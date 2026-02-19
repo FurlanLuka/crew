@@ -2,10 +2,10 @@
 # crew — Agent team launcher with workspace & project management
 #
 # Usage:
-#   crew                                Select workspace and launch agents
-#   crew <workspace>                    Launch agents for a workspace
+#   crew                                Select workspace and launch agents + servers
+#   crew <workspace>                    Launch agents + servers for a workspace
 #   crew servers [workspace]            Launch dev servers only
-#   crew up [workspace]                 Launch agents + dev servers
+#   crew agents [workspace]             Launch agents only
 #   crew workspace create <name>        Create a workspace
 #   crew workspace list                 List workspaces
 #   crew workspace delete <name>        Delete a workspace
@@ -159,7 +159,7 @@ cmd_project_add() {
   workspace_exists "$ws" || die "Workspace '$ws' not found."
 
   printf "Project name: "
-  read -r proj_name
+  read -er proj_name
   [[ -z "$proj_name" ]] && die "Name cannot be empty."
 
   printf "Project path: "
@@ -169,16 +169,16 @@ cmd_project_add() {
   proj_path="$(cd "$proj_path" && pwd)"
 
   printf "Agent role description (e.g. 'owns the backend API'): "
-  read -r proj_role
+  read -er proj_role
   [[ -z "$proj_role" ]] && proj_role="works on $proj_name"
 
   printf "Dev server command (leave empty if none): "
-  read -r dev_cmd
+  read -er dev_cmd
 
   local dev_port=""
   if [[ -n "$dev_cmd" ]]; then
     printf "Dev server port (leave empty if none): "
-    read -r dev_port
+    read -er dev_port
   fi
 
   python3 -c "
@@ -504,9 +504,9 @@ cmd_help() {
   bold "crew — Agent team launcher"
   echo ""
   bold "  Launch:"
-  echo "  crew [workspace]                  Launch agents (pick workspace if omitted)"
+  echo "  crew [workspace]                  Launch agents + dev servers"
   echo "  crew servers [workspace]          Launch dev servers only"
-  echo "  crew up [workspace]               Launch agents + dev servers"
+  echo "  crew agents [workspace]           Launch agents only"
   echo ""
   bold "  Workspaces:"
   echo "  crew workspace create <name>      Create a workspace"
@@ -545,13 +545,14 @@ case "${1:-}" in
     esac
     ;;
   servers) cmd_launch_servers "${2:-}" ;;
+  agents)  cmd_launch_agents "${2:-}" ;;
   up)      cmd_launch_up "${2:-}" ;;
   kill)    cmd_kill ;;
   help)    cmd_help ;;
-  "")      cmd_launch_agents "" ;;
+  "")      cmd_launch_up "" ;;
   *)
     if workspace_exists "$1"; then
-      cmd_launch_agents "$1"
+      cmd_launch_up "$1"
     else
       die "Unknown command '$1'. Try: crew help"
     fi
