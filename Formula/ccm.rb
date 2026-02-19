@@ -1,8 +1,8 @@
 class Ccm < Formula
   desc "Claude Code Manager — package manager for agents and skills"
   homepage "https://github.com/FurlanLuka/homebrew-tap"
-  url "https://github.com/FurlanLuka/homebrew-tap/archive/refs/tags/v0.12.0.tar.gz"
-  sha256 "7ff24fd7c62bfc8449a6a6ce107b91b614e00ae7ebd03fb44b6810e220dc13e1"
+  url "https://github.com/FurlanLuka/homebrew-tap/archive/refs/tags/v0.13.0.tar.gz"
+  sha256 "f52e7c4c2a91d960dc0e0dbd783d8696a0bc589033b93bb1d803457f3a6cb7b5"
   license "MIT"
 
   depends_on "gum"
