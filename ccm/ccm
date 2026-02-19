@@ -15,6 +15,9 @@
 #   ccm skills installed               List installed skills
 #   ccm skills remove <name>           Remove a skill
 #   ccm skills update [name]           Update skill(s)
+#   ccm profile pull                   Pull global CLAUDE.md from registry
+#   ccm profile show                   Show current global CLAUDE.md
+#   ccm profile remove                 Remove global CLAUDE.md
 #   ccm help                           Show this help
 
 set -euo pipefail
@@ -509,6 +512,41 @@ cmd_skills_update() {
 }
 
 # ─────────────────────────────────────────────
+# PROFILE
+# ─────────────────────────────────────────────
+cmd_profile_pull() {
+  local target="${CLAUDE_CONFIG_DIR}/CLAUDE.md"
+
+  local content
+  content=$(gh_raw "${REGISTRY_BASE}/profile/CLAUDE.md") || die "Failed to fetch profile from registry."
+
+  mkdir -p "$CLAUDE_CONFIG_DIR"
+  echo "$content" > "$target"
+  green "Profile pulled to ${target}"
+}
+
+cmd_profile_show() {
+  local target="${CLAUDE_CONFIG_DIR}/CLAUDE.md"
+
+  if [[ -f "$target" ]]; then
+    cat "$target"
+  else
+    dim "No profile installed. Run: ccm profile pull"
+  fi
+}
+
+cmd_profile_remove() {
+  local target="${CLAUDE_CONFIG_DIR}/CLAUDE.md"
+
+  if [[ -f "$target" ]]; then
+    rm "$target"
+    green "Profile removed (${target})"
+  else
+    die "No profile installed."
+  fi
+}
+
+# ─────────────────────────────────────────────
 # HELP
 # ─────────────────────────────────────────────
 cmd_help() {
@@ -530,6 +568,11 @@ cmd_help() {
   echo "  ccm skills installed               List installed skills"
   echo "  ccm skills remove <name>           Remove a skill"
   echo "  ccm skills update [name]           Update skill(s)"
+  echo ""
+  bold "  Profile:"
+  echo "  ccm profile pull                   Pull global CLAUDE.md from registry"
+  echo "  ccm profile show                   Show current global CLAUDE.md"
+  echo "  ccm profile remove                 Remove global CLAUDE.md"
   echo ""
   bold "  General:"
   echo "  ccm help                           Show this help"
@@ -561,6 +604,14 @@ case "${1:-}" in
       remove)    cmd_skills_remove "${3:-}" ;;
       update)    cmd_skills_update "${3:-}" ;;
       *)         die "Unknown: ccm skills ${2:-}. Try: list, install, installed, remove, update" ;;
+    esac
+    ;;
+  profile)
+    case "${2:-}" in
+      pull)   cmd_profile_pull ;;
+      show)   cmd_profile_show ;;
+      remove) cmd_profile_remove ;;
+      *)      die "Unknown: ccm profile ${2:-}. Try: pull, show, remove" ;;
     esac
     ;;
   help) cmd_help ;;
