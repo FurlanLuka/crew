@@ -44,6 +44,12 @@ ccm agents installed                  # See what's installed
 
 Agents are `.md` files with YAML frontmatter. Skills are directories with a `SKILL.md` and optional references/scripts. Everything installs into `$CLAUDE_CONFIG_DIR` (default `~/.claude`) or `.claude/` in your project.
 
+Also supports push notifications via [ntfy.sh](https://ntfy.sh) — get alerted on your phone when Claude is waiting for input:
+
+```bash
+ccm notification setup                # One-time setup (no account needed)
+```
+
 [Full documentation →](ccm/)
 
 ## Registry
