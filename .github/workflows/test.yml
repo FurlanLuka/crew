@@ -12,8 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Symlink tap into Homebrew
+        run: |
+          TAP_DIR="$(brew --repository)/Library/Taps/furlanluka/homebrew-tap"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          ln -s "${{ github.workspace }}" "$TAP_DIR"
+
       - name: Lint formula
-        run: brew audit --formula Formula/crew.rb
+        run: brew audit --formula furlanluka/tap/crew
 
       - name: Check bash syntax
         run: bash -n crew/crew
@@ -32,7 +38,7 @@ jobs:
           ln -s "${{ github.workspace }}" "$TAP_DIR"
 
       - name: Install crew from local tap
-        run: brew install --formula Formula/crew.rb
+        run: brew install furlanluka/tap/crew
 
       - name: Test crew help
         run: crew help | grep -q "Agent team launcher"
