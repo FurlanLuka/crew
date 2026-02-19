@@ -58,6 +58,19 @@ ccm skills remove <name>           # Remove a skill
 ccm skills update [name]           # Update one or all skills
 ```
 
+### Notifications
+
+Get push notifications on your phone/desktop when Claude finishes and is waiting for input. Powered by [ntfy.sh](https://ntfy.sh) — no account required.
+
+```bash
+ccm notification setup             # Set up push notifications (interactive)
+ccm notification status            # Show current notification config
+ccm notification test              # Send a test notification
+ccm notification remove            # Remove notification hook
+```
+
+Notifications include the project name so you know which session is idle.
+
 ## Install locations
 
 | Flag | Agents | Skills |
