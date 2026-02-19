@@ -895,24 +895,45 @@ cmd_update() {
 # NOTIFICATIONS
 # ─────────────────────────────────────────────
 SETTINGS_FILE="${CLAUDE_CONFIG_DIR}/settings.json"
+NTFY_HOOK_SCRIPT="${CLAUDE_CONFIG_DIR}/hooks/ccm-ntfy.sh"
 
 _ntfy_extract_topic() {
-  [[ -f "$SETTINGS_FILE" ]] || return 1
-  python3 -c "
-import json, sys, re
-with open('$SETTINGS_FILE') as f:
-    settings = json.load(f)
-hooks = settings.get('hooks', {}).get('Notification', [])
-for entry in hooks:
-    if entry.get('matcher') == 'idle_prompt':
-        for h in entry.get('hooks', []):
-            cmd = h.get('command', '')
-            m = re.search(r'ntfy\.sh/(\S+)', cmd)
-            if m:
-                print(m.group(1))
-                sys.exit(0)
-sys.exit(1)
-" 2>/dev/null
+  [[ -f "$NTFY_HOOK_SCRIPT" ]] || return 1
+  grep '^NTFY_TOPIC=' "$NTFY_HOOK_SCRIPT" 2>/dev/null | head -1 | cut -d'"' -f2
+}
+
+_ntfy_write_script() {
+  local topic="$1"
+  mkdir -p "$(dirname "$NTFY_HOOK_SCRIPT")"
+  cat > "$NTFY_HOOK_SCRIPT" << 'HOOKEOF'
+#!/usr/bin/env bash
+NTFY_TOPIC="__TOPIC__"
+
+INPUT=$(cat)
+TYPE=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('notification_type',''))" 2>/dev/null)
+MSG=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('message',''))" 2>/dev/null)
+CWD=$(echo "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null)
+PROJECT=$(basename "$CWD")
+
+case "$TYPE" in
+  idle_prompt)       TITLE="Claude idle — $PROJECT"; TAGS="white_check_mark"; PRIO="default" ;;
+  permission_prompt) TITLE="Permission needed — $PROJECT"; TAGS="lock"; PRIO="high" ;;
+  auth_success)      TITLE="Auth success — $PROJECT"; TAGS="key"; PRIO="low" ;;
+  elicitation_dialog) TITLE="Input needed — $PROJECT"; TAGS="question"; PRIO="high" ;;
+  *)                 TITLE="Claude — $PROJECT"; TAGS="bell"; PRIO="default" ;;
+esac
+
+curl -sf \
+  -H "Title: $TITLE" \
+  -H "Tags: $TAGS" \
+  -H "Priority: $PRIO" \
+  -d "$MSG" \
+  "ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1
+
+exit 0
+HOOKEOF
+  sed -i '' "s|__TOPIC__|${topic}|" "$NTFY_HOOK_SCRIPT"
+  chmod +x "$NTFY_HOOK_SCRIPT"
 }
 
 cmd_notification_setup() {
@@ -923,13 +944,17 @@ cmd_notification_setup() {
   read -r topic
   topic="${topic:-$default_topic}"
 
+  # Write the hook script
+  _ntfy_write_script "$topic"
+
+  # Register hook in settings.json (no matcher = all notification types)
   mkdir -p "$CLAUDE_CONFIG_DIR"
 
   python3 -c "
 import json, os
 
 path = '$SETTINGS_FILE'
-topic = '$topic'
+script = '$NTFY_HOOK_SCRIPT'
 
 if os.path.exists(path):
     with open(path) as f:
@@ -938,21 +963,18 @@ else:
     settings = {}
 
 hook_entry = {
-    'matcher': 'idle_prompt',
     'hooks': [{
         'type': 'command',
-        'command': \"curl -sf -H 'Title: Claude idle' -d \\\"Waiting for input in $(basename $PWD)\\\" ntfy.sh/\" + topic
+        'command': script
     }]
 }
 
 hooks = settings.setdefault('hooks', {})
 notif_hooks = hooks.get('Notification', [])
 
-# Remove any existing idle_prompt ntfy hook
-notif_hooks = [h for h in notif_hooks if not (
-    h.get('matcher') == 'idle_prompt' and
-    any('ntfy.sh/' in hk.get('command', '') for hk in h.get('hooks', []))
-)]
+# Remove any existing ccm-ntfy hook
+notif_hooks = [h for h in notif_hooks if not
+    any('ccm-ntfy.sh' in hk.get('command', '') for hk in h.get('hooks', []))]
 
 notif_hooks.append(hook_entry)
 hooks['Notification'] = notif_hooks
@@ -963,12 +985,19 @@ with open(path, 'w') as f:
 " || die "Failed to write settings."
 
   green "Notifications enabled (topic: ${topic})"
+  echo ""
+  echo "  All notification types are active:"
+  echo "    idle_prompt        — Claude finished, waiting for input"
+  echo "    permission_prompt  — Claude needs permission to proceed"
+  echo "    auth_success       — Authentication completed"
+  echo "    elicitation_dialog — Claude is asking for input"
+  echo ""
   dim "Subscribe at: https://ntfy.sh/${topic}"
 }
 
 cmd_notification_status() {
   local topic
-  if topic=$(_ntfy_extract_topic); then
+  if topic=$(_ntfy_extract_topic) && [[ -n "$topic" ]]; then
     green "Notifications: enabled (topic: ${topic})"
     dim "Subscribe at: https://ntfy.sh/${topic}"
   else
@@ -980,8 +1009,17 @@ cmd_notification_status() {
 cmd_notification_test() {
   local topic
   topic=$(_ntfy_extract_topic) || die "No notification hook configured. Run: ccm notification setup"
+  [[ -z "$topic" ]] && die "No notification hook configured. Run: ccm notification setup"
 
-  curl -sf -H "Title: Claude idle" -d "Test from $(basename "$PWD")" "ntfy.sh/${topic}" >/dev/null \
+  # Simulate each notification type
+  local project
+  project=$(basename "$PWD")
+
+  curl -sf \
+    -H "Title: Claude idle — ${project}" \
+    -H "Tags: white_check_mark" \
+    -d "Test: Claude is waiting for input" \
+    "ntfy.sh/${topic}" >/dev/null \
     && green "Test notification sent to topic '${topic}'" \
     || die "Failed to send notification."
 }
@@ -991,7 +1029,9 @@ cmd_notification_remove() {
 
   local topic
   topic=$(_ntfy_extract_topic) || die "No notification hook configured."
+  [[ -z "$topic" ]] && die "No notification hook configured."
 
+  # Remove hook from settings.json
   python3 -c "
 import json
 
@@ -1002,10 +1042,8 @@ with open(path) as f:
 hooks = settings.get('hooks', {})
 notif_hooks = hooks.get('Notification', [])
 
-notif_hooks = [h for h in notif_hooks if not (
-    h.get('matcher') == 'idle_prompt' and
-    any('ntfy.sh/' in hk.get('command', '') for hk in h.get('hooks', []))
-)]
+notif_hooks = [h for h in notif_hooks if not
+    any('ccm-ntfy.sh' in hk.get('command', '') for hk in h.get('hooks', []))]
 
 if notif_hooks:
     hooks['Notification'] = notif_hooks
@@ -1019,6 +1057,9 @@ with open(path, 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
 " || die "Failed to update settings."
+
+  # Remove the hook script
+  rm -f "$NTFY_HOOK_SCRIPT"
 
   green "Notification hook removed (was topic: ${topic})"
 }

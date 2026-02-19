@@ -60,7 +60,7 @@ ccm skills update [name]           # Update one or all skills
 
 ### Notifications
 
-Get push notifications on your phone/desktop when Claude finishes and is waiting for input. Powered by [ntfy.sh](https://ntfy.sh) — no account required.
+Get push notifications on your phone/desktop when Claude needs attention. Powered by [ntfy.sh](https://ntfy.sh) — no account required.
 
 ```bash
 ccm notification setup             # Set up push notifications (interactive)
@@ -69,7 +69,16 @@ ccm notification test              # Send a test notification
 ccm notification remove            # Remove notification hook
 ```
 
-Notifications include the project name so you know which session is idle.
+All Claude Code notification types are covered:
+
+| Type | When it fires |
+|------|---------------|
+| `idle_prompt` | Claude finished, waiting for input |
+| `permission_prompt` | Claude needs permission to proceed |
+| `elicitation_dialog` | Claude is asking for input |
+| `auth_success` | Authentication completed |
+
+Each notification includes the project name so you know which session needs attention.
 
 ## Install locations
 
