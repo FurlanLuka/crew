@@ -19,9 +19,11 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
    gh pr diff <number>
    ```
 
-2. **Understand context** — read relevant source files around the changed areas to understand the full picture, not just the diff.
+2. **Parse the diff to identify changed lines** — before analyzing, build a map of which lines were actually added (+) or removed (-) in each file. You will ONLY comment on these lines. Context lines (lines without + or -) are NOT changed lines.
 
-3. **Analyze changes** — evaluate the diff against this checklist. For JavaScript and TypeScript files, also apply the js-ts-clean-code skill guidelines (preloaded into your context):
+3. **Understand context** — read relevant source files around the changed areas to understand the full picture, not just the diff.
+
+4. **Analyze changes** — evaluate the diff against this checklist. For JavaScript and TypeScript files, also apply the js-ts-clean-code skill guidelines (preloaded into your context):
    - Correctness: logic errors, off-by-one, null/undefined handling, race conditions
    - Security: injection, exposed secrets, auth gaps, input validation
    - Performance: unnecessary allocations, N+1 queries, missing indexes, blocking calls
@@ -30,31 +32,40 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
    - Testing: untested paths, missing edge case tests, brittle assertions
    - API design: breaking changes, inconsistent patterns, missing validation
 
-4. **Present each comment individually** — for every issue you find, use AskUserQuestion to present:
-   - The file and line(s) affected
-   - The comment you want to post (exact text)
-   - Your reasoning: why this matters, what could go wrong, and how to fix it
+5. **Present each comment individually** — for every issue you find, use the **AskUserQuestion tool** to present it. Each question should include:
+   - The file and exact line number(s) affected
    - Severity: critical / warning / suggestion
+   - The exact comment text you want to post
+   - Why this matters and how to fix it
 
-   Ask the user to approve, edit, or skip each comment. Offer these options:
+   Provide these options via AskUserQuestion:
    - **Post** — submit the comment as-is
    - **Skip** — don't post this comment
-   - **Edit** — let the user provide revised wording
+   - **Edit** — user provides revised wording (via "Other" option)
 
-5. **Submit the review** — after all comments are triaged, post approved comments:
-   ```
-   gh pr review <number> --comment --body "<comment>"
-   ```
-   Or for inline comments on specific files/lines:
+   **Wait for the user's response before moving to the next comment.** Process comments one at a time.
+
+6. **Submit approved comments** — after user approves, post using inline comments on the correct changed line:
    ```
    gh api repos/{owner}/{repo}/pulls/<number>/comments \
      -f body="<comment>" -f path="<file>" -f commit_id="<sha>" \
      -F line=<line> -f side=RIGHT
    ```
+   For comments that don't map to a specific changed line, post as a general PR comment:
+   ```
+   gh pr review <number> --comment --body "<comment>"
+   ```
 
-## Rules
+## Commenting Rules — CRITICAL
 
-- Never post a comment without explicit user approval.
+- **ONLY comment on changed lines** — lines that appear with `+` (added) or `-` (removed) in the diff. NEVER comment on unchanged context lines.
+- To find the correct line number for a `+` line: start from the new file line number in the hunk header (`@@ -old,count +NEW,count @@`) and count forward through the hunk, skipping `-` lines (they don't exist in the new file).
+- If an issue relates to unchanged code, post it as a **general PR comment** instead of an inline comment.
+- When using the GitHub API to post inline comments, the `line` parameter must be the line number in the NEW version of the file for `side=RIGHT`.
+
+## General Rules
+
+- **Never post a comment without explicit user approval via AskUserQuestion.**
 - Be specific — reference exact lines, variable names, and concrete fixes.
 - Don't nitpick style or formatting unless it hurts readability.
 - If the PR looks good, say so. Not every review needs comments.

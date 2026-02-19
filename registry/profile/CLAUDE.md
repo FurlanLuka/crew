@@ -8,6 +8,7 @@ Use the following agents when appropriate:
 
 - **js-ts-code-reviewer** — after writing or modifying JavaScript/TypeScript code, run this agent to review your changes for quality, security, and standards compliance.
 - **pr-reviewer** — when asked to review a pull request, use this agent to analyze the diff and post review comments.
+- **daily-chores** — run this agent to triage daily tasks (PR reviews, etc.) interactively.
 
 ## Skills
 

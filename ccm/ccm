@@ -18,6 +18,8 @@
 #   ccm profile pull                   Pull global CLAUDE.md from registry
 #   ccm profile show                   Show current global CLAUDE.md
 #   ccm profile remove                 Remove global CLAUDE.md
+#   ccm install [-p]                   Install all agents, skills, and profile
+#   ccm update                         Smart-update all installed items
 #   ccm help                           Show this help
 
 set -euo pipefail
@@ -43,6 +45,16 @@ die() { red "Error: $1"; exit 1; }
 parse_frontmatter() {
   local key="$1"
   sed -n '/^---$/,/^---$/p' | grep "^${key}:" | sed "s/^${key}:[[:space:]]*//"
+}
+
+# SHA-256 hash of stdin
+content_hash() {
+  shasum -a 256 | cut -d' ' -f1
+}
+
+# SHA-256 hash of a file
+file_hash() {
+  shasum -a 256 < "$1" 2>/dev/null | cut -d' ' -f1
 }
 
 # GitHub API helper
@@ -205,18 +217,31 @@ cmd_agents_update() {
     local global_file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
     local project_file=".claude/agents/${name}.md"
 
+    local content
+    content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
+    local remote_hash
+    remote_hash=$(echo "$content" | content_hash)
+
     if [[ -f "$project_file" ]]; then
-      local content
-      content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
-      echo "$content" > "$project_file"
-      green "Updated agent '${name}' (project)."
+      local local_hash
+      local_hash=$(echo "$(cat "$project_file")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Agent '${name}' already up to date (project)."
+      else
+        echo "$content" > "$project_file"
+        green "Updated agent '${name}' (project)."
+      fi
     fi
 
     if [[ -f "$global_file" ]]; then
-      local content
-      content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
-      echo "$content" > "$global_file"
-      green "Updated agent '${name}' (global)."
+      local local_hash
+      local_hash=$(echo "$(cat "$global_file")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Agent '${name}' already up to date (global)."
+      else
+        echo "$content" > "$global_file"
+        green "Updated agent '${name}' (global)."
+      fi
     fi
 
     [[ ! -f "$project_file" && ! -f "$global_file" ]] && die "Agent '${name}' not installed."
@@ -224,36 +249,52 @@ cmd_agents_update() {
   fi
 
   # Update all installed agents
-  local updated=0
+  local found=0
 
   local global_dir="${CLAUDE_CONFIG_DIR}/agents"
   if [[ -d "$global_dir" ]]; then
     for f in "$global_dir"/*.md; do
       [[ -f "$f" ]] || continue
+      found=1
       local n
       n=$(basename "$f" .md)
       local content
       content=$(gh_raw "${REGISTRY_BASE}/agents/${n}.md") || continue
-      echo "$content" > "$f"
-      green "Updated agent '${n}' (global)."
-      updated=$((updated + 1))
+      local remote_hash
+      remote_hash=$(echo "$content" | content_hash)
+      local local_hash
+      local_hash=$(echo "$(cat "$f")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Agent '${n}' already up to date (global)."
+      else
+        echo "$content" > "$f"
+        green "Updated agent '${n}' (global)."
+      fi
     done
   fi
 
   if [[ -d ".claude/agents" ]]; then
     for f in .claude/agents/*.md; do
       [[ -f "$f" ]] || continue
+      found=1
       local n
       n=$(basename "$f" .md)
       local content
       content=$(gh_raw "${REGISTRY_BASE}/agents/${n}.md") || continue
-      echo "$content" > "$f"
-      green "Updated agent '${n}' (project)."
-      updated=$((updated + 1))
+      local remote_hash
+      remote_hash=$(echo "$content" | content_hash)
+      local local_hash
+      local_hash=$(echo "$(cat "$f")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Agent '${n}' already up to date (project)."
+      else
+        echo "$content" > "$f"
+        green "Updated agent '${n}' (project)."
+      fi
     done
   fi
 
-  if [[ $updated -eq 0 ]]; then
+  if [[ $found -eq 0 ]]; then
     dim "No agents to update."
   fi
 }
@@ -466,14 +507,31 @@ cmd_skills_update() {
     local global_dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
     local project_dir=".claude/skills/${name}"
 
+    local remote_skill
+    remote_skill=$(gh_raw "${REGISTRY_BASE}/skills/${name}/SKILL.md") || die "Skill '${name}' not found in registry."
+    local remote_hash
+    remote_hash=$(echo "$remote_skill" | content_hash)
+
     if [[ -d "$project_dir" ]]; then
-      rm -rf "$project_dir"
-      cmd_skills_install "$name" -p
+      local local_hash
+      local_hash=$(echo "$(cat "${project_dir}/SKILL.md")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Skill '${name}' already up to date (project)."
+      else
+        rm -rf "$project_dir"
+        cmd_skills_install "$name" -p
+      fi
     fi
 
     if [[ -d "$global_dir" ]]; then
-      rm -rf "$global_dir"
-      cmd_skills_install "$name"
+      local local_hash
+      local_hash=$(echo "$(cat "${global_dir}/SKILL.md")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Skill '${name}' already up to date (global)."
+      else
+        rm -rf "$global_dir"
+        cmd_skills_install "$name"
+      fi
     fi
 
     [[ ! -d "$project_dir" && ! -d "$global_dir" ]] && die "Skill '${name}' not installed."
@@ -481,17 +539,28 @@ cmd_skills_update() {
   fi
 
   # Update all installed skills
-  local updated=0
+  local found=0
 
   local global_dir="${CLAUDE_CONFIG_DIR}/skills"
   if [[ -d "$global_dir" ]]; then
     for d in "$global_dir"/*/; do
       [[ -d "$d" ]] || continue
       [[ -f "${d}SKILL.md" ]] || continue
+      found=1
       local n
       n=$(basename "$d")
-      rm -rf "$d"
-      cmd_skills_install "$n" 2>/dev/null && updated=$((updated + 1)) || true
+      local remote_skill
+      remote_skill=$(gh_raw "${REGISTRY_BASE}/skills/${n}/SKILL.md") || continue
+      local remote_hash
+      remote_hash=$(echo "$remote_skill" | content_hash)
+      local local_hash
+      local_hash=$(echo "$(cat "${d}SKILL.md")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Skill '${n}' already up to date (global)."
+      else
+        rm -rf "$d"
+        cmd_skills_install "$n" 2>/dev/null || true
+      fi
     done
   fi
 
@@ -499,14 +568,25 @@ cmd_skills_update() {
     for d in .claude/skills/*/; do
       [[ -d "$d" ]] || continue
       [[ -f "${d}SKILL.md" ]] || continue
+      found=1
       local n
       n=$(basename "$d")
-      rm -rf "$d"
-      cmd_skills_install "$n" -p 2>/dev/null && updated=$((updated + 1)) || true
+      local remote_skill
+      remote_skill=$(gh_raw "${REGISTRY_BASE}/skills/${n}/SKILL.md") || continue
+      local remote_hash
+      remote_hash=$(echo "$remote_skill" | content_hash)
+      local local_hash
+      local_hash=$(echo "$(cat "${d}SKILL.md")" | content_hash)
+      if [[ "$remote_hash" == "$local_hash" ]]; then
+        dim "Skill '${n}' already up to date (project)."
+      else
+        rm -rf "$d"
+        cmd_skills_install "$n" -p 2>/dev/null || true
+      fi
     done
   fi
 
-  if [[ $updated -eq 0 ]]; then
+  if [[ $found -eq 0 ]]; then
     dim "No skills to update."
   fi
 }
@@ -547,6 +627,103 @@ cmd_profile_remove() {
 }
 
 # ─────────────────────────────────────────────
+# INSTALL / UPDATE (top-level)
+# ─────────────────────────────────────────────
+cmd_profile_update() {
+  local target="${CLAUDE_CONFIG_DIR}/CLAUDE.md"
+
+  if [[ ! -f "$target" ]]; then
+    dim "No profile installed. Skipping."
+    return
+  fi
+
+  local content
+  content=$(gh_raw "${REGISTRY_BASE}/profile/CLAUDE.md") || die "Failed to fetch profile from registry."
+
+  local remote_hash
+  remote_hash=$(echo "$content" | content_hash)
+  local local_hash
+  local_hash=$(echo "$(cat "$target")" | content_hash)
+
+  if [[ "$remote_hash" == "$local_hash" ]]; then
+    dim "Profile already up to date."
+  else
+    echo "$content" > "$target"
+    green "Updated profile (${target})."
+  fi
+}
+
+cmd_install() {
+  local scope="${1:-}"
+
+  bold "Installing all agents..."
+  echo ""
+
+  local response
+  response=$(gh_api "${REGISTRY_BASE}/agents") || die "Failed to fetch agent registry."
+
+  local agent_names
+  agent_names=$(echo "$response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    name = item['name']
+    if name.endswith('.md'):
+        print(name[:-3])
+" 2>/dev/null) || true
+
+  if [[ -n "$agent_names" ]]; then
+    while IFS= read -r name; do
+      cmd_agents_install "$name" "$scope"
+    done <<< "$agent_names"
+  else
+    dim "  No agents in registry."
+  fi
+
+  echo ""
+  bold "Installing all skills..."
+  echo ""
+
+  response=$(gh_api "${REGISTRY_BASE}/skills") || die "Failed to fetch skill registry."
+
+  local skill_names
+  skill_names=$(echo "$response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    if item['type'] == 'dir':
+        print(item['name'])
+" 2>/dev/null) || true
+
+  if [[ -n "$skill_names" ]]; then
+    while IFS= read -r name; do
+      cmd_skills_install "$name" "$scope"
+    done <<< "$skill_names"
+  else
+    dim "  No skills in registry."
+  fi
+
+  echo ""
+  bold "Pulling profile..."
+  echo ""
+  cmd_profile_pull
+}
+
+cmd_update() {
+  bold "Updating agents..."
+  echo ""
+  cmd_agents_update
+  echo ""
+  bold "Updating skills..."
+  echo ""
+  cmd_skills_update
+  echo ""
+  bold "Updating profile..."
+  echo ""
+  cmd_profile_update
+}
+
+# ─────────────────────────────────────────────
 # HELP
 # ─────────────────────────────────────────────
 cmd_help() {
@@ -575,6 +752,8 @@ cmd_help() {
   echo "  ccm profile remove                 Remove global CLAUDE.md"
   echo ""
   bold "  General:"
+  echo "  ccm install [-p]                   Install all agents, skills, and profile"
+  echo "  ccm update                         Smart-update all installed items"
   echo "  ccm help                           Show this help"
   echo ""
   dim "  Registry: github.com/${REGISTRY_REPO}"
@@ -614,6 +793,8 @@ case "${1:-}" in
       *)      die "Unknown: ccm profile ${2:-}. Try: pull, show, remove" ;;
     esac
     ;;
+  install) cmd_install "${2:-}" ;;
+  update)  cmd_update ;;
   help) cmd_help ;;
   "")   cmd_help ;;
   *)    die "Unknown command '${1:-}'. Try: ccm help" ;;
