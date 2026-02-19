@@ -116,6 +116,9 @@ cleanup_workspace() {
     echo "Killed agent session: $session"
   fi
 
+  # Clean up prompt file
+  rm -f "${CONFIG_DIR}/prompt-${ws}.md" 2>/dev/null
+
   # Close Cursor/VS Code workspace window
   local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
   if [[ -f "$ws_file" ]]; then
@@ -310,14 +313,18 @@ cmd_launch_agents() {
     return
   fi
 
-  # Build prompt
-  local prompt="Create an agent team and spawn these teammates:\n"
-  while IFS='|' read -r name path role dev_cmd port; do
-    prompt+="- **$name** (working directory: $path): $role\n"
-  done <<< "$projects"
-  prompt+="\nEach teammate should cd into their project directory before starting work."
-  prompt+="\nCreate a shared task list so I can see status."
-  prompt+="\nWait for my instructions on what to build."
+  # Build prompt and write to file
+  local prompt_file="${CONFIG_DIR}/prompt-${ws}.md"
+  {
+    echo "Create an agent team and spawn these teammates:"
+    while IFS='|' read -r name path role dev_cmd port; do
+      echo "- **$name** (working directory: $path): $role"
+    done <<< "$projects"
+    echo ""
+    echo "Each teammate should cd into their project directory before starting work."
+    echo "Create a shared task list so I can see status."
+    echo "Wait for my instructions on what to build."
+  } > "$prompt_file"
 
   # Lead path = parent of first project
   local lead_path
@@ -328,9 +335,7 @@ cmd_launch_agents() {
   echo ""
 
   tmux new-session -d -s "$session" -c "$lead_path"
-  tmux send-keys -t "$session" "claude" Enter
-  sleep 3
-  tmux send-keys -t "$session" "$(echo -e "$prompt")" Enter
+  tmux send-keys -t "$session" "claude \"\$(cat '$prompt_file')\"" Enter
 
   echo "┌─────────────────────────────────────────┐"
   echo "│  Workspace: $ws (agents)                │"
@@ -485,13 +490,18 @@ cmd_launch_up() {
     return
   fi
 
-  local prompt="Create an agent team and spawn these teammates:\n"
-  while IFS='|' read -r name path role dev_cmd port; do
-    prompt+="- **$name** (working directory: $path): $role\n"
-  done <<< "$projects"
-  prompt+="\nEach teammate should cd into their project directory before starting work."
-  prompt+="\nCreate a shared task list so I can see status."
-  prompt+="\nWait for my instructions on what to build."
+  # Build prompt and write to file
+  local prompt_file="${CONFIG_DIR}/prompt-${ws}.md"
+  {
+    echo "Create an agent team and spawn these teammates:"
+    while IFS='|' read -r name path role dev_cmd port; do
+      echo "- **$name** (working directory: $path): $role"
+    done <<< "$projects"
+    echo ""
+    echo "Each teammate should cd into their project directory before starting work."
+    echo "Create a shared task list so I can see status."
+    echo "Wait for my instructions on what to build."
+  } > "$prompt_file"
 
   local lead_path
   lead_path=$(echo "$projects" | head -1 | cut -d'|' -f2 | xargs dirname)
@@ -501,9 +511,7 @@ cmd_launch_up() {
   echo ""
 
   tmux new-session -d -s "$session" -c "$lead_path" -n "agents"
-  tmux send-keys -t "$session:agents" "claude" Enter
-  sleep 3
-  tmux send-keys -t "$session:agents" "$(echo -e "$prompt")" Enter
+  tmux send-keys -t "$session:agents" "claude \"\$(cat '$prompt_file')\"" Enter
 
   echo "┌─────────────────────────────────────────┐"
   echo "│  Workspace: $ws                         │"
