@@ -37,16 +37,19 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "SHA256: $SHA"
 
-      - name: Update formula with new URL and SHA
+      - name: Update all formulas with new URL and SHA
         run: |
-          sed -i "s|url \".*\"|url \"${{ steps.sha.outputs.url }}\"|" Formula/crew.rb
-          sed -i "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" Formula/crew.rb
-          cat Formula/crew.rb
+          for formula in Formula/*.rb; do
+            sed -i "s|url \".*\"|url \"${{ steps.sha.outputs.url }}\"|" "$formula"
+            sed -i "s|sha256 \".*\"|sha256 \"${{ steps.sha.outputs.sha256 }}\"|" "$formula"
+          done
+          echo "Updated formulas:"
+          cat Formula/*.rb
 
       - name: Commit and push formula update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/crew.rb
-          git commit -m "Update formula for ${{ github.ref_name }}"
+          git add Formula/
+          git commit -m "Update formulas for ${{ github.ref_name }}"
           git push origin main

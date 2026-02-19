@@ -339,7 +339,11 @@ cmd_launch_agents() {
   echo ""
 
   tmux new-session -d -s "$session" -c "$lead_path"
-  tmux send-keys -t "$session" "claude \"\$(cat '$prompt_file')\"" Enter
+  local claude_cmd="claude \"\$(cat '$prompt_file')\""
+  if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
+    claude_cmd="CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' ${claude_cmd}"
+  fi
+  tmux send-keys -t "$session" "$claude_cmd" Enter
 
   echo "┌─────────────────────────────────────────┐"
   echo "│  Workspace: $ws (agents)                │"
@@ -515,7 +519,11 @@ cmd_launch_up() {
   echo ""
 
   tmux new-session -d -s "$session" -c "$lead_path" -n "agents"
-  tmux send-keys -t "$session:agents" "claude \"\$(cat '$prompt_file')\"" Enter
+  local claude_cmd="claude \"\$(cat '$prompt_file')\""
+  if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
+    claude_cmd="CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' ${claude_cmd}"
+  fi
+  tmux send-keys -t "$session:agents" "$claude_cmd" Enter
 
   echo "┌─────────────────────────────────────────┐"
   echo "│  Workspace: $ws                         │"

@@ -1,0 +1,569 @@
+#!/usr/bin/env bash
+# ccm — Claude Code Manager
+# Package manager for Claude Code agents and skills.
+#
+# Usage:
+#   ccm agents list                    List available agents from registry
+#   ccm agents install <name>          Install agent (global by default)
+#   ccm agents install <name> -p       Install to current project
+#   ccm agents installed               List installed agents
+#   ccm agents remove <name>           Remove an agent
+#   ccm agents update [name]           Update agent(s)
+#   ccm skills list                    List available skills from registry
+#   ccm skills install <name>          Install skill (global by default)
+#   ccm skills install <name> -p       Install to current project
+#   ccm skills installed               List installed skills
+#   ccm skills remove <name>           Remove a skill
+#   ccm skills update [name]           Update skill(s)
+#   ccm help                           Show this help
+
+set -euo pipefail
+
+CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+REGISTRY_REPO="FurlanLuka/homebrew-tap"
+REGISTRY_BRANCH="main"
+REGISTRY_BASE="registry"
+
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+red()    { printf "\033[31m%s\033[0m\n" "$1"; }
+green()  { printf "\033[32m%s\033[0m\n" "$1"; }
+blue()   { printf "\033[34m%s\033[0m\n" "$1"; }
+bold()   { printf "\033[1m%s\033[0m\n" "$1"; }
+dim()    { printf "\033[2m%s\033[0m\n" "$1"; }
+
+die() { red "Error: $1"; exit 1; }
+
+# Parse YAML frontmatter from .md content on stdin
+# Extracts a single key value from --- delimited frontmatter
+parse_frontmatter() {
+  local key="$1"
+  sed -n '/^---$/,/^---$/p' | grep "^${key}:" | sed "s/^${key}:[[:space:]]*//"
+}
+
+# GitHub API helper
+gh_api() {
+  local endpoint="$1"
+  local url="https://api.github.com/repos/${REGISTRY_REPO}/contents/${endpoint}?ref=${REGISTRY_BRANCH}"
+  curl -sf -H "Accept: application/vnd.github.v3+json" "$url"
+}
+
+# Raw file download
+gh_raw() {
+  local path="$1"
+  local url="https://raw.githubusercontent.com/${REGISTRY_REPO}/${REGISTRY_BRANCH}/${path}"
+  curl -sf "$url"
+}
+
+# ─────────────────────────────────────────────
+# AGENTS
+# ─────────────────────────────────────────────
+cmd_agents_list() {
+  bold "Available agents:"
+  echo ""
+
+  local response
+  response=$(gh_api "${REGISTRY_BASE}/agents") || die "Failed to fetch agent registry."
+
+  local names
+  names=$(echo "$response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    name = item['name']
+    if name.endswith('.md'):
+        print(name[:-3])
+" 2>/dev/null) || true
+
+  if [[ -z "$names" ]]; then
+    dim "  No agents in registry yet."
+    return
+  fi
+
+  while IFS= read -r name; do
+    local content
+    content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || continue
+    local desc
+    desc=$(echo "$content" | parse_frontmatter "description")
+    if [[ -n "$desc" ]]; then
+      printf "  %-24s %s\n" "$name" "$desc"
+    else
+      echo "  $name"
+    fi
+  done <<< "$names"
+}
+
+cmd_agents_install() {
+  local name="${1:-}"
+  [[ -z "$name" ]] && die "Usage: ccm agents install <name> [-p]"
+
+  local project=false
+  [[ "${2:-}" == "-p" ]] && project=true
+
+  local target_dir
+  if [[ "$project" == true ]]; then
+    target_dir=".claude/agents"
+  else
+    target_dir="${CLAUDE_CONFIG_DIR}/agents"
+  fi
+
+  mkdir -p "$target_dir"
+
+  local content
+  content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
+
+  echo "$content" > "${target_dir}/${name}.md"
+
+  if [[ "$project" == true ]]; then
+    green "Installed agent '${name}' to project (.claude/agents/${name}.md)"
+  else
+    green "Installed agent '${name}' globally (${target_dir}/${name}.md)"
+  fi
+}
+
+cmd_agents_installed() {
+  bold "Installed agents:"
+  echo ""
+
+  local found=0
+
+  # Global agents
+  local global_dir="${CLAUDE_CONFIG_DIR}/agents"
+  if [[ -d "$global_dir" ]]; then
+    for f in "$global_dir"/*.md; do
+      [[ -f "$f" ]] || continue
+      found=1
+      local name
+      name=$(basename "$f" .md)
+      local desc
+      desc=$(parse_frontmatter "description" < "$f")
+      if [[ -n "$desc" ]]; then
+        printf "  %-24s %s  (global)\n" "$name" "$desc"
+      else
+        printf "  %-24s (global)\n" "$name"
+      fi
+    done
+  fi
+
+  # Project agents
+  if [[ -d ".claude/agents" ]]; then
+    for f in .claude/agents/*.md; do
+      [[ -f "$f" ]] || continue
+      found=1
+      local name
+      name=$(basename "$f" .md)
+      local desc
+      desc=$(parse_frontmatter "description" < "$f")
+      if [[ -n "$desc" ]]; then
+        printf "  %-24s %s  (project)\n" "$name" "$desc"
+      else
+        printf "  %-24s (project)\n" "$name"
+      fi
+    done
+  fi
+
+  if [[ $found -eq 0 ]]; then
+    dim "  No agents installed."
+  fi
+}
+
+cmd_agents_remove() {
+  local name="${1:-}"
+  [[ -z "$name" ]] && die "Usage: ccm agents remove <name>"
+
+  local removed=false
+
+  # Try project first
+  if [[ -f ".claude/agents/${name}.md" ]]; then
+    rm ".claude/agents/${name}.md"
+    green "Removed agent '${name}' from project."
+    removed=true
+  fi
+
+  # Try global
+  local global_file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
+  if [[ -f "$global_file" ]]; then
+    rm "$global_file"
+    green "Removed agent '${name}' from global."
+    removed=true
+  fi
+
+  if [[ "$removed" == false ]]; then
+    die "Agent '${name}' not found."
+  fi
+}
+
+cmd_agents_update() {
+  local name="${1:-}"
+
+  if [[ -n "$name" ]]; then
+    # Update single agent
+    local global_file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
+    local project_file=".claude/agents/${name}.md"
+
+    if [[ -f "$project_file" ]]; then
+      local content
+      content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
+      echo "$content" > "$project_file"
+      green "Updated agent '${name}' (project)."
+    fi
+
+    if [[ -f "$global_file" ]]; then
+      local content
+      content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
+      echo "$content" > "$global_file"
+      green "Updated agent '${name}' (global)."
+    fi
+
+    [[ ! -f "$project_file" && ! -f "$global_file" ]] && die "Agent '${name}' not installed."
+    return
+  fi
+
+  # Update all installed agents
+  local updated=0
+
+  local global_dir="${CLAUDE_CONFIG_DIR}/agents"
+  if [[ -d "$global_dir" ]]; then
+    for f in "$global_dir"/*.md; do
+      [[ -f "$f" ]] || continue
+      local n
+      n=$(basename "$f" .md)
+      local content
+      content=$(gh_raw "${REGISTRY_BASE}/agents/${n}.md") || continue
+      echo "$content" > "$f"
+      green "Updated agent '${n}' (global)."
+      updated=$((updated + 1))
+    done
+  fi
+
+  if [[ -d ".claude/agents" ]]; then
+    for f in .claude/agents/*.md; do
+      [[ -f "$f" ]] || continue
+      local n
+      n=$(basename "$f" .md)
+      local content
+      content=$(gh_raw "${REGISTRY_BASE}/agents/${n}.md") || continue
+      echo "$content" > "$f"
+      green "Updated agent '${n}' (project)."
+      updated=$((updated + 1))
+    done
+  fi
+
+  if [[ $updated -eq 0 ]]; then
+    dim "No agents to update."
+  fi
+}
+
+# ─────────────────────────────────────────────
+# SKILLS
+# ─────────────────────────────────────────────
+cmd_skills_list() {
+  bold "Available skills:"
+  echo ""
+
+  local response
+  response=$(gh_api "${REGISTRY_BASE}/skills") || die "Failed to fetch skill registry."
+
+  local names
+  names=$(echo "$response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    if item['type'] == 'dir':
+        print(item['name'])
+" 2>/dev/null) || true
+
+  if [[ -z "$names" ]]; then
+    dim "  No skills in registry yet."
+    return
+  fi
+
+  while IFS= read -r name; do
+    local content
+    content=$(gh_raw "${REGISTRY_BASE}/skills/${name}/SKILL.md") || continue
+    local desc
+    desc=$(echo "$content" | parse_frontmatter "description")
+    if [[ -n "$desc" ]]; then
+      printf "  %-24s %s\n" "$name" "$desc"
+    else
+      echo "  $name"
+    fi
+  done <<< "$names"
+}
+
+cmd_skills_install() {
+  local name="${1:-}"
+  [[ -z "$name" ]] && die "Usage: ccm skills install <name> [-p]"
+
+  local project=false
+  [[ "${2:-}" == "-p" ]] && project=true
+
+  local target_dir
+  if [[ "$project" == true ]]; then
+    target_dir=".claude/skills/${name}"
+  else
+    target_dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
+  fi
+
+  mkdir -p "$target_dir"
+
+  # List files in skill directory
+  local response
+  response=$(gh_api "${REGISTRY_BASE}/skills/${name}") || die "Skill '${name}' not found in registry."
+
+  local files
+  files=$(echo "$response" | python3 -c "
+import json, sys
+
+def list_files(items, prefix=''):
+    for item in items:
+        path = prefix + item['name'] if prefix else item['name']
+        if item['type'] == 'file':
+            print(path)
+
+items = json.load(sys.stdin)
+list_files(items)
+" 2>/dev/null) || die "Failed to parse skill contents."
+
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+    local content
+    content=$(gh_raw "${REGISTRY_BASE}/skills/${name}/${file}") || { red "Failed to download: ${file}"; continue; }
+
+    # Create subdirectories if needed
+    local file_dir
+    file_dir=$(dirname "$file")
+    if [[ "$file_dir" != "." ]]; then
+      mkdir -p "${target_dir}/${file_dir}"
+    fi
+
+    echo "$content" > "${target_dir}/${file}"
+  done <<< "$files"
+
+  # Handle subdirectories (one level deep)
+  local dirs
+  dirs=$(echo "$response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    if item['type'] == 'dir':
+        print(item['name'])
+" 2>/dev/null) || true
+
+  while IFS= read -r subdir; do
+    [[ -z "$subdir" ]] && continue
+    mkdir -p "${target_dir}/${subdir}"
+
+    local sub_response
+    sub_response=$(gh_api "${REGISTRY_BASE}/skills/${name}/${subdir}") || continue
+
+    local sub_files
+    sub_files=$(echo "$sub_response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    if item['type'] == 'file':
+        print(item['name'])
+" 2>/dev/null) || continue
+
+    while IFS= read -r sf; do
+      [[ -z "$sf" ]] && continue
+      local sc
+      sc=$(gh_raw "${REGISTRY_BASE}/skills/${name}/${subdir}/${sf}") || continue
+      echo "$sc" > "${target_dir}/${subdir}/${sf}"
+    done <<< "$sub_files"
+  done <<< "$dirs"
+
+  if [[ "$project" == true ]]; then
+    green "Installed skill '${name}' to project (.claude/skills/${name}/)"
+  else
+    green "Installed skill '${name}' globally (${target_dir}/)"
+  fi
+}
+
+cmd_skills_installed() {
+  bold "Installed skills:"
+  echo ""
+
+  local found=0
+
+  # Global skills
+  local global_dir="${CLAUDE_CONFIG_DIR}/skills"
+  if [[ -d "$global_dir" ]]; then
+    for d in "$global_dir"/*/; do
+      [[ -d "$d" ]] || continue
+      [[ -f "${d}SKILL.md" ]] || continue
+      found=1
+      local name
+      name=$(basename "$d")
+      local desc
+      desc=$(parse_frontmatter "description" < "${d}SKILL.md")
+      if [[ -n "$desc" ]]; then
+        printf "  %-24s %s  (global)\n" "$name" "$desc"
+      else
+        printf "  %-24s (global)\n" "$name"
+      fi
+    done
+  fi
+
+  # Project skills
+  if [[ -d ".claude/skills" ]]; then
+    for d in .claude/skills/*/; do
+      [[ -d "$d" ]] || continue
+      [[ -f "${d}SKILL.md" ]] || continue
+      found=1
+      local name
+      name=$(basename "$d")
+      local desc
+      desc=$(parse_frontmatter "description" < "${d}SKILL.md")
+      if [[ -n "$desc" ]]; then
+        printf "  %-24s %s  (project)\n" "$name" "$desc"
+      else
+        printf "  %-24s (project)\n" "$name"
+      fi
+    done
+  fi
+
+  if [[ $found -eq 0 ]]; then
+    dim "  No skills installed."
+  fi
+}
+
+cmd_skills_remove() {
+  local name="${1:-}"
+  [[ -z "$name" ]] && die "Usage: ccm skills remove <name>"
+
+  local removed=false
+
+  # Try project first
+  if [[ -d ".claude/skills/${name}" ]]; then
+    rm -rf ".claude/skills/${name}"
+    green "Removed skill '${name}' from project."
+    removed=true
+  fi
+
+  # Try global
+  local global_dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
+  if [[ -d "$global_dir" ]]; then
+    rm -rf "$global_dir"
+    green "Removed skill '${name}' from global."
+    removed=true
+  fi
+
+  if [[ "$removed" == false ]]; then
+    die "Skill '${name}' not found."
+  fi
+}
+
+cmd_skills_update() {
+  local name="${1:-}"
+
+  if [[ -n "$name" ]]; then
+    local global_dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
+    local project_dir=".claude/skills/${name}"
+
+    if [[ -d "$project_dir" ]]; then
+      rm -rf "$project_dir"
+      cmd_skills_install "$name" -p
+    fi
+
+    if [[ -d "$global_dir" ]]; then
+      rm -rf "$global_dir"
+      cmd_skills_install "$name"
+    fi
+
+    [[ ! -d "$project_dir" && ! -d "$global_dir" ]] && die "Skill '${name}' not installed."
+    return
+  fi
+
+  # Update all installed skills
+  local updated=0
+
+  local global_dir="${CLAUDE_CONFIG_DIR}/skills"
+  if [[ -d "$global_dir" ]]; then
+    for d in "$global_dir"/*/; do
+      [[ -d "$d" ]] || continue
+      [[ -f "${d}SKILL.md" ]] || continue
+      local n
+      n=$(basename "$d")
+      rm -rf "$d"
+      cmd_skills_install "$n" 2>/dev/null && updated=$((updated + 1)) || true
+    done
+  fi
+
+  if [[ -d ".claude/skills" ]]; then
+    for d in .claude/skills/*/; do
+      [[ -d "$d" ]] || continue
+      [[ -f "${d}SKILL.md" ]] || continue
+      local n
+      n=$(basename "$d")
+      rm -rf "$d"
+      cmd_skills_install "$n" -p 2>/dev/null && updated=$((updated + 1)) || true
+    done
+  fi
+
+  if [[ $updated -eq 0 ]]; then
+    dim "No skills to update."
+  fi
+}
+
+# ─────────────────────────────────────────────
+# HELP
+# ─────────────────────────────────────────────
+cmd_help() {
+  echo ""
+  bold "ccm — Claude Code Manager"
+  echo ""
+  bold "  Agents:"
+  echo "  ccm agents list                    List available agents from registry"
+  echo "  ccm agents install <name>          Install agent globally"
+  echo "  ccm agents install <name> -p       Install agent to current project"
+  echo "  ccm agents installed               List installed agents"
+  echo "  ccm agents remove <name>           Remove an agent"
+  echo "  ccm agents update [name]           Update agent(s)"
+  echo ""
+  bold "  Skills:"
+  echo "  ccm skills list                    List available skills from registry"
+  echo "  ccm skills install <name>          Install skill globally"
+  echo "  ccm skills install <name> -p       Install skill to current project"
+  echo "  ccm skills installed               List installed skills"
+  echo "  ccm skills remove <name>           Remove a skill"
+  echo "  ccm skills update [name]           Update skill(s)"
+  echo ""
+  bold "  General:"
+  echo "  ccm help                           Show this help"
+  echo ""
+  dim "  Registry: github.com/${REGISTRY_REPO}"
+  dim "  Config:   ${CLAUDE_CONFIG_DIR}"
+  echo ""
+}
+
+# ─────────────────────────────────────────────
+# ROUTER
+# ─────────────────────────────────────────────
+case "${1:-}" in
+  agents)
+    case "${2:-}" in
+      list)      cmd_agents_list ;;
+      install)   cmd_agents_install "${3:-}" "${4:-}" ;;
+      installed) cmd_agents_installed ;;
+      remove)    cmd_agents_remove "${3:-}" ;;
+      update)    cmd_agents_update "${3:-}" ;;
+      *)         die "Unknown: ccm agents ${2:-}. Try: list, install, installed, remove, update" ;;
+    esac
+    ;;
+  skills)
+    case "${2:-}" in
+      list)      cmd_skills_list ;;
+      install)   cmd_skills_install "${3:-}" "${4:-}" ;;
+      installed) cmd_skills_installed ;;
+      remove)    cmd_skills_remove "${3:-}" ;;
+      update)    cmd_skills_update "${3:-}" ;;
+      *)         die "Unknown: ccm skills ${2:-}. Try: list, install, installed, remove, update" ;;
+    esac
+    ;;
+  help) cmd_help ;;
+  "")   cmd_help ;;
+  *)    die "Unknown command '${1:-}'. Try: ccm help" ;;
+esac

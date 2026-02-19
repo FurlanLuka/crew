@@ -1,21 +1,29 @@
-# crew
+# FurlanLuka/homebrew-tap
+
+Homebrew tap for Claude Code tools.
+
+## Tools
+
+### crew
 
 Agent team launcher with workspace & project management.
 
-## Install
-
 ```bash
 brew install FurlanLuka/tap/crew
+crew help
 ```
 
-## Usage
+### ccm
+
+Claude Code Manager — package manager for agents and skills.
 
 ```bash
-crew help
+brew install FurlanLuka/tap/ccm
+ccm help
 ```
 
 ## Requirements
 
-- `tmux` (installed automatically by Homebrew)
+- `tmux` (installed automatically by Homebrew for crew)
 - `python3` on your PATH
 - `claude` (Claude Code CLI) for agent features
