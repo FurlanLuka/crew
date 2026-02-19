@@ -119,23 +119,27 @@ cleanup_workspace() {
   # Clean up prompt file
   rm -f "${CONFIG_DIR}/prompt-${ws}.md" 2>/dev/null
 
-  # Close Cursor/VS Code workspace window
+  # Close Cursor/VS Code workspace window (Electron apps need System Events)
   local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
   if [[ -f "$ws_file" ]]; then
-    local app_name=""
+    local process_name=""
     if command -v cursor &>/dev/null; then
-      app_name="Cursor"
+      process_name="Cursor"
     elif command -v code &>/dev/null; then
-      app_name="Code"
+      process_name="Code"
     fi
-    if [[ -n "$app_name" ]]; then
+    if [[ -n "$process_name" ]]; then
       osascript -e "
-        tell application \"$app_name\"
-          repeat with w in (every window)
-            if name of w contains \"$ws\" then
-              close w
-            end if
-          end repeat
+        tell application \"System Events\"
+          if exists process \"$process_name\" then
+            tell process \"$process_name\"
+              repeat with w in (every window)
+                if name of w contains \"$ws\" then
+                  click button 1 of w
+                end if
+              end repeat
+            end tell
+          end if
         end tell
       " 2>/dev/null || true
     fi
