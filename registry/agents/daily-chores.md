@@ -33,13 +33,20 @@ repo#number — title (by author)
 
 Use AskUserQuestion to present the list. Let the user pick which PR to review.
 
-### Step 4 — Hand off to pr-reviewer
+### Step 4 — Launch pr-reviewer in new tmux window
 
-Once the user picks a PR, delegate the review to the **pr-reviewer** agent. Pass the full repo identifier (owner/repo) and PR number so it can run `gh pr view` and `gh pr diff`.
+Once the user picks a PR, open a **new tmux window** with a fresh Claude session running the pr-reviewer agent:
+
+```bash
+tmux new-window -n "pr-review" "CCM_SPAWNED=1 claude --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
+```
+
+This gives the review its own session and context window. After launching, tell the user which window was opened.
+
+Then ask if the user wants to pick another PR or stop.
 
 ## Rules
 
 - Only show PRs where the user is a requested reviewer.
 - Present PRs newest-first.
-- One PR at a time — finish the review before offering the next.
-- After a review is done, ask if the user wants to review another PR or move on.
+- After launching a review, offer to pick another PR or stop.

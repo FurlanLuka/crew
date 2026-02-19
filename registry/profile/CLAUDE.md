@@ -17,3 +17,4 @@ The following skills are available:
 
 - **js-ts-clean-code** — when writing, reviewing, or refactoring JavaScript/TypeScript code, follow these guidelines for readability, naming, formatting, error handling, and import conventions.
 - **web-designer** — design system knowledge base (components, sections, approaches, CSS variables, markup rules, style references). Support skill for the web-designer agent — not user-invocable.
+- **pr-review-comments** — comment style guide for PR reviews. Ensures comments sound natural and human. Support skill for the pr-reviewer agent — not user-invocable.
