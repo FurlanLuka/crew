@@ -4,14 +4,15 @@
 #
 # Usage:
 #   ccm agents list                    List available agents from registry
-#   ccm agents install <name>          Install agent (global by default)
-#   ccm agents install <name> -p       Install to current project
+#   ccm agents install [name]          Install agent (interactive picker if no name)
+#   ccm agents install [name] -p       Install to current project
 #   ccm agents installed               List installed agents
 #   ccm agents remove <name>           Remove an agent
 #   ccm agents update [name]           Update agent(s)
+#   ccm agents run [name]              Run an installed agent
 #   ccm skills list                    List available skills from registry
-#   ccm skills install <name>          Install skill (global by default)
-#   ccm skills install <name> -p       Install to current project
+#   ccm skills install [name]          Install skill (interactive picker if no name)
+#   ccm skills install [name] -p       Install to current project
 #   ccm skills installed               List installed skills
 #   ccm skills remove <name>           Remove a skill
 #   ccm skills update [name]           Update skill(s)
@@ -57,6 +58,62 @@ file_hash() {
   shasum -a 256 < "$1" 2>/dev/null | cut -d' ' -f1
 }
 
+# Interactive picker: check for gum (charmbracelet)
+has_gum() { command -v gum &>/dev/null; }
+
+# Single-select picker
+# Usage: pick_one "header" option1 option2 ...
+pick_one() {
+  local header="$1"; shift
+  local opts=("$@")
+  [[ ${#opts[@]} -eq 0 ]] && return 1
+
+  if has_gum; then
+    gum choose --header "$header" "${opts[@]}"
+  else
+    echo "$header" >&2
+    local i=1
+    for opt in "${opts[@]}"; do
+      printf "  %d) %s\n" "$i" "$opt" >&2
+      ((i++))
+    done
+    printf "Enter number: " >&2
+    local choice
+    read -r choice
+    [[ "$choice" =~ ^[0-9]+$ ]] || return 1
+    ((choice >= 1 && choice <= ${#opts[@]})) || return 1
+    echo "${opts[$((choice-1))]}"
+  fi
+}
+
+# Multi-select picker
+# Usage: pick_many "header" option1 option2 ...
+# Returns newline-separated selections
+pick_many() {
+  local header="$1"; shift
+  local opts=("$@")
+  [[ ${#opts[@]} -eq 0 ]] && return 1
+
+  if has_gum; then
+    gum choose --no-limit --header "$header" "${opts[@]}"
+  else
+    echo "$header" >&2
+    local i=1
+    for opt in "${opts[@]}"; do
+      printf "  %d) %s\n" "$i" "$opt" >&2
+      ((i++))
+    done
+    printf "Enter numbers (space-separated): " >&2
+    local choices
+    read -r choices
+    for c in $choices; do
+      [[ "$c" =~ ^[0-9]+$ ]] || continue
+      ((c >= 1 && c <= ${#opts[@]})) || continue
+      echo "${opts[$((c-1))]}"
+    done
+  fi
+}
+
 # GitHub API helper
 gh_api() {
   local endpoint="$1"
@@ -72,24 +129,69 @@ gh_raw() {
 }
 
 # ─────────────────────────────────────────────
-# AGENTS
+# REGISTRY FETCHERS
 # ─────────────────────────────────────────────
-cmd_agents_list() {
-  bold "Available agents:"
-  echo ""
-
+fetch_registry_agent_names() {
   local response
   response=$(gh_api "${REGISTRY_BASE}/agents") || die "Failed to fetch agent registry."
-
-  local names
-  names=$(echo "$response" | python3 -c "
+  echo "$response" | python3 -c "
 import json, sys
 items = json.load(sys.stdin)
 for item in items:
     name = item['name']
     if name.endswith('.md'):
         print(name[:-3])
-" 2>/dev/null) || true
+" 2>/dev/null
+}
+
+fetch_registry_skill_names() {
+  local response
+  response=$(gh_api "${REGISTRY_BASE}/skills") || die "Failed to fetch skill registry."
+  echo "$response" | python3 -c "
+import json, sys
+items = json.load(sys.stdin)
+for item in items:
+    if item['type'] == 'dir':
+        print(item['name'])
+" 2>/dev/null
+}
+
+get_installed_agent_names() {
+  local global_names=""
+  local global_dir="${CLAUDE_CONFIG_DIR}/agents"
+  if [[ -d "$global_dir" ]]; then
+    for f in "$global_dir"/*.md; do
+      [[ -f "$f" ]] || continue
+      local n
+      n=$(basename "$f" .md)
+      global_names="${global_names:+${global_names}
+}${n}"
+      echo "$n"
+    done
+  fi
+  if [[ -d ".claude/agents" ]]; then
+    for f in .claude/agents/*.md; do
+      [[ -f "$f" ]] || continue
+      local n
+      n=$(basename "$f" .md)
+      # Deduplicate against global names
+      if [[ -n "$global_names" ]] && echo "$global_names" | grep -qx "$n"; then
+        continue
+      fi
+      echo "$n"
+    done
+  fi
+}
+
+# ─────────────────────────────────────────────
+# AGENTS
+# ─────────────────────────────────────────────
+cmd_agents_list() {
+  bold "Available agents:"
+  echo ""
+
+  local names
+  names=$(fetch_registry_agent_names) || true
 
   if [[ -z "$names" ]]; then
     dim "  No agents in registry yet."
@@ -109,12 +211,9 @@ for item in items:
   done <<< "$names"
 }
 
-cmd_agents_install() {
-  local name="${1:-}"
-  [[ -z "$name" ]] && die "Usage: ccm agents install <name> [-p]"
-
-  local project=false
-  [[ "${2:-}" == "-p" ]] && project=true
+_install_single_agent() {
+  local name="$1"
+  local project="${2:-false}"
 
   local target_dir
   if [[ "$project" == true ]]; then
@@ -135,6 +234,40 @@ cmd_agents_install() {
   else
     green "Installed agent '${name}' globally (${target_dir}/${name}.md)"
   fi
+}
+
+cmd_agents_install() {
+  local name="" project=false
+  for arg in "$@"; do
+    if [[ "$arg" == "-p" ]]; then
+      project=true
+    elif [[ -z "$name" ]]; then
+      name="$arg"
+    fi
+  done
+
+  if [[ -n "$name" ]]; then
+    _install_single_agent "$name" "$project"
+    return
+  fi
+
+  # Interactive: pick from registry
+  local names
+  names=$(fetch_registry_agent_names) || return 1
+  [[ -z "$names" ]] && { dim "No agents in registry."; return; }
+
+  local opts=()
+  while IFS= read -r n; do
+    opts+=("$n")
+  done <<< "$names"
+
+  local selected
+  selected=$(pick_many "Select agents to install:" "${opts[@]}") || return 0
+  [[ -z "$selected" ]] && return 0
+
+  while IFS= read -r n; do
+    _install_single_agent "$n" "$project"
+  done <<< "$selected"
 }
 
 cmd_agents_installed() {
@@ -299,6 +432,32 @@ cmd_agents_update() {
   fi
 }
 
+cmd_agents_run() {
+  local name="${1:-}"
+
+  if [[ -z "$name" ]]; then
+    local names
+    names=$(get_installed_agent_names)
+    [[ -z "$names" ]] && die "No agents installed. Run: ccm agents install"
+
+    local opts=()
+    while IFS= read -r n; do
+      opts+=("$n")
+    done <<< "$names"
+
+    name=$(pick_one "Select agent to run:" "${opts[@]}") || return 0
+    [[ -z "$name" ]] && return 0
+  fi
+
+  # Verify installed
+  local found=false
+  [[ -f "${CLAUDE_CONFIG_DIR}/agents/${name}.md" ]] && found=true
+  [[ -f ".claude/agents/${name}.md" ]] && found=true
+  [[ "$found" == false ]] && die "Agent '${name}' not installed. Run: ccm agents install ${name}"
+
+  exec claude --agent "$name"
+}
+
 # ─────────────────────────────────────────────
 # SKILLS
 # ─────────────────────────────────────────────
@@ -306,17 +465,8 @@ cmd_skills_list() {
   bold "Available skills:"
   echo ""
 
-  local response
-  response=$(gh_api "${REGISTRY_BASE}/skills") || die "Failed to fetch skill registry."
-
   local names
-  names=$(echo "$response" | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-for item in items:
-    if item['type'] == 'dir':
-        print(item['name'])
-" 2>/dev/null) || true
+  names=$(fetch_registry_skill_names) || true
 
   if [[ -z "$names" ]]; then
     dim "  No skills in registry yet."
@@ -336,12 +486,9 @@ for item in items:
   done <<< "$names"
 }
 
-cmd_skills_install() {
-  local name="${1:-}"
-  [[ -z "$name" ]] && die "Usage: ccm skills install <name> [-p]"
-
-  local project=false
-  [[ "${2:-}" == "-p" ]] && project=true
+_install_single_skill() {
+  local name="$1"
+  local project="${2:-false}"
 
   local target_dir
   if [[ "$project" == true ]]; then
@@ -424,6 +571,40 @@ for item in items:
   else
     green "Installed skill '${name}' globally (${target_dir}/)"
   fi
+}
+
+cmd_skills_install() {
+  local name="" project=false
+  for arg in "$@"; do
+    if [[ "$arg" == "-p" ]]; then
+      project=true
+    elif [[ -z "$name" ]]; then
+      name="$arg"
+    fi
+  done
+
+  if [[ -n "$name" ]]; then
+    _install_single_skill "$name" "$project"
+    return
+  fi
+
+  # Interactive: pick from registry
+  local names
+  names=$(fetch_registry_skill_names) || return 1
+  [[ -z "$names" ]] && { dim "No skills in registry."; return; }
+
+  local opts=()
+  while IFS= read -r n; do
+    opts+=("$n")
+  done <<< "$names"
+
+  local selected
+  selected=$(pick_many "Select skills to install:" "${opts[@]}") || return 0
+  [[ -z "$selected" ]] && return 0
+
+  while IFS= read -r n; do
+    _install_single_skill "$n" "$project"
+  done <<< "$selected"
 }
 
 cmd_skills_installed() {
@@ -519,7 +700,7 @@ cmd_skills_update() {
         dim "Skill '${name}' already up to date (project)."
       else
         rm -rf "$project_dir"
-        cmd_skills_install "$name" -p
+        _install_single_skill "$name" true
       fi
     fi
 
@@ -530,7 +711,7 @@ cmd_skills_update() {
         dim "Skill '${name}' already up to date (global)."
       else
         rm -rf "$global_dir"
-        cmd_skills_install "$name"
+        _install_single_skill "$name"
       fi
     fi
 
@@ -559,7 +740,7 @@ cmd_skills_update() {
         dim "Skill '${n}' already up to date (global)."
       else
         rm -rf "$d"
-        cmd_skills_install "$n" 2>/dev/null || true
+        _install_single_skill "$n" 2>/dev/null || true
       fi
     done
   fi
@@ -581,7 +762,7 @@ cmd_skills_update() {
         dim "Skill '${n}' already up to date (project)."
       else
         rm -rf "$d"
-        cmd_skills_install "$n" -p 2>/dev/null || true
+        _install_single_skill "$n" true 2>/dev/null || true
       fi
     done
   fi
@@ -654,27 +835,18 @@ cmd_profile_update() {
 }
 
 cmd_install() {
-  local scope="${1:-}"
+  local project=false
+  [[ "${1:-}" == "-p" ]] && project=true
 
   bold "Installing all agents..."
   echo ""
 
-  local response
-  response=$(gh_api "${REGISTRY_BASE}/agents") || die "Failed to fetch agent registry."
-
   local agent_names
-  agent_names=$(echo "$response" | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-for item in items:
-    name = item['name']
-    if name.endswith('.md'):
-        print(name[:-3])
-" 2>/dev/null) || true
+  agent_names=$(fetch_registry_agent_names) || true
 
   if [[ -n "$agent_names" ]]; then
     while IFS= read -r name; do
-      cmd_agents_install "$name" "$scope"
+      _install_single_agent "$name" "$project"
     done <<< "$agent_names"
   else
     dim "  No agents in registry."
@@ -684,20 +856,12 @@ for item in items:
   bold "Installing all skills..."
   echo ""
 
-  response=$(gh_api "${REGISTRY_BASE}/skills") || die "Failed to fetch skill registry."
-
   local skill_names
-  skill_names=$(echo "$response" | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-for item in items:
-    if item['type'] == 'dir':
-        print(item['name'])
-" 2>/dev/null) || true
+  skill_names=$(fetch_registry_skill_names) || true
 
   if [[ -n "$skill_names" ]]; then
     while IFS= read -r name; do
-      cmd_skills_install "$name" "$scope"
+      _install_single_skill "$name" "$project"
     done <<< "$skill_names"
   else
     dim "  No skills in registry."
@@ -732,16 +896,17 @@ cmd_help() {
   echo ""
   bold "  Agents:"
   echo "  ccm agents list                    List available agents from registry"
-  echo "  ccm agents install <name>          Install agent globally"
-  echo "  ccm agents install <name> -p       Install agent to current project"
+  echo "  ccm agents install [name]          Install agent (interactive picker if no name)"
+  echo "  ccm agents install [name] -p       Install to current project"
   echo "  ccm agents installed               List installed agents"
   echo "  ccm agents remove <name>           Remove an agent"
   echo "  ccm agents update [name]           Update agent(s)"
+  echo "  ccm agents run [name]              Run an installed agent"
   echo ""
   bold "  Skills:"
   echo "  ccm skills list                    List available skills from registry"
-  echo "  ccm skills install <name>          Install skill globally"
-  echo "  ccm skills install <name> -p       Install skill to current project"
+  echo "  ccm skills install [name]          Install skill (interactive picker if no name)"
+  echo "  ccm skills install [name] -p       Install to current project"
   echo "  ccm skills installed               List installed skills"
   echo "  ccm skills remove <name>           Remove a skill"
   echo "  ccm skills update [name]           Update skill(s)"
@@ -768,17 +933,18 @@ case "${1:-}" in
   agents)
     case "${2:-}" in
       list)      cmd_agents_list ;;
-      install)   cmd_agents_install "${3:-}" "${4:-}" ;;
+      install)   shift 2; cmd_agents_install "$@" ;;
       installed) cmd_agents_installed ;;
       remove)    cmd_agents_remove "${3:-}" ;;
       update)    cmd_agents_update "${3:-}" ;;
-      *)         die "Unknown: ccm agents ${2:-}. Try: list, install, installed, remove, update" ;;
+      run)       cmd_agents_run "${3:-}" ;;
+      *)         die "Unknown: ccm agents ${2:-}. Try: list, install, installed, remove, update, run" ;;
     esac
     ;;
   skills)
     case "${2:-}" in
       list)      cmd_skills_list ;;
-      install)   cmd_skills_install "${3:-}" "${4:-}" ;;
+      install)   shift 2; cmd_skills_install "$@" ;;
       installed) cmd_skills_installed ;;
       remove)    cmd_skills_remove "${3:-}" ;;
       update)    cmd_skills_update "${3:-}" ;;

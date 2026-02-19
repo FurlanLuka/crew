@@ -5,6 +5,8 @@ class Ccm < Formula
   sha256 "b958dc0c2f7b5c6aebc2a60a9751c43e6dd4c740b5c1b1c68d01c85a69141689"
   license "MIT"
 
+  depends_on "gum"
+
   def install
     bin.install "ccm/ccm"
   end

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Theme Preview</title>
+  <!-- INJECT_CSS -->
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       STATIC DEFAULTS (typography sizes, weights, etc.)
+       ═══════════════════════════════════════════════════════════════ */
+    :root {
+      /* Typography sizes */
+      --text-xs: 12px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 18px;
+      --text-xl: 24px;
+      --text-2xl: 32px;
+      --text-3xl: 40px;
+      --text-4xl: 48px;
+
+      /* Font weights */
+      --font-normal: 400;
+      --font-medium: 500;
+      --font-semibold: 600;
+      --font-bold: 700;
+      --font-extrabold: 800;
+
+      /* Line heights */
+      --leading-tight: 1.25;
+      --leading-normal: 1.5;
+      --leading-relaxed: 1.75;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       PREVIEW STYLES (using CSS variables from injected CSS)
+       ═══════════════════════════════════════════════════════════════ */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: var(--space-8, 32px);
+      background: var(--background, #ffffff);
+      color: var(--text-body, #3d3d3d);
+      line-height: var(--leading-normal);
+    }
+
+    h1 { margin-bottom: var(--space-1, 4px); font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-heading, #1a1a1a); }
+    .subtitle { margin-bottom: var(--space-8, 32px); font-size: var(--text-sm); color: var(--text-muted, #6b6b6b); }
+    h2 {
+      margin: var(--space-6, 24px) 0 var(--space-3, 12px);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted, #6b6b6b);
+      font-weight: var(--font-semibold);
+    }
+
+    /* Color Scales */
+    .scale-row { display: flex; gap: var(--space-1, 4px); margin-bottom: var(--space-2, 8px); }
+    .swatch {
+      flex: 1;
+      height: 48px;
+      border-radius: var(--radius-md, 8px);
+      display: flex;
+      align-items: flex-end;
+      padding: var(--space-1, 4px) var(--space-2, 8px);
+      font-size: 9px;
+      font-weight: var(--font-semibold);
+    }
+    .lt { color: white; }
+    .dt { color: #333; }
+
+    /* Surface Demo */
+    .surface-row { display: flex; gap: var(--space-3, 12px); margin: var(--space-3, 12px) 0 var(--space-6, 24px); flex-wrap: wrap; }
+    .surface-swatch {
+      width: 100px;
+      height: 70px;
+      border-radius: var(--radius-lg, 12px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      text-align: center;
+      line-height: var(--leading-normal);
+      color: var(--text-muted, #6b6b6b);
+    }
+
+    /* Semantic Colors */
+    .semantic-row { display: flex; gap: var(--space-4, 16px); flex-wrap: wrap; margin-bottom: var(--space-4, 16px); }
+    .semantic-item { display: flex; flex-direction: column; gap: var(--space-1, 4px); }
+    .semantic-label { font-size: 10px; color: var(--text-muted, #6b6b6b); text-transform: uppercase; letter-spacing: 0.5px; }
+    .semantic-swatches { display: flex; gap: var(--space-1, 4px); }
+    .semantic-swatch {
+      width: 48px;
+      height: 36px;
+      border-radius: var(--radius-md, 8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: var(--font-medium);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      padding: var(--space-2, 8px) var(--space-6, 24px);
+      border-radius: var(--radius-md, 8px);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      border: none;
+      cursor: pointer;
+      margin: var(--space-1, 4px);
+    }
+    .btn-outline {
+      background: transparent;
+      border: 1.5px solid;
+    }
+
+    /* Cards */
+    .demo-cards { display: flex; gap: var(--space-4, 16px); flex-wrap: wrap; margin: var(--space-3, 12px) 0 var(--space-6, 24px); }
+    .demo-card {
+      border-radius: var(--radius-lg, 12px);
+      padding: var(--space-5, 20px);
+      min-width: 160px;
+      flex: 1;
+    }
+    .demo-card .card-title { font-weight: var(--font-semibold); margin-bottom: var(--space-1, 4px); color: var(--text-heading, #1a1a1a); }
+    .demo-card .card-desc { font-size: var(--text-sm); color: var(--text-muted, #6b6b6b); }
+
+    /* Typography Scale */
+    .type-scale {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2, 8px);
+      margin-bottom: var(--space-6, 24px);
+    }
+    .type-item {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-5, 20px);
+    }
+    .type-label {
+      font-size: 10px;
+      color: var(--text-muted, #6b6b6b);
+      width: 56px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+      padding-top: var(--space-1, 4px);
+    }
+  </style>
+</head>
+<body>
+
+<h1>Theme Preview</h1>
+<p class="subtitle">Color palette and typography</p>
+
+<h2>Primary Scale</h2>
+<div class="scale-row">
+  <div class="swatch dt" style="background: var(--primary-50);">50</div>
+  <div class="swatch dt" style="background: var(--primary-100);">100</div>
+  <div class="swatch dt" style="background: var(--primary-200);">200</div>
+  <div class="swatch dt" style="background: var(--primary-300);">300</div>
+  <div class="swatch dt" style="background: var(--primary-400);">400</div>
+  <div class="swatch lt" style="background: var(--primary-500);">500</div>
+  <div class="swatch lt" style="background: var(--primary-600);">600</div>
+  <div class="swatch lt" style="background: var(--primary-700);">700</div>
+  <div class="swatch lt" style="background: var(--primary-800);">800</div>
+  <div class="swatch lt" style="background: var(--primary-900);">900</div>
+</div>
+
+<h2>Neutral Scale</h2>
+<div class="scale-row">
+  <div class="swatch dt" style="background: var(--neutral-50);">50</div>
+  <div class="swatch dt" style="background: var(--neutral-100);">100</div>
+  <div class="swatch dt" style="background: var(--neutral-200);">200</div>
+  <div class="swatch dt" style="background: var(--neutral-300);">300</div>
+  <div class="swatch dt" style="background: var(--neutral-400);">400</div>
+  <div class="swatch lt" style="background: var(--neutral-500);">500</div>
+  <div class="swatch lt" style="background: var(--neutral-600);">600</div>
+  <div class="swatch lt" style="background: var(--neutral-700);">700</div>
+  <div class="swatch lt" style="background: var(--neutral-800);">800</div>
+  <div class="swatch lt" style="background: var(--neutral-900);">900</div>
+</div>
+
+<h2>Typography</h2>
+<div class="type-scale">
+  <div class="type-item">
+    <span class="type-label">Display</span>
+    <span style="font-size: var(--text-4xl); font-weight: var(--font-extrabold); color: var(--text-heading); letter-spacing: -0.03em; line-height: 1.1;">Hero Headline</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">Title</span>
+    <span style="font-size: var(--text-3xl); font-weight: var(--font-bold); color: var(--text-heading); letter-spacing: -0.02em; line-height: 1.2;">Page Title</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">H1</span>
+    <span style="font-size: var(--text-2xl); font-weight: var(--font-bold); color: var(--text-heading); letter-spacing: -0.01em;">Section Heading</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">H2</span>
+    <span style="font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--text-heading);">Subsection Heading</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">H3</span>
+    <span style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-heading);">Card Title</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">Body</span>
+    <span style="font-size: var(--text-base); font-weight: var(--font-normal); color: var(--text-body); line-height: var(--leading-relaxed);">Regular body text for paragraphs and content</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">Small</span>
+    <span style="font-size: var(--text-sm); font-weight: var(--font-normal); color: var(--text-body); line-height: var(--leading-normal);">Smaller text for secondary content</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">Muted</span>
+    <span style="font-size: var(--text-sm); font-weight: var(--font-normal); color: var(--text-muted);">Helper text and captions</span>
+  </div>
+  <div class="type-item">
+    <span class="type-label">Link</span>
+    <a href="#" style="font-size: var(--text-base); color: var(--text-link); text-decoration: none;">Click here to learn more</a>
+  </div>
+</div>
+
+<h2>Surfaces</h2>
+<div class="surface-row">
+  <div class="surface-swatch" style="background: var(--background); border: 1px solid var(--border);">
+    Background
+  </div>
+  <div class="surface-swatch" style="background: var(--surface); border: 1px solid var(--border);">
+    Surface
+  </div>
+  <div class="surface-swatch" style="background: var(--surface-elevated); border: 1px solid var(--border);">
+    Elevated
+  </div>
+  <div class="surface-swatch" style="background: var(--background); border: 2px solid var(--border);">
+    Border
+  </div>
+</div>
+
+<h2>Semantic Colors</h2>
+<div class="semantic-row">
+  <div class="semantic-item">
+    <span class="semantic-label">Success</span>
+    <div class="semantic-swatches">
+      <div class="semantic-swatch dt" style="background: var(--success-bg);">bg</div>
+      <div class="semantic-swatch lt" style="background: var(--success);">main</div>
+    </div>
+  </div>
+  <div class="semantic-item">
+    <span class="semantic-label">Warning</span>
+    <div class="semantic-swatches">
+      <div class="semantic-swatch dt" style="background: var(--warning-bg);">bg</div>
+      <div class="semantic-swatch lt" style="background: var(--warning);">main</div>
+    </div>
+  </div>
+  <div class="semantic-item">
+    <span class="semantic-label">Error</span>
+    <div class="semantic-swatches">
+      <div class="semantic-swatch dt" style="background: var(--error-bg);">bg</div>
+      <div class="semantic-swatch lt" style="background: var(--error);">main</div>
+    </div>
+  </div>
+  <div class="semantic-item">
+    <span class="semantic-label">Info</span>
+    <div class="semantic-swatches">
+      <div class="semantic-swatch dt" style="background: var(--info-bg);">bg</div>
+      <div class="semantic-swatch lt" style="background: var(--info);">main</div>
+    </div>
+  </div>
+</div>
+
+<h2>Buttons</h2>
+<div style="margin-bottom: var(--space-6, 24px);">
+  <button class="btn" style="background: var(--primary-600); color: var(--text-on-primary);">Primary Action</button>
+  <button class="btn" style="background: var(--neutral-200); color: var(--neutral-800);">Secondary</button>
+  <button class="btn btn-outline" style="border-color: var(--primary-600); color: var(--primary-600);">Outline</button>
+  <button class="btn" style="background: var(--success); color: white;">Approve</button>
+  <button class="btn" style="background: var(--error); color: white;">Reject</button>
+</div>
+
+<h2>Cards</h2>
+<div class="demo-cards">
+  <div class="demo-card" style="background: var(--surface); border: 1px solid var(--border);">
+    <div class="card-title">Default Card</div>
+    <div class="card-desc">Surface background with border</div>
+  </div>
+  <div class="demo-card" style="background: var(--primary-50); border: 1px solid var(--primary-200);">
+    <div class="card-title" style="color: var(--primary-700);">Primary Tint</div>
+    <div class="card-desc">Subtle primary highlight</div>
+  </div>
+  <div class="demo-card" style="background: var(--neutral-100); border: 1px solid var(--neutral-300);">
+    <div class="card-title" style="color: var(--neutral-800);">Neutral Card</div>
+    <div class="card-desc">Subtle gray background</div>
+  </div>
+</div>
+
+</body>
+</html>
