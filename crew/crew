@@ -1,0 +1,559 @@
+#!/usr/bin/env bash
+# crew — Agent team launcher with workspace & project management
+#
+# Usage:
+#   crew                                Select workspace and launch agents
+#   crew <workspace>                    Launch agents for a workspace
+#   crew servers [workspace]            Launch dev servers only
+#   crew up [workspace]                 Launch agents + dev servers
+#   crew workspace create <name>        Create a workspace
+#   crew workspace list                 List workspaces
+#   crew workspace delete <name>        Delete a workspace
+#   crew project add <workspace>        Add a project (interactive)
+#   crew project list <workspace>       List projects in a workspace
+#   crew project remove <ws> <project>  Remove a project
+#   crew kill                           Tear down all crew sessions
+#   crew help                           Show this help
+
+set -euo pipefail
+
+CONFIG_DIR="${HOME}/.crew"
+WORKSPACES_DIR="${CONFIG_DIR}/workspaces"
+
+mkdir -p "$WORKSPACES_DIR"
+
+# ─────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────
+red()    { printf "\033[31m%s\033[0m\n" "$1"; }
+green()  { printf "\033[32m%s\033[0m\n" "$1"; }
+blue()   { printf "\033[34m%s\033[0m\n" "$1"; }
+bold()   { printf "\033[1m%s\033[0m\n" "$1"; }
+dim()    { printf "\033[2m%s\033[0m\n" "$1"; }
+
+die() { red "❌ $1"; exit 1; }
+
+workspace_file() { echo "$WORKSPACES_DIR/$1.json"; }
+
+workspace_exists() {
+  [[ -f "$(workspace_file "$1")" ]]
+}
+
+# Pick a workspace interactively or auto-select if only one
+pick_workspace() {
+  local ws="${1:-}"
+  if [[ -n "$ws" ]]; then
+    workspace_exists "$ws" || die "Workspace '$ws' not found."
+    echo "$ws"
+    return
+  fi
+
+  local workspaces=()
+  for f in "$WORKSPACES_DIR"/*.json; do
+    [[ -f "$f" ]] || continue
+    workspaces+=("$(basename "$f" .json)")
+  done
+
+  [[ ${#workspaces[@]} -eq 0 ]] && die "No workspaces. Create one with: crew workspace create <name>"
+
+  if [[ ${#workspaces[@]} -eq 1 ]]; then
+    blue "Auto-selecting workspace: ${workspaces[0]}"
+    echo "${workspaces[0]}"
+    return
+  fi
+
+  echo "" >&2
+  bold "Select a workspace:" >&2
+  echo "" >&2
+  for i in "${!workspaces[@]}"; do
+    local count
+    count=$(python3 -c "import json; print(len(json.load(open('$(workspace_file "${workspaces[$i]}")'))['projects']))" 2>/dev/null || echo 0)
+    echo "  $((i + 1))) ${workspaces[$i]} ($count projects)" >&2
+  done
+  echo "" >&2
+  printf "Enter number: " >&2
+  read -r choice
+  [[ "$choice" =~ ^[0-9]+$ ]] || die "Invalid selection."
+  local idx=$((choice - 1))
+  [[ $idx -ge 0 && $idx -lt ${#workspaces[@]} ]] || die "Invalid selection."
+  echo "${workspaces[$idx]}"
+}
+
+# Read projects from workspace as "name|path|role|dev_command|port" lines
+read_projects() {
+  local ws="$1"
+  python3 -c "
+import json, sys
+with open('$(workspace_file "$ws")') as f:
+    data = json.load(f)
+if not data['projects']:
+    sys.exit(1)
+for p in data['projects']:
+    dev = p.get('dev_command', '')
+    port = p.get('port', '')
+    print(f\"{p['name']}|{p['path']}|{p['role']}|{dev}|{port}\")
+" 2>/dev/null || die "No projects in workspace '$ws'. Add some with: crew project add $ws"
+}
+
+# Attach to tmux session (iTerm2 control mode if available)
+attach_session() {
+  local session="$1"
+  if [[ "${TERM_PROGRAM:-}" == "iTerm.app" ]]; then
+    tmux -CC attach -t "$session"
+  else
+    tmux attach -t "$session"
+  fi
+}
+
+# ─────────────────────────────────────────────
+# WORKSPACE COMMANDS
+# ─────────────────────────────────────────────
+cmd_workspace_create() {
+  local name="${1:-}"
+  [[ -z "$name" ]] && die "Usage: crew workspace create <name>"
+  workspace_exists "$name" && die "Workspace '$name' already exists."
+
+  python3 -c "
+import json
+data = {'name': '$name', 'projects': []}
+with open('$(workspace_file "$name")', 'w') as f:
+    json.dump(data, f, indent=2)
+"
+  green "✅ Workspace '$name' created."
+  echo "   Add projects with: crew project add $name"
+}
+
+cmd_workspace_list() {
+  bold "Workspaces:"
+  echo ""
+  local found=0
+  for f in "$WORKSPACES_DIR"/*.json; do
+    [[ -f "$f" ]] || continue
+    found=1
+    local name
+    name=$(basename "$f" .json)
+    local count
+    count=$(python3 -c "import json; print(len(json.load(open('$f'))['projects']))" 2>/dev/null || echo 0)
+    echo "  $name ($count projects)"
+  done
+  if [[ $found -eq 0 ]]; then
+    dim "  No workspaces yet. Create one with: crew workspace create <name>"
+  fi
+}
+
+cmd_workspace_delete() {
+  local name="${1:-}"
+  [[ -z "$name" ]] && die "Usage: crew workspace delete <name>"
+  workspace_exists "$name" || die "Workspace '$name' not found."
+
+  rm "$(workspace_file "$name")"
+  green "✅ Workspace '$name' deleted."
+}
+
+# ─────────────────────────────────────────────
+# PROJECT COMMANDS
+# ─────────────────────────────────────────────
+cmd_project_add() {
+  local ws="${1:-}"
+  [[ -z "$ws" ]] && die "Usage: crew project add <workspace>"
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  printf "Project name: "
+  read -r proj_name
+  [[ -z "$proj_name" ]] && die "Name cannot be empty."
+
+  printf "Project path: "
+  read -er proj_path
+  proj_path="${proj_path/#\~/$HOME}"
+  [[ -d "$proj_path" ]] || die "Directory not found: $proj_path"
+  proj_path="$(cd "$proj_path" && pwd)"
+
+  printf "Agent role description (e.g. 'owns the backend API'): "
+  read -r proj_role
+  [[ -z "$proj_role" ]] && proj_role="works on $proj_name"
+
+  printf "Dev server command (leave empty if none): "
+  read -r dev_cmd
+
+  local dev_port=""
+  if [[ -n "$dev_cmd" ]]; then
+    printf "Dev server port (leave empty if none): "
+    read -r dev_port
+  fi
+
+  python3 -c "
+import json
+with open('$(workspace_file "$ws")', 'r') as f:
+    data = json.load(f)
+proj = {
+    'name': $(python3 -c "import json; print(json.dumps('$proj_name'))"),
+    'path': $(python3 -c "import json; print(json.dumps('$proj_path'))"),
+    'role': $(python3 -c "import json; print(json.dumps('$proj_role'))")
+}
+dev_cmd = '''$dev_cmd'''
+dev_port = '''$dev_port'''
+if dev_cmd:
+    proj['dev_command'] = dev_cmd
+if dev_port:
+    proj['port'] = dev_port
+data['projects'].append(proj)
+with open('$(workspace_file "$ws")', 'w') as f:
+    json.dump(data, f, indent=2)
+"
+  green "✅ Added '$proj_name' to workspace '$ws'."
+}
+
+cmd_project_list() {
+  local ws="${1:-}"
+  [[ -z "$ws" ]] && die "Usage: crew project list <workspace>"
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  bold "Projects in '$ws':"
+  echo ""
+  python3 -c "
+import json
+with open('$(workspace_file "$ws")') as f:
+    data = json.load(f)
+if not data['projects']:
+    print('  No projects yet. Add one with: crew project add $ws')
+for p in data['projects']:
+    print(f\"  {p['name']}\")
+    print(f\"    path:    {p['path']}\")
+    print(f\"    role:    {p['role']}\")
+    dev = p.get('dev_command', '')
+    port = p.get('port', '')
+    if dev:
+        line = f'    server:  {dev}'
+        if port:
+            line += f' (port {port})'
+        print(line)
+    print()
+"
+}
+
+cmd_project_remove() {
+  local ws="${1:-}"
+  local proj="${2:-}"
+  [[ -z "$ws" || -z "$proj" ]] && die "Usage: crew project remove <workspace> <project>"
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  python3 -c "
+import json, sys
+with open('$(workspace_file "$ws")', 'r') as f:
+    data = json.load(f)
+before = len(data['projects'])
+data['projects'] = [p for p in data['projects'] if p['name'] != '$proj']
+if len(data['projects']) == before:
+    sys.exit(1)
+with open('$(workspace_file "$ws")', 'w') as f:
+    json.dump(data, f, indent=2)
+" || die "Project '$proj' not found in workspace '$ws'."
+  green "✅ Removed '$proj' from workspace '$ws'."
+}
+
+# ─────────────────────────────────────────────
+# LAUNCH AGENTS
+# ─────────────────────────────────────────────
+cmd_launch_agents() {
+  local ws
+  ws=$(pick_workspace "${1:-}")
+  local projects
+  projects=$(read_projects "$ws")
+
+  command -v tmux &>/dev/null || die "tmux not found. Install with: brew install tmux"
+  command -v claude &>/dev/null || die "claude not found. Install Claude Code first."
+
+  local session="crew-$ws"
+
+  if tmux has-session -t "$session" 2>/dev/null; then
+    echo "Agent session already running. Attaching..."
+    attach_session "$session"
+    exit 0
+  fi
+
+  # Build prompt
+  local prompt="Create an agent team and spawn these teammates:\n"
+  while IFS='|' read -r name path role dev_cmd port; do
+    prompt+="- **$name** (working directory: $path): $role\n"
+  done <<< "$projects"
+  prompt+="\nEach teammate should cd into their project directory before starting work."
+  prompt+="\nCreate a shared task list so I can see status."
+  prompt+="\nWait for my instructions on what to build."
+
+  # Lead path = parent of first project
+  local lead_path
+  lead_path=$(echo "$projects" | head -1 | cut -d'|' -f2 | xargs dirname)
+
+  echo ""
+  blue "🚀 Launching agents: $ws"
+  echo ""
+
+  tmux new-session -d -s "$session" -c "$lead_path"
+  tmux send-keys -t "$session" "claude" Enter
+  sleep 3
+  tmux send-keys -t "$session" "$(echo -e "$prompt")" Enter
+
+  echo "┌─────────────────────────────────────────┐"
+  echo "│  Workspace: $ws (agents)                │"
+  echo "│  Agent teams will spawn tmux panes.     │"
+  echo "│                                         │"
+  echo "│  Ctrl+B + arrows = switch panes         │"
+  echo "│  Ctrl+B + n/p   = next/prev window      │"
+  echo "│  crew kill       = tear down             │"
+  echo "└─────────────────────────────────────────┘"
+  echo ""
+
+  attach_session "$session"
+}
+
+# ─────────────────────────────────────────────
+# GENERATE WORKSPACE FILE & LAUNCH DEV SERVERS IN CURSOR
+# ─────────────────────────────────────────────
+generate_workspace_file() {
+  local ws="$1"
+  local ws_file="${CONFIG_DIR}/tmp-${ws}.code-workspace"
+
+  python3 -c "
+import json
+
+with open('$(workspace_file "$ws")') as f:
+    data = json.load(f)
+
+folders = [{'path': p['path']} for p in data['projects']]
+
+tasks = []
+for p in data['projects']:
+    dev_cmd = p.get('dev_command', '')
+    if not dev_cmd:
+        continue
+    port = p.get('port', '')
+    label = f\"{p['name']} server\"
+    if port:
+        label += f\" :{port}\"
+    tasks.append({
+        'label': label,
+        'type': 'shell',
+        'command': dev_cmd,
+        'options': {'cwd': p['path']},
+        'isBackground': True,
+        'problemMatcher': [],
+        'presentation': {
+            'group': 'servers',
+            'reveal': 'always'
+        },
+        'runOptions': {
+            'runOn': 'folderOpen'
+        }
+    })
+
+workspace = {
+    'folders': folders,
+    'settings': {
+        'task.allowAutomaticTasks': 'on'
+    },
+    'tasks': {
+        'version': '2.0.0',
+        'tasks': tasks
+    }
+}
+
+with open('$ws_file', 'w') as f:
+    json.dump(workspace, f, indent=2)
+
+print('$ws_file')
+"
+}
+
+cmd_launch_servers() {
+  local ws
+  ws=$(pick_workspace "${1:-}")
+  local projects
+  projects=$(read_projects "$ws")
+
+  # Detect editor
+  local editor=""
+  if command -v cursor &>/dev/null; then
+    editor="cursor"
+  elif command -v code &>/dev/null; then
+    editor="code"
+  else
+    die "Neither 'cursor' nor 'code' CLI found. Install Cursor or VS Code CLI."
+  fi
+
+  local ws_file
+  ws_file=$(generate_workspace_file "$ws")
+
+  echo ""
+  blue "🚀 Opening dev servers in $editor: $ws"
+  echo ""
+
+  $editor "$ws_file"
+
+  # Clean up temp file after Cursor has read it
+  (sleep 10 && rm -f "$ws_file") &
+
+  green "✅ Workspace opened. Servers will auto-start in split terminals."
+  echo ""
+  dim "   If servers don't start automatically:"
+  dim "   → Allow automatic tasks when prompted, or"
+  dim "   → Set \"task.allowAutomaticTasks\": \"on\" in settings"
+}
+
+# ─────────────────────────────────────────────
+# LAUNCH BOTH (agents + servers)
+# ─────────────────────────────────────────────
+cmd_launch_up() {
+  local ws
+  ws=$(pick_workspace "${1:-}")
+
+  command -v tmux &>/dev/null || die "tmux not found. Install with: brew install tmux"
+  command -v claude &>/dev/null || die "claude not found. Install Claude Code first."
+
+  local projects
+  projects=$(read_projects "$ws")
+
+  local session="crew-$ws"
+
+  if tmux has-session -t "$session" 2>/dev/null; then
+    echo "Agent session already running. Attaching..."
+    attach_session "$session"
+    exit 0
+  fi
+
+  # --- Dev servers in Cursor/VS Code ---
+  local has_servers=false
+  while IFS='|' read -r name path role dev_cmd port; do
+    [[ -n "$dev_cmd" ]] && has_servers=true && break
+  done <<< "$projects"
+
+  if [[ "$has_servers" == true ]]; then
+    local editor=""
+    if command -v cursor &>/dev/null; then
+      editor="cursor"
+    elif command -v code &>/dev/null; then
+      editor="code"
+    fi
+
+    if [[ -n "$editor" ]]; then
+      local ws_file
+      ws_file=$(generate_workspace_file "$ws")
+      blue "📂 Opening dev servers in $editor..."
+      $editor "$ws_file"
+      (sleep 10 && rm -f "$ws_file") &
+    else
+      dim "⚠ No cursor/code CLI found. Skipping dev servers."
+    fi
+  fi
+
+  # --- Agents in tmux ---
+  local prompt="Create an agent team and spawn these teammates:\n"
+  while IFS='|' read -r name path role dev_cmd port; do
+    prompt+="- **$name** (working directory: $path): $role\n"
+  done <<< "$projects"
+  prompt+="\nEach teammate should cd into their project directory before starting work."
+  prompt+="\nCreate a shared task list so I can see status."
+  prompt+="\nWait for my instructions on what to build."
+
+  local lead_path
+  lead_path=$(echo "$projects" | head -1 | cut -d'|' -f2 | xargs dirname)
+
+  echo ""
+  blue "🚀 Launching agents: $ws"
+  echo ""
+
+  tmux new-session -d -s "$session" -c "$lead_path" -n "agents"
+  tmux send-keys -t "$session:agents" "claude" Enter
+  sleep 3
+  tmux send-keys -t "$session:agents" "$(echo -e "$prompt")" Enter
+
+  echo "┌─────────────────────────────────────────┐"
+  echo "│  Workspace: $ws                         │"
+  echo "│                                         │"
+  echo "│  iTerm2:  Agent team (Claude)           │"
+  if [[ "$has_servers" == true ]]; then
+  echo "│  Cursor:  Dev servers (split terminals) │"
+  fi
+  echo "│                                         │"
+  echo "│  crew kill = tear down agents            │"
+  echo "└─────────────────────────────────────────┘"
+  echo ""
+
+  attach_session "$session"
+}
+
+# ─────────────────────────────────────────────
+# KILL
+# ─────────────────────────────────────────────
+cmd_kill() {
+  local killed=0
+  for session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^crew-'); do
+    tmux kill-session -t "$session"
+    echo "Killed session: $session"
+    killed=1
+  done
+  [[ $killed -eq 0 ]] && echo "No crew sessions running." || green "✅ Done."
+  # Clean up any leftover temp workspace files
+  rm -f "${CONFIG_DIR}"/tmp-*.code-workspace 2>/dev/null
+}
+
+# ─────────────────────────────────────────────
+# HELP
+# ─────────────────────────────────────────────
+cmd_help() {
+  echo ""
+  bold "crew — Agent team launcher"
+  echo ""
+  bold "  Launch:"
+  echo "  crew [workspace]                  Launch agents (pick workspace if omitted)"
+  echo "  crew servers [workspace]          Launch dev servers only"
+  echo "  crew up [workspace]               Launch agents + dev servers"
+  echo ""
+  bold "  Workspaces:"
+  echo "  crew workspace create <name>      Create a workspace"
+  echo "  crew workspace list               List all workspaces"
+  echo "  crew workspace delete <name>      Delete a workspace"
+  echo ""
+  bold "  Projects:"
+  echo "  crew project add <workspace>      Add a project (interactive)"
+  echo "  crew project list <workspace>     List projects in a workspace"
+  echo "  crew project remove <ws> <proj>   Remove a project"
+  echo ""
+  bold "  Session:"
+  echo "  crew kill                         Kill all crew sessions"
+  echo "  crew help                         Show this help"
+  echo ""
+}
+
+# ─────────────────────────────────────────────
+# ROUTER
+# ─────────────────────────────────────────────
+case "${1:-}" in
+  workspace)
+    case "${2:-}" in
+      create) cmd_workspace_create "${3:-}" ;;
+      list)   cmd_workspace_list ;;
+      delete) cmd_workspace_delete "${3:-}" ;;
+      *)      die "Unknown: crew workspace ${2:-}. Try: create, list, delete" ;;
+    esac
+    ;;
+  project)
+    case "${2:-}" in
+      add)    cmd_project_add "${3:-}" ;;
+      list)   cmd_project_list "${3:-}" ;;
+      remove) cmd_project_remove "${3:-}" "${4:-}" ;;
+      *)      die "Unknown: crew project ${2:-}. Try: add, list, remove" ;;
+    esac
+    ;;
+  servers) cmd_launch_servers "${2:-}" ;;
+  up)      cmd_launch_up "${2:-}" ;;
+  kill)    cmd_kill ;;
+  help)    cmd_help ;;
+  "")      cmd_launch_agents "" ;;
+  *)
+    if workspace_exists "$1"; then
+      cmd_launch_agents "$1"
+    else
+      die "Unknown command '$1'. Try: crew help"
+    fi
+    ;;
+esac
