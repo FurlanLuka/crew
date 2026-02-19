@@ -105,6 +105,43 @@ attach_session() {
   fi
 }
 
+# Tear down everything for a workspace
+cleanup_workspace() {
+  local ws="$1"
+  local session="crew-$ws"
+
+  # Kill tmux session
+  if tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session"
+    echo "Killed agent session: $session"
+  fi
+
+  # Close Cursor/VS Code workspace window
+  local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
+  if [[ -f "$ws_file" ]]; then
+    local app_name=""
+    if command -v cursor &>/dev/null; then
+      app_name="Cursor"
+    elif command -v code &>/dev/null; then
+      app_name="Code"
+    fi
+    if [[ -n "$app_name" ]]; then
+      osascript -e "
+        tell application \"$app_name\"
+          repeat with w in (every window)
+            if name of w contains \"$ws\" then
+              close w
+            end if
+          end repeat
+        end tell
+      " 2>/dev/null || true
+    fi
+    rm -f "$ws_file"
+  fi
+
+  green "✅ Workspace '$ws' torn down."
+}
+
 # ─────────────────────────────────────────────
 # WORKSPACE COMMANDS
 # ─────────────────────────────────────────────
@@ -265,10 +302,12 @@ cmd_launch_agents() {
 
   local session="crew-$ws"
 
+  trap "cleanup_workspace '$ws'" EXIT
+
   if tmux has-session -t "$session" 2>/dev/null; then
     echo "Agent session already running. Attaching..."
     attach_session "$session"
-    exit 0
+    return
   fi
 
   # Build prompt
@@ -299,7 +338,7 @@ cmd_launch_agents() {
   echo "│                                         │"
   echo "│  Ctrl+B + arrows = switch panes         │"
   echo "│  Ctrl+B + n/p   = next/prev window      │"
-  echo "│  crew kill       = tear down             │"
+  echo "│  Detach (esc) = tear down everything     │"
   echo "└─────────────────────────────────────────┘"
   echo ""
 
@@ -311,7 +350,7 @@ cmd_launch_agents() {
 # ─────────────────────────────────────────────
 generate_workspace_file() {
   local ws="$1"
-  local ws_file="${CONFIG_DIR}/tmp-${ws}.code-workspace"
+  local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
 
   python3 -c "
 import json
@@ -389,9 +428,6 @@ cmd_launch_servers() {
 
   $editor "$ws_file"
 
-  # Clean up temp file after Cursor has read it
-  (sleep 10 && rm -f "$ws_file") &
-
   green "✅ Workspace opened. Servers will auto-start in split terminals."
   echo ""
   dim "   If servers don't start automatically:"
@@ -413,12 +449,10 @@ cmd_launch_up() {
   projects=$(read_projects "$ws")
 
   local session="crew-$ws"
+  local session_exists=false
+  tmux has-session -t "$session" 2>/dev/null && session_exists=true
 
-  if tmux has-session -t "$session" 2>/dev/null; then
-    echo "Agent session already running. Attaching..."
-    attach_session "$session"
-    exit 0
-  fi
+  trap "cleanup_workspace '$ws'" EXIT
 
   # --- Dev servers in Cursor/VS Code ---
   local has_servers=false
@@ -439,13 +473,18 @@ cmd_launch_up() {
       ws_file=$(generate_workspace_file "$ws")
       blue "📂 Opening dev servers in $editor..."
       $editor "$ws_file"
-      (sleep 10 && rm -f "$ws_file") &
     else
       dim "⚠ No cursor/code CLI found. Skipping dev servers."
     fi
   fi
 
   # --- Agents in tmux ---
+  if [[ "$session_exists" == true ]]; then
+    echo "Agent session already running. Attaching..."
+    attach_session "$session"
+    return
+  fi
+
   local prompt="Create an agent team and spawn these teammates:\n"
   while IFS='|' read -r name path role dev_cmd port; do
     prompt+="- **$name** (working directory: $path): $role\n"
@@ -474,7 +513,7 @@ cmd_launch_up() {
   echo "│  Cursor:  Dev servers (split terminals) │"
   fi
   echo "│                                         │"
-  echo "│  crew kill = tear down agents            │"
+  echo "│  Detach (esc) = tear down everything     │"
   echo "└─────────────────────────────────────────┘"
   echo ""
 
@@ -487,13 +526,11 @@ cmd_launch_up() {
 cmd_kill() {
   local killed=0
   for session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^crew-'); do
-    tmux kill-session -t "$session"
-    echo "Killed session: $session"
+    local ws="${session#crew-}"
+    cleanup_workspace "$ws"
     killed=1
   done
-  [[ $killed -eq 0 ]] && echo "No crew sessions running." || green "✅ Done."
-  # Clean up any leftover temp workspace files
-  rm -f "${CONFIG_DIR}"/tmp-*.code-workspace 2>/dev/null
+  [[ $killed -eq 0 ]] && echo "No crew sessions running."
 }
 
 # ─────────────────────────────────────────────
