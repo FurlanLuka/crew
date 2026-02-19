@@ -19,6 +19,10 @@
 #   ccm profile pull                   Pull global CLAUDE.md from registry
 #   ccm profile show                   Show current global CLAUDE.md
 #   ccm profile remove                 Remove global CLAUDE.md
+#   ccm notification setup              Set up push notifications via ntfy.sh
+#   ccm notification status             Show notification config
+#   ccm notification test               Send a test notification
+#   ccm notification remove             Remove notification hook
 #   ccm install [-p]                   Install all agents, skills, and profile
 #   ccm update                         Smart-update all installed items
 #   ccm help                           Show this help
@@ -888,6 +892,138 @@ cmd_update() {
 }
 
 # ─────────────────────────────────────────────
+# NOTIFICATIONS
+# ─────────────────────────────────────────────
+SETTINGS_FILE="${CLAUDE_CONFIG_DIR}/settings.json"
+
+_ntfy_extract_topic() {
+  [[ -f "$SETTINGS_FILE" ]] || return 1
+  python3 -c "
+import json, sys, re
+with open('$SETTINGS_FILE') as f:
+    settings = json.load(f)
+hooks = settings.get('hooks', {}).get('Notification', [])
+for entry in hooks:
+    if entry.get('matcher') == 'idle_prompt':
+        for h in entry.get('hooks', []):
+            cmd = h.get('command', '')
+            m = re.search(r'ntfy\.sh/(\S+)', cmd)
+            if m:
+                print(m.group(1))
+                sys.exit(0)
+sys.exit(1)
+" 2>/dev/null
+}
+
+cmd_notification_setup() {
+  local default_topic="ccm-$(LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 8)"
+
+  printf "Enter ntfy.sh topic [%s]: " "$default_topic"
+  local topic
+  read -r topic
+  topic="${topic:-$default_topic}"
+
+  mkdir -p "$CLAUDE_CONFIG_DIR"
+
+  python3 -c "
+import json, os
+
+path = '$SETTINGS_FILE'
+topic = '$topic'
+
+if os.path.exists(path):
+    with open(path) as f:
+        settings = json.load(f)
+else:
+    settings = {}
+
+hook_entry = {
+    'matcher': 'idle_prompt',
+    'hooks': [{
+        'type': 'command',
+        'command': \"curl -sf -H 'Title: Claude idle' -d \\\"Waiting for input in $(basename $PWD)\\\" ntfy.sh/\" + topic
+    }]
+}
+
+hooks = settings.setdefault('hooks', {})
+notif_hooks = hooks.get('Notification', [])
+
+# Remove any existing idle_prompt ntfy hook
+notif_hooks = [h for h in notif_hooks if not (
+    h.get('matcher') == 'idle_prompt' and
+    any('ntfy.sh/' in hk.get('command', '') for hk in h.get('hooks', []))
+)]
+
+notif_hooks.append(hook_entry)
+hooks['Notification'] = notif_hooks
+
+with open(path, 'w') as f:
+    json.dump(settings, f, indent=2)
+    f.write('\n')
+" || die "Failed to write settings."
+
+  green "Notifications enabled (topic: ${topic})"
+  dim "Subscribe at: https://ntfy.sh/${topic}"
+}
+
+cmd_notification_status() {
+  local topic
+  if topic=$(_ntfy_extract_topic); then
+    green "Notifications: enabled (topic: ${topic})"
+    dim "Subscribe at: https://ntfy.sh/${topic}"
+  else
+    dim "Notifications: not configured"
+    dim "Run: ccm notification setup"
+  fi
+}
+
+cmd_notification_test() {
+  local topic
+  topic=$(_ntfy_extract_topic) || die "No notification hook configured. Run: ccm notification setup"
+
+  curl -sf -H "Title: Claude idle" -d "Test from $(basename "$PWD")" "ntfy.sh/${topic}" >/dev/null \
+    && green "Test notification sent to topic '${topic}'" \
+    || die "Failed to send notification."
+}
+
+cmd_notification_remove() {
+  [[ -f "$SETTINGS_FILE" ]] || die "No settings file found."
+
+  local topic
+  topic=$(_ntfy_extract_topic) || die "No notification hook configured."
+
+  python3 -c "
+import json
+
+path = '$SETTINGS_FILE'
+with open(path) as f:
+    settings = json.load(f)
+
+hooks = settings.get('hooks', {})
+notif_hooks = hooks.get('Notification', [])
+
+notif_hooks = [h for h in notif_hooks if not (
+    h.get('matcher') == 'idle_prompt' and
+    any('ntfy.sh/' in hk.get('command', '') for hk in h.get('hooks', []))
+)]
+
+if notif_hooks:
+    hooks['Notification'] = notif_hooks
+else:
+    hooks.pop('Notification', None)
+
+if not hooks:
+    settings.pop('hooks', None)
+
+with open(path, 'w') as f:
+    json.dump(settings, f, indent=2)
+    f.write('\n')
+" || die "Failed to update settings."
+
+  green "Notification hook removed (was topic: ${topic})"
+}
+
+# ─────────────────────────────────────────────
 # HELP
 # ─────────────────────────────────────────────
 cmd_help() {
@@ -915,6 +1051,12 @@ cmd_help() {
   echo "  ccm profile pull                   Pull global CLAUDE.md from registry"
   echo "  ccm profile show                   Show current global CLAUDE.md"
   echo "  ccm profile remove                 Remove global CLAUDE.md"
+  echo ""
+  bold "  Notifications:"
+  echo "  ccm notification setup             Set up push notifications via ntfy.sh"
+  echo "  ccm notification status            Show notification config"
+  echo "  ccm notification test              Send a test notification"
+  echo "  ccm notification remove            Remove notification hook"
   echo ""
   bold "  General:"
   echo "  ccm install [-p]                   Install all agents, skills, and profile"
@@ -957,6 +1099,15 @@ case "${1:-}" in
       show)   cmd_profile_show ;;
       remove) cmd_profile_remove ;;
       *)      die "Unknown: ccm profile ${2:-}. Try: pull, show, remove" ;;
+    esac
+    ;;
+  notification)
+    case "${2:-}" in
+      setup)  cmd_notification_setup ;;
+      status) cmd_notification_status ;;
+      test)   cmd_notification_test ;;
+      remove) cmd_notification_remove ;;
+      *)      die "Unknown: ccm notification ${2:-}. Try: setup, status, test, remove" ;;
     esac
     ;;
   install) cmd_install "${2:-}" ;;
