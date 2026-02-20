@@ -61,22 +61,4 @@ Community agents and skills live in [`registry/`](registry/).
 | `reactjs-new-project` | Recommended React project architecture and setup conventions. |
 | `web-designer` | Design system knowledge base for web design generation. Support skill for web-designer. |
 
-No manifest files — metadata is parsed directly from YAML frontmatter.
-
-```
-registry/
-├── agents/
-│   └── <name>.md
-└── skills/
-    └── <name>/
-        └── SKILL.md
-```
-
 To contribute, add your agent or skill and open a PR.
-
-## Requirements
-
-- macOS
-- `python3` on your PATH
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (`claude`)
-- `tmux` (installed automatically with crew)
