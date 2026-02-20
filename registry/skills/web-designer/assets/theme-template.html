@@ -68,6 +68,17 @@
       font-size: 9px;
       font-weight: var(--font-semibold);
     }
+    .swatch-sm {
+      flex: 1;
+      height: 48px;
+      border-radius: var(--radius-md, 8px);
+      display: flex;
+      align-items: flex-end;
+      padding: var(--space-1, 4px) var(--space-2, 8px);
+      font-size: 9px;
+      font-weight: var(--font-semibold);
+      max-width: 120px;
+    }
     .lt { color: white; }
     .dt { color: #333; }
 
@@ -170,6 +181,29 @@
   <div class="swatch lt" style="background: var(--primary-700);">700</div>
   <div class="swatch lt" style="background: var(--primary-800);">800</div>
   <div class="swatch lt" style="background: var(--primary-900);">900</div>
+</div>
+
+<h2>Secondary Scale</h2>
+<div class="scale-row">
+  <div class="swatch dt" style="background: var(--secondary-50);">50</div>
+  <div class="swatch dt" style="background: var(--secondary-100);">100</div>
+  <div class="swatch dt" style="background: var(--secondary-200);">200</div>
+  <div class="swatch dt" style="background: var(--secondary-300);">300</div>
+  <div class="swatch dt" style="background: var(--secondary-400);">400</div>
+  <div class="swatch lt" style="background: var(--secondary-500);">500</div>
+  <div class="swatch lt" style="background: var(--secondary-600);">600</div>
+  <div class="swatch lt" style="background: var(--secondary-700);">700</div>
+  <div class="swatch lt" style="background: var(--secondary-800);">800</div>
+  <div class="swatch lt" style="background: var(--secondary-900);">900</div>
+</div>
+
+<h2>Accent Scale</h2>
+<div class="scale-row">
+  <div class="swatch-sm dt" style="background: var(--accent-100);">100</div>
+  <div class="swatch-sm dt" style="background: var(--accent-300);">300</div>
+  <div class="swatch-sm lt" style="background: var(--accent-500);">500</div>
+  <div class="swatch-sm lt" style="background: var(--accent-700);">700</div>
+  <div class="swatch-sm lt" style="background: var(--accent-900);">900</div>
 </div>
 
 <h2>Neutral Scale</h2>
@@ -277,10 +311,10 @@
 <h2>Buttons</h2>
 <div style="margin-bottom: var(--space-6, 24px);">
   <button class="btn" style="background: var(--primary-600); color: var(--text-on-primary);">Primary Action</button>
-  <button class="btn" style="background: var(--neutral-200); color: var(--neutral-800);">Secondary</button>
+  <button class="btn" style="background: var(--secondary-600); color: var(--text-on-secondary);">Secondary</button>
+  <button class="btn" style="background: var(--accent-500); color: var(--text-on-accent);">Accent</button>
   <button class="btn btn-outline" style="border-color: var(--primary-600); color: var(--primary-600);">Outline</button>
-  <button class="btn" style="background: var(--success); color: white;">Approve</button>
-  <button class="btn" style="background: var(--error); color: white;">Reject</button>
+  <button class="btn" style="background: var(--neutral-200); color: var(--neutral-800);">Neutral</button>
 </div>
 
 <h2>Cards</h2>
@@ -293,9 +327,13 @@
     <div class="card-title" style="color: var(--primary-700);">Primary Tint</div>
     <div class="card-desc">Subtle primary highlight</div>
   </div>
-  <div class="demo-card" style="background: var(--neutral-100); border: 1px solid var(--neutral-300);">
-    <div class="card-title" style="color: var(--neutral-800);">Neutral Card</div>
-    <div class="card-desc">Subtle gray background</div>
+  <div class="demo-card" style="background: var(--secondary-50); border: 1px solid var(--secondary-200);">
+    <div class="card-title" style="color: var(--secondary-700);">Secondary Tint</div>
+    <div class="card-desc">Subtle secondary highlight</div>
+  </div>
+  <div class="demo-card" style="background: var(--accent-100); border: 1px solid var(--accent-300);">
+    <div class="card-title" style="color: var(--accent-700);">Accent Highlight</div>
+    <div class="card-desc">Bold accent card</div>
   </div>
 </div>
 

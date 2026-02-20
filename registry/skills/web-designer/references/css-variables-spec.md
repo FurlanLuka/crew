@@ -19,6 +19,35 @@ The primary color is the brand/accent color used for buttons, links, and interac
 --primary-900  → darkest
 ```
 
+## Secondary Scale (10 shades)
+
+A complementary or contrasting color for visual richness. Used for: secondary buttons, alternate section backgrounds, decorative elements, hover states on non-primary items, visual variety.
+
+```
+--secondary-50   → lightest tint
+--secondary-100  → very light
+--secondary-200  → light
+--secondary-300  → medium light
+--secondary-400  → medium
+--secondary-500  → medium saturated
+--secondary-600  → main secondary color
+--secondary-700  → dark
+--secondary-800  → darker
+--secondary-900  → darkest
+```
+
+## Accent Scale (5 values)
+
+A bold pop color for highlights and emphasis. Used sparingly for: badges, notification dots, special callouts, decorative accents, gradient endpoints.
+
+```
+--accent-100  → light tint
+--accent-300  → medium
+--accent-500  → main accent
+--accent-700  → dark
+--accent-900  → darkest
+```
+
 ## Neutral Scale (10 shades)
 
 Used for text, backgrounds, borders, and UI chrome.
@@ -47,15 +76,17 @@ Used for text, backgrounds, borders, and UI chrome.
 
 ## Semantic Colors
 
+Choose colors that harmonize with the palette mood. These don't have to be the traditional green/amber/red/blue — pick hues that feel natural within the overall palette while still communicating their meaning clearly.
+
 ```
---success     → #22c55e (green)
---success-bg  → #dcfce7 (light green background)
---warning     → #f59e0b (amber)
---warning-bg  → #fef3c7 (light amber background)
---error       → #ef4444 (red)
---error-bg    → #fee2e2 (light red background)
---info        → #3b82f6 (blue)
---info-bg     → #dbeafe (light blue background)
+--success     → positive/confirmation color (often green, but could be teal, emerald, etc.)
+--success-bg  → light background variant
+--warning     → caution color (often amber, but could be gold, orange, etc.)
+--warning-bg  → light background variant
+--error       → danger/destructive color (often red, but could be crimson, rose, etc.)
+--error-bg    → light background variant
+--info        → informational color (often blue, but could be cyan, indigo, etc.)
+--info-bg     → light background variant
 ```
 
 ## Typography Colors
@@ -79,7 +110,8 @@ Other text colors:
 --text-link          → var(--primary-600)
 --text-link-hover    → var(--primary-700)
 --text-on-primary    → #ffffff (text on primary-colored backgrounds)
---text-on-secondary  → var(--text-body)
+--text-on-secondary  → #ffffff (text on secondary-colored backgrounds)
+--text-on-accent     → #ffffff (text on accent-colored backgrounds)
 --text-disabled      → #9ca3af
 ```
 
@@ -109,19 +141,40 @@ Other text colors:
 
 ## Complete Example
 
+A 3-color palette: deep blue primary + warm coral secondary + gold accent.
+
 ```css
 :root {
-  /* Primary - Ocean Blue */
-  --primary-50: #f0f9ff;
-  --primary-100: #e0f2fe;
-  --primary-200: #bae6fd;
-  --primary-300: #7dd3fc;
-  --primary-400: #38bdf8;
-  --primary-500: #0ea5e9;
-  --primary-600: #0284c7;
-  --primary-700: #0369a1;
-  --primary-800: #075985;
-  --primary-900: #0c4a6e;
+  /* Primary - Deep Blue */
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+
+  /* Secondary - Warm Coral */
+  --secondary-50: #fff7ed;
+  --secondary-100: #ffedd5;
+  --secondary-200: #fed7aa;
+  --secondary-300: #fdba74;
+  --secondary-400: #fb923c;
+  --secondary-500: #f97316;
+  --secondary-600: #ea580c;
+  --secondary-700: #c2410c;
+  --secondary-800: #9a3412;
+  --secondary-900: #7c2d12;
+
+  /* Accent - Gold */
+  --accent-100: #fef9c3;
+  --accent-300: #fde047;
+  --accent-500: #eab308;
+  --accent-700: #a16207;
+  --accent-900: #713f12;
 
   /* Neutral */
   --neutral-50: #fafafa;
@@ -141,15 +194,15 @@ Other text colors:
   --surface-elevated: #f8fafc;
   --border: #e2e8f0;
 
-  /* Semantic */
-  --success: #22c55e;
-  --success-bg: #dcfce7;
+  /* Semantic — colors chosen to harmonize with the blue/coral/gold palette */
+  --success: #10b981;
+  --success-bg: #d1fae5;
   --warning: #f59e0b;
   --warning-bg: #fef3c7;
   --error: #ef4444;
   --error-bg: #fee2e2;
-  --info: #3b82f6;
-  --info-bg: #dbeafe;
+  --info: #6366f1;
+  --info-bg: #e0e7ff;
 
   /* Typography */
   --text-heading: #1a1a1a;
@@ -158,7 +211,8 @@ Other text colors:
   --text-link: var(--primary-600);
   --text-link-hover: var(--primary-700);
   --text-on-primary: #ffffff;
-  --text-on-secondary: var(--text-body);
+  --text-on-secondary: #ffffff;
+  --text-on-accent: #1a1a1a;
   --text-disabled: #9ca3af;
 
   /* Spacing */
