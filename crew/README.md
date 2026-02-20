@@ -28,19 +28,19 @@ crew my-app
 ### Launch
 
 ```bash
-crew [workspace]                  # Launch agents + terminals in Cursor
+crew [workspace]                  # Launch in Cursor
 crew [workspace] -a               # Launch agents only (tmux)
 ```
 
-When no workspace is specified and only one exists, it's auto-selected. With multiple workspaces you get an interactive picker.
+When no workspace is specified, you get an interactive picker.
 
 ### Workspaces
 
 ```bash
-crew workspace                    # Interactive picker (create/list/delete)
+crew workspace                    # Interactive picker (create/list/remove)
 crew workspace create <name>      # Create a workspace
 crew workspace list               # List all workspaces
-crew workspace delete <name>      # Delete a workspace
+crew workspace remove <name>      # Remove a workspace (picker if no name)
 ```
 
 Workspaces are stored as JSON in `~/.crew/workspaces/`.
@@ -64,49 +64,34 @@ Each project has:
 Install and manage agents and skills from a shared registry.
 
 ```bash
-crew agents                       # Interactive picker (list/install/...)
-crew agents list                  # List available agents from registry
+crew agents                       # Interactive picker
+crew agents list                  # List installed agents
 crew agents install [name]        # Install agent (picker if no name)
 crew agents install [name] -p     # Install to current project
-crew agents installed             # List installed agents
-crew agents remove <name>         # Remove an agent
+crew agents remove [name]         # Remove an agent (picker if no name)
 crew agents update [name]         # Update agent(s)
 crew agents run [name]            # Run an installed agent
 crew run [name]                   # Shortcut for agents run
 
-crew skills                       # Interactive picker (list/install/...)
-crew skills list                  # List available skills from registry
+crew skills                       # Interactive picker
+crew skills list                  # List installed skills
 crew skills install [name]        # Install skill (picker if no name)
 crew skills install [name] -p     # Install to current project
-crew skills installed             # List installed skills
-crew skills remove <name>         # Remove a skill
+crew skills remove [name]         # Remove a skill (picker if no name)
 crew skills update [name]         # Update skill(s)
 
-crew install [-p]                 # Bulk install all agents+skills+profile
-crew update                       # Bulk update all installed items
+crew update                       # Update all agents+skills+profile
 ```
 
 ### Profile
 
 ```bash
-crew profile                      # Interactive picker (pull/show/remove)
-crew profile pull                 # Pull global CLAUDE.md from registry
+crew profile                      # Interactive picker (install/show/update/remove)
+crew profile install              # Install global CLAUDE.md from registry
 crew profile show                 # Show current global CLAUDE.md
+crew profile update               # Update profile from registry
 crew profile remove               # Remove global CLAUDE.md
 ```
-
-### Config
-
-Manage multiple Claude config directories. When more than one config is registered, crew shows a picker before any command that needs it.
-
-```bash
-crew config                       # Interactive picker (add/list/remove)
-crew config add <name> <path>     # Register a config (e.g. crew config add personal ~/.claude-personal)
-crew config list                  # List registered configs
-crew config remove [name]         # Remove a config
-```
-
-With 0 configs, crew falls back to `$CLAUDE_CONFIG_DIR` or `~/.claude`. With 1 config, it's auto-selected.
 
 ### Notifications
 
@@ -134,13 +119,11 @@ This kills all tmux sessions, closes Cursor/VS Code workspace windows, and clean
 
 **Registry** — agents and skills are fetched from a GitHub registry. Agents are markdown files installed to `$CLAUDE_CONFIG_DIR/agents/`. Skills are directory bundles installed to `$CLAUDE_CONFIG_DIR/skills/`.
 
-**Multi-config** — registered configs are stored in `~/.crew/claude-configs`. Before any command that touches `CLAUDE_CONFIG_DIR`, crew resolves the active config via picker (or auto-select/env fallback).
-
 ## Environment
 
 | Variable | Description |
 |----------|-------------|
-| `CLAUDE_CONFIG_DIR` | Fallback when no configs are registered. Defaults to `~/.claude`. |
+| `CLAUDE_CONFIG_DIR` | Claude Code config directory. Defaults to `~/.claude`. |
 
 ## Requirements
 
