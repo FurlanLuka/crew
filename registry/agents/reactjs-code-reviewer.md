@@ -6,6 +6,8 @@ description: >
 tools: Read, Grep, Glob, Bash
 model: haiku
 skills:
+  - js-ts-clean-code
+  - code-structure
   - reactjs-clean-code
 ---
 
