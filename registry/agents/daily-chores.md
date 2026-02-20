@@ -39,11 +39,12 @@ repo#number — title (by author)
 
 Use AskUserQuestion to let the user pick a PR.
 
-Once picked, launch the pr-reviewer agent in a new tmux window:
+Once picked, launch the pr-reviewer agent in a new tmux window using send-keys (so it starts interactively):
 
 ```bash
 CLAUDE_BIN=$(which claude)
-tmux new-window -n "pr-review" "$CLAUDE_BIN --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
+tmux new-window -n "pr-review"
+tmux send-keys -t "pr-review" "$CLAUDE_BIN --agent pr-reviewer 'Review PR {owner}/{repo}#{number}'" Enter
 ```
 
 After launching, tell the user which tmux window was opened. Then ask if the user wants to pick another chore or stop.
