@@ -2,30 +2,26 @@
 # crew — Agent team launcher, workspace manager & package registry
 #
 # Launch:
-#   crew [workspace]                     Launch agents + terminals in Cursor
+#   crew [workspace]                     Launch in Cursor
 #   crew [workspace] -a                  Launch agents only (tmux)
-#   crew kill                            Tear down all crew sessions
 #
 # Workspace & project management:
-#   crew workspace [create|list|delete]  Picker if no subcommand
-#   crew project [add|list|remove]       Picker if no subcommand
+#   crew workspace [create|list|remove]
+#   crew project [add|list|remove]
 #
 # Registry:
-#   crew install [-p]                    Bulk install all agents+skills+profile
-#   crew update                          Bulk update all
-#   crew agents [list|install|installed|remove|update|run]
-#   crew skills [list|install|installed|remove|update]
+#   crew agents [list|install|remove|update|run]
+#   crew skills [list|install|remove|update]
 #   crew run [agent]                     Shortcut for agents run
+#   crew update                          Update all agents+skills+profile
 #
 # Profile:
-#   crew profile [pull|show|remove]      Picker if no subcommand
-#
-# Config:
-#   crew config [add|list|remove]        Picker if no subcommand
+#   crew profile [install|show|update|remove]
 #
 # Notifications:
 #   crew notify [setup|status|test|remove]
 #
+#   crew kill
 #   crew help
 
 set -euo pipefail
@@ -35,7 +31,6 @@ set -euo pipefail
 # ─────────────────────────────────────────────
 CONFIG_DIR="${HOME}/.crew"
 WORKSPACES_DIR="${CONFIG_DIR}/workspaces"
-CONFIGS_FILE="${CONFIG_DIR}/claude-configs"
 
 REGISTRY_REPO="FurlanLuka/homebrew-tap"
 REGISTRY_BRANCH="main"
@@ -64,10 +59,6 @@ parse_frontmatter() {
 
 content_hash() {
   shasum -a 256 | cut -d' ' -f1
-}
-
-file_hash() {
-  shasum -a 256 < "$1" 2>/dev/null | cut -d' ' -f1
 }
 
 # ─────────────────────────────────────────────
@@ -163,12 +154,6 @@ pick_workspace() {
 
   [[ ${#workspaces[@]} -eq 0 ]] && die "No workspaces. Create one with: crew workspace create <name>"
 
-  if [[ ${#workspaces[@]} -eq 1 ]]; then
-    blue "Auto-selecting workspace: ${workspaces[0]}" >&2
-    echo "${workspaces[0]}"
-    return
-  fi
-
   pick_one "Select workspace:" "${workspaces[@]}" || exit 1
 }
 
@@ -235,132 +220,11 @@ cleanup_workspace() {
 }
 
 # ─────────────────────────────────────────────
-# CONFIG — multi Claude config support
+# CONFIG — resolve CLAUDE_CONFIG_DIR
 # ─────────────────────────────────────────────
-pick_config() {
-  # Read configs from file
-  local configs=()
-  local paths=()
-  if [[ -f "$CONFIGS_FILE" ]]; then
-    while IFS='=' read -r name path; do
-      [[ -z "$name" || "$name" =~ ^# ]] && continue
-      configs+=("$name")
-      paths+=("$path")
-    done < "$CONFIGS_FILE"
-  fi
-
-  # 0 configs → env fallback
-  if [[ ${#configs[@]} -eq 0 ]]; then
-    echo "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-    return
-  fi
-
-  # 1 config → auto-select
-  if [[ ${#configs[@]} -eq 1 ]]; then
-    blue "Auto-selecting config: ${configs[0]}" >&2
-    echo "${paths[0]}"
-    return
-  fi
-
-  # N configs → picker
-  local selected
-  selected=$(pick_one "Select Claude config:" "${configs[@]}") || exit 1
-
-  for i in "${!configs[@]}"; do
-    if [[ "${configs[$i]}" == "$selected" ]]; then
-      echo "${paths[$i]}"
-      return
-    fi
-  done
-}
-
 resolve_config() {
-  CLAUDE_CONFIG_DIR=$(pick_config)
+  CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
   export CLAUDE_CONFIG_DIR
-}
-
-cmd_config_add() {
-  local name="${1:-}"
-  local path="${2:-}"
-  [[ -z "$name" || -z "$path" ]] && die "Usage: crew config add <name> <path>"
-
-  path="${path/#\~/$HOME}"
-  [[ -d "$path" ]] || die "Directory not found: $path"
-  path="$(cd "$path" && pwd)"
-
-  # Check for duplicate name
-  if [[ -f "$CONFIGS_FILE" ]]; then
-    while IFS='=' read -r n _; do
-      [[ "$n" == "$name" ]] && die "Config '$name' already exists. Remove it first."
-    done < "$CONFIGS_FILE"
-  fi
-
-  echo "${name}=${path}" >> "$CONFIGS_FILE"
-  green "Config '$name' added (${path})"
-}
-
-cmd_config_list() {
-  bold "Claude configs:"
-  echo ""
-
-  if [[ ! -f "$CONFIGS_FILE" ]] || [[ ! -s "$CONFIGS_FILE" ]]; then
-    dim "  No configs registered."
-    dim "  Using: ${CLAUDE_CONFIG_DIR:-$HOME/.claude} (env/default)"
-    echo ""
-    dim "  Add one with: crew config add <name> <path>"
-    return
-  fi
-
-  while IFS='=' read -r name path; do
-    [[ -z "$name" || "$name" =~ ^# ]] && continue
-    printf "  %-20s %s\n" "$name" "$path"
-  done < "$CONFIGS_FILE"
-}
-
-cmd_config_remove() {
-  local name="${1:-}"
-
-  if [[ -z "$name" ]]; then
-    # Interactive: pick from list
-    [[ ! -f "$CONFIGS_FILE" ]] && die "No configs registered."
-    local configs=()
-    while IFS='=' read -r n _; do
-      [[ -z "$n" || "$n" =~ ^# ]] && continue
-      configs+=("$n")
-    done < "$CONFIGS_FILE"
-    [[ ${#configs[@]} -eq 0 ]] && die "No configs registered."
-    name=$(pick_one "Select config to remove:" "${configs[@]}") || return 0
-    [[ -z "$name" ]] && return 0
-  fi
-
-  [[ ! -f "$CONFIGS_FILE" ]] && die "Config '$name' not found."
-
-  local tmp="${CONFIGS_FILE}.tmp"
-  local found=false
-  while IFS='=' read -r n path; do
-    if [[ "$n" == "$name" ]]; then
-      found=true
-      continue
-    fi
-    echo "${n}=${path}"
-  done < "$CONFIGS_FILE" > "$tmp"
-  mv "$tmp" "$CONFIGS_FILE"
-
-  [[ "$found" == true ]] || die "Config '$name' not found."
-  green "Config '$name' removed."
-}
-
-dispatch_config() {
-  local sub="${1:-}"
-  if [[ -z "$sub" ]]; then
-    sub=$(pick_one "Config action:" "add" "list" "remove") || exit 1
-  fi
-  case "$sub" in
-    add)    cmd_config_add "${2:-}" "${3:-}" ;;
-    list)   cmd_config_list ;;
-    remove) cmd_config_remove "${2:-}" ;;
-    *)      die "Unknown: crew config $sub. Try: add, list, remove" ;;
-  esac
 }
 
 # ─────────────────────────────────────────────
@@ -399,7 +263,7 @@ cmd_workspace_list() {
   fi
 }
 
-cmd_workspace_delete() {
+cmd_workspace_remove() {
   local name="${1:-}"
   if [[ -z "$name" ]]; then
     local workspaces=()
@@ -407,26 +271,26 @@ cmd_workspace_delete() {
       [[ -f "$f" ]] || continue
       workspaces+=("$(basename "$f" .json)")
     done
-    [[ ${#workspaces[@]} -eq 0 ]] && die "No workspaces to delete."
-    name=$(pick_one "Select workspace to delete:" "${workspaces[@]}") || return 0
+    [[ ${#workspaces[@]} -eq 0 ]] && die "No workspaces to remove."
+    name=$(pick_one "Select workspace to remove:" "${workspaces[@]}") || return 0
     [[ -z "$name" ]] && return 0
   fi
   workspace_exists "$name" || die "Workspace '$name' not found."
 
   rm "$(workspace_file "$name")"
-  green "Workspace '$name' deleted."
+  green "Workspace '$name' removed."
 }
 
 dispatch_workspace() {
   local sub="${1:-}"
   if [[ -z "$sub" ]]; then
-    sub=$(pick_one "Workspace action:" "create" "list" "delete") || exit 1
+    sub=$(pick_one "Workspace action:" "create" "list" "remove") || exit 1
   fi
   case "$sub" in
     create) cmd_workspace_create "${2:-}" ;;
     list)   cmd_workspace_list ;;
-    delete) cmd_workspace_delete "${2:-}" ;;
-    *)      die "Unknown: crew workspace $sub. Try: create, list, delete" ;;
+    remove) cmd_workspace_remove "${2:-}" ;;
+    *)      die "Unknown: crew workspace $sub. Try: create, list, remove" ;;
   esac
 }
 
@@ -555,27 +419,22 @@ for item in items:
 }
 
 get_installed_agent_names() {
-  local global_names=""
-  local global_dir="${CLAUDE_CONFIG_DIR}/agents"
-  if [[ -d "$global_dir" ]]; then
-    for f in "$global_dir"/*.md; do
+  local dir="${CLAUDE_CONFIG_DIR}/agents"
+  if [[ -d "$dir" ]]; then
+    for f in "$dir"/*.md; do
       [[ -f "$f" ]] || continue
-      local n
-      n=$(basename "$f" .md)
-      global_names="${global_names:+${global_names}
-}${n}"
-      echo "$n"
+      basename "$f" .md
     done
   fi
-  if [[ -d ".claude/agents" ]]; then
-    for f in .claude/agents/*.md; do
-      [[ -f "$f" ]] || continue
-      local n
-      n=$(basename "$f" .md)
-      if [[ -n "$global_names" ]] && echo "$global_names" | grep -qx "$n"; then
-        continue
-      fi
-      echo "$n"
+}
+
+get_installed_skill_names() {
+  local dir="${CLAUDE_CONFIG_DIR}/skills"
+  if [[ -d "$dir" ]]; then
+    for d in "$dir"/*/; do
+      [[ -d "$d" ]] || continue
+      [[ -f "${d}SKILL.md" ]] || continue
+      basename "$d"
     done
   fi
 }
@@ -584,28 +443,30 @@ get_installed_agent_names() {
 # REGISTRY: AGENTS
 # ─────────────────────────────────────────────
 cmd_agents_list() {
-  bold "Available agents:"
+  bold "Installed agents:"
   echo ""
 
-  local names
-  names=$(fetch_registry_agent_names) || true
-
-  if [[ -z "$names" ]]; then
-    dim "  No agents in registry yet."
-    return
+  local found=0
+  local dir="${CLAUDE_CONFIG_DIR}/agents"
+  if [[ -d "$dir" ]]; then
+    for f in "$dir"/*.md; do
+      [[ -f "$f" ]] || continue
+      found=1
+      local name
+      name=$(basename "$f" .md)
+      local desc
+      desc=$(parse_frontmatter "description" < "$f")
+      if [[ -n "$desc" ]]; then
+        printf "  %-24s %s\n" "$name" "$desc"
+      else
+        echo "  $name"
+      fi
+    done
   fi
 
-  while IFS= read -r name; do
-    local content
-    content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || continue
-    local desc
-    desc=$(echo "$content" | parse_frontmatter "description")
-    if [[ -n "$desc" ]]; then
-      printf "  %-24s %s\n" "$name" "$desc"
-    else
-      echo "  $name"
-    fi
-  done <<< "$names"
+  if [[ $found -eq 0 ]]; then
+    dim "  No agents installed."
+  fi
 }
 
 _install_single_agent() {
@@ -666,117 +527,56 @@ cmd_agents_install() {
   done <<< "$selected"
 }
 
-cmd_agents_installed() {
-  bold "Installed agents:"
-  echo ""
-
-  local found=0
-
-  local global_dir="${CLAUDE_CONFIG_DIR}/agents"
-  if [[ -d "$global_dir" ]]; then
-    for f in "$global_dir"/*.md; do
-      [[ -f "$f" ]] || continue
-      found=1
-      local name
-      name=$(basename "$f" .md)
-      local desc
-      desc=$(parse_frontmatter "description" < "$f")
-      if [[ -n "$desc" ]]; then
-        printf "  %-24s %s  (global)\n" "$name" "$desc"
-      else
-        printf "  %-24s (global)\n" "$name"
-      fi
-    done
-  fi
-
-  if [[ -d ".claude/agents" ]]; then
-    for f in .claude/agents/*.md; do
-      [[ -f "$f" ]] || continue
-      found=1
-      local name
-      name=$(basename "$f" .md)
-      local desc
-      desc=$(parse_frontmatter "description" < "$f")
-      if [[ -n "$desc" ]]; then
-        printf "  %-24s %s  (project)\n" "$name" "$desc"
-      else
-        printf "  %-24s (project)\n" "$name"
-      fi
-    done
-  fi
-
-  if [[ $found -eq 0 ]]; then
-    dim "  No agents installed."
-  fi
-}
-
 cmd_agents_remove() {
   local name="${1:-}"
-  [[ -z "$name" ]] && die "Usage: crew agents remove <name>"
 
-  local removed=false
+  if [[ -z "$name" ]]; then
+    local names
+    names=$(get_installed_agent_names)
+    [[ -z "$names" ]] && die "No agents installed."
 
-  if [[ -f ".claude/agents/${name}.md" ]]; then
-    rm ".claude/agents/${name}.md"
-    green "Removed agent '${name}' from project."
-    removed=true
+    local opts=()
+    while IFS= read -r n; do
+      opts+=("$n")
+    done <<< "$names"
+
+    name=$(pick_one "Select agent to remove:" "${opts[@]}") || return 0
+    [[ -z "$name" ]] && return 0
   fi
 
-  local global_file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
-  if [[ -f "$global_file" ]]; then
-    rm "$global_file"
-    green "Removed agent '${name}' from global."
-    removed=true
-  fi
-
-  if [[ "$removed" == false ]]; then
-    die "Agent '${name}' not found."
-  fi
+  local file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
+  [[ -f "$file" ]] || die "Agent '${name}' not found."
+  rm "$file"
+  green "Removed agent '${name}'."
 }
 
 cmd_agents_update() {
   local name="${1:-}"
 
   if [[ -n "$name" ]]; then
-    local global_file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
-    local project_file=".claude/agents/${name}.md"
+    local file="${CLAUDE_CONFIG_DIR}/agents/${name}.md"
+    [[ -f "$file" ]] || die "Agent '${name}' not installed."
 
     local content
     content=$(gh_raw "${REGISTRY_BASE}/agents/${name}.md") || die "Agent '${name}' not found in registry."
     local remote_hash
     remote_hash=$(echo "$content" | content_hash)
+    local local_hash
+    local_hash=$(echo "$(cat "$file")" | content_hash)
 
-    if [[ -f "$project_file" ]]; then
-      local local_hash
-      local_hash=$(echo "$(cat "$project_file")" | content_hash)
-      if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Agent '${name}' already up to date (project)."
-      else
-        echo "$content" > "$project_file"
-        green "Updated agent '${name}' (project)."
-      fi
+    if [[ "$remote_hash" == "$local_hash" ]]; then
+      dim "Agent '${name}' already up to date."
+    else
+      echo "$content" > "$file"
+      green "Updated agent '${name}'."
     fi
-
-    if [[ -f "$global_file" ]]; then
-      local local_hash
-      local_hash=$(echo "$(cat "$global_file")" | content_hash)
-      if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Agent '${name}' already up to date (global)."
-      else
-        echo "$content" > "$global_file"
-        green "Updated agent '${name}' (global)."
-      fi
-    fi
-
-    [[ ! -f "$project_file" && ! -f "$global_file" ]] && die "Agent '${name}' not installed."
     return
   fi
 
   local found=0
-
-  local global_dir="${CLAUDE_CONFIG_DIR}/agents"
-  if [[ -d "$global_dir" ]]; then
-    for f in "$global_dir"/*.md; do
+  local dir="${CLAUDE_CONFIG_DIR}/agents"
+  if [[ -d "$dir" ]]; then
+    for f in "$dir"/*.md; do
       [[ -f "$f" ]] || continue
       found=1
       local n
@@ -788,31 +588,10 @@ cmd_agents_update() {
       local local_hash
       local_hash=$(echo "$(cat "$f")" | content_hash)
       if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Agent '${n}' already up to date (global)."
+        dim "Agent '${n}' already up to date."
       else
         echo "$content" > "$f"
-        green "Updated agent '${n}' (global)."
-      fi
-    done
-  fi
-
-  if [[ -d ".claude/agents" ]]; then
-    for f in .claude/agents/*.md; do
-      [[ -f "$f" ]] || continue
-      found=1
-      local n
-      n=$(basename "$f" .md)
-      local content
-      content=$(gh_raw "${REGISTRY_BASE}/agents/${n}.md") || continue
-      local remote_hash
-      remote_hash=$(echo "$content" | content_hash)
-      local local_hash
-      local_hash=$(echo "$(cat "$f")" | content_hash)
-      if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Agent '${n}' already up to date (project)."
-      else
-        echo "$content" > "$f"
-        green "Updated agent '${n}' (project)."
+        green "Updated agent '${n}'."
       fi
     done
   fi
@@ -839,10 +618,11 @@ cmd_agents_run() {
     [[ -z "$name" ]] && return 0
   fi
 
-  local found=false
-  [[ -f "${CLAUDE_CONFIG_DIR}/agents/${name}.md" ]] && found=true
-  [[ -f ".claude/agents/${name}.md" ]] && found=true
-  [[ "$found" == false ]] && die "Agent '${name}' not installed. Run: crew agents install ${name}"
+  [[ -f "${CLAUDE_CONFIG_DIR}/agents/${name}.md" ]] || die "Agent '${name}' not installed. Run: crew agents install ${name}"
+
+  blue "Starting agent: ${name}"
+  dim "  Config: ${CLAUDE_CONFIG_DIR}"
+  echo ""
 
   exec claude --agent "$name"
 }
@@ -850,16 +630,15 @@ cmd_agents_run() {
 dispatch_agents() {
   local sub="${1:-}"
   if [[ -z "$sub" ]]; then
-    sub=$(pick_one "Agents action:" "list" "install" "installed" "remove" "update" "run") || exit 1
+    sub=$(pick_one "Agents action:" "list" "install" "remove" "update" "run") || exit 1
   fi
   case "$sub" in
     list)      cmd_agents_list ;;
     install)   shift 2>/dev/null || true; cmd_agents_install "$@" ;;
-    installed) cmd_agents_installed ;;
     remove)    cmd_agents_remove "${2:-}" ;;
     update)    cmd_agents_update "${2:-}" ;;
     run)       cmd_agents_run "${2:-}" ;;
-    *)         die "Unknown: crew agents $sub. Try: list, install, installed, remove, update, run" ;;
+    *)         die "Unknown: crew agents $sub. Try: list, install, remove, update, run" ;;
   esac
 }
 
@@ -867,28 +646,31 @@ dispatch_agents() {
 # REGISTRY: SKILLS
 # ─────────────────────────────────────────────
 cmd_skills_list() {
-  bold "Available skills:"
+  bold "Installed skills:"
   echo ""
 
-  local names
-  names=$(fetch_registry_skill_names) || true
-
-  if [[ -z "$names" ]]; then
-    dim "  No skills in registry yet."
-    return
+  local found=0
+  local dir="${CLAUDE_CONFIG_DIR}/skills"
+  if [[ -d "$dir" ]]; then
+    for d in "$dir"/*/; do
+      [[ -d "$d" ]] || continue
+      [[ -f "${d}SKILL.md" ]] || continue
+      found=1
+      local name
+      name=$(basename "$d")
+      local desc
+      desc=$(parse_frontmatter "description" < "${d}SKILL.md")
+      if [[ -n "$desc" ]]; then
+        printf "  %-24s %s\n" "$name" "$desc"
+      else
+        echo "  $name"
+      fi
+    done
   fi
 
-  while IFS= read -r name; do
-    local content
-    content=$(gh_raw "${REGISTRY_BASE}/skills/${name}/SKILL.md") || continue
-    local desc
-    desc=$(echo "$content" | parse_frontmatter "description")
-    if [[ -n "$desc" ]]; then
-      printf "  %-24s %s\n" "$name" "$desc"
-    else
-      echo "  $name"
-    fi
-  done <<< "$names"
+  if [[ $found -eq 0 ]]; then
+    dim "  No skills installed."
+  fi
 }
 
 _install_single_skill() {
@@ -1009,119 +791,56 @@ cmd_skills_install() {
   done <<< "$selected"
 }
 
-cmd_skills_installed() {
-  bold "Installed skills:"
-  echo ""
-
-  local found=0
-
-  local global_dir="${CLAUDE_CONFIG_DIR}/skills"
-  if [[ -d "$global_dir" ]]; then
-    for d in "$global_dir"/*/; do
-      [[ -d "$d" ]] || continue
-      [[ -f "${d}SKILL.md" ]] || continue
-      found=1
-      local name
-      name=$(basename "$d")
-      local desc
-      desc=$(parse_frontmatter "description" < "${d}SKILL.md")
-      if [[ -n "$desc" ]]; then
-        printf "  %-24s %s  (global)\n" "$name" "$desc"
-      else
-        printf "  %-24s (global)\n" "$name"
-      fi
-    done
-  fi
-
-  if [[ -d ".claude/skills" ]]; then
-    for d in .claude/skills/*/; do
-      [[ -d "$d" ]] || continue
-      [[ -f "${d}SKILL.md" ]] || continue
-      found=1
-      local name
-      name=$(basename "$d")
-      local desc
-      desc=$(parse_frontmatter "description" < "${d}SKILL.md")
-      if [[ -n "$desc" ]]; then
-        printf "  %-24s %s  (project)\n" "$name" "$desc"
-      else
-        printf "  %-24s (project)\n" "$name"
-      fi
-    done
-  fi
-
-  if [[ $found -eq 0 ]]; then
-    dim "  No skills installed."
-  fi
-}
-
 cmd_skills_remove() {
   local name="${1:-}"
-  [[ -z "$name" ]] && die "Usage: crew skills remove <name>"
 
-  local removed=false
+  if [[ -z "$name" ]]; then
+    local names
+    names=$(get_installed_skill_names)
+    [[ -z "$names" ]] && die "No skills installed."
 
-  if [[ -d ".claude/skills/${name}" ]]; then
-    rm -rf ".claude/skills/${name}"
-    green "Removed skill '${name}' from project."
-    removed=true
+    local opts=()
+    while IFS= read -r n; do
+      opts+=("$n")
+    done <<< "$names"
+
+    name=$(pick_one "Select skill to remove:" "${opts[@]}") || return 0
+    [[ -z "$name" ]] && return 0
   fi
 
-  local global_dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
-  if [[ -d "$global_dir" ]]; then
-    rm -rf "$global_dir"
-    green "Removed skill '${name}' from global."
-    removed=true
-  fi
-
-  if [[ "$removed" == false ]]; then
-    die "Skill '${name}' not found."
-  fi
+  local dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
+  [[ -d "$dir" ]] || die "Skill '${name}' not found."
+  rm -rf "$dir"
+  green "Removed skill '${name}'."
 }
 
 cmd_skills_update() {
   local name="${1:-}"
 
   if [[ -n "$name" ]]; then
-    local global_dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
-    local project_dir=".claude/skills/${name}"
+    local dir="${CLAUDE_CONFIG_DIR}/skills/${name}"
+    [[ -d "$dir" ]] || die "Skill '${name}' not installed."
 
     local remote_skill
     remote_skill=$(gh_raw "${REGISTRY_BASE}/skills/${name}/SKILL.md") || die "Skill '${name}' not found in registry."
     local remote_hash
     remote_hash=$(echo "$remote_skill" | content_hash)
+    local local_hash
+    local_hash=$(echo "$(cat "${dir}/SKILL.md")" | content_hash)
 
-    if [[ -d "$project_dir" ]]; then
-      local local_hash
-      local_hash=$(echo "$(cat "${project_dir}/SKILL.md")" | content_hash)
-      if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Skill '${name}' already up to date (project)."
-      else
-        rm -rf "$project_dir"
-        _install_single_skill "$name" true
-      fi
+    if [[ "$remote_hash" == "$local_hash" ]]; then
+      dim "Skill '${name}' already up to date."
+    else
+      rm -rf "$dir"
+      _install_single_skill "$name"
     fi
-
-    if [[ -d "$global_dir" ]]; then
-      local local_hash
-      local_hash=$(echo "$(cat "${global_dir}/SKILL.md")" | content_hash)
-      if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Skill '${name}' already up to date (global)."
-      else
-        rm -rf "$global_dir"
-        _install_single_skill "$name"
-      fi
-    fi
-
-    [[ ! -d "$project_dir" && ! -d "$global_dir" ]] && die "Skill '${name}' not installed."
     return
   fi
 
   local found=0
-
-  local global_dir="${CLAUDE_CONFIG_DIR}/skills"
-  if [[ -d "$global_dir" ]]; then
-    for d in "$global_dir"/*/; do
+  local dir="${CLAUDE_CONFIG_DIR}/skills"
+  if [[ -d "$dir" ]]; then
+    for d in "$dir"/*/; do
       [[ -d "$d" ]] || continue
       [[ -f "${d}SKILL.md" ]] || continue
       found=1
@@ -1134,32 +853,10 @@ cmd_skills_update() {
       local local_hash
       local_hash=$(echo "$(cat "${d}SKILL.md")" | content_hash)
       if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Skill '${n}' already up to date (global)."
+        dim "Skill '${n}' already up to date."
       else
         rm -rf "$d"
         _install_single_skill "$n" 2>/dev/null || true
-      fi
-    done
-  fi
-
-  if [[ -d ".claude/skills" ]]; then
-    for d in .claude/skills/*/; do
-      [[ -d "$d" ]] || continue
-      [[ -f "${d}SKILL.md" ]] || continue
-      found=1
-      local n
-      n=$(basename "$d")
-      local remote_skill
-      remote_skill=$(gh_raw "${REGISTRY_BASE}/skills/${n}/SKILL.md") || continue
-      local remote_hash
-      remote_hash=$(echo "$remote_skill" | content_hash)
-      local local_hash
-      local_hash=$(echo "$(cat "${d}SKILL.md")" | content_hash)
-      if [[ "$remote_hash" == "$local_hash" ]]; then
-        dim "Skill '${n}' already up to date (project)."
-      else
-        rm -rf "$d"
-        _install_single_skill "$n" true 2>/dev/null || true
       fi
     done
   fi
@@ -1172,22 +869,21 @@ cmd_skills_update() {
 dispatch_skills() {
   local sub="${1:-}"
   if [[ -z "$sub" ]]; then
-    sub=$(pick_one "Skills action:" "list" "install" "installed" "remove" "update") || exit 1
+    sub=$(pick_one "Skills action:" "list" "install" "remove" "update") || exit 1
   fi
   case "$sub" in
     list)      cmd_skills_list ;;
     install)   shift 2>/dev/null || true; cmd_skills_install "$@" ;;
-    installed) cmd_skills_installed ;;
     remove)    cmd_skills_remove "${2:-}" ;;
     update)    cmd_skills_update "${2:-}" ;;
-    *)         die "Unknown: crew skills $sub. Try: list, install, installed, remove, update" ;;
+    *)         die "Unknown: crew skills $sub. Try: list, install, remove, update" ;;
   esac
 }
 
 # ─────────────────────────────────────────────
 # PROFILE
 # ─────────────────────────────────────────────
-cmd_profile_pull() {
+cmd_profile_install() {
   local target="${CLAUDE_CONFIG_DIR}/CLAUDE.md"
 
   local content
@@ -1195,7 +891,7 @@ cmd_profile_pull() {
 
   mkdir -p "$CLAUDE_CONFIG_DIR"
   echo "$content" > "$target"
-  green "Profile pulled to ${target}"
+  green "Profile installed to ${target}"
 }
 
 cmd_profile_show() {
@@ -1204,7 +900,7 @@ cmd_profile_show() {
   if [[ -f "$target" ]]; then
     cat "$target"
   else
-    dim "No profile installed. Run: crew profile pull"
+    dim "No profile installed. Run: crew profile install"
   fi
 }
 
@@ -1246,58 +942,20 @@ cmd_profile_update() {
 dispatch_profile() {
   local sub="${1:-}"
   if [[ -z "$sub" ]]; then
-    sub=$(pick_one "Profile action:" "pull" "show" "remove") || exit 1
+    sub=$(pick_one "Profile action:" "install" "show" "update" "remove") || exit 1
   fi
   case "$sub" in
-    pull)   cmd_profile_pull ;;
-    show)   cmd_profile_show ;;
-    remove) cmd_profile_remove ;;
-    *)      die "Unknown: crew profile $sub. Try: pull, show, remove" ;;
+    install) cmd_profile_install ;;
+    show)    cmd_profile_show ;;
+    update)  cmd_profile_update ;;
+    remove)  cmd_profile_remove ;;
+    *)       die "Unknown: crew profile $sub. Try: install, show, update, remove" ;;
   esac
 }
 
 # ─────────────────────────────────────────────
 # INSTALL / UPDATE (top-level)
 # ─────────────────────────────────────────────
-cmd_install() {
-  local project=false
-  [[ "${1:-}" == "-p" ]] && project=true
-
-  bold "Installing all agents..."
-  echo ""
-
-  local agent_names
-  agent_names=$(fetch_registry_agent_names) || true
-
-  if [[ -n "$agent_names" ]]; then
-    while IFS= read -r name; do
-      _install_single_agent "$name" "$project"
-    done <<< "$agent_names"
-  else
-    dim "  No agents in registry."
-  fi
-
-  echo ""
-  bold "Installing all skills..."
-  echo ""
-
-  local skill_names
-  skill_names=$(fetch_registry_skill_names) || true
-
-  if [[ -n "$skill_names" ]]; then
-    while IFS= read -r name; do
-      _install_single_skill "$name" "$project"
-    done <<< "$skill_names"
-  else
-    dim "  No skills in registry."
-  fi
-
-  echo ""
-  bold "Pulling profile..."
-  echo ""
-  cmd_profile_pull
-}
-
 cmd_update() {
   bold "Updating agents..."
   echo ""
@@ -1400,7 +1058,7 @@ notif_hooks = hooks.get('Notification', [])
 
 # Remove any existing crew/ntfy hook
 notif_hooks = [h for h in notif_hooks if not
-    any('crew-ntfy.sh' in hk.get('command', '') or 'ccm-ntfy.sh' in hk.get('command', '') or 'ntfy.sh/' in hk.get('command', '')
+    any('crew-ntfy.sh' in hk.get('command', '') or 'ntfy.sh/' in hk.get('command', '')
         for hk in h.get('hooks', []))]
 
 notif_hooks.append(hook_entry)
@@ -1469,7 +1127,7 @@ hooks = settings.get('hooks', {})
 notif_hooks = hooks.get('Notification', [])
 
 notif_hooks = [h for h in notif_hooks if not
-    any('crew-ntfy.sh' in hk.get('command', '') or 'ccm-ntfy.sh' in hk.get('command', '') or 'ntfy.sh/' in hk.get('command', '')
+    any('crew-ntfy.sh' in hk.get('command', '') or 'ntfy.sh/' in hk.get('command', '')
         for hk in h.get('hooks', []))]
 
 if notif_hooks:
@@ -1488,8 +1146,6 @@ with open(path, 'w') as f:
   local hook_script
   hook_script=$(_ntfy_hook_script)
   rm -f "$hook_script"
-  # Also clean up legacy ccm hook script
-  rm -f "${CLAUDE_CONFIG_DIR}/hooks/ccm-ntfy.sh"
 
   green "Notification hook removed (was topic: ${topic})"
 }
@@ -1648,9 +1304,6 @@ cmd_launch_up() {
 
     tmux new-session -d -s "$session" -c "$lead_path"
     local claude_cmd="claude \"\$(cat '$prompt_file')\""
-    if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
-      claude_cmd="CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' ${claude_cmd}"
-    fi
     tmux send-keys -t "$session" "$claude_cmd" Enter
 
     echo "┌─────────────────────────────────────────┐"
@@ -1700,9 +1353,6 @@ cmd_launch_up() {
 
   tmux new-session -d -s "$session" -c "$lead_path" -n "agents"
   local claude_cmd="claude \"\$(cat '$prompt_file')\""
-  if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
-    claude_cmd="CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' ${claude_cmd}"
-  fi
   tmux send-keys -t "$session:agents" "$claude_cmd" Enter
 
   echo "┌─────────────────────────────────────────┐"
@@ -1748,34 +1398,30 @@ cmd_help() {
   bold "crew — Agent team launcher & registry"
   echo ""
   bold "  Launch:"
-  echo "  crew [workspace]                   Launch in Cursor (agents + terminals)"
-  echo "  crew [workspace] -a                Launch agents only (tmux)"
+  echo "  crew [workspace]                    Launch in Cursor"
+  echo "  crew [workspace] -a                 Launch agents only (tmux)"
   echo ""
   bold "  Workspaces:"
-  echo "  crew workspace [create|list|delete] Picker if no subcommand"
+  echo "  crew workspace [create|list|remove]"
   echo ""
   bold "  Projects:"
-  echo "  crew project [add|list|remove]     Picker if no subcommand"
+  echo "  crew project [add|list|remove]"
   echo ""
   bold "  Registry:"
-  echo "  crew agents [list|install|installed|remove|update|run]"
-  echo "  crew skills [list|install|installed|remove|update]"
-  echo "  crew run [agent]                   Shortcut for agents run"
-  echo "  crew install [-p]                  Bulk install all agents+skills+profile"
-  echo "  crew update                        Bulk update all"
+  echo "  crew agents [list|install|remove|update|run]"
+  echo "  crew skills [list|install|remove|update]"
+  echo "  crew run [agent]                    Shortcut for agents run"
+  echo "  crew update                         Update all agents+skills+profile"
   echo ""
   bold "  Profile:"
-  echo "  crew profile [pull|show|remove]    Picker if no subcommand"
-  echo ""
-  bold "  Config:"
-  echo "  crew config [add|list|remove]      Manage Claude config directories"
+  echo "  crew profile [install|show|update|remove]"
   echo ""
   bold "  Notifications:"
   echo "  crew notify [setup|status|test|remove]"
   echo ""
   bold "  Session:"
-  echo "  crew kill                          Kill all crew sessions"
-  echo "  crew help                          Show this help"
+  echo "  crew kill                           Kill all crew sessions"
+  echo "  crew help                           Show this help"
   echo ""
   dim "  Registry: github.com/${REGISTRY_REPO}"
   dim "  Config:   ${CLAUDE_CONFIG_DIR:-~/.claude}"
@@ -1791,14 +1437,12 @@ case "${1:-}" in
   skills)       resolve_config; dispatch_skills "${@:2}" ;;
   profile)      resolve_config; dispatch_profile "${@:2}" ;;
   notify)       resolve_config; dispatch_notify "${@:2}" ;;
-  install)      resolve_config; cmd_install "${2:-}" ;;
   update)       resolve_config; cmd_update ;;
   run)          resolve_config; cmd_agents_run "${2:-}" ;;
 
   # No config needed
   workspace)    dispatch_workspace "${@:2}" ;;
   project)      dispatch_project "${@:2}" ;;
-  config)       dispatch_config "${@:2}" ;;
   kill)         cmd_kill ;;
   help)         cmd_help ;;
 
