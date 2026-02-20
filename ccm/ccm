@@ -459,7 +459,7 @@ cmd_agents_run() {
   [[ -f ".claude/agents/${name}.md" ]] && found=true
   [[ "$found" == false ]] && die "Agent '${name}' not installed. Run: ccm agents install ${name}"
 
-  exec claude --agent "$name" -p "go"
+  exec claude --agent "$name"
 }
 
 # ─────────────────────────────────────────────
