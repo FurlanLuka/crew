@@ -363,6 +363,10 @@ cmd_launch_agents() {
 # ─────────────────────────────────────────────
 generate_workspace_file() {
   local ws="$1"
+  local include_agents="${2:-false}"
+  local prompt_file="${3:-}"
+  local lead_path="${4:-}"
+  local claude_config_dir="${5:-}"
   local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
 
   python3 -c "
@@ -374,6 +378,34 @@ with open('$(workspace_file "$ws")') as f:
 folders = [{'path': p['path']} for p in data['projects']]
 
 tasks = []
+
+# Agent task (runs claude with the team prompt)
+include_agents = '$include_agents' == 'true'
+if include_agents:
+    prompt_file = '$prompt_file'
+    lead_path = '$lead_path'
+    claude_config_dir = '$claude_config_dir'
+    claude_cmd = 'claude \"\$(cat ' + json.dumps(prompt_file)[1:-1] + ')\"'
+    if claude_config_dir:
+        claude_cmd = \"CLAUDE_CONFIG_DIR='\" + claude_config_dir + \"' \" + claude_cmd
+    tasks.append({
+        'label': 'agents',
+        'type': 'shell',
+        'command': claude_cmd,
+        'options': {'cwd': lead_path},
+        'isBackground': True,
+        'problemMatcher': [],
+        'presentation': {
+            'group': 'agents',
+            'focus': True,
+            'reveal': 'always'
+        },
+        'runOptions': {
+            'runOn': 'folderOpen'
+        }
+    })
+
+# Dev server tasks (wrapped so they wait for Enter)
 for p in data['projects']:
     dev_cmd = p.get('dev_command', '')
     if not dev_cmd:
@@ -382,10 +414,11 @@ for p in data['projects']:
     label = f\"{p['name']} server\"
     if port:
         label += f\" :{port}\"
+    wrapped = f'echo \"▸ {dev_cmd}\" && echo \"\" && echo \"Press Enter to start...\" && read && exec {dev_cmd}'
     tasks.append({
         'label': label,
         'type': 'shell',
-        'command': dev_cmd,
+        'command': wrapped,
         'options': {'cwd': p['path']},
         'isBackground': True,
         'problemMatcher': [],
@@ -433,7 +466,7 @@ cmd_launch_servers() {
   fi
 
   local ws_file
-  ws_file=$(generate_workspace_file "$ws")
+  ws_file=$(generate_workspace_file "$ws" "false")
 
   echo ""
   blue "🚀 Opening dev servers in $editor: $ws"
@@ -441,11 +474,7 @@ cmd_launch_servers() {
 
   $editor "$ws_file"
 
-  green "✅ Workspace opened. Servers will auto-start in split terminals."
-  echo ""
-  dim "   If servers don't start automatically:"
-  dim "   → Allow automatic tasks when prompted, or"
-  dim "   → Set \"task.allowAutomaticTasks\": \"on\" in settings"
+  green "✅ Workspace opened. Press Enter in each terminal to start servers."
 }
 
 # ─────────────────────────────────────────────
@@ -455,50 +484,12 @@ cmd_launch_up() {
   local ws
   ws=$(pick_workspace "${1:-}")
 
-  command -v tmux &>/dev/null || die "tmux not found. Install with: brew install tmux"
   command -v claude &>/dev/null || die "claude not found. Install Claude Code first."
 
   local projects
   projects=$(read_projects "$ws")
 
-  local session="crew-$ws"
-  local session_exists=false
-  tmux has-session -t "$session" 2>/dev/null && session_exists=true
-
-  trap "cleanup_workspace '$ws'" EXIT
-
-  # --- Dev servers in Cursor/VS Code ---
-  local has_servers=false
-  while IFS='|' read -r name path role dev_cmd port; do
-    [[ -n "$dev_cmd" ]] && has_servers=true && break
-  done <<< "$projects"
-
-  if [[ "$has_servers" == true ]]; then
-    local editor=""
-    if command -v cursor &>/dev/null; then
-      editor="cursor"
-    elif command -v code &>/dev/null; then
-      editor="code"
-    fi
-
-    if [[ -n "$editor" ]]; then
-      local ws_file
-      ws_file=$(generate_workspace_file "$ws")
-      blue "📂 Opening dev servers in $editor..."
-      $editor "$ws_file"
-    else
-      dim "⚠ No cursor/code CLI found. Skipping dev servers."
-    fi
-  fi
-
-  # --- Agents in tmux ---
-  if [[ "$session_exists" == true ]]; then
-    echo "Agent session already running. Attaching..."
-    attach_session "$session"
-    return
-  fi
-
-  # Build prompt and write to file
+  # Build prompt file (always, before workspace generation)
   local prompt_file="${CONFIG_DIR}/prompt-${ws}.md"
   {
     echo "Create an agent team and spawn these teammates:"
@@ -514,8 +505,43 @@ cmd_launch_up() {
   local lead_path
   lead_path=$(echo "$projects" | head -1 | cut -d'|' -f2 | xargs dirname)
 
+  # Detect editor
+  local editor=""
+  if command -v cursor &>/dev/null; then
+    editor="cursor"
+  elif command -v code &>/dev/null; then
+    editor="code"
+  fi
+
+  # ── Cursor-first path: everything in the editor ──
+  if [[ -n "$editor" ]]; then
+    local ws_file
+    ws_file=$(generate_workspace_file "$ws" "true" "$prompt_file" "$lead_path" "${CLAUDE_CONFIG_DIR:-}")
+
+    $editor "$ws_file"
+
+    echo ""
+    green "✅ Workspace '$ws' opened in $editor. Agents will auto-start."
+    dim "   crew kill = tear down everything"
+    echo ""
+    return
+  fi
+
+  # ── Fallback: tmux (no editor found) ──
+  command -v tmux &>/dev/null || die "tmux not found. Install with: brew install tmux"
+
+  local session="crew-$ws"
+
+  if tmux has-session -t "$session" 2>/dev/null; then
+    echo "Agent session already running. Attaching..."
+    attach_session "$session"
+    return
+  fi
+
+  trap "cleanup_workspace '$ws'" EXIT
+
   echo ""
-  blue "🚀 Launching agents: $ws"
+  blue "🚀 Launching agents (tmux): $ws"
   echo ""
 
   tmux new-session -d -s "$session" -c "$lead_path" -n "agents"
@@ -526,13 +552,9 @@ cmd_launch_up() {
   tmux send-keys -t "$session:agents" "$claude_cmd" Enter
 
   echo "┌─────────────────────────────────────────┐"
-  echo "│  Workspace: $ws                         │"
+  echo "│  Workspace: $ws (tmux fallback)         │"
   echo "│                                         │"
-  echo "│  iTerm2:  Agent team (Claude)           │"
-  if [[ "$has_servers" == true ]]; then
-  echo "│  Cursor:  Dev servers (split terminals) │"
-  fi
-  echo "│                                         │"
+  echo "│  No editor found — agents in tmux.      │"
   echo "│  Detach (esc) = tear down everything     │"
   echo "└─────────────────────────────────────────┘"
   echo ""
@@ -545,11 +567,25 @@ cmd_launch_up() {
 # ─────────────────────────────────────────────
 cmd_kill() {
   local killed=0
+
+  # Kill tmux-based sessions
   for session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^crew-'); do
     local ws="${session#crew-}"
     cleanup_workspace "$ws"
     killed=1
   done
+
+  # Clean up Cursor-only workspaces (no tmux session)
+  for ws_file in "${CONFIG_DIR}"/*.code-workspace; do
+    [[ -f "$ws_file" ]] || continue
+    local ws
+    ws=$(basename "$ws_file" .code-workspace)
+    # Skip if already handled via tmux above
+    tmux has-session -t "crew-$ws" 2>/dev/null && continue
+    cleanup_workspace "$ws"
+    killed=1
+  done
+
   [[ $killed -eq 0 ]] && echo "No crew sessions running."
 }
 
@@ -561,9 +597,9 @@ cmd_help() {
   bold "crew — Agent team launcher"
   echo ""
   bold "  Launch:"
-  echo "  crew [workspace]                  Launch agents + dev servers"
-  echo "  crew servers [workspace]          Launch dev servers only"
-  echo "  crew agents [workspace]           Launch agents only"
+  echo "  crew [workspace]                  Launch in Cursor (agents + servers)"
+  echo "  crew servers [workspace]          Launch dev servers only (Cursor)"
+  echo "  crew agents [workspace]           Launch agents only (tmux)"
   echo ""
   bold "  Workspaces:"
   echo "  crew workspace create <name>      Create a workspace"
