@@ -21,12 +21,10 @@ jobs:
       - name: Lint formulas
         run: |
           brew audit --formula furlanluka/tap/crew
-          brew audit --formula furlanluka/tap/ccm
 
       - name: Check bash syntax
         run: |
           bash -n crew/crew
-          bash -n ccm/ccm
 
   test-install:
     if: github.event_name == 'push'
@@ -46,9 +44,3 @@ jobs:
 
       - name: Test crew help
         run: crew help | grep -q "Agent team launcher"
-
-      - name: Install ccm from local tap
-        run: brew install furlanluka/tap/ccm
-
-      - name: Test ccm help
-        run: ccm help | grep -q "Claude Code Manager"
