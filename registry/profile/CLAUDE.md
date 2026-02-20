@@ -35,10 +35,9 @@ Use the following agents when appropriate:
 
 The following skills are available:
 
-- **js-ts-clean-code** — when writing, reviewing, or refactoring JavaScript/TypeScript code, follow these guidelines for readability, simplicity, formatting, naming, comments, and import conventions.
-- **code-structure** — when writing, reviewing, or refactoring JS/TS code, follow these structural patterns for assignments, object construction, block formatting, type extraction, logical grouping, and iteration.
-- **nodejs-clean-code** — when writing, reviewing, or refactoring Node.js/TypeScript backend code, follow these guidelines for error handling, async patterns, and backend-specific type conventions. Complements `js-ts-clean-code` and `code-structure`.
-- **reactjs-clean-code** — when writing, reviewing, or refactoring React code, follow these guidelines for component structure, state management, hooks, and composition. Complements `js-ts-clean-code` and `code-structure`.
+- **js-ts-clean-code** — when writing, reviewing, or refactoring JavaScript/TypeScript code, follow these guidelines for readability, simplicity, formatting, naming, imports, assignment patterns, object construction, block formatting, type extraction, logical grouping, and iteration.
+- **nodejs-clean-code** — when writing, reviewing, or refactoring Node.js/TypeScript backend code, follow these guidelines for error handling, async patterns, and backend-specific type conventions. Complements `js-ts-clean-code`.
+- **reactjs-clean-code** — when writing, reviewing, or refactoring React code, follow these guidelines for component structure, state management, hooks, and composition. Complements `js-ts-clean-code`.
 - **reactjs-new-project** — when scaffolding a new React project, follow these guidelines for project structure, tooling, and conventions.
 - **web-designer** — design system knowledge base (universal components, layout techniques, design principles, CSS variables, markup rules). Support skill for the web-designer agent — not user-invocable.
 - **pr-review-comments** — comment style guide for PR reviews. Ensures comments sound natural and human. Support skill for the pr-reviewer agent — not user-invocable.

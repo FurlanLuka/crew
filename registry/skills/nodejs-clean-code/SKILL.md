@@ -2,13 +2,13 @@
 name: nodejs-clean-code
 description: >
   Node.js and backend TypeScript guidelines. Covers error handling, async patterns, and
-  backend-specific type conventions. Complements `js-ts-clean-code` and `code-structure`.
+  backend-specific type conventions. Complements `js-ts-clean-code`.
 user-invocable: false
 ---
 
 # Node.js / Backend TypeScript Guidelines
 
-Backend-specific patterns. Use alongside `js-ts-clean-code` (formatting, naming, imports) and `code-structure` (assignments, objects, blocks, types).
+Backend-specific patterns. Use alongside `js-ts-clean-code` (formatting, naming, imports, structure).
 
 ## Types and Interfaces
 

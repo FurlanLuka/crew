@@ -55,10 +55,9 @@ Community agents and skills live in [`registry/`](registry/).
 
 | Skill | Description |
 |-------|-------------|
-| `js-ts-clean-code` | JavaScript/TypeScript clean code guidelines (readability, formatting, naming, imports). |
-| `code-structure` | Code structure and expression patterns (assignments, objects, blocks, types, iteration). |
-| `nodejs-clean-code` | Node.js/backend-specific guidelines (error handling, async). Extends base skills. |
-| `reactjs-clean-code` | React-specific guidelines (components, state, hooks, composition). Extends base skills. |
+| `js-ts-clean-code` | JS/TS clean code guidelines (readability, formatting, naming, imports, structure, patterns). |
+| `nodejs-clean-code` | Node.js/backend-specific guidelines (error handling, async). Extends `js-ts-clean-code`. |
+| `reactjs-clean-code` | React-specific guidelines (components, state, hooks, composition). Extends `js-ts-clean-code`. |
 | `reactjs-new-project` | Recommended React project architecture and setup conventions. |
 | `pr-review-comments` | Comment style guide for PR reviews. Support skill for pr-reviewer. |
 | `web-designer` | Design system knowledge base for web design generation. Support skill for web-designer. |

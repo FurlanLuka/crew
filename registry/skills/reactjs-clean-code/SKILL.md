@@ -2,13 +2,13 @@
 name: reactjs-clean-code
 description: >
   React clean code guidelines. Covers component structure, state management, data fetching,
-  hooks, composition, and React-specific patterns. Complements `js-ts-clean-code` and `code-structure`.
+  hooks, composition, and React-specific patterns. Complements `js-ts-clean-code`.
 user-invocable: false
 ---
 
 # React Clean Code Guidelines
 
-React-specific patterns. Use alongside `js-ts-clean-code` (formatting, naming, imports) and `code-structure` (assignments, objects, blocks, types).
+React-specific patterns. Use alongside `js-ts-clean-code` (formatting, naming, imports, structure).
 
 ## Component Structure
 
