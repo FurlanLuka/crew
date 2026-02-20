@@ -39,13 +39,13 @@ repo#number — title (by author)
 
 Use AskUserQuestion to let the user pick a PR.
 
-Once picked, open a **new tmux window** with a fresh Claude session running the pr-reviewer agent:
+Once picked, open a **tmux side pane** with a fresh Claude session running the pr-reviewer agent:
 
 ```bash
-tmux new-window -n "pr-review" "CCM_SPAWNED=1 claude --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
+tmux split-window -h "CCM_SPAWNED=1 claude --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
 ```
 
-After launching, tell the user which window was opened. Then ask if the user wants to pick another chore or stop.
+After launching, tell the user the review pane was opened. Then ask if the user wants to pick another chore or stop.
 
 ### Step 3b — Linear
 
