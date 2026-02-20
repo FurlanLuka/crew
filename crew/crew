@@ -116,8 +116,9 @@ cleanup_workspace() {
     echo "Killed agent session: $session"
   fi
 
-  # Clean up prompt file
+  # Clean up prompt file and shell config dirs
   rm -f "${CONFIG_DIR}/prompt-${ws}.md" 2>/dev/null
+  rm -rf "${CONFIG_DIR}/shells/${ws}" 2>/dev/null
 
   # Close Cursor/VS Code workspace window (Electron apps need System Events)
   local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
@@ -370,7 +371,7 @@ generate_workspace_file() {
   local ws_file="${CONFIG_DIR}/${ws}.code-workspace"
 
   python3 -c "
-import json
+import json, os
 
 with open('$(workspace_file "$ws")') as f:
     data = json.load(f)
@@ -387,11 +388,13 @@ if include_agents:
     claude_config_dir = '$claude_config_dir'
     claude_cmd = 'claude \"\$(cat ' + json.dumps(prompt_file)[1:-1] + ')\"'
     if claude_config_dir:
-        claude_cmd = \"CLAUDE_CONFIG_DIR='\" + claude_config_dir + \"' \" + claude_cmd
+        claude_cmd = 'CLAUDE_CONFIG_DIR=\"' + claude_config_dir + '\" ' + claude_cmd
+    ws_name = '$ws'
+    tmux_cmd = \"tmux new-session -s crew-\" + ws_name + \" -c '\" + lead_path + \"' '\" + claude_cmd + \"'\"
     tasks.append({
         'label': 'agents',
         'type': 'shell',
-        'command': claude_cmd,
+        'command': tmux_cmd,
         'options': {'cwd': lead_path},
         'isBackground': True,
         'problemMatcher': [],
@@ -405,7 +408,8 @@ if include_agents:
         }
     })
 
-# Dev server tasks (wrapped so they wait for Enter)
+# Dev server tasks (ZDOTDIR: normal zsh with pre-typed command)
+config_dir = '$CONFIG_DIR'
 for p in data['projects']:
     dev_cmd = p.get('dev_command', '')
     if not dev_cmd:
@@ -414,11 +418,18 @@ for p in data['projects']:
     label = f\"{p['name']} server\"
     if port:
         label += f\" :{port}\"
-    wrapped = f'echo \"▸ {dev_cmd}\" && echo \"\" && echo \"Press Enter to start...\" && read && exec {dev_cmd}'
+    shell_dir = os.path.join(config_dir, 'shells', '$ws', p['name'])
+    os.makedirs(shell_dir, exist_ok=True)
+    zshrc = os.path.join(shell_dir, '.zshrc')
+    with open(zshrc, 'w') as sf:
+        sf.write('ZDOTDIR=\"\$HOME\"\n')
+        sf.write('[[ -f \"\$HOME/.zshrc\" ]] && source \"\$HOME/.zshrc\"\n')
+        sf.write(\"print -z '\" + dev_cmd + \"'\n\")
+    cmd = \"ZDOTDIR='\" + shell_dir + \"' exec zsh -i\"
     tasks.append({
         'label': label,
         'type': 'shell',
-        'command': wrapped,
+        'command': cmd,
         'options': {'cwd': p['path']},
         'isBackground': True,
         'problemMatcher': [],
