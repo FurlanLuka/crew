@@ -972,9 +972,10 @@ hook_entry = {
 hooks = settings.setdefault('hooks', {})
 notif_hooks = hooks.get('Notification', [])
 
-# Remove any existing ccm-ntfy hook
+# Remove any existing ccm/ntfy hook (script-based or legacy inline curl)
 notif_hooks = [h for h in notif_hooks if not
-    any('ccm-ntfy.sh' in hk.get('command', '') for hk in h.get('hooks', []))]
+    any('ccm-ntfy.sh' in hk.get('command', '') or 'ntfy.sh/' in hk.get('command', '')
+        for hk in h.get('hooks', []))]
 
 notif_hooks.append(hook_entry)
 hooks['Notification'] = notif_hooks
@@ -1043,7 +1044,8 @@ hooks = settings.get('hooks', {})
 notif_hooks = hooks.get('Notification', [])
 
 notif_hooks = [h for h in notif_hooks if not
-    any('ccm-ntfy.sh' in hk.get('command', '') for hk in h.get('hooks', []))]
+    any('ccm-ntfy.sh' in hk.get('command', '') or 'ntfy.sh/' in hk.get('command', '')
+        for hk in h.get('hooks', []))]
 
 if notif_hooks:
     hooks['Notification'] = notif_hooks
