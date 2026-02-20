@@ -39,18 +39,18 @@ repo#number — title (by author)
 
 Use AskUserQuestion to let the user pick a PR.
 
-Once picked, launch the pr-reviewer agent. If inside tmux, open a side pane. Otherwise, run it inline:
+Once picked, launch the pr-reviewer agent. If inside tmux, open a new window. Otherwise, run it inline:
 
 ```bash
 CLAUDE_BIN=$(which claude)
 if [ -n "$TMUX" ]; then
-  tmux split-window -h "CCM_SPAWNED=1 $CLAUDE_BIN --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
+  tmux new-window -d -n "pr-review" "CCM_SPAWNED=1 $CLAUDE_BIN --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
 else
   $CLAUDE_BIN --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'
 fi
 ```
 
-After the review completes (or the pane is launched), ask if the user wants to pick another chore or stop.
+After the review completes (or the window is launched), ask if the user wants to pick another chore or stop.
 
 ### Step 3b — Linear
 

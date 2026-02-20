@@ -77,9 +77,9 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
    - **Request changes** — run `gh pr review <number> --request-changes --body "<summary>"`
    - **Skip** — don't submit a review verdict
 
-8. **Cleanup** — after the verdict is submitted or skipped, check if you're inside a tmux session and close the pane:
+8. **Cleanup** — after the verdict is submitted or skipped, check if you're inside a tmux session and close the window:
    ```bash
-   [ "$CCM_SPAWNED" = "1" ] && tmux kill-pane
+   [ "$CCM_SPAWNED" = "1" ] && tmux kill-window
    ```
 
 ## General Rules
