@@ -2,7 +2,7 @@ class Crew < Formula
   desc "Agent team launcher with workspace & project management"
   homepage "https://github.com/FurlanLuka/homebrew-tap"
   url "https://github.com/FurlanLuka/homebrew-tap/archive/refs/tags/v0.13.0.tar.gz"
-  sha256 "3d0cbdd9e318426ecd2f8002cb8fc76962f583bfd66850f3b453b1930360680c"
+  sha256 "aa4aa65511614629b50806074d7c94b7322bb64373e8114e3a37deedfefd54db"
   license "MIT"
 
   depends_on "tmux"
