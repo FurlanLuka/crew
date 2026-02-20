@@ -32,12 +32,14 @@ gh search prs --review-requested=@me --state=open --json number,title,author,cre
 
 If the result is empty, tell the user there are no pending PR reviews and go back to Step 2.
 
-Otherwise, parse the JSON and build a numbered list sorted newest-first. Each entry should show:
-```
-repo#number — title (by author)
-```
+Otherwise, parse the JSON and sort newest-first. Present PRs using AskUserQuestion with pagination:
 
-Use AskUserQuestion to let the user pick a PR.
+1. **Batch into pages of 4** — show up to 4 PRs per AskUserQuestion call. Use the format `repo#number — title (by author)` as the option label, with createdAt as the description.
+2. **Add a "More..." option** if there are additional PRs beyond the current page (use description "Show next batch of PRs").
+3. **Add a "Skip" option** on every page to return to chore selection.
+4. If the user picks "More...", show the next batch (again up to 4, plus "More..." / "Skip" as needed). Repeat until all PRs have been offered or the user picks one.
+
+**Important:** AskUserQuestion supports 2–4 options. PRs + "More..." + "Skip" must fit within that limit, so show at most 2 PRs when both "More..." and "Skip" are needed, or up to 3 PRs when only "Skip" is needed (last page). On a single page with ≤3 PRs total, show all PRs + "Skip".
 
 Once picked, launch the pr-reviewer agent in a new tmux window using send-keys (so it starts interactively):
 
@@ -63,6 +65,7 @@ Group by team/project if there are multiple. After showing the list, ask if the 
 
 ## Rules
 
+- NEVER ask the user to type or select a number manually. All choices must go through AskUserQuestion.
 - Only show chore options that are actually available (check integrations first).
 - Present PRs newest-first.
 - After completing a chore, always offer to pick another or stop.

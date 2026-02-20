@@ -386,15 +386,13 @@ if include_agents:
     prompt_file = '$prompt_file'
     lead_path = '$lead_path'
     claude_config_dir = '$claude_config_dir'
-    claude_cmd = 'claude \"\$(cat ' + json.dumps(prompt_file)[1:-1] + ')\"'
+    claude_cmd = 'claude --teammate-mode in-process \"\$(cat ' + json.dumps(prompt_file)[1:-1] + ')\"'
     if claude_config_dir:
-        claude_cmd = 'CLAUDE_CONFIG_DIR=\"' + claude_config_dir + '\" ' + claude_cmd
-    ws_name = '$ws'
-    tmux_cmd = \"tmux new-session -s crew-\" + ws_name + \" -c '\" + lead_path + \"' '\" + claude_cmd + \"'\"
+        claude_cmd = \"CLAUDE_CONFIG_DIR='\" + claude_config_dir + \"' \" + claude_cmd
     tasks.append({
         'label': 'agents',
         'type': 'shell',
-        'command': tmux_cmd,
+        'command': claude_cmd,
         'options': {'cwd': lead_path},
         'isBackground': True,
         'problemMatcher': [],
@@ -424,6 +422,7 @@ for p in data['projects']:
     with open(zshrc, 'w') as sf:
         sf.write('ZDOTDIR=\"\$HOME\"\n')
         sf.write('[[ -f \"\$HOME/.zshrc\" ]] && source \"\$HOME/.zshrc\"\n')
+        sf.write('clear\n')
         sf.write(\"print -z '\" + dev_cmd + \"'\n\")
     cmd = \"ZDOTDIR='\" + shell_dir + \"' exec zsh -i\"
     tasks.append({

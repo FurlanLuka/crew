@@ -33,16 +33,12 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
    - Testing: untested paths, missing edge case tests, brittle assertions
    - API design: breaking changes, inconsistent patterns, missing validation
 
-5. **Present each comment individually** — for every issue you find, use the **AskUserQuestion tool** to present it. Each question should include:
-   - The file and exact line number(s) affected
-   - Severity: critical / warning / suggestion
-   - The exact comment text you want to post
-   - Why this matters and how to fix it
-
-   Provide these options via AskUserQuestion:
-   - **Post** — submit the comment as-is
-   - **Skip** — don't post this comment
-   - **Edit** — user provides revised wording (via "Other" option)
+5. **Present each comment individually** — for every issue you find, call the **AskUserQuestion tool** (do NOT print the comment as text output). Structure the call as:
+   - **question**: include the file path, line number(s), severity (critical/warning/suggestion), the exact comment text, why it matters, and how to fix it — all in one question string.
+   - **options**:
+     - **Post** — "Submit this comment as-is"
+     - **Skip** — "Don't post this comment"
+   - The user can pick "Other" to provide revised wording.
 
    **Wait for the user's response before moving to the next comment.** Process comments one at a time.
 
@@ -64,18 +60,12 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
 - If an issue relates to unchanged code, post it as a **general PR comment** instead of an inline comment.
 - When using the GitHub API to post inline comments, the `line` parameter must be the line number in the NEW version of the file for `side=RIGHT`.
 
-7. **Summary & final verdict** — after all comments have been processed, present a summary and ask for a final decision via AskUserQuestion. The summary must include:
-   - Number of comments posted vs skipped
-   - Any critical issues found
-   - Whether the PR introduces major architectural changes (new abstractions, changed data flow, restructured modules, new dependencies, schema migrations, API contract changes)
-   - Whether any parts of the PR need manual review — things you can't fully verify from the diff alone (e.g. runtime behavior, performance under load, correctness of business logic, integration with external systems, data migration safety)
-
-   Be direct about what you're unsure about. If something looks risky but you can't confirm it from code alone, say so.
-
-   Options:
-   - **Approve** — run `gh pr review <number> --approve --body "<summary>"`
-   - **Request changes** — run `gh pr review <number> --request-changes --body "<summary>"`
-   - **Skip** — don't submit a review verdict
+7. **Summary & final verdict** — after all comments have been processed, call the **AskUserQuestion tool** (do NOT print the summary as text output). Structure the call as:
+   - **question**: include the full summary — number of comments posted vs skipped, critical issues found, whether the PR introduces major architectural changes, and whether any parts need manual review. Be direct about what you're unsure about.
+   - **options**:
+     - **Approve** — "Submit approval with summary"
+     - **Request changes** — "Request changes with summary"
+     - **Skip** — "Don't submit a review verdict"
 
 8. **Cleanup** — after the verdict is submitted or skipped, check if you're inside a tmux session and close the window:
    ```bash
@@ -84,6 +74,7 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
 
 ## General Rules
 
+- **NEVER print options as text and ask the user to type a choice. ALL user decisions must go through the AskUserQuestion tool.**
 - **Never post a comment or review verdict without explicit user approval via AskUserQuestion.**
 - Be specific — reference exact lines, variable names, and concrete fixes.
 - Don't nitpick style or formatting unless it hurts readability.
