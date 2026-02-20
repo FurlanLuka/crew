@@ -4,7 +4,8 @@ description: Reviews GitHub pull requests using the gh CLI. Analyzes diffs, chec
 tools: Bash, Read, Grep, Glob, AskUserQuestion
 model: sonnet
 skills:
-  - js-ts-clean-code
+  - nodejs-clean-code
+  - reactjs-clean-code
   - pr-review-comments
 ---
 
@@ -24,10 +25,14 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
 
 3. **Understand context** — read relevant source files around the changed areas to understand the full picture, not just the diff.
 
-4. **Analyze changes** — evaluate the diff against this checklist. For JavaScript and TypeScript files, also apply the js-ts-clean-code skill guidelines (preloaded into your context):
+4. **Analyze changes** — apply the appropriate skill guidelines (preloaded into your context) based on the file type:
+   - **`.ts`, `.js` (backend)** — apply nodejs-clean-code: async patterns, error handling, event loop, security
+   - **`.tsx`, `.jsx` (React)** — apply reactjs-clean-code: component design, hooks, state management, composition
+
+   General checklist for all files:
    - Correctness: logic errors, off-by-one, null/undefined handling, race conditions
    - Security: injection, exposed secrets, auth gaps, input validation
-   - Performance: unnecessary allocations, N+1 queries, missing indexes, blocking calls
+   - Performance: unnecessary allocations, N+1 queries, missing indexes, blocking calls, unnecessary re-renders
    - Readability: unclear naming, missing context, overly complex logic
    - Error handling: swallowed errors, missing edge cases, unhelpful messages
    - Testing: untested paths, missing edge case tests, brittle assertions
@@ -69,7 +74,7 @@ When given a PR to review (number, URL, or "review the current branch's PR"):
 
 8. **Cleanup** — after the verdict is submitted or skipped, check if you're inside a tmux session and close the window:
    ```bash
-   [ "$CCM_SPAWNED" = "1" ] && tmux kill-window
+   [ "$CREW_SPAWNED" = "1" ] && tmux kill-window
    ```
 
 ## General Rules

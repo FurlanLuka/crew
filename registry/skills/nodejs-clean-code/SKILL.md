@@ -1,10 +1,10 @@
 ---
-name: js-ts-clean-code
-description: JavaScript and TypeScript clean code guidelines. Covers readability, simplicity, formatting, naming, error handling, and import conventions. Use when writing, reviewing, or refactoring JS/TS code.
+name: nodejs-clean-code
+description: Node.js and backend TypeScript clean code guidelines. Covers readability, simplicity, formatting, naming, error handling, and import conventions. Use when writing, reviewing, or refactoring backend code.
 user-invocable: false
 ---
 
-# JavaScript / TypeScript Clean Code Guidelines
+# Node.js / Backend TypeScript Clean Code Guidelines
 
 Code should be as readable as possible and as simple as possible. If something feels too complex, split it up or rethink the architecture.
 
