@@ -42,10 +42,11 @@ Use AskUserQuestion to let the user pick a PR.
 Once picked, launch the pr-reviewer agent. If inside tmux, open a side pane. Otherwise, run it inline:
 
 ```bash
+CLAUDE_BIN=$(which claude)
 if [ -n "$TMUX" ]; then
-  tmux split-window -h "CCM_SPAWNED=1 claude --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
+  tmux split-window -h "CCM_SPAWNED=1 $CLAUDE_BIN --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'"
 else
-  claude --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'
+  $CLAUDE_BIN --agent pr-reviewer -p 'Review PR {owner}/{repo}#{number}'
 fi
 ```
 
