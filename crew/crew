@@ -439,15 +439,33 @@ dispatch_project() {
 # WORKTREE COMMANDS
 # ─────────────────────────────────────────────
 cmd_worktree_create() {
-  local ws="${1:-}"
-  local wt_name="${2:-}"
-  [[ -z "$ws" ]] && die "Usage: crew worktree create <workspace> [name]"
+  local ws="" wt_name="" from_branch=""
+  for arg in "$@"; do
+    case "$arg" in
+      --from) from_branch="__next__" ;;
+      *)
+        if [[ "$from_branch" == "__next__" ]]; then
+          from_branch="$arg"
+        elif [[ -z "$ws" ]]; then
+          ws="$arg"
+        elif [[ -z "$wt_name" ]]; then
+          wt_name="$arg"
+        fi
+        ;;
+    esac
+  done
+  [[ -z "$ws" ]] && die "Usage: crew worktree create <workspace> [name] [--from <branch>]"
   workspace_exists "$ws" || die "Workspace '$ws' not found."
 
   if [[ -z "$wt_name" ]]; then
     printf "Worktree name: "
     read -er wt_name
     [[ -z "$wt_name" ]] && die "Name cannot be empty."
+  fi
+
+  if [[ -z "$from_branch" ]]; then
+    printf "Base branch (leave empty for HEAD): "
+    read -er from_branch
   fi
 
   # Validate name: alphanumeric, dots, hyphens — no double dashes
@@ -505,8 +523,13 @@ with open('$(workspace_file "$wt_ws")', 'w') as f:
     fi
 
     # Create the worktree
-    (cd "$p_path" && git worktree add "$wt_dir" -b "$branch" 2>/dev/null) \
-      || die "Failed to create worktree for '$p_name'. Branch '$branch' may already exist."
+    if [[ -n "$from_branch" ]]; then
+      (cd "$p_path" && git worktree add "$wt_dir" -b "$branch" "$from_branch" 2>/dev/null) \
+        || die "Failed to create worktree for '$p_name'. Branch '$branch' may already exist or '$from_branch' not found."
+    else
+      (cd "$p_path" && git worktree add "$wt_dir" -b "$branch" 2>/dev/null) \
+        || die "Failed to create worktree for '$p_name'. Branch '$branch' may already exist."
+    fi
 
     # Run npm install if package.json exists
     if [[ -f "${wt_dir}/package.json" ]]; then
@@ -634,7 +657,7 @@ dispatch_worktree() {
     sub=$(pick_one "Worktree action:" "create" "list" "remove" "push") || exit 1
   fi
   case "$sub" in
-    create) cmd_worktree_create "${2:-}" "${3:-}" ;;
+    create) shift; cmd_worktree_create "$@" ;;
     list)   cmd_worktree_list "${2:-}" ;;
     remove) cmd_worktree_remove "${2:-}" "${3:-}" ;;
     push)   cmd_worktree_push "${2:-}" "${3:-}" ;;
@@ -1696,7 +1719,7 @@ cmd_help() {
   echo "  crew project [add|list|remove]"
   echo ""
   bold "  Worktrees:"
-  echo "  crew worktree create <workspace> [name]  Create worktrees for all projects"
+  echo "  crew worktree create <ws> [name] [--from branch]  Create worktrees"
   echo "  crew worktree list [workspace]            List worktrees and branches"
   echo "  crew worktree remove <workspace> [name]   Remove worktrees + config"
   echo "  crew worktree push <workspace> <name>     Push worktree branches"
