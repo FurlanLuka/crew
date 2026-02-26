@@ -1456,7 +1456,7 @@ import json, os
 with open('$(workspace_file "$ws")') as f:
     data = json.load(f)
 
-folders = [{'path': p['path']} for p in data['projects']]
+folders = [{'path': p['path'], 'name': p['name']} for p in data['projects']]
 
 tasks = []
 
