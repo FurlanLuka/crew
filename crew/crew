@@ -458,23 +458,29 @@ cmd_worktree_create() {
   [[ -z "$ws" ]] && die "Usage: crew worktree create <workspace> [name] [--from <branch>]"
   workspace_exists "$ws" || die "Workspace '$ws' not found."
 
+  local interactive=false
   if [[ -z "$wt_name" ]]; then
+    interactive=true
     printf "Worktree name: "
     read -er wt_name
     [[ -z "$wt_name" ]] && die "Name cannot be empty."
   fi
 
-  if [[ -z "$from_branch" ]]; then
+  if [[ -z "$from_branch" ]] && [[ "$interactive" == true ]]; then
     printf "Base branch (leave empty for HEAD): "
     read -er from_branch
   fi
 
-  # Validate name: alphanumeric, dots, hyphens — no double dashes
-  [[ "$wt_name" =~ ^[a-zA-Z0-9._-]+$ ]] || die "Invalid name. Use alphanumeric, dots, or hyphens."
+  # Validate name: alphanumeric, dots, hyphens, slashes — no double dashes
+  [[ "$wt_name" =~ ^[a-zA-Z0-9._/-]+$ ]] || die "Invalid name. Use alphanumeric, dots, hyphens, or slashes."
   [[ "$wt_name" == *--* ]] && die "Name cannot contain '--'."
 
+  # Filesystem-safe name (slashes → dashes), original kept for branch
+  local wt_safe="${wt_name//\//-}"
+  local branch="worktree-${wt_name}"
+
   local wt_ws
-  wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
+  wt_ws=$(worktree_workspace_name "$ws" "$wt_safe")
   workspace_exists "$wt_ws" && die "Worktree '$wt_name' already exists for workspace '$ws'."
 
   local projects
@@ -491,13 +497,13 @@ wt_data = {
     'name': '$wt_ws',
     'worktree': {
         'base_workspace': '$ws',
-        'name': '$wt_name'
+        'name': '$wt_safe'
     },
     'projects': []
 }
 
 for p in base['projects']:
-    wt_path = os.path.join(p['path'], '.claude', 'worktrees', '$wt_name')
+    wt_path = os.path.join(p['path'], '.claude', 'worktrees', '$wt_safe')
     proj = dict(p)
     proj['path'] = wt_path
     wt_data['projects'].append(proj)
@@ -508,8 +514,7 @@ with open('$(workspace_file "$wt_ws")', 'w') as f:
 
   # Create git worktrees for each project
   while IFS='|' read -r p_name p_path p_role; do
-    local wt_dir="${p_path}/.claude/worktrees/${wt_name}"
-    local branch="worktree-${wt_name}"
+    local wt_dir="${p_path}/.claude/worktrees/${wt_safe}"
 
     echo "  Creating worktree for $p_name..."
 
@@ -539,7 +544,11 @@ with open('$(workspace_file "$wt_ws")', 'w') as f:
     fi
   done <<< "$projects"
 
-  green "Worktree '$wt_name' created for workspace '$ws'."
+  if [[ "$wt_safe" != "$wt_name" ]]; then
+    dim "  Normalized: $wt_name → $wt_safe"
+  fi
+  dim "  Branch: $branch"
+  green "Worktree '$wt_safe' created for workspace '$ws'."
 }
 
 cmd_worktree_list() {
@@ -598,6 +607,9 @@ cmd_worktree_remove() {
     [[ -z "$wt_name" ]] && return 0
   fi
 
+  # Normalize slashes for lookup
+  wt_name="${wt_name//\//-}"
+
   local wt_ws
   wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
   workspace_exists "$wt_ws" || die "Worktree '$wt_name' not found for workspace '$ws'."
@@ -632,16 +644,20 @@ cmd_worktree_push() {
   [[ -z "$ws" || -z "$wt_name" ]] && die "Usage: crew worktree push <workspace> <name>"
   workspace_exists "$ws" || die "Workspace '$ws' not found."
 
+  # Normalize slashes for lookup
+  wt_name="${wt_name//\//-}"
+
   local wt_ws
   wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
   workspace_exists "$wt_ws" || die "Worktree '$wt_name' not found for workspace '$ws'."
 
-  local branch="worktree-${wt_name}"
   local wt_projects
   wt_projects=$(read_projects "$wt_ws")
 
   while IFS='|' read -r p_name p_path p_role; do
     if [[ -d "$p_path" ]]; then
+      local branch
+      branch=$(cd "$p_path" && git branch --show-current 2>/dev/null) || true
       echo "  Pushing $p_name ($branch)..."
       (cd "$p_path" && git push -u origin "$branch" 2>&1) || red "  Failed to push $p_name"
     else
@@ -1554,7 +1570,7 @@ cmd_launch_up() {
       read -er wt_name
       if [[ -n "$wt_name" ]]; then
         cmd_worktree_create "$ws" "$wt_name"
-        launch_ws=$(worktree_workspace_name "$ws" "$wt_name")
+        launch_ws=$(worktree_workspace_name "$ws" "${wt_name//\//-}")
       fi
     elif [[ "$choice" != "No worktree (original)" ]]; then
       launch_ws=$(worktree_workspace_name "$ws" "$choice")
@@ -1565,7 +1581,7 @@ cmd_launch_up() {
     read -er wt_name
     if [[ -n "$wt_name" ]]; then
       cmd_worktree_create "$ws" "$wt_name"
-      launch_ws=$(worktree_workspace_name "$ws" "$wt_name")
+      launch_ws=$(worktree_workspace_name "$ws" "${wt_name//\//-}")
     fi
   fi
 
@@ -1580,6 +1596,11 @@ cmd_launch_up() {
       echo "- **$name** (working directory: $path): $role"
     done <<< "$projects"
     echo ""
+    if [[ "$launch_ws" == *--* ]]; then
+      echo "IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch."
+      echo "All changes stay isolated from the main codebase until explicitly merged."
+      echo ""
+    fi
     echo "Each teammate should cd into their project directory before starting work."
     echo "Create a shared task list so I can see status."
     echo "Wait for my instructions on what to build."
