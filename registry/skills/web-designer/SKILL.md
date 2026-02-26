@@ -37,7 +37,7 @@ Principles and techniques for creating distinctive designs:
 - Component composition and anti-patterns
 - Awwwards judging criteria breakdown
 
-**How to read**: Read for design thinking principles. This teaches HOW to approach design, not what to copy. Real site examples come from live Awwwards research (WebFetch), not this file.
+**How to read**: Read for design thinking principles. This teaches HOW to approach design, not what to copy. Real site examples come from live Playwright screenshots during the research phase, not this file.
 
 ### `references/css-variables-spec.md`
 **When to read**: Before theme generation (Phase 3).
@@ -75,9 +75,9 @@ Base HTML template for theme preview. Contains:
 
 ## Design Research
 
-Real-world site inspiration comes from **live Awwwards research** during the agent's research phase (Phase 2), not from static reference files. The agent uses WebFetch to browse:
-- `https://www.awwwards.com/websites/{tag}/` — browse by relevant tag
-- `https://www.awwwards.com/websites/sites-of-the-month/` — recent winners
-- Individual showcase pages for deeper inspiration
+Real-world site inspiration comes from **live visual research** during the agent's research phase (Phase 2), not from static reference files. The agent uses Playwright to screenshot real websites:
+- Awwwards listing/tag pages to discover interesting sites
+- CSS Design Awards, Godly, Dribbble, Behance, or any relevant source
+- 3-5 individual reference sites for detailed visual analysis
 
-This ensures every design session draws from current, award-winning work rather than a fixed set of memorized examples.
+The agent is multimodal — it reads the screenshots to identify layout approaches, typography, color, and spatial rhythm. This ensures every design session draws from current, award-winning work rather than a fixed set of memorized examples.

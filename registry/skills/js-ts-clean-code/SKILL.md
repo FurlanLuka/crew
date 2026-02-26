@@ -117,9 +117,24 @@ await sendNotification(payload);
 ## Block Formatting
 
 - Always use braces for `if`/`else`/`for`/`while` — even single-line bodies.
+- One blank line before `if`/`for`/`while`/`switch` when preceded by another statement. No blank line when it's the first statement after an opening brace.
 - Empty line before `return`/`throw` in multi-statement blocks. No empty line when it's the only statement.
 
 ```ts
+// Good — blank line before if, braces around single statement
+const items = event.clipboardData?.items;
+
+if (!items) {
+  return false;
+}
+
+// Good — no blank line, if is first statement in function
+const handleClose = () => {
+  if (editor) {
+    editor.commands.setContent('');
+  }
+};
+
 // Good — multi-statement block
 if (isExpired) {
   logger.warn('Token expired');
@@ -127,13 +142,19 @@ if (isExpired) {
   throw new AuthError('TOKEN_EXPIRED');
 }
 
-// Good — single statement, no blank line
+// Good — single statement, no blank line before return
 if (!user) {
   return null;
 }
 
 // Bad — no braces
 if (!user) return null;
+
+// Bad — no blank line before if
+const file = files.find(f => f.id === id);
+if (!file) {
+  return null;
+}
 ```
 
 ## Type Extraction
