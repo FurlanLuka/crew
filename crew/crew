@@ -253,6 +253,7 @@ cleanup_workspace() {
 # CONFIG — resolve CLAUDE_CONFIG_DIR
 # ─────────────────────────────────────────────
 resolve_config() {
+  _USER_CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-}"
   CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
   export CLAUDE_CONFIG_DIR
 }
@@ -1634,7 +1635,7 @@ cmd_launch_up() {
   # ── Default: Cursor/VS Code with agents + terminals ──
   if [[ -n "$editor" ]]; then
     local ws_file
-    ws_file=$(generate_workspace_file "$launch_ws" "true" "$prompt_file" "$lead_path" "${CLAUDE_CONFIG_DIR:-}")
+    ws_file=$(generate_workspace_file "$launch_ws" "true" "$prompt_file" "$lead_path" "$_USER_CLAUDE_CONFIG_DIR")
 
     $editor "$ws_file"
 
