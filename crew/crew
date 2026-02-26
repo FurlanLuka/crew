@@ -537,6 +537,12 @@ with open('$(workspace_file "$wt_ws")', 'w') as f:
         || die "Failed to create worktree for '$p_name'. Branch '$branch' may already exist."
     fi
 
+    # Copy .env files from original project
+    for env_file in "$p_path"/.env*; do
+      [[ -f "$env_file" ]] || continue
+      cp "$env_file" "$wt_dir/"
+    done
+
     # Run npm install if package.json exists
     if [[ -f "${wt_dir}/package.json" ]]; then
       echo "  Running npm install for $p_name..."
