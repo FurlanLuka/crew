@@ -8,6 +8,7 @@
 # Workspace & project management:
 #   crew workspace [create|list|remove]
 #   crew project [add|list|remove]
+#   crew worktree [create|list|remove|push]
 #
 # Registry:
 #   crew agents [list|install|remove|update|run]
@@ -149,7 +150,10 @@ pick_workspace() {
   local workspaces=()
   for f in "$WORKSPACES_DIR"/*.json; do
     [[ -f "$f" ]] || continue
-    workspaces+=("$(basename "$f" .json)")
+    local fname
+    fname=$(basename "$f" .json)
+    [[ "$fname" == *--* ]] && continue
+    workspaces+=("$fname")
   done
 
   [[ ${#workspaces[@]} -eq 0 ]] && die "No workspaces. Create one with: crew workspace create <name>"
@@ -168,6 +172,32 @@ if not data['projects']:
 for p in data['projects']:
     print(f\"{p['name']}|{p['path']}|{p['role']}\")
 " 2>/dev/null || die "No projects in workspace '$ws'. Add some with: crew project add $ws"
+}
+
+# ─────────────────────────────────────────────
+# HELPERS — worktree
+# ─────────────────────────────────────────────
+worktree_workspace_name() {
+  local base="$1" wt_name="$2"
+  echo "${base}--${wt_name}"
+}
+
+list_worktrees() {
+  local base="$1"
+  for f in "$WORKSPACES_DIR"/${base}--*.json; do
+    [[ -f "$f" ]] || continue
+    local fname
+    fname=$(basename "$f" .json)
+    echo "${fname#${base}--}"
+  done
+}
+
+has_worktrees() {
+  local base="$1"
+  for f in "$WORKSPACES_DIR"/${base}--*.json; do
+    [[ -f "$f" ]] && return 0
+  done
+  return 1
 }
 
 attach_session() {
@@ -251,9 +281,10 @@ cmd_workspace_list() {
   local found=0
   for f in "$WORKSPACES_DIR"/*.json; do
     [[ -f "$f" ]] || continue
-    found=1
     local name
     name=$(basename "$f" .json)
+    [[ "$name" == *--* ]] && continue
+    found=1
     local count
     count=$(python3 -c "import json; print(len(json.load(open('$f'))['projects']))" 2>/dev/null || echo 0)
     echo "  $name ($count projects)"
@@ -269,13 +300,27 @@ cmd_workspace_remove() {
     local workspaces=()
     for f in "$WORKSPACES_DIR"/*.json; do
       [[ -f "$f" ]] || continue
-      workspaces+=("$(basename "$f" .json)")
+      local fname
+      fname=$(basename "$f" .json)
+      [[ "$fname" == *--* ]] && continue
+      workspaces+=("$fname")
     done
     [[ ${#workspaces[@]} -eq 0 ]] && die "No workspaces to remove."
     name=$(pick_one "Select workspace to remove:" "${workspaces[@]}") || return 0
     [[ -z "$name" ]] && return 0
   fi
   workspace_exists "$name" || die "Workspace '$name' not found."
+
+  # Cascade: remove all worktrees for this workspace
+  if has_worktrees "$name"; then
+    local wts
+    wts=$(list_worktrees "$name")
+    while IFS= read -r wt; do
+      [[ -z "$wt" ]] && continue
+      echo "Removing worktree '$wt'..."
+      cmd_worktree_remove "$name" "$wt" 2>/dev/null || true
+    done <<< "$wts"
+  fi
 
   rm "$(workspace_file "$name")"
   green "Workspace '$name' removed."
@@ -387,6 +432,213 @@ dispatch_project() {
     list)   cmd_project_list "${2:-}" ;;
     remove) cmd_project_remove "${2:-}" "${3:-}" ;;
     *)      die "Unknown: crew project $sub. Try: add, list, remove" ;;
+  esac
+}
+
+# ─────────────────────────────────────────────
+# WORKTREE COMMANDS
+# ─────────────────────────────────────────────
+cmd_worktree_create() {
+  local ws="${1:-}"
+  local wt_name="${2:-}"
+  [[ -z "$ws" ]] && die "Usage: crew worktree create <workspace> [name]"
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  if [[ -z "$wt_name" ]]; then
+    printf "Worktree name: "
+    read -er wt_name
+    [[ -z "$wt_name" ]] && die "Name cannot be empty."
+  fi
+
+  # Validate name: alphanumeric, dots, hyphens — no double dashes
+  [[ "$wt_name" =~ ^[a-zA-Z0-9._-]+$ ]] || die "Invalid name. Use alphanumeric, dots, or hyphens."
+  [[ "$wt_name" == *--* ]] && die "Name cannot contain '--'."
+
+  local wt_ws
+  wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
+  workspace_exists "$wt_ws" && die "Worktree '$wt_name' already exists for workspace '$ws'."
+
+  local projects
+  projects=$(read_projects "$ws")
+
+  # Create worktree config with worktree paths
+  python3 -c "
+import json, os
+
+with open('$(workspace_file "$ws")') as f:
+    base = json.load(f)
+
+wt_data = {
+    'name': '$wt_ws',
+    'worktree': {
+        'base_workspace': '$ws',
+        'name': '$wt_name'
+    },
+    'projects': []
+}
+
+for p in base['projects']:
+    wt_path = os.path.join(p['path'], '.claude', 'worktrees', '$wt_name')
+    proj = dict(p)
+    proj['path'] = wt_path
+    wt_data['projects'].append(proj)
+
+with open('$(workspace_file "$wt_ws")', 'w') as f:
+    json.dump(wt_data, f, indent=2)
+"
+
+  # Create git worktrees for each project
+  while IFS='|' read -r p_name p_path p_role; do
+    local wt_dir="${p_path}/.claude/worktrees/${wt_name}"
+    local branch="worktree-${wt_name}"
+
+    echo "  Creating worktree for $p_name..."
+
+    # Ensure .claude/worktrees/ is in .gitignore
+    local gitignore="${p_path}/.gitignore"
+    if [[ -f "$gitignore" ]]; then
+      if ! grep -qF '.claude/worktrees/' "$gitignore" 2>/dev/null; then
+        echo '.claude/worktrees/' >> "$gitignore"
+      fi
+    else
+      echo '.claude/worktrees/' > "$gitignore"
+    fi
+
+    # Create the worktree
+    (cd "$p_path" && git worktree add "$wt_dir" -b "$branch" 2>/dev/null) \
+      || die "Failed to create worktree for '$p_name'. Branch '$branch' may already exist."
+
+    # Run npm install if package.json exists
+    if [[ -f "${wt_dir}/package.json" ]]; then
+      echo "  Running npm install for $p_name..."
+      (cd "$wt_dir" && npm install --silent 2>/dev/null) || true
+    fi
+  done <<< "$projects"
+
+  green "Worktree '$wt_name' created for workspace '$ws'."
+}
+
+cmd_worktree_list() {
+  local ws="${1:-}"
+  if [[ -z "$ws" ]]; then
+    ws=$(pick_workspace "")
+  fi
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  local wts
+  wts=$(list_worktrees "$ws")
+
+  if [[ -z "$wts" ]]; then
+    dim "No worktrees for workspace '$ws'."
+    return
+  fi
+
+  bold "Worktrees for '$ws':"
+  echo ""
+  while IFS= read -r wt_name; do
+    [[ -z "$wt_name" ]] && continue
+    echo "  $wt_name"
+    local wt_ws
+    wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
+    local wt_projects
+    wt_projects=$(read_projects "$wt_ws" 2>/dev/null) || continue
+    while IFS='|' read -r p_name p_path p_role; do
+      local branch=""
+      if [[ -d "$p_path" ]]; then
+        branch=$(cd "$p_path" && git branch --show-current 2>/dev/null) || true
+      fi
+      if [[ -n "$branch" ]]; then
+        dim "    $p_name → $branch"
+      else
+        dim "    $p_name (not found)"
+      fi
+    done <<< "$wt_projects"
+  done <<< "$wts"
+}
+
+cmd_worktree_remove() {
+  local ws="${1:-}"
+  local wt_name="${2:-}"
+  [[ -z "$ws" ]] && die "Usage: crew worktree remove <workspace> <name>"
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  if [[ -z "$wt_name" ]]; then
+    local wts
+    wts=$(list_worktrees "$ws")
+    [[ -z "$wts" ]] && die "No worktrees for workspace '$ws'."
+    local opts=()
+    while IFS= read -r w; do
+      [[ -n "$w" ]] && opts+=("$w")
+    done <<< "$wts"
+    wt_name=$(pick_one "Select worktree to remove:" "${opts[@]}") || return 0
+    [[ -z "$wt_name" ]] && return 0
+  fi
+
+  local wt_ws
+  wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
+  workspace_exists "$wt_ws" || die "Worktree '$wt_name' not found for workspace '$ws'."
+
+  # Kill any running session for this worktree workspace
+  local session="crew-$wt_ws"
+  if tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session"
+    echo "Killed session: $session"
+  fi
+
+  # Remove git worktrees using base workspace project paths
+  local base_projects
+  base_projects=$(read_projects "$ws")
+  while IFS='|' read -r p_name p_path p_role; do
+    local wt_dir="${p_path}/.claude/worktrees/${wt_name}"
+    if [[ -d "$wt_dir" ]]; then
+      echo "  Removing worktree for $p_name..."
+      (cd "$p_path" && git worktree remove "$wt_dir" --force 2>/dev/null) || true
+    fi
+  done <<< "$base_projects"
+
+  # Remove worktree config
+  rm -f "$(workspace_file "$wt_ws")"
+
+  green "Worktree '$wt_name' removed from workspace '$ws'."
+}
+
+cmd_worktree_push() {
+  local ws="${1:-}"
+  local wt_name="${2:-}"
+  [[ -z "$ws" || -z "$wt_name" ]] && die "Usage: crew worktree push <workspace> <name>"
+  workspace_exists "$ws" || die "Workspace '$ws' not found."
+
+  local wt_ws
+  wt_ws=$(worktree_workspace_name "$ws" "$wt_name")
+  workspace_exists "$wt_ws" || die "Worktree '$wt_name' not found for workspace '$ws'."
+
+  local branch="worktree-${wt_name}"
+  local wt_projects
+  wt_projects=$(read_projects "$wt_ws")
+
+  while IFS='|' read -r p_name p_path p_role; do
+    if [[ -d "$p_path" ]]; then
+      echo "  Pushing $p_name ($branch)..."
+      (cd "$p_path" && git push -u origin "$branch" 2>&1) || red "  Failed to push $p_name"
+    else
+      red "  Worktree path not found for $p_name"
+    fi
+  done <<< "$wt_projects"
+
+  green "Pushed worktree '$wt_name' branches."
+}
+
+dispatch_worktree() {
+  local sub="${1:-}"
+  if [[ -z "$sub" ]]; then
+    sub=$(pick_one "Worktree action:" "create" "list" "remove" "push") || exit 1
+  fi
+  case "$sub" in
+    create) cmd_worktree_create "${2:-}" "${3:-}" ;;
+    list)   cmd_worktree_list "${2:-}" ;;
+    remove) cmd_worktree_remove "${2:-}" "${3:-}" ;;
+    push)   cmd_worktree_push "${2:-}" "${3:-}" ;;
+    *)      die "Unknown: crew worktree $sub. Try: create, list, remove, push" ;;
   esac
 }
 
@@ -1190,7 +1442,8 @@ if include_agents:
     prompt_file = '$prompt_file'
     lead_path = '$lead_path'
     claude_config_dir = '$claude_config_dir'
-    claude_cmd = 'claude --teammate-mode in-process \"\$(cat ' + json.dumps(prompt_file)[1:-1] + ')\"'
+    claude_cmd = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude'
+    claude_cmd += ' --teammate-mode in-process \"\$(cat ' + json.dumps(prompt_file)[1:-1] + ')\"'
     if claude_config_dir:
         claude_cmd = \"CLAUDE_CONFIG_DIR='\" + claude_config_dir + \"' \" + claude_cmd
     tasks.append({
@@ -1257,11 +1510,46 @@ cmd_launch_up() {
 
   command -v claude &>/dev/null || die "claude not found. Install Claude Code first."
 
+  # Worktree selection
+  local launch_ws="$ws"
+  if has_worktrees "$ws"; then
+    local wts
+    wts=$(list_worktrees "$ws")
+    local opts=()
+    while IFS= read -r w; do
+      [[ -n "$w" ]] && opts+=("$w")
+    done <<< "$wts"
+    opts+=("+ New worktree" "No worktree (original)")
+
+    local choice
+    choice=$(pick_one "Select worktree:" "${opts[@]}") || exit 1
+
+    if [[ "$choice" == "+ New worktree" ]]; then
+      printf "Worktree name: "
+      local wt_name
+      read -er wt_name
+      if [[ -n "$wt_name" ]]; then
+        cmd_worktree_create "$ws" "$wt_name"
+        launch_ws=$(worktree_workspace_name "$ws" "$wt_name")
+      fi
+    elif [[ "$choice" != "No worktree (original)" ]]; then
+      launch_ws=$(worktree_workspace_name "$ws" "$choice")
+    fi
+  else
+    printf "Worktree name (leave empty to skip): "
+    local wt_name
+    read -er wt_name
+    if [[ -n "$wt_name" ]]; then
+      cmd_worktree_create "$ws" "$wt_name"
+      launch_ws=$(worktree_workspace_name "$ws" "$wt_name")
+    fi
+  fi
+
   local projects
-  projects=$(read_projects "$ws")
+  projects=$(read_projects "$launch_ws")
 
   # Build prompt file
-  local prompt_file="${CONFIG_DIR}/prompt-${ws}.md"
+  local prompt_file="${CONFIG_DIR}/prompt-${launch_ws}.md"
   {
     echo "Create an agent team and spawn these teammates:"
     while IFS='|' read -r name path role; do
@@ -1288,9 +1576,9 @@ cmd_launch_up() {
   if [[ "$mode" == "agents" ]]; then
     command -v tmux &>/dev/null || die "tmux not found. Install with: brew install tmux"
 
-    local session="crew-$ws"
+    local session="crew-$launch_ws"
 
-    trap "cleanup_workspace '$ws'" EXIT
+    trap "cleanup_workspace '$launch_ws'" EXIT
 
     if tmux has-session -t "$session" 2>/dev/null; then
       echo "Agent session already running. Attaching..."
@@ -1299,15 +1587,15 @@ cmd_launch_up() {
     fi
 
     echo ""
-    blue "Launching agents: $ws"
+    blue "Launching agents: $launch_ws"
     echo ""
 
     tmux new-session -d -s "$session" -c "$lead_path"
-    local claude_cmd="claude \"\$(cat '$prompt_file')\""
+    local claude_cmd="CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude \"\$(cat '$prompt_file')\""
     tmux send-keys -t "$session" "$claude_cmd" Enter
 
     echo "┌─────────────────────────────────────────┐"
-    echo "│  Workspace: $ws (agents)                │"
+    echo "│  Workspace: $launch_ws (agents)         │"
     echo "│  Agent teams will spawn tmux panes.     │"
     echo "│                                         │"
     echo "│  Ctrl+B + arrows = switch panes         │"
@@ -1323,12 +1611,12 @@ cmd_launch_up() {
   # ── Default: Cursor/VS Code with agents + terminals ──
   if [[ -n "$editor" ]]; then
     local ws_file
-    ws_file=$(generate_workspace_file "$ws" "true" "$prompt_file" "$lead_path" "${CLAUDE_CONFIG_DIR:-}")
+    ws_file=$(generate_workspace_file "$launch_ws" "true" "$prompt_file" "$lead_path" "${CLAUDE_CONFIG_DIR:-}")
 
     $editor "$ws_file"
 
     echo ""
-    green "Workspace '$ws' opened in $editor. Agents will auto-start."
+    green "Workspace '$launch_ws' opened in $editor. Agents will auto-start."
     dim "   crew kill = tear down everything"
     echo ""
     return
@@ -1337,7 +1625,7 @@ cmd_launch_up() {
   # Fallback: tmux (no editor found)
   command -v tmux &>/dev/null || die "tmux not found. Install with: brew install tmux"
 
-  local session="crew-$ws"
+  local session="crew-$launch_ws"
 
   if tmux has-session -t "$session" 2>/dev/null; then
     echo "Agent session already running. Attaching..."
@@ -1345,18 +1633,18 @@ cmd_launch_up() {
     return
   fi
 
-  trap "cleanup_workspace '$ws'" EXIT
+  trap "cleanup_workspace '$launch_ws'" EXIT
 
   echo ""
-  blue "Launching agents (tmux): $ws"
+  blue "Launching agents (tmux): $launch_ws"
   echo ""
 
   tmux new-session -d -s "$session" -c "$lead_path" -n "agents"
-  local claude_cmd="claude \"\$(cat '$prompt_file')\""
+  local claude_cmd="CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude \"\$(cat '$prompt_file')\""
   tmux send-keys -t "$session:agents" "$claude_cmd" Enter
 
   echo "┌─────────────────────────────────────────┐"
-  echo "│  Workspace: $ws (tmux fallback)         │"
+  echo "│  Workspace: $launch_ws (tmux fallback)  │"
   echo "│                                         │"
   echo "│  No editor found — agents in tmux.      │"
   echo "│  Detach (esc) = tear down everything     │"
@@ -1407,6 +1695,12 @@ cmd_help() {
   bold "  Projects:"
   echo "  crew project [add|list|remove]"
   echo ""
+  bold "  Worktrees:"
+  echo "  crew worktree create <workspace> [name]  Create worktrees for all projects"
+  echo "  crew worktree list [workspace]            List worktrees and branches"
+  echo "  crew worktree remove <workspace> [name]   Remove worktrees + config"
+  echo "  crew worktree push <workspace> <name>     Push worktree branches"
+  echo ""
   bold "  Registry:"
   echo "  crew agents [list|install|remove|update|run]"
   echo "  crew skills [list|install|remove|update]"
@@ -1443,6 +1737,7 @@ case "${1:-}" in
   # No config needed
   workspace)    dispatch_workspace "${@:2}" ;;
   project)      dispatch_project "${@:2}" ;;
+  worktree)     dispatch_worktree "${@:2}" ;;
   kill)         cmd_kill ;;
   help)         cmd_help ;;
 
