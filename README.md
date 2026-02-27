@@ -1,6 +1,6 @@
 # homebrew-tap
 
-Homebrew tap for Claude Code power tools. Manage multi-agent teams across projects and install community agents & skills — all from the command line.
+Homebrew tap for Claude Code power tools. Manage multi-agent teams across projects and install community agents & skills — all from a polished interactive TUI.
 
 ```bash
 brew tap FurlanLuka/tap
@@ -8,33 +8,45 @@ brew tap FurlanLuka/tap
 
 ## crew — Agent team launcher & registry
 
-Coordinate multiple Claude Code agents across projects in a single workspace. Define projects with roles, then launch everything with one command. Manage agents, skills, profiles, and notifications — all from one CLI.
+Coordinate multiple Claude Code agents across projects in a single workspace. Define projects, assign roles, then launch everything with one command. Manage agents, skills, profiles, and notifications — all from one interactive CLI.
 
 ```bash
 brew install FurlanLuka/tap/crew
 ```
 
-```bash
-crew workspace create my-app          # Create a workspace
-crew project add my-app               # Add projects (interactive)
-crew my-app                           # Launch agents in Cursor
-crew kill                             # Tear down everything
-```
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `crew` | Main menu — pick any domain |
+| `crew workspace` | Manage workspaces, projects, worktrees, and launch |
+| `crew project` | Global project pool — add/remove projects |
+| `crew registry` | Install and manage agents & skills |
+| `crew profile` | Manage Claude profile |
+| `crew notify` | Push notification setup |
+| `crew kill` | Kill all crew sessions |
+| `crew <name>` | Launch workspace directly |
+| `crew --version` | Print version |
+
+### Quick start
 
 ```bash
-crew agents install code-reviewer     # Install an agent
-crew skills install e2e-test-writer   # Install a skill
-crew agents list                      # See what's installed
-crew update                           # Update everything
+crew project              # Add your projects (name + path)
+crew workspace            # Create a workspace, add projects, launch
+crew kill                 # Tear down everything
+```
+
+### Registry
+
+```bash
+crew registry             # Browse and install agents & skills
 ```
 
 Push notifications via [ntfy.sh](https://ntfy.sh) — get alerted when Claude needs attention:
 
 ```bash
-crew notify setup                     # One-time setup (no account needed)
+crew notify               # One-time setup (no account needed)
 ```
-
-[Full documentation →](crew/)
 
 ## Registry
 

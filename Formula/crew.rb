@@ -5,21 +5,13 @@ class Crew < Formula
   sha256 "4427f331cf8c642e44a5d82812bc47015cee685f65ae8ac3ddce2abd94d89acb"
   license "MIT"
 
-  depends_on "gum"
-  depends_on "tmux"
-
   def install
-    bin.install "crew/crew"
-  end
-
-  def caveats
-    <<~EOS
-      crew requires python3 on your PATH.
-      If you don't have it: brew install python@3
-    EOS
+    cd "crew" do
+      system "go", "build", "-ldflags", "-s -w -X main.Version=#{version}", "-o", bin/"crew", "./main.go"
+    end
   end
 
   test do
-    assert_match "Agent team launcher & registry", shell_output("#{bin}/crew help")
+    assert_match "crew", shell_output("#{bin}/crew --version")
   end
 end
