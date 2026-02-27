@@ -2,11 +2,13 @@ package workspace
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
+	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
 )
 
 type Project struct {
@@ -192,4 +194,83 @@ func PromptFilePath(wsName string) string {
 // CodeWorkspaceFilePath returns the .code-workspace file path.
 func CodeWorkspaceFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, wsName+".code-workspace")
+}
+
+// CreateWorktree creates a worktree workspace JSON and git worktrees for all
+// projects. It is idempotent — if the worktree already exists, it returns the
+// normalized name without error.
+func CreateWorktree(base, name, fromBranch string) (string, error) {
+	safeName := NormalizeName(name)
+	wtWs := WorktreeWorkspaceName(base, safeName)
+
+	if Exists(wtWs) {
+		return safeName, nil
+	}
+
+	ws, err := Load(base)
+	if err != nil {
+		return "", err
+	}
+	if len(ws.Projects) == 0 {
+		return "", fmt.Errorf("workspace '%s' has no projects", base)
+	}
+
+	branch := "worktree-" + name
+	wtWorkspace := &Workspace{
+		Name: wtWs,
+		Worktree: &WorktreeInfo{
+			BaseWorkspace: base,
+			Name:          safeName,
+		},
+		Projects: make([]Project, len(ws.Projects)),
+	}
+	for i, p := range ws.Projects {
+		wtWorkspace.Projects[i] = Project{
+			Name: p.Name,
+			Path: p.Path + "/.claude/worktrees/" + safeName,
+			Role: p.Role,
+		}
+	}
+	if err := Save(wtWorkspace); err != nil {
+		return "", err
+	}
+
+	for _, p := range ws.Projects {
+		wtDir := p.Path + "/.claude/worktrees/" + safeName
+		if err := exec.CreateGitWorktree(p.Path, wtDir, branch, fromBranch); err != nil {
+			return "", fmt.Errorf("failed to create worktree for %s: %w", p.Name, err)
+		}
+		exec.EnsureGitignore(p.Path)
+		exec.CopyEnvFiles(p.Path, wtDir)
+		exec.RunNpmInstall(wtDir)
+	}
+
+	return safeName, nil
+}
+
+// GeneratePrompt builds the agent team prompt, writes it to the prompt file,
+// and returns the text.
+func GeneratePrompt(ws *Workspace) (string, error) {
+	var b strings.Builder
+	b.WriteString("Create an agent team and spawn these teammates:\n")
+	for _, p := range ws.Projects {
+		fmt.Fprintf(&b, "- **%s** (working directory: %s): %s\n", p.Name, p.Path, p.Role)
+	}
+	b.WriteString("\n")
+
+	if ws.Worktree != nil {
+		b.WriteString("IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch.\n")
+		b.WriteString("All changes stay isolated from the main codebase until explicitly merged.\n\n")
+	}
+
+	b.WriteString("Each teammate should cd into their project directory before starting work.\n")
+	b.WriteString("Create a shared task list so I can see status.\n")
+	b.WriteString("Wait for my instructions on what to build.\n")
+
+	text := b.String()
+	promptFile := PromptFilePath(ws.Name)
+	if err := os.WriteFile(promptFile, []byte(text), 0o644); err != nil {
+		return "", err
+	}
+	return text, nil
 }

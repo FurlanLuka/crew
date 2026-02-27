@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -50,6 +51,14 @@ func main() {
 	case "notify":
 		runTUI(notify.NewView())
 
+	case "ls":
+		cmdLs()
+		return
+
+	case "start":
+		cmdStart()
+		return
+
 	case "":
 		runTUI(mainMenu())
 
@@ -58,7 +67,7 @@ func main() {
 		if workspace.Exists(cmd) {
 			runTUI(workspace.NewLaunchView(cmd))
 		} else {
-			fmt.Fprintf(os.Stderr, "Unknown command '%s'.\nUsage: crew [workspace|project|registry|profile|notify|kill]\n", cmd)
+			fmt.Fprintf(os.Stderr, "Unknown command '%s'.\nUsage: crew [workspace|project|registry|profile|notify|kill|ls|start]\n", cmd)
 			os.Exit(1)
 		}
 	}
@@ -101,6 +110,97 @@ func runTUI(page app.Page) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func cmdLs() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces]\n")
+		os.Exit(1)
+	}
+
+	switch os.Args[2] {
+	case "projects":
+		cmdLsProjects()
+	case "workspaces":
+		cmdLsWorkspaces()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces]\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func cmdLsProjects() {
+	projects, err := project.List()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	for _, p := range projects {
+		fmt.Printf("%s\t%s\n", p.Name, p.Path)
+	}
+}
+
+func cmdLsWorkspaces() {
+	summaries, err := workspace.ListSummaries()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	for _, s := range summaries {
+		fmt.Printf("%s\t%d projects\t%d worktrees\n", s.Name, s.ProjectCount, s.WorktreeCount)
+	}
+}
+
+func cmdStart() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew start <workspace> [--worktree=<name>] [--from=<branch>]\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[2]
+	worktreeName := ""
+	fromBranch := ""
+
+	for _, arg := range os.Args[3:] {
+		switch {
+		case strings.HasPrefix(arg, "--worktree="):
+			worktreeName = strings.TrimPrefix(arg, "--worktree=")
+		case strings.HasPrefix(arg, "--from="):
+			fromBranch = strings.TrimPrefix(arg, "--from=")
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew start <workspace> [--worktree=<name>] [--from=<branch>]\n", arg)
+			os.Exit(1)
+		}
+	}
+
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	loadName := wsName
+	if worktreeName != "" {
+		safeName, err := workspace.CreateWorktree(wsName, worktreeName, fromBranch)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		loadName = workspace.WorktreeWorkspaceName(wsName, safeName)
+	}
+
+	ws, err := workspace.Load(loadName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	prompt, err := workspace.GeneratePrompt(ws)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(prompt)
 }
 
 func cmdKill() {

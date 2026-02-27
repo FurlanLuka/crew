@@ -320,47 +320,10 @@ func (v WorktreeView) startWorktreeCreation(name, fromBranch string) tea.Cmd {
 			return errMsg{fmt.Errorf("worktree '%s' already exists", safeName)}
 		}
 
-		ws, err := Load(base)
+		safeName, err := CreateWorktree(base, name, fromBranch)
 		if err != nil {
 			return errMsg{err}
 		}
-
-		if len(ws.Projects) == 0 {
-			return errMsg{fmt.Errorf("workspace '%s' has no projects", base)}
-		}
-
-		// Create worktree workspace config
-		branch := "worktree-" + name
-		wtWorkspace := &Workspace{
-			Name: wtWs,
-			Worktree: &WorktreeInfo{
-				BaseWorkspace: base,
-				Name:          safeName,
-			},
-			Projects: make([]Project, len(ws.Projects)),
-		}
-		for i, p := range ws.Projects {
-			wtWorkspace.Projects[i] = Project{
-				Name: p.Name,
-				Path: p.Path + "/.claude/worktrees/" + safeName,
-				Role: p.Role,
-			}
-		}
-		if err := Save(wtWorkspace); err != nil {
-			return errMsg{err}
-		}
-
-		// Create git worktrees for each project
-		for _, p := range ws.Projects {
-			wtDir := p.Path + "/.claude/worktrees/" + safeName
-			if err := exec.CreateGitWorktree(p.Path, wtDir, branch, fromBranch); err != nil {
-				return errMsg{fmt.Errorf("failed to create worktree for %s: %w", p.Name, err)}
-			}
-			exec.EnsureGitignore(p.Path)
-			exec.CopyEnvFiles(p.Path, wtDir)
-			exec.RunNpmInstall(wtDir)
-		}
-
 		return worktreeCreatedMsg{safeName}
 	}
 }

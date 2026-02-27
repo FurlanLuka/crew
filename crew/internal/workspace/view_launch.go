@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -371,44 +370,10 @@ func (v LaunchView) createWorktreeForLaunch(name, fromBranch string) tea.Cmd {
 			return errMsg{fmt.Errorf("worktree '%s' already exists", safeName)}
 		}
 
-		ws, err := Load(base)
+		safeName, err := CreateWorktree(base, name, fromBranch)
 		if err != nil {
 			return errMsg{err}
 		}
-		if len(ws.Projects) == 0 {
-			return errMsg{fmt.Errorf("workspace '%s' has no projects", base)}
-		}
-
-		branch := "worktree-" + name
-		wtWorkspace := &Workspace{
-			Name: wtWs,
-			Worktree: &WorktreeInfo{
-				BaseWorkspace: base,
-				Name:          safeName,
-			},
-			Projects: make([]Project, len(ws.Projects)),
-		}
-		for i, p := range ws.Projects {
-			wtWorkspace.Projects[i] = Project{
-				Name: p.Name,
-				Path: p.Path + "/.claude/worktrees/" + safeName,
-				Role: p.Role,
-			}
-		}
-		if err := Save(wtWorkspace); err != nil {
-			return errMsg{err}
-		}
-
-		for _, p := range ws.Projects {
-			wtDir := p.Path + "/.claude/worktrees/" + safeName
-			if err := exec.CreateGitWorktree(p.Path, wtDir, branch, fromBranch); err != nil {
-				return errMsg{fmt.Errorf("failed to create worktree for %s: %w", p.Name, err)}
-			}
-			exec.EnsureGitignore(p.Path)
-			exec.CopyEnvFiles(p.Path, wtDir)
-			exec.RunNpmInstall(wtDir)
-		}
-
 		return worktreeCreatedForLaunchMsg{safeName}
 	}
 }
@@ -430,10 +395,10 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			return errMsg{fmt.Errorf("claude not found — install Claude Code first")}
 		}
 
-		promptFile := PromptFilePath(launchWs)
-		if err := generatePrompt(ws, promptFile); err != nil {
+		if _, err := GeneratePrompt(ws); err != nil {
 			return errMsg{err}
 		}
+		promptFile := PromptFilePath(launchWs)
 
 		leadPath := filepath.Dir(ws.Projects[0].Path)
 		editor := exec.DetectEditor()
@@ -450,26 +415,6 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 
 		return launchExecutedMsg{}
 	}
-}
-
-func generatePrompt(ws *Workspace, promptFile string) error {
-	var b strings.Builder
-	b.WriteString("Create an agent team and spawn these teammates:\n")
-	for _, p := range ws.Projects {
-		fmt.Fprintf(&b, "- **%s** (working directory: %s): %s\n", p.Name, p.Path, p.Role)
-	}
-	b.WriteString("\n")
-
-	if ws.Worktree != nil {
-		b.WriteString("IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch.\n")
-		b.WriteString("All changes stay isolated from the main codebase until explicitly merged.\n\n")
-	}
-
-	b.WriteString("Each teammate should cd into their project directory before starting work.\n")
-	b.WriteString("Create a shared task list so I can see status.\n")
-	b.WriteString("Wait for my instructions on what to build.\n")
-
-	return os.WriteFile(promptFile, []byte(b.String()), 0o644)
 }
 
 func launchWithEditor(ws *Workspace, editor, promptFile, leadPath string) tea.Msg {
