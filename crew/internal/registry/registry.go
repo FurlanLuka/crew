@@ -6,10 +6,42 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	osexec "os/exec"
 	"strings"
+	"sync"
 
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
 )
+
+var httpClient = &http.Client{}
+
+var ghToken string
+var ghTokenOnce sync.Once
+
+func resolveGHToken() string {
+	ghTokenOnce.Do(func() {
+		if t := os.Getenv("GITHUB_TOKEN"); t != "" {
+			ghToken = t
+			return
+		}
+		if out, err := osexec.Command("gh", "auth", "token").Output(); err == nil {
+			ghToken = strings.TrimSpace(string(out))
+		}
+	})
+	return ghToken
+}
+
+func ghGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token := resolveGHToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return httpClient.Do(req)
+}
 
 // ghContentsEntry is a single entry from the GitHub contents API.
 type ghContentsEntry struct {
@@ -22,7 +54,7 @@ func FetchContents(path string) ([]ghContentsEntry, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s?ref=%s",
 		config.RegistryRepo, path, config.RegistryBranch)
 
-	resp, err := http.Get(url)
+	resp, err := ghGet(url)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +76,7 @@ func FetchRaw(path string) (string, error) {
 	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s",
 		config.RegistryRepo, config.RegistryBranch, path)
 
-	resp, err := http.Get(url)
+	resp, err := ghGet(url)
 	if err != nil {
 		return "", err
 	}
