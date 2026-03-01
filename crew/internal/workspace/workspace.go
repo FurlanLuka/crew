@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
+	"github.com/FurlanLuka/homebrew-tap/crew/internal/dev"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
 )
 
@@ -129,6 +130,8 @@ type Summary struct {
 	Name          string
 	ProjectCount  int
 	WorktreeCount int
+	DevRunning    bool
+	TmuxActive    bool
 }
 
 // ListSummaries returns summaries for all base workspaces.
@@ -149,9 +152,16 @@ func ListSummaries() ([]Summary, error) {
 			Name:          name,
 			ProjectCount:  projCount,
 			WorktreeCount: CountWorktrees(name),
+			DevRunning:    devRoutesExist(name),
+			TmuxActive:    exec.TmuxSessionExists("crew-" + name),
 		})
 	}
 	return summaries, nil
+}
+
+func devRoutesExist(wsName string) bool {
+	info, err := os.Stat(dev.RoutesFilePath(wsName))
+	return err == nil && info.Size() > 2 // more than just "[]"
 }
 
 // Create creates a new empty workspace.
@@ -204,9 +214,6 @@ func CodeWorkspaceFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, wsName+".code-workspace")
 }
 
-// CreateWorktree creates a worktree workspace JSON and git worktrees for all
-// projects. It is idempotent — if the worktree already exists, it returns the
-// normalized name without error.
 // worktreeDirsExist checks whether the git worktree directories for all
 // projects in the base workspace actually exist on disk.
 func worktreeDirsExist(base, safeName string) bool {
@@ -223,6 +230,9 @@ func worktreeDirsExist(base, safeName string) bool {
 	return true
 }
 
+// CreateWorktree creates git worktrees for all projects in the base workspace
+// and saves a worktree workspace JSON. It is idempotent — if the worktree
+// already exists, it returns the normalized name without error.
 func CreateWorktree(base, name, fromBranch string) (string, error) {
 	safeName := NormalizeName(name)
 	wtWs := WorktreeWorkspaceName(base, safeName)
@@ -244,6 +254,25 @@ func CreateWorktree(base, name, fromBranch string) (string, error) {
 	}
 
 	branch := "worktree-" + name
+
+	// 1. Create git worktrees FIRST — rollback on failure
+	var created []int
+	for i, p := range ws.Projects {
+		wtDir := p.Path + "/.claude/worktrees/" + safeName
+		if err := exec.CreateGitWorktree(p.Path, wtDir, branch, fromBranch); err != nil {
+			for _, ci := range created {
+				cp := ws.Projects[ci]
+				exec.RemoveGitWorktree(cp.Path, cp.Path+"/.claude/worktrees/"+safeName)
+			}
+			return "", fmt.Errorf("failed to create worktree for %s: %w", p.Name, err)
+		}
+		created = append(created, i)
+		exec.EnsureGitignore(p.Path)
+		exec.CopyEnvFiles(p.Path, wtDir)
+		exec.RunNpmInstall(wtDir)
+	}
+
+	// 2. Save workspace JSON after all git worktrees succeed
 	wtWorkspace := &Workspace{
 		Name: wtWs,
 		Worktree: &WorktreeInfo{
@@ -261,17 +290,11 @@ func CreateWorktree(base, name, fromBranch string) (string, error) {
 		}
 	}
 	if err := Save(wtWorkspace); err != nil {
-		return "", err
-	}
-
-	for _, p := range ws.Projects {
-		wtDir := p.Path + "/.claude/worktrees/" + safeName
-		if err := exec.CreateGitWorktree(p.Path, wtDir, branch, fromBranch); err != nil {
-			return "", fmt.Errorf("failed to create worktree for %s: %w", p.Name, err)
+		for _, ci := range created {
+			cp := ws.Projects[ci]
+			exec.RemoveGitWorktree(cp.Path, cp.Path+"/.claude/worktrees/"+safeName)
 		}
-		exec.EnsureGitignore(p.Path)
-		exec.CopyEnvFiles(p.Path, wtDir)
-		exec.RunNpmInstall(wtDir)
+		return "", err
 	}
 
 	return safeName, nil
@@ -324,4 +347,34 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 		return "", err
 	}
 	return text, nil
+}
+
+// BuildDevProjects converts workspace projects into dev.DevProject slice.
+// baseWs provides the dev server config, srcProjects provides the paths
+// (which may be worktree paths).
+func BuildDevProjects(baseWs *Workspace, srcProjects []Project) []dev.DevProject {
+	var projects []dev.DevProject
+	for _, sp := range srcProjects {
+		var servers []dev.DevServerConfig
+		for _, bp := range baseWs.Projects {
+			if bp.Name == sp.Name {
+				for _, ds := range bp.DevServers {
+					servers = append(servers, dev.DevServerConfig{
+						Name:    ds.Name,
+						Port:    ds.Port,
+						Command: ds.Command,
+						Dir:     ds.Dir,
+					})
+				}
+				break
+			}
+		}
+		if len(servers) > 0 {
+			projects = append(projects, dev.DevProject{
+				Path:       sp.Path,
+				DevServers: servers,
+			})
+		}
+	}
+	return projects
 }

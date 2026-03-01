@@ -15,7 +15,14 @@ import (
 
 // ── Messages ──
 
-type worktreesLoadedMsg struct{ names []string }
+type worktreeItem struct {
+	Name       string
+	Branch     string
+	DevCount   int
+	TmuxActive bool
+}
+
+type worktreesLoadedMsg struct{ items []worktreeItem }
 type worktreeCreatedMsg struct{ name string }
 type worktreeRemovedMsg struct{ name string }
 type worktreePushedMsg struct{ name string }
@@ -35,7 +42,7 @@ const (
 type WorktreeView struct {
 	base        string
 	state       wtViewState
-	worktrees   []string
+	worktrees   []worktreeItem
 	cursor      int
 	input       textinput.Model
 	branchInput textinput.Model
@@ -75,7 +82,7 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case worktreesLoadedMsg:
-		v.worktrees = msg.names
+		v.worktrees = msg.items
 		if v.cursor >= len(v.worktrees) {
 			v.cursor = max(0, len(v.worktrees)-1)
 		}
@@ -97,10 +104,14 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = fmt.Sprintf("Pushed worktree '%s'", msg.name)
 		return v, nil
 
+	case happyLaunchedMsg:
+		v.statusMsg = fmt.Sprintf("Happy Coder: %s", msg.session)
+		return v, nil
+
 	case errMsg:
 		v.err = msg.err
 		v.state = wtStateList
-		return v, nil
+		return v, v.loadWorktrees()
 
 	case tea.KeyMsg:
 		return v.handleKey(msg)
@@ -167,8 +178,23 @@ func (v WorktreeView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, nil
 	case msg.String() == "p":
 		if len(v.worktrees) > 0 {
-			name := v.worktrees[v.cursor]
+			name := v.worktrees[v.cursor].Name
 			return v, v.pushWorktree(name)
+		}
+		return v, nil
+	case msg.String() == "h":
+		if len(v.worktrees) > 0 {
+			name := v.worktrees[v.cursor].Name
+			return v, launchHappy(v.base, name)
+		}
+		return v, nil
+	case msg.String() == "enter":
+		if len(v.worktrees) > 0 {
+			name := v.worktrees[v.cursor].Name
+			page := NewLaunchView(v.base)
+			page.selectedWt = name
+			page.state = launchStateMode
+			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 		}
 		return v, nil
 	}
@@ -207,7 +233,7 @@ func (v WorktreeView) handleCreateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (v WorktreeView) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		name := v.worktrees[v.cursor]
+		name := v.worktrees[v.cursor].Name
 		v.state = wtStateList
 		return v, v.removeWorktree(name)
 	default:
@@ -242,19 +268,35 @@ func (v WorktreeView) renderList(b *strings.Builder) {
 		return
 	}
 
-	for i, name := range v.worktrees {
+	for i, wt := range v.worktrees {
 		cursor := "  "
 		if i == v.cursor {
 			cursor = app.Selected.Render("> ")
 		}
 
-		display := name
+		display := wt.Name
 		if i == v.cursor {
-			display = app.Selected.Render(name)
+			display = app.Selected.Render(wt.Name)
 		}
 
 		b.WriteString(cursor)
 		b.WriteString(display)
+		if wt.Branch != "" {
+			b.WriteString("  ")
+			b.WriteString(app.Subtle.Render(wt.Branch))
+		}
+
+		var badges []string
+		if wt.DevCount > 0 {
+			badges = append(badges, app.Highlight.Render(fmt.Sprintf("[dev: %d]", wt.DevCount)))
+		}
+		if wt.TmuxActive {
+			badges = append(badges, app.Highlight.Render("[tmux]"))
+		}
+		if len(badges) > 0 {
+			b.WriteString("  ")
+			b.WriteString(strings.Join(badges, " "))
+		}
 		b.WriteString("\n")
 	}
 
@@ -271,7 +313,7 @@ func (v WorktreeView) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("n new  d delete  p push  esc back"))
+	b.WriteString(app.HelpStyle.Render("n new  d delete  p push  h happy  enter launch  esc back"))
 	b.WriteString("\n")
 }
 
@@ -295,7 +337,7 @@ func (v WorktreeView) renderCreate(b *strings.Builder) {
 }
 
 func (v WorktreeView) renderConfirmRemove(b *strings.Builder) {
-	name := v.worktrees[v.cursor]
+	name := v.worktrees[v.cursor].Name
 	b.WriteString(fmt.Sprintf("  Remove worktree '%s'? (y/n)\n", name))
 }
 
@@ -308,7 +350,31 @@ func (v WorktreeView) loadWorktrees() tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
-		return worktreesLoadedMsg{names}
+
+		routes, _ := dev.LoadRoutes(base)
+		items := make([]worktreeItem, len(names))
+		for i, name := range names {
+			wtWs := WorktreeWorkspaceName(base, name)
+			item := worktreeItem{Name: name}
+
+			// Get branch from first project
+			if ws, err := Load(wtWs); err == nil && len(ws.Projects) > 0 {
+				item.Branch = exec.GetCurrentBranch(ws.Projects[0].Path)
+			}
+
+			// Count dev routes for this worktree's subdomain
+			for _, r := range routes {
+				if r.Subdomain == name {
+					item.DevCount++
+				}
+			}
+
+			// Check tmux session
+			item.TmuxActive = exec.TmuxSessionExists("crew-" + wtWs)
+
+			items[i] = item
+		}
+		return worktreesLoadedMsg{items}
 	}
 }
 

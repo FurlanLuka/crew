@@ -123,6 +123,11 @@ var Root = CommandInfo{
 					},
 				},
 				{
+					Name:        "rm",
+					Description: "Remove a dev server from a project",
+					Usage:       "crew dev rm <workspace> <project> <server-name>",
+				},
+				{
 					Name:         "show",
 					Description:  "Show configured dev servers for a workspace",
 					Usage:        "crew dev show <workspace>",

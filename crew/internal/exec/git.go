@@ -1,6 +1,8 @@
 package exec
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 
 // CreateGitWorktree creates a git worktree at wtDir with the given branch.
 // If fromBranch is non-empty, it bases the new branch on that.
+// If the branch already exists, it falls back to reusing it.
 func CreateGitWorktree(projectPath, wtDir, branch, fromBranch string) error {
 	var cmd *exec.Cmd
 	if fromBranch != "" {
@@ -17,7 +20,34 @@ func CreateGitWorktree(projectPath, wtDir, branch, fromBranch string) error {
 		cmd = exec.Command("git", "worktree", "add", wtDir, "-b", branch)
 	}
 	cmd.Dir = projectPath
-	return cmd.Run()
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if strings.Contains(msg, "already exists") {
+			return createWorktreeReuse(projectPath, wtDir, branch)
+		}
+		if msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
+	}
+	return nil
+}
+
+func createWorktreeReuse(projectPath, wtDir, branch string) error {
+	cmd := exec.Command("git", "worktree", "add", wtDir, branch)
+	cmd.Dir = projectPath
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
+	}
+	return nil
 }
 
 // RemoveGitWorktree removes a git worktree.

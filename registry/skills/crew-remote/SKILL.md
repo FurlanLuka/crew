@@ -22,6 +22,7 @@ Reference card for managing crew workspaces, worktrees, and dev servers from a r
 | `crew dev status` | Show all running dev servers with URLs |
 | `crew dev status <ws>` | Show running dev servers for one workspace |
 | `crew dev add <ws> <proj> ...` | Add a dev server to a project |
+| `crew dev rm <ws> <proj> <name>` | Remove a dev server from a project |
 | `crew dev start <ws> [flags]` | Start dev servers with reverse proxy |
 | `crew dev stop [<ws>] [flags]` | Stop dev servers |
 | `crew dev restart <ws> [flags]` | Restart dev servers |
@@ -144,6 +145,18 @@ All commands use **tab-separated** output for easy parsing:
 | `crew show <ws>` | `<name>\t<path>\t<role>` |
 | `crew dev show <ws>` | `<project>\t<server>\t<port>\t<cmd>[\t<dir>]` |
 | `crew dev status [<ws>]` | `<workspace>\t<worktree>\t<port>\t<url>` |
+
+## Installation
+
+**macOS:**
+```bash
+brew install FurlanLuka/tap/crew
+```
+
+**Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/FurlanLuka/homebrew-tap/main/install.sh | sh
+```
 
 ## Common Patterns
 

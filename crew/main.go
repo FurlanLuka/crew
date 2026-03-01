@@ -322,20 +322,10 @@ func cmdHappy() {
 		os.Exit(1)
 	}
 
-	session := "crew-" + ws.Name
-
-	if !exec.TmuxSessionExists(session) {
-		leadPath := ws.Projects[0].Path
-		if err := exec.CreateTmuxSession(session, leadPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating tmux session: %v\n", err)
-			os.Exit(1)
-		}
-
-		happyCmd := "happy"
-		for _, p := range ws.Projects[1:] {
-			happyCmd += fmt.Sprintf(" --add-dir %s", p.Path)
-		}
-		exec.TmuxSendKeys(session, happyCmd)
+	session, err := workspace.StartHappySession(ws)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("Started: %s\nVisible in Happy mobile app.\n", session)
@@ -343,7 +333,7 @@ func cmdHappy() {
 
 func cmdDev() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev [setup|add|show|start|stop|restart|status]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev [setup|add|rm|show|start|stop|restart|status]\n")
 		os.Exit(1)
 	}
 
@@ -352,6 +342,8 @@ func cmdDev() {
 		cmdDevSetup()
 	case "add":
 		cmdDevAdd()
+	case "rm":
+		cmdDevRm()
 	case "show":
 		cmdDevShow()
 	case "start":
@@ -365,7 +357,7 @@ func cmdDev() {
 	case "_proxy":
 		cmdDevProxy()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|show|start|stop|restart|status]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -525,6 +517,52 @@ func cmdDevAdd() {
 	fmt.Printf("Added dev server '%s' to %s/%s (port %d)\n", name, wsName, projName, port)
 }
 
+func cmdDevRm() {
+	if len(os.Args) < 6 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev rm <workspace> <project> <server-name>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[3]
+	projName := os.Args[4]
+	serverName := os.Args[5]
+
+	ws, err := workspace.Load(wsName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	found := false
+	for i, p := range ws.Projects {
+		if p.Name != projName {
+			continue
+		}
+		filtered := ws.Projects[i].DevServers[:0]
+		for _, ds := range ws.Projects[i].DevServers {
+			if ds.Name == serverName {
+				found = true
+				continue
+			}
+			filtered = append(filtered, ds)
+		}
+		ws.Projects[i].DevServers = filtered
+		break
+	}
+
+	if !found {
+		fmt.Fprintf(os.Stderr, "Error: server '%s' not found in %s/%s\n", serverName, wsName, projName)
+		os.Exit(1)
+	}
+
+	if err := workspace.Save(ws); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Removed dev server '%s' from %s/%s\n", serverName, wsName, projName)
+}
+
 func cmdDevShow() {
 	if len(os.Args) < 4 {
 		fmt.Fprintf(os.Stderr, "Usage: crew dev show <workspace>\n")
@@ -649,7 +687,7 @@ func cmdDevStart() {
 	}
 
 	// Build DevProject slice
-	projects := buildDevProjects(baseWs, srcProjects)
+	projects := workspace.BuildDevProjects(baseWs, srcProjects)
 	if len(projects) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — run: crew dev setup %s\n", wsName)
 		os.Exit(1)
@@ -746,12 +784,8 @@ func cmdDevRestart() {
 		os.Exit(1)
 	}
 
-	// Stop
-	subdomain := worktreeName
-	if subdomain == "" {
-		subdomain = "main"
-	}
-	dev.StopWorktree(wsName, subdomain)
+	// Stop existing servers before restarting
+	dev.StopWorktree(wsName, worktreeName)
 
 	// Start
 	if host == "" {
@@ -778,7 +812,7 @@ func cmdDevRestart() {
 		srcProjects = baseWs.Projects
 	}
 
-	projects := buildDevProjects(baseWs, srcProjects)
+	projects := workspace.BuildDevProjects(baseWs, srcProjects)
 	if len(projects) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — run: crew dev setup %s\n", wsName)
 		os.Exit(1)
@@ -827,34 +861,6 @@ func cmdDevProxy() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func buildDevProjects(baseWs *workspace.Workspace, srcProjects []workspace.Project) []dev.DevProject {
-	var projects []dev.DevProject
-	for _, sp := range srcProjects {
-		// Find dev servers from base workspace (config lives on base)
-		var servers []dev.DevServerConfig
-		for _, bp := range baseWs.Projects {
-			if bp.Name == sp.Name {
-				for _, ds := range bp.DevServers {
-					servers = append(servers, dev.DevServerConfig{
-						Name:    ds.Name,
-						Port:    ds.Port,
-						Command: ds.Command,
-						Dir:     ds.Dir,
-					})
-				}
-				break
-			}
-		}
-		if len(servers) > 0 {
-			projects = append(projects, dev.DevProject{
-				Path:       sp.Path,
-				DevServers: servers,
-			})
-		}
-	}
-	return projects
 }
 
 func detectDevCommand(projectPath string) string {

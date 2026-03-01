@@ -28,11 +28,13 @@ type worktreeCreatedForLaunchMsg struct{ name string }
 const (
 	launchModeEditorAgents = iota
 	launchModeAgentsOnly
+	launchModeHappy
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
 	"Agents only (tmux)",
+	"Happy Coder",
 }
 
 // ── Special worktree options ──
@@ -173,6 +175,8 @@ func (v LaunchView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (v LaunchView) handleWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, app.Keys.Quit):
+		return v, tea.Quit
 	case key.Matches(msg, app.Keys.Back):
 		return v, func() tea.Msg { return app.PopPageMsg{} }
 	case key.Matches(msg, app.Keys.Up):
@@ -239,6 +243,8 @@ func (v LaunchView) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (v LaunchView) handleModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
+	case key.Matches(msg, app.Keys.Quit):
+		return v, tea.Quit
 	case key.Matches(msg, app.Keys.Back):
 		v.state = launchStateWorktree
 		return v, nil
@@ -366,8 +372,12 @@ func (v LaunchView) createWorktreeForLaunch(name, fromBranch string) tea.Cmd {
 	return func() tea.Msg {
 		safeName := NormalizeName(name)
 		wtWs := WorktreeWorkspaceName(base, safeName)
+
 		if Exists(wtWs) {
-			return errMsg{fmt.Errorf("worktree '%s' already exists", safeName)}
+			if worktreeDirsExist(base, safeName) {
+				return errMsg{fmt.Errorf("worktree '%s' already exists", safeName)}
+			}
+			Remove(wtWs)
 		}
 
 		safeName, err := CreateWorktree(base, name, fromBranch)
@@ -400,24 +410,27 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 		}
 		promptFile := PromptFilePath(launchWs)
 
-		leadPath := filepath.Dir(ws.Projects[0].Path)
+		projectPath := ws.Projects[0].Path
 		editor := exec.DetectEditor()
 
 		switch mode {
 		case launchModeEditorAgents:
 			if editor != "" {
-				return launchWithEditor(ws, editor, promptFile, leadPath)
+				editorRoot := filepath.Dir(projectPath)
+				return launchWithEditor(ws, editor, promptFile, editorRoot)
 			}
-			return launchWithTmux(ws, promptFile, leadPath)
+			return launchWithTmux(ws, promptFile, projectPath)
 		case launchModeAgentsOnly:
-			return launchWithTmux(ws, promptFile, leadPath)
+			return launchWithTmux(ws, promptFile, projectPath)
+		case launchModeHappy:
+			return launchWithHappy(ws)
 		}
 
 		return launchExecutedMsg{}
 	}
 }
 
-func launchWithEditor(ws *Workspace, editor, promptFile, leadPath string) tea.Msg {
+func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.Msg {
 	wsFile := CodeWorkspaceFilePath(ws.Name)
 
 	projects := make([]exec.WorkspaceProject, len(ws.Projects))
@@ -430,7 +443,7 @@ func launchWithEditor(ws *Workspace, editor, promptFile, leadPath string) tea.Ms
 		claudeDir = config.ClaudeConfigDir
 	}
 
-	if err := exec.GenerateCodeWorkspace(wsFile, projects, promptFile, leadPath, claudeDir, true); err != nil {
+	if err := exec.GenerateCodeWorkspace(wsFile, projects, promptFile, editorRoot, claudeDir, true); err != nil {
 		return errMsg{err}
 	}
 
@@ -441,7 +454,7 @@ func launchWithEditor(ws *Workspace, editor, promptFile, leadPath string) tea.Ms
 	return launchExecutedMsg{}
 }
 
-func launchWithTmux(ws *Workspace, promptFile, leadPath string) tea.Msg {
+func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
 	if !exec.HasTmux() {
 		return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
 	}
@@ -453,7 +466,7 @@ func launchWithTmux(ws *Workspace, promptFile, leadPath string) tea.Msg {
 		return launchExecutedMsg{}
 	}
 
-	if err := exec.CreateTmuxSession(session, leadPath); err != nil {
+	if err := exec.CreateTmuxSession(session, sessionDir); err != nil {
 		return errMsg{err}
 	}
 
@@ -462,4 +475,50 @@ func launchWithTmux(ws *Workspace, promptFile, leadPath string) tea.Msg {
 
 	exec.AttachTmuxSession(session)
 	return launchExecutedMsg{}
+}
+
+func launchWithHappy(ws *Workspace) tea.Msg {
+	session, err := StartHappySession(ws)
+	if err != nil {
+		return errMsg{err}
+	}
+	exec.AttachTmuxSession(session)
+	return launchExecutedMsg{}
+}
+
+// StartHappySession creates (or reuses) a Happy Coder tmux session for the
+// given workspace. Returns the session name.
+func StartHappySession(ws *Workspace) (string, error) {
+	if !exec.HasHappy() {
+		return "", fmt.Errorf("happy CLI not found — install from https://happycoder.ai")
+	}
+	if !exec.HasTmux() {
+		return "", fmt.Errorf("tmux not found — install with: brew install tmux")
+	}
+	if len(ws.Projects) == 0 {
+		return "", fmt.Errorf("workspace has no projects")
+	}
+
+	session := "crew-" + ws.Name
+
+	if exec.TmuxSessionExists(session) {
+		return session, nil
+	}
+
+	if _, err := GeneratePrompt(ws); err != nil {
+		return "", err
+	}
+
+	if err := exec.CreateTmuxSession(session, ws.Projects[0].Path); err != nil {
+		return "", err
+	}
+
+	promptFile := PromptFilePath(ws.Name)
+	happyCmd := fmt.Sprintf("happy --prompt-file %s", promptFile)
+	for _, p := range ws.Projects[1:] {
+		happyCmd += fmt.Sprintf(" --add-dir %s", p.Path)
+	}
+	exec.TmuxSendKeys(session, happyCmd)
+
+	return session, nil
 }

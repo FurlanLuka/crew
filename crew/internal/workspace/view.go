@@ -17,6 +17,7 @@ import (
 type workspacesLoadedMsg struct{ summaries []Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
+type happyLaunchedMsg struct{ session string }
 type errMsg struct{ err error }
 
 // Project management messages
@@ -50,7 +51,6 @@ type View struct {
 	input     textinput.Model
 	err       error
 	statusMsg string
-	width     int
 
 	// Project management within workspace
 	selectedWs    string
@@ -93,7 +93,6 @@ func (v View) Init() tea.Cmd {
 func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		v.width = msg.Width
 		return v, nil
 
 	case workspacesLoadedMsg:
@@ -134,6 +133,10 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.state = stateProjects
 		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
 		return v, loadWsProjects(v.selectedWs)
+
+	case happyLaunchedMsg:
+		v.statusMsg = fmt.Sprintf("Happy Coder: %s", msg.session)
+		return v, nil
 
 	case errMsg:
 		v.err = msg.err
@@ -197,12 +200,14 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "n":
 		v.state = stateCreate
 		v.statusMsg = ""
+		v.err = nil
 		v.input.Focus()
 		return v, v.input.Cursor.BlinkCmd()
 	case msg.String() == "d":
 		if len(v.summaries) > 0 {
 			v.state = stateConfirmRemove
 			v.statusMsg = ""
+			v.err = nil
 		}
 		return v, nil
 	case msg.String() == "p":
@@ -211,6 +216,7 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.state = stateProjects
 			v.projCursor = 0
 			v.statusMsg = ""
+			v.err = nil
 			return v, loadWsProjects(v.selectedWs)
 		}
 		return v, nil
@@ -219,6 +225,19 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s := v.summaries[v.cursor]
 			page := NewWorktreeView(s.Name)
 			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
+		}
+		return v, nil
+	case msg.String() == "s":
+		if len(v.summaries) > 0 {
+			s := v.summaries[v.cursor]
+			page := NewDevView(s.Name)
+			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
+		}
+		return v, nil
+	case msg.String() == "h":
+		if len(v.summaries) > 0 {
+			s := v.summaries[v.cursor]
+			return v, launchHappy(s.Name, "")
 		}
 		return v, nil
 	case msg.String() == "enter":
@@ -285,6 +304,7 @@ func (v View) handleProjectsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return v, nil
 	case msg.String() == "a":
+		v.err = nil
 		if len(v.poolNames) > 0 {
 			v.state = stateProjectPick
 			v.poolCursor = 0
@@ -396,7 +416,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString(app.Subtle.Render("No workspaces yet."))
 		b.WriteString("\n\n")
 		b.WriteString("  ")
-		b.WriteString(app.HelpStyle.Render("n new  q quit"))
+		b.WriteString(app.HelpStyle.Render("n new  esc back"))
 		b.WriteString("\n")
 		return
 	}
@@ -417,10 +437,22 @@ func (v View) renderList(b *strings.Builder) {
 			details += fmt.Sprintf(" · %d worktrees", s.WorktreeCount)
 		}
 
+		var badges []string
+		if s.DevRunning {
+			badges = append(badges, app.Highlight.Render("[dev]"))
+		}
+		if s.TmuxActive {
+			badges = append(badges, app.Highlight.Render("[tmux]"))
+		}
+
 		b.WriteString(cursor)
 		b.WriteString(name)
 		b.WriteString("  ")
 		b.WriteString(app.Subtle.Render(details))
+		if len(badges) > 0 {
+			b.WriteString("  ")
+			b.WriteString(strings.Join(badges, " "))
+		}
 		b.WriteString("\n")
 	}
 
@@ -431,7 +463,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  w worktrees  enter launch  esc back"
+	help := "n new  d delete  p projects  w worktrees  s servers  h happy  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -635,5 +667,25 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 			return errMsg{err}
 		}
 		return wsProjectRemovedMsg{projName}
+	}
+}
+
+func launchHappy(wsName, worktreeName string) tea.Cmd {
+	return func() tea.Msg {
+		loadName := wsName
+		if worktreeName != "" {
+			loadName = WorktreeWorkspaceName(wsName, worktreeName)
+		}
+
+		ws, err := Load(loadName)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		session, err := StartHappySession(ws)
+		if err != nil {
+			return errMsg{err}
+		}
+		return happyLaunchedMsg{session}
 	}
 }
