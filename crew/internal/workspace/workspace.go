@@ -11,10 +11,18 @@ import (
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
 )
 
+type DevServer struct {
+	Name    string `json:"name"`
+	Port    int    `json:"port"`
+	Command string `json:"command"`
+	Dir     string `json:"dir,omitempty"`
+}
+
 type Project struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Role string `json:"role"`
+	Name       string      `json:"name"`
+	Path       string      `json:"path"`
+	Role       string      `json:"role"`
+	DevServers []DevServer `json:"dev_servers,omitempty"`
 }
 
 type WorktreeInfo struct {
@@ -199,12 +207,32 @@ func CodeWorkspaceFilePath(wsName string) string {
 // CreateWorktree creates a worktree workspace JSON and git worktrees for all
 // projects. It is idempotent — if the worktree already exists, it returns the
 // normalized name without error.
+// worktreeDirsExist checks whether the git worktree directories for all
+// projects in the base workspace actually exist on disk.
+func worktreeDirsExist(base, safeName string) bool {
+	ws, err := Load(base)
+	if err != nil {
+		return false
+	}
+	for _, p := range ws.Projects {
+		dir := p.Path + "/.claude/worktrees/" + safeName
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
+}
+
 func CreateWorktree(base, name, fromBranch string) (string, error) {
 	safeName := NormalizeName(name)
 	wtWs := WorktreeWorkspaceName(base, safeName)
 
 	if Exists(wtWs) {
-		return safeName, nil
+		if worktreeDirsExist(base, safeName) {
+			return safeName, nil
+		}
+		// Stale JSON without actual worktree dirs — clean up.
+		Remove(wtWs)
 	}
 
 	ws, err := Load(base)
@@ -226,9 +254,10 @@ func CreateWorktree(base, name, fromBranch string) (string, error) {
 	}
 	for i, p := range ws.Projects {
 		wtWorkspace.Projects[i] = Project{
-			Name: p.Name,
-			Path: p.Path + "/.claude/worktrees/" + safeName,
-			Role: p.Role,
+			Name:       p.Name,
+			Path:       p.Path + "/.claude/worktrees/" + safeName,
+			Role:       p.Role,
+			DevServers: p.DevServers,
 		}
 	}
 	if err := Save(wtWorkspace); err != nil {
@@ -261,6 +290,28 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 	if ws.Worktree != nil {
 		b.WriteString("IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch.\n")
 		b.WriteString("All changes stay isolated from the main codebase until explicitly merged.\n\n")
+	}
+
+	// Include dev server URLs if configured
+	hasDevServers := false
+	for _, p := range ws.Projects {
+		if len(p.DevServers) > 0 {
+			hasDevServers = true
+			break
+		}
+	}
+	if hasDevServers {
+		b.WriteString("Dev servers are configured for this workspace. Each project's dev servers:\n")
+		for _, p := range ws.Projects {
+			for _, ds := range p.DevServers {
+				dir := ""
+				if ds.Dir != "" {
+					dir = " (dir: " + ds.Dir + ")"
+				}
+				fmt.Fprintf(&b, "- %s/%s: port %d, command: %s%s\n", p.Name, ds.Name, ds.Port, ds.Command, dir)
+			}
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("Each teammate should cd into their project directory before starting work.\n")

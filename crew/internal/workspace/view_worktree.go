@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/app"
+	"github.com/FurlanLuka/homebrew-tap/crew/internal/dev"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
 )
 
@@ -316,8 +317,16 @@ func (v WorktreeView) startWorktreeCreation(name, fromBranch string) tea.Cmd {
 	return func() tea.Msg {
 		safeName := NormalizeName(name)
 		wtWs := WorktreeWorkspaceName(base, safeName)
+
+		// If the workspace JSON exists, check whether the git worktrees
+		// are actually on disk.  A previous failed or cleaned-up attempt
+		// can leave a stale JSON behind.
 		if Exists(wtWs) {
-			return errMsg{fmt.Errorf("worktree '%s' already exists", safeName)}
+			if worktreeDirsExist(base, safeName) {
+				return errMsg{fmt.Errorf("worktree '%s' already exists", safeName)}
+			}
+			// Stale JSON — remove it so CreateWorktree can proceed.
+			Remove(wtWs)
 		}
 
 		safeName, err := CreateWorktree(base, name, fromBranch)
@@ -332,6 +341,9 @@ func (v WorktreeView) removeWorktree(name string) tea.Cmd {
 	base := v.base
 	return func() tea.Msg {
 		wtWs := WorktreeWorkspaceName(base, name)
+
+		// Stop dev servers for this worktree
+		dev.StopWorktree(base, name)
 
 		// Kill tmux session
 		session := "crew-" + wtWs
