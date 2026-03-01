@@ -28,18 +28,66 @@ brew install FurlanLuka/tap/crew
 | `crew <name>` | Launch workspace directly |
 | `crew --version` | Print version |
 
+### Setup — macOS
+
+```bash
+brew install FurlanLuka/tap/crew
+
+# Install all agents & skills
+crew registry install --all
+
+# Add projects, create workspace, launch
+crew project
+crew workspace
+```
+
+### Setup — Linux / Remote Server
+
+```bash
+# Install crew + dependencies (Node.js, tmux, happy CLI)
+curl -fsSL https://raw.githubusercontent.com/FurlanLuka/homebrew-tap/main/install.sh | sh
+
+# Install Claude Code
+curl -fsSL https://claude.ai/install.sh | bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+
+# Authenticate GitHub (needed for registry API calls)
+gh auth login
+
+# Install all agents & skills
+crew registry install --all
+```
+
+### Remote agent with Happy Coder
+
+Run persistent Claude sessions on a remote server, controlled from your phone:
+
+```bash
+# On the server
+happy auth login          # Scan QR code with Happy mobile app
+happy daemon start        # Start background daemon
+
+# Now spawn sessions from the Happy mobile app — they persist
+# even when SSH disconnects
+happy daemon status       # Check daemon
+happy daemon list         # List active sessions
+```
+
 ### Quick start
 
 ```bash
 crew project              # Add your projects (name + path)
 crew workspace            # Create a workspace, add projects, launch
+crew <workspace-name>     # Launch workspace directly
 crew kill                 # Tear down everything
 ```
 
 ### Registry
 
 ```bash
-crew registry             # Browse and install agents & skills
+crew registry             # Browse and install agents & skills (TUI)
+crew registry install --all          # Install everything (CLI)
+crew registry install <name>         # Install a specific agent or skill
 ```
 
 Push notifications via [ntfy.sh](https://ntfy.sh) — get alerted when Claude needs attention:
