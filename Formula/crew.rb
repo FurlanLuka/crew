@@ -5,21 +5,21 @@
 class Crew < Formula
   desc "Agent team launcher, workspace manager & package registry"
   homepage "https://github.com/FurlanLuka/homebrew-tap"
-  version "1.2.5"
+  version "1.2.6"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.intel?
-      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.5/crew_1.2.5_darwin_amd64.tar.gz"
-      sha256 "ee2ec0549a488406509e84d97a8140a8224d74d86491637100a9dd432ff55bdc"
+      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.6/crew_1.2.6_darwin_amd64.tar.gz"
+      sha256 "63d5b2fe5c59816fc613688047e2b1988880d4362f431f1d983af7b79f010bad"
 
       define_method(:install) do
         bin.install "crew"
       end
     end
     if Hardware::CPU.arm?
-      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.5/crew_1.2.5_darwin_arm64.tar.gz"
-      sha256 "4d7dcd92e0233cfd6c4dcfb02e57b8de20295e1d911f1576f001fd20e54440dc"
+      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.6/crew_1.2.6_darwin_arm64.tar.gz"
+      sha256 "88e4587a2be7c21d09014e9c17a5c58a4adcab694042bd98ceb1cdb1b1064435"
 
       define_method(:install) do
         bin.install "crew"
@@ -29,15 +29,15 @@ class Crew < Formula
 
   on_linux do
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.5/crew_1.2.5_linux_amd64.tar.gz"
-      sha256 "19304f23a010ee9b8ad293a9fade41712c6913cda7c80646dfa1e8e11f4d34d2"
+      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.6/crew_1.2.6_linux_amd64.tar.gz"
+      sha256 "08a9c6a1b4484a920a45602a9dcae6369e0bee1d4f036e4295ee5eb055934aee"
       define_method(:install) do
         bin.install "crew"
       end
     end
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.5/crew_1.2.5_linux_arm64.tar.gz"
-      sha256 "b94a9a7ad20a070182931154a405bba670161929824bda2e9a397c9bf7daa1a3"
+      url "https://github.com/FurlanLuka/homebrew-tap/releases/download/v1.2.6/crew_1.2.6_linux_arm64.tar.gz"
+      sha256 "878da7af284fe57ad1252357d5f12636498fef827a2d9bbee5d7ac6e59041db3"
       define_method(:install) do
         bin.install "crew"
       end
