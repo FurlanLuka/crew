@@ -83,7 +83,9 @@ func StartWorktree(baseWsName string, projects []DevProject, worktreeName, host 
 				dir = filepath.Join(p.Path, ds.Dir)
 			}
 
-			cmd := fmt.Sprintf("PORT=%d %s", route.InternalPort, ds.Command)
+			portStr := fmt.Sprintf("%d", route.InternalPort)
+			expanded := strings.ReplaceAll(ds.Command, "$PORT", portStr)
+			cmd := fmt.Sprintf("PORT=%s %s", portStr, expanded)
 			createTmuxWindow(session, windowName, dir, cmd)
 		}
 	}
