@@ -29,17 +29,3 @@ jobs:
       - name: Test version flag
         working-directory: crew
         run: ./crew --version | grep -q "crew"
-
-  lint-formula:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Symlink tap into Homebrew
-        run: |
-          TAP_DIR="$(brew --repository)/Library/Taps/furlanluka/homebrew-tap"
-          mkdir -p "$(dirname "$TAP_DIR")"
-          ln -s "${{ github.workspace }}" "$TAP_DIR"
-
-      - name: Lint formulas
-        run: brew audit --formula furlanluka/tap/crew

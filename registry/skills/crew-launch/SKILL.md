@@ -40,14 +40,16 @@ If creating a new worktree, the `crew happy` command handles creation automatica
 
 ### 5. Launch Happy Coder session
 
-Run:
+**IMPORTANT:** The `crew happy` command must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Use Bash with `run_in_background` and `nohup` to detach it, or instruct the user to run it manually in a separate terminal.
+
+Run (detached):
 ```bash
-crew happy <workspace>
+nohup crew happy <workspace> >/dev/null 2>&1 &
 ```
 
 Or with a worktree:
 ```bash
-crew happy <workspace> --worktree=<name>
+nohup crew happy <workspace> --worktree=<name> >/dev/null 2>&1 &
 ```
 
 ### 6. Check dev server config

@@ -9,7 +9,7 @@ CLI + TUI workspace manager for Claude Code. Manages workspaces, worktrees, dev 
 - **CLI output:** Tab-separated for scripting (`name\tpath\trole`)
 - **Registry:** Fetches agents/skills from GitHub API, falls back to local installs on failure
 - **Config:** Stored in `CLAUDE_CONFIG_DIR` (defaults to `~/.claude`, user overrides to `~/.claude-personal`)
-- **Module path:** `github.com/FurlanLuka/homebrew-tap/crew`
+- **Module path:** `github.com/FurlanLuka/crew/crew`
 
 ### Project structure
 
@@ -66,7 +66,7 @@ cd crew && go test ./...
 
 - GoReleaser pipeline triggers on git tag push
 - **Always create new version tags** — never delete and re-tag
-- Homebrew formula auto-updates via the tap repo
+- Install script is the sole distribution method
 
 ## Agents
 

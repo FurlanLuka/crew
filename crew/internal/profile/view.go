@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/app"
 )
 
 // ── Messages ──

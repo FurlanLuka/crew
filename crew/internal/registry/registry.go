@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 var httpClient = &http.Client{}

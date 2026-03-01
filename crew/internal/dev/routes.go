@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 type Route struct {

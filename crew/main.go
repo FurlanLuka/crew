@@ -7,16 +7,16 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/app"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/dev"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/help"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/notify"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/profile"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/project"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/registry"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/workspace"
+	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/help"
+	"github.com/FurlanLuka/crew/crew/internal/notify"
+	"github.com/FurlanLuka/crew/crew/internal/profile"
+	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/registry"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 var Version = "dev"

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 // Project is a global project entry (no role — role is workspace-specific).

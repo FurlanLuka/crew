@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/app"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/dev"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 // ── Messages ──

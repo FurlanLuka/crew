@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 func setupTestConfig(t *testing.T) string {

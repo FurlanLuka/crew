@@ -1,4 +1,4 @@
-module github.com/FurlanLuka/homebrew-tap/crew
+module github.com/FurlanLuka/crew/crew
 
 go 1.25.1
 

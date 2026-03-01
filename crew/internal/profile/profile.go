@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/registry"
+	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/registry"
 )
 
 func Path() string {

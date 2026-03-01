@@ -1,15 +1,17 @@
 #!/bin/sh
 set -e
 
-REPO="FurlanLuka/homebrew-tap"
+REPO="FurlanLuka/crew"
 
 main() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    if [ "$OS" != "linux" ]; then
-        echo "This script is for Linux. On macOS, use:"
-        echo "  brew install FurlanLuka/tap/crew"
-        exit 1
-    fi
+    case "$OS" in
+        darwin|linux) ;;
+        *)
+            echo "Unsupported OS: $OS"
+            exit 1
+            ;;
+    esac
 
     case "$(uname -m)" in
         x86_64)        ARCH="amd64" ;;
@@ -20,43 +22,49 @@ main() {
             ;;
     esac
 
-    # Install system dependencies
-    for dep in tmux git; do
-        command -v "$dep" >/dev/null 2>&1 && continue
-        echo "Installing $dep..."
-        if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y "$dep"
-        elif command -v dnf >/dev/null 2>&1; then
-            sudo dnf install -y "$dep"
-        elif command -v pacman >/dev/null 2>&1; then
-            sudo pacman -S --noconfirm "$dep"
-        else
-            echo "Please install $dep manually and re-run this script."
-            exit 1
-        fi
-    done
+    # Install system dependencies (Linux only)
+    if [ "$OS" = "linux" ]; then
+        for dep in tmux git; do
+            command -v "$dep" >/dev/null 2>&1 && continue
+            echo "Installing $dep..."
+            if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update -qq && sudo apt-get install -y "$dep"
+            elif command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y "$dep"
+            elif command -v pacman >/dev/null 2>&1; then
+                sudo pacman -S --noconfirm "$dep"
+            else
+                echo "Please install $dep manually and re-run this script."
+                exit 1
+            fi
+        done
 
-    # Install Node.js if missing
-    if ! command -v node >/dev/null 2>&1; then
-        echo "Installing Node.js..."
-        if command -v apt-get >/dev/null 2>&1; then
-            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
-            sudo apt-get install -y nodejs
-        elif command -v dnf >/dev/null 2>&1; then
-            curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-            sudo dnf install -y nodejs
-        elif command -v pacman >/dev/null 2>&1; then
-            sudo pacman -S --noconfirm nodejs npm
-        else
-            echo "Please install Node.js manually and re-run this script."
-            exit 1
+        # Install Node.js if missing
+        if ! command -v node >/dev/null 2>&1; then
+            echo "Installing Node.js..."
+            if command -v apt-get >/dev/null 2>&1; then
+                curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+                sudo apt-get install -y nodejs
+            elif command -v dnf >/dev/null 2>&1; then
+                curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+                sudo dnf install -y nodejs
+            elif command -v pacman >/dev/null 2>&1; then
+                sudo pacman -S --noconfirm nodejs npm
+            else
+                echo "Please install Node.js manually and re-run this script."
+                exit 1
+            fi
         fi
     fi
 
     # Install happy CLI if missing
     if ! command -v happy >/dev/null 2>&1; then
         echo "Installing happy CLI..."
-        sudo npm install -g happy-coder
+        if [ "$OS" = "darwin" ]; then
+            npm install -g happy-coder
+        else
+            sudo npm install -g happy-coder
+        fi
     fi
 
     # Resolve GitHub token for authenticated API calls
@@ -78,12 +86,17 @@ main() {
         exit 1
     fi
 
-    URL="https://github.com/$REPO/releases/download/v${VERSION}/crew_${VERSION}_linux_${ARCH}.tar.gz"
+    URL="https://github.com/$REPO/releases/download/v${VERSION}/crew_${VERSION}_${OS}_${ARCH}.tar.gz"
 
-    echo "Installing crew v${VERSION} (linux/${ARCH})..."
+    echo "Installing crew v${VERSION} (${OS}/${ARCH})..."
     TMP=$(mktemp -d)
     curl -fsSL "$URL" | tar -xz -C "$TMP"
-    sudo install -m 755 "$TMP/crew" /usr/local/bin/crew
+
+    if [ "$OS" = "darwin" ]; then
+        install -m 755 "$TMP/crew" /usr/local/bin/crew
+    else
+        sudo install -m 755 "$TMP/crew" /usr/local/bin/crew
+    fi
     rm -rf "$TMP"
 
     mkdir -p "$HOME/.crew/workspaces"

@@ -15,16 +15,3 @@ builds:
       - -s -w -X main.Version={{.Version}}
     env:
       - CGO_ENABLED=0
-
-brews:
-  - repository:
-      owner: FurlanLuka
-      name: homebrew-tap
-    directory: Formula
-    homepage: "https://github.com/FurlanLuka/homebrew-tap"
-    description: "Agent team launcher, workspace manager & package registry"
-    license: "MIT"
-    install: |
-      bin.install "crew"
-    test: |
-      assert_match "crew", shell_output("#{bin}/crew --version")

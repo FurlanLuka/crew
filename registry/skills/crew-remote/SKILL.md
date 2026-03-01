@@ -128,11 +128,13 @@ crew dev restart <workspace> [--worktree=<name>] [--host=<ip>]
 
 ### Launch a session
 
+**IMPORTANT:** `crew happy` must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Detach it or instruct the user to run it in a separate terminal.
+
 ```bash
 crew launch                                # open workspace picker (TUI)
 crew launch <workspace>                    # open launch view for a workspace (TUI)
 crew start <workspace> --worktree=<name>   # generate agent prompt
-crew happy <workspace> --worktree=<name>   # launch Happy Coder in tmux
+nohup crew happy <workspace> --worktree=<name> >/dev/null 2>&1 &  # launch Happy Coder (detached)
 ```
 
 Both `start` and `happy` accept `--from=<branch>` to base a new worktree on a specific branch.
@@ -151,14 +153,8 @@ All commands use **tab-separated** output for easy parsing:
 
 ## Installation
 
-**macOS:**
 ```bash
-brew install FurlanLuka/tap/crew
-```
-
-**Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/FurlanLuka/homebrew-tap/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
 ```
 
 ## Common Patterns

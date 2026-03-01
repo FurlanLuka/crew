@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/dev"
-	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 type DevServer struct {

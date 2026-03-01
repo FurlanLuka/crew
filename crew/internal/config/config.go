@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	RegistryRepo   = "FurlanLuka/homebrew-tap"
+	RegistryRepo   = "FurlanLuka/crew"
 	RegistryBranch = "main"
 	RegistryBase   = "registry"
 )

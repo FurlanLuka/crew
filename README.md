@@ -1,20 +1,8 @@
-# homebrew-tap
+# crew
 
-Homebrew tap for Claude Code power tools. Manage multi-agent teams across projects and install community agents & skills — all from a polished interactive TUI.
+Agent team launcher, workspace manager & package registry for Claude Code. Manage multi-agent teams across projects and install community agents & skills — all from a polished interactive TUI.
 
-```bash
-brew tap FurlanLuka/tap
-```
-
-## crew — Agent team launcher & registry
-
-Coordinate multiple Claude Code agents across projects in a single workspace. Define projects, assign roles, then launch everything with one command. Manage agents, skills, profiles, and notifications — all from one interactive CLI.
-
-```bash
-brew install FurlanLuka/tap/crew
-```
-
-### Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -28,10 +16,14 @@ brew install FurlanLuka/tap/crew
 | `crew <name>` | Launch workspace directly |
 | `crew --version` | Print version |
 
-### Setup — macOS
+## Setup — macOS
 
 ```bash
-brew install FurlanLuka/tap/crew
+# Install crew
+curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
+
+# Or build from source
+go install github.com/FurlanLuka/crew/crew@latest
 
 # Install all agents & skills
 crew registry install --all
@@ -41,11 +33,11 @@ crew project
 crew workspace
 ```
 
-### Setup — Linux / Remote Server
+## Setup — Linux / Remote Server
 
 ```bash
 # Install crew + dependencies (Node.js, tmux, happy CLI)
-curl -fsSL https://raw.githubusercontent.com/FurlanLuka/homebrew-tap/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
 
 # Install Claude Code
 curl -fsSL https://claude.ai/install.sh | bash
@@ -73,7 +65,7 @@ happy daemon status       # Check daemon
 happy daemon list         # List active sessions
 ```
 
-### Quick start
+## Quick start
 
 ```bash
 crew project              # Add your projects (name + path)
@@ -82,7 +74,9 @@ crew <workspace-name>     # Launch workspace directly
 crew kill                 # Tear down everything
 ```
 
-### Registry
+## Registry
+
+Community agents and skills live in [`registry/`](registry/).
 
 ```bash
 crew registry             # Browse and install agents & skills (TUI)
@@ -95,10 +89,6 @@ Push notifications via [ntfy.sh](https://ntfy.sh) — get alerted when Claude ne
 ```bash
 crew notify               # One-time setup (no account needed)
 ```
-
-## Registry
-
-Community agents and skills live in [`registry/`](registry/).
 
 ### Agents
 
