@@ -59,8 +59,18 @@ main() {
         sudo npm install -g happy-coder
     fi
 
+    # Resolve GitHub token for authenticated API calls
+    if [ -z "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1; then
+        GITHUB_TOKEN=$(gh auth token 2>/dev/null || true)
+    fi
+
+    AUTH_HEADER=""
+    if [ -n "$GITHUB_TOKEN" ]; then
+        AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
+    fi
+
     # Fetch latest version
-    VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+    VERSION=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://api.github.com/repos/$REPO/releases/latest" \
         | grep '"tag_name"' | sed 's/.*"v//' | sed 's/".*//')
 
     if [ -z "$VERSION" ]; then
