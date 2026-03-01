@@ -1,5 +1,5 @@
 ---
-name: launch
+name: crew-launch
 description: >
   Interactively pick a workspace and worktree, launch a Happy Coder session,
   and optionally start dev servers with a reverse proxy so each worktree
@@ -13,7 +13,7 @@ All-in-one workspace launcher: Happy Coder session + dev servers.
 
 ## Instructions
 
-When the user invokes `/launch`, follow these steps:
+When the user invokes `/crew-launch`, follow these steps:
 
 ### 1. Discover workspaces
 

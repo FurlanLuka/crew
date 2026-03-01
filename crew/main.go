@@ -69,6 +69,10 @@ func main() {
 		cmdHappy()
 		return
 
+	case "launch":
+		cmdLaunch()
+		return
+
 	case "show":
 		cmdShow()
 		return
@@ -329,6 +333,21 @@ func cmdHappy() {
 	}
 
 	fmt.Printf("Started: %s\nVisible in Happy mobile app.\n", session)
+}
+
+func cmdLaunch() {
+	if len(os.Args) < 3 {
+		runTUI(workspace.NewView())
+		return
+	}
+
+	wsName := os.Args[2]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	runTUI(workspace.NewLaunchView(wsName))
 }
 
 func cmdDev() {

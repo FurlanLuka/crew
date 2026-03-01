@@ -22,6 +22,7 @@ func TestFindSubcommand(t *testing.T) {
 		{"ls", true},
 		{"help", true},
 		{"happy", true},
+		{"launch", true},
 		{"nonexistent", false},
 		{"", false},
 	}

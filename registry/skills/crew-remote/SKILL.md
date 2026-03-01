@@ -28,6 +28,7 @@ Reference card for managing crew workspaces, worktrees, and dev servers from a r
 | `crew dev restart <ws> [flags]` | Restart dev servers |
 | `crew start <ws> [flags]` | Generate agent prompt for a workspace |
 | `crew happy <ws> [flags]` | Launch Happy Coder session in tmux |
+| `crew launch [<workspace>]` | Open the launch view (TUI) |
 | `crew help [cmd] [subcmd]` | Show help for a command |
 | `crew help --json` | Full command tree as JSON |
 
@@ -128,11 +129,13 @@ crew dev restart <workspace> [--worktree=<name>] [--host=<ip>]
 ### Launch a session
 
 ```bash
+crew launch                                # open workspace picker (TUI)
+crew launch <workspace>                    # open launch view for a workspace (TUI)
 crew start <workspace> --worktree=<name>   # generate agent prompt
 crew happy <workspace> --worktree=<name>   # launch Happy Coder in tmux
 ```
 
-Both commands accept `--from=<branch>` to base a new worktree on a specific branch.
+Both `start` and `happy` accept `--from=<branch>` to base a new worktree on a specific branch.
 
 ## Output Formats
 

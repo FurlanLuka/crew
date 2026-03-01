@@ -102,6 +102,12 @@ var Root = CommandInfo{
 			},
 		},
 		{
+			Name:        "launch",
+			Description: "Open the launch view for a workspace",
+			Usage:       "crew launch [<workspace>]",
+			TUI:         true,
+		},
+		{
 			Name:        "dev",
 			Description: "Manage dev servers and reverse proxy",
 			Subcommands: []CommandInfo{
