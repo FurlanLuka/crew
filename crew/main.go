@@ -11,6 +11,7 @@ import (
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/config"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/dev"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/exec"
+	"github.com/FurlanLuka/homebrew-tap/crew/internal/help"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/notify"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/profile"
 	"github.com/FurlanLuka/homebrew-tap/crew/internal/project"
@@ -72,6 +73,10 @@ func main() {
 		cmdShow()
 		return
 
+	case "help":
+		help.Run(os.Args[2:])
+		return
+
 	case "":
 		runTUI(mainMenu())
 
@@ -80,7 +85,7 @@ func main() {
 		if workspace.Exists(cmd) {
 			runTUI(workspace.NewLaunchView(cmd))
 		} else {
-			fmt.Fprintf(os.Stderr, "Unknown command '%s'.\nUsage: crew [workspace|project|registry|profile|notify|kill|ls|start|dev|happy|show]\n", cmd)
+			fmt.Fprintf(os.Stderr, "Unknown command '%s'. Run 'crew help' for usage.\n", cmd)
 			os.Exit(1)
 		}
 	}
@@ -127,7 +132,7 @@ func runTUI(page app.Page) {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees]\n")
 		os.Exit(1)
 	}
 
@@ -136,8 +141,10 @@ func cmdLs() {
 		cmdLsProjects()
 	case "workspaces":
 		cmdLsWorkspaces()
+	case "worktrees":
+		cmdLsWorktrees()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -161,6 +168,28 @@ func cmdLsWorkspaces() {
 	}
 	for _, s := range summaries {
 		fmt.Printf("%s\t%d projects\t%d worktrees\n", s.Name, s.ProjectCount, s.WorktreeCount)
+	}
+}
+
+func cmdLsWorktrees() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew ls worktrees <workspace>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[3]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	wts, err := workspace.ListWorktrees(wsName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	for _, name := range wts {
+		fmt.Println(name)
 	}
 }
 
@@ -314,7 +343,7 @@ func cmdHappy() {
 
 func cmdDev() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev [setup|add|start|stop]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev [setup|add|show|start|stop|restart|status]\n")
 		os.Exit(1)
 	}
 
@@ -323,16 +352,20 @@ func cmdDev() {
 		cmdDevSetup()
 	case "add":
 		cmdDevAdd()
+	case "show":
+		cmdDevShow()
 	case "start":
 		cmdDevStart()
 	case "stop":
 		cmdDevStop()
 	case "restart":
 		cmdDevRestart()
+	case "status":
+		cmdDevStatus()
 	case "_proxy":
 		cmdDevProxy()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|start|stop|restart]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|show|start|stop|restart|status]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -490,6 +523,71 @@ func cmdDevAdd() {
 	}
 
 	fmt.Printf("Added dev server '%s' to %s/%s (port %d)\n", name, wsName, projName, port)
+}
+
+func cmdDevShow() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev show <workspace>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[3]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	ws, err := workspace.Load(wsName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, p := range ws.Projects {
+		for _, ds := range p.DevServers {
+			if ds.Dir != "" {
+				fmt.Printf("%s\t%s\t%d\t%s\t%s\n", p.Name, ds.Name, ds.Port, ds.Command, ds.Dir)
+			} else {
+				fmt.Printf("%s\t%s\t%d\t%s\n", p.Name, ds.Name, ds.Port, ds.Command)
+			}
+		}
+	}
+}
+
+func cmdDevStatus() {
+	wsFilter := ""
+	if len(os.Args) > 3 {
+		wsFilter = os.Args[3]
+	}
+
+	host := dev.DetectLANIP()
+
+	var allRoutes []dev.WsRoutes
+	var err error
+
+	if wsFilter != "" {
+		routes, loadErr := dev.LoadRoutes(wsFilter)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", loadErr)
+			os.Exit(1)
+		}
+		if len(routes) > 0 {
+			allRoutes = []dev.WsRoutes{{Workspace: wsFilter, Routes: routes}}
+		}
+	} else {
+		allRoutes, err = dev.ListAllRoutes()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	for _, wr := range allRoutes {
+		for _, r := range wr.Routes {
+			url := fmt.Sprintf("http://%s.%s.nip.io:%d", r.Subdomain, host, r.ExternalPort)
+			fmt.Printf("%s\t%s\t%d\t%s\n", wr.Workspace, r.Subdomain, r.ExternalPort, url)
+		}
+	}
 }
 
 func cmdDevStart() {
