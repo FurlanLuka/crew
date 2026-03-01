@@ -1,0 +1,94 @@
+package help
+
+import (
+	"testing"
+)
+
+func TestRootHasSubcommands(t *testing.T) {
+	if len(Root.Subcommands) == 0 {
+		t.Fatal("Root.Subcommands is empty")
+	}
+}
+
+func TestFindSubcommand(t *testing.T) {
+	tests := []struct {
+		name  string
+		found bool
+	}{
+		{"workspace", true},
+		{"project", true},
+		{"registry", true},
+		{"dev", true},
+		{"ls", true},
+		{"help", true},
+		{"happy", true},
+		{"nonexistent", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := findSubcommand(&Root, tt.name)
+			if tt.found && result == nil {
+				t.Errorf("findSubcommand(%q) = nil, want non-nil", tt.name)
+			}
+			if !tt.found && result != nil {
+				t.Errorf("findSubcommand(%q) = %+v, want nil", tt.name, result)
+			}
+		})
+	}
+}
+
+func TestDevSubcommands(t *testing.T) {
+	dev := findSubcommand(&Root, "dev")
+	if dev == nil {
+		t.Fatal("dev command not found")
+	}
+
+	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status"}
+	if len(dev.Subcommands) != len(expected) {
+		t.Fatalf("dev has %d subcommands, want %d", len(dev.Subcommands), len(expected))
+	}
+
+	for _, name := range expected {
+		if findSubcommand(dev, name) == nil {
+			t.Errorf("dev subcommand %q not found", name)
+		}
+	}
+}
+
+func TestLsSubcommands(t *testing.T) {
+	ls := findSubcommand(&Root, "ls")
+	if ls == nil {
+		t.Fatal("ls command not found")
+	}
+
+	expected := []string{"workspaces", "projects", "worktrees"}
+	for _, name := range expected {
+		if findSubcommand(ls, name) == nil {
+			t.Errorf("ls subcommand %q not found", name)
+		}
+	}
+}
+
+func TestHappyCommand(t *testing.T) {
+	happy := findSubcommand(&Root, "happy")
+	if happy == nil {
+		t.Fatal("happy command not found")
+	}
+
+	if len(happy.Flags) != 2 {
+		t.Fatalf("happy has %d flags, want 2", len(happy.Flags))
+	}
+
+	flagNames := make(map[string]bool)
+	for _, f := range happy.Flags {
+		flagNames[f.Name] = true
+	}
+	if !flagNames["--worktree=<name>"] {
+		t.Error("happy missing --worktree flag")
+	}
+	if !flagNames["--from=<branch>"] {
+		t.Error("happy missing --from flag")
+	}
+}
