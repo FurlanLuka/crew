@@ -20,7 +20,7 @@ main() {
             ;;
     esac
 
-    # Install dependencies
+    # Install system dependencies
     for dep in tmux git; do
         command -v "$dep" >/dev/null 2>&1 && continue
         echo "Installing $dep..."
@@ -35,6 +35,29 @@ main() {
             exit 1
         fi
     done
+
+    # Install Node.js if missing
+    if ! command -v node >/dev/null 2>&1; then
+        echo "Installing Node.js..."
+        if command -v apt-get >/dev/null 2>&1; then
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+            sudo apt-get install -y nodejs
+        elif command -v dnf >/dev/null 2>&1; then
+            curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+            sudo dnf install -y nodejs
+        elif command -v pacman >/dev/null 2>&1; then
+            sudo pacman -S --noconfirm nodejs npm
+        else
+            echo "Please install Node.js manually and re-run this script."
+            exit 1
+        fi
+    fi
+
+    # Install happy CLI if missing
+    if ! command -v happy >/dev/null 2>&1; then
+        echo "Installing happy CLI..."
+        sudo npm install -g happy-coder
+    fi
 
     # Fetch latest version
     VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
