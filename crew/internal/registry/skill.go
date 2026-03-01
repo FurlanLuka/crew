@@ -137,6 +137,25 @@ func UpdateSkill(name string) (bool, error) {
 	return err == nil, err
 }
 
+// InstallAllSkills installs all uninstalled skills from the registry.
+func InstallAllSkills() (installed []string, failed []string, err error) {
+	skills, err := ListSkills()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, s := range skills {
+		if s.Installed {
+			continue
+		}
+		if installErr := InstallSkill(s.Name); installErr != nil {
+			failed = append(failed, s.Name)
+		} else {
+			installed = append(installed, s.Name)
+		}
+	}
+	return installed, failed, nil
+}
+
 func isSkillInstalled(name string) bool {
 	_, err := os.Stat(filepath.Join(config.ClaudeConfigDir, "skills", name, "SKILL.md"))
 	return err == nil

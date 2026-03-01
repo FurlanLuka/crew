@@ -106,6 +106,25 @@ func UpdateAgent(name string) (bool, error) {
 	return err == nil, err
 }
 
+// InstallAllAgents installs all uninstalled agents from the registry.
+func InstallAllAgents() (installed []string, failed []string, err error) {
+	agents, err := ListAgents()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, a := range agents {
+		if a.Installed {
+			continue
+		}
+		if installErr := InstallAgent(a.Name); installErr != nil {
+			failed = append(failed, a.Name)
+		} else {
+			installed = append(installed, a.Name)
+		}
+	}
+	return installed, failed, nil
+}
+
 func isAgentInstalled(name string) bool {
 	_, err := os.Stat(filepath.Join(config.ClaudeConfigDir, "agents", name+".md"))
 	return err == nil

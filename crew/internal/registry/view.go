@@ -157,6 +157,9 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "U":
 		v.statusMsg = ""
 		return v, v.updateAll()
+	case msg.String() == "A":
+		v.statusMsg = ""
+		return v, v.installAll()
 	}
 	return v, nil
 }
@@ -254,7 +257,7 @@ func (v View) View() string {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("tab switch  i install  d remove  u update  U update all  esc back"))
+	b.WriteString(app.HelpStyle.Render("tab switch  i install  A install all  d remove  u update  U update all  esc back"))
 	b.WriteString("\n")
 
 	return b.String()
@@ -294,28 +297,13 @@ func (v View) renderItem(b *strings.Builder, item itemInfo, idx int) {
 
 func fetchRegistry() tea.Msg {
 	agents, agentErr := ListAgents()
-	skills, skillErr := ListSkills()
-
-	if agentErr != nil && skillErr != nil {
-		// Fallback to local
-		agents = make([]AgentInfo, 0)
-		for _, a := range InstalledAgents() {
-			agents = append(agents, a)
-		}
-		skills = make([]SkillInfo, 0)
-		for _, s := range InstalledSkills() {
-			skills = append(skills, s)
-		}
-	}
 	if agentErr != nil {
-		for _, a := range InstalledAgents() {
-			agents = append(agents, a)
-		}
+		agents = InstalledAgents()
 	}
+
+	skills, skillErr := ListSkills()
 	if skillErr != nil {
-		for _, s := range InstalledSkills() {
-			skills = append(skills, s)
-		}
+		skills = InstalledSkills()
 	}
 
 	return registryLoadedMsg{agents, skills}
@@ -384,6 +372,24 @@ func (v View) updateAll() tea.Cmd {
 		}
 
 		return updateDoneMsg{results}
+	}
+}
+
+func (v View) installAll() tea.Cmd {
+	return func() tea.Msg {
+		agents, _ := ListAgents()
+		for _, a := range agents {
+			if !a.Installed {
+				InstallAgent(a.Name)
+			}
+		}
+		skills, _ := ListSkills()
+		for _, s := range skills {
+			if !s.Installed {
+				InstallSkill(s.Name)
+			}
+		}
+		return installDoneMsg{"all agents and skills"}
 	}
 }
 

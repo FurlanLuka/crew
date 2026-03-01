@@ -42,6 +42,16 @@ var Root = CommandInfo{
 			Name:        "registry",
 			Description: "Install and manage agents & skills",
 			TUI:         true,
+			Subcommands: []CommandInfo{
+				{
+					Name:        "install",
+					Description: "Install agents and skills from registry",
+					Usage:       "crew registry install [<name> | --all]",
+					Flags: []FlagInfo{
+						{Name: "--all", Description: "Install all available agents and skills"},
+					},
+				},
+			},
 		},
 		{
 			Name:        "profile",

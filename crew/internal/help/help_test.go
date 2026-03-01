@@ -72,6 +72,30 @@ func TestLsSubcommands(t *testing.T) {
 	}
 }
 
+func TestRegistrySubcommands(t *testing.T) {
+	reg := findSubcommand(&Root, "registry")
+	if reg == nil {
+		t.Fatal("registry command not found")
+	}
+
+	install := findSubcommand(reg, "install")
+	if install == nil {
+		t.Fatal("registry install subcommand not found")
+	}
+
+	if install.Usage == "" {
+		t.Error("registry install missing usage")
+	}
+
+	if len(install.Flags) != 1 {
+		t.Fatalf("registry install has %d flags, want 1", len(install.Flags))
+	}
+
+	if install.Flags[0].Name != "--all" {
+		t.Errorf("registry install flag = %q, want --all", install.Flags[0].Name)
+	}
+}
+
 func TestHappyCommand(t *testing.T) {
 	happy := findSubcommand(&Root, "happy")
 	if happy == nil {
