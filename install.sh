@@ -87,6 +87,17 @@ main() {
     rm -rf "$TMP"
 
     mkdir -p "$HOME/.crew/workspaces"
+
+    # Start happy daemon if authenticated
+    if command -v happy >/dev/null 2>&1; then
+        if happy auth status 2>/dev/null | grep -q "Authenticated"; then
+            echo "Starting happy daemon..."
+            happy daemon start 2>/dev/null || true
+        else
+            echo "Run 'happy auth login' to authenticate, then 'happy daemon start'."
+        fi
+    fi
+
     echo "crew v${VERSION} installed successfully."
     echo "Run: crew help"
 }
