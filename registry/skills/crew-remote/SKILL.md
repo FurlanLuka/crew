@@ -29,6 +29,8 @@ Reference card for managing crew workspaces, worktrees, and dev servers from a r
 | `crew start <ws> [flags]` | Generate agent prompt for a workspace |
 | `crew happy <ws> [flags]` | Launch Happy Coder session in tmux |
 | `crew launch [<workspace>]` | Open the launch view (TUI) |
+| `crew plans start` | Start the plan viewer server |
+| `crew plans stop` | Stop the plan viewer server |
 | `crew help [cmd] [subcmd]` | Show help for a command |
 | `crew help --json` | Full command tree as JSON |
 
@@ -90,6 +92,19 @@ To find the URL for a specific worktree:
 crew dev status <workspace>
 ```
 Then look for the matching worktree name in the output.
+
+## Plan Viewer
+
+Built-in web dashboard for browsing Claude plan files (`CLAUDE_CONFIG_DIR/plans/*.md`).
+
+```bash
+crew plans start   # start the plan viewer (runs in tmux session crew-plans)
+crew plans stop    # stop the plan viewer
+```
+
+URL: `http://plans.<lan-ip>.nip.io:3080` (port 3080 by default, standalone — not proxied through the dev proxy).
+
+The plan viewer is a built-in Go HTTP server with an embedded SPA. No external dependencies required.
 
 ## Managing
 
