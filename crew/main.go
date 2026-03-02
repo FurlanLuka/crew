@@ -13,6 +13,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/notify"
+	"github.com/FurlanLuka/crew/crew/internal/plans"
 	"github.com/FurlanLuka/crew/crew/internal/profile"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/registry"
@@ -53,6 +54,9 @@ func main() {
 
 	case "notify":
 		runTUI(notify.NewView())
+
+	case "plans":
+		cmdPlans()
 
 	case "ls":
 		cmdLs()
@@ -122,6 +126,11 @@ func mainMenu() app.Menu {
 			Label:       "Notifications",
 			Description: "Push notification setup",
 			Page:        func() app.Page { return notify.NewView() },
+		},
+		{
+			Label:       "Plans",
+			Description: "Claude plan viewer dashboard",
+			Page:        func() app.Page { return plans.NewView() },
 		},
 	})
 }
@@ -983,6 +992,33 @@ func detectDevCommand(projectPath string) string {
 		return "npm start"
 	}
 	return ""
+}
+
+func cmdPlans() {
+	if len(os.Args) < 3 {
+		runTUI(plans.NewView())
+		return
+	}
+
+	switch os.Args[2] {
+	case "start":
+		cfg := plans.LoadConfig()
+		if !cfg.Enabled {
+			fmt.Fprintf(os.Stderr, "Error: plan viewer not enabled — run: crew plans (TUI) and press 'e'\n")
+			os.Exit(1)
+		}
+		if err := plans.Start(cfg.Port); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Plan viewer started\n  %s\n", plans.URL())
+	case "stop":
+		plans.Stop()
+		fmt.Println("Plan viewer stopped")
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown plans command '%s'.\nUsage: crew plans [start|stop]\n", os.Args[2])
+		os.Exit(1)
+	}
 }
 
 func cmdKill() {

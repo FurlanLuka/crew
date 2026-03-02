@@ -23,6 +23,7 @@ func TestFindSubcommand(t *testing.T) {
 		{"help", true},
 		{"happy", true},
 		{"launch", true},
+		{"plans", true},
 		{"nonexistent", false},
 		{"", false},
 	}
@@ -93,6 +94,20 @@ func TestRegistrySubcommands(t *testing.T) {
 
 	if install.Flags[0].Name != "--all" {
 		t.Errorf("registry install flag = %q, want --all", install.Flags[0].Name)
+	}
+}
+
+func TestPlansSubcommands(t *testing.T) {
+	plans := findSubcommand(&Root, "plans")
+	if plans == nil {
+		t.Fatal("plans command not found")
+	}
+
+	expected := []string{"start", "stop"}
+	for _, name := range expected {
+		if findSubcommand(plans, name) == nil {
+			t.Errorf("plans subcommand %q not found", name)
+		}
 	}
 }
 

@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -441,8 +440,7 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 		switch mode {
 		case launchModeEditorAgents:
 			if editor != "" {
-				editorRoot := filepath.Dir(projectPath)
-				return launchWithEditor(ws, editor, promptFile, editorRoot)
+				return launchWithEditor(ws, editor, promptFile, projectPath)
 			}
 			return launchWithTmux(ws, promptFile, projectPath)
 		case launchModeAgentsOnly:
@@ -495,7 +493,11 @@ func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
 		return errMsg{err}
 	}
 
-	claudeCmd := fmt.Sprintf(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude "$(cat '%s')"`, promptFile)
+	claudeCmd := "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude"
+	for _, p := range ws.Projects[1:] {
+		claudeCmd += fmt.Sprintf(" --add-dir %s", p.Path)
+	}
+	claudeCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
 	exec.TmuxSendKeys(session, claudeCmd)
 
 	exec.AttachTmuxSession(session)

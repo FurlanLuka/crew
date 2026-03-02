@@ -128,6 +128,66 @@ func TestGenerateCodeWorkspace_WithAgents(t *testing.T) {
 	}
 }
 
+func TestGenerateCodeWorkspace_AddDir(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "adddir.code-workspace")
+	projects := []WorkspaceProject{
+		{Name: "api", Path: "/tmp/api"},
+		{Name: "web", Path: "/tmp/web"},
+	}
+
+	if err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "", true); err != nil {
+		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var ws map[string]interface{}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+	agentTask := taskList[0].(map[string]interface{})
+	cmd := agentTask["command"].(string)
+
+	if !strings.Contains(cmd, "--add-dir /tmp/web") {
+		t.Errorf("agent command should contain '--add-dir /tmp/web', got: %s", cmd)
+	}
+	if strings.Contains(cmd, "--add-dir /tmp/api") {
+		t.Error("agent command should NOT contain '--add-dir /tmp/api' (lead project is CWD)")
+	}
+}
+
+func TestGenerateCodeWorkspace_AddDir_SingleProject(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "single.code-workspace")
+	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
+
+	if err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "", true); err != nil {
+		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var ws map[string]interface{}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+	agentTask := taskList[0].(map[string]interface{})
+	cmd := agentTask["command"].(string)
+
+	if strings.Contains(cmd, "--add-dir") {
+		t.Errorf("single-project workspace should not contain --add-dir, got: %s", cmd)
+	}
+}
+
 func TestGenerateCodeWorkspace_NoAgents(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "no-agents.code-workspace")
 	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}

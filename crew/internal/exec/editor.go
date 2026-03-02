@@ -76,6 +76,9 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, promptF
 
 	if includeAgents && promptFile != "" {
 		claudeCmd := "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude"
+		for _, p := range projects[1:] {
+			claudeCmd += " --add-dir " + p.Path
+		}
 		claudeCmd += ` --teammate-mode in-process "$(cat ` + promptFile + `)"`
 		if claudeConfigDir != "" {
 			claudeCmd = "CLAUDE_CONFIG_DIR='" + claudeConfigDir + "' " + claudeCmd

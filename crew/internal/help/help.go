@@ -64,6 +64,15 @@ var Root = CommandInfo{
 			TUI:         true,
 		},
 		{
+			Name:        "plans",
+			Description: "Claude plan viewer dashboard",
+			TUI:         true,
+			Subcommands: []CommandInfo{
+				{Name: "start", Description: "Start the plan viewer"},
+				{Name: "stop", Description: "Stop the plan viewer"},
+			},
+		},
+		{
 			Name:        "ls",
 			Description: "List workspaces, projects, or worktrees",
 			Subcommands: []CommandInfo{
