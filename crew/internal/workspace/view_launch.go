@@ -505,11 +505,10 @@ func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
 }
 
 func launchWithHappy(ws *Workspace) tea.Msg {
-	session, err := StartHappySession(ws)
+	_, err := StartHappySession(ws)
 	if err != nil {
 		return errMsg{err}
 	}
-	exec.AttachTmuxSession(session)
 	return launchExecutedMsg{}
 }
 
