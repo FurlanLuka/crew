@@ -63,7 +63,7 @@ func AttachTmuxSession(session string) error {
 	}
 	args = append(args, "attach", "-t", session)
 
-	return syscall.Exec(tmuxPath, args, os.Environ())
+	return syscall.Exec(tmuxPath, args, envWithoutTMUX())
 }
 
 // ListCrewSessions returns all tmux sessions starting with "crew-".
