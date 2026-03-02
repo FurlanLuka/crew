@@ -430,14 +430,7 @@ func (v WorktreeView) startWorktreeCreation(name, fromBranch string) tea.Cmd {
 func (v WorktreeView) removeWorktree(name string) tea.Cmd {
 	base := v.base
 	return func() tea.Msg {
-		wtWs := WorktreeWorkspaceName(base, name)
-
-		// Stop dev servers for this worktree
-		dev.StopWorktree(base, name)
-
-		// Kill tmux session
-		session := "crew-" + wtWs
-		exec.KillTmuxSession(session)
+		StopSession(base, name)
 
 		// Remove git worktrees using base project paths
 		ws, err := Load(base)
@@ -448,7 +441,7 @@ func (v WorktreeView) removeWorktree(name string) tea.Cmd {
 			}
 		}
 
-		Remove(wtWs)
+		Remove(WorktreeWorkspaceName(base, name))
 		return worktreeRemovedMsg{name}
 	}
 }

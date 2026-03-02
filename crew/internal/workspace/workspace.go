@@ -349,6 +349,20 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 	return text, nil
 }
 
+// StopSession kills the tmux session, stops dev servers, and removes the
+// prompt file for a workspace or worktree session.
+func StopSession(wsName, worktreeName string) {
+	loadName := wsName
+	if worktreeName != "" {
+		loadName = WorktreeWorkspaceName(wsName, worktreeName)
+	}
+	exec.KillTmuxSession("crew-" + loadName)
+	if worktreeName != "" {
+		dev.StopWorktree(wsName, worktreeName)
+	}
+	os.Remove(PromptFilePath(loadName))
+}
+
 // BuildDevProjects converts workspace projects into dev.DevProject slice.
 // baseWs provides the dev server config, srcProjects provides the paths
 // (which may be worktree paths).

@@ -193,6 +193,22 @@ var Root = CommandInfo{
 			},
 		},
 		{
+			Name:        "stop",
+			Description: "Stop a workspace or worktree session",
+			Usage:       "crew stop <workspace> [--worktree=<name>]",
+			Flags: []FlagInfo{
+				{Name: "--worktree=<name>", Description: "Stop a specific worktree session"},
+			},
+		},
+		{
+			Name:        "rm",
+			Description: "Remove a worktree",
+			Usage:       "crew rm <workspace> --worktree=<name>",
+			Flags: []FlagInfo{
+				{Name: "--worktree=<name>", Description: "Worktree to remove", Required: true},
+			},
+		},
+		{
 			Name:        "kill",
 			Description: "Kill all crew sessions",
 			Usage:       "crew kill",

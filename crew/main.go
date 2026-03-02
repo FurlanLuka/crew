@@ -78,6 +78,14 @@ func main() {
 		cmdLaunch()
 		return
 
+	case "stop":
+		cmdStop()
+		return
+
+	case "rm":
+		cmdRm()
+		return
+
 	case "show":
 		cmdShow()
 		return
@@ -1030,6 +1038,109 @@ func cmdPlansServe() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func cmdStop() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew stop <workspace> [--worktree=<name>]\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[2]
+	worktreeName := ""
+
+	for _, arg := range os.Args[3:] {
+		switch {
+		case strings.HasPrefix(arg, "--worktree="):
+			worktreeName = strings.TrimPrefix(arg, "--worktree=")
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew stop <workspace> [--worktree=<name>]\n", arg)
+			os.Exit(1)
+		}
+	}
+
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	loadName := wsName
+	if worktreeName != "" {
+		loadName = workspace.WorktreeWorkspaceName(wsName, worktreeName)
+	}
+
+	workspace.StopSession(wsName, worktreeName)
+
+	// Remove .code-workspace and close editor window
+	wsFile := workspace.CodeWorkspaceFilePath(loadName)
+	if _, err := os.Stat(wsFile); err == nil {
+		editor := exec.DetectEditor()
+		exec.CloseEditorWindow(exec.EditorProcessName(editor), loadName)
+		os.Remove(wsFile)
+	}
+
+	label := wsName
+	if worktreeName != "" {
+		label = wsName + " (worktree: " + worktreeName + ")"
+	}
+	fmt.Printf("Stopped session: %s\n", label)
+}
+
+func cmdRm() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew rm <workspace> --worktree=<name>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[2]
+	worktreeName := ""
+
+	for _, arg := range os.Args[3:] {
+		switch {
+		case strings.HasPrefix(arg, "--worktree="):
+			worktreeName = strings.TrimPrefix(arg, "--worktree=")
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew rm <workspace> --worktree=<name>\n", arg)
+			os.Exit(1)
+		}
+	}
+
+	if worktreeName == "" {
+		fmt.Fprintf(os.Stderr, "Error: --worktree flag is required.\nUsage: crew rm <workspace> --worktree=<name>\n")
+		os.Exit(1)
+	}
+
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	wtWsName := workspace.WorktreeWorkspaceName(wsName, worktreeName)
+
+	// Stop session (tmux, dev servers, prompt file)
+	workspace.StopSession(wsName, worktreeName)
+
+	// Remove .code-workspace and close editor window
+	wsFile := workspace.CodeWorkspaceFilePath(wtWsName)
+	if _, err := os.Stat(wsFile); err == nil {
+		editor := exec.DetectEditor()
+		exec.CloseEditorWindow(exec.EditorProcessName(editor), wtWsName)
+		os.Remove(wsFile)
+	}
+
+	// Remove git worktrees using base project paths
+	ws, err := workspace.Load(wsName)
+	if err == nil {
+		for _, p := range ws.Projects {
+			wtDir := p.Path + "/.claude/worktrees/" + worktreeName
+			exec.RemoveGitWorktree(p.Path, wtDir)
+		}
+	}
+
+	// Delete workspace JSON
+	workspace.Remove(wtWsName)
+
+	fmt.Printf("Removed worktree: %s/%s\n", wsName, worktreeName)
 }
 
 func cmdKill() {
