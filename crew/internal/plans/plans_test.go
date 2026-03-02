@@ -89,11 +89,6 @@ func TestSaveConfig_CreatesDir(t *testing.T) {
 	}
 }
 
-func TestIsInstalled(t *testing.T) {
-	// Just verify it returns without panicking
-	_ = IsInstalled()
-}
-
 func TestIsRunning(t *testing.T) {
 	// No tmux session named "crew-plans" should exist in test
 	if IsRunning() {

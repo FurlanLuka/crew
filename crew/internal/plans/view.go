@@ -13,12 +13,9 @@ import (
 // ── Messages ──
 
 type statusLoadedMsg struct {
-	enabled bool
 	running bool
 	url     string
 }
-type enabledMsg struct{}
-type disabledMsg struct{}
 type startedMsg struct{ url string }
 type stoppedMsg struct{}
 type errMsg struct{ err error }
@@ -26,7 +23,6 @@ type errMsg struct{ err error }
 // ── Model ──
 
 type View struct {
-	enabled   bool
 	running   bool
 	url       string
 	loading   bool
@@ -37,8 +33,6 @@ type View struct {
 }
 
 func NewView() View {
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
 	return View{}
 }
 
@@ -54,23 +48,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case statusLoadedMsg:
-		v.enabled = msg.enabled
 		v.running = msg.running
 		v.url = msg.url
-		return v, nil
-
-	case enabledMsg:
-		v.loading = false
-		v.enabled = true
-		v.statusMsg = "Plan viewer enabled"
-		return v, nil
-
-	case disabledMsg:
-		v.loading = false
-		v.enabled = false
-		v.running = false
-		v.url = ""
-		v.statusMsg = "Plan viewer disabled"
 		return v, nil
 
 	case startedMsg:
@@ -83,6 +62,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stoppedMsg:
 		v.loading = false
 		v.running = false
+		v.url = ""
 		v.statusMsg = "Plan viewer stopped"
 		return v, nil
 
@@ -116,28 +96,8 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, app.Keys.Back):
 		return v, func() tea.Msg { return app.PopPageMsg{} }
 
-	case msg.String() == "e":
-		if !v.enabled {
-			v.loading = true
-			v.actionMsg = "Installing claude-plan-viewer..."
-			v.statusMsg = ""
-			v.err = nil
-			v.spinner = spinner.New()
-			v.spinner.Spinner = spinner.Dot
-			return v, tea.Batch(v.spinner.Tick, enablePlans)
-		}
-		return v, nil
-
-	case msg.String() == "d":
-		if v.enabled {
-			v.statusMsg = ""
-			v.err = nil
-			return v, disablePlans
-		}
-		return v, nil
-
 	case msg.String() == "s":
-		if v.enabled && !v.running {
+		if !v.running {
 			v.loading = true
 			v.actionMsg = "Starting plan viewer..."
 			v.statusMsg = ""
@@ -172,14 +132,6 @@ func (v View) View() string {
 		return b.String()
 	}
 
-	status := app.Error.Render("disabled")
-	if v.enabled {
-		status = app.Success.Render("enabled")
-	}
-	b.WriteString("  Status:  ")
-	b.WriteString(status)
-	b.WriteString("\n")
-
 	server := app.Error.Render("stopped")
 	if v.running {
 		server = app.Success.Render("running")
@@ -208,7 +160,7 @@ func (v View) View() string {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("e enable  d disable  s start  x stop  esc back"))
+	b.WriteString(app.HelpStyle.Render("s start  x stop  esc back"))
 	b.WriteString("\n")
 
 	return b.String()
@@ -217,43 +169,15 @@ func (v View) View() string {
 // ── Commands ──
 
 func loadStatus() tea.Msg {
-	cfg := LoadConfig()
 	running := IsRunning()
 	url := ""
 	if running {
 		url = URL()
 	}
 	return statusLoadedMsg{
-		enabled: cfg.Enabled,
 		running: running,
 		url:     url,
 	}
-}
-
-func enablePlans() tea.Msg {
-	if !IsInstalled() {
-		if err := Install(); err != nil {
-			return errMsg{err}
-		}
-	}
-	cfg := LoadConfig()
-	cfg.Enabled = true
-	if err := SaveConfig(cfg); err != nil {
-		return errMsg{err}
-	}
-	return enabledMsg{}
-}
-
-func disablePlans() tea.Msg {
-	if IsRunning() {
-		Stop()
-	}
-	cfg := LoadConfig()
-	cfg.Enabled = false
-	if err := SaveConfig(cfg); err != nil {
-		return errMsg{err}
-	}
-	return disabledMsg{}
 }
 
 func startPlans() tea.Msg {

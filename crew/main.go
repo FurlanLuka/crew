@@ -1003,10 +1003,6 @@ func cmdPlans() {
 	switch os.Args[2] {
 	case "start":
 		cfg := plans.LoadConfig()
-		if !cfg.Enabled {
-			fmt.Fprintf(os.Stderr, "Error: plan viewer not enabled — run: crew plans (TUI) and press 'e'\n")
-			os.Exit(1)
-		}
 		if err := plans.Start(cfg.Port); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -1015,8 +1011,23 @@ func cmdPlans() {
 	case "stop":
 		plans.Stop()
 		fmt.Println("Plan viewer stopped")
+	case "_serve":
+		cmdPlansServe()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown plans command '%s'.\nUsage: crew plans [start|stop]\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func cmdPlansServe() {
+	port := 3080
+	for _, arg := range os.Args[3:] {
+		if strings.HasPrefix(arg, "--port=") {
+			fmt.Sscanf(strings.TrimPrefix(arg, "--port="), "%d", &port)
+		}
+	}
+	if err := plans.RunServer(port); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

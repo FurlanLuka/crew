@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Plans</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:             #0d1117;
+  --bg-surface:     #161b22;
+  --bg-elevated:    #1c2129;
+  --bg-overlay:     #21262d;
+  --border:         #30363d;
+  --border-light:   #21262d;
+  --text:           #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #6e7681;
+  --accent:         #58a6ff;
+  --accent-dim:     #1f6feb;
+  --accent-subtle:  rgba(56,139,253,0.1);
+  --success:        #3fb950;
+  --warning:        #d29922;
+  --danger:         #f85149;
+  --radius:         8px;
+  --radius-lg:      12px;
+  --shadow:         0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-lg:      0 4px 12px rgba(0,0,0,0.4);
+  --transition:     150ms ease;
+  --header-h:       56px;
+  --sidebar-w:      340px;
+  --font-sans:      -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono:      "SF Mono", "Fira Code", "Fira Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── App Shell ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: var(--header-h);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.header-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.header-back:active { background: var(--accent-subtle); }
+
+.header-back svg {
+  width: 20px;
+  height: 20px;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.header-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.header-spacer { flex: 1; }
+
+.header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: all var(--transition);
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.header-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.header-btn:active { background: var(--bg-overlay); }
+.header-btn.spinning svg { animation: spin 1s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.header-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Main Layout ── */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sidebar-controls {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 34px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.search-input::placeholder { color: var(--text-muted); }
+.search-input:focus { border-color: var(--accent); }
+
+.sort-select {
+  height: 40px;
+  padding: 0 28px 0 10px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e7681' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sort-select:focus { border-color: var(--accent); }
+
+/* ── Plan List ── */
+.plan-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.plan-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background var(--transition);
+  -webkit-tap-highlight-color: transparent;
+  min-height: 48px;
+}
+
+.plan-item:hover { background: var(--bg-surface); }
+.plan-item:active { background: var(--bg-elevated); }
+.plan-item.active { background: var(--accent-subtle); border-left: 3px solid var(--accent); padding-left: 13px; }
+
+.plan-item-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.plan-item-filename {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-item-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Detail Panel ── */
+.detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.detail-empty svg {
+  width: 48px;
+  height: 48px;
+  opacity: 0.4;
+}
+
+.detail-empty p {
+  font-size: 15px;
+}
+
+/* ── Detail Header ── */
+.detail-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.detail-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.detail-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-meta-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.detail-filename {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ── Detail Body ── */
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px;
+}
+
+/* ── Loading ── */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── Empty Search ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 8px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-state p {
+  font-size: 14px;
+}
+
+/* ── Markdown ── */
+.markdown {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown > *:first-child { margin-top: 0; }
+.markdown > *:last-child { margin-bottom: 0; }
+
+.markdown h1, .markdown h2, .markdown h3,
+.markdown h4, .markdown h5, .markdown h6 {
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.markdown h1 { font-size: 1.6em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.markdown h2 { font-size: 1.35em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.markdown h3 { font-size: 1.15em; }
+.markdown h4 { font-size: 1em; }
+
+.markdown p { margin-bottom: 1em; }
+
+.markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.markdown a:hover { text-decoration: underline; }
+
+.markdown strong { font-weight: 600; color: var(--text); }
+.markdown em { font-style: italic; }
+
+.markdown ul, .markdown ol {
+  padding-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+.markdown li { margin-bottom: 0.35em; }
+.markdown li > ul, .markdown li > ol { margin-top: 0.35em; margin-bottom: 0; }
+
+.markdown li input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--accent);
+}
+
+.markdown blockquote {
+  border-left: 3px solid var(--accent-dim);
+  padding: 0.5em 1em;
+  margin: 0 0 1em 0;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.markdown blockquote p:last-child { margin-bottom: 0; }
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.markdown pre {
+  position: relative;
+  margin-bottom: 1em;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.markdown pre code {
+  display: block;
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  -webkit-overflow-scrolling: touch;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.markdown thead { background: var(--bg-surface); }
+.markdown th, .markdown td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.markdown th { font-weight: 600; color: var(--text); }
+.markdown td { color: var(--text-secondary); }
+
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+.markdown img {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+
+/* ── Code Block Copy Button ── */
+.code-block-wrap {
+  position: relative;
+}
+
+.code-lang {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.code-block-wrap pre code {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.copy-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.copy-btn:active { background: var(--bg-overlay); }
+.copy-btn.copied { color: var(--success); border-color: var(--success); }
+
+.copy-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* No language header -- just float the button */
+.code-block-wrap:not(.has-lang) .copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.code-block-wrap:not(.has-lang):hover .copy-btn { opacity: 1; }
+
+/* ── Desktop: side-by-side ── */
+@media (min-width: 768px) {
+  .sidebar {
+    width: var(--sidebar-w);
+    border-right: 1px solid var(--border);
+  }
+
+  .detail {
+    display: flex;
+  }
+
+  .header-back { display: none !important; }
+  .header-title-detail { display: none; }
+}
+
+/* ── Mobile ── */
+@media (max-width: 767px) {
+  .main {
+    position: relative;
+  }
+
+  .sidebar {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    transition: transform 0.25s ease;
+  }
+
+  .detail {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+  }
+
+  /* When a plan is selected */
+  .app.detail-open .sidebar {
+    transform: translateX(-30%);
+  }
+
+  .app.detail-open .detail {
+    transform: translateX(0);
+  }
+
+  .app.detail-open .header-back { display: flex; }
+  .app.detail-open .header-title-list { display: none; }
+
+  .detail-body { padding: 16px; }
+  .detail-header { padding: 14px 16px; }
+  .detail-title { font-size: 18px; }
+
+  .markdown { font-size: 15px; }
+  .markdown pre code { font-size: 12.5px; padding: 14px; }
+
+  .code-block-wrap:not(.has-lang) .copy-btn { opacity: 1; }
+}
+
+/* ── Focus visible for keyboard nav ── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+input:focus:not(:focus-visible) {
+  outline: none;
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <!-- Header -->
+  <header class="header">
+    <button class="header-back" id="backBtn" onclick="goBack()" aria-label="Back to list">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <span class="header-title header-title-list">Plans</span>
+    <span class="header-title header-title-detail" id="headerDetailTitle" style="display:none;"></span>
+    <span class="header-count" id="planCount">0</span>
+    <span class="header-spacer"></span>
+    <button class="header-btn" id="refreshBtn" onclick="refresh()" aria-label="Refresh plans">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21.5 2v6h-6"/><path d="M2.5 22v-6h6"/>
+        <path d="M2.76 8.5a10 10 0 0 1 17.49-1L21.5 8"/>
+        <path d="M21.24 15.5a10 10 0 0 1-17.49 1L2.5 16"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Sidebar / List -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-controls">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input class="search-input" id="searchInput" type="text" placeholder="Search plans..." autocomplete="off" spellcheck="false">
+        </div>
+        <select class="sort-select" id="sortSelect" aria-label="Sort plans">
+          <option value="modified-desc">Newest</option>
+          <option value="modified-asc">Oldest</option>
+          <option value="title-asc">A - Z</option>
+          <option value="title-desc">Z - A</option>
+          <option value="size-desc">Largest</option>
+          <option value="size-asc">Smallest</option>
+        </select>
+      </div>
+      <div class="plan-list" id="planList">
+        <div class="loading"><div class="spinner"></div><span>Loading plans...</span></div>
+      </div>
+    </div>
+
+    <!-- Detail -->
+    <div class="detail" id="detail">
+      <div class="detail-empty" id="detailEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>
+        </svg>
+        <p>Select a plan to view</p>
+      </div>
+      <div id="detailContent" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+        <div class="detail-header" id="detailHeader">
+          <div class="detail-title" id="detailTitle"></div>
+          <div class="detail-meta" id="detailMeta"></div>
+        </div>
+        <div class="detail-body">
+          <div class="markdown" id="detailMarkdown"></div>
+        </div>
+      </div>
+      <div class="loading" id="detailLoading" style="display:none;">
+        <div class="spinner"></div><span>Loading plan...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Dependencies -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<script>
+// ── State ──
+let plans = [];
+let selected = null;
+let search = '';
+let sortBy = 'modified';
+let sortDir = 'desc';
+let isMobile = window.innerWidth < 768;
+
+// ── Elements ──
+const $ = (id) => document.getElementById(id);
+const app = $('app');
+const planListEl = $('planList');
+const searchInput = $('searchInput');
+const sortSelect = $('sortSelect');
+const detailEmpty = $('detailEmpty');
+const detailContent = $('detailContent');
+const detailLoading = $('detailLoading');
+const detailTitle = $('detailTitle');
+const detailMeta = $('detailMeta');
+const detailMarkdown = $('detailMarkdown');
+const planCountEl = $('planCount');
+const refreshBtn = $('refreshBtn');
+const headerDetailTitle = $('headerDetailTitle');
+
+// ── Configure marked ──
+marked.setOptions({
+  gfm: true,
+  breaks: false,
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try { return hljs.highlight(code, { language: lang }).value; }
+      catch (e) {}
+    }
+    try { return hljs.highlightAuto(code).value; }
+    catch (e) {}
+    return code;
+  }
+});
+
+// ── Helpers ──
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function timeAgo(dateStr) {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+
+  if (diff < 60) return 'just now';
+  if (diff < 3600) { const m = Math.floor(diff / 60); return m + (m === 1 ? ' min ago' : ' mins ago'); }
+  if (diff < 86400) { const h = Math.floor(diff / 3600); return h + (h === 1 ? ' hour ago' : ' hours ago'); }
+  if (diff < 604800) { const d = Math.floor(diff / 86400); return d + (d === 1 ? ' day ago' : ' days ago'); }
+  if (diff < 2592000) { const w = Math.floor(diff / 604800); return w + (w === 1 ? ' week ago' : ' weeks ago'); }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ── Fetch Plans ──
+async function fetchPlans() {
+  planListEl.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading plans...</span></div>';
+  try {
+    const res = await fetch('/api/plans');
+    if (!res.ok) throw new Error('Failed to fetch plans');
+    plans = await res.json();
+    if (!Array.isArray(plans)) plans = [];
+    renderList();
+  } catch (err) {
+    plans = [];
+    planListEl.innerHTML = '<div class="empty-state"><p>Failed to load plans</p><p style="font-size:12px;color:var(--text-muted);">' + escapeHtml(err.message) + '</p></div>';
+    planCountEl.textContent = '0';
+  }
+}
+
+// ── Filter & Sort ──
+function getFilteredPlans() {
+  let filtered = plans;
+
+  if (search.trim()) {
+    const q = search.toLowerCase().trim();
+    filtered = filtered.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.filename.toLowerCase().includes(q)
+    );
+  }
+
+  filtered.sort((a, b) => {
+    let cmp = 0;
+    if (sortBy === 'modified') {
+      cmp = new Date(a.modified) - new Date(b.modified);
+    } else if (sortBy === 'title') {
+      cmp = a.title.localeCompare(b.title);
+    } else if (sortBy === 'size') {
+      cmp = a.size - b.size;
+    }
+    return sortDir === 'desc' ? -cmp : cmp;
+  });
+
+  return filtered;
+}
+
+// ── Render List ──
+function renderList() {
+  const filtered = getFilteredPlans();
+  planCountEl.textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    if (search.trim()) {
+      planListEl.innerHTML = '<div class="empty-state"><p>No plans match "' + escapeHtml(search) + '"</p></div>';
+    } else {
+      planListEl.innerHTML = '<div class="empty-state"><p>No plans found</p></div>';
+    }
+    return;
+  }
+
+  let html = '';
+  for (const plan of filtered) {
+    const isActive = selected === plan.filename;
+    html += '<div class="plan-item' + (isActive ? ' active' : '') + '" data-filename="' + escapeHtml(plan.filename) + '" onclick="selectPlan(\'' + escapeHtml(plan.filename).replace(/'/g, "\\'") + '\')" role="button" tabindex="0">';
+    html += '<div class="plan-item-title">' + escapeHtml(plan.title) + '</div>';
+    html += '<div class="plan-item-filename">' + escapeHtml(plan.filename) + '</div>';
+    html += '<div class="plan-item-meta">';
+    html += '<span>' + formatSize(plan.size) + '</span>';
+    html += '<span>' + timeAgo(plan.modified) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  }
+  planListEl.innerHTML = html;
+
+  // Keyboard support for list items
+  planListEl.querySelectorAll('.plan-item').forEach(item => {
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        item.click();
+      }
+    });
+  });
+}
+
+// ── Select Plan ──
+async function selectPlan(filename) {
+  selected = filename;
+  renderList();
+
+  // Show loading
+  detailEmpty.style.display = 'none';
+  detailContent.style.display = 'none';
+  detailLoading.style.display = 'flex';
+
+  // Mobile: slide to detail
+  app.classList.add('detail-open');
+
+  // Update header for mobile
+  const plan = plans.find(p => p.filename === filename);
+  if (plan) {
+    headerDetailTitle.textContent = plan.title;
+    if (isMobile) {
+      headerDetailTitle.style.display = '';
+    }
+  }
+
+  // Push history state for back button
+  if (isMobile) {
+    history.pushState({ view: 'detail', filename }, '', '#' + filename);
+  }
+
+  try {
+    const res = await fetch('/api/plans/' + encodeURIComponent(filename));
+    if (!res.ok) throw new Error('Failed to load plan');
+    const markdown = await res.text();
+
+    // Render
+    const plan = plans.find(p => p.filename === filename);
+    if (plan) {
+      detailTitle.textContent = plan.title;
+      detailMeta.innerHTML =
+        '<span class="detail-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="detail-filename">' + escapeHtml(plan.filename) + '</span></span>' +
+        '<span class="detail-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' + timeAgo(plan.modified) + '</span>' +
+        '<span class="detail-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + formatSize(plan.size) + '</span>';
+    }
+
+    detailMarkdown.innerHTML = marked.parse(markdown);
+    injectCopyButtons();
+
+    detailLoading.style.display = 'none';
+    detailContent.style.display = 'flex';
+
+    // Scroll to top
+    detailContent.querySelector('.detail-body')?.scrollTo(0, 0);
+  } catch (err) {
+    detailLoading.style.display = 'none';
+    detailContent.style.display = 'flex';
+    detailMarkdown.innerHTML = '<div class="empty-state"><p>Failed to load plan</p><p style="font-size:12px;">' + escapeHtml(err.message) + '</p></div>';
+  }
+}
+
+// ── Copy Buttons ──
+function injectCopyButtons() {
+  detailMarkdown.querySelectorAll('pre').forEach(pre => {
+    const code = pre.querySelector('code');
+    if (!code) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'code-block-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+
+    // Detect language from class
+    const langClass = Array.from(code.classList).find(c => c.startsWith('language-'));
+    const lang = langClass ? langClass.replace('language-', '') : '';
+
+    if (lang) {
+      wrap.classList.add('has-lang');
+      const header = document.createElement('div');
+      header.className = 'code-lang';
+      header.innerHTML = '<span>' + escapeHtml(lang) + '</span>';
+      const btn = createCopyButton(code);
+      header.appendChild(btn);
+      wrap.appendChild(header);
+    } else {
+      const btn = createCopyButton(code);
+      wrap.appendChild(btn);
+    }
+
+    wrap.appendChild(pre);
+  });
+}
+
+function createCopyButton(codeEl) {
+  const btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copy</span>';
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(codeEl.textContent);
+      btn.classList.add('copied');
+      btn.querySelector('span').textContent = 'Copied!';
+      btn.querySelector('svg').innerHTML = '<polyline points="20 6 9 17 4 12"/>';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.querySelector('span').textContent = 'Copy';
+        btn.querySelector('svg').innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+      }, 2000);
+    } catch (err) {
+      // Fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = codeEl.textContent;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      btn.querySelector('span').textContent = 'Copied!';
+      setTimeout(() => { btn.querySelector('span').textContent = 'Copy'; }, 2000);
+    }
+  });
+  return btn;
+}
+
+// ── Back / Navigation ──
+function goBack() {
+  selected = null;
+  app.classList.remove('detail-open');
+  headerDetailTitle.style.display = 'none';
+  detailContent.style.display = 'none';
+  detailEmpty.style.display = 'flex';
+  renderList();
+
+  if (isMobile && history.state?.view === 'detail') {
+    history.back();
+  }
+}
+
+// Browser back button support
+window.addEventListener('popstate', (e) => {
+  if (isMobile && app.classList.contains('detail-open')) {
+    selected = null;
+    app.classList.remove('detail-open');
+    headerDetailTitle.style.display = 'none';
+    detailContent.style.display = 'none';
+    detailEmpty.style.display = 'flex';
+    renderList();
+  }
+});
+
+// ── Refresh ──
+async function refresh() {
+  refreshBtn.classList.add('spinning');
+  await fetchPlans();
+  // Re-select current plan if still exists
+  if (selected && plans.find(p => p.filename === selected)) {
+    await selectPlan(selected);
+  } else if (selected) {
+    selected = null;
+    app.classList.remove('detail-open');
+    detailContent.style.display = 'none';
+    detailEmpty.style.display = 'flex';
+  }
+  refreshBtn.classList.remove('spinning');
+}
+
+// ── Event Listeners ──
+searchInput.addEventListener('input', (e) => {
+  search = e.target.value;
+  renderList();
+});
+
+sortSelect.addEventListener('change', (e) => {
+  const [by, dir] = e.target.value.split('-');
+  sortBy = by;
+  sortDir = dir;
+  renderList();
+});
+
+// Track mobile state
+window.addEventListener('resize', () => {
+  const wasMobile = isMobile;
+  isMobile = window.innerWidth < 768;
+
+  if (wasMobile && !isMobile) {
+    // Switched to desktop
+    app.classList.remove('detail-open');
+    headerDetailTitle.style.display = 'none';
+    if (!selected) {
+      detailEmpty.style.display = 'flex';
+    }
+  } else if (!wasMobile && isMobile && selected) {
+    // Switched to mobile with plan selected
+    app.classList.add('detail-open');
+    headerDetailTitle.style.display = '';
+  }
+});
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', (e) => {
+  // Cmd/Ctrl+K to focus search
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    searchInput.focus();
+  }
+  // Escape to go back on mobile or clear search
+  if (e.key === 'Escape') {
+    if (isMobile && app.classList.contains('detail-open')) {
+      goBack();
+    } else if (document.activeElement === searchInput) {
+      searchInput.value = '';
+      search = '';
+      searchInput.blur();
+      renderList();
+    }
+  }
+});
+
+// ── Init ──
+fetchPlans();
+</script>
+
+</body>
+</html>

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -47,27 +46,9 @@ func SaveConfig(cfg Config) error {
 	return os.WriteFile(configPath(), append(data, '\n'), 0o644)
 }
 
-func IsInstalled() bool {
-	_, err := exec.LookPath("claude-plan-viewer")
-	return err == nil
-}
-
-func Install() error {
-	if _, err := exec.LookPath("npm"); err != nil {
-		return fmt.Errorf("npm not found — install Node.js first")
-	}
-	cmd := exec.Command("npm", "install", "-g", "claude-plan-viewer")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 func Start(port int) error {
 	if !crewExec.HasTmux() {
 		return fmt.Errorf("tmux not found — install with: brew install tmux")
-	}
-	if !IsInstalled() {
-		return fmt.Errorf("claude-plan-viewer not installed — enable first")
 	}
 	if IsRunning() {
 		return fmt.Errorf("plan viewer already running")
@@ -78,7 +59,7 @@ func Start(port int) error {
 		return fmt.Errorf("failed to create tmux session: %w", err)
 	}
 
-	cmd := fmt.Sprintf("claude-plan-viewer --port %d --host 0.0.0.0 --claude-dir %s", port, config.ClaudeConfigDir)
+	cmd := fmt.Sprintf("crew plans _serve --port %d", port)
 	return crewExec.TmuxSendKeys(sessionName, cmd)
 }
 
