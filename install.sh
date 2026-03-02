@@ -2,6 +2,7 @@
 set -e
 
 REPO="FurlanLuka/crew"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 main() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -60,7 +61,7 @@ main() {
     # Install happy CLI if missing
     if ! command -v happy >/dev/null 2>&1; then
         echo "Installing happy CLI..."
-        sudo npm install -g happy-coder
+        npm install -g happy-coder 2>/dev/null || sudo npm install -g happy-coder
     fi
 
     # Resolve GitHub token for authenticated API calls
@@ -88,10 +89,18 @@ main() {
     TMP=$(mktemp -d)
     curl -fsSL "$URL" | tar -xz -C "$TMP"
 
-    sudo install -m 755 "$TMP/crew" /usr/local/bin/crew
+    mkdir -p "$INSTALL_DIR"
+    install -m 755 "$TMP/crew" "$INSTALL_DIR/crew"
     rm -rf "$TMP"
 
     mkdir -p "$HOME/.crew/workspaces"
+
+    # Ensure INSTALL_DIR is on PATH
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+        echo ""
+        echo "Add this to your shell profile (~/.zshrc, ~/.bashrc, etc.):"
+        echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+    fi
 
     # Start happy daemon if authenticated
     if command -v happy >/dev/null 2>&1; then
