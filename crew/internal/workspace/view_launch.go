@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -545,6 +546,7 @@ func StartHappySession(ws *Workspace) (string, error) {
 		happyCmd += fmt.Sprintf(" --add-dir %s", p.Path)
 	}
 	happyCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
+	fmt.Fprintf(os.Stderr, "[debug] tmux send-keys: %s\n", happyCmd)
 	exec.TmuxSendKeys(session, happyCmd)
 
 	return session, nil
