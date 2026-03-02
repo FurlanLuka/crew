@@ -60,11 +60,7 @@ main() {
     # Install happy CLI if missing
     if ! command -v happy >/dev/null 2>&1; then
         echo "Installing happy CLI..."
-        if [ "$OS" = "darwin" ]; then
-            npm install -g happy-coder
-        else
-            sudo npm install -g happy-coder
-        fi
+        sudo npm install -g happy-coder
     fi
 
     # Resolve GitHub token for authenticated API calls
@@ -92,11 +88,7 @@ main() {
     TMP=$(mktemp -d)
     curl -fsSL "$URL" | tar -xz -C "$TMP"
 
-    if [ "$OS" = "darwin" ]; then
-        install -m 755 "$TMP/crew" /usr/local/bin/crew
-    else
-        sudo install -m 755 "$TMP/crew" /usr/local/bin/crew
-    fi
+    sudo install -m 755 "$TMP/crew" /usr/local/bin/crew
     rm -rf "$TMP"
 
     mkdir -p "$HOME/.crew/workspaces"
