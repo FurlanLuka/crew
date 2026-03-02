@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
@@ -42,18 +43,22 @@ type View struct {
 	skills    []SkillInfo
 	cursor    int
 	loading   bool
+	actionMsg string
+	spinner   spinner.Model
 	statusMsg string
 	err       error
 }
 
 func NewView() View {
-	return View{loading: true}
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	return View{loading: true, actionMsg: "Loading registry...", spinner: sp}
 }
 
 func (v View) Title() string { return "Registry" }
 
 func (v View) Init() tea.Cmd {
-	return fetchRegistry
+	return tea.Batch(v.spinner.Tick, fetchRegistry)
 }
 
 func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -68,14 +73,17 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case installDoneMsg:
+		v.loading = false
 		v.statusMsg = fmt.Sprintf("Installed '%s'", msg.name)
 		return v, fetchRegistry
 
 	case removeDoneMsg:
+		v.loading = false
 		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
 		return v, fetchRegistry
 
 	case updateDoneMsg:
+		v.loading = false
 		updated := 0
 		for _, r := range msg.results {
 			if r.updated {
@@ -94,6 +102,14 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.loading = false
 		return v, nil
 
+	case spinner.TickMsg:
+		if v.loading {
+			var cmd tea.Cmd
+			v.spinner, cmd = v.spinner.Update(msg)
+			return v, cmd
+		}
+		return v, nil
+
 	case tea.KeyMsg:
 		return v.handleKey(msg)
 	}
@@ -101,6 +117,10 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if v.loading {
+		return v, nil
+	}
+
 	items := v.currentItems()
 
 	switch {
@@ -131,8 +151,11 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(items) > 0 {
 			item := items[v.cursor]
 			if !item.installed {
+				v.loading = true
+				v.actionMsg = fmt.Sprintf("Installing '%s'...", item.name)
 				v.statusMsg = ""
-				return v, v.installItem(item.name)
+				v.err = nil
+				return v, tea.Batch(v.spinner.Tick, v.installItem(item.name))
 			}
 		}
 		return v, nil
@@ -140,8 +163,11 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(items) > 0 {
 			item := items[v.cursor]
 			if item.installed {
+				v.loading = true
+				v.actionMsg = fmt.Sprintf("Removing '%s'...", item.name)
 				v.statusMsg = ""
-				return v, v.removeItem(item.name)
+				v.err = nil
+				return v, tea.Batch(v.spinner.Tick, v.removeItem(item.name))
 			}
 		}
 		return v, nil
@@ -149,17 +175,26 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(items) > 0 {
 			item := items[v.cursor]
 			if item.installed {
+				v.loading = true
+				v.actionMsg = fmt.Sprintf("Updating '%s'...", item.name)
 				v.statusMsg = ""
-				return v, v.updateSingleItem(item.name)
+				v.err = nil
+				return v, tea.Batch(v.spinner.Tick, v.updateSingleItem(item.name))
 			}
 		}
 		return v, nil
 	case msg.String() == "U":
+		v.loading = true
+		v.actionMsg = "Updating all..."
 		v.statusMsg = ""
-		return v, v.updateAll()
+		v.err = nil
+		return v, tea.Batch(v.spinner.Tick, v.updateAll())
 	case msg.String() == "A":
+		v.loading = true
+		v.actionMsg = "Installing all..."
 		v.statusMsg = ""
-		return v, v.installAll()
+		v.err = nil
+		return v, tea.Batch(v.spinner.Tick, v.installAll())
 	}
 	return v, nil
 }
@@ -205,7 +240,11 @@ func (v View) View() string {
 	b.WriteString("\n\n")
 
 	if v.loading {
-		b.WriteString("  Loading...\n")
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" ")
+		b.WriteString(v.actionMsg)
+		b.WriteString("\n")
 		return b.String()
 	}
 

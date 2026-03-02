@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -55,6 +56,9 @@ type DevView struct {
 	editIdx     int // -1 for add, >= 0 for edit
 	projects    []string
 	projCursor  int
+	loading     bool
+	actionMsg   string
+	spinner     spinner.Model
 	statusMsg   string
 	err         error
 }
@@ -69,11 +73,15 @@ func NewDevView(wsName string) DevView {
 		inputs[i].CharLimit = limits[i]
 	}
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+
 	return DevView{
 		wsName:  wsName,
 		state:   devStateList,
 		inputs:  inputs,
 		editIdx: -1,
+		spinner: sp,
 	}
 }
 
@@ -122,16 +130,27 @@ func (v DevView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, v.loadDevServers()
 
 	case devStartedMsg:
+		v.loading = false
 		v.statusMsg = msg.status
 		return v, v.loadDevServers()
 
 	case devStoppedMsg:
+		v.loading = false
 		v.statusMsg = "Dev servers stopped"
 		return v, v.loadDevServers()
 
 	case errMsg:
 		v.err = msg.err
+		v.loading = false
 		v.state = devStateList
+		return v, nil
+
+	case spinner.TickMsg:
+		if v.loading {
+			var cmd tea.Cmd
+			v.spinner, cmd = v.spinner.Update(msg)
+			return v, cmd
+		}
 		return v, nil
 
 	case tea.KeyMsg:
@@ -160,6 +179,10 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (v DevView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if v.loading {
+		return v, nil
+	}
+
 	switch {
 	case key.Matches(msg, app.Keys.Quit):
 		return v, tea.Quit
@@ -195,9 +218,17 @@ func (v DevView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return v, nil
 	case msg.String() == "S":
-		return v, v.startAllDevServers()
+		v.loading = true
+		v.actionMsg = "Starting dev servers..."
+		v.statusMsg = ""
+		v.err = nil
+		return v, tea.Batch(v.spinner.Tick, v.startAllDevServers())
 	case msg.String() == "X":
-		return v, v.stopAllDevServers()
+		v.loading = true
+		v.actionMsg = "Stopping dev servers..."
+		v.statusMsg = ""
+		v.err = nil
+		return v, tea.Batch(v.spinner.Tick, v.stopAllDevServers())
 	}
 	return v, nil
 }
@@ -355,6 +386,13 @@ func (v DevView) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("\n")
+	if v.loading {
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" ")
+		b.WriteString(v.actionMsg)
+		b.WriteString("\n\n")
+	}
 	if v.statusMsg != "" {
 		b.WriteString("  ")
 		b.WriteString(app.Success.Render(v.statusMsg))
