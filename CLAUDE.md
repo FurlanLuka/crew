@@ -79,7 +79,7 @@ Use the following agents when appropriate:
 - **web-designer** — award-winning web designer. Researches real award-winning sites for inspiration, then generates unique, distinctive designs through iterative conversation. Use when the user wants to design a website, create a visual theme, generate HTML mockups, or build a design system. Use proactively when design tasks are detected.
 - **architect** — software architecture and system design agent. Use when designing new features, modules, APIs, database schemas, or system-level decisions. When entering plan mode for new features or architectural decisions, spawn this agent in the background during the design phase.
 - **crew** — crew workspace expert. Use when the user wants to manage workspaces, list projects or worktrees, check dev server status, start/stop/restart dev servers, or launch a workspace session.
-- **git-guardian** — git state checker. Use before starting implementation (after plan approval) and after completing implementation. Checks current branch, uncommitted changes, and whether working on main/master.
+- **git-guardian** — git state checker. Use before starting implementation (after plan approval), after completing implementation, and before any push/tag. Checks branch safety, uncommitted changes, and runs project-specific preflight checks before push.
 
 ## Skills
 

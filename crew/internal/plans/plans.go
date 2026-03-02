@@ -26,14 +26,14 @@ func configPath() string {
 func LoadConfig() Config {
 	data, err := os.ReadFile(configPath())
 	if err != nil {
-		return Config{Port: 80}
+		return Config{Port: 3080}
 	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{Port: 80}
+		return Config{Port: 3080}
 	}
 	if cfg.Port == 0 {
-		cfg.Port = 80
+		cfg.Port = 3080
 	}
 	return cfg
 }
@@ -78,7 +78,7 @@ func Start(port int) error {
 		return fmt.Errorf("failed to create tmux session: %w", err)
 	}
 
-	cmd := fmt.Sprintf("sudo claude-plan-viewer --port %d --host 0.0.0.0 --claude-dir %s", port, config.ClaudeConfigDir)
+	cmd := fmt.Sprintf("claude-plan-viewer --port %d --host 0.0.0.0 --claude-dir %s", port, config.ClaudeConfigDir)
 	return crewExec.TmuxSendKeys(sessionName, cmd)
 }
 
@@ -91,6 +91,10 @@ func IsRunning() bool {
 }
 
 func URL() string {
-	return "http://plans." + dev.DetectLANIP() + ".nip.io"
+	cfg := LoadConfig()
+	host := "plans." + dev.DetectLANIP() + ".nip.io"
+	if cfg.Port != 80 {
+		return fmt.Sprintf("http://%s:%d", host, cfg.Port)
+	}
+	return "http://" + host
 }
- 

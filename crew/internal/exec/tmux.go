@@ -19,10 +19,23 @@ func TmuxSessionExists(session string) bool {
 	return cmd.Run() == nil
 }
 
-// CreateTmuxSession creates a new tmux session.
+// CreateTmuxSession creates a new detached tmux session.
+// Unsets $TMUX so this works even when called from inside an existing session.
 func CreateTmuxSession(session, dir string) error {
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", session, "-c", dir)
+	cmd.Env = envWithoutTMUX()
 	return cmd.Run()
+}
+
+// envWithoutTMUX returns os.Environ() with $TMUX removed.
+func envWithoutTMUX() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "TMUX=") {
+			env = append(env, e)
+		}
+	}
+	return env
 }
 
 // TmuxSendKeys sends keys to a tmux session.

@@ -27,8 +27,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.Enabled {
 		t.Error("default config should have Enabled=false")
 	}
-	if cfg.Port != 80 {
-		t.Errorf("default config Port = %d, want 80", cfg.Port)
+	if cfg.Port != 3080 {
+		t.Errorf("default config Port = %d, want 3080", cfg.Port)
 	}
 }
 
