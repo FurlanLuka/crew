@@ -25,7 +25,7 @@ func setupPlansDir(t *testing.T) string {
 func TestScanPlans(t *testing.T) {
 	dir := setupPlansDir(t)
 
-	os.WriteFile(filepath.Join(dir, "plan-one.md"), []byte("# First Plan\nSome content"), 0o644)
+	os.WriteFile(filepath.Join(dir, "plan-one.md"), []byte("# First Plan (crew)\nSome content"), 0o644)
 	os.WriteFile(filepath.Join(dir, "plan-two.md"), []byte("No heading here"), 0o644)
 	os.WriteFile(filepath.Join(dir, "not-markdown.txt"), []byte("ignored"), 0o644)
 
@@ -46,10 +46,16 @@ func TestScanPlans(t *testing.T) {
 	if p1.Title != "First Plan" {
 		t.Errorf("plan-one title = %q, want %q", p1.Title, "First Plan")
 	}
+	if p1.Project != "crew" {
+		t.Errorf("plan-one project = %q, want %q", p1.Project, "crew")
+	}
 
 	p2 := byName["plan-two.md"]
 	if p2.Title != "plan-two" {
 		t.Errorf("plan-two title = %q, want %q", p2.Title, "plan-two")
+	}
+	if p2.Project != "" {
+		t.Errorf("plan-two project = %q, want empty", p2.Project)
 	}
 }
 
@@ -76,6 +82,36 @@ func TestScanPlans_MissingDir(t *testing.T) {
 	}
 	if plans != nil {
 		t.Errorf("got %v, want nil", plans)
+	}
+}
+
+func TestExtractProject(t *testing.T) {
+	tests := []struct {
+		name        string
+		title       string
+		wantClean   string
+		wantProject string
+	}{
+		{"with project", "Plan: Add feature (crew)", "Plan: Add feature", "crew"},
+		{"slash project", "Migrate to Vike (sonioxx/speak-api)", "Migrate to Vike", "sonioxx/speak-api"},
+		{"no project", "Simple title", "Simple title", ""},
+		{"empty parens", "Title ()", "Title ()", ""},
+		{"nested parens", "Fix (some) bug (myproject)", "Fix (some) bug", "myproject"},
+		{"whitespace in parens", "Title ( spaced )", "Title", "spaced"},
+		{"no closing paren", "Title (unclosed", "Title (unclosed", ""},
+		{"paren not at end", "Title (mid) extra", "Title (mid) extra", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clean, project := extractProject(tt.title)
+			if clean != tt.wantClean {
+				t.Errorf("clean = %q, want %q", clean, tt.wantClean)
+			}
+			if project != tt.wantProject {
+				t.Errorf("project = %q, want %q", project, tt.wantProject)
+			}
+		})
 	}
 }
 
@@ -108,7 +144,7 @@ func TestExtractTitle(t *testing.T) {
 
 func TestHandleListPlans(t *testing.T) {
 	dir := setupPlansDir(t)
-	os.WriteFile(filepath.Join(dir, "test.md"), []byte("# Test Plan\nBody"), 0o644)
+	os.WriteFile(filepath.Join(dir, "test.md"), []byte("# Test Plan (myapp)\nBody"), 0o644)
 
 	req := httptest.NewRequest("GET", "/api/plans", nil)
 	w := httptest.NewRecorder()
@@ -132,6 +168,9 @@ func TestHandleListPlans(t *testing.T) {
 	}
 	if plans[0].Title != "Test Plan" {
 		t.Errorf("title = %q, want %q", plans[0].Title, "Test Plan")
+	}
+	if plans[0].Project != "myapp" {
+		t.Errorf("project = %q, want %q", plans[0].Project, "myapp")
 	}
 }
 

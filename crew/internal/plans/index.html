@@ -274,6 +274,19 @@ body {
   color: var(--text-muted);
 }
 
+.plan-item-project {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-subtle);
+  padding: 1px 7px;
+  border-radius: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 /* ── Detail Panel ── */
 .detail {
   flex: 1;
@@ -680,6 +693,9 @@ input:focus:not(:focus-visible) {
           </svg>
           <input class="search-input" id="searchInput" type="text" placeholder="Search plans..." autocomplete="off" spellcheck="false">
         </div>
+        <select class="sort-select" id="projectFilter" aria-label="Filter by project">
+          <option value="">All projects</option>
+        </select>
         <select class="sort-select" id="sortSelect" aria-label="Sort plans">
           <option value="modified-desc">Newest</option>
           <option value="modified-asc">Oldest</option>
@@ -728,6 +744,7 @@ input:focus:not(:focus-visible) {
 let plans = [];
 let selected = null;
 let search = '';
+let filterProject = '';
 let sortBy = 'modified';
 let sortDir = 'desc';
 let isMobile = window.innerWidth < 768;
@@ -738,6 +755,7 @@ const app = $('app');
 const planListEl = $('planList');
 const searchInput = $('searchInput');
 const sortSelect = $('sortSelect');
+const projectFilterEl = $('projectFilter');
 const detailEmpty = $('detailEmpty');
 const detailContent = $('detailContent');
 const detailLoading = $('detailLoading');
@@ -797,6 +815,7 @@ async function fetchPlans() {
     if (!res.ok) throw new Error('Failed to fetch plans');
     plans = await res.json();
     if (!Array.isArray(plans)) plans = [];
+    populateProjectFilter();
     renderList();
   } catch (err) {
     plans = [];
@@ -805,15 +824,35 @@ async function fetchPlans() {
   }
 }
 
+// ── Project Filter ──
+function populateProjectFilter() {
+  const projects = [...new Set(plans.map(p => p.project).filter(Boolean))].sort();
+  const prev = projectFilterEl.value;
+  projectFilterEl.innerHTML = '<option value="">All projects</option>';
+  for (const p of projects) {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    projectFilterEl.appendChild(opt);
+  }
+  if (projects.includes(prev)) projectFilterEl.value = prev;
+  projectFilterEl.style.display = projects.length > 0 ? '' : 'none';
+}
+
 // ── Filter & Sort ──
 function getFilteredPlans() {
   let filtered = plans;
+
+  if (filterProject) {
+    filtered = filtered.filter(p => p.project === filterProject);
+  }
 
   if (search.trim()) {
     const q = search.toLowerCase().trim();
     filtered = filtered.filter(p =>
       p.title.toLowerCase().includes(q) ||
-      p.filename.toLowerCase().includes(q)
+      p.filename.toLowerCase().includes(q) ||
+      (p.project && p.project.toLowerCase().includes(q))
     );
   }
 
@@ -850,7 +889,7 @@ function renderList() {
   for (const plan of filtered) {
     const isActive = selected === plan.filename;
     html += '<div class="plan-item' + (isActive ? ' active' : '') + '" data-filename="' + escapeHtml(plan.filename) + '" onclick="selectPlan(\'' + escapeHtml(plan.filename).replace(/'/g, "\\'") + '\')" role="button" tabindex="0">';
-    html += '<div class="plan-item-title">' + escapeHtml(plan.title) + '</div>';
+    html += '<div class="plan-item-title">' + escapeHtml(plan.title) + (plan.project ? '<span class="plan-item-project">' + escapeHtml(plan.project) + '</span>' : '') + '</div>';
     html += '<div class="plan-item-filename">' + escapeHtml(plan.filename) + '</div>';
     html += '<div class="plan-item-meta">';
     html += '<span>' + formatSize(plan.size) + '</span>';
@@ -908,6 +947,7 @@ async function selectPlan(filename) {
     if (plan) {
       detailTitle.textContent = plan.title;
       detailMeta.innerHTML =
+        (plan.project ? '<span class="plan-item-project">' + escapeHtml(plan.project) + '</span>' : '') +
         '<span class="detail-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="detail-filename">' + escapeHtml(plan.filename) + '</span></span>' +
         '<span class="detail-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' + timeAgo(plan.modified) + '</span>' +
         '<span class="detail-meta-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' + formatSize(plan.size) + '</span>';
@@ -1037,6 +1077,11 @@ async function refresh() {
 // ── Event Listeners ──
 searchInput.addEventListener('input', (e) => {
   search = e.target.value;
+  renderList();
+});
+
+projectFilterEl.addEventListener('change', (e) => {
+  filterProject = e.target.value;
   renderList();
 });
 

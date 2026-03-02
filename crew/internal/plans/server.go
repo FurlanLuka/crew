@@ -20,6 +20,7 @@ var staticFS embed.FS
 type PlanMeta struct {
 	Filename string    `json:"filename"`
 	Title    string    `json:"title"`
+	Project  string    `json:"project"`
 	Size     int64     `json:"size"`
 	Modified time.Time `json:"modified"`
 }
@@ -47,10 +48,12 @@ func scanPlans() ([]PlanMeta, error) {
 		if err != nil {
 			continue
 		}
-		title := extractTitle(filepath.Join(dir, e.Name()))
+		rawTitle := extractTitle(filepath.Join(dir, e.Name()))
+		title, project := extractProject(rawTitle)
 		plans = append(plans, PlanMeta{
 			Filename: e.Name(),
 			Title:    title,
+			Project:  project,
 			Size:     info.Size(),
 			Modified: info.ModTime().UTC(),
 		})
@@ -73,6 +76,20 @@ func extractTitle(path string) string {
 		}
 	}
 	return filenameStem(filepath.Base(path))
+}
+
+func extractProject(title string) (clean string, project string) {
+	idx := strings.LastIndex(title, "(")
+	if idx < 0 || !strings.HasSuffix(title, ")") {
+		return title, ""
+	}
+	inner := title[idx+1 : len(title)-1]
+	inner = strings.TrimSpace(inner)
+	if inner == "" {
+		return title, ""
+	}
+	clean = strings.TrimSpace(title[:idx])
+	return clean, inner
 }
 
 func filenameStem(name string) string {
