@@ -47,6 +47,18 @@ func TestLoadConfig_CustomPort(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_MigratesPort80(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	data := []byte(`{"enabled": true, "port": 80}`)
+	os.WriteFile(filepath.Join(tmp, "plans.json"), data, 0o644)
+
+	cfg := LoadConfig()
+	if cfg.Port != 3080 {
+		t.Errorf("Port = %d, want 3080 (migrated from 80)", cfg.Port)
+	}
+}
+
 func TestSaveConfig_RoundTrip(t *testing.T) {
 	setupTestConfig(t)
 

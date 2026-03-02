@@ -32,7 +32,7 @@ func LoadConfig() Config {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{Port: 3080}
 	}
-	if cfg.Port == 0 {
+	if cfg.Port == 0 || cfg.Port == 80 {
 		cfg.Port = 3080
 	}
 	return cfg
