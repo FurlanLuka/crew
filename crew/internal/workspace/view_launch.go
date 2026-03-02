@@ -541,10 +541,11 @@ func StartHappySession(ws *Workspace) (string, error) {
 	}
 
 	promptFile := PromptFilePath(ws.Name)
-	happyCmd := fmt.Sprintf("happy --prompt-file %s", promptFile)
+	happyCmd := "happy"
 	for _, p := range ws.Projects[1:] {
 		happyCmd += fmt.Sprintf(" --add-dir %s", p.Path)
 	}
+	happyCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
 	exec.TmuxSendKeys(session, happyCmd)
 
 	return session, nil
