@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -34,6 +35,7 @@ type wtViewState int
 const (
 	wtStateList wtViewState = iota
 	wtStateCreate
+	wtStateCreating
 	wtStateConfirmRemove
 )
 
@@ -47,6 +49,7 @@ type WorktreeView struct {
 	input       textinput.Model
 	branchInput textinput.Model
 	focusField  int // 0=name, 1=branch
+	spinner     spinner.Model
 	statusMsg   string
 	err         error
 }
@@ -60,11 +63,15 @@ func NewWorktreeView(base string) WorktreeView {
 	bi.Placeholder = "leave empty for HEAD"
 	bi.CharLimit = 128
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+
 	return WorktreeView{
 		base:        base,
 		state:       wtStateList,
 		input:       ti,
 		branchInput: bi,
+		spinner:     sp,
 	}
 }
 
@@ -110,8 +117,20 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		v.err = msg.err
-		v.state = wtStateList
+		if v.state == wtStateCreating {
+			v.state = wtStateCreate
+		} else {
+			v.state = wtStateList
+		}
 		return v, v.loadWorktrees()
+
+	case spinner.TickMsg:
+		if v.state == wtStateCreating {
+			var cmd tea.Cmd
+			v.spinner, cmd = v.spinner.Update(msg)
+			return v, cmd
+		}
+		return v, nil
 
 	case tea.KeyMsg:
 		return v.handleKey(msg)
@@ -224,7 +243,8 @@ func (v WorktreeView) handleCreateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if name == "" {
 			return v, nil
 		}
-		return v, v.startWorktreeCreation(name, strings.TrimSpace(v.branchInput.Value()))
+		v.state = wtStateCreating
+		return v, tea.Batch(v.spinner.Tick, v.startWorktreeCreation(name, strings.TrimSpace(v.branchInput.Value())))
 	}
 
 	return v.updateInputs(msg)
@@ -250,6 +270,10 @@ func (v WorktreeView) View() string {
 		v.renderList(&b)
 	case wtStateCreate:
 		v.renderCreate(&b)
+	case wtStateCreating:
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Creating worktree...\n")
 	case wtStateConfirmRemove:
 		v.renderConfirmRemove(&b)
 	}

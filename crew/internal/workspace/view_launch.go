@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -51,6 +52,7 @@ type launchState int
 const (
 	launchStateWorktree launchState = iota
 	launchStateNewWorktree
+	launchStateCreatingWorktree
 	launchStateMode
 	launchStateLaunching
 )
@@ -69,6 +71,7 @@ type LaunchView struct {
 	branchInput textinput.Model
 	formField   int // 0=name, 1=branch
 	selectedWt string // resolved worktree name or "" for base
+	spinner    spinner.Model
 	err        error
 }
 
@@ -81,11 +84,15 @@ func NewLaunchView(base string) LaunchView {
 	bi.Placeholder = "leave empty for HEAD"
 	bi.CharLimit = 128
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+
 	return LaunchView{
 		base:        base,
 		state:       launchStateWorktree,
 		nameInput:   ni,
 		branchInput: bi,
+		spinner:     sp,
 	}
 }
 
@@ -129,6 +136,17 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		v.err = msg.err
+		if v.state == launchStateCreatingWorktree {
+			v.state = launchStateNewWorktree
+		}
+		return v, nil
+
+	case spinner.TickMsg:
+		if v.state == launchStateCreatingWorktree || v.state == launchStateLaunching {
+			var cmd tea.Cmd
+			v.spinner, cmd = v.spinner.Update(msg)
+			return v, cmd
+		}
 		return v, nil
 
 	case tea.KeyMsg:
@@ -235,7 +253,8 @@ func (v LaunchView) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, nil
 		}
 		fromBranch := strings.TrimSpace(v.branchInput.Value())
-		return v, v.createWorktreeForLaunch(name, fromBranch)
+		v.state = launchStateCreatingWorktree
+		return v, tea.Batch(v.spinner.Tick, v.createWorktreeForLaunch(name, fromBranch))
 	}
 
 	return v.updateInputs(msg)
@@ -260,7 +279,7 @@ func (v LaunchView) handleModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, nil
 	case msg.String() == "enter":
 		v.state = launchStateLaunching
-		return v, v.executeLaunch()
+		return v, tea.Batch(v.spinner.Tick, v.executeLaunch())
 	}
 	return v, nil
 }
@@ -273,10 +292,16 @@ func (v LaunchView) View() string {
 		v.renderWorktreeSelect(&b)
 	case launchStateNewWorktree:
 		v.renderNewWorktreeForm(&b)
+	case launchStateCreatingWorktree:
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Creating worktree...\n")
 	case launchStateMode:
 		v.renderModeSelect(&b)
 	case launchStateLaunching:
-		b.WriteString("  Launching...\n")
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Launching...\n")
 	}
 
 	if v.err != nil {
