@@ -42,15 +42,6 @@ const defaultLazygitConfig = `gui:
 git:
   pagers:
     - pager: delta --dark --paging=never --side-by-side --line-numbers --syntax-theme Dracula
-customCommands:
-  - key: '>'
-    command: 'tmux next-window'
-    context: 'global'
-    showOutput: false
-  - key: '<'
-    command: 'tmux previous-window'
-    context: 'global'
-    showOutput: false
 `
 
 // EnsureLazygitConfig creates the default lazygit config if it doesn't exist.

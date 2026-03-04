@@ -742,6 +742,7 @@ func launchLazygit(wsName string) tea.Cmd {
 				exec.CreateTmuxWindow(session, wp.Name, dir, lgCmd)
 			}
 
+			exec.SetTmuxPrefix(session, "C-Space")
 			exec.SetTmuxDestroyOnDetach(session)
 		}
 
