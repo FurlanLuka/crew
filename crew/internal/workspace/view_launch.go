@@ -398,6 +398,16 @@ func StartHappierSession(ws *Workspace) (string, error) {
 		return session, nil
 	}
 
+	// Single project: run happier directly in the project dir, no agent team.
+	if len(ws.Projects) == 1 {
+		projectDir := ProjectPath(ws.Name, ws.Projects[0].Name)
+		if err := exec.CreateTmuxSession(session, projectDir); err != nil {
+			return "", err
+		}
+		exec.TmuxSendKeys(session, "happier")
+		return session, nil
+	}
+
 	prompt, err := GeneratePrompt(ws)
 	if err != nil {
 		return "", err

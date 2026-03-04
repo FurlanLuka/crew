@@ -124,6 +124,15 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.cursor++
 		}
 		return v, nil
+	case msg.String() == "enter" || msg.String() == "l":
+		running := v.runningItems()
+		if len(running) == 0 {
+			v.err = fmt.Errorf("no servers are running")
+			return v, nil
+		}
+		initialTab := v.runningTabIndex()
+		logs := NewLogsView(v.wsName, running, initialTab)
+		return v, func() tea.Msg { return app.PushPageMsg{Page: logs} }
 	case msg.String() == "S":
 		v.loading = true
 		v.actionMsg = "Starting dev servers..."
@@ -217,7 +226,7 @@ func (v DevView) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("S start all  X stop all  esc back"))
+	b.WriteString(app.HelpStyle.Render("l logs  S start all  X stop all  esc back"))
 	b.WriteString("\n")
 }
 
@@ -297,4 +306,28 @@ func (v DevView) stopAllDevServers() tea.Cmd {
 		dev.StopAll(wsName)
 		return devStoppedMsg{}
 	}
+}
+
+func (v DevView) runningItems() []devItem {
+	var running []devItem
+	for _, item := range v.items {
+		if item.Running {
+			running = append(running, item)
+		}
+	}
+	return running
+}
+
+// runningTabIndex maps the cursor position to an index in the running-only list.
+func (v DevView) runningTabIndex() int {
+	idx := 0
+	for i, item := range v.items {
+		if i == v.cursor {
+			return idx
+		}
+		if item.Running {
+			idx++
+		}
+	}
+	return 0
 }

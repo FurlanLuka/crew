@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -106,6 +107,18 @@ func parseCrewSessionsOutput(output string) []CrewSession {
 		})
 	}
 	return sessions
+}
+
+// CaptureTmuxPane captures the output of a tmux pane.
+// Returns empty string (no error) if the session/window doesn't exist.
+func CaptureTmuxPane(session, window string, lines int) (string, error) {
+	target := session + ":" + window
+	cmd := exec.Command("tmux", "capture-pane", "-t", target, "-p", "-S", fmt.Sprintf("-%d", lines))
+	out, err := cmd.Output()
+	if err != nil {
+		return "", nil
+	}
+	return string(out), nil
 }
 
 // ListCrewSessions returns all tmux sessions starting with "crew-".
