@@ -23,7 +23,7 @@ func ListSessionInfos() []SessionInfo {
 	infos := make([]SessionInfo, 0, len(sessions))
 
 	for _, s := range sessions {
-		if s.Name == "crew-plans" || strings.HasPrefix(s.Name, "crew-dev-") {
+		if s.Name == "crew-plans" || strings.HasPrefix(s.Name, "crew-dev-") || strings.HasPrefix(s.Name, "crew-git-") {
 			continue
 		}
 

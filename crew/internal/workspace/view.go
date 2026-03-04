@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
@@ -262,6 +263,12 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, launchHappier(s.Name)
 		}
 		return v, nil
+	case msg.String() == "g":
+		if len(v.summaries) > 0 {
+			s := v.summaries[v.cursor]
+			return v, launchLazygit(s.Name)
+		}
+		return v, nil
 	case msg.String() == "o":
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
@@ -503,7 +510,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  s servers  o open  h happier  enter launch  esc back"
+	help := "n new  d delete  p projects  s servers  g git  o open  h happier  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -695,6 +702,52 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 			return errMsg{err}
 		}
 		return wsProjectRemovedMsg{projName}
+	}
+}
+
+func launchLazygit(wsName string) tea.Cmd {
+	return func() tea.Msg {
+		if !exec.HasLazygit() {
+			return errMsg{fmt.Errorf("lazygit not found — install it first")}
+		}
+		if !exec.HasTmux() {
+			return errMsg{fmt.Errorf("tmux not found — install it first")}
+		}
+
+		ws, err := Load(wsName)
+		if err != nil {
+			return errMsg{err}
+		}
+		if len(ws.Projects) == 0 {
+			return errMsg{fmt.Errorf("no projects in workspace")}
+		}
+
+		session := "crew-git-" + wsName
+
+		if !exec.TmuxSessionExists(session) {
+			exec.EnsureLazygitConfig()
+			lgCmd := exec.LazygitCommand()
+
+			// Create session with first project
+			firstDir := ProjectPath(wsName, ws.Projects[0].Name)
+			if err := exec.CreateTmuxSession(session, firstDir); err != nil {
+				return errMsg{fmt.Errorf("failed to create tmux session: %w", err)}
+			}
+			exec.TmuxSendKeys(session, lgCmd)
+			exec.RenameTmuxWindow(session, ws.Projects[0].Name)
+
+			// Create windows for remaining projects
+			for _, wp := range ws.Projects[1:] {
+				dir := ProjectPath(wsName, wp.Name)
+				exec.CreateTmuxWindow(session, wp.Name, dir, lgCmd)
+			}
+
+			exec.SetTmuxDestroyOnDetach(session)
+		}
+
+		// Attach (replaces process via syscall.Exec)
+		exec.AttachTmuxSession(session)
+		return errMsg{fmt.Errorf("failed to attach to git session")}
 	}
 }
 

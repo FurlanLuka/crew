@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
+	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 // DevProject is the data Start needs per project.
@@ -83,7 +84,7 @@ func Start(wsName string, projects []DevProject, host string) ([]Route, error) {
 			portStr := fmt.Sprintf("%d", route.InternalPort)
 			expanded := strings.ReplaceAll(ds.Command, "$PORT", portStr)
 			cmd := fmt.Sprintf("PORT=%s %s", portStr, expanded)
-			createTmuxWindow(session, windowName, dir, cmd)
+			crewExec.CreateTmuxWindow(session, windowName, dir, cmd)
 		}
 	}
 
@@ -190,12 +191,6 @@ func createTmuxSession(session string) error {
 func killTmuxSession(session string) {
 	debug.Log("dev", "kill-session -t %s", session)
 	exec.Command("tmux", "kill-session", "-t", session).Run()
-}
-
-func createTmuxWindow(session, name, dir, command string) {
-	debug.Log("dev", "new-window -t %s -n %s -c %s → %s", session, name, dir, command)
-	exec.Command("tmux", "new-window", "-t", session, "-n", name, "-c", dir).Run()
-	exec.Command("tmux", "send-keys", "-t", session+":"+name, command, "Enter").Run()
 }
 
 func killWindowsWithPrefix(session, prefix string) {

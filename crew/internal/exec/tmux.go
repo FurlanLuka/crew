@@ -128,6 +128,31 @@ func parseCrewSessionsOutput(output string) []CrewSession {
 	return sessions
 }
 
+// RenameTmuxWindow renames the current window in a tmux session.
+func RenameTmuxWindow(session, name string) {
+	debug.Log("tmux", "rename-window -t %s %s", session, name)
+	cmd := exec.Command("tmux", "rename-window", "-t", session, name)
+	cmd.Run()
+}
+
+// CreateTmuxWindow creates a named window in a tmux session and sends a command.
+func CreateTmuxWindow(session, name, dir, command string) {
+	debug.Log("tmux", "new-window -t %s -n %s -c %s → %s", session, name, dir, command)
+	cmd := exec.Command("tmux", "new-window", "-t", session, "-n", name, "-c", dir)
+	cmd.Env = envWithoutTMUX()
+	cmd.Run()
+	sendCmd := exec.Command("tmux", "send-keys", "-t", session+":"+name, command, "Enter")
+	sendCmd.Run()
+}
+
+// SetTmuxDestroyOnDetach sets a client-detached hook that kills the session on detach.
+func SetTmuxDestroyOnDetach(session string) {
+	hook := fmt.Sprintf("if-shell -F '#{==:#{session_name},%s}' 'kill-session -t %s'", session, session)
+	debug.Log("tmux", "set-hook -t %s client-detached → %s", session, hook)
+	cmd := exec.Command("tmux", "set-hook", "-t", session, "client-detached", hook)
+	cmd.Run()
+}
+
 // CaptureTmuxPane captures the output of a tmux pane.
 // Returns empty string (no error) if the session/window doesn't exist.
 func CaptureTmuxPane(session, window string, lines int) (string, error) {

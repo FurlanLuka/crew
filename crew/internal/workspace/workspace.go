@@ -263,6 +263,7 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 // prompt file for a workspace.
 func StopSession(wsName string) {
 	exec.KillTmuxSession("crew-" + wsName)
+	exec.KillTmuxSession("crew-git-" + wsName)
 	dev.StopAll(wsName)
 	os.Remove(PromptFilePath(wsName))
 }
