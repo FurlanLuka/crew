@@ -1,7 +1,7 @@
 ---
 name: crew-launch
 description: >
-  Interactively pick a workspace, launch a Happy Coder session,
+  Interactively pick a workspace, launch a Happier session,
   and optionally start dev servers with a reverse proxy so each workspace
   is accessible at {workspace}.{ip}.nip.io:{port}.
 user-invocable: true
@@ -9,7 +9,7 @@ user-invocable: true
 
 # Launch
 
-All-in-one workspace launcher: Happy Coder session + dev servers.
+All-in-one workspace launcher: Happier session + dev servers.
 
 ## Instructions
 
@@ -29,13 +29,13 @@ Use **AskUserQuestion** to present the workspaces as options. For each option:
 - **label**: workspace name
 - **description**: list the project names and their roles (e.g. "api (lead), web-app (support)")
 
-### 4. Launch Happy Coder session
+### 4. Launch Happier session
 
-**IMPORTANT:** The `crew happy` command must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Use Bash with `run_in_background` and `nohup` to detach it, or instruct the user to run it manually in a separate terminal.
+**IMPORTANT:** The `crew happier` command must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Use Bash with `run_in_background` and `nohup` to detach it, or instruct the user to run it manually in a separate terminal.
 
 Run (detached):
 ```bash
-nohup crew happy <workspace> >/dev/null 2>&1 &
+nohup crew happier <workspace> >/dev/null 2>&1 &
 ```
 
 ### 5. Check dev server config
@@ -74,7 +74,7 @@ crew dev start <workspace>
 
 Print:
 - Which workspace was selected
-- That the Happy session is running
+- That the Happier session is running
 - Dev server URLs (if started), formatted as clickable links:
   ```
   Dev servers:

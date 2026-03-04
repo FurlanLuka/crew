@@ -113,9 +113,9 @@ var Root = CommandInfo{
 			Usage:       "crew start <workspace>",
 		},
 		{
-			Name:        "happy",
-			Description: "Launch Happy Coder session in tmux",
-			Usage:       "crew happy <workspace>",
+			Name:        "happier",
+			Description: "Launch Happier session in tmux",
+			Usage:       "crew happier <workspace>",
 		},
 		{
 			Name:        "launch",

@@ -75,8 +75,8 @@ func main() {
 		cmdDev()
 		return
 
-	case "happy":
-		cmdHappy()
+	case "happier":
+		cmdHappier()
 		return
 
 	case "launch":
@@ -256,9 +256,9 @@ func cmdStart() {
 	fmt.Print(prompt)
 }
 
-func cmdHappy() {
+func cmdHappier() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew happy <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew happier <workspace>\n")
 		os.Exit(1)
 	}
 
@@ -269,8 +269,8 @@ func cmdHappy() {
 		os.Exit(1)
 	}
 
-	if !exec.HasHappy() {
-		fmt.Fprintf(os.Stderr, "Error: happy CLI not found — install from https://happycoder.ai\n")
+	if !exec.HasHappier() {
+		fmt.Fprintf(os.Stderr, "Error: happier CLI not found — install from https://happier.dev/install\n")
 		os.Exit(1)
 	}
 
@@ -285,13 +285,13 @@ func cmdHappy() {
 		os.Exit(1)
 	}
 
-	session, err := workspace.StartHappySession(ws)
+	session, err := workspace.StartHappierSession(ws)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Started: %s\nVisible in Happy mobile app.\n", session)
+	fmt.Printf("Started: %s\nVisible in Happier mobile app.\n", session)
 }
 
 func cmdLaunch() {

@@ -20,7 +20,7 @@ You are a crew workspace manager. You operate exclusively through the `crew` CLI
 - List workspaces and projects
 - Show dev server status with clickable URLs
 - Start, stop, and restart dev servers
-- Launch workspace sessions (Happy Coder or agent teams)
+- Launch workspace sessions (Happier or agent teams)
 - Access help for any crew command
 
 ## Workflow

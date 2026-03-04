@@ -25,13 +25,13 @@ type launchExecutedMsg struct{}
 const (
 	launchModeEditorAgents = iota
 	launchModeAgentsOnly
-	launchModeHappy
+	launchModeHappier
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
 	"Agents only (tmux)",
-	"Happy Coder",
+	"Happier",
 }
 
 // ── States ──
@@ -222,8 +222,8 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			return launchWithTmux(ws, promptFile, firstProjectDir)
 		case launchModeAgentsOnly:
 			return launchWithTmux(ws, promptFile, firstProjectDir)
-		case launchModeHappy:
-			return launchWithHappy(ws)
+		case launchModeHappier:
+			return launchWithHappier(ws)
 		}
 
 		return launchExecutedMsg{}
@@ -284,19 +284,19 @@ func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
 	return launchExecutedMsg{}
 }
 
-func launchWithHappy(ws *Workspace) tea.Msg {
-	_, err := StartHappySession(ws)
+func launchWithHappier(ws *Workspace) tea.Msg {
+	_, err := StartHappierSession(ws)
 	if err != nil {
 		return errMsg{err}
 	}
 	return launchExecutedMsg{}
 }
 
-// StartHappySession creates (or reuses) a Happy Coder tmux session for the
+// StartHappierSession creates (or reuses) a Happier tmux session for the
 // given workspace. Returns the session name.
-func StartHappySession(ws *Workspace) (string, error) {
-	if !exec.HasHappy() {
-		return "", fmt.Errorf("happy CLI not found — install from https://happycoder.ai")
+func StartHappierSession(ws *Workspace) (string, error) {
+	if !exec.HasHappier() {
+		return "", fmt.Errorf("happier CLI not found — install from https://happier.dev/install")
 	}
 	if !exec.HasTmux() {
 		return "", fmt.Errorf("tmux not found — install with: brew install tmux")
@@ -315,18 +315,14 @@ func StartHappySession(ws *Workspace) (string, error) {
 		return "", err
 	}
 
-	firstProjectPath := ProjectPath(ws.Name, ws.Projects[0].Name)
-	if err := exec.CreateTmuxSession(session, firstProjectPath); err != nil {
+	sessionDir := WorkspaceDir(ws.Name)
+	if err := exec.CreateTmuxSession(session, sessionDir); err != nil {
 		return "", err
 	}
 
 	promptFile := PromptFilePath(ws.Name)
-	happyCmd := "happy"
-	for _, wp := range ws.Projects[1:] {
-		happyCmd += fmt.Sprintf(" --add-dir %s", ProjectPath(ws.Name, wp.Name))
-	}
-	happyCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
-	exec.TmuxSendKeys(session, happyCmd)
+	happierCmd := fmt.Sprintf(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 happier "$(cat '%s')"`, promptFile)
+	exec.TmuxSendKeys(session, happierCmd)
 
 	return session, nil
 }

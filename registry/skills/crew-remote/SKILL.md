@@ -26,7 +26,7 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | `crew dev stop [<ws>]` | Stop dev servers |
 | `crew dev restart <ws> [--host=<ip>]` | Restart dev servers |
 | `crew start <ws>` | Generate agent prompt for a workspace |
-| `crew happy <ws>` | Launch Happy Coder session in tmux |
+| `crew happier <ws>` | Launch Happier session in tmux |
 | `crew stop <ws>` | Stop a workspace session |
 | `crew rm <ws>` | Remove a workspace entirely |
 | `crew launch [<workspace>]` | Open the launch view (TUI) |
@@ -134,13 +134,13 @@ crew dev restart <workspace> [--host=<ip>]
 
 ### Launch a session
 
-**IMPORTANT:** `crew happy` must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Detach it or instruct the user to run it in a separate terminal.
+**IMPORTANT:** `crew happier` must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Detach it or instruct the user to run it in a separate terminal.
 
 ```bash
 crew launch                   # open workspace picker (TUI)
 crew launch <workspace>       # open launch view for a workspace (TUI)
 crew start <workspace>        # generate agent prompt
-nohup crew happy <workspace> >/dev/null 2>&1 &  # launch Happy Coder (detached)
+nohup crew happier <workspace> >/dev/null 2>&1 &  # launch Happier (detached)
 ```
 
 ### Stop / remove a workspace

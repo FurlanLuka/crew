@@ -21,7 +21,7 @@ func TestFindSubcommand(t *testing.T) {
 		{"dev", true},
 		{"ls", true},
 		{"help", true},
-		{"happy", true},
+		{"happier", true},
 		{"launch", true},
 		{"plans", true},
 		{"nonexistent", false},
@@ -111,14 +111,14 @@ func TestPlansSubcommands(t *testing.T) {
 	}
 }
 
-func TestHappyCommand(t *testing.T) {
-	happy := findSubcommand(&Root, "happy")
-	if happy == nil {
-		t.Fatal("happy command not found")
+func TestHappierCommand(t *testing.T) {
+	happier := findSubcommand(&Root, "happier")
+	if happier == nil {
+		t.Fatal("happier command not found")
 	}
 
-	if len(happy.Flags) != 0 {
-		t.Fatalf("happy has %d flags, want 0", len(happy.Flags))
+	if len(happier.Flags) != 0 {
+		t.Fatalf("happier has %d flags, want 0", len(happier.Flags))
 	}
 }
 

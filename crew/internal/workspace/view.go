@@ -18,7 +18,7 @@ import (
 type workspacesLoadedMsg struct{ summaries []Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
-type happyLaunchedMsg struct{ session string }
+type happierLaunchedMsg struct{ session string }
 type errMsg struct{ err error }
 
 // Project management messages
@@ -146,8 +146,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		return v, loadWsProjects(v.selectedWs)
 
-	case happyLaunchedMsg:
-		v.statusMsg = fmt.Sprintf("Happy Coder: %s — visible in mobile app", msg.session)
+	case happierLaunchedMsg:
+		v.statusMsg = fmt.Sprintf("Happier: %s — visible in mobile app", msg.session)
 		v.err = nil
 		return v, nil
 
@@ -255,7 +255,7 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "h":
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
-			return v, launchHappy(s.Name)
+			return v, launchHappier(s.Name)
 		}
 		return v, nil
 	case msg.String() == "enter":
@@ -492,7 +492,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  s servers  h happy  enter launch  esc back"
+	help := "n new  d delete  p projects  s servers  h happier  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -687,17 +687,17 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 	}
 }
 
-func launchHappy(wsName string) tea.Cmd {
+func launchHappier(wsName string) tea.Cmd {
 	return func() tea.Msg {
 		ws, err := Load(wsName)
 		if err != nil {
 			return errMsg{err}
 		}
 
-		session, err := StartHappySession(ws)
+		session, err := StartHappierSession(ws)
 		if err != nil {
 			return errMsg{err}
 		}
-		return happyLaunchedMsg{session}
+		return happierLaunchedMsg{session}
 	}
 }
