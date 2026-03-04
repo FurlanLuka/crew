@@ -88,8 +88,9 @@ main() {
             LG_VERSION=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" \
                 | grep '"tag_name"' | sed 's/.*"v//' | sed 's/".*//')
             if [ -n "$LG_VERSION" ]; then
-                LG_OS=$(uname -s)
+                LG_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
                 LG_ARCH=$(uname -m)
+                case "$LG_ARCH" in aarch64) LG_ARCH="arm64" ;; esac
                 LG_URL="https://github.com/jesseduffield/lazygit/releases/download/v${LG_VERSION}/lazygit_${LG_VERSION}_${LG_OS}_${LG_ARCH}.tar.gz"
                 LG_TMP=$(mktemp -d)
                 curl -fsSL "$LG_URL" | tar -xz -C "$LG_TMP"
@@ -114,7 +115,7 @@ main() {
         else
             # GitHub releases fallback (Ubuntu, macOS without brew)
             DELTA_VERSION=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://api.github.com/repos/dandavison/delta/releases/latest" \
-                | grep '"tag_name"' | sed 's/.*"//' | sed 's/".*//')
+                | grep '"tag_name"' | sed 's/.*"tag_name": "//' | sed 's/".*//')
             if [ -n "$DELTA_VERSION" ]; then
                 if [ "$OS" = "darwin" ]; then
                     DELTA_TARGET="delta-${DELTA_VERSION}-aarch64-apple-darwin"
