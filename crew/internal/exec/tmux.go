@@ -61,12 +61,6 @@ func TmuxSendKeys(session, keys string) error {
 	return nil
 }
 
-// SetTmuxPrefix changes the prefix key for a tmux session.
-func SetTmuxPrefix(session, key string) {
-	debug.Log("tmux", "set-option -t %s prefix %s", session, key)
-	exec.Command("tmux", "set-option", "-t", session, "prefix", key).Run()
-}
-
 // KillTmuxSession kills a tmux session.
 func KillTmuxSession(session string) {
 	debug.Log("tmux", "kill-session -t %s", session)
