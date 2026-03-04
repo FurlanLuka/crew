@@ -40,9 +40,8 @@ const defaultLazygitConfig = `gui:
       - "#50fa7b"
       - bold
 git:
-  paging:
-    colorArg: always
-    pager: delta --dark --paging=never --side-by-side --line-numbers --syntax-theme Dracula
+  pagers:
+    - pager: delta --dark --paging=never --side-by-side --line-numbers --syntax-theme Dracula
 `
 
 // EnsureLazygitConfig creates the default lazygit config if it doesn't exist.
