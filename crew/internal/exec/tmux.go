@@ -61,6 +61,19 @@ func TmuxSendKeys(session, keys string) error {
 	return nil
 }
 
+// SetTmuxPrefix changes the prefix key for a tmux session.
+func SetTmuxPrefix(session, key string) {
+	debug.Log("tmux", "set-option -t %s prefix %s", session, key)
+	exec.Command("tmux", "set-option", "-t", session, "prefix", key).Run()
+	exec.Command("tmux", "set-option", "-t", session, "prefix2", "None").Run()
+}
+
+// BindTmuxKey binds a key directly (no prefix) to a tmux command for a session.
+func BindTmuxKey(session, key, command string) {
+	debug.Log("tmux", "bind-key -t %s -n %s %s", session, key, command)
+	exec.Command("tmux", "bind-key", "-t", session, "-n", key, command).Run()
+}
+
 // KillTmuxSession kills a tmux session.
 func KillTmuxSession(session string) {
 	debug.Log("tmux", "kill-session -t %s", session)
