@@ -2,7 +2,10 @@ package workspace
 
 import (
 	"fmt"
+	"os"
+	osexec "os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -28,11 +31,13 @@ type happierLaunchSuccessMsg struct{ session string }
 const (
 	launchModeEditorAgents = iota
 	launchModeHappier
+	launchModeClaude
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
 	"Happier",
+	"Claude",
 }
 
 var sessionLabels = []string{
@@ -309,6 +314,8 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			return launchWithTmux(ws, promptFile, firstProjectDir)
 		case launchModeHappier:
 			return launchWithHappier(ws)
+		case launchModeClaude:
+			return launchWithClaude(ws, promptFile)
 		}
 
 		return launchExecutedMsg{}
@@ -375,6 +382,56 @@ func launchWithHappier(ws *Workspace) tea.Msg {
 		return errMsg{err}
 	}
 	return happierLaunchSuccessMsg{session: session}
+}
+
+func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
+	claudePath, err := osexec.LookPath("claude")
+	if err != nil {
+		return errMsg{fmt.Errorf("claude not found in PATH")}
+	}
+
+	prompt, err := os.ReadFile(promptFile)
+	if err != nil {
+		return errMsg{fmt.Errorf("failed to read prompt file: %w", err)}
+	}
+
+	debug.Log("claude", "launching claude session for workspace %s", ws.Name)
+
+	args := []string{"claude"}
+	for _, wp := range ws.Projects[1:] {
+		args = append(args, "--add-dir", ProjectPath(ws.Name, wp.Name))
+	}
+	args = append(args, string(prompt))
+
+	env := os.Environ()
+	env = setEnv(env, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1")
+	if config.UserSetClaudeConfig {
+		env = setEnv(env, "CLAUDE_CONFIG_DIR", config.ClaudeConfigDir)
+	}
+
+	workDir := ProjectPath(ws.Name, ws.Projects[0].Name)
+	debug.Log("claude", "exec %s (cwd: %s, args: %v)", claudePath, workDir, args)
+
+	if err := os.Chdir(workDir); err != nil {
+		return errMsg{fmt.Errorf("failed to chdir to %s: %w", workDir, err)}
+	}
+
+	if err := syscall.Exec(claudePath, args, env); err != nil {
+		return errMsg{fmt.Errorf("exec claude: %w", err)}
+	}
+
+	return launchExecutedMsg{}
+}
+
+func setEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for i, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			env[i] = prefix + value
+			return env
+		}
+	}
+	return append(env, prefix+value)
 }
 
 // StartHappierSession creates (or reuses) a Happier tmux session for the
