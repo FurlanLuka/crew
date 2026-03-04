@@ -255,6 +255,10 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "h":
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
+			if s.TmuxActive {
+				v.err = fmt.Errorf("session already running — press enter to manage")
+				return v, nil
+			}
 			return v, launchHappier(s.Name)
 		}
 		return v, nil

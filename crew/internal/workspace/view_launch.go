@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -16,22 +17,27 @@ import (
 // ── Messages ──
 
 type launchDataLoadedMsg struct {
-	hasEditor bool
+	hasEditor     bool
+	sessionActive bool
 }
 type launchExecutedMsg struct{}
+type happierLaunchSuccessMsg struct{ session string }
 
 // ── Launch modes ──
 
 const (
 	launchModeEditorAgents = iota
-	launchModeAgentsOnly
 	launchModeHappier
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
-	"Agents only (tmux)",
 	"Happier",
+}
+
+var sessionLabels = []string{
+	"Attach",
+	"Stop",
 }
 
 // ── States ──
@@ -41,17 +47,19 @@ type launchState int
 const (
 	launchStateMode launchState = iota
 	launchStateLaunching
+	launchStateSession
 )
 
 // ── Model ──
 
 type LaunchView struct {
-	base       string
-	state      launchState
-	hasEditor  bool
-	modeCursor int
-	spinner    spinner.Model
-	err        error
+	base          string
+	state         launchState
+	hasEditor     bool
+	modeCursor    int
+	sessionCursor int
+	spinner       spinner.Model
+	err           error
 }
 
 func NewLaunchView(base string) LaunchView {
@@ -72,8 +80,10 @@ func (v LaunchView) Title() string {
 func (v LaunchView) Init() tea.Cmd {
 	return func() tea.Msg {
 		editor := exec.DetectEditor()
+		session := "crew-" + v.base
 		return launchDataLoadedMsg{
-			hasEditor: editor != "",
+			hasEditor:     editor != "",
+			sessionActive: exec.TmuxSessionExists(session),
 		}
 	}
 }
@@ -85,10 +95,22 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case launchDataLoadedMsg:
 		v.hasEditor = msg.hasEditor
+		if msg.sessionActive {
+			v.state = launchStateSession
+		}
 		return v, nil
 
 	case launchExecutedMsg:
 		return v, tea.Quit
+
+	case happierLaunchSuccessMsg:
+		return v, tea.Sequence(
+			tea.Println(app.Success.Render(fmt.Sprintf("Happier session launched: %s", msg.session))),
+			tea.Quit,
+		)
+
+	case sessionStoppedMsg:
+		return v, func() tea.Msg { return app.PopPageMsg{} }
 
 	case errMsg:
 		v.err = msg.err
@@ -113,8 +135,11 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (v LaunchView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if v.state == launchStateMode {
+	switch v.state {
+	case launchStateMode:
 		return v.handleModeKey(msg)
+	case launchStateSession:
+		return v.handleSessionKey(msg)
 	}
 	return v, nil
 }
@@ -152,6 +177,8 @@ func (v LaunchView) View() string {
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
 		b.WriteString(" Launching...\n")
+	case launchStateSession:
+		v.renderSessionSelect(&b)
 	}
 
 	if v.err != nil {
@@ -188,6 +215,66 @@ func (v LaunchView) renderModeSelect(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+func (v LaunchView) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, app.Keys.Quit):
+		return v, tea.Quit
+	case key.Matches(msg, app.Keys.Back):
+		return v, func() tea.Msg { return app.PopPageMsg{} }
+	case key.Matches(msg, app.Keys.Up):
+		if v.sessionCursor > 0 {
+			v.sessionCursor--
+		}
+		return v, nil
+	case key.Matches(msg, app.Keys.Down):
+		if v.sessionCursor < len(sessionLabels)-1 {
+			v.sessionCursor++
+		}
+		return v, nil
+	case msg.String() == "enter":
+		wsName := v.base
+		session := "crew-" + wsName
+		if v.sessionCursor == 0 {
+			// Attach
+			return v, func() tea.Msg {
+				exec.AttachTmuxSession(session)
+				return errMsg{fmt.Errorf("failed to attach to session")}
+			}
+		}
+		// Stop
+		return v, func() tea.Msg {
+			StopSession(wsName)
+			return sessionStoppedMsg{wsName}
+		}
+	}
+	return v, nil
+}
+
+func (v LaunchView) renderSessionSelect(b *strings.Builder) {
+	b.WriteString("  ")
+	b.WriteString(app.Subtle.Render("Session active:"))
+	b.WriteString("\n")
+
+	for i, label := range sessionLabels {
+		cursor := "  "
+		if i == v.sessionCursor {
+			cursor = app.Selected.Render("> ")
+		}
+		display := label
+		if i == v.sessionCursor {
+			display = app.Selected.Render(label)
+		}
+		b.WriteString("  ")
+		b.WriteString(cursor)
+		b.WriteString(display)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n  ")
+	b.WriteString(app.HelpStyle.Render("enter select  esc back"))
+	b.WriteString("\n")
+}
+
 // ── Launch logic ──
 
 func (v LaunchView) executeLaunch() tea.Cmd {
@@ -219,8 +306,6 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			if editor != "" {
 				return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
 			}
-			return launchWithTmux(ws, promptFile, firstProjectDir)
-		case launchModeAgentsOnly:
 			return launchWithTmux(ws, promptFile, firstProjectDir)
 		case launchModeHappier:
 			return launchWithHappier(ws)
@@ -285,11 +370,11 @@ func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
 }
 
 func launchWithHappier(ws *Workspace) tea.Msg {
-	_, err := StartHappierSession(ws)
+	session, err := StartHappierSession(ws)
 	if err != nil {
 		return errMsg{err}
 	}
-	return launchExecutedMsg{}
+	return happierLaunchSuccessMsg{session: session}
 }
 
 // StartHappierSession creates (or reuses) a Happier tmux session for the
@@ -306,22 +391,31 @@ func StartHappierSession(ws *Workspace) (string, error) {
 	}
 
 	session := "crew-" + ws.Name
+	fmt.Fprintf(os.Stderr, "[debug] happier session: %s\n", session)
 
 	if exec.TmuxSessionExists(session) {
+		fmt.Fprintf(os.Stderr, "[debug] reusing existing tmux session\n")
 		return session, nil
 	}
 
-	if _, err := GeneratePrompt(ws); err != nil {
+	prompt, err := GeneratePrompt(ws)
+	if err != nil {
 		return "", err
 	}
+	fmt.Fprintf(os.Stderr, "[debug] prompt: %d bytes\n", len(prompt))
 
 	sessionDir := WorkspaceDir(ws.Name)
 	if err := exec.CreateTmuxSession(session, sessionDir); err != nil {
 		return "", err
 	}
 
-	promptFile := PromptFilePath(ws.Name)
-	happierCmd := fmt.Sprintf(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 happier "$(cat '%s')"`, promptFile)
+	// Escape the prompt for safe embedding in a $'...' shell string.
+	escaped := strings.ReplaceAll(prompt, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+
+	happierCmd := fmt.Sprintf(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 happier $'%s'`, escaped)
+	fmt.Fprintf(os.Stderr, "[debug] tmux send-keys: %s\n", happierCmd)
 	exec.TmuxSendKeys(session, happierCmd)
 
 	return session, nil
