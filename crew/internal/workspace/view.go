@@ -745,8 +745,8 @@ func launchLazygit(wsName string) tea.Cmd {
 			exec.SetTmuxDestroyOnDetach(session)
 		}
 
-		// Attach (replaces process via syscall.Exec)
-		exec.AttachTmuxSession(session)
+		// Attach without iTerm2 integration — windows stay in terminal
+		exec.AttachTmuxSessionRaw(session)
 		return errMsg{fmt.Errorf("failed to attach to git session")}
 	}
 }

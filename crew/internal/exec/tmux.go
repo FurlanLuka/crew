@@ -68,16 +68,26 @@ func KillTmuxSession(session string) {
 }
 
 // AttachTmuxSession attaches to a tmux session via syscall.Exec (replaces process).
+// Uses iTerm2's -CC integration when available.
 func AttachTmuxSession(session string) error {
-	debug.Log("tmux", "attach -t %s", session)
+	return attachTmux(session, true)
+}
+
+// AttachTmuxSessionRaw attaches to a tmux session without iTerm2 integration.
+// Windows stay inside the terminal; switch with ctrl-b n/p.
+func AttachTmuxSessionRaw(session string) error {
+	return attachTmux(session, false)
+}
+
+func attachTmux(session string, iterm bool) error {
+	debug.Log("tmux", "attach -t %s (iterm=%v)", session, iterm)
 	tmuxPath, err := exec.LookPath("tmux")
 	if err != nil {
 		return err
 	}
 
-	// Use -CC for iTerm2
 	args := []string{"tmux"}
-	if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+	if iterm && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 		args = append(args, "-CC")
 	}
 	args = append(args, "attach", "-t", session)
