@@ -68,19 +68,6 @@ func SetTmuxPrefix(session, key string) {
 	exec.Command("tmux", "set-option", "-t", session, "prefix2", "None").Run()
 }
 
-// BindTmuxKey binds a key directly (no prefix needed) to a tmux command.
-// Note: tmux keybindings are global, not per-session.
-func BindTmuxKey(key, command string) {
-	debug.Log("tmux", "bind-key -n %s %s", key, command)
-	exec.Command("tmux", "bind-key", "-n", key, command).Run()
-}
-
-// UnbindTmuxKey removes a root-level key binding.
-func UnbindTmuxKey(key string) {
-	debug.Log("tmux", "unbind-key -n %s", key)
-	exec.Command("tmux", "unbind-key", "-n", key).Run()
-}
-
 // KillTmuxSession kills a tmux session.
 func KillTmuxSession(session string) {
 	debug.Log("tmux", "kill-session -t %s", session)
@@ -176,14 +163,8 @@ func CreateTmuxWindow(session, name, dir, command string) {
 }
 
 // SetTmuxDestroyOnDetach sets a client-detached hook that kills the session on detach.
-// Also unbinds any root-level keys that were added for this session.
-func SetTmuxDestroyOnDetach(session string, unbindKeys ...string) {
-	cmds := ""
-	for _, k := range unbindKeys {
-		cmds += fmt.Sprintf("unbind -n %s ; ", k)
-	}
-	cmds += fmt.Sprintf("kill-session -t %s", session)
-	hook := fmt.Sprintf("if-shell -F '#{==:#{session_name},%s}' '%s'", session, cmds)
+func SetTmuxDestroyOnDetach(session string) {
+	hook := fmt.Sprintf("if-shell -F '#{==:#{session_name},%s}' 'kill-session -t %s'", session, session)
 	debug.Log("tmux", "set-hook -t %s client-detached → %s", session, hook)
 	cmd := exec.Command("tmux", "set-hook", "-t", session, "client-detached", hook)
 	cmd.Run()

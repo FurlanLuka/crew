@@ -743,9 +743,7 @@ func launchLazygit(wsName string) tea.Cmd {
 			}
 
 			exec.SetTmuxPrefix(session, "C-a")
-			exec.BindTmuxKey("C-Right", "next-window")
-			exec.BindTmuxKey("C-Left", "previous-window")
-			exec.SetTmuxDestroyOnDetach(session, "C-Right", "C-Left")
+			exec.SetTmuxDestroyOnDetach(session)
 		}
 
 		// Attach without iTerm2 integration — windows stay in terminal
