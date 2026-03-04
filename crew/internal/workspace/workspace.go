@@ -10,31 +10,28 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
-type DevServer struct {
-	Name    string `json:"name"`
-	Port    int    `json:"port"`
-	Command string `json:"command"`
-	Dir     string `json:"dir,omitempty"`
-}
-
-type Project struct {
-	Name       string      `json:"name"`
-	Path       string      `json:"path"`
-	Role       string      `json:"role"`
-	DevServers []DevServer `json:"dev_servers,omitempty"`
-}
-
-type WorktreeInfo struct {
-	BaseWorkspace string `json:"base_workspace"`
-	Name          string `json:"name"`
+// WorkspaceProject references a global project with a workspace-specific role.
+type WorkspaceProject struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
 }
 
 type Workspace struct {
-	Name     string        `json:"name"`
-	Worktree *WorktreeInfo `json:"worktree,omitempty"`
-	Projects []Project     `json:"projects"`
+	Name     string             `json:"name"`
+	Projects []WorkspaceProject `json:"projects"`
+}
+
+// ProjectPath returns the worktree directory for a project within a workspace.
+func ProjectPath(wsName, projName string) string {
+	return filepath.Join(config.WorkspacesDir, wsName, projName)
+}
+
+// WorkspaceDir returns the root directory for a workspace.
+func WorkspaceDir(wsName string) string {
+	return filepath.Join(config.WorkspacesDir, wsName)
 }
 
 func Load(name string) (*Workspace, error) {
@@ -62,11 +59,7 @@ func Exists(name string) bool {
 	return err == nil
 }
 
-func Remove(name string) error {
-	return os.Remove(config.WorkspaceFile(name))
-}
-
-// List returns all base workspace names (excludes worktree workspaces).
+// List returns all workspace names.
 func List() ([]string, error) {
 	entries, err := os.ReadDir(config.WorkspacesDir)
 	if err != nil {
@@ -82,59 +75,20 @@ func List() ([]string, error) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".json")
-		if strings.Contains(name, "--") {
-			continue
-		}
 		names = append(names, name)
 	}
 	return names, nil
 }
 
-// WorktreeWorkspaceName returns the composite workspace name for a worktree.
-func WorktreeWorkspaceName(base, wtName string) string {
-	return base + "--" + wtName
-}
-
-// ListWorktrees returns worktree names for a base workspace.
-func ListWorktrees(base string) ([]string, error) {
-	entries, err := os.ReadDir(config.WorkspacesDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	prefix := base + "--"
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		name := strings.TrimSuffix(e.Name(), ".json")
-		if strings.HasPrefix(name, prefix) {
-			names = append(names, strings.TrimPrefix(name, prefix))
-		}
-	}
-	return names, nil
-}
-
-// CountWorktrees returns the number of worktrees for a base workspace.
-func CountWorktrees(base string) int {
-	wts, _ := ListWorktrees(base)
-	return len(wts)
-}
-
 // Summary holds display info for the workspace list view.
 type Summary struct {
-	Name          string
-	ProjectCount  int
-	WorktreeCount int
-	DevRunning    bool
-	TmuxActive    bool
+	Name         string
+	ProjectCount int
+	DevRunning   bool
+	TmuxActive   bool
 }
 
-// ListSummaries returns summaries for all base workspaces.
+// ListSummaries returns summaries for all workspaces.
 func ListSummaries() ([]Summary, error) {
 	names, err := List()
 	if err != nil {
@@ -149,11 +103,10 @@ func ListSummaries() ([]Summary, error) {
 			projCount = len(ws.Projects)
 		}
 		summaries = append(summaries, Summary{
-			Name:          name,
-			ProjectCount:  projCount,
-			WorktreeCount: CountWorktrees(name),
-			DevRunning:    devRoutesExist(name),
-			TmuxActive:    exec.TmuxSessionExists("crew-" + name),
+			Name:         name,
+			ProjectCount: projCount,
+			DevRunning:   devRoutesExist(name),
+			TmuxActive:   exec.TmuxSessionExists("crew-" + name),
 		})
 	}
 	return summaries, nil
@@ -164,44 +117,110 @@ func devRoutesExist(wsName string) bool {
 	return err == nil && info.Size() > 2 // more than just "[]"
 }
 
-// Create creates a new empty workspace.
+// Create creates a new empty workspace with its directory.
 func Create(name string) error {
+	if _, err := os.Stat(config.WorkspaceFile(name)); err == nil {
+		return fmt.Errorf("workspace '%s' already exists", name)
+	}
+	if err := os.MkdirAll(WorkspaceDir(name), 0o755); err != nil {
+		return err
+	}
 	ws := &Workspace{
 		Name:     name,
-		Projects: []Project{},
+		Projects: []WorkspaceProject{},
 	}
 	return Save(ws)
 }
 
-// AddProject adds a project to a workspace.
-func AddProject(wsName string, proj Project) error {
+// DetectDefaultBranch returns the best base branch for a project repo.
+// Tries develop, main, then falls back to HEAD.
+func DetectDefaultBranch(projectPath string) string {
+	for _, branch := range []string{"develop", "main"} {
+		out, err := exec.RunGitCommand(projectPath, "rev-parse", "--verify", branch)
+		if err == nil && strings.TrimSpace(out) != "" {
+			return branch
+		}
+	}
+	return "HEAD"
+}
+
+// AddProject creates a git worktree and adds a project to a workspace.
+func AddProject(wsName, projName, role string) error {
+	p := project.Get(projName)
+	if p == nil {
+		return fmt.Errorf("project '%s' not found in pool", projName)
+	}
+
+	// Load workspace first to check for duplicates before creating worktree
 	ws, err := Load(wsName)
 	if err != nil {
 		return err
 	}
-	ws.Projects = append(ws.Projects, proj)
+	for _, existing := range ws.Projects {
+		if existing.Name == projName {
+			return fmt.Errorf("project '%s' already in workspace", projName)
+		}
+	}
+
+	wtDir := ProjectPath(wsName, projName)
+	baseBranch := DetectDefaultBranch(p.Path)
+
+	branchName := "crew/" + wsName + "/" + projName
+	if err := exec.CreateGitWorktree(p.Path, wtDir, branchName, baseBranch); err != nil {
+		return fmt.Errorf("failed to create worktree for %s: %w", projName, err)
+	}
+
+	exec.CopyEnvFiles(p.Path, wtDir)
+	exec.RunNpmInstall(wtDir)
+
+	ws.Projects = append(ws.Projects, WorkspaceProject{Name: projName, Role: role})
 	return Save(ws)
 }
 
-// RemoveProject removes a project by name from a workspace.
+// RemoveProject removes a git worktree and project from a workspace.
 func RemoveProject(wsName, projName string) error {
+	wtDir := ProjectPath(wsName, projName)
+
+	// Try to remove git worktree properly
+	p := project.Get(projName)
+	if p != nil {
+		exec.RemoveGitWorktree(p.Path, wtDir)
+	}
+	os.RemoveAll(wtDir) // fallback cleanup
+
 	ws, err := Load(wsName)
 	if err != nil {
 		return err
 	}
-	filtered := ws.Projects[:0]
-	for _, p := range ws.Projects {
-		if p.Name != projName {
-			filtered = append(filtered, p)
+	var filtered []WorkspaceProject
+	for _, wp := range ws.Projects {
+		if wp.Name != projName {
+			filtered = append(filtered, wp)
 		}
 	}
 	ws.Projects = filtered
 	return Save(ws)
 }
 
-// NormalizeName converts slashes to dashes for filesystem safety.
-func NormalizeName(name string) string {
-	return strings.ReplaceAll(name, "/", "-")
+// Remove fully removes a workspace: stops session, removes git worktrees,
+// deletes workspace directory and JSON.
+func Remove(name string) error {
+	StopSession(name)
+
+	ws, err := Load(name)
+	if err == nil {
+		for _, wp := range ws.Projects {
+			wtDir := ProjectPath(name, wp.Name)
+			p := project.Get(wp.Name)
+			if p != nil {
+				exec.RemoveGitWorktree(p.Path, wtDir)
+			}
+		}
+	}
+
+	os.RemoveAll(WorkspaceDir(name))
+	os.Remove(config.WorkspaceFile(name))
+	return nil
 }
 
 // PromptFilePath returns the path for the workspace prompt file.
@@ -214,124 +233,42 @@ func CodeWorkspaceFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, wsName+".code-workspace")
 }
 
-// worktreeDirsExist checks whether the git worktree directories for all
-// projects in the base workspace actually exist on disk.
-func worktreeDirsExist(base, safeName string) bool {
-	ws, err := Load(base)
-	if err != nil {
-		return false
-	}
-	for _, p := range ws.Projects {
-		dir := p.Path + "/.claude/worktrees/" + safeName
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			return false
-		}
-	}
-	return true
-}
-
-// CreateWorktree creates git worktrees for all projects in the base workspace
-// and saves a worktree workspace JSON. It is idempotent — if the worktree
-// already exists, it returns the normalized name without error.
-func CreateWorktree(base, name, fromBranch string) (string, error) {
-	safeName := NormalizeName(name)
-	wtWs := WorktreeWorkspaceName(base, safeName)
-
-	if Exists(wtWs) {
-		if worktreeDirsExist(base, safeName) {
-			return safeName, nil
-		}
-		// Stale JSON without actual worktree dirs — clean up.
-		Remove(wtWs)
-	}
-
-	ws, err := Load(base)
-	if err != nil {
-		return "", err
-	}
-	if len(ws.Projects) == 0 {
-		return "", fmt.Errorf("workspace '%s' has no projects", base)
-	}
-
-	branch := "worktree-" + name
-
-	// 1. Create git worktrees FIRST — rollback on failure
-	var created []int
-	for i, p := range ws.Projects {
-		wtDir := p.Path + "/.claude/worktrees/" + safeName
-		if err := exec.CreateGitWorktree(p.Path, wtDir, branch, fromBranch); err != nil {
-			for _, ci := range created {
-				cp := ws.Projects[ci]
-				exec.RemoveGitWorktree(cp.Path, cp.Path+"/.claude/worktrees/"+safeName)
-			}
-			return "", fmt.Errorf("failed to create worktree for %s: %w", p.Name, err)
-		}
-		created = append(created, i)
-		exec.EnsureGitignore(p.Path)
-		exec.CopyEnvFiles(p.Path, wtDir)
-		exec.RunNpmInstall(wtDir)
-	}
-
-	// 2. Save workspace JSON after all git worktrees succeed
-	wtWorkspace := &Workspace{
-		Name: wtWs,
-		Worktree: &WorktreeInfo{
-			BaseWorkspace: base,
-			Name:          safeName,
-		},
-		Projects: make([]Project, len(ws.Projects)),
-	}
-	for i, p := range ws.Projects {
-		wtWorkspace.Projects[i] = Project{
-			Name:       p.Name,
-			Path:       p.Path + "/.claude/worktrees/" + safeName,
-			Role:       p.Role,
-			DevServers: p.DevServers,
-		}
-	}
-	if err := Save(wtWorkspace); err != nil {
-		for _, ci := range created {
-			cp := ws.Projects[ci]
-			exec.RemoveGitWorktree(cp.Path, cp.Path+"/.claude/worktrees/"+safeName)
-		}
-		return "", err
-	}
-
-	return safeName, nil
-}
-
 // GeneratePrompt builds the agent team prompt, writes it to the prompt file,
 // and returns the text.
 func GeneratePrompt(ws *Workspace) (string, error) {
 	var b strings.Builder
 	b.WriteString("Create an agent team and spawn these teammates:\n")
-	for _, p := range ws.Projects {
-		fmt.Fprintf(&b, "- **%s** (working directory: %s): %s\n", p.Name, p.Path, p.Role)
+	for _, wp := range ws.Projects {
+		path := ProjectPath(ws.Name, wp.Name)
+		fmt.Fprintf(&b, "- **%s** (working directory: %s): %s\n", wp.Name, path, wp.Role)
 	}
 	b.WriteString("\n")
 
-	if ws.Worktree != nil {
-		b.WriteString("IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch.\n")
-		b.WriteString("All changes stay isolated from the main codebase until explicitly merged.\n\n")
-	}
+	b.WriteString("IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch.\n")
+	b.WriteString("All changes stay isolated from the main codebase until explicitly merged.\n\n")
 
-	// Include dev server URLs if configured
+	// Include dev server URLs if configured (from project pool)
 	hasDevServers := false
-	for _, p := range ws.Projects {
-		if len(p.DevServers) > 0 {
+	for _, wp := range ws.Projects {
+		p := project.Get(wp.Name)
+		if p != nil && len(p.DevServers) > 0 {
 			hasDevServers = true
 			break
 		}
 	}
 	if hasDevServers {
 		b.WriteString("Dev servers are configured for this workspace. Each project's dev servers:\n")
-		for _, p := range ws.Projects {
+		for _, wp := range ws.Projects {
+			p := project.Get(wp.Name)
+			if p == nil {
+				continue
+			}
 			for _, ds := range p.DevServers {
 				dir := ""
 				if ds.Dir != "" {
 					dir = " (dir: " + ds.Dir + ")"
 				}
-				fmt.Fprintf(&b, "- %s/%s: port %d, command: %s%s\n", p.Name, ds.Name, ds.Port, ds.Command, dir)
+				fmt.Fprintf(&b, "- %s/%s: port %d, command: %s%s\n", wp.Name, ds.Name, ds.Port, ds.Command, dir)
 			}
 		}
 		b.WriteString("\n")
@@ -350,45 +287,35 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 }
 
 // StopSession kills the tmux session, stops dev servers, and removes the
-// prompt file for a workspace or worktree session.
-func StopSession(wsName, worktreeName string) {
-	loadName := wsName
-	if worktreeName != "" {
-		loadName = WorktreeWorkspaceName(wsName, worktreeName)
-	}
-	exec.KillTmuxSession("crew-" + loadName)
-	if worktreeName != "" {
-		dev.StopWorktree(wsName, worktreeName)
-	}
-	os.Remove(PromptFilePath(loadName))
+// prompt file for a workspace.
+func StopSession(wsName string) {
+	exec.KillTmuxSession("crew-" + wsName)
+	dev.StopAll(wsName)
+	os.Remove(PromptFilePath(wsName))
 }
 
-// BuildDevProjects converts workspace projects into dev.DevProject slice.
-// baseWs provides the dev server config, srcProjects provides the paths
-// (which may be worktree paths).
-func BuildDevProjects(baseWs *Workspace, srcProjects []Project) []dev.DevProject {
+// BuildDevProjects converts workspace projects into dev.DevProject slice
+// using project pool for config and workspace dir for paths.
+func BuildDevProjects(wsName string, wsProjects []WorkspaceProject) []dev.DevProject {
 	var projects []dev.DevProject
-	for _, sp := range srcProjects {
-		var servers []dev.DevServerConfig
-		for _, bp := range baseWs.Projects {
-			if bp.Name == sp.Name {
-				for _, ds := range bp.DevServers {
-					servers = append(servers, dev.DevServerConfig{
-						Name:    ds.Name,
-						Port:    ds.Port,
-						Command: ds.Command,
-						Dir:     ds.Dir,
-					})
-				}
-				break
-			}
+	for _, wp := range wsProjects {
+		p := project.Get(wp.Name)
+		if p == nil || len(p.DevServers) == 0 {
+			continue
 		}
-		if len(servers) > 0 {
-			projects = append(projects, dev.DevProject{
-				Path:       sp.Path,
-				DevServers: servers,
+		var servers []dev.DevServerConfig
+		for _, ds := range p.DevServers {
+			servers = append(servers, dev.DevServerConfig{
+				Name:    ds.Name,
+				Port:    ds.Port,
+				Command: ds.Command,
+				Dir:     ds.Dir,
 			})
 		}
+		projects = append(projects, dev.DevProject{
+			Path:       ProjectPath(wsName, wp.Name),
+			DevServers: servers,
+		})
 	}
 	return projects
 }

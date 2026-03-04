@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -22,7 +23,7 @@ type errMsg struct{ err error }
 
 // Project management messages
 type wsProjectsLoadedMsg struct {
-	wsProjects []Project
+	wsProjects []WorkspaceProject
 	poolNames  []string // names from pool not yet in workspace
 }
 type wsProjectAddedMsg struct{ name string }
@@ -39,6 +40,8 @@ const (
 	stateProjects        // project list for selected workspace
 	stateProjectPick     // pick from pool to add
 	stateProjectRole     // enter role for picked project
+	stateAddingProject   // async: creating git worktree
+	stateRemovingProject // async: removing git worktree
 	stateProjectConfirmRemove
 )
 
@@ -51,10 +54,11 @@ type View struct {
 	input     textinput.Model
 	err       error
 	statusMsg string
+	spinner   spinner.Model
 
 	// Project management within workspace
 	selectedWs    string
-	wsProjects    []Project
+	wsProjects    []WorkspaceProject
 	projCursor    int
 	poolNames     []string // available from pool
 	poolCursor    int
@@ -71,16 +75,20 @@ func NewView() View {
 	ri.Placeholder = "owns the backend API"
 	ri.CharLimit = 256
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+
 	return View{
 		state:     stateList,
 		input:     ti,
 		roleInput: ri,
+		spinner:   sp,
 	}
 }
 
 func (v View) Title() string {
 	switch v.state {
-	case stateProjects, stateProjectPick, stateProjectRole, stateProjectConfirmRemove:
+	case stateProjects, stateProjectPick, stateProjectRole, stateAddingProject, stateRemovingProject, stateProjectConfirmRemove:
 		return fmt.Sprintf("Projects in \"%s\"", v.selectedWs)
 	}
 	return "Workspaces"
@@ -145,6 +153,18 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		v.err = msg.err
+		// If we were in an async state, go back to projects
+		if v.state == stateAddingProject || v.state == stateRemovingProject {
+			v.state = stateProjects
+		}
+		return v, nil
+
+	case spinner.TickMsg:
+		if v.state == stateAddingProject || v.state == stateRemovingProject {
+			var cmd tea.Cmd
+			v.spinner, cmd = v.spinner.Update(msg)
+			return v, cmd
+		}
 		return v, nil
 
 	case tea.KeyMsg:
@@ -225,13 +245,6 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, loadWsProjects(v.selectedWs)
 		}
 		return v, nil
-	case msg.String() == "w":
-		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			page := NewWorktreeView(s.Name)
-			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
-		}
-		return v, nil
 	case msg.String() == "s":
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
@@ -242,7 +255,7 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "h":
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
-			return v, launchHappy(s.Name, "")
+			return v, launchHappy(s.Name)
 		}
 		return v, nil
 	case msg.String() == "enter":
@@ -369,7 +382,8 @@ func (v View) handleProjectRoleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if role == "" {
 			role = "works on " + name
 		}
-		return v, addProjectToWorkspace(wsName, name, role)
+		v.state = stateAddingProject
+		return v, tea.Batch(v.spinner.Tick, addProjectToWorkspace(wsName, name, role))
 	}
 
 	var cmd tea.Cmd
@@ -382,8 +396,8 @@ func (v View) handleProjectConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 	case "y", "Y":
 		name := v.wsProjects[v.projCursor].Name
 		wsName := v.selectedWs
-		v.state = stateProjects
-		return v, removeProjectFromWorkspace(wsName, name)
+		v.state = stateRemovingProject
+		return v, tea.Batch(v.spinner.Tick, removeProjectFromWorkspace(wsName, name))
 	default:
 		v.state = stateProjects
 		return v, nil
@@ -408,6 +422,14 @@ func (v View) View() string {
 		v.renderProjectPick(&b)
 	case stateProjectRole:
 		v.renderProjectRole(&b)
+	case stateAddingProject:
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Creating git worktree...\n")
+	case stateRemovingProject:
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Removing git worktree...\n")
 	case stateProjectConfirmRemove:
 		v.renderProjectConfirmRemove(&b)
 	}
@@ -438,9 +460,6 @@ func (v View) renderList(b *strings.Builder) {
 		}
 
 		details := fmt.Sprintf("%d projects", s.ProjectCount)
-		if s.WorktreeCount > 0 {
-			details += fmt.Sprintf(" · %d worktrees", s.WorktreeCount)
-		}
 
 		var badges []string
 		if s.DevRunning {
@@ -473,7 +492,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  w worktrees  s servers  h happy  enter launch  esc back"
+	help := "n new  d delete  p projects  s servers  h happy  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -497,7 +516,7 @@ func (v View) renderCreate(b *strings.Builder) {
 
 func (v View) renderConfirmRemove(b *strings.Builder) {
 	name := v.summaries[v.cursor].Name
-	b.WriteString(fmt.Sprintf("  Remove workspace '%s'? (y/n)\n", name))
+	b.WriteString(fmt.Sprintf("  Remove workspace '%s'? This will delete all worktrees. (y/n)\n", name))
 }
 
 func (v View) renderProjects(b *strings.Builder) {
@@ -506,13 +525,13 @@ func (v View) renderProjects(b *strings.Builder) {
 		b.WriteString(app.Subtle.Render("No projects in this workspace."))
 		b.WriteString("\n\n")
 	} else {
-		for i, p := range v.wsProjects {
+		for i, wp := range v.wsProjects {
 			cursor := "  "
 			if i == v.projCursor {
 				cursor = app.Selected.Render("> ")
 			}
 
-			name := p.Name
+			name := wp.Name
 			if i == v.projCursor {
 				name = app.Selected.Render(name)
 			}
@@ -520,12 +539,12 @@ func (v View) renderProjects(b *strings.Builder) {
 			b.WriteString(cursor)
 			b.WriteString(name)
 			b.WriteString("  ")
-			b.WriteString(app.Subtle.Render(p.Path))
+			b.WriteString(app.Subtle.Render(ProjectPath(v.selectedWs, wp.Name)))
 			b.WriteString("\n")
 
-			if p.Role != "" {
+			if wp.Role != "" {
 				b.WriteString("    ")
-				b.WriteString(app.Subtle.Render(p.Role))
+				b.WriteString(app.Subtle.Render(wp.Role))
 				b.WriteString("\n")
 			}
 		}
@@ -592,7 +611,7 @@ func (v View) renderProjectRole(b *strings.Builder) {
 
 func (v View) renderProjectConfirmRemove(b *strings.Builder) {
 	name := v.wsProjects[v.projCursor].Name
-	b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? (y/n)\n", name))
+	b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? This will delete the worktree. (y/n)\n", name))
 }
 
 // ── Commands ──
@@ -607,9 +626,6 @@ func loadWorkspaces() tea.Msg {
 
 func createWorkspace(name string) tea.Cmd {
 	return func() tea.Msg {
-		if Exists(name) {
-			return errMsg{fmt.Errorf("workspace '%s' already exists", name)}
-		}
 		if err := Create(name); err != nil {
 			return errMsg{err}
 		}
@@ -619,11 +635,6 @@ func createWorkspace(name string) tea.Cmd {
 
 func removeWorkspace(name string) tea.Cmd {
 	return func() tea.Msg {
-		wts, _ := ListWorktrees(name)
-		for _, wt := range wts {
-			wtWs := WorktreeWorkspaceName(name, wt)
-			Remove(wtWs)
-		}
 		if err := Remove(name); err != nil {
 			return errMsg{err}
 		}
@@ -641,8 +652,8 @@ func loadWsProjects(wsName string) tea.Cmd {
 		// Find pool projects not already in workspace
 		pool, _ := project.List()
 		inWs := make(map[string]bool)
-		for _, p := range ws.Projects {
-			inWs[p.Name] = true
+		for _, wp := range ws.Projects {
+			inWs[wp.Name] = true
 		}
 		var available []string
 		for _, p := range pool {
@@ -660,11 +671,7 @@ func loadWsProjects(wsName string) tea.Cmd {
 
 func addProjectToWorkspace(wsName, projName, role string) tea.Cmd {
 	return func() tea.Msg {
-		p := project.Get(projName)
-		if p == nil {
-			return errMsg{fmt.Errorf("project '%s' not found in pool", projName)}
-		}
-		if err := AddProject(wsName, Project{Name: p.Name, Path: p.Path, Role: role}); err != nil {
+		if err := AddProject(wsName, projName, role); err != nil {
 			return errMsg{err}
 		}
 		return wsProjectAddedMsg{projName}
@@ -680,14 +687,9 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 	}
 }
 
-func launchHappy(wsName, worktreeName string) tea.Cmd {
+func launchHappy(wsName string) tea.Cmd {
 	return func() tea.Msg {
-		loadName := wsName
-		if worktreeName != "" {
-			loadName = WorktreeWorkspaceName(wsName, worktreeName)
-		}
-
-		ws, err := Load(loadName)
+		ws, err := Load(wsName)
 		if err != nil {
 			return errMsg{err}
 		}

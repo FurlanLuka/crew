@@ -1,9 +1,9 @@
 ---
 name: crew-launch
 description: >
-  Interactively pick a workspace and worktree, launch a Happy Coder session,
-  and optionally start dev servers with a reverse proxy so each worktree
-  is accessible at {worktree}.{ip}.nip.io:{port}.
+  Interactively pick a workspace, launch a Happy Coder session,
+  and optionally start dev servers with a reverse proxy so each workspace
+  is accessible at {workspace}.{ip}.nip.io:{port}.
 user-invocable: true
 ---
 
@@ -29,16 +29,7 @@ Use **AskUserQuestion** to present the workspaces as options. For each option:
 - **label**: workspace name
 - **description**: list the project names and their roles (e.g. "api (lead), web-app (support)")
 
-### 4. Ask about worktree
-
-Use **AskUserQuestion** to ask if they want to use a worktree:
-- Existing worktrees (if any — look for `<workspace>--<name>` patterns in `crew ls workspaces`)
-- **"Create new worktree"** — prompt for a name (short, kebab-case)
-- **"No worktree"** — launch directly on the main branch
-
-If creating a new worktree, the `crew happy` command handles creation automatically.
-
-### 5. Launch Happy Coder session
+### 4. Launch Happy Coder session
 
 **IMPORTANT:** The `crew happy` command must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Use Bash with `run_in_background` and `nohup` to detach it, or instruct the user to run it manually in a separate terminal.
 
@@ -47,24 +38,19 @@ Run (detached):
 nohup crew happy <workspace> >/dev/null 2>&1 &
 ```
 
-Or with a worktree:
-```bash
-nohup crew happy <workspace> --worktree=<name> >/dev/null 2>&1 &
-```
+### 5. Check dev server config
 
-### 6. Check dev server config
-
-Load the workspace JSON at `~/.crew/workspaces/<workspace>.json` and check if any projects have `dev_servers` configured.
+Run `crew dev show <project>` for each project in the workspace to check if dev servers are configured.
 
 **If dev servers are configured**, ask:
 - **"Start dev servers"** — proceed to start them
 - **"Skip dev servers"** — finish without starting dev servers
 
 **If no dev servers are configured**, ask:
-- **"Set up dev servers"** — auto-detect and configure (see step 6a)
+- **"Set up dev servers"** — auto-detect and configure (see step 5a)
 - **"Skip dev servers"** — finish without dev servers
 
-#### 6a. Auto-setup dev servers
+#### 5a. Auto-setup dev servers
 
 For each project, read its `package.json` (at the project path) to detect scripts and likely ports:
 - Look for `dev`, `start`, `storybook` scripts
@@ -72,35 +58,30 @@ For each project, read its `package.json` (at the project path) to detect script
 
 For each detected server, run:
 ```bash
-crew dev add <workspace> <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
+crew dev add <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
 ```
 
 If multiple apps exist in subdirectories (monorepo), set `--dir` accordingly.
 
-### 7. Start dev servers
+### 6. Start dev servers
 
 Run:
-```bash
-crew dev start <workspace> --worktree=<name>
-```
-
-Or without worktree:
 ```bash
 crew dev start <workspace>
 ```
 
-### 8. Show summary
+### 7. Show summary
 
 Print:
 - Which workspace was selected
-- The worktree name (if any)
 - That the Happy session is running
 - Dev server URLs (if started), formatted as clickable links:
   ```
   Dev servers:
-    http://<worktree>.<ip>.nip.io:<port>
+    http://<workspace>.<ip>.nip.io:<port>
   ```
 - Useful commands:
-  - `crew dev restart <workspace> --worktree=<name>` to restart dev servers
-  - `crew dev stop <workspace> --worktree=<name>` to stop dev servers
+  - `crew dev restart <workspace>` to restart dev servers
+  - `crew dev stop <workspace>` to stop dev servers
+  - `crew stop <workspace>` to stop the session
   - `crew kill` to stop everything

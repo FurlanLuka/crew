@@ -57,27 +57,6 @@ func RemoveGitWorktree(projectPath, wtDir string) {
 	cmd.Run()
 }
 
-// EnsureGitignore adds .claude/worktrees/ to .gitignore if not present.
-func EnsureGitignore(projectPath string) {
-	gitignore := filepath.Join(projectPath, ".gitignore")
-	entry := ".claude/worktrees/"
-
-	data, err := os.ReadFile(gitignore)
-	if err == nil {
-		if strings.Contains(string(data), entry) {
-			return
-		}
-		f, err := os.OpenFile(gitignore, os.O_APPEND|os.O_WRONLY, 0o644)
-		if err == nil {
-			f.WriteString("\n" + entry + "\n")
-			f.Close()
-		}
-		return
-	}
-
-	os.WriteFile(gitignore, []byte(entry+"\n"), 0o644)
-}
-
 // CopyEnvFiles copies .env* files from src to dst.
 func CopyEnvFiles(srcDir, dstDir string) {
 	entries, err := os.ReadDir(srcDir)
@@ -124,4 +103,22 @@ func PushBranch(dir string) error {
 	cmd := exec.Command("git", "push", "-u", "origin", branch)
 	cmd.Dir = dir
 	return cmd.Run()
+}
+
+// RunGitCommand runs an arbitrary git command in the given directory and returns stdout.
+func RunGitCommand(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// PruneWorktrees runs git worktree prune in the given directory.
+func PruneWorktrees(dir string) {
+	cmd := exec.Command("git", "worktree", "prune")
+	cmd.Dir = dir
+	cmd.Run()
 }

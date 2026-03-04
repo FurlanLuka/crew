@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// DevProject is the data StartWorktree needs per project.
-// Kept separate from workspace.Project to avoid import cycles.
+// DevProject is the data Start needs per project.
+// Kept separate from workspace types to avoid import cycles.
 type DevProject struct {
 	Path       string
 	DevServers []DevServerConfig
@@ -28,14 +28,9 @@ func SessionName(wsName string) string {
 	return "crew-dev-" + wsName
 }
 
-// StartWorktree starts dev servers for a worktree and updates the proxy.
-// projects should already have the correct paths (worktree paths if applicable).
-func StartWorktree(baseWsName string, projects []DevProject, worktreeName, host string) ([]Route, error) {
-	subdomain := worktreeName
-	if subdomain == "" {
-		subdomain = "main"
-	}
-
+// Start starts dev servers for a workspace and updates the proxy.
+// projects should already have the correct paths (workspace worktree paths).
+func Start(wsName string, projects []DevProject, host string) ([]Route, error) {
 	// Build new routes
 	var newRoutes []Route
 	for _, p := range projects {
@@ -45,23 +40,23 @@ func StartWorktree(baseWsName string, projects []DevProject, worktreeName, host 
 				return nil, fmt.Errorf("failed to find free port: %w", err)
 			}
 			newRoutes = append(newRoutes, Route{
-				Subdomain:    subdomain,
+				Subdomain:    wsName,
 				ExternalPort: ds.Port,
 				InternalPort: port,
 			})
 		}
 	}
 
-	// Load existing routes, append new ones
-	existing, _ := LoadRoutes(baseWsName)
-	filtered := filterRoutes(existing, subdomain)
+	// Load existing routes, replace with new ones
+	existing, _ := LoadRoutes(wsName)
+	filtered := filterRoutes(existing, wsName)
 	allRoutes := append(filtered, newRoutes...)
 
-	if err := SaveRoutes(baseWsName, allRoutes); err != nil {
+	if err := SaveRoutes(wsName, allRoutes); err != nil {
 		return nil, err
 	}
 
-	session := SessionName(baseWsName)
+	session := SessionName(wsName)
 
 	// Ensure tmux session exists
 	if !tmuxSessionExists(session) {
@@ -77,7 +72,7 @@ func StartWorktree(baseWsName string, projects []DevProject, worktreeName, host 
 			route := newRoutes[routeIdx]
 			routeIdx++
 
-			windowName := fmt.Sprintf("%s/%s", subdomain, ds.Name)
+			windowName := fmt.Sprintf("%s/%s", wsName, ds.Name)
 			dir := p.Path
 			if ds.Dir != "" {
 				dir = filepath.Join(p.Path, ds.Dir)
@@ -91,38 +86,33 @@ func StartWorktree(baseWsName string, projects []DevProject, worktreeName, host 
 	}
 
 	// Start/restart proxy window
-	restartProxy(session, baseWsName, host)
+	restartProxy(session, wsName, host)
 
 	return newRoutes, nil
 }
 
-// StopWorktree stops dev servers for a specific worktree.
-func StopWorktree(baseWsName, worktreeName string) error {
-	subdomain := worktreeName
-	if subdomain == "" {
-		subdomain = "main"
-	}
+// Stop stops dev servers for a workspace.
+func Stop(wsName string) error {
+	session := SessionName(wsName)
 
-	session := SessionName(baseWsName)
-
-	// Kill tmux windows for this worktree
-	killWindowsWithPrefix(session, subdomain+"/")
+	// Kill tmux windows for this workspace
+	killWindowsWithPrefix(session, wsName+"/")
 
 	// Update routes
-	existing, _ := LoadRoutes(baseWsName)
-	filtered := filterRoutes(existing, subdomain)
+	existing, _ := LoadRoutes(wsName)
+	filtered := filterRoutes(existing, wsName)
 
 	if len(filtered) == 0 {
 		killTmuxSession(session)
-		RemoveRoutesFile(baseWsName)
+		RemoveRoutesFile(wsName)
 		return nil
 	}
 
-	if err := SaveRoutes(baseWsName, filtered); err != nil {
+	if err := SaveRoutes(wsName, filtered); err != nil {
 		return err
 	}
 
-	restartProxy(session, baseWsName, "")
+	restartProxy(session, wsName, "")
 	return nil
 }
 

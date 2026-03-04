@@ -30,12 +30,12 @@ var Root = CommandInfo{
 	Subcommands: []CommandInfo{
 		{
 			Name:        "workspace",
-			Description: "Manage workspaces, worktrees, and launch",
+			Description: "Manage workspaces and launch",
 			TUI:         true,
 		},
 		{
 			Name:        "project",
-			Description: "Add/remove projects in workspaces",
+			Description: "Add/remove projects and configure dev servers",
 			TUI:         true,
 		},
 		{
@@ -79,13 +79,13 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "ls",
-			Description: "List workspaces, projects, or worktrees",
+			Description: "List workspaces, projects, or sessions",
 			Subcommands: []CommandInfo{
 				{
 					Name:         "workspaces",
-					Description:  "List all workspaces with project and worktree counts",
+					Description:  "List all workspaces with project counts",
 					Usage:        "crew ls workspaces",
-					OutputFormat: "<name>\\t<n> projects\\t<n> worktrees",
+					OutputFormat: "<name>\\t<n> projects",
 				},
 				{
 					Name:         "projects",
@@ -94,16 +94,10 @@ var Root = CommandInfo{
 					OutputFormat: "<name>\\t<path>",
 				},
 				{
-					Name:         "worktrees",
-					Description:  "List worktree names for a workspace",
-					Usage:        "crew ls worktrees <workspace>",
-					OutputFormat: "<name> (one per line)",
-				},
-				{
 					Name:         "sessions",
 					Description:  "List active sessions",
 					Usage:        "crew ls sessions",
-					OutputFormat: "<session>\\t<type>\\t<projects>\\t<uptime>\\t<dev>",
+					OutputFormat: "<workspace>\\t<projects>\\t<uptime>\\t<dev>",
 				},
 			},
 		},
@@ -116,20 +110,12 @@ var Root = CommandInfo{
 		{
 			Name:        "start",
 			Description: "Generate agent prompt for a workspace",
-			Usage:       "crew start <workspace> [flags]",
-			Flags: []FlagInfo{
-				{Name: "--worktree=<name>", Description: "Use or create a worktree"},
-				{Name: "--from=<branch>", Description: "Base branch for new worktree"},
-			},
+			Usage:       "crew start <workspace>",
 		},
 		{
 			Name:        "happy",
 			Description: "Launch Happy Coder session in tmux",
-			Usage:       "crew happy <workspace> [flags]",
-			Flags: []FlagInfo{
-				{Name: "--worktree=<name>", Description: "Use or create a worktree"},
-				{Name: "--from=<branch>", Description: "Base branch for new worktree"},
-			},
+			Usage:       "crew happy <workspace>",
 		},
 		{
 			Name:        "launch",
@@ -144,13 +130,12 @@ var Root = CommandInfo{
 				{
 					Name:        "setup",
 					Description: "Interactive dev server configuration",
-					Usage:       "crew dev setup <workspace>",
-					TUI:         true,
+					Usage:       "crew dev setup <project>",
 				},
 				{
 					Name:        "add",
 					Description: "Add a dev server to a project",
-					Usage:       "crew dev add <workspace> <project> [flags]",
+					Usage:       "crew dev add <project> [flags]",
 					Flags: []FlagInfo{
 						{Name: "--name=<n>", Description: "Server name", Required: true},
 						{Name: "--port=<p>", Description: "External port", Required: true},
@@ -161,37 +146,32 @@ var Root = CommandInfo{
 				{
 					Name:        "rm",
 					Description: "Remove a dev server from a project",
-					Usage:       "crew dev rm <workspace> <project> <server-name>",
+					Usage:       "crew dev rm <project> <server-name>",
 				},
 				{
 					Name:         "show",
-					Description:  "Show configured dev servers for a workspace",
-					Usage:        "crew dev show <workspace>",
-					OutputFormat: "<project>\\t<server-name>\\t<port>\\t<command>[\\t<dir>]",
+					Description:  "Show configured dev servers for a project",
+					Usage:        "crew dev show <project>",
+					OutputFormat: "<server-name>\\t<port>\\t<command>[\\t<dir>]",
 				},
 				{
 					Name:        "start",
 					Description: "Start dev servers with reverse proxy",
 					Usage:       "crew dev start <workspace> [flags]",
 					Flags: []FlagInfo{
-						{Name: "--worktree=<name>", Description: "Start servers for a specific worktree"},
 						{Name: "--host=<ip>", Description: "IP for nip.io URLs", Default: "auto-detect LAN IP"},
 					},
 				},
 				{
 					Name:        "stop",
 					Description: "Stop dev servers",
-					Usage:       "crew dev stop [<workspace>] [flags]",
-					Flags: []FlagInfo{
-						{Name: "--worktree=<name>", Description: "Stop servers for a specific worktree"},
-					},
+					Usage:       "crew dev stop [<workspace>]",
 				},
 				{
 					Name:        "restart",
 					Description: "Restart dev servers",
 					Usage:       "crew dev restart <workspace> [flags]",
 					Flags: []FlagInfo{
-						{Name: "--worktree=<name>", Description: "Restart servers for a specific worktree"},
 						{Name: "--host=<ip>", Description: "IP for nip.io URLs", Default: "auto-detect LAN IP"},
 					},
 				},
@@ -199,25 +179,19 @@ var Root = CommandInfo{
 					Name:         "status",
 					Description:  "Show running dev servers and their URLs",
 					Usage:        "crew dev status [<workspace>]",
-					OutputFormat: "<workspace>\\t<worktree>\\t<port>\\t<url>",
+					OutputFormat: "<workspace>\\t<subdomain>\\t<port>\\t<url>",
 				},
 			},
 		},
 		{
 			Name:        "stop",
-			Description: "Stop a workspace or worktree session",
-			Usage:       "crew stop <workspace> [--worktree=<name>]",
-			Flags: []FlagInfo{
-				{Name: "--worktree=<name>", Description: "Stop a specific worktree session"},
-			},
+			Description: "Stop a workspace session",
+			Usage:       "crew stop <workspace>",
 		},
 		{
 			Name:        "rm",
-			Description: "Remove a worktree",
-			Usage:       "crew rm <workspace> --worktree=<name>",
-			Flags: []FlagInfo{
-				{Name: "--worktree=<name>", Description: "Worktree to remove", Required: true},
-			},
+			Description: "Remove a workspace",
+			Usage:       "crew rm <workspace>",
 		},
 		{
 			Name:        "kill",

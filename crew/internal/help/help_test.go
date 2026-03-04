@@ -65,7 +65,7 @@ func TestLsSubcommands(t *testing.T) {
 		t.Fatal("ls command not found")
 	}
 
-	expected := []string{"workspaces", "projects", "worktrees"}
+	expected := []string{"workspaces", "projects", "sessions"}
 	for _, name := range expected {
 		if findSubcommand(ls, name) == nil {
 			t.Errorf("ls subcommand %q not found", name)
@@ -117,18 +117,33 @@ func TestHappyCommand(t *testing.T) {
 		t.Fatal("happy command not found")
 	}
 
-	if len(happy.Flags) != 2 {
-		t.Fatalf("happy has %d flags, want 2", len(happy.Flags))
+	if len(happy.Flags) != 0 {
+		t.Fatalf("happy has %d flags, want 0", len(happy.Flags))
+	}
+}
+
+func TestStopCommand(t *testing.T) {
+	stop := findSubcommand(&Root, "stop")
+	if stop == nil {
+		t.Fatal("stop command not found")
 	}
 
-	flagNames := make(map[string]bool)
-	for _, f := range happy.Flags {
-		flagNames[f.Name] = true
+	if len(stop.Flags) != 0 {
+		t.Fatalf("stop has %d flags, want 0", len(stop.Flags))
 	}
-	if !flagNames["--worktree=<name>"] {
-		t.Error("happy missing --worktree flag")
+}
+
+func TestRmCommand(t *testing.T) {
+	rm := findSubcommand(&Root, "rm")
+	if rm == nil {
+		t.Fatal("rm command not found")
 	}
-	if !flagNames["--from=<branch>"] {
-		t.Error("happy missing --from flag")
+
+	if len(rm.Flags) != 0 {
+		t.Fatalf("rm has %d flags, want 0", len(rm.Flags))
+	}
+
+	if rm.Usage != "crew rm <workspace>" {
+		t.Errorf("rm Usage = %q, want %q", rm.Usage, "crew rm <workspace>")
 	}
 }

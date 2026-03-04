@@ -10,11 +10,8 @@ import (
 
 // SessionInfo holds display data for an active crew session.
 type SessionInfo struct {
-	TmuxSession  string // "crew-myapp--feat-1"
-	DisplayName  string // "myapp/feat-1" or "myapp"
-	BaseName     string // "myapp"
-	WorktreeName string // "feat-1" or ""
-	IsWorktree   bool
+	TmuxSession  string // "crew-myws"
+	Workspace    string // "myws"
 	ProjectCount int
 	DevRunning   bool
 	Age          string // "2h ago", "15m ago"
@@ -28,13 +25,11 @@ func ListSessionInfos() []SessionInfo {
 	for _, s := range sessions {
 		info := parseSessionName(s.Name, formatAge(s.CreatedAt))
 
-		// Try loading workspace for project count
-		fullName := strings.TrimPrefix(s.Name, "crew-")
-		if ws, err := Load(fullName); err == nil {
+		if ws, err := Load(info.Workspace); err == nil {
 			info.ProjectCount = len(ws.Projects)
 		}
 
-		info.DevRunning = devRoutesExist(info.BaseName)
+		info.DevRunning = devRoutesExist(info.Workspace)
 
 		infos = append(infos, info)
 	}
@@ -42,27 +37,14 @@ func ListSessionInfos() []SessionInfo {
 	return infos
 }
 
-// parseSessionName builds a SessionInfo from a tmux session name and pre-formatted age string.
-// It handles the "crew-" prefix and "--" worktree separator.
+// parseSessionName builds a SessionInfo from a tmux session name.
 func parseSessionName(tmuxName, age string) SessionInfo {
-	fullName := strings.TrimPrefix(tmuxName, "crew-")
-
-	info := SessionInfo{
+	wsName := strings.TrimPrefix(tmuxName, "crew-")
+	return SessionInfo{
 		TmuxSession: tmuxName,
+		Workspace:   wsName,
 		Age:         age,
 	}
-
-	if idx := strings.Index(fullName, "--"); idx > 0 {
-		info.BaseName = fullName[:idx]
-		info.WorktreeName = fullName[idx+2:]
-		info.IsWorktree = true
-		info.DisplayName = info.BaseName + "/" + info.WorktreeName
-	} else {
-		info.BaseName = fullName
-		info.DisplayName = fullName
-	}
-
-	return info
 }
 
 // formatAge returns a human-readable relative duration like "2h ago", "15m ago".

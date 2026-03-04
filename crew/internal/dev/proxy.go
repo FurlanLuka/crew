@@ -187,7 +187,7 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 </head><body>
 <h1>crew dev proxy</h1>
 <table>
-<tr><th>Worktree</th><th>Port</th><th>URL</th></tr>
+<tr><th>Workspace</th><th>Port</th><th>URL</th></tr>
 `)
 
 	for port, routes := range h.all {
@@ -201,7 +201,7 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "</table></body></html>\n")
 }
 
-// extractSubdomain extracts the worktree name from the Host header.
+// extractSubdomain extracts the workspace name from the Host header.
 // e.g., "feature-a.192.168.1.50.nip.io:5173" → "feature-a"
 func extractSubdomain(host, baseIP string) string {
 	// Strip port

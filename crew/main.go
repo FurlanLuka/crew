@@ -24,6 +24,7 @@ var Version = "dev"
 
 func main() {
 	config.Init()
+	workspace.Migrate()
 
 	cmd := ""
 	if len(os.Args) > 1 {
@@ -116,7 +117,7 @@ func mainMenu() app.Menu {
 	return app.NewMenu([]app.MenuItem{
 		{
 			Label:       "Workspace",
-			Description: "Manage workspaces, worktrees, and launch",
+			Description: "Manage workspaces and launch",
 			Page:        func() app.Page { return workspace.NewView() },
 		},
 		{
@@ -126,7 +127,7 @@ func mainMenu() app.Menu {
 		},
 		{
 			Label:       "Project",
-			Description: "Add/remove projects in workspaces",
+			Description: "Add/remove projects and configure dev servers",
 			Page:        func() app.Page { return project.NewView() },
 		},
 		{
@@ -163,7 +164,7 @@ func runTUI(page app.Page) {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|sessions]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|sessions]\n")
 		os.Exit(1)
 	}
 
@@ -172,12 +173,10 @@ func cmdLs() {
 		cmdLsProjects()
 	case "workspaces":
 		cmdLsWorkspaces()
-	case "worktrees":
-		cmdLsWorktrees()
 	case "sessions":
 		cmdLsSessions()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|sessions]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|sessions]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -200,29 +199,7 @@ func cmdLsWorkspaces() {
 		os.Exit(1)
 	}
 	for _, s := range summaries {
-		fmt.Printf("%s\t%d projects\t%d worktrees\n", s.Name, s.ProjectCount, s.WorktreeCount)
-	}
-}
-
-func cmdLsWorktrees() {
-	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls worktrees <workspace>\n")
-		os.Exit(1)
-	}
-
-	wsName := os.Args[3]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
-
-	wts, err := workspace.ListWorktrees(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	for _, name := range wts {
-		fmt.Println(name)
+		fmt.Printf("%s\t%d projects\n", s.Name, s.ProjectCount)
 	}
 }
 
@@ -245,49 +222,26 @@ func cmdShow() {
 		os.Exit(1)
 	}
 
-	for _, p := range ws.Projects {
-		fmt.Printf("%s\t%s\t%s\n", p.Name, p.Path, p.Role)
+	for _, wp := range ws.Projects {
+		path := workspace.ProjectPath(wsName, wp.Name)
+		fmt.Printf("%s\t%s\t%s\n", wp.Name, path, wp.Role)
 	}
 }
 
 func cmdStart() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew start <workspace> [--worktree=<name>] [--from=<branch>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew start <workspace>\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[2]
-	worktreeName := ""
-	fromBranch := ""
-
-	for _, arg := range os.Args[3:] {
-		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
-		case strings.HasPrefix(arg, "--from="):
-			fromBranch = strings.TrimPrefix(arg, "--from=")
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew start <workspace> [--worktree=<name>] [--from=<branch>]\n", arg)
-			os.Exit(1)
-		}
-	}
 
 	if !workspace.Exists(wsName) {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
 		os.Exit(1)
 	}
 
-	loadName := wsName
-	if worktreeName != "" {
-		safeName, err := workspace.CreateWorktree(wsName, worktreeName, fromBranch)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		loadName = workspace.WorktreeWorkspaceName(wsName, safeName)
-	}
-
-	ws, err := workspace.Load(loadName)
+	ws, err := workspace.Load(wsName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -304,25 +258,11 @@ func cmdStart() {
 
 func cmdHappy() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew happy <workspace> [--worktree=<name>] [--from=<branch>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew happy <workspace>\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[2]
-	worktreeName := ""
-	fromBranch := ""
-
-	for _, arg := range os.Args[3:] {
-		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
-		case strings.HasPrefix(arg, "--from="):
-			fromBranch = strings.TrimPrefix(arg, "--from=")
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew happy <workspace> [--worktree=<name>] [--from=<branch>]\n", arg)
-			os.Exit(1)
-		}
-	}
 
 	if !workspace.Exists(wsName) {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
@@ -339,17 +279,7 @@ func cmdHappy() {
 		os.Exit(1)
 	}
 
-	loadName := wsName
-	if worktreeName != "" {
-		safeName, err := workspace.CreateWorktree(wsName, worktreeName, fromBranch)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		loadName = workspace.WorktreeWorkspaceName(wsName, safeName)
-	}
-
-	ws, err := workspace.Load(loadName)
+	ws, err := workspace.Load(wsName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -499,96 +429,76 @@ func cmdDev() {
 
 func cmdDevSetup() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev setup <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev setup <project>\n")
 		os.Exit(1)
 	}
 
-	wsName := os.Args[3]
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	projName := os.Args[3]
+	p := project.Get(projName)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
 		os.Exit(1)
 	}
 
-	if len(ws.Projects) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' has no projects\n", wsName)
-		os.Exit(1)
+	fmt.Printf("Setting up dev servers for \"%s\" (%s)\n\n", projName, p.Path)
+
+	// Auto-detect from package.json
+	detected := detectDevCommand(p.Path)
+	if detected != "" {
+		fmt.Printf("  Detected: %s\n", detected)
 	}
 
-	fmt.Printf("Setting up dev servers for \"%s\"\n\n", wsName)
+	var count int
+	fmt.Print("  How many dev servers? ")
+	fmt.Scanln(&count)
 
-	for i, p := range ws.Projects {
-		fmt.Printf("Project: %s (%s)\n", p.Name, p.Path)
+	for j := 0; j < count; j++ {
+		fmt.Printf("\n  Server %d:\n", j+1)
 
-		// Auto-detect from package.json
-		detected := detectDevCommand(p.Path)
-		if detected != "" {
-			fmt.Printf("  Detected: %s\n", detected)
+		var name, cmd, dir string
+		var port int
+
+		fmt.Print("    Name: ")
+		fmt.Scanln(&name)
+
+		fmt.Print("    Port: ")
+		fmt.Scanln(&port)
+
+		defaultCmd := detected
+		if defaultCmd != "" {
+			fmt.Printf("    Command [%s]: ", defaultCmd)
+		} else {
+			fmt.Print("    Command: ")
+		}
+		fmt.Scanln(&cmd)
+		if cmd == "" {
+			cmd = defaultCmd
 		}
 
-		var count int
-		fmt.Print("  How many dev servers? ")
-		fmt.Scanln(&count)
+		fmt.Print("    Directory (relative, empty for root): ")
+		fmt.Scanln(&dir)
 
-		var servers []workspace.DevServer
-		for j := 0; j < count; j++ {
-			fmt.Printf("\n  Server %d:\n", j+1)
-
-			var name, cmd, dir string
-			var port int
-
-			fmt.Print("    Name: ")
-			fmt.Scanln(&name)
-
-			fmt.Print("    Port: ")
-			fmt.Scanln(&port)
-
-			defaultCmd := detected
-			if defaultCmd != "" {
-				fmt.Printf("    Command [%s]: ", defaultCmd)
-			} else {
-				fmt.Print("    Command: ")
-			}
-			fmt.Scanln(&cmd)
-			if cmd == "" {
-				cmd = defaultCmd
-			}
-
-			fmt.Print("    Directory (relative, empty for root): ")
-			fmt.Scanln(&dir)
-
-			servers = append(servers, workspace.DevServer{
-				Name:    name,
-				Port:    port,
-				Command: cmd,
-				Dir:     dir,
-			})
+		ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
+		if err := project.AddDevServer(projName, ds); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
-
-		ws.Projects[i].DevServers = servers
-		fmt.Println()
 	}
 
-	if err := workspace.Save(ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving workspace: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Saved dev server config to %s.\n", wsName)
+	fmt.Printf("\nSaved dev server config for %s.\n", projName)
 }
 
 func cmdDevAdd() {
-	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev add <workspace> <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>]\n")
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>]\n")
 		os.Exit(1)
 	}
 
-	wsName := os.Args[3]
-	projName := os.Args[4]
+	projName := os.Args[3]
 	var name, cmd, dir string
 	var port int
 
-	for _, arg := range os.Args[5:] {
+	for _, arg := range os.Args[4:] {
 		switch {
 		case strings.HasPrefix(arg, "--name="):
 			name = strings.TrimPrefix(arg, "--name=")
@@ -609,120 +519,62 @@ func cmdDevAdd() {
 		os.Exit(1)
 	}
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
+	p := project.Get(projName)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
+		os.Exit(1)
+	}
+
+	ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
+	if err := project.AddDevServer(projName, ds); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	found := false
-	for i, p := range ws.Projects {
-		if p.Name != projName {
-			continue
-		}
-		found = true
-
-		ds := workspace.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
-
-		// Replace existing or append
-		replaced := false
-		for j, existing := range ws.Projects[i].DevServers {
-			if existing.Name == name {
-				ws.Projects[i].DevServers[j] = ds
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			ws.Projects[i].DevServers = append(ws.Projects[i].DevServers, ds)
-		}
-		break
-	}
-
-	if !found {
-		fmt.Fprintf(os.Stderr, "Error: project '%s' not found in workspace '%s'\n", projName, wsName)
-		os.Exit(1)
-	}
-
-	if err := workspace.Save(ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Added dev server '%s' to %s/%s (port %d)\n", name, wsName, projName, port)
+	fmt.Printf("Added dev server '%s' to %s (port %d)\n", name, projName, port)
 }
 
 func cmdDevRm() {
-	if len(os.Args) < 6 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev rm <workspace> <project> <server-name>\n")
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev rm <project> <server-name>\n")
 		os.Exit(1)
 	}
 
-	wsName := os.Args[3]
-	projName := os.Args[4]
-	serverName := os.Args[5]
+	projName := os.Args[3]
+	serverName := os.Args[4]
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
+	p := project.Get(projName)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
+		os.Exit(1)
+	}
+
+	if err := project.RemoveDevServer(projName, serverName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	found := false
-	for i, p := range ws.Projects {
-		if p.Name != projName {
-			continue
-		}
-		filtered := ws.Projects[i].DevServers[:0]
-		for _, ds := range ws.Projects[i].DevServers {
-			if ds.Name == serverName {
-				found = true
-				continue
-			}
-			filtered = append(filtered, ds)
-		}
-		ws.Projects[i].DevServers = filtered
-		break
-	}
-
-	if !found {
-		fmt.Fprintf(os.Stderr, "Error: server '%s' not found in %s/%s\n", serverName, wsName, projName)
-		os.Exit(1)
-	}
-
-	if err := workspace.Save(ws); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Removed dev server '%s' from %s/%s\n", serverName, wsName, projName)
+	fmt.Printf("Removed dev server '%s' from %s\n", serverName, projName)
 }
 
 func cmdDevShow() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev show <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev show <project>\n")
 		os.Exit(1)
 	}
 
-	wsName := os.Args[3]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+	projName := os.Args[3]
+	p := project.Get(projName)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
 		os.Exit(1)
 	}
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	for _, p := range ws.Projects {
-		for _, ds := range p.DevServers {
-			if ds.Dir != "" {
-				fmt.Printf("%s\t%s\t%d\t%s\t%s\n", p.Name, ds.Name, ds.Port, ds.Command, ds.Dir)
-			} else {
-				fmt.Printf("%s\t%s\t%d\t%s\n", p.Name, ds.Name, ds.Port, ds.Command)
-			}
+	for _, ds := range p.DevServers {
+		if ds.Dir != "" {
+			fmt.Printf("%s\t%d\t%s\t%s\n", ds.Name, ds.Port, ds.Command, ds.Dir)
+		} else {
+			fmt.Printf("%s\t%d\t%s\n", ds.Name, ds.Port, ds.Command)
 		}
 	}
 }
@@ -765,18 +617,15 @@ func cmdDevStatus() {
 
 func cmdDevStart() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev start <workspace> [--worktree=<name>] [--host=<ip>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev start <workspace> [--host=<ip>]\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[3]
-	worktreeName := ""
 	host := ""
 
 	for _, arg := range os.Args[4:] {
 		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
 		case strings.HasPrefix(arg, "--host="):
 			host = strings.TrimPrefix(arg, "--host=")
 		default:
@@ -799,47 +648,25 @@ func cmdDevStart() {
 		host = dev.DetectLANIP()
 	}
 
-	// Load base workspace for dev server config
-	baseWs, err := workspace.Load(wsName)
+	ws, err := workspace.Load(wsName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Resolve project paths (worktree paths if applicable)
-	var srcProjects []workspace.Project
-	if worktreeName != "" {
-		safeName := workspace.NormalizeName(worktreeName)
-		wtWsName := workspace.WorktreeWorkspaceName(wsName, safeName)
-		wtWs, err := workspace.Load(wtWsName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: worktree '%s' not found — create it first: crew start %s --worktree=%s\n", worktreeName, wsName, worktreeName)
-			os.Exit(1)
-		}
-		srcProjects = wtWs.Projects
-	} else {
-		srcProjects = baseWs.Projects
-	}
-
-	// Build DevProject slice
-	projects := workspace.BuildDevProjects(baseWs, srcProjects)
+	projects := workspace.BuildDevProjects(wsName, ws.Projects)
 	if len(projects) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — run: crew dev setup %s\n", wsName)
+		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
 		os.Exit(1)
 	}
 
-	routes, err := dev.StartWorktree(wsName, projects, worktreeName, host)
+	routes, err := dev.Start(wsName, projects, host)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Dev servers for %s", wsName)
-	if worktreeName != "" {
-		fmt.Printf(" (worktree: %s)", worktreeName)
-	}
-	fmt.Println()
-	fmt.Println()
+	fmt.Printf("Dev servers for %s\n\n", wsName)
 
 	for _, r := range routes {
 		fmt.Printf("  http://%s.%s.nip.io:%d\n", r.Subdomain, host, r.ExternalPort)
@@ -851,35 +678,19 @@ func cmdDevStart() {
 
 func cmdDevStop() {
 	wsName := ""
-	worktreeName := ""
 
 	for _, arg := range os.Args[3:] {
-		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
-		default:
-			if wsName == "" {
-				wsName = arg
-			} else {
-				fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-				os.Exit(1)
-			}
+		if wsName == "" {
+			wsName = arg
+		} else {
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
 		}
 	}
 
 	if wsName == "" {
-		// Kill all dev sessions
 		dev.StopAll("")
 		fmt.Println("Stopped all dev sessions.")
-		return
-	}
-
-	if worktreeName != "" {
-		if err := dev.StopWorktree(wsName, worktreeName); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Stopped dev servers for worktree '%s'\n", worktreeName)
 		return
 	}
 
@@ -889,18 +700,15 @@ func cmdDevStop() {
 
 func cmdDevRestart() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace> [--worktree=<name>] [--host=<ip>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace> [--host=<ip>]\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[3]
-	worktreeName := ""
 	host := ""
 
 	for _, arg := range os.Args[4:] {
 		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
 		case strings.HasPrefix(arg, "--host="):
 			host = strings.TrimPrefix(arg, "--host=")
 		default:
@@ -920,51 +728,31 @@ func cmdDevRestart() {
 	}
 
 	// Stop existing servers before restarting
-	dev.StopWorktree(wsName, worktreeName)
+	dev.StopAll(wsName)
 
-	// Start
 	if host == "" {
 		host = dev.DetectLANIP()
 	}
 
-	baseWs, err := workspace.Load(wsName)
+	ws, err := workspace.Load(wsName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	var srcProjects []workspace.Project
-	if worktreeName != "" {
-		safeName := workspace.NormalizeName(worktreeName)
-		wtWsName := workspace.WorktreeWorkspaceName(wsName, safeName)
-		wtWs, err := workspace.Load(wtWsName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: worktree '%s' not found\n", worktreeName)
-			os.Exit(1)
-		}
-		srcProjects = wtWs.Projects
-	} else {
-		srcProjects = baseWs.Projects
-	}
-
-	projects := workspace.BuildDevProjects(baseWs, srcProjects)
+	projects := workspace.BuildDevProjects(wsName, ws.Projects)
 	if len(projects) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — run: crew dev setup %s\n", wsName)
+		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
 		os.Exit(1)
 	}
 
-	routes, err := dev.StartWorktree(wsName, projects, worktreeName, host)
+	routes, err := dev.Start(wsName, projects, host)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Restarted dev servers for %s", wsName)
-	if worktreeName != "" {
-		fmt.Printf(" (worktree: %s)", worktreeName)
-	}
-	fmt.Println()
-	fmt.Println()
+	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
 
 	for _, r := range routes {
 		fmt.Printf("  http://%s.%s.nip.io:%d\n", r.Subdomain, host, r.ExternalPort)
@@ -1053,105 +841,58 @@ func cmdPlansServe() {
 
 func cmdStop() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew stop <workspace> [--worktree=<name>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew stop <workspace>\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[2]
-	worktreeName := ""
-
-	for _, arg := range os.Args[3:] {
-		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew stop <workspace> [--worktree=<name>]\n", arg)
-			os.Exit(1)
-		}
-	}
 
 	if !workspace.Exists(wsName) {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
 		os.Exit(1)
 	}
 
-	loadName := wsName
-	if worktreeName != "" {
-		loadName = workspace.WorktreeWorkspaceName(wsName, worktreeName)
-	}
-
-	workspace.StopSession(wsName, worktreeName)
+	workspace.StopSession(wsName)
 
 	// Remove .code-workspace and close editor window
-	wsFile := workspace.CodeWorkspaceFilePath(loadName)
+	wsFile := workspace.CodeWorkspaceFilePath(wsName)
 	if _, err := os.Stat(wsFile); err == nil {
 		editor := exec.DetectEditor()
-		exec.CloseEditorWindow(exec.EditorProcessName(editor), loadName)
+		exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
 		os.Remove(wsFile)
 	}
 
-	label := wsName
-	if worktreeName != "" {
-		label = wsName + " (worktree: " + worktreeName + ")"
-	}
-	fmt.Printf("Stopped session: %s\n", label)
+	fmt.Printf("Stopped session: %s\n", wsName)
 }
 
 func cmdRm() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew rm <workspace> --worktree=<name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew rm <workspace>\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[2]
-	worktreeName := ""
-
-	for _, arg := range os.Args[3:] {
-		switch {
-		case strings.HasPrefix(arg, "--worktree="):
-			worktreeName = strings.TrimPrefix(arg, "--worktree=")
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'.\nUsage: crew rm <workspace> --worktree=<name>\n", arg)
-			os.Exit(1)
-		}
-	}
-
-	if worktreeName == "" {
-		fmt.Fprintf(os.Stderr, "Error: --worktree flag is required.\nUsage: crew rm <workspace> --worktree=<name>\n")
-		os.Exit(1)
-	}
 
 	if !workspace.Exists(wsName) {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
 		os.Exit(1)
 	}
 
-	wtWsName := workspace.WorktreeWorkspaceName(wsName, worktreeName)
-
-	// Stop session (tmux, dev servers, prompt file)
-	workspace.StopSession(wsName, worktreeName)
-
 	// Remove .code-workspace and close editor window
-	wsFile := workspace.CodeWorkspaceFilePath(wtWsName)
+	wsFile := workspace.CodeWorkspaceFilePath(wsName)
 	if _, err := os.Stat(wsFile); err == nil {
 		editor := exec.DetectEditor()
-		exec.CloseEditorWindow(exec.EditorProcessName(editor), wtWsName)
+		exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
 		os.Remove(wsFile)
 	}
 
-	// Remove git worktrees using base project paths
-	ws, err := workspace.Load(wsName)
-	if err == nil {
-		for _, p := range ws.Projects {
-			wtDir := p.Path + "/.claude/worktrees/" + worktreeName
-			exec.RemoveGitWorktree(p.Path, wtDir)
-		}
+	// Full cleanup
+	if err := workspace.Remove(wsName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Delete workspace JSON
-	workspace.Remove(wtWsName)
-
-	fmt.Printf("Removed worktree: %s/%s\n", wsName, worktreeName)
+	fmt.Printf("Removed workspace: %s\n", wsName)
 }
 
 func cmdSessions() {
@@ -1161,10 +902,6 @@ func cmdSessions() {
 func cmdLsSessions() {
 	infos := workspace.ListSessionInfos()
 	for _, s := range infos {
-		typ := "base"
-		if s.IsWorktree {
-			typ = "worktree"
-		}
 		label := fmt.Sprintf("%d projects", s.ProjectCount)
 		if s.ProjectCount == 1 {
 			label = "1 project"
@@ -1173,9 +910,8 @@ func cmdLsSessions() {
 		if s.DevRunning {
 			devLabel = "dev"
 		}
-		// Strip " ago" suffix for compact CLI output
 		age := strings.TrimSuffix(s.Age, " ago")
-		fmt.Printf("%s\t%s\t%s\t%s\t%s\n", s.TmuxSession[len("crew-"):], typ, label, age, devLabel)
+		fmt.Printf("%s\t%s\t%s\t%s\n", s.Workspace, label, age, devLabel)
 	}
 }
 

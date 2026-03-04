@@ -1,6 +1,6 @@
 # crew
 
-CLI + TUI workspace manager for Claude Code. Manages workspaces, worktrees, dev servers, agent/skill registry, and session launching.
+CLI + TUI workspace manager for Claude Code. Manages workspaces, dev servers, agent/skill registry, and session launching.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ crew/
     profile/           # Claude profile management TUI
     project/           # Project CRUD
     registry/          # Agent/skill registry (fetch, install, update, TUI)
-    workspace/         # Workspace/worktree management, session launching
+    workspace/         # Workspace management, session launching
 ```
 
 ## UX philosophy
@@ -78,7 +78,7 @@ Use the following agents when appropriate:
 - **daily-chores** — read-only daily dashboard. Gathers GitHub PRs, Linear tasks, and project updates, then outputs a formatted summary with links.
 - **web-designer** — award-winning web designer. Researches real award-winning sites for inspiration, then generates unique, distinctive designs through iterative conversation. Use when the user wants to design a website, create a visual theme, generate HTML mockups, or build a design system. Use proactively when design tasks are detected.
 - **architect** — software architecture and system design agent. Use when designing new features, modules, APIs, database schemas, or system-level decisions. When entering plan mode for new features or architectural decisions, spawn this agent in the background during the design phase.
-- **crew** — crew workspace expert. Use when the user wants to manage workspaces, list projects or worktrees, check dev server status, start/stop/restart dev servers, or launch a workspace session.
+- **crew** — crew workspace expert. Use when the user wants to manage workspaces, list projects, check dev server status, start/stop/restart dev servers, or launch a workspace session.
 - **git-guardian** — git state checker. Use before starting implementation (after plan approval), after completing implementation, and before any push/tag. Checks branch safety, uncommitted changes, and runs project-specific preflight checks before push.
 
 ## Skills
@@ -91,5 +91,5 @@ The following skills are available:
 - **reactjs-new-project** — when scaffolding a new React project, follow these guidelines for project structure, tooling, and conventions.
 - **web-designer** — design system knowledge base (universal components, layout techniques, design principles, CSS variables, markup rules). Support skill for the web-designer agent — not user-invocable.
 - **pr-review-comments** — comment style guide for PR reviews. Ensures comments sound natural and human. Support skill for the pr-reviewer agent — not user-invocable.
-- **crew-remote** — remote management reference for crew workspaces, worktrees, dev servers, and deployment URLs.
-- **crew-launch** — interactive workspace launcher: discover workspaces, pick one, create worktree, launch session, start dev servers.
+- **crew-remote** — remote management reference for crew workspaces, dev servers, and deployment URLs.
+- **crew-launch** — interactive workspace launcher: discover workspaces, pick one, launch session, start dev servers.

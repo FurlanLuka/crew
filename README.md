@@ -7,7 +7,7 @@ Agent team launcher, workspace manager & package registry for Claude Code. Manag
 | Command | Description |
 |---------|-------------|
 | `crew` | Main menu — pick any domain |
-| `crew workspace` | Manage workspaces, projects, worktrees, and launch |
+| `crew workspace` | Manage workspaces, projects, and launch |
 | `crew project` | Global project pool — add/remove projects |
 | `crew registry` | Install and manage agents & skills |
 | `crew profile` | Manage Claude profile |

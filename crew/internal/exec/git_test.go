@@ -4,54 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
-
-func TestEnsureGitignore_NewFile(t *testing.T) {
-	dir := t.TempDir()
-
-	EnsureGitignore(dir)
-
-	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	if !strings.Contains(string(data), ".claude/worktrees/") {
-		t.Error(".gitignore should contain .claude/worktrees/")
-	}
-}
-
-func TestEnsureGitignore_ExistingWithout(t *testing.T) {
-	dir := t.TempDir()
-	gitignore := filepath.Join(dir, ".gitignore")
-	os.WriteFile(gitignore, []byte("node_modules/\n"), 0o644)
-
-	EnsureGitignore(dir)
-
-	data, _ := os.ReadFile(gitignore)
-	content := string(data)
-	if !strings.Contains(content, "node_modules/") {
-		t.Error("should preserve existing entries")
-	}
-	if !strings.Contains(content, ".claude/worktrees/") {
-		t.Error("should append .claude/worktrees/")
-	}
-}
-
-func TestEnsureGitignore_Idempotent(t *testing.T) {
-	dir := t.TempDir()
-	gitignore := filepath.Join(dir, ".gitignore")
-	os.WriteFile(gitignore, []byte(".claude/worktrees/\n"), 0o644)
-
-	EnsureGitignore(dir)
-
-	data, _ := os.ReadFile(gitignore)
-	count := strings.Count(string(data), ".claude/worktrees/")
-	if count != 1 {
-		t.Errorf(".claude/worktrees/ appears %d times, want 1", count)
-	}
-}
 
 func TestCopyEnvFiles(t *testing.T) {
 	src := t.TempDir()
@@ -153,7 +107,7 @@ func TestCreateAndRemoveWorktree(t *testing.T) {
 	}
 
 	dir := initGitRepo(t)
-	wtDir := filepath.Join(dir, ".claude", "worktrees", "test-wt")
+	wtDir := filepath.Join(dir, "worktrees", "test-wt")
 
 	err := CreateGitWorktree(dir, wtDir, "wt-test-branch", "")
 	if err != nil {
@@ -178,7 +132,7 @@ func TestCreateWorktree_BranchExists(t *testing.T) {
 	}
 
 	dir := initGitRepo(t)
-	wtDir := filepath.Join(dir, ".claude", "worktrees", "reuse-wt")
+	wtDir := filepath.Join(dir, "worktrees", "reuse-wt")
 
 	// First create
 	err := CreateGitWorktree(dir, wtDir, "wt-reuse-branch", "")
@@ -190,7 +144,7 @@ func TestCreateWorktree_BranchExists(t *testing.T) {
 	RemoveGitWorktree(dir, wtDir)
 
 	// Second create should fall back to reusing the branch
-	wtDir2 := filepath.Join(dir, ".claude", "worktrees", "reuse-wt2")
+	wtDir2 := filepath.Join(dir, "worktrees", "reuse-wt2")
 	err = CreateGitWorktree(dir, wtDir2, "wt-reuse-branch", "")
 	if err != nil {
 		t.Fatalf("second CreateGitWorktree: %v", err)
@@ -201,4 +155,58 @@ func TestCreateWorktree_BranchExists(t *testing.T) {
 
 	// Cleanup
 	RemoveGitWorktree(dir, wtDir2)
+}
+
+func TestCreateGitWorktree_WithFromBranch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping git integration test")
+	}
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+
+	dir := initGitRepo(t)
+	branch := GetCurrentBranch(dir)
+	wtDir := filepath.Join(dir, "worktrees", "from-branch-wt")
+
+	err := CreateGitWorktree(dir, wtDir, "from-branch-test", branch)
+	if err != nil {
+		t.Fatalf("CreateGitWorktree with fromBranch: %v", err)
+	}
+	if _, err := os.Stat(wtDir); err != nil {
+		t.Error("worktree dir should exist after create with fromBranch")
+	}
+
+	RemoveGitWorktree(dir, wtDir)
+}
+
+func TestPruneWorktrees(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping git integration test")
+	}
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+
+	dir := initGitRepo(t)
+	PruneWorktrees(dir) // should not panic on clean repo
+}
+
+func TestRunGitCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping git integration test")
+	}
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+
+	dir := initGitRepo(t)
+
+	out, err := RunGitCommand(dir, "status")
+	if err != nil {
+		t.Fatalf("RunGitCommand: %v", err)
+	}
+	if out == "" {
+		t.Error("RunGitCommand returned empty string")
+	}
 }

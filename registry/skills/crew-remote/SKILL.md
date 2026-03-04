@@ -1,7 +1,7 @@
 ---
 name: crew-remote
 description: >
-  Remote management reference for crew workspaces, worktrees, dev servers,
+  Remote management reference for crew workspaces, dev servers,
   and deployment URLs. Quick reference card for all CLI commands an AI agent
   needs to inspect and manage a crew installation.
 user-invocable: true
@@ -9,25 +9,26 @@ user-invocable: true
 
 # Crew Remote Management
 
-Reference card for managing crew workspaces, worktrees, and dev servers from a remote agent.
+Reference card for managing crew workspaces and dev servers from a remote agent.
 
 ## Quick Reference
 
 | Command | Description |
 |---|---|
 | `crew ls workspaces` | List all workspaces |
-| `crew ls worktrees <ws>` | List worktree names for a workspace |
 | `crew show <ws>` | Show projects in a workspace |
-| `crew dev show <ws>` | Show configured dev servers |
+| `crew dev show <project>` | Show configured dev servers for a project |
 | `crew dev status` | Show all running dev servers with URLs |
 | `crew dev status <ws>` | Show running dev servers for one workspace |
-| `crew dev add <ws> <proj> ...` | Add a dev server to a project |
-| `crew dev rm <ws> <proj> <name>` | Remove a dev server from a project |
-| `crew dev start <ws> [flags]` | Start dev servers with reverse proxy |
-| `crew dev stop [<ws>] [flags]` | Stop dev servers |
-| `crew dev restart <ws> [flags]` | Restart dev servers |
-| `crew start <ws> [flags]` | Generate agent prompt for a workspace |
-| `crew happy <ws> [flags]` | Launch Happy Coder session in tmux |
+| `crew dev add <project> ...` | Add a dev server to a project |
+| `crew dev rm <project> <name>` | Remove a dev server from a project |
+| `crew dev start <ws> [--host=<ip>]` | Start dev servers with reverse proxy |
+| `crew dev stop [<ws>]` | Stop dev servers |
+| `crew dev restart <ws> [--host=<ip>]` | Restart dev servers |
+| `crew start <ws>` | Generate agent prompt for a workspace |
+| `crew happy <ws>` | Launch Happy Coder session in tmux |
+| `crew stop <ws>` | Stop a workspace session |
+| `crew rm <ws>` | Remove a workspace entirely |
 | `crew launch [<workspace>]` | Open the launch view (TUI) |
 | `crew plans start` | Start the plan viewer server |
 | `crew plans stop` | Stop the plan viewer server |
@@ -41,7 +42,7 @@ Reference card for managing crew workspaces, worktrees, and dev servers from a r
 ```bash
 crew ls workspaces
 ```
-Output: `<name>\t<n> projects\t<n> worktrees`
+Output: `<name>\t<n> projects`
 
 ### Show projects in a workspace
 
@@ -50,17 +51,10 @@ crew show <workspace>
 ```
 Output: `<name>\t<path>\t<role>`
 
-### List worktrees
-
-```bash
-crew ls worktrees <workspace>
-```
-Output: one worktree name per line.
-
 ### Show configured dev servers
 
 ```bash
-crew dev show <workspace>
+crew dev show <project>
 ```
 Output: `<project>\t<server-name>\t<port>\t<command>[\t<dir>]`
 
@@ -72,7 +66,7 @@ Shows what dev servers are **configured** (not necessarily running).
 crew dev status              # all workspaces
 crew dev status <workspace>  # one workspace
 ```
-Output: `<workspace>\t<worktree>\t<port>\t<url>`
+Output: `<workspace>\t<port>\t<url>`
 
 Shows **running** dev servers with their nip.io URLs.
 
@@ -80,18 +74,17 @@ Shows **running** dev servers with their nip.io URLs.
 
 Dev servers use nip.io for DNS:
 ```
-http://<worktree>.<lan-ip>.nip.io:<port>
+http://<workspace>.<lan-ip>.nip.io:<port>
 ```
 
-- `main` is the worktree name when no worktree is specified
+- The workspace name is used as the subdomain
 - The LAN IP is auto-detected (the server's non-loopback IPv4)
-- Each worktree gets its own subdomain on the same external port
+- Each workspace gets its own subdomain on the same external port
 
-To find the URL for a specific worktree:
+To find the URL for a workspace:
 ```bash
 crew dev status <workspace>
 ```
-Then look for the matching worktree name in the output.
 
 ## Plan Viewer
 
@@ -111,7 +104,7 @@ The plan viewer is a built-in Go HTTP server with an embedded SPA. No external d
 ### Add a dev server
 
 ```bash
-crew dev add <workspace> <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
+crew dev add <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
 ```
 
 - `--name`: server name (e.g., `web`, `api`)
@@ -123,22 +116,20 @@ crew dev add <workspace> <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
 
 ```bash
 crew dev start <workspace>
-crew dev start <workspace> --worktree=<name>
 crew dev start <workspace> --host=<ip>
 ```
 
 ### Stop dev servers
 
 ```bash
-crew dev stop                              # stop all
-crew dev stop <workspace>                  # stop workspace
-crew dev stop <workspace> --worktree=<name>  # stop one worktree
+crew dev stop                 # stop all
+crew dev stop <workspace>     # stop workspace
 ```
 
 ### Restart dev servers
 
 ```bash
-crew dev restart <workspace> [--worktree=<name>] [--host=<ip>]
+crew dev restart <workspace> [--host=<ip>]
 ```
 
 ### Launch a session
@@ -146,13 +137,18 @@ crew dev restart <workspace> [--worktree=<name>] [--host=<ip>]
 **IMPORTANT:** `crew happy` must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Detach it or instruct the user to run it in a separate terminal.
 
 ```bash
-crew launch                                # open workspace picker (TUI)
-crew launch <workspace>                    # open launch view for a workspace (TUI)
-crew start <workspace> --worktree=<name>   # generate agent prompt
-nohup crew happy <workspace> --worktree=<name> >/dev/null 2>&1 &  # launch Happy Coder (detached)
+crew launch                   # open workspace picker (TUI)
+crew launch <workspace>       # open launch view for a workspace (TUI)
+crew start <workspace>        # generate agent prompt
+nohup crew happy <workspace> >/dev/null 2>&1 &  # launch Happy Coder (detached)
 ```
 
-Both `start` and `happy` accept `--from=<branch>` to base a new worktree on a specific branch.
+### Stop / remove a workspace
+
+```bash
+crew stop <workspace>         # stop session (tmux + dev servers)
+crew rm <workspace>           # remove workspace entirely (worktrees, dir, JSON)
+```
 
 ## Output Formats
 
@@ -160,11 +156,10 @@ All commands use **tab-separated** output for easy parsing:
 
 | Command | Format |
 |---|---|
-| `crew ls workspaces` | `<name>\t<n> projects\t<n> worktrees` |
-| `crew ls worktrees <ws>` | `<name>` (one per line) |
+| `crew ls workspaces` | `<name>\t<n> projects` |
 | `crew show <ws>` | `<name>\t<path>\t<role>` |
-| `crew dev show <ws>` | `<project>\t<server>\t<port>\t<cmd>[\t<dir>]` |
-| `crew dev status [<ws>]` | `<workspace>\t<worktree>\t<port>\t<url>` |
+| `crew dev show <project>` | `<project>\t<server>\t<port>\t<cmd>[\t<dir>]` |
+| `crew dev status [<ws>]` | `<workspace>\t<port>\t<url>` |
 
 ## Installation
 
@@ -180,32 +175,21 @@ curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | s
 crew dev status
 ```
 
-### "Set up dev servers for a workspace"
+### "Set up dev servers for a project"
 
 ```bash
 # 1. Check what's configured
-crew dev show <workspace>
+crew dev show <project>
 
 # 2. Add missing servers
-crew dev add <workspace> <project> --name=web --port=5173 --cmd="npm run dev"
+crew dev add <project> --name=web --port=5173 --cmd="npm run dev"
 
-# 3. Start them
+# 3. Start them for a workspace
 crew dev start <workspace>
 ```
 
-### "What's the URL for worktree feature-x?"
+### "What's the URL for my workspace?"
 
 ```bash
-crew dev status <workspace>
-# Find the line with "feature-x" in the worktree column
-```
-
-### "Spin up a new worktree with dev servers"
-
-```bash
-# 1. Start dev servers for the new worktree
-crew dev start <workspace> --worktree=feature-x
-
-# 2. Check the URLs
 crew dev status <workspace>
 ```

@@ -96,43 +96,11 @@ func TestParseSessionName_BaseSession(t *testing.T) {
 	if info.TmuxSession != "crew-myapp" {
 		t.Errorf("TmuxSession = %q, want %q", info.TmuxSession, "crew-myapp")
 	}
-	if info.BaseName != "myapp" {
-		t.Errorf("BaseName = %q, want %q", info.BaseName, "myapp")
-	}
-	if info.DisplayName != "myapp" {
-		t.Errorf("DisplayName = %q, want %q", info.DisplayName, "myapp")
-	}
-	if info.WorktreeName != "" {
-		t.Errorf("WorktreeName = %q, want empty", info.WorktreeName)
-	}
-	if info.IsWorktree {
-		t.Error("IsWorktree should be false for base session")
+	if info.Workspace != "myapp" {
+		t.Errorf("Workspace = %q, want %q", info.Workspace, "myapp")
 	}
 	if info.Age != "2h ago" {
 		t.Errorf("Age = %q, want %q", info.Age, "2h ago")
-	}
-}
-
-func TestParseSessionName_WorktreeSession(t *testing.T) {
-	info := parseSessionName("crew-myapp--feat-1", "15m ago")
-
-	if info.TmuxSession != "crew-myapp--feat-1" {
-		t.Errorf("TmuxSession = %q, want %q", info.TmuxSession, "crew-myapp--feat-1")
-	}
-	if info.BaseName != "myapp" {
-		t.Errorf("BaseName = %q, want %q", info.BaseName, "myapp")
-	}
-	if info.WorktreeName != "feat-1" {
-		t.Errorf("WorktreeName = %q, want %q", info.WorktreeName, "feat-1")
-	}
-	if !info.IsWorktree {
-		t.Error("IsWorktree should be true for worktree session")
-	}
-	if info.DisplayName != "myapp/feat-1" {
-		t.Errorf("DisplayName = %q, want %q", info.DisplayName, "myapp/feat-1")
-	}
-	if info.Age != "15m ago" {
-		t.Errorf("Age = %q, want %q", info.Age, "15m ago")
 	}
 }
 
@@ -149,33 +117,20 @@ func TestParseSessionName_DefaultFields(t *testing.T) {
 
 func TestParseSessionName_Table(t *testing.T) {
 	tests := []struct {
-		tmuxName    string
-		wantBase    string
-		wantWT      string
-		wantDisplay string
-		wantIsWT    bool
+		tmuxName      string
+		wantWorkspace string
 	}{
-		{"crew-alpha", "alpha", "", "alpha", false},
-		{"crew-alpha--beta", "alpha", "beta", "alpha/beta", true},
-		{"crew-my-app--fix-bug", "my-app", "fix-bug", "my-app/fix-bug", true},
-		{"crew-a--b--c", "a", "b--c", "a/b--c", true},
+		{"crew-alpha", "alpha"},
+		{"crew-my-app", "my-app"},
+		{"crew-workspace-1", "workspace-1"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.tmuxName, func(t *testing.T) {
 			info := parseSessionName(tt.tmuxName, "")
 
-			if info.BaseName != tt.wantBase {
-				t.Errorf("BaseName = %q, want %q", info.BaseName, tt.wantBase)
-			}
-			if info.WorktreeName != tt.wantWT {
-				t.Errorf("WorktreeName = %q, want %q", info.WorktreeName, tt.wantWT)
-			}
-			if info.DisplayName != tt.wantDisplay {
-				t.Errorf("DisplayName = %q, want %q", info.DisplayName, tt.wantDisplay)
-			}
-			if info.IsWorktree != tt.wantIsWT {
-				t.Errorf("IsWorktree = %v, want %v", info.IsWorktree, tt.wantIsWT)
+			if info.Workspace != tt.wantWorkspace {
+				t.Errorf("Workspace = %q, want %q", info.Workspace, tt.wantWorkspace)
 			}
 		})
 	}

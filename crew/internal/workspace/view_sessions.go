@@ -150,12 +150,6 @@ func (v SessionsView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, nil
 	case msg.String() == "r":
 		if len(v.sessions) > 0 {
-			s := v.sessions[v.cursor]
-			if !s.IsWorktree {
-				v.statusMsg = ""
-				v.err = fmt.Errorf("cannot remove base session — use 's' to stop it")
-				return v, nil
-			}
 			v.state = sessStateConfirmRemove
 			v.statusMsg = ""
 			v.err = nil
@@ -254,7 +248,7 @@ func (v SessionsView) renderList(b *strings.Builder) {
 			cursor = app.Selected.Render("> ")
 		}
 
-		display := s.DisplayName
+		display := s.Workspace
 		if i == v.cursor {
 			display = app.Selected.Render(display)
 		}
@@ -308,7 +302,7 @@ func (v SessionsView) renderConfirmStop(b *strings.Builder) {
 	if v.cursor >= len(v.sessions) {
 		return
 	}
-	name := v.sessions[v.cursor].DisplayName
+	name := v.sessions[v.cursor].Workspace
 	b.WriteString(fmt.Sprintf("  Stop session '%s'? (y/n)\n", name))
 }
 
@@ -316,8 +310,8 @@ func (v SessionsView) renderConfirmRemove(b *strings.Builder) {
 	if v.cursor >= len(v.sessions) {
 		return
 	}
-	name := v.sessions[v.cursor].DisplayName
-	b.WriteString(fmt.Sprintf("  Remove session + worktree '%s'? (y/n)\n", name))
+	name := v.sessions[v.cursor].Workspace
+	b.WriteString(fmt.Sprintf("  Remove workspace '%s'? This will delete all worktrees. (y/n)\n", name))
 }
 
 func (v SessionsView) renderConfirmStopAll(b *strings.Builder) {
@@ -332,51 +326,34 @@ func loadSessions() tea.Msg {
 
 func stopSession(s SessionInfo) tea.Cmd {
 	return func() tea.Msg {
-		StopSession(s.BaseName, s.WorktreeName)
+		StopSession(s.Workspace)
 
 		// Clean up .code-workspace file
-		loadName := s.BaseName
-		if s.WorktreeName != "" {
-			loadName = WorktreeWorkspaceName(s.BaseName, s.WorktreeName)
-		}
-		wsFile := CodeWorkspaceFilePath(loadName)
+		wsFile := CodeWorkspaceFilePath(s.Workspace)
 		if _, err := os.Stat(wsFile); err == nil {
 			editor := exec.DetectEditor()
-			exec.CloseEditorWindow(exec.EditorProcessName(editor), loadName)
+			exec.CloseEditorWindow(exec.EditorProcessName(editor), s.Workspace)
 			os.Remove(wsFile)
 		}
 
-		return sessionStoppedMsg{s.DisplayName}
+		return sessionStoppedMsg{s.Workspace}
 	}
 }
 
 func removeSession(s SessionInfo) tea.Cmd {
 	return func() tea.Msg {
-		StopSession(s.BaseName, s.WorktreeName)
-
-		wtWsName := WorktreeWorkspaceName(s.BaseName, s.WorktreeName)
+		// Full cleanup: stop session + remove workspace
+		Remove(s.Workspace)
 
 		// Clean up .code-workspace file
-		wsFile := CodeWorkspaceFilePath(wtWsName)
+		wsFile := CodeWorkspaceFilePath(s.Workspace)
 		if _, err := os.Stat(wsFile); err == nil {
 			editor := exec.DetectEditor()
-			exec.CloseEditorWindow(exec.EditorProcessName(editor), wtWsName)
+			exec.CloseEditorWindow(exec.EditorProcessName(editor), s.Workspace)
 			os.Remove(wsFile)
 		}
 
-		// Remove git worktrees using base project paths
-		ws, err := Load(s.BaseName)
-		if err == nil {
-			for _, p := range ws.Projects {
-				wtDir := p.Path + "/.claude/worktrees/" + s.WorktreeName
-				exec.RemoveGitWorktree(p.Path, wtDir)
-			}
-		}
-
-		// Delete workspace JSON
-		Remove(wtWsName)
-
-		return sessionRemovedMsg{s.DisplayName}
+		return sessionRemovedMsg{s.Workspace}
 	}
 }
 
@@ -386,15 +363,11 @@ func stopAllSessions(sessions []SessionInfo) tea.Cmd {
 		editorProc := exec.EditorProcessName(editor)
 
 		for _, s := range sessions {
-			StopSession(s.BaseName, s.WorktreeName)
+			StopSession(s.Workspace)
 
-			loadName := s.BaseName
-			if s.WorktreeName != "" {
-				loadName = WorktreeWorkspaceName(s.BaseName, s.WorktreeName)
-			}
-			wsFile := CodeWorkspaceFilePath(loadName)
+			wsFile := CodeWorkspaceFilePath(s.Workspace)
 			if _, err := os.Stat(wsFile); err == nil {
-				exec.CloseEditorWindow(editorProc, loadName)
+				exec.CloseEditorWindow(editorProc, s.Workspace)
 				os.Remove(wsFile)
 			}
 		}
