@@ -266,7 +266,7 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
 			dir := WorkspaceDir(s.Name)
-			return v, tea.Sequence(tea.Println(dir), tea.Quit)
+			return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: dir} }
 		}
 		return v, nil
 	case msg.String() == "enter":

@@ -172,9 +172,13 @@ func mainMenu() app.Menu {
 func runTUI(page app.Page) {
 	a := app.New(page)
 	p := tea.NewProgram(a, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+	m, err := p.Run()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+	if final, ok := m.(app.App); ok && final.ExitOutput != "" {
+		fmt.Println(final.ExitOutput)
 	}
 }
 

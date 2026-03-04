@@ -18,11 +18,15 @@ type PushPageMsg struct{ Page Page }
 // PopPageMsg pops the current page.
 type PopPageMsg struct{}
 
+// ExitWithOutputMsg quits the TUI and prints output to stdout after exit.
+type ExitWithOutputMsg struct{ Output string }
+
 // App is the root model managing a navigation stack of pages.
 type App struct {
-	stack  []Page
-	width  int
-	height int
+	stack      []Page
+	width      int
+	height     int
+	ExitOutput string
 }
 
 func New(initial Page) App {
@@ -55,6 +59,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds := []tea.Cmd{msg.Page.Init()}
 		a.forwardWindowSize(&cmds)
 		return a, tea.Batch(cmds...)
+
+	case ExitWithOutputMsg:
+		a.ExitOutput = msg.Output
+		return a, tea.Quit
 
 	case PopPageMsg:
 		if len(a.stack) <= 1 {
