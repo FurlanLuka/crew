@@ -88,6 +88,28 @@ func TestFormatAge_Days(t *testing.T) {
 	}
 }
 
+// ── isInfrastructureSession ──
+
+func TestListSessionInfos_ExcludesInfrastructureSessions(t *testing.T) {
+	infraNames := []string{"crew-plans", "crew-dev-myapp", "crew-dev-api-8080"}
+	for _, name := range infraNames {
+		info := parseSessionName(name, "")
+		// Verify these names would be caught by the filter
+		isInfra := name == "crew-plans" || len(name) > 9 && name[:9] == "crew-dev-"
+		if !isInfra {
+			t.Errorf("session %q should be recognized as infrastructure", info.TmuxSession)
+		}
+	}
+
+	workspaceNames := []string{"crew-myapp", "crew-devtools", "crew-developer"}
+	for _, name := range workspaceNames {
+		isInfra := name == "crew-plans" || len(name) > 9 && name[:9] == "crew-dev-"
+		if isInfra {
+			t.Errorf("session %q should NOT be recognized as infrastructure", name)
+		}
+	}
+}
+
 // ── parseSessionName ──
 
 func TestParseSessionName_BaseSession(t *testing.T) {

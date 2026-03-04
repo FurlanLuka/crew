@@ -23,6 +23,10 @@ func ListSessionInfos() []SessionInfo {
 	infos := make([]SessionInfo, 0, len(sessions))
 
 	for _, s := range sessions {
+		if s.Name == "crew-plans" || strings.HasPrefix(s.Name, "crew-dev-") {
+			continue
+		}
+
 		info := parseSessionName(s.Name, formatAge(s.CreatedAt))
 
 		if ws, err := Load(info.Workspace); err == nil {
