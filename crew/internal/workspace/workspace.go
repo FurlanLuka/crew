@@ -247,33 +247,6 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 	b.WriteString("IMPORTANT: Each project directory is a git worktree — an isolated working copy with its own branch.\n")
 	b.WriteString("All changes stay isolated from the main codebase until explicitly merged.\n\n")
 
-	// Include dev server URLs if configured (from project pool)
-	hasDevServers := false
-	for _, wp := range ws.Projects {
-		p := project.Get(wp.Name)
-		if p != nil && len(p.DevServers) > 0 {
-			hasDevServers = true
-			break
-		}
-	}
-	if hasDevServers {
-		b.WriteString("Dev servers are configured for this workspace. Each project's dev servers:\n")
-		for _, wp := range ws.Projects {
-			p := project.Get(wp.Name)
-			if p == nil {
-				continue
-			}
-			for _, ds := range p.DevServers {
-				dir := ""
-				if ds.Dir != "" {
-					dir = " (dir: " + ds.Dir + ")"
-				}
-				fmt.Fprintf(&b, "- %s/%s: port %d, command: %s%s\n", wp.Name, ds.Name, ds.Port, ds.Command, dir)
-			}
-		}
-		b.WriteString("\n")
-	}
-
 	b.WriteString("Each teammate should cd into their project directory before starting work.\n")
 	b.WriteString("Create a shared task list so I can see status.\n")
 	b.WriteString("Wait for my instructions on what to build.\n")

@@ -197,33 +197,6 @@ func TestGeneratePrompt(t *testing.T) {
 	}
 }
 
-func TestGeneratePrompt_WithDevServers(t *testing.T) {
-	setupTestConfig(t)
-
-	project.Add(project.Project{
-		Name: "api",
-		Path: "/tmp/api",
-		DevServers: []project.DevServer{
-			{Name: "server", Port: 3000, Command: "npm start"},
-		},
-	})
-
-	ws := &Workspace{
-		Name: "dev-prompt",
-		Projects: []WorkspaceProject{
-			{Name: "api", Role: "backend"},
-		},
-	}
-
-	text, err := GeneratePrompt(ws)
-	if err != nil {
-		t.Fatalf("GeneratePrompt: %v", err)
-	}
-	if !containsAll(text, "Dev servers", "port 3000") {
-		t.Error("prompt should mention dev servers when configured")
-	}
-}
-
 func TestGeneratePrompt_WritesFile(t *testing.T) {
 	setupTestConfig(t)
 

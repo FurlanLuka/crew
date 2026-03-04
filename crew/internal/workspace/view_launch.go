@@ -390,26 +390,29 @@ func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
 		return errMsg{fmt.Errorf("claude not found in PATH")}
 	}
 
-	prompt, err := os.ReadFile(promptFile)
-	if err != nil {
-		return errMsg{fmt.Errorf("failed to read prompt file: %w", err)}
-	}
-
 	debug.Log("claude", "launching claude session for workspace %s", ws.Name)
 
 	args := []string{"claude"}
-	for _, wp := range ws.Projects[1:] {
-		args = append(args, "--add-dir", ProjectPath(ws.Name, wp.Name))
-	}
-	args = append(args, string(prompt))
-
 	env := os.Environ()
-	env = setEnv(env, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1")
+	workDir := ProjectPath(ws.Name, ws.Projects[0].Name)
+
+	if len(ws.Projects) > 1 {
+		for _, wp := range ws.Projects[1:] {
+			args = append(args, "--add-dir", ProjectPath(ws.Name, wp.Name))
+		}
+
+		prompt, err := os.ReadFile(promptFile)
+		if err != nil {
+			return errMsg{fmt.Errorf("failed to read prompt file: %w", err)}
+		}
+		args = append(args, string(prompt))
+		env = setEnv(env, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1")
+	}
+
 	if config.UserSetClaudeConfig {
 		env = setEnv(env, "CLAUDE_CONFIG_DIR", config.ClaudeConfigDir)
 	}
 
-	workDir := ProjectPath(ws.Name, ws.Projects[0].Name)
 	debug.Log("claude", "exec %s (cwd: %s, args: %v)", claudePath, workDir, args)
 
 	if err := os.Chdir(workDir); err != nil {

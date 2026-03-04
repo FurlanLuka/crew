@@ -235,7 +235,27 @@ func cmdOpen() {
 		os.Exit(1)
 	}
 
-	fmt.Println(workspace.WorkspaceDir(wsName))
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	shellPath, err := osexec.LookPath(shell)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: shell not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	dir := workspace.WorkspaceDir(wsName)
+	if err := os.Chdir(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	debug.Log("open", "exec %s in %s", shellPath, dir)
+	if err := syscall.Exec(shellPath, []string{shell}, os.Environ()); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func cmdShow() {
