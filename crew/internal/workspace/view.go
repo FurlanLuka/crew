@@ -106,12 +106,14 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case workspaceCreatedMsg:
 		v.state = stateList
 		v.statusMsg = fmt.Sprintf("Created workspace '%s'", msg.name)
+		v.err = nil
 		v.input.Reset()
 		return v, loadWorkspaces
 
 	case workspaceRemovedMsg:
 		v.state = stateList
 		v.statusMsg = fmt.Sprintf("Removed workspace '%s'", msg.name)
+		v.err = nil
 		return v, loadWorkspaces
 
 	case wsProjectsLoadedMsg:
@@ -125,6 +127,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wsProjectAddedMsg:
 		v.state = stateProjects
 		v.statusMsg = fmt.Sprintf("Added '%s'", msg.name)
+		v.err = nil
 		v.roleInput.Reset()
 		v.pickedProject = ""
 		return v, loadWsProjects(v.selectedWs)
@@ -132,10 +135,12 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wsProjectRemovedMsg:
 		v.state = stateProjects
 		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
+		v.err = nil
 		return v, loadWsProjects(v.selectedWs)
 
 	case happyLaunchedMsg:
-		v.statusMsg = fmt.Sprintf("Happy Coder: %s", msg.session)
+		v.statusMsg = fmt.Sprintf("Happy Coder: %s — visible in mobile app", msg.session)
+		v.err = nil
 		return v, nil
 
 	case errMsg:
@@ -460,6 +465,11 @@ func (v View) renderList(b *strings.Builder) {
 	if v.statusMsg != "" {
 		b.WriteString("  ")
 		b.WriteString(app.Success.Render(v.statusMsg))
+		b.WriteString("\n\n")
+	}
+	if v.err != nil {
+		b.WriteString("  ")
+		b.WriteString(app.Error.Render(v.err.Error()))
 		b.WriteString("\n\n")
 	}
 

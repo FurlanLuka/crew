@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -127,6 +126,7 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Worktree was created, select it and proceed to mode
 		v.selectedWt = msg.name
 		v.state = launchStateMode
+		v.err = nil
 		v.nameInput.Reset()
 		v.branchInput.Reset()
 		return v, nil
@@ -266,6 +266,7 @@ func (v LaunchView) handleModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, tea.Quit
 	case key.Matches(msg, app.Keys.Back):
 		v.state = launchStateWorktree
+		v.err = nil
 		return v, nil
 	case key.Matches(msg, app.Keys.Up):
 		if v.modeCursor > 0 {
@@ -546,7 +547,6 @@ func StartHappySession(ws *Workspace) (string, error) {
 		happyCmd += fmt.Sprintf(" --add-dir %s", p.Path)
 	}
 	happyCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
-	fmt.Fprintf(os.Stderr, "[debug] tmux send-keys: %s\n", happyCmd)
 	exec.TmuxSendKeys(session, happyCmd)
 
 	return session, nil

@@ -98,6 +98,7 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case worktreeCreatedMsg:
 		v.state = wtStateList
 		v.statusMsg = fmt.Sprintf("Created worktree '%s'", msg.name)
+		v.err = nil
 		v.input.Reset()
 		v.branchInput.Reset()
 		return v, v.loadWorktrees()
@@ -105,14 +106,17 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case worktreeRemovedMsg:
 		v.state = wtStateList
 		v.statusMsg = fmt.Sprintf("Removed worktree '%s'", msg.name)
+		v.err = nil
 		return v, v.loadWorktrees()
 
 	case worktreePushedMsg:
 		v.statusMsg = fmt.Sprintf("Pushed worktree '%s'", msg.name)
+		v.err = nil
 		return v, nil
 
 	case happyLaunchedMsg:
-		v.statusMsg = fmt.Sprintf("Happy Coder: %s", msg.session)
+		v.statusMsg = fmt.Sprintf("Happy Coder: %s — visible in mobile app", msg.session)
+		v.err = nil
 		return v, nil
 
 	case errMsg:

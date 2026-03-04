@@ -59,6 +59,11 @@ var Root = CommandInfo{
 			TUI:         true,
 		},
 		{
+			Name:        "sessions",
+			Description: "View and manage active sessions",
+			TUI:         true,
+		},
+		{
 			Name:        "notify",
 			Description: "Push notification setup",
 			TUI:         true,
@@ -93,6 +98,12 @@ var Root = CommandInfo{
 					Description:  "List worktree names for a workspace",
 					Usage:        "crew ls worktrees <workspace>",
 					OutputFormat: "<name> (one per line)",
+				},
+				{
+					Name:         "sessions",
+					Description:  "List active sessions",
+					Usage:        "crew ls sessions",
+					OutputFormat: "<session>\\t<type>\\t<projects>\\t<uptime>\\t<dev>",
 				},
 			},
 		},

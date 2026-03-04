@@ -121,22 +121,26 @@ func (v DevView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case devServerSavedMsg:
 		v.state = devStateList
 		v.statusMsg = "Server saved"
+		v.err = nil
 		v.resetForm()
 		return v, v.loadDevServers()
 
 	case devServerRemovedMsg:
 		v.state = devStateList
 		v.statusMsg = "Server removed"
+		v.err = nil
 		return v, v.loadDevServers()
 
 	case devStartedMsg:
 		v.loading = false
 		v.statusMsg = msg.status
+		v.err = nil
 		return v, v.loadDevServers()
 
 	case devStoppedMsg:
 		v.loading = false
 		v.statusMsg = "Dev servers stopped"
+		v.err = nil
 		return v, v.loadDevServers()
 
 	case errMsg:

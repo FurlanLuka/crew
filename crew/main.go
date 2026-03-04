@@ -39,6 +39,10 @@ func main() {
 		cmdKill()
 		return
 
+	case "sessions":
+		cmdSessions()
+		return
+
 	case "workspace":
 		runTUI(workspace.NewView())
 
@@ -116,6 +120,11 @@ func mainMenu() app.Menu {
 			Page:        func() app.Page { return workspace.NewView() },
 		},
 		{
+			Label:       "Sessions",
+			Description: "View and manage active sessions",
+			Page:        func() app.Page { return workspace.NewSessionsView() },
+		},
+		{
 			Label:       "Project",
 			Description: "Add/remove projects in workspaces",
 			Page:        func() app.Page { return project.NewView() },
@@ -154,7 +163,7 @@ func runTUI(page app.Page) {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|sessions]\n")
 		os.Exit(1)
 	}
 
@@ -165,8 +174,10 @@ func cmdLs() {
 		cmdLsWorkspaces()
 	case "worktrees":
 		cmdLsWorktrees()
+	case "sessions":
+		cmdLsSessions()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|sessions]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -1141,6 +1152,31 @@ func cmdRm() {
 	workspace.Remove(wtWsName)
 
 	fmt.Printf("Removed worktree: %s/%s\n", wsName, worktreeName)
+}
+
+func cmdSessions() {
+	runTUI(workspace.NewSessionsView())
+}
+
+func cmdLsSessions() {
+	infos := workspace.ListSessionInfos()
+	for _, s := range infos {
+		typ := "base"
+		if s.IsWorktree {
+			typ = "worktree"
+		}
+		label := fmt.Sprintf("%d projects", s.ProjectCount)
+		if s.ProjectCount == 1 {
+			label = "1 project"
+		}
+		devLabel := "-"
+		if s.DevRunning {
+			devLabel = "dev"
+		}
+		// Strip " ago" suffix for compact CLI output
+		age := strings.TrimSuffix(s.Age, " ago")
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\n", s.TmuxSession[len("crew-"):], typ, label, age, devLabel)
+	}
 }
 
 func cmdKill() {

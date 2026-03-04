@@ -3,8 +3,10 @@ package exec
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // HasTmux checks if tmux is available.
@@ -64,6 +66,46 @@ func AttachTmuxSession(session string) error {
 	args = append(args, "attach", "-t", session)
 
 	return syscall.Exec(tmuxPath, args, envWithoutTMUX())
+}
+
+// CrewSession holds a crew tmux session with its creation time.
+type CrewSession struct {
+	Name      string
+	CreatedAt time.Time
+}
+
+// ListCrewSessionsDetailed returns all crew tmux sessions with creation timestamps.
+func ListCrewSessionsDetailed() []CrewSession {
+	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}\t#{session_created}")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return parseCrewSessionsOutput(string(out))
+}
+
+// parseCrewSessionsOutput parses tmux list-sessions output (tab-separated name + unix timestamp)
+// and returns only sessions with the "crew-" prefix.
+func parseCrewSessionsOutput(output string) []CrewSession {
+	var sessions []CrewSession
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 || !strings.HasPrefix(parts[0], "crew-") {
+			continue
+		}
+		ts, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		sessions = append(sessions, CrewSession{
+			Name:      parts[0],
+			CreatedAt: time.Unix(ts, 0),
+		})
+	}
+	return sessions
 }
 
 // ListCrewSessions returns all tmux sessions starting with "crew-".

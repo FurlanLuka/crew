@@ -59,7 +59,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		}
 		a.stack = a.stack[:len(a.stack)-1]
-		return a, nil
+		// Re-init the revealed page so it refreshes its data
+		top := a.stack[len(a.stack)-1]
+		return a, top.Init()
 	}
 
 	// Forward to current page
