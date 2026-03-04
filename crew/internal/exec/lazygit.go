@@ -43,11 +43,11 @@ git:
   pagers:
     - pager: delta --dark --paging=never --side-by-side --line-numbers --syntax-theme Dracula
 customCommands:
-  - key: '<f1>'
+  - key: '>'
     command: 'tmux next-window'
     context: 'global'
     showOutput: false
-  - key: '<f2>'
+  - key: '<'
     command: 'tmux previous-window'
     context: 'global'
     showOutput: false
