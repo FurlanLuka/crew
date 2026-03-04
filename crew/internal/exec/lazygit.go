@@ -43,12 +43,24 @@ git:
   pagers:
     - pager: delta --dark --paging=never --side-by-side --line-numbers --syntax-theme Dracula
 customCommands:
-  - key: ')'
-    command: 'tmux next-window'
+  - key: '1'
+    command: 'tmux select-window -t :0'
     context: 'global'
     output: 'none'
-  - key: '('
-    command: 'tmux previous-window'
+  - key: '2'
+    command: 'tmux select-window -t :1'
+    context: 'global'
+    output: 'none'
+  - key: '3'
+    command: 'tmux select-window -t :2'
+    context: 'global'
+    output: 'none'
+  - key: '4'
+    command: 'tmux select-window -t :3'
+    context: 'global'
+    output: 'none'
+  - key: '5'
+    command: 'tmux select-window -t :4'
     context: 'global'
     output: 'none'
 `
