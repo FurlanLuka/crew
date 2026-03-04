@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	osexec "os/exec"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -17,6 +19,7 @@ import (
 
 type paneContentMsg struct{ content string }
 type tickLogsMsg time.Time
+type serverRestartedMsg struct{}
 
 // ── Data ──
 
@@ -87,6 +90,9 @@ func (v LogsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickLogsMsg:
 		return v, tea.Batch(v.capturePane(), tickLogs())
 
+	case serverRestartedMsg:
+		return v, nil
+
 	case tea.KeyMsg:
 		return v.handleKey(msg)
 	}
@@ -126,6 +132,11 @@ func (v LogsView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "shift+tab" || msg.String() == "left" || msg.String() == "h":
 		v.tabIdx = (v.tabIdx - 1 + len(v.tabs)) % len(v.tabs)
 		return v, v.capturePane()
+	case msg.String() == "r":
+		if v.tabIdx == len(v.tabs)-1 {
+			return v, nil // skip proxy tab
+		}
+		return v, v.restartServer()
 	}
 
 	// Forward to viewport for scrolling
@@ -163,13 +174,23 @@ func (v LogsView) View() string {
 
 	b.WriteString("\n")
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("tab switch  ↑↓ scroll  esc back"))
+	b.WriteString(app.HelpStyle.Render("r restart  tab switch  ↑↓ scroll  esc back"))
 	b.WriteString("\n")
 
 	return b.String()
 }
 
 // ── Commands ──
+
+func (v LogsView) restartServer() tea.Cmd {
+	target := fmt.Sprintf("%s:%s", v.session, v.tabs[v.tabIdx].window)
+	return func() tea.Msg {
+		debug.Log("tmux", "restart server %s", target)
+		osexec.Command("tmux", "send-keys", "-t", target, "C-c").Run()
+		osexec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
+		return serverRestartedMsg{}
+	}
+}
 
 func (v LogsView) capturePane() tea.Cmd {
 	session := v.session
