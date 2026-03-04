@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/help"
@@ -75,6 +78,10 @@ func main() {
 		cmdDev()
 		return
 
+	case "debug":
+		cmdDebug()
+		return
+
 	case "happier":
 		cmdHappier()
 		return
@@ -89,6 +96,10 @@ func main() {
 
 	case "rm":
 		cmdRm()
+		return
+
+	case "open":
+		cmdOpen()
 		return
 
 	case "show":
@@ -150,6 +161,11 @@ func mainMenu() app.Menu {
 			Description: "Claude plan viewer dashboard",
 			Page:        func() app.Page { return plans.NewView() },
 		},
+		{
+			Label:       "Debug",
+			Description: "View debug log",
+			Page:        func() app.Page { return debug.NewView() },
+		},
 	})
 }
 
@@ -201,6 +217,21 @@ func cmdLsWorkspaces() {
 	for _, s := range summaries {
 		fmt.Printf("%s\t%d projects\n", s.Name, s.ProjectCount)
 	}
+}
+
+func cmdOpen() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew open <workspace>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[2]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	fmt.Println(workspace.WorkspaceDir(wsName))
 }
 
 func cmdShow() {
@@ -799,6 +830,27 @@ func detectDevCommand(projectPath string) string {
 		return "npm start"
 	}
 	return ""
+}
+
+func cmdDebug() {
+	logPath := config.ConfigDir + "/debug.log"
+
+	// Ensure the file exists before tail -f
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err == nil {
+		f.Close()
+	}
+
+	tailPath, err := osexec.LookPath("tail")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: tail not found\n")
+		os.Exit(1)
+	}
+
+	if err := syscall.Exec(tailPath, []string{"tail", "-f", logPath}, os.Environ()); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func cmdPlans() {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
 // HasTmux checks if tmux is available.
@@ -19,15 +21,22 @@ func HasTmux() bool {
 // TmuxSessionExists checks if a tmux session exists.
 func TmuxSessionExists(session string) bool {
 	cmd := exec.Command("tmux", "has-session", "-t", session)
-	return cmd.Run() == nil
+	exists := cmd.Run() == nil
+	debug.Log("tmux", "has-session -t %s → %v", session, exists)
+	return exists
 }
 
 // CreateTmuxSession creates a new detached tmux session.
 // Unsets $TMUX so this works even when called from inside an existing session.
 func CreateTmuxSession(session, dir string) error {
+	debug.Log("tmux", "new-session -d -s %s -c %s", session, dir)
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", session, "-c", dir)
 	cmd.Env = envWithoutTMUX()
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		debug.Log("tmux", "new-session -s %s → error: %v", session, err)
+		return err
+	}
+	return nil
 }
 
 // envWithoutTMUX returns os.Environ() with $TMUX removed.
@@ -43,17 +52,24 @@ func envWithoutTMUX() []string {
 
 // TmuxSendKeys sends keys to a tmux session.
 func TmuxSendKeys(session, keys string) error {
+	debug.Log("tmux", "send-keys -t %s %s", session, keys)
 	cmd := exec.Command("tmux", "send-keys", "-t", session, keys, "Enter")
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		debug.Log("tmux", "send-keys -t %s → error: %v", session, err)
+		return err
+	}
+	return nil
 }
 
 // KillTmuxSession kills a tmux session.
 func KillTmuxSession(session string) {
+	debug.Log("tmux", "kill-session -t %s", session)
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
 // AttachTmuxSession attaches to a tmux session via syscall.Exec (replaces process).
 func AttachTmuxSession(session string) error {
+	debug.Log("tmux", "attach -t %s", session)
 	tmuxPath, err := exec.LookPath("tmux")
 	if err != nil {
 		return err
@@ -77,12 +93,15 @@ type CrewSession struct {
 
 // ListCrewSessionsDetailed returns all crew tmux sessions with creation timestamps.
 func ListCrewSessionsDetailed() []CrewSession {
+	debug.Log("tmux", "list-sessions (detailed)")
 	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}\t#{session_created}")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
-	return parseCrewSessionsOutput(string(out))
+	sessions := parseCrewSessionsOutput(string(out))
+	debug.Log("tmux", "list-sessions → %d crew sessions", len(sessions))
+	return sessions
 }
 
 // parseCrewSessionsOutput parses tmux list-sessions output (tab-separated name + unix timestamp)
@@ -113,6 +132,7 @@ func parseCrewSessionsOutput(output string) []CrewSession {
 // Returns empty string (no error) if the session/window doesn't exist.
 func CaptureTmuxPane(session, window string, lines int) (string, error) {
 	target := session + ":" + window
+	debug.Log("tmux", "capture-pane -t %s -S -%d", target, lines)
 	cmd := exec.Command("tmux", "capture-pane", "-t", target, "-p", "-S", fmt.Sprintf("-%d", lines))
 	out, err := cmd.Output()
 	if err != nil {
@@ -123,6 +143,7 @@ func CaptureTmuxPane(session, window string, lines int) (string, error) {
 
 // ListCrewSessions returns all tmux sessions starting with "crew-".
 func ListCrewSessions() []string {
+	debug.Log("tmux", "list-sessions")
 	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
 	out, err := cmd.Output()
 	if err != nil {
@@ -135,5 +156,6 @@ func ListCrewSessions() []string {
 			sessions = append(sessions, line)
 		}
 	}
+	debug.Log("tmux", "list-sessions → %d crew sessions", len(sessions))
 	return sessions
 }

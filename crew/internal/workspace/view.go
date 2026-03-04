@@ -262,6 +262,13 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, launchHappier(s.Name)
 		}
 		return v, nil
+	case msg.String() == "o":
+		if len(v.summaries) > 0 {
+			s := v.summaries[v.cursor]
+			dir := WorkspaceDir(s.Name)
+			return v, tea.Sequence(tea.Println(dir), tea.Quit)
+		}
+		return v, nil
 	case msg.String() == "enter":
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
@@ -496,7 +503,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  s servers  h happier  enter launch  esc back"
+	help := "n new  d delete  p projects  s servers  o open  h happier  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")

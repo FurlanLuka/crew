@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
 // DetectEditor returns "cursor", "code", or "" based on available editors.
@@ -126,8 +128,13 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, promptF
 
 // OpenEditor opens a file in the detected editor.
 func OpenEditor(editor, path string) error {
+	debug.Log("editor", "%s %s", editor, path)
 	cmd := exec.Command(editor, path)
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		debug.Log("editor", "%s %s → error: %v", editor, path, err)
+		return err
+	}
+	return nil
 }
 
 // CloseEditorWindow closes an editor window by workspace name (macOS).
@@ -135,6 +142,7 @@ func CloseEditorWindow(processName, wsName string) {
 	if processName == "" {
 		return
 	}
+	debug.Log("editor", "close window %s containing %s", processName, wsName)
 	script := `tell application "System Events"
 		if exists process "` + processName + `" then
 			tell process "` + processName + `"

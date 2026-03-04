@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
 // DevProject is the data Start needs per project.
@@ -171,35 +173,47 @@ func filterRoutes(routes []Route, subdomain string) []Route {
 
 func tmuxSessionExists(session string) bool {
 	cmd := exec.Command("tmux", "has-session", "-t", session)
-	return cmd.Run() == nil
+	exists := cmd.Run() == nil
+	debug.Log("dev", "has-session -t %s → %v", session, exists)
+	return exists
 }
 
 func createTmuxSession(session string) error {
-	return exec.Command("tmux", "new-session", "-d", "-s", session).Run()
+	debug.Log("dev", "new-session -d -s %s", session)
+	if err := exec.Command("tmux", "new-session", "-d", "-s", session).Run(); err != nil {
+		debug.Log("dev", "new-session -s %s → error: %v", session, err)
+		return err
+	}
+	return nil
 }
 
 func killTmuxSession(session string) {
+	debug.Log("dev", "kill-session -t %s", session)
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
 func createTmuxWindow(session, name, dir, command string) {
+	debug.Log("dev", "new-window -t %s -n %s -c %s → %s", session, name, dir, command)
 	exec.Command("tmux", "new-window", "-t", session, "-n", name, "-c", dir).Run()
 	exec.Command("tmux", "send-keys", "-t", session+":"+name, command, "Enter").Run()
 }
 
 func killWindowsWithPrefix(session, prefix string) {
+	debug.Log("dev", "kill-windows with prefix %s in %s", prefix, session)
 	out, err := exec.Command("tmux", "list-windows", "-t", session, "-F", "#{window_name}").Output()
 	if err != nil {
 		return
 	}
 	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if strings.HasPrefix(name, prefix) {
+			debug.Log("dev", "kill-window -t %s:%s", session, name)
 			exec.Command("tmux", "kill-window", "-t", session+":"+name).Run()
 		}
 	}
 }
 
 func restartProxy(session, wsName, host string) {
+	debug.Log("dev", "restart proxy for %s (host: %s)", wsName, host)
 	exec.Command("tmux", "kill-window", "-t", session+":proxy").Run()
 
 	crewBin, err := os.Executable()
@@ -212,6 +226,7 @@ func restartProxy(session, wsName, host string) {
 		cmd += fmt.Sprintf(" --host=%s", host)
 	}
 
+	debug.Log("dev", "proxy cmd: %s", cmd)
 	exec.Command("tmux", "new-window", "-t", session, "-n", "proxy").Run()
 	exec.Command("tmux", "send-keys", "-t", session+":proxy", cmd, "Enter").Run()
 }

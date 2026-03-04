@@ -47,6 +47,7 @@ crew is a power-user tool. It should feel fast, intuitive, and polished:
 - **Always show status** after install/remove/update actions
 - **Fallback gracefully** — if GitHub API fails, use local data
 - **Feature-based organization** — each package owns its types, logic, and view
+- **Debug logging** — every external command execution (tmux, git, editor, npm, osascript) must include a `debug.Log(category, ...)` call. Log the command before running it; log errors inline. Use categories matching the package: `"tmux"`, `"git"`, `"editor"`, `"dev"`. Import from `github.com/FurlanLuka/crew/crew/internal/debug`.
 
 ## Development
 

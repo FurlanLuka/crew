@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -391,10 +391,10 @@ func StartHappierSession(ws *Workspace) (string, error) {
 	}
 
 	session := "crew-" + ws.Name
-	fmt.Fprintf(os.Stderr, "[debug] happier session: %s\n", session)
+	debug.Log("happier", "session: %s", session)
 
 	if exec.TmuxSessionExists(session) {
-		fmt.Fprintf(os.Stderr, "[debug] reusing existing tmux session\n")
+		debug.Log("happier", "reusing existing tmux session")
 		return session, nil
 	}
 
@@ -412,7 +412,7 @@ func StartHappierSession(ws *Workspace) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprintf(os.Stderr, "[debug] prompt: %d bytes\n", len(prompt))
+	debug.Log("happier", "prompt: %d bytes", len(prompt))
 
 	sessionDir := WorkspaceDir(ws.Name)
 	if err := exec.CreateTmuxSession(session, sessionDir); err != nil {
@@ -425,7 +425,7 @@ func StartHappierSession(ws *Workspace) (string, error) {
 	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 
 	happierCmd := fmt.Sprintf(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 happier $'%s'`, escaped)
-	fmt.Fprintf(os.Stderr, "[debug] tmux send-keys: %s\n", happierCmd)
+	debug.Log("happier", "tmux send-keys: %s", happierCmd)
 	exec.TmuxSendKeys(session, happierCmd)
 
 	return session, nil
