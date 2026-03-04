@@ -36,7 +36,7 @@ crew workspace
 ## Setup — Linux / Remote Server
 
 ```bash
-# Install crew + dependencies (Node.js, tmux, happy CLI)
+# Install crew + dependencies (Node.js, tmux, happier CLI)
 curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
 
 # Install Claude Code
@@ -50,19 +50,19 @@ gh auth login
 crew registry install --all
 ```
 
-### Remote agent with Happy Coder
+### Remote agent with Happier
 
 Run persistent Claude sessions on a remote server, controlled from your phone:
 
 ```bash
 # On the server
-happy auth login          # Scan QR code with Happy mobile app
-happy daemon start        # Start background daemon
+happier auth login        # Scan QR code with Happier mobile app
+happier daemon start      # Start background daemon
 
-# Now spawn sessions from the Happy mobile app — they persist
+# Now spawn sessions from the Happier mobile app — they persist
 # even when SSH disconnects
-happy daemon status       # Check daemon
-happy daemon list         # List active sessions
+happier daemon status     # Check daemon
+happier daemon list       # List active sessions
 ```
 
 ## Quick start

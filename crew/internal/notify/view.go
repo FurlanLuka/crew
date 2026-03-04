@@ -181,7 +181,7 @@ func (v View) renderStatus(b *strings.Builder) {
 		b.WriteString(v.topic)
 		b.WriteString("\n")
 		b.WriteString("  URL:    ")
-		b.WriteString(app.Subtle.Render("https://ntfy.sh/"+v.topic))
+		b.WriteString(app.Subtle.Render("https://ntfy.sh/" + v.topic))
 		b.WriteString("\n")
 	}
 

@@ -34,14 +34,14 @@ type codeWorkspaceFolder struct {
 }
 
 type codeWorkspaceTask struct {
-	Label          string            `json:"label"`
-	Type           string            `json:"type"`
-	Command        string            `json:"command"`
-	Options        map[string]string `json:"options,omitempty"`
-	IsBackground   bool              `json:"isBackground"`
-	ProblemMatcher []interface{}     `json:"problemMatcher"`
+	Label          string                 `json:"label"`
+	Type           string                 `json:"type"`
+	Command        string                 `json:"command"`
+	Options        map[string]string      `json:"options,omitempty"`
+	IsBackground   bool                   `json:"isBackground"`
+	ProblemMatcher []interface{}          `json:"problemMatcher"`
 	Presentation   map[string]interface{} `json:"presentation,omitempty"`
-	RunOptions     map[string]string `json:"runOptions,omitempty"`
+	RunOptions     map[string]string      `json:"runOptions,omitempty"`
 }
 
 type codeWorkspace struct {

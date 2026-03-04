@@ -12,8 +12,8 @@ const (
 )
 
 var (
-	ConfigDir      string
-	WorkspacesDir  string
+	ConfigDir       string
+	WorkspacesDir   string
 	ClaudeConfigDir string
 
 	// Whether the user explicitly set CLAUDE_CONFIG_DIR

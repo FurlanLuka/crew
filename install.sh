@@ -58,10 +58,10 @@ main() {
         fi
     fi
 
-    # Install happy CLI if missing
-    if ! command -v happy >/dev/null 2>&1; then
-        echo "Installing happy CLI..."
-        npm install -g happy-coder 2>/dev/null || sudo npm install -g happy-coder
+    # Install happier CLI if missing
+    if ! command -v happier >/dev/null 2>&1; then
+        echo "Installing happier CLI..."
+        npm install -g @happier-dev/cli@next 2>/dev/null || sudo npm install -g @happier-dev/cli@next
     fi
 
     # Resolve GitHub token for authenticated API calls
@@ -102,13 +102,13 @@ main() {
         echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
     fi
 
-    # Start happy daemon if authenticated
-    if command -v happy >/dev/null 2>&1; then
-        if happy auth status 2>/dev/null | grep -q "Authenticated"; then
-            echo "Starting happy daemon..."
-            happy daemon start 2>/dev/null || true
+    # Start happier daemon if authenticated
+    if command -v happier >/dev/null 2>&1; then
+        if happier auth status 2>/dev/null | grep -q "Authenticated"; then
+            echo "Starting happier daemon..."
+            happier daemon start 2>/dev/null || true
         else
-            echo "Run 'happy auth login' to authenticate, then 'happy daemon start'."
+            echo "Run 'happier auth login' to authenticate, then 'happier daemon start'."
         fi
     fi
 

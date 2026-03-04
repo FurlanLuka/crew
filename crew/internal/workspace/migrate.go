@@ -21,7 +21,7 @@ type oldProject struct {
 
 // oldWorkspace matches the pre-migration workspace shape.
 type oldWorkspace struct {
-	Name     string       `json:"name"`
+	Name     string `json:"name"`
 	Worktree *struct {
 		BaseWorkspace string `json:"base_workspace"`
 		Name          string `json:"name"`
