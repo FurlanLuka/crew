@@ -726,6 +726,7 @@ func launchLazygit(wsName string) tea.Cmd {
 
 		if !exec.TmuxSessionExists(session) {
 			exec.EnsureLazygitConfig()
+			exec.EnsureTmuxConfig()
 			lgCmd := exec.LazygitCommand()
 
 			// Create session with first project
@@ -733,6 +734,7 @@ func launchLazygit(wsName string) tea.Cmd {
 			if err := exec.CreateTmuxSession(session, firstDir); err != nil {
 				return errMsg{fmt.Errorf("failed to create tmux session: %w", err)}
 			}
+			exec.SourceTmuxConfig(session)
 			exec.TmuxSendKeys(session, lgCmd)
 			exec.RenameTmuxWindow(session, ws.Projects[0].Name)
 

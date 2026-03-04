@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
@@ -59,6 +61,41 @@ func TmuxSendKeys(session, keys string) error {
 		return err
 	}
 	return nil
+}
+
+// TmuxConfigPath returns the path to crew's tmux config.
+func TmuxConfigPath() string {
+	return filepath.Join(config.ConfigDir, "tmux.conf")
+}
+
+const defaultTmuxConfig = `# crew-managed tmux config
+set -g status-style 'bg=#1e1e2e fg=#cdd6f4'
+set -g status-left '#{?client_prefix,#[bg=#f38ba8 fg=#1e1e2e bold] PREFIX ,#[bg=#313244 fg=#cdd6f4]  tmux  }'
+set -g status-left-length 20
+set -g window-status-current-style 'bg=#45475a fg=#cdd6f4 bold'
+set -g window-status-style 'bg=#1e1e2e fg=#585b70'
+set -g window-status-format ' #I:#W '
+set -g window-status-current-format ' #I:#W '
+set -g status-right ''
+`
+
+// EnsureTmuxConfig creates the default tmux config if it doesn't exist.
+func EnsureTmuxConfig() {
+	cfgFile := TmuxConfigPath()
+	if _, err := os.Stat(cfgFile); err == nil {
+		return
+	}
+	os.WriteFile(cfgFile, []byte(defaultTmuxConfig), 0o644)
+}
+
+// SourceTmuxConfig loads crew's tmux config into a session.
+func SourceTmuxConfig(session string) {
+	cfgFile := TmuxConfigPath()
+	if _, err := os.Stat(cfgFile); err != nil {
+		return
+	}
+	debug.Log("tmux", "source-file %s", cfgFile)
+	exec.Command("tmux", "source-file", cfgFile).Run()
 }
 
 // KillTmuxSession kills a tmux session.

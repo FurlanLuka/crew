@@ -57,5 +57,5 @@ func EnsureLazygitConfig() {
 
 // LazygitCommand returns the shell command to launch lazygit with crew's config.
 func LazygitCommand() string {
-	return "LG_CONFIG_DIR=" + LazygitConfigDir() + " lazygit"
+	return "lazygit --use-config-dir=" + LazygitConfigDir()
 }
