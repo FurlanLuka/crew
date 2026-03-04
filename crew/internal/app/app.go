@@ -52,7 +52,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PushPageMsg:
 		a.stack = append(a.stack, msg.Page)
-		return a, msg.Page.Init()
+		cmds := []tea.Cmd{msg.Page.Init()}
+		a.forwardWindowSize(&cmds)
+		return a, tea.Batch(cmds...)
 
 	case PopPageMsg:
 		if len(a.stack) <= 1 {
@@ -61,7 +63,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.stack = a.stack[:len(a.stack)-1]
 		// Re-init the revealed page so it refreshes its data
 		top := a.stack[len(a.stack)-1]
-		return a, top.Init()
+		cmds := []tea.Cmd{top.Init()}
+		a.forwardWindowSize(&cmds)
+		return a, tea.Batch(cmds...)
 	}
 
 	// Forward to current page
@@ -73,6 +77,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return a, nil
+}
+
+// forwardWindowSize sends the stored window size to the top page so it can
+// initialize size-dependent components (e.g. viewport).
+func (a *App) forwardWindowSize(cmds *[]tea.Cmd) {
+	if a.width == 0 || a.height == 0 || len(a.stack) == 0 {
+		return
+	}
+	page := a.stack[len(a.stack)-1]
+	updated, cmd := page.Update(tea.WindowSizeMsg{Width: a.width, Height: a.height})
+	a.stack[len(a.stack)-1] = updated.(Page)
+	if cmd != nil {
+		*cmds = append(*cmds, cmd)
+	}
 }
 
 func (a App) View() string {
