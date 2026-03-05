@@ -241,7 +241,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 		}
 
 		routes, _ := dev.LoadRoutes(wsName)
-		host := dev.DetectLANIP()
+		host := dev.ResolveHostIP()
 
 		// Build running route lookup: port -> Route
 		runningPorts := map[int]dev.Route{}
@@ -283,7 +283,7 @@ func (v DevView) startAllDevServers() tea.Cmd {
 			return errMsg{err}
 		}
 
-		host := dev.DetectLANIP()
+		host := dev.ResolveHostIP()
 		projects := BuildDevProjects(wsName, ws.Projects)
 
 		if len(projects) == 0 {

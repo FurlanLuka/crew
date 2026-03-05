@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
@@ -144,6 +145,15 @@ func FindFreePort() (int, error) {
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	return port, nil
+}
+
+// ResolveHostIP returns the configured server IP from settings,
+// falling back to auto-detected LAN IP.
+func ResolveHostIP() string {
+	if ip := config.LoadSettings().ServerIP; ip != "" {
+		return ip
+	}
+	return DetectLANIP()
 }
 
 // DetectLANIP returns the machine's LAN IP address.

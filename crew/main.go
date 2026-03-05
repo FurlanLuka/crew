@@ -82,10 +82,6 @@ func main() {
 		cmdDebug()
 		return
 
-	case "happier":
-		cmdHappier()
-		return
-
 	case "launch":
 		cmdLaunch()
 		return
@@ -130,11 +126,6 @@ func mainMenu() app.Menu {
 			Label:       "Workspace",
 			Description: "Manage workspaces and launch",
 			Page:        func() app.Page { return workspace.NewView() },
-		},
-		{
-			Label:       "Sessions",
-			Description: "View and manage active sessions",
-			Page:        func() app.Page { return workspace.NewSessionsView() },
 		},
 		{
 			Label:       "Project",
@@ -309,44 +300,6 @@ func cmdStart() {
 	}
 
 	fmt.Print(prompt)
-}
-
-func cmdHappier() {
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew happier <workspace>\n")
-		os.Exit(1)
-	}
-
-	wsName := os.Args[2]
-
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
-
-	if !exec.HasHappier() {
-		fmt.Fprintf(os.Stderr, "Error: happier CLI not found — install from https://happier.dev/install\n")
-		os.Exit(1)
-	}
-
-	if !exec.HasTmux() {
-		fmt.Fprintf(os.Stderr, "Error: tmux not found — install with: brew install tmux\n")
-		os.Exit(1)
-	}
-
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	session, err := workspace.StartHappierSession(ws)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Started: %s\nVisible in Happier mobile app.\n", session)
 }
 
 func cmdLaunch() {
@@ -640,7 +593,7 @@ func cmdDevStatus() {
 		wsFilter = os.Args[3]
 	}
 
-	host := dev.DetectLANIP()
+	host := dev.ResolveHostIP()
 
 	var allRoutes []dev.WsRoutes
 	var err error
@@ -700,7 +653,7 @@ func cmdDevStart() {
 	}
 
 	if host == "" {
-		host = dev.DetectLANIP()
+		host = dev.ResolveHostIP()
 	}
 
 	ws, err := workspace.Load(wsName)
@@ -786,7 +739,7 @@ func cmdDevRestart() {
 	dev.StopAll(wsName)
 
 	if host == "" {
-		host = dev.DetectLANIP()
+		host = dev.ResolveHostIP()
 	}
 
 	ws, err := workspace.Load(wsName)

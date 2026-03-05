@@ -68,7 +68,7 @@ func TmuxConfigPath() string {
 	return filepath.Join(config.ConfigDir, "tmux.conf")
 }
 
-const defaultTmuxConfig = `# crew-managed tmux config
+const defaultTmuxConfig = `# crew-config v2
 set -g status-style 'bg=#1e1e2e fg=#cdd6f4'
 set -g status-left '#{?client_prefix,#[bg=#f38ba8 fg=#1e1e2e bold] PREFIX ,#[bg=#313244 fg=#cdd6f4]  tmux  }'
 set -g status-left-length 20
@@ -77,15 +77,25 @@ set -g window-status-style 'bg=#1e1e2e fg=#585b70'
 set -g window-status-format ' #I:#W '
 set -g window-status-current-format ' #I:#W '
 set -g status-right ''
+setw -g mouse on
 `
 
-// EnsureTmuxConfig creates the default tmux config if it doesn't exist.
+// EnsureTmuxConfig writes the default tmux config.
+// If the file doesn't exist, it creates it.
+// If the file exists and is crew-managed (first line starts with "# crew"), it overwrites.
+// If the file exists and was user-customized, it leaves it alone.
 func EnsureTmuxConfig() {
 	cfgFile := TmuxConfigPath()
-	if _, err := os.Stat(cfgFile); err == nil {
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		// File doesn't exist — write it
+		os.WriteFile(cfgFile, []byte(defaultTmuxConfig), 0o644)
 		return
 	}
-	os.WriteFile(cfgFile, []byte(defaultTmuxConfig), 0o644)
+	firstLine, _, _ := strings.Cut(string(data), "\n")
+	if strings.HasPrefix(firstLine, "# crew") {
+		os.WriteFile(cfgFile, []byte(defaultTmuxConfig), 0o644)
+	}
 }
 
 // SourceTmuxConfig loads crew's tmux config into a session.

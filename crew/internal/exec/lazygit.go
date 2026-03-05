@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 )
@@ -19,7 +20,8 @@ func LazygitConfigDir() string {
 	return filepath.Join(config.ConfigDir, "lazygit")
 }
 
-const defaultLazygitConfig = `gui:
+const defaultLazygitConfig = `# crew-config v2
+gui:
   theme:
     activeBorderColor:
       - "#ff79c6"
@@ -44,15 +46,24 @@ git:
     - pager: delta --dark --paging=never --side-by-side --line-numbers --syntax-theme Dracula
 `
 
-// EnsureLazygitConfig creates the default lazygit config if it doesn't exist.
+// EnsureLazygitConfig writes the default lazygit config.
+// If the file doesn't exist, it creates it.
+// If the file exists and is crew-managed (first line starts with "# crew"), it overwrites.
+// If the file exists and was user-customized, it leaves it alone.
 func EnsureLazygitConfig() {
 	dir := LazygitConfigDir()
 	cfgFile := filepath.Join(dir, "config.yml")
-	if _, err := os.Stat(cfgFile); err == nil {
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		// File doesn't exist — write it
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(cfgFile, []byte(defaultLazygitConfig), 0o644)
 		return
 	}
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(cfgFile, []byte(defaultLazygitConfig), 0o644)
+	firstLine, _, _ := strings.Cut(string(data), "\n")
+	if strings.HasPrefix(firstLine, "# crew") {
+		os.WriteFile(cfgFile, []byte(defaultLazygitConfig), 0o644)
+	}
 }
 
 // LazygitCommand returns the shell command to launch lazygit with crew's config.

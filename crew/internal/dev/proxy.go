@@ -23,7 +23,7 @@ func RunProxy(wsName, host string) error {
 	}
 
 	if host == "" {
-		host = DetectLANIP()
+		host = ResolveHostIP()
 	}
 
 	// Group routes by external port

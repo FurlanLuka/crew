@@ -24,19 +24,16 @@ type launchDataLoadedMsg struct {
 	sessionActive bool
 }
 type launchExecutedMsg struct{}
-type happierLaunchSuccessMsg struct{ session string }
 
 // ── Launch modes ──
 
 const (
 	launchModeEditorAgents = iota
-	launchModeHappier
 	launchModeClaude
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
-	"Happier",
 	"Claude",
 }
 
@@ -107,12 +104,6 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case launchExecutedMsg:
 		return v, tea.Quit
-
-	case happierLaunchSuccessMsg:
-		return v, tea.Sequence(
-			tea.Println(app.Success.Render(fmt.Sprintf("Happier session launched: %s", msg.session))),
-			tea.Quit,
-		)
 
 	case sessionStoppedMsg:
 		return v, func() tea.Msg { return app.PopPageMsg{} }
@@ -312,8 +303,6 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 				return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
 			}
 			return launchWithTmux(ws, promptFile, firstProjectDir)
-		case launchModeHappier:
-			return launchWithHappier(ws)
 		case launchModeClaude:
 			return launchWithClaude(ws, promptFile)
 		}
@@ -376,14 +365,6 @@ func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
 	return launchExecutedMsg{}
 }
 
-func launchWithHappier(ws *Workspace) tea.Msg {
-	session, err := StartHappierSession(ws)
-	if err != nil {
-		return errMsg{err}
-	}
-	return happierLaunchSuccessMsg{session: session}
-}
-
 func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
 	claudePath, err := osexec.LookPath("claude")
 	if err != nil {
@@ -438,56 +419,3 @@ func setEnv(env []string, key, value string) []string {
 	return append(env, prefix+value)
 }
 
-// StartHappierSession creates (or reuses) a Happier tmux session for the
-// given workspace. Returns the session name.
-func StartHappierSession(ws *Workspace) (string, error) {
-	if !exec.HasHappier() {
-		return "", fmt.Errorf("happier CLI not found — install from https://happier.dev/install")
-	}
-	if !exec.HasTmux() {
-		return "", fmt.Errorf("tmux not found — install with: brew install tmux")
-	}
-	if len(ws.Projects) == 0 {
-		return "", fmt.Errorf("workspace has no projects")
-	}
-
-	session := "crew-" + ws.Name
-	debug.Log("happier", "session: %s", session)
-
-	if exec.TmuxSessionExists(session) {
-		debug.Log("happier", "reusing existing tmux session")
-		return session, nil
-	}
-
-	// Single project: run happier directly in the project dir, no agent team.
-	if len(ws.Projects) == 1 {
-		projectDir := ProjectPath(ws.Name, ws.Projects[0].Name)
-		if err := exec.CreateTmuxSession(session, projectDir); err != nil {
-			return "", err
-		}
-		exec.TmuxSendKeys(session, "happier")
-		return session, nil
-	}
-
-	prompt, err := GeneratePrompt(ws)
-	if err != nil {
-		return "", err
-	}
-	debug.Log("happier", "prompt: %d bytes", len(prompt))
-
-	sessionDir := WorkspaceDir(ws.Name)
-	if err := exec.CreateTmuxSession(session, sessionDir); err != nil {
-		return "", err
-	}
-
-	// Escape the prompt for safe embedding in a $'...' shell string.
-	escaped := strings.ReplaceAll(prompt, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
-	escaped = strings.ReplaceAll(escaped, "\n", `\n`)
-
-	happierCmd := fmt.Sprintf(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 happier $'%s'`, escaped)
-	debug.Log("happier", "tmux send-keys: %s", happierCmd)
-	exec.TmuxSendKeys(session, happierCmd)
-
-	return session, nil
-}

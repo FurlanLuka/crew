@@ -19,7 +19,6 @@ import (
 type workspacesLoadedMsg struct{ summaries []Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
-type happierLaunchedMsg struct{ session string }
 type errMsg struct{ err error }
 
 // Project management messages
@@ -147,11 +146,6 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		return v, loadWsProjects(v.selectedWs)
 
-	case happierLaunchedMsg:
-		v.statusMsg = fmt.Sprintf("Happier: %s — visible in mobile app", msg.session)
-		v.err = nil
-		return v, nil
-
 	case errMsg:
 		v.err = msg.err
 		// If we were in an async state, go back to projects
@@ -251,16 +245,6 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			s := v.summaries[v.cursor]
 			page := NewDevView(s.Name)
 			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
-		}
-		return v, nil
-	case msg.String() == "h":
-		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			if s.TmuxActive {
-				v.err = fmt.Errorf("session already running — press enter to manage")
-				return v, nil
-			}
-			return v, launchHappier(s.Name)
 		}
 		return v, nil
 	case msg.String() == "g":
@@ -510,7 +494,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  s servers  g git  o open  h happier  enter launch  esc back"
+	help := "n new  d delete  p projects  s servers  g git  o open  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -753,17 +737,3 @@ func launchLazygit(wsName string) tea.Cmd {
 	}
 }
 
-func launchHappier(wsName string) tea.Cmd {
-	return func() tea.Msg {
-		ws, err := Load(wsName)
-		if err != nil {
-			return errMsg{err}
-		}
-
-		session, err := StartHappierSession(ws)
-		if err != nil {
-			return errMsg{err}
-		}
-		return happierLaunchedMsg{session}
-	}
-}
