@@ -366,21 +366,22 @@ func launchWithTmux(ws *Workspace, promptFile, firstProjectDir string) tea.Msg {
 
 	exec.EnsureTmuxConfig()
 
-	// 1. Claude session
-	if err := exec.CreateTmuxSession(claudeSession, firstProjectDir); err != nil {
+	wsDir := WorkspaceDir(ws.Name)
+
+	// 1. Claude session — launch from workspace dir, add all projects
+	if err := exec.CreateTmuxSession(claudeSession, wsDir); err != nil {
 		return errMsg{fmt.Errorf("failed to create claude session: %w", err)}
 	}
 	exec.SourceTmuxConfig(claudeSession)
 
 	claudeCmd := "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude"
-	for _, wp := range ws.Projects[1:] {
+	for _, wp := range ws.Projects {
 		claudeCmd += fmt.Sprintf(" --add-dir %s", ProjectPath(ws.Name, wp.Name))
 	}
 	claudeCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
 	exec.TmuxSendKeys(claudeSession, claudeCmd)
 
 	// 2. Servers session
-	wsDir := WorkspaceDir(ws.Name)
 	if err := exec.CreateTmuxSession(serversSession, wsDir); err != nil {
 		return errMsg{fmt.Errorf("failed to create servers session: %w", err)}
 	}
