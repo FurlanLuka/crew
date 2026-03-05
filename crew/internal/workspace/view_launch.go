@@ -397,7 +397,8 @@ func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
 	workDir := ProjectPath(ws.Name, ws.Projects[0].Name)
 
 	if len(ws.Projects) > 1 {
-		for _, wp := range ws.Projects[1:] {
+		workDir = WorkspaceDir(ws.Name)
+		for _, wp := range ws.Projects {
 			args = append(args, "--add-dir", ProjectPath(ws.Name, wp.Name))
 		}
 
