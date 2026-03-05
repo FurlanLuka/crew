@@ -393,6 +393,7 @@ func launchWithTmux(ws *Workspace, promptFile, firstProjectDir string) tea.Msg {
 	exec.TmuxSendKeys(serversSession, devTuiCmd)
 
 	// 3. Git session
+	sessions := []string{claudeSession, serversSession}
 	if exec.HasLazygit() {
 		exec.EnsureLazygitConfig()
 		lgCmd := exec.LazygitCommand()
@@ -408,9 +409,15 @@ func launchWithTmux(ws *Workspace, promptFile, firstProjectDir string) tea.Msg {
 			dir := ProjectPath(ws.Name, wp.Name)
 			exec.CreateTmuxWindow(gitSession, wp.Name, dir, lgCmd)
 		}
+		sessions = append(sessions, gitSession)
 	}
 
-	return launchExecutedMsg{}
+	var output strings.Builder
+	fmt.Fprintf(&output, "Launched %d tmux sessions:\n", len(sessions))
+	for _, s := range sessions {
+		fmt.Fprintf(&output, "  %s\n", s)
+	}
+	return app.ExitWithOutputMsg{Output: output.String()}
 }
 
 func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
