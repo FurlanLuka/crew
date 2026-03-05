@@ -18,16 +18,23 @@ type SessionInfo struct {
 }
 
 // ListSessionInfos returns info for all active crew tmux sessions.
+// Deduplicates by workspace name so multiple sessions per workspace show as one entry.
 func ListSessionInfos() []SessionInfo {
 	sessions := exec.ListCrewSessionsDetailed()
+	seen := make(map[string]bool)
 	infos := make([]SessionInfo, 0, len(sessions))
 
 	for _, s := range sessions {
-		if s.Name == "crew-plans" || strings.HasPrefix(s.Name, "crew-dev-") || strings.HasPrefix(s.Name, "crew-git-") {
+		if s.Name == "crew-plans" || strings.HasPrefix(s.Name, "crew-dev-") {
 			continue
 		}
 
 		info := parseSessionName(s.Name, formatAge(s.CreatedAt))
+
+		if seen[info.Workspace] {
+			continue
+		}
+		seen[info.Workspace] = true
 
 		if ws, err := Load(info.Workspace); err == nil {
 			info.ProjectCount = len(ws.Projects)
@@ -42,8 +49,12 @@ func ListSessionInfos() []SessionInfo {
 }
 
 // parseSessionName builds a SessionInfo from a tmux session name.
+// Strips known suffixes (-claude, -servers, -git) to extract the workspace name.
 func parseSessionName(tmuxName, age string) SessionInfo {
 	wsName := strings.TrimPrefix(tmuxName, "crew-")
+	for _, suffix := range []string{"-claude", "-servers", "-git"} {
+		wsName = strings.TrimSuffix(wsName, suffix)
+	}
 	return SessionInfo{
 		TmuxSession: tmuxName,
 		Workspace:   wsName,

@@ -82,10 +82,13 @@ func (v LaunchView) Title() string {
 func (v LaunchView) Init() tea.Cmd {
 	return func() tea.Msg {
 		editor := exec.DetectEditor()
-		session := "crew-" + v.base
+		active := exec.TmuxSessionExists("crew-"+v.base+"-claude") ||
+			exec.TmuxSessionExists("crew-"+v.base+"-servers") ||
+			exec.TmuxSessionExists("crew-"+v.base+"-git") ||
+			exec.TmuxSessionExists("crew-"+v.base) // backward compat
 		return launchDataLoadedMsg{
 			hasEditor:     editor != "",
-			sessionActive: exec.TmuxSessionExists(session),
+			sessionActive: active,
 		}
 	}
 }
@@ -229,9 +232,12 @@ func (v LaunchView) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, nil
 	case msg.String() == "enter":
 		wsName := v.base
-		session := "crew-" + wsName
 		if v.sessionCursor == 0 {
-			// Attach
+			// Attach to claude session (primary)
+			session := "crew-" + wsName + "-claude"
+			if !exec.TmuxSessionExists(session) {
+				session = "crew-" + wsName // backward compat
+			}
 			return v, func() tea.Msg {
 				exec.AttachTmuxSession(session)
 				return errMsg{fmt.Errorf("failed to attach to session")}
@@ -338,30 +344,68 @@ func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.
 	return launchExecutedMsg{}
 }
 
-func launchWithTmux(ws *Workspace, promptFile, sessionDir string) tea.Msg {
+func launchWithTmux(ws *Workspace, promptFile, firstProjectDir string) tea.Msg {
 	if !exec.HasTmux() {
 		return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
 	}
 
-	session := "crew-" + ws.Name
+	claudeSession := "crew-" + ws.Name + "-claude"
+	serversSession := "crew-" + ws.Name + "-servers"
+	gitSession := "crew-" + ws.Name + "-git"
 
-	if exec.TmuxSessionExists(session) {
-		exec.AttachTmuxSession(session)
-		return launchExecutedMsg{}
+	// Duplicate protection
+	for _, s := range []string{claudeSession, serversSession, gitSession} {
+		if exec.TmuxSessionExists(s) {
+			return errMsg{fmt.Errorf("session '%s' already exists — run crew stop %s first", s, ws.Name)}
+		}
 	}
 
-	if err := exec.CreateTmuxSession(session, sessionDir); err != nil {
-		return errMsg{err}
+	exec.EnsureTmuxConfig()
+
+	// 1. Claude session
+	if err := exec.CreateTmuxSession(claudeSession, firstProjectDir); err != nil {
+		return errMsg{fmt.Errorf("failed to create claude session: %w", err)}
 	}
+	exec.SourceTmuxConfig(claudeSession)
 
 	claudeCmd := "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude"
 	for _, wp := range ws.Projects[1:] {
 		claudeCmd += fmt.Sprintf(" --add-dir %s", ProjectPath(ws.Name, wp.Name))
 	}
 	claudeCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
-	exec.TmuxSendKeys(session, claudeCmd)
+	exec.TmuxSendKeys(claudeSession, claudeCmd)
 
-	exec.AttachTmuxSession(session)
+	// 2. Servers session
+	wsDir := WorkspaceDir(ws.Name)
+	if err := exec.CreateTmuxSession(serversSession, wsDir); err != nil {
+		return errMsg{fmt.Errorf("failed to create servers session: %w", err)}
+	}
+	exec.SourceTmuxConfig(serversSession)
+
+	devTuiCmd := "crew dev tui " + ws.Name
+	if config.UserSetClaudeConfig {
+		devTuiCmd = "CLAUDE_CONFIG_DIR=" + config.ClaudeConfigDir + " " + devTuiCmd
+	}
+	exec.TmuxSendKeys(serversSession, devTuiCmd)
+
+	// 3. Git session
+	if exec.HasLazygit() {
+		exec.EnsureLazygitConfig()
+		lgCmd := exec.LazygitCommand()
+
+		if err := exec.CreateTmuxSession(gitSession, firstProjectDir); err != nil {
+			return errMsg{fmt.Errorf("failed to create git session: %w", err)}
+		}
+		exec.SourceTmuxConfig(gitSession)
+		exec.TmuxSendKeys(gitSession, lgCmd)
+		exec.RenameTmuxWindow(gitSession, ws.Projects[0].Name)
+
+		for _, wp := range ws.Projects[1:] {
+			dir := ProjectPath(ws.Name, wp.Name)
+			exec.CreateTmuxWindow(gitSession, wp.Name, dir, lgCmd)
+		}
+	}
+
 	return launchExecutedMsg{}
 }
 

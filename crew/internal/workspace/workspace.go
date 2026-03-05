@@ -106,7 +106,10 @@ func ListSummaries() ([]Summary, error) {
 			Name:         name,
 			ProjectCount: projCount,
 			DevRunning:   devRoutesExist(name),
-			TmuxActive:   exec.TmuxSessionExists("crew-" + name),
+			TmuxActive: exec.TmuxSessionExists("crew-"+name+"-claude") ||
+				exec.TmuxSessionExists("crew-"+name+"-servers") ||
+				exec.TmuxSessionExists("crew-"+name+"-git") ||
+				exec.TmuxSessionExists("crew-"+name), // backward compat
 		})
 	}
 	return summaries, nil
@@ -262,6 +265,10 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 // StopSession kills the tmux session, stops dev servers, and removes the
 // prompt file for a workspace.
 func StopSession(wsName string) {
+	exec.KillTmuxSession("crew-" + wsName + "-claude")
+	exec.KillTmuxSession("crew-" + wsName + "-servers")
+	exec.KillTmuxSession("crew-" + wsName + "-git")
+	// Backward compat
 	exec.KillTmuxSession("crew-" + wsName)
 	exec.KillTmuxSession("crew-git-" + wsName)
 	dev.StopAll(wsName)

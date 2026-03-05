@@ -491,10 +491,12 @@ func cmdDev() {
 		cmdDevRestart()
 	case "status":
 		cmdDevStatus()
+	case "tui":
+		cmdDevTui()
 	case "_proxy":
 		cmdDevProxy()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|tui]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -834,6 +836,21 @@ func cmdDevRestart() {
 	fmt.Printf("Session: %s\n", dev.SessionName(wsName))
 }
 
+func cmdDevTui() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev tui <workspace>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[3]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	runTUI(workspace.NewDevView(wsName))
+}
+
 func cmdDevProxy() {
 	wsName := ""
 	host := ""
@@ -1013,6 +1030,11 @@ func cmdKill() {
 	// Kill tmux sessions
 	for _, session := range exec.ListCrewSessions() {
 		wsName := session[len("crew-"):]
+		// Strip known suffixes to get the workspace name
+		for _, suffix := range []string{"-claude", "-servers", "-git"} {
+			wsName = strings.TrimSuffix(wsName, suffix)
+		}
+
 		exec.KillTmuxSession(session)
 		fmt.Printf("Killed session: %s\n", session)
 
@@ -1038,8 +1060,7 @@ func cmdKill() {
 		name := e.Name()
 		if len(name) > len(".code-workspace") && name[len(name)-len(".code-workspace"):] == ".code-workspace" {
 			wsName := name[:len(name)-len(".code-workspace")]
-			session := "crew-" + wsName
-			if !exec.TmuxSessionExists(session) {
+			if !exec.TmuxSessionExists("crew-"+wsName+"-claude") && !exec.TmuxSessionExists("crew-"+wsName) {
 				wsFile := workspace.CodeWorkspaceFilePath(wsName)
 				editor := exec.DetectEditor()
 				exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)

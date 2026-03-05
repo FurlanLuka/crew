@@ -202,14 +202,6 @@ func CreateTmuxWindow(session, name, dir, command string) {
 	sendCmd.Run()
 }
 
-// SetTmuxDestroyOnDetach sets a client-detached hook that kills the session on detach.
-func SetTmuxDestroyOnDetach(session string) {
-	hook := fmt.Sprintf("if-shell -F '#{==:#{session_name},%s}' 'kill-session -t %s'", session, session)
-	debug.Log("tmux", "set-hook -t %s client-detached → %s", session, hook)
-	cmd := exec.Command("tmux", "set-hook", "-t", session, "client-detached", hook)
-	cmd.Run()
-}
-
 // CaptureTmuxPane captures the output of a tmux pane.
 // Returns empty string (no error) if the session/window doesn't exist.
 func CaptureTmuxPane(session, window string, lines int) (string, error) {
