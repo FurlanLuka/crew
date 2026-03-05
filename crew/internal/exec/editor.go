@@ -128,8 +128,8 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, promptF
 
 // OpenEditor opens a file in the detected editor.
 func OpenEditor(editor, path string) error {
-	debug.Log("editor", "%s %s", editor, path)
-	cmd := exec.Command(editor, path)
+	debug.Log("editor", "%s -n %s", editor, path)
+	cmd := exec.Command(editor, "-n", path)
 	if err := cmd.Start(); err != nil {
 		debug.Log("editor", "%s %s → error: %v", editor, path, err)
 		return err
