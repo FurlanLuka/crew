@@ -94,6 +94,10 @@ func main() {
 		cmdRm()
 		return
 
+	case "code":
+		cmdCode()
+		return
+
 	case "open":
 		cmdOpen()
 		return
@@ -247,6 +251,70 @@ func cmdOpen() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func cmdCode() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew code <workspace>\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[2]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	settings := config.LoadSettings()
+	if settings.SSHHost == "" {
+		fmt.Fprintf(os.Stderr, "Error: ssh_host not configured\nSet it in %s:\n  {\"ssh_host\": \"your-host-alias\"}\n", config.SettingsFilePath())
+		os.Exit(1)
+	}
+
+	ws, err := workspace.Load(wsName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	editor := exec.DetectEditor()
+	if editor == "" {
+		fmt.Fprintf(os.Stderr, "Error: neither cursor nor code found in PATH\n")
+		os.Exit(1)
+	}
+
+	scheme := "vscode://"
+	if editor == "cursor" {
+		scheme = "cursor://"
+	}
+
+	var remotePath string
+	if len(ws.Projects) == 1 {
+		remotePath = workspace.ProjectPath(wsName, ws.Projects[0].Name)
+	} else {
+		// Generate .code-workspace file for multi-project workspaces
+		wsFile := workspace.CodeWorkspaceFilePath(wsName)
+		var projects []exec.WorkspaceProject
+		for _, wp := range ws.Projects {
+			projects = append(projects, exec.WorkspaceProject{
+				Name: wp.Name,
+				Path: workspace.ProjectPath(wsName, wp.Name),
+			})
+		}
+		if err := exec.GenerateCodeWorkspace(wsFile, projects, "", "", "", false); err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating workspace file: %v\n", err)
+			os.Exit(1)
+		}
+		remotePath = wsFile
+	}
+
+	uri := scheme + "vscode-remote/ssh-remote+" + settings.SSHHost + remotePath
+	display := editor + " → " + wsName
+
+	// OSC 8 clickable hyperlink
+	fmt.Printf("\033]8;;%s\033\\%s\033]8;;\033\\\n", uri, display)
+	// Plain URI fallback
+	fmt.Println(uri)
 }
 
 func cmdShow() {

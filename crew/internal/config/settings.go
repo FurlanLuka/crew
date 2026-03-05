@@ -8,6 +8,7 @@ import (
 
 type Settings struct {
 	ServerIP string `json:"server_ip,omitempty"`
+	SSHHost  string `json:"ssh_host,omitempty"`
 }
 
 func SettingsFilePath() string {

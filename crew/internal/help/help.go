@@ -108,6 +108,11 @@ var Root = CommandInfo{
 			OutputFormat: "<name>\\t<path>\\t<role>",
 		},
 		{
+			Name:        "code",
+			Description: "Open workspace in Cursor/VSCode via Remote SSH",
+			Usage:       "crew code <workspace>",
+		},
+		{
 			Name:        "start",
 			Description: "Generate agent prompt for a workspace",
 			Usage:       "crew start <workspace>",
