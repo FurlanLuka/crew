@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
@@ -26,6 +27,7 @@ type wsProjectsLoadedMsg struct {
 	wsProjects []WorkspaceProject
 	poolNames  []string // names from pool not yet in workspace
 }
+type codeOpenedMsg struct{ output string }
 type wsProjectAddedMsg struct{ name string }
 type wsProjectRemovedMsg struct{ name string }
 
@@ -123,6 +125,9 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = fmt.Sprintf("Removed workspace '%s'", msg.name)
 		v.err = nil
 		return v, loadWorkspaces
+
+	case codeOpenedMsg:
+		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: msg.output} }
 
 	case wsProjectsLoadedMsg:
 		v.wsProjects = msg.wsProjects
@@ -251,6 +256,12 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(v.summaries) > 0 {
 			s := v.summaries[v.cursor]
 			return v, launchLazygit(s.Name)
+		}
+		return v, nil
+	case msg.String() == "c":
+		if len(v.summaries) > 0 {
+			s := v.summaries[v.cursor]
+			return v, openCode(s.Name)
 		}
 		return v, nil
 	case msg.String() == "o":
@@ -494,7 +505,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  s servers  g git  o open  enter launch  esc back"
+	help := "n new  d delete  p projects  s servers  g git  c code  o open  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -734,6 +745,51 @@ func launchLazygit(wsName string) tea.Cmd {
 		// Attach without iTerm2 integration — windows stay in terminal
 		exec.AttachTmuxSessionRaw(session)
 		return errMsg{fmt.Errorf("failed to attach to git session")}
+	}
+}
+
+func openCode(wsName string) tea.Cmd {
+	return func() tea.Msg {
+		settings := config.LoadSettings()
+		if settings.SSHHost == "" {
+			return errMsg{fmt.Errorf("ssh_host not configured — set it in crew config")}
+		}
+
+		ws, err := Load(wsName)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		var remotePath string
+		if len(ws.Projects) == 1 {
+			remotePath = ProjectPath(wsName, ws.Projects[0].Name)
+		} else {
+			wsFile := CodeWorkspaceFilePath(wsName)
+			var projects []exec.WorkspaceProject
+			for _, wp := range ws.Projects {
+				projects = append(projects, exec.WorkspaceProject{
+					Name: wp.Name,
+					Path: ProjectPath(wsName, wp.Name),
+				})
+			}
+			if err := exec.GenerateCodeWorkspace(wsFile, projects, "", "", "", false); err != nil {
+				return errMsg{err}
+			}
+			remotePath = wsFile
+		}
+
+		var b strings.Builder
+		for _, ed := range []struct{ name, scheme string }{
+			{"cursor", "cursor://"},
+			{"vscode", "vscode://"},
+		} {
+			uri := ed.scheme + "vscode-remote/ssh-remote+" + settings.SSHHost + remotePath
+			display := ed.name + " → " + wsName
+			// OSC 8 clickable hyperlink
+			fmt.Fprintf(&b, "\033]8;;%s\033\\%s\033]8;;\033\\\n", uri, display)
+		}
+
+		return codeOpenedMsg{output: b.String()}
 	}
 }
 

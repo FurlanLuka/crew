@@ -282,17 +282,6 @@ func cmdCode() {
 		os.Exit(1)
 	}
 
-	editor := exec.DetectEditor()
-	if editor == "" {
-		fmt.Fprintf(os.Stderr, "Error: neither cursor nor code found in PATH\n")
-		os.Exit(1)
-	}
-
-	scheme := "vscode://"
-	if editor == "cursor" {
-		scheme = "cursor://"
-	}
-
 	var remotePath string
 	if len(ws.Projects) == 1 {
 		remotePath = workspace.ProjectPath(wsName, ws.Projects[0].Name)
@@ -313,13 +302,15 @@ func cmdCode() {
 		remotePath = wsFile
 	}
 
-	uri := scheme + "vscode-remote/ssh-remote+" + settings.SSHHost + remotePath
-	display := editor + " → " + wsName
-
-	// OSC 8 clickable hyperlink
-	fmt.Printf("\033]8;;%s\033\\%s\033]8;;\033\\\n", uri, display)
-	// Plain URI fallback
-	fmt.Println(uri)
+	for _, ed := range []struct{ name, scheme string }{
+		{"cursor", "cursor://"},
+		{"vscode", "vscode://"},
+	} {
+		uri := ed.scheme + "vscode-remote/ssh-remote+" + settings.SSHHost + remotePath
+		display := ed.name + " → " + wsName
+		// OSC 8 clickable hyperlink
+		fmt.Printf("\033]8;;%s\033\\%s\033]8;;\033\\\n", uri, display)
+	}
 }
 
 func cmdShow() {
