@@ -681,10 +681,12 @@ func cmdDevStatus() {
 		}
 	}
 
+	proxyPort := config.LoadSettings().GetProxyPort()
+
 	for _, wr := range allRoutes {
 		for _, r := range wr.Routes {
-			url := fmt.Sprintf("http://%s.%s.nip.io:%d", r.Subdomain, host, r.ExternalPort)
-			fmt.Printf("%s\t%s\t%d\t%s\n", wr.Workspace, r.Subdomain, r.ExternalPort, url)
+			url := fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, wr.Workspace, host, proxyPort)
+			fmt.Printf("%s\t%s\t%d\t%s\n", wr.Workspace, r.ServerName, r.ExternalPort, url)
 		}
 	}
 }
@@ -728,13 +730,15 @@ func cmdDevStart() {
 		os.Exit(1)
 	}
 
+	proxyPort := config.LoadSettings().GetProxyPort()
+
 	projects := workspace.BuildDevProjects(wsName, ws.Projects)
 	if len(projects) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(wsName, projects, host)
+	routes, err := dev.Start(wsName, projects, host, proxyPort)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -743,7 +747,7 @@ func cmdDevStart() {
 	fmt.Printf("Dev servers for %s\n\n", wsName)
 
 	for _, r := range routes {
-		fmt.Printf("  http://%s.%s.nip.io:%d\n", r.Subdomain, host, r.ExternalPort)
+		fmt.Printf("  http://%s.%s.%s.nip.io:%d\n", r.ServerName, wsName, host, proxyPort)
 	}
 
 	fmt.Println()
@@ -769,6 +773,7 @@ func cmdDevStop() {
 	}
 
 	dev.StopAll(wsName)
+	dev.StopProxyIfIdle()
 	fmt.Printf("Stopped dev session for %s\n", wsName)
 }
 
@@ -808,6 +813,8 @@ func cmdDevRestart() {
 		host = dev.ResolveHostIP()
 	}
 
+	proxyPort := config.LoadSettings().GetProxyPort()
+
 	ws, err := workspace.Load(wsName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -820,7 +827,7 @@ func cmdDevRestart() {
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(wsName, projects, host)
+	routes, err := dev.Start(wsName, projects, host, proxyPort)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -829,7 +836,7 @@ func cmdDevRestart() {
 	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
 
 	for _, r := range routes {
-		fmt.Printf("  http://%s.%s.nip.io:%d\n", r.Subdomain, host, r.ExternalPort)
+		fmt.Printf("  http://%s.%s.%s.nip.io:%d\n", r.ServerName, wsName, host, proxyPort)
 	}
 
 	fmt.Println()
@@ -852,24 +859,19 @@ func cmdDevTui() {
 }
 
 func cmdDevProxy() {
-	wsName := ""
 	host := ""
+	port := config.LoadSettings().GetProxyPort()
 
 	for _, arg := range os.Args[3:] {
 		switch {
-		case strings.HasPrefix(arg, "--ws="):
-			wsName = strings.TrimPrefix(arg, "--ws=")
 		case strings.HasPrefix(arg, "--host="):
 			host = strings.TrimPrefix(arg, "--host=")
+		case strings.HasPrefix(arg, "--port="):
+			fmt.Sscanf(strings.TrimPrefix(arg, "--port="), "%d", &port)
 		}
 	}
 
-	if wsName == "" {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev _proxy --ws=<name> [--host=<ip>]\n")
-		os.Exit(1)
-	}
-
-	if err := dev.RunProxy(wsName, host); err != nil {
+	if err := dev.RunProxy(host, port); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

@@ -11,6 +11,7 @@ import (
 
 type Route struct {
 	Subdomain    string `json:"subdomain"`
+	ServerName   string `json:"server_name"`
 	ExternalPort int    `json:"external_port"`
 	InternalPort int    `json:"internal_port"`
 }

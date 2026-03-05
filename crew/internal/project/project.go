@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 )
+
+var validServerName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // DevServer describes how to run a dev server for a project.
 type DevServer struct {
@@ -110,6 +113,9 @@ func Update(proj Project) error {
 
 // AddDevServer adds a dev server to a project in the pool.
 func AddDevServer(projName string, ds DevServer) error {
+	if !validServerName.MatchString(ds.Name) {
+		return fmt.Errorf("server name '%s' is invalid — only lowercase letters, digits, and hyphens allowed", ds.Name)
+	}
 	projects, err := List()
 	if err != nil {
 		return err

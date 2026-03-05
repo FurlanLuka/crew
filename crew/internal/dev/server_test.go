@@ -2,7 +2,6 @@ package dev
 
 import (
 	"net"
-	"strings"
 	"testing"
 )
 
@@ -61,33 +60,3 @@ func TestDetectLANIP(t *testing.T) {
 	}
 }
 
-func TestFilterRoutes(t *testing.T) {
-	routes := []Route{
-		{Subdomain: "main", ExternalPort: 5173, InternalPort: 49001},
-		{Subdomain: "feature", ExternalPort: 5173, InternalPort: 49002},
-		{Subdomain: "main", ExternalPort: 3000, InternalPort: 49003},
-	}
-
-	tests := []struct {
-		subdomain string
-		wantLen   int
-	}{
-		{"main", 1},    // removes 2 "main" routes, keeps 1 "feature"
-		{"feature", 2}, // removes 1 "feature" route, keeps 2 "main"
-		{"unknown", 3}, // removes nothing
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.subdomain, func(t *testing.T) {
-			got := filterRoutes(routes, tt.subdomain)
-			if len(got) != tt.wantLen {
-				names := make([]string, len(got))
-				for i, r := range got {
-					names[i] = r.Subdomain
-				}
-				t.Errorf("filterRoutes(%q) = %d routes (%s), want %d",
-					tt.subdomain, len(got), strings.Join(names, ","), tt.wantLen)
-			}
-		})
-	}
-}

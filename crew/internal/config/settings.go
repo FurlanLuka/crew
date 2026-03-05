@@ -7,8 +7,18 @@ import (
 )
 
 type Settings struct {
-	ServerIP string `json:"server_ip,omitempty"`
-	SSHHost  string `json:"ssh_host,omitempty"`
+	ServerIP  string `json:"server_ip,omitempty"`
+	SSHHost   string `json:"ssh_host,omitempty"`
+	ProxyPort int    `json:"proxy_port,omitempty"`
+}
+
+const DefaultProxyPort = 8080
+
+func (s Settings) GetProxyPort() int {
+	if s.ProxyPort > 0 {
+		return s.ProxyPort
+	}
+	return DefaultProxyPort
 }
 
 func SettingsFilePath() string {

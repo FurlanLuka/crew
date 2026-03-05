@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -12,6 +13,8 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
+
+var validWSName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // WorkspaceProject references a global project with a workspace-specific role.
 type WorkspaceProject struct {
@@ -122,6 +125,9 @@ func devRoutesExist(wsName string) bool {
 
 // Create creates a new empty workspace with its directory.
 func Create(name string) error {
+	if !validWSName.MatchString(name) {
+		return fmt.Errorf("workspace name '%s' is invalid — only lowercase letters, digits, and hyphens allowed", name)
+	}
 	if _, err := os.Stat(config.WorkspaceFile(name)); err == nil {
 		return fmt.Errorf("workspace '%s' already exists", name)
 	}
@@ -272,6 +278,7 @@ func StopSession(wsName string) {
 	exec.KillTmuxSession("crew-" + wsName)
 	exec.KillTmuxSession("crew-git-" + wsName)
 	dev.StopAll(wsName)
+	dev.StopProxyIfIdle()
 	os.Remove(PromptFilePath(wsName))
 }
 

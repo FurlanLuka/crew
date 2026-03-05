@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
@@ -262,7 +263,8 @@ func (v DevView) loadDevServers() tea.Cmd {
 				}
 				if r, ok := runningPorts[ds.Port]; ok {
 					item.Running = true
-					item.URL = fmt.Sprintf("http://%s.%s.nip.io:%d", r.Subdomain, host, r.ExternalPort)
+					proxyPort := config.LoadSettings().GetProxyPort()
+					item.URL = fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, r.Subdomain, host, proxyPort)
 				}
 				items = append(items, item)
 			}
@@ -290,7 +292,8 @@ func (v DevView) startAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(wsName, projects, host)
+		proxyPort := config.LoadSettings().GetProxyPort()
+		routes, err := dev.Start(wsName, projects, host, proxyPort)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -304,6 +307,7 @@ func (v DevView) stopAllDevServers() tea.Cmd {
 	wsName := v.wsName
 	return func() tea.Msg {
 		dev.StopAll(wsName)
+		dev.StopProxyIfIdle()
 		return devStoppedMsg{}
 	}
 }

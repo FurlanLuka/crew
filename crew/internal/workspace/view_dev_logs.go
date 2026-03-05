@@ -11,7 +11,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -24,8 +26,9 @@ type serverRestartedMsg struct{}
 // ── Data ──
 
 type logTab struct {
-	label  string // display name ("api", "web", "proxy")
-	window string // tmux window name ("<ws>/api", "proxy")
+	label  string // display name ("api", "web", "urls")
+	window string // tmux window name ("<ws>/api") — empty for urls tab
+	isURLs bool   // true for the URLs overview tab
 }
 
 // ── Model ──
@@ -51,7 +54,7 @@ func NewLogsView(wsName string, items []devItem, initialIdx int) LogsView {
 			window: fmt.Sprintf("%s/%s", wsName, item.Server.Name),
 		})
 	}
-	tabs = append(tabs, logTab{label: "proxy", window: "proxy"})
+	tabs = append(tabs, logTab{label: "urls", isURLs: true})
 
 	tabIdx := initialIdx
 	if tabIdx >= len(tabs) {
@@ -136,8 +139,8 @@ func (v LogsView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.tabIdx = (v.tabIdx - 1 + len(v.tabs)) % len(v.tabs)
 		return v, v.capturePane()
 	case msg.String() == "r":
-		if v.tabIdx == len(v.tabs)-1 {
-			return v, nil // skip proxy tab
+		if v.tabs[v.tabIdx].isURLs {
+			return v, nil // skip urls tab
 		}
 		return v, v.restartServer()
 	}
@@ -196,12 +199,69 @@ func (v LogsView) restartServer() tea.Cmd {
 }
 
 func (v LogsView) capturePane() tea.Cmd {
+	tab := v.tabs[v.tabIdx]
+
+	if tab.isURLs {
+		wsName := v.wsName
+		return func() tea.Msg {
+			return paneContentMsg{content: buildURLsContent(wsName)}
+		}
+	}
+
 	session := v.session
-	window := v.tabs[v.tabIdx].window
+	window := tab.window
 	return func() tea.Msg {
 		content, _ := exec.CaptureTmuxPane(session, window, 500)
 		return paneContentMsg{content: strings.TrimRight(content, "\n")}
 	}
+}
+
+func buildURLsContent(wsName string) string {
+	host := dev.ResolveHostIP()
+	proxyPort := config.LoadSettings().GetProxyPort()
+
+	allRoutes, _ := dev.ListAllRoutes()
+
+	var b strings.Builder
+	b.WriteString("Service URLs\n")
+	b.WriteString(strings.Repeat("─", 40))
+	b.WriteString("\n\n")
+
+	found := false
+	for _, wr := range allRoutes {
+		if wr.Workspace != wsName {
+			continue
+		}
+		for _, r := range wr.Routes {
+			url := fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, wr.Workspace, host, proxyPort)
+			b.WriteString(fmt.Sprintf("  %-12s %s\n", r.ServerName, url))
+			found = true
+		}
+	}
+	if !found {
+		b.WriteString("  No servers running\n")
+	}
+
+	// Also show other workspaces if they have routes
+	var others []dev.WsRoutes
+	for _, wr := range allRoutes {
+		if wr.Workspace != wsName {
+			others = append(others, wr)
+		}
+	}
+	if len(others) > 0 {
+		b.WriteString("\nOther workspaces\n")
+		b.WriteString(strings.Repeat("─", 40))
+		b.WriteString("\n\n")
+		for _, wr := range others {
+			for _, r := range wr.Routes {
+				url := fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, wr.Workspace, host, proxyPort)
+				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", wr.Workspace, r.ServerName, url))
+			}
+		}
+	}
+
+	return b.String()
 }
 
 func tickLogs() tea.Cmd {

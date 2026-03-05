@@ -27,14 +27,16 @@ type DevServerConfig struct {
 	Dir     string
 }
 
+const proxySessionName = "crew-dev-proxy"
+
 // SessionName returns the tmux session name for dev servers.
 func SessionName(wsName string) string {
 	return "crew-dev-" + wsName
 }
 
-// Start starts dev servers for a workspace and updates the proxy.
+// Start starts dev servers for a workspace and launches the shared proxy.
 // projects should already have the correct paths (workspace worktree paths).
-func Start(wsName string, projects []DevProject, host string) ([]Route, error) {
+func Start(wsName string, projects []DevProject, host string, proxyPort int) ([]Route, error) {
 	// Build new routes
 	var newRoutes []Route
 	for _, p := range projects {
@@ -45,18 +47,14 @@ func Start(wsName string, projects []DevProject, host string) ([]Route, error) {
 			}
 			newRoutes = append(newRoutes, Route{
 				Subdomain:    wsName,
+				ServerName:   ds.Name,
 				ExternalPort: ds.Port,
 				InternalPort: port,
 			})
 		}
 	}
 
-	// Load existing routes, replace with new ones
-	existing, _ := LoadRoutes(wsName)
-	filtered := filterRoutes(existing, wsName)
-	allRoutes := append(filtered, newRoutes...)
-
-	if err := SaveRoutes(wsName, allRoutes); err != nil {
+	if err := SaveRoutes(wsName, newRoutes); err != nil {
 		return nil, err
 	}
 
@@ -89,42 +87,18 @@ func Start(wsName string, projects []DevProject, host string) ([]Route, error) {
 		}
 	}
 
-	// Start/restart proxy window
-	restartProxy(session, wsName, host)
+	// Ensure shared proxy is running
+	ensureProxy(host, proxyPort)
 
 	return newRoutes, nil
 }
 
-// Stop stops dev servers for a workspace.
-func Stop(wsName string) error {
-	session := SessionName(wsName)
-
-	// Kill tmux windows for this workspace
-	killWindowsWithPrefix(session, wsName+"/")
-
-	// Update routes
-	existing, _ := LoadRoutes(wsName)
-	filtered := filterRoutes(existing, wsName)
-
-	if len(filtered) == 0 {
-		killTmuxSession(session)
-		RemoveRoutesFile(wsName)
-		return nil
-	}
-
-	if err := SaveRoutes(wsName, filtered); err != nil {
-		return err
-	}
-
-	restartProxy(session, wsName, "")
-	return nil
-}
-
 // StopAll kills dev sessions. Empty wsName kills all dev sessions.
+// Does NOT manage the shared proxy — callers should call StopProxyIfIdle()
+// after an explicit stop, or leave the proxy running for restarts.
 func StopAll(wsName string) {
 	if wsName != "" {
-		session := SessionName(wsName)
-		killTmuxSession(session)
+		killTmuxSession(SessionName(wsName))
 		RemoveRoutesFile(wsName)
 		return
 	}
@@ -133,6 +107,16 @@ func StopAll(wsName string) {
 		ws := strings.TrimPrefix(session, "crew-dev-")
 		killTmuxSession(session)
 		RemoveRoutesFile(ws)
+	}
+	killTmuxSession(proxySessionName)
+}
+
+// StopProxyIfIdle kills the shared proxy if no route files remain.
+func StopProxyIfIdle() {
+	allRoutes, _ := ListAllRoutes()
+	if len(allRoutes) == 0 {
+		debug.Log("dev", "no routes left, killing proxy")
+		killTmuxSession(proxySessionName)
 	}
 }
 
@@ -172,16 +156,6 @@ func DetectLANIP() string {
 
 // --- helpers ---
 
-func filterRoutes(routes []Route, subdomain string) []Route {
-	var out []Route
-	for _, r := range routes {
-		if r.Subdomain != subdomain {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
 func tmuxSessionExists(session string) bool {
 	cmd := exec.Command("tmux", "has-session", "-t", session)
 	exists := cmd.Run() == nil
@@ -203,37 +177,26 @@ func killTmuxSession(session string) {
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
-func killWindowsWithPrefix(session, prefix string) {
-	debug.Log("dev", "kill-windows with prefix %s in %s", prefix, session)
-	out, err := exec.Command("tmux", "list-windows", "-t", session, "-F", "#{window_name}").Output()
-	if err != nil {
+func ensureProxy(host string, port int) {
+	if tmuxSessionExists(proxySessionName) {
+		debug.Log("dev", "proxy already running in %s", proxySessionName)
 		return
 	}
-	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(name, prefix) {
-			debug.Log("dev", "kill-window -t %s:%s", session, name)
-			exec.Command("tmux", "kill-window", "-t", session+":"+name).Run()
-		}
-	}
-}
 
-func restartProxy(session, wsName, host string) {
-	debug.Log("dev", "restart proxy for %s (host: %s)", wsName, host)
-	exec.Command("tmux", "kill-window", "-t", session+":proxy").Run()
+	debug.Log("dev", "starting shared proxy on %s:%d", host, port)
+	if err := createTmuxSession(proxySessionName); err != nil {
+		debug.Log("dev", "failed to create proxy session: %v", err)
+		return
+	}
 
 	crewBin, err := os.Executable()
 	if err != nil {
 		crewBin = "crew"
 	}
 
-	cmd := fmt.Sprintf("%s dev _proxy --ws=%s", crewBin, wsName)
-	if host != "" {
-		cmd += fmt.Sprintf(" --host=%s", host)
-	}
-
+	cmd := fmt.Sprintf("%s dev _proxy --host=%s --port=%d", crewBin, host, port)
 	debug.Log("dev", "proxy cmd: %s", cmd)
-	exec.Command("tmux", "new-window", "-t", session, "-n", "proxy").Run()
-	exec.Command("tmux", "send-keys", "-t", session+":proxy", cmd, "Enter").Run()
+	exec.Command("tmux", "send-keys", "-t", proxySessionName, cmd, "Enter").Run()
 }
 
 func listDevSessions() []string {
@@ -243,7 +206,7 @@ func listDevSessions() []string {
 	}
 	var sessions []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, "crew-dev-") {
+		if strings.HasPrefix(line, "crew-dev-") && line != proxySessionName {
 			sessions = append(sessions, line)
 		}
 	}
