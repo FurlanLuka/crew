@@ -59,8 +59,8 @@ var Root = CommandInfo{
 			TUI:         true,
 		},
 		{
-			Name:        "sessions",
-			Description: "View and manage active sessions",
+			Name:        "config",
+			Description: "View and edit crew settings",
 			TUI:         true,
 		},
 		{

@@ -20,6 +20,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/profile"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/registry"
+	"github.com/FurlanLuka/crew/crew/internal/settings"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -43,9 +44,8 @@ func main() {
 		cmdKill()
 		return
 
-	case "sessions":
-		cmdSessions()
-		return
+	case "config":
+		runTUI(settings.NewView())
 
 	case "workspace":
 		runTUI(workspace.NewView())
@@ -155,6 +155,11 @@ func mainMenu() app.Menu {
 			Label:       "Plans",
 			Description: "Claude plan viewer dashboard",
 			Page:        func() app.Page { return plans.NewView() },
+		},
+		{
+			Label:       "Settings",
+			Description: "Server IP, SSH host, managed configs",
+			Page:        func() app.Page { return settings.NewView() },
 		},
 		{
 			Label:       "Debug",
@@ -990,10 +995,6 @@ func cmdRm() {
 	}
 
 	fmt.Printf("Removed workspace: %s\n", wsName)
-}
-
-func cmdSessions() {
-	runTUI(workspace.NewSessionsView())
 }
 
 func cmdLsSessions() {
