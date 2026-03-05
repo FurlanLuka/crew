@@ -30,11 +30,13 @@ type launchExecutedMsg struct{}
 const (
 	launchModeEditorAgents = iota
 	launchModeClaude
+	launchModeTmux
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
 	"Claude",
+	"Tmux",
 }
 
 var sessionLabels = []string{
@@ -311,6 +313,8 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			return launchWithTmux(ws, promptFile, firstProjectDir)
 		case launchModeClaude:
 			return launchWithClaude(ws, promptFile)
+		case launchModeTmux:
+			return launchWithTmux(ws, promptFile, firstProjectDir)
 		}
 
 		return launchExecutedMsg{}
