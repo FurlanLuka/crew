@@ -83,8 +83,11 @@ func (v LogsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case paneContentMsg:
+		wasAtBottom := v.viewport.AtBottom()
 		v.viewport.SetContent(msg.content)
-		v.viewport.GotoBottom()
+		if wasAtBottom {
+			v.viewport.GotoBottom()
+		}
 		return v, nil
 
 	case tickLogsMsg:

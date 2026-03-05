@@ -405,7 +405,7 @@ func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
 		if err != nil {
 			return errMsg{fmt.Errorf("failed to read prompt file: %w", err)}
 		}
-		args = append(args, string(prompt))
+		args = append(args, "--", string(prompt))
 		env = setEnv(env, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1")
 	}
 
