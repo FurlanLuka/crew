@@ -338,6 +338,13 @@ func (v DevServerView) saveServer() tea.Cmd {
 	portStr := strings.TrimSpace(v.inputs[1].Value())
 	cmdVal := strings.TrimSpace(v.inputs[2].Value())
 	dirVal := strings.TrimSpace(v.inputs[3].Value())
+	editIdx := v.editIdx
+
+	// Capture original name so we can remove it if renamed
+	var origName string
+	if editIdx >= 0 && editIdx < len(v.items) {
+		origName = v.items[editIdx].Server.Name
+	}
 
 	return func() tea.Msg {
 		if nameVal == "" || portStr == "" || cmdVal == "" {
@@ -347,6 +354,11 @@ func (v DevServerView) saveServer() tea.Cmd {
 		port, err := strconv.Atoi(portStr)
 		if err != nil || port <= 0 {
 			return errMsg{fmt.Errorf("invalid port number")}
+		}
+
+		// If editing and name changed, remove the old entry first
+		if origName != "" && origName != nameVal {
+			RemoveDevServer(projName, origName)
 		}
 
 		ds := DevServer{Name: nameVal, Port: port, Command: cmdVal, Dir: dirVal}
