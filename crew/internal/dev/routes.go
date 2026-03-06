@@ -2,6 +2,7 @@ package dev
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,14 @@ func RemoveRoutesFile(wsName string) {
 type WsRoutes struct {
 	Workspace string
 	Routes    []Route
+}
+
+// FormatURL builds a dev server URL, omitting the port for port 80.
+func FormatURL(serverName, wsName, host string, port int) string {
+	if port == 80 {
+		return fmt.Sprintf("http://%s.%s.%s.nip.io", serverName, wsName, host)
+	}
+	return fmt.Sprintf("http://%s.%s.%s.nip.io:%d", serverName, wsName, host, port)
 }
 
 // ListAllRoutes scans all dev-routes-*.json files and returns routes grouped by workspace.

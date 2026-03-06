@@ -264,7 +264,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 				if r, ok := runningPorts[ds.Port]; ok {
 					item.Running = true
 					proxyPort := config.LoadSettings().GetProxyPort()
-					item.URL = fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, r.Subdomain, host, proxyPort)
+					item.URL = dev.FormatURL(r.ServerName, r.Subdomain, host, proxyPort)
 				}
 				items = append(items, item)
 			}

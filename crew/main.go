@@ -679,7 +679,7 @@ func cmdDevStatus() {
 
 	for _, wr := range allRoutes {
 		for _, r := range wr.Routes {
-			url := fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, wr.Workspace, host, proxyPort)
+			url := dev.FormatURL(r.ServerName, wr.Workspace, host, proxyPort)
 			fmt.Printf("%s\t%s\t%d\t%s\n", wr.Workspace, r.ServerName, r.ExternalPort, url)
 		}
 	}
@@ -741,7 +741,7 @@ func cmdDevStart() {
 	fmt.Printf("Dev servers for %s\n\n", wsName)
 
 	for _, r := range routes {
-		fmt.Printf("  http://%s.%s.%s.nip.io:%d\n", r.ServerName, wsName, host, proxyPort)
+		fmt.Printf("  %s\n", dev.FormatURL(r.ServerName, wsName, host, proxyPort))
 	}
 
 	fmt.Println()
@@ -830,7 +830,7 @@ func cmdDevRestart() {
 	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
 
 	for _, r := range routes {
-		fmt.Printf("  http://%s.%s.%s.nip.io:%d\n", r.ServerName, wsName, host, proxyPort)
+		fmt.Printf("  %s\n", dev.FormatURL(r.ServerName, wsName, host, proxyPort))
 	}
 
 	fmt.Println()

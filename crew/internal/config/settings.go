@@ -12,7 +12,7 @@ type Settings struct {
 	ProxyPort int    `json:"proxy_port,omitempty"`
 }
 
-const DefaultProxyPort = 8080
+const DefaultProxyPort = 80
 
 func (s Settings) GetProxyPort() int {
 	if s.ProxyPort > 0 {

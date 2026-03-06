@@ -233,7 +233,7 @@ func buildURLsContent(wsName string) string {
 			continue
 		}
 		for _, r := range wr.Routes {
-			url := fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, wr.Workspace, host, proxyPort)
+			url := dev.FormatURL(r.ServerName, wr.Workspace, host, proxyPort)
 			b.WriteString(fmt.Sprintf("  %-12s %s\n", r.ServerName, url))
 			found = true
 		}
@@ -255,7 +255,7 @@ func buildURLsContent(wsName string) string {
 		b.WriteString("\n\n")
 		for _, wr := range others {
 			for _, r := range wr.Routes {
-				url := fmt.Sprintf("http://%s.%s.%s.nip.io:%d", r.ServerName, wr.Workspace, host, proxyPort)
+				url := dev.FormatURL(r.ServerName, wr.Workspace, host, proxyPort)
 				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", wr.Workspace, r.ServerName, url))
 			}
 		}
