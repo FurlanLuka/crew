@@ -79,7 +79,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "ls",
-			Description: "List workspaces, projects, or sessions",
+			Description: "List workspaces or projects",
 			Subcommands: []CommandInfo{
 				{
 					Name:         "workspaces",
@@ -92,12 +92,6 @@ var Root = CommandInfo{
 					Description:  "List all registered projects",
 					Usage:        "crew ls projects",
 					OutputFormat: "<name>\\t<path>",
-				},
-				{
-					Name:         "sessions",
-					Description:  "List active sessions",
-					Usage:        "crew ls sessions",
-					OutputFormat: "<workspace>\\t<projects>\\t<uptime>\\t<dev>",
 				},
 			},
 		},
@@ -184,19 +178,14 @@ var Root = CommandInfo{
 			},
 		},
 		{
-			Name:        "stop",
-			Description: "Stop a workspace session",
-			Usage:       "crew stop <workspace>",
+			Name:        "git",
+			Description: "Launch lazygit in tmux for a workspace",
+			Usage:       "crew git <workspace>",
 		},
 		{
 			Name:        "rm",
 			Description: "Remove a workspace",
 			Usage:       "crew rm <workspace>",
-		},
-		{
-			Name:        "kill",
-			Description: "Kill all crew sessions",
-			Usage:       "crew kill",
 		},
 		{
 			Name:        "help",

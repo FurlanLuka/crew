@@ -40,10 +40,6 @@ func main() {
 		fmt.Println("crew " + Version)
 		return
 
-	case "kill":
-		cmdKill()
-		return
-
 	case "config":
 		runTUI(settings.NewView())
 
@@ -86,8 +82,8 @@ func main() {
 		cmdLaunch()
 		return
 
-	case "stop":
-		cmdStop()
+	case "git":
+		cmdGit()
 		return
 
 	case "rm":
@@ -184,7 +180,7 @@ func runTUI(page app.Page) {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|sessions]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces]\n")
 		os.Exit(1)
 	}
 
@@ -193,10 +189,8 @@ func cmdLs() {
 		cmdLsProjects()
 	case "workspaces":
 		cmdLsWorkspaces()
-	case "sessions":
-		cmdLsSessions()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|sessions]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -951,32 +945,6 @@ func cmdPlansServe() {
 	}
 }
 
-func cmdStop() {
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew stop <workspace>\n")
-		os.Exit(1)
-	}
-
-	wsName := os.Args[2]
-
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
-
-	workspace.StopSession(wsName)
-
-	// Remove .code-workspace and close editor window
-	wsFile := workspace.CodeWorkspaceFilePath(wsName)
-	if _, err := os.Stat(wsFile); err == nil {
-		editor := exec.DetectEditor()
-		exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
-		os.Remove(wsFile)
-	}
-
-	fmt.Printf("Stopped session: %s\n", wsName)
-}
-
 func cmdRm() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: crew rm <workspace>\n")
@@ -1007,73 +975,20 @@ func cmdRm() {
 	fmt.Printf("Removed workspace: %s\n", wsName)
 }
 
-func cmdLsSessions() {
-	infos := workspace.ListSessionInfos()
-	for _, s := range infos {
-		label := fmt.Sprintf("%d projects", s.ProjectCount)
-		if s.ProjectCount == 1 {
-			label = "1 project"
-		}
-		devLabel := "-"
-		if s.DevRunning {
-			devLabel = "dev"
-		}
-		age := strings.TrimSuffix(s.Age, " ago")
-		fmt.Printf("%s\t%s\t%s\t%s\n", s.Workspace, label, age, devLabel)
-	}
-}
-
-func cmdKill() {
-	killed := false
-
-	// Clean up dev sessions and route files
-	dev.StopAll("")
-
-	// Kill tmux sessions
-	for _, session := range exec.ListCrewSessions() {
-		wsName := session[len("crew-"):]
-		// Strip known suffixes to get the workspace name
-		for _, suffix := range []string{"-claude", "-servers", "-git"} {
-			wsName = strings.TrimSuffix(wsName, suffix)
-		}
-
-		exec.KillTmuxSession(session)
-		fmt.Printf("Killed session: %s\n", session)
-
-		// Clean up prompt + workspace files
-		os.Remove(workspace.PromptFilePath(wsName))
-
-		wsFile := workspace.CodeWorkspaceFilePath(wsName)
-		if _, err := os.Stat(wsFile); err == nil {
-			editor := exec.DetectEditor()
-			exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
-			os.Remove(wsFile)
-		}
-
-		killed = true
+func cmdGit() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew git <workspace>\n")
+		os.Exit(1)
 	}
 
-	// Clean up orphaned .code-workspace files
-	entries, _ := os.ReadDir(config.ConfigDir)
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if len(name) > len(".code-workspace") && name[len(name)-len(".code-workspace"):] == ".code-workspace" {
-			wsName := name[:len(name)-len(".code-workspace")]
-			if !exec.TmuxSessionExists("crew-"+wsName+"-claude") && !exec.TmuxSessionExists("crew-"+wsName) {
-				wsFile := workspace.CodeWorkspaceFilePath(wsName)
-				editor := exec.DetectEditor()
-				exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
-				os.Remove(wsFile)
-				os.Remove(workspace.PromptFilePath(wsName))
-				killed = true
-			}
-		}
+	wsName := os.Args[2]
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
 	}
 
-	if !killed {
-		fmt.Println("No crew sessions running.")
+	if err := workspace.LaunchGitSession(wsName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 }

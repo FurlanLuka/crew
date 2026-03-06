@@ -5,10 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -114,12 +112,6 @@ func KillTmuxSession(session string) {
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
-// AttachTmuxSession attaches to a tmux session via syscall.Exec (replaces process).
-// Uses iTerm2's -CC integration when available.
-func AttachTmuxSession(session string) error {
-	return attachTmux(session, true)
-}
-
 // AttachTmuxSessionRaw attaches to a tmux session without iTerm2 integration.
 // Windows stay inside the terminal; switch with ctrl-b n/p.
 func AttachTmuxSessionRaw(session string) error {
@@ -142,47 +134,10 @@ func attachTmux(session string, iterm bool) error {
 	return syscall.Exec(tmuxPath, args, envWithoutTMUX())
 }
 
-// CrewSession holds a crew tmux session with its creation time.
-type CrewSession struct {
-	Name      string
-	CreatedAt time.Time
-}
-
-// ListCrewSessionsDetailed returns all crew tmux sessions with creation timestamps.
-func ListCrewSessionsDetailed() []CrewSession {
-	debug.Log("tmux", "list-sessions (detailed)")
-	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}\t#{session_created}")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	sessions := parseCrewSessionsOutput(string(out))
-	debug.Log("tmux", "list-sessions → %d crew sessions", len(sessions))
-	return sessions
-}
-
-// parseCrewSessionsOutput parses tmux list-sessions output (tab-separated name + unix timestamp)
-// and returns only sessions with the "crew-" prefix.
-func parseCrewSessionsOutput(output string) []CrewSession {
-	var sessions []CrewSession
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) != 2 || !strings.HasPrefix(parts[0], "crew-") {
-			continue
-		}
-		ts, err := strconv.ParseInt(parts[1], 10, 64)
-		if err != nil {
-			continue
-		}
-		sessions = append(sessions, CrewSession{
-			Name:      parts[0],
-			CreatedAt: time.Unix(ts, 0),
-		})
-	}
-	return sessions
+// SetTmuxOption sets a tmux session option.
+func SetTmuxOption(session, option, value string) {
+	debug.Log("tmux", "set-option -t %s %s %s", session, option, value)
+	exec.Command("tmux", "set-option", "-t", session, option, value).Run()
 }
 
 // RenameTmuxWindow renames the current window in a tmux session.
@@ -213,23 +168,4 @@ func CaptureTmuxPane(session, window string, lines int) (string, error) {
 		return "", nil
 	}
 	return string(out), nil
-}
-
-// ListCrewSessions returns all tmux sessions starting with "crew-".
-func ListCrewSessions() []string {
-	debug.Log("tmux", "list-sessions")
-	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	var sessions []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, "crew-") {
-			sessions = append(sessions, line)
-		}
-	}
-	debug.Log("tmux", "list-sessions → %d crew sessions", len(sessions))
-	return sessions
 }

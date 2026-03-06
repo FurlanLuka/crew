@@ -88,7 +88,6 @@ type Summary struct {
 	Name         string
 	ProjectCount int
 	DevRunning   bool
-	TmuxActive   bool
 }
 
 // ListSummaries returns summaries for all workspaces.
@@ -109,10 +108,6 @@ func ListSummaries() ([]Summary, error) {
 			Name:         name,
 			ProjectCount: projCount,
 			DevRunning:   devRoutesExist(name),
-			TmuxActive: exec.TmuxSessionExists("crew-"+name+"-claude") ||
-				exec.TmuxSessionExists("crew-"+name+"-servers") ||
-				exec.TmuxSessionExists("crew-"+name+"-git") ||
-				exec.TmuxSessionExists("crew-"+name), // backward compat
 		})
 	}
 	return summaries, nil
@@ -211,10 +206,12 @@ func RemoveProject(wsName, projName string) error {
 	return Save(ws)
 }
 
-// Remove fully removes a workspace: stops session, removes git worktrees,
+// Remove fully removes a workspace: stops dev servers, removes git worktrees,
 // deletes workspace directory and JSON.
 func Remove(name string) error {
-	StopSession(name)
+	dev.StopAll(name)
+	dev.StopProxyIfIdle()
+	os.Remove(PromptFilePath(name))
 
 	ws, err := Load(name)
 	if err == nil {
@@ -266,20 +263,6 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 		return "", err
 	}
 	return text, nil
-}
-
-// StopSession kills the tmux session, stops dev servers, and removes the
-// prompt file for a workspace.
-func StopSession(wsName string) {
-	exec.KillTmuxSession("crew-" + wsName + "-claude")
-	exec.KillTmuxSession("crew-" + wsName + "-servers")
-	exec.KillTmuxSession("crew-" + wsName + "-git")
-	// Backward compat
-	exec.KillTmuxSession("crew-" + wsName)
-	exec.KillTmuxSession("crew-git-" + wsName)
-	dev.StopAll(wsName)
-	dev.StopProxyIfIdle()
-	os.Remove(PromptFilePath(wsName))
 }
 
 // BuildDevProjects converts workspace projects into dev.DevProject slice

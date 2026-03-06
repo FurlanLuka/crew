@@ -59,4 +59,3 @@ func TestDetectLANIP(t *testing.T) {
 		t.Errorf("DetectLANIP = %q, not IPv4", ip)
 	}
 }
-

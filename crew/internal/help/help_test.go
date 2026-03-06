@@ -66,7 +66,7 @@ func TestLsSubcommands(t *testing.T) {
 		t.Fatal("ls command not found")
 	}
 
-	expected := []string{"workspaces", "projects", "sessions"}
+	expected := []string{"workspaces", "projects"}
 	for _, name := range expected {
 		if findSubcommand(ls, name) == nil {
 			t.Errorf("ls subcommand %q not found", name)
@@ -109,17 +109,6 @@ func TestPlansSubcommands(t *testing.T) {
 		if findSubcommand(plans, name) == nil {
 			t.Errorf("plans subcommand %q not found", name)
 		}
-	}
-}
-
-func TestStopCommand(t *testing.T) {
-	stop := findSubcommand(&Root, "stop")
-	if stop == nil {
-		t.Fatal("stop command not found")
-	}
-
-	if len(stop.Flags) != 0 {
-		t.Fatalf("stop has %d flags, want 0", len(stop.Flags))
 	}
 }
 

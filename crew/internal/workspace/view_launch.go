@@ -20,8 +20,7 @@ import (
 // ── Messages ──
 
 type launchDataLoadedMsg struct {
-	hasEditor     bool
-	sessionActive bool
+	hasEditor bool
 }
 type launchExecutedMsg struct{}
 
@@ -30,18 +29,11 @@ type launchExecutedMsg struct{}
 const (
 	launchModeEditorAgents = iota
 	launchModeClaude
-	launchModeTmux
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
 	"Claude",
-	"Tmux",
-}
-
-var sessionLabels = []string{
-	"Attach",
-	"Stop",
 }
 
 // ── States ──
@@ -51,19 +43,17 @@ type launchState int
 const (
 	launchStateMode launchState = iota
 	launchStateLaunching
-	launchStateSession
 )
 
 // ── Model ──
 
 type LaunchView struct {
-	base          string
-	state         launchState
-	hasEditor     bool
-	modeCursor    int
-	sessionCursor int
-	spinner       spinner.Model
-	err           error
+	base       string
+	state      launchState
+	hasEditor  bool
+	modeCursor int
+	spinner    spinner.Model
+	err        error
 }
 
 func NewLaunchView(base string) LaunchView {
@@ -84,13 +74,8 @@ func (v LaunchView) Title() string {
 func (v LaunchView) Init() tea.Cmd {
 	return func() tea.Msg {
 		editor := exec.DetectEditor()
-		active := exec.TmuxSessionExists("crew-"+v.base+"-claude") ||
-			exec.TmuxSessionExists("crew-"+v.base+"-servers") ||
-			exec.TmuxSessionExists("crew-"+v.base+"-git") ||
-			exec.TmuxSessionExists("crew-"+v.base) // backward compat
 		return launchDataLoadedMsg{
-			hasEditor:     editor != "",
-			sessionActive: active,
+			hasEditor: editor != "",
 		}
 	}
 }
@@ -102,16 +87,10 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case launchDataLoadedMsg:
 		v.hasEditor = msg.hasEditor
-		if msg.sessionActive {
-			v.state = launchStateSession
-		}
 		return v, nil
 
 	case launchExecutedMsg:
 		return v, tea.Quit
-
-	case sessionStoppedMsg:
-		return v, func() tea.Msg { return app.PopPageMsg{} }
 
 	case errMsg:
 		v.err = msg.err
@@ -136,11 +115,8 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (v LaunchView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch v.state {
-	case launchStateMode:
+	if v.state == launchStateMode {
 		return v.handleModeKey(msg)
-	case launchStateSession:
-		return v.handleSessionKey(msg)
 	}
 	return v, nil
 }
@@ -178,8 +154,6 @@ func (v LaunchView) View() string {
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
 		b.WriteString(" Launching...\n")
-	case launchStateSession:
-		v.renderSessionSelect(&b)
 	}
 
 	if v.err != nil {
@@ -216,69 +190,6 @@ func (v LaunchView) renderModeSelect(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-func (v LaunchView) handleSessionKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, app.Keys.Quit):
-		return v, tea.Quit
-	case key.Matches(msg, app.Keys.Back):
-		return v, func() tea.Msg { return app.PopPageMsg{} }
-	case key.Matches(msg, app.Keys.Up):
-		if v.sessionCursor > 0 {
-			v.sessionCursor--
-		}
-		return v, nil
-	case key.Matches(msg, app.Keys.Down):
-		if v.sessionCursor < len(sessionLabels)-1 {
-			v.sessionCursor++
-		}
-		return v, nil
-	case msg.String() == "enter":
-		wsName := v.base
-		if v.sessionCursor == 0 {
-			// Attach to claude session (primary)
-			session := "crew-" + wsName + "-claude"
-			if !exec.TmuxSessionExists(session) {
-				session = "crew-" + wsName // backward compat
-			}
-			return v, func() tea.Msg {
-				exec.AttachTmuxSession(session)
-				return errMsg{fmt.Errorf("failed to attach to session")}
-			}
-		}
-		// Stop
-		return v, func() tea.Msg {
-			StopSession(wsName)
-			return sessionStoppedMsg{wsName}
-		}
-	}
-	return v, nil
-}
-
-func (v LaunchView) renderSessionSelect(b *strings.Builder) {
-	b.WriteString("  ")
-	b.WriteString(app.Subtle.Render("Session active:"))
-	b.WriteString("\n")
-
-	for i, label := range sessionLabels {
-		cursor := "  "
-		if i == v.sessionCursor {
-			cursor = app.Selected.Render("> ")
-		}
-		display := label
-		if i == v.sessionCursor {
-			display = app.Selected.Render(label)
-		}
-		b.WriteString("  ")
-		b.WriteString(cursor)
-		b.WriteString(display)
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter select  esc back"))
-	b.WriteString("\n")
-}
-
 // ── Launch logic ──
 
 func (v LaunchView) executeLaunch() tea.Cmd {
@@ -302,19 +213,16 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			return errMsg{err}
 		}
 		promptFile := PromptFilePath(wsName)
-		firstProjectDir := ProjectPath(wsName, ws.Projects[0].Name)
 		editor := exec.DetectEditor()
 
 		switch mode {
 		case launchModeEditorAgents:
-			if editor != "" {
-				return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
+			if editor == "" {
+				return errMsg{fmt.Errorf("no editor detected — install VS Code or Cursor, or use 'Claude' mode")}
 			}
-			return launchWithTmux(ws, promptFile, firstProjectDir)
+			return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
 		case launchModeClaude:
 			return launchWithClaude(ws, promptFile)
-		case launchModeTmux:
-			return launchWithTmux(ws, promptFile, firstProjectDir)
 		}
 
 		return launchExecutedMsg{}
@@ -346,79 +254,6 @@ func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.
 	}
 
 	return launchExecutedMsg{}
-}
-
-func launchWithTmux(ws *Workspace, promptFile, firstProjectDir string) tea.Msg {
-	if !exec.HasTmux() {
-		return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
-	}
-
-	claudeSession := "crew-" + ws.Name + "-claude"
-	serversSession := "crew-" + ws.Name + "-servers"
-	gitSession := "crew-" + ws.Name + "-git"
-
-	// Duplicate protection
-	for _, s := range []string{claudeSession, serversSession, gitSession} {
-		if exec.TmuxSessionExists(s) {
-			return errMsg{fmt.Errorf("session '%s' already exists — run crew stop %s first", s, ws.Name)}
-		}
-	}
-
-	exec.EnsureTmuxConfig()
-
-	wsDir := WorkspaceDir(ws.Name)
-
-	// 1. Claude session — launch from workspace dir, add all projects
-	if err := exec.CreateTmuxSession(claudeSession, wsDir); err != nil {
-		return errMsg{fmt.Errorf("failed to create claude session: %w", err)}
-	}
-	exec.SourceTmuxConfig(claudeSession)
-
-	claudeCmd := "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude"
-	for _, wp := range ws.Projects {
-		claudeCmd += fmt.Sprintf(" --add-dir %s", ProjectPath(ws.Name, wp.Name))
-	}
-	claudeCmd += fmt.Sprintf(` "$(cat '%s')"`, promptFile)
-	exec.TmuxSendKeys(claudeSession, claudeCmd)
-
-	// 2. Servers session
-	if err := exec.CreateTmuxSession(serversSession, wsDir); err != nil {
-		return errMsg{fmt.Errorf("failed to create servers session: %w", err)}
-	}
-	exec.SourceTmuxConfig(serversSession)
-
-	devTuiCmd := "crew dev tui " + ws.Name
-	if config.UserSetClaudeConfig {
-		devTuiCmd = "CLAUDE_CONFIG_DIR=" + config.ClaudeConfigDir + " " + devTuiCmd
-	}
-	exec.TmuxSendKeys(serversSession, devTuiCmd)
-
-	// 3. Git session
-	sessions := []string{claudeSession, serversSession}
-	if exec.HasLazygit() {
-		exec.EnsureLazygitConfig()
-		lgCmd := exec.LazygitCommand()
-
-		if err := exec.CreateTmuxSession(gitSession, firstProjectDir); err != nil {
-			return errMsg{fmt.Errorf("failed to create git session: %w", err)}
-		}
-		exec.SourceTmuxConfig(gitSession)
-		exec.TmuxSendKeys(gitSession, lgCmd)
-		exec.RenameTmuxWindow(gitSession, ws.Projects[0].Name)
-
-		for _, wp := range ws.Projects[1:] {
-			dir := ProjectPath(ws.Name, wp.Name)
-			exec.CreateTmuxWindow(gitSession, wp.Name, dir, lgCmd)
-		}
-		sessions = append(sessions, gitSession)
-	}
-
-	var output strings.Builder
-	fmt.Fprintf(&output, "Launched %d tmux sessions:\n", len(sessions))
-	for _, s := range sessions {
-		fmt.Fprintf(&output, "  %s\n", s)
-	}
-	return app.ExitWithOutputMsg{Output: output.String()}
 }
 
 func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
@@ -474,4 +309,3 @@ func setEnv(env []string, key, value string) []string {
 	}
 	return append(env, prefix+value)
 }
-

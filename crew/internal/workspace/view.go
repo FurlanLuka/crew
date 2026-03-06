@@ -478,9 +478,6 @@ func (v View) renderList(b *strings.Builder) {
 		if s.DevRunning {
 			badges = append(badges, app.Highlight.Render("[dev]"))
 		}
-		if s.TmuxActive {
-			badges = append(badges, app.Highlight.Render("[tmux]"))
-		}
 
 		b.WriteString(cursor)
 		b.WriteString(name)
@@ -702,44 +699,10 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 
 func launchLazygit(wsName string) tea.Cmd {
 	return func() tea.Msg {
-		if !exec.HasLazygit() {
-			return errMsg{fmt.Errorf("lazygit not found — install it first")}
+		if err := LaunchGitSession(wsName); err != nil {
+			return errMsg{err}
 		}
-		if !exec.HasTmux() {
-			return errMsg{fmt.Errorf("tmux not found — install it first")}
-		}
-
-		session := "crew-" + wsName + "-git"
-
-		if !exec.TmuxSessionExists(session) {
-			ws, err := Load(wsName)
-			if err != nil {
-				return errMsg{err}
-			}
-			if len(ws.Projects) == 0 {
-				return errMsg{fmt.Errorf("no projects in workspace")}
-			}
-
-			exec.EnsureLazygitConfig()
-			exec.EnsureTmuxConfig()
-			lgCmd := exec.LazygitCommand()
-
-			firstDir := ProjectPath(wsName, ws.Projects[0].Name)
-			if err := exec.CreateTmuxSession(session, firstDir); err != nil {
-				return errMsg{fmt.Errorf("failed to create tmux session: %w", err)}
-			}
-			exec.SourceTmuxConfig(session)
-			exec.TmuxSendKeys(session, lgCmd)
-			exec.RenameTmuxWindow(session, ws.Projects[0].Name)
-
-			for _, wp := range ws.Projects[1:] {
-				dir := ProjectPath(wsName, wp.Name)
-				exec.CreateTmuxWindow(session, wp.Name, dir, lgCmd)
-			}
-		}
-
-		exec.AttachTmuxSessionRaw(session)
-		return errMsg{fmt.Errorf("failed to attach to git session")}
+		return launchExecutedMsg{}
 	}
 }
 
@@ -787,4 +750,3 @@ func openCode(wsName string) tea.Cmd {
 		return codeOpenedMsg{output: b.String()}
 	}
 }
-
