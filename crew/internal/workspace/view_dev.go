@@ -146,6 +146,12 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.statusMsg = ""
 		v.err = nil
 		return v, tea.Batch(v.spinner.Tick, v.stopAllDevServers())
+	case msg.String() == "R":
+		v.loading = true
+		v.actionMsg = "Restarting dev servers..."
+		v.statusMsg = ""
+		v.err = nil
+		return v, tea.Batch(v.spinner.Tick, v.restartAllDevServers())
 	}
 	return v, nil
 }
@@ -227,7 +233,7 @@ func (v DevView) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("l logs  S start all  X stop all  esc back"))
+	b.WriteString(app.HelpStyle.Render("l logs  S start all  X stop all  R restart all  esc back"))
 	b.WriteString("\n")
 }
 
@@ -314,6 +320,40 @@ func (v DevView) stopAllDevServers() tea.Cmd {
 		dev.StopAll(wsName)
 		dev.StopProxyIfIdle()
 		return devStoppedMsg{}
+	}
+}
+
+func (v DevView) restartAllDevServers() tea.Cmd {
+	wsName := v.wsName
+	return func() tea.Msg {
+		if !exec.HasTmux() {
+			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
+		}
+
+		dev.StopAll(wsName)
+		dev.StopProxyIfIdle()
+
+		ws, err := Load(wsName)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		settings := config.LoadSettings()
+		host := dev.ResolveHostIP()
+		domain := settings.GetDomain(host)
+		proxyPort := settings.GetProxyPort()
+
+		projects := BuildDevProjects(wsName, ws.Projects)
+		if len(projects) == 0 {
+			return errMsg{fmt.Errorf("no dev servers configured")}
+		}
+
+		routes, err := dev.Start(wsName, projects, domain, proxyPort)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		return devStartedMsg{fmt.Sprintf("Restarted %d dev servers", len(routes))}
 	}
 }
 
