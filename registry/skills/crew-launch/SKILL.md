@@ -1,15 +1,14 @@
 ---
 name: crew-launch
 description: >
-  Interactively pick a workspace, launch a Happier session,
-  and optionally start dev servers with a reverse proxy so each workspace
-  is accessible at {workspace}.{ip}.nip.io:{port}.
+  Interactive workspace launcher: discover workspaces, pick one,
+  launch session, start dev servers.
 user-invocable: true
 ---
 
 # Launch
 
-All-in-one workspace launcher: Happier session + dev servers.
+All-in-one workspace launcher: session + dev servers.
 
 ## Instructions
 
@@ -18,6 +17,10 @@ When the user invokes `/crew-launch`, follow these steps:
 ### 1. Discover workspaces
 
 Run `crew ls workspaces` to get the list of available workspaces.
+
+If no workspaces exist, offer to create one:
+1. Ask for a workspace name
+2. Run `crew workspace` (TUI) or guide through CLI: `crew` → Workspace → New
 
 ### 2. Inspect each workspace
 
@@ -29,14 +32,13 @@ Use **AskUserQuestion** to present the workspaces as options. For each option:
 - **label**: workspace name
 - **description**: list the project names and their roles (e.g. "api (lead), web-app (support)")
 
-### 4. Launch Happier session
+### 4. Launch session
 
-**IMPORTANT:** The `crew happier` command must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Use Bash with `run_in_background` and `nohup` to detach it, or instruct the user to run it manually in a separate terminal.
+Instruct the user to run `crew launch <workspace>` in their terminal. This opens the TUI launch view with two modes:
+- **Editor + Agents** — opens the workspace in Cursor/VS Code with Claude agent teams
+- **Claude** — launches Claude Code directly with all project directories
 
-Run (detached):
-```bash
-nohup crew happier <workspace> >/dev/null 2>&1 &
-```
+**Note:** `crew launch` replaces the current process (`syscall.Exec`), so it cannot be run from within Claude Code. The user must run it in a separate terminal.
 
 ### 5. Check dev server config
 
@@ -73,15 +75,14 @@ crew dev start <workspace>
 ### 7. Show summary
 
 Print:
-- Which workspace was selected
-- That the Happier session is running
+- Which workspace was launched
 - Dev server URLs (if started), formatted as clickable links:
   ```
   Dev servers:
-    http://<workspace>.<ip>.nip.io:<port>
+    http://<server>.<workspace>.<ip>.nip.io
   ```
 - Useful commands:
   - `crew dev restart <workspace>` to restart dev servers
   - `crew dev stop <workspace>` to stop dev servers
-  - `crew stop <workspace>` to stop the session
-  - `crew kill` to stop everything
+  - `crew git <workspace>` to launch lazygit
+  - `crew rm <workspace>` to remove the workspace

@@ -16,24 +16,43 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | Command | Description |
 |---|---|
 | `crew ls workspaces` | List all workspaces |
+| `crew ls projects` | List all registered projects |
 | `crew show <ws>` | Show projects in a workspace |
 | `crew dev show <project>` | Show configured dev servers for a project |
 | `crew dev status` | Show all running dev servers with URLs |
 | `crew dev status <ws>` | Show running dev servers for one workspace |
+| `crew dev setup <project>` | Interactive dev server configuration (TUI) |
 | `crew dev add <project> ...` | Add a dev server to a project |
 | `crew dev rm <project> <name>` | Remove a dev server from a project |
 | `crew dev start <ws> [--host=<ip>]` | Start dev servers with reverse proxy |
 | `crew dev stop [<ws>]` | Stop dev servers |
 | `crew dev restart <ws> [--host=<ip>]` | Restart dev servers |
 | `crew start <ws>` | Generate agent prompt for a workspace |
-| `crew happier <ws>` | Launch Happier session in tmux |
-| `crew stop <ws>` | Stop a workspace session |
-| `crew rm <ws>` | Remove a workspace entirely |
-| `crew launch [<workspace>]` | Open the launch view (TUI) |
+| `crew launch [<ws>]` | Open the launch view (TUI) |
+| `crew git <ws>` | Launch lazygit in tmux (ephemeral, dies on detach) |
+| `crew rm <ws>` | Remove a workspace (stops dev servers, removes worktrees) |
 | `crew plans start` | Start the plan viewer server |
 | `crew plans stop` | Stop the plan viewer server |
 | `crew help [cmd] [subcmd]` | Show help for a command |
 | `crew help --json` | Full command tree as JSON |
+
+## Concepts
+
+### Projects
+
+Projects are registered in a global pool with a name and path to a git repo. They can be added to multiple workspaces.
+
+### Workspaces
+
+A workspace groups projects together for a task. When a project is added to a workspace, crew creates a **git worktree** — an isolated branch that doesn't affect the main repo.
+
+### Dev servers
+
+Each project can have named dev servers (e.g., `api`, `web`). When started, crew assigns each a random internal port and runs them in tmux windows. A shared reverse proxy on port 80 routes requests by subdomain.
+
+### Git sessions
+
+`crew git <ws>` launches lazygit in a tmux session with one window per project. Sessions are ephemeral — they auto-destroy when you detach (`ctrl-b d`). Re-running `crew git <ws>` creates a fresh session.
 
 ## Inspecting
 
@@ -56,7 +75,7 @@ Output: `<name>\t<path>\t<role>`
 ```bash
 crew dev show <project>
 ```
-Output: `<project>\t<server-name>\t<port>\t<command>[\t<dir>]`
+Output: `<server-name>\t<port>\t<command>[\t<dir>]`
 
 Shows what dev servers are **configured** (not necessarily running).
 
@@ -66,38 +85,46 @@ Shows what dev servers are **configured** (not necessarily running).
 crew dev status              # all workspaces
 crew dev status <workspace>  # one workspace
 ```
-Output: `<workspace>\t<port>\t<url>`
+Output: `<workspace>\t<server-name>\t<port>\t<url>`
 
 Shows **running** dev servers with their nip.io URLs.
 
-## URL Resolution
+## Dev Server Architecture
 
-Dev servers use nip.io for DNS:
+### URL scheme
+
+Dev servers use a shared reverse proxy on port 80 with nested nip.io subdomains:
 ```
-http://<workspace>.<lan-ip>.nip.io:<port>
+http://<server>.<workspace>.<lan-ip>.nip.io
 ```
 
-- The workspace name is used as the subdomain
-- The LAN IP is auto-detected (the server's non-loopback IPv4)
-- Each workspace gets its own subdomain on the same external port
+- `<server>` — the dev server name (e.g., `api`, `web`) set via `--name`
+- `<workspace>` — the workspace name
+- `<lan-ip>` — auto-detected LAN IP (or `--host` override)
+- Port 80 is the default — no port needed in URLs
 
-To find the URL for a workspace:
+Example: `http://api.my-ws.192.168.1.50.nip.io`
+
+### How it works
+
+1. `crew dev start <ws>` finds a free port for each dev server
+2. Each server runs in its own tmux window with `PORT=<free-port>` set
+3. A shared reverse proxy (single tmux session `crew-dev-proxy`) listens on port 80
+4. On each request, the proxy extracts `<server>` and `<workspace>` from the hostname
+5. It looks up the route file (`dev-routes-<ws>.json`) to find the internal port
+6. The request is forwarded to `localhost:<internal-port>`
+
+The proxy supports both HTTP and WebSocket connections.
+
+### Port assignment
+
+The `--port` flag on `crew dev add` is the port your app normally listens on (for reference only). At runtime, crew assigns a random free port and passes it via the `PORT` environment variable. Your start command should use `$PORT`:
+
 ```bash
-crew dev status <workspace>
+crew dev add myproject --name=api --port=3000 --cmd="npm run dev -- --port \$PORT"
 ```
 
-## Plan Viewer
-
-Built-in web dashboard for browsing Claude plan files (`CLAUDE_CONFIG_DIR/plans/*.md`).
-
-```bash
-crew plans start   # start the plan viewer (runs in tmux session crew-plans)
-crew plans stop    # stop the plan viewer
-```
-
-URL: `http://plans.<lan-ip>.nip.io:3080` (port 3080 by default, standalone — not proxied through the dev proxy).
-
-The plan viewer is a built-in Go HTTP server with an embedded SPA. No external dependencies required.
+Or if your framework reads `PORT` automatically (e.g., Next.js, Express), just use the standard command.
 
 ## Managing
 
@@ -107,9 +134,9 @@ The plan viewer is a built-in Go HTTP server with an embedded SPA. No external d
 crew dev add <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
 ```
 
-- `--name`: server name (e.g., `web`, `api`)
-- `--port`: external port (e.g., `5173`, `3000`)
-- `--cmd`: start command (e.g., `npm run dev`)
+- `--name`: server name, used as subdomain (e.g., `web`, `api`)
+- `--port`: the port the dev server normally listens on
+- `--cmd`: start command (e.g., `npm run dev`). Use `$PORT` for the dynamic internal port
 - `--dir`: subdirectory relative to project root (for monorepos)
 
 ### Start dev servers
@@ -123,7 +150,7 @@ crew dev start <workspace> --host=<ip>
 
 ```bash
 crew dev stop                 # stop all
-crew dev stop <workspace>     # stop workspace
+crew dev stop <workspace>     # stop one workspace
 ```
 
 ### Restart dev servers
@@ -132,34 +159,23 @@ crew dev stop <workspace>     # stop workspace
 crew dev restart <workspace> [--host=<ip>]
 ```
 
-### Launch a session
-
-**IMPORTANT:** `crew happier` must run **outside** of Claude Code — it spawns a tmux session that won't work if launched from within a Claude Code agent. Detach it or instruct the user to run it in a separate terminal.
+### Remove a workspace
 
 ```bash
-crew launch                   # open workspace picker (TUI)
-crew launch <workspace>       # open launch view for a workspace (TUI)
-crew start <workspace>        # generate agent prompt
-nohup crew happier <workspace> >/dev/null 2>&1 &  # launch Happier (detached)
-```
-
-### Stop / remove a workspace
-
-```bash
-crew stop <workspace>         # stop session (tmux + dev servers)
-crew rm <workspace>           # remove workspace entirely (worktrees, dir, JSON)
+crew rm <workspace>           # stops dev servers, removes worktrees, dir, and JSON
 ```
 
 ## Output Formats
 
-All commands use **tab-separated** output for easy parsing:
+All CLI list commands use **tab-separated** output for easy parsing:
 
 | Command | Format |
 |---|---|
 | `crew ls workspaces` | `<name>\t<n> projects` |
+| `crew ls projects` | `<name>\t<path>` |
 | `crew show <ws>` | `<name>\t<path>\t<role>` |
-| `crew dev show <project>` | `<project>\t<server>\t<port>\t<cmd>[\t<dir>]` |
-| `crew dev status [<ws>]` | `<workspace>\t<port>\t<url>` |
+| `crew dev show <project>` | `<server>\t<port>\t<cmd>[\t<dir>]` |
+| `crew dev status [<ws>]` | `<workspace>\t<server>\t<port>\t<url>` |
 
 ## Installation
 
@@ -192,4 +208,21 @@ crew dev start <workspace>
 
 ```bash
 crew dev status <workspace>
+```
+
+### "Full setup from scratch"
+
+```bash
+# 1. Register projects
+crew project                  # TUI — add name + path
+
+# 2. Create workspace
+crew workspace                # TUI — create, add projects with roles
+
+# 3. Configure dev servers
+crew dev setup <project>      # TUI — interactive setup
+
+# 4. Launch
+crew launch <workspace>       # TUI — pick Editor+Agents or Claude
+crew dev start <workspace>    # start dev servers
 ```
