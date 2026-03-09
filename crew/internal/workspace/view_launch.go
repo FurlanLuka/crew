@@ -29,11 +29,13 @@ type launchExecutedMsg struct{}
 const (
 	launchModeEditorAgents = iota
 	launchModeClaude
+	launchModeClaudeYolo
 )
 
 var launchModeLabels = []string{
 	"Editor + Agents",
 	"Claude",
+	"Claude (Skip permissions)",
 }
 
 // ── States ──
@@ -222,7 +224,9 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			}
 			return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
 		case launchModeClaude:
-			return launchWithClaude(ws, promptFile)
+			return launchWithClaude(ws, promptFile, false)
+		case launchModeClaudeYolo:
+			return launchWithClaude(ws, promptFile, true)
 		}
 
 		return launchExecutedMsg{}
@@ -256,7 +260,7 @@ func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.
 	return launchExecutedMsg{}
 }
 
-func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
+func launchWithClaude(ws *Workspace, promptFile string, skipPermissions bool) tea.Msg {
 	claudePath, err := osexec.LookPath("claude")
 	if err != nil {
 		return errMsg{fmt.Errorf("claude not found in PATH")}
@@ -265,6 +269,9 @@ func launchWithClaude(ws *Workspace, promptFile string) tea.Msg {
 	debug.Log("claude", "launching claude session for workspace %s", ws.Name)
 
 	args := []string{"claude"}
+	if skipPermissions {
+		args = append(args, "--dangerously-skip-permissions")
+	}
 	env := os.Environ()
 	workDir := ProjectPath(ws.Name, ws.Projects[0].Name)
 
