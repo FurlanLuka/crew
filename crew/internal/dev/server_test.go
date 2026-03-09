@@ -26,7 +26,7 @@ func TestSessionName(t *testing.T) {
 }
 
 func TestFindFreePort(t *testing.T) {
-	port1, err := FindFreePort()
+	port1, err := findFreePort()
 	if err != nil {
 		t.Fatalf("FindFreePort: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestFindFreePort(t *testing.T) {
 		t.Errorf("port = %d, want > 0", port1)
 	}
 
-	port2, err := FindFreePort()
+	port2, err := findFreePort()
 	if err != nil {
 		t.Fatalf("FindFreePort second call: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestFindFreePort(t *testing.T) {
 }
 
 func TestDetectLANIP(t *testing.T) {
-	ip := DetectLANIP()
+	ip := detectLANIP()
 	if ip == "" {
 		t.Fatal("DetectLANIP returned empty string")
 	}

@@ -60,36 +60,6 @@ func TestLoadConfig_MigratesPort80(t *testing.T) {
 	}
 }
 
-func TestSaveConfig_RoundTrip(t *testing.T) {
-	setupTestConfig(t)
-
-	want := Config{Enabled: true, Port: 3000}
-	if err := SaveConfig(want); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
-
-	got := LoadConfig()
-	if got.Enabled != want.Enabled {
-		t.Errorf("Enabled = %v, want %v", got.Enabled, want.Enabled)
-	}
-	if got.Port != want.Port {
-		t.Errorf("Port = %d, want %d", got.Port, want.Port)
-	}
-}
-
-func TestSaveConfig_CreatesDir(t *testing.T) {
-	tmp := t.TempDir()
-	config.ConfigDir = filepath.Join(tmp, "nested", "crew")
-
-	if err := SaveConfig(Config{Port: 80}); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
-	}
-
-	if _, err := os.Stat(config.ConfigDir); err != nil {
-		t.Errorf("SaveConfig should create ConfigDir: %v", err)
-	}
-}
-
 func TestIsRunning(t *testing.T) {
 	// No tmux session named "crew-plans" should exist in test
 	if IsRunning() {

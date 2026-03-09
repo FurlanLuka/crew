@@ -74,23 +74,6 @@ func TestExtractTopic_Missing(t *testing.T) {
 	}
 }
 
-func TestIsEnabled(t *testing.T) {
-	setupTestConfig(t)
-
-	if IsEnabled() {
-		t.Error("IsEnabled should be false without hook script")
-	}
-
-	script := hookScript("crew-test1234")
-	dir := filepath.Dir(hookScriptPath())
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(hookScriptPath(), []byte(script), 0o755)
-
-	if !IsEnabled() {
-		t.Error("IsEnabled should be true with hook script")
-	}
-}
-
 func TestHookScript(t *testing.T) {
 	topic := "crew-deadbeef"
 	script := hookScript(topic)

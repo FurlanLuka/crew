@@ -303,9 +303,9 @@ func TestBuildDevProjects_MissingProject(t *testing.T) {
 
 func TestDetectDefaultBranch_Fallback(t *testing.T) {
 	dir := t.TempDir()
-	branch := DetectDefaultBranch(dir)
+	branch := detectDefaultBranch(dir)
 	if branch != "HEAD" {
-		t.Errorf("DetectDefaultBranch for non-git dir = %q, want %q", branch, "HEAD")
+		t.Errorf("detectDefaultBranch for non-git dir = %q, want %q", branch, "HEAD")
 	}
 }
 

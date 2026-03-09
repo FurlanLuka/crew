@@ -22,13 +22,11 @@ func (s Settings) GetDomain(host string) string {
 	return host + ".nip.io"
 }
 
-const DefaultProxyPort = 80
-
 func (s Settings) GetProxyPort() int {
 	if s.ProxyPort > 0 {
 		return s.ProxyPort
 	}
-	return DefaultProxyPort
+	return 80
 }
 
 func SettingsFilePath() string {

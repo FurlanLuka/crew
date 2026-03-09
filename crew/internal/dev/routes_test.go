@@ -37,7 +37,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		{Subdomain: "feature", ExternalPort: 5173, InternalPort: 49002},
 	}
 
-	if err := SaveRoutes("test-ws", routes); err != nil {
+	if err := saveRoutes("test-ws", routes); err != nil {
 		t.Fatalf("SaveRoutes: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestSaveRoutes_Empty(t *testing.T) {
 	setupTestConfig(t)
 
 	// First create a routes file
-	if err := SaveRoutes("empty-test", []Route{{Subdomain: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
+	if err := saveRoutes("empty-test", []Route{{Subdomain: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
 		t.Fatalf("SaveRoutes setup: %v", err)
 	}
 	if _, err := os.Stat(RoutesFilePath("empty-test")); err != nil {
@@ -80,7 +80,7 @@ func TestSaveRoutes_Empty(t *testing.T) {
 	}
 
 	// Saving empty slice should delete the file
-	if err := SaveRoutes("empty-test", []Route{}); err != nil {
+	if err := saveRoutes("empty-test", []Route{}); err != nil {
 		t.Fatalf("SaveRoutes empty: %v", err)
 	}
 	if _, err := os.Stat(RoutesFilePath("empty-test")); !os.IsNotExist(err) {
@@ -91,10 +91,10 @@ func TestSaveRoutes_Empty(t *testing.T) {
 func TestRemoveRoutesFile(t *testing.T) {
 	setupTestConfig(t)
 
-	if err := SaveRoutes("rm-test", []Route{{Subdomain: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
+	if err := saveRoutes("rm-test", []Route{{Subdomain: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
 		t.Fatalf("SaveRoutes: %v", err)
 	}
-	RemoveRoutesFile("rm-test")
+	removeRoutesFile("rm-test")
 
 	if _, err := os.Stat(RoutesFilePath("rm-test")); !os.IsNotExist(err) {
 		t.Error("routes file should be gone after RemoveRoutesFile")
@@ -104,12 +104,12 @@ func TestRemoveRoutesFile(t *testing.T) {
 func TestListAllRoutes(t *testing.T) {
 	setupTestConfig(t)
 
-	if err := SaveRoutes("ws-a", []Route{
+	if err := saveRoutes("ws-a", []Route{
 		{Subdomain: "main", ExternalPort: 5173, InternalPort: 49001},
 	}); err != nil {
 		t.Fatalf("SaveRoutes ws-a: %v", err)
 	}
-	if err := SaveRoutes("ws-b", []Route{
+	if err := saveRoutes("ws-b", []Route{
 		{Subdomain: "feat", ExternalPort: 3000, InternalPort: 49002},
 		{Subdomain: "main", ExternalPort: 3000, InternalPort: 49003},
 	}); err != nil {

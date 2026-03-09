@@ -28,6 +28,7 @@ type wsProjectsLoadedMsg struct {
 	poolNames  []string // names from pool not yet in workspace
 }
 type codeOpenedMsg struct{ output string }
+type gitSessionReadyMsg struct{ session string }
 type wsProjectAddedMsg struct{ name string }
 type wsProjectRemovedMsg struct{ name string }
 
@@ -128,6 +129,12 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case codeOpenedMsg:
 		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: msg.output} }
+
+	case gitSessionReadyMsg:
+		cmd := GitAttachCmd(msg.session)
+		return v, tea.ExecProcess(cmd, func(err error) tea.Msg {
+			return loadWorkspaces()
+		})
 
 	case wsProjectsLoadedMsg:
 		v.wsProjects = msg.wsProjects
@@ -699,10 +706,11 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 
 func launchLazygit(wsName string) tea.Cmd {
 	return func() tea.Msg {
-		if err := LaunchGitSession(wsName); err != nil {
+		session, err := EnsureGitSession(wsName)
+		if err != nil {
 			return errMsg{err}
 		}
-		return launchExecutedMsg{}
+		return gitSessionReadyMsg{session}
 	}
 }
 

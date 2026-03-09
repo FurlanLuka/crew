@@ -36,7 +36,7 @@ func LoadRoutes(wsName string) ([]Route, error) {
 	return routes, nil
 }
 
-func SaveRoutes(wsName string, routes []Route) error {
+func saveRoutes(wsName string, routes []Route) error {
 	if len(routes) == 0 {
 		os.Remove(RoutesFilePath(wsName))
 		return nil
@@ -48,7 +48,7 @@ func SaveRoutes(wsName string, routes []Route) error {
 	return os.WriteFile(RoutesFilePath(wsName), data, 0o644)
 }
 
-func RemoveRoutesFile(wsName string) {
+func removeRoutesFile(wsName string) {
 	os.Remove(RoutesFilePath(wsName))
 }
 

@@ -136,9 +136,9 @@ func Create(name string) error {
 	return Save(ws)
 }
 
-// DetectDefaultBranch returns the best base branch for a project repo.
+// detectDefaultBranch returns the best base branch for a project repo.
 // Tries develop, main, then falls back to HEAD.
-func DetectDefaultBranch(projectPath string) string {
+func detectDefaultBranch(projectPath string) string {
 	for _, branch := range []string{"develop", "main"} {
 		out, err := exec.RunGitCommand(projectPath, "rev-parse", "--verify", branch)
 		if err == nil && strings.TrimSpace(out) != "" {
@@ -167,7 +167,7 @@ func AddProject(wsName, projName, role string) error {
 	}
 
 	wtDir := ProjectPath(wsName, projName)
-	baseBranch := DetectDefaultBranch(p.Path)
+	baseBranch := detectDefaultBranch(p.Path)
 
 	branchName := "crew/" + wsName + "/" + projName
 	if err := exec.CreateGitWorktree(p.Path, wtDir, branchName, baseBranch); err != nil {

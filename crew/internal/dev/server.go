@@ -41,7 +41,7 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 	var newRoutes []Route
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
-			port, err := FindFreePort()
+			port, err := findFreePort()
 			if err != nil {
 				return nil, fmt.Errorf("failed to find free port: %w", err)
 			}
@@ -54,7 +54,7 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 		}
 	}
 
-	if err := SaveRoutes(wsName, newRoutes); err != nil {
+	if err := saveRoutes(wsName, newRoutes); err != nil {
 		return nil, err
 	}
 
@@ -99,14 +99,14 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 func StopAll(wsName string) {
 	if wsName != "" {
 		killTmuxSession(SessionName(wsName))
-		RemoveRoutesFile(wsName)
+		removeRoutesFile(wsName)
 		return
 	}
 
 	for _, session := range listDevSessions() {
 		ws := strings.TrimPrefix(session, "crew-dev-")
 		killTmuxSession(session)
-		RemoveRoutesFile(ws)
+		removeRoutesFile(ws)
 	}
 	killTmuxSession(ProxySessionName)
 }
@@ -120,8 +120,7 @@ func StopProxyIfIdle() {
 	}
 }
 
-// FindFreePort finds a free TCP port.
-func FindFreePort() (int, error) {
+func findFreePort() (int, error) {
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return 0, err
@@ -137,11 +136,10 @@ func ResolveHostIP() string {
 	if ip := config.LoadSettings().ServerIP; ip != "" {
 		return ip
 	}
-	return DetectLANIP()
+	return detectLANIP()
 }
 
-// DetectLANIP returns the machine's LAN IP address.
-func DetectLANIP() string {
+func detectLANIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "127.0.0.1"

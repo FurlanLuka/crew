@@ -82,22 +82,6 @@ func initGitRepo(t *testing.T) string {
 	return dir
 }
 
-func TestGetCurrentBranch(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping git integration test")
-	}
-	if !hasGit() {
-		t.Skip("git not available")
-	}
-
-	dir := initGitRepo(t)
-
-	branch := GetCurrentBranch(dir)
-	if branch == "" {
-		t.Error("GetCurrentBranch returned empty string")
-	}
-}
-
 func TestCreateAndRemoveWorktree(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping git integration test")
@@ -166,10 +150,9 @@ func TestCreateGitWorktree_WithFromBranch(t *testing.T) {
 	}
 
 	dir := initGitRepo(t)
-	branch := GetCurrentBranch(dir)
 	wtDir := filepath.Join(dir, "worktrees", "from-branch-wt")
 
-	err := CreateGitWorktree(dir, wtDir, "from-branch-test", branch)
+	err := CreateGitWorktree(dir, wtDir, "from-branch-test", "main")
 	if err != nil {
 		t.Fatalf("CreateGitWorktree with fromBranch: %v", err)
 	}

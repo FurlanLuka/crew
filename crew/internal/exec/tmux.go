@@ -112,25 +112,16 @@ func KillTmuxSession(session string) {
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
-// AttachTmuxSessionRaw attaches to a tmux session without iTerm2 integration.
+// AttachTmuxSessionRaw attaches to a tmux session.
 // Windows stay inside the terminal; switch with ctrl-b n/p.
 func AttachTmuxSessionRaw(session string) error {
-	return attachTmux(session, false)
-}
-
-func attachTmux(session string, iterm bool) error {
-	debug.Log("tmux", "attach -t %s (iterm=%v)", session, iterm)
+	debug.Log("tmux", "attach -t %s", session)
 	tmuxPath, err := exec.LookPath("tmux")
 	if err != nil {
 		return err
 	}
 
-	args := []string{"tmux"}
-	if iterm && os.Getenv("TERM_PROGRAM") == "iTerm.app" {
-		args = append(args, "-CC")
-	}
-	args = append(args, "attach", "-t", session)
-
+	args := []string{"tmux", "attach", "-t", session}
 	return syscall.Exec(tmuxPath, args, envWithoutTMUX())
 }
 

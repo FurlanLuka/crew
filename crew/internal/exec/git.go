@@ -91,36 +91,6 @@ func RunNpmInstall(dir string) {
 	cmd.Run()
 }
 
-// GetCurrentBranch returns the current branch name for the given dir.
-func GetCurrentBranch(dir string) string {
-	cmd := exec.Command("git", "branch", "--show-current")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		debug.Log("git", "branch --show-current in %s → error: %v", dir, err)
-		return ""
-	}
-	branch := strings.TrimSpace(string(out))
-	debug.Log("git", "branch --show-current in %s → %s", dir, branch)
-	return branch
-}
-
-// PushBranch pushes the current branch in dir.
-func PushBranch(dir string) error {
-	branch := GetCurrentBranch(dir)
-	if branch == "" {
-		return nil
-	}
-	debug.Log("git", "push -u origin %s in %s", branch, dir)
-	cmd := exec.Command("git", "push", "-u", "origin", branch)
-	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
-		debug.Log("git", "push -u origin %s → error: %v", branch, err)
-		return err
-	}
-	return nil
-}
-
 // RunGitCommand runs an arbitrary git command in the given directory and returns stdout.
 func RunGitCommand(dir string, args ...string) (string, error) {
 	debug.Log("git", "git %s in %s", strings.Join(args, " "), dir)

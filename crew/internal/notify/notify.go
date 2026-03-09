@@ -35,11 +35,6 @@ func ExtractTopic() string {
 	return ""
 }
 
-// IsEnabled returns true if notifications are configured.
-func IsEnabled() bool {
-	return ExtractTopic() != ""
-}
-
 // GenerateTopic generates a random ntfy topic.
 func GenerateTopic() string {
 	b := make([]byte, 4)

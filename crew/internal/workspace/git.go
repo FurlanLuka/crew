@@ -2,55 +2,71 @@ package workspace
 
 import (
 	"fmt"
+	"os/exec"
 
-	"github.com/FurlanLuka/crew/crew/internal/exec"
+	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
-// GitSessionName returns the tmux session name for a workspace's git session.
-func GitSessionName(wsName string) string {
+func gitSessionName(wsName string) string {
 	return "crew-git-" + wsName
 }
 
-// LaunchGitSession creates a tmux session with lazygit windows for each project
-// in the workspace, then attaches to it. If the session already exists, it just attaches.
-func LaunchGitSession(wsName string) error {
-	if !exec.HasLazygit() {
-		return fmt.Errorf("lazygit not found — install it first")
+// EnsureGitSession creates a tmux session with lazygit windows for each project
+// in the workspace (if it doesn't already exist). Returns the session name.
+func EnsureGitSession(wsName string) (string, error) {
+	if !crewExec.HasLazygit() {
+		return "", fmt.Errorf("lazygit not found — install it first")
 	}
-	if !exec.HasTmux() {
-		return fmt.Errorf("tmux not found — install it first")
+	if !crewExec.HasTmux() {
+		return "", fmt.Errorf("tmux not found — install it first")
 	}
 
-	session := GitSessionName(wsName)
+	session := gitSessionName(wsName)
 
-	if !exec.TmuxSessionExists(session) {
+	if !crewExec.TmuxSessionExists(session) {
 		ws, err := Load(wsName)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if len(ws.Projects) == 0 {
-			return fmt.Errorf("no projects in workspace")
+			return "", fmt.Errorf("no projects in workspace")
 		}
 
-		exec.EnsureLazygitConfig()
-		exec.EnsureTmuxConfig()
-		lgCmd := exec.LazygitCommand()
+		crewExec.EnsureLazygitConfig()
+		crewExec.EnsureTmuxConfig()
+		lgCmd := crewExec.LazygitCommand()
 
 		firstDir := ProjectPath(wsName, ws.Projects[0].Name)
-		if err := exec.CreateTmuxSession(session, firstDir); err != nil {
-			return fmt.Errorf("failed to create tmux session: %w", err)
+		if err := crewExec.CreateTmuxSession(session, firstDir); err != nil {
+			return "", fmt.Errorf("failed to create tmux session: %w", err)
 		}
-		exec.SourceTmuxConfig(session)
-		exec.SetTmuxOption(session, "destroy-unattached", "on")
-		exec.TmuxSendKeys(session, lgCmd)
-		exec.RenameTmuxWindow(session, ws.Projects[0].Name)
+		crewExec.SourceTmuxConfig(session)
+		crewExec.SetTmuxOption(session, "destroy-unattached", "on")
+		crewExec.TmuxSendKeys(session, lgCmd)
+		crewExec.RenameTmuxWindow(session, ws.Projects[0].Name)
 
 		for _, wp := range ws.Projects[1:] {
 			dir := ProjectPath(wsName, wp.Name)
-			exec.CreateTmuxWindow(session, wp.Name, dir, lgCmd)
+			crewExec.CreateTmuxWindow(session, wp.Name, dir, lgCmd)
 		}
 	}
 
-	exec.AttachTmuxSessionRaw(session)
+	return session, nil
+}
+
+// LaunchGitSession creates a tmux session with lazygit windows for each project
+// in the workspace, then attaches to it via syscall.Exec (replaces current process).
+func LaunchGitSession(wsName string) error {
+	session, err := EnsureGitSession(wsName)
+	if err != nil {
+		return err
+	}
+	crewExec.AttachTmuxSessionRaw(session)
 	return fmt.Errorf("failed to attach to git session")
+}
+
+// GitAttachCmd returns an *exec.Cmd that attaches to the git tmux session.
+// Use with tea.ExecProcess from Bubbletea TUI.
+func GitAttachCmd(session string) *exec.Cmd {
+	return exec.Command("tmux", "attach", "-t", session)
 }

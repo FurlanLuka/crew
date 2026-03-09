@@ -37,15 +37,6 @@ func LoadConfig() Config {
 	return cfg
 }
 
-func SaveConfig(cfg Config) error {
-	os.MkdirAll(config.ConfigDir, 0o755)
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(configPath(), append(data, '\n'), 0o644)
-}
-
 func Start(port int) error {
 	if !crewExec.HasTmux() {
 		return fmt.Errorf("tmux not found — install with: brew install tmux")
