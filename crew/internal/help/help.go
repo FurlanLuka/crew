@@ -151,10 +151,7 @@ var Root = CommandInfo{
 				{
 					Name:        "start",
 					Description: "Start dev servers with reverse proxy",
-					Usage:       "crew dev start <workspace> [flags]",
-					Flags: []FlagInfo{
-						{Name: "--host=<ip>", Description: "IP for nip.io URLs", Default: "auto-detect LAN IP"},
-					},
+					Usage:       "crew dev start <workspace>",
 				},
 				{
 					Name:        "stop",
@@ -164,10 +161,7 @@ var Root = CommandInfo{
 				{
 					Name:        "restart",
 					Description: "Restart dev servers",
-					Usage:       "crew dev restart <workspace> [flags]",
-					Flags: []FlagInfo{
-						{Name: "--host=<ip>", Description: "IP for nip.io URLs", Default: "auto-detect LAN IP"},
-					},
+					Usage:       "crew dev restart <workspace>",
 				},
 				{
 					Name:         "status",

@@ -36,7 +36,7 @@ func SessionName(wsName string) string {
 
 // Start starts dev servers for a workspace and launches the shared proxy.
 // projects should already have the correct paths (workspace worktree paths).
-func Start(wsName string, projects []DevProject, host string, proxyPort int) ([]Route, error) {
+func Start(wsName string, projects []DevProject, domain string, proxyPort int) ([]Route, error) {
 	// Build new routes
 	var newRoutes []Route
 	for _, p := range projects {
@@ -88,7 +88,7 @@ func Start(wsName string, projects []DevProject, host string, proxyPort int) ([]
 	}
 
 	// Ensure shared proxy is running
-	ensureProxy(host, proxyPort)
+	ensureProxy(domain, proxyPort)
 
 	return newRoutes, nil
 }
@@ -177,13 +177,13 @@ func killTmuxSession(session string) {
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
-func ensureProxy(host string, port int) {
+func ensureProxy(domain string, port int) {
 	if tmuxSessionExists(ProxySessionName) {
 		debug.Log("dev", "proxy already running in %s", ProxySessionName)
 		return
 	}
 
-	debug.Log("dev", "starting shared proxy on %s:%d", host, port)
+	debug.Log("dev", "starting shared proxy on %s:%d", domain, port)
 	if err := createTmuxSession(ProxySessionName); err != nil {
 		debug.Log("dev", "failed to create proxy session: %v", err)
 		return
@@ -194,7 +194,7 @@ func ensureProxy(host string, port int) {
 		crewBin = "crew"
 	}
 
-	cmd := fmt.Sprintf("%s dev _proxy --host=%s --port=%d", crewBin, host, port)
+	cmd := fmt.Sprintf("%s dev _proxy --domain=%s --port=%d", crewBin, domain, port)
 	debug.Log("dev", "proxy cmd: %s", cmd)
 	exec.Command("tmux", "send-keys", "-t", ProxySessionName, cmd, "Enter").Run()
 }

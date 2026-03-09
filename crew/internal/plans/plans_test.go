@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -96,7 +97,9 @@ func TestIsRunning(t *testing.T) {
 	}
 }
 
-func TestURL(t *testing.T) {
+func TestURL_DefaultDomain(t *testing.T) {
+	setupTestConfig(t)
+
 	u := URL()
 
 	parsed, err := url.Parse(u)
@@ -109,7 +112,7 @@ func TestURL(t *testing.T) {
 	if parsed.Host == "" {
 		t.Error("host is empty")
 	}
-	// Should start with "plans." and end with ".nip.io"
+	// Should start with "plans." and end with ".nip.io" (default behavior)
 	host := parsed.Hostname()
 	if len(host) < len("plans.x.nip.io") {
 		t.Errorf("host %q looks too short", host)
@@ -119,5 +122,27 @@ func TestURL(t *testing.T) {
 	}
 	if host[len(host)-7:] != ".nip.io" {
 		t.Errorf("host %q should end with '.nip.io'", host)
+	}
+}
+
+func TestURL_CustomDomain(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	// Set custom domain
+	settingsData := []byte(`{"domain": "example.com"}`)
+	os.WriteFile(filepath.Join(tmp, "config.json"), settingsData, 0o644)
+
+	u := URL()
+
+	parsed, err := url.Parse(u)
+	if err != nil {
+		t.Fatalf("URL() = %q is not parseable: %v", u, err)
+	}
+	host := parsed.Hostname()
+	if host[:6] != "plans." {
+		t.Errorf("host %q should start with 'plans.'", host)
+	}
+	if !strings.HasSuffix(host, ".example.com") {
+		t.Errorf("host %q should end with '.example.com'", host)
 	}
 }

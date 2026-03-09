@@ -10,6 +10,16 @@ type Settings struct {
 	ServerIP  string `json:"server_ip,omitempty"`
 	SSHHost   string `json:"ssh_host,omitempty"`
 	ProxyPort int    `json:"proxy_port,omitempty"`
+	Domain    string `json:"domain,omitempty"`
+}
+
+// GetDomain returns the configured custom domain, or falls back to
+// host-based nip.io domain for local/LAN development.
+func (s Settings) GetDomain(host string) string {
+	if s.Domain != "" {
+		return s.Domain
+	}
+	return host + ".nip.io"
 }
 
 const DefaultProxyPort = 80

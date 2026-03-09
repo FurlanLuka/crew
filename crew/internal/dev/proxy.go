@@ -12,17 +12,17 @@ import (
 
 // RunProxy starts the shared reverse proxy on a single port.
 // Routes are hot-reloaded from route files on each request.
-func RunProxy(host string, port int) error {
-	if host == "" {
-		host = ResolveHostIP()
+func RunProxy(domain string, port int) error {
+	if domain == "" {
+		domain = ResolveHostIP() + ".nip.io"
 	}
 
-	handler := &proxyHandler{host: host}
+	handler := &proxyHandler{domain: domain}
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	fmt.Printf("crew dev proxy\n")
 	fmt.Printf("Listening on %s\n", addr)
-	fmt.Printf("Host: %s\n\n", host)
+	fmt.Printf("Domain: %s\n\n", domain)
 
 	server := &http.Server{
 		Addr:    addr,
@@ -32,11 +32,11 @@ func RunProxy(host string, port int) error {
 }
 
 type proxyHandler struct {
-	host string
+	domain string
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	serverName, workspace := extractSubdomainParts(r.Host, h.host)
+	serverName, workspace := extractSubdomainParts(r.Host, h.domain)
 
 	if serverName == "" || workspace == "" {
 		h.serveStatusPage(w, r)
@@ -166,7 +166,7 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 
 	for _, wr := range allRoutes {
 		for _, route := range wr.Routes {
-			u := fmt.Sprintf("http://%s.%s.%s.nip.io:%s", route.ServerName, wr.Workspace, h.host, proxyPort)
+			u := fmt.Sprintf("http://%s.%s.%s:%s", route.ServerName, wr.Workspace, h.domain, proxyPort)
 			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a></td></tr>`+"\n",
 				route.ServerName, wr.Workspace, u, u)
 		}
@@ -177,13 +177,13 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 
 // extractSubdomainParts parses nested subdomains from the Host header.
 // e.g., "api.ws-a.192.168.1.50.nip.io:8080" → ("api", "ws-a")
-func extractSubdomainParts(host, baseIP string) (serverName, workspace string) {
+func extractSubdomainParts(host, domain string) (serverName, workspace string) {
 	h := host
 	if idx := strings.LastIndex(h, ":"); idx != -1 {
 		h = h[:idx]
 	}
 
-	suffix := "." + baseIP + ".nip.io"
+	suffix := "." + domain
 	if !strings.HasSuffix(h, suffix) {
 		return "", ""
 	}

@@ -242,7 +242,10 @@ func (v DevView) loadDevServers() tea.Cmd {
 		}
 
 		routes, _ := dev.LoadRoutes(wsName)
+		settings := config.LoadSettings()
 		host := dev.ResolveHostIP()
+		domain := settings.GetDomain(host)
+		proxyPort := settings.GetProxyPort()
 
 		// Build running route lookup: port -> Route
 		runningPorts := map[int]dev.Route{}
@@ -263,8 +266,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 				}
 				if r, ok := runningPorts[ds.Port]; ok {
 					item.Running = true
-					proxyPort := config.LoadSettings().GetProxyPort()
-					item.URL = dev.FormatURL(r.ServerName, r.Subdomain, host, proxyPort)
+					item.URL = dev.FormatURL(r.ServerName, r.Subdomain, domain, proxyPort)
 				}
 				items = append(items, item)
 			}
@@ -285,15 +287,18 @@ func (v DevView) startAllDevServers() tea.Cmd {
 			return errMsg{err}
 		}
 
+		settings := config.LoadSettings()
 		host := dev.ResolveHostIP()
+		domain := settings.GetDomain(host)
+		proxyPort := settings.GetProxyPort()
+
 		projects := BuildDevProjects(wsName, ws.Projects)
 
 		if len(projects) == 0 {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		proxyPort := config.LoadSettings().GetProxyPort()
-		routes, err := dev.Start(wsName, projects, host, proxyPort)
+		routes, err := dev.Start(wsName, projects, domain, proxyPort)
 		if err != nil {
 			return errMsg{err}
 		}

@@ -73,9 +73,12 @@ func IsRunning() bool {
 
 func URL() string {
 	cfg := LoadConfig()
-	host := "plans." + dev.ResolveHostIP() + ".nip.io"
+	settings := config.LoadSettings()
+	host := dev.ResolveHostIP()
+	domain := settings.GetDomain(host)
+	h := "plans." + domain
 	if cfg.Port != 80 {
-		return fmt.Sprintf("http://%s:%d", host, cfg.Port)
+		return fmt.Sprintf("http://%s:%d", h, cfg.Port)
 	}
-	return "http://" + host
+	return "http://" + h
 }

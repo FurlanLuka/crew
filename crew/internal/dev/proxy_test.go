@@ -11,26 +11,29 @@ func TestExtractSubdomainParts(t *testing.T) {
 	tests := []struct {
 		name       string
 		host       string
-		baseIP     string
+		domain     string
 		wantServer string
 		wantWS     string
 	}{
-		{"valid nested", "api.ws-a.192.168.1.50.nip.io:8080", "192.168.1.50", "api", "ws-a"},
-		{"no port", "web.ws-b.192.168.1.50.nip.io", "192.168.1.50", "web", "ws-b"},
-		{"wrong suffix", "api.ws-a.10.0.0.1.nip.io:8080", "192.168.1.50", "", ""},
-		{"single subdomain only", "ws-a.192.168.1.50.nip.io:8080", "192.168.1.50", "", ""},
-		{"empty subdomain", "192.168.1.50.nip.io:8080", "192.168.1.50", "", ""},
-		{"localhost", "localhost:8080", "192.168.1.50", "", ""},
-		{"bare IP", "192.168.1.50:8080", "192.168.1.50", "", ""},
-		{"triple nested", "a.b.c.192.168.1.50.nip.io:8080", "192.168.1.50", "a", "b.c"},
+		{"valid nested nip.io", "api.ws-a.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "api", "ws-a"},
+		{"no port", "web.ws-b.192.168.1.50.nip.io", "192.168.1.50.nip.io", "web", "ws-b"},
+		{"wrong suffix", "api.ws-a.10.0.0.1.nip.io:8080", "192.168.1.50.nip.io", "", ""},
+		{"single subdomain only", "ws-a.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "", ""},
+		{"empty subdomain", "192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "", ""},
+		{"localhost", "localhost:8080", "192.168.1.50.nip.io", "", ""},
+		{"bare IP", "192.168.1.50:8080", "192.168.1.50.nip.io", "", ""},
+		{"triple nested", "a.b.c.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "a", "b.c"},
+		{"custom domain", "api.ws-a.example.com:8080", "example.com", "api", "ws-a"},
+		{"custom domain no port", "web.ws-b.example.com", "example.com", "web", "ws-b"},
+		{"custom domain wrong suffix", "api.ws-a.other.com:8080", "example.com", "", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotServer, gotWS := extractSubdomainParts(tt.host, tt.baseIP)
+			gotServer, gotWS := extractSubdomainParts(tt.host, tt.domain)
 			if gotServer != tt.wantServer || gotWS != tt.wantWS {
 				t.Errorf("extractSubdomainParts(%q, %q) = (%q, %q), want (%q, %q)",
-					tt.host, tt.baseIP, gotServer, gotWS, tt.wantServer, tt.wantWS)
+					tt.host, tt.domain, gotServer, gotWS, tt.wantServer, tt.wantWS)
 			}
 		})
 	}
@@ -71,7 +74,7 @@ func TestIsWebSocketUpgrade(t *testing.T) {
 }
 
 func TestProxyHandler_StatusPage(t *testing.T) {
-	h := &proxyHandler{host: "192.168.1.50"}
+	h := &proxyHandler{domain: "192.168.1.50.nip.io"}
 
 	req := httptest.NewRequest("GET", "http://192.168.1.50:8080/", nil)
 	req.Host = "192.168.1.50:8080"
@@ -89,7 +92,7 @@ func TestProxyHandler_StatusPage(t *testing.T) {
 }
 
 func TestProxyHandler_UnknownSubdomain(t *testing.T) {
-	h := &proxyHandler{host: "192.168.1.50"}
+	h := &proxyHandler{domain: "192.168.1.50.nip.io"}
 
 	req := httptest.NewRequest("GET", "http://unknown.192.168.1.50.nip.io:8080/", nil)
 	req.Host = "unknown.192.168.1.50.nip.io:8080"

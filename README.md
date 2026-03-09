@@ -58,11 +58,7 @@ crew workspace
 curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
 
 # Install GitHub CLI (needed for registry API calls)
-(type -p wget >/dev/null || sudo apt-get install -y wget) && \
-sudo mkdir -p /etc/apt/keyrings && \
-wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
-sudo apt-get update && sudo apt-get install -y gh
+# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 
 # Install Claude Code
 curl -fsSL https://claude.ai/install.sh | bash

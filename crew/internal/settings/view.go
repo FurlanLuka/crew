@@ -33,14 +33,14 @@ const (
 type View struct {
 	state     viewState
 	settings  config.Settings
-	inputs    [2]textinput.Model
+	inputs    [3]textinput.Model
 	focus     int
 	statusMsg string
 	err       error
 }
 
 func NewView() View {
-	var inputs [2]textinput.Model
+	var inputs [3]textinput.Model
 
 	inputs[0] = textinput.New()
 	inputs[0].Placeholder = "10.138.0.32"
@@ -49,6 +49,10 @@ func NewView() View {
 	inputs[1] = textinput.New()
 	inputs[1].Placeholder = "crew-dev"
 	inputs[1].CharLimit = 64
+
+	inputs[2] = textinput.New()
+	inputs[2].Placeholder = "example.com"
+	inputs[2].CharLimit = 253
 
 	return View{state: stateView, inputs: inputs}
 }
@@ -109,8 +113,10 @@ func (v View) handleViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		v.inputs[0].SetValue(v.settings.ServerIP)
 		v.inputs[1].SetValue(v.settings.SSHHost)
+		v.inputs[2].SetValue(v.settings.Domain)
 		v.inputs[0].Focus()
 		v.inputs[1].Blur()
+		v.inputs[2].Blur()
 		return v, v.inputs[0].Cursor.BlinkCmd()
 	case msg.String() == "r":
 		return v, refreshConfigs
@@ -132,6 +138,7 @@ func (v View) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s := config.Settings{
 			ServerIP: strings.TrimSpace(v.inputs[0].Value()),
 			SSHHost:  strings.TrimSpace(v.inputs[1].Value()),
+			Domain:   strings.TrimSpace(v.inputs[2].Value()),
 		}
 		return v, saveSettings(s)
 	}
@@ -173,11 +180,19 @@ func (v View) renderView(b *strings.Builder) {
 		sshHost = app.Subtle.Render("not set")
 	}
 
+	domain := v.settings.Domain
+	if domain == "" {
+		domain = app.Subtle.Render("not set")
+	}
+
 	b.WriteString("  Server IP:  ")
 	b.WriteString(serverIP)
 	b.WriteString("\n")
 	b.WriteString("  SSH Host:   ")
 	b.WriteString(sshHost)
+	b.WriteString("\n")
+	b.WriteString("  Domain:     ")
+	b.WriteString(domain)
 	b.WriteString("\n")
 
 	b.WriteString("\n")
@@ -203,6 +218,9 @@ func (v View) renderEdit(b *strings.Builder) {
 	b.WriteString("\n")
 	b.WriteString("  SSH Host:   ")
 	b.WriteString(v.inputs[1].View())
+	b.WriteString("\n")
+	b.WriteString("  Domain:     ")
+	b.WriteString(v.inputs[2].View())
 	b.WriteString("\n\n")
 
 	b.WriteString("  ")
