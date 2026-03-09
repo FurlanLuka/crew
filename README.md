@@ -2,23 +2,37 @@
 
 CLI + TUI workspace manager for Claude Code. Manages multi-agent workspaces, dev servers with reverse proxy, agent/skill registry, and session launching.
 
-## Commands
+## Features
 
-| Command | Description |
-|---------|-------------|
-| `crew` | Main menu (TUI) |
-| `crew workspace` | Manage workspaces, projects, and launch |
-| `crew project` | Global project pool — add/remove projects |
-| `crew registry` | Install and manage agents & skills |
-| `crew profile` | Manage Claude profile |
-| `crew config` | Settings — server IP, SSH host |
-| `crew notify` | Push notification setup |
-| `crew dev status` | Show running dev servers with URLs |
-| `crew git <ws>` | Launch lazygit (ephemeral, dies on detach) |
-| `crew launch <ws>` | Launch workspace (Editor + Agents or Claude) |
-| `crew rm <ws>` | Remove a workspace |
-| `crew <name>` | Launch workspace directly |
-| `crew --version` | Print version |
+| Feature | Command | Description |
+|---------|---------|-------------|
+| `projects` | `crew project` | Global project pool — register repos, list, remove |
+| `projects.servers` | `crew dev add <project>` | Configure dev servers per project (name, port, command, dir) |
+| `projects.servers.setup` | `crew dev setup <project>` | Interactive dev server configuration wizard with npm script auto-detection |
+| `workspaces` | `crew workspace` | Group projects into isolated workspaces with automatic git worktrees |
+| `workspaces.launch.editor` | `crew launch <ws>` | Open workspace in Cursor/VS Code with agent team prompt auto-generated |
+| `workspaces.launch.claude` | `crew launch <ws>` | Launch Claude Code session with `--add-dir` for each project |
+| `workspaces.launch.claude-skip` | `crew launch <ws>` | Launch Claude with `--dangerously-skip-permissions` |
+| `workspaces.open` | `crew open <ws>` | Open shell in workspace directory |
+| `workspaces.git` | `crew git <ws>` | Launch lazygit in tmux with one window per project (ephemeral session) |
+| `workspaces.code` | `crew code <ws>` | Generate Remote SSH URLs for Cursor/VS Code |
+| `workspaces.show` | `crew show <ws>` | Display workspace projects with paths and roles |
+| `workspaces.remove` | `crew rm <ws>` | Remove a workspace and clean up worktrees |
+| `workspaces.shortcut` | `crew <ws>` | Launch workspace directly by name |
+| `dev.start` | `crew dev start <ws>` | Start dev servers for a workspace with automatic free port assignment |
+| `dev.stop` | `crew dev stop [<ws>]` | Stop dev servers for a workspace or all workspaces |
+| `dev.restart` | `crew dev restart <ws>` | Restart dev servers with fresh port assignment |
+| `dev.status` | `crew dev status [<ws>]` | Show running servers with clickable URLs |
+| `dev.logs` | TUI | Live dev server logs with per-server tabs and proxy tab |
+| `dev.proxy` | automatic | Shared reverse proxy — routes by subdomain, supports HTTP + WebSocket |
+| `dev.proxy.routing` | automatic | `<server>.<workspace>.<lan-ip>.nip.io` URL format, hot-reloaded routes |
+| `registry` | `crew registry` | Browse, install, update, and remove agents & skills |
+| `registry.install` | `crew registry install <name>` | Install individual items or bulk install with `--all` |
+| `registry.verify` | automatic | SHA256 content verification, GitHub API with token support and local fallback |
+| `profile` | `crew profile` | View, install, update, and remove Claude profile (CLAUDE.md) |
+| `notify` | `crew notify` | Push notifications via ntfy.sh — get alerted when Claude needs attention |
+| `plans` | `crew plans [start\|stop]` | View Claude plans with built-in web viewer |
+| `config` | `crew config` | Settings — server IP, SSH host, proxy port |
 
 ## Setup — macOS
 
