@@ -93,17 +93,18 @@ Shows **running** dev servers with their nip.io URLs.
 
 ### URL scheme
 
-Dev servers use a shared reverse proxy on port 80 with nested nip.io subdomains:
+Dev servers use a shared reverse proxy on port 80 with a flat subdomain format:
 ```
-http://<server>.<workspace>.<lan-ip>.nip.io
+http://<server>--<workspace>.<domain>
 ```
 
 - `<server>` — the dev server name (e.g., `api`, `web`) set via `--name`
 - `<workspace>` — the workspace name
-- `<lan-ip>` — auto-detected LAN IP (or `--host` override)
+- `<domain>` — auto-detected as `<lan-ip>.nip.io`, or a custom domain via `crew config`
+- The `--` separator keeps everything in a single subdomain level (wildcard SSL compatible)
 - Port 80 is the default — no port needed in URLs
 
-Example: `http://api.my-ws.192.168.1.50.nip.io`
+Example: `http://api--my-ws.192.168.1.50.nip.io`
 
 ### How it works
 

@@ -166,7 +166,7 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 
 	for _, wr := range allRoutes {
 		for _, route := range wr.Routes {
-			u := fmt.Sprintf("http://%s.%s.%s:%s", route.ServerName, wr.Workspace, h.domain, proxyPort)
+			u := fmt.Sprintf("http://%s--%s.%s:%s", route.ServerName, wr.Workspace, h.domain, proxyPort)
 			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a></td></tr>`+"\n",
 				route.ServerName, wr.Workspace, u, u)
 		}
@@ -175,8 +175,8 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "</table></body></html>\n")
 }
 
-// extractSubdomainParts parses nested subdomains from the Host header.
-// e.g., "api.ws-a.192.168.1.50.nip.io:8080" → ("api", "ws-a")
+// extractSubdomainParts parses the subdomain from the Host header.
+// e.g., "api--ws-a.192.168.1.50.nip.io:8080" → ("api", "ws-a")
 func extractSubdomainParts(host, domain string) (serverName, workspace string) {
 	h := host
 	if idx := strings.LastIndex(h, ":"); idx != -1 {
@@ -189,7 +189,7 @@ func extractSubdomainParts(host, domain string) (serverName, workspace string) {
 	}
 
 	sub := strings.TrimSuffix(h, suffix)
-	parts := strings.SplitN(sub, ".", 2)
+	parts := strings.SplitN(sub, "--", 2)
 	if len(parts) != 2 {
 		return "", ""
 	}

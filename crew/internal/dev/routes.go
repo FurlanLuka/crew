@@ -61,9 +61,9 @@ type WsRoutes struct {
 // FormatURL builds a dev server URL, omitting the port for port 80.
 func FormatURL(serverName, wsName, domain string, port int) string {
 	if port == 80 {
-		return fmt.Sprintf("http://%s.%s.%s", serverName, wsName, domain)
+		return fmt.Sprintf("http://%s--%s.%s", serverName, wsName, domain)
 	}
-	return fmt.Sprintf("http://%s.%s.%s:%d", serverName, wsName, domain, port)
+	return fmt.Sprintf("http://%s--%s.%s:%d", serverName, wsName, domain, port)
 }
 
 // ListAllRoutes scans all dev-routes-*.json files and returns routes grouped by workspace.

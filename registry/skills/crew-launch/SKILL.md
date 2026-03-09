@@ -79,7 +79,7 @@ Print:
 - Dev server URLs (if started), formatted as clickable links:
   ```
   Dev servers:
-    http://<server>.<workspace>.<ip>.nip.io
+    http://<server>--<workspace>.<ip>.nip.io
   ```
 - Useful commands:
   - `crew dev restart <workspace>` to restart dev servers

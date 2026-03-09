@@ -25,7 +25,7 @@ CLI + TUI workspace manager for Claude Code. Manages multi-agent workspaces, dev
 | `dev.status` | `crew dev status [<ws>]` | Show running servers with clickable URLs |
 | `dev.logs` | TUI | Live dev server logs with per-server tabs and proxy tab |
 | `dev.proxy` | automatic | Shared reverse proxy — routes by subdomain, supports HTTP + WebSocket |
-| `dev.proxy.routing` | automatic | `<server>.<workspace>.<lan-ip>.nip.io` URL format, hot-reloaded routes |
+| `dev.proxy.routing` | automatic | `<server>--<workspace>.<domain>` URL format, hot-reloaded routes |
 | `registry` | `crew registry` | Browse, install, update, and remove agents & skills |
 | `registry.install` | `crew registry install <name>` | Install individual items or bulk install with `--all` |
 | `registry.verify` | automatic | SHA256 content verification, GitHub API with token support and local fallback |
@@ -107,7 +107,7 @@ Each project can have named dev servers (e.g., `api`, `web`). When started, crew
                     ┌─────────────────────────────────────┐
                     │         Reverse Proxy (:80)         │
                     │                                     │
-  HTTP request      │  api.my-ws.192.168.1.50.nip.io     │
+  HTTP request      │  api--my-ws.192.168.1.50.nip.io    │
  ──────────────────►│  → extract server=api, ws=my-ws    │
                     │  → lookup dev-routes-my-ws.json     │
                     │  → forward to localhost:54321       │
@@ -120,11 +120,12 @@ Each project can have named dev servers (e.g., `api`, `web`). When started, crew
                     └───────────┘        └───────────┘
 ```
 
-**URL format:** `http://<server>.<workspace>.<lan-ip>.nip.io`
+**URL format:** `http://<server>--<workspace>.<domain>`
 
 - `<server>` — dev server name (set with `--name`)
 - `<workspace>` — workspace name
-- `<lan-ip>` — auto-detected LAN IP (override with `--host`)
+- `<domain>` — auto-detected as `<lan-ip>.nip.io`, or set a custom domain via `crew config`
+- The `--` separator keeps everything in a single subdomain level, so wildcard SSL certs (e.g., `*.example.com`) work correctly
 - [nip.io](https://nip.io) is a free wildcard DNS service — any request to `<anything>.<ip>.nip.io` resolves to `<ip>`. This lets you use real hostnames with subdomains instead of `localhost:<port>`, which means the reverse proxy can route by hostname without any DNS configuration
 
 The proxy supports HTTP and WebSocket connections. Route files (`dev-routes-*.json`) are hot-reloaded on each request.
@@ -144,6 +145,7 @@ Configured via `crew config` (TUI) or `~/.claude-personal/config.json`:
 | Setting | Description | Default |
 |---------|-------------|---------|
 | `server_ip` | LAN IP for nip.io URLs | auto-detected |
+| `domain` | Custom domain for proxy URLs (e.g., `luka.ngrok.pro`) | `<server_ip>.nip.io` |
 | `ssh_host` | SSH host alias for remote editor | — |
 | `proxy_port` | Reverse proxy listen port | 80 |
 

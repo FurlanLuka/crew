@@ -15,17 +15,17 @@ func TestExtractSubdomainParts(t *testing.T) {
 		wantServer string
 		wantWS     string
 	}{
-		{"valid nested nip.io", "api.ws-a.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "api", "ws-a"},
-		{"no port", "web.ws-b.192.168.1.50.nip.io", "192.168.1.50.nip.io", "web", "ws-b"},
-		{"wrong suffix", "api.ws-a.10.0.0.1.nip.io:8080", "192.168.1.50.nip.io", "", ""},
+		{"valid nip.io", "api--ws-a.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "api", "ws-a"},
+		{"no port", "web--ws-b.192.168.1.50.nip.io", "192.168.1.50.nip.io", "web", "ws-b"},
+		{"wrong suffix", "api--ws-a.10.0.0.1.nip.io:8080", "192.168.1.50.nip.io", "", ""},
 		{"single subdomain only", "ws-a.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "", ""},
 		{"empty subdomain", "192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "", ""},
 		{"localhost", "localhost:8080", "192.168.1.50.nip.io", "", ""},
 		{"bare IP", "192.168.1.50:8080", "192.168.1.50.nip.io", "", ""},
-		{"triple nested", "a.b.c.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "a", "b.c"},
-		{"custom domain", "api.ws-a.example.com:8080", "example.com", "api", "ws-a"},
-		{"custom domain no port", "web.ws-b.example.com", "example.com", "web", "ws-b"},
-		{"custom domain wrong suffix", "api.ws-a.other.com:8080", "example.com", "", ""},
+		{"custom domain", "api--ws-a.example.com:8080", "example.com", "api", "ws-a"},
+		{"custom domain no port", "web--ws-b.example.com", "example.com", "web", "ws-b"},
+		{"custom domain wrong suffix", "api--ws-a.other.com:8080", "example.com", "", ""},
+		{"ngrok wildcard", "api--my-ws.luka.ngrok.pro:80", "luka.ngrok.pro", "api", "my-ws"},
 	}
 
 	for _, tt := range tests {
@@ -104,6 +104,6 @@ func TestProxyHandler_UnknownSubdomain(t *testing.T) {
 		t.Errorf("status = %d, want 200", w.Code)
 	}
 	if !strings.Contains(w.Body.String(), "crew dev proxy") {
-		t.Error("single subdomain (no nested) should show status page")
+		t.Error("single subdomain (no --) should show status page")
 	}
 }
