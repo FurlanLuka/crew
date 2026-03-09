@@ -25,11 +25,19 @@ main() {
 
     # Install system dependencies (Linux only)
     if [ "$OS" = "linux" ]; then
-        for dep in tmux git; do
+        for dep in tmux git gh; do
             command -v "$dep" >/dev/null 2>&1 && continue
             printf '%s\n' "Installing $dep..."
             if command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update -qq && sudo apt-get install -y "$dep"
+                if [ "$dep" = "gh" ]; then
+                    (type -p wget >/dev/null || sudo apt-get install -y wget) && \
+                    sudo mkdir -p /etc/apt/keyrings && \
+                    wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
+                    printf 'deb [arch=%s signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n' "$(dpkg --print-architecture)" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+                    sudo apt-get update -qq && sudo apt-get install -y gh
+                else
+                    sudo apt-get update -qq && sudo apt-get install -y "$dep"
+                fi
             elif command -v dnf >/dev/null 2>&1; then
                 sudo dnf install -y "$dep"
             elif command -v pacman >/dev/null 2>&1; then
