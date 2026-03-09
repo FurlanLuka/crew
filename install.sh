@@ -157,6 +157,11 @@ main() {
     install -m 755 "$TMP/crew" "$INSTALL_DIR/crew"
     rm -rf "$TMP"
 
+    # Allow binding to port 80 without root (Linux only)
+    if [ "$OS" = "linux" ]; then
+        sudo setcap 'cap_net_bind_service=+ep' "$INSTALL_DIR/crew" 2>/dev/null || true
+    fi
+
     mkdir -p "$HOME/.crew/workspaces"
 
     # Ensure INSTALL_DIR is on PATH
