@@ -115,7 +115,7 @@ Each project can have named dev servers (e.g., `api`, `web`). When started, crew
 - `<server>` — dev server name (set with `--name`)
 - `<workspace>` — workspace name
 - `<lan-ip>` — auto-detected LAN IP (override with `--host`)
-- nip.io resolves any `<anything>.<ip>.nip.io` to `<ip>`
+- [nip.io](https://nip.io) is a free wildcard DNS service — any request to `<anything>.<ip>.nip.io` resolves to `<ip>`. This lets you use real hostnames with subdomains instead of `localhost:<port>`, which means the reverse proxy can route by hostname without any DNS configuration
 
 The proxy supports HTTP and WebSocket connections. Route files (`dev-routes-*.json`) are hot-reloaded on each request.
 
