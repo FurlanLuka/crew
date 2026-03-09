@@ -167,7 +167,7 @@ func mainMenu() app.Menu {
 
 func runTUI(page app.Page) {
 	a := app.New(page)
-	p := tea.NewProgram(a, tea.WithAltScreen())
+	p := tea.NewProgram(a, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
