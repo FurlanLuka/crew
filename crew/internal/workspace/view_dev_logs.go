@@ -26,9 +26,10 @@ type serverRestartedMsg struct{}
 // ── Data ──
 
 type logTab struct {
-	label  string // display name ("api", "web", "urls")
-	window string // tmux window name ("<ws>/api") — empty for urls tab
-	isURLs bool   // true for the URLs overview tab
+	label   string // display name ("api", "web", "proxy", "urls")
+	window  string // tmux window name ("<ws>/api") — empty for urls/proxy tab
+	isURLs  bool   // true for the URLs overview tab
+	isProxy bool   // true for the proxy logs tab
 }
 
 // ── Model ──
@@ -54,6 +55,7 @@ func NewLogsView(wsName string, items []devItem, initialIdx int) LogsView {
 			window: fmt.Sprintf("%s/%s", wsName, item.Server.Name),
 		})
 	}
+	tabs = append(tabs, logTab{label: "proxy", isProxy: true})
 	tabs = append(tabs, logTab{label: "urls", isURLs: true})
 
 	tabIdx := initialIdx
@@ -140,7 +142,10 @@ func (v LogsView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, v.capturePane()
 	case msg.String() == "r":
 		if v.tabs[v.tabIdx].isURLs {
-			return v, nil // skip urls tab
+			return v, nil
+		}
+		if v.tabs[v.tabIdx].isProxy {
+			return v, v.restartProxy()
 		}
 		return v, v.restartServer()
 	}
@@ -188,6 +193,15 @@ func (v LogsView) View() string {
 
 // ── Commands ──
 
+func (v LogsView) restartProxy() tea.Cmd {
+	return func() tea.Msg {
+		debug.Log("tmux", "restart proxy %s", dev.ProxySessionName)
+		osexec.Command("tmux", "send-keys", "-t", dev.ProxySessionName, "C-c").Run()
+		osexec.Command("tmux", "send-keys", "-t", dev.ProxySessionName, "Up", "Enter").Run()
+		return serverRestartedMsg{}
+	}
+}
+
 func (v LogsView) restartServer() tea.Cmd {
 	target := fmt.Sprintf("%s:%s", v.session, v.tabs[v.tabIdx].window)
 	return func() tea.Msg {
@@ -205,6 +219,13 @@ func (v LogsView) capturePane() tea.Cmd {
 		wsName := v.wsName
 		return func() tea.Msg {
 			return paneContentMsg{content: buildURLsContent(wsName)}
+		}
+	}
+
+	if tab.isProxy {
+		return func() tea.Msg {
+			content, _ := exec.CaptureTmuxPane(dev.ProxySessionName, "0", 500)
+			return paneContentMsg{content: strings.TrimRight(content, "\n")}
 		}
 	}
 

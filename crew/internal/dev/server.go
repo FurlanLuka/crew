@@ -27,7 +27,7 @@ type DevServerConfig struct {
 	Dir     string
 }
 
-const proxySessionName = "crew-dev-proxy"
+const ProxySessionName = "crew-dev-proxy"
 
 // SessionName returns the tmux session name for dev servers.
 func SessionName(wsName string) string {
@@ -108,7 +108,7 @@ func StopAll(wsName string) {
 		killTmuxSession(session)
 		RemoveRoutesFile(ws)
 	}
-	killTmuxSession(proxySessionName)
+	killTmuxSession(ProxySessionName)
 }
 
 // StopProxyIfIdle kills the shared proxy if no route files remain.
@@ -116,7 +116,7 @@ func StopProxyIfIdle() {
 	allRoutes, _ := ListAllRoutes()
 	if len(allRoutes) == 0 {
 		debug.Log("dev", "no routes left, killing proxy")
-		killTmuxSession(proxySessionName)
+		killTmuxSession(ProxySessionName)
 	}
 }
 
@@ -178,13 +178,13 @@ func killTmuxSession(session string) {
 }
 
 func ensureProxy(host string, port int) {
-	if tmuxSessionExists(proxySessionName) {
-		debug.Log("dev", "proxy already running in %s", proxySessionName)
+	if tmuxSessionExists(ProxySessionName) {
+		debug.Log("dev", "proxy already running in %s", ProxySessionName)
 		return
 	}
 
 	debug.Log("dev", "starting shared proxy on %s:%d", host, port)
-	if err := createTmuxSession(proxySessionName); err != nil {
+	if err := createTmuxSession(ProxySessionName); err != nil {
 		debug.Log("dev", "failed to create proxy session: %v", err)
 		return
 	}
@@ -196,7 +196,7 @@ func ensureProxy(host string, port int) {
 
 	cmd := fmt.Sprintf("%s dev _proxy --host=%s --port=%d", crewBin, host, port)
 	debug.Log("dev", "proxy cmd: %s", cmd)
-	exec.Command("tmux", "send-keys", "-t", proxySessionName, cmd, "Enter").Run()
+	exec.Command("tmux", "send-keys", "-t", ProxySessionName, cmd, "Enter").Run()
 }
 
 func listDevSessions() []string {
@@ -206,7 +206,7 @@ func listDevSessions() []string {
 	}
 	var sessions []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, "crew-dev-") && line != proxySessionName {
+		if strings.HasPrefix(line, "crew-dev-") && line != ProxySessionName {
 			sessions = append(sessions, line)
 		}
 	}
