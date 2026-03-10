@@ -29,8 +29,12 @@ func TmuxSessionExists(session string) bool {
 // CreateTmuxSession creates a new detached tmux session.
 // Unsets $TMUX so this works even when called from inside an existing session.
 func CreateTmuxSession(session, dir string) error {
+	args := []string{"new-session", "-d", "-s", session}
+	if dir != "" {
+		args = append(args, "-c", dir)
+	}
 	debug.Log("tmux", "new-session -d -s %s -c %s", session, dir)
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", session, "-c", dir)
+	cmd := exec.Command("tmux", args...)
 	cmd.Env = EnvWithoutTMUX()
 	if err := cmd.Run(); err != nil {
 		debug.Log("tmux", "new-session -s %s → error: %v", session, err)
@@ -104,6 +108,30 @@ func SourceTmuxConfig(session string) {
 	}
 	debug.Log("tmux", "source-file %s", cfgFile)
 	exec.Command("tmux", "source-file", cfgFile).Run()
+}
+
+// ListTmuxSessions returns the names of all active tmux sessions.
+func ListTmuxSessions() []string {
+	debug.Log("tmux", "list-sessions")
+	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
+	if err != nil {
+		return nil
+	}
+	var sessions []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			sessions = append(sessions, line)
+		}
+	}
+	return sessions
+}
+
+// TmuxRestartLastCommand sends C-c then Up+Enter to a tmux target,
+// effectively restarting whatever command was last run.
+func TmuxRestartLastCommand(target string) {
+	debug.Log("tmux", "restart-last-command -t %s", target)
+	exec.Command("tmux", "send-keys", "-t", target, "C-c").Run()
+	exec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
 }
 
 // KillTmuxSession kills a tmux session.

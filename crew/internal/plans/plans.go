@@ -37,7 +37,7 @@ func LoadConfig() Config {
 	return cfg
 }
 
-func Start(port int) error {
+func Start(domain string, proxyPort int) error {
 	if !crewExec.HasTmux() {
 		return fmt.Errorf("tmux not found — install with: brew install tmux")
 	}
@@ -45,17 +45,36 @@ func Start(port int) error {
 		return fmt.Errorf("plan viewer already running")
 	}
 
+	internalPort, err := dev.FindFreePort()
+	if err != nil {
+		return fmt.Errorf("failed to find free port: %w", err)
+	}
+
+	if err := dev.SavePlansPort(internalPort); err != nil {
+		return fmt.Errorf("failed to save plans port: %w", err)
+	}
+
+	if err := dev.EnsureProxy(domain, proxyPort); err != nil {
+		return fmt.Errorf("failed to start proxy: %w", err)
+	}
+
 	home, _ := os.UserHomeDir()
 	if err := crewExec.CreateTmuxSession(sessionName, home); err != nil {
+		dev.RemovePlansPort()
 		return fmt.Errorf("failed to create tmux session: %w", err)
 	}
 
-	cmd := fmt.Sprintf("crew plans _serve --port %d", port)
+	crewBin, err := os.Executable()
+	if err != nil {
+		crewBin = "crew"
+	}
+	cmd := fmt.Sprintf("%s plans _serve --port %d", crewBin, internalPort)
 	return crewExec.TmuxSendKeys(sessionName, cmd)
 }
 
 func Stop() {
 	crewExec.KillTmuxSession(sessionName)
+	dev.RemovePlansPort()
 }
 
 func IsRunning() bool {
@@ -63,13 +82,13 @@ func IsRunning() bool {
 }
 
 func URL() string {
-	cfg := LoadConfig()
 	settings := config.LoadSettings()
 	host := dev.ResolveHostIP()
 	domain := settings.GetDomain(host)
+	proxyPort := settings.GetProxyPort()
 	h := "plans." + domain
-	if cfg.Port != 80 {
-		return fmt.Sprintf("http://%s:%d", h, cfg.Port)
+	if proxyPort != 80 {
+		return fmt.Sprintf("http://%s:%d", h, proxyPort)
 	}
 	return "http://" + h
 }

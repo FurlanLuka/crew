@@ -17,7 +17,7 @@ func RunProxy(domain string, port int) error {
 		domain = ResolveHostIP() + ".nip.io"
 	}
 
-	handler := &proxyHandler{domain: domain}
+	handler := &proxyHandler{domain: domain, port: port}
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	fmt.Printf("crew dev proxy\n")
@@ -33,9 +33,20 @@ func RunProxy(domain string, port int) error {
 
 type proxyHandler struct {
 	domain string
+	port   int
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Check for plans subdomain (plans.{domain})
+	if sub := extractSubdomain(r.Host, h.domain); sub == "plans" {
+		if port := LoadPlansPort(); port > 0 {
+			h.proxyTo(w, r, port)
+			return
+		}
+		h.serveStatusPage(w, r)
+		return
+	}
+
 	serverName, workspace := extractSubdomainParts(r.Host, h.domain)
 
 	if serverName == "" || workspace == "" {
@@ -71,17 +82,18 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.proxyTo(w, r, target.InternalPort)
+}
+
+func (h *proxyHandler) proxyTo(w http.ResponseWriter, r *http.Request, port int) {
 	targetURL := &url.URL{
 		Scheme: "http",
-		Host:   fmt.Sprintf("127.0.0.1:%d", target.InternalPort),
+		Host:   fmt.Sprintf("127.0.0.1:%d", port),
 	}
-
-	// WebSocket upgrade — use raw TCP hijack
 	if isWebSocketUpgrade(r) {
 		h.handleWebSocket(w, r, targetURL)
 		return
 	}
-
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.ServeHTTP(w, r)
 }
@@ -156,12 +168,12 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 <tr><th>Service</th><th>Workspace</th><th>URL</th></tr>
 `)
 
-	// Detect proxy port from the incoming request
-	proxyPort := r.Host
-	if idx := strings.LastIndex(proxyPort, ":"); idx != -1 {
-		proxyPort = proxyPort[idx+1:]
-	} else {
-		proxyPort = "8080"
+	proxyPort := fmt.Sprintf("%d", h.port)
+
+	// Show plans if running
+	if port := LoadPlansPort(); port > 0 {
+		u := fmt.Sprintf("http://plans.%s:%s", h.domain, proxyPort)
+		fmt.Fprintf(w, `<tr><td>plans</td><td>—</td><td><a href="%s">%s</a></td></tr>`+"\n", u, u)
 	}
 
 	for _, wr := range allRoutes {
@@ -173,6 +185,21 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, "</table></body></html>\n")
+}
+
+// extractSubdomain returns the full subdomain prefix before .{domain}.
+// e.g., "plans.192.168.1.50.nip.io:8080" → "plans"
+// e.g., "api--ws-a.192.168.1.50.nip.io:8080" → "api--ws-a"
+func extractSubdomain(host, domain string) string {
+	h := host
+	if idx := strings.LastIndex(h, ":"); idx != -1 {
+		h = h[:idx]
+	}
+	suffix := "." + domain
+	if !strings.HasSuffix(h, suffix) {
+		return ""
+	}
+	return strings.TrimSuffix(h, suffix)
 }
 
 // extractSubdomainParts parses the subdomain from the Host header.

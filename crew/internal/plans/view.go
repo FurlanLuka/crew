@@ -8,6 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
 // ── Messages ──
@@ -181,8 +183,11 @@ func loadStatus() tea.Msg {
 }
 
 func startPlans() tea.Msg {
-	cfg := LoadConfig()
-	if err := Start(cfg.Port); err != nil {
+	settings := config.LoadSettings()
+	host := dev.ResolveHostIP()
+	domain := settings.GetDomain(host)
+	proxyPort := settings.GetProxyPort()
+	if err := Start(domain, proxyPort); err != nil {
 		return errMsg{err}
 	}
 	return startedMsg{url: URL()}

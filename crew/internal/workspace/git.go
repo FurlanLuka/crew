@@ -61,8 +61,10 @@ func LaunchGitSession(wsName string) error {
 	if err != nil {
 		return err
 	}
-	crewExec.AttachTmuxSessionRaw(session)
-	return fmt.Errorf("failed to attach to git session")
+	if err := crewExec.AttachTmuxSessionRaw(session); err != nil {
+		return fmt.Errorf("failed to attach to git session: %w", err)
+	}
+	return nil
 }
 
 // GitAttachCmd returns an *exec.Cmd that attaches to the git tmux session.

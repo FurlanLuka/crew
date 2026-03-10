@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"fmt"
-	osexec "os/exec"
 	"strings"
 	"time"
 
@@ -12,9 +11,8 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
-	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
+	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 // ── Messages ──
@@ -195,9 +193,7 @@ func (v LogsView) View() string {
 
 func (v LogsView) restartProxy() tea.Cmd {
 	return func() tea.Msg {
-		debug.Log("tmux", "restart proxy %s", dev.ProxySessionName)
-		osexec.Command("tmux", "send-keys", "-t", dev.ProxySessionName, "C-c").Run()
-		osexec.Command("tmux", "send-keys", "-t", dev.ProxySessionName, "Up", "Enter").Run()
+		crewExec.TmuxRestartLastCommand(dev.ProxySessionName)
 		return serverRestartedMsg{}
 	}
 }
@@ -205,9 +201,7 @@ func (v LogsView) restartProxy() tea.Cmd {
 func (v LogsView) restartServer() tea.Cmd {
 	target := fmt.Sprintf("%s:%s", v.session, v.tabs[v.tabIdx].window)
 	return func() tea.Msg {
-		debug.Log("tmux", "restart server %s", target)
-		osexec.Command("tmux", "send-keys", "-t", target, "C-c").Run()
-		osexec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
+		crewExec.TmuxRestartLastCommand(target)
 		return serverRestartedMsg{}
 	}
 }
@@ -224,7 +218,7 @@ func (v LogsView) capturePane() tea.Cmd {
 
 	if tab.isProxy {
 		return func() tea.Msg {
-			content, _ := exec.CaptureTmuxPane(dev.ProxySessionName, "0", 500)
+			content, _ := crewExec.CaptureTmuxPane(dev.ProxySessionName, "0", 500)
 			return paneContentMsg{content: strings.TrimRight(content, "\n")}
 		}
 	}
@@ -232,7 +226,7 @@ func (v LogsView) capturePane() tea.Cmd {
 	session := v.session
 	window := tab.window
 	return func() tea.Msg {
-		content, _ := exec.CaptureTmuxPane(session, window, 500)
+		content, _ := crewExec.CaptureTmuxPane(session, window, 500)
 		return paneContentMsg{content: strings.TrimRight(content, "\n")}
 	}
 }

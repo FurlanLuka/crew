@@ -66,6 +66,34 @@ func FormatURL(serverName, wsName, domain string, port int) string {
 	return fmt.Sprintf("http://%s--%s.%s:%d", serverName, wsName, domain, port)
 }
 
+// PlansPortFile returns the path to the file storing the plans server's internal port.
+func PlansPortFile() string {
+	return filepath.Join(config.ConfigDir, "plans-internal-port")
+}
+
+// LoadPlansPort reads the plans server's internal port. Returns 0 if not running.
+func LoadPlansPort() int {
+	data, err := os.ReadFile(PlansPortFile())
+	if err != nil {
+		return 0
+	}
+	var port int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &port); err != nil {
+		return 0
+	}
+	return port
+}
+
+// SavePlansPort writes the plans server's internal port to disk.
+func SavePlansPort(port int) error {
+	return os.WriteFile(PlansPortFile(), []byte(fmt.Sprintf("%d", port)), 0o644)
+}
+
+// RemovePlansPort removes the plans port file.
+func RemovePlansPort() {
+	os.Remove(PlansPortFile())
+}
+
 // ListAllRoutes scans all dev-routes-*.json files and returns routes grouped by workspace.
 func ListAllRoutes() ([]WsRoutes, error) {
 	pattern := filepath.Join(config.ConfigDir, "dev-routes-*.json")

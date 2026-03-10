@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -41,7 +40,7 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 	var newRoutes []Route
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
-			port, err := findFreePort()
+			port, err := FindFreePort()
 			if err != nil {
 				return nil, fmt.Errorf("failed to find free port: %w", err)
 			}
@@ -61,8 +60,8 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 	session := SessionName(wsName)
 
 	// Ensure tmux session exists
-	if !tmuxSessionExists(session) {
-		if err := createTmuxSession(session); err != nil {
+	if !crewExec.TmuxSessionExists(session) {
+		if err := crewExec.CreateTmuxSession(session, ""); err != nil {
 			return nil, fmt.Errorf("failed to create tmux session: %w", err)
 		}
 	}
@@ -88,7 +87,9 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 	}
 
 	// Ensure shared proxy is running
-	ensureProxy(domain, proxyPort)
+	if err := EnsureProxy(domain, proxyPort); err != nil {
+		return nil, err
+	}
 
 	return newRoutes, nil
 }
@@ -98,17 +99,17 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 // after an explicit stop, or leave the proxy running for restarts.
 func StopAll(wsName string) {
 	if wsName != "" {
-		killTmuxSession(SessionName(wsName))
+		crewExec.KillTmuxSession(SessionName(wsName))
 		removeRoutesFile(wsName)
 		return
 	}
 
 	for _, session := range listDevSessions() {
 		ws := strings.TrimPrefix(session, "crew-dev-")
-		killTmuxSession(session)
+		crewExec.KillTmuxSession(session)
 		removeRoutesFile(ws)
 	}
-	killTmuxSession(ProxySessionName)
+	crewExec.KillTmuxSession(ProxySessionName)
 }
 
 // StopProxyIfIdle kills the shared proxy if no route files remain.
@@ -116,11 +117,12 @@ func StopProxyIfIdle() {
 	allRoutes, _ := ListAllRoutes()
 	if len(allRoutes) == 0 {
 		debug.Log("dev", "no routes left, killing proxy")
-		killTmuxSession(ProxySessionName)
+		crewExec.KillTmuxSession(ProxySessionName)
 	}
 }
 
-func findFreePort() (int, error) {
+// FindFreePort returns a random available TCP port.
+func FindFreePort() (int, error) {
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return 0, err
@@ -154,37 +156,16 @@ func detectLANIP() string {
 
 // --- helpers ---
 
-func tmuxSessionExists(session string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", session)
-	exists := cmd.Run() == nil
-	debug.Log("dev", "has-session -t %s → %v", session, exists)
-	return exists
-}
-
-func createTmuxSession(session string) error {
-	debug.Log("dev", "new-session -d -s %s", session)
-	if err := exec.Command("tmux", "new-session", "-d", "-s", session).Run(); err != nil {
-		debug.Log("dev", "new-session -s %s → error: %v", session, err)
-		return err
-	}
-	return nil
-}
-
-func killTmuxSession(session string) {
-	debug.Log("dev", "kill-session -t %s", session)
-	exec.Command("tmux", "kill-session", "-t", session).Run()
-}
-
-func ensureProxy(domain string, port int) {
-	if tmuxSessionExists(ProxySessionName) {
+// EnsureProxy starts the shared reverse proxy if it's not already running.
+func EnsureProxy(domain string, port int) error {
+	if crewExec.TmuxSessionExists(ProxySessionName) {
 		debug.Log("dev", "proxy already running in %s", ProxySessionName)
-		return
+		return nil
 	}
 
 	debug.Log("dev", "starting shared proxy on %s:%d", domain, port)
-	if err := createTmuxSession(ProxySessionName); err != nil {
-		debug.Log("dev", "failed to create proxy session: %v", err)
-		return
+	if err := crewExec.CreateTmuxSession(ProxySessionName, ""); err != nil {
+		return fmt.Errorf("failed to create proxy session: %w", err)
 	}
 
 	crewBin, err := os.Executable()
@@ -194,18 +175,14 @@ func ensureProxy(domain string, port int) {
 
 	cmd := fmt.Sprintf("%s dev _proxy --domain=%s --port=%d", crewBin, domain, port)
 	debug.Log("dev", "proxy cmd: %s", cmd)
-	exec.Command("tmux", "send-keys", "-t", ProxySessionName, cmd, "Enter").Run()
+	return crewExec.TmuxSendKeys(ProxySessionName, cmd)
 }
 
 func listDevSessions() []string {
-	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
-	if err != nil {
-		return nil
-	}
 	var sessions []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, "crew-dev-") && line != ProxySessionName {
-			sessions = append(sessions, line)
+	for _, s := range crewExec.ListTmuxSessions() {
+		if strings.HasPrefix(s, "crew-dev-") && s != ProxySessionName {
+			sessions = append(sessions, s)
 		}
 	}
 	return sessions
