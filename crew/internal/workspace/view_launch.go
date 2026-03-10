@@ -2,10 +2,7 @@ package workspace
 
 import (
 	"fmt"
-	"os"
-	osexec "os/exec"
 	"strings"
-	"syscall"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -13,7 +10,6 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
-	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -23,6 +19,14 @@ type launchDataLoadedMsg struct {
 	hasEditor bool
 }
 type launchExecutedMsg struct{}
+
+type claudeSessionReadyMsg struct {
+	session string
+}
+type claudeSessionExistsMsg struct {
+	wsName          string
+	skipPermissions bool
+}
 
 // ── Launch modes ──
 
@@ -45,17 +49,21 @@ type launchState int
 const (
 	launchStateMode launchState = iota
 	launchStateLaunching
+	launchStateSessionExists
 )
 
 // ── Model ──
 
 type LaunchView struct {
-	base       string
-	state      launchState
-	hasEditor  bool
-	modeCursor int
-	spinner    spinner.Model
-	err        error
+	base             string
+	state            launchState
+	hasEditor        bool
+	modeCursor       int
+	sessionCursor    int
+	sessionWsName    string
+	sessionSkipPerms bool
+	spinner          spinner.Model
+	err              error
 }
 
 func NewLaunchView(base string) LaunchView {
@@ -94,6 +102,19 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case launchExecutedMsg:
 		return v, tea.Quit
 
+	case claudeSessionReadyMsg:
+		cmd := ClaudeAttachCmd(msg.session)
+		return v, tea.ExecProcess(cmd, func(err error) tea.Msg {
+			return launchExecutedMsg{}
+		})
+
+	case claudeSessionExistsMsg:
+		v.state = launchStateSessionExists
+		v.sessionCursor = 0
+		v.sessionWsName = msg.wsName
+		v.sessionSkipPerms = msg.skipPermissions
+		return v, nil
+
 	case errMsg:
 		v.err = msg.err
 		if v.state == launchStateLaunching {
@@ -117,8 +138,11 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (v LaunchView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if v.state == launchStateMode {
+	switch v.state {
+	case launchStateMode:
 		return v.handleModeKey(msg)
+	case launchStateSessionExists:
+		return v.handleSessionExistsKey(msg)
 	}
 	return v, nil
 }
@@ -146,6 +170,45 @@ func (v LaunchView) handleModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
+func (v LaunchView) handleSessionExistsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, app.Keys.Quit):
+		return v, tea.Quit
+	case key.Matches(msg, app.Keys.Back):
+		v.state = launchStateMode
+		return v, nil
+	case key.Matches(msg, app.Keys.Up):
+		if v.sessionCursor > 0 {
+			v.sessionCursor--
+		}
+		return v, nil
+	case key.Matches(msg, app.Keys.Down):
+		if v.sessionCursor < 1 {
+			v.sessionCursor++
+		}
+		return v, nil
+	case msg.String() == "enter":
+		if v.sessionCursor == 0 {
+			// Attach to existing session
+			session := claudeSessionName(v.sessionWsName)
+			return v, func() tea.Msg {
+				return claudeSessionReadyMsg{session: session}
+			}
+		}
+		// Stop and start new
+		v.state = launchStateLaunching
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			KillClaudeSession(v.sessionWsName)
+			session, err := CreateClaudeSession(v.sessionWsName, v.sessionSkipPerms)
+			if err != nil {
+				return errMsg{err}
+			}
+			return claudeSessionReadyMsg{session: session}
+		})
+	}
+	return v, nil
+}
+
 func (v LaunchView) View() string {
 	var b strings.Builder
 
@@ -156,6 +219,8 @@ func (v LaunchView) View() string {
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
 		b.WriteString(" Launching...\n")
+	case launchStateSessionExists:
+		v.renderSessionExists(&b)
 	}
 
 	if v.err != nil {
@@ -192,6 +257,32 @@ func (v LaunchView) renderModeSelect(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+func (v LaunchView) renderSessionExists(b *strings.Builder) {
+	b.WriteString("  ")
+	b.WriteString(app.Subtle.Render("A Claude session already exists for this workspace:"))
+	b.WriteString("\n")
+
+	options := []string{"Attach to existing", "Stop and start new"}
+	for i, label := range options {
+		cursor := "  "
+		if i == v.sessionCursor {
+			cursor = app.Selected.Render("> ")
+		}
+		display := label
+		if i == v.sessionCursor {
+			display = app.Selected.Render(label)
+		}
+		b.WriteString("  ")
+		b.WriteString(cursor)
+		b.WriteString(display)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n  ")
+	b.WriteString(app.HelpStyle.Render("enter select  esc back"))
+	b.WriteString("\n")
+}
+
 // ── Launch logic ──
 
 func (v LaunchView) executeLaunch() tea.Cmd {
@@ -199,38 +290,46 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 	mode := v.modeCursor
 
 	return func() tea.Msg {
-		ws, err := Load(wsName)
-		if err != nil {
-			return errMsg{err}
-		}
-		if len(ws.Projects) == 0 {
-			return errMsg{fmt.Errorf("workspace '%s' has no projects", wsName)}
-		}
-
-		if !exec.HasClaude() {
-			return errMsg{fmt.Errorf("claude not found — install Claude Code first")}
-		}
-
-		if _, err := GeneratePrompt(ws); err != nil {
-			return errMsg{err}
-		}
-		promptFile := PromptFilePath(wsName)
-		editor := exec.DetectEditor()
-
 		switch mode {
 		case launchModeEditorAgents:
+			ws, err := Load(wsName)
+			if err != nil {
+				return errMsg{err}
+			}
+			if len(ws.Projects) == 0 {
+				return errMsg{fmt.Errorf("workspace '%s' has no projects", wsName)}
+			}
+			editor := exec.DetectEditor()
 			if editor == "" {
 				return errMsg{fmt.Errorf("no editor detected — install VS Code or Cursor, or use 'Claude' mode")}
 			}
+			if _, err := GeneratePrompt(ws); err != nil {
+				return errMsg{err}
+			}
+			promptFile := PromptFilePath(wsName)
 			return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
-		case launchModeClaude:
-			return launchWithClaude(ws, promptFile, false)
-		case launchModeClaudeYolo:
-			return launchWithClaude(ws, promptFile, true)
+
+		case launchModeClaude, launchModeClaudeYolo:
+			return launchClaude(wsName, mode == launchModeClaudeYolo)
 		}
 
 		return launchExecutedMsg{}
 	}
+}
+
+func launchClaude(wsName string, skipPermissions bool) tea.Msg {
+	if ClaudeSessionExists(wsName) {
+		return claudeSessionExistsMsg{
+			wsName:          wsName,
+			skipPermissions: skipPermissions,
+		}
+	}
+
+	session, err := CreateClaudeSession(wsName, skipPermissions)
+	if err != nil {
+		return errMsg{err}
+	}
+	return claudeSessionReadyMsg{session: session}
 }
 
 func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.Msg {
@@ -258,61 +357,4 @@ func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.
 	}
 
 	return launchExecutedMsg{}
-}
-
-func launchWithClaude(ws *Workspace, promptFile string, skipPermissions bool) tea.Msg {
-	claudePath, err := osexec.LookPath("claude")
-	if err != nil {
-		return errMsg{fmt.Errorf("claude not found in PATH")}
-	}
-
-	debug.Log("claude", "launching claude session for workspace %s", ws.Name)
-
-	args := []string{"claude"}
-	if skipPermissions {
-		args = append(args, "--dangerously-skip-permissions")
-	}
-	env := os.Environ()
-	workDir := ProjectPath(ws.Name, ws.Projects[0].Name)
-
-	if len(ws.Projects) > 1 {
-		workDir = WorkspaceDir(ws.Name)
-		for _, wp := range ws.Projects {
-			args = append(args, "--add-dir", ProjectPath(ws.Name, wp.Name))
-		}
-
-		prompt, err := os.ReadFile(promptFile)
-		if err != nil {
-			return errMsg{fmt.Errorf("failed to read prompt file: %w", err)}
-		}
-		args = append(args, "--", string(prompt))
-		env = setEnv(env, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1")
-	}
-
-	if config.UserSetClaudeConfig {
-		env = setEnv(env, "CLAUDE_CONFIG_DIR", config.ClaudeConfigDir)
-	}
-
-	debug.Log("claude", "exec %s (cwd: %s, args: %v)", claudePath, workDir, args)
-
-	if err := os.Chdir(workDir); err != nil {
-		return errMsg{fmt.Errorf("failed to chdir to %s: %w", workDir, err)}
-	}
-
-	if err := syscall.Exec(claudePath, args, env); err != nil {
-		return errMsg{fmt.Errorf("exec claude: %w", err)}
-	}
-
-	return launchExecutedMsg{}
-}
-
-func setEnv(env []string, key, value string) []string {
-	prefix := key + "="
-	for i, e := range env {
-		if strings.HasPrefix(e, prefix) {
-			env[i] = prefix + value
-			return env
-		}
-	}
-	return append(env, prefix+value)
 }

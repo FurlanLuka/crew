@@ -68,5 +68,7 @@ func LaunchGitSession(wsName string) error {
 // GitAttachCmd returns an *exec.Cmd that attaches to the git tmux session.
 // Use with tea.ExecProcess from Bubbletea TUI.
 func GitAttachCmd(session string) *exec.Cmd {
-	return exec.Command("tmux", "attach", "-t", session)
+	cmd := exec.Command("tmux", "attach", "-t", session)
+	cmd.Env = crewExec.EnvWithoutTMUX()
+	return cmd
 }

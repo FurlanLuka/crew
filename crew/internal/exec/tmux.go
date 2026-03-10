@@ -31,7 +31,7 @@ func TmuxSessionExists(session string) bool {
 func CreateTmuxSession(session, dir string) error {
 	debug.Log("tmux", "new-session -d -s %s -c %s", session, dir)
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", session, "-c", dir)
-	cmd.Env = envWithoutTMUX()
+	cmd.Env = EnvWithoutTMUX()
 	if err := cmd.Run(); err != nil {
 		debug.Log("tmux", "new-session -s %s → error: %v", session, err)
 		return err
@@ -39,8 +39,8 @@ func CreateTmuxSession(session, dir string) error {
 	return nil
 }
 
-// envWithoutTMUX returns os.Environ() with $TMUX removed.
-func envWithoutTMUX() []string {
+// EnvWithoutTMUX returns os.Environ() with $TMUX removed.
+func EnvWithoutTMUX() []string {
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "TMUX=") {
@@ -122,7 +122,7 @@ func AttachTmuxSessionRaw(session string) error {
 	}
 
 	args := []string{"tmux", "attach", "-t", session}
-	return syscall.Exec(tmuxPath, args, envWithoutTMUX())
+	return syscall.Exec(tmuxPath, args, EnvWithoutTMUX())
 }
 
 // SetTmuxOption sets a tmux session option.
@@ -142,7 +142,7 @@ func RenameTmuxWindow(session, name string) {
 func CreateTmuxWindow(session, name, dir, command string) {
 	debug.Log("tmux", "new-window -t %s -n %s -c %s → %s", session, name, dir, command)
 	cmd := exec.Command("tmux", "new-window", "-t", session, "-n", name, "-c", dir)
-	cmd.Env = envWithoutTMUX()
+	cmd.Env = EnvWithoutTMUX()
 	cmd.Run()
 	sendCmd := exec.Command("tmux", "send-keys", "-t", session+":"+name, command, "Enter")
 	sendCmd.Run()
