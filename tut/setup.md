@@ -113,13 +113,6 @@ Navigate to **Settings** and press **e** to edit:
 - **SSH Host** — your SSH config host name (e.g. `speak-vm`) — used by `crew code`
 - **Domain** — your ngrok domain (e.g. `jsmith-dev.ngrok.app`) — set after step 5
 
-To use ngrok on port 80, set the proxy port in the config file directly:
-
-```bash
-# ~/.claude-personal/settings.json (or ~/.claude/settings.json)
-{ "domain": "jsmith-dev.ngrok.app", "ssh_host": "speak-vm", "proxy_port": 80 }
-```
-
 ---
 
 ## 5. Public Access

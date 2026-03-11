@@ -53,6 +53,8 @@ func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
 	// Build the claude command with env vars inlined
 	var parts []string
 
+	parts = append(parts, "IS_SANDBOX=1")
+
 	if config.UserSetClaudeConfig {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+shellQuote(config.ClaudeConfigDir))
 	}
