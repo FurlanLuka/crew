@@ -3,7 +3,7 @@ version: 2
 project_name: crew
 
 builds:
-  - main: ./main.go
+  - main: .
     binary: crew
     goos:
       - darwin

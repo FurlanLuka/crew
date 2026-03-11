@@ -20,7 +20,7 @@ jobs:
 
       - name: Build
         working-directory: crew
-        run: go build -o crew ./main.go
+        run: go build -o crew .
 
       - name: Vet
         working-directory: crew
