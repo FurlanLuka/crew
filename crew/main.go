@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -39,6 +40,10 @@ func main() {
 		return
 
 	case "config":
+		if len(os.Args) > 2 {
+			cmdConfig()
+			return
+		}
 		runTUI(settings.NewView())
 
 	case "workspace":
@@ -51,10 +56,22 @@ func main() {
 		cmdRegistry()
 		return
 
+	case "add":
+		cmdAdd()
+		return
+
 	case "profile":
+		if len(os.Args) > 2 {
+			cmdProfile()
+			return
+		}
 		runTUI(profile.NewView())
 
 	case "notify":
+		if len(os.Args) > 2 {
+			cmdNotify()
+			return
+		}
 		runTUI(notify.NewView())
 
 	case "plans":
@@ -375,10 +392,20 @@ func cmdLaunch() {
 
 func cmdRm() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew rm <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew rm <workspace> | crew rm project <name> | crew rm workspace <ws> <project>\n")
 		os.Exit(1)
 	}
 
+	switch os.Args[2] {
+	case "project":
+		cmdRmProject()
+		return
+	case "workspace":
+		cmdRmWorkspaceProject()
+		return
+	}
+
+	// Default: remove entire workspace
 	wsName := os.Args[2]
 
 	if !workspace.Exists(wsName) {
@@ -401,6 +428,220 @@ func cmdRm() {
 	}
 
 	fmt.Printf("Removed workspace: %s\n", wsName)
+}
+
+func cmdRmProject() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew rm project <name>\n")
+		os.Exit(1)
+	}
+	name := os.Args[3]
+	if err := project.Remove(name); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Removed project: %s\n", name)
+}
+
+func cmdRmWorkspaceProject() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew rm workspace <workspace> <project>\n")
+		os.Exit(1)
+	}
+	wsName := os.Args[3]
+	projName := os.Args[4]
+	if err := workspace.RemoveProject(wsName, projName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Removed %s from %s\n", projName, wsName)
+}
+
+func cmdAdd() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> | crew add workspace <name> [<project> --role=<role>]\n")
+		os.Exit(1)
+	}
+
+	switch os.Args[2] {
+	case "project":
+		cmdAddProject()
+	case "workspace":
+		cmdAddWorkspace()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown add target '%s'.\nUsage: crew add [project|workspace]\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func cmdAddProject() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path>\n")
+		os.Exit(1)
+	}
+	name := os.Args[3]
+	path := os.Args[4]
+	if err := project.Add(project.Project{Name: name, Path: path}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Added project: %s (%s)\n", name, path)
+}
+
+func cmdAddWorkspace() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project> --role=<role>]\n")
+		os.Exit(1)
+	}
+	wsName := os.Args[3]
+
+	// If only name given, create workspace
+	if len(os.Args) == 4 {
+		if err := workspace.Create(wsName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Created workspace: %s\n", wsName)
+		return
+	}
+
+	// With project arg, add project to workspace
+	projName := os.Args[4]
+	role := ""
+	for _, arg := range os.Args[5:] {
+		if strings.HasPrefix(arg, "--role=") {
+			role = strings.TrimPrefix(arg, "--role=")
+		} else {
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+
+	if err := workspace.AddProject(wsName, projName, role); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Added %s to %s\n", projName, wsName)
+}
+
+func cmdConfig() {
+	switch os.Args[2] {
+	case "show":
+		s := config.LoadSettings()
+		fmt.Printf("server_ip\t%s\n", s.ServerIP)
+		fmt.Printf("ssh_host\t%s\n", s.SSHHost)
+		fmt.Printf("proxy_port\t%d\n", s.ProxyPort)
+		fmt.Printf("domain\t%s\n", s.Domain)
+	case "set":
+		if len(os.Args) < 5 {
+			fmt.Fprintf(os.Stderr, "Usage: crew config set <key> <value>\n")
+			os.Exit(1)
+		}
+		key := os.Args[3]
+		value := os.Args[4]
+		s := config.LoadSettings()
+		switch key {
+		case "server_ip":
+			s.ServerIP = value
+		case "ssh_host":
+			s.SSHHost = value
+		case "proxy_port":
+			var port int
+			if n, _ := fmt.Sscanf(value, "%d", &port); n != 1 {
+				fmt.Fprintf(os.Stderr, "Error: invalid port value\n")
+				os.Exit(1)
+			}
+			s.ProxyPort = port
+		case "domain":
+			s.Domain = value
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown key '%s'. Valid keys: server_ip, ssh_host, proxy_port, domain\n", key)
+			os.Exit(1)
+		}
+		if err := config.SaveSettings(s); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Set %s = %s\n", key, value)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config command '%s'.\nUsage: crew config [show|set]\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func cmdProfile() {
+	switch os.Args[2] {
+	case "install":
+		if err := profile.Install(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Installed profile")
+	case "update":
+		changed, err := profile.Update()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if changed {
+			fmt.Println("Updated")
+		} else {
+			fmt.Println("Already up to date")
+		}
+	case "rm":
+		if err := profile.Remove(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Removed profile")
+	case "status":
+		if profile.IsInstalled() {
+			fmt.Println("installed")
+		} else {
+			fmt.Println("not installed")
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown profile command '%s'.\nUsage: crew profile [install|update|rm|status]\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func cmdNotify() {
+	switch os.Args[2] {
+	case "setup":
+		topic := ""
+		if len(os.Args) > 3 {
+			topic = os.Args[3]
+		}
+		if topic == "" {
+			topic = notify.GenerateTopic()
+		}
+		if err := notify.Setup(topic); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Notifications enabled (topic: %s)\n", topic)
+	case "test":
+		topic := notify.ExtractTopic()
+		if topic == "" {
+			fmt.Fprintf(os.Stderr, "Error: notifications not set up. Run 'crew notify setup' first.\n")
+			os.Exit(1)
+		}
+		if err := notify.TestNotification(topic); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Test notification sent")
+	case "rm":
+		if err := notify.RemoveHook(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Notifications disabled")
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown notify command '%s'.\nUsage: crew notify [setup|test|rm]\n", os.Args[2])
+		os.Exit(1)
+	}
 }
 
 func cmdGit() {

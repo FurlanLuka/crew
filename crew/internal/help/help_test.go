@@ -17,6 +17,7 @@ func TestFindSubcommand(t *testing.T) {
 	}{
 		{"workspace", true},
 		{"project", true},
+		{"add", true},
 		{"registry", true},
 		{"dev", true},
 		{"ls", true},
@@ -25,6 +26,8 @@ func TestFindSubcommand(t *testing.T) {
 		{"code", true},
 		{"plans", true},
 		{"config", true},
+		{"profile", true},
+		{"notify", true},
 		{"nonexistent", false},
 		{"", false},
 	}
@@ -80,21 +83,32 @@ func TestRegistrySubcommands(t *testing.T) {
 		t.Fatal("registry command not found")
 	}
 
-	install := findSubcommand(reg, "install")
-	if install == nil {
-		t.Fatal("registry install subcommand not found")
+	expected := []string{"install", "rm", "update"}
+	for _, name := range expected {
+		if findSubcommand(reg, name) == nil {
+			t.Errorf("registry subcommand %q not found", name)
+		}
 	}
 
+	install := findSubcommand(reg, "install")
 	if install.Usage == "" {
 		t.Error("registry install missing usage")
 	}
-
-	if len(install.Flags) != 1 {
-		t.Fatalf("registry install has %d flags, want 1", len(install.Flags))
+	if len(install.Flags) != 1 || install.Flags[0].Name != "--all" {
+		t.Error("registry install should have --all flag")
 	}
 
-	if install.Flags[0].Name != "--all" {
-		t.Errorf("registry install flag = %q, want --all", install.Flags[0].Name)
+	update := findSubcommand(reg, "update")
+	if update.Usage == "" {
+		t.Error("registry update missing usage")
+	}
+	if len(update.Flags) != 1 || update.Flags[0].Name != "--all" {
+		t.Error("registry update should have --all flag")
+	}
+
+	rm := findSubcommand(reg, "rm")
+	if rm.Usage == "" {
+		t.Error("registry rm missing usage")
 	}
 }
 
@@ -118,11 +132,145 @@ func TestRmCommand(t *testing.T) {
 		t.Fatal("rm command not found")
 	}
 
-	if len(rm.Flags) != 0 {
-		t.Fatalf("rm has %d flags, want 0", len(rm.Flags))
-	}
-
 	if rm.Usage != "crew rm <workspace>" {
 		t.Errorf("rm Usage = %q, want %q", rm.Usage, "crew rm <workspace>")
+	}
+
+	expected := []string{"project", "workspace"}
+	for _, name := range expected {
+		if findSubcommand(rm, name) == nil {
+			t.Errorf("rm subcommand %q not found", name)
+		}
+	}
+
+	proj := findSubcommand(rm, "project")
+	if proj.Usage == "" {
+		t.Error("rm project missing usage")
+	}
+
+	ws := findSubcommand(rm, "workspace")
+	if ws.Usage == "" {
+		t.Error("rm workspace missing usage")
+	}
+}
+
+func TestAddSubcommands(t *testing.T) {
+	add := findSubcommand(&Root, "add")
+	if add == nil {
+		t.Fatal("add command not found")
+	}
+
+	expected := []string{"project", "workspace"}
+	for _, name := range expected {
+		if findSubcommand(add, name) == nil {
+			t.Errorf("add subcommand %q not found", name)
+		}
+	}
+
+	proj := findSubcommand(add, "project")
+	if proj.Usage == "" {
+		t.Error("add project missing usage")
+	}
+
+	ws := findSubcommand(add, "workspace")
+	if ws.Usage == "" {
+		t.Error("add workspace missing usage")
+	}
+	if len(ws.Flags) != 1 || ws.Flags[0].Name != "--role=<r>" {
+		t.Error("add workspace should have --role flag")
+	}
+}
+
+func TestConfigSubcommands(t *testing.T) {
+	cfg := findSubcommand(&Root, "config")
+	if cfg == nil {
+		t.Fatal("config command not found")
+	}
+
+	expected := []string{"show", "set"}
+	for _, name := range expected {
+		sub := findSubcommand(cfg, name)
+		if sub == nil {
+			t.Errorf("config subcommand %q not found", name)
+		}
+		if sub.Usage == "" {
+			t.Errorf("config %s missing usage", name)
+		}
+	}
+
+	show := findSubcommand(cfg, "show")
+	if show.OutputFormat == "" {
+		t.Error("config show missing output format")
+	}
+}
+
+func TestProfileSubcommands(t *testing.T) {
+	prof := findSubcommand(&Root, "profile")
+	if prof == nil {
+		t.Fatal("profile command not found")
+	}
+
+	expected := []string{"install", "update", "rm", "status"}
+	for _, name := range expected {
+		sub := findSubcommand(prof, name)
+		if sub == nil {
+			t.Errorf("profile subcommand %q not found", name)
+		}
+		if sub.Usage == "" {
+			t.Errorf("profile %s missing usage", name)
+		}
+	}
+}
+
+func TestExamplesPresent(t *testing.T) {
+	// Commands that should have examples
+	cmdsWithExamples := []struct {
+		path []string
+	}{
+		{[]string{"add", "project"}},
+		{[]string{"add", "workspace"}},
+		{[]string{"registry", "install"}},
+		{[]string{"registry", "rm"}},
+		{[]string{"registry", "update"}},
+		{[]string{"config", "set"}},
+		{[]string{"notify", "setup"}},
+		{[]string{"dev", "add"}},
+		{[]string{"dev", "start"}},
+		{[]string{"rm"}},
+		{[]string{"rm", "project"}},
+		{[]string{"rm", "workspace"}},
+		{[]string{"help"}},
+	}
+
+	for _, tt := range cmdsWithExamples {
+		cmd := &Root
+		for _, name := range tt.path {
+			cmd = findSubcommand(cmd, name)
+			if cmd == nil {
+				t.Errorf("command %v not found", tt.path)
+				break
+			}
+		}
+		if cmd != nil && len(cmd.Examples) == 0 {
+			t.Errorf("command %v should have examples", tt.path)
+		}
+	}
+}
+
+func TestNotifySubcommands(t *testing.T) {
+	notify := findSubcommand(&Root, "notify")
+	if notify == nil {
+		t.Fatal("notify command not found")
+	}
+
+	expected := []string{"setup", "test", "rm"}
+	for _, name := range expected {
+		sub := findSubcommand(notify, name)
+		if sub == nil {
+			t.Errorf("notify subcommand %q not found", name)
+		}
+		if sub.Usage == "" {
+			t.Errorf("notify %s missing usage", name)
+		}
 	}
 }

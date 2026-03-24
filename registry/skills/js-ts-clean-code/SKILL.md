@@ -42,9 +42,8 @@ Code should be as readable as possible and as simple as possible. If something f
 ## Comments
 
 - Minimal comments. Well-named functions and variables should speak for themselves.
-- No JSDoc. No comment blocks above functions.
-- Only add inline comments inside a function when the logic is genuinely complex and not obvious from the code alone.
 - Never comment what the code does. If you feel the need, rename things until the code is self-explanatory.
+- For detailed commenting guidelines (when to use block comments, JSDoc, inline comments, documenting business context, external dependencies, and infrastructure chains), see the `code-documenting` skill.
 
 ## Imports and Exports
 

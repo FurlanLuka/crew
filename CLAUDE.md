@@ -93,4 +93,5 @@ The following skills are available:
 - **web-designer** — design system knowledge base (universal components, layout techniques, design principles, CSS variables, markup rules). Support skill for the web-designer agent — not user-invocable.
 - **pr-review-comments** — comment style guide for PR reviews. Ensures comments sound natural and human. Support skill for the pr-reviewer agent — not user-invocable.
 - **crew-remote** — remote management reference for crew workspaces, dev servers, and deployment URLs.
+- **code-documenting** — code documentation and commenting guidelines. Covers when, where, and how to write comments that explain business context, domain rules, external dependencies, and non-obvious decisions. Use when writing, reviewing, or refactoring code that involves business logic or system integrations. Complements `js-ts-clean-code`.
 - **crew-launch** — interactive workspace launcher: discover workspaces, pick one, launch session, start dev servers.

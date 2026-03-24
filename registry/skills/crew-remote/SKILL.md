@@ -15,9 +15,18 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 
 | Command | Description |
 |---|---|
-| `crew ls workspaces` | List all workspaces |
+| **Projects** | |
 | `crew ls projects` | List all registered projects |
+| `crew add project <name> <path>` | Register a project |
+| `crew rm project <name>` | Remove a project |
+| **Workspaces** | |
+| `crew ls workspaces` | List all workspaces |
 | `crew show <ws>` | Show projects in a workspace |
+| `crew add workspace <name>` | Create a workspace |
+| `crew add workspace <ws> <proj> --role=<r>` | Add project to workspace |
+| `crew rm workspace <ws> <project>` | Remove project from workspace |
+| `crew rm <ws>` | Remove entire workspace |
+| **Dev Servers** | |
 | `crew dev show <project>` | Show configured dev servers for a project |
 | `crew dev status` | Show all running dev servers with URLs |
 | `crew dev status <ws>` | Show running dev servers for one workspace |
@@ -27,10 +36,26 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | `crew dev start <ws> [--host=<ip>]` | Start dev servers with reverse proxy |
 | `crew dev stop [<ws>]` | Stop dev servers |
 | `crew dev restart <ws> [--host=<ip>]` | Restart dev servers |
+| **Registry** | |
+| `crew registry install [<name> \| --all]` | Install agents/skills |
+| `crew registry update [<name> \| --all]` | Update agents/skills |
+| `crew registry rm <name>` | Remove an agent or skill |
+| **Profile** | |
+| `crew profile status` | Check if profile is installed |
+| `crew profile install` | Install Claude profile |
+| `crew profile update` | Update Claude profile |
+| `crew profile rm` | Remove Claude profile |
+| **Config** | |
+| `crew config show` | Show all settings |
+| `crew config set <key> <value>` | Set a config value |
+| **Notifications** | |
+| `crew notify setup [<topic>]` | Enable push notifications |
+| `crew notify test` | Send test notification |
+| `crew notify rm` | Disable push notifications |
+| **Other** | |
 | `crew start <ws>` | Generate agent prompt for a workspace |
 | `crew launch [<ws>]` | Open the launch view (TUI) |
 | `crew git <ws>` | Launch lazygit in tmux (ephemeral, dies on detach) |
-| `crew rm <ws>` | Remove a workspace (stops dev servers, removes worktrees) |
 | `crew plans start` | Start the plan viewer server |
 | `crew plans stop` | Stop the plan viewer server |
 | `crew help [cmd] [subcmd]` | Show help for a command |
@@ -215,15 +240,19 @@ crew dev status <workspace>
 
 ```bash
 # 1. Register projects
-crew project                  # TUI — add name + path
+crew add project my-api /path/to/api
+crew add project my-web /path/to/web
 
-# 2. Create workspace
-crew workspace                # TUI — create, add projects with roles
+# 2. Create workspace and add projects
+crew add workspace my-ws
+crew add workspace my-ws my-api --role="Backend API"
+crew add workspace my-ws my-web --role="Frontend"
 
 # 3. Configure dev servers
-crew dev setup <project>      # TUI — interactive setup
+crew dev add my-api --name=api --port=3000 --cmd="npm run dev"
+crew dev add my-web --name=web --port=5173 --cmd="npm run dev"
 
 # 4. Launch
 crew launch <workspace>       # TUI — pick Editor+Agents or Claude
-crew dev start <workspace>    # start dev servers
+crew dev start my-ws          # start dev servers
 ```
