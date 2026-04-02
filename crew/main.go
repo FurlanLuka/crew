@@ -304,7 +304,7 @@ func cmdCode() {
 				Path: workspace.ProjectPath(wsName, wp.Name),
 			})
 		}
-		if err := exec.GenerateCodeWorkspace(wsFile, projects, "", "", "", false); err != nil {
+		if err := exec.GenerateCodeWorkspace(wsFile, projects); err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating workspace file: %v\n", err)
 			os.Exit(1)
 		}

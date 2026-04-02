@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -37,7 +36,7 @@ func TestGenerateCodeWorkspace(t *testing.T) {
 		{Name: "web", Path: "/tmp/web"},
 	}
 
-	err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "/custom/claude", true)
+	err := GenerateCodeWorkspace(filePath, projects)
 	if err != nil {
 		t.Fatalf("GenerateCodeWorkspace: %v", err)
 	}
@@ -76,96 +75,55 @@ func TestGenerateCodeWorkspace(t *testing.T) {
 	if !ok {
 		t.Fatal("missing tasks.tasks")
 	}
-	// 1 agent task + 2 project terminal tasks = 3
-	if len(taskList) != 3 {
-		t.Errorf("tasks = %d, want 3", len(taskList))
+	// 2 project terminal tasks (no agent task — Claude runs in tmux)
+	if len(taskList) != 2 {
+		t.Errorf("tasks = %d, want 2", len(taskList))
 	}
 }
 
-func TestGenerateCodeWorkspace_WithAgents(t *testing.T) {
-	filePath := filepath.Join(t.TempDir(), "agents.code-workspace")
-	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
-
-	if err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "", true); err != nil {
-		t.Fatalf("GenerateCodeWorkspace: %v", err)
-	}
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	var ws map[string]interface{}
-	if err := json.Unmarshal(data, &ws); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-
-	tasks, ok := ws["tasks"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing tasks")
-	}
-	taskList, ok := tasks["tasks"].([]interface{})
-	if !ok {
-		t.Fatal("missing tasks.tasks")
-	}
-
-	agentTask, ok := taskList[0].(map[string]interface{})
-	if !ok {
-		t.Fatal("first task is not a map")
-	}
-	if agentTask["label"] != "agents" {
-		t.Errorf("first task label = %q, want %q", agentTask["label"], "agents")
-	}
-
-	cmd, _ := agentTask["command"].(string)
-	if cmd == "" {
-		t.Error("agent task command is empty")
-	}
-	if !strings.Contains(cmd, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1") {
-		t.Error("agent command should contain AGENT_TEAMS env var")
-	}
-	if !strings.Contains(cmd, "teammate-mode") {
-		t.Error("agent command should contain teammate-mode flag")
-	}
-}
-
-func TestGenerateCodeWorkspace_AddDir(t *testing.T) {
-	filePath := filepath.Join(t.TempDir(), "adddir.code-workspace")
-	projects := []WorkspaceProject{
-		{Name: "api", Path: "/tmp/api"},
-		{Name: "web", Path: "/tmp/web"},
-	}
-
-	if err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "", true); err != nil {
-		t.Fatalf("GenerateCodeWorkspace: %v", err)
-	}
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	var ws map[string]interface{}
-	if err := json.Unmarshal(data, &ws); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-
-	tasks := ws["tasks"].(map[string]interface{})
-	taskList := tasks["tasks"].([]interface{})
-	agentTask := taskList[0].(map[string]interface{})
-	cmd := agentTask["command"].(string)
-
-	if !strings.Contains(cmd, "--add-dir /tmp/web") {
-		t.Errorf("agent command should contain '--add-dir /tmp/web', got: %s", cmd)
-	}
-	if strings.Contains(cmd, "--add-dir /tmp/api") {
-		t.Error("agent command should NOT contain '--add-dir /tmp/api' (lead project is CWD)")
-	}
-}
-
-func TestGenerateCodeWorkspace_AddDir_SingleProject(t *testing.T) {
+func TestGenerateCodeWorkspace_SingleProject(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "single.code-workspace")
 	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
 
-	if err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "", true); err != nil {
+	if err := GenerateCodeWorkspace(filePath, projects); err != nil {
+		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var ws map[string]interface{}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	folders := ws["folders"].([]interface{})
+	if len(folders) != 1 {
+		t.Errorf("folders = %d, want 1", len(folders))
+	}
+
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+	if len(taskList) != 1 {
+		t.Errorf("tasks = %d, want 1", len(taskList))
+	}
+
+	task := taskList[0].(map[string]interface{})
+	if task["label"] != "api" {
+		t.Errorf("task label = %q, want %q", task["label"], "api")
+	}
+}
+
+func TestGenerateCodeWorkspace_TerminalPerProject(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "terminals.code-workspace")
+	projects := []WorkspaceProject{
+		{Name: "api", Path: "/tmp/api"},
+		{Name: "web", Path: "/tmp/web"},
+		{Name: "worker", Path: "/tmp/worker"},
+	}
+
+	if err := GenerateCodeWorkspace(filePath, projects); err != nil {
 		t.Fatalf("GenerateCodeWorkspace: %v", err)
 	}
 
@@ -180,48 +138,14 @@ func TestGenerateCodeWorkspace_AddDir_SingleProject(t *testing.T) {
 
 	tasks := ws["tasks"].(map[string]interface{})
 	taskList := tasks["tasks"].([]interface{})
-	agentTask := taskList[0].(map[string]interface{})
-	cmd := agentTask["command"].(string)
-
-	if strings.Contains(cmd, "--add-dir") {
-		t.Errorf("single-project workspace should not contain --add-dir, got: %s", cmd)
-	}
-}
-
-func TestGenerateCodeWorkspace_NoAgents(t *testing.T) {
-	filePath := filepath.Join(t.TempDir(), "no-agents.code-workspace")
-	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
-
-	if err := GenerateCodeWorkspace(filePath, projects, "/tmp/prompt.md", "/tmp/api", "", false); err != nil {
-		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	if len(taskList) != 3 {
+		t.Errorf("tasks = %d, want 3", len(taskList))
 	}
 
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	var ws map[string]interface{}
-	if err := json.Unmarshal(data, &ws); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-
-	tasks, ok := ws["tasks"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing tasks")
-	}
-	taskList, ok := tasks["tasks"].([]interface{})
-	if !ok {
-		t.Fatal("missing tasks.tasks")
-	}
-
-	if len(taskList) != 1 {
-		t.Errorf("tasks = %d, want 1 (no agent task)", len(taskList))
-	}
-	task, ok := taskList[0].(map[string]interface{})
-	if !ok {
-		t.Fatal("first task is not a map")
-	}
-	if task["label"] != "api" {
-		t.Errorf("task label = %q, want %q", task["label"], "api")
+	for i, name := range []string{"api", "web", "worker"} {
+		task := taskList[i].(map[string]interface{})
+		if task["label"] != name {
+			t.Errorf("task[%d] label = %q, want %q", i, task["label"], name)
+		}
 	}
 }

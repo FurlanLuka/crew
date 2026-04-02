@@ -9,7 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
-	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -31,13 +30,15 @@ type claudeSessionExistsMsg struct {
 // ── Launch modes ──
 
 const (
-	launchModeEditorAgents = iota
+	launchModeEditorClaude = iota
+	launchModeEditorClaudeYolo
 	launchModeClaude
 	launchModeClaudeYolo
 )
 
 var launchModeLabels = []string{
-	"Editor + Agents",
+	"Editor + Claude",
+	"Editor + Claude (Skip permissions)",
 	"Claude",
 	"Claude (Skip permissions)",
 }
@@ -291,7 +292,7 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 
 	return func() tea.Msg {
 		switch mode {
-		case launchModeEditorAgents:
+		case launchModeEditorClaude, launchModeEditorClaudeYolo:
 			ws, err := Load(wsName)
 			if err != nil {
 				return errMsg{err}
@@ -303,11 +304,26 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			if editor == "" {
 				return errMsg{fmt.Errorf("no editor detected — install VS Code or Cursor, or use 'Claude' mode")}
 			}
-			if _, err := GeneratePrompt(ws); err != nil {
+
+			wsFile := CodeWorkspaceFilePath(ws.Name)
+			projects := make([]exec.WorkspaceProject, len(ws.Projects))
+			for i, wp := range ws.Projects {
+				projects[i] = exec.WorkspaceProject{
+					Name: wp.Name,
+					Path: ProjectPath(ws.Name, wp.Name),
+				}
+			}
+
+			if err := exec.GenerateCodeWorkspace(wsFile, projects); err != nil {
 				return errMsg{err}
 			}
-			promptFile := PromptFilePath(wsName)
-			return launchWithEditor(ws, editor, promptFile, WorkspaceDir(wsName))
+			if err := exec.OpenEditor(editor, wsFile); err != nil {
+				return errMsg{err}
+			}
+
+			// Claude runs in a separate tmux session.
+			// Multi-project: agent teams. Single-project: plain Claude.
+			return launchClaude(wsName, mode == launchModeEditorClaudeYolo)
 
 		case launchModeClaude, launchModeClaudeYolo:
 			return launchClaude(wsName, mode == launchModeClaudeYolo)
@@ -332,29 +348,3 @@ func launchClaude(wsName string, skipPermissions bool) tea.Msg {
 	return claudeSessionReadyMsg{session: session}
 }
 
-func launchWithEditor(ws *Workspace, editor, promptFile, editorRoot string) tea.Msg {
-	wsFile := CodeWorkspaceFilePath(ws.Name)
-
-	projects := make([]exec.WorkspaceProject, len(ws.Projects))
-	for i, wp := range ws.Projects {
-		projects[i] = exec.WorkspaceProject{
-			Name: wp.Name,
-			Path: ProjectPath(ws.Name, wp.Name),
-		}
-	}
-
-	claudeDir := ""
-	if config.UserSetClaudeConfig {
-		claudeDir = config.ClaudeConfigDir
-	}
-
-	if err := exec.GenerateCodeWorkspace(wsFile, projects, promptFile, editorRoot, claudeDir, true); err != nil {
-		return errMsg{err}
-	}
-
-	if err := exec.OpenEditor(editor, wsFile); err != nil {
-		return errMsg{err}
-	}
-
-	return launchExecutedMsg{}
-}

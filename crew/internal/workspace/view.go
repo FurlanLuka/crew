@@ -738,7 +738,7 @@ func openCode(wsName string) tea.Cmd {
 					Path: ProjectPath(wsName, wp.Name),
 				})
 			}
-			if err := exec.GenerateCodeWorkspace(wsFile, projects, "", "", "", false); err != nil {
+			if err := exec.GenerateCodeWorkspace(wsFile, projects); err != nil {
 				return errMsg{err}
 			}
 			remotePath = wsFile

@@ -61,7 +61,8 @@ type WorkspaceProject struct {
 }
 
 // GenerateCodeWorkspace creates a .code-workspace file and returns its path.
-func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, promptFile, leadPath, claudeConfigDir string, includeAgents bool) error {
+// Claude runs in a separate tmux session, not as a VS Code task.
+func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject) error {
 	ws := codeWorkspace{
 		Settings: map[string]string{
 			"task.allowAutomaticTasks": "on",
@@ -73,32 +74,6 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, promptF
 		ws.Folders = append(ws.Folders, codeWorkspaceFolder{
 			Path: p.Path,
 			Name: p.Name,
-		})
-	}
-
-	if includeAgents && promptFile != "" {
-		claudeCmd := "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude"
-		for _, p := range projects[1:] {
-			claudeCmd += " --add-dir " + p.Path
-		}
-		claudeCmd += ` --teammate-mode in-process "$(cat ` + promptFile + `)"`
-		if claudeConfigDir != "" {
-			claudeCmd = "CLAUDE_CONFIG_DIR='" + claudeConfigDir + "' " + claudeCmd
-		}
-
-		ws.Tasks.Tasks = append(ws.Tasks.Tasks, codeWorkspaceTask{
-			Label:          "agents",
-			Type:           "shell",
-			Command:        claudeCmd,
-			Options:        map[string]string{"cwd": leadPath},
-			IsBackground:   true,
-			ProblemMatcher: []interface{}{},
-			Presentation: map[string]interface{}{
-				"group":  "agents",
-				"focus":  true,
-				"reveal": "always",
-			},
-			RunOptions: map[string]string{"runOn": "folderOpen"},
 		})
 	}
 
