@@ -36,6 +36,32 @@ func main() {
 		cmd = os.Args[1]
 	}
 
+	// Check for updates in background (skip for dev builds and update command)
+	var updateCh chan string
+	if Version != "dev" && cmd != "update" {
+		updateCh = make(chan string, 1)
+		go func() {
+			latest, err := fetchLatestVersion()
+			if err != nil || latest == Version {
+				updateCh <- ""
+				return
+			}
+			updateCh <- latest
+		}()
+	}
+	defer func() {
+		if updateCh == nil {
+			return
+		}
+		select {
+		case latest := <-updateCh:
+			if latest != "" {
+				fmt.Fprintf(os.Stderr, "\nUpdate available: v%s → v%s (run 'crew update')\n", Version, latest)
+			}
+		default:
+		}
+	}()
+
 	switch cmd {
 	case "--version", "-v":
 		fmt.Println("crew " + Version)
