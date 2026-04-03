@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,106 +29,156 @@ func TestEditorProcessName(t *testing.T) {
 	}
 }
 
-func TestGenerateCodeWorkspace(t *testing.T) {
+func TestGenerateCodeWorkspace_NoClaude(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "test.code-workspace")
-
 	projects := []WorkspaceProject{
 		{Name: "api", Path: "/tmp/api"},
 		{Name: "web", Path: "/tmp/web"},
 	}
 
-	err := GenerateCodeWorkspace(filePath, projects)
-	if err != nil {
+	if err := GenerateCodeWorkspace(filePath, projects, nil); err != nil {
 		t.Fatalf("GenerateCodeWorkspace: %v", err)
 	}
 
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
+	ws := readWorkspace(t, filePath)
 
-	var ws map[string]interface{}
-	if err := json.Unmarshal(data, &ws); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
-	}
-
-	folders, ok := ws["folders"].([]interface{})
-	if !ok {
-		t.Fatal("missing folders")
-	}
+	folders := ws["folders"].([]interface{})
 	if len(folders) != 2 {
 		t.Errorf("folders = %d, want 2", len(folders))
 	}
 
-	settings, ok := ws["settings"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing settings")
-	}
-	if settings["task.allowAutomaticTasks"] != "on" {
-		t.Error("missing task.allowAutomaticTasks setting")
-	}
-
-	tasks, ok := ws["tasks"].(map[string]interface{})
-	if !ok {
-		t.Fatal("missing tasks")
-	}
-	taskList, ok := tasks["tasks"].([]interface{})
-	if !ok {
-		t.Fatal("missing tasks.tasks")
-	}
-	// 2 project terminal tasks (no agent task — Claude runs in tmux)
-	if len(taskList) != 2 {
-		t.Errorf("tasks = %d, want 2", len(taskList))
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList, _ := tasks["tasks"].([]interface{})
+	if len(taskList) != 0 {
+		t.Errorf("tasks = %d, want 0 (no claude, no terminals)", len(taskList))
 	}
 }
 
-func TestGenerateCodeWorkspace_SingleProject(t *testing.T) {
+func TestGenerateCodeWorkspace_ClaudeSingleProject(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "single.code-workspace")
 	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
 
-	if err := GenerateCodeWorkspace(filePath, projects); err != nil {
+	claude := &ClaudeTask{LeadPath: "/tmp/api"}
+
+	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
 		t.Fatalf("GenerateCodeWorkspace: %v", err)
 	}
 
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	var ws map[string]interface{}
-	if err := json.Unmarshal(data, &ws); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-
-	folders := ws["folders"].([]interface{})
-	if len(folders) != 1 {
-		t.Errorf("folders = %d, want 1", len(folders))
-	}
-
+	ws := readWorkspace(t, filePath)
 	tasks := ws["tasks"].(map[string]interface{})
 	taskList := tasks["tasks"].([]interface{})
+
 	if len(taskList) != 1 {
-		t.Errorf("tasks = %d, want 1", len(taskList))
+		t.Fatalf("tasks = %d, want 1", len(taskList))
 	}
 
 	task := taskList[0].(map[string]interface{})
-	if task["label"] != "api" {
-		t.Errorf("task label = %q, want %q", task["label"], "api")
+	cmd := task["command"].(string)
+
+	if strings.Contains(cmd, "AGENT_TEAMS") {
+		t.Error("single-project should not have agent teams")
+	}
+	if strings.Contains(cmd, "--add-dir") {
+		t.Error("single-project should not have --add-dir")
+	}
+	if strings.Contains(cmd, "--teammate-mode") {
+		t.Error("single-project should not have --teammate-mode")
 	}
 }
 
-func TestGenerateCodeWorkspace_TerminalPerProject(t *testing.T) {
-	filePath := filepath.Join(t.TempDir(), "terminals.code-workspace")
+func TestGenerateCodeWorkspace_ClaudeMultiProject(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "multi.code-workspace")
 	projects := []WorkspaceProject{
 		{Name: "api", Path: "/tmp/api"},
 		{Name: "web", Path: "/tmp/web"},
-		{Name: "worker", Path: "/tmp/worker"},
 	}
 
-	if err := GenerateCodeWorkspace(filePath, projects); err != nil {
+	claude := &ClaudeTask{
+		LeadPath:   "/tmp/ws",
+		PromptFile: "/tmp/prompt.md",
+		AgentTeams: true,
+	}
+
+	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
 		t.Fatalf("GenerateCodeWorkspace: %v", err)
 	}
 
-	data, err := os.ReadFile(filePath)
+	ws := readWorkspace(t, filePath)
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+
+	if len(taskList) != 1 {
+		t.Fatalf("tasks = %d, want 1", len(taskList))
+	}
+
+	task := taskList[0].(map[string]interface{})
+	cmd := task["command"].(string)
+
+	if !strings.Contains(cmd, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1") {
+		t.Error("multi-project should contain AGENT_TEAMS env var")
+	}
+	if !strings.Contains(cmd, "--add-dir /tmp/web") {
+		t.Error("multi-project should contain --add-dir for second project")
+	}
+	if strings.Contains(cmd, "--add-dir /tmp/api") {
+		t.Error("should NOT contain --add-dir for lead project")
+	}
+	if !strings.Contains(cmd, "--teammate-mode") {
+		t.Error("multi-project should contain --teammate-mode")
+	}
+}
+
+func TestGenerateCodeWorkspace_SkipPermissions(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "yolo.code-workspace")
+	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
+
+	claude := &ClaudeTask{
+		LeadPath:        "/tmp/api",
+		SkipPermissions: true,
+	}
+
+	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
+		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	}
+
+	ws := readWorkspace(t, filePath)
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+	task := taskList[0].(map[string]interface{})
+	cmd := task["command"].(string)
+
+	if !strings.Contains(cmd, "--dangerously-skip-permissions") {
+		t.Error("should contain --dangerously-skip-permissions")
+	}
+}
+
+func TestGenerateCodeWorkspace_ClaudeConfigDir(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "config.code-workspace")
+	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
+
+	claude := &ClaudeTask{
+		LeadPath:        "/tmp/api",
+		ClaudeConfigDir: "/custom/claude",
+	}
+
+	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
+		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	}
+
+	ws := readWorkspace(t, filePath)
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+	task := taskList[0].(map[string]interface{})
+	cmd := task["command"].(string)
+
+	if !strings.Contains(cmd, "CLAUDE_CONFIG_DIR='/custom/claude'") {
+		t.Errorf("should contain CLAUDE_CONFIG_DIR, got: %s", cmd)
+	}
+}
+
+func readWorkspace(t *testing.T, path string) map[string]interface{} {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -135,17 +186,5 @@ func TestGenerateCodeWorkspace_TerminalPerProject(t *testing.T) {
 	if err := json.Unmarshal(data, &ws); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-
-	tasks := ws["tasks"].(map[string]interface{})
-	taskList := tasks["tasks"].([]interface{})
-	if len(taskList) != 3 {
-		t.Errorf("tasks = %d, want 3", len(taskList))
-	}
-
-	for i, name := range []string{"api", "web", "worker"} {
-		task := taskList[i].(map[string]interface{})
-		if task["label"] != name {
-			t.Errorf("task[%d] label = %q, want %q", i, task["label"], name)
-		}
-	}
+	return ws
 }

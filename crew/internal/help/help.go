@@ -241,7 +241,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "launch",
-			Description: "Open the interactive launch view — choose Editor+Agents or Claude mode, start dev servers, and begin working",
+			Description: "Open the interactive launch view — choose Editor+Claude or Claude mode, start dev servers, and begin working",
 			Usage:       "crew launch [<workspace>]",
 			TUI:         true,
 			Examples:    []string{"crew launch", "crew launch feature-auth"},
@@ -337,6 +337,11 @@ var Root = CommandInfo{
 				},
 			},
 			Examples: []string{"crew rm feature-auth"},
+		},
+		{
+			Name:        "update",
+			Description: "Update crew to the latest version",
+			Usage:       "crew update",
 		},
 		{
 			Name:        "help",

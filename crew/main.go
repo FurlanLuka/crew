@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -115,6 +117,10 @@ func main() {
 
 	case "show":
 		cmdShow()
+		return
+
+	case "update":
+		cmdUpdate()
 		return
 
 	case "help":
@@ -304,7 +310,7 @@ func cmdCode() {
 				Path: workspace.ProjectPath(wsName, wp.Name),
 			})
 		}
-		if err := exec.GenerateCodeWorkspace(wsFile, projects); err != nil {
+		if err := exec.GenerateCodeWorkspace(wsFile, projects, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating workspace file: %v\n", err)
 			os.Exit(1)
 		}
@@ -681,4 +687,86 @@ func cmdDebug() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func cmdUpdate() {
+	selfPath, err := osexec.LookPath("crew")
+	if err != nil {
+		selfPath, err = os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: cannot determine crew binary path\n")
+			os.Exit(1)
+		}
+	}
+
+	latest, err := fetchLatestVersion()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching latest version: %v\n", err)
+		os.Exit(1)
+	}
+
+	current := Version
+	if current == latest {
+		fmt.Printf("crew is already up to date (v%s)\n", current)
+		return
+	}
+
+	fmt.Printf("Updating crew v%s → v%s\n", current, latest)
+
+	osName := strings.ToLower(runtime.GOOS)
+	arch := runtime.GOARCH
+
+	url := fmt.Sprintf("https://github.com/%s/releases/download/v%s/crew_%s_%s_%s.tar.gz",
+		config.RegistryRepo, latest, latest, osName, arch)
+
+	tmpDir, err := os.MkdirTemp("", "crew-update-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temp dir: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tarPath := filepath.Join(tmpDir, "crew.tar.gz")
+	dlCmd := osexec.Command("curl", "-fsSL", "-o", tarPath, url)
+	dlCmd.Stderr = os.Stderr
+	if err := dlCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error downloading release: %v\n", err)
+		os.Exit(1)
+	}
+
+	extractCmd := osexec.Command("tar", "-xzf", tarPath, "-C", tmpDir)
+	if err := extractCmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error extracting release: %v\n", err)
+		os.Exit(1)
+	}
+
+	newBin := filepath.Join(tmpDir, "crew")
+	if err := os.Rename(newBin, selfPath); err != nil {
+		// rename may fail across filesystems; fall back to copy
+		if err := copyFile(newBin, selfPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error replacing binary: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	os.Chmod(selfPath, 0o755)
+
+	fmt.Printf("crew updated to v%s\n", latest)
+}
+
+func fetchLatestVersion() (string, error) {
+	cmd := osexec.Command("gh", "api", "repos/"+config.RegistryRepo+"/releases/latest", "--jq", ".tag_name")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("gh api failed: %w (is gh installed and authenticated?)", err)
+	}
+	tag := strings.TrimSpace(string(out))
+	return strings.TrimPrefix(tag, "v"), nil
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o755)
 }

@@ -60,9 +60,19 @@ type WorkspaceProject struct {
 	Path string
 }
 
-// GenerateCodeWorkspace creates a .code-workspace file and returns its path.
-// Claude runs in a separate tmux session, not as a VS Code task.
-func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject) error {
+// ClaudeTask configures the Claude task in the .code-workspace file.
+// Nil means no Claude task. For single-project, set AgentTeams=false.
+type ClaudeTask struct {
+	PromptFile      string // Path to prompt file (required for agent teams)
+	LeadPath        string // Working directory for Claude
+	ClaudeConfigDir string // Custom CLAUDE_CONFIG_DIR (empty = default)
+	AgentTeams      bool   // Enable agent teams (multi-project)
+	SkipPermissions bool   // Add --dangerously-skip-permissions
+}
+
+// GenerateCodeWorkspace creates a .code-workspace file.
+// Pass a non-nil ClaudeTask to include a Claude terminal task that auto-runs on open.
+func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, claude *ClaudeTask) error {
 	ws := codeWorkspace{
 		Settings: map[string]string{
 			"task.allowAutomaticTasks": "on",
@@ -77,17 +87,50 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject) error {
 		})
 	}
 
-	// Terminal per project
-	for _, p := range projects {
+	if claude != nil {
+		var parts []string
+
+		if claude.ClaudeConfigDir != "" {
+			parts = append(parts, "CLAUDE_CONFIG_DIR='"+claude.ClaudeConfigDir+"'")
+		}
+
+		if claude.AgentTeams {
+			parts = append(parts, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
+		}
+
+		parts = append(parts, "claude")
+
+		if claude.SkipPermissions {
+			parts = append(parts, "--dangerously-skip-permissions")
+		}
+
+		if claude.AgentTeams {
+			for _, p := range projects[1:] {
+				parts = append(parts, "--add-dir", p.Path)
+			}
+			if claude.PromptFile != "" {
+				parts = append(parts, "--teammate-mode", "in-process", "\"$(cat "+claude.PromptFile+")\"")
+			}
+		}
+
+		claudeCmd := ""
+		for i, p := range parts {
+			if i > 0 {
+				claudeCmd += " "
+			}
+			claudeCmd += p
+		}
+
 		ws.Tasks.Tasks = append(ws.Tasks.Tasks, codeWorkspaceTask{
-			Label:          p.Name,
+			Label:          "claude",
 			Type:           "shell",
-			Command:        "",
-			Options:        map[string]string{"cwd": p.Path},
+			Command:        claudeCmd,
+			Options:        map[string]string{"cwd": claude.LeadPath},
 			IsBackground:   true,
 			ProblemMatcher: []interface{}{},
 			Presentation: map[string]interface{}{
-				"group":  "terminals",
+				"group":  "claude",
+				"focus":  true,
 				"reveal": "always",
 			},
 			RunOptions: map[string]string{"runOn": "folderOpen"},
