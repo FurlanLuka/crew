@@ -20,6 +20,7 @@ import (
 type workspacesLoadedMsg struct{ summaries []Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
+type workspaceDuplicatedMsg struct{ src, dst string }
 type errMsg struct{ err error }
 
 // Project management messages
@@ -46,6 +47,8 @@ const (
 	stateAddingProject   // async: creating git worktree
 	stateRemovingProject // async: removing git worktree
 	stateProjectConfirmRemove
+	stateDuplicate
+	stateDuplicating
 )
 
 // ── Model ──
@@ -127,6 +130,13 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		return v, loadWorkspaces
 
+	case workspaceDuplicatedMsg:
+		v.state = stateList
+		v.statusMsg = fmt.Sprintf("Duplicated '%s' → '%s'", msg.src, msg.dst)
+		v.err = nil
+		v.input.Reset()
+		return v, loadWorkspaces
+
 	case codeOpenedMsg:
 		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: msg.output} }
 
@@ -164,10 +174,13 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.state == stateAddingProject || v.state == stateRemovingProject {
 			v.state = stateProjects
 		}
+		if v.state == stateDuplicating {
+			v.state = stateList
+		}
 		return v, nil
 
 	case spinner.TickMsg:
-		if v.state == stateAddingProject || v.state == stateRemovingProject {
+		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating {
 			var cmd tea.Cmd
 			v.spinner, cmd = v.spinner.Update(msg)
 			return v, cmd
@@ -180,7 +193,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Forward to text inputs
 	switch v.state {
-	case stateCreate:
+	case stateCreate, stateDuplicate:
 		var cmd tea.Cmd
 		v.input, cmd = v.input.Update(msg)
 		return v, cmd
@@ -209,6 +222,8 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleProjectRoleKey(msg)
 	case stateProjectConfirmRemove:
 		return v.handleProjectConfirmRemoveKey(msg)
+	case stateDuplicate:
+		return v.handleDuplicateKey(msg)
 	}
 	return v, nil
 }
@@ -235,6 +250,17 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		v.input.Focus()
 		return v, v.input.Cursor.BlinkCmd()
+	case msg.String() == "u":
+		if len(v.summaries) > 0 {
+			v.selectedWs = v.summaries[v.cursor].Name
+			v.state = stateDuplicate
+			v.statusMsg = ""
+			v.err = nil
+			v.input.SetValue("")
+			v.input.Focus()
+			return v, v.input.Cursor.BlinkCmd()
+		}
+		return v, nil
 	case msg.String() == "d":
 		if len(v.summaries) > 0 {
 			v.state = stateConfirmRemove
@@ -301,6 +327,32 @@ func (v View) handleCreateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, nil
 		}
 		return v, createWorkspace(name)
+	}
+
+	var cmd tea.Cmd
+	v.input, cmd = v.input.Update(msg)
+	return v, cmd
+}
+
+func (v View) handleDuplicateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		v.state = stateList
+		v.input.Reset()
+		return v, nil
+	case "enter":
+		name := strings.TrimSpace(v.input.Value())
+		if name == "" {
+			return v, nil
+		}
+		srcName := v.selectedWs
+		v.state = stateDuplicating
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			if err := Duplicate(srcName, name); err != nil {
+				return errMsg{err}
+			}
+			return workspaceDuplicatedMsg{src: srcName, dst: name}
+		})
 	}
 
 	var cmd tea.Cmd
@@ -452,6 +504,12 @@ func (v View) View() string {
 		b.WriteString(" Removing git worktree...\n")
 	case stateProjectConfirmRemove:
 		v.renderProjectConfirmRemove(&b)
+	case stateDuplicate:
+		v.renderDuplicate(&b)
+	case stateDuplicating:
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Duplicating workspace...\n")
 	}
 
 	return b.String()
@@ -509,7 +567,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  d delete  p projects  s servers  g git  c code  o open  enter launch  esc back"
+	help := "n new  u duplicate  d delete  p projects  s servers  g git  c code  o open  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -528,6 +586,22 @@ func (v View) renderCreate(b *strings.Builder) {
 
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render("enter create  esc cancel"))
+	b.WriteString("\n")
+}
+
+func (v View) renderDuplicate(b *strings.Builder) {
+	b.WriteString(fmt.Sprintf("  Duplicate '%s' as: ", v.selectedWs))
+	b.WriteString(v.input.View())
+	b.WriteString("\n\n")
+
+	if v.err != nil {
+		b.WriteString("  ")
+		b.WriteString(app.Error.Render(v.err.Error()))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("  ")
+	b.WriteString(app.HelpStyle.Render("enter duplicate  esc cancel"))
 	b.WriteString("\n")
 }
 

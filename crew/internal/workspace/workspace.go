@@ -136,6 +136,24 @@ func Create(name string) error {
 	return Save(ws)
 }
 
+// Duplicate creates a new workspace with the same projects as the source.
+// Each project gets a fresh worktree branched from the default branch.
+func Duplicate(srcName, dstName string) error {
+	src, err := Load(srcName)
+	if err != nil {
+		return fmt.Errorf("source workspace: %w", err)
+	}
+	if err := Create(dstName); err != nil {
+		return err
+	}
+	for _, wp := range src.Projects {
+		if err := AddProject(dstName, wp.Name, wp.Role); err != nil {
+			return fmt.Errorf("adding project '%s': %w", wp.Name, err)
+		}
+	}
+	return nil
+}
+
 // detectDefaultBranch returns the best base branch for a project repo.
 // Tries develop, main, then falls back to HEAD.
 func detectDefaultBranch(projectPath string) string {

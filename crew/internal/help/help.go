@@ -339,6 +339,12 @@ var Root = CommandInfo{
 			Examples: []string{"crew rm feature-auth"},
 		},
 		{
+			Name:        "duplicate",
+			Description: "Duplicate a workspace — creates a new workspace with fresh worktrees for the same projects",
+			Usage:       "crew duplicate <source> <new-name>",
+			Examples:    []string{"crew duplicate feature-auth feature-auth-v2"},
+		},
+		{
 			Name:        "update",
 			Description: "Update crew to the latest version",
 			Usage:       "crew update",

@@ -129,6 +129,10 @@ func main() {
 		cmdGit()
 		return
 
+	case "duplicate":
+		cmdDuplicate()
+		return
+
 	case "rm":
 		cmdRm()
 		return
@@ -420,6 +424,23 @@ func cmdLaunch() {
 	}
 
 	runTUI(workspace.NewLaunchView(wsName))
+}
+
+func cmdDuplicate() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <source> <new-name>\n")
+		os.Exit(1)
+	}
+	srcName := os.Args[2]
+	dstName := os.Args[3]
+
+	if err := workspace.Duplicate(srcName, dstName); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	ws, _ := workspace.Load(dstName)
+	fmt.Printf("Duplicated \"%s\" → \"%s\" (%d projects)\n", srcName, dstName, len(ws.Projects))
 }
 
 func cmdRm() {
