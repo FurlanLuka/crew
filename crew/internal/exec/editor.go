@@ -90,6 +90,10 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, claude 
 	if claude != nil {
 		var parts []string
 
+		if claude.SkipPermissions {
+			parts = append(parts, "IS_SANDBOX=1")
+		}
+
 		if claude.ClaudeConfigDir != "" {
 			parts = append(parts, "CLAUDE_CONFIG_DIR='"+claude.ClaudeConfigDir+"'")
 		}
