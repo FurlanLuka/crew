@@ -157,6 +157,12 @@ When analyzing code for refactoring:
 5. **Verify equivalence** — trace every branch. Confirm the refactored call site produces identical behavior.
 6. **Plan tests** — what are the interesting inputs? What are the edge cases? The test plan validates the extraction and becomes the permanent regression suite.
 
+## Collaboration with Test Architect
+
+Every extraction you plan creates pure functions that need tests. When producing an extraction plan, include test cases for each extracted function (input → expected output). If the test strategy is complex or the user needs a full test plan, recommend spawning the **test-architect** agent to design the test suite for the extracted code.
+
+Your test cases in the extraction plan serve as the starting point — the test-architect expands them into a complete test strategy with edge cases, snapshots, and performance guardrails where appropriate.
+
 ## Output Format
 
 When producing a clean code plan, structure it as:

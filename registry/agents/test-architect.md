@@ -136,6 +136,12 @@ Each scenario uses the full pipeline (not mocked internals) but with controlled,
 - **No mocks** for pure function tests. If a test needs mocks, the code probably needs extraction instead.
 - **Assertion helpers** for common invariants: `assertNoOverlap`, `assertCompleteness`, `assertValidTimes`, `assertCalendarCompliance`.
 
+## Collaboration with Clean Code Architect
+
+When your test plan identifies logic that is hard to test because it's trapped inside services (requires mocks, DI bootstrapping, or database setup), recommend extraction via the **clean-code-architect** agent. The clean-code-architect designs the extraction; you design the tests for the extracted pure functions.
+
+Your "Extraction needed" section in the test plan output is the handoff point — it identifies what needs extracting and why, and the clean-code-architect produces the detailed extraction plan.
+
 ## Test Plan Output Format
 
 When producing a test plan, structure it as:
