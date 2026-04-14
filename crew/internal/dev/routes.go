@@ -14,8 +14,14 @@ type Route struct {
 	Subdomain    string `json:"subdomain"`
 	ServerName   string `json:"server_name"`
 	ExternalPort int    `json:"external_port"`
-	InternalPort int    `json:"internal_port"`
+	// InternalPort is the port the server is actually bound to.
+	// When NoProxy is true this is the user-facing port on localhost.
+	InternalPort int  `json:"internal_port"`
+	NoProxy      bool `json:"no_proxy,omitempty"`
 }
+
+// Proxied reports whether the route should be served through the reverse proxy.
+func (r Route) Proxied() bool { return !r.NoProxy }
 
 func RoutesFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, "dev-routes-"+wsName+".json")
@@ -64,6 +70,15 @@ func FormatURL(serverName, wsName, domain string, port int) string {
 		return fmt.Sprintf("http://%s--%s.%s", serverName, wsName, domain)
 	}
 	return fmt.Sprintf("http://%s--%s.%s:%d", serverName, wsName, domain, port)
+}
+
+// RouteURL returns the user-facing URL for a route, choosing localhost for
+// no-proxy routes and the proxy subdomain otherwise.
+func RouteURL(r Route, wsName, domain string, proxyPort int) string {
+	if r.NoProxy {
+		return fmt.Sprintf("http://localhost:%d", r.InternalPort)
+	}
+	return FormatURL(r.ServerName, wsName, domain, proxyPort)
 }
 
 // PlansPortFile returns the path to the file storing the plans server's internal port.

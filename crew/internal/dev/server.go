@@ -20,10 +20,11 @@ type DevProject struct {
 }
 
 type DevServerConfig struct {
-	Name    string
-	Port    int
-	Command string
-	Dir     string
+	Name      string
+	Port      int
+	Command   string
+	Dir       string
+	LocalPort int
 }
 
 const ProxySessionName = "crew-dev-proxy"
@@ -33,22 +34,40 @@ func SessionName(wsName string) string {
 	return "crew-dev-" + wsName
 }
 
-// Start starts dev servers for a workspace and launches the shared proxy.
+// Start starts dev servers for a workspace. When noProxy is false it also
+// launches the shared reverse proxy; when true, each server binds to its
+// configured LocalPort and the proxy is skipped.
 // projects should already have the correct paths (workspace worktree paths).
-func Start(wsName string, projects []DevProject, domain string, proxyPort int) ([]Route, error) {
-	// Build new routes
+func Start(wsName string, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
+	if noProxy {
+		for _, p := range projects {
+			for _, ds := range p.DevServers {
+				if ds.LocalPort == 0 {
+					return nil, fmt.Errorf("dev server %q has no local_port — configure with: crew dev add <project> --name=%s ... --local-port=<n>", ds.Name, ds.Name)
+				}
+			}
+		}
+	}
+
 	var newRoutes []Route
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
-			port, err := FindFreePort()
-			if err != nil {
-				return nil, fmt.Errorf("failed to find free port: %w", err)
+			port := ds.LocalPort
+			externalPort := ds.LocalPort
+			if !noProxy {
+				freePort, err := FindFreePort()
+				if err != nil {
+					return nil, fmt.Errorf("failed to find free port: %w", err)
+				}
+				port = freePort
+				externalPort = ds.Port
 			}
 			newRoutes = append(newRoutes, Route{
 				Subdomain:    wsName,
 				ServerName:   ds.Name,
-				ExternalPort: ds.Port,
+				ExternalPort: externalPort,
 				InternalPort: port,
+				NoProxy:      noProxy,
 			})
 		}
 	}
@@ -86,9 +105,10 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int) (
 		}
 	}
 
-	// Ensure shared proxy is running
-	if err := EnsureProxy(domain, proxyPort); err != nil {
-		return nil, err
+	if !noProxy {
+		if err := EnsureProxy(domain, proxyPort); err != nil {
+			return nil, err
+		}
 	}
 
 	return newRoutes, nil
@@ -112,13 +132,19 @@ func StopAll(wsName string) {
 	crewExec.KillTmuxSession(ProxySessionName)
 }
 
-// StopProxyIfIdle kills the shared proxy if no route files remain.
+// StopProxyIfIdle kills the shared proxy if no proxied routes remain.
+// No-proxy routes don't count — they're served on localhost, not via the proxy.
 func StopProxyIfIdle() {
 	allRoutes, _ := ListAllRoutes()
-	if len(allRoutes) == 0 {
-		debug.Log("dev", "no routes left, killing proxy")
-		crewExec.KillTmuxSession(ProxySessionName)
+	for _, wr := range allRoutes {
+		for _, r := range wr.Routes {
+			if r.Proxied() {
+				return
+			}
+		}
 	}
+	debug.Log("dev", "no proxied routes left, killing proxy")
+	crewExec.KillTmuxSession(ProxySessionName)
 }
 
 // FindFreePort returns a random available TCP port.

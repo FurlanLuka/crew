@@ -250,7 +250,7 @@ func buildURLsContent(wsName string) string {
 			continue
 		}
 		for _, r := range wr.Routes {
-			url := dev.FormatURL(r.ServerName, wr.Workspace, domain, proxyPort)
+			url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
 			b.WriteString(fmt.Sprintf("  %-12s %s\n", r.ServerName, url))
 			found = true
 		}
@@ -272,7 +272,7 @@ func buildURLsContent(wsName string) string {
 		b.WriteString("\n\n")
 		for _, wr := range others {
 			for _, r := range wr.Routes {
-				url := dev.FormatURL(r.ServerName, wr.Workspace, domain, proxyPort)
+				url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
 				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", wr.Workspace, r.ServerName, url))
 			}
 		}

@@ -41,6 +41,7 @@ type DevView struct {
 	spinner   spinner.Model
 	statusMsg string
 	err       error
+	noProxy   bool
 }
 
 func NewDevView(wsName string) DevView {
@@ -152,6 +153,11 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.statusMsg = ""
 		v.err = nil
 		return v, tea.Batch(v.spinner.Tick, v.restartAllDevServers())
+	case msg.String() == "p":
+		v.noProxy = !v.noProxy
+		v.err = nil
+		v.statusMsg = ""
+		return v, v.loadDevServers()
 	}
 	return v, nil
 }
@@ -232,8 +238,12 @@ func (v DevView) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
+	proxyState := "on"
+	if v.noProxy {
+		proxyState = "off"
+	}
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("l logs  S start all  X stop all  R restart all  esc back"))
+	b.WriteString(app.HelpStyle.Render(fmt.Sprintf("l logs  S start all  X stop all  R restart all  p proxy: %s  esc back", proxyState)))
 	b.WriteString("\n")
 }
 
@@ -253,10 +263,9 @@ func (v DevView) loadDevServers() tea.Cmd {
 		domain := settings.GetDomain(host)
 		proxyPort := settings.GetProxyPort()
 
-		// Build running route lookup: port -> Route
-		runningPorts := map[int]dev.Route{}
+		runningByName := map[string]dev.Route{}
 		for _, r := range routes {
-			runningPorts[r.ExternalPort] = r
+			runningByName[r.ServerName] = r
 		}
 
 		var items []devItem
@@ -270,9 +279,9 @@ func (v DevView) loadDevServers() tea.Cmd {
 					ProjectName: wp.Name,
 					Server:      ds,
 				}
-				if r, ok := runningPorts[ds.Port]; ok {
+				if r, ok := runningByName[ds.Name]; ok {
 					item.Running = true
-					item.URL = dev.FormatURL(r.ServerName, r.Subdomain, domain, proxyPort)
+					item.URL = dev.RouteURL(r, wsName, domain, proxyPort)
 				}
 				items = append(items, item)
 			}
@@ -283,6 +292,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 
 func (v DevView) startAllDevServers() tea.Cmd {
 	wsName := v.wsName
+	noProxy := v.noProxy
 	return func() tea.Msg {
 		if !exec.HasTmux() {
 			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
@@ -304,7 +314,7 @@ func (v DevView) startAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(wsName, projects, domain, proxyPort)
+		routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -325,6 +335,7 @@ func (v DevView) stopAllDevServers() tea.Cmd {
 
 func (v DevView) restartAllDevServers() tea.Cmd {
 	wsName := v.wsName
+	noProxy := v.noProxy
 	return func() tea.Msg {
 		if !exec.HasTmux() {
 			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
@@ -348,7 +359,7 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(wsName, projects, domain, proxyPort)
+		routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}

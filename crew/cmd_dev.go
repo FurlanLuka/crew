@@ -75,13 +75,16 @@ func cmdDevSetup() {
 		fmt.Printf("\n  Server %d:\n", j+1)
 
 		var name, cmd, dir string
-		var port int
+		var port, localPort int
 
 		fmt.Print("    Name: ")
 		fmt.Scanln(&name)
 
 		fmt.Print("    Port: ")
 		fmt.Scanln(&port)
+
+		fmt.Print("    Local port (optional, required for --no-proxy): ")
+		fmt.Scanln(&localPort)
 
 		defaultCmd := detected
 		if defaultCmd != "" {
@@ -97,7 +100,7 @@ func cmdDevSetup() {
 		fmt.Print("    Directory (relative, empty for root): ")
 		fmt.Scanln(&dir)
 
-		ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
+		ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir, LocalPort: localPort}
 		if err := project.AddDevServer(projName, ds); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -109,13 +112,13 @@ func cmdDevSetup() {
 
 func cmdDevAdd() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>] [--local-port=<n>]\n")
 		os.Exit(1)
 	}
 
 	projName := os.Args[3]
 	var name, cmd, dir string
-	var port int
+	var port, localPort int
 
 	for _, arg := range os.Args[4:] {
 		switch {
@@ -130,6 +133,11 @@ func cmdDevAdd() {
 			cmd = strings.TrimPrefix(arg, "--cmd=")
 		case strings.HasPrefix(arg, "--dir="):
 			dir = strings.TrimPrefix(arg, "--dir=")
+		case strings.HasPrefix(arg, "--local-port="):
+			if n, _ := fmt.Sscanf(strings.TrimPrefix(arg, "--local-port="), "%d", &localPort); n != 1 {
+				fmt.Fprintf(os.Stderr, "Error: invalid --local-port value\n")
+				os.Exit(1)
+			}
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
@@ -147,7 +155,7 @@ func cmdDevAdd() {
 		os.Exit(1)
 	}
 
-	ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
+	ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir, LocalPort: localPort}
 	if err := project.AddDevServer(projName, ds); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -193,11 +201,14 @@ func cmdDevShow() {
 	}
 
 	for _, ds := range p.DevServers {
-		if ds.Dir != "" {
-			fmt.Printf("%s\t%d\t%s\t%s\n", ds.Name, ds.Port, ds.Command, ds.Dir)
-		} else {
-			fmt.Printf("%s\t%d\t%s\n", ds.Name, ds.Port, ds.Command)
+		cols := []string{ds.Name, fmt.Sprintf("%d", ds.Port), ds.Command}
+		if ds.Dir != "" || ds.LocalPort != 0 {
+			cols = append(cols, ds.Dir)
 		}
+		if ds.LocalPort != 0 {
+			cols = append(cols, fmt.Sprintf("%d", ds.LocalPort))
+		}
+		fmt.Println(strings.Join(cols, "\t"))
 	}
 }
 
@@ -234,9 +245,32 @@ func cmdDevStatus() {
 
 	for _, wr := range allRoutes {
 		for _, r := range wr.Routes {
-			url := dev.FormatURL(r.ServerName, wr.Workspace, domain, proxyPort)
+			url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
 			fmt.Printf("%s\t%s\t%d\t%s\n", wr.Workspace, r.ServerName, r.ExternalPort, url)
 		}
+	}
+}
+
+// parseNoProxyFlag parses extra args after the workspace name, accepting only
+// --no-proxy. Exits on unknown flags.
+func parseNoProxyFlag(args []string) bool {
+	noProxy := false
+	for _, arg := range args {
+		switch arg {
+		case "--no-proxy":
+			noProxy = true
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+	return noProxy
+}
+
+// printRouteURLs prints one URL per route, one per line, indented.
+func printRouteURLs(routes []dev.Route, wsName, domain string, proxyPort int) {
+	for _, r := range routes {
+		fmt.Printf("  %s\n", dev.RouteURL(r, wsName, domain, proxyPort))
 	}
 }
 
@@ -247,11 +281,7 @@ func cmdDevStart() {
 	}
 
 	wsName := os.Args[3]
-
-	for _, arg := range os.Args[4:] {
-		fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-		os.Exit(1)
-	}
+	noProxy := parseNoProxyFlag(os.Args[4:])
 
 	if !workspace.Exists(wsName) {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
@@ -280,17 +310,14 @@ func cmdDevStart() {
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(wsName, projects, domain, proxyPort)
+	routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Dev servers for %s\n\n", wsName)
-
-	for _, r := range routes {
-		fmt.Printf("  %s\n", dev.FormatURL(r.ServerName, wsName, domain, proxyPort))
-	}
+	printRouteURLs(routes, wsName, domain, proxyPort)
 
 	fmt.Println()
 	fmt.Printf("Session: %s\n", dev.SessionName(wsName))
@@ -326,11 +353,7 @@ func cmdDevRestart() {
 	}
 
 	wsName := os.Args[3]
-
-	for _, arg := range os.Args[4:] {
-		fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-		os.Exit(1)
-	}
+	noProxy := parseNoProxyFlag(os.Args[4:])
 
 	if !workspace.Exists(wsName) {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
@@ -362,17 +385,14 @@ func cmdDevRestart() {
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(wsName, projects, domain, proxyPort)
+	routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
-
-	for _, r := range routes {
-		fmt.Printf("  %s\n", dev.FormatURL(r.ServerName, wsName, domain, proxyPort))
-	}
+	printRouteURLs(routes, wsName, domain, proxyPort)
 
 	fmt.Println()
 	fmt.Printf("Session: %s\n", dev.SessionName(wsName))

@@ -14,10 +14,11 @@ var validServerName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // DevServer describes how to run a dev server for a project.
 type DevServer struct {
-	Name    string `json:"name"`
-	Port    int    `json:"port"`
-	Command string `json:"command"`
-	Dir     string `json:"dir,omitempty"`
+	Name      string `json:"name"`
+	Port      int    `json:"port"`
+	Command   string `json:"command"`
+	Dir       string `json:"dir,omitempty"`
+	LocalPort int    `json:"local_port,omitempty"`
 }
 
 // Project is a global project entry (no role — role is workspace-specific).

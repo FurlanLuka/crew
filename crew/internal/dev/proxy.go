@@ -67,6 +67,9 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for i := range wr.Routes {
+			if !wr.Routes[i].Proxied() {
+				continue
+			}
 			if wr.Routes[i].ServerName == serverName {
 				target = &wr.Routes[i]
 				break
@@ -178,6 +181,9 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 
 	for _, wr := range allRoutes {
 		for _, route := range wr.Routes {
+			if !route.Proxied() {
+				continue
+			}
 			u := fmt.Sprintf("http://%s--%s.%s:%s", route.ServerName, wr.Workspace, h.domain, proxyPort)
 			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a></td></tr>`+"\n",
 				route.ServerName, wr.Workspace, u, u)

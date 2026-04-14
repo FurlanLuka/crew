@@ -133,6 +133,72 @@ func TestListAllRoutes(t *testing.T) {
 	}
 }
 
+func TestRouteURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		route     Route
+		wsName    string
+		domain    string
+		proxyPort int
+		want      string
+	}{
+		{
+			name:      "proxy route",
+			route:     Route{ServerName: "api", InternalPort: 49001},
+			wsName:    "main",
+			domain:    "dev.local",
+			proxyPort: 8080,
+			want:      "http://api--main.dev.local:8080",
+		},
+		{
+			name:      "proxy route port 80 omits port",
+			route:     Route{ServerName: "web", InternalPort: 49002},
+			wsName:    "main",
+			domain:    "dev.local",
+			proxyPort: 80,
+			want:      "http://web--main.dev.local",
+		},
+		{
+			name:      "no-proxy route uses localhost and InternalPort",
+			route:     Route{ServerName: "api", InternalPort: 3000, NoProxy: true},
+			wsName:    "main",
+			domain:    "dev.local",
+			proxyPort: 8080,
+			want:      "http://localhost:3000",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RouteURL(tt.route, tt.wsName, tt.domain, tt.proxyPort)
+			if got != tt.want {
+				t.Errorf("RouteURL = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNoProxyRoundTrip(t *testing.T) {
+	setupTestConfig(t)
+
+	routes := []Route{
+		{Subdomain: "ws", ServerName: "api", ExternalPort: 3000, InternalPort: 3000, NoProxy: true},
+		{Subdomain: "ws", ServerName: "web", ExternalPort: 5173, InternalPort: 49001},
+	}
+	if err := saveRoutes("ws", routes); err != nil {
+		t.Fatalf("saveRoutes: %v", err)
+	}
+	loaded, err := LoadRoutes("ws")
+	if err != nil {
+		t.Fatalf("LoadRoutes: %v", err)
+	}
+	if !loaded[0].NoProxy {
+		t.Errorf("loaded[0].NoProxy = false, want true")
+	}
+	if loaded[1].NoProxy {
+		t.Errorf("loaded[1].NoProxy = true, want false")
+	}
+}
+
 func TestListAllRoutes_Empty(t *testing.T) {
 	setupTestConfig(t)
 
