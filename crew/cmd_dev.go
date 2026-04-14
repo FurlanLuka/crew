@@ -75,16 +75,13 @@ func cmdDevSetup() {
 		fmt.Printf("\n  Server %d:\n", j+1)
 
 		var name, cmd, dir string
-		var port, localPort int
+		var port int
 
 		fmt.Print("    Name: ")
 		fmt.Scanln(&name)
 
 		fmt.Print("    Port: ")
 		fmt.Scanln(&port)
-
-		fmt.Print("    Local port (optional, required for --no-proxy): ")
-		fmt.Scanln(&localPort)
 
 		defaultCmd := detected
 		if defaultCmd != "" {
@@ -100,7 +97,7 @@ func cmdDevSetup() {
 		fmt.Print("    Directory (relative, empty for root): ")
 		fmt.Scanln(&dir)
 
-		ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir, LocalPort: localPort}
+		ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
 		if err := project.AddDevServer(projName, ds); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -112,13 +109,13 @@ func cmdDevSetup() {
 
 func cmdDevAdd() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>] [--local-port=<n>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>]\n")
 		os.Exit(1)
 	}
 
 	projName := os.Args[3]
 	var name, cmd, dir string
-	var port, localPort int
+	var port int
 
 	for _, arg := range os.Args[4:] {
 		switch {
@@ -133,11 +130,6 @@ func cmdDevAdd() {
 			cmd = strings.TrimPrefix(arg, "--cmd=")
 		case strings.HasPrefix(arg, "--dir="):
 			dir = strings.TrimPrefix(arg, "--dir=")
-		case strings.HasPrefix(arg, "--local-port="):
-			if n, _ := fmt.Sscanf(strings.TrimPrefix(arg, "--local-port="), "%d", &localPort); n != 1 {
-				fmt.Fprintf(os.Stderr, "Error: invalid --local-port value\n")
-				os.Exit(1)
-			}
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
@@ -155,7 +147,7 @@ func cmdDevAdd() {
 		os.Exit(1)
 	}
 
-	ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir, LocalPort: localPort}
+	ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
 	if err := project.AddDevServer(projName, ds); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -201,14 +193,11 @@ func cmdDevShow() {
 	}
 
 	for _, ds := range p.DevServers {
-		cols := []string{ds.Name, fmt.Sprintf("%d", ds.Port), ds.Command}
-		if ds.Dir != "" || ds.LocalPort != 0 {
-			cols = append(cols, ds.Dir)
+		if ds.Dir != "" {
+			fmt.Printf("%s\t%d\t%s\t%s\n", ds.Name, ds.Port, ds.Command, ds.Dir)
+		} else {
+			fmt.Printf("%s\t%d\t%s\n", ds.Name, ds.Port, ds.Command)
 		}
-		if ds.LocalPort != 0 {
-			cols = append(cols, fmt.Sprintf("%d", ds.LocalPort))
-		}
-		fmt.Println(strings.Join(cols, "\t"))
 	}
 }
 

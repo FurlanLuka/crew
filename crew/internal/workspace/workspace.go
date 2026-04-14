@@ -295,11 +295,10 @@ func BuildDevProjects(wsName string, wsProjects []WorkspaceProject) []dev.DevPro
 		var servers []dev.DevServerConfig
 		for _, ds := range p.DevServers {
 			servers = append(servers, dev.DevServerConfig{
-				Name:      ds.Name,
-				Port:      ds.Port,
-				Command:   ds.Command,
-				Dir:       ds.Dir,
-				LocalPort: ds.LocalPort,
+				Name:    ds.Name,
+				Port:    ds.Port,
+				Command: ds.Command,
+				Dir:     ds.Dir,
 			})
 		}
 		projects = append(projects, dev.DevProject{

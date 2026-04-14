@@ -263,15 +263,13 @@ var Root = CommandInfo{
 					Usage:       "crew dev add <project> [flags]",
 					Flags: []FlagInfo{
 						{Name: "--name=<n>", Description: "Server name (used as subdomain)", Required: true},
-						{Name: "--port=<p>", Description: "Reference port (the port your app normally uses)", Required: true},
+						{Name: "--port=<p>", Description: "Port the server binds to in --no-proxy mode (reference-only in proxy mode)", Required: true},
 						{Name: "--cmd=<c>", Description: "Start command (use $PORT for the dynamic port)", Required: true},
 						{Name: "--dir=<d>", Description: "Subdirectory relative to project root (for monorepos)"},
-						{Name: "--local-port=<n>", Description: "Fixed local port used when started with --no-proxy"},
 					},
 					Examples: []string{
 						"crew dev add my-api --name=api --port=3000 --cmd=\"npm run dev\"",
 						"crew dev add my-app --name=web --port=5173 --cmd=\"npm run dev\" --dir=packages/web",
-						"crew dev add my-api --name=api --port=3000 --cmd=\"npm run dev\" --local-port=3000",
 					},
 				},
 				{
@@ -284,15 +282,15 @@ var Root = CommandInfo{
 					Name:         "show",
 					Description:  "Show configured dev servers for a project (not necessarily running)",
 					Usage:        "crew dev show <project>",
-					OutputFormat: "<server-name>\\t<port>\\t<command>[\\t<dir>[\\t<local-port>]]",
+					OutputFormat: "<server-name>\\t<port>\\t<command>[\\t<dir>]",
 					Examples:     []string{"crew dev show my-api"},
 				},
 				{
 					Name:        "start",
-					Description: "Start all dev servers for a workspace in tmux windows and launch the shared reverse proxy. URLs use the format: http://<server>--<workspace>.<domain>. With --no-proxy, servers bind to their configured --local-port and URLs are plain http://localhost:<local-port>; the proxy is not started.",
+					Description: "Start all dev servers for a workspace in tmux windows and launch the shared reverse proxy. URLs use the format: http://<server>--<workspace>.<domain>. With --no-proxy, servers bind to their configured --port and URLs are plain http://localhost:<port>; the proxy is not started.",
 					Usage:       "crew dev start <workspace> [--no-proxy]",
 					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Skip the reverse proxy; bind each server to its --local-port"},
+						{Name: "--no-proxy", Description: "Skip the reverse proxy; bind each server to its --port on localhost"},
 					},
 					Examples: []string{"crew dev start feature-auth", "crew dev start feature-auth --no-proxy"},
 				},
@@ -307,7 +305,7 @@ var Root = CommandInfo{
 					Description: "Stop and restart dev servers for a workspace",
 					Usage:       "crew dev restart <workspace> [--no-proxy]",
 					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Skip the reverse proxy; bind each server to its --local-port"},
+						{Name: "--no-proxy", Description: "Skip the reverse proxy; bind each server to its --port on localhost"},
 					},
 					Examples: []string{"crew dev restart feature-auth", "crew dev restart feature-auth --no-proxy"},
 				},

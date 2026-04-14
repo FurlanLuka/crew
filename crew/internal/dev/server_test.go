@@ -2,7 +2,6 @@ package dev
 
 import (
 	"net"
-	"os"
 	"testing"
 
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
@@ -47,26 +46,6 @@ func TestFindFreePort(t *testing.T) {
 
 }
 
-func TestStart_NoProxy_RequiresLocalPort(t *testing.T) {
-	setupTestConfig(t)
-
-	projects := []DevProject{{
-		Path: t.TempDir(),
-		DevServers: []DevServerConfig{
-			{Name: "api", Port: 3000, Command: "echo api"},
-		},
-	}}
-
-	_, err := Start("ws", projects, "dev.local", 8080, true)
-	if err == nil {
-		t.Fatal("Start with noProxy and no LocalPort should error")
-	}
-
-	if _, statErr := os.Stat(RoutesFilePath("ws")); !os.IsNotExist(statErr) {
-		t.Error("routes file should not be written when validation fails")
-	}
-}
-
 func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 	if !crewExec.HasTmux() {
 		t.Skip("tmux not available")
@@ -82,7 +61,7 @@ func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 	projects := []DevProject{{
 		Path: t.TempDir(),
 		DevServers: []DevServerConfig{
-			{Name: "api", Port: 3000, Command: "sleep 30", LocalPort: 3001},
+			{Name: "api", Port: 3001, Command: "sleep 30"},
 		},
 	}}
 

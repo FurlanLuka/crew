@@ -20,11 +20,10 @@ type DevProject struct {
 }
 
 type DevServerConfig struct {
-	Name      string
-	Port      int
-	Command   string
-	Dir       string
-	LocalPort int
+	Name    string
+	Port    int
+	Command string
+	Dir     string
 }
 
 const ProxySessionName = "crew-dev-proxy"
@@ -36,36 +35,24 @@ func SessionName(wsName string) string {
 
 // Start starts dev servers for a workspace. When noProxy is false it also
 // launches the shared reverse proxy; when true, each server binds to its
-// configured LocalPort and the proxy is skipped.
+// configured Port on localhost and the proxy is skipped.
 // projects should already have the correct paths (workspace worktree paths).
 func Start(wsName string, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
-	if noProxy {
-		for _, p := range projects {
-			for _, ds := range p.DevServers {
-				if ds.LocalPort == 0 {
-					return nil, fmt.Errorf("dev server %q has no local_port — configure with: crew dev add <project> --name=%s ... --local-port=<n>", ds.Name, ds.Name)
-				}
-			}
-		}
-	}
-
 	var newRoutes []Route
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
-			port := ds.LocalPort
-			externalPort := ds.LocalPort
+			port := ds.Port
 			if !noProxy {
 				freePort, err := FindFreePort()
 				if err != nil {
 					return nil, fmt.Errorf("failed to find free port: %w", err)
 				}
 				port = freePort
-				externalPort = ds.Port
 			}
 			newRoutes = append(newRoutes, Route{
 				Subdomain:    wsName,
 				ServerName:   ds.Name,
-				ExternalPort: externalPort,
+				ExternalPort: ds.Port,
 				InternalPort: port,
 				NoProxy:      noProxy,
 			})
