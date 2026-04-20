@@ -33,6 +33,16 @@ func SessionName(wsName string) string {
 	return "crew-dev-" + wsName
 }
 
+// LogDir returns the directory holding dev server log files for a workspace.
+func LogDir(wsName string) string {
+	return filepath.Join(config.ConfigDir, "logs", wsName)
+}
+
+// LogFile returns the log file path for a specific dev server.
+func LogFile(wsName, serverName string) string {
+	return filepath.Join(LogDir(wsName), serverName+".log")
+}
+
 // Start starts dev servers for a workspace. When noProxy is false it also
 // launches the shared reverse proxy; when true, each server binds to its
 // configured Port on localhost and the proxy is skipped.
@@ -85,10 +95,20 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int, n
 				dir = filepath.Join(p.Path, ds.Dir)
 			}
 
+			logFile := LogFile(wsName, ds.Name)
+			if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+				return nil, fmt.Errorf("failed to create log dir: %w", err)
+			}
+			if err := os.WriteFile(logFile, nil, 0o644); err != nil {
+				return nil, fmt.Errorf("failed to truncate log file: %w", err)
+			}
+
 			portStr := fmt.Sprintf("%d", route.InternalPort)
 			expanded := strings.ReplaceAll(ds.Command, "$PORT", portStr)
 			cmd := fmt.Sprintf("PORT=%s %s", portStr, expanded)
-			crewExec.CreateTmuxWindow(session, windowName, dir, cmd)
+			crewExec.TmuxNewWindow(session, windowName, dir)
+			crewExec.TmuxPipePaneToFile(session, windowName, logFile)
+			_ = crewExec.TmuxSendKeys(session+":"+windowName, cmd)
 		}
 	}
 

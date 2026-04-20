@@ -176,6 +176,24 @@ func CreateTmuxWindow(session, name, dir, command string) {
 	sendCmd.Run()
 }
 
+// TmuxNewWindow creates a named window in a tmux session without running any command.
+// Use this when you need to configure the pane (e.g. pipe-pane) before sending a command.
+func TmuxNewWindow(session, name, dir string) {
+	debug.Log("tmux", "new-window -t %s -n %s -c %s", session, name, dir)
+	cmd := exec.Command("tmux", "new-window", "-t", session, "-n", name, "-c", dir)
+	cmd.Env = EnvWithoutTMUX()
+	cmd.Run()
+}
+
+// TmuxPipePaneToFile enables pipe-pane on the target window, appending pane output to the file.
+// Calling pipe-pane a second time replaces any prior pipe on the same pane.
+func TmuxPipePaneToFile(session, window, file string) {
+	target := session + ":" + window
+	cmd := "cat >> '" + strings.ReplaceAll(file, "'", "'\"'\"'") + "'"
+	debug.Log("tmux", "pipe-pane -t %s %s", target, cmd)
+	exec.Command("tmux", "pipe-pane", "-t", target, cmd).Run()
+}
+
 // CaptureTmuxPane captures the output of a tmux pane.
 // Returns empty string (no error) if the session/window doesn't exist.
 func CaptureTmuxPane(session, window string, lines int) (string, error) {

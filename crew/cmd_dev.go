@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -15,7 +16,7 @@ import (
 
 func cmdDev() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev [setup|add|rm|show|start|stop|restart|status]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev [setup|add|rm|show|start|stop|restart|status|logs]\n")
 		os.Exit(1)
 	}
 
@@ -36,12 +37,14 @@ func cmdDev() {
 		cmdDevRestart()
 	case "status":
 		cmdDevStatus()
+	case "logs":
+		cmdDevLogs()
 	case "tui":
 		cmdDevTui()
 	case "_proxy":
 		cmdDevProxy()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|tui]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|logs|tui]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -385,6 +388,58 @@ func cmdDevRestart() {
 
 	fmt.Println()
 	fmt.Printf("Session: %s\n", dev.SessionName(wsName))
+}
+
+func cmdDevLogs() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev logs <workspace> <server> [-f|--follow]\n")
+		os.Exit(1)
+	}
+
+	wsName := os.Args[3]
+	serverName := os.Args[4]
+	follow := false
+	for _, arg := range os.Args[5:] {
+		switch arg {
+		case "-f", "--follow":
+			follow = true
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+
+	if !workspace.Exists(wsName) {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
+		os.Exit(1)
+	}
+
+	logFile := dev.LogFile(wsName, serverName)
+	if _, err := os.Stat(logFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: no log file for %s/%s — has the server been started?\n", wsName, serverName)
+		os.Exit(1)
+	}
+
+	var tool string
+	var args []string
+	if follow {
+		tool = "tail"
+		args = []string{"-n", "+1", "-f", logFile}
+	} else {
+		tool = "cat"
+		args = []string{logFile}
+	}
+
+	cmd := osexec.Command(tool, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*osexec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func cmdDevTui() {

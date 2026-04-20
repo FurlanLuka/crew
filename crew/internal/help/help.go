@@ -316,6 +316,15 @@ var Root = CommandInfo{
 					OutputFormat: "<workspace>\\t<subdomain>\\t<port>\\t<url>",
 					Examples:     []string{"crew dev status", "crew dev status feature-auth"},
 				},
+				{
+					Name:        "logs",
+					Description: "Print the log for a dev server. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output.",
+					Usage:       "crew dev logs <workspace> <server> [-f|--follow]",
+					Flags: []FlagInfo{
+						{Name: "-f, --follow", Description: "Stream new output as it arrives (tail -f)"},
+					},
+					Examples: []string{"crew dev logs feature-auth api", "crew dev logs feature-auth web -f"},
+				},
 			},
 		},
 		{
