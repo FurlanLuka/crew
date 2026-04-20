@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,6 +26,7 @@ type WorkspaceProject struct {
 
 type Workspace struct {
 	Name     string             `json:"name"`
+	TeamID   string             `json:"team_id,omitempty"`
 	Projects []WorkspaceProject `json:"projects"`
 }
 
@@ -260,8 +263,19 @@ func CodeWorkspaceFilePath(wsName string) string {
 // GeneratePrompt builds the agent team prompt, writes it to the prompt file,
 // and returns the text.
 func GeneratePrompt(ws *Workspace) (string, error) {
+	if ws.TeamID == "" {
+		var buf [4]byte
+		if _, err := rand.Read(buf[:]); err != nil {
+			return "", fmt.Errorf("generate team id: %w", err)
+		}
+		ws.TeamID = hex.EncodeToString(buf[:])
+		if err := Save(ws); err != nil {
+			return "", fmt.Errorf("persist team id: %w", err)
+		}
+	}
+	teamName := "crew-" + ws.Name + "-" + ws.TeamID
 	var b strings.Builder
-	b.WriteString("Create an agent team and spawn these teammates:\n")
+	fmt.Fprintf(&b, "Create an agent team named exactly `%s` (use this exact name — it uniquely identifies this workspace) and spawn these teammates:\n", teamName)
 	for _, wp := range ws.Projects {
 		path := ProjectPath(ws.Name, wp.Name)
 		fmt.Fprintf(&b, "- **%s** (working directory: %s): %s\n", wp.Name, path, wp.Role)
