@@ -26,8 +26,6 @@ Use the following agents when appropriate:
 
 - **nodejs-code-reviewer** — after writing or modifying Node.js/TypeScript backend code, run this agent to review your changes for quality, security, and standards compliance.
 - **reactjs-code-reviewer** — after writing or modifying React code, run this agent to review your changes for component design, hooks usage, and standards compliance.
-- **pr-reviewer** — when asked to review a pull request, use this agent to analyze the diff and post review comments.
-- **daily-chores** — read-only daily dashboard. Gathers GitHub PRs, Linear tasks, and project updates, then outputs a formatted summary with links.
 - **web-designer** — award-winning web designer. Researches real award-winning sites for inspiration, then generates unique, distinctive designs through iterative conversation. Use when the user wants to design a website, create a visual theme, generate HTML mockups, or build a design system. Use proactively when design tasks are detected.
 - **architect** — software architecture and system design agent. The primary entry point for all architecture work. Use when designing new features, modules, APIs, database schemas, or system-level decisions. When entering plan mode for new features or architectural decisions, spawn this agent in the background during the design phase. The architect will recommend spawning clean-code-architect and test-architect as follow-up steps when the design touches existing code or introduces new logic that needs testing. When the architect recommends these follow-ups, spawn them.
 - **test-architect** — test architecture and strategy agent. Use when planning what to test, designing test structure, identifying coverage gaps, or deciding how to test a new feature. Collaborates with clean-code-architect — when tests are hard to write because logic is trapped in services, it recommends extraction.
@@ -42,4 +40,3 @@ The following skills are available:
 - **reactjs-clean-code** — when writing, reviewing, or refactoring React code, follow these guidelines for component structure, state management, hooks, and composition. Complements `js-ts-clean-code`.
 - **reactjs-new-project** — when scaffolding a new React project, follow these guidelines for project structure, tooling, and conventions.
 - **web-designer** — design system knowledge base (universal components, layout techniques, design principles, CSS variables, markup rules). Support skill for the web-designer agent — not user-invocable.
-- **pr-review-comments** — comment style guide for PR reviews. Ensures comments sound natural and human. Support skill for the pr-reviewer agent — not user-invocable.

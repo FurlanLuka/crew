@@ -75,12 +75,11 @@ Use the following agents when appropriate:
 
 - **nodejs-code-reviewer** — after writing or modifying Node.js/TypeScript backend code, run this agent to review your changes for quality, security, and standards compliance.
 - **reactjs-code-reviewer** — after writing or modifying React code, run this agent to review your changes for component design, hooks usage, and standards compliance.
-- **pr-reviewer** — when asked to review a pull request, use this agent to analyze the diff and post review comments.
-- **daily-chores** — read-only daily dashboard. Gathers GitHub PRs, Linear tasks, and project updates, then outputs a formatted summary with links.
 - **web-designer** — award-winning web designer. Researches real award-winning sites for inspiration, then generates unique, distinctive designs through iterative conversation. Use when the user wants to design a website, create a visual theme, generate HTML mockups, or build a design system. Use proactively when design tasks are detected.
 - **architect** — software architecture and system design agent. Use when designing new features, modules, APIs, database schemas, or system-level decisions. When entering plan mode for new features or architectural decisions, spawn this agent in the background during the design phase.
+- **clean-code-architect** — clean code architecture agent. Use when reviewing code for refactoring opportunities, planning extractions, identifying tangled logic, or designing clean patterns for existing code.
+- **test-architect** — test architecture and strategy agent. Use when planning what to test, designing test structure, identifying coverage gaps, or deciding how to test a new feature.
 - **crew** — crew workspace expert. Use when the user wants to manage workspaces, list projects, check dev server status, start/stop/restart dev servers, or launch a workspace session.
-- **git-guardian** — git state checker. Use before starting implementation (after plan approval), after completing implementation, and before any push/tag. Checks branch safety, uncommitted changes, and runs project-specific preflight checks before push.
 
 ## Skills
 
@@ -91,7 +90,6 @@ The following skills are available:
 - **reactjs-clean-code** — when writing, reviewing, or refactoring React code, follow these guidelines for component structure, state management, hooks, and composition. Complements `js-ts-clean-code`.
 - **reactjs-new-project** — when scaffolding a new React project, follow these guidelines for project structure, tooling, and conventions.
 - **web-designer** — design system knowledge base (universal components, layout techniques, design principles, CSS variables, markup rules). Support skill for the web-designer agent — not user-invocable.
-- **pr-review-comments** — comment style guide for PR reviews. Ensures comments sound natural and human. Support skill for the pr-reviewer agent — not user-invocable.
 - **crew-remote** — remote management reference for crew workspaces, dev servers, and deployment URLs.
 - **code-documenting** — code documentation and commenting guidelines. Covers when, where, and how to write comments that explain business context, domain rules, external dependencies, and non-obvious decisions. Use when writing, reviewing, or refactoring code that involves business logic or system integrations. Complements `js-ts-clean-code`.
 - **crew-launch** — interactive workspace launcher: discover workspaces, pick one, launch session, start dev servers.

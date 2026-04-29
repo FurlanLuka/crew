@@ -171,9 +171,9 @@ crew notify               # One-time setup (no account needed)
 |-------|-------------|
 | `crew` | Workspace management, dev servers, session launching. |
 | `architect` | Software architecture and system design agent. |
-| `daily-chores` | Read-only daily dashboard. Gathers GitHub PRs, Linear tasks, and project updates. |
+| `clean-code-architect` | Reviews code for refactoring opportunities and clean patterns. |
+| `test-architect` | Test architecture and strategy: what to test, coverage gaps, structure. |
 | `nodejs-code-reviewer` | Reviews Node.js/backend TypeScript code for quality, security, and standards. |
-| `pr-reviewer` | Reviews GitHub pull requests using the gh CLI. |
 | `reactjs-code-reviewer` | Reviews React code for quality, security, and standards. |
 | `web-designer` | Award-winning web designer. Generates unique designs through iterative conversation. |
 
@@ -187,7 +187,6 @@ crew notify               # One-time setup (no account needed)
 | `reactjs-new-project` | Recommended React project architecture and setup conventions. |
 | `crew-remote` | Remote management reference for crew workspaces and dev servers. |
 | `crew-launch` | Interactive workspace launcher with dev server setup. |
-| `pr-review-comments` | Comment style guide for PR reviews. Support skill for pr-reviewer. |
 | `web-designer` | Design system knowledge base for web design generation. Support skill for web-designer. |
 
 To contribute, add your agent or skill and open a PR.
