@@ -302,6 +302,9 @@ func (v DevView) startAllDevServers() tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
+		if err := AssertDirectProjectsAvailable(ws); err != nil {
+			return errMsg{err}
+		}
 
 		settings := config.LoadSettings()
 		host := dev.ResolveHostIP()
@@ -346,6 +349,9 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 
 		ws, err := Load(wsName)
 		if err != nil {
+			return errMsg{err}
+		}
+		if err := AssertDirectProjectsAvailable(ws); err != nil {
 			return errMsg{err}
 		}
 

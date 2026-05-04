@@ -44,6 +44,7 @@ const (
 	stateProjects        // project list for selected workspace
 	stateProjectPick     // pick from pool to add
 	stateProjectRole     // enter role for picked project
+	stateProjectMode     // pick mode (worktree | direct) for picked project
 	stateAddingProject   // async: creating git worktree
 	stateRemovingProject // async: removing git worktree
 	stateProjectConfirmRemove
@@ -70,6 +71,8 @@ type View struct {
 	poolCursor    int
 	roleInput     textinput.Model
 	pickedProject string // name of project being added
+	pickedRole    string // role captured before mode pick
+	modeCursor    int    // 0 = worktree, 1 = direct
 }
 
 func NewView() View {
@@ -94,7 +97,7 @@ func NewView() View {
 
 func (v View) Title() string {
 	switch v.state {
-	case stateProjects, stateProjectPick, stateProjectRole, stateAddingProject, stateRemovingProject, stateProjectConfirmRemove:
+	case stateProjects, stateProjectPick, stateProjectRole, stateProjectMode, stateAddingProject, stateRemovingProject, stateProjectConfirmRemove:
 		return fmt.Sprintf("Projects in \"%s\"", v.selectedWs)
 	}
 	return "Workspaces"
@@ -160,6 +163,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		v.roleInput.Reset()
 		v.pickedProject = ""
+		v.pickedRole = ""
+		v.modeCursor = 0
 		return v, loadWsProjects(v.selectedWs)
 
 	case wsProjectRemovedMsg:
@@ -220,6 +225,8 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleProjectPickKey(msg)
 	case stateProjectRole:
 		return v.handleProjectRoleKey(msg)
+	case stateProjectMode:
+		return v.handleProjectModeKey(msg)
 	case stateProjectConfirmRemove:
 		return v.handleProjectConfirmRemoveKey(msg)
 	case stateDuplicate:
@@ -450,17 +457,50 @@ func (v View) handleProjectRoleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		role := strings.TrimSpace(v.roleInput.Value())
 		name := v.pickedProject
-		wsName := v.selectedWs
 		if role == "" {
 			role = "works on " + name
 		}
-		v.state = stateAddingProject
-		return v, tea.Batch(v.spinner.Tick, addProjectToWorkspace(wsName, name, role))
+		v.pickedRole = role
+		v.modeCursor = 0
+		v.state = stateProjectMode
+		return v, nil
 	}
 
 	var cmd tea.Cmd
 	v.roleInput, cmd = v.roleInput.Update(msg)
 	return v, cmd
+}
+
+func (v View) handleProjectModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, app.Keys.Back):
+		v.state = stateProjectRole
+		return v, nil
+	case key.Matches(msg, app.Keys.Up):
+		if v.modeCursor > 0 {
+			v.modeCursor--
+		}
+		return v, nil
+	case key.Matches(msg, app.Keys.Down):
+		if v.modeCursor < 1 {
+			v.modeCursor++
+		}
+		return v, nil
+	case msg.String() == "w":
+		v.modeCursor = 0
+		return v, nil
+	case msg.String() == "d":
+		v.modeCursor = 1
+		return v, nil
+	case msg.String() == "enter":
+		mode := ModeWorktree
+		if v.modeCursor == 1 {
+			mode = ModeDirect
+		}
+		v.state = stateAddingProject
+		return v, tea.Batch(v.spinner.Tick, addProjectToWorkspace(v.selectedWs, v.pickedProject, v.pickedRole, mode))
+	}
+	return v, nil
 }
 
 func (v View) handleProjectConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -494,14 +534,16 @@ func (v View) View() string {
 		v.renderProjectPick(&b)
 	case stateProjectRole:
 		v.renderProjectRole(&b)
+	case stateProjectMode:
+		v.renderProjectMode(&b)
 	case stateAddingProject:
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
-		b.WriteString(" Creating git worktree...\n")
+		b.WriteString(" Adding project...\n")
 	case stateRemovingProject:
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
-		b.WriteString(" Removing git worktree...\n")
+		b.WriteString(" Removing project...\n")
 	case stateProjectConfirmRemove:
 		v.renderProjectConfirmRemove(&b)
 	case stateDuplicate:
@@ -607,7 +649,30 @@ func (v View) renderDuplicate(b *strings.Builder) {
 
 func (v View) renderConfirmRemove(b *strings.Builder) {
 	name := v.summaries[v.cursor].Name
-	b.WriteString(fmt.Sprintf("  Remove workspace '%s'? This will delete all worktrees. (y/n)\n", name))
+	worktreeCount, directCount := countModes(name)
+	switch {
+	case worktreeCount == 0 && directCount > 0:
+		b.WriteString(fmt.Sprintf("  Remove workspace '%s'? No worktrees to delete; %d direct project(s) will be untouched. (y/n)\n", name, directCount))
+	case worktreeCount > 0 && directCount > 0:
+		b.WriteString(fmt.Sprintf("  Remove workspace '%s'? Will delete %d worktree(s); %d direct project(s) untouched. (y/n)\n", name, worktreeCount, directCount))
+	default:
+		b.WriteString(fmt.Sprintf("  Remove workspace '%s'? This will delete all worktrees. (y/n)\n", name))
+	}
+}
+
+func countModes(wsName string) (worktree, direct int) {
+	ws, err := Load(wsName)
+	if err != nil {
+		return 0, 0
+	}
+	for _, wp := range ws.Projects {
+		if IsDirect(wp) {
+			direct++
+		} else {
+			worktree++
+		}
+	}
+	return
 }
 
 func (v View) renderProjects(b *strings.Builder) {
@@ -629,8 +694,12 @@ func (v View) renderProjects(b *strings.Builder) {
 
 			b.WriteString(cursor)
 			b.WriteString(name)
+			if IsDirect(wp) {
+				b.WriteString("  ")
+				b.WriteString(app.Highlight.Render("[direct]"))
+			}
 			b.WriteString("  ")
-			b.WriteString(app.Subtle.Render(ProjectPath(v.selectedWs, wp.Name)))
+			b.WriteString(app.Subtle.Render(ResolvePath(v.selectedWs, wp)))
 			b.WriteString("\n")
 
 			if wp.Role != "" {
@@ -700,9 +769,46 @@ func (v View) renderProjectRole(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+func (v View) renderProjectMode(b *strings.Builder) {
+	b.WriteString(fmt.Sprintf("  Adding '%s'\n\n", v.pickedProject))
+	b.WriteString("  ")
+	b.WriteString(app.Subtle.Render("Mode:"))
+	b.WriteString("\n")
+
+	options := []struct {
+		label, desc string
+	}{
+		{"worktree", "Fresh git worktree on a new crew/ branch (default — isolated)"},
+		{"direct", "Use the project's canonical checkout (NOT isolated; only one workspace at a time)"},
+	}
+	for i, opt := range options {
+		cursor := "  "
+		if i == v.modeCursor {
+			cursor = app.Selected.Render("> ")
+		}
+		label := opt.label
+		if i == v.modeCursor {
+			label = app.Selected.Render(label)
+		}
+		b.WriteString(cursor)
+		b.WriteString(label)
+		b.WriteString("  ")
+		b.WriteString(app.Subtle.Render(opt.desc))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n  ")
+	b.WriteString(app.HelpStyle.Render("w worktree  d direct  enter add  esc back"))
+	b.WriteString("\n")
+}
+
 func (v View) renderProjectConfirmRemove(b *strings.Builder) {
-	name := v.wsProjects[v.projCursor].Name
-	b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? This will delete the worktree. (y/n)\n", name))
+	wp := v.wsProjects[v.projCursor]
+	if IsDirect(wp) {
+		b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? Project repo will not be touched. (y/n)\n", wp.Name))
+		return
+	}
+	b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? This will delete the worktree. (y/n)\n", wp.Name))
 }
 
 // ── Commands ──
@@ -760,9 +866,9 @@ func loadWsProjects(wsName string) tea.Cmd {
 	}
 }
 
-func addProjectToWorkspace(wsName, projName, role string) tea.Cmd {
+func addProjectToWorkspace(wsName, projName, role, mode string) tea.Cmd {
 	return func() tea.Msg {
-		if err := AddProject(wsName, projName, role); err != nil {
+		if err := AddProject(wsName, projName, role, mode); err != nil {
 			return errMsg{err}
 		}
 		return wsProjectAddedMsg{projName}
@@ -802,14 +908,14 @@ func openCode(wsName string) tea.Cmd {
 
 		var remotePath string
 		if len(ws.Projects) == 1 {
-			remotePath = ProjectPath(wsName, ws.Projects[0].Name)
+			remotePath = ResolvePath(wsName, ws.Projects[0])
 		} else {
 			wsFile := CodeWorkspaceFilePath(wsName)
 			var projects []exec.WorkspaceProject
 			for _, wp := range ws.Projects {
 				projects = append(projects, exec.WorkspaceProject{
 					Name: wp.Name,
-					Path: ProjectPath(wsName, wp.Name),
+					Path: ResolvePath(wsName, wp),
 				})
 			}
 			if err := exec.GenerateCodeWorkspace(wsFile, projects, nil); err != nil {

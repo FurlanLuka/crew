@@ -329,7 +329,7 @@ func cmdCode() {
 
 	var remotePath string
 	if len(ws.Projects) == 1 {
-		remotePath = workspace.ProjectPath(wsName, ws.Projects[0].Name)
+		remotePath = workspace.ResolvePath(wsName, ws.Projects[0])
 	} else {
 		// Generate .code-workspace file for multi-project workspaces
 		wsFile := workspace.CodeWorkspaceFilePath(wsName)
@@ -337,7 +337,7 @@ func cmdCode() {
 		for _, wp := range ws.Projects {
 			projects = append(projects, exec.WorkspaceProject{
 				Name: wp.Name,
-				Path: workspace.ProjectPath(wsName, wp.Name),
+				Path: workspace.ResolvePath(wsName, wp),
 			})
 		}
 		if err := exec.GenerateCodeWorkspace(wsFile, projects, nil); err != nil {
@@ -378,8 +378,12 @@ func cmdShow() {
 	}
 
 	for _, wp := range ws.Projects {
-		path := workspace.ProjectPath(wsName, wp.Name)
-		fmt.Printf("%s\t%s\t%s\n", wp.Name, path, wp.Role)
+		path := workspace.ResolvePath(wsName, wp)
+		mode := "worktree"
+		if workspace.IsDirect(wp) {
+			mode = "direct"
+		}
+		fmt.Printf("%s\t%s\t%s\t%s\n", wp.Name, path, mode, wp.Role)
 	}
 }
 
@@ -561,20 +565,28 @@ func cmdAddWorkspace() {
 	// With project arg, add project to workspace
 	projName := os.Args[4]
 	role := ""
+	mode := workspace.ModeWorktree
 	for _, arg := range os.Args[5:] {
-		if strings.HasPrefix(arg, "--role=") {
+		switch {
+		case strings.HasPrefix(arg, "--role="):
 			role = strings.TrimPrefix(arg, "--role=")
-		} else {
+		case arg == "--direct":
+			mode = workspace.ModeDirect
+		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
 		}
 	}
 
-	if err := workspace.AddProject(wsName, projName, role); err != nil {
+	if err := workspace.AddProject(wsName, projName, role, mode); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Added %s to %s\n", projName, wsName)
+	if mode == workspace.ModeDirect {
+		fmt.Printf("Added %s to %s (direct mode — no worktree, points at canonical repo)\n", projName, wsName)
+	} else {
+		fmt.Printf("Added %s to %s\n", projName, wsName)
+	}
 }
 
 func cmdConfig() {

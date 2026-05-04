@@ -36,7 +36,7 @@ func EnsureGitSession(wsName string) (string, error) {
 		crewExec.EnsureTmuxConfig()
 		lgCmd := crewExec.LazygitCommand()
 
-		firstDir := ProjectPath(wsName, ws.Projects[0].Name)
+		firstDir := ResolvePath(wsName, ws.Projects[0])
 		if err := crewExec.CreateTmuxSession(session, firstDir); err != nil {
 			return "", fmt.Errorf("failed to create tmux session: %w", err)
 		}
@@ -46,7 +46,7 @@ func EnsureGitSession(wsName string) (string, error) {
 		crewExec.RenameTmuxWindow(session, ws.Projects[0].Name)
 
 		for _, wp := range ws.Projects[1:] {
-			dir := ProjectPath(wsName, wp.Name)
+			dir := ResolvePath(wsName, wp)
 			crewExec.CreateTmuxWindow(session, wp.Name, dir, lgCmd)
 		}
 	}

@@ -62,7 +62,7 @@ func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
 	}
 
 	multiProject := len(ws.Projects) > 1
-	workDir := ProjectPath(wsName, ws.Projects[0].Name)
+	workDir := ResolvePath(wsName, ws.Projects[0])
 
 	if multiProject {
 		workDir = WorkspaceDir(wsName)
@@ -77,7 +77,7 @@ func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
 
 	if multiProject {
 		for _, wp := range ws.Projects {
-			parts = append(parts, "--add-dir", shellQuote(ProjectPath(wsName, wp.Name)))
+			parts = append(parts, "--add-dir", shellQuote(ResolvePath(wsName, wp)))
 		}
 
 		// Use $(cat ...) so the shell reads the file rather than inlining

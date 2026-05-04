@@ -1,7 +1,9 @@
 package workspace
 
 import (
+	"encoding/json"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -159,6 +161,100 @@ func TestProjectPath(t *testing.T) {
 	want := filepath.Join(config.WorkspacesDir, "wrk1", "api")
 	if got != want {
 		t.Errorf("ProjectPath = %q, want %q", got, want)
+	}
+}
+
+func TestWorktreePath(t *testing.T) {
+	tmp := t.TempDir()
+	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
+
+	got := WorktreePath("wrk1", "api")
+	want := filepath.Join(config.WorkspacesDir, "wrk1", "api")
+	if got != want {
+		t.Errorf("WorktreePath = %q, want %q", got, want)
+	}
+}
+
+func TestResolvePath(t *testing.T) {
+	setupTestConfig(t)
+
+	project.Add(project.Project{Name: "api", Path: "/canonical/api"})
+
+	worktreeWp := WorkspaceProject{Name: "api", Role: "r"}
+	got := ResolvePath("ws", worktreeWp)
+	want := WorktreePath("ws", "api")
+	if got != want {
+		t.Errorf("ResolvePath worktree = %q, want %q", got, want)
+	}
+
+	directWp := WorkspaceProject{Name: "api", Role: "r", Mode: ModeDirect}
+	got = ResolvePath("ws", directWp)
+	want = "/canonical/api"
+	if got != want {
+		t.Errorf("ResolvePath direct = %q, want %q", got, want)
+	}
+}
+
+func TestIsDirect(t *testing.T) {
+	cases := []struct {
+		mode string
+		want bool
+	}{
+		{"", false},
+		{"worktree", false},
+		{"direct", true},
+		{"weird", false},
+	}
+	for _, c := range cases {
+		got := IsDirect(WorkspaceProject{Mode: c.mode})
+		if got != c.want {
+			t.Errorf("IsDirect(%q) = %v, want %v", c.mode, got, c.want)
+		}
+	}
+}
+
+func TestWorkspaceProjectJSON_RoundTrip(t *testing.T) {
+	// Empty mode round-trips through "" (omitempty keeps JSON tidy).
+	worktree := WorkspaceProject{Name: "api", Role: "backend"}
+	data, err := json.Marshal(worktree)
+	if err != nil {
+		t.Fatalf("marshal worktree: %v", err)
+	}
+	if strings.Contains(string(data), "\"mode\"") {
+		t.Errorf("worktree JSON should omit mode field, got %s", data)
+	}
+	var decoded WorkspaceProject
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if IsDirect(decoded) {
+		t.Error("decoded worktree should not be direct")
+	}
+
+	// Direct mode round-trips faithfully.
+	direct := WorkspaceProject{Name: "api", Role: "backend", Mode: ModeDirect}
+	data, err = json.Marshal(direct)
+	if err != nil {
+		t.Fatalf("marshal direct: %v", err)
+	}
+	if !strings.Contains(string(data), "\"mode\":\"direct\"") {
+		t.Errorf("direct JSON missing mode field, got %s", data)
+	}
+	var decoded2 WorkspaceProject
+	if err := json.Unmarshal(data, &decoded2); err != nil {
+		t.Fatalf("unmarshal direct: %v", err)
+	}
+	if !IsDirect(decoded2) {
+		t.Error("decoded direct should be direct")
+	}
+
+	// Old JSONs without mode decode as worktree.
+	var legacy WorkspaceProject
+	if err := json.Unmarshal([]byte(`{"name":"api","role":"r"}`), &legacy); err != nil {
+		t.Fatalf("unmarshal legacy: %v", err)
+	}
+	if IsDirect(legacy) {
+		t.Error("legacy entry without mode should not be direct")
 	}
 }
 
@@ -323,6 +419,241 @@ func TestCreateCreatesDirectory(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Error("workspace path should be a directory")
+	}
+}
+
+// ── Direct mode ──
+
+// initRepo turns dir into a tiny git repo with an initial commit, so it can be
+// used as a project pool entry for direct-mode tests.
+func initRepo(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "--initial-branch=main"},
+		{"-c", "user.email=a@b", "-c", "user.name=test", "commit", "--allow-empty", "-m", "init"},
+	} {
+		cmd := osexec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	if err := Create("ws"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := AddProject("ws", "api", "backend", ModeDirect); err != nil {
+		t.Fatalf("AddProject direct: %v", err)
+	}
+
+	// No worktree should have been created under the workspaces tree.
+	wt := WorktreePath("ws", "api")
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree dir %s should not exist for direct mode", wt)
+	}
+
+	ws, err := Load("ws")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(ws.Projects) != 1 || !IsDirect(ws.Projects[0]) {
+		t.Fatalf("expected 1 direct project, got %+v", ws.Projects)
+	}
+}
+
+func TestRemoveProject_DirectMode_LeavesRepoIntact(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+
+	sentinel := filepath.Join(repo, "SENTINEL")
+	if err := os.WriteFile(sentinel, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	if err := Create("ws"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddProject("ws", "api", "backend", ModeDirect); err != nil {
+		t.Fatalf("AddProject direct: %v", err)
+	}
+
+	if err := RemoveProject("ws", "api"); err != nil {
+		t.Fatalf("RemoveProject: %v", err)
+	}
+
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("canonical repo sentinel was destroyed by RemoveProject: %v", err)
+	}
+	if _, err := os.Stat(repo); err != nil {
+		t.Fatalf("canonical repo dir was destroyed by RemoveProject: %v", err)
+	}
+}
+
+func TestRemove_DirectMode_LeavesRepoIntact(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+
+	sentinel := filepath.Join(repo, "SENTINEL")
+	os.WriteFile(sentinel, []byte("keep me"), 0o644)
+
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	if err := Create("ws"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddProject("ws", "api", "backend", ModeDirect); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Remove("ws"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("canonical repo sentinel was destroyed by Remove: %v", err)
+	}
+	if _, err := os.Stat(repo); err != nil {
+		t.Fatalf("canonical repo dir was destroyed by Remove: %v", err)
+	}
+}
+
+func TestAddProject_DirectMode_CollisionRefused(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	if err := Create("ws-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Create("ws-b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddProject("ws-a", "api", "owner", ModeDirect); err != nil {
+		t.Fatalf("first direct add: %v", err)
+	}
+	err := AddProject("ws-b", "api", "owner", ModeDirect)
+	if err == nil {
+		t.Fatal("second direct add should have been refused")
+	}
+	if !strings.Contains(err.Error(), "ws-a") {
+		t.Errorf("error should mention conflicting workspace 'ws-a', got: %v", err)
+	}
+}
+
+func TestDuplicate_RefusesDirectCollision(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	if err := Create("ws-src"); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddProject("ws-src", "api", "owner", ModeDirect); err != nil {
+		t.Fatalf("AddProject direct: %v", err)
+	}
+
+	err := Duplicate("ws-src", "ws-dst")
+	if err == nil {
+		t.Fatal("duplicating a workspace with a direct entry should refuse (collision with source)")
+	}
+}
+
+func TestGeneratePrompt_DirectModeFraming(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	ws := &Workspace{
+		Name: "ws",
+		Projects: []WorkspaceProject{
+			{Name: "api", Role: "backend", Mode: ModeDirect},
+		},
+	}
+	text, err := GeneratePrompt(ws)
+	if err != nil {
+		t.Fatalf("GeneratePrompt: %v", err)
+	}
+	if !containsAll(text, "[direct]", "CAUTION", "NOT isolated") {
+		t.Errorf("direct-mode prompt missing direct framing:\n%s", text)
+	}
+	if strings.Contains(text, "IMPORTANT: `[worktree]`") {
+		t.Errorf("direct-only workspace should not include worktree framing:\n%s", text)
+	}
+}
+
+func TestGeneratePrompt_MixedModes(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "api", Path: repo})
+	project.Add(project.Project{Name: "web", Path: filepath.Join(tmp, "web")})
+
+	ws := &Workspace{
+		Name: "ws",
+		Projects: []WorkspaceProject{
+			{Name: "api", Role: "backend", Mode: ModeDirect},
+			{Name: "web", Role: "frontend"},
+		},
+	}
+	text, err := GeneratePrompt(ws)
+	if err != nil {
+		t.Fatalf("GeneratePrompt: %v", err)
+	}
+	if !containsAll(text, "[direct]", "[worktree]", "CAUTION", "IMPORTANT") {
+		t.Errorf("mixed-mode prompt missing both framings:\n%s", text)
+	}
+}
+
+func TestAssertNoOtherDirect_IgnoresWorktreeEntries(t *testing.T) {
+	tmp := setupTestConfig(t)
+
+	repo := filepath.Join(tmp, "repo")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "api", Path: repo})
+
+	if err := Create("ws-other"); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-seed ws-other with a worktree entry for "api" by hand (avoid worktree creation).
+	ws, _ := Load("ws-other")
+	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "api", Role: "r"})
+	if err := Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	// A direct add elsewhere should NOT be blocked by a worktree entry.
+	if err := assertNoOtherDirect("api", "ws-new"); err != nil {
+		t.Errorf("worktree entries must not block direct adds: %v", err)
 	}
 }
 

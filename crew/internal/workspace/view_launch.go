@@ -322,12 +322,12 @@ func launchWithEditor(ws *Workspace, editor string, skipPermissions bool) tea.Ms
 	for i, wp := range ws.Projects {
 		projects[i] = exec.WorkspaceProject{
 			Name: wp.Name,
-			Path: ProjectPath(ws.Name, wp.Name),
+			Path: ResolvePath(ws.Name, wp),
 		}
 	}
 
 	multiProject := len(ws.Projects) > 1
-	leadPath := ProjectPath(ws.Name, ws.Projects[0].Name)
+	leadPath := ResolvePath(ws.Name, ws.Projects[0])
 
 	claude := &exec.ClaudeTask{
 		LeadPath:        leadPath,

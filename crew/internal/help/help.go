@@ -54,15 +54,17 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "workspace",
-					Description: "Create a new workspace, or add a project to an existing one. Without a project argument, creates an empty workspace. With a project, creates a git worktree and adds it to the workspace.",
-					Usage:       "crew add workspace <name> [<project> --role=<role>]",
+					Description: "Create a new workspace, or add a project to an existing one. Without a project argument, creates an empty workspace. With a project, creates a git worktree (default) and adds it to the workspace, or attaches the canonical repo with --direct.",
+					Usage:       "crew add workspace <name> [<project> --role=<role>] [--direct]",
 					Flags: []FlagInfo{
 						{Name: "--role=<r>", Description: "Role description for the project in this workspace (e.g., \"Backend API\", \"Frontend\")"},
+						{Name: "--direct", Description: "Attach the project's canonical checkout instead of creating a fresh worktree. Changes are NOT isolated. Only one workspace at a time may direct-mount a given project."},
 					},
 					Examples: []string{
 						"crew add workspace feature-auth",
 						"crew add workspace feature-auth my-api --role=\"Auth service\"",
 						"crew add workspace feature-auth frontend --role=\"Login UI\"",
+						"crew add workspace quickfix my-api --role=\"Hotfix\" --direct",
 					},
 				},
 			},

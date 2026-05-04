@@ -176,8 +176,14 @@ func TestAddSubcommands(t *testing.T) {
 	if ws.Usage == "" {
 		t.Error("add workspace missing usage")
 	}
-	if len(ws.Flags) != 1 || ws.Flags[0].Name != "--role=<r>" {
-		t.Error("add workspace should have --role flag")
+	if len(ws.Flags) != 2 {
+		t.Fatalf("add workspace should have 2 flags, got %d", len(ws.Flags))
+	}
+	wantFlags := map[string]bool{"--role=<r>": true, "--direct": true}
+	for _, f := range ws.Flags {
+		if !wantFlags[f.Name] {
+			t.Errorf("unexpected flag %q on add workspace", f.Name)
+		}
 	}
 }
 
