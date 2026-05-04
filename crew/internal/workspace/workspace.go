@@ -296,6 +296,7 @@ func Remove(name string) error {
 	dev.StopAll(name)
 	dev.StopProxyIfIdle()
 	os.Remove(PromptFilePath(name))
+	os.Remove(NoTeamsPromptFilePath(name))
 
 	ws, err := Load(name)
 	if err == nil {
@@ -425,9 +426,15 @@ func currentBranch(path string) string {
 	return branch
 }
 
-// PromptFilePath returns the path for the workspace prompt file.
+// PromptFilePath returns the path for the workspace's agent-team prompt file.
 func PromptFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, "prompt-"+wsName+".md")
+}
+
+// NoTeamsPromptFilePath returns the path for the flat (no-agent-teams) prompt
+// file used by the "Editor + Claude (No teams)" launch mode.
+func NoTeamsPromptFilePath(wsName string) string {
+	return filepath.Join(config.ConfigDir, "prompt-"+wsName+"-noteams.md")
 }
 
 // CodeWorkspaceFilePath returns the .code-workspace file path.
@@ -497,6 +504,36 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 	text := b.String()
 	promptFile := PromptFilePath(ws.Name)
 	if err := os.WriteFile(promptFile, []byte(text), 0o644); err != nil {
+		return "", err
+	}
+	return text, nil
+}
+
+// GenerateNoTeamsPrompt writes a flat (no-agent-team) prompt for a workspace
+// and returns its text. The prompt orients a single Claude instance to every
+// project in the workspace by listing names, working directories, and roles —
+// without instructing it to spawn a team.
+//
+// Intended for the "Editor + Claude (No teams)" launch mode, which starts
+// Claude at WorkspaceDir(ws.Name) with each project exposed via --add-dir.
+func GenerateNoTeamsPrompt(ws *Workspace) (string, error) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", ws.Name)
+	b.WriteString("This workspace contains the following project worktrees, each on its own crew/ branch — all changes stay isolated until merged:\n\n")
+	for _, wp := range ws.Projects {
+		path := ResolvePath(ws.Name, wp)
+		role := wp.Role
+		if role == "" {
+			role = "(no role specified)"
+		}
+		fmt.Fprintf(&b, "- **%s** (%s): %s\n", wp.Name, path, role)
+	}
+	b.WriteString("\n")
+	b.WriteString("cd into the relevant project's directory before running commands or editing files there.\n")
+	b.WriteString("Wait for my instructions on what to build.\n")
+
+	text := b.String()
+	if err := os.WriteFile(NoTeamsPromptFilePath(ws.Name), []byte(text), 0o644); err != nil {
 		return "", err
 	}
 	return text, nil

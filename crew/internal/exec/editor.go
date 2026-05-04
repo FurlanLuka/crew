@@ -61,13 +61,14 @@ type WorkspaceProject struct {
 }
 
 // ClaudeTask configures the Claude task in the .code-workspace file.
-// Nil means no Claude task. For single-project, set AgentTeams=false.
+// Nil means no Claude task.
 type ClaudeTask struct {
-	PromptFile      string // Path to prompt file (required for agent teams)
-	LeadPath        string // Working directory for Claude
-	ClaudeConfigDir string // Custom CLAUDE_CONFIG_DIR (empty = default)
-	AgentTeams      bool   // Enable agent teams (multi-project)
-	SkipPermissions bool   // Add --dangerously-skip-permissions
+	PromptFile      string   // Path to prompt file; passed as the initial message via $(cat ...).
+	LeadPath        string   // Working directory for Claude.
+	ClaudeConfigDir string   // Custom CLAUDE_CONFIG_DIR (empty = default).
+	AddDirs         []string // Extra directories to expose via --add-dir (e.g. sibling worktrees).
+	AgentTeams      bool     // Enable agent teams (env var + --teammate-mode).
+	SkipPermissions bool     // Add --dangerously-skip-permissions.
 }
 
 // GenerateCodeWorkspace creates a .code-workspace file.
@@ -108,13 +109,16 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, claude 
 			parts = append(parts, "--dangerously-skip-permissions")
 		}
 
+		for _, dir := range claude.AddDirs {
+			parts = append(parts, "--add-dir", dir)
+		}
+
 		if claude.AgentTeams {
-			for _, p := range projects[1:] {
-				parts = append(parts, "--add-dir", p.Path)
-			}
-			if claude.PromptFile != "" {
-				parts = append(parts, "--teammate-mode", "in-process", "\"$(cat "+claude.PromptFile+")\"")
-			}
+			parts = append(parts, "--teammate-mode", "in-process")
+		}
+
+		if claude.PromptFile != "" {
+			parts = append(parts, "\"$(cat "+claude.PromptFile+")\"")
 		}
 
 		claudeCmd := ""

@@ -96,6 +96,7 @@ func TestGenerateCodeWorkspace_ClaudeMultiProject(t *testing.T) {
 	claude := &ClaudeTask{
 		LeadPath:   "/tmp/ws",
 		PromptFile: "/tmp/prompt.md",
+		AddDirs:    []string{"/tmp/web"},
 		AgentTeams: true,
 	}
 
@@ -125,6 +126,51 @@ func TestGenerateCodeWorkspace_ClaudeMultiProject(t *testing.T) {
 	}
 	if !strings.Contains(cmd, "--teammate-mode") {
 		t.Error("multi-project should contain --teammate-mode")
+	}
+}
+
+func TestGenerateCodeWorkspace_NoTeamsMultiProject(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "noteams.code-workspace")
+	projects := []WorkspaceProject{
+		{Name: "api", Path: "/tmp/api"},
+		{Name: "web", Path: "/tmp/web"},
+	}
+
+	claude := &ClaudeTask{
+		LeadPath:   "/tmp/ws",
+		PromptFile: "/tmp/prompt.md",
+		AddDirs:    []string{"/tmp/api", "/tmp/web"},
+		AgentTeams: false,
+	}
+
+	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
+		t.Fatalf("GenerateCodeWorkspace: %v", err)
+	}
+
+	ws := readWorkspace(t, filePath)
+	tasks := ws["tasks"].(map[string]interface{})
+	taskList := tasks["tasks"].([]interface{})
+	task := taskList[0].(map[string]interface{})
+	cmd := task["command"].(string)
+
+	if strings.Contains(cmd, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") {
+		t.Errorf("no-teams launch must not set agent-teams env var, got: %s", cmd)
+	}
+	if strings.Contains(cmd, "--teammate-mode") {
+		t.Errorf("no-teams launch must not pass --teammate-mode, got: %s", cmd)
+	}
+	for _, dir := range []string{"--add-dir /tmp/api", "--add-dir /tmp/web"} {
+		if !strings.Contains(cmd, dir) {
+			t.Errorf("no-teams launch should expose %q, got: %s", dir, cmd)
+		}
+	}
+	if !strings.Contains(cmd, "$(cat /tmp/prompt.md)") {
+		t.Errorf("no-teams launch should include prompt file via $(cat ...), got: %s", cmd)
+	}
+
+	opts := task["options"].(map[string]interface{})
+	if opts["cwd"] != "/tmp/ws" {
+		t.Errorf("cwd = %v, want /tmp/ws (workspace root)", opts["cwd"])
 	}
 }
 

@@ -633,6 +633,68 @@ func TestGeneratePrompt_MixedModes(t *testing.T) {
 	}
 }
 
+func TestGenerateNoTeamsPrompt(t *testing.T) {
+	setupTestConfig(t)
+
+	ws := &Workspace{
+		Name: "flat-ws",
+		Projects: []WorkspaceProject{
+			{Name: "api", Role: "backend service"},
+			{Name: "web", Role: "frontend app"},
+		},
+	}
+
+	text, err := GenerateNoTeamsPrompt(ws)
+	if err != nil {
+		t.Fatalf("GenerateNoTeamsPrompt: %v", err)
+	}
+
+	if strings.Contains(text, "agent team") {
+		t.Errorf("no-teams prompt must not instruct agent-team creation, got:\n%s", text)
+	}
+	if !containsAll(text, "api", "web", "backend service", "frontend app", "flat-ws") {
+		t.Errorf("no-teams prompt missing expected content:\n%s", text)
+	}
+
+	if _, err := os.Stat(NoTeamsPromptFilePath("flat-ws")); err != nil {
+		t.Errorf("no-teams prompt file should be written: %v", err)
+	}
+	// Regular team prompt file should NOT be created by GenerateNoTeamsPrompt.
+	if _, err := os.Stat(PromptFilePath("flat-ws")); !os.IsNotExist(err) {
+		t.Error("GenerateNoTeamsPrompt should not write the agent-team prompt file")
+	}
+}
+
+func TestRemove_DeletesBothPromptFiles(t *testing.T) {
+	setupTestConfig(t)
+
+	if err := Create("two-prompts"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	ws, _ := Load("two-prompts")
+	ws.Projects = []WorkspaceProject{{Name: "p", Role: "r"}}
+	Save(ws)
+
+	GeneratePrompt(ws)
+	GenerateNoTeamsPrompt(ws)
+
+	for _, path := range []string{PromptFilePath("two-prompts"), NoTeamsPromptFilePath("two-prompts")} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s to exist before Remove", path)
+		}
+	}
+
+	if err := Remove("two-prompts"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	for _, path := range []string{PromptFilePath("two-prompts"), NoTeamsPromptFilePath("two-prompts")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("Remove should delete %s", path)
+		}
+	}
+}
+
 func TestAssertNoOtherDirect_IgnoresWorktreeEntries(t *testing.T) {
 	tmp := setupTestConfig(t)
 

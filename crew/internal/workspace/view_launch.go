@@ -16,7 +16,8 @@ import (
 // ── Messages ──
 
 type launchDataLoadedMsg struct {
-	hasEditor bool
+	hasEditor   bool
+	noTeamsMode bool // workspace qualifies for the "no teams" launch modes
 }
 type launchExecutedMsg struct{}
 
@@ -33,6 +34,8 @@ type claudeSessionExistsMsg struct {
 const (
 	launchModeEditorClaude = iota
 	launchModeEditorClaudeYolo
+	launchModeEditorClaudeNoTeams
+	launchModeEditorClaudeNoTeamsYolo
 	launchModeClaude
 	launchModeClaudeYolo
 )
@@ -40,8 +43,28 @@ const (
 var launchModeLabels = []string{
 	"Editor + Claude",
 	"Editor + Claude (Skip permissions)",
+	"Editor + Claude (No teams)",
+	"Editor + Claude (No teams, Skip permissions)",
 	"Claude",
 	"Claude (Skip permissions)",
+}
+
+// launchModeNoTeams reports whether mode runs Claude in flat (no-agent-team) form.
+func launchModeNoTeams(mode int) bool {
+	return mode == launchModeEditorClaudeNoTeams || mode == launchModeEditorClaudeNoTeamsYolo
+}
+
+// availableLaunchModes returns the launch modes to display for a workspace.
+// The "no teams" modes only make sense when there's more than one worktree
+// project — single-project workspaces never use teams, and direct-mode
+// projects don't share a common root for Claude to start in.
+func availableLaunchModes(includeNoTeams bool) []int {
+	modes := []int{launchModeEditorClaude, launchModeEditorClaudeYolo}
+	if includeNoTeams {
+		modes = append(modes, launchModeEditorClaudeNoTeams, launchModeEditorClaudeNoTeamsYolo)
+	}
+	modes = append(modes, launchModeClaude, launchModeClaudeYolo)
+	return modes
 }
 
 // ── States ──
@@ -60,6 +83,8 @@ type LaunchView struct {
 	base             string
 	state            launchState
 	hasEditor        bool
+	noTeamsMode      bool // true if workspace qualifies for no-teams launch (multi-project, all worktree)
+	modes            []int
 	modeCursor       int
 	sessionCursor    int
 	sessionWsName    string
@@ -84,10 +109,23 @@ func (v LaunchView) Title() string {
 }
 
 func (v LaunchView) Init() tea.Cmd {
+	wsName := v.base
 	return func() tea.Msg {
 		editor := exec.DetectEditor()
+		noTeams := false
+		if ws, err := Load(wsName); err == nil && len(ws.Projects) > 1 {
+			allWorktree := true
+			for _, wp := range ws.Projects {
+				if IsDirect(wp) {
+					allWorktree = false
+					break
+				}
+			}
+			noTeams = allWorktree
+		}
 		return launchDataLoadedMsg{
-			hasEditor: editor != "",
+			hasEditor:   editor != "",
+			noTeamsMode: noTeams,
 		}
 	}
 }
@@ -99,6 +137,11 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case launchDataLoadedMsg:
 		v.hasEditor = msg.hasEditor
+		v.noTeamsMode = msg.noTeamsMode
+		v.modes = availableLaunchModes(v.noTeamsMode)
+		if v.modeCursor >= len(v.modes) {
+			v.modeCursor = 0
+		}
 		return v, nil
 
 	case launchExecutedMsg:
@@ -161,7 +204,7 @@ func (v LaunchView) handleModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return v, nil
 	case key.Matches(msg, app.Keys.Down):
-		if v.modeCursor < len(launchModeLabels)-1 {
+		if v.modeCursor < len(v.modes)-1 {
 			v.modeCursor++
 		}
 		return v, nil
@@ -239,14 +282,14 @@ func (v LaunchView) renderModeSelect(b *strings.Builder) {
 	b.WriteString(app.Subtle.Render("Mode:"))
 	b.WriteString("\n")
 
-	for i, label := range launchModeLabels {
+	for i, mode := range v.modes {
 		cursor := "  "
 		if i == v.modeCursor {
 			cursor = app.Selected.Render("> ")
 		}
-		display := label
+		display := launchModeLabels[mode]
 		if i == v.modeCursor {
-			display = app.Selected.Render(label)
+			display = app.Selected.Render(display)
 		}
 		b.WriteString("  ")
 		b.WriteString(cursor)
@@ -289,11 +332,15 @@ func (v LaunchView) renderSessionExists(b *strings.Builder) {
 
 func (v LaunchView) executeLaunch() tea.Cmd {
 	wsName := v.base
-	mode := v.modeCursor
+	if v.modeCursor >= len(v.modes) {
+		return func() tea.Msg { return errMsg{fmt.Errorf("no launch mode selected")} }
+	}
+	mode := v.modes[v.modeCursor]
 
 	return func() tea.Msg {
 		switch mode {
-		case launchModeEditorClaude, launchModeEditorClaudeYolo:
+		case launchModeEditorClaude, launchModeEditorClaudeYolo,
+			launchModeEditorClaudeNoTeams, launchModeEditorClaudeNoTeamsYolo:
 			ws, err := Load(wsName)
 			if err != nil {
 				return errMsg{err}
@@ -305,7 +352,11 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			if editor == "" {
 				return errMsg{fmt.Errorf("no editor detected — install VS Code or Cursor, or use 'Claude' mode")}
 			}
-			return launchWithEditor(ws, editor, mode == launchModeEditorClaudeYolo)
+			skipPerms := mode == launchModeEditorClaudeYolo || mode == launchModeEditorClaudeNoTeamsYolo
+			if launchModeNoTeams(mode) {
+				return launchWithEditorNoTeams(ws, editor, skipPerms)
+			}
+			return launchWithEditor(ws, editor, skipPerms)
 
 		case launchModeClaude, launchModeClaudeYolo:
 			return launchClaude(wsName, mode == launchModeClaudeYolo)
@@ -345,6 +396,47 @@ func launchWithEditor(ws *Workspace, editor string, skipPermissions bool) tea.Ms
 		}
 		claude.PromptFile = PromptFilePath(ws.Name)
 		claude.LeadPath = WorkspaceDir(ws.Name)
+		for _, p := range projects[1:] {
+			claude.AddDirs = append(claude.AddDirs, p.Path)
+		}
+	}
+
+	if err := exec.GenerateCodeWorkspace(wsFile, projects, claude); err != nil {
+		return errMsg{err}
+	}
+	if err := exec.OpenEditor(editor, wsFile); err != nil {
+		return errMsg{err}
+	}
+	return launchExecutedMsg{}
+}
+
+// launchWithEditorNoTeams runs a single flat Claude instance at the workspace
+// root with all project worktrees exposed via --add-dir. The initial prompt
+// just lists project locations and roles — no agent team coordination.
+func launchWithEditorNoTeams(ws *Workspace, editor string, skipPermissions bool) tea.Msg {
+	wsFile := CodeWorkspaceFilePath(ws.Name)
+
+	projects := make([]exec.WorkspaceProject, len(ws.Projects))
+	addDirs := make([]string, 0, len(ws.Projects))
+	for i, wp := range ws.Projects {
+		path := ResolvePath(ws.Name, wp)
+		projects[i] = exec.WorkspaceProject{Name: wp.Name, Path: path}
+		addDirs = append(addDirs, path)
+	}
+
+	if _, err := GenerateNoTeamsPrompt(ws); err != nil {
+		return errMsg{err}
+	}
+
+	claude := &exec.ClaudeTask{
+		LeadPath:        WorkspaceDir(ws.Name),
+		PromptFile:      NoTeamsPromptFilePath(ws.Name),
+		AddDirs:         addDirs,
+		AgentTeams:      false,
+		SkipPermissions: skipPermissions,
+	}
+	if config.UserSetClaudeConfig {
+		claude.ClaudeConfigDir = config.ClaudeConfigDir
 	}
 
 	if err := exec.GenerateCodeWorkspace(wsFile, projects, claude); err != nil {
