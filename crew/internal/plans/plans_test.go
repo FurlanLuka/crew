@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
 func setupTestConfig(t *testing.T) string {
@@ -92,6 +93,20 @@ func TestURL_DefaultDomain(t *testing.T) {
 	}
 	if host[len(host)-7:] != ".nip.io" {
 		t.Errorf("host %q should end with '.nip.io'", host)
+	}
+}
+
+func TestURL_NoProxyMode(t *testing.T) {
+	setupTestConfig(t)
+
+	if err := dev.SavePlansNoProxyPort(54321); err != nil {
+		t.Fatalf("SavePlansNoProxyPort: %v", err)
+	}
+	defer dev.RemovePlansPort()
+
+	u := URL()
+	if u != "http://localhost:54321" {
+		t.Errorf("URL() = %q, want http://localhost:54321", u)
 	}
 }
 

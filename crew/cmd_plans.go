@@ -18,11 +18,20 @@ func cmdPlans() {
 
 	switch os.Args[2] {
 	case "start":
+		noProxy := false
+		for _, arg := range os.Args[3:] {
+			if arg == "--no-proxy" {
+				noProxy = true
+			} else {
+				fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+				os.Exit(1)
+			}
+		}
 		settings := config.LoadSettings()
 		host := dev.ResolveHostIP()
 		domain := settings.GetDomain(host)
 		proxyPort := settings.GetProxyPort()
-		if err := plans.Start(domain, proxyPort); err != nil {
+		if err := plans.Start(domain, proxyPort, noProxy); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

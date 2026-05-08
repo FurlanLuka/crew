@@ -37,7 +37,10 @@ func LoadConfig() Config {
 	return cfg
 }
 
-func Start(domain string, proxyPort int) error {
+// Start launches the plans viewer. When noProxy is true the server binds to
+// localhost on its internal port and the shared proxy is not started; the URL
+// returned by URL() will be http://localhost:<port>.
+func Start(domain string, proxyPort int, noProxy bool) error {
 	if !crewExec.HasTmux() {
 		return fmt.Errorf("tmux not found — install with: brew install tmux")
 	}
@@ -50,12 +53,18 @@ func Start(domain string, proxyPort int) error {
 		return fmt.Errorf("failed to find free port: %w", err)
 	}
 
-	if err := dev.SavePlansPort(internalPort); err != nil {
-		return fmt.Errorf("failed to save plans port: %w", err)
-	}
-
-	if err := dev.EnsureProxy(domain, proxyPort); err != nil {
-		return fmt.Errorf("failed to start proxy: %w", err)
+	if noProxy {
+		if err := dev.SavePlansNoProxyPort(internalPort); err != nil {
+			return fmt.Errorf("failed to save plans port: %w", err)
+		}
+	} else {
+		if err := dev.SavePlansPort(internalPort); err != nil {
+			return fmt.Errorf("failed to save plans port: %w", err)
+		}
+		if err := dev.EnsureProxy(domain, proxyPort); err != nil {
+			dev.RemovePlansPort()
+			return fmt.Errorf("failed to start proxy: %w", err)
+		}
 	}
 
 	home, _ := os.UserHomeDir()
@@ -82,6 +91,9 @@ func IsRunning() bool {
 }
 
 func URL() string {
+	if port := dev.LoadPlansNoProxyPort(); port > 0 {
+		return fmt.Sprintf("http://localhost:%d", port)
+	}
 	settings := config.LoadSettings()
 	host := dev.ResolveHostIP()
 	domain := settings.GetDomain(host)

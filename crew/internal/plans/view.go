@@ -16,6 +16,7 @@ import (
 
 type statusLoadedMsg struct {
 	running bool
+	noProxy bool
 	url     string
 }
 type startedMsg struct{ url string }
@@ -32,6 +33,7 @@ type View struct {
 	spinner   spinner.Model
 	statusMsg string
 	err       error
+	noProxy   bool
 }
 
 func NewView() View {
@@ -52,6 +54,9 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusLoadedMsg:
 		v.running = msg.running
 		v.url = msg.url
+		if msg.running {
+			v.noProxy = msg.noProxy
+		}
 		return v, nil
 
 	case startedMsg:
@@ -106,7 +111,7 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.err = nil
 			v.spinner = spinner.New()
 			v.spinner.Spinner = spinner.Dot
-			return v, tea.Batch(v.spinner.Tick, startPlans)
+			return v, tea.Batch(v.spinner.Tick, startPlans(v.noProxy))
 		}
 		return v, nil
 
@@ -115,6 +120,14 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.statusMsg = ""
 			v.err = nil
 			return v, stopPlans
+		}
+		return v, nil
+
+	case msg.String() == "p":
+		if !v.running {
+			v.noProxy = !v.noProxy
+			v.statusMsg = ""
+			v.err = nil
 		}
 		return v, nil
 	}
@@ -161,8 +174,12 @@ func (v View) View() string {
 		b.WriteString("\n\n")
 	}
 
+	proxyState := "on"
+	if v.noProxy {
+		proxyState = "off"
+	}
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("s start  x stop  esc back"))
+	b.WriteString(app.HelpStyle.Render("s start  x stop  p proxy: " + proxyState + "  esc back"))
 	b.WriteString("\n")
 
 	return b.String()
@@ -173,24 +190,29 @@ func (v View) View() string {
 func loadStatus() tea.Msg {
 	running := IsRunning()
 	url := ""
+	noProxy := false
 	if running {
 		url = URL()
+		noProxy = dev.LoadPlansNoProxyPort() > 0
 	}
 	return statusLoadedMsg{
 		running: running,
+		noProxy: noProxy,
 		url:     url,
 	}
 }
 
-func startPlans() tea.Msg {
-	settings := config.LoadSettings()
-	host := dev.ResolveHostIP()
-	domain := settings.GetDomain(host)
-	proxyPort := settings.GetProxyPort()
-	if err := Start(domain, proxyPort); err != nil {
-		return errMsg{err}
+func startPlans(noProxy bool) tea.Cmd {
+	return func() tea.Msg {
+		settings := config.LoadSettings()
+		host := dev.ResolveHostIP()
+		domain := settings.GetDomain(host)
+		proxyPort := settings.GetProxyPort()
+		if err := Start(domain, proxyPort, noProxy); err != nil {
+			return errMsg{err}
+		}
+		return startedMsg{url: URL()}
 	}
-	return startedMsg{url: URL()}
 }
 
 func stopPlans() tea.Msg {

@@ -195,7 +195,10 @@ var Root = CommandInfo{
 				{
 					Name:        "start",
 					Description: "Start the plan viewer server",
-					Usage:       "crew plans start",
+					Usage:       "crew plans start [--no-proxy]",
+					Flags: []FlagInfo{
+						{Name: "--no-proxy", Description: "Bind directly to a localhost port instead of routing through the shared proxy. URL becomes http://localhost:<port>."},
+					},
 				},
 				{
 					Name:        "stop",
