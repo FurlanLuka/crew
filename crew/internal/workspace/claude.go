@@ -27,7 +27,12 @@ func KillClaudeSession(wsName string) {
 
 // CreateClaudeSession creates a tmux session running Claude for the workspace.
 // Returns the session name.
-func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
+//
+// When noTeams is true and the workspace has multiple projects, Claude runs as a
+// single flat instance at the workspace root with every worktree exposed via
+// --add-dir — no agent-team coordination. Otherwise multi-project workspaces
+// launch in agent-team mode.
+func CreateClaudeSession(wsName string, skipPermissions, noTeams bool) (string, error) {
 	if !crewExec.HasClaude() {
 		return "", fmt.Errorf("claude not found — install Claude Code first")
 	}
@@ -43,12 +48,9 @@ func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
 		return "", fmt.Errorf("workspace '%s' has no projects", wsName)
 	}
 
-	if _, err := GeneratePrompt(ws); err != nil {
-		return "", err
-	}
-	promptFile := PromptFilePath(wsName)
-
 	session := claudeSessionName(wsName)
+	multiProject := len(ws.Projects) > 1
+	teams := multiProject && !noTeams
 
 	// Build the claude command with env vars inlined
 	var parts []string
@@ -61,11 +63,11 @@ func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+shellQuote(config.ClaudeConfigDir))
 	}
 
-	multiProject := len(ws.Projects) > 1
 	workDir := ResolvePath(wsName, ws.Projects[0])
-
 	if multiProject {
 		workDir = WorkspaceDir(wsName)
+	}
+	if teams {
 		parts = append(parts, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
 	}
 
@@ -79,11 +81,22 @@ func CreateClaudeSession(wsName string, skipPermissions bool) (string, error) {
 		for _, wp := range ws.Projects {
 			parts = append(parts, "--add-dir", shellQuote(ResolvePath(wsName, wp)))
 		}
+	}
 
-		// Use $(cat ...) so the shell reads the file rather than inlining
-		// multi-line prompt content as tmux keystrokes (which would break on newlines
-		// and hit terminal input buffer limits).
-		parts = append(parts, "--teammate-mode", "in-process", "--", "\"$(cat "+shellQuote(promptFile)+")\"")
+	// Use $(cat ...) so the shell reads the file rather than inlining multi-line
+	// prompt content as tmux keystrokes (which would break on newlines and hit
+	// terminal input buffer limits).
+	switch {
+	case teams:
+		if _, err := GeneratePrompt(ws); err != nil {
+			return "", err
+		}
+		parts = append(parts, "--teammate-mode", "in-process", "--", "\"$(cat "+shellQuote(PromptFilePath(wsName))+")\"")
+	case multiProject && noTeams:
+		if _, err := GenerateNoTeamsPrompt(ws); err != nil {
+			return "", err
+		}
+		parts = append(parts, "--", "\"$(cat "+shellQuote(NoTeamsPromptFilePath(wsName))+")\"")
 	}
 
 	crewExec.EnsureTmuxConfig()

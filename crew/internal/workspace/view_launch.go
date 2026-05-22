@@ -27,6 +27,7 @@ type claudeSessionReadyMsg struct {
 type claudeSessionExistsMsg struct {
 	wsName          string
 	skipPermissions bool
+	noTeams         bool
 }
 
 // ── Launch modes ──
@@ -38,6 +39,8 @@ const (
 	launchModeEditorClaudeNoTeamsYolo
 	launchModeClaude
 	launchModeClaudeYolo
+	launchModeClaudeNoTeams
+	launchModeClaudeNoTeamsYolo
 )
 
 var launchModeLabels = []string{
@@ -47,6 +50,8 @@ var launchModeLabels = []string{
 	"Editor + Claude (No teams, Skip permissions)",
 	"Claude",
 	"Claude (Skip permissions)",
+	"Claude (No teams)",
+	"Claude (No teams, Skip permissions)",
 }
 
 // launchModeNoTeams reports whether mode runs Claude in flat (no-agent-team) form.
@@ -64,6 +69,9 @@ func availableLaunchModes(includeNoTeams bool) []int {
 		modes = append(modes, launchModeEditorClaudeNoTeams, launchModeEditorClaudeNoTeamsYolo)
 	}
 	modes = append(modes, launchModeClaude, launchModeClaudeYolo)
+	if includeNoTeams {
+		modes = append(modes, launchModeClaudeNoTeams, launchModeClaudeNoTeamsYolo)
+	}
 	return modes
 }
 
@@ -89,6 +97,7 @@ type LaunchView struct {
 	sessionCursor    int
 	sessionWsName    string
 	sessionSkipPerms bool
+	sessionNoTeams   bool
 	spinner          spinner.Model
 	err              error
 }
@@ -158,6 +167,7 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.sessionCursor = 0
 		v.sessionWsName = msg.wsName
 		v.sessionSkipPerms = msg.skipPermissions
+		v.sessionNoTeams = msg.noTeams
 		return v, nil
 
 	case errMsg:
@@ -244,7 +254,7 @@ func (v LaunchView) handleSessionExistsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		v.state = launchStateLaunching
 		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
 			KillClaudeSession(v.sessionWsName)
-			session, err := CreateClaudeSession(v.sessionWsName, v.sessionSkipPerms)
+			session, err := CreateClaudeSession(v.sessionWsName, v.sessionSkipPerms, v.sessionNoTeams)
 			if err != nil {
 				return errMsg{err}
 			}
@@ -359,7 +369,10 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 			return launchWithEditor(ws, editor, skipPerms)
 
 		case launchModeClaude, launchModeClaudeYolo:
-			return launchClaude(wsName, mode == launchModeClaudeYolo)
+			return launchClaude(wsName, mode == launchModeClaudeYolo, false)
+
+		case launchModeClaudeNoTeams, launchModeClaudeNoTeamsYolo:
+			return launchClaude(wsName, mode == launchModeClaudeNoTeamsYolo, true)
 		}
 
 		return launchExecutedMsg{}
@@ -448,15 +461,16 @@ func launchWithEditorNoTeams(ws *Workspace, editor string, skipPermissions bool)
 	return launchExecutedMsg{}
 }
 
-func launchClaude(wsName string, skipPermissions bool) tea.Msg {
+func launchClaude(wsName string, skipPermissions, noTeams bool) tea.Msg {
 	if ClaudeSessionExists(wsName) {
 		return claudeSessionExistsMsg{
 			wsName:          wsName,
 			skipPermissions: skipPermissions,
+			noTeams:         noTeams,
 		}
 	}
 
-	session, err := CreateClaudeSession(wsName, skipPermissions)
+	session, err := CreateClaudeSession(wsName, skipPermissions, noTeams)
 	if err != nil {
 		return errMsg{err}
 	}
