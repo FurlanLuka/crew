@@ -11,54 +11,34 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
-func claudeSessionName(wsName string) string {
-	return "crew-claude-" + wsName
-}
-
-// ClaudeSessionExists checks if a Claude tmux session exists for the workspace.
-func ClaudeSessionExists(wsName string) bool {
-	return crewExec.TmuxSessionExists(claudeSessionName(wsName))
-}
-
-// KillClaudeSession kills the Claude tmux session for the workspace.
-func KillClaudeSession(wsName string) {
-	crewExec.KillTmuxSession(claudeSessionName(wsName))
-}
-
-// CreateClaudeSession creates a tmux session running Claude for the workspace.
-// Returns the session name.
+// buildClaudeParts builds the shell-command tokens (env assignments inlined,
+// followed by `claude` and its flags) plus the directory Claude should start in.
 //
 // When noTeams is true and the workspace has multiple projects, Claude runs as a
 // single flat instance at the workspace root with every worktree exposed via
 // --add-dir — no agent-team coordination. Otherwise multi-project workspaces
 // launch in agent-team mode.
-func CreateClaudeSession(wsName string, skipPermissions, noTeams bool) (string, error) {
-	if !crewExec.HasClaude() {
-		return "", fmt.Errorf("claude not found — install Claude Code first")
-	}
-	if !crewExec.HasTmux() {
-		return "", fmt.Errorf("tmux not found — install it first")
-	}
-
+//
+// The prompt is passed via $(cat ...) so the shell reads the file rather than
+// inlining multi-line content (which would break tmux keystroke sends on
+// newlines and hit terminal input buffer limits).
+func buildClaudeParts(wsName string, skipPermissions, noTeams bool) ([]string, string, error) {
 	ws, err := Load(wsName)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	if len(ws.Projects) == 0 {
-		return "", fmt.Errorf("workspace '%s' has no projects", wsName)
+		return nil, "", fmt.Errorf("workspace '%s' has no projects", wsName)
 	}
 
-	session := claudeSessionName(wsName)
 	multiProject := len(ws.Projects) > 1
 	teams := multiProject && !noTeams
 
-	// Build the claude command with env vars inlined
 	var parts []string
 
 	if skipPermissions {
 		parts = append(parts, "IS_SANDBOX=1")
 	}
-
 	if config.UserSetClaudeConfig {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+shellQuote(config.ClaudeConfigDir))
 	}
@@ -83,47 +63,42 @@ func CreateClaudeSession(wsName string, skipPermissions, noTeams bool) (string, 
 		}
 	}
 
-	// Use $(cat ...) so the shell reads the file rather than inlining multi-line
-	// prompt content as tmux keystrokes (which would break on newlines and hit
-	// terminal input buffer limits).
 	switch {
 	case teams:
 		if _, err := GeneratePrompt(ws); err != nil {
-			return "", err
+			return nil, "", err
 		}
 		parts = append(parts, "--teammate-mode", "in-process", "--", "\"$(cat "+shellQuote(PromptFilePath(wsName))+")\"")
 	case multiProject && noTeams:
 		if _, err := GenerateNoTeamsPrompt(ws); err != nil {
-			return "", err
+			return nil, "", err
 		}
 		parts = append(parts, "--", "\"$(cat "+shellQuote(NoTeamsPromptFilePath(wsName))+")\"")
 	}
 
-	crewExec.EnsureTmuxConfig()
-
-	if err := crewExec.CreateTmuxSession(session, workDir); err != nil {
-		return "", fmt.Errorf("failed to create tmux session: %w", err)
-	}
-	crewExec.SourceTmuxConfig(session)
-	// No destroy-unattached — sessions persist after detach so users can reattach.
-
-	cmd := strings.Join(parts, " ")
-	debug.Log("claude", "tmux session %s → %s", session, cmd)
-
-	if err := crewExec.TmuxSendKeys(session, cmd); err != nil {
-		crewExec.KillTmuxSession(session)
-		return "", fmt.Errorf("failed to send claude command: %w", err)
-	}
-
-	return session, nil
+	return parts, workDir, nil
 }
 
-// ClaudeAttachCmd returns an *exec.Cmd that attaches to the Claude tmux session.
-// Use with tea.ExecProcess from Bubbletea TUI.
-func ClaudeAttachCmd(session string) *exec.Cmd {
-	cmd := exec.Command("tmux", "attach", "-t", session)
-	cmd.Env = crewExec.EnvWithoutTMUX()
-	return cmd
+// ClaudeCommand returns an *exec.Cmd that runs Claude directly in the current
+// terminal. Use with tea.ExecProcess from a Bubbletea TUI: the TUI suspends,
+// Claude takes over the terminal, and control returns when Claude exits.
+// Nothing is tracked — there's no session to reattach to.
+func ClaudeCommand(wsName string, skipPermissions, noTeams bool) (*exec.Cmd, error) {
+	if !crewExec.HasClaude() {
+		return nil, fmt.Errorf("claude not found — install Claude Code first")
+	}
+
+	parts, workDir, err := buildClaudeParts(wsName, skipPermissions, noTeams)
+	if err != nil {
+		return nil, err
+	}
+
+	cmdStr := strings.Join(parts, " ")
+	debug.Log("claude", "direct run in %s → %s", workDir, cmdStr)
+
+	cmd := exec.Command("sh", "-c", cmdStr)
+	cmd.Dir = workDir
+	return cmd, nil
 }
 
 // shellQuote wraps a string in single quotes, escaping embedded single quotes.

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	osexec "os/exec"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -21,13 +22,11 @@ type launchDataLoadedMsg struct {
 }
 type launchExecutedMsg struct{}
 
-type claudeSessionReadyMsg struct {
-	session string
-}
-type claudeSessionExistsMsg struct {
-	wsName          string
-	skipPermissions bool
-	noTeams         bool
+// claudeExecReadyMsg carries a Claude command to run directly in the current
+// terminal. Claude takes over the terminal until it exits — no tmux, no
+// session tracking, no reattach.
+type claudeExecReadyMsg struct {
+	cmd *osexec.Cmd
 }
 
 // ── Launch modes ──
@@ -82,24 +81,19 @@ type launchState int
 const (
 	launchStateMode launchState = iota
 	launchStateLaunching
-	launchStateSessionExists
 )
 
 // ── Model ──
 
 type LaunchView struct {
-	base             string
-	state            launchState
-	hasEditor        bool
-	noTeamsMode      bool // true if workspace qualifies for no-teams launch (multi-project, all worktree)
-	modes            []int
-	modeCursor       int
-	sessionCursor    int
-	sessionWsName    string
-	sessionSkipPerms bool
-	sessionNoTeams   bool
-	spinner          spinner.Model
-	err              error
+	base        string
+	state       launchState
+	hasEditor   bool
+	noTeamsMode bool // true if workspace qualifies for no-teams launch (multi-project, all worktree)
+	modes       []int
+	modeCursor  int
+	spinner     spinner.Model
+	err         error
 }
 
 func NewLaunchView(base string) LaunchView {
@@ -156,19 +150,13 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case launchExecutedMsg:
 		return v, tea.Quit
 
-	case claudeSessionReadyMsg:
-		cmd := ClaudeAttachCmd(msg.session)
-		return v, tea.ExecProcess(cmd, func(err error) tea.Msg {
+	case claudeExecReadyMsg:
+		return v, tea.ExecProcess(msg.cmd, func(err error) tea.Msg {
+			if err != nil {
+				return errMsg{err}
+			}
 			return launchExecutedMsg{}
 		})
-
-	case claudeSessionExistsMsg:
-		v.state = launchStateSessionExists
-		v.sessionCursor = 0
-		v.sessionWsName = msg.wsName
-		v.sessionSkipPerms = msg.skipPermissions
-		v.sessionNoTeams = msg.noTeams
-		return v, nil
 
 	case errMsg:
 		v.err = msg.err
@@ -193,11 +181,8 @@ func (v LaunchView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (v LaunchView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch v.state {
-	case launchStateMode:
+	if v.state == launchStateMode {
 		return v.handleModeKey(msg)
-	case launchStateSessionExists:
-		return v.handleSessionExistsKey(msg)
 	}
 	return v, nil
 }
@@ -225,45 +210,6 @@ func (v LaunchView) handleModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
-func (v LaunchView) handleSessionExistsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, app.Keys.Quit):
-		return v, tea.Quit
-	case key.Matches(msg, app.Keys.Back):
-		v.state = launchStateMode
-		return v, nil
-	case key.Matches(msg, app.Keys.Up):
-		if v.sessionCursor > 0 {
-			v.sessionCursor--
-		}
-		return v, nil
-	case key.Matches(msg, app.Keys.Down):
-		if v.sessionCursor < 1 {
-			v.sessionCursor++
-		}
-		return v, nil
-	case msg.String() == "enter":
-		if v.sessionCursor == 0 {
-			// Attach to existing session
-			session := claudeSessionName(v.sessionWsName)
-			return v, func() tea.Msg {
-				return claudeSessionReadyMsg{session: session}
-			}
-		}
-		// Stop and start new
-		v.state = launchStateLaunching
-		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
-			KillClaudeSession(v.sessionWsName)
-			session, err := CreateClaudeSession(v.sessionWsName, v.sessionSkipPerms, v.sessionNoTeams)
-			if err != nil {
-				return errMsg{err}
-			}
-			return claudeSessionReadyMsg{session: session}
-		})
-	}
-	return v, nil
-}
-
 func (v LaunchView) View() string {
 	var b strings.Builder
 
@@ -274,8 +220,6 @@ func (v LaunchView) View() string {
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
 		b.WriteString(" Launching...\n")
-	case launchStateSessionExists:
-		v.renderSessionExists(&b)
 	}
 
 	if v.err != nil {
@@ -309,32 +253,6 @@ func (v LaunchView) renderModeSelect(b *strings.Builder) {
 
 	b.WriteString("\n  ")
 	b.WriteString(app.HelpStyle.Render("enter launch  esc back"))
-	b.WriteString("\n")
-}
-
-func (v LaunchView) renderSessionExists(b *strings.Builder) {
-	b.WriteString("  ")
-	b.WriteString(app.Subtle.Render("A Claude session already exists for this workspace:"))
-	b.WriteString("\n")
-
-	options := []string{"Attach to existing", "Stop and start new"}
-	for i, label := range options {
-		cursor := "  "
-		if i == v.sessionCursor {
-			cursor = app.Selected.Render("> ")
-		}
-		display := label
-		if i == v.sessionCursor {
-			display = app.Selected.Render(label)
-		}
-		b.WriteString("  ")
-		b.WriteString(cursor)
-		b.WriteString(display)
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter select  esc back"))
 	b.WriteString("\n")
 }
 
@@ -461,19 +379,14 @@ func launchWithEditorNoTeams(ws *Workspace, editor string, skipPermissions bool)
 	return launchExecutedMsg{}
 }
 
+// launchClaude runs Claude for the workspace directly in the current terminal
+// via tea.ExecProcess — no tmux, no session tracking. noTeams selects the flat
+// (no-agent-team) form for multi-project workspaces.
 func launchClaude(wsName string, skipPermissions, noTeams bool) tea.Msg {
-	if ClaudeSessionExists(wsName) {
-		return claudeSessionExistsMsg{
-			wsName:          wsName,
-			skipPermissions: skipPermissions,
-			noTeams:         noTeams,
-		}
-	}
-
-	session, err := CreateClaudeSession(wsName, skipPermissions, noTeams)
+	cmd, err := ClaudeCommand(wsName, skipPermissions, noTeams)
 	if err != nil {
 		return errMsg{err}
 	}
-	return claudeSessionReadyMsg{session: session}
+	return claudeExecReadyMsg{cmd: cmd}
 }
 
