@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -27,9 +28,42 @@ import (
 
 var Version = "dev"
 
+// jsonOutput is set once at startup from the global --json flag and read by
+// list/show commands to emit JSON instead of tab-separated output.
+var jsonOutput bool
+
+// extractFlag returns args with all occurrences of flag removed, plus whether
+// it was present.
+func extractFlag(args []string, flag string) ([]string, bool) {
+	out := make([]string, 0, len(args))
+	found := false
+	for _, a := range args {
+		if a == flag {
+			found = true
+			continue
+		}
+		out = append(out, a)
+	}
+	return out, found
+}
+
+// printJSON marshals v as indented JSON to stdout, exiting non-zero on error.
+func printJSON(v any) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(data))
+}
+
 func main() {
 	config.Init()
 	workspace.Migrate()
+
+	// Strip the global --json flag before computing cmd so it works in any
+	// position and is not rejected by strict per-command arg parsers.
+	os.Args, jsonOutput = extractFlag(os.Args, "--json")
 
 	cmd := ""
 	if len(os.Args) > 1 {
@@ -252,6 +286,13 @@ func cmdLsProjects() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	if jsonOutput {
+		if projects == nil {
+			projects = []project.Project{}
+		}
+		printJSON(projects)
+		return
+	}
 	for _, p := range projects {
 		fmt.Printf("%s\t%s\n", p.Name, p.Path)
 	}
@@ -262,6 +303,10 @@ func cmdLsWorkspaces() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+	if jsonOutput {
+		printJSON(summaries)
+		return
 	}
 	for _, s := range summaries {
 		fmt.Printf("%s\t%d projects\n", s.Name, s.ProjectCount)
@@ -377,13 +422,29 @@ func cmdShow() {
 		os.Exit(1)
 	}
 
+	type wsProjectOut struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+		Mode string `json:"mode"`
+		Role string `json:"role"`
+	}
+
+	out := []wsProjectOut{}
 	for _, wp := range ws.Projects {
 		path := workspace.ResolvePath(wsName, wp)
 		mode := "worktree"
 		if workspace.IsDirect(wp) {
 			mode = "direct"
 		}
-		fmt.Printf("%s\t%s\t%s\t%s\n", wp.Name, path, mode, wp.Role)
+		out = append(out, wsProjectOut{Name: wp.Name, Path: path, Mode: mode, Role: wp.Role})
+	}
+
+	if jsonOutput {
+		printJSON(out)
+		return
+	}
+	for _, p := range out {
+		fmt.Printf("%s\t%s\t%s\t%s\n", p.Name, p.Path, p.Mode, p.Role)
 	}
 }
 
@@ -593,6 +654,15 @@ func cmdConfig() {
 	switch os.Args[2] {
 	case "show":
 		s := config.LoadSettings()
+		if jsonOutput {
+			printJSON(struct {
+				ServerIP  string `json:"server_ip"`
+				SSHHost   string `json:"ssh_host"`
+				ProxyPort int    `json:"proxy_port"`
+				Domain    string `json:"domain"`
+			}{s.ServerIP, s.SSHHost, s.ProxyPort, s.Domain})
+			return
+		}
 		fmt.Printf("server_ip\t%s\n", s.ServerIP)
 		fmt.Printf("ssh_host\t%s\n", s.SSHHost)
 		fmt.Printf("proxy_port\t%d\n", s.ProxyPort)

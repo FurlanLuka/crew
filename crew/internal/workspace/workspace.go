@@ -125,9 +125,10 @@ func List() ([]string, error) {
 
 // Summary holds display info for the workspace list view.
 type Summary struct {
-	Name         string
-	ProjectCount int
-	DevRunning   bool
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	ProjectCount int    `json:"project_count"`
+	DevRunning   bool   `json:"dev_running"`
 }
 
 // ListSummaries returns summaries for all workspaces.
@@ -146,6 +147,7 @@ func ListSummaries() ([]Summary, error) {
 		}
 		summaries = append(summaries, Summary{
 			Name:         name,
+			Path:         WorkspaceDir(name),
 			ProjectCount: projCount,
 			DevRunning:   devRoutesExist(name),
 		})

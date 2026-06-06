@@ -24,6 +24,10 @@ case "mycommand":
 
 All operations are available via CLI. See `crew help --json` for the full tree.
 
+List/show commands (`ls projects`, `ls workspaces`, `show <ws>`, `dev show`, `dev status`,
+`config show`) accept a global `--json` flag for structured output — same convention as
+`crew help --json`.
+
 ### CRUD operations
 
 | Operation | CLI |

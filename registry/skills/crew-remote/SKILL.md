@@ -93,7 +93,7 @@ Output: `<name>\t<n> projects`
 ```bash
 crew show <workspace>
 ```
-Output: `<name>\t<path>\t<role>`
+Output: `<name>\t<path>\t<mode>\t<role>`
 
 ### Show configured dev servers
 
@@ -199,9 +199,26 @@ All CLI list commands use **tab-separated** output for easy parsing:
 |---|---|
 | `crew ls workspaces` | `<name>\t<n> projects` |
 | `crew ls projects` | `<name>\t<path>` |
-| `crew show <ws>` | `<name>\t<path>\t<role>` |
+| `crew show <ws>` | `<name>\t<path>\t<mode>\t<role>` |
 | `crew dev show <project>` | `<server>\t<port>\t<cmd>[\t<dir>]` |
 | `crew dev status [<ws>]` | `<workspace>\t<server>\t<port>\t<url>` |
+
+### JSON output
+
+All list/show commands accept a global `--json` flag (works in any position) that
+returns a JSON array instead of tab-separated lines. Empty results return `[]`.
+
+```bash
+crew ls workspaces --json    # [{ "name", "path", "project_count", "dev_running" }, ...]
+crew ls projects --json      # [{ "name", "path", "dev_servers" }, ...]
+crew show <ws> --json        # [{ "name", "path", "mode", "role" }, ...]
+crew dev show <proj> --json  # [{ "name", "port", "command", "dir" }, ...]
+crew dev status --json       # [{ "workspace", "server_name", "external_port", "url" }, ...]
+crew config show --json      # { "server_ip", "ssh_host", "proxy_port", "domain" }
+```
+
+`crew ls workspaces --json` includes each workspace's filesystem `path` (not shown in
+the tab-separated form).
 
 ## Installation
 

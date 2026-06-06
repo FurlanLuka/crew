@@ -151,6 +151,26 @@ func TestListSummaries(t *testing.T) {
 	if s.ProjectCount != 2 {
 		t.Errorf("ProjectCount = %d, want 2", s.ProjectCount)
 	}
+	if s.Path != WorkspaceDir("sum-ws") {
+		t.Errorf("Path = %q, want %q", s.Path, WorkspaceDir("sum-ws"))
+	}
+}
+
+// TestSummaryJSONKeys locks the snake_case wire format used by `crew ls workspaces --json`.
+func TestSummaryJSONKeys(t *testing.T) {
+	data, err := json.Marshal(Summary{
+		Name:         "ws",
+		Path:         "/p",
+		ProjectCount: 3,
+		DevRunning:   true,
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `{"name":"ws","path":"/p","project_count":3,"dev_running":true}`
+	if string(data) != want {
+		t.Errorf("Summary JSON = %s, want %s", data, want)
+	}
 }
 
 func TestProjectPath(t *testing.T) {

@@ -195,6 +195,14 @@ func cmdDevShow() {
 		os.Exit(1)
 	}
 
+	if jsonOutput {
+		servers := p.DevServers
+		if servers == nil {
+			servers = []project.DevServer{}
+		}
+		printJSON(servers)
+		return
+	}
 	for _, ds := range p.DevServers {
 		if ds.Dir != "" {
 			fmt.Printf("%s\t%d\t%s\t%s\n", ds.Name, ds.Port, ds.Command, ds.Dir)
@@ -235,11 +243,32 @@ func cmdDevStatus() {
 		}
 	}
 
+	type routeOut struct {
+		Workspace    string `json:"workspace"`
+		ServerName   string `json:"server_name"`
+		ExternalPort int    `json:"external_port"`
+		URL          string `json:"url"`
+	}
+
+	out := []routeOut{}
 	for _, wr := range allRoutes {
 		for _, r := range wr.Routes {
 			url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
-			fmt.Printf("%s\t%s\t%d\t%s\n", wr.Workspace, r.ServerName, r.ExternalPort, url)
+			out = append(out, routeOut{
+				Workspace:    wr.Workspace,
+				ServerName:   r.ServerName,
+				ExternalPort: r.ExternalPort,
+				URL:          url,
+			})
 		}
+	}
+
+	if jsonOutput {
+		printJSON(out)
+		return
+	}
+	for _, r := range out {
+		fmt.Printf("%s\t%s\t%d\t%s\n", r.Workspace, r.ServerName, r.ExternalPort, r.URL)
 	}
 }
 
