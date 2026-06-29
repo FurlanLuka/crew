@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -126,18 +127,70 @@ func ListTmuxSessions() []string {
 	return sessions
 }
 
-// TmuxRestartLastCommand sends C-c then Up+Enter to a tmux target,
-// effectively restarting whatever command was last run.
+// TmuxRestartLastCommand restarts whatever command was last run in a tmux target.
+// It first kills the running command's descendant processes (C-c alone only
+// signals the foreground group; bundler workers/file-watchers that setsid() into
+// their own group escape it and orphan), then C-c clears the prompt and Up+Enter
+// re-runs the command. Only descendants of the pane shell are killed — the shell
+// itself is preserved so Up+Enter has something to re-run.
 func TmuxRestartLastCommand(target string) {
 	debug.Log("tmux", "restart-last-command -t %s", target)
+	killPaneDescendants("-t", target)
 	exec.Command("tmux", "send-keys", "-t", target, "C-c").Run()
 	exec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
 }
 
-// KillTmuxSession kills a tmux session.
+// KillTmuxSession kills a tmux session and the full process tree of every pane.
+// tmux kill-session only SIGHUPs each pane's direct process, so dev-server
+// children that detached into their own session survive and orphan to PID 1 —
+// repeated restarts pile up hundreds and exhaust the per-user process limit.
 func KillTmuxSession(session string) {
+	killPaneDescendants("-s", "-t", session)
 	debug.Log("tmux", "kill-session -t %s", session)
 	exec.Command("tmux", "kill-session", "-t", session).Run()
+}
+
+// killPaneDescendants kills the descendant processes of every pane matched by the
+// given `tmux list-panes` selector (e.g. "-s","-t",session for a whole session,
+// or "-t",session:window for one window). The pane's own shell is left running.
+func killPaneDescendants(selector ...string) {
+	args := append([]string{"list-panes", "-F", "#{pane_pid}"}, selector...)
+	out, err := exec.Command("tmux", args...).Output()
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Fields(string(out)) {
+		if pid, err := strconv.Atoi(line); err == nil && pid > 0 {
+			killDescendants(pid)
+		}
+	}
+}
+
+// killDescendants SIGKILLs every process descended from pid (children,
+// grandchildren, …) but NOT pid itself. The tree is enumerated from the live
+// ppid graph BEFORE any kill, so processes that setsid() into their own group
+// stay reachable via their still-living parent.
+func killDescendants(pid int) {
+	var victims []int
+	frontier := []int{pid}
+	for len(frontier) > 0 {
+		parent := frontier[0]
+		frontier = frontier[1:]
+		out, err := exec.Command("pgrep", "-P", strconv.Itoa(parent)).Output()
+		if err != nil {
+			continue
+		}
+		for _, f := range strings.Fields(string(out)) {
+			if child, err := strconv.Atoi(f); err == nil {
+				victims = append(victims, child)
+				frontier = append(frontier, child)
+			}
+		}
+	}
+	for _, p := range victims {
+		debug.Log("tmux", "kill-tree SIGKILL %d", p)
+		syscall.Kill(p, syscall.SIGKILL)
+	}
 }
 
 // AttachTmuxSessionRaw attaches to a tmux session.

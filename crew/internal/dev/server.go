@@ -75,6 +75,13 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int, n
 
 	session := SessionName(wsName)
 
+	// Kill any existing session first so Start is idempotent. Without this, a
+	// second start while servers are already running would append duplicate
+	// windows (and duplicate dev-server process trees) to the live session,
+	// while saveRoutes above has already orphaned the old routes — the old
+	// servers keep running untracked and leak. KillTmuxSession tree-kills.
+	crewExec.KillTmuxSession(session)
+
 	// Ensure tmux session exists
 	if !crewExec.TmuxSessionExists(session) {
 		if err := crewExec.CreateTmuxSession(session, ""); err != nil {
