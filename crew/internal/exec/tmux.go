@@ -128,69 +128,94 @@ func ListTmuxSessions() []string {
 }
 
 // TmuxRestartLastCommand restarts whatever command was last run in a tmux target.
-// It first kills the running command's descendant processes (C-c alone only
-// signals the foreground group; bundler workers/file-watchers that setsid() into
-// their own group escape it and orphan), then C-c clears the prompt and Up+Enter
-// re-runs the command. Only descendants of the pane shell are killed — the shell
-// itself is preserved so Up+Enter has something to re-run.
+// It first kills the running command's processes (C-c alone only signals the
+// foreground group; bundler workers/file-watchers that setsid() into their own
+// group escape it and orphan), then C-c clears the prompt and Up+Enter re-runs
+// the command. The pane's own shell is preserved so Up+Enter has something to
+// re-run — see killPaneProcesses for what is and isn't killed.
 func TmuxRestartLastCommand(target string) {
 	debug.Log("tmux", "restart-last-command -t %s", target)
-	killPaneDescendants("-t", target)
+	killPaneProcesses("-t", target)
 	exec.Command("tmux", "send-keys", "-t", target, "C-c").Run()
 	exec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
 }
 
-// KillTmuxSession kills a tmux session and the full process tree of every pane.
+// KillTmuxSession kills a tmux session and the processes of every pane.
 // tmux kill-session only SIGHUPs each pane's direct process, so dev-server
 // children that detached into their own session survive and orphan to PID 1 —
 // repeated restarts pile up hundreds and exhaust the per-user process limit.
+//
+// The sweep must stay before kill-session: a pane's tty is released when the
+// pane dies and the slot can be reused by an unrelated terminal, so resolving
+// ttys afterwards would risk killing someone else's processes.
 func KillTmuxSession(session string) {
-	killPaneDescendants("-s", "-t", session)
+	killPaneProcesses("-s", "-t", session)
 	debug.Log("tmux", "kill-session -t %s", session)
 	exec.Command("tmux", "kill-session", "-t", session).Run()
 }
 
-// killPaneDescendants kills the descendant processes of every pane matched by the
+// killPaneProcesses kills the processes running in every pane matched by the
 // given `tmux list-panes` selector (e.g. "-s","-t",session for a whole session,
 // or "-t",session:window for one window). The pane's own shell is left running.
-func killPaneDescendants(selector ...string) {
-	args := append([]string{"list-panes", "-F", "#{pane_pid}"}, selector...)
+//
+// Victim selection is selectVictims; it needs the pane tty as well as the pane
+// pid, because processes orphaned to PID 1 are unreachable through ppid alone.
+func killPaneProcesses(selector ...string) {
+	args := append([]string{"list-panes", "-F", "#{pane_pid} #{pane_tty}"}, selector...)
+	debug.Log("tmux", "%s", strings.Join(args, " "))
 	out, err := exec.Command("tmux", args...).Output()
+	if err != nil {
+		debug.Log("tmux", "list-panes %s → error: %v", strings.Join(selector, " "), err)
+		return
+	}
+
+	panes := parsePaneRefs(string(out))
+	if len(panes) == 0 {
+		debug.Log("tmux", "list-panes %s → no panes", strings.Join(selector, " "))
+		return
+	}
+
+	rows, err := snapshotProcs()
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Fields(string(out)) {
-		if pid, err := strconv.Atoi(line); err == nil && pid > 0 {
-			killDescendants(pid)
+	protected := protectedPIDs(rows)
+
+	for _, pane := range panes {
+		for _, pid := range selectVictims(rows, pane, protected) {
+			debug.Log("tmux", "pane-sweep SIGKILL %d", pid)
+			syscall.Kill(pid, syscall.SIGKILL)
 		}
 	}
 }
 
-// killDescendants SIGKILLs every process descended from pid (children,
-// grandchildren, …) but NOT pid itself. The tree is enumerated from the live
-// ppid graph BEFORE any kill, so processes that setsid() into their own group
-// stay reachable via their still-living parent.
-func killDescendants(pid int) {
-	var victims []int
-	frontier := []int{pid}
-	for len(frontier) > 0 {
-		parent := frontier[0]
-		frontier = frontier[1:]
-		out, err := exec.Command("pgrep", "-P", strconv.Itoa(parent)).Output()
-		if err != nil {
+// paneRef is one pane's pid and controlling tty.
+type paneRef struct {
+	pid int
+	tty string
+}
+
+// parsePaneRefs parses `tmux list-panes -F '#{pane_pid} #{pane_tty}'` output.
+// A pane whose tty is missing or unusable is still returned with an empty tty
+// rather than dropped, so it keeps the ppid-graph sweep.
+func parsePaneRefs(out string) []paneRef {
+	var panes []paneRef
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
 			continue
 		}
-		for _, f := range strings.Fields(string(out)) {
-			if child, err := strconv.Atoi(f); err == nil {
-				victims = append(victims, child)
-				frontier = append(frontier, child)
-			}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid <= 0 {
+			continue
 		}
+		tty := ""
+		if len(fields) > 1 {
+			tty = normalizeTTY(fields[1])
+		}
+		panes = append(panes, paneRef{pid: pid, tty: tty})
 	}
-	for _, p := range victims {
-		debug.Log("tmux", "kill-tree SIGKILL %d", p)
-		syscall.Kill(p, syscall.SIGKILL)
-	}
+	return panes
 }
 
 // AttachTmuxSessionRaw attaches to a tmux session.
