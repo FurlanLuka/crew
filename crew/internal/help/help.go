@@ -27,7 +27,7 @@ type FlagInfo struct {
 
 var Root = CommandInfo{
 	Name:        "crew",
-	Description: "Agent team launcher, workspace manager & package registry",
+	Description: "Workspace manager, dev-server runner & package registry",
 	Subcommands: []CommandInfo{
 		{
 			Name:        "workspace",
@@ -240,13 +240,13 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "start",
-			Description: "Generate and print the agent prompt for a workspace. The prompt instructs Claude to create an agent team with the workspace's projects and roles.",
+			Description: "Generate and print the orientation prompt for a workspace — the project list, working directories, roles, and worktree/direct framing. Paste it into a running Claude; launches inject it automatically for multi-project workspaces and any workspace with a direct-mode project.",
 			Usage:       "crew start <workspace>",
 			Examples:    []string{"crew start feature-auth"},
 		},
 		{
 			Name:        "launch",
-			Description: "Open the interactive launch view — choose Editor+Claude or Claude mode, start dev servers, and begin working",
+			Description: "Open the interactive launch view — choose Editor + Claude or Claude (both skip permissions), start dev servers, and begin working",
 			Usage:       "crew launch [<workspace>]",
 			TUI:         true,
 			Examples:    []string{"crew launch", "crew launch feature-auth"},

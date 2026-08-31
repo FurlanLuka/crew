@@ -35,8 +35,8 @@ Use **AskUserQuestion** to present the workspaces as options. For each option:
 ### 4. Launch session
 
 Instruct the user to run `crew launch <workspace>` in their terminal. This opens the TUI launch view with two modes:
-- **Editor + Agents** — opens the workspace in Cursor/VS Code with Claude agent teams
-- **Claude** — launches Claude Code directly with all project directories
+- **Editor + Claude (Skip permissions)** — opens the workspace in Cursor/VS Code with Claude wired up
+- **Claude (Skip permissions)** — launches Claude Code directly with all project directories
 
 **Note:** `crew launch` replaces the current process (`syscall.Exec`), so it cannot be run from within Claude Code. The user must run it in a separate terminal.
 

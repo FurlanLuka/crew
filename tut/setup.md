@@ -166,9 +166,8 @@ Select a workspace and press **enter** to launch. Pick a mode:
 
 ![Launch mode selection](crew-workspaces-launch.png)
 
-- **Editor + Agents** — opens your editor and starts Claude agents
-- **Claude** — starts Claude Code in a tmux session
-- **Claude (Skip permissions)** — same, with auto-accept enabled
+- **Editor + Claude (Skip permissions)** — opens your editor with Claude wired up
+- **Claude (Skip permissions)** — starts Claude Code directly in your terminal
 
 ### Open in Cursor / VS Code
 

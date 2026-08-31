@@ -311,6 +311,9 @@ func TestGeneratePrompt(t *testing.T) {
 	if !containsAll(text, "worktree") {
 		t.Error("prompt should mention worktree (all workspace projects are worktrees now)")
 	}
+	if strings.Contains(text, "agent team") {
+		t.Errorf("prompt must not instruct agent-team creation, got:\n%s", text)
+	}
 }
 
 func TestGeneratePrompt_WritesFile(t *testing.T) {
@@ -653,39 +656,7 @@ func TestGeneratePrompt_MixedModes(t *testing.T) {
 	}
 }
 
-func TestGenerateNoTeamsPrompt(t *testing.T) {
-	setupTestConfig(t)
-
-	ws := &Workspace{
-		Name: "flat-ws",
-		Projects: []WorkspaceProject{
-			{Name: "api", Role: "backend service"},
-			{Name: "web", Role: "frontend app"},
-		},
-	}
-
-	text, err := GenerateNoTeamsPrompt(ws)
-	if err != nil {
-		t.Fatalf("GenerateNoTeamsPrompt: %v", err)
-	}
-
-	if strings.Contains(text, "agent team") {
-		t.Errorf("no-teams prompt must not instruct agent-team creation, got:\n%s", text)
-	}
-	if !containsAll(text, "api", "web", "backend service", "frontend app", "flat-ws") {
-		t.Errorf("no-teams prompt missing expected content:\n%s", text)
-	}
-
-	if _, err := os.Stat(NoTeamsPromptFilePath("flat-ws")); err != nil {
-		t.Errorf("no-teams prompt file should be written: %v", err)
-	}
-	// Regular team prompt file should NOT be created by GenerateNoTeamsPrompt.
-	if _, err := os.Stat(PromptFilePath("flat-ws")); !os.IsNotExist(err) {
-		t.Error("GenerateNoTeamsPrompt should not write the agent-team prompt file")
-	}
-}
-
-func TestRemove_DeletesBothPromptFiles(t *testing.T) {
+func TestRemove_DeletesPromptFiles(t *testing.T) {
 	setupTestConfig(t)
 
 	if err := Create("two-prompts"); err != nil {
@@ -696,9 +667,12 @@ func TestRemove_DeletesBothPromptFiles(t *testing.T) {
 	Save(ws)
 
 	GeneratePrompt(ws)
-	GenerateNoTeamsPrompt(ws)
+	// Stand in for a file left behind by a version that still wrote the
+	// separate no-teams prompt; Remove must still clean it up.
+	legacy := legacyNoTeamsPromptFilePath("two-prompts")
+	os.WriteFile(legacy, []byte("stale"), 0o644)
 
-	for _, path := range []string{PromptFilePath("two-prompts"), NoTeamsPromptFilePath("two-prompts")} {
+	for _, path := range []string{PromptFilePath("two-prompts"), legacy} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist before Remove", path)
 		}
@@ -708,7 +682,7 @@ func TestRemove_DeletesBothPromptFiles(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	for _, path := range []string{PromptFilePath("two-prompts"), NoTeamsPromptFilePath("two-prompts")} {
+	for _, path := range []string{PromptFilePath("two-prompts"), legacy} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("Remove should delete %s", path)
 		}

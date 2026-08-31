@@ -53,7 +53,7 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | `crew notify test` | Send test notification |
 | `crew notify rm` | Disable push notifications |
 | **Other** | |
-| `crew start <ws>` | Generate agent prompt for a workspace |
+| `crew start <ws>` | Generate the orientation prompt for a workspace |
 | `crew launch [<ws>]` | Open the launch view (TUI) |
 | `crew git <ws>` | Launch lazygit in tmux (ephemeral, dies on detach) |
 | `crew plans start` | Start the plan viewer server |
@@ -270,6 +270,6 @@ crew dev add my-api --name=api --port=3000 --cmd="npm run dev"
 crew dev add my-web --name=web --port=5173 --cmd="npm run dev"
 
 # 4. Launch
-crew launch <workspace>       # TUI — pick Editor+Agents or Claude
+crew launch <workspace>       # TUI — pick Editor + Claude, or Claude
 crew dev start my-ws          # start dev servers
 ```

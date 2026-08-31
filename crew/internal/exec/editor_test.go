@@ -86,50 +86,7 @@ func TestGenerateCodeWorkspace_ClaudeSingleProject(t *testing.T) {
 	}
 }
 
-func TestGenerateCodeWorkspace_ClaudeMultiProject(t *testing.T) {
-	filePath := filepath.Join(t.TempDir(), "multi.code-workspace")
-	projects := []WorkspaceProject{
-		{Name: "api", Path: "/tmp/api"},
-		{Name: "web", Path: "/tmp/web"},
-	}
-
-	claude := &ClaudeTask{
-		LeadPath:   "/tmp/ws",
-		PromptFile: "/tmp/prompt.md",
-		AddDirs:    []string{"/tmp/web"},
-		AgentTeams: true,
-	}
-
-	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
-		t.Fatalf("GenerateCodeWorkspace: %v", err)
-	}
-
-	ws := readWorkspace(t, filePath)
-	tasks := ws["tasks"].(map[string]interface{})
-	taskList := tasks["tasks"].([]interface{})
-
-	if len(taskList) != 1 {
-		t.Fatalf("tasks = %d, want 1", len(taskList))
-	}
-
-	task := taskList[0].(map[string]interface{})
-	cmd := task["command"].(string)
-
-	if !strings.Contains(cmd, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1") {
-		t.Error("multi-project should contain AGENT_TEAMS env var")
-	}
-	if !strings.Contains(cmd, "--add-dir /tmp/web") {
-		t.Error("multi-project should contain --add-dir for second project")
-	}
-	if strings.Contains(cmd, "--add-dir /tmp/api") {
-		t.Error("should NOT contain --add-dir for lead project")
-	}
-	if !strings.Contains(cmd, "--teammate-mode") {
-		t.Error("multi-project should contain --teammate-mode")
-	}
-}
-
-func TestGenerateCodeWorkspace_NoTeamsMultiProject(t *testing.T) {
+func TestGenerateCodeWorkspace_MultiProject(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "noteams.code-workspace")
 	projects := []WorkspaceProject{
 		{Name: "api", Path: "/tmp/api"},
@@ -140,7 +97,6 @@ func TestGenerateCodeWorkspace_NoTeamsMultiProject(t *testing.T) {
 		LeadPath:   "/tmp/ws",
 		PromptFile: "/tmp/prompt.md",
 		AddDirs:    []string{"/tmp/api", "/tmp/web"},
-		AgentTeams: false,
 	}
 
 	if err := GenerateCodeWorkspace(filePath, projects, claude); err != nil {
@@ -154,18 +110,18 @@ func TestGenerateCodeWorkspace_NoTeamsMultiProject(t *testing.T) {
 	cmd := task["command"].(string)
 
 	if strings.Contains(cmd, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") {
-		t.Errorf("no-teams launch must not set agent-teams env var, got: %s", cmd)
+		t.Errorf("launch must not set agent-teams env var, got: %s", cmd)
 	}
 	if strings.Contains(cmd, "--teammate-mode") {
-		t.Errorf("no-teams launch must not pass --teammate-mode, got: %s", cmd)
+		t.Errorf("launch must not pass --teammate-mode, got: %s", cmd)
 	}
 	for _, dir := range []string{"--add-dir /tmp/api", "--add-dir /tmp/web"} {
 		if !strings.Contains(cmd, dir) {
-			t.Errorf("no-teams launch should expose %q, got: %s", dir, cmd)
+			t.Errorf("launch should expose %q, got: %s", dir, cmd)
 		}
 	}
 	if !strings.Contains(cmd, "$(cat /tmp/prompt.md)") {
-		t.Errorf("no-teams launch should include prompt file via $(cat ...), got: %s", cmd)
+		t.Errorf("launch should include prompt file via $(cat ...), got: %s", cmd)
 	}
 
 	opts := task["options"].(map[string]interface{})

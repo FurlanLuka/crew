@@ -1,0 +1,123 @@
+package workspace
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/config"
+)
+
+func TestAvailableLaunchModes(t *testing.T) {
+	if got := availableLaunchModes(true); !reflect.DeepEqual(got, []int{launchModeEditorClaude, launchModeClaude}) {
+		t.Errorf("with an editor = %v, want both modes", got)
+	}
+	// The editor mode is hidden rather than offered-and-failed: with only two
+	// modes, leaving it in would make half the menu a dead end.
+	if got := availableLaunchModes(false); !reflect.DeepEqual(got, []int{launchModeClaude}) {
+		t.Errorf("without an editor = %v, want only the Claude mode", got)
+	}
+}
+
+func TestClaudeTaskFor_SingleProject(t *testing.T) {
+	pinClaudeConfig(t, false)
+	ws := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+
+	task := claudeTaskFor(ws)
+
+	// A single-project workspace opens in the project itself. The workspace
+	// root is an empty scratch dir for a direct-mode project.
+	if want := ResolvePath("solo", ws.Projects[0]); task.LeadPath != want {
+		t.Errorf("LeadPath = %q, want %q", task.LeadPath, want)
+	}
+	if task.AddDirs != nil {
+		t.Errorf("AddDirs = %v, want nil", task.AddDirs)
+	}
+	if task.PromptFile != "" {
+		t.Errorf("PromptFile = %q, want empty", task.PromptFile)
+	}
+	if !task.SkipPermissions {
+		t.Error("SkipPermissions should be true — both launch modes skip")
+	}
+}
+
+func TestClaudeTaskFor_MultiProject(t *testing.T) {
+	pinClaudeConfig(t, false)
+	ws := newTestWorkspace(t, "multi", []WorkspaceProject{
+		{Name: "api", Role: "backend"},
+		{Name: "web", Role: "frontend"},
+	})
+
+	task := claudeTaskFor(ws)
+
+	if task.LeadPath != WorkspaceDir("multi") {
+		t.Errorf("LeadPath = %q, want %q", task.LeadPath, WorkspaceDir("multi"))
+	}
+	// Every project is exposed, the lead included — the agent-teams path used
+	// to skip the lead, and the two modes must not drift apart again.
+	want := []string{WorktreePath("multi", "api"), WorktreePath("multi", "web")}
+	if !reflect.DeepEqual(task.AddDirs, want) {
+		t.Errorf("AddDirs = %v, want %v", task.AddDirs, want)
+	}
+	if task.PromptFile != PromptFilePath("multi") {
+		t.Errorf("PromptFile = %q, want %q", task.PromptFile, PromptFilePath("multi"))
+	}
+}
+
+func TestClaudeTaskFor_SingleDirectProjectStillGetsPrompt(t *testing.T) {
+	pinClaudeConfig(t, false)
+	ws := newTestWorkspace(t, "solo", []WorkspaceProject{
+		{Name: "api", Role: "backend", Mode: ModeDirect},
+	})
+
+	if task := claudeTaskFor(ws); task.PromptFile != PromptFilePath("solo") {
+		t.Errorf("PromptFile = %q, want the prompt so the CAUTION framing reaches Claude", task.PromptFile)
+	}
+}
+
+func TestClaudeTaskFor_ClaudeConfigDir(t *testing.T) {
+	pinClaudeConfig(t, true)
+	ws := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+
+	if task := claudeTaskFor(ws); task.ClaudeConfigDir != config.ClaudeConfigDir {
+		t.Errorf("ClaudeConfigDir = %q, want %q", task.ClaudeConfigDir, config.ClaudeConfigDir)
+	}
+
+	pinClaudeConfig(t, false)
+	if task := claudeTaskFor(ws); task.ClaudeConfigDir != "" {
+		t.Errorf("ClaudeConfigDir = %q, want empty when unset", task.ClaudeConfigDir)
+	}
+}
+
+// The editor and terminal launch modes build the same launch independently.
+// This is the cross-check that stops them drifting.
+func TestClaudeTaskFor_AgreesWithBuildClaudeParts(t *testing.T) {
+	pinClaudeConfig(t, false)
+
+	for _, projects := range [][]WorkspaceProject{
+		{{Name: "api", Role: "backend"}},
+		{{Name: "api", Role: "backend", Mode: ModeDirect}},
+		{{Name: "api", Role: "backend"}, {Name: "web", Role: "frontend"}},
+	} {
+		ws := newTestWorkspace(t, "ws", projects)
+
+		task := claudeTaskFor(ws)
+		parts, workDir := buildClaudeParts(ws)
+		cmd := strings.Join(parts, " ")
+
+		if task.LeadPath != workDir {
+			t.Errorf("%d project(s): editor LeadPath %q != terminal workDir %q",
+				len(projects), task.LeadPath, workDir)
+		}
+		for _, dir := range task.AddDirs {
+			if !strings.Contains(cmd, "--add-dir '"+dir+"'") {
+				t.Errorf("%d project(s): editor exposes %q but terminal command does not: %s",
+					len(projects), dir, cmd)
+			}
+		}
+		if (task.PromptFile != "") != strings.Contains(cmd, "$(cat ") {
+			t.Errorf("%d project(s): modes disagree on injecting the prompt (editor=%q, terminal=%s)",
+				len(projects), task.PromptFile, cmd)
+		}
+	}
+}

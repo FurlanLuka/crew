@@ -1,6 +1,6 @@
 # crew
 
-CLI + TUI workspace manager for Claude Code. Manages multi-agent workspaces, dev servers with reverse proxy, agent/skill registry, and session launching.
+CLI + TUI workspace manager for Claude Code. Manages worktree-isolated workspaces, dev servers with reverse proxy, agent/skill registry, and session launching.
 
 ## Features
 
@@ -10,9 +10,8 @@ CLI + TUI workspace manager for Claude Code. Manages multi-agent workspaces, dev
 | `projects.servers` | `crew dev add <project>` | Configure dev servers per project (name, port, command, dir) |
 | `projects.servers.setup` | `crew dev setup <project>` | Interactive dev server configuration wizard with npm script auto-detection |
 | `workspaces` | `crew workspace` | Group projects into isolated workspaces with automatic git worktrees |
-| `workspaces.launch.editor` | `crew launch <ws>` | Open workspace in Cursor/VS Code with agent team prompt auto-generated |
-| `workspaces.launch.claude` | `crew launch <ws>` | Launch Claude Code session with `--add-dir` for each project |
-| `workspaces.launch.claude-skip` | `crew launch <ws>` | Launch Claude with `--dangerously-skip-permissions` |
+| `workspaces.launch.editor` | `crew launch <ws>` | Open workspace in Cursor/VS Code with the orientation prompt auto-generated |
+| `workspaces.launch.claude` | `crew launch <ws>` | Launch Claude Code with `--add-dir` for each project and `--dangerously-skip-permissions` |
 | `workspaces.open` | `crew open <ws>` | Open shell in workspace directory |
 | `workspaces.git` | `crew git <ws>` | Launch lazygit in tmux with one window per project (ephemeral session) |
 | `workspaces.code` | `crew code <ws>` | Generate Remote SSH URLs for Cursor/VS Code |
@@ -133,8 +132,8 @@ The proxy supports HTTP and WebSocket connections. Route files (`dev-routes-*.js
 ### Sessions
 
 **Launch modes** (`crew launch <ws>`):
-- **Editor + Agents** — opens workspace in Cursor/VS Code, generates agent team prompt
-- **Claude** — launches Claude Code directly with `--add-dir` for each project
+- **Editor + Claude (Skip permissions)** — opens workspace in Cursor/VS Code, generates the orientation prompt
+- **Claude (Skip permissions)** — launches Claude Code directly with `--add-dir` for each project
 
 **Git sessions** (`crew git <ws>`) open lazygit in tmux with one window per project. Sessions are ephemeral — they auto-destroy on detach via `destroy-unattached`.
 

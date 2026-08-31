@@ -67,7 +67,6 @@ type ClaudeTask struct {
 	LeadPath        string   // Working directory for Claude.
 	ClaudeConfigDir string   // Custom CLAUDE_CONFIG_DIR (empty = default).
 	AddDirs         []string // Extra directories to expose via --add-dir (e.g. sibling worktrees).
-	AgentTeams      bool     // Enable agent teams (env var + --teammate-mode).
 	SkipPermissions bool     // Add --dangerously-skip-permissions.
 }
 
@@ -99,10 +98,6 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, claude 
 			parts = append(parts, "CLAUDE_CONFIG_DIR='"+claude.ClaudeConfigDir+"'")
 		}
 
-		if claude.AgentTeams {
-			parts = append(parts, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1")
-		}
-
 		parts = append(parts, "claude")
 
 		if claude.SkipPermissions {
@@ -111,10 +106,6 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, claude 
 
 		for _, dir := range claude.AddDirs {
 			parts = append(parts, "--add-dir", dir)
-		}
-
-		if claude.AgentTeams {
-			parts = append(parts, "--teammate-mode", "in-process")
 		}
 
 		if claude.PromptFile != "" {

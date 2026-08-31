@@ -1,8 +1,6 @@
 package workspace
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -43,7 +41,6 @@ func IsDirect(wp WorkspaceProject) bool {
 
 type Workspace struct {
 	Name     string             `json:"name"`
-	TeamID   string             `json:"team_id,omitempty"`
 	Projects []WorkspaceProject `json:"projects"`
 }
 
@@ -298,7 +295,7 @@ func Remove(name string) error {
 	dev.StopAll(name)
 	dev.StopProxyIfIdle()
 	os.Remove(PromptFilePath(name))
-	os.Remove(NoTeamsPromptFilePath(name))
+	os.Remove(legacyNoTeamsPromptFilePath(name))
 
 	ws, err := Load(name)
 	if err == nil {
@@ -428,14 +425,15 @@ func currentBranch(path string) string {
 	return branch
 }
 
-// PromptFilePath returns the path for the workspace's agent-team prompt file.
+// PromptFilePath returns the path for the workspace's prompt file.
 func PromptFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, "prompt-"+wsName+".md")
 }
 
-// NoTeamsPromptFilePath returns the path for the flat (no-agent-teams) prompt
-// file used by the "Editor + Claude (No teams)" launch mode.
-func NoTeamsPromptFilePath(wsName string) string {
+// legacyNoTeamsPromptFilePath is the prompt path crew wrote while teams and
+// no-teams launch modes coexisted. Kept only so Remove still cleans up files
+// left on disk by older versions; drop it after a release or two.
+func legacyNoTeamsPromptFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, "prompt-"+wsName+"-noteams.md")
 }
 
@@ -444,27 +442,47 @@ func CodeWorkspaceFilePath(wsName string) string {
 	return filepath.Join(config.ConfigDir, wsName+".code-workspace")
 }
 
-// GeneratePrompt builds the agent team prompt, writes it to the prompt file,
-// and returns the text.
-func GeneratePrompt(ws *Workspace) (string, error) {
-	if ws.TeamID == "" {
-		var buf [4]byte
-		if _, err := rand.Read(buf[:]); err != nil {
-			return "", fmt.Errorf("generate team id: %w", err)
-		}
-		ws.TeamID = hex.EncodeToString(buf[:])
-		if err := Save(ws); err != nil {
-			return "", fmt.Errorf("persist team id: %w", err)
+// needsPrompt reports whether a launch should inject the orientation prompt.
+//
+// Multi-project workspaces need it to find their projects. A workspace holding
+// any direct-mode project needs it for the CAUTION framing regardless of size:
+// both launch modes skip permissions, so a lone direct project would otherwise
+// drop Claude into the user's canonical repo with no warning at all.
+func needsPrompt(ws *Workspace) bool {
+	if len(ws.Projects) > 1 {
+		return true
+	}
+	for _, wp := range ws.Projects {
+		if IsDirect(wp) {
+			return true
 		}
 	}
-	teamName := "crew-" + ws.Name + "-" + ws.TeamID
+	return false
+}
+
+// GeneratePrompt writes the workspace orientation prompt and returns its text.
+// It orients a single Claude instance to every project in the workspace by
+// listing names, working directories, and roles.
+//
+// Projects are labelled `[worktree]` or `[direct]` because the distinction
+// changes what is safe to do: worktree projects are isolated copies, while
+// direct projects point at the canonical repository, so a mistaken commit or
+// branch switch there lands in the user's real repo. Both launch modes run
+// Claude with permissions skipped, which makes this framing the only thing
+// warning it off the user's working tree.
+func GeneratePrompt(ws *Workspace) (string, error) {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Create an agent team named exactly `%s` (use this exact name — it uniquely identifies this workspace) and spawn these teammates:\n", teamName)
+	fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", ws.Name)
+	b.WriteString("It contains the following projects:\n\n")
 
 	hasWorktree := false
 	hasDirect := false
 	for _, wp := range ws.Projects {
 		path := ResolvePath(ws.Name, wp)
+		role := wp.Role
+		if role == "" {
+			role = "(no role specified)"
+		}
 		modeLabel := "worktree"
 		if IsDirect(wp) {
 			modeLabel = "direct"
@@ -472,7 +490,7 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 		} else {
 			hasWorktree = true
 		}
-		fmt.Fprintf(&b, "- **%s** [%s] (working directory: %s): %s\n", wp.Name, modeLabel, path, wp.Role)
+		fmt.Fprintf(&b, "- **%s** [%s] (%s): %s\n", wp.Name, modeLabel, path, role)
 	}
 	b.WriteString("\n")
 
@@ -499,43 +517,11 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("Each teammate should cd into their project directory before starting work.\n")
-	b.WriteString("Create a shared task list so I can see status.\n")
-	b.WriteString("Wait for my instructions on what to build.\n")
-
-	text := b.String()
-	promptFile := PromptFilePath(ws.Name)
-	if err := os.WriteFile(promptFile, []byte(text), 0o644); err != nil {
-		return "", err
-	}
-	return text, nil
-}
-
-// GenerateNoTeamsPrompt writes a flat (no-agent-team) prompt for a workspace
-// and returns its text. The prompt orients a single Claude instance to every
-// project in the workspace by listing names, working directories, and roles —
-// without instructing it to spawn a team.
-//
-// Intended for the "Editor + Claude (No teams)" launch mode, which starts
-// Claude at WorkspaceDir(ws.Name) with each project exposed via --add-dir.
-func GenerateNoTeamsPrompt(ws *Workspace) (string, error) {
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", ws.Name)
-	b.WriteString("This workspace contains the following project worktrees, each on its own crew/ branch — all changes stay isolated until merged:\n\n")
-	for _, wp := range ws.Projects {
-		path := ResolvePath(ws.Name, wp)
-		role := wp.Role
-		if role == "" {
-			role = "(no role specified)"
-		}
-		fmt.Fprintf(&b, "- **%s** (%s): %s\n", wp.Name, path, role)
-	}
-	b.WriteString("\n")
 	b.WriteString("cd into the relevant project's directory before running commands or editing files there.\n")
 	b.WriteString("Wait for my instructions on what to build.\n")
 
 	text := b.String()
-	if err := os.WriteFile(NoTeamsPromptFilePath(ws.Name), []byte(text), 0o644); err != nil {
+	if err := os.WriteFile(PromptFilePath(ws.Name), []byte(text), 0o644); err != nil {
 		return "", err
 	}
 	return text, nil
