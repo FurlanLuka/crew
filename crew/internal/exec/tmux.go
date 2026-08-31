@@ -37,6 +37,12 @@ func CreateTmuxSession(session, dir string) error {
 	debug.Log("tmux", "new-session -d -s %s -c %s", session, dir)
 	cmd := exec.Command("tmux", args...)
 	cmd.Env = EnvWithoutTMUX()
+	// When no server is running this client daemonizes into one, inheriting
+	// crew's working directory. Anchoring it outside the workspace tree keeps
+	// the server from resembling an abandoned workspace process to any sweep.
+	if home, err := os.UserHomeDir(); err == nil {
+		cmd.Dir = home
+	}
 	if err := cmd.Run(); err != nil {
 		debug.Log("tmux", "new-session -s %s → error: %v", session, err)
 		return err

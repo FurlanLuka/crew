@@ -1,0 +1,3 @@
+# Written by debug.Log when config.ConfigDir is unset, which is the case in
+# test binaries.
+debug.log

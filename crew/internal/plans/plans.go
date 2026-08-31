@@ -13,6 +13,9 @@ import (
 
 const sessionName = "crew-plans"
 
+// SessionName returns the tmux session the plans server runs in.
+func SessionName() string { return sessionName }
+
 type Config struct {
 	Enabled bool `json:"enabled"`
 	Port    int  `json:"port"`

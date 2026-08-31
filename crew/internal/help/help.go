@@ -208,6 +208,19 @@ var Root = CommandInfo{
 			},
 		},
 		{
+			Name:         "ps",
+			Description:  "List what crew is running: tmux sessions, and processes that leaked out of them. Loose processes are only those whose parent has exited while still working inside the workspace tree — anything still attached to a live process (a running Claude session, an editor terminal) is reported as left alone.",
+			Usage:        "crew ps [--json]",
+			OutputFormat: "<kind>\\t<pid>\\t<session|cwd>\\t<command>",
+			Examples:     []string{"crew ps", "crew ps --json"},
+		},
+		{
+			Name:        "kill",
+			Description: "Stop every crew session and reclaim the processes that leaked out of them, without rebooting. Prints the commands to restore what it stopped. Processes with a live parent are never killed.",
+			Usage:       "crew kill [--dry-run]",
+			Examples:    []string{"crew kill", "crew kill --dry-run"},
+		},
+		{
 			Name:        "ls",
 			Description: "List workspaces or projects (tab-separated output for scripting)",
 			Subcommands: []CommandInfo{

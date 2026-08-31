@@ -2,7 +2,10 @@ package exec
 
 import (
 	"os"
+	"os/exec"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -29,22 +32,43 @@ func TestNormalizeTTY(t *testing.T) {
 }
 
 func TestParseProcRows(t *testing.T) {
-	out := "  PID  PPID TTY\n" +
-		" 7711  7707 ttys002\n" +
-		" 7720  7711 ttys002\n" +
-		" 7723     1 ttys002\n" +
-		"27231 27228 ??\n" +
-		"garbage line\n"
+	// Shape of `ps -axww -o pid=,ppid=,tty=,command=`.
+	out := " 7711  7707 ttys002 -zsh\n" +
+		" 7720  7711 ttys002 npm run dev\n" +
+		" 7723     1 ttys002 node /path/with spaces/server.js --flag\n" +
+		"27231 27228 ??      sh -c cat >> '/tmp/x.log'\n" +
+		"garbage line\n" +
+		"  123   abc ttys003 bad ppid\n"
 
 	want := []procRow{
-		{pid: 7711, ppid: 7707, tty: "ttys002"},
-		{pid: 7720, ppid: 7711, tty: "ttys002"},
-		{pid: 7723, ppid: 1, tty: "ttys002"},
-		{pid: 27231, ppid: 27228, tty: ""},
+		{pid: 7711, ppid: 7707, tty: "ttys002", command: "-zsh"},
+		{pid: 7720, ppid: 7711, tty: "ttys002", command: "npm run dev"},
+		{pid: 7723, ppid: 1, tty: "ttys002", command: "node /path/with spaces/server.js --flag"},
+		{pid: 27231, ppid: 27228, tty: "", command: "sh -c cat >> '/tmp/x.log'"},
 	}
 
 	if got := parseProcRows(out); !reflect.DeepEqual(got, want) {
 		t.Errorf("parseProcRows =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// A row must never be dropped silently: an under-parsed table means an
+// under-killed sweep, which is the failure this package exists to prevent.
+func TestParseProcRows_DropsNoRows(t *testing.T) {
+	out, err := exec.Command("ps", psArgs...).Output()
+	if err != nil {
+		t.Fatalf("ps: %v", err)
+	}
+
+	lines := 0
+	for _, l := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(l) != "" {
+			lines++
+		}
+	}
+
+	if got := len(parseProcRows(string(out))); got != lines {
+		t.Errorf("parsed %d rows from %d non-blank lines — rows are being dropped", got, lines)
 	}
 }
 
@@ -97,14 +121,14 @@ func TestSelectVictims(t *testing.T) {
 		want      []int
 	}{
 		{
-			name:    "orphan on pane tty is caught, other panes untouched",
-			pane:    paneRef{pid: 7711, tty: "ttys002"},
-			want:    []int{7720, 7722, 7723, 7777},
+			name: "orphan on pane tty is caught, other panes untouched",
+			pane: paneRef{pid: 7711, tty: "ttys002"},
+			want: []int{7720, 7722, 7723, 7777},
 		},
 		{
-			name:    "no tty falls back to the ppid graph only",
-			pane:    paneRef{pid: 7711},
-			want:    []int{7720, 7722, 7777},
+			name: "no tty falls back to the ppid graph only",
+			pane: paneRef{pid: 7711},
+			want: []int{7720, 7722, 7777},
 		},
 		{
 			name:      "protected pids are never returned",
@@ -113,9 +137,9 @@ func TestSelectVictims(t *testing.T) {
 			want:      []int{7720, 7777},
 		},
 		{
-			name:    "unrelated pane sweeps only its own tty",
-			pane:    paneRef{pid: 9000, tty: "ttys009"},
-			want:    nil,
+			name: "unrelated pane sweeps only its own tty",
+			pane: paneRef{pid: 9000, tty: "ttys009"},
+			want: nil,
 		},
 	}
 
@@ -218,12 +242,28 @@ func TestSnapshotProcs_ParsesRealPSOutput(t *testing.T) {
 
 	self := os.Getpid()
 	for _, r := range rows {
-		if r.pid == self {
-			if r.ppid != os.Getppid() {
-				t.Errorf("ppid for self = %d, want %d", r.ppid, os.Getppid())
-			}
-			return
+		if r.pid != self {
+			continue
 		}
+
+		// Every field is checked against independently obtained truth. A column
+		// reordered in psArgs still parses cleanly and still passes the
+		// hand-written fixture tests, so this is the only thing standing
+		// between a reorder and a silently dead pane sweep.
+		if r.ppid != os.Getppid() {
+			t.Errorf("ppid = %d, want %d", r.ppid, os.Getppid())
+		}
+		wantTTY := ""
+		if out, err := exec.Command("ps", "-o", "tty=", "-p", strconv.Itoa(self)).Output(); err == nil {
+			wantTTY = normalizeTTY(strings.TrimSpace(string(out)))
+		}
+		if r.tty != wantTTY {
+			t.Errorf("tty = %q, want %q", r.tty, wantTTY)
+		}
+		if !strings.Contains(r.command, "exec.test") {
+			t.Errorf("command = %q, want it to name the test binary", r.command)
+		}
+		return
 	}
 	t.Errorf("snapshot of %d rows did not include the test process (pid %d)", len(rows), self)
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/notify"
 	"github.com/FurlanLuka/crew/crew/internal/plans"
+	"github.com/FurlanLuka/crew/crew/internal/procs"
 	"github.com/FurlanLuka/crew/crew/internal/profile"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/registry"
@@ -143,6 +144,14 @@ func main() {
 		cmdLs()
 		return
 
+	case "ps":
+		cmdPs()
+		return
+
+	case "kill":
+		cmdKill()
+		return
+
 	case "start":
 		cmdStart()
 		return
@@ -241,6 +250,11 @@ func mainMenu() app.Menu {
 			Label:       "Settings",
 			Description: "Server IP, SSH host, managed configs",
 			Page:        func() app.Page { return settings.NewView() },
+		},
+		{
+			Label:       "Processes",
+			Description: "What crew is running, and reclaim leaked processes",
+			Page:        func() app.Page { return procs.NewView() },
 		},
 		{
 			Label:       "Debug",

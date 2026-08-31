@@ -12,9 +12,19 @@ import (
 
 // procRow is one row of a process-table snapshot.
 type procRow struct {
-	pid  int
-	ppid int
-	tty  string // normalized ("ttys002"); empty when the process has no controlling terminal
+	pid     int
+	ppid    int
+	tty     string // normalized ("ttys002"); empty when the process has no controlling terminal
+	command string
+}
+
+// ProcRow is the exported view of a snapshot row, for callers outside this
+// package that need to reason about the process table (see Snapshot).
+type ProcRow struct {
+	PID     int
+	PPID    int
+	TTY     string
+	Command string
 }
 
 // snapshotProcs captures the whole process table in a single ps call.
@@ -29,17 +39,55 @@ type procRow struct {
 // beforehand, so a pid that exits and is recycled in between still takes the
 // signal. That exposure is unchanged from the previous implementation.
 func snapshotProcs() ([]procRow, error) {
-	debug.Log("tmux", "ps -axo pid,ppid,tty")
-	out, err := exec.Command("ps", "-axo", "pid,ppid,tty").Output()
+	debug.Log("tmux", "%s", strings.Join(psArgs, " "))
+	out, err := exec.Command("ps", psArgs...).Output()
 	if err != nil {
-		debug.Log("tmux", "ps -axo pid,ppid,tty → error: %v", err)
+		debug.Log("tmux", "ps → error: %v", err)
 		return nil, err
 	}
 	return parseProcRows(string(out)), nil
 }
 
-// parseProcRows parses `ps -axo pid,ppid,tty` output. The header row and any
-// line that doesn't yield two numeric ids are skipped.
+// psArgs is the single process-table query for the whole binary. Column ORDER
+// is load-bearing: parseProcRows reads pid/ppid/pgid/tty positionally, so
+// reordering silently turns a pgid into a tty and the pane sweep stops matching
+// anything. TestSnapshotProcs_ParsesRealPSOutput pins each field against
+// independently obtained truth for exactly that reason.
+//
+// -ww disables the terminal-width truncation that would otherwise clip command.
+// command stays last because it is the only field containing spaces.
+var psArgs = []string{"-axww", "-o", "pid=,ppid=,tty=,command="}
+
+// Snapshot returns the current process table. Callers outside this package use
+// it together with ProtectedPIDs rather than shelling out to ps themselves.
+func Snapshot() ([]ProcRow, error) {
+	rows, err := snapshotProcs()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ProcRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ProcRow{PID: r.pid, PPID: r.ppid, TTY: r.tty, Command: r.command})
+	}
+	return out, nil
+}
+
+// ProtectedPIDs returns the pids that must never be signalled by any sweep:
+// crew itself and every process above it.
+//
+// Pure over a snapshot the caller already holds, so there is exactly one
+// definition of the never-kill set and no caller is tempted to re-derive it.
+func ProtectedPIDs(rows []ProcRow) []int {
+	internal := make([]procRow, len(rows))
+	for i, r := range rows {
+		internal[i] = procRow{pid: r.PID, ppid: r.PPID, tty: r.TTY, command: r.Command}
+	}
+	return protectedPIDs(internal)
+}
+
+// parseProcRows parses the output of `ps` run with psArgs. Any line that does
+// not yield three numeric ids is skipped, which also drops a header row if one
+// is ever present.
 func parseProcRows(out string) []procRow {
 	var rows []procRow
 	for _, line := range strings.Split(out, "\n") {
@@ -55,7 +103,12 @@ func parseProcRows(out string) []procRow {
 		if err != nil {
 			continue
 		}
-		rows = append(rows, procRow{pid: pid, ppid: ppid, tty: normalizeTTY(fields[2])})
+		rows = append(rows, procRow{
+			pid:     pid,
+			ppid:    ppid,
+			tty:     normalizeTTY(fields[2]),
+			command: strings.Join(fields[3:], " "),
+		})
 	}
 	return rows
 }
