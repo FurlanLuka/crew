@@ -46,10 +46,14 @@ var Root = CommandInfo{
 				{
 					Name:        "project",
 					Description: "Register a git repo in the global project pool. Projects can be added to multiple workspaces.",
-					Usage:       "crew add project <name> <path>",
+					Usage:       "crew add project <name> <path> [--setup=<cmd>]",
+					Flags: []FlagInfo{
+						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). Re-running with --setup on an existing project updates it."},
+					},
 					Examples: []string{
 						"crew add project my-api /home/user/repos/api",
 						"crew add project frontend ~/repos/web-app",
+						"crew add project ai-tutor-api ~/repos/ai-tutor-api --setup=\"make sync\"",
 					},
 				},
 				{
@@ -69,9 +73,13 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Add a second working copy to a workspace. Every project in the workspace gets a fresh git worktree under <workspace>/<name>, on branch crew/<workspace>/<name>/<project>. A workspace holding a direct-mode project can only have one worktree.",
-					Usage:       "crew add worktree <workspace>/<name>",
-					Examples:    []string{"crew add worktree phone-speak/wrk3"},
+					Description: "Add a second working copy to a workspace. Shows each project's base branch and whether it is behind origin, then checks every project out under <workspace>/<name> on branch crew/<workspace>/<name>/<project>, copies .env files from the canonical repo, installs (mise install, then the lockfile's package manager or the project's setup command), and smoke-starts the dev servers to catch a checkout that cannot run. A workspace holding a direct-mode project can only have one worktree.",
+					Usage:       "crew add worktree <workspace>/<name> [--no-install] [--no-smoke]",
+					Flags: []FlagInfo{
+						{Name: "--no-install", Description: "Check out only; skip mise and package installs"},
+						{Name: "--no-smoke", Description: "Skip the smoke start"},
+					},
+					Examples: []string{"crew add worktree phone-speak/wrk3", "crew add worktree phone-speak/wrk3 --no-install"},
 				},
 				{
 					Name:        "binding",
@@ -362,6 +370,15 @@ var Root = CommandInfo{
 				{Name: "--dry-run", Description: "Print the plan and stop"},
 			},
 			Examples: []string{"crew migrate --dry-run", "crew migrate"},
+		},
+		{
+			Name:        "setup",
+			Description: "Re-run every project's install steps in a worktree: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command. Idempotent — the fix for an install that failed when the worktree was created. Ends with a smoke start: servers are started, checked a few seconds later, and stopped again.",
+			Usage:       "crew setup <workspace>[/<worktree>] [--no-smoke]",
+			Flags: []FlagInfo{
+				{Name: "--no-smoke", Description: "Skip the smoke start"},
+			},
+			Examples: []string{"crew setup phone-speak/wrk3"},
 		},
 		{
 			Name:        "uninstall",

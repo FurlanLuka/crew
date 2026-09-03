@@ -305,7 +305,7 @@ func loadWsProjects(wsName string) tea.Cmd {
 
 func addProjectToWorkspace(wsName, projName, role, mode string) tea.Cmd {
 	return func() tea.Msg {
-		if err := AddProject(wsName, projName, role, mode); err != nil {
+		if err := AddProject(wsName, projName, role, mode, CheckoutOptions{Install: true}); err != nil {
 			return errMsg{err}
 		}
 		return wsProjectAddedMsg{projName}

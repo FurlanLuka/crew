@@ -491,7 +491,7 @@ func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
 	if err := Create("ws"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := AddProject("ws", "api", "backend", ModeDirect); err != nil {
+	if err := AddProject("ws", "api", "backend", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
@@ -527,7 +527,7 @@ func TestRemoveProject_DirectMode_LeavesRepoIntact(t *testing.T) {
 	if err := Create("ws"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws", "api", "backend", ModeDirect); err != nil {
+	if err := AddProject("ws", "api", "backend", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
@@ -558,7 +558,7 @@ func TestRemove_DirectMode_LeavesRepoIntact(t *testing.T) {
 	if err := Create("ws"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws", "api", "backend", ModeDirect); err != nil {
+	if err := AddProject("ws", "api", "backend", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -588,10 +588,10 @@ func TestAddProject_DirectMode_CollisionRefused(t *testing.T) {
 	if err := Create("ws-b"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws-a", "api", "owner", ModeDirect); err != nil {
+	if err := AddProject("ws-a", "api", "owner", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("first direct add: %v", err)
 	}
-	err := AddProject("ws-b", "api", "owner", ModeDirect)
+	err := AddProject("ws-b", "api", "owner", ModeDirect, CheckoutOptions{})
 	if err == nil {
 		t.Fatal("second direct add should have been refused")
 	}
@@ -611,13 +611,13 @@ func TestDuplicateWorktree_RefusesDirectCollision(t *testing.T) {
 	if err := Create("ws-src"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws-src", "api", "owner", ModeDirect); err != nil {
+	if err := AddProject("ws-src", "api", "owner", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
 	// A duplicate is a second worktree, and a direct project pins the workspace
 	// to one — the same invariant, reached through DuplicateWorktree.
-	err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2")
+	err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2", CheckoutOptions{})
 	if err == nil {
 		t.Fatal("duplicating a worktree alongside a direct project should refuse")
 	}

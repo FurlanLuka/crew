@@ -3,6 +3,7 @@ package workspace
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
@@ -35,7 +36,19 @@ func Refs(ws *Workspace) []Ref {
 	return refs
 }
 
-// createProjectWorktree checks a project out into one worktree.
+// CheckoutOptions controls what happens after a project is checked out.
+type CheckoutOptions struct {
+	// Install runs the project's setup steps (mise, the lockfile's package
+	// manager, or the explicit setup command). Off skips them entirely.
+	Install bool
+	// Progress is told about each step as it finishes; nil is fine.
+	Progress func(project string, r exec.SetupResult)
+}
+
+// createProjectWorktree checks a project out into one worktree: a git
+// worktree on its own branch with .env files copied in (gitignored, so git
+// would not bring them). Installing is a separate step — see setupProject —
+// so a failed install never leaves a half-made worktree.
 func createProjectWorktree(ref Ref, p project.Project) error {
 	wtDir := WorktreePath(ref, p.Name)
 	baseBranch := detectDefaultBranch(p.Path)
@@ -43,9 +56,99 @@ func createProjectWorktree(ref Ref, p project.Project) error {
 	if err := exec.CreateGitWorktree(p.Path, wtDir, BranchName(ref, p.Name), baseBranch); err != nil {
 		return fmt.Errorf("failed to create worktree for %s in %s: %w", p.Name, ref, err)
 	}
-	exec.CopyEnvFiles(p.Path, wtDir)
-	exec.RunNpmInstall(wtDir)
+	exec.CopyEnvFiles(envSource(ref, p), wtDir)
 	return nil
+}
+
+// envSource is where a new checkout's .env files come from: the canonical
+// repo when it has any, otherwise a sibling worktree of the same workspace.
+// The canonical repo often has none — the real .env was only ever written
+// inside a checkout — and a worktree without one cannot start.
+func envSource(ref Ref, p project.Project) string {
+	if exec.HasEnvFiles(p.Path) {
+		return p.Path
+	}
+	ws, err := Load(ref.Workspace)
+	if err != nil {
+		return p.Path
+	}
+	for _, sibling := range Refs(ws) {
+		if sibling.Worktree == ref.Worktree {
+			continue
+		}
+		if dir := WorktreePath(sibling, p.Name); exec.HasEnvFiles(dir) {
+			return dir
+		}
+	}
+	return p.Path
+}
+
+// setupProject runs one checkout's install steps.
+func setupProject(ref Ref, p project.Project, opts CheckoutOptions) error {
+	if !opts.Install {
+		return nil
+	}
+	wtDir := WorktreePath(ref, p.Name)
+	report := func(r exec.SetupResult) {
+		if opts.Progress != nil {
+			opts.Progress(p.Name, r)
+		}
+	}
+	if err := exec.RunSetup(wtDir, exec.SetupSteps(wtDir, p.Setup), report); err != nil {
+		return fmt.Errorf("%s: %w", p.Name, err)
+	}
+	return nil
+}
+
+// SetupError is one or more projects whose install failed. The worktree
+// itself exists and is recorded; Setup re-runs the installs.
+type SetupError struct {
+	Ref    Ref
+	Errors []error
+}
+
+func (e *SetupError) Error() string {
+	msgs := make([]string, 0, len(e.Errors))
+	for _, err := range e.Errors {
+		msgs = append(msgs, err.Error())
+	}
+	return fmt.Sprintf("%d project(s) failed to set up in %s:\n  %s", len(e.Errors), e.Ref, strings.Join(msgs, "\n  "))
+}
+
+// Setup re-runs every project's install steps in a worktree. Idempotent, so
+// it is the fix for an install that failed the first time.
+func Setup(ref Ref, opts CheckoutOptions) error {
+	ws, err := Load(ref.Workspace)
+	if err != nil {
+		return err
+	}
+	return setupAll(ref, ws, opts)
+}
+
+func setupAll(ref Ref, ws *Workspace, opts CheckoutOptions) error {
+	var failed []error
+	for _, wp := range ws.Projects {
+		if IsDirect(wp) {
+			continue
+		}
+		p := project.Get(wp.Name)
+		if p == nil {
+			continue
+		}
+		if err := setupProject(ref, *p, opts); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	if len(failed) > 0 {
+		return &SetupError{Ref: ref, Errors: failed}
+	}
+	return nil
+}
+
+// SetupStepsFor previews what a checkout of p would run, for output that
+// shows the plan before doing it.
+func SetupStepsFor(p project.Project) []exec.SetupStep {
+	return exec.SetupSteps(p.Path, p.Setup)
 }
 
 // removeWorktreeArtifacts deletes everything crew keys by one worktree's slug:
@@ -59,7 +162,7 @@ func removeWorktreeArtifacts(ref Ref) {
 
 // AddWorktree adds a worktree to a workspace and checks every project out into
 // it.
-func AddWorktree(wsName, name string) error {
+func AddWorktree(wsName, name string, opts CheckoutOptions) error {
 	if err := ValidateName("worktree", name); err != nil {
 		return err
 	}
@@ -92,18 +195,36 @@ func AddWorktree(wsName, name string) error {
 		return err
 	}
 
+	// Checkouts are all-or-nothing: a failure here rolls back what was
+	// made, so a retry starts clean instead of colliding with a half-made
+	// worktree. Installs come after the worktree is recorded, and a failed
+	// install keeps the ones that succeeded.
+	var made []WorkspaceProject
 	for _, wp := range ws.Projects {
 		p := project.Get(wp.Name)
 		if p == nil {
+			rollbackWorktree(ref, made)
 			return fmt.Errorf("project '%s' not found in pool", wp.Name)
 		}
 		if err := createProjectWorktree(ref, *p); err != nil {
+			rollbackWorktree(ref, made)
 			return err
 		}
+		made = append(made, wp)
 	}
 
 	ws.Worktrees = append(ws.Worktrees, Worktree{Name: name})
-	return Save(ws)
+	if err := Save(ws); err != nil {
+		return err
+	}
+	return setupAll(ref, ws, opts)
+}
+
+func rollbackWorktree(ref Ref, made []WorkspaceProject) {
+	for _, wp := range made {
+		cleanupWorktree(ref, wp)
+	}
+	os.RemoveAll(WorktreeDir(ref))
 }
 
 // RemoveWorktree destroys a worktree's checkouts and forgets it.
@@ -142,7 +263,7 @@ func RemoveWorktree(wsName, name string) error {
 
 // DuplicateWorktree creates a new worktree in the same workspace, carrying the
 // source worktree's overrides across.
-func DuplicateWorktree(ref Ref, newName string) error {
+func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) error {
 	ws, err := Load(ref.Workspace)
 	if err != nil {
 		return err
@@ -152,7 +273,7 @@ func DuplicateWorktree(ref Ref, newName string) error {
 		return err
 	}
 
-	if err := AddWorktree(ref.Workspace, newName); err != nil {
+	if err := AddWorktree(ref.Workspace, newName, opts); err != nil {
 		return err
 	}
 	if len(src.Overrides) == 0 {

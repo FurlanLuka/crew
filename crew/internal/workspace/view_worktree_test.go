@@ -112,22 +112,3 @@ func TestRenderWorktreePage_CleanHasNoAnomalyBlock(t *testing.T) {
 		t.Errorf("hidden rows rendered:\n%s", got)
 	}
 }
-
-// stripANSI removes lipgloss styling so the layout can be compared as text.
-func stripANSI(s string) string {
-	var out strings.Builder
-	inEsc := false
-	for _, r := range s {
-		switch {
-		case inEsc:
-			if r == 'm' {
-				inEsc = false
-			}
-		case r == '\x1b':
-			inEsc = true
-		default:
-			out.WriteRune(r)
-		}
-	}
-	return out.String()
-}

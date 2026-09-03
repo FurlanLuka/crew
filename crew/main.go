@@ -156,6 +156,10 @@ func main() {
 		cmdUninstall()
 		return
 
+	case "setup":
+		cmdSetup()
+		return
+
 	case "dev":
 		cmdDev()
 		return
@@ -465,21 +469,29 @@ func cmdLaunch() {
 // of the same projects — and a worktree is now the thing that is.
 func cmdDuplicate() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <workspace>[/<worktree>] <new-worktree>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]\n")
 		os.Exit(1)
 	}
 
 	src := mustResolve(os.Args[2]).Ref
 	newName := os.Args[3]
 
-	if err := workspace.DuplicateWorktree(src, newName); err != nil {
+	install, smoke := parseCheckoutFlags(os.Args[4:])
+	opts := workspace.CheckoutOptions{Install: install, Progress: printSetupProgress}
+	fmt.Printf("Duplicating %s → %s/%s\n\n", src, src.Workspace, newName)
+	if err := workspace.DuplicateWorktree(src, newName, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	dst := workspace.Ref{Workspace: src.Workspace, Worktree: newName}
-	fmt.Printf("Duplicated %s → %s\n", src, dst)
-	fmt.Printf("crew dev start %s\n", dst)
+	if smoke && install {
+		if res, err := workspace.Resolve(dst); err == nil {
+			runSmoke(res)
+		}
+	}
+	fmt.Printf("\nDuplicated %s → %s\n", src, dst)
+	fmt.Printf("crew launch %s\n", dst)
 }
 
 func cmdRm() {
@@ -583,16 +595,45 @@ func cmdAdd() {
 
 func cmdAddProject() {
 	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>]\n")
 		os.Exit(1)
 	}
 	name := os.Args[3]
 	path := os.Args[4]
-	if err := project.Add(project.Project{Name: name, Path: path}); err != nil {
+	setup := ""
+	for _, arg := range os.Args[5:] {
+		switch {
+		case strings.HasPrefix(arg, "--setup="):
+			setup = strings.TrimPrefix(arg, "--setup=")
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+
+	// Re-adding an existing project with --setup updates just that; the
+	// setup command is the one field worth changing after the fact.
+	if existing := project.Get(name); existing != nil && setup != "" {
+		if err := project.SetSetup(name, setup); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Setup for %s: %s\n", name, setup)
+		return
+	}
+
+	if err := project.Add(project.Project{Name: name, Path: path, Setup: setup}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Added project: %s (%s)\n", name, path)
+	if steps := workspace.SetupStepsFor(project.Project{Name: name, Path: path, Setup: setup}); len(steps) > 0 {
+		names := make([]string, 0, len(steps))
+		for _, st := range steps {
+			names = append(names, st.Name)
+		}
+		fmt.Printf("New checkouts will run: %s\n", strings.Join(names, " → "))
+	}
 }
 
 func cmdAddWorkspace() {
@@ -626,7 +667,8 @@ func cmdAddWorkspace() {
 		}
 	}
 
-	if err := workspace.AddProject(wsName, projName, role, mode); err != nil {
+	opts := workspace.CheckoutOptions{Install: true, Progress: printSetupProgress}
+	if err := workspace.AddProject(wsName, projName, role, mode, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

@@ -131,7 +131,7 @@ func detectDefaultBranch(projectPath string) string {
 // creates a git worktree under the workspace directory; in direct mode it
 // records a pointer to the project's canonical checkout without creating a
 // worktree.
-func AddProject(wsName, projName, role, mode string) error {
+func AddProject(wsName, projName, role, mode string, opts CheckoutOptions) error {
 	if mode == "" {
 		mode = ModeWorktree
 	}
@@ -168,6 +168,11 @@ func AddProject(wsName, projName, role, mode string) error {
 	} else {
 		for _, ref := range Refs(ws) {
 			if err := createProjectWorktree(ref, *p); err != nil {
+				return err
+			}
+		}
+		for _, ref := range Refs(ws) {
+			if err := setupProject(ref, *p, opts); err != nil {
 				return err
 			}
 		}

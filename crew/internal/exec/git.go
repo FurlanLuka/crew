@@ -66,6 +66,20 @@ func RemoveGitWorktree(projectPath, wtDir string) {
 	cmd.Run()
 }
 
+// HasEnvFiles reports whether dir holds any .env* file.
+func HasEnvFiles(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), ".env") {
+			return true
+		}
+	}
+	return false
+}
+
 // CopyEnvFiles copies .env* files from src to dst.
 func CopyEnvFiles(srcDir, dstDir string) {
 	entries, err := os.ReadDir(srcDir)
@@ -80,17 +94,6 @@ func CopyEnvFiles(srcDir, dstDir string) {
 			}
 		}
 	}
-}
-
-// RunNpmInstall runs npm install in dir if package.json exists.
-func RunNpmInstall(dir string) {
-	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
-		return
-	}
-	debug.Log("git", "npm install --silent in %s", dir)
-	cmd := exec.Command("npm", "install", "--silent")
-	cmd.Dir = dir
-	cmd.Run()
 }
 
 // RunGitCommand runs an arbitrary git command in the given directory and returns stdout.

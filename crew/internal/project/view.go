@@ -18,6 +18,7 @@ import (
 type projectsLoadedMsg struct{ projects []Project }
 type projectAddedMsg struct{ name string }
 type projectRemovedMsg struct{ name string }
+type setupSavedMsg struct{ name string }
 type errMsg struct{ err error }
 
 // ── States ──
@@ -28,19 +29,21 @@ const (
 	stateList viewState = iota
 	stateAddForm
 	stateConfirmRemove
+	stateSetupForm
 )
 
 // ── Model ──
 
 type View struct {
-	state     viewState
-	projects  []Project
-	cursor    int
-	pathInput textinput.Model
-	nameInput textinput.Model
-	formField int // 0=path, 1=name
-	statusMsg string
-	err       error
+	state      viewState
+	projects   []Project
+	cursor     int
+	pathInput  textinput.Model
+	nameInput  textinput.Model
+	setupInput textinput.Model
+	formField  int // 0=path, 1=name
+	statusMsg  string
+	err        error
 }
 
 func NewView() View {
@@ -52,10 +55,15 @@ func NewView() View {
 	ni.Placeholder = "project-name (auto-detected from path)"
 	ni.CharLimit = 64
 
+	si := textinput.New()
+	si.Placeholder = "make sync   (empty: detect from lockfile)"
+	si.CharLimit = 256
+
 	return View{
-		state:     stateList,
-		pathInput: pi,
-		nameInput: ni,
+		state:      stateList,
+		pathInput:  pi,
+		nameInput:  ni,
+		setupInput: si,
 	}
 }
 
@@ -88,6 +96,12 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
 		return v, loadProjects
 
+	case setupSavedMsg:
+		v.state = stateList
+		v.statusMsg = fmt.Sprintf("Setup for '%s' saved", msg.name)
+		v.setupInput.Blur()
+		return v, loadProjects
+
 	case errMsg:
 		v.err = msg.err
 		return v, nil
@@ -96,6 +110,11 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v.handleKey(msg)
 	}
 
+	if v.state == stateSetupForm {
+		var cmd tea.Cmd
+		v.setupInput, cmd = v.setupInput.Update(msg)
+		return v, cmd
+	}
 	if v.state == stateAddForm {
 		return v.updateFormInput(msg)
 	}
@@ -111,8 +130,34 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleAddFormKey(msg)
 	case stateConfirmRemove:
 		return v.handleConfirmRemoveKey(msg)
+	case stateSetupForm:
+		return v.handleSetupFormKey(msg)
 	}
 	return v, nil
+}
+
+// handleSetupFormKey edits the one project field worth changing after the
+// fact: the command that installs a fresh checkout when the lockfile alone
+// is not the answer.
+func (v View) handleSetupFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		v.state = stateList
+		v.setupInput.Blur()
+		return v, nil
+	case "enter":
+		name := v.projects[v.cursor].Name
+		command := strings.TrimSpace(v.setupInput.Value())
+		return v, func() tea.Msg {
+			if err := SetSetup(name, command); err != nil {
+				return errMsg{err}
+			}
+			return setupSavedMsg{name}
+		}
+	}
+	var cmd tea.Cmd
+	v.setupInput, cmd = v.setupInput.Update(msg)
+	return v, cmd
 }
 
 func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -156,6 +201,16 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			p := v.projects[v.cursor]
 			page := NewBindingsView(p.Name)
 			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
+		}
+		return v, nil
+	case msg.String() == "t":
+		if len(v.projects) > 0 {
+			v.state = stateSetupForm
+			v.statusMsg = ""
+			v.err = nil
+			v.setupInput.SetValue(v.projects[v.cursor].Setup)
+			v.setupInput.Focus()
+			return v, v.setupInput.Cursor.BlinkCmd()
 		}
 		return v, nil
 	}
@@ -266,9 +321,22 @@ func (v View) View() string {
 		v.renderAddForm(&b)
 	case stateConfirmRemove:
 		v.renderConfirmRemove(&b)
+	case stateSetupForm:
+		v.renderSetupForm(&b)
 	}
 
 	return b.String()
+}
+
+func (v View) renderSetupForm(b *strings.Builder) {
+	p := v.projects[v.cursor]
+	fmt.Fprintf(b, "  Setup command for %s\n\n", p.Name)
+	b.WriteString("  Runs in every new checkout after mise install. Leave empty to detect from the lockfile.\n\n")
+	b.WriteString("  ")
+	b.WriteString(v.setupInput.View())
+	b.WriteString("\n\n  ")
+	b.WriteString(app.HelpStyle.Render("enter save  esc cancel"))
+	b.WriteString("\n")
 }
 
 func (v View) renderList(b *strings.Builder) {
@@ -292,6 +360,9 @@ func (v View) renderList(b *strings.Builder) {
 			b.WriteString(name)
 			b.WriteString("  ")
 			b.WriteString(app.Subtle.Render(p.Path))
+			if p.Setup != "" {
+				b.WriteString("  " + app.Subtle.Render("setup: "+p.Setup))
+			}
 			b.WriteString("\n")
 		}
 	}
@@ -304,7 +375,7 @@ func (v View) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  b bindings  esc back"))
+	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  b bindings  t setup  esc back"))
 	b.WriteString("\n")
 }
 

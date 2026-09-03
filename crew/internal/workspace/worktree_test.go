@@ -1,11 +1,13 @@
 package workspace
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
@@ -26,7 +28,7 @@ func newRepoWorkspace(t *testing.T, wsName string, projNames ...string) {
 		t.Fatalf("Create: %v", err)
 	}
 	for _, name := range projNames {
-		if err := AddProject(wsName, name, "role", ""); err != nil {
+		if err := AddProject(wsName, name, "role", "", CheckoutOptions{}); err != nil {
 			t.Fatalf("AddProject %s: %v", name, err)
 		}
 	}
@@ -55,7 +57,7 @@ func TestCreate_SeedsDefaultWorktree(t *testing.T) {
 func TestAddWorktree_ChecksOutEveryProject(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api", "web")
 
-	if err := AddWorktree("ws", "wrk2"); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -79,10 +81,10 @@ func TestAddWorktree_ChecksOutEveryProject(t *testing.T) {
 func TestAddWorktree_SecondWorktreeDoesNotCollideOnBranch(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 
-	if err := AddWorktree("ws", "wrk2"); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree wrk2: %v", err)
 	}
-	if err := AddWorktree("ws", "wrk3"); err != nil {
+	if err := AddWorktree("ws", "wrk3", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree wrk3: %v", err)
 	}
 
@@ -97,17 +99,17 @@ func TestAddWorktree_SecondWorktreeDoesNotCollideOnBranch(t *testing.T) {
 func TestAddWorktree_RejectsDuplicateAndBadNames(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 
-	if err := AddWorktree("ws", DefaultWorktree); err == nil {
+	if err := AddWorktree("ws", DefaultWorktree, CheckoutOptions{}); err == nil {
 		t.Error("duplicate worktree name should be rejected")
 	}
-	if err := AddWorktree("ws", "wrk--2"); err == nil {
+	if err := AddWorktree("ws", "wrk--2", CheckoutOptions{}); err == nil {
 		t.Error("'--' in a worktree name should be rejected")
 	}
 }
 
 func TestRemoveWorktree(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
-	if err := AddWorktree("ws", "wrk2"); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -149,11 +151,11 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 		project.Add(project.Project{Name: "api", Path: repo})
 
 		Create("ws")
-		if err := AddProject("ws", "api", "r", ModeDirect); err != nil {
+		if err := AddProject("ws", "api", "r", ModeDirect, CheckoutOptions{}); err != nil {
 			t.Fatalf("AddProject direct: %v", err)
 		}
 
-		err := AddWorktree("ws", "wrk2")
+		err := AddWorktree("ws", "wrk2", CheckoutOptions{})
 		if err == nil {
 			t.Fatal("adding a worktree alongside a direct project should be refused")
 		}
@@ -164,7 +166,7 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 
 	t.Run("direct project refused when worktrees exist", func(t *testing.T) {
 		newRepoWorkspace(t, "ws", "api")
-		if err := AddWorktree("ws", "wrk2"); err != nil {
+		if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 			t.Fatalf("AddWorktree: %v", err)
 		}
 
@@ -173,7 +175,7 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 		initRepo(t, repo)
 		project.Add(project.Project{Name: "other", Path: repo})
 
-		err := AddProject("ws", "other", "r", ModeDirect)
+		err := AddProject("ws", "other", "r", ModeDirect, CheckoutOptions{})
 		if err == nil {
 			t.Fatal("adding a direct project to a multi-worktree workspace should be refused")
 		}
@@ -212,7 +214,7 @@ func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 		t.Fatalf("SetOverride: %v", err)
 	}
 
-	if err := DuplicateWorktree(src, "wrk2"); err != nil {
+	if err := DuplicateWorktree(src, "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("DuplicateWorktree: %v", err)
 	}
 
@@ -225,5 +227,102 @@ func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 	}
 	if _, err := os.Stat(res.Projects[0].Path); err != nil {
 		t.Errorf("duplicate has no checkout: %v", err)
+	}
+}
+
+// A failed checkout rolls back what was made, so a retry starts clean.
+func TestAddWorktree_CheckoutFailureRollsBack(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	// A second project whose pool entry is gone makes the second checkout fail.
+	ws, _ := Load("ws")
+	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "ghost"})
+	Save(ws)
+
+	err := AddWorktree("ws", "wrk2", CheckoutOptions{})
+	if err == nil {
+		t.Fatal("expected the missing pool entry to fail the checkout")
+	}
+
+	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
+	if _, statErr := os.Stat(WorktreeDir(ref)); !os.IsNotExist(statErr) {
+		t.Errorf("worktree dir left behind after a failed checkout")
+	}
+	ws, _ = Load("ws")
+	for _, wt := range ws.Worktrees {
+		if wt.Name == "wrk2" {
+			t.Error("failed worktree was recorded")
+		}
+	}
+	// The api checkout was made before ghost failed; git must not still know it.
+	if list, _ := exec.RunGitCommand(project.Get("api").Path, "worktree", "list"); strings.Contains(list, "wrk2") {
+		t.Errorf("rolled-back checkout still registered:\n%s", list)
+	}
+}
+
+// A failed install keeps the worktree and the checkouts that installed fine;
+// Setup re-runs it.
+func TestAddWorktree_InstallFailureKeepsWorktree(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	project.SetSetup("api", "exit 7")
+
+	var reported []string
+	err := AddWorktree("ws", "wrk2", CheckoutOptions{
+		Install: true,
+		Progress: func(proj string, r exec.SetupResult) {
+			reported = append(reported, proj+":"+r.Step.Name)
+		},
+	})
+
+	var setupErr *SetupError
+	if !errors.As(err, &setupErr) {
+		t.Fatalf("err = %v, want a SetupError", err)
+	}
+	if len(reported) != 1 || reported[0] != "api:exit 7" {
+		t.Errorf("reported %v", reported)
+	}
+	if _, err := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"}); err != nil {
+		t.Errorf("worktree should exist and resolve after an install failure: %v", err)
+	}
+
+	project.SetSetup("api", "true")
+	if err := Setup(Ref{Workspace: "ws", Worktree: "wrk2"}, CheckoutOptions{Install: true}); err != nil {
+		t.Errorf("Setup after fixing the command: %v", err)
+	}
+}
+
+// The canonical repo often has no .env — it was only ever written inside a
+// checkout. A new worktree takes it from a sibling rather than starting bare.
+func TestAddWorktree_CopiesEnvFromSiblingWhenCanonicalHasNone(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	os.WriteFile(filepath.Join(WorktreePath(Ref{Workspace: "ws", Worktree: DefaultWorktree}, "api"), ".env"), []byte("SECRET=1\n"), 0o644)
+
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(WorktreePath(Ref{Workspace: "ws", Worktree: "wrk2"}, "api"), ".env"))
+	if err != nil {
+		t.Fatalf(".env not copied from the sibling worktree: %v", err)
+	}
+	if string(data) != "SECRET=1\n" {
+		t.Errorf(".env = %q", data)
+	}
+}
+
+func TestTailLog_StripsPromptNoise(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "x.log")
+	os.WriteFile(path, []byte(strings.Join([]string{
+		"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m          \x1b]7;file://Mac/x\x07➜  ai-tutor-api eexport SPEAK_API_URL='x'; PORT=1 make start",
+		"export SPEAK_API_URL='http://localhost:1'; PORT=1 make start_uvicorn",
+		"\x1b[31merror: No environment file found at: `.env`\x1b[0m",
+		"make: *** [start_uvicorn] Error 2",
+		"➜  ai-tutor-api git:(crew/x)",
+		"",
+	}, "\n")), 0o644)
+
+	got := tailLog(path, 4)
+	want := "error: No environment file found at: `.env`\nmake: *** [start_uvicorn] Error 2"
+	if got != want {
+		t.Errorf("tailLog =\n%q\nwant\n%q", got, want)
 	}
 }

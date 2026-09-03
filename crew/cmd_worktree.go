@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -28,11 +31,12 @@ func mustParseWorktreeRef(arg, verb string) workspace.Ref {
 
 func cmdAddWorktree() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add worktree <workspace>/<name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add worktree <workspace>/<name> [--no-install] [--no-smoke]\n")
 		os.Exit(1)
 	}
 
 	ref := mustParseWorktreeRef(os.Args[3], "add")
+	install, smoke := parseCheckoutFlags(os.Args[4:])
 
 	ws, err := workspace.Load(ref.Workspace)
 	if err != nil {
@@ -46,8 +50,16 @@ func cmdAddWorktree() {
 		fmt.Printf("\n  %s\n", warn)
 	}
 
-	fmt.Printf("\nCreating worktree %s...\n", ref)
-	if err := workspace.AddWorktree(ref.Workspace, ref.Worktree); err != nil {
+	fmt.Printf("\nCreating %s\n\n", ref)
+	opts := workspace.CheckoutOptions{Install: install, Progress: printSetupProgress}
+	err = workspace.AddWorktree(ref.Workspace, ref.Worktree, opts)
+	var setupErr *workspace.SetupError
+	if errors.As(err, &setupErr) {
+		fmt.Fprintf(os.Stderr, "\n! %v\n", err)
+		fmt.Fprintf(os.Stderr, "  The worktree exists. Fix the step, then: crew setup %s\n", ref)
+		fmt.Fprintf(os.Stderr, "  Or set an explicit install command: crew add project <name> <path> --setup=<cmd>\n")
+		smoke = false
+	} else if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -58,11 +70,99 @@ func cmdAddWorktree() {
 		os.Exit(1)
 	}
 
+	if smoke && install {
+		runSmoke(res)
+	}
+
 	fmt.Printf("\nWorktree %s\n\n", ref)
 	for _, p := range res.Projects {
 		fmt.Printf("  %s\t%s\n", p.Name, p.Path)
 	}
-	fmt.Printf("\ncrew dev start %s\n", ref)
+	fmt.Printf("\ncrew launch %s\n", ref)
+}
+
+func cmdSetup() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew setup <workspace>[/<worktree>] [--no-smoke]\n")
+		os.Exit(1)
+	}
+	res := mustResolve(os.Args[2])
+	_, smoke := parseCheckoutFlags(os.Args[3:])
+
+	fmt.Printf("Setting up %s\n\n", res.Ref)
+	err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Progress: printSetupProgress})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n! %v\n", err)
+		os.Exit(1)
+	}
+	if smoke {
+		runSmoke(res)
+	}
+}
+
+// parseCheckoutFlags reads --no-install / --no-smoke. Exits on anything else.
+func parseCheckoutFlags(args []string) (install, smoke bool) {
+	install, smoke = true, true
+	for _, arg := range args {
+		switch arg {
+		case "--no-install":
+			install = false
+		case "--no-smoke":
+			smoke = false
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+	return install, smoke
+}
+
+// printSetupProgress is one line per finished install step.
+func printSetupProgress(project string, r exec.SetupResult) {
+	mark := "✓"
+	if r.Err != nil {
+		mark = "✗"
+	}
+	fmt.Printf("  %-16s %s %-14s %s\n", project, mark, r.Step.Name, r.Duration.Round(time.Second))
+}
+
+// runSmoke starts the servers, reports which survived a few seconds, and
+// stops them again. Failures print their last log lines; nothing blocks.
+func runSmoke(res *workspace.Resolved) {
+	if !hasServers(res) {
+		return
+	}
+	fmt.Printf("\nSmoke-starting dev servers (%s)…\n\n", "stopped again afterwards")
+
+	results, err := workspace.SmokeStart(res)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  could not start: %v\n", err)
+		return
+	}
+	for _, r := range results {
+		if r.Alive {
+			fmt.Printf("  %-16s ✓ %s\n", r.Project, r.Server)
+			continue
+		}
+		fmt.Printf("  %-16s ✗ %s exited within seconds\n", r.Project, r.Server)
+		for _, line := range strings.Split(r.Tail, "\n") {
+			if line != "" {
+				fmt.Printf("      %s\n", line)
+			}
+		}
+	}
+	if failed := workspace.SmokeFailures(results); len(failed) > 0 {
+		fmt.Printf("\n  ! %d server(s) died on start — check dependencies and env in the new checkout. crew dev logs %s <server> has the full output.\n", len(failed), res.Ref)
+	}
+}
+
+func hasServers(res *workspace.Resolved) bool {
+	for _, p := range res.Projects {
+		if len(p.DevServers) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func cmdRmWorktree() {

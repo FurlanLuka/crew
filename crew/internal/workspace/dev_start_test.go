@@ -21,7 +21,7 @@ func bindingWorkspace(t *testing.T) {
 	project.AddBinding("tutor", project.Binding{Var: "API_URL", Value: "{{url:api}}"})
 	project.AddBinding("tutor", project.Binding{Var: "AGENT", Value: "{{worktree}}"})
 
-	if err := AddWorktree("ws", "wrk2"); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 	if err := SetOverride(Ref{Workspace: "ws", Worktree: "wrk2"}, "API_URL", "https://deployed"); err != nil {
@@ -131,15 +131,15 @@ func TestResolveEnv_NothingRunning(t *testing.T) {
 // AddProject has to check the new project out into every worktree.
 func TestAddProject_FansOutToEveryWorktree(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
-	AddWorktree("ws", "wrk2")
-	AddWorktree("ws", "wrk3")
+	AddWorktree("ws", "wrk2", CheckoutOptions{})
+	AddWorktree("ws", "wrk3", CheckoutOptions{})
 
 	repo := filepath.Join(t.TempDir(), "web")
 	os.MkdirAll(repo, 0o755)
 	initRepo(t, repo)
 	project.Add(project.Project{Name: "web", Path: repo})
 
-	if err := AddProject("ws", "web", "frontend", ""); err != nil {
+	if err := AddProject("ws", "web", "frontend", "", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject: %v", err)
 	}
 
@@ -162,7 +162,7 @@ func TestAddProject_FansOutToEveryWorktree(t *testing.T) {
 // Remove has to tear down every worktree's artifacts, not one flat set.
 func TestRemove_TearsDownEveryWorktreesArtifacts(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
-	AddWorktree("ws", "wrk2")
+	AddWorktree("ws", "wrk2", CheckoutOptions{})
 
 	var paths []string
 	for _, wt := range []string{DefaultWorktree, "wrk2"} {

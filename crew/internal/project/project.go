@@ -40,6 +40,10 @@ type Project struct {
 	Path       string      `json:"path"`
 	DevServers []DevServer `json:"dev_servers,omitempty"`
 	Bindings   []Binding   `json:"bindings,omitempty"`
+	// Setup is the command that installs a fresh checkout, when the lockfile
+	// alone is not the answer — "make sync" for a repo that also pulls model
+	// weights or needs registry auth. Replaces detection; mise still runs first.
+	Setup string `json:"setup,omitempty"`
 }
 
 func poolFile() string {
@@ -166,6 +170,21 @@ func RemoveDevServer(projName, serverName string) error {
 				}
 			}
 			projects[i].DevServers = filtered
+			return save(projects)
+		}
+	}
+	return fmt.Errorf("project '%s' not found", projName)
+}
+
+// SetSetup records or clears a project's explicit setup command.
+func SetSetup(projName, command string) error {
+	projects, err := List()
+	if err != nil {
+		return err
+	}
+	for i, p := range projects {
+		if p.Name == projName {
+			projects[i].Setup = command
 			return save(projects)
 		}
 	}

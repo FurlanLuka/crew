@@ -290,3 +290,19 @@ func CaptureTmuxPane(session, window string, lines int) (string, error) {
 	}
 	return string(out), nil
 }
+
+// TmuxPaneBusy reports whether a window's pane is still running something
+// other than its shell — the process crew started is alive.
+func TmuxPaneBusy(session, window string) bool {
+	target := session + ":" + window
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", target, "#{pane_current_command}").Output()
+	if err != nil {
+		return false
+	}
+	current := strings.TrimSpace(string(out))
+	switch current {
+	case "", "zsh", "bash", "sh", "fish":
+		return false
+	}
+	return true
+}
