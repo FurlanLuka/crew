@@ -189,7 +189,8 @@ func (v BindingsView) renderProject(b *strings.Builder) {
 			servers = append(servers, fmt.Sprintf("%s :%d", ds.Name, ds.Port))
 		}
 		b.WriteString(app.RowPrefix(i == v.projectCur))
-		b.WriteString(fmt.Sprintf("%-16s %s\n", app.RowName(p.Name, i == v.projectCur), app.Subtle.Render(strings.Join(servers, "  "))))
+		b.WriteString(app.RowName(fmt.Sprintf("%-16s", p.Name), i == v.projectCur))
+		b.WriteString(" " + app.Subtle.Render(strings.Join(servers, "  ")) + "\n")
 	}
 
 	b.WriteString("\n  ")
@@ -202,7 +203,8 @@ func (v BindingsView) renderServer(b *strings.Builder) {
 
 	for i, ds := range v.pickedProj.DevServers {
 		b.WriteString(app.RowPrefix(i == v.serverCur))
-		b.WriteString(fmt.Sprintf("%-16s %s\n", app.RowName(ds.Name, i == v.serverCur), app.Subtle.Render(fmt.Sprintf(":%d  %s", ds.Port, ds.Command))))
+		b.WriteString(app.RowName(fmt.Sprintf("%-16s", ds.Name), i == v.serverCur))
+		b.WriteString(" " + app.Subtle.Render(fmt.Sprintf(":%d  %s", ds.Port, ds.Command)) + "\n")
 	}
 
 	b.WriteString("\n  ")
