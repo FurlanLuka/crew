@@ -18,6 +18,7 @@ type DevProject struct {
 	Name       string
 	Path       string
 	DevServers []DevServerConfig
+	Bindings   []Binding
 }
 
 type DevServerConfig struct {
