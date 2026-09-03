@@ -51,7 +51,7 @@ func TestDevSubcommands(t *testing.T) {
 		t.Fatal("dev command not found")
 	}
 
-	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status", "logs"}
+	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status", "logs", "tui"}
 	if len(dev.Subcommands) != len(expected) {
 		t.Fatalf("dev has %d subcommands, want %d", len(dev.Subcommands), len(expected))
 	}
@@ -69,7 +69,7 @@ func TestLsSubcommands(t *testing.T) {
 		t.Fatal("ls command not found")
 	}
 
-	expected := []string{"workspaces", "projects"}
+	expected := []string{"workspaces", "worktrees", "projects", "bindings"}
 	for _, name := range expected {
 		if findSubcommand(ls, name) == nil {
 			t.Errorf("ls subcommand %q not found", name)
@@ -160,7 +160,7 @@ func TestAddSubcommands(t *testing.T) {
 		t.Fatal("add command not found")
 	}
 
-	expected := []string{"project", "workspace"}
+	expected := []string{"project", "workspace", "worktree", "binding"}
 	for _, name := range expected {
 		if findSubcommand(add, name) == nil {
 			t.Errorf("add subcommand %q not found", name)
@@ -277,6 +277,29 @@ func TestNotifySubcommands(t *testing.T) {
 		}
 		if sub.Usage == "" {
 			t.Errorf("notify %s missing usage", name)
+		}
+	}
+}
+
+func TestRmSubcommands(t *testing.T) {
+	rm := findSubcommand(&Root, "rm")
+	if rm == nil {
+		t.Fatal("rm command not found")
+	}
+
+	for _, name := range []string{"project", "workspace", "worktree", "binding"} {
+		if findSubcommand(rm, name) == nil {
+			t.Errorf("rm subcommand %q not found", name)
+		}
+	}
+}
+
+// Every top-level command main dispatches must be documented, or `crew help`
+// lies about what exists.
+func TestTopLevelCommandsDocumented(t *testing.T) {
+	for _, name := range []string{"env", "run", "migrate", "duplicate", "add", "rm", "ls", "dev"} {
+		if findSubcommand(&Root, name) == nil {
+			t.Errorf("top-level command %q not documented", name)
 		}
 	}
 }

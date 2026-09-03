@@ -32,7 +32,7 @@ type devItem struct {
 // ── Model ──
 
 type DevView struct {
-	wsName    string
+	ref       Ref
 	items     []devItem
 	cursor    int
 	loading   bool
@@ -43,18 +43,18 @@ type DevView struct {
 	noProxy   bool
 }
 
-func NewDevView(wsName string) DevView {
+func NewDevView(ref Ref) DevView {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
 	return DevView{
-		wsName:  wsName,
+		ref:     ref,
 		spinner: sp,
 	}
 }
 
 func (v DevView) Title() string {
-	return fmt.Sprintf("Dev Servers for \"%s\"", v.wsName)
+	return fmt.Sprintf("Dev Servers for \"%s\"", v.ref)
 }
 
 func (v DevView) Init() tea.Cmd {
@@ -132,7 +132,7 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, nil
 		}
 		initialTab := v.runningTabIndex()
-		logs := NewLogsView(v.wsName, running, initialTab)
+		logs := NewLogsView(v.ref, running, initialTab)
 		return v, func() tea.Msg { return app.PushPageMsg{Page: logs} }
 	case msg.String() == "S":
 		v.loading = true
@@ -249,38 +249,34 @@ func (v DevView) renderList(b *strings.Builder) {
 // ── Commands ──
 
 func (v DevView) loadDevServers() tea.Cmd {
-	wsName := v.wsName
+	ref := v.ref
 	return func() tea.Msg {
-		ws, err := Load(wsName)
+		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}
 
-		routes, _ := dev.LoadRoutes(dev.Slug(wsName))
+		routes, _ := dev.LoadRoutes(res.Slug)
 		settings := config.LoadSettings()
 		host := dev.ResolveHostIP()
 		domain := settings.GetDomain(host)
 		proxyPort := settings.GetProxyPort()
 
-		runningByName := map[string]dev.Route{}
+		running := map[dev.ProjectServer]dev.Route{}
 		for _, r := range routes {
-			runningByName[r.ServerName] = r
+			running[dev.ProjectServer{Project: r.Project, Server: r.ServerName}] = r
 		}
 
 		var items []devItem
-		for _, wp := range ws.Projects {
-			p := project.Get(wp.Name)
-			if p == nil {
-				continue
-			}
+		for _, p := range res.Projects {
 			for _, ds := range p.DevServers {
 				item := devItem{
-					ProjectName: wp.Name,
+					ProjectName: p.Name,
 					Server:      ds,
 				}
-				if r, ok := runningByName[ds.Name]; ok {
+				if r, ok := running[dev.ProjectServer{Project: p.Name, Server: ds.Name}]; ok {
 					item.Running = true
-					item.URL = dev.RouteURL(r, dev.Slug(wsName), domain, proxyPort)
+					item.URL = dev.RouteURL(r, res.Slug, domain, proxyPort)
 				}
 				items = append(items, item)
 			}
@@ -294,9 +290,9 @@ func (v DevView) startAllDevServers() tea.Cmd {
 }
 
 func (v DevView) stopAllDevServers() tea.Cmd {
-	wsName := v.wsName
+	ref := v.ref
 	return func() tea.Msg {
-		dev.StopAll(dev.Slug(wsName))
+		dev.StopAll(ref.Slug())
 		dev.StopProxyIfIdle()
 		return devStoppedMsg{}
 	}
@@ -309,10 +305,10 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 // runDevStart backs both the start and restart actions; restart differs only
 // in tearing the existing session down first, and in the word it reports.
 func (v DevView) runDevStart(restart bool) tea.Cmd {
-	wsName := v.wsName
+	ref := v.ref
 	noProxy := v.noProxy
 	return func() tea.Msg {
-		res, err := Resolve(Ref{Workspace: wsName})
+		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}

@@ -204,3 +204,26 @@ func TestSetAndClearOverride(t *testing.T) {
 		t.Errorf("overrides = %+v, want it cleared", res.Overrides)
 	}
 }
+
+func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	src := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	if err := SetOverride(src, "SPEAK_API_URL", "https://dev"); err != nil {
+		t.Fatalf("SetOverride: %v", err)
+	}
+
+	if err := DuplicateWorktree(src, "wrk2"); err != nil {
+		t.Fatalf("DuplicateWorktree: %v", err)
+	}
+
+	res, err := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if res.Overrides["SPEAK_API_URL"] != "https://dev" {
+		t.Errorf("overrides = %+v, want the source's override copied", res.Overrides)
+	}
+	if _, err := os.Stat(res.Projects[0].Path); err != nil {
+		t.Errorf("duplicate has no checkout: %v", err)
+	}
+}

@@ -33,7 +33,7 @@ type logTab struct {
 // ── Model ──
 
 type LogsView struct {
-	wsName   string
+	ref      Ref
 	session  string
 	tabs     []logTab
 	tabIdx   int
@@ -43,14 +43,14 @@ type LogsView struct {
 	ready    bool
 }
 
-func NewLogsView(wsName string, items []devItem, initialIdx int) LogsView {
-	session := dev.SessionName(dev.Slug(wsName))
+func NewLogsView(ref Ref, items []devItem, initialIdx int) LogsView {
+	session := dev.SessionName(ref.Slug())
 
 	var tabs []logTab
 	for _, item := range items {
 		tabs = append(tabs, logTab{
 			label:  item.Server.Name,
-			window: fmt.Sprintf("%s/%s", wsName, item.Server.Name),
+			window: fmt.Sprintf("%s/%s", ref.Slug(), item.Server.Name),
 		})
 	}
 	tabs = append(tabs, logTab{label: "proxy", isProxy: true})
@@ -62,7 +62,7 @@ func NewLogsView(wsName string, items []devItem, initialIdx int) LogsView {
 	}
 
 	return LogsView{
-		wsName:  wsName,
+		ref:     ref,
 		session: session,
 		tabs:    tabs,
 		tabIdx:  tabIdx,
@@ -70,7 +70,7 @@ func NewLogsView(wsName string, items []devItem, initialIdx int) LogsView {
 }
 
 func (v LogsView) Title() string {
-	return fmt.Sprintf("Logs — %s", v.wsName)
+	return fmt.Sprintf("Logs — %s", v.ref)
 }
 
 func (v LogsView) Init() tea.Cmd {
@@ -210,9 +210,9 @@ func (v LogsView) capturePane() tea.Cmd {
 	tab := v.tabs[v.tabIdx]
 
 	if tab.isURLs {
-		wsName := v.wsName
+		ref := v.ref
 		return func() tea.Msg {
-			return paneContentMsg{content: buildURLsContent(wsName)}
+			return paneContentMsg{content: buildURLsContent(ref)}
 		}
 	}
 
@@ -231,7 +231,7 @@ func (v LogsView) capturePane() tea.Cmd {
 	}
 }
 
-func buildURLsContent(wsName string) string {
+func buildURLsContent(ref Ref) string {
 	settings := config.LoadSettings()
 	host := dev.ResolveHostIP()
 	domain := settings.GetDomain(host)
@@ -246,7 +246,7 @@ func buildURLsContent(wsName string) string {
 
 	found := false
 	for _, wr := range allRoutes {
-		if wr.Slug != dev.Slug(wsName) {
+		if wr.Slug != ref.Slug() {
 			continue
 		}
 		for _, r := range wr.Routes {
@@ -262,7 +262,7 @@ func buildURLsContent(wsName string) string {
 	// Also show other workspaces if they have routes
 	var others []dev.WsRoutes
 	for _, wr := range allRoutes {
-		if wr.Slug != dev.Slug(wsName) {
+		if wr.Slug != ref.Slug() {
 			others = append(others, wr)
 		}
 	}

@@ -20,6 +20,8 @@ type workspacesLoadedMsg struct{ summaries []Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
 type workspaceDuplicatedMsg struct{ src, dst string }
+type worktreeAddedMsg struct{ ref Ref }
+type worktreeRemovedMsg struct{ ref Ref }
 type errMsg struct{ err error }
 
 // Project management messages
@@ -49,6 +51,8 @@ const (
 	stateProjectConfirmRemove
 	stateDuplicate
 	stateDuplicating
+	stateNewWorktree
+	stateAddingWorktree
 )
 
 // ── Model ──
@@ -64,6 +68,7 @@ type View struct {
 
 	// Project management within workspace
 	selectedWs    string
+	selectedRef   Ref
 	wsProjects    []WorkspaceProject
 	projCursor    int
 	poolNames     []string // available from pool
@@ -139,6 +144,19 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.input.Reset()
 		return v, loadWorkspaces
 
+	case worktreeRemovedMsg:
+		v.state = stateList
+		v.statusMsg = fmt.Sprintf("Removed worktree '%s'", msg.ref)
+		v.err = nil
+		return v, loadWorkspaces
+
+	case worktreeAddedMsg:
+		v.state = stateList
+		v.statusMsg = fmt.Sprintf("Created worktree '%s'", msg.ref)
+		v.err = nil
+		v.input.Reset()
+		return v, loadWorkspaces
+
 	case codeOpenedMsg:
 		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: msg.output} }
 
@@ -178,13 +196,13 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.state == stateAddingProject || v.state == stateRemovingProject {
 			v.state = stateProjects
 		}
-		if v.state == stateDuplicating {
+		if v.state == stateDuplicating || v.state == stateAddingWorktree {
 			v.state = stateList
 		}
 		return v, nil
 
 	case spinner.TickMsg:
-		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating {
+		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree {
 			var cmd tea.Cmd
 			v.spinner, cmd = v.spinner.Update(msg)
 			return v, cmd
@@ -197,7 +215,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Forward to text inputs
 	switch v.state {
-	case stateCreate, stateDuplicate:
+	case stateCreate, stateDuplicate, stateNewWorktree:
 		var cmd tea.Cmd
 		v.input, cmd = v.input.Update(msg)
 		return v, cmd
@@ -230,6 +248,8 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleProjectConfirmRemoveKey(msg)
 	case stateDuplicate:
 		return v.handleDuplicateKey(msg)
+	case stateNewWorktree:
+		return v.handleNewWorktreeKey(msg)
 	}
 	return v, nil
 }
@@ -258,7 +278,8 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, v.input.Cursor.BlinkCmd()
 	case msg.String() == "u":
 		if len(v.summaries) > 0 {
-			v.selectedWs = v.summaries[v.cursor].Name
+			v.selectedWs = v.summaries[v.cursor].Workspace
+			v.selectedRef = v.summaries[v.cursor].Ref
 			v.state = stateDuplicate
 			v.statusMsg = ""
 			v.err = nil
@@ -276,7 +297,8 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, nil
 	case msg.String() == "p":
 		if len(v.summaries) > 0 {
-			v.selectedWs = v.summaries[v.cursor].Name
+			v.selectedWs = v.summaries[v.cursor].Workspace
+			v.selectedRef = v.summaries[v.cursor].Ref
 			v.state = stateProjects
 			v.projCursor = 0
 			v.statusMsg = ""
@@ -284,36 +306,43 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, loadWsProjects(v.selectedWs)
 		}
 		return v, nil
+	case msg.String() == "w":
+		if len(v.summaries) > 0 {
+			v.selectedWs = v.summaries[v.cursor].Workspace
+			v.selectedRef = v.summaries[v.cursor].Ref
+			v.state = stateNewWorktree
+			v.statusMsg = ""
+			v.err = nil
+			v.input.SetValue("")
+			v.input.Focus()
+			return v, v.input.Cursor.BlinkCmd()
+		}
+		return v, nil
 	case msg.String() == "s":
 		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			page := NewDevView(s.Name)
+			page := NewDevView(v.summaries[v.cursor].Ref)
 			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 		}
 		return v, nil
 	case msg.String() == "g":
 		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			return v, launchLazygit(s.Name)
+			return v, launchLazygit(v.summaries[v.cursor].Ref)
 		}
 		return v, nil
 	case msg.String() == "c":
 		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			return v, openCode(s.Name)
+			return v, openCode(v.summaries[v.cursor].Ref)
 		}
 		return v, nil
 	case msg.String() == "o":
 		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			dir := WorkspaceDir(s.Name)
+			dir := v.summaries[v.cursor].Path
 			return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: dir} }
 		}
 		return v, nil
 	case msg.String() == "enter":
 		if len(v.summaries) > 0 {
-			s := v.summaries[v.cursor]
-			page := NewLaunchView(s.Name)
+			page := NewLaunchView(v.summaries[v.cursor].Ref)
 			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 		}
 		return v, nil
@@ -351,13 +380,39 @@ func (v View) handleDuplicateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if name == "" {
 			return v, nil
 		}
-		srcName := v.selectedWs
+		src := v.selectedRef
 		v.state = stateDuplicating
 		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
-			if err := Duplicate(srcName, name); err != nil {
+			if err := DuplicateWorktree(src, name); err != nil {
 				return errMsg{err}
 			}
-			return workspaceDuplicatedMsg{src: srcName, dst: name}
+			return workspaceDuplicatedMsg{src: src.String(), dst: src.Workspace + "/" + name}
+		})
+	}
+
+	var cmd tea.Cmd
+	v.input, cmd = v.input.Update(msg)
+	return v, cmd
+}
+
+func (v View) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		v.state = stateList
+		v.input.Reset()
+		return v, nil
+	case "enter":
+		name := strings.TrimSpace(v.input.Value())
+		if name == "" {
+			return v, nil
+		}
+		wsName := v.selectedWs
+		v.state = stateAddingWorktree
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			if err := AddWorktree(wsName, name); err != nil {
+				return errMsg{err}
+			}
+			return worktreeAddedMsg{ref: Ref{Workspace: wsName, Worktree: name}}
 		})
 	}
 
@@ -369,9 +424,12 @@ func (v View) handleDuplicateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (v View) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		name := v.summaries[v.cursor].Name
+		s := v.summaries[v.cursor]
 		v.state = stateList
-		return v, removeWorkspace(name)
+		if v.isLastWorktree(s) {
+			return v, removeWorkspace(s.Workspace)
+		}
+		return v, removeWorktree(s.Ref)
 	default:
 		v.state = stateList
 		return v, nil
@@ -550,7 +608,13 @@ func (v View) View() string {
 	case stateDuplicating:
 		b.WriteString("  ")
 		b.WriteString(v.spinner.View())
-		b.WriteString(" Duplicating workspace...\n")
+		b.WriteString(" Duplicating worktree...\n")
+	case stateNewWorktree:
+		v.renderNewWorktree(&b)
+	case stateAddingWorktree:
+		b.WriteString("  ")
+		b.WriteString(v.spinner.View())
+		b.WriteString(" Creating worktree...\n")
 	}
 
 	return b.String()
@@ -573,9 +637,15 @@ func (v View) renderList(b *strings.Builder) {
 			cursor = app.Selected.Render("> ")
 		}
 
-		name := s.Name
+		name := s.Workspace + "/" + app.Highlight.Render(s.Worktree)
+		if s.Worktree == "" {
+			name = s.Workspace + "  " + app.Subtle.Render("(run crew migrate)")
+		}
 		if i == v.cursor {
-			name = app.Selected.Render(name)
+			name = app.Selected.Render(s.Workspace+"/") + app.Selected.Render(s.Worktree)
+			if s.Worktree == "" {
+				name = app.Selected.Render(s.Workspace) + "  " + app.Subtle.Render("(run crew migrate)")
+			}
 		}
 
 		details := fmt.Sprintf("%d projects", s.ProjectCount)
@@ -608,7 +678,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n\n")
 	}
 
-	help := "n new  u duplicate  d delete  p projects  s servers  g git  c code  o open  enter launch  esc back"
+	help := "n new  w worktree  u duplicate  d delete  p projects  s servers  g git  c code  o open  enter launch  esc back"
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render(help))
 	b.WriteString("\n")
@@ -630,8 +700,24 @@ func (v View) renderCreate(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+func (v View) renderNewWorktree(b *strings.Builder) {
+	b.WriteString(fmt.Sprintf("  New worktree in '%s': %s/", v.selectedWs, v.selectedWs))
+	b.WriteString(v.input.View())
+	b.WriteString("\n\n")
+
+	if v.err != nil {
+		b.WriteString("  ")
+		b.WriteString(app.Error.Render(v.err.Error()))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("  ")
+	b.WriteString(app.HelpStyle.Render("enter create  esc cancel"))
+	b.WriteString("\n")
+}
+
 func (v View) renderDuplicate(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("  Duplicate '%s' as: ", v.selectedWs))
+	b.WriteString(fmt.Sprintf("  Duplicate worktree '%s' as %s/", v.selectedRef, v.selectedRef.Workspace))
 	b.WriteString(v.input.View())
 	b.WriteString("\n\n")
 
@@ -646,8 +732,26 @@ func (v View) renderDuplicate(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+// isLastWorktree reports whether removing this row's worktree would leave its
+// workspace empty — in which case the workspace goes with it.
+func (v View) isLastWorktree(s Summary) bool {
+	count := 0
+	for _, other := range v.summaries {
+		if other.Workspace == s.Workspace {
+			count++
+		}
+	}
+	return count <= 1
+}
+
 func (v View) renderConfirmRemove(b *strings.Builder) {
-	name := v.summaries[v.cursor].Name
+	s := v.summaries[v.cursor]
+	if !v.isLastWorktree(s) {
+		b.WriteString(fmt.Sprintf("  Remove worktree '%s'? Its checkouts will be deleted; the workspace stays. (y/n)\n", s.Name))
+		return
+	}
+
+	name := s.Workspace
 	worktreeCount, directCount := countModes(name)
 	switch {
 	case worktreeCount == 0 && directCount > 0:
@@ -698,7 +802,7 @@ func (v View) renderProjects(b *strings.Builder) {
 				b.WriteString(app.Highlight.Render("[direct]"))
 			}
 			b.WriteString("  ")
-			b.WriteString(app.Subtle.Render(WorktreePath(Ref{Workspace: v.selectedWs}, wp.Name)))
+			b.WriteString(app.Subtle.Render(WorktreePath(v.selectedRef, wp.Name)))
 			b.WriteString("\n")
 
 			if wp.Role != "" {
@@ -838,6 +942,15 @@ func removeWorkspace(name string) tea.Cmd {
 	}
 }
 
+func removeWorktree(ref Ref) tea.Cmd {
+	return func() tea.Msg {
+		if err := RemoveWorktree(ref.Workspace, ref.Worktree); err != nil {
+			return errMsg{err}
+		}
+		return worktreeRemovedMsg{ref}
+	}
+}
+
 func loadWsProjects(wsName string) tea.Cmd {
 	return func() tea.Msg {
 		ws, err := Load(wsName)
@@ -883,9 +996,9 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 	}
 }
 
-func launchLazygit(wsName string) tea.Cmd {
+func launchLazygit(ref Ref) tea.Cmd {
 	return func() tea.Msg {
-		res, err := Resolve(Ref{Workspace: wsName})
+		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -897,14 +1010,14 @@ func launchLazygit(wsName string) tea.Cmd {
 	}
 }
 
-func openCode(wsName string) tea.Cmd {
+func openCode(ref Ref) tea.Cmd {
 	return func() tea.Msg {
 		settings := config.LoadSettings()
 		if settings.SSHHost == "" {
 			return errMsg{fmt.Errorf("ssh_host not configured — set it in crew config")}
 		}
 
-		res, err := Resolve(Ref{Workspace: wsName})
+		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}

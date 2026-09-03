@@ -63,7 +63,7 @@ const (
 // ── Model ──
 
 type LaunchView struct {
-	base       string
+	ref        Ref
 	state      launchState
 	modes      []int
 	modeCursor int
@@ -71,19 +71,19 @@ type LaunchView struct {
 	err        error
 }
 
-func NewLaunchView(base string) LaunchView {
+func NewLaunchView(ref Ref) LaunchView {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
 	return LaunchView{
-		base:    base,
+		ref:     ref,
 		state:   launchStateMode,
 		spinner: sp,
 	}
 }
 
 func (v LaunchView) Title() string {
-	return fmt.Sprintf("Launch \"%s\"", v.base)
+	return fmt.Sprintf("Launch \"%s\"", v.ref)
 }
 
 func (v LaunchView) Init() tea.Cmd {
@@ -216,19 +216,19 @@ func (v LaunchView) renderModeSelect(b *strings.Builder) {
 // ── Launch logic ──
 
 func (v LaunchView) executeLaunch() tea.Cmd {
-	wsName := v.base
+	ref := v.ref
 	if v.modeCursor >= len(v.modes) {
 		return func() tea.Msg { return errMsg{fmt.Errorf("no launch mode selected")} }
 	}
 	mode := v.modes[v.modeCursor]
 
 	return func() tea.Msg {
-		res, err := Resolve(Ref{Workspace: wsName})
+		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}
 		if len(res.Projects) == 0 {
-			return errMsg{fmt.Errorf("workspace '%s' has no projects", wsName)}
+			return errMsg{fmt.Errorf("workspace '%s' has no projects", ref)}
 		}
 
 		switch mode {

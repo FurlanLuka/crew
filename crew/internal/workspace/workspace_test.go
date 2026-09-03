@@ -144,22 +144,44 @@ func TestListSummaries(t *testing.T) {
 		t.Fatalf("ListSummaries returned %d, want 1", len(summaries))
 	}
 
+	// One row per worktree: a fresh workspace has exactly its default one.
 	s := summaries[0]
-	if s.Name != "sum-ws" {
-		t.Errorf("Name = %q, want %q", s.Name, "sum-ws")
+	if s.Name != "sum-ws/"+DefaultWorktree {
+		t.Errorf("Name = %q, want %q", s.Name, "sum-ws/"+DefaultWorktree)
+	}
+	if s.Workspace != "sum-ws" || s.Worktree != DefaultWorktree {
+		t.Errorf("split = (%q, %q), want (sum-ws, %s)", s.Workspace, s.Worktree, DefaultWorktree)
 	}
 	if s.ProjectCount != 2 {
 		t.Errorf("ProjectCount = %d, want 2", s.ProjectCount)
 	}
-	if s.Path != WorkspaceDir("sum-ws") {
-		t.Errorf("Path = %q, want %q", s.Path, WorkspaceDir("sum-ws"))
+	if want := WorktreeDir(Ref{Workspace: "sum-ws", Worktree: DefaultWorktree}); s.Path != want {
+		t.Errorf("Path = %q, want %q", s.Path, want)
+	}
+}
+
+func TestListSummaries_OneRowPerWorktree(t *testing.T) {
+	setupTestConfig(t)
+	Save(&Workspace{Name: "multi", Worktrees: []Worktree{{Name: "wrk1"}, {Name: "wrk2"}}})
+
+	summaries, err := ListSummaries()
+	if err != nil {
+		t.Fatalf("ListSummaries: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("got %d rows, want one per worktree", len(summaries))
+	}
+	if summaries[0].Name != "multi/wrk1" || summaries[1].Name != "multi/wrk2" {
+		t.Errorf("rows = %q, %q", summaries[0].Name, summaries[1].Name)
 	}
 }
 
 // TestSummaryJSONKeys locks the snake_case wire format used by `crew ls workspaces --json`.
 func TestSummaryJSONKeys(t *testing.T) {
 	data, err := json.Marshal(Summary{
-		Name:         "ws",
+		Name:         "ws/wt",
+		Workspace:    "ws",
+		Worktree:     "wt",
 		Path:         "/p",
 		ProjectCount: 3,
 		DevRunning:   true,
@@ -167,7 +189,7 @@ func TestSummaryJSONKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	want := `{"name":"ws","path":"/p","project_count":3,"dev_running":true}`
+	want := `{"name":"ws/wt","workspace":"ws","worktree":"wt","path":"/p","project_count":3,"dev_running":true}`
 	if string(data) != want {
 		t.Errorf("Summary JSON = %s, want %s", data, want)
 	}
@@ -578,7 +600,7 @@ func TestAddProject_DirectMode_CollisionRefused(t *testing.T) {
 	}
 }
 
-func TestDuplicate_RefusesDirectCollision(t *testing.T) {
+func TestDuplicateWorktree_RefusesDirectCollision(t *testing.T) {
 	tmp := setupTestConfig(t)
 
 	repo := filepath.Join(tmp, "repo")
@@ -593,9 +615,11 @@ func TestDuplicate_RefusesDirectCollision(t *testing.T) {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
-	err := Duplicate("ws-src", "ws-dst")
+	// A duplicate is a second worktree, and a direct project pins the workspace
+	// to one — the same invariant, reached through DuplicateWorktree.
+	err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2")
 	if err == nil {
-		t.Fatal("duplicating a workspace with a direct entry should refuse (collision with source)")
+		t.Fatal("duplicating a worktree alongside a direct project should refuse")
 	}
 }
 

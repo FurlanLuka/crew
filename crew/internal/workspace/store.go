@@ -55,9 +55,15 @@ func List() ([]string, error) {
 	return names, nil
 }
 
-// Summary holds display info for the workspace list view.
+// Summary is one worktree as the list view shows it. The list is flat — one
+// row per worktree, not per workspace — because every action a row offers
+// (launch, dev servers, git, editor) acts on a working copy, and a row that is
+// already one leaves nothing to pick.
 type Summary struct {
-	Name         string `json:"name"`
+	Ref          Ref    `json:"-"`
+	Name         string `json:"name"` // "phone-speak/wrk2"
+	Workspace    string `json:"workspace"`
+	Worktree     string `json:"worktree"`
 	Path         string `json:"path"`
 	ProjectCount int    `json:"project_count"`
 	DevRunning   bool   `json:"dev_running"`
@@ -70,19 +76,23 @@ func ListSummaries() ([]Summary, error) {
 		return nil, err
 	}
 
-	summaries := make([]Summary, 0, len(names))
+	var summaries []Summary
 	for _, name := range names {
 		ws, err := Load(name)
-		projCount := 0
-		if err == nil {
-			projCount = len(ws.Projects)
+		if err != nil {
+			continue
 		}
-		summaries = append(summaries, Summary{
-			Name:         name,
-			Path:         WorkspaceDir(name),
-			ProjectCount: projCount,
-			DevRunning:   devRoutesExist(name),
-		})
+		for _, ref := range workspaceRefs(ws) {
+			summaries = append(summaries, Summary{
+				Ref:          ref,
+				Name:         ref.String(),
+				Workspace:    ref.Workspace,
+				Worktree:     ref.Worktree,
+				Path:         WorktreeDir(ref),
+				ProjectCount: len(ws.Projects),
+				DevRunning:   dev.Running(ref.Slug()),
+			})
+		}
 	}
 	return summaries, nil
 }

@@ -151,6 +151,13 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 		}
 		return v, nil
+	case msg.String() == "b":
+		if len(v.projects) > 0 {
+			p := v.projects[v.cursor]
+			page := NewBindingsView(p.Name)
+			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
+		}
+		return v, nil
 	}
 	return v, nil
 }
@@ -297,7 +304,7 @@ func (v View) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  esc back"))
+	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  b bindings  esc back"))
 	b.WriteString("\n")
 }
 

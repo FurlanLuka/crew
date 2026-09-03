@@ -226,13 +226,15 @@ func cmdDevStatus() {
 	var err error
 
 	if wsFilter != "" {
-		routes, loadErr := dev.LoadRoutes(dev.Slug(wsFilter))
-		if loadErr != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", loadErr)
-			os.Exit(1)
-		}
-		if len(routes) > 0 {
-			allRoutes = []dev.WsRoutes{{Slug: dev.Slug(wsFilter), Routes: routes}}
+		for _, slug := range slugsFor(wsFilter) {
+			routes, loadErr := dev.LoadRoutes(slug)
+			if loadErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", loadErr)
+				os.Exit(1)
+			}
+			if len(routes) > 0 {
+				allRoutes = append(allRoutes, dev.WsRoutes{Slug: slug, Routes: routes})
+			}
 		}
 	} else {
 		allRoutes, err = dev.ListAllRoutes()
@@ -350,9 +352,37 @@ func cmdDevStop() {
 		return
 	}
 
-	dev.StopAll(dev.Slug(wsName))
+	for _, slug := range slugsFor(wsName) {
+		dev.StopAll(slug)
+		fmt.Printf("Stopped dev session for %s\n", dev.DisplayRef(slug))
+	}
 	dev.StopProxyIfIdle()
-	fmt.Printf("Stopped dev session for %s\n", wsName)
+}
+
+// slugsFor expands a ref argument for the read-only and stop-everything
+// commands: a bare workspace means every worktree in it, which is what stop
+// and status meant before worktrees existed. Commands that start something
+// still have to be told which worktree.
+func slugsFor(arg string) []dev.Slug {
+	ref, err := workspace.ParseRef(arg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if ref.Worktree != "" {
+		return []dev.Slug{ref.Slug()}
+	}
+
+	ws, err := workspace.Load(ref.Workspace)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", ref.Workspace)
+		os.Exit(1)
+	}
+	var slugs []dev.Slug
+	for _, r := range workspace.Refs(ws) {
+		slugs = append(slugs, r.Slug())
+	}
+	return slugs
 }
 
 func cmdDevRestart() {
@@ -417,17 +447,11 @@ func cmdDevLogs() {
 
 func cmdDevTui() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev tui <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev tui <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
 
-	wsName := os.Args[3]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
-
-	runTUI(workspace.NewDevView(wsName))
+	runTUI(workspace.NewDevView(mustResolve(os.Args[3]).Ref))
 }
 
 func cmdDevProxy() {

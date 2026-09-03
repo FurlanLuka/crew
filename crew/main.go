@@ -15,6 +15,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/notify"
@@ -68,6 +69,7 @@ func printJSON(v any) {
 
 func main() {
 	config.Init()
+	project.Previewer = workspace.PreviewBinding
 
 	// Strip the global --json flag before computing cmd so it works in any
 	// position and is not rejected by strict per-command arg parsers.
@@ -223,9 +225,9 @@ func main() {
 		runTUI(mainMenu())
 
 	default:
-		// Try as workspace name shortcut (launch directly)
-		if workspace.Exists(cmd) {
-			runTUI(workspace.NewLaunchView(cmd))
+		// Try as workspace/worktree ref shortcut (launch directly)
+		if ref, err := workspace.ParseRef(cmd); err == nil && workspace.Exists(ref.Workspace) {
+			runTUI(workspace.NewLaunchView(mustResolve(cmd).Ref))
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown command '%s'. Run 'crew help' for usage.\n", cmd)
 			os.Exit(1)
@@ -349,17 +351,41 @@ func cmdLsProjects() {
 }
 
 func cmdLsWorkspaces() {
-	summaries, err := workspace.ListSummaries()
+	names, err := workspace.List()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
+	type workspaceOut struct {
+		Name         string   `json:"name"`
+		ProjectCount int      `json:"project_count"`
+		Worktrees    []string `json:"worktrees"`
+		DevRunning   bool     `json:"dev_running"`
+	}
+
+	out := []workspaceOut{}
+	for _, name := range names {
+		ws, err := workspace.Load(name)
+		if err != nil {
+			continue
+		}
+		row := workspaceOut{Name: name, ProjectCount: len(ws.Projects), Worktrees: []string{}}
+		for _, ref := range workspace.Refs(ws) {
+			row.Worktrees = append(row.Worktrees, ref.Worktree)
+			if dev.Running(ref.Slug()) {
+				row.DevRunning = true
+			}
+		}
+		out = append(out, row)
+	}
+
 	if jsonOutput {
-		printJSON(summaries)
+		printJSON(out)
 		return
 	}
-	for _, s := range summaries {
-		fmt.Printf("%s\t%d projects\n", s.Name, s.ProjectCount)
+	for _, w := range out {
+		fmt.Printf("%s\t%d projects\t%s\n", w.Name, w.ProjectCount, strings.Join(w.Worktrees, ","))
 	}
 }
 
@@ -369,11 +395,7 @@ func cmdOpen() {
 		os.Exit(1)
 	}
 
-	wsName := os.Args[2]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
+	res := mustResolve(os.Args[2])
 
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -385,7 +407,7 @@ func cmdOpen() {
 		os.Exit(1)
 	}
 
-	dir := workspace.WorkspaceDir(wsName)
+	dir := res.Dir
 	if err := os.Chdir(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -492,30 +514,29 @@ func cmdLaunch() {
 		return
 	}
 
-	wsName := os.Args[2]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
-
-	runTUI(workspace.NewLaunchView(wsName))
+	runTUI(workspace.NewLaunchView(mustResolve(os.Args[2]).Ref))
 }
 
+// cmdDuplicate copies a worktree within its workspace. This is what
+// duplicating a workspace was actually being used for — a second working copy
+// of the same projects — and a worktree is now the thing that is.
 func cmdDuplicate() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <source> <new-name>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <workspace>[/<worktree>] <new-worktree>\n")
 		os.Exit(1)
 	}
-	srcName := os.Args[2]
-	dstName := os.Args[3]
 
-	if err := workspace.Duplicate(srcName, dstName); err != nil {
+	src := mustResolve(os.Args[2]).Ref
+	newName := os.Args[3]
+
+	if err := workspace.DuplicateWorktree(src, newName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	ws, _ := workspace.Load(dstName)
-	fmt.Printf("Duplicated \"%s\" → \"%s\" (%d projects)\n", srcName, dstName, len(ws.Projects))
+	dst := workspace.Ref{Workspace: src.Workspace, Worktree: newName}
+	fmt.Printf("Duplicated %s → %s\n", src, dst)
+	fmt.Printf("crew dev start %s\n", dst)
 }
 
 func cmdRm() {
