@@ -250,3 +250,31 @@ func TestBranchName_DistinctPerWorktree(t *testing.T) {
 		t.Errorf("legacy BranchName = %q, want crew/legacy/api", got)
 	}
 }
+
+// The bug the first live run found: DevProjects built dev.DevProject without
+// its bindings, so nothing ever resolved.
+func TestDevProjects_CarriesBindings(t *testing.T) {
+	setupTestConfig(t)
+	project.Add(project.Project{
+		Name: "ai-tutor-api", Path: "/p/tutor",
+		Bindings: []project.Binding{{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+	})
+	Save(&Workspace{
+		Name:      "ws",
+		Projects:  []WorkspaceProject{{Name: "ai-tutor-api"}},
+		Worktrees: []Worktree{{Name: "main"}},
+	})
+
+	res, err := Resolve(Ref{Workspace: "ws"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	projects := res.DevProjects()
+	if len(projects) != 1 {
+		t.Fatalf("got %d dev projects, want 1 — a project with bindings but no servers still resolves", len(projects))
+	}
+	if len(projects[0].Bindings) != 1 || projects[0].Bindings[0].Var != "SPEAK_API_URL" {
+		t.Errorf("bindings = %+v, want SPEAK_API_URL carried through", projects[0].Bindings)
+	}
+}

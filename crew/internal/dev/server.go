@@ -210,7 +210,7 @@ func Start(p StartParams) (StartResult, error) {
 	return StartResult{
 		Routes:      newRoutes,
 		Resolutions: resolutions,
-		Conflicts:   InspectEnvConflicts(p.Projects, resolutions),
+		Conflicts:   InspectEnvConflicts(p.Slug, p.Projects, resolutions),
 	}, nil
 }
 

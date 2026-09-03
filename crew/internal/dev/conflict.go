@@ -24,29 +24,33 @@ type Conflict struct {
 	Owner   PortOwner
 }
 
-// DetectParams scopes conflict detection to one project.
+// DetectParams scopes conflict detection to one project in one worktree.
 //
 // Per-project because two projects can each define API_URL with different
 // values; a flat map would attribute the conflict to the wrong one, in a
 // warning whose whole value is naming the right one.
 type DetectParams struct {
 	Project   string
+	Slug      Slug
 	EnvValues map[string]string
 	Injected  []Resolution
 	Allocated map[int]PortOwner
 }
 
-// DetectPortConflicts finds env values aimed at a port owned by another
-// project. Pure.
+// DetectPortConflicts finds env values aimed at a port crew gave to a server
+// in a DIFFERENT worktree. Pure.
 //
-// It scans every env value, not just the ones a binding failed to resolve. The
-// variable behind the bug this exists to catch — an eval env pointing at
-// localhost:3000, which was another project's homepage — had no binding at all,
-// so scoping the scan to bindings would mean it could never fire on its own
-// motivating example.
+// The boundary is the worktree, not the project. A value pointing at a sibling
+// project in the same worktree is the expected topology — it is what bindings
+// formalise and what the scan proposes. A value pointing into another worktree
+// is the bug: an env file copied from elsewhere, or a port that collides
+// across worktrees. That is the case behind this feature — an eval env in one
+// worktree pointing at localhost:3000, which was another workspace's homepage.
 //
-// Variables crew is injecting are skipped: crew has already replaced them, so
-// whatever the file says about them no longer reaches the process.
+// It scans every env value, not just the ones a binding failed to resolve; the
+// variable in that case had no binding at all. Variables crew is injecting are
+// skipped: crew has already replaced them, so whatever the file says about them
+// no longer reaches the process.
 func DetectPortConflicts(p DetectParams) []Conflict {
 	injected := make(map[string]bool, len(p.Injected))
 	for _, r := range p.Injected {
@@ -67,7 +71,7 @@ func DetectPortConflicts(p DetectParams) []Conflict {
 		}
 
 		owner, allocated := p.Allocated[port]
-		if !allocated || owner.Project == p.Project {
+		if !allocated || owner.Slug == p.Slug {
 			continue
 		}
 

@@ -16,8 +16,8 @@ func GroupResolutions(resolutions []Resolution) map[string][]Resolution {
 }
 
 // InspectEnvConflicts reads each project's env files and reports values aimed
-// at a port crew handed to a different project.
-func InspectEnvConflicts(projects []DevProject, resolutions []Resolution) []Conflict {
+// at a port crew handed to a server in another worktree.
+func InspectEnvConflicts(slug Slug, projects []DevProject, resolutions []Resolution) []Conflict {
 	allocated := AllocatedPorts()
 	byProject := GroupResolutions(resolutions)
 
@@ -25,6 +25,7 @@ func InspectEnvConflicts(projects []DevProject, resolutions []Resolution) []Conf
 	for _, p := range projects {
 		conflicts = append(conflicts, DetectPortConflicts(DetectParams{
 			Project:   p.Name,
+			Slug:      slug,
 			EnvValues: ReadEnvValues(p.Path),
 			Injected:  byProject[p.Name],
 			Allocated: allocated,

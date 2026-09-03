@@ -133,6 +133,14 @@ func PlanMigration() (*MigrationPlan, error) {
 	return plan, nil
 }
 
+// relWorkspaces shortens a path under WorkspacesDir for display.
+func relWorkspaces(path string) string {
+	if rel, err := filepath.Rel(config.WorkspacesDir, path); err == nil {
+		return rel
+	}
+	return path
+}
+
 func dedupe(in []string) []string {
 	var out []string
 	for i, s := range in {
@@ -155,7 +163,7 @@ func FormatPlan(plan *MigrationPlan) string {
 		fmt.Fprintf(&b, "  %-22s → %s\n", m.OldWorkspace, m.Ref)
 	}
 
-	b.WriteString("\nPaths\n\n")
+	fmt.Fprintf(&b, "\nPaths — under %s\n\n", config.WorkspacesDir)
 	for _, m := range plan.Moves {
 		for _, wp := range m.Projects {
 			if IsDirect(wp) {
@@ -163,8 +171,8 @@ func FormatPlan(plan *MigrationPlan) string {
 				continue
 			}
 			fmt.Fprintf(&b, "  %-46s → %s\n",
-				WorktreePath(Ref{Workspace: m.OldWorkspace}, wp.Name),
-				WorktreePath(m.Ref, wp.Name))
+				relWorkspaces(WorktreePath(Ref{Workspace: m.OldWorkspace}, wp.Name)),
+				relWorkspaces(WorktreePath(m.Ref, wp.Name)))
 		}
 	}
 

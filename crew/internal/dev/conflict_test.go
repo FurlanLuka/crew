@@ -53,6 +53,7 @@ func allocatedFixture() map[int]PortOwner {
 func TestDetectPortConflicts_NamesTheRealOwner(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project:   "ai-tutor-api",
+		Slug:      "phone-speak--wrk2",
 		EnvValues: map[string]string{"SPEAK_API_URL": "http://localhost:3000"},
 		Allocated: allocatedFixture(),
 	})
@@ -75,6 +76,7 @@ func TestDetectPortConflicts_NamesTheRealOwner(t *testing.T) {
 func TestDetectPortConflicts_UnallocatedPortIsNotAConflict(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project:   "ai-tutor-api",
+		Slug:      "phone-speak--wrk2",
 		EnvValues: map[string]string{"OTHER_URL": "http://localhost:9999"},
 		Allocated: allocatedFixture(),
 	})
@@ -88,6 +90,7 @@ func TestDetectPortConflicts_UnallocatedPortIsNotAConflict(t *testing.T) {
 func TestDetectPortConflicts_OwnPortIsNotAConflict(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project:   "ai-tutor-api",
+		Slug:      "phone-speak--wrk2",
 		EnvValues: map[string]string{"SELF_URL": "http://localhost:8000"},
 		Allocated: allocatedFixture(),
 	})
@@ -97,11 +100,31 @@ func TestDetectPortConflicts_OwnPortIsNotAConflict(t *testing.T) {
 	}
 }
 
+// A sibling project in the same worktree is the expected topology — it is
+// what a binding formalises. In no-proxy mode every correct cross-project URL
+// looks like this, so treating it as a conflict would fire on every start.
+func TestDetectPortConflicts_SiblingInSameWorktreeIsNotAConflict(t *testing.T) {
+	allocated := map[int]PortOwner{
+		3000: {Slug: "phone-speak--wrk2", Project: "speak-api", Server: "speak-api"},
+	}
+	conflicts := DetectPortConflicts(DetectParams{
+		Project:   "ai-tutor-api",
+		Slug:      "phone-speak--wrk2",
+		EnvValues: map[string]string{"SPEAK_API_URL": "http://localhost:3000"},
+		Allocated: allocated,
+	})
+
+	if len(conflicts) != 0 {
+		t.Errorf("got %+v, want none — speak-api is a sibling in the same worktree", conflicts)
+	}
+}
+
 // Crew has already replaced the value, so whatever the file says about it never
 // reaches the process.
 func TestDetectPortConflicts_InjectedVarIsSkipped(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project:   "ai-tutor-api",
+		Slug:      "phone-speak--wrk2",
 		EnvValues: map[string]string{"SPEAK_API_URL": "http://localhost:3000"},
 		Injected: []Resolution{
 			{Project: "ai-tutor-api", Var: "SPEAK_API_URL", Value: "http://localhost:54021", Source: SourceBinding},
@@ -119,6 +142,7 @@ func TestDetectPortConflicts_InjectedVarIsSkipped(t *testing.T) {
 func TestDetectPortConflicts_UnresolvedVarStillWarns(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project:   "ai-tutor-api",
+		Slug:      "phone-speak--wrk2",
 		EnvValues: map[string]string{"SPEAK_API_URL": "http://localhost:3000"},
 		Injected: []Resolution{
 			{Project: "ai-tutor-api", Var: "SPEAK_API_URL", Source: SourceUnresolved},
@@ -134,6 +158,7 @@ func TestDetectPortConflicts_UnresolvedVarStillWarns(t *testing.T) {
 func TestDetectPortConflicts_NonLocalValuesIgnored(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project: "ai-tutor-api",
+		Slug:    "phone-speak--wrk2",
 		EnvValues: map[string]string{
 			"BRAINTRUST_API_KEY": "sk-abcdef",
 			"DEPLOYED_URL":       "https://dev-api.speak.com",
@@ -150,6 +175,7 @@ func TestDetectPortConflicts_NonLocalValuesIgnored(t *testing.T) {
 func TestDetectPortConflicts_SortedByVar(t *testing.T) {
 	conflicts := DetectPortConflicts(DetectParams{
 		Project: "ai-tutor-api",
+		Slug:    "phone-speak--wrk2",
 		EnvValues: map[string]string{
 			"Z_URL": "http://localhost:3000",
 			"A_URL": "http://localhost:3000",

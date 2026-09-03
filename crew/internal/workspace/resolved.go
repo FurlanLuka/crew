@@ -102,7 +102,9 @@ func (r *Resolved) HasDirect() bool {
 func (r *Resolved) DevProjects() []dev.DevProject {
 	var projects []dev.DevProject
 	for _, p := range r.Projects {
-		if len(p.DevServers) == 0 {
+		// A project with bindings but no dev servers still takes part in
+		// resolution — crew run and crew env are for exactly that project.
+		if len(p.DevServers) == 0 && len(p.Bindings) == 0 {
 			continue
 		}
 		var servers []dev.DevServerConfig
@@ -114,10 +116,15 @@ func (r *Resolved) DevProjects() []dev.DevProject {
 				Dir:     ds.Dir,
 			})
 		}
+		var bindings []dev.Binding
+		for _, b := range p.Bindings {
+			bindings = append(bindings, dev.Binding{Var: b.Var, Value: b.Value})
+		}
 		projects = append(projects, dev.DevProject{
 			Name:       p.Name,
 			Path:       p.Path,
 			DevServers: servers,
+			Bindings:   bindings,
 		})
 	}
 	return projects
