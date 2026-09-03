@@ -87,19 +87,28 @@ func WorktreeNames(ws *Workspace) []string {
 }
 
 // Create creates a new empty workspace with its directory.
+// DefaultWorktree is the worktree a new workspace starts with, and what
+// migration names the single worktree of a workspace that had no naming
+// convention to read.
+const DefaultWorktree = "main"
+
+// Create creates a new empty workspace with one worktree.
 func Create(name string) error {
-	if !validWSName.MatchString(name) {
-		return fmt.Errorf("workspace name '%s' is invalid — only lowercase letters, digits, and hyphens allowed", name)
+	if err := ValidateName("workspace", name); err != nil {
+		return err
 	}
 	if _, err := os.Stat(config.WorkspaceFile(name)); err == nil {
 		return fmt.Errorf("workspace '%s' already exists", name)
 	}
-	if err := os.MkdirAll(WorkspaceDir(name), 0o755); err != nil {
+
+	ref := Ref{Workspace: name, Worktree: DefaultWorktree}
+	if err := os.MkdirAll(WorktreeDir(ref), 0o755); err != nil {
 		return err
 	}
 	ws := &Workspace{
-		Name:     name,
-		Projects: []WorkspaceProject{},
+		Name:      name,
+		Projects:  []WorkspaceProject{},
+		Worktrees: []Worktree{{Name: DefaultWorktree}},
 	}
 	return Save(ws)
 }
@@ -168,18 +177,18 @@ func AddProject(wsName, projName, role, mode string) error {
 		if err := assertNoOtherDirect(projName, wsName); err != nil {
 			return err
 		}
+		if err := assertDirectFitsWorktrees(ws, projName); err != nil {
+			return err
+		}
 		if err := assertGitRepo(p.Path); err != nil {
 			return fmt.Errorf("project '%s' cannot be used in direct mode: %w", projName, err)
 		}
 	} else {
-		wtDir := WorktreePath(Ref{Workspace: wsName}, projName)
-		baseBranch := detectDefaultBranch(p.Path)
-		branchName := "crew/" + wsName + "/" + projName
-		if err := exec.CreateGitWorktree(p.Path, wtDir, branchName, baseBranch); err != nil {
-			return fmt.Errorf("failed to create worktree for %s: %w", projName, err)
+		for _, ref := range workspaceRefs(ws) {
+			if err := createProjectWorktree(ref, *p); err != nil {
+				return err
+			}
 		}
-		exec.CopyEnvFiles(p.Path, wtDir)
-		exec.RunNpmInstall(wtDir)
 	}
 
 	persistedMode := mode
@@ -202,7 +211,9 @@ func RemoveProject(wsName, projName string) error {
 
 	for _, wp := range ws.Projects {
 		if wp.Name == projName {
-			cleanupWorktree(wsName, wp)
+			for _, ref := range workspaceRefs(ws) {
+				cleanupWorktree(ref, wp)
+			}
 			break
 		}
 	}
@@ -221,17 +232,23 @@ func RemoveProject(wsName, projName string) error {
 // for worktree-mode entries (direct-mode entries are left alone), deletes the
 // workspace directory and JSON.
 func Remove(name string) error {
-	dev.StopAll(dev.Slug(name))
-	dev.StopProxyIfIdle()
-	os.Remove(PromptFilePath(Ref{Workspace: name}))
 	os.Remove(legacyNoTeamsPromptFilePath(name))
 
 	ws, err := Load(name)
 	if err == nil {
-		for _, wp := range ws.Projects {
-			cleanupWorktree(name, wp)
+		// Every worktree has its own dev session, route file, log directory,
+		// prompt and .code-workspace — tearing down only the workspace name
+		// would leave each of those orphaned per worktree.
+		for _, ref := range workspaceRefs(ws) {
+			removeWorktreeArtifacts(ref)
+			for _, wp := range ws.Projects {
+				cleanupWorktree(ref, wp)
+			}
 		}
+	} else {
+		removeWorktreeArtifacts(Ref{Workspace: name})
 	}
+	dev.StopProxyIfIdle()
 
 	// WorkspaceDir is bounded to ~/.claude/workspaces/<name>/. Direct-mode
 	// projects' canonical paths live elsewhere, so this RemoveAll cannot reach
@@ -244,11 +261,11 @@ func Remove(name string) error {
 // cleanupWorktree is the single place destructive worktree teardown happens.
 // No-ops for direct-mode entries. Defensively asserts the path being deleted
 // lives under config.WorkspacesDir before touching it.
-func cleanupWorktree(wsName string, wp WorkspaceProject) {
+func cleanupWorktree(ref Ref, wp WorkspaceProject) {
 	if IsDirect(wp) {
 		return
 	}
-	wtDir := WorktreePath(Ref{Workspace: wsName}, wp.Name)
+	wtDir := WorktreePath(ref, wp.Name)
 
 	// Defensive guard: never delete anything outside the workspaces tree.
 	abs, err := filepath.Abs(wtDir)

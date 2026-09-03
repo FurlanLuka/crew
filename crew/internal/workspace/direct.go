@@ -73,3 +73,17 @@ func assertGitRepo(path string) error {
 	}
 	return nil
 }
+
+// assertDirectFitsWorktrees refuses a direct-mode project in a workspace that
+// already has more than one worktree.
+//
+// The pin is enforced in both directions: AddWorktree refuses when a direct
+// project is present, and this refuses when worktrees already exist. Guarding
+// only one lets you reach the forbidden state by doing it in the other order.
+func assertDirectFitsWorktrees(ws *Workspace, projName string) error {
+	if len(ws.Worktrees) > 1 {
+		return fmt.Errorf("workspace '%s' has %d worktrees, so '%s' cannot be added in direct mode — a direct project has one canonical checkout that the worktrees would share",
+			ws.Name, len(ws.Worktrees), projName)
+	}
+	return nil
+}

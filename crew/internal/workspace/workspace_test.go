@@ -672,7 +672,9 @@ func TestRemove_DeletesPromptFiles(t *testing.T) {
 	legacy := legacyNoTeamsPromptFilePath("two-prompts")
 	os.WriteFile(legacy, []byte("stale"), 0o644)
 
-	for _, path := range []string{PromptFilePath(Ref{Workspace: "two-prompts"}), legacy} {
+	// The prompt is keyed by the worktree's slug, so ask the resolved ref
+	// rather than assuming the flat pre-worktree filename.
+	for _, path := range []string{PromptFilePath(res.Ref), legacy} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist before Remove", path)
 		}
@@ -682,7 +684,7 @@ func TestRemove_DeletesPromptFiles(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	for _, path := range []string{PromptFilePath(Ref{Workspace: "two-prompts"}), legacy} {
+	for _, path := range []string{PromptFilePath(res.Ref), legacy} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("Remove should delete %s", path)
 		}
