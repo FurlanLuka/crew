@@ -13,39 +13,39 @@ import (
 
 // buildClaudeParts builds the shell-command tokens (env assignments inlined,
 // followed by `claude` and its flags) plus the directory Claude should start in.
-// It assumes ws has at least one project, and that the prompt file already
-// exists when needsPrompt(ws); ClaudeCommand guarantees both.
+// It assumes res has at least one project, and that the prompt file already
+// exists when NeedsPrompt(res); ClaudeCommand guarantees both.
 //
-// A multi-project workspace runs one flat Claude instance at the workspace root
-// with every project exposed via --add-dir; a single-project workspace starts
+// A multi-project worktree runs one flat Claude instance at the worktree root
+// with every project exposed via --add-dir; a single-project worktree starts
 // directly in that project and needs no orientation prompt.
 //
 // The prompt is passed via $(cat ...) so the shell reads the file rather than
 // inlining multi-line content (which would break tmux keystroke sends on
 // newlines and hit terminal input buffer limits).
-func buildClaudeParts(ws *Workspace) ([]string, string) {
-	multiProject := len(ws.Projects) > 1
+func buildClaudeParts(res *Resolved) ([]string, string) {
+	multiProject := res.MultiProject()
 
 	parts := []string{"IS_SANDBOX=1"}
 	if config.UserSetClaudeConfig {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+crewExec.ShellQuote(config.ClaudeConfigDir))
 	}
 
-	workDir := ResolvePath(ws.Name, ws.Projects[0])
+	workDir := res.Projects[0].Path
 	if multiProject {
-		workDir = WorkspaceDir(ws.Name)
+		workDir = res.Dir
 	}
 
 	parts = append(parts, "claude", "--dangerously-skip-permissions")
 
 	if multiProject {
-		for _, wp := range ws.Projects {
-			parts = append(parts, "--add-dir", crewExec.ShellQuote(ResolvePath(ws.Name, wp)))
+		for _, p := range res.Projects {
+			parts = append(parts, "--add-dir", crewExec.ShellQuote(p.Path))
 		}
 	}
 
-	if needsPrompt(ws) {
-		parts = append(parts, "--", "\"$(cat "+crewExec.ShellQuote(PromptFilePath(ws.Name))+")\"")
+	if NeedsPrompt(res) {
+		parts = append(parts, "--", "\"$(cat "+crewExec.ShellQuote(PromptFilePath(res.Ref))+")\"")
 	}
 
 	return parts, workDir
@@ -55,25 +55,21 @@ func buildClaudeParts(ws *Workspace) ([]string, string) {
 // terminal. Use with tea.ExecProcess from a Bubbletea TUI: the TUI suspends,
 // Claude takes over the terminal, and control returns when Claude exits.
 // Nothing is tracked — there's no session to reattach to.
-func ClaudeCommand(wsName string) (*exec.Cmd, error) {
+func ClaudeCommand(res *Resolved) (*exec.Cmd, error) {
 	if !crewExec.HasClaude() {
 		return nil, fmt.Errorf("claude not found — install Claude Code first")
 	}
 
-	ws, err := Load(wsName)
-	if err != nil {
-		return nil, err
+	if len(res.Projects) == 0 {
+		return nil, fmt.Errorf("workspace '%s' has no projects", res.Ref)
 	}
-	if len(ws.Projects) == 0 {
-		return nil, fmt.Errorf("workspace '%s' has no projects", wsName)
-	}
-	if needsPrompt(ws) {
-		if _, err := GeneratePrompt(ws); err != nil {
+	if NeedsPrompt(res) {
+		if _, err := GeneratePrompt(res); err != nil {
 			return nil, err
 		}
 	}
 
-	parts, workDir := buildClaudeParts(ws)
+	parts, workDir := buildClaudeParts(res)
 
 	cmdStr := strings.Join(parts, " ")
 	debug.Log("claude", "direct run in %s → %s", workDir, cmdStr)

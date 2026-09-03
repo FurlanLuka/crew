@@ -177,30 +177,33 @@ func TestWorktreePath(t *testing.T) {
 	tmp := t.TempDir()
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
 
-	got := WorktreePath("wrk1", "api")
+	got := WorktreePath(Ref{Workspace: "wrk1"}, "api")
 	want := filepath.Join(config.WorkspacesDir, "wrk1", "api")
 	if got != want {
 		t.Errorf("WorktreePath = %q, want %q", got, want)
 	}
 }
 
-func TestResolvePath(t *testing.T) {
+func TestResolvePathsPerMode(t *testing.T) {
 	setupTestConfig(t)
 
 	project.Add(project.Project{Name: "api", Path: "/canonical/api"})
+	project.Add(project.Project{Name: "web", Path: "/canonical/web"})
+	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{
+		{Name: "api", Role: "r"},
+		{Name: "web", Role: "r", Mode: ModeDirect},
+	}})
 
-	worktreeWp := WorkspaceProject{Name: "api", Role: "r"}
-	got := ResolvePath("ws", worktreeWp)
-	want := WorktreePath("ws", "api")
-	if got != want {
-		t.Errorf("ResolvePath worktree = %q, want %q", got, want)
+	res, err := Resolve(Ref{Workspace: "ws"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 
-	directWp := WorkspaceProject{Name: "api", Role: "r", Mode: ModeDirect}
-	got = ResolvePath("ws", directWp)
-	want = "/canonical/api"
-	if got != want {
-		t.Errorf("ResolvePath direct = %q, want %q", got, want)
+	if want := WorktreePath(Ref{Workspace: "ws"}, "api"); res.Projects[0].Path != want {
+		t.Errorf("worktree path = %q, want %q", res.Projects[0].Path, want)
+	}
+	if res.Projects[1].Path != "/canonical/web" {
+		t.Errorf("direct path = %q, want %q", res.Projects[1].Path, "/canonical/web")
 	}
 }
 
@@ -281,15 +284,12 @@ func TestWorkspaceDir(t *testing.T) {
 func TestGeneratePrompt(t *testing.T) {
 	setupTestConfig(t)
 
-	ws := &Workspace{
-		Name: "prompt-test",
-		Projects: []WorkspaceProject{
-			{Name: "api", Role: "backend service"},
-			{Name: "web", Role: "frontend app"},
-		},
-	}
+	res := newTestWorkspace(t, "prompt-test", []WorkspaceProject{
+		{Name: "api", Role: "backend service"},
+		{Name: "web", Role: "frontend app"},
+	})
 
-	text, err := GeneratePrompt(ws)
+	text, err := GeneratePrompt(res)
 	if err != nil {
 		t.Fatalf("GeneratePrompt: %v", err)
 	}
@@ -308,14 +308,11 @@ func TestGeneratePrompt(t *testing.T) {
 func TestGeneratePrompt_WritesFile(t *testing.T) {
 	setupTestConfig(t)
 
-	ws := &Workspace{
-		Name:     "file-test",
-		Projects: []WorkspaceProject{{Name: "p", Role: "r"}},
-	}
+	res := newTestWorkspace(t, "file-test", []WorkspaceProject{{Name: "p", Role: "r"}})
 
-	GeneratePrompt(ws)
+	GeneratePrompt(res)
 
-	path := PromptFilePath("file-test")
+	path := PromptFilePath(Ref{Workspace: "file-test"})
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("prompt file not created at %s", path)
 	}
@@ -336,16 +333,21 @@ func TestBuildDevProjects(t *testing.T) {
 		Path: "/base/web",
 	})
 
-	wsProjects := []WorkspaceProject{
+	Save(&Workspace{Name: "test-ws", Projects: []WorkspaceProject{
 		{Name: "api", Role: "backend"},
 		{Name: "web", Role: "frontend"},
+	}})
+
+	res, err := Resolve(Ref{Workspace: "test-ws"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
 
-	result := BuildDevProjects("test-ws", wsProjects)
+	result := res.DevProjects()
 	if len(result) != 1 {
-		t.Fatalf("BuildDevProjects returned %d projects, want 1 (web has no dev servers)", len(result))
+		t.Fatalf("DevProjects returned %d projects, want 1 (web has no dev servers)", len(result))
 	}
-	expectedPath := WorktreePath("test-ws", "api")
+	expectedPath := WorktreePath(Ref{Workspace: "test-ws"}, "api")
 	if result[0].Path != expectedPath {
 		t.Errorf("Path = %q, want %q", result[0].Path, expectedPath)
 	}
@@ -358,7 +360,7 @@ func TestPromptFilePath(t *testing.T) {
 	tmp := t.TempDir()
 	config.ConfigDir = tmp
 
-	got := PromptFilePath("myws")
+	got := PromptFilePath(Ref{Workspace: "myws"})
 	want := filepath.Join(tmp, "prompt-myws.md")
 	if got != want {
 		t.Errorf("PromptFilePath = %q, want %q", got, want)
@@ -369,7 +371,7 @@ func TestCodeWorkspaceFilePath(t *testing.T) {
 	tmp := t.TempDir()
 	config.ConfigDir = tmp
 
-	got := CodeWorkspaceFilePath("myws")
+	got := CodeWorkspaceFilePath(Ref{Workspace: "myws"})
 	want := filepath.Join(tmp, "myws.code-workspace")
 	if got != want {
 		t.Errorf("CodeWorkspaceFilePath = %q, want %q", got, want)
@@ -399,13 +401,16 @@ func TestRemove_CleansUpDirectory(t *testing.T) {
 	}
 }
 
-func TestBuildDevProjects_MissingProject(t *testing.T) {
+func TestDevProjects_MissingProject(t *testing.T) {
 	setupTestConfig(t)
 
-	wsProjects := []WorkspaceProject{{Name: "ghost", Role: "phantom"}}
-	result := BuildDevProjects("ws", wsProjects)
-	if len(result) != 0 {
-		t.Errorf("BuildDevProjects returned %d projects, want 0 for missing pool project", len(result))
+	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{{Name: "ghost", Role: "phantom"}}})
+	res, err := Resolve(Ref{Workspace: "ws"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if result := res.DevProjects(); len(result) != 0 {
+		t.Errorf("DevProjects returned %d projects, want 0 for missing pool project", len(result))
 	}
 }
 
@@ -469,7 +474,7 @@ func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
 	}
 
 	// No worktree should have been created under the workspaces tree.
-	wt := WorktreePath("ws", "api")
+	wt := WorktreePath(Ref{Workspace: "ws"}, "api")
 	if _, err := os.Stat(wt); !os.IsNotExist(err) {
 		t.Errorf("worktree dir %s should not exist for direct mode", wt)
 	}
@@ -602,13 +607,14 @@ func TestGeneratePrompt_DirectModeFraming(t *testing.T) {
 	initRepo(t, repo)
 	project.Add(project.Project{Name: "api", Path: repo})
 
-	ws := &Workspace{
-		Name: "ws",
-		Projects: []WorkspaceProject{
-			{Name: "api", Role: "backend", Mode: ModeDirect},
-		},
+	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{
+		{Name: "api", Role: "backend", Mode: ModeDirect},
+	}})
+	res, err := Resolve(Ref{Workspace: "ws"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
-	text, err := GeneratePrompt(ws)
+	text, err := GeneratePrompt(res)
 	if err != nil {
 		t.Fatalf("GeneratePrompt: %v", err)
 	}
@@ -629,14 +635,15 @@ func TestGeneratePrompt_MixedModes(t *testing.T) {
 	project.Add(project.Project{Name: "api", Path: repo})
 	project.Add(project.Project{Name: "web", Path: filepath.Join(tmp, "web")})
 
-	ws := &Workspace{
-		Name: "ws",
-		Projects: []WorkspaceProject{
-			{Name: "api", Role: "backend", Mode: ModeDirect},
-			{Name: "web", Role: "frontend"},
-		},
+	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{
+		{Name: "api", Role: "backend", Mode: ModeDirect},
+		{Name: "web", Role: "frontend"},
+	}})
+	res, err := Resolve(Ref{Workspace: "ws"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
 	}
-	text, err := GeneratePrompt(ws)
+	text, err := GeneratePrompt(res)
 	if err != nil {
 		t.Fatalf("GeneratePrompt: %v", err)
 	}
@@ -655,13 +662,17 @@ func TestRemove_DeletesPromptFiles(t *testing.T) {
 	ws.Projects = []WorkspaceProject{{Name: "p", Role: "r"}}
 	Save(ws)
 
-	GeneratePrompt(ws)
+	res, err := Resolve(Ref{Workspace: "two-prompts"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	GeneratePrompt(res)
 	// Stand in for a file left behind by a version that still wrote the
 	// separate no-teams prompt; Remove must still clean it up.
 	legacy := legacyNoTeamsPromptFilePath("two-prompts")
 	os.WriteFile(legacy, []byte("stale"), 0o644)
 
-	for _, path := range []string{PromptFilePath("two-prompts"), legacy} {
+	for _, path := range []string{PromptFilePath(Ref{Workspace: "two-prompts"}), legacy} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist before Remove", path)
 		}
@@ -671,7 +682,7 @@ func TestRemove_DeletesPromptFiles(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	for _, path := range []string{PromptFilePath("two-prompts"), legacy} {
+	for _, path := range []string{PromptFilePath(Ref{Workspace: "two-prompts"}), legacy} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("Remove should delete %s", path)
 		}

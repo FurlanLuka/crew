@@ -298,11 +298,11 @@ func (v DevView) startAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
 		}
 
-		ws, err := Load(wsName)
+		res, err := Resolve(Ref{Workspace: wsName})
 		if err != nil {
 			return errMsg{err}
 		}
-		if err := AssertDirectProjectsAvailable(ws); err != nil {
+		if err := AssertDirectProjectsAvailable(res); err != nil {
 			return errMsg{err}
 		}
 
@@ -311,13 +311,13 @@ func (v DevView) startAllDevServers() tea.Cmd {
 		domain := settings.GetDomain(host)
 		proxyPort := settings.GetProxyPort()
 
-		projects := BuildDevProjects(wsName, ws.Projects)
+		projects := res.DevProjects()
 
 		if len(projects) == 0 {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
+		routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -347,11 +347,11 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 		dev.StopAll(dev.Slug(wsName))
 		dev.StopProxyIfIdle()
 
-		ws, err := Load(wsName)
+		res, err := Resolve(Ref{Workspace: wsName})
 		if err != nil {
 			return errMsg{err}
 		}
-		if err := AssertDirectProjectsAvailable(ws); err != nil {
+		if err := AssertDirectProjectsAvailable(res); err != nil {
 			return errMsg{err}
 		}
 
@@ -360,12 +360,12 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 		domain := settings.GetDomain(host)
 		proxyPort := settings.GetProxyPort()
 
-		projects := BuildDevProjects(wsName, ws.Projects)
+		projects := res.DevProjects()
 		if len(projects) == 0 {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
+		routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
@@ -699,7 +698,7 @@ func (v View) renderProjects(b *strings.Builder) {
 				b.WriteString(app.Highlight.Render("[direct]"))
 			}
 			b.WriteString("  ")
-			b.WriteString(app.Subtle.Render(ResolvePath(v.selectedWs, wp)))
+			b.WriteString(app.Subtle.Render(WorktreePath(Ref{Workspace: v.selectedWs}, wp.Name)))
 			b.WriteString("\n")
 
 			if wp.Role != "" {
@@ -886,7 +885,11 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 
 func launchLazygit(wsName string) tea.Cmd {
 	return func() tea.Msg {
-		session, err := EnsureGitSession(wsName)
+		res, err := Resolve(Ref{Workspace: wsName})
+		if err != nil {
+			return errMsg{err}
+		}
+		session, err := EnsureGitSession(res)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -901,40 +904,15 @@ func openCode(wsName string) tea.Cmd {
 			return errMsg{fmt.Errorf("ssh_host not configured — set it in crew config")}
 		}
 
-		ws, err := Load(wsName)
+		res, err := Resolve(Ref{Workspace: wsName})
 		if err != nil {
 			return errMsg{err}
 		}
 
-		var remotePath string
-		if len(ws.Projects) == 1 {
-			remotePath = ResolvePath(wsName, ws.Projects[0])
-		} else {
-			wsFile := CodeWorkspaceFilePath(wsName)
-			var projects []exec.WorkspaceProject
-			for _, wp := range ws.Projects {
-				projects = append(projects, exec.WorkspaceProject{
-					Name: wp.Name,
-					Path: ResolvePath(wsName, wp),
-				})
-			}
-			if err := exec.GenerateCodeWorkspace(wsFile, projects, nil); err != nil {
-				return errMsg{err}
-			}
-			remotePath = wsFile
+		links, err := EditorLinks(res, settings.SSHHost)
+		if err != nil {
+			return errMsg{err}
 		}
-
-		var b strings.Builder
-		for _, ed := range []struct{ name, scheme string }{
-			{"cursor", "cursor://"},
-			{"vscode", "vscode://"},
-		} {
-			uri := ed.scheme + "vscode-remote/ssh-remote+" + settings.SSHHost + remotePath
-			display := ed.name + " → " + wsName
-			// OSC 8 clickable hyperlink
-			fmt.Fprintf(&b, "\033]8;;%s\033\\%s\033]8;;\033\\\n", uri, display)
-		}
-
-		return codeOpenedMsg{output: b.String()}
+		return codeOpenedMsg{output: links}
 	}
 }

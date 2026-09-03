@@ -20,11 +20,26 @@ type DevServer struct {
 	Dir     string `json:"dir,omitempty"`
 }
 
+// Binding declares that this project needs Var set, and how to compute it.
+//
+// The edge lives on the project rather than the workspace because it comes from
+// this project's own env schema: ai-tutor-api needs speak-api's URL in
+// SPEAK_API_URL in every workspace it ever appears in. Declaring it per
+// workspace means re-declaring the same edge everywhere and watching them drift.
+//
+// Value is a template over {{url:proj/server}}, {{port:proj/server}},
+// {{worktree}} and {{workspace}}.
+type Binding struct {
+	Var   string `json:"var"`
+	Value string `json:"value"`
+}
+
 // Project is a global project entry (no role — role is workspace-specific).
 type Project struct {
 	Name       string      `json:"name"`
 	Path       string      `json:"path"`
 	DevServers []DevServer `json:"dev_servers,omitempty"`
+	Bindings   []Binding   `json:"bindings,omitempty"`
 }
 
 func poolFile() string {

@@ -21,13 +21,13 @@ func TestAvailableLaunchModes(t *testing.T) {
 
 func TestClaudeTaskFor_SingleProject(t *testing.T) {
 	pinClaudeConfig(t, false)
-	ws := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
 
-	task := claudeTaskFor(ws)
+	task := ClaudeTaskFor(res)
 
 	// A single-project workspace opens in the project itself. The workspace
 	// root is an empty scratch dir for a direct-mode project.
-	if want := ResolvePath("solo", ws.Projects[0]); task.LeadPath != want {
+	if want := res.Projects[0].Path; task.LeadPath != want {
 		t.Errorf("LeadPath = %q, want %q", task.LeadPath, want)
 	}
 	if task.AddDirs != nil {
@@ -43,48 +43,48 @@ func TestClaudeTaskFor_SingleProject(t *testing.T) {
 
 func TestClaudeTaskFor_MultiProject(t *testing.T) {
 	pinClaudeConfig(t, false)
-	ws := newTestWorkspace(t, "multi", []WorkspaceProject{
+	res := newTestWorkspace(t, "multi", []WorkspaceProject{
 		{Name: "api", Role: "backend"},
 		{Name: "web", Role: "frontend"},
 	})
 
-	task := claudeTaskFor(ws)
+	task := ClaudeTaskFor(res)
 
-	if task.LeadPath != WorkspaceDir("multi") {
-		t.Errorf("LeadPath = %q, want %q", task.LeadPath, WorkspaceDir("multi"))
+	if task.LeadPath != WorktreeDir(Ref{Workspace: "multi"}) {
+		t.Errorf("LeadPath = %q, want %q", task.LeadPath, WorktreeDir(Ref{Workspace: "multi"}))
 	}
 	// Every project is exposed, the lead included — the agent-teams path used
 	// to skip the lead, and the two modes must not drift apart again.
-	want := []string{WorktreePath("multi", "api"), WorktreePath("multi", "web")}
+	want := []string{WorktreePath(Ref{Workspace: "multi"}, "api"), WorktreePath(Ref{Workspace: "multi"}, "web")}
 	if !reflect.DeepEqual(task.AddDirs, want) {
 		t.Errorf("AddDirs = %v, want %v", task.AddDirs, want)
 	}
-	if task.PromptFile != PromptFilePath("multi") {
-		t.Errorf("PromptFile = %q, want %q", task.PromptFile, PromptFilePath("multi"))
+	if task.PromptFile != PromptFilePath(Ref{Workspace: "multi"}) {
+		t.Errorf("PromptFile = %q, want %q", task.PromptFile, PromptFilePath(Ref{Workspace: "multi"}))
 	}
 }
 
 func TestClaudeTaskFor_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 	pinClaudeConfig(t, false)
-	ws := newTestWorkspace(t, "solo", []WorkspaceProject{
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{
 		{Name: "api", Role: "backend", Mode: ModeDirect},
 	})
 
-	if task := claudeTaskFor(ws); task.PromptFile != PromptFilePath("solo") {
+	if task := ClaudeTaskFor(res); task.PromptFile != PromptFilePath(Ref{Workspace: "solo"}) {
 		t.Errorf("PromptFile = %q, want the prompt so the CAUTION framing reaches Claude", task.PromptFile)
 	}
 }
 
 func TestClaudeTaskFor_ClaudeConfigDir(t *testing.T) {
 	pinClaudeConfig(t, true)
-	ws := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
 
-	if task := claudeTaskFor(ws); task.ClaudeConfigDir != config.ClaudeConfigDir {
+	if task := ClaudeTaskFor(res); task.ClaudeConfigDir != config.ClaudeConfigDir {
 		t.Errorf("ClaudeConfigDir = %q, want %q", task.ClaudeConfigDir, config.ClaudeConfigDir)
 	}
 
 	pinClaudeConfig(t, false)
-	if task := claudeTaskFor(ws); task.ClaudeConfigDir != "" {
+	if task := ClaudeTaskFor(res); task.ClaudeConfigDir != "" {
 		t.Errorf("ClaudeConfigDir = %q, want empty when unset", task.ClaudeConfigDir)
 	}
 }
@@ -99,10 +99,10 @@ func TestClaudeTaskFor_AgreesWithBuildClaudeParts(t *testing.T) {
 		{{Name: "api", Role: "backend", Mode: ModeDirect}},
 		{{Name: "api", Role: "backend"}, {Name: "web", Role: "frontend"}},
 	} {
-		ws := newTestWorkspace(t, "ws", projects)
+		res := newTestWorkspace(t, "ws", projects)
 
-		task := claudeTaskFor(ws)
-		parts, workDir := buildClaudeParts(ws)
+		task := ClaudeTaskFor(res)
+		parts, workDir := buildClaudeParts(res)
 		cmd := strings.Join(parts, " ")
 
 		if task.LeadPath != workDir {

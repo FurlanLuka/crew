@@ -15,6 +15,7 @@ import (
 // DevProject is the data Start needs per project.
 // Kept separate from workspace types to avoid import cycles.
 type DevProject struct {
+	Name       string
 	Path       string
 	DevServers []DevServerConfig
 }

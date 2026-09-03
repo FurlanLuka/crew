@@ -8,22 +8,14 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
-// needsPrompt reports whether a launch should inject the orientation prompt.
+// NeedsPrompt reports whether a launch should inject the orientation prompt.
 //
-// Multi-project workspaces need it to find their projects. A workspace holding
+// Multi-project worktrees need it to find their projects. A worktree holding
 // any direct-mode project needs it for the CAUTION framing regardless of size:
 // both launch modes skip permissions, so a lone direct project would otherwise
 // drop Claude into the user's canonical repo with no warning at all.
-func needsPrompt(ws *Workspace) bool {
-	if len(ws.Projects) > 1 {
-		return true
-	}
-	for _, wp := range ws.Projects {
-		if IsDirect(wp) {
-			return true
-		}
-	}
-	return false
+func NeedsPrompt(res *Resolved) bool {
+	return res.MultiProject() || res.HasDirect()
 }
 
 // currentBranch returns the current branch name at path, or "" if it cannot be
@@ -40,37 +32,49 @@ func currentBranch(path string) string {
 	return branch
 }
 
-// GeneratePrompt writes the workspace orientation prompt and returns its text.
-// It orients a single Claude instance to every project in the workspace by
-// listing names, working directories, and roles.
+// directBranches reads the current branch of every direct-mode project. This is
+// the only impure part of prompt generation, hoisted out so RenderPrompt stays
+// a pure function of data.
+func directBranches(res *Resolved) map[string]string {
+	branches := make(map[string]string)
+	for _, p := range res.Projects {
+		if p.Direct {
+			branches[p.Name] = currentBranch(p.Path)
+		}
+	}
+	return branches
+}
+
+// RenderPrompt builds the orientation prompt text. It orients a single Claude
+// instance to every project in the worktree by listing names, working
+// directories, and roles.
 //
-// Projects are labelled `[worktree]` or `[direct]` because the distinction
-// changes what is safe to do: worktree projects are isolated copies, while
-// direct projects point at the canonical repository, so a mistaken commit or
-// branch switch there lands in the user's real repo. Both launch modes run
-// Claude with permissions skipped, which makes this framing the only thing
-// warning it off the user's working tree.
-func GeneratePrompt(ws *Workspace) (string, error) {
+// Projects are labelled [worktree] or [direct] because the distinction changes
+// what is safe to do: worktree projects are isolated copies, while direct
+// projects point at the canonical repository, so a mistaken commit or branch
+// switch there lands in the user's real repo. Both launch modes run Claude with
+// permissions skipped, which makes this framing the only thing warning it off
+// the user's working tree.
+func RenderPrompt(res *Resolved, branches map[string]string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", ws.Name)
+	fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", res.Ref)
 	b.WriteString("It contains the following projects:\n\n")
 
 	hasWorktree := false
 	hasDirect := false
-	for _, wp := range ws.Projects {
-		path := ResolvePath(ws.Name, wp)
-		role := wp.Role
+	for _, p := range res.Projects {
+		role := p.Role
 		if role == "" {
 			role = "(no role specified)"
 		}
 		modeLabel := "worktree"
-		if IsDirect(wp) {
+		if p.Direct {
 			modeLabel = "direct"
 			hasDirect = true
 		} else {
 			hasWorktree = true
 		}
-		fmt.Fprintf(&b, "- **%s** [%s] (%s): %s\n", wp.Name, modeLabel, path, role)
+		fmt.Fprintf(&b, "- **%s** [%s] (%s): %s\n", p.Name, modeLabel, p.Path, role)
 	}
 	b.WriteString("\n")
 
@@ -82,16 +86,14 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 	if hasDirect {
 		b.WriteString("CAUTION: `[direct]` projects point at the canonical repository — changes are NOT isolated. ")
 		b.WriteString("Confirm with the user before committing or switching branches in a direct project.\n")
-		for _, wp := range ws.Projects {
-			if !IsDirect(wp) {
+		for _, p := range res.Projects {
+			if !p.Direct {
 				continue
 			}
-			path := ResolvePath(ws.Name, wp)
-			branch := currentBranch(path)
-			if branch == "" {
-				fmt.Fprintf(&b, "  - **%s** is on a detached HEAD or unknown branch at %s.\n", wp.Name, path)
+			if branch := branches[p.Name]; branch == "" {
+				fmt.Fprintf(&b, "  - **%s** is on a detached HEAD or unknown branch at %s.\n", p.Name, p.Path)
 			} else {
-				fmt.Fprintf(&b, "  - **%s** is currently on branch `%s` at %s.\n", wp.Name, branch, path)
+				fmt.Fprintf(&b, "  - **%s** is currently on branch `%s` at %s.\n", p.Name, branch, p.Path)
 			}
 		}
 		b.WriteString("\n")
@@ -100,8 +102,13 @@ func GeneratePrompt(ws *Workspace) (string, error) {
 	b.WriteString("cd into the relevant project's directory before running commands or editing files there.\n")
 	b.WriteString("Wait for my instructions on what to build.\n")
 
-	text := b.String()
-	if err := os.WriteFile(PromptFilePath(ws.Name), []byte(text), 0o644); err != nil {
+	return b.String()
+}
+
+// GeneratePrompt renders the orientation prompt and writes it to disk.
+func GeneratePrompt(res *Resolved) (string, error) {
+	text := RenderPrompt(res, directBranches(res))
+	if err := os.WriteFile(PromptFilePath(res.Ref), []byte(text), 0o644); err != nil {
 		return "", err
 	}
 	return text, nil

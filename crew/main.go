@@ -271,6 +271,24 @@ func runTUI(page app.Page) {
 	}
 }
 
+// mustResolve turns a "<workspace>[/<worktree>]" argument into a resolved
+// worktree, or exits with the parse/lookup error. Every command taking a
+// workspace argument goes through here so the "which worktree did you mean"
+// message is written once.
+func mustResolve(arg string) *workspace.Resolved {
+	ref, err := workspace.ParseRef(arg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	res, err := workspace.Resolve(ref)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	return res
+}
+
 func cmdLs() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces]\n")
@@ -374,41 +392,12 @@ func cmdCode() {
 		os.Exit(1)
 	}
 
-	ws, err := workspace.Load(wsName)
+	links, err := workspace.EditorLinks(mustResolve(wsName), settings.SSHHost)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	var remotePath string
-	if len(ws.Projects) == 1 {
-		remotePath = workspace.ResolvePath(wsName, ws.Projects[0])
-	} else {
-		// Generate .code-workspace file for multi-project workspaces
-		wsFile := workspace.CodeWorkspaceFilePath(wsName)
-		var projects []exec.WorkspaceProject
-		for _, wp := range ws.Projects {
-			projects = append(projects, exec.WorkspaceProject{
-				Name: wp.Name,
-				Path: workspace.ResolvePath(wsName, wp),
-			})
-		}
-		if err := exec.GenerateCodeWorkspace(wsFile, projects, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "Error generating workspace file: %v\n", err)
-			os.Exit(1)
-		}
-		remotePath = wsFile
-	}
-
-	for _, ed := range []struct{ name, scheme string }{
-		{"cursor", "cursor://"},
-		{"vscode", "vscode://"},
-	} {
-		uri := ed.scheme + "vscode-remote/ssh-remote+" + settings.SSHHost + remotePath
-		display := ed.name + " → " + wsName
-		// OSC 8 clickable hyperlink
-		fmt.Printf("\033]8;;%s\033\\%s\033]8;;\033\\\n", uri, display)
-	}
+	fmt.Print(links)
 }
 
 func cmdShow() {
@@ -424,11 +413,7 @@ func cmdShow() {
 		os.Exit(1)
 	}
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	res := mustResolve(wsName)
 
 	type wsProjectOut struct {
 		Name string `json:"name"`
@@ -438,13 +423,12 @@ func cmdShow() {
 	}
 
 	out := []wsProjectOut{}
-	for _, wp := range ws.Projects {
-		path := workspace.ResolvePath(wsName, wp)
+	for _, p := range res.Projects {
 		mode := "worktree"
-		if workspace.IsDirect(wp) {
+		if p.Direct {
 			mode = "direct"
 		}
-		out = append(out, wsProjectOut{Name: wp.Name, Path: path, Mode: mode, Role: wp.Role})
+		out = append(out, wsProjectOut{Name: p.Name, Path: p.Path, Mode: mode, Role: p.Role})
 	}
 
 	if jsonOutput {
@@ -469,13 +453,7 @@ func cmdStart() {
 		os.Exit(1)
 	}
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	prompt, err := workspace.GeneratePrompt(ws)
+	prompt, err := workspace.GeneratePrompt(mustResolve(wsName))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -540,7 +518,7 @@ func cmdRm() {
 	}
 
 	// Remove .code-workspace and close editor window
-	wsFile := workspace.CodeWorkspaceFilePath(wsName)
+	wsFile := workspace.CodeWorkspaceFilePath(workspace.Ref{Workspace: wsName})
 	if _, err := os.Stat(wsFile); err == nil {
 		editor := exec.DetectEditor()
 		exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
@@ -799,7 +777,7 @@ func cmdGit() {
 		os.Exit(1)
 	}
 
-	if err := workspace.LaunchGitSession(wsName); err != nil {
+	if err := workspace.LaunchGitSession(mustResolve(wsName)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

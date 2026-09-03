@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
-	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -224,87 +223,55 @@ func (v LaunchView) executeLaunch() tea.Cmd {
 	mode := v.modes[v.modeCursor]
 
 	return func() tea.Msg {
+		res, err := Resolve(Ref{Workspace: wsName})
+		if err != nil {
+			return errMsg{err}
+		}
+		if len(res.Projects) == 0 {
+			return errMsg{fmt.Errorf("workspace '%s' has no projects", wsName)}
+		}
+
 		switch mode {
 		case launchModeEditorClaude:
-			ws, err := Load(wsName)
-			if err != nil {
-				return errMsg{err}
-			}
-			if len(ws.Projects) == 0 {
-				return errMsg{fmt.Errorf("workspace '%s' has no projects", wsName)}
-			}
 			editor := exec.DetectEditor()
 			if editor == "" {
 				return errMsg{fmt.Errorf("no editor detected — install VS Code or Cursor, or use 'Claude' mode")}
 			}
-			return launchWithEditor(ws, editor)
+			return launchWithEditor(res, editor)
 
 		case launchModeClaude:
-			return launchClaude(wsName)
+			return launchClaude(res)
 		}
 
 		return launchExecutedMsg{}
 	}
 }
 
-// launchWithEditor opens the workspace in the editor with a Claude task wired
-// up. A multi-project workspace runs one flat Claude at the workspace root with
-// every project exposed via --add-dir; a single-project workspace starts in the
+// launchWithEditor opens the worktree in the editor with a Claude task wired
+// up. A multi-project worktree runs one flat Claude at the worktree root with
+// every project exposed via --add-dir; a single-project worktree starts in the
 // project itself and needs no orientation prompt.
-func launchWithEditor(ws *Workspace, editor string) tea.Msg {
-	wsFile := CodeWorkspaceFilePath(ws.Name)
-
-	projects := make([]exec.WorkspaceProject, len(ws.Projects))
-	for i, wp := range ws.Projects {
-		projects[i] = exec.WorkspaceProject{
-			Name: wp.Name,
-			Path: ResolvePath(ws.Name, wp),
-		}
-	}
-
-	if needsPrompt(ws) {
-		if _, err := GeneratePrompt(ws); err != nil {
+func launchWithEditor(res *Resolved, editor string) tea.Msg {
+	if NeedsPrompt(res) {
+		if _, err := GeneratePrompt(res); err != nil {
 			return errMsg{err}
 		}
 	}
 
-	if err := exec.GenerateCodeWorkspace(wsFile, projects, claudeTaskFor(ws)); err != nil {
+	target, err := EditorRemotePath(res, ClaudeTaskFor(res))
+	if err != nil {
 		return errMsg{err}
 	}
-	if err := exec.OpenEditor(editor, wsFile); err != nil {
+	if err := exec.OpenEditor(editor, target); err != nil {
 		return errMsg{err}
 	}
 	return launchExecutedMsg{}
 }
 
-// claudeTaskFor builds the editor's Claude task for a workspace. It mirrors
-// buildClaudeParts, which does the same job for the terminal launch mode — the
-// two must agree on working directory and exposed directories.
-func claudeTaskFor(ws *Workspace) *exec.ClaudeTask {
-	claude := &exec.ClaudeTask{
-		LeadPath:        ResolvePath(ws.Name, ws.Projects[0]),
-		SkipPermissions: true,
-	}
-	if config.UserSetClaudeConfig {
-		claude.ClaudeConfigDir = config.ClaudeConfigDir
-	}
-
-	if len(ws.Projects) > 1 {
-		claude.LeadPath = WorkspaceDir(ws.Name)
-		for _, wp := range ws.Projects {
-			claude.AddDirs = append(claude.AddDirs, ResolvePath(ws.Name, wp))
-		}
-	}
-	if needsPrompt(ws) {
-		claude.PromptFile = PromptFilePath(ws.Name)
-	}
-	return claude
-}
-
 // launchClaude runs Claude for the workspace directly in the current terminal
 // via tea.ExecProcess — no tmux, no session tracking.
-func launchClaude(wsName string) tea.Msg {
-	cmd, err := ClaudeCommand(wsName)
+func launchClaude(res *Resolved) tea.Msg {
+	cmd, err := ClaudeCommand(res)
 	if err != nil {
 		return errMsg{err}
 	}

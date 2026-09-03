@@ -38,9 +38,52 @@ func IsDirect(wp WorkspaceProject) bool {
 	return wp.Mode == ModeDirect
 }
 
+// Worktree is one working copy of a workspace's projects. Overrides pin a
+// variable for this worktree only, beating whatever binding would otherwise
+// resolve it; keys are "VAR" or "project.VAR", and the qualified form wins.
+type Worktree struct {
+	Name      string            `json:"name"`
+	Overrides map[string]string `json:"overrides,omitempty"`
+}
+
 type Workspace struct {
-	Name     string             `json:"name"`
-	Projects []WorkspaceProject `json:"projects"`
+	Name      string             `json:"name"`
+	Projects  []WorkspaceProject `json:"projects"`
+	Worktrees []Worktree         `json:"worktrees,omitempty"`
+}
+
+// selectWorktree picks the named worktree, or the only one when unnamed.
+//
+// A workspace with no worktrees at all predates the nested layout. It resolves
+// to a single unnamed worktree so its paths and slug stay flat, which is what
+// keeps crew working against un-migrated state.
+func selectWorktree(ws *Workspace, name string) (Worktree, error) {
+	if len(ws.Worktrees) == 0 {
+		return Worktree{}, nil
+	}
+	if name == "" {
+		if len(ws.Worktrees) == 1 {
+			return ws.Worktrees[0], nil
+		}
+		return Worktree{}, fmt.Errorf("workspace '%s' has %d worktrees (%s) — say which: %s/<worktree>",
+			ws.Name, len(ws.Worktrees), strings.Join(WorktreeNames(ws), ", "), ws.Name)
+	}
+	for _, wt := range ws.Worktrees {
+		if wt.Name == name {
+			return wt, nil
+		}
+	}
+	return Worktree{}, fmt.Errorf("workspace '%s' has no worktree '%s' (have: %s)",
+		ws.Name, name, strings.Join(WorktreeNames(ws), ", "))
+}
+
+// WorktreeNames lists a workspace's worktree names in declaration order.
+func WorktreeNames(ws *Workspace) []string {
+	names := make([]string, 0, len(ws.Worktrees))
+	for _, wt := range ws.Worktrees {
+		names = append(names, wt.Name)
+	}
+	return names
 }
 
 // Create creates a new empty workspace with its directory.
@@ -129,7 +172,7 @@ func AddProject(wsName, projName, role, mode string) error {
 			return fmt.Errorf("project '%s' cannot be used in direct mode: %w", projName, err)
 		}
 	} else {
-		wtDir := WorktreePath(wsName, projName)
+		wtDir := WorktreePath(Ref{Workspace: wsName}, projName)
 		baseBranch := detectDefaultBranch(p.Path)
 		branchName := "crew/" + wsName + "/" + projName
 		if err := exec.CreateGitWorktree(p.Path, wtDir, branchName, baseBranch); err != nil {
@@ -180,7 +223,7 @@ func RemoveProject(wsName, projName string) error {
 func Remove(name string) error {
 	dev.StopAll(dev.Slug(name))
 	dev.StopProxyIfIdle()
-	os.Remove(PromptFilePath(name))
+	os.Remove(PromptFilePath(Ref{Workspace: name}))
 	os.Remove(legacyNoTeamsPromptFilePath(name))
 
 	ws, err := Load(name)
@@ -205,7 +248,7 @@ func cleanupWorktree(wsName string, wp WorkspaceProject) {
 	if IsDirect(wp) {
 		return
 	}
-	wtDir := WorktreePath(wsName, wp.Name)
+	wtDir := WorktreePath(Ref{Workspace: wsName}, wp.Name)
 
 	// Defensive guard: never delete anything outside the workspaces tree.
 	abs, err := filepath.Abs(wtDir)
@@ -228,30 +271,4 @@ func cleanupWorktree(wsName string, wp WorkspaceProject) {
 		exec.RemoveGitWorktree(p.Path, wtDir)
 	}
 	os.RemoveAll(wtDir)
-}
-
-// BuildDevProjects converts workspace projects into dev.DevProject slice
-// using project pool for config and workspace dir for paths.
-func BuildDevProjects(wsName string, wsProjects []WorkspaceProject) []dev.DevProject {
-	var projects []dev.DevProject
-	for _, wp := range wsProjects {
-		p := project.Get(wp.Name)
-		if p == nil || len(p.DevServers) == 0 {
-			continue
-		}
-		var servers []dev.DevServerConfig
-		for _, ds := range p.DevServers {
-			servers = append(servers, dev.DevServerConfig{
-				Name:    ds.Name,
-				Port:    ds.Port,
-				Command: ds.Command,
-				Dir:     ds.Dir,
-			})
-		}
-		projects = append(projects, dev.DevProject{
-			Path:       ResolvePath(wsName, wp),
-			DevServers: servers,
-		})
-	}
-	return projects
 }

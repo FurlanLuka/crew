@@ -319,29 +319,24 @@ func cmdDevStart() {
 	domain := settings.GetDomain(host)
 	proxyPort := settings.GetProxyPort()
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	projects := workspace.BuildDevProjects(wsName, ws.Projects)
+	res := mustResolve(wsName)
+	projects := res.DevProjects()
 	if len(projects) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
+	routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Dev servers for %s\n\n", wsName)
-	printRouteURLs(routes, dev.Slug(wsName), domain, proxyPort)
+	printRouteURLs(routes, res.Slug, domain, proxyPort)
 
 	fmt.Println()
-	fmt.Printf("Session: %s\n", dev.SessionName(dev.Slug(wsName)))
+	fmt.Printf("Session: %s\n", dev.SessionName(res.Slug))
 }
 
 func cmdDevStop() {
@@ -394,29 +389,24 @@ func cmdDevRestart() {
 	domain := settings.GetDomain(host)
 	proxyPort := settings.GetProxyPort()
 
-	ws, err := workspace.Load(wsName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	projects := workspace.BuildDevProjects(wsName, ws.Projects)
+	res := mustResolve(wsName)
+	projects := res.DevProjects()
 	if len(projects) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
+	routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
-	printRouteURLs(routes, dev.Slug(wsName), domain, proxyPort)
+	printRouteURLs(routes, res.Slug, domain, proxyPort)
 
 	fmt.Println()
-	fmt.Printf("Session: %s\n", dev.SessionName(dev.Slug(wsName)))
+	fmt.Printf("Session: %s\n", dev.SessionName(res.Slug))
 }
 
 func cmdDevLogs() {

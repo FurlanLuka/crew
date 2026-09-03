@@ -39,15 +39,15 @@ func AssertNoOtherDirect(projName, excludeWs string) error {
 }
 
 // AssertDirectProjectsAvailable runs the direct-mode collision check across
-// every direct-mode project in ws. Call this before starting dev servers,
+// every direct-mode project in res. Call this before starting dev servers,
 // launching editors, or doing any other work that assumes the canonical repo
 // is bound to ws and not somewhere else.
-func AssertDirectProjectsAvailable(ws *Workspace) error {
-	for _, wp := range ws.Projects {
-		if !IsDirect(wp) {
+func AssertDirectProjectsAvailable(res *Resolved) error {
+	for _, p := range res.Projects {
+		if !p.Direct {
 			continue
 		}
-		if err := assertNoOtherDirect(wp.Name, ws.Name); err != nil {
+		if err := assertNoOtherDirect(p.Name, res.Ref.Workspace); err != nil {
 			return err
 		}
 	}
