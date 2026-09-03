@@ -29,25 +29,25 @@ type DevServerConfig struct {
 const ProxySessionName = "crew-dev-proxy"
 
 // SessionName returns the tmux session name for dev servers.
-func SessionName(wsName string) string {
-	return "crew-dev-" + wsName
+func SessionName(slug Slug) string {
+	return "crew-dev-" + string(slug)
 }
 
-// LogDir returns the directory holding dev server log files for a workspace.
-func LogDir(wsName string) string {
-	return filepath.Join(config.ConfigDir, "logs", wsName)
+// LogDir returns the directory holding dev server log files for a worktree.
+func LogDir(slug Slug) string {
+	return filepath.Join(config.ConfigDir, "logs", string(slug))
 }
 
 // LogFile returns the log file path for a specific dev server.
-func LogFile(wsName, serverName string) string {
-	return filepath.Join(LogDir(wsName), serverName+".log")
+func LogFile(slug Slug, serverName string) string {
+	return filepath.Join(LogDir(slug), serverName+".log")
 }
 
-// Start starts dev servers for a workspace. When noProxy is false it also
+// Start starts dev servers for one worktree. When noProxy is false it also
 // launches the shared reverse proxy; when true, each server binds to its
 // configured Port on localhost and the proxy is skipped.
-// projects should already have the correct paths (workspace worktree paths).
-func Start(wsName string, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
+// projects should already have the correct paths (worktree paths).
+func Start(slug Slug, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
 	var newRoutes []Route
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
@@ -60,7 +60,7 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int, n
 				port = freePort
 			}
 			newRoutes = append(newRoutes, Route{
-				Subdomain:    wsName,
+				Subdomain:    string(slug),
 				ServerName:   ds.Name,
 				ExternalPort: ds.Port,
 				InternalPort: port,
@@ -69,11 +69,11 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int, n
 		}
 	}
 
-	if err := saveRoutes(wsName, newRoutes); err != nil {
+	if err := saveRoutes(slug, newRoutes); err != nil {
 		return nil, err
 	}
 
-	session := SessionName(wsName)
+	session := SessionName(slug)
 
 	// Kill any existing session first so Start is idempotent. Without this, a
 	// second start while servers are already running would append duplicate
@@ -96,13 +96,13 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int, n
 			route := newRoutes[routeIdx]
 			routeIdx++
 
-			windowName := fmt.Sprintf("%s/%s", wsName, ds.Name)
+			windowName := fmt.Sprintf("%s/%s", slug, ds.Name)
 			dir := p.Path
 			if ds.Dir != "" {
 				dir = filepath.Join(p.Path, ds.Dir)
 			}
 
-			logFile := LogFile(wsName, ds.Name)
+			logFile := LogFile(slug, ds.Name)
 			if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
 				return nil, fmt.Errorf("failed to create log dir: %w", err)
 			}
@@ -128,20 +128,19 @@ func Start(wsName string, projects []DevProject, domain string, proxyPort int, n
 	return newRoutes, nil
 }
 
-// StopAll kills dev sessions. Empty wsName kills all dev sessions.
+// StopAll kills dev sessions. An empty slug kills all dev sessions.
 // Does NOT manage the shared proxy — callers should call StopProxyIfIdle()
 // after an explicit stop, or leave the proxy running for restarts.
-func StopAll(wsName string) {
-	if wsName != "" {
-		crewExec.KillTmuxSession(SessionName(wsName))
-		removeRoutesFile(wsName)
+func StopAll(slug Slug) {
+	if slug != "" {
+		crewExec.KillTmuxSession(SessionName(slug))
+		removeRoutesFile(slug)
 		return
 	}
 
 	for _, session := range listDevSessions() {
-		ws := strings.TrimPrefix(session, "crew-dev-")
 		crewExec.KillTmuxSession(session)
-		removeRoutesFile(ws)
+		removeRoutesFile(Slug(strings.TrimPrefix(session, "crew-dev-")))
 	}
 	crewExec.KillTmuxSession(ProxySessionName)
 }

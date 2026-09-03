@@ -13,7 +13,7 @@ func TestExtractSubdomainParts(t *testing.T) {
 		host       string
 		domain     string
 		wantServer string
-		wantWS     string
+		wantWS     Slug
 	}{
 		{"valid nip.io", "api--ws-a.192.168.1.50.nip.io:8080", "192.168.1.50.nip.io", "api", "ws-a"},
 		{"no port", "web--ws-b.192.168.1.50.nip.io", "192.168.1.50.nip.io", "web", "ws-b"},

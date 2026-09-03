@@ -51,12 +51,6 @@ func WorktreePath(wsName, projName string) string {
 	return filepath.Join(config.WorkspacesDir, wsName, projName)
 }
 
-// ProjectPath is a deprecated alias for WorktreePath; prefer ResolvePath when
-// possible so direct-mode projects resolve to their canonical repo.
-func ProjectPath(wsName, projName string) string {
-	return WorktreePath(wsName, projName)
-}
-
 // ResolvePath returns the working directory for a workspace project: the
 // canonical project path for direct mode, or the worktree path otherwise.
 // Falls back to the worktree path if the project pool entry is missing.
@@ -153,7 +147,7 @@ func ListSummaries() ([]Summary, error) {
 }
 
 func devRoutesExist(wsName string) bool {
-	info, err := os.Stat(dev.RoutesFilePath(wsName))
+	info, err := os.Stat(dev.RoutesFilePath(dev.Slug(wsName)))
 	return err == nil && info.Size() > 2 // more than just "[]"
 }
 
@@ -292,7 +286,7 @@ func RemoveProject(wsName, projName string) error {
 // for worktree-mode entries (direct-mode entries are left alone), deletes the
 // workspace directory and JSON.
 func Remove(name string) error {
-	dev.StopAll(name)
+	dev.StopAll(dev.Slug(name))
 	dev.StopProxyIfIdle()
 	os.Remove(PromptFilePath(name))
 	os.Remove(legacyNoTeamsPromptFilePath(name))

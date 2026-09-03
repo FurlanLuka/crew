@@ -47,9 +47,9 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serverName, workspace := extractSubdomainParts(r.Host, h.domain)
+	serverName, slug := extractSubdomainParts(r.Host, h.domain)
 
-	if serverName == "" || workspace == "" {
+	if serverName == "" || slug == "" {
 		h.serveStatusPage(w, r)
 		return
 	}
@@ -63,7 +63,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var target *Route
 	for _, wr := range allRoutes {
-		if wr.Workspace != workspace {
+		if wr.Slug != slug {
 			continue
 		}
 		for i := range wr.Routes {
@@ -168,7 +168,7 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 </head><body>
 <h1>crew dev proxy</h1>
 <table>
-<tr><th>Service</th><th>Workspace</th><th>URL</th></tr>
+<tr><th>Service</th><th>Worktree</th><th>URL</th></tr>
 `)
 
 	proxyPort := fmt.Sprintf("%d", h.port)
@@ -184,9 +184,9 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 			if !route.Proxied() {
 				continue
 			}
-			u := fmt.Sprintf("http://%s--%s.%s:%s", route.ServerName, wr.Workspace, h.domain, proxyPort)
+			u := fmt.Sprintf("http://%s--%s.%s:%s", route.ServerName, wr.Slug, h.domain, proxyPort)
 			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a></td></tr>`+"\n",
-				route.ServerName, wr.Workspace, u, u)
+				route.ServerName, DisplayRef(wr.Slug), u, u)
 		}
 	}
 
@@ -209,8 +209,8 @@ func extractSubdomain(host, domain string) string {
 }
 
 // extractSubdomainParts parses the subdomain from the Host header.
-// e.g., "api--ws-a.192.168.1.50.nip.io:8080" → ("api", "ws-a")
-func extractSubdomainParts(host, domain string) (serverName, workspace string) {
+// e.g., "api--ws-a--wrk1.192.168.1.50.nip.io:8080" → ("api", "ws-a--wrk1")
+func extractSubdomainParts(host, domain string) (serverName string, slug Slug) {
 	h := host
 	if idx := strings.LastIndex(h, ":"); idx != -1 {
 		h = h[:idx]
@@ -226,7 +226,7 @@ func extractSubdomainParts(host, domain string) (serverName, workspace string) {
 	if len(parts) != 2 {
 		return "", ""
 	}
-	return parts[0], parts[1]
+	return parts[0], Slug(parts[1])
 }
 
 func isWebSocketUpgrade(r *http.Request) bool {

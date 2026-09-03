@@ -28,7 +28,7 @@ func buildClaudeParts(ws *Workspace) ([]string, string) {
 
 	parts := []string{"IS_SANDBOX=1"}
 	if config.UserSetClaudeConfig {
-		parts = append(parts, "CLAUDE_CONFIG_DIR="+shellQuote(config.ClaudeConfigDir))
+		parts = append(parts, "CLAUDE_CONFIG_DIR="+crewExec.ShellQuote(config.ClaudeConfigDir))
 	}
 
 	workDir := ResolvePath(ws.Name, ws.Projects[0])
@@ -40,12 +40,12 @@ func buildClaudeParts(ws *Workspace) ([]string, string) {
 
 	if multiProject {
 		for _, wp := range ws.Projects {
-			parts = append(parts, "--add-dir", shellQuote(ResolvePath(ws.Name, wp)))
+			parts = append(parts, "--add-dir", crewExec.ShellQuote(ResolvePath(ws.Name, wp)))
 		}
 	}
 
 	if needsPrompt(ws) {
-		parts = append(parts, "--", "\"$(cat "+shellQuote(PromptFilePath(ws.Name))+")\"")
+		parts = append(parts, "--", "\"$(cat "+crewExec.ShellQuote(PromptFilePath(ws.Name))+")\"")
 	}
 
 	return parts, workDir
@@ -81,9 +81,4 @@ func ClaudeCommand(wsName string) (*exec.Cmd, error) {
 	cmd := exec.Command("sh", "-c", cmdStr)
 	cmd.Dir = workDir
 	return cmd, nil
-}
-
-// shellQuote wraps a string in single quotes, escaping embedded single quotes.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }

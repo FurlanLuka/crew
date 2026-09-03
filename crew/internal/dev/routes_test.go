@@ -22,7 +22,7 @@ func setupTestConfig(t *testing.T) string {
 func TestRoutesFilePath(t *testing.T) {
 	tmp := setupTestConfig(t)
 
-	got := RoutesFilePath("myws")
+	got := RoutesFilePath(Slug("myws"))
 	want := filepath.Join(tmp, "dev-routes-myws.json")
 	if got != want {
 		t.Errorf("RoutesFilePath = %q, want %q", got, want)
@@ -137,7 +137,7 @@ func TestRouteURL(t *testing.T) {
 	tests := []struct {
 		name      string
 		route     Route
-		wsName    string
+		wsName    Slug
 		domain    string
 		proxyPort int
 		want      string

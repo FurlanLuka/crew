@@ -227,13 +227,13 @@ func cmdDevStatus() {
 	var err error
 
 	if wsFilter != "" {
-		routes, loadErr := dev.LoadRoutes(wsFilter)
+		routes, loadErr := dev.LoadRoutes(dev.Slug(wsFilter))
 		if loadErr != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", loadErr)
 			os.Exit(1)
 		}
 		if len(routes) > 0 {
-			allRoutes = []dev.WsRoutes{{Workspace: wsFilter, Routes: routes}}
+			allRoutes = []dev.WsRoutes{{Slug: dev.Slug(wsFilter), Routes: routes}}
 		}
 	} else {
 		allRoutes, err = dev.ListAllRoutes()
@@ -253,9 +253,9 @@ func cmdDevStatus() {
 	out := []routeOut{}
 	for _, wr := range allRoutes {
 		for _, r := range wr.Routes {
-			url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
+			url := dev.RouteURL(r, wr.Slug, domain, proxyPort)
 			out = append(out, routeOut{
-				Workspace:    wr.Workspace,
+				Workspace:    dev.DisplayRef(wr.Slug),
 				ServerName:   r.ServerName,
 				ExternalPort: r.ExternalPort,
 				URL:          url,
@@ -289,9 +289,9 @@ func parseNoProxyFlag(args []string) bool {
 }
 
 // printRouteURLs prints one URL per route, one per line, indented.
-func printRouteURLs(routes []dev.Route, wsName, domain string, proxyPort int) {
+func printRouteURLs(routes []dev.Route, slug dev.Slug, domain string, proxyPort int) {
 	for _, r := range routes {
-		fmt.Printf("  %s\n", dev.RouteURL(r, wsName, domain, proxyPort))
+		fmt.Printf("  %s\n", dev.RouteURL(r, slug, domain, proxyPort))
 	}
 }
 
@@ -331,17 +331,17 @@ func cmdDevStart() {
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
+	routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Dev servers for %s\n\n", wsName)
-	printRouteURLs(routes, wsName, domain, proxyPort)
+	printRouteURLs(routes, dev.Slug(wsName), domain, proxyPort)
 
 	fmt.Println()
-	fmt.Printf("Session: %s\n", dev.SessionName(wsName))
+	fmt.Printf("Session: %s\n", dev.SessionName(dev.Slug(wsName)))
 }
 
 func cmdDevStop() {
@@ -362,7 +362,7 @@ func cmdDevStop() {
 		return
 	}
 
-	dev.StopAll(wsName)
+	dev.StopAll(dev.Slug(wsName))
 	dev.StopProxyIfIdle()
 	fmt.Printf("Stopped dev session for %s\n", wsName)
 }
@@ -387,7 +387,7 @@ func cmdDevRestart() {
 	}
 
 	// Stop existing servers before restarting
-	dev.StopAll(wsName)
+	dev.StopAll(dev.Slug(wsName))
 
 	settings := config.LoadSettings()
 	host := dev.ResolveHostIP()
@@ -406,17 +406,17 @@ func cmdDevRestart() {
 		os.Exit(1)
 	}
 
-	routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
+	routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
-	printRouteURLs(routes, wsName, domain, proxyPort)
+	printRouteURLs(routes, dev.Slug(wsName), domain, proxyPort)
 
 	fmt.Println()
-	fmt.Printf("Session: %s\n", dev.SessionName(wsName))
+	fmt.Printf("Session: %s\n", dev.SessionName(dev.Slug(wsName)))
 }
 
 func cmdDevLogs() {
@@ -443,7 +443,7 @@ func cmdDevLogs() {
 		os.Exit(1)
 	}
 
-	logFile := dev.LogFile(wsName, serverName)
+	logFile := dev.LogFile(dev.Slug(wsName), serverName)
 	if _, err := os.Stat(logFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: no log file for %s/%s — has the server been started?\n", wsName, serverName)
 		os.Exit(1)

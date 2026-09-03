@@ -257,7 +257,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 			return errMsg{err}
 		}
 
-		routes, _ := dev.LoadRoutes(wsName)
+		routes, _ := dev.LoadRoutes(dev.Slug(wsName))
 		settings := config.LoadSettings()
 		host := dev.ResolveHostIP()
 		domain := settings.GetDomain(host)
@@ -281,7 +281,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 				}
 				if r, ok := runningByName[ds.Name]; ok {
 					item.Running = true
-					item.URL = dev.RouteURL(r, wsName, domain, proxyPort)
+					item.URL = dev.RouteURL(r, dev.Slug(wsName), domain, proxyPort)
 				}
 				items = append(items, item)
 			}
@@ -317,7 +317,7 @@ func (v DevView) startAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
+		routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -330,7 +330,7 @@ func (v DevView) startAllDevServers() tea.Cmd {
 func (v DevView) stopAllDevServers() tea.Cmd {
 	wsName := v.wsName
 	return func() tea.Msg {
-		dev.StopAll(wsName)
+		dev.StopAll(dev.Slug(wsName))
 		dev.StopProxyIfIdle()
 		return devStoppedMsg{}
 	}
@@ -344,7 +344,7 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
 		}
 
-		dev.StopAll(wsName)
+		dev.StopAll(dev.Slug(wsName))
 		dev.StopProxyIfIdle()
 
 		ws, err := Load(wsName)
@@ -365,7 +365,7 @@ func (v DevView) restartAllDevServers() tea.Cmd {
 			return errMsg{fmt.Errorf("no dev servers configured")}
 		}
 
-		routes, err := dev.Start(wsName, projects, domain, proxyPort, noProxy)
+		routes, err := dev.Start(dev.Slug(wsName), projects, domain, proxyPort, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}

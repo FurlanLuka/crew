@@ -10,6 +10,24 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
+// Slug identifies one running unit of dev servers. It is the flat form of a
+// workspace/worktree pair ("phone-speak--wrk2") and is what every route file,
+// log directory, tmux session and proxy subdomain is keyed by.
+//
+// It is a distinct type because a bare workspace name reaching one of those
+// helpers resolves to the wrong file rather than failing — the compiler catches
+// that here instead of leaving it to be noticed at runtime.
+type Slug string
+
+// DisplayRef renders a slug the way the user writes it: "phone-speak/wrk2".
+//
+// "/" is the user-facing separator; "--" appears only inside identifiers whose
+// rendering crew does not control — tmux session names, hostnames, filenames.
+// Anything printed for a human goes through here.
+func DisplayRef(slug Slug) string {
+	return strings.Replace(string(slug), "--", "/", 1)
+}
+
 type Route struct {
 	Subdomain    string `json:"subdomain"`
 	ServerName   string `json:"server_name"`
@@ -23,12 +41,12 @@ type Route struct {
 // Proxied reports whether the route should be served through the reverse proxy.
 func (r Route) Proxied() bool { return !r.NoProxy }
 
-func RoutesFilePath(wsName string) string {
-	return filepath.Join(config.ConfigDir, "dev-routes-"+wsName+".json")
+func RoutesFilePath(slug Slug) string {
+	return filepath.Join(config.ConfigDir, "dev-routes-"+string(slug)+".json")
 }
 
-func LoadRoutes(wsName string) ([]Route, error) {
-	data, err := os.ReadFile(RoutesFilePath(wsName))
+func LoadRoutes(slug Slug) ([]Route, error) {
+	data, err := os.ReadFile(RoutesFilePath(slug))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -42,43 +60,43 @@ func LoadRoutes(wsName string) ([]Route, error) {
 	return routes, nil
 }
 
-func saveRoutes(wsName string, routes []Route) error {
+func saveRoutes(slug Slug, routes []Route) error {
 	if len(routes) == 0 {
-		os.Remove(RoutesFilePath(wsName))
+		os.Remove(RoutesFilePath(slug))
 		return nil
 	}
 	data, err := json.MarshalIndent(routes, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(RoutesFilePath(wsName), data, 0o644)
+	return os.WriteFile(RoutesFilePath(slug), data, 0o644)
 }
 
-func removeRoutesFile(wsName string) {
-	os.Remove(RoutesFilePath(wsName))
+func removeRoutesFile(slug Slug) {
+	os.Remove(RoutesFilePath(slug))
 }
 
-// WsRoutes pairs a workspace name with its routes.
+// WsRoutes pairs a slug with the routes running under it.
 type WsRoutes struct {
-	Workspace string
-	Routes    []Route
+	Slug   Slug
+	Routes []Route
 }
 
 // FormatURL builds a dev server URL, omitting the port for port 80.
-func FormatURL(serverName, wsName, domain string, port int) string {
+func FormatURL(serverName string, slug Slug, domain string, port int) string {
 	if port == 80 {
-		return fmt.Sprintf("http://%s--%s.%s", serverName, wsName, domain)
+		return fmt.Sprintf("http://%s--%s.%s", serverName, slug, domain)
 	}
-	return fmt.Sprintf("http://%s--%s.%s:%d", serverName, wsName, domain, port)
+	return fmt.Sprintf("http://%s--%s.%s:%d", serverName, slug, domain, port)
 }
 
 // RouteURL returns the user-facing URL for a route, choosing localhost for
 // no-proxy routes and the proxy subdomain otherwise.
-func RouteURL(r Route, wsName, domain string, proxyPort int) string {
+func RouteURL(r Route, slug Slug, domain string, proxyPort int) string {
 	if r.NoProxy {
 		return fmt.Sprintf("http://localhost:%d", r.InternalPort)
 	}
-	return FormatURL(r.ServerName, wsName, domain, proxyPort)
+	return FormatURL(r.ServerName, slug, domain, proxyPort)
 }
 
 // PlansPortFile returns the path to the file storing the plans server's
@@ -148,6 +166,7 @@ func ListAllRoutes() ([]WsRoutes, error) {
 		// "dev-routes-<wsName>.json"
 		name := strings.TrimPrefix(base, "dev-routes-")
 		name = strings.TrimSuffix(name, ".json")
+		slug := Slug(name)
 
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -158,7 +177,7 @@ func ListAllRoutes() ([]WsRoutes, error) {
 			continue
 		}
 		if len(routes) > 0 {
-			result = append(result, WsRoutes{Workspace: name, Routes: routes})
+			result = append(result, WsRoutes{Slug: slug, Routes: routes})
 		}
 	}
 	return result, nil

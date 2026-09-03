@@ -130,22 +130,3 @@ func TestNeedsPrompt(t *testing.T) {
 		})
 	}
 }
-
-func TestShellQuote(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"/tmp/plain", "'/tmp/plain'"},
-		{"/tmp/it's here", `'/tmp/it'"'"'s here'`},
-		{"", "''"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := shellQuote(tt.input); got != tt.want {
-				t.Errorf("shellQuote(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}

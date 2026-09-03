@@ -9,7 +9,7 @@ import (
 
 func TestSessionName(t *testing.T) {
 	tests := []struct {
-		input string
+		input Slug
 		want  string
 	}{
 		{"myws", "crew-dev-myws"},
@@ -18,7 +18,7 @@ func TestSessionName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
+		t.Run(string(tt.input), func(t *testing.T) {
 			got := SessionName(tt.input)
 			if got != tt.want {
 				t.Errorf("SessionName(%q) = %q, want %q", tt.input, got, tt.want)

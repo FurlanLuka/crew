@@ -173,17 +173,6 @@ func TestSummaryJSONKeys(t *testing.T) {
 	}
 }
 
-func TestProjectPath(t *testing.T) {
-	tmp := t.TempDir()
-	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
-
-	got := ProjectPath("wrk1", "api")
-	want := filepath.Join(config.WorkspacesDir, "wrk1", "api")
-	if got != want {
-		t.Errorf("ProjectPath = %q, want %q", got, want)
-	}
-}
-
 func TestWorktreePath(t *testing.T) {
 	tmp := t.TempDir()
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
@@ -356,7 +345,7 @@ func TestBuildDevProjects(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("BuildDevProjects returned %d projects, want 1 (web has no dev servers)", len(result))
 	}
-	expectedPath := ProjectPath("test-ws", "api")
+	expectedPath := WorktreePath("test-ws", "api")
 	if result[0].Path != expectedPath {
 		t.Errorf("Path = %q, want %q", result[0].Path, expectedPath)
 	}

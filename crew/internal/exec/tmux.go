@@ -273,7 +273,7 @@ func TmuxNewWindow(session, name, dir string) {
 // Calling pipe-pane a second time replaces any prior pipe on the same pane.
 func TmuxPipePaneToFile(session, window, file string) {
 	target := session + ":" + window
-	cmd := "cat >> '" + strings.ReplaceAll(file, "'", "'\"'\"'") + "'"
+	cmd := "cat >> " + ShellQuote(file)
 	debug.Log("tmux", "pipe-pane -t %s %s", target, cmd)
 	exec.Command("tmux", "pipe-pane", "-t", target, cmd).Run()
 }

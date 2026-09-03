@@ -44,7 +44,7 @@ type LogsView struct {
 }
 
 func NewLogsView(wsName string, items []devItem, initialIdx int) LogsView {
-	session := "crew-dev-" + wsName
+	session := dev.SessionName(dev.Slug(wsName))
 
 	var tabs []logTab
 	for _, item := range items {
@@ -246,11 +246,11 @@ func buildURLsContent(wsName string) string {
 
 	found := false
 	for _, wr := range allRoutes {
-		if wr.Workspace != wsName {
+		if wr.Slug != dev.Slug(wsName) {
 			continue
 		}
 		for _, r := range wr.Routes {
-			url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
+			url := dev.RouteURL(r, wr.Slug, domain, proxyPort)
 			b.WriteString(fmt.Sprintf("  %-12s %s\n", r.ServerName, url))
 			found = true
 		}
@@ -262,7 +262,7 @@ func buildURLsContent(wsName string) string {
 	// Also show other workspaces if they have routes
 	var others []dev.WsRoutes
 	for _, wr := range allRoutes {
-		if wr.Workspace != wsName {
+		if wr.Slug != dev.Slug(wsName) {
 			others = append(others, wr)
 		}
 	}
@@ -272,8 +272,8 @@ func buildURLsContent(wsName string) string {
 		b.WriteString("\n\n")
 		for _, wr := range others {
 			for _, r := range wr.Routes {
-				url := dev.RouteURL(r, wr.Workspace, domain, proxyPort)
-				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", wr.Workspace, r.ServerName, url))
+				url := dev.RouteURL(r, wr.Slug, domain, proxyPort)
+				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", dev.DisplayRef(wr.Slug), r.ServerName, url))
 			}
 		}
 	}
