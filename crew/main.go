@@ -476,7 +476,7 @@ func cmdDuplicate() {
 	src := mustResolve(os.Args[2]).Ref
 	newName := os.Args[3]
 
-	install, smoke := parseCheckoutFlags(os.Args[4:])
+	install, smoke, _ := parseCheckoutFlags(os.Args[4:])
 	opts := workspace.CheckoutOptions{Install: install, Progress: printSetupProgress}
 	fmt.Printf("Duplicating %s → %s/%s\n\n", src, src.Workspace, newName)
 	if err := workspace.DuplicateWorktree(src, newName, opts); err != nil {

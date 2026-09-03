@@ -23,6 +23,7 @@ type workspaceRemovedMsg struct{ name string }
 type workspaceDuplicatedMsg struct{ src, dst string }
 type worktreeAddedMsg struct{ ref Ref }
 type baseStatusesMsg struct{ statuses []BaseStatus }
+type basesPulledMsg struct{ failed []error }
 
 // setupProgressMsg is one install step finishing while a worktree is being
 // created. The worker sends these on a channel and the view keeps listening
@@ -177,6 +178,17 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.baseStatuses = msg.statuses
 		v.baseLoading = false
 		return v, nil
+
+	case basesPulledMsg:
+		if len(msg.failed) > 0 {
+			msgs := make([]string, 0, len(msg.failed))
+			for _, err := range msg.failed {
+				msgs = append(msgs, err.Error())
+			}
+			v.err = fmt.Errorf("%s", strings.Join(msgs, "; "))
+		}
+		v.baseLoading = true
+		return v, tea.Batch(loadBaseStatuses(v.selectedWs), v.spinner.Tick)
 
 	case setupProgressMsg:
 		v.setupLines = append(v.setupLines, msg.line)
@@ -502,6 +514,13 @@ func (v View) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.state = stateWorktrees
 		v.input.Reset()
 		return v, nil
+	case "ctrl+p":
+		if v.baseLoading || !Stale(v.baseStatuses) {
+			return v, nil
+		}
+		v.baseLoading = true
+		v.err = nil
+		return v, tea.Batch(pullBases(v.selectedWs, v.baseStatuses), v.spinner.Tick)
 	case "enter":
 		name := strings.TrimSpace(v.input.Value())
 		if name == "" {
@@ -721,6 +740,7 @@ func (v View) renderNewWorktree(b *strings.Builder) {
 		}
 		if warn := StaleWarning(v.baseStatuses); warn != "" {
 			b.WriteString("\n  " + app.Highlight.Render(warn) + "\n")
+			b.WriteString("  " + app.Subtle.Render("ctrl+p pulls the latest into the local bases (fast-forward only)") + "\n")
 		}
 	}
 
@@ -883,6 +903,16 @@ func setupLine(project string, r exec.SetupResult) string {
 		mark = app.Error.Render("✗")
 	}
 	return fmt.Sprintf("%-16s %s %-14s %s", project, mark, r.Step.Name, app.Subtle.Render(r.Duration.Round(time.Second).String()))
+}
+
+func pullBases(wsName string, statuses []BaseStatus) tea.Cmd {
+	return func() tea.Msg {
+		ws, err := Load(wsName)
+		if err != nil {
+			return errMsg{err}
+		}
+		return basesPulledMsg{failed: UpdateBases(ws, statuses)}
+	}
 }
 
 func loadBaseStatuses(wsName string) tea.Cmd {

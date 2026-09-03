@@ -145,3 +145,66 @@ func StaleWarning(statuses []BaseStatus) string {
 	return fmt.Sprintf("! %d of %d projects behind origin — worktrees branch from the local base. Pull first for the latest.",
 		len(behind), len(statuses))
 }
+
+// UpdateBase fast-forwards a project's local base branch to origin.
+//
+// The canonical checkout is usually on a feature branch, so a plain `git pull`
+// there would update the wrong thing. `git fetch origin base:base` moves the
+// local base ref without touching the working tree, and refuses anything
+// that is not a fast-forward. When base is the checked-out branch git refuses
+// that form, so it becomes a ff-only merge — which only runs on a clean tree.
+func UpdateBase(p project.Project) error {
+	base := detectDefaultBranch(p.Path)
+	if base == "HEAD" {
+		return fmt.Errorf("%s: no develop or main branch", p.Name)
+	}
+
+	if currentBranch(p.Path) != base {
+		if _, err := exec.RunGitCommandTimeout(p.Path, fetchTimeout, "fetch", "--quiet", "origin", base+":"+base); err != nil {
+			return fmt.Errorf("%s: fast-forwarding %s failed — local %s has commits origin does not", p.Name, base, base)
+		}
+		return nil
+	}
+
+	if out, _ := exec.RunGitCommand(p.Path, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		return fmt.Errorf("%s: %s is checked out with uncommitted changes — commit or stash first", p.Name, base)
+	}
+	if _, err := exec.RunGitCommandTimeout(p.Path, fetchTimeout, "fetch", "--quiet", "origin", base); err != nil {
+		return fmt.Errorf("%s: fetch failed", p.Name)
+	}
+	if _, err := exec.RunGitCommand(p.Path, "merge", "--ff-only", "--quiet", "origin/"+base); err != nil {
+		return fmt.Errorf("%s: %s cannot fast-forward — local commits diverge from origin", p.Name, base)
+	}
+	return nil
+}
+
+// UpdateBases pulls every behind project in a workspace, in parallel, and
+// returns the failures. Projects already up to date, direct, or unknown are
+// left alone.
+func UpdateBases(ws *Workspace, statuses []BaseStatus) []error {
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		failed []error
+	)
+	for _, st := range statuses {
+		if st.Behind <= 0 {
+			continue
+		}
+		p := project.Get(st.Project)
+		if p == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(p project.Project) {
+			defer wg.Done()
+			if err := UpdateBase(p); err != nil {
+				mu.Lock()
+				failed = append(failed, err)
+				mu.Unlock()
+			}
+		}(*p)
+	}
+	wg.Wait()
+	return failed
+}

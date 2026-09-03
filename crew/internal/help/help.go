@@ -74,8 +74,9 @@ var Root = CommandInfo{
 				{
 					Name:        "worktree",
 					Description: "Add a second working copy to a workspace. Shows each project's base branch and whether it is behind origin, then checks every project out under <workspace>/<name> on branch crew/<workspace>/<name>/<project>, copies .env files from the canonical repo, installs (mise install, then the lockfile's package manager or the project's setup command), and smoke-starts the dev servers to catch a checkout that cannot run. A workspace holding a direct-mode project can only have one worktree.",
-					Usage:       "crew add worktree <workspace>/<name> [--no-install] [--no-smoke]",
+					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]",
 					Flags: []FlagInfo{
+						{Name: "--pull", Description: "Fast-forward each project's local base branch to origin first. Never touches a checked-out feature branch; refuses when the base has diverged or is checked out with uncommitted changes."},
 						{Name: "--no-install", Description: "Check out only; skip mise and package installs"},
 						{Name: "--no-smoke", Description: "Skip the smoke start"},
 					},

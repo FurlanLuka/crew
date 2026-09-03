@@ -123,3 +123,65 @@ func TestFormatBaseStatuses_Golden(t *testing.T) {
 		t.Errorf("single-project warning = %q", one)
 	}
 }
+
+// UpdateBase moves the local base ref without touching a feature branch the
+// checkout sits on, and refuses when the base has local commits origin lacks.
+func TestUpdateBase(t *testing.T) {
+	setupTestConfig(t)
+	remote, clone := remoteAndClone(t, "api")
+
+	pusher := filepath.Join(t.TempDir(), "pusher")
+	exec.RunGitCommand(filepath.Dir(pusher), "clone", "-q", remote, pusher)
+	commitOn(t, pusher, "upstream")
+	exec.RunGitCommand(pusher, "push", "-q", "origin", "main")
+
+	t.Run("checkout on a feature branch: base ref moves, tree untouched", func(t *testing.T) {
+		exec.RunGitCommand(clone, "checkout", "-q", "-b", "feature/x")
+		if err := UpdateBase(*project.Get("api")); err != nil {
+			t.Fatalf("UpdateBase: %v", err)
+		}
+		if st := baseStatus(*project.Get("api")); st.Behind != 0 {
+			t.Errorf("still %d behind after update", st.Behind)
+		}
+		if cur := currentBranch(clone); cur != "feature/x" {
+			t.Errorf("checkout moved to %q; must stay on the feature branch", cur)
+		}
+	})
+
+	t.Run("base checked out and clean: fast-forwards", func(t *testing.T) {
+		commitOn(t, pusher, "more upstream")
+		exec.RunGitCommand(pusher, "push", "-q", "origin", "main")
+		exec.RunGitCommand(clone, "checkout", "-q", "main")
+		if err := UpdateBase(*project.Get("api")); err != nil {
+			t.Fatalf("UpdateBase: %v", err)
+		}
+		if st := baseStatus(*project.Get("api")); st.Behind != 0 {
+			t.Errorf("still %d behind", st.Behind)
+		}
+	})
+
+	t.Run("base checked out and dirty: refuses", func(t *testing.T) {
+		commitOn(t, pusher, "even more")
+		exec.RunGitCommand(pusher, "push", "-q", "origin", "main")
+		os.WriteFile(filepath.Join(clone, "dirty.txt"), []byte("x"), 0o644)
+		err := UpdateBase(*project.Get("api"))
+		if err == nil || !strings.Contains(err.Error(), "uncommitted") {
+			t.Errorf("err = %v, want a refusal naming uncommitted changes", err)
+		}
+		os.Remove(filepath.Join(clone, "dirty.txt"))
+	})
+
+	t.Run("diverged base: refuses", func(t *testing.T) {
+		exec.RunGitCommand(clone, "checkout", "-q", "-b", "feature/y")
+		exec.RunGitCommand(clone, "checkout", "-q", "main")
+		commitOn(t, clone, "local only")
+		exec.RunGitCommand(clone, "checkout", "-q", "feature/y")
+		commitOn(t, pusher, "upstream again")
+		exec.RunGitCommand(pusher, "push", "-q", "origin", "main")
+
+		err := UpdateBase(*project.Get("api"))
+		if err == nil || !strings.Contains(err.Error(), "fast-forward") {
+			t.Errorf("err = %v, want a fast-forward refusal", err)
+		}
+	})
+}

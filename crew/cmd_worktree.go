@@ -31,12 +31,12 @@ func mustParseWorktreeRef(arg, verb string) workspace.Ref {
 
 func cmdAddWorktree() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add worktree <workspace>/<name> [--no-install] [--no-smoke]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]\n")
 		os.Exit(1)
 	}
 
 	ref := mustParseWorktreeRef(os.Args[3], "add")
-	install, smoke := parseCheckoutFlags(os.Args[4:])
+	install, smoke, pull := parseCheckoutFlags(os.Args[4:])
 
 	ws, err := workspace.Load(ref.Workspace)
 	if err != nil {
@@ -45,9 +45,19 @@ func cmdAddWorktree() {
 	}
 
 	statuses := workspace.BaseStatuses(ws)
+	if pull && workspace.Stale(statuses) {
+		fmt.Printf("Pulling latest…\n")
+		for _, err := range workspace.UpdateBases(ws, statuses) {
+			fmt.Fprintf(os.Stderr, "  ! %v\n", err)
+		}
+		statuses = workspace.BaseStatuses(ws)
+	}
 	fmt.Printf("Branching from\n\n%s", workspace.FormatBaseStatuses(statuses))
 	if warn := workspace.StaleWarning(statuses); warn != "" {
 		fmt.Printf("\n  %s\n", warn)
+		if !pull {
+			fmt.Printf("  crew add worktree %s --pull fast-forwards the local bases first.\n", ref)
+		}
 	}
 
 	fmt.Printf("\nCreating %s\n\n", ref)
@@ -87,7 +97,7 @@ func cmdSetup() {
 		os.Exit(1)
 	}
 	res := mustResolve(os.Args[2])
-	_, smoke := parseCheckoutFlags(os.Args[3:])
+	_, smoke, _ := parseCheckoutFlags(os.Args[3:])
 
 	fmt.Printf("Setting up %s\n\n", res.Ref)
 	err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Progress: printSetupProgress})
@@ -100,8 +110,9 @@ func cmdSetup() {
 	}
 }
 
-// parseCheckoutFlags reads --no-install / --no-smoke. Exits on anything else.
-func parseCheckoutFlags(args []string) (install, smoke bool) {
+// parseCheckoutFlags reads --no-install / --no-smoke / --pull. Exits on
+// anything else.
+func parseCheckoutFlags(args []string) (install, smoke, pull bool) {
 	install, smoke = true, true
 	for _, arg := range args {
 		switch arg {
@@ -109,12 +120,14 @@ func parseCheckoutFlags(args []string) (install, smoke bool) {
 			install = false
 		case "--no-smoke":
 			smoke = false
+		case "--pull":
+			pull = true
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
 		}
 	}
-	return install, smoke
+	return install, smoke, pull
 }
 
 // printSetupProgress is one line per finished install step.
