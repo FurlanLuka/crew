@@ -11,6 +11,15 @@ CLI + TUI workspace manager for Claude Code. Manages workspaces, dev servers, ag
 - **Config:** Stored in `CLAUDE_CONFIG_DIR` (defaults to `~/.claude`, user overrides to `~/.claude-personal`)
 - **Module path:** `github.com/FurlanLuka/crew/crew`
 
+### Model
+
+- **Project** — a registered repo in the global pool (`projects.json`). Owns its dev servers and its **bindings**.
+- **Workspace** — membership: which projects, with which roles. Pure config, nothing on disk of its own.
+- **Worktree** — one working copy of a workspace's projects, at `~/.crew/workspaces/<ws>/<wt>/<project>`, on branch `crew/<ws>/<wt>/<project>`. Owns **overrides**. Every artifact crew keys per running unit (route file, log dir, tmux session, prompt, `.code-workspace`) is keyed by the worktree's **slug** `<ws>--<wt>`.
+- **Ref** — how the user names a worktree: `<ws>/<wt>`, or bare `<ws>` when there is one. `/` is the user-facing separator; `--` appears only in identifiers crew doesn't render (hostnames, filenames, tmux). Anything printed for a human goes through `dev.DisplayRef`.
+- **Binding** — `{var, value}` on a project; `value` is a template over `{{url:proj[/server]}}`, `{{port:proj[/server]}}`, `{{worktree}}`, `{{workspace}}`. Resolved at `crew dev start` after ports are allocated and injected into the process env as exports. Precedence: worktree override > binding > left alone. A template that only partly expands is discarded whole. Env files are read (for the conflict warning and the scan), never written.
+- A workspace with no `worktrees` predates this model. It keeps flat paths and a bare slug until `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
+
 ### Project structure
 
 ```
@@ -19,15 +28,19 @@ crew/
   internal/
     app/               # Bubbletea app shell, styles, key bindings
     config/            # Config dir paths, registry base URL
-    dev/               # Dev server management, reverse proxy, routing
+    dev/               # Dev server management, reverse proxy, routing, binding resolution
     exec/              # Shell execution, tmux, editor detection
     help/              # CLI help system (structured CommandInfo tree)
     notify/            # Push notification setup TUI
     profile/           # Claude profile management TUI
     project/           # Project CRUD
     registry/          # Agent/skill registry (fetch, install, update, TUI)
-    workspace/         # Workspace management, session launching
+    workspace/         # Workspace/worktree management, Resolved context, migration, session launching
 ```
+
+`dev` cannot import `workspace` (cycle). `dev` declares its own input types (`DevProject`,
+`ResolveParams`) and `workspace.Resolved` builds them. `project` cannot import `workspace`
+either; the binding editor's live preview is a function `main` wires in (`project.Previewer`).
 
 ## UX philosophy
 
@@ -48,6 +61,9 @@ crew is a power-user tool. It should feel fast, intuitive, and polished:
 - **Fallback gracefully** — if GitHub API fails, use local data
 - **Feature-based organization** — each package owns its types, logic, and view
 - **Debug logging** — every external command execution (tmux, git, editor, npm, osascript) must include a `debug.Log(category, ...)` call. Log the command before running it; log errors inline. Use categories matching the package: `"tmux"`, `"git"`, `"editor"`, `"dev"`. Import from `github.com/FurlanLuka/crew/crew/internal/debug`.
+- **Never log binding values** — names, sources and targets only. Bindings and overrides carry service URLs and can carry credentials.
+- **Resolve once** — commands take a ref, call `mustResolve` / `workspace.Resolve`, and work from the `*Resolved`. Don't call `project.Get` inside loops; that is the pattern `Resolved` replaced.
+- **Warn, never block, at dev-server start** — crew asserts only facts it owns (ports it allocated, projects it placed). It is not a schema validator for every project.
 
 ## Development
 

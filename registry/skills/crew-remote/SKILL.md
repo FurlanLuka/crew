@@ -33,7 +33,11 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | `crew dev setup <project>` | Interactive dev server configuration (TUI) |
 | `crew dev add <project> ...` | Add a dev server to a project |
 | `crew dev rm <project> <name>` | Remove a dev server from a project |
-| `crew dev start <ws> [--host=<ip>]` | Start dev servers with reverse proxy |
+| `crew dev start <ws>/<wt>` | Start dev servers with reverse proxy, bindings injected |
+| `crew env <ws>/<wt> <proj>` | Resolved env for a project, KEY=VALUE |
+| `crew run <ws>/<wt> <proj> -- <cmd>` | Run a command with that env |
+| `crew ls worktrees [<ws>]` | Every working copy, one row each |
+| `crew add binding <proj> --scan` | Propose bindings from a project's .env |
 | `crew dev stop [<ws>]` | Stop dev servers |
 | `crew dev restart <ws> [--host=<ip>]` | Restart dev servers |
 | **Registry** | |
@@ -91,7 +95,7 @@ Output: `<name>\t<n> projects`
 ### Show projects in a workspace
 
 ```bash
-crew show <workspace>
+crew show <workspace>[/<worktree>]
 ```
 Output: `<name>\t<path>\t<mode>\t<role>`
 
@@ -108,9 +112,9 @@ Shows what dev servers are **configured** (not necessarily running).
 
 ```bash
 crew dev status              # all workspaces
-crew dev status <workspace>  # one workspace
+crew dev status <workspace>[/<worktree>]  # one workspace, or one worktree
 ```
-Output: `<workspace>\t<server-name>\t<port>\t<url>`
+Output: `<workspace>/<worktree>\t<server-name>\t<port>\t<url>`
 
 Shows **running** dev servers with their nip.io URLs.
 
@@ -120,23 +124,23 @@ Shows **running** dev servers with their nip.io URLs.
 
 Dev servers use a shared reverse proxy on port 80 with a flat subdomain format:
 ```
-http://<server>--<workspace>.<domain>
+http://<server>--<workspace>--<worktree>.<domain>
 ```
 
 - `<server>` — the dev server name (e.g., `api`, `web`) set via `--name`
-- `<workspace>` — the workspace name
+- `<workspace>--<worktree>` — the worktree's slug (the `/` in the ref becomes `--` in a hostname)
 - `<domain>` — auto-detected as `<lan-ip>.nip.io`, or a custom domain via `crew config`
 - The `--` separator keeps everything in a single subdomain level (wildcard SSL compatible)
 - Port 80 is the default — no port needed in URLs
 
-Example: `http://api--my-ws.192.168.1.50.nip.io`
+Example: `http://api--my-ws--main.192.168.1.50.nip.io`
 
 ### How it works
 
-1. `crew dev start <ws>` finds a free port for each dev server
+1. `crew dev start <ws>/<wt>` finds a free port for each dev server, then resolves each project's bindings against those ports and exports them into the server's environment
 2. Each server runs in its own tmux window with `PORT=<free-port>` set
 3. A shared reverse proxy (single tmux session `crew-dev-proxy`) listens on port 80
-4. On each request, the proxy extracts `<server>` and `<workspace>` from the hostname
+4. On each request, the proxy extracts `<server>` and the worktree slug from the hostname
 5. It looks up the route file (`dev-routes-<ws>.json`) to find the internal port
 6. The request is forwarded to `localhost:<internal-port>`
 
@@ -168,27 +172,29 @@ crew dev add <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
 ### Start dev servers
 
 ```bash
-crew dev start <workspace>
-crew dev start <workspace> --host=<ip>
+crew dev start <workspace>/<worktree>
+crew dev start <workspace>/<worktree> --no-proxy
 ```
 
 ### Stop dev servers
 
 ```bash
 crew dev stop                 # stop all
-crew dev stop <workspace>     # stop one workspace
+crew dev stop <workspace>     # stop every worktree of one workspace
+crew dev stop <workspace>/<worktree>
 ```
 
 ### Restart dev servers
 
 ```bash
-crew dev restart <workspace> [--host=<ip>]
+crew dev restart <workspace>/<worktree> [--no-proxy]
 ```
 
 ### Remove a workspace
 
 ```bash
-crew rm <workspace>           # stops dev servers, removes worktrees, dir, and JSON
+crew rm <workspace>           # stops dev servers, removes every worktree, dir, and JSON
+crew rm worktree <workspace>/<worktree>   # just one working copy
 ```
 
 ## Output Formats
@@ -201,7 +207,7 @@ All CLI list commands use **tab-separated** output for easy parsing:
 | `crew ls projects` | `<name>\t<path>` |
 | `crew show <ws>` | `<name>\t<path>\t<mode>\t<role>` |
 | `crew dev show <project>` | `<server>\t<port>\t<cmd>[\t<dir>]` |
-| `crew dev status [<ws>]` | `<workspace>\t<server>\t<port>\t<url>` |
+| `crew dev status [<ws>[/<wt>]]` | `<workspace>/<worktree>\t<server>\t<port>\t<url>` |
 
 ### JSON output
 
@@ -243,8 +249,11 @@ crew dev show <project>
 # 2. Add missing servers
 crew dev add <project> --name=web --port=5173 --cmd="npm run dev"
 
-# 3. Start them for a workspace
-crew dev start <workspace>
+# 3. Declare what this project needs from the others
+crew add binding <project> --scan --apply
+
+# 4. Start them for a worktree
+crew dev start <workspace>/<worktree>
 ```
 
 ### "What's the URL for my workspace?"
@@ -252,6 +261,19 @@ crew dev start <workspace>
 ```bash
 crew dev status <workspace>
 ```
+
+### "Why is my service talking to the wrong thing?"
+
+```bash
+# Every variable crew resolved for the project in this worktree, and any left alone
+crew env <workspace>/<worktree> <project>
+
+# Run the failing script with the same env the dev servers got
+crew run <workspace>/<worktree> <project> -- <command>
+```
+
+`crew dev start` also prints a `!` block when a project's `.env` points at a port crew gave
+to a different project — that is the wrong-service case caught before it runs.
 
 ### "Full setup from scratch"
 
@@ -270,6 +292,6 @@ crew dev add my-api --name=api --port=3000 --cmd="npm run dev"
 crew dev add my-web --name=web --port=5173 --cmd="npm run dev"
 
 # 4. Launch
-crew launch <workspace>       # TUI — pick Editor + Claude, or Claude
-crew dev start my-ws          # start dev servers
+crew launch <workspace>/<worktree>   # TUI — pick Editor + Claude, or Claude
+crew dev start my-ws/main            # start dev servers
 ```
