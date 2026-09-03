@@ -96,15 +96,6 @@ func PlanServers(projects []DevProject, ports []int, noProxy bool) []PlannedServ
 	return planned
 }
 
-// countServers returns how many ports Start needs to allocate.
-func countServers(projects []DevProject) int {
-	n := 0
-	for _, p := range projects {
-		n += len(p.DevServers)
-	}
-	return n
-}
-
 // ServerCommand assembles the shell line for one dev server: exports for
 // this project's resolved variables, then PORT, then the configured command
 // with $PORT expanded. Pure, so the exact string can be asserted — it is sent
@@ -122,6 +113,10 @@ type StartParams struct {
 	Worktree  string
 	Projects  []DevProject
 	Overrides map[string]string
+	// Reserved is the port each server got last time, keyed "project/server".
+	// A reserved port is reused when still free, so a worktree's ports survive
+	// restarts and anything holding a URL from crew env stays valid.
+	Reserved  map[string]int
 	Domain    string
 	ProxyPort int
 	NoProxy   bool
@@ -132,6 +127,42 @@ type StartResult struct {
 	Routes      []Route
 	Resolutions []Resolution
 	Conflicts   []Conflict
+	// Ports is every server's port as bound, keyed "project/server", for the
+	// caller to persist as next time's reservation.
+	Ports map[string]int
+}
+
+// PortKey is how a server's reservation is keyed.
+func PortKey(project, server string) string { return project + "/" + server }
+
+// AllocatePorts returns one port per server, in order. A reserved port that
+// is still free is kept; anything else gets a fresh free port.
+func AllocatePorts(projects []DevProject, reserved map[string]int) ([]int, error) {
+	var ports []int
+	for _, p := range projects {
+		for _, ds := range p.DevServers {
+			if want := reserved[PortKey(p.Name, ds.Name)]; want > 0 && PortFree(want) {
+				ports = append(ports, want)
+				continue
+			}
+			port, err := FindFreePort()
+			if err != nil {
+				return nil, fmt.Errorf("failed to find free port: %w", err)
+			}
+			ports = append(ports, port)
+		}
+	}
+	return ports, nil
+}
+
+// PortFree reports whether a TCP port can be bound right now.
+func PortFree(port int) bool {
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return false
+	}
+	l.Close()
+	return true
 }
 
 // Start starts dev servers for one worktree on freshly allocated ports. When
@@ -141,16 +172,16 @@ type StartResult struct {
 func Start(p StartParams) (StartResult, error) {
 	// Allocate every port before starting anything: dev servers reference each
 	// other's ports, so allocation has to complete before the first one runs.
-	var ports []int
-	for range countServers(p.Projects) {
-		freePort, err := FindFreePort()
-		if err != nil {
-			return StartResult{}, fmt.Errorf("failed to find free port: %w", err)
-		}
-		ports = append(ports, freePort)
+	ports, err := AllocatePorts(p.Projects, p.Reserved)
+	if err != nil {
+		return StartResult{}, err
 	}
 
 	planned := PlanServers(p.Projects, ports, p.NoProxy)
+	bound := make(map[string]int, len(planned))
+	for _, ps := range planned {
+		bound[PortKey(ps.Project, ps.Server.Name)] = ps.Route.InternalPort
+	}
 
 	newRoutes := make([]Route, 0, len(planned))
 	for _, ps := range planned {
@@ -211,7 +242,8 @@ func Start(p StartParams) (StartResult, error) {
 	return StartResult{
 		Routes:      newRoutes,
 		Resolutions: resolutions,
-		Conflicts:   InspectEnvConflicts(p.Slug, p.Projects, resolutions),
+		Conflicts:   InspectEnvConflicts(p.Slug, p.Projects, planned, resolutions),
+		Ports:       bound,
 	}, nil
 }
 

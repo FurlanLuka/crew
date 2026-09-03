@@ -32,6 +32,7 @@ type Resolved struct {
 	Dir       string
 	Projects  []ResolvedProject
 	Overrides map[string]string
+	Ports     map[string]int
 }
 
 // Resolve loads a workspace and binds it to one of its worktrees.
@@ -80,6 +81,7 @@ func Resolve(ref Ref) (*Resolved, error) {
 		Dir:       WorktreeDir(ref),
 		Projects:  projects,
 		Overrides: wt.Overrides,
+		Ports:     wt.Ports,
 	}, nil
 }
 

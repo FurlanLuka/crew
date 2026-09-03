@@ -182,3 +182,39 @@ func TestRemove_TearsDownEveryWorktreesArtifacts(t *testing.T) {
 		}
 	}
 }
+
+// Ports survive restarts: the second start of a worktree binds the same ports
+// the first one got, and `crew env` output stays valid across it.
+func TestStartDev_PortsSurviveRestart(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	bindingWorkspace(t)
+	t.Cleanup(func() { dev.StopAll("ws--main") })
+
+	res, err := Resolve(Ref{Workspace: "ws", Worktree: DefaultWorktree})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	first, err := StartDev(res, true, false)
+	if err != nil {
+		t.Fatalf("first StartDev: %v", err)
+	}
+	firstPort := first.Ports[dev.PortKey("api", "api")]
+	if firstPort == 0 {
+		t.Fatalf("no port recorded for api: %+v", first.Ports)
+	}
+
+	// Re-resolve so the persisted reservation is what the restart sees.
+	res, _ = Resolve(Ref{Workspace: "ws", Worktree: DefaultWorktree})
+	if res.Ports[dev.PortKey("api", "api")] != firstPort {
+		t.Fatalf("reservation not persisted: %+v", res.Ports)
+	}
+	second, err := StartDev(res, true, true)
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	if got := second.Ports[dev.PortKey("api", "api")]; got != firstPort {
+		t.Errorf("api restarted on %d, want the reserved %d", got, firstPort)
+	}
+}

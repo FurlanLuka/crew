@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"net"
 	"os"
 	"testing"
 )
@@ -203,5 +204,56 @@ func TestLoadRoutes_LegacyFileWithoutProject(t *testing.T) {
 	}
 	if routes[0].ServerName != "api" || routes[0].InternalPort != 54001 {
 		t.Errorf("route = %+v, want api on 54001", routes[0])
+	}
+}
+
+// A worktree keeps its ports across restarts: a reserved port that is still
+// free is reused, anything else gets a fresh one.
+func TestAllocatePorts_ReusesFreeReservations(t *testing.T) {
+	projects := []DevProject{{
+		Name: "speak-api",
+		DevServers: []DevServerConfig{
+			{Name: "api", Port: 3000},
+			{Name: "ws", Port: 3001},
+		},
+	}}
+
+	free, _ := FindFreePort()
+	held, _ := net.Listen("tcp", ":0")
+	defer held.Close()
+	taken := held.Addr().(*net.TCPAddr).Port
+
+	ports, err := AllocatePorts(projects, map[string]int{
+		PortKey("speak-api", "api"): free,
+		PortKey("speak-api", "ws"):  taken,
+	})
+	if err != nil {
+		t.Fatalf("AllocatePorts: %v", err)
+	}
+	if len(ports) != 2 {
+		t.Fatalf("got %d ports, want 2", len(ports))
+	}
+	if ports[0] != free {
+		t.Errorf("api = %d, want the reserved %d reused", ports[0], free)
+	}
+	if ports[1] == taken || ports[1] == 0 {
+		t.Errorf("ws = %d, want a fresh port since %d is held", ports[1], taken)
+	}
+}
+
+func TestAllocatePorts_NoReservationsAllocatesFresh(t *testing.T) {
+	ports, err := AllocatePorts(twoProjects(), nil)
+	if err != nil {
+		t.Fatalf("AllocatePorts: %v", err)
+	}
+	if len(ports) != 3 {
+		t.Fatalf("got %d ports, want 3", len(ports))
+	}
+	seen := map[int]bool{}
+	for _, p := range ports {
+		if p == 0 || seen[p] {
+			t.Errorf("ports = %v, want three distinct non-zero ports", ports)
+		}
+		seen[p] = true
 	}
 }

@@ -166,6 +166,8 @@ func DuplicateWorktree(ref Ref, newName string) error {
 	for i, wt := range ws.Worktrees {
 		if wt.Name == newName {
 			ws.Worktrees[i].Overrides = src.Overrides
+			// Ports are deliberately not copied: two worktrees on the same
+			// ports is the collision this whole model exists to prevent.
 		}
 	}
 	return Save(ws)
@@ -214,4 +216,24 @@ func ClearOverride(ref Ref, key string) error {
 		}
 	}
 	return nil
+}
+
+// SavePorts records the ports a worktree's servers were bound to, so the next
+// start reuses them. A pre-worktree workspace has nowhere to keep them and is
+// left alone.
+func SavePorts(ref Ref, ports map[string]int) error {
+	if ref.Worktree == "" || len(ports) == 0 {
+		return nil
+	}
+	ws, err := Load(ref.Workspace)
+	if err != nil {
+		return err
+	}
+	for i := range ws.Worktrees {
+		if ws.Worktrees[i].Name == ref.Worktree {
+			ws.Worktrees[i].Ports = ports
+			return Save(ws)
+		}
+	}
+	return fmt.Errorf("workspace '%s' has no worktree '%s'", ref.Workspace, ref.Worktree)
 }

@@ -191,3 +191,65 @@ func TestDetectPortConflicts_SortedByVar(t *testing.T) {
 			conflicts[0].Var, conflicts[1].Var)
 	}
 }
+
+// Today's failure: speak-api's .env said :8000, ai-tutor-api's configured
+// port, while ai-tutor-api was actually allocated :53778 in the same
+// worktree. Crew knows both facts and has to say so.
+func TestDetectPortConflicts_StaleConfiguredPortOfSibling(t *testing.T) {
+	siblings := []PlannedServer{
+		{Project: "ai-tutor-api", Server: DevServerConfig{Name: "ai-tutor-api", Port: 8000}, Route: Route{InternalPort: 53778}},
+		{Project: "speak-api", Server: DevServerConfig{Name: "speak-api", Port: 3000}, Route: Route{InternalPort: 53776}},
+	}
+	conflicts := DetectPortConflicts(DetectParams{
+		Project:   "speak-api",
+		Slug:      "phone-speak--wrk1",
+		EnvValues: map[string]string{"AI_TUTOR_API_URL": "http://localhost:8000"},
+		Siblings:  siblings,
+	})
+
+	if len(conflicts) != 1 {
+		t.Fatalf("got %d conflicts, want 1", len(conflicts))
+	}
+	c := conflicts[0]
+	if c.Stale == nil || c.Stale.Project != "ai-tutor-api" || c.Stale.ActualPort != 53778 {
+		t.Errorf("conflict = %+v, want the stale sibling named with its real port", c)
+	}
+
+	want := "\n  ! speak-api/.env: AI_TUTOR_API_URL=http://localhost:8000\n" +
+		"    :8000 is ai-tutor-api/ai-tutor-api's configured port, but it is running on :53778 — crew add binding speak-api --scan\n"
+	if got := FormatConflicts(conflicts); got != want {
+		t.Errorf("FormatConflicts =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// A project's env pointing at its own configured port is not stale — that is
+// its own server, and $PORT is what it should read anyway.
+func TestDetectPortConflicts_OwnConfiguredPortIsNotStale(t *testing.T) {
+	conflicts := DetectPortConflicts(DetectParams{
+		Project:   "speak-api",
+		Slug:      "phone-speak--wrk1",
+		EnvValues: map[string]string{"HOST": "http://localhost:3000"},
+		Siblings: []PlannedServer{
+			{Project: "speak-api", Server: DevServerConfig{Name: "speak-api", Port: 3000}, Route: Route{InternalPort: 53776}},
+		},
+	})
+	if len(conflicts) != 0 {
+		t.Errorf("got %+v, want none", conflicts)
+	}
+}
+
+// A sibling that really is on its configured port (nothing to warn about) —
+// the stale check compares against where it actually runs.
+func TestDetectPortConflicts_SiblingOnItsConfiguredPortIsFine(t *testing.T) {
+	conflicts := DetectPortConflicts(DetectParams{
+		Project:   "speak-api",
+		Slug:      "phone-speak--wrk1",
+		EnvValues: map[string]string{"AI_TUTOR_API_URL": "http://localhost:8000"},
+		Siblings: []PlannedServer{
+			{Project: "ai-tutor-api", Server: DevServerConfig{Name: "ai-tutor-api", Port: 8000}, Route: Route{InternalPort: 8000}},
+		},
+	})
+	if len(conflicts) != 0 {
+		t.Errorf("got %+v, want none", conflicts)
+	}
+}

@@ -32,16 +32,25 @@ func StartDev(res *Resolved, noProxy, restart bool) (dev.StartResult, error) {
 	}
 
 	settings := config.LoadSettings()
-	return dev.Start(dev.StartParams{
+	result, err := dev.Start(dev.StartParams{
 		Slug:      res.Slug,
 		Workspace: res.Ref.Workspace,
 		Worktree:  res.Ref.Worktree,
 		Projects:  projects,
 		Overrides: res.Overrides,
+		Reserved:  res.Ports,
 		Domain:    settings.GetDomain(dev.ResolveHostIP()),
 		ProxyPort: settings.GetProxyPort(),
 		NoProxy:   noProxy,
 	})
+	if err != nil {
+		return result, err
+	}
+
+	if err := SavePorts(res.Ref, result.Ports); err != nil {
+		return result, fmt.Errorf("servers started but ports could not be remembered: %w", err)
+	}
+	return result, nil
 }
 
 // DevURLs renders one URL per route for a worktree.

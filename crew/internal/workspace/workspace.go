@@ -44,6 +44,9 @@ func IsDirect(wp WorkspaceProject) bool {
 type Worktree struct {
 	Name      string            `json:"name"`
 	Overrides map[string]string `json:"overrides,omitempty"`
+	// Ports remembers the port each dev server was bound to, keyed
+	// "project/server", so a worktree keeps its ports across restarts.
+	Ports map[string]int `json:"ports,omitempty"`
 }
 
 type Workspace struct {

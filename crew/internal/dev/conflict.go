@@ -14,14 +14,28 @@ type PortOwner struct {
 	Server  string
 }
 
-// Conflict is an env file value pointing at a port crew handed to something
-// else. Not a guess: crew allocated the port and knows what it gave it to.
+// Conflict is an env file value pointing at a port crew knows is wrong for it.
+//
+// Two shapes, both facts crew owns rather than guesses. Owner is set when the
+// port was allocated to a server in another worktree. Stale is set when the
+// port is a sibling project's configured port — the number in its dev-server
+// config — while that server is actually running somewhere else in this
+// worktree: the env file predates dynamic ports, and a binding is the fix.
 type Conflict struct {
 	Project string
 	Var     string
 	Value   string
 	Port    int
 	Owner   PortOwner
+	Stale   *StaleTarget
+}
+
+// StaleTarget is the sibling server an env value was written for, and where
+// it actually is now.
+type StaleTarget struct {
+	Project    string
+	Server     string
+	ActualPort int
 }
 
 // DetectParams scopes conflict detection to one project in one worktree.
@@ -35,6 +49,9 @@ type DetectParams struct {
 	EnvValues map[string]string
 	Injected  []Resolution
 	Allocated map[int]PortOwner
+	// Siblings are this worktree's own servers as planned: configured port →
+	// where they actually run. Optional; only the stale check uses it.
+	Siblings []PlannedServer
 }
 
 // DetectPortConflicts finds env values aimed at a port crew gave to a server
@@ -70,22 +87,34 @@ func DetectPortConflicts(p DetectParams) []Conflict {
 			continue
 		}
 
-		owner, allocated := p.Allocated[port]
-		if !allocated || owner.Slug == p.Slug {
+		if owner, allocated := p.Allocated[port]; allocated && owner.Slug != p.Slug {
+			conflicts = append(conflicts, Conflict{
+				Project: p.Project, Var: name, Value: value, Port: port, Owner: owner,
+			})
 			continue
 		}
 
-		conflicts = append(conflicts, Conflict{
-			Project: p.Project,
-			Var:     name,
-			Value:   value,
-			Port:    port,
-			Owner:   owner,
-		})
+		if stale := staleSibling(p, port); stale != nil {
+			conflicts = append(conflicts, Conflict{
+				Project: p.Project, Var: name, Value: value, Port: port, Stale: stale,
+			})
+		}
 	}
 
 	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].Var < conflicts[j].Var })
 	return conflicts
+}
+
+// staleSibling reports whether port is the configured port of another server
+// in this worktree that is not actually bound there.
+func staleSibling(p DetectParams, port int) *StaleTarget {
+	for _, ps := range p.Siblings {
+		if ps.Project == p.Project || ps.Server.Port != port || ps.Route.InternalPort == port {
+			continue
+		}
+		return &StaleTarget{Project: ps.Project, Server: ps.Server.Name, ActualPort: ps.Route.InternalPort}
+	}
+	return nil
 }
 
 // ParseLocalhostPort extracts the port from a value addressing the local

@@ -67,6 +67,13 @@ func cmdMigrate() {
 			fmt.Printf("  %s\n  → %s\n\n", pair[0], pair[1])
 		}
 	}
+	if venvs := workspace.MovedVenvs(plan); len(venvs) > 0 {
+		fmt.Printf("Python venvs relocated (shebangs rewritten, nothing reinstalled):\n\n")
+		for _, v := range venvs {
+			fmt.Printf("  %s\n", v)
+		}
+		fmt.Println()
+	}
 	fmt.Printf("Backup: %s\n", backup)
 }
 

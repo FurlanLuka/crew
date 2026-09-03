@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
@@ -325,6 +326,18 @@ func moveWorktree(m MigrationMove) error {
 		exec.RenameGitBranch(newPath,
 			BranchName(Ref{Workspace: m.OldWorkspace}, wp.Name),
 			BranchName(m.Ref, wp.Name))
+
+		for _, name := range []string{".venv", "venv"} {
+			venv := filepath.Join(newPath, name)
+			if _, err := os.Stat(filepath.Join(venv, "bin")); err != nil {
+				continue
+			}
+			if n, err := RelocateVenv(venv, oldPath, newPath); err != nil {
+				return fmt.Errorf("relocating %s: %w", venv, err)
+			} else if n > 0 {
+				debug.Log("git", "relocated %d shebangs in %s", n, venv)
+			}
+		}
 	}
 
 	// Anything else in the old directory — notes, audit folders, a checkout
@@ -407,4 +420,55 @@ func MigratedPaths(plan *MigrationPlan) [][2]string {
 		}
 	}
 	return pairs
+}
+
+// MovedVenvs lists Python virtualenvs inside moved checkouts. A venv bakes its
+// absolute path into every script's shebang line, so after a move
+// `.venv/bin/uvicorn` fails with "bad interpreter" until the shebangs are
+// rewritten or the venv recreated. `uv sync` does not notice — it tracks
+// package contents, not scripts.
+func MovedVenvs(plan *MigrationPlan) []string {
+	var venvs []string
+	for _, pair := range MigratedPaths(plan) {
+		for _, name := range []string{".venv", "venv"} {
+			candidate := filepath.Join(pair[1], name)
+			if _, err := os.Stat(filepath.Join(candidate, "bin", "python")); err == nil {
+				venvs = append(venvs, candidate)
+			}
+		}
+	}
+	return venvs
+}
+
+// RelocateVenv rewrites the shebang lines under a moved venv's bin directory
+// from oldRoot to newRoot. This is what a relocate does; nothing is
+// reinstalled, so packages installed from local wheels survive.
+func RelocateVenv(venv, oldRoot, newRoot string) (int, error) {
+	entries, err := os.ReadDir(filepath.Join(venv, "bin"))
+	if err != nil {
+		return 0, err
+	}
+
+	rewritten := 0
+	for _, e := range entries {
+		path := filepath.Join(venv, "bin", e.Name())
+		if e.IsDir() || e.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		prefix := "#!" + oldRoot
+		if !strings.HasPrefix(string(data), prefix) {
+			continue
+		}
+		info, _ := e.Info()
+		fixed := "#!" + newRoot + string(data[len(prefix):])
+		if err := os.WriteFile(path, []byte(fixed), info.Mode()); err != nil {
+			return rewritten, err
+		}
+		rewritten++
+	}
+	return rewritten, nil
 }

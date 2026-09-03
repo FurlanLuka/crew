@@ -439,3 +439,39 @@ func TestApplyMigration_LeavesFeatureBranchesAlone(t *testing.T) {
 		t.Errorf("branch = %q, want the feature branch untouched", strings.TrimSpace(branch))
 	}
 }
+
+// A venv bakes its absolute path into every script's shebang; after a move,
+// `.venv/bin/uvicorn` fails with "bad interpreter". Migration rewrites them.
+func TestApplyMigration_RelocatesVenvShebangs(t *testing.T) {
+	setupTestConfig(t)
+	legacyWorkspaceWithCheckout(t, "ws-wrk1", "api")
+
+	oldPath := WorktreePath(Ref{Workspace: "ws-wrk1"}, "api")
+	bin := filepath.Join(oldPath, ".venv", "bin")
+	os.MkdirAll(bin, 0o755)
+	os.WriteFile(filepath.Join(bin, "python"), []byte("fake"), 0o755)
+	os.WriteFile(filepath.Join(bin, "uvicorn"), []byte("#!"+oldPath+"/.venv/bin/python\nprint('hi')\n"), 0o755)
+	os.WriteFile(filepath.Join(bin, "activate"), []byte("# not a shebang script\n"), 0o644)
+
+	plan, _ := PlanMigration()
+	if err := ApplyMigration(plan, filepath.Join(t.TempDir(), "backup")); err != nil {
+		t.Fatalf("ApplyMigration: %v", err)
+	}
+
+	newPath := WorktreePath(Ref{Workspace: "ws", Worktree: "wrk1"}, "api")
+	data, err := os.ReadFile(filepath.Join(newPath, ".venv", "bin", "uvicorn"))
+	if err != nil {
+		t.Fatalf("uvicorn missing after move: %v", err)
+	}
+	if want := "#!" + newPath + "/.venv/bin/python\nprint('hi')\n"; string(data) != want {
+		t.Errorf("shebang not relocated:\n%q\nwant\n%q", data, want)
+	}
+	if info, _ := os.Stat(filepath.Join(newPath, ".venv", "bin", "uvicorn")); info.Mode()&0o111 == 0 {
+		t.Error("executable bit lost on rewrite")
+	}
+
+	venvs := MovedVenvs(plan)
+	if len(venvs) != 1 || !strings.HasSuffix(venvs[0], filepath.Join("wrk1", "api", ".venv")) {
+		t.Errorf("MovedVenvs = %v, want the relocated venv reported", venvs)
+	}
+}

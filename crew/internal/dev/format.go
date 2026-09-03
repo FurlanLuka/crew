@@ -17,7 +17,7 @@ func GroupResolutions(resolutions []Resolution) map[string][]Resolution {
 
 // InspectEnvConflicts reads each project's env files and reports values aimed
 // at a port crew handed to a server in another worktree.
-func InspectEnvConflicts(slug Slug, projects []DevProject, resolutions []Resolution) []Conflict {
+func InspectEnvConflicts(slug Slug, projects []DevProject, planned []PlannedServer, resolutions []Resolution) []Conflict {
 	allocated := AllocatedPorts()
 	byProject := GroupResolutions(resolutions)
 
@@ -29,6 +29,7 @@ func InspectEnvConflicts(slug Slug, projects []DevProject, resolutions []Resolut
 			EnvValues: ReadEnvValues(p.Path),
 			Injected:  byProject[p.Name],
 			Allocated: allocated,
+			Siblings:  planned,
 		})...)
 	}
 	return conflicts
@@ -82,6 +83,11 @@ func FormatConflicts(conflicts []Conflict) string {
 	var b strings.Builder
 	for _, c := range conflicts {
 		fmt.Fprintf(&b, "\n  ! %s/.env: %s=%s\n", c.Project, c.Var, c.Value)
+		if c.Stale != nil {
+			fmt.Fprintf(&b, "    :%d is %s/%s's configured port, but it is running on :%d — crew add binding %s --scan\n",
+				c.Port, c.Stale.Project, c.Stale.Server, c.Stale.ActualPort, c.Project)
+			continue
+		}
 		fmt.Fprintf(&b, "    :%d is %s/%s in worktree %s\n",
 			c.Port, c.Owner.Project, c.Owner.Server, DisplayRef(c.Owner.Slug))
 	}
