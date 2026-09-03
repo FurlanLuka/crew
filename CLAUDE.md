@@ -19,9 +19,12 @@ at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source u
 - **Ref** — how the user names a worktree: `<ws>/<wt>`, or bare `<ws>` when it has one.
   `/` is user-facing; `--` appears only where crew does not render (hostnames, filenames,
   tmux). Anything printed for a human goes through `dev.DisplayRef`.
-- **Binding** — `{var, value}` on a project. `value` is a template over
-  `{{url:proj[/server]}}`, `{{port:proj[/server]}}`, `{{worktree}}`, `{{workspace}}`; the server
-  is optional when the target has one. `dev.ParseTokens` is the one grammar, used by both
+- **Binding** — `{var, value}` on a project. `value` is a template over `{{proj[/server]}}`
+  (`http://localhost:<port>`), `{{proj[/server].host}}` (`localhost:<port>`),
+  `{{proj[/server].port}}`, `{{worktree}}`, `{{workspace}}`; the server is optional when the
+  target has one. `{{url:X}}` / `{{port:X}}` is the pre-2.1 spelling — still parsed, never
+  written; `dev.TokenFor` is the one place that spells a token. `dev.ParseTokens` is the one
+  grammar (a malformed token is an error there, not a kind nobody expands), used by both
   the validator (`project.ValidateBinding`) and the resolver. Precedence per variable:
   worktree override > binding > left alone. A template that only partly expands is discarded
   whole. Resolved values are injected as `export`s ahead of `PORT=` in the tmux command;

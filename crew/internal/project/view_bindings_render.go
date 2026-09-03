@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
 // ── View ──
@@ -50,6 +51,9 @@ func (v BindingsView) renderList(b *strings.Builder) {
 		b.WriteString(app.RowName(bd.Var, i == v.cursor) + pad)
 		b.WriteString("  ")
 		b.WriteString(app.Subtle.Render(fmt.Sprintf("%-36s", bd.Value)))
+		if dev.IsLegacyToken(bd.Value) {
+			b.WriteString(app.Subtle.Render("· old form  "))
+		}
 		b.WriteString(renderPreviewInline(v.previews[bd.Var]))
 		b.WriteString("\n")
 	}
@@ -79,10 +83,17 @@ func renderPreviewInline(previews []BindingPreview) string {
 	}
 	for _, p := range previews {
 		if p.Resolved {
-			return "→ " + p.Value + "  " + app.Subtle.Render("in "+p.Ref)
+			return "→ " + p.Value + "  " + app.Subtle.Render("in "+p.Ref+stoppedTag(p))
 		}
 	}
 	return app.Highlight.Render("→ left alone") + "  " + app.Subtle.Render(previews[0].Detail)
+}
+
+func stoppedTag(p BindingPreview) string {
+	if p.Running {
+		return ""
+	}
+	return " · stopped"
 }
 
 func (v BindingsView) renderScan(b *strings.Builder) {
@@ -151,14 +162,14 @@ func (v BindingsView) renderEdit(b *strings.Builder) {
 			b.WriteString("         ")
 			if p.Resolved {
 				b.WriteString("→ " + p.Value)
-				b.WriteString("  " + app.Subtle.Render("in "+p.Ref))
+				b.WriteString("  " + app.Subtle.Render("in "+p.Ref+stoppedTag(p)))
 			} else {
 				b.WriteString(app.Highlight.Render("→ left alone"))
 				b.WriteString("  " + app.Subtle.Render("in "+p.Ref+" · "+p.Detail))
 			}
 			b.WriteString("\n")
 		}
-	} else if Previewer != nil && v.draft.Value != "" && validVarName.MatchString(v.draft.Var) {
+	} else if v.err == nil && Previewer != nil && v.draft.Value != "" && validVarName.MatchString(v.draft.Var) {
 		b.WriteString("\n         ")
 		b.WriteString(app.Subtle.Render("→ not in any worktree yet"))
 		b.WriteString("\n")
@@ -178,15 +189,18 @@ func (v BindingsView) renderEdit(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-type legendRow struct{ token, meaning, example string }
+type legendRow struct{ token, expands, note string }
 
-// The legend is the whole grammar. If a token is added to dev.ParseTokens it
-// belongs here too, or nobody will find it from the TUI.
+// The legend is the whole grammar. If dev.parseToken learns a form it belongs
+// here too, or nobody will find it from the TUI.
 var tokenLegend = []legendRow{
-	{"{{url:PROJECT}}", "http://localhost:<port> of that project's server", "{{url:speak-api}}"},
-	{"{{port:PROJECT/SERVER}}", "the port alone — for any other scheme, or a path", "ws://localhost:{{port:livekit}}/rtc"},
-	{"{{worktree}}", "this worktree's name", "agent-{{worktree}}"},
-	{"{{workspace}}", "this workspace's name", "db_{{workspace}}_{{worktree}}"},
+	{"{{speak-api}}", "http://localhost:54494", "URL of its one server"},
+	{"{{speak-api.host}}", "localhost:54494", "ws://{{speak-api.host}}/rtc"},
+	{"{{speak-api.port}}", "54494", ""},
+	{"{{ai-tutor-api/worker}}", "http://localhost:54497", "a named server"},
+	{"{{ai-tutor-api/worker.port}}", "54497", ".host / .port go after the server"},
+	{"{{worktree}}", "wrk1", "this worktree's name"},
+	{"{{workspace}}", "phone-speak", "this workspace's name"},
 }
 
 // renderTokenLegend lists the tokens and the projects they can point at, so
@@ -195,12 +209,12 @@ func renderTokenLegend(b *strings.Builder, targets []Project) {
 	b.WriteString("  Tokens\n")
 	for _, r := range tokenLegend {
 		// Pad before styling: width counts the escape bytes otherwise.
-		b.WriteString(fmt.Sprintf("    %-25s ", r.token))
-		b.WriteString(app.Subtle.Render(fmt.Sprintf("%-50s %s", r.meaning, r.example)))
+		b.WriteString(fmt.Sprintf("    %-30s ", r.token))
+		b.WriteString(app.Subtle.Render(strings.TrimRight(fmt.Sprintf("%-24s %s", r.expands, r.note), " ")))
 		b.WriteString("\n")
 	}
 	b.WriteString("    ")
-	b.WriteString(app.Subtle.Render("SERVER is optional when the project has one server. A value without tokens is used as-is."))
+	b.WriteString(app.Subtle.Render("Name the server only when the project has more than one. No tokens = used as-is."))
 	b.WriteString("\n\n")
 
 	b.WriteString("  Projects\n")

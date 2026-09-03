@@ -34,7 +34,7 @@ func remoteAndClone(t *testing.T, name string) (remote, clone string) {
 
 func commitOn(t *testing.T, repo, msg string) {
 	t.Helper()
-	if _, err := exec.RunGitCommand(repo, "commit", "-q", "--allow-empty", "-m", msg); err != nil {
+	if _, err := exec.RunGitCommand(repo, "-c", "user.email=a@b", "-c", "user.name=test", "commit", "-q", "--allow-empty", "-m", msg); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 }

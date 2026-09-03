@@ -402,19 +402,171 @@ func TestIndexRoutePorts_LegacyRoutesDoNotResolve(t *testing.T) {
 }
 
 func TestParseTokens(t *testing.T) {
-	tokens := ParseTokens("ws://localhost:{{port:livekit}}/x/{{worktree}}-{{workspace:}}")
+	target := func(proj, server, accessor string) Token {
+		return Token{Kind: TokenTarget, Target: TargetRef{Project: proj, Server: server, HasServer: server != ""}, Accessor: accessor}
+	}
 
-	want := []Token{
-		{Raw: "{{port:livekit}}", Kind: "port", Arg: "livekit", HasArg: true},
-		{Raw: "{{worktree}}", Kind: "worktree"},
-		{Raw: "{{workspace:}}", Kind: "workspace", HasArg: true},
+	tests := []struct {
+		in   string
+		want Token
+	}{
+		{"{{speak-api}}", target("speak-api", "", AccessorURL)},
+		{"{{speak-api.url}}", target("speak-api", "", AccessorURL)},
+		{"{{speak-api.host}}", target("speak-api", "", AccessorHost)},
+		{"{{speak-api.port}}", target("speak-api", "", AccessorPort)},
+		{"{{mumbo/backend}}", target("mumbo", "backend", AccessorURL)},
+		{"{{mumbo/backend.port}}", target("mumbo", "backend", AccessorPort)},
+		{"{{worktree}}", Token{Kind: TokenWorktree}},
+		{"{{workspace}}", Token{Kind: TokenWorkspace}},
+		// Pre-2.1 spelling, still read.
+		{"{{url:speak-api}}", target("speak-api", "", AccessorURL)},
+		{"{{port:livekit}}", target("livekit", "", AccessorPort)},
+		{"{{url:mumbo/backend}}", target("mumbo", "backend", AccessorURL)},
 	}
-	if len(tokens) != len(want) {
-		t.Fatalf("tokens = %+v, want %+v", tokens, want)
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			tokens, err := ParseTokens("x-" + tt.in + "-y")
+			if err != nil {
+				t.Fatalf("ParseTokens: %v", err)
+			}
+			tt.want.Raw = tt.in
+			if len(tokens) != 1 || tokens[0] != tt.want {
+				t.Errorf("tokens = %+v, want %+v", tokens, tt.want)
+			}
+		})
 	}
-	for i := range want {
-		if tokens[i] != want[i] {
-			t.Errorf("token %d = %+v, want %+v", i, tokens[i], want[i])
+}
+
+func TestParseTokens_Malformed(t *testing.T) {
+	tests := []struct {
+		in      string
+		wantErr string
+	}{
+		{"{{}}", GrammarHint},
+		{"{{speak-api.}}", GrammarHint},
+		{"{{.port}}", "expected project or project/server"},
+		{"{{speak-api/}}", "expected project or project/server"},
+		{"{{a/b/c}}", "expected project or project/server"},
+		{"{{worktree:}}", GrammarHint},
+		{"{{ws:x}}", GrammarHint},
+		{"{{url:}}", GrammarHint},
+		{"{{worktree.host}}", "{{worktree}} takes no accessor"},
+		{"{{workspace.port}}", "{{workspace}} takes no accessor"},
+		{"{{speak-api.foo}}", ".foo is not url, host or port — a server is written {{speak-api/foo}}"},
+		{"{{ai-tutor-api.worker}}", "a server is written {{ai-tutor-api/worker}}"},
+		{"{{a.b.port}}", ".b.port is not url, host or port"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			_, err := ParseTokens(tt.in)
+			if err == nil {
+				t.Fatalf("ParseTokens(%q) accepted it", tt.in)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to mention %q", err, tt.wantErr)
+			}
+			if !strings.HasPrefix(err.Error(), tt.in+": ") {
+				t.Errorf("error = %q, want it prefixed with the token", err)
+			}
+		})
+	}
+}
+
+func TestParseTokens_MultipleInOneValue(t *testing.T) {
+	tokens, err := ParseTokens("ws://{{livekit.host}}/x/{{worktree}}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 2 || tokens[0].Raw != "{{livekit.host}}" || tokens[1].Raw != "{{worktree}}" {
+		t.Errorf("tokens = %+v", tokens)
+	}
+}
+
+// TokenFor is the only writer; whatever it spells must read back identically,
+// and never in the legacy form.
+func TestTokenFor_RoundTrips(t *testing.T) {
+	targets := []TargetRef{
+		{Project: "speak-api"},
+		{Project: "mumbo", Server: "backend", HasServer: true},
+	}
+	for _, target := range targets {
+		for _, accessor := range []string{"", AccessorURL, AccessorHost, AccessorPort} {
+			spelled := TokenFor(target, accessor)
+			if IsLegacyToken(spelled) || strings.Contains(spelled, ".url") {
+				t.Errorf("TokenFor(%+v, %q) = %q", target, accessor, spelled)
+			}
+			tokens, err := ParseTokens(spelled)
+			if err != nil || len(tokens) != 1 {
+				t.Fatalf("ParseTokens(%q) = %+v, %v", spelled, tokens, err)
+			}
+			wantAccessor := accessor
+			if wantAccessor == "" {
+				wantAccessor = AccessorURL
+			}
+			if tokens[0].Target != target || tokens[0].Accessor != wantAccessor {
+				t.Errorf("ParseTokens(%q) = %+v", spelled, tokens[0])
+			}
+		}
+	}
+}
+
+func TestIsLegacyToken(t *testing.T) {
+	tests := map[string]bool{
+		"{{url:speak-api}}":         true,
+		"ws://localhost:{{port:x}}": true,
+		"{{speak-api}}":             false,
+		"ws://{{speak-api.host}}":   false,
+		"{{worktree}}":              false,
+		"literal":                   false,
+	}
+	for in, want := range tests {
+		if got := IsLegacyToken(in); got != want {
+			t.Errorf("IsLegacyToken(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// The new spelling resolves to exactly what the legacy one did, value and
+// description alike, since saved bindings keep the old form indefinitely.
+func TestResolveBindings_NewFormMatchesLegacy(t *testing.T) {
+	pairs := []struct{ legacy, modern string }{
+		{"{{url:speak-api}}", "{{speak-api}}"},
+		{"ws://localhost:{{port:speak-api}}/rtc", "ws://{{speak-api.host}}/rtc"},
+		{"{{port:mumbo/api}}", "{{mumbo/api.port}}"},
+		{"{{url:mumbo/api}}", "{{mumbo/api}}"},
+	}
+	for _, pair := range pairs {
+		t.Run(pair.modern, func(t *testing.T) {
+			resolve := func(value string) Resolution {
+				p := bindingFixture(map[string][]Binding{
+					"ai-tutor-api": {{Var: "V", Value: value}},
+				})
+				return find(t, ResolveBindings(p), "ai-tutor-api", "V")
+			}
+			legacy, modern := resolve(pair.legacy), resolve(pair.modern)
+			if !modern.Resolved() {
+				t.Fatalf("%s left alone: %s", pair.modern, modern.Detail)
+			}
+			if modern.Value != legacy.Value || modern.Detail != legacy.Detail {
+				t.Errorf("%s = (%q, %q), legacy %s = (%q, %q)",
+					pair.modern, modern.Value, modern.Detail, pair.legacy, legacy.Value, legacy.Detail)
+			}
+		})
+	}
+}
+
+func TestIndexReservedPorts(t *testing.T) {
+	got := IndexReservedPorts(map[string]int{"speak-api/speak-api": 54021, "mumbo/api": 54030, "junk": 1})
+	want := map[ProjectServer]int{
+		{Project: "speak-api", Server: "speak-api"}: 54021,
+		{Project: "mumbo", Server: "api"}:           54030,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%+v = %d, want %d", k, got[k], v)
 		}
 	}
 }

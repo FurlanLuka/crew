@@ -248,7 +248,7 @@ func cmdAddBinding() {
 	}
 
 	projName := os.Args[3]
-	var varName, value, urlTarget, portTarget string
+	var varName, value, urlTarget, portTarget, hostTarget string
 	scan, apply := false, false
 
 	for _, arg := range os.Args[4:] {
@@ -265,6 +265,8 @@ func cmdAddBinding() {
 			urlTarget = strings.TrimPrefix(arg, "--url=")
 		case strings.HasPrefix(arg, "--port="):
 			portTarget = strings.TrimPrefix(arg, "--port=")
+		case strings.HasPrefix(arg, "--host="):
+			hostTarget = strings.TrimPrefix(arg, "--host=")
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
@@ -276,15 +278,13 @@ func cmdAddBinding() {
 		return
 	}
 
-	switch {
-	case urlTarget != "":
-		value = "{{url:" + urlTarget + "}}"
-	case portTarget != "":
-		value = "{{port:" + portTarget + "}}"
+	value, err := bindingValue(urlTarget, hostTarget, portTarget, value)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
-
-	if varName == "" || value == "" {
-		fmt.Fprintf(os.Stderr, "Error: --var and one of --url/--port/--value are required\n")
+	if varName == "" {
+		fmt.Fprintf(os.Stderr, "Error: --var is required\n")
 		os.Exit(1)
 	}
 
@@ -293,6 +293,36 @@ func cmdAddBinding() {
 		os.Exit(1)
 	}
 	fmt.Printf("Bound %s in %s to %s\n", varName, projName, value)
+}
+
+// bindingValue turns the --url/--host/--port shorthands, or --value, into the
+// template to store. Exactly one may be given; the shorthands take a bare
+// "proj[/server]" and spell the token through dev.TokenFor.
+func bindingValue(url, host, port, value string) (string, error) {
+	given := 0
+	for _, s := range []string{url, host, port, value} {
+		if s != "" {
+			given++
+		}
+	}
+	if given != 1 {
+		return "", fmt.Errorf("give one of --url, --host, --port or --value")
+	}
+	if value != "" {
+		return value, nil
+	}
+	arg, accessor := url, dev.AccessorURL
+	switch {
+	case host != "":
+		arg, accessor = host, dev.AccessorHost
+	case port != "":
+		arg, accessor = port, dev.AccessorPort
+	}
+	target, err := dev.ParseTarget(arg)
+	if err != nil {
+		return "", fmt.Errorf("--%s=%s: %w", accessor, arg, err)
+	}
+	return dev.TokenFor(target, accessor), nil
 }
 
 func cmdRmBinding() {

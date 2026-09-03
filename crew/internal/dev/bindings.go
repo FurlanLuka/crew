@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -76,6 +77,21 @@ func IndexPorts(planned []PlannedServer) map[ProjectServer]int {
 // skipped: two of them named "api" would collapse to one key, which is the
 // silent wrong-port binding this whole thing exists to prevent. Those servers
 // resolve as "not running" until they are restarted under this version.
+// IndexReservedPorts reads a worktree's remembered ports, keyed as PortKey
+// writes them. They are what the next start reuses, so a stopped worktree can
+// still be resolved against.
+func IndexReservedPorts(reserved map[string]int) map[ProjectServer]int {
+	ports := make(map[ProjectServer]int, len(reserved))
+	for key, port := range reserved {
+		proj, server, ok := strings.Cut(key, "/")
+		if !ok {
+			continue
+		}
+		ports[ProjectServer{Project: proj, Server: server}] = port
+	}
+	return ports
+}
+
 func IndexRoutePorts(routes []Route) map[ProjectServer]int {
 	ports := make(map[ProjectServer]int, len(routes))
 	for _, r := range routes {
@@ -193,50 +209,148 @@ type TemplateContext struct {
 	InWorktree map[string]bool
 }
 
-var tokenPattern = regexp.MustCompile(`\{\{([a-z]+)(?::([^}]*))?\}\}`)
+var tokenPattern = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
 
-// Token is one {{kind:arg}} occurrence in a binding template.
+// Reserved words a token can be on its own. They are also refused as project
+// names (project.Add), so a token is never both.
+const (
+	TokenWorktree  = "worktree"
+	TokenWorkspace = "workspace"
+	// TokenTarget is every other token: a project's server, plus an accessor.
+	TokenTarget = "target"
+)
+
+// Accessors: what a {{project[/server].accessor}} token asks for.
+const (
+	AccessorURL  = "url"  // http://localhost:<port> — the default, never written out
+	AccessorHost = "host" // localhost:<port>, for any other scheme or a path
+	AccessorPort = "port" // the number
+)
+
+// Token is one {{…}} occurrence in a binding template.
 type Token struct {
 	Raw  string
-	Kind string
-	Arg  string
-	// HasArg distinguishes "{{worktree:}}" (a colon with nothing after it, a
-	// typo) from "{{worktree}}".
-	HasArg bool
+	Kind string // TokenWorktree, TokenWorkspace or TokenTarget
+	// Target and Accessor are set when Kind is TokenTarget.
+	Target   TargetRef
+	Accessor string
 }
 
-// ParseTokens finds every token in a template. Pure.
-//
-// This is the one grammar; the validator in project and the resolver here both
-// walk its output, so a token kind cannot be accepted at add time and then
-// silently never expand at start time.
-func ParseTokens(value string) []Token {
-	var tokens []Token
-	for _, m := range tokenPattern.FindAllStringSubmatch(value, -1) {
-		tokens = append(tokens, Token{
-			Raw:    m[0],
-			Kind:   m[1],
-			Arg:    m[2],
-			HasArg: strings.Contains(m[0], ":"),
-		})
-	}
-	return tokens
-}
-
-// TargetRef is a parsed "proj[/server]" token argument.
+// TargetRef is a parsed "proj[/server]".
 type TargetRef struct {
 	Project   string
 	Server    string
 	HasServer bool
 }
 
-// ParseTarget splits a {{url:…}} / {{port:…}} argument. Pure.
-func ParseTarget(arg string) (TargetRef, error) {
-	if arg == "" {
-		return TargetRef{}, fmt.Errorf("missing target — expected {{url:project}} or {{url:project/server}}")
+// GrammarHint is the one-line shape of a valid token, for error messages.
+const GrammarHint = "expected {{project}}, {{project/server}}, either with .host or .port, {{worktree}} or {{workspace}}"
+
+// ParseTokens finds every token in a template. Pure.
+//
+// This is the one grammar; the validator in project and the resolver here both
+// walk its output, so a token cannot be accepted at add time and then silently
+// never expand at start time. A malformed token is an error here, for the same
+// reason: neither side gets to decide on its own what malformed means.
+func ParseTokens(value string) ([]Token, error) {
+	var tokens []Token
+	for _, m := range tokenPattern.FindAllStringSubmatch(value, -1) {
+		tok, err := parseToken(m[1])
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", m[0], err)
+		}
+		tok.Raw = m[0]
+		tokens = append(tokens, tok)
 	}
+	return tokens, nil
+}
+
+func parseToken(inner string) (Token, error) {
+	if inner == "" {
+		return Token{}, errors.New(GrammarHint)
+	}
+
+	// Reserved words are matched whole, before any split, so {{worktree.host}}
+	// is told it takes no accessor rather than that no project is called worktree.
+	switch inner {
+	case TokenWorktree, TokenWorkspace:
+		return Token{Kind: inner}, nil
+	}
+	if word, _, _ := strings.Cut(inner, "."); word == TokenWorktree || word == TokenWorkspace {
+		return Token{}, fmt.Errorf("{{%s}} takes no accessor", word)
+	}
+
+	// Pre-2.1 spelling, {{url:X}} / {{port:X}}. Still read so saved bindings keep
+	// working; nothing writes it any more.
+	if kind, arg, legacy := strings.Cut(inner, ":"); legacy {
+		switch kind {
+		case AccessorURL, AccessorPort:
+			if arg == "" {
+				return Token{}, errors.New(GrammarHint)
+			}
+			return targetToken(arg, kind)
+		}
+		return Token{}, errors.New(GrammarHint)
+	}
+
+	// A "." can only start the accessor: project and server names are held to
+	// ^[a-z0-9-]+$ (project.validServerName, project.Add), so there is never
+	// one inside a target. Loosening either regex breaks this split.
+	target, accessor, hasAccessor := strings.Cut(inner, ".")
+	if !hasAccessor {
+		return targetToken(target, AccessorURL)
+	}
+	switch accessor {
+	case AccessorURL, AccessorHost, AccessorPort:
+		return targetToken(target, accessor)
+	case "":
+		return Token{}, errors.New(GrammarHint)
+	}
+	return Token{}, fmt.Errorf(".%s is not url, host or port — a server is written {{%s/%s}}", accessor, target, accessor)
+}
+
+func targetToken(arg, accessor string) (Token, error) {
+	target, err := ParseTarget(arg)
+	if err != nil {
+		return Token{}, err
+	}
+	return Token{Kind: TokenTarget, Target: target, Accessor: accessor}, nil
+}
+
+// ParseTarget splits a "proj[/server]" reference. Pure. Also reached from
+// the CLI shorthands, where no {{…}} is involved, so the error names only
+// the target shape; parseToken wraps it with the token.
+func ParseTarget(arg string) (TargetRef, error) {
 	proj, server, hasServer := strings.Cut(arg, "/")
+	if proj == "" || (hasServer && server == "") || strings.Contains(server, "/") {
+		return TargetRef{}, errors.New("expected project or project/server")
+	}
 	return TargetRef{Project: proj, Server: server, HasServer: hasServer}, nil
+}
+
+// IsLegacyToken reports whether a value still uses the pre-2.1 {{url:X}} /
+// {{port:X}} spelling, so the list can say so without rewriting anything.
+func IsLegacyToken(value string) bool {
+	for _, m := range tokenPattern.FindAllStringSubmatch(value, -1) {
+		if strings.Contains(m[1], ":") {
+			return true
+		}
+	}
+	return false
+}
+
+// TokenFor spells a token. The one place that knows how; the scan, the CLI
+// shorthands and the legend all come here, so nothing else can drift from
+// what ParseTokens reads.
+func TokenFor(target TargetRef, accessor string) string {
+	ref := target.Project
+	if target.HasServer {
+		ref += "/" + target.Server
+	}
+	if accessor == "" || accessor == AccessorURL {
+		return "{{" + ref + "}}"
+	}
+	return "{{" + ref + "." + accessor + "}}"
 }
 
 // AmbiguousTargetError is the message both validation and resolution give for a
@@ -249,10 +363,11 @@ func AmbiguousTargetError(proj string, count int, names string) error {
 //
 // Tokens:
 //
-//	{{url:proj/server}}   http://localhost:<port>
-//	{{port:proj/server}}  the allocated port
-//	{{worktree}}          this worktree's name
-//	{{workspace}}         this workspace's name
+//	{{proj}}  {{proj/server}}   http://localhost:<port>
+//	{{proj.host}}               localhost:<port>
+//	{{proj.port}}               the allocated port
+//	{{worktree}}                this worktree's name
+//	{{workspace}}               this workspace's name
 //
 // The server half is optional when the target project has exactly one dev
 // server, which is the common case and what the scan proposes.
@@ -261,8 +376,12 @@ func AmbiguousTargetError(proj string, count int, names string) error {
 // a half-expanded value that reaches a process is exactly the silently-wrong
 // URL this feature exists to prevent.
 func ExpandTemplate(value string, ctx TemplateContext) (string, error) {
+	tokens, err := ParseTokens(value)
+	if err != nil {
+		return "", err
+	}
 	expanded := value
-	for _, tok := range ParseTokens(value) {
+	for _, tok := range tokens {
 		replacement, err := ctx.expand(tok)
 		if err != nil {
 			return "", err
@@ -274,37 +393,32 @@ func ExpandTemplate(value string, ctx TemplateContext) (string, error) {
 
 func (ctx TemplateContext) expand(tok Token) (string, error) {
 	switch tok.Kind {
-	case "worktree":
+	case TokenWorktree:
 		if ctx.Worktree == "" {
 			return "", fmt.Errorf("{{worktree}} is unavailable — workspace has no worktrees")
 		}
 		return ctx.Worktree, nil
 
-	case "workspace":
+	case TokenWorkspace:
 		return ctx.Workspace, nil
 
-	case "port", "url":
-		port, err := ctx.lookupPort(tok.Arg)
+	default:
+		port, err := ctx.lookupPort(tok.Target)
 		if err != nil {
 			return "", err
 		}
-		if tok.Kind == "url" {
-			return fmt.Sprintf("http://localhost:%d", port), nil
+		switch tok.Accessor {
+		case AccessorHost:
+			return fmt.Sprintf("localhost:%d", port), nil
+		case AccessorPort:
+			return strconv.Itoa(port), nil
 		}
-		return strconv.Itoa(port), nil
-
-	default:
-		return "", fmt.Errorf("unknown token {{%s}}", tok.Kind)
+		return fmt.Sprintf("http://localhost:%d", port), nil
 	}
 }
 
 // lookupPort resolves a "proj[/server]" reference against the running servers.
-func (ctx TemplateContext) lookupPort(arg string) (int, error) {
-	target, err := ParseTarget(arg)
-	if err != nil {
-		return 0, err
-	}
-
+func (ctx TemplateContext) lookupPort(target TargetRef) (int, error) {
 	if !ctx.InWorktree[target.Project] {
 		return 0, fmt.Errorf("%s not in workspace", target.Project)
 	}
@@ -341,24 +455,19 @@ func (ctx TemplateContext) lookupPort(arg string) (int, error) {
 // "from project (server)" form. "a/b" already means workspace/worktree in the
 // same output, so it is deliberately not reused here.
 func describeTemplate(value string) string {
-	tokens := ParseTokens(value)
-	if len(tokens) == 0 {
+	tokens, err := ParseTokens(value)
+	if err != nil || len(tokens) == 0 {
 		return "literal"
 	}
 	tok := tokens[0]
 	switch tok.Kind {
-	case "port", "url":
-		target, err := ParseTarget(tok.Arg)
-		if err != nil {
-			return "literal"
-		}
-		if target.HasServer {
-			return fmt.Sprintf("from %s (%s)", target.Project, target.Server)
-		}
-		return "from " + target.Project
-	default:
+	case TokenWorktree, TokenWorkspace:
 		return "{{" + tok.Kind + "}}"
 	}
+	if tok.Target.HasServer {
+		return fmt.Sprintf("from %s (%s)", tok.Target.Project, tok.Target.Server)
+	}
+	return "from " + tok.Target.Project
 }
 
 // EnvPrefix renders resolved variables as shell exports. Pure.

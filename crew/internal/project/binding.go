@@ -23,31 +23,23 @@ func ValidateBinding(projName string, b Binding) error {
 		return fmt.Errorf("binding for %s has no value", b.Var)
 	}
 
-	for _, tok := range dev.ParseTokens(b.Value) {
-		switch tok.Kind {
-		case "worktree", "workspace":
-			if tok.HasArg {
-				return fmt.Errorf("{{%s}} takes no argument", tok.Kind)
-			}
-		case "url", "port":
-			if err := validateTarget(tok.Arg); err != nil {
+	tokens, err := dev.ParseTokens(b.Value)
+	if err != nil {
+		return err
+	}
+	for _, tok := range tokens {
+		if tok.Kind == dev.TokenTarget {
+			if err := validateTarget(tok.Target); err != nil {
 				return err
 			}
-		default:
-			return fmt.Errorf("unknown token {{%s}} — expected url, port, worktree or workspace", tok.Kind)
 		}
 	}
 	return nil
 }
 
-// validateTarget checks that a {{url:…}} / {{port:…}} target names a project in
-// the pool and, when it omits the server, that the project has exactly one.
-func validateTarget(arg string) error {
-	ref, err := dev.ParseTarget(arg)
-	if err != nil {
-		return err
-	}
-
+// validateTarget checks that a token's target names a project in the pool
+// and, when it omits the server, that the project has exactly one.
+func validateTarget(ref dev.TargetRef) error {
 	target := Get(ref.Project)
 	if target == nil {
 		return fmt.Errorf("no project '%s' in the pool", ref.Project)

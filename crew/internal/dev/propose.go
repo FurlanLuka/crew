@@ -1,7 +1,6 @@
 package dev
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 )
@@ -60,25 +59,27 @@ func ProposeBindings(envValues map[string]string, configured map[int][]ProjectSe
 // ProposeTemplate writes the shortest template that names a target
 // unambiguously — the bare project form when it owns one server.
 //
-// The env file's scheme and path are kept: {{url:…}} expands to http://, so
+// The env file's scheme and path are kept: {{proj}} expands to http://, so
 // proposing it for ws://localhost:7880 would silently turn a WebSocket URL into
-// an HTTP one, and --apply would write that without anyone seeing it.
+// an HTTP one, and --apply would write that without anyone seeing it. Only
+// plain http collapses to the bare token; everything else keeps its scheme
+// around {{proj.host}}.
 func ProposeTemplate(value string, target ProjectServer, configured map[int][]ProjectServer) string {
-	ref := target.Project
+	ref := TargetRef{Project: target.Project}
 	if configuredServerCount(target.Project, configured) > 1 {
-		ref = target.Project + "/" + target.Server
+		ref.Server, ref.HasServer = target.Server, true
 	}
 
 	scheme, rest := splitScheme(strings.TrimSpace(value))
 	_, tail := splitHostPort(rest)
 
-	if scheme == "http" && tail == "" {
-		return fmt.Sprintf("{{url:%s}}", ref)
+	if scheme == "http" {
+		return TokenFor(ref, AccessorURL) + tail
 	}
 	if scheme == "" {
-		return fmt.Sprintf("localhost:{{port:%s}}%s", ref, tail)
+		return TokenFor(ref, AccessorHost) + tail
 	}
-	return fmt.Sprintf("%s://localhost:{{port:%s}}%s", scheme, ref, tail)
+	return scheme + "://" + TokenFor(ref, AccessorHost) + tail
 }
 
 func configuredServerCount(project string, configured map[int][]ProjectServer) int {

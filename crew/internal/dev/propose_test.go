@@ -28,17 +28,17 @@ func TestProposeBindings(t *testing.T) {
 
 	// A configured port becomes a proposal naming the project that claims it,
 	// and takes the bare form when that project owns one server.
-	if got := byVar["SPEAK_API_URL"]; got.Template != "{{url:speak-api}}" {
-		t.Errorf("SPEAK_API_URL template = %q, want {{url:speak-api}}", got.Template)
+	if got := byVar["SPEAK_API_URL"]; got.Template != "{{speak-api}}" {
+		t.Errorf("SPEAK_API_URL template = %q, want {{speak-api}}", got.Template)
 	}
 
 	// Pointing at your own dev server is a legitimate binding, not a mistake.
-	if got := byVar["SELF_URL"]; got.Template != "{{url:ai-tutor-api}}" {
+	if got := byVar["SELF_URL"]; got.Template != "{{ai-tutor-api}}" {
 		t.Errorf("SELF_URL template = %q, want the self reference proposed", got.Template)
 	}
 
 	// mumbo owns two servers, so the bare form would be ambiguous.
-	if got := byVar["MUMBO_URL"]; got.Template != "{{url:mumbo/backend}}" {
+	if got := byVar["MUMBO_URL"]; got.Template != "{{mumbo/backend}}" {
 		t.Errorf("MUMBO_URL template = %q, want the server named", got.Template)
 	}
 
@@ -91,7 +91,7 @@ func TestProposeBindings_NothingToPropose(t *testing.T) {
 	}
 }
 
-// {{url:…}} expands to http://, so proposing it for a ws:// value would
+// {{proj}} expands to http://, so proposing it for a ws:// value would
 // silently change the scheme — and --apply writes that unseen.
 func TestProposeTemplate_PreservesSchemeAndPath(t *testing.T) {
 	configured := map[int][]ProjectServer{
@@ -105,14 +105,14 @@ func TestProposeTemplate_PreservesSchemeAndPath(t *testing.T) {
 		value string
 		want  string
 	}{
-		{"http://localhost:3000", "{{url:speak-api}}"},
-		{"ws://localhost:7880", "ws://localhost:{{port:livekit}}"},
-		{"wss://localhost:7880/rtc", "wss://localhost:{{port:livekit}}/rtc"},
-		{"https://localhost:3000", "https://localhost:{{port:speak-api}}"},
-		{"http://localhost:3000/v1?x=1", "http://localhost:{{port:speak-api}}/v1?x=1"},
-		{"localhost:3000", "localhost:{{port:speak-api}}"},
-		{"http://localhost:3100", "{{url:mumbo/backend}}"},
-		{"ws://127.0.0.1:3001", "ws://localhost:{{port:mumbo/homepage}}"},
+		{"http://localhost:3000", "{{speak-api}}"},
+		{"http://localhost:3000/v1?x=1", "{{speak-api}}/v1?x=1"},
+		{"ws://localhost:7880", "ws://{{livekit.host}}"},
+		{"wss://localhost:7880/rtc", "wss://{{livekit.host}}/rtc"},
+		{"https://localhost:3000", "https://{{speak-api.host}}"},
+		{"localhost:3000", "{{speak-api.host}}"},
+		{"http://localhost:3100", "{{mumbo/backend}}"},
+		{"ws://127.0.0.1:3001", "ws://{{mumbo/homepage.host}}"},
 	}
 
 	for _, tt := range tests {

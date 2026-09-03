@@ -32,15 +32,17 @@ Projects reach each other over localhost. Ports are allocated by crew, so no sta
 
 ```
 crew add binding ai-tutor-api --var=SPEAK_API_URL --url=speak-api
-crew add binding ai-tutor-api --var=LIVEKIT_URL --value='ws://localhost:{{port:livekit}}'
+crew add binding ai-tutor-api --var=LIVEKIT_URL --value='ws://{{livekit.host}}/rtc'
 crew add binding ai-tutor-api --var=LIVEKIT_AGENT_NAME --value='{{worktree}}'
 crew add binding ai-tutor-api --scan            # propose from the project's own .env
 crew add binding ai-tutor-api --scan --apply
 crew ls bindings ai-tutor-api --check=phone-speak/wrk1
 ```
 
-Tokens: `{{url:proj[/server]}}`, `{{port:proj[/server]}}`, `{{worktree}}`, `{{workspace}}`.
-Server optional when the target has one. At `crew dev start`, bindings resolve against the
+Tokens: `{{proj}}` → `http://localhost:<port>`; `{{proj.host}}` → `localhost:<port>` (for
+`ws://`, `https://`, a path); `{{proj.port}}` → the number; `{{proj/server}}` when the project
+has several servers, `.host`/`.port` after it; `{{worktree}}`, `{{workspace}}` → the names.
+Older bindings may still read `{{url:proj}}` / `{{port:proj}}` — same meaning, still valid. At `crew dev start`, bindings resolve against the
 allocated ports and are exported into each server's env. A worktree **override** wins over a
 binding (`crew add override <ws>/<wt> VAR=value`) and is also the acknowledgement for a binding
 that legitimately never resolves in one worktree.

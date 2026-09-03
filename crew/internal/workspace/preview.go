@@ -31,8 +31,15 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 
 			// Substitute the draft for whatever the pool currently declares, so
 			// an edit previews as edited rather than as saved.
+			// A stopped worktree resolves against the ports it will get back on
+			// the next start, so the editor shows a value while nothing runs.
 			routes, _ := dev.LoadRoutes(res.Slug)
-			params := res.ResolveParams(dev.IndexRoutePorts(routes))
+			ports := dev.IndexRoutePorts(routes)
+			running := len(ports) > 0
+			if !running {
+				ports = dev.IndexReservedPorts(res.Ports)
+			}
+			params := res.ResolveParams(ports)
 			for i := range params.Projects {
 				if params.Projects[i].Name == projName {
 					params.Projects[i].Bindings = []dev.Binding{{Var: b.Var, Value: b.Value}}
@@ -47,6 +54,7 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 					Ref:      ref.String(),
 					Value:    r.Value,
 					Resolved: r.Resolved(),
+					Running:  running,
 					Detail:   r.Detail,
 				})
 			}

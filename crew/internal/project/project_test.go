@@ -115,6 +115,20 @@ func TestAdd_Duplicate(t *testing.T) {
 	}
 }
 
+// A project name has to work inside {{…}}: no reserved word, no "." or "/".
+func TestAdd_RejectsNamesThatCannotBeTokens(t *testing.T) {
+	setupTestConfig(t)
+
+	for _, name := range []string{"worktree", "workspace", "url", "host", "port", "Bad.Name", "a/b", "Caps"} {
+		if err := Add(Project{Name: name, Path: "/p"}); err == nil {
+			t.Errorf("Add(%q) accepted it", name)
+		}
+	}
+	if err := Add(Project{Name: "speak-api-2", Path: "/p"}); err != nil {
+		t.Errorf("Add(speak-api-2): %v", err)
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	setupTestConfig(t)
 

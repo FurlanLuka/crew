@@ -18,7 +18,10 @@ type BindingPreview struct {
 	Ref      string
 	Value    string
 	Resolved bool
-	Detail   string
+	// Running is false when the value came from the worktree's reserved
+	// ports rather than live servers — right, but not yet true.
+	Running bool
+	Detail  string
 }
 
 // PreviewFunc resolves a binding against every worktree the project is in.
@@ -99,7 +102,7 @@ func NewBindingsView(projName string) BindingsView {
 	varInput.CharLimit = 64
 
 	valueInput := textinput.New()
-	valueInput.Placeholder = "{{url:speak-api}}"
+	valueInput.Placeholder = "{{speak-api}}"
 	valueInput.CharLimit = 256
 
 	return BindingsView{
@@ -344,11 +347,24 @@ func (v BindingsView) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (v *BindingsView) syncDraft() tea.Cmd {
 	v.draft.Var = strings.TrimSpace(v.varInput.Value())
 	v.draft.Value = strings.TrimSpace(v.valueInput.Value())
-	if !validVarName.MatchString(v.draft.Var) || v.draft.Value == "" {
+	previewable, err := draftState(v.draft)
+	v.err = err
+	if !previewable {
 		v.draftPreview = nil
 		return nil
 	}
 	return v.previewDraft()
+}
+
+// draftState decides what the editor shows for a half-typed binding. A
+// malformed token is one fact about the value, not one per worktree, so it
+// is the error and there is no preview; an unfinished var name or empty
+// value is not an error at all, just nothing to preview yet.
+func draftState(d Binding) (previewable bool, err error) {
+	if _, err := dev.ParseTokens(d.Value); err != nil {
+		return false, err
+	}
+	return validVarName.MatchString(d.Var) && d.Value != "", nil
 }
 
 func (v *BindingsView) setFocus(f editField) tea.Cmd {
@@ -391,7 +407,7 @@ func (v BindingsView) completeVar(prefix string) string {
 	return ""
 }
 
-// projectsWithServers is what {{url:…}} and {{port:…}} can target.
+// projectsWithServers is what a {{project}} token can target.
 func (v BindingsView) projectsWithServers() []Project {
 	var out []Project
 	for _, p := range v.pool {

@@ -33,21 +33,25 @@ func TestValidateBinding(t *testing.T) {
 		binding Binding
 		wantErr string
 	}{
-		{name: "bare project reference", binding: Binding{Var: "A", Value: "{{url:speak-api}}"}},
-		{name: "named server", binding: Binding{Var: "A", Value: "{{url:mumbo/backend}}"}},
-		{name: "port inside a larger value", binding: Binding{Var: "A", Value: "ws://localhost:{{port:speak-api}}"}},
+		{name: "bare project reference", binding: Binding{Var: "A", Value: "{{speak-api}}"}},
+		{name: "named server", binding: Binding{Var: "A", Value: "{{mumbo/backend}}"}},
+		{name: "host inside a larger value", binding: Binding{Var: "A", Value: "ws://{{speak-api.host}}/rtc"}},
+		{name: "port on a named server", binding: Binding{Var: "A", Value: "{{mumbo/backend.port}}"}},
+		{name: "legacy url form", binding: Binding{Var: "A", Value: "{{url:speak-api}}"}},
+		{name: "legacy port form", binding: Binding{Var: "A", Value: "ws://localhost:{{port:mumbo/backend}}"}},
 		{name: "identity tokens", binding: Binding{Var: "A", Value: "db_{{workspace}}_{{worktree}}"}},
 		{name: "plain literal", binding: Binding{Var: "A", Value: "https://deployed"}},
 
 		{name: "bad var name", binding: Binding{Var: "not-a-var", Value: "x"}, wantErr: "not a valid"},
 		{name: "empty value", binding: Binding{Var: "A"}, wantErr: "no value"},
-		{name: "unknown project", binding: Binding{Var: "A", Value: "{{url:ghost}}"}, wantErr: "no project 'ghost'"},
-		{name: "unknown server", binding: Binding{Var: "A", Value: "{{url:mumbo/nope}}"}, wantErr: "no dev server"},
-		{name: "ambiguous bare reference", binding: Binding{Var: "A", Value: "{{url:mumbo}}"}, wantErr: "name one"},
-		{name: "target has no servers", binding: Binding{Var: "A", Value: "{{url:ai-tutor-api}}"}, wantErr: "no dev servers"},
-		{name: "unknown token", binding: Binding{Var: "A", Value: "{{nope:x}}"}, wantErr: "unknown token"},
-		{name: "argument on identity token", binding: Binding{Var: "A", Value: "{{worktree:x}}"}, wantErr: "takes no argument"},
-		{name: "missing target", binding: Binding{Var: "A", Value: "{{url:}}"}, wantErr: "missing target"},
+		{name: "unknown project", binding: Binding{Var: "A", Value: "{{ghost}}"}, wantErr: "no project 'ghost'"},
+		{name: "unknown server", binding: Binding{Var: "A", Value: "{{mumbo/nope}}"}, wantErr: "no dev server"},
+		{name: "ambiguous bare reference", binding: Binding{Var: "A", Value: "{{mumbo}}"}, wantErr: "name one"},
+		{name: "target has no servers", binding: Binding{Var: "A", Value: "{{ai-tutor-api}}"}, wantErr: "no dev servers"},
+		{name: "unknown legacy kind", binding: Binding{Var: "A", Value: "{{nope:x}}"}, wantErr: dev.GrammarHint},
+		{name: "accessor on identity token", binding: Binding{Var: "A", Value: "{{worktree.host}}"}, wantErr: "takes no accessor"},
+		{name: "dot where slash belongs", binding: Binding{Var: "A", Value: "{{mumbo.backend}}"}, wantErr: "a server is written {{mumbo/backend}}"},
+		{name: "empty token", binding: Binding{Var: "A", Value: "{{}}"}, wantErr: dev.GrammarHint},
 	}
 
 	for _, tt := range tests {

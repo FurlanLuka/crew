@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
 var validServerName = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -27,8 +28,7 @@ type DevServer struct {
 // SPEAK_API_URL in every workspace it ever appears in. Declaring it per
 // workspace means re-declaring the same edge everywhere and watching them drift.
 //
-// Value is a template over {{url:proj/server}}, {{port:proj/server}},
-// {{worktree}} and {{workspace}}.
+// Value is a template; dev.ParseTokens is the grammar.
 type Binding struct {
 	Var   string `json:"var"`
 	Value string `json:"value"`
@@ -74,8 +74,31 @@ func save(projects []Project) error {
 	return os.WriteFile(poolFile(), data, 0o644)
 }
 
+// reservedNames cannot be project names: a token {{worktree}} must mean the
+// worktree, and {{port}} must stay a typo rather than a project.
+var reservedNames = map[string]bool{
+	dev.TokenWorktree: true, dev.TokenWorkspace: true,
+	dev.AccessorURL: true, dev.AccessorHost: true, dev.AccessorPort: true,
+}
+
+// ValidateName is the rule a project name must pass to be usable as a binding
+// token: the server-name charset, which has no "." or "/", and none of the
+// reserved words. Existing pool entries are not re-checked.
+func ValidateName(name string) error {
+	if !validServerName.MatchString(name) {
+		return fmt.Errorf("'%s' is not a valid project name — use a-z, 0-9 and -", name)
+	}
+	if reservedNames[name] {
+		return fmt.Errorf("'%s' is reserved — it has a meaning inside {{…}} binding tokens", name)
+	}
+	return nil
+}
+
 // Add adds a project to the global pool.
 func Add(proj Project) error {
+	if err := ValidateName(proj.Name); err != nil {
+		return err
+	}
 	projects, err := List()
 	if err != nil {
 		return err

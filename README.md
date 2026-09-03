@@ -87,7 +87,8 @@ Each project can have named dev servers. `crew dev start phone-speak/wrk2`:
 1. Allocates a free port per server — and remembers it, so the worktree keeps its ports across
    restarts. The configured `--port` is reference only.
 2. Resolves every project's bindings against those ports and exports them into the server's
-   environment. `SPEAK_API_URL={{url:speak-api}}` becomes `http://localhost:54494`.
+   environment. `SPEAK_API_URL={{speak-api}}` becomes `http://localhost:54494`;
+`LIVEKIT_URL=ws://{{livekit.host}}/rtc` becomes `ws://localhost:54497/rtc`.
 3. Runs each server in a tmux window with `PORT` set. URLs are `http://localhost:<port>`.
 4. Prints anything it could not resolve, and any env value pointing at a port that belongs to
    something else — the wrong-service bug caught at start instead of at runtime.
