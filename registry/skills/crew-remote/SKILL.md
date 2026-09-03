@@ -39,28 +39,13 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | `crew ls worktrees [<ws>]` | Every working copy, one row each |
 | `crew add binding <proj> --scan` | Propose bindings from a project's .env |
 | `crew dev stop [<ws>]` | Stop dev servers |
-| `crew dev restart <ws> [--host=<ip>]` | Restart dev servers |
-| **Registry** | |
-| `crew registry install [<name> \| --all]` | Install agents/skills |
-| `crew registry update [<name> \| --all]` | Update agents/skills |
-| `crew registry rm <name>` | Remove an agent or skill |
-| **Profile** | |
-| `crew profile status` | Check if profile is installed |
-| `crew profile install` | Install Claude profile |
-| `crew profile update` | Update Claude profile |
-| `crew profile rm` | Remove Claude profile |
+| `crew dev restart <ws>/<wt> [--proxy]` | Restart dev servers |
 | **Config** | |
 | `crew config show` | Show all settings |
 | `crew config set <key> <value>` | Set a config value |
-| **Notifications** | |
-| `crew notify setup [<topic>]` | Enable push notifications |
-| `crew notify test` | Send test notification |
-| `crew notify rm` | Disable push notifications |
 | **Other** | |
 | `crew start <ws>` | Generate the orientation prompt for a workspace |
 | `crew launch [<ws>]` | Open the launch view (TUI) |
-| `crew plans start` | Start the plan viewer server |
-| `crew plans stop` | Stop the plan viewer server |
 | `crew help [cmd] [subcmd]` | Show help for a command |
 | `crew help --json` | Full command tree as JSON |
 
@@ -114,13 +99,17 @@ crew dev status <workspace>[/<worktree>]  # one workspace, or one worktree
 ```
 Output: `<workspace>/<worktree>\t<server-name>\t<port>\t<url>`
 
-Shows **running** dev servers with their nip.io URLs.
+Shows **running** dev servers with their URLs — `http://localhost:<port>` by default, hostnames when started with `--proxy`.
 
 ## Dev Server Architecture
 
 ### URL scheme
 
-Dev servers use a shared reverse proxy on port 80 with a flat subdomain format:
+By default each server is addressed as `http://localhost:<port>`, where the port is
+allocated by crew and stays the same for that worktree across restarts.
+
+With `--proxy`, a shared reverse proxy on port 80 also serves every server under a
+flat subdomain, reachable from other devices on the LAN:
 ```
 http://<server>--<workspace>--<worktree>.<domain>
 ```
@@ -170,8 +159,8 @@ crew dev add <project> --name=<n> --port=<p> --cmd="<c>" [--dir=<d>]
 ### Start dev servers
 
 ```bash
-crew dev start <workspace>/<worktree>
-crew dev start <workspace>/<worktree> --no-proxy
+crew dev start <workspace>/<worktree>            # localhost URLs
+crew dev start <workspace>/<worktree> --proxy    # + LAN hostnames via the shared proxy
 ```
 
 ### Stop dev servers
@@ -185,7 +174,7 @@ crew dev stop <workspace>/<worktree>
 ### Restart dev servers
 
 ```bash
-crew dev restart <workspace>/<worktree> [--no-proxy]
+crew dev restart <workspace>/<worktree> [--proxy]
 ```
 
 ### Remove a workspace

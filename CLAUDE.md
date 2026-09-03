@@ -1,13 +1,12 @@
 # crew
 
-CLI + TUI workspace manager for Claude Code. Manages workspaces, dev servers, agent/skill registry, and session launching.
+CLI + TUI workspace manager for Claude Code. Manages workspaces, worktrees, dev servers, env bindings, and session launching.
 
 ## Architecture
 
 - **Language:** Go
 - **TUI framework:** Bubbletea (Elm architecture: Model → Update → View)
 - **CLI output:** Tab-separated for scripting (`name\tpath\trole`)
-- **Registry:** Fetches agents/skills from GitHub API, falls back to local installs on failure
 - **Config:** Stored in `CLAUDE_CONFIG_DIR` (defaults to `~/.claude`, user overrides to `~/.claude-personal`)
 - **Module path:** `github.com/FurlanLuka/crew/crew`
 
@@ -27,14 +26,11 @@ crew/
   main.go              # CLI entry point, command routing
   internal/
     app/               # Bubbletea app shell, styles, key bindings
-    config/            # Config dir paths, registry base URL
+    config/            # Config dir paths, settings
     dev/               # Dev server management, reverse proxy, routing, binding resolution
     exec/              # Shell execution, tmux, editor detection
     help/              # CLI help system (structured CommandInfo tree)
-    notify/            # Push notification setup TUI
-    profile/           # Claude profile management TUI
     project/           # Project CRUD
-    registry/          # Agent/skill registry (fetch, install, update, TUI)
     workspace/         # Workspace/worktree management, Resolved context, migration, session launching
 ```
 
@@ -58,7 +54,6 @@ crew is a power-user tool. It should feel fast, intuitive, and polished:
 - **Tab-separated output** for all CLI list commands (pipe-friendly)
 - **Bubbletea** for all interactive views (consistent navigation: arrows, tab, esc)
 - **Always show status** after install/remove/update actions
-- **Fallback gracefully** — if GitHub API fails, use local data
 - **Feature-based organization** — each package owns its types, logic, and view
 - **Debug logging** — every external command execution (tmux, git, editor, npm, osascript) must include a `debug.Log(category, ...)` call. Log the command before running it; log errors inline. Use categories matching the package: `"tmux"`, `"git"`, `"editor"`, `"dev"`. Import from `github.com/FurlanLuka/crew/crew/internal/debug`.
 - **Never log binding values** — names, sources and targets only. Bindings and overrides carry service URLs and can carry credentials.
@@ -76,7 +71,7 @@ cd crew && go test ./...
 
 # Run locally
 /tmp/crew help
-/tmp/crew registry
+/tmp/crew workspace
 ```
 
 ## Release

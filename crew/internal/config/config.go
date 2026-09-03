@@ -5,11 +5,8 @@ import (
 	"path/filepath"
 )
 
-const (
-	RegistryRepo   = "FurlanLuka/crew"
-	RegistryBranch = "main"
-	RegistryBase   = "registry"
-)
+// Repo is where releases come from, for `crew update`.
+const Repo = "FurlanLuka/crew"
 
 var (
 	ConfigDir       string

@@ -9,7 +9,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
-	"github.com/FurlanLuka/crew/crew/internal/plans"
 )
 
 // Report is what a reclaim actually did.
@@ -64,8 +63,8 @@ func Killable(inv Inventory) ([]int, error) {
 // own idea of what is safe to kill.
 //
 // Teardown is delegated to the packages that own each kind of session: they
-// also clear routes files and the plans port, which killing the tmux session
-// directly would strand — leaving the proxy forwarding to a dead upstream.
+// also clear routes files, which killing the tmux session directly would
+// strand — leaving the proxy forwarding to a dead upstream.
 func Reclaim(inv Inventory) (Report, error) {
 	report := Report{Sessions: stopSessions(inv)}
 
@@ -82,8 +81,8 @@ func Reclaim(inv Inventory) (Report, error) {
 // that are actually gone afterwards.
 //
 // Teardown is delegated to the packages that own each kind of session: they
-// also clear routes files and the plans port, which killing the tmux session
-// directly would strand, leaving the proxy forwarding to a dead upstream.
+// also clear routes files, which killing the tmux session directly would
+// strand, leaving the proxy forwarding to a dead upstream.
 func stopSessions(inv Inventory) []string {
 	if len(inv.Sessions) == 0 {
 		return nil
@@ -91,11 +90,6 @@ func stopSessions(inv Inventory) []string {
 
 	debug.Log("procs", "reclaim: stopping dev sessions and proxy")
 	dev.StopAll("")
-
-	if plans.IsRunning() {
-		debug.Log("procs", "reclaim: stopping plans server")
-		plans.Stop()
-	}
 
 	// Report what is gone rather than what was asked to stop, so the count
 	// cannot claim a teardown that silently failed.
@@ -220,19 +214,7 @@ func restoreCommands(inv Inventory) []string {
 		cmds = append(cmds, "crew dev start "+ws)
 	}
 	sort.Strings(cmds)
-	if plansWasRunning(inv) {
-		cmds = append(cmds, "crew plans start")
-	}
 	return cmds
-}
-
-func plansWasRunning(inv Inventory) bool {
-	for _, s := range inv.Sessions {
-		if s.Name == plans.SessionName() {
-			return true
-		}
-	}
-	return false
 }
 
 // Summary is the one line that matters when deciding whether to reclaim: how

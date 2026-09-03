@@ -254,12 +254,16 @@ func cmdDevStatus() {
 	}
 }
 
-// parseNoProxyFlag parses extra args after the workspace name, accepting only
-// --no-proxy. Exits on unknown flags.
-func parseNoProxyFlag(args []string) bool {
-	noProxy := false
+// parseProxyFlag parses extra args after the workspace name and reports
+// whether to skip the proxy. Off by default — localhost URLs are what a
+// single machine wants; --proxy opts into the shared reverse proxy for LAN
+// hostnames. --no-proxy is still accepted so old habits and docs keep working.
+func parseProxyFlag(args []string) (noProxy bool) {
+	noProxy = true
 	for _, arg := range args {
 		switch arg {
+		case "--proxy":
+			noProxy = false
 		case "--no-proxy":
 			noProxy = true
 		default:
@@ -272,10 +276,10 @@ func parseNoProxyFlag(args []string) bool {
 
 func cmdDevStart() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev start <workspace>[/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev start <workspace>[/<worktree>] [--proxy]\n")
 		os.Exit(1)
 	}
-	startDev(os.Args[3], parseNoProxyFlag(os.Args[4:]), false)
+	startDev(os.Args[3], parseProxyFlag(os.Args[4:]), false)
 }
 
 // startDev backs both `crew dev start` and `crew dev restart`; restart differs
@@ -367,10 +371,10 @@ func slugsFor(arg string) []dev.Slug {
 
 func cmdDevRestart() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace>[/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace>[/<worktree>] [--proxy]\n")
 		os.Exit(1)
 	}
-	startDev(os.Args[3], parseNoProxyFlag(os.Args[4:]), true)
+	startDev(os.Args[3], parseProxyFlag(os.Args[4:]), true)
 }
 
 func cmdDevLogs() {

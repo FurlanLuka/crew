@@ -18,11 +18,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/help"
-	"github.com/FurlanLuka/crew/crew/internal/notify"
-	"github.com/FurlanLuka/crew/crew/internal/plans"
-	"github.com/FurlanLuka/crew/crew/internal/profile"
 	"github.com/FurlanLuka/crew/crew/internal/project"
-	"github.com/FurlanLuka/crew/crew/internal/registry"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -124,30 +120,9 @@ func main() {
 	case "project":
 		runTUI(project.NewView())
 
-	case "registry":
-		cmdRegistry()
-		return
-
 	case "add":
 		cmdAdd()
 		return
-
-	case "profile":
-		if len(os.Args) > 2 {
-			cmdProfile()
-			return
-		}
-		runTUI(profile.NewView())
-
-	case "notify":
-		if len(os.Args) > 2 {
-			cmdNotify()
-			return
-		}
-		runTUI(notify.NewView())
-
-	case "plans":
-		cmdPlans()
 
 	case "ls":
 		cmdLs()
@@ -242,26 +217,6 @@ func mainMenu() app.Menu {
 			Label:       "Project",
 			Description: "Add/remove projects and configure dev servers",
 			Page:        func() app.Page { return project.NewView() },
-		},
-		{
-			Label:       "Registry",
-			Description: "Install and manage agents & skills",
-			Page:        func() app.Page { return registry.NewView() },
-		},
-		{
-			Label:       "Profile",
-			Description: "Manage Claude profile",
-			Page:        func() app.Page { return profile.NewView() },
-		},
-		{
-			Label:       "Notifications",
-			Description: "Push notification setup",
-			Page:        func() app.Page { return notify.NewView() },
-		},
-		{
-			Label:       "Plans",
-			Description: "Claude plan viewer dashboard",
-			Page:        func() app.Page { return plans.NewView() },
 		},
 		{
 			Label:       "Settings",
@@ -732,81 +687,6 @@ func cmdConfig() {
 	}
 }
 
-func cmdProfile() {
-	switch os.Args[2] {
-	case "install":
-		if err := profile.Install(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Installed profile")
-	case "update":
-		changed, err := profile.Update()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		if changed {
-			fmt.Println("Updated")
-		} else {
-			fmt.Println("Already up to date")
-		}
-	case "rm":
-		if err := profile.Remove(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Removed profile")
-	case "status":
-		if profile.IsInstalled() {
-			fmt.Println("installed")
-		} else {
-			fmt.Println("not installed")
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown profile command '%s'.\nUsage: crew profile [install|update|rm|status]\n", os.Args[2])
-		os.Exit(1)
-	}
-}
-
-func cmdNotify() {
-	switch os.Args[2] {
-	case "setup":
-		topic := ""
-		if len(os.Args) > 3 {
-			topic = os.Args[3]
-		}
-		if topic == "" {
-			topic = notify.GenerateTopic()
-		}
-		if err := notify.Setup(topic); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Notifications enabled (topic: %s)\n", topic)
-	case "test":
-		topic := notify.ExtractTopic()
-		if topic == "" {
-			fmt.Fprintf(os.Stderr, "Error: notifications not set up. Run 'crew notify setup' first.\n")
-			os.Exit(1)
-		}
-		if err := notify.TestNotification(topic); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Test notification sent")
-	case "rm":
-		if err := notify.RemoveHook(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Notifications disabled")
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown notify command '%s'.\nUsage: crew notify [setup|test|rm]\n", os.Args[2])
-		os.Exit(1)
-	}
-}
-
 func cmdDebug() {
 	logPath := config.ConfigDir + "/debug.log"
 
@@ -856,7 +736,7 @@ func cmdUpdate() {
 	arch := runtime.GOARCH
 
 	url := fmt.Sprintf("https://github.com/%s/releases/download/v%s/crew_%s_%s_%s.tar.gz",
-		config.RegistryRepo, latest, latest, osName, arch)
+		config.Repo, latest, latest, osName, arch)
 
 	tmpDir, err := os.MkdirTemp("", "crew-update-*")
 	if err != nil {
@@ -893,7 +773,7 @@ func cmdUpdate() {
 }
 
 func fetchLatestVersion() (string, error) {
-	cmd := osexec.Command("gh", "api", "repos/"+config.RegistryRepo+"/releases/latest", "--jq", ".tag_name")
+	cmd := osexec.Command("gh", "api", "repos/"+config.Repo+"/releases/latest", "--jq", ".tag_name")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("gh api failed: %w (is gh installed and authenticated?)", err)

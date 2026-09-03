@@ -112,59 +112,6 @@ func RouteURL(r Route, slug Slug, domain string, proxyPort int) string {
 	return FormatURL(r.ServerName, slug, domain, proxyPort)
 }
 
-// PlansPortFile returns the path to the file storing the plans server's
-// internal port when running behind the shared proxy.
-func PlansPortFile() string {
-	return filepath.Join(config.ConfigDir, "plans-internal-port")
-}
-
-// PlansNoProxyPortFile returns the path to the file storing the plans server's
-// port when it's running in no-proxy mode (bound to localhost).
-func PlansNoProxyPortFile() string {
-	return filepath.Join(config.ConfigDir, "plans-no-proxy-port")
-}
-
-func readPortFile(path string) int {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0
-	}
-	var port int
-	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &port); err != nil {
-		return 0
-	}
-	return port
-}
-
-// LoadPlansPort reads the plans server's proxy-mode port. Returns 0 when plans
-// is not running OR is running in no-proxy mode (the proxy has no business
-// routing it in that case).
-func LoadPlansPort() int {
-	return readPortFile(PlansPortFile())
-}
-
-// LoadPlansNoProxyPort reads the plans server's localhost port for no-proxy
-// runs. Returns 0 when plans is not running in no-proxy mode.
-func LoadPlansNoProxyPort() int {
-	return readPortFile(PlansNoProxyPortFile())
-}
-
-// SavePlansPort writes the plans server's internal port for proxy-mode runs.
-func SavePlansPort(port int) error {
-	return os.WriteFile(PlansPortFile(), []byte(fmt.Sprintf("%d", port)), 0o644)
-}
-
-// SavePlansNoProxyPort writes the plans server's port for no-proxy runs.
-func SavePlansNoProxyPort(port int) error {
-	return os.WriteFile(PlansNoProxyPortFile(), []byte(fmt.Sprintf("%d", port)), 0o644)
-}
-
-// RemovePlansPort removes both plans port sidecar files.
-func RemovePlansPort() {
-	os.Remove(PlansPortFile())
-	os.Remove(PlansNoProxyPortFile())
-}
-
 // ListAllRoutes scans all dev-routes-*.json files and returns routes grouped by workspace.
 func ListAllRoutes() ([]WsRoutes, error) {
 	pattern := filepath.Join(config.ConfigDir, "dev-routes-*.json")

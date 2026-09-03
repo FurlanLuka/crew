@@ -96,7 +96,7 @@ Print:
 - Dev server URLs (if started), formatted as clickable links:
   ```
   Dev servers:
-    http://<server>--<workspace>--<worktree>.<ip>.nip.io
+    http://localhost:<port>            (or the --proxy hostname when started with --proxy)
   ```
 - Useful commands:
   - `crew dev restart <workspace>/<worktree>` to restart dev servers

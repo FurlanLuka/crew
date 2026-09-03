@@ -105,74 +105,6 @@ var Root = CommandInfo{
 			},
 		},
 		{
-			Name:        "registry",
-			Description: "Install, update, and manage agents & skills from the crew registry",
-			TUI:         true,
-			Subcommands: []CommandInfo{
-				{
-					Name:        "install",
-					Description: "Install agents and skills from the registry. Tries agent first, then skill.",
-					Usage:       "crew registry install [<name> | --all]",
-					Flags: []FlagInfo{
-						{Name: "--all", Description: "Install all available agents and skills"},
-					},
-					Examples: []string{
-						"crew registry install crew",
-						"crew registry install crew-remote",
-						"crew registry install --all",
-					},
-				},
-				{
-					Name:        "rm",
-					Description: "Remove a locally installed agent or skill. Tries agent first, then skill.",
-					Usage:       "crew registry rm <name>",
-					Examples: []string{
-						"crew registry rm crew",
-						"crew registry rm crew-remote",
-					},
-				},
-				{
-					Name:        "update",
-					Description: "Update an installed agent/skill to the latest version from the registry, or update all installed items at once.",
-					Usage:       "crew registry update [<name> | --all]",
-					Flags: []FlagInfo{
-						{Name: "--all", Description: "Update all installed agents and skills"},
-					},
-					Examples: []string{
-						"crew registry update crew",
-						"crew registry update --all",
-					},
-				},
-			},
-		},
-		{
-			Name:        "profile",
-			Description: "Manage the shared Claude profile (CLAUDE.md) installed from the registry",
-			TUI:         true,
-			Subcommands: []CommandInfo{
-				{
-					Name:        "install",
-					Description: "Download and install the Claude profile from the registry to CLAUDE_CONFIG_DIR/CLAUDE.md",
-					Usage:       "crew profile install",
-				},
-				{
-					Name:        "update",
-					Description: "Check for changes and update the Claude profile to the latest version. Prints 'Already up to date' if unchanged.",
-					Usage:       "crew profile update",
-				},
-				{
-					Name:        "rm",
-					Description: "Remove the installed Claude profile",
-					Usage:       "crew profile rm",
-				},
-				{
-					Name:        "status",
-					Description: "Check if the Claude profile is installed. Prints 'installed' or 'not installed'.",
-					Usage:       "crew profile status",
-				},
-			},
-		},
-		{
 			Name:        "config",
 			Description: "View and edit crew settings (server IP, SSH host, proxy port, domain)",
 			TUI:         true,
@@ -193,52 +125,6 @@ var Root = CommandInfo{
 						"crew config set proxy_port 8080",
 						"crew config set domain dev.example.com",
 					},
-				},
-			},
-		},
-		{
-			Name:        "notify",
-			Description: "Configure push notifications via ntfy.sh — get alerted when Claude needs input",
-			TUI:         true,
-			Subcommands: []CommandInfo{
-				{
-					Name:        "setup",
-					Description: "Enable push notifications. Generates a random topic if none given. Creates a hook script and registers it in Claude settings.",
-					Usage:       "crew notify setup [<topic>]",
-					Examples: []string{
-						"crew notify setup",
-						"crew notify setup my-custom-topic",
-					},
-				},
-				{
-					Name:        "test",
-					Description: "Send a test notification to verify the setup is working",
-					Usage:       "crew notify test",
-				},
-				{
-					Name:        "rm",
-					Description: "Remove the notification hook script and unregister from Claude settings",
-					Usage:       "crew notify rm",
-				},
-			},
-		},
-		{
-			Name:        "plans",
-			Description: "Claude plan viewer dashboard — view agent plans in a web UI",
-			TUI:         true,
-			Subcommands: []CommandInfo{
-				{
-					Name:        "start",
-					Description: "Start the plan viewer server",
-					Usage:       "crew plans start [--no-proxy]",
-					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Bind directly to a localhost port instead of routing through the shared proxy. URL becomes http://localhost:<port>."},
-					},
-				},
-				{
-					Name:        "stop",
-					Description: "Stop the plan viewer server",
-					Usage:       "crew plans stop",
 				},
 			},
 		},
@@ -361,12 +247,12 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "start",
-					Description: "Start all dev servers for a worktree in tmux windows and launch the shared reverse proxy. URLs use the format: http://<server>--<workspace>--<worktree>.<domain>. Ports are always allocated fresh — the configured --port is reference only — so any number of worktrees can run at once. With --no-proxy, URLs are plain http://localhost:<allocated-port> and the proxy is not started. Bindings are resolved after ports are allocated and injected into each server's env; anything left alone or pointing at a port crew gave to another project is printed.",
-					Usage:       "crew dev start <workspace>[/<worktree>] [--no-proxy]",
+					Description: "Start all dev servers for a worktree in tmux windows. Ports are always allocated fresh — the configured --port is reference only — and a worktree keeps its ports across restarts, so any number of worktrees can run at once. URLs are http://localhost:<port>. With --proxy the shared reverse proxy starts too and URLs become http://<server>--<workspace>--<worktree>.<domain>, reachable from other devices on the LAN. Bindings are resolved after ports are allocated and injected into each server's env; anything left alone or pointing at a port crew gave to another project is printed.",
+					Usage:       "crew dev start <workspace>[/<worktree>] [--proxy]",
 					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Skip the reverse proxy; address each server as localhost:<allocated port>"},
+						{Name: "--proxy", Description: "Also run the shared reverse proxy and address servers by hostname"},
 					},
-					Examples: []string{"crew dev start feature-auth", "crew dev start phone-speak/wrk2", "crew dev start feature-auth --no-proxy"},
+					Examples: []string{"crew dev start feature-auth", "crew dev start phone-speak/wrk2", "crew dev start phone-speak/wrk2 --proxy"},
 				},
 				{
 					Name:        "stop",
@@ -377,11 +263,11 @@ var Root = CommandInfo{
 				{
 					Name:        "restart",
 					Description: "Stop and restart dev servers for a worktree",
-					Usage:       "crew dev restart <workspace>[/<worktree>] [--no-proxy]",
+					Usage:       "crew dev restart <workspace>[/<worktree>] [--proxy]",
 					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Skip the reverse proxy; address each server as localhost:<allocated port>"},
+						{Name: "--proxy", Description: "Also run the shared reverse proxy and address servers by hostname"},
 					},
-					Examples: []string{"crew dev restart feature-auth", "crew dev restart feature-auth --no-proxy"},
+					Examples: []string{"crew dev restart feature-auth", "crew dev restart phone-speak/wrk2 --proxy"},
 				},
 				{
 					Name:         "status",
