@@ -65,14 +65,22 @@ func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 		},
 	}}
 
-	routes, err := Start("ws-np", projects, "dev.local", 8080, true)
+	result, err := Start(StartParams{
+		Slug:      "ws-np",
+		Workspace: "ws",
+		Worktree:  "np",
+		Projects:  projects,
+		Domain:    "dev.local",
+		ProxyPort: 8080,
+		NoProxy:   true,
+	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if len(routes) != 1 {
-		t.Fatalf("got %d routes, want 1", len(routes))
+	if len(result.Routes) != 1 {
+		t.Fatalf("got %d routes, want 1", len(result.Routes))
 	}
-	r := routes[0]
+	r := result.Routes[0]
 	if !r.NoProxy {
 		t.Errorf("route.NoProxy = false, want true")
 	}

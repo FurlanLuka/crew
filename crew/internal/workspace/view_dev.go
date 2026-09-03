@@ -11,7 +11,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
@@ -291,40 +290,7 @@ func (v DevView) loadDevServers() tea.Cmd {
 }
 
 func (v DevView) startAllDevServers() tea.Cmd {
-	wsName := v.wsName
-	noProxy := v.noProxy
-	return func() tea.Msg {
-		if !exec.HasTmux() {
-			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
-		}
-
-		res, err := Resolve(Ref{Workspace: wsName})
-		if err != nil {
-			return errMsg{err}
-		}
-		if err := AssertDirectProjectsAvailable(res); err != nil {
-			return errMsg{err}
-		}
-
-		settings := config.LoadSettings()
-		host := dev.ResolveHostIP()
-		domain := settings.GetDomain(host)
-		proxyPort := settings.GetProxyPort()
-
-		projects := res.DevProjects()
-
-		if len(projects) == 0 {
-			return errMsg{fmt.Errorf("no dev servers configured")}
-		}
-
-		routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
-		if err != nil {
-			return errMsg{err}
-		}
-
-		status := fmt.Sprintf("Started %d dev servers", len(routes))
-		return devStartedMsg{status}
-	}
+	return v.runDevStart(false)
 }
 
 func (v DevView) stopAllDevServers() tea.Cmd {
@@ -337,40 +303,35 @@ func (v DevView) stopAllDevServers() tea.Cmd {
 }
 
 func (v DevView) restartAllDevServers() tea.Cmd {
+	return v.runDevStart(true)
+}
+
+// runDevStart backs both the start and restart actions; restart differs only
+// in tearing the existing session down first, and in the word it reports.
+func (v DevView) runDevStart(restart bool) tea.Cmd {
 	wsName := v.wsName
 	noProxy := v.noProxy
 	return func() tea.Msg {
-		if !exec.HasTmux() {
-			return errMsg{fmt.Errorf("tmux not found — install with: brew install tmux")}
-		}
-
-		dev.StopAll(dev.Slug(wsName))
-		dev.StopProxyIfIdle()
-
 		res, err := Resolve(Ref{Workspace: wsName})
 		if err != nil {
 			return errMsg{err}
 		}
-		if err := AssertDirectProjectsAvailable(res); err != nil {
-			return errMsg{err}
+
+		if restart {
+			dev.StopAll(res.Slug)
+			dev.StopProxyIfIdle()
 		}
 
-		settings := config.LoadSettings()
-		host := dev.ResolveHostIP()
-		domain := settings.GetDomain(host)
-		proxyPort := settings.GetProxyPort()
-
-		projects := res.DevProjects()
-		if len(projects) == 0 {
-			return errMsg{fmt.Errorf("no dev servers configured")}
-		}
-
-		routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
+		result, err := StartDev(res, noProxy)
 		if err != nil {
 			return errMsg{err}
 		}
 
-		return devStartedMsg{fmt.Sprintf("Restarted %d dev servers", len(routes))}
+		verb := "Started"
+		if restart {
+			verb = "Restarted"
+		}
+		return devStartedMsg{fmt.Sprintf("%s %d dev servers", verb, len(result.Routes))}
 	}
 }
 

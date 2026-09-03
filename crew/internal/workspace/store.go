@@ -87,7 +87,17 @@ func ListSummaries() ([]Summary, error) {
 	return summaries, nil
 }
 
+// devRoutesExist reports whether any of a workspace's worktrees has dev
+// servers running.
 func devRoutesExist(wsName string) bool {
-	info, err := os.Stat(dev.RoutesFilePath(dev.Slug(wsName)))
-	return err == nil && info.Size() > 2 // more than just "[]"
+	ws, err := Load(wsName)
+	if err != nil {
+		return dev.Running(dev.Slug(wsName))
+	}
+	for _, ref := range workspaceRefs(ws) {
+		if dev.Running(ref.Slug()) {
+			return true
+		}
+	}
+	return false
 }

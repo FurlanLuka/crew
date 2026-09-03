@@ -178,7 +178,7 @@ type TemplateContext struct {
 	InWorktree map[string]bool
 }
 
-var tokenPattern = regexp.MustCompile(`\{\{([a-z]+)(?::([^}]+))?\}\}`)
+var tokenPattern = regexp.MustCompile(`\{\{([a-z]+)(?::([^}]*))?\}\}`)
 
 // ExpandTemplate substitutes every token in a binding value. Pure.
 //

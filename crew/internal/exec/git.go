@@ -111,3 +111,60 @@ func PruneWorktrees(dir string) {
 	cmd.Dir = dir
 	cmd.Run()
 }
+
+// MoveGitWorktree relocates a checked-out worktree, keeping git's gitdir
+// pointer valid.
+//
+// The caller must create the destination's PARENT and leave the leaf absent:
+// `git worktree move` onto an existing directory nests inside it and exits 0,
+// producing a wrong path with a success code.
+//
+// `git worktree move` refuses locked worktrees and worktrees containing
+// submodules, so a plain rename plus `git worktree repair` is the fallback —
+// repair rewrites the pointers a rename leaves stale.
+func MoveGitWorktree(projectPath, oldPath, newPath string) error {
+	debug.Log("git", "worktree move %s → %s", oldPath, newPath)
+
+	cmd := exec.Command("git", "worktree", "move", oldPath, newPath)
+	cmd.Dir = projectPath
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err == nil {
+		return nil
+	}
+
+	msg := strings.TrimSpace(stderr.String())
+	debug.Log("git", "worktree move failed (%s) — falling back to rename + repair", msg)
+
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return fmt.Errorf("%s (rename fallback: %w)", msg, err)
+	}
+
+	repair := exec.Command("git", "worktree", "repair", newPath)
+	repair.Dir = projectPath
+	var repairErr bytes.Buffer
+	repair.Stderr = &repairErr
+	if err := repair.Run(); err != nil {
+		return fmt.Errorf("moved %s but `git worktree repair` failed: %s", newPath, strings.TrimSpace(repairErr.String()))
+	}
+	return nil
+}
+
+// RenameGitBranch renames the branch checked out at wtDir. Best-effort: a
+// worktree on a detached HEAD or an unexpected branch is left as it is.
+func RenameGitBranch(wtDir, oldName, newName string) {
+	if oldName == newName {
+		return
+	}
+
+	current, err := RunGitCommand(wtDir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil || strings.TrimSpace(current) != oldName {
+		debug.Log("git", "branch rename skipped in %s (on %q, expected %q)", wtDir, strings.TrimSpace(current), oldName)
+		return
+	}
+
+	debug.Log("git", "branch -m %s %s in %s", oldName, newName, wtDir)
+	cmd := exec.Command("git", "branch", "-m", newName)
+	cmd.Dir = wtDir
+	cmd.Run()
+}

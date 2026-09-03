@@ -34,10 +34,19 @@ var jsonOutput bool
 
 // extractFlag returns args with all occurrences of flag removed, plus whether
 // it was present.
+// extractFlag pulls a global flag out of argv wherever it appears.
+//
+// It stops at "--": everything after that belongs to a child process (see
+// `crew run`), so `crew run ws/wt proj -- node --json` has to leave the child's
+// flag alone rather than eating it and switching crew to JSON output.
 func extractFlag(args []string, flag string) ([]string, bool) {
 	out := make([]string, 0, len(args))
 	found := false
-	for _, a := range args {
+	for i, a := range args {
+		if a == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
 		if a == flag {
 			found = true
 			continue
@@ -59,7 +68,6 @@ func printJSON(v any) {
 
 func main() {
 	config.Init()
-	workspace.Migrate()
 
 	// Strip the global --json flag before computing cmd so it works in any
 	// position and is not rejected by strict per-command arg parsers.
@@ -153,6 +161,18 @@ func main() {
 
 	case "start":
 		cmdStart()
+		return
+
+	case "env":
+		cmdEnv()
+		return
+
+	case "run":
+		cmdRun()
+		return
+
+	case "migrate":
+		cmdMigrate()
 		return
 
 	case "dev":
@@ -291,7 +311,7 @@ func mustResolve(arg string) *workspace.Resolved {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings]\n")
 		os.Exit(1)
 	}
 
@@ -300,8 +320,12 @@ func cmdLs() {
 		cmdLsProjects()
 	case "workspaces":
 		cmdLsWorkspaces()
+	case "worktrees":
+		cmdLsWorktrees()
+	case "bindings":
+		cmdLsBindings()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -507,6 +531,12 @@ func cmdRm() {
 	case "workspace":
 		cmdRmWorkspaceProject()
 		return
+	case "worktree":
+		cmdRmWorktree()
+		return
+	case "binding":
+		cmdRmBinding()
+		return
 	}
 
 	// Default: remove entire workspace
@@ -563,7 +593,7 @@ func cmdRmWorkspaceProject() {
 
 func cmdAdd() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> | crew add workspace <name> [<project> --role=<role>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add [project|workspace|worktree|binding] ...\n")
 		os.Exit(1)
 	}
 
@@ -572,8 +602,12 @@ func cmdAdd() {
 		cmdAddProject()
 	case "workspace":
 		cmdAddWorkspace()
+	case "worktree":
+		cmdAddWorktree()
+	case "binding":
+		cmdAddBinding()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown add target '%s'.\nUsage: crew add [project|workspace]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown add target '%s'.\nUsage: crew add [project|workspace|worktree|binding]\n", os.Args[2])
 		os.Exit(1)
 	}
 }

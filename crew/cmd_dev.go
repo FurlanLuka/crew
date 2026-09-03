@@ -9,7 +9,6 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -288,55 +287,49 @@ func parseNoProxyFlag(args []string) bool {
 	return noProxy
 }
 
-// printRouteURLs prints one URL per route, one per line, indented.
-func printRouteURLs(routes []dev.Route, slug dev.Slug, domain string, proxyPort int) {
-	for _, r := range routes {
-		fmt.Printf("  %s\n", dev.RouteURL(r, slug, domain, proxyPort))
-	}
-}
-
 func cmdDevStart() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev start <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev start <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
+	startDev(os.Args[3], parseNoProxyFlag(os.Args[4:]), false)
+}
 
-	wsName := os.Args[3]
-	noProxy := parseNoProxyFlag(os.Args[4:])
+// startDev backs both `crew dev start` and `crew dev restart`; restart differs
+// only in tearing the existing session down first, and in the word it reports.
+func startDev(arg string, noProxy, restart bool) {
+	res := mustResolve(arg)
 
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
+	if restart {
+		dev.StopAll(res.Slug)
 	}
 
-	if !exec.HasTmux() {
-		fmt.Fprintf(os.Stderr, "Error: tmux not found — install with: brew install tmux\n")
-		os.Exit(1)
-	}
-
-	settings := config.LoadSettings()
-	host := dev.ResolveHostIP()
-	domain := settings.GetDomain(host)
-	proxyPort := settings.GetProxyPort()
-
-	res := mustResolve(wsName)
-	projects := res.DevProjects()
-	if len(projects) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
-		os.Exit(1)
-	}
-
-	routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
+	result, err := workspace.StartDev(res, noProxy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Dev servers for %s\n\n", wsName)
-	printRouteURLs(routes, res.Slug, domain, proxyPort)
+	verb := "Dev servers for"
+	if restart {
+		verb = "Restarted dev servers for"
+	}
+	fmt.Printf("%s %s\n\n", verb, res.Ref)
+	for _, url := range workspace.DevURLs(res, result.Routes) {
+		fmt.Printf("  %s\n", url)
+	}
 
-	fmt.Println()
-	fmt.Printf("Session: %s\n", dev.SessionName(res.Slug))
+	if summary := dev.FormatResolutions(result.Resolutions); summary != "" {
+		fmt.Printf("\n%s", summary)
+	}
+	if warnings := dev.FormatConflicts(result.Conflicts); warnings != "" {
+		fmt.Print(warnings)
+	}
+
+	fmt.Printf("\nSession: %s\n", dev.SessionName(res.Slug))
+	if len(result.Resolutions) > 0 {
+		fmt.Printf("crew env %s <project> — full table\n", res.Ref)
+	}
 }
 
 func cmdDevStop() {
@@ -364,49 +357,10 @@ func cmdDevStop() {
 
 func cmdDevRestart() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
-
-	wsName := os.Args[3]
-	noProxy := parseNoProxyFlag(os.Args[4:])
-
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
-
-	if !exec.HasTmux() {
-		fmt.Fprintf(os.Stderr, "Error: tmux not found — install with: brew install tmux\n")
-		os.Exit(1)
-	}
-
-	// Stop existing servers before restarting
-	dev.StopAll(dev.Slug(wsName))
-
-	settings := config.LoadSettings()
-	host := dev.ResolveHostIP()
-	domain := settings.GetDomain(host)
-	proxyPort := settings.GetProxyPort()
-
-	res := mustResolve(wsName)
-	projects := res.DevProjects()
-	if len(projects) == 0 {
-		fmt.Fprintf(os.Stderr, "Error: no dev_servers configured — configure via: crew dev setup <project>\n")
-		os.Exit(1)
-	}
-
-	routes, err := dev.Start(res.Slug, projects, domain, proxyPort, noProxy)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Restarted dev servers for %s\n\n", wsName)
-	printRouteURLs(routes, res.Slug, domain, proxyPort)
-
-	fmt.Println()
-	fmt.Printf("Session: %s\n", dev.SessionName(res.Slug))
+	startDev(os.Args[3], parseNoProxyFlag(os.Args[4:]), true)
 }
 
 func cmdDevLogs() {

@@ -35,6 +35,10 @@ func workspaceRefs(ws *Workspace) []Ref {
 	return refs
 }
 
+// Refs is the exported form of workspaceRefs, for callers listing a
+// workspace's worktrees.
+func Refs(ws *Workspace) []Ref { return workspaceRefs(ws) }
+
 // createProjectWorktree checks a project out into one worktree.
 func createProjectWorktree(ref Ref, p project.Project) error {
 	wtDir := WorktreePath(ref, p.Name)

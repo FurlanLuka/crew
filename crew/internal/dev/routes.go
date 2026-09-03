@@ -81,6 +81,13 @@ func removeRoutesFile(slug Slug) {
 	os.Remove(RoutesFilePath(slug))
 }
 
+// Running reports whether a worktree currently has dev servers up, which is
+// exactly whether it has a non-empty route file.
+func Running(slug Slug) bool {
+	routes, err := LoadRoutes(slug)
+	return err == nil && len(routes) > 0
+}
+
 // WsRoutes pairs a slug with the routes running under it.
 type WsRoutes struct {
 	Slug   Slug

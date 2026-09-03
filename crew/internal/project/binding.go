@@ -1,0 +1,162 @@
+package project
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/FurlanLuka/crew/crew/internal/dev"
+)
+
+var (
+	validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	bindingToken = regexp.MustCompile(`\{\{([a-z]+)(?::([^}]*))?\}\}`)
+)
+
+// ValidateBinding checks a binding against the project pool before it is saved.
+//
+// Every check here is one that would otherwise surface as a variable silently
+// left alone at dev-server start, which is far away from the edit that caused
+// it. Failing the edit is the cheap place to be wrong.
+func ValidateBinding(projName string, b Binding) error {
+	if !validVarName.MatchString(b.Var) {
+		return fmt.Errorf("'%s' is not a valid environment variable name", b.Var)
+	}
+	if b.Value == "" {
+		return fmt.Errorf("binding for %s has no value", b.Var)
+	}
+
+	for _, m := range bindingToken.FindAllStringSubmatch(b.Value, -1) {
+		kind, arg := m[1], m[2]
+
+		switch kind {
+		case "worktree", "workspace":
+			// The pattern matches "{{worktree:}}" too, with an empty argument;
+			// a colon with nothing after it is a typo, not a valid token.
+			if strings.Contains(m[0], ":") {
+				return fmt.Errorf("{{%s}} takes no argument", kind)
+			}
+		case "url", "port":
+			if err := validateTarget(arg); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown token {{%s}} — expected url, port, worktree or workspace", kind)
+		}
+	}
+	return nil
+}
+
+// validateTarget checks that a {{url:…}} / {{port:…}} target names a project in
+// the pool and, when it omits the server, that the project has exactly one.
+func validateTarget(arg string) error {
+	if arg == "" {
+		return fmt.Errorf("missing target — expected {{url:project}} or {{url:project/server}}")
+	}
+
+	projName, server, hasServer := strings.Cut(arg, "/")
+	target := Get(projName)
+	if target == nil {
+		return fmt.Errorf("no project '%s' in the pool", projName)
+	}
+
+	if hasServer {
+		for _, ds := range target.DevServers {
+			if ds.Name == server {
+				return nil
+			}
+		}
+		return fmt.Errorf("project '%s' has no dev server '%s' (has: %s)",
+			projName, server, serverNames(*target))
+	}
+
+	switch len(target.DevServers) {
+	case 0:
+		return fmt.Errorf("project '%s' has no dev servers configured", projName)
+	case 1:
+		return nil
+	default:
+		return fmt.Errorf("project '%s' has %d dev servers — name one, as %s/<server> (has: %s)",
+			projName, len(target.DevServers), projName, serverNames(*target))
+	}
+}
+
+func serverNames(p Project) string {
+	names := make([]string, 0, len(p.DevServers))
+	for _, ds := range p.DevServers {
+		names = append(names, ds.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// AddBinding adds or replaces a binding on a project in the pool.
+func AddBinding(projName string, b Binding) error {
+	if err := ValidateBinding(projName, b); err != nil {
+		return err
+	}
+
+	projects, err := List()
+	if err != nil {
+		return err
+	}
+	for i, p := range projects {
+		if p.Name != projName {
+			continue
+		}
+		for j, existing := range p.Bindings {
+			if existing.Var == b.Var {
+				projects[i].Bindings[j] = b
+				return save(projects)
+			}
+		}
+		projects[i].Bindings = append(projects[i].Bindings, b)
+		return save(projects)
+	}
+	return fmt.Errorf("project '%s' not found", projName)
+}
+
+// RemoveBinding drops a binding by variable name.
+func RemoveBinding(projName, varName string) error {
+	projects, err := List()
+	if err != nil {
+		return err
+	}
+	for i, p := range projects {
+		if p.Name != projName {
+			continue
+		}
+		var filtered []Binding
+		found := false
+		for _, b := range p.Bindings {
+			if b.Var == varName {
+				found = true
+				continue
+			}
+			filtered = append(filtered, b)
+		}
+		if !found {
+			return fmt.Errorf("project '%s' has no binding for %s", projName, varName)
+		}
+		projects[i].Bindings = filtered
+		return save(projects)
+	}
+	return fmt.Errorf("project '%s' not found", projName)
+}
+
+// ConfiguredPorts maps each configured dev-server port to the projects that
+// claim it. A port with two claimants is why Proposal carries Ambiguous rather
+// than guessing.
+func ConfiguredPorts() map[int][]dev.ProjectServer {
+	ports := make(map[int][]dev.ProjectServer)
+
+	projects, err := List()
+	if err != nil {
+		return ports
+	}
+	for _, p := range projects {
+		for _, ds := range p.DevServers {
+			ports[ds.Port] = append(ports[ds.Port], dev.ProjectServer{Project: p.Name, Server: ds.Name})
+		}
+	}
+	return ports
+}

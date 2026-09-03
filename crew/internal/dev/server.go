@@ -45,10 +45,6 @@ func LogFile(slug Slug, serverName string) string {
 	return filepath.Join(LogDir(slug), serverName+".log")
 }
 
-// Start starts dev servers for one worktree. When noProxy is false it also
-// launches the shared reverse proxy; when true, each server binds to its
-// configured Port on localhost and the proxy is skipped.
-// projects should already have the correct paths (worktree paths).
 // PlannedServer is one dev server with its port already allocated and its
 // working directory already joined — the pairing of project, server and route
 // that Start's two passes would otherwise have to rebuild positionally.
@@ -113,36 +109,65 @@ func buildServerCommand(command string, port int) string {
 	return "PORT=" + portStr + " " + strings.ReplaceAll(command, "$PORT", portStr)
 }
 
-// Start starts dev servers for one worktree. When noProxy is false it also
+// StartParams is everything Start needs for one worktree.
+type StartParams struct {
+	Slug      Slug
+	Workspace string
+	Worktree  string
+	Projects  []DevProject
+	Overrides map[string]string
+	Domain    string
+	ProxyPort int
+	NoProxy   bool
+}
+
+// StartResult reports what started and what crew has to say about it.
+type StartResult struct {
+	Routes      []Route
+	Resolutions []Resolution
+	Conflicts   []Conflict
+}
+
+// Start starts dev servers for one worktree. When NoProxy is false it also
 // launches the shared reverse proxy; when true, each server binds to its
 // configured Port on localhost and the proxy is skipped.
-// projects should already have the correct paths (worktree paths).
-func Start(slug Slug, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
+// Projects should already have the correct paths (worktree paths).
+func Start(p StartParams) (StartResult, error) {
 	// Allocate every port before starting anything: dev servers reference each
 	// other's ports, so allocation has to complete before the first one runs.
 	var ports []int
-	if !noProxy {
-		for range countServers(projects) {
+	if !p.NoProxy {
+		for range countServers(p.Projects) {
 			freePort, err := FindFreePort()
 			if err != nil {
-				return nil, fmt.Errorf("failed to find free port: %w", err)
+				return StartResult{}, fmt.Errorf("failed to find free port: %w", err)
 			}
 			ports = append(ports, freePort)
 		}
 	}
 
-	planned := PlanServers(projects, ports, noProxy)
+	planned := PlanServers(p.Projects, ports, p.NoProxy)
 
 	newRoutes := make([]Route, 0, len(planned))
 	for _, ps := range planned {
 		newRoutes = append(newRoutes, ps.Route)
 	}
 
-	if err := saveRoutes(slug, newRoutes); err != nil {
-		return nil, err
+	if err := saveRoutes(p.Slug, newRoutes); err != nil {
+		return StartResult{}, err
 	}
 
-	session := SessionName(slug)
+	resolutions := ResolveBindings(ResolveParams{
+		Projects:  p.Projects,
+		Ports:     IndexPorts(planned),
+		Workspace: p.Workspace,
+		Worktree:  p.Worktree,
+		Overrides: p.Overrides,
+	})
+	LogResolutions(p.Slug, resolutions)
+
+	byProject := GroupResolutions(resolutions)
+	session := SessionName(p.Slug)
 
 	// Kill any existing session first so Start is idempotent. Without this, a
 	// second start while servers are already running would append duplicate
@@ -154,33 +179,39 @@ func Start(slug Slug, projects []DevProject, domain string, proxyPort int, noPro
 	// Ensure tmux session exists
 	if !crewExec.TmuxSessionExists(session) {
 		if err := crewExec.CreateTmuxSession(session, ""); err != nil {
-			return nil, fmt.Errorf("failed to create tmux session: %w", err)
+			return StartResult{}, fmt.Errorf("failed to create tmux session: %w", err)
 		}
 	}
 
 	for _, ps := range planned {
-		windowName := fmt.Sprintf("%s/%s", slug, ps.Server.Name)
+		windowName := fmt.Sprintf("%s/%s", p.Slug, ps.Server.Name)
 
-		logFile := LogFile(slug, ps.Server.Name)
+		logFile := LogFile(p.Slug, ps.Server.Name)
 		if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
-			return nil, fmt.Errorf("failed to create log dir: %w", err)
+			return StartResult{}, fmt.Errorf("failed to create log dir: %w", err)
 		}
 		if err := os.WriteFile(logFile, nil, 0o644); err != nil {
-			return nil, fmt.Errorf("failed to truncate log file: %w", err)
+			return StartResult{}, fmt.Errorf("failed to truncate log file: %w", err)
 		}
+
+		command := EnvPrefix(byProject[ps.Project]) + buildServerCommand(ps.Server.Command, ps.Route.InternalPort)
 
 		crewExec.TmuxNewWindow(session, windowName, ps.Dir)
 		crewExec.TmuxPipePaneToFile(session, windowName, logFile)
-		_ = crewExec.TmuxSendKeys(session+":"+windowName, buildServerCommand(ps.Server.Command, ps.Route.InternalPort))
+		_ = crewExec.TmuxSendKeys(session+":"+windowName, command)
 	}
 
-	if !noProxy {
-		if err := EnsureProxy(domain, proxyPort); err != nil {
-			return nil, err
+	if !p.NoProxy {
+		if err := EnsureProxy(p.Domain, p.ProxyPort); err != nil {
+			return StartResult{}, err
 		}
 	}
 
-	return newRoutes, nil
+	return StartResult{
+		Routes:      newRoutes,
+		Resolutions: resolutions,
+		Conflicts:   InspectEnvConflicts(p.Projects, resolutions),
+	}, nil
 }
 
 // StopAll kills dev sessions. An empty slug kills all dev sessions.
