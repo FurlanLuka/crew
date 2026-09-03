@@ -144,3 +144,27 @@ func plural(n int, one, many string) string {
 	}
 	return fmt.Sprintf("%d %s", n, many)
 }
+
+// StatusRow is one running dev server as `crew dev status` reports it.
+type StatusRow struct {
+	Worktree     string `json:"worktree"`
+	ServerName   string `json:"server_name"`
+	ExternalPort int    `json:"external_port"`
+	URL          string `json:"url"`
+}
+
+// StatusRows flattens route files into display rows. Pure.
+func StatusRows(all []WsRoutes, domain string, proxyPort int) []StatusRow {
+	rows := []StatusRow{}
+	for _, wr := range all {
+		for _, r := range wr.Routes {
+			rows = append(rows, StatusRow{
+				Worktree:     DisplayRef(wr.Slug),
+				ServerName:   r.ServerName,
+				ExternalPort: r.ExternalPort,
+				URL:          RouteURL(r, wr.Slug, domain, proxyPort),
+			})
+		}
+	}
+	return rows
+}

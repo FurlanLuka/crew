@@ -86,7 +86,6 @@ func WorktreeNames(ws *Workspace) []string {
 	return names
 }
 
-// Create creates a new empty workspace with its directory.
 // DefaultWorktree is the worktree a new workspace starts with, and what
 // migration names the single worktree of a workspace that had no naming
 // convention to read.
@@ -164,7 +163,7 @@ func AddProject(wsName, projName, role, mode string) error {
 			return fmt.Errorf("project '%s' cannot be used in direct mode: %w", projName, err)
 		}
 	} else {
-		for _, ref := range workspaceRefs(ws) {
+		for _, ref := range Refs(ws) {
 			if err := createProjectWorktree(ref, *p); err != nil {
 				return err
 			}
@@ -191,7 +190,7 @@ func RemoveProject(wsName, projName string) error {
 
 	for _, wp := range ws.Projects {
 		if wp.Name == projName {
-			for _, ref := range workspaceRefs(ws) {
+			for _, ref := range Refs(ws) {
 				cleanupWorktree(ref, wp)
 			}
 			break
@@ -219,7 +218,7 @@ func Remove(name string) error {
 		// Every worktree has its own dev session, route file, log directory,
 		// prompt and .code-workspace — tearing down only the workspace name
 		// would leave each of those orphaned per worktree.
-		for _, ref := range workspaceRefs(ws) {
+		for _, ref := range Refs(ws) {
 			removeWorktreeArtifacts(ref)
 			for _, wp := range ws.Projects {
 				cleanupWorktree(ref, wp)

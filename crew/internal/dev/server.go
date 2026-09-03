@@ -102,11 +102,14 @@ func countServers(projects []DevProject) int {
 	return n
 }
 
-// buildServerCommand assembles the shell line for one dev server. Pure, so the
-// exact string can be asserted — it is sent to tmux and never returned.
-func buildServerCommand(command string, port int) string {
-	portStr := fmt.Sprintf("%d", port)
-	return "PORT=" + portStr + " " + strings.ReplaceAll(command, "$PORT", portStr)
+// ServerCommand assembles the shell line for one dev server: exports for
+// this project's resolved variables, then PORT, then the configured command
+// with $PORT expanded. Pure, so the exact string can be asserted — it is sent
+// to tmux and never returned, and it is the only place resolution reaches a
+// process.
+func ServerCommand(ps PlannedServer, resolutions []Resolution) string {
+	portStr := fmt.Sprintf("%d", ps.Route.InternalPort)
+	return EnvPrefix(resolutions) + "PORT=" + portStr + " " + strings.ReplaceAll(ps.Server.Command, "$PORT", portStr)
 }
 
 // StartParams is everything Start needs for one worktree.
@@ -176,7 +179,6 @@ func Start(p StartParams) (StartResult, error) {
 	// servers keep running untracked and leak. KillTmuxSession tree-kills.
 	crewExec.KillTmuxSession(session)
 
-	// Ensure tmux session exists
 	if !crewExec.TmuxSessionExists(session) {
 		if err := crewExec.CreateTmuxSession(session, ""); err != nil {
 			return StartResult{}, fmt.Errorf("failed to create tmux session: %w", err)
@@ -194,11 +196,9 @@ func Start(p StartParams) (StartResult, error) {
 			return StartResult{}, fmt.Errorf("failed to truncate log file: %w", err)
 		}
 
-		command := EnvPrefix(byProject[ps.Project]) + buildServerCommand(ps.Server.Command, ps.Route.InternalPort)
-
 		crewExec.TmuxNewWindow(session, windowName, ps.Dir)
 		crewExec.TmuxPipePaneToFile(session, windowName, logFile)
-		_ = crewExec.TmuxSendKeys(session+":"+windowName, command)
+		_ = crewExec.TmuxSendKeys(session+":"+windowName, ServerCommand(ps, byProject[ps.Project]))
 	}
 
 	if !p.NoProxy {

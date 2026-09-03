@@ -82,7 +82,7 @@ func ListSummaries() ([]Summary, error) {
 		if err != nil {
 			continue
 		}
-		for _, ref := range workspaceRefs(ws) {
+		for _, ref := range Refs(ws) {
 			summaries = append(summaries, Summary{
 				Ref:          ref,
 				Name:         ref.String(),
@@ -104,7 +104,7 @@ func devRoutesExist(wsName string) bool {
 	if err != nil {
 		return dev.Running(dev.Slug(wsName))
 	}
-	for _, ref := range workspaceRefs(ws) {
+	for _, ref := range Refs(ws) {
 		if dev.Running(ref.Slug()) {
 			return true
 		}

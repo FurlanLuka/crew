@@ -139,7 +139,7 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.actionMsg = "Starting dev servers..."
 		v.statusMsg = ""
 		v.err = nil
-		return v, tea.Batch(v.spinner.Tick, v.startAllDevServers())
+		return v, tea.Batch(v.spinner.Tick, v.runDevStart(false))
 	case msg.String() == "X":
 		v.loading = true
 		v.actionMsg = "Stopping dev servers..."
@@ -151,7 +151,7 @@ func (v DevView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.actionMsg = "Restarting dev servers..."
 		v.statusMsg = ""
 		v.err = nil
-		return v, tea.Batch(v.spinner.Tick, v.restartAllDevServers())
+		return v, tea.Batch(v.spinner.Tick, v.runDevStart(true))
 	case msg.String() == "p":
 		v.noProxy = !v.noProxy
 		v.err = nil
@@ -285,10 +285,6 @@ func (v DevView) loadDevServers() tea.Cmd {
 	}
 }
 
-func (v DevView) startAllDevServers() tea.Cmd {
-	return v.runDevStart(false)
-}
-
 func (v DevView) stopAllDevServers() tea.Cmd {
 	ref := v.ref
 	return func() tea.Msg {
@@ -296,10 +292,6 @@ func (v DevView) stopAllDevServers() tea.Cmd {
 		dev.StopProxyIfIdle()
 		return devStoppedMsg{}
 	}
-}
-
-func (v DevView) restartAllDevServers() tea.Cmd {
-	return v.runDevStart(true)
 }
 
 // runDevStart backs both the start and restart actions; restart differs only
@@ -313,12 +305,7 @@ func (v DevView) runDevStart(restart bool) tea.Cmd {
 			return errMsg{err}
 		}
 
-		if restart {
-			dev.StopAll(res.Slug)
-			dev.StopProxyIfIdle()
-		}
-
-		result, err := StartDev(res, noProxy)
+		result, err := StartDev(res, noProxy, restart)
 		if err != nil {
 			return errMsg{err}
 		}

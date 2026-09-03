@@ -244,32 +244,13 @@ func cmdDevStatus() {
 		}
 	}
 
-	type routeOut struct {
-		Workspace    string `json:"workspace"`
-		ServerName   string `json:"server_name"`
-		ExternalPort int    `json:"external_port"`
-		URL          string `json:"url"`
-	}
-
-	out := []routeOut{}
-	for _, wr := range allRoutes {
-		for _, r := range wr.Routes {
-			url := dev.RouteURL(r, wr.Slug, domain, proxyPort)
-			out = append(out, routeOut{
-				Workspace:    dev.DisplayRef(wr.Slug),
-				ServerName:   r.ServerName,
-				ExternalPort: r.ExternalPort,
-				URL:          url,
-			})
-		}
-	}
-
+	rows := dev.StatusRows(allRoutes, domain, proxyPort)
 	if jsonOutput {
-		printJSON(out)
+		printJSON(rows)
 		return
 	}
-	for _, r := range out {
-		fmt.Printf("%s\t%s\t%d\t%s\n", r.Workspace, r.ServerName, r.ExternalPort, r.URL)
+	for _, r := range rows {
+		fmt.Printf("%s\t%s\t%d\t%s\n", r.Worktree, r.ServerName, r.ExternalPort, r.URL)
 	}
 }
 
@@ -301,12 +282,11 @@ func cmdDevStart() {
 // only in tearing the existing session down first, and in the word it reports.
 func startDev(arg string, noProxy, restart bool) {
 	res := mustResolve(arg)
-
-	if restart {
-		dev.StopAll(res.Slug)
+	if res.Ref.Worktree == "" {
+		fmt.Fprintf(os.Stderr, "note: workspace '%s' predates worktrees — run `crew migrate` to get {{worktree}} and a second working copy\n\n", res.Ref.Workspace)
 	}
 
-	result, err := workspace.StartDev(res, noProxy)
+	result, err := workspace.StartDev(res, noProxy, restart)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -395,12 +375,10 @@ func cmdDevRestart() {
 
 func cmdDevLogs() {
 	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev logs <workspace> <server> [-f|--follow]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev logs <workspace>[/<worktree>] <server> [-f|--follow]\n")
 		os.Exit(1)
 	}
 
-	wsName := os.Args[3]
-	serverName := os.Args[4]
 	follow := false
 	for _, arg := range os.Args[5:] {
 		switch arg {
@@ -412,14 +390,12 @@ func cmdDevLogs() {
 		}
 	}
 
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
+	res := mustResolve(os.Args[3])
+	serverName := os.Args[4]
 
-	logFile := dev.LogFile(dev.Slug(wsName), serverName)
+	logFile := dev.LogFile(res.Slug, serverName)
 	if _, err := os.Stat(logFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: no log file for %s/%s — has the server been started?\n", wsName, serverName)
+		fmt.Fprintf(os.Stderr, "Error: no log file for %s %s — has the server been started?\n", res.Ref, serverName)
 		os.Exit(1)
 	}
 

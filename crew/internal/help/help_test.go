@@ -69,7 +69,7 @@ func TestLsSubcommands(t *testing.T) {
 		t.Fatal("ls command not found")
 	}
 
-	expected := []string{"workspaces", "worktrees", "projects", "bindings"}
+	expected := []string{"workspaces", "worktrees", "projects", "bindings", "overrides"}
 	for _, name := range expected {
 		if findSubcommand(ls, name) == nil {
 			t.Errorf("ls subcommand %q not found", name)
@@ -160,7 +160,7 @@ func TestAddSubcommands(t *testing.T) {
 		t.Fatal("add command not found")
 	}
 
-	expected := []string{"project", "workspace", "worktree", "binding"}
+	expected := []string{"project", "workspace", "worktree", "binding", "override"}
 	for _, name := range expected {
 		if findSubcommand(add, name) == nil {
 			t.Errorf("add subcommand %q not found", name)
@@ -287,7 +287,7 @@ func TestRmSubcommands(t *testing.T) {
 		t.Fatal("rm command not found")
 	}
 
-	for _, name := range []string{"project", "workspace", "worktree", "binding"} {
+	for _, name := range []string{"project", "workspace", "worktree", "binding", "override"} {
 		if findSubcommand(rm, name) == nil {
 			t.Errorf("rm subcommand %q not found", name)
 		}

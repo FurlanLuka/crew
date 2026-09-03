@@ -8,11 +8,13 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
-// StartDev starts a worktree's dev servers.
+// StartDev starts a worktree's dev servers. With restart, the existing session
+// is torn down first; the proxy is left running, since Start would only bring
+// it straight back.
 //
 // The single place the checks, settings lookup and dev.Start call live — the
 // CLI's start and restart paths and the TUI's two were four copies of it.
-func StartDev(res *Resolved, noProxy bool) (dev.StartResult, error) {
+func StartDev(res *Resolved, noProxy, restart bool) (dev.StartResult, error) {
 	if !exec.HasTmux() {
 		return dev.StartResult{}, fmt.Errorf("tmux not found — install with: brew install tmux")
 	}
@@ -21,8 +23,12 @@ func StartDev(res *Resolved, noProxy bool) (dev.StartResult, error) {
 	}
 
 	projects := res.DevProjects()
-	if len(projects) == 0 {
+	if !hasServers(projects) {
 		return dev.StartResult{}, fmt.Errorf("no dev_servers configured — configure via: crew dev setup <project>")
+	}
+
+	if restart {
+		dev.StopAll(res.Slug)
 	}
 
 	settings := config.LoadSettings()
@@ -49,4 +55,13 @@ func DevURLs(res *Resolved, routes []dev.Route) []string {
 		urls = append(urls, dev.RouteURL(r, res.Slug, domain, proxyPort))
 	}
 	return urls
+}
+
+func hasServers(projects []dev.DevProject) bool {
+	for _, p := range projects {
+		if len(p.DevServers) > 0 {
+			return true
+		}
+	}
+	return false
 }

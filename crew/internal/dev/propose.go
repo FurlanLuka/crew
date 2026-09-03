@@ -3,6 +3,7 @@ package dev
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Proposal is a binding crew thinks a project's env file is already asking for.
@@ -47,7 +48,7 @@ func ProposeBindings(envValues map[string]string, configured map[int][]ProjectSe
 			Ambiguous: len(owners) > 1,
 		}
 		if !p.Ambiguous {
-			p.Template = ProposeTemplate(owners[0], configured)
+			p.Template = ProposeTemplate(value, owners[0], configured)
 		}
 		proposals = append(proposals, p)
 	}
@@ -58,17 +59,52 @@ func ProposeBindings(envValues map[string]string, configured map[int][]ProjectSe
 
 // ProposeTemplate writes the shortest template that names a target
 // unambiguously — the bare project form when it owns one server.
-func ProposeTemplate(target ProjectServer, configured map[int][]ProjectServer) string {
-	servers := 0
+//
+// The env file's scheme and path are kept: {{url:…}} expands to http://, so
+// proposing it for ws://localhost:7880 would silently turn a WebSocket URL into
+// an HTTP one, and --apply would write that without anyone seeing it.
+func ProposeTemplate(value string, target ProjectServer, configured map[int][]ProjectServer) string {
+	ref := target.Project
+	if configuredServerCount(target.Project, configured) > 1 {
+		ref = target.Project + "/" + target.Server
+	}
+
+	scheme, rest := splitScheme(strings.TrimSpace(value))
+	_, tail := splitHostPort(rest)
+
+	if scheme == "http" && tail == "" {
+		return fmt.Sprintf("{{url:%s}}", ref)
+	}
+	if scheme == "" {
+		return fmt.Sprintf("localhost:{{port:%s}}%s", ref, tail)
+	}
+	return fmt.Sprintf("%s://localhost:{{port:%s}}%s", scheme, ref, tail)
+}
+
+func configuredServerCount(project string, configured map[int][]ProjectServer) int {
+	n := 0
 	for _, owners := range configured {
 		for _, o := range owners {
-			if o.Project == target.Project {
-				servers++
+			if o.Project == project {
+				n++
 			}
 		}
 	}
-	if servers == 1 {
-		return fmt.Sprintf("{{url:%s}}", target.Project)
+	return n
+}
+
+// splitScheme separates "ws://host:port/x" into ("ws", "host:port/x").
+func splitScheme(value string) (scheme, rest string) {
+	if i := strings.Index(value, "://"); i > 0 {
+		return value[:i], value[i+3:]
 	}
-	return fmt.Sprintf("{{url:%s/%s}}", target.Project, target.Server)
+	return "", value
+}
+
+// splitHostPort separates "host:port/path?q" into ("host:port", "/path?q").
+func splitHostPort(rest string) (hostPort, tail string) {
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		return rest[:i], rest[i:]
+	}
+	return rest, ""
 }

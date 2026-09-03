@@ -55,7 +55,7 @@ func TestParseRef(t *testing.T) {
 	}
 }
 
-func TestRefSlugRoundTrip(t *testing.T) {
+func TestRefSlugAndDisplayAgree(t *testing.T) {
 	tests := []struct {
 		ref  Ref
 		slug dev.Slug
@@ -70,8 +70,8 @@ func TestRefSlugRoundTrip(t *testing.T) {
 			if got := tt.ref.Slug(); got != tt.slug {
 				t.Errorf("Slug = %q, want %q", got, tt.slug)
 			}
-			if got := ParseSlug(tt.slug); got != tt.ref {
-				t.Errorf("ParseSlug(%q) = %+v, want %+v", tt.slug, got, tt.ref)
+			if got := dev.DisplayRef(tt.slug); got != tt.ref.String() {
+				t.Errorf("DisplayRef(%q) = %q, want %q", tt.slug, got, tt.ref.String())
 			}
 		})
 	}

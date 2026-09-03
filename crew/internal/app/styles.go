@@ -11,3 +11,31 @@ var (
 	Selected  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	HelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
+
+// MoveCursor steps a list cursor by delta, clamped to [0, n).
+func MoveCursor(cur, delta, n int) int {
+	next := cur + delta
+	if next < 0 || n == 0 {
+		return 0
+	}
+	if next >= n {
+		return n - 1
+	}
+	return next
+}
+
+// RowPrefix is the two-column gutter every list row starts with.
+func RowPrefix(selected bool) string {
+	if selected {
+		return Selected.Render("> ")
+	}
+	return "  "
+}
+
+// RowName renders a row's primary label, highlighted when selected.
+func RowName(name string, selected bool) string {
+	if selected {
+		return Selected.Render(name)
+	}
+	return name
+}

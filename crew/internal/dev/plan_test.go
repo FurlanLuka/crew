@@ -115,7 +115,15 @@ func TestPlanServers_NoServers(t *testing.T) {
 	}
 }
 
-func TestBuildServerCommand(t *testing.T) {
+func planned(command string, port int) PlannedServer {
+	return PlannedServer{
+		Project: "speak-api",
+		Server:  DevServerConfig{Name: "api", Command: command},
+		Route:   Route{Project: "speak-api", ServerName: "api", InternalPort: port},
+	}
+}
+
+func TestServerCommand(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
@@ -130,10 +138,42 @@ func TestBuildServerCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := buildServerCommand(tt.command, tt.port); got != tt.want {
-				t.Errorf("buildServerCommand = %q, want %q", got, tt.want)
+			// No resolutions: the line must be byte-identical to what crew built
+			// before bindings existed.
+			if got := ServerCommand(planned(tt.command, tt.port), nil); got != tt.want {
+				t.Errorf("ServerCommand = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// The only place resolution reaches a process. Exports go first, so a chained
+// configured command still sees them; unresolved variables are absent.
+func TestServerCommand_PrefixesResolvedVars(t *testing.T) {
+	got := ServerCommand(planned("npm run start", 54021), []Resolution{
+		{Project: "speak-api", Var: "TUTOR_URL", Value: "http://localhost:54088", Source: SourceBinding},
+		{Project: "speak-api", Var: "GONE", Source: SourceUnresolved},
+		{Project: "speak-api", Var: "AGENT", Value: "wrk 2", Source: SourceOverride},
+	})
+
+	want := "export TUTOR_URL='http://localhost:54088'; export AGENT='wrk 2'; PORT=54021 npm run start"
+	if got != want {
+		t.Errorf("ServerCommand =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// Start keys the prefix by project; a server must not carry another
+// project's variables.
+func TestServerCommand_UsesOnlyThisProjectsResolutions(t *testing.T) {
+	all := []Resolution{
+		{Project: "speak-api", Var: "A", Value: "1", Source: SourceBinding},
+		{Project: "mumbo", Var: "B", Value: "2", Source: SourceBinding},
+	}
+	byProject := GroupResolutions(all)
+
+	got := ServerCommand(planned("npm start", 3000), byProject["speak-api"])
+	if got != "export A='1'; PORT=3000 npm start" {
+		t.Errorf("ServerCommand = %q, want only speak-api's vars", got)
 	}
 }
 

@@ -90,3 +90,40 @@ func TestProposeBindings_NothingToPropose(t *testing.T) {
 		t.Errorf("got %+v, want none", got)
 	}
 }
+
+// {{url:…}} expands to http://, so proposing it for a ws:// value would
+// silently change the scheme — and --apply writes that unseen.
+func TestProposeTemplate_PreservesSchemeAndPath(t *testing.T) {
+	configured := map[int][]ProjectServer{
+		7880: {{Project: "livekit", Server: "livekit"}},
+		3000: {{Project: "speak-api", Server: "speak-api"}},
+		3100: {{Project: "mumbo", Server: "backend"}},
+		3001: {{Project: "mumbo", Server: "homepage"}},
+	}
+
+	tests := []struct {
+		value string
+		want  string
+	}{
+		{"http://localhost:3000", "{{url:speak-api}}"},
+		{"ws://localhost:7880", "ws://localhost:{{port:livekit}}"},
+		{"wss://localhost:7880/rtc", "wss://localhost:{{port:livekit}}/rtc"},
+		{"https://localhost:3000", "https://localhost:{{port:speak-api}}"},
+		{"http://localhost:3000/v1?x=1", "http://localhost:{{port:speak-api}}/v1?x=1"},
+		{"localhost:3000", "localhost:{{port:speak-api}}"},
+		{"http://localhost:3100", "{{url:mumbo/backend}}"},
+		{"ws://127.0.0.1:3001", "ws://localhost:{{port:mumbo/homepage}}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			proposals := ProposeBindings(map[string]string{"V": tt.value}, configured)
+			if len(proposals) != 1 {
+				t.Fatalf("got %d proposals, want 1", len(proposals))
+			}
+			if got := proposals[0].Template; got != tt.want {
+				t.Errorf("template = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

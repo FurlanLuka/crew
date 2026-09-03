@@ -57,7 +57,6 @@ func extractFlag(args []string, flag string) ([]string, bool) {
 	return out, found
 }
 
-// printJSON marshals v as indented JSON to stdout, exiting non-zero on error.
 func printJSON(v any) {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -227,7 +226,7 @@ func main() {
 	default:
 		// Try as workspace/worktree ref shortcut (launch directly)
 		if ref, err := workspace.ParseRef(cmd); err == nil && workspace.Exists(ref.Workspace) {
-			runTUI(workspace.NewLaunchView(mustResolve(cmd).Ref))
+			runTUI(workspace.NewLaunchView(mustResolve(ref.String()).Ref))
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown command '%s'. Run 'crew help' for usage.\n", cmd)
 			os.Exit(1)
@@ -313,7 +312,7 @@ func mustResolve(arg string) *workspace.Resolved {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings|overrides]\n")
 		os.Exit(1)
 	}
 
@@ -326,8 +325,10 @@ func cmdLs() {
 		cmdLsWorktrees()
 	case "bindings":
 		cmdLsBindings()
+	case "overrides":
+		cmdLsOverrides()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings|overrides]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -422,15 +423,11 @@ func cmdOpen() {
 
 func cmdCode() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew code <workspace>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew code <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
 
 	wsName := os.Args[2]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
 
 	settings := config.LoadSettings()
 	if settings.SSHHost == "" {
@@ -453,11 +450,6 @@ func cmdShow() {
 	}
 
 	wsName := os.Args[2]
-
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
 
 	res := mustResolve(wsName)
 
@@ -493,11 +485,6 @@ func cmdStart() {
 	}
 
 	wsName := os.Args[2]
-
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
 
 	prompt, err := workspace.GeneratePrompt(mustResolve(wsName))
 	if err != nil {
@@ -558,6 +545,9 @@ func cmdRm() {
 	case "binding":
 		cmdRmBinding()
 		return
+	case "override":
+		cmdRmOverride()
+		return
 	}
 
 	// Default: remove entire workspace
@@ -568,15 +558,15 @@ func cmdRm() {
 		os.Exit(1)
 	}
 
-	// Remove .code-workspace and close editor window
-	wsFile := workspace.CodeWorkspaceFilePath(workspace.Ref{Workspace: wsName})
-	if _, err := os.Stat(wsFile); err == nil {
+	if ws, err := workspace.Load(wsName); err == nil {
 		editor := exec.DetectEditor()
-		exec.CloseEditorWindow(exec.EditorProcessName(editor), wsName)
-		os.Remove(wsFile)
+		for _, ref := range workspace.Refs(ws) {
+			if _, err := os.Stat(workspace.CodeWorkspaceFilePath(ref)); err == nil {
+				exec.CloseEditorWindow(exec.EditorProcessName(editor), string(ref.Slug()))
+			}
+		}
 	}
 
-	// Full cleanup
 	if err := workspace.Remove(wsName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -627,8 +617,10 @@ func cmdAdd() {
 		cmdAddWorktree()
 	case "binding":
 		cmdAddBinding()
+	case "override":
+		cmdAddOverride()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown add target '%s'.\nUsage: crew add [project|workspace|worktree|binding]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown add target '%s'.\nUsage: crew add [project|workspace|worktree|binding|override]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -654,7 +646,6 @@ func cmdAddWorkspace() {
 	}
 	wsName := os.Args[3]
 
-	// If only name given, create workspace
 	if len(os.Args) == 4 {
 		if err := workspace.Create(wsName); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -664,7 +655,6 @@ func cmdAddWorkspace() {
 		return
 	}
 
-	// With project arg, add project to workspace
 	projName := os.Args[4]
 	role := ""
 	mode := workspace.ModeWorktree
@@ -827,10 +817,6 @@ func cmdGit() {
 	}
 
 	wsName := os.Args[2]
-	if !workspace.Exists(wsName) {
-		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", wsName)
-		os.Exit(1)
-	}
 
 	if err := workspace.LaunchGitSession(mustResolve(wsName)); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

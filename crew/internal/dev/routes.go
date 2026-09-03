@@ -175,7 +175,6 @@ func ListAllRoutes() ([]WsRoutes, error) {
 	var result []WsRoutes
 	for _, path := range matches {
 		base := filepath.Base(path)
-		// "dev-routes-<wsName>.json"
 		name := strings.TrimPrefix(base, "dev-routes-")
 		name = strings.TrimSuffix(name, ".json")
 		slug := Slug(name)

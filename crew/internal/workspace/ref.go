@@ -84,13 +84,3 @@ func (r Ref) String() string {
 	}
 	return r.Workspace + "/" + r.Worktree
 }
-
-// ParseSlug inverts Slug. ListAllRoutes reports slugs, and anything printing
-// them for a human needs the ref back.
-func ParseSlug(slug dev.Slug) Ref {
-	ws, wt, found := strings.Cut(string(slug), "--")
-	if !found {
-		return Ref{Workspace: ws}
-	}
-	return Ref{Workspace: ws, Worktree: wt}
-}

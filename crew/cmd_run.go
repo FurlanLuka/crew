@@ -11,54 +11,18 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
-// resolveProjectEnv computes a project's variables against the servers that are
-// currently running in a worktree.
-//
-// Unlike the start path, nothing is being allocated here — the ports come from
-// the route file, so a worktree with no dev servers up resolves every reference
-// binding to "left alone" and leaves those variables to the project's own env
-// files, which is the correct answer rather than a failure.
-func resolveProjectEnv(res *workspace.Resolved, projName string) []dev.Resolution {
-	routes, _ := dev.LoadRoutes(res.Slug)
-
-	resolutions := dev.ResolveBindings(dev.ResolveParams{
-		Projects:  res.DevProjects(),
-		Ports:     dev.IndexRoutePorts(routes),
-		Workspace: res.Ref.Workspace,
-		Worktree:  res.Ref.Worktree,
-		Overrides: res.Overrides,
-	})
-	return dev.GroupResolutions(resolutions)[projName]
-}
-
 // mustResolveProject resolves a worktree and confirms the project is in it.
-func mustResolveProject(refArg, projName string) (*workspace.Resolved, []dev.Resolution) {
+func mustResolveProject(refArg, projName string) (*workspace.Resolved, workspace.ResolvedProject, []dev.Resolution) {
 	res := mustResolve(refArg)
 
-	for _, p := range res.Projects {
-		if p.Name == projName {
-			return res, resolveProjectEnv(res, projName)
-		}
+	p, ok := res.Project(projName)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' is not in %s\n", projName, res.Ref)
+		fmt.Fprintf(os.Stderr, "Projects: %s\n", res.ProjectNames())
+		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "Error: project '%s' is not in %s\n", projName, res.Ref)
-	fmt.Fprintf(os.Stderr, "Projects: %s\n", projectNames(res))
-	os.Exit(1)
-	return nil, nil
-}
-
-func projectNames(res *workspace.Resolved) string {
-	names := ""
-	for i, p := range res.Projects {
-		if i > 0 {
-			names += ", "
-		}
-		names += p.Name
-	}
-	if names == "" {
-		return "(none)"
-	}
-	return names
+	return res, p, dev.GroupResolutions(res.ResolveEnv())[projName]
 }
 
 func cmdEnv() {
@@ -67,7 +31,7 @@ func cmdEnv() {
 		os.Exit(1)
 	}
 
-	res, resolutions := mustResolveProject(os.Args[2], os.Args[3])
+	res, _, resolutions := mustResolveProject(os.Args[2], os.Args[3])
 
 	if jsonOutput {
 		type envOut struct {
@@ -124,14 +88,8 @@ func cmdRun() {
 		os.Exit(1)
 	}
 
-	res, resolutions := mustResolveProject(refArg, projName)
-
-	var projPath string
-	for _, p := range res.Projects {
-		if p.Name == projName {
-			projPath = p.Path
-		}
-	}
+	res, proj, resolutions := mustResolveProject(refArg, projName)
+	projPath := proj.Path
 
 	binary, err := osexec.LookPath(command[0])
 	if err != nil {

@@ -23,7 +23,7 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 			continue
 		}
 
-		for _, ref := range workspaceRefs(ws) {
+		for _, ref := range Refs(ws) {
 			res, err := Resolve(ref)
 			if err != nil {
 				continue
@@ -31,21 +31,15 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 
 			// Substitute the draft for whatever the pool currently declares, so
 			// an edit previews as edited rather than as saved.
-			projects := res.DevProjects()
-			for i := range projects {
-				if projects[i].Name == projName {
-					projects[i].Bindings = []dev.Binding{{Var: b.Var, Value: b.Value}}
+			routes, _ := dev.LoadRoutes(res.Slug)
+			params := res.ResolveParams(dev.IndexRoutePorts(routes))
+			for i := range params.Projects {
+				if params.Projects[i].Name == projName {
+					params.Projects[i].Bindings = []dev.Binding{{Var: b.Var, Value: b.Value}}
 				}
 			}
 
-			routes, _ := dev.LoadRoutes(res.Slug)
-			for _, r := range dev.ResolveBindings(dev.ResolveParams{
-				Projects:  projects,
-				Ports:     dev.IndexRoutePorts(routes),
-				Workspace: ref.Workspace,
-				Worktree:  ref.Worktree,
-				Overrides: res.Overrides,
-			}) {
+			for _, r := range dev.ResolveBindings(params) {
 				if r.Project != projName || r.Var != b.Var {
 					continue
 				}

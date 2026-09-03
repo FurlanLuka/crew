@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
 func setupPool(t *testing.T) {
@@ -160,5 +161,48 @@ func TestConfiguredPorts_Collision(t *testing.T) {
 
 	if got := ConfiguredPorts()[3000]; len(got) != 2 {
 		t.Errorf("port 3000 claimed by %+v, want both projects", got)
+	}
+}
+
+// The scan and the validator count servers independently; every non-ambiguous
+// proposal has to be one the validator accepts, or --apply fails on its own
+// output.
+func TestProposeThenAdd_EveryProposalValidates(t *testing.T) {
+	setupPool(t)
+
+	proposals := dev.ProposeBindings(map[string]string{
+		"SPEAK_API_URL": "http://localhost:3000",
+		"MUMBO_URL":     "http://localhost:3100",
+		"HOMEPAGE_WS":   "ws://localhost:3001/live",
+	}, ConfiguredPorts())
+
+	if len(proposals) != 3 {
+		t.Fatalf("got %d proposals, want 3", len(proposals))
+	}
+	for _, p := range proposals {
+		if p.Ambiguous {
+			t.Errorf("%s unexpectedly ambiguous", p.Var)
+			continue
+		}
+		if err := AddBinding("ai-tutor-api", Binding{Var: p.Var, Value: p.Template}); err != nil {
+			t.Errorf("proposal %s=%s rejected by the validator: %v", p.Var, p.Template, err)
+		}
+	}
+	if got := Get("ai-tutor-api"); len(got.Bindings) != 3 {
+		t.Errorf("bindings = %+v, want all three applied", got.Bindings)
+	}
+}
+
+// ParseEnvFile accepts keys the validator rejects; --apply has to report the
+// rejection rather than abort the run.
+func TestProposeThenAdd_RejectsUnusableVarName(t *testing.T) {
+	setupPool(t)
+
+	proposals := dev.ProposeBindings(dev.ParseEnvFile("MY-VAR=http://localhost:3000"), ConfiguredPorts())
+	if len(proposals) != 1 {
+		t.Fatalf("got %d proposals, want 1 — the scan itself does not validate names", len(proposals))
+	}
+	if err := AddBinding("ai-tutor-api", Binding{Var: proposals[0].Var, Value: proposals[0].Template}); err == nil {
+		t.Error("MY-VAR should be rejected as a variable name")
 	}
 }

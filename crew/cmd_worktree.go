@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -185,15 +186,19 @@ func cmdRmBinding() {
 
 func cmdLsBindings() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls bindings <project> [--check <workspace>/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls bindings <project> [--check=<workspace>/<worktree>]\n")
 		os.Exit(1)
 	}
 
 	projName := os.Args[3]
 	checkRef := ""
-	for i, arg := range os.Args[4:] {
-		if arg == "--check" && i+5 < len(os.Args) {
-			checkRef = os.Args[i+5]
+	for _, arg := range os.Args[4:] {
+		switch {
+		case strings.HasPrefix(arg, "--check="):
+			checkRef = strings.TrimPrefix(arg, "--check=")
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
 		}
 	}
 
@@ -208,43 +213,44 @@ func cmdLsBindings() {
 	// everywhere visible at declaration time instead of at start time.
 	resolved := map[string]dev.Resolution{}
 	if checkRef != "" {
-		for _, r := range resolveProjectEnv(mustResolve(checkRef), projName) {
+		_, _, rs := mustResolveProject(checkRef, projName)
+		for _, r := range rs {
 			resolved[r.Var] = r
 		}
 	}
 
+	type bindingOut struct {
+		Var    string `json:"var"`
+		Value  string `json:"value"`
+		Result string `json:"result,omitempty"`
+	}
+	out := []bindingOut{}
+	for _, b := range p.Bindings {
+		row := bindingOut{Var: b.Var, Value: b.Value}
+		if r, ok := resolved[b.Var]; ok {
+			row.Result = bindingResult(r)
+		}
+		out = append(out, row)
+	}
+
 	if jsonOutput {
-		type bindingOut struct {
-			Var    string `json:"var"`
-			Value  string `json:"value"`
-			Result string `json:"result,omitempty"`
-		}
-		out := []bindingOut{}
-		for _, b := range p.Bindings {
-			row := bindingOut{Var: b.Var, Value: b.Value}
-			if r, ok := resolved[b.Var]; ok {
-				row.Result = r.Value
-				if !r.Resolved() {
-					row.Result = "left alone — " + r.Detail
-				}
-			}
-			out = append(out, row)
-		}
 		printJSON(out)
 		return
 	}
-
-	for _, b := range p.Bindings {
-		if r, ok := resolved[b.Var]; ok {
-			result := r.Value
-			if !r.Resolved() {
-				result = "left alone — " + r.Detail
-			}
-			fmt.Printf("%s\t%s\t%s\n", b.Var, b.Value, result)
+	for _, row := range out {
+		if row.Result != "" {
+			fmt.Printf("%s\t%s\t%s\n", row.Var, row.Value, row.Result)
 			continue
 		}
-		fmt.Printf("%s\t%s\n", b.Var, b.Value)
+		fmt.Printf("%s\t%s\n", row.Var, row.Value)
 	}
+}
+
+func bindingResult(r dev.Resolution) string {
+	if r.Resolved() {
+		return r.Value
+	}
+	return "left alone — " + r.Detail
 }
 
 // runBindingScan reads a project's env files and proposes bindings for the
@@ -280,14 +286,14 @@ func runBindingScan(projName string, apply bool) {
 		case prop.Ambiguous:
 			fmt.Printf("  ? %-22s %-24s two projects configured on :%d — pick one by hand\n",
 				prop.Var, prop.Value, prop.Port)
-		case apply:
-			if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template}); err != nil {
-				fmt.Printf("  ! %-22s %s\n", prop.Var, err)
-				continue
-			}
-			applied++
-			fmt.Printf("  ✓ %-22s %-24s → %s\n", prop.Var, prop.Value, prop.Template)
 		default:
+			if apply {
+				if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template}); err != nil {
+					fmt.Printf("  ! %-22s %s\n", prop.Var, err)
+					continue
+				}
+				applied++
+			}
 			fmt.Printf("  ✓ %-22s %-24s → %s\n", prop.Var, prop.Value, prop.Template)
 		}
 	}
@@ -297,4 +303,68 @@ func runBindingScan(projName string, apply bool) {
 		return
 	}
 	fmt.Printf("\nRe-run with --apply to add these, or use the TUI to pick individually.\n")
+}
+
+// Overrides are the top precedence rung; a worktree pins a variable and the
+// binding is ignored there. `crew add override` is also the acknowledgement
+// for a binding that legitimately never resolves in one worktree — it stops
+// printing as an anomaly on every start.
+func cmdAddOverride() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew add override <workspace>/<worktree> <VAR>=<value>\n")
+		fmt.Fprintf(os.Stderr, "       crew add override <workspace>/<worktree> <project>.<VAR>=<value>\n")
+		os.Exit(1)
+	}
+
+	res := mustResolve(os.Args[3])
+	key, value, found := strings.Cut(os.Args[4], "=")
+	if !found || key == "" {
+		fmt.Fprintf(os.Stderr, "Error: expected <VAR>=<value>, got '%s'\n", os.Args[4])
+		os.Exit(1)
+	}
+
+	if err := workspace.SetOverride(res.Ref, key, value); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Override %s in %s\n", key, res.Ref)
+}
+
+func cmdRmOverride() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew rm override <workspace>/<worktree> <VAR>\n")
+		os.Exit(1)
+	}
+
+	res := mustResolve(os.Args[3])
+	if _, ok := res.Overrides[os.Args[4]]; !ok {
+		fmt.Fprintf(os.Stderr, "Error: %s has no override for %s\n", res.Ref, os.Args[4])
+		os.Exit(1)
+	}
+	if err := workspace.ClearOverride(res.Ref, os.Args[4]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Removed override %s from %s\n", os.Args[4], res.Ref)
+}
+
+func cmdLsOverrides() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew ls overrides <workspace>/<worktree>\n")
+		os.Exit(1)
+	}
+
+	res := mustResolve(os.Args[3])
+	if jsonOutput {
+		printJSON(res.Overrides)
+		return
+	}
+	keys := make([]string, 0, len(res.Overrides))
+	for k := range res.Overrides {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Printf("%s\t%s\n", k, res.Overrides[k])
+	}
 }

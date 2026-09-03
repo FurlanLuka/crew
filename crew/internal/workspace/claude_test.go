@@ -113,24 +113,3 @@ func TestBuildClaudeParts_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 		t.Errorf("single project should not pass --add-dir, got: %s", got)
 	}
 }
-
-func TestNeedsPrompt(t *testing.T) {
-	tests := []struct {
-		name     string
-		projects []WorkspaceProject
-		want     bool
-	}{
-		{"single worktree", []WorkspaceProject{{Name: "api"}}, false},
-		{"single direct", []WorkspaceProject{{Name: "api", Mode: ModeDirect}}, true},
-		{"multi worktree", []WorkspaceProject{{Name: "api"}, {Name: "web"}}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res := newTestWorkspace(t, "ws", tt.projects)
-			if got := NeedsPrompt(res); got != tt.want {
-				t.Errorf("NeedsPrompt = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}

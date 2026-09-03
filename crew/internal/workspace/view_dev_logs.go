@@ -259,7 +259,6 @@ func buildURLsContent(ref Ref) string {
 		b.WriteString("  No servers running\n")
 	}
 
-	// Also show other workspaces if they have routes
 	var others []dev.WsRoutes
 	for _, wr := range allRoutes {
 		if wr.Slug != ref.Slug() {

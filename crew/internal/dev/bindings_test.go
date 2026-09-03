@@ -348,10 +348,73 @@ func TestEnvPrefix(t *testing.T) {
 	}
 }
 
-// A project with no bindings must produce exactly the command line crew built
-// before any of this existed.
-func TestEnvPrefix_NoBindingsLeavesCommandByteIdentical(t *testing.T) {
-	if prefix := EnvPrefix(nil); prefix+buildServerCommand("npm run start", 54021) != "PORT=54021 npm run start" {
-		t.Errorf("command = %q, want the unprefixed form", prefix+buildServerCommand("npm run start", 54021))
+// Unqualified overrides come from a map; the export prefix and the env table
+// must not reshuffle between runs.
+func TestResolveBindings_OverrideOrderIsStable(t *testing.T) {
+	p := bindingFixture(nil)
+	p.Overrides = map[string]string{"Z": "1", "A": "2", "M": "3", "B": "4"}
+
+	first := ResolveBindings(p)
+	for i := 0; i < 50; i++ {
+		again := ResolveBindings(p)
+		for j := range first {
+			if again[j].Var != first[j].Var || again[j].Project != first[j].Project {
+				t.Fatalf("run %d reordered: %+v vs %+v", i, again[j], first[j])
+			}
+		}
+	}
+
+	var vars []string
+	for _, r := range first {
+		if r.Project == "speak-api" {
+			vars = append(vars, r.Var)
+		}
+	}
+	if strings.Join(vars, "") != "ABMZ" {
+		t.Errorf("order = %v, want sorted", vars)
+	}
+}
+
+// A route file written before Route.Project existed cannot say which project
+// owns a server, so two "api" routes would collapse to one key — exactly the
+// silent wrong-port binding this exists to prevent. Skip them instead.
+func TestIndexRoutePorts_LegacyRoutesDoNotResolve(t *testing.T) {
+	ports := IndexRoutePorts([]Route{
+		{ServerName: "api", InternalPort: 54001},
+		{ServerName: "api", InternalPort: 54002},
+		{Project: "mumbo", ServerName: "api", InternalPort: 54003},
+	})
+
+	if len(ports) != 1 {
+		t.Fatalf("ports = %+v, want only the project-tagged route", ports)
+	}
+	if _, ok := ports[ProjectServer{Project: "", Server: "api"}]; ok {
+		t.Error("legacy route indexed under an empty project")
+	}
+
+	p := bindingFixture(map[string][]Binding{
+		"ai-tutor-api": {{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+	})
+	p.Ports = ports
+	if got := find(t, ResolveBindings(p), "ai-tutor-api", "SPEAK_API_URL"); got.Source != SourceUnresolved {
+		t.Errorf("Source = %s, want unresolved against a legacy route file", got.Source)
+	}
+}
+
+func TestParseTokens(t *testing.T) {
+	tokens := ParseTokens("ws://localhost:{{port:livekit}}/x/{{worktree}}-{{workspace:}}")
+
+	want := []Token{
+		{Raw: "{{port:livekit}}", Kind: "port", Arg: "livekit", HasArg: true},
+		{Raw: "{{worktree}}", Kind: "worktree"},
+		{Raw: "{{workspace:}}", Kind: "workspace", HasArg: true},
+	}
+	if len(tokens) != len(want) {
+		t.Fatalf("tokens = %+v, want %+v", tokens, want)
+	}
+	for i := range want {
+		if tokens[i] != want[i] {
+			t.Errorf("token %d = %+v, want %+v", i, tokens[i], want[i])
+		}
 	}
 }

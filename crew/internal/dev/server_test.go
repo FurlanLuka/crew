@@ -99,29 +99,48 @@ func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 }
 
 func TestStopProxyIfIdle_NoProxyRoutesDontKeepProxyAlive(t *testing.T) {
+	if !crewExec.HasTmux() {
+		t.Skip("tmux not available")
+	}
 	setupTestConfig(t)
+	t.Cleanup(func() { crewExec.KillTmuxSession(ProxySessionName) })
 
-	// Only a no-proxy route exists; proxy should be considered idle.
+	if err := crewExec.CreateTmuxSession(ProxySessionName, ""); err != nil {
+		t.Fatalf("CreateTmuxSession: %v", err)
+	}
 	if err := saveRoutes("ws", []Route{
 		{Project: "api", ServerName: "api", ExternalPort: 3000, InternalPort: 3000, NoProxy: true},
 	}); err != nil {
 		t.Fatalf("saveRoutes: %v", err)
 	}
 
-	// Should not panic and should treat the system as idle (KillTmuxSession is a
-	// no-op when the proxy session doesn't exist, so we only assert that the
-	// function inspected routes correctly by not returning early).
-	allRoutes, _ := ListAllRoutes()
-	idle := true
-	for _, wr := range allRoutes {
-		for _, r := range wr.Routes {
-			if r.Proxied() {
-				idle = false
-			}
-		}
+	StopProxyIfIdle()
+
+	if crewExec.TmuxSessionExists(ProxySessionName) {
+		t.Error("a no-proxy route alone should not keep the proxy alive")
 	}
-	if !idle {
-		t.Error("workspace with only no-proxy route should leave proxy idle")
+}
+
+func TestStopProxyIfIdle_ProxiedRouteKeepsProxyAlive(t *testing.T) {
+	if !crewExec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	setupTestConfig(t)
+	t.Cleanup(func() { crewExec.KillTmuxSession(ProxySessionName) })
+
+	if err := crewExec.CreateTmuxSession(ProxySessionName, ""); err != nil {
+		t.Fatalf("CreateTmuxSession: %v", err)
+	}
+	if err := saveRoutes("ws--wrk1", []Route{
+		{Project: "api", ServerName: "api", ExternalPort: 3000, InternalPort: 54001},
+	}); err != nil {
+		t.Fatalf("saveRoutes: %v", err)
+	}
+
+	StopProxyIfIdle()
+
+	if !crewExec.TmuxSessionExists(ProxySessionName) {
+		t.Error("a proxied route should keep the proxy alive")
 	}
 }
 

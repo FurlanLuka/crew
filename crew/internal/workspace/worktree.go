@@ -22,9 +22,9 @@ func BranchName(ref Ref, projName string) string {
 	return "crew/" + ref.Workspace + "/" + ref.Worktree + "/" + projName
 }
 
-// workspaceRefs lists every worktree of a workspace as a Ref. A workspace with
-// no worktrees yields the single flat pre-nesting ref.
-func workspaceRefs(ws *Workspace) []Ref {
+// Refs lists every worktree of a workspace as a Ref. A workspace with no
+// worktrees yields the single flat pre-nesting ref.
+func Refs(ws *Workspace) []Ref {
 	if len(ws.Worktrees) == 0 {
 		return []Ref{{Workspace: ws.Name}}
 	}
@@ -34,10 +34,6 @@ func workspaceRefs(ws *Workspace) []Ref {
 	}
 	return refs
 }
-
-// Refs is the exported form of workspaceRefs, for callers listing a
-// workspace's worktrees.
-func Refs(ws *Workspace) []Ref { return workspaceRefs(ws) }
 
 // createProjectWorktree checks a project out into one worktree.
 func createProjectWorktree(ref Ref, p project.Project) error {

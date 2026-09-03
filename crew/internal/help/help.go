@@ -93,6 +93,15 @@ var Root = CommandInfo{
 						"crew add binding ai-tutor-api --scan --apply",
 					},
 				},
+				{
+					Name:        "override",
+					Description: "Pin a variable for one worktree. Beats whatever the binding would resolve, and is the acknowledgement for a binding that legitimately never resolves here — it stops printing as an anomaly on every start. Key is VAR, or project.VAR to pin one project when two share a name.",
+					Usage:       "crew add override <workspace>/<worktree> <VAR>=<value>",
+					Examples: []string{
+						"crew add override phone-speak/wrk2 SPEAK_API_URL=https://dev-api.speak.com",
+						"crew add override phone-speak/wrk2 ai-tutor-api.API_URL=https://tutor.dev",
+					},
+				},
 			},
 		},
 		{
@@ -272,9 +281,16 @@ var Root = CommandInfo{
 				{
 					Name:         "bindings",
 					Description:  "List a project's bindings as declared. With --check, resolve each against a real worktree and show the value it would get there, or why it would be left alone.",
-					Usage:        "crew ls bindings <project> [--check <workspace>[/<worktree>]]",
+					Usage:        "crew ls bindings <project> [--check=<workspace>[/<worktree>]]",
 					OutputFormat: "<var>\\t<template>[\\t<resolved value>]",
-					Examples:     []string{"crew ls bindings ai-tutor-api", "crew ls bindings ai-tutor-api --check phone-speak/wrk1"},
+					Examples:     []string{"crew ls bindings ai-tutor-api", "crew ls bindings ai-tutor-api --check=phone-speak/wrk1"},
+				},
+				{
+					Name:         "overrides",
+					Description:  "List a worktree's overrides",
+					Usage:        "crew ls overrides <workspace>/<worktree>",
+					OutputFormat: "<key>\\t<value>",
+					Examples:     []string{"crew ls overrides phone-speak/wrk2"},
 				},
 			},
 		},
@@ -426,6 +442,12 @@ var Root = CommandInfo{
 					Description: "Remove a binding from a project",
 					Usage:       "crew rm binding <project> <var>",
 					Examples:    []string{"crew rm binding ai-tutor-api SPEAK_API_URL"},
+				},
+				{
+					Name:        "override",
+					Description: "Remove a worktree override; the binding applies again",
+					Usage:       "crew rm override <workspace>/<worktree> <VAR>",
+					Examples:    []string{"crew rm override phone-speak/wrk2 SPEAK_API_URL"},
 				},
 			},
 			Examples: []string{"crew rm feature-auth"},

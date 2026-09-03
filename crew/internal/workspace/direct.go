@@ -32,12 +32,6 @@ func assertNoOtherDirect(projName, excludeWs string) error {
 	return nil
 }
 
-// AssertNoOtherDirect is the exported form for callers outside this package
-// (e.g. CLI start paths) that need to defend against direct-mode collisions.
-func AssertNoOtherDirect(projName, excludeWs string) error {
-	return assertNoOtherDirect(projName, excludeWs)
-}
-
 // AssertDirectProjectsAvailable runs the direct-mode collision check across
 // every direct-mode project in res. Call this before starting dev servers,
 // launching editors, or doing any other work that assumes the canonical repo

@@ -33,20 +33,6 @@ type MigrationPlan struct {
 	Conflicts []string
 }
 
-// NeedsMigration reports whether any workspace still predates worktrees.
-func NeedsMigration() bool {
-	names, err := List()
-	if err != nil {
-		return false
-	}
-	for _, name := range names {
-		if ws, err := Load(name); err == nil && len(ws.Worktrees) == 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // SplitWorkspaceName maps an old workspace name to its workspace and worktree.
 // Pure.
 //
@@ -59,8 +45,7 @@ func SplitWorkspaceName(name string) (workspace, worktree string) {
 	return name, DefaultWorktree
 }
 
-// PlanMigration decides the whole migration without touching anything. Pure
-// apart from reading the workspaces it is planning for.
+// PlanMigration decides the whole migration without touching anything.
 func PlanMigration() (*MigrationPlan, error) {
 	names, err := List()
 	if err != nil {
@@ -68,58 +53,60 @@ func PlanMigration() (*MigrationPlan, error) {
 	}
 	sort.Strings(names)
 
+	var workspaces []*Workspace
+	for _, name := range names {
+		if ws, err := Load(name); err == nil {
+			workspaces = append(workspaces, ws)
+		}
+	}
+	return planFrom(workspaces), nil
+}
+
+// planFrom is the pure core: maps names by convention, groups by target
+// workspace, unions projects, and finds every merge the direct-mode pin
+// forbids.
+func planFrom(workspaces []*Workspace) *MigrationPlan {
 	plan := &MigrationPlan{Merges: map[string][]string{}}
 	projectsByWorkspace := map[string][]WorkspaceProject{}
 	directOwner := map[string]string{}
 
-	for _, name := range names {
-		ws, err := Load(name)
-		if err != nil {
-			continue
-		}
+	for _, ws := range workspaces {
 		if len(ws.Worktrees) > 0 {
 			continue // already migrated
 		}
 
-		wsName, wtName := SplitWorkspaceName(name)
-		plan.Moves = append(plan.Moves, MigrationMove{OldWorkspace: name, Ref: Ref{Workspace: wsName, Worktree: wtName}, Projects: ws.Projects})
-		plan.Merges[wsName] = append(plan.Merges[wsName], name)
+		wsName, wtName := SplitWorkspaceName(ws.Name)
+		plan.Moves = append(plan.Moves, MigrationMove{
+			OldWorkspace: ws.Name,
+			Ref:          Ref{Workspace: wsName, Worktree: wtName},
+			Projects:     ws.Projects,
+		})
+		plan.Merges[wsName] = append(plan.Merges[wsName], ws.Name)
 
 		for _, wp := range ws.Projects {
-			key := wsName + "/" + wp.Name
-			existing := projectsByWorkspace[wsName]
-
-			seen := false
-			for _, e := range existing {
-				if e.Name != wp.Name {
-					continue
-				}
-				seen = true
+			for _, e := range projectsByWorkspace[wsName] {
 				// A project held direct in one old workspace and as a worktree
 				// in another cannot merge: the result would be a direct project
 				// alongside several worktrees, which the pin forbids.
-				if IsDirect(e) != IsDirect(wp) {
+				if e.Name == wp.Name && IsDirect(e) != IsDirect(wp) {
 					plan.Conflicts = append(plan.Conflicts, fmt.Sprintf(
 						"'%s' is direct in one of %s and a worktree in another — resolve by hand before migrating",
 						wp.Name, strings.Join(plan.Merges[wsName], ", ")))
 				}
 			}
-			if !seen {
-				projectsByWorkspace[wsName] = append(existing, wp)
-			}
+			projectsByWorkspace[wsName] = unionProjects(projectsByWorkspace[wsName], []WorkspaceProject{wp})
 
 			if IsDirect(wp) {
-				if owner, ok := directOwner[wsName]; ok && owner != key {
+				if owner, ok := directOwner[wsName]; ok && owner != wp.Name {
 					plan.Conflicts = append(plan.Conflicts, fmt.Sprintf(
 						"workspace '%s' would hold two direct projects across its worktrees (%s, %s) — a direct project pins a workspace to one worktree",
-						wsName, strings.TrimPrefix(owner, wsName+"/"), wp.Name))
+						wsName, owner, wp.Name))
 				}
-				directOwner[wsName] = key
+				directOwner[wsName] = wp.Name
 			}
 		}
 	}
 
-	// A direct project pins its workspace to one worktree.
 	for wsName, olds := range plan.Merges {
 		if _, hasDirect := directOwner[wsName]; hasDirect && len(olds) > 1 {
 			plan.Conflicts = append(plan.Conflicts, fmt.Sprintf(
@@ -130,7 +117,7 @@ func PlanMigration() (*MigrationPlan, error) {
 
 	sort.Strings(plan.Conflicts)
 	plan.Conflicts = dedupe(plan.Conflicts)
-	return plan, nil
+	return plan
 }
 
 // relWorkspaces shortens a path under WorkspacesDir for display.
@@ -253,7 +240,7 @@ func ApplyMigration(plan *MigrationPlan, backup string) error {
 		if err := Save(ws); err != nil {
 			return err
 		}
-		for _, ref := range workspaceRefs(ws) {
+		for _, ref := range Refs(ws) {
 			if res, err := Resolve(ref); err == nil && NeedsPrompt(res) {
 				GeneratePrompt(res)
 			}

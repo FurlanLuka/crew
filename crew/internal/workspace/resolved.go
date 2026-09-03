@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/project"
@@ -128,4 +129,49 @@ func (r *Resolved) DevProjects() []dev.DevProject {
 		})
 	}
 	return projects
+}
+
+// ResolveEnv computes every project's variables against the dev servers
+// currently running in this worktree.
+//
+// Unlike Start, nothing is allocated here — ports come from the route file, so
+// a worktree with no servers up resolves every reference binding to "left
+// alone", which is the correct answer for crew run and crew env rather than a
+// failure.
+func (r *Resolved) ResolveEnv() []dev.Resolution {
+	routes, _ := dev.LoadRoutes(r.Slug)
+	return dev.ResolveBindings(r.ResolveParams(dev.IndexRoutePorts(routes)))
+}
+
+// ResolveParams is the resolver input for this worktree with the given ports.
+func (r *Resolved) ResolveParams(ports map[dev.ProjectServer]int) dev.ResolveParams {
+	return dev.ResolveParams{
+		Projects:  r.DevProjects(),
+		Ports:     ports,
+		Workspace: r.Ref.Workspace,
+		Worktree:  r.Ref.Worktree,
+		Overrides: r.Overrides,
+	}
+}
+
+// Project finds one project by name.
+func (r *Resolved) Project(name string) (ResolvedProject, bool) {
+	for _, p := range r.Projects {
+		if p.Name == name {
+			return p, true
+		}
+	}
+	return ResolvedProject{}, false
+}
+
+// ProjectNames renders the project list for error messages.
+func (r *Resolved) ProjectNames() string {
+	if len(r.Projects) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(r.Projects))
+	for _, p := range r.Projects {
+		names = append(names, p.Name)
+	}
+	return strings.Join(names, ", ")
 }

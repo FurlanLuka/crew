@@ -8,10 +8,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
-var (
-	validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	bindingToken = regexp.MustCompile(`\{\{([a-z]+)(?::([^}]*))?\}\}`)
-)
+var validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // ValidateBinding checks a binding against the project pool before it is saved.
 //
@@ -26,22 +23,18 @@ func ValidateBinding(projName string, b Binding) error {
 		return fmt.Errorf("binding for %s has no value", b.Var)
 	}
 
-	for _, m := range bindingToken.FindAllStringSubmatch(b.Value, -1) {
-		kind, arg := m[1], m[2]
-
-		switch kind {
+	for _, tok := range dev.ParseTokens(b.Value) {
+		switch tok.Kind {
 		case "worktree", "workspace":
-			// The pattern matches "{{worktree:}}" too, with an empty argument;
-			// a colon with nothing after it is a typo, not a valid token.
-			if strings.Contains(m[0], ":") {
-				return fmt.Errorf("{{%s}} takes no argument", kind)
+			if tok.HasArg {
+				return fmt.Errorf("{{%s}} takes no argument", tok.Kind)
 			}
 		case "url", "port":
-			if err := validateTarget(arg); err != nil {
+			if err := validateTarget(tok.Arg); err != nil {
 				return err
 			}
 		default:
-			return fmt.Errorf("unknown token {{%s}} — expected url, port, worktree or workspace", kind)
+			return fmt.Errorf("unknown token {{%s}} — expected url, port, worktree or workspace", tok.Kind)
 		}
 	}
 	return nil
@@ -50,34 +43,33 @@ func ValidateBinding(projName string, b Binding) error {
 // validateTarget checks that a {{url:…}} / {{port:…}} target names a project in
 // the pool and, when it omits the server, that the project has exactly one.
 func validateTarget(arg string) error {
-	if arg == "" {
-		return fmt.Errorf("missing target — expected {{url:project}} or {{url:project/server}}")
+	ref, err := dev.ParseTarget(arg)
+	if err != nil {
+		return err
 	}
 
-	projName, server, hasServer := strings.Cut(arg, "/")
-	target := Get(projName)
+	target := Get(ref.Project)
 	if target == nil {
-		return fmt.Errorf("no project '%s' in the pool", projName)
+		return fmt.Errorf("no project '%s' in the pool", ref.Project)
 	}
 
-	if hasServer {
+	if ref.HasServer {
 		for _, ds := range target.DevServers {
-			if ds.Name == server {
+			if ds.Name == ref.Server {
 				return nil
 			}
 		}
 		return fmt.Errorf("project '%s' has no dev server '%s' (has: %s)",
-			projName, server, serverNames(*target))
+			ref.Project, ref.Server, serverNames(*target))
 	}
 
 	switch len(target.DevServers) {
 	case 0:
-		return fmt.Errorf("project '%s' has no dev servers configured", projName)
+		return fmt.Errorf("project '%s' has no dev servers configured", ref.Project)
 	case 1:
 		return nil
 	default:
-		return fmt.Errorf("project '%s' has %d dev servers — name one, as %s/<server> (has: %s)",
-			projName, len(target.DevServers), projName, serverNames(*target))
+		return dev.AmbiguousTargetError(ref.Project, len(target.DevServers), serverNames(*target))
 	}
 }
 

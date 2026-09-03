@@ -3,6 +3,8 @@ package dev
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -26,6 +28,9 @@ func TestExtractSubdomainParts(t *testing.T) {
 		{"custom domain no port", "web--ws-b.example.com", "example.com", "web", "ws-b"},
 		{"custom domain wrong suffix", "api--ws-a.other.com:8080", "example.com", "", ""},
 		{"ngrok wildcard", "api--my-ws.luka.ngrok.pro:80", "luka.ngrok.pro", "api", "my-ws"},
+		// Worktree slugs carry a second "--"; SplitN at the first one keeps it.
+		{"worktree slug", "api--phone-speak--wrk2.dev.local:8080", "dev.local", "api", "phone-speak--wrk2"},
+		{"hyphenated worktree", "web--ws--wrk-2.dev.local", "dev.local", "web", "ws--wrk-2"},
 	}
 
 	for _, tt := range tests {
@@ -105,5 +110,55 @@ func TestProxyHandler_UnknownSubdomain(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "crew dev proxy") {
 		t.Error("single subdomain (no --) should show status page")
+	}
+}
+
+// The plan's central claim: a worktree slug survives the trip through a
+// hostname and back with no proxy change.
+func TestSubdomainRoundTrip(t *testing.T) {
+	for _, slug := range []Slug{"phone-speak--wrk2", "mumbo--main", "legacy"} {
+		t.Run(string(slug), func(t *testing.T) {
+			u, err := url.Parse(FormatURL("api", slug, "dev.local", 8080))
+			if err != nil {
+				t.Fatalf("FormatURL produced an unparseable URL: %v", err)
+			}
+			server, got := extractSubdomainParts(u.Host, "dev.local")
+			if server != "api" || got != slug {
+				t.Errorf("round trip = (%q, %q), want (api, %q)", server, got, slug)
+			}
+		})
+	}
+}
+
+// ServeHTTP matches the request's slug against route files; a worktree slug
+// has to reach its backend rather than the status page.
+func TestProxyHandler_RoutesToWorktreeSlug(t *testing.T) {
+	setupTestConfig(t)
+
+	hit := false
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer backend.Close()
+
+	port, _ := strconv.Atoi(strings.TrimPrefix(backend.URL, "http://127.0.0.1:"))
+	if err := saveRoutes("phone-speak--wrk2", []Route{
+		{Project: "speak-api", ServerName: "api", ExternalPort: 3000, InternalPort: port},
+	}); err != nil {
+		t.Fatalf("saveRoutes: %v", err)
+	}
+
+	h := &proxyHandler{domain: "dev.local", port: 8080}
+	req := httptest.NewRequest("GET", "http://api--phone-speak--wrk2.dev.local:8080/health", nil)
+	req.Host = "api--phone-speak--wrk2.dev.local:8080"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !hit {
+		t.Fatalf("backend not reached; status %d, body %q", rec.Code, rec.Body.String())
+	}
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want the backend's 204", rec.Code)
 	}
 }

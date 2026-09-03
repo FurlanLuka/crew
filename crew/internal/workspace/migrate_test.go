@@ -94,9 +94,6 @@ func TestPlanMigration_SkipsAlreadyMigrated(t *testing.T) {
 	if len(plan.Moves) != 0 {
 		t.Errorf("planned %d moves for already-migrated state, want 0", len(plan.Moves))
 	}
-	if NeedsMigration() {
-		t.Error("NeedsMigration should be false once every workspace has worktrees")
-	}
 }
 
 // Merging a project held direct in one old workspace and as a worktree in
@@ -342,5 +339,54 @@ func TestMigratedPaths(t *testing.T) {
 	}
 	if !strings.HasSuffix(pairs[0][1], filepath.Join("phone-speak", "wrk1", "api")) {
 		t.Errorf("new path = %q, want it under phone-speak/wrk1", pairs[0][1])
+	}
+}
+
+// Two old workspaces can disagree on a project's role. First wins, silently:
+// roles are prose for the orientation prompt, not config anything depends on.
+func TestPlanFrom_UnionKeepsFirstRole(t *testing.T) {
+	plan := planFrom([]*Workspace{
+		{Name: "ws-wrk1", Projects: []WorkspaceProject{{Name: "api", Role: "backend"}}},
+		{Name: "ws-wrk2", Projects: []WorkspaceProject{{Name: "api", Role: "worker"}}},
+	})
+
+	if len(plan.Conflicts) != 0 {
+		t.Errorf("role disagreement should not conflict: %v", plan.Conflicts)
+	}
+	merged := unionProjects(nil, plan.Moves[0].Projects)
+	merged = unionProjects(merged, plan.Moves[1].Projects)
+	if len(merged) != 1 || merged[0].Role != "backend" {
+		t.Errorf("merged = %+v, want one api with the first role", merged)
+	}
+}
+
+// planFrom is pure — the whole mapping table without a filesystem.
+func TestPlanFrom_MappingTable(t *testing.T) {
+	plan := planFrom([]*Workspace{
+		{Name: "phone-speak-wrk1"},
+		{Name: "phone-speak-wrk2"},
+		{Name: "speak-partner-wrk1"},
+		{Name: "x-wrk10"},
+		{Name: "mumbo"},
+		{Name: "done", Worktrees: []Worktree{{Name: "main"}}},
+	})
+
+	want := map[string]string{
+		"phone-speak-wrk1":   "phone-speak/wrk1",
+		"phone-speak-wrk2":   "phone-speak/wrk2",
+		"speak-partner-wrk1": "speak-partner/wrk1",
+		"x-wrk10":            "x/wrk10",
+		"mumbo":              "mumbo/main",
+	}
+	if len(plan.Moves) != len(want) {
+		t.Fatalf("planned %d moves, want %d — 'done' is already migrated", len(plan.Moves), len(want))
+	}
+	for _, m := range plan.Moves {
+		if got := m.Ref.String(); got != want[m.OldWorkspace] {
+			t.Errorf("%s → %s, want %s", m.OldWorkspace, got, want[m.OldWorkspace])
+		}
+	}
+	if got := plan.Merges["phone-speak"]; len(got) != 2 {
+		t.Errorf("phone-speak merges %v, want two", got)
 	}
 }
