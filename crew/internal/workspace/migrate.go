@@ -24,6 +24,10 @@ type MigrationMove struct {
 	OldWorkspace string
 	Ref          Ref
 	Projects     []WorkspaceProject
+	// Branches is the branch each checkout is actually on, read from git so
+	// the printed plan only promises renames that will happen. Most real
+	// checkouts sit on feature branches, which the rename leaves alone.
+	Branches map[string]string
 }
 
 // MigrationPlan is the whole migration, decided before anything is touched.
@@ -59,7 +63,17 @@ func PlanMigration() (*MigrationPlan, error) {
 			workspaces = append(workspaces, ws)
 		}
 	}
-	return planFrom(workspaces), nil
+
+	plan := planFrom(workspaces)
+	for i, m := range plan.Moves {
+		plan.Moves[i].Branches = map[string]string{}
+		for _, wp := range m.Projects {
+			if !IsDirect(wp) {
+				plan.Moves[i].Branches[wp.Name] = currentBranch(WorktreePath(Ref{Workspace: m.OldWorkspace}, wp.Name))
+			}
+		}
+	}
+	return plan, nil
 }
 
 // planFrom is the pure core: maps names by convention, groups by target
@@ -169,9 +183,15 @@ func FormatPlan(plan *MigrationPlan) string {
 			if IsDirect(wp) {
 				continue
 			}
-			fmt.Fprintf(&b, "  %-46s → %s\n",
-				BranchName(Ref{Workspace: m.OldWorkspace}, wp.Name),
-				BranchName(m.Ref, wp.Name))
+			old := BranchName(Ref{Workspace: m.OldWorkspace}, wp.Name)
+			switch actual := m.Branches[wp.Name]; actual {
+			case old:
+				fmt.Fprintf(&b, "  %-46s → %s\n", old, BranchName(m.Ref, wp.Name))
+			case "":
+				fmt.Fprintf(&b, "  %-46s (no checkout)\n", filepath.Join(m.OldWorkspace, wp.Name))
+			default:
+				fmt.Fprintf(&b, "  %-46s (kept — on %s)\n", filepath.Join(m.OldWorkspace, wp.Name), actual)
+			}
 		}
 	}
 

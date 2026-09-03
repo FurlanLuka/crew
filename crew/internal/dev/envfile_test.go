@@ -73,3 +73,25 @@ func TestReadEnvValues_NoFiles(t *testing.T) {
 		t.Errorf("got %+v, want empty for a directory with no env files", got)
 	}
 }
+
+// A real .env carries SPEAK_API_URL three times — localhost under a docker
+// hostname. Which one the app sees depends on its loader; the scan's question
+// is whether any of them reaches a crew port.
+func TestPreferLocalhost(t *testing.T) {
+	all := ParseEnvFileAll("SPEAK_API_URL=http://localhost:3000\nSPEAK_API_URL=http://speak-api\nOTHER=x\nOTHER=y")
+
+	if got := all["SPEAK_API_URL"]; len(got) != 2 {
+		t.Fatalf("ParseEnvFileAll kept %v, want both", got)
+	}
+
+	picked := PreferLocalhost(all)
+	if picked["SPEAK_API_URL"] != "http://localhost:3000" {
+		t.Errorf("SPEAK_API_URL = %q, want the localhost value even though it is shadowed", picked["SPEAK_API_URL"])
+	}
+	if picked["OTHER"] != "y" {
+		t.Errorf("OTHER = %q, want last-wins when nothing is localhost", picked["OTHER"])
+	}
+	if ParseEnvFile("A=1\nA=2")["A"] != "2" {
+		t.Error("ParseEnvFile should still be last-wins")
+	}
+}

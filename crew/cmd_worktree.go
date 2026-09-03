@@ -266,9 +266,10 @@ func runBindingScan(projName string, apply bool) {
 		os.Exit(1)
 	}
 
-	proposals := dev.ProposeBindings(dev.ReadEnvValues(p.Path), project.ConfiguredPorts())
+	dirs := project.CheckoutDirs(projName)
+	proposals := dev.ProposeBindings(project.ScanEnv(projName), project.ConfiguredPorts())
 	if len(proposals) == 0 {
-		fmt.Printf("Scanned %s — nothing in its env files points at a port crew allocates.\n", p.Path)
+		fmt.Printf("Scanned %d checkouts of %s — nothing in their env files points at a port crew allocates.\n", len(dirs), projName)
 		return
 	}
 
@@ -277,7 +278,7 @@ func runBindingScan(projName string, apply bool) {
 		declared[b.Var] = true
 	}
 
-	fmt.Printf("Scanned %s\n\n", p.Path)
+	fmt.Printf("Scanned %d checkouts of %s\n\n", len(dirs), projName)
 	applied := 0
 	for _, prop := range proposals {
 		switch {

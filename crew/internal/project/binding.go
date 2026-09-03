@@ -152,3 +152,28 @@ func ConfiguredPorts() map[int][]dev.ProjectServer {
 	}
 	return ports
 }
+
+// CheckoutDirs lists every directory a project's env files might live in:
+// the canonical repo and each worktree checkout. Set by main, because the
+// checkouts are the workspace package's to know and it imports this one.
+// CopyEnvFiles puts .env into checkouts at creation, so the canonical repo
+// alone is usually empty.
+var CheckoutDirs = func(projName string) []string {
+	if p := Get(projName); p != nil {
+		return []string{p.Path}
+	}
+	return nil
+}
+
+// ScanEnv reads env values across every checkout of a project for the
+// binding scan. A key given several values — in one file or across checkouts
+// — yields the one pointing at localhost when there is one.
+func ScanEnv(projName string) map[string]string {
+	all := map[string][]string{}
+	for _, dir := range CheckoutDirs(projName) {
+		for k, vs := range dev.ReadEnvValuesAll(dir) {
+			all[k] = append(all[k], vs...)
+		}
+	}
+	return dev.PreferLocalhost(all)
+}

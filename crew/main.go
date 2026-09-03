@@ -69,6 +69,7 @@ func printJSON(v any) {
 func main() {
 	config.Init()
 	project.Previewer = workspace.PreviewBinding
+	project.CheckoutDirs = workspace.ProjectCheckouts
 
 	// Strip the global --json flag before computing cmd so it works in any
 	// position and is not rejected by strict per-command arg parsers.

@@ -63,3 +63,27 @@ func hasProject(ws *Workspace, projName string) bool {
 	}
 	return false
 }
+
+// ProjectCheckouts is every directory holding a checkout of projName — the
+// canonical repo plus each worktree it is in.
+func ProjectCheckouts(projName string) []string {
+	var dirs []string
+	if p := project.Get(projName); p != nil {
+		dirs = append(dirs, p.Path)
+	}
+
+	names, err := List()
+	if err != nil {
+		return dirs
+	}
+	for _, wsName := range names {
+		ws, err := Load(wsName)
+		if err != nil || !hasProject(ws, projName) {
+			continue
+		}
+		for _, ref := range Refs(ws) {
+			dirs = append(dirs, WorktreePath(ref, projName))
+		}
+	}
+	return dirs
+}

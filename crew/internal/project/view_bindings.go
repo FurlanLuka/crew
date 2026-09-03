@@ -568,7 +568,7 @@ func (v BindingsView) load() tea.Cmd {
 			return errMsg{fmt.Errorf("project '%s' not found", projName)}
 		}
 
-		envValues := dev.ReadEnvValues(p.Path)
+		envValues := ScanEnv(projName)
 		envKeys := make([]string, 0, len(envValues))
 		for k := range envValues {
 			envKeys = append(envKeys, k)
