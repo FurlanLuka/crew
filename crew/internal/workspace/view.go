@@ -20,6 +20,7 @@ type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
 type workspaceDuplicatedMsg struct{ src, dst string }
 type worktreeAddedMsg struct{ ref Ref }
+type baseStatusesMsg struct{ statuses []BaseStatus }
 type worktreeRemovedMsg struct{ ref Ref }
 type errMsg struct{ err error }
 
@@ -66,6 +67,10 @@ type View struct {
 	err       error
 	statusMsg string
 	spinner   spinner.Model
+
+	// Base branches shown while naming a new worktree; nil while loading.
+	baseStatuses []BaseStatus
+	baseLoading  bool
 
 	// Project management within workspace
 	selectedWs    string
@@ -153,6 +158,11 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		return v, loadWorkspaces
 
+	case baseStatusesMsg:
+		v.baseStatuses = msg.statuses
+		v.baseLoading = false
+		return v, nil
+
 	case worktreeAddedMsg:
 		v.state = stateWorktrees
 		v.statusMsg = fmt.Sprintf("Created worktree '%s'", msg.ref)
@@ -198,7 +208,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case spinner.TickMsg:
-		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree {
+		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree || v.baseLoading {
 			var cmd tea.Cmd
 			v.spinner, cmd = v.spinner.Update(msg)
 			return v, cmd
@@ -361,10 +371,12 @@ func (v View) handleWorktreesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.state = stateNewWorktree
 		v.statusMsg = ""
 		v.err = nil
+		v.baseStatuses = nil
+		v.baseLoading = true
 		v.input.SetValue("")
 		v.input.Placeholder = fmt.Sprintf("wrk%d", len(worktrees)+1)
 		v.input.Focus()
-		return v, v.input.Cursor.BlinkCmd()
+		return v, tea.Batch(v.input.Cursor.BlinkCmd(), loadBaseStatuses(v.selectedWs), v.spinner.Tick)
 	}
 
 	switch {
@@ -675,7 +687,20 @@ func (v View) renderCreate(b *strings.Builder) {
 }
 
 func (v View) renderNewWorktree(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("  New worktree: %s/", v.selectedWs))
+	b.WriteString("  Branching from\n\n")
+	switch {
+	case v.baseLoading:
+		b.WriteString("  " + v.spinner.View() + " checking base branches against origin...\n")
+	default:
+		for _, line := range strings.Split(strings.TrimRight(FormatBaseStatuses(v.baseStatuses), "\n"), "\n") {
+			b.WriteString(styleBaseLine(line) + "\n")
+		}
+		if warn := StaleWarning(v.baseStatuses); warn != "" {
+			b.WriteString("\n  " + app.Highlight.Render(warn) + "\n")
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("\n  New worktree: %s/", v.selectedWs))
 	b.WriteString(v.input.View())
 	b.WriteString("\n\n")
 
@@ -688,6 +713,18 @@ func (v View) renderNewWorktree(b *strings.Builder) {
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render("enter create  esc cancel"))
 	b.WriteString("\n")
+}
+
+// styleBaseLine colours a base-status line by what it says.
+func styleBaseLine(line string) string {
+	switch {
+	case strings.Contains(line, "behind"):
+		return app.Highlight.Render(line)
+	case strings.Contains(line, "failed") || strings.Contains(line, "no origin") || strings.Contains(line, "not in"):
+		return app.Error.Render(line)
+	default:
+		return line
+	}
 }
 
 func (v View) renderDuplicate(b *strings.Builder) {
@@ -744,6 +781,16 @@ func removeWorkspace(name string) tea.Cmd {
 			return errMsg{err}
 		}
 		return workspaceRemovedMsg{name}
+	}
+}
+
+func loadBaseStatuses(wsName string) tea.Cmd {
+	return func() tea.Msg {
+		ws, err := Load(wsName)
+		if err != nil {
+			return errMsg{err}
+		}
+		return baseStatusesMsg{statuses: BaseStatuses(ws)}
 	}
 }
 

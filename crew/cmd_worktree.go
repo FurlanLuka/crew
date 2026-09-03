@@ -34,7 +34,19 @@ func cmdAddWorktree() {
 
 	ref := mustParseWorktreeRef(os.Args[3], "add")
 
-	fmt.Printf("Creating worktree %s...\n", ref)
+	ws, err := workspace.Load(ref.Workspace)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", ref.Workspace)
+		os.Exit(1)
+	}
+
+	statuses := workspace.BaseStatuses(ws)
+	fmt.Printf("Branching from\n\n%s", workspace.FormatBaseStatuses(statuses))
+	if warn := workspace.StaleWarning(statuses); warn != "" {
+		fmt.Printf("\n  %s\n", warn)
+	}
+
+	fmt.Printf("\nCreating worktree %s...\n", ref)
 	if err := workspace.AddWorktree(ref.Workspace, ref.Worktree); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

@@ -2,11 +2,13 @@ package exec
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
@@ -167,4 +169,22 @@ func RenameGitBranch(wtDir, oldName, newName string) {
 	cmd := exec.Command("git", "branch", "-m", newName)
 	cmd.Dir = wtDir
 	cmd.Run()
+}
+
+// RunGitCommandTimeout is RunGitCommand with a deadline, for anything that
+// touches the network. A fetch against an unreachable remote must not hang
+// the TUI.
+func RunGitCommandTimeout(dir string, timeout time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	debug.Log("git", "git %s in %s (timeout %s)", strings.Join(args, " "), dir, timeout)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		debug.Log("git", "git %s → error: %v", strings.Join(args, " "), err)
+		return "", err
+	}
+	return string(out), nil
 }
