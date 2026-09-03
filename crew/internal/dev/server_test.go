@@ -95,7 +95,7 @@ func TestStopProxyIfIdle_NoProxyRoutesDontKeepProxyAlive(t *testing.T) {
 
 	// Only a no-proxy route exists; proxy should be considered idle.
 	if err := saveRoutes("ws", []Route{
-		{Subdomain: "ws", ServerName: "api", ExternalPort: 3000, InternalPort: 3000, NoProxy: true},
+		{Project: "api", ServerName: "api", ExternalPort: 3000, InternalPort: 3000, NoProxy: true},
 	}); err != nil {
 		t.Fatalf("saveRoutes: %v", err)
 	}

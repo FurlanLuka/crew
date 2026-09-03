@@ -33,8 +33,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	setupTestConfig(t)
 
 	routes := []Route{
-		{Subdomain: "main", ExternalPort: 5173, InternalPort: 49001},
-		{Subdomain: "feature", ExternalPort: 5173, InternalPort: 49002},
+		{Project: "main", ExternalPort: 5173, InternalPort: 49001},
+		{Project: "feature", ExternalPort: 5173, InternalPort: 49002},
 	}
 
 	if err := saveRoutes("test-ws", routes); err != nil {
@@ -48,10 +48,10 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if len(loaded) != 2 {
 		t.Fatalf("LoadRoutes returned %d routes, want 2", len(loaded))
 	}
-	if loaded[0].Subdomain != "main" || loaded[0].ExternalPort != 5173 || loaded[0].InternalPort != 49001 {
+	if loaded[0].Project != "main" || loaded[0].ExternalPort != 5173 || loaded[0].InternalPort != 49001 {
 		t.Errorf("loaded[0] = %+v, want {main 5173 49001}", loaded[0])
 	}
-	if loaded[1].Subdomain != "feature" || loaded[1].InternalPort != 49002 {
+	if loaded[1].Project != "feature" || loaded[1].InternalPort != 49002 {
 		t.Errorf("loaded[1] = %+v", loaded[1])
 	}
 }
@@ -72,7 +72,7 @@ func TestSaveRoutes_Empty(t *testing.T) {
 	setupTestConfig(t)
 
 	// First create a routes file
-	if err := saveRoutes("empty-test", []Route{{Subdomain: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
+	if err := saveRoutes("empty-test", []Route{{Project: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
 		t.Fatalf("SaveRoutes setup: %v", err)
 	}
 	if _, err := os.Stat(RoutesFilePath("empty-test")); err != nil {
@@ -91,7 +91,7 @@ func TestSaveRoutes_Empty(t *testing.T) {
 func TestRemoveRoutesFile(t *testing.T) {
 	setupTestConfig(t)
 
-	if err := saveRoutes("rm-test", []Route{{Subdomain: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
+	if err := saveRoutes("rm-test", []Route{{Project: "x", ExternalPort: 1, InternalPort: 2}}); err != nil {
 		t.Fatalf("SaveRoutes: %v", err)
 	}
 	removeRoutesFile("rm-test")
@@ -105,13 +105,13 @@ func TestListAllRoutes(t *testing.T) {
 	setupTestConfig(t)
 
 	if err := saveRoutes("ws-a", []Route{
-		{Subdomain: "main", ExternalPort: 5173, InternalPort: 49001},
+		{Project: "main", ExternalPort: 5173, InternalPort: 49001},
 	}); err != nil {
 		t.Fatalf("SaveRoutes ws-a: %v", err)
 	}
 	if err := saveRoutes("ws-b", []Route{
-		{Subdomain: "feat", ExternalPort: 3000, InternalPort: 49002},
-		{Subdomain: "main", ExternalPort: 3000, InternalPort: 49003},
+		{Project: "feat", ExternalPort: 3000, InternalPort: 49002},
+		{Project: "main", ExternalPort: 3000, InternalPort: 49003},
 	}); err != nil {
 		t.Fatalf("SaveRoutes ws-b: %v", err)
 	}
@@ -181,8 +181,8 @@ func TestNoProxyRoundTrip(t *testing.T) {
 	setupTestConfig(t)
 
 	routes := []Route{
-		{Subdomain: "ws", ServerName: "api", ExternalPort: 3000, InternalPort: 3000, NoProxy: true},
-		{Subdomain: "ws", ServerName: "web", ExternalPort: 5173, InternalPort: 49001},
+		{Project: "ws", ServerName: "api", ExternalPort: 3000, InternalPort: 3000, NoProxy: true},
+		{Project: "ws", ServerName: "web", ExternalPort: 5173, InternalPort: 49001},
 	}
 	if err := saveRoutes("ws", routes); err != nil {
 		t.Fatalf("saveRoutes: %v", err)

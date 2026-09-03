@@ -48,26 +48,93 @@ func LogFile(slug Slug, serverName string) string {
 // launches the shared reverse proxy; when true, each server binds to its
 // configured Port on localhost and the proxy is skipped.
 // projects should already have the correct paths (worktree paths).
-func Start(slug Slug, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
-	var newRoutes []Route
+// PlannedServer is one dev server with its port already allocated and its
+// working directory already joined — the pairing of project, server and route
+// that Start's two passes would otherwise have to rebuild positionally.
+type PlannedServer struct {
+	Project string
+	Server  DevServerConfig
+	Dir     string
+	Route   Route
+}
+
+// PlanServers pairs each configured dev server with one allocated port.
+// Pure: ports are allocated by the caller and handed in, in order.
+//
+// In no-proxy mode the server binds to its configured port directly, so the
+// internal and external ports are the same and the allocated ports are unused.
+func PlanServers(projects []DevProject, ports []int, noProxy bool) []PlannedServer {
+	var planned []PlannedServer
+	i := 0
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
 			port := ds.Port
-			if !noProxy {
-				freePort, err := FindFreePort()
-				if err != nil {
-					return nil, fmt.Errorf("failed to find free port: %w", err)
-				}
-				port = freePort
+			if !noProxy && i < len(ports) {
+				port = ports[i]
 			}
-			newRoutes = append(newRoutes, Route{
-				Subdomain:    string(slug),
-				ServerName:   ds.Name,
-				ExternalPort: ds.Port,
-				InternalPort: port,
-				NoProxy:      noProxy,
+			i++
+
+			dir := p.Path
+			if ds.Dir != "" {
+				dir = filepath.Join(p.Path, ds.Dir)
+			}
+
+			planned = append(planned, PlannedServer{
+				Project: p.Name,
+				Server:  ds,
+				Dir:     dir,
+				Route: Route{
+					Project:      p.Name,
+					ServerName:   ds.Name,
+					ExternalPort: ds.Port,
+					InternalPort: port,
+					NoProxy:      noProxy,
+				},
 			})
 		}
+	}
+	return planned
+}
+
+// countServers returns how many ports Start needs to allocate.
+func countServers(projects []DevProject) int {
+	n := 0
+	for _, p := range projects {
+		n += len(p.DevServers)
+	}
+	return n
+}
+
+// buildServerCommand assembles the shell line for one dev server. Pure, so the
+// exact string can be asserted — it is sent to tmux and never returned.
+func buildServerCommand(command string, port int) string {
+	portStr := fmt.Sprintf("%d", port)
+	return "PORT=" + portStr + " " + strings.ReplaceAll(command, "$PORT", portStr)
+}
+
+// Start starts dev servers for one worktree. When noProxy is false it also
+// launches the shared reverse proxy; when true, each server binds to its
+// configured Port on localhost and the proxy is skipped.
+// projects should already have the correct paths (worktree paths).
+func Start(slug Slug, projects []DevProject, domain string, proxyPort int, noProxy bool) ([]Route, error) {
+	// Allocate every port before starting anything: dev servers reference each
+	// other's ports, so allocation has to complete before the first one runs.
+	var ports []int
+	if !noProxy {
+		for range countServers(projects) {
+			freePort, err := FindFreePort()
+			if err != nil {
+				return nil, fmt.Errorf("failed to find free port: %w", err)
+			}
+			ports = append(ports, freePort)
+		}
+	}
+
+	planned := PlanServers(projects, ports, noProxy)
+
+	newRoutes := make([]Route, 0, len(planned))
+	for _, ps := range planned {
+		newRoutes = append(newRoutes, ps.Route)
 	}
 
 	if err := saveRoutes(slug, newRoutes); err != nil {
@@ -90,34 +157,20 @@ func Start(slug Slug, projects []DevProject, domain string, proxyPort int, noPro
 		}
 	}
 
-	// Start dev server windows
-	routeIdx := 0
-	for _, p := range projects {
-		for _, ds := range p.DevServers {
-			route := newRoutes[routeIdx]
-			routeIdx++
+	for _, ps := range planned {
+		windowName := fmt.Sprintf("%s/%s", slug, ps.Server.Name)
 
-			windowName := fmt.Sprintf("%s/%s", slug, ds.Name)
-			dir := p.Path
-			if ds.Dir != "" {
-				dir = filepath.Join(p.Path, ds.Dir)
-			}
-
-			logFile := LogFile(slug, ds.Name)
-			if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
-				return nil, fmt.Errorf("failed to create log dir: %w", err)
-			}
-			if err := os.WriteFile(logFile, nil, 0o644); err != nil {
-				return nil, fmt.Errorf("failed to truncate log file: %w", err)
-			}
-
-			portStr := fmt.Sprintf("%d", route.InternalPort)
-			expanded := strings.ReplaceAll(ds.Command, "$PORT", portStr)
-			cmd := fmt.Sprintf("PORT=%s %s", portStr, expanded)
-			crewExec.TmuxNewWindow(session, windowName, dir)
-			crewExec.TmuxPipePaneToFile(session, windowName, logFile)
-			_ = crewExec.TmuxSendKeys(session+":"+windowName, cmd)
+		logFile := LogFile(slug, ps.Server.Name)
+		if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create log dir: %w", err)
 		}
+		if err := os.WriteFile(logFile, nil, 0o644); err != nil {
+			return nil, fmt.Errorf("failed to truncate log file: %w", err)
+		}
+
+		crewExec.TmuxNewWindow(session, windowName, ps.Dir)
+		crewExec.TmuxPipePaneToFile(session, windowName, logFile)
+		_ = crewExec.TmuxSendKeys(session+":"+windowName, buildServerCommand(ps.Server.Command, ps.Route.InternalPort))
 	}
 
 	if !noProxy {

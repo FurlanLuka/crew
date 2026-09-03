@@ -29,7 +29,12 @@ func DisplayRef(slug Slug) string {
 }
 
 type Route struct {
-	Subdomain    string `json:"subdomain"`
+	// Project owns this server. Server names are only unique within a project
+	// (validServerName is enforced per-project), so without this two projects
+	// in one worktree that both expose a server called "api" are
+	// indistinguishable — and binding resolution would pick whichever it hit
+	// first. Empty when loaded from a route file written before this field.
+	Project      string `json:"project,omitempty"`
 	ServerName   string `json:"server_name"`
 	ExternalPort int    `json:"external_port"`
 	// InternalPort is the port the server is actually bound to.
