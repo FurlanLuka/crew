@@ -307,8 +307,34 @@ func moveWorktree(m MigrationMove) error {
 			BranchName(m.Ref, wp.Name))
 	}
 
-	// The old workspace directory is left only if it is now empty.
+	// Anything else in the old directory — notes, audit folders, a checkout
+	// whose pool entry is gone — belongs to this working copy and travels with
+	// it rather than being stranded beside the new tree.
+	if err := moveLooseEntries(WorktreeDir(Ref{Workspace: m.OldWorkspace}), WorktreeDir(m.Ref)); err != nil {
+		return err
+	}
 	os.Remove(WorktreeDir(Ref{Workspace: m.OldWorkspace}))
+	return nil
+}
+
+func moveLooseEntries(oldDir, newDir string) error {
+	entries, err := os.ReadDir(oldDir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		src := filepath.Join(oldDir, e.Name())
+		dst := filepath.Join(newDir, e.Name())
+		if src == newDir || strings.HasPrefix(newDir, src+string(os.PathSeparator)) {
+			continue // the new tree nested inside the old one (mumbo → mumbo/main)
+		}
+		if _, err := os.Stat(dst); err == nil {
+			return fmt.Errorf("refusing to move %s: %s already exists", src, dst)
+		}
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("moving %s: %w", src, err)
+		}
+	}
 	return nil
 }
 

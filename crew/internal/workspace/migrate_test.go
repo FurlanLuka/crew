@@ -390,3 +390,52 @@ func TestPlanFrom_MappingTable(t *testing.T) {
 		t.Errorf("phone-speak merges %v, want two", got)
 	}
 }
+
+// Real workspace roots hold notes and audit folders next to the checkouts.
+// They belong to that working copy and must not be stranded in the old dir.
+func TestApplyMigration_MovesLooseFilesWithTheWorktree(t *testing.T) {
+	setupTestConfig(t)
+	legacyWorkspaceWithCheckout(t, "ws-wrk1", "api")
+
+	oldDir := WorktreeDir(Ref{Workspace: "ws-wrk1"})
+	os.WriteFile(filepath.Join(oldDir, "notes.md"), []byte("keep me"), 0o644)
+	os.MkdirAll(filepath.Join(oldDir, "audit", "x"), 0o755)
+
+	plan, _ := PlanMigration()
+	if err := ApplyMigration(plan, filepath.Join(t.TempDir(), "backup")); err != nil {
+		t.Fatalf("ApplyMigration: %v", err)
+	}
+
+	newDir := WorktreeDir(Ref{Workspace: "ws", Worktree: "wrk1"})
+	for _, rel := range []string{"notes.md", filepath.Join("audit", "x"), "api"} {
+		if _, err := os.Stat(filepath.Join(newDir, rel)); err != nil {
+			t.Errorf("%s did not travel with the worktree: %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(oldDir); !os.IsNotExist(err) {
+		t.Errorf("old directory %s should be gone", oldDir)
+	}
+}
+
+// A checkout on a feature branch keeps it: the rename only applies to the
+// crew/<ws>/<proj> convention, and most real worktrees are not on it.
+func TestApplyMigration_LeavesFeatureBranchesAlone(t *testing.T) {
+	setupTestConfig(t)
+	legacyWorkspaceWithCheckout(t, "ws-wrk1", "api")
+
+	old := WorktreePath(Ref{Workspace: "ws-wrk1"}, "api")
+	if _, err := exec.RunGitCommand(old, "checkout", "-q", "-b", "feature/s4b-1"); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+
+	plan, _ := PlanMigration()
+	if err := ApplyMigration(plan, filepath.Join(t.TempDir(), "backup")); err != nil {
+		t.Fatalf("ApplyMigration: %v", err)
+	}
+
+	moved := WorktreePath(Ref{Workspace: "ws", Worktree: "wrk1"}, "api")
+	branch, _ := exec.RunGitCommand(moved, "rev-parse", "--abbrev-ref", "HEAD")
+	if strings.TrimSpace(branch) != "feature/s4b-1" {
+		t.Errorf("branch = %q, want the feature branch untouched", strings.TrimSpace(branch))
+	}
+}
