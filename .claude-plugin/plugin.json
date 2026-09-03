@@ -1,0 +1,10 @@
+{
+  "name": "crew",
+  "description": "Drive crew from Claude Code: workspaces, worktrees, dev servers with stable ports, env bindings, and the same env for scripts and evals.",
+  "version": "2.0.0",
+  "author": {
+    "name": "Luka Furlan",
+    "url": "https://github.com/FurlanLuka"
+  },
+  "homepage": "https://github.com/FurlanLuka/crew"
+}

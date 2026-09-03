@@ -1,0 +1,14 @@
+{
+  "name": "crew",
+  "owner": {
+    "name": "Luka Furlan"
+  },
+  "plugins": [
+    {
+      "name": "crew",
+      "source": "./",
+      "description": "Drive crew from Claude Code: workspaces, worktrees, dev servers with stable ports, env bindings, and the same env for scripts and evals."
+    }
+  ],
+  "description": "crew — CLI + TUI workspace manager for Claude Code."
+}

@@ -1,106 +1,130 @@
 # crew
 
-CLI + TUI workspace manager for Claude Code. Manages workspaces, worktrees, dev servers, env bindings, and session launching.
+CLI + TUI workspace manager for Claude Code. Workspaces hold projects; worktrees are isolated
+working copies of them, each with stable dev-server ports and env bindings that point projects
+at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source under `crew/`.
 
-## Architecture
+## Model
 
-- **Language:** Go
-- **TUI framework:** Bubbletea (Elm architecture: Model → Update → View)
-- **CLI output:** Tab-separated for scripting (`name\tpath\trole`)
-- **Config:** Stored in `CLAUDE_CONFIG_DIR` (defaults to `~/.claude`, user overrides to `~/.claude-personal`)
-- **Module path:** `github.com/FurlanLuka/crew/crew`
+- **Project** — a repo in the global pool (`~/.crew/projects.json`): name, path, dev servers,
+  **bindings**, and an optional **setup** command.
+- **Workspace** — membership: which projects, with which roles. Pure config, nothing of its
+  own on disk. `~/.crew/workspaces/<ws>.json`.
+- **Worktree** — one working copy of a workspace's projects, at
+  `~/.crew/workspaces/<ws>/<wt>/<project>`, branch `crew/<ws>/<wt>/<project>`. Owns its
+  **overrides** and its reserved **ports**. Everything crew keys per running unit — route
+  file, log dir, tmux session, prompt, `.code-workspace` — is keyed by the worktree's
+  **slug** `<ws>--<wt>` (`dev.Slug`, a distinct type so a bare workspace name cannot reach
+  those helpers).
+- **Ref** — how the user names a worktree: `<ws>/<wt>`, or bare `<ws>` when it has one.
+  `/` is user-facing; `--` appears only where crew does not render (hostnames, filenames,
+  tmux). Anything printed for a human goes through `dev.DisplayRef`.
+- **Binding** — `{var, value}` on a project. `value` is a template over
+  `{{url:proj[/server]}}`, `{{port:proj[/server]}}`, `{{worktree}}`, `{{workspace}}`; the server
+  is optional when the target has one. `dev.ParseTokens` is the one grammar, used by both
+  the validator (`project.ValidateBinding`) and the resolver. Precedence per variable:
+  worktree override > binding > left alone. A template that only partly expands is discarded
+  whole. Resolved values are injected as `export`s ahead of `PORT=` in the tmux command;
+  env files are read (scan, conflict warning), never written.
+- **Ports** are always allocated by crew and remembered per worktree (`Worktree.Ports`), so a
+  restart lands on the same ones. The configured `--port` is reference only. `--proxy` is
+  opt-in; default URLs are `localhost:<port>`.
+- A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
+  `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 
-### Model
-
-- **Project** — a registered repo in the global pool (`projects.json`). Owns its dev servers and its **bindings**.
-- **Workspace** — membership: which projects, with which roles. Pure config, nothing on disk of its own.
-- **Worktree** — one working copy of a workspace's projects, at `~/.crew/workspaces/<ws>/<wt>/<project>`, on branch `crew/<ws>/<wt>/<project>`. Owns **overrides**. Every artifact crew keys per running unit (route file, log dir, tmux session, prompt, `.code-workspace`) is keyed by the worktree's **slug** `<ws>--<wt>`.
-- **Ref** — how the user names a worktree: `<ws>/<wt>`, or bare `<ws>` when there is one. `/` is the user-facing separator; `--` appears only in identifiers crew doesn't render (hostnames, filenames, tmux). Anything printed for a human goes through `dev.DisplayRef`.
-- **Binding** — `{var, value}` on a project; `value` is a template over `{{url:proj[/server]}}`, `{{port:proj[/server]}}`, `{{worktree}}`, `{{workspace}}`. Resolved at `crew dev start` after ports are allocated and injected into the process env as exports. Precedence: worktree override > binding > left alone. A template that only partly expands is discarded whole. Env files are read (for the conflict warning and the scan), never written.
-- A workspace with no `worktrees` predates this model. It keeps flat paths and a bare slug until `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
-
-### Project structure
+## Structure
 
 ```
 crew/
-  main.go              # CLI entry point, command routing
+  main.go              dispatch, mustResolve, the add|rm|ls noun trio
+  cmd_dev.go           crew dev …          cmd_worktree.go   worktree/binding/override/setup cmds
+  cmd_run.go           crew env, crew run  cmd_migrate.go    crew migrate
+  cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   internal/
-    app/               # Bubbletea app shell, styles, key bindings
-    config/            # Config dir paths, settings
-    dev/               # Dev server management, reverse proxy, routing, binding resolution
-    exec/              # Shell execution, tmux, editor detection
-    help/              # CLI help system (structured CommandInfo tree)
-    project/           # Project CRUD
-    workspace/         # Workspace/worktree management, Resolved context, migration, session launching
+    app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
+    config/     ~/.crew paths, settings.json
+    debug/      debug.log + its TUI view
+    dev/        ports, routes, proxy, binding resolution, conflicts, scan proposals, formatters
+    exec/       git, tmux, editor, ShellQuote, setup steps (mise + lockfile detection)
+    help/       structured command tree (help_test pins every command)
+    procs/      process inventory and reclaim
+    project/    pool CRUD, bindings, setup; project TUI incl. the binding editor
+    settings/   settings TUI, uninstall entry
+    uninstall/  crew uninstall
+    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, TUI
 ```
 
-`dev` cannot import `workspace` (cycle). `dev` declares its own input types (`DevProject`,
-`ResolveParams`) and `workspace.Resolved` builds them. `project` cannot import `workspace`
-either; the binding editor's live preview is a function `main` wires in (`project.Previewer`).
+Import boundaries that shape the packages: `dev` cannot import `workspace` (it declares its own
+inputs — `DevProject`, `ResolveParams` — and `workspace.Resolved` builds them). `project` cannot
+import `workspace`; the binding editor's live preview and checkout list are functions `main`
+wires in (`project.Previewer`, `project.CheckoutDirs`).
 
-## UX philosophy
+### Resolved
 
-crew is a power-user tool. It should feel fast, intuitive, and polished:
+`workspace.Resolve(ref)` does the I/O once — one workspace read, one pool read — and returns
+every project with its path decided and its pool config attached. Commands go
+`mustResolve(arg)` → `*Resolved` → work. Don't call `project.Get` inside loops; that is what
+`Resolved` replaced. `res.DevProjects()`, `res.ResolveEnv()`, `res.ResolveParams(ports)`.
 
-- **Instant feedback** — show status after every action, never leave the user wondering
-- **Beautiful terminal output** — use lipgloss styles consistently, align columns, use icons
-- **No unnecessary prompts** — smart defaults, flags over interactive Q&A for CLI
-- **Clickable URLs** — always print full URLs so terminals can make them clickable
-- **Graceful errors** — clear message, suggest the fix, exit non-zero
-- **TUI for browsing, CLI for scripting** — same features available both ways
+### TUI
 
-## Key conventions
+`crew workspace` → workspaces → enter → that workspace's worktrees (+ new) → enter → the
+**worktree page** (`view_worktree.go`): servers with live status and URLs, the same anomaly
+block `crew dev start` prints, launch and open rows, one cursor. `crew project` → `s` servers,
+`b` bindings (scan-first editor with live preview), `t` setup command.
 
-- **Tab-separated output** for all CLI list commands (pipe-friendly)
-- **Bubbletea** for all interactive views (consistent navigation: arrows, tab, esc)
-- **Always show status** after install/remove/update actions
-- **Feature-based organization** — each package owns its types, logic, and view
-- **Debug logging** — every external command execution (tmux, git, editor, npm, osascript) must include a `debug.Log(category, ...)` call. Log the command before running it; log errors inline. Use categories matching the package: `"tmux"`, `"git"`, `"editor"`, `"dev"`. Import from `github.com/FurlanLuka/crew/crew/internal/debug`.
-- **Never log binding values** — names, sources and targets only. Bindings and overrides carry service URLs and can carry credentials.
-- **Resolve once** — commands take a ref, call `mustResolve` / `workspace.Resolve`, and work from the `*Resolved`. Don't call `project.Get` inside loops; that is the pattern `Resolved` replaced.
-- **Warn, never block, at dev-server start** — crew asserts only facts it owns (ports it allocated, projects it placed). It is not a schema validator for every project.
+### New worktree
 
-## Development
+`AddWorktree`: base-branch table with behind-origin counts (fetches in parallel; `ctrl+p` /
+`--pull` fast-forwards local bases without touching a checked-out feature branch) → git
+worktree per project, all-or-nothing with rollback → `.env` copied from the canonical repo or
+a sibling worktree → recorded → installs per project (`mise trust && mise install`, then
+lockfile-detected package manager or the project's `Setup`; failures keep what passed,
+`crew setup <ref>` re-runs) → smoke start: servers up six seconds, which panes still run,
+last log lines for the dead ones, stop.
+
+## Conventions
+
+- **Tab-separated output** for CLI list commands; `--json` everywhere via the global flag
+  stripper (`extractFlag` stops at `--` so `crew run … -- child --json` keeps the child's flag).
+- **Bubbletea** for every interactive view; arrows/enter/esc; letters as accelerators.
+- **Show status after every action.**
+- **Warn, never block, at dev-server start.** Crew asserts only facts it owns — ports it
+  allocated, projects it placed. A value pointing at a sibling in the same worktree is normal;
+  one pointing into another worktree, or at a sibling's configured port while it runs
+  elsewhere, is a conflict.
+- **Debug logging** — every external command (tmux, git, editor, package managers, mise)
+  goes through `debug.Log(category, …)`: `"tmux"`, `"git"`, `"editor"`, `"dev"`, `"setup"`,
+  `"procs"`, `"uninstall"`. Log the command before running it; log errors inline.
+- **Never log binding values** — names, sources and targets only. Values carry URLs and can
+  carry credentials.
+- **Comments say why, not what.** A comment earns its place with a constraint, a product
+  reason, or a non-obvious decision — never a restatement of the next line.
+
+## Tests
+
+`*_test.go` beside the source. `setupTestConfig(t)` points `config.ConfigDir` at a
+`t.TempDir()`; nothing touches `~/.crew`. Real git via `initRepo` (`workspace_test.go`) and
+`remoteAndClone` (`base_test.go`) — worktree creation, migration moves, branch renames and
+fetch counts run against actual repositories. Exact full-string comparison is the snapshot
+convention (`FormatResolutions`, `RenderPrompt`, `renderWorktreePage`, `ServerCommand`).
+tmux-dependent tests `t.Skip` without tmux and tolerate a live user proxy.
 
 ```bash
-# Build
-cd crew && go build -o /tmp/crew .
-
-# Test
-cd crew && go test ./...
-
-# Run locally
-/tmp/crew help
-/tmp/crew workspace
+cd crew && go build -o /tmp/crew . && go test ./...
 ```
+
+Live checks go against a fake HOME (`HOME=/tmp/x crew …`), never the real `~/.crew`, unless
+the point is to verify real state.
 
 ## Release
 
-- GoReleaser pipeline triggers on git tag push
-- **Always create new version tags** — never delete and re-tag
-- Install script is the sole distribution method
+GoReleaser on tag push. Always a new tag, never delete and re-tag. `install.sh` is the
+distribution method; `crew update` pulls the latest release. Replacing `~/.local/bin/crew`
+in place gets SIGKILLed on macOS (signature) — `rm` then `cp`, then `codesign --sign -`.
 
-## Agents
+## Claude Code plugin
 
-Use the following agents when appropriate:
-
-- **nodejs-code-reviewer** — after writing or modifying Node.js/TypeScript backend code, run this agent to review your changes for quality, security, and standards compliance.
-- **reactjs-code-reviewer** — after writing or modifying React code, run this agent to review your changes for component design, hooks usage, and standards compliance.
-- **web-designer** — award-winning web designer. Researches real award-winning sites for inspiration, then generates unique, distinctive designs through iterative conversation. Use when the user wants to design a website, create a visual theme, generate HTML mockups, or build a design system. Use proactively when design tasks are detected.
-- **architect** — software architecture and system design agent. Use when designing new features, modules, APIs, database schemas, or system-level decisions. When entering plan mode for new features or architectural decisions, spawn this agent in the background during the design phase.
-- **clean-code-architect** — clean code architecture agent. Use when reviewing code for refactoring opportunities, planning extractions, identifying tangled logic, or designing clean patterns for existing code.
-- **test-architect** — test architecture and strategy agent. Use when planning what to test, designing test structure, identifying coverage gaps, or deciding how to test a new feature.
-- **crew** — crew workspace expert. Use when the user wants to manage workspaces, list projects, check dev server status, start/stop/restart dev servers, or launch a workspace session.
-
-## Skills
-
-The following skills are available:
-
-- **js-ts-clean-code** — when writing, reviewing, or refactoring JavaScript/TypeScript code, follow these guidelines for readability, simplicity, formatting, naming, imports, assignment patterns, object construction, block formatting, type extraction, logical grouping, and iteration.
-- **nodejs-clean-code** — when writing, reviewing, or refactoring Node.js/TypeScript backend code, follow these guidelines for error handling, async patterns, and backend-specific type conventions. Complements `js-ts-clean-code`.
-- **reactjs-clean-code** — when writing, reviewing, or refactoring React code, follow these guidelines for component structure, state management, hooks, and composition. Complements `js-ts-clean-code`.
-- **reactjs-new-project** — when scaffolding a new React project, follow these guidelines for project structure, tooling, and conventions.
-- **web-designer** — design system knowledge base (universal components, layout techniques, design principles, CSS variables, markup rules). Support skill for the web-designer agent — not user-invocable.
-- **crew-remote** — remote management reference for crew workspaces, dev servers, and deployment URLs.
-- **code-documenting** — code documentation and commenting guidelines. Covers when, where, and how to write comments that explain business context, domain rules, external dependencies, and non-obvious decisions. Use when writing, reviewing, or refactoring code that involves business logic or system integrations. Complements `js-ts-clean-code`.
-- **crew-launch** — interactive workspace launcher: discover workspaces, pick one, launch session, start dev servers.
+`.claude-plugin/` at the repo root ships the `crew` skill and agent for Claude Code:
+`/plugin marketplace add FurlanLuka/crew`, then `/plugin install crew@crew`. Keep
+`skills/crew/SKILL.md` in step with the CLI — it is what an agent reads to drive crew.

@@ -15,43 +15,46 @@ CLI + TUI workspace manager for Claude Code. Workspaces hold projects; worktrees
 | `crew add binding <project> --scan` | Declare which env vars crew computes from the ports it allocates |
 | `crew env <ws>/<wt> <project>` | A project's resolved env for that worktree, `KEY=VALUE` |
 | `crew run <ws>/<wt> <project> -- <cmd>` | Run a script or eval with the same env the dev servers got |
+| `crew setup <ws>/<wt>` | Re-run a worktree's installs after a failure |
 | `crew show <ws>/<wt>` | Projects with paths and roles |
 | `crew code <ws>/<wt>` | Remote SSH URLs for Cursor/VS Code |
-| `crew migrate` | Move pre-worktree workspaces to the nested layout |
+| `crew migrate` | Move pre-2.0 workspaces to the nested layout |
 | `crew config` | Settings — server IP, SSH host, proxy port, uninstall |
+| `crew uninstall [--purge]` | Remove crew; `--purge` also removes every checkout and `~/.crew` |
 
-## Setup — macOS
+## Install
 
 ```bash
-# Install crew
+# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
 
 # Or build from source
 go install github.com/FurlanLuka/crew/crew@latest
-
-# Add projects, create workspace, launch
-crew project
-crew workspace
 ```
 
-## Setup — Linux / Remote Server
-
-```bash
-# Install crew + dependencies (tmux, git)
-curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
-
-# Install Claude Code
-curl -fsSL https://claude.ai/install.sh | bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-
-```
+Linux installs pull in `tmux` and `git` if missing. Claude Code itself:
+`curl -fsSL https://claude.ai/install.sh | bash`.
 
 ## Quick start
 
 ```bash
-crew project              # Add your projects (name + path)
-crew workspace            # Create a workspace, add projects, enter a worktree
-crew <workspace>/<wt>     # Open a worktree directly
+crew add project speak-api ~/Documents/speak-api          # register repos
+crew dev add speak-api --name=speak-api --port=3000 --cmd="npm start"
+crew add workspace phone-speak speak-api --role=api        # workspace + first project
+crew add binding ai-tutor-api --scan --apply               # bindings from its .env
+crew launch phone-speak/main                               # the worktree page
+crew add worktree phone-speak/wrk2 --pull                  # a second working copy
+```
+
+Or drive it from the TUI: `crew project`, `crew workspace`, `crew <ws>/<wt>`.
+
+## Claude Code plugin
+
+The `crew` skill and agent ship in this repo, so Claude Code can drive crew for you:
+
+```
+/plugin marketplace add FurlanLuka/crew
+/plugin install crew@crew
 ```
 
 ## Architecture
