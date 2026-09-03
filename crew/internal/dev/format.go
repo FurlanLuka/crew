@@ -74,6 +74,35 @@ func FormatResolutions(resolutions []Resolution) string {
 	return b.String()
 }
 
+// FormatAnomalies is FormatResolutions without the count line — just what was
+// left alone, for a page that shows the servers themselves right above.
+func FormatAnomalies(resolutions []Resolution) string {
+	unresolved := make(map[string][]Resolution)
+	var order []string
+	for _, r := range resolutions {
+		if r.Resolved() {
+			continue
+		}
+		if _, seen := unresolved[r.Project]; !seen {
+			order = append(order, r.Project)
+		}
+		unresolved[r.Project] = append(unresolved[r.Project], r)
+	}
+	if len(order) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	for _, projName := range order {
+		fmt.Fprintf(&b, "\n  %s\n", projName)
+		width := varWidth(unresolved[projName])
+		for _, r := range unresolved[projName] {
+			fmt.Fprintf(&b, "    %-*s  left alone — %s\n", width, r.Var, r.Detail)
+		}
+	}
+	return b.String()
+}
+
 // FormatConflicts renders the port-conflict warnings. Pure.
 func FormatConflicts(conflicts []Conflict) string {
 	if len(conflicts) == 0 {

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -29,6 +30,10 @@ func StartDev(res *Resolved, noProxy, restart bool) (dev.StartResult, error) {
 
 	if restart {
 		dev.StopAll(res.Slug)
+		// KillTmuxSession returns before the servers have died. Allocating
+		// right away sees the reserved ports still held and moves every
+		// server to a fresh port — the opposite of what restart is for.
+		dev.WaitPortsFree(res.Ports, 3*time.Second)
 	}
 
 	settings := config.LoadSettings()

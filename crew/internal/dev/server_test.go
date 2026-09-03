@@ -53,9 +53,14 @@ func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 	setupTestConfig(t)
 
 	session := SessionName("ws-np")
+	// A real proxy may be running for the user's own worktrees; only assert
+	// that this Start did not create one.
+	proxyBefore := crewExec.TmuxSessionExists(ProxySessionName)
 	t.Cleanup(func() {
 		crewExec.KillTmuxSession(session)
-		crewExec.KillTmuxSession(ProxySessionName)
+		if !proxyBefore {
+			crewExec.KillTmuxSession(ProxySessionName)
+		}
 	})
 
 	projects := []DevProject{{
@@ -96,7 +101,7 @@ func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 		t.Errorf("persisted routes = %+v, err=%v", loaded, err)
 	}
 
-	if crewExec.TmuxSessionExists(ProxySessionName) {
+	if !proxyBefore && crewExec.TmuxSessionExists(ProxySessionName) {
 		t.Error("proxy session should not be started in no-proxy mode")
 	}
 }

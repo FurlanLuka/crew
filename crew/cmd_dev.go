@@ -427,7 +427,7 @@ func cmdDevTui() {
 		os.Exit(1)
 	}
 
-	runTUI(workspace.NewDevView(mustResolve(os.Args[3]).Ref))
+	runTUI(workspace.NewWorktreeView(mustResolve(os.Args[3]).Ref))
 }
 
 func cmdDevProxy() {

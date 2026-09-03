@@ -103,6 +103,5 @@ Print:
   - `crew dev stop <workspace>/<worktree>` to stop dev servers
   - `crew env <workspace>/<worktree> <project>` to see every resolved variable
   - `crew run <workspace>/<worktree> <project> -- <cmd>` to run a script or eval with the same env
-  - `crew git <workspace>/<worktree>` to launch lazygit
   - `crew add worktree <workspace>/<name>` for a second working copy
   - `crew rm worktree <workspace>/<worktree>` to remove this one

@@ -97,14 +97,6 @@ func stopSessions(inv Inventory) []string {
 		plans.Stop()
 	}
 
-	// Git sessions have no owning package to ask; they are ephemeral lazygit
-	// windows and safe to drop directly.
-	for _, s := range inv.Sessions {
-		if strings.HasPrefix(s.Name, "crew-git-") {
-			crewExec.KillTmuxSession(s.Name)
-		}
-	}
-
 	// Report what is gone rather than what was asked to stop, so the count
 	// cannot claim a teardown that silently failed.
 	remaining := map[string]bool{}

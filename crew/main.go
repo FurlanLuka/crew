@@ -189,10 +189,6 @@ func main() {
 		cmdLaunch()
 		return
 
-	case "git":
-		cmdGit()
-		return
-
 	case "duplicate":
 		cmdDuplicate()
 		return
@@ -227,7 +223,7 @@ func main() {
 	default:
 		// Try as workspace/worktree ref shortcut (launch directly)
 		if ref, err := workspace.ParseRef(cmd); err == nil && workspace.Exists(ref.Workspace) {
-			runTUI(workspace.NewLaunchView(mustResolve(ref.String()).Ref))
+			runTUI(workspace.NewWorktreeView(mustResolve(ref.String()).Ref))
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown command '%s'. Run 'crew help' for usage.\n", cmd)
 			os.Exit(1)
@@ -502,7 +498,7 @@ func cmdLaunch() {
 		return
 	}
 
-	runTUI(workspace.NewLaunchView(mustResolve(os.Args[2]).Ref))
+	runTUI(workspace.NewWorktreeView(mustResolve(os.Args[2]).Ref))
 }
 
 // cmdDuplicate copies a worktree within its workspace. This is what
@@ -807,20 +803,6 @@ func cmdNotify() {
 		fmt.Println("Notifications disabled")
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown notify command '%s'.\nUsage: crew notify [setup|test|rm]\n", os.Args[2])
-		os.Exit(1)
-	}
-}
-
-func cmdGit() {
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew git <workspace>\n")
-		os.Exit(1)
-	}
-
-	wsName := os.Args[2]
-
-	if err := workspace.LaunchGitSession(mustResolve(wsName)); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }

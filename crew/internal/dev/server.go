@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -135,6 +136,32 @@ type StartResult struct {
 // PortKey is how a server's reservation is keyed.
 func PortKey(project, server string) string { return project + "/" + server }
 
+// PlannedFromRoutes rebuilds the planned servers for a worktree from its route
+// file, so anything that inspects a running worktree — the worktree page, crew
+// env — sees the same shape Start does.
+func PlannedFromRoutes(projects []DevProject, routes []Route) []PlannedServer {
+	byKey := make(map[ProjectServer]Route, len(routes))
+	for _, r := range routes {
+		byKey[ProjectServer{Project: r.Project, Server: r.ServerName}] = r
+	}
+
+	var planned []PlannedServer
+	for _, p := range projects {
+		for _, ds := range p.DevServers {
+			r, ok := byKey[ProjectServer{Project: p.Name, Server: ds.Name}]
+			if !ok {
+				continue
+			}
+			dir := p.Path
+			if ds.Dir != "" {
+				dir = filepath.Join(p.Path, ds.Dir)
+			}
+			planned = append(planned, PlannedServer{Project: p.Name, Server: ds, Dir: dir, Route: r})
+		}
+	}
+	return planned
+}
+
 // AllocatePorts returns one port per server, in order. A reserved port that
 // is still free is kept; anything else gets a fresh free port.
 func AllocatePorts(projects []DevProject, reserved map[string]int) ([]int, error) {
@@ -153,6 +180,25 @@ func AllocatePorts(projects []DevProject, reserved map[string]int) ([]int, error
 		}
 	}
 	return ports, nil
+}
+
+// WaitPortsFree blocks until every reserved port can be bound, or the timeout
+// passes. Used after stopping a session so a restart lands on the same ports.
+func WaitPortsFree(reserved map[string]int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for {
+		busy := false
+		for _, port := range reserved {
+			if port > 0 && !PortFree(port) {
+				busy = true
+				break
+			}
+		}
+		if !busy || time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // PortFree reports whether a TCP port can be bound right now.

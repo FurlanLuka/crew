@@ -409,12 +409,6 @@ var Root = CommandInfo{
 			},
 		},
 		{
-			Name:        "git",
-			Description: "Launch lazygit in a tmux session with one window per project. Sessions are ephemeral — they auto-destroy when you detach (ctrl-b d).",
-			Usage:       "crew git <workspace>[/<worktree>]",
-			Examples:    []string{"crew git feature-auth"},
-		},
-		{
 			Name:        "rm",
 			Description: "Remove workspaces, projects, or workspace projects. Without subcommand, removes an entire workspace (stops dev servers, removes worktrees, directory, and JSON).",
 			Usage:       "crew rm <workspace>",

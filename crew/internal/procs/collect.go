@@ -12,7 +12,7 @@ import (
 )
 
 // sessionPrefix matches every tmux session crew creates: crew-dev-<ws>,
-// crew-dev-proxy, crew-git-<ws>, and the plans session.
+// crew-dev-proxy, and the plans session.
 const sessionPrefix = "crew-"
 
 // collectSessions groups crew's tmux sessions with the processes running in

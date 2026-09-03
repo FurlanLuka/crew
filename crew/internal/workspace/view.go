@@ -29,7 +29,6 @@ type wsProjectsLoadedMsg struct {
 	poolNames  []string // names from pool not yet in workspace
 }
 type codeOpenedMsg struct{ output string }
-type gitSessionReadyMsg struct{ session string }
 type wsProjectAddedMsg struct{ name string }
 type wsProjectRemovedMsg struct{ name string }
 
@@ -163,12 +162,6 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case codeOpenedMsg:
 		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: msg.output} }
-
-	case gitSessionReadyMsg:
-		cmd := GitAttachCmd(msg.session)
-		return v, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return loadWorkspaces()
-		})
 
 	case wsProjectsLoadedMsg:
 		v.wsProjects = msg.wsProjects
@@ -394,7 +387,7 @@ func (v View) handleWorktreesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if onNew {
 			return startNew()
 		}
-		page := NewLaunchView(worktrees[v.wtCursor].Ref)
+		page := NewWorktreeView(worktrees[v.wtCursor].Ref)
 		return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 	}
 
@@ -417,15 +410,6 @@ func (v View) handleWorktreesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.state = stateConfirmRemoveWorktree
 		v.statusMsg = ""
 		return v, nil
-	case "s":
-		page := NewDevView(selected.Ref)
-		return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
-	case "g":
-		return v, launchLazygit(selected.Ref)
-	case "c":
-		return v, openCode(selected.Ref)
-	case "o":
-		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: selected.Path} }
 	}
 	return v, nil
 }
@@ -646,7 +630,7 @@ func (v View) renderWorktrees(b *strings.Builder) {
 	if v.wtCursor == newIdx {
 		b.WriteString(app.HelpStyle.Render("enter create  esc back"))
 	} else {
-		b.WriteString(app.HelpStyle.Render("enter launch  s servers  g git  c code  o open  u duplicate  n new  d delete  esc back"))
+		b.WriteString(app.HelpStyle.Render("enter open  u duplicate  n new  d delete  esc back"))
 	}
 	b.WriteString("\n")
 }
@@ -769,20 +753,6 @@ func removeWorktree(ref Ref) tea.Cmd {
 			return errMsg{err}
 		}
 		return worktreeRemovedMsg{ref}
-	}
-}
-
-func launchLazygit(ref Ref) tea.Cmd {
-	return func() tea.Msg {
-		res, err := Resolve(ref)
-		if err != nil {
-			return errMsg{err}
-		}
-		session, err := EnsureGitSession(res)
-		if err != nil {
-			return errMsg{err}
-		}
-		return gitSessionReadyMsg{session}
 	}
 }
 

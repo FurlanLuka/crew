@@ -8,17 +8,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
-func TestAvailableLaunchModes(t *testing.T) {
-	if got := availableLaunchModes(true); !reflect.DeepEqual(got, []int{launchModeEditorClaude, launchModeClaude}) {
-		t.Errorf("with an editor = %v, want both modes", got)
-	}
-	// The editor mode is hidden rather than offered-and-failed: with only two
-	// modes, leaving it in would make half the menu a dead end.
-	if got := availableLaunchModes(false); !reflect.DeepEqual(got, []int{launchModeClaude}) {
-		t.Errorf("without an editor = %v, want only the Claude mode", got)
-	}
-}
-
 func TestClaudeTaskFor_SingleProject(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})

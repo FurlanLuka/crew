@@ -59,7 +59,6 @@ Reference card for managing crew workspaces and dev servers from a remote agent.
 | **Other** | |
 | `crew start <ws>` | Generate the orientation prompt for a workspace |
 | `crew launch [<ws>]` | Open the launch view (TUI) |
-| `crew git <ws>` | Launch lazygit in tmux (ephemeral, dies on detach) |
 | `crew plans start` | Start the plan viewer server |
 | `crew plans stop` | Stop the plan viewer server |
 | `crew help [cmd] [subcmd]` | Show help for a command |
@@ -81,7 +80,6 @@ Each project can have named dev servers (e.g., `api`, `web`). When started, crew
 
 ### Git sessions
 
-`crew git <ws>` launches lazygit in a tmux session with one window per project. Sessions are ephemeral — they auto-destroy when you detach (`ctrl-b d`). Re-running `crew git <ws>` creates a fresh session.
 
 ## Inspecting
 

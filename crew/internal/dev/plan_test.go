@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 )
 
 func twoProjects() []DevProject {
@@ -255,5 +256,45 @@ func TestAllocatePorts_NoReservationsAllocatesFresh(t *testing.T) {
 			t.Errorf("ports = %v, want three distinct non-zero ports", ports)
 		}
 		seen[p] = true
+	}
+}
+
+// The page and crew env inspect a running worktree from its route file; the
+// shape has to match what Start planned.
+func TestPlannedFromRoutes(t *testing.T) {
+	projects := twoProjects()
+	routes := []Route{
+		{Project: "speak-api", ServerName: "api", ExternalPort: 3000, InternalPort: 54001},
+		{Project: "mumbo", ServerName: "homepage", ExternalPort: 3001, InternalPort: 54003},
+	}
+
+	planned := PlannedFromRoutes(projects, routes)
+	if len(planned) != 2 {
+		t.Fatalf("planned %d, want 2 — mumbo/api has no route and is skipped", len(planned))
+	}
+	if planned[0].Project != "speak-api" || planned[0].Route.InternalPort != 54001 || planned[0].Dir != "/wt/speak-api" {
+		t.Errorf("planned[0] = %+v", planned[0])
+	}
+	if planned[1].Server.Name != "homepage" || planned[1].Dir != "/wt/mumbo/homepage" {
+		t.Errorf("planned[1] = %+v", planned[1])
+	}
+}
+
+func TestWaitPortsFree(t *testing.T) {
+	held, _ := net.Listen("tcp", ":0")
+	port := held.Addr().(*net.TCPAddr).Port
+
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		held.Close()
+	}()
+
+	start := time.Now()
+	WaitPortsFree(map[string]int{"p/s": port}, 3*time.Second)
+	if elapsed := time.Since(start); elapsed < 250*time.Millisecond || elapsed > 2*time.Second {
+		t.Errorf("waited %v, want roughly until the port was released", elapsed)
+	}
+	if !PortFree(port) {
+		t.Error("port should be free after the wait")
 	}
 }

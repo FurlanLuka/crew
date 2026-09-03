@@ -245,6 +245,5 @@ func saveSettings(s config.Settings) tea.Cmd {
 
 func refreshConfigs() tea.Msg {
 	exec.EnsureTmuxConfig()
-	exec.EnsureLazygitConfig()
 	return refreshedMsg{}
 }
