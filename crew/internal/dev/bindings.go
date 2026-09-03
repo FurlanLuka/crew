@@ -255,7 +255,7 @@ func AmbiguousTargetError(proj string, count int, names string) error {
 //	{{workspace}}         this workspace's name
 //
 // The server half is optional when the target project has exactly one dev
-// server, which is the common case and what the pickers generate.
+// server, which is the common case and what the scan proposes.
 //
 // An unresolvable token fails the whole expansion rather than leaving a hole:
 // a half-expanded value that reaches a process is exactly the silently-wrong

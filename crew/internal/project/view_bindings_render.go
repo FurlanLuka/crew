@@ -16,16 +16,8 @@ func (v BindingsView) View() string {
 		v.renderList(&b)
 	case bindingStateScan:
 		v.renderScan(&b)
-	case bindingStateVar:
-		v.renderVar(&b)
-	case bindingStateSource:
-		v.renderSource(&b)
-	case bindingStateProject:
-		v.renderProject(&b)
-	case bindingStateServer:
-		v.renderServer(&b)
-	case bindingStateCustom:
-		v.renderCustom(&b)
+	case bindingStateEdit:
+		v.renderEdit(&b)
 	case bindingStateConfirmRemove:
 		b.WriteString(fmt.Sprintf("  Remove binding '%s'? (y/n)\n", v.bindings[v.cursor].Var))
 	}
@@ -126,101 +118,28 @@ func (v BindingsView) renderScan(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-func (v BindingsView) renderVar(b *strings.Builder) {
-	b.WriteString("  Adding binding\n\n")
-	b.WriteString("  var    ")
-	b.WriteString(v.varInput.View())
-	b.WriteString("\n")
+// ── Edit ──
 
-	if match := v.completeVar(v.varInput.Value()); match != "" && match != v.varInput.Value() {
-		b.WriteString("         ")
-		b.WriteString(app.Subtle.Render("tab → " + match))
-		b.WriteString("\n")
-	}
-
-	if v.err != nil {
-		b.WriteString("\n  ")
-		b.WriteString(app.Error.Render(v.err.Error()))
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter next  tab complete from .env  esc cancel"))
-	b.WriteString("\n")
-}
-
-func (v BindingsView) renderSource(b *strings.Builder) {
-	if v.insertToken {
-		b.WriteString("  Insert token\n\n")
-	} else {
-		b.WriteString(fmt.Sprintf("  %s\n\n", v.draft.Var))
-		b.WriteString("  value  ")
-	}
-
-	for i, label := range sourceLabels {
-		if i > 0 || v.insertToken {
-			b.WriteString("         ")
-		}
-		if i == v.sourceCur {
-			b.WriteString(app.Selected.Render("▸ " + label))
-		} else {
-			b.WriteString("  " + label)
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter pick  esc back"))
-	b.WriteString("\n")
-}
-
-func (v BindingsView) renderProject(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("  %s — which project?\n\n", v.draft.Var))
-
-	candidates := v.projectsWithServers()
-	if len(candidates) == 0 {
-		b.WriteString("  ")
-		b.WriteString(app.Subtle.Render("No project has dev servers configured yet."))
-		b.WriteString("\n")
-	}
-	for i, p := range candidates {
-		servers := make([]string, 0, len(p.DevServers))
-		for _, ds := range p.DevServers {
-			servers = append(servers, fmt.Sprintf("%s :%d", ds.Name, ds.Port))
-		}
-		b.WriteString(app.RowPrefix(i == v.projectCur))
-		b.WriteString(app.RowName(fmt.Sprintf("%-16s", p.Name), i == v.projectCur))
-		b.WriteString(" " + app.Subtle.Render(strings.Join(servers, "  ")) + "\n")
-	}
-
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter pick  esc back"))
-	b.WriteString("\n")
-}
-
-func (v BindingsView) renderServer(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("  %s — which server of %s?\n\n", v.draft.Var, v.pickedProj.Name))
-
-	for i, ds := range v.pickedProj.DevServers {
-		b.WriteString(app.RowPrefix(i == v.serverCur))
-		b.WriteString(app.RowName(fmt.Sprintf("%-16s", ds.Name), i == v.serverCur))
-		b.WriteString(" " + app.Subtle.Render(fmt.Sprintf(":%d  %s", ds.Port, ds.Command)) + "\n")
-	}
-
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter pick  esc back"))
-	b.WriteString("\n")
-}
-
-func (v BindingsView) renderCustom(b *strings.Builder) {
+func (v BindingsView) renderEdit(b *strings.Builder) {
 	action := "Adding binding"
 	if v.editIdx >= 0 {
 		action = "Editing binding"
 	}
 	b.WriteString(fmt.Sprintf("  %s\n\n", action))
-	b.WriteString(fmt.Sprintf("  var    %s\n", v.draft.Var))
+
+	b.WriteString("  var    ")
+	b.WriteString(v.varInput.View())
+	b.WriteString("\n")
+	if v.focus == fieldVar {
+		if match := v.completeVar(v.varInput.Value()); match != "" && match != v.varInput.Value() {
+			b.WriteString("         ")
+			b.WriteString(app.Subtle.Render("tab → " + match))
+			b.WriteString("\n")
+		}
+	}
+
 	b.WriteString("  value  ")
-	b.WriteString(v.customInput.View())
+	b.WriteString(v.valueInput.View())
 	b.WriteString("\n")
 
 	// Live preview against every worktree this project is in — the actual
@@ -239,7 +158,7 @@ func (v BindingsView) renderCustom(b *strings.Builder) {
 			}
 			b.WriteString("\n")
 		}
-	} else if Previewer != nil && v.draft.Value != "" {
+	} else if Previewer != nil && v.draft.Value != "" && validVarName.MatchString(v.draft.Var) {
 		b.WriteString("\n         ")
 		b.WriteString(app.Subtle.Render("→ not in any worktree yet"))
 		b.WriteString("\n")
@@ -251,7 +170,55 @@ func (v BindingsView) renderCustom(b *strings.Builder) {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter save  ctrl+t insert token  esc cancel"))
 	b.WriteString("\n")
+	renderTokenLegend(b, v.projectsWithServers())
+
+	b.WriteString("\n  ")
+	b.WriteString(app.HelpStyle.Render("tab next field  enter save  esc cancel"))
+	b.WriteString("\n")
+}
+
+type legendRow struct{ token, meaning, example string }
+
+// The legend is the whole grammar. If a token is added to dev.ParseTokens it
+// belongs here too, or nobody will find it from the TUI.
+var tokenLegend = []legendRow{
+	{"{{url:PROJECT}}", "http://localhost:<port> of that project's server", "{{url:speak-api}}"},
+	{"{{port:PROJECT/SERVER}}", "the port alone — for any other scheme, or a path", "ws://localhost:{{port:livekit}}/rtc"},
+	{"{{worktree}}", "this worktree's name", "agent-{{worktree}}"},
+	{"{{workspace}}", "this workspace's name", "db_{{workspace}}_{{worktree}}"},
+}
+
+// renderTokenLegend lists the tokens and the projects they can point at, so
+// a value can be typed without leaving the screen or knowing the grammar.
+func renderTokenLegend(b *strings.Builder, targets []Project) {
+	b.WriteString("  Tokens\n")
+	for _, r := range tokenLegend {
+		// Pad before styling: width counts the escape bytes otherwise.
+		b.WriteString(fmt.Sprintf("    %-25s ", r.token))
+		b.WriteString(app.Subtle.Render(fmt.Sprintf("%-50s %s", r.meaning, r.example)))
+		b.WriteString("\n")
+	}
+	b.WriteString("    ")
+	b.WriteString(app.Subtle.Render("SERVER is optional when the project has one server. A value without tokens is used as-is."))
+	b.WriteString("\n\n")
+
+	b.WriteString("  Projects\n")
+	if len(targets) == 0 {
+		b.WriteString("    ")
+		b.WriteString(app.Subtle.Render("none with dev servers yet — crew dev add <project> …"))
+		b.WriteString("\n")
+		return
+	}
+	width := 0
+	for _, p := range targets {
+		width = max(width, len(p.Name))
+	}
+	for _, p := range targets {
+		servers := make([]string, 0, len(p.DevServers))
+		for _, ds := range p.DevServers {
+			servers = append(servers, fmt.Sprintf("%s :%d", ds.Name, ds.Port))
+		}
+		b.WriteString(fmt.Sprintf("    %-*s  %s\n", width, p.Name, app.Subtle.Render(strings.Join(servers, "  "))))
+	}
 }

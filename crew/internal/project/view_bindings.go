@@ -50,32 +50,16 @@ type bindingState int
 const (
 	bindingStateList bindingState = iota
 	bindingStateScan
-	bindingStateVar
-	bindingStateSource
-	bindingStateProject
-	bindingStateServer
-	bindingStateCustom
+	bindingStateEdit
 	bindingStateConfirmRemove
 )
 
-// sourceKind is what the value picker offers. Nobody types a template.
-type sourceKind int
+type editField int
 
 const (
-	sourceURL sourceKind = iota
-	sourcePort
-	sourceWorktree
-	sourceWorkspace
-	sourceCustom
+	fieldVar editField = iota
+	fieldValue
 )
-
-var sourceLabels = []string{
-	"a project's URL",
-	"a project's port",
-	"this worktree's name",
-	"this workspace's name",
-	"custom…",
-}
 
 // ── Model ──
 
@@ -91,21 +75,16 @@ type BindingsView struct {
 	accepted  map[int]bool
 	scanCur   int
 
-	varInput    textinput.Model
-	envKeys     []string
-	customInput textinput.Model
-	editIdx     int
-
-	sourceCur  int
+	// The editor is one screen: both fields, the token legend and the
+	// projects that can be targeted, so nothing has to be remembered from a
+	// previous step. The value is typed, not picked — every scheme and path
+	// is expressible and the legend is right there.
+	varInput   textinput.Model
+	valueInput textinput.Model
+	focus      editField
+	envKeys    []string
 	pool       []Project
-	projectCur int
-	serverCur  int
-	pickedProj Project
-	pickedKind sourceKind
-	// insertToken is set when the picker was opened from the custom field via
-	// ctrl-t, so the chosen token is inserted at the cursor instead of
-	// becoming the whole value.
-	insertToken bool
+	editIdx    int
 
 	draft        Binding
 	draftPreview []BindingPreview
@@ -119,17 +98,17 @@ func NewBindingsView(projName string) BindingsView {
 	varInput.Placeholder = "SPEAK_API_URL"
 	varInput.CharLimit = 64
 
-	customInput := textinput.New()
-	customInput.Placeholder = "ws://localhost:{{port:livekit}}"
-	customInput.CharLimit = 256
+	valueInput := textinput.New()
+	valueInput.Placeholder = "{{url:speak-api}}"
+	valueInput.CharLimit = 256
 
 	return BindingsView{
-		projName:    projName,
-		state:       bindingStateList,
-		varInput:    varInput,
-		customInput: customInput,
-		editIdx:     -1,
-		accepted:    map[int]bool{},
+		projName:   projName,
+		state:      bindingStateList,
+		varInput:   varInput,
+		valueInput: valueInput,
+		editIdx:    -1,
+		accepted:   map[int]bool{},
 	}
 }
 
@@ -195,15 +174,8 @@ func (v BindingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v.handleKey(msg)
 	}
 
-	switch v.state {
-	case bindingStateVar:
-		var cmd tea.Cmd
-		v.varInput, cmd = v.varInput.Update(msg)
-		return v, cmd
-	case bindingStateCustom:
-		var cmd tea.Cmd
-		v.customInput, cmd = v.customInput.Update(msg)
-		return v, cmd
+	if v.state == bindingStateEdit {
+		return v.updateFocused(msg)
 	}
 	return v, nil
 }
@@ -214,16 +186,8 @@ func (v BindingsView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleListKey(msg)
 	case bindingStateScan:
 		return v.handleScanKey(msg)
-	case bindingStateVar:
-		return v.handleVarKey(msg)
-	case bindingStateSource:
-		return v.handleSourceKey(msg)
-	case bindingStateProject:
-		return v.handleProjectKey(msg)
-	case bindingStateServer:
-		return v.handleServerKey(msg)
-	case bindingStateCustom:
-		return v.handleCustomKey(msg)
+	case bindingStateEdit:
+		return v.handleEditKey(msg)
 	case bindingStateConfirmRemove:
 		return v.handleConfirmRemoveKey(msg)
 	}
@@ -248,22 +212,23 @@ func (v BindingsView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.resetDraft()
 		v.statusMsg = ""
 		v.err = nil
-		v.state = bindingStateVar
-		v.varInput.Focus()
-		return v, v.varInput.Cursor.BlinkCmd()
+		v.state = bindingStateEdit
+		return v, v.setFocus(fieldVar)
 	case msg.String() == "e":
 		if len(v.bindings) == 0 {
 			return v, nil
 		}
 		b := v.bindings[v.cursor]
 		v.resetDraft()
+		v.statusMsg = ""
+		v.err = nil
 		v.editIdx = v.cursor
 		v.draft = b
 		v.varInput.SetValue(b.Var)
-		v.customInput.SetValue(b.Value)
-		v.state = bindingStateCustom
-		v.customInput.Focus()
-		return v, tea.Batch(v.customInput.Cursor.BlinkCmd(), v.previewDraft())
+		v.valueInput.SetValue(b.Value)
+		v.valueInput.CursorEnd()
+		v.state = bindingStateEdit
+		return v, tea.Batch(v.setFocus(fieldValue), v.previewDraft())
 	case msg.String() == "d":
 		if len(v.bindings) > 0 {
 			v.state = bindingStateConfirmRemove
@@ -328,36 +293,89 @@ func (v BindingsView) handleScanKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
-// ── Var name ──
+// ── Edit ──
 
-func (v BindingsView) handleVarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (v BindingsView) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		v.state = bindingStateList
 		v.resetDraft()
 		return v, nil
 	case "tab":
-		if match := v.completeVar(v.varInput.Value()); match != "" {
-			v.varInput.SetValue(match)
-			v.varInput.CursorEnd()
+		// On the var field tab finishes the name from .env when it can; the
+		// hint under the field says which it will do.
+		if v.focus == fieldVar {
+			if match := v.completeVar(v.varInput.Value()); match != "" && match != v.varInput.Value() {
+				v.varInput.SetValue(match)
+				v.varInput.CursorEnd()
+				return v, v.syncDraft()
+			}
 		}
-		return v, nil
+		return v, v.setFocus(v.focus.other())
+	case "shift+tab", "up", "down":
+		return v, v.setFocus(v.focus.other())
 	case "enter":
-		name := strings.TrimSpace(v.varInput.Value())
-		if !validVarName.MatchString(name) {
-			v.err = fmt.Errorf("'%s' is not a valid environment variable name", name)
-			return v, nil
+		if err := v.validateVar(); err != nil {
+			v.err = err
+			return v, v.setFocus(fieldVar)
 		}
-		v.err = nil
-		v.draft.Var = name
-		v.state = bindingStateSource
-		v.sourceCur = 0
-		v.insertToken = false
-		return v, nil
+		if strings.TrimSpace(v.valueInput.Value()) == "" {
+			v.err = nil
+			return v, v.setFocus(fieldValue)
+		}
+		v.draft.Value = strings.TrimSpace(v.valueInput.Value())
+		return v, v.saveDraft()
 	}
+	return v.updateFocused(msg)
+}
+
+// updateFocused forwards a message to whichever field has focus and keeps
+// the draft, and its preview, in step with what is on screen.
+func (v BindingsView) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	v.varInput, cmd = v.varInput.Update(msg)
-	return v, cmd
+	if v.focus == fieldVar {
+		v.varInput, cmd = v.varInput.Update(msg)
+	} else {
+		v.valueInput, cmd = v.valueInput.Update(msg)
+	}
+	return v, tea.Batch(cmd, v.syncDraft())
+}
+
+func (v *BindingsView) syncDraft() tea.Cmd {
+	v.draft.Var = strings.TrimSpace(v.varInput.Value())
+	v.draft.Value = strings.TrimSpace(v.valueInput.Value())
+	if !validVarName.MatchString(v.draft.Var) || v.draft.Value == "" {
+		v.draftPreview = nil
+		return nil
+	}
+	return v.previewDraft()
+}
+
+func (v *BindingsView) setFocus(f editField) tea.Cmd {
+	v.focus = f
+	if f == fieldVar {
+		v.valueInput.Blur()
+		v.varInput.Focus()
+		return v.varInput.Cursor.BlinkCmd()
+	}
+	v.varInput.Blur()
+	v.valueInput.Focus()
+	return v.valueInput.Cursor.BlinkCmd()
+}
+
+func (f editField) other() editField {
+	if f == fieldVar {
+		return fieldValue
+	}
+	return fieldVar
+}
+
+func (v BindingsView) validateVar() error {
+	name := strings.TrimSpace(v.varInput.Value())
+	if !validVarName.MatchString(name) {
+		return fmt.Errorf("'%s' is not a valid environment variable name", name)
+	}
+	return nil
 }
 
 func (v BindingsView) completeVar(prefix string) string {
@@ -373,103 +391,7 @@ func (v BindingsView) completeVar(prefix string) string {
 	return ""
 }
 
-// ── Source picker ──
-
-func (v BindingsView) handleSourceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, app.Keys.Quit):
-		return v, tea.Quit
-	case key.Matches(msg, app.Keys.Back):
-		if v.insertToken {
-			v.state = bindingStateCustom
-			v.customInput.Focus()
-			return v, v.customInput.Cursor.BlinkCmd()
-		}
-		v.state = bindingStateVar
-		v.varInput.Focus()
-		return v, v.varInput.Cursor.BlinkCmd()
-	case key.Matches(msg, app.Keys.Up):
-		v.sourceCur = app.MoveCursor(v.sourceCur, -1, len(sourceLabels))
-		return v, nil
-	case key.Matches(msg, app.Keys.Down):
-		v.sourceCur = app.MoveCursor(v.sourceCur, 1, len(sourceLabels))
-		return v, nil
-	case msg.String() == "enter":
-		v.pickedKind = sourceKind(v.sourceCur)
-		switch v.pickedKind {
-		case sourceURL, sourcePort:
-			v.state = bindingStateProject
-			v.projectCur = 0
-			return v, nil
-		case sourceWorktree:
-			return v.acceptToken("{{worktree}}")
-		case sourceWorkspace:
-			return v.acceptToken("{{workspace}}")
-		case sourceCustom:
-			v.state = bindingStateCustom
-			v.customInput.Focus()
-			return v, v.customInput.Cursor.BlinkCmd()
-		}
-	}
-	return v, nil
-}
-
-// ── Project / server pickers ──
-
-func (v BindingsView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	candidates := v.projectsWithServers()
-	switch {
-	case key.Matches(msg, app.Keys.Quit):
-		return v, tea.Quit
-	case key.Matches(msg, app.Keys.Back):
-		v.state = bindingStateSource
-		return v, nil
-	case key.Matches(msg, app.Keys.Up):
-		v.projectCur = app.MoveCursor(v.projectCur, -1, len(candidates))
-		return v, nil
-	case key.Matches(msg, app.Keys.Down):
-		v.projectCur = app.MoveCursor(v.projectCur, 1, len(candidates))
-		return v, nil
-	case msg.String() == "enter":
-		if len(candidates) == 0 {
-			return v, nil
-		}
-		v.pickedProj = candidates[v.projectCur]
-		// The server step disappears when there is nothing to choose between —
-		// the common case, and why the bare {{url:project}} form exists.
-		if len(v.pickedProj.DevServers) == 1 {
-			return v.acceptToken(v.tokenFor(v.pickedProj.Name, ""))
-		}
-		v.state = bindingStateServer
-		v.serverCur = 0
-		return v, nil
-	}
-	return v, nil
-}
-
-func (v BindingsView) handleServerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	servers := v.pickedProj.DevServers
-	switch {
-	case key.Matches(msg, app.Keys.Quit):
-		return v, tea.Quit
-	case key.Matches(msg, app.Keys.Back):
-		v.state = bindingStateProject
-		return v, nil
-	case key.Matches(msg, app.Keys.Up):
-		v.serverCur = app.MoveCursor(v.serverCur, -1, len(servers))
-		return v, nil
-	case key.Matches(msg, app.Keys.Down):
-		v.serverCur = app.MoveCursor(v.serverCur, 1, len(servers))
-		return v, nil
-	case msg.String() == "enter":
-		if len(servers) == 0 {
-			return v, nil
-		}
-		return v.acceptToken(v.tokenFor(v.pickedProj.Name, servers[v.serverCur].Name))
-	}
-	return v, nil
-}
-
+// projectsWithServers is what {{url:…}} and {{port:…}} can target.
 func (v BindingsView) projectsWithServers() []Project {
 	var out []Project
 	for _, p := range v.pool {
@@ -480,60 +402,7 @@ func (v BindingsView) projectsWithServers() []Project {
 	return out
 }
 
-func (v BindingsView) tokenFor(projName, server string) string {
-	kind := "url"
-	if v.pickedKind == sourcePort {
-		kind = "port"
-	}
-	if server == "" {
-		return fmt.Sprintf("{{%s:%s}}", kind, projName)
-	}
-	return fmt.Sprintf("{{%s:%s/%s}}", kind, projName, server)
-}
-
-// acceptToken takes a picked token either as the whole value or, when the
-// picker was opened from the custom field, inserted at its cursor.
-func (v BindingsView) acceptToken(token string) (tea.Model, tea.Cmd) {
-	if v.insertToken {
-		v.insertToken = false
-		cur := v.customInput.Value()
-		pos := v.customInput.Position()
-		v.customInput.SetValue(cur[:pos] + token + cur[pos:])
-		v.customInput.SetCursor(pos + len(token))
-		v.state = bindingStateCustom
-		v.customInput.Focus()
-		return v, tea.Batch(v.customInput.Cursor.BlinkCmd(), v.previewDraft())
-	}
-
-	v.draft.Value = token
-	v.customInput.SetValue(token)
-	v.state = bindingStateCustom
-	v.customInput.Focus()
-	return v, tea.Batch(v.customInput.Cursor.BlinkCmd(), v.previewDraft())
-}
-
-// ── Custom / confirm ──
-
-func (v BindingsView) handleCustomKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		v.state = bindingStateList
-		v.resetDraft()
-		return v, nil
-	case "ctrl+t":
-		v.insertToken = true
-		v.state = bindingStateSource
-		v.sourceCur = 0
-		return v, nil
-	case "enter":
-		v.draft.Value = strings.TrimSpace(v.customInput.Value())
-		return v, v.saveDraft()
-	}
-	var cmd tea.Cmd
-	v.customInput, cmd = v.customInput.Update(msg)
-	v.draft.Value = v.customInput.Value()
-	return v, tea.Batch(cmd, v.previewDraft())
-}
+// ── Confirm ──
 
 func (v BindingsView) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -550,12 +419,12 @@ func (v BindingsView) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd
 func (v *BindingsView) resetDraft() {
 	v.varInput.Reset()
 	v.varInput.Blur()
-	v.customInput.Reset()
-	v.customInput.Blur()
+	v.valueInput.Reset()
+	v.valueInput.Blur()
+	v.focus = fieldVar
 	v.draft = Binding{}
 	v.draftPreview = nil
 	v.editIdx = -1
-	v.insertToken = false
 }
 
 // ── Commands ──
