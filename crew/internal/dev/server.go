@@ -58,15 +58,18 @@ type PlannedServer struct {
 // PlanServers pairs each configured dev server with one allocated port.
 // Pure: ports are allocated by the caller and handed in, in order.
 //
-// In no-proxy mode the server binds to its configured port directly, so the
-// internal and external ports are the same and the allocated ports are unused.
+// The port is always the allocated one, proxy or not. The configured port is
+// reference only — binding to it would mean two worktrees of the same project
+// cannot run at once, and it is how an env file pointing at localhost:3000
+// ended up talking to another workspace's homepage. NoProxy only decides
+// whether the route is served through the proxy or addressed as localhost.
 func PlanServers(projects []DevProject, ports []int, noProxy bool) []PlannedServer {
 	var planned []PlannedServer
 	i := 0
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
 			port := ds.Port
-			if !noProxy && i < len(ports) {
+			if i < len(ports) {
 				port = ports[i]
 			}
 			i++
@@ -131,22 +134,20 @@ type StartResult struct {
 	Conflicts   []Conflict
 }
 
-// Start starts dev servers for one worktree. When NoProxy is false it also
-// launches the shared reverse proxy; when true, each server binds to its
-// configured Port on localhost and the proxy is skipped.
+// Start starts dev servers for one worktree on freshly allocated ports. When
+// NoProxy is false it also launches the shared reverse proxy; when true, the
+// servers are addressed directly as localhost:<port> and the proxy is skipped.
 // Projects should already have the correct paths (worktree paths).
 func Start(p StartParams) (StartResult, error) {
 	// Allocate every port before starting anything: dev servers reference each
 	// other's ports, so allocation has to complete before the first one runs.
 	var ports []int
-	if !p.NoProxy {
-		for range countServers(p.Projects) {
-			freePort, err := FindFreePort()
-			if err != nil {
-				return StartResult{}, fmt.Errorf("failed to find free port: %w", err)
-			}
-			ports = append(ports, freePort)
+	for range countServers(p.Projects) {
+		freePort, err := FindFreePort()
+		if err != nil {
+			return StartResult{}, fmt.Errorf("failed to find free port: %w", err)
 		}
+		ports = append(ports, freePort)
 	}
 
 	planned := PlanServers(p.Projects, ports, p.NoProxy)

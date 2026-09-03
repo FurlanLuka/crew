@@ -3,6 +3,7 @@ package workspace
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -88,9 +89,11 @@ func TestStartDev_ResolvesAgainstTheSelectedWorktree(t *testing.T) {
 		t.Fatalf("StartDev: %v", err)
 	}
 
-	// main has no override, so the binding resolves to api's port.
-	if got := devResult(t, result, "API_URL"); got.Source != dev.SourceBinding || got.Value != "http://localhost:3000" {
-		t.Errorf("API_URL = %+v, want the binding resolved on main", got)
+	// main has no override, so the binding resolves to api's allocated port —
+	// never the configured 3000.
+	got := devResult(t, result, "API_URL")
+	if got.Source != dev.SourceBinding || got.Value == "http://localhost:3000" || !strings.HasPrefix(got.Value, "http://localhost:") {
+		t.Errorf("API_URL = %+v, want the binding resolved to an allocated port on main", got)
 	}
 	if got := devResult(t, result, "AGENT"); got.Value != DefaultWorktree {
 		t.Errorf("AGENT = %q, want %s", got.Value, DefaultWorktree)

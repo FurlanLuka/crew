@@ -84,8 +84,11 @@ func TestStart_NoProxy_WritesRoutesAndSkipsProxy(t *testing.T) {
 	if !r.NoProxy {
 		t.Errorf("route.NoProxy = false, want true")
 	}
-	if r.InternalPort != 3001 || r.ExternalPort != 3001 {
-		t.Errorf("route ports = (%d, %d), want (3001, 3001)", r.InternalPort, r.ExternalPort)
+	if r.ExternalPort != 3001 {
+		t.Errorf("ExternalPort = %d, want the configured 3001 kept for reference", r.ExternalPort)
+	}
+	if r.InternalPort == 3001 || r.InternalPort == 0 {
+		t.Errorf("InternalPort = %d, want a freshly allocated port even in no-proxy mode", r.InternalPort)
 	}
 
 	loaded, err := LoadRoutes("ws-np")

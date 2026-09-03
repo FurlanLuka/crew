@@ -337,7 +337,7 @@ var Root = CommandInfo{
 					Usage:       "crew dev add <project> [flags]",
 					Flags: []FlagInfo{
 						{Name: "--name=<n>", Description: "Server name (used as subdomain)", Required: true},
-						{Name: "--port=<p>", Description: "Port the server binds to in --no-proxy mode (reference-only in proxy mode)", Required: true},
+						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT", Required: true},
 						{Name: "--cmd=<c>", Description: "Start command (use $PORT for the dynamic port)", Required: true},
 						{Name: "--dir=<d>", Description: "Subdirectory relative to project root (for monorepos)"},
 					},
@@ -361,10 +361,10 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "start",
-					Description: "Start all dev servers for a worktree in tmux windows and launch the shared reverse proxy. URLs use the format: http://<server>--<workspace>--<worktree>.<domain>. With --no-proxy, servers bind to their configured --port and URLs are plain http://localhost:<port>; the proxy is not started. Bindings are resolved after ports are allocated and injected into each server's env; anything left alone or pointing at a port crew gave to another project is printed.",
+					Description: "Start all dev servers for a worktree in tmux windows and launch the shared reverse proxy. URLs use the format: http://<server>--<workspace>--<worktree>.<domain>. Ports are always allocated fresh — the configured --port is reference only — so any number of worktrees can run at once. With --no-proxy, URLs are plain http://localhost:<allocated-port> and the proxy is not started. Bindings are resolved after ports are allocated and injected into each server's env; anything left alone or pointing at a port crew gave to another project is printed.",
 					Usage:       "crew dev start <workspace>[/<worktree>] [--no-proxy]",
 					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Skip the reverse proxy; bind each server to its --port on localhost"},
+						{Name: "--no-proxy", Description: "Skip the reverse proxy; address each server as localhost:<allocated port>"},
 					},
 					Examples: []string{"crew dev start feature-auth", "crew dev start phone-speak/wrk2", "crew dev start feature-auth --no-proxy"},
 				},
@@ -379,7 +379,7 @@ var Root = CommandInfo{
 					Description: "Stop and restart dev servers for a worktree",
 					Usage:       "crew dev restart <workspace>[/<worktree>] [--no-proxy]",
 					Flags: []FlagInfo{
-						{Name: "--no-proxy", Description: "Skip the reverse proxy; bind each server to its --port on localhost"},
+						{Name: "--no-proxy", Description: "Skip the reverse proxy; address each server as localhost:<allocated port>"},
 					},
 					Examples: []string{"crew dev restart feature-auth", "crew dev restart feature-auth --no-proxy"},
 				},

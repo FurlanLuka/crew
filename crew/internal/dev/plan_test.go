@@ -77,17 +77,21 @@ func TestPlanServers_SameServerNameAcrossProjectsStaysDistinct(t *testing.T) {
 	}
 }
 
-func TestPlanServers_NoProxyBindsConfiguredPort(t *testing.T) {
-	planned := PlanServers(twoProjects(), nil, true)
+// Ports are allocated whether or not the proxy runs. Binding to the
+// configured port in no-proxy mode is how two worktrees could never run at
+// once, and how a stale env pointing at :3000 reached another workspace.
+func TestPlanServers_NoProxyStillAllocates(t *testing.T) {
+	planned := PlanServers(twoProjects(), []int{54001, 54002, 54003}, true)
 
-	for _, ps := range planned {
-		if ps.Route.InternalPort != ps.Route.ExternalPort {
-			t.Errorf("%s/%s: internal %d != external %d in no-proxy mode",
-				ps.Project, ps.Server.Name, ps.Route.InternalPort, ps.Route.ExternalPort)
+	for i, ps := range planned {
+		if ps.Route.InternalPort != []int{54001, 54002, 54003}[i] {
+			t.Errorf("%s/%s: bound %d, want the allocated port", ps.Project, ps.Server.Name, ps.Route.InternalPort)
 		}
-		if ps.Route.InternalPort != ps.Server.Port {
-			t.Errorf("%s/%s: bound %d, want configured %d",
-				ps.Project, ps.Server.Name, ps.Route.InternalPort, ps.Server.Port)
+		if ps.Route.InternalPort == ps.Server.Port {
+			t.Errorf("%s/%s: bound the configured port %d in no-proxy mode", ps.Project, ps.Server.Name, ps.Server.Port)
+		}
+		if ps.Route.ExternalPort != ps.Server.Port {
+			t.Errorf("%s/%s: ExternalPort = %d, want the configured %d kept for reference", ps.Project, ps.Server.Name, ps.Route.ExternalPort, ps.Server.Port)
 		}
 		if !ps.Route.NoProxy {
 			t.Errorf("%s/%s: NoProxy = false", ps.Project, ps.Server.Name)

@@ -275,14 +275,14 @@ func TestResolveBindings_DuplicateVarLastWins(t *testing.T) {
 	}
 }
 
-// In no-proxy mode servers bind their configured ports, and resolution has to
-// follow them there.
+// No-proxy mode allocates like proxy mode does; resolution follows the
+// allocated port, never the configured one.
 func TestResolveBindings_NoProxyPorts(t *testing.T) {
 	projects := []DevProject{
 		{Name: "speak-api", DevServers: []DevServerConfig{{Name: "speak-api", Port: 3000}}},
 		{Name: "ai-tutor-api", Bindings: []Binding{{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}}},
 	}
-	planned := PlanServers(projects, nil, true)
+	planned := PlanServers(projects, []int{54021}, true)
 
 	rs := ResolveBindings(ResolveParams{
 		Projects:  projects,
@@ -291,8 +291,8 @@ func TestResolveBindings_NoProxyPorts(t *testing.T) {
 		Worktree:  "wrk1",
 	})
 
-	if got := find(t, rs, "ai-tutor-api", "SPEAK_API_URL"); got.Value != "http://localhost:3000" {
-		t.Errorf("Value = %q, want the configured port in no-proxy mode", got.Value)
+	if got := find(t, rs, "ai-tutor-api", "SPEAK_API_URL"); got.Value != "http://localhost:54021" {
+		t.Errorf("Value = %q, want the allocated port, not the configured 3000", got.Value)
 	}
 }
 

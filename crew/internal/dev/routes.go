@@ -37,8 +37,9 @@ type Route struct {
 	Project      string `json:"project,omitempty"`
 	ServerName   string `json:"server_name"`
 	ExternalPort int    `json:"external_port"`
-	// InternalPort is the port the server is actually bound to.
-	// When NoProxy is true this is the user-facing port on localhost.
+	// InternalPort is the port the server is actually bound to — always
+	// allocated by crew, never the configured ExternalPort. When NoProxy is
+	// true this is also the user-facing port on localhost.
 	InternalPort int  `json:"internal_port"`
 	NoProxy      bool `json:"no_proxy,omitempty"`
 }
