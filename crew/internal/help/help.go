@@ -364,6 +364,15 @@ var Root = CommandInfo{
 			Examples: []string{"crew migrate --dry-run", "crew migrate"},
 		},
 		{
+			Name:        "uninstall",
+			Description: "Stop every dev server and remove the crew binary. ~/.crew — workspace config and every worktree checkout — is kept unless --purge is given, which removes the checkouts through git and deletes the directory.",
+			Usage:       "crew uninstall [--purge]",
+			Flags: []FlagInfo{
+				{Name: "--purge", Description: "Also remove every workspace's checkouts and ~/.crew. Uncommitted work in checkouts is lost."},
+			},
+			Examples: []string{"crew uninstall", "crew uninstall --purge"},
+		},
+		{
 			Name:        "update",
 			Description: "Update crew to the latest version",
 			Usage:       "crew update",

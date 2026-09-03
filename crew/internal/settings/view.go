@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -10,6 +12,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/uninstall"
 )
 
 // ── Messages ──
@@ -17,6 +20,7 @@ import (
 type settingsLoadedMsg struct{ settings config.Settings }
 type savedMsg struct{}
 type refreshedMsg struct{}
+type uninstalledMsg struct{ report uninstall.Report }
 type errMsg struct{ err error }
 
 // ── States ──
@@ -26,6 +30,7 @@ type viewState int
 const (
 	stateView viewState = iota
 	stateEdit
+	stateConfirmUninstall
 )
 
 // ── Model ──
@@ -82,13 +87,23 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = "Configs refreshed"
 		return v, nil
 
+	case uninstalledMsg:
+		// The binary is gone; say so on the way out.
+		return v, func() tea.Msg {
+			return app.ExitWithOutputMsg{Output: uninstallSummary(msg.report)}
+		}
+
 	case errMsg:
+		v.state = stateView
 		v.err = msg.err
 		return v, nil
 
 	case tea.KeyMsg:
-		if v.state == stateEdit {
+		switch v.state {
+		case stateEdit:
 			return v.handleEditKey(msg)
+		case stateConfirmUninstall:
+			return v.handleConfirmUninstallKey(msg)
 		}
 		return v.handleViewKey(msg)
 	}
@@ -120,8 +135,27 @@ func (v View) handleViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, v.inputs[0].Cursor.BlinkCmd()
 	case msg.String() == "r":
 		return v, refreshConfigs
+	case msg.String() == "u":
+		v.state = stateConfirmUninstall
+		v.statusMsg = ""
+		v.err = nil
+		return v, nil
 	}
 	return v, nil
+}
+
+// handleConfirmUninstallKey: k keeps ~/.crew (config and every checkout),
+// p removes it all. Anything else backs out.
+func (v View) handleConfirmUninstallKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "k", "K":
+		return v, runUninstall(false)
+	case "p", "P":
+		return v, runUninstall(true)
+	default:
+		v.state = stateView
+		return v, nil
+	}
 }
 
 func (v View) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -164,6 +198,8 @@ func (v View) View() string {
 		v.renderView(&b)
 	case stateEdit:
 		v.renderEdit(&b)
+	case stateConfirmUninstall:
+		v.renderConfirmUninstall(&b)
 	}
 
 	return b.String()
@@ -208,7 +244,7 @@ func (v View) renderView(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("e edit  r refresh configs  esc back"))
+	b.WriteString(app.HelpStyle.Render("e edit  r refresh configs  u uninstall crew  esc back"))
 	b.WriteString("\n")
 }
 
@@ -228,7 +264,40 @@ func (v View) renderEdit(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+func (v View) renderConfirmUninstall(b *strings.Builder) {
+	bin, _ := os.Executable()
+	b.WriteString("  Uninstall crew?\n\n")
+	fmt.Fprintf(b, "  Stops every dev server and removes %s.\n\n", bin)
+	fmt.Fprintf(b, "  %s  keep %s — workspace config and every checkout stay\n", app.Selected.Render("k"), config.ConfigDir)
+	fmt.Fprintf(b, "  %s  purge — remove every checkout through git and delete %s\n", app.Error.Render("p"), config.ConfigDir)
+	b.WriteString("\n  ")
+	b.WriteString(app.HelpStyle.Render("k keep  p purge  esc cancel"))
+	b.WriteString("\n")
+}
+
 // ── Commands ──
+
+func uninstallSummary(r uninstall.Report) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Removed %s\n", r.Binary)
+	for _, ws := range r.Workspaces {
+		fmt.Fprintf(&b, "Removed workspace %s\n", ws)
+	}
+	if r.Kept != "" {
+		fmt.Fprintf(&b, "Kept %s\n", r.Kept)
+	}
+	return b.String()
+}
+
+func runUninstall(purge bool) tea.Cmd {
+	return func() tea.Msg {
+		report, err := uninstall.Run(purge)
+		if err != nil {
+			return errMsg{err}
+		}
+		return uninstalledMsg{report}
+	}
+}
 
 func loadSettings() tea.Msg {
 	return settingsLoadedMsg{settings: config.LoadSettings()}

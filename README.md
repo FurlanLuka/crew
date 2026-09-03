@@ -1,37 +1,24 @@
 # crew
 
-CLI + TUI workspace manager for Claude Code. Manages worktree-isolated workspaces, dev servers with reverse proxy, agent/skill registry, and session launching.
+CLI + TUI workspace manager for Claude Code. Workspaces hold projects; worktrees are isolated working copies of them, each with its own dev servers, stable ports, and env bindings that point projects at each other.
 
 ## Features
 
-| Feature | Command | Description |
-|---------|---------|-------------|
-| `projects` | `crew project` | Global project pool — register repos, list, remove |
-| `projects.servers` | `crew dev add <project>` | Configure dev servers per project (name, port, command, dir) |
-| `projects.servers.setup` | `crew dev setup <project>` | Interactive dev server configuration wizard with npm script auto-detection |
-| `workspaces` | `crew workspace` | Group projects into isolated workspaces with automatic git worktrees |
-| `workspaces.launch.editor` | `crew launch <ws>` | Open workspace in Cursor/VS Code with the orientation prompt auto-generated |
-| `workspaces.launch.claude` | `crew launch <ws>` | Launch Claude Code with `--add-dir` for each project and `--dangerously-skip-permissions` |
-| `workspaces.open` | `crew open <ws>` | Open shell in workspace directory |
-| `workspaces.git` | `crew git <ws>` | Launch lazygit in tmux with one window per project (ephemeral session) |
-| `workspaces.code` | `crew code <ws>` | Generate Remote SSH URLs for Cursor/VS Code |
-| `workspaces.show` | `crew show <ws>` | Display workspace projects with paths and roles |
-| `workspaces.remove` | `crew rm <ws>` | Remove a workspace and clean up worktrees |
-| `workspaces.shortcut` | `crew <ws>` | Launch workspace directly by name |
-| `dev.start` | `crew dev start <ws>` | Start dev servers for a workspace with automatic free port assignment |
-| `dev.stop` | `crew dev stop [<ws>]` | Stop dev servers for a workspace or all workspaces |
-| `dev.restart` | `crew dev restart <ws>` | Restart dev servers with fresh port assignment |
-| `dev.status` | `crew dev status [<ws>]` | Show running servers with clickable URLs |
-| `dev.logs` | TUI | Live dev server logs with per-server tabs and proxy tab |
-| `dev.proxy` | automatic | Shared reverse proxy — routes by subdomain, supports HTTP + WebSocket |
-| `dev.proxy.routing` | automatic | `<server>--<workspace>.<domain>` URL format, hot-reloaded routes |
-| `registry` | `crew registry` | Browse, install, update, and remove agents & skills |
-| `registry.install` | `crew registry install <name>` | Install individual items or bulk install with `--all` |
-| `registry.verify` | automatic | SHA256 content verification, GitHub API with token support and local fallback |
-| `profile` | `crew profile` | View, install, update, and remove Claude profile (CLAUDE.md) |
-| `notify` | `crew notify` | Push notifications via ntfy.sh — get alerted when Claude needs attention |
-| `plans` | `crew plans [start\|stop]` | View Claude plans with built-in web viewer |
-| `config` | `crew config` | Settings — server IP, SSH host, proxy port |
+| Command | Description |
+|---------|-------------|
+| `crew project` | Global project pool — register repos, configure dev servers and bindings |
+| `crew workspace` | Workspaces and their worktrees; enter a worktree for servers, launch and open |
+| `crew add worktree <ws>/<name>` | A second working copy of a workspace — fresh git worktree per project |
+| `crew launch <ws>/<wt>` | The worktree page: servers with status and URLs, Editor + Claude, Claude, open |
+| `crew dev start <ws>/<wt> [--proxy]` | Start dev servers on stable per-worktree ports; `--proxy` adds LAN hostnames |
+| `crew dev status\|stop\|restart\|logs` | Manage running servers |
+| `crew add binding <project> --scan` | Declare which env vars crew computes from the ports it allocates |
+| `crew env <ws>/<wt> <project>` | A project's resolved env for that worktree, `KEY=VALUE` |
+| `crew run <ws>/<wt> <project> -- <cmd>` | Run a script or eval with the same env the dev servers got |
+| `crew show <ws>/<wt>` | Projects with paths and roles |
+| `crew code <ws>/<wt>` | Remote SSH URLs for Cursor/VS Code |
+| `crew migrate` | Move pre-worktree workspaces to the nested layout |
+| `crew config` | Settings — server IP, SSH host, proxy port, uninstall |
 
 ## Setup — macOS
 
@@ -42,9 +29,6 @@ curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | s
 # Or build from source
 go install github.com/FurlanLuka/crew/crew@latest
 
-# Install all agents & skills
-crew registry install --all
-
 # Add projects, create workspace, launch
 crew project
 crew workspace
@@ -53,139 +37,78 @@ crew workspace
 ## Setup — Linux / Remote Server
 
 ```bash
-# Install crew + dependencies (Node.js, tmux, lazygit, delta)
+# Install crew + dependencies (tmux, git)
 curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
-
-# Install GitHub CLI (needed for registry API calls)
-# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 
 # Install Claude Code
 curl -fsSL https://claude.ai/install.sh | bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 
-# Authenticate GitHub
-gh auth login
-
-# Install all agents & skills
-crew registry install --all
 ```
 
 ## Quick start
 
 ```bash
 crew project              # Add your projects (name + path)
-crew workspace            # Create a workspace, add projects, launch
-crew <workspace-name>     # Launch workspace directly
+crew workspace            # Create a workspace, add projects, enter a worktree
+crew <workspace>/<wt>     # Open a worktree directly
 ```
 
 ## Architecture
 
-### Projects and workspaces
+### Projects, workspaces, worktrees
 
-**Projects** are git repositories registered in a global pool (`crew project`). Each has a name and a path.
+**Projects** are git repositories registered in a global pool (`crew project`). Each has a
+name, a path, its dev servers, and its **bindings** — the env vars it needs from other
+projects, as templates over the ports crew allocates.
 
-**Workspaces** group projects together for a task. When a project is added to a workspace, crew creates a **git worktree** — an isolated branch in its own directory. Changes stay isolated from the main repo until explicitly merged.
+**Workspaces** are membership: which projects, with which roles. **Worktrees** are the working
+copies — one git worktree per project, on branch `crew/<ws>/<wt>/<project>`, isolated from the
+main repo until merged. A workspace can have any number.
 
 ```
 ~/.crew/workspaces/
-  my-workspace/
-    api/          ← git worktree (branch: crew/my-workspace/api)
-    web-app/      ← git worktree (branch: crew/my-workspace/web-app)
+  phone-speak/
+    wrk1/
+      speak-api/        ← branch crew/phone-speak/wrk1/speak-api
+      ai-tutor-api/
+    wrk2/
+      speak-api/        ← branch crew/phone-speak/wrk2/speak-api
+      ai-tutor-api/
 ```
 
-### Dev server proxy
+### Dev servers, ports, bindings
 
-Each project can have named dev servers (e.g., `api`, `web`). When started, crew:
+Each project can have named dev servers. `crew dev start phone-speak/wrk2`:
 
-1. Assigns each server a random free port
-2. Runs each in a tmux window with `PORT=<free-port>` set
-3. Starts a shared reverse proxy on **port 80**
-4. Routes requests by subdomain to the correct internal port
+1. Allocates a free port per server — and remembers it, so the worktree keeps its ports across
+   restarts. The configured `--port` is reference only.
+2. Resolves every project's bindings against those ports and exports them into the server's
+   environment. `SPEAK_API_URL={{url:speak-api}}` becomes `http://localhost:54494`.
+3. Runs each server in a tmux window with `PORT` set. URLs are `http://localhost:<port>`.
+4. Prints anything it could not resolve, and any env value pointing at a port that belongs to
+   something else — the wrong-service bug caught at start instead of at runtime.
 
-```
-                    ┌─────────────────────────────────────┐
-                    │         Reverse Proxy (:80)         │
-                    │                                     │
-  HTTP request      │  api--my-ws.192.168.1.50.nip.io    │
- ──────────────────►│  → extract server=api, ws=my-ws    │
-                    │  → lookup dev-routes-my-ws.json     │
-                    │  → forward to localhost:54321       │
-                    │                                     │
-                    └─────────────────────────────────────┘
-                          │                    │
-                    ┌─────┴─────┐        ┌─────┴─────┐
-                    │ api:54321 │        │ web:54322 │
-                    │ (tmux)    │        │ (tmux)    │
-                    └───────────┘        └───────────┘
-```
+Env files are read, never written. Overrides pin a variable for one worktree.
 
-**URL format:** `http://<server>--<workspace>.<domain>`
+With `--proxy`, a shared reverse proxy on port 80 also serves every server as
+`http://<server>--<workspace>--<worktree>.<domain>` for other devices on the LAN, with
+`<domain>` defaulting to `<lan-ip>.nip.io`.
 
-- `<server>` — dev server name (set with `--name`)
-- `<workspace>` — workspace name
-- `<domain>` — auto-detected as `<lan-ip>.nip.io`, or set a custom domain via `crew config`
-- The `--` separator keeps everything in a single subdomain level, so wildcard SSL certs (e.g., `*.example.com`) work correctly
-- [nip.io](https://nip.io) is a free wildcard DNS service — any request to `<anything>.<ip>.nip.io` resolves to `<ip>`. This lets you use real hostnames with subdomains instead of `localhost:<port>`, which means the reverse proxy can route by hostname without any DNS configuration
+### Launching
 
-The proxy supports HTTP and WebSocket connections. Route files (`dev-routes-*.json`) are hot-reloaded on each request.
-
-### Sessions
-
-**Launch modes** (`crew launch <ws>`):
-- **Editor + Claude (Skip permissions)** — opens workspace in Cursor/VS Code, generates the orientation prompt
-- **Claude (Skip permissions)** — launches Claude Code directly with `--add-dir` for each project
-
-**Git sessions** (`crew git <ws>`) open lazygit in tmux with one window per project. Sessions are ephemeral — they auto-destroy on detach via `destroy-unattached`.
+Enter a worktree (`crew launch phone-speak/wrk1`, or from `crew workspace`) for one page:
+servers with status and URLs, **Editor + Claude** (Cursor/VS Code with the orientation prompt
+and Claude wired up), **Claude in terminal** (`--add-dir` per project, permissions skipped), and
+open actions.
 
 ### Settings
 
-Configured via `crew config` (TUI) or `~/.claude-personal/config.json`:
+Configured via `crew config` (TUI) or `~/.crew/config.json`:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `server_ip` | LAN IP for nip.io URLs | auto-detected |
+| `server_ip` | LAN IP for `--proxy` URLs | auto-detected |
 | `domain` | Custom domain for proxy URLs (e.g., `luka.ngrok.pro`) | `<server_ip>.nip.io` |
 | `ssh_host` | SSH host alias for remote editor | — |
 | `proxy_port` | Reverse proxy listen port | 80 |
-
-## Registry
-
-Community agents and skills live in [`registry/`](registry/).
-
-```bash
-crew registry             # Browse and install agents & skills (TUI)
-crew registry install --all          # Install everything (CLI)
-crew registry install <name>         # Install a specific agent or skill
-```
-
-Push notifications via [ntfy.sh](https://ntfy.sh) — get alerted when Claude needs attention:
-
-```bash
-crew notify               # One-time setup (no account needed)
-```
-
-### Agents
-
-| Agent | Description |
-|-------|-------------|
-| `crew` | Workspace management, dev servers, session launching. |
-| `architect` | Software architecture and system design agent. |
-| `clean-code-architect` | Reviews code for refactoring opportunities and clean patterns. |
-| `test-architect` | Test architecture and strategy: what to test, coverage gaps, structure. |
-| `nodejs-code-reviewer` | Reviews Node.js/backend TypeScript code for quality, security, and standards. |
-| `reactjs-code-reviewer` | Reviews React code for quality, security, and standards. |
-| `web-designer` | Award-winning web designer. Generates unique designs through iterative conversation. |
-
-### Skills
-
-| Skill | Description |
-|-------|-------------|
-| `js-ts-clean-code` | JS/TS clean code guidelines (readability, formatting, naming, imports, structure, patterns). |
-| `nodejs-clean-code` | Node.js/backend-specific guidelines (error handling, async). Extends `js-ts-clean-code`. |
-| `reactjs-clean-code` | React-specific guidelines (components, state, hooks, composition). Extends `js-ts-clean-code`. |
-| `reactjs-new-project` | Recommended React project architecture and setup conventions. |
-| `crew-remote` | Remote management reference for crew workspaces and dev servers. |
-| `crew-launch` | Interactive workspace launcher with dev server setup. |
-| `web-designer` | Design system knowledge base for web design generation. Support skill for web-designer. |
-
-To contribute, add your agent or skill and open a PR.

@@ -152,6 +152,10 @@ func main() {
 		cmdMigrate()
 		return
 
+	case "uninstall":
+		cmdUninstall()
+		return
+
 	case "dev":
 		cmdDev()
 		return
