@@ -32,6 +32,11 @@ at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source u
 - **Ports** are always allocated by crew and remembered per worktree (`Worktree.Ports`), so a
   restart lands on the same ones. The configured `--port` is reference only. `--proxy` is
   opt-in; default URLs are `localhost:<port>`.
+- **Bundle** — `crew export` writes projects (pool entries + origin remote) and workspace
+  *membership* (projects, roles, modes) to one JSON file; never worktrees, ports or
+  overrides. `crew import` applies each card as `y` is pressed; `--all` never guesses a
+  path and never clones. An existing workspace is skip-only; a project can be replaced.
+  `transfer` sits above `project` and `workspace`; only `main` imports it.
 - **Removal never deletes inline.** `cleanupWorktree` is the one teardown primitive: it
   renames the checkout into `~/.crew/trash` (`trash.Put`, which refuses anything outside
   `WorkspacesDir`), prunes git, and a detached `rm -rf` clears the trash — a full build in a
@@ -48,6 +53,7 @@ crew/
   cmd_dev.go           crew dev …          cmd_worktree.go   worktree/binding/override/setup cmds
   cmd_run.go           crew env, crew run  cmd_migrate.go    crew migrate
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
+  cmd_transfer.go      crew export, crew import
   internal/
     app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
     config/     ~/.crew paths, settings.json
@@ -59,6 +65,7 @@ crew/
     procs/      process inventory and reclaim
     project/    pool CRUD, bindings, setup; project TUI incl. the binding editor
     settings/   settings TUI, trash size + empty, uninstall entry
+    transfer/   export/import bundle: Collect, Covered, Inspect, Clone, Import*; picker + wizard TUIs
     trash/      removed checkouts: rename into ~/.crew/trash, detached rm, sweep on start
     uninstall/  crew uninstall
     workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, TUI

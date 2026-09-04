@@ -374,6 +374,26 @@ var Root = CommandInfo{
 			Examples: []string{"crew migrate --dry-run", "crew migrate"},
 		},
 		{
+			Name:        "export",
+			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup command and origin remote; workspaces carry which projects with which roles. Worktrees, ports and overrides stay local.",
+			Usage:       "crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]",
+			Flags: []FlagInfo{
+				{Name: "--all", Description: "Every project and workspace, no picker"},
+				{Name: "--projects=<a,b>", Description: "Only these projects"},
+				{Name: "--workspaces=<x,y>", Description: "Only these workspaces; every project they use must be in --projects"},
+			},
+			Examples: []string{"crew export", "crew export ~/Desktop/crew.json --all", "crew export --projects=speak-api,ai-tutor-api --workspaces=phone-speak"},
+		},
+		{
+			Name:        "import",
+			Description: "Bring a crew export into this machine, one item at a time. Each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup, n skips, r replaces one already here. Then each workspace: y creates it with a checkout of every member (no installs). Every y is applied at once; esc keeps what was done.",
+			Usage:       "crew import <file> [--all]",
+			Flags: []FlagInfo{
+				{Name: "--all", Description: "No wizard: import everything new, keep what exists, refuse if any path is missing — never guesses, never clones"},
+			},
+			Examples: []string{"crew import ~/Desktop/crew.json", "crew import crew-export.json --all"},
+		},
+		{
 			Name:        "setup",
 			Description: "Re-run every project's install steps in a worktree: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command. Idempotent — the fix for an install that failed when the worktree was created. Ends with a smoke start: servers are started, checked a few seconds later, and stopped again.",
 			Usage:       "crew setup <workspace>[/<worktree>] [--no-smoke]",

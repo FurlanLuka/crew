@@ -20,6 +20,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
+	"github.com/FurlanLuka/crew/crew/internal/transfer"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -157,6 +158,14 @@ func main() {
 		cmdMigrate()
 		return
 
+	case "export":
+		cmdExport()
+		return
+
+	case "import":
+		cmdImport()
+		return
+
 	case "uninstall":
 		cmdUninstall()
 		return
@@ -236,6 +245,11 @@ func mainMenu() app.Menu {
 			Label:       "Project",
 			Description: "Add/remove projects and configure dev servers",
 			Page:        func() app.Page { return project.NewView() },
+		},
+		{
+			Label:       "Export",
+			Description: "Pick projects and workspaces to carry to another machine",
+			Page:        func() app.Page { return transfer.NewExportView("") },
 		},
 		{
 			Label:       "Settings",

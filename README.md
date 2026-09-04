@@ -18,6 +18,8 @@ CLI + TUI workspace manager for Claude Code. Workspaces hold projects; worktrees
 | `crew setup <ws>/<wt>` | Re-run a worktree's installs after a failure |
 | `crew show <ws>/<wt>` | Projects with paths and roles |
 | `crew code <ws>/<wt>` | Remote SSH URLs for Cursor/VS Code |
+| `crew export [file]` | Pick projects + the workspaces they cover; write one file for another machine |
+| `crew import <file>` | Walk that file card by card: approve, edit the path, clone the remote, or skip |
 | `crew migrate` | Move pre-2.0 workspaces to the nested layout |
 | `crew config` | Settings — server IP, SSH host, proxy port, uninstall |
 | `crew uninstall [--purge]` | Remove crew; `--purge` also removes every checkout and `~/.crew` |

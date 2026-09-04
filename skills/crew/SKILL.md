@@ -113,6 +113,8 @@ crew start <ws>/<wt>         print the orientation prompt for a multi-project wo
 
 ### Everything else
 ```
+crew export [file] [--all]   projects + workspace membership to a file (picker without flags)
+crew import <file> [--all]   card-by-card wizard; --all imports what is new and refuses missing paths
 crew migrate [--dry-run]     move pre-2.0 workspaces to the nested layout (backs up first)
 crew ps / crew kill          process inventory and reclaim
 crew config show|set         server_ip, domain, ssh_host, proxy_port
@@ -130,6 +132,12 @@ crew update / crew uninstall [--purge]
 1. `crew env <ws>/<wt> <project>` — what crew resolved and what it left alone.
 2. `crew ls bindings <project>` — is the edge declared? If not, `--scan`.
 3. `crew dev restart <ws>/<wt>` — read the `!` block.
+
+**"Set crew up on my other machine"**
+1. Here: `crew export ~/Desktop/crew.json` — tick projects, the workspaces they cover, enter.
+2. There: `crew import ~/Desktop/crew.json` — the user drives the cards (y / e / c / n / r);
+   a path that does not exist can be edited or cloned from the project's origin remote.
+   Worktrees, ports and overrides are not carried; `crew add worktree` afterwards.
 
 **"Run the evals with the right URLs"**
 `crew run <ws>/<wt> ai-tutor-api -- make eval`
