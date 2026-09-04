@@ -65,6 +65,7 @@ const (
 	stateAddingWorktree
 	stateWorktrees // worktree list for the selected workspace
 	stateConfirmRemoveWorktree
+	stateRemovingWorktree
 )
 
 // ── Model ──
@@ -122,7 +123,7 @@ func (v View) Title() string {
 	switch v.state {
 	case stateProjects, stateProjectPick, stateProjectRole, stateProjectMode, stateAddingProject, stateRemovingProject, stateProjectConfirmRemove:
 		return fmt.Sprintf("Projects in \"%s\"", v.selectedWs)
-	case stateWorktrees, stateNewWorktree, stateAddingWorktree, stateDuplicate, stateDuplicating, stateConfirmRemoveWorktree:
+	case stateWorktrees, stateNewWorktree, stateAddingWorktree, stateDuplicate, stateDuplicating, stateConfirmRemoveWorktree, stateRemovingWorktree:
 		return fmt.Sprintf("Worktrees in \"%s\"", v.selectedWs)
 	}
 	return "Workspaces"
@@ -236,13 +237,13 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.state == stateAddingProject || v.state == stateRemovingProject {
 			v.state = stateProjects
 		}
-		if v.state == stateDuplicating || v.state == stateAddingWorktree {
+		if v.state == stateDuplicating || v.state == stateAddingWorktree || v.state == stateRemovingWorktree {
 			v.state = stateWorktrees
 		}
 		return v, nil
 
 	case spinner.TickMsg:
-		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree || v.baseLoading {
+		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree || v.state == stateRemovingWorktree || v.baseLoading {
 			var cmd tea.Cmd
 			v.spinner, cmd = v.spinner.Update(msg)
 			return v, cmd
@@ -564,7 +565,10 @@ func (v View) handleConfirmRemoveWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd
 			v.state = stateList
 			return v, removeWorkspace(v.selectedWs)
 		}
-		return v, removeWorktree(v.selectedRef)
+		// Removing a large checkout takes a while; the list would look idle
+		// and a second d would start a concurrent removal on the next row.
+		v.state = stateRemovingWorktree
+		return v, tea.Batch(removeWorktree(v.selectedRef), v.spinner.Tick)
 	default:
 		v.state = stateWorktrees
 		return v, nil
@@ -615,6 +619,8 @@ func (v View) View() string {
 		b.WriteString(fmt.Sprintf("  Remove worktree '%s'? Its checkouts will be deleted; the workspace stays. (y/n)\n", v.selectedRef))
 	case stateAddingWorktree:
 		v.renderSetupProgress(&b, "Creating worktree...")
+	case stateRemovingWorktree:
+		b.WriteString(fmt.Sprintf("  %s Removing %s — large checkouts take a while\n", v.spinner.View(), v.selectedRef))
 	}
 
 	return b.String()

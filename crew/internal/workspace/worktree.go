@@ -257,6 +257,23 @@ func RemoveWorktree(wsName, name string) error {
 	}
 	os.RemoveAll(WorktreeDir(ref))
 
+	// The disk work above can take a minute on a large checkout, and another
+	// removal may have saved the workspace meanwhile. Drop this entry from
+	// the file as it is now, not from the snapshot taken before.
+	return dropWorktreeRecord(wsName, name)
+}
+
+func dropWorktreeRecord(wsName, name string) error {
+	ws, err := Load(wsName)
+	if err != nil {
+		return err
+	}
+	remaining := ws.Worktrees[:0:0]
+	for _, wt := range ws.Worktrees {
+		if wt.Name != name {
+			remaining = append(remaining, wt)
+		}
+	}
 	ws.Worktrees = remaining
 	return Save(ws)
 }
