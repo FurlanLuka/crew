@@ -39,9 +39,10 @@ func (v BindingsView) renderList(b *strings.Builder) {
 		return
 	}
 
-	width := 0
+	width, valueWidth := 0, 0
 	for _, bd := range v.bindings {
 		width = max(width, len(bd.Var))
+		valueWidth = max(valueWidth, len(bd.Value))
 	}
 
 	for i, bd := range v.bindings {
@@ -50,7 +51,7 @@ func (v BindingsView) renderList(b *strings.Builder) {
 		b.WriteString(app.RowPrefix(i == v.cursor))
 		b.WriteString(app.RowName(bd.Var, i == v.cursor) + pad)
 		b.WriteString("  ")
-		b.WriteString(app.Subtle.Render(fmt.Sprintf("%-36s", bd.Value)))
+		b.WriteString(app.Subtle.Render(fmt.Sprintf("%-*s  ", valueWidth, bd.Value)))
 		if dev.IsLegacyToken(bd.Value) {
 			b.WriteString(app.Subtle.Render("· old form  "))
 		}
