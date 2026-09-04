@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
@@ -125,6 +126,34 @@ func TestRemoveWorktree(t *testing.T) {
 	if len(ws.Worktrees) != 1 {
 		t.Errorf("worktrees = %+v, want just the default left", ws.Worktrees)
 	}
+	// Git forgot it, and the checkout sits in the trash for the sweep.
+	if list, _ := exec.RunGitCommand(project.Get("api").Path, "worktree", "list"); strings.Contains(list, "wrk2") {
+		t.Errorf("removed checkout still registered:\n%s", list)
+	}
+	if !trashHolds(t, "api") {
+		t.Error("checkout should be in the trash")
+	}
+}
+
+// checkoutInTrash plants a trash entry, as a removal would.
+func checkoutInTrash(t *testing.T, base string) {
+	t.Helper()
+	dir := filepath.Join(config.TrashDir, "1-"+base)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// trashHolds reports whether a trash entry named after base exists.
+func trashHolds(t *testing.T, base string) bool {
+	t.Helper()
+	entries, _ := os.ReadDir(config.TrashDir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), "-"+base) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRemoveWorktree_RefusesTheLastOne(t *testing.T) {
@@ -256,6 +285,9 @@ func TestAddWorktree_CheckoutFailureRollsBack(t *testing.T) {
 	// The api checkout was made before ghost failed; git must not still know it.
 	if list, _ := exec.RunGitCommand(project.Get("api").Path, "worktree", "list"); strings.Contains(list, "wrk2") {
 		t.Errorf("rolled-back checkout still registered:\n%s", list)
+	}
+	if !trashHolds(t, "api") {
+		t.Error("rolled-back checkout should be in the trash, not deleted inline")
 	}
 }
 

@@ -101,7 +101,7 @@ func TestCreateAndRemoveWorktree(t *testing.T) {
 		t.Error("worktree dir should exist after create")
 	}
 
-	RemoveGitWorktree(dir, wtDir)
+	removeGitWorktree(dir, wtDir)
 	if _, err := os.Stat(wtDir); !os.IsNotExist(err) {
 		t.Error("worktree dir should be gone after remove")
 	}
@@ -125,7 +125,7 @@ func TestCreateWorktree_BranchExists(t *testing.T) {
 	}
 
 	// Remove the directory but branch still exists in git
-	RemoveGitWorktree(dir, wtDir)
+	removeGitWorktree(dir, wtDir)
 
 	// Second create should fall back to reusing the branch
 	wtDir2 := filepath.Join(dir, "worktrees", "reuse-wt2")
@@ -138,7 +138,7 @@ func TestCreateWorktree_BranchExists(t *testing.T) {
 	}
 
 	// Cleanup
-	RemoveGitWorktree(dir, wtDir2)
+	removeGitWorktree(dir, wtDir2)
 }
 
 func TestCreateGitWorktree_WithFromBranch(t *testing.T) {
@@ -160,7 +160,7 @@ func TestCreateGitWorktree_WithFromBranch(t *testing.T) {
 		t.Error("worktree dir should exist after create with fromBranch")
 	}
 
-	RemoveGitWorktree(dir, wtDir)
+	removeGitWorktree(dir, wtDir)
 }
 
 func TestPruneWorktrees(t *testing.T) {
@@ -192,4 +192,11 @@ func TestRunGitCommand(t *testing.T) {
 	if out == "" {
 		t.Error("RunGitCommand returned empty string")
 	}
+}
+
+// removeGitWorktree is test teardown; production code trashes and prunes.
+func removeGitWorktree(projectPath, wtDir string) {
+	cmd := exec.Command("git", "worktree", "remove", wtDir, "--force")
+	cmd.Dir = projectPath
+	cmd.Run()
 }

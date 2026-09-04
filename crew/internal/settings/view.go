@@ -6,12 +6,14 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/trash"
 	"github.com/FurlanLuka/crew/crew/internal/uninstall"
 )
 
@@ -21,6 +23,11 @@ type settingsLoadedMsg struct{ settings config.Settings }
 type savedMsg struct{}
 type refreshedMsg struct{}
 type uninstalledMsg struct{ report uninstall.Report }
+type trashSizedMsg struct {
+	bytes   int64
+	entries int
+}
+type trashEmptiedMsg struct{}
 type errMsg struct{ err error }
 
 // ── States ──
@@ -31,6 +38,7 @@ const (
 	stateView viewState = iota
 	stateEdit
 	stateConfirmUninstall
+	stateConfirmEmptyTrash
 )
 
 // ── Model ──
@@ -42,6 +50,13 @@ type View struct {
 	focus     int
 	statusMsg string
 	err       error
+
+	// The trash walk can take a while on a big one, so its row shows the
+	// spinner until the size lands.
+	spinner      spinner.Model
+	trashBytes   int64
+	trashEntries int
+	trashSized   bool
 }
 
 func NewView() View {
@@ -59,13 +74,17 @@ func NewView() View {
 	inputs[2].Placeholder = "example.com"
 	inputs[2].CharLimit = 253
 
-	return View{state: stateView, inputs: inputs}
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = app.Highlight
+
+	return View{state: stateView, inputs: inputs, spinner: sp}
 }
 
 func (v View) Title() string { return "Settings" }
 
 func (v View) Init() tea.Cmd {
-	return loadSettings
+	return tea.Batch(loadSettings, sizeTrash, v.spinner.Tick)
 }
 
 func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -87,6 +106,25 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = "Configs refreshed"
 		return v, nil
 
+	case trashSizedMsg:
+		v.trashBytes, v.trashEntries, v.trashSized = msg.bytes, msg.entries, true
+		return v, nil
+
+	case trashEmptiedMsg:
+		v.state = stateView
+		v.statusMsg = "Trash emptied"
+		v.err = nil
+		v.trashSized = false
+		return v, tea.Batch(sizeTrash, v.spinner.Tick)
+
+	case spinner.TickMsg:
+		if v.trashSized {
+			return v, nil
+		}
+		var cmd tea.Cmd
+		v.spinner, cmd = v.spinner.Update(msg)
+		return v, cmd
+
 	case uninstalledMsg:
 		// The binary is gone; say so on the way out.
 		return v, func() tea.Msg {
@@ -104,6 +142,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return v.handleEditKey(msg)
 		case stateConfirmUninstall:
 			return v.handleConfirmUninstallKey(msg)
+		case stateConfirmEmptyTrash:
+			return v.handleConfirmEmptyTrashKey(msg)
 		}
 		return v.handleViewKey(msg)
 	}
@@ -140,8 +180,27 @@ func (v View) handleViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.statusMsg = ""
 		v.err = nil
 		return v, nil
+	case msg.String() == "t":
+		if v.trashSized && v.trashEntries == 0 {
+			v.statusMsg = "Trash is empty"
+			return v, nil
+		}
+		v.state = stateConfirmEmptyTrash
+		v.statusMsg = ""
+		v.err = nil
+		return v, nil
 	}
 	return v, nil
+}
+
+func (v View) handleConfirmEmptyTrashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		return v, emptyTrash
+	default:
+		v.state = stateView
+		return v, nil
+	}
 }
 
 // handleConfirmUninstallKey: k keeps ~/.crew (config and every checkout),
@@ -200,6 +259,8 @@ func (v View) View() string {
 		v.renderEdit(&b)
 	case stateConfirmUninstall:
 		v.renderConfirmUninstall(&b)
+	case stateConfirmEmptyTrash:
+		fmt.Fprintf(&b, "  Delete %s from the trash now? (y/n)\n", v.trashSummary())
 	}
 
 	return b.String()
@@ -230,6 +291,9 @@ func (v View) renderView(b *strings.Builder) {
 	b.WriteString("  Domain:     ")
 	b.WriteString(domain)
 	b.WriteString("\n")
+	b.WriteString("  Trash:      ")
+	b.WriteString(v.renderTrash())
+	b.WriteString("\n")
 
 	b.WriteString("\n")
 	if v.statusMsg != "" {
@@ -244,8 +308,28 @@ func (v View) renderView(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("e edit  r refresh configs  u uninstall crew  esc back"))
+	b.WriteString(app.HelpStyle.Render("e edit  r refresh configs  t empty trash  u uninstall crew  esc back"))
 	b.WriteString("\n")
+}
+
+// renderTrash: removed checkouts are cleared in the background; this row is
+// where to see whether that happened, and t is the way to force it.
+func (v View) renderTrash() string {
+	if !v.trashSized {
+		return v.spinner.View() + " " + app.Subtle.Render("measuring "+config.TrashDir)
+	}
+	if v.trashEntries == 0 {
+		return app.Subtle.Render("empty")
+	}
+	return v.trashSummary() + "  " + app.Subtle.Render("clearing in background — t deletes now")
+}
+
+func (v View) trashSummary() string {
+	noun := "entries"
+	if v.trashEntries == 1 {
+		noun = "entry"
+	}
+	return fmt.Sprintf("%s in %d %s", app.FormatBytes(v.trashBytes), v.trashEntries, noun)
 }
 
 func (v View) renderEdit(b *strings.Builder) {
@@ -297,6 +381,18 @@ func runUninstall(purge bool) tea.Cmd {
 		}
 		return uninstalledMsg{report}
 	}
+}
+
+func sizeTrash() tea.Msg {
+	bytes, entries := trash.Size()
+	return trashSizedMsg{bytes: bytes, entries: entries}
+}
+
+func emptyTrash() tea.Msg {
+	if err := trash.Empty(); err != nil {
+		return errMsg{err}
+	}
+	return trashEmptiedMsg{}
 }
 
 func loadSettings() tea.Msg {

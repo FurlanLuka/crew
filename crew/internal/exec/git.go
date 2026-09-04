@@ -58,14 +58,6 @@ func createWorktreeReuse(projectPath, wtDir, branch string) error {
 	return nil
 }
 
-// RemoveGitWorktree removes a git worktree.
-func RemoveGitWorktree(projectPath, wtDir string) {
-	debug.Log("git", "worktree remove %s --force", wtDir)
-	cmd := exec.Command("git", "worktree", "remove", wtDir, "--force")
-	cmd.Dir = projectPath
-	cmd.Run()
-}
-
 // HasEnvFiles reports whether dir holds any .env* file.
 func HasEnvFiles(dir string) bool {
 	entries, err := os.ReadDir(dir)

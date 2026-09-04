@@ -60,6 +60,9 @@ func cmdAddWorktree() {
 		}
 	}
 
+	if notice := workspace.TrashNotice(); notice != "" {
+		fmt.Printf("\n  %s\n", notice)
+	}
 	fmt.Printf("\nCreating %s\n\n", ref)
 	opts := workspace.CheckoutOptions{Install: install, Progress: printSetupProgress}
 	err = workspace.AddWorktree(ref.Workspace, ref.Worktree, opts)

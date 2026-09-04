@@ -20,6 +20,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
+	"github.com/FurlanLuka/crew/crew/internal/trash"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -74,6 +75,12 @@ func main() {
 	cmd := ""
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
+	}
+
+	// Retry any removed checkout an earlier run did not finish clearing.
+	// Uninstall's purge takes ~/.crew whole, trash included.
+	if cmd != "uninstall" {
+		trash.Sweep()
 	}
 
 	// Check for updates in background (skip for dev builds and update command)

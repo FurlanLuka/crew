@@ -32,6 +32,11 @@ at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source u
 - **Ports** are always allocated by crew and remembered per worktree (`Worktree.Ports`), so a
   restart lands on the same ones. The configured `--port` is reference only. `--proxy` is
   opt-in; default URLs are `localhost:<port>`.
+- **Removal never deletes inline.** `cleanupWorktree` is the one teardown primitive: it
+  renames the checkout into `~/.crew/trash` (`trash.Put`, which refuses anything outside
+  `WorkspacesDir`), prunes git, and a detached `rm -rf` clears the trash — a full build in a
+  checkout can be 100+ GB. `main` sweeps leftovers on every start; Settings shows the size and
+  can empty it. The TUI walks worktree sizes asynchronously and keeps them for the view's life.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 
@@ -48,11 +53,13 @@ crew/
     config/     ~/.crew paths, settings.json
     debug/      debug.log + its TUI view
     dev/        ports, routes, proxy, binding resolution, conflicts, scan proposals, formatters
+    dirsize/    bytes under a directory (pure)
     exec/       git, tmux, editor, ShellQuote, setup steps (mise + lockfile detection)
     help/       structured command tree (help_test pins every command)
     procs/      process inventory and reclaim
     project/    pool CRUD, bindings, setup; project TUI incl. the binding editor
-    settings/   settings TUI, uninstall entry
+    settings/   settings TUI, trash size + empty, uninstall entry
+    trash/      removed checkouts: rename into ~/.crew/trash, detached rm, sweep on start
     uninstall/  crew uninstall
     workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, TUI
 ```
@@ -98,7 +105,7 @@ last log lines for the dead ones, stop.
   elsewhere, is a conflict.
 - **Debug logging** — every external command (tmux, git, editor, package managers, mise)
   goes through `debug.Log(category, …)`: `"tmux"`, `"git"`, `"editor"`, `"dev"`, `"setup"`,
-  `"procs"`, `"uninstall"`. Log the command before running it; log errors inline.
+  `"procs"`, `"trash"`, `"uninstall"`. Log the command before running it; log errors inline.
 - **Never log binding values** — names, sources and targets only. Values carry URLs and can
   carry credentials.
 - **Comments say why, not what.** A comment earns its place with a constraint, a product

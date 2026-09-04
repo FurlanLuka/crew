@@ -12,6 +12,7 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dirsize"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -22,6 +23,7 @@ type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
 type workspaceDuplicatedMsg struct{ src, dst string }
 type worktreeAddedMsg struct{ ref Ref }
+type worktreeSizesMsg struct{ sizes map[string]int64 }
 type baseStatusesMsg struct{ statuses []BaseStatus }
 type basesPulledMsg struct{ failed []error }
 
@@ -85,6 +87,10 @@ type View struct {
 	baseLoading  bool
 	// setupLines is what has finished so far while a checkout is installing.
 	setupLines []string
+	// sizes is bytes on disk per worktree ref, filled in after the list shows
+	// and kept for the view's lifetime — a walk over a big build tree is slow
+	// and competes with whatever is writing it. An absent key is still loading.
+	sizes map[string]int64
 
 	// Project management within workspace
 	selectedWs    string
@@ -116,6 +122,7 @@ func NewView() View {
 		input:     ti,
 		roleInput: ri,
 		spinner:   sp,
+		sizes:     map[string]int64{},
 	}
 }
 
@@ -144,7 +151,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.cursor >= len(v.summaries) {
 			v.cursor = max(0, len(v.summaries)-1)
 		}
-		return v, nil
+		return v, v.loadMissingSizes()
 
 	case workspaceCreatedMsg:
 		v.state = stateList
@@ -171,9 +178,16 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case worktreeRemovedMsg:
 		v.state = stateWorktrees
-		v.statusMsg = fmt.Sprintf("Removed worktree '%s'", msg.ref)
+		v.statusMsg = fmt.Sprintf("Removed worktree '%s' — clearing in background", msg.ref)
 		v.err = nil
+		delete(v.sizes, msg.ref.String())
 		return v, loadWorkspaces
+
+	case worktreeSizesMsg:
+		for ref, n := range msg.sizes {
+			v.sizes[ref] = n
+		}
+		return v, nil
 
 	case baseStatusesMsg:
 		v.baseStatuses = msg.statuses
@@ -243,7 +257,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case spinner.TickMsg:
-		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree || v.state == stateRemovingWorktree || v.baseLoading {
+		if v.state == stateAddingProject || v.state == stateRemovingProject || v.state == stateDuplicating || v.state == stateAddingWorktree || v.state == stateRemovingWorktree || v.baseLoading || v.sizesLoading() {
 			var cmd tea.Cmd
 			v.spinner, cmd = v.spinner.Update(msg)
 			return v, cmd
@@ -384,6 +398,7 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.wtCursor = 0
 			v.statusMsg = ""
 			v.err = nil
+			return v, v.loadMissingSizes()
 		}
 		return v, nil
 	}
@@ -648,6 +663,7 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString("\n")
 	}
 
+	renderTrashNotice(b)
 	v.renderStatus(b)
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render("enter worktrees  n new  p projects  d delete  esc back"))
@@ -672,9 +688,17 @@ func (v View) renderWorktrees(b *strings.Builder) {
 		return
 	}
 
+	width := 0
+	for _, s := range row.Worktrees {
+		width = max(width, len(s.Worktree))
+	}
 	for i, s := range row.Worktrees {
 		b.WriteString(app.RowPrefix(i == v.wtCursor))
 		b.WriteString(renderSummaryName(s, i == v.wtCursor))
+		if s.Worktree != "" {
+			b.WriteString(strings.Repeat(" ", width-len(s.Worktree)))
+			b.WriteString("  " + v.renderSize(s))
+		}
 		if s.DevRunning {
 			b.WriteString("  " + app.Highlight.Render("[dev]"))
 		}
@@ -686,6 +710,7 @@ func (v View) renderWorktrees(b *strings.Builder) {
 	b.WriteString(app.RowName("+ new worktree", v.wtCursor == newIdx))
 	b.WriteString("\n")
 
+	renderTrashNotice(b)
 	v.renderStatus(b)
 	b.WriteString("  ")
 	if v.wtCursor == newIdx {
@@ -712,6 +737,25 @@ func (v View) renderStatus(b *strings.Builder) {
 
 // renderSummaryName shows ws/wt with the worktree highlighted, or the bare
 // workspace with a migrate hint when it predates worktrees.
+// renderSize is right-aligned so the column reads as numbers; a worktree
+// still being walked shows the spinner in its place.
+func (v View) renderSize(s Summary) string {
+	n, ok := v.sizes[s.Ref.String()]
+	if !ok {
+		// %7s would count the glyph's bytes, not its width.
+		return strings.Repeat(" ", 6) + v.spinner.View()
+	}
+	return app.Subtle.Render(fmt.Sprintf("%7s", app.FormatBytes(n)))
+}
+
+// renderTrashNotice says when removed checkouts are still being cleared —
+// the bytes are not back yet, which matters right before creating the next.
+func renderTrashNotice(b *strings.Builder) {
+	if notice := TrashNotice(); notice != "" {
+		b.WriteString("\n  " + app.Subtle.Render(notice) + "\n")
+	}
+}
+
 func renderSummaryName(s Summary, selected bool) string {
 	if s.Worktree == "" {
 		return app.RowName("(flat)", selected) + "  " + app.Subtle.Render("run crew migrate to name it")
@@ -736,6 +780,7 @@ func (v View) renderCreate(b *strings.Builder) {
 }
 
 func (v View) renderNewWorktree(b *strings.Builder) {
+	renderTrashNotice(b)
 	b.WriteString("  Branching from\n\n")
 	switch {
 	case v.baseLoading:
@@ -819,6 +864,53 @@ func (v View) renderConfirmRemove(b *strings.Builder) {
 }
 
 // ── Commands ──
+
+// loadMissingSizes walks the selected workspace's worktrees that have no size
+// yet. Nothing is rewalked: a removed or added worktree drops out of or never
+// enters the map, everything else keeps the number it got.
+func (v View) loadMissingSizes() tea.Cmd {
+	if v.state != stateWorktrees {
+		return nil
+	}
+	row, ok := v.selectedRow()
+	if !ok {
+		return nil
+	}
+	var missing []Summary
+	for _, s := range row.Worktrees {
+		if _, done := v.sizes[s.Ref.String()]; !done {
+			missing = append(missing, s)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	// One walk per worktree, so a small one is not held up by a huge sibling.
+	cmds := []tea.Cmd{v.spinner.Tick}
+	for _, s := range missing {
+		ref, path := s.Ref.String(), s.Path
+		cmds = append(cmds, func() tea.Msg {
+			return worktreeSizesMsg{map[string]int64{ref: dirsize.Of(path)}}
+		})
+	}
+	return tea.Batch(cmds...)
+}
+
+func (v View) sizesLoading() bool {
+	if v.state != stateWorktrees {
+		return false
+	}
+	row, ok := v.selectedRow()
+	if !ok {
+		return false
+	}
+	for _, s := range row.Worktrees {
+		if _, done := v.sizes[s.Ref.String()]; !done && s.Worktree != "" {
+			return true
+		}
+	}
+	return false
+}
 
 func loadWorkspaces() tea.Msg {
 	summaries, err := ListSummaries()

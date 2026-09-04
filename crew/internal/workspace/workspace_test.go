@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/trash"
 )
 
 func setupTestConfig(t *testing.T) string {
@@ -17,9 +19,12 @@ func setupTestConfig(t *testing.T) string {
 	tmp := t.TempDir()
 	config.ConfigDir = tmp
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
+	config.TrashDir = filepath.Join(tmp, "trash")
 	config.ClaudeConfigDir = filepath.Join(tmp, "claude")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
 	os.MkdirAll(config.ClaudeConfigDir, 0o755)
+	// Trashed checkouts stay put so tests can look at them.
+	trash.DisableSweepForTest(t)
 	return tmp
 }
 
@@ -507,6 +512,35 @@ func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
 	}
 	if len(ws.Projects) != 1 || !IsDirect(ws.Projects[0]) {
 		t.Fatalf("expected 1 direct project, got %+v", ws.Projects)
+	}
+}
+
+// Removing one project trashes its checkout in every worktree and leaves the
+// siblings alone.
+func TestRemoveProject_WorktreeMode_TrashesOnlyThatProject(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api", "web")
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	if err := RemoveProject("ws", "api"); err != nil {
+		t.Fatalf("RemoveProject: %v", err)
+	}
+
+	for _, wt := range []string{DefaultWorktree, "wrk2"} {
+		ref := Ref{Workspace: "ws", Worktree: wt}
+		if _, err := os.Stat(WorktreePath(ref, "api")); !os.IsNotExist(err) {
+			t.Errorf("%s: api checkout should be gone", wt)
+		}
+		if _, err := os.Stat(WorktreePath(ref, "web")); err != nil {
+			t.Errorf("%s: web checkout should survive: %v", wt, err)
+		}
+	}
+	if list, _ := exec.RunGitCommand(project.Get("api").Path, "worktree", "list"); strings.Contains(list, "ws/") {
+		t.Errorf("api still has crew checkouts registered:\n%s", list)
+	}
+	if !trashHolds(t, "api") {
+		t.Error("api checkouts should be in the trash")
 	}
 }
 

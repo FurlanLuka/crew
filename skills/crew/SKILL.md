@@ -84,6 +84,9 @@ crew duplicate <ws>/<wt> <new-wt>
 crew setup <ws>/<wt>                     re-run installs after a failure
 ```
 
+`rm worktree` returns at once: the checkout is moved to `~/.crew/trash` and deleted in the
+background, so disk space comes back a little later (Settings shows the trash and can empty it).
+
 `add worktree` shows each project's base branch and how far behind origin it is (`--pull`
 fast-forwards the local bases; never touches a checked-out feature branch), checks out,
 copies `.env` from the canonical repo or a sibling worktree, installs (`mise install`, then

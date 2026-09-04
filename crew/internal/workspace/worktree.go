@@ -8,6 +8,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/trash"
 )
 
 // BranchName is the branch a project's checkout gets in one worktree.
@@ -224,7 +225,22 @@ func rollbackWorktree(ref Ref, made []WorkspaceProject) {
 	for _, wp := range made {
 		cleanupWorktree(ref, wp)
 	}
-	os.RemoveAll(WorktreeDir(ref))
+	trash.Put(WorktreeDir(ref))
+	trash.Sweep()
+}
+
+// TrashNotice is the one line to show wherever disk is about to be used:
+// removed checkouts are cleared in the background, so the space they took
+// may not be back yet.
+func TrashNotice() string {
+	n := trash.Entries()
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "trash: 1 removed checkout still clearing in background"
+	}
+	return fmt.Sprintf("trash: %d removed checkouts still clearing in background", n)
 }
 
 // RemoveWorktree destroys a worktree's checkouts and forgets it.
@@ -255,7 +271,9 @@ func RemoveWorktree(wsName, name string) error {
 	for _, wp := range ws.Projects {
 		cleanupWorktree(ref, wp)
 	}
-	os.RemoveAll(WorktreeDir(ref))
+	// Whatever else accumulated in the worktree dir goes the same way.
+	trash.Put(WorktreeDir(ref))
+	trash.Sweep()
 
 	// The disk work above can take a minute on a large checkout, and another
 	// removal may have saved the workspace meanwhile. Drop this entry from

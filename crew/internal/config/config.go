@@ -12,6 +12,9 @@ var (
 	ConfigDir       string
 	WorkspacesDir   string
 	ClaudeConfigDir string
+	// TrashDir holds removed checkouts until a background delete clears them;
+	// same volume as WorkspacesDir so the move there is a rename.
+	TrashDir string
 
 	// Whether the user explicitly set CLAUDE_CONFIG_DIR
 	UserSetClaudeConfig bool
@@ -22,6 +25,7 @@ func Init() {
 
 	ConfigDir = filepath.Join(home, ".crew")
 	WorkspacesDir = filepath.Join(ConfigDir, "workspaces")
+	TrashDir = filepath.Join(ConfigDir, "trash")
 
 	raw := os.Getenv("CLAUDE_CONFIG_DIR")
 	UserSetClaudeConfig = raw != ""

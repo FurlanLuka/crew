@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/trash"
 )
 
 var validWSName = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -237,42 +239,39 @@ func Remove(name string) error {
 	}
 	dev.StopProxyIfIdle()
 
-	// WorkspaceDir is bounded to ~/.claude/workspaces/<name>/. Direct-mode
-	// projects' canonical paths live elsewhere, so this RemoveAll cannot reach
-	// them — keep it for cleaning up the worktree shells and prompt artifacts.
-	os.RemoveAll(WorkspaceDir(name))
+	// Direct-mode projects' canonical paths live elsewhere, so trashing the
+	// workspace dir cannot reach them — it clears the worktree shells and
+	// whatever loose files were left in them.
+	trash.Put(WorkspaceDir(name))
+	trash.Sweep()
 	os.Remove(config.WorkspaceFile(name))
 	return nil
 }
 
 // cleanupWorktree is the single place destructive worktree teardown happens.
-// No-ops for direct-mode entries. Defensively asserts the path being deleted
-// lives under config.WorkspacesDir before touching it.
+// No-ops for direct-mode entries. The checkout is moved to the trash rather
+// than deleted — a full build inside can be 100+ GB — and git is told to
+// forget it; trash.Put refuses anything outside the workspaces tree.
 func cleanupWorktree(ref Ref, wp WorkspaceProject) {
 	if IsDirect(wp) {
 		return
 	}
 	wtDir := WorktreePath(ref, wp.Name)
 
-	// Defensive guard: never delete anything outside the workspaces tree.
-	abs, err := filepath.Abs(wtDir)
-	if err != nil {
-		return
-	}
-	rootAbs, err := filepath.Abs(config.WorkspacesDir)
-	if err != nil {
-		return
-	}
-	if !strings.HasPrefix(abs, rootAbs+string(os.PathSeparator)) {
-		return
-	}
-	// And never the canonical project repo itself.
-	if p := project.Get(wp.Name); p != nil {
+	// Never the canonical project repo itself, however the pool is set up.
+	p := project.Get(wp.Name)
+	if p != nil {
 		pAbs, _ := filepath.Abs(p.Path)
+		abs, _ := filepath.Abs(wtDir)
 		if pAbs == abs {
 			return
 		}
-		exec.RemoveGitWorktree(p.Path, wtDir)
 	}
-	os.RemoveAll(wtDir)
+	if _, err := trash.Put(wtDir); err != nil {
+		debug.Log("trash", "%s: %v", wtDir, err)
+		return
+	}
+	if p != nil {
+		exec.PruneWorktrees(p.Path)
+	}
 }
