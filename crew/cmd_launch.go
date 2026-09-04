@@ -68,6 +68,10 @@ func cmdEdit() {
 		fmt.Fprintf(os.Stderr, "Error: no editor found — install Cursor or VS Code, or pass --editor\n")
 		os.Exit(1)
 	}
+	if editor != "cursor" && editor != "code" {
+		fmt.Fprintf(os.Stderr, "Error: --editor must be cursor or code\n")
+		os.Exit(1)
+	}
 	res := mustResolve(os.Args[2])
 	if err := workspace.LaunchEditor(res, editor); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

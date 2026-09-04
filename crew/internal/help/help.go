@@ -476,18 +476,11 @@ var Root = CommandInfo{
 }
 
 // Run handles `crew help [args...]`.
-func Run(args []string) {
-	jsonOutput := false
-	var filtered []string
-	for _, a := range args {
-		if a == "--json" {
-			jsonOutput = true
-		} else {
-			filtered = append(filtered, a)
-		}
-	}
-
-	if jsonOutput {
+// Run prints help for the named command path. asJSON dumps the whole tree;
+// main has already stripped the global --json flag, so it is passed in.
+func Run(args []string, asJSON bool) {
+	filtered := args
+	if asJSON {
 		data, _ := json.MarshalIndent(Root, "", "  ")
 		fmt.Println(string(data))
 		return

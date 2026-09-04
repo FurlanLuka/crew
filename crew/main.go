@@ -224,7 +224,7 @@ func main() {
 		return
 
 	case "help":
-		help.Run(os.Args[2:])
+		help.Run(os.Args[2:], jsonOutput)
 		return
 
 	case "":
