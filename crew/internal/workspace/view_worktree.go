@@ -107,9 +107,7 @@ type WorktreeView struct {
 }
 
 func NewWorktreeView(ref Ref) WorktreeView {
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
-	return WorktreeView{ref: ref, spinner: sp, noProxy: true}
+	return WorktreeView{ref: ref, spinner: app.NewSpinner(), noProxy: true}
 }
 
 func (v WorktreeView) Title() string {

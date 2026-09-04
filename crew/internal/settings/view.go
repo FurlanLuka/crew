@@ -74,11 +74,7 @@ func NewView() View {
 	inputs[2].Placeholder = "example.com"
 	inputs[2].CharLimit = 253
 
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
-	sp.Style = app.Highlight
-
-	return View{state: stateView, inputs: inputs, spinner: sp}
+	return View{state: stateView, inputs: inputs, spinner: app.NewSpinner()}
 }
 
 func (v View) Title() string { return "Settings" }

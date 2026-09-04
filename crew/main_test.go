@@ -165,3 +165,11 @@ func TestExtractFlag_BeforeSeparatorStillWorks(t *testing.T) {
 		t.Errorf("args = %q, want crew's flag stripped", got)
 	}
 }
+
+func TestShouldSweepTrash(t *testing.T) {
+	for cmd, want := range map[string]bool{"": true, "workspace": true, "rm": true, "uninstall": false} {
+		if got := shouldSweepTrash(cmd); got != want {
+			t.Errorf("shouldSweepTrash(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}

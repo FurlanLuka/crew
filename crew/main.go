@@ -77,9 +77,7 @@ func main() {
 		cmd = os.Args[1]
 	}
 
-	// Retry any removed checkout an earlier run did not finish clearing.
-	// Uninstall's purge takes ~/.crew whole, trash included.
-	if cmd != "uninstall" {
+	if shouldSweepTrash(cmd) {
 		trash.Sweep()
 	}
 
@@ -219,6 +217,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// shouldSweepTrash: every run retries clearing removed checkouts an earlier
+// run did not finish — except uninstall, whose purge takes ~/.crew whole.
+func shouldSweepTrash(cmd string) bool {
+	return cmd != "uninstall"
 }
 
 func mainMenu() app.Menu {

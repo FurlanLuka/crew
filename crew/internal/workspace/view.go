@@ -114,14 +114,11 @@ func NewView() View {
 	ri.Placeholder = "owns the backend API"
 	ri.CharLimit = 256
 
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
-
 	return View{
 		state:     stateList,
 		input:     ti,
 		roleInput: ri,
-		spinner:   sp,
+		spinner:   app.NewSpinner(),
 		sizes:     map[string]int64{},
 	}
 }
@@ -735,8 +732,6 @@ func (v View) renderStatus(b *strings.Builder) {
 	}
 }
 
-// renderSummaryName shows ws/wt with the worktree highlighted, or the bare
-// workspace with a migrate hint when it predates worktrees.
 // renderSize is right-aligned so the column reads as numbers; a worktree
 // still being walked shows the spinner in its place.
 func (v View) renderSize(s Summary) string {
@@ -756,6 +751,8 @@ func renderTrashNotice(b *strings.Builder) {
 	}
 }
 
+// renderSummaryName shows ws/wt with the worktree highlighted, or the bare
+// workspace with a migrate hint when it predates worktrees.
 func renderSummaryName(s Summary, selected bool) string {
 	if s.Worktree == "" {
 		return app.RowName("(flat)", selected) + "  " + app.Subtle.Render("run crew migrate to name it")
@@ -878,7 +875,8 @@ func (v View) loadMissingSizes() tea.Cmd {
 	}
 	var missing []Summary
 	for _, s := range row.Worktrees {
-		if _, done := v.sizes[s.Ref.String()]; !done {
+		// A flat pre-2.0 workspace has no size column to fill.
+		if _, done := v.sizes[s.Ref.String()]; !done && s.Worktree != "" {
 			missing = append(missing, s)
 		}
 	}

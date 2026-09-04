@@ -242,7 +242,9 @@ func Remove(name string) error {
 	// Direct-mode projects' canonical paths live elsewhere, so trashing the
 	// workspace dir cannot reach them — it clears the worktree shells and
 	// whatever loose files were left in them.
-	trash.Put(WorkspaceDir(name))
+	if _, err := trash.Put(WorkspaceDir(name)); err != nil {
+		debug.Log("trash", "%s: %v", WorkspaceDir(name), err)
+	}
 	trash.Sweep()
 	os.Remove(config.WorkspaceFile(name))
 	return nil

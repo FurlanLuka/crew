@@ -1,6 +1,9 @@
 package app
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/lipgloss"
+)
 
 var (
 	Title     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
@@ -38,4 +41,12 @@ func RowName(name string, selected bool) string {
 		return Selected.Render(name)
 	}
 	return name
+}
+
+// NewSpinner is the one spinner every view shows while something runs.
+func NewSpinner() spinner.Model {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = Highlight
+	return sp
 }

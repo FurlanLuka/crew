@@ -49,7 +49,7 @@ func Put(path string) (string, error) {
 	}
 	dest := filepath.Join(config.TrashDir, fmt.Sprintf("%d-%s", time.Now().UnixNano(), filepath.Base(abs)))
 	debug.Log("trash", "move %s → %s", abs, dest)
-	if err := os.Rename(abs, dest); err != nil {
+	if err := rename(abs, dest); err != nil {
 		debug.Log("trash", "rename failed, removing in place: %v", err)
 		return "", os.RemoveAll(abs)
 	}
@@ -69,8 +69,12 @@ func Sweep() {
 	}
 }
 
-// sweep is a variable so tests can keep the entries around to look at.
-var sweep = spawnRemove
+// rename and sweep are variables so tests can fail the move and keep the
+// entries around to look at.
+var (
+	rename = os.Rename
+	sweep  = spawnRemove
+)
 
 func spawnRemove(path string) {
 	debug.Log("trash", "rm -rf %s (detached)", path)

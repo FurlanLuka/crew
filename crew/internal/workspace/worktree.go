@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
@@ -225,7 +226,9 @@ func rollbackWorktree(ref Ref, made []WorkspaceProject) {
 	for _, wp := range made {
 		cleanupWorktree(ref, wp)
 	}
-	trash.Put(WorktreeDir(ref))
+	if _, err := trash.Put(WorktreeDir(ref)); err != nil {
+		debug.Log("trash", "%s: %v", WorktreeDir(ref), err)
+	}
 	trash.Sweep()
 }
 
@@ -272,7 +275,9 @@ func RemoveWorktree(wsName, name string) error {
 		cleanupWorktree(ref, wp)
 	}
 	// Whatever else accumulated in the worktree dir goes the same way.
-	trash.Put(WorktreeDir(ref))
+	if _, err := trash.Put(WorktreeDir(ref)); err != nil {
+		debug.Log("trash", "%s: %v", WorktreeDir(ref), err)
+	}
 	trash.Sweep()
 
 	// The disk work above can take a minute on a large checkout, and another

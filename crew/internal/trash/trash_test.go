@@ -1,6 +1,7 @@
 package trash
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,5 +102,25 @@ func TestSweep_SpawnsPerEntry(t *testing.T) {
 	Sweep()
 	if len(swept) != 2 {
 		t.Errorf("swept %v, want 2 entries", swept)
+	}
+}
+
+// Another volume cannot be renamed into; the path is deleted where it is.
+func TestPut_RenameFailureRemovesInPlace(t *testing.T) {
+	setup(t)
+	prev := rename
+	rename = func(string, string) error { return errors.New("cross-device link") }
+	t.Cleanup(func() { rename = prev })
+	src := checkout(t, "ws/wrk1/api", 10)
+
+	dest, err := Put(src)
+	if err != nil || dest != "" {
+		t.Fatalf("Put = %q, %v; want \"\", nil", dest, err)
+	}
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Error("source should be removed in place")
+	}
+	if n := Entries(); n != 0 {
+		t.Errorf("Entries = %d, want 0", n)
 	}
 }
