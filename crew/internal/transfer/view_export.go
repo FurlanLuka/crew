@@ -266,7 +266,7 @@ func (v ExportView) View() string {
 	var b strings.Builder
 	switch v.state {
 	case exportStateDone:
-		fmt.Fprintf(&b, "  Wrote %s — %s\n\n  ", v.written.file, countPhrase(v.written.projects, v.written.workspaces))
+		fmt.Fprintf(&b, "  Wrote %s — %s\n\n  ", v.written.file, CountPhrase(v.written.projects, v.written.workspaces))
 		b.WriteString(app.HelpStyle.Render("esc back"))
 		b.WriteString("\n")
 		return b.String()
@@ -330,7 +330,7 @@ func (v ExportView) renderList(b *strings.Builder) {
 		b.WriteString("  " + app.Error.Render(v.err.Error()) + "\n\n")
 	}
 	projNames, wsNames := v.selection()
-	b.WriteString("  " + app.HelpStyle.Render(fmt.Sprintf("space toggle  a all/none  f file  enter export %s  esc cancel", countPhrase(len(projNames), len(wsNames)))))
+	b.WriteString("  " + app.HelpStyle.Render(fmt.Sprintf("space toggle  a all/none  f file  enter export %s  esc cancel", CountPhrase(len(projNames), len(wsNames)))))
 	b.WriteString("\n")
 }
 
@@ -360,7 +360,9 @@ func memberNames(ws *workspace.Workspace) string {
 	return strings.Join(names, ", ")
 }
 
-func countPhrase(projects, workspaces int) string {
+// CountPhrase is "N projects, M workspaces", pluralised — the CLI and the
+// picker say it the same way.
+func CountPhrase(projects, workspaces int) string {
 	return fmt.Sprintf("%s, %s", plural(projects, "project"), plural(workspaces, "workspace"))
 }
 

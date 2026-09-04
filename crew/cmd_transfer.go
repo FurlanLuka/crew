@@ -110,7 +110,7 @@ func cmdExport() {
 		printJSON(map[string]any{"file": a.file, "projects": len(b.Projects), "workspaces": len(b.Workspaces)})
 		return
 	}
-	fmt.Printf("Wrote %s — %d projects, %d workspaces\n", a.file, len(b.Projects), len(b.Workspaces))
+	fmt.Printf("Wrote %s — %s\n", a.file, transfer.CountPhrase(len(b.Projects), len(b.Workspaces)))
 }
 
 func everything() (projNames, wsNames []string, err error) {
