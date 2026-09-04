@@ -183,10 +183,8 @@ func TestClone(t *testing.T) {
 }
 
 func TestMissingMembers(t *testing.T) {
-	setupTestConfig(t)
-	project.Add(project.Project{Name: "here", Path: "/h"})
 	m := Membership{Projects: []workspace.WorkspaceProject{{Name: "here"}, {Name: "accepted"}, {Name: "skipped"}}}
-	got := MissingMembers(m, map[string]bool{"accepted": true})
+	got := MissingMembers(m, map[string]bool{"here": true, "accepted": true})
 	if len(got) != 1 || got[0] != "skipped" {
 		t.Errorf("MissingMembers = %v", got)
 	}
@@ -247,5 +245,21 @@ func TestImportWorkspace(t *testing.T) {
 	}
 	if err := ImportWorkspace(m, nil); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("existing workspace must be refused: %v", err)
+	}
+}
+
+func TestMissingPaths(t *testing.T) {
+	tmp := setupTestConfig(t)
+	here := filepath.Join(tmp, "here")
+	os.MkdirAll(here, 0o755)
+	project.Add(project.Project{Name: "known", Path: "/gone/known"})
+	b := Bundle{Projects: []Exported{
+		{Project: project.Project{Name: "known", Path: "/gone/known"}}, // kept local: never blocks --all
+		{Project: project.Project{Name: "present", Path: here}},
+		{Project: project.Project{Name: "absent", Path: "/gone/absent"}},
+	}}
+	got := MissingPaths(b, Inspect(b))
+	if len(got) != 1 || got[0].Name != "absent" {
+		t.Errorf("MissingPaths = %+v, want just absent", got)
 	}
 }

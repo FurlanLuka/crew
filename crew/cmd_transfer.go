@@ -74,7 +74,11 @@ func cmdExport() {
 
 	projNames, wsNames := a.projects, a.workspaces
 	if a.all {
-		projNames, wsNames = everything()
+		var err error
+		if projNames, wsNames, err = everything(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	} else if len(wsNames) > 0 {
 		// A named workspace has to be covered, the same rule the picker uses.
 		chosen := map[string]bool{}
@@ -109,13 +113,16 @@ func cmdExport() {
 	fmt.Printf("Wrote %s — %d projects, %d workspaces\n", a.file, len(b.Projects), len(b.Workspaces))
 }
 
-func everything() (projNames, wsNames []string) {
-	pool, _ := project.List()
+func everything() (projNames, wsNames []string, err error) {
+	pool, err := project.List()
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, p := range pool {
 		projNames = append(projNames, p.Name)
 	}
-	wsNames, _ = workspace.List()
-	return projNames, wsNames
+	wsNames, err = workspace.List()
+	return projNames, wsNames, err
 }
 
 func cmdImport() {
@@ -151,22 +158,19 @@ func cmdImport() {
 // only if every path is here — it never guesses and never clones.
 func importAll(file string, b transfer.Bundle) {
 	plan := transfer.Inspect(b)
-	var missing []string
-	for i, e := range b.Projects {
-		if !plan.Projects[i].Exists && !plan.Projects[i].PathExists {
-			missing = append(missing, fmt.Sprintf("  %s\t%s", e.Name, e.Path))
+	if missing := transfer.MissingPaths(b, plan); len(missing) > 0 {
+		lines := make([]string, 0, len(missing))
+		for _, e := range missing {
+			lines = append(lines, fmt.Sprintf("  %s\t%s", e.Name, e.Path))
 		}
-	}
-	if len(missing) > 0 {
-		fmt.Fprintf(os.Stderr, "Error: these paths do not exist here; run crew import %s without --all to fix them one by one:\n%s\n", file, strings.Join(missing, "\n"))
+		fmt.Fprintf(os.Stderr, "Error: these paths do not exist here; run crew import %s without --all to fix them one by one:\n%s\n", file, strings.Join(lines, "\n"))
 		os.Exit(1)
 	}
 
-	accepted := map[string]bool{}
+	present := plan.Known
 	for i, e := range b.Projects {
 		if plan.Projects[i].Exists {
 			fmt.Printf("%s\tkept local\n", e.Name)
-			accepted[e.Name] = true
 			continue
 		}
 		if err := transfer.ImportProject(e.Name, e.Project, false); err != nil {
@@ -174,14 +178,14 @@ func importAll(file string, b transfer.Bundle) {
 			continue
 		}
 		fmt.Printf("%s\timported\n", e.Name)
-		accepted[e.Name] = true
+		present[e.Name] = true
 	}
 	for i, m := range b.Workspaces {
 		if plan.Workspaces[i].Exists {
 			fmt.Printf("%s\tkept local\n", m.Name)
 			continue
 		}
-		if need := transfer.MissingMembers(m, accepted); len(need) > 0 {
+		if need := transfer.MissingMembers(m, present); len(need) > 0 {
 			fmt.Printf("%s\tskipped\tneeds %s\n", m.Name, strings.Join(need, ", "))
 			continue
 		}

@@ -112,10 +112,10 @@ type ImportView struct {
 	// cloneAfterEdit: c with nowhere to put the clone asks for the path first.
 	cloneAfterEdit bool
 
-	accepted map[string]bool // present after this import: imported, replaced or kept
-	anchors  []string        // paths to look beside for the next card
-	results  []projectResult
-	wsRes    []wsResult
+	present map[string]bool // in the pool before, or imported/replaced/kept in this walk
+	anchors []string        // paths to look beside for the next card
+	results []projectResult
+	wsRes   []wsResult
 
 	spinner  spinner.Model
 	progress string
@@ -130,19 +130,17 @@ func NewImportView(file string, b Bundle) ImportView {
 		inputs[i] = textinput.New()
 		inputs[i].CharLimit = 512
 	}
+	plan := Inspect(b)
 	v := ImportView{
-		file:     file,
-		bundle:   b,
-		plan:     Inspect(b),
-		inputs:   inputs,
-		accepted: map[string]bool{},
-		results:  make([]projectResult, len(b.Projects)),
-		wsRes:    make([]wsResult, len(b.Workspaces)),
-		spinner:  app.NewSpinner(),
-	}
-	pool, _ := project.List()
-	for _, p := range pool {
-		v.anchors = append(v.anchors, p.Path)
+		file:    file,
+		bundle:  b,
+		plan:    plan,
+		inputs:  inputs,
+		present: plan.Known,
+		anchors: plan.Anchors,
+		results: make([]projectResult, len(b.Projects)),
+		wsRes:   make([]wsResult, len(b.Workspaces)),
+		spinner: app.NewSpinner(),
 	}
 	for i := range v.results {
 		v.results[i].Outcome = outcomeNotReached
@@ -216,7 +214,11 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return v, nil
 		}
 		v.results[v.idx] = projectResult{Outcome: msg.outcome, Name: msg.name, Path: msg.path, Cloned: v.results[v.idx].Cloned}
-		v.accepted[msg.name] = true
+		if msg.outcome == outcomeReplaced {
+			// The record that matched is gone; only the name it has now is here.
+			delete(v.present, v.bundle.Projects[v.idx].Name)
+		}
+		v.present[msg.name] = true
 		v.anchors = append(v.anchors, msg.path)
 		return v.advance()
 
@@ -240,7 +242,6 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.progress = ""
 		if msg.err != nil {
 			v.wsRes[v.idx] = wsResult{Outcome: outcomeFailed, Detail: msg.err.Error()}
-			v.err = msg.err
 			return v.advance()
 		}
 		m := v.bundle.Workspaces[v.idx]
@@ -314,7 +315,7 @@ func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if st.Exists {
 			// Keeping the local record still counts as present for workspaces.
 			v.results[v.idx] = projectResult{Outcome: outcomeKept, Name: st.Local.Name, Path: st.Local.Path}
-			v.accepted[st.Local.Name] = true
+			v.present[st.Local.Name] = true
 			v.anchors = append(v.anchors, st.Local.Path)
 		} else {
 			v.results[v.idx] = projectResult{Outcome: outcomeSkipped, Name: v.current.Name}
@@ -326,12 +327,8 @@ func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.apply(true)
 	case msg.String() == "c" && v.current.Remote != "" && !v.pathExists && v.cloneTarget() == "":
 		// Nothing to anchor a target on yet: ask for the path, then clone there.
-		v.state = importStateEdit
 		v.cloneAfterEdit = true
-		v.inputs[fieldName].SetValue(v.current.Name)
-		v.inputs[fieldPath].SetValue(v.current.Path)
-		v.inputs[fieldSetup].SetValue(v.current.Setup)
-		return v, v.setFocus(fieldPath)
+		return v, v.beginEdit(v.current.Path)
 	case msg.String() == "c" && v.cloneTarget() != "":
 		v.state = importStateCloning
 		v.err = nil
@@ -340,8 +337,6 @@ func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return clonedMsg{target: target, err: Clone(remote, target)}
 		})
 	case msg.String() == "e":
-		v.state = importStateEdit
-		v.err = nil
 		path := v.current.Path
 		if !v.pathExists {
 			if v.suggested != "" {
@@ -350,12 +345,21 @@ func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				path = t
 			}
 		}
-		v.inputs[fieldName].SetValue(v.current.Name)
-		v.inputs[fieldPath].SetValue(path)
-		v.inputs[fieldSetup].SetValue(v.current.Setup)
-		return v, v.setFocus(fieldPath)
+		return v, v.beginEdit(path)
 	}
 	return v, nil
+}
+
+// beginEdit opens the three fields with the card's values and the path the
+// card would otherwise use, cursor on the path — the field that differs
+// between machines.
+func (v *ImportView) beginEdit(path string) tea.Cmd {
+	v.state = importStateEdit
+	v.err = nil
+	v.inputs[fieldName].SetValue(v.current.Name)
+	v.inputs[fieldPath].SetValue(path)
+	v.inputs[fieldSetup].SetValue(v.current.Setup)
+	return v.setFocus(fieldPath)
 }
 
 func (v ImportView) apply(replace bool) (tea.Model, tea.Cmd) {
@@ -438,7 +442,7 @@ func (v ImportView) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (v ImportView) handleWorkspaceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m := v.bundle.Workspaces[v.idx]
 	exists := v.plan.Workspaces[v.idx].Exists
-	missing := MissingMembers(m, v.accepted)
+	missing := MissingMembers(m, v.present)
 	switch {
 	case key.Matches(msg, app.Keys.Quit):
 		return v, tea.Quit
@@ -624,7 +628,7 @@ func (v ImportView) renderEdit(b *strings.Builder) {
 func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
 	m := v.bundle.Workspaces[v.idx]
 	exists := v.plan.Workspaces[v.idx].Exists
-	missing := MissingMembers(m, v.accepted)
+	missing := MissingMembers(m, v.present)
 	b.WriteString(v.header(""))
 
 	name := fmt.Sprintf("  name      %-*s", pathCol, m.Name)
@@ -691,7 +695,7 @@ func (v ImportView) memberOutcome(name string) string {
 			return app.Error.Render("not reached")
 		}
 	}
-	if project.Get(name) != nil {
+	if v.plan.Known[name] {
 		return app.Subtle.Render("already here")
 	}
 	return app.Error.Render("missing")

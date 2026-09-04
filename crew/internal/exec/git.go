@@ -58,6 +58,28 @@ func createWorktreeReuse(projectPath, wtDir, branch string) error {
 	return nil
 }
 
+// Clone runs git clone into a directory that does not exist yet, which is
+// why RunGitCommand (which needs a cwd) is not used. Auth and network are
+// the user's; git's last line is what they need to read.
+func Clone(remote, target string) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	debug.Log("git", "clone %s %s", remote, target)
+	cmd := exec.Command("git", "clone", "--quiet", remote, target)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		debug.Log("git", "clone %s → error: %v: %s", remote, err, msg)
+		if msg == "" {
+			msg = err.Error()
+		}
+		lines := strings.Split(msg, "\n")
+		return fmt.Errorf("git clone: %s", strings.TrimSpace(lines[len(lines)-1]))
+	}
+	return nil
+}
+
 // HasEnvFiles reports whether dir holds any .env* file.
 func HasEnvFiles(dir string) bool {
 	entries, err := os.ReadDir(dir)
