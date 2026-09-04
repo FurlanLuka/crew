@@ -243,16 +243,23 @@ func cmdLsWorktrees() {
 		return
 	}
 	for _, wt := range out {
-		running := ""
-		if wt.DevRunning {
-			running = "dev"
-		}
-		if withSize {
-			fmt.Printf("%s\t%s\t%s\t%s\n", wt.Ref, wt.Path, app.FormatBytes(wt.SizeBytes), running)
-			continue
-		}
-		fmt.Printf("%s\t%s\t%s\n", wt.Ref, wt.Path, running)
+		fmt.Println(worktreeRow(wt.Ref, wt.Path, wt.SizeBytes, withSize, wt.DevRunning))
 	}
+}
+
+// worktreeRow is one line of crew ls worktrees: the size column only when
+// asked for, "dev" last so the layout without it is unchanged.
+func worktreeRow(ref, path string, sizeBytes int64, withSize, running bool) string {
+	cols := []string{ref, path}
+	if withSize {
+		cols = append(cols, app.FormatBytes(sizeBytes))
+	}
+	if running {
+		cols = append(cols, "dev")
+	} else {
+		cols = append(cols, "")
+	}
+	return strings.Join(cols, "\t")
 }
 
 func cmdAddBinding() {

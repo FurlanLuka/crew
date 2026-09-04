@@ -143,7 +143,7 @@ func TestConfigSubcommands(t *testing.T) {
 		t.Fatal("config command not found")
 	}
 
-	expected := []string{"show", "set"}
+	expected := []string{"show", "set", "refresh"}
 	for _, name := range expected {
 		sub := findSubcommand(cfg, name)
 		if sub == nil {
@@ -238,6 +238,10 @@ func TestSkillDocumentsEveryUsage(t *testing.T) {
 			if !strings.Contains(skill, form) {
 				t.Errorf("skills/crew/SKILL.md does not contain %q", form)
 			}
+		}
+		// Output columns are quoted in the skill too; they drift just as easily.
+		if c.OutputFormat != "" && !strings.Contains(skill, c.OutputFormat) {
+			t.Errorf("skills/crew/SKILL.md does not contain the output format %q of %q", c.OutputFormat, c.Usage)
 		}
 		for i := range c.Subcommands {
 			walk(&c.Subcommands[i])

@@ -210,7 +210,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "claude",
-			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected when the worktree has more than one project. Replaces the crew process.",
+			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected for a multi-project worktree or one with a direct-mode project. Replaces the crew process.",
 			Usage:       "crew claude <workspace>[/<worktree>]",
 			Examples:    []string{"crew claude phone-speak/wrk1"},
 		},

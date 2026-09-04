@@ -174,12 +174,12 @@ crew edit <workspace>[/<worktree>] [--editor=cursor|code]   local editor on the 
 crew open <workspace>[/<worktree>]                       a shell in the worktree directory
 crew code <workspace>[/<worktree>]                       remote-SSH URL for Cursor/VS Code (needs ssh_host)
 crew start <workspace>[/<worktree>]                      print the orientation prompt
-crew launch [<workspace>[/<worktree>]]                   the worktree page (TUI)
+crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the worktree page; bare, the workspace list
 ```
 
 - `claude` and `open` replace the crew process — the user runs them, not you. `claude` skips
-  permissions and passes every project with `--add-dir`; multi-project worktrees get the
-  orientation prompt (`crew start` prints it) injected.
+  permissions and passes every project with `--add-dir`; a multi-project worktree, or one
+  with a direct-mode project, gets the orientation prompt (`crew start` prints it) injected.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
   say which they are in `crew help`.
 

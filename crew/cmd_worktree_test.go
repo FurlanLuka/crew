@@ -38,3 +38,25 @@ func TestBindingValue(t *testing.T) {
 		})
 	}
 }
+
+func TestWorktreeRow(t *testing.T) {
+	tests := []struct {
+		name     string
+		size     int64
+		withSize bool
+		running  bool
+		want     string
+	}{
+		{"plain", 0, false, false, "ws/wt\t/p\t"},
+		{"running", 0, false, true, "ws/wt\t/p\tdev"},
+		{"size", 161 << 30, true, false, "ws/wt\t/p\t161 GB\t"},
+		{"size and running", 226 << 20, true, true, "ws/wt\t/p\t226 MB\tdev"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := worktreeRow("ws/wt", "/p", tt.size, tt.withSize, tt.running); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

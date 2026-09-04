@@ -173,3 +173,44 @@ func TestShouldSweepTrash(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAddProjectArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    addProjectArgs
+		wantErr string
+	}{
+		{name: "new project", args: []string{"api", "/repo"}, want: addProjectArgs{name: "api", path: "/repo"}},
+		{name: "new with setup", args: []string{"api", "/repo", "--setup=make sync"}, want: addProjectArgs{name: "api", path: "/repo", setup: "make sync", hasSetup: true}},
+		{name: "update setup", args: []string{"api", "--setup=make sync"}, want: addProjectArgs{name: "api", setup: "make sync", hasSetup: true}},
+		{name: "clear setup", args: []string{"api", "--setup="}, want: addProjectArgs{name: "api", hasSetup: true}},
+		{name: "update path", args: []string{"api", "--path=/moved"}, want: addProjectArgs{name: "api", newPath: "/moved"}},
+		{name: "both", args: []string{"api", "--setup=x", "--path=/moved"}, want: addProjectArgs{name: "api", setup: "x", hasSetup: true, newPath: "/moved"}},
+		{name: "no args", args: nil, wantErr: "usage"},
+		{name: "two paths", args: []string{"api", "/a", "/b"}, wantErr: "one path at most"},
+		{name: "unknown flag", args: []string{"api", "--nope"}, wantErr: "unknown flag"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAddProjectArgs(tt.args)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Errorf("got %+v, %v; want %+v", got, err, tt.want)
+			}
+		})
+	}
+
+	// An existing project needs at least one thing to change.
+	if err := (addProjectArgs{name: "api"}).updatesExisting(); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("no flags on an existing project: %v", err)
+	}
+	if err := (addProjectArgs{name: "api", newPath: "/x"}).updatesExisting(); err != nil {
+		t.Errorf("--path alone should update: %v", err)
+	}
+}

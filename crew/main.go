@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -621,49 +622,72 @@ func cmdAdd() {
 	}
 }
 
-func cmdAddProject() {
-	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>]\n")
-		fmt.Fprintf(os.Stderr, "       crew add project <name> [--setup=<cmd>] [--path=<dir>]   (update an existing one)\n")
-		os.Exit(1)
+// addProjectArgs is what crew add project was told; the same command
+// registers a new project and updates an existing one.
+type addProjectArgs struct {
+	name, path, setup string
+	hasSetup          bool
+	newPath           string
+}
+
+func parseAddProjectArgs(args []string) (addProjectArgs, error) {
+	var a addProjectArgs
+	if len(args) == 0 {
+		return a, errors.New("usage: crew add project <name> <path> [--setup=<cmd>]")
 	}
-	name := os.Args[3]
-	path, setup, newPath := "", "", ""
-	hasSetup := false
-	for _, arg := range os.Args[4:] {
+	a.name = args[0]
+	for _, arg := range args[1:] {
 		switch {
 		case strings.HasPrefix(arg, "--setup="):
-			setup, hasSetup = strings.TrimPrefix(arg, "--setup="), true
+			a.setup, a.hasSetup = strings.TrimPrefix(arg, "--setup="), true
 		case strings.HasPrefix(arg, "--path="):
-			newPath = strings.TrimPrefix(arg, "--path=")
+			a.newPath = strings.TrimPrefix(arg, "--path=")
 		case strings.HasPrefix(arg, "-"):
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-			os.Exit(1)
+			return a, fmt.Errorf("unknown flag '%s'", arg)
+		case a.path != "":
+			return a, fmt.Errorf("one path at most, got '%s' and '%s'", a.path, arg)
 		default:
-			path = arg
+			a.path = arg
 		}
 	}
+	return a, nil
+}
 
-	// Re-adding an existing project updates the fields worth changing after
-	// the fact: the setup command, and the path when a repo has moved.
+// updatesExisting is the branch for a project already in the pool: only
+// --setup and --path mean anything, and at least one must be given.
+func (a addProjectArgs) updatesExisting() error {
+	if !a.hasSetup && a.newPath == "" {
+		return fmt.Errorf("project '%s' already exists — pass --setup or --path to change it", a.name)
+	}
+	return nil
+}
+
+func cmdAddProject() {
+	a, err := parseAddProjectArgs(os.Args[3:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	name, path, setup := a.name, a.path, a.setup
+
 	if existing := project.Get(name); existing != nil {
-		if !hasSetup && newPath == "" {
-			fmt.Fprintf(os.Stderr, "Error: project '%s' already exists — pass --setup or --path to change it\n", name)
+		if err := a.updatesExisting(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if hasSetup {
+		if a.hasSetup {
 			if err := project.SetSetup(name, setup); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
 			fmt.Printf("Setup for %s: %s\n", name, setup)
 		}
-		if newPath != "" {
-			if err := project.SetPath(name, newPath); err != nil {
+		if a.newPath != "" {
+			if err := project.SetPath(name, a.newPath); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			fmt.Printf("Path for %s: %s\n", name, newPath)
+			fmt.Printf("Path for %s: %s\n", name, a.newPath)
 		}
 		return
 	}
@@ -671,7 +695,6 @@ func cmdAddProject() {
 		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>]\n")
 		os.Exit(1)
 	}
-
 	if err := project.Add(project.Project{Name: name, Path: path, Setup: setup}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

@@ -199,7 +199,6 @@ func RemoveDevServer(projName, serverName string) error {
 	return fmt.Errorf("project '%s' not found", projName)
 }
 
-// SetSetup records or clears a project's explicit setup command.
 // SetPath moves a project's canonical checkout. Worktrees already made from
 // the old path keep working — git tracks them from the repo, not from crew.
 func SetPath(projName, path string) error {
@@ -220,6 +219,7 @@ func SetPath(projName, path string) error {
 	return fmt.Errorf("project '%s' not found", projName)
 }
 
+// SetSetup records or clears a project's explicit setup command.
 func SetSetup(projName, command string) error {
 	projects, err := List()
 	if err != nil {
