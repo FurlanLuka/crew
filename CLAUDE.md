@@ -54,6 +54,7 @@ crew/
   cmd_run.go           crew env, crew run  cmd_migrate.go    crew migrate
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   cmd_transfer.go      crew export, crew import
+  cmd_launch.go        crew launch, claude, edit          cmd_trash.go  crew trash
   internal/
     app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
     config/     ~/.crew paths, settings.json
@@ -102,6 +103,9 @@ last log lines for the dead ones, stop.
 
 ## Conventions
 
+- **Every feature is a command.** The TUIs compose commands; nothing is TUI-only. A new
+  command goes in `help.go`, and `help_test` requires its usage line verbatim in
+  `skills/crew/SKILL.md` — the skill is what an agent reads.
 - **Tab-separated output** for CLI list commands; `--json` everywhere via the global flag
   stripper (`extractFlag` stops at `--` so `crew run … -- child --json` keeps the child's flag).
 - **Bubbletea** for every interactive view; arrows/enter/esc; letters as accelerators.

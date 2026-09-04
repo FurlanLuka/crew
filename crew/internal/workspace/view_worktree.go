@@ -518,17 +518,7 @@ func (v WorktreeView) launch(withEditor bool) tea.Cmd {
 // every project exposed via --add-dir; a single-project worktree starts in the
 // project itself and needs no orientation prompt.
 func launchWithEditor(res *Resolved, editor string) tea.Msg {
-	if NeedsPrompt(res) {
-		if _, err := GeneratePrompt(res); err != nil {
-			return errMsg{err}
-		}
-	}
-
-	target, err := EditorRemotePath(res, ClaudeTaskFor(res))
-	if err != nil {
-		return errMsg{err}
-	}
-	if err := exec.OpenEditor(editor, target); err != nil {
+	if err := LaunchEditor(res, editor); err != nil {
 		return errMsg{err}
 	}
 	return launchExecutedMsg{}

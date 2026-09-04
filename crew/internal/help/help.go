@@ -46,14 +46,16 @@ var Root = CommandInfo{
 				{
 					Name:        "project",
 					Description: "Register a git repo in the global project pool. Projects can be added to multiple workspaces.",
-					Usage:       "crew add project <name> <path> [--setup=<cmd>]",
+					Usage:       "crew add project <name> <path> [--setup=<cmd>] | crew add project <name> [--setup=<cmd>] [--path=<dir>]",
 					Flags: []FlagInfo{
-						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). Re-running with --setup on an existing project updates it."},
+						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it."},
+						{Name: "--path=<dir>", Description: "On an existing project, where its canonical checkout now lives (the repo moved)"},
 					},
 					Examples: []string{
 						"crew add project my-api /home/user/repos/api",
 						"crew add project frontend ~/repos/web-app",
 						"crew add project ai-tutor-api ~/repos/ai-tutor-api --setup=\"make sync\"",
+						"crew add project ai-tutor-api --path=~/code/ai-tutor-api",
 					},
 				},
 				{
@@ -136,6 +138,12 @@ var Root = CommandInfo{
 						"crew config set domain dev.example.com",
 					},
 				},
+				{
+					Name:        "refresh",
+					Description: "Rewrite the tmux config crew manages (~/.crew/tmux.conf) to the current default. Only a file crew wrote is touched.",
+					Usage:       "crew config refresh",
+					Examples:    []string{"crew config refresh"},
+				},
 			},
 		},
 		{
@@ -164,9 +172,12 @@ var Root = CommandInfo{
 				{
 					Name:         "worktrees",
 					Description:  "List every working copy — one row per worktree, across all workspaces or one. This is the 'what do I have checked out' view.",
-					Usage:        "crew ls worktrees [<workspace>]",
-					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[dev]",
-					Examples:     []string{"crew ls worktrees", "crew ls worktrees phone-speak"},
+					Usage:        "crew ls worktrees [<workspace>] [--size]",
+					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[<size>\\t][dev]",
+					Flags: []FlagInfo{
+						{Name: "--size", Description: "Add bytes on disk per worktree. Walks every file — slow on one with a full build inside"},
+					},
+					Examples: []string{"crew ls worktrees", "crew ls worktrees phone-speak", "crew ls worktrees --size"},
 				},
 				{
 					Name:         "projects",
@@ -198,8 +209,29 @@ var Root = CommandInfo{
 			Examples:     []string{"crew show feature-auth"},
 		},
 		{
+			Name:        "claude",
+			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected when the worktree has more than one project. Replaces the crew process.",
+			Usage:       "crew claude <workspace>[/<worktree>]",
+			Examples:    []string{"crew claude phone-speak/wrk1"},
+		},
+		{
+			Name:        "edit",
+			Description: "Open the worktree in the local editor (Cursor, else VS Code) with the orientation prompt written and Claude wired up — the worktree page's 'Editor + Claude'. For a remote-SSH URL instead, see crew code.",
+			Usage:       "crew edit <workspace>[/<worktree>] [--editor=cursor|code]",
+			Flags: []FlagInfo{
+				{Name: "--editor=<cursor|code>", Description: "Which editor; detected when omitted"},
+			},
+			Examples: []string{"crew edit phone-speak/wrk1", "crew edit phone-speak/wrk1 --editor=code"},
+		},
+		{
+			Name:        "open",
+			Description: "Start a shell in the worktree directory — the worktree page's 'Shell here'. Replaces the crew process; exit returns to where you were.",
+			Usage:       "crew open <workspace>[/<worktree>]",
+			Examples:    []string{"crew open phone-speak/wrk1"},
+		},
+		{
 			Name:        "code",
-			Description: "Open a workspace in Cursor/VSCode via SSH Remote. Requires ssh_host to be configured (crew config set ssh_host <host>). For multi-project workspaces, generates a .code-workspace file.",
+			Description: "Print the remote-SSH URL that opens the worktree in Cursor/VS Code on another machine. Requires ssh_host (crew config set ssh_host <host>). For multi-project worktrees, generates a .code-workspace file. To open the local editor, see crew edit.",
 			Usage:       "crew code <workspace>[/<worktree>]",
 			Examples:    []string{"crew code feature-auth"},
 		},
@@ -230,7 +262,7 @@ var Root = CommandInfo{
 				{
 					Name:        "add",
 					Description: "Add a dev server to a project. The --port is for reference only — at runtime, crew assigns a random free port via the PORT env var.",
-					Usage:       "crew dev add <project> [flags]",
+					Usage:       "crew dev add <project> --name=<name> --port=<port> --cmd=<command> [--dir=<subdir>]",
 					Flags: []FlagInfo{
 						{Name: "--name=<n>", Description: "Server name (used as subdomain)", Required: true},
 						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT", Required: true},
@@ -345,7 +377,7 @@ var Root = CommandInfo{
 		{
 			Name:        "duplicate",
 			Description: "Duplicate a worktree within its workspace — fresh checkouts of the same projects, with the source worktree's overrides copied across",
-			Usage:       "crew duplicate <workspace>[/<worktree>] <new-worktree>",
+			Usage:       "crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]",
 			Examples:    []string{"crew duplicate phone-speak/wrk1 wrk3"},
 		},
 		{
@@ -392,6 +424,20 @@ var Root = CommandInfo{
 				{Name: "--all", Description: "No wizard: import everything new, keep what exists, refuse if any path is missing — never guesses, never clones"},
 			},
 			Examples: []string{"crew import ~/Desktop/crew.json", "crew import crew-export.json --all"},
+		},
+		{
+			Name:         "trash",
+			Description:  "Removed checkouts are moved to ~/.crew/trash and deleted in the background, so removal returns at once. This shows what is still clearing; 'crew trash empty' deletes it now, for when the background delete never finished.",
+			Usage:        "crew trash [empty]",
+			OutputFormat: "<path>\\t<size>\\t<n> entries\\t<note>  |  <path>\\tempty",
+			Examples:     []string{"crew trash", "crew trash empty"},
+		},
+		{
+			Name:        "debug",
+			Description: "Open the debug log (~/.crew/debug.log): every tmux, git, editor, package-manager, mise and trash command crew ran, with errors. Binding values are never logged.",
+			Usage:       "crew debug",
+			TUI:         true,
+			Examples:    []string{"crew debug"},
 		},
 		{
 			Name:        "setup",

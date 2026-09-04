@@ -202,6 +202,18 @@ func main() {
 		cmdOpen()
 		return
 
+	case "claude":
+		cmdClaude()
+		return
+
+	case "edit":
+		cmdEdit()
+		return
+
+	case "trash":
+		cmdTrash()
+		return
+
 	case "show":
 		cmdShow()
 		return
@@ -480,15 +492,6 @@ func cmdStart() {
 	fmt.Print(prompt)
 }
 
-func cmdLaunch() {
-	if len(os.Args) < 3 {
-		runTUI(workspace.NewView())
-		return
-	}
-
-	runTUI(workspace.NewWorktreeView(mustResolve(os.Args[2]).Ref))
-}
-
 // cmdDuplicate copies a worktree within its workspace. This is what
 // duplicating a workspace was actually being used for — a second working copy
 // of the same projects — and a worktree is now the thing that is.
@@ -619,32 +622,54 @@ func cmdAdd() {
 }
 
 func cmdAddProject() {
-	if len(os.Args) < 5 {
+	if len(os.Args) < 4 {
 		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>]\n")
+		fmt.Fprintf(os.Stderr, "       crew add project <name> [--setup=<cmd>] [--path=<dir>]   (update an existing one)\n")
 		os.Exit(1)
 	}
 	name := os.Args[3]
-	path := os.Args[4]
-	setup := ""
-	for _, arg := range os.Args[5:] {
+	path, setup, newPath := "", "", ""
+	hasSetup := false
+	for _, arg := range os.Args[4:] {
 		switch {
 		case strings.HasPrefix(arg, "--setup="):
-			setup = strings.TrimPrefix(arg, "--setup=")
-		default:
+			setup, hasSetup = strings.TrimPrefix(arg, "--setup="), true
+		case strings.HasPrefix(arg, "--path="):
+			newPath = strings.TrimPrefix(arg, "--path=")
+		case strings.HasPrefix(arg, "-"):
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
+		default:
+			path = arg
 		}
 	}
 
-	// Re-adding an existing project with --setup updates just that; the
-	// setup command is the one field worth changing after the fact.
-	if existing := project.Get(name); existing != nil && setup != "" {
-		if err := project.SetSetup(name, setup); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	// Re-adding an existing project updates the fields worth changing after
+	// the fact: the setup command, and the path when a repo has moved.
+	if existing := project.Get(name); existing != nil {
+		if !hasSetup && newPath == "" {
+			fmt.Fprintf(os.Stderr, "Error: project '%s' already exists — pass --setup or --path to change it\n", name)
 			os.Exit(1)
 		}
-		fmt.Printf("Setup for %s: %s\n", name, setup)
+		if hasSetup {
+			if err := project.SetSetup(name, setup); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Setup for %s: %s\n", name, setup)
+		}
+		if newPath != "" {
+			if err := project.SetPath(name, newPath); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Path for %s: %s\n", name, newPath)
+		}
 		return
+	}
+	if path == "" {
+		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>]\n")
+		os.Exit(1)
 	}
 
 	if err := project.Add(project.Project{Name: name, Path: path, Setup: setup}); err != nil {
@@ -752,8 +777,11 @@ func cmdConfig() {
 			os.Exit(1)
 		}
 		fmt.Printf("Set %s = %s\n", key, value)
+	case "refresh":
+		exec.EnsureTmuxConfig()
+		fmt.Printf("Refreshed %s\n", exec.TmuxConfigPath())
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown config command '%s'.\nUsage: crew config [show|set]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown config command '%s'.\nUsage: crew config [show|set|refresh]\n", os.Args[2])
 		os.Exit(1)
 	}
 }

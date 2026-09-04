@@ -1,6 +1,9 @@
 package help
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -204,9 +207,43 @@ func TestRmSubcommands(t *testing.T) {
 // Every top-level command main dispatches must be documented, or `crew help`
 // lies about what exists.
 func TestTopLevelCommandsDocumented(t *testing.T) {
-	for _, name := range []string{"env", "run", "migrate", "uninstall", "setup", "duplicate", "add", "rm", "ls", "dev", "export", "import"} {
+	for _, name := range []string{"env", "run", "migrate", "uninstall", "setup", "duplicate", "add", "rm", "ls", "dev", "export", "import", "claude", "edit", "open", "trash", "debug", "config", "code", "start", "launch", "show", "ps", "kill", "update"} {
 		if findSubcommand(&Root, name) == nil {
 			t.Errorf("top-level command %q not documented", name)
 		}
+	}
+}
+
+// The skill is what an agent reads to drive crew. Every usage line in the help
+// tree must appear in it verbatim, so adding a command without documenting it
+// there fails here rather than in someone's session.
+func TestSkillDocumentsEveryUsage(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "skills", "crew", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("skill: %v", err)
+	}
+	skill := string(data)
+
+	var walk func(c *CommandInfo)
+	walk = func(c *CommandInfo) {
+		// A usage with alternatives lists each form; every form is required.
+		for _, form := range strings.Split(c.Usage, " | crew ") {
+			form = strings.TrimSpace(form)
+			if form == "" {
+				continue
+			}
+			if !strings.HasPrefix(form, "crew ") {
+				form = "crew " + form
+			}
+			if !strings.Contains(skill, form) {
+				t.Errorf("skills/crew/SKILL.md does not contain %q", form)
+			}
+		}
+		for i := range c.Subcommands {
+			walk(&c.Subcommands[i])
+		}
+	}
+	for i := range Root.Subcommands {
+		walk(&Root.Subcommands[i])
 	}
 }

@@ -200,6 +200,26 @@ func RemoveDevServer(projName, serverName string) error {
 }
 
 // SetSetup records or clears a project's explicit setup command.
+// SetPath moves a project's canonical checkout. Worktrees already made from
+// the old path keep working — git tracks them from the repo, not from crew.
+func SetPath(projName, path string) error {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("'%s' is not a directory", path)
+	}
+	projects, err := List()
+	if err != nil {
+		return err
+	}
+	for i, p := range projects {
+		if p.Name == projName {
+			projects[i].Path = path
+			return save(projects)
+		}
+	}
+	return fmt.Errorf("project '%s' not found", projName)
+}
+
 func SetSetup(projName, command string) error {
 	projects, err := List()
 	if err != nil {

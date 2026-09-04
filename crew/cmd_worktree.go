@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/dirsize"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -197,8 +199,9 @@ func cmdRmWorktree() {
 
 func cmdLsWorktrees() {
 	var names []string
-	if len(os.Args) > 3 {
-		names = []string{os.Args[3]}
+	args, withSize := extractFlag(os.Args, "--size")
+	if len(args) > 3 {
+		names = []string{args[3]}
 	} else {
 		all, err := workspace.List()
 		if err != nil {
@@ -212,6 +215,7 @@ func cmdLsWorktrees() {
 		Ref        string `json:"ref"`
 		Path       string `json:"path"`
 		DevRunning bool   `json:"dev_running"`
+		SizeBytes  int64  `json:"size_bytes,omitempty"`
 	}
 
 	out := []worktreeOut{}
@@ -221,11 +225,16 @@ func cmdLsWorktrees() {
 			continue
 		}
 		for _, ref := range workspace.Refs(ws) {
-			out = append(out, worktreeOut{
+			row := worktreeOut{
 				Ref:        ref.String(),
 				Path:       workspace.WorktreeDir(ref),
 				DevRunning: dev.Running(ref.Slug()),
-			})
+			}
+			// A walk; a worktree with a full build inside takes a while.
+			if withSize {
+				row.SizeBytes = dirsize.Of(row.Path)
+			}
+			out = append(out, row)
 		}
 	}
 
@@ -237,6 +246,10 @@ func cmdLsWorktrees() {
 		running := ""
 		if wt.DevRunning {
 			running = "dev"
+		}
+		if withSize {
+			fmt.Printf("%s\t%s\t%s\t%s\n", wt.Ref, wt.Path, app.FormatBytes(wt.SizeBytes), running)
+			continue
 		}
 		fmt.Printf("%s\t%s\t%s\n", wt.Ref, wt.Path, running)
 	}

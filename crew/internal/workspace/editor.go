@@ -76,3 +76,19 @@ func EditorLinks(res *Resolved, sshHost string) (string, error) {
 	}
 	return b.String(), nil
 }
+
+// LaunchEditor opens the worktree in the local editor with the orientation
+// prompt written and the Claude task wired — the worktree page's "Editor +
+// Claude" and crew edit share it.
+func LaunchEditor(res *Resolved, editor string) error {
+	if NeedsPrompt(res) {
+		if _, err := GeneratePrompt(res); err != nil {
+			return err
+		}
+	}
+	target, err := EditorRemotePath(res, ClaudeTaskFor(res))
+	if err != nil {
+		return err
+	}
+	return exec.OpenEditor(editor, target)
+}

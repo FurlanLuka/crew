@@ -207,3 +207,22 @@ func TestRemoveDevServer(t *testing.T) {
 		t.Errorf("remaining server = %q, want %q", p.DevServers[0].Name, "api")
 	}
 }
+
+func TestSetPath(t *testing.T) {
+	setupTestConfig(t)
+	dir := t.TempDir()
+	Add(Project{Name: "api", Path: "/old"})
+
+	if err := SetPath("api", dir); err != nil {
+		t.Fatalf("SetPath: %v", err)
+	}
+	if got := Get("api").Path; got != dir {
+		t.Errorf("path = %q, want %q", got, dir)
+	}
+	if err := SetPath("api", "/nope/missing"); err == nil {
+		t.Error("a missing dir must be refused")
+	}
+	if err := SetPath("ghost", dir); err == nil {
+		t.Error("an unknown project must be refused")
+	}
+}

@@ -4,25 +4,47 @@ CLI + TUI workspace manager for Claude Code. Workspaces hold projects; worktrees
 
 ## Features
 
-| Command | Description |
-|---------|-------------|
-| `crew project` | Global project pool — register repos, configure dev servers and bindings |
-| `crew workspace` | Workspaces and their worktrees; enter a worktree for servers, launch and open |
-| `crew add worktree <ws>/<name>` | A second working copy of a workspace — fresh git worktree per project |
-| `crew launch <ws>/<wt>` | The worktree page: servers with status and URLs, Editor + Claude, Claude, open |
-| `crew dev start <ws>/<wt> [--proxy]` | Start dev servers on stable per-worktree ports; `--proxy` adds LAN hostnames |
-| `crew dev status\|stop\|restart\|logs` | Manage running servers |
-| `crew add binding <project> --scan` | Declare which env vars crew computes from the ports it allocates |
-| `crew env <ws>/<wt> <project>` | A project's resolved env for that worktree, `KEY=VALUE` |
-| `crew run <ws>/<wt> <project> -- <cmd>` | Run a script or eval with the same env the dev servers got |
-| `crew setup <ws>/<wt>` | Re-run a worktree's installs after a failure |
-| `crew show <ws>/<wt>` | Projects with paths and roles |
-| `crew code <ws>/<wt>` | Remote SSH URLs for Cursor/VS Code |
-| `crew export [file]` | Pick projects + the workspaces they cover; write one file for another machine |
-| `crew import <file>` | Walk that file card by card: approve, edit the path, clone the remote, or skip |
-| `crew migrate` | Move pre-2.0 workspaces to the nested layout |
-| `crew config` | Settings — server IP, SSH host, proxy port, uninstall |
-| `crew uninstall [--purge]` | Remove crew; `--purge` also removes every checkout and `~/.crew` |
+Everything is a command; the TUIs (`crew workspace`, `crew project`, `crew config`, `crew
+launch`) sit on top of them. List commands print tab-separated rows; `--json` works anywhere.
+
+| Read state | |
+|---|---|
+| `crew ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings` · `ls overrides` | What exists — worktrees is "what do I have checked out", `--size` adds bytes on disk |
+| `crew show <ws>/<wt>` · `crew dev status` · `crew dev show <project>` | Paths and roles; running servers with ports and URLs; a project's configured servers |
+| `crew env <ws>/<wt> <project>` · `crew ps` · `crew trash` · `crew config show` | Resolved env; crew's processes; what is still clearing from the trash; settings |
+
+| Projects and dev servers | |
+|---|---|
+| `crew add project <name> <path> [--setup=<cmd>]` | Register a repo; re-run with `--setup` or `--path` to change one |
+| `crew dev add <project> --name --port --cmd [--dir]` · `dev rm` · `dev setup` | Named dev servers; the port is reference only, crew allocates real ones |
+
+| Bindings | |
+|---|---|
+| `crew add binding <project> --var=X --url=proj \| --host=proj \| --port=proj \| --value=…` | Declare which env vars crew computes: `{{proj}}`, `{{proj.host}}`, `{{proj.port}}`, `{{proj/server}}`, `{{worktree}}`, `{{workspace}}` |
+| `crew add binding <project> --scan [--apply]` | Propose bindings from the project's own `.env` |
+| `crew add override <ws>/<wt> VAR=value` · `rm override` | Pin a variable for one worktree |
+| `crew run <ws>/<wt> <project> -- <cmd>` | Run anything with the same env the dev servers got |
+
+| Workspaces and worktrees | |
+|---|---|
+| `crew add workspace <name> [<project> --role=r [--direct]]` · `rm workspace <ws> <project>` · `rm <ws>` | Membership |
+| `crew add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke]` · `duplicate` · `setup` | A working copy: base-branch table, checkouts, `.env`, installs, smoke start |
+| `crew rm worktree <ws>/<name>` | Returns at once; the checkout is cleared in the background (`crew trash`) |
+| `crew migrate [--dry-run]` | Move pre-2.0 workspaces to the nested layout |
+
+| Dev servers | |
+|---|---|
+| `crew dev start\|stop\|restart <ws>/<wt> [--proxy]` · `dev logs <server> [-f]` | Stable per-worktree ports, bindings exported, anomalies printed; `--proxy` adds LAN hostnames |
+
+| Launching | |
+|---|---|
+| `crew claude <ws>/<wt>` · `crew edit <ws>/<wt>` · `crew open <ws>/<wt>` | Claude in the terminal; local editor with the prompt and Claude wired; a shell in the worktree |
+| `crew code <ws>/<wt>` · `crew start <ws>/<wt>` · `crew launch <ws>/<wt>` | Remote-SSH URL; the orientation prompt; the worktree page (TUI) |
+
+| Another machine, housekeeping | |
+|---|---|
+| `crew export [file] [--all \| --projects=… [--workspaces=…]]` · `crew import <file> [--all]` | Projects (with origin remotes) and workspace membership in one file; a card-by-card wizard on the other side |
+| `crew trash [empty]` · `crew kill` · `crew config set\|refresh` · `crew update` · `crew uninstall [--purge]` | Finish clearing removed checkouts; reclaim leaked processes; settings; updates; removal |
 
 ## Install
 
@@ -44,8 +66,10 @@ crew add project speak-api ~/Documents/speak-api          # register repos
 crew dev add speak-api --name=speak-api --port=3000 --cmd="npm start"
 crew add workspace phone-speak speak-api --role=api        # workspace + first project
 crew add binding ai-tutor-api --scan --apply               # bindings from its .env
-crew launch phone-speak/main                               # the worktree page
+crew dev start phone-speak/main                            # servers on stable ports
+crew claude phone-speak/main                               # Claude in the worktree
 crew add worktree phone-speak/wrk2 --pull                  # a second working copy
+crew export ~/Desktop/crew.json --all                      # take it to another machine
 ```
 
 Or drive it from the TUI: `crew project`, `crew workspace`, `crew <ws>/<wt>`.
@@ -108,9 +132,16 @@ servers with status and URLs, **Editor + Claude** (Cursor/VS Code with the orien
 and Claude wired up), **Claude in terminal** (`--add-dir` per project, permissions skipped), and
 open actions.
 
+### Removal and disk
+
+`crew rm worktree` moves the checkout into `~/.crew/trash` and returns at once; a background
+delete clears it, and every crew run retries what was left. `crew trash` shows what is still
+clearing, `crew trash empty` finishes it now. `crew ls worktrees --size` shows where the
+space went — build output inside a checkout is what grows.
+
 ### Settings
 
-Configured via `crew config` (TUI) or `~/.crew/config.json`:
+Configured via `crew config` (TUI), `crew config set`, or `~/.crew/config.json`:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
@@ -118,3 +149,5 @@ Configured via `crew config` (TUI) or `~/.crew/config.json`:
 | `domain` | Custom domain for proxy URLs (e.g., `luka.ngrok.pro`) | `<server_ip>.nip.io` |
 | `ssh_host` | SSH host alias for remote editor | — |
 | `proxy_port` | Reverse proxy listen port | 80 |
+
+`crew config refresh` rewrites the tmux config crew manages.
