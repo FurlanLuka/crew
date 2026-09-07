@@ -21,7 +21,7 @@ func bindingWorkspace(t *testing.T) {
 	project.AddBinding("tutor", project.Binding{Var: "API_URL", Value: "{{url:api}}"})
 	project.AddBinding("tutor", project.Binding{Var: "AGENT", Value: "{{worktree}}"})
 
-	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 	if err := SetOverride(Ref{Workspace: "ws", Worktree: "wrk2"}, "API_URL", "https://deployed"); err != nil {

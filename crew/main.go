@@ -515,21 +515,15 @@ func cmdDuplicate() {
 	newName := os.Args[3]
 
 	install, smoke, _ := parseCheckoutFlags(os.Args[4:])
-	opts := workspace.CheckoutOptions{Install: install, Progress: printSetupProgress}
+	opts := workspace.CheckoutOptions{Install: install, Smoke: smoke && install, Progress: printSetupProgress}
 	fmt.Printf("Duplicating %s → %s/%s\n\n", src, src.Workspace, newName)
-	if err := workspace.DuplicateWorktree(src, newName, opts); err != nil {
+	h, err := workspace.DuplicateWorktree(src, newName, opts)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
 	dst := workspace.Ref{Workspace: src.Workspace, Worktree: newName}
-	if smoke && install {
-		if res, err := workspace.Resolve(dst); err == nil {
-			runSmoke(res)
-		}
-	}
-	fmt.Printf("\nDuplicated %s → %s\n", src, dst)
-	fmt.Printf("crew launch %s\n", dst)
+	landOn(dst, fmt.Sprintf("Duplicated %s → %s", src, dst), h)
 }
 
 func cmdRm() {

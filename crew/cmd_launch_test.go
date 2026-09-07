@@ -20,7 +20,7 @@ func TestTerminalCheck(t *testing.T) {
 }
 
 func TestFixPlan(t *testing.T) {
-	h := &workspace.Health{Stage: workspace.StageSmoke}
+	h := &workspace.Health{Issues: []workspace.Issue{{Stage: workspace.StageSmoke}}}
 	tests := []struct {
 		health     *workspace.Health
 		hasServers bool

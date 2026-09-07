@@ -37,14 +37,16 @@ at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source u
   overrides. `crew import` applies each card as `y` is pressed; `--all` never guesses a
   path and never clones. An existing workspace is skip-only; a project can be replaced.
   `transfer` sits above `project` and `workspace`; only `main` imports it.
-- **Health** — `Worktree.Health {stage, at, issues}` is the last failure a check found:
-  a `SetupError` (stage install) or a server that died in the smoke (stage smoke, with
-  `evidenceTail` log lines). Absent = fine. Written by `RecordHealth` (own load/save, like
-  `SavePorts`) from `setupAll` and `Verify`; cleared only by a passing `Verify` or an
-  install stage that passes. Never by `dev start`. `crew fix` = `FixCommand`: the
-  orientation prompt plus `RenderFixPrompt`, always passed (`buildClaudeParts(res,
-  withPrompt)`), so a single-project worktree gets it too. Both smoke paths (CLI `runSmoke`,
-  TUI `smokeInto`) go through `Verify`, which refuses while servers run.
+- **Health** — `Worktree.Health {at, issues[{stage, project, server, detail}]}` is what the
+  last check found wrong: stages `checkout`, `install` (30-line `StepError` tail), `smoke`
+  (`evidenceTail` log lines). Absent = verified. `AddWorktree` records the worktree first,
+  then runs `checkoutProjects` → `installProjects` → smoke over every project, none
+  stopping the rest, and returns the Health (errors are pre-flight only). `Verify` composes
+  the same primitives over what is missing, then smokes; `Setup` with installs forced.
+  `RecordHealth` does its own load/save like `SavePorts`. Cleared only by a passing
+  `Verify`/`Setup` — never by `dev start`. `crew fix` = `FixCommand`: the orientation
+  prompt plus `RenderFixPrompt`, always passed (`buildClaudeParts(res, withPrompt)`), from
+  the worktree root when a checkout is missing.
 - **Removal never deletes inline.** `cleanupWorktree` is the one teardown primitive: it
   renames the checkout into `~/.crew/trash` (`trash.Put`, which refuses anything outside
   `WorkspacesDir`), prunes git, and a detached `rm -rf` clears the trash — a full build in a
@@ -119,7 +121,9 @@ last log lines for the dead ones, stop.
 - **Bubbletea** for every interactive view; arrows/enter/esc; letters as accelerators.
 - **Show status after every action.**
 - **Warn, never block, at dev-server start.** Crew asserts only facts it owns — ports it
-  allocated, projects it placed. A value pointing at a sibling in the same worktree is normal;
+  allocated, projects it placed. The one carve-out: the worktree **page** locks its start
+  and launch rows while a failure is recorded (`f fix`, `v verify`, logs and shell stay
+  live); the CLI prints the issues and proceeds. A value pointing at a sibling in the same worktree is normal;
   one pointing into another worktree, or at a sibling's configured port while it runs
   elsewhere, is a conflict.
 - **Debug logging** — every external command (tmux, git, editor, package managers, mise)

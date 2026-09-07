@@ -51,6 +51,7 @@ func cmdClaude() {
 	}
 	requireTerminal("claude")
 	res := mustResolve(os.Args[2])
+	printHealthWarning(res)
 	cmd, err := workspace.ClaudeCommand(res)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -96,6 +97,7 @@ func cmdEdit() {
 		os.Exit(1)
 	}
 	res := mustResolve(os.Args[2])
+	printHealthWarning(res)
 	if err := workspace.LaunchEditor(res, editor); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

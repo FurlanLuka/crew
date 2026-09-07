@@ -139,14 +139,18 @@ crew migrate [--dry-run]
   installs per project, and a smoke start — servers up for a few seconds, which still run,
   last log lines for the dead ones. Read that output and relay it; a failed install keeps
   the worktree and `crew setup <ref>` re-runs it.
-- **Health.** A failed install or a server that dies within seconds of the smoke start is
-  **recorded on the worktree**: `crew ls worktrees` ends the row with `install failed` or
-  `server died: <project>/<server>`, and the worktree page shows the evidence. `crew verify
-  <ref>` re-runs just the smoke (exit 1 on a death) and clears it when everything survives;
-  `crew fix <ref>` opens Claude in the worktree with the failure, the log tail, and the env
-  anomalies in the prompt — the user runs it. A plain `dev start` never clears health.
-  `verify` refuses while the worktree's servers are running (it restarts them): `crew dev
-  stop <ref>` first.
+- **Creation never stops.** `add worktree` checks out every project, installs every checkout
+  and smoke-starts the servers, each step over every project; a failure at any stage is an
+  issue **recorded on the worktree** (`checkout failed: x`, `install failed: x`, `server died:
+  x/y`, or `N issues` in `crew ls worktrees`). In a terminal, creation ends on the worktree
+  page, **locked** to `f fix with Claude` / `v verify` (plus logs and a shell) until a verify
+  passes; without a terminal it prints the issues and exits 1.
+- **Verify** finishes what is missing — checks out a project that failed, re-runs the installs
+  that failed — then smokes; exit 1 while anything is recorded, cleared on a pass. `crew fix
+  <ref>` opens Claude with every issue, its evidence and the env anomalies — the user runs
+  it. A plain `dev start` never clears health; the CLI prints the issues and proceeds
+  (`! <ref>: … — crew fix … / crew verify …`). `verify` refuses while the worktree's servers
+  are running (it restarts them): `crew dev stop <ref>` first.
 - `duplicate` is a new worktree of the same projects with the source's overrides copied;
   ports are never copied.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
@@ -246,12 +250,14 @@ crew help [<command>] [<subcommand>] [--json]
 2. `crew ls bindings <project>` — is the edge declared? If not: `crew add binding <project> --scan`.
 3. `crew dev restart <ws>/<wt>` — read the `!` block.
 
-**"A server died when I created the worktree"**
-1. `crew ls worktrees <ws>` — the row says which: `server died: <project>/<server>`.
-2. `crew dev logs <ws>/<wt> <server>` for the full output; `crew env <ws>/<wt> <project>` for
-   what was left alone.
-3. Tell them: `crew fix <ws>/<wt>` — Claude opens with the evidence; or fix it yourself
-   (`.env`, `crew add override`) and `crew verify <ws>/<wt>`.
+**"Something failed when I created the worktree"**
+1. `crew ls worktrees <ws>` — the row says what: `checkout failed: …`, `install failed: …`,
+   `server died: <project>/<server>`, or `N issues`.
+2. `crew dev logs <ws>/<wt> <server>` for a dead server's output; `crew env <ws>/<wt>
+   <project>` for what was left alone.
+3. Tell them: `crew fix <ws>/<wt>` — Claude opens with every issue; or fix it yourself
+   (`.env`, `crew add override`, git) and `crew verify <ws>/<wt>` — which also finishes the
+   checkouts and installs that failed.
 
 **"Run the evals with the right URLs"** — `crew run <ws>/<wt> ai-tutor-api -- make eval`.
 

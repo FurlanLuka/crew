@@ -1,9 +1,10 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -43,6 +44,9 @@ type CheckoutOptions struct {
 	// Install runs the project's setup steps (mise, the lockfile's package
 	// manager, or the explicit setup command). Off skips them entirely.
 	Install bool
+	// Smoke starts the servers afterwards, watches them for a few seconds and
+	// stops them: the check that finds a missing var before you do.
+	Smoke bool
 	// Progress is told about each step as it finishes; nil is fine.
 	Progress func(project string, r exec.SetupResult)
 }
@@ -56,7 +60,10 @@ func createProjectWorktree(ref Ref, p project.Project) error {
 	baseBranch := detectDefaultBranch(p.Path)
 
 	if err := exec.CreateGitWorktree(p.Path, wtDir, BranchName(ref, p.Name), baseBranch); err != nil {
-		return fmt.Errorf("failed to create worktree for %s in %s: %w", p.Name, ref, err)
+		// Leave nothing behind: a directory here would make the next attempt
+		// read git's "already exists" as a branch to reuse.
+		cleanupWorktree(ref, WorkspaceProject{Name: p.Name})
+		return err
 	}
 	exec.CopyEnvFiles(envSource(ref, p), wtDir)
 	return nil
@@ -112,64 +119,159 @@ type ProjectSetupError struct {
 func (e *ProjectSetupError) Error() string { return e.Project + ": " + e.Err.Error() }
 func (e *ProjectSetupError) Unwrap() error { return e.Err }
 
-// SetupError is one or more projects whose install failed. The worktree
-// itself exists and is recorded; Setup re-runs the installs.
-type SetupError struct {
-	Ref    Ref
-	Errors []error
-}
+// The three steps of making a worktree, each over a named set of projects
+// and each collecting failures instead of stopping. AddWorktree runs them
+// over every project; Verify over what is missing; Setup with installs
+// forced. Nothing here returns early: the point of a worktree is to be on
+// it, seeing what is done and what is not.
 
-func (e *SetupError) Error() string {
-	msgs := make([]string, 0, len(e.Errors))
-	for _, err := range e.Errors {
-		msgs = append(msgs, err.Error())
-	}
-	return fmt.Sprintf("%d project(s) failed to set up in %s:\n  %s", len(e.Errors), e.Ref, strings.Join(msgs, "\n  "))
-}
-
-// Setup re-runs every project's install steps in a worktree. Idempotent, so
-// it is the fix for an install that failed the first time.
-func Setup(ref Ref, opts CheckoutOptions) error {
-	ws, err := Load(ref.Workspace)
-	if err != nil {
-		return err
-	}
-	return setupAll(ref, ws, opts)
-}
-
-func setupAll(ref Ref, ws *Workspace, opts CheckoutOptions) error {
-	var failed []error
-	for _, wp := range ws.Projects {
-		if IsDirect(wp) {
+// checkoutProjects makes a git worktree and copies .env for each name;
+// returns the ones made and an issue per failure.
+func checkoutProjects(ref Ref, ws *Workspace, names []string, progress func(string, exec.SetupResult)) (made []string, issues []Issue) {
+	for _, name := range names {
+		wp, ok := memberOf(ws, name)
+		if !ok || IsDirect(wp) {
 			continue
 		}
-		p := project.Get(wp.Name)
+		p := project.Get(name)
+		if p == nil {
+			issues = append(issues, Issue{Stage: StageCheckout, Project: name, Detail: "not in the project pool"})
+			continue
+		}
+		start := time.Now()
+		err := createProjectWorktree(ref, *p)
+		if progress != nil {
+			progress(name, exec.SetupResult{Step: exec.SetupStep{Name: "checkout"}, Duration: time.Since(start), Err: err})
+		}
+		if err != nil {
+			issues = append(issues, Issue{Stage: StageCheckout, Project: name, Detail: err.Error()})
+			continue
+		}
+		made = append(made, name)
+	}
+	return made, issues
+}
+
+// installProjects runs the install steps for each name that has a checkout;
+// an issue per failure, with the step's output tail as the evidence.
+func installProjects(ref Ref, ws *Workspace, names []string, opts CheckoutOptions) []Issue {
+	var issues []Issue
+	for _, name := range names {
+		wp, ok := memberOf(ws, name)
+		if !ok || IsDirect(wp) || !dirExists(WorktreePath(ref, name)) {
+			continue
+		}
+		p := project.Get(name)
 		if p == nil {
 			continue
 		}
 		if err := setupProject(ref, *p, opts); err != nil {
-			failed = append(failed, err)
+			issues = append(issues, Issue{Stage: StageInstall, Project: name, Detail: installDetail(err)})
 		}
 	}
-	if len(failed) > 0 {
-		serr := &SetupError{Ref: ref, Errors: failed}
-		if err := RecordHealth(ref, HealthFromSetup(serr)); err != nil {
-			debug.Log("setup", "record health for %s: %v", ref, err)
-		}
-		return serr
+	return issues
+}
+
+// installDetail is the step's output tail when there is one — the terminal
+// gets the last few lines, the record keeps enough to read.
+func installDetail(err error) string {
+	var se *exec.StepError
+	if errors.As(err, &se) && se.Output != "" {
+		return se.Step + ":\n" + se.Output
 	}
-	// Installs passed: an install failure on record is over. A smoke that
-	// follows writes its own verdict. Read the file as it is now — the ws
-	// held through the installs is minutes old and a verify may have written
-	// since.
-	if fresh, err := Load(ref.Workspace); err == nil {
-		if wt, err := selectWorktree(fresh, ref.Worktree); err == nil && wt.Health != nil && wt.Health.Stage == StageInstall {
-			if err := ClearHealth(ref); err != nil {
-				debug.Log("setup", "clear health for %s: %v", ref, err)
+	var pe *ProjectSetupError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+func memberOf(ws *Workspace, name string) (WorkspaceProject, bool) {
+	for _, wp := range ws.Projects {
+		if wp.Name == name {
+			return wp, true
+		}
+	}
+	return WorkspaceProject{}, false
+}
+
+func memberNames(ws *Workspace) []string {
+	names := make([]string, 0, len(ws.Projects))
+	for _, wp := range ws.Projects {
+		names = append(names, wp.Name)
+	}
+	return names
+}
+
+// Setup re-runs every project's installs, then the smoke when asked, and
+// records the verdict — the same check creation ends with.
+func Setup(ref Ref, opts CheckoutOptions) (VerifyResult, error) {
+	ws, err := Load(ref.Workspace)
+	if err != nil {
+		return VerifyResult{}, err
+	}
+	res, err := Resolve(ref)
+	if err != nil {
+		return VerifyResult{}, err
+	}
+	if opts.Smoke && dev.Running(res.Slug) {
+		return VerifyResult{}, ErrServersRunning
+	}
+	missing := missingCheckouts(ref, ws)
+	_, issues := checkoutProjects(ref, ws, missing, opts.Progress)
+	opts.Install = true
+	issues = append(issues, installProjects(ref, ws, memberNames(ws), opts)...)
+	return finishCheck(ref, issues, opts)
+}
+
+// reportSmoke says what the smoke found, one line per server, the way
+// install steps are reported.
+func reportSmoke(results []SmokeResult, progress func(string, exec.SetupResult)) {
+	if progress == nil {
+		return
+	}
+	for _, r := range results {
+		step := exec.SetupResult{Step: exec.SetupStep{Name: "smoke " + r.Server}}
+		if !r.Alive {
+			step.Err = errors.New("died within seconds")
+		}
+		progress(r.Project, step)
+	}
+}
+
+func missingCheckouts(ref Ref, ws *Workspace) []string {
+	var missing []string
+	for _, wp := range ws.Projects {
+		if !IsDirect(wp) && !dirExists(WorktreePath(ref, wp.Name)) {
+			missing = append(missing, wp.Name)
+		}
+	}
+	return missing
+}
+
+// finishCheck runs the smoke when asked, reports each server through
+// Progress as a step, and records what everything found.
+func finishCheck(ref Ref, issues []Issue, opts CheckoutOptions) (VerifyResult, error) {
+	var results []SmokeResult
+	if opts.Smoke {
+		res, err := Resolve(ref)
+		if err != nil {
+			return VerifyResult{}, err
+		}
+		if len(res.DevProjects()) > 0 {
+			results, err = SmokeStart(res)
+			if err != nil {
+				issues = append(issues, Issue{Stage: StageSmoke, Project: ref.String(), Detail: "could not start: " + err.Error()})
 			}
+			reportSmoke(results, opts.Progress)
+			issues = append(issues, smokeIssues(results)...)
 		}
 	}
-	return nil
+	h := healthOf(issues)
+	if err := RecordHealth(ref, h); err != nil {
+		debug.Log("setup", "record health for %s: %v", ref, err)
+	}
+	return VerifyResult{Smoke: results, Health: h}, nil
 }
 
 // SetupStepsFor previews what a checkout of p would run, for output that
@@ -187,23 +289,25 @@ func removeWorktreeArtifacts(ref Ref) {
 	os.Remove(CodeWorkspaceFilePath(ref))
 }
 
-// AddWorktree adds a worktree to a workspace and checks every project out into
-// it.
-func AddWorktree(wsName, name string, opts CheckoutOptions) error {
+// AddWorktree adds a worktree to a workspace: checks every project out, installs
+// every checkout, smokes the servers — each step over every project, each
+// failure recorded on the worktree rather than stopping the rest. The error is
+// only for the pre-flight; what the steps found is the Health.
+func AddWorktree(wsName, name string, opts CheckoutOptions) (*Health, error) {
 	if err := ValidateName("worktree", name); err != nil {
-		return err
+		return nil, err
 	}
 
 	ws, err := Load(wsName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(ws.Worktrees) == 0 {
-		return fmt.Errorf("workspace '%s' predates worktrees — run `crew migrate` first", wsName)
+		return nil, fmt.Errorf("workspace '%s' predates worktrees — run `crew migrate` first", wsName)
 	}
 	for _, wt := range ws.Worktrees {
 		if wt.Name == name {
-			return fmt.Errorf("workspace '%s' already has a worktree '%s'", wsName, name)
+			return nil, fmt.Errorf("workspace '%s' already has a worktree '%s'", wsName, name)
 		}
 	}
 
@@ -212,49 +316,29 @@ func AddWorktree(wsName, name string, opts CheckoutOptions) error {
 	// assertNoOtherDirect prevents between workspaces.
 	for _, wp := range ws.Projects {
 		if IsDirect(wp) {
-			return fmt.Errorf("workspace '%s' holds '%s' in direct mode, so it can only have one worktree — remove it or re-add it as a worktree project first",
+			return nil, fmt.Errorf("workspace '%s' holds '%s' in direct mode, so it can only have one worktree — remove it or re-add it as a worktree project first",
 				wsName, wp.Name)
 		}
 	}
 
 	ref := Ref{Workspace: wsName, Worktree: name}
 	if err := os.MkdirAll(WorktreeDir(ref), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 
-	// Checkouts are all-or-nothing: a failure here rolls back what was
-	// made, so a retry starts clean instead of colliding with a half-made
-	// worktree. Installs come after the worktree is recorded, and a failed
-	// install keeps the ones that succeeded.
-	var made []WorkspaceProject
-	for _, wp := range ws.Projects {
-		p := project.Get(wp.Name)
-		if p == nil {
-			rollbackWorktree(ref, made)
-			return fmt.Errorf("project '%s' not found in pool", wp.Name)
-		}
-		if err := createProjectWorktree(ref, *p); err != nil {
-			rollbackWorktree(ref, made)
-			return err
-		}
-		made = append(made, wp)
-	}
-
+	// Recorded before anything is checked out: from here on every directory
+	// made belongs to a worktree the list knows, whatever else happens.
 	ws.Worktrees = append(ws.Worktrees, Worktree{Name: name})
 	if err := Save(ws); err != nil {
-		return err
+		return nil, err
 	}
-	return setupAll(ref, ws, opts)
-}
 
-func rollbackWorktree(ref Ref, made []WorkspaceProject) {
-	for _, wp := range made {
-		cleanupWorktree(ref, wp)
+	_, issues := checkoutProjects(ref, ws, memberNames(ws), opts.Progress)
+	if opts.Install {
+		issues = append(issues, installProjects(ref, ws, memberNames(ws), opts)...)
 	}
-	if _, err := trash.Put(WorktreeDir(ref)); err != nil {
-		debug.Log("trash", "%s: %v", WorktreeDir(ref), err)
-	}
-	trash.Sweep()
+	result, err := finishCheck(ref, issues, opts)
+	return result.Health, err
 }
 
 // TrashNotice is the one line to show wherever disk is about to be used:
@@ -328,26 +412,27 @@ func dropWorktreeRecord(wsName, name string) error {
 
 // DuplicateWorktree creates a new worktree in the same workspace, carrying the
 // source worktree's overrides across.
-func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) error {
+func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) (*Health, error) {
 	ws, err := Load(ref.Workspace)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	src, err := selectWorktree(ws, ref.Worktree)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := AddWorktree(ref.Workspace, newName, opts); err != nil {
-		return err
+	h, err := AddWorktree(ref.Workspace, newName, opts)
+	if err != nil {
+		return nil, err
 	}
 	if len(src.Overrides) == 0 {
-		return nil
+		return h, nil
 	}
 
 	ws, err = Load(ref.Workspace)
 	if err != nil {
-		return err
+		return h, err
 	}
 	for i, wt := range ws.Worktrees {
 		if wt.Name == newName {
@@ -356,7 +441,7 @@ func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) error {
 			// ports is the collision this whole model exists to prevent.
 		}
 	}
-	return Save(ws)
+	return h, Save(ws)
 }
 
 // SetOverride pins a variable for one worktree, or clears it when value is

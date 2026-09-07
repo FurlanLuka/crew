@@ -75,7 +75,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Add a second working copy to a workspace. Shows each project's base branch and whether it is behind origin, then checks every project out under <workspace>/<name> on branch crew/<workspace>/<name>/<project>, copies .env files from the canonical repo, installs (mise install, then the lockfile's package manager or the project's setup command), and smoke-starts the dev servers to catch a checkout that cannot run. A workspace holding a direct-mode project can only have one worktree.",
+					Description: "Check every project out into a new working copy, install each checkout, and start the servers for a few seconds to see which survive — every step over every project, none stopping the rest. Anything that fails is recorded on the worktree, and creation ends on the worktree page (locked to fix and verify while anything is recorded); without a terminal it prints the summary and exits 1. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
 					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]",
 					Flags: []FlagInfo{
 						{Name: "--pull", Description: "Fast-forward each project's local base branch to origin first. Never touches a checked-out feature branch; refuses when the base has diverged or is checked out with uncommitted changes."},
@@ -217,7 +217,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "fix",
-			Description: "Open Claude Code in the worktree with the recorded failure in front of it: the stage that failed, each project or server with its error or log tail, the env anomalies, and the instruction to fix the cause and run crew verify. With nothing recorded it runs verify first, so it is one command either way. Replaces the crew process.",
+			Description: "Open Claude Code in the worktree with what failed in front of it: each issue with its stage (checkout, install, smoke), the error or log tail, the env anomalies, and the instruction to fix the cause and run crew verify. With nothing recorded it runs verify first, so it is one command either way. Replaces the crew process.",
 			Usage:       "crew fix <workspace>[/<worktree>]",
 			Examples:    []string{"crew fix phone-speak/wrk2"},
 		},
@@ -267,7 +267,7 @@ var Root = CommandInfo{
 			Subcommands: []CommandInfo{
 				{
 					Name:        "setup",
-					Description: "Interactive dev server configuration — auto-detects package.json scripts and walks you through naming, ports, and commands",
+					Description: "Re-run every project's install steps in a worktree — mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command — checking out anything still missing first, then the smoke start. Idempotent; the verdict is recorded on the worktree like crew verify's.",
 					Usage:       "crew dev setup <project>",
 					TUI:         true,
 					Examples:    []string{"crew dev setup my-api"},

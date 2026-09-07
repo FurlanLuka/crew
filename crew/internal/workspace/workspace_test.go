@@ -519,7 +519,7 @@ func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
 // siblings alone.
 func TestRemoveProject_WorktreeMode_TrashesOnlyThatProject(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api", "web")
-	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -651,7 +651,7 @@ func TestDuplicateWorktree_RefusesDirectCollision(t *testing.T) {
 
 	// A duplicate is a second worktree, and a direct project pins the workspace
 	// to one — the same invariant, reached through DuplicateWorktree.
-	err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2", CheckoutOptions{})
+	_, err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2", CheckoutOptions{})
 	if err == nil {
 		t.Fatal("duplicating a worktree alongside a direct project should refuse")
 	}

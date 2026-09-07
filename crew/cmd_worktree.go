@@ -68,34 +68,63 @@ func cmdAddWorktree() {
 		fmt.Printf("\n  %s\n", notice)
 	}
 	fmt.Printf("\nCreating %s\n\n", ref)
-	opts := workspace.CheckoutOptions{Install: install, Progress: printSetupProgress}
-	err = workspace.AddWorktree(ref.Workspace, ref.Worktree, opts)
-	var setupErr *workspace.SetupError
-	if errors.As(err, &setupErr) {
-		fmt.Fprintf(os.Stderr, "\n! %v\n", err)
-		fmt.Fprintf(os.Stderr, "  The worktree exists; the failure is recorded on it.\n")
-		printFixHint(ref, true)
-		smoke = false
-	} else if err != nil {
+	opts := workspace.CheckoutOptions{Install: install, Smoke: smoke && install, Progress: printSetupProgress}
+	h, err := workspace.AddWorktree(ref.Workspace, ref.Worktree, opts)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	landOn(ref, fmt.Sprintf("Created %s", ref), h)
+}
 
+// landOn is where creation ends: the worktree page, locked or not, when
+// there is a terminal to show it in; otherwise the summary and the way out,
+// and exit 1 while anything is recorded so a script can tell.
+func landOn(ref workspace.Ref, created string, h *workspace.Health) {
+	if isTerminal() {
+		page := workspace.NewWorktreeView(ref)
+		page.SetStatus(created + healthSuffix(h))
+		runTUI(page)
+		return
+	}
 	res, err := workspace.Resolve(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	if smoke && install {
-		runSmoke(res)
-	}
-
-	fmt.Printf("\nWorktree %s\n\n", ref)
+	fmt.Printf("\n%s%s\n\n", created, healthSuffix(h))
 	for _, p := range res.Projects {
 		fmt.Printf("  %s\t%s\n", p.Name, p.Path)
 	}
+	if h != nil {
+		fmt.Println()
+		printIssues(h)
+		printFixHint(ref)
+		os.Exit(1)
+	}
 	fmt.Printf("\ncrew launch %s\n", ref)
+}
+
+func healthSuffix(h *workspace.Health) string {
+	if h == nil {
+		return ""
+	}
+	return " — " + h.Summary()
+}
+
+func printIssues(h *workspace.Health) {
+	for _, issue := range h.Issues {
+		fmt.Printf("  ! %-9s %s\n", issue.Stage, issue.Name())
+		lines := strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n")
+		if len(lines) > 4 {
+			lines = lines[len(lines)-4:]
+		}
+		for _, line := range lines {
+			if line != "" {
+				fmt.Printf("      %s\n", line)
+			}
+		}
+	}
 }
 
 func cmdSetup() {
@@ -107,15 +136,23 @@ func cmdSetup() {
 	_, smoke, _ := parseCheckoutFlags(os.Args[3:])
 
 	fmt.Printf("Setting up %s\n\n", res.Ref)
-	err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Progress: printSetupProgress})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "\n! %v\n", err)
-		printFixHint(res.Ref, true)
+	result, err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Smoke: smoke, Progress: printSetupProgress})
+	if errors.Is(err, workspace.ErrServersRunning) {
+		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — the smoke would restart them. crew dev stop %s first, or --no-smoke.\n", res.Ref, res.Ref)
 		os.Exit(1)
 	}
-	if smoke {
-		runSmoke(res)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
+	printSmokeTails(result.Smoke)
+	if result.Health != nil {
+		fmt.Println()
+		printIssues(result.Health)
+		printFixHint(res.Ref)
+		os.Exit(1)
+	}
+	fmt.Printf("\n%s checks out\n", res.Ref)
 }
 
 // parseCheckoutFlags reads --no-install / --no-smoke / --pull. Exits on
@@ -147,51 +184,47 @@ func printSetupProgress(project string, r exec.SetupResult) {
 	fmt.Printf("  %-16s %s %-14s %s\n", project, mark, r.Step.Name, r.Duration.Round(time.Second))
 }
 
-// runSmoke starts the servers, reports which survived a few seconds, and
-// stops them again. Failures print their last log lines; nothing blocks.
-// runSmoke is the CLI's verify: the report, and the verdict recorded on the
-// worktree so the list and the page carry it.
-func runSmoke(res *workspace.Resolved) {
-	if !hasServers(res) {
-		return
-	}
-	fmt.Printf("\nSmoke-starting dev servers (%s)…\n\n", "stopped again afterwards")
-	results, err := workspace.Verify(res)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  could not start: %v\n", err)
-		return
-	}
-	printSmoke(res, results)
-}
-
-func printSmoke(res *workspace.Resolved, results []workspace.SmokeResult) {
-	for _, r := range results {
-		if r.Alive {
-			fmt.Printf("  %-16s ✓ %s\n", r.Project, r.Server)
-			continue
-		}
-		fmt.Printf("  %-16s ✗ %s exited within seconds\n", r.Project, r.Server)
+// printSmokeTails shows the last log lines of each server that died; the
+// alive/dead line per server was already printed as a step.
+func printSmokeTails(results []workspace.SmokeResult) {
+	for _, r := range workspace.SmokeFailures(results) {
 		for _, line := range strings.Split(r.Tail, "\n") {
 			if line != "" {
 				fmt.Printf("      %s\n", line)
 			}
 		}
 	}
-	if failed := workspace.SmokeFailures(results); len(failed) > 0 {
-		fmt.Printf("\n  ! %d server(s) died on start — recorded on %s. crew dev logs %s <server> has the full output.\n", len(failed), res.Ref, res.Ref)
-		printFixHint(res.Ref, false)
-	}
 }
 
 // printFixHint is the way out of a recorded failure, printed wherever one
 // is reported.
-func printFixHint(ref workspace.Ref, install bool) {
+func printFixHint(ref workspace.Ref) {
 	fmt.Printf("    crew fix %s     Claude in the worktree with this failure\n", ref)
-	if install {
-		fmt.Printf("    crew setup %s   re-run the installs once the cause is fixed\n", ref)
+	fmt.Printf("    crew verify %s  finish what is missing and check again\n", ref)
+}
+
+// printHealthWarning is the CLI's version of the locked page: say what is
+// recorded and how to clear it, then carry on — warn, never block.
+func printHealthWarning(res *workspace.Resolved) {
+	if res.Health == nil {
 		return
 	}
-	fmt.Printf("    crew verify %s  check again\n", ref)
+	fmt.Fprintf(os.Stderr, "! %s: %s — crew fix %s / crew verify %s\n", res.Ref, res.Health.Summary(), res.Ref, res.Ref)
+}
+
+// verifyOrExit runs the verify and turns its refusals into the exit every
+// caller wants; the running-servers case names the way out.
+func verifyOrExit(res *workspace.Resolved) workspace.VerifyResult {
+	result, err := workspace.Verify(res, workspace.CheckoutOptions{Install: true, Smoke: true, Progress: printSetupProgress})
+	if errors.Is(err, workspace.ErrServersRunning) {
+		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	return result
 }
 
 func cmdVerify() {
@@ -200,20 +233,20 @@ func cmdVerify() {
 		os.Exit(1)
 	}
 	res := mustResolve(os.Args[2])
-	if !hasServers(res) {
-		fmt.Printf("%s has no dev servers to check\n", res.Ref)
-		return
-	}
-	results, _ := verifyOrExit(res)
+	result := verifyOrExit(res)
 	if jsonOutput {
-		printJSON(results)
+		printJSON(result)
 	} else {
-		printSmoke(res, results)
-		if len(workspace.SmokeFailures(results)) == 0 {
-			fmt.Printf("\n%s checks out — health cleared\n", res.Ref)
+		printSmokeTails(result.Smoke)
+		if result.Health == nil {
+			fmt.Printf("\n%s checks out — unlocked\n", res.Ref)
+		} else {
+			fmt.Println()
+			printIssues(result.Health)
+			printFixHint(res.Ref)
 		}
 	}
-	if len(workspace.SmokeFailures(results)) > 0 {
+	if result.Health != nil {
 		os.Exit(1)
 	}
 }
@@ -238,21 +271,6 @@ func fixPlan(health *workspace.Health, hasServers bool) fixAction {
 	}
 }
 
-// verifyOrExit runs the verify and turns its refusals into the exit every
-// caller wants; the running-servers case names the way out.
-func verifyOrExit(res *workspace.Resolved) ([]workspace.SmokeResult, error) {
-	results, err := workspace.Verify(res)
-	if errors.Is(err, workspace.ErrServersRunning) {
-		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
-		os.Exit(1)
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	return results, nil
-}
-
 // cmdFix opens Claude on the worktree with the recorded failure in front of
 // it. Nothing recorded → verify first, so it is one command either way.
 func cmdFix() {
@@ -268,8 +286,8 @@ func cmdFix() {
 		return
 	case fixVerifyFirst:
 		fmt.Printf("Nothing recorded on %s — checking…\n\n", res.Ref)
-		results, _ := verifyOrExit(res)
-		printSmoke(res, results)
+		result := verifyOrExit(res)
+		printSmokeTails(result.Smoke)
 		if res.Health == nil {
 			fmt.Printf("\nnothing recorded — %s checks out\n", res.Ref)
 			return

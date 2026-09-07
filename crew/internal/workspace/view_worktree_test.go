@@ -116,11 +116,12 @@ func TestRenderWorktreePage_CleanHasNoAnomalyBlock(t *testing.T) {
 	}
 }
 
-func TestRenderWorktreePage_HealthBlock(t *testing.T) {
+func TestRenderWorktreePage_Locked(t *testing.T) {
 	page := pageFixture()
-	page.Anomalies = ""
-	page.Health = &Health{Stage: StageSmoke, At: time.Now().Add(-2 * time.Minute), Issues: []Issue{
-		{Project: "speak-api", Server: "speak-api", Detail: "l1\nl2\n  at loadConfig (src/config.ts:12)\nError: SPEAK_DB_URL is not set"},
+	page.Anomalies = "  something\n"
+	page.Health = &Health{At: time.Now().Add(-2 * time.Minute), Issues: []Issue{
+		{Stage: StageCheckout, Project: "gcp-infra", Detail: "fatal: a branch named 'x' already exists"},
+		{Stage: StageSmoke, Project: "speak-api", Server: "speak-api", Detail: "l1\nl2\n  at loadConfig (src/config.ts:12)\nError: SPEAK_DB_URL is not set"},
 	}}
 	rows := worktreeRows(page.Items, true, true)
 
@@ -129,19 +130,37 @@ func TestRenderWorktreePage_HealthBlock(t *testing.T) {
 	got := stripANSI(b.String())
 
 	want := strings.Join([]string{
+		"  /w/phone-speak/wrk1",
+		"  proxy: off",
 		"",
-		"  ! server died: speak-api/speak-api · 2 minutes ago",
-		"    speak-api/speak-api   l2",
-		"                            at loadConfig (src/config.ts:12)",
-		"                          Error: SPEAK_DB_URL is not set",
-		"                          … 1 more lines — f hands Claude all of it",
+		"  ! 2 issues · 2 minutes ago",
+		"    checkout  gcp-infra             fatal: a branch named 'x' already exists",
+		"    smoke     speak-api/speak-api   l2",
+		"                                      at loadConfig (src/config.ts:12)",
+		"                                    Error: SPEAK_DB_URL is not set",
+		"                                    … 1 more lines — f hands Claude all of it",
 		"",
 		"    f fix with Claude   v verify",
 		"",
-		"  Launch",
+		"  Servers  locked until verified",
+		"  > speak-api           ● :54494   http://localhost:54494",
+		"    phone-speak-worker  ○",
+		"",
+		"  Launch  locked until verified",
+		"    Editor + Claude             ",
+		"    Claude in terminal          ",
+		"",
+		"  Open",
+		"    Cursor / VS Code (remote)",
+		"    Shell here",
+		"",
 	}, "\n")
-	if !strings.Contains(got, want) {
-		t.Errorf("page =\n%s\nwant to contain\n%s", got, want)
+	if got != want {
+		t.Errorf("page =\n%s\nwant\n%s", got, want)
+	}
+	// Anomalies are hidden on a locked page: the issues are the message.
+	if strings.Contains(got, "something") {
+		t.Error("anomalies should not show while locked")
 	}
 }
 
@@ -169,6 +188,7 @@ func TestWorktreeView_VerifyAndFixKeys(t *testing.T) {
 	v := NewWorktreeView(Ref{Workspace: "ws", Worktree: "wt"})
 	v.page = pageFixture()
 	v.page.Health = nil
+	v.rows = worktreeRows(v.page.Items, true, true)
 
 	// f without a recorded failure does nothing.
 	v, cmd := press(v, "f")
@@ -203,24 +223,49 @@ func TestWorktreeView_VerifyAndFixKeys(t *testing.T) {
 
 	// The verdict lands as a status or an error, and the page reloads.
 	v.loading = true
-	m, cmd := v.Update(verifiedMsg{results: []SmokeResult{{Project: "a", Server: "a", Alive: true}}})
+	m, cmd := v.Update(verifiedMsg{result: VerifyResult{Smoke: []SmokeResult{{Project: "a", Server: "a", Alive: true}}}})
 	v = m.(WorktreeView)
-	if v.loading || v.statusMsg != "Checks out — health cleared" || cmd == nil {
+	if v.loading || v.statusMsg != "Checks out — unlocked" || cmd == nil {
 		t.Errorf("pass: loading=%v status=%q", v.loading, v.statusMsg)
 	}
-	m, _ = v.Update(verifiedMsg{results: []SmokeResult{{Project: "a", Server: "a"}}})
+	dead := VerifyResult{Health: &Health{Issues: []Issue{{Stage: StageSmoke, Project: "a", Server: "a"}}}}
+	m, _ = v.Update(verifiedMsg{result: dead})
 	v = m.(WorktreeView)
-	if v.err == nil || !strings.Contains(v.err.Error(), "1 server(s) died — recorded; f opens Claude on it") {
+	if v.err == nil || !strings.Contains(v.err.Error(), "server died: a/a — recorded; f opens Claude on it") {
 		t.Errorf("death: err=%v", v.err)
 	}
 
 	// f with a recorded failure produces the exec command.
-	v.page.Health = &Health{Stage: StageSmoke, Issues: []Issue{{Project: "a", Server: "a", Detail: "x"}}}
+	v.page.Health = &Health{Issues: []Issue{{Stage: StageSmoke, Project: "a", Server: "a", Detail: "x"}}}
 	_, cmd = press(v, "f")
 	if cmd == nil {
 		t.Error("f with health should run the fix")
 	}
-	if !strings.Contains(stripANSI(v.View()), "f fix  esc back") {
-		t.Error("help line should offer f when health is set")
+
+	// Locked: the keys that would start or launch say so and do nothing;
+	// the shell and logs stay live.
+	v.err, v.statusMsg = nil, ""
+	for _, k := range []string{"s", "r", "x"} {
+		v2, cmd := press(v, k)
+		if cmd != nil || v2.statusMsg != lockedMsg {
+			t.Errorf("%s on a locked page: cmd=%v status=%q", k, cmd != nil, v2.statusMsg)
+		}
 	}
+	v.cursor = len(v.rows) - 1 // Shell here
+	_, cmd = press(v, "enter")
+	if cmd == nil {
+		t.Error("enter on Shell here should still work while locked")
+	}
+	v.cursor = 2 // Editor + Claude
+	v2, cmd := press(v, "enter")
+	if cmd != nil || v2.statusMsg != lockedMsg {
+		t.Errorf("enter on a launch row while locked: cmd=%v status=%q", cmd != nil, v2.statusMsg)
+	}
+	if _, cmd := press(v, "o"); cmd == nil {
+		t.Error("o should open the shell while locked")
+	}
+	if !strings.Contains(stripANSI(v.View()), "f fix  v verify  l logs  o shell  p proxy  esc back") {
+		t.Errorf("locked help line:\n%s", stripANSI(v.View()))
+	}
+
 }

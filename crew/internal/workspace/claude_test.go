@@ -113,3 +113,31 @@ func TestBuildClaudeParts_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 		t.Errorf("single project should not pass --add-dir, got: %s", got)
 	}
 }
+
+// A recorded checkout failure means no directory: claude starts in the
+// worktree root and is not handed the missing one.
+func TestBuildClaudeParts_MissingCheckout(t *testing.T) {
+	setupTestConfig(t)
+	res := &Resolved{
+		Ref: Ref{Workspace: "ws", Worktree: "main"},
+		Dir: "/w/ws/main",
+		Projects: []ResolvedProject{
+			{Name: "api", Path: "/w/ws/main/api"},
+			{Name: "web", Path: "/w/ws/main/web"},
+		},
+		Health: &Health{Issues: []Issue{{Stage: StageCheckout, Project: "web", Detail: "x"}}},
+	}
+	parts, workDir := buildClaudeParts(res, true)
+	cmd := strings.Join(parts, " ")
+	if workDir != "/w/ws/main" {
+		t.Errorf("workDir = %q", workDir)
+	}
+	if !strings.Contains(cmd, "--add-dir '/w/ws/main/api'") || strings.Contains(cmd, "/w/ws/main/web") {
+		t.Errorf("command = %s", cmd)
+	}
+
+	solo := &Resolved{Ref: res.Ref, Dir: res.Dir, Projects: res.Projects[1:], Health: res.Health}
+	if _, workDir := buildClaudeParts(solo, true); workDir != "/w/ws/main" {
+		t.Errorf("single project with a failed checkout should start in the worktree root, got %q", workDir)
+	}
+}

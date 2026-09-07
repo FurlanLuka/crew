@@ -21,8 +21,11 @@ import (
 type workspacesLoadedMsg struct{ summaries []Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
-type workspaceDuplicatedMsg struct{ src, dst string }
-type worktreeAddedMsg struct{ ref Ref }
+type worktreeAddedMsg struct {
+	ref            Ref
+	health         *Health
+	duplicatedFrom string
+}
 type worktreeSizesMsg struct{ sizes map[string]int64 }
 type baseStatusesMsg struct{ statuses []BaseStatus }
 type basesPulledMsg struct{ failed []error }
@@ -163,16 +166,6 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		return v, loadWorkspaces
 
-	case workspaceDuplicatedMsg:
-		v.state = stateWorktrees
-		v.statusMsg = fmt.Sprintf("Duplicated '%s' → '%s'", msg.src, msg.dst)
-		if len(v.setupLines) > 0 {
-			v.statusMsg = strings.Join(v.setupLines, "\n  ") + "\n\n  " + v.statusMsg
-		}
-		v.err = nil
-		v.input.Reset()
-		return v, loadWorkspaces
-
 	case worktreeRemovedMsg:
 		v.state = stateWorktrees
 		v.statusMsg = fmt.Sprintf("Removed worktree '%s' — clearing in background", msg.ref)
@@ -207,14 +200,23 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, listen(msg.ch)
 
 	case worktreeAddedMsg:
+		// The list stays under the pushed page and is what esc comes back to,
+		// so its state is reset here even though the page takes over now.
 		v.state = stateWorktrees
-		v.statusMsg = fmt.Sprintf("Created worktree '%s'", msg.ref)
-		if len(v.setupLines) > 0 {
-			v.statusMsg = strings.Join(v.setupLines, "\n  ") + "\n\n  " + v.statusMsg
-		}
+		v.statusMsg = ""
 		v.err = nil
 		v.input.Reset()
-		return v, loadWorkspaces
+		delete(v.sizes, msg.ref.String())
+		created := fmt.Sprintf("Created %s", msg.ref)
+		if msg.duplicatedFrom != "" {
+			created = fmt.Sprintf("Duplicated %s → %s", msg.duplicatedFrom, msg.ref)
+		}
+		if msg.health != nil {
+			created += " — " + msg.health.Summary()
+		}
+		page := NewWorktreeView(msg.ref)
+		page.statusMsg = created
+		return v, tea.Batch(loadWorkspaces, func() tea.Msg { return app.PushPageMsg{Page: page} })
 
 	case codeOpenedMsg:
 		return v, func() tea.Msg { return app.ExitWithOutputMsg{Output: msg.output} }
@@ -507,11 +509,11 @@ func (v View) handleDuplicateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.state = stateDuplicating
 		v.setupLines = nil
 		ch := runWithProgress(func(opts CheckoutOptions, ch chan tea.Msg) tea.Msg {
-			if err := DuplicateWorktree(src, name, opts); err != nil {
+			h, err := DuplicateWorktree(src, name, opts)
+			if err != nil {
 				return errMsg{err}
 			}
-			smokeInto(ch, Ref{Workspace: src.Workspace, Worktree: name})
-			return workspaceDuplicatedMsg{src: src.String(), dst: src.Workspace + "/" + name}
+			return worktreeAddedMsg{ref: Ref{Workspace: src.Workspace, Worktree: name}, health: h, duplicatedFrom: src.String()}
 		})
 		return v, tea.Batch(v.spinner.Tick, listen(ch))
 	}
@@ -543,11 +545,11 @@ func (v View) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.state = stateAddingWorktree
 		v.setupLines = nil
 		ch := runWithProgress(func(opts CheckoutOptions, ch chan tea.Msg) tea.Msg {
-			if err := AddWorktree(wsName, name, opts); err != nil {
+			h, err := AddWorktree(wsName, name, opts)
+			if err != nil {
 				return errMsg{err}
 			}
-			smokeInto(ch, Ref{Workspace: wsName, Worktree: name})
-			return worktreeAddedMsg{ref: Ref{Workspace: wsName, Worktree: name}}
+			return worktreeAddedMsg{ref: Ref{Workspace: wsName, Worktree: name}, health: h}
 		})
 		return v, tea.Batch(v.spinner.Tick, listen(ch))
 	}
@@ -946,6 +948,7 @@ func runWithProgress(run func(CheckoutOptions, chan tea.Msg) tea.Msg) <-chan tea
 	go func() {
 		opts := CheckoutOptions{
 			Install: true,
+			Smoke:   true,
 			Progress: func(project string, r exec.SetupResult) {
 				ch <- setupProgressMsg{line: setupLine(project, r), ch: ch}
 			},
@@ -954,41 +957,6 @@ func runWithProgress(run func(CheckoutOptions, chan tea.Msg) tea.Msg) <-chan tea
 		close(ch)
 	}()
 	return ch
-}
-
-// smokeInto starts the new worktree's servers, reports which survive a few
-// seconds as progress lines, and stops them again. Failures carry their last
-// log lines. Skipped when nothing is configured.
-func smokeInto(ch chan tea.Msg, ref Ref) {
-	res, err := Resolve(ref)
-	if err != nil {
-		return
-	}
-	if len(res.DevProjects()) == 0 {
-		return
-	}
-	ch <- setupProgressMsg{line: app.Subtle.Render("smoke-starting dev servers…"), ch: ch}
-
-	results, err := Verify(res)
-	if err != nil {
-		ch <- setupProgressMsg{line: app.Error.Render("could not start: " + err.Error()), ch: ch}
-		return
-	}
-	for _, r := range results {
-		if r.Alive {
-			ch <- setupProgressMsg{line: fmt.Sprintf("%-16s %s %s", r.Project, app.Success.Render("✓"), r.Server), ch: ch}
-			continue
-		}
-		ch <- setupProgressMsg{line: fmt.Sprintf("%-16s %s %s exited within seconds", r.Project, app.Error.Render("✗"), r.Server), ch: ch}
-		for _, line := range strings.Split(r.Tail, "\n") {
-			if line != "" {
-				ch <- setupProgressMsg{line: "    " + app.Subtle.Render(line), ch: ch}
-			}
-		}
-	}
-	if failed := SmokeFailures(results); len(failed) > 0 {
-		ch <- setupProgressMsg{line: app.Highlight.Render(fmt.Sprintf("! %d server(s) died on start — recorded; open the worktree and press f to fix it with Claude", len(failed))), ch: ch}
-	}
 }
 
 func listen(ch <-chan tea.Msg) tea.Cmd {

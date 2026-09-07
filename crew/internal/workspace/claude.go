@@ -23,8 +23,11 @@ func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+crewExec.ShellQuote(config.ClaudeConfigDir))
 	}
 
+	// A project whose checkout failed has no directory: start in the
+	// worktree root then, and only hand claude the checkouts that were made.
+	missing := res.missingCheckouts()
 	workDir := res.Projects[0].Path
-	if multiProject {
+	if multiProject || missing[res.Projects[0].Name] {
 		workDir = res.Dir
 	}
 
@@ -32,7 +35,9 @@ func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 
 	if multiProject {
 		for _, p := range res.Projects {
-			parts = append(parts, "--add-dir", crewExec.ShellQuote(p.Path))
+			if !missing[p.Name] {
+				parts = append(parts, "--add-dir", crewExec.ShellQuote(p.Path))
+			}
 		}
 	}
 

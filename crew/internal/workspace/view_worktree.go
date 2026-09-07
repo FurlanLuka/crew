@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"strings"
 	"time"
@@ -25,7 +26,11 @@ type worktreeLoadedMsg struct {
 type devStartedMsg struct{ status string }
 type devStoppedMsg struct{}
 type launchExecutedMsg struct{}
-type verifiedMsg struct{ results []SmokeResult }
+type verifiedMsg struct{ result VerifyResult }
+type verifyProgressMsg struct {
+	line string
+	ch   <-chan tea.Msg
+}
 
 // claudeExecReadyMsg carries a Claude command to run directly in the current
 // terminal. Claude takes over the terminal until it exits — no tmux, no
@@ -115,6 +120,9 @@ func NewWorktreeView(ref Ref) WorktreeView {
 	return WorktreeView{ref: ref, spinner: app.NewSpinner(), noProxy: true}
 }
 
+// SetStatus is the line the page opens with — what creation just did.
+func (v *WorktreeView) SetStatus(msg string) { v.statusMsg = msg }
+
 func (v WorktreeView) Title() string {
 	return v.ref.String()
 }
@@ -155,12 +163,16 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case launchExecutedMsg:
 		return v, tea.Quit
 
+	case verifyProgressMsg:
+		v.actionMsg = msg.line
+		return v, listen(msg.ch)
+
 	case verifiedMsg:
 		v.loading = false
-		if failed := SmokeFailures(msg.results); len(failed) > 0 {
-			v.err = fmt.Errorf("%d server(s) died — recorded; f opens Claude on it", len(failed))
+		if h := msg.result.Health; h != nil {
+			v.err = fmt.Errorf("%s — recorded; f opens Claude on it", h.Summary())
 		} else {
-			v.statusMsg = "Checks out — health cleared"
+			v.statusMsg = "Checks out — unlocked"
 		}
 		return v, v.load()
 
@@ -194,12 +206,33 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
+// locked: something is recorded on the worktree, so the keys that would
+// start servers or launch on it wait for a verify. Reading logs, opening a
+// shell and fixing stay live — that is how it gets unlocked.
+func (v WorktreeView) locked() bool { return v.page.Health != nil }
+
+const lockedMsg = "locked — f fix with Claude, v verify"
+
 func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if v.loading {
 		return v, nil
 	}
 	if v.confirmVerify {
 		return v.handleConfirmVerifyKey(msg)
+	}
+	if v.locked() {
+		switch msg.String() {
+		case "s", "r", "x":
+			v.statusMsg, v.err = lockedMsg, nil
+			return v, nil
+		case "enter":
+			if len(v.rows) > 0 && v.rows[v.cursor].Kind != rowServer && v.rows[v.cursor].Kind != rowOpenShell {
+				v.statusMsg, v.err = lockedMsg, nil
+				return v, nil
+			}
+		case "o":
+			return v.activateRow(rowOpenShell)
+		}
 	}
 
 	switch {
@@ -234,7 +267,7 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.confirmVerify = true
 			return v, nil
 		}
-		return v.act("Verifying — servers up, six seconds, stopped again…", v.runVerify())
+		return v.act("verifying — servers up, six seconds, stopped again…", v.runVerify())
 	case msg.String() == "f" && v.page.Health != nil:
 		return v, v.runFix()
 	}
@@ -244,7 +277,7 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (v WorktreeView) handleConfirmVerifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	v.confirmVerify = false
 	if msg.String() == "y" || msg.String() == "Y" {
-		return v.act("Verifying — servers restarted, six seconds, stopped again…", v.runVerify())
+		return v.act("verifying — servers restarted, six seconds, stopped again…", v.runVerify())
 	}
 	return v, nil
 }
@@ -262,7 +295,11 @@ func (v WorktreeView) activate() (tea.Model, tea.Cmd) {
 	if len(v.rows) == 0 {
 		return v, nil
 	}
-	switch row := v.rows[v.cursor]; row.Kind {
+	return v.activateRow(v.rows[v.cursor].Kind)
+}
+
+func (v WorktreeView) activateRow(kind rowKind) (tea.Model, tea.Cmd) {
+	switch kind {
 	case rowServer:
 		return v.openLogs()
 	case rowLaunchEditor:
@@ -279,38 +316,42 @@ func (v WorktreeView) activate() (tea.Model, tea.Cmd) {
 }
 
 func (v WorktreeView) openLogs() (tea.Model, tea.Cmd) {
-	running := v.runningItems()
-	if len(running) == 0 {
-		v.err = fmt.Errorf("no servers are running")
+	items := v.loggedItems()
+	if len(items) == 0 {
+		v.err = fmt.Errorf("no server has run yet")
 		return v, nil
 	}
-	logs := NewLogsView(v.ref, running, v.runningTabIndex())
+	logs := NewLogsView(v.ref, items, v.loggedTabIndex())
 	return v, func() tea.Msg { return app.PushPageMsg{Page: logs} }
 }
 
-func (v WorktreeView) runningItems() []devItem {
-	var running []devItem
+// loggedItems is every server that is running or has a log file — a dead
+// server's smoke output is what you read on a locked page.
+func (v WorktreeView) loggedItems() []devItem {
+	var out []devItem
 	for _, item := range v.page.Items {
-		if item.Running {
-			running = append(running, item)
+		if item.Running || fileExists(dev.LogFile(v.ref.Slug(), item.Server.Name)) {
+			out = append(out, item)
 		}
 	}
-	return running
+	return out
 }
 
-// runningTabIndex maps the cursor to its position among running servers, so
-// the logs view opens on the server under the cursor when it is running.
-func (v WorktreeView) runningTabIndex() int {
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// loggedTabIndex maps the cursor to its position among the servers the logs
+// view lists, so it opens on the server under the cursor.
+func (v WorktreeView) loggedTabIndex() int {
 	if len(v.rows) == 0 || v.rows[v.cursor].Kind != rowServer {
 		return 0
 	}
-	idx := 0
-	for i, item := range v.page.Items {
-		if i == v.rows[v.cursor].Item {
-			return idx
-		}
-		if item.Running {
-			idx++
+	want := v.page.Items[v.rows[v.cursor].Item].Server.Name
+	for i, item := range v.loggedItems() {
+		if item.Server.Name == want {
+			return i
 		}
 	}
 	return 0
@@ -346,8 +387,8 @@ func (v WorktreeView) View() string {
 	}
 	b.WriteString("\n  ")
 	help := "enter act  s start all  r restart  x stop  l logs  p proxy  v verify"
-	if v.page.Health != nil {
-		help += "  f fix"
+	if v.locked() {
+		help = "f fix  v verify  l logs  o shell  p proxy"
 	}
 	b.WriteString(app.HelpStyle.Render(help + "  esc back"))
 	b.WriteString("\n")
@@ -362,14 +403,33 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 		proxy = "off"
 	}
 	fmt.Fprintf(b, "  %s\n", app.Subtle.Render(page.Dir))
-	fmt.Fprintf(b, "  %s\n\n", app.Subtle.Render("proxy: "+proxy))
+	fmt.Fprintf(b, "  %s\n", app.Subtle.Render("proxy: "+proxy))
+
+	// What is recorded comes first: it is the reason the rest is locked.
+	locked := page.Health != nil
+	renderHealth(b, page.Health)
+	b.WriteString("\n")
 
 	selected := func(kind rowKind, item int) bool {
 		return len(rows) > 0 && rows[cursor].Kind == kind && (kind != rowServer || rows[cursor].Item == item)
 	}
+	// name renders a row label; on a locked page the rows that wait for a
+	// verify are dimmed whether or not the cursor is on them.
+	name := func(label string, sel, gated bool) string {
+		if locked && gated {
+			return app.Subtle.Render(label)
+		}
+		return app.RowName(label, sel)
+	}
+	lockedTag := func(section string) string {
+		if locked {
+			return section + "  " + app.Subtle.Render("locked until verified")
+		}
+		return section
+	}
 
-	b.WriteString("  Servers")
-	if page.Session != "" {
+	b.WriteString("  " + lockedTag("Servers"))
+	if page.Session != "" && !locked {
 		b.WriteString("  " + app.Subtle.Render(page.Session))
 	}
 	b.WriteString("\n")
@@ -386,35 +446,39 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	for i, item := range page.Items {
 		sel := selected(rowServer, i)
 		b.WriteString("  " + app.RowPrefix(sel))
-		b.WriteString(app.RowName(fmt.Sprintf("%-*s", width, item.Server.Name), sel))
-		if item.Running {
+		b.WriteString(name(fmt.Sprintf("%-*s", width, item.Server.Name), sel, true))
+		switch {
+		case item.Running:
 			fmt.Fprintf(b, "  %s :%d   %s", app.Success.Render("●"), item.Port, app.Subtle.Render(item.URL))
-		} else {
+		case locked:
+			fmt.Fprintf(b, "  %s", app.Subtle.Render("○"))
+		default:
 			fmt.Fprintf(b, "  %s %s", app.Subtle.Render("○"), app.Subtle.Render("stopped"))
 		}
 		b.WriteString("\n")
 	}
 
-	if page.Anomalies != "" {
+	if page.Anomalies != "" && !locked {
 		b.WriteString("\n")
 		for _, line := range strings.Split(strings.TrimRight(page.Anomalies, "\n"), "\n") {
 			b.WriteString("  " + app.Highlight.Render(line) + "\n")
 		}
 	}
-	renderHealth(b, page.Health)
 
-	b.WriteString("\n  Launch\n")
+	b.WriteString("\n  " + lockedTag("Launch") + "\n")
 	if page.HasEditor {
 		sel := selected(rowLaunchEditor, 0)
 		b.WriteString("  " + app.RowPrefix(sel))
-		b.WriteString(app.RowName(fmt.Sprintf("%-28s", "Editor + Claude"), sel))
-		b.WriteString(app.Subtle.Render(leadHint(page)))
+		b.WriteString(name(fmt.Sprintf("%-28s", "Editor + Claude"), sel, true))
+		if !locked {
+			b.WriteString(app.Subtle.Render(leadHint(page)))
+		}
 		b.WriteString("\n")
 	}
 	sel := selected(rowLaunchClaude, 0)
 	b.WriteString("  " + app.RowPrefix(sel))
-	b.WriteString(app.RowName(fmt.Sprintf("%-28s", "Claude in terminal"), sel))
-	if !page.HasEditor {
+	b.WriteString(name(fmt.Sprintf("%-28s", "Claude in terminal"), sel, true))
+	if !page.HasEditor && !locked {
 		b.WriteString(app.Subtle.Render(leadHint(page)))
 	}
 	b.WriteString("\n")
@@ -423,32 +487,28 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	if page.HasSSH {
 		sel := selected(rowOpenRemote, 0)
 		b.WriteString("  " + app.RowPrefix(sel))
-		b.WriteString(app.RowName("Cursor / VS Code (remote)", sel))
+		b.WriteString(name("Cursor / VS Code (remote)", sel, true))
 		b.WriteString("\n")
 	}
 	sel = selected(rowOpenShell, 0)
 	b.WriteString("  " + app.RowPrefix(sel))
-	b.WriteString(app.RowName("Shell here", sel))
+	b.WriteString(name("Shell here", sel, false))
 	b.WriteString("\n")
 }
 
-// renderHealth is the recorded failure with its evidence and the two keys
-// out of it. Evidence is cut to a few lines here; f hands Claude all of it.
+// renderHealth is what is recorded on the worktree, per issue with its
+// stage and a few lines of evidence, and the two keys out of it. f hands
+// Claude all of the evidence.
 func renderHealth(b *strings.Builder, h *Health) {
 	if h == nil {
 		return
 	}
 	b.WriteString("\n  " + app.Error.Render("! "+h.Summary()) + app.Subtle.Render(" · "+ago(h.At)) + "\n")
 	width := 0
-	names := make([]string, len(h.Issues))
-	for i, issue := range h.Issues {
-		names[i] = issue.Project
-		if issue.Server != "" {
-			names[i] += "/" + issue.Server
-		}
-		width = max(width, len(names[i]))
+	for _, issue := range h.Issues {
+		width = max(width, len(issue.Name()))
 	}
-	for i, issue := range h.Issues {
+	for _, issue := range h.Issues {
 		lines := strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n")
 		hidden := 0
 		if len(lines) > 3 {
@@ -456,14 +516,14 @@ func renderHealth(b *strings.Builder, h *Health) {
 			lines = lines[len(lines)-3:]
 		}
 		for j, line := range lines {
-			label := strings.Repeat(" ", width)
+			label := strings.Repeat(" ", 10+width)
 			if j == 0 {
-				label = fmt.Sprintf("%-*s", width, names[i])
+				label = fmt.Sprintf("%-9s %-*s", issue.Stage, width, issue.Name())
 			}
-			b.WriteString("    " + label + "   " + app.Subtle.Render(line) + "\n")
+			b.WriteString("    " + app.Subtle.Render(label[:9]) + label[9:] + "   " + app.Subtle.Render(line) + "\n")
 		}
 		if hidden > 0 {
-			b.WriteString("    " + strings.Repeat(" ", width) + "   " + app.Subtle.Render(fmt.Sprintf("… %d more lines — f hands Claude all of it", hidden)) + "\n")
+			b.WriteString("    " + strings.Repeat(" ", 10+width) + "   " + app.Subtle.Render(fmt.Sprintf("… %d more lines — f hands Claude all of it", hidden)) + "\n")
 		}
 	}
 	b.WriteString("\n    " + app.Highlight.Render("f fix with Claude   v verify") + "\n")
@@ -608,22 +668,34 @@ func (v WorktreeView) launch(withEditor bool) tea.Cmd {
 	}
 }
 
+// runVerify streams what the verify is doing — a checkout, an install, the
+// smoke — because a verify that has to finish an install is minutes, and a
+// static spinner would read as a hang.
 func (v WorktreeView) runVerify() tea.Cmd {
 	ref := v.ref
-	return func() tea.Msg {
+	ch := make(chan tea.Msg, 64)
+	go func() {
 		res, err := Resolve(ref)
 		if err != nil {
-			return errMsg{err}
+			ch <- errMsg{err}
+			close(ch)
+			return
 		}
 		// The page asked already; a session still up here is stopped by the
 		// smoke start itself.
 		dev.StopAll(res.Slug)
-		results, err := Verify(res)
+		opts := CheckoutOptions{Install: true, Smoke: true, Progress: func(project string, r exec.SetupResult) {
+			ch <- verifyProgressMsg{line: "verifying — " + setupLine(project, r), ch: ch}
+		}}
+		result, err := Verify(res, opts)
 		if err != nil {
-			return errMsg{err}
+			ch <- errMsg{err}
+		} else {
+			ch <- verifiedMsg{result}
 		}
-		return verifiedMsg{results}
-	}
+		close(ch)
+	}()
+	return listen(ch)
 }
 
 // runFix is crew fix from the page: Claude with the recorded failure.

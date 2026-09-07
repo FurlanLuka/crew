@@ -135,13 +135,13 @@ open actions.
 
 ### Health
 
-Creating a worktree ends with a smoke start: servers up, six seconds, which survived. A
-server that dies — usually a missing var in the fresh `.env` — is recorded on the worktree:
-`crew ls worktrees` says `server died: <project>/<server>`, the worktree page shows the log
-tail with `f fix with Claude` and `v verify`. `crew fix` opens Claude in the worktree with
-the failure, the log tail and the env anomalies in the prompt; `crew verify` re-runs the
-check and clears it when everything survives. Only a check clears it — a plain `dev start`
-never does.
+Creating a worktree runs every step it can — every checkout and `.env`, every install, then
+the servers for six seconds to see which survive — and records every failure on the worktree
+with its stage. Creation ends on the worktree page, **locked** to `f fix with Claude` and
+`v verify` while anything is recorded (logs and a shell stay open). `crew fix` opens Claude
+in the worktree with each issue, its evidence and the env anomalies in the prompt; `crew
+verify` finishes what is missing, re-checks, and unlocks the page on a pass. Only a check
+clears it — a plain `dev start` never does; from the CLI it just prints the issues first.
 
 ### Removal and disk
 

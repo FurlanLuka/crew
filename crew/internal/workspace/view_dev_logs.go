@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -223,10 +224,16 @@ func (v LogsView) capturePane() tea.Cmd {
 		}
 	}
 
-	session := v.session
-	window := tab.window
+	session, window, logFile := v.session, tab.window, dev.LogFile(v.ref.Slug(), tab.label)
 	return func() tea.Msg {
-		content, _ := crewExec.CaptureTmuxPane(session, window, 500)
+		content, err := crewExec.CaptureTmuxPane(session, window, 500)
+		if err != nil || strings.TrimSpace(content) == "" {
+			// No pane: the server is stopped. Its log file is what a smoke or
+			// a crash left behind, and the reason to open logs on a dead one.
+			if data, readErr := os.ReadFile(logFile); readErr == nil {
+				content = "(stopped — last log)\n" + string(data)
+			}
+		}
 		return paneContentMsg{content: strings.TrimRight(content, "\n")}
 	}
 }

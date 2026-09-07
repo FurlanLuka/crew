@@ -290,6 +290,7 @@ func startDev(arg string, noProxy, restart bool) {
 		fmt.Fprintf(os.Stderr, "note: workspace '%s' predates worktrees — run `crew migrate` to get {{worktree}} and a second working copy\n\n", res.Ref.Workspace)
 	}
 
+	printHealthWarning(res)
 	result, err := workspace.StartDev(res, noProxy, restart)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
