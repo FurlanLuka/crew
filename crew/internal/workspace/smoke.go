@@ -11,15 +11,19 @@ import (
 
 // SmokeResult is one server's fate a few seconds after start.
 type SmokeResult struct {
-	Project string
-	Server  string
-	Alive   bool
-	Tail    string // last log lines, for a server that died
+	Project  string
+	Server   string
+	Alive    bool
+	Tail     string // last few log lines, for the terminal
+	Evidence string // a longer tail, kept on the worktree for whoever fixes it
 }
 
 const (
 	smokeSettle = 6 * time.Second
 	smokeTail   = 4
+	// A stack trace usually sits above the one line that says why; the
+	// terminal shows the end, the recorded evidence keeps enough to read it.
+	evidenceTail = 30
 )
 
 // SmokeStart starts a worktree's servers, waits for them to settle, reports
@@ -46,6 +50,7 @@ func SmokeStart(res *Resolved) ([]SmokeResult, error) {
 		sr.Alive = exec.TmuxPaneBusy(session, window)
 		if !sr.Alive {
 			sr.Tail = tailLog(dev.LogFile(res.Slug, r.ServerName), smokeTail)
+			sr.Evidence = tailLog(dev.LogFile(res.Slug, r.ServerName), evidenceTail)
 		}
 		results = append(results, sr)
 	}
@@ -78,7 +83,7 @@ func tailLog(path string, n int) string {
 // isPromptNoise drops what a tmux pane records around the real output: the
 // shell prompt, the command crew typed, and zsh's end-of-line marker.
 func isPromptNoise(line string) bool {
-	return strings.HasPrefix(line, "export ") ||
+	return line == "export" || strings.HasPrefix(line, "export ") ||
 		strings.HasPrefix(line, "PORT=") ||
 		strings.Contains(line, "export SPEAK") ||
 		strings.Contains(line, "➜") ||

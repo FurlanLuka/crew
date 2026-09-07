@@ -3,6 +3,7 @@ package workspace
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
@@ -110,5 +111,33 @@ func TestRenderWorktreePage_CleanHasNoAnomalyBlock(t *testing.T) {
 	}
 	if strings.Contains(got, "Editor + Claude") || strings.Contains(got, "remote") {
 		t.Errorf("hidden rows rendered:\n%s", got)
+	}
+}
+
+func TestRenderWorktreePage_HealthBlock(t *testing.T) {
+	page := pageFixture()
+	page.Anomalies = ""
+	page.Health = &Health{Stage: StageSmoke, At: time.Now().Add(-2 * time.Minute), Issues: []Issue{
+		{Project: "speak-api", Server: "speak-api", Detail: "l1\nl2\n  at loadConfig (src/config.ts:12)\nError: SPEAK_DB_URL is not set"},
+	}}
+	rows := worktreeRows(page.Items, true, true)
+
+	var b strings.Builder
+	renderWorktreePage(&b, page, rows, 0, true)
+	got := stripANSI(b.String())
+
+	want := strings.Join([]string{
+		"",
+		"  ! server died: speak-api/speak-api · 2 minutes ago",
+		"    speak-api/speak-api   l2",
+		"                            at loadConfig (src/config.ts:12)",
+		"                          Error: SPEAK_DB_URL is not set",
+		"",
+		"    f fix with Claude   v verify",
+		"",
+		"  Launch",
+	}, "\n")
+	if !strings.Contains(got, want) {
+		t.Errorf("page =\n%s\nwant to contain\n%s", got, want)
 	}
 }

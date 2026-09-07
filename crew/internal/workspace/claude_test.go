@@ -41,7 +41,7 @@ func TestBuildClaudeParts_SingleProject(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
 
-	parts, workDir := buildClaudeParts(res)
+	parts, workDir := buildClaudeParts(res, NeedsPrompt(res))
 
 	got := strings.Join(parts, " ")
 	want := "IS_SANDBOX=1 claude --dangerously-skip-permissions"
@@ -63,7 +63,7 @@ func TestBuildClaudeParts_MultiProject(t *testing.T) {
 		{Name: "web", Role: "frontend"},
 	})
 
-	parts, workDir := buildClaudeParts(res)
+	parts, workDir := buildClaudeParts(res, NeedsPrompt(res))
 
 	got := strings.Join(parts, " ")
 	want := "IS_SANDBOX=1 claude --dangerously-skip-permissions" +
@@ -83,7 +83,7 @@ func TestBuildClaudeParts_ClaudeConfigDir(t *testing.T) {
 	pinClaudeConfig(t, true)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
 
-	parts, _ := buildClaudeParts(res)
+	parts, _ := buildClaudeParts(res, NeedsPrompt(res))
 
 	got := strings.Join(parts, " ")
 	want := "IS_SANDBOX=1 CLAUDE_CONFIG_DIR='" + config.ClaudeConfigDir +
@@ -102,7 +102,7 @@ func TestBuildClaudeParts_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 		{Name: "api", Role: "backend", Mode: ModeDirect},
 	})
 
-	parts, _ := buildClaudeParts(res)
+	parts, _ := buildClaudeParts(res, NeedsPrompt(res))
 
 	got := strings.Join(parts, " ")
 	if !strings.Contains(got, "$(cat '"+PromptFilePath(Ref{Workspace: "solo"})+"')") {

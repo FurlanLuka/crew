@@ -173,7 +173,7 @@ var Root = CommandInfo{
 					Name:         "worktrees",
 					Description:  "List every working copy — one row per worktree, across all workspaces or one. This is the 'what do I have checked out' view.",
 					Usage:        "crew ls worktrees [<workspace>] [--size]",
-					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[<size>\\t][dev]",
+					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[<size>\\t][dev][\\t<recorded failure>]",
 					Flags: []FlagInfo{
 						{Name: "--size", Description: "Add bytes on disk per worktree. Walks every file — slow on one with a full build inside"},
 					},
@@ -207,6 +207,19 @@ var Root = CommandInfo{
 			Usage:        "crew show <workspace>[/<worktree>]",
 			OutputFormat: "<name>\\t<path>\\t<role>",
 			Examples:     []string{"crew show feature-auth"},
+		},
+		{
+			Name:         "verify",
+			Description:  "Check a worktree the way creating it does: start its dev servers, wait a few seconds, report which survived with the last log lines of any that died, stop them again. The verdict is recorded on the worktree — a failure shows in crew ls worktrees and on the worktree page until a verify passes. Refuses while the worktree's servers are running, since it would restart them.",
+			Usage:        "crew verify <workspace>[/<worktree>]",
+			OutputFormat: "<project>  ✓|✗ <server> [exited within seconds]",
+			Examples:     []string{"crew verify phone-speak/wrk2"},
+		},
+		{
+			Name:        "fix",
+			Description: "Open Claude Code in the worktree with the recorded failure in front of it: the stage that failed, each project or server with its error or log tail, the env anomalies, and the instruction to fix the cause and run crew verify. With nothing recorded it runs verify first, so it is one command either way. Replaces the crew process.",
+			Usage:       "crew fix <workspace>[/<worktree>]",
+			Examples:    []string{"crew fix phone-speak/wrk2"},
 		},
 		{
 			Name:        "claude",

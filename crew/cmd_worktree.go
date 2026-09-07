@@ -6,9 +6,11 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/dirsize"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
@@ -71,8 +73,8 @@ func cmdAddWorktree() {
 	var setupErr *workspace.SetupError
 	if errors.As(err, &setupErr) {
 		fmt.Fprintf(os.Stderr, "\n! %v\n", err)
-		fmt.Fprintf(os.Stderr, "  The worktree exists. Fix the step, then: crew setup %s\n", ref)
-		fmt.Fprintf(os.Stderr, "  Or set an explicit install command: crew add project <name> <path> --setup=<cmd>\n")
+		fmt.Fprintf(os.Stderr, "  The worktree exists; the failure is recorded on it.\n")
+		printFixHint(ref, true)
 		smoke = false
 	} else if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -108,6 +110,7 @@ func cmdSetup() {
 	err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Progress: printSetupProgress})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n! %v\n", err)
+		printFixHint(res.Ref, true)
 		os.Exit(1)
 	}
 	if smoke {
@@ -146,17 +149,22 @@ func printSetupProgress(project string, r exec.SetupResult) {
 
 // runSmoke starts the servers, reports which survived a few seconds, and
 // stops them again. Failures print their last log lines; nothing blocks.
+// runSmoke is the CLI's verify: the report, and the verdict recorded on the
+// worktree so the list and the page carry it.
 func runSmoke(res *workspace.Resolved) {
 	if !hasServers(res) {
 		return
 	}
 	fmt.Printf("\nSmoke-starting dev servers (%s)…\n\n", "stopped again afterwards")
-
-	results, err := workspace.SmokeStart(res)
+	results, err := workspace.Verify(res)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  could not start: %v\n", err)
 		return
 	}
+	printSmoke(res, results)
+}
+
+func printSmoke(res *workspace.Resolved, results []workspace.SmokeResult) {
 	for _, r := range results {
 		if r.Alive {
 			fmt.Printf("  %-16s ✓ %s\n", r.Project, r.Server)
@@ -170,7 +178,98 @@ func runSmoke(res *workspace.Resolved) {
 		}
 	}
 	if failed := workspace.SmokeFailures(results); len(failed) > 0 {
-		fmt.Printf("\n  ! %d server(s) died on start — check dependencies and env in the new checkout. crew dev logs %s <server> has the full output.\n", len(failed), res.Ref)
+		fmt.Printf("\n  ! %d server(s) died on start — recorded on %s. crew dev logs %s <server> has the full output.\n", len(failed), res.Ref, res.Ref)
+		printFixHint(res.Ref, false)
+	}
+}
+
+// printFixHint is the way out of a recorded failure, printed wherever one
+// is reported.
+func printFixHint(ref workspace.Ref, install bool) {
+	fmt.Printf("    crew fix %s     Claude in the worktree with this failure\n", ref)
+	if install {
+		fmt.Printf("    crew setup %s   re-run the installs once the cause is fixed\n", ref)
+		return
+	}
+	fmt.Printf("    crew verify %s  check again\n", ref)
+}
+
+func cmdVerify() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew verify <workspace>[/<worktree>]\n")
+		os.Exit(1)
+	}
+	res := mustResolve(os.Args[2])
+	if !hasServers(res) {
+		fmt.Printf("%s has no dev servers to check\n", res.Ref)
+		return
+	}
+	results, err := workspace.Verify(res)
+	if errors.Is(err, workspace.ErrServersRunning) {
+		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if jsonOutput {
+		printJSON(results)
+	} else {
+		printSmoke(res, results)
+		if len(workspace.SmokeFailures(results)) == 0 {
+			fmt.Printf("\n%s checks out — health cleared\n", res.Ref)
+		}
+	}
+	if len(workspace.SmokeFailures(results)) > 0 {
+		os.Exit(1)
+	}
+}
+
+// cmdFix opens Claude on the worktree with the recorded failure in front of
+// it. Nothing recorded → verify first, so it is one command either way.
+func cmdFix() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: crew fix <workspace>[/<worktree>]\n")
+		os.Exit(1)
+	}
+	requireTerminal("fix")
+	res := mustResolve(os.Args[2])
+	if res.Health == nil {
+		if !hasServers(res) {
+			fmt.Printf("nothing recorded on %s, and no dev servers to check\n", res.Ref)
+			return
+		}
+		fmt.Printf("Nothing recorded on %s — checking…\n\n", res.Ref)
+		results, err := workspace.Verify(res)
+		if errors.Is(err, workspace.ErrServersRunning) {
+			fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
+			os.Exit(1)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		printSmoke(res, results)
+		if res.Health == nil {
+			fmt.Printf("\nnothing recorded — %s checks out\n", res.Ref)
+			return
+		}
+		fmt.Println()
+	}
+	cmd, err := workspace.FixCommand(res, workspace.FixAnomalies(res))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.Chdir(cmd.Dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	debug.Log("claude", "fix: exec %s in %s", strings.Join(cmd.Args, " "), cmd.Dir)
+	if err := syscall.Exec(cmd.Path, cmd.Args, os.Environ()); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 }
 
@@ -216,6 +315,7 @@ func cmdLsWorktrees() {
 		Path       string `json:"path"`
 		DevRunning bool   `json:"dev_running"`
 		SizeBytes  int64  `json:"size_bytes,omitempty"`
+		Health     string `json:"health,omitempty"`
 	}
 
 	out := []worktreeOut{}
@@ -230,6 +330,9 @@ func cmdLsWorktrees() {
 				Path:       workspace.WorktreeDir(ref),
 				DevRunning: dev.Running(ref.Slug()),
 			}
+			if wt, err := workspace.WorktreeOf(ws, ref); err == nil {
+				row.Health = wt.Health.Summary()
+			}
 			// A walk; a worktree with a full build inside takes a while.
 			if withSize {
 				row.SizeBytes = dirsize.Of(row.Path)
@@ -243,13 +346,14 @@ func cmdLsWorktrees() {
 		return
 	}
 	for _, wt := range out {
-		fmt.Println(worktreeRow(wt.Ref, wt.Path, wt.SizeBytes, withSize, wt.DevRunning))
+		fmt.Println(worktreeRow(wt.Ref, wt.Path, wt.SizeBytes, withSize, wt.DevRunning, wt.Health))
 	}
 }
 
 // worktreeRow is one line of crew ls worktrees: the size column only when
-// asked for, "dev" last so the layout without it is unchanged.
-func worktreeRow(ref, path string, sizeBytes int64, withSize, running bool) string {
+// asked for, then "dev", then the recorded failure, so a healthy layout
+// without --size is unchanged.
+func worktreeRow(ref, path string, sizeBytes int64, withSize, running bool, health string) string {
 	cols := []string{ref, path}
 	if withSize {
 		cols = append(cols, app.FormatBytes(sizeBytes))
@@ -258,6 +362,9 @@ func worktreeRow(ref, path string, sizeBytes int64, withSize, running bool) stri
 		cols = append(cols, "dev")
 	} else {
 		cols = append(cols, "")
+	}
+	if health != "" {
+		cols = append(cols, health)
 	}
 	return strings.Join(cols, "\t")
 }

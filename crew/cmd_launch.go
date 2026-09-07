@@ -6,10 +6,22 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/charmbracelet/x/term"
+
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
+
+// requireTerminal: claude, fix and open hand the terminal to another
+// program. Without one — a script, an agent's shell — claude would run
+// headless with permissions skipped, which is not what anybody asked for.
+func requireTerminal(what string) {
+	if !term.IsTerminal(os.Stdin.Fd()) {
+		fmt.Fprintf(os.Stderr, "Error: crew %s needs a terminal — run it yourself, not from a script or an agent\n", what)
+		os.Exit(1)
+	}
+}
 
 func cmdLaunch() {
 	if len(os.Args) < 3 {
@@ -27,6 +39,7 @@ func cmdClaude() {
 		fmt.Fprintf(os.Stderr, "Usage: crew claude <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
+	requireTerminal("claude")
 	res := mustResolve(os.Args[2])
 	cmd, err := workspace.ClaudeCommand(res)
 	if err != nil {

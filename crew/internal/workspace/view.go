@@ -699,6 +699,9 @@ func (v View) renderWorktrees(b *strings.Builder) {
 		if s.DevRunning {
 			b.WriteString("  " + app.Highlight.Render("[dev]"))
 		}
+		if s.Health != "" {
+			b.WriteString("  " + app.Error.Render("! "+s.Health))
+		}
 		b.WriteString("\n")
 	}
 
@@ -966,7 +969,7 @@ func smokeInto(ch chan tea.Msg, ref Ref) {
 	}
 	ch <- setupProgressMsg{line: app.Subtle.Render("smoke-starting dev servers…"), ch: ch}
 
-	results, err := SmokeStart(res)
+	results, err := Verify(res)
 	if err != nil {
 		ch <- setupProgressMsg{line: app.Error.Render("could not start: " + err.Error()), ch: ch}
 		return
@@ -984,7 +987,7 @@ func smokeInto(ch chan tea.Msg, ref Ref) {
 		}
 	}
 	if failed := SmokeFailures(results); len(failed) > 0 {
-		ch <- setupProgressMsg{line: app.Highlight.Render(fmt.Sprintf("! %d server(s) died on start — check dependencies and env in the new checkout", len(failed))), ch: ch}
+		ch <- setupProgressMsg{line: app.Highlight.Render(fmt.Sprintf("! %d server(s) died on start — recorded; open the worktree and press f to fix it with Claude", len(failed))), ch: ch}
 	}
 }
 

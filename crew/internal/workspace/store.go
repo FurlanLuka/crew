@@ -67,6 +67,7 @@ type Summary struct {
 	Path         string `json:"path"`
 	ProjectCount int    `json:"project_count"`
 	DevRunning   bool   `json:"dev_running"`
+	Health       string `json:"health,omitempty"` // Health.Summary(), "" when fine
 }
 
 // ListSummaries returns summaries for all workspaces.
@@ -83,7 +84,7 @@ func ListSummaries() ([]Summary, error) {
 			continue
 		}
 		for _, ref := range Refs(ws) {
-			summaries = append(summaries, Summary{
+			sm := Summary{
 				Ref:          ref,
 				Name:         ref.String(),
 				Workspace:    ref.Workspace,
@@ -91,7 +92,11 @@ func ListSummaries() ([]Summary, error) {
 				Path:         WorktreeDir(ref),
 				ProjectCount: len(ws.Projects),
 				DevRunning:   dev.Running(ref.Slug()),
-			})
+			}
+			if wt, err := selectWorktree(ws, ref.Worktree); err == nil {
+				sm.Health = wt.Health.Summary()
+			}
+			summaries = append(summaries, sm)
 		}
 	}
 	return summaries, nil

@@ -23,6 +23,7 @@ func TestRenderWorktrees_SizeColumnAndTrashNotice(t *testing.T) {
 		{Ref: Ref{Workspace: "phone-speak", Worktree: "wrk10"}, Workspace: "phone-speak", Worktree: "wrk10"},
 	}
 	v.sizes["phone-speak/wrk1"] = 161 << 30
+	v.summaries[1].Health = "server died: api/api"
 
 	var b strings.Builder
 	v.renderWorktrees(&b)
@@ -34,6 +35,9 @@ func TestRenderWorktrees_SizeColumnAndTrashNotice(t *testing.T) {
 	}
 	if !strings.Contains(got, "  wrk10        ") || strings.Contains(got, "wrk10  161") {
 		t.Errorf("wrk10 row should show no size yet:\n%s", got)
+	}
+	if !strings.Contains(got, "! server died: api/api") {
+		t.Errorf("recorded failure should show on the row:\n%s", got)
 	}
 	if strings.Contains(got, "trash:") {
 		t.Errorf("no trash notice when the trash is empty:\n%s", got)

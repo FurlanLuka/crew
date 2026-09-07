@@ -35,7 +35,7 @@ workspace`, `crew project`, `crew config` (bare), `crew launch`, `crew dev tui`,
 
 ```
 crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>
-crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev]
+crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev][\t<recorded failure>]
 crew ls projects                                           <name>\t<path>
 crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<template>[\t<resolved value>]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
@@ -125,6 +125,8 @@ crew rm <workspace>                                                the whole wor
 crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]
 crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]
 crew setup <workspace>[/<worktree>] [--no-smoke]
+crew verify <workspace>[/<worktree>]                              <project>  ✓|✗ <server> [exited within seconds]
+crew fix <workspace>[/<worktree>]
 crew rm worktree <workspace>/<name>
 crew migrate [--dry-run]
 ```
@@ -137,6 +139,14 @@ crew migrate [--dry-run]
   installs per project, and a smoke start — servers up for a few seconds, which still run,
   last log lines for the dead ones. Read that output and relay it; a failed install keeps
   the worktree and `crew setup <ref>` re-runs it.
+- **Health.** A failed install or a server that dies within seconds of the smoke start is
+  **recorded on the worktree**: `crew ls worktrees` ends the row with `install failed` or
+  `server died: <project>/<server>`, and the worktree page shows the evidence. `crew verify
+  <ref>` re-runs just the smoke (exit 1 on a death) and clears it when everything survives;
+  `crew fix <ref>` opens Claude in the worktree with the failure, the log tail, and the env
+  anomalies in the prompt — the user runs it. A plain `dev start` never clears health.
+  `verify` refuses while the worktree's servers are running (it restarts them): `crew dev
+  stop <ref>` first.
 - `duplicate` is a new worktree of the same projects with the source's overrides copied;
   ports are never copied.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
@@ -177,7 +187,8 @@ crew start <workspace>[/<worktree>]                      print the orientation p
 crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the worktree page; bare, the workspace list
 ```
 
-- `claude` and `open` replace the crew process — the user runs them, not you. `claude` skips
+- `claude`, `fix` and `open` replace the crew process and refuse without a terminal — the
+  user runs them, not you. `claude` skips
   permissions and passes every project with `--add-dir`; a multi-project worktree, or one
   with a direct-mode project, gets the orientation prompt (`crew start` prints it) injected.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
@@ -234,6 +245,13 @@ crew help [<command>] [<subcommand>] [--json]
 1. `crew env <ws>/<wt> <project>` — what resolved, what was left alone.
 2. `crew ls bindings <project>` — is the edge declared? If not: `crew add binding <project> --scan`.
 3. `crew dev restart <ws>/<wt>` — read the `!` block.
+
+**"A server died when I created the worktree"**
+1. `crew ls worktrees <ws>` — the row says which: `server died: <project>/<server>`.
+2. `crew dev logs <ws>/<wt> <server>` for the full output; `crew env <ws>/<wt> <project>` for
+   what was left alone.
+3. Tell them: `crew fix <ws>/<wt>` — Claude opens with the evidence; or fix it yourself
+   (`.env`, `crew add override`) and `crew verify <ws>/<wt>`.
 
 **"Run the evals with the right URLs"** — `crew run <ws>/<wt> ai-tutor-api -- make eval`.
 

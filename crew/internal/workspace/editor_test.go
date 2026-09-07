@@ -91,7 +91,7 @@ func TestClaudeTaskFor_AgreesWithBuildClaudeParts(t *testing.T) {
 		res := newTestWorkspace(t, "ws", projects)
 
 		task := ClaudeTaskFor(res)
-		parts, workDir := buildClaudeParts(res)
+		parts, workDir := buildClaudeParts(res, NeedsPrompt(res))
 		cmd := strings.Join(parts, " ")
 
 		if task.LeadPath != workDir {

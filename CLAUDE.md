@@ -37,6 +37,14 @@ at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source u
   overrides. `crew import` applies each card as `y` is pressed; `--all` never guesses a
   path and never clones. An existing workspace is skip-only; a project can be replaced.
   `transfer` sits above `project` and `workspace`; only `main` imports it.
+- **Health** — `Worktree.Health {stage, at, issues}` is the last failure a check found:
+  a `SetupError` (stage install) or a server that died in the smoke (stage smoke, with
+  `evidenceTail` log lines). Absent = fine. Written by `RecordHealth` (own load/save, like
+  `SavePorts`) from `setupAll` and `Verify`; cleared only by a passing `Verify` or an
+  install stage that passes. Never by `dev start`. `crew fix` = `FixCommand`: the
+  orientation prompt plus `RenderFixPrompt`, always passed (`buildClaudeParts(res,
+  withPrompt)`), so a single-project worktree gets it too. Both smoke paths (CLI `runSmoke`,
+  TUI `smokeInto`) go through `Verify`, which refuses while servers run.
 - **Removal never deletes inline.** `cleanupWorktree` is the one teardown primitive: it
   renames the checkout into `~/.crew/trash` (`trash.Put`, which refuses anything outside
   `WorkspacesDir`), prunes git, and a detached `rm -rf` clears the trash — a full build in a

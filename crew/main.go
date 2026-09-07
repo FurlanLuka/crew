@@ -207,6 +207,14 @@ func main() {
 		cmdClaude()
 		return
 
+	case "verify":
+		cmdVerify()
+		return
+
+	case "fix":
+		cmdFix()
+		return
+
 	case "edit":
 		cmdEdit()
 		return
@@ -394,6 +402,7 @@ func cmdOpen() {
 		os.Exit(1)
 	}
 
+	requireTerminal("open")
 	res := mustResolve(os.Args[2])
 
 	shell := os.Getenv("SHELL")

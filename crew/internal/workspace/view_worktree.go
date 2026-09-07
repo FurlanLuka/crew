@@ -4,6 +4,7 @@ import (
 	"fmt"
 	osexec "os/exec"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -24,6 +25,7 @@ type worktreeLoadedMsg struct {
 type devStartedMsg struct{ status string }
 type devStoppedMsg struct{}
 type launchExecutedMsg struct{}
+type verifiedMsg struct{ results []SmokeResult }
 
 // claudeExecReadyMsg carries a Claude command to run directly in the current
 // terminal. Claude takes over the terminal until it exits — no tmux, no
@@ -49,6 +51,7 @@ type worktreePage struct {
 	NoProxy     bool // how the running session was started, if any
 	Items       []devItem
 	Anomalies   string // FormatResolutions anomalies + FormatConflicts, "" when clean
+	Health      *Health
 	LeadProject string
 	LeadBranch  string
 	HasEditor   bool
@@ -104,6 +107,8 @@ type WorktreeView struct {
 	// touchedProxy records that the user flipped p, so a reload does not
 	// snap the toggle back to the running session's mode.
 	touchedProxy bool
+	// confirmVerify: a verify restarts running servers, so it asks first.
+	confirmVerify bool
 }
 
 func NewWorktreeView(ref Ref) WorktreeView {
@@ -150,6 +155,15 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case launchExecutedMsg:
 		return v, tea.Quit
 
+	case verifiedMsg:
+		v.loading = false
+		if failed := SmokeFailures(msg.results); len(failed) > 0 {
+			v.err = fmt.Errorf("%d server(s) died — recorded; f opens Claude on it", len(failed))
+		} else {
+			v.statusMsg = "Checks out — health cleared"
+		}
+		return v, v.load()
+
 	case claudeExecReadyMsg:
 		return v, tea.ExecProcess(msg.cmd, func(err error) tea.Msg {
 			if err != nil {
@@ -184,6 +198,9 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if v.loading {
 		return v, nil
 	}
+	if v.confirmVerify {
+		return v.handleConfirmVerifyKey(msg)
+	}
 
 	switch {
 	case key.Matches(msg, app.Keys.Quit):
@@ -212,6 +229,22 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		v.statusMsg = ""
 		return v, nil
+	case msg.String() == "v":
+		if v.page.Session != "" {
+			v.confirmVerify = true
+			return v, nil
+		}
+		return v.act("Verifying — servers up, six seconds, stopped again…", v.runVerify())
+	case msg.String() == "f" && v.page.Health != nil:
+		return v, v.runFix()
+	}
+	return v, nil
+}
+
+func (v WorktreeView) handleConfirmVerifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	v.confirmVerify = false
+	if msg.String() == "y" || msg.String() == "Y" {
+		return v.act("Verifying — servers restarted, six seconds, stopped again…", v.runVerify())
 	}
 	return v, nil
 }
@@ -307,8 +340,16 @@ func (v WorktreeView) View() string {
 		b.WriteString("\n")
 	}
 
+	if v.confirmVerify {
+		b.WriteString("\n  " + app.Highlight.Render("Servers are running; verify restarts them. (y/n)") + "\n")
+		return b.String()
+	}
 	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter act  s start all  r restart  x stop  l logs  p proxy  esc back"))
+	help := "enter act  s start all  r restart  x stop  l logs  p proxy  v verify"
+	if v.page.Health != nil {
+		help += "  f fix"
+	}
+	b.WriteString(app.HelpStyle.Render(help + "  esc back"))
 	b.WriteString("\n")
 	return b.String()
 }
@@ -360,6 +401,7 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 			b.WriteString("  " + app.Highlight.Render(line) + "\n")
 		}
 	}
+	renderHealth(b, page.Health)
 
 	b.WriteString("\n  Launch\n")
 	if page.HasEditor {
@@ -388,6 +430,53 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	b.WriteString("  " + app.RowPrefix(sel))
 	b.WriteString(app.RowName("Shell here", sel))
 	b.WriteString("\n")
+}
+
+// renderHealth is the recorded failure with its evidence and the two keys
+// out of it. Evidence is cut to a few lines here; f hands Claude all of it.
+func renderHealth(b *strings.Builder, h *Health) {
+	if h == nil {
+		return
+	}
+	b.WriteString("\n  " + app.Error.Render("! "+h.Summary()) + app.Subtle.Render(" · "+ago(h.At)) + "\n")
+	width := 0
+	names := make([]string, len(h.Issues))
+	for i, issue := range h.Issues {
+		names[i] = issue.Project
+		if issue.Server != "" {
+			names[i] += "/" + issue.Server
+		}
+		width = max(width, len(names[i]))
+	}
+	for i, issue := range h.Issues {
+		lines := strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n")
+		if len(lines) > 3 {
+			lines = lines[len(lines)-3:]
+		}
+		for j, line := range lines {
+			label := strings.Repeat(" ", width)
+			if j == 0 {
+				label = fmt.Sprintf("%-*s", width, names[i])
+			}
+			b.WriteString("    " + label + "   " + app.Subtle.Render(line) + "\n")
+		}
+	}
+	b.WriteString("\n    " + app.Highlight.Render("f fix with Claude   v verify") + "\n")
+}
+
+// ago is "2 minutes ago" for a timestamp; nothing older than days needs finer.
+func ago(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+	}
 }
 
 func leadHint(page worktreePage) string {
@@ -449,6 +538,7 @@ func loadWorktreePage(res *Resolved) worktreePage {
 		Dir:       res.Dir,
 		Items:     items,
 		Anomalies: strings.TrimLeft(anomalies, "\n"),
+		Health:    res.Health,
 		HasEditor: exec.DetectEditor() != "",
 		HasSSH:    settings.SSHHost != "",
 	}
@@ -510,6 +600,40 @@ func (v WorktreeView) launch(withEditor bool) tea.Cmd {
 			return launchWithEditor(res, editor)
 		}
 		return launchClaude(res)
+	}
+}
+
+func (v WorktreeView) runVerify() tea.Cmd {
+	ref := v.ref
+	return func() tea.Msg {
+		res, err := Resolve(ref)
+		if err != nil {
+			return errMsg{err}
+		}
+		// The page asked already; a session still up here is stopped by the
+		// smoke start itself.
+		dev.StopAll(res.Slug)
+		results, err := Verify(res)
+		if err != nil {
+			return errMsg{err}
+		}
+		return verifiedMsg{results}
+	}
+}
+
+// runFix is crew fix from the page: Claude with the recorded failure.
+func (v WorktreeView) runFix() tea.Cmd {
+	ref := v.ref
+	return func() tea.Msg {
+		res, err := Resolve(ref)
+		if err != nil {
+			return errMsg{err}
+		}
+		cmd, err := FixCommand(res, FixAnomalies(res))
+		if err != nil {
+			return errMsg{err}
+		}
+		return claudeExecReadyMsg{cmd: cmd}
 	}
 }
 

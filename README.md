@@ -29,6 +29,7 @@ launch`) sit on top of them. List commands print tab-separated rows; `--json` wo
 |---|---|
 | `crew add workspace <name> [<project> --role=r [--direct]]` · `rm workspace <ws> <project>` · `rm <ws>` | Membership |
 | `crew add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke]` · `duplicate` · `setup` | A working copy: base-branch table, checkouts, `.env`, installs, smoke start |
+| `crew verify <ws>/<wt>` · `crew fix <ws>/<wt>` | A failed install or a server that dies on start is recorded on the worktree; `verify` re-checks, `fix` opens Claude with the evidence |
 | `crew rm worktree <ws>/<name>` | Returns at once; the checkout is cleared in the background (`crew trash`) |
 | `crew migrate [--dry-run]` | Move pre-2.0 workspaces to the nested layout |
 
@@ -131,6 +132,16 @@ Enter a worktree (`crew launch phone-speak/wrk1`, or from `crew workspace`) for 
 servers with status and URLs, **Editor + Claude** (Cursor/VS Code with the orientation prompt
 and Claude wired up), **Claude in terminal** (`--add-dir` per project, permissions skipped), and
 open actions.
+
+### Health
+
+Creating a worktree ends with a smoke start: servers up, six seconds, which survived. A
+server that dies — usually a missing var in the fresh `.env` — is recorded on the worktree:
+`crew ls worktrees` says `server died: <project>/<server>`, the worktree page shows the log
+tail with `f fix with Claude` and `v verify`. `crew fix` opens Claude in the worktree with
+the failure, the log tail and the env anomalies in the prompt; `crew verify` re-runs the
+check and clears it when everything survives. Only a check clears it — a plain `dev start`
+never does.
 
 ### Removal and disk
 

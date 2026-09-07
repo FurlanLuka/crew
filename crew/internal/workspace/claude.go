@@ -23,7 +23,10 @@ import (
 // The prompt is passed via $(cat ...) so the shell reads the file rather than
 // inlining multi-line content (which would break tmux keystroke sends on
 // newlines and hit terminal input buffer limits).
-func buildClaudeParts(res *Resolved) ([]string, string) {
+// buildClaudeParts assembles the claude invocation. withPrompt is decided by
+// the caller: the orientation prompt is for multi-project and direct-mode
+// worktrees, the fix prompt is always passed.
+func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 	multiProject := res.MultiProject()
 
 	parts := []string{"IS_SANDBOX=1"}
@@ -44,7 +47,7 @@ func buildClaudeParts(res *Resolved) ([]string, string) {
 		}
 	}
 
-	if NeedsPrompt(res) {
+	if withPrompt {
 		parts = append(parts, "--", "\"$(cat "+crewExec.ShellQuote(PromptFilePath(res.Ref))+")\"")
 	}
 
@@ -56,20 +59,28 @@ func buildClaudeParts(res *Resolved) ([]string, string) {
 // Claude takes over the terminal, and control returns when Claude exits.
 // Nothing is tracked — there's no session to reattach to.
 func ClaudeCommand(res *Resolved) (*exec.Cmd, error) {
+	if NeedsPrompt(res) {
+		return claudeCommand(res, func() (string, error) { return GeneratePrompt(res) })
+	}
+	return claudeCommand(res, nil)
+}
+
+// claudeCommand runs claude in the worktree; writePrompt, when given, puts
+// the prompt file in place first and the command passes it.
+func claudeCommand(res *Resolved, writePrompt func() (string, error)) (*exec.Cmd, error) {
 	if !crewExec.HasClaude() {
 		return nil, fmt.Errorf("claude not found — install Claude Code first")
 	}
-
 	if len(res.Projects) == 0 {
 		return nil, fmt.Errorf("workspace '%s' has no projects", res.Ref)
 	}
-	if NeedsPrompt(res) {
-		if _, err := GeneratePrompt(res); err != nil {
+	if writePrompt != nil {
+		if _, err := writePrompt(); err != nil {
 			return nil, err
 		}
 	}
 
-	parts, workDir := buildClaudeParts(res)
+	parts, workDir := buildClaudeParts(res, writePrompt != nil)
 
 	cmdStr := strings.Join(parts, " ")
 	debug.Log("claude", "direct run in %s → %s", workDir, cmdStr)

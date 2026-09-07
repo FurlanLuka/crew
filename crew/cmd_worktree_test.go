@@ -52,9 +52,12 @@ func TestWorktreeRow(t *testing.T) {
 		{"size", 161 << 30, true, false, "ws/wt\t/p\t161 GB\t"},
 		{"size and running", 226 << 20, true, true, "ws/wt\t/p\t226 MB\tdev"},
 	}
+	if got := worktreeRow("ws/wt", "/p", 0, false, false, "server died: api/api"); got != "ws/wt\t/p\t\tserver died: api/api" {
+		t.Errorf("health column: %q", got)
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := worktreeRow("ws/wt", "/p", tt.size, tt.withSize, tt.running); got != tt.want {
+			if got := worktreeRow("ws/wt", "/p", tt.size, tt.withSize, tt.running, ""); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})

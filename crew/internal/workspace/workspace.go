@@ -49,6 +49,9 @@ type Worktree struct {
 	// Ports remembers the port each dev server was bound to, keyed
 	// "project/server", so a worktree keeps its ports across restarts.
 	Ports map[string]int `json:"ports,omitempty"`
+	// Health is the last failure a check found — absent when the last check
+	// passed. Only an explicit verify or setup clears it.
+	Health *Health `json:"health,omitempty"`
 }
 
 type Workspace struct {
@@ -56,6 +59,9 @@ type Workspace struct {
 	Projects  []WorkspaceProject `json:"projects"`
 	Worktrees []Worktree         `json:"worktrees,omitempty"`
 }
+
+// WorktreeOf is selectWorktree for callers that already hold the workspace.
+func WorktreeOf(ws *Workspace, ref Ref) (Worktree, error) { return selectWorktree(ws, ref.Worktree) }
 
 // selectWorktree picks the named worktree, or the only one when unnamed.
 //

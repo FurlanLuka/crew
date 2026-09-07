@@ -97,10 +97,20 @@ func setupProject(ref Ref, p project.Project, opts CheckoutOptions) error {
 		}
 	}
 	if err := exec.RunSetup(wtDir, exec.SetupSteps(wtDir, p.Setup), report); err != nil {
-		return fmt.Errorf("%s: %w", p.Name, err)
+		return &ProjectSetupError{Project: p.Name, Err: err}
 	}
 	return nil
 }
+
+// ProjectSetupError names the project whose install failed, so the failure
+// can be recorded against it.
+type ProjectSetupError struct {
+	Project string
+	Err     error
+}
+
+func (e *ProjectSetupError) Error() string { return e.Project + ": " + e.Err.Error() }
+func (e *ProjectSetupError) Unwrap() error { return e.Err }
 
 // SetupError is one or more projects whose install failed. The worktree
 // itself exists and is recorded; Setup re-runs the installs.
@@ -142,7 +152,14 @@ func setupAll(ref Ref, ws *Workspace, opts CheckoutOptions) error {
 		}
 	}
 	if len(failed) > 0 {
-		return &SetupError{Ref: ref, Errors: failed}
+		serr := &SetupError{Ref: ref, Errors: failed}
+		RecordHealth(ref, HealthFromSetup(serr))
+		return serr
+	}
+	// Installs passed: an install failure on record is over. A smoke that
+	// follows writes its own verdict.
+	if wt, err := selectWorktree(ws, ref.Worktree); err == nil && wt.Health != nil && wt.Health.Stage == StageInstall {
+		ClearHealth(ref)
 	}
 	return nil
 }
