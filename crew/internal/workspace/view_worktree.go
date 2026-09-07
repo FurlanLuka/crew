@@ -450,7 +450,9 @@ func renderHealth(b *strings.Builder, h *Health) {
 	}
 	for i, issue := range h.Issues {
 		lines := strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n")
+		hidden := 0
 		if len(lines) > 3 {
+			hidden = len(lines) - 3
 			lines = lines[len(lines)-3:]
 		}
 		for j, line := range lines {
@@ -459,6 +461,9 @@ func renderHealth(b *strings.Builder, h *Health) {
 				label = fmt.Sprintf("%-*s", width, names[i])
 			}
 			b.WriteString("    " + label + "   " + app.Subtle.Render(line) + "\n")
+		}
+		if hidden > 0 {
+			b.WriteString("    " + strings.Repeat(" ", width) + "   " + app.Subtle.Render(fmt.Sprintf("… %d more lines — f hands Claude all of it", hidden)) + "\n")
 		}
 	}
 	b.WriteString("\n    " + app.Highlight.Render("f fix with Claude   v verify") + "\n")

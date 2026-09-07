@@ -204,15 +204,7 @@ func cmdVerify() {
 		fmt.Printf("%s has no dev servers to check\n", res.Ref)
 		return
 	}
-	results, err := workspace.Verify(res)
-	if errors.Is(err, workspace.ErrServersRunning) {
-		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
-		os.Exit(1)
-	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	results, _ := verifyOrExit(res)
 	if jsonOutput {
 		printJSON(results)
 	} else {
@@ -226,6 +218,41 @@ func cmdVerify() {
 	}
 }
 
+// fixAction is what crew fix does first, decided from what is known.
+type fixAction int
+
+const (
+	fixNothingToCheck fixAction = iota // nothing recorded, no servers: say so
+	fixVerifyFirst                     // nothing recorded: verify, then decide
+	fixNow                             // a failure is recorded: straight to Claude
+)
+
+func fixPlan(health *workspace.Health, hasServers bool) fixAction {
+	switch {
+	case health != nil:
+		return fixNow
+	case hasServers:
+		return fixVerifyFirst
+	default:
+		return fixNothingToCheck
+	}
+}
+
+// verifyOrExit runs the verify and turns its refusals into the exit every
+// caller wants; the running-servers case names the way out.
+func verifyOrExit(res *workspace.Resolved) ([]workspace.SmokeResult, error) {
+	results, err := workspace.Verify(res)
+	if errors.Is(err, workspace.ErrServersRunning) {
+		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	return results, nil
+}
+
 // cmdFix opens Claude on the worktree with the recorded failure in front of
 // it. Nothing recorded → verify first, so it is one command either way.
 func cmdFix() {
@@ -235,21 +262,13 @@ func cmdFix() {
 	}
 	requireTerminal("fix")
 	res := mustResolve(os.Args[2])
-	if res.Health == nil {
-		if !hasServers(res) {
-			fmt.Printf("nothing recorded on %s, and no dev servers to check\n", res.Ref)
-			return
-		}
+	switch fixPlan(res.Health, hasServers(res)) {
+	case fixNothingToCheck:
+		fmt.Printf("nothing recorded on %s, and no dev servers to check\n", res.Ref)
+		return
+	case fixVerifyFirst:
 		fmt.Printf("Nothing recorded on %s — checking…\n\n", res.Ref)
-		results, err := workspace.Verify(res)
-		if errors.Is(err, workspace.ErrServersRunning) {
-			fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
-			os.Exit(1)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		results, _ := verifyOrExit(res)
 		printSmoke(res, results)
 		if res.Health == nil {
 			fmt.Printf("\nnothing recorded — %s checks out\n", res.Ref)

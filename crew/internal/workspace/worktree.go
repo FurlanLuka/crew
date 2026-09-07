@@ -153,13 +153,21 @@ func setupAll(ref Ref, ws *Workspace, opts CheckoutOptions) error {
 	}
 	if len(failed) > 0 {
 		serr := &SetupError{Ref: ref, Errors: failed}
-		RecordHealth(ref, HealthFromSetup(serr))
+		if err := RecordHealth(ref, HealthFromSetup(serr)); err != nil {
+			debug.Log("setup", "record health for %s: %v", ref, err)
+		}
 		return serr
 	}
 	// Installs passed: an install failure on record is over. A smoke that
-	// follows writes its own verdict.
-	if wt, err := selectWorktree(ws, ref.Worktree); err == nil && wt.Health != nil && wt.Health.Stage == StageInstall {
-		ClearHealth(ref)
+	// follows writes its own verdict. Read the file as it is now — the ws
+	// held through the installs is minutes old and a verify may have written
+	// since.
+	if fresh, err := Load(ref.Workspace); err == nil {
+		if wt, err := selectWorktree(fresh, ref.Worktree); err == nil && wt.Health != nil && wt.Health.Stage == StageInstall {
+			if err := ClearHealth(ref); err != nil {
+				debug.Log("setup", "clear health for %s: %v", ref, err)
+			}
+		}
 	}
 	return nil
 }

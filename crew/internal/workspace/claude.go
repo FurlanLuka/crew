@@ -11,21 +11,10 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
-// buildClaudeParts builds the shell-command tokens (env assignments inlined,
-// followed by `claude` and its flags) plus the directory Claude should start in.
-// It assumes res has at least one project, and that the prompt file already
-// exists when NeedsPrompt(res); ClaudeCommand guarantees both.
-//
-// A multi-project worktree runs one flat Claude instance at the worktree root
-// with every project exposed via --add-dir; a single-project worktree starts
-// directly in that project and needs no orientation prompt.
-//
-// The prompt is passed via $(cat ...) so the shell reads the file rather than
-// inlining multi-line content (which would break tmux keystroke sends on
-// newlines and hit terminal input buffer limits).
 // buildClaudeParts assembles the claude invocation. withPrompt is decided by
-// the caller: the orientation prompt is for multi-project and direct-mode
-// worktrees, the fix prompt is always passed.
+// the caller, which has written PromptFilePath(res.Ref) first: the
+// orientation prompt for multi-project and direct-mode worktrees, the fix
+// prompt always.
 func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 	multiProject := res.MultiProject()
 

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
@@ -38,6 +40,10 @@ func TestHealthFromSetupAndSmoke(t *testing.T) {
 	}
 	if h.Summary() != "server died: web/web" {
 		t.Errorf("Summary = %q", h.Summary())
+	}
+	two := HealthFromSmoke([]SmokeResult{{Project: "a", Server: "a"}, {Project: "b", Server: "b"}})
+	if two.Summary() != "2 servers died" {
+		t.Errorf("Summary for two = %q", two.Summary())
 	}
 	var none *Health
 	if none.Summary() != "" {
@@ -256,5 +262,50 @@ func TestWorktreeListShowsHealth(t *testing.T) {
 	summaries, _ := ListSummaries()
 	if len(summaries) != 1 || summaries[0].Health != "server died: api/api" {
 		t.Errorf("summaries = %+v", summaries)
+	}
+}
+
+// A passing install settles an install failure and nothing else: a recorded
+// smoke death is the smoke's to clear.
+func TestSetupPassLeavesSmokeHealthAlone(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	RecordHealth(ref, &Health{Stage: StageSmoke, At: time.Now(), Issues: []Issue{{Project: "api", Server: "api", Detail: "died"}}})
+	project.SetSetup("api", "true")
+	if err := Setup(ref, CheckoutOptions{Install: true}); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := Resolve(ref)
+	if res.Health == nil || res.Health.Stage != StageSmoke {
+		t.Errorf("smoke health should survive a passing install, got %+v", res.Health)
+	}
+}
+
+// The TUI's create flow smokes through the same path, so what it finds is
+// recorded too.
+func TestSmokeInto_RecordsHealth(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	newRepoWorkspace(t, "ws", "api")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sh -c 'echo Error: DB_URL is not set; exit 1'"})
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	t.Cleanup(func() { dev.StopAll("ws--main") })
+
+	ch := make(chan tea.Msg, 64)
+	go func() { smokeInto(ch, ref); close(ch) }()
+	var lines []string
+	for msg := range ch {
+		if p, ok := msg.(setupProgressMsg); ok {
+			lines = append(lines, p.line)
+		}
+	}
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "exited within seconds") || !strings.Contains(joined, "recorded") {
+		t.Errorf("progress lines:\n%s", joined)
+	}
+	res, _ := Resolve(ref)
+	if res.Health == nil || res.Health.Stage != StageSmoke {
+		t.Errorf("smokeInto should record the death, got %+v", res.Health)
 	}
 }

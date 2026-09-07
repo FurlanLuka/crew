@@ -17,10 +17,20 @@ import (
 // program. Without one — a script, an agent's shell — claude would run
 // headless with permissions skipped, which is not what anybody asked for.
 func requireTerminal(what string) {
-	if !term.IsTerminal(os.Stdin.Fd()) {
-		fmt.Fprintf(os.Stderr, "Error: crew %s needs a terminal — run it yourself, not from a script or an agent\n", what)
+	if msg, ok := terminalCheck(isTerminal(), what); !ok {
+		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(1)
 	}
+}
+
+// isTerminal is a variable so tests can stand in for the real stdin.
+var isTerminal = func() bool { return term.IsTerminal(os.Stdin.Fd()) }
+
+func terminalCheck(tty bool, what string) (string, bool) {
+	if tty {
+		return "", true
+	}
+	return fmt.Sprintf("Error: crew %s needs a terminal — run it yourself, not from a script or an agent", what), false
 }
 
 func cmdLaunch() {
