@@ -261,6 +261,7 @@ func finishCheck(ref Ref, issues []Issue, opts CheckoutOptions) (VerifyResult, e
 		if len(res.DevProjects()) > 0 {
 			results, err = SmokeStart(res)
 			if err != nil {
+				// Not a server dying: nothing came up at all. No Server names it.
 				issues = append(issues, Issue{Stage: StageSmoke, Project: ref.String(), Detail: "could not start: " + err.Error()})
 			}
 			reportSmoke(results, opts.Progress)
@@ -269,7 +270,9 @@ func finishCheck(ref Ref, issues []Issue, opts CheckoutOptions) (VerifyResult, e
 	}
 	h := healthOf(issues)
 	if err := RecordHealth(ref, h); err != nil {
-		debug.Log("setup", "record health for %s: %v", ref, err)
+		// Health is read straight back from disk by the list and the page;
+		// a verdict that did not land is not a verdict.
+		return VerifyResult{Smoke: results, Health: h}, fmt.Errorf("record health for %s: %w", ref, err)
 	}
 	return VerifyResult{Smoke: results, Health: h}, nil
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
@@ -264,10 +265,17 @@ func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 func TestAddWorktree_InstallFailureKeepsWorktree(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 	project.SetSetup("api", "exit 7")
+	smoke := exec.HasTmux()
+	if smoke {
+		// The smoke still runs after a failed install: whatever is up is worth knowing.
+		project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+		t.Cleanup(func() { dev.StopAll("ws--wrk2") })
+	}
 
 	var reported []string
 	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{
 		Install: true,
+		Smoke:   smoke,
 		Progress: func(proj string, r exec.SetupResult) {
 			reported = append(reported, proj+":"+r.Step.Name)
 		},
@@ -278,8 +286,12 @@ func TestAddWorktree_InstallFailureKeepsWorktree(t *testing.T) {
 	if h == nil || h.Summary() != "install failed: api" {
 		t.Errorf("Health = %+v", h)
 	}
-	if strings.Join(reported, ",") != "api:checkout,api:exit 7" {
-		t.Errorf("reported %v", reported)
+	want := "api:checkout,api:exit 7"
+	if smoke {
+		want += ",api:smoke api"
+	}
+	if strings.Join(reported, ",") != want {
+		t.Errorf("reported %v, want %s", reported, want)
 	}
 	if _, err := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"}); err != nil {
 		t.Errorf("worktree should exist and resolve after an install failure: %v", err)

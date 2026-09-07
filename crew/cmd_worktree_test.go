@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 	"strings"
 	"testing"
 )
@@ -61,5 +62,41 @@ func TestWorktreeRow(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHealthWarningLineAndCreationSummary(t *testing.T) {
+	ref := workspace.Ref{Workspace: "ws", Worktree: "wt"}
+	res := &workspace.Resolved{Ref: ref, Projects: []workspace.ResolvedProject{{Name: "api", Path: "/w/api"}}}
+	if got := healthWarningLine(res); got != "" {
+		t.Errorf("no health: %q", got)
+	}
+	res.Health = &workspace.Health{Issues: []workspace.Issue{{Stage: workspace.StageInstall, Project: "api", Detail: "a\nb\nc\nd\ne\nf"}}}
+	if got := healthWarningLine(res); got != "! ws/wt: install failed: api — crew fix ws/wt / crew verify ws/wt\n" {
+		t.Errorf("warning = %q", got)
+	}
+
+	text, failed := renderCreationSummary(res, "Created ws/wt", res.Health)
+	want := strings.Join([]string{
+		"",
+		"Created ws/wt — install failed: api",
+		"",
+		"  api\t/w/api",
+		"",
+		"  ! install   api",
+		"      c",
+		"      d",
+		"      e",
+		"      f",
+		"    crew fix ws/wt     Claude in the worktree with this failure",
+		"    crew verify ws/wt  finish what is missing and check again",
+		"",
+	}, "\n")
+	if !failed || text != want {
+		t.Errorf("failed=%v summary =\n%s\nwant\n%s", failed, text, want)
+	}
+	text, failed = renderCreationSummary(res, "Created ws/wt", nil)
+	if failed || !strings.Contains(text, "crew launch ws/wt") || strings.Contains(text, "!") {
+		t.Errorf("clean summary =\n%s", text)
 	}
 }

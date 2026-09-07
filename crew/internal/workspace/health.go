@@ -81,6 +81,9 @@ func (i Issue) Summary() string {
 	case StageInstall:
 		return "install failed: " + i.Project
 	case StageSmoke:
+		if i.Server == "" {
+			return "servers could not start"
+		}
 		return "server died: " + i.Project + "/" + i.Server
 	}
 	return i.Stage + " failed: " + i.Project
@@ -94,9 +97,9 @@ func (i Issue) Name() string {
 	return i.Project
 }
 
-// missingCheckouts names the projects whose checkout is recorded as failed
+// failedCheckouts names the projects whose checkout is recorded as failed
 // — the directories that are not there.
-func (r *Resolved) missingCheckouts() map[string]bool {
+func (r *Resolved) failedCheckouts() map[string]bool {
 	out := map[string]bool{}
 	if r.Health == nil {
 		return out
@@ -188,12 +191,7 @@ func Verify(res *Resolved, opts CheckoutOptions) (VerifyResult, error) {
 		return VerifyResult{}, err
 	}
 
-	var missing []string
-	for _, wp := range ws.Projects {
-		if !IsDirect(wp) && !dirExists(WorktreePath(res.Ref, wp.Name)) {
-			missing = append(missing, wp.Name)
-		}
-	}
+	missing := missingCheckouts(res.Ref, ws)
 	made, issues := checkoutProjects(res.Ref, ws, missing, opts.Progress)
 
 	toInstall := res.Health.installIssues()
@@ -206,8 +204,11 @@ func Verify(res *Resolved, opts CheckoutOptions) (VerifyResult, error) {
 
 	opts.Smoke = true
 	result, err := finishCheck(res.Ref, issues, opts)
+	if err != nil {
+		return result, err
+	}
 	res.Health = result.Health
-	return result, err
+	return result, nil
 }
 
 // RenderFixPrompt is what crew fix opens Claude with: the orientation prompt,
@@ -219,7 +220,7 @@ func RenderFixPrompt(res *Resolved, h *Health, anomalies string) string {
 	b.WriteString("\n## What failed\n\n")
 	b.WriteString("Creating this worktree ran every step it could; these did not go through:\n\n")
 	for _, issue := range h.Issues {
-		fmt.Fprintf(&b, "%s — %s:\n", issue.Name(), stageWords(issue.Stage))
+		fmt.Fprintf(&b, "%s — %s:\n", issue.Name(), stageWords(issue))
 		for _, line := range strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n") {
 			b.WriteString("    " + line + "\n")
 		}
@@ -237,16 +238,19 @@ func RenderFixPrompt(res *Resolved, h *Health, anomalies string) string {
 	return b.String()
 }
 
-func stageWords(stage string) string {
-	switch stage {
+func stageWords(i Issue) string {
+	switch i.Stage {
 	case StageCheckout:
 		return "the git checkout failed"
 	case StageInstall:
 		return "the install failed"
 	case StageSmoke:
+		if i.Server == "" {
+			return "the servers could not be started"
+		}
 		return "the server died within seconds of starting"
 	}
-	return stage + " failed"
+	return i.Stage + " failed"
 }
 
 // FixAnomalies is what the fix prompt says about bindings: resolved against

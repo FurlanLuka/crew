@@ -394,3 +394,46 @@ func TestAddWorktree_SmokeDeathIsRecorded(t *testing.T) {
 		t.Error("recorded on the worktree")
 	}
 }
+
+// A duplicate carries the source's overrides and the creation's verdict.
+func TestDuplicateWorktree_CarriesHealth(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	src := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	SetOverride(src, "K", "v")
+	project.SetSetup("api", "exit 5")
+
+	h, err := DuplicateWorktree(src, "wrk2", CheckoutOptions{Install: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h == nil || h.Summary() != "install failed: api" {
+		t.Errorf("Health = %+v", h)
+	}
+	res, _ := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"})
+	if res.Overrides["K"] != "v" || res.Health == nil {
+		t.Errorf("overrides=%v health=%+v", res.Overrides, res.Health)
+	}
+}
+
+func TestSetup_RefusesWhileServersRun(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	newRepoWorkspace(t, "ws", "api")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	t.Cleanup(func() { dev.StopAll("ws--main") })
+	res, _ := Resolve(ref)
+	if _, err := StartDev(res, true, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Setup(ref, CheckoutOptions{Install: true, Smoke: true}); !errors.Is(err, ErrServersRunning) {
+		t.Errorf("Setup with smoke while running = %v", err)
+	}
+	if !dev.Running(res.Slug) {
+		t.Error("the refused setup must leave the session alone")
+	}
+	if _, err := Setup(ref, CheckoutOptions{Install: true}); err != nil {
+		t.Errorf("Setup without smoke should proceed: %v", err)
+	}
+}

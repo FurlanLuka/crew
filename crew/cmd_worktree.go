@@ -92,17 +92,27 @@ func landOn(ref workspace.Ref, created string, h *workspace.Health) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("\n%s%s\n\n", created, healthSuffix(h))
-	for _, p := range res.Projects {
-		fmt.Printf("  %s\t%s\n", p.Name, p.Path)
-	}
-	if h != nil {
-		fmt.Println()
-		printIssues(h)
-		printFixHint(ref)
+	text, failed := renderCreationSummary(res, created, h)
+	fmt.Print(text)
+	if failed {
 		os.Exit(1)
 	}
-	fmt.Printf("\ncrew launch %s\n", ref)
+}
+
+// renderCreationSummary is the non-terminal ending: what was made, every
+// issue, and the way out — or the launch line when nothing is recorded.
+func renderCreationSummary(res *workspace.Resolved, created string, h *workspace.Health) (string, bool) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n%s%s\n\n", created, healthSuffix(h))
+	for _, p := range res.Projects {
+		fmt.Fprintf(&b, "  %s\t%s\n", p.Name, p.Path)
+	}
+	if h != nil {
+		b.WriteString("\n" + renderIssues(h) + fixHint(res.Ref))
+		return b.String(), true
+	}
+	fmt.Fprintf(&b, "\ncrew launch %s\n", res.Ref)
+	return b.String(), false
 }
 
 func healthSuffix(h *workspace.Health) string {
@@ -112,19 +122,25 @@ func healthSuffix(h *workspace.Health) string {
 	return " — " + h.Summary()
 }
 
-func printIssues(h *workspace.Health) {
+func printIssues(h *workspace.Health) { fmt.Print(renderIssues(h)) }
+
+// renderIssues is each issue with its stage and the last few lines of
+// evidence, the way the terminal shows it.
+func renderIssues(h *workspace.Health) string {
+	var b strings.Builder
 	for _, issue := range h.Issues {
-		fmt.Printf("  ! %-9s %s\n", issue.Stage, issue.Name())
+		fmt.Fprintf(&b, "  ! %-9s %s\n", issue.Stage, issue.Name())
 		lines := strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n")
 		if len(lines) > 4 {
 			lines = lines[len(lines)-4:]
 		}
 		for _, line := range lines {
 			if line != "" {
-				fmt.Printf("      %s\n", line)
+				fmt.Fprintf(&b, "      %s\n", line)
 			}
 		}
 	}
+	return b.String()
 }
 
 func cmdSetup() {
@@ -198,18 +214,21 @@ func printSmokeTails(results []workspace.SmokeResult) {
 
 // printFixHint is the way out of a recorded failure, printed wherever one
 // is reported.
-func printFixHint(ref workspace.Ref) {
-	fmt.Printf("    crew fix %s     Claude in the worktree with this failure\n", ref)
-	fmt.Printf("    crew verify %s  finish what is missing and check again\n", ref)
+func printFixHint(ref workspace.Ref) { fmt.Print(fixHint(ref)) }
+
+func fixHint(ref workspace.Ref) string {
+	return fmt.Sprintf("    crew fix %s     Claude in the worktree with this failure\n    crew verify %s  finish what is missing and check again\n", ref, ref)
 }
 
 // printHealthWarning is the CLI's version of the locked page: say what is
 // recorded and how to clear it, then carry on — warn, never block.
-func printHealthWarning(res *workspace.Resolved) {
+func printHealthWarning(res *workspace.Resolved) { fmt.Fprint(os.Stderr, healthWarningLine(res)) }
+
+func healthWarningLine(res *workspace.Resolved) string {
 	if res.Health == nil {
-		return
+		return ""
 	}
-	fmt.Fprintf(os.Stderr, "! %s: %s — crew fix %s / crew verify %s\n", res.Ref, res.Health.Summary(), res.Ref, res.Ref)
+	return fmt.Sprintf("! %s: %s — crew fix %s / crew verify %s\n", res.Ref, res.Health.Summary(), res.Ref, res.Ref)
 }
 
 // verifyOrExit runs the verify and turns its refusals into the exit every

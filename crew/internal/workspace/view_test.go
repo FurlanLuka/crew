@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
@@ -137,4 +138,43 @@ func TestLoadMissingSizes_OnlyWalksUnknownWorktrees(t *testing.T) {
 	if v.sizesLoading() || v.loadMissingSizes() != nil {
 		t.Error("nothing to walk once every worktree has a size")
 	}
+}
+
+// Creation ends on the worktree page: the list resets itself for when esc
+// comes back, and pushes the page with what just happened as its status.
+func TestWorktreeAdded_PushesThePage(t *testing.T) {
+	setupTestConfig(t)
+	v := NewView()
+	v.state = stateAddingWorktree
+	v.sizes["ws/wt"] = 5
+	ref := Ref{Workspace: "ws", Worktree: "wt"}
+
+	m, cmd := v.Update(worktreeAddedMsg{ref: ref, health: &Health{Issues: []Issue{{Stage: StageSmoke, Project: "a", Server: "a"}}}})
+	v = m.(View)
+	if v.state != stateWorktrees || v.statusMsg != "" {
+		t.Errorf("list should be reset: state=%v status=%q", v.state, v.statusMsg)
+	}
+	if _, ok := v.sizes["ws/wt"]; ok {
+		t.Error("the new worktree's size should be invalidated")
+	}
+	var page WorktreeView
+	found := false
+	for _, msg := range runBatch(t, cmd) {
+		if p, ok := msg.(app.PushPageMsg); ok {
+			page, found = p.Page.(WorktreeView)
+		}
+	}
+	if !found || page.ref != ref || page.statusMsg != "Created ws/wt — server died: a/a" {
+		t.Errorf("pushed page: found=%v ref=%v status=%q", found, page.ref, page.statusMsg)
+	}
+
+	m, cmd = v.Update(worktreeAddedMsg{ref: ref, duplicatedFrom: "ws/main"})
+	for _, msg := range runBatch(t, cmd) {
+		if p, ok := msg.(app.PushPageMsg); ok {
+			if got := p.Page.(WorktreeView).statusMsg; got != "Duplicated ws/main → ws/wt" {
+				t.Errorf("duplicate status = %q", got)
+			}
+		}
+	}
+	_ = m
 }

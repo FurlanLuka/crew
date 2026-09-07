@@ -206,12 +206,15 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
-// locked: something is recorded on the worktree, so the keys that would
+// locked: something is recorded on the worktree, so the rows that would
 // start servers or launch on it wait for a verify. Reading logs, opening a
 // shell and fixing stay live — that is how it gets unlocked.
 func (v WorktreeView) locked() bool { return v.page.Health != nil }
 
 const lockedMsg = "locked — f fix with Claude, v verify"
+
+// gatedWhileLocked is which rows a locked page refuses to act on.
+func gatedWhileLocked(kind rowKind) bool { return kind != rowOpenShell && kind != rowServer }
 
 func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if v.loading {
@@ -220,19 +223,9 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if v.confirmVerify {
 		return v.handleConfirmVerifyKey(msg)
 	}
-	if v.locked() {
-		switch msg.String() {
-		case "s", "r", "x":
-			v.statusMsg, v.err = lockedMsg, nil
-			return v, nil
-		case "enter":
-			if len(v.rows) > 0 && v.rows[v.cursor].Kind != rowServer && v.rows[v.cursor].Kind != rowOpenShell {
-				v.statusMsg, v.err = lockedMsg, nil
-				return v, nil
-			}
-		case "o":
-			return v.activateRow(rowOpenShell)
-		}
+	if v.locked() && v.refusedWhileLocked(msg) {
+		v.statusMsg, v.err = lockedMsg, nil
+		return v, nil
 	}
 
 	switch {
@@ -248,6 +241,8 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, nil
 	case msg.String() == "enter":
 		return v.activate()
+	case msg.String() == "o":
+		return v.activateRow(rowOpenShell)
 	case msg.String() == "l":
 		return v.openLogs()
 	case msg.String() == "s":
@@ -280,6 +275,17 @@ func (v WorktreeView) handleConfirmVerifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return v.act("verifying — servers restarted, six seconds, stopped again…", v.runVerify())
 	}
 	return v, nil
+}
+
+// refusedWhileLocked: the start/stop keys, and enter on a gated row.
+func (v WorktreeView) refusedWhileLocked(msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "s", "r", "x":
+		return true
+	case "enter":
+		return len(v.rows) > 0 && gatedWhileLocked(v.rows[v.cursor].Kind)
+	}
+	return false
 }
 
 func (v WorktreeView) act(label string, cmd tea.Cmd) (tea.Model, tea.Cmd) {
@@ -413,10 +419,10 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	selected := func(kind rowKind, item int) bool {
 		return len(rows) > 0 && rows[cursor].Kind == kind && (kind != rowServer || rows[cursor].Item == item)
 	}
-	// name renders a row label; on a locked page the rows that wait for a
-	// verify are dimmed whether or not the cursor is on them.
-	name := func(label string, sel, gated bool) string {
-		if locked && gated {
+	// name renders a row label; on a locked page everything but the shell
+	// is dimmed — servers too, though enter on one still opens its log.
+	name := func(label string, kind rowKind, sel bool) string {
+		if locked && kind != rowOpenShell {
 			return app.Subtle.Render(label)
 		}
 		return app.RowName(label, sel)
@@ -446,7 +452,7 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	for i, item := range page.Items {
 		sel := selected(rowServer, i)
 		b.WriteString("  " + app.RowPrefix(sel))
-		b.WriteString(name(fmt.Sprintf("%-*s", width, item.Server.Name), sel, true))
+		b.WriteString(name(fmt.Sprintf("%-*s", width, item.Server.Name), rowServer, sel))
 		switch {
 		case item.Running:
 			fmt.Fprintf(b, "  %s :%d   %s", app.Success.Render("●"), item.Port, app.Subtle.Render(item.URL))
@@ -469,7 +475,7 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	if page.HasEditor {
 		sel := selected(rowLaunchEditor, 0)
 		b.WriteString("  " + app.RowPrefix(sel))
-		b.WriteString(name(fmt.Sprintf("%-28s", "Editor + Claude"), sel, true))
+		b.WriteString(name(fmt.Sprintf("%-28s", "Editor + Claude"), rowLaunchEditor, sel))
 		if !locked {
 			b.WriteString(app.Subtle.Render(leadHint(page)))
 		}
@@ -477,7 +483,7 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	}
 	sel := selected(rowLaunchClaude, 0)
 	b.WriteString("  " + app.RowPrefix(sel))
-	b.WriteString(name(fmt.Sprintf("%-28s", "Claude in terminal"), sel, true))
+	b.WriteString(name(fmt.Sprintf("%-28s", "Claude in terminal"), rowLaunchClaude, sel))
 	if !page.HasEditor && !locked {
 		b.WriteString(app.Subtle.Render(leadHint(page)))
 	}
@@ -487,12 +493,12 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	if page.HasSSH {
 		sel := selected(rowOpenRemote, 0)
 		b.WriteString("  " + app.RowPrefix(sel))
-		b.WriteString(name("Cursor / VS Code (remote)", sel, true))
+		b.WriteString(name("Cursor / VS Code (remote)", rowOpenRemote, sel))
 		b.WriteString("\n")
 	}
 	sel = selected(rowOpenShell, 0)
 	b.WriteString("  " + app.RowPrefix(sel))
-	b.WriteString(name("Shell here", sel, false))
+	b.WriteString(name("Shell here", rowOpenShell, sel))
 	b.WriteString("\n")
 }
 

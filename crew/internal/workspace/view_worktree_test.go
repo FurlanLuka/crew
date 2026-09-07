@@ -1,10 +1,13 @@
 package workspace
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/project"
@@ -268,4 +271,32 @@ func TestWorktreeView_VerifyAndFixKeys(t *testing.T) {
 		t.Errorf("locked help line:\n%s", stripANSI(v.View()))
 	}
 
+}
+
+// l lists every server with a log file, not only running ones: a dead
+// server's smoke output is what you read on a locked page.
+func TestLoggedItems_IncludeStoppedServersWithALog(t *testing.T) {
+	setupTestConfig(t)
+	ref := Ref{Workspace: "ws", Worktree: "wt"}
+	v := NewWorktreeView(ref)
+	v.page.Items = []devItem{
+		{ProjectName: "api", Server: project.DevServer{Name: "api"}},
+		{ProjectName: "web", Server: project.DevServer{Name: "web"}},
+		{ProjectName: "run", Server: project.DevServer{Name: "run"}, Running: true},
+	}
+	os.MkdirAll(dev.LogDir(ref.Slug()), 0o755)
+	os.WriteFile(dev.LogFile(ref.Slug(), "api"), []byte("Error: x\n"), 0o644)
+
+	names := []string{}
+	for _, item := range v.loggedItems() {
+		names = append(names, item.Server.Name)
+	}
+	if strings.Join(names, ",") != "api,run" {
+		t.Errorf("loggedItems = %v, want api (log file) and run (running), not web", names)
+	}
+	v.page.Items = v.page.Items[1:2]
+	m, cmd := v.openLogs()
+	if cmd != nil || m.(WorktreeView).err == nil || m.(WorktreeView).err.Error() != "no server has run yet" {
+		t.Errorf("openLogs with nothing to show: cmd=%v err=%v", cmd != nil, m.(WorktreeView).err)
+	}
 }

@@ -25,7 +25,7 @@ func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 
 	// A project whose checkout failed has no directory: start in the
 	// worktree root then, and only hand claude the checkouts that were made.
-	missing := res.missingCheckouts()
+	missing := res.failedCheckouts()
 	workDir := res.Projects[0].Path
 	if multiProject || missing[res.Projects[0].Name] {
 		workDir = res.Dir
