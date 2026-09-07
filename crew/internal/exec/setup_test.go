@@ -1,8 +1,10 @@
 package exec
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,5 +88,26 @@ func TestRunSetup_StopsAtFirstFailureAndReports(t *testing.T) {
 	}
 	if len(seen) != 2 || seen[0] != "ok:ok" || seen[1] != "boom:err" {
 		t.Errorf("reported %v, want the first two only", seen)
+	}
+}
+
+// A failed step keeps enough output to see why: the message is the last few
+// lines, Output the tail a pydantic error's field name sits in.
+func TestRunSetupStep_KeepsOutputTail(t *testing.T) {
+	dir := t.TempDir()
+	script := "for i in $(seq 1 40); do echo line $i; done; echo 'settings.Sentry' >&2; echo '  dsn' >&2; echo '  Field required [type=missing]' >&2; exit 2"
+	err := runSetupStep(dir, SetupStep{Name: "make sync", Command: script}, false)
+	var se *StepError
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %T %v, want StepError", err, err)
+	}
+	if got := strings.Count(se.Output, "\n") + 1; got != setupOutputTail {
+		t.Errorf("Output keeps %d lines, want %d", got, setupOutputTail)
+	}
+	if !strings.Contains(se.Output, "settings.Sentry") || !strings.Contains(se.Output, "line 40") {
+		t.Errorf("Output should hold stdout and stderr, the field name included:\n%s", se.Output)
+	}
+	if err.Error() != "make sync: settings.Sentry\n  dsn\n  Field required [type=missing]" {
+		t.Errorf("Error() = %q", err.Error())
 	}
 }

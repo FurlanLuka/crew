@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+	osexec "os/exec"
 	"strings"
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 // Health is the last failure a check found on a worktree. Absent means the
@@ -60,12 +61,17 @@ func (h *Health) Summary() string {
 func HealthFromSetup(err *SetupError) *Health {
 	h := &Health{Stage: StageInstall, At: time.Now()}
 	for _, e := range err.Errors {
+		issue := Issue{Detail: e.Error()}
 		var pe *ProjectSetupError
 		if errors.As(e, &pe) {
-			h.Issues = append(h.Issues, Issue{Project: pe.Project, Detail: pe.Err.Error()})
-			continue
+			issue.Project, issue.Detail = pe.Project, pe.Err.Error()
 		}
-		h.Issues = append(h.Issues, Issue{Detail: e.Error()})
+		// The step's full tail is the evidence; the message is the terminal's cut.
+		var se *exec.StepError
+		if errors.As(e, &se) && se.Output != "" {
+			issue.Detail = se.Step + ":\n" + se.Output
+		}
+		h.Issues = append(h.Issues, issue)
 	}
 	return h
 }
@@ -187,7 +193,7 @@ func FixAnomalies(res *Resolved) string {
 
 // FixCommand is ClaudeCommand with the fix prompt, always passed: the
 // orientation prompt's project-count gate does not apply to a failure.
-func FixCommand(res *Resolved, anomalies string) (*exec.Cmd, error) {
+func FixCommand(res *Resolved, anomalies string) (*osexec.Cmd, error) {
 	if res.Health == nil {
 		return nil, fmt.Errorf("nothing recorded on %s — crew verify %s first", res.Ref, res.Ref)
 	}

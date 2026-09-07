@@ -2,7 +2,6 @@ package exec
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,6 +100,32 @@ func RunSetup(dir string, steps []SetupStep, report func(SetupResult)) error {
 	return nil
 }
 
+// StepError is a setup step that failed, with enough of its output to see
+// why: the message is the last few lines for the terminal, Output the last
+// setupOutputTail lines for whoever has to fix it. A pydantic validation
+// error names the field two lines above "Field required".
+type StepError struct {
+	Step   string
+	Err    error
+	Output string
+}
+
+const setupOutputTail = 30
+
+func (e *StepError) Error() string {
+	lines := strings.Split(strings.TrimSpace(e.Output), "\n")
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	msg := strings.TrimSpace(strings.Join(lines, "\n"))
+	if msg == "" {
+		return e.Step + ": " + e.Err.Error()
+	}
+	return e.Step + ": " + msg
+}
+
+func (e *StepError) Unwrap() error { return e.Err }
+
 func runSetupStep(dir string, step SetupStep, underMise bool) error {
 	shell := step.Command
 	if underMise {
@@ -110,18 +135,15 @@ func runSetupStep(dir string, step SetupStep, underMise bool) error {
 
 	cmd := exec.Command("sh", "-c", shell)
 	cmd.Dir = dir
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if lines := strings.Split(msg, "\n"); len(lines) > 3 {
-			msg = strings.Join(lines[len(lines)-3:], "\n")
+		tail := strings.TrimSpace(out.String())
+		if lines := strings.Split(tail, "\n"); len(lines) > setupOutputTail {
+			tail = strings.Join(lines[len(lines)-setupOutputTail:], "\n")
 		}
-		debug.Log("setup", "%s failed in %s: %v — %s", step.Name, dir, err, msg)
-		if msg == "" {
-			return fmt.Errorf("%s: %w", step.Name, err)
-		}
-		return fmt.Errorf("%s: %s", step.Name, msg)
+		debug.Log("setup", "%s failed in %s: %v —\n%s", step.Name, dir, err, tail)
+		return &StepError{Step: step.Name, Err: err, Output: tail}
 	}
 	return nil
 }
