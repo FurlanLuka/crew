@@ -205,7 +205,7 @@ in place gets SIGKILLed on macOS (signature) — `rm` then `cp`, then `codesign 
 
 ## Claude Code plugin
 
-`.claude-plugin/` at the repo root ships the `crew` skill, agent and two commands
-(`/crew:status`, `/crew:proxy`) for Claude Code: `/plugin marketplace add FurlanLuka/crew`,
+`.claude-plugin/` at the repo root ships the `crew` skill, agent and four commands
+(`/crew:setup`, `/crew:import`, `/crew:status`, `/crew:proxy`) for Claude Code: `/plugin marketplace add FurlanLuka/crew`,
 then `/plugin install crew@crew`. Keep `skills/crew/SKILL.md` in step with the CLI — it is
 what an agent reads to drive crew; bump `plugin.json` when the plugin's surface changes.

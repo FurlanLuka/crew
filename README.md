@@ -111,6 +111,10 @@ plugin does not ship it. What you get:
 - **Agent `crew`** — runs the commands and reads what they print. Plain-language asks route
   here: *"what do I have running?"*, *"start store-front/wrk2 with the proxy"*, *"why is
   store-api talking to the wrong checkout-api?"*, *"set this up on my other Mac"*.
+- **`/crew:setup [name]`** — guided workspace setup: which repos, roles, dev servers,
+  bindings, then builds it and checks the servers come up.
+- **`/crew:import [file]`** — guided import of a crew export: asks where the file is, walks
+  the plan and decides each project (path, clone, replace) with you.
 - **`/crew:status [ref]`** — worktrees, running servers, recorded issues, readable.
 - **`/crew:proxy [ref]`** — a `--proxy` URL opens here but not on the phone: walks the
   other-device test from `crew help dev start`.
