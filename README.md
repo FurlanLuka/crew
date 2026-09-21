@@ -93,6 +93,9 @@ write files, not print values: its output is logged with the install's.
 ### Bindings
 
 A binding lives on the project that needs the value: *this variable, computed like this*.
+A value with no template in it is a literal — the project-wide default for every worktree,
+which a worktree override (`crew add override`) still beats. Secrets never go in bindings;
+they are exported.
 
 | Template | Becomes |
 |---|---|

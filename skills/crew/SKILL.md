@@ -126,7 +126,10 @@ in a `.env` can be right. A binding says which variable, and a template says how
 {{worktree}}  {{workspace}}    the names — agent-{{worktree}}, db_{{workspace}}_{{worktree}}
 ```
 
-A value without tokens is used as-is. `{{url:x}}` / `{{port:x}}` is the pre-2.1 spelling —
+A value without tokens is used as-is — a **literal binding** (`--value=on`) is the
+project-wide default for every worktree, the "project-level override"; a worktree override
+still wins on top of it, and `duplicate` copies the source's overrides. Never put a secret
+in a binding: bindings are exported. `{{url:x}}` / `{{port:x}}` is the pre-2.1 spelling —
 still valid, never written by crew.
 
 ```
