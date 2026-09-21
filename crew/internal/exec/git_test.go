@@ -15,9 +15,20 @@ func TestCopyEnvFiles(t *testing.T) {
 	// Create source files
 	os.WriteFile(filepath.Join(src, ".env"), []byte("KEY=val"), 0o644)
 	os.WriteFile(filepath.Join(src, ".env.local"), []byte("LOCAL=1"), 0o644)
+	os.WriteFile(filepath.Join(src, ".local.env"), []byte("OVR=1"), 0o644)
+	os.WriteFile(filepath.Join(src, "example.local.env"), []byte("X=1"), 0o644)
 	os.WriteFile(filepath.Join(src, "README.md"), []byte("# hi"), 0o644)
 
 	CopyEnvFiles(src, dst)
+
+	// A get-env script's local override file comes along; a tracked example
+	// (not a dotfile) does not need to.
+	if _, err := os.Stat(filepath.Join(dst, ".local.env")); err != nil {
+		t.Error(".local.env not copied")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "example.local.env")); !os.IsNotExist(err) {
+		t.Error("example.local.env should not be copied")
+	}
 
 	// .env and .env.local should be copied
 	if _, err := os.Stat(filepath.Join(dst, ".env")); err != nil {
@@ -297,5 +308,17 @@ func TestTrustMise_WithoutMiseOnPath(t *testing.T) {
 			t.Errorf("%s should count as mise config", name)
 		}
 		TrustMise(dir) // must not panic or fail without the binary
+	}
+}
+
+func TestIsEnvFile(t *testing.T) {
+	for name, want := range map[string]bool{
+		".env": true, ".env.local": true, ".env.phone-speak-evals": true,
+		".local.env": true, ".local-overrides.env": true, ".development.env": true,
+		"example.local.env": false, "local.env": false, ".envrc": true, ".sops.yaml": false, "README.md": false,
+	} {
+		if got := IsEnvFile(name); got != want {
+			t.Errorf("IsEnvFile(%q) = %v, want %v", name, got, want)
+		}
 	}
 }

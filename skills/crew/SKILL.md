@@ -208,7 +208,8 @@ crew migrate [--dry-run] [--yes]
   part is in the foreground, before the runners start. Each runner: the checkout (with the
   repo's git hooks off — a hook written for a user's checkout does not get to fail crew's;
   `mise trust` when there is a `mise.toml`), `.env` copied from the canonical repo or a
-  sibling worktree, the env command when the project has one, the install, then the smoke
+  sibling worktree (`.env*` and the `.local.env` / `.local-overrides.env` files a get-env
+  script merges), the env command when the project has one, the install, then the smoke
   of that project's servers — each watched
   until it listens on its port, dies, or a minute passes. **Each server is smoked on its
   own**: siblings' URLs are resolved (ports were reserved first) but nothing answers on

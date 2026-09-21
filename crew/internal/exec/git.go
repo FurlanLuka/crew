@@ -129,11 +129,22 @@ func HasEnvFiles(dir string) bool {
 		return false
 	}
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), ".env") {
+		if !e.IsDir() && IsEnvFile(e.Name()) {
 			return true
 		}
 	}
 	return false
+}
+
+// IsEnvFile: the dotfiles a checkout's env lives in — `.env`, `.env.local`,
+// and the `.local.env` / `.local-overrides.env` shape a get-env script
+// merges its local overrides from. Those are gitignored in some repos and
+// would otherwise be the one thing a new checkout lacks. Pure.
+func IsEnvFile(name string) bool {
+	if !strings.HasPrefix(name, ".") {
+		return false
+	}
+	return strings.HasPrefix(name, ".env") || strings.HasSuffix(name, ".env")
 }
 
 // CopyEnvFiles copies .env* files from src to dst.
@@ -143,7 +154,7 @@ func CopyEnvFiles(srcDir, dstDir string) {
 		return
 	}
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), ".env") {
+		if !e.IsDir() && IsEnvFile(e.Name()) {
 			data, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
 			if err == nil {
 				os.WriteFile(filepath.Join(dstDir, e.Name()), data, 0o644)
