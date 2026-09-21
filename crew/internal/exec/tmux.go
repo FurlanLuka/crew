@@ -260,6 +260,41 @@ func CreateTmuxWindow(session, name, dir, command string) {
 	sendCmd.Run()
 }
 
+// TmuxRunInSession runs command as its own window of session, creating the
+// session around it when there is none — no shell underneath, so the window
+// closes when the command exits and the session goes with its last window.
+// That is the runner shape: "session exists" means "something still runs".
+func TmuxRunInSession(session, name, dir, command string) error {
+	args := []string{"new-session", "-d", "-s", session}
+	if TmuxSessionExists(session) {
+		args = []string{"new-window", "-d", "-t", session}
+	}
+	args = append(args, "-n", name, "-c", dir, command)
+	debug.Log("tmux", "%s", strings.Join(args, " "))
+	cmd := exec.Command("tmux", args...)
+	cmd.Env = EnvWithoutTMUX()
+	// A new server daemonizes from here; anchored outside the workspace
+	// tree like CreateTmuxSession.
+	if home, err := os.UserHomeDir(); err == nil {
+		cmd.Dir = home
+	}
+	if err := cmd.Run(); err != nil {
+		debug.Log("tmux", "%s → error: %v", args[0], err)
+		return err
+	}
+	return nil
+}
+
+// KillTmuxWindow kills one window and the processes of its pane, with the
+// same sweep KillTmuxSession does and for the same reason: a dev server's
+// detached children outlive a plain kill-window.
+func KillTmuxWindow(session, window string) {
+	target := session + ":" + window
+	killPaneProcesses("-t", target)
+	debug.Log("tmux", "kill-window -t %s", target)
+	exec.Command("tmux", "kill-window", "-t", target).Run()
+}
+
 // TmuxNewWindow creates a named window in a tmux session without running any command.
 // Use this when you need to configure the pane (e.g. pipe-pane) before sending a command.
 func TmuxNewWindow(session, name, dir string) {
@@ -291,6 +326,29 @@ func CaptureTmuxPane(session, window string, lines int) (string, error) {
 	return string(out), nil
 }
 
+// TmuxSessionIdle reports whether every pane of a session runs nothing but
+// its shell — a session with no work left in it.
+func TmuxSessionIdle(session string) bool {
+	out, err := exec.Command("tmux", "list-panes", "-s", "-t", session, "-F", "#{pane_current_command}").Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if !isShell(strings.TrimSpace(line)) {
+			return false
+		}
+	}
+	return true
+}
+
+func isShell(command string) bool {
+	switch command {
+	case "", "zsh", "bash", "sh", "fish":
+		return true
+	}
+	return false
+}
+
 // TmuxPaneBusy reports whether a window's pane is still running something
 // other than its shell — the process crew started is alive.
 func TmuxPaneBusy(session, window string) bool {
@@ -299,10 +357,5 @@ func TmuxPaneBusy(session, window string) bool {
 	if err != nil {
 		return false
 	}
-	current := strings.TrimSpace(string(out))
-	switch current {
-	case "", "zsh", "bash", "sh", "fish":
-		return false
-	}
-	return true
+	return !isShell(strings.TrimSpace(string(out)))
 }

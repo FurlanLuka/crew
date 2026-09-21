@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -45,11 +43,10 @@ type CheckoutOptions struct {
 	// Install runs the project's setup steps (mise, the lockfile's package
 	// manager, or the explicit setup command). Off skips them entirely.
 	Install bool
-	// Smoke starts the servers afterwards, watches them for a few seconds and
-	// stops them: the check that finds a missing var before you do.
+	// Smoke starts the servers afterwards, watches each until it listens,
+	// dies or the ceiling passes, and stops them: the check that finds a
+	// missing var before you do.
 	Smoke bool
-	// Progress is told about each step as it finishes; nil is fine.
-	Progress func(project string, r exec.SetupResult)
 }
 
 // createProjectWorktree checks a project out into one worktree: a git
@@ -96,18 +93,11 @@ func envSource(ref Ref, p project.Project) string {
 	return p.Path
 }
 
-// setupProject runs one checkout's install steps.
-func setupProject(ref Ref, p project.Project, opts CheckoutOptions) error {
-	if !opts.Install {
-		return nil
-	}
+// setupProject runs one checkout's install steps in this process — the
+// pre-2.0 flat path; a worktree's installs run in their runner.
+func setupProject(ref Ref, p project.Project) error {
 	wtDir := WorktreePath(ref, p.Name)
-	report := func(r exec.SetupResult) {
-		if opts.Progress != nil {
-			opts.Progress(p.Name, r)
-		}
-	}
-	if err := exec.RunSetup(wtDir, exec.SetupSteps(wtDir, p.Setup), report); err != nil {
+	if err := exec.RunSetup(wtDir, exec.SetupSteps(wtDir, p.Setup), nil, nil); err != nil {
 		return &ProjectSetupError{Project: p.Name, Err: err}
 	}
 	return nil
@@ -122,85 +112,6 @@ type ProjectSetupError struct {
 
 func (e *ProjectSetupError) Error() string { return e.Project + ": " + e.Err.Error() }
 func (e *ProjectSetupError) Unwrap() error { return e.Err }
-
-// The three steps of making a worktree, each over a named set of projects
-// and each collecting failures instead of stopping. AddWorktree runs them
-// over every project; Verify over what is missing; Setup with installs
-// forced. Nothing here returns early: the point of a worktree is to be on
-// it, seeing what is done and what is not.
-
-// checkoutProjects makes a git worktree and copies .env for each name;
-// returns the ones made and an issue per failure.
-func checkoutProjects(ref Ref, ws *Workspace, names []string, progress func(string, exec.SetupResult)) (made []string, issues []Issue) {
-	for _, name := range names {
-		wp, ok := memberOf(ws, name)
-		if !ok || IsDirect(wp) {
-			continue
-		}
-		p := project.Get(name)
-		if p == nil {
-			issues = append(issues, Issue{Stage: StageCheckout, Project: name, Detail: "not in the project pool"})
-			continue
-		}
-		start := time.Now()
-		err := createProjectWorktree(ref, *p)
-		if progress != nil {
-			progress(name, exec.SetupResult{Step: exec.SetupStep{Name: "checkout"}, Duration: time.Since(start), Err: err})
-		}
-		if err != nil {
-			issues = append(issues, Issue{Stage: StageCheckout, Project: name, Detail: err.Error()})
-			continue
-		}
-		made = append(made, name)
-	}
-	return made, issues
-}
-
-// installProjects runs the install steps for each name that has a checkout,
-// all at once — each project's install is its own, and they are the slow
-// part of a worktree. An issue per failure, with the step's output tail as
-// the evidence, in the order the names came.
-func installProjects(ref Ref, ws *Workspace, names []string, opts CheckoutOptions) []Issue {
-	var mu sync.Mutex
-	serial := opts
-	if opts.Progress != nil {
-		// One line at a time from many installs.
-		serial.Progress = func(project string, r exec.SetupResult) {
-			mu.Lock()
-			defer mu.Unlock()
-			opts.Progress(project, r)
-		}
-	}
-
-	results := make([]*Issue, len(names))
-	var wg sync.WaitGroup
-	for i, name := range names {
-		wp, ok := memberOf(ws, name)
-		if !ok || IsDirect(wp) || !dirExists(WorktreePath(ref, name)) {
-			continue
-		}
-		p := project.Get(name)
-		if p == nil {
-			continue
-		}
-		wg.Add(1)
-		go func(i int, p project.Project) {
-			defer wg.Done()
-			if err := setupProject(ref, p, serial); err != nil {
-				results[i] = &Issue{Stage: StageInstall, Project: p.Name, Detail: installDetail(err)}
-			}
-		}(i, *p)
-	}
-	wg.Wait()
-
-	var issues []Issue
-	for _, r := range results {
-		if r != nil {
-			issues = append(issues, *r)
-		}
-	}
-	return issues
-}
 
 // installDetail is the step's output tail when there is one — the terminal
 // gets the last few lines, the record keeps enough to read.
@@ -233,75 +144,47 @@ func memberNames(ws *Workspace) []string {
 	return names
 }
 
-// Setup re-runs every project's installs, then the smoke when asked, and
-// records the verdict — the same check creation ends with.
-func Setup(ref Ref, opts CheckoutOptions) (VerifyResult, error) {
+// Setup re-runs every project's installs (or the named ones'), each in
+// its own runner, with the smoke when asked — the same check creation
+// runs, installs forced. Returns once the runners are started.
+func Setup(ref Ref, opts CheckoutOptions, only []string) error {
 	ws, err := Load(ref.Workspace)
 	if err != nil {
-		return VerifyResult{}, err
+		return err
 	}
-	res, err := Resolve(ref)
+	if opts.Smoke && dev.Running(ref.Slug()) {
+		return ErrServersRunning
+	}
+	names, err := chosenMembers(ws, only)
 	if err != nil {
-		return VerifyResult{}, err
+		return err
 	}
-	if opts.Smoke && dev.Running(res.Slug) {
-		return VerifyResult{}, ErrServersRunning
-	}
-	missing := missingCheckouts(ref, ws)
-	_, issues := checkoutProjects(ref, ws, missing, opts.Progress)
-	opts.Install = true
-	issues = append(issues, installProjects(ref, ws, memberNames(ws), opts)...)
-	return finishCheck(ref, issues, opts)
+	return StartSetup(ref, jobsFor(names, CheckoutOptions{Install: true, Smoke: opts.Smoke}))
 }
 
-// reportSmoke says what the smoke found, one line per server, the way
-// install steps are reported.
-func reportSmoke(results []SmokeResult, progress func(string, exec.SetupResult)) {
-	if progress == nil {
-		return
+// chosenMembers is the members a filter names — every one of them, or all
+// of them with no filter. A name that is not a member is an error, not a
+// silent no-op.
+func chosenMembers(ws *Workspace, only []string) ([]string, error) {
+	if len(only) == 0 {
+		return memberNames(ws), nil
 	}
-	for _, r := range results {
-		step := exec.SetupResult{Step: exec.SetupStep{Name: "smoke " + r.Server}, Duration: r.Took()}
-		switch r.State() {
-		case SmokeDied:
-			step.Err = errors.New("died")
-		case SmokeUnreached:
-			step.Err = fmt.Errorf("not listening on :%d", r.Port)
+	for _, n := range only {
+		if _, ok := memberOf(ws, n); !ok {
+			return nil, fmt.Errorf("project '%s' is not in workspace '%s'", n, ws.Name)
 		}
-		progress(r.Project, step)
 	}
+	return only, nil
 }
 
-func missingCheckouts(ref Ref, ws *Workspace) []string {
-	var missing []string
+func missingCheckouts(ref Ref, ws *Workspace) map[string]bool {
+	missing := map[string]bool{}
 	for _, wp := range ws.Projects {
 		if !IsDirect(wp) && !dirExists(WorktreePath(ref, wp.Name)) {
-			missing = append(missing, wp.Name)
+			missing[wp.Name] = true
 		}
 	}
 	return missing
-}
-
-// finishCheck runs the smoke when asked, reports each server through
-// Progress as a step, and records what everything found.
-func finishCheck(ref Ref, issues []Issue, opts CheckoutOptions) (VerifyResult, error) {
-	var results []SmokeResult
-	if opts.Smoke {
-		var smoked []Issue
-		var err error
-		results, smoked, err = smokeStage(ref, opts)
-		if err != nil {
-			return VerifyResult{}, err
-		}
-		issues = append(issues, smoked...)
-	}
-	h := healthOf(issues)
-	if err := RecordHealth(ref, h); err != nil {
-		// Health is read straight back from disk by the list and the page;
-		// a verdict that did not land is not a verdict.
-		return VerifyResult{Smoke: results, Health: h}, fmt.Errorf("record health for %s: %w", ref, err)
-	}
-	return VerifyResult{Smoke: results, Health: h}, nil
 }
 
 // SetupStepsFor previews what a checkout of p would run, for output that
@@ -311,86 +194,75 @@ func SetupStepsFor(p project.Project) []exec.SetupStep {
 }
 
 // removeWorktreeArtifacts deletes everything crew keys by one worktree's slug:
-// its dev session and routes, logs, prompt and editor workspace file.
+// its setup runners and their files, its dev session and routes, logs,
+// prompt and editor workspace file. The runners go first — one still
+// installing into a checkout about to be trashed would record health on
+// a worktree that no longer exists.
 func removeWorktreeArtifacts(ref Ref) {
+	removeSetupArtifacts(ref)
 	dev.StopAll(ref.Slug())
 	os.RemoveAll(dev.LogDir(ref.Slug()))
 	os.Remove(PromptFilePath(ref))
 	os.Remove(CodeWorkspaceFilePath(ref))
 }
 
-// AddWorktree adds a worktree to a workspace: checks every project out, installs
-// every checkout, smokes the servers — each step over every project, each
-// failure recorded on the worktree rather than stopping the rest. The error is
-// only for the pre-flight; what the steps found is the Health.
-func AddWorktree(wsName, name string, opts CheckoutOptions) (*Health, error) {
-	if err := ValidateName("worktree", name); err != nil {
-		return nil, err
-	}
-
-	ws, err := Load(wsName)
+// AddWorktree adds a worktree to a workspace and starts one runner per
+// project — checkout, install, smoke, each failure recorded on the
+// worktree as it happens. Returns as soon as the runners are spawned; the
+// error is only for the pre-flight. Ends on `crew setup status <ref>`.
+func AddWorktree(wsName, name string, opts CheckoutOptions) error {
+	ref, members, err := addWorktreeRecord(wsName, name, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if len(ws.Worktrees) == 0 {
-		return nil, fmt.Errorf("workspace '%s' predates worktrees — run `crew migrate` first", wsName)
-	}
-	for _, wt := range ws.Worktrees {
-		if wt.Name == name {
-			return nil, fmt.Errorf("workspace '%s' already has a worktree '%s'", wsName, name)
-		}
-	}
-
-	// A direct-mode project points at the one canonical checkout, so a second
-	// worktree would have both sharing it — the same clobbering that
-	// assertNoOtherDirect prevents between workspaces.
-	for _, wp := range ws.Projects {
-		if IsDirect(wp) {
-			return nil, fmt.Errorf("workspace '%s' holds '%s' in direct mode, so it can only have one worktree — remove it or re-add it as a worktree project first",
-				wsName, wp.Name)
-		}
-	}
-
-	ref := Ref{Workspace: wsName, Worktree: name}
-	if err := os.MkdirAll(WorktreeDir(ref), 0o755); err != nil {
-		return nil, err
-	}
-
-	// Recorded before anything is checked out: from here on every directory
-	// made belongs to a worktree the list knows, whatever else happens.
-	ws.Worktrees = append(ws.Worktrees, Worktree{Name: name})
-	if err := Save(ws); err != nil {
-		return nil, err
-	}
-
-	_, issues := checkoutProjects(ref, ws, memberNames(ws), opts.Progress)
-	if opts.Install {
-		issues = append(issues, installProjects(ref, ws, memberNames(ws), opts)...)
-	}
-	result, err := finishCheck(ref, issues, opts)
-	return result.Health, err
+	return StartSetup(ref, jobsFor(members, opts))
 }
 
-// smokeStage is the smoke on its own: start, wait for verdicts, stop,
-// report — the results for a caller that shows them and the issues for
-// whoever records them. A worktree with nothing to smoke yields nothing.
-// The error is the resolve; a stack that could not start at all is an
-// issue with no server on it.
-func smokeStage(ref Ref, opts CheckoutOptions) ([]SmokeResult, []Issue, error) {
-	res, err := Resolve(ref)
-	if err != nil {
-		return nil, nil, err
+// jobsFor is one job per name with the same options.
+func jobsFor(names []string, opts CheckoutOptions) []ProjectJob {
+	jobs := make([]ProjectJob, 0, len(names))
+	for _, n := range names {
+		jobs = append(jobs, ProjectJob{Project: n, Install: opts.Install, Smoke: opts.Smoke})
 	}
-	if len(res.DevProjects()) == 0 {
-		return nil, nil, nil
+	return jobs
+}
+
+// addWorktreeRecord is the pre-flight and the record: the worktree is on
+// the workspace, with its overrides, before any runner starts — from then
+// on every directory made belongs to a worktree the list knows, and a
+// runner's smoke already sees the overrides. Returns the members to run.
+func addWorktreeRecord(wsName, name string, overrides map[string]string) (Ref, []string, error) {
+	if err := ValidateName("worktree", name); err != nil {
+		return Ref{}, nil, err
 	}
-	results, err := SmokeStart(res)
-	var issues []Issue
-	if err != nil {
-		issues = append(issues, Issue{Stage: StageSmoke, Project: ref.String(), Detail: "could not start: " + err.Error()})
-	}
-	reportSmoke(results, opts.Progress)
-	return results, append(issues, smokeIssues(results)...), nil
+	ref := Ref{Workspace: wsName, Worktree: name}
+	var members []string
+	err := Update(wsName, func(ws *Workspace) error {
+		if len(ws.Worktrees) == 0 {
+			return fmt.Errorf("workspace '%s' predates worktrees — run `crew migrate` first", wsName)
+		}
+		for _, wt := range ws.Worktrees {
+			if wt.Name == name {
+				return fmt.Errorf("workspace '%s' already has a worktree '%s'", wsName, name)
+			}
+		}
+		// A direct-mode project points at the one canonical checkout, so a
+		// second worktree would have both sharing it — the same clobbering
+		// that assertNoOtherDirect prevents between workspaces.
+		for _, wp := range ws.Projects {
+			if IsDirect(wp) {
+				return fmt.Errorf("workspace '%s' holds '%s' in direct mode, so it can only have one worktree — remove it or re-add it as a worktree project first",
+					wsName, wp.Name)
+			}
+		}
+		if err := os.MkdirAll(WorktreeDir(ref), 0o755); err != nil {
+			return err
+		}
+		ws.Worktrees = append(ws.Worktrees, Worktree{Name: name, Overrides: overrides})
+		members = memberNames(ws)
+		return nil
+	})
+	return ref, members, err
 }
 
 // TrashNotice is the one line to show wherever disk is about to be used:
@@ -448,115 +320,89 @@ func RemoveWorktree(wsName, name string) error {
 }
 
 func dropWorktreeRecord(wsName, name string) error {
-	ws, err := Load(wsName)
-	if err != nil {
-		return err
-	}
-	remaining := ws.Worktrees[:0:0]
-	for _, wt := range ws.Worktrees {
-		if wt.Name != name {
-			remaining = append(remaining, wt)
+	return Update(wsName, func(ws *Workspace) error {
+		remaining := ws.Worktrees[:0:0]
+		for _, wt := range ws.Worktrees {
+			if wt.Name != name {
+				remaining = append(remaining, wt)
+			}
 		}
-	}
-	ws.Worktrees = remaining
-	return Save(ws)
+		ws.Worktrees = remaining
+		return nil
+	})
 }
 
 // DuplicateWorktree creates a new worktree in the same workspace, carrying the
-// source worktree's overrides across.
-func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) (*Health, error) {
+// source worktree's overrides across before its runners start. Ports are
+// deliberately not copied: two worktrees on the same ports is the
+// collision this whole model exists to prevent. Refuses while the source
+// is still being made — its .env, which the copy takes, may not be there.
+func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) error {
 	ws, err := Load(ref.Workspace)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	src, err := selectWorktree(ws, ref.Worktree)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	h, err := AddWorktree(ref.Workspace, newName, opts)
+	if SetupRunning(Ref{Workspace: ref.Workspace, Worktree: src.Name}) {
+		return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, ref, ref)
+	}
+	dst, members, err := addWorktreeRecord(ref.Workspace, newName, src.Overrides)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if len(src.Overrides) == 0 {
-		return h, nil
-	}
-
-	ws, err = Load(ref.Workspace)
-	if err != nil {
-		return h, err
-	}
-	for i, wt := range ws.Worktrees {
-		if wt.Name == newName {
-			ws.Worktrees[i].Overrides = src.Overrides
-			// Ports are deliberately not copied: two worktrees on the same
-			// ports is the collision this whole model exists to prevent.
-		}
-	}
-	return h, Save(ws)
+	return StartSetup(dst, jobsFor(members, opts))
 }
 
-// SetOverride pins a variable for one worktree, or clears it when value is
-// empty and clear is true.
+// SetOverride pins a variable for one worktree.
 func SetOverride(ref Ref, key, value string) error {
-	ws, err := Load(ref.Workspace)
-	if err != nil {
-		return err
-	}
-	wt, err := selectWorktree(ws, ref.Worktree)
-	if err != nil {
-		return err
-	}
-
-	for i := range ws.Worktrees {
-		if ws.Worktrees[i].Name != wt.Name {
-			continue
+	return updateWorktree(ref, func(wt *Worktree) {
+		if wt.Overrides == nil {
+			wt.Overrides = map[string]string{}
 		}
-		if ws.Worktrees[i].Overrides == nil {
-			ws.Worktrees[i].Overrides = map[string]string{}
-		}
-		ws.Worktrees[i].Overrides[key] = value
-		return Save(ws)
-	}
-	return fmt.Errorf("workspace '%s' has no worktree '%s'", ref.Workspace, wt.Name)
+		wt.Overrides[key] = value
+	})
 }
 
 // ClearOverride removes a worktree override.
 func ClearOverride(ref Ref, key string) error {
-	ws, err := Load(ref.Workspace)
-	if err != nil {
-		return err
-	}
-	wt, err := selectWorktree(ws, ref.Worktree)
-	if err != nil {
-		return err
-	}
-
-	for i := range ws.Worktrees {
-		if ws.Worktrees[i].Name == wt.Name {
-			delete(ws.Worktrees[i].Overrides, key)
-			return Save(ws)
-		}
-	}
-	return nil
+	return updateWorktree(ref, func(wt *Worktree) { delete(wt.Overrides, key) })
 }
 
-// SavePorts records the ports a worktree's servers were bound to, so the next
-// start reuses them. A pre-worktree workspace has nowhere to keep them and is
-// left alone.
+// SavePorts records the ports a worktree's servers were bound to, so the
+// next start reuses them — merged, not replaced: the runners of one
+// worktree each refresh their own project's ports. A pre-worktree
+// workspace has nowhere to keep them and is left alone.
 func SavePorts(ref Ref, ports map[string]int) error {
 	if ref.Worktree == "" || len(ports) == 0 {
 		return nil
 	}
-	ws, err := Load(ref.Workspace)
-	if err != nil {
-		return err
-	}
-	for i := range ws.Worktrees {
-		if ws.Worktrees[i].Name == ref.Worktree {
-			ws.Worktrees[i].Ports = ports
-			return Save(ws)
+	return updateWorktree(ref, func(wt *Worktree) {
+		if wt.Ports == nil {
+			wt.Ports = map[string]int{}
 		}
-	}
-	return fmt.Errorf("workspace '%s' has no worktree '%s'", ref.Workspace, ref.Worktree)
+		for k, v := range ports {
+			wt.Ports[k] = v
+		}
+	})
+}
+
+// updateWorktree is Update narrowed to one worktree of the workspace,
+// resolved the way a Ref is (the only one when unnamed).
+func updateWorktree(ref Ref, fn func(*Worktree)) error {
+	return Update(ref.Workspace, func(ws *Workspace) error {
+		wt, err := selectWorktree(ws, ref.Worktree)
+		if err != nil {
+			return err
+		}
+		for i := range ws.Worktrees {
+			if ws.Worktrees[i].Name == wt.Name {
+				fn(&ws.Worktrees[i])
+				return nil
+			}
+		}
+		return fmt.Errorf("workspace '%s' has no worktree '%s'", ref.Workspace, wt.Name)
+	})
 }

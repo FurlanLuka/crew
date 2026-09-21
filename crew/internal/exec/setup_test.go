@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -75,7 +76,7 @@ func TestRunSetup_StopsAtFirstFailureAndReports(t *testing.T) {
 		{Name: "ok", Command: "true"},
 		{Name: "boom", Command: "echo 'no such module' >&2; exit 3"},
 		{Name: "never", Command: "true"},
-	}, func(r SetupResult) {
+	}, nil, func(r SetupResult) {
 		mark := "ok"
 		if r.Err != nil {
 			mark = "err"
@@ -96,7 +97,7 @@ func TestRunSetup_StopsAtFirstFailureAndReports(t *testing.T) {
 func TestRunSetupStep_KeepsOutputTail(t *testing.T) {
 	dir := t.TempDir()
 	script := "for i in $(seq 1 40); do echo line $i; done; echo 'settings.Sentry' >&2; echo '  dsn' >&2; echo '  Field required [type=missing]' >&2; exit 2"
-	err := runSetupStep(dir, SetupStep{Name: "make sync", Command: script}, false)
+	err := runSetupStep(dir, SetupStep{Name: "make sync", Command: script}, false, nil)
 	var se *StepError
 	if !errors.As(err, &se) {
 		t.Fatalf("err = %T %v, want StepError", err, err)
@@ -109,5 +110,20 @@ func TestRunSetupStep_KeepsOutputTail(t *testing.T) {
 	}
 	if err.Error() != "make sync: settings.Sentry\n  dsn\n  Field required [type=missing]" {
 		t.Errorf("Error() = %q", err.Error())
+	}
+}
+
+// A step's output streams to the writer as it runs — a runner's log is read
+// while the install is still going — and the tail is still kept for the error.
+func TestRunSetup_StreamsOutput(t *testing.T) {
+	var stream bytes.Buffer
+	err := RunSetup(t.TempDir(), []SetupStep{
+		{Name: "say", Command: "echo hello; echo oops >&2; exit 1"},
+	}, &stream, nil)
+	if err == nil || !strings.Contains(err.Error(), "oops") {
+		t.Errorf("err = %v", err)
+	}
+	if got := stream.String(); !strings.Contains(got, "hello") || !strings.Contains(got, "oops") {
+		t.Errorf("streamed = %q", got)
 	}
 }

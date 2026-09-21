@@ -1,14 +1,12 @@
 package workspace
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
-	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
@@ -33,6 +31,11 @@ func newRepoWorkspace(t *testing.T, wsName string, projNames ...string) {
 		if err := AddProject(wsName, name, "role", "", CheckoutOptions{}); err != nil {
 			t.Fatalf("AddProject %s: %v", name, err)
 		}
+	}
+	// A checkout failure is recorded, not returned: a fixture must not be
+	// half-made under every assertion that follows.
+	if h := recorded(t, Ref{Workspace: wsName, Worktree: DefaultWorktree}); h != nil {
+		t.Fatalf("fixture checkout failed: %+v", h)
 	}
 }
 
@@ -59,7 +62,7 @@ func TestCreate_SeedsDefaultWorktree(t *testing.T) {
 func TestAddWorktree_ChecksOutEveryProject(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api", "web")
 
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -83,10 +86,10 @@ func TestAddWorktree_ChecksOutEveryProject(t *testing.T) {
 func TestAddWorktree_SecondWorktreeDoesNotCollideOnBranch(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree wrk2: %v", err)
 	}
-	if _, err := AddWorktree("ws", "wrk3", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk3", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree wrk3: %v", err)
 	}
 
@@ -101,17 +104,17 @@ func TestAddWorktree_SecondWorktreeDoesNotCollideOnBranch(t *testing.T) {
 func TestAddWorktree_RejectsDuplicateAndBadNames(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 
-	if _, err := AddWorktree("ws", DefaultWorktree, CheckoutOptions{}); err == nil {
+	if err := AddWorktree("ws", DefaultWorktree, CheckoutOptions{}); err == nil {
 		t.Error("duplicate worktree name should be rejected")
 	}
-	if _, err := AddWorktree("ws", "wrk--2", CheckoutOptions{}); err == nil {
+	if err := AddWorktree("ws", "wrk--2", CheckoutOptions{}); err == nil {
 		t.Error("'--' in a worktree name should be rejected")
 	}
 }
 
 func TestRemoveWorktree(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -185,7 +188,7 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 			t.Fatalf("AddProject direct: %v", err)
 		}
 
-		_, err := AddWorktree("ws", "wrk2", CheckoutOptions{})
+		err := AddWorktree("ws", "wrk2", CheckoutOptions{})
 		if err == nil {
 			t.Fatal("adding a worktree alongside a direct project should be refused")
 		}
@@ -196,7 +199,7 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 
 	t.Run("direct project refused when worktrees exist", func(t *testing.T) {
 		newRepoWorkspace(t, "ws", "api")
-		if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+		if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 			t.Fatalf("AddWorktree: %v", err)
 		}
 
@@ -244,7 +247,7 @@ func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 		t.Fatalf("SetOverride: %v", err)
 	}
 
-	if _, err := DuplicateWorktree(src, "wrk2", CheckoutOptions{}); err != nil {
+	if err := DuplicateWorktree(src, "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("DuplicateWorktree: %v", err)
 	}
 
@@ -258,50 +261,39 @@ func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 	if _, err := os.Stat(res.Projects[0].Path); err != nil {
 		t.Errorf("duplicate has no checkout: %v", err)
 	}
+	if res.Health != nil {
+		t.Errorf("clean duplicate recorded %+v", res.Health)
+	}
 }
 
-// A failed checkout rolls back what was made, so a retry starts clean.
 // A failed install keeps the worktree and the checkouts that installed fine;
-// Setup re-runs it.
+// Setup re-runs it. The runner stops at the failed step — a smoke of an
+// install that did not finish would only add noise to the evidence.
 func TestAddWorktree_InstallFailureKeepsWorktree(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 	project.SetSetup("api", "exit 7")
-	smoke := exec.HasTmux()
-	if smoke {
-		// The smoke still runs after a failed install: whatever is up is worth knowing.
-		project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
-		t.Cleanup(func() { dev.StopAll("ws--wrk2") })
-	}
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
 
-	var reported []string
-	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{
-		Install: true,
-		Smoke:   smoke,
-		Progress: func(proj string, r exec.SetupResult) {
-			reported = append(reported, proj+":"+r.Step.Name)
-		},
-	})
-	if err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Install: true, Smoke: true}); err != nil {
 		t.Fatalf("err = %v, want none: the failure is recorded, not returned", err)
 	}
-	if h == nil || h.Summary() != "install failed: api" {
+	if h := recorded(t, ref); h == nil || h.Summary() != "install failed: api" {
 		t.Errorf("Health = %+v", h)
 	}
-	want := "api:checkout,api:exit 7"
-	if smoke {
-		want += ",api:smoke api"
+	if got := strings.Join(stepsOf(t, ref), ","); got != "api:checkout,api:exit 7" {
+		t.Errorf("steps = %s, want the install's failure to end the run", got)
 	}
-	if strings.Join(reported, ",") != want {
-		t.Errorf("reported %v, want %s", reported, want)
-	}
-	if _, err := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"}); err != nil {
+	if _, err := Resolve(ref); err != nil {
 		t.Errorf("worktree should exist and resolve after an install failure: %v", err)
 	}
 
 	project.SetSetup("api", "true")
-	result, err := Setup(Ref{Workspace: "ws", Worktree: "wrk2"}, CheckoutOptions{Install: true})
-	if err != nil || result.Health != nil {
-		t.Errorf("Setup after fixing the command: %v %+v", err, result.Health)
+	if err := Setup(ref, CheckoutOptions{Install: true}, nil); err != nil {
+		t.Fatalf("Setup after fixing the command: %v", err)
+	}
+	if h := recorded(t, ref); h != nil {
+		t.Errorf("a passing install should clear, got %+v", h)
 	}
 }
 
@@ -311,7 +303,7 @@ func TestAddWorktree_CopiesEnvFromSiblingWhenCanonicalHasNone(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 	os.WriteFile(filepath.Join(WorktreePath(Ref{Workspace: "ws", Worktree: DefaultWorktree}, "api"), ".env"), []byte("SECRET=1\n"), 0o644)
 
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -339,25 +331,5 @@ func TestTailLog_StripsPromptNoise(t *testing.T) {
 	want := "error: No environment file found at: `.env`\nmake: *** [start_uvicorn] Error 2"
 	if got != want {
 		t.Errorf("tailLog =\n%q\nwant\n%q", got, want)
-	}
-}
-
-// reportSmoke is what puts "(2s)" and the reason on a progress line.
-func TestReportSmoke(t *testing.T) {
-	var got []string
-	reportSmoke([]SmokeResult{
-		{Project: "api", Server: "api", TookMs: 2500},
-		{Project: "web", Server: "web", Alive: true, Referenced: true, Port: 3000, TookMs: 60000},
-		{Project: "w", Server: "worker", Alive: true, TookMs: 10},
-	}, func(p string, r exec.SetupResult) {
-		e := ""
-		if r.Err != nil {
-			e = r.Err.Error()
-		}
-		got = append(got, fmt.Sprintf("%s:%s:%s:%s", p, r.Step.Name, r.Duration, e))
-	})
-	want := []string{"api:smoke api:2.5s:died", "web:smoke web:1m0s:not listening on :3000", "w:smoke worker:10ms:"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("got %v\nwant %v", got, want)
 	}
 }

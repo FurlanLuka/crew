@@ -143,6 +143,7 @@ type importArgs struct {
 	pull    bool
 	install bool
 	smoke   bool
+	wait    bool
 }
 
 func parseImportArgs(args []string) (importArgs, error) {
@@ -157,6 +158,8 @@ func parseImportArgs(args []string) (importArgs, error) {
 			a.install = false
 		case arg == "--no-smoke":
 			a.smoke = false
+		case arg == "--wait":
+			a.wait = true
 		case arg == "--all":
 			a.all = true
 		case arg == "--clone":
@@ -204,8 +207,8 @@ func parseImportArgs(args []string) (importArgs, error) {
 	if a.item == "workspace" && (a.project.Clone || a.project.Replace) {
 		return a, errors.New("--clone and --replace belong to project imports")
 	}
-	if (a.pull || !a.install || !a.smoke) && !a.all && a.item != "workspace" {
-		return a, errors.New("--pull, --no-install and --no-smoke belong to workspace imports")
+	if (a.pull || !a.install || !a.smoke || a.wait) && !a.all && a.item != "workspace" {
+		return a, errors.New("--pull, --no-install, --no-smoke and --wait belong to workspace imports")
 	}
 	if !a.all && a.item != "project" && (a.project.Clone || a.project.Replace) {
 		return a, errors.New("--clone and --replace need --all or project <name>")
@@ -216,7 +219,7 @@ func parseImportArgs(args []string) (importArgs, error) {
 func cmdImport() {
 	a, err := parseImportArgs(os.Args[2:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke]]\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]\n", err)
 		os.Exit(1)
 	}
 	b, err := transfer.Read(a.file)
@@ -280,16 +283,19 @@ func printImportRows(rows []transfer.PlanRow) {
 }
 
 // importWorkspace is one workspace the way crew add worktree makes one:
-// the base table (pulled first on --pull), then checkouts, installs and the
-// smoke with progress on the human stream. The row carries what was
-// recorded; failed says whether anything was.
+// the base table (pulled first on --pull), then one runner per project.
+// The row says where the runners are; with --wait it carries what they
+// recorded, and failed says whether anything was.
 func importWorkspace(m transfer.Membership, a importArgs) (transfer.PlanRow, bool) {
 	printBases(m.Workspace(), a.pull, "--pull fast-forwards the local bases first.")
-	fmt.Fprintf(human, "\nCreating %s\n\n", m.Name)
-	opts := a.checkoutOptions()
-	opts.Progress = printSetupProgress
-	results, err := transfer.ImportWorkspace(m, opts)
-	return transfer.WorkspaceRow(m.Name, results, err)
+	fmt.Fprintf(human, "\nCreating %s\n", m.Name)
+	ref, started, err := transfer.ImportWorkspace(m, a.checkoutOptions())
+	var h *workspace.Health
+	if err == nil && started && a.wait {
+		st := watchSetup(ref)
+		h = st.Health()
+	}
+	return transfer.WorkspaceRow(m.Name, started, h, a.wait, err)
 }
 
 // checkoutOptions is the worktree options an import was told, with crew add

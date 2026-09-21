@@ -63,7 +63,18 @@ func ValidateName(kind, name string) error {
 	if strings.Contains(name, "--") {
 		return fmt.Errorf("%s name '%s' is invalid — '--' is reserved as the workspace/worktree separator", kind, name)
 	}
+	if kind == "workspace" && reservedNames[name] {
+		return fmt.Errorf("workspace name '%s' is reserved — it is a subcommand (crew setup %s, crew rm %s)", name, name, name)
+	}
 	return nil
+}
+
+// reservedNames are words that follow a verb as a subcommand — `crew setup
+// status <ref>`, `crew rm worktree <ref>` — so a workspace by that name
+// could never be named where the verb takes a ref.
+var reservedNames = map[string]bool{
+	"status": true, "logs": true,
+	"project": true, "workspace": true, "worktree": true, "binding": true, "override": true,
 }
 
 // Slug is the flat form used for route files, log directories, tmux sessions

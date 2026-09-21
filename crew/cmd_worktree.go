@@ -13,7 +13,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/dirsize"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -35,12 +34,12 @@ func mustParseWorktreeRef(arg, verb string) workspace.Ref {
 
 func cmdAddWorktree() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]\n")
 		os.Exit(1)
 	}
 
 	ref := mustParseWorktreeRef(os.Args[3], "add")
-	install, smoke, pull := parseCheckoutFlags(os.Args[4:])
+	f := parseSetupFlags(os.Args[4:], false)
 
 	ws, err := workspace.Load(ref.Workspace)
 	if err != nil {
@@ -48,19 +47,92 @@ func cmdAddWorktree() {
 		os.Exit(1)
 	}
 
-	printBases(ws, pull, fmt.Sprintf("crew add worktree %s --pull fast-forwards the local bases first.", ref))
+	printBases(ws, f.pull, fmt.Sprintf("crew add worktree %s --pull fast-forwards the local bases first.", ref))
 
 	if notice := workspace.TrashNotice(); notice != "" {
 		fmt.Fprintf(human, "\n  %s\n", notice)
 	}
-	fmt.Fprintf(human, "\nCreating %s\n\n", ref)
-	opts := workspace.CheckoutOptions{Install: install, Smoke: smoke && install, Progress: printSetupProgress}
-	h, err := workspace.AddWorktree(ref.Workspace, ref.Worktree, opts)
+	fmt.Fprintf(human, "\nCreating %s\n", ref)
+	if err := workspace.AddWorktree(ref.Workspace, ref.Worktree, f.checkoutOptions()); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	landOn(ref, fmt.Sprintf("Created %s", ref), f.wait)
+}
+
+// setupFlags is what every command that starts runners takes.
+type setupFlags struct {
+	install, smoke, pull, wait bool
+	projects                   []string // the filter, where one is allowed
+}
+
+func (f setupFlags) checkoutOptions() workspace.CheckoutOptions {
+	// No install, nothing to smoke.
+	return workspace.CheckoutOptions{Install: f.install, Smoke: f.smoke && f.install}
+}
+
+// parseSetupFlags reads --no-install / --no-smoke / --pull / --wait and,
+// where allowed, bare project names. Exits on anything else.
+func parseSetupFlags(args []string, projects bool) setupFlags {
+	f, err := parseSetupArgs(args, projects)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	landOn(ref, fmt.Sprintf("Created %s", ref), h)
+	return f
+}
+
+// parseSetupArgs is parseSetupFlags without the exit. Pure.
+func parseSetupArgs(args []string, projects bool) (setupFlags, error) {
+	f := setupFlags{install: true, smoke: true}
+	for _, arg := range args {
+		switch {
+		case arg == "--no-install":
+			f.install = false
+		case arg == "--no-smoke":
+			f.smoke = false
+		case arg == "--pull":
+			f.pull = true
+		case arg == "--wait":
+			f.wait = true
+		case strings.HasPrefix(arg, "-"):
+			return f, fmt.Errorf("unknown flag '%s'", arg)
+		case projects:
+			f.projects = append(f.projects, arg)
+		default:
+			return f, fmt.Errorf("unexpected argument '%s'", arg)
+		}
+	}
+	return f, nil
+}
+
+// watchSetup waits for a worktree's runners, redrawing their table every
+// second in a terminal and printing it once at the end otherwise, and
+// returns the final status.
+func watchSetup(ref workspace.Ref) workspace.Status {
+	tty := isTerminal() && !jsonOutput
+	frames := []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
+	drawn, i := 0, 0
+	st, err := workspace.WatchSetup(ref, time.Second, func(st workspace.Status) {
+		if !tty {
+			return
+		}
+		if drawn > 0 {
+			fmt.Fprintf(human, "\033[%dA\033[J", drawn)
+		}
+		table := workspace.RenderSetupTable(st, frames[i%len(frames)])
+		fmt.Fprint(human, table)
+		drawn = strings.Count(table, "\n")
+		i++
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if !tty {
+		fmt.Fprint(human, workspace.RenderSetupTable(st, "…"))
+	}
+	return st
 }
 
 // printBases is the base-branch table every worktree creation opens with:
@@ -84,13 +156,15 @@ func printBases(ws *workspace.Workspace, pull bool, pullHint string) {
 	}
 }
 
-// landOn is where creation ends: the worktree page, locked or not, when
-// there is a terminal to show it in; otherwise the summary and the way out,
-// and exit 1 while anything is recorded so a script can tell.
-func landOn(ref workspace.Ref, created string, h *workspace.Health) {
-	if isTerminal() && !jsonOutput {
+// landOn is where creation ends. The runners are going; in a terminal the
+// worktree page shows them (esc leaves them running). Without one, the
+// status line and the way to watch — or, with --wait, the runners watched
+// to the end, the summary, and exit 1 while anything is recorded so a
+// script can tell.
+func landOn(ref workspace.Ref, created string, wait bool) {
+	if isTerminal() && !jsonOutput && !wait {
 		page := workspace.NewWorktreeView(ref)
-		page.SetStatus(created + healthSuffix(h))
+		page.SetStatus(created + " — installing")
 		runTUI(page)
 		return
 	}
@@ -99,31 +173,73 @@ func landOn(ref workspace.Ref, created string, h *workspace.Health) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if jsonOutput {
-		type projOut struct {
-			Name string `json:"name"`
-			Path string `json:"path"`
+	projects := projectsOut(res)
+	if !wait {
+		if jsonOutput {
+			printJSON(startedDoc(ref, projects))
+			return
 		}
-		projects := make([]projOut, 0, len(res.Projects))
-		for _, p := range res.Projects {
-			projects = append(projects, projOut{p.Name, p.Path})
-		}
-		printJSON(map[string]any{"ref": ref.String(), "projects": projects, "health": h})
-		if h != nil {
-			os.Exit(1)
-		}
+		fmt.Print(renderStarted(ref, created, len(res.Projects)))
 		return
 	}
-	text, failed := renderCreationSummary(res, created, h)
-	fmt.Print(text)
-	if failed {
+	reportVerdict(ref, func(st workspace.Status, h *workspace.Health) (map[string]any, string) {
+		return finishedDoc(ref, projects, h), renderCreationSummary(res, created, h)
+	})
+}
+
+// projOut is a project in a creation document.
+type projOut struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+func projectsOut(res *workspace.Resolved) []projOut {
+	out := make([]projOut, 0, len(res.Projects))
+	for _, p := range res.Projects {
+		out = append(out, projOut{p.Name, p.Path})
+	}
+	return out
+}
+
+// startedDoc is the --json creation document without --wait: the runners
+// are going, no health yet. Pure.
+func startedDoc(ref workspace.Ref, projects []projOut) map[string]any {
+	return map[string]any{"ref": ref.String(), "running": true, "projects": projects}
+}
+
+// finishedDoc is the --wait --json creation document: what was made and
+// what is recorded. Pure.
+func finishedDoc(ref workspace.Ref, projects []projOut, h *workspace.Health) map[string]any {
+	return map[string]any{"ref": ref.String(), "projects": projects, "health": h}
+}
+
+// reportVerdict is how every waited-for command ends: the runners watched
+// to the end, the worktree's record read fresh (a verify of one project
+// leaves the others' record standing), then the document on --json or
+// the text — and exit 1 while anything is recorded, so a script can tell.
+func reportVerdict(ref workspace.Ref, render func(workspace.Status, *workspace.Health) (doc map[string]any, text string)) {
+	st := watchSetup(ref)
+	h := recordedHealth(ref)
+	doc, text := render(st, h)
+	if jsonOutput {
+		printJSON(doc)
+	} else {
+		fmt.Print(text)
+	}
+	if h != nil {
 		os.Exit(1)
 	}
 }
 
-// renderCreationSummary is the non-terminal ending: what was made, every
+// renderStarted is the no-terminal, no-wait ending: the runners are going,
+// here is how to watch them. Pure.
+func renderStarted(ref workspace.Ref, created string, projects int) string {
+	return fmt.Sprintf("%s — %d projects installing in the background.\n  crew setup status %s [--wait]   what each runner has done; --wait stays until every one is done\n  crew setup logs %s <project>    what an install is printing\n", created, projects, ref, ref)
+}
+
+// renderCreationSummary is the waited-for ending: what was made, every
 // issue, and the way out — or the launch line when nothing is recorded.
-func renderCreationSummary(res *workspace.Resolved, created string, h *workspace.Health) (string, bool) {
+func renderCreationSummary(res *workspace.Resolved, created string, h *workspace.Health) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s%s\n\n", created, healthSuffix(h))
 	for _, p := range res.Projects {
@@ -131,10 +247,10 @@ func renderCreationSummary(res *workspace.Resolved, created string, h *workspace
 	}
 	if h != nil {
 		b.WriteString("\n" + renderIssues(h) + fixHint(res.Ref))
-		return b.String(), true
+		return b.String()
 	}
 	fmt.Fprintf(&b, "\ncrew launch %s\n", res.Ref)
-	return b.String(), false
+	return b.String()
 }
 
 func healthSuffix(h *workspace.Health) string {
@@ -165,81 +281,178 @@ func renderIssues(h *workspace.Health) string {
 	return b.String()
 }
 
+// cmdSetup is three commands: `crew setup <ref> [<project>…]` re-runs the
+// installs (one runner per project), `crew setup status <ref>` shows the
+// runners, `crew setup logs <ref> <project>` tails one.
 func cmdSetup() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew setup <workspace>[/<worktree>] [--no-smoke]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew setup <workspace>[/<worktree>] [<project>…] [--no-smoke] [--wait]\n       crew setup status <workspace>[/<worktree>] [--wait]\n       crew setup logs <workspace>[/<worktree>] <project> [--lines=N]\n")
 		os.Exit(1)
 	}
+	switch os.Args[2] {
+	case "status":
+		cmdSetupStatus()
+		return
+	case "logs":
+		cmdSetupLogs()
+		return
+	}
 	res := mustResolve(os.Args[2])
-	_, smoke, _ := parseCheckoutFlags(os.Args[3:])
+	f := parseSetupFlags(os.Args[3:], true)
 
-	fmt.Fprintf(human, "Setting up %s\n\n", res.Ref)
-	result, err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Smoke: smoke, Progress: printSetupProgress})
+	fmt.Fprintf(human, "Setting up %s\n", res.Ref)
+	err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Smoke: f.smoke}, f.projects)
 	if errors.Is(err, workspace.ErrServersRunning) {
 		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — the smoke would restart them. crew dev stop %s first, or --no-smoke.\n", res.Ref, res.Ref)
 		os.Exit(1)
 	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	if jsonOutput {
-		printJSON(jsonVerifyResult(result))
-		if result.Health != nil {
-			os.Exit(1)
-		}
+	exitOnRunnerError(err)
+	finishRunners(res.Ref, f.wait, "checks out")
+}
+
+// exitOnRunnerError turns a refusal to start runners into the exit every
+// caller wants.
+func exitOnRunnerError(err error) {
+	if err == nil {
 		return
 	}
-	printSmokeTails(result.Smoke)
-	if result.Health != nil {
-		fmt.Println()
-		printIssues(result.Health)
-		printFixHint(res.Ref)
+	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	os.Exit(1)
+}
+
+// finishRunners is how setup and verify end: the status line with the
+// runners going, or — with --wait — the table to the end, the issues, and
+// exit 1 while anything is recorded.
+func finishRunners(ref workspace.Ref, wait bool, passed string) {
+	if !wait {
+		if jsonOutput {
+			printJSON(map[string]any{"ref": ref.String(), "running": true})
+			return
+		}
+		fmt.Printf("Started — one runner per project.\n  crew setup status %s [--wait]\n", ref)
+		return
+	}
+	reportVerdict(ref, func(st workspace.Status, h *workspace.Health) (map[string]any, string) {
+		return jsonStatus(st, h), renderVerdict(ref, h, passed)
+	})
+}
+
+// renderVerdict is the waited-for text of setup and verify: the issues
+// and the way out, or the pass line. Pure.
+func renderVerdict(ref workspace.Ref, h *workspace.Health, passed string) string {
+	if h != nil {
+		return "\n" + renderIssues(h) + fixHint(ref)
+	}
+	return fmt.Sprintf("\n%s %s\n", ref, passed)
+}
+
+// recordedHealth reads the worktree's record fresh, after the runners
+// wrote it.
+func recordedHealth(ref workspace.Ref) *workspace.Health {
+	res, err := workspace.Resolve(ref)
+	if err != nil {
+		return nil
+	}
+	return res.Health
+}
+
+// jsonStatus is the runners' status as data, every list a list — a reader
+// should never branch on null.
+func jsonStatus(st workspace.Status, h *workspace.Health) map[string]any {
+	projects := make([]workspace.ProjectStatus, 0, len(st.Projects))
+	for _, p := range st.Projects {
+		if p.Steps == nil {
+			p.Steps = []workspace.RunStep{}
+		}
+		if p.Issues == nil {
+			p.Issues = []workspace.Issue{}
+		}
+		projects = append(projects, p)
+	}
+	return map[string]any{"ref": st.Ref.String(), "running": st.Running(), "failed": st.Failed(), "projects": projects, "health": h}
+}
+
+// cmdSetupStatus: what each runner has done. Exit 2 while any is alive,
+// 1 once all stopped with a failure, 0 otherwise; --wait stays to the end.
+func cmdSetupStatus() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew setup status <workspace>[/<worktree>] [--wait]\n")
 		os.Exit(1)
 	}
-	fmt.Printf("\n%s checks out\n", res.Ref)
-}
-
-// jsonVerifyResult is the verify/setup result with an empty smoke list as
-// [] — a reader should never branch on null.
-func jsonVerifyResult(r workspace.VerifyResult) workspace.VerifyResult {
-	if r.Smoke == nil {
-		r.Smoke = []workspace.SmokeResult{}
+	res := mustResolve(os.Args[3])
+	f := parseSetupFlags(os.Args[4:], false)
+	var st workspace.Status
+	if f.wait {
+		st = watchSetup(res.Ref)
+	} else {
+		var err error
+		st, err = workspace.SetupStatus(res.Ref)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
-	return r
+	if jsonOutput {
+		printJSON(jsonStatus(st, recordedHealth(res.Ref)))
+		os.Exit(st.ExitCode())
+	}
+	if !f.wait {
+		if len(st.Projects) == 0 {
+			fmt.Printf("no setup has run on %s\n", res.Ref)
+			return
+		}
+		fmt.Print(workspace.RenderSetupTable(st, "▸"))
+	}
+	if h := recordedHealth(res.Ref); h != nil && !st.Running() {
+		fmt.Println()
+		printIssues(h)
+		printFixHint(res.Ref)
+	}
+	os.Exit(st.ExitCode())
 }
 
-// parseCheckoutFlags reads --no-install / --no-smoke / --pull. Exits on
-// anything else.
-func parseCheckoutFlags(args []string) (install, smoke, pull bool) {
-	install, smoke = true, true
-	for _, arg := range args {
-		switch arg {
-		case "--no-install":
-			install = false
-		case "--no-smoke":
-			smoke = false
-		case "--pull":
-			pull = true
+// cmdSetupLogs tails one runner's log: its steps and what its install
+// printed — live while it runs.
+func cmdSetupLogs() {
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew setup logs <workspace>[/<worktree>] <project> [--lines=N]\n")
+		os.Exit(1)
+	}
+	res := mustResolve(os.Args[3])
+	proj := os.Args[4]
+	lines := 50
+	for _, arg := range os.Args[5:] {
+		switch {
+		case strings.HasPrefix(arg, "--lines="):
+			lines = intFlag("--lines", strings.TrimPrefix(arg, "--lines="), true)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
 		}
 	}
-	return install, smoke, pull
-}
-
-// printSetupProgress is one line per finished install step.
-func printSetupProgress(project string, r exec.SetupResult) {
-	mark := "✓"
-	if r.Err != nil {
-		mark = "✗"
+	text, err := workspace.SetupLogs(res.Ref, proj, lines)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: no runner log for %s on %s — crew setup status %s\n", proj, res.Ref, res.Ref)
+		os.Exit(1)
 	}
-	fmt.Fprintf(human, "  %-16s %s %-14s %s\n", project, mark, r.Step.Name, r.Duration.Round(time.Second))
+	if jsonOutput {
+		printJSON(logsDoc(res.Ref, proj, text))
+		return
+	}
+	fmt.Println(text)
 }
 
-// printSmokeTails shows the last log lines of each server that died; the
-// alive/dead line per server was already printed as a step.
+// logsDoc is `setup logs --json`: the lines as a list, never null. Pure.
+func logsDoc(ref workspace.Ref, proj, text string) map[string]any {
+	lines := []string{}
+	if text != "" {
+		lines = strings.Split(text, "\n")
+	}
+	return map[string]any{"ref": ref.String(), "project": proj, "lines": lines}
+}
+
+// printSmokeTails shows the last log lines of each server that died, and
+// a note per idle one.
 func printSmokeTails(results []workspace.SmokeResult) {
 	for _, r := range workspace.SmokeFailures(results) {
 		if r.State() == workspace.SmokeUnreached {
@@ -275,43 +488,27 @@ func healthWarningLine(res *workspace.Resolved) string {
 	return fmt.Sprintf("! %s: %s — crew fix %s / crew verify %s\n", res.Ref, res.Health.Summary(), res.Ref, res.Ref)
 }
 
-// verifyOrExit runs the verify and turns its refusals into the exit every
-// caller wants; the running-servers case names the way out.
-func verifyOrExit(res *workspace.Resolved) workspace.VerifyResult {
-	result, err := workspace.Verify(res, workspace.CheckoutOptions{Install: true, Smoke: true, Progress: printSetupProgress})
+// startVerifyOrExit starts the verify's runners and turns a refusal into
+// the exit every caller wants; the running-servers case names the way out.
+func startVerifyOrExit(res *workspace.Resolved, only []string) {
+	err := workspace.Verify(res, workspace.CheckoutOptions{Install: true, Smoke: true}, only)
 	if errors.Is(err, workspace.ErrServersRunning) {
 		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — a verify restarts them. crew dev stop %s first.\n", res.Ref, res.Ref)
 		os.Exit(1)
 	}
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	return result
+	exitOnRunnerError(err)
 }
 
 func cmdVerify() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew verify <workspace>[/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew verify <workspace>[/<worktree>] [<project>…] [--wait]\n")
 		os.Exit(1)
 	}
 	res := mustResolve(os.Args[2])
-	result := verifyOrExit(res)
-	if jsonOutput {
-		printJSON(jsonVerifyResult(result))
-	} else {
-		printSmokeTails(result.Smoke)
-		if result.Health == nil {
-			fmt.Printf("\n%s checks out — unlocked\n", res.Ref)
-		} else {
-			fmt.Println()
-			printIssues(result.Health)
-			printFixHint(res.Ref)
-		}
-	}
-	if result.Health != nil {
-		os.Exit(1)
-	}
+	f := parseSetupFlags(os.Args[3:], true)
+	fmt.Fprintf(human, "Verifying %s\n", res.Ref)
+	startVerifyOrExit(res, f.projects)
+	finishRunners(res.Ref, f.wait, "checks out — unlocked")
 }
 
 // fixAction is what crew fix does first, decided from what is known.
@@ -402,14 +599,14 @@ func cmdFix() {
 		}
 		fmt.Fprintln(human)
 	case fixVerifyFirst:
-		fmt.Fprintf(human, "Nothing recorded on %s — checking…\n\n", res.Ref)
-		result := verifyOrExit(res)
-		printSmokeTails(result.Smoke)
-		if res.Health == nil {
+		// The fix needs the verdict, so this is the one verify that waits.
+		fmt.Fprintf(human, "Nothing recorded on %s — verifying…\n\n", res.Ref)
+		startVerifyOrExit(res, nil)
+		watchSetup(res.Ref)
+		if health = recordedHealth(res.Ref); health == nil {
 			fmt.Fprintf(human, "\nnothing recorded — %s checks out\n", res.Ref)
 			return
 		}
-		health = res.Health
 		fmt.Fprintln(human)
 	}
 	if printPrompt {
@@ -470,9 +667,11 @@ func cmdLsWorktrees() {
 	}
 
 	type worktreeOut struct {
-		Ref        string            `json:"ref"`
-		Path       string            `json:"path"`
-		DevRunning bool              `json:"dev_running"`
+		Ref        string `json:"ref"`
+		Path       string `json:"path"`
+		DevRunning bool   `json:"dev_running"`
+		// Installing: setup runners are alive on it — crew setup status.
+		Installing bool              `json:"installing"`
 		SizeBytes  int64             `json:"size_bytes,omitempty"`
 		Health     string            `json:"health,omitempty"`
 		Issues     []workspace.Issue `json:"issues,omitempty"`
@@ -489,6 +688,7 @@ func cmdLsWorktrees() {
 				Ref:        ref.String(),
 				Path:       workspace.WorktreeDir(ref),
 				DevRunning: dev.Running(ref.Slug()),
+				Installing: workspace.SetupRunning(ref),
 			}
 			if wt, err := workspace.WorktreeOf(ws, ref); err == nil {
 				row.Health = wt.Health.Summary()
@@ -509,21 +709,24 @@ func cmdLsWorktrees() {
 		return
 	}
 	for _, wt := range out {
-		fmt.Println(worktreeRow(wt.Ref, wt.Path, wt.SizeBytes, withSize, wt.DevRunning, wt.Health))
+		fmt.Println(worktreeRow(wt.Ref, wt.Path, wt.SizeBytes, withSize, wt.DevRunning, wt.Installing, wt.Health))
 	}
 }
 
 // worktreeRow is one line of crew ls worktrees: the size column only when
-// asked for, then "dev", then the recorded failure, so a healthy layout
-// without --size is unchanged.
-func worktreeRow(ref, path string, sizeBytes int64, withSize, running bool, health string) string {
+// asked for, then "dev" or "installing", then the recorded failure, so a
+// healthy layout without --size is unchanged.
+func worktreeRow(ref, path string, sizeBytes int64, withSize, running, installing bool, health string) string {
 	cols := []string{ref, path}
 	if withSize {
 		cols = append(cols, app.FormatBytes(sizeBytes))
 	}
-	if running {
+	switch {
+	case running:
 		cols = append(cols, "dev")
-	} else {
+	case installing:
+		cols = append(cols, "installing")
+	default:
 		cols = append(cols, "")
 	}
 	if health != "" {

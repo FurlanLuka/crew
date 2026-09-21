@@ -2,6 +2,7 @@ package exec
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -108,15 +109,17 @@ type SetupResult struct {
 
 // RunSetup runs the steps in order and reports each as it finishes. A failing
 // step stops the sequence — a package manager running against tools mise did
-// not install is noise, not progress.
+// not install is noise, not progress. Every step's output streams to out as
+// it happens (nil discards it) — a setup runner's log is what someone reads
+// while an install is still going.
 //
 // When mise is in play, each later step runs through `mise exec` so it sees
 // the pinned toolchain even in a shell where mise is not activated.
-func RunSetup(dir string, steps []SetupStep, report func(SetupResult)) error {
+func RunSetup(dir string, steps []SetupStep, out io.Writer, report func(SetupResult)) error {
 	underMise := false
 	for _, step := range steps {
 		start := time.Now()
-		err := runSetupStep(dir, step, underMise)
+		err := runSetupStep(dir, step, underMise, out)
 		if report != nil {
 			report(SetupResult{Step: step, Duration: time.Since(start), Err: err})
 		}
@@ -156,7 +159,7 @@ func (e *StepError) Error() string {
 
 func (e *StepError) Unwrap() error { return e.Err }
 
-func runSetupStep(dir string, step SetupStep, underMise bool) error {
+func runSetupStep(dir string, step SetupStep, underMise bool, stream io.Writer) error {
 	shell := step.Command
 	if underMise {
 		shell = "mise exec -- sh -c " + ShellQuote(step.Command)
@@ -166,7 +169,11 @@ func runSetupStep(dir string, step SetupStep, underMise bool) error {
 	cmd := exec.Command("sh", "-c", shell)
 	cmd.Dir = dir
 	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
+	var w io.Writer = &out
+	if stream != nil {
+		w = io.MultiWriter(&out, stream)
+	}
+	cmd.Stdout, cmd.Stderr = w, w
 	if err := cmd.Run(); err != nil {
 		tail := strings.TrimSpace(out.String())
 		if lines := strings.Split(tail, "\n"); len(lines) > setupOutputTail {

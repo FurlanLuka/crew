@@ -389,3 +389,56 @@ func TestKillTmuxSession_NonexistentSessionIsNoOp(t *testing.T) {
 	// Must not panic or fail when there is nothing to kill.
 	KillTmuxSession("crew-test-does-not-exist")
 }
+
+// TmuxSessionIdle is what decides that a setup session with no runner left
+// may go: a pane still running a command keeps it; idle shells do not.
+// KillTmuxWindow leaves the other windows and the session alone.
+func TestTmuxSessionIdle_AndKillTmuxWindow(t *testing.T) {
+	requireTmux(t)
+	dir := startPrivateTmux(t)
+	session := fmt.Sprintf("crew-test-idle-%d", os.Getpid())
+	if err := TmuxRunInSession(session, "busy", dir, "sleep 30"); err != nil {
+		t.Fatalf("TmuxRunInSession: %v", err)
+	}
+	TmuxNewWindow(session, "shell", dir)
+	t.Cleanup(func() { KillTmuxSession(session) })
+
+	waitFor(t, "the busy window to run", func() bool { return TmuxPaneBusy(session, "busy") })
+	if TmuxSessionIdle(session) {
+		t.Error("a session with a running command is not idle")
+	}
+	KillTmuxWindow(session, "shell")
+	if !TmuxSessionExists(session) || !TmuxPaneBusy(session, "busy") {
+		t.Error("killing one window must leave the session and its other window")
+	}
+	KillTmuxWindow(session, "busy")
+	// A window created with its command closes when the command dies;
+	// the session goes with its last window.
+	waitFor(t, "the session to go with its last window", func() bool { return !TmuxSessionExists(session) })
+
+	if err := CreateTmuxSession(session, dir); err != nil {
+		t.Fatal(err)
+	}
+	if !TmuxSessionIdle(session) {
+		t.Error("a session of idle shells is idle")
+	}
+}
+
+// TmuxRunInSession makes the session around the first command and adds a
+// window to it for the next.
+func TestTmuxRunInSession_CreatesThenAdds(t *testing.T) {
+	requireTmux(t)
+	dir := startPrivateTmux(t)
+	session := fmt.Sprintf("crew-test-run-%d", os.Getpid())
+	t.Cleanup(func() { KillTmuxSession(session) })
+	if err := TmuxRunInSession(session, "a", dir, "sleep 30"); err != nil {
+		t.Fatal(err)
+	}
+	if err := TmuxRunInSession(session, "b", dir, "sleep 30"); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := exec.Command("tmux", "list-windows", "-t", session, "-F", "#{window_name}").Output()
+	if got := strings.TrimSpace(string(out)); got != "a\nb" {
+		t.Errorf("windows = %q", got)
+	}
+}

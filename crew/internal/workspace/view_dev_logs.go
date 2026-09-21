@@ -25,10 +25,12 @@ type serverRestartedMsg struct{}
 // ── Data ──
 
 type logTab struct {
-	label   string // display name ("api", "web", "proxy", "urls")
-	window  string // tmux window name ("<ws>/api") — empty for urls/proxy tab
-	isURLs  bool   // true for the URLs overview tab
-	isProxy bool   // true for the proxy logs tab
+	label   string   // display name ("api", "web", "proxy", "urls")
+	window  string   // tmux window name ("<ws>/api") — empty for urls/proxy tab
+	file    string   // a log file to tail instead of a pane — a setup runner's
+	stopped []string // logs to read when the pane is gone: the dev log, then the last smoke's
+	isURLs  bool     // true for the URLs overview tab
+	isProxy bool     // true for the proxy logs tab
 }
 
 // ── Model ──
@@ -50,8 +52,9 @@ func NewLogsView(ref Ref, items []devItem, initialIdx int) LogsView {
 	var tabs []logTab
 	for _, item := range items {
 		tabs = append(tabs, logTab{
-			label:  item.Server.Name,
-			window: fmt.Sprintf("%s/%s", ref.Slug(), item.Server.Name),
+			label:   item.Server.Name,
+			window:  fmt.Sprintf("%s/%s", ref.Slug(), item.Server.Name),
+			stopped: []string{dev.LogFile(ref.Slug(), item.Server.Name), smokeLogFile(ref.Slug(), item.ProjectName, item.Server.Name)},
 		})
 	}
 	tabs = append(tabs, logTab{label: "proxy", isProxy: true})
@@ -68,6 +71,16 @@ func NewLogsView(ref Ref, items []devItem, initialIdx int) LogsView {
 		tabs:    tabs,
 		tabIdx:  tabIdx,
 	}
+}
+
+// NewSetupLogsView is the logs view over the setup runners' logs, one tab
+// per project: what each install is printing right now.
+func NewSetupLogsView(ref Ref, projects []string) LogsView {
+	var tabs []logTab
+	for _, p := range projects {
+		tabs = append(tabs, logTab{label: p, file: RunnerLogFile(ref, p)})
+	}
+	return LogsView{ref: ref, tabs: tabs}
 }
 
 func (v LogsView) Title() string {
@@ -140,7 +153,7 @@ func (v LogsView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.tabIdx = (v.tabIdx - 1 + len(v.tabs)) % len(v.tabs)
 		return v, v.capturePane()
 	case msg.String() == "r":
-		if v.tabs[v.tabIdx].isURLs {
+		if v.tabs[v.tabIdx].isURLs || v.tabs[v.tabIdx].file != "" {
 			return v, nil
 		}
 		if v.tabs[v.tabIdx].isProxy {
@@ -184,7 +197,11 @@ func (v LogsView) View() string {
 
 	b.WriteString("\n")
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("r restart  tab switch  ↑↓ scroll  esc back"))
+	if v.tabs[v.tabIdx].file != "" {
+		b.WriteString(app.HelpStyle.Render("tab switch  ↑↓ scroll  esc back"))
+	} else {
+		b.WriteString(app.HelpStyle.Render("r restart  tab switch  ↑↓ scroll  esc back"))
+	}
 	b.WriteString("\n")
 
 	return b.String()
@@ -210,6 +227,17 @@ func (v LogsView) restartServer() tea.Cmd {
 func (v LogsView) capturePane() tea.Cmd {
 	tab := v.tabs[v.tabIdx]
 
+	if tab.file != "" {
+		file := tab.file
+		return func() tea.Msg {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return paneContentMsg{content: "(nothing yet)"}
+			}
+			return paneContentMsg{content: strings.TrimRight(string(data), "\n")}
+		}
+	}
+
 	if tab.isURLs {
 		ref := v.ref
 		return func() tea.Msg {
@@ -224,14 +252,17 @@ func (v LogsView) capturePane() tea.Cmd {
 		}
 	}
 
-	session, window, logFile := v.session, tab.window, dev.LogFile(v.ref.Slug(), tab.label)
+	session, window, stopped := v.session, tab.window, tab.stopped
 	return func() tea.Msg {
 		content, err := crewExec.CaptureTmuxPane(session, window, 500)
 		if err != nil || strings.TrimSpace(content) == "" {
 			// No pane: the server is stopped. Its log file is what a smoke or
 			// a crash left behind, and the reason to open logs on a dead one.
-			if data, readErr := os.ReadFile(logFile); readErr == nil {
-				content = "(stopped — last log)\n" + string(data)
+			for _, logFile := range stopped {
+				if data, readErr := os.ReadFile(logFile); readErr == nil {
+					content = "(stopped — last log)\n" + string(data)
+					break
+				}
 			}
 		}
 		return paneContentMsg{content: strings.TrimRight(content, "\n")}

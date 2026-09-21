@@ -11,8 +11,8 @@ import (
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
-// sessionPrefix matches every tmux session crew creates: crew-dev-<ws>,
-// and crew-dev-proxy.
+// sessionPrefix matches every tmux session crew creates: crew-dev-<slug>,
+// crew-setup-<slug> (a worktree's setup runners) and crew-dev-proxy.
 const sessionPrefix = "crew-"
 
 // collectSessions groups crew's tmux sessions with the processes running in

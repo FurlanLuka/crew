@@ -354,7 +354,7 @@ func loadWsProjects(wsName string) tea.Cmd {
 
 func addProjectsToWorkspace(wsName string, specs []ProjectSpec) tea.Cmd {
 	return func() tea.Msg {
-		results, err := AddProjects(wsName, specs, CheckoutOptions{Install: true})
+		refs, err := AddProjects(wsName, specs, CheckoutOptions{Install: true, Smoke: true})
 		if err != nil {
 			return errMsg{err}
 		}
@@ -362,36 +362,21 @@ func addProjectsToWorkspace(wsName string, specs []ProjectSpec) tea.Cmd {
 		for i, s := range specs {
 			names[i] = s.Name
 		}
-		var issues []Issue
-		for _, r := range results {
-			issues = append(issues, r.Issues...)
-		}
-		return wsProjectsAddedMsg{names: names, issues: issues}
+		return wsProjectsAddedMsg{names: names, refs: refs}
 	}
 }
 
-// addedStatus is the one line after an add: what went in, what failed.
-func addedStatus(names []string, issues []Issue) string {
-	failed := map[string]bool{}
-	for _, i := range issues {
-		failed[i.Project] = true
+// addedStatus is the one line after an add: what went in, and where its
+// runners are going. Pure.
+func addedStatus(names []string, refs []Ref) string {
+	msg := "Added " + strings.Join(names, ", ")
+	if len(refs) == 0 {
+		return msg
 	}
-	var ok, bad []string
-	for _, n := range names {
-		if failed[n] {
-			bad = append(bad, n)
-		} else {
-			ok = append(ok, n)
-		}
+	if len(refs) == 1 {
+		return msg + fmt.Sprintf(" — installing on %s (its page shows the runners)", refs[0])
 	}
-	msg := "Added " + strings.Join(ok, ", ")
-	if len(ok) == 0 {
-		msg = "Added nothing"
-	}
-	if len(bad) > 0 {
-		msg += " — " + strings.Join(bad, ", ") + " failed, recorded on the worktree (f fix on its page)"
-	}
-	return msg
+	return msg + fmt.Sprintf(" — installing on %d worktrees (each page shows its runners)", len(refs))
 }
 
 func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {

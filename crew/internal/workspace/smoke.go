@@ -92,25 +92,6 @@ const (
 	evidenceTail = 30
 )
 
-// SmokeStart starts a worktree's servers, waits for each to reach a verdict,
-// and stops everything again.
-//
-// Crew cannot judge "healthy" — a server that binds and then serves errors
-// looks fine from here. What it can read honestly is "died" and "never
-// listened", which is exactly the shape of a broken checkout: bad
-// interpreter, missing module, no .env. Servers are stopped afterwards
-// because creating a worktree should not leave things running as a side
-// effect; the page is one keystroke away for that.
-func SmokeStart(res *Resolved) ([]SmokeResult, error) {
-	result, err := StartDev(res, true, false)
-	if err != nil {
-		return nil, err
-	}
-	results := waitRoutes(res.Slug, result.Routes, SmokeCeiling)
-	dev.StopAll(res.Slug)
-	return results, nil
-}
-
 // CheckServers is one look at whatever is running now — nothing started,
 // nothing stopped, nothing waited for. What `crew dev check` prints and
 // what the worktree page marks its rows with. Nil when nothing runs.
@@ -119,7 +100,7 @@ func CheckServers(res *Resolved) []SmokeResult {
 	if len(routes) == 0 {
 		return nil
 	}
-	return waitRoutes(res.Slug, routes, 0)
+	return waitDevRoutes(res.Slug, routes, 0)
 }
 
 // WaitServers is CheckServers with the smoke's patience: `crew dev check
@@ -129,25 +110,33 @@ func WaitServers(res *Resolved) []SmokeResult {
 	if len(routes) == 0 {
 		return nil
 	}
-	return waitRoutes(res.Slug, routes, SmokeCeiling)
+	return waitDevRoutes(res.Slug, routes, SmokeCeiling)
+}
+
+// waitDevRoutes is waitRoutes over the dev session's windows and logs.
+func waitDevRoutes(slug dev.Slug, routes []dev.Route, ceiling time.Duration) []SmokeResult {
+	window := func(r dev.Route) string { return string(slug) + "/" + r.ServerName }
+	logFor := func(r dev.Route) string { return dev.LogFile(slug, r.ServerName) }
+	return waitRoutes(dev.SessionName(slug), routes, window, logFor, ceiling)
 }
 
 // waitRoutes polls each route's pane and port until it has a verdict, and
-// keeps the log tail for the ones that failed.
-func waitRoutes(slug dev.Slug, routes []dev.Route, ceiling time.Duration) []SmokeResult {
-	session := dev.SessionName(slug)
+// keeps the log tail for the ones that failed. The session, the window a
+// route runs in and where its log is are the caller's — the dev session
+// and a setup runner's smoke lay them out differently.
+func waitRoutes(session string, routes []dev.Route, window, logFor func(dev.Route) string, ceiling time.Duration) []SmokeResult {
 	look := func(r dev.Route) (alive, listening bool) {
-		alive = exec.TmuxPaneBusy(session, string(slug)+"/"+r.ServerName)
+		alive = exec.TmuxPaneBusy(session, window(r))
 		if alive {
 			listening = portOpen(r.InternalPort)
 		}
 		return alive, listening
 	}
 	results := waitForServers(routes, referencedServers(), look, smokeTiming{ceiling: ceiling, tick: smokeTick, grace: deadGrace})
-	for i := range results {
+	for i, r := range routes {
 		if results[i].Failed() {
-			results[i].Tail = tailLog(dev.LogFile(slug, results[i].Server), smokeTail)
-			results[i].Evidence = tailLog(dev.LogFile(slug, results[i].Server), evidenceTail)
+			results[i].Tail = tailLog(logFor(r), smokeTail)
+			results[i].Evidence = tailLog(logFor(r), evidenceTail)
 		}
 	}
 	return results

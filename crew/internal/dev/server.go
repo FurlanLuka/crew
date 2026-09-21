@@ -37,14 +37,15 @@ type DevServerConfig struct {
 // a name of their own and never touch a live proxy.
 var ProxySessionName = "crew-dev-proxy"
 
-// crewExecutable is what the proxy pane runs. A variable so tests can point
-// it at a no-op: under go test it would be the test binary, which re-runs
-// the whole package inside the pane.
-var crewExecutable = os.Executable
-
 // SessionName returns the tmux session name for dev servers.
 func SessionName(slug Slug) string {
 	return "crew-dev-" + string(slug)
+}
+
+// SetupSessionName is the tmux session a worktree's setup runners live in —
+// one window per project while it is being created, verified or set up.
+func SetupSessionName(slug Slug) string {
+	return "crew-setup-" + string(slug)
 }
 
 // LogDir returns the directory holding dev server log files for a worktree.
@@ -278,19 +279,9 @@ func Start(p StartParams) (StartResult, error) {
 	}
 
 	for _, ps := range planned {
-		windowName := fmt.Sprintf("%s/%s", p.Slug, ps.Server.Name)
-
-		logFile := LogFile(p.Slug, ps.Server.Name)
-		if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
-			return StartResult{}, fmt.Errorf("failed to create log dir: %w", err)
+		if err := startServerWindow(session, fmt.Sprintf("%s/%s", p.Slug, ps.Server.Name), LogFile(p.Slug, ps.Server.Name), ps, byProject[ps.Project]); err != nil {
+			return StartResult{}, err
 		}
-		if err := os.WriteFile(logFile, nil, 0o644); err != nil {
-			return StartResult{}, fmt.Errorf("failed to truncate log file: %w", err)
-		}
-
-		crewExec.TmuxNewWindow(session, windowName, ps.Dir)
-		crewExec.TmuxPipePaneToFile(session, windowName, logFile)
-		_ = crewExec.TmuxSendKeys(session+":"+windowName, ServerCommand(ps, byProject[ps.Project]))
 	}
 
 	var warnings []string
@@ -313,9 +304,10 @@ func Start(p StartParams) (StartResult, error) {
 	}, nil
 }
 
-// StopAll kills dev sessions. An empty slug kills every dev session and the
-// shared proxy with them; a per-slug stop leaves the proxy alone — callers call
-// StopProxyIfIdle() after an explicit stop, or keep it across a restart.
+// StopAll kills dev sessions. An empty slug kills every dev session, every
+// setup session and the shared proxy with them; a per-slug stop leaves the
+// proxy alone — callers call StopProxyIfIdle() after an explicit stop, or
+// keep it across a restart.
 func StopAll(slug Slug) {
 	if slug != "" {
 		crewExec.KillTmuxSession(SessionName(slug))
@@ -323,11 +315,136 @@ func StopAll(slug Slug) {
 		return
 	}
 
-	for _, session := range listDevSessions() {
+	for _, session := range sessionsToStop(crewExec.ListTmuxSessions(), ProxySessionName) {
 		crewExec.KillTmuxSession(session)
-		removeRoutesFile(Slug(strings.TrimPrefix(session, "crew-dev-")))
+		if slug, ok := strings.CutPrefix(session, "crew-dev-"); ok {
+			removeRoutesFile(Slug(slug))
+		}
 	}
 	StopProxy()
+}
+
+// sessionsToStop is every crew session a stop-all takes down: dev
+// sessions and setup runners; the proxy has its own stop. Pure.
+func sessionsToStop(all []string, proxy string) []string {
+	var out []string
+	for _, s := range all {
+		if s == proxy {
+			continue
+		}
+		if strings.HasPrefix(s, "crew-dev-") || strings.HasPrefix(s, "crew-setup-") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// StopSetup kills a worktree's setup session — its runners and whatever
+// servers a smoke had up.
+func StopSetup(slug Slug) {
+	crewExec.KillTmuxSession(SetupSessionName(slug))
+}
+
+// ProjectServersParams is what a setup runner needs to smoke one project's
+// servers: every project (bindings resolve against siblings), the reserved
+// ports the smoke binds, and which project's servers to start.
+type ProjectServersParams struct {
+	Session   string
+	Slug      Slug
+	Workspace string
+	Worktree  string
+	Projects  []DevProject
+	Project   string
+	Overrides map[string]string
+	Ports     map[string]int // "project/server" → port, every server covered
+	LogFile   func(server string) string
+}
+
+// StartProjectServers starts one project's servers as windows of the given
+// session on the ports handed in — no allocation, no routes file, no proxy:
+// a smoke is transient and must not look like a dev start to anything that
+// reads routes. The env is resolved exactly as Start resolves it. Returns
+// the routes for the wait loop and the window names for StopWindows.
+func StartProjectServers(p ProjectServersParams) ([]Route, []string, error) {
+	var mine []DevProject
+	for _, dp := range p.Projects {
+		if dp.Name == p.Project {
+			mine = append(mine, dp)
+		}
+	}
+	var ports []int
+	for _, dp := range mine {
+		for _, ds := range dp.DevServers {
+			port, ok := p.Ports[PortKey(dp.Name, ds.Name)]
+			if !ok || port == 0 {
+				return nil, nil, fmt.Errorf("no port reserved for %s", PortKey(dp.Name, ds.Name))
+			}
+			ports = append(ports, port)
+		}
+	}
+	planned := PlanServers(mine, ports, true)
+	if len(planned) == 0 {
+		return nil, nil, nil
+	}
+
+	resolutions := ResolveBindings(ResolveParams{
+		Projects:  p.Projects,
+		Ports:     IndexReservedPorts(p.Ports),
+		Workspace: p.Workspace,
+		Worktree:  p.Worktree,
+		Overrides: p.Overrides,
+	})
+	LogResolutions(p.Slug, resolutions)
+	byProject := GroupResolutions(resolutions)
+
+	if !crewExec.TmuxSessionExists(p.Session) {
+		if err := crewExec.CreateTmuxSession(p.Session, ""); err != nil {
+			return nil, nil, fmt.Errorf("failed to create session: %w", err)
+		}
+	}
+	var routes []Route
+	var windows []string
+	for _, ps := range planned {
+		window := fmt.Sprintf("%s/%s", ps.Project, ps.Server.Name)
+		if err := startServerWindow(p.Session, window, p.LogFile(ps.Server.Name), ps, byProject[ps.Project]); err != nil {
+			return routes, windows, err
+		}
+		routes = append(routes, ps.Route)
+		windows = append(windows, window)
+	}
+	return routes, windows, nil
+}
+
+// startServerWindow is one dev server as a window: its log truncated and
+// piped, then the command sent. The pipe is set before the command so the
+// first lines are not lost.
+func startServerWindow(session, window, logFile string, ps PlannedServer, resolutions []Resolution) error {
+	if err := os.MkdirAll(filepath.Dir(logFile), 0o755); err != nil {
+		return fmt.Errorf("failed to create log dir: %w", err)
+	}
+	if err := os.WriteFile(logFile, nil, 0o644); err != nil {
+		return fmt.Errorf("failed to truncate log file: %w", err)
+	}
+	crewExec.TmuxNewWindow(session, window, ps.Dir)
+	crewExec.TmuxPipePaneToFile(session, window, logFile)
+	// A failed send-keys is logged by TmuxSendKeys and shows up as a dead
+	// pane at the check; the other servers still start.
+	_ = crewExec.TmuxSendKeys(session+":"+window, ServerCommand(ps, resolutions))
+	return nil
+}
+
+// StopWindows kills the named windows of a session, each with the pane
+// sweep a session kill does — a smoke's servers leak children otherwise.
+// A session left with nothing but idle shells goes too: a runner in its
+// own window keeps the session alive, an in-process one has no window
+// there and would leave the shell the session was created with.
+func StopWindows(session string, windows []string) {
+	for _, w := range windows {
+		crewExec.KillTmuxWindow(session, w)
+	}
+	if crewExec.TmuxSessionExists(session) && crewExec.TmuxSessionIdle(session) {
+		crewExec.KillTmuxSession(session)
+	}
 }
 
 // StopProxyIfIdle kills the shared proxy if no proxied routes remain.
@@ -567,7 +684,7 @@ func EnsureProxy(domain string, port int) error {
 		return fmt.Errorf("failed to create proxy session: %w", err)
 	}
 
-	crewBin, err := crewExecutable()
+	crewBin, err := crewExec.CrewBinary()
 	if err != nil {
 		crewBin = "crew"
 	}
@@ -582,14 +699,4 @@ func EnsureProxy(domain string, port int) error {
 	cmd := fmt.Sprintf("%s dev _proxy --domain=%s --port=%d", crewBin, domain, port)
 	debug.Log("dev", "proxy cmd: %s", cmd)
 	return crewExec.TmuxSendKeys(ProxySessionName, cmd)
-}
-
-func listDevSessions() []string {
-	var sessions []string
-	for _, s := range crewExec.ListTmuxSessions() {
-		if strings.HasPrefix(s, "crew-dev-") && s != ProxySessionName {
-			sessions = append(sessions, s)
-		}
-	}
-	return sessions
 }

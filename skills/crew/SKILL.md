@@ -45,7 +45,7 @@ through crew — never start a server by hand, never `-f`.
 
 ```
 crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>
-crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev][\t<recorded failure>]   --json adds issues[]
+crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev|installing][\t<recorded failure>]   --json adds issues[], installing
 crew ls projects                                           <name>\t<path>
 crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<template>[\t<resolved value>]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
@@ -145,56 +145,91 @@ crew run <workspace>[/<worktree>] <project> -- <command...>
 ## 5. Workspaces and worktrees
 
 ```
-crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct]     <project>\t<added|failed>\t<worktree|direct>\t<detail>
+crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct] [--wait]     <project>\t<added|failed>\t<worktree|direct>\t<detail>
 crew rm workspace <workspace> <project>                            remove a project from a workspace
 crew rm <workspace>                                                the whole workspace, every worktree
-crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]
-crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]
-crew setup <workspace>[/<worktree>] [--no-smoke]
-crew verify <workspace>[/<worktree>]                              <project>  ✓|✗ smoke <server> <took> [died | not listening on :<port>]
+crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]
+crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke] [--wait]
+crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]
+crew setup status <workspace>[/<worktree>] [--wait]               ✓|✗|▸ <project>  <step> <took> · <step> <took> · ▸ <running step> | <step> — <reason>
+crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]
+crew verify <workspace>[/<worktree>] [<project>...] [--wait]
 crew fix <workspace>[/<worktree>] [--print]
 crew rm worktree <workspace>/<name>
 crew migrate [--dry-run] [--yes]
 ```
 
+- **A worktree is made in the background, one runner per project.** `add worktree`,
+  `duplicate`, `setup`, `verify`, `add workspace <ws> <p>…` and `import … workspace` record
+  what they are about to make, reserve the worktree's ports, start one runner per project
+  (a window of tmux session `crew-setup-<ws>--<wt>`: checkout → `.env` → `mise trust` →
+  install → a smoke of that project's own servers → record) and **return at once**. Wall
+  clock is the slowest project, not the sum. Nothing is finished when the command returns —
+  `crew setup status <ref>` is where the verdicts are.
+- **Poll `crew setup status <ref>`** (or `--json`): one row per project with its state
+  (`starting`, `running`, `ok`, `failed`, `interrupted`), its steps in order with how long
+  each took, the running one marked `▸`, a failed one with its reason. Exit **2 while any
+  runner is alive**, **1** once all stopped with anything recorded, **0** otherwise. A
+  failure is recorded on the worktree **the moment it happens** — `crew fix <ref> --print`
+  has it while the other runners still install, so act on the first failure early instead
+  of waiting for the slowest install. `--wait` stays until no runner is left (then 1 or 0).
+  `crew setup logs <ref> <project>` is what an install is printing right now (its steps
+  and the package manager's output) — read it when a step is taking long.
+- `--wait` on any of the creating commands does the polling for you: the table live in a
+  terminal, then the summary — issues and the fix line — and exit 1 while anything is
+  recorded. `--json` without `--wait` is `{ref, running: true, projects}` (no health yet);
+  `--wait --json` is `{ref, projects, health}` as before. Without a terminal and without
+  `--wait`, the command prints the `crew setup status` line and exits 0.
 - `add workspace` takes any number of projects in one call — `store-api:"Backend API"
   store-app:"iOS app" checkout-api` — and creates the workspace if it is new. Names are
-  checked before anything happens; checkouts run, then every install at once. A checkout or
-  install that fails keeps the member and is recorded on that worktree — the `crew fix
-  <ws>/<wt> --print` line is printed per worktree.
-  One call, not one per project.
+  checked before anything happens; then the members are recorded and their runners start
+  in every worktree of the workspace. `added` means **recorded and installing**, not done —
+  the `crew setup status <ws>/<wt>` line is printed per worktree; with `--wait` the rows say
+  `added` or `failed` for real and exit 1 on any failure. A checkout or install that fails
+  keeps the member, recorded on that worktree. One call, not one per project.
 - `--direct` adds the projects by their canonical paths instead of git worktrees — for a repo
   that must not be checked out twice.
 - `add worktree` prints each project's base branch and how far behind origin it is; `--pull`
-  fast-forwards the local bases first (never touches a checked-out feature branch). Then:
-  checkouts (all-or-nothing), `.env` copied from the canonical repo or a sibling worktree,
-  installs per project, and a smoke start — each server watched until it listens on its
-  port, dies, or a minute passes (a stack that is up in three seconds is judged in three);
-  last log lines for the failed ones. Read that output and relay it; a failed install keeps
-  the worktree and `crew setup <ref>` re-runs it. Crew's checkouts run with the repo's git
-  hooks off — a hook written for a user's checkout does not get to fail crew's — and
-  `mise trust` is done at checkout when there is a `mise.toml`.
-- **Creation never stops.** `add worktree` checks out every project, installs every checkout
-  and smoke-starts the servers, each step over every project; a failure at any stage is an
+  fast-forwards the local bases first (never touches a checked-out feature branch) — that
+  part is in the foreground, before the runners start. Each runner: the checkout (with the
+  repo's git hooks off — a hook written for a user's checkout does not get to fail crew's;
+  `mise trust` when there is a `mise.toml`), `.env` copied from the canonical repo or a
+  sibling worktree, the install, then the smoke of that project's servers — each watched
+  until it listens on its port, dies, or a minute passes. **Each server is smoked on its
+  own**: siblings' URLs are resolved (ports were reserved first) but nothing answers on
+  them; a server that exits at boot because its upstream is unreachable reads `died` with
+  the connection error in its evidence — that is the evidence to read, not a crew fault. A
+  failed install keeps the worktree and ends that runner (no smoke of a half-installed
+  checkout); `crew setup <ref> <project>` re-runs it.
+- **Creation never stops.** Every runner runs to its own end; a failure at any stage is an
   issue **recorded on the worktree** (`checkout failed: x`, `install failed: x`, `server died:
-  x/y`, or `N issues` in `crew ls worktrees`). In a terminal, creation ends on the worktree
-  page, **locked** to `f fix with Claude` / `v verify` (plus logs and a shell) until a verify
-  passes; without a terminal it prints the issues and exits 1.
-- **Verify** finishes what is missing — checks out a project that failed, re-runs the installs
-  that failed — then smokes; exit 1 while anything is recorded, cleared on a pass. `crew fix
-  <ref>` opens Claude with every issue, its evidence and the env anomalies — the user runs
-  it. **You are already here: `crew fix <ref> --print`** prints that same prompt (the 30-line
-  install tails, the dead servers' log lines, the anomalies) so you fix the cause yourself,
-  then `crew verify <ref>`. Without a terminal bare `fix` prints too, so you cannot get it
-  wrong. `--json` is the recorded health as data; `ls worktrees --json`
-  carries the same `issues[]`. A plain `dev start` never clears health; the CLI prints the
-  issues and proceeds (`! <ref>: … — crew fix … / crew verify …`). `verify` refuses while the
-  worktree's servers are running (it restarts them): `crew dev stop <ref>` first.
-- `add worktree`, `duplicate`, `setup` and `verify` all take `--json`: progress goes to
-  stderr, the result — `{ref, projects, health}` or the verify result — to stdout, exit 1
-  while anything is recorded.
-- `duplicate` is a new worktree of the same projects with the source's overrides copied;
-  ports are never copied.
+  x/y`, or `N issues` in `crew ls worktrees`, `installing` in the dev column while runners
+  are alive). A runner that vanished without a verdict (a killed window, a reboot) is
+  recorded as `interrupted` by whoever looks next — never a clean row. In a terminal,
+  creation lands on the worktree page, which shows the runners' table live and stays
+  **locked** to `f fix with Claude` / `v verify` (plus logs and a shell) while anything is
+  recorded or still installing; esc leaves the runners going.
+- **Verify** finishes what is missing — checks out and installs a project that has no
+  checkout, re-installs one whose install failed — and smokes every project, one runner per
+  project; each clears or rewrites its own project's record. **Name the project you fixed**
+  (`crew verify <ref> <project>`) and only its runner starts — the others keep their record
+  and their result. `crew fix <ref>` opens Claude with every issue, its evidence and the env
+  anomalies — the user runs it. **You are already here: `crew fix <ref> --print`** prints
+  that same prompt (the 30-line install tails, the dead servers' log lines, the anomalies)
+  so you fix the cause yourself, then `crew verify <ref> <project> --wait`. Without a
+  terminal bare `fix` prints too, so you cannot get it wrong. `--json` is the recorded
+  health as data; `ls worktrees --json` carries the same `issues[]`. A plain `dev start`
+  never clears health; the CLI prints the issues and proceeds (`! <ref>: … — crew fix … /
+  crew verify …`). `verify` and `setup` refuse while the worktree's servers are running
+  (they restart them): `crew dev stop <ref>` first.
+- **Refused while runners are alive** — the one thing crew blocks on besides a verify under
+  running servers, because a dev server on top of an install still writing the same
+  checkout is corruption, not a warning: `crew dev start`, `verify`, `setup`, `duplicate`
+  of that worktree, and a second runner for the same project. The error names `crew setup
+  status <ref>`; wait for it (`--wait`) and retry. Adding a new project to a busy worktree
+  is fine — it is one more runner. `crew rm worktree` and `crew kill` stop the runners.
+- `duplicate` is a new worktree of the same projects with the source's overrides copied
+  before its runners start; ports are never copied.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
   the background (a full Xcode build can be 100+ GB). Disk comes back a little later — `crew
   trash` shows what is still clearing.
@@ -274,7 +309,7 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
 
 ```
 crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json
-crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke]]
+crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
                                                          <project|workspace>\t<name>\t<status|outcome>\t<detail>
 ```
 
@@ -284,9 +319,9 @@ crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install]
   cover. With `--projects`, every workspace named must be covered by them.
 - Bare, `import` is a wizard the user drives: `y` import, `e` edit name/path/setup, `c` clone
   the remote (the path field opens prefilled with crew's guess, enter takes it, or type
-  another), `n` skip, `r` replace one already here; then `y` creates each workspace with a
-  checkout of every member (no installs). Every `y` is applied at once; `esc` keeps what was
-  done.
+  another), `n` skip, `r` replace one already here; then `y` creates each workspace the way
+  `crew add worktree` does — the card shows the runners' table until they are done. Every
+  `y` is applied at once; `esc` keeps what was done.
 - **You drive it with modes.** `--plan` first: one row per item —
   `project\t<name>\texists|path exists|suggested|clone|missing\t<path>` (`suggested` = a
   sibling found beside a repo crew knows, taken automatically — even under `--clone`;
@@ -296,13 +331,14 @@ crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install]
   prints the same row with the outcome — `imported`, `imported (cloned)`, `replaced`,
   `replaced (cloned)` — and the path; a name already in the pool needs `--replace` (refused
   before anything is cloned). `crew import <file> workspace <name> [--pull] [--no-install]
-  [--no-smoke]` creates it once every member is in the pool — **exactly the way `crew add
-  worktree` makes one**: the base table (`--pull` fast-forwards the local bases first; say
-  so when it prints `behind`), checkouts, installs, the smoke; what fails is recorded on
-  `<name>/main` and the row says `created … N issue(s) recorded — crew fix <name>/main
-  --print`, exit 1. `crew import <file> --all [--clone] [--replace] [--pull] …` does the
-  whole bundle: new items only unless `--replace`; missing paths refuse the run unless
-  `--clone`; never guesses. Output rows `<kind>\t<name>\t<outcome>\t<detail>`.
+  [--no-smoke] [--wait]` creates it once every member is in the pool — **exactly the way
+  `crew add worktree` makes one**: the base table (`--pull` fast-forwards the local bases
+  first; say so when it prints `behind`), then one runner per project in the background;
+  the row says `created\tinstalling — crew setup status <name>/main` and you poll that.
+  With `--wait` the row carries the verdict: `created … N issue(s) recorded — crew fix
+  <name>/main --print`, exit 1. `crew import <file> --all [--clone] [--replace] [--pull]
+  …` does the whole bundle: new items only unless `--replace`; missing paths refuse the run
+  unless `--clone`; never guesses. Output rows `<kind>\t<name>\t<outcome>\t<detail>`.
 
 ## 9. Housekeeping
 
@@ -332,8 +368,11 @@ crew help [<command>] [<subcommand>] [--json]
 
 **"Set up a second working copy of store-front"**
 1. `crew ls worktrees store-front`
-2. `crew add worktree store-front/wrk3 --pull` — relay the base table and the smoke result.
-3. Tell them: `crew launch store-front/wrk3`, or `crew claude store-front/wrk3`.
+2. `crew add worktree store-front/wrk3 --pull` — relay the base table; the runners start.
+3. `crew setup status store-front/wrk3` every ten seconds or so (or `--wait` once). A `✗`
+   row while others still run: act on it now — `crew fix store-front/wrk3 --print`, fix,
+   `crew verify store-front/wrk3 <project>`. Relay the final table.
+4. Tell them: `crew launch store-front/wrk3`, or `crew claude store-front/wrk3`.
 
 **"Why is service X talking to the wrong thing?"**
 1. `crew env <ws>/<wt> <project>` — what resolved, what was left alone.
@@ -341,14 +380,16 @@ crew help [<command>] [<subcommand>] [--json]
 3. `crew dev restart <ws>/<wt>` — read the `!` block.
 
 **"Something failed when I created the worktree"**
-1. `crew ls worktrees <ws>` — the row says what: `checkout failed: …`, `install failed: …`,
-   `server died: <project>/<server>`, or `N issues`.
-2. `crew dev logs <ws>/<wt> <server>` for a dead server's output; `crew env <ws>/<wt>
+1. `crew setup status <ws>/<wt>` — which project, at which step, and whether the others
+   are still running; `crew ls worktrees <ws>` has the summary (`checkout failed: …`,
+   `install failed: …`, `server died: <project>/<server>`, `N issues`).
+2. `crew setup logs <ws>/<wt> <project>` for what the install printed; `crew env <ws>/<wt>
    <project>` for what was left alone.
 3. `crew fix <ws>/<wt> --print` — every issue with its evidence, as the prompt Claude would
    get. Fix the cause (`.env`, `crew add override`, git, the setup command) and `crew verify
-   <ws>/<wt>` — which also finishes the checkouts and installs that failed. Or hand the user
-   `crew fix <ws>/<wt>` to open Claude on it.
+   <ws>/<wt> <project> --wait` — only that project's runner, the others keep their record;
+   it also finishes a checkout or install that failed. Or hand the user `crew fix <ws>/<wt>`
+   to open Claude on it.
 
 **"Open it on my phone"**
 1. `crew dev restart <ws>/<wt> --proxy` — relay the URLs and the `Other devices:` line.
@@ -374,9 +415,10 @@ crew help [<command>] [<subcommand>] [--json]
    `missing` → ask where the repo is or should go, then `--path=` or `--clone=<dir>`;
    `exists` → leave it, or `--replace` if the user wants the bundle's servers and bindings.
    Then `crew import … workspace <name> --pull` for each `ready` one — it makes the `main`
-   worktree the way `add worktree` does (base table, checkouts, installs, smoke; minutes,
-   not seconds) and records what failed; relay the row and any `crew fix … --print` line.
-   `--all --clone --pull` is the one-shot when every row is plain.
+   worktree the way `add worktree` does (base table, then the runners in the background)
+   and returns; poll `crew setup status <name>/main` and act on the first `✗` while the
+   rest install; relay the final table and any `crew fix … --print` line. `--all --clone
+   --pull` is the one-shot when every row is plain; add `--wait` to have it block.
 
 **"Disk is full"**
 1. `crew trash` — anything still clearing? `crew trash empty` finishes it now.

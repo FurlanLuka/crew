@@ -44,23 +44,52 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   flags; `--all [--clone] [--replace]` takes the bundle. A sibling `Suggest` found beats a
   bare `--clone` (an explicit `--clone=<dir>` is honoured); the existence check runs before
   any clone so a refusal leaves nothing behind; `--all` never guesses. A workspace import
-  (`ImportWorkspace(m, ImportOptions{Install, Smoke, Progress})`) is `Create` + `AddProjects`
-  — the add-worktree pipeline, issues recorded on `main`, a pre-flight failure takes the
-  empty workspace back; `BaseStatusesFor`/`PullBasesFor` give the callers (CLI, wizard card
+  (`ImportWorkspace(m, CheckoutOptions) (ref, started, err)`) is `Create` + `AddProjects`
+  — the add-worktree pipeline, runners started on `main`, a pre-flight failure takes the
+  empty workspace back; `WorkspaceRow(name, started, health, waited, err)` is the row; `BaseStatusesFor`/`PullBasesFor` give the callers (CLI, wizard card
   with `ctrl+p`) the base table and `--pull`. `transfer` sits above `project` and
   `workspace`; only `main` imports it.
+- **Setup runners** (`setup_job.go`) — a worktree is made one project at a time, each by
+  its own runner: `StartSetup(ref, []ProjectJob{project, install, smoke})` pre-flights
+  (members, no live runner for those projects), reserves every server's port
+  (`reservePorts`), clears those projects' recorded issues, writes a stub result per
+  project and spawns one runner each through `SpawnRunner` (a var; default
+  `spawnTmuxRunner` = a window of `crew-setup-<slug>` created *with its command*, so it
+  closes when the runner exits and the session goes with the last one; tests swap in an
+  in-process run). The window runs `HOME=<quoted> <exec.CrewBinary> _setup <ref>
+  <project> [--no-install] [--no-smoke]` (`runnerCommand`, pure) — HOME explicit because
+  the tmux server's env is not the caller's. `crew _setup` (`cmd_setup_runner.go`) is
+  `NewRunner` + a SIGHUP/SIGTERM trap → `Runner.Abort` + `Runner.Run`: checkout (skipped
+  when present / direct) → install (`exec.RunSetup` streaming to the runner log) → smoke of
+  *its own* servers → `recordMerged` its project's issues. A stage that fails ends the run.
+  Result file `~/.crew/setup/<slug>/<project>.json` (`RunResult{pid, started_at, done,
+  aborted, steps[{name, status, took_ms, detail}], issues}`, atomic writes) after every
+  step; runner log `<project>.log`; smoke logs `<project>-<server>.log` (never the dev log
+  path). `SetupStatus` derives `ProjectState` (`starting|running|ok|failed|interrupted`)
+  from file + pid (`deriveProjectState`, pure; liveness is `kill(pid, 0)`, never the pane)
+  and records a vanished runner as interrupted (`markInterrupted`). `Status.ExitCode()`: 2
+  while any runner is alive, 1 stopped with a failure, 0. `WaitSetup`/`WatchSetup` poll.
+  Smoke per project: `dev.StartProjectServers` (windows `<project>/<server>` of the setup
+  session on the reserved ports, env resolved as `dev.Start` does, no routes file) →
+  `waitRoutes(session, …)` → `dev.StopWindows` (pane sweep, idle session killed). Each
+  server is smoked alone — a sibling's URL resolves but nothing answers; docs say so.
+  Pre-2.0 flat refs take `runFlat` (synchronous, no smoke, nothing recorded).
 - **Health** — `Worktree.Health {at, issues[{stage, project, server, reason, detail}]}` is
   what the last check found wrong: stages `checkout`, `install` (30-line `StepError` tail),
   `smoke` (`evidenceTail` log lines) with `reason` `died` or `not listening`. Absent =
-  verified. `AddWorktree` records the worktree first, then runs `checkoutProjects` →
-  `installProjects` (parallel across projects) → smoke over every project, none stopping
-  the rest, and returns the Health (errors are pre-flight only). `Verify` composes the same
-  primitives over what is missing, then smokes; `Setup` with installs forced. `AddProjects`
-  (the `add workspace <ws> <p>…` path) validates every spec, runs the same primitives over
-  each existing worktree and `recordMerged`s install/checkout issues per worktree.
-  `RecordHealth` does its own load/save like `SavePorts`. Cleared only by a passing
-  `Verify`/`Setup` — never by `dev start`; `RemoveProject` drops the removed project's
-  issues. `crew fix` = `FixCommandFor(res, health, anomalies)`: the orientation prompt plus
+  verified. `AddWorktree` = `addWorktreeRecord` (validate, record the worktree with its
+  overrides) + `StartSetup(all)`; `DuplicateWorktree` records the source's overrides first;
+  `Verify(res, opts, only)` = `StartSetup(verifyJobs(...))` (install only where the checkout
+  is missing or its install failed, smoke everywhere; `only` filters); `Setup` = installs
+  forced. `AddProjects` (the `add workspace <ws> <p>…` path) validates every spec, records
+  the members under `Update`, then `StartSetup(new)` per worktree (smoke off where servers
+  run) and returns the refs. All return once the runners are spawned; the CLI's `--wait`
+  is `watchSetup`. Every read-modify-write of a workspace file goes through `store.Update`
+  (flock on `<ws>.json.lock` + atomic rename; `updateWorktree` narrows it) — the runners of
+  one worktree record concurrently. `recordMerged` replaces one project's issues, nil when
+  nothing remains. Cleared only by a passing runner — never by `dev start`;
+  `RemoveProject` drops the removed project's issues (and refuses while a runner is alive).
+  `crew fix` = `FixCommandFor(res, health, anomalies)`: the orientation prompt plus
   `RenderFixPrompt`, always passed, from the worktree root when a checkout is missing;
   `--print` (or no tty) writes the prompt to stdout; with servers running, `MergeHealth`
   adds what `CheckServers` finds.
@@ -71,8 +100,11 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   the loop, pure over a `look`: every tick each undecided server is looked at; listening or
   idle-alive → done, dead → done (after a 2 s `deadGrace` for a pane not yet seen busy),
   referenced-not-listening → `SmokeUnreached` at `SmokeCeiling` (60 s, a var tests
-  shorten). `SmokeStart` = start → `waitRoutes(ceiling)` → stop; `CheckServers` =
-  `waitRoutes(0)` (one look); `WaitServers` = the loop over what runs (`dev check --wait`).
+  shorten). `waitRoutes(session, routes, window, logFor, ceiling)` is the I/O around it —
+  the dev session (`waitDevRoutes`) and a runner's smoke lay windows and logs out
+  differently. `CheckServers` = one look; `WaitServers` = the loop over what runs (`dev
+  check --wait`). `exec.TmuxPaneBusy` reads `pane_current_command`, so a server whose
+  command is `sh -c …` reads as an idle shell.
   The page: `startedAt` → `Settling` window; `recheckMsg` every 2 s while a row is
   `SmokeUnreached`; those rows render `starting…` and are left out of `CheckHealth` until
   the window closes. `portOpen` dials 127.0.0.1 then [::1].
@@ -90,7 +122,8 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   status|stop`, `InspectProxy`.
 - **Non-interactive everywhere.** `crew fix --print`, `dev setup [--apply --port]` (no
   prompts), `migrate --yes`, `uninstall --yes`, `debug --tail=N`, `dev logs --lines=N`,
-  `dev check`, `import --plan|project|workspace|--all`. `human` (`main.go`) is where
+  `dev check`, `import --plan|project|workspace|--all`, `setup status [--wait]`, `setup
+  logs --lines=N`; every creating command returns at once and takes `--wait`. `human` (`main.go`) is where
   progress and narration go: stdout normally, stderr under `--json` (and under `fix
   --print`) so the document on stdout stays parseable. Empty lists marshal as `[]`, never
   null. `add workspace <ws> <p>[:<role>]…` creates the workspace when missing.
@@ -112,6 +145,7 @@ crew/
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   cmd_transfer.go      crew export, crew import (parseImportArgs: --plan | project | workspace | --all)
   cmd_launch.go        crew launch, claude, edit          cmd_trash.go  crew trash
+  cmd_setup_runner.go  crew _setup — the hidden per-project runner (exempt from help/SKILL)
   internal/
     app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
     config/     ~/.crew paths, settings.json
@@ -152,13 +186,16 @@ block `crew dev start` prints, launch and open rows, one cursor. `crew project` 
 ### New worktree
 
 `AddWorktree`: base-branch table with behind-origin counts (fetches in parallel; `ctrl+p` /
-`--pull` fast-forwards local bases without touching a checked-out feature branch) → git
-worktree per project (`git -c core.hooksPath=/dev/null worktree add`, the error is git's last
-stderr line, `mise trust` when there is a `mise.toml`) → `.env` copied from the canonical repo
-or a sibling worktree → recorded → installs per project (`mise trust && mise install`, then
-lockfile-detected package manager or the project's `Setup`; failures keep what passed,
-`crew setup <ref>` re-runs) → smoke start: servers up six seconds, which panes still run
-and which listen on their port, last log lines for the failed ones, stop.
+`--pull` fast-forwards local bases without touching a checked-out feature branch — in the
+foreground, before the runners) → the worktree recorded, ports reserved → one runner per
+project in the background. Each: git worktree (`git -c core.hooksPath=/dev/null worktree
+add`, the error is git's last stderr line, `mise trust` when there is a `mise.toml`) →
+`.env` copied from the canonical repo or a sibling worktree → install (`mise trust && mise
+install`, then lockfile-detected package manager or the project's `Setup`; a failure ends
+that runner, `crew setup <ref> <project>` re-runs) → smoke of its own servers: which panes
+still run and which listen on their port, last log lines for the failed ones, stop. The
+page (`Setup *Status`, `installing()`) shows the table every 2 s and gates start/launch
+until the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
 
 ## Conventions
 
@@ -176,7 +213,12 @@ and which listen on their port, last log lines for the failed ones, stop.
   allocated, projects it placed, URLs it handed out (hence `SmokeUnreached` vs `SmokeIdle`).
   The one carve-out: the worktree **page** locks its start and launch rows while a failure
   is *recorded* (`f fix`, `v verify`, logs and shell stay live); a live check never locks,
-  it marks rows and offers `f`. The CLI prints the issues and proceeds. A value pointing at a sibling in the same worktree is normal;
+  it marks rows and offers `f`. The CLI prints the issues and proceeds. The second
+  carve-out, CLI included: while a setup runner is alive on a worktree, `dev start`,
+  `verify`, `setup`, `duplicate` and `rm workspace <p>` refuse (`ErrSetupRunning`) — crew
+  owns the fact that it started an install, and a server on top of it is corruption, not a
+  warning. `status` and `logs` (and the noun words) are reserved workspace names
+  (`ValidateName`). A value pointing at a sibling in the same worktree is normal;
   one pointing into another worktree, or at a sibling's configured port while it runs
   elsewhere, is a conflict.
 - **Debug logging** — every external command (tmux, git, editor, package managers, mise)
@@ -193,7 +235,13 @@ and which listen on their port, last log lines for the failed ones, stop.
 `t.TempDir()`; nothing touches `~/.crew`. tmux tests use a per-process proxy session name
 (`dev.ProxySessionName` set in `setupTestConfig` / `isolateProxy`) so `go test ./...` never
 kills a live proxy and packages do not race on the shared tmux server; the proxy pane runs
-`/usr/bin/true` via `crewExecutable` (the test binary would re-run the package). Real git via `initRepo` (`workspace_test.go`) and
+`/usr/bin/true` via `exec.CrewBinary` (the test binary would re-run the package). Setup
+runners: `setupTestConfig` installs `inlineRunners` (each job runs in-process, in order,
+before `StartSetup` returns — the old synchronous semantics); `backgroundRunners(t)` runs
+them as goroutines for the early-visibility and refusal tests; `realRunners(t)` restores
+the tmux spawn with `runnerArgv` pointed at the test binary's helper process (`TestMain`
+with `CREW_TEST_CONFIG_DIR`) for the one real-spawn test and the killed-window test.
+`recorded(t, ref)` / `stepsOf(t, ref)` read the verdict off disk. Real git via `initRepo` (`workspace_test.go`) and
 `remoteAndClone` (`base_test.go`) — worktree creation, migration moves, branch renames and
 fetch counts run against actual repositories. Exact full-string comparison is the snapshot
 convention (`FormatResolutions`, `RenderPrompt`, `renderWorktreePage`, `ServerCommand`).

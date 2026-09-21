@@ -149,7 +149,7 @@ func TestWorktreeAdded_PushesThePage(t *testing.T) {
 	v.sizes["ws/wt"] = 5
 	ref := Ref{Workspace: "ws", Worktree: "wt"}
 
-	m, cmd := v.Update(worktreeAddedMsg{ref: ref, health: &Health{Issues: []Issue{{Stage: StageSmoke, Project: "a", Server: "a"}}}})
+	m, cmd := v.Update(worktreeAddedMsg{ref: ref})
 	v = m.(View)
 	if v.state != stateWorktrees || v.statusMsg != "" {
 		t.Errorf("list should be reset: state=%v status=%q", v.state, v.statusMsg)
@@ -164,14 +164,14 @@ func TestWorktreeAdded_PushesThePage(t *testing.T) {
 			page, found = p.Page.(WorktreeView)
 		}
 	}
-	if !found || page.ref != ref || page.statusMsg != "Created ws/wt — server died: a/a" {
+	if !found || page.ref != ref || page.statusMsg != "Created ws/wt — installing" {
 		t.Errorf("pushed page: found=%v ref=%v status=%q", found, page.ref, page.statusMsg)
 	}
 
 	m, cmd = v.Update(worktreeAddedMsg{ref: ref, duplicatedFrom: "ws/main"})
 	for _, msg := range runBatch(t, cmd) {
 		if p, ok := msg.(app.PushPageMsg); ok {
-			if got := p.Page.(WorktreeView).statusMsg; got != "Duplicated ws/main → ws/wt" {
+			if got := p.Page.(WorktreeView).statusMsg; got != "Duplicated ws/main → ws/wt — installing" {
 				t.Errorf("duplicate status = %q", got)
 			}
 		}
@@ -254,13 +254,14 @@ func TestProjectPick_MultiSelect(t *testing.T) {
 
 func TestAddedStatus(t *testing.T) {
 	if got := addedStatus([]string{"api", "web"}, nil); got != "Added api, web" {
-		t.Errorf("all good → %q", got)
+		t.Errorf("flat workspace → %q", got)
 	}
-	issues := []Issue{{Stage: StageInstall, Project: "web"}}
-	if got := addedStatus([]string{"api", "web"}, issues); got != "Added api — web failed, recorded on the worktree (f fix on its page)" {
-		t.Errorf("one failed → %q", got)
+	one := []Ref{{Workspace: "ws", Worktree: "main"}}
+	if got := addedStatus([]string{"api", "web"}, one); got != "Added api, web — installing on ws/main (its page shows the runners)" {
+		t.Errorf("one worktree → %q", got)
 	}
-	if got := addedStatus([]string{"web"}, issues); got != "Added nothing — web failed, recorded on the worktree (f fix on its page)" {
-		t.Errorf("all failed → %q", got)
+	two := append(one, Ref{Workspace: "ws", Worktree: "wrk2"})
+	if got := addedStatus([]string{"web"}, two); got != "Added web — installing on 2 worktrees (each page shows its runners)" {
+		t.Errorf("two worktrees → %q", got)
 	}
 }

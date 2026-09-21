@@ -2,14 +2,15 @@ package workspace
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
-	"time"
-
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
@@ -224,18 +225,12 @@ func TestWorktreeView_VerifyAndFixKeys(t *testing.T) {
 		t.Error("v with no session should verify without asking")
 	}
 
-	// The verdict lands as a status or an error, and the page reloads.
+	// The runners started: the page reloads and follows them.
 	v.loading = true
-	m, cmd := v.Update(verifiedMsg{result: VerifyResult{Smoke: []SmokeResult{{Project: "a", Server: "a", Alive: true}}}})
+	m, cmd := v.Update(verifyStartedMsg{})
 	v = m.(WorktreeView)
-	if v.loading || v.statusMsg != "Checks out — unlocked" || cmd == nil {
-		t.Errorf("pass: loading=%v status=%q", v.loading, v.statusMsg)
-	}
-	dead := VerifyResult{Health: &Health{Issues: []Issue{{Stage: StageSmoke, Project: "a", Server: "a"}}}}
-	m, _ = v.Update(verifiedMsg{result: dead})
-	v = m.(WorktreeView)
-	if v.err == nil || !strings.Contains(v.err.Error(), "server died: a/a — recorded; f opens Claude on it") {
-		t.Errorf("death: err=%v", v.err)
+	if v.loading || !strings.HasPrefix(v.statusMsg, "verifying") || cmd == nil {
+		t.Errorf("started: loading=%v status=%q", v.loading, v.statusMsg)
 	}
 
 	// f with a recorded failure produces the exec command.
@@ -386,5 +381,151 @@ func TestRenderWorktreePage_StartingRow(t *testing.T) {
 	renderWorktreePage(&b, page, worktreeRows(page.Items, false, false), 0, true)
 	if got := stripANSI(b.String()); !strings.Contains(got, "  > api  ● starting… :54494   http://localhost:54494") {
 		t.Errorf("starting row:\n%s", got)
+	}
+}
+
+func installingPage() worktreePage {
+	page := pageFixture()
+	page.Anomalies, page.Session, page.HasEditor, page.HasSSH = "", "", true, false
+	page.Items[0].Running, page.Items[0].Port, page.Items[0].URL = false, 0, ""
+	page.Setup = &Status{Projects: []ProjectStatus{
+		{Project: "store-api", State: StateRunning, Steps: []RunStep{{Name: "checkout", Status: StepOK, TookMs: 1200}, {Name: "npm ci", Status: StepRunning}}},
+		{Project: "checkout-api", State: StateFailed, Steps: []RunStep{{Name: "checkout", Status: StepOK, TookMs: 900}, {Name: "uv sync", Status: StepFailed, TookMs: 3000, Detail: "no solution"}}},
+	}}
+	return page
+}
+
+// While runners are alive the page shows their table under what is
+// recorded so far, and every section that would touch a checkout says
+// it waits for the install.
+func TestRenderWorktreePage_Installing(t *testing.T) {
+	page := installingPage()
+	page.Health = &Health{At: time.Now(), Issues: []Issue{{Stage: StageInstall, Project: "checkout-api", Detail: "uv sync:\nno solution"}}}
+	rows := worktreeRows(page.Items, true, false)
+
+	var b strings.Builder
+	renderWorktreePage(&b, page, rows, 0, true)
+	got := stripANSI(b.String())
+	want := strings.Join([]string{
+		"  /w/store-front/wrk1",
+		"  proxy: off",
+		"",
+		"  ! install failed: checkout-api · just now",
+		"    install   checkout-api   uv sync:",
+		"                             no solution",
+		"",
+		"    f fix with Claude",
+		"",
+		"  installing · one runner per project",
+		"  ▸ store-api     checkout 1s · ▸ npm ci",
+		"  ✗ checkout-api  checkout 1s · uv sync — no solution",
+		"",
+		"  Servers  after the install",
+		"  > store-api           ○",
+		"    store-front-worker  ○",
+		"",
+		"  Launch  after the install",
+		"    Editor + Claude             ",
+		"    Claude in terminal          ",
+		"",
+		"  Open",
+		"    Shell here",
+		"",
+	}, "\n")
+	if got != want {
+		t.Errorf("page =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// Installing gates what a locked page gates plus the verify; the shell,
+// the runner logs and the fix stay live; installing wins over locked.
+func TestWorktreeView_InstallingKeys(t *testing.T) {
+	press := func(v WorktreeView, k string) (WorktreeView, tea.Cmd) {
+		m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
+		return m.(WorktreeView), cmd
+	}
+	v := NewWorktreeView(Ref{Workspace: "ws", Worktree: "wt"})
+	v.page = installingPage()
+	v.page.Health = &Health{Issues: []Issue{{Stage: StageInstall, Project: "checkout-api"}}}
+	v.rows = worktreeRows(v.page.Items, true, false)
+
+	for _, k := range []string{"s", "r", "x", "v"} {
+		v2, cmd := press(v, k)
+		if cmd != nil || v2.statusMsg != installingMsg {
+			t.Errorf("%s while installing: cmd=%v status=%q", k, cmd != nil, v2.statusMsg)
+		}
+	}
+	v.cursor = 2 // Editor + Claude
+	if v2, cmd := press(v, "enter"); cmd != nil || v2.statusMsg != installingMsg {
+		t.Errorf("enter on a launch row: cmd=%v status=%q", cmd != nil, v2.statusMsg)
+	}
+	if _, cmd := press(v, "o"); cmd == nil {
+		t.Error("o (shell) must stay live")
+	}
+	if _, cmd := press(v, "f"); cmd == nil {
+		t.Error("f on what is recorded so far must stay live")
+	}
+	_, cmd := press(v, "l")
+	if cmd == nil {
+		t.Fatal("l must open the runner logs")
+	}
+	push, ok := cmd().(app.PushPageMsg)
+	if !ok {
+		t.Fatalf("l → %T, want a pushed page", cmd())
+	}
+	logs, ok := push.Page.(LogsView)
+	if !ok || len(logs.tabs) != 2 || logs.tabs[0].label != "store-api" || logs.tabs[0].file == "" {
+		t.Errorf("runner logs view = %+v", push.Page)
+	}
+	if help := stripANSI(v.View()); !strings.Contains(help, "f fix what failed so far  l runner logs  o shell") {
+		t.Errorf("help line:\n%s", help)
+	}
+	v.page.Health = nil
+	if help := stripANSI(v.View()); !strings.Contains(help, "l runner logs  o shell") || strings.Contains(help, "f fix") {
+		t.Errorf("help line without health:\n%s", help)
+	}
+}
+
+// The page keeps looking while runners are alive, and stops once they are done.
+func TestWorktreeLoaded_RechecksWhileInstalling(t *testing.T) {
+	running := worktreePage{Setup: &Status{Projects: []ProjectStatus{{State: StateRunning}}}}
+	done := worktreePage{Setup: &Status{Projects: []ProjectStatus{{State: StateOK}}}}
+	if _, cmd := (WorktreeView{}).Update(worktreeLoadedMsg{page: running}); cmd == nil {
+		t.Error("installing should schedule a recheck")
+	}
+	if _, cmd := (WorktreeView{}).Update(worktreeLoadedMsg{page: done}); cmd != nil {
+		t.Error("finished runners should not")
+	}
+}
+
+// A setup logs tab tails a file, live, with no restart key.
+func TestSetupLogsView_TailsFile(t *testing.T) {
+	setupTestConfig(t)
+	ref := Ref{Workspace: "ws", Worktree: "wt"}
+	v := NewSetupLogsView(ref, []string{"api"})
+	if got := v.capturePane()().(paneContentMsg).content; got != "(nothing yet)" {
+		t.Errorf("no file → %q", got)
+	}
+	os.MkdirAll(filepath.Dir(RunnerLogFile(ref, "api")), 0o755)
+	os.WriteFile(RunnerLogFile(ref, "api"), []byte("▸ npm ci\nadded 12 packages\n"), 0o644)
+	if got := v.capturePane()().(paneContentMsg).content; got != "▸ npm ci\nadded 12 packages" {
+		t.Errorf("file → %q", got)
+	}
+	m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if cmd != nil || strings.Contains(stripANSI(m.(LogsView).View()), "r restart") {
+		t.Error("a file tab has nothing to restart")
+	}
+}
+
+// The refused-key hint does not outlive the runners it was about.
+func TestWorktreeLoaded_ClearsInstallingHint(t *testing.T) {
+	v := WorktreeView{statusMsg: installingMsg}
+	m, _ := v.Update(worktreeLoadedMsg{page: worktreePage{Setup: &Status{Projects: []ProjectStatus{{State: StateOK}}}}})
+	if got := m.(WorktreeView).statusMsg; got != "" {
+		t.Errorf("status after the runners = %q", got)
+	}
+	m, _ = v.Update(worktreeLoadedMsg{page: worktreePage{Setup: &Status{Projects: []ProjectStatus{{State: StateRunning}}}}})
+	if got := m.(WorktreeView).statusMsg; got != installingMsg {
+		t.Errorf("status while running = %q", got)
 	}
 }

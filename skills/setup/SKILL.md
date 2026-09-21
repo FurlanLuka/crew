@@ -22,8 +22,11 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
 4. Bindings: `crew add binding <project> --scan` for each project; show the proposals; apply
    the unambiguous ones with `--apply`, ask about any marked ambiguous.
 5. Roles: ask one line per project ("Backend API", "iOS app"). Then one call:
-   `crew add workspace <ws> a:"role" b:"role" …`. Relay the rows; a `failed` row is recorded
-   on the worktree — `crew fix <ws>/main --print` has the evidence.
+   `crew add workspace <ws> a:"role" b:"role" …`. It returns at once — one runner per
+   project installs in the background. Poll `crew setup status <ws>/main` (exit 2 while
+   running); a `✗` row is recorded the moment it fails — `crew fix <ws>/main --print` has
+   the evidence, fix it, `crew verify <ws>/main <project>` — while the others still
+   install. Relay the final table.
 6. Check it works: `crew dev start <ws>/main`, relay the URLs and `!` lines, then
    `sleep 6; crew dev check <ws>/main`. Every row `running`? Hand them `crew claude
    <ws>/main` (or `crew launch <ws>/main`). Otherwise fix what the check names.

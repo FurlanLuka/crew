@@ -3,7 +3,6 @@ package workspace
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -13,7 +12,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dirsize"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 // ── Messages ──
@@ -23,20 +21,12 @@ type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
 type worktreeAddedMsg struct {
 	ref            Ref
-	health         *Health
 	duplicatedFrom string
 }
 type worktreeSizesMsg struct{ sizes map[string]int64 }
 type baseStatusesMsg struct{ statuses []BaseStatus }
 type basesPulledMsg struct{ failed []error }
 
-// setupProgressMsg is one install step finishing while a worktree is being
-// created. The worker sends these on a channel and the view keeps listening
-// until the terminal message arrives.
-type setupProgressMsg struct {
-	line string
-	ch   <-chan tea.Msg
-}
 type worktreeRemovedMsg struct{ ref Ref }
 type errMsg struct{ err error }
 
@@ -47,8 +37,8 @@ type wsProjectsLoadedMsg struct {
 }
 type codeOpenedMsg struct{ output string }
 type wsProjectsAddedMsg struct {
-	names  []string
-	issues []Issue
+	names []string
+	refs  []Ref // the worktrees whose runners were started
 }
 type wsProjectRemovedMsg struct{ name string }
 
@@ -91,8 +81,6 @@ type View struct {
 	// Base branches shown while naming a new worktree; nil while loading.
 	baseStatuses []BaseStatus
 	baseLoading  bool
-	// setupLines is what has finished so far while a checkout is installing.
-	setupLines []string
 	// sizes is bytes on disk per worktree ref, filled in after the list shows
 	// and kept for the view's lifetime — a walk over a big build tree is slow
 	// and competes with whatever is writing it. An absent key is still loading.
@@ -202,10 +190,6 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.baseLoading = true
 		return v, tea.Batch(loadBaseStatuses(v.selectedWs), v.spinner.Tick)
 
-	case setupProgressMsg:
-		v.setupLines = append(v.setupLines, msg.line)
-		return v, listen(msg.ch)
-
 	case worktreeAddedMsg:
 		// The list stays under the pushed page and is what esc comes back to,
 		// so its state is reset here even though the page takes over now.
@@ -214,12 +198,9 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.err = nil
 		v.input.Reset()
 		delete(v.sizes, msg.ref.String())
-		created := fmt.Sprintf("Created %s", msg.ref)
+		created := fmt.Sprintf("Created %s — installing", msg.ref)
 		if msg.duplicatedFrom != "" {
-			created = fmt.Sprintf("Duplicated %s → %s", msg.duplicatedFrom, msg.ref)
-		}
-		if msg.health != nil {
-			created += " — " + msg.health.Summary()
+			created = fmt.Sprintf("Duplicated %s → %s — installing", msg.duplicatedFrom, msg.ref)
 		}
 		page := NewWorktreeView(msg.ref)
 		page.statusMsg = created
@@ -238,7 +219,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case wsProjectsAddedMsg:
 		v.state = stateProjects
-		v.statusMsg = addedStatus(msg.names, msg.issues)
+		v.statusMsg = addedStatus(msg.names, msg.refs)
 		v.err = nil
 		v.roleInput.Reset()
 		v.pickedProject = ""
@@ -514,15 +495,12 @@ func (v View) handleDuplicateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		src := v.selectedRef
 		v.state = stateDuplicating
-		v.setupLines = nil
-		ch := runWithProgress(func(opts CheckoutOptions, ch chan tea.Msg) tea.Msg {
-			h, err := DuplicateWorktree(src, name, opts)
-			if err != nil {
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			if err := DuplicateWorktree(src, name, CheckoutOptions{Install: true, Smoke: true}); err != nil {
 				return errMsg{err}
 			}
-			return worktreeAddedMsg{ref: Ref{Workspace: src.Workspace, Worktree: name}, health: h, duplicatedFrom: src.String()}
+			return worktreeAddedMsg{ref: Ref{Workspace: src.Workspace, Worktree: name}, duplicatedFrom: src.String()}
 		})
-		return v, tea.Batch(v.spinner.Tick, listen(ch))
 	}
 
 	var cmd tea.Cmd
@@ -550,15 +528,12 @@ func (v View) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		wsName := v.selectedWs
 		v.state = stateAddingWorktree
-		v.setupLines = nil
-		ch := runWithProgress(func(opts CheckoutOptions, ch chan tea.Msg) tea.Msg {
-			h, err := AddWorktree(wsName, name, opts)
-			if err != nil {
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			if err := AddWorktree(wsName, name, CheckoutOptions{Install: true, Smoke: true}); err != nil {
 				return errMsg{err}
 			}
-			return worktreeAddedMsg{ref: Ref{Workspace: wsName, Worktree: name}, health: h}
+			return worktreeAddedMsg{ref: Ref{Workspace: wsName, Worktree: name}}
 		})
-		return v, tea.Batch(v.spinner.Tick, listen(ch))
 	}
 
 	var cmd tea.Cmd
@@ -631,7 +606,7 @@ func (v View) View() string {
 	case stateDuplicate:
 		v.renderDuplicate(&b)
 	case stateDuplicating:
-		v.renderSetupProgress(&b, "Duplicating worktree...")
+		b.WriteString(fmt.Sprintf("  %s Duplicating worktree — reserving ports, starting the runners…\n", v.spinner.View()))
 	case stateNewWorktree:
 		v.renderNewWorktree(&b)
 	case stateWorktrees:
@@ -639,7 +614,7 @@ func (v View) View() string {
 	case stateConfirmRemoveWorktree:
 		b.WriteString(fmt.Sprintf("  Remove worktree '%s'? Its checkouts will be deleted; the workspace stays. (y/n)\n", v.selectedRef))
 	case stateAddingWorktree:
-		v.renderSetupProgress(&b, "Creating worktree...")
+		b.WriteString(fmt.Sprintf("  %s Creating worktree — reserving ports, starting the runners…\n", v.spinner.View()))
 	case stateRemovingWorktree:
 		b.WriteString(fmt.Sprintf("  %s Removing %s — large checkouts take a while\n", v.spinner.View(), v.selectedRef))
 	}
@@ -707,6 +682,9 @@ func (v View) renderWorktrees(b *strings.Builder) {
 		}
 		if s.DevRunning {
 			b.WriteString("  " + app.Highlight.Render("[dev]"))
+		}
+		if s.Installing {
+			b.WriteString("  " + app.Highlight.Render("installing…"))
 		}
 		if s.Health != "" {
 			b.WriteString("  " + app.Error.Render("! "+s.Health))
@@ -817,18 +795,6 @@ func (v View) renderNewWorktree(b *strings.Builder) {
 	b.WriteString("  ")
 	b.WriteString(app.HelpStyle.Render("enter create  esc cancel"))
 	b.WriteString("\n")
-}
-
-func (v View) renderSetupProgress(b *strings.Builder, label string) {
-	for _, line := range v.setupLines {
-		b.WriteString("  " + line + "\n")
-	}
-	if len(v.setupLines) > 0 {
-		b.WriteString("\n")
-	}
-	b.WriteString("  ")
-	b.WriteString(v.spinner.View())
-	b.WriteString(" " + label + "\n")
 }
 
 // styleBaseLine colours a base-status line by what it says.
@@ -946,37 +912,6 @@ func removeWorkspace(name string) tea.Cmd {
 		}
 		return workspaceRemovedMsg{name}
 	}
-}
-
-// runWithProgress runs a checkout in the background, streaming one line per
-// finished install step, then the final message. listen drains the channel.
-func runWithProgress(run func(CheckoutOptions, chan tea.Msg) tea.Msg) <-chan tea.Msg {
-	ch := make(chan tea.Msg, 64)
-	go func() {
-		opts := CheckoutOptions{
-			Install: true,
-			Smoke:   true,
-			Progress: func(project string, r exec.SetupResult) {
-				ch <- setupProgressMsg{line: setupLine(project, r), ch: ch}
-			},
-		}
-		ch <- run(opts, ch)
-		close(ch)
-	}()
-	return ch
-}
-
-func listen(ch <-chan tea.Msg) tea.Cmd {
-	return func() tea.Msg { return <-ch }
-}
-
-// setupLine is one finished step as the progress list shows it.
-func setupLine(project string, r exec.SetupResult) string {
-	mark := app.Success.Render("✓")
-	if r.Err != nil {
-		mark = app.Error.Render("✗")
-	}
-	return fmt.Sprintf("%-16s %s %-14s %s", project, mark, r.Step.Name, app.Subtle.Render(r.Duration.Round(time.Second).String()))
 }
 
 func pullBases(wsName string, statuses []BaseStatus) tea.Cmd {

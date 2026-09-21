@@ -22,7 +22,7 @@ func bindingWorkspace(t *testing.T) {
 	project.AddBinding("tutor", project.Binding{Var: "API_URL", Value: "{{url:api}}"})
 	project.AddBinding("tutor", project.Binding{Var: "AGENT", Value: "{{worktree}}"})
 
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 	if err := SetOverride(Ref{Workspace: "ws", Worktree: "wrk2"}, "API_URL", "https://deployed"); err != nil {
@@ -245,21 +245,23 @@ func TestAddProjects_ManyAtOnce(t *testing.T) {
 		t.Fatalf("nothing should have been added: %+v", ws.Projects)
 	}
 
-	// Two one-second installs finishing together is the parallelism; serial
-	// would be two seconds.
-	start := time.Now()
-	results, err := AddProjects("ws", []ProjectSpec{{Name: "web", Role: "ui"}, {Name: "worker"}, {Name: "slow"}}, CheckoutOptions{Install: true})
+	// One runner per project: the two one-second installs overlap — the
+	// second starts before the first finishes.
+	backgroundRunners(t)
+	refs, err := AddProjects("ws", []ProjectSpec{{Name: "web", Role: "ui"}, {Name: "worker"}, {Name: "slow"}}, CheckoutOptions{Install: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if took := time.Since(start); took > 1800*time.Millisecond {
-		t.Errorf("installs did not run in parallel: %s", took)
+	if len(refs) != 1 || refs[0].Worktree != DefaultWorktree {
+		t.Fatalf("refs = %+v", refs)
 	}
-	if len(results) != 1 || results[0].Ref.Worktree != DefaultWorktree {
-		t.Fatalf("results = %+v", results)
+	if _, err := WaitSetup(refs[0]); err != nil {
+		t.Fatal(err)
 	}
-	if issues := results[0].Issues; len(issues) != 1 || issues[0].Project != "web" || issues[0].Stage != StageInstall {
-		t.Errorf("issues = %+v", issues)
+	worker, _ := readResult(resultFile(refs[0].Slug(), "worker"))
+	slow, _ := readResult(resultFile(refs[0].Slug(), "slow"))
+	if worker.FinishedAt == nil || slow.FinishedAt == nil || !slow.StartedAt.Before(*worker.FinishedAt) || !worker.StartedAt.Before(*slow.FinishedAt) {
+		t.Errorf("installs did not overlap: worker %v–%v, slow %v–%v", worker.StartedAt, worker.FinishedAt, slow.StartedAt, slow.FinishedAt)
 	}
 	ws, _ := Load("ws")
 	names := []string{}
@@ -291,14 +293,12 @@ func TestAddProjects_CheckoutFailureIsRecordedAndKept(t *testing.T) {
 	// Not a git repository: every worktree's checkout of it fails.
 	project.Add(project.Project{Name: "broken", Path: t.TempDir()})
 
-	results, err := AddProjects("ws", []ProjectSpec{{Name: "web"}, {Name: "broken"}}, CheckoutOptions{})
+	refs, err := AddProjects("ws", []ProjectSpec{{Name: "web"}, {Name: "broken"}}, CheckoutOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range results {
-		if len(r.Issues) != 1 || r.Issues[0].Stage != StageCheckout || r.Issues[0].Project != "broken" {
-			t.Errorf("%s: issues = %+v", r.Ref, r.Issues)
-		}
+	if len(refs) != 2 {
+		t.Fatalf("refs = %+v, want both worktrees", refs)
 	}
 	ws, _ := Load("ws")
 	if len(ws.Projects) != 3 || ws.Projects[2].Name != "broken" {
@@ -388,12 +388,11 @@ func TestAddProjects_SmokeRecordedUnlessRunning(t *testing.T) {
 	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
 	t.Cleanup(func() { dev.StopAll(ref.Slug()) })
 
-	results, err := AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Smoke: true})
-	if err != nil {
+	if _, err := AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Smoke: true}); err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 1 || len(results[0].Issues) != 1 || results[0].Issues[0].Stage != StageSmoke {
-		t.Fatalf("results = %+v", results)
+	if got := strings.Join(stepsOf(t, ref), ","); got != "api:checkout,web:checkout,web:smoke web" {
+		t.Errorf("steps = %s", got)
 	}
 	if res, _ := Resolve(ref); res.Health == nil || res.Health.Summary() != "server died: web/web" {
 		t.Errorf("health = %+v", res.Health)
@@ -406,18 +405,13 @@ func TestAddProjects_SmokeRecordedUnlessRunning(t *testing.T) {
 	if _, err := StartDev(res, true, false); err != nil {
 		t.Fatal(err)
 	}
-	var steps []string
-	results, err = AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Smoke: true, Progress: func(p string, r exec.SetupResult) {
-		steps = append(steps, p+":"+r.Step.Name)
-	}})
-	if err != nil {
+	if _, err := AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Smoke: true}); err != nil {
 		t.Fatal(err)
 	}
-	if len(results[0].Issues) != 0 || !dev.Running(ref.Slug()) {
-		t.Errorf("running servers must be left alone: issues=%+v running=%v", results[0].Issues, dev.Running(ref.Slug()))
+	if h := recorded(t, ref); h != nil || !dev.Running(ref.Slug()) {
+		t.Errorf("running servers must be left alone: health=%+v running=%v", h, dev.Running(ref.Slug()))
 	}
-	// The skip is said, not silent — and is a step, never an issue.
-	if len(steps) == 0 || steps[len(steps)-1] != "ws/main:smoke skipped" {
-		t.Errorf("steps = %v", steps)
+	if got := strings.Join(stepsOf(t, ref), ","); strings.Contains(got, "smoke") {
+		t.Errorf("no smoke while servers run: %s", got)
 	}
 }

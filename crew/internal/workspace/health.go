@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
-	"sort"
 	"strings"
 	"time"
 
@@ -138,7 +137,6 @@ func (h *Health) installIssues() map[string]bool {
 	return out
 }
 
-// healthOf is nil when nothing failed.
 // without is h minus one project's issues; nil once nothing is left.
 func (h *Health) without(project string) *Health {
 	if h == nil {
@@ -201,71 +199,45 @@ func smokeIssues(results []SmokeResult) []Issue {
 	return issues
 }
 
-// RecordHealth writes h on the worktree; nil clears it. Its own load and
-// save, the way SavePorts works: the caller may have held a workspace across
-// a minutes-long install, and saving that snapshot would drop what any
-// sibling wrote meanwhile.
+// RecordHealth writes h on the worktree; nil clears it.
 func RecordHealth(ref Ref, h *Health) error {
-	ws, err := Load(ref.Workspace)
-	if err != nil {
-		return err
-	}
-	wt, err := selectWorktree(ws, ref.Worktree)
-	if err != nil {
-		return err
-	}
-	for i := range ws.Worktrees {
-		if ws.Worktrees[i].Name == wt.Name {
-			ws.Worktrees[i].Health = h
-			return Save(ws)
-		}
-	}
-	return fmt.Errorf("workspace '%s' has no worktree '%s'", ref.Workspace, ref.Worktree)
+	return updateWorktree(ref, func(wt *Worktree) { wt.Health = h })
 }
 
 func ClearHealth(ref Ref) error { return RecordHealth(ref, nil) }
 
-// VerifyResult is what a check found: the smoke, and the issues recorded
-// afterwards (nil when everything passed).
-type VerifyResult struct {
-	Smoke  []SmokeResult `json:"smoke"`
-	Health *Health       `json:"health"`
-}
-
-// Verify finishes what a worktree is missing, then checks it: a project with
-// no checkout is checked out, one with a recorded install failure (or a
-// checkout just made) is installed, then the servers are started, watched
-// for a few seconds, and stopped again. The verdict is written or cleared.
-// On a verified worktree that is the smoke alone. Refuses while the
-// worktree's servers are running — a smoke start would restart them under
-// whoever is using them.
-func Verify(res *Resolved, opts CheckoutOptions) (VerifyResult, error) {
+// Verify finishes what a worktree is missing, then checks it, one runner
+// per project: a project with no checkout is checked out and installed, one
+// with a recorded install failure is installed again, and every project's
+// servers are smoked — started, watched until each listens, dies or the
+// ceiling passes, stopped. Each runner writes or clears its project's
+// verdict. With names, only those projects — re-verify the one you fixed.
+// Refuses while the worktree's servers are running (a smoke would restart
+// them under whoever is using them) or while a runner is already on it.
+func Verify(res *Resolved, opts CheckoutOptions, only []string) error {
 	if dev.Running(res.Slug) {
-		return VerifyResult{}, ErrServersRunning
+		return ErrServersRunning
 	}
 	ws, err := Load(res.Ref.Workspace)
 	if err != nil {
-		return VerifyResult{}, err
+		return err
 	}
-
-	missing := missingCheckouts(res.Ref, ws)
-	made, issues := checkoutProjects(res.Ref, ws, missing, opts.Progress)
-
-	toInstall := res.Health.installIssues()
-	for _, name := range made {
-		toInstall[name] = true
-	}
-	if opts.Install {
-		issues = append(issues, installProjects(res.Ref, ws, sortedKeys(toInstall), opts)...)
-	}
-
-	opts.Smoke = true
-	result, err := finishCheck(res.Ref, issues, opts)
+	names, err := chosenMembers(ws, only)
 	if err != nil {
-		return result, err
+		return err
 	}
-	res.Health = result.Health
-	return result, nil
+	return StartSetup(res.Ref, verifyJobs(names, missingCheckouts(res.Ref, ws), res.Health.installIssues(), opts.Install))
+}
+
+// verifyJobs is what a verify runs per project: an install only where the
+// checkout is missing or its last install failed, the smoke everywhere.
+// Pure.
+func verifyJobs(names []string, missing, installFailed map[string]bool, install bool) []ProjectJob {
+	jobs := make([]ProjectJob, 0, len(names))
+	for _, n := range names {
+		jobs = append(jobs, ProjectJob{Project: n, Install: install && (missing[n] || installFailed[n]), Smoke: true})
+	}
+	return jobs
 }
 
 // RenderFixPrompt is what crew fix opens Claude with: the orientation prompt,
@@ -346,13 +318,4 @@ func FixCommandFor(res *Resolved, h *Health, anomalies string) (*osexec.Cmd, err
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-func sortedKeys(set map[string]bool) []string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

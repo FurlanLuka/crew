@@ -14,7 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
-	crewexec "github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -31,14 +30,21 @@ type clonedMsg struct {
 	target string
 	err    error
 }
-type wsProgressMsg struct {
-	line string
-	ch   chan string
+
+// wsStartedMsg: the workspace is created and its runners are going (or
+// there was nothing to run); the card follows them until they are done.
+type wsStartedMsg struct {
+	name    string
+	ref     workspace.Ref
+	started bool
+	err     error
 }
-type wsDoneMsg struct {
+
+// wsPollMsg is the runners' table, looked at again every couple of
+// seconds while any is alive.
+type wsPollMsg struct {
 	name   string
-	issues int
-	err    error
+	status workspace.Status
 }
 
 // wsBasesMsg: the base-branch table for the workspace card, fetched in the
@@ -130,8 +136,9 @@ type ImportView struct {
 	results []projectResult
 	wsRes   []wsResult
 
-	spinner  spinner.Model
-	progress string
+	spinner spinner.Model
+	// setup is the running import's runner table, shown on the card.
+	setup *workspace.Status
 	// The workspace card's base table; nil while it loads. ctrl+p pulls.
 	bases   []workspace.BaseStatus
 	pulling bool
@@ -251,24 +258,32 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.refreshPath()
 		return v, nil
 
-	case wsProgressMsg:
-		v.progress = msg.line
-		return v, listenProgress(msg.ch)
-
-	case wsDoneMsg:
-		v.state = importStateCard
-		v.progress = ""
+	case wsStartedMsg:
 		if msg.err != nil {
+			v.state = importStateCard
 			v.wsRes[v.idx] = wsResult{Outcome: outcomeFailed, Detail: msg.err.Error()}
 			return v.advance()
 		}
-		m := v.bundle.Workspaces[v.idx]
-		ref := workspace.Ref{Workspace: m.Name, Worktree: workspace.DefaultWorktree}
-		detail := fmt.Sprintf("%s under %s", plural(len(m.Projects), "checkout"), tildify(workspace.WorktreeDir(ref)))
-		if msg.issues > 0 {
-			detail = fmt.Sprintf("%s recorded — crew fix %s --print", plural(msg.issues, "issue"), ref)
+		if !msg.started {
+			v.state = importStateCard
+			v.wsRes[v.idx] = wsResult{Outcome: outcomeCreated, Detail: "empty workspace"}
+			return v.advance()
 		}
-		v.wsRes[v.idx] = wsResult{Outcome: outcomeCreated, Detail: detail}
+		return v, pollSetup(msg.ref)
+
+	case wsPollMsg:
+		if v.phase != phaseWorkspaces || v.idx >= len(v.bundle.Workspaces) || v.bundle.Workspaces[v.idx].Name != msg.name {
+			return v, nil
+		}
+		st := msg.status
+		v.setup = &st
+		if st.Running() {
+			return v, tea.Tick(2*time.Second, func(time.Time) tea.Msg { return pollSetup(st.Ref)() })
+		}
+		v.state = importStateCard
+		v.setup = nil
+		m := v.bundle.Workspaces[v.idx]
+		v.wsRes[v.idx] = wsResult{Outcome: outcomeCreated, Detail: createdDetail(m, st)}
 		return v.advance()
 
 	case wsBasesMsg:
@@ -517,30 +532,31 @@ func (v ImportView) handleWorkspaceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case msg.String() == "y" && !exists && len(missing) == 0 && !v.pulling:
 		v.state = importStateCreating
 		v.err = nil
-		ch := make(chan string, 32)
-		return v, tea.Batch(v.spinner.Tick, listenProgress(ch), func() tea.Msg {
-			results, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true, Smoke: true, Progress: func(project string, r crewexec.SetupResult) {
-				mark := "✓"
-				if r.Err != nil {
-					mark = "✗"
-				}
-				ch <- fmt.Sprintf("Creating %s — %s %s %s (%s)", m.Name, project, mark, r.Step.Name, r.Duration.Round(time.Second))
-			}})
-			close(ch)
-			return wsDoneMsg{name: m.Name, issues: IssueCount(results), err: err}
+		v.setup = nil
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			ref, started, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true, Smoke: true})
+			return wsStartedMsg{name: m.Name, ref: ref, started: started, err: err}
 		})
 	}
 	return v, nil
 }
 
-func listenProgress(ch chan string) tea.Cmd {
+func pollSetup(ref workspace.Ref) tea.Cmd {
 	return func() tea.Msg {
-		line, ok := <-ch
-		if !ok {
-			return nil
-		}
-		return wsProgressMsg{line: line, ch: ch}
+		st, _ := workspace.SetupStatus(ref)
+		st.Ref = ref
+		return wsPollMsg{name: ref.Workspace, status: st}
 	}
+}
+
+// createdDetail is the summary line for a created workspace once its
+// runners are done. Pure.
+func createdDetail(m Membership, st workspace.Status) string {
+	ref := workspace.Ref{Workspace: m.Name, Worktree: workspace.DefaultWorktree}
+	if h := st.Health(); h != nil {
+		return fmt.Sprintf("%s recorded — crew fix %s --print", plural(len(h.Issues), "issue"), ref)
+	}
+	return fmt.Sprintf("%s under %s", plural(len(m.Projects), "checkout"), tildify(workspace.WorktreeDir(ref)))
 }
 
 // ── Render ──
@@ -727,7 +743,12 @@ func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
 
 	switch {
 	case v.state == importStateCreating:
-		b.WriteString(fmt.Sprintf("  %s %s\n", v.spinner.View(), v.progress))
+		if v.setup == nil {
+			b.WriteString(fmt.Sprintf("  %s creating %s — reserving ports, starting one runner per project…\n", v.spinner.View(), m.Name))
+			return
+		}
+		b.WriteString(fmt.Sprintf("  %s installing %s — one runner per project\n", v.spinner.View(), m.Name))
+		b.WriteString(workspace.RenderSetupTable(*v.setup, "▸"))
 		return
 	case exists:
 		b.WriteString("  " + app.Subtle.Render("A workspace by this name is here already; an import never replaces one.") + "\n\n")
@@ -858,8 +879,11 @@ func (v ImportView) renderSummary(b *strings.Builder) {
 			created = append(created, v.bundle.Workspaces[i].Name)
 		}
 	}
+	for _, name := range created {
+		b.WriteString("\n  crew launch " + name)
+	}
 	if len(created) > 0 {
-		b.WriteString("\n  crew launch " + created[0] + "\n")
+		b.WriteString("\n")
 	}
 	b.WriteString("\n  " + app.Subtle.Render("Run crew import again to change a decision; imported items offer replace.") + "\n")
 	b.WriteString("  " + app.HelpStyle.Render("esc close") + "\n")

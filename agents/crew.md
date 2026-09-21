@@ -40,6 +40,12 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   `$PORT` — the project's dev command must bind it. Say which command to change; do not paper
   over it with an override.
 - Adding projects to a workspace: one call — `crew add workspace <ws> a:"role" b c`.
+- Creating anything (`add worktree`, `add workspace <p>…`, `duplicate`, `setup`, `verify`,
+  `import … workspace`) returns at once with one runner per project in the background.
+  Poll `crew setup status <ref>` (exit 2 while running, 1 failed, 0 clean) and act on the
+  first `✗` while the rest install — `crew fix <ref> --print`, fix, `crew verify <ref>
+  <project>`. `--wait` blocks instead. `crew setup logs <ref> <project>` is what an install
+  is printing.
 - Everything has a flag form; use it. Only the full-screen views (`crew workspace`, `crew
   project`, `crew config`, `crew launch`, `crew dev tui`, bare `crew debug`, `crew export`
   without flags, `crew import` without a mode) and the process-replacing commands (`crew

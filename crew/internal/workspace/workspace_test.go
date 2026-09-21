@@ -7,6 +7,7 @@ import (
 	osexec "os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -36,7 +37,69 @@ func setupTestConfig(t *testing.T) string {
 		exec.KillTmuxSession(dev.ProxySessionName)
 		dev.ProxySessionName = prev
 	})
+	inlineRunners(t)
 	return tmp
+}
+
+// inlineRunners makes StartSetup run each job here, one after another,
+// before returning: under go test the crew binary is the test binary, and
+// a test that creates a worktree wants it made when the call returns. A
+// test about the background itself calls backgroundRunners.
+func inlineRunners(t *testing.T) {
+	t.Helper()
+	prev := SpawnRunner
+	SpawnRunner = func(ref Ref, job ProjectJob) error { return RunProjectSetup(ref, job) }
+	t.Cleanup(func() { SpawnRunner = prev })
+}
+
+// backgroundRunners runs each job in a goroutine of this process — the
+// real shape, minus tmux. Every runner is awaited at cleanup so none
+// outlives the temp dir.
+func backgroundRunners(t *testing.T) {
+	t.Helper()
+	prev := SpawnRunner
+	var wg sync.WaitGroup
+	SpawnRunner = func(ref Ref, job ProjectJob) error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			RunProjectSetup(ref, job)
+		}()
+		return nil
+	}
+	t.Cleanup(func() {
+		wg.Wait()
+		SpawnRunner = prev
+	})
+}
+
+// recorded is the worktree's health as it stands on disk.
+func recorded(t *testing.T, ref Ref) *Health {
+	t.Helper()
+	res, err := Resolve(ref)
+	if err != nil {
+		t.Fatalf("Resolve %s: %v", ref, err)
+	}
+	return res.Health
+}
+
+// stepsOf is "project:step" for every step a runner ran on a worktree, in
+// order, skipped ones left out — what the progress callback used to say.
+func stepsOf(t *testing.T, ref Ref) []string {
+	t.Helper()
+	st, err := SetupStatus(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, p := range st.Projects {
+		for _, s := range p.Steps {
+			if s.Status != StepSkipped {
+				out = append(out, p.Project+":"+s.Name)
+			}
+		}
+	}
+	return out
 }
 
 func TestCreateLoadSave(t *testing.T) {
@@ -205,7 +268,7 @@ func TestSummaryJSONKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	want := `{"name":"ws/wt","workspace":"ws","worktree":"wt","path":"/p","project_count":3,"dev_running":true}`
+	want := `{"name":"ws/wt","workspace":"ws","worktree":"wt","path":"/p","project_count":3,"dev_running":true,"installing":false}`
 	if string(data) != want {
 		t.Errorf("Summary JSON = %s, want %s", data, want)
 	}
@@ -530,7 +593,7 @@ func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
 // siblings alone.
 func TestRemoveProject_WorktreeMode_TrashesOnlyThatProject(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api", "web")
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
 
@@ -552,6 +615,17 @@ func TestRemoveProject_WorktreeMode_TrashesOnlyThatProject(t *testing.T) {
 	}
 	if !trashHolds(t, "api") {
 		t.Error("api checkouts should be in the trash")
+	}
+	// Its runner files go with it: a status row for a project that is
+	// no longer a member would mislead.
+	for _, wt := range []string{DefaultWorktree, "wrk2"} {
+		ref := Ref{Workspace: "ws", Worktree: wt}
+		if st, _ := SetupStatus(ref); len(st.Projects) != 1 || st.Projects[0].Project != "web" {
+			t.Errorf("%s status after removal = %+v", wt, st.Projects)
+		}
+		if _, err := os.Stat(RunnerLogFile(ref, "api")); !os.IsNotExist(err) {
+			t.Errorf("%s: api's runner log should be gone", wt)
+		}
 	}
 }
 
@@ -662,7 +736,7 @@ func TestDuplicateWorktree_RefusesDirectCollision(t *testing.T) {
 
 	// A duplicate is a second worktree, and a direct project pins the workspace
 	// to one — the same invariant, reached through DuplicateWorktree.
-	_, err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2", CheckoutOptions{})
+	err := DuplicateWorktree(Ref{Workspace: "ws-src", Worktree: DefaultWorktree}, "wrk2", CheckoutOptions{})
 	if err == nil {
 		t.Fatal("duplicating a worktree alongside a direct project should refuse")
 	}

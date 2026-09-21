@@ -3,6 +3,7 @@ package workspace
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -108,7 +109,7 @@ func TestRecordHealth_RoundTripsAndClears(t *testing.T) {
 // keeps both, even though the caller of RecordHealth loaded nothing itself.
 func TestRecordHealth_KeepsSiblingWrites(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	main, wrk2 := Ref{Workspace: "ws", Worktree: DefaultWorktree}, Ref{Workspace: "ws", Worktree: "wrk2"}
@@ -133,29 +134,20 @@ func TestSetupFailureRecordsHealthAndPassClears(t *testing.T) {
 	project.SetSetup("api", "exit 7")
 	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
 
-	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{Install: true})
-	if err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Install: true}); err != nil {
 		t.Fatalf("a failed install is not an error any more: %v", err)
 	}
-	if h == nil || h.Issues[0].Stage != StageInstall || h.Issues[0].Project != "api" {
+	h := recorded(t, ref)
+	if h == nil || h.Issues[0].Stage != StageInstall || h.Issues[0].Project != "api" || h.Summary() != "install failed: api" {
 		t.Fatalf("Health after a failed install = %+v", h)
-	}
-	res, _ := Resolve(ref)
-	if res.Health == nil || res.Health.Summary() != "install failed: api" {
-		t.Fatalf("recorded = %+v", res.Health)
 	}
 
 	project.SetSetup("api", "true")
-	result, err := Setup(ref, CheckoutOptions{Install: true})
-	if err != nil {
+	if err := Setup(ref, CheckoutOptions{Install: true}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if result.Health != nil {
-		t.Errorf("a passing install should clear, got %+v", result.Health)
-	}
-	res, _ = Resolve(ref)
-	if res.Health != nil {
-		t.Errorf("cleared on disk too, got %+v", res.Health)
+	if h := recorded(t, ref); h != nil {
+		t.Errorf("a passing install should clear, got %+v", h)
 	}
 }
 
@@ -168,8 +160,7 @@ func TestAddWorktree_CheckoutFailureIsRecorded(t *testing.T) {
 	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "ghost", Role: "x"})
 	Save(ws)
 
-	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{})
-	if err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatalf("err = %v, want none", err)
 	}
 	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
@@ -179,7 +170,7 @@ func TestAddWorktree_CheckoutFailureIsRecorded(t *testing.T) {
 	if _, err := os.Stat(WorktreePath(ref, "ghost")); !os.IsNotExist(err) {
 		t.Error("ghost left a directory behind")
 	}
-	if h == nil || h.Summary() != "checkout failed: ghost" || !strings.Contains(h.Issues[0].Detail, "not in the project pool") {
+	if h := recorded(t, ref); h == nil || h.Summary() != "checkout failed: ghost" || !strings.Contains(h.Issues[0].Detail, "not in the project pool") {
 		t.Errorf("Health = %+v", h)
 	}
 	loaded, _ := Load("ws")
@@ -200,7 +191,7 @@ func TestVerify_FinishesMissingCheckoutsAndInstalls(t *testing.T) {
 	t.Cleanup(func() { dev.StopAll("ws--wrk2") })
 
 	// Make the worktree with web's checkout removed and an install issue on api.
-	if _, err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	cleanupWorktree(ref, WorkspaceProject{Name: "web"})
@@ -208,30 +199,34 @@ func TestVerify_FinishesMissingCheckoutsAndInstalls(t *testing.T) {
 		{Stage: StageCheckout, Project: "web", Detail: "x"},
 		{Stage: StageInstall, Project: "api", Detail: "x"},
 	}})
-	installed := map[string]bool{}
 	project.SetSetup("api", "true")
 	project.SetSetup("web", "true")
 
 	res, _ := Resolve(ref)
-	result, err := Verify(res, CheckoutOptions{Install: true, Progress: func(p string, r exec.SetupResult) {
-		if r.Step.Name != "checkout" && !strings.HasPrefix(r.Step.Name, "smoke") {
-			installed[p] = true
-		}
-	}})
-	if err != nil {
+	if err := Verify(res, CheckoutOptions{Install: true}, nil); err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(WorktreePath(ref, "web"), ".git")); err != nil {
 		t.Error("web should have been checked out by verify")
 	}
-	if !installed["api"] || !installed["web"] {
-		t.Errorf("installs ran for %v, want api (recorded) and web (just made)", installed)
+	if got := strings.Join(stepsOf(t, ref), ","); got != "api:true,api:smoke api,web:checkout,web:true" {
+		t.Errorf("steps = %s, want api installed (recorded) and web checked out and installed (just made)", got)
 	}
-	if result.Health != nil {
-		t.Errorf("everything passed, got %+v", result.Health)
+	if h := recorded(t, ref); h != nil {
+		t.Errorf("everything passed, got %+v", h)
 	}
-	if res.Health != nil {
-		t.Error("the caller's Resolved should be updated")
+}
+
+// verifyJobs: an install only where the checkout is missing or its last
+// install failed; the smoke everywhere; nothing at all without install.
+func TestVerifyJobs(t *testing.T) {
+	got := verifyJobs([]string{"api", "web", "worker"}, map[string]bool{"web": true}, map[string]bool{"api": true}, true)
+	want := []ProjectJob{{Project: "api", Install: true, Smoke: true}, {Project: "web", Install: true, Smoke: true}, {Project: "worker", Smoke: true}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("jobs = %+v, want %+v", got, want)
+	}
+	if got := verifyJobs([]string{"api"}, nil, map[string]bool{"api": true}, false); got[0].Install {
+		t.Errorf("no install asked: %+v", got)
 	}
 }
 
@@ -328,34 +323,41 @@ func TestVerify_RecordsADeathAndRefusesWhileRunning(t *testing.T) {
 	t.Cleanup(func() { dev.StopAll("ws--main") })
 
 	res, _ := Resolve(ref)
-	result, err := Verify(res, CheckoutOptions{})
-	if err != nil {
+	if err := Verify(res, CheckoutOptions{}, nil); err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if len(SmokeFailures(result.Smoke)) != 1 {
-		t.Fatalf("results = %+v, want one death", result.Smoke)
+	st, _ := SetupStatus(ref)
+	if len(st.Projects) != 1 || st.Projects[0].State != StateFailed || !strings.HasSuffix(st.Projects[0].Steps[len(st.Projects[0].Steps)-1].Detail, "died") {
+		t.Fatalf("status = %+v, want one death", st.Projects)
 	}
 	res, _ = Resolve(ref)
 	if res.Health == nil || res.Health.Issues[0].Stage != StageSmoke || !strings.Contains(res.Health.Issues[0].Detail, "DB_URL is not set") {
 		t.Fatalf("Health after a death = %+v", res.Health)
 	}
+	// The smoke's output is the runner's evidence, not the dev log.
+	if _, err := os.Stat(dev.LogFile(ref.Slug(), "api")); !os.IsNotExist(err) {
+		t.Error("a smoke must not write the dev log")
+	}
 
 	// Fixed: a server that stays up clears it.
 	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
 	res, _ = Resolve(ref)
-	if _, err := Verify(res, CheckoutOptions{}); err != nil {
+	if err := Verify(res, CheckoutOptions{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	res, _ = Resolve(ref)
 	if res.Health != nil {
 		t.Errorf("a passing verify should clear health, got %+v", res.Health)
 	}
+	if exec.TmuxSessionExists(dev.SetupSessionName(ref.Slug())) {
+		t.Error("the smoke's windows must be gone when the runner is")
+	}
 
 	// Running servers: verify refuses rather than restarting them.
 	if _, err := StartDev(res, true, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Verify(res, CheckoutOptions{}); !errors.Is(err, ErrServersRunning) {
+	if err := Verify(res, CheckoutOptions{}, nil); !errors.Is(err, ErrServersRunning) {
 		t.Errorf("Verify while running = %v, want ErrServersRunning", err)
 	}
 	if !dev.Running(res.Slug) {
@@ -384,22 +386,15 @@ func TestAddWorktree_SmokeDeathIsRecorded(t *testing.T) {
 	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sh -c 'echo Error: DB_URL is not set; exit 1'"})
 	t.Cleanup(func() { dev.StopAll("ws--wrk2") })
 
-	var steps []string
-	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true, Progress: func(p string, r exec.SetupResult) {
-		steps = append(steps, p+":"+r.Step.Name)
-	}})
-	if err != nil {
+	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true}); err != nil {
 		t.Fatal(err)
 	}
-	if h == nil || h.Summary() != "server died: api/api" || !strings.Contains(h.Issues[0].Detail, "DB_URL is not set") {
+	if h := recorded(t, ref); h == nil || h.Summary() != "server died: api/api" || !strings.Contains(h.Issues[0].Detail, "DB_URL is not set") {
 		t.Errorf("Health = %+v", h)
 	}
-	if strings.Join(steps, ",") != "api:checkout,api:smoke api" {
-		t.Errorf("steps = %v", steps)
-	}
-	res, _ := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"})
-	if res.Health == nil {
-		t.Error("recorded on the worktree")
+	if got := strings.Join(stepsOf(t, ref), ","); got != "api:checkout,api:smoke api" {
+		t.Errorf("steps = %s", got)
 	}
 }
 
@@ -410,15 +405,11 @@ func TestDuplicateWorktree_CarriesHealth(t *testing.T) {
 	SetOverride(src, "K", "v")
 	project.SetSetup("api", "exit 5")
 
-	h, err := DuplicateWorktree(src, "wrk2", CheckoutOptions{Install: true})
-	if err != nil {
+	if err := DuplicateWorktree(src, "wrk2", CheckoutOptions{Install: true}); err != nil {
 		t.Fatal(err)
 	}
-	if h == nil || h.Summary() != "install failed: api" {
-		t.Errorf("Health = %+v", h)
-	}
 	res, _ := Resolve(Ref{Workspace: "ws", Worktree: "wrk2"})
-	if res.Overrides["K"] != "v" || res.Health == nil {
+	if res.Overrides["K"] != "v" || res.Health == nil || res.Health.Summary() != "install failed: api" {
 		t.Errorf("overrides=%v health=%+v", res.Overrides, res.Health)
 	}
 }
@@ -435,14 +426,17 @@ func TestSetup_RefusesWhileServersRun(t *testing.T) {
 	if _, err := StartDev(res, true, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Setup(ref, CheckoutOptions{Install: true, Smoke: true}); !errors.Is(err, ErrServersRunning) {
+	if err := Setup(ref, CheckoutOptions{Install: true, Smoke: true}, nil); !errors.Is(err, ErrServersRunning) {
 		t.Errorf("Setup with smoke while running = %v", err)
 	}
 	if !dev.Running(res.Slug) {
 		t.Error("the refused setup must leave the session alone")
 	}
-	if _, err := Setup(ref, CheckoutOptions{Install: true}); err != nil {
+	if err := Setup(ref, CheckoutOptions{Install: true}, nil); err != nil {
 		t.Errorf("Setup without smoke should proceed: %v", err)
+	}
+	if h := recorded(t, ref); h != nil {
+		t.Errorf("the install passed: %+v", h)
 	}
 }
 
@@ -457,30 +451,34 @@ func TestAddWorktree_NotListeningIsRecordedOnlyWhenReferenced(t *testing.T) {
 	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
 	t.Cleanup(func() { dev.StopAll("ws--wrk2"); dev.StopAll("ws--wrk3") })
 
-	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true})
-	if err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true}); err != nil {
 		t.Fatal(err)
 	}
-	if h != nil {
+	if h := recorded(t, Ref{Workspace: "ws", Worktree: "wrk2"}); h != nil {
 		t.Errorf("unreferenced and alive should pass, got %+v", h)
 	}
 
 	project.AddBinding("web", project.Binding{Var: "API_URL", Value: "{{api}}"})
-	var steps []string
-	h, err = AddWorktree("ws", "wrk3", CheckoutOptions{Smoke: true, Progress: func(p string, r exec.SetupResult) {
-		if r.Err != nil {
-			steps = append(steps, p+":"+r.Step.Name+":"+r.Err.Error())
-		}
-	}})
-	if err != nil {
+	ref := Ref{Workspace: "ws", Worktree: "wrk3"}
+	if err := AddWorktree("ws", "wrk3", CheckoutOptions{Smoke: true}); err != nil {
 		t.Fatal(err)
 	}
+	h := recorded(t, ref)
 	if h == nil || h.Summary() != "server not listening: api/api" || h.Issues[0].Reason != ReasonNotListening ||
 		!strings.Contains(h.Issues[0].Detail, "nothing listens on :") {
 		t.Errorf("Health = %+v", h)
 	}
-	if len(steps) != 1 || !strings.HasPrefix(steps[0], "api:smoke api:not listening on :") {
-		t.Errorf("steps = %v", steps)
+	st, _ := SetupStatus(ref)
+	var failed []string
+	for _, p := range st.Projects {
+		for _, s := range p.Steps {
+			if s.Status == StepFailed {
+				failed = append(failed, p.Project+":"+s.Name+":"+s.Detail)
+			}
+		}
+	}
+	if len(failed) != 1 || !strings.HasPrefix(failed[0], "api:smoke api:not listening on :") {
+		t.Errorf("failed steps = %v", failed)
 	}
 }
 
@@ -499,11 +497,10 @@ func TestAddWorktree_ListeningServerPasses(t *testing.T) {
 	project.AddBinding("web", project.Binding{Var: "API_URL", Value: "{{api}}"})
 	t.Cleanup(func() { dev.StopAll("ws--wrk2") })
 
-	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true})
-	if err != nil {
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true}); err != nil {
 		t.Fatal(err)
 	}
-	if h != nil {
+	if h := recorded(t, Ref{Workspace: "ws", Worktree: "wrk2"}); h != nil {
 		t.Errorf("a listening, referenced server must pass: %+v", h)
 	}
 }

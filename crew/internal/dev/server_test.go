@@ -183,9 +183,9 @@ func TestDetectLANIP(t *testing.T) {
 // command line is still echoed, which is what the assertions read.
 func stubProxyBinary(t *testing.T) {
 	t.Helper()
-	prev := crewExecutable
-	crewExecutable = func() (string, error) { return "/usr/bin/true", nil }
-	t.Cleanup(func() { crewExecutable = prev })
+	prev := crewExec.CrewBinary
+	crewExec.CrewBinary = func() (string, error) { return "/usr/bin/true", nil }
+	t.Cleanup(func() { crewExec.CrewBinary = prev })
 }
 
 // isolateProxy gives the test its own proxy session name, so a user's live
@@ -486,5 +486,15 @@ func TestProxyWarning_UsesRecordedError(t *testing.T) {
 	}
 	if st, _ := loadProxyState(); st.Error != "" {
 		t.Errorf("relaunch kept the old error: %+v", st)
+	}
+}
+
+// A stop-all takes every dev and setup session; the proxy has its own stop
+// and anything not crew's is left alone.
+func TestSessionsToStop(t *testing.T) {
+	all := []string{"crew-dev-ws--main", "crew-setup-ws--wrk2", "crew-dev-proxy", "crew-test-proxy-1", "main", "crew-devel"}
+	got := sessionsToStop(all, "crew-dev-proxy")
+	if strings.Join(got, ",") != "crew-dev-ws--main,crew-setup-ws--wrk2" {
+		t.Errorf("sessions = %v", got)
 	}
 }

@@ -23,6 +23,12 @@ func setupTestConfig(t *testing.T) string {
 	config.ClaudeConfigDir = filepath.Join(tmp, "claude")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
 	trash.DisableSweepForTest(t)
+	// Runners in-process, one after another: under go test the crew
+	// binary is the test binary, and an import here wants its worktree
+	// made when the call returns.
+	prev := workspace.SpawnRunner
+	workspace.SpawnRunner = func(ref workspace.Ref, job workspace.ProjectJob) error { return workspace.RunProjectSetup(ref, job) }
+	t.Cleanup(func() { workspace.SpawnRunner = prev })
 	return tmp
 }
 
@@ -248,36 +254,33 @@ func TestImportWorkspace(t *testing.T) {
 	project.SetSetup("api", "exit 7")
 
 	ghost := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}, {Name: "ghost", Role: "x"}}}
-	if _, err := ImportWorkspace(ghost, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "ghost") {
+	if _, _, err := ImportWorkspace(ghost, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "ghost") {
 		t.Fatalf("err = %v, want ghost to fail pre-flight", err)
 	}
 	if workspace.Exists("ws") {
 		t.Fatal("a pre-flight failure must leave no workspace behind")
 	}
 
-	var steps []string
 	m := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}
-	results, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true, Progress: func(p string, r crewexec.SetupResult) {
-		steps = append(steps, p+":"+r.Step.Name)
-	}})
+	ref, started, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := workspace.Ref{Workspace: "ws", Worktree: workspace.DefaultWorktree}
+	if !started || ref != (workspace.Ref{Workspace: "ws", Worktree: workspace.DefaultWorktree}) {
+		t.Fatalf("started=%v ref=%v", started, ref)
+	}
 	if _, err := os.Stat(filepath.Join(workspace.WorktreePath(ref, "api"), ".git")); err != nil {
 		t.Error("api checkout should exist")
 	}
-	if IssueCount(results) != 1 || results[0].Issues[0].Stage != workspace.StageInstall {
-		t.Errorf("results = %+v", results)
+	st, _ := workspace.SetupStatus(ref)
+	if len(st.Projects) != 1 || st.Projects[0].State != workspace.StateFailed {
+		t.Errorf("status = %+v", st.Projects)
 	}
 	res, _ := workspace.Resolve(ref)
 	if res.Health == nil || res.Health.Summary() != "install failed: api" {
 		t.Errorf("health = %+v", res.Health)
 	}
-	if strings.Join(steps, ",") != "api:checkout,api:exit 7" {
-		t.Errorf("progress = %v", steps)
-	}
-	if _, err := ImportWorkspace(m, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, _, err := ImportWorkspace(m, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("existing workspace must be refused: %v", err)
 	}
 }
@@ -296,8 +299,12 @@ func TestMembershipWorkspace_BaseStatuses(t *testing.T) {
 // An export can carry an empty workspace; it imports as one.
 func TestImportWorkspace_Empty(t *testing.T) {
 	setupTestConfig(t)
-	if _, err := ImportWorkspace(Membership{Name: "empty"}, workspace.CheckoutOptions{}); err != nil {
+	_, started, err := ImportWorkspace(Membership{Name: "empty"}, workspace.CheckoutOptions{})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if started {
+		t.Error("nothing to run on an empty workspace")
 	}
 	if !workspace.Exists("empty") {
 		t.Error("the empty workspace should exist")
@@ -305,16 +312,24 @@ func TestImportWorkspace_Empty(t *testing.T) {
 }
 
 func TestWorkspaceRow(t *testing.T) {
-	row, failed := WorkspaceRow("ws", nil, nil)
+	row, failed := WorkspaceRow("ws", false, nil, false, nil)
 	if failed || row.Status != "created" || row.Detail != "" {
-		t.Errorf("clean create → %+v %v", row, failed)
+		t.Errorf("empty create → %+v %v", row, failed)
 	}
-	issues := []workspace.RefIssues{{Ref: workspace.Ref{Workspace: "ws", Worktree: "main"}, Issues: []workspace.Issue{{Stage: workspace.StageInstall, Project: "api"}, {Stage: workspace.StageSmoke, Project: "api", Server: "api"}}}}
-	row, failed = WorkspaceRow("ws", issues, nil)
+	row, failed = WorkspaceRow("ws", true, nil, false, nil)
+	if failed || row.Status != "created" || row.Detail != "installing — crew setup status ws/main" {
+		t.Errorf("started, not waited → %+v %v", row, failed)
+	}
+	row, failed = WorkspaceRow("ws", true, nil, true, nil)
+	if failed || row.Status != "created" || row.Detail != "" {
+		t.Errorf("waited, clean → %+v %v", row, failed)
+	}
+	h := &workspace.Health{Issues: []workspace.Issue{{Stage: workspace.StageInstall, Project: "api"}, {Stage: workspace.StageSmoke, Project: "api", Server: "api"}}}
+	row, failed = WorkspaceRow("ws", true, h, true, nil)
 	if !failed || row.Status != "created" || row.Detail != "2 issue(s) recorded — crew fix ws/main --print / crew verify ws/main" {
-		t.Errorf("create with issues → %+v %v", row, failed)
+		t.Errorf("waited, issues → %+v %v", row, failed)
 	}
-	row, failed = WorkspaceRow("ws", nil, errors.New("workspace 'ws' already exists"))
+	row, failed = WorkspaceRow("ws", false, nil, false, errors.New("workspace 'ws' already exists"))
 	if !failed || row.Status != "failed" || row.Detail != "workspace 'ws' already exists" {
 		t.Errorf("error → %+v %v", row, failed)
 	}

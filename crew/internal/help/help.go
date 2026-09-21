@@ -67,13 +67,14 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "workspace",
-					Description:  "Create a workspace, or add projects to one — any number in one call, the workspace created if it does not exist. Each project gets a git worktree in every existing worktree of the workspace (or the canonical repo with --direct), then the installs run, all at once. Every name is checked before anything happens; a checkout or install that fails keeps the member, recorded on the worktree for crew fix / verify.",
-					Usage:        "crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct]",
+					Description:  "Create a workspace, or add projects to one — any number in one call, the workspace created if it does not exist. Every name is checked before anything happens; then the members are recorded and, in every worktree of the workspace, one runner per new project starts in the background (checkout, install, smoke of its own servers) — `added` means recorded and installing. A checkout or install that fails keeps the member, recorded on the worktree for crew fix / verify. --wait stays until every runner is done and reports `failed` rows.",
+					Usage:        "crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct] [--wait]",
 					OutputFormat: "<project>\\t<added|failed>\\t<worktree|direct>\\t<detail>",
 					Flags: []FlagInfo{
 						{Name: "<project>[:<role>]", Description: "A pool project, with its role in this workspace after a colon (\"store-api:Backend API\"); without one, \"works on <project>\""},
 						{Name: "--role=<r>", Description: "The role for a single project — the same as <project>:<role>"},
 						{Name: "--direct", Description: "Attach the canonical checkouts instead of creating worktrees. Changes are NOT isolated. Only one workspace at a time may direct-mount a given project."},
+						{Name: "--wait", Description: "Stay until every runner is done; rows then say added or failed, exit 1 on any failure"},
 					},
 					Examples: []string{
 						"crew add workspace feature-auth",
@@ -84,14 +85,15 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Check every project out into a new working copy, install each checkout, and start the servers to see which come up — each is watched until it listens on its port, dies, or a minute passes — every step over every project, none stopping the rest. Anything that fails is recorded on the worktree, and creation ends on the worktree page (locked to fix and verify while anything is recorded); without a terminal it prints the summary and exits 1. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
-					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]",
+					Description: "Make a new working copy of every project, in the background: the worktree is recorded, its ports reserved, and one runner per project starts (a window of tmux session crew-setup-<ws>--<name>) doing checkout → .env → install → a smoke of its own servers, each watched until it listens on its port, dies, or a minute passes. The command returns at once. In a terminal it lands on the worktree page, which shows the runners; without one it prints how to watch: crew setup status <ref>. A failure is recorded on the worktree the moment it happens, while the other runners continue — crew fix <ref> --print has it before the slowest install ends. --wait stays until every runner is done, prints the summary and exits 1 if anything is recorded. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
+					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]",
 					Flags: []FlagInfo{
 						{Name: "--pull", Description: "Fast-forward each project's local base branch to origin first. Never touches a checked-out feature branch; refuses when the base has diverged or is checked out with uncommitted changes."},
-						{Name: "--no-install", Description: "Check out only; skip mise and package installs"},
+						{Name: "--no-install", Description: "Check out only; skip mise and package installs (and so the smoke)"},
 						{Name: "--no-smoke", Description: "Skip the smoke start"},
+						{Name: "--wait", Description: "Stay until every runner is done: the table live in a terminal, then the summary; exit 1 if anything is recorded. --json then carries the health"},
 					},
-					Examples: []string{"crew add worktree store-front/wrk3", "crew add worktree store-front/wrk3 --no-install"},
+					Examples: []string{"crew add worktree store-front/wrk3", "crew add worktree store-front/wrk3 --wait", "crew add worktree store-front/wrk3 --no-install"},
 				},
 				{
 					Name:        "binding",
@@ -188,7 +190,7 @@ var Root = CommandInfo{
 					Name:         "worktrees",
 					Description:  "List every working copy — one row per worktree, across all workspaces or one. This is the 'what do I have checked out' view.",
 					Usage:        "crew ls worktrees [<workspace>] [--size]",
-					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[<size>\\t][dev][\\t<recorded failure>]",
+					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[<size>\\t][dev|installing][\\t<recorded failure>]",
 					Flags: []FlagInfo{
 						{Name: "--size", Description: "Add bytes on disk per worktree. Walks every file — slow on one with a full build inside"},
 					},
@@ -224,11 +226,14 @@ var Root = CommandInfo{
 			Examples:     []string{"crew show feature-auth"},
 		},
 		{
-			Name:         "verify",
-			Description:  "Check a worktree the way creating it does: start its dev servers, watch each until it listens, dies, or a minute passes, report the verdicts with the last log lines of any that failed, stop them again. The verdict is recorded on the worktree — a failure shows in crew ls worktrees and on the worktree page until a verify passes. Refuses while the worktree's servers are running, since it would restart them.",
-			Usage:        "crew verify <workspace>[/<worktree>]",
-			OutputFormat: "<project>  ✓|✗ smoke <server> <took> [died | not listening on :<port>]",
-			Examples:     []string{"crew verify store-front/wrk2"},
+			Name:        "verify",
+			Description: "Check a worktree the way creating it does, one runner per project in the background: a project with no checkout is checked out and installed, one whose last install failed is installed again, and every project's servers are smoked — started, watched until each listens, dies, or a minute passes, stopped. Each runner writes or clears its own project's verdict; the worktree page stays locked until every record is cleared. Name projects to verify only those — the one you just fixed — while the rest keep their record. Returns at once with crew setup status <ref> as the way to watch; --wait stays to the end and exits 1 if anything is recorded. Refuses while the worktree's servers are running (it would restart them) or while a setup is already running on it.",
+			Usage:       "crew verify <workspace>[/<worktree>] [<project>...] [--wait]",
+			Flags: []FlagInfo{
+				{Name: "<project>...", Description: "Only these projects; the others keep whatever is recorded"},
+				{Name: "--wait", Description: "Stay until every runner is done; then the issues, exit 1 on any"},
+			},
+			Examples: []string{"crew verify store-front/wrk2", "crew verify store-front/wrk2 --wait", "crew verify store-front/wrk2 store-api"},
 		},
 		{
 			Name:        "fix",
@@ -440,8 +445,8 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "duplicate",
-			Description: "Duplicate a worktree within its workspace — fresh checkouts of the same projects, with the source worktree's overrides copied across",
-			Usage:       "crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]",
+			Description: "Duplicate a worktree within its workspace — fresh checkouts of the same projects, with the source worktree's overrides copied across before its runners start. Made the way crew add worktree makes one: in the background, one runner per project; --wait stays to the end.",
+			Usage:       "crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke] [--wait]",
 			Examples:    []string{"crew duplicate store-front/wrk1 wrk3"},
 		},
 		{
@@ -484,7 +489,7 @@ var Root = CommandInfo{
 		{
 			Name:         "import",
 			Description:  "Bring a crew export into this machine. Bare, a wizard walks one card per item: each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once.",
-			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke]]",
+			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
 			OutputFormat: "<project|workspace>\\t<name>\\t<status|outcome>\\t<detail>",
 			Flags: []FlagInfo{
 				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here (suggested path, clone target, missing members)"},
@@ -492,6 +497,7 @@ var Root = CommandInfo{
 				{Name: "--pull", Description: "workspace: fast-forward the local base branches from origin before checking out (the base table is printed either way)"},
 				{Name: "--no-install", Description: "workspace: skip the installs"},
 				{Name: "--no-smoke", Description: "workspace: skip the smoke start"},
+				{Name: "--wait", Description: "workspace: stay until its runners are done; the row then carries what was recorded"},
 				{Name: "--path=<dir>", Description: "project: use this checkout instead of the exported path"},
 				{Name: "--clone[=<dir>]", Description: "project: clone the origin remote when the path is not here and no sibling was found — beside a known repo (the plan's clone target) or into <dir>"},
 				{Name: "--replace", Description: "project: swap out the local record of the same name"},
@@ -527,12 +533,35 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "setup",
-			Description: "Re-run every project's install steps in a worktree: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command. Idempotent — the fix for an install that failed when the worktree was created. Ends with a smoke start: servers are started, checked a few seconds later, and stopped again.",
-			Usage:       "crew setup <workspace>[/<worktree>] [--no-smoke]",
+			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
+			Usage:       "crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]",
 			Flags: []FlagInfo{
+				{Name: "<project>...", Description: "Only these projects"},
 				{Name: "--no-smoke", Description: "Skip the smoke start"},
+				{Name: "--wait", Description: "Stay until every runner is done; then the issues, exit 1 on any"},
 			},
-			Examples: []string{"crew setup store-front/wrk3"},
+			Examples: []string{"crew setup store-front/wrk3", "crew setup store-front/wrk3 store-api --wait"},
+			Subcommands: []CommandInfo{
+				{
+					Name:         "status",
+					Description:  "What each project's runner has done on a worktree — creation, a verify or a setup, still going or finished: one row per project with its state (starting, running, ok, failed, interrupted), its steps in order with how long each took, the running one marked, a failed one with its reason. A runner that vanished without a verdict (a killed window, a reboot) reads as interrupted and is recorded on the worktree as a failure. Exit 2 while any runner is alive, 1 once all stopped with anything recorded, 0 otherwise — an agent polls this and acts on the first failure while the rest still install. --wait stays until no runner is left (then 1 or 0).",
+					Usage:        "crew setup status <workspace>[/<worktree>] [--wait]",
+					OutputFormat: "✓|✗|▸ <project>  <step> <took> · <step> <took> · ▸ <running step> | <step> — <reason>",
+					Flags: []FlagInfo{
+						{Name: "--wait", Description: "Stay until every runner is done, the table live in a terminal"},
+					},
+					Examples: []string{"crew setup status store-front/wrk3", "crew setup status store-front/wrk3 --wait", "crew setup status store-front/wrk3 --json"},
+				},
+				{
+					Name:        "logs",
+					Description: "The last lines of one project's runner log: its steps as they finished and everything its install printed — live while it runs, kept afterwards. What to read when a step is taking long.",
+					Usage:       "crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]",
+					Flags: []FlagInfo{
+						{Name: "--lines=<n>", Description: "How many lines from the end (default 50)"},
+					},
+					Examples: []string{"crew setup logs store-front/wrk3 store-api", "crew setup logs store-front/wrk3 store-api --lines=200"},
+				},
+			},
 		},
 		{
 			Name:        "uninstall",

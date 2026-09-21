@@ -238,7 +238,7 @@ func TestMembershipOf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MembershipOf: %v", err)
 	}
-	if _, err := ImportWorkspace(m, workspace.CheckoutOptions{}); err != nil {
+	if _, _, err := ImportWorkspace(m, workspace.CheckoutOptions{}); err != nil {
 		t.Fatalf("ImportWorkspace: %v", err)
 	}
 	if !workspace.Exists("ws") {

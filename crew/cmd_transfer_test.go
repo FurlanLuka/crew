@@ -134,4 +134,13 @@ func TestParseImportArgs_WorktreeOptions(t *testing.T) {
 	if a, _ := parseImportArgs([]string{"b.json", "--plan"}); !a.install || !a.smoke {
 		t.Errorf("defaults should be install+smoke: %+v", a)
 	}
+	if a, err := parseImportArgs([]string{"b.json", "workspace", "ws", "--wait"}); err != nil || !a.wait {
+		t.Errorf("workspace --wait: %+v, %v", a, err)
+	}
+	if a, err := parseImportArgs([]string{"b.json", "--all", "--wait"}); err != nil || !a.wait {
+		t.Errorf("--all --wait: %+v, %v", a, err)
+	}
+	if _, err := parseImportArgs([]string{"b.json", "project", "api", "--wait"}); err == nil || !strings.Contains(err.Error(), "belong to workspace") {
+		t.Errorf("--wait on a project: %v", err)
+	}
 }

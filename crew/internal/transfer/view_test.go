@@ -245,9 +245,8 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 	var out []tea.Msg
 	switch msg := cmd().(type) {
 	case tea.BatchMsg:
-		// Bubbletea runs a batch concurrently; a listener in it blocks until
-		// the worker beside it sends. Progress comes first so a test sees the
-		// line before the completion that follows it.
+		// Bubbletea runs a batch concurrently; run every part and keep the
+		// terminal messages, in order.
 		results := make([][]tea.Msg, len(msg))
 		var wg sync.WaitGroup
 		for i, sub := range msg {
@@ -258,18 +257,10 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 			}()
 		}
 		wg.Wait()
-		var rest []tea.Msg
 		for _, r := range results {
-			for _, m := range r {
-				if _, ok := m.(wsProgressMsg); ok {
-					out = append(out, m)
-				} else {
-					rest = append(rest, m)
-				}
-			}
+			out = append(out, r...)
 		}
-		out = append(out, rest...)
-	case projectDoneMsg, clonedMsg, wsProgressMsg, wsDoneMsg:
+	case projectDoneMsg, clonedMsg, wsStartedMsg, wsPollMsg:
 		out = append(out, msg)
 	}
 	return out
@@ -448,20 +439,17 @@ func TestImportView_WorkspaceCreate(t *testing.T) {
 	if v.state != importStateCreating {
 		t.Fatalf("state = %v", v.state)
 	}
-	// Drain: the create runs to completion; progress lines arrive through the channel.
-	var sawProgress bool
+	if !strings.Contains(plain(v.View()), "creating ws — reserving ports") {
+		t.Errorf("creating card:\n%s", plain(v.View()))
+	}
+	// Drain: the runners run inline here, so the first poll already finds
+	// them done and the card advances to the summary.
+	var sawPoll bool
 	var drain func(tea.Cmd)
 	drain = func(c tea.Cmd) {
 		for _, msg := range runCmd(c) {
-			if p, ok := msg.(wsProgressMsg); ok {
-				sawProgress = true
-				m, next := v.Update(p)
-				v = m.(ImportView)
-				if !strings.Contains(plain(v.View()), "Creating ws — api ✓ checkout") {
-					t.Errorf("progress line:\n%s", plain(v.View()))
-				}
-				drain(next)
-				continue
+			if _, ok := msg.(wsPollMsg); ok {
+				sawPoll = true
 			}
 			m, next := v.Update(msg)
 			v = m.(ImportView)
@@ -469,8 +457,8 @@ func TestImportView_WorkspaceCreate(t *testing.T) {
 		}
 	}
 	drain(cmd)
-	if !sawProgress {
-		t.Error("no progress message seen")
+	if !sawPoll {
+		t.Error("the card should poll the runners")
 	}
 	if v.wsRes[0].Outcome != outcomeCreated || !strings.HasPrefix(v.wsRes[0].Detail, "1 checkout under ") {
 		t.Errorf("wsRes = %+v", v.wsRes[0])
@@ -580,9 +568,17 @@ func TestImportView_WorkspaceCardBasesAndPull(t *testing.T) {
 		t.Errorf("after pull:\n%s", plain(v.View()))
 	}
 
-	// A create that recorded issues says so and names the fix line.
+	// While the runners go, the card shows their table and polls again; a
+	// create that recorded issues says so and names the fix line.
 	v.state = importStateCreating
-	m, _ = v.Update(wsDoneMsg{name: "ws", issues: 2})
+	running := workspace.Status{Projects: []workspace.ProjectStatus{{Project: "api", State: workspace.StateRunning, Steps: []workspace.RunStep{{Name: "npm ci", Status: workspace.StepRunning}}}}}
+	m, cmd = v.Update(wsPollMsg{name: "ws", status: running})
+	v = m.(ImportView)
+	if v.state != importStateCreating || cmd == nil || !strings.Contains(plain(v.View()), "▸ npm ci") {
+		t.Errorf("polling card: state=%v cmd=%v\n%s", v.state, cmd != nil, plain(v.View()))
+	}
+	done := workspace.Status{Projects: []workspace.ProjectStatus{{Project: "api", State: workspace.StateFailed, Issues: []workspace.Issue{{Stage: workspace.StageInstall, Project: "api"}, {Stage: workspace.StageSmoke, Project: "api", Server: "api"}}}}}
+	m, _ = v.Update(wsPollMsg{name: "ws", status: done})
 	v = m.(ImportView)
 	if r := v.wsRes[0]; r.Outcome != outcomeCreated || !strings.HasPrefix(r.Detail, "2 issues recorded — crew fix ws/main --print") {
 		t.Errorf("wsRes = %+v", r)

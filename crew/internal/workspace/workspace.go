@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -146,93 +145,55 @@ type ProjectSpec struct {
 
 // AddProject adds one project to a workspace; AddProjects with one spec.
 func AddProject(wsName, projName, role, mode string, opts CheckoutOptions) error {
-	results, err := AddProjects(wsName, []ProjectSpec{{Name: projName, Role: role, Mode: mode}}, opts)
-	if err != nil {
-		return err
-	}
-	for _, r := range results {
-		if len(r.Issues) > 0 {
-			return errors.New(r.Issues[0].Summary() + ": " + firstLine(r.Issues[0].Detail))
-		}
-	}
-	return nil
-}
-
-// RefIssues is what went wrong in one worktree, in worktree order — the
-// caller's hint has to name the worktree, not the workspace.
-type RefIssues struct {
-	Ref    Ref
-	Issues []Issue
+	_, err := AddProjects(wsName, []ProjectSpec{{Name: projName, Role: role, Mode: mode}}, opts)
+	return err
 }
 
 // AddProjects adds several projects to a workspace in one pass. Every spec
 // is checked before anything happens — a bad name fails the whole call
-// with nothing done. Then, per worktree: the checkouts, then the installs
-// in parallel (the slow part; each project's install is its own), and the
-// issues recorded on that worktree's health so crew fix and verify apply.
-// Every validated project becomes a member, whatever its checkout or
-// install did — the same rule as creating a worktree: nothing stops, what
-// failed is recorded, and verify finishes a checkout that is missing.
-func AddProjects(wsName string, specs []ProjectSpec, opts CheckoutOptions) ([]RefIssues, error) {
-	ws, err := Load(wsName)
+// with nothing done. Then the members are saved and, per worktree, one
+// runner per new project starts: checkout, install, smoke of its own
+// servers, its issues recorded on that worktree. Every validated project
+// becomes a member whatever its runner finds — nothing stops, what failed
+// is recorded, and verify finishes a checkout that is missing. A worktree
+// whose servers are running skips the smoke: it would restart them, and
+// crew dev restart is one keystroke away. Returns the worktrees the
+// runners were started on.
+func AddProjects(wsName string, specs []ProjectSpec, opts CheckoutOptions) ([]Ref, error) {
+	names := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		names = append(names, spec.Name)
+	}
+	var ws *Workspace
+	err := Update(wsName, func(loaded *Workspace) error {
+		if err := validateSpecs(loaded, specs); err != nil {
+			return err
+		}
+		for _, spec := range specs {
+			loaded.Projects = append(loaded.Projects, WorkspaceProject{Name: spec.Name, Role: spec.Role, Mode: persistedMode(spec.Mode)})
+		}
+		ws = loaded
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if err := validateSpecs(ws, specs); err != nil {
-		return nil, err
-	}
 
-	// Members first, in memory: the checkout and install primitives work
-	// over a workspace's members.
-	var names []string
-	for _, spec := range specs {
-		ws.Projects = append(ws.Projects, WorkspaceProject{Name: spec.Name, Role: spec.Role, Mode: persistedMode(spec.Mode)})
-		if spec.Mode != ModeDirect {
-			names = append(names, spec.Name)
-		}
-	}
-
-	var results []RefIssues
+	var started []Ref
 	for _, ref := range Refs(ws) {
-		made, issues := checkoutProjects(ref, ws, names, opts.Progress)
-		issues = append(issues, installProjects(ref, ws, made, opts)...)
-		results = append(results, RefIssues{Ref: ref, Issues: issues})
-	}
-
-	if err := Save(ws); err != nil {
-		return nil, err
-	}
-	// The smoke needs the members saved (it resolves the worktree), and the
-	// health goes after the save too: recordMerged loads and saves the
-	// workspace itself, and a save of this older copy would undo it.
-	for i := range results {
-		r := &results[i]
-		if r.Ref.Worktree == "" {
-			continue // pre-2.0 flat workspace: nothing to smoke or record on
-		}
-		// A smoke restarts the worktree's servers; one that is running keeps
-		// running — crew dev restart is one keystroke away, a kill is not.
-		// Said out loud, or the run reads as if there were no smoke stage.
-		if opts.Smoke {
-			if dev.Running(r.Ref.Slug()) {
-				if opts.Progress != nil {
-					opts.Progress(r.Ref.String(), exec.SetupResult{Step: exec.SetupStep{Name: "smoke skipped"}, Err: errors.New("servers running — crew dev restart to see the new ones")})
-				}
-			} else {
-				_, smoked, err := smokeStage(r.Ref, opts)
-				if err != nil {
-					return nil, err
-				}
-				r.Issues = append(r.Issues, smoked...)
+		jobs := jobsFor(names, opts)
+		if opts.Smoke && dev.Running(ref.Slug()) {
+			debug.Log("setup", "%s: servers running — the new projects are not smoked", ref)
+			for i := range jobs {
+				jobs[i].Smoke = false
 			}
 		}
-		if len(r.Issues) > 0 {
-			if err := recordMerged(r.Ref, names, r.Issues); err != nil {
-				return nil, err
-			}
+		if err := StartSetup(ref, jobs); err != nil {
+			return started, err
 		}
+		started = append(started, ref)
 	}
-	return results, nil
+	return started, nil
 }
 
 // validateSpecs is every pre-flight check, before a single side effect:
@@ -294,29 +255,25 @@ func persistedMode(mode string) string {
 }
 
 // recordMerged writes fresh issues for the named projects onto a worktree,
-// keeping whatever was recorded about its other projects.
+// keeping whatever was recorded about its other projects; nothing left
+// clears the record. One locked read-modify-write — the runners of one
+// worktree call this concurrently.
 func recordMerged(ref Ref, projects []string, fresh []Issue) error {
-	ws, err := Load(ref.Workspace)
-	if err != nil {
-		return err
-	}
-	wt, err := selectWorktree(ws, ref.Worktree)
-	if err != nil {
-		return err
-	}
 	mine := map[string]bool{}
 	for _, p := range projects {
 		mine[p] = true
 	}
-	var kept []Issue
-	if wt.Health != nil {
-		for _, i := range wt.Health.Issues {
-			if !mine[i.Project] {
-				kept = append(kept, i)
+	return updateWorktree(ref, func(wt *Worktree) {
+		var kept []Issue
+		if wt.Health != nil {
+			for _, i := range wt.Health.Issues {
+				if !mine[i.Project] {
+					kept = append(kept, i)
+				}
 			}
 		}
-	}
-	return RecordHealth(ref, &Health{At: time.Now(), Issues: append(kept, fresh...)})
+		wt.Health = healthOf(append(kept, fresh...))
+	})
 }
 
 func firstLine(s string) string {
@@ -338,25 +295,36 @@ func RemoveProject(wsName, projName string) error {
 	for _, wp := range ws.Projects {
 		if wp.Name == projName {
 			for _, ref := range Refs(ws) {
+				// A runner still installing it would record on a member
+				// that is gone.
+				if ref.Worktree != "" && SetupRunning(ref) {
+					return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, ref, ref)
+				}
+			}
+			for _, ref := range Refs(ws) {
 				cleanupWorktree(ref, wp)
+				os.Remove(resultFile(ref.Slug(), projName))
+				os.Remove(RunnerLogFile(ref, projName))
 			}
 			break
 		}
 	}
 
-	var filtered []WorkspaceProject
-	for _, wp := range ws.Projects {
-		if wp.Name != projName {
-			filtered = append(filtered, wp)
+	return Update(wsName, func(ws *Workspace) error {
+		var filtered []WorkspaceProject
+		for _, wp := range ws.Projects {
+			if wp.Name != projName {
+				filtered = append(filtered, wp)
+			}
 		}
-	}
-	ws.Projects = filtered
-	// What was recorded about it goes with it: a fix prompt must not
-	// describe a project that is no longer here.
-	for i := range ws.Worktrees {
-		ws.Worktrees[i].Health = ws.Worktrees[i].Health.without(projName)
-	}
-	return Save(ws)
+		ws.Projects = filtered
+		// What was recorded about it goes with it: a fix prompt must not
+		// describe a project that is no longer here.
+		for i := range ws.Worktrees {
+			ws.Worktrees[i].Health = ws.Worktrees[i].Health.without(projName)
+		}
+		return nil
+	})
 }
 
 // Remove fully removes a workspace: stops dev servers, removes git worktrees

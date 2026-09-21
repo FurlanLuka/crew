@@ -209,6 +209,10 @@ func main() {
 		cmdSetup()
 		return
 
+	case "_setup":
+		cmdSetupRunner()
+		return
+
 	case "dev":
 		cmdDev()
 		return
@@ -541,23 +545,21 @@ func cmdStart() {
 // of the same projects — and a worktree is now the thing that is.
 func cmdDuplicate() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke] [--wait]\n")
 		os.Exit(1)
 	}
 
 	src := mustResolve(os.Args[2]).Ref
 	newName := os.Args[3]
 
-	install, smoke, _ := parseCheckoutFlags(os.Args[4:])
-	opts := workspace.CheckoutOptions{Install: install, Smoke: smoke && install, Progress: printSetupProgress}
-	fmt.Fprintf(human, "Duplicating %s → %s/%s\n\n", src, src.Workspace, newName)
-	h, err := workspace.DuplicateWorktree(src, newName, opts)
-	if err != nil {
+	f := parseSetupFlags(os.Args[4:], false)
+	fmt.Fprintf(human, "Duplicating %s → %s/%s\n", src, src.Workspace, newName)
+	if err := workspace.DuplicateWorktree(src, newName, f.checkoutOptions()); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	dst := workspace.Ref{Workspace: src.Workspace, Worktree: newName}
-	landOn(dst, fmt.Sprintf("Duplicated %s → %s", src, dst), h)
+	landOn(dst, fmt.Sprintf("Duplicated %s → %s", src, dst), f.wait)
 }
 
 func cmdRm() {
@@ -790,7 +792,7 @@ func parseProjectSpecs(args []string) ([]workspace.ProjectSpec, error) {
 
 func cmdAddWorkspace() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct] [--wait]\n")
 		os.Exit(1)
 	}
 	wsName := os.Args[3]
@@ -804,7 +806,8 @@ func cmdAddWorkspace() {
 		return
 	}
 
-	specs, err := parseProjectSpecs(os.Args[4:])
+	args, wait := extractFlag(os.Args[4:], "--wait")
+	specs, err := parseProjectSpecs(args)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -818,20 +821,15 @@ func cmdAddWorkspace() {
 		}
 		fmt.Fprintf(human, "Created workspace: %s\n", wsName)
 	}
-	opts := workspace.CheckoutOptions{Install: true, Progress: printSetupProgress}
-	results, err := workspace.AddProjects(wsName, specs, opts)
+	refs, err := workspace.AddProjects(wsName, specs, workspace.CheckoutOptions{Install: true, Smoke: true})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	var issues []workspace.Issue
-	for _, r := range results {
-		issues = append(issues, r.Issues...)
-	}
 
-	// One row per project: what happened to it. A checkout or install that
-	// fails keeps the member and is recorded on the worktree, so the fix
-	// line follows.
+	// One row per project. Added means the member is recorded and its
+	// runners are going; with --wait, failed is what they recorded — the
+	// member stays, the fix line follows.
 	type row struct {
 		Project string `json:"project"`
 		Outcome string `json:"outcome"` // added | failed
@@ -839,9 +837,16 @@ func cmdAddWorkspace() {
 		Detail  string `json:"detail,omitempty"`
 	}
 	failed := map[string]workspace.Issue{}
-	for _, i := range issues {
-		if _, seen := failed[i.Project]; !seen {
-			failed[i.Project] = i
+	if wait {
+		for _, ref := range refs {
+			watchSetup(ref)
+			if h := recordedHealth(ref); h != nil {
+				for _, i := range h.Issues {
+					if _, seen := failed[i.Project]; !seen {
+						failed[i.Project] = i
+					}
+				}
+			}
 		}
 	}
 	rows := make([]row, 0, len(specs))
@@ -853,6 +858,8 @@ func cmdAddWorkspace() {
 		r := row{Project: spec.Name, Outcome: "added", Mode: mode}
 		if i, ok := failed[spec.Name]; ok {
 			r.Outcome, r.Detail = "failed", i.Summary()
+		} else if !wait && len(refs) > 0 {
+			r.Detail = "installing"
 		}
 		rows = append(rows, r)
 	}
@@ -863,11 +870,17 @@ func cmdAddWorkspace() {
 			fmt.Printf("%s\t%s\t%s\t%s\n", r.Project, r.Outcome, r.Mode, r.Detail)
 		}
 	}
-	if len(issues) > 0 {
+	if !wait && len(refs) > 0 {
+		for _, ref := range refs {
+			fmt.Fprintf(human, "  crew setup status %s [--wait]\n", ref)
+		}
+		return
+	}
+	if len(failed) > 0 {
 		fmt.Fprintf(os.Stderr, "! %d of %d failed\n", len(failed), len(specs))
-		for _, r := range results {
-			if len(r.Issues) > 0 {
-				fmt.Fprintf(os.Stderr, "  crew fix %s --print / crew verify %s\n", r.Ref, r.Ref)
+		for _, ref := range refs {
+			if recordedHealth(ref) != nil {
+				fmt.Fprintf(os.Stderr, "  crew fix %s --print / crew verify %s\n", ref, ref)
 			}
 		}
 		os.Exit(1)

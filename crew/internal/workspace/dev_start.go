@@ -22,6 +22,11 @@ func StartDev(res *Resolved, noProxy, restart bool) (dev.StartResult, error) {
 	if err := AssertDirectProjectsAvailable(res); err != nil {
 		return dev.StartResult{}, err
 	}
+	// A server on top of an install still writing the same checkout is
+	// corruption, not a warning — the refusal crew owns.
+	if SetupRunning(res.Ref) {
+		return dev.StartResult{}, fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, res.Ref, res.Ref)
+	}
 
 	projects := res.DevProjects()
 	if !hasServers(projects) {

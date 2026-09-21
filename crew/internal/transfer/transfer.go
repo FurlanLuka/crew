@@ -275,56 +275,57 @@ func (m Membership) Workspace() *workspace.Workspace {
 
 // ImportWorkspace creates the workspace and its main worktree the way crew
 // add workspace does: every member checked before anything happens, then
-// checkouts, installs, the smoke — each failure recorded on the worktree,
-// never stopping the rest. The error is pre-flight only.
-func ImportWorkspace(m Membership, opts workspace.CheckoutOptions) ([]workspace.RefIssues, error) {
+// one runner per project — checkout, install, smoke — each failure recorded
+// on the worktree as it lands. Returns the main worktree's ref once the
+// runners are started (false when the workspace was empty: nothing to
+// run); the error is pre-flight only.
+func ImportWorkspace(m Membership, opts workspace.CheckoutOptions) (workspace.Ref, bool, error) {
+	ref := workspace.Ref{Workspace: m.Name, Worktree: workspace.DefaultWorktree}
 	if workspace.Exists(m.Name) {
-		return nil, fmt.Errorf("workspace '%s' already exists", m.Name)
+		return ref, false, fmt.Errorf("workspace '%s' already exists", m.Name)
 	}
 	specs := make([]workspace.ProjectSpec, len(m.Projects))
 	for i, wp := range m.Projects {
 		specs[i] = workspace.ProjectSpec{Name: wp.Name, Role: wp.Role, Mode: wp.Mode}
 	}
 	if err := workspace.Create(m.Name); err != nil {
-		return nil, err
+		return ref, false, err
 	}
 	if len(specs) == 0 {
-		return nil, nil // an empty workspace is a valid export; nothing to check out
+		return ref, false, nil // an empty workspace is a valid export; nothing to check out
 	}
-	results, err := workspace.AddProjects(m.Name, specs, opts)
-	if err != nil {
+	if _, err := workspace.AddProjects(m.Name, specs, opts); err != nil {
 		// Pre-flight failed after the create: take the empty workspace back.
 		if rmErr := workspace.Remove(m.Name); rmErr != nil {
 			debug.Log("trash", "import %s: could not remove the empty workspace after a failed pre-flight: %v", m.Name, rmErr)
 		}
-		return nil, err
+		return ref, false, err
 	}
-	return results, nil
+	return ref, true, nil
 }
 
-// WorkspaceRow is the import's row for a workspace and whether it counts as
-// failed for the exit code: an error is `failed`; a create with issues is
-// `created` with the fix line and still failed. Pure.
-func WorkspaceRow(name string, results []workspace.RefIssues, err error) (PlanRow, bool) {
+// WorkspaceRow is the import's row for a workspace and whether it counts
+// as failed for the exit code: an error is `failed`; a create whose
+// runners are still going is `created` with the status command; one
+// waited for with issues is `created` with the fix line and still failed.
+// Pure over the health the caller read (nil while not waited for).
+func WorkspaceRow(name string, started bool, h *workspace.Health, waited bool, err error) (PlanRow, bool) {
 	if err != nil {
 		return PlanRow{Kind: "workspace", Name: name, Status: "failed", Detail: err.Error()}, true
 	}
 	row := PlanRow{Kind: "workspace", Name: name, Status: "created"}
-	if n := IssueCount(results); n > 0 {
-		ref := workspace.Ref{Workspace: name, Worktree: workspace.DefaultWorktree}
-		row.Detail = fmt.Sprintf("%d issue(s) recorded — crew fix %s --print / crew verify %s", n, ref, ref)
+	ref := workspace.Ref{Workspace: name, Worktree: workspace.DefaultWorktree}
+	switch {
+	case !started:
+		return row, false
+	case !waited:
+		row.Detail = fmt.Sprintf("installing — crew setup status %s", ref)
+		return row, false
+	case h != nil:
+		row.Detail = fmt.Sprintf("%d issue(s) recorded — crew fix %s --print / crew verify %s", len(h.Issues), ref, ref)
 		return row, true
 	}
 	return row, false
-}
-
-// IssueCount is how many issues an import left across a workspace's worktrees.
-func IssueCount(results []workspace.RefIssues) int {
-	n := 0
-	for _, r := range results {
-		n += len(r.Issues)
-	}
-	return n
 }
 
 // ── helpers ──

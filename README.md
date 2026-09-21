@@ -34,6 +34,7 @@ crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
 crew add binding store-app --scan --apply                 # which env vars point at siblings
 
 crew add workspace store-front store-api:"Backend API" store-app:"Web app"
+crew setup status store-front/main --wait                 # one runner per project: checkout, install, smoke
 crew dev start store-front/main                           # servers up on stable ports
 crew dev check store-front/main --wait                    # did they come up?
 crew claude store-front/main                              # Claude, oriented, in the worktree
@@ -49,9 +50,11 @@ Or from the TUI: `crew project`, `crew workspace`, `crew launch <ws>/<wt>`.
   Start both; nothing collides.
 - **Services find each other.** `API_URL=http://localhost:3000` is right in one copy and wrong in
   the next. Bindings make it `{{store-api}}` and crew fills in the port each copy got.
-- **You know when it didn't work.** Creating a worktree checks everything out, installs, and
-  starts the servers to see which survive and bind their port. What failed is recorded with
-  its evidence; `crew fix` hands it to Claude, `crew verify` re-checks.
+- **You know when it didn't work — early.** Creating a worktree runs one runner per project
+  in the background: checkout, install, start its servers to see if they bind their port.
+  A failure is recorded with its evidence the moment it happens, while the other installs
+  still run; `crew setup status` shows the table, `crew fix` hands it to Claude, `crew
+  verify <project>` re-checks just that one.
 - **Agents drive it.** Tab-separated rows or `--json` everywhere, nothing that needs a
   terminal except the TUIs, and an orientation prompt that tells the agent inside a worktree
   what it is standing in and how to run the servers.
@@ -66,8 +69,8 @@ one working copy: for each project a git worktree on branch `crew/<ws>/<wt>/<pro
 copied `.env`, an install, and reserved ports.
 
 `crew add workspace <ws> <p1>[:<role>] <p2> …` adds any number of projects in one call —
-names checked first, checkouts, then every install at once. `crew add worktree <ws>/<name>`
-makes another copy of all of them; `--pull` fast-forwards the base branches first.
+names checked first, then one runner per project. `crew add worktree <ws>/<name>` makes
+another copy of all of them; `--pull` fast-forwards the base branches first.
 
 ### What a project needs
 
@@ -120,20 +123,48 @@ Not listening is a failure when some binding points at that server (crew handed 
 URL) and only a note when nothing does (a queue worker registered with a port). The worktree
 page does the same after a start — rows read `starting…` until each has its verdict.
 
+### Making a worktree
+
+`crew add worktree` returns at once. It records the worktree, reserves its ports, and starts
+one **runner per project** — a window of tmux session `crew-setup-<ws>--<wt>` — each doing
+checkout (with the repo's git hooks off — a hook written for your checkout does not get to
+fail crew's) → `.env` → install → a smoke of that project's own servers, with the same
+patience as `dev check --wait`. Wall clock is the slowest project, not the sum.
+
+```
+$ crew setup status store-front/wrk2
+  ✓ store-api     checkout 1s · npm ci 11s · smoke store-api 2s
+  ✗ store-app     checkout 1s · pnpm install — exit 1
+  ▸ checkout-api  checkout 1s · ▸ uv sync
+```
+
+Every runner writes its verdict the moment it has one, so `store-app`'s failure is on the
+worktree — and in `crew fix --print` — while `checkout-api` still installs. `crew setup
+status` exits 2 while anything runs, 1 once stopped with a failure, 0 otherwise; `--wait`
+stays to the end. `crew setup logs <ref> <project>` is what an install is printing. In a
+terminal, creation lands on the worktree page, which shows the same table live. A runner that
+vanishes (a killed window, a reboot) is recorded as interrupted, never as verified.
+
+Each server is smoked on its own: siblings' URLs resolve (ports were reserved first) but
+nothing answers on them, so a server that exits when its upstream is unreachable reads `died`
+with the connection error in its evidence.
+
 ### When something fails
 
-Creating a worktree never stops halfway: every checkout (with the repo's git hooks off — a
-hook written for your checkout does not get to fail crew's), every install, then the smoke
-start with the same patience as `dev check --wait` — each failure recorded on the worktree
-with its stage and evidence (an install's last thirty lines, a dead server's log tail, `not
-listening` on a port). `crew ls worktrees` shows it; the
-worktree page opens locked to `f fix with Claude` and `v verify`.
+Creation never stops halfway: each failure is recorded on the worktree with its stage and
+evidence (an install's last thirty lines, a dead server's log tail, `not listening` on a
+port). `crew ls worktrees` shows it; the worktree page stays locked to `f fix with Claude`
+and `v verify` while anything is recorded or still installing.
 
 - `crew fix <ref>` opens Claude in the worktree with every issue, its evidence and the env
   anomalies in the prompt. `--print` (or no terminal) writes that prompt to stdout instead —
   for the agent that is already there. With servers running it adds what `dev check` finds.
-- `crew verify <ref>` finishes what is missing, re-runs failed installs, smoke-starts, and
-  clears the record on a pass. Nothing else clears it.
+- `crew verify <ref> [<project>…]` finishes what is missing, re-runs failed installs,
+  smoke-starts, and clears the record on a pass — per project, so `crew verify <ref>
+  store-app` re-checks the one you fixed and leaves the rest alone. Nothing else clears it.
+- While runners are alive, `dev start`, `verify`, `setup` and `duplicate` of that worktree
+  refuse — a dev server on top of an install writing the same checkout is corruption, not a
+  warning. It is the one refusal besides a verify under running servers.
 
 ### Other devices
 
@@ -148,9 +179,10 @@ is actually answering. Tailscale users: `crew config set server_ip $(tailscale i
 `crew export --all` writes the projects (with their origin remotes) and the workspace
 memberships to one file — never worktrees, ports or overrides. `crew import <file>` on the
 other side is a wizard, or `--plan` then `project <name> [--path | --clone | --replace]` and
-`workspace <name> [--pull]` for an agent. A workspace import makes its `main` worktree
-exactly the way `crew add worktree` does — base table, `--pull`, installs, smoke, failures
-recorded — so what you get on the second machine is as current and as checked as on the first.
+`workspace <name> [--pull] [--wait]` for an agent. A workspace import makes its `main`
+worktree exactly the way `crew add worktree` does — base table, `--pull`, one runner per
+project, failures recorded — so what you get on the second machine is as current and as
+checked as on the first.
 
 ### Removal
 
@@ -198,10 +230,10 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | **See** | `ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings <p> [--check=<ref>]` · `ls overrides <ref>` · `show <ref>` · `env <ref> <p>` · `dev status` · `dev show <p>` · `dev check <ref>` · `ps` · `trash` · `config show` · `debug --tail=N` |
 | **Projects** | `add project <name> <path> [--setup=…]` · `rm project` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p> --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p> --scan [--apply]` · `rm binding` · `add\|rm override <ref> VAR=value` · `run <ref> <p> -- <cmd>` |
-| **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref>` · `verify <ref>` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
+| **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
-| **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> … \| workspace <name> [--pull] \| --all [--clone] [--replace] [--pull]]` |
+| **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> … \| workspace <name> [--pull] [--wait] \| --all [--clone] [--replace] [--pull] [--wait]]` |
 | **Housekeeping** | `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
 
 Settings (`crew config set`): `server_ip` (LAN IP for proxy URLs, auto-detected), `domain`

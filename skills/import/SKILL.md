@@ -24,11 +24,12 @@ time. Never guess a path or clone without asking.
    `crew import <file> project <name> [--path=…] [--clone[=…]] [--replace]` per answer and
    show the row it prints.
 4. Workspaces: for each `ready` one, `crew import <file> workspace <name> --pull` — this
-   makes the `main` worktree the way `crew add worktree` does (fetches and fast-forwards the
-   local bases, checks out, installs, smoke-starts; minutes, not seconds — say so first).
-   Relay the base table and the result row; a `created … N issue(s) recorded` row means
-   `crew fix <name>/main --print` has the evidence. A `needs …` one: name what is missing
-   and skip.
+   makes the `main` worktree the way `crew add worktree` does: fetches and fast-forwards
+   the local bases, then one runner per project in the background (checkout, install,
+   smoke) and returns. Relay the base table, then poll `crew setup status <name>/main`
+   (exit 2 while running); a `✗` row is on the worktree the moment it fails — `crew fix
+   <name>/main --print` has the evidence — act on it while the rest install. Relay the
+   final table. A `needs …` one: name what is missing and skip.
 5. Finish with `crew ls worktrees` and the next step: `crew add worktree <ws>/<name>` for
    a working copy, or `crew dev start <ws>/main`.
 

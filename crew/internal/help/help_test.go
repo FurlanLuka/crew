@@ -126,10 +126,10 @@ func TestAddSubcommands(t *testing.T) {
 	if ws.Usage == "" {
 		t.Error("add workspace missing usage")
 	}
-	if len(ws.Flags) != 3 {
-		t.Fatalf("add workspace should have 3 flags, got %d", len(ws.Flags))
+	if len(ws.Flags) != 4 {
+		t.Fatalf("add workspace should have 4 flags, got %d", len(ws.Flags))
 	}
-	wantFlags := map[string]bool{"<project>[:<role>]": true, "--role=<r>": true, "--direct": true}
+	wantFlags := map[string]bool{"<project>[:<role>]": true, "--role=<r>": true, "--direct": true, "--wait": true}
 	for _, f := range ws.Flags {
 		if !wantFlags[f.Name] {
 			t.Errorf("unexpected flag %q on add workspace", f.Name)
