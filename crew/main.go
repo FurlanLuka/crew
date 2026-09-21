@@ -666,19 +666,23 @@ func cmdAdd() {
 type addProjectArgs struct {
 	name, path, setup string
 	hasSetup          bool
+	envCmd            string
+	hasEnvCmd         bool
 	newPath           string
 }
 
 func parseAddProjectArgs(args []string) (addProjectArgs, error) {
 	var a addProjectArgs
 	if len(args) == 0 {
-		return a, errors.New("usage: crew add project <name> <path> [--setup=<cmd>]")
+		return a, errors.New("usage: crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>]")
 	}
 	a.name = args[0]
 	for _, arg := range args[1:] {
 		switch {
 		case strings.HasPrefix(arg, "--setup="):
 			a.setup, a.hasSetup = strings.TrimPrefix(arg, "--setup="), true
+		case strings.HasPrefix(arg, "--env-cmd="):
+			a.envCmd, a.hasEnvCmd = strings.TrimPrefix(arg, "--env-cmd="), true
 		case strings.HasPrefix(arg, "--path="):
 			a.newPath = strings.TrimPrefix(arg, "--path=")
 		case strings.HasPrefix(arg, "-"):
@@ -693,10 +697,10 @@ func parseAddProjectArgs(args []string) (addProjectArgs, error) {
 }
 
 // updatesExisting is the branch for a project already in the pool: only
-// --setup and --path mean anything, and at least one must be given.
+// --setup, --env-cmd and --path mean anything, and at least one must be given.
 func (a addProjectArgs) updatesExisting() error {
-	if !a.hasSetup && a.newPath == "" {
-		return fmt.Errorf("project '%s' already exists — pass --setup or --path to change it", a.name)
+	if !a.hasSetup && !a.hasEnvCmd && a.newPath == "" {
+		return fmt.Errorf("project '%s' already exists — pass --setup, --env-cmd or --path to change it", a.name)
 	}
 	return nil
 }
@@ -707,45 +711,64 @@ func cmdAddProject() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	name, path, setup := a.name, a.path, a.setup
+	name, path := a.name, a.path
 
 	if existing := project.Get(name); existing != nil {
-		if err := a.updatesExisting(); err != nil {
+		lines, err := applyProjectUpdate(a)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if a.hasSetup {
-			if err := project.SetSetup(name, setup); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Printf("Setup for %s: %s\n", name, setup)
-		}
-		if a.newPath != "" {
-			if err := project.SetPath(name, a.newPath); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Printf("Path for %s: %s\n", name, a.newPath)
+		for _, line := range lines {
+			fmt.Println(line)
 		}
 		return
 	}
 	if path == "" {
-		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>]\n")
 		os.Exit(1)
 	}
-	if err := project.Add(project.Project{Name: name, Path: path, Setup: setup}); err != nil {
+	p := project.Project{Name: name, Path: path, Setup: a.setup, EnvCmd: a.envCmd}
+	if err := project.Add(p); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Added project: %s (%s)\n", name, path)
-	if steps := workspace.SetupStepsFor(project.Project{Name: name, Path: path, Setup: setup}); len(steps) > 0 {
+	if steps := workspace.SetupStepsFor(p); len(steps) > 0 {
 		names := make([]string, 0, len(steps))
 		for _, st := range steps {
 			names = append(names, st.Name)
 		}
 		fmt.Printf("New checkouts will run: %s\n", strings.Join(names, " → "))
 	}
+}
+
+// applyProjectUpdate is `crew add project` on a project already in the
+// pool: each given flag lands, and the lines say what changed.
+func applyProjectUpdate(a addProjectArgs) ([]string, error) {
+	if err := a.updatesExisting(); err != nil {
+		return nil, err
+	}
+	var lines []string
+	if a.hasSetup {
+		if err := project.SetSetup(a.name, a.setup); err != nil {
+			return nil, err
+		}
+		lines = append(lines, fmt.Sprintf("Setup for %s: %s", a.name, a.setup))
+	}
+	if a.hasEnvCmd {
+		if err := project.SetEnvCmd(a.name, a.envCmd); err != nil {
+			return nil, err
+		}
+		lines = append(lines, fmt.Sprintf("Env command for %s: %s", a.name, a.envCmd))
+	}
+	if a.newPath != "" {
+		if err := project.SetPath(a.name, a.newPath); err != nil {
+			return nil, err
+		}
+		lines = append(lines, fmt.Sprintf("Path for %s: %s", a.name, a.newPath))
+	}
+	return lines, nil
 }
 
 // parseProjectSpecs reads "<project>[:<role>]" arguments and the flags that

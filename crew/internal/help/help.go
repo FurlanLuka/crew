@@ -44,7 +44,7 @@ var Root = CommandInfo{
 			Name:        "project",
 			Description: "Interactive project manager — add/remove projects and configure dev servers",
 			TUI:         true,
-			Notes:       []string{"Same actions without the TUI: crew add project (--setup), crew dev add / rm / setup, crew add binding (--scan --apply), crew rm project."},
+			Notes:       []string{"Same actions without the TUI: crew add project (--setup, --env-cmd), crew dev add / rm / setup, crew add binding (--scan --apply), crew rm project."},
 		},
 		{
 			Name:        "add",
@@ -53,15 +53,16 @@ var Root = CommandInfo{
 				{
 					Name:        "project",
 					Description: "Register a git repo in the global project pool. Projects can be added to multiple workspaces.",
-					Usage:       "crew add project <name> <path> [--setup=<cmd>] | crew add project <name> [--setup=<cmd>] [--path=<dir>]",
+					Usage:       "crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
 					Flags: []FlagInfo{
-						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it."},
+						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it; empty clears it."},
+						{Name: "--env-cmd=<cmd>", Description: "Command that writes a fresh checkout's env files (make get-env — sops, a vault); runs after mise install, before the install, over the .env crew copied in. Must write files, not print values — its output is logged. On an existing project, updates it; empty clears it."},
 						{Name: "--path=<dir>", Description: "On an existing project, where its canonical checkout now lives (the repo moved)"},
 					},
 					Examples: []string{
 						"crew add project my-api /home/user/repos/api",
 						"crew add project frontend ~/repos/web-app",
-						"crew add project checkout-api ~/repos/checkout-api --setup=\"make sync\"",
+						"crew add project checkout-api ~/repos/checkout-api --setup=\"make sync\" --env-cmd=\"make get-env\"",
 						"crew add project checkout-api --path=~/code/checkout-api",
 					},
 				},
@@ -85,7 +86,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Make a new working copy of every project, in the background: the worktree is recorded, its ports reserved, and one runner per project starts (a window of tmux session crew-setup-<ws>--<name>) doing checkout → .env → install → a smoke of its own servers, each watched until it listens on its port, dies, or a minute passes. The command returns at once. In a terminal it lands on the worktree page, which shows the runners; without one it prints how to watch: crew setup status <ref>. A failure is recorded on the worktree the moment it happens, while the other runners continue — crew fix <ref> --print has it before the slowest install ends. --wait stays until every runner is done, prints the summary and exits 1 if anything is recorded. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
+					Description: "Make a new working copy of every project, in the background: the worktree is recorded, its ports reserved, and one runner per project starts (a window of tmux session crew-setup-<ws>--<name>) doing checkout → .env → env command → install → a smoke of its own servers, each watched until it listens on its port, dies, or a minute passes. The command returns at once. In a terminal it lands on the worktree page, which shows the runners; without one it prints how to watch: crew setup status <ref>. A failure is recorded on the worktree the moment it happens, while the other runners continue — crew fix <ref> --print has it before the slowest install ends. --wait stays until every runner is done, prints the summary and exits 1 if anything is recorded. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
 					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]",
 					Flags: []FlagInfo{
 						{Name: "--pull", Description: "Fast-forward each project's local base branch to origin first. Never touches a checked-out feature branch; refuses when the base has diverged or is checked out with uncommitted changes."},
@@ -477,7 +478,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "export",
-			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup command and origin remote; workspaces carry which projects with which roles. Worktrees, ports and overrides stay local.",
+			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects with which roles. Worktrees, ports and overrides stay local.",
 			Usage:       "crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]",
 			Flags: []FlagInfo{
 				{Name: "--all", Description: "Every project and workspace, no picker"},
@@ -488,8 +489,8 @@ var Root = CommandInfo{
 		},
 		{
 			Name:         "import",
-			Description:  "Bring a crew export into this machine. Bare, a wizard walks one card per item: each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once.",
-			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
+			Description:  "Bring a crew export into this machine. Bare, a wizard walks one card per item: each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup/env cmd, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once.",
+			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
 			OutputFormat: "<project|workspace>\\t<name>\\t<status|outcome>\\t<detail>",
 			Flags: []FlagInfo{
 				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here (suggested path, clone target, missing members)"},
@@ -503,6 +504,7 @@ var Root = CommandInfo{
 				{Name: "--replace", Description: "project: swap out the local record of the same name"},
 				{Name: "--name=<new>", Description: "project: import under another name (bindings pointing at the old name are left alone)"},
 				{Name: "--setup=<cmd>", Description: "project: override the setup command"},
+				{Name: "--env-cmd=<cmd>", Description: "project: override the env command"},
 			},
 			Examples: []string{
 				"crew import ~/Desktop/crew.json",
@@ -533,7 +535,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "setup",
-			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
+			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the project's env command when it has one, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
 			Usage:       "crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]",
 			Flags: []FlagInfo{
 				{Name: "<project>...", Description: "Only these projects"},

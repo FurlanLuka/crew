@@ -14,7 +14,10 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
 2. Ask what the workspace is for and which repos belong in it (paths on disk). For each repo
    not in the pool: `crew add project <name> <path>` (name = the directory name unless they
    say otherwise; `a-z 0-9 -`). If it needs more than the lockfile to install (model weights,
-   a `make` target), ask for the setup command: `--setup="…"`.
+   a `make` target), ask for the setup command: `--setup="…"`. If its README or Makefile
+   mentions secrets, sops, 1Password or a `get-env` target, ask for the env command that
+   writes the checkout's env files: `--env-cmd="make get-env"` — it runs before the install.
+   Skip the question otherwise; most projects have none.
 3. Dev servers, per project: `crew dev setup <project>` shows what `package.json` offers;
    confirm the port and command, then `crew dev setup <project> --apply --port=<p>` or
    `crew dev add <project> --name=<n> --port=<p> --cmd="<c>"`. Remind them the command must

@@ -84,20 +84,26 @@ func DetectSetup(dir string) []SetupStep {
 	return steps
 }
 
-// SetupSteps decides a checkout's steps: an explicit project setup command
-// replaces detection (mise still runs first when present), otherwise the
-// lockfile decides.
-func SetupSteps(dir, explicit string) []SetupStep {
-	if explicit == "" {
-		return DetectSetup(dir)
-	}
+// SetupSteps decides a checkout's steps: mise first when present, then the
+// env command when the project has one (it writes the env files the
+// install may need — after mise so a mise-managed sops or op is there),
+// then the install: an explicit setup command replaces detection,
+// otherwise the lockfile decides.
+func SetupSteps(dir, explicit, envCmd string) []SetupStep {
+	detected := DetectSetup(dir)
 	var steps []SetupStep
-	for _, s := range DetectSetup(dir) {
-		if s.Name == "mise install" {
-			steps = append(steps, s)
-		}
+	if len(detected) > 0 && detected[0].Name == "mise install" {
+		steps, detected = append(steps, detected[0]), detected[1:]
 	}
-	return append(steps, SetupStep{Name: explicit, Command: explicit})
+	if envCmd != "" {
+		// Named apart from the install so a failure reads as the fetch, and
+		// so a setup with the same text is a different step.
+		steps = append(steps, SetupStep{Name: "env: " + envCmd, Command: envCmd})
+	}
+	if explicit != "" {
+		return append(steps, SetupStep{Name: explicit, Command: explicit})
+	}
+	return append(steps, detected...)
 }
 
 // SetupResult is one step's outcome.

@@ -174,6 +174,8 @@ func parseImportArgs(args []string) (importArgs, error) {
 			a.project.Name = strings.TrimPrefix(arg, "--name=")
 		case strings.HasPrefix(arg, "--setup="):
 			a.project.Setup = strings.TrimPrefix(arg, "--setup=")
+		case strings.HasPrefix(arg, "--env-cmd="):
+			a.project.EnvCmd = strings.TrimPrefix(arg, "--env-cmd=")
 		case strings.HasPrefix(arg, "-"):
 			return a, fmt.Errorf("unknown flag '%s'", arg)
 		case a.file == "":
@@ -201,8 +203,8 @@ func parseImportArgs(args []string) (importArgs, error) {
 	if modes > 1 {
 		return a, errors.New("one of --plan, --all, project <name>, workspace <name>")
 	}
-	if a.item != "project" && (a.project.Path != "" || a.project.CloneTo != "" || a.project.Name != "" || a.project.Setup != "") {
-		return a, errors.New("--path, --clone=<dir>, --name and --setup belong to import <file> project <name>")
+	if a.item != "project" && (a.project.Path != "" || a.project.CloneTo != "" || a.project.Name != "" || a.project.Setup != "" || a.project.EnvCmd != "") {
+		return a, errors.New("--path, --clone=<dir>, --name, --setup and --env-cmd belong to import <file> project <name>")
 	}
 	if a.item == "workspace" && (a.project.Clone || a.project.Replace) {
 		return a, errors.New("--clone and --replace belong to project imports")
@@ -219,7 +221,7 @@ func parseImportArgs(args []string) (importArgs, error) {
 func cmdImport() {
 	a, err := parseImportArgs(os.Args[2:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]\n", err)
 		os.Exit(1)
 	}
 	b, err := transfer.Read(a.file)

@@ -11,7 +11,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
 ## Model
 
 - **Project** — a repo in the global pool (`~/.crew/projects.json`): name, path, dev servers,
-  **bindings**, and an optional **setup** command.
+  **bindings**, an optional **setup** command and an optional **env command** (`EnvCmd`,
+  `--env-cmd`): `exec.SetupSteps(dir, setup, envCmd)` = `mise install?` → `env: <cmd>` →
+  the install, so the env command is one more setup step with the same streaming, evidence
+  and failure rules; the `.env` copy at checkout is the baseline it overwrites.
 - **Workspace** — membership: which projects, with which roles. Pure config, nothing of its
   own on disk. `~/.crew/workspaces/<ws>.json`.
 - **Worktree** — one working copy of a workspace's projects, at
@@ -181,7 +184,7 @@ every project with its path decided and its pool config attached. Commands go
 `crew workspace` → workspaces → enter → that workspace's worktrees (+ new) → enter → the
 **worktree page** (`view_worktree.go`): servers with live status and URLs, the same anomaly
 block `crew dev start` prints, launch and open rows, one cursor. `crew project` → `s` servers,
-`b` bindings (scan-first editor with live preview), `t` setup command.
+`b` bindings (scan-first editor with live preview), `t` setup command, `e` env command.
 
 ### New worktree
 

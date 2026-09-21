@@ -106,6 +106,7 @@ const (
 	fieldName = iota
 	fieldPath
 	fieldSetup
+	fieldEnvCmd
 )
 
 // ImportView walks the bundle one card at a time. Every y is applied when
@@ -125,7 +126,7 @@ type ImportView struct {
 	suggested  string
 	warn       string
 
-	inputs [3]textinput.Model
+	inputs [4]textinput.Model
 	focus  int
 	// cloneAfterEdit: c always goes through the path field — prefilled with
 	// crew's guess, so enter takes it and typing over it picks another.
@@ -148,7 +149,7 @@ type ImportView struct {
 }
 
 func NewImportView(file string, b Bundle) ImportView {
-	var inputs [3]textinput.Model
+	var inputs [4]textinput.Model
 	for i := range inputs {
 		inputs[i] = textinput.New()
 		inputs[i].CharLimit = 512
@@ -422,6 +423,7 @@ func (v *ImportView) beginEdit(path string) tea.Cmd {
 	v.inputs[fieldName].SetValue(v.current.Name)
 	v.inputs[fieldPath].SetValue(path)
 	v.inputs[fieldSetup].SetValue(v.current.Setup)
+	v.inputs[fieldEnvCmd].SetValue(v.current.EnvCmd)
 	return v.setFocus(fieldPath)
 }
 
@@ -481,6 +483,7 @@ func (v ImportView) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.current.Name = name
 		v.current.Path = expandHome(strings.TrimSpace(v.inputs[fieldPath].Value()))
 		v.current.Setup = strings.TrimSpace(v.inputs[fieldSetup].Value())
+		v.current.EnvCmd = strings.TrimSpace(v.inputs[fieldEnvCmd].Value())
 		v.refreshPath()
 		v.state = importStateCard
 		if v.cloneAfterEdit {
@@ -641,6 +644,9 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	if p.Setup != "" {
 		b.WriteString("  setup     " + app.Subtle.Render(p.Setup) + "\n")
 	}
+	if p.EnvCmd != "" {
+		b.WriteString("  env       " + app.Subtle.Render(p.EnvCmd) + "\n")
+	}
 	if p.Remote != "" {
 		b.WriteString("  remote    " + app.Subtle.Render(p.Remote) + "\n")
 	}
@@ -702,7 +708,8 @@ func (v ImportView) renderEdit(b *strings.Builder) {
 		b.WriteString("  " + app.Error.Render("✗ not here"))
 	}
 	b.WriteString("\n")
-	b.WriteString("  setup     " + v.inputs[fieldSetup].View() + "\n\n")
+	b.WriteString("  setup     " + v.inputs[fieldSetup].View() + "\n")
+	b.WriteString("  env       " + v.inputs[fieldEnvCmd].View() + "\n\n")
 	b.WriteString("            " + app.Subtle.Render("servers and bindings can be changed in crew project after import") + "\n\n")
 	if v.err != nil {
 		b.WriteString("  " + app.Error.Render(v.err.Error()) + "\n\n")

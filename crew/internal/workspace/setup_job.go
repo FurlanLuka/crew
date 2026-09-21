@@ -303,7 +303,7 @@ func (r *Runner) install(wp WorkspaceProject, p project.Project) *Issue {
 		return nil
 	}
 	wtDir := WorktreePath(r.ref, wp.Name)
-	steps := exec.SetupSteps(wtDir, p.Setup)
+	steps := exec.SetupSteps(wtDir, p.Setup, p.EnvCmd)
 	if len(steps) == 0 {
 		r.skip("install", "nothing to install")
 		return nil

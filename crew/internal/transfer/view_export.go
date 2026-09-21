@@ -349,6 +349,9 @@ func describeProject(p project.Project) string {
 	if p.Setup != "" {
 		parts = append(parts, "setup: "+p.Setup)
 	}
+	if p.EnvCmd != "" {
+		parts = append(parts, "env: "+p.EnvCmd)
+	}
 	return strings.Join(parts, "  ")
 }
 

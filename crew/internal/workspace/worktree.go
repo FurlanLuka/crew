@@ -97,7 +97,7 @@ func envSource(ref Ref, p project.Project) string {
 // pre-2.0 flat path; a worktree's installs run in their runner.
 func setupProject(ref Ref, p project.Project) error {
 	wtDir := WorktreePath(ref, p.Name)
-	if err := exec.RunSetup(wtDir, exec.SetupSteps(wtDir, p.Setup), nil, nil); err != nil {
+	if err := exec.RunSetup(wtDir, exec.SetupSteps(wtDir, p.Setup, p.EnvCmd), nil, nil); err != nil {
 		return &ProjectSetupError{Project: p.Name, Err: err}
 	}
 	return nil
@@ -190,7 +190,7 @@ func missingCheckouts(ref Ref, ws *Workspace) map[string]bool {
 // SetupStepsFor previews what a checkout of p would run, for output that
 // shows the plan before doing it.
 func SetupStepsFor(p project.Project) []exec.SetupStep {
-	return exec.SetupSteps(p.Path, p.Setup)
+	return exec.SetupSteps(p.Path, p.Setup, p.EnvCmd)
 }
 
 // removeWorktreeArtifacts deletes everything crew keys by one worktree's slug:

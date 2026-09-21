@@ -81,6 +81,7 @@ type ProjectOptions struct {
 	Replace bool   // swap out the local record of the same name
 	Name    string // import under this name
 	Setup   string // override the setup command
+	EnvCmd  string // override the env command
 }
 
 // ProjectResult is what ApplyProject did.
@@ -106,6 +107,9 @@ func ApplyProject(b Bundle, plan Plan, name string, o ProjectOptions) (ProjectRe
 	}
 	if o.Setup != "" {
 		p.Setup = o.Setup
+	}
+	if o.EnvCmd != "" {
+		p.EnvCmd = o.EnvCmd
 	}
 	if o.Path != "" {
 		p.Path = o.Path

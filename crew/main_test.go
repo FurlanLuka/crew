@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -189,6 +191,8 @@ func TestParseAddProjectArgs(t *testing.T) {
 		{name: "clear setup", args: []string{"api", "--setup="}, want: addProjectArgs{name: "api", hasSetup: true}},
 		{name: "update path", args: []string{"api", "--path=/moved"}, want: addProjectArgs{name: "api", newPath: "/moved"}},
 		{name: "both", args: []string{"api", "--setup=x", "--path=/moved"}, want: addProjectArgs{name: "api", setup: "x", hasSetup: true, newPath: "/moved"}},
+		{name: "new with env cmd", args: []string{"api", "/repo", "--env-cmd=make get-env"}, want: addProjectArgs{name: "api", path: "/repo", envCmd: "make get-env", hasEnvCmd: true}},
+		{name: "clear env cmd", args: []string{"api", "--env-cmd="}, want: addProjectArgs{name: "api", hasEnvCmd: true}},
 		{name: "no args", args: nil, wantErr: "usage"},
 		{name: "two paths", args: []string{"api", "/a", "/b"}, wantErr: "one path at most"},
 		{name: "unknown flag", args: []string{"api", "--nope"}, wantErr: "unknown flag"},
@@ -214,6 +218,9 @@ func TestParseAddProjectArgs(t *testing.T) {
 	}
 	if err := (addProjectArgs{name: "api", newPath: "/x"}).updatesExisting(); err != nil {
 		t.Errorf("--path alone should update: %v", err)
+	}
+	if err := (addProjectArgs{name: "api", hasEnvCmd: true}).updatesExisting(); err != nil {
+		t.Errorf("--env-cmd alone should update: %v", err)
 	}
 }
 
@@ -278,5 +285,29 @@ func TestParseProjectSpecs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Each flag on an existing project lands, and only that one; empty clears.
+func TestApplyProjectUpdate(t *testing.T) {
+	prev := config.ConfigDir
+	config.ConfigDir = t.TempDir()
+	t.Cleanup(func() { config.ConfigDir = prev })
+	project.Add(project.Project{Name: "api", Path: "/p", Setup: "make sync"})
+	lines, err := applyProjectUpdate(addProjectArgs{name: "api", envCmd: "make get-env", hasEnvCmd: true})
+	if err != nil || len(lines) != 1 || lines[0] != "Env command for api: make get-env" {
+		t.Fatalf("lines = %v, %v", lines, err)
+	}
+	if p := project.Get("api"); p.EnvCmd != "make get-env" || p.Setup != "make sync" {
+		t.Errorf("after --env-cmd: %+v", p)
+	}
+	if _, err := applyProjectUpdate(addProjectArgs{name: "api", hasEnvCmd: true}); err != nil {
+		t.Fatal(err)
+	}
+	if p := project.Get("api"); p.EnvCmd != "" {
+		t.Errorf("empty must clear: %+v", p)
+	}
+	if _, err := applyProjectUpdate(addProjectArgs{name: "api"}); err == nil {
+		t.Error("no flags must be refused")
 	}
 }

@@ -75,8 +75,8 @@ crew debug [--tail=<n>]                                    <date> <time> [<categ
 ## 3. Projects and dev servers
 
 ```
-crew add project <name> <path> [--setup=<cmd>]
-crew add project <name> [--setup=<cmd>] [--path=<dir>]         re-run on an existing project updates it
+crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>]
+crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]         re-run on an existing project updates it
 crew rm project <name>
 crew dev add <project> --name=<name> --port=<port> --cmd=<command> [--dir=<subdir>]
 crew dev rm <project> <server-name>
@@ -89,6 +89,17 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
   answer (`make sync` for a repo that also pulls model weights). Without it crew detects
   `uv sync`, `pnpm install`, `npm ci` or `yarn` from the lockfile; `mise install` runs first
   either way.
+- `--env-cmd` is the command that **writes** a fresh checkout's env files — `make get-env`,
+  `npm run get-env`, whatever pulls from sops or a vault. Runs in the checkout after `mise
+  install` and before the install (so an install that needs the vars has them) as its own
+  step `env: <cmd>` in `crew setup status`. The copied `.env` is the baseline it
+  overwrites; a file it does not regenerate stays as copied. Ask for it when a README
+  mentions secrets, sops, 1Password or a `get-env` target; most projects have none. **It
+  must write files, not print values** — its output is the runner log and, on failure, its
+  last lines go on the worktree and into `crew fix`'s prompt; credentials stay in the
+  tool's own config, never in the command (it is exported). `verify` does not re-fetch
+  (it re-installs only what failed); `crew setup <ref> <project>` is the refresh. Not run
+  on a direct-mode member or with `--no-install`.
 - `--path` on an existing project: the repo moved. Worktrees already made keep working.
 - `dev setup` detects one server from `package.json` (`dev`, else `start`) and prints it;
   `--apply --port=<p>` records it. It cannot know the port; nothing detected is an error
@@ -194,7 +205,8 @@ crew migrate [--dry-run] [--yes]
   part is in the foreground, before the runners start. Each runner: the checkout (with the
   repo's git hooks off — a hook written for a user's checkout does not get to fail crew's;
   `mise trust` when there is a `mise.toml`), `.env` copied from the canonical repo or a
-  sibling worktree, the install, then the smoke of that project's servers — each watched
+  sibling worktree, the env command when the project has one, the install, then the smoke
+  of that project's servers — each watched
   until it listens on its port, dies, or a minute passes. **Each server is smoked on its
   own**: siblings' URLs are resolved (ports were reserved first) but nothing answers on
   them; a server that exits at boot because its upstream is unreachable reads `died` with
@@ -309,7 +321,7 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
 
 ```
 crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json
-crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
+crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
                                                          <project|workspace>\t<name>\t<status|outcome>\t<detail>
 ```
 
@@ -327,7 +339,7 @@ crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install]
   sibling found beside a repo crew knows, taken automatically — even under `--clone`;
   `clone` = where `--clone` would put it; `missing` = give `--path` or `--clone=<dir>`) and
   `workspace\t<name>\texists|ready|needs\t<members>`. Then per item:
-  `crew import <file> project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>]`
+  `crew import <file> project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>]`
   prints the same row with the outcome — `imported`, `imported (cloned)`, `replaced`,
   `replaced (cloned)` — and the path; a name already in the pool needs `--replace` (refused
   before anything is cloned). `crew import <file> workspace <name> [--pull] [--no-install]

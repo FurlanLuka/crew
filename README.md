@@ -85,7 +85,10 @@ crew stays out of your code. Two things:
    bindings fill.
 
 Optional: `--setup="make sync"` when the lockfile alone does not install the checkout (mise,
-then `uv sync` / `pnpm install` / `npm ci` / `yarn` are detected on their own).
+then `uv sync` / `pnpm install` / `npm ci` / `yarn` are detected on their own), and
+`--env-cmd="make get-env"` when the checkout's env files come from sops or a vault — it runs
+in the checkout after mise and before the install, over the `.env` crew copied in. It must
+write files, not print values: its output is logged with the install's.
 
 ### Bindings
 

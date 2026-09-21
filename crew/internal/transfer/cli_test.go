@@ -248,3 +248,23 @@ func TestMembershipOf(t *testing.T) {
 		t.Error("unknown workspace must fail")
 	}
 }
+
+// --env-cmd overrides the bundle's command on the way in; empty keeps it.
+func TestApplyProject_EnvCmdOverride(t *testing.T) {
+	tmp := setupTestConfig(t)
+	here := filepath.Join(tmp, "web")
+	os.MkdirAll(here, 0o755)
+	b := Bundle{Projects: []Exported{{Project: project.Project{Name: "web", Path: here, EnvCmd: "npm run get-env"}}}}
+	if _, err := ApplyProject(b, Inspect(b), "web", ProjectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := project.Get("web").EnvCmd; got != "npm run get-env" {
+		t.Errorf("kept = %q", got)
+	}
+	if _, err := ApplyProject(b, Inspect(b), "web", ProjectOptions{Replace: true, EnvCmd: "make get-env"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := project.Get("web").EnvCmd; got != "make get-env" {
+		t.Errorf("overridden = %q", got)
+	}
+}

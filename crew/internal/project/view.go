@@ -18,7 +18,10 @@ import (
 type projectsLoadedMsg struct{ projects []Project }
 type projectAddedMsg struct{ name string }
 type projectRemovedMsg struct{ name string }
-type setupSavedMsg struct{ name string }
+type commandSavedMsg struct {
+	name  string
+	field commandField
+}
 type errMsg struct{ err error }
 
 // ── States ──
@@ -29,21 +32,67 @@ const (
 	stateList viewState = iota
 	stateAddForm
 	stateConfirmRemove
-	stateSetupForm
+	stateCommandForm
 )
+
+// commandField is which of a project's two commands the one-line form
+// edits: the install (`t`) or the env fetch (`e`). Same form, same save;
+// the enum owns everything that differs.
+type commandField int
+
+const (
+	fieldSetup commandField = iota
+	fieldEnvCmd
+)
+
+func (f commandField) label() string {
+	if f == fieldEnvCmd {
+		return "Env command"
+	}
+	return "Setup command"
+}
+
+func (f commandField) value(p Project) string {
+	if f == fieldEnvCmd {
+		return p.EnvCmd
+	}
+	return p.Setup
+}
+
+func (f commandField) placeholder() string {
+	if f == fieldEnvCmd {
+		return "make get-env   (empty: the copied .env is all)"
+	}
+	return "make sync   (empty: detect from lockfile)"
+}
+
+func (f commandField) hint() string {
+	if f == fieldEnvCmd {
+		return "Writes the checkout's env files; runs after mise install, before the install. Must write files, not print values — its output is logged."
+	}
+	return "Runs in every new checkout after mise install. Leave empty to detect from the lockfile."
+}
+
+func (f commandField) save(name, command string) error {
+	if f == fieldEnvCmd {
+		return SetEnvCmd(name, command)
+	}
+	return SetSetup(name, command)
+}
 
 // ── Model ──
 
 type View struct {
-	state      viewState
-	projects   []Project
-	cursor     int
-	pathInput  textinput.Model
-	nameInput  textinput.Model
-	setupInput textinput.Model
-	formField  int // 0=path, 1=name
-	statusMsg  string
-	err        error
+	state        viewState
+	projects     []Project
+	cursor       int
+	pathInput    textinput.Model
+	nameInput    textinput.Model
+	commandInput textinput.Model
+	editing      commandField
+	formField    int // 0=path, 1=name
+	statusMsg    string
+	err          error
 }
 
 func NewView() View {
@@ -56,14 +105,13 @@ func NewView() View {
 	ni.CharLimit = 64
 
 	si := textinput.New()
-	si.Placeholder = "make sync   (empty: detect from lockfile)"
 	si.CharLimit = 256
 
 	return View{
-		state:      stateList,
-		pathInput:  pi,
-		nameInput:  ni,
-		setupInput: si,
+		state:        stateList,
+		pathInput:    pi,
+		nameInput:    ni,
+		commandInput: si,
 	}
 }
 
@@ -96,10 +144,10 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
 		return v, loadProjects
 
-	case setupSavedMsg:
+	case commandSavedMsg:
 		v.state = stateList
-		v.statusMsg = fmt.Sprintf("Setup for '%s' saved", msg.name)
-		v.setupInput.Blur()
+		v.statusMsg = fmt.Sprintf("%s for '%s' saved", msg.field.label(), msg.name)
+		v.commandInput.Blur()
 		return v, loadProjects
 
 	case errMsg:
@@ -110,9 +158,9 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v.handleKey(msg)
 	}
 
-	if v.state == stateSetupForm {
+	if v.state == stateCommandForm {
 		var cmd tea.Cmd
-		v.setupInput, cmd = v.setupInput.Update(msg)
+		v.commandInput, cmd = v.commandInput.Update(msg)
 		return v, cmd
 	}
 	if v.state == stateAddForm {
@@ -130,33 +178,33 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleAddFormKey(msg)
 	case stateConfirmRemove:
 		return v.handleConfirmRemoveKey(msg)
-	case stateSetupForm:
-		return v.handleSetupFormKey(msg)
+	case stateCommandForm:
+		return v.handleCommandFormKey(msg)
 	}
 	return v, nil
 }
 
-// handleSetupFormKey edits the one project field worth changing after the
-// fact: the command that installs a fresh checkout when the lockfile alone
-// is not the answer.
-func (v View) handleSetupFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handleCommandFormKey is the one-line form for the two commands worth
+// changing after the fact: the install and the env fetch.
+func (v View) handleCommandFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		v.state = stateList
-		v.setupInput.Blur()
+		v.commandInput.Blur()
 		return v, nil
 	case "enter":
 		name := v.projects[v.cursor].Name
-		command := strings.TrimSpace(v.setupInput.Value())
+		command := strings.TrimSpace(v.commandInput.Value())
+		field := v.editing
 		return v, func() tea.Msg {
-			if err := SetSetup(name, command); err != nil {
+			if err := field.save(name, command); err != nil {
 				return errMsg{err}
 			}
-			return setupSavedMsg{name}
+			return commandSavedMsg{name, field}
 		}
 	}
 	var cmd tea.Cmd
-	v.setupInput, cmd = v.setupInput.Update(msg)
+	v.commandInput, cmd = v.commandInput.Update(msg)
 	return v, cmd
 }
 
@@ -204,15 +252,9 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return v, nil
 	case msg.String() == "t":
-		if len(v.projects) > 0 {
-			v.state = stateSetupForm
-			v.statusMsg = ""
-			v.err = nil
-			v.setupInput.SetValue(v.projects[v.cursor].Setup)
-			v.setupInput.Focus()
-			return v, v.setupInput.Cursor.BlinkCmd()
-		}
-		return v, nil
+		return v.openCommandForm(fieldSetup)
+	case msg.String() == "e":
+		return v.openCommandForm(fieldEnvCmd)
 	}
 	return v, nil
 }
@@ -321,19 +363,32 @@ func (v View) View() string {
 		v.renderAddForm(&b)
 	case stateConfirmRemove:
 		v.renderConfirmRemove(&b)
-	case stateSetupForm:
-		v.renderSetupForm(&b)
+	case stateCommandForm:
+		v.renderCommandForm(&b)
 	}
 
 	return b.String()
 }
 
-func (v View) renderSetupForm(b *strings.Builder) {
-	p := v.projects[v.cursor]
-	fmt.Fprintf(b, "  Setup command for %s\n\n", p.Name)
-	b.WriteString("  Runs in every new checkout after mise install. Leave empty to detect from the lockfile.\n\n")
+func (v View) openCommandForm(field commandField) (tea.Model, tea.Cmd) {
+	if len(v.projects) == 0 {
+		return v, nil
+	}
+	v.state = stateCommandForm
+	v.editing = field
+	v.statusMsg = ""
+	v.err = nil
+	v.commandInput.Placeholder = field.placeholder()
+	v.commandInput.SetValue(field.value(v.projects[v.cursor]))
+	v.commandInput.Focus()
+	return v, v.commandInput.Cursor.BlinkCmd()
+}
+
+func (v View) renderCommandForm(b *strings.Builder) {
+	fmt.Fprintf(b, "  %s for %s\n\n", v.editing.label(), v.projects[v.cursor].Name)
+	b.WriteString("  " + v.editing.hint() + "\n\n")
 	b.WriteString("  ")
-	b.WriteString(v.setupInput.View())
+	b.WriteString(v.commandInput.View())
 	b.WriteString("\n\n  ")
 	b.WriteString(app.HelpStyle.Render("enter save  esc cancel"))
 	b.WriteString("\n")
@@ -363,6 +418,9 @@ func (v View) renderList(b *strings.Builder) {
 			if p.Setup != "" {
 				b.WriteString("  " + app.Subtle.Render("setup: "+p.Setup))
 			}
+			if p.EnvCmd != "" {
+				b.WriteString("  " + app.Subtle.Render("env: "+p.EnvCmd))
+			}
 			b.WriteString("\n")
 		}
 	}
@@ -375,7 +433,7 @@ func (v View) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  b bindings  t setup  esc back"))
+	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  b bindings  t setup  e env cmd  esc back"))
 	b.WriteString("\n")
 }
 

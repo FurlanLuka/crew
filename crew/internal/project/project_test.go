@@ -226,3 +226,20 @@ func TestSetPath(t *testing.T) {
 		t.Error("an unknown project must be refused")
 	}
 }
+
+func TestSetEnvCmd_RoundTripsAndClears(t *testing.T) {
+	setupTestConfig(t)
+	Add(Project{Name: "api", Path: "/p"})
+	if err := SetEnvCmd("api", "make get-env"); err != nil {
+		t.Fatal(err)
+	}
+	if got := Get("api").EnvCmd; got != "make get-env" {
+		t.Errorf("EnvCmd = %q", got)
+	}
+	if err := SetEnvCmd("api", ""); err != nil || Get("api").EnvCmd != "" {
+		t.Errorf("clear: %v %q", err, Get("api").EnvCmd)
+	}
+	if err := SetEnvCmd("nope", "x"); err == nil {
+		t.Error("unknown project must fail")
+	}
+}

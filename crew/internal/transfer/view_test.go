@@ -24,7 +24,7 @@ func TestExportView_UncoveredWorkspaceDimsInPlace(t *testing.T) {
 	m, _ := v.Update(exportLoadedMsg{
 		projects: []project.Project{
 			{Name: "store-api", DevServers: []project.DevServer{{Name: "store-api", Port: 3000}}, Bindings: []project.Binding{{Var: "A"}, {Var: "B"}}},
-			{Name: "admin", DevServers: []project.DevServer{{Name: "a"}, {Name: "b"}}, Setup: "make sync"},
+			{Name: "admin", DevServers: []project.DevServer{{Name: "a"}, {Name: "b"}}, Setup: "make sync", EnvCmd: "make get-env"},
 		},
 		workspaces: []*workspace.Workspace{
 			{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api"}}},
@@ -42,7 +42,7 @@ func TestExportView_UncoveredWorkspaceDimsInPlace(t *testing.T) {
 		"",
 		"  Projects",
 		"  ✓ store-api    1 server  2 bindings",
-		"> ○ admin        2 servers  setup: make sync",
+		"> ○ admin        2 servers  setup: make sync  env: make get-env",
 		"",
 		"  Workspaces     only those whose projects are all ticked",
 		"  ✓ store-front  store-api",
@@ -83,7 +83,7 @@ func importFixture(t *testing.T) (ImportView, string) {
 		{Project: project.Project{Name: "store-api", Path: here,
 			DevServers: []project.DevServer{{Name: "store-api", Port: 3000, Command: "npm start"}},
 			Bindings:   []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}"}, {Var: "CHECKOUT_API_ASR_URL", Value: "{{checkout-api}}"}},
-			Setup:      "npm ci"}},
+			Setup:      "npm ci", EnvCmd: "npm run get-env"}},
 		{Project: project.Project{Name: "checkout-api", Path: "/Users/other/checkout-api",
 			DevServers: []project.DevServer{{Name: "checkout-api", Port: 8000}, {Name: "worker", Port: 8003}},
 			Bindings:   []project.Binding{{Var: "STORE_API_URL", Value: "{{store-api}}"}}}, Remote: "git@x:ai.git"},
@@ -106,6 +106,7 @@ func TestImportView_AlreadyHereCard(t *testing.T) {
 		"            CHECKOUT_API_ASR_URL  {{checkout-api}}",
 		"            local has 1 binding: CHECKOUT_API_URL",
 		"  setup     npm ci",
+		"  env       npm run get-env",
 		"",
 		"  r replace local  n keep local  e edit  esc stop",
 		"",
@@ -582,5 +583,27 @@ func TestImportView_WorkspaceCardBasesAndPull(t *testing.T) {
 	v = m.(ImportView)
 	if r := v.wsRes[0]; r.Outcome != outcomeCreated || !strings.HasPrefix(r.Detail, "2 issues recorded — crew fix ws/main --print") {
 		t.Errorf("wsRes = %+v", r)
+	}
+}
+
+// The edit form carries the env command: shown, editable, saved on the card.
+func TestImportView_EditEnvCmd(t *testing.T) {
+	v, _ := importFixture(t)
+	v = press(t, v, "e")
+	if v.state != importStateEdit || !strings.Contains(plain(v.View()), "  env       ") || v.inputs[fieldEnvCmd].Value() != "npm run get-env" {
+		t.Fatalf("edit form (field=%q):\n%s", v.inputs[fieldEnvCmd].Value(), plain(v.View()))
+	}
+	v.inputs[fieldEnvCmd].SetValue("make get-env")
+	m, _ := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = m.(ImportView)
+	if v.state != importStateCard || v.current.EnvCmd != "make get-env" {
+		t.Errorf("after enter: state=%v env=%q", v.state, v.current.EnvCmd)
+	}
+	if got := plain(v.View()); !strings.Contains(got, "env       make get-env") {
+		t.Errorf("card:\n%s", got)
+	}
+	v = press(t, v, "r")
+	if got := project.Get("store-api"); got == nil || got.EnvCmd != "make get-env" {
+		t.Errorf("imported project = %+v", got)
 	}
 }

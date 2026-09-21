@@ -44,6 +44,11 @@ type Project struct {
 	// alone is not the answer — "make sync" for a repo that also pulls model
 	// weights or needs registry auth. Replaces detection; mise still runs first.
 	Setup string `json:"setup,omitempty"`
+	// EnvCmd writes a fresh checkout's env files — "make get-env" for a repo
+	// whose secrets come from sops or a vault. The copied .env is a stale
+	// snapshot; this runs after mise install and before the package manager
+	// so an install that needs the vars has them.
+	EnvCmd string `json:"env_cmd,omitempty"`
 }
 
 func poolFile() string {
@@ -221,13 +226,22 @@ func SetPath(projName, path string) error {
 
 // SetSetup records or clears a project's explicit setup command.
 func SetSetup(projName, command string) error {
+	return update(projName, func(p *Project) { p.Setup = command })
+}
+
+// SetEnvCmd records or clears a project's env command.
+func SetEnvCmd(projName, command string) error {
+	return update(projName, func(p *Project) { p.EnvCmd = command })
+}
+
+func update(projName string, fn func(*Project)) error {
 	projects, err := List()
 	if err != nil {
 		return err
 	}
 	for i, p := range projects {
 		if p.Name == projName {
-			projects[i].Setup = command
+			fn(&projects[i])
 			return save(projects)
 		}
 	}
