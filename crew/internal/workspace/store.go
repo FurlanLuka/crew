@@ -61,7 +61,7 @@ func List() ([]string, error) {
 // already one leaves nothing to pick.
 type Summary struct {
 	Ref          Ref    `json:"-"`
-	Name         string `json:"name"` // "phone-speak/wrk2"
+	Name         string `json:"name"` // "store-front/wrk2"
 	Workspace    string `json:"workspace"`
 	Worktree     string `json:"worktree"`
 	Path         string `json:"path"`

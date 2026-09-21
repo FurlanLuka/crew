@@ -107,7 +107,13 @@ func cmdExport() {
 		os.Exit(1)
 	}
 	if jsonOutput {
-		printJSON(map[string]any{"file": a.file, "projects": len(b.Projects), "workspaces": len(b.Workspaces)})
+		if projNames == nil {
+			projNames = []string{}
+		}
+		if wsNames == nil {
+			wsNames = []string{}
+		}
+		printJSON(map[string]any{"file": a.file, "projects": projNames, "workspaces": wsNames})
 		return
 	}
 	fmt.Printf("Wrote %s — %s\n", a.file, transfer.CountPhrase(len(b.Projects), len(b.Workspaces)))
@@ -125,74 +131,174 @@ func everything() (projNames, wsNames []string, err error) {
 	return projNames, wsNames, err
 }
 
-func cmdImport() {
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew import <file> [--all]\n")
-		os.Exit(1)
-	}
-	file, all := "", false
-	for _, arg := range os.Args[2:] {
+// importArgs is what crew import was told. No mode means the wizard.
+type importArgs struct {
+	file    string
+	plan    bool
+	all     bool
+	item    string // "project" | "workspace" | ""
+	name    string
+	project transfer.ProjectOptions
+}
+
+func parseImportArgs(args []string) (importArgs, error) {
+	var a importArgs
+	for _, arg := range args {
 		switch {
+		case arg == "--plan":
+			a.plan = true
 		case arg == "--all":
-			all = true
+			a.all = true
+		case arg == "--clone":
+			a.project.Clone = true
+		case strings.HasPrefix(arg, "--clone="):
+			a.project.Clone, a.project.CloneTo = true, strings.TrimPrefix(arg, "--clone=")
+		case arg == "--replace":
+			a.project.Replace = true
+		case strings.HasPrefix(arg, "--path="):
+			a.project.Path = strings.TrimPrefix(arg, "--path=")
+		case strings.HasPrefix(arg, "--name="):
+			a.project.Name = strings.TrimPrefix(arg, "--name=")
+		case strings.HasPrefix(arg, "--setup="):
+			a.project.Setup = strings.TrimPrefix(arg, "--setup=")
 		case strings.HasPrefix(arg, "-"):
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-			os.Exit(1)
+			return a, fmt.Errorf("unknown flag '%s'", arg)
+		case a.file == "":
+			a.file = arg
+		case a.item == "" && (arg == "project" || arg == "workspace"):
+			a.item = arg
+		case a.item != "" && a.name == "":
+			a.name = arg
 		default:
-			file = arg
+			return a, fmt.Errorf("unexpected argument '%s'", arg)
 		}
 	}
-	b, err := transfer.Read(file)
+	if a.file == "" {
+		return a, errors.New("a bundle file is needed")
+	}
+	if a.item != "" && a.name == "" {
+		return a, fmt.Errorf("%s needs a name", a.item)
+	}
+	modes := 0
+	for _, on := range []bool{a.plan, a.all, a.item != ""} {
+		if on {
+			modes++
+		}
+	}
+	if modes > 1 {
+		return a, errors.New("one of --plan, --all, project <name>, workspace <name>")
+	}
+	if a.item != "project" && (a.project.Path != "" || a.project.CloneTo != "" || a.project.Name != "" || a.project.Setup != "") {
+		return a, errors.New("--path, --clone=<dir>, --name and --setup belong to import <file> project <name>")
+	}
+	if a.item == "workspace" && (a.project.Clone || a.project.Replace) {
+		return a, errors.New("--clone and --replace belong to project imports")
+	}
+	if !a.all && a.item != "project" && (a.project.Clone || a.project.Replace) {
+		return a, errors.New("--clone and --replace need --all or project <name>")
+	}
+	return a, nil
+}
+
+func cmdImport() {
+	a, err := parseImportArgs(os.Args[2:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name>]\n", err)
+		os.Exit(1)
+	}
+	b, err := transfer.Read(a.file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if !all {
-		runTUI(transfer.NewImportView(file, b))
-		return
+	switch {
+	case a.plan:
+		printImportRows(transfer.PlanRows(b, transfer.Inspect(b)))
+	case a.item == "project":
+		res, err := transfer.ApplyProject(b, transfer.Inspect(b), a.name, a.project)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		printImportRows([]transfer.PlanRow{{Kind: "project", Name: res.Name, Status: outcomeWord(res), Detail: res.Path}})
+	case a.item == "workspace":
+		if err := transfer.ApplyWorkspace(b, a.name); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		printImportRows([]transfer.PlanRow{{Kind: "workspace", Name: a.name, Status: "created"}})
+	case a.all:
+		importAll(a.file, b, a.project)
+	default:
+		runTUI(transfer.NewImportView(a.file, b))
 	}
-	importAll(file, b)
 }
 
-// importAll is the non-interactive path: everything whose name is new, and
-// only if every path is here — it never guesses and never clones.
-func importAll(file string, b transfer.Bundle) {
+// outcomeWord is the outcome column for a project. The parenthetical says
+// a checkout was made, which is what a reader wants to know before deleting
+// anything.
+func outcomeWord(res transfer.ProjectResult) string {
+	switch {
+	case res.Replaced && res.Cloned:
+		return "replaced (cloned)"
+	case res.Replaced:
+		return "replaced"
+	case res.Cloned:
+		return "imported (cloned)"
+	}
+	return "imported"
+}
+
+// printImportRows is the one shape every import mode prints: the plan's
+// rows, with Status carrying the outcome once something was done.
+func printImportRows(rows []transfer.PlanRow) {
+	if jsonOutput {
+		printJSON(rows)
+		return
+	}
+	for _, r := range rows {
+		fmt.Printf("%s\t%s\t%s\t%s\n", r.Kind, r.Name, r.Status, r.Detail)
+	}
+}
+
+// importAll is the non-interactive path. By default it takes only what is
+// new and already here, and refuses up front if any path is missing — never
+// guessing. --clone lets a missing repo be cloned where a card would offer,
+// --replace swaps records of the same name.
+func importAll(file string, b transfer.Bundle, o transfer.ProjectOptions) {
 	plan := transfer.Inspect(b)
-	if missing := transfer.MissingPaths(b, plan); len(missing) > 0 {
+	if missing := transfer.MissingPaths(b, plan); len(missing) > 0 && !o.Clone {
 		lines := make([]string, 0, len(missing))
 		for _, e := range missing {
 			lines = append(lines, fmt.Sprintf("  %s\t%s", e.Name, e.Path))
 		}
-		fmt.Fprintf(os.Stderr, "Error: these paths do not exist here; run crew import %s without --all to fix them one by one:\n%s\n", file, strings.Join(lines, "\n"))
+		fmt.Fprintf(os.Stderr, "Error: these paths do not exist here; add --clone, or run crew import %s without --all to fix them one by one:\n%s\n", file, strings.Join(lines, "\n"))
 		os.Exit(1)
 	}
 
-	present := plan.Known
+	rows := make([]transfer.PlanRow, 0, len(b.Projects)+len(b.Workspaces))
 	for i, e := range b.Projects {
-		if plan.Projects[i].Exists {
-			fmt.Printf("%s\tkept local\n", e.Name)
+		if plan.Projects[i].Exists && !o.Replace {
+			rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: "kept local"})
 			continue
 		}
-		if err := transfer.ImportProject(e.Name, e.Project, false); err != nil {
-			fmt.Printf("%s\tfailed\t%v\n", e.Name, err)
+		res, err := transfer.ApplyProject(b, plan, e.Name, o)
+		if err != nil {
+			rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: "failed", Detail: err.Error()})
 			continue
 		}
-		fmt.Printf("%s\timported\n", e.Name)
-		present[e.Name] = true
+		rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: outcomeWord(res), Detail: res.Path})
 	}
 	for i, m := range b.Workspaces {
 		if plan.Workspaces[i].Exists {
-			fmt.Printf("%s\tkept local\n", m.Name)
+			rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "kept local"})
 			continue
 		}
-		if need := transfer.MissingMembers(m, present); len(need) > 0 {
-			fmt.Printf("%s\tskipped\tneeds %s\n", m.Name, strings.Join(need, ", "))
+		if err := transfer.ApplyWorkspace(b, m.Name); err != nil {
+			rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "failed", Detail: err.Error()})
 			continue
 		}
-		if err := transfer.ImportWorkspace(m, nil); err != nil {
-			fmt.Printf("%s\tfailed\t%v\n", m.Name, err)
-			continue
-		}
-		fmt.Printf("%s\tcreated\n", m.Name)
+		rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "created"})
 	}
+	printImportRows(rows)
 }

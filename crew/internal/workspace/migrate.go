@@ -41,8 +41,8 @@ type MigrationPlan struct {
 // SplitWorkspaceName maps an old workspace name to its workspace and worktree.
 // Pure.
 //
-//	phone-speak-wrk1 → phone-speak / wrk1
-//	mumbo            → mumbo       / main
+//	store-front-wrk1 → store-front / wrk1
+//	admin            → admin       / main
 func SplitWorkspaceName(name string) (workspace, worktree string) {
 	if m := wrkSuffix.FindStringSubmatch(name); m != nil {
 		return m[1], m[2]
@@ -262,7 +262,7 @@ func ApplyMigration(plan *MigrationPlan, backup string) error {
 			return err
 		}
 		for _, ref := range Refs(ws) {
-			if res, err := Resolve(ref); err == nil && NeedsPrompt(res) {
+			if res, err := Resolve(ref); err == nil {
 				GeneratePrompt(res)
 			}
 		}
@@ -359,7 +359,7 @@ func moveLooseEntries(oldDir, newDir string) error {
 		src := filepath.Join(oldDir, e.Name())
 		dst := filepath.Join(newDir, e.Name())
 		if src == newDir || strings.HasPrefix(newDir, src+string(os.PathSeparator)) {
-			continue // the new tree nested inside the old one (mumbo → mumbo/main)
+			continue // the new tree nested inside the old one (admin → admin/main)
 		}
 		if _, err := os.Stat(dst); err == nil {
 			return fmt.Errorf("refusing to move %s: %s already exists", src, dst)

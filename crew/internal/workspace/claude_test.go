@@ -41,10 +41,13 @@ func TestBuildClaudeParts_SingleProject(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
 
-	parts, workDir := buildClaudeParts(res, NeedsPrompt(res))
+	parts, workDir := buildClaudeParts(res, true)
 
+	// Every launch carries the prompt now: even a single project needs the
+	// crew section, and CREW_REF names the worktree for whatever runs.
 	got := strings.Join(parts, " ")
-	want := "IS_SANDBOX=1 claude --dangerously-skip-permissions"
+	want := "IS_SANDBOX=1 CREW_REF='solo' claude --dangerously-skip-permissions" +
+		" -- \"$(cat '" + PromptFilePath(Ref{Workspace: "solo"}) + "')\""
 	if got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -63,10 +66,10 @@ func TestBuildClaudeParts_MultiProject(t *testing.T) {
 		{Name: "web", Role: "frontend"},
 	})
 
-	parts, workDir := buildClaudeParts(res, NeedsPrompt(res))
+	parts, workDir := buildClaudeParts(res, true)
 
 	got := strings.Join(parts, " ")
-	want := "IS_SANDBOX=1 claude --dangerously-skip-permissions" +
+	want := "IS_SANDBOX=1 CREW_REF='multi' claude --dangerously-skip-permissions" +
 		" --add-dir '" + WorktreePath(Ref{Workspace: "multi"}, "api") + "'" +
 		" --add-dir '" + WorktreePath(Ref{Workspace: "multi"}, "web") + "'" +
 		" -- \"$(cat '" + PromptFilePath(Ref{Workspace: "multi"}) + "')\""
@@ -83,11 +86,11 @@ func TestBuildClaudeParts_ClaudeConfigDir(t *testing.T) {
 	pinClaudeConfig(t, true)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
 
-	parts, _ := buildClaudeParts(res, NeedsPrompt(res))
+	parts, _ := buildClaudeParts(res, true)
 
 	got := strings.Join(parts, " ")
-	want := "IS_SANDBOX=1 CLAUDE_CONFIG_DIR='" + config.ClaudeConfigDir +
-		"' claude --dangerously-skip-permissions"
+	want := "IS_SANDBOX=1 CREW_REF='solo' CLAUDE_CONFIG_DIR='" + config.ClaudeConfigDir +
+		"' claude --dangerously-skip-permissions -- \"$(cat '" + PromptFilePath(Ref{Workspace: "solo"}) + "')\""
 	if got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -102,7 +105,7 @@ func TestBuildClaudeParts_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 		{Name: "api", Role: "backend", Mode: ModeDirect},
 	})
 
-	parts, _ := buildClaudeParts(res, NeedsPrompt(res))
+	parts, _ := buildClaudeParts(res, true)
 
 	got := strings.Join(parts, " ")
 	if !strings.Contains(got, "$(cat '"+PromptFilePath(Ref{Workspace: "solo"})+"')") {

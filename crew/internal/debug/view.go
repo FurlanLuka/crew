@@ -119,7 +119,7 @@ func (v View) View() string {
 
 func readLog() tea.Cmd {
 	return func() tea.Msg {
-		content := ReadTail(200)
+		content := ReadTail(DefaultTail)
 		return debugContentMsg{content: strings.TrimRight(content, "\n")}
 	}
 }

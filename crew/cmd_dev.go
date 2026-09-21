@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -40,73 +42,161 @@ func cmdDev() {
 		cmdDevLogs()
 	case "tui":
 		cmdDevTui()
+	case "check":
+		cmdDevCheck()
+	case "proxy":
+		cmdDevProxyCtl()
 	case "_proxy":
 		cmdDevProxy()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|logs|tui]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|check|logs|proxy|tui]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
 
-func cmdDevSetup() {
+// cmdDevCheck is the smoke's look at the running servers, on demand: which
+// died, which run without listening while something points at them.
+func cmdDevCheck() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev setup <project>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev check <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
+	res := mustResolve(os.Args[3])
+	results := workspace.CheckServers(res)
+	if jsonOutput {
+		if results == nil {
+			results = []workspace.SmokeResult{}
+		}
+		printJSON(results)
+	} else if results == nil {
+		fmt.Fprintf(os.Stderr, "nothing running on %s — crew dev start %s\n", res.Ref, res.Ref)
+	} else {
+		for _, r := range results {
+			state, detail := "running", ""
+			switch r.State() {
+			case workspace.SmokeDied:
+				state, detail = "died", firstLine(r.Tail)
+			case workspace.SmokeUnreached:
+				state, detail = "not listening", fmt.Sprintf("something points at :%d", r.Port)
+			case workspace.SmokeIdle:
+				state, detail = "not listening", "nothing points at it"
+			}
+			fmt.Printf("%s/%s\t%s\t%d\t%s\n", r.Project, r.Server, state, r.Port, detail)
+		}
+	}
+	if len(workspace.SmokeFailures(results)) > 0 {
+		os.Exit(1)
+	}
+}
 
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// cmdDevProxyCtl is the proxy's own surface: what it is serving, and a stop
+// that leaves every worktree's servers alone.
+func cmdDevProxyCtl() {
+	sub := "status"
+	if len(os.Args) > 3 {
+		sub = os.Args[3]
+	}
+	switch sub {
+	case "status":
+		st := dev.InspectProxy()
+		if jsonOutput {
+			printJSON(st)
+			return
+		}
+		state := "down"
+		switch {
+		case st.Running && st.Listening:
+			state = "up"
+		case st.Running:
+			state = "up (not listening)"
+		}
+		fmt.Printf("%s\t%s\t%d\t%s\n", state, st.Domain, st.Port, st.URL)
+		switch {
+		case st.Error != "" && !st.Listening:
+			fmt.Fprintf(os.Stderr, "! %s\n", st.Error)
+		case st.Running && !st.Listening:
+			fmt.Fprintf(os.Stderr, "! another server holds the port? lsof -nP -iTCP:%d -sTCP:LISTEN\n", st.Port)
+		}
+	case "stop":
+		dev.StopProxy()
+		if jsonOutput {
+			printJSON(map[string]bool{"stopped": true})
+			return
+		}
+		fmt.Println("Stopped the proxy. Worktrees started with --proxy keep running; their hostnames answer again after crew dev restart <ref> --proxy.")
+	default:
+		fmt.Fprintf(os.Stderr, "Usage: crew dev proxy [status|stop]\n")
+		os.Exit(1)
+	}
+}
+
+// cmdDevSetup reports what crew can detect for a project and, with --apply,
+// records it. Detection only knows package.json's dev/start scripts, so the
+// port is always the caller's to give.
+func cmdDevSetup() {
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew dev setup <project> [--apply --port=<port>]\n")
+		os.Exit(1)
+	}
 	projName := os.Args[3]
+	apply, port := false, 0
+	for _, arg := range os.Args[4:] {
+		switch {
+		case arg == "--apply":
+			apply = true
+		case strings.HasPrefix(arg, "--port="):
+			port = intFlag("--port", strings.TrimPrefix(arg, "--port="), true)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+	if apply && port == 0 {
+		fmt.Fprintf(os.Stderr, "Error: --apply needs --port=<port> — the script does not say which\n")
+		os.Exit(1)
+	}
 	p := project.Get(projName)
 	if p == nil {
 		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Setting up dev servers for \"%s\" (%s)\n\n", projName, p.Path)
-
-	// Auto-detect from package.json
-	detected := detectDevCommand(p.Path)
-	if detected != "" {
-		fmt.Printf("  Detected: %s\n", detected)
+	proposal := setupProposal{Name: projName, Port: port, Command: detectDevCommand(p.Path), Outcome: "detected"}
+	if proposal.Command == "" {
+		fmt.Fprintf(os.Stderr, "Error: nothing detected in %s — crew dev add %s --name=%s --port=<port> --cmd=<command>\n", p.Path, projName, projName)
+		os.Exit(1)
 	}
-
-	var count int
-	fmt.Print("  How many dev servers? ")
-	fmt.Scanln(&count)
-
-	for j := 0; j < count; j++ {
-		fmt.Printf("\n  Server %d:\n", j+1)
-
-		var name, cmd, dir string
-		var port int
-
-		fmt.Print("    Name: ")
-		fmt.Scanln(&name)
-
-		fmt.Print("    Port: ")
-		fmt.Scanln(&port)
-
-		defaultCmd := detected
-		if defaultCmd != "" {
-			fmt.Printf("    Command [%s]: ", defaultCmd)
-		} else {
-			fmt.Print("    Command: ")
-		}
-		fmt.Scanln(&cmd)
-		if cmd == "" {
-			cmd = defaultCmd
-		}
-
-		fmt.Print("    Directory (relative, empty for root): ")
-		fmt.Scanln(&dir)
-
-		ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
-		if err := project.AddDevServer(projName, ds); err != nil {
+	if apply {
+		if err := project.AddDevServer(projName, project.DevServer{Name: proposal.Name, Port: port, Command: proposal.Command}); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+		proposal.Outcome = "added"
 	}
+	if jsonOutput {
+		printJSON(proposal)
+		return
+	}
+	fmt.Printf("%s\t%s\t%s\n", proposal.Outcome, proposal.Name, proposal.Command)
+	if !apply {
+		fmt.Printf("crew dev setup %s --apply --port=<port> records it\n", projName)
+	}
+}
 
-	fmt.Printf("\nSaved dev server config for %s.\n", projName)
+// setupProposal is the one server detection can offer: named after the
+// project, running the detected script.
+type setupProposal struct {
+	Name    string `json:"name"`
+	Port    int    `json:"port,omitempty"`
+	Command string `json:"command"`
+	Outcome string `json:"outcome"` // detected | added
 }
 
 func cmdDevAdd() {
@@ -124,10 +214,7 @@ func cmdDevAdd() {
 		case strings.HasPrefix(arg, "--name="):
 			name = strings.TrimPrefix(arg, "--name=")
 		case strings.HasPrefix(arg, "--port="):
-			if n, _ := fmt.Sscanf(strings.TrimPrefix(arg, "--port="), "%d", &port); n != 1 {
-				fmt.Fprintf(os.Stderr, "Error: invalid --port value\n")
-				os.Exit(1)
-			}
+			port = intFlag("--port", strings.TrimPrefix(arg, "--port="), true)
 		case strings.HasPrefix(arg, "--cmd="):
 			cmd = strings.TrimPrefix(arg, "--cmd=")
 		case strings.HasPrefix(arg, "--dir="):
@@ -247,11 +334,26 @@ func cmdDevStatus() {
 	rows := dev.StatusRows(allRoutes, domain, proxyPort)
 	if jsonOutput {
 		printJSON(rows)
-		return
+	} else {
+		for _, r := range rows {
+			fmt.Printf("%s\t%s\t%d\t%s\n", r.Worktree, r.ServerName, r.ExternalPort, r.URL)
+		}
 	}
-	for _, r := range rows {
-		fmt.Printf("%s\t%s\t%d\t%s\n", r.Worktree, r.ServerName, r.ExternalPort, r.URL)
+	// The hostnames above are the proxy's; without it they are dead URLs.
+	if ref := firstProxied(allRoutes); ref != "" && !dev.InspectProxy().Running {
+		fmt.Fprintf(os.Stderr, "! proxy is not running — crew dev restart %s --proxy\n", ref)
 	}
+}
+
+func firstProxied(all []dev.WsRoutes) string {
+	for _, wr := range all {
+		for _, r := range wr.Routes {
+			if r.Proxied() {
+				return dev.DisplayRef(wr.Slug)
+			}
+		}
+	}
+	return ""
 }
 
 // parseProxyFlag parses extra args after the workspace name and reports
@@ -297,6 +399,29 @@ func startDev(arg string, noProxy, restart bool) {
 		os.Exit(1)
 	}
 
+	if jsonOutput {
+		out := startOut{
+			Ref:         res.Ref.String(),
+			URLs:        workspace.DevURLs(res, result.Routes),
+			Resolutions: result.Resolutions,
+			Conflicts:   result.Conflicts,
+			Warnings:    result.Warnings,
+			Health:      res.Health,
+		}
+		// Empty lists are lists; a reader should never branch on null.
+		if out.Resolutions == nil {
+			out.Resolutions = []dev.Resolution{}
+		}
+		if out.Conflicts == nil {
+			out.Conflicts = []dev.Conflict{}
+		}
+		if out.Warnings == nil {
+			out.Warnings = []string{}
+		}
+		printJSON(out)
+		return
+	}
+
 	verb := "Dev servers for"
 	if restart {
 		verb = "Restarted dev servers for"
@@ -312,11 +437,30 @@ func startDev(arg string, noProxy, restart bool) {
 	if warnings := dev.FormatConflicts(result.Conflicts); warnings != "" {
 		fmt.Print(warnings)
 	}
+	for _, w := range result.Warnings {
+		fmt.Printf("\n! %s\n", w)
+	}
 
 	fmt.Printf("\nSession: %s\n", dev.SessionName(res.Slug))
 	if len(result.Resolutions) > 0 {
 		fmt.Printf("crew env %s <project> — full table\n", res.Ref)
 	}
+	if !noProxy {
+		// The one place the user is when a phone cannot open a URL; the
+		// status page is the first thing to try there.
+		fmt.Printf("Other devices: open %s first — crew help dev start if a URL fails there\n", dev.ProxyStatusURL())
+	}
+}
+
+// startOut is crew dev start --json: everything the text form prints, as
+// data. Health is the recorded failure the text form warns about first.
+type startOut struct {
+	Ref         string            `json:"ref"`
+	URLs        []string          `json:"urls"`
+	Resolutions []dev.Resolution  `json:"resolutions"`
+	Conflicts   []dev.Conflict    `json:"conflicts"`
+	Warnings    []string          `json:"warnings"`
+	Health      *workspace.Health `json:"health,omitempty"`
 }
 
 func cmdDevStop() {
@@ -384,11 +528,13 @@ func cmdDevLogs() {
 		os.Exit(1)
 	}
 
-	follow := false
+	follow, lines := false, 0
 	for _, arg := range os.Args[5:] {
-		switch arg {
-		case "-f", "--follow":
+		switch {
+		case arg == "-f" || arg == "--follow":
 			follow = true
+		case strings.HasPrefix(arg, "--lines="):
+			lines = intFlag("--lines", strings.TrimPrefix(arg, "--lines="), true)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
@@ -406,10 +552,14 @@ func cmdDevLogs() {
 
 	var tool string
 	var args []string
-	if follow {
+	switch {
+	case follow:
 		tool = "tail"
 		args = []string{"-n", "+1", "-f", logFile}
-	} else {
+	case lines > 0:
+		tool = "tail"
+		args = []string{"-n", strconv.Itoa(lines), logFile}
+	default:
 		tool = "cat"
 		args = []string{logFile}
 	}
@@ -444,14 +594,13 @@ func cmdDevProxy() {
 		case strings.HasPrefix(arg, "--domain="):
 			domain = strings.TrimPrefix(arg, "--domain=")
 		case strings.HasPrefix(arg, "--port="):
-			if n, _ := fmt.Sscanf(strings.TrimPrefix(arg, "--port="), "%d", &port); n != 1 {
-				fmt.Fprintf(os.Stderr, "Error: invalid --port value\n")
-				os.Exit(1)
-			}
+			port = intFlag("--port", strings.TrimPrefix(arg, "--port="), true)
 		}
 	}
 
 	if err := dev.RunProxy(domain, port); err != nil {
+		debug.Log("dev", "proxy exited: %v", err)
+		dev.RecordProxyError(err)
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

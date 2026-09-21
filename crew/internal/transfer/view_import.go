@@ -109,7 +109,8 @@ type ImportView struct {
 
 	inputs [3]textinput.Model
 	focus  int
-	// cloneAfterEdit: c with nowhere to put the clone asks for the path first.
+	// cloneAfterEdit: c always goes through the path field — prefilled with
+	// crew's guess, so enter takes it and typing over it picks another.
 	cloneAfterEdit bool
 
 	present map[string]bool // in the pool before, or imported/replaced/kept in this walk
@@ -325,17 +326,13 @@ func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.apply(false)
 	case msg.String() == "r" && st.Exists && v.canImport():
 		return v.apply(true)
-	case msg.String() == "c" && v.current.Remote != "" && !v.pathExists && v.cloneTarget() == "":
-		// Nothing to anchor a target on yet: ask for the path, then clone there.
+	case msg.String() == "c" && v.current.Remote != "" && !v.pathExists:
 		v.cloneAfterEdit = true
-		return v, v.beginEdit(v.current.Path)
-	case msg.String() == "c" && v.cloneTarget() != "":
-		v.state = importStateCloning
-		v.err = nil
-		remote, target := v.current.Remote, v.cloneTarget()
-		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
-			return clonedMsg{target: target, err: Clone(remote, target)}
-		})
+		path := v.cloneTarget()
+		if path == "" {
+			path = v.current.Path
+		}
+		return v, v.beginEdit(path)
 	case msg.String() == "e":
 		path := v.current.Path
 		if !v.pathExists {
@@ -535,7 +532,7 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	case v.cloneTarget() != "":
 		b.WriteString(app.Error.Render("✗ not here"))
 		b.WriteString(fmt.Sprintf("\n            %-*s ", pathCol, app.Highlight.Render("→ "+v.cloneTarget())))
-		b.WriteString(app.Subtle.Render("c clones here" + besidePhrase(v.cloneTarget(), v.anchors)))
+		b.WriteString(app.Subtle.Render("c clones here" + besidePhrase(v.cloneTarget(), v.anchors) + " — or anywhere you type"))
 	case p.Remote != "":
 		b.WriteString(app.Error.Render("✗ not here — c asks where to clone, e sets the path"))
 	default:
@@ -608,12 +605,21 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 }
 
 func (v ImportView) renderEdit(b *strings.Builder) {
-	b.WriteString(v.header(" · editing"))
+	mode, apply := " · editing", "enter apply"
+	if v.cloneAfterEdit {
+		mode, apply = " · where to clone", "enter clone"
+	}
+	b.WriteString(v.header(mode))
 	b.WriteString("  name      " + v.inputs[fieldName].View() + "\n")
 	b.WriteString("  path      " + v.inputs[fieldPath].View())
-	if dirExists(expandHome(strings.TrimSpace(v.inputs[fieldPath].Value()))) {
+	switch exists := dirExists(expandHome(strings.TrimSpace(v.inputs[fieldPath].Value()))); {
+	case exists && v.cloneAfterEdit:
+		b.WriteString("  " + app.Success.Render("✓ exists — used as is, nothing cloned"))
+	case exists:
 		b.WriteString("  " + app.Success.Render("✓ exists"))
-	} else {
+	case v.cloneAfterEdit:
+		b.WriteString("  " + app.Highlight.Render("→ clone lands here"))
+	default:
 		b.WriteString("  " + app.Error.Render("✗ not here"))
 	}
 	b.WriteString("\n")
@@ -622,7 +628,7 @@ func (v ImportView) renderEdit(b *strings.Builder) {
 	if v.err != nil {
 		b.WriteString("  " + app.Error.Render(v.err.Error()) + "\n\n")
 	}
-	b.WriteString("  " + app.HelpStyle.Render("tab next  enter apply  esc back") + "\n")
+	b.WriteString("  " + app.HelpStyle.Render("tab next  "+apply+"  esc back") + "\n")
 }
 
 func (v ImportView) renderWorkspaceCard(b *strings.Builder) {

@@ -3,6 +3,7 @@ package help
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -15,7 +16,11 @@ type CommandInfo struct {
 	Subcommands  []CommandInfo `json:"subcommands,omitempty"`
 	OutputFormat string        `json:"output_format,omitempty"`
 	Examples     []string      `json:"examples,omitempty"`
-	TUI          bool          `json:"tui,omitempty"`
+	// Notes hold what a description cannot: the description also renders in
+	// the parent's command list, so anything longer than a line lives here
+	// and shows only on the command's own page.
+	Notes []string `json:"notes,omitempty"`
+	TUI   bool     `json:"tui,omitempty"`
 }
 
 type FlagInfo struct {
@@ -27,17 +32,19 @@ type FlagInfo struct {
 
 var Root = CommandInfo{
 	Name:        "crew",
-	Description: "Workspace manager, dev-server runner & package registry",
+	Description: "Workspaces of git worktrees for coding agents: dev servers on stable ports, env bindings between projects, Claude Code and editors launched in place. Every command prints rows or --json.",
 	Subcommands: []CommandInfo{
 		{
 			Name:        "workspace",
 			Description: "Interactive workspace manager — create, configure, and launch workspaces",
 			TUI:         true,
+			Notes:       []string{"Same actions without the TUI: crew add workspace, crew add worktree, crew duplicate, crew rm, crew launch / claude / edit / open."},
 		},
 		{
 			Name:        "project",
 			Description: "Interactive project manager — add/remove projects and configure dev servers",
 			TUI:         true,
+			Notes:       []string{"Same actions without the TUI: crew add project (--setup), crew dev add / rm / setup, crew add binding (--scan --apply), crew rm project."},
 		},
 		{
 			Name:        "add",
@@ -54,22 +61,24 @@ var Root = CommandInfo{
 					Examples: []string{
 						"crew add project my-api /home/user/repos/api",
 						"crew add project frontend ~/repos/web-app",
-						"crew add project ai-tutor-api ~/repos/ai-tutor-api --setup=\"make sync\"",
-						"crew add project ai-tutor-api --path=~/code/ai-tutor-api",
+						"crew add project checkout-api ~/repos/checkout-api --setup=\"make sync\"",
+						"crew add project checkout-api --path=~/code/checkout-api",
 					},
 				},
 				{
-					Name:        "workspace",
-					Description: "Create a new workspace, or add a project to an existing one. Without a project argument, creates an empty workspace. With a project, creates a git worktree (default) and adds it to the workspace, or attaches the canonical repo with --direct.",
-					Usage:       "crew add workspace <name> [<project> --role=<role>] [--direct]",
+					Name:         "workspace",
+					Description:  "Create a workspace, or add projects to one — any number in one call, the workspace created if it does not exist. Each project gets a git worktree in every existing worktree of the workspace (or the canonical repo with --direct), then the installs run, all at once. Every name is checked before anything happens; a checkout or install that fails keeps the member, recorded on the worktree for crew fix / verify.",
+					Usage:        "crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct]",
+					OutputFormat: "<project>\\t<added|failed>\\t<worktree|direct>\\t<detail>",
 					Flags: []FlagInfo{
-						{Name: "--role=<r>", Description: "Role description for the project in this workspace (e.g., \"Backend API\", \"Frontend\")"},
-						{Name: "--direct", Description: "Attach the project's canonical checkout instead of creating a fresh worktree. Changes are NOT isolated. Only one workspace at a time may direct-mount a given project."},
+						{Name: "<project>[:<role>]", Description: "A pool project, with its role in this workspace after a colon (\"store-api:Backend API\"); without one, \"works on <project>\""},
+						{Name: "--role=<r>", Description: "The role for a single project — the same as <project>:<role>"},
+						{Name: "--direct", Description: "Attach the canonical checkouts instead of creating worktrees. Changes are NOT isolated. Only one workspace at a time may direct-mount a given project."},
 					},
 					Examples: []string{
 						"crew add workspace feature-auth",
 						"crew add workspace feature-auth my-api --role=\"Auth service\"",
-						"crew add workspace feature-auth frontend --role=\"Login UI\"",
+						"crew add workspace store-front store-api:\"Backend API\" store-app:\"iOS app\" checkout-api",
 						"crew add workspace quickfix my-api --role=\"Hotfix\" --direct",
 					},
 				},
@@ -82,7 +91,7 @@ var Root = CommandInfo{
 						{Name: "--no-install", Description: "Check out only; skip mise and package installs"},
 						{Name: "--no-smoke", Description: "Skip the smoke start"},
 					},
-					Examples: []string{"crew add worktree phone-speak/wrk3", "crew add worktree phone-speak/wrk3 --no-install"},
+					Examples: []string{"crew add worktree store-front/wrk3", "crew add worktree store-front/wrk3 --no-install"},
 				},
 				{
 					Name:        "binding",
@@ -93,16 +102,16 @@ var Root = CommandInfo{
 						{Name: "--url=<p[/s]>", Description: "Shorthand for --value='{{p/s}}' — http://localhost:<port> of that dev server"},
 						{Name: "--host=<p[/s]>", Description: "Shorthand for --value='{{p/s.host}}' — localhost:<port>, for any other scheme"},
 						{Name: "--port=<p[/s]>", Description: "Shorthand for --value='{{p/s.port}}' — just the port number"},
-						{Name: "--value=<t>", Description: "Full template, for composition (e.g. ws://{{livekit.host}}/rtc)"},
+						{Name: "--value=<t>", Description: "Full template, for composition (e.g. ws://{{signals.host}}/rtc)"},
 						{Name: "--scan", Description: "Read the project's .env and propose bindings for values pointing at ports crew allocates"},
 						{Name: "--apply", Description: "With --scan, add every unambiguous proposal"},
 					},
 					Examples: []string{
-						"crew add binding ai-tutor-api --var=SPEAK_API_URL --url=speak-api",
-						"crew add binding ai-tutor-api --var=LIVEKIT_URL --value='ws://{{livekit.host}}/rtc'",
-						"crew add binding ai-tutor-api --var=LIVEKIT_AGENT_NAME --value='{{worktree}}'",
-						"crew add binding ai-tutor-api --scan",
-						"crew add binding ai-tutor-api --scan --apply",
+						"crew add binding checkout-api --var=STORE_API_URL --url=store-api",
+						"crew add binding checkout-api --var=SIGNALS_URL --value='ws://{{signals.host}}/rtc'",
+						"crew add binding checkout-api --var=SIGNALS_AGENT_NAME --value='{{worktree}}'",
+						"crew add binding checkout-api --scan",
+						"crew add binding checkout-api --scan --apply",
 					},
 				},
 				{
@@ -110,8 +119,8 @@ var Root = CommandInfo{
 					Description: "Pin a variable for one worktree. Beats whatever the binding would resolve, and is the acknowledgement for a binding that legitimately never resolves here — it stops printing as an anomaly on every start. Key is VAR, or project.VAR to pin one project when two share a name.",
 					Usage:       "crew add override <workspace>/<worktree> <VAR>=<value>",
 					Examples: []string{
-						"crew add override phone-speak/wrk2 SPEAK_API_URL=https://dev-api.speak.com",
-						"crew add override phone-speak/wrk2 ai-tutor-api.API_URL=https://tutor.dev",
+						"crew add override store-front/wrk2 STORE_API_URL=https://dev-api.store.com",
+						"crew add override store-front/wrk2 checkout-api.API_URL=https://tutor.dev",
 					},
 				},
 			},
@@ -120,6 +129,7 @@ var Root = CommandInfo{
 			Name:        "config",
 			Description: "View and edit crew settings (server IP, SSH host, proxy port, domain)",
 			TUI:         true,
+			Notes:       []string{"Same actions without the TUI: crew config show / set / refresh, crew trash empty, crew uninstall."},
 			Subcommands: []CommandInfo{
 				{
 					Name:         "show",
@@ -136,6 +146,11 @@ var Root = CommandInfo{
 						"crew config set ssh_host my-dev-vm",
 						"crew config set proxy_port 8080",
 						"crew config set domain dev.example.com",
+					},
+					Notes: []string{
+						"server_ip: ipconfig getifaddr en0 (Wi-Fi) or tailscale ip -4. Detected from the first non-loopback interface when unset.",
+						"domain: needs wildcard DNS (*.dev.example.com) resolving to server_ip; the default <server_ip>.nip.io needs nothing.",
+						"A changed server_ip, domain or proxy_port takes effect on the next crew dev start|restart --proxy — the proxy is relaunched when its settings differ.",
 					},
 				},
 				{
@@ -177,7 +192,7 @@ var Root = CommandInfo{
 					Flags: []FlagInfo{
 						{Name: "--size", Description: "Add bytes on disk per worktree. Walks every file — slow on one with a full build inside"},
 					},
-					Examples: []string{"crew ls worktrees", "crew ls worktrees phone-speak", "crew ls worktrees --size"},
+					Examples: []string{"crew ls worktrees", "crew ls worktrees store-front", "crew ls worktrees --size"},
 				},
 				{
 					Name:         "projects",
@@ -190,14 +205,14 @@ var Root = CommandInfo{
 					Description:  "List a project's bindings as declared. With --check, resolve each against a real worktree and show the value it would get there, or why it would be left alone.",
 					Usage:        "crew ls bindings <project> [--check=<workspace>[/<worktree>]]",
 					OutputFormat: "<var>\\t<template>[\\t<resolved value>]",
-					Examples:     []string{"crew ls bindings ai-tutor-api", "crew ls bindings ai-tutor-api --check=phone-speak/wrk1"},
+					Examples:     []string{"crew ls bindings checkout-api", "crew ls bindings checkout-api --check=store-front/wrk1"},
 				},
 				{
 					Name:         "overrides",
 					Description:  "List a worktree's overrides",
 					Usage:        "crew ls overrides <workspace>/<worktree>",
 					OutputFormat: "<key>\\t<value>",
-					Examples:     []string{"crew ls overrides phone-speak/wrk2"},
+					Examples:     []string{"crew ls overrides store-front/wrk2"},
 				},
 			},
 		},
@@ -213,19 +228,22 @@ var Root = CommandInfo{
 			Description:  "Check a worktree the way creating it does: start its dev servers, wait a few seconds, report which survived with the last log lines of any that died, stop them again. The verdict is recorded on the worktree — a failure shows in crew ls worktrees and on the worktree page until a verify passes. Refuses while the worktree's servers are running, since it would restart them.",
 			Usage:        "crew verify <workspace>[/<worktree>]",
 			OutputFormat: "<project>  ✓|✗ <server> [exited within seconds]",
-			Examples:     []string{"crew verify phone-speak/wrk2"},
+			Examples:     []string{"crew verify store-front/wrk2"},
 		},
 		{
 			Name:        "fix",
-			Description: "Open Claude Code in the worktree with what failed in front of it: each issue with its stage (checkout, install, smoke), the error or log tail, the env anomalies, and the instruction to fix the cause and run crew verify. With nothing recorded it runs verify first, so it is one command either way. Replaces the crew process.",
-			Usage:       "crew fix <workspace>[/<worktree>]",
-			Examples:    []string{"crew fix phone-speak/wrk2"},
+			Description: "Open Claude Code in the worktree with what failed in front of it: each issue with its stage (checkout, install, smoke), the error or log tail, the env anomalies, and the instruction to fix the cause and run crew verify. With nothing recorded it checks the running servers (crew dev check) or, with none running, runs verify first, so it is one command either way. Replaces the crew process. --print writes that same prompt to stdout instead — for an agent that is already here; without a terminal that is what happens anyway. --json is the recorded health as data.",
+			Usage:       "crew fix <workspace>[/<worktree>] [--print]",
+			Flags: []FlagInfo{
+				{Name: "--print", Description: "Print the fix prompt (issues, evidence, anomalies) instead of opening Claude; no terminal needed"},
+			},
+			Examples: []string{"crew fix store-front/wrk2", "crew fix store-front/wrk2 --print", "crew fix store-front/wrk2 --json"},
 		},
 		{
 			Name:        "claude",
-			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected for a multi-project worktree or one with a direct-mode project. Replaces the crew process.",
+			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected (projects, roles, and a crew section on driving the servers). Replaces the crew process.",
 			Usage:       "crew claude <workspace>[/<worktree>]",
-			Examples:    []string{"crew claude phone-speak/wrk1"},
+			Examples:    []string{"crew claude store-front/wrk1"},
 		},
 		{
 			Name:        "edit",
@@ -234,13 +252,13 @@ var Root = CommandInfo{
 			Flags: []FlagInfo{
 				{Name: "--editor=<cursor|code>", Description: "Which editor; detected when omitted"},
 			},
-			Examples: []string{"crew edit phone-speak/wrk1", "crew edit phone-speak/wrk1 --editor=code"},
+			Examples: []string{"crew edit store-front/wrk1", "crew edit store-front/wrk1 --editor=code"},
 		},
 		{
 			Name:        "open",
 			Description: "Start a shell in the worktree directory — the worktree page's 'Shell here'. Replaces the crew process; exit returns to where you were.",
 			Usage:       "crew open <workspace>[/<worktree>]",
-			Examples:    []string{"crew open phone-speak/wrk1"},
+			Examples:    []string{"crew open store-front/wrk1"},
 		},
 		{
 			Name:        "code",
@@ -250,7 +268,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "start",
-			Description: "Generate and print the orientation prompt for a workspace — the project list, working directories, roles, and worktree/direct framing. Paste it into a running Claude; launches inject it automatically for multi-project workspaces and any workspace with a direct-mode project.",
+			Description: "Generate and print the orientation prompt for a workspace — the project list, working directories, roles, and worktree/direct framing. Ends with a crew section: the ref, and the commands that session should drive the servers with. Every launch (crew claude, crew edit, the page) injects it; paste it into a Claude opened some other way.",
 			Usage:       "crew start <workspace>[/<worktree>]",
 			Examples:    []string{"crew start feature-auth"},
 		},
@@ -259,18 +277,22 @@ var Root = CommandInfo{
 			Description: "Open the interactive launch view — choose Editor + Claude or Claude (both skip permissions), start dev servers, and begin working",
 			Usage:       "crew launch [<workspace>[/<worktree>]]",
 			TUI:         true,
-			Examples:    []string{"crew launch", "crew launch feature-auth", "crew launch phone-speak/wrk2"},
+			Examples:    []string{"crew launch", "crew launch feature-auth", "crew launch store-front/wrk2"},
 		},
 		{
 			Name:        "dev",
 			Description: "Manage dev servers and reverse proxy. Each project can have named dev servers that run in tmux windows behind a shared reverse proxy.",
 			Subcommands: []CommandInfo{
 				{
-					Name:        "setup",
-					Description: "Re-run every project's install steps in a worktree — mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command — checking out anything still missing first, then the smoke start. Idempotent; the verdict is recorded on the worktree like crew verify's.",
-					Usage:       "crew dev setup <project>",
-					TUI:         true,
-					Examples:    []string{"crew dev setup my-api"},
+					Name:         "setup",
+					Description:  "Detect a dev server for a project from package.json (a dev script, else start) and print it; --apply records it as a server named after the project. Detection cannot know the port, so --apply needs --port. crew dev add is the full form.",
+					Usage:        "crew dev setup <project> [--apply --port=<port>]",
+					OutputFormat: "<detected|added>\\t<name>\\t<command>",
+					Flags: []FlagInfo{
+						{Name: "--apply", Description: "Record the detected server; needs --port"},
+						{Name: "--port=<port>", Description: "The reference port for the detected server"},
+					},
+					Examples: []string{"crew dev setup web", "crew dev setup web --apply --port=3000"},
 				},
 				{
 					Name:        "add",
@@ -281,6 +303,10 @@ var Root = CommandInfo{
 						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT", Required: true},
 						{Name: "--cmd=<c>", Description: "Start command (use $PORT for the dynamic port)", Required: true},
 						{Name: "--dir=<d>", Description: "Subdirectory relative to project root (for monorepos)"},
+					},
+					Notes: []string{
+						"The command runs with PORT=<allocated> in its environment; it must bind that port (next dev -p $PORT, --port $PORT, process.env.PORT). --port is the reference for .env scans and conflict checks, not what runs.",
+						"Sibling URLs come from env vars the project reads at start — the ones crew add binding fills.",
 					},
 					Examples: []string{
 						"crew dev add my-api --name=api --port=3000 --cmd=\"npm run dev\"",
@@ -307,7 +333,14 @@ var Root = CommandInfo{
 					Flags: []FlagInfo{
 						{Name: "--proxy", Description: "Also run the shared reverse proxy and address servers by hostname"},
 					},
-					Examples: []string{"crew dev start feature-auth", "crew dev start phone-speak/wrk2", "crew dev start phone-speak/wrk2 --proxy"},
+					Examples: []string{"crew dev start feature-auth", "crew dev start store-front/wrk2", "crew dev start store-front/wrk2 --proxy", "crew dev start store-front/wrk2 --json"},
+					Notes: []string{
+						"--proxy: one reverse proxy on <server_ip>:<proxy_port> (crew config show) serves every running server at http://<server>--<workspace>--<worktree>.<domain>; http://<server_ip>:<proxy_port>/ lists them.",
+						"A URL works here but not on another device: open http://<server_ip>:<proxy_port>/ there first.",
+						"Loads: the hostname is the problem — <ip>.nip.io resolves to a private IP, which router DNS rebind protection (Fritz!Box, UniFi, dnsmasq, Pi-hole), NextDNS or iOS Private Relay refuse. Allow nip.io there, turn off Limit IP Address Tracking for that Wi-Fi, or use a domain of your own (crew config set domain).",
+						"Does not load: the device cannot reach this machine — different network, guest/AP isolation, VPN, cellular.",
+						"Tailscale sidesteps both: crew config set server_ip <tailscale ip>, then crew dev restart <ref> --proxy. URLs become <server>--<ws>--<wt>.100.x.y.z.nip.io and work off the LAN too.",
+					},
 				},
 				{
 					Name:        "stop",
@@ -322,30 +355,45 @@ var Root = CommandInfo{
 					Flags: []FlagInfo{
 						{Name: "--proxy", Description: "Also run the shared reverse proxy and address servers by hostname"},
 					},
-					Examples: []string{"crew dev restart feature-auth", "crew dev restart phone-speak/wrk2 --proxy"},
+					Examples: []string{"crew dev restart feature-auth", "crew dev restart store-front/wrk2 --proxy"},
 				},
 				{
 					Name:         "status",
-					Description:  "Show running dev servers and their URLs. Without an argument, shows all. A bare workspace name shows all of its worktrees.",
+					Description:  "Show running dev servers and their URLs. Without an argument, shows all. A bare workspace name shows all of its worktrees. A proxied worktree whose proxy is down gets a ! line on stderr.",
 					Usage:        "crew dev status [<workspace>[/<worktree>]]",
 					OutputFormat: "<workspace>/<worktree>\\t<server>\\t<port>\\t<url>",
 					Examples:     []string{"crew dev status", "crew dev status feature-auth"},
 				},
 				{
+					Name:         "check",
+					Description:  "Look at a worktree's running servers the way the smoke does: a pane that exited is died; one that runs without anything accepting on its port is not listening — a failure when some binding points at it, a note when nothing does. Run it a few seconds after a start. Exit 1 on any failure; crew fix <ref> --print then carries the evidence.",
+					Usage:        "crew dev check <workspace>[/<worktree>]",
+					OutputFormat: "<project>/<server>\\t<running|died|not listening>\\t<port>\\t<detail>",
+					Examples:     []string{"crew dev check store-front/wrk2", "crew dev check store-front/wrk2 --json"},
+				},
+				{
+					Name:         "proxy",
+					Description:  "The shared reverse proxy: whether its session is up and answering, what domain and port it was launched with, and its status page URL. stop kills the proxy alone — worktrees keep running on their ports; crew dev restart <ref> --proxy brings the hostnames back.",
+					Usage:        "crew dev proxy [status|stop]",
+					OutputFormat: "<up|up (not listening)|down>\\t<domain>\\t<port>\\t<status url>",
+					Examples:     []string{"crew dev proxy status", "crew dev proxy stop"},
+				},
+				{
 					Name:        "logs",
-					Description: "Print the log for a dev server. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output.",
-					Usage:       "crew dev logs <workspace>[/<worktree>] <server> [-f|--follow]",
+					Description: "Print the log for a dev server. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output, --lines for just the end.",
+					Usage:       "crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]",
 					Flags: []FlagInfo{
 						{Name: "-f, --follow", Description: "Stream new output as it arrives (tail -f)"},
+						{Name: "--lines=<n>", Description: "Only the last n lines"},
 					},
-					Examples: []string{"crew dev logs feature-auth api", "crew dev logs feature-auth web -f"},
+					Examples: []string{"crew dev logs feature-auth api", "crew dev logs feature-auth web -f", "crew dev logs feature-auth api --lines=50"},
 				},
 				{
 					Name:        "tui",
 					Description: "Open the interactive dev server view for a worktree — start, stop, restart, and tail logs",
 					Usage:       "crew dev tui <workspace>[/<worktree>]",
 					TUI:         true,
-					Examples:    []string{"crew dev tui phone-speak/wrk1"},
+					Examples:    []string{"crew dev tui store-front/wrk1"},
 				},
 			},
 		},
@@ -370,19 +418,19 @@ var Root = CommandInfo{
 					Name:        "worktree",
 					Description: "Remove one worktree — its checkouts, dev session, logs and prompt. Refuses to remove the last worktree; remove the workspace instead.",
 					Usage:       "crew rm worktree <workspace>/<name>",
-					Examples:    []string{"crew rm worktree phone-speak/wrk3"},
+					Examples:    []string{"crew rm worktree store-front/wrk3"},
 				},
 				{
 					Name:        "binding",
 					Description: "Remove a binding from a project",
 					Usage:       "crew rm binding <project> <var>",
-					Examples:    []string{"crew rm binding ai-tutor-api SPEAK_API_URL"},
+					Examples:    []string{"crew rm binding checkout-api STORE_API_URL"},
 				},
 				{
 					Name:        "override",
 					Description: "Remove a worktree override; the binding applies again",
 					Usage:       "crew rm override <workspace>/<worktree> <VAR>",
-					Examples:    []string{"crew rm override phone-speak/wrk2 SPEAK_API_URL"},
+					Examples:    []string{"crew rm override store-front/wrk2 STORE_API_URL"},
 				},
 			},
 			Examples: []string{"crew rm feature-auth"},
@@ -391,30 +439,31 @@ var Root = CommandInfo{
 			Name:        "duplicate",
 			Description: "Duplicate a worktree within its workspace — fresh checkouts of the same projects, with the source worktree's overrides copied across",
 			Usage:       "crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]",
-			Examples:    []string{"crew duplicate phone-speak/wrk1 wrk3"},
+			Examples:    []string{"crew duplicate store-front/wrk1 wrk3"},
 		},
 		{
 			Name:         "env",
 			Description:  "Print a project's resolved env for a worktree, against the dev servers currently running there. stdout is pure KEY=VALUE so it can be eval'd; the full table and any variables left alone go to stderr. Values are point-in-time — prefer `crew run` over pasting them anywhere.",
 			Usage:        "crew env <workspace>[/<worktree>] <project>",
 			OutputFormat: "<VAR>=<value>",
-			Examples:     []string{"crew env phone-speak/wrk1 ai-tutor-api", "eval \"$(crew env phone-speak/wrk1 ai-tutor-api)\""},
+			Examples:     []string{"crew env store-front/wrk1 checkout-api", "eval \"$(crew env store-front/wrk1 checkout-api)\""},
 		},
 		{
 			Name:        "run",
 			Description: "Run a command inside a project's checkout with its bindings resolved into the environment. This is how evals, scripts and CLIs that crew does not start get the same URLs the dev servers got. Everything after -- is the command, untouched.",
 			Usage:       "crew run <workspace>[/<worktree>] <project> -- <command...>",
 			Examples: []string{
-				"crew run phone-speak/wrk1 ai-tutor-api -- make eval",
-				"crew run phone-speak/wrk2 ai-tutor-api -- uv run python -m tests.smoke",
+				"crew run store-front/wrk1 checkout-api -- make eval",
+				"crew run store-front/wrk2 checkout-api -- uv run python -m tests.smoke",
 			},
 		},
 		{
 			Name:        "migrate",
 			Description: "Move pre-worktree workspaces to the nested layout. <name>-wrkN becomes workspace <name>, worktree wrkN; anything else becomes <name>/main. Prints the full plan, backs up workspace and route files, asks, then moves checkouts with git worktree move and renames branches. Old paths are printed afterwards so anything holding them can be updated.",
-			Usage:       "crew migrate [--dry-run]",
+			Usage:       "crew migrate [--dry-run] [--yes]",
 			Flags: []FlagInfo{
 				{Name: "--dry-run", Description: "Print the plan and stop"},
+				{Name: "--yes", Description: "Apply without the confirmation prompt"},
 			},
 			Examples: []string{"crew migrate --dry-run", "crew migrate"},
 		},
@@ -427,16 +476,30 @@ var Root = CommandInfo{
 				{Name: "--projects=<a,b>", Description: "Only these projects"},
 				{Name: "--workspaces=<x,y>", Description: "Only these workspaces; every project they use must be in --projects"},
 			},
-			Examples: []string{"crew export", "crew export ~/Desktop/crew.json --all", "crew export --projects=speak-api,ai-tutor-api --workspaces=phone-speak"},
+			Examples: []string{"crew export", "crew export ~/Desktop/crew.json --all", "crew export --projects=store-api,checkout-api --workspaces=store-front"},
 		},
 		{
-			Name:        "import",
-			Description: "Bring a crew export into this machine, one item at a time. Each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup, n skips, r replaces one already here. Then each workspace: y creates it with a checkout of every member (no installs). Every y is applied at once; esc keeps what was done.",
-			Usage:       "crew import <file> [--all]",
+			Name:         "import",
+			Description:  "Bring a crew export into this machine. Bare, a wizard walks one card per item: each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once.",
+			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name>]",
+			OutputFormat: "<project|workspace>\\t<name>\\t<status|outcome>\\t<detail>",
 			Flags: []FlagInfo{
-				{Name: "--all", Description: "No wizard: import everything new, keep what exists, refuse if any path is missing — never guesses, never clones"},
+				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here (suggested path, clone target, missing members)"},
+				{Name: "--all", Description: "Import everything new, keep what exists, refuse if any path is missing — never guesses. With --clone, missing repos are cloned where a card would offer; with --replace, records of the same name are swapped out"},
+				{Name: "--path=<dir>", Description: "project: use this checkout instead of the exported path"},
+				{Name: "--clone[=<dir>]", Description: "project: clone the origin remote when the path is not here and no sibling was found — beside a known repo (the plan's clone target) or into <dir>"},
+				{Name: "--replace", Description: "project: swap out the local record of the same name"},
+				{Name: "--name=<new>", Description: "project: import under another name (bindings pointing at the old name are left alone)"},
+				{Name: "--setup=<cmd>", Description: "project: override the setup command"},
 			},
-			Examples: []string{"crew import ~/Desktop/crew.json", "crew import crew-export.json --all"},
+			Examples: []string{
+				"crew import ~/Desktop/crew.json",
+				"crew import crew.json --plan",
+				"crew import crew.json project checkout-api --clone",
+				"crew import crew.json project store-api --path=~/code/store-api --replace",
+				"crew import crew.json workspace store-front",
+				"crew import crew.json --all --clone",
+			},
 		},
 		{
 			Name:         "trash",
@@ -446,11 +509,15 @@ var Root = CommandInfo{
 			Examples:     []string{"crew trash", "crew trash empty"},
 		},
 		{
-			Name:        "debug",
-			Description: "Open the debug log (~/.crew/debug.log): every tmux, git, editor, package-manager, mise and trash command crew ran, with errors. Binding values are never logged.",
-			Usage:       "crew debug",
-			TUI:         true,
-			Examples:    []string{"crew debug"},
+			Name:         "debug",
+			Description:  "Follow the debug log (~/.crew/debug.log): every tmux, git, editor, package-manager, mise and trash command crew ran, with errors. Binding values are never logged. --tail prints the last lines and returns; --json parses them.",
+			Usage:        "crew debug [--tail=<n>]",
+			OutputFormat: "<date> <time> [<category>] <message>",
+			TUI:          true,
+			Flags: []FlagInfo{
+				{Name: "--tail=<n>", Description: "Print the last n lines instead of following (--json alone implies 200)"},
+			},
+			Examples: []string{"crew debug", "crew debug --tail=50", "crew debug --tail=200 --json"},
 		},
 		{
 			Name:        "setup",
@@ -459,14 +526,15 @@ var Root = CommandInfo{
 			Flags: []FlagInfo{
 				{Name: "--no-smoke", Description: "Skip the smoke start"},
 			},
-			Examples: []string{"crew setup phone-speak/wrk3"},
+			Examples: []string{"crew setup store-front/wrk3"},
 		},
 		{
 			Name:        "uninstall",
 			Description: "Stop every dev server and remove the crew binary. ~/.crew — workspace config and every worktree checkout — is kept unless --purge is given, which removes the checkouts through git and deletes the directory.",
-			Usage:       "crew uninstall [--purge]",
+			Usage:       "crew uninstall [--purge] [--yes]",
 			Flags: []FlagInfo{
 				{Name: "--purge", Description: "Also remove every workspace's checkouts and ~/.crew. Uncommitted work in checkouts is lost."},
+				{Name: "--yes", Description: "Skip the confirmation prompt"},
 			},
 			Examples: []string{"crew uninstall", "crew uninstall --purge"},
 		},
@@ -509,7 +577,7 @@ func Run(args []string, asJSON bool) {
 		cmd = child
 	}
 
-	printHelp(cmd, filtered)
+	printHelp(os.Stdout, cmd, filtered)
 }
 
 func findSubcommand(parent *CommandInfo, name string) *CommandInfo {
@@ -521,20 +589,20 @@ func findSubcommand(parent *CommandInfo, name string) *CommandInfo {
 	return nil
 }
 
-func printHelp(cmd *CommandInfo, path []string) {
+func printHelp(w io.Writer, cmd *CommandInfo, path []string) {
 	fullName := "crew"
 	if len(path) > 0 {
 		fullName += " " + strings.Join(path, " ")
 	}
 
-	fmt.Printf("%s - %s\n", fullName, cmd.Description)
+	fmt.Fprintf(w, "%s - %s\n", fullName, cmd.Description)
 
 	if cmd.Usage != "" {
-		fmt.Printf("\nUsage: %s\n", cmd.Usage)
+		fmt.Fprintf(w, "\nUsage: %s\n", cmd.Usage)
 	}
 
 	if len(cmd.Subcommands) > 0 {
-		fmt.Println("\nCommands:")
+		fmt.Fprintln(w, "\nCommands:")
 		maxLen := 0
 		for _, sc := range cmd.Subcommands {
 			if len(sc.Name) > maxLen {
@@ -546,17 +614,17 @@ func printHelp(cmd *CommandInfo, path []string) {
 			if sc.TUI {
 				suffix = " (TUI)"
 			}
-			fmt.Printf("  %-*s  %s%s\n", maxLen, sc.Name, sc.Description, suffix)
+			fmt.Fprintf(w, "  %-*s  %s%s\n", maxLen, sc.Name, sc.Description, suffix)
 		}
 		hint := "crew help <command>"
 		if len(path) > 0 {
 			hint = "crew help " + strings.Join(path, " ") + " <command>"
 		}
-		fmt.Printf("\nRun '%s' for details.\n", hint)
+		fmt.Fprintf(w, "\nRun '%s' for details.\n", hint)
 	}
 
 	if len(cmd.Flags) > 0 {
-		fmt.Println("\nFlags:")
+		fmt.Fprintln(w, "\nFlags:")
 		maxLen := 0
 		for _, f := range cmd.Flags {
 			if len(f.Name) > maxLen {
@@ -570,18 +638,25 @@ func printHelp(cmd *CommandInfo, path []string) {
 			} else if f.Default != "" {
 				extra = " (default: " + f.Default + ")"
 			}
-			fmt.Printf("  %-*s  %s%s\n", maxLen, f.Name, f.Description, extra)
+			fmt.Fprintf(w, "  %-*s  %s%s\n", maxLen, f.Name, f.Description, extra)
 		}
 	}
 
 	if cmd.OutputFormat != "" {
-		fmt.Printf("\nOutput: %s\n", cmd.OutputFormat)
+		fmt.Fprintf(w, "\nOutput: %s\n", cmd.OutputFormat)
 	}
 
 	if len(cmd.Examples) > 0 {
-		fmt.Println("\nExamples:")
+		fmt.Fprintln(w, "\nExamples:")
 		for _, ex := range cmd.Examples {
-			fmt.Printf("  %s\n", ex)
+			fmt.Fprintf(w, "  %s\n", ex)
+		}
+	}
+
+	if len(cmd.Notes) > 0 {
+		fmt.Fprintln(w, "\nNotes:")
+		for _, n := range cmd.Notes {
+			fmt.Fprintf(w, "  %s\n", n)
 		}
 	}
 }

@@ -195,13 +195,13 @@ type legendRow struct{ token, expands, note string }
 // The legend is the whole grammar. If dev.parseToken learns a form it belongs
 // here too, or nobody will find it from the TUI.
 var tokenLegend = []legendRow{
-	{"{{speak-api}}", "http://localhost:54494", "URL of its one server"},
-	{"{{speak-api.host}}", "localhost:54494", "ws://{{speak-api.host}}/rtc"},
-	{"{{speak-api.port}}", "54494", ""},
-	{"{{ai-tutor-api/worker}}", "http://localhost:54497", "a named server"},
-	{"{{ai-tutor-api/worker.port}}", "54497", ".host / .port go after the server"},
+	{"{{store-api}}", "http://localhost:54494", "URL of its one server"},
+	{"{{store-api.host}}", "localhost:54494", "ws://{{store-api.host}}/rtc"},
+	{"{{store-api.port}}", "54494", ""},
+	{"{{checkout-api/worker}}", "http://localhost:54497", "a named server"},
+	{"{{checkout-api/worker.port}}", "54497", ".host / .port go after the server"},
 	{"{{worktree}}", "wrk1", "this worktree's name"},
-	{"{{workspace}}", "phone-speak", "this workspace's name"},
+	{"{{workspace}}", "store-front", "this workspace's name"},
 }
 
 // renderTokenLegend lists the tokens and the projects they can point at, so

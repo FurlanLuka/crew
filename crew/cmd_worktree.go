@@ -50,24 +50,24 @@ func cmdAddWorktree() {
 
 	statuses := workspace.BaseStatuses(ws)
 	if pull && workspace.Stale(statuses) {
-		fmt.Printf("Pulling latest…\n")
+		fmt.Fprintf(human, "Pulling latest…\n")
 		for _, err := range workspace.UpdateBases(ws, statuses) {
 			fmt.Fprintf(os.Stderr, "  ! %v\n", err)
 		}
 		statuses = workspace.BaseStatuses(ws)
 	}
-	fmt.Printf("Branching from\n\n%s", workspace.FormatBaseStatuses(statuses))
+	fmt.Fprintf(human, "Branching from\n\n%s", workspace.FormatBaseStatuses(statuses))
 	if warn := workspace.StaleWarning(statuses); warn != "" {
-		fmt.Printf("\n  %s\n", warn)
+		fmt.Fprintf(human, "\n  %s\n", warn)
 		if !pull {
-			fmt.Printf("  crew add worktree %s --pull fast-forwards the local bases first.\n", ref)
+			fmt.Fprintf(human, "  crew add worktree %s --pull fast-forwards the local bases first.\n", ref)
 		}
 	}
 
 	if notice := workspace.TrashNotice(); notice != "" {
-		fmt.Printf("\n  %s\n", notice)
+		fmt.Fprintf(human, "\n  %s\n", notice)
 	}
-	fmt.Printf("\nCreating %s\n\n", ref)
+	fmt.Fprintf(human, "\nCreating %s\n\n", ref)
 	opts := workspace.CheckoutOptions{Install: install, Smoke: smoke && install, Progress: printSetupProgress}
 	h, err := workspace.AddWorktree(ref.Workspace, ref.Worktree, opts)
 	if err != nil {
@@ -81,7 +81,7 @@ func cmdAddWorktree() {
 // there is a terminal to show it in; otherwise the summary and the way out,
 // and exit 1 while anything is recorded so a script can tell.
 func landOn(ref workspace.Ref, created string, h *workspace.Health) {
-	if isTerminal() {
+	if isTerminal() && !jsonOutput {
 		page := workspace.NewWorktreeView(ref)
 		page.SetStatus(created + healthSuffix(h))
 		runTUI(page)
@@ -91,6 +91,21 @@ func landOn(ref workspace.Ref, created string, h *workspace.Health) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+	if jsonOutput {
+		type projOut struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		}
+		projects := make([]projOut, 0, len(res.Projects))
+		for _, p := range res.Projects {
+			projects = append(projects, projOut{p.Name, p.Path})
+		}
+		printJSON(map[string]any{"ref": ref.String(), "projects": projects, "health": h})
+		if h != nil {
+			os.Exit(1)
+		}
+		return
 	}
 	text, failed := renderCreationSummary(res, created, h)
 	fmt.Print(text)
@@ -122,7 +137,7 @@ func healthSuffix(h *workspace.Health) string {
 	return " — " + h.Summary()
 }
 
-func printIssues(h *workspace.Health) { fmt.Print(renderIssues(h)) }
+func printIssues(h *workspace.Health) { fmt.Fprint(human, renderIssues(h)) }
 
 // renderIssues is each issue with its stage and the last few lines of
 // evidence, the way the terminal shows it.
@@ -151,7 +166,7 @@ func cmdSetup() {
 	res := mustResolve(os.Args[2])
 	_, smoke, _ := parseCheckoutFlags(os.Args[3:])
 
-	fmt.Printf("Setting up %s\n\n", res.Ref)
+	fmt.Fprintf(human, "Setting up %s\n\n", res.Ref)
 	result, err := workspace.Setup(res.Ref, workspace.CheckoutOptions{Install: true, Smoke: smoke, Progress: printSetupProgress})
 	if errors.Is(err, workspace.ErrServersRunning) {
 		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — the smoke would restart them. crew dev stop %s first, or --no-smoke.\n", res.Ref, res.Ref)
@@ -161,6 +176,13 @@ func cmdSetup() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	if jsonOutput {
+		printJSON(jsonVerifyResult(result))
+		if result.Health != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	printSmokeTails(result.Smoke)
 	if result.Health != nil {
 		fmt.Println()
@@ -169,6 +191,15 @@ func cmdSetup() {
 		os.Exit(1)
 	}
 	fmt.Printf("\n%s checks out\n", res.Ref)
+}
+
+// jsonVerifyResult is the verify/setup result with an empty smoke list as
+// [] — a reader should never branch on null.
+func jsonVerifyResult(r workspace.VerifyResult) workspace.VerifyResult {
+	if r.Smoke == nil {
+		r.Smoke = []workspace.SmokeResult{}
+	}
+	return r
 }
 
 // parseCheckoutFlags reads --no-install / --no-smoke / --pull. Exits on
@@ -197,24 +228,30 @@ func printSetupProgress(project string, r exec.SetupResult) {
 	if r.Err != nil {
 		mark = "✗"
 	}
-	fmt.Printf("  %-16s %s %-14s %s\n", project, mark, r.Step.Name, r.Duration.Round(time.Second))
+	fmt.Fprintf(human, "  %-16s %s %-14s %s\n", project, mark, r.Step.Name, r.Duration.Round(time.Second))
 }
 
 // printSmokeTails shows the last log lines of each server that died; the
 // alive/dead line per server was already printed as a step.
 func printSmokeTails(results []workspace.SmokeResult) {
 	for _, r := range workspace.SmokeFailures(results) {
+		if r.State() == workspace.SmokeUnreached {
+			fmt.Fprintf(human, "      running but nothing listens on :%d\n", r.Port)
+		}
 		for _, line := range strings.Split(r.Tail, "\n") {
 			if line != "" {
-				fmt.Printf("      %s\n", line)
+				fmt.Fprintf(human, "      %s\n", line)
 			}
 		}
+	}
+	for _, note := range workspace.SmokeNotes(results) {
+		fmt.Fprintf(human, "  · %s\n", note)
 	}
 }
 
 // printFixHint is the way out of a recorded failure, printed wherever one
 // is reported.
-func printFixHint(ref workspace.Ref) { fmt.Print(fixHint(ref)) }
+func printFixHint(ref workspace.Ref) { fmt.Fprint(human, fixHint(ref)) }
 
 func fixHint(ref workspace.Ref) string {
 	return fmt.Sprintf("    crew fix %s     Claude in the worktree with this failure\n    crew verify %s  finish what is missing and check again\n", ref, ref)
@@ -254,7 +291,7 @@ func cmdVerify() {
 	res := mustResolve(os.Args[2])
 	result := verifyOrExit(res)
 	if jsonOutput {
-		printJSON(result)
+		printJSON(jsonVerifyResult(result))
 	} else {
 		printSmokeTails(result.Smoke)
 		if result.Health == nil {
@@ -276,13 +313,16 @@ type fixAction int
 const (
 	fixNothingToCheck fixAction = iota // nothing recorded, no servers: say so
 	fixVerifyFirst                     // nothing recorded: verify, then decide
+	fixCheckRunning                    // nothing recorded, servers up: check them as they run
 	fixNow                             // a failure is recorded: straight to Claude
 )
 
-func fixPlan(health *workspace.Health, hasServers bool) fixAction {
+func fixPlan(health *workspace.Health, hasServers, running bool) fixAction {
 	switch {
 	case health != nil:
 		return fixNow
+	case running:
+		return fixCheckRunning
 	case hasServers:
 		return fixVerifyFirst
 	default:
@@ -292,28 +332,84 @@ func fixPlan(health *workspace.Health, hasServers bool) fixAction {
 
 // cmdFix opens Claude on the worktree with the recorded failure in front of
 // it. Nothing recorded → verify first, so it is one command either way.
+// --print hands the same prompt to whoever is already running — an agent
+// fixing it itself needs the evidence, not another Claude.
 func cmdFix() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew fix <workspace>[/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew fix <workspace>[/<worktree>] [--print]\n")
 		os.Exit(1)
 	}
-	requireTerminal("fix")
+	printPrompt := false
+	for _, arg := range os.Args[3:] {
+		switch arg {
+		case "--print":
+			printPrompt = true
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+	if !printPrompt && !jsonOutput && !isTerminal() {
+		// No terminal means a script or an agent: opening Claude is not an
+		// option, the prompt itself is what they need. Same as --print.
+		fmt.Fprintf(os.Stderr, "no terminal — printing the fix prompt (crew fix %s --print)\n", os.Args[2])
+		printPrompt = true
+	}
+	if printPrompt {
+		// stdout is the prompt and nothing else; a capturing agent must not
+		// get the verify narration inside it.
+		human = os.Stderr
+	}
+
 	res := mustResolve(os.Args[2])
-	switch fixPlan(res.Health, hasServers(res)) {
-	case fixNothingToCheck:
-		fmt.Printf("nothing recorded on %s, and no dev servers to check\n", res.Ref)
+	if jsonOutput {
+		// The record as it stands; a check is crew verify --json's job.
+		if res.Health == nil {
+			fmt.Fprintf(os.Stderr, "nothing recorded on %s — crew verify %s --json checks\n", res.Ref, res.Ref)
+			printJSON(workspace.Health{Issues: []workspace.Issue{}})
+			return
+		}
+		printJSON(res.Health)
 		return
+	}
+	health := res.Health
+	running := dev.Running(res.Slug)
+	switch fixPlan(res.Health, hasServers(res), running) {
+	case fixNow:
+		// Something recorded and servers up: the record plus what they are
+		// doing right now.
+		if running {
+			health = workspace.MergeHealth(res.Health, workspace.CheckHealth(workspace.CheckServers(res)))
+		}
+	case fixNothingToCheck:
+		fmt.Fprintf(human, "nothing recorded on %s, and no dev servers to check\n", res.Ref)
+		return
+	case fixCheckRunning:
+		// A verify would restart what is running; look at it as it is.
+		fmt.Fprintf(human, "Nothing recorded on %s — checking the running servers…\n\n", res.Ref)
+		results := workspace.CheckServers(res)
+		printSmokeTails(results)
+		if health = workspace.CheckHealth(results); health == nil {
+			fmt.Fprintf(human, "\nnothing wrong with what is running on %s\n", res.Ref)
+			return
+		}
+		fmt.Fprintln(human)
 	case fixVerifyFirst:
-		fmt.Printf("Nothing recorded on %s — checking…\n\n", res.Ref)
+		fmt.Fprintf(human, "Nothing recorded on %s — checking…\n\n", res.Ref)
 		result := verifyOrExit(res)
 		printSmokeTails(result.Smoke)
 		if res.Health == nil {
-			fmt.Printf("\nnothing recorded — %s checks out\n", res.Ref)
+			fmt.Fprintf(human, "\nnothing recorded — %s checks out\n", res.Ref)
 			return
 		}
-		fmt.Println()
+		health = res.Health
+		fmt.Fprintln(human)
 	}
-	cmd, err := workspace.FixCommand(res, workspace.FixAnomalies(res))
+	if printPrompt {
+		fmt.Print(workspace.RenderFixPrompt(res, health, workspace.FixAnomalies(res)))
+		return
+	}
+	cmd, err := workspace.FixCommandFor(res, health, workspace.FixAnomalies(res))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -367,11 +463,12 @@ func cmdLsWorktrees() {
 	}
 
 	type worktreeOut struct {
-		Ref        string `json:"ref"`
-		Path       string `json:"path"`
-		DevRunning bool   `json:"dev_running"`
-		SizeBytes  int64  `json:"size_bytes,omitempty"`
-		Health     string `json:"health,omitempty"`
+		Ref        string            `json:"ref"`
+		Path       string            `json:"path"`
+		DevRunning bool              `json:"dev_running"`
+		SizeBytes  int64             `json:"size_bytes,omitempty"`
+		Health     string            `json:"health,omitempty"`
+		Issues     []workspace.Issue `json:"issues,omitempty"`
 	}
 
 	out := []worktreeOut{}
@@ -388,6 +485,9 @@ func cmdLsWorktrees() {
 			}
 			if wt, err := workspace.WorktreeOf(ws, ref); err == nil {
 				row.Health = wt.Health.Summary()
+				if wt.Health != nil {
+					row.Issues = wt.Health.Issues
+				}
 			}
 			// A walk; a worktree with a full build inside takes a while.
 			if withSize {
@@ -609,34 +709,63 @@ func runBindingScan(projName string, apply bool) {
 
 	dirs := project.CheckoutDirs(projName)
 	proposals := dev.ProposeBindings(project.ScanEnv(projName), project.ConfiguredPorts())
-	if len(proposals) == 0 {
-		fmt.Printf("Scanned %d checkouts of %s — nothing in their env files points at a port crew allocates.\n", len(dirs), projName)
-		return
-	}
 
 	declared := map[string]bool{}
 	for _, b := range p.Bindings {
 		declared[b.Var] = true
 	}
 
-	fmt.Printf("Scanned %d checkouts of %s\n\n", len(dirs), projName)
+	// One row per proposal, decided before anything prints, so the JSON and
+	// text forms cannot drift.
+	type scanRow struct {
+		Var      string `json:"var"`
+		Value    string `json:"value"`
+		Port     int    `json:"port,omitempty"`
+		Template string `json:"template,omitempty"`
+		Status   string `json:"status"` // already bound | ambiguous | proposed | added | failed
+		Detail   string `json:"detail,omitempty"`
+	}
+	rows := make([]scanRow, 0, len(proposals))
 	applied := 0
 	for _, prop := range proposals {
+		row := scanRow{Var: prop.Var, Value: prop.Value, Port: prop.Port, Template: prop.Template}
 		switch {
 		case declared[prop.Var]:
-			fmt.Printf("  · %-22s %-24s already bound\n", prop.Var, prop.Value)
+			row.Status = "already bound"
 		case prop.Ambiguous:
-			fmt.Printf("  ? %-22s %-24s two projects configured on :%d — pick one by hand\n",
-				prop.Var, prop.Value, prop.Port)
-		default:
-			if apply {
-				if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template}); err != nil {
-					fmt.Printf("  ! %-22s %s\n", prop.Var, err)
-					continue
-				}
+			row.Status, row.Detail = "ambiguous", fmt.Sprintf("two projects configured on :%d — pick one by hand", prop.Port)
+		case apply:
+			if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template}); err != nil {
+				row.Status, row.Detail = "failed", err.Error()
+			} else {
+				row.Status = "added"
 				applied++
 			}
-			fmt.Printf("  ✓ %-22s %-24s → %s\n", prop.Var, prop.Value, prop.Template)
+		default:
+			row.Status = "proposed"
+		}
+		rows = append(rows, row)
+	}
+
+	if jsonOutput {
+		printJSON(rows)
+		return
+	}
+	if len(rows) == 0 {
+		fmt.Printf("Scanned %d checkouts of %s — nothing in their env files points at a port crew allocates.\n", len(dirs), projName)
+		return
+	}
+	fmt.Printf("Scanned %d checkouts of %s\n\n", len(dirs), projName)
+	for _, r := range rows {
+		switch r.Status {
+		case "already bound":
+			fmt.Printf("  · %-22s %-24s already bound\n", r.Var, r.Value)
+		case "ambiguous":
+			fmt.Printf("  ? %-22s %-24s %s\n", r.Var, r.Value, r.Detail)
+		case "failed":
+			fmt.Printf("  ! %-22s %s\n", r.Var, r.Detail)
+		default:
+			fmt.Printf("  ✓ %-22s %-24s → %s\n", r.Var, r.Value, r.Template)
 		}
 	}
 

@@ -18,12 +18,12 @@ func TestRenderWorktrees_SizeColumnAndTrashNotice(t *testing.T) {
 
 	v := NewView()
 	v.state = stateWorktrees
-	v.selectedWs = "phone-speak"
+	v.selectedWs = "store-front"
 	v.summaries = []Summary{
-		{Ref: Ref{Workspace: "phone-speak", Worktree: "wrk1"}, Workspace: "phone-speak", Worktree: "wrk1", DevRunning: true},
-		{Ref: Ref{Workspace: "phone-speak", Worktree: "wrk10"}, Workspace: "phone-speak", Worktree: "wrk10"},
+		{Ref: Ref{Workspace: "store-front", Worktree: "wrk1"}, Workspace: "store-front", Worktree: "wrk1", DevRunning: true},
+		{Ref: Ref{Workspace: "store-front", Worktree: "wrk10"}, Workspace: "store-front", Worktree: "wrk10"},
 	}
-	v.sizes["phone-speak/wrk1"] = 161 << 30
+	v.sizes["store-front/wrk1"] = 161 << 30
 	v.summaries[1].Health = "server died: api/api"
 
 	var b strings.Builder
@@ -177,4 +177,90 @@ func TestWorktreeAdded_PushesThePage(t *testing.T) {
 		}
 	}
 	_ = m
+}
+
+func keyMsg(s string) tea.KeyMsg {
+	switch s {
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case " ":
+		return tea.KeyMsg{Type: tea.KeySpace}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	}
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+// Space ticks, enter walks a role prompt per ticked project, then one mode
+// step, then one add of all of them. Nothing ticked: the row under the
+// cursor, as before.
+func TestProjectPick_MultiSelect(t *testing.T) {
+	setupTestConfig(t)
+	v := NewView()
+	v.state = stateProjectPick
+	v.selectedWs = "ws"
+	v.poolNames = []string{"api", "web", "worker"}
+
+	step := func(k string) {
+		m, _ := v.Update(keyMsg(k))
+		v = m.(View)
+	}
+	step(" ")    // tick api
+	step("down") // → web
+	step("down") // → worker
+	step(" ")    // tick worker
+	if got := stripANSI(v.View()); !strings.Contains(got, "✓ api") || !strings.Contains(got, "○ web") || !strings.Contains(got, "✓ worker") {
+		t.Errorf("ticks not rendered:\n%s", got)
+	}
+	step("enter")
+	if v.state != stateProjectRole || v.pickedProject != "api" || len(v.queue) != 2 {
+		t.Fatalf("after enter: state=%v picked=%q queue=%v", v.state, v.pickedProject, v.queue)
+	}
+	if got := stripANSI(v.View()); !strings.Contains(got, "Adding 'api' (1 of 2)") {
+		t.Errorf("role prompt should count:\n%s", got)
+	}
+	v.roleInput.SetValue("Backend")
+	step("enter")
+	if v.state != stateProjectRole || v.pickedProject != "worker" {
+		t.Fatalf("second role prompt: state=%v picked=%q", v.state, v.pickedProject)
+	}
+	step("enter") // empty role → default
+	if v.state != stateProjectMode {
+		t.Fatalf("after the last role: state=%v", v.state)
+	}
+	want := []ProjectSpec{{Name: "api", Role: "Backend"}, {Name: "worker", Role: "works on worker"}}
+	if len(v.picked) != 2 || v.picked[0] != want[0] || v.picked[1] != want[1] {
+		t.Errorf("picked = %+v, want %+v", v.picked, want)
+	}
+	if got := stripANSI(v.View()); !strings.Contains(got, "Adding api, worker") {
+		t.Errorf("mode step names them all:\n%s", got)
+	}
+
+	// Nothing ticked: enter takes the cursor row, one role prompt, no count.
+	v = NewView()
+	v.state = stateProjectPick
+	v.poolNames = []string{"api", "web"}
+	step("down")
+	step("enter")
+	if v.state != stateProjectRole || v.pickedProject != "web" || len(v.queue) != 1 {
+		t.Errorf("single pick: state=%v picked=%q queue=%v", v.state, v.pickedProject, v.queue)
+	}
+	if got := stripANSI(v.View()); strings.Contains(got, "of 1") {
+		t.Errorf("a single pick should not count:\n%s", got)
+	}
+}
+
+func TestAddedStatus(t *testing.T) {
+	if got := addedStatus([]string{"api", "web"}, nil); got != "Added api, web" {
+		t.Errorf("all good → %q", got)
+	}
+	issues := []Issue{{Stage: StageInstall, Project: "web"}}
+	if got := addedStatus([]string{"api", "web"}, issues); got != "Added api — web failed, recorded on the worktree (f fix on its page)" {
+		t.Errorf("one failed → %q", got)
+	}
+	if got := addedStatus([]string{"web"}, issues); got != "Added nothing — web failed, recorded on the worktree (f fix on its page)" {
+		t.Errorf("all failed → %q", got)
+	}
 }

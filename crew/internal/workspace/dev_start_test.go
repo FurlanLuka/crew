@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
@@ -66,7 +67,7 @@ func TestStartDev_PassesOverridesAndIdentityThrough(t *testing.T) {
 		t.Errorf("API_URL = %+v, want the wrk2 override", got)
 	}
 	if got := devResult(t, result, "AGENT"); got.Value != "wrk2" {
-		t.Errorf("AGENT = %q, want the selected worktree — this is the LiveKit agent-name collision", got.Value)
+		t.Errorf("AGENT = %q, want the selected worktree — this is the Signals agent-name collision", got.Value)
 	}
 }
 
@@ -216,5 +217,158 @@ func TestStartDev_PortsSurviveRestart(t *testing.T) {
 	}
 	if got := second.Ports[dev.PortKey("api", "api")]; got != firstPort {
 		t.Errorf("api restarted on %d, want the reserved %d", got, firstPort)
+	}
+}
+
+// Several projects in one call: every spec checked before anything happens,
+// installs run at once, an install failure keeps the member and lands on the
+// worktree's health.
+func TestAddProjects_ManyAtOnce(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	for _, name := range []string{"web", "worker", "slow"} {
+		repo := filepath.Join(t.TempDir(), name)
+		os.MkdirAll(repo, 0o755)
+		initRepo(t, repo)
+		project.Add(project.Project{Name: name, Path: repo})
+	}
+	project.SetSetup("web", "exit 7")
+	project.SetSetup("worker", "sleep 1")
+	project.SetSetup("slow", "sleep 1")
+
+	// Pre-flight: a bad call fails whole, nothing added.
+	for _, bad := range [][]ProjectSpec{{{Name: "web"}, {Name: "nope"}}, {{Name: "web"}, {Name: "web"}}, {}} {
+		if _, err := AddProjects("ws", bad, CheckoutOptions{}); err == nil {
+			t.Errorf("%+v should fail before any side effect", bad)
+		}
+	}
+	if ws, _ := Load("ws"); len(ws.Projects) != 1 {
+		t.Fatalf("nothing should have been added: %+v", ws.Projects)
+	}
+
+	// Two one-second installs finishing together is the parallelism; serial
+	// would be two seconds.
+	start := time.Now()
+	results, err := AddProjects("ws", []ProjectSpec{{Name: "web", Role: "ui"}, {Name: "worker"}, {Name: "slow"}}, CheckoutOptions{Install: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > 1800*time.Millisecond {
+		t.Errorf("installs did not run in parallel: %s", took)
+	}
+	if len(results) != 1 || results[0].Ref.Worktree != DefaultWorktree {
+		t.Fatalf("results = %+v", results)
+	}
+	if issues := results[0].Issues; len(issues) != 1 || issues[0].Project != "web" || issues[0].Stage != StageInstall {
+		t.Errorf("issues = %+v", issues)
+	}
+	ws, _ := Load("ws")
+	names := []string{}
+	for _, wp := range ws.Projects {
+		names = append(names, wp.Name)
+	}
+	if strings.Join(names, ",") != "api,web,worker,slow" {
+		t.Errorf("members = %v", names)
+	}
+	res, _ := Resolve(Ref{Workspace: "ws", Worktree: DefaultWorktree})
+	if res.Health == nil || res.Health.Summary() != "install failed: web" {
+		t.Errorf("health = %+v", res.Health)
+	}
+	if wp := ws.Projects[1]; wp.Role != "ui" {
+		t.Errorf("role not kept: %+v", wp)
+	}
+}
+
+// A checkout that fails is recorded on every worktree it failed in, the
+// project stays a member, and the good project beside it is unaffected —
+// verify finishes what is missing.
+func TestAddProjects_CheckoutFailureIsRecordedAndKept(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	AddWorktree("ws", "wrk2", CheckoutOptions{})
+	good := filepath.Join(t.TempDir(), "web")
+	os.MkdirAll(good, 0o755)
+	initRepo(t, good)
+	project.Add(project.Project{Name: "web", Path: good})
+	// Not a git repository: every worktree's checkout of it fails.
+	project.Add(project.Project{Name: "broken", Path: t.TempDir()})
+
+	results, err := AddProjects("ws", []ProjectSpec{{Name: "web"}, {Name: "broken"}}, CheckoutOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if len(r.Issues) != 1 || r.Issues[0].Stage != StageCheckout || r.Issues[0].Project != "broken" {
+			t.Errorf("%s: issues = %+v", r.Ref, r.Issues)
+		}
+	}
+	ws, _ := Load("ws")
+	if len(ws.Projects) != 3 || ws.Projects[2].Name != "broken" {
+		t.Errorf("broken should stay a member: %+v", ws.Projects)
+	}
+	for _, wt := range []string{DefaultWorktree, "wrk2"} {
+		ref := Ref{Workspace: "ws", Worktree: wt}
+		if _, err := os.Stat(WorktreePath(ref, "web")); err != nil {
+			t.Errorf("%s: web's checkout should be there", ref)
+		}
+		if _, err := os.Stat(WorktreePath(ref, "broken")); err == nil {
+			t.Errorf("%s: broken should have no checkout", ref)
+		}
+		res, _ := Resolve(ref)
+		if res.Health == nil || res.Health.Summary() != "checkout failed: broken" {
+			t.Errorf("%s health = %+v", ref, res.Health)
+		}
+	}
+}
+
+// A second add keeps the first add's record about other projects.
+func TestAddProjects_KeepsOtherProjectsIssues(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	RecordHealth(ref, &Health{At: time.Now(), Issues: []Issue{{Stage: StageCheckout, Project: "api", Detail: "old"}}})
+	repo := filepath.Join(t.TempDir(), "web")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "web", Path: repo})
+	project.SetSetup("web", "exit 7")
+
+	if _, err := AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Install: true}); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := Resolve(ref)
+	if res.Health == nil || len(res.Health.Issues) != 2 ||
+		res.Health.Issues[0].Project != "api" || res.Health.Issues[0].Detail != "old" ||
+		res.Health.Issues[1].Project != "web" || res.Health.Issues[1].Stage != StageInstall {
+		t.Errorf("health = %+v", res.Health)
+	}
+}
+
+// The page's rows get their check through one join; a key mismatch would
+// show plain ● everywhere. And a check of nothing running is nil.
+func TestLoadWorktreePage_JoinsTheCheck(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	newRepoWorkspace(t, "ws", "api")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+	res, _ := Resolve(Ref{Workspace: "ws", Worktree: DefaultWorktree})
+	if CheckServers(res) != nil {
+		t.Error("nothing running should check as nil")
+	}
+	if _, err := StartDev(res, true, false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dev.StopAll(res.Slug) })
+	// The pane's shell needs a moment to be running the command.
+	time.Sleep(time.Second)
+
+	page := loadWorktreePage(res, false)
+	if page.Items[0].Check != nil || page.CheckHealth != nil {
+		t.Errorf("without a check: %+v", page.Items[0])
+	}
+	page = loadWorktreePage(res, true)
+	if c := page.Items[0].Check; c == nil || !c.Alive || c.Listening || c.Port != page.Items[0].Port {
+		t.Errorf("with a check: %+v", page.Items[0])
+	}
+	if page.CheckHealth != nil {
+		t.Errorf("an idle, unreferenced worker is not a failure: %+v", page.CheckHealth)
 	}
 }

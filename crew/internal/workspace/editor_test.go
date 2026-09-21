@@ -22,8 +22,9 @@ func TestClaudeTaskFor_SingleProject(t *testing.T) {
 	if task.AddDirs != nil {
 		t.Errorf("AddDirs = %v, want nil", task.AddDirs)
 	}
-	if task.PromptFile != "" {
-		t.Errorf("PromptFile = %q, want empty", task.PromptFile)
+	// Every launch carries the prompt now — the crew section is for any size.
+	if task.PromptFile != PromptFilePath(Ref{Workspace: "solo"}) {
+		t.Errorf("PromptFile = %q", task.PromptFile)
 	}
 	if !task.SkipPermissions {
 		t.Error("SkipPermissions should be true — both launch modes skip")
@@ -91,7 +92,7 @@ func TestClaudeTaskFor_AgreesWithBuildClaudeParts(t *testing.T) {
 		res := newTestWorkspace(t, "ws", projects)
 
 		task := ClaudeTaskFor(res)
-		parts, workDir := buildClaudeParts(res, NeedsPrompt(res))
+		parts, workDir := buildClaudeParts(res, true)
 		cmd := strings.Join(parts, " ")
 
 		if task.LeadPath != workDir {
@@ -107,6 +108,9 @@ func TestClaudeTaskFor_AgreesWithBuildClaudeParts(t *testing.T) {
 		if (task.PromptFile != "") != strings.Contains(cmd, "$(cat ") {
 			t.Errorf("%d project(s): modes disagree on injecting the prompt (editor=%q, terminal=%s)",
 				len(projects), task.PromptFile, cmd)
+		}
+		if task.Ref != res.Ref.String() || !strings.Contains(cmd, "CREW_REF='"+task.Ref+"'") {
+			t.Errorf("%d project(s): CREW_REF disagrees (editor=%q, terminal=%s)", len(projects), task.Ref, cmd)
 		}
 	}
 }

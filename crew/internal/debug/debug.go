@@ -55,11 +55,19 @@ func truncateIfNeeded(path string) {
 	os.WriteFile(path, half, 0o644)
 }
 
+// DefaultTail is how much of the log a reader gets when they did not say.
+const DefaultTail = 200
+
 // ReadTail returns the last n lines from the debug log file.
 func ReadTail(n int) string {
+	return strings.Join(TailLines(n), "\n")
+}
+
+// TailLines is the last n lines of the log, oldest first.
+func TailLines(n int) []string {
 	f, err := os.Open(logPath())
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer f.Close()
 
@@ -68,10 +76,37 @@ func ReadTail(n int) string {
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
 	}
+	return lines
+}
 
-	return strings.Join(lines, "\n")
+// Entry is one log line as data: what Log wrote, split back apart.
+type Entry struct {
+	At       string `json:"at"`
+	Category string `json:"category"`
+	Message  string `json:"message"`
+}
+
+// ParseLines turns log lines into entries. A line that is not in Log's
+// shape (a continuation, a truncation marker) keeps its text as the message
+// with no time or category. Pure.
+func ParseLines(lines []string) []Entry {
+	entries := make([]Entry, 0, len(lines)) // never nil: --json prints [] on a fresh install
+	for _, l := range lines {
+		entries = append(entries, parseLine(l))
+	}
+	return entries
+}
+
+func parseLine(l string) Entry {
+	// "2006-01-02 15:04:05 [category] message"
+	if len(l) > 20 && l[10] == ' ' && l[19] == ' ' && strings.HasPrefix(l[20:], "[") {
+		rest := l[21:]
+		if end := strings.Index(rest, "] "); end > 0 {
+			return Entry{At: l[:19], Category: rest[:end], Message: rest[end+2:]}
+		}
+	}
+	return Entry{Message: l}
 }

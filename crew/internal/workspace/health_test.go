@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,6 +61,11 @@ func TestHealthUnmarshal_BackFillsStage(t *testing.T) {
 	}
 	if len(h.Issues) != 1 || h.Issues[0].Stage != StageSmoke || h.Summary() != "server died: api/api" {
 		t.Errorf("unmarshalled = %+v", h)
+	}
+	var unreached Health
+	json.Unmarshal([]byte(`{"at":"2026-09-07T10:00:00Z","issues":[{"stage":"smoke","project":"api","server":"api","reason":"not listening","detail":"x"}]}`), &unreached)
+	if unreached.Summary() != "server not listening: api/api" {
+		t.Errorf("reason lost on the way back: %+v", unreached)
 	}
 	var fresh Health
 	json.Unmarshal([]byte(`{"at":"2026-09-07T10:00:00Z","issues":[{"stage":"checkout","project":"web","detail":"x"}]}`), &fresh)
@@ -231,9 +237,9 @@ func TestVerify_FinishesMissingCheckoutsAndInstalls(t *testing.T) {
 
 func fixFixture(t *testing.T) *Resolved {
 	t.Helper()
-	newRepoWorkspace(t, "phone-speak", "speak-api")
-	project.AddDevServer("speak-api", project.DevServer{Name: "speak-api", Port: 3000, Command: "npm start"})
-	res, err := Resolve(Ref{Workspace: "phone-speak", Worktree: DefaultWorktree})
+	newRepoWorkspace(t, "store-front", "store-api")
+	project.AddDevServer("store-api", project.DevServer{Name: "store-api", Port: 3000, Command: "npm start"})
+	res, err := Resolve(Ref{Workspace: "store-front", Worktree: DefaultWorktree})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,10 +249,11 @@ func fixFixture(t *testing.T) *Resolved {
 func TestRenderFixPrompt_Golden(t *testing.T) {
 	res := fixFixture(t)
 	h := &Health{Issues: []Issue{
-		{Stage: StageCheckout, Project: "gcp-infra", Detail: "fatal: a branch named 'crew/phone-speak/main/gcp-infra' already exists"},
-		{Stage: StageSmoke, Project: "speak-api", Server: "speak-api", Detail: "  at loadConfig (src/config.ts:12)\nError: SPEAK_DB_URL is not set"},
+		{Stage: StageCheckout, Project: "infra-ops", Detail: "fatal: a branch named 'crew/store-front/main/infra-ops' already exists"},
+		{Stage: StageSmoke, Project: "store-api", Server: "store-api", Detail: "  at loadConfig (src/config.ts:12)\nError: STORE_DB_URL is not set"},
+		{Stage: StageSmoke, Project: "store-app", Server: "web", Reason: ReasonNotListening, Detail: "running but nothing listens on :54003\nvite ready"},
 	}}
-	got := RenderFixPrompt(res, h, "  speak-api\n    API_URL  left alone — tutor not in workspace\n")
+	got := RenderFixPrompt(res, h, "  store-api\n    API_URL  left alone — tutor not in workspace\n")
 	orientation := RenderPrompt(res, directBranches(res))
 	if !strings.HasPrefix(got, orientation) {
 		t.Fatalf("the fix prompt must start with the orientation prompt:\n%s", got)
@@ -255,28 +262,32 @@ func TestRenderFixPrompt_Golden(t *testing.T) {
 		"",
 		"## What failed",
 		"",
-		"Creating this worktree ran every step it could; these did not go through:",
+		"What crew found wrong on this worktree — at creation, on a verify, or looking at the servers as they run:",
 		"",
-		"gcp-infra — the git checkout failed:",
-		"    fatal: a branch named 'crew/phone-speak/main/gcp-infra' already exists",
+		"infra-ops — the git checkout failed:",
+		"    fatal: a branch named 'crew/store-front/main/infra-ops' already exists",
 		"",
-		"speak-api/speak-api — the server died within seconds of starting:",
+		"store-api/store-api — the server died within seconds of starting:",
 		"      at loadConfig (src/config.ts:12)",
-		"    Error: SPEAK_DB_URL is not set",
+		"    Error: STORE_DB_URL is not set",
+		"",
+		"store-app/web — the server kept running but never listened on its port — something points at that port (does its command bind $PORT?):",
+		"    running but nothing listens on :54003",
+		"    vite ready",
 		"",
 		"Env anomalies for this worktree (bindings crew could not resolve — a plain var missing from .env shows in the log above, not here):",
-		"    speak-api",
+		"    store-api",
 		"    API_URL  left alone — tutor not in workspace",
 		"",
-		"Fix the cause in this checkout — .env, an override (crew add override phone-speak/main VAR=value), code, or git — then run: crew verify phone-speak/main",
+		"Fix the cause in this checkout — .env, an override (crew add override store-front/main VAR=value), code, or git — then run: crew verify store-front/main",
 		"verify checks out anything still missing, re-runs the installs that failed, starts the servers and records what it finds; the worktree page stays locked until it passes.",
 		"",
 	}, "\n")
 	if tail := strings.TrimPrefix(got, orientation); tail != want {
 		t.Errorf("fix prompt tail =\n%s\nwant\n%s", tail, want)
 	}
-	got = strings.TrimPrefix(RenderFixPrompt(res, &Health{Issues: []Issue{{Stage: StageInstall, Project: "speak-api", Detail: "make sync:\nuv sync: No solution found"}}}, ""), orientation)
-	if !strings.Contains(got, "speak-api — the install failed:\n    make sync:\n    uv sync: No solution found") || strings.Contains(got, "Env anomalies") {
+	got = strings.TrimPrefix(RenderFixPrompt(res, &Health{Issues: []Issue{{Stage: StageInstall, Project: "store-api", Detail: "make sync:\nuv sync: No solution found"}}}, ""), orientation)
+	if !strings.Contains(got, "store-api — the install failed:\n    make sync:\n    uv sync: No solution found") || strings.Contains(got, "Env anomalies") {
 		t.Errorf("install prompt =\n%s", got)
 	}
 }
@@ -288,13 +299,10 @@ func TestFixCommand_AlwaysPassesThePrompt(t *testing.T) {
 		t.Skip("claude not installed")
 	}
 	res := fixFixture(t)
-	if NeedsPrompt(res) {
-		t.Fatal("fixture should be a single, non-direct project")
-	}
 	if _, err := FixCommand(res, ""); err == nil {
 		t.Error("nothing recorded must be refused")
 	}
-	res.Health = &Health{Issues: []Issue{{Stage: StageSmoke, Project: "speak-api", Server: "speak-api", Detail: "died"}}}
+	res.Health = &Health{Issues: []Issue{{Stage: StageSmoke, Project: "store-api", Server: "store-api", Detail: "died"}}}
 	cmd, err := FixCommand(res, "")
 	if err != nil {
 		t.Fatal(err)
@@ -435,5 +443,113 @@ func TestSetup_RefusesWhileServersRun(t *testing.T) {
 	}
 	if _, err := Setup(ref, CheckoutOptions{Install: true}); err != nil {
 		t.Errorf("Setup without smoke should proceed: %v", err)
+	}
+}
+
+// A server that runs but never binds is a failure only when a binding
+// depends on it; an unreferenced worker is a note.
+func TestAddWorktree_NotListeningIsRecordedOnlyWhenReferenced(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	newRepoWorkspace(t, "ws", "api", "web")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+	t.Cleanup(func() { dev.StopAll("ws--wrk2"); dev.StopAll("ws--wrk3") })
+
+	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h != nil {
+		t.Errorf("unreferenced and alive should pass, got %+v", h)
+	}
+
+	project.AddBinding("web", project.Binding{Var: "API_URL", Value: "{{api}}"})
+	var steps []string
+	h, err = AddWorktree("ws", "wrk3", CheckoutOptions{Smoke: true, Progress: func(p string, r exec.SetupResult) {
+		if r.Err != nil {
+			steps = append(steps, p+":"+r.Step.Name+":"+r.Err.Error())
+		}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h == nil || h.Summary() != "server not listening: api/api" || h.Issues[0].Reason != ReasonNotListening ||
+		!strings.Contains(h.Issues[0].Detail, "nothing listens on :") {
+		t.Errorf("Health = %+v", h)
+	}
+	if len(steps) != 1 || !strings.HasPrefix(steps[0], "api:smoke api:not listening on :") {
+		t.Errorf("steps = %v", steps)
+	}
+}
+
+// A server that binds its port reads as listening — the green path exists
+// live, not only in hand-built structs (a wrong port field here would mark
+// every referenced server red with all the pure tests green).
+func TestAddWorktree_ListeningServerPasses(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	if _, err := osexec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	newRepoWorkspace(t, "ws", "api", "web")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "python3 -m http.server $PORT"})
+	project.AddBinding("web", project.Binding{Var: "API_URL", Value: "{{api}}"})
+	t.Cleanup(func() { dev.StopAll("ws--wrk2") })
+
+	h, err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h != nil {
+		t.Errorf("a listening, referenced server must pass: %+v", h)
+	}
+}
+
+func TestHealthWithout(t *testing.T) {
+	h := &Health{Issues: []Issue{{Stage: StageInstall, Project: "a"}, {Stage: StageSmoke, Project: "b", Server: "b"}}}
+	if got := h.without("a"); len(got.Issues) != 1 || got.Issues[0].Project != "b" {
+		t.Errorf("without a = %+v", got)
+	}
+	if got := h.without("a").without("b"); got != nil {
+		t.Errorf("nothing left should be nil, got %+v", got)
+	}
+	var none *Health
+	if none.without("a") != nil {
+		t.Error("nil stays nil")
+	}
+}
+
+func TestMergeHealth(t *testing.T) {
+	recorded := &Health{Issues: []Issue{{Stage: StageSmoke, Project: "api", Server: "api", Reason: ReasonDied}}}
+	check := &Health{Issues: []Issue{
+		{Stage: StageSmoke, Project: "api", Server: "api", Reason: ReasonNotListening}, // already covered
+		{Stage: StageSmoke, Project: "web", Server: "web", Reason: ReasonNotListening},
+	}}
+	got := MergeHealth(recorded, check)
+	if len(got.Issues) != 2 || got.Issues[0].Reason != ReasonDied || got.Issues[1].Project != "web" {
+		t.Errorf("merged = %+v", got)
+	}
+	if MergeHealth(nil, check) != check || MergeHealth(recorded, nil) != recorded || MergeHealth(nil, nil) != nil {
+		t.Error("nil sides pass the other through")
+	}
+}
+
+// Removing a project takes its record with it.
+func TestRemoveProject_DropsItsIssues(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api", "web")
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	RecordHealth(ref, &Health{At: time.Now(), Issues: []Issue{{Stage: StageInstall, Project: "web"}, {Stage: StageInstall, Project: "api"}}})
+	if err := RemoveProject("ws", "web"); err != nil {
+		t.Fatal(err)
+	}
+	res, _ := Resolve(ref)
+	if res.Health == nil || len(res.Health.Issues) != 1 || res.Health.Issues[0].Project != "api" {
+		t.Errorf("health after remove = %+v", res.Health)
+	}
+	RemoveProject("ws", "api")
+	if res, _ := Resolve(ref); res.Health != nil {
+		t.Errorf("last issue gone should clear health: %+v", res.Health)
 	}
 }

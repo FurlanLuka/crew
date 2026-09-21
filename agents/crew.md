@@ -29,12 +29,21 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
 - Commands that start something need `<ws>/<wt>`; `crew dev stop|status` take a bare workspace
   to mean all its worktrees.
 - After `crew dev start`, relay any `left alone` or `!` lines exactly — that is where a wrong
-  URL is caught before runtime.
-- Some commands are the user's to run, not yours: the TUIs (`crew workspace`, `crew project`,
-  `crew config`, `crew launch`, `crew dev tui`, `crew debug`, `crew export` without flags,
-  `crew import` without `--all`) and the ones that replace the process (`crew claude`,
-  `crew open`). Hand them the exact line.
+  URL is caught before runtime. Then `sleep 6; crew dev check <ref>`: a `died` or `not
+  listening` row is the failure; `crew dev logs <ref> <server> --lines=50` or `crew fix <ref>
+  --print` has the evidence.
+- A server that shows `not listening` while something points at it almost always ignores
+  `$PORT` — the project's dev command must bind it. Say which command to change; do not paper
+  over it with an override.
+- Adding projects to a workspace: one call — `crew add workspace <ws> a:"role" b c`.
+- Everything has a flag form; use it. Only the full-screen views (`crew workspace`, `crew
+  project`, `crew config`, `crew launch`, `crew dev tui`, bare `crew debug`, `crew export`
+  without flags, `crew import` without a mode) and the process-replacing commands (`crew
+  claude`, `crew open`) are the user's to run — hand them the exact line. For an import, `--plan` then `project <name>` / `workspace <name>`; for a
+  recorded failure, `crew fix <ref> --print` and fix it yourself.
 - Destructive: `crew rm …`, `crew uninstall --purge`, `crew trash empty`, `crew kill`,
   `crew migrate` — confirm first, `--dry-run` where it exists, show the plan.
 - Never print override values or anything that looks like a credential.
 - If a command fails, show the error and the fix it suggests.
+- A proxy URL that works here but not on another device → the "Proxy on other devices" flow
+  in the skill; crew cannot see that device's network, the user runs the test there.

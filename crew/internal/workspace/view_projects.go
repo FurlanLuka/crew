@@ -61,16 +61,49 @@ func (v View) handleProjectPickKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, app.Keys.Down):
 		v.poolCursor = app.MoveCursor(v.poolCursor, 1, len(v.poolNames))
 		return v, nil
-	case msg.String() == "enter":
+	case msg.String() == " ":
 		if len(v.poolNames) > 0 {
-			v.pickedProject = v.poolNames[v.poolCursor]
-			v.state = stateProjectRole
-			v.roleInput.Focus()
-			return v, v.roleInput.Cursor.BlinkCmd()
+			if v.poolPicked == nil {
+				v.poolPicked = map[string]bool{}
+			}
+			name := v.poolNames[v.poolCursor]
+			v.poolPicked[name] = !v.poolPicked[name]
 		}
 		return v, nil
+	case msg.String() == "enter":
+		if len(v.poolNames) == 0 {
+			return v, nil
+		}
+		// The ticked ones in list order; with none ticked, the row under
+		// the cursor — one pick works as it always did.
+		v.queue = nil
+		for _, name := range v.poolNames {
+			if v.poolPicked[name] {
+				v.queue = append(v.queue, name)
+			}
+		}
+		if len(v.queue) == 0 {
+			v.queue = []string{v.poolNames[v.poolCursor]}
+		}
+		v.picked = nil
+		return v.askRole()
 	}
 	return v, nil
+}
+
+// askRole prompts for the next queued project's role, or moves on to the
+// mode step once every role is in.
+func (v View) askRole() (tea.Model, tea.Cmd) {
+	if len(v.picked) == len(v.queue) {
+		v.modeCursor = 0
+		v.state = stateProjectMode
+		return v, nil
+	}
+	v.pickedProject = v.queue[len(v.picked)]
+	v.roleInput.Reset()
+	v.state = stateProjectRole
+	v.roleInput.Focus()
+	return v, v.roleInput.Cursor.BlinkCmd()
 }
 
 func (v View) handleProjectRoleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -79,6 +112,7 @@ func (v View) handleProjectRoleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.state = stateProjectPick
 		v.roleInput.Reset()
 		v.pickedProject = ""
+		v.picked = nil
 		return v, nil
 	case "enter":
 		role := strings.TrimSpace(v.roleInput.Value())
@@ -86,10 +120,8 @@ func (v View) handleProjectRoleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if role == "" {
 			role = "works on " + name
 		}
-		v.pickedRole = role
-		v.modeCursor = 0
-		v.state = stateProjectMode
-		return v, nil
+		v.picked = append(v.picked, ProjectSpec{Name: name, Role: role})
+		return v.askRole()
 	}
 
 	var cmd tea.Cmd
@@ -123,8 +155,12 @@ func (v View) handleProjectModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if v.modeCursor == 1 {
 			mode = ModeDirect
 		}
+		specs := make([]ProjectSpec, len(v.picked))
+		for i, p := range v.picked {
+			specs[i] = ProjectSpec{Name: p.Name, Role: p.Role, Mode: mode}
+		}
 		v.state = stateAddingProject
-		return v, tea.Batch(v.spinner.Tick, addProjectToWorkspace(v.selectedWs, v.pickedProject, v.pickedRole, mode))
+		return v, tea.Batch(v.spinner.Tick, addProjectsToWorkspace(v.selectedWs, specs))
 	}
 	return v, nil
 }
@@ -196,7 +232,7 @@ func (v View) renderProjects(b *strings.Builder) {
 
 func (v View) renderProjectPick(b *strings.Builder) {
 	b.WriteString("  ")
-	b.WriteString(app.Subtle.Render("Select project to add:"))
+	b.WriteString(app.Subtle.Render("Select projects to add:"))
 	b.WriteString("\n\n")
 
 	for i, name := range v.poolNames {
@@ -204,12 +240,17 @@ func (v View) renderProjectPick(b *strings.Builder) {
 		if i == v.poolCursor {
 			cursor = app.Selected.Render("> ")
 		}
+		tick := "○ "
+		if v.poolPicked[name] {
+			tick = app.Success.Render("✓ ")
+		}
 		display := name
 		if i == v.poolCursor {
 			display = app.Selected.Render(name)
 		}
 
 		b.WriteString(cursor)
+		b.WriteString(tick)
 		b.WriteString(display)
 
 		if p := project.Get(name); p != nil {
@@ -220,12 +261,16 @@ func (v View) renderProjectPick(b *strings.Builder) {
 	}
 
 	b.WriteString("\n  ")
-	b.WriteString(app.HelpStyle.Render("enter select  esc back"))
+	b.WriteString(app.HelpStyle.Render("space tick  enter add ticked (or this one)  esc back"))
 	b.WriteString("\n")
 }
 
 func (v View) renderProjectRole(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("  Adding '%s'\n\n", v.pickedProject))
+	if len(v.queue) > 1 {
+		b.WriteString(fmt.Sprintf("  Adding '%s' (%d of %d)\n\n", v.pickedProject, len(v.picked)+1, len(v.queue)))
+	} else {
+		b.WriteString(fmt.Sprintf("  Adding '%s'\n\n", v.pickedProject))
+	}
 	b.WriteString("  Role: ")
 	b.WriteString(v.roleInput.View())
 	b.WriteString("\n\n")
@@ -236,7 +281,11 @@ func (v View) renderProjectRole(b *strings.Builder) {
 }
 
 func (v View) renderProjectMode(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("  Adding '%s'\n\n", v.pickedProject))
+	names := make([]string, len(v.picked))
+	for i, p := range v.picked {
+		names[i] = p.Name
+	}
+	b.WriteString(fmt.Sprintf("  Adding %s\n\n", strings.Join(names, ", ")))
 	b.WriteString("  ")
 	b.WriteString(app.Subtle.Render("Mode:"))
 	b.WriteString("\n")
@@ -303,13 +352,46 @@ func loadWsProjects(wsName string) tea.Cmd {
 	}
 }
 
-func addProjectToWorkspace(wsName, projName, role, mode string) tea.Cmd {
+func addProjectsToWorkspace(wsName string, specs []ProjectSpec) tea.Cmd {
 	return func() tea.Msg {
-		if err := AddProject(wsName, projName, role, mode, CheckoutOptions{Install: true}); err != nil {
+		results, err := AddProjects(wsName, specs, CheckoutOptions{Install: true})
+		if err != nil {
 			return errMsg{err}
 		}
-		return wsProjectAddedMsg{projName}
+		names := make([]string, len(specs))
+		for i, s := range specs {
+			names[i] = s.Name
+		}
+		var issues []Issue
+		for _, r := range results {
+			issues = append(issues, r.Issues...)
+		}
+		return wsProjectsAddedMsg{names: names, issues: issues}
 	}
+}
+
+// addedStatus is the one line after an add: what went in, what failed.
+func addedStatus(names []string, issues []Issue) string {
+	failed := map[string]bool{}
+	for _, i := range issues {
+		failed[i.Project] = true
+	}
+	var ok, bad []string
+	for _, n := range names {
+		if failed[n] {
+			bad = append(bad, n)
+		} else {
+			ok = append(ok, n)
+		}
+	}
+	msg := "Added " + strings.Join(ok, ", ")
+	if len(ok) == 0 {
+		msg = "Added nothing"
+	}
+	if len(bad) > 0 {
+		msg += " — " + strings.Join(bad, ", ") + " failed, recorded on the worktree (f fix on its page)"
+	}
+	return msg
 }
 
 func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {

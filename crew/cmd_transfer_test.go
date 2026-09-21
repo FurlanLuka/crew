@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/transfer"
 )
 
 func TestParseExportArgs(t *testing.T) {
@@ -43,5 +45,66 @@ func TestParseExportArgs(t *testing.T) {
 				t.Errorf("interactive = %v", got.interactive())
 			}
 		})
+	}
+}
+
+func TestParseImportArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    importArgs
+		wantErr string
+	}{
+		{name: "file only → wizard", args: []string{"b.json"}, want: importArgs{file: "b.json"}},
+		{name: "plan", args: []string{"b.json", "--plan"}, want: importArgs{file: "b.json", plan: true}},
+		{name: "all with clone and replace", args: []string{"--all", "b.json", "--clone", "--replace"},
+			want: importArgs{file: "b.json", all: true, project: transfer.ProjectOptions{Clone: true, Replace: true}}},
+		{name: "project with every flag", args: []string{"b.json", "project", "api", "--clone=/x/api", "--replace", "--name=api2", "--setup=make", "--path=/p"},
+			want: importArgs{file: "b.json", item: "project", name: "api", project: transfer.ProjectOptions{Clone: true, CloneTo: "/x/api", Replace: true, Name: "api2", Setup: "make", Path: "/p"}}},
+		{name: "workspace", args: []string{"b.json", "workspace", "ws"}, want: importArgs{file: "b.json", item: "workspace", name: "ws"}},
+		{name: "no file", args: []string{"--plan"}, wantErr: "bundle file"},
+		{name: "item without name", args: []string{"b.json", "project"}, wantErr: "needs a name"},
+		{name: "two modes", args: []string{"b.json", "--plan", "--all"}, wantErr: "one of"},
+		{name: "path on all", args: []string{"b.json", "--all", "--path=/p"}, wantErr: "belong to import <file> project"},
+		{name: "clone on workspace", args: []string{"b.json", "workspace", "ws", "--clone"}, wantErr: "belong to project"},
+		{name: "clone on wizard", args: []string{"b.json", "--clone"}, wantErr: "need --all"},
+		{name: "clone on plan", args: []string{"b.json", "--plan", "--clone"}, wantErr: "need --all"},
+		{name: "replace on plan", args: []string{"b.json", "--plan", "--replace"}, wantErr: "need --all"},
+		{name: "unknown flag", args: []string{"b.json", "--nope"}, wantErr: "unknown flag"},
+		{name: "stray argument", args: []string{"b.json", "x"}, wantErr: "unexpected argument"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseImportArgs(tt.args)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("got %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// outcomeWord is the outcome column agents parse from import --json.
+func TestOutcomeWord(t *testing.T) {
+	for _, tt := range []struct {
+		res  transfer.ProjectResult
+		want string
+	}{
+		{transfer.ProjectResult{}, "imported"},
+		{transfer.ProjectResult{Cloned: true}, "imported (cloned)"},
+		{transfer.ProjectResult{Replaced: true}, "replaced"},
+		{transfer.ProjectResult{Replaced: true, Cloned: true}, "replaced (cloned)"},
+	} {
+		if got := outcomeWord(tt.res); got != tt.want {
+			t.Errorf("%+v → %q, want %q", tt.res, got, tt.want)
+		}
 	}
 }

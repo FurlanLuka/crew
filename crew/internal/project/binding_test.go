@@ -15,14 +15,14 @@ func setupPool(t *testing.T) {
 	config.ConfigDir = t.TempDir()
 	os.MkdirAll(config.ConfigDir, 0o755)
 
-	Add(Project{Name: "speak-api", Path: "/p/speak-api", DevServers: []DevServer{
-		{Name: "speak-api", Port: 3000, Command: "npm start"},
+	Add(Project{Name: "store-api", Path: "/p/store-api", DevServers: []DevServer{
+		{Name: "store-api", Port: 3000, Command: "npm start"},
 	}})
-	Add(Project{Name: "mumbo", Path: "/p/mumbo", DevServers: []DevServer{
+	Add(Project{Name: "admin", Path: "/p/admin", DevServers: []DevServer{
 		{Name: "backend", Port: 3100, Command: "pnpm dev"},
 		{Name: "homepage", Port: 3001, Command: "pnpm dev"},
 	}})
-	Add(Project{Name: "ai-tutor-api", Path: "/p/ai-tutor-api"})
+	Add(Project{Name: "checkout-api", Path: "/p/checkout-api"})
 }
 
 func TestValidateBinding(t *testing.T) {
@@ -33,30 +33,30 @@ func TestValidateBinding(t *testing.T) {
 		binding Binding
 		wantErr string
 	}{
-		{name: "bare project reference", binding: Binding{Var: "A", Value: "{{speak-api}}"}},
-		{name: "named server", binding: Binding{Var: "A", Value: "{{mumbo/backend}}"}},
-		{name: "host inside a larger value", binding: Binding{Var: "A", Value: "ws://{{speak-api.host}}/rtc"}},
-		{name: "port on a named server", binding: Binding{Var: "A", Value: "{{mumbo/backend.port}}"}},
-		{name: "legacy url form", binding: Binding{Var: "A", Value: "{{url:speak-api}}"}},
-		{name: "legacy port form", binding: Binding{Var: "A", Value: "ws://localhost:{{port:mumbo/backend}}"}},
+		{name: "bare project reference", binding: Binding{Var: "A", Value: "{{store-api}}"}},
+		{name: "named server", binding: Binding{Var: "A", Value: "{{admin/backend}}"}},
+		{name: "host inside a larger value", binding: Binding{Var: "A", Value: "ws://{{store-api.host}}/rtc"}},
+		{name: "port on a named server", binding: Binding{Var: "A", Value: "{{admin/backend.port}}"}},
+		{name: "legacy url form", binding: Binding{Var: "A", Value: "{{url:store-api}}"}},
+		{name: "legacy port form", binding: Binding{Var: "A", Value: "ws://localhost:{{port:admin/backend}}"}},
 		{name: "identity tokens", binding: Binding{Var: "A", Value: "db_{{workspace}}_{{worktree}}"}},
 		{name: "plain literal", binding: Binding{Var: "A", Value: "https://deployed"}},
 
 		{name: "bad var name", binding: Binding{Var: "not-a-var", Value: "x"}, wantErr: "not a valid"},
 		{name: "empty value", binding: Binding{Var: "A"}, wantErr: "no value"},
 		{name: "unknown project", binding: Binding{Var: "A", Value: "{{ghost}}"}, wantErr: "no project 'ghost'"},
-		{name: "unknown server", binding: Binding{Var: "A", Value: "{{mumbo/nope}}"}, wantErr: "no dev server"},
-		{name: "ambiguous bare reference", binding: Binding{Var: "A", Value: "{{mumbo}}"}, wantErr: "name one"},
-		{name: "target has no servers", binding: Binding{Var: "A", Value: "{{ai-tutor-api}}"}, wantErr: "no dev servers"},
+		{name: "unknown server", binding: Binding{Var: "A", Value: "{{admin/nope}}"}, wantErr: "no dev server"},
+		{name: "ambiguous bare reference", binding: Binding{Var: "A", Value: "{{admin}}"}, wantErr: "name one"},
+		{name: "target has no servers", binding: Binding{Var: "A", Value: "{{checkout-api}}"}, wantErr: "no dev servers"},
 		{name: "unknown legacy kind", binding: Binding{Var: "A", Value: "{{nope:x}}"}, wantErr: dev.GrammarHint},
 		{name: "accessor on identity token", binding: Binding{Var: "A", Value: "{{worktree.host}}"}, wantErr: "takes no accessor"},
-		{name: "dot where slash belongs", binding: Binding{Var: "A", Value: "{{mumbo.backend}}"}, wantErr: "a server is written {{mumbo/backend}}"},
+		{name: "dot where slash belongs", binding: Binding{Var: "A", Value: "{{admin.backend}}"}, wantErr: "a server is written {{admin/backend}}"},
 		{name: "empty token", binding: Binding{Var: "A", Value: "{{}}"}, wantErr: dev.GrammarHint},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateBinding("ai-tutor-api", tt.binding)
+			err := ValidateBinding("checkout-api", tt.binding)
 
 			if tt.wantErr == "" {
 				if err != nil {
@@ -78,7 +78,7 @@ func TestValidateBinding(t *testing.T) {
 func TestValidateBinding_AmbiguityNamesTheServers(t *testing.T) {
 	setupPool(t)
 
-	err := ValidateBinding("ai-tutor-api", Binding{Var: "A", Value: "{{url:mumbo}}"})
+	err := ValidateBinding("checkout-api", Binding{Var: "A", Value: "{{url:admin}}"})
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -92,18 +92,18 @@ func TestValidateBinding_AmbiguityNamesTheServers(t *testing.T) {
 func TestAddBinding_RoundTrip(t *testing.T) {
 	setupPool(t)
 
-	if err := AddBinding("ai-tutor-api", Binding{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}); err != nil {
+	if err := AddBinding("checkout-api", Binding{Var: "STORE_API_URL", Value: "{{url:store-api}}"}); err != nil {
 		t.Fatalf("AddBinding: %v", err)
 	}
 
-	p := Get("ai-tutor-api")
-	if len(p.Bindings) != 1 || p.Bindings[0].Var != "SPEAK_API_URL" {
-		t.Fatalf("bindings = %+v, want one for SPEAK_API_URL", p.Bindings)
+	p := Get("checkout-api")
+	if len(p.Bindings) != 1 || p.Bindings[0].Var != "STORE_API_URL" {
+		t.Fatalf("bindings = %+v, want one for STORE_API_URL", p.Bindings)
 	}
 
 	// It survives a real read of projects.json, not just the in-memory value.
 	data, _ := os.ReadFile(filepath.Join(config.ConfigDir, "projects.json"))
-	if !strings.Contains(string(data), "SPEAK_API_URL") {
+	if !strings.Contains(string(data), "STORE_API_URL") {
 		t.Error("binding not persisted to projects.json")
 	}
 }
@@ -111,31 +111,31 @@ func TestAddBinding_RoundTrip(t *testing.T) {
 func TestAddBinding_ReplacesSameVar(t *testing.T) {
 	setupPool(t)
 
-	AddBinding("ai-tutor-api", Binding{Var: "A", Value: "{{url:speak-api}}"})
-	if err := AddBinding("ai-tutor-api", Binding{Var: "A", Value: "{{url:mumbo/backend}}"}); err != nil {
+	AddBinding("checkout-api", Binding{Var: "A", Value: "{{url:store-api}}"})
+	if err := AddBinding("checkout-api", Binding{Var: "A", Value: "{{url:admin/backend}}"}); err != nil {
 		t.Fatalf("AddBinding: %v", err)
 	}
 
-	p := Get("ai-tutor-api")
+	p := Get("checkout-api")
 	if len(p.Bindings) != 1 {
 		t.Fatalf("bindings = %+v, want one — the same var replaces", p.Bindings)
 	}
-	if p.Bindings[0].Value != "{{url:mumbo/backend}}" {
+	if p.Bindings[0].Value != "{{url:admin/backend}}" {
 		t.Errorf("value = %q, want the replacement", p.Bindings[0].Value)
 	}
 }
 
 func TestRemoveBinding(t *testing.T) {
 	setupPool(t)
-	AddBinding("ai-tutor-api", Binding{Var: "A", Value: "{{url:speak-api}}"})
+	AddBinding("checkout-api", Binding{Var: "A", Value: "{{url:store-api}}"})
 
-	if err := RemoveBinding("ai-tutor-api", "A"); err != nil {
+	if err := RemoveBinding("checkout-api", "A"); err != nil {
 		t.Fatalf("RemoveBinding: %v", err)
 	}
-	if p := Get("ai-tutor-api"); len(p.Bindings) != 0 {
+	if p := Get("checkout-api"); len(p.Bindings) != 0 {
 		t.Errorf("bindings = %+v, want none", p.Bindings)
 	}
-	if err := RemoveBinding("ai-tutor-api", "A"); err == nil {
+	if err := RemoveBinding("checkout-api", "A"); err == nil {
 		t.Error("removing an absent binding should error")
 	}
 }
@@ -144,11 +144,11 @@ func TestConfiguredPorts(t *testing.T) {
 	setupPool(t)
 	ports := ConfiguredPorts()
 
-	if got := ports[3000]; len(got) != 1 || got[0].Project != "speak-api" {
-		t.Errorf("port 3000 = %+v, want speak-api", got)
+	if got := ports[3000]; len(got) != 1 || got[0].Project != "store-api" {
+		t.Errorf("port 3000 = %+v, want store-api", got)
 	}
 	if got := ports[3100]; len(got) != 1 || got[0].Server != "backend" {
-		t.Errorf("port 3100 = %+v, want mumbo/backend", got)
+		t.Errorf("port 3100 = %+v, want admin/backend", got)
 	}
 	if _, ok := ports[9999]; ok {
 		t.Error("unconfigured port should be absent")
@@ -175,8 +175,8 @@ func TestProposeThenAdd_EveryProposalValidates(t *testing.T) {
 	setupPool(t)
 
 	proposals := dev.ProposeBindings(map[string]string{
-		"SPEAK_API_URL": "http://localhost:3000",
-		"MUMBO_URL":     "http://localhost:3100",
+		"STORE_API_URL": "http://localhost:3000",
+		"ADMIN_URL":     "http://localhost:3100",
 		"HOMEPAGE_WS":   "ws://localhost:3001/live",
 	}, ConfiguredPorts())
 
@@ -188,11 +188,11 @@ func TestProposeThenAdd_EveryProposalValidates(t *testing.T) {
 			t.Errorf("%s unexpectedly ambiguous", p.Var)
 			continue
 		}
-		if err := AddBinding("ai-tutor-api", Binding{Var: p.Var, Value: p.Template}); err != nil {
+		if err := AddBinding("checkout-api", Binding{Var: p.Var, Value: p.Template}); err != nil {
 			t.Errorf("proposal %s=%s rejected by the validator: %v", p.Var, p.Template, err)
 		}
 	}
-	if got := Get("ai-tutor-api"); len(got.Bindings) != 3 {
+	if got := Get("checkout-api"); len(got.Bindings) != 3 {
 		t.Errorf("bindings = %+v, want all three applied", got.Bindings)
 	}
 }
@@ -206,7 +206,7 @@ func TestProposeThenAdd_RejectsUnusableVarName(t *testing.T) {
 	if len(proposals) != 1 {
 		t.Fatalf("got %d proposals, want 1 — the scan itself does not validate names", len(proposals))
 	}
-	if err := AddBinding("ai-tutor-api", Binding{Var: proposals[0].Var, Value: proposals[0].Template}); err == nil {
+	if err := AddBinding("checkout-api", Binding{Var: proposals[0].Var, Value: proposals[0].Template}); err == nil {
 		t.Error("MY-VAR should be rejected as a variable name")
 	}
 }

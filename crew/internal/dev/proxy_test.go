@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,7 +30,7 @@ func TestExtractSubdomainParts(t *testing.T) {
 		{"custom domain wrong suffix", "api--ws-a.other.com:8080", "example.com", "", ""},
 		{"ngrok wildcard", "api--my-ws.luka.ngrok.pro:80", "luka.ngrok.pro", "api", "my-ws"},
 		// Worktree slugs carry a second "--"; SplitN at the first one keeps it.
-		{"worktree slug", "api--phone-speak--wrk2.dev.local:8080", "dev.local", "api", "phone-speak--wrk2"},
+		{"worktree slug", "api--store-front--wrk2.dev.local:8080", "dev.local", "api", "store-front--wrk2"},
 		{"hyphenated worktree", "web--ws--wrk-2.dev.local", "dev.local", "web", "ws--wrk-2"},
 	}
 
@@ -116,7 +117,7 @@ func TestProxyHandler_UnknownSubdomain(t *testing.T) {
 // The plan's central claim: a worktree slug survives the trip through a
 // hostname and back with no proxy change.
 func TestSubdomainRoundTrip(t *testing.T) {
-	for _, slug := range []Slug{"phone-speak--wrk2", "mumbo--main", "legacy"} {
+	for _, slug := range []Slug{"store-front--wrk2", "admin--main", "legacy"} {
 		t.Run(string(slug), func(t *testing.T) {
 			u, err := url.Parse(FormatURL("api", slug, "dev.local", 8080))
 			if err != nil {
@@ -143,15 +144,15 @@ func TestProxyHandler_RoutesToWorktreeSlug(t *testing.T) {
 	defer backend.Close()
 
 	port, _ := strconv.Atoi(strings.TrimPrefix(backend.URL, "http://127.0.0.1:"))
-	if err := saveRoutes("phone-speak--wrk2", []Route{
-		{Project: "speak-api", ServerName: "api", ExternalPort: 3000, InternalPort: port},
+	if err := saveRoutes("store-front--wrk2", []Route{
+		{Project: "store-api", ServerName: "api", ExternalPort: 3000, InternalPort: port},
 	}); err != nil {
 		t.Fatalf("saveRoutes: %v", err)
 	}
 
 	h := &proxyHandler{domain: "dev.local", port: 8080}
-	req := httptest.NewRequest("GET", "http://api--phone-speak--wrk2.dev.local:8080/health", nil)
-	req.Host = "api--phone-speak--wrk2.dev.local:8080"
+	req := httptest.NewRequest("GET", "http://api--store-front--wrk2.dev.local:8080/health", nil)
+	req.Host = "api--store-front--wrk2.dev.local:8080"
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -160,5 +161,43 @@ func TestProxyHandler_RoutesToWorktreeSlug(t *testing.T) {
 	}
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("status = %d, want the backend's 204", rec.Code)
+	}
+}
+
+// The page's links carry the port only when it is not 80 — the same rule as
+// every URL crew prints, so a link copied from the page works as printed.
+func TestProxyHandler_StatusPageLinksMatchRouteURLs(t *testing.T) {
+	setupTestConfig(t)
+	saveRoutes("ws--wrk1", []Route{{Project: "api", ServerName: "api", ExternalPort: 3000, InternalPort: 54001}})
+
+	for _, tt := range []struct {
+		port int
+		want string
+	}{
+		{80, "http://api--ws--wrk1.10.0.0.1.nip.io\""},
+		{8081, "http://api--ws--wrk1.10.0.0.1.nip.io:8081\""},
+	} {
+		h := &proxyHandler{domain: "10.0.0.1.nip.io", port: tt.port}
+		req := httptest.NewRequest("GET", "http://10.0.0.1/", nil)
+		req.Host = "10.0.0.1"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if !strings.Contains(w.Body.String(), tt.want) {
+			t.Errorf("port %d: page lacks %q:\n%s", tt.port, tt.want, w.Body.String())
+		}
+	}
+}
+
+// The probe must recognise the real status page, not just a stub with the
+// marker: served for a bare loopback Host, marker within the first 4 KB.
+func TestIsProxyStatusPage_RecognisesRealPage(t *testing.T) {
+	setupTestConfig(t)
+	saveRoutes("ws--wrk1", []Route{{Project: "api", ServerName: "api", ExternalPort: 3000, InternalPort: 54001}})
+	srv := httptest.NewServer(&proxyHandler{domain: "10.0.0.1.nip.io", port: 80})
+	defer srv.Close()
+	_, portStr, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	port, _ := strconv.Atoi(portStr)
+	if !isProxyStatusPage(srv.Client(), port) {
+		t.Error("the real status page was not recognised")
 	}
 }

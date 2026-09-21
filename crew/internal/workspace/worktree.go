@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -152,11 +153,25 @@ func checkoutProjects(ref Ref, ws *Workspace, names []string, progress func(stri
 	return made, issues
 }
 
-// installProjects runs the install steps for each name that has a checkout;
-// an issue per failure, with the step's output tail as the evidence.
+// installProjects runs the install steps for each name that has a checkout,
+// all at once — each project's install is its own, and they are the slow
+// part of a worktree. An issue per failure, with the step's output tail as
+// the evidence, in the order the names came.
 func installProjects(ref Ref, ws *Workspace, names []string, opts CheckoutOptions) []Issue {
-	var issues []Issue
-	for _, name := range names {
+	var mu sync.Mutex
+	serial := opts
+	if opts.Progress != nil {
+		// One line at a time from many installs.
+		serial.Progress = func(project string, r exec.SetupResult) {
+			mu.Lock()
+			defer mu.Unlock()
+			opts.Progress(project, r)
+		}
+	}
+
+	results := make([]*Issue, len(names))
+	var wg sync.WaitGroup
+	for i, name := range names {
 		wp, ok := memberOf(ws, name)
 		if !ok || IsDirect(wp) || !dirExists(WorktreePath(ref, name)) {
 			continue
@@ -165,8 +180,20 @@ func installProjects(ref Ref, ws *Workspace, names []string, opts CheckoutOption
 		if p == nil {
 			continue
 		}
-		if err := setupProject(ref, *p, opts); err != nil {
-			issues = append(issues, Issue{Stage: StageInstall, Project: name, Detail: installDetail(err)})
+		wg.Add(1)
+		go func(i int, p project.Project) {
+			defer wg.Done()
+			if err := setupProject(ref, p, serial); err != nil {
+				results[i] = &Issue{Stage: StageInstall, Project: p.Name, Detail: installDetail(err)}
+			}
+		}(i, *p)
+	}
+	wg.Wait()
+
+	var issues []Issue
+	for _, r := range results {
+		if r != nil {
+			issues = append(issues, *r)
 		}
 	}
 	return issues
@@ -232,8 +259,11 @@ func reportSmoke(results []SmokeResult, progress func(string, exec.SetupResult))
 	}
 	for _, r := range results {
 		step := exec.SetupResult{Step: exec.SetupStep{Name: "smoke " + r.Server}}
-		if !r.Alive {
+		switch r.State() {
+		case SmokeDied:
 			step.Err = errors.New("died within seconds")
+		case SmokeUnreached:
+			step.Err = fmt.Errorf("not listening on :%d", r.Port)
 		}
 		progress(r.Project, step)
 	}

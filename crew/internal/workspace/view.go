@@ -46,7 +46,10 @@ type wsProjectsLoadedMsg struct {
 	poolNames  []string // names from pool not yet in workspace
 }
 type codeOpenedMsg struct{ output string }
-type wsProjectAddedMsg struct{ name string }
+type wsProjectsAddedMsg struct {
+	names  []string
+	issues []Issue
+}
 type wsProjectRemovedMsg struct{ name string }
 
 // ── States ──
@@ -102,10 +105,14 @@ type View struct {
 	projCursor    int
 	poolNames     []string // available from pool
 	poolCursor    int
+	poolPicked    map[string]bool // space-toggled in the pick list; enter with none picked takes the row
 	roleInput     textinput.Model
 	pickedProject string // name of project being added
-	pickedRole    string // role captured before mode pick
-	modeCursor    int    // 0 = worktree, 1 = direct
+	// queue is every picked project, roles asked one after another; picked
+	// holds the ones already answered, in order.
+	queue      []string
+	picked     []ProjectSpec
+	modeCursor int // 0 = worktree, 1 = direct
 }
 
 func NewView() View {
@@ -229,13 +236,13 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return v, nil
 
-	case wsProjectAddedMsg:
+	case wsProjectsAddedMsg:
 		v.state = stateProjects
-		v.statusMsg = fmt.Sprintf("Added '%s'", msg.name)
+		v.statusMsg = addedStatus(msg.names, msg.issues)
 		v.err = nil
 		v.roleInput.Reset()
 		v.pickedProject = ""
-		v.pickedRole = ""
+		v.queue, v.picked, v.poolPicked = nil, nil, nil
 		v.modeCursor = 0
 		return v, loadWsProjects(v.selectedWs)
 

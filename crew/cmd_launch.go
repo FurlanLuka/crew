@@ -13,11 +13,12 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
-// requireTerminal: claude, fix and open hand the terminal to another
-// program. Without one — a script, an agent's shell — claude would run
-// headless with permissions skipped, which is not what anybody asked for.
-func requireTerminal(what string) {
-	if msg, ok := terminalCheck(isTerminal(), what); !ok {
+// requireTerminal: claude and open hand the terminal to another program.
+// Without one — a script, an agent's shell — claude would run headless with
+// permissions skipped, which is not what anybody asked for; alt names the
+// command that gives that caller the same thing as data.
+func requireTerminal(what, alt string) {
+	if msg, ok := terminalCheck(isTerminal(), what, alt); !ok {
 		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(1)
 	}
@@ -26,11 +27,12 @@ func requireTerminal(what string) {
 // isTerminal is a variable so tests can stand in for the real stdin.
 var isTerminal = func() bool { return term.IsTerminal(os.Stdin.Fd()) }
 
-func terminalCheck(tty bool, what string) (string, bool) {
+// terminalCheck is requireTerminal's decision, pure.
+func terminalCheck(tty bool, what, alt string) (string, bool) {
 	if tty {
 		return "", true
 	}
-	return fmt.Sprintf("Error: crew %s needs a terminal — run it yourself, not from a script or an agent", what), false
+	return fmt.Sprintf("Error: crew %s needs a terminal — hand the user this line; %s", what, alt), false
 }
 
 func cmdLaunch() {
@@ -49,7 +51,7 @@ func cmdClaude() {
 		fmt.Fprintf(os.Stderr, "Usage: crew claude <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
-	requireTerminal("claude")
+	requireTerminal("claude", "crew start <ref> prints the prompt it would open with")
 	res := mustResolve(os.Args[2])
 	printHealthWarning(res)
 	cmd, err := workspace.ClaudeCommand(res)

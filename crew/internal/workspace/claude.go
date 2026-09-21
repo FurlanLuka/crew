@@ -18,7 +18,8 @@ import (
 func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 	multiProject := res.MultiProject()
 
-	parts := []string{"IS_SANDBOX=1"}
+	// CREW_REF lets anything Claude runs know which worktree it is in.
+	parts := []string{"IS_SANDBOX=1", "CREW_REF=" + crewExec.ShellQuote(res.Ref.String())}
 	if config.UserSetClaudeConfig {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+crewExec.ShellQuote(config.ClaudeConfigDir))
 	}
@@ -53,10 +54,7 @@ func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 // Claude takes over the terminal, and control returns when Claude exits.
 // Nothing is tracked — there's no session to reattach to.
 func ClaudeCommand(res *Resolved) (*exec.Cmd, error) {
-	if NeedsPrompt(res) {
-		return claudeCommand(res, func() (string, error) { return GeneratePrompt(res) })
-	}
-	return claudeCommand(res, nil)
+	return claudeCommand(res, func() (string, error) { return GeneratePrompt(res) })
 }
 
 // claudeCommand runs claude in the worktree; writePrompt, when given, puts

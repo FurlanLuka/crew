@@ -1,9 +1,11 @@
 package main
 
 import (
-	"github.com/FurlanLuka/crew/crew/internal/workspace"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 func TestBindingValue(t *testing.T) {
@@ -12,11 +14,11 @@ func TestBindingValue(t *testing.T) {
 		url, host, port, value string
 		want, wantErr          string
 	}{
-		{name: "url shorthand", url: "speak-api", want: "{{speak-api}}"},
-		{name: "url with server", url: "mumbo/backend", want: "{{mumbo/backend}}"},
-		{name: "host shorthand", host: "livekit", want: "{{livekit.host}}"},
-		{name: "port with server", port: "mumbo/backend", want: "{{mumbo/backend.port}}"},
-		{name: "value verbatim", value: "ws://{{livekit.host}}/rtc", want: "ws://{{livekit.host}}/rtc"},
+		{name: "url shorthand", url: "store-api", want: "{{store-api}}"},
+		{name: "url with server", url: "admin/backend", want: "{{admin/backend}}"},
+		{name: "host shorthand", host: "signals", want: "{{signals.host}}"},
+		{name: "port with server", port: "admin/backend", want: "{{admin/backend.port}}"},
+		{name: "value verbatim", value: "ws://{{signals.host}}/rtc", want: "ws://{{signals.host}}/rtc"},
 		{name: "nothing given", wantErr: "give one of"},
 		{name: "two given", url: "a", port: "b", wantErr: "give one of"},
 		{name: "bad target", url: "a/b/c", wantErr: "--url=a/b/c: expected project or project/server"},
@@ -98,5 +100,12 @@ func TestHealthWarningLineAndCreationSummary(t *testing.T) {
 	text, failed = renderCreationSummary(res, "Created ws/wt", nil)
 	if failed || !strings.Contains(text, "crew launch ws/wt") || strings.Contains(text, "!") {
 		t.Errorf("clean summary =\n%s", text)
+	}
+}
+
+func TestJSONVerifyResult_SmokeIsAList(t *testing.T) {
+	data, _ := json.Marshal(jsonVerifyResult(workspace.VerifyResult{}))
+	if !strings.Contains(string(data), `"smoke":[]`) {
+		t.Errorf("empty smoke → %s", data)
 	}
 }

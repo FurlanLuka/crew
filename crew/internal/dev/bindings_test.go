@@ -5,39 +5,39 @@ import (
 	"testing"
 )
 
-// A worktree holding speak-api (one server) and mumbo (two, one of them also
+// A worktree holding store-api (one server) and admin (two, one of them also
 // called "api" — legal, since server names are unique only within a project).
 func bindingFixture(bindings map[string][]Binding) ResolveParams {
 	projects := []DevProject{
 		{
-			Name:       "speak-api",
-			DevServers: []DevServerConfig{{Name: "speak-api", Port: 3000}},
-			Bindings:   bindings["speak-api"],
+			Name:       "store-api",
+			DevServers: []DevServerConfig{{Name: "store-api", Port: 3000}},
+			Bindings:   bindings["store-api"],
 		},
 		{
-			Name: "mumbo",
+			Name: "admin",
 			DevServers: []DevServerConfig{
 				{Name: "api", Port: 3100},
 				{Name: "homepage", Port: 3001},
 			},
-			Bindings: bindings["mumbo"],
+			Bindings: bindings["admin"],
 		},
 		{
-			Name:       "ai-tutor-api",
-			DevServers: []DevServerConfig{{Name: "ai-tutor-api", Port: 8000}},
-			Bindings:   bindings["ai-tutor-api"],
+			Name:       "checkout-api",
+			DevServers: []DevServerConfig{{Name: "checkout-api", Port: 8000}},
+			Bindings:   bindings["checkout-api"],
 		},
 	}
 
 	return ResolveParams{
 		Projects:  projects,
-		Workspace: "phone-speak",
+		Workspace: "store-front",
 		Worktree:  "wrk2",
 		Ports: map[ProjectServer]int{
-			{Project: "speak-api", Server: "speak-api"}:       54021,
-			{Project: "mumbo", Server: "api"}:                 54030,
-			{Project: "mumbo", Server: "homepage"}:            54031,
-			{Project: "ai-tutor-api", Server: "ai-tutor-api"}: 54088,
+			{Project: "store-api", Server: "store-api"}:       54021,
+			{Project: "admin", Server: "api"}:                 54030,
+			{Project: "admin", Server: "homepage"}:            54031,
+			{Project: "checkout-api", Server: "checkout-api"}: 54088,
 		},
 	}
 }
@@ -55,18 +55,18 @@ func find(t *testing.T, rs []Resolution, project, name string) Resolution {
 
 func TestResolveBindings_URLTemplate(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+		"checkout-api": {{Var: "STORE_API_URL", Value: "{{url:store-api}}"}},
 	})
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "SPEAK_API_URL")
+	got := find(t, ResolveBindings(p), "checkout-api", "STORE_API_URL")
 	if got.Source != SourceBinding {
 		t.Errorf("Source = %s, want binding", got.Source)
 	}
 	if got.Value != "http://localhost:54021" {
 		t.Errorf("Value = %q, want http://localhost:54021", got.Value)
 	}
-	if got.Detail != "from speak-api" {
-		t.Errorf("Detail = %q, want %q", got.Detail, "from speak-api")
+	if got.Detail != "from store-api" {
+		t.Errorf("Detail = %q, want %q", got.Detail, "from store-api")
 	}
 }
 
@@ -74,21 +74,21 @@ func TestResolveBindings_URLTemplate(t *testing.T) {
 // binding has to reach the one it named.
 func TestResolveBindings_SameServerNameAcrossProjects(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "MUMBO_API_URL", Value: "{{url:mumbo/api}}"}},
+		"checkout-api": {{Var: "ADMIN_API_URL", Value: "{{url:admin/api}}"}},
 	})
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "MUMBO_API_URL")
+	got := find(t, ResolveBindings(p), "checkout-api", "ADMIN_API_URL")
 	if got.Value != "http://localhost:54030" {
-		t.Errorf("Value = %q, want mumbo/api's port 54030", got.Value)
+		t.Errorf("Value = %q, want admin/api's port 54030", got.Value)
 	}
 }
 
 func TestResolveBindings_PortInsideLargerValue(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "LIVEKIT_URL", Value: "ws://localhost:{{port:mumbo/homepage}}/rtc"}},
+		"checkout-api": {{Var: "SIGNALS_URL", Value: "ws://localhost:{{port:admin/homepage}}/rtc"}},
 	})
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "LIVEKIT_URL")
+	got := find(t, ResolveBindings(p), "checkout-api", "SIGNALS_URL")
 	if got.Value != "ws://localhost:54031/rtc" {
 		t.Errorf("Value = %q, want ws://localhost:54031/rtc", got.Value)
 	}
@@ -96,8 +96,8 @@ func TestResolveBindings_PortInsideLargerValue(t *testing.T) {
 
 func TestResolveBindings_IdentityTokens(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {
-			{Var: "LIVEKIT_AGENT_NAME", Value: "{{worktree}}"},
+		"checkout-api": {
+			{Var: "SIGNALS_AGENT_NAME", Value: "{{worktree}}"},
 			{Var: "DUMP_DIR", Value: "/tmp/turns/{{workspace}}-{{worktree}}"},
 			{Var: "PLAIN", Value: "no tokens here"},
 		},
@@ -105,11 +105,11 @@ func TestResolveBindings_IdentityTokens(t *testing.T) {
 	rs := ResolveBindings(p)
 
 	for _, tt := range []struct{ name, want string }{
-		{"LIVEKIT_AGENT_NAME", "wrk2"},
-		{"DUMP_DIR", "/tmp/turns/phone-speak-wrk2"},
+		{"SIGNALS_AGENT_NAME", "wrk2"},
+		{"DUMP_DIR", "/tmp/turns/store-front-wrk2"},
 		{"PLAIN", "no tokens here"},
 	} {
-		if got := find(t, rs, "ai-tutor-api", tt.name); got.Value != tt.want {
+		if got := find(t, rs, "checkout-api", tt.name); got.Value != tt.want {
 			t.Errorf("%s = %q, want %q", tt.name, got.Value, tt.want)
 		}
 	}
@@ -121,18 +121,18 @@ func TestResolveBindings_UnresolvableTargets(t *testing.T) {
 		value      string
 		wantDetail string
 	}{
-		{"project not in worktree", "{{url:speak-partner}}", "not in workspace"},
-		{"named server not running", "{{url:speak-api/other}}", "is not running"},
-		{"bare ref is ambiguous", "{{url:mumbo}}", "name one"},
+		{"project not in worktree", "{{url:store-partner}}", "not in workspace"},
+		{"named server not running", "{{url:store-api/other}}", "is not running"},
+		{"bare ref is ambiguous", "{{url:admin}}", "name one"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := bindingFixture(map[string][]Binding{
-				"ai-tutor-api": {{Var: "TARGET", Value: tt.value}},
+				"checkout-api": {{Var: "TARGET", Value: tt.value}},
 			})
 
-			got := find(t, ResolveBindings(p), "ai-tutor-api", "TARGET")
+			got := find(t, ResolveBindings(p), "checkout-api", "TARGET")
 			if got.Source != SourceUnresolved {
 				t.Errorf("Source = %s, want unresolved", got.Source)
 			}
@@ -150,10 +150,10 @@ func TestResolveBindings_UnresolvableTargets(t *testing.T) {
 // prevent, so a failing token discards the whole thing.
 func TestResolveBindings_PartialExpansionDiscardsWholeValue(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "COMBINED", Value: "{{url:speak-api}}/from/{{url:speak-partner}}"}},
+		"checkout-api": {{Var: "COMBINED", Value: "{{url:store-api}}/from/{{url:store-partner}}"}},
 	})
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "COMBINED")
+	got := find(t, ResolveBindings(p), "checkout-api", "COMBINED")
 	if got.Source != SourceUnresolved {
 		t.Fatalf("Source = %s, want unresolved", got.Source)
 	}
@@ -164,34 +164,34 @@ func TestResolveBindings_PartialExpansionDiscardsWholeValue(t *testing.T) {
 
 func TestResolveBindings_OverrideBeatsResolvableBinding(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+		"checkout-api": {{Var: "STORE_API_URL", Value: "{{url:store-api}}"}},
 	})
-	p.Overrides = map[string]string{"SPEAK_API_URL": "https://dev-api.speak.com"}
+	p.Overrides = map[string]string{"STORE_API_URL": "https://dev-api.store.com"}
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "SPEAK_API_URL")
+	got := find(t, ResolveBindings(p), "checkout-api", "STORE_API_URL")
 	if got.Source != SourceOverride {
 		t.Errorf("Source = %s, want override", got.Source)
 	}
-	if got.Value != "https://dev-api.speak.com" {
+	if got.Value != "https://dev-api.store.com" {
 		t.Errorf("Value = %q, want the override", got.Value)
 	}
 }
 
 func TestResolveBindings_QualifiedOverrideBeatsBare(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "API_URL", Value: "{{url:speak-api}}"}},
-		"mumbo":        {{Var: "API_URL", Value: "{{url:speak-api}}"}},
+		"checkout-api": {{Var: "API_URL", Value: "{{url:store-api}}"}},
+		"admin":        {{Var: "API_URL", Value: "{{url:store-api}}"}},
 	})
 	p.Overrides = map[string]string{
 		"API_URL":              "https://shared",
-		"ai-tutor-api.API_URL": "https://tutor-only",
+		"checkout-api.API_URL": "https://tutor-only",
 	}
 	rs := ResolveBindings(p)
 
-	if got := find(t, rs, "ai-tutor-api", "API_URL"); got.Value != "https://tutor-only" {
+	if got := find(t, rs, "checkout-api", "API_URL"); got.Value != "https://tutor-only" {
 		t.Errorf("qualified override = %q, want https://tutor-only", got.Value)
 	}
-	if got := find(t, rs, "mumbo", "API_URL"); got.Value != "https://shared" {
+	if got := find(t, rs, "admin", "API_URL"); got.Value != "https://shared" {
 		t.Errorf("bare override = %q, want https://shared", got.Value)
 	}
 }
@@ -200,11 +200,11 @@ func TestResolveBindings_QualifiedOverrideBeatsBare(t *testing.T) {
 // what distinguishes "set to empty" from "left alone".
 func TestResolveBindings_EmptyOverrideIsNotUnresolved(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+		"checkout-api": {{Var: "STORE_API_URL", Value: "{{url:store-api}}"}},
 	})
-	p.Overrides = map[string]string{"SPEAK_API_URL": ""}
+	p.Overrides = map[string]string{"STORE_API_URL": ""}
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "SPEAK_API_URL")
+	got := find(t, ResolveBindings(p), "checkout-api", "STORE_API_URL")
 	if got.Source != SourceOverride || !got.Resolved() {
 		t.Errorf("empty override reported as %s (resolved=%v), want a resolved override",
 			got.Source, got.Resolved())
@@ -218,9 +218,9 @@ func TestResolveBindings_EmptyOverrideIsNotUnresolved(t *testing.T) {
 // when nothing declared the variable.
 func TestResolveBindings_OverrideWithoutBindingStillApplies(t *testing.T) {
 	p := bindingFixture(nil)
-	p.Overrides = map[string]string{"ai-tutor-api.EXTRA": "value"}
+	p.Overrides = map[string]string{"checkout-api.EXTRA": "value"}
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "EXTRA")
+	got := find(t, ResolveBindings(p), "checkout-api", "EXTRA")
 	if got.Source != SourceOverride || got.Value != "value" {
 		t.Errorf("got %+v, want a resolved override", got)
 	}
@@ -230,11 +230,11 @@ func TestResolveBindings_OverrideWithoutBindingStillApplies(t *testing.T) {
 // mechanism: it stops printing as an anomaly on every start.
 func TestResolveBindings_OverrideSilencesUnresolvableBinding(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "GONE", Value: "{{url:speak-partner}}"}},
+		"checkout-api": {{Var: "GONE", Value: "{{url:store-partner}}"}},
 	})
 	p.Overrides = map[string]string{"GONE": "https://deployed"}
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "GONE")
+	got := find(t, ResolveBindings(p), "checkout-api", "GONE")
 	if got.Source != SourceOverride {
 		t.Errorf("Source = %s, want override to win over an unresolvable binding", got.Source)
 	}
@@ -242,10 +242,10 @@ func TestResolveBindings_OverrideSilencesUnresolvableBinding(t *testing.T) {
 
 func TestResolveBindings_SelfReference(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "SELF_URL", Value: "{{url:ai-tutor-api}}"}},
+		"checkout-api": {{Var: "SELF_URL", Value: "{{url:checkout-api}}"}},
 	})
 
-	got := find(t, ResolveBindings(p), "ai-tutor-api", "SELF_URL")
+	got := find(t, ResolveBindings(p), "checkout-api", "SELF_URL")
 	if got.Value != "http://localhost:54088" {
 		t.Errorf("Value = %q, want its own port", got.Value)
 	}
@@ -255,7 +255,7 @@ func TestResolveBindings_SelfReference(t *testing.T) {
 // it is a decision rather than an accident of map ordering.
 func TestResolveBindings_DuplicateVarLastWins(t *testing.T) {
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {
+		"checkout-api": {
 			{Var: "DUP", Value: "first"},
 			{Var: "DUP", Value: "second"},
 		},
@@ -279,8 +279,8 @@ func TestResolveBindings_DuplicateVarLastWins(t *testing.T) {
 // allocated port, never the configured one.
 func TestResolveBindings_NoProxyPorts(t *testing.T) {
 	projects := []DevProject{
-		{Name: "speak-api", DevServers: []DevServerConfig{{Name: "speak-api", Port: 3000}}},
-		{Name: "ai-tutor-api", Bindings: []Binding{{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}}},
+		{Name: "store-api", DevServers: []DevServerConfig{{Name: "store-api", Port: 3000}}},
+		{Name: "checkout-api", Bindings: []Binding{{Var: "STORE_API_URL", Value: "{{url:store-api}}"}}},
 	}
 	planned := PlanServers(projects, []int{54021}, true)
 
@@ -291,22 +291,22 @@ func TestResolveBindings_NoProxyPorts(t *testing.T) {
 		Worktree:  "wrk1",
 	})
 
-	if got := find(t, rs, "ai-tutor-api", "SPEAK_API_URL"); got.Value != "http://localhost:54021" {
+	if got := find(t, rs, "checkout-api", "STORE_API_URL"); got.Value != "http://localhost:54021" {
 		t.Errorf("Value = %q, want the allocated port, not the configured 3000", got.Value)
 	}
 }
 
 func TestIndexRoutePorts(t *testing.T) {
 	ports := IndexRoutePorts([]Route{
-		{Project: "speak-api", ServerName: "speak-api", InternalPort: 54021},
-		{Project: "mumbo", ServerName: "api", InternalPort: 54030},
+		{Project: "store-api", ServerName: "store-api", InternalPort: 54021},
+		{Project: "admin", ServerName: "api", InternalPort: 54030},
 	})
 
-	if got := ports[ProjectServer{Project: "mumbo", Server: "api"}]; got != 54030 {
-		t.Errorf("mumbo/api = %d, want 54030", got)
+	if got := ports[ProjectServer{Project: "admin", Server: "api"}]; got != 54030 {
+		t.Errorf("admin/api = %d, want 54030", got)
 	}
-	if _, ok := ports[ProjectServer{Project: "speak-api", Server: "api"}]; ok {
-		t.Error("speak-api/api should not exist — only mumbo owns a server named api")
+	if _, ok := ports[ProjectServer{Project: "store-api", Server: "api"}]; ok {
+		t.Error("store-api/api should not exist — only admin owns a server named api")
 	}
 }
 
@@ -324,8 +324,8 @@ func TestEnvPrefix(t *testing.T) {
 		},
 		{
 			"exports rather than inline assignment",
-			[]Resolution{{Var: "SPEAK_API_URL", Value: "http://localhost:54021", Source: SourceBinding}},
-			"export SPEAK_API_URL='http://localhost:54021'; ",
+			[]Resolution{{Var: "STORE_API_URL", Value: "http://localhost:54021", Source: SourceBinding}},
+			"export STORE_API_URL='http://localhost:54021'; ",
 		},
 		{
 			"quotes a value with spaces",
@@ -366,7 +366,7 @@ func TestResolveBindings_OverrideOrderIsStable(t *testing.T) {
 
 	var vars []string
 	for _, r := range first {
-		if r.Project == "speak-api" {
+		if r.Project == "store-api" {
 			vars = append(vars, r.Var)
 		}
 	}
@@ -382,7 +382,7 @@ func TestIndexRoutePorts_LegacyRoutesDoNotResolve(t *testing.T) {
 	ports := IndexRoutePorts([]Route{
 		{ServerName: "api", InternalPort: 54001},
 		{ServerName: "api", InternalPort: 54002},
-		{Project: "mumbo", ServerName: "api", InternalPort: 54003},
+		{Project: "admin", ServerName: "api", InternalPort: 54003},
 	})
 
 	if len(ports) != 1 {
@@ -393,10 +393,10 @@ func TestIndexRoutePorts_LegacyRoutesDoNotResolve(t *testing.T) {
 	}
 
 	p := bindingFixture(map[string][]Binding{
-		"ai-tutor-api": {{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+		"checkout-api": {{Var: "STORE_API_URL", Value: "{{url:store-api}}"}},
 	})
 	p.Ports = ports
-	if got := find(t, ResolveBindings(p), "ai-tutor-api", "SPEAK_API_URL"); got.Source != SourceUnresolved {
+	if got := find(t, ResolveBindings(p), "checkout-api", "STORE_API_URL"); got.Source != SourceUnresolved {
 		t.Errorf("Source = %s, want unresolved against a legacy route file", got.Source)
 	}
 }
@@ -410,18 +410,18 @@ func TestParseTokens(t *testing.T) {
 		in   string
 		want Token
 	}{
-		{"{{speak-api}}", target("speak-api", "", AccessorURL)},
-		{"{{speak-api.url}}", target("speak-api", "", AccessorURL)},
-		{"{{speak-api.host}}", target("speak-api", "", AccessorHost)},
-		{"{{speak-api.port}}", target("speak-api", "", AccessorPort)},
-		{"{{mumbo/backend}}", target("mumbo", "backend", AccessorURL)},
-		{"{{mumbo/backend.port}}", target("mumbo", "backend", AccessorPort)},
+		{"{{store-api}}", target("store-api", "", AccessorURL)},
+		{"{{store-api.url}}", target("store-api", "", AccessorURL)},
+		{"{{store-api.host}}", target("store-api", "", AccessorHost)},
+		{"{{store-api.port}}", target("store-api", "", AccessorPort)},
+		{"{{admin/backend}}", target("admin", "backend", AccessorURL)},
+		{"{{admin/backend.port}}", target("admin", "backend", AccessorPort)},
 		{"{{worktree}}", Token{Kind: TokenWorktree}},
 		{"{{workspace}}", Token{Kind: TokenWorkspace}},
 		// Pre-2.1 spelling, still read.
-		{"{{url:speak-api}}", target("speak-api", "", AccessorURL)},
-		{"{{port:livekit}}", target("livekit", "", AccessorPort)},
-		{"{{url:mumbo/backend}}", target("mumbo", "backend", AccessorURL)},
+		{"{{url:store-api}}", target("store-api", "", AccessorURL)},
+		{"{{port:signals}}", target("signals", "", AccessorPort)},
+		{"{{url:admin/backend}}", target("admin", "backend", AccessorURL)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
@@ -443,17 +443,17 @@ func TestParseTokens_Malformed(t *testing.T) {
 		wantErr string
 	}{
 		{"{{}}", GrammarHint},
-		{"{{speak-api.}}", GrammarHint},
+		{"{{store-api.}}", GrammarHint},
 		{"{{.port}}", "expected project or project/server"},
-		{"{{speak-api/}}", "expected project or project/server"},
+		{"{{store-api/}}", "expected project or project/server"},
 		{"{{a/b/c}}", "expected project or project/server"},
 		{"{{worktree:}}", GrammarHint},
 		{"{{ws:x}}", GrammarHint},
 		{"{{url:}}", GrammarHint},
 		{"{{worktree.host}}", "{{worktree}} takes no accessor"},
 		{"{{workspace.port}}", "{{workspace}} takes no accessor"},
-		{"{{speak-api.foo}}", ".foo is not url, host or port — a server is written {{speak-api/foo}}"},
-		{"{{ai-tutor-api.worker}}", "a server is written {{ai-tutor-api/worker}}"},
+		{"{{store-api.foo}}", ".foo is not url, host or port — a server is written {{store-api/foo}}"},
+		{"{{checkout-api.worker}}", "a server is written {{checkout-api/worker}}"},
 		{"{{a.b.port}}", ".b.port is not url, host or port"},
 	}
 	for _, tt := range tests {
@@ -473,11 +473,11 @@ func TestParseTokens_Malformed(t *testing.T) {
 }
 
 func TestParseTokens_MultipleInOneValue(t *testing.T) {
-	tokens, err := ParseTokens("ws://{{livekit.host}}/x/{{worktree}}")
+	tokens, err := ParseTokens("ws://{{signals.host}}/x/{{worktree}}")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tokens) != 2 || tokens[0].Raw != "{{livekit.host}}" || tokens[1].Raw != "{{worktree}}" {
+	if len(tokens) != 2 || tokens[0].Raw != "{{signals.host}}" || tokens[1].Raw != "{{worktree}}" {
 		t.Errorf("tokens = %+v", tokens)
 	}
 }
@@ -486,8 +486,8 @@ func TestParseTokens_MultipleInOneValue(t *testing.T) {
 // and never in the legacy form.
 func TestTokenFor_RoundTrips(t *testing.T) {
 	targets := []TargetRef{
-		{Project: "speak-api"},
-		{Project: "mumbo", Server: "backend", HasServer: true},
+		{Project: "store-api"},
+		{Project: "admin", Server: "backend", HasServer: true},
 	}
 	for _, target := range targets {
 		for _, accessor := range []string{"", AccessorURL, AccessorHost, AccessorPort} {
@@ -512,10 +512,10 @@ func TestTokenFor_RoundTrips(t *testing.T) {
 
 func TestIsLegacyToken(t *testing.T) {
 	tests := map[string]bool{
-		"{{url:speak-api}}":         true,
+		"{{url:store-api}}":         true,
 		"ws://localhost:{{port:x}}": true,
-		"{{speak-api}}":             false,
-		"ws://{{speak-api.host}}":   false,
+		"{{store-api}}":             false,
+		"ws://{{store-api.host}}":   false,
 		"{{worktree}}":              false,
 		"literal":                   false,
 	}
@@ -530,18 +530,18 @@ func TestIsLegacyToken(t *testing.T) {
 // description alike, since saved bindings keep the old form indefinitely.
 func TestResolveBindings_NewFormMatchesLegacy(t *testing.T) {
 	pairs := []struct{ legacy, modern string }{
-		{"{{url:speak-api}}", "{{speak-api}}"},
-		{"ws://localhost:{{port:speak-api}}/rtc", "ws://{{speak-api.host}}/rtc"},
-		{"{{port:mumbo/api}}", "{{mumbo/api.port}}"},
-		{"{{url:mumbo/api}}", "{{mumbo/api}}"},
+		{"{{url:store-api}}", "{{store-api}}"},
+		{"ws://localhost:{{port:store-api}}/rtc", "ws://{{store-api.host}}/rtc"},
+		{"{{port:admin/api}}", "{{admin/api.port}}"},
+		{"{{url:admin/api}}", "{{admin/api}}"},
 	}
 	for _, pair := range pairs {
 		t.Run(pair.modern, func(t *testing.T) {
 			resolve := func(value string) Resolution {
 				p := bindingFixture(map[string][]Binding{
-					"ai-tutor-api": {{Var: "V", Value: value}},
+					"checkout-api": {{Var: "V", Value: value}},
 				})
-				return find(t, ResolveBindings(p), "ai-tutor-api", "V")
+				return find(t, ResolveBindings(p), "checkout-api", "V")
 			}
 			legacy, modern := resolve(pair.legacy), resolve(pair.modern)
 			if !modern.Resolved() {
@@ -556,10 +556,10 @@ func TestResolveBindings_NewFormMatchesLegacy(t *testing.T) {
 }
 
 func TestIndexReservedPorts(t *testing.T) {
-	got := IndexReservedPorts(map[string]int{"speak-api/speak-api": 54021, "mumbo/api": 54030, "junk": 1})
+	got := IndexReservedPorts(map[string]int{"store-api/store-api": 54021, "admin/api": 54030, "junk": 1})
 	want := map[ProjectServer]int{
-		{Project: "speak-api", Server: "speak-api"}: 54021,
-		{Project: "mumbo", Server: "api"}:           54030,
+		{Project: "store-api", Server: "store-api"}: 54021,
+		{Project: "admin", Server: "api"}:           54030,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v, want %+v", got, want)

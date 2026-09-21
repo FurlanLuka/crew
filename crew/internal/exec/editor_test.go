@@ -135,6 +135,7 @@ func TestGenerateCodeWorkspace_SkipPermissions(t *testing.T) {
 	projects := []WorkspaceProject{{Name: "api", Path: "/tmp/api"}}
 
 	claude := &ClaudeTask{
+		Ref:             "ws/wt",
 		LeadPath:        "/tmp/api",
 		SkipPermissions: true,
 	}
@@ -151,6 +152,10 @@ func TestGenerateCodeWorkspace_SkipPermissions(t *testing.T) {
 
 	if !strings.Contains(cmd, "--dangerously-skip-permissions") {
 		t.Error("should contain --dangerously-skip-permissions")
+	}
+	// The env the prompt tells Claude to rely on, ahead of the binary.
+	if i, j := strings.Index(cmd, "CREW_REF='ws/wt'"), strings.Index(cmd, "claude"); i < 0 || j < 0 || i > j {
+		t.Errorf("CREW_REF should precede claude: %s", cmd)
 	}
 }
 

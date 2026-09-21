@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 func TestExtractFlag(t *testing.T) {
@@ -93,15 +95,15 @@ func TestSplitRunArgs(t *testing.T) {
 	}{
 		{
 			name:    "ref project and command",
-			args:    []string{"phone-speak/wrk1", "ai-tutor-api", "--", "make", "eval"},
-			ref:     "phone-speak/wrk1",
-			project: "ai-tutor-api",
+			args:    []string{"store-front/wrk1", "checkout-api", "--", "make", "eval"},
+			ref:     "store-front/wrk1",
+			project: "checkout-api",
 			command: []string{"make", "eval"},
 		},
 		{
 			name:    "bare workspace",
-			args:    []string{"mumbo", "backend", "--", "npm", "test"},
-			ref:     "mumbo",
+			args:    []string{"admin", "backend", "--", "npm", "test"},
+			ref:     "admin",
 			project: "backend",
 			command: []string{"npm", "test"},
 		},
@@ -212,5 +214,69 @@ func TestParseAddProjectArgs(t *testing.T) {
 	}
 	if err := (addProjectArgs{name: "api", newPath: "/x"}).updatesExisting(); err != nil {
 		t.Errorf("--path alone should update: %v", err)
+	}
+}
+
+func TestParseIntFlag(t *testing.T) {
+	for _, tt := range []struct {
+		raw      string
+		positive bool
+		want     int
+		wantErr  bool
+	}{
+		{"30", true, 30, false},
+		{" 30 ", true, 30, false},
+		{"30x0", true, 0, true},
+		{"0", true, 0, true},
+		{"-1", true, 0, true},
+		{"0", false, 0, false},
+		{"", true, 0, true},
+	} {
+		got, err := parseIntFlag(tt.raw, tt.positive)
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("parseIntFlag(%q, %v) = %d, %v; want %d, err=%v", tt.raw, tt.positive, got, err, tt.want, tt.wantErr)
+		}
+	}
+}
+
+func TestParseProjectSpecs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    []workspace.ProjectSpec
+		wantErr string
+	}{
+		{name: "one with --role", args: []string{"api", "--role=Backend"}, want: []workspace.ProjectSpec{{Name: "api", Role: "Backend"}}},
+		{name: "one without role", args: []string{"api"}, want: []workspace.ProjectSpec{{Name: "api", Role: "works on api"}}},
+		{name: "several with inline roles", args: []string{"api:Backend API", "web:iOS app", "worker"},
+			want: []workspace.ProjectSpec{{Name: "api", Role: "Backend API"}, {Name: "web", Role: "iOS app"}, {Name: "worker", Role: "works on worker"}}},
+		{name: "direct applies to all", args: []string{"api", "web", "--direct"},
+			want: []workspace.ProjectSpec{{Name: "api", Role: "works on api", Mode: workspace.ModeDirect}, {Name: "web", Role: "works on web", Mode: workspace.ModeDirect}}},
+		{name: "--role with several", args: []string{"api", "web", "--role=x"}, wantErr: "names one project's role"},
+		{name: "role twice", args: []string{"api:x", "--role=y"}, wantErr: "give the role once"},
+		{name: "empty name", args: []string{":role"}, wantErr: "project name is needed"},
+		{name: "unknown flag", args: []string{"api", "--nope"}, wantErr: "unknown flag"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseProjectSpecs(tt.args)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %+v, want %+v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("spec %d = %+v, want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
 }

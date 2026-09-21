@@ -15,6 +15,7 @@ func ClaudeTaskFor(res *Resolved) *exec.ClaudeTask {
 	claude := &exec.ClaudeTask{
 		LeadPath:        res.Projects[0].Path,
 		SkipPermissions: true,
+		Ref:             res.Ref.String(),
 	}
 	if config.UserSetClaudeConfig {
 		claude.ClaudeConfigDir = config.ClaudeConfigDir
@@ -26,9 +27,7 @@ func ClaudeTaskFor(res *Resolved) *exec.ClaudeTask {
 			claude.AddDirs = append(claude.AddDirs, p.Path)
 		}
 	}
-	if NeedsPrompt(res) {
-		claude.PromptFile = PromptFilePath(res.Ref)
-	}
+	claude.PromptFile = PromptFilePath(res.Ref)
 	return claude
 }
 
@@ -81,10 +80,8 @@ func EditorLinks(res *Resolved, sshHost string) (string, error) {
 // prompt written and the Claude task wired — the worktree page's "Editor +
 // Claude" and crew edit share it.
 func LaunchEditor(res *Resolved, editor string) error {
-	if NeedsPrompt(res) {
-		if _, err := GeneratePrompt(res); err != nil {
-			return err
-		}
+	if _, err := GeneratePrompt(res); err != nil {
+		return err
 	}
 	target, err := EditorRemotePath(res, ClaudeTaskFor(res))
 	if err != nil {

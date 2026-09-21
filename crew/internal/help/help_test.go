@@ -50,7 +50,7 @@ func TestDevSubcommands(t *testing.T) {
 		t.Fatal("dev command not found")
 	}
 
-	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status", "logs", "tui"}
+	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status", "check", "proxy", "logs", "tui"}
 	if len(dev.Subcommands) != len(expected) {
 		t.Fatalf("dev has %d subcommands, want %d", len(dev.Subcommands), len(expected))
 	}
@@ -126,10 +126,10 @@ func TestAddSubcommands(t *testing.T) {
 	if ws.Usage == "" {
 		t.Error("add workspace missing usage")
 	}
-	if len(ws.Flags) != 2 {
-		t.Fatalf("add workspace should have 2 flags, got %d", len(ws.Flags))
+	if len(ws.Flags) != 3 {
+		t.Fatalf("add workspace should have 3 flags, got %d", len(ws.Flags))
 	}
-	wantFlags := map[string]bool{"--role=<r>": true, "--direct": true}
+	wantFlags := map[string]bool{"<project>[:<role>]": true, "--role=<r>": true, "--direct": true}
 	for _, f := range ws.Flags {
 		if !wantFlags[f.Name] {
 			t.Errorf("unexpected flag %q on add workspace", f.Name)
@@ -249,5 +249,67 @@ func TestSkillDocumentsEveryUsage(t *testing.T) {
 	}
 	for i := range Root.Subcommands {
 		walk(&Root.Subcommands[i])
+	}
+}
+
+// The proxy is the one part of crew whose failures happen on a device crew
+// cannot see; the notes are where a user standing there is sent.
+func TestProxyNotes(t *testing.T) {
+	for _, path := range [][]string{{"dev", "start"}, {"config", "set"}} {
+		cmd := &Root
+		for _, name := range path {
+			cmd = findSubcommand(cmd, name)
+		}
+		if len(cmd.Notes) == 0 {
+			t.Errorf("%v should carry notes", path)
+		}
+	}
+}
+
+func TestPrintHelp_Snapshot(t *testing.T) {
+	cmd := &CommandInfo{
+		Name:         "set",
+		Description:  "Set a value",
+		Usage:        "crew config set <key> <value>",
+		Flags:        []FlagInfo{{Name: "--force", Description: "Do it", Default: "off"}},
+		OutputFormat: "<key>\\t<value>",
+		Examples:     []string{"crew config set a b"},
+		Notes:        []string{"first note", "  indented detail"},
+	}
+	var b strings.Builder
+	printHelp(&b, cmd, []string{"config", "set"})
+	want := strings.Join([]string{
+		"crew config set - Set a value",
+		"",
+		"Usage: crew config set <key> <value>",
+		"",
+		"Flags:",
+		"  --force  Do it (default: off)",
+		"",
+		"Output: <key>\\t<value>",
+		"",
+		"Examples:",
+		"  crew config set a b",
+		"",
+		"Notes:",
+		"  first note",
+		"    indented detail",
+		"",
+	}, "\n")
+	if b.String() != want {
+		t.Errorf("printHelp =\n%s\nwant\n%s", b.String(), want)
+	}
+}
+
+// Notes exist because a description also renders in the parent's command
+// list; a note must never leak there.
+func TestPrintHelp_NotesStayOffParentList(t *testing.T) {
+	parent := &CommandInfo{Name: "dev", Description: "Dev servers", Subcommands: []CommandInfo{
+		{Name: "start", Description: "Start them", Notes: []string{"the long story"}},
+	}}
+	var b strings.Builder
+	printHelp(&b, parent, []string{"dev"})
+	if strings.Contains(b.String(), "Notes:") || strings.Contains(b.String(), "the long story") {
+		t.Errorf("parent list carries a note:\n%s", b.String())
 	}
 }

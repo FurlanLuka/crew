@@ -20,6 +20,9 @@ import (
 
 // ── Messages ──
 
+// recheckMsg: the servers started a moment ago have had time to settle.
+type recheckMsg struct{}
+
 type worktreeLoadedMsg struct {
 	page worktreePage
 }
@@ -47,16 +50,30 @@ type devItem struct {
 	Running     bool
 	Port        int
 	URL         string
+	// Check is what the smoke's look at the running server found — nil
+	// until it has had time to settle after a start.
+	Check *SmokeResult
+}
+
+// checked is the check's verdict, SmokeOK until there is one.
+func (d devItem) checked() SmokeState {
+	if d.Check == nil {
+		return SmokeOK
+	}
+	return d.Check.State()
 }
 
 // worktreePage is everything the page shows, loaded in one go.
 type worktreePage struct {
-	Dir         string
-	Session     string
-	NoProxy     bool // how the running session was started, if any
-	Items       []devItem
-	Anomalies   string // FormatResolutions anomalies + FormatConflicts, "" when clean
-	Health      *Health
+	Dir       string
+	Session   string
+	NoProxy   bool // how the running session was started, if any
+	Items     []devItem
+	Anomalies string // FormatResolutions anomalies + FormatConflicts, "" when clean
+	Health    *Health
+	// CheckHealth is what the running servers' check found, never written:
+	// f hands it to Claude, a plain start still records nothing.
+	CheckHealth *Health
 	LeadProject string
 	LeadBranch  string
 	HasEditor   bool
@@ -152,6 +169,11 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.loading = false
 		v.statusMsg = msg.status
 		v.err = nil
+		// Rows first, the check once the servers have had the smoke's
+		// settle time — checking at once would call every server dead.
+		return v, tea.Batch(v.loadWith(false), tea.Tick(smokeSettle, func(time.Time) tea.Msg { return recheckMsg{} }))
+
+	case recheckMsg:
 		return v, v.load()
 
 	case devStoppedMsg:
@@ -263,7 +285,7 @@ func (v WorktreeView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return v, nil
 		}
 		return v.act("verifying — servers up, six seconds, stopped again…", v.runVerify())
-	case msg.String() == "f" && v.page.Health != nil:
+	case msg.String() == "f" && (v.page.Health != nil || v.page.CheckHealth != nil):
 		return v, v.runFix()
 	}
 	return v, nil
@@ -395,6 +417,8 @@ func (v WorktreeView) View() string {
 	help := "enter act  s start all  r restart  x stop  l logs  p proxy  v verify"
 	if v.locked() {
 		help = "f fix  v verify  l logs  o shell  p proxy"
+	} else if v.page.CheckHealth != nil {
+		help = "f fix with Claude  " + help
 	}
 	b.WriteString(app.HelpStyle.Render(help + "  esc back"))
 	b.WriteString("\n")
@@ -454,6 +478,12 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 		b.WriteString("  " + app.RowPrefix(sel))
 		b.WriteString(name(fmt.Sprintf("%-*s", width, item.Server.Name), rowServer, sel))
 		switch {
+		case item.checked() == SmokeDied:
+			fmt.Fprintf(b, "  %s :%d   %s", app.Error.Render("✗ died"), item.Port, app.Subtle.Render(firstLine(item.Check.Tail)))
+		case item.checked() == SmokeUnreached:
+			fmt.Fprintf(b, "  %s :%d   %s", app.Error.Render("! not listening"), item.Port, app.Subtle.Render("something points at it"))
+		case item.checked() == SmokeIdle:
+			fmt.Fprintf(b, "  %s :%d   %s", app.Highlight.Render("● not listening"), item.Port, app.Subtle.Render("nothing points at it"))
 		case item.Running:
 			fmt.Fprintf(b, "  %s :%d   %s", app.Success.Render("●"), item.Port, app.Subtle.Render(item.URL))
 		case locked:
@@ -562,22 +592,34 @@ func leadHint(page worktreePage) string {
 
 // ── Commands ──
 
-func (v WorktreeView) load() tea.Cmd {
+func (v WorktreeView) load() tea.Cmd { return v.loadWith(true) }
+
+func (v WorktreeView) loadWith(check bool) tea.Cmd {
 	ref := v.ref
 	return func() tea.Msg {
 		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}
-		return worktreeLoadedMsg{page: loadWorktreePage(res)}
+		return worktreeLoadedMsg{page: loadWorktreePage(res, check)}
 	}
 }
 
 // loadWorktreePage gathers everything the page shows: configured servers
 // joined to what is running, and the same anomalies `crew dev start` prints,
 // so the page tells you before you start anything.
-func loadWorktreePage(res *Resolved) worktreePage {
+func loadWorktreePage(res *Resolved, check bool) worktreePage {
 	routes, _ := dev.LoadRoutes(res.Slug)
+	var checks map[string]SmokeResult
+	var checkHealth *Health
+	if check && len(routes) > 0 {
+		results := inspectRoutes(res.Slug, routes)
+		checks = make(map[string]SmokeResult, len(results))
+		for _, r := range results {
+			checks[dev.PortKey(r.Project, r.Server)] = r
+		}
+		checkHealth = CheckHealth(results)
+	}
 	settings := config.LoadSettings()
 	domain := settings.GetDomain(dev.ResolveHostIP())
 	proxyPort := settings.GetProxyPort()
@@ -595,6 +637,10 @@ func loadWorktreePage(res *Resolved) worktreePage {
 				item.Running = true
 				item.Port = r.InternalPort
 				item.URL = dev.RouteURL(r, res.Slug, domain, proxyPort)
+				if c, ok := checks[dev.PortKey(p.Name, ds.Name)]; ok {
+					c := c
+					item.Check = &c
+				}
 			}
 			items = append(items, item)
 		}
@@ -606,12 +652,13 @@ func loadWorktreePage(res *Resolved) worktreePage {
 		dev.FormatConflicts(dev.InspectEnvConflicts(res.Slug, projects, dev.PlannedFromRoutes(projects, routes), resolutions))
 
 	page := worktreePage{
-		Dir:       res.Dir,
-		Items:     items,
-		Anomalies: strings.TrimLeft(anomalies, "\n"),
-		Health:    res.Health,
-		HasEditor: exec.DetectEditor() != "",
-		HasSSH:    settings.SSHHost != "",
+		Dir:         res.Dir,
+		Items:       items,
+		CheckHealth: checkHealth,
+		Anomalies:   strings.TrimLeft(anomalies, "\n"),
+		Health:      res.Health,
+		HasEditor:   exec.DetectEditor() != "",
+		HasSSH:      settings.SSHHost != "",
 	}
 	if len(routes) > 0 {
 		page.Session = dev.SessionName(res.Slug)
@@ -704,15 +751,17 @@ func (v WorktreeView) runVerify() tea.Cmd {
 	return listen(ch)
 }
 
-// runFix is crew fix from the page: Claude with the recorded failure.
+// runFix is crew fix from the page: Claude with the recorded failure, or
+// with what the check of the running servers found.
 func (v WorktreeView) runFix() tea.Cmd {
 	ref := v.ref
+	transient := v.page.CheckHealth
 	return func() tea.Msg {
 		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}
-		cmd, err := FixCommand(res, FixAnomalies(res))
+		cmd, err := FixCommandFor(res, MergeHealth(res.Health, transient), FixAnomalies(res))
 		if err != nil {
 			return errMsg{err}
 		}

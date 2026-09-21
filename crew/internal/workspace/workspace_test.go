@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
@@ -25,6 +27,15 @@ func setupTestConfig(t *testing.T) string {
 	os.MkdirAll(config.ClaudeConfigDir, 0o755)
 	// Trashed checkouts stay put so tests can look at them.
 	trash.DisableSweepForTest(t)
+	// Smoke starts and removals StopProxyIfIdle on the shared tmux server; a
+	// name of our own keeps that away from a live proxy and from other
+	// packages' tests.
+	prev := dev.ProxySessionName
+	dev.ProxySessionName = fmt.Sprintf("crew-test-proxy-%d", os.Getpid())
+	t.Cleanup(func() {
+		exec.KillTmuxSession(dev.ProxySessionName)
+		dev.ProxySessionName = prev
+	})
 	return tmp
 }
 

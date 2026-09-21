@@ -39,11 +39,11 @@ const (
 
 // Resolution is one variable's outcome for one project in one worktree.
 type Resolution struct {
-	Project string
-	Var     string
-	Value   string
-	Source  Source
-	Detail  string
+	Project string `json:"project"`
+	Var     string `json:"var"`
+	Value   string `json:"value"`
+	Source  Source `json:"source"`
+	Detail  string `json:"detail"`
 }
 
 // Resolved reports whether this variable should be injected.

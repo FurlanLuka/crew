@@ -195,13 +195,16 @@ func Suggest(exported string, anchors []string) string {
 
 // CloneTarget is where c would clone: beside the latest anchor, else into the
 // exported path when its parent exists here, else "" — the card asks for a
-// path first. Pure over the fs.
+// path first. Never a directory that is already there: git refuses those,
+// and the sibling Suggest found is what y is for. Pure over the fs.
 func CloneTarget(exported string, anchors []string) string {
 	base := filepath.Base(exported)
 	if len(anchors) > 0 {
-		return filepath.Join(filepath.Dir(anchors[len(anchors)-1]), base)
+		if beside := filepath.Join(filepath.Dir(anchors[len(anchors)-1]), base); !dirExists(beside) {
+			return beside
+		}
 	}
-	if dirExists(filepath.Dir(exported)) {
+	if dirExists(filepath.Dir(exported)) && !dirExists(exported) {
 		return exported
 	}
 	return ""

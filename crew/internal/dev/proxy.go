@@ -139,6 +139,10 @@ func (h *proxyHandler) handleWebSocket(w http.ResponseWriter, r *http.Request, t
 	<-done
 }
 
+// proxyPageMarker is how crew recognises its own proxy on a port: the
+// status page carries it, nothing else on :80 does.
+const proxyPageMarker = "crew dev proxy"
+
 func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 	allRoutes, _ := ListAllRoutes()
 
@@ -146,7 +150,7 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	fmt.Fprintf(w, `<!DOCTYPE html>
-<html><head><title>crew dev proxy</title>
+<html><head><title>`+proxyPageMarker+`</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; }
   h1 { font-size: 1.4em; }
@@ -161,14 +165,12 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 <tr><th>Service</th><th>Worktree</th><th>URL</th></tr>
 `)
 
-	proxyPort := fmt.Sprintf("%d", h.port)
-
 	for _, wr := range allRoutes {
 		for _, route := range wr.Routes {
 			if !route.Proxied() {
 				continue
 			}
-			u := fmt.Sprintf("http://%s--%s.%s:%s", route.ServerName, wr.Slug, h.domain, proxyPort)
+			u := RouteURL(route, wr.Slug, h.domain, h.port)
 			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a></td></tr>`+"\n",
 				route.ServerName, DisplayRef(wr.Slug), u, u)
 		}

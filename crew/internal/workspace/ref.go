@@ -7,7 +7,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
-// Ref names one worktree inside one workspace — "phone-speak/wrk2".
+// Ref names one worktree inside one workspace — "store-front/wrk2".
 //
 // A Ref is what the user types and what every command resolves against. It is
 // pure data: parsing one never touches disk, so a caller can validate syntax
@@ -50,7 +50,7 @@ func ParseRef(s string) (Ref, error) {
 // ValidateName enforces the naming rule shared by workspaces and worktrees.
 //
 // "--" is rejected specifically because it is the slug separator: a workspace
-// literally named "phone-speak--wrk2" would collide with workspace phone-speak
+// literally named "store-front--wrk2" would collide with workspace store-front
 // worktree wrk2 across the route file, log directory, tmux session and proxy
 // subdomain simultaneously.
 func ValidateName(kind, name string) error {

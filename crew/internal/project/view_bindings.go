@@ -98,11 +98,11 @@ type BindingsView struct {
 
 func NewBindingsView(projName string) BindingsView {
 	varInput := textinput.New()
-	varInput.Placeholder = "SPEAK_API_URL"
+	varInput.Placeholder = "STORE_API_URL"
 	varInput.CharLimit = 64
 
 	valueInput := textinput.New()
-	valueInput.Placeholder = "{{speak-api}}"
+	valueInput.Placeholder = "{{store-api}}"
 	valueInput.CharLimit = 256
 
 	return BindingsView{

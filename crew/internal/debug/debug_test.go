@@ -1,6 +1,7 @@
 package debug
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -189,5 +190,47 @@ func TestLogPath(t *testing.T) {
 	want := filepath.Join("/tmp/test-crew", "debug.log")
 	if got != want {
 		t.Errorf("logPath() = %q, want %q", got, want)
+	}
+}
+
+func TestParseLines(t *testing.T) {
+	got := ParseLines([]string{
+		"2026-09-21 14:47:45 [dev] proxy running with a, want b — relaunching",
+		"2026-09-21 14:47:46 [tmux] send-keys -t s [x] y",
+		"    continuation line",
+		"",
+	})
+	want := []Entry{
+		{At: "2026-09-21 14:47:45", Category: "dev", Message: "proxy running with a, want b — relaunching"},
+		{At: "2026-09-21 14:47:46", Category: "tmux", Message: "send-keys -t s [x] y"},
+		{Message: "    continuation line"},
+		{Message: ""},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("entry %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// A fresh install has no log; --json must print [] rather than null.
+func TestParseLines_NoLogIsEmptyList(t *testing.T) {
+	config.ConfigDir = t.TempDir()
+	data, _ := json.Marshal(ParseLines(TailLines(DefaultTail)))
+	if string(data) != "[]" {
+		t.Errorf("no log → %s", data)
+	}
+}
+
+// What Log writes must come back through ParseLines unchanged.
+func TestParseLines_RoundTrip(t *testing.T) {
+	config.ConfigDir = t.TempDir()
+	Log("git", "clone %s → %s", "a", "b")
+	entries := ParseLines(TailLines(1))
+	if len(entries) != 1 || entries[0].Category != "git" || entries[0].Message != "clone a → b" || len(entries[0].At) != 19 {
+		t.Errorf("round trip = %+v", entries)
 	}
 }

@@ -11,13 +11,15 @@ import (
 )
 
 func cmdMigrate() {
-	dryRun := false
+	dryRun, yes := false, false
 	for _, arg := range os.Args[2:] {
 		switch arg {
 		case "--dry-run":
 			dryRun = true
+		case "--yes":
+			yes = true
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\nUsage: crew migrate [--dry-run]\n", arg)
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\nUsage: crew migrate [--dry-run] [--yes]\n", arg)
 			os.Exit(1)
 		}
 	}
@@ -46,7 +48,7 @@ func cmdMigrate() {
 	backup := workspace.BackupDir(time.Now())
 	fmt.Printf("\nThis moves git worktrees on disk and rewrites workspace config.\n")
 	fmt.Printf("Workspace and route files will be copied to %s first.\n", backup)
-	if !confirm("Proceed? [y/N] ") {
+	if !yes && !confirm("Proceed? [y/N] ") {
 		fmt.Println("Cancelled.")
 		return
 	}

@@ -24,8 +24,8 @@ type DevServer struct {
 // Binding declares that this project needs Var set, and how to compute it.
 //
 // The edge lives on the project rather than the workspace because it comes from
-// this project's own env schema: ai-tutor-api needs speak-api's URL in
-// SPEAK_API_URL in every workspace it ever appears in. Declaring it per
+// this project's own env schema: checkout-api needs store-api's URL in
+// STORE_API_URL in every workspace it ever appears in. Declaring it per
 // workspace means re-declaring the same edge everywhere and watching them drift.
 //
 // Value is a template; dev.ParseTokens is the grammar.

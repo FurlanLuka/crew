@@ -164,6 +164,18 @@ func TestCloneTarget(t *testing.T) {
 	if got := CloneTarget("/nope/nowhere/web", nil); got != "" {
 		t.Errorf("no anchor, no parent = %q", got)
 	}
+	// A sibling already beside the anchor is a suggestion, not a clone target.
+	os.MkdirAll(filepath.Join(tmp, "dev", "web"), 0o755)
+	if got := CloneTarget("/nope/nowhere/web", []string{filepath.Join(tmp, "dev", "api")}); got != "" {
+		t.Errorf("beside exists, no parent = %q", got)
+	}
+	if got := CloneTarget(filepath.Join(tmp, "web"), []string{filepath.Join(tmp, "dev", "api")}); got != filepath.Join(tmp, "web") {
+		t.Errorf("beside exists, parent exists = %q", got)
+	}
+	os.MkdirAll(filepath.Join(tmp, "web"), 0o755)
+	if got := CloneTarget(filepath.Join(tmp, "web"), nil); got != "" {
+		t.Errorf("exported exists = %q", got)
+	}
 }
 
 func TestClone(t *testing.T) {

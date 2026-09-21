@@ -93,18 +93,18 @@ func TestBaseStatuses_DirectAndMissing(t *testing.T) {
 
 func TestFormatBaseStatuses_Golden(t *testing.T) {
 	got := FormatBaseStatuses([]BaseStatus{
-		{Project: "speak-api", Base: "develop", Current: "feature/s4b-3071", Behind: 3, Ahead: 0},
-		{Project: "ai-tutor-api", Base: "main", Current: "main", Behind: 0, Ahead: 1},
-		{Project: "speak-app", Base: "develop", Current: "develop", Behind: 0},
-		{Project: "gcp-infra", Base: "main", Current: "main", Behind: -1, Ahead: -1, Err: "fetch failed — remote state unknown"},
+		{Project: "store-api", Base: "develop", Current: "feature/s4b-3071", Behind: 3, Ahead: 0},
+		{Project: "checkout-api", Base: "main", Current: "main", Behind: 0, Ahead: 1},
+		{Project: "store-app", Base: "develop", Current: "develop", Behind: 0},
+		{Project: "infra-ops", Base: "main", Current: "main", Behind: -1, Ahead: -1, Err: "fetch failed — remote state unknown"},
 		{Project: "ghost", Behind: -1, Err: "not in project pool"},
 	})
 
 	want := strings.Join([]string{
-		"  speak-api     develop     3 behind origin/develop   (checkout is on feature/s4b-3071)",
-		"  ai-tutor-api  main        up to date, 1 ahead",
-		"  speak-app     develop     up to date",
-		"  gcp-infra     main        fetch failed — remote state unknown",
+		"  store-api     develop     3 behind origin/develop   (checkout is on feature/s4b-3071)",
+		"  checkout-api  main        up to date, 1 ahead",
+		"  store-app     develop     up to date",
+		"  infra-ops     main        fetch failed — remote state unknown",
 		"  ghost         not in project pool",
 		"",
 	}, "\n")
@@ -112,7 +112,7 @@ func TestFormatBaseStatuses_Golden(t *testing.T) {
 		t.Errorf("FormatBaseStatuses =\n%s\nwant\n%s", got, want)
 	}
 
-	warn := StaleWarning([]BaseStatus{{Project: "speak-api", Behind: 3}, {Project: "web", Behind: 1}, {Project: "ok"}})
+	warn := StaleWarning([]BaseStatus{{Project: "store-api", Behind: 3}, {Project: "web", Behind: 1}, {Project: "ok"}})
 	if !strings.HasPrefix(warn, "! 2 of 3 projects behind origin") {
 		t.Errorf("StaleWarning = %q", warn)
 	}

@@ -10,15 +10,15 @@ import (
 func twoProjects() []DevProject {
 	return []DevProject{
 		{
-			Name: "speak-api",
-			Path: "/wt/speak-api",
+			Name: "store-api",
+			Path: "/wt/store-api",
 			DevServers: []DevServerConfig{
 				{Name: "api", Port: 3000, Command: "npm start"},
 			},
 		},
 		{
-			Name: "mumbo",
-			Path: "/wt/mumbo",
+			Name: "admin",
+			Path: "/wt/admin",
 			DevServers: []DevServerConfig{
 				{Name: "api", Port: 3100, Command: "pnpm dev", Dir: "backend"},
 				{Name: "homepage", Port: 3001, Command: "pnpm dev", Dir: "homepage"},
@@ -40,9 +40,9 @@ func TestPlanServers_PairsPortsInOrder(t *testing.T) {
 		internal int
 		external int
 	}{
-		{"speak-api", "api", 54001, 3000},
-		{"mumbo", "api", 54002, 3100},
-		{"mumbo", "homepage", 54003, 3001},
+		{"store-api", "api", 54001, 3000},
+		{"admin", "api", 54002, 3100},
+		{"admin", "homepage", 54003, 3001},
 	}
 	for i, w := range want {
 		got := planned[i]
@@ -104,14 +104,14 @@ func TestPlanServers_NoProxyStillAllocates(t *testing.T) {
 func TestPlanServers_JoinsServerDir(t *testing.T) {
 	planned := PlanServers(twoProjects(), []int{1, 2, 3}, false)
 
-	if planned[0].Dir != "/wt/speak-api" {
+	if planned[0].Dir != "/wt/store-api" {
 		t.Errorf("empty Dir should stay at project root, got %q", planned[0].Dir)
 	}
-	if planned[1].Dir != "/wt/mumbo/backend" {
-		t.Errorf("Dir = %q, want /wt/mumbo/backend", planned[1].Dir)
+	if planned[1].Dir != "/wt/admin/backend" {
+		t.Errorf("Dir = %q, want /wt/admin/backend", planned[1].Dir)
 	}
-	if planned[2].Dir != "/wt/mumbo/homepage" {
-		t.Errorf("Dir = %q, want /wt/mumbo/homepage", planned[2].Dir)
+	if planned[2].Dir != "/wt/admin/homepage" {
+		t.Errorf("Dir = %q, want /wt/admin/homepage", planned[2].Dir)
 	}
 }
 
@@ -123,9 +123,9 @@ func TestPlanServers_NoServers(t *testing.T) {
 
 func planned(command string, port int) PlannedServer {
 	return PlannedServer{
-		Project: "speak-api",
+		Project: "store-api",
 		Server:  DevServerConfig{Name: "api", Command: command},
-		Route:   Route{Project: "speak-api", ServerName: "api", InternalPort: port},
+		Route:   Route{Project: "store-api", ServerName: "api", InternalPort: port},
 	}
 }
 
@@ -157,9 +157,9 @@ func TestServerCommand(t *testing.T) {
 // configured command still sees them; unresolved variables are absent.
 func TestServerCommand_PrefixesResolvedVars(t *testing.T) {
 	got := ServerCommand(planned("npm run start", 54021), []Resolution{
-		{Project: "speak-api", Var: "TUTOR_URL", Value: "http://localhost:54088", Source: SourceBinding},
-		{Project: "speak-api", Var: "GONE", Source: SourceUnresolved},
-		{Project: "speak-api", Var: "AGENT", Value: "wrk 2", Source: SourceOverride},
+		{Project: "store-api", Var: "TUTOR_URL", Value: "http://localhost:54088", Source: SourceBinding},
+		{Project: "store-api", Var: "GONE", Source: SourceUnresolved},
+		{Project: "store-api", Var: "AGENT", Value: "wrk 2", Source: SourceOverride},
 	})
 
 	want := "export TUTOR_URL='http://localhost:54088'; export AGENT='wrk 2'; PORT=54021 npm run start"
@@ -172,14 +172,14 @@ func TestServerCommand_PrefixesResolvedVars(t *testing.T) {
 // project's variables.
 func TestServerCommand_UsesOnlyThisProjectsResolutions(t *testing.T) {
 	all := []Resolution{
-		{Project: "speak-api", Var: "A", Value: "1", Source: SourceBinding},
-		{Project: "mumbo", Var: "B", Value: "2", Source: SourceBinding},
+		{Project: "store-api", Var: "A", Value: "1", Source: SourceBinding},
+		{Project: "admin", Var: "B", Value: "2", Source: SourceBinding},
 	}
 	byProject := GroupResolutions(all)
 
-	got := ServerCommand(planned("npm start", 3000), byProject["speak-api"])
+	got := ServerCommand(planned("npm start", 3000), byProject["store-api"])
 	if got != "export A='1'; PORT=3000 npm start" {
-		t.Errorf("ServerCommand = %q, want only speak-api's vars", got)
+		t.Errorf("ServerCommand = %q, want only store-api's vars", got)
 	}
 }
 
@@ -212,7 +212,7 @@ func TestLoadRoutes_LegacyFileWithoutProject(t *testing.T) {
 // free is reused, anything else gets a fresh one.
 func TestAllocatePorts_ReusesFreeReservations(t *testing.T) {
 	projects := []DevProject{{
-		Name: "speak-api",
+		Name: "store-api",
 		DevServers: []DevServerConfig{
 			{Name: "api", Port: 3000},
 			{Name: "ws", Port: 3001},
@@ -225,8 +225,8 @@ func TestAllocatePorts_ReusesFreeReservations(t *testing.T) {
 	taken := held.Addr().(*net.TCPAddr).Port
 
 	ports, err := AllocatePorts(projects, map[string]int{
-		PortKey("speak-api", "api"): free,
-		PortKey("speak-api", "ws"):  taken,
+		PortKey("store-api", "api"): free,
+		PortKey("store-api", "ws"):  taken,
 	})
 	if err != nil {
 		t.Fatalf("AllocatePorts: %v", err)
@@ -264,18 +264,18 @@ func TestAllocatePorts_NoReservationsAllocatesFresh(t *testing.T) {
 func TestPlannedFromRoutes(t *testing.T) {
 	projects := twoProjects()
 	routes := []Route{
-		{Project: "speak-api", ServerName: "api", ExternalPort: 3000, InternalPort: 54001},
-		{Project: "mumbo", ServerName: "homepage", ExternalPort: 3001, InternalPort: 54003},
+		{Project: "store-api", ServerName: "api", ExternalPort: 3000, InternalPort: 54001},
+		{Project: "admin", ServerName: "homepage", ExternalPort: 3001, InternalPort: 54003},
 	}
 
 	planned := PlannedFromRoutes(projects, routes)
 	if len(planned) != 2 {
-		t.Fatalf("planned %d, want 2 — mumbo/api has no route and is skipped", len(planned))
+		t.Fatalf("planned %d, want 2 — admin/api has no route and is skipped", len(planned))
 	}
-	if planned[0].Project != "speak-api" || planned[0].Route.InternalPort != 54001 || planned[0].Dir != "/wt/speak-api" {
+	if planned[0].Project != "store-api" || planned[0].Route.InternalPort != 54001 || planned[0].Dir != "/wt/store-api" {
 		t.Errorf("planned[0] = %+v", planned[0])
 	}
-	if planned[1].Server.Name != "homepage" || planned[1].Dir != "/wt/mumbo/homepage" {
+	if planned[1].Server.Name != "homepage" || planned[1].Dir != "/wt/admin/homepage" {
 		t.Errorf("planned[1] = %+v", planned[1])
 	}
 }

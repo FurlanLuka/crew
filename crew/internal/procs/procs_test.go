@@ -133,15 +133,15 @@ func liveMachineRows() ([]crewExec.ProcRow, map[int]string) {
 		{PID: 8030, PPID: 1, Command: "/Applications/Cursor.app/Contents/MacOS/Cursor"},
 		{PID: 8119, PPID: 8030, Command: "Cursor Helper: terminal pty-host"},
 		{PID: 89947, PPID: 8030, Command: "Cursor Helper (Plugin).app/Contents/MacOS/Cursor Helper (Plugin)"},
-		{PID: 68397, PPID: 8119, TTY: "ttys014", Command: "claude --dangerously-skip-permissions --add-dir " + wsRoot + "/phone-speak-wrk1/speak-api"},
+		{PID: 68397, PPID: 8119, TTY: "ttys014", Command: "claude --dangerously-skip-permissions --add-dir " + wsRoot + "/store-front-wrk1/store-api"},
 		{PID: 93389, PPID: 68397, Command: "/bin/zsh -c source /Users/luka/.claude/shell-snapshots/snapshot-zsh.sh"},
-		{PID: 93391, PPID: 93389, Command: "uv run python -m pytest apps/livekit_worker/tests/unit/phone_speak/ -q"},
-		{PID: 93394, PPID: 93391, Command: wsRoot + "/phone-speak-wrk1/ai-tutor-api/.venv/bin/python3 -m pytest"},
+		{PID: 93391, PPID: 93389, Command: "uv run python -m pytest apps/signals_worker/tests/unit/store_front/ -q"},
+		{PID: 93394, PPID: 93391, Command: wsRoot + "/store-front-wrk1/checkout-api/.venv/bin/python3 -m pytest"},
 		{PID: 68011, PPID: 8119, TTY: "ttys010", Command: "/opt/homebrew/bin/zsh -i"},
 		{PID: 80489, PPID: 8119, TTY: "ttys024", Command: "/opt/homebrew/bin/zsh -i"},
-		{PID: 90514, PPID: 89947, Command: wsRoot + "/phone-speak-wrk1/speak-api/node_modules/@biomejs/cli-darwin-arm64/biome lsp-proxy --stdio"},
+		{PID: 90514, PPID: 89947, Command: wsRoot + "/store-front-wrk1/store-api/node_modules/@biomejs/cli-darwin-arm64/biome lsp-proxy --stdio"},
 		// The genuine leak: parent exited, still holding a workspace directory.
-		{PID: 77001, PPID: 1, Command: "node " + wsRoot + "/phone-speak-wrk1/speak-app/node_modules/.bin/next dev"},
+		{PID: 77001, PPID: 1, Command: "node " + wsRoot + "/store-front-wrk1/store-app/node_modules/.bin/next dev"},
 		// A child of that leak. Its own parent is alive, but that parent is the leak.
 		{PID: 77002, PPID: 77001, Command: "node next-server worker"},
 	}
@@ -151,7 +151,7 @@ func liveMachineRows() ([]crewExec.ProcRow, map[int]string) {
 		if r.PID == 1 || r.PID == 8030 || r.PID == 8119 || r.PID == 89947 {
 			continue
 		}
-		cwds[r.PID] = wsRoot + "/phone-speak-wrk1/speak-api"
+		cwds[r.PID] = wsRoot + "/store-front-wrk1/store-api"
 	}
 	return rows, cwds
 }

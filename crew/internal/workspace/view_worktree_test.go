@@ -15,14 +15,14 @@ import (
 
 func pageFixture() worktreePage {
 	return worktreePage{
-		Dir:     "/w/phone-speak/wrk1",
-		Session: "crew-dev-phone-speak--wrk1",
+		Dir:     "/w/store-front/wrk1",
+		Session: "crew-dev-store-front--wrk1",
 		Items: []devItem{
-			{ProjectName: "speak-api", Server: project.DevServer{Name: "speak-api", Port: 3000}, Running: true, Port: 54494, URL: "http://localhost:54494"},
-			{ProjectName: "ai-tutor-api", Server: project.DevServer{Name: "phone-speak-worker", Port: 8003}},
+			{ProjectName: "store-api", Server: project.DevServer{Name: "store-api", Port: 3000}, Running: true, Port: 54494, URL: "http://localhost:54494"},
+			{ProjectName: "checkout-api", Server: project.DevServer{Name: "store-front-worker", Port: 8003}},
 		},
-		Anomalies:   "  ai-tutor-api\n    GONE  left alone — not in workspace\n",
-		LeadProject: "speak-api",
+		Anomalies:   "  checkout-api\n    GONE  left alone — not in workspace\n",
+		LeadProject: "store-api",
 		LeadBranch:  "feature/s4b-3071",
 		HasEditor:   true,
 		HasSSH:      true,
@@ -69,18 +69,18 @@ func TestRenderWorktreePage_Golden(t *testing.T) {
 	got := stripANSI(b.String())
 
 	want := strings.Join([]string{
-		"  /w/phone-speak/wrk1",
+		"  /w/store-front/wrk1",
 		"  proxy: on",
 		"",
-		"  Servers  crew-dev-phone-speak--wrk1",
-		"  > speak-api           ● :54494   http://localhost:54494",
-		"    phone-speak-worker  ○ stopped",
+		"  Servers  crew-dev-store-front--wrk1",
+		"  > store-api           ● :54494   http://localhost:54494",
+		"    store-front-worker  ○ stopped",
 		"",
-		"    ai-tutor-api",
+		"    checkout-api",
 		"      GONE  left alone — not in workspace",
 		"",
 		"  Launch",
-		"    Editor + Claude             speak-api · feature/s4b-3071",
+		"    Editor + Claude             store-api · feature/s4b-3071",
 		"    Claude in terminal          ",
 		"",
 		"  Open",
@@ -123,8 +123,8 @@ func TestRenderWorktreePage_Locked(t *testing.T) {
 	page := pageFixture()
 	page.Anomalies = "  something\n"
 	page.Health = &Health{At: time.Now().Add(-2 * time.Minute), Issues: []Issue{
-		{Stage: StageCheckout, Project: "gcp-infra", Detail: "fatal: a branch named 'x' already exists"},
-		{Stage: StageSmoke, Project: "speak-api", Server: "speak-api", Detail: "l1\nl2\n  at loadConfig (src/config.ts:12)\nError: SPEAK_DB_URL is not set"},
+		{Stage: StageCheckout, Project: "infra-ops", Detail: "fatal: a branch named 'x' already exists"},
+		{Stage: StageSmoke, Project: "store-api", Server: "store-api", Detail: "l1\nl2\n  at loadConfig (src/config.ts:12)\nError: STORE_DB_URL is not set"},
 	}}
 	rows := worktreeRows(page.Items, true, true)
 
@@ -133,21 +133,21 @@ func TestRenderWorktreePage_Locked(t *testing.T) {
 	got := stripANSI(b.String())
 
 	want := strings.Join([]string{
-		"  /w/phone-speak/wrk1",
+		"  /w/store-front/wrk1",
 		"  proxy: off",
 		"",
 		"  ! 2 issues · 2 minutes ago",
-		"    checkout  gcp-infra             fatal: a branch named 'x' already exists",
-		"    smoke     speak-api/speak-api   l2",
+		"    checkout  infra-ops             fatal: a branch named 'x' already exists",
+		"    smoke     store-api/store-api   l2",
 		"                                      at loadConfig (src/config.ts:12)",
-		"                                    Error: SPEAK_DB_URL is not set",
+		"                                    Error: STORE_DB_URL is not set",
 		"                                    … 1 more lines — f hands Claude all of it",
 		"",
 		"    f fix with Claude   v verify",
 		"",
 		"  Servers  locked until verified",
-		"  > speak-api           ● :54494   http://localhost:54494",
-		"    phone-speak-worker  ○",
+		"  > store-api           ● :54494   http://localhost:54494",
+		"    store-front-worker  ○",
 		"",
 		"  Launch  locked until verified",
 		"    Editor + Claude             ",
@@ -298,5 +298,57 @@ func TestLoggedItems_IncludeStoppedServersWithALog(t *testing.T) {
 	m, cmd := v.openLogs()
 	if cmd != nil || m.(WorktreeView).err == nil || m.(WorktreeView).err.Error() != "no server has run yet" {
 		t.Errorf("openLogs with nothing to show: cmd=%v err=%v", cmd != nil, m.(WorktreeView).err)
+	}
+}
+
+// A running row is only "●" once the check says so; the two ways it can be
+// wrong are spelled out on the row, and f is offered without locking.
+func TestRenderWorktreePage_CheckedRows(t *testing.T) {
+	page := pageFixture()
+	page.Anomalies = ""
+	page.HasEditor, page.HasSSH = false, false
+	page.Items = []devItem{
+		{ProjectName: "store-api", Server: project.DevServer{Name: "store-api"}, Running: true, Port: 54494, URL: "http://localhost:54494",
+			Check: &SmokeResult{Alive: true, Listening: true}},
+		{ProjectName: "checkout-api", Server: project.DevServer{Name: "checkout-api"}, Running: true, Port: 54496,
+			Check: &SmokeResult{Alive: false, Tail: "ModuleNotFoundError: No module named 'x'\nmore"}},
+		{ProjectName: "checkout-api", Server: project.DevServer{Name: "worker"}, Running: true, Port: 54497,
+			Check: &SmokeResult{Alive: true, Listening: false, Referenced: true}},
+		{ProjectName: "signals", Server: project.DevServer{Name: "ingress"}, Running: true, Port: 54498,
+			Check: &SmokeResult{Alive: true, Listening: false}},
+	}
+	page.CheckHealth = CheckHealth([]SmokeResult{*page.Items[1].Check, *page.Items[2].Check})
+	rows := worktreeRows(page.Items, false, false)
+
+	var b strings.Builder
+	renderWorktreePage(&b, page, rows, 0, true)
+	got := stripANSI(b.String())
+	want := strings.Join([]string{
+		"  /w/store-front/wrk1",
+		"  proxy: off",
+		"",
+		"  Servers  crew-dev-store-front--wrk1",
+		"  > store-api     ● :54494   http://localhost:54494",
+		"    checkout-api  ✗ died :54496   ModuleNotFoundError: No module named 'x'",
+		"    worker        ! not listening :54497   something points at it",
+		"    ingress       ● not listening :54498   nothing points at it",
+		"",
+		"  Launch",
+		"    Claude in terminal          store-api · feature/s4b-3071",
+		"",
+		"  Open",
+		"    Shell here",
+		"",
+	}, "\n")
+	if got != want {
+		t.Errorf("page =\n%s\nwant\n%s", got, want)
+	}
+
+	v := WorktreeView{ref: Ref{Workspace: "store-front", Worktree: "wrk1"}, page: page, rows: rows}
+	if v.locked() {
+		t.Error("a check never locks the page")
+	}
+	if help := stripANSI(v.View()); !strings.Contains(help, "f fix with Claude  enter act") {
+		t.Errorf("help should offer f:\n%s", help)
 	}
 }

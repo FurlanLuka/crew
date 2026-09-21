@@ -10,13 +10,21 @@ user-invocable: true
 
 # crew
 
-Everything crew does is a command. List commands print tab-separated rows; `--json` works on
+crew is a plain CLI; this reference is for any agent with a shell. Everything crew does is a
+command. List commands print tab-separated rows; `--json` works on
 any command, in any position. `crew help <cmd> [<sub>]` is authoritative; `crew help --json`
 dumps the whole tree. Never guess state — run the command.
 
-A few commands open a full-screen TUI and are the **user's to run**, not yours: `crew
-workspace`, `crew project`, `crew config` (bare), `crew launch`, `crew dev tui`, `crew debug`,
-`crew export` without flags, `crew import` without `--all`. Everything below is scriptable.
+Every action has a non-interactive form; nothing needs the TUI. The full-screen views are
+the **user's to run**, not yours — `crew workspace`, `crew project`, `crew config` (bare),
+`crew launch`, `crew dev tui`, `crew debug` (bare), `crew export` without flags, `crew import`
+without a mode — and so are the commands that replace the process (`crew claude`, `crew open`;
+bare `crew fix` prints when there is no terminal). Everything below is scriptable, and
+`--json` works everywhere; under `--json` progress goes to stderr and stdout is the document.
+
+**If you are inside a crew worktree** (`$CREW_REF` is set, or the session opened with a
+"## crew" section in its first message): that ref is yours. Servers, env, logs and checks go
+through crew — never start a server by hand, never `-f`.
 
 ## 1. Model
 
@@ -28,14 +36,16 @@ workspace`, `crew project`, `crew config` (bare), `crew launch`, `crew dev tui`,
   reserved **ports** (kept across restarts) and its **overrides**.
 - **Ref** — how you name a worktree: `<ws>/<wt>`, or bare `<ws>` when it has one worktree.
   `ws--wt` is the slug crew uses in hostnames, log dirs and tmux sessions; never type it.
-- **Binding** — `{var, template}` on a project. Resolved against the worktree's ports at
-  `crew dev start` and exported into each server's env. Env files are read, never written.
+- **Binding** — `{var, template}` on a project: which env var crew computes and how, so a
+  project finds its siblings on the ports crew allocated. Resolved against the worktree's
+  ports at `crew dev start` and exported into each server's env. Env files are read, never
+  written. §4 has the grammar; the README's "Bindings" section has the why.
 
 ## 2. Read state
 
 ```
 crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>
-crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev][\t<recorded failure>]
+crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev][\t<recorded failure>]   --json adds issues[]
 crew ls projects                                           <name>\t<path>
 crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<template>[\t<resolved value>]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
@@ -46,6 +56,8 @@ crew env <workspace>[/<worktree>] <project>                <VAR>=<value>
 crew ps [--json]                                           <kind>\t<pid>\t<session|cwd>\t<command>
 crew trash [empty]                                         <path>\t<size>\t<n> entries\t<note>  |  <path>\tempty
 crew config show                                           <key>\t<value>
+crew dev proxy [status|stop]                               <up|up (not listening)|down>\t<domain>\t<port>\t<status url>
+crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -53,7 +65,12 @@ crew config show                                           <key>\t<value>
 - `env` prints resolved `KEY=VALUE` on stdout (eval-able); the table and anything left alone
   go to stderr. Values are point-in-time — resolve at run time with `crew run` instead of
   pasting them anywhere.
-- `dev status` with no ref covers every worktree; a bare workspace means all its worktrees.
+- `dev status` with no ref covers every worktree; a bare workspace means all its worktrees. A
+  `!` line on stderr means a proxied worktree's proxy is down.
+- Logs print and return: `dev logs <ref> <server> [--lines=N]`, `debug --tail=N`. Never `-f`
+  or bare `debug` — they follow forever and you would hang.
+- `debug --tail=N` is the last N lines of crew's own log (every git/tmux/install command it
+  ran, with errors); `--json` parses them into `{at, category, message}`. Bare `debug` follows.
 
 ## 3. Projects and dev servers
 
@@ -63,7 +80,7 @@ crew add project <name> [--setup=<cmd>] [--path=<dir>]         re-run on an exis
 crew rm project <name>
 crew dev add <project> --name=<name> --port=<port> --cmd=<command> [--dir=<subdir>]
 crew dev rm <project> <server-name>
-crew dev setup <project>                                       interactive detection of package.json scripts
+crew dev setup <project> [--apply --port=<port>]               <detected|added>\t<name>\t<command>
 ```
 
 - Project names: `a-z 0-9 -`, and not `worktree`, `workspace`, `url`, `host`, `port` — they
@@ -73,9 +90,17 @@ crew dev setup <project>                                       interactive detec
   `uv sync`, `pnpm install`, `npm ci` or `yarn` from the lockfile; `mise install` runs first
   either way.
 - `--path` on an existing project: the repo moved. Worktrees already made keep working.
+- `dev setup` detects one server from `package.json` (`dev`, else `start`) and prints it;
+  `--apply --port=<p>` records it. It cannot know the port; nothing detected is an error
+  naming the `dev add` line to run instead. `dev add` is the full form.
 - `dev add` on an existing server name replaces it. The port is **reference only**: crew
   allocates a free port per worktree and passes it as `$PORT`; the configured one is what
   `.env` files and bindings are matched against.
+- **The contract a project must meet:** its dev server binds `$PORT` (`next dev -p $PORT`,
+  `--port $PORT`, `process.env.PORT`), and it reads sibling URLs from env vars — the ones
+  bindings fill. A server that ignores `$PORT` shows as `not listening` in `crew dev check`
+  and collides across worktrees; tell the user which command to change, do not work around
+  it with overrides.
 
 ## 4. Bindings and overrides
 
@@ -83,10 +108,10 @@ Projects reach each other over localhost, and crew allocates the ports, so no st
 in a `.env` can be right. A binding says which variable, and a template says how:
 
 ```
-{{speak-api}}                  http://localhost:<port>        the project's one server (URL)
-{{speak-api.host}}             localhost:<port>               for ws://, https://, a path: ws://{{speak-api.host}}/rtc
-{{speak-api.port}}             <port>
-{{ai-tutor-api/worker}}        a named server, when the project has several; .host / .port after it
+{{store-api}}                  http://localhost:<port>        the project's one server (URL)
+{{store-api.host}}             localhost:<port>               for ws://, https://, a path: ws://{{store-api.host}}/rtc
+{{store-api.port}}             <port>
+{{checkout-api/worker}}        a named server, when the project has several; .host / .port after it
 {{worktree}}  {{workspace}}    the names — agent-{{worktree}}, db_{{workspace}}_{{worktree}}
 ```
 
@@ -107,7 +132,8 @@ crew run <workspace>[/<worktree>] <project> -- <command...>
 - `--url=x` writes `{{x}}`, `--host=x` writes `{{x.host}}`, `--port=x` writes `{{x.port}}`;
   `--value` takes any template. `--scan` reads the project's `.env` files across every
   checkout and proposes bindings for values pointing at ports crew allocates; `--apply` adds
-  the unambiguous ones.
+  the unambiguous ones. `--scan --json` is one row per proposal with a `status` of `proposed`,
+  `already bound`, `ambiguous`, `added` or `failed`.
 - Precedence per variable: worktree override > binding > left alone. A template that only
   partly resolves is left alone whole — never a half-expanded URL.
 - An override is also the acknowledgement for a binding that legitimately never resolves in
@@ -119,19 +145,25 @@ crew run <workspace>[/<worktree>] <project> -- <command...>
 ## 5. Workspaces and worktrees
 
 ```
-crew add workspace <name> [<project> --role=<role>] [--direct]     no project: create; with one: add it (re-runnable)
+crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct]     <project>\t<added|failed>\t<worktree|direct>\t<detail>
 crew rm workspace <workspace> <project>                            remove a project from a workspace
 crew rm <workspace>                                                the whole workspace, every worktree
 crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]
 crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]
 crew setup <workspace>[/<worktree>] [--no-smoke]
 crew verify <workspace>[/<worktree>]                              <project>  ✓|✗ <server> [exited within seconds]
-crew fix <workspace>[/<worktree>]
+crew fix <workspace>[/<worktree>] [--print]
 crew rm worktree <workspace>/<name>
-crew migrate [--dry-run]
+crew migrate [--dry-run] [--yes]
 ```
 
-- `--direct` adds the project by its canonical path instead of a git worktree — for a repo
+- `add workspace` takes any number of projects in one call — `store-api:"Backend API"
+  store-app:"iOS app" checkout-api` — and creates the workspace if it is new. Names are
+  checked before anything happens; checkouts run, then every install at once. A checkout or
+  install that fails keeps the member and is recorded on that worktree — the `crew fix
+  <ws>/<wt> --print` line is printed per worktree.
+  One call, not one per project.
+- `--direct` adds the projects by their canonical paths instead of git worktrees — for a repo
   that must not be checked out twice.
 - `add worktree` prints each project's base branch and how far behind origin it is; `--pull`
   fast-forwards the local bases first (never touches a checked-out feature branch). Then:
@@ -148,16 +180,24 @@ crew migrate [--dry-run]
 - **Verify** finishes what is missing — checks out a project that failed, re-runs the installs
   that failed — then smokes; exit 1 while anything is recorded, cleared on a pass. `crew fix
   <ref>` opens Claude with every issue, its evidence and the env anomalies — the user runs
-  it. A plain `dev start` never clears health; the CLI prints the issues and proceeds
-  (`! <ref>: … — crew fix … / crew verify …`). `verify` refuses while the worktree's servers
-  are running (it restarts them): `crew dev stop <ref>` first.
+  it. **You are already here: `crew fix <ref> --print`** prints that same prompt (the 30-line
+  install tails, the dead servers' log lines, the anomalies) so you fix the cause yourself,
+  then `crew verify <ref>`. Without a terminal bare `fix` prints too, so you cannot get it
+  wrong. `--json` is the recorded health as data; `ls worktrees --json`
+  carries the same `issues[]`. A plain `dev start` never clears health; the CLI prints the
+  issues and proceeds (`! <ref>: … — crew fix … / crew verify …`). `verify` refuses while the
+  worktree's servers are running (it restarts them): `crew dev stop <ref>` first.
+- `add worktree`, `duplicate`, `setup` and `verify` all take `--json`: progress goes to
+  stderr, the result — `{ref, projects, health}` or the verify result — to stdout, exit 1
+  while anything is recorded.
 - `duplicate` is a new worktree of the same projects with the source's overrides copied;
   ports are never copied.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
   the background (a full Xcode build can be 100+ GB). Disk comes back a little later — `crew
   trash` shows what is still clearing.
 - `migrate` moves pre-2.0 flat workspaces to the nested layout: backs up, prints the plan,
-  moves checkouts with `git worktree move`. Always `--dry-run` first and show the user the plan.
+  moves checkouts with `git worktree move`. Always `--dry-run` first and show the user the
+  plan; `--yes` applies without the prompt.
 
 ## 6. Dev servers
 
@@ -165,7 +205,9 @@ crew migrate [--dry-run]
 crew dev start <workspace>[/<worktree>] [--proxy]
 crew dev stop [<workspace>[/<worktree>]]
 crew dev restart <workspace>[/<worktree>] [--proxy]
-crew dev logs <workspace>[/<worktree>] <server> [-f|--follow]
+crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]
+crew dev check <workspace>[/<worktree>]                           <project>/<server>\t<running|died|not listening>\t<port>\t<detail>
+crew dev proxy [status|stop]
 crew dev tui <workspace>[/<worktree>]                              the worktree page (TUI)
 ```
 
@@ -173,12 +215,36 @@ crew dev tui <workspace>[/<worktree>]                              the worktree 
   the project's resolved bindings exported. URLs are `http://localhost:<port>`; `--proxy`
   adds `http://<server>--<ws>--<wt>.<domain>` for other devices.
 - Ports are reserved per worktree and reused on restart, so a URL from `crew env` stays valid.
+- **After a start, check.** `crew dev start` returns as soon as the panes are up; ~6 s later
+  `crew dev check <ref>` says which server `died` (log tail in the detail) or is `not
+  listening` on its port — a failure when a binding points at it, a note when nothing does
+  (a queue worker registered with a port). Exit 1 on a failure; `crew fix <ref> --print`
+  then has the evidence. The smoke at creation and `verify` apply the same two tests.
 - **Read the end of `crew dev start` and relay it verbatim.** After the URLs: a resolution
   count, anything left alone, then `!` blocks — an env value pointing at a port crew gave to
-  something else, or at a sibling's configured port while it runs elsewhere. Servers still
-  start (warn, never block); the block is the one place a wrong URL is visible before it
-  fails at runtime.
+  something else, or at a sibling's configured port while it runs elsewhere, or a proxy
+  session that came up with nothing listening. Servers still start (warn, never block); the
+  block is the one place a wrong URL is visible before it fails at runtime. `--json` gives
+  the same as `{ref, urls, resolutions, conflicts, warnings, health}`.
 - `stop` and `status` with a bare workspace mean all its worktrees.
+
+**Proxy on other devices.** `--proxy` runs one reverse proxy on `<server_ip>:<proxy_port>`
+(`crew config show`; default the Wi-Fi IP and 80, domain `<server_ip>.nip.io`). Its own page
+at `http://<server_ip>:<proxy_port>/` lists every proxied URL — `crew dev start` prints it.
+Crew can only see this machine, so when a URL works here and not on a phone, have the user
+open that page there and branch on the answer:
+- It loads → the hostname is the problem: `<ip>.nip.io` resolves to a private IP, which
+  router DNS rebind protection (Fritz!Box, UniFi, dnsmasq, Pi-hole), NextDNS or iOS Private
+  Relay refuse. Fixes: allow `nip.io` in the router/resolver, turn off *Limit IP Address
+  Tracking* for that Wi-Fi on the iPhone, or `crew config set domain <own wildcard domain>`.
+- It does not load → the device cannot reach this machine: different network, guest/AP
+  isolation, VPN, cellular.
+- Tailscale sidesteps both: `crew config set server_ip $(tailscale ip -4)`, then `crew dev
+  restart <ref> --proxy` — the proxy is relaunched whenever its settings changed, and the
+  URLs work off the LAN too.
+Verify first that it is not this side: `crew dev proxy status` — `up` with the expected
+domain and port, or `up (not listening)` (the port is taken; the pane's last line is in the
+`!` warning `dev start` printed) or `down`. `crew dev proxy stop` kills the proxy alone.
 
 ## 7. Launching
 
@@ -191,10 +257,11 @@ crew start <workspace>[/<worktree>]                      print the orientation p
 crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the worktree page; bare, the workspace list
 ```
 
-- `claude`, `fix` and `open` replace the crew process and refuse without a terminal — the
-  user runs them, not you. `claude` skips
-  permissions and passes every project with `--add-dir`; a multi-project worktree, or one
-  with a direct-mode project, gets the orientation prompt (`crew start` prints it) injected.
+- `claude` and `open` replace the crew process and refuse without a terminal — the user runs
+  them, not you (bare `fix` prints instead). `claude` skips permissions, passes every project
+  with `--add-dir`, sets `CREW_REF`, and injects the orientation prompt (`crew start` prints
+  it): the projects, their roles, and a `## crew` section telling that session to drive the
+  servers through crew.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
   say which they are in `crew help`.
 
@@ -202,19 +269,31 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
 
 ```
 crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json
-crew import <file> [--all]
+crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name>]
+                                                         <project|workspace>\t<name>\t<status|outcome>\t<detail>
 ```
 
 - A bundle carries projects (path, dev servers, bindings, setup, origin remote) and workspace
   **membership** (projects, roles, modes). Never worktrees, ports or overrides.
 - Without flags `export` is a picker: tick projects, then the workspaces those ticks fully
   cover. With `--projects`, every workspace named must be covered by them.
-- Without `--all`, `import` walks one card per item — the user drives it: `y` import, `e` edit
-  name/path/setup, `c` clone the remote (when the path is not here), `n` skip, `r` replace one
-  already here; then `y` creates each workspace with a checkout of every member (no
-  installs). Every `y` is applied at once; `esc` keeps what was done.
-- `--all` imports what is new, keeps what exists, and refuses up front if any path is missing
-  — it never guesses a path and never clones.
+- Bare, `import` is a wizard the user drives: `y` import, `e` edit name/path/setup, `c` clone
+  the remote (the path field opens prefilled with crew's guess, enter takes it, or type
+  another), `n` skip, `r` replace one already here; then `y` creates each workspace with a
+  checkout of every member (no installs). Every `y` is applied at once; `esc` keeps what was
+  done.
+- **You drive it with modes.** `--plan` first: one row per item —
+  `project\t<name>\texists|path exists|suggested|clone|missing\t<path>` (`suggested` = a
+  sibling found beside a repo crew knows, taken automatically — even under `--clone`;
+  `clone` = where `--clone` would put it; `missing` = give `--path` or `--clone=<dir>`) and
+  `workspace\t<name>\texists|ready|needs\t<members>`. Then per item:
+  `crew import <file> project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>]`
+  prints the same row with the outcome — `imported`, `imported (cloned)`, `replaced`,
+  `replaced (cloned)` — and the path; a name already in the pool needs `--replace` (refused
+  before anything is cloned). `crew import <file> workspace <name>` creates it once
+  every member is in the pool. `crew import <file> --all [--clone] [--replace]` does the
+  whole bundle: new items only unless `--replace`; missing paths refuse the run unless
+  `--clone`; never guesses. Output rows `<kind>\t<name>\t<outcome>\t<detail>`.
 
 ## 9. Housekeeping
 
@@ -223,27 +302,29 @@ crew trash [empty]
 crew ps [--json]
 crew kill [--dry-run]
 crew config show | crew config set <key> <value> | crew config refresh
-crew debug                                               the debug log (TUI)
+crew debug [--tail=<n>]                                  bare: follow the log; --tail prints and returns
 crew update
-crew uninstall [--purge]
+crew uninstall [--purge] [--yes]
 crew help [<command>] [<subcommand>] [--json]
 ```
 
 - `ps` lists crew's tmux sessions and processes that leaked out of them; `kill` stops every
   session and reclaims the leaks (never anything with a live parent) and prints how to
   restore. `--dry-run` first.
-- `config set` keys: `server_ip`, `ssh_host`, `proxy_port`, `domain`. `refresh` rewrites the
-  managed tmux config.
-- `uninstall --purge` deletes every checkout — confirm with the user first.
+- `config set` keys: `server_ip`, `ssh_host`, `proxy_port`, `domain`. A changed `server_ip`,
+  `domain` or `proxy_port` takes effect on the next `dev start|restart --proxy`. `refresh`
+  rewrites the managed tmux config.
+- `uninstall --purge` deletes every checkout — confirm with the user first; `--yes` skips
+  crew's own prompt.
 
 ## Flows
 
 **"What do I have?"** — `crew ls worktrees`, then `crew dev status`.
 
-**"Set up a second working copy of phone-speak"**
-1. `crew ls worktrees phone-speak`
-2. `crew add worktree phone-speak/wrk3 --pull` — relay the base table and the smoke result.
-3. Tell them: `crew launch phone-speak/wrk3`, or `crew claude phone-speak/wrk3`.
+**"Set up a second working copy of store-front"**
+1. `crew ls worktrees store-front`
+2. `crew add worktree store-front/wrk3 --pull` — relay the base table and the smoke result.
+3. Tell them: `crew launch store-front/wrk3`, or `crew claude store-front/wrk3`.
 
 **"Why is service X talking to the wrong thing?"**
 1. `crew env <ws>/<wt> <project>` — what resolved, what was left alone.
@@ -255,19 +336,36 @@ crew help [<command>] [<subcommand>] [--json]
    `server died: <project>/<server>`, or `N issues`.
 2. `crew dev logs <ws>/<wt> <server>` for a dead server's output; `crew env <ws>/<wt>
    <project>` for what was left alone.
-3. Tell them: `crew fix <ws>/<wt>` — Claude opens with every issue; or fix it yourself
-   (`.env`, `crew add override`, git) and `crew verify <ws>/<wt>` — which also finishes the
-   checkouts and installs that failed.
+3. `crew fix <ws>/<wt> --print` — every issue with its evidence, as the prompt Claude would
+   get. Fix the cause (`.env`, `crew add override`, git, the setup command) and `crew verify
+   <ws>/<wt>` — which also finishes the checkouts and installs that failed. Or hand the user
+   `crew fix <ws>/<wt>` to open Claude on it.
 
-**"Run the evals with the right URLs"** — `crew run <ws>/<wt> ai-tutor-api -- make eval`.
+**"Open it on my phone"**
+1. `crew dev restart <ws>/<wt> --proxy` — relay the URLs and the `Other devices:` line.
+2. Not opening there? The user opens the `Other devices:` URL on the phone, then the §6
+   branch: loads → DNS (nip.io blocked), does not → not the same network. Tailscale when
+   either bites.
+
+**"Run the evals with the right URLs"** — `crew run <ws>/<wt> checkout-api -- make eval`.
 
 **"Dev servers for a new project"** — `crew dev add <project> --name=<n> --port=<p>
 --cmd="<c>"`, then `crew add binding <project> --scan`.
 
+**"Start everything and make sure it works"**
+1. `crew dev start <ws>/<wt>` — relay the URLs and any `!` lines.
+2. `sleep 6; crew dev check <ws>/<wt>` — every row `running`? Done. A `died` or
+   `not listening` row: `crew dev logs <ws>/<wt> <server> --lines=50`, or `crew fix
+   <ws>/<wt> --print` for all of it at once; fix, `crew dev restart`, check again.
+
 **"Set crew up on my other machine"**
 1. Here: `crew export ~/Desktop/crew.json --all` (or the picker, user-run).
-2. There: `crew import ~/Desktop/crew.json` — user drives the cards; missing repos are edited
-   or cloned from their remotes. Then `crew add worktree` as needed.
+2. There: `crew import ~/Desktop/crew.json --plan` — read every row. Then per project:
+   `path exists`/`suggested` → `crew import … project <name>`; `clone` → `… --clone`;
+   `missing` → ask where the repo is or should go, then `--path=` or `--clone=<dir>`;
+   `exists` → leave it, or `--replace` if the user wants the bundle's servers and bindings.
+   Then `crew import … workspace <name>` for each `ready` one, and `crew add worktree` as
+   needed. `--all --clone` is the one-shot when every row is plain.
 
 **"Disk is full"**
 1. `crew trash` — anything still clearing? `crew trash empty` finishes it now.
@@ -282,5 +380,5 @@ crew help [<command>] [<subcommand>] [--json]
 - Never print override values or binding-resolved values that look like credentials.
 - Destructive, confirm first: `rm <ws>`, `rm worktree`, `rm project`, `uninstall --purge`,
   `trash empty`, `migrate` (dry-run and show the plan), `kill`.
-- TUI commands and process-replacing ones (`claude`, `open`) are for the user to run; give
-  them the exact line.
+- TUI commands and process-replacing ones (`claude`, `open`, bare `fix`) are for the user to
+  run; give them the exact line. Everything they do has a flag form above — use that.

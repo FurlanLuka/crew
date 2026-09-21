@@ -9,13 +9,15 @@ import (
 )
 
 func cmdUninstall() {
-	purge := false
+	purge, yes := false, false
 	for _, arg := range os.Args[2:] {
 		switch arg {
 		case "--purge":
 			purge = true
+		case "--yes":
+			yes = true
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\nUsage: crew uninstall [--purge]\n", arg)
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\nUsage: crew uninstall [--purge] [--yes]\n", arg)
 			os.Exit(1)
 		}
 	}
@@ -27,7 +29,7 @@ func cmdUninstall() {
 	} else {
 		fmt.Printf("%s and its worktree checkouts are kept. Add --purge to remove them too.\n", config.ConfigDir)
 	}
-	if !confirm("Proceed? [y/N] ") {
+	if !yes && !confirm("Proceed? [y/N] ") {
 		fmt.Println("Cancelled.")
 		return
 	}

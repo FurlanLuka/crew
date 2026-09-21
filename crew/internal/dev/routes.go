@@ -11,7 +11,7 @@ import (
 )
 
 // Slug identifies one running unit of dev servers. It is the flat form of a
-// workspace/worktree pair ("phone-speak--wrk2") and is what every route file,
+// workspace/worktree pair ("store-front--wrk2") and is what every route file,
 // log directory, tmux session and proxy subdomain is keyed by.
 //
 // It is a distinct type because a bare workspace name reaching one of those
@@ -19,7 +19,7 @@ import (
 // that here instead of leaving it to be noticed at runtime.
 type Slug string
 
-// DisplayRef renders a slug the way the user writes it: "phone-speak/wrk2".
+// DisplayRef renders a slug the way the user writes it: "store-front/wrk2".
 //
 // "/" is the user-facing separator; "--" appears only inside identifiers whose
 // rendering crew does not control — tmux session names, hostnames, filenames.

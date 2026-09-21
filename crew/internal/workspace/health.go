@@ -29,13 +29,21 @@ type Issue struct {
 	Stage   string `json:"stage"`
 	Project string `json:"project"`
 	Server  string `json:"server,omitempty"`
-	Detail  string `json:"detail"`
+	// Reason tells two smoke failures apart: the process is gone, or it
+	// runs but never bound its port (ReasonDied, ReasonNotListening).
+	Reason string `json:"reason,omitempty"`
+	Detail string `json:"detail"`
 }
 
 const (
 	StageCheckout = "checkout"
 	StageInstall  = "install"
 	StageSmoke    = "smoke"
+)
+
+const (
+	ReasonDied         = "died"
+	ReasonNotListening = "not listening"
 )
 
 // UnmarshalJSON reads the shape an unreleased build wrote — one stage at the
@@ -84,6 +92,9 @@ func (i Issue) Summary() string {
 		if i.Server == "" {
 			return "servers could not start"
 		}
+		if i.Reason == ReasonNotListening {
+			return "server not listening: " + i.Project + "/" + i.Server
+		}
 		return "server died: " + i.Project + "/" + i.Server
 	}
 	return i.Stage + " failed: " + i.Project
@@ -128,6 +139,46 @@ func (h *Health) installIssues() map[string]bool {
 }
 
 // healthOf is nil when nothing failed.
+// without is h minus one project's issues; nil once nothing is left.
+func (h *Health) without(project string) *Health {
+	if h == nil {
+		return nil
+	}
+	var kept []Issue
+	for _, i := range h.Issues {
+		if i.Project != project {
+			kept = append(kept, i)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return &Health{At: h.At, Issues: kept}
+}
+
+// MergeHealth is the recorded health plus what a check of the running
+// servers found about servers the record does not already cover — crew fix
+// with servers up should describe both.
+func MergeHealth(recorded, check *Health) *Health {
+	if check == nil {
+		return recorded
+	}
+	if recorded == nil {
+		return check
+	}
+	seen := map[string]bool{}
+	for _, i := range recorded.Issues {
+		seen[i.Name()] = true
+	}
+	merged := &Health{At: recorded.At, Issues: append([]Issue(nil), recorded.Issues...)}
+	for _, i := range check.Issues {
+		if !seen[i.Name()] {
+			merged.Issues = append(merged.Issues, i)
+		}
+	}
+	return merged
+}
+
 func healthOf(issues []Issue) *Health {
 	if len(issues) == 0 {
 		return nil
@@ -135,11 +186,17 @@ func healthOf(issues []Issue) *Health {
 	return &Health{At: time.Now(), Issues: issues}
 }
 
-// smokeIssues turns the dead servers into issues.
+// smokeIssues turns the failed servers into issues.
 func smokeIssues(results []SmokeResult) []Issue {
 	var issues []Issue
 	for _, r := range SmokeFailures(results) {
-		issues = append(issues, Issue{Stage: StageSmoke, Project: r.Project, Server: r.Server, Detail: r.Evidence})
+		issue := Issue{Stage: StageSmoke, Project: r.Project, Server: r.Server, Reason: ReasonDied, Detail: r.Evidence}
+		if r.State() == SmokeUnreached {
+			// True for a smoke and for a look at running servers alike.
+			issue.Reason = ReasonNotListening
+			issue.Detail = fmt.Sprintf("running but nothing listens on :%d\n%s", r.Port, r.Evidence)
+		}
+		issues = append(issues, issue)
 	}
 	return issues
 }
@@ -171,8 +228,8 @@ func ClearHealth(ref Ref) error { return RecordHealth(ref, nil) }
 // VerifyResult is what a check found: the smoke, and the issues recorded
 // afterwards (nil when everything passed).
 type VerifyResult struct {
-	Smoke  []SmokeResult
-	Health *Health
+	Smoke  []SmokeResult `json:"smoke"`
+	Health *Health       `json:"health"`
 }
 
 // Verify finishes what a worktree is missing, then checks it: a project with
@@ -218,7 +275,7 @@ func RenderFixPrompt(res *Resolved, h *Health, anomalies string) string {
 	var b strings.Builder
 	b.WriteString(RenderPrompt(res, directBranches(res)))
 	b.WriteString("\n## What failed\n\n")
-	b.WriteString("Creating this worktree ran every step it could; these did not go through:\n\n")
+	b.WriteString("What crew found wrong on this worktree — at creation, on a verify, or looking at the servers as they run:\n\n")
 	for _, issue := range h.Issues {
 		fmt.Fprintf(&b, "%s — %s:\n", issue.Name(), stageWords(issue))
 		for _, line := range strings.Split(strings.TrimRight(issue.Detail, "\n"), "\n") {
@@ -248,6 +305,9 @@ func stageWords(i Issue) string {
 		if i.Server == "" {
 			return "the servers could not be started"
 		}
+		if i.Reason == ReasonNotListening {
+			return "the server kept running but never listened on its port — something points at that port (does its command bind $PORT?)"
+		}
 		return "the server died within seconds of starting"
 	}
 	return i.Stage + " failed"
@@ -268,10 +328,16 @@ func FixAnomalies(res *Resolved) string {
 // FixCommand is ClaudeCommand with the fix prompt, always passed: the
 // orientation prompt's project-count gate does not apply to a failure.
 func FixCommand(res *Resolved, anomalies string) (*osexec.Cmd, error) {
-	if res.Health == nil {
+	return FixCommandFor(res, res.Health, anomalies)
+}
+
+// FixCommandFor is FixCommand over any health — the recorded one, or what
+// a check of the running servers just found.
+func FixCommandFor(res *Resolved, h *Health, anomalies string) (*osexec.Cmd, error) {
+	if h == nil {
 		return nil, fmt.Errorf("nothing recorded on %s — crew verify %s first", res.Ref, res.Ref)
 	}
-	text := RenderFixPrompt(res, res.Health, anomalies)
+	text := RenderFixPrompt(res, h, anomalies)
 	return claudeCommand(res, func() (string, error) {
 		return text, os.WriteFile(PromptFilePath(res.Ref), []byte(text), 0o644)
 	})

@@ -8,16 +8,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
-// NeedsPrompt reports whether a launch should inject the orientation prompt.
-//
-// Multi-project worktrees need it to find their projects. A worktree holding
-// any direct-mode project needs it for the CAUTION framing regardless of size:
-// both launch modes skip permissions, so a lone direct project would otherwise
-// drop Claude into the user's canonical repo with no warning at all.
-func NeedsPrompt(res *Resolved) bool {
-	return res.MultiProject() || res.HasDirect()
-}
-
 // currentBranch returns the current branch name at path, or "" if it cannot be
 // determined (detached HEAD, missing repo, etc.).
 func currentBranch(path string) string {
@@ -99,9 +89,27 @@ func RenderPrompt(res *Resolved, branches map[string]string) string {
 		b.WriteString("\n")
 	}
 
+	b.WriteString(renderCrewSection(res.Ref))
+
 	b.WriteString("cd into the relevant project's directory before running commands or editing files there.\n")
 	b.WriteString("Wait for my instructions on what to build.\n")
 
+	return b.String()
+}
+
+// renderCrewSection tells Claude it is inside a crew worktree and that the
+// servers, their env and their logs are crew's to drive — the session was
+// opened by crew, so the CLI is there and `CREW_REF` names the worktree.
+func renderCrewSection(ref Ref) string {
+	var b strings.Builder
+	b.WriteString("## crew\n\n")
+	fmt.Fprintf(&b, "This worktree is managed by crew (`crew` on PATH; ref `%s`, also in `$CREW_REF`). Drive the dev servers and their env through it — never start a server by hand:\n\n", ref)
+	fmt.Fprintf(&b, "- `crew dev status %s` · `crew dev start %s` · `crew dev restart %s` · `crew dev stop %s` — servers on stable ports, bindings exported; read the `!` lines it prints\n", ref, ref, ref, ref)
+	fmt.Fprintf(&b, "- `crew dev check %s` — a few seconds after a start: which server died or never listened\n", ref)
+	fmt.Fprintf(&b, "- `crew dev logs %s <server> --lines=50` — a server's output (never `-f`, it follows forever)\n", ref)
+	fmt.Fprintf(&b, "- `crew env %s <project>` · `crew run %s <project> -- <cmd>` — the resolved env; run tests, scripts and evals through `crew run` so they see the same URLs the servers got\n", ref, ref)
+	fmt.Fprintf(&b, "- `crew fix %s --print` — when something is recorded as failed: every issue with its evidence\n", ref)
+	b.WriteString("- `crew help <command>` for the rest; the `crew` skill if your agent has it (`/crew:crew` in Claude Code)\n\n")
 	return b.String()
 }
 

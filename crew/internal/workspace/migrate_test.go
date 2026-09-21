@@ -18,11 +18,11 @@ func TestSplitWorkspaceName(t *testing.T) {
 		ws    string
 		wt    string
 	}{
-		{"phone-speak-wrk1", "phone-speak", "wrk1"},
-		{"phone-speak-wrk2", "phone-speak", "wrk2"},
-		{"speak-partner-wrk1", "speak-partner", "wrk1"},
+		{"store-front-wrk1", "store-front", "wrk1"},
+		{"store-front-wrk2", "store-front", "wrk2"},
+		{"store-partner-wrk1", "store-partner", "wrk1"},
 		{"x-wrk10", "x", "wrk10"},
-		{"mumbo", "mumbo", DefaultWorktree},
+		{"admin", "admin", DefaultWorktree},
 		{"flat", "flat", DefaultWorktree},
 
 		// "wrk1" alone is a workspace name, not a suffix — there is nothing in
@@ -52,9 +52,9 @@ func saveLegacy(t *testing.T, name string, projects ...WorkspaceProject) {
 
 func TestPlanMigration_MergesByConvention(t *testing.T) {
 	setupTestConfig(t)
-	saveLegacy(t, "phone-speak-wrk1", WorkspaceProject{Name: "api", Role: "backend"})
-	saveLegacy(t, "phone-speak-wrk2", WorkspaceProject{Name: "api", Role: "backend"}, WorkspaceProject{Name: "web"})
-	saveLegacy(t, "mumbo", WorkspaceProject{Name: "mumbo"})
+	saveLegacy(t, "store-front-wrk1", WorkspaceProject{Name: "api", Role: "backend"})
+	saveLegacy(t, "store-front-wrk2", WorkspaceProject{Name: "api", Role: "backend"}, WorkspaceProject{Name: "web"})
+	saveLegacy(t, "admin", WorkspaceProject{Name: "admin"})
 
 	plan, err := PlanMigration()
 	if err != nil {
@@ -64,8 +64,8 @@ func TestPlanMigration_MergesByConvention(t *testing.T) {
 	if len(plan.Moves) != 3 {
 		t.Fatalf("planned %d moves, want 3", len(plan.Moves))
 	}
-	if got := plan.Merges["phone-speak"]; len(got) != 2 {
-		t.Errorf("phone-speak folds %v, want both wrk workspaces", got)
+	if got := plan.Merges["store-front"]; len(got) != 2 {
+		t.Errorf("store-front folds %v, want both wrk workspaces", got)
 	}
 	if len(plan.Conflicts) != 0 {
 		t.Errorf("conflicts = %v, want none", plan.Conflicts)
@@ -75,11 +75,11 @@ func TestPlanMigration_MergesByConvention(t *testing.T) {
 	for _, m := range plan.Moves {
 		byOld[m.OldWorkspace] = m.Ref
 	}
-	if got := byOld["phone-speak-wrk2"]; got.Workspace != "phone-speak" || got.Worktree != "wrk2" {
-		t.Errorf("phone-speak-wrk2 → %s, want phone-speak/wrk2", got)
+	if got := byOld["store-front-wrk2"]; got.Workspace != "store-front" || got.Worktree != "wrk2" {
+		t.Errorf("store-front-wrk2 → %s, want store-front/wrk2", got)
 	}
-	if got := byOld["mumbo"]; got.Worktree != DefaultWorktree {
-		t.Errorf("mumbo → %s, want the default worktree", got)
+	if got := byOld["admin"]; got.Worktree != DefaultWorktree {
+		t.Errorf("admin → %s, want the default worktree", got)
 	}
 }
 
@@ -166,7 +166,7 @@ func legacyWorkspaceWithCheckout(t *testing.T, wsName, projName string) string {
 
 func TestApplyMigration_MovesCheckoutsAndRenamesBranches(t *testing.T) {
 	setupTestConfig(t)
-	repo := legacyWorkspaceWithCheckout(t, "phone-speak-wrk1", "api")
+	repo := legacyWorkspaceWithCheckout(t, "store-front-wrk1", "api")
 
 	plan, err := PlanMigration()
 	if err != nil {
@@ -176,12 +176,12 @@ func TestApplyMigration_MovesCheckoutsAndRenamesBranches(t *testing.T) {
 		t.Fatalf("ApplyMigration: %v", err)
 	}
 
-	newRef := Ref{Workspace: "phone-speak", Worktree: "wrk1"}
+	newRef := Ref{Workspace: "store-front", Worktree: "wrk1"}
 	newPath := WorktreePath(newRef, "api")
 	if _, err := os.Stat(newPath); err != nil {
 		t.Fatalf("checkout not at %s: %v", newPath, err)
 	}
-	if _, err := os.Stat(WorktreePath(Ref{Workspace: "phone-speak-wrk1"}, "api")); !os.IsNotExist(err) {
+	if _, err := os.Stat(WorktreePath(Ref{Workspace: "store-front-wrk1"}, "api")); !os.IsNotExist(err) {
 		t.Error("old checkout path should be gone")
 	}
 
@@ -201,34 +201,34 @@ func TestApplyMigration_MovesCheckoutsAndRenamesBranches(t *testing.T) {
 		t.Errorf("git worktree list does not mention %s:\n%s", newPath, list)
 	}
 
-	ws, err := Load("phone-speak")
+	ws, err := Load("store-front")
 	if err != nil {
 		t.Fatalf("Load migrated workspace: %v", err)
 	}
 	if len(ws.Worktrees) != 1 || ws.Worktrees[0].Name != "wrk1" {
 		t.Errorf("worktrees = %+v, want one named wrk1", ws.Worktrees)
 	}
-	if _, err := Load("phone-speak-wrk1"); err == nil {
+	if _, err := Load("store-front-wrk1"); err == nil {
 		t.Error("old workspace JSON should be gone")
 	}
 }
 
-// mumbo → mumbo/main moves a checkout into a new child of the very directory
+// admin → admin/main moves a checkout into a new child of the very directory
 // being iterated.
 func TestApplyMigration_SelfNesting(t *testing.T) {
 	setupTestConfig(t)
-	legacyWorkspaceWithCheckout(t, "mumbo", "mumbo")
+	legacyWorkspaceWithCheckout(t, "admin", "admin")
 
 	plan, _ := PlanMigration()
 	if err := ApplyMigration(plan, filepath.Join(t.TempDir(), "backup")); err != nil {
 		t.Fatalf("ApplyMigration: %v", err)
 	}
 
-	want := WorktreePath(Ref{Workspace: "mumbo", Worktree: DefaultWorktree}, "mumbo")
+	want := WorktreePath(Ref{Workspace: "admin", Worktree: DefaultWorktree}, "admin")
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("checkout not at %s: %v", want, err)
 	}
-	if _, err := os.Stat(filepath.Join(want, "mumbo")); err == nil {
+	if _, err := os.Stat(filepath.Join(want, "admin")); err == nil {
 		t.Error("checkout nested one level too deep")
 	}
 }
@@ -328,8 +328,8 @@ func TestBackupDir(t *testing.T) {
 
 func TestMigratedPaths(t *testing.T) {
 	plan := &MigrationPlan{Moves: []MigrationMove{{
-		OldWorkspace: "phone-speak-wrk1",
-		Ref:          Ref{Workspace: "phone-speak", Worktree: "wrk1"},
+		OldWorkspace: "store-front-wrk1",
+		Ref:          Ref{Workspace: "store-front", Worktree: "wrk1"},
 		Projects:     []WorkspaceProject{{Name: "api"}, {Name: "direct", Mode: ModeDirect}},
 	}}}
 
@@ -337,8 +337,8 @@ func TestMigratedPaths(t *testing.T) {
 	if len(pairs) != 1 {
 		t.Fatalf("got %d pairs, want 1 — direct projects do not move", len(pairs))
 	}
-	if !strings.HasSuffix(pairs[0][1], filepath.Join("phone-speak", "wrk1", "api")) {
-		t.Errorf("new path = %q, want it under phone-speak/wrk1", pairs[0][1])
+	if !strings.HasSuffix(pairs[0][1], filepath.Join("store-front", "wrk1", "api")) {
+		t.Errorf("new path = %q, want it under store-front/wrk1", pairs[0][1])
 	}
 }
 
@@ -363,20 +363,20 @@ func TestPlanFrom_UnionKeepsFirstRole(t *testing.T) {
 // planFrom is pure — the whole mapping table without a filesystem.
 func TestPlanFrom_MappingTable(t *testing.T) {
 	plan := planFrom([]*Workspace{
-		{Name: "phone-speak-wrk1"},
-		{Name: "phone-speak-wrk2"},
-		{Name: "speak-partner-wrk1"},
+		{Name: "store-front-wrk1"},
+		{Name: "store-front-wrk2"},
+		{Name: "store-partner-wrk1"},
 		{Name: "x-wrk10"},
-		{Name: "mumbo"},
+		{Name: "admin"},
 		{Name: "done", Worktrees: []Worktree{{Name: "main"}}},
 	})
 
 	want := map[string]string{
-		"phone-speak-wrk1":   "phone-speak/wrk1",
-		"phone-speak-wrk2":   "phone-speak/wrk2",
-		"speak-partner-wrk1": "speak-partner/wrk1",
+		"store-front-wrk1":   "store-front/wrk1",
+		"store-front-wrk2":   "store-front/wrk2",
+		"store-partner-wrk1": "store-partner/wrk1",
 		"x-wrk10":            "x/wrk10",
-		"mumbo":              "mumbo/main",
+		"admin":              "admin/main",
 	}
 	if len(plan.Moves) != len(want) {
 		t.Fatalf("planned %d moves, want %d — 'done' is already migrated", len(plan.Moves), len(want))
@@ -386,8 +386,8 @@ func TestPlanFrom_MappingTable(t *testing.T) {
 			t.Errorf("%s → %s, want %s", m.OldWorkspace, got, want[m.OldWorkspace])
 		}
 	}
-	if got := plan.Merges["phone-speak"]; len(got) != 2 {
-		t.Errorf("phone-speak merges %v, want two", got)
+	if got := plan.Merges["store-front"]; len(got) != 2 {
+		t.Errorf("store-front merges %v, want two", got)
 	}
 }
 

@@ -219,19 +219,19 @@ func TestSetAndClearOverride(t *testing.T) {
 	Create("ws")
 	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
 
-	if err := SetOverride(ref, "SPEAK_API_URL", "https://dev"); err != nil {
+	if err := SetOverride(ref, "STORE_API_URL", "https://dev"); err != nil {
 		t.Fatalf("SetOverride: %v", err)
 	}
 	res, _ := Resolve(ref)
-	if res.Overrides["SPEAK_API_URL"] != "https://dev" {
+	if res.Overrides["STORE_API_URL"] != "https://dev" {
 		t.Errorf("overrides = %+v, want the value set", res.Overrides)
 	}
 
-	if err := ClearOverride(ref, "SPEAK_API_URL"); err != nil {
+	if err := ClearOverride(ref, "STORE_API_URL"); err != nil {
 		t.Fatalf("ClearOverride: %v", err)
 	}
 	res, _ = Resolve(ref)
-	if _, ok := res.Overrides["SPEAK_API_URL"]; ok {
+	if _, ok := res.Overrides["STORE_API_URL"]; ok {
 		t.Errorf("overrides = %+v, want it cleared", res.Overrides)
 	}
 }
@@ -239,7 +239,7 @@ func TestSetAndClearOverride(t *testing.T) {
 func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 	src := Ref{Workspace: "ws", Worktree: DefaultWorktree}
-	if err := SetOverride(src, "SPEAK_API_URL", "https://dev"); err != nil {
+	if err := SetOverride(src, "STORE_API_URL", "https://dev"); err != nil {
 		t.Fatalf("SetOverride: %v", err)
 	}
 
@@ -251,7 +251,7 @@ func TestDuplicateWorktree_CarriesOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if res.Overrides["SPEAK_API_URL"] != "https://dev" {
+	if res.Overrides["STORE_API_URL"] != "https://dev" {
 		t.Errorf("overrides = %+v, want the source's override copied", res.Overrides)
 	}
 	if _, err := os.Stat(res.Projects[0].Path); err != nil {
@@ -326,11 +326,11 @@ func TestAddWorktree_CopiesEnvFromSiblingWhenCanonicalHasNone(t *testing.T) {
 func TestTailLog_StripsPromptNoise(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "x.log")
 	os.WriteFile(path, []byte(strings.Join([]string{
-		"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m          \x1b]7;file://Mac/x\x07➜  ai-tutor-api eexport SPEAK_API_URL='x'; PORT=1 make start",
-		"export SPEAK_API_URL='http://localhost:1'; PORT=1 make start_uvicorn",
+		"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m          \x1b]7;file://Mac/x\x07➜  checkout-api eexport STORE_API_URL='x'; PORT=1 make start",
+		"export STORE_API_URL='http://localhost:1'; PORT=1 make start_uvicorn",
 		"\x1b[31merror: No environment file found at: `.env`\x1b[0m",
 		"make: *** [start_uvicorn] Error 2",
-		"➜  ai-tutor-api git:(crew/x)",
+		"➜  checkout-api git:(crew/x)",
 		"",
 	}, "\n")), 0o644)
 

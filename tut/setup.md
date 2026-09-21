@@ -1,6 +1,6 @@
 # Crew VM Setup Guide
 
-Complete setup for running Crew on a GCP VM with Claude Code, dev servers, and remote editor access.
+Complete setup for running crew on a GCP VM: dev servers, Claude Code (or any agent with a shell), and remote editor access.
 
 ---
 
@@ -9,12 +9,12 @@ Complete setup for running Crew on a GCP VM with Claude Code, dev servers, and r
 On your **local machine**, generate a key and register it with your VM:
 
 ```bash
-ssh-keygen -t ed25519 -C "jsmith" -f ~/.ssh/speak_dev_vm
+ssh-keygen -t ed25519 -C "jsmith" -f ~/.ssh/store_dev_vm
 
-echo "jsmith:$(cat ~/.ssh/speak_dev_vm.pub)" > /tmp/ssh-keys.txt
+echo "jsmith:$(cat ~/.ssh/store_dev_vm.pub)" > /tmp/ssh-keys.txt
 gcloud compute instances add-metadata jsmith-dev-vm \
   --metadata-from-file=ssh-keys=/tmp/ssh-keys.txt \
-  --project=speak-2-dev-vms --zone=us-west1-b
+  --project=store-2-dev-vms --zone=us-west1-b
 rm /tmp/ssh-keys.txt
 ```
 
@@ -23,17 +23,17 @@ rm /tmp/ssh-keys.txt
 Add to `~/.ssh/config`:
 
 ```
-Host speak-vm
+Host store-vm
   HostName jsmith-dev-vm
   User jsmith
-  IdentityFile ~/.ssh/speak_dev_vm
-  ProxyCommand gcloud compute start-iap-tunnel %h %p --listen-on-stdin --project=speak-2-dev-vms --zone=us-west1-b
+  IdentityFile ~/.ssh/store_dev_vm
+  ProxyCommand gcloud compute start-iap-tunnel %h %p --listen-on-stdin --project=store-2-dev-vms --zone=us-west1-b
 ```
 
 Verify the connection:
 
 ```bash
-ssh speak-vm
+ssh store-vm
 ```
 
 ---
@@ -59,71 +59,74 @@ claude login
 ## 3. Clone Projects
 
 ```bash
-gh repo clone your-org/speak-api ~/projects/speak-api
-gh repo clone your-org/speak-partner ~/projects/speak-partner
+gh repo clone your-org/store-api ~/projects/store-api
+gh repo clone your-org/store-app ~/projects/store-app
 ```
 
-> Replace with your actual org and project names.
-
-Install dependencies for each project (e.g. `cd ~/projects/speak-api && npm install`).
+> Replace with your actual org and project names. crew installs each worktree's dependencies
+> itself (mise, then the lockfile's package manager or the project's setup command), so no
+> `npm install` here.
 
 ---
 
 ## 4. Set Up Crew
 
-Run `crew` to open the main menu:
+Everything is a command; `crew project` / `crew workspace` are the same things as TUIs.
 
-![Crew main menu](crew-main.png)
+### Register projects and their dev servers
 
-### Register projects
+```bash
+crew add project store-api ~/projects/store-api
+crew add project store-app ~/projects/store-app
+crew dev add store-api --name=store-api --port=3000 --cmd="npm run dev"
+crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
+```
 
-Navigate to **Project** and press **a** to add a project. Enter the path and name:
+The `--port` is a reference; crew allocates a real port per worktree and runs the command
+with `PORT=<n>` set — the dev command must bind `$PORT`.
 
-![Adding a project](crew-projects-add.png)
+### Bindings
 
-Your projects will appear in the list:
+Tell crew which env vars point at siblings, so every worktree gets the right URLs:
 
-![Project list](crew-projects.png)
-
-Select a project and press **s** to configure its dev servers — set the name, port, and start command:
-
-![Dev server configuration](crew-projects-dev-server.png)
-
-Repeat for each project.
+```bash
+crew add binding store-app --scan          # proposes from store-app's .env
+crew add binding store-app --scan --apply  # adds the unambiguous ones
+```
 
 ### Create a workspace
 
-Navigate to **Workspace** and press **n** to create a new workspace:
+```bash
+crew add workspace store-front store-api:"Backend API" store-app:"Web app"
+```
 
-![Creating a workspace](crew-workspaces-add.png)
-
-Then press **p** to select which projects to include.
-
-![Workspace list](crew-workspaces.png)
-
-Workspaces with running dev servers show a **[dev]** badge.
+That checks both projects out, installs them, and smoke-starts the servers. `crew ls
+worktrees` lists what you have; a recorded failure shows in the row.
 
 ### Configure settings
 
-Navigate to **Settings** and press **e** to edit:
+```bash
+crew config set ssh_host store-vm            # used by crew code
+crew config set domain jsmith-dev.ngrok.app  # after step 5
+crew config show
+```
 
-![Settings view](crew-settings.png)
-
-- **Server IP** — auto-detected, override if needed
-- **SSH Host** — your SSH config host name (e.g. `speak-vm`) — used by `crew code`
-- **Domain** — your ngrok domain (e.g. `jsmith-dev.ngrok.app`) — set after step 5
+`server_ip` is auto-detected; override it with `crew config set server_ip <ip>` if the VM has
+several interfaces.
 
 ---
 
 ## 5. Public Access
 
-Dev servers are accessible at `http://{server}--{workspace}.{vm-ip}.nip.io:{port}` without any extra setup. However, services that use Firebase Auth will block requests from `.nip.io` domains since they're not in the authorized domains list.
+With `crew dev start <ref> --proxy`, dev servers are reachable at
+`http://<server>--<workspace>--<worktree>.<vm-ip>.nip.io` without extra setup. Services that
+use Firebase Auth block `.nip.io` origins (not in the authorized domains list), so use a
+stable domain.
 
 ### ngrok (recommended)
 
-ngrok gives you a stable domain that you can whitelist in Firebase.
-
-Reserve a wildcard domain on [dashboard.ngrok.com](https://dashboard.ngrok.com) (e.g. `*.jsmith-dev.ngrok.app`), then run in a detached tmux session:
+Reserve a wildcard domain on [dashboard.ngrok.com](https://dashboard.ngrok.com) (e.g.
+`*.jsmith-dev.ngrok.app`), then run in a detached tmux session:
 
 ```bash
 tmux new -s ngrok
@@ -133,7 +136,8 @@ ngrok http 80 --url=jsmith-dev.ngrok.app
 
 > Replace `jsmith-dev.ngrok.app` with your reserved domain.
 
-Go back to **Settings** in crew and set **Domain** to your ngrok domain.
+Then `crew config set domain jsmith-dev.ngrok.app`. The proxy picks the domain up on the next
+`crew dev start … --proxy`.
 
 ### Firebase Auth
 
@@ -146,59 +150,58 @@ Add your ngrok domain to Firebase's authorized domains so auth flows work:
 
 ## 6. Using Crew
 
-Everything below is done from the **Workspace** screen (`crew` → **Workspace**).
+```bash
+crew dev start store-front/main --proxy      # servers on stable ports, LAN hostnames
+sleep 6; crew dev check store-front/main     # which server died or never listened
+crew dev logs store-front/main store-api --lines=50
+crew dev stop store-front/main
+```
 
-### Start dev servers
-
-Select a workspace and press **s** to start dev servers. Press **l** to open the live log viewer.
-
-Each server gets its own tab — switch with **tab**, restart with **r**, scroll with arrow keys:
-
-![Dev log viewer — server logs](crew-logs-server.png)
-
-The **urls** tab shows all service URLs for the current workspace, plus any other running workspaces:
-
-![Dev log viewer — URLs](crew-logs.png)
+`crew dev start` prints the URLs and any `!` lines — an env value pointing at the wrong
+port is caught there, before it fails at runtime.
 
 ### Launch Claude
 
-Select a workspace and press **enter** to launch. Pick a mode:
-
-![Launch mode selection](crew-workspaces-launch.png)
-
-- **Editor + Claude (Skip permissions)** — opens your editor with Claude wired up
-- **Claude (Skip permissions)** — starts Claude Code directly in your terminal
-
-### Open in Cursor / VS Code
-
-Select a workspace and press **c**, or from the CLI:
-
 ```bash
-crew code my-workspace
+crew claude store-front/main     # Claude Code in this terminal, in the worktree
+crew edit store-front/main       # local Cursor / VS Code with the prompt and Claude wired
+crew launch store-front/main     # the worktree page (TUI): status, launch, logs
 ```
 
-![crew code output](crew-workspace-code.png)
+Claude opens with the orientation prompt — the projects, roles, and a `## crew` section that
+tells it to drive the servers through crew.
 
-Prints clickable links that open the workspace in Cursor or VS Code via Remote-SSH. You can also connect manually: `Remote-SSH: Connect to Host` → `speak-vm`.
+### Open in Cursor / VS Code from your laptop
 
-### Git (lazygit)
+```bash
+crew code store-front/main
+```
 
-Select a workspace and press **g** to open lazygit in a tmux session with a tab per project.
+Prints clickable links that open the worktree via Remote-SSH. You can also connect manually:
+`Remote-SSH: Connect to Host` → `store-vm`.
+
+### A second working copy
+
+```bash
+crew add worktree store-front/wrk2 --pull    # own branches, own ports, own .env
+crew claude store-front/wrk2
+```
+
+### When something fails
+
+`crew ls worktrees` shows what was recorded (`install failed: …`, `server died: …`, `server
+not listening: …`). `crew fix <ref>` opens Claude with the evidence; `crew fix <ref> --print`
+prints it; `crew verify <ref>` finishes what is missing and re-checks.
 
 ---
 
-## Optional: Install Agents & Skills
+## Optional: the Claude Code plugin
 
-Crew ships with a registry of reusable Claude Code agents and skills (code reviewers, PR reviewer, web designer, etc.). These are optional — Crew works fine without them.
+On your laptop, in Claude Code:
 
-From the main menu, navigate to **Registry**:
-
-![Registry with installed agents](crew-registry.png)
-
-Use **tab** to switch between Agents and Skills, **i** to install, **d** to remove, **u** to update.
-
-Or install everything at once from the CLI:
-
-```bash
-crew registry install --all
 ```
+/plugin marketplace add FurlanLuka/crew
+/plugin install crew@crew
+```
+
+Claude can then drive crew over SSH for you — see the README's plugin section.

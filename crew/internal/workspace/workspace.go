@@ -1,11 +1,13 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -135,64 +137,172 @@ func detectDefaultBranch(projectPath string) string {
 	return "HEAD"
 }
 
-// AddProject adds a project to a workspace. In worktree mode (default) it
-// creates a git worktree under the workspace directory; in direct mode it
-// records a pointer to the project's canonical checkout without creating a
-// worktree.
+// ProjectSpec is one project to add: name, role, and worktree or direct.
+type ProjectSpec struct {
+	Name string
+	Role string
+	Mode string
+}
+
+// AddProject adds one project to a workspace; AddProjects with one spec.
 func AddProject(wsName, projName, role, mode string, opts CheckoutOptions) error {
-	if mode == "" {
-		mode = ModeWorktree
-	}
-	if mode != ModeWorktree && mode != ModeDirect {
-		return fmt.Errorf("invalid mode '%s' (expected 'worktree' or 'direct')", mode)
-	}
-
-	p := project.Get(projName)
-	if p == nil {
-		return fmt.Errorf("project '%s' not found in pool", projName)
-	}
-
-	// Load workspace first to check for duplicates before any side effects.
-	ws, err := Load(wsName)
+	results, err := AddProjects(wsName, []ProjectSpec{{Name: projName, Role: role, Mode: mode}}, opts)
 	if err != nil {
 		return err
 	}
+	for _, r := range results {
+		if len(r.Issues) > 0 {
+			return errors.New(r.Issues[0].Summary() + ": " + firstLine(r.Issues[0].Detail))
+		}
+	}
+	return nil
+}
+
+// RefIssues is what went wrong in one worktree, in worktree order — the
+// caller's hint has to name the worktree, not the workspace.
+type RefIssues struct {
+	Ref    Ref
+	Issues []Issue
+}
+
+// AddProjects adds several projects to a workspace in one pass. Every spec
+// is checked before anything happens — a bad name fails the whole call
+// with nothing done. Then, per worktree: the checkouts, then the installs
+// in parallel (the slow part; each project's install is its own), and the
+// issues recorded on that worktree's health so crew fix and verify apply.
+// Every validated project becomes a member, whatever its checkout or
+// install did — the same rule as creating a worktree: nothing stops, what
+// failed is recorded, and verify finishes a checkout that is missing.
+func AddProjects(wsName string, specs []ProjectSpec, opts CheckoutOptions) ([]RefIssues, error) {
+	ws, err := Load(wsName)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateSpecs(ws, specs); err != nil {
+		return nil, err
+	}
+
+	// Members first, in memory: the checkout and install primitives work
+	// over a workspace's members.
+	var names []string
+	for _, spec := range specs {
+		ws.Projects = append(ws.Projects, WorkspaceProject{Name: spec.Name, Role: spec.Role, Mode: persistedMode(spec.Mode)})
+		if spec.Mode != ModeDirect {
+			names = append(names, spec.Name)
+		}
+	}
+
+	var results []RefIssues
+	for _, ref := range Refs(ws) {
+		made, issues := checkoutProjects(ref, ws, names, opts.Progress)
+		issues = append(issues, installProjects(ref, ws, made, opts)...)
+		results = append(results, RefIssues{Ref: ref, Issues: issues})
+	}
+
+	if err := Save(ws); err != nil {
+		return nil, err
+	}
+	// Health after the membership save: recordMerged loads and saves the
+	// workspace itself, and a save of this older copy would undo it.
+	for _, r := range results {
+		if len(r.Issues) > 0 && r.Ref.Worktree != "" {
+			if err := recordMerged(r.Ref, names, r.Issues); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return results, nil
+}
+
+// validateSpecs is every pre-flight check, before a single side effect:
+// pool membership, duplicates (in the workspace and within the call),
+// direct-mode rules.
+func validateSpecs(ws *Workspace, specs []ProjectSpec) error {
+	if len(specs) == 0 {
+		return errors.New("no projects given")
+	}
+	pool, err := project.List()
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]project.Project, len(pool))
+	for _, p := range pool {
+		byName[p.Name] = p
+	}
+	seen := map[string]bool{}
 	for _, existing := range ws.Projects {
-		if existing.Name == projName {
-			return fmt.Errorf("project '%s' already in workspace", projName)
-		}
+		seen[existing.Name] = true
 	}
-
-	if mode == ModeDirect {
-		if err := assertNoOtherDirect(projName, wsName); err != nil {
-			return err
+	for _, spec := range specs {
+		mode := spec.Mode
+		if mode == "" {
+			mode = ModeWorktree
 		}
-		if err := assertDirectFitsWorktrees(ws, projName); err != nil {
-			return err
+		if mode != ModeWorktree && mode != ModeDirect {
+			return fmt.Errorf("invalid mode '%s' (expected 'worktree' or 'direct')", mode)
 		}
-		if err := assertGitRepo(p.Path); err != nil {
-			return fmt.Errorf("project '%s' cannot be used in direct mode: %w", projName, err)
+		p, ok := byName[spec.Name]
+		if !ok {
+			return fmt.Errorf("project '%s' not found in pool", spec.Name)
 		}
-	} else {
-		for _, ref := range Refs(ws) {
-			if err := createProjectWorktree(ref, *p); err != nil {
+		if seen[spec.Name] {
+			return fmt.Errorf("project '%s' already in workspace", spec.Name)
+		}
+		seen[spec.Name] = true
+		if mode == ModeDirect {
+			if err := assertNoOtherDirect(spec.Name, ws.Name); err != nil {
 				return err
 			}
-		}
-		for _, ref := range Refs(ws) {
-			if err := setupProject(ref, *p, opts); err != nil {
+			if err := assertDirectFitsWorktrees(ws, spec.Name); err != nil {
 				return err
+			}
+			if err := assertGitRepo(p.Path); err != nil {
+				return fmt.Errorf("project '%s' cannot be used in direct mode: %w", spec.Name, err)
 			}
 		}
 	}
+	return nil
+}
 
-	persistedMode := mode
-	if persistedMode == ModeWorktree {
-		// Keep JSON tidy: empty string means default (worktree).
-		persistedMode = ""
+// persistedMode keeps JSON tidy: empty means the default, worktree.
+func persistedMode(mode string) string {
+	if mode == ModeWorktree {
+		return ""
 	}
-	ws.Projects = append(ws.Projects, WorkspaceProject{Name: projName, Role: role, Mode: persistedMode})
-	return Save(ws)
+	return mode
+}
+
+// recordMerged writes fresh issues for the named projects onto a worktree,
+// keeping whatever was recorded about its other projects.
+func recordMerged(ref Ref, projects []string, fresh []Issue) error {
+	ws, err := Load(ref.Workspace)
+	if err != nil {
+		return err
+	}
+	wt, err := selectWorktree(ws, ref.Worktree)
+	if err != nil {
+		return err
+	}
+	mine := map[string]bool{}
+	for _, p := range projects {
+		mine[p] = true
+	}
+	var kept []Issue
+	if wt.Health != nil {
+		for _, i := range wt.Health.Issues {
+			if !mine[i.Project] {
+				kept = append(kept, i)
+			}
+		}
+	}
+	return RecordHealth(ref, &Health{At: time.Now(), Issues: append(kept, fresh...)})
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // RemoveProject removes a project from a workspace. For worktree-mode projects
@@ -220,6 +330,11 @@ func RemoveProject(wsName, projName string) error {
 		}
 	}
 	ws.Projects = filtered
+	// What was recorded about it goes with it: a fix prompt must not
+	// describe a project that is no longer here.
+	for i := range ws.Worktrees {
+		ws.Worktrees[i].Health = ws.Worktrees[i].Health.without(projName)
+	}
 	return Save(ws)
 }
 

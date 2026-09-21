@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -31,6 +33,35 @@ var Version = "dev"
 // jsonOutput is set once at startup from the global --json flag and read by
 // list/show commands to emit JSON instead of tab-separated output.
 var jsonOutput bool
+
+// human is where progress and narration go: stdout normally, stderr under
+// --json so the document on stdout stays parseable.
+var human io.Writer = os.Stdout
+
+// parseIntFlag reads a flag value strictly: Sscanf's %d would take "30x0"
+// as 30. positive rejects zero and below for counts (--tail, --lines). Pure.
+func parseIntFlag(raw string, positive bool) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || (positive && n <= 0) {
+		what := "a number"
+		if positive {
+			what = "a positive number"
+		}
+		return 0, fmt.Errorf("needs %s, got '%s'", what, raw)
+	}
+	return n, nil
+}
+
+// intFlag is parseIntFlag for a command: the message names the flag and
+// the process ends, the way every other bad argument ends.
+func intFlag(name, raw string, positive bool) int {
+	n, err := parseIntFlag(raw, positive)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s %v\n", name, err)
+		os.Exit(1)
+	}
+	return n
+}
 
 // extractFlag returns args with all occurrences of flag removed, plus whether
 // it was present.
@@ -73,6 +104,9 @@ func main() {
 	// Strip the global --json flag before computing cmd so it works in any
 	// position and is not rejected by strict per-command arg parsers.
 	os.Args, jsonOutput = extractFlag(os.Args, "--json")
+	if jsonOutput {
+		human = os.Stderr
+	}
 
 	cmd := ""
 	if len(os.Args) > 1 {
@@ -402,7 +436,7 @@ func cmdOpen() {
 		os.Exit(1)
 	}
 
-	requireTerminal("open")
+	requireTerminal("open", "crew show <ref> prints every checkout's path")
 	res := mustResolve(os.Args[2])
 
 	shell := os.Getenv("SHELL")
@@ -516,7 +550,7 @@ func cmdDuplicate() {
 
 	install, smoke, _ := parseCheckoutFlags(os.Args[4:])
 	opts := workspace.CheckoutOptions{Install: install, Smoke: smoke && install, Progress: printSetupProgress}
-	fmt.Printf("Duplicating %s → %s/%s\n\n", src, src.Workspace, newName)
+	fmt.Fprintf(human, "Duplicating %s → %s/%s\n\n", src, src.Workspace, newName)
 	h, err := workspace.DuplicateWorktree(src, newName, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -712,9 +746,51 @@ func cmdAddProject() {
 	}
 }
 
+// parseProjectSpecs reads "<project>[:<role>]" arguments and the flags that
+// apply to the whole call. --role= is the single-project spelling; with
+// several projects the role rides on each name. Pure.
+func parseProjectSpecs(args []string) ([]workspace.ProjectSpec, error) {
+	var specs []workspace.ProjectSpec
+	role, direct := "", false
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--role="):
+			role = strings.TrimPrefix(arg, "--role=")
+		case arg == "--direct":
+			direct = true
+		case strings.HasPrefix(arg, "-"):
+			return nil, fmt.Errorf("unknown flag '%s'", arg)
+		default:
+			name, r, _ := strings.Cut(arg, ":")
+			if name == "" {
+				return nil, fmt.Errorf("'%s': a project name is needed before the colon", arg)
+			}
+			specs = append(specs, workspace.ProjectSpec{Name: name, Role: r})
+		}
+	}
+	if role != "" {
+		if len(specs) != 1 {
+			return nil, errors.New("--role= names one project's role; with several, write <project>:<role>")
+		}
+		if specs[0].Role != "" {
+			return nil, errors.New("give the role once: --role= or <project>:<role>")
+		}
+		specs[0].Role = role
+	}
+	for i := range specs {
+		if specs[i].Role == "" {
+			specs[i].Role = "works on " + specs[i].Name
+		}
+		if direct {
+			specs[i].Mode = workspace.ModeDirect
+		}
+	}
+	return specs, nil
+}
+
 func cmdAddWorkspace() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project> --role=<role>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct]\n")
 		os.Exit(1)
 	}
 	wsName := os.Args[3]
@@ -724,34 +800,77 @@ func cmdAddWorkspace() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Created workspace: %s\n", wsName)
+		fmt.Fprintf(human, "Created workspace: %s\n", wsName)
 		return
 	}
 
-	projName := os.Args[4]
-	role := ""
-	mode := workspace.ModeWorktree
-	for _, arg := range os.Args[5:] {
-		switch {
-		case strings.HasPrefix(arg, "--role="):
-			role = strings.TrimPrefix(arg, "--role=")
-		case arg == "--direct":
-			mode = workspace.ModeDirect
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-			os.Exit(1)
-		}
-	}
-
-	opts := workspace.CheckoutOptions{Install: true, Progress: printSetupProgress}
-	if err := workspace.AddProject(wsName, projName, role, mode, opts); err != nil {
+	specs, err := parseProjectSpecs(os.Args[4:])
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if mode == workspace.ModeDirect {
-		fmt.Printf("Added %s to %s (direct mode — no worktree, points at canonical repo)\n", projName, wsName)
+
+	// One command for "workspace with these projects": the create is implied.
+	if !workspace.Exists(wsName) {
+		if err := workspace.Create(wsName); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(human, "Created workspace: %s\n", wsName)
+	}
+	opts := workspace.CheckoutOptions{Install: true, Progress: printSetupProgress}
+	results, err := workspace.AddProjects(wsName, specs, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	var issues []workspace.Issue
+	for _, r := range results {
+		issues = append(issues, r.Issues...)
+	}
+
+	// One row per project: what happened to it. A checkout or install that
+	// fails keeps the member and is recorded on the worktree, so the fix
+	// line follows.
+	type row struct {
+		Project string `json:"project"`
+		Outcome string `json:"outcome"` // added | failed
+		Mode    string `json:"mode"`
+		Detail  string `json:"detail,omitempty"`
+	}
+	failed := map[string]workspace.Issue{}
+	for _, i := range issues {
+		if _, seen := failed[i.Project]; !seen {
+			failed[i.Project] = i
+		}
+	}
+	rows := make([]row, 0, len(specs))
+	for _, spec := range specs {
+		mode := "worktree"
+		if spec.Mode == workspace.ModeDirect {
+			mode = "direct"
+		}
+		r := row{Project: spec.Name, Outcome: "added", Mode: mode}
+		if i, ok := failed[spec.Name]; ok {
+			r.Outcome, r.Detail = "failed", i.Summary()
+		}
+		rows = append(rows, r)
+	}
+	if jsonOutput {
+		printJSON(rows)
 	} else {
-		fmt.Printf("Added %s to %s\n", projName, wsName)
+		for _, r := range rows {
+			fmt.Printf("%s\t%s\t%s\t%s\n", r.Project, r.Outcome, r.Mode, r.Detail)
+		}
+	}
+	if len(issues) > 0 {
+		fmt.Fprintf(os.Stderr, "! %d of %d failed\n", len(failed), len(specs))
+		for _, r := range results {
+			if len(r.Issues) > 0 {
+				fmt.Fprintf(os.Stderr, "  crew fix %s --print / crew verify %s\n", r.Ref, r.Ref)
+			}
+		}
+		os.Exit(1)
 	}
 }
 
@@ -786,12 +905,7 @@ func cmdConfig() {
 		case "ssh_host":
 			s.SSHHost = value
 		case "proxy_port":
-			var port int
-			if n, _ := fmt.Sscanf(value, "%d", &port); n != 1 {
-				fmt.Fprintf(os.Stderr, "Error: invalid port value\n")
-				os.Exit(1)
-			}
-			s.ProxyPort = port
+			s.ProxyPort = intFlag("proxy_port", value, false)
 		case "domain":
 			s.Domain = value
 		default:
@@ -812,7 +926,34 @@ func cmdConfig() {
 	}
 }
 
+// cmdDebug follows the log in a terminal; --tail=N prints the last lines
+// and returns, which is what a script or an agent wants.
 func cmdDebug() {
+	tail := 0
+	for _, arg := range os.Args[2:] {
+		switch {
+		case strings.HasPrefix(arg, "--tail="):
+			tail = intFlag("--tail", strings.TrimPrefix(arg, "--tail="), true)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\nUsage: crew debug [--tail=<n>]\n", arg)
+			os.Exit(1)
+		}
+	}
+	if tail == 0 && jsonOutput {
+		tail = debug.DefaultTail
+	}
+	if tail > 0 {
+		lines := debug.TailLines(tail)
+		if jsonOutput {
+			printJSON(debug.ParseLines(lines))
+			return
+		}
+		for _, l := range lines {
+			fmt.Println(l)
+		}
+		return
+	}
+
 	logPath := config.ConfigDir + "/debug.log"
 
 	// Ensure the file exists before tail -f

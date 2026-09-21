@@ -63,6 +63,7 @@ type WorkspaceProject struct {
 // ClaudeTask configures the Claude task in the .code-workspace file.
 // Nil means no Claude task.
 type ClaudeTask struct {
+	Ref             string   // The worktree, exported as CREW_REF so what Claude runs knows where it is.
 	PromptFile      string   // Path to prompt file; passed as the initial message via $(cat ...).
 	LeadPath        string   // Working directory for Claude.
 	ClaudeConfigDir string   // Custom CLAUDE_CONFIG_DIR (empty = default).
@@ -92,6 +93,9 @@ func GenerateCodeWorkspace(filePath string, projects []WorkspaceProject, claude 
 
 		if claude.SkipPermissions {
 			parts = append(parts, "IS_SANDBOX=1")
+		}
+		if claude.Ref != "" {
+			parts = append(parts, "CREW_REF="+ShellQuote(claude.Ref))
 		}
 
 		if claude.ClaudeConfigDir != "" {

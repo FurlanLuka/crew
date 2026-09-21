@@ -124,8 +124,8 @@ func TestAdd_RejectsNamesThatCannotBeTokens(t *testing.T) {
 			t.Errorf("Add(%q) accepted it", name)
 		}
 	}
-	if err := Add(Project{Name: "speak-api-2", Path: "/p"}); err != nil {
-		t.Errorf("Add(speak-api-2): %v", err)
+	if err := Add(Project{Name: "store-api-2", Path: "/p"}); err != nil {
+		t.Errorf("Add(store-api-2): %v", err)
 	}
 }
 

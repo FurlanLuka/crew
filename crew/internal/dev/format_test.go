@@ -9,10 +9,10 @@ import (
 // binding, an identity token, and one variable left alone.
 func mixedResolutions() []Resolution {
 	return []Resolution{
-		{Project: "ai-tutor-api", Var: "SPEAK_API_URL", Value: "https://dev-api.speak.com", Source: SourceOverride, Detail: "worktree override"},
-		{Project: "ai-tutor-api", Var: "LIVEKIT_AGENT_NAME", Value: "wrk2", Source: SourceBinding, Detail: "{{worktree}}"},
-		{Project: "ai-tutor-api", Var: "AI_TUTOR_API_URL", Source: SourceUnresolved, Detail: "speak-partner not in workspace"},
-		{Project: "speak-api", Var: "TUTOR_URL", Value: "http://localhost:54088", Source: SourceBinding, Detail: "from ai-tutor-api"},
+		{Project: "checkout-api", Var: "STORE_API_URL", Value: "https://dev-api.store.com", Source: SourceOverride, Detail: "worktree override"},
+		{Project: "checkout-api", Var: "SIGNALS_AGENT_NAME", Value: "wrk2", Source: SourceBinding, Detail: "{{worktree}}"},
+		{Project: "checkout-api", Var: "CHECKOUT_API_URL", Source: SourceUnresolved, Detail: "store-partner not in workspace"},
+		{Project: "store-api", Var: "TUTOR_URL", Value: "http://localhost:54088", Source: SourceBinding, Detail: "from checkout-api"},
 	}
 }
 
@@ -22,8 +22,8 @@ func TestFormatResolutions_Golden(t *testing.T) {
 	want := strings.Join([]string{
 		"Resolved env  3 vars across 2 projects",
 		"",
-		"  ai-tutor-api",
-		"    AI_TUTOR_API_URL  left alone — speak-partner not in workspace",
+		"  checkout-api",
+		"    CHECKOUT_API_URL  left alone — store-partner not in workspace",
 		"",
 	}, "\n")
 
@@ -52,17 +52,17 @@ func TestFormatResolutions_Empty(t *testing.T) {
 
 func TestFormatConflicts_Golden(t *testing.T) {
 	conflicts := []Conflict{{
-		Project: "ai-tutor-api",
-		Var:     "AI_TUTOR_API_URL",
+		Project: "checkout-api",
+		Var:     "CHECKOUT_API_URL",
 		Value:   "http://localhost:3000",
 		Port:    3000,
-		Owner:   PortOwner{Slug: "mumbo--main", Project: "mumbo", Server: "homepage"},
+		Owner:   PortOwner{Slug: "admin--main", Project: "admin", Server: "homepage"},
 	}}
 
 	want := strings.Join([]string{
 		"",
-		"  ! ai-tutor-api/.env: AI_TUTOR_API_URL=http://localhost:3000",
-		"    :3000 is mumbo/homepage in worktree mumbo/main",
+		"  ! checkout-api/.env: CHECKOUT_API_URL=http://localhost:3000",
+		"    :3000 is admin/homepage in worktree admin/main",
 		"",
 	}, "\n")
 
@@ -79,12 +79,12 @@ func TestFormatConflicts_Empty(t *testing.T) {
 
 func TestFormatEnvTable_Golden(t *testing.T) {
 	rs := []Resolution{
-		{Project: "ai-tutor-api", Var: "SPEAK_API_URL", Value: "http://localhost:54021", Source: SourceBinding},
-		{Project: "ai-tutor-api", Var: "GONE", Source: SourceUnresolved, Detail: "not in workspace"},
+		{Project: "checkout-api", Var: "STORE_API_URL", Value: "http://localhost:54021", Source: SourceBinding},
+		{Project: "checkout-api", Var: "GONE", Source: SourceUnresolved, Detail: "not in workspace"},
 	}
 
 	want := strings.Join([]string{
-		"  SPEAK_API_URL  http://localhost:54021",
+		"  STORE_API_URL  http://localhost:54021",
 		"  GONE           left alone — not in workspace",
 		"",
 	}, "\n")
@@ -100,8 +100,8 @@ func TestEnvLines_OnlyResolvedAndSorted(t *testing.T) {
 	got := EnvLines(mixedResolutions())
 
 	want := []string{
-		"LIVEKIT_AGENT_NAME=wrk2",
-		"SPEAK_API_URL=https://dev-api.speak.com",
+		"SIGNALS_AGENT_NAME=wrk2",
+		"STORE_API_URL=https://dev-api.store.com",
 		"TUTOR_URL=http://localhost:54088",
 	}
 	if len(got) != len(want) {
@@ -117,14 +117,14 @@ func TestEnvLines_OnlyResolvedAndSorted(t *testing.T) {
 func TestGroupResolutions(t *testing.T) {
 	byProject := GroupResolutions(mixedResolutions())
 
-	if len(byProject["ai-tutor-api"]) != 3 {
-		t.Errorf("ai-tutor-api has %d resolutions, want 3", len(byProject["ai-tutor-api"]))
+	if len(byProject["checkout-api"]) != 3 {
+		t.Errorf("checkout-api has %d resolutions, want 3", len(byProject["checkout-api"]))
 	}
-	if len(byProject["speak-api"]) != 1 {
-		t.Errorf("speak-api has %d resolutions, want 1", len(byProject["speak-api"]))
+	if len(byProject["store-api"]) != 1 {
+		t.Errorf("store-api has %d resolutions, want 1", len(byProject["store-api"]))
 	}
 	// Order within a project has to survive: EnvPrefix depends on it.
-	if byProject["ai-tutor-api"][0].Var != "SPEAK_API_URL" {
-		t.Errorf("first var = %q, want SPEAK_API_URL", byProject["ai-tutor-api"][0].Var)
+	if byProject["checkout-api"][0].Var != "STORE_API_URL" {
+		t.Errorf("first var = %q, want STORE_API_URL", byProject["checkout-api"][0].Var)
 	}
 }

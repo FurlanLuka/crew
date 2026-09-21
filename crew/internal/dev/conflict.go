@@ -9,9 +9,9 @@ import (
 
 // PortOwner is the dev server crew allocated a port to.
 type PortOwner struct {
-	Slug    Slug
-	Project string
-	Server  string
+	Slug    Slug   `json:"slug"`
+	Project string `json:"project"`
+	Server  string `json:"server"`
 }
 
 // Conflict is an env file value pointing at a port crew knows is wrong for it.
@@ -22,20 +22,20 @@ type PortOwner struct {
 // config — while that server is actually running somewhere else in this
 // worktree: the env file predates dynamic ports, and a binding is the fix.
 type Conflict struct {
-	Project string
-	Var     string
-	Value   string
-	Port    int
-	Owner   PortOwner
-	Stale   *StaleTarget
+	Project string       `json:"project"`
+	Var     string       `json:"var"`
+	Value   string       `json:"value"`
+	Port    int          `json:"port"`
+	Owner   PortOwner    `json:"owner"`
+	Stale   *StaleTarget `json:"stale,omitempty"`
 }
 
 // StaleTarget is the sibling server an env value was written for, and where
 // it actually is now.
 type StaleTarget struct {
-	Project    string
-	Server     string
-	ActualPort int
+	Project    string `json:"project"`
+	Server     string `json:"server"`
+	ActualPort int    `json:"actual_port"`
 }
 
 // DetectParams scopes conflict detection to one project in one worktree.

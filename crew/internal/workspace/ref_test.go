@@ -16,19 +16,19 @@ func TestParseRef(t *testing.T) {
 		want    Ref
 		wantErr string
 	}{
-		{input: "phone-speak", want: Ref{Workspace: "phone-speak"}},
-		{input: "phone-speak/wrk2", want: Ref{Workspace: "phone-speak", Worktree: "wrk2"}},
+		{input: "store-front", want: Ref{Workspace: "store-front"}},
+		{input: "store-front/wrk2", want: Ref{Workspace: "store-front", Worktree: "wrk2"}},
 		{input: "a/b/c", wantErr: "expected <workspace>"},
 		{input: "", wantErr: "empty"},
 		{input: "ws/", wantErr: "worktree name is empty"},
 		{input: "/wt", wantErr: "workspace name is empty"},
-		{input: "Phone-Speak", wantErr: "invalid"},
+		{input: "Store-Front", wantErr: "invalid"},
 		{input: "ws/WRK2", wantErr: "invalid"},
 
 		// "--" is the slug separator: a workspace literally named
-		// "phone-speak--wrk2" would collide with phone-speak/wrk2 across the
+		// "store-front--wrk2" would collide with store-front/wrk2 across the
 		// route file, log dir, tmux session and subdomain at once.
-		{input: "phone-speak--wrk2", wantErr: "reserved"},
+		{input: "store-front--wrk2", wantErr: "reserved"},
 		{input: "ws/wrk--2", wantErr: "reserved"},
 	}
 
@@ -60,8 +60,8 @@ func TestRefSlugAndDisplayAgree(t *testing.T) {
 		ref  Ref
 		slug dev.Slug
 	}{
-		{Ref{Workspace: "phone-speak", Worktree: "wrk2"}, "phone-speak--wrk2"},
-		{Ref{Workspace: "mumbo", Worktree: "main"}, "mumbo--main"},
+		{Ref{Workspace: "store-front", Worktree: "wrk2"}, "store-front--wrk2"},
+		{Ref{Workspace: "admin", Worktree: "main"}, "admin--main"},
 		{Ref{Workspace: "legacy"}, "legacy"},
 	}
 
@@ -78,8 +78,8 @@ func TestRefSlugAndDisplayAgree(t *testing.T) {
 }
 
 func TestRefString(t *testing.T) {
-	if got := (Ref{Workspace: "phone-speak", Worktree: "wrk2"}).String(); got != "phone-speak/wrk2" {
-		t.Errorf("String = %q, want phone-speak/wrk2", got)
+	if got := (Ref{Workspace: "store-front", Worktree: "wrk2"}).String(); got != "store-front/wrk2" {
+		t.Errorf("String = %q, want store-front/wrk2", got)
 	}
 	if got := (Ref{Workspace: "legacy"}).String(); got != "legacy" {
 		t.Errorf("String = %q, want legacy", got)
@@ -216,7 +216,7 @@ func TestResolve_CarriesWorktreeOverrides(t *testing.T) {
 		Name: "ws",
 		Worktrees: []Worktree{
 			{Name: "wrk1"},
-			{Name: "wrk2", Overrides: map[string]string{"SPEAK_API_URL": "https://dev"}},
+			{Name: "wrk2", Overrides: map[string]string{"STORE_API_URL": "https://dev"}},
 		},
 	})
 
@@ -224,7 +224,7 @@ func TestResolve_CarriesWorktreeOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if res.Overrides["SPEAK_API_URL"] != "https://dev" {
+	if res.Overrides["STORE_API_URL"] != "https://dev" {
 		t.Errorf("overrides = %+v, want the wrk2 override", res.Overrides)
 	}
 
@@ -237,14 +237,14 @@ func TestResolve_CarriesWorktreeOverrides(t *testing.T) {
 // git refuses to check one branch out into two worktrees, so the worktree has
 // to be part of the branch name.
 func TestBranchName_DistinctPerWorktree(t *testing.T) {
-	a := BranchName(Ref{Workspace: "phone-speak", Worktree: "wrk1"}, "ai-tutor-api")
-	b := BranchName(Ref{Workspace: "phone-speak", Worktree: "wrk2"}, "ai-tutor-api")
+	a := BranchName(Ref{Workspace: "store-front", Worktree: "wrk1"}, "checkout-api")
+	b := BranchName(Ref{Workspace: "store-front", Worktree: "wrk2"}, "checkout-api")
 
 	if a == b {
 		t.Fatalf("both worktrees produced branch %q", a)
 	}
-	if a != "crew/phone-speak/wrk1/ai-tutor-api" {
-		t.Errorf("BranchName = %q, want crew/phone-speak/wrk1/ai-tutor-api", a)
+	if a != "crew/store-front/wrk1/checkout-api" {
+		t.Errorf("BranchName = %q, want crew/store-front/wrk1/checkout-api", a)
 	}
 	if got := BranchName(Ref{Workspace: "legacy"}, "api"); got != "crew/legacy/api" {
 		t.Errorf("legacy BranchName = %q, want crew/legacy/api", got)
@@ -256,12 +256,12 @@ func TestBranchName_DistinctPerWorktree(t *testing.T) {
 func TestDevProjects_CarriesBindings(t *testing.T) {
 	setupTestConfig(t)
 	project.Add(project.Project{
-		Name: "ai-tutor-api", Path: "/p/tutor",
-		Bindings: []project.Binding{{Var: "SPEAK_API_URL", Value: "{{url:speak-api}}"}},
+		Name: "checkout-api", Path: "/p/tutor",
+		Bindings: []project.Binding{{Var: "STORE_API_URL", Value: "{{url:store-api}}"}},
 	})
 	Save(&Workspace{
 		Name:      "ws",
-		Projects:  []WorkspaceProject{{Name: "ai-tutor-api"}},
+		Projects:  []WorkspaceProject{{Name: "checkout-api"}},
 		Worktrees: []Worktree{{Name: "main"}},
 	})
 
@@ -274,7 +274,7 @@ func TestDevProjects_CarriesBindings(t *testing.T) {
 	if len(projects) != 1 {
 		t.Fatalf("got %d dev projects, want 1 — a project with bindings but no servers still resolves", len(projects))
 	}
-	if len(projects[0].Bindings) != 1 || projects[0].Bindings[0].Var != "SPEAK_API_URL" {
-		t.Errorf("bindings = %+v, want SPEAK_API_URL carried through", projects[0].Bindings)
+	if len(projects[0].Bindings) != 1 || projects[0].Bindings[0].Var != "STORE_API_URL" {
+		t.Errorf("bindings = %+v, want STORE_API_URL carried through", projects[0].Bindings)
 	}
 }

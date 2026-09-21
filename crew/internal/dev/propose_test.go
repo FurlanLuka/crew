@@ -4,21 +4,21 @@ import "testing"
 
 func configuredFixture() map[int][]ProjectServer {
 	return map[int][]ProjectServer{
-		3000: {{Project: "speak-api", Server: "speak-api"}},
-		8000: {{Project: "ai-tutor-api", Server: "ai-tutor-api"}},
-		3100: {{Project: "mumbo", Server: "backend"}},
-		3001: {{Project: "mumbo", Server: "homepage"}},
+		3000: {{Project: "store-api", Server: "store-api"}},
+		8000: {{Project: "checkout-api", Server: "checkout-api"}},
+		3100: {{Project: "admin", Server: "backend"}},
+		3001: {{Project: "admin", Server: "homepage"}},
 	}
 }
 
 func TestProposeBindings(t *testing.T) {
 	proposals := ProposeBindings(map[string]string{
-		"SPEAK_API_URL":      "http://localhost:3000",
+		"STORE_API_URL":      "http://localhost:3000",
 		"SELF_URL":           "http://localhost:8000",
-		"MUMBO_URL":          "http://localhost:3100",
+		"ADMIN_URL":          "http://localhost:3100",
 		"UNKNOWN_PORT":       "http://localhost:9999",
 		"BRAINTRUST_API_KEY": "sk-abcdef",
-		"DEPLOYED":           "https://dev-api.speak.com",
+		"DEPLOYED":           "https://dev-api.store.com",
 	}, configuredFixture())
 
 	byVar := map[string]Proposal{}
@@ -28,18 +28,18 @@ func TestProposeBindings(t *testing.T) {
 
 	// A configured port becomes a proposal naming the project that claims it,
 	// and takes the bare form when that project owns one server.
-	if got := byVar["SPEAK_API_URL"]; got.Template != "{{speak-api}}" {
-		t.Errorf("SPEAK_API_URL template = %q, want {{speak-api}}", got.Template)
+	if got := byVar["STORE_API_URL"]; got.Template != "{{store-api}}" {
+		t.Errorf("STORE_API_URL template = %q, want {{store-api}}", got.Template)
 	}
 
 	// Pointing at your own dev server is a legitimate binding, not a mistake.
-	if got := byVar["SELF_URL"]; got.Template != "{{ai-tutor-api}}" {
+	if got := byVar["SELF_URL"]; got.Template != "{{checkout-api}}" {
 		t.Errorf("SELF_URL template = %q, want the self reference proposed", got.Template)
 	}
 
-	// mumbo owns two servers, so the bare form would be ambiguous.
-	if got := byVar["MUMBO_URL"]; got.Template != "{{mumbo/backend}}" {
-		t.Errorf("MUMBO_URL template = %q, want the server named", got.Template)
+	// admin owns two servers, so the bare form would be ambiguous.
+	if got := byVar["ADMIN_URL"]; got.Template != "{{admin/backend}}" {
+		t.Errorf("ADMIN_URL template = %q, want the server named", got.Template)
 	}
 
 	for _, absent := range []string{"UNKNOWN_PORT", "BRAINTRUST_API_KEY", "DEPLOYED"} {
@@ -54,8 +54,8 @@ func TestProposeBindings(t *testing.T) {
 func TestProposeBindings_AmbiguousPort(t *testing.T) {
 	configured := map[int][]ProjectServer{
 		3000: {
-			{Project: "speak-api", Server: "speak-api"},
-			{Project: "mumbo", Server: "homepage"},
+			{Project: "store-api", Server: "store-api"},
+			{Project: "admin", Server: "homepage"},
 		},
 	}
 
@@ -95,24 +95,24 @@ func TestProposeBindings_NothingToPropose(t *testing.T) {
 // silently change the scheme — and --apply writes that unseen.
 func TestProposeTemplate_PreservesSchemeAndPath(t *testing.T) {
 	configured := map[int][]ProjectServer{
-		7880: {{Project: "livekit", Server: "livekit"}},
-		3000: {{Project: "speak-api", Server: "speak-api"}},
-		3100: {{Project: "mumbo", Server: "backend"}},
-		3001: {{Project: "mumbo", Server: "homepage"}},
+		7880: {{Project: "signals", Server: "signals"}},
+		3000: {{Project: "store-api", Server: "store-api"}},
+		3100: {{Project: "admin", Server: "backend"}},
+		3001: {{Project: "admin", Server: "homepage"}},
 	}
 
 	tests := []struct {
 		value string
 		want  string
 	}{
-		{"http://localhost:3000", "{{speak-api}}"},
-		{"http://localhost:3000/v1?x=1", "{{speak-api}}/v1?x=1"},
-		{"ws://localhost:7880", "ws://{{livekit.host}}"},
-		{"wss://localhost:7880/rtc", "wss://{{livekit.host}}/rtc"},
-		{"https://localhost:3000", "https://{{speak-api.host}}"},
-		{"localhost:3000", "{{speak-api.host}}"},
-		{"http://localhost:3100", "{{mumbo/backend}}"},
-		{"ws://127.0.0.1:3001", "ws://{{mumbo/homepage.host}}"},
+		{"http://localhost:3000", "{{store-api}}"},
+		{"http://localhost:3000/v1?x=1", "{{store-api}}/v1?x=1"},
+		{"ws://localhost:7880", "ws://{{signals.host}}"},
+		{"wss://localhost:7880/rtc", "wss://{{signals.host}}/rtc"},
+		{"https://localhost:3000", "https://{{store-api.host}}"},
+		{"localhost:3000", "{{store-api.host}}"},
+		{"http://localhost:3100", "{{admin/backend}}"},
+		{"ws://127.0.0.1:3001", "ws://{{admin/homepage.host}}"},
 	}
 
 	for _, tt := range tests {
