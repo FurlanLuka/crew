@@ -24,6 +24,9 @@ type SmokeResult struct {
 	Referenced bool   `json:"referenced"`
 	Tail       string `json:"tail,omitempty"`     // last few log lines, for the terminal
 	Evidence   string `json:"evidence,omitempty"` // a longer tail, kept on the worktree for whoever fixes it
+	// TookMs is how long the verdict took: a server that listens in two
+	// seconds passes in two, one that never does fails at the ceiling.
+	TookMs int64 `json:"took_ms"`
 }
 
 // SmokeState is the one verdict every reader switches on.
@@ -57,63 +60,160 @@ func (r SmokeResult) Failed() bool {
 	return st == SmokeDied || st == SmokeUnreached
 }
 
+// Took is how long the verdict took.
+func (r SmokeResult) Took() time.Duration { return time.Duration(r.TookMs) * time.Millisecond }
+
+// withoutStarting drops the servers still coming up — for a page that
+// must not hand Claude a verdict it does not have yet. Pure.
+func withoutStarting(results []SmokeResult) []SmokeResult {
+	var decided []SmokeResult
+	for _, r := range results {
+		if r.State() != SmokeUnreached {
+			decided = append(decided, r)
+		}
+	}
+	return decided
+}
+
+// SmokeCeiling is how long a referenced server gets to start listening.
+// A variable so tests can shorten it; there is no per-server knob — one
+// ceiling, and a server that listens sooner passes sooner.
+var SmokeCeiling = 60 * time.Second
+
 const (
-	smokeSettle = 6 * time.Second
-	smokeTail   = 4
+	smokeTick = time.Second
+	// deadGrace: right after a start the pane's shell has not launched the
+	// command yet, and "not busy" would read as "died". A pane never seen
+	// busy is only dead after this.
+	deadGrace = 2 * time.Second
+	smokeTail = 4
 	// A stack trace usually sits above the one line that says why; the
 	// terminal shows the end, the recorded evidence keeps enough to read it.
 	evidenceTail = 30
 )
 
-// SmokeStart starts a worktree's servers, waits for them to settle, reports
-// which are still running, and stops everything again.
+// SmokeStart starts a worktree's servers, waits for each to reach a verdict,
+// and stops everything again.
 //
 // Crew cannot judge "healthy" — a server that binds and then serves errors
-// looks fine from here. What it can read honestly is "died within seconds",
-// which is exactly the shape of a broken checkout: bad interpreter, missing
-// module, no .env. Servers are stopped afterwards because creating a worktree
-// should not leave things running as a side effect; the page is one keystroke
-// away for that.
+// looks fine from here. What it can read honestly is "died" and "never
+// listened", which is exactly the shape of a broken checkout: bad
+// interpreter, missing module, no .env. Servers are stopped afterwards
+// because creating a worktree should not leave things running as a side
+// effect; the page is one keystroke away for that.
 func SmokeStart(res *Resolved) ([]SmokeResult, error) {
 	result, err := StartDev(res, true, false)
 	if err != nil {
 		return nil, err
 	}
-	time.Sleep(smokeSettle)
-	results := inspectRoutes(res.Slug, result.Routes)
+	results := waitRoutes(res.Slug, result.Routes, SmokeCeiling)
 	dev.StopAll(res.Slug)
 	return results, nil
 }
 
-// CheckServers is the smoke's look at whatever is running now — nothing
-// started, nothing stopped. What `crew dev check` prints and what the
-// worktree page marks its rows with. Nil when nothing runs.
+// CheckServers is one look at whatever is running now — nothing started,
+// nothing stopped, nothing waited for. What `crew dev check` prints and
+// what the worktree page marks its rows with. Nil when nothing runs.
 func CheckServers(res *Resolved) []SmokeResult {
 	routes, _ := dev.LoadRoutes(res.Slug)
 	if len(routes) == 0 {
 		return nil
 	}
-	return inspectRoutes(res.Slug, routes)
+	return waitRoutes(res.Slug, routes, 0)
 }
 
-// inspectRoutes reads each route's pane and port, and keeps the log tail
-// for the ones that failed.
-func inspectRoutes(slug dev.Slug, routes []dev.Route) []SmokeResult {
+// WaitServers is CheckServers with the smoke's patience: `crew dev check
+// --wait` right after a start.
+func WaitServers(res *Resolved) []SmokeResult {
+	routes, _ := dev.LoadRoutes(res.Slug)
+	if len(routes) == 0 {
+		return nil
+	}
+	return waitRoutes(res.Slug, routes, SmokeCeiling)
+}
+
+// waitRoutes polls each route's pane and port until it has a verdict, and
+// keeps the log tail for the ones that failed.
+func waitRoutes(slug dev.Slug, routes []dev.Route, ceiling time.Duration) []SmokeResult {
 	session := dev.SessionName(slug)
-	referenced := referencedServers()
-	var results []SmokeResult
-	for _, r := range routes {
-		window := string(slug) + "/" + r.ServerName
-		sr := SmokeResult{Project: r.Project, Server: r.ServerName, Port: r.InternalPort, Referenced: referenced[dev.PortKey(r.Project, r.ServerName)]}
-		sr.Alive = exec.TmuxPaneBusy(session, window)
-		if sr.Alive {
-			sr.Listening = portOpen(r.InternalPort)
+	look := func(r dev.Route) (alive, listening bool) {
+		alive = exec.TmuxPaneBusy(session, string(slug)+"/"+r.ServerName)
+		if alive {
+			listening = portOpen(r.InternalPort)
 		}
-		if sr.Failed() {
-			sr.Tail = tailLog(dev.LogFile(slug, r.ServerName), smokeTail)
-			sr.Evidence = tailLog(dev.LogFile(slug, r.ServerName), evidenceTail)
+		return alive, listening
+	}
+	results := waitForServers(routes, referencedServers(), look, smokeTiming{ceiling: ceiling, tick: smokeTick, grace: deadGrace})
+	for i := range results {
+		if results[i].Failed() {
+			results[i].Tail = tailLog(dev.LogFile(slug, results[i].Server), smokeTail)
+			results[i].Evidence = tailLog(dev.LogFile(slug, results[i].Server), evidenceTail)
 		}
-		results = append(results, sr)
+	}
+	return results
+}
+
+// smokeTiming is the loop's clock: how long a referenced server gets to
+// listen, how often to look, and how long a pane not yet seen busy gets
+// before "not busy" means "died".
+type smokeTiming struct {
+	ceiling, tick, grace time.Duration
+}
+
+// hasVerdict is the loop's one decision, for one look at one server. A
+// port that answers is a verdict, so is a dead pane — unless it was never
+// seen busy and the grace is still running, in which case the shell may
+// just not have launched the command yet; a server nobody points at is
+// done the moment it is alive (there is nothing to wait for). Pure.
+func hasVerdict(alive, listening, referenced, seenAlive, withinGrace bool) bool {
+	switch {
+	case listening:
+		return true
+	case !alive:
+		return seenAlive || !withinGrace
+	default:
+		return !referenced
+	}
+}
+
+// waitForServers is the loop: every tick each undecided server is looked
+// at again until hasVerdict says so; a referenced one that never listens
+// is Unreached at the ceiling. look is the only I/O it does itself; time
+// is real. The loop ends when every server has its verdict — a stack that
+// comes up in three seconds is judged in three.
+func waitForServers(routes []dev.Route, referenced map[string]bool, look func(dev.Route) (alive, listening bool), t smokeTiming) []SmokeResult {
+	start := time.Now()
+	results := make([]SmokeResult, len(routes))
+	decided := make([]bool, len(routes))
+	seenAlive := make([]bool, len(routes))
+	for i, r := range routes {
+		results[i] = SmokeResult{Project: r.Project, Server: r.ServerName, Port: r.InternalPort, Referenced: referenced[dev.PortKey(r.Project, r.ServerName)]}
+	}
+	for {
+		pending := 0
+		for i, r := range routes {
+			if decided[i] {
+				continue
+			}
+			alive, listening := look(r)
+			results[i].Alive, results[i].Listening = alive, listening
+			seenAlive[i] = seenAlive[i] || alive
+			if hasVerdict(alive, listening, results[i].Referenced, seenAlive[i], time.Since(start) < t.grace) {
+				decided[i] = true
+				results[i].TookMs = time.Since(start).Milliseconds()
+				continue
+			}
+			pending++
+		}
+		if pending == 0 || time.Since(start) >= t.ceiling {
+			break
+		}
+		time.Sleep(t.tick)
+	}
+	for i := range results {
+		if !decided[i] {
+			results[i].TookMs = time.Since(start).Milliseconds()
+		}
 	}
 	return results
 }

@@ -149,13 +149,14 @@ func ApplyProject(b Bundle, plan Plan, name string, o ProjectOptions) (ProjectRe
 	return ProjectResult{Name: p.Name, Path: p.Path, Cloned: cloned, Replaced: st.Exists}, nil
 }
 
-// ApplyWorkspace creates one bundle workspace. Members must already be in
-// the pool: the plan's pool snapshot is refreshed here, so projects imported
-// a moment ago count.
-func ApplyWorkspace(b Bundle, name string) error {
+// MembershipOf is the bundle workspace by name, checked against the pool
+// as it is now — the plan's snapshot is refreshed here, so a project
+// imported a moment ago counts. The caller shows the base table and then
+// ImportWorkspaces it.
+func MembershipOf(b Bundle, name string) (Membership, error) {
 	idx := indexOfWorkspace(b, name)
 	if idx < 0 {
-		return fmt.Errorf("workspace '%s' is not in the bundle", name)
+		return Membership{}, fmt.Errorf("workspace '%s' is not in the bundle", name)
 	}
 	m := b.Workspaces[idx]
 	known := map[string]bool{}
@@ -164,9 +165,9 @@ func ApplyWorkspace(b Bundle, name string) error {
 		known[p.Name] = true
 	}
 	if need := MissingMembers(m, known); len(need) > 0 {
-		return fmt.Errorf("workspace '%s' needs %s — import them first", name, strings.Join(need, ", "))
+		return Membership{}, fmt.Errorf("workspace '%s' needs %s — import them first", name, strings.Join(need, ", "))
 	}
-	return ImportWorkspace(m, nil)
+	return m, nil
 }
 
 func indexOfProject(b Bundle, name string) int {

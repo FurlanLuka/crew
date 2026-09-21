@@ -151,7 +151,7 @@ crew rm <workspace>                                                the whole wor
 crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]
 crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke]
 crew setup <workspace>[/<worktree>] [--no-smoke]
-crew verify <workspace>[/<worktree>]                              <project>  ✓|✗ <server> [exited within seconds]
+crew verify <workspace>[/<worktree>]                              <project>  ✓|✗ smoke <server> <took> [died | not listening on :<port>]
 crew fix <workspace>[/<worktree>] [--print]
 crew rm worktree <workspace>/<name>
 crew migrate [--dry-run] [--yes]
@@ -168,9 +168,12 @@ crew migrate [--dry-run] [--yes]
 - `add worktree` prints each project's base branch and how far behind origin it is; `--pull`
   fast-forwards the local bases first (never touches a checked-out feature branch). Then:
   checkouts (all-or-nothing), `.env` copied from the canonical repo or a sibling worktree,
-  installs per project, and a smoke start — servers up for a few seconds, which still run,
-  last log lines for the dead ones. Read that output and relay it; a failed install keeps
-  the worktree and `crew setup <ref>` re-runs it.
+  installs per project, and a smoke start — each server watched until it listens on its
+  port, dies, or a minute passes (a stack that is up in three seconds is judged in three);
+  last log lines for the failed ones. Read that output and relay it; a failed install keeps
+  the worktree and `crew setup <ref>` re-runs it. Crew's checkouts run with the repo's git
+  hooks off — a hook written for a user's checkout does not get to fail crew's — and
+  `mise trust` is done at checkout when there is a `mise.toml`.
 - **Creation never stops.** `add worktree` checks out every project, installs every checkout
   and smoke-starts the servers, each step over every project; a failure at any stage is an
   issue **recorded on the worktree** (`checkout failed: x`, `install failed: x`, `server died:
@@ -206,7 +209,7 @@ crew dev start <workspace>[/<worktree>] [--proxy]
 crew dev stop [<workspace>[/<worktree>]]
 crew dev restart <workspace>[/<worktree>] [--proxy]
 crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]
-crew dev check <workspace>[/<worktree>]                           <project>/<server>\t<running|died|not listening>\t<port>\t<detail>
+crew dev check <workspace>[/<worktree>] [--wait]                  <project>/<server>\t<running|died|not listening>\t<port>\t<took>\t<detail>
 crew dev proxy [status|stop]
 crew dev tui <workspace>[/<worktree>]                              the worktree page (TUI)
 ```
@@ -215,11 +218,13 @@ crew dev tui <workspace>[/<worktree>]                              the worktree 
   the project's resolved bindings exported. URLs are `http://localhost:<port>`; `--proxy`
   adds `http://<server>--<ws>--<wt>.<domain>` for other devices.
 - Ports are reserved per worktree and reused on restart, so a URL from `crew env` stays valid.
-- **After a start, check.** `crew dev start` returns as soon as the panes are up; ~6 s later
-  `crew dev check <ref>` says which server `died` (log tail in the detail) or is `not
-  listening` on its port — a failure when a binding points at it, a note when nothing does
-  (a queue worker registered with a port). Exit 1 on a failure; `crew fix <ref> --print`
-  then has the evidence. The smoke at creation and `verify` apply the same two tests.
+- **After a start, check.** `crew dev start` returns as soon as the panes are up; then
+  `crew dev check <ref> --wait` watches each server until it listens, dies, or a minute
+  passes and says which `died` (log tail in the detail) or is `not listening` on its port —
+  a failure when a binding points at it, a note when nothing does (a queue worker registered
+  with a port). Bare `dev check` is one look now, for servers that have been up a while.
+  Exit 1 on a failure; `crew fix <ref> --print` then has the evidence. The smoke at creation
+  and `verify` apply the same tests with the same patience.
 - **Read the end of `crew dev start` and relay it verbatim.** After the URLs: a resolution
   count, anything left alone, then `!` blocks — an env value pointing at a port crew gave to
   something else, or at a sibling's configured port while it runs elsewhere, or a proxy
@@ -269,7 +274,7 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
 
 ```
 crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json
-crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name>]
+crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke]]
                                                          <project|workspace>\t<name>\t<status|outcome>\t<detail>
 ```
 
@@ -290,8 +295,12 @@ crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--pat
   `crew import <file> project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>]`
   prints the same row with the outcome — `imported`, `imported (cloned)`, `replaced`,
   `replaced (cloned)` — and the path; a name already in the pool needs `--replace` (refused
-  before anything is cloned). `crew import <file> workspace <name>` creates it once
-  every member is in the pool. `crew import <file> --all [--clone] [--replace]` does the
+  before anything is cloned). `crew import <file> workspace <name> [--pull] [--no-install]
+  [--no-smoke]` creates it once every member is in the pool — **exactly the way `crew add
+  worktree` makes one**: the base table (`--pull` fast-forwards the local bases first; say
+  so when it prints `behind`), checkouts, installs, the smoke; what fails is recorded on
+  `<name>/main` and the row says `created … N issue(s) recorded — crew fix <name>/main
+  --print`, exit 1. `crew import <file> --all [--clone] [--replace] [--pull] …` does the
   whole bundle: new items only unless `--replace`; missing paths refuse the run unless
   `--clone`; never guesses. Output rows `<kind>\t<name>\t<outcome>\t<detail>`.
 
@@ -354,7 +363,7 @@ crew help [<command>] [<subcommand>] [--json]
 
 **"Start everything and make sure it works"**
 1. `crew dev start <ws>/<wt>` — relay the URLs and any `!` lines.
-2. `sleep 6; crew dev check <ws>/<wt>` — every row `running`? Done. A `died` or
+2. `crew dev check <ws>/<wt> --wait` — every row `running`? Done. A `died` or
    `not listening` row: `crew dev logs <ws>/<wt> <server> --lines=50`, or `crew fix
    <ws>/<wt> --print` for all of it at once; fix, `crew dev restart`, check again.
 
@@ -364,8 +373,10 @@ crew help [<command>] [<subcommand>] [--json]
    `path exists`/`suggested` → `crew import … project <name>`; `clone` → `… --clone`;
    `missing` → ask where the repo is or should go, then `--path=` or `--clone=<dir>`;
    `exists` → leave it, or `--replace` if the user wants the bundle's servers and bindings.
-   Then `crew import … workspace <name>` for each `ready` one, and `crew add worktree` as
-   needed. `--all --clone` is the one-shot when every row is plain.
+   Then `crew import … workspace <name> --pull` for each `ready` one — it makes the `main`
+   worktree the way `add worktree` does (base table, checkouts, installs, smoke; minutes,
+   not seconds) and records what failed; relay the row and any `crew fix … --print` line.
+   `--all --clone --pull` is the one-shot when every row is plain.
 
 **"Disk is full"**
 1. `crew trash` — anything still clearing? `crew trash empty` finishes it now.

@@ -139,14 +139,24 @@ type importArgs struct {
 	item    string // "project" | "workspace" | ""
 	name    string
 	project transfer.ProjectOptions
+	// The worktree options a workspace import shares with crew add worktree.
+	pull    bool
+	install bool
+	smoke   bool
 }
 
 func parseImportArgs(args []string) (importArgs, error) {
-	var a importArgs
+	a := importArgs{install: true, smoke: true}
 	for _, arg := range args {
 		switch {
 		case arg == "--plan":
 			a.plan = true
+		case arg == "--pull":
+			a.pull = true
+		case arg == "--no-install":
+			a.install = false
+		case arg == "--no-smoke":
+			a.smoke = false
 		case arg == "--all":
 			a.all = true
 		case arg == "--clone":
@@ -194,6 +204,9 @@ func parseImportArgs(args []string) (importArgs, error) {
 	if a.item == "workspace" && (a.project.Clone || a.project.Replace) {
 		return a, errors.New("--clone and --replace belong to project imports")
 	}
+	if (a.pull || !a.install || !a.smoke) && !a.all && a.item != "workspace" {
+		return a, errors.New("--pull, --no-install and --no-smoke belong to workspace imports")
+	}
 	if !a.all && a.item != "project" && (a.project.Clone || a.project.Replace) {
 		return a, errors.New("--clone and --replace need --all or project <name>")
 	}
@@ -203,7 +216,7 @@ func parseImportArgs(args []string) (importArgs, error) {
 func cmdImport() {
 	a, err := parseImportArgs(os.Args[2:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name>]\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke]]\n", err)
 		os.Exit(1)
 	}
 	b, err := transfer.Read(a.file)
@@ -222,13 +235,18 @@ func cmdImport() {
 		}
 		printImportRows([]transfer.PlanRow{{Kind: "project", Name: res.Name, Status: outcomeWord(res), Detail: res.Path}})
 	case a.item == "workspace":
-		if err := transfer.ApplyWorkspace(b, a.name); err != nil {
+		m, err := transfer.MembershipOf(b, a.name)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		printImportRows([]transfer.PlanRow{{Kind: "workspace", Name: a.name, Status: "created"}})
+		row, failed := importWorkspace(m, a)
+		printImportRows([]transfer.PlanRow{row})
+		if failed {
+			os.Exit(1)
+		}
 	case a.all:
-		importAll(a.file, b, a.project)
+		importAll(a.file, b, a)
 	default:
 		runTUI(transfer.NewImportView(a.file, b))
 	}
@@ -261,11 +279,32 @@ func printImportRows(rows []transfer.PlanRow) {
 	}
 }
 
+// importWorkspace is one workspace the way crew add worktree makes one:
+// the base table (pulled first on --pull), then checkouts, installs and the
+// smoke with progress on the human stream. The row carries what was
+// recorded; failed says whether anything was.
+func importWorkspace(m transfer.Membership, a importArgs) (transfer.PlanRow, bool) {
+	printBases(m.Workspace(), a.pull, "--pull fast-forwards the local bases first.")
+	fmt.Fprintf(human, "\nCreating %s\n\n", m.Name)
+	opts := a.checkoutOptions()
+	opts.Progress = printSetupProgress
+	results, err := transfer.ImportWorkspace(m, opts)
+	return transfer.WorkspaceRow(m.Name, results, err)
+}
+
+// checkoutOptions is the worktree options an import was told, with crew add
+// worktree's rule applied: no install, nothing to smoke. Pure.
+func (a importArgs) checkoutOptions() workspace.CheckoutOptions {
+	return workspace.CheckoutOptions{Install: a.install, Smoke: a.smoke && a.install}
+}
+
 // importAll is the non-interactive path. By default it takes only what is
 // new and already here, and refuses up front if any path is missing — never
 // guessing. --clone lets a missing repo be cloned where a card would offer,
-// --replace swaps records of the same name.
-func importAll(file string, b transfer.Bundle, o transfer.ProjectOptions) {
+// --replace swaps records of the same name. Workspaces are made the way
+// crew add worktree makes one.
+func importAll(file string, b transfer.Bundle, a importArgs) {
+	o := a.project
 	plan := transfer.Inspect(b)
 	if missing := transfer.MissingPaths(b, plan); len(missing) > 0 && !o.Clone {
 		lines := make([]string, 0, len(missing))
@@ -289,16 +328,24 @@ func importAll(file string, b transfer.Bundle, o transfer.ProjectOptions) {
 		}
 		rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: outcomeWord(res), Detail: res.Path})
 	}
+	anyFailed := false
 	for i, m := range b.Workspaces {
 		if plan.Workspaces[i].Exists {
 			rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "kept local"})
 			continue
 		}
-		if err := transfer.ApplyWorkspace(b, m.Name); err != nil {
+		member, err := transfer.MembershipOf(b, m.Name)
+		if err != nil {
 			rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "failed", Detail: err.Error()})
+			anyFailed = true
 			continue
 		}
-		rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "created"})
+		row, failed := importWorkspace(member, a)
+		anyFailed = anyFailed || failed
+		rows = append(rows, row)
 	}
 	printImportRows(rows)
+	if anyFailed {
+		os.Exit(1)
+	}
 }

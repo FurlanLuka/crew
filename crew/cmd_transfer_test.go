@@ -85,6 +85,8 @@ func TestParseImportArgs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// install and smoke default on; the table leaves them out.
+			tt.want.install, tt.want.smoke = true, true
 			if got != tt.want {
 				t.Errorf("got %+v, want %+v", got, tt.want)
 			}
@@ -106,5 +108,30 @@ func TestOutcomeWord(t *testing.T) {
 		if got := outcomeWord(tt.res); got != tt.want {
 			t.Errorf("%+v → %q, want %q", tt.res, got, tt.want)
 		}
+	}
+}
+
+func TestParseImportArgs_WorktreeOptions(t *testing.T) {
+	a, err := parseImportArgs([]string{"b.json", "workspace", "ws", "--pull", "--no-smoke"})
+	if err != nil || !a.pull || !a.install || a.smoke {
+		t.Errorf("workspace flags: %+v, %v", a, err)
+	}
+	a, err = parseImportArgs([]string{"b.json", "--all", "--no-install"})
+	if err != nil || a.install || !a.smoke {
+		t.Errorf("--all flags: %+v, %v", a, err)
+	}
+	// No install, nothing to smoke — the same rule as crew add worktree.
+	if o := a.checkoutOptions(); o.Install || o.Smoke {
+		t.Errorf("--no-install must also skip the smoke: %+v", o)
+	}
+	a, _ = parseImportArgs([]string{"b.json", "workspace", "ws", "--no-smoke"})
+	if o := a.checkoutOptions(); !o.Install || o.Smoke {
+		t.Errorf("--no-smoke keeps the install: %+v", o)
+	}
+	if _, err := parseImportArgs([]string{"b.json", "project", "api", "--pull"}); err == nil || !strings.Contains(err.Error(), "belong to workspace") {
+		t.Errorf("--pull on a project: %v", err)
+	}
+	if a, _ := parseImportArgs([]string{"b.json", "--plan"}); !a.install || !a.smoke {
+		t.Errorf("defaults should be install+smoke: %+v", a)
 	}
 }

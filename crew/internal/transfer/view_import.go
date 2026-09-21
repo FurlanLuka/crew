@@ -1,10 +1,12 @@
 package transfer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -12,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	crewexec "github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -33,8 +36,17 @@ type wsProgressMsg struct {
 	ch   chan string
 }
 type wsDoneMsg struct {
-	name string
-	err  error
+	name   string
+	issues int
+	err    error
+}
+
+// wsBasesMsg: the base-branch table for the workspace card, fetched in the
+// background when the card opens (and again after a pull).
+type wsBasesMsg struct {
+	name     string
+	statuses []workspace.BaseStatus
+	pulled   []error
 }
 
 // ── Outcomes ──
@@ -120,7 +132,10 @@ type ImportView struct {
 
 	spinner  spinner.Model
 	progress string
-	stopped  string // "project 3 of 5" when esc ended it early
+	// The workspace card's base table; nil while it loads. ctrl+p pulls.
+	bases   []workspace.BaseStatus
+	pulling bool
+	stopped string // "project 3 of 5" when esc ended it early
 
 	err error
 }
@@ -156,7 +171,8 @@ func NewImportView(file string, b Bundle) ImportView {
 
 func (v ImportView) Title() string { return "Import" }
 
-func (v ImportView) Init() tea.Cmd { return nil }
+// Init: a bundle with only workspaces opens on a workspace card.
+func (v ImportView) Init() tea.Cmd { return v.loadBases() }
 
 // openCard loads the current item into the card, re-inspecting the path
 // against everything accepted so far.
@@ -172,6 +188,7 @@ func (v *ImportView) openCard() {
 		v.current = v.bundle.Projects[v.idx]
 		v.refreshPath()
 	case phaseWorkspaces:
+		v.bases = nil
 		if v.idx >= len(v.bundle.Workspaces) {
 			v.phase = phaseDone
 		}
@@ -247,12 +264,25 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m := v.bundle.Workspaces[v.idx]
 		ref := workspace.Ref{Workspace: m.Name, Worktree: workspace.DefaultWorktree}
-		v.wsRes[v.idx] = wsResult{Outcome: outcomeCreated,
-			Detail: fmt.Sprintf("%s under %s", plural(len(m.Projects), "checkout"), tildify(workspace.WorktreeDir(ref)))}
+		detail := fmt.Sprintf("%s under %s", plural(len(m.Projects), "checkout"), tildify(workspace.WorktreeDir(ref)))
+		if msg.issues > 0 {
+			detail = fmt.Sprintf("%s recorded — crew fix %s --print", plural(msg.issues, "issue"), ref)
+		}
+		v.wsRes[v.idx] = wsResult{Outcome: outcomeCreated, Detail: detail}
 		return v.advance()
 
+	case wsBasesMsg:
+		if v.phase != phaseWorkspaces || v.idx >= len(v.bundle.Workspaces) || v.bundle.Workspaces[v.idx].Name != msg.name {
+			return v, nil
+		}
+		v.bases, v.pulling = msg.statuses, false
+		if len(msg.pulled) > 0 {
+			v.err = errors.Join(msg.pulled...)
+		}
+		return v, nil
+
 	case spinner.TickMsg:
-		if v.state != importStateCloning && v.state != importStateCreating {
+		if v.state != importStateCloning && v.state != importStateCreating && !v.basesLoading() && !v.pulling {
 			return v, nil
 		}
 		var cmd tea.Cmd
@@ -288,8 +318,29 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (v ImportView) advance() (tea.Model, tea.Cmd) {
 	v.idx++
 	v.openCard()
-	return v, nil
+	return v, v.loadBases()
 }
+
+// loadBases fetches the workspace card's base table in the background —
+// one fetch per member, in parallel, off the key loop. The card shows a
+// spinner while bases is nil.
+func (v ImportView) loadBases() tea.Cmd {
+	if !v.wantsBases() {
+		return nil
+	}
+	m := v.bundle.Workspaces[v.idx]
+	return tea.Batch(v.spinner.Tick, func() tea.Msg { return wsBasesMsg{name: m.Name, statuses: workspace.BaseStatuses(m.Workspace())} })
+}
+
+// wantsBases: a workspace card that can be created, so its base table is
+// worth fetching.
+func (v ImportView) wantsBases() bool {
+	return v.phase == phaseWorkspaces && v.idx < len(v.bundle.Workspaces) &&
+		!v.plan.Workspaces[v.idx].Exists && len(MissingMembers(v.bundle.Workspaces[v.idx], v.present)) == 0
+}
+
+// basesLoading: the table is wanted and not here yet.
+func (v ImportView) basesLoading() bool { return v.wantsBases() && v.bases == nil }
 
 // stop ends the walk; everything not reached stays marked that way.
 func (v ImportView) stop() (tea.Model, tea.Cmd) {
@@ -455,16 +506,28 @@ func (v ImportView) handleWorkspaceKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.wsRes[v.idx] = wsResult{Outcome: outcomeSkipped}
 		}
 		return v.advance()
-	case msg.String() == "y" && !exists && len(missing) == 0:
+	case msg.String() == "ctrl+p" && !exists && len(missing) == 0 && v.bases != nil && !v.pulling:
+		v.pulling, v.err = true, nil
+		statuses := v.bases
+		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+			ws := m.Workspace()
+			pulled := workspace.UpdateBases(ws, statuses)
+			return wsBasesMsg{name: m.Name, statuses: workspace.BaseStatuses(ws), pulled: pulled}
+		})
+	case msg.String() == "y" && !exists && len(missing) == 0 && !v.pulling:
 		v.state = importStateCreating
 		v.err = nil
-		ch := make(chan string, 8)
+		ch := make(chan string, 32)
 		return v, tea.Batch(v.spinner.Tick, listenProgress(ch), func() tea.Msg {
-			err := ImportWorkspace(m, func(name string, i, n int) {
-				ch <- fmt.Sprintf("Creating %s — checking out %s (%d of %d)", m.Name, name, i, n)
-			})
+			results, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true, Smoke: true, Progress: func(project string, r crewexec.SetupResult) {
+				mark := "✓"
+				if r.Err != nil {
+					mark = "✗"
+				}
+				ch <- fmt.Sprintf("Creating %s — %s %s %s (%s)", m.Name, project, mark, r.Step.Name, r.Duration.Round(time.Second))
+			}})
 			close(ch)
-			return wsDoneMsg{name: m.Name, err: err}
+			return wsDoneMsg{name: m.Name, issues: IssueCount(results), err: err}
 		})
 	}
 	return v, nil
@@ -673,11 +736,25 @@ func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
 		b.WriteString("  " + app.Highlight.Render(fmt.Sprintf("! needs %s, which %s not imported — n skips this workspace", strings.Join(missing, ", "), wasWere(len(missing)))) + "\n\n")
 		b.WriteString("  " + app.HelpStyle.Render("n skip  esc stop") + "\n")
 	default:
-		b.WriteString("  " + app.Subtle.Render("Creates the main worktree: a checkout of each project, no installs.") + "\n\n")
+		switch {
+		case v.pulling:
+			b.WriteString(fmt.Sprintf("  %s pulling the latest into the local bases…\n\n", v.spinner.View()))
+		case v.basesLoading():
+			b.WriteString(fmt.Sprintf("  %s checking the base branches against origin…\n\n", v.spinner.View()))
+		default:
+			b.WriteString("  " + app.Subtle.Render("Branching from") + "\n")
+			b.WriteString(workspace.FormatBaseStatuses(v.bases))
+			if warn := workspace.StaleWarning(v.bases); warn != "" {
+				b.WriteString("\n  " + app.Highlight.Render(warn) + "\n")
+				b.WriteString("  " + app.Subtle.Render("ctrl+p pulls the latest into the local bases (fast-forward only)") + "\n")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("  " + app.Subtle.Render("y creates the main worktree the way crew add worktree does: checkouts, installs, a smoke start; what fails is recorded.") + "\n\n")
 		if v.err != nil {
 			b.WriteString("  " + app.Error.Render("! "+v.err.Error()) + "\n\n")
 		}
-		b.WriteString("  " + app.HelpStyle.Render("y create  n skip  esc stop") + "\n")
+		b.WriteString("  " + app.HelpStyle.Render("y create  ctrl+p pull first  n skip  esc stop") + "\n")
 	}
 }
 

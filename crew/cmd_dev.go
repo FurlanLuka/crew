@@ -7,6 +7,7 @@ import (
 	osexec "os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -58,11 +59,26 @@ func cmdDev() {
 // died, which run without listening while something points at them.
 func cmdDevCheck() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev check <workspace>[/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev check <workspace>[/<worktree>] [--wait]\n")
 		os.Exit(1)
 	}
+	wait := false
+	for _, arg := range os.Args[4:] {
+		switch arg {
+		case "--wait":
+			wait = true
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
 	res := mustResolve(os.Args[3])
-	results := workspace.CheckServers(res)
+	var results []workspace.SmokeResult
+	if wait {
+		results = workspace.WaitServers(res)
+	} else {
+		results = workspace.CheckServers(res)
+	}
 	if jsonOutput {
 		if results == nil {
 			results = []workspace.SmokeResult{}
@@ -81,7 +97,7 @@ func cmdDevCheck() {
 			case workspace.SmokeIdle:
 				state, detail = "not listening", "nothing points at it"
 			}
-			fmt.Printf("%s/%s\t%s\t%d\t%s\n", r.Project, r.Server, state, r.Port, detail)
+			fmt.Printf("%s/%s\t%s\t%d\t%s\t%s\n", r.Project, r.Server, state, r.Port, r.Took().Round(100*time.Millisecond), detail)
 		}
 	}
 	if len(workspace.SmokeFailures(results)) > 0 {

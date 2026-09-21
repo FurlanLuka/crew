@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -338,5 +339,25 @@ func TestTailLog_StripsPromptNoise(t *testing.T) {
 	want := "error: No environment file found at: `.env`\nmake: *** [start_uvicorn] Error 2"
 	if got != want {
 		t.Errorf("tailLog =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// reportSmoke is what puts "(2s)" and the reason on a progress line.
+func TestReportSmoke(t *testing.T) {
+	var got []string
+	reportSmoke([]SmokeResult{
+		{Project: "api", Server: "api", TookMs: 2500},
+		{Project: "web", Server: "web", Alive: true, Referenced: true, Port: 3000, TookMs: 60000},
+		{Project: "w", Server: "worker", Alive: true, TookMs: 10},
+	}, func(p string, r exec.SetupResult) {
+		e := ""
+		if r.Err != nil {
+			e = r.Err.Error()
+		}
+		got = append(got, fmt.Sprintf("%s:%s:%s:%s", p, r.Step.Name, r.Duration, e))
+	})
+	want := []string{"api:smoke api:2.5s:died", "web:smoke web:1m0s:not listening on :3000", "w:smoke worker:10ms:"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got %v\nwant %v", got, want)
 	}
 }

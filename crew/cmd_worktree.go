@@ -48,21 +48,7 @@ func cmdAddWorktree() {
 		os.Exit(1)
 	}
 
-	statuses := workspace.BaseStatuses(ws)
-	if pull && workspace.Stale(statuses) {
-		fmt.Fprintf(human, "Pulling latest…\n")
-		for _, err := range workspace.UpdateBases(ws, statuses) {
-			fmt.Fprintf(os.Stderr, "  ! %v\n", err)
-		}
-		statuses = workspace.BaseStatuses(ws)
-	}
-	fmt.Fprintf(human, "Branching from\n\n%s", workspace.FormatBaseStatuses(statuses))
-	if warn := workspace.StaleWarning(statuses); warn != "" {
-		fmt.Fprintf(human, "\n  %s\n", warn)
-		if !pull {
-			fmt.Fprintf(human, "  crew add worktree %s --pull fast-forwards the local bases first.\n", ref)
-		}
-	}
+	printBases(ws, pull, fmt.Sprintf("crew add worktree %s --pull fast-forwards the local bases first.", ref))
 
 	if notice := workspace.TrashNotice(); notice != "" {
 		fmt.Fprintf(human, "\n  %s\n", notice)
@@ -75,6 +61,27 @@ func cmdAddWorktree() {
 		os.Exit(1)
 	}
 	landOn(ref, fmt.Sprintf("Created %s", ref), h)
+}
+
+// printBases is the base-branch table every worktree creation opens with:
+// pulled first when asked and stale, the stale warning with the way to
+// pull otherwise. On the human stream, like all narration.
+func printBases(ws *workspace.Workspace, pull bool, pullHint string) {
+	statuses := workspace.BaseStatuses(ws)
+	if pull && workspace.Stale(statuses) {
+		fmt.Fprintf(human, "Pulling latest…\n")
+		for _, err := range workspace.UpdateBases(ws, statuses) {
+			fmt.Fprintf(os.Stderr, "  ! %v\n", err)
+		}
+		statuses = workspace.BaseStatuses(ws)
+	}
+	fmt.Fprintf(human, "Branching from\n\n%s", workspace.FormatBaseStatuses(statuses))
+	if warn := workspace.StaleWarning(statuses); warn != "" {
+		fmt.Fprintf(human, "\n  %s\n", warn)
+		if !pull {
+			fmt.Fprintf(human, "  %s\n", pullHint)
+		}
+	}
 }
 
 // landOn is where creation ends: the worktree page, locked or not, when

@@ -219,7 +219,7 @@ func TestApplyProject_ExplicitCloneAndReplace(t *testing.T) {
 	}
 }
 
-func TestApplyWorkspace(t *testing.T) {
+func TestMembershipOf(t *testing.T) {
 	tmp := setupTestConfig(t)
 	api := filepath.Join(tmp, "repos", "api")
 	initRepo(t, api)
@@ -227,20 +227,24 @@ func TestApplyWorkspace(t *testing.T) {
 		Projects:   []Exported{{Project: project.Project{Name: "api", Path: api}}},
 		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "api"}}}},
 	}
-	if err := ApplyWorkspace(b, "ws"); err == nil {
+	if _, err := MembershipOf(b, "ws"); err == nil {
 		t.Fatal("members not in the pool yet must block")
 	}
 	if _, err := ApplyProject(b, Inspect(b), "api", ProjectOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	// The pool is re-read: the project imported a moment ago counts.
-	if err := ApplyWorkspace(b, "ws"); err != nil {
-		t.Fatalf("ApplyWorkspace: %v", err)
+	m, err := MembershipOf(b, "ws")
+	if err != nil {
+		t.Fatalf("MembershipOf: %v", err)
+	}
+	if _, err := ImportWorkspace(m, workspace.CheckoutOptions{}); err != nil {
+		t.Fatalf("ImportWorkspace: %v", err)
 	}
 	if !workspace.Exists("ws") {
 		t.Error("workspace not created")
 	}
-	if err := ApplyWorkspace(b, "nope"); err == nil {
+	if _, err := MembershipOf(b, "nope"); err == nil {
 		t.Error("unknown workspace must fail")
 	}
 }

@@ -452,6 +452,7 @@ func TestAddWorktree_NotListeningIsRecordedOnlyWhenReferenced(t *testing.T) {
 	if !exec.HasTmux() {
 		t.Skip("tmux not available")
 	}
+	shortCeiling(t)
 	newRepoWorkspace(t, "ws", "api", "web")
 	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
 	t.Cleanup(func() { dev.StopAll("ws--wrk2"); dev.StopAll("ws--wrk3") })
@@ -552,4 +553,13 @@ func TestRemoveProject_DropsItsIssues(t *testing.T) {
 	if res, _ := Resolve(ref); res.Health != nil {
 		t.Errorf("last issue gone should clear health: %+v", res.Health)
 	}
+}
+
+// shortCeiling keeps a test that needs a "never listened" verdict from
+// waiting the real minute.
+func shortCeiling(t *testing.T) {
+	t.Helper()
+	prev := SmokeCeiling
+	SmokeCeiling = 3 * time.Second
+	t.Cleanup(func() { SmokeCeiling = prev })
 }

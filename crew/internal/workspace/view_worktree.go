@@ -20,8 +20,12 @@ import (
 
 // ── Messages ──
 
-// recheckMsg: the servers started a moment ago have had time to settle.
+// recheckMsg: look at the servers started a moment ago again.
 type recheckMsg struct{}
+
+// pageRecheck is how often the page looks again while servers are still
+// coming up after a start.
+const pageRecheck = 2 * time.Second
 
 type worktreeLoadedMsg struct {
 	page worktreePage
@@ -74,6 +78,10 @@ type worktreePage struct {
 	// CheckHealth is what the running servers' check found, never written:
 	// f hands it to Claude, a plain start still records nothing.
 	CheckHealth *Health
+	// Settling: the servers were started less than the smoke ceiling ago, so
+	// a referenced one that is not listening yet is "starting", not a
+	// verdict — the page keeps looking until it is.
+	Settling    bool
 	LeadProject string
 	LeadBranch  string
 	HasEditor   bool
@@ -131,6 +139,13 @@ type WorktreeView struct {
 	touchedProxy bool
 	// confirmVerify: a verify restarts running servers, so it asks first.
 	confirmVerify bool
+	// startedAt: when the page last started the servers; drives Settling.
+	startedAt time.Time
+}
+
+// settling: within the smoke ceiling of a start the page has made.
+func (v WorktreeView) settling() bool {
+	return !v.startedAt.IsZero() && time.Since(v.startedAt) < SmokeCeiling
 }
 
 func NewWorktreeView(ref Ref) WorktreeView {
@@ -163,15 +178,20 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			v.noProxy = msg.page.NoProxy
 		}
 		v.loading = false
+		// Still starting? Look again in a moment.
+		if msg.page.Settling && msg.page.anyStarting() {
+			return v, tea.Tick(pageRecheck, func(time.Time) tea.Msg { return recheckMsg{} })
+		}
 		return v, nil
 
 	case devStartedMsg:
 		v.loading = false
 		v.statusMsg = msg.status
 		v.err = nil
-		// Rows first, the check once the servers have had the smoke's
-		// settle time — checking at once would call every server dead.
-		return v, tea.Batch(v.loadWith(false), tea.Tick(smokeSettle, func(time.Time) tea.Msg { return recheckMsg{} }))
+		v.startedAt = time.Now()
+		// Rows first; the checks follow every couple of seconds until every
+		// server has a verdict or the ceiling passes.
+		return v, tea.Batch(v.loadWith(false), tea.Tick(pageRecheck, func(time.Time) tea.Msg { return recheckMsg{} }))
 
 	case recheckMsg:
 		return v, v.load()
@@ -480,6 +500,8 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 		switch {
 		case item.checked() == SmokeDied:
 			fmt.Fprintf(b, "  %s :%d   %s", app.Error.Render("✗ died"), item.Port, app.Subtle.Render(firstLine(item.Check.Tail)))
+		case item.checked() == SmokeUnreached && page.Settling:
+			fmt.Fprintf(b, "  %s :%d   %s", app.Highlight.Render("● starting…"), item.Port, app.Subtle.Render(item.URL))
 		case item.checked() == SmokeUnreached:
 			fmt.Fprintf(b, "  %s :%d   %s", app.Error.Render("! not listening"), item.Port, app.Subtle.Render("something points at it"))
 		case item.checked() == SmokeIdle:
@@ -595,30 +617,45 @@ func leadHint(page worktreePage) string {
 func (v WorktreeView) load() tea.Cmd { return v.loadWith(true) }
 
 func (v WorktreeView) loadWith(check bool) tea.Cmd {
-	ref := v.ref
+	ref, settling := v.ref, v.settling()
 	return func() tea.Msg {
 		res, err := Resolve(ref)
 		if err != nil {
 			return errMsg{err}
 		}
-		return worktreeLoadedMsg{page: loadWorktreePage(res, check)}
+		return worktreeLoadedMsg{page: loadWorktreePage(res, check, settling)}
 	}
+}
+
+// anyStarting: a referenced server the check found not listening yet.
+func (p worktreePage) anyStarting() bool {
+	for _, item := range p.Items {
+		if item.checked() == SmokeUnreached {
+			return true
+		}
+	}
+	return false
 }
 
 // loadWorktreePage gathers everything the page shows: configured servers
 // joined to what is running, and the same anomalies `crew dev start` prints,
 // so the page tells you before you start anything.
-func loadWorktreePage(res *Resolved, check bool) worktreePage {
+func loadWorktreePage(res *Resolved, check, settling bool) worktreePage {
 	routes, _ := dev.LoadRoutes(res.Slug)
 	var checks map[string]SmokeResult
 	var checkHealth *Health
 	if check && len(routes) > 0 {
-		results := inspectRoutes(res.Slug, routes)
+		results := waitRoutes(res.Slug, routes, 0)
 		checks = make(map[string]SmokeResult, len(results))
 		for _, r := range results {
 			checks[dev.PortKey(r.Project, r.Server)] = r
 		}
-		checkHealth = CheckHealth(results)
+		// No verdict on a server that is still starting: f waits too.
+		verdicts := results
+		if settling {
+			verdicts = withoutStarting(results)
+		}
+		checkHealth = CheckHealth(verdicts)
 	}
 	settings := config.LoadSettings()
 	domain := settings.GetDomain(dev.ResolveHostIP())
@@ -655,6 +692,7 @@ func loadWorktreePage(res *Resolved, check bool) worktreePage {
 		Dir:         res.Dir,
 		Items:       items,
 		CheckHealth: checkHealth,
+		Settling:    settling,
 		Anomalies:   strings.TrimLeft(anomalies, "\n"),
 		Health:      res.Health,
 		HasEditor:   exec.DetectEditor() != "",

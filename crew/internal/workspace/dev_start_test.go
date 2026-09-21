@@ -360,15 +360,64 @@ func TestLoadWorktreePage_JoinsTheCheck(t *testing.T) {
 	// The pane's shell needs a moment to be running the command.
 	time.Sleep(time.Second)
 
-	page := loadWorktreePage(res, false)
+	page := loadWorktreePage(res, false, false)
 	if page.Items[0].Check != nil || page.CheckHealth != nil {
 		t.Errorf("without a check: %+v", page.Items[0])
 	}
-	page = loadWorktreePage(res, true)
+	page = loadWorktreePage(res, true, false)
 	if c := page.Items[0].Check; c == nil || !c.Alive || c.Listening || c.Port != page.Items[0].Port {
 		t.Errorf("with a check: %+v", page.Items[0])
 	}
 	if page.CheckHealth != nil {
 		t.Errorf("an idle, unreferenced worker is not a failure: %+v", page.CheckHealth)
+	}
+}
+
+// The smoke stage runs for an added project and lands on the worktree —
+// unless that worktree's servers are running, which a smoke would kill.
+func TestAddProjects_SmokeRecordedUnlessRunning(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	newRepoWorkspace(t, "ws", "api")
+	repo := filepath.Join(t.TempDir(), "web")
+	os.MkdirAll(repo, 0o755)
+	initRepo(t, repo)
+	project.Add(project.Project{Name: "web", Path: repo})
+	project.AddDevServer("web", project.DevServer{Name: "web", Port: 3001, Command: "sh -c 'exit 1'"})
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	t.Cleanup(func() { dev.StopAll(ref.Slug()) })
+
+	results, err := AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Smoke: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || len(results[0].Issues) != 1 || results[0].Issues[0].Stage != StageSmoke {
+		t.Fatalf("results = %+v", results)
+	}
+	if res, _ := Resolve(ref); res.Health == nil || res.Health.Summary() != "server died: web/web" {
+		t.Errorf("health = %+v", res.Health)
+	}
+
+	// Servers up: no smoke, the running session is left alone.
+	RemoveProject("ws", "web")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+	res, _ := Resolve(ref)
+	if _, err := StartDev(res, true, false); err != nil {
+		t.Fatal(err)
+	}
+	var steps []string
+	results, err = AddProjects("ws", []ProjectSpec{{Name: "web"}}, CheckoutOptions{Smoke: true, Progress: func(p string, r exec.SetupResult) {
+		steps = append(steps, p+":"+r.Step.Name)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results[0].Issues) != 0 || !dev.Running(ref.Slug()) {
+		t.Errorf("running servers must be left alone: issues=%+v running=%v", results[0].Issues, dev.Running(ref.Slug()))
+	}
+	// The skip is said, not silent — and is a step, never an issue.
+	if len(steps) == 0 || steps[len(steps)-1] != "ws/main:smoke skipped" {
+		t.Errorf("steps = %v", steps)
 	}
 }

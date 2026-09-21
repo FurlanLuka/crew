@@ -43,8 +43,12 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `workspace <name>` are `transfer.ApplyProject` / `ApplyWorkspace` — the card's decision as
   flags; `--all [--clone] [--replace]` takes the bundle. A sibling `Suggest` found beats a
   bare `--clone` (an explicit `--clone=<dir>` is honoured); the existence check runs before
-  any clone so a refusal leaves nothing behind; `--all` never guesses. `transfer` sits above
-  `project` and `workspace`; only `main` imports it.
+  any clone so a refusal leaves nothing behind; `--all` never guesses. A workspace import
+  (`ImportWorkspace(m, ImportOptions{Install, Smoke, Progress})`) is `Create` + `AddProjects`
+  — the add-worktree pipeline, issues recorded on `main`, a pre-flight failure takes the
+  empty workspace back; `BaseStatusesFor`/`PullBasesFor` give the callers (CLI, wizard card
+  with `ctrl+p`) the base table and `--pull`. `transfer` sits above `project` and
+  `workspace`; only `main` imports it.
 - **Health** — `Worktree.Health {at, issues[{stage, project, server, reason, detail}]}` is
   what the last check found wrong: stages `checkout`, `install` (30-line `StepError` tail),
   `smoke` (`evidenceTail` log lines) with `reason` `died` or `not listening`. Absent =
@@ -60,14 +64,18 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `RenderFixPrompt`, always passed, from the worktree root when a checkout is missing;
   `--print` (or no tty) writes the prompt to stdout; with servers running, `MergeHealth`
   adds what `CheckServers` finds.
-- **Smoke / check** — `SmokeResult{alive, listening, referenced, port}` → `State()`:
-  `SmokeOK`, `SmokeDied`, `SmokeUnreached` (runs, nothing listens, a binding points at it —
-  a failure), `SmokeIdle` (same but nobody points at it — a note). `referencedIn` walks the
-  pool's bindings through `dev.ParseTokens`. `SmokeStart` = start, settle 6 s, `inspectRoutes`,
-  stop; `CheckServers` = `inspectRoutes` over what runs now — `crew dev check`, the page's
-  rows (`devItem.Check`, re-run 6 s after a start via `recheckMsg`), and `CheckHealth` (a
-  Health never written; the page's `f` and `fix` use it). `portOpen` dials 127.0.0.1 then
-  [::1].
+- **Smoke / check** — `SmokeResult{alive, listening, referenced, port, took_ms}` →
+  `State()`: `SmokeOK`, `SmokeDied`, `SmokeUnreached` (runs, nothing listens, a binding
+  points at it — a failure), `SmokeIdle` (same but nobody points at it — a note).
+  `referencedIn` walks the pool's bindings through `dev.ParseTokens`. `waitForServers` is
+  the loop, pure over a `look`: every tick each undecided server is looked at; listening or
+  idle-alive → done, dead → done (after a 2 s `deadGrace` for a pane not yet seen busy),
+  referenced-not-listening → `SmokeUnreached` at `SmokeCeiling` (60 s, a var tests
+  shorten). `SmokeStart` = start → `waitRoutes(ceiling)` → stop; `CheckServers` =
+  `waitRoutes(0)` (one look); `WaitServers` = the loop over what runs (`dev check --wait`).
+  The page: `startedAt` → `Settling` window; `recheckMsg` every 2 s while a row is
+  `SmokeUnreached`; those rows render `starting…` and are left out of `CheckHealth` until
+  the window closes. `portOpen` dials 127.0.0.1 then [::1].
 - **Orientation prompt** — `RenderPrompt` is injected on every launch (`crew claude`, `crew
   edit`, the page, `FixCommand`), single project or not; it ends with `renderCrewSection`
   (the ref, the `crew dev/env/run/fix` lines). `CREW_REF=<ws>/<wt>` is exported in both launch
@@ -145,8 +153,9 @@ block `crew dev start` prints, launch and open rows, one cursor. `crew project` 
 
 `AddWorktree`: base-branch table with behind-origin counts (fetches in parallel; `ctrl+p` /
 `--pull` fast-forwards local bases without touching a checked-out feature branch) → git
-worktree per project, all-or-nothing with rollback → `.env` copied from the canonical repo or
-a sibling worktree → recorded → installs per project (`mise trust && mise install`, then
+worktree per project (`git -c core.hooksPath=/dev/null worktree add`, the error is git's last
+stderr line, `mise trust` when there is a `mise.toml`) → `.env` copied from the canonical repo
+or a sibling worktree → recorded → installs per project (`mise trust && mise install`, then
 lockfile-detected package manager or the project's `Setup`; failures keep what passed,
 `crew setup <ref>` re-runs) → smoke start: servers up six seconds, which panes still run
 and which listen on their port, last log lines for the failed ones, stop.

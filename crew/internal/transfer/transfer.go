@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	crewexec "github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -266,25 +267,64 @@ func ImportProject(original string, p project.Project, replace bool) error {
 	return project.Add(p)
 }
 
-// ImportWorkspace creates the workspace and checks every member out into its
-// main worktree — what crew add workspace does, no installs. A member that
-// fails leaves the ones before it; the error names it.
-func ImportWorkspace(m Membership, progress func(projName string, i, n int)) error {
+// Workspace is the membership as the workspace it would be — what the
+// base-branch helpers read before it exists on disk.
+func (m Membership) Workspace() *workspace.Workspace {
+	return &workspace.Workspace{Name: m.Name, Projects: m.Projects}
+}
+
+// ImportWorkspace creates the workspace and its main worktree the way crew
+// add workspace does: every member checked before anything happens, then
+// checkouts, installs, the smoke — each failure recorded on the worktree,
+// never stopping the rest. The error is pre-flight only.
+func ImportWorkspace(m Membership, opts workspace.CheckoutOptions) ([]workspace.RefIssues, error) {
 	if workspace.Exists(m.Name) {
-		return fmt.Errorf("workspace '%s' already exists", m.Name)
+		return nil, fmt.Errorf("workspace '%s' already exists", m.Name)
+	}
+	specs := make([]workspace.ProjectSpec, len(m.Projects))
+	for i, wp := range m.Projects {
+		specs[i] = workspace.ProjectSpec{Name: wp.Name, Role: wp.Role, Mode: wp.Mode}
 	}
 	if err := workspace.Create(m.Name); err != nil {
-		return err
+		return nil, err
 	}
-	for i, wp := range m.Projects {
-		if progress != nil {
-			progress(wp.Name, i+1, len(m.Projects))
-		}
-		if err := workspace.AddProject(m.Name, wp.Name, wp.Role, wp.Mode, workspace.CheckoutOptions{}); err != nil {
-			return fmt.Errorf("%s: %w", wp.Name, err)
-		}
+	if len(specs) == 0 {
+		return nil, nil // an empty workspace is a valid export; nothing to check out
 	}
-	return nil
+	results, err := workspace.AddProjects(m.Name, specs, opts)
+	if err != nil {
+		// Pre-flight failed after the create: take the empty workspace back.
+		if rmErr := workspace.Remove(m.Name); rmErr != nil {
+			debug.Log("trash", "import %s: could not remove the empty workspace after a failed pre-flight: %v", m.Name, rmErr)
+		}
+		return nil, err
+	}
+	return results, nil
+}
+
+// WorkspaceRow is the import's row for a workspace and whether it counts as
+// failed for the exit code: an error is `failed`; a create with issues is
+// `created` with the fix line and still failed. Pure.
+func WorkspaceRow(name string, results []workspace.RefIssues, err error) (PlanRow, bool) {
+	if err != nil {
+		return PlanRow{Kind: "workspace", Name: name, Status: "failed", Detail: err.Error()}, true
+	}
+	row := PlanRow{Kind: "workspace", Name: name, Status: "created"}
+	if n := IssueCount(results); n > 0 {
+		ref := workspace.Ref{Workspace: name, Worktree: workspace.DefaultWorktree}
+		row.Detail = fmt.Sprintf("%d issue(s) recorded — crew fix %s --print / crew verify %s", n, ref, ref)
+		return row, true
+	}
+	return row, false
+}
+
+// IssueCount is how many issues an import left across a workspace's worktrees.
+func IssueCount(results []workspace.RefIssues) int {
+	n := 0
+	for _, r := range results {
+		n += len(r.Issues)
+	}
+	return n
 }
 
 // ── helpers ──

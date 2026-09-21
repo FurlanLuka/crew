@@ -67,6 +67,9 @@ func createProjectWorktree(ref Ref, p project.Project) error {
 		return err
 	}
 	exec.CopyEnvFiles(envSource(ref, p), wtDir)
+	// The checkout is fine either way; the install step trusts again and
+	// says so if it cannot.
+	exec.TrustMise(wtDir)
 	return nil
 }
 
@@ -258,10 +261,10 @@ func reportSmoke(results []SmokeResult, progress func(string, exec.SetupResult))
 		return
 	}
 	for _, r := range results {
-		step := exec.SetupResult{Step: exec.SetupStep{Name: "smoke " + r.Server}}
+		step := exec.SetupResult{Step: exec.SetupStep{Name: "smoke " + r.Server}, Duration: r.Took()}
 		switch r.State() {
 		case SmokeDied:
-			step.Err = errors.New("died within seconds")
+			step.Err = errors.New("died")
 		case SmokeUnreached:
 			step.Err = fmt.Errorf("not listening on :%d", r.Port)
 		}
@@ -284,19 +287,13 @@ func missingCheckouts(ref Ref, ws *Workspace) []string {
 func finishCheck(ref Ref, issues []Issue, opts CheckoutOptions) (VerifyResult, error) {
 	var results []SmokeResult
 	if opts.Smoke {
-		res, err := Resolve(ref)
+		var smoked []Issue
+		var err error
+		results, smoked, err = smokeStage(ref, opts)
 		if err != nil {
 			return VerifyResult{}, err
 		}
-		if len(res.DevProjects()) > 0 {
-			results, err = SmokeStart(res)
-			if err != nil {
-				// Not a server dying: nothing came up at all. No Server names it.
-				issues = append(issues, Issue{Stage: StageSmoke, Project: ref.String(), Detail: "could not start: " + err.Error()})
-			}
-			reportSmoke(results, opts.Progress)
-			issues = append(issues, smokeIssues(results)...)
-		}
+		issues = append(issues, smoked...)
 	}
 	h := healthOf(issues)
 	if err := RecordHealth(ref, h); err != nil {
@@ -372,6 +369,28 @@ func AddWorktree(wsName, name string, opts CheckoutOptions) (*Health, error) {
 	}
 	result, err := finishCheck(ref, issues, opts)
 	return result.Health, err
+}
+
+// smokeStage is the smoke on its own: start, wait for verdicts, stop,
+// report — the results for a caller that shows them and the issues for
+// whoever records them. A worktree with nothing to smoke yields nothing.
+// The error is the resolve; a stack that could not start at all is an
+// issue with no server on it.
+func smokeStage(ref Ref, opts CheckoutOptions) ([]SmokeResult, []Issue, error) {
+	res, err := Resolve(ref)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(res.DevProjects()) == 0 {
+		return nil, nil, nil
+	}
+	results, err := SmokeStart(res)
+	var issues []Issue
+	if err != nil {
+		issues = append(issues, Issue{Stage: StageSmoke, Project: ref.String(), Detail: "could not start: " + err.Error()})
+	}
+	reportSmoke(results, opts.Progress)
+	return results, append(issues, smokeIssues(results)...), nil
 }
 
 // TrashNotice is the one line to show wherever disk is about to be used:

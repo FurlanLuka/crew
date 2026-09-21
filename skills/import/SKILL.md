@@ -23,8 +23,12 @@ time. Never guess a path or clone without asking.
    for `exists` — keep local or `--replace` with the bundle's servers and bindings. Run
    `crew import <file> project <name> [--path=…] [--clone[=…]] [--replace]` per answer and
    show the row it prints.
-4. Workspaces: for each `ready` one, `crew import <file> workspace <name>` (this checks out
-   every member — say so first). A `needs …` one: name what is missing and skip.
+4. Workspaces: for each `ready` one, `crew import <file> workspace <name> --pull` — this
+   makes the `main` worktree the way `crew add worktree` does (fetches and fast-forwards the
+   local bases, checks out, installs, smoke-starts; minutes, not seconds — say so first).
+   Relay the base table and the result row; a `created … N issue(s) recorded` row means
+   `crew fix <name>/main --print` has the evidence. A `needs …` one: name what is missing
+   and skip.
 5. Finish with `crew ls worktrees` and the next step: `crew add worktree <ws>/<name>` for
    a working copy, or `crew dev start <ws>/main`.
 

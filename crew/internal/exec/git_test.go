@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -199,4 +200,102 @@ func removeGitWorktree(projectPath, wtDir string) {
 	cmd := exec.Command("git", "worktree", "remove", wtDir, "--force")
 	cmd.Dir = projectPath
 	cmd.Run()
+}
+
+// A repo hook that fails on the all-zeros ref git hands it under worktree
+// add (the shape of a checked-in check-dependencies hook) must not fail
+// crew's checkout — the hook is for the user's checkout, not crew's.
+func TestCreateGitWorktree_SurvivesFailingHook(t *testing.T) {
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+	dir := initGitRepo(t)
+	hooks := filepath.Join(dir, ".githooks")
+	os.MkdirAll(hooks, 0o755)
+	os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte("#!/bin/sh\nexit 1\n"), 0o755)
+	cmd := exec.Command("git", "config", "core.hooksPath", ".githooks")
+	cmd.Dir = dir
+	cmd.Run()
+
+	wtDir := filepath.Join(dir, "worktrees", "hooked")
+	if err := CreateGitWorktree(dir, wtDir, "wt-hooked", ""); err != nil {
+		t.Fatalf("CreateGitWorktree under a failing hook: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wtDir, "README.md")); err != nil {
+		t.Error("the checkout should be there")
+	}
+}
+
+// The user reads git's last line, where the reason is.
+func TestCreateGitWorktree_ErrorIsTheLastLine(t *testing.T) {
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+	dir := initGitRepo(t)
+	err := CreateGitWorktree(dir, filepath.Join(dir, "worktrees", "x"), "wt-x", "no-such-branch")
+	if err == nil || strings.HasPrefix(err.Error(), "Preparing") || !strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("err = %v, want git's fatal line", err)
+	}
+}
+
+func TestGitReason(t *testing.T) {
+	for in, want := range map[string]string{
+		"Preparing worktree (new branch 'x')\nfatal: bad object 0000\n":                                                                              "fatal: bad object 0000",
+		"Preparing worktree\nfatal: '/x' is a missing but already registered worktree;\nuse 'add -f' to override, or 'prune' or 'remove' to clear\n": "fatal: '/x' is a missing but already registered worktree;",
+		"just a line\n": "just a line",
+	} {
+		if got := gitReason(in); got != want {
+			t.Errorf("gitReason(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A registration left over from a deleted directory must not block a
+// second checkout of the same branch.
+func TestCreateGitWorktree_ReuseAfterDirectoryGone(t *testing.T) {
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+	dir := initGitRepo(t)
+	wtDir := filepath.Join(dir, "worktrees", "again")
+	if err := CreateGitWorktree(dir, wtDir, "wt-again", ""); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(wtDir) // the wiped ~/.crew case: git still has it registered
+	if err := CreateGitWorktree(dir, wtDir, "wt-again", ""); err != nil {
+		t.Fatalf("second checkout after the directory vanished: %v", err)
+	}
+}
+
+func TestLastLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"Preparing worktree (new branch 'x')\nfatal: bad object 0000\n": "fatal: bad object 0000",
+		"one\n\n  \n": "one",
+		"":            "",
+	} {
+		if got := lastLine(in); got != want {
+			t.Errorf("lastLine(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTrustMise_NoConfigIsNoop(t *testing.T) {
+	TrustMise(t.TempDir()) // nothing to trust: no mise call, no panic
+	if HasMiseConfig(t.TempDir()) {
+		t.Error("an empty dir has no mise config")
+	}
+}
+
+// A checkout with a mise.toml on a machine without mise is still a fine
+// checkout; both spellings of the config count.
+func TestTrustMise_WithoutMiseOnPath(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	for _, name := range []string{"mise.toml", ".mise.toml"} {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, name), []byte(""), 0o644)
+		if !HasMiseConfig(dir) {
+			t.Errorf("%s should count as mise config", name)
+		}
+		TrustMise(dir) // must not panic or fail without the binary
+	}
 }

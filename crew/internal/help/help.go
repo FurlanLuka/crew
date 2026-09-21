@@ -84,7 +84,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Check every project out into a new working copy, install each checkout, and start the servers for a few seconds to see which survive — every step over every project, none stopping the rest. Anything that fails is recorded on the worktree, and creation ends on the worktree page (locked to fix and verify while anything is recorded); without a terminal it prints the summary and exits 1. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
+					Description: "Check every project out into a new working copy, install each checkout, and start the servers to see which come up — each is watched until it listens on its port, dies, or a minute passes — every step over every project, none stopping the rest. Anything that fails is recorded on the worktree, and creation ends on the worktree page (locked to fix and verify while anything is recorded); without a terminal it prints the summary and exits 1. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
 					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke]",
 					Flags: []FlagInfo{
 						{Name: "--pull", Description: "Fast-forward each project's local base branch to origin first. Never touches a checked-out feature branch; refuses when the base has diverged or is checked out with uncommitted changes."},
@@ -225,9 +225,9 @@ var Root = CommandInfo{
 		},
 		{
 			Name:         "verify",
-			Description:  "Check a worktree the way creating it does: start its dev servers, wait a few seconds, report which survived with the last log lines of any that died, stop them again. The verdict is recorded on the worktree — a failure shows in crew ls worktrees and on the worktree page until a verify passes. Refuses while the worktree's servers are running, since it would restart them.",
+			Description:  "Check a worktree the way creating it does: start its dev servers, watch each until it listens, dies, or a minute passes, report the verdicts with the last log lines of any that failed, stop them again. The verdict is recorded on the worktree — a failure shows in crew ls worktrees and on the worktree page until a verify passes. Refuses while the worktree's servers are running, since it would restart them.",
 			Usage:        "crew verify <workspace>[/<worktree>]",
-			OutputFormat: "<project>  ✓|✗ <server> [exited within seconds]",
+			OutputFormat: "<project>  ✓|✗ smoke <server> <took> [died | not listening on :<port>]",
 			Examples:     []string{"crew verify store-front/wrk2"},
 		},
 		{
@@ -366,10 +366,13 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "check",
-					Description:  "Look at a worktree's running servers the way the smoke does: a pane that exited is died; one that runs without anything accepting on its port is not listening — a failure when some binding points at it, a note when nothing does. Run it a few seconds after a start. Exit 1 on any failure; crew fix <ref> --print then carries the evidence.",
-					Usage:        "crew dev check <workspace>[/<worktree>]",
-					OutputFormat: "<project>/<server>\\t<running|died|not listening>\\t<port>\\t<detail>",
-					Examples:     []string{"crew dev check store-front/wrk2", "crew dev check store-front/wrk2 --json"},
+					Description:  "Look at a worktree's running servers the way the smoke does: a pane that exited is died; one that runs without anything accepting on its port is not listening — a failure when some binding points at it, a note when nothing does. Bare, it is one look; --wait watches each server until it listens, dies, or a minute passes — the thing to run right after a start. Exit 1 on any failure; crew fix <ref> --print then carries the evidence.",
+					Usage:        "crew dev check <workspace>[/<worktree>] [--wait]",
+					OutputFormat: "<project>/<server>\\t<running|died|not listening>\\t<port>\\t<took>\\t<detail>",
+					Flags: []FlagInfo{
+						{Name: "--wait", Description: "Keep looking until every server has a verdict (up to a minute) instead of one look now"},
+					},
+					Examples: []string{"crew dev check store-front/wrk2 --wait", "crew dev check store-front/wrk2 --json"},
 				},
 				{
 					Name:         "proxy",
@@ -481,11 +484,14 @@ var Root = CommandInfo{
 		{
 			Name:         "import",
 			Description:  "Bring a crew export into this machine. Bare, a wizard walks one card per item: each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once.",
-			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name>]",
+			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke]]",
 			OutputFormat: "<project|workspace>\\t<name>\\t<status|outcome>\\t<detail>",
 			Flags: []FlagInfo{
 				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here (suggested path, clone target, missing members)"},
-				{Name: "--all", Description: "Import everything new, keep what exists, refuse if any path is missing — never guesses. With --clone, missing repos are cloned where a card would offer; with --replace, records of the same name are swapped out"},
+				{Name: "--all", Description: "Import everything new, keep what exists, refuse if any path is missing — never guesses. With --clone, missing repos are cloned where a card would offer; with --replace, records of the same name are swapped out. Workspaces are made the way crew add worktree makes one"},
+				{Name: "--pull", Description: "workspace: fast-forward the local base branches from origin before checking out (the base table is printed either way)"},
+				{Name: "--no-install", Description: "workspace: skip the installs"},
+				{Name: "--no-smoke", Description: "workspace: skip the smoke start"},
 				{Name: "--path=<dir>", Description: "project: use this checkout instead of the exported path"},
 				{Name: "--clone[=<dir>]", Description: "project: clone the origin remote when the path is not here and no sibling was found — beside a known repo (the plan's clone target) or into <dir>"},
 				{Name: "--replace", Description: "project: swap out the local record of the same name"},

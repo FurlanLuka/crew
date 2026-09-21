@@ -352,3 +352,39 @@ func TestRenderWorktreePage_CheckedRows(t *testing.T) {
 		t.Errorf("help should offer f:\n%s", help)
 	}
 }
+
+// While a referenced server is still starting the page schedules another
+// look; once every row has its verdict, or the window closed, it stops.
+func TestWorktreeLoaded_RechecksOnlyWhileStarting(t *testing.T) {
+	starting := devItem{Running: true, Check: &SmokeResult{Alive: true, Referenced: true}}
+	up := devItem{Running: true, Check: &SmokeResult{Alive: true, Listening: true}}
+	for _, tt := range []struct {
+		name     string
+		page     worktreePage
+		wantTick bool
+	}{
+		{"settling, one starting", worktreePage{Settling: true, Items: []devItem{starting, up}}, true},
+		{"settling, all decided", worktreePage{Settling: true, Items: []devItem{up}}, false},
+		{"window closed", worktreePage{Settling: false, Items: []devItem{starting}}, false},
+	} {
+		_, cmd := WorktreeView{}.Update(worktreeLoadedMsg{page: tt.page})
+		if (cmd != nil) != tt.wantTick {
+			t.Errorf("%s: tick=%v, want %v", tt.name, cmd != nil, tt.wantTick)
+		}
+	}
+}
+
+func TestRenderWorktreePage_StartingRow(t *testing.T) {
+	page := pageFixture()
+	page.Anomalies, page.HasEditor, page.HasSSH = "", false, false
+	page.Settling = true
+	page.Items = []devItem{
+		{ProjectName: "api", Server: project.DevServer{Name: "api"}, Running: true, Port: 54494, URL: "http://localhost:54494",
+			Check: &SmokeResult{Alive: true, Referenced: true}},
+	}
+	var b strings.Builder
+	renderWorktreePage(&b, page, worktreeRows(page.Items, false, false), 0, true)
+	if got := stripANSI(b.String()); !strings.Contains(got, "  > api  ● starting… :54494   http://localhost:54494") {
+		t.Errorf("starting row:\n%s", got)
+	}
+}

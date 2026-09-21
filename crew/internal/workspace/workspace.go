@@ -202,10 +202,31 @@ func AddProjects(wsName string, specs []ProjectSpec, opts CheckoutOptions) ([]Re
 	if err := Save(ws); err != nil {
 		return nil, err
 	}
-	// Health after the membership save: recordMerged loads and saves the
+	// The smoke needs the members saved (it resolves the worktree), and the
+	// health goes after the save too: recordMerged loads and saves the
 	// workspace itself, and a save of this older copy would undo it.
-	for _, r := range results {
-		if len(r.Issues) > 0 && r.Ref.Worktree != "" {
+	for i := range results {
+		r := &results[i]
+		if r.Ref.Worktree == "" {
+			continue // pre-2.0 flat workspace: nothing to smoke or record on
+		}
+		// A smoke restarts the worktree's servers; one that is running keeps
+		// running — crew dev restart is one keystroke away, a kill is not.
+		// Said out loud, or the run reads as if there were no smoke stage.
+		if opts.Smoke {
+			if dev.Running(r.Ref.Slug()) {
+				if opts.Progress != nil {
+					opts.Progress(r.Ref.String(), exec.SetupResult{Step: exec.SetupStep{Name: "smoke skipped"}, Err: errors.New("servers running — crew dev restart to see the new ones")})
+				}
+			} else {
+				_, smoked, err := smokeStage(r.Ref, opts)
+				if err != nil {
+					return nil, err
+				}
+				r.Issues = append(r.Issues, smoked...)
+			}
+		}
+		if len(r.Issues) > 0 {
 			if err := recordMerged(r.Ref, names, r.Issues); err != nil {
 				return nil, err
 			}

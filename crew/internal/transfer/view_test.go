@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -431,8 +432,15 @@ func TestImportView_WorkspaceCreate(t *testing.T) {
 		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}}}
 	v := NewImportView("/x/b.json", b)
 	v = press(t, v, "y")
-	if !strings.Contains(plain(v.View()), "y create  n skip  esc stop") {
+	// The card opens on its base table (fetched in the background) and the
+	// same keys crew add worktree offers.
+	if got := plain(v.View()); !strings.Contains(got, "y create  ctrl+p pull first  n skip  esc stop") || !strings.Contains(got, "checking the base branches") {
 		t.Fatalf("workspace card:\n%s", plain(v.View()))
+	}
+	m0, _ := v.Update(wsBasesMsg{name: "ws", statuses: workspace.BaseStatuses(b.Workspaces[0].Workspace())})
+	v = m0.(ImportView)
+	if got := plain(v.View()); !strings.Contains(got, "Branching from") || !strings.Contains(got, "api") {
+		t.Fatalf("base table:\n%s", got)
 	}
 
 	m, cmd := v.Update(keyRune("y"))
@@ -449,7 +457,7 @@ func TestImportView_WorkspaceCreate(t *testing.T) {
 				sawProgress = true
 				m, next := v.Update(p)
 				v = m.(ImportView)
-				if !strings.Contains(plain(v.View()), "Creating ws — checking out api (1 of 1)") {
+				if !strings.Contains(plain(v.View()), "Creating ws — api ✓ checkout") {
 					t.Errorf("progress line:\n%s", plain(v.View()))
 				}
 				drain(next)
@@ -528,5 +536,55 @@ func TestExportView_FileAndSectionToggle(t *testing.T) {
 	}
 	if got := plain(v.View()); !strings.Contains(got, "· ws  needs a, b") {
 		t.Errorf("workspace should dim when uncovered:\n%s", got)
+	}
+}
+
+func TestImportView_WorkspaceCardBasesAndPull(t *testing.T) {
+	tmp := setupTestConfig(t)
+	api := filepath.Join(tmp, "repos", "api")
+	initRepo(t, api)
+	b := Bundle{Version: 1,
+		Projects:   []Exported{{Project: project.Project{Name: "api", Path: api}}},
+		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}}}
+	v := NewImportView("/x/b.json", b)
+	v = press(t, v, "y") // api imported → workspace card
+
+	// A table for another card is dropped; the right one shows, with the
+	// stale warning and the pull hint.
+	m, _ := v.Update(wsBasesMsg{name: "other", statuses: []workspace.BaseStatus{{Project: "x", Base: "main"}}})
+	v = m.(ImportView)
+	if v.bases != nil {
+		t.Fatal("a table for another card must be ignored")
+	}
+	m, _ = v.Update(wsBasesMsg{name: "ws", statuses: []workspace.BaseStatus{{Project: "api", Base: "main", Behind: 2}}})
+	v = m.(ImportView)
+	if got := plain(v.View()); !strings.Contains(got, "2 behind origin/main") || !strings.Contains(got, "ctrl+p pulls the latest") {
+		t.Errorf("stale card:\n%s", got)
+	}
+
+	// ctrl+p: pulling, y ignored meanwhile, then the table comes back
+	// with the pull's error shown.
+	m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	v = m.(ImportView)
+	if !v.pulling || cmd == nil || !strings.Contains(plain(v.View()), "pulling the latest") {
+		t.Fatalf("after ctrl+p: pulling=%v\n%s", v.pulling, plain(v.View()))
+	}
+	m, _ = v.Update(keyRune("y"))
+	v = m.(ImportView)
+	if v.state == importStateCreating {
+		t.Fatal("y must wait for the pull")
+	}
+	m, _ = v.Update(wsBasesMsg{name: "ws", statuses: []workspace.BaseStatus{{Project: "api", Base: "main"}}, pulled: []error{errors.New("api: not a fast-forward")}})
+	v = m.(ImportView)
+	if v.pulling || !strings.Contains(plain(v.View()), "! api: not a fast-forward") || !strings.Contains(plain(v.View()), "up to date") {
+		t.Errorf("after pull:\n%s", plain(v.View()))
+	}
+
+	// A create that recorded issues says so and names the fix line.
+	v.state = importStateCreating
+	m, _ = v.Update(wsDoneMsg{name: "ws", issues: 2})
+	v = m.(ImportView)
+	if r := v.wsRes[0]; r.Outcome != outcomeCreated || !strings.HasPrefix(r.Detail, "2 issues recorded — crew fix ws/main --print") {
+		t.Errorf("wsRes = %+v", r)
 	}
 }

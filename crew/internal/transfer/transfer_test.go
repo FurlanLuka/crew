@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,27 +237,86 @@ func TestImportProject(t *testing.T) {
 	}
 }
 
+// An import makes the main worktree the way crew add worktree does: what
+// fails is recorded on it, the workspace stands, and a member that is not
+// in the pool fails the whole thing before anything is made.
 func TestImportWorkspace(t *testing.T) {
 	tmp := setupTestConfig(t)
 	api := filepath.Join(tmp, "repos", "api")
 	initRepo(t, api)
 	project.Add(project.Project{Name: "api", Path: api})
+	project.SetSetup("api", "exit 7")
 
-	var seen []string
-	m := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}, {Name: "ghost", Role: "x"}}}
-	err := ImportWorkspace(m, func(name string, i, n int) { seen = append(seen, name) })
-	if err == nil || !strings.Contains(err.Error(), "ghost") {
-		t.Fatalf("err = %v, want ghost to fail", err)
+	ghost := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}, {Name: "ghost", Role: "x"}}}
+	if _, err := ImportWorkspace(ghost, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "ghost") {
+		t.Fatalf("err = %v, want ghost to fail pre-flight", err)
+	}
+	if workspace.Exists("ws") {
+		t.Fatal("a pre-flight failure must leave no workspace behind")
+	}
+
+	var steps []string
+	m := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}
+	results, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true, Progress: func(p string, r crewexec.SetupResult) {
+		steps = append(steps, p+":"+r.Step.Name)
+	}})
+	if err != nil {
+		t.Fatal(err)
 	}
 	ref := workspace.Ref{Workspace: "ws", Worktree: workspace.DefaultWorktree}
 	if _, err := os.Stat(filepath.Join(workspace.WorktreePath(ref, "api"), ".git")); err != nil {
-		t.Error("api checkout should exist despite ghost failing")
+		t.Error("api checkout should exist")
 	}
-	if strings.Join(seen, ",") != "api,ghost" {
-		t.Errorf("progress = %v", seen)
+	if IssueCount(results) != 1 || results[0].Issues[0].Stage != workspace.StageInstall {
+		t.Errorf("results = %+v", results)
 	}
-	if err := ImportWorkspace(m, nil); err == nil || !strings.Contains(err.Error(), "already exists") {
+	res, _ := workspace.Resolve(ref)
+	if res.Health == nil || res.Health.Summary() != "install failed: api" {
+		t.Errorf("health = %+v", res.Health)
+	}
+	if strings.Join(steps, ",") != "api:checkout,api:exit 7" {
+		t.Errorf("progress = %v", steps)
+	}
+	if _, err := ImportWorkspace(m, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("existing workspace must be refused: %v", err)
+	}
+}
+
+func TestMembershipWorkspace_BaseStatuses(t *testing.T) {
+	tmp := setupTestConfig(t)
+	_, clone := repoWithOrigin(t, tmp, "api")
+	project.Add(project.Project{Name: "api", Path: clone})
+	m := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api"}, {Name: "ghost"}}}
+	st := workspace.BaseStatuses(m.Workspace())
+	if len(st) != 2 || st[0].Project != "api" || st[0].Err != "" || st[1].Err == "" {
+		t.Errorf("statuses = %+v", st)
+	}
+}
+
+// An export can carry an empty workspace; it imports as one.
+func TestImportWorkspace_Empty(t *testing.T) {
+	setupTestConfig(t)
+	if _, err := ImportWorkspace(Membership{Name: "empty"}, workspace.CheckoutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if !workspace.Exists("empty") {
+		t.Error("the empty workspace should exist")
+	}
+}
+
+func TestWorkspaceRow(t *testing.T) {
+	row, failed := WorkspaceRow("ws", nil, nil)
+	if failed || row.Status != "created" || row.Detail != "" {
+		t.Errorf("clean create → %+v %v", row, failed)
+	}
+	issues := []workspace.RefIssues{{Ref: workspace.Ref{Workspace: "ws", Worktree: "main"}, Issues: []workspace.Issue{{Stage: workspace.StageInstall, Project: "api"}, {Stage: workspace.StageSmoke, Project: "api", Server: "api"}}}}
+	row, failed = WorkspaceRow("ws", issues, nil)
+	if !failed || row.Status != "created" || row.Detail != "2 issue(s) recorded — crew fix ws/main --print / crew verify ws/main" {
+		t.Errorf("create with issues → %+v %v", row, failed)
+	}
+	row, failed = WorkspaceRow("ws", nil, errors.New("workspace 'ws' already exists"))
+	if !failed || row.Status != "failed" || row.Detail != "workspace 'ws' already exists" {
+		t.Errorf("error → %+v %v", row, failed)
 	}
 }
 

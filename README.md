@@ -35,7 +35,7 @@ crew add binding store-app --scan --apply                 # which env vars point
 
 crew add workspace store-front store-api:"Backend API" store-app:"Web app"
 crew dev start store-front/main                           # servers up on stable ports
-sleep 6; crew dev check store-front/main                  # did they come up?
+crew dev check store-front/main --wait                    # did they come up?
 crew claude store-front/main                              # Claude, oriented, in the worktree
 
 crew add worktree store-front/wrk2 --pull                 # a second copy of everything
@@ -113,18 +113,20 @@ eval` runs anything with exactly that env.
 
 ### Checking the servers
 
-`crew dev start` returns as soon as the panes are up. `crew dev check <ref>` a few seconds
-later says what became of each server: `running`, `died` (last log lines attached), or `not
-listening` — nothing accepts on its port. Not listening is a failure when some binding points
-at that server (crew handed out a dead URL) and only a note when nothing does (a queue worker
-registered with a port). The worktree page runs the same check after a start and marks the
-rows.
+`crew dev start` returns as soon as the panes are up. `crew dev check <ref> --wait` watches
+each server until it listens on its port, dies, or a minute passes, and says what became of
+it: `running` (with how long it took), `died` (last log lines attached), or `not listening`.
+Not listening is a failure when some binding points at that server (crew handed out a dead
+URL) and only a note when nothing does (a queue worker registered with a port). The worktree
+page does the same after a start — rows read `starting…` until each has its verdict.
 
 ### When something fails
 
-Creating a worktree never stops halfway: every checkout, every install, then the smoke start —
-each failure recorded on the worktree with its stage and evidence (an install's last thirty
-lines, a dead server's log tail, `not listening` on a port). `crew ls worktrees` shows it; the
+Creating a worktree never stops halfway: every checkout (with the repo's git hooks off — a
+hook written for your checkout does not get to fail crew's), every install, then the smoke
+start with the same patience as `dev check --wait` — each failure recorded on the worktree
+with its stage and evidence (an install's last thirty lines, a dead server's log tail, `not
+listening` on a port). `crew ls worktrees` shows it; the
 worktree page opens locked to `f fix with Claude` and `v verify`.
 
 - `crew fix <ref>` opens Claude in the worktree with every issue, its evidence and the env
@@ -146,7 +148,9 @@ is actually answering. Tailscale users: `crew config set server_ip $(tailscale i
 `crew export --all` writes the projects (with their origin remotes) and the workspace
 memberships to one file — never worktrees, ports or overrides. `crew import <file>` on the
 other side is a wizard, or `--plan` then `project <name> [--path | --clone | --replace]` and
-`workspace <name>` for an agent.
+`workspace <name> [--pull]` for an agent. A workspace import makes its `main` worktree
+exactly the way `crew add worktree` does — base table, `--pull`, installs, smoke, failures
+recorded — so what you get on the second machine is as current and as checked as on the first.
 
 ### Removal
 
@@ -195,9 +199,9 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | **Projects** | `add project <name> <path> [--setup=…]` · `rm project` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p> --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p> --scan [--apply]` · `rm binding` · `add\|rm override <ref> VAR=value` · `run <ref> <p> -- <cmd>` |
 | **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref>` · `verify <ref>` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
-| **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref>` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
+| **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
-| **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> … \| workspace <name> \| --all [--clone] [--replace]]` |
+| **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> … \| workspace <name> [--pull] \| --all [--clone] [--replace] [--pull]]` |
 | **Housekeeping** | `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
 
 Settings (`crew config set`): `server_ip` (LAN IP for proxy URLs, auto-detected), `domain`

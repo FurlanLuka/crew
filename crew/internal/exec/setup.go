@@ -17,6 +17,36 @@ type SetupStep struct {
 	Command string // what actually runs, through sh -c
 }
 
+// TrustMise marks a checkout's mise config trusted, when it has one. Done at
+// checkout rather than install so a hook or a shell that touches the tree
+// before the install does not stop at "config files are not trusted". A
+// failure is logged and nothing more: the install step trusts again and
+// reports.
+func TrustMise(dir string) {
+	if !HasMiseConfig(dir) {
+		return
+	}
+	if _, err := exec.LookPath("mise"); err != nil {
+		return
+	}
+	debug.Log("setup", "mise trust --quiet in %s", dir)
+	cmd := exec.Command("mise", "trust", "--quiet")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		debug.Log("setup", "mise trust in %s → error: %v: %s", dir, err, strings.TrimSpace(string(out)))
+	}
+}
+
+// HasMiseConfig: the checkout pins a toolchain with mise.
+func HasMiseConfig(dir string) bool {
+	for _, name := range []string{"mise.toml", ".mise.toml"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // DetectSetup reads a checkout and decides what installs it. Pure over the
 // files present.
 //
@@ -34,7 +64,7 @@ func DetectSetup(dir string) []SetupStep {
 	// A fresh checkout is a new path, and mise refuses config it has not been
 	// told to trust there. The file is the same tracked mise.toml the
 	// canonical repo already trusts, so trusting it is the right call.
-	if has("mise.toml") || has(".mise.toml") {
+	if HasMiseConfig(dir) {
 		steps = append(steps, SetupStep{Name: "mise install", Command: "mise trust --quiet && mise install --quiet"})
 	}
 

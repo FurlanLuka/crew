@@ -9,7 +9,8 @@ user-invocable: true
 
 Run `crew ls worktrees <workspace> --json` and `crew dev status $ARGUMENTS --json` — the
 argument is a workspace or `ws/wt`; `ls worktrees` takes only the workspace half; both bare
-when none. For every worktree with servers running, also `crew dev check <ref>`.
+when none. For every worktree with servers running, also `crew dev check <ref>` (bare — one
+look; `--wait` only right after a start you made).
 Summarize readably: recorded issues first (`checkout failed`, `install failed`, `server died`,
 `server not listening`, `N issues` — with the `crew fix <ref> --print` / `crew verify <ref>`
 line), then each worktree with its running servers, their check verdict and clickable URLs,

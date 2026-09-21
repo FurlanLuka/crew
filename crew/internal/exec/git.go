@@ -18,44 +18,86 @@ import (
 // If the branch already exists, it falls back to reusing it.
 func CreateGitWorktree(projectPath, wtDir, branch, fromBranch string) error {
 	debug.Log("git", "worktree add %s -b %s (from: %s)", wtDir, branch, fromBranch)
-	var cmd *exec.Cmd
+	args := []string{"worktree", "add", wtDir, "-b", branch}
 	if fromBranch != "" {
-		cmd = exec.Command("git", "worktree", "add", wtDir, "-b", branch, fromBranch)
-	} else {
-		cmd = exec.Command("git", "worktree", "add", wtDir, "-b", branch)
+		args = append(args, fromBranch)
 	}
-	cmd.Dir = projectPath
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+	msg, err := worktreeAdd(projectPath, args...)
+	if err != nil {
 		if strings.Contains(msg, "already exists") {
 			debug.Log("git", "worktree add %s → branch exists, reusing", wtDir)
 			return createWorktreeReuse(projectPath, wtDir, branch)
 		}
-		if msg != "" {
-			debug.Log("git", "worktree add %s → error: %s", wtDir, msg)
-			return fmt.Errorf("%s", msg)
-		}
-		debug.Log("git", "worktree add %s → error: %v", wtDir, err)
-		return err
+		debug.Log("git", "worktree add %s → error: %s", wtDir, firstNonEmpty(msg, err.Error()))
+		return worktreeError(msg, err)
 	}
 	return nil
 }
 
 func createWorktreeReuse(projectPath, wtDir, branch string) error {
-	cmd := exec.Command("git", "worktree", "add", wtDir, branch)
+	// A registration for a directory that is gone (a wiped ~/.crew) blocks
+	// the add with "already registered"; prune is what git offers for it.
+	PruneWorktrees(projectPath)
+	msg, err := worktreeAdd(projectPath, "worktree", "add", wtDir, branch)
+	if err != nil {
+		debug.Log("git", "worktree add %s (reuse) → error: %s", wtDir, firstNonEmpty(msg, err.Error()))
+		return worktreeError(msg, err)
+	}
+	return nil
+}
+
+// worktreeAdd runs one git worktree add with the repo's hooks off. A
+// post-checkout hook is written for a user's checkout; whether crew's
+// exists is not its call, and a hook that fails on the all-zeros ref git
+// hands it here would otherwise fail every worktree creation. Returns
+// stderr in full so the log keeps it all.
+func worktreeAdd(projectPath string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-c", "core.hooksPath=/dev/null"}, args...)...)
 	cmd.Dir = projectPath
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("%s", msg)
-		}
-		return err
+	err := cmd.Run()
+	return strings.TrimSpace(stderr.String()), err
+}
+
+// worktreeError is what the user reads: git's "fatal:" or "error:" line —
+// the first line is "Preparing worktree", progress; a hint ("use 'add -f'
+// …") can trail the reason. Pure.
+func worktreeError(stderr string, err error) error {
+	if reason := gitReason(stderr); reason != "" {
+		return fmt.Errorf("%s", reason)
 	}
-	return nil
+	return err
+}
+
+// gitReason is the last "fatal:"/"error:" line of git's stderr, else the
+// last non-empty line.
+func gitReason(stderr string) string {
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(l, "fatal:") || strings.HasPrefix(l, "error:") {
+			return l
+		}
+	}
+	return lastLine(stderr)
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := strings.TrimSpace(lines[i]); l != "" {
+			return l
+		}
+	}
+	return ""
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // Clone runs git clone into a directory that does not exist yet, which is
