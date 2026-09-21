@@ -39,6 +39,7 @@ const (
 	stateEdit
 	stateConfirmUninstall
 	stateConfirmEmptyTrash
+	stateEmptyingTrash // the delete can take minutes on a big checkout
 )
 
 // ── Model ──
@@ -114,7 +115,7 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, tea.Batch(sizeTrash, v.spinner.Tick)
 
 	case spinner.TickMsg:
-		if v.trashSized {
+		if v.trashSized && v.state != stateEmptyingTrash {
 			return v, nil
 		}
 		var cmd tea.Cmd
@@ -140,6 +141,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return v.handleConfirmUninstallKey(msg)
 		case stateConfirmEmptyTrash:
 			return v.handleConfirmEmptyTrashKey(msg)
+		case stateEmptyingTrash:
+			return v, nil // nothing to press until it is done
 		}
 		return v.handleViewKey(msg)
 	}
@@ -192,7 +195,11 @@ func (v View) handleViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (v View) handleConfirmEmptyTrashKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
-		return v, emptyTrash
+		// Say so at once: a 100 GB build takes minutes to unlink, and a
+		// prompt that sits there reads as "y did nothing".
+		v.state = stateEmptyingTrash
+		v.err = nil
+		return v, tea.Batch(emptyTrash, v.spinner.Tick)
 	default:
 		v.state = stateView
 		return v, nil
@@ -257,6 +264,8 @@ func (v View) View() string {
 		v.renderConfirmUninstall(&b)
 	case stateConfirmEmptyTrash:
 		fmt.Fprintf(&b, "  Delete %s from the trash now? (y/n)\n", v.trashSummary())
+	case stateEmptyingTrash:
+		fmt.Fprintf(&b, "  %s Emptying the trash — %s. A big checkout takes a while.\n", v.spinner.View(), v.trashSummary())
 	}
 
 	return b.String()

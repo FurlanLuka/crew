@@ -14,6 +14,9 @@ import (
 func cmdTrash() {
 	if len(os.Args) > 2 && os.Args[2] == "empty" {
 		bytes, entries := trash.Size()
+		if entries > 0 {
+			fmt.Fprintf(human, "Emptying %s — %s in %d entries, this can take a while…\n", config.TrashDir, app.FormatBytes(bytes), entries)
+		}
 		if err := trash.Empty(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)

@@ -60,6 +60,13 @@ func TestEmptyTrashFlow(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("y should run the empty command")
 	}
+	// While it runs the view says so and takes no keys.
+	if got := m.(View); got.state != stateEmptyingTrash || !strings.Contains(got.View(), "Emptying the trash") {
+		t.Errorf("after y: state=%v\n%s", got.state, got.View())
+	}
+	if again := press(m.(View), "t"); again.state != stateEmptyingTrash {
+		t.Errorf("keys during the delete should be ignored, state=%v", again.state)
+	}
 	m, _ = m.(View).Update(trashEmptiedMsg{})
 	v = m.(View)
 	if v.state != stateView || v.statusMsg != "Trash emptied" || v.trashSized {
