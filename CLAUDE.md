@@ -158,7 +158,7 @@ and which listen on their port, last log lines for the failed ones, stop.
   data alternative). A new command goes in `help.go` (TUI entries carry a `Notes` line
   naming the CLI equivalent), and `help_test` requires its usage line and output format
   verbatim in `skills/crew/SKILL.md` — the skill is what an agent reads. README's command
-  tables and the plugin files (`agents/crew.md`, `commands/*.md`) follow by hand.
+  tables and the plugin files (`agents/crew.md`, `skills/*/SKILL.md`) follow by hand.
 - **Tab-separated output** for CLI list commands; `--json` everywhere via the global flag
   stripper (`extractFlag` stops at `--` so `crew run … -- child --json` keeps the child's flag).
 - **Bubbletea** for every interactive view; arrows/enter/esc; letters as accelerators.
@@ -205,7 +205,8 @@ in place gets SIGKILLed on macOS (signature) — `rm` then `cp`, then `codesign 
 
 ## Claude Code plugin
 
-`.claude-plugin/` at the repo root ships the `crew` skill, agent and four commands
-(`/crew:setup`, `/crew:import`, `/crew:status`, `/crew:proxy`) for Claude Code: `/plugin marketplace add FurlanLuka/crew`,
+`.claude-plugin/` at the repo root ships the `crew` skill, the agent and four guided skills
+(`skills/{setup,import,status,proxy}` — auto-invoked from their descriptions, or
+`/crew:<name>`) for Claude Code: `/plugin marketplace add FurlanLuka/crew`,
 then `/plugin install crew@crew`. Keep `skills/crew/SKILL.md` in step with the CLI — it is
 what an agent reads to drive crew; bump `plugin.json` when the plugin's surface changes.

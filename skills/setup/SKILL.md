@@ -1,5 +1,11 @@
 ---
-description: Guided workspace setup — which repos, what roles, which dev servers, then build and check it
+name: setup
+description: >
+  Guided crew workspace setup — which repos, what roles, which dev servers and bindings, then
+  builds the workspace and checks the servers come up. Use when the user wants to set up,
+  create or bootstrap a workspace, add several projects to one, register repos with crew, or
+  says "get this project into crew" / "set up crew for X".
+user-invocable: true
 ---
 
 Set up a crew workspace with the user, one question at a time. $ARGUMENTS may name it.

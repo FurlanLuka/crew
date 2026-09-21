@@ -1,5 +1,11 @@
 ---
-description: Guided import of a crew export — asks where the file is, then decides each project and workspace with you
+name: import
+description: >
+  Guided import of a crew export onto this machine — asks where the bundle file is, walks the
+  plan and decides each project (existing path, clone, replace) and workspace with the user.
+  Use when the user mentions a crew export/bundle/JSON from another machine, wants to move or
+  copy their crew setup here, or says "import my workspaces" / "set crew up on this Mac".
+user-invocable: true
 ---
 
 Bring a crew export ($ARGUMENTS is the file, if given) onto this machine, one decision at a

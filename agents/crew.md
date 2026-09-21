@@ -9,6 +9,10 @@ tools: Bash, Read, AskUserQuestion
 model: sonnet
 skills:
   - crew
+  - setup
+  - import
+  - status
+  - proxy
 ---
 
 # crew

@@ -1,5 +1,10 @@
 ---
-description: What crew has checked out and what is running — worktrees, servers, recorded issues
+name: status
+description: >
+  What crew has right now — worktrees, running dev servers with their check verdict and URLs,
+  recorded failures — in one readable summary. Use when the user asks what is running, what
+  they have checked out, whether the servers are up, or "crew status".
+user-invocable: true
 ---
 
 Run `crew ls worktrees <workspace> --json` and `crew dev status $ARGUMENTS --json` — the

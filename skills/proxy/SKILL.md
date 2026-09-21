@@ -1,5 +1,10 @@
 ---
-description: Why a --proxy URL does not open on a phone or another device
+name: proxy
+description: >
+  Why a crew --proxy URL opens on this machine but not on a phone or another device — checks
+  the proxy here and walks the other-device test. Use when a nip.io / proxy / LAN hostname
+  from crew fails elsewhere, or the user wants to open a dev server on their phone.
+user-invocable: true
 ---
 
 The user's dev-server URL works on this machine but not on another device. You can only see

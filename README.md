@@ -111,13 +111,13 @@ plugin does not ship it. What you get:
 - **Agent `crew`** — runs the commands and reads what they print. Plain-language asks route
   here: *"what do I have running?"*, *"start store-front/wrk2 with the proxy"*, *"why is
   store-api talking to the wrong checkout-api?"*, *"set this up on my other Mac"*.
-- **`/crew:setup [name]`** — guided workspace setup: which repos, roles, dev servers,
-  bindings, then builds it and checks the servers come up.
-- **`/crew:import [file]`** — guided import of a crew export: asks where the file is, walks
-  the plan and decides each project (path, clone, replace) with you.
-- **`/crew:status [ref]`** — worktrees, running servers, recorded issues, readable.
-- **`/crew:proxy [ref]`** — a `--proxy` URL opens here but not on the phone: walks the
-  other-device test from `crew help dev start`.
+- **Guided skills** — picked up automatically from what you say, or `/crew:<name>` by hand:
+  - `setup` — which repos, roles, dev servers, bindings; builds the workspace and checks
+    the servers come up ("set up crew for these two repos").
+  - `import` — asks where the export is, walks the plan and decides each project (path,
+    clone, replace) with you ("import my crew setup from the other Mac").
+  - `status` — worktrees, running servers with their check verdict, recorded issues.
+  - `proxy` — a `--proxy` URL opens here but not on the phone: the other-device test.
 
 Commands that take over the terminal — the TUIs, `crew claude`, `crew open` — are handed to
 you as the exact line to run. Everything else has a non-interactive form:
