@@ -15,19 +15,6 @@ with a shell can drive it; Claude Code gets the extras.
   wrk2/  store-api  store-app  checkout-api     ← branches crew/store-front/wrk2/*, ports 54501…
 ```
 
-## Why
-
-- **Two features at once, no juggling.** Each worktree has its own branches, ports and `.env`.
-  Start both; nothing collides.
-- **Services find each other.** `API_URL=http://localhost:3000` is right in one copy and wrong in
-  the next. Bindings make it `{{store-api}}` and crew fills in the port each copy got.
-- **You know when it didn't work.** Creating a worktree checks everything out, installs, and
-  starts the servers to see which survive and bind their port. What failed is recorded with
-  its evidence; `crew fix` hands it to Claude, `crew verify` re-checks.
-- **Agents drive it.** Tab-separated rows or `--json` everywhere, nothing that needs a
-  terminal except the TUIs, and an orientation prompt that tells the agent inside a worktree
-  what it is standing in and how to run the servers.
-
 ## Install
 
 ```bash
@@ -55,6 +42,19 @@ crew add worktree store-front/wrk2 --pull                 # a second copy of eve
 ```
 
 Or from the TUI: `crew project`, `crew workspace`, `crew launch <ws>/<wt>`.
+
+## Why
+
+- **Two features at once, no juggling.** Each worktree has its own branches, ports and `.env`.
+  Start both; nothing collides.
+- **Services find each other.** `API_URL=http://localhost:3000` is right in one copy and wrong in
+  the next. Bindings make it `{{store-api}}` and crew fills in the port each copy got.
+- **You know when it didn't work.** Creating a worktree checks everything out, installs, and
+  starts the servers to see which survive and bind their port. What failed is recorded with
+  its evidence; `crew fix` hands it to Claude, `crew verify` re-checks.
+- **Agents drive it.** Tab-separated rows or `--json` everywhere, nothing that needs a
+  terminal except the TUIs, and an orientation prompt that tells the agent inside a worktree
+  what it is standing in and how to run the servers.
 
 ## How it works
 
