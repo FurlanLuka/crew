@@ -373,3 +373,14 @@ func TestProposeThenAdd_RejectsUnusableVarName(t *testing.T) {
 		t.Error("MY-VAR should be rejected as a variable name")
 	}
 }
+
+func TestWithDevServers(t *testing.T) {
+	pool := []Project{{Name: "docs"}, {Name: "api", DevServers: []DevServer{{Name: "api", Port: 3000}}}, {Name: "web", DevServers: []DevServer{{Name: "web", Port: 5173}}}}
+	got := WithDevServers(pool)
+	if len(got) != 2 || got[0].Name != "api" || got[1].Name != "web" {
+		t.Errorf("%+v", got)
+	}
+	if got := WithDevServers(nil); got != nil {
+		t.Errorf("empty pool → %+v", got)
+	}
+}

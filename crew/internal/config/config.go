@@ -59,6 +59,15 @@ func ExpandHome(path string) string {
 	return path
 }
 
+// Tildify is ExpandHome the other way: a path under the home directory
+// shown with ~, the way a person would type it. Pure but for the lookup.
+func Tildify(path string) string {
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home+"/") {
+		return "~" + path[len(home):]
+	}
+	return path
+}
+
 // Under: path is strictly inside root — never the root itself, never a
 // sibling that shares its prefix ("projects-old" beside "projects"). The
 // one spelling of the guard every removal checks against.

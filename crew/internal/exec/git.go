@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -187,6 +188,22 @@ func RemoteHeadBranch(dir string) string {
 		return ""
 	}
 	return strings.TrimPrefix(strings.TrimSpace(out), "refs/remotes/origin/")
+}
+
+// CommitsAhead counts the commits branch has that base does not — what a
+// fix made on a scratch branch would lose if the checkout were replaced.
+// 0 when the checkout is gone or either ref is unknown: there is nothing
+// to lose then, and the caller must not be blocked on it.
+func CommitsAhead(dir, base, branch string) int {
+	if _, err := os.Stat(dir); err != nil {
+		return 0
+	}
+	out, err := RunGitCommand(dir, "rev-list", "--count", base+".."+branch)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(out))
+	return n
 }
 
 // DeleteBranch removes a local branch, force — for the scratch branch of a

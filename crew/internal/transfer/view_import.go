@@ -3,7 +3,6 @@ package transfer
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -575,7 +574,7 @@ func createdDetail(m Membership, st workspace.Status) string {
 	if h := st.Health(); h != nil {
 		return fmt.Sprintf("%s recorded — crew fix %s --print", plural(len(h.Issues), "issue"), ref)
 	}
-	return fmt.Sprintf("%s under %s", plural(len(m.Projects), "checkout"), tildify(workspace.WorktreeDir(ref)))
+	return fmt.Sprintf("%s under %s", plural(len(m.Projects), "checkout"), config.Tildify(workspace.WorktreeDir(ref)))
 }
 
 // ── Render ──
@@ -626,17 +625,17 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	sit := v.situation()
 	switch sit {
 	case sitHere:
-		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, orNoRemote(p.Remote), app.Success.Render("✓ same repo here at "+tildify(st.Local.Path))))
+		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, orNoRemote(p.Remote), app.Success.Render("✓ same repo here at "+config.Tildify(st.Local.Path))))
 	case sitOtherRemote:
 		b.WriteString(fmt.Sprintf("  remote    %-*s\n", pathCol, p.Remote))
-		b.WriteString(fmt.Sprintf("  local     %-*s %s\n", pathCol, app.Highlight.Render(orNoRemote(st.LocalRemote)), app.Subtle.Render("at "+tildify(st.Local.Path)+" — r clones this one instead")))
+		b.WriteString(fmt.Sprintf("  local     %-*s %s\n", pathCol, app.Highlight.Render(orNoRemote(st.LocalRemote)), app.Subtle.Render("at "+config.Tildify(st.Local.Path)+" — r clones this one instead")))
 	case sitClone:
 		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, p.Remote, app.Error.Render("✗ not here")))
-		b.WriteString(fmt.Sprintf("            %-*s %s\n", pathCol, app.Highlight.Render("→ "+tildify(project.ClonePath(p.Name))), app.Subtle.Render("y clones here — p adopts a checkout you have")))
+		b.WriteString(fmt.Sprintf("            %-*s %s\n", pathCol, app.Highlight.Render("→ "+config.Tildify(project.ClonePath(p.Name))), app.Subtle.Render("y clones here — p adopts a checkout you have")))
 	case sitBlocked:
 		dir := project.ClonePath(p.Name)
 		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, p.Remote, app.Error.Render("✗ not here")))
-		b.WriteString(fmt.Sprintf("            %-*s %s\n", pathCol, app.Error.Render("✗ "+tildify(dir)+" exists"), app.Subtle.Render(blockedWayOut(dir))))
+		b.WriteString(fmt.Sprintf("            %-*s %s\n", pathCol, app.Error.Render("✗ "+config.Tildify(dir)+" exists"), app.Subtle.Render(blockedWayOut(dir))))
 	case sitNoRemote:
 		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, app.Error.Render("✗ none — cannot be cloned"), app.Subtle.Render("p adopts a checkout you have"+wasAtPhrase(p.Path))))
 	}
@@ -675,7 +674,7 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	}
 	if v.state == importStateApplying {
 		if v.pending.Action == actionClone {
-			b.WriteString(fmt.Sprintf("  %s Cloning %s → %s\n", v.spinner.View(), p.Name, tildify(v.pending.Path)))
+			b.WriteString(fmt.Sprintf("  %s Cloning %s → %s\n", v.spinner.View(), p.Name, config.Tildify(v.pending.Path)))
 		} else {
 			b.WriteString(fmt.Sprintf("  %s Recording %s\n", v.spinner.View(), p.Name))
 		}
@@ -892,11 +891,31 @@ func (v ImportView) renderSummary(b *strings.Builder) {
 	if len(created) > 0 {
 		b.WriteString("\n")
 	}
+	// A clone is only config until a check has run it: the line that
+	// proves each one reproduces here.
+	cloned := clonedNames(v.results)
+	for _, name := range cloned {
+		b.WriteString("\n  crew check project " + name)
+	}
+	if len(cloned) > 0 {
+		b.WriteString("\n")
+	}
 	b.WriteString("\n  " + app.Subtle.Render("Run crew import again to change a decision; imported items offer replace.") + "\n")
 	b.WriteString("  " + app.HelpStyle.Render("esc close") + "\n")
 }
 
 // ── small renderers ──
+
+// clonedNames is every project this walk cloned, in bundle order. Pure.
+func clonedNames(results []projectResult) []string {
+	var out []string
+	for _, r := range results {
+		if r.Outcome == outcomeImported && r.Cloned {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
 
 func describeServers(servers []project.DevServer) string {
 	parts := make([]string, 0, len(servers))
@@ -941,11 +960,4 @@ func wasWere(n int) string {
 		return "was"
 	}
 	return "were"
-}
-
-func tildify(path string) string {
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home+"/") {
-		return "~" + path[len(home):]
-	}
-	return path
 }

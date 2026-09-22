@@ -42,9 +42,12 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "project",
-			Description: "Interactive project manager — add/remove projects and configure dev servers",
+			Description: "Interactive project manager — a is a wizard that walks a new project through every concept and proves it with a check; s / b / t / e change servers, bindings and the two commands later",
 			TUI:         true,
-			Notes:       []string{"Same actions without the TUI: crew add project <url> | --path (--setup, --env-cmd), crew dev add / rm / setup, crew add binding (--scan --apply), crew rm project."},
+			Notes: []string{
+				"Same actions without the TUI: crew add project <name> <url> | --path (--setup, --env-cmd), crew dev setup / add / rm, crew add binding (--scan --apply), crew check project, crew rm project.",
+				"The wizard applies each step when its key is pressed — nothing is staged; esc keeps what was recorded and names where crew project picks the rest up.",
+			},
 		},
 		{
 			Name:        "add",

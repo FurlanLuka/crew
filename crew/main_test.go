@@ -360,12 +360,15 @@ func TestPurgeAllowed(t *testing.T) {
 
 // Where a new project's path comes from, and what a URL refuses.
 func TestAddProjectTarget(t *testing.T) {
-	prev := config.ProjectsDir
-	config.ProjectsDir = t.TempDir()
-	t.Cleanup(func() { config.ProjectsDir = prev })
+	prevDir, prevProjects := config.ConfigDir, config.ProjectsDir
+	config.ConfigDir, config.ProjectsDir = t.TempDir(), t.TempDir()
+	t.Cleanup(func() { config.ConfigDir, config.ProjectsDir = prevDir, prevProjects })
 	url := "git@github.com:example/signals.git"
 	have := t.TempDir()
-	existing := &project.Project{Name: "signals", Path: "/repos/signals"}
+	// The pool holds the existing project: the "already exists" refusal
+	// is NewTarget's, read off the pool.
+	project.Add(project.Project{Name: "store-api", Path: "/repos/store-api"})
+	existing := project.Get("store-api")
 	for _, tt := range []struct {
 		name     string
 		a        addProjectArgs
@@ -378,10 +381,11 @@ func TestAddProjectTarget(t *testing.T) {
 		{"--path adopts", addProjectArgs{name: "signals", newPath: have}, nil, have, false, ""},
 		{"--path must be a dir", addProjectArgs{name: "signals", newPath: have + "/nope"}, nil, "", false, "is not a directory"},
 		{"a bare path is refused", addProjectArgs{name: "signals", url: "/repos/signals"}, nil, "", false, "crew add project signals --path=/repos/signals; the default is a git URL"},
-		{"update keeps the path decision to the caller", addProjectArgs{name: "signals", hasSetup: true}, existing, "", false, ""},
-		{"--path on an existing project is a move", addProjectArgs{name: "signals", newPath: "/moved"}, existing, "/moved", false, ""},
+		{"update keeps the path decision to the caller", addProjectArgs{name: "store-api", hasSetup: true}, existing, "", false, ""},
+		{"--path on an existing project is a move", addProjectArgs{name: "store-api", newPath: "/moved"}, existing, "/moved", false, ""},
 		{"nothing given", addProjectArgs{name: "signals"}, nil, "", false, "usage"},
-		{"url on an existing project", addProjectArgs{name: "signals", url: url}, existing, "", false, "already exists at /repos/signals"},
+		{"url on an existing project", addProjectArgs{name: "store-api", url: url}, existing, "", false, "already exists at /repos/store-api"},
+		{"a bad name with --path", addProjectArgs{name: "Bad", newPath: have}, nil, "", false, "'Bad' is not a valid project name"},
 		{"url with --path", addProjectArgs{name: "signals", url: url, newPath: "/x"}, nil, "", false, "drop --path to clone it, or drop the URL to adopt /x"},
 	} {
 		path, clone, err := addProjectTarget(tt.a, tt.existing)

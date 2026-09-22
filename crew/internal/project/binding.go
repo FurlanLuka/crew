@@ -197,6 +197,18 @@ func BoundFor(bindings []Binding, server string) map[string]bool {
 	return declared
 }
 
+// WithDevServers is the pool narrowed to what a {{project}} token can
+// point at. Pure.
+func WithDevServers(pool []Project) []Project {
+	var out []Project
+	for _, p := range pool {
+		if len(p.DevServers) > 0 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // ConfiguredPorts maps each configured dev-server port to the projects that
 // claim it. A port with two claimants is why Proposal carries Ambiguous rather
 // than guessing.

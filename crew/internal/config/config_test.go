@@ -103,3 +103,17 @@ func TestExpandHome(t *testing.T) {
 		}
 	}
 }
+
+// Tildify is ExpandHome the other way.
+func TestTildify(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	if got := Tildify(filepath.Join(home, ".crew", "projects", "api")); got != "~/.crew/projects/api" {
+		t.Errorf("%q", got)
+	}
+	if got := Tildify("/opt/api"); got != "/opt/api" {
+		t.Errorf("outside home stays: %q", got)
+	}
+	if got := Tildify(home); got != home {
+		t.Errorf("the home dir itself is not a child of it: %q", got)
+	}
+}

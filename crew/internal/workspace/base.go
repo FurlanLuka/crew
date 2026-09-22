@@ -31,7 +31,7 @@ const fetchTimeout = 8 * time.Second
 // baseStatus reads one project. It fetches the base branch so "behind" means
 // behind the remote as of now, not as of the last time someone pulled.
 func baseStatus(p project.Project) BaseStatus {
-	st := BaseStatus{Project: p.Name, Base: detectDefaultBranch(p.Path), Current: currentBranch(p.Path), Behind: -1, Ahead: -1}
+	st := BaseStatus{Project: p.Name, Base: DefaultBranch(p.Path), Current: currentBranch(p.Path), Behind: -1, Ahead: -1}
 	if st.Base == "HEAD" {
 		st.Err = "no develop or main branch"
 		return st
@@ -154,7 +154,7 @@ func StaleWarning(statuses []BaseStatus) string {
 // that is not a fast-forward. When base is the checked-out branch git refuses
 // that form, so it becomes a ff-only merge — which only runs on a clean tree.
 func UpdateBase(p project.Project) error {
-	base := detectDefaultBranch(p.Path)
+	base := DefaultBranch(p.Path)
 	if base == "HEAD" {
 		return fmt.Errorf("%s: no develop or main branch", p.Name)
 	}

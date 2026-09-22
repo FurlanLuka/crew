@@ -347,3 +347,42 @@ func TestSetPath_Absolute(t *testing.T) {
 		t.Errorf("missing dir: %v", err)
 	}
 }
+
+// NewTarget is the decision crew add project and the wizard share: the
+// refusals come before any clone would land.
+func TestNewTarget(t *testing.T) {
+	setupTestConfig(t)
+	have := t.TempDir()
+	Add(Project{Name: "taken", Path: have})
+	os.MkdirAll(ClonePath("blocked"), 0o755)
+	for _, tt := range []struct {
+		name, path string
+		target     string
+		clone      bool
+		wantErr    string
+	}{
+		{"signals", "", ClonePath("signals"), true, ""},
+		{"signals", have, have, false, ""},
+		{"taken", "", "", false, "project 'taken' already exists at " + have},
+		{"blocked", "", "", false, "crew add project blocked --path=" + ClonePath("blocked")},
+		{"signals", have + "/nope", "", false, "is not a directory"},
+		{"Bad", "", "", false, "not a valid project name"},
+	} {
+		target, clone, err := NewTarget(tt.name, tt.path)
+		if tt.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("%s/%s: err = %v, want %q", tt.name, tt.path, err, tt.wantErr)
+			}
+			continue
+		}
+		if err != nil || target != tt.target || clone != tt.clone {
+			t.Errorf("%s/%s: got %q %v %v", tt.name, tt.path, target, clone, err)
+		}
+	}
+	wd, _ := os.Getwd()
+	if rel, err := filepath.Rel(wd, have); err == nil {
+		if target, _, err := NewTarget("signals", rel); err != nil || target != have {
+			t.Errorf("a relative path is taken absolute: %q, %v", target, err)
+		}
+	}
+}

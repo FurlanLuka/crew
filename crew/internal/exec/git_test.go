@@ -443,3 +443,31 @@ func TestOriginURL(t *testing.T) {
 		t.Errorf("a missing dir has no origin: %q", got)
 	}
 }
+
+// CommitsAhead counts what a scratch branch would lose; a missing
+// checkout counts nothing so nothing is blocked on it.
+func TestCommitsAhead(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		if _, err := RunGitCommand(dir, args...); err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base")
+	run("checkout", "-q", "-b", "scratch")
+	if got := CommitsAhead(dir, "main", "scratch"); got != 0 {
+		t.Errorf("nothing ahead → %d", got)
+	}
+	run("-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "fix")
+	if got := CommitsAhead(dir, "main", "scratch"); got != 1 {
+		t.Errorf("one fix → %d", got)
+	}
+	if got := CommitsAhead(filepath.Join(dir, "gone"), "main", "scratch"); got != 0 {
+		t.Errorf("missing checkout → %d", got)
+	}
+	if got := CommitsAhead(dir, "main", "nope"); got != 0 {
+		t.Errorf("unknown branch → %d", got)
+	}
+}

@@ -501,7 +501,15 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	// While runners are alive, their table — the failures so far are in the
 	// health block above it.
 	locked := page.Health != nil || page.installing()
-	renderHealth(b, page.Health, page.installing())
+	if page.Health != nil {
+		RenderHealth(b, page.Health)
+		keys := "f fix with Claude   v verify"
+		if page.installing() {
+			// The rest is still being made; a verify has to wait for it.
+			keys = "f fix with Claude"
+		}
+		b.WriteString("\n    " + app.Highlight.Render(keys) + "\n")
+	}
 	if page.installing() {
 		b.WriteString("\n  " + app.Highlight.Render("installing") + app.Subtle.Render(" · one runner per project") + "\n")
 		b.WriteString(RenderSetupTable(*page.Setup, spinnerFrame, page.Now))
@@ -605,10 +613,11 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	b.WriteString("\n")
 }
 
-// renderHealth is what is recorded on the worktree, per issue with its
-// stage and a few lines of evidence, and the two keys out of it. f hands
-// Claude all of the evidence.
-func renderHealth(b *strings.Builder, h *Health, installing bool) {
+// RenderHealth is what is recorded on the worktree, per issue with its
+// stage and a few lines of evidence — the block every screen that shows a
+// failure opens with; the keys out of it are the caller's, they differ
+// per screen. f hands Claude all of the evidence.
+func RenderHealth(b *strings.Builder, h *Health) {
 	if h == nil {
 		return
 	}
@@ -635,12 +644,6 @@ func renderHealth(b *strings.Builder, h *Health, installing bool) {
 			b.WriteString("    " + strings.Repeat(" ", 10+width) + "   " + app.Subtle.Render(fmt.Sprintf("… %d more lines — f hands Claude all of it", hidden)) + "\n")
 		}
 	}
-	keys := "f fix with Claude   v verify"
-	if installing {
-		// The rest is still being made; a verify has to wait for it.
-		keys = "f fix with Claude"
-	}
-	b.WriteString("\n    " + app.Highlight.Render(keys) + "\n")
 }
 
 // spinnerFrame is the page's mark on a running step. Static: the page

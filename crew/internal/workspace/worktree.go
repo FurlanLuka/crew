@@ -55,7 +55,7 @@ type CheckoutOptions struct {
 // so a failed install never leaves a half-made worktree.
 func createProjectWorktree(ref Ref, p project.Project) error {
 	wtDir := WorktreePath(ref, p.Name)
-	baseBranch := detectDefaultBranch(p.Path)
+	baseBranch := DefaultBranch(p.Path)
 
 	if err := exec.CreateGitWorktree(p.Path, wtDir, BranchName(ref, p.Name), baseBranch); err != nil {
 		// Leave nothing behind: a directory here would make the next attempt

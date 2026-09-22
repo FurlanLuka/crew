@@ -16,7 +16,8 @@ any command, in any position. `crew help <cmd> [<sub>]` is authoritative; `crew 
 dumps the whole tree. Never guess state — run the command.
 
 Every action has a non-interactive form; nothing needs the TUI. The full-screen views are
-the **user's to run**, not yours — `crew workspace`, `crew project`, `crew config` (bare),
+the **user's to run**, not yours — `crew workspace`, `crew project` (its `a` is a wizard:
+source → install → servers → bindings → check, each step a command below), `crew config` (bare),
 `crew launch`, `crew dev tui`, `crew debug` (bare), `crew export` without flags, `crew import`
 without a mode — and so are the commands that replace the process (`crew claude`, `crew open`;
 bare `crew fix` prints when there is no terminal). Everything below is scriptable, and

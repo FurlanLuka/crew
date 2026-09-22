@@ -150,3 +150,39 @@ func TestRunSetup_StreamsOutput(t *testing.T) {
 		t.Errorf("streamed = %q", got)
 	}
 }
+
+func TestDetectDevCommand(t *testing.T) {
+	dir := t.TempDir()
+	if got := DetectDevCommand(dir); got != "" {
+		t.Errorf("no package.json → %q", got)
+	}
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"start":"node ."}}`), 0o644)
+	if got := DetectDevCommand(dir); got != "npm start" {
+		t.Errorf("start only → %q", got)
+	}
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"scripts":{"dev":"vite","start":"node ."}}`), 0o644)
+	if got := DetectDevCommand(dir); got != "npm run dev" {
+		t.Errorf("dev wins → %q", got)
+	}
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`not json`), 0o644)
+	if got := DetectDevCommand(dir); got != "" {
+		t.Errorf("bad json → %q", got)
+	}
+}
+
+// StepLine is the one spelling of a plan: names joined by arrows.
+func TestStepLine(t *testing.T) {
+	if got := StepLine(nil); got != "" {
+		t.Errorf("none → %q", got)
+	}
+	steps := ComposeSteps([]SetupStep{{Name: "mise install"}, {Name: "pnpm install"}}, "", "make get-env")
+	if got := StepLine(steps); got != "mise install → pnpm install → env: make get-env" {
+		t.Errorf("%q", got)
+	}
+	// ComposeSteps is SetupSteps over what was already detected.
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "pnpm-lock.yaml"), nil, 0o644)
+	if a, b := StepLine(SetupSteps(dir, "make sync", "")), StepLine(ComposeSteps(DetectSetup(dir), "make sync", "")); a != b || a != "make sync" {
+		t.Errorf("SetupSteps %q vs ComposeSteps %q", a, b)
+	}
+}

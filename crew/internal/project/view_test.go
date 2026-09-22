@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/FurlanLuka/crew/crew/internal/app"
 )
 
 // t and e open the same one-line form on the project's two commands; enter
@@ -69,5 +71,32 @@ func TestCommandField(t *testing.T) {
 		if tt.f.label() != tt.label || tt.f.value(p) != tt.value || !strings.Contains(tt.f.placeholder(), tt.placeholderHas) {
 			t.Errorf("%v: %q %q %q", tt.f, tt.f.label(), tt.f.value(p), tt.f.placeholder())
 		}
+	}
+}
+
+// a opens the wizard main wires in; without one the key is neither
+// offered nor taken.
+func TestProjectView_AddWizard(t *testing.T) {
+	setupTestConfig(t)
+	v := NewView()
+	prev := AddWizard
+	t.Cleanup(func() { AddWizard = prev })
+	AddWizard = nil
+	if got := v.View(); strings.Contains(got, "a add") {
+		t.Errorf("help offers a with no wizard:\n%s", got)
+	}
+	if _, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}); cmd != nil {
+		t.Error("a must be inert with no wizard")
+	}
+	AddWizard = func() app.Page { return NewDevServerView("stand-in") }
+	if got := v.View(); !strings.Contains(got, "a add  d delete") {
+		t.Errorf("help offers a once wired:\n%s", got)
+	}
+	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if cmd == nil {
+		t.Fatal("a pushes the wizard")
+	}
+	if msg, ok := cmd().(app.PushPageMsg); !ok || msg.Page.Title() != "Dev Servers for \"stand-in\"" {
+		t.Errorf("a pushed %+v", cmd())
 	}
 }

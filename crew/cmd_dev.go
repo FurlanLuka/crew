@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -12,6 +11,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -184,7 +184,7 @@ func cmdDevSetup() {
 		os.Exit(1)
 	}
 
-	proposal := setupProposal{Name: projName, Port: port, Command: detectDevCommand(p.Path), Outcome: "detected"}
+	proposal := setupProposal{Name: projName, Port: port, Command: exec.DetectDevCommand(p.Path), Outcome: "detected"}
 	if proposal.Command == "" {
 		fmt.Fprintf(os.Stderr, "Error: nothing detected in %s — crew dev add %s --name=%s --port=<port> --cmd=<command>\n", p.Path, projName, projName)
 		os.Exit(1)
@@ -632,24 +632,4 @@ func cmdDevProxy() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func detectDevCommand(projectPath string) string {
-	data, err := os.ReadFile(projectPath + "/package.json")
-	if err != nil {
-		return ""
-	}
-	var pkg struct {
-		Scripts map[string]string `json:"scripts"`
-	}
-	if json.Unmarshal(data, &pkg) != nil {
-		return ""
-	}
-	if _, ok := pkg.Scripts["dev"]; ok {
-		return "npm run dev"
-	}
-	if _, ok := pkg.Scripts["start"]; ok {
-		return "npm start"
-	}
-	return ""
 }

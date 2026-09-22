@@ -98,6 +98,35 @@ func ValidateCheckoutDir(path string) error {
 	return nil
 }
 
+// NewTarget decides where a new project's checkout comes from: the clone
+// crew will make into ClonePath(name), or — with a path — a checkout the
+// user already has, taken absolute. It holds the refusals every caller
+// needs in the same words: the name (valid, and not already in the pool —
+// asked before any clone lands under it), the clone dir, the adopted
+// directory. Pure but for the pool read and two stats.
+func NewTarget(name, path string) (target string, clone bool, err error) {
+	if err := ValidateName(name); err != nil {
+		return "", false, err
+	}
+	if p := Get(name); p != nil {
+		return "", false, fmt.Errorf("project '%s' already exists at %s — crew rm project %s first, or pick another name", name, p.Path, name)
+	}
+	if path != "" {
+		if err := ValidateCheckoutDir(path); err != nil {
+			return "", false, err
+		}
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return "", false, err
+		}
+		return abs, false, nil
+	}
+	if err := CloneAllowed(name); err != nil {
+		return "", false, err
+	}
+	return ClonePath(name), true, nil
+}
+
 // RemoteOf is the project's identity: the origin its checkout points at,
 // read when asked and never stored, so it cannot drift from the clone.
 // "" for a repo without one — such a project cannot be cloned elsewhere.

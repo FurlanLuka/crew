@@ -2,6 +2,7 @@ package exec
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -84,13 +85,54 @@ func DetectSetup(dir string) []SetupStep {
 	return steps
 }
 
+// StepLine is the steps as one line — `mise install → pnpm install → env:
+// make get-env` — for anything that shows the plan before running it. Pure;
+// "" for none.
+func StepLine(steps []SetupStep) string {
+	names := make([]string, 0, len(steps))
+	for _, st := range steps {
+		names = append(names, st.Name)
+	}
+	return strings.Join(names, " → ")
+}
+
+// DetectDevCommand is the one dev command a checkout can be read for: the
+// package.json dev script, else its start script. It says nothing about
+// the port — that is always the caller's to give. Pure over the file.
+func DetectDevCommand(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	if err != nil {
+		return ""
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if json.Unmarshal(data, &pkg) != nil {
+		return ""
+	}
+	if _, ok := pkg.Scripts["dev"]; ok {
+		return "npm run dev"
+	}
+	if _, ok := pkg.Scripts["start"]; ok {
+		return "npm start"
+	}
+	return ""
+}
+
 // SetupSteps decides a checkout's steps: mise first when present, then the
 // install (an explicit setup command replaces detection, otherwise the
-// lockfile decides), then the env command when the project has one — last,
-// so a get-env implemented as a package script or through an installed
-// tool has what it needs; the copied .env is the baseline until then.
+// lockfile decides), then the env command when the project has one.
 func SetupSteps(dir, explicit, envCmd string) []SetupStep {
-	steps := DetectSetup(dir)
+	return ComposeSteps(DetectSetup(dir), explicit, envCmd)
+}
+
+// ComposeSteps is SetupSteps over steps already detected — the install
+// (an explicit command replaces the detected one, mise stays first), then
+// the env command last, so a get-env implemented as a package script or
+// through an installed tool has what it needs; the copied .env is the
+// baseline until then. Pure, so a form can preview it as the text changes.
+func ComposeSteps(detected []SetupStep, explicit, envCmd string) []SetupStep {
+	steps := detected
 	if explicit != "" {
 		var mise []SetupStep
 		if len(steps) > 0 && steps[0].Name == "mise install" {

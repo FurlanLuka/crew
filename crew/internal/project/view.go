@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -10,13 +9,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
-	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 // ── Messages ──
 
 type projectsLoadedMsg struct{ projects []Project }
-type projectAddedMsg struct{ name string }
 type projectRemovedMsg struct{ name string }
 type commandSavedMsg struct {
 	name  string
@@ -30,7 +27,6 @@ type viewState int
 
 const (
 	stateList viewState = iota
-	stateAddForm
 	stateConfirmRemove
 	stateCommandForm
 )
@@ -80,37 +76,30 @@ func (f commandField) save(name, command string) error {
 	return SetSetup(name, command)
 }
 
+// AddWizard opens the add-project walk — source, install, servers,
+// bindings, check. Its check step needs the workspace package, which
+// imports this one, so main wires the constructor in (as with Previewer);
+// nil leaves the list without an add key.
+var AddWizard func() app.Page
+
 // ── Model ──
 
 type View struct {
 	state        viewState
 	projects     []Project
 	cursor       int
-	pathInput    textinput.Model
-	nameInput    textinput.Model
 	commandInput textinput.Model
 	editing      commandField
-	formField    int // 0=path, 1=name
 	statusMsg    string
 	err          error
 }
 
 func NewView() View {
-	pi := textinput.New()
-	pi.Placeholder = "/path/to/project"
-	pi.CharLimit = 256
-
-	ni := textinput.New()
-	ni.Placeholder = "project-name (auto-detected from path)"
-	ni.CharLimit = 64
-
 	si := textinput.New()
 	si.CharLimit = 256
 
 	return View{
 		state:        stateList,
-		pathInput:    pi,
-		nameInput:    ni,
 		commandInput: si,
 	}
 }
@@ -127,17 +116,13 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case projectsLoadedMsg:
+		// Every success reloads; an error shown is the last thing that failed.
+		v.err = nil
 		v.projects = msg.projects
 		if v.cursor >= len(v.projects) {
 			v.cursor = max(0, len(v.projects)-1)
 		}
 		return v, nil
-
-	case projectAddedMsg:
-		v.state = stateList
-		v.statusMsg = fmt.Sprintf("Added '%s'", msg.name)
-		v.resetForm()
-		return v, loadProjects
 
 	case projectRemovedMsg:
 		v.state = stateList
@@ -163,9 +148,6 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.commandInput, cmd = v.commandInput.Update(msg)
 		return v, cmd
 	}
-	if v.state == stateAddForm {
-		return v.updateFormInput(msg)
-	}
 
 	return v, nil
 }
@@ -174,8 +156,6 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch v.state {
 	case stateList:
 		return v.handleListKey(msg)
-	case stateAddForm:
-		return v.handleAddFormKey(msg)
 	case stateConfirmRemove:
 		return v.handleConfirmRemoveKey(msg)
 	case stateCommandForm:
@@ -224,13 +204,9 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.cursor++
 		}
 		return v, nil
-	case msg.String() == "a":
-		v.state = stateAddForm
-		v.formField = 0
-		v.err = nil
-		v.statusMsg = ""
-		v.pathInput.Focus()
-		return v, v.pathInput.Cursor.BlinkCmd()
+	case msg.String() == "a" && AddWizard != nil:
+		page := AddWizard()
+		return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 	case msg.String() == "d":
 		if len(v.projects) > 0 {
 			v.state = stateConfirmRemove
@@ -259,34 +235,6 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
-func (v View) handleAddFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		v.state = stateList
-		v.resetForm()
-		return v, nil
-	case "tab":
-		v.formField = (v.formField + 1) % 2
-		v.pathInput.Blur()
-		v.nameInput.Blur()
-		if v.formField == 0 {
-			v.pathInput.Focus()
-			return v, v.pathInput.Cursor.BlinkCmd()
-		}
-		// Auto-detect name from path
-		path := strings.TrimSpace(v.pathInput.Value())
-		if path != "" && v.nameInput.Value() == "" {
-			v.nameInput.SetValue(filepath.Base(config.ExpandHome(path)))
-		}
-		v.nameInput.Focus()
-		return v, v.nameInput.Cursor.BlinkCmd()
-	case "enter":
-		return v, v.submitForm()
-	}
-
-	return v.updateFormInput(msg)
-}
-
 func (v View) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y":
@@ -304,62 +252,12 @@ func (v View) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (v View) updateFormInput(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	if v.formField == 0 {
-		v.pathInput, cmd = v.pathInput.Update(msg)
-	} else {
-		v.nameInput, cmd = v.nameInput.Update(msg)
-	}
-	return v, cmd
-}
-
-func (v *View) resetForm() {
-	v.pathInput.Reset()
-	v.nameInput.Reset()
-	v.formField = 0
-	v.pathInput.Blur()
-	v.nameInput.Blur()
-}
-
-func (v View) submitForm() tea.Cmd {
-	path := strings.TrimSpace(v.pathInput.Value())
-	name := strings.TrimSpace(v.nameInput.Value())
-
-	return func() tea.Msg {
-		if path == "" {
-			return errMsg{fmt.Errorf("path cannot be empty")}
-		}
-
-		path = config.ExpandHome(path)
-		if err := ValidateCheckoutDir(path); err != nil {
-			return errMsg{err}
-		}
-
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return errMsg{err}
-		}
-
-		if name == "" {
-			name = filepath.Base(absPath)
-		}
-
-		if err := Add(Project{Name: name, Path: absPath}); err != nil {
-			return errMsg{err}
-		}
-		return projectAddedMsg{name}
-	}
-}
-
 func (v View) View() string {
 	var b strings.Builder
 
 	switch v.state {
 	case stateList:
 		v.renderList(&b)
-	case stateAddForm:
-		v.renderAddForm(&b)
 	case stateConfirmRemove:
 		v.renderConfirmRemove(&b)
 	case stateCommandForm:
@@ -430,20 +328,6 @@ func (v View) renderList(b *strings.Builder) {
 		b.WriteString(app.Success.Render(v.statusMsg))
 		b.WriteString("\n\n")
 	}
-
-	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("a add  d delete  s servers  b bindings  t setup  e env cmd  esc back"))
-	b.WriteString("\n")
-}
-
-func (v View) renderAddForm(b *strings.Builder) {
-	b.WriteString("  Path: ")
-	b.WriteString(v.pathInput.View())
-	b.WriteString("\n")
-	b.WriteString("  Name: ")
-	b.WriteString(v.nameInput.View())
-	b.WriteString("\n\n")
-
 	if v.err != nil {
 		b.WriteString("  ")
 		b.WriteString(app.Error.Render(v.err.Error()))
@@ -451,8 +335,18 @@ func (v View) renderAddForm(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render("tab next field  enter add  esc cancel"))
+	b.WriteString(app.HelpStyle.Render(listHelp(AddWizard != nil)))
 	b.WriteString("\n")
+}
+
+// listHelp is the list's key line; a is offered only when the wizard is
+// wired, so the help never names a key the handler drops. Pure.
+func listHelp(canAdd bool) string {
+	keys := "d delete  s servers  b bindings  t setup  e env cmd  esc back"
+	if canAdd {
+		return "a add  " + keys
+	}
+	return keys
 }
 
 func (v View) renderConfirmRemove(b *strings.Builder) {

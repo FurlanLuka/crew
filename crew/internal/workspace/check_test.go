@@ -445,10 +445,10 @@ func TestDetectDefaultBranch_OriginHead(t *testing.T) {
 	gitLines(t, tmp, "clone", "--bare", "-q", seed, remote)
 	clone := filepath.Join(tmp, "api")
 	gitLines(t, tmp, "clone", "-q", remote, clone)
-	if got := detectDefaultBranch(clone); got != "master" {
-		t.Errorf("detectDefaultBranch = %s, want master", got)
+	if got := DefaultBranch(clone); got != "master" {
+		t.Errorf("DefaultBranch = %s, want master", got)
 	}
-	if got := detectDefaultBranch(seed); got != "HEAD" {
+	if got := DefaultBranch(seed); got != "HEAD" {
 		t.Errorf("no origin, no main: %s, want HEAD", got)
 	}
 }

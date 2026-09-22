@@ -1,7 +1,7 @@
 {
   "name": "crew",
   "description": "Drive crew — workspaces of git worktrees, dev servers on stable ports, env bindings between projects — from Claude Code.",
-  "version": "2.8.0",
+  "version": "3.0.0",
   "author": {
     "name": "Luka Furlan",
     "url": "https://github.com/FurlanLuka"

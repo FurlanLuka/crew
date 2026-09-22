@@ -129,11 +129,12 @@ func Create(name string) error {
 	return Save(ws)
 }
 
-// detectDefaultBranch returns the best base branch for a project repo:
+// DefaultBranch is the best base branch for a project repo — what a
+// checkout branches from and a check's scratch branch is measured against:
 // develop, main, then whatever origin/HEAD points at (a clone of a
 // `master` repo, say) — a local name, so the base table and --pull can
 // fetch it — and HEAD only when there is no origin.
-func detectDefaultBranch(projectPath string) string {
+func DefaultBranch(projectPath string) string {
 	for _, branch := range []string{"develop", "main"} {
 		out, err := exec.RunGitCommand(projectPath, "rev-parse", "--verify", branch)
 		if err == nil && strings.TrimSpace(out) != "" {

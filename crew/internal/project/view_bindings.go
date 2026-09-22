@@ -468,15 +468,7 @@ func (v BindingsView) completeVar(prefix string) string {
 }
 
 // projectsWithServers is what a {{project}} token can target.
-func (v BindingsView) projectsWithServers() []Project {
-	var out []Project
-	for _, p := range v.pool {
-		if len(p.DevServers) > 0 {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+func (v BindingsView) projectsWithServers() []Project { return WithDevServers(v.pool) }
 
 // ── Confirm ──
 

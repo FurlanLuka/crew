@@ -15,6 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/FurlanLuka/crew/crew/internal/addproject"
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -101,6 +102,7 @@ func main() {
 	config.Init()
 	project.Previewer = workspace.PreviewBinding
 	project.CheckoutDirs = workspace.ProjectCheckouts
+	project.AddWizard = addproject.New
 
 	// Strip the global --json flag before computing cmd so it works in any
 	// position and is not rejected by strict per-command arg parsers.
@@ -826,22 +828,17 @@ func cmdAddProject() {
 	}
 	fmt.Printf("Added project: %s (%s)\n", name, path)
 	if steps := workspace.SetupStepsFor(p); len(steps) > 0 {
-		names := make([]string, 0, len(steps))
-		for _, st := range steps {
-			names = append(names, st.Name)
-		}
-		fmt.Printf("New checkouts will run: %s\n", strings.Join(names, " → "))
+		fmt.Printf("New checkouts will run: %s\n", exec.StepLine(steps))
 	}
 }
 
-// addProjectTarget decides where a new project's checkout comes from: the
-// clone crew will make from a git URL — the default — or, with --path, a
-// checkout the user already has, taken absolute (the identity is read off
-// it later, from wherever crew is run). A bare path is refused so "the
-// default is a clone" stays true; a URL cannot update a project (the clone
-// is the fact, already registered as one path) or ride along with --path.
-// An existing project with --path is the update case — the caller's. Pure
-// but for the two stats: the adopted dir, and the clone dir.
+// addProjectTarget is crew add project's reading of its flags: a URL
+// clones (the default), --path adopts, a bare path is refused so "the
+// default is a clone" stays true, a URL cannot ride along with --path. The
+// rules both entry points share — the name (taken or not: a URL cannot
+// update a project, the clone is the fact), the clone dir, the adopted
+// directory — are project.NewTarget's. An existing project with --path is
+// the update case — the caller's.
 func addProjectTarget(a addProjectArgs, existing *project.Project) (path string, clone bool, err error) {
 	switch {
 	case a.url != "" && !exec.IsGitURL(a.url):
@@ -850,24 +847,15 @@ func addProjectTarget(a addProjectArgs, existing *project.Project) (path string,
 		if existing == nil && a.newPath == "" {
 			return "", false, errors.New("usage: crew add project <name> <url> | --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]")
 		}
-		if existing == nil {
-			if err := project.ValidateCheckoutDir(a.newPath); err != nil {
-				return "", false, fmt.Errorf("--path: %w", err)
-			}
-			if abs, err := filepath.Abs(a.newPath); err == nil {
-				return abs, false, nil
-			}
+		if existing != nil {
+			return a.newPath, false, nil
 		}
-		return a.newPath, false, nil
-	case existing != nil:
-		return "", false, fmt.Errorf("project '%s' already exists at %s — crew rm project %s first, or pick another name", a.name, existing.Path, a.name)
+		path, _, err := project.NewTarget(a.name, a.newPath)
+		return path, false, err
 	case a.newPath != "":
 		return "", false, fmt.Errorf("%s: a URL always clones to %s — drop --path to clone it, or drop the URL to adopt %s", a.name, project.ClonePath(a.name), a.newPath)
 	}
-	if err := project.CloneAllowed(a.name); err != nil {
-		return "", false, err
-	}
-	return project.ClonePath(a.name), true, nil
+	return project.NewTarget(a.name, "")
 }
 
 // applyProjectUpdate is `crew add project` on a project already in the

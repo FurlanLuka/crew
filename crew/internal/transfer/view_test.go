@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -125,7 +126,7 @@ func TestImportView_CloneAndNoRemoteCards(t *testing.T) {
 	v = press(t, v, "n")
 	got := plain(v.View())
 	if !strings.Contains(got, "project 2 of 3") || !strings.Contains(got, "remote    git@x:ai.git") || !strings.Contains(got, "✗ not here") ||
-		!strings.Contains(got, "→ "+tildify(project.ClonePath("checkout-api"))) || !strings.Contains(got, "y clones here — p adopts a checkout you have") ||
+		!strings.Contains(got, "→ "+config.Tildify(project.ClonePath("checkout-api"))) || !strings.Contains(got, "y clones here — p adopts a checkout you have") ||
 		!strings.Contains(got, "y clone  p adopt a path  e edit  n skip  esc stop") {
 		t.Errorf("clone card =\n%s", got)
 	}
@@ -368,7 +369,7 @@ func TestImportView_YClones(t *testing.T) {
 	target := project.ClonePath("infra-ops")
 	m, cmd := v.Update(keyRune("y"))
 	v = m.(ImportView)
-	if v.state != importStateApplying || v.pending.Action != actionClone || !strings.Contains(plain(v.View()), "Cloning infra-ops → "+tildify(target)) {
+	if v.state != importStateApplying || v.pending.Action != actionClone || !strings.Contains(plain(v.View()), "Cloning infra-ops → "+config.Tildify(target)) {
 		t.Fatalf("after y: state=%v pending=%+v\n%s", v.state, v.pending, plain(v.View()))
 	}
 	for _, msg := range runCmd(cmd) {
@@ -384,8 +385,8 @@ func TestImportView_YClones(t *testing.T) {
 		t.Errorf("record = %+v", p)
 	}
 	v = press(t, v, "n")
-	if got := plain(v.View()); !strings.Contains(got, "infra-ops     imported (cloned)   → "+target) {
-		t.Errorf("summary:\n%s", got)
+	if got := plain(v.View()); !strings.Contains(got, "infra-ops     imported (cloned)   → "+target) || !strings.Contains(got, "\n  crew check project infra-ops\n") {
+		t.Errorf("summary names the clone and the check that proves it:\n%s", got)
 	}
 }
 
@@ -453,7 +454,7 @@ func TestImportView_BlockedCard(t *testing.T) {
 	b := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "api"}, Remote: remote}}}
 	v := NewImportView("/x/b.json", b)
 	got := plain(v.View())
-	if !strings.Contains(got, "✗ "+tildify(project.ClonePath("api"))+" exists") || !strings.Contains(got, "p adopts it, or delete it first") ||
+	if !strings.Contains(got, "✗ "+config.Tildify(project.ClonePath("api"))+" exists") || !strings.Contains(got, "p adopts it, or delete it first") ||
 		!strings.Contains(got, "  p adopt a path  e edit  n skip  esc stop") || strings.Contains(got, "y clone") {
 		t.Fatalf("blocked card:\n%s", got)
 	}
