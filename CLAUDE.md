@@ -180,8 +180,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   null. `add workspace <ws> <p>[:<role>]…` creates the workspace when missing.
 - **Removal never deletes inline.** `cleanupWorktree` is the one teardown primitive: it
   renames the checkout into `~/.crew/trash` (`trash.Put`, which refuses anything outside
-  `WorkspacesDir`), prunes git, and a detached `rm -rf` clears the trash — a full build in a
-  checkout can be 100+ GB. `main` sweeps leftovers on every start; Settings shows the size and
+  `WorkspacesDir`), prunes git, deletes the `crew/<ws>/<wt>/<project>` branch (crew's
+  namespace; commits not on the base are counted into the debug log and stay in the reflog),
+  and a detached `rm -rf` clears the trash — a full build in a checkout can be 100+ GB. `main` sweeps leftovers on every start; Settings shows the size and
   can empty it. The TUI walks worktree sizes asynchronously and keeps them for the view's life.
 - **Check** — `crew check project <name>` proves a project reproduces from nothing: the
   target `check/<name>` (`CheckWorkspace` is reserved in `Create` only, so `ParseRef`

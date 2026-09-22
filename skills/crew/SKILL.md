@@ -284,8 +284,10 @@ crew migrate [--dry-run] [--yes]
 - `duplicate` is a new worktree of the same projects with the source's overrides copied
   before its runners start; ports are never copied.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
-  the background (a full Xcode build can be 100+ GB). Disk comes back a little later — `crew
-  trash` shows what is still clearing. `rm worktree check/<project>` removes a kept check.
+  the background (a full Xcode build can be 100+ GB), and its `crew/<ws>/<wt>/<project>`
+  branch is deleted from the repo (commits not on the base stay in the reflog). Disk comes
+  back a little later — `crew trash` shows what is still clearing. `rm worktree
+  check/<project>` removes a kept check.
 - `migrate` moves pre-2.0 flat workspaces to the nested layout: backs up, prints the plan,
   moves checkouts with `git worktree move`. Always `--dry-run` first and show the user the
   plan; `--yes` applies without the prompt.

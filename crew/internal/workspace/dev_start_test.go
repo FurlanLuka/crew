@@ -182,6 +182,9 @@ func TestRemove_TearsDownEveryWorktreesArtifacts(t *testing.T) {
 			t.Errorf("%s survived Remove", path)
 		}
 	}
+	if branches, _ := exec.RunGitCommand(project.Get("api").Path, "branch", "--list", "crew/ws/*"); strings.TrimSpace(branches) != "" {
+		t.Errorf("the worktrees' branches survived Remove: %q", branches)
+	}
 }
 
 // Ports survive restarts: the second start of a worktree binds the same ports

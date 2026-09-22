@@ -138,9 +138,13 @@ func TestRemoveWorktree(t *testing.T) {
 	if len(ws.Worktrees) != 1 {
 		t.Errorf("worktrees = %+v, want just the default left", ws.Worktrees)
 	}
-	// Git forgot it, and the checkout sits in the trash for the sweep.
+	// Git forgot it — the worktree and its branch — and the checkout sits
+	// in the trash for the sweep.
 	if list, _ := exec.RunGitCommand(project.Get("api").Path, "worktree", "list"); strings.Contains(list, "wrk2") {
 		t.Errorf("removed checkout still registered:\n%s", list)
+	}
+	if branches, _ := exec.RunGitCommand(project.Get("api").Path, "branch", "--list", BranchName(ref, "api")); strings.TrimSpace(branches) != "" {
+		t.Errorf("the worktree's branch should be deleted: %q", branches)
 	}
 	if !trashHolds(t, "api") {
 		t.Error("checkout should be in the trash")

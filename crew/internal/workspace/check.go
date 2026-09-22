@@ -12,7 +12,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
-	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
 )
@@ -213,16 +212,13 @@ func RemoveCheck(projName string) error {
 	return os.Remove(checkFile(projName))
 }
 
-// trashCheckTarget: dev artifacts gone, the checkout to the trash, the
-// scratch branch deleted, the target dir to the trash. Every step is a
+// trashCheckTarget: dev artifacts gone, the checkout to the trash with its
+// scratch branch (cleanupWorktree), the target dir to the trash. Every step is a
 // no-op on nothing, so callers need not ask what is there. The setup dir
 // is the caller's call — a pass keeps it, a removal does not.
 func trashCheckTarget(ref Ref) {
 	removeDevArtifacts(ref)
 	cleanupWorktree(ref, WorkspaceProject{Name: ref.Worktree})
-	if p := project.Get(ref.Worktree); p != nil {
-		exec.DeleteBranch(p.Path, BranchName(ref, ref.Worktree))
-	}
 	if _, err := trash.Put(WorktreeDir(ref)); err != nil {
 		debug.Log("trash", "%s: %v", WorktreeDir(ref), err)
 	}

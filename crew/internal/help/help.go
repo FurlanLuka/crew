@@ -432,7 +432,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Remove one worktree — its checkouts, dev session, logs and prompt. Refuses to remove the last worktree; remove the workspace instead. check/<project> removes a kept check.",
+					Description: "Remove one worktree — its checkouts (to the trash), their crew/<ws>/<wt>/<project> branches, dev session, logs and prompt. Commits not on the base stay in the repo's reflog. Refuses to remove the last worktree; remove the workspace instead. check/<project> removes a kept check.",
 					Usage:       "crew rm worktree <workspace>/<name>",
 					Examples:    []string{"crew rm worktree store-front/wrk3", "crew rm worktree check/signals"},
 				},

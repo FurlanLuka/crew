@@ -376,7 +376,11 @@ func Remove(name string) error {
 // cleanupWorktree is the single place destructive worktree teardown happens.
 // No-ops for direct-mode entries. The checkout is moved to the trash rather
 // than deleted — a full build inside can be 100+ GB — and git is told to
-// forget it; trash.Put refuses anything outside the workspaces tree.
+// forget it, branch included: crew/<ws>/<wt>/<project> is crew's namespace,
+// and a branch left behind per removed worktree is what `git branch` fills
+// up with. Commits not on the base stay in the canonical repo's reflog;
+// the count is logged so the log says what went. trash.Put refuses
+// anything outside the workspaces tree.
 func cleanupWorktree(ref Ref, wp WorkspaceProject) {
 	if IsDirect(wp) {
 		return
@@ -398,5 +402,10 @@ func cleanupWorktree(ref Ref, wp WorkspaceProject) {
 	}
 	if p != nil {
 		exec.PruneWorktrees(p.Path)
+		branch := BranchName(ref, wp.Name)
+		if n := exec.CommitsAhead(p.Path, DefaultBranch(p.Path), branch); n > 0 {
+			debug.Log("git", "%s: %d commits not on the base go with the branch — git reflog in %s has them", branch, n, p.Path)
+		}
+		exec.DeleteBranch(p.Path, branch)
 	}
 }

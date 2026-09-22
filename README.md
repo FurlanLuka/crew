@@ -217,7 +217,9 @@ checked as on the first.
 ### Removal
 
 `crew rm worktree` returns at once: the checkout moves to `~/.crew/trash` and a background
-delete clears it (a full build can be 100 GB). `crew trash` shows what is still clearing.
+delete clears it (a full build can be 100 GB); its `crew/<ws>/<wt>/<project>` branch is
+deleted from the repo (commits not on the base stay in the reflog). `crew trash` shows what
+is still clearing.
 `crew rm project <name> --purge` also trashes a clone crew made from a URL — refused while a
 workspace still lists the project.
 
