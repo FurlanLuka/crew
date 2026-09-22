@@ -553,10 +553,12 @@ func TestRemoveProject_DropsItsIssues(t *testing.T) {
 }
 
 // shortCeiling keeps a test that needs a "never listened" verdict from
-// waiting the real minute.
+// waiting the real minute. Eight seconds, not three: the shell-start cap is
+// twice the ceiling, and under the whole suite's load an interactive shell
+// has taken more than six to take its command.
 func shortCeiling(t *testing.T) {
 	t.Helper()
 	prev := SmokeCeiling
-	SmokeCeiling = 3 * time.Second
+	SmokeCeiling = 8 * time.Second
 	t.Cleanup(func() { SmokeCeiling = prev })
 }

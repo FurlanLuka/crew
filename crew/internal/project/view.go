@@ -2,7 +2,6 @@ package project
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -11,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 // ── Messages ──
@@ -276,7 +276,7 @@ func (v View) handleAddFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Auto-detect name from path
 		path := strings.TrimSpace(v.pathInput.Value())
 		if path != "" && v.nameInput.Value() == "" {
-			v.nameInput.SetValue(filepath.Base(expandHome(path)))
+			v.nameInput.SetValue(filepath.Base(config.ExpandHome(path)))
 		}
 		v.nameInput.Focus()
 		return v, v.nameInput.Cursor.BlinkCmd()
@@ -331,10 +331,9 @@ func (v View) submitForm() tea.Cmd {
 			return errMsg{fmt.Errorf("path cannot be empty")}
 		}
 
-		path = expandHome(path)
-		info, err := os.Stat(path)
-		if err != nil || !info.IsDir() {
-			return errMsg{fmt.Errorf("directory not found: %s", path)}
+		path = config.ExpandHome(path)
+		if err := ValidateCheckoutDir(path); err != nil {
+			return errMsg{err}
 		}
 
 		absPath, err := filepath.Abs(path)
@@ -469,12 +468,4 @@ func loadProjects() tea.Msg {
 		return errMsg{err}
 	}
 	return projectsLoadedMsg{projects}
-}
-
-func expandHome(path string) string {
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
-	}
-	return path
 }

@@ -373,3 +373,73 @@ func TestClone_RemoteHeadBranch_DeleteBranch(t *testing.T) {
 		t.Error("a failed clone leaves no directory")
 	}
 }
+
+// RepoKey folds the transports one repo can be named by into one key, so
+// import matches a clone made over ssh against a bundle written over https.
+func TestRepoKey(t *testing.T) {
+	same := []string{
+		"git@github.com:o/r.git",
+		"https://github.com/o/r",
+		"https://github.com/o/r.git",
+		"ssh://git@github.com/o/r.git",
+		"https://GitHub.com/o/r/",
+		"https://user:token@github.com/o/r.git",
+	}
+	for _, u := range same {
+		if got := RepoKey(u); got != "github.com/o/r" {
+			t.Errorf("RepoKey(%q) = %q", u, got)
+		}
+	}
+	if RepoKey("https://github.com/o/R") == RepoKey("https://github.com/o/r") {
+		t.Error("the path keeps its case")
+	}
+	// A port is transport; the scp form needs no user; an absolute scp path
+	// keeps one slash.
+	for _, pair := range [][2]string{
+		{"ssh://git@h:2222/o/r.git", "git@h:o/r.git"},
+		{"h:o/r.git", "git@h:o/r.git"},
+		{"git@h:/srv/repo.git", "ssh://h/srv/repo"},
+	} {
+		if RepoKey(pair[0]) != RepoKey(pair[1]) {
+			t.Errorf("RepoKey(%q)=%q != RepoKey(%q)=%q", pair[0], RepoKey(pair[0]), pair[1], RepoKey(pair[1]))
+		}
+	}
+	if got := RepoKey("https://user@host"); got != "host" {
+		t.Errorf("userinfo without a path = %q", got)
+	}
+	if got := RedactURL("https://user:token@github.com/o/r.git"); got != "https://github.com/o/r.git" {
+		t.Errorf("RedactURL = %q", got)
+	}
+	if got := RedactURL("git@github.com:o/r.git"); got != "git@github.com:o/r.git" {
+		t.Errorf("RedactURL leaves the scp form: %q", got)
+	}
+	if got := RepoKey("file:///tmp/x.git"); got != "/tmp/x" {
+		t.Errorf("file url = %q", got)
+	}
+	if got := RepoKey("/tmp/bare.git"); got != "/tmp/bare" {
+		t.Errorf("bare path = %q", got)
+	}
+	if got := RepoKey(""); got != "" {
+		t.Errorf("empty = %q", got)
+	}
+}
+
+func TestOriginURL(t *testing.T) {
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+	seed := initGitRepo(t)
+	if got := OriginURL(seed); got != "" {
+		t.Errorf("a plain repo has no origin: %q", got)
+	}
+	clone := filepath.Join(t.TempDir(), "clone")
+	if err := Clone("file://"+seed, clone); err != nil {
+		t.Fatal(err)
+	}
+	if got := OriginURL(clone); got != "file://"+seed {
+		t.Errorf("origin = %q", got)
+	}
+	if got := OriginURL(filepath.Join(t.TempDir(), "missing")); got != "" {
+		t.Errorf("a missing dir has no origin: %q", got)
+	}
+}

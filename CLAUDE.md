@@ -14,11 +14,17 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   **bindings**, an optional **setup** command and an optional **env command** (`EnvCmd`,
   `--env-cmd`): `exec.SetupSteps(dir, setup, envCmd)` = `mise install?` → the install →
   `env: <cmd>`, so the env command is one more setup step with the same streaming, evidence
-  and failure rules; the `.env` copy at checkout is the baseline it overwrites. The path is
-  a repo the user has, or — `add project <name> <url>` (`exec.IsGitURL`: full URLs only) —
-  a clone crew made under `config.ProjectsDir` (`~/.crew/projects/<name>`,
-  `project.CrewOwned`); `rm project --purge` trashes only those (`purgeAllowed`: not a
-  member anywhere, no check kept). `trash.Put` accepts `WorkspacesDir` or `ProjectsDir`.
+  and failure rules; the `.env` copy at checkout is the baseline it overwrites. **The git
+  remote is the identity, the path is where crew keeps the clone.** `add project <name>
+  <url>` (`exec.IsGitURL`: full URLs only) clones under `config.ProjectsDir`
+  (`~/.crew/projects/<name>`, `project.CrewOwned`); `--path=<dir>` adopts a checkout the
+  user already has (a bare path is refused — `addProjectTarget`). The remote is never
+  stored: `project.RemoteOf(p)` = `exec.OriginURL(p.Path)`, read when asked (`ls projects`
+  third column, export, import matching), so it cannot drift from the clone; equality is by
+  `exec.RepoKey` (transport, `user@`, `.git`, trailing `/` stripped, scp form folded, host
+  lower-cased). `project.CloneAllowed(name)` is the one clone-dir rule for add and import.
+  `rm project --purge` trashes only crew-owned clones (`purgeAllowed`: not a member
+  anywhere, no check kept). `trash.Put` accepts `WorkspacesDir` or `ProjectsDir`.
 - **Workspace** — membership: which projects, with which roles. Pure config, nothing of its
   own on disk. `~/.crew/workspaces/<ws>.json`.
 - **Worktree** — one working copy of a workspace's projects, at
@@ -60,14 +66,30 @@ checkout-api / signals / admin / infra-ops set — never a real product.
 - **Ports** are always allocated by crew and remembered per worktree (`Worktree.Ports`), so a
   restart lands on the same ones. The configured `--port` is reference only. `--proxy` is
   opt-in; default URLs are `localhost:<port>`.
-- **Bundle** — `crew export` writes projects (pool entries + origin remote) and workspace
-  *membership* (projects, roles, modes) to one JSON file; never worktrees, ports or
-  overrides. `crew import` bare is the wizard (one card per item); `--plan` prints
-  `transfer.PlanRows`; `project <name> [--path|--clone[=dir]|--replace|--name|--setup]` and
-  `workspace <name>` are `transfer.ApplyProject` / `ApplyWorkspace` — the card's decision as
-  flags; `--all [--clone] [--replace]` takes the bundle. A sibling `Suggest` found beats a
-  bare `--clone` (an explicit `--clone=<dir>` is honoured); the existence check runs before
-  any clone so a refusal leaves nothing behind; `--all` never guesses. A workspace import
+- **Bundle** (`Version` 2) — `crew export` writes projects by remote (`Exported{Project
+  with Path blanked, Remote}` — no path; `WithoutRemote` names the config-only ones, said
+  through `human` and as `no_remote` in `--json`) and workspace *membership* (projects,
+  roles, modes) to one JSON file; never worktrees, ports or overrides. A v1 bundle still
+  reads (its path is only a hint in a `missing` row); a v1 crew refuses a v2 bundle.
+  `crew import` bare is the wizard (one card per item); `--plan` prints
+  `transfer.PlanRows` — `exists` (same remote by `RepoKey`, or nothing to compare) ·
+  `other remote` · `clone` (into `ClonePath(name)`) · `blocked` (that dir is taken) ·
+  `missing` (no remote) · `ready`/`needs`. `Inspect` reads the pool once
+  (`ProjectStatus{Exists, Local, LocalRemote, CloneDirTaken}`). **One decision for the CLI
+  and the wizard:** `decide(p, remote, st, opts)` (pure, `decide.go`) → `Keep | Record |
+  Clone | Adopt` — exists without `--replace` keeps; a given `--path` adopts; same remote
+  records on the local path (config sync, no clone); no remote refuses; else clone under
+  the imported name — and `applyDecision` runs it: name validated first, `CloneAllowed`,
+  an other-remote replace refused while `WorkspacesWith` is non-empty, then clone, then
+  record. `ApplyProject(b, plan, name, ProjectOptions{Path, Replace, Name, Setup, EnvCmd})`
+  and the wizard's `y`/`r`/`p` both go through them; `classify(st, remote) situation`
+  (`decide.go`) is the one reading behind the plan row, the card's status line, keys and
+  guards, and `decide`'s config-sync rule (a config-only export — no remote in the bundle —
+  of a project here records like a same-remote one). `Inspect` also records each local
+  project's workspaces (`membership()`, the workspace files read once); `--all` refuses up
+  front on `Refusals(b, plan, o)` — blocked or missing rows, and under `--replace` an
+  `other remote` row for a project in a workspace — and clones nothing until the list is
+  clean; `AllRows` is its loop, a failed row exits 1. A workspace import
   (`ImportWorkspace(m, CheckoutOptions) (ref, started, err)`) is `Create` + `AddProjects`
   — the add-worktree pipeline, runners started on `main`, a pre-flight failure takes the
   empty workspace back; `WorkspaceRow(name, started, health, waited, err)` is the row; `BaseStatusesFor`/`PullBasesFor` give the callers (CLI, wizard card

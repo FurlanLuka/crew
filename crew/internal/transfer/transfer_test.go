@@ -64,7 +64,9 @@ func repoWithOrigin(t *testing.T, tmp, name string) (remote, clone string) {
 	return remote, clone
 }
 
-func TestCollect_RecordsRemoteWhenThereIsOne(t *testing.T) {
+// A bundle names a project by its remote and carries no path — the path
+// is this machine's. A project without a remote still exports.
+func TestCollect(t *testing.T) {
 	tmp := setupTestConfig(t)
 	remote, clone := repoWithOrigin(t, tmp, "api")
 	project.Add(project.Project{Name: "api", Path: clone, DevServers: []project.DevServer{{Name: "api", Port: 3000}}})
@@ -81,8 +83,75 @@ func TestCollect_RecordsRemoteWhenThereIsOne(t *testing.T) {
 	if len(b.Projects) != 2 || b.Projects[0].Remote != remote || b.Projects[1].Remote != "" {
 		t.Errorf("projects = %+v", b.Projects)
 	}
+	for _, e := range b.Projects {
+		if e.Path != "" {
+			t.Errorf("a bundle carries no path: %+v", e)
+		}
+	}
 	if len(b.Workspaces) != 1 || b.Workspaces[0].Projects[0].Role != "backend" {
 		t.Errorf("workspaces = %+v", b.Workspaces)
+	}
+	if got := WithoutRemote(b); len(got) != 1 || got[0] != "local" {
+		t.Errorf("WithoutRemote = %v", got)
+	}
+	path := filepath.Join(tmp, "b.json")
+	if err := Write(path, b); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), `"path"`) || !strings.Contains(string(data), `"version": 2`) {
+		t.Errorf("bundle on disk:\n%s", data)
+	}
+}
+
+// The bundle's JSON, exactly — the wire format other machines read.
+func TestWrite_Golden(t *testing.T) {
+	tmp := setupTestConfig(t)
+	b := Bundle{Version: Version, Projects: []Exported{
+		{Project: project.Project{Name: "store-api", DevServers: []project.DevServer{{Name: "store-api", Port: 3000, Command: "npm start"}}, Setup: "npm ci"}, Remote: "git@x:store-api.git"},
+		{Project: project.Project{Name: "notes"}},
+	}, Workspaces: []Membership{{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api", Role: "api"}}}}}
+	path := filepath.Join(tmp, "b.json")
+	if err := Write(path, b); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	want := strings.Join([]string{
+		"{",
+		`  "version": 2,`,
+		`  "projects": [`,
+		"    {",
+		`      "name": "store-api",`,
+		`      "dev_servers": [`,
+		"        {",
+		`          "name": "store-api",`,
+		`          "port": 3000,`,
+		`          "command": "npm start"`,
+		"        }",
+		"      ],",
+		`      "setup": "npm ci",`,
+		`      "remote": "git@x:store-api.git"`,
+		"    },",
+		"    {",
+		`      "name": "notes"`,
+		"    }",
+		"  ],",
+		`  "workspaces": [`,
+		"    {",
+		`      "name": "store-front",`,
+		`      "projects": [`,
+		"        {",
+		`          "name": "store-api",`,
+		`          "role": "api"`,
+		"        }",
+		"      ]",
+		"    }",
+		"  ]",
+		"}",
+		"",
+	}, "\n")
+	if string(data) != want {
+		t.Errorf("bundle =\n%s\nwant\n%s", data, want)
 	}
 }
 
@@ -117,94 +186,25 @@ func TestWriteRead(t *testing.T) {
 	}
 
 	os.WriteFile(path, []byte(`{"version": 99}`), 0o644)
-	if _, err := Read(path); err == nil || !strings.Contains(err.Error(), "version 99") {
+	if _, err := Read(path); err == nil || !strings.Contains(err.Error(), "version 99") || !strings.Contains(err.Error(), "run crew update") {
 		t.Errorf("future version: %v", err)
+	}
+	// A v1 bundle carried paths; they read, and are only ever a hint.
+	os.WriteFile(path, []byte(`{"version":1,"projects":[{"name":"api","path":"/Users/other/api","remote":"git@x:api.git"},{"name":"old","path":"/Users/other/old"}],"workspaces":[]}`), 0o644)
+	old, err := Read(path)
+	if err != nil {
+		t.Fatalf("v1 bundle: %v", err)
+	}
+	rows := PlanRows(old, Inspect(old))
+	if rows[0].Status != StatusClone || rows[0].Detail != project.ClonePath("api") {
+		t.Errorf("v1 project with a remote clones to crew's dir: %+v", rows[0])
+	}
+	if rows[1].Status != StatusMissing || !strings.Contains(rows[1].Detail, "was at /Users/other/old") {
+		t.Errorf("v1 project without a remote is missing, with its old path as the hint: %+v", rows[1])
 	}
 	os.WriteFile(path, []byte(`{"name": "not a bundle"}`), 0o644)
 	if _, err := Read(path); err == nil || !strings.Contains(err.Error(), "not a crew export") {
 		t.Errorf("not a bundle: %v", err)
-	}
-}
-
-func TestInspectAndSuggest(t *testing.T) {
-	tmp := setupTestConfig(t)
-	here := filepath.Join(tmp, "dev", "api")
-	os.MkdirAll(here, 0o755)
-	os.MkdirAll(filepath.Join(tmp, "dev", "web"), 0o755)
-	project.Add(project.Project{Name: "api", Path: here})
-
-	b := Bundle{Projects: []Exported{
-		{Project: project.Project{Name: "api", Path: here}},
-		{Project: project.Project{Name: "web", Path: "/elsewhere/web"}},
-		{Project: project.Project{Name: "gone", Path: "/elsewhere/gone"}},
-	}, Workspaces: []Membership{{Name: "ws"}}}
-	workspace.Create("ws")
-
-	plan := Inspect(b)
-	if !plan.Projects[0].Exists || !plan.Projects[0].PathExists || plan.Projects[0].Local == nil {
-		t.Errorf("api: %+v", plan.Projects[0])
-	}
-	if plan.Projects[1].PathExists || plan.Projects[1].Suggested != filepath.Join(tmp, "dev", "web") {
-		t.Errorf("web: %+v", plan.Projects[1])
-	}
-	if plan.Projects[2].Suggested != "" {
-		t.Errorf("gone should have no suggestion: %+v", plan.Projects[2])
-	}
-	if !plan.Workspaces[0].Exists {
-		t.Error("ws exists locally")
-	}
-
-	// The latest anchor wins: an accepted import beside which the next one sits.
-	os.MkdirAll(filepath.Join(tmp, "other", "web"), 0o755)
-	if got := Suggest("/x/web", []string{here, filepath.Join(tmp, "other", "api")}); got != filepath.Join(tmp, "other", "web") {
-		t.Errorf("Suggest = %q", got)
-	}
-}
-
-func TestCloneTarget(t *testing.T) {
-	tmp := setupTestConfig(t)
-	if got := CloneTarget("/x/web", []string{"/a/api", filepath.Join(tmp, "dev", "api")}); got != filepath.Join(tmp, "dev", "web") {
-		t.Errorf("anchored = %q", got)
-	}
-	if got := CloneTarget(filepath.Join(tmp, "web"), nil); got != filepath.Join(tmp, "web") {
-		t.Errorf("parent exists = %q", got)
-	}
-	// Nowhere else: crew's own projects dir, never a refusal on a fresh machine.
-	if got := CloneTarget("/nope/nowhere/web", nil); got != project.ClonePath("web") {
-		t.Errorf("no anchor, no parent = %q", got)
-	}
-	os.MkdirAll(project.ClonePath("web"), 0o755)
-	if got := CloneTarget("/nope/nowhere/web", nil); got != "" {
-		t.Errorf("projects dir taken = %q", got)
-	}
-	os.RemoveAll(project.ClonePath("web"))
-	// A sibling already beside the anchor is a suggestion, not a clone target.
-	os.MkdirAll(filepath.Join(tmp, "dev", "web"), 0o755)
-	if got := CloneTarget("/nope/nowhere/web", []string{filepath.Join(tmp, "dev", "api")}); got != project.ClonePath("web") {
-		t.Errorf("beside exists, no parent = %q", got)
-	}
-	if got := CloneTarget(filepath.Join(tmp, "web"), []string{filepath.Join(tmp, "dev", "api")}); got != filepath.Join(tmp, "web") {
-		t.Errorf("beside exists, parent exists = %q", got)
-	}
-	os.MkdirAll(filepath.Join(tmp, "web"), 0o755)
-	if got := CloneTarget(filepath.Join(tmp, "web"), nil); got != project.ClonePath("web") {
-		t.Errorf("exported exists → own dir = %q", got)
-	}
-}
-
-func TestClone(t *testing.T) {
-	tmp := setupTestConfig(t)
-	remote, _ := repoWithOrigin(t, tmp, "api")
-	target := filepath.Join(tmp, "new", "api")
-	if err := Clone(remote, target); err != nil {
-		t.Fatalf("Clone: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
-		t.Error("no checkout at target")
-	}
-	err := Clone(filepath.Join(tmp, "missing.git"), filepath.Join(tmp, "new", "x"))
-	if err == nil || !strings.HasPrefix(err.Error(), "git clone: ") {
-		t.Errorf("bad remote: %v", err)
 	}
 }
 
@@ -342,18 +342,73 @@ func TestWorkspaceRow(t *testing.T) {
 	}
 }
 
-func TestMissingPaths(t *testing.T) {
+// Inspect matches by remote key: a legacy entry (no stored remote) whose
+// clone points at the bundle's repo is the same project over any
+// transport; a local checkout without an origin is not.
+func TestInspect(t *testing.T) {
 	tmp := setupTestConfig(t)
-	here := filepath.Join(tmp, "here")
-	os.MkdirAll(here, 0o755)
-	project.Add(project.Project{Name: "known", Path: "/gone/known"})
+	remote, clone := repoWithOrigin(t, tmp, "api")
+	project.Add(project.Project{Name: "api", Path: clone})
+	plain := filepath.Join(tmp, "repos", "plain")
+	initRepo(t, plain)
+	project.Add(project.Project{Name: "plain", Path: plain})
+	os.MkdirAll(project.ClonePath("taken"), 0o755)
+	workspace.Create("ws")
+
 	b := Bundle{Projects: []Exported{
-		{Project: project.Project{Name: "known", Path: "/gone/known"}}, // kept local: never blocks --all
-		{Project: project.Project{Name: "present", Path: here}},
-		{Project: project.Project{Name: "absent", Path: "/gone/absent"}},
-	}}
-	got := MissingPaths(b, Inspect(b))
-	if len(got) != 1 || got[0].Name != "absent" {
-		t.Errorf("MissingPaths = %+v, want just absent", got)
+		{Project: project.Project{Name: "api"}, Remote: "file://" + remote},
+		{Project: project.Project{Name: "plain"}, Remote: "git@x:plain.git"},
+		{Project: project.Project{Name: "web"}, Remote: "git@x:web.git"},
+		{Project: project.Project{Name: "taken"}, Remote: "git@x:taken.git"},
+		{Project: project.Project{Name: "gone"}},
+	}, Workspaces: []Membership{{Name: "ws"}}}
+	plan := Inspect(b)
+	api := plan.Projects[0]
+	if !api.Exists || api.Local == nil || !api.SameRemote(b.Projects[0].Remote) {
+		t.Errorf("api: %+v", api)
+	}
+	if !api.SameRemote(remote) {
+		t.Error("the file:// spelling and the bare path are one repo")
+	}
+	if p := plan.Projects[1]; !p.Exists || p.SameRemote("git@x:plain.git") || p.LocalRemote != "" {
+		t.Errorf("plain: %+v", p)
+	}
+	if p := plan.Projects[2]; p.Exists || p.CloneDirTaken {
+		t.Errorf("web: %+v", p)
+	}
+	if p := plan.Projects[3]; p.Exists || !p.CloneDirTaken {
+		t.Errorf("taken: %+v", p)
+	}
+	if p := plan.Projects[4]; p.Exists {
+		t.Errorf("gone: %+v", p)
+	}
+	if !plan.Workspaces[0].Exists || !plan.Known["api"] || plan.Known["web"] {
+		t.Errorf("plan = %+v", plan)
+	}
+	// A local project's workspaces are on its status, read once.
+	workspace.AddProject("ws", "api", "api", "", workspace.CheckoutOptions{})
+	if got := Inspect(b).Projects[0].Workspaces; len(got) != 1 || got[0] != "ws" {
+		t.Errorf("Workspaces = %v", got)
+	}
+
+	refused := Refusals(b, plan, ProjectOptions{})
+	if len(refused) != 2 || refused[0].Name != "taken" || refused[0].Status != StatusBlocked || refused[1].Name != "gone" || refused[1].Status != StatusMissing {
+		t.Errorf("Refusals = %+v", refused)
+	}
+}
+
+// Two empties are not the same repo; a differing key is another one.
+func TestProjectStatus_SameRemote(t *testing.T) {
+	if (ProjectStatus{Exists: true}).SameRemote("") {
+		t.Error("nothing to compare is not a match")
+	}
+	if (ProjectStatus{Exists: true, LocalRemote: "git@github.com:o/r.git"}).SameRemote("https://github.com/o/r") != true {
+		t.Error("ssh and https name one repo")
+	}
+	if (ProjectStatus{Exists: true, LocalRemote: "git@github.com:o/r.git"}).SameRemote("git@github.com:o/other.git") {
+		t.Error("another repo")
+	}
+	if (ProjectStatus{Exists: false, LocalRemote: "git@github.com:o/r.git"}).SameRemote("git@github.com:o/r.git") {
+		t.Error("not here is not the same as here")
 	}
 }

@@ -46,7 +46,7 @@ through crew — never start a server by hand, never `-f`.
 ```
 crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>
 crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev|installing][\t<recorded failure>]   --json adds issues[], installing
-crew ls projects                                           <name>\t<path>
+crew ls projects                                           <name>\t<path>\t<remote|->
 crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<server|->\t<template>[\t<resolved value>]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
 crew show <workspace>[/<worktree>]                         <name>\t<path>\t<role>
@@ -75,7 +75,8 @@ crew debug [--tail=<n>]                                    <date> <time> [<categ
 ## 3. Projects and dev servers
 
 ```
-crew add project <name> <path-or-url> [--setup=<cmd>] [--env-cmd=<cmd>]
+crew add project <name> <url> [--setup=<cmd>] [--env-cmd=<cmd>]                  clones into ~/.crew/projects/<name>
+crew add project <name> --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]           adopts a checkout you already have
 crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]         re-run on an existing project updates it
 crew rm project <name> [--purge]
 crew check project <name> [--pull] [--no-smoke] [--wait]        one runner; crew setup status check/<name> watches it
@@ -86,12 +87,15 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
 
 - Project names: `a-z 0-9 -`, and not `worktree`, `workspace`, `url`, `host`, `port` — they
   are token words.
-- A **path** registers a repo that is already there. A **git URL** (`git@…`, `https://…`,
-  `ssh://…`, `file://…` — the full URL, never `owner/repo`) is cloned into
-  `~/.crew/projects/<name>` and that is the project's path; `crew rm project <name>
-  --purge` trashes that clone (never a path of yours), refused while a workspace still
-  lists the project or a check of it is kept. `gh repo list <owner> --json name,url` is
-  where URLs come from when the user has `gh`.
+- **A project is its git remote.** The default is a **git URL** (`git@…`, `https://…`,
+  `ssh://…`, `file://…` — the full URL, never `owner/repo`): cloned into
+  `~/.crew/projects/<name>`, and the remote is what names the project in `ls projects`,
+  in an export, on another machine. A bare path is refused — a checkout you already have
+  is adopted with **`--path=<dir>`** (its own `origin` is its identity; one with no
+  remote exports as config only). `crew rm project <name> --purge` trashes a clone crew
+  made (never a path of yours), refused while a workspace still lists the project or a
+  check of it is kept. `gh repo list <owner> --json name,url` is where URLs come from
+  when the user has `gh`.
 - **`crew check project <name>`** proves the config reproduces from nothing: a fresh
   checkout of the canonical repo through the setup runner (mise → install → `env: <cmd>` →
   a smoke of its own servers) as the target `check/<name>`. Pass → the checkout, branch and
@@ -357,36 +361,48 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
 
 ```
 crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json
-crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
+crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
                                                          <project|workspace>\t<name>\t<status|outcome>\t<detail>
 ```
 
-- A bundle carries projects (path, dev servers, bindings, setup, origin remote) and workspace
-  **membership** (projects, roles, modes). Never worktrees, ports or overrides.
+- A bundle carries projects by **git remote** (dev servers, bindings, setup, env command —
+  no path) and workspace **membership** (projects, roles, modes). Never worktrees, ports or
+  overrides. A project whose checkout has no remote still exports, as config only: `export`
+  says so (`<name> has no git remote — it cannot be cloned on another machine`; `--json`
+  lists them under `no_remote`).
 - Without flags `export` is a picker: tick projects, then the workspaces those ticks fully
   cover. With `--projects`, every workspace named must be covered by them.
-- Bare, `import` is a wizard the user drives: `y` import, `e` edit name/path/setup, `c` clone
-  the remote (the path field opens prefilled with crew's guess, enter takes it, or type
-  another), `n` skip, `r` replace one already here; then `y` creates each workspace the way
-  `crew add worktree` does — the card shows the runners' table until they are done. Every
-  `y` is applied at once; `esc` keeps what was done.
+- Bare, `import` is a wizard the user drives: `y` clone into `~/.crew/projects/<name>`, `p`
+  adopt a checkout already on this machine (one field, the path), `e` edit name/setup/env,
+  `n` skip, `r` replace one already here; then `y` creates each workspace the way `crew add
+  worktree` does — the card shows the runners' table until they are done. Every `y` is
+  applied at once; `esc` keeps what was done.
 - **You drive it with modes.** `--plan` first: one row per item —
-  `project\t<name>\texists|path exists|suggested|clone|missing\t<path>` (`suggested` = a
-  sibling found beside a repo crew knows, taken automatically — even under `--clone`;
-  `clone` = where `--clone` would put it; `missing` = give `--path` or `--clone=<dir>`) and
-  `workspace\t<name>\texists|ready|needs\t<members>`. Then per item:
-  `crew import <file> project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>]`
+  `project\t<name>\texists|other remote|clone|blocked|missing\t<detail>` (`exists` = here
+  under the same remote, nothing to do; `other remote` = the name is here but its checkout
+  points elsewhere, detail names it; `clone` = not here, detail is where the clone lands;
+  `blocked` = that dir is already taken — `--path` adopts it, or delete it; `missing` = no
+  remote in the bundle — `--path=<dir>` is the only way, an old bundle's path is shown as
+  the hint) and `workspace\t<name>\texists|ready|needs\t<members>`. Then per item:
+  `crew import <file> project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>]`
   prints the same row with the outcome — `imported`, `imported (cloned)`, `replaced`,
-  `replaced (cloned)` — and the path; a name already in the pool needs `--replace` (refused
-  before anything is cloned). `crew import <file> workspace <name> [--pull] [--no-install]
+  `replaced (cloned)` — and the path; a name already in the pool needs `--replace`: same
+  remote swaps the config and keeps the checkout, another remote clones fresh (refused
+  while a workspace still has the project — its worktrees hang off the old checkout). A
+  repo you already have on disk is cloned a second time unless you `--path` it — that is
+  the trade, not a bug. `crew import <file> workspace <name> [--pull] [--no-install]
   [--no-smoke] [--wait]` creates it once every member is in the pool — **exactly the way
   `crew add worktree` makes one**: the base table (`--pull` fast-forwards the local bases
   first; say so when it prints `behind`), then one runner per project in the background;
   the row says `created\tinstalling — crew setup status <name>/main` and you poll that.
   With `--wait` the row carries the verdict: `created … N issue(s) recorded — crew fix
-  <name>/main --print`, exit 1. `crew import <file> --all [--clone] [--replace] [--pull]
-  …` does the whole bundle: new items only unless `--replace`; missing paths refuse the run
-  unless `--clone`; never guesses. Output rows `<kind>\t<name>\t<outcome>\t<detail>`.
+  <name>/main --print`, exit 1. `crew import <file> --all [--replace] [--pull] …` does the
+  whole bundle: every project not here is cloned, the ones here kept unless `--replace`;
+  any `blocked` or `missing` row — and, under `--replace`, an `other remote` row for a
+  project a workspace still has — refuses the run up front, before a single clone; a
+  project that fails on the way is a `failed` row and exit 1. Output rows
+  `<kind>\t<name>\t<outcome>\t<detail>`. A replace on a project here whose bundle entry
+  has no remote (a config-only export) swaps the config and keeps the checkout.
 
 ## 9. Housekeeping
 
@@ -466,14 +482,17 @@ crew help [<command>] [<subcommand>] [--json]
 **"Set crew up on my other machine"**
 1. Here: `crew export ~/Desktop/crew.json --all` (or the picker, user-run).
 2. There: `crew import ~/Desktop/crew.json --plan` — read every row. Then per project:
-   `path exists`/`suggested` → `crew import … project <name>`; `clone` → `… --clone`;
-   `missing` → ask where the repo is or should go, then `--path=` or `--clone=<dir>`;
-   `exists` → leave it, or `--replace` if the user wants the bundle's servers and bindings.
+   `clone` → `crew import … project <name>` (it clones into `~/.crew/projects/<name>`; if
+   the user already has that repo checked out, `--path=<dir>` adopts it instead);
+   `blocked` → `--path=<dir>` for the dir that is there, or have the user delete it;
+   `missing` → ask where the repo is, then `--path=`; `exists` → leave it, or `--replace`
+   if the user wants the bundle's servers and bindings; `other remote` → ask which repo is
+   right — `--replace` clones the bundle's.
    Then `crew import … workspace <name> --pull` for each `ready` one — it makes the `main`
    worktree the way `add worktree` does (base table, then the runners in the background)
    and returns; poll `crew setup status <name>/main` and act on the first `✗` while the
-   rest install; relay the final table and any `crew fix … --print` line. `--all --clone
-   --pull` is the one-shot when every row is plain; add `--wait` to have it block.
+   rest install; relay the final table and any `crew fix … --print` line. `--all --pull` is
+   the one-shot when every row is `clone`/`exists`/`ready`; add `--wait` to have it block.
 
 **"Disk is full"**
 1. `crew trash` — anything still clearing? `crew trash empty` finishes it now.
@@ -482,7 +501,8 @@ crew help [<command>] [<subcommand>] [--json]
 4. `crew rm worktree <ws>/<wt>` for one that is done — returns at once, clears in background.
 
 **"Add this repo and make sure it runs"** (a URL, or a pick from `gh repo list`)
-1. `crew add project <name> <url> [--setup=…] [--env-cmd=…]` — clones to `~/.crew/projects/<name>`.
+1. `crew add project <name> <url> [--setup=…] [--env-cmd=…]` — clones to `~/.crew/projects/<name>`
+   (a checkout the user already has: `--path=<dir>` instead).
 2. Read the clone's README / Makefile / package.json / pyproject / mise.toml; `crew dev add
    <name> --name=… --port=… --cmd=…` per server, `--setup` / `--env-cmd` when the lockfile
    alone is not the answer.

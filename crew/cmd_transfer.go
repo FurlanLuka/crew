@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -106,6 +107,12 @@ func cmdExport() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	// A bundle without a remote is still a config backup; say what it
+	// cannot do on another machine.
+	noRemote := transfer.WithoutRemote(b)
+	for _, name := range noRemote {
+		fmt.Fprintf(human, "%s has no git remote — it cannot be cloned on another machine\n", name)
+	}
 	if jsonOutput {
 		if projNames == nil {
 			projNames = []string{}
@@ -113,7 +120,10 @@ func cmdExport() {
 		if wsNames == nil {
 			wsNames = []string{}
 		}
-		printJSON(map[string]any{"file": a.file, "projects": projNames, "workspaces": wsNames})
+		if noRemote == nil {
+			noRemote = []string{}
+		}
+		printJSON(map[string]any{"file": a.file, "projects": projNames, "workspaces": wsNames, "no_remote": noRemote})
 		return
 	}
 	fmt.Printf("Wrote %s — %s\n", a.file, transfer.CountPhrase(len(b.Projects), len(b.Workspaces)))
@@ -162,14 +172,12 @@ func parseImportArgs(args []string) (importArgs, error) {
 			a.wait = true
 		case arg == "--all":
 			a.all = true
-		case arg == "--clone":
-			a.project.Clone = true
-		case strings.HasPrefix(arg, "--clone="):
-			a.project.Clone, a.project.CloneTo = true, strings.TrimPrefix(arg, "--clone=")
+		case arg == "--clone" || strings.HasPrefix(arg, "--clone="):
+			return a, errors.New("clone is the default now; --path=<dir> adopts a checkout you already have")
 		case arg == "--replace":
 			a.project.Replace = true
 		case strings.HasPrefix(arg, "--path="):
-			a.project.Path = strings.TrimPrefix(arg, "--path=")
+			a.project.Path = config.ExpandHome(strings.TrimPrefix(arg, "--path="))
 		case strings.HasPrefix(arg, "--name="):
 			a.project.Name = strings.TrimPrefix(arg, "--name=")
 		case strings.HasPrefix(arg, "--setup="):
@@ -203,17 +211,17 @@ func parseImportArgs(args []string) (importArgs, error) {
 	if modes > 1 {
 		return a, errors.New("one of --plan, --all, project <name>, workspace <name>")
 	}
-	if a.item != "project" && (a.project.Path != "" || a.project.CloneTo != "" || a.project.Name != "" || a.project.Setup != "" || a.project.EnvCmd != "") {
-		return a, errors.New("--path, --clone=<dir>, --name, --setup and --env-cmd belong to import <file> project <name>")
+	if a.item != "project" && (a.project.Path != "" || a.project.Name != "" || a.project.Setup != "" || a.project.EnvCmd != "") {
+		return a, errors.New("--path, --name, --setup and --env-cmd belong to import <file> project <name>")
 	}
-	if a.item == "workspace" && (a.project.Clone || a.project.Replace) {
-		return a, errors.New("--clone and --replace belong to project imports")
+	if a.item == "workspace" && a.project.Replace {
+		return a, errors.New("--replace belongs to project imports")
 	}
 	if (a.pull || !a.install || !a.smoke || a.wait) && !a.all && a.item != "workspace" {
 		return a, errors.New("--pull, --no-install, --no-smoke and --wait belong to workspace imports")
 	}
-	if !a.all && a.item != "project" && (a.project.Clone || a.project.Replace) {
-		return a, errors.New("--clone and --replace need --all or project <name>")
+	if !a.all && a.item != "project" && a.project.Replace {
+		return a, errors.New("--replace needs --all or project <name>")
 	}
 	return a, nil
 }
@@ -221,7 +229,7 @@ func parseImportArgs(args []string) (importArgs, error) {
 func cmdImport() {
 	a, err := parseImportArgs(os.Args[2:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]\n", err)
 		os.Exit(1)
 	}
 	b, err := transfer.Read(a.file)
@@ -306,37 +314,26 @@ func (a importArgs) checkoutOptions() workspace.CheckoutOptions {
 	return workspace.CheckoutOptions{Install: a.install, Smoke: a.smoke && a.install}
 }
 
-// importAll is the non-interactive path. By default it takes only what is
-// new and already here, and refuses up front if any path is missing — never
-// guessing. --clone lets a missing repo be cloned where a card would offer,
-// --replace swaps records of the same name. Workspaces are made the way
-// crew add worktree makes one.
+// importAll is the non-interactive path: every project not here is
+// cloned, the ones here are kept (--replace swaps them), and anything that
+// cannot go as it stands — no remote, the clone dir taken, or under
+// --replace another remote for a project whose worktrees hang off the
+// local checkout — refuses the whole run up front, before a single clone.
+// A project that fails on the way is its row and exit 1. Workspaces are
+// made the way crew add worktree makes one.
 func importAll(file string, b transfer.Bundle, a importArgs) {
 	o := a.project
 	plan := transfer.Inspect(b)
-	if missing := transfer.MissingPaths(b, plan); len(missing) > 0 && !o.Clone {
-		lines := make([]string, 0, len(missing))
-		for _, e := range missing {
-			lines = append(lines, fmt.Sprintf("  %s\t%s", e.Name, e.Path))
-		}
-		fmt.Fprintf(os.Stderr, "Error: these paths do not exist here; add --clone, or run crew import %s without --all to fix them one by one:\n%s\n", file, strings.Join(lines, "\n"))
+	if refused := transfer.Refusals(b, plan, o); len(refused) > 0 {
+		fmt.Fprintf(os.Stderr, "Error: these cannot go as they are; import them one by one with crew import %s project <name> --path=<dir>, or run crew import %s without --all:\n%s\n", file, file, strings.Join(transfer.RefusalLines(refused), "\n"))
 		os.Exit(1)
 	}
 
-	rows := make([]transfer.PlanRow, 0, len(b.Projects)+len(b.Workspaces))
-	for i, e := range b.Projects {
-		if plan.Projects[i].Exists && !o.Replace {
-			rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: "kept local"})
-			continue
-		}
-		res, err := transfer.ApplyProject(b, plan, e.Name, o)
-		if err != nil {
-			rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: "failed", Detail: err.Error()})
-			continue
-		}
-		rows = append(rows, transfer.PlanRow{Kind: "project", Name: e.Name, Status: outcomeWord(res), Detail: res.Path})
-	}
+	rows := transfer.AllRows(b, plan, o, outcomeWord)
 	anyFailed := false
+	for _, r := range rows {
+		anyFailed = anyFailed || r.Status == "failed"
+	}
 	for i, m := range b.Workspaces {
 		if plan.Workspaces[i].Exists {
 			rows = append(rows, transfer.PlanRow{Kind: "workspace", Name: m.Name, Status: "kept local"})

@@ -44,7 +44,7 @@ var Root = CommandInfo{
 			Name:        "project",
 			Description: "Interactive project manager — add/remove projects and configure dev servers",
 			TUI:         true,
-			Notes:       []string{"Same actions without the TUI: crew add project (--setup, --env-cmd), crew dev add / rm / setup, crew add binding (--scan --apply), crew rm project."},
+			Notes:       []string{"Same actions without the TUI: crew add project <url> | --path (--setup, --env-cmd), crew dev add / rm / setup, crew add binding (--scan --apply), crew rm project."},
 		},
 		{
 			Name:        "add",
@@ -52,18 +52,17 @@ var Root = CommandInfo{
 			Subcommands: []CommandInfo{
 				{
 					Name:        "project",
-					Description: "Register a git repo in the global project pool: a path registers what is there; a git URL (git@…, https://…, ssh://…, file://… — a full URL, not owner/repo) is cloned into ~/.crew/projects/<name> and that is the project's path. Refuses a URL when the name is taken or that directory exists. Projects can be added to multiple workspaces. crew check project <name> then proves the config reproduces from nothing.",
-					Usage:       "crew add project <name> <path-or-url> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
+					Description: "Register a project in the global pool by its git URL (git@…, https://…, ssh://…, file://… — a full URL, not owner/repo): the repo is cloned into ~/.crew/projects/<name>, and its remote is what names the project from then on — in ls projects, in an export, on another machine. --path=<dir> instead adopts a checkout you already have (the repo's own origin is its identity; without one it cannot be exported for cloning). A bare path is refused. Refuses a URL when the name is taken or that directory exists. Projects can be added to multiple workspaces. crew check project <name> then proves the config reproduces from nothing.",
+					Usage:       "crew add project <name> <url> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
 					Flags: []FlagInfo{
 						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it; empty clears it."},
 						{Name: "--env-cmd=<cmd>", Description: "Command that writes a fresh checkout's env files (make get-env — sops, a vault); runs after the install, over the .env crew copied in. Must write files, not print values — its output is logged. On an existing project, updates it; empty clears it."},
-						{Name: "--path=<dir>", Description: "On an existing project, where its canonical checkout now lives (the repo moved)"},
+						{Name: "--path=<dir>", Description: "A checkout you already have, adopted as the canonical instead of a clone; on an existing project, where its canonical checkout now lives (the repo moved)"},
 					},
 					Examples: []string{
-						"crew add project my-api /home/user/repos/api",
-						"crew add project frontend ~/repos/web-app",
-						"crew add project checkout-api ~/repos/checkout-api --setup=\"make sync\" --env-cmd=\"make get-env\"",
+						"crew add project my-api git@github.com:example/my-api.git",
 						"crew add project signals git@github.com:example/signals.git --env-cmd=\"make get-env\"",
+						"crew add project checkout-api --path=~/repos/checkout-api --setup=\"make sync\"",
 						"crew add project checkout-api --path=~/code/checkout-api",
 					},
 				},
@@ -201,9 +200,9 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "projects",
-					Description:  "List all registered projects with their paths",
+					Description:  "List all registered projects: the path crew keeps the checkout at, and the git remote that names it (- when the checkout has none — such a project exports as config only).",
 					Usage:        "crew ls projects",
-					OutputFormat: "<name>\\t<path>",
+					OutputFormat: "<name>\\t<path>\\t<remote|->",
 				},
 				{
 					Name:         "bindings",
@@ -483,7 +482,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "export",
-			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects with which roles. Worktrees, ports and overrides stay local.",
+			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects with which roles. Worktrees, ports and overrides stay local. A project is written by its git remote — no path — so the other machine clones it; one whose checkout has no remote still exports (config only) and is named as such.",
 			Usage:       "crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]",
 			Flags: []FlagInfo{
 				{Name: "--all", Description: "Every project and workspace, no picker"},
@@ -494,19 +493,18 @@ var Root = CommandInfo{
 		},
 		{
 			Name:         "import",
-			Description:  "Bring a crew export into this machine. Bare, a wizard walks one card per item: each project card shows the path and whether it exists here, suggests one found beside a repo crew already knows, or clones the origin remote; y imports, e edits name/path/setup/env cmd, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once.",
-			Usage:        "crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--clone[=<dir>]] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
+			Description:  "Bring a crew export into this machine. A project is its git remote: one already here under the same remote is left alone (r replaces its config), one not here is cloned into ~/.crew/projects/<name>. Bare, a wizard walks one card per item: y clones, p adopts a checkout you already have, e edits name/setup/env cmd, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once. A repo you already have on disk is cloned a second time unless you p/--path it.",
+			Usage:        "crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
 			OutputFormat: "<project|workspace>\\t<name>\\t<status|outcome>\\t<detail>",
 			Flags: []FlagInfo{
-				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here (suggested path, clone target, missing members)"},
-				{Name: "--all", Description: "Import everything new, keep what exists, refuse if any path is missing — never guesses. With --clone, missing repos are cloned where a card would offer; with --replace, records of the same name are swapped out. Workspaces are made the way crew add worktree makes one"},
+				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here — exists, other remote, clone (and where), blocked (the clone dir is taken), missing (no remote); needs (a workspace's absent members)"},
+				{Name: "--all", Description: "Clone every project not here, keep the ones that are (--replace swaps them); refuses up front — before a single clone — on any blocked or missing row, and under --replace on another remote for a project whose worktrees hang off the local checkout. A project that fails on the way is its row and exit 1. Workspaces are made the way crew add worktree makes one"},
 				{Name: "--pull", Description: "workspace: fast-forward the local base branches from origin before checking out (the base table is printed either way)"},
 				{Name: "--no-install", Description: "workspace: skip the installs"},
 				{Name: "--no-smoke", Description: "workspace: skip the smoke start"},
 				{Name: "--wait", Description: "workspace: stay until its runners are done; the row then carries what was recorded"},
-				{Name: "--path=<dir>", Description: "project: use this checkout instead of the exported path"},
-				{Name: "--clone[=<dir>]", Description: "project: clone the origin remote when the path is not here and no sibling was found — beside a known repo (the plan's clone target) or into <dir>"},
-				{Name: "--replace", Description: "project: swap out the local record of the same name"},
+				{Name: "--path=<dir>", Description: "project: adopt this checkout as the canonical instead of cloning — the only way for a project with no remote"},
+				{Name: "--replace", Description: "project: swap out the local record of the same name — same remote, or no remote in the bundle (a config-only export): its config, checkout kept; another remote: a fresh clone (refused while a workspace still has the project)"},
 				{Name: "--name=<new>", Description: "project: import under another name (bindings pointing at the old name are left alone)"},
 				{Name: "--setup=<cmd>", Description: "project: override the setup command"},
 				{Name: "--env-cmd=<cmd>", Description: "project: override the env command"},
@@ -514,10 +512,10 @@ var Root = CommandInfo{
 			Examples: []string{
 				"crew import ~/Desktop/crew.json",
 				"crew import crew.json --plan",
-				"crew import crew.json project checkout-api --clone",
+				"crew import crew.json project checkout-api",
 				"crew import crew.json project store-api --path=~/code/store-api --replace",
 				"crew import crew.json workspace store-front",
-				"crew import crew.json --all --clone",
+				"crew import crew.json --all --pull",
 			},
 		},
 		{

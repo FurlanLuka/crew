@@ -40,8 +40,9 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
 - A server that shows `not listening` while something points at it almost always ignores
   `$PORT` — the project's dev command must bind it. Say which command to change; do not paper
   over it with an override.
-- A new repo: `crew add project <name> <path-or-url>` (a URL clones into
-  `~/.crew/projects/<name>`), configure it, then `crew check project <name> --wait` before
+- A new repo: `crew add project <name> <url>` (clones into `~/.crew/projects/<name>`; a
+  checkout the user already has is adopted with `--path=<dir>` — a bare path is refused),
+  configure it, then `crew check project <name> --wait` before
   it joins a workspace — `✗` means every worktree would fail the same way; `crew setup logs
   check/<name> <name>` has the output, `crew fix check/<name> --print` the evidence.
 - A binding's owner is `<project>` (every dev server) or `<project>/<server>` (that one —
@@ -58,7 +59,7 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
 - Everything has a flag form; use it. Only the full-screen views (`crew workspace`, `crew
   project`, `crew config`, `crew launch`, `crew dev tui`, bare `crew debug`, `crew export`
   without flags, `crew import` without a mode) and the process-replacing commands (`crew
-  claude`, `crew open`) are the user's to run — hand them the exact line. For an import, `--plan` then `project <name>` / `workspace <name>`; for a
+  claude`, `crew open`) are the user's to run — hand them the exact line. For an import, `--plan` then `project <name>` (clones; `--path` adopts) / `workspace <name>`; for a
   recorded failure, `crew fix <ref> --print` and fix it yourself.
 - Destructive: `crew rm …` (`rm project --purge` trashes a clone crew made), `crew uninstall
   --purge`, `crew trash empty`, `crew clean`, `crew kill`, `crew migrate` — confirm first,

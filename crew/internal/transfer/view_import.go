@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -24,11 +25,8 @@ type projectDoneMsg struct {
 	outcome outcome
 	name    string
 	path    string
+	cloned  bool
 	err     error
-}
-type clonedMsg struct {
-	target string
-	err    error
 }
 
 // wsStartedMsg: the workspace is created and its runners are going (or
@@ -98,7 +96,10 @@ type importState int
 const (
 	importStateCard importState = iota
 	importStateEdit
-	importStateCloning
+	// importStatePath: the one-field form p opens — a checkout to adopt.
+	importStatePath
+	// importStateApplying: the decision is running (a clone takes a while).
+	importStateApplying
 	importStateCreating
 )
 
@@ -108,6 +109,10 @@ const (
 	fieldSetup
 	fieldEnvCmd
 )
+
+// editFields is the e form: what differs between machines is the path,
+// and the path is no longer the card's to edit — p adopts one, y clones.
+var editFields = []int{fieldName, fieldSetup, fieldEnvCmd}
 
 // ImportView walks the bundle one card at a time. Every y is applied when
 // pressed; nothing is staged, so stopping keeps what was done.
@@ -121,19 +126,15 @@ type ImportView struct {
 	idx   int
 
 	// The card in hand, with edits applied.
-	current    Exported
-	pathExists bool
-	suggested  string
-	warn       string
+	current Exported
+	warn    string
 
 	inputs [4]textinput.Model
 	focus  int
-	// cloneAfterEdit: c always goes through the path field — prefilled with
-	// crew's guess, so enter takes it and typing over it picks another.
-	cloneAfterEdit bool
+	// pending is the decision being applied — the spinner says what.
+	pending decision
 
 	present map[string]bool // in the pool before, or imported/replaced/kept in this walk
-	anchors []string        // paths to look beside for the next card
 	results []projectResult
 	wsRes   []wsResult
 
@@ -161,7 +162,6 @@ func NewImportView(file string, b Bundle) ImportView {
 		plan:    plan,
 		inputs:  inputs,
 		present: plan.Known,
-		anchors: plan.Anchors,
 		results: make([]projectResult, len(b.Projects)),
 		wsRes:   make([]wsResult, len(b.Workspaces)),
 		spinner: app.NewSpinner(),
@@ -182,8 +182,7 @@ func (v ImportView) Title() string { return "Import" }
 // Init: a bundle with only workspaces opens on a workspace card.
 func (v ImportView) Init() tea.Cmd { return v.loadBases() }
 
-// openCard loads the current item into the card, re-inspecting the path
-// against everything accepted so far.
+// openCard loads the current item into the card.
 func (v *ImportView) openCard() {
 	v.warn, v.err = "", nil
 	switch v.phase {
@@ -194,20 +193,11 @@ func (v *ImportView) openCard() {
 			return
 		}
 		v.current = v.bundle.Projects[v.idx]
-		v.refreshPath()
 	case phaseWorkspaces:
 		v.bases = nil
 		if v.idx >= len(v.bundle.Workspaces) {
 			v.phase = phaseDone
 		}
-	}
-}
-
-func (v *ImportView) refreshPath() {
-	v.pathExists = dirExists(v.current.Path)
-	v.suggested = ""
-	if !v.pathExists {
-		v.suggested = Suggest(v.current.Path, v.anchors)
 	}
 }
 
@@ -218,15 +208,23 @@ func (v ImportView) status() ProjectStatus {
 	return ProjectStatus{}
 }
 
-func (v ImportView) cloneTarget() string {
-	if v.current.Remote == "" || v.pathExists {
-		return ""
+// keys is a situation's help line, without the esc every card has. The
+// status line, the key line and the handler all read classify, so a key
+// the help offers is always one the handler takes.
+func keysFor(sit situation) []string {
+	switch sit {
+	case sitHere, sitOtherRemote:
+		return []string{"r replace local", "n keep local", "e edit"}
+	case sitClone:
+		return []string{"y clone", "p adopt a path", "e edit", "n skip"}
+	default:
+		return []string{"p adopt a path", "e edit", "n skip"}
 	}
-	return CloneTarget(v.current.Path, v.anchors)
 }
 
-// canImport: y needs a path that exists, or one crew found for it.
-func (v ImportView) canImport() bool { return v.pathExists || v.suggested != "" }
+func (v ImportView) situation() situation { return classify(v.status(), v.current.Remote) }
+
+// ── Update ──
 
 func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -239,25 +237,13 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			v.err = msg.err
 			return v, nil
 		}
-		v.results[v.idx] = projectResult{Outcome: msg.outcome, Name: msg.name, Path: msg.path, Cloned: v.results[v.idx].Cloned}
+		v.results[v.idx] = projectResult{Outcome: msg.outcome, Name: msg.name, Path: msg.path, Cloned: msg.cloned}
 		if msg.outcome == outcomeReplaced {
 			// The record that matched is gone; only the name it has now is here.
 			delete(v.present, v.bundle.Projects[v.idx].Name)
 		}
 		v.present[msg.name] = true
-		v.anchors = append(v.anchors, msg.path)
 		return v.advance()
-
-	case clonedMsg:
-		v.state = importStateCard
-		if msg.err != nil {
-			v.err = msg.err
-			return v, nil
-		}
-		v.current.Path = msg.target
-		v.results[v.idx].Cloned = true
-		v.refreshPath()
-		return v, nil
 
 	case wsStartedMsg:
 		if msg.err != nil {
@@ -298,7 +284,7 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, nil
 
 	case spinner.TickMsg:
-		if v.state != importStateCloning && v.state != importStateCreating && !v.basesLoading() && !v.pulling {
+		if v.state != importStateApplying && v.state != importStateCreating && !v.basesLoading() && !v.pulling {
 			return v, nil
 		}
 		var cmd tea.Cmd
@@ -309,7 +295,9 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch v.state {
 		case importStateEdit:
 			return v.handleEditKey(msg)
-		case importStateCloning, importStateCreating:
+		case importStatePath:
+			return v.handlePathKey(msg)
+		case importStateApplying, importStateCreating:
 			return v, nil
 		}
 		switch v.phase {
@@ -323,7 +311,7 @@ func (v ImportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	if v.state == importStateEdit {
+	if v.state == importStateEdit || v.state == importStatePath {
 		var cmd tea.Cmd
 		v.inputs[v.focus], cmd = v.inputs[v.focus].Update(msg)
 		return v, cmd
@@ -373,7 +361,7 @@ func (v ImportView) stop() (tea.Model, tea.Cmd) {
 // ── Project card ──
 
 func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	st := v.status()
+	st, sit := v.status(), v.situation()
 	switch {
 	case key.Matches(msg, app.Keys.Quit):
 		return v, tea.Quit
@@ -384,65 +372,71 @@ func (v ImportView) handleProjectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Keeping the local record still counts as present for workspaces.
 			v.results[v.idx] = projectResult{Outcome: outcomeKept, Name: st.Local.Name, Path: st.Local.Path}
 			v.present[st.Local.Name] = true
-			v.anchors = append(v.anchors, st.Local.Path)
 		} else {
 			v.results[v.idx] = projectResult{Outcome: outcomeSkipped, Name: v.current.Name}
 		}
 		return v.advance()
-	case msg.String() == "y" && !st.Exists && v.canImport():
-		return v.apply(false)
-	case msg.String() == "r" && st.Exists && v.canImport():
-		return v.apply(true)
-	case msg.String() == "c" && v.current.Remote != "" && !v.pathExists:
-		v.cloneAfterEdit = true
-		path := v.cloneTarget()
-		if path == "" {
-			path = v.current.Path
-		}
-		return v, v.beginEdit(path)
+	case msg.String() == "y" && sit == sitClone:
+		return v.apply(ProjectOptions{})
+	case msg.String() == "y" && sit == sitBlocked:
+		dir := project.ClonePath(v.current.Name)
+		v.err = fmt.Errorf("%s exists — %s", dir, blockedWayOut(dir))
+		return v, nil
+	case msg.String() == "r" && (sit == sitHere || sit == sitOtherRemote):
+		return v.apply(ProjectOptions{Replace: true})
+	case msg.String() == "p" && !st.Exists:
+		return v, v.beginPath()
 	case msg.String() == "e":
-		path := v.current.Path
-		if !v.pathExists {
-			if v.suggested != "" {
-				path = v.suggested
-			} else if t := v.cloneTarget(); t != "" {
-				path = t
-			}
-		}
-		return v, v.beginEdit(path)
+		return v, v.beginEdit()
 	}
 	return v, nil
 }
 
-// beginEdit opens the three fields with the card's values and the path the
-// card would otherwise use, cursor on the path — the field that differs
-// between machines.
-func (v *ImportView) beginEdit(path string) tea.Cmd {
+// beginEdit opens the card's own fields — name, setup, env. The path is
+// not among them: it is this machine's, decided by y or p.
+func (v *ImportView) beginEdit() tea.Cmd {
 	v.state = importStateEdit
 	v.err = nil
 	v.inputs[fieldName].SetValue(v.current.Name)
-	v.inputs[fieldPath].SetValue(path)
 	v.inputs[fieldSetup].SetValue(v.current.Setup)
 	v.inputs[fieldEnvCmd].SetValue(v.current.EnvCmd)
+	return v.setFocus(fieldName)
+}
+
+// beginPath opens the one field p has: a checkout on this machine to
+// record as the canonical instead of cloning.
+func (v *ImportView) beginPath() tea.Cmd {
+	v.state = importStatePath
+	v.err = nil
+	v.inputs[fieldPath].SetValue("")
 	return v.setFocus(fieldPath)
 }
 
-func (v ImportView) apply(replace bool) (tea.Model, tea.Cmd) {
+// apply runs the card's decision — the same decide and applyDecision the
+// CLI runs — in one command; the card shows what is happening meanwhile.
+func (v ImportView) apply(o ProjectOptions) (tea.Model, tea.Cmd) {
+	st := v.status()
 	p := v.current.Project
-	if !v.pathExists {
-		p.Path = v.suggested
+	d, err := decide(p.Name, v.current.Remote, st, o)
+	if err != nil {
+		v.err = err
+		return v, nil
 	}
-	original := v.bundle.Projects[v.idx].Name
-	outcome := outcomeImported
-	if replace {
-		outcome = outcomeReplaced
-	}
-	return v, func() tea.Msg {
-		if err := ImportProject(original, p, replace); err != nil {
+	v.pending = d
+	v.state = importStateApplying
+	v.err = nil
+	original, remote := v.bundle.Projects[v.idx].Name, v.current.Remote
+	return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
+		res, err := applyDecision(original, p, remote, d)
+		if err != nil {
 			return projectDoneMsg{err: err}
 		}
-		return projectDoneMsg{outcome: outcome, name: p.Name, path: p.Path}
-	}
+		outcome := outcomeImported
+		if res.Replaced {
+			outcome = outcomeReplaced
+		}
+		return projectDoneMsg{outcome: outcome, name: res.Name, path: res.Path, cloned: res.Cloned}
+	})
 }
 
 func (v *ImportView) setFocus(f int) tea.Cmd {
@@ -461,42 +455,64 @@ func (v ImportView) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		v.state = importStateCard
-		v.cloneAfterEdit = false
 		return v, nil
 	case "tab":
-		return v, v.setFocus((v.focus + 1) % len(v.inputs))
+		return v, v.setFocus(nextEditField(v.focus, 1))
 	case "shift+tab":
-		return v, v.setFocus((v.focus + len(v.inputs) - 1) % len(v.inputs))
+		return v, v.setFocus(nextEditField(v.focus, -1))
 	case "enter":
 		name := strings.TrimSpace(v.inputs[fieldName].Value())
 		if err := project.ValidateName(name); err != nil {
 			v.err = err
 			return v, nil
 		}
-		v.err = nil
 		original := v.bundle.Projects[v.idx].Name
+		// A rename onto a name already in the pool is refused here, on the
+		// form, rather than at y — the same rule applyDecision holds.
+		if name != original && v.present[name] {
+			v.err = fmt.Errorf("project '%s' is already in the pool — choose another name", name)
+			return v, nil
+		}
+		v.err = nil
 		if name != original && name != v.current.Name {
 			if refs := ReferencedBy(v.bundle, original); len(refs) > 0 {
 				v.warn = fmt.Sprintf("%s point at %s — left alone until re-bound", strings.Join(refs, ", "), original)
 			}
 		}
 		v.current.Name = name
-		v.current.Path = expandHome(strings.TrimSpace(v.inputs[fieldPath].Value()))
 		v.current.Setup = strings.TrimSpace(v.inputs[fieldSetup].Value())
 		v.current.EnvCmd = strings.TrimSpace(v.inputs[fieldEnvCmd].Value())
-		v.refreshPath()
 		v.state = importStateCard
-		if v.cloneAfterEdit {
-			v.cloneAfterEdit = false
-			if !v.pathExists {
-				v.state = importStateCloning
-				remote, target := v.current.Remote, v.current.Path
-				return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
-					return clonedMsg{target: target, err: Clone(remote, target)}
-				})
-			}
-		}
 		return v, nil
+	}
+	var cmd tea.Cmd
+	v.inputs[v.focus], cmd = v.inputs[v.focus].Update(msg)
+	return v, cmd
+}
+
+// nextEditField steps through the e form's fields. Pure.
+func nextEditField(f, step int) int {
+	for i, x := range editFields {
+		if x == f {
+			return editFields[(i+step+len(editFields))%len(editFields)]
+		}
+	}
+	return editFields[0]
+}
+
+func (v ImportView) handlePathKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		v.state = importStateCard
+		v.err = nil
+		return v, nil
+	case "enter":
+		path := config.ExpandHome(strings.TrimSpace(v.inputs[fieldPath].Value()))
+		if !dirExists(path) {
+			v.err = fmt.Errorf("%s is not a directory here", path)
+			return v, nil
+		}
+		return v.apply(ProjectOptions{Path: path})
 	}
 	var cmd tea.Cmd
 	v.inputs[v.focus], cmd = v.inputs[v.focus].Update(msg)
@@ -571,6 +587,8 @@ func (v ImportView) View() string {
 		v.renderSummary(&b)
 	case v.phase == phaseProjects && v.state == importStateEdit:
 		v.renderEdit(&b)
+	case v.phase == phaseProjects && v.state == importStatePath:
+		v.renderPath(&b)
 	case v.phase == phaseProjects:
 		v.renderProjectCard(&b)
 	case v.phase == phaseWorkspaces:
@@ -603,24 +621,25 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	}
 	b.WriteString(name + "\n")
 
-	b.WriteString(fmt.Sprintf("  path      %-*s ", pathCol, p.Path))
-	switch {
-	case v.pathExists:
-		b.WriteString(app.Success.Render("✓ exists"))
-	case v.suggested != "":
-		b.WriteString(app.Error.Render("✗ not here"))
-		b.WriteString(fmt.Sprintf("\n            %-*s ", pathCol, app.Highlight.Render("→ "+v.suggested)))
-		b.WriteString(app.Subtle.Render("found beside " + filepath.Base(besideOf(v.suggested, v.anchors)) + " — y uses this"))
-	case v.cloneTarget() != "":
-		b.WriteString(app.Error.Render("✗ not here"))
-		b.WriteString(fmt.Sprintf("\n            %-*s ", pathCol, app.Highlight.Render("→ "+v.cloneTarget())))
-		b.WriteString(app.Subtle.Render("c clones here" + besidePhrase(v.cloneTarget(), v.anchors) + " — or anywhere you type"))
-	case p.Remote != "":
-		b.WriteString(app.Error.Render("✗ not here — c asks where to clone, e sets the path"))
-	default:
-		b.WriteString(app.Error.Render("✗ not here — e to set the path"))
+	// What names the project here: its remote, and what this machine
+	// would do about it.
+	sit := v.situation()
+	switch sit {
+	case sitHere:
+		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, orNoRemote(p.Remote), app.Success.Render("✓ same repo here at "+tildify(st.Local.Path))))
+	case sitOtherRemote:
+		b.WriteString(fmt.Sprintf("  remote    %-*s\n", pathCol, p.Remote))
+		b.WriteString(fmt.Sprintf("  local     %-*s %s\n", pathCol, app.Highlight.Render(orNoRemote(st.LocalRemote)), app.Subtle.Render("at "+tildify(st.Local.Path)+" — r clones this one instead")))
+	case sitClone:
+		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, p.Remote, app.Error.Render("✗ not here")))
+		b.WriteString(fmt.Sprintf("            %-*s %s\n", pathCol, app.Highlight.Render("→ "+tildify(project.ClonePath(p.Name))), app.Subtle.Render("y clones here — p adopts a checkout you have")))
+	case sitBlocked:
+		dir := project.ClonePath(p.Name)
+		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, p.Remote, app.Error.Render("✗ not here")))
+		b.WriteString(fmt.Sprintf("            %-*s %s\n", pathCol, app.Error.Render("✗ "+tildify(dir)+" exists"), app.Subtle.Render(blockedWayOut(dir))))
+	case sitNoRemote:
+		b.WriteString(fmt.Sprintf("  remote    %-*s %s\n", pathCol, app.Error.Render("✗ none — cannot be cloned"), app.Subtle.Render("p adopts a checkout you have"+wasAtPhrase(p.Path))))
 	}
-	b.WriteString("\n")
 
 	if len(p.DevServers) > 0 {
 		b.WriteString("  servers   " + app.Subtle.Render(describeServers(p.DevServers)) + "\n")
@@ -647,10 +666,6 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	if p.EnvCmd != "" {
 		b.WriteString("  env       " + app.Subtle.Render(p.EnvCmd) + "\n")
 	}
-	if p.Remote != "" {
-		b.WriteString("  remote    " + app.Subtle.Render(p.Remote) + "\n")
-	}
-
 	b.WriteString("\n")
 	if v.warn != "" {
 		b.WriteString("  " + app.Highlight.Render("! "+v.warn) + "\n\n")
@@ -658,63 +673,49 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	if v.err != nil {
 		b.WriteString("  " + app.Error.Render("! "+v.err.Error()) + "\n\n")
 	}
-	if v.state == importStateCloning {
-		target := v.cloneTarget()
-		if target == "" {
-			target = p.Path
+	if v.state == importStateApplying {
+		if v.pending.Action == actionClone {
+			b.WriteString(fmt.Sprintf("  %s Cloning %s → %s\n", v.spinner.View(), p.Name, tildify(v.pending.Path)))
+		} else {
+			b.WriteString(fmt.Sprintf("  %s Recording %s\n", v.spinner.View(), p.Name))
 		}
-		b.WriteString(fmt.Sprintf("  %s Cloning %s → %s\n", v.spinner.View(), p.Name, target))
 		return
 	}
 
-	var keys []string
-	switch {
-	case st.Exists && v.canImport():
-		keys = append(keys, "r replace local", "n keep local")
-	case st.Exists:
-		keys = append(keys, "n keep local")
-	case v.pathExists:
-		keys = append(keys, "y import")
-	case v.suggested != "":
-		keys = append(keys, "y import with suggested path")
-	}
-	if !v.pathExists && v.current.Remote != "" {
-		keys = append(keys, "c clone")
-	}
-	keys = append(keys, "e edit")
-	if !st.Exists {
-		keys = append(keys, "n skip")
-	}
-	keys = append(keys, "esc stop")
+	keys := append(keysFor(sit), "esc stop")
 	b.WriteString("  " + app.HelpStyle.Render(strings.Join(keys, "  ")) + "\n")
 }
 
 func (v ImportView) renderEdit(b *strings.Builder) {
-	mode, apply := " · editing", "enter apply"
-	if v.cloneAfterEdit {
-		mode, apply = " · where to clone", "enter clone"
-	}
-	b.WriteString(v.header(mode))
+	b.WriteString(v.header(" · editing"))
 	b.WriteString("  name      " + v.inputs[fieldName].View() + "\n")
-	b.WriteString("  path      " + v.inputs[fieldPath].View())
-	switch exists := dirExists(expandHome(strings.TrimSpace(v.inputs[fieldPath].Value()))); {
-	case exists && v.cloneAfterEdit:
-		b.WriteString("  " + app.Success.Render("✓ exists — used as is, nothing cloned"))
-	case exists:
-		b.WriteString("  " + app.Success.Render("✓ exists"))
-	case v.cloneAfterEdit:
-		b.WriteString("  " + app.Highlight.Render("→ clone lands here"))
-	default:
-		b.WriteString("  " + app.Error.Render("✗ not here"))
-	}
-	b.WriteString("\n")
 	b.WriteString("  setup     " + v.inputs[fieldSetup].View() + "\n")
 	b.WriteString("  env       " + v.inputs[fieldEnvCmd].View() + "\n\n")
 	b.WriteString("            " + app.Subtle.Render("servers and bindings can be changed in crew project after import") + "\n\n")
 	if v.err != nil {
 		b.WriteString("  " + app.Error.Render(v.err.Error()) + "\n\n")
 	}
-	b.WriteString("  " + app.HelpStyle.Render("tab next  "+apply+"  esc back") + "\n")
+	b.WriteString("  " + app.HelpStyle.Render("tab next  enter apply  esc back") + "\n")
+}
+
+// renderPath is the p form: one field, a checkout to adopt as the
+// canonical — for a repo already on this machine, or one with no remote.
+func (v ImportView) renderPath(b *strings.Builder) {
+	b.WriteString(v.header(" · adopt a path"))
+	b.WriteString("  path      " + v.inputs[fieldPath].View())
+	if path := config.ExpandHome(strings.TrimSpace(v.inputs[fieldPath].Value())); path != "" {
+		if dirExists(path) {
+			b.WriteString("  " + app.Success.Render("✓ exists — recorded as is, nothing cloned"))
+		} else {
+			b.WriteString("  " + app.Error.Render("✗ not here"))
+		}
+	}
+	b.WriteString("\n\n")
+	b.WriteString("            " + app.Subtle.Render("a checkout you already have; its own origin becomes the project's identity") + "\n\n")
+	if v.err != nil {
+		b.WriteString("  " + app.Error.Render(v.err.Error()) + "\n\n")
+	}
+	b.WriteString("  " + app.HelpStyle.Render("enter adopt  esc back") + "\n")
 }
 
 func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
@@ -838,10 +839,9 @@ func (v ImportView) renderSummary(b *strings.Builder) {
 			if r.Cloned {
 				line += app.Subtle.Render(" (cloned)")
 			}
-			switch {
-			case r.Name != e.Name:
+			if r.Name != e.Name {
 				line += "   " + app.Subtle.Render("→ "+r.Name+" at "+r.Path)
-			case r.Path != e.Path:
+			} else {
 				line += "   " + app.Subtle.Render("→ "+r.Path)
 			}
 		case outcomeReplaced:
@@ -918,21 +918,22 @@ func bindingNames(bindings []project.Binding) string {
 	return strings.Join(names, ", ")
 }
 
-// besideOf names the anchor a suggestion sits next to.
-func besideOf(path string, anchors []string) string {
-	for i := len(anchors) - 1; i >= 0; i-- {
-		if filepath.Dir(anchors[i]) == filepath.Dir(path) {
-			return anchors[i]
-		}
+// blockedWayOut is the card's half of blockedDetail: what the user can do
+// about the thing sitting where the clone would land.
+func blockedWayOut(dir string) string {
+	if !adoptable(dir) {
+		return "delete it first — it is not a directory"
 	}
-	return ""
+	return "p adopts it, or delete it first"
 }
 
-func besidePhrase(path string, anchors []string) string {
-	if a := besideOf(path, anchors); a != "" {
-		return " — beside " + filepath.Base(a)
+// wasAtPhrase: a v1 bundle carried the path the repo had on the other
+// machine — the best hint there is.
+func wasAtPhrase(path string) string {
+	if path == "" {
+		return ""
 	}
-	return ""
+	return " (was at " + path + ")"
 }
 
 func wasWere(n int) string {

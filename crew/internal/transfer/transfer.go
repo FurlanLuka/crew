@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -16,8 +15,11 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
-// Version is the bundle format; Read refuses anything newer.
-const Version = 1
+// Version is the bundle format; Read refuses anything newer. 2 dropped the
+// path: a v1 crew handed a path-less bundle would guess a parent directory
+// as the checkout, so it must refuse instead. v1 bundles still read — the
+// remote was already there, the path is ignored.
+const Version = 2
 
 // Bundle is the file.
 type Bundle struct {
@@ -26,8 +28,9 @@ type Bundle struct {
 	Workspaces []Membership `json:"workspaces"`
 }
 
-// Exported is a pool entry plus where it can be cloned from, so a path that
-// does not exist on the other machine is not a dead end.
+// Exported is a pool entry by its identity: the remote it can be cloned
+// from, with its config. The path stays behind — it is this machine's.
+// A v1 bundle's path is read into Project.Path and shown as a hint only.
 type Exported struct {
 	project.Project
 	Remote string `json:"remote,omitempty"`
@@ -52,7 +55,9 @@ func Collect(projNames, wsNames []string) (Bundle, error) {
 	b := Bundle{Version: Version, Projects: []Exported{}, Workspaces: []Membership{}}
 	for _, p := range pool {
 		if want[p.Name] {
-			b.Projects = append(b.Projects, Exported{Project: p, Remote: originOf(p.Path)})
+			remote := project.RemoteOf(p)
+			p.Path = ""
+			b.Projects = append(b.Projects, Exported{Project: p, Remote: remote})
 		}
 	}
 	for _, name := range wsNames {
@@ -65,14 +70,16 @@ func Collect(projNames, wsNames []string) (Bundle, error) {
 	return b, nil
 }
 
-// originOf is the origin URL, or "" — a repo without one exports fine, it
-// just cannot be cloned on the other side.
-func originOf(repo string) string {
-	out, err := crewexec.RunGitCommand(repo, "remote", "get-url", "origin")
-	if err != nil {
-		return ""
+// WithoutRemote names the bundle projects nothing can clone — worth a line
+// at export time, since the bundle is still a config backup. Pure.
+func WithoutRemote(b Bundle) []string {
+	var out []string
+	for _, e := range b.Projects {
+		if e.Remote == "" {
+			out = append(out, e.Name)
+		}
 	}
-	return strings.TrimSpace(out)
+	return out
 }
 
 // Covered is every workspace whose projects are all chosen — the rule that
@@ -132,12 +139,26 @@ func Read(path string) (Bundle, error) {
 
 // ── Import: inspection ──
 
-// ProjectStatus is what the card knows before any key is pressed.
+// ProjectStatus is what the card knows before any key is pressed: whether
+// the name is here, what its checkout points at, and whether the clone
+// crew would make has somewhere to land.
 type ProjectStatus struct {
-	Exists     bool   // name already in the pool
-	PathExists bool   // the exported path is here
-	Suggested  string // an existing dir found beside a known repo, or ""
-	Local      *project.Project
+	Exists      bool   // name already in the pool
+	LocalRemote string // RemoteOf the local entry; "" when it has none
+	// CloneDirTaken: ClonePath(name) already exists, so the default clone
+	// is refused — --path adopts it, or it is deleted first.
+	CloneDirTaken bool
+	// Workspaces the local project is a member of: a replace that clones
+	// is refused while any (its worktrees hang off the checkout).
+	Workspaces []string
+	// Local is the pool entry; set exactly when Exists.
+	Local *project.Project
+}
+
+// SameRemote: the local checkout is this repo, by key. Two empties are not
+// the same repo — nothing was compared.
+func (st ProjectStatus) SameRemote(remote string) bool {
+	return st.Exists && remote != "" && crewexec.RepoKey(st.LocalRemote) == crewexec.RepoKey(remote)
 }
 
 // WorkspaceStatus: an existing name is skip-only.
@@ -148,29 +169,30 @@ type WorkspaceStatus struct {
 type Plan struct {
 	Projects   []ProjectStatus
 	Workspaces []WorkspaceStatus
-	// Known and Anchors are the pool as it was when the bundle was inspected —
-	// one read, then the wizard reasons over the snapshot.
-	Known   map[string]bool // project names in the pool
-	Anchors []string        // pool project paths, for Suggest and CloneTarget
+	// Known is the pool as it was when the bundle was inspected — one
+	// read, then the wizard reasons over the snapshot.
+	Known map[string]bool // project names in the pool
 }
 
-// Inspect checks a bundle against this machine: the pool, read once, and the
-// filesystem. Per-card state that depends on earlier decisions
-// (MissingMembers, CloneTarget) is asked for as the wizard reaches each card.
+// Inspect checks a bundle against this machine: the pool, read once, each
+// local entry's remote read off its checkout, and the clone dir. Per-card
+// state that depends on earlier decisions (MissingMembers) is asked for as
+// the wizard reaches each card.
 func Inspect(b Bundle) Plan {
 	pool, _ := project.List()
 	plan := Plan{Known: make(map[string]bool, len(pool))}
+	byName := make(map[string]project.Project, len(pool))
 	for _, p := range pool {
 		plan.Known[p.Name] = true
-		plan.Anchors = append(plan.Anchors, p.Path)
+		byName[p.Name] = p
 	}
+	members := membership()
 	for _, e := range b.Projects {
-		st := ProjectStatus{PathExists: dirExists(e.Path)}
-		if local := project.Get(e.Name); local != nil {
-			st.Exists, st.Local = true, local
-		}
-		if !st.PathExists {
-			st.Suggested = Suggest(e.Path, plan.Anchors)
+		st := ProjectStatus{CloneDirTaken: project.CloneDirTaken(e.Name)}
+		if local, ok := byName[e.Name]; ok {
+			st.Exists, st.LocalRemote = true, project.RemoteOf(local)
+			st.Local = &local
+			st.Workspaces = members[e.Name]
 		}
 		plan.Projects = append(plan.Projects, st)
 	}
@@ -180,53 +202,72 @@ func Inspect(b Bundle) Plan {
 	return plan
 }
 
-// Suggest looks for the exported path's basename beside each anchor — a repo
-// this machine already knows about, checked latest first. A second Mac tends
-// to keep siblings together even when the parent differs. Pure over the fs.
-func Suggest(exported string, anchors []string) string {
-	base := filepath.Base(exported)
-	for i := len(anchors) - 1; i >= 0; i-- {
-		candidate := filepath.Join(filepath.Dir(anchors[i]), base)
-		if candidate != exported && dirExists(candidate) {
-			return candidate
+// membership is every workspace each project is a member of — the
+// workspace files read once for the whole inspection, not once per bundle
+// project.
+func membership() map[string][]string {
+	out := map[string][]string{}
+	names, _ := workspace.List()
+	for _, name := range names {
+		ws, err := workspace.Load(name)
+		if err != nil {
+			continue
+		}
+		for _, wp := range ws.Projects {
+			out[wp.Name] = append(out[wp.Name], name)
 		}
 	}
-	return ""
+	return out
 }
 
-// CloneTarget is where c would clone: beside the latest anchor, else into the
-// exported path when its parent exists here, else crew's own projects dir,
-// else "" — the card asks for a path first. Never a directory that is
-// already there: git refuses those, and the sibling Suggest found is what y
-// is for. Pure over the fs.
-func CloneTarget(exported string, anchors []string) string {
-	base := filepath.Base(exported)
-	if len(anchors) > 0 {
-		if beside := filepath.Join(filepath.Dir(anchors[len(anchors)-1]), base); !dirExists(beside) {
-			return beside
-		}
-	}
-	if dirExists(filepath.Dir(exported)) && !dirExists(exported) {
-		return exported
-	}
-	// Nowhere the bundle or the pool suggests: crew's own projects dir, so a
-	// fresh machine never has to refuse a clone it was asked for.
-	if own := project.ClonePath(base); !dirExists(own) {
-		return own
-	}
-	return ""
-}
-
-// MissingPaths is what stops a non-interactive import: bundle projects that
-// are neither here by name nor by path. A --all never guesses or clones.
-func MissingPaths(b Bundle, plan Plan) []Exported {
-	var missing []Exported
+// Refusals is what stops a non-interactive import before anything is
+// cloned: bundle projects that cannot go as they are — no remote, the clone
+// dir already taken, or (under --replace) another remote for a project
+// whose worktrees hang off the local checkout. --all never guesses. Pure.
+func Refusals(b Bundle, plan Plan, o ProjectOptions) []PlanRow {
+	var out []PlanRow
+	rows := PlanRows(b, plan)
 	for i, e := range b.Projects {
-		if !plan.Projects[i].Exists && !plan.Projects[i].PathExists {
-			missing = append(missing, e)
+		row, st := rows[i], plan.Projects[i]
+		switch {
+		case row.Status == StatusMissing || row.Status == StatusBlocked:
+			out = append(out, row)
+		case o.Replace && row.Status == StatusOtherRemote && len(st.Workspaces) > 0:
+			row.Detail = replaceUnderWorktrees(e.Name, st.Workspaces).Error()
+			out = append(out, row)
 		}
 	}
-	return missing
+	return out
+}
+
+// AllRows is the non-interactive import of every bundle project, in
+// order: the ones here are kept (swapped under --replace), the rest go
+// through ApplyProject; a failure is that project's row, not the end of
+// the run. The caller has already taken Refusals to heart.
+func AllRows(b Bundle, plan Plan, o ProjectOptions, outcome func(ProjectResult) string) []PlanRow {
+	rows := make([]PlanRow, 0, len(b.Projects))
+	for i, e := range b.Projects {
+		if plan.Projects[i].Exists && !o.Replace {
+			rows = append(rows, PlanRow{Kind: "project", Name: e.Name, Status: "kept local"})
+			continue
+		}
+		res, err := ApplyProject(b, plan, e.Name, o)
+		if err != nil {
+			rows = append(rows, PlanRow{Kind: "project", Name: e.Name, Status: "failed", Detail: err.Error()})
+			continue
+		}
+		rows = append(rows, PlanRow{Kind: "project", Name: e.Name, Status: outcome(res), Detail: res.Path})
+	}
+	return rows
+}
+
+// RefusalLines is how --all names what it will not touch. Pure.
+func RefusalLines(rows []PlanRow) []string {
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("  %s\t%s\t%s", r.Name, r.Status, r.Detail))
+	}
+	return lines
 }
 
 // MissingMembers is what keeps a workspace card from offering y: members not
@@ -251,10 +292,6 @@ func ReferencedBy(b Bundle, projName string) []string {
 }
 
 // ── Import: actions ──
-
-// Clone is exec.Clone; the wizard reaches it from here so nothing else in
-// the package touches git directly.
-func Clone(remote, target string) error { return crewexec.Clone(remote, target) }
 
 // ImportProject adds p to the pool. With replace, the record that matched
 // the bundle's original name is swapped out — whatever the name field says

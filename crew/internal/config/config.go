@@ -47,6 +47,18 @@ func WorkspaceFile(name string) string {
 	return filepath.Join(WorkspacesDir, name+".json")
 }
 
+// ExpandHome turns a leading ~/ into the home directory — what a shell
+// would have done, for a path that reached crew without one (an agent, a
+// TUI field).
+func ExpandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
 // Under: path is strictly inside root — never the root itself, never a
 // sibling that shares its prefix ("projects-old" beside "projects"). The
 // one spelling of the guard every removal checks against.

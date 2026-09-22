@@ -16,9 +16,10 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
 2. Ask what the workspace is for and which repos belong in it: a path on disk, a git URL,
    or a pick from GitHub — `gh auth status`, then `gh repo list <owner> --json
    name,url,description --limit 100` and offer the names (no `gh`: ask for URLs). For each
-   repo not in the pool: `crew add project <name> <path>` for a path, `crew add project
-   <name> <url>` for a URL (cloned into `~/.crew/projects/<name>`; name = the repo name
-   unless they say otherwise; `a-z 0-9 -`). Then read the repo — README, Makefile,
+   repo not in the pool: `crew add project <name> <url>` (cloned into
+   `~/.crew/projects/<name>`; name = the repo name unless they say otherwise; `a-z 0-9 -`),
+   or `crew add project <name> --path=<dir>` for a checkout they already have (a bare path
+   is refused; the repo's own origin becomes its identity). Then read the repo — README, Makefile,
    package.json, pyproject.toml, mise.toml — for how it installs and runs. If it needs more
    than the lockfile to install (model weights, a `make` target), propose the setup command:
    `--setup="…"`. If the README or Makefile mentions secrets, sops, 1Password or a

@@ -2,8 +2,6 @@ package transfer
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -11,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -21,6 +20,9 @@ const DefaultExportFile = "crew-export.json"
 type exportLoadedMsg struct {
 	projects   []project.Project
 	workspaces []*workspace.Workspace
+	// noRemote: projects nothing can clone — read off each checkout here,
+	// in the load, not on every render.
+	noRemote map[string]bool
 }
 type exportWrittenMsg struct {
 	file                 string
@@ -45,6 +47,7 @@ type ExportView struct {
 
 	projects   []project.Project
 	workspaces []*workspace.Workspace
+	noRemote   map[string]bool
 	picked     map[string]bool // projects
 	wsPicked   map[string]bool // workspaces; only counts while covered
 	cursor     int
@@ -81,7 +84,7 @@ func (v ExportView) Init() tea.Cmd {
 				workspaces = append(workspaces, ws)
 			}
 		}
-		return exportLoadedMsg{projects: projects, workspaces: workspaces}
+		return exportLoadedMsg{projects: projects, workspaces: workspaces, noRemote: noRemoteOf(projects)}
 	}
 }
 
@@ -90,7 +93,7 @@ func (v ExportView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return v, nil
 	case exportLoadedMsg:
-		v.projects, v.workspaces = msg.projects, msg.workspaces
+		v.projects, v.workspaces, v.noRemote = msg.projects, msg.workspaces, msg.noRemote
 		// Everything starts ticked: the common export is "all of it".
 		for _, p := range v.projects {
 			v.picked[p.Name] = true
@@ -245,19 +248,23 @@ func writeBundle(file string, projNames, wsNames []string) tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
-		if err := Write(expandHome(file), b); err != nil {
+		if err := Write(config.ExpandHome(file), b); err != nil {
 			return errMsg{err}
 		}
 		return exportWrittenMsg{file: file, projects: len(b.Projects), workspaces: len(b.Workspaces)}
 	}
 }
 
-func expandHome(path string) string {
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
+// noRemoteOf names the pool entries whose checkout has no origin — one git
+// call each, made once at load.
+func noRemoteOf(projects []project.Project) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range projects {
+		if project.RemoteOf(p) == "" {
+			out[p.Name] = true
+		}
 	}
-	return path
+	return out
 }
 
 // ── Render ──
@@ -298,7 +305,11 @@ func (v ExportView) renderList(b *strings.Builder) {
 		}
 		b.WriteString(app.RowPrefix(i == v.cursor))
 		b.WriteString(app.RowName(fmt.Sprintf("%s %-*s", mark, width, p.Name), i == v.cursor))
-		b.WriteString("  " + app.Subtle.Render(describeProject(p)) + "\n")
+		b.WriteString("  " + app.Subtle.Render(describeProject(p)))
+		if v.noRemote[p.Name] {
+			b.WriteString("  " + app.Highlight.Render("no git remote — config only, cannot be cloned"))
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n  " + app.Subtle.Render("Workspaces") + strings.Repeat(" ", max(0, width-6)) + app.Subtle.Render("only those whose projects are all ticked") + "\n")

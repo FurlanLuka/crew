@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -172,22 +173,26 @@ func TestExtractFlag_BeforeSeparatorStillWorks(t *testing.T) {
 }
 
 func TestParseAddProjectArgs(t *testing.T) {
+	// ~ reaches crew unexpanded from an agent; the parser expands it.
+	home, _ := os.UserHomeDir()
 	tests := []struct {
 		name    string
 		args    []string
 		want    addProjectArgs
 		wantErr string
 	}{
-		{name: "new project", args: []string{"api", "/repo"}, want: addProjectArgs{name: "api", path: "/repo"}},
-		{name: "new with setup", args: []string{"api", "/repo", "--setup=make sync"}, want: addProjectArgs{name: "api", path: "/repo", setup: "make sync", hasSetup: true}},
+		{name: "new project", args: []string{"api", "git@x:api.git"}, want: addProjectArgs{name: "api", url: "git@x:api.git"}},
+		{name: "new with setup", args: []string{"api", "git@x:api.git", "--setup=make sync"}, want: addProjectArgs{name: "api", url: "git@x:api.git", setup: "make sync", hasSetup: true}},
 		{name: "update setup", args: []string{"api", "--setup=make sync"}, want: addProjectArgs{name: "api", setup: "make sync", hasSetup: true}},
 		{name: "clear setup", args: []string{"api", "--setup="}, want: addProjectArgs{name: "api", hasSetup: true}},
 		{name: "update path", args: []string{"api", "--path=/moved"}, want: addProjectArgs{name: "api", newPath: "/moved"}},
 		{name: "both", args: []string{"api", "--setup=x", "--path=/moved"}, want: addProjectArgs{name: "api", setup: "x", hasSetup: true, newPath: "/moved"}},
-		{name: "new with env cmd", args: []string{"api", "/repo", "--env-cmd=make get-env"}, want: addProjectArgs{name: "api", path: "/repo", envCmd: "make get-env", hasEnvCmd: true}},
+		{name: "new with env cmd", args: []string{"api", "git@x:api.git", "--env-cmd=make get-env"}, want: addProjectArgs{name: "api", url: "git@x:api.git", envCmd: "make get-env", hasEnvCmd: true}},
+		{name: "adopt", args: []string{"api", "--path=/repo"}, want: addProjectArgs{name: "api", newPath: "/repo"}},
+		{name: "tilde path", args: []string{"api", "--path=~/x"}, want: addProjectArgs{name: "api", newPath: filepath.Join(home, "x")}},
 		{name: "clear env cmd", args: []string{"api", "--env-cmd="}, want: addProjectArgs{name: "api", hasEnvCmd: true}},
 		{name: "no args", args: nil, wantErr: "usage"},
-		{name: "two paths", args: []string{"api", "/a", "/b"}, wantErr: "one path at most"},
+		{name: "two urls", args: []string{"api", "git@x:a.git", "git@x:b.git"}, wantErr: "one url at most"},
 		{name: "unknown flag", args: []string{"api", "--nope"}, wantErr: "unknown flag"},
 	}
 	for _, tt := range tests {
@@ -353,22 +358,13 @@ func TestPurgeAllowed(t *testing.T) {
 	}
 }
 
-func TestCloneAllowed(t *testing.T) {
-	dir := t.TempDir()
-	if err := cloneAllowed("api", dir); err == nil || !strings.Contains(err.Error(), "crew add project api "+dir) {
-		t.Errorf("existing dir: %v", err)
-	}
-	if err := cloneAllowed("api", dir+"/new"); err != nil {
-		t.Errorf("free path: %v", err)
-	}
-}
-
 // Where a new project's path comes from, and what a URL refuses.
 func TestAddProjectTarget(t *testing.T) {
 	prev := config.ProjectsDir
 	config.ProjectsDir = t.TempDir()
 	t.Cleanup(func() { config.ProjectsDir = prev })
 	url := "git@github.com:example/signals.git"
+	have := t.TempDir()
 	existing := &project.Project{Name: "signals", Path: "/repos/signals"}
 	for _, tt := range []struct {
 		name     string
@@ -378,12 +374,15 @@ func TestAddProjectTarget(t *testing.T) {
 		clone    bool
 		wantErr  string
 	}{
-		{"path", addProjectArgs{name: "signals", path: "/repos/signals"}, nil, "/repos/signals", false, ""},
+		{"url clones", addProjectArgs{name: "signals", url: url}, nil, project.ClonePath("signals"), true, ""},
+		{"--path adopts", addProjectArgs{name: "signals", newPath: have}, nil, have, false, ""},
+		{"--path must be a dir", addProjectArgs{name: "signals", newPath: have + "/nope"}, nil, "", false, "is not a directory"},
+		{"a bare path is refused", addProjectArgs{name: "signals", url: "/repos/signals"}, nil, "", false, "crew add project signals --path=/repos/signals; the default is a git URL"},
 		{"update keeps the path decision to the caller", addProjectArgs{name: "signals", hasSetup: true}, existing, "", false, ""},
-		{"no path", addProjectArgs{name: "signals"}, nil, "", false, "usage"},
-		{"url", addProjectArgs{name: "signals", path: url}, nil, project.ClonePath("signals"), true, ""},
-		{"url on an existing project", addProjectArgs{name: "signals", path: url}, existing, "", false, "already exists at /repos/signals"},
-		{"url with --path", addProjectArgs{name: "signals", path: url, newPath: "/x"}, nil, "", false, "--path means"},
+		{"--path on an existing project is a move", addProjectArgs{name: "signals", newPath: "/moved"}, existing, "/moved", false, ""},
+		{"nothing given", addProjectArgs{name: "signals"}, nil, "", false, "usage"},
+		{"url on an existing project", addProjectArgs{name: "signals", url: url}, existing, "", false, "already exists at /repos/signals"},
+		{"url with --path", addProjectArgs{name: "signals", url: url, newPath: "/x"}, nil, "", false, "drop --path to clone it, or drop the URL to adopt /x"},
 	} {
 		path, clone, err := addProjectTarget(tt.a, tt.existing)
 		if tt.wantErr != "" {
@@ -397,7 +396,23 @@ func TestAddProjectTarget(t *testing.T) {
 		}
 	}
 	os.MkdirAll(project.ClonePath("taken"), 0o755)
-	if _, _, err := addProjectTarget(addProjectArgs{name: "taken", path: url}, nil); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, _, err := addProjectTarget(addProjectArgs{name: "taken", url: url}, nil); err == nil || !strings.Contains(err.Error(), "crew add project taken --path="+project.ClonePath("taken")) {
 		t.Errorf("clone dir taken: %v", err)
+	}
+	wd, _ := os.Getwd()
+	if rel, err := filepath.Rel(wd, have); err == nil {
+		if path, _, err := addProjectTarget(addProjectArgs{name: "signals", newPath: rel}, nil); err != nil || path != have {
+			t.Errorf("a relative --path is recorded absolute: %q, %v", path, err)
+		}
+	}
+}
+
+func TestProjectLine(t *testing.T) {
+	p := project.Project{Name: "api", Path: "/p/api"}
+	if got := projectLine(p, "git@x:api.git"); got != "api\t/p/api\tgit@x:api.git" {
+		t.Errorf("%q", got)
+	}
+	if got := projectLine(p, ""); got != "api\t/p/api\t-" {
+		t.Errorf("%q", got)
 	}
 }

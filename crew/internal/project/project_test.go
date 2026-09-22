@@ -1,11 +1,15 @@
 package project
 
 import (
+	"encoding/json"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 func setupTestConfig(t *testing.T) {
@@ -258,5 +262,88 @@ func TestCrewOwned(t *testing.T) {
 	}
 	if CrewOwned(Project{Path: "repos/api"}) {
 		t.Error("a relative path elsewhere is not crew-owned")
+	}
+}
+
+// The identity is read off the checkout, never stored: a pool entry from
+// before, a clone, a plain repo and a vanished path all answer.
+func TestRemoteOf(t *testing.T) {
+	if _, err := osexec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	setupTestConfig(t)
+	seed := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=a@b", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"}} {
+		if _, err := exec.RunGitCommand(seed, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clone := filepath.Join(t.TempDir(), "clone")
+	if err := exec.Clone("file://"+seed, clone); err != nil {
+		t.Fatal(err)
+	}
+	if got := RemoteOf(Project{Name: "api", Path: clone}); got != "file://"+seed {
+		t.Errorf("clone = %q", got)
+	}
+	if got := RemoteOf(Project{Name: "seed", Path: seed}); got != "" {
+		t.Errorf("plain repo = %q", got)
+	}
+	if got := RemoteOf(Project{Name: "gone", Path: "/nope/gone"}); got != "" {
+		t.Errorf("vanished = %q", got)
+	}
+}
+
+func TestPath_OmittedWhenEmpty(t *testing.T) {
+	data, _ := json.Marshal(Project{Name: "a"})
+	if strings.Contains(string(data), `"path"`) {
+		t.Errorf("empty path written: %s", data)
+	}
+	data, _ = json.Marshal(Project{Name: "a", Path: "/p"})
+	if !strings.Contains(string(data), `"path":"/p"`) {
+		t.Errorf("path missing: %s", data)
+	}
+}
+
+func TestCloneAllowed(t *testing.T) {
+	setupTestConfig(t)
+	if err := CloneAllowed("api"); err != nil || CloneDirTaken("api") {
+		t.Errorf("free: %v", err)
+	}
+	os.MkdirAll(ClonePath("api"), 0o755)
+	if err := CloneAllowed("api"); err == nil || !strings.Contains(err.Error(), "crew add project api --path="+ClonePath("api")+" registers what is there, or delete it first") {
+		t.Errorf("taken: %v", err)
+	}
+	// A file where the clone would land stops git just as a dir does.
+	os.WriteFile(ClonePath("filed"), []byte("x"), 0o644)
+	if !CloneDirTaken("filed") {
+		t.Error("a file at the clone path is taken")
+	}
+	if err := ValidateCheckoutDir(ClonePath("filed")); err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Errorf("a file is not a checkout: %v", err)
+	}
+	if err := ValidateCheckoutDir(ClonePath("api")); err != nil {
+		t.Errorf("a dir is: %v", err)
+	}
+}
+
+// The repo moved: the new path is recorded absolute, since the identity is
+// read off it later from wherever crew runs.
+func TestSetPath_Absolute(t *testing.T) {
+	setupTestConfig(t)
+	Add(Project{Name: "api", Path: "/old"})
+	dir := t.TempDir()
+	wd, _ := os.Getwd()
+	rel, err := filepath.Rel(wd, dir)
+	if err != nil {
+		t.Skip("temp dir not relative to cwd")
+	}
+	if err := SetPath("api", rel); err != nil {
+		t.Fatal(err)
+	}
+	if got := Get("api").Path; got != dir {
+		t.Errorf("Path = %q, want %q", got, dir)
+	}
+	if err := SetPath("api", filepath.Join(dir, "nope")); err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Errorf("missing dir: %v", err)
 	}
 }

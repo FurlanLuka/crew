@@ -27,8 +27,8 @@ Linux installs pull in `tmux` and `git` if missing. `crew update` pulls the late
 ## Quick start
 
 ```bash
-crew add project store-api ~/code/store-api               # register a repo you have…
-crew add project store-app git@github.com:example/store-app.git   # …or clone one into ~/.crew/projects
+crew add project store-app git@github.com:example/store-app.git   # clone into ~/.crew/projects…
+crew add project store-api --path=~/code/store-api        # …or adopt a checkout you already have
 crew dev add store-api --name=store-api --port=3000 --cmd="npm run dev"
 crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
 crew add binding store-app --scan --apply                 # which env vars point at siblings
@@ -201,10 +201,14 @@ is actually answering. Tailscale users: `crew config set server_ip $(tailscale i
 
 ### Another machine
 
-`crew export --all` writes the projects (with their origin remotes) and the workspace
-memberships to one file — never worktrees, ports or overrides. `crew import <file>` on the
-other side is a wizard, or `--plan` then `project <name> [--path | --clone | --replace]` and
-`workspace <name> [--pull] [--wait]` for an agent. A workspace import makes its `main`
+A project is its git remote; the path is where crew keeps the clone. `crew export --all`
+writes the projects by remote (with servers, bindings, setup, env command — no paths) and
+the workspace memberships to one file — never worktrees, ports or overrides. `crew import
+<file>` on the other side clones every project it does not have into `~/.crew/projects`:
+a wizard (`y` clone, `p` adopt a checkout you already have, `r` replace), or `--plan` then
+`project <name> [--path | --replace]` and `workspace <name> [--pull] [--wait]` for an
+agent, or `--all`. A repo you already have on disk gets a second clone unless you point
+at it; a checkout with no remote exports as config only. A workspace import makes its `main`
 worktree exactly the way `crew add worktree` does — base table, `--pull`, one runner per
 project, failures recorded — so what you get on the second machine is as current and as
 checked as on the first.
@@ -259,12 +263,12 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | | |
 |---|---|
 | **See** | `ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings <p> [--check=<ref>]` · `ls overrides <ref>` · `show <ref>` · `env <ref> <p>` · `dev status` · `dev show <p>` · `dev check <ref>` · `ps` · `trash` · `config show` · `debug --tail=N` |
-| **Projects** | `add project <name> <path-or-url> [--setup=…] [--env-cmd=…]` · `rm project [--purge]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
+| **Projects** | `add project <name> <url> \| --path=<dir> [--setup=…] [--env-cmd=…]` · `rm project [--purge]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p>[/<server>] --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p>[/<server>] --scan [--apply]` · `rm binding <p>[/<server>] X` · `add\|rm override <ref> VAR=value` · `env <ref> <p>[/<server>]` · `run <ref> <p>[/<server>] -- <cmd>` |
 | **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
-| **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> … \| workspace <name> [--pull] [--wait] \| --all [--clone] [--replace] [--pull] [--wait]]` |
+| **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> [--path \| --replace] \| workspace <name> [--pull] [--wait] \| --all [--replace] [--pull] [--wait]]` |
 | **Housekeeping** | `clean [--dry-run]` · `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
 
 Settings (`crew config set`): `server_ip` (LAN IP for proxy URLs, auto-detected), `domain`

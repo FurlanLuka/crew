@@ -9,6 +9,7 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 var validServerName = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -47,7 +48,7 @@ func (b Binding) Label() string { return b.Key().Label() }
 // Project is a global project entry (no role — role is workspace-specific).
 type Project struct {
 	Name       string      `json:"name"`
-	Path       string      `json:"path"`
+	Path       string      `json:"path,omitempty"`
 	DevServers []DevServer `json:"dev_servers,omitempty"`
 	Bindings   []Binding   `json:"bindings,omitempty"`
 	// Setup is the command that installs a fresh checkout, when the lockfile
@@ -67,6 +68,40 @@ func CrewOwned(p Project) bool { return config.Under(p.Path, config.ProjectsDir)
 
 // ClonePath is where `crew add project <name> <url>` puts the clone.
 func ClonePath(name string) string { return filepath.Join(config.ProjectsDir, name) }
+
+// CloneDirTaken: something already sits where the clone would land — a
+// dir or a file, either stops git. The one predicate for add and import;
+// each words its own way out.
+func CloneDirTaken(name string) bool {
+	_, err := os.Stat(ClonePath(name))
+	return err == nil
+}
+
+// CloneAllowed is CloneDirTaken as add project's refusal: never adopt what
+// is there silently, name the two ways out.
+func CloneAllowed(name string) error {
+	if CloneDirTaken(name) {
+		dir := ClonePath(name)
+		return fmt.Errorf("%s already exists — crew add project %s --path=%s registers what is there, or delete it first", dir, name, dir)
+	}
+	return nil
+}
+
+// ValidateCheckoutDir: a path taken as a canonical checkout must be a
+// directory that is here. The one check for add --path, SetPath and an
+// import's adoption.
+func ValidateCheckoutDir(path string) error {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("'%s' is not a directory", path)
+	}
+	return nil
+}
+
+// RemoteOf is the project's identity: the origin its checkout points at,
+// read when asked and never stored, so it cannot drift from the clone.
+// "" for a repo without one — such a project cannot be cloned elsewhere.
+func RemoteOf(p Project) string { return exec.OriginURL(p.Path) }
 
 func poolFile() string {
 	return filepath.Join(config.ConfigDir, "projects.json")
@@ -276,9 +311,12 @@ func RenameDevServer(projName, oldName string, ds DevServer) error {
 // SetPath moves a project's canonical checkout. Worktrees already made from
 // the old path keep working — git tracks them from the repo, not from crew.
 func SetPath(projName, path string) error {
-	info, err := os.Stat(path)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("'%s' is not a directory", path)
+	if err := ValidateCheckoutDir(path); err != nil {
+		return err
+	}
+	// The identity is read off the path later, from wherever crew runs.
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
 	}
 	projects, err := List()
 	if err != nil {

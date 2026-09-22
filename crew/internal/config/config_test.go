@@ -86,3 +86,20 @@ func TestUnder(t *testing.T) {
 		t.Error("an empty root holds nothing")
 	}
 }
+
+func TestExpandHome(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	for in, want := range map[string]string{
+		"~/x":     filepath.Join(home, "x"),
+		"~/a/b":   filepath.Join(home, "a", "b"),
+		"~":       "~",
+		"~user/x": "~user/x",
+		"/abs":    "/abs",
+		"rel":     "rel",
+		"":        "",
+	} {
+		if got := ExpandHome(in); got != want {
+			t.Errorf("ExpandHome(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

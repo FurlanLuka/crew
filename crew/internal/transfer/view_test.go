@@ -26,6 +26,7 @@ func TestExportView_UncoveredWorkspaceDimsInPlace(t *testing.T) {
 			{Name: "store-api", DevServers: []project.DevServer{{Name: "store-api", Port: 3000}}, Bindings: []project.Binding{{Var: "A"}, {Var: "B"}}},
 			{Name: "admin", DevServers: []project.DevServer{{Name: "a"}, {Name: "b"}}, Setup: "make sync", EnvCmd: "make get-env"},
 		},
+		noRemote: map[string]bool{"admin": true},
 		workspaces: []*workspace.Workspace{
 			{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api"}}},
 			{Name: "admin", Projects: []workspace.WorkspaceProject{{Name: "admin"}}},
@@ -42,7 +43,7 @@ func TestExportView_UncoveredWorkspaceDimsInPlace(t *testing.T) {
 		"",
 		"  Projects",
 		"  ✓ store-api    1 server  2 bindings",
-		"> ○ admin        2 servers  setup: make sync  env: make get-env",
+		"> ○ admin        2 servers  setup: make sync  env: make get-env  no git remote — config only, cannot be cloned",
 		"",
 		"  Workspaces     only those whose projects are all ticked",
 		"  ✓ store-front  store-api",
@@ -71,36 +72,38 @@ func TestExportView_UncoveredWorkspaceDimsInPlace(t *testing.T) {
 	}
 }
 
-func importFixture(t *testing.T) (ImportView, string) {
+// importFixture is the three card shapes in order: store-api is here as a
+// clone of the bundle's remote, checkout-api is not here and has one,
+// infra-ops has none (a v1 bundle, so its old path rides along as a hint).
+// The bare remote's path comes back with the view for goldens.
+func importFixture(t *testing.T) (ImportView, string, string) {
 	t.Helper()
 	tmp := setupTestConfig(t)
-	here := filepath.Join(tmp, "dev", "store-api")
-	os.MkdirAll(here, 0o755)
-	os.MkdirAll(filepath.Join(tmp, "dev", "checkout-api"), 0o755)
+	remote, here := repoWithOrigin(t, tmp, "store-api")
 	project.Add(project.Project{Name: "store-api", Path: here, Bindings: []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}", Server: "store-api"}}})
 
 	b := Bundle{Version: 1, Projects: []Exported{
-		{Project: project.Project{Name: "store-api", Path: here,
+		{Project: project.Project{Name: "store-api",
 			DevServers: []project.DevServer{{Name: "store-api", Port: 3000, Command: "npm start"}},
 			Bindings:   []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}", Server: "store-api"}, {Var: "CHECKOUT_API_ASR_URL", Value: "{{checkout-api}}"}},
-			Setup:      "npm ci", EnvCmd: "npm run get-env"}},
-		{Project: project.Project{Name: "checkout-api", Path: "/Users/other/checkout-api",
+			Setup:      "npm ci", EnvCmd: "npm run get-env"}, Remote: remote},
+		{Project: project.Project{Name: "checkout-api",
 			DevServers: []project.DevServer{{Name: "checkout-api", Port: 8000}, {Name: "worker", Port: 8003}},
 			Bindings:   []project.Binding{{Var: "STORE_API_URL", Value: "{{store-api}}"}}}, Remote: "git@x:ai.git"},
-		{Project: project.Project{Name: "infra-ops", Path: "/Users/other/infra-ops"}, Remote: "git@x:gcp.git"},
+		{Project: project.Project{Name: "infra-ops", Path: "/Users/other/infra-ops"}},
 	}, Workspaces: []Membership{{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api", Role: "api"}, {Name: "infra-ops", Role: "infra", Mode: workspace.ModeDirect}}}}}
-	return NewImportView("/x/crew-export.json", b), tmp
+	return NewImportView("/x/crew-export.json", b), tmp, remote
 }
 
 func TestImportView_AlreadyHereCard(t *testing.T) {
-	v, tmp := importFixture(t)
+	v, tmp, remote := importFixture(t)
 	got := plain(v.View())
-	here := filepath.Join(tmp, "dev", "store-api")
+	here := filepath.Join(tmp, "repos", "store-api")
 	want := strings.Join([]string{
 		"  Import crew-export.json · project 1 of 3",
 		"",
 		"  name      store-api                                  · already here",
-		"  path      " + padTo(here, pathCol) + " ✓ exists",
+		"  remote    " + padTo(remote, pathCol) + " ✓ same repo here at " + here,
 		"  servers   store-api :3000  npm start",
 		"  bindings  CHECKOUT_API_URL (store-api)  {{checkout-api}}",
 		"            CHECKOUT_API_ASR_URL          {{checkout-api}}",
@@ -116,40 +119,122 @@ func TestImportView_AlreadyHereCard(t *testing.T) {
 	}
 }
 
-func TestImportView_SuggestionThenClone(t *testing.T) {
-	v, tmp := importFixture(t)
-	// Keep local on card 1 → anchors gain store-api's path → card 2 finds checkout-api beside it.
-	m, _ := v.Update(keyRune("n"))
-	v = m.(ImportView)
+// The two not-here shapes: a remote to clone from, and none at all.
+func TestImportView_CloneAndNoRemoteCards(t *testing.T) {
+	v, _, _ := importFixture(t)
+	v = press(t, v, "n")
 	got := plain(v.View())
-	suggested := filepath.Join(tmp, "dev", "checkout-api")
-	if !strings.Contains(got, "project 2 of 3") || !strings.Contains(got, "✗ not here") ||
-		!strings.Contains(got, "→ "+suggested) || !strings.Contains(got, "found beside store-api — y uses this") ||
-		!strings.Contains(got, "remote    git@x:ai.git") ||
-		!strings.Contains(got, "y import with suggested path  c clone  e edit  n skip  esc stop") {
-		t.Errorf("card 2 =\n%s", got)
+	if !strings.Contains(got, "project 2 of 3") || !strings.Contains(got, "remote    git@x:ai.git") || !strings.Contains(got, "✗ not here") ||
+		!strings.Contains(got, "→ "+tildify(project.ClonePath("checkout-api"))) || !strings.Contains(got, "y clones here — p adopts a checkout you have") ||
+		!strings.Contains(got, "y clone  p adopt a path  e edit  n skip  esc stop") {
+		t.Errorf("clone card =\n%s", got)
 	}
-
-	// c must not clone onto the sibling y already offers: with no place to
-	// put a fresh clone it asks for a path.
-	m, cmd := v.Update(keyRune("c"))
-	if ev := m.(ImportView); ev.state != importStateEdit || !ev.cloneAfterEdit || cmd == nil {
-		t.Errorf("c on suggested card: state=%v cloneAfterEdit=%v", ev.state, ev.cloneAfterEdit)
-	}
-
-	// Skip it: card 3 has no sibling to find, so c clones beside the last anchor.
-	m, _ = v.Update(keyRune("n"))
-	v = m.(ImportView)
+	v = press(t, v, "n")
 	got = plain(v.View())
-	target := filepath.Join(tmp, "dev", "infra-ops")
-	if !strings.Contains(got, "→ "+target) || !strings.Contains(got, "c clones here — beside store-api — or anywhere you type") ||
-		!strings.Contains(got, "  c clone  e edit  n skip  esc stop") || strings.Contains(got, "y import") {
-		t.Errorf("card 3 =\n%s", got)
+	if !strings.Contains(got, "project 3 of 3") || !strings.Contains(got, "✗ none — cannot be cloned") ||
+		!strings.Contains(got, "p adopts a checkout you have (was at /Users/other/infra-ops)") ||
+		!strings.Contains(got, "  p adopt a path  e edit  n skip  esc stop") || strings.Contains(got, "y clone") {
+		t.Errorf("no-remote card =\n%s", got)
+	}
+	// y on a card with nothing to clone does nothing.
+	if m, _ := v.Update(keyRune("y")); m.(ImportView).state != importStateCard || m.(ImportView).err != nil {
+		t.Error("y is not a key on the no-remote card")
+	}
+}
+
+// An existing name whose checkout points at another repo: both remotes on
+// the card, r clones the bundle's.
+func TestImportView_OtherRemoteCard(t *testing.T) {
+	tmp := setupTestConfig(t)
+	localRepo := filepath.Join(tmp, "repos", "admin")
+	initRepo(t, localRepo)
+	project.Add(project.Project{Name: "admin", Path: localRepo})
+	remote, _ := repoWithOrigin(t, tmp, "admin-upstream")
+	b := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "admin"}, Remote: remote}}}
+	v := NewImportView("/x/b.json", b)
+	got := plain(v.View())
+	if !strings.Contains(got, "· already here") || !strings.Contains(got, "remote    "+remote) ||
+		!strings.Contains(got, "local     no remote") || !strings.Contains(got, "r clones this one instead") ||
+		!strings.Contains(got, "r replace local  n keep local  e edit  esc stop") {
+		t.Errorf("other-remote card =\n%s", got)
+	}
+	v = press(t, v, "r")
+	if p := project.Get("admin"); p == nil || p.Path != project.ClonePath("admin") || project.RemoteOf(*p) != remote {
+		t.Errorf("r should clone the bundle's remote: %+v", p)
+	}
+	if !strings.Contains(plain(v.View()), "admin  replaced") {
+		t.Errorf("summary:\n%s", plain(v.View()))
+	}
+}
+
+// r on a config-only entry (no remote in the bundle, here without origin)
+// syncs the config and keeps the checkout — the key the card offers works.
+func TestImportView_ReplaceConfigOnly(t *testing.T) {
+	tmp := setupTestConfig(t)
+	notes := filepath.Join(tmp, "repos", "notes")
+	initRepo(t, notes)
+	project.Add(project.Project{Name: "notes", Path: notes})
+	b := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "notes", Setup: "make"}}}}
+	v := NewImportView("/x/b.json", b)
+	if got := plain(v.View()); !strings.Contains(got, "✓ same repo here at") || !strings.Contains(got, "r replace local") {
+		t.Fatalf("card:\n%s", got)
+	}
+	v = press(t, v, "r")
+	if p := project.Get("notes"); p == nil || p.Path != notes || p.Setup != "make" {
+		t.Errorf("record = %+v", p)
+	}
+	if _, err := os.Stat(project.ClonePath("notes")); err == nil {
+		t.Error("nothing cloned")
+	}
+}
+
+// A rename onto a name already in the pool is refused on the card, before
+// any clone.
+func TestImportView_RenameCollisionClonesNothing(t *testing.T) {
+	v, tmp, _ := importFixture(t)
+	remote, _ := repoWithOrigin(t, tmp, "infra-ops")
+	v.bundle.Projects[2].Remote = remote
+	v = press(t, v, "n")
+	v = press(t, v, "n")
+	v = press(t, v, "e")
+	v.focus = fieldName
+	v = typeInto(t, v, "store-api")
+	v = press(t, v, "enter")
+	// Refused on the form, before y is even offered under that name.
+	if v.state != importStateEdit || v.err == nil || !strings.Contains(v.err.Error(), "already in the pool — choose another name") {
+		t.Errorf("state=%v err=%v", v.state, v.err)
+	}
+	if v.current.Name != "infra-ops" {
+		t.Errorf("the rename must not have landed: %q", v.current.Name)
+	}
+	if _, err := os.Stat(project.ClonePath("store-api")); err == nil {
+		t.Error("a collision must not have cloned")
+	}
+}
+
+// The picker's mark is read off each checkout at load.
+func TestNoRemoteOf(t *testing.T) {
+	tmp := setupTestConfig(t)
+	_, clone := repoWithOrigin(t, tmp, "api")
+	plainRepo := filepath.Join(tmp, "repos", "plain")
+	initRepo(t, plainRepo)
+	got := noRemoteOf([]project.Project{{Name: "api", Path: clone}, {Name: "plain", Path: plainRepo}})
+	if len(got) != 1 || !got["plain"] {
+		t.Errorf("noRemoteOf = %v", got)
+	}
+}
+
+func TestNextEditField(t *testing.T) {
+	if got := nextEditField(fieldEnvCmd, 1); got != fieldName {
+		t.Errorf("tab wraps to the name, got %d", got)
+	}
+	if got := nextEditField(fieldName, -1); got != fieldEnvCmd {
+		t.Errorf("shift+tab wraps to env, got %d", got)
 	}
 }
 
 func TestImportView_WorkspaceBlockedThenSummary(t *testing.T) {
-	v, _ := importFixture(t)
+	v, _, _ := importFixture(t)
 	for _, k := range []string{"n", "n", "n"} { // keep store-api, skip the other two
 		m, _ := v.Update(keyRune(k))
 		v = m.(ImportView)
@@ -187,7 +272,7 @@ func TestImportView_WorkspaceBlockedThenSummary(t *testing.T) {
 }
 
 func TestImportView_EscStopsAndKeepsApplied(t *testing.T) {
-	v, tmp := importFixture(t)
+	v, tmp, _ := importFixture(t)
 	v = press(t, v, "r") // replace store-api: applied at once
 	if project.Get("store-api") == nil || len(project.Get("store-api").Bindings) != 2 {
 		t.Fatal("replace should have landed before the next card")
@@ -261,7 +346,7 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 		for _, r := range results {
 			out = append(out, r...)
 		}
-	case projectDoneMsg, clonedMsg, wsStartedMsg, wsPollMsg:
+	case projectDoneMsg, wsStartedMsg, wsPollMsg:
 		out = append(out, msg)
 	}
 	return out
@@ -273,43 +358,30 @@ func typeInto(t *testing.T, v ImportView, text string) ImportView {
 	return v
 }
 
-func TestImportView_CloneAnchored(t *testing.T) {
-	v, tmp := importFixture(t)
+// y clones into crew's own dir and moves on in one step.
+func TestImportView_YClones(t *testing.T) {
+	v, tmp, _ := importFixture(t)
 	remote, _ := repoWithOrigin(t, tmp, "infra-ops")
 	v.bundle.Projects[2].Remote = remote
-	v = press(t, v, "n") // store-api kept → anchor
-	v = press(t, v, "n") // checkout-api skipped
-	target := filepath.Join(tmp, "dev", "infra-ops")
-	if got := v.cloneTarget(); got != target {
-		t.Fatalf("cloneTarget = %q, want %q", got, target)
-	}
-
-	// c offers the guess in the path field; enter takes it as is.
-	v = press(t, v, "c")
-	if v.state != importStateEdit || v.focus != fieldPath || v.inputs[fieldPath].Value() != target {
-		t.Fatalf("after c: state=%v path field=%q", v.state, v.inputs[fieldPath].Value())
-	}
-	if got := plain(v.View()); !strings.Contains(got, "· where to clone") || !strings.Contains(got, "→ clone lands here") ||
-		!strings.Contains(got, "tab next  enter clone  esc back") {
-		t.Errorf("clone prompt:\n%s", got)
-	}
-	m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v = press(t, v, "n")
+	v = press(t, v, "n")
+	target := project.ClonePath("infra-ops")
+	m, cmd := v.Update(keyRune("y"))
 	v = m.(ImportView)
-	if v.state != importStateCloning || !strings.Contains(plain(v.View()), "Cloning infra-ops → "+target) {
-		t.Errorf("after enter: state=%v\n%s", v.state, plain(v.View()))
+	if v.state != importStateApplying || v.pending.Action != actionClone || !strings.Contains(plain(v.View()), "Cloning infra-ops → "+tildify(target)) {
+		t.Fatalf("after y: state=%v pending=%+v\n%s", v.state, v.pending, plain(v.View()))
 	}
 	for _, msg := range runCmd(cmd) {
 		v = settle(t, v, msg)
 	}
-	if v.state != importStateCard || !v.pathExists || v.current.Path != target {
-		t.Fatalf("after clone: state=%v pathExists=%v path=%q", v.state, v.pathExists, v.current.Path)
-	}
-	if !strings.Contains(plain(v.View()), "  y import  ") {
-		t.Errorf("card after clone:\n%s", plain(v.View()))
-	}
-	v = press(t, v, "y")
 	if !strings.Contains(plain(v.View()), "workspace 1 of 1") {
-		t.Fatalf("y after clone should advance:\n%s", plain(v.View()))
+		t.Fatalf("y should clone and advance:\n%s", plain(v.View()))
+	}
+	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
+		t.Error("no checkout at the clone target")
+	}
+	if p := project.Get("infra-ops"); p == nil || p.Path != target {
+		t.Errorf("record = %+v", p)
 	}
 	v = press(t, v, "n")
 	if got := plain(v.View()); !strings.Contains(got, "infra-ops     imported (cloned)   → "+target) {
@@ -317,72 +389,104 @@ func TestImportView_CloneAnchored(t *testing.T) {
 	}
 }
 
-func TestImportView_ClonePickedPath(t *testing.T) {
-	v, tmp := importFixture(t)
-	remote, _ := repoWithOrigin(t, tmp, "infra-ops")
-	v.bundle.Projects[2].Remote = remote
+// p adopts a checkout already here: nothing cloned, the record points at
+// it, and a dir that is not there is refused in place.
+func TestImportView_PAdopts(t *testing.T) {
+	v, tmp, _ := importFixture(t)
+	_, have := repoWithOrigin(t, tmp, "elsewhere")
 	v = press(t, v, "n")
 	v = press(t, v, "n")
-	v = press(t, v, "c")
-	picked := filepath.Join(tmp, "elsewhere", "infra")
-	v = typeInto(t, v, picked)
-	v = press(t, v, "enter")
-	if v.state != importStateCard || !v.pathExists || v.current.Path != picked {
-		t.Fatalf("typed path: state=%v pathExists=%v path=%q", v.state, v.pathExists, v.current.Path)
+	v = press(t, v, "p")
+	if v.state != importStatePath || v.focus != fieldPath || v.inputs[fieldPath].Value() != "" {
+		t.Fatalf("after p: state=%v field=%q", v.state, v.inputs[fieldPath].Value())
 	}
-	if _, err := os.Stat(filepath.Join(picked, ".git")); err != nil {
-		t.Error("no checkout at the picked path")
+	if got := plain(v.View()); !strings.Contains(got, "· adopt a path") || !strings.Contains(got, "enter adopt  esc back") {
+		t.Errorf("path form:\n%s", got)
+	}
+	v = typeInto(t, v, filepath.Join(tmp, "nope"))
+	if got := plain(v.View()); !strings.Contains(got, "✗ not here") {
+		t.Errorf("missing dir should show inline:\n%s", got)
+	}
+	v = press(t, v, "enter")
+	if v.state != importStatePath || v.err == nil {
+		t.Fatalf("enter on a missing dir stays put: state=%v err=%v", v.state, v.err)
+	}
+	v = typeInto(t, v, have)
+	if got := plain(v.View()); !strings.Contains(got, "✓ exists — recorded as is, nothing cloned") {
+		t.Errorf("existing dir:\n%s", got)
+	}
+	v = press(t, v, "enter")
+	if !strings.Contains(plain(v.View()), "workspace 1 of 1") {
+		t.Fatalf("enter should adopt and advance:\n%s", plain(v.View()))
+	}
+	if p := project.Get("infra-ops"); p == nil || p.Path != have {
+		t.Errorf("record = %+v", p)
+	}
+	if _, err := os.Stat(project.ClonePath("infra-ops")); err == nil {
+		t.Error("an adoption clones nothing")
+	}
+	v = press(t, v, "n")
+	if got := plain(v.View()); !strings.Contains(got, "infra-ops     imported   → "+have) {
+		t.Errorf("summary:\n%s", got)
 	}
 }
 
 func TestImportView_CloneErrorShowsInline(t *testing.T) {
-	v, _ := importFixture(t)
+	v, _, _ := importFixture(t)
 	v.bundle.Projects[2].Remote = "/nowhere/missing.git"
 	v = press(t, v, "n")
 	v = press(t, v, "n")
-	v = press(t, v, "c")
-	v = press(t, v, "enter")
-	if v.state != importStateCard || v.err == nil || !strings.Contains(plain(v.View()), "! git clone:") {
+	v = press(t, v, "y")
+	if v.state != importStateCard || v.err == nil || !strings.Contains(plain(v.View()), "! infra-ops: git clone:") {
 		t.Errorf("state=%v err=%v\n%s", v.state, v.err, plain(v.View()))
 	}
-	if !strings.Contains(plain(v.View()), "c clone  e edit  n skip  esc stop") {
+	if !strings.Contains(plain(v.View()), "y clone  p adopt a path  e edit  n skip  esc stop") {
 		t.Error("keys should come back after a failed clone")
 	}
 }
 
-func TestImportView_CloneWithoutAnchorAsksForPath(t *testing.T) {
+// The clone dir already taken: the card says so, y explains, p adopts.
+func TestImportView_BlockedCard(t *testing.T) {
 	tmp := setupTestConfig(t)
 	remote, _ := repoWithOrigin(t, tmp, "api")
-	b := Bundle{Version: 1, Projects: []Exported{{Project: project.Project{Name: "api", Path: "/nowhere/api"}, Remote: remote}}}
-	// With nowhere else, the card offers crew's own projects dir.
-	v := NewImportView("/x/b.json", b)
-	if got := plain(v.View()); !strings.Contains(got, "→ "+project.ClonePath("api")) || !strings.Contains(got, "c clones here") {
-		t.Fatalf("card with the projects dir free:\n%s", got)
-	}
-	// That dir taken: c asks where to clone.
 	os.MkdirAll(project.ClonePath("api"), 0o755)
-	v = NewImportView("/x/b.json", b)
-	if !strings.Contains(plain(v.View()), "✗ not here — c asks where to clone, e sets the path") {
-		t.Fatalf("card:\n%s", plain(v.View()))
+	b := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "api"}, Remote: remote}}}
+	v := NewImportView("/x/b.json", b)
+	got := plain(v.View())
+	if !strings.Contains(got, "✗ "+tildify(project.ClonePath("api"))+" exists") || !strings.Contains(got, "p adopts it, or delete it first") ||
+		!strings.Contains(got, "  p adopt a path  e edit  n skip  esc stop") || strings.Contains(got, "y clone") {
+		t.Fatalf("blocked card:\n%s", got)
+	}
+	v = press(t, v, "y")
+	if v.state != importStateCard || v.err == nil || v.err.Error() != project.ClonePath("api")+" exists — p adopts it, or delete it first" {
+		t.Errorf("y on a blocked card explains: state=%v err=%v", v.state, v.err)
+	}
+	if project.Get("api") != nil {
+		t.Error("y on a blocked card records nothing")
+	}
+	v = press(t, v, "p")
+	v = typeInto(t, v, project.ClonePath("api"))
+	v = press(t, v, "enter")
+	if p := project.Get("api"); p == nil || p.Path != project.ClonePath("api") {
+		t.Errorf("p adopts the dir that is there: %+v", p)
 	}
 
-	v = press(t, v, "c")
-	if v.state != importStateEdit || !v.cloneAfterEdit || v.focus != fieldPath {
-		t.Fatalf("c without anchor should open the path field: state=%v", v.state)
+	// A file where the clone would land cannot be adopted: the card says
+	// delete, not p.
+	os.WriteFile(project.ClonePath("filed"), []byte("x"), 0o644)
+	bf := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "filed"}, Remote: remote}}}
+	vf := NewImportView("/x/b.json", bf)
+	if got := plain(vf.View()); !strings.Contains(got, "delete it first — it is not a directory") || strings.Contains(got, "p adopts it") {
+		t.Errorf("blocked-by-a-file card:\n%s", got)
 	}
-	target := filepath.Join(tmp, "picked", "api")
-	v = typeInto(t, v, target)
-	v = press(t, v, "enter")
-	if v.state != importStateCard || !v.pathExists || v.current.Path != target {
-		t.Errorf("enter should clone there: state=%v pathExists=%v path=%q", v.state, v.pathExists, v.current.Path)
-	}
-	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
-		t.Error("no checkout at the typed path")
+	vf = press(t, vf, "y")
+	if vf.err == nil || !strings.Contains(vf.err.Error(), "delete it first — it is not a directory") {
+		t.Errorf("y on a file-blocked card: %v", vf.err)
 	}
 }
 
 func TestImportView_RenameWarnsAboutReferences(t *testing.T) {
-	v, _ := importFixture(t)
+	v, _, _ := importFixture(t)
 	v = press(t, v, "n") // to checkout-api, which store-api's bindings point at
 	v = press(t, v, "e")
 	v.focus = fieldName
@@ -398,7 +502,7 @@ func TestImportView_RenameWarnsAboutReferences(t *testing.T) {
 }
 
 func TestImportView_ReplaceAfterRename(t *testing.T) {
-	v, _ := importFixture(t)
+	v, tmp, _ := importFixture(t)
 	v = press(t, v, "e")
 	v.focus = fieldName
 	v = typeInto(t, v, "store-api2")
@@ -409,6 +513,10 @@ func TestImportView_ReplaceAfterRename(t *testing.T) {
 	v = press(t, v, "r")
 	if project.Get("store-api") != nil || project.Get("store-api2") == nil {
 		t.Fatal("replace should swap the original record for the renamed one")
+	}
+	// Same remote: the local checkout stays the canonical, nothing cloned.
+	if p := project.Get("store-api2"); p.Path != filepath.Join(tmp, "repos", "store-api") {
+		t.Errorf("a same-remote replace keeps the local path: %+v", p)
 	}
 	if !v.present["store-api2"] || v.present["store-api"] {
 		t.Errorf("present = %v", v.present)
@@ -426,11 +534,12 @@ func TestImportView_WorkspaceCreate(t *testing.T) {
 	tmp := setupTestConfig(t)
 	api := filepath.Join(tmp, "repos", "api")
 	initRepo(t, api)
-	b := Bundle{Version: 1,
-		Projects:   []Exported{{Project: project.Project{Name: "api", Path: api}}},
+	project.Add(project.Project{Name: "api", Path: api})
+	b := Bundle{Version: 2,
+		Projects:   []Exported{{Project: project.Project{Name: "api"}}},
 		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}}}
 	v := NewImportView("/x/b.json", b)
-	v = press(t, v, "y")
+	v = press(t, v, "n") // api is here: kept → workspace card
 	// The card opens on its base table (fetched in the background) and the
 	// same keys crew add worktree offers.
 	if got := plain(v.View()); !strings.Contains(got, "y create  ctrl+p pull first  n skip  esc stop") || !strings.Contains(got, "checking the base branches") {
@@ -539,11 +648,12 @@ func TestImportView_WorkspaceCardBasesAndPull(t *testing.T) {
 	tmp := setupTestConfig(t)
 	api := filepath.Join(tmp, "repos", "api")
 	initRepo(t, api)
-	b := Bundle{Version: 1,
-		Projects:   []Exported{{Project: project.Project{Name: "api", Path: api}}},
+	project.Add(project.Project{Name: "api", Path: api})
+	b := Bundle{Version: 2,
+		Projects:   []Exported{{Project: project.Project{Name: "api"}}},
 		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}}}
 	v := NewImportView("/x/b.json", b)
-	v = press(t, v, "y") // api imported → workspace card
+	v = press(t, v, "n") // api is here: kept → workspace card
 
 	// A table for another card is dropped; the right one shows, with the
 	// stale warning and the pull hint.
@@ -595,7 +705,7 @@ func TestImportView_WorkspaceCardBasesAndPull(t *testing.T) {
 
 // The edit form carries the env command: shown, editable, saved on the card.
 func TestImportView_EditEnvCmd(t *testing.T) {
-	v, _ := importFixture(t)
+	v, _, _ := importFixture(t)
 	v = press(t, v, "e")
 	if v.state != importStateEdit || !strings.Contains(plain(v.View()), "  env       ") || v.inputs[fieldEnvCmd].Value() != "npm run get-env" {
 		t.Fatalf("edit form (field=%q):\n%s", v.inputs[fieldEnvCmd].Value(), plain(v.View()))

@@ -384,16 +384,31 @@ func cmdLsProjects() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	// The remote is read off each checkout — one git call per row, which a
+	// list can afford; it is the project's identity and the export's.
+	type projectOut struct {
+		project.Project
+		Remote string `json:"remote"`
+	}
+	out := []projectOut{}
+	for _, p := range projects {
+		out = append(out, projectOut{Project: p, Remote: project.RemoteOf(p)})
+	}
 	if jsonOutput {
-		if projects == nil {
-			projects = []project.Project{}
-		}
-		printJSON(projects)
+		printJSON(out)
 		return
 	}
-	for _, p := range projects {
-		fmt.Printf("%s\t%s\n", p.Name, p.Path)
+	for _, p := range out {
+		fmt.Println(projectLine(p.Project, p.Remote))
 	}
+}
+
+// projectLine is one row of crew ls projects: name, path, remote or "-".
+func projectLine(p project.Project, remote string) string {
+	if remote == "" {
+		remote = "-"
+	}
+	return p.Name + "\t" + p.Path + "\t" + remote
 }
 
 func cmdLsWorkspaces() {
@@ -730,17 +745,19 @@ func cmdAdd() {
 // addProjectArgs is what crew add project was told; the same command
 // registers a new project and updates an existing one.
 type addProjectArgs struct {
-	name, path, setup string
-	hasSetup          bool
-	envCmd            string
-	hasEnvCmd         bool
-	newPath           string
+	name, url, setup string
+	hasSetup         bool
+	envCmd           string
+	hasEnvCmd        bool
+	// newPath: --path=<dir> — adopt a checkout you already have (new name),
+	// or "the repo moved" (existing name).
+	newPath string
 }
 
 func parseAddProjectArgs(args []string) (addProjectArgs, error) {
 	var a addProjectArgs
 	if len(args) == 0 {
-		return a, errors.New("usage: crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>]")
+		return a, errors.New("usage: crew add project <name> <url> | --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]")
 	}
 	a.name = args[0]
 	for _, arg := range args[1:] {
@@ -750,13 +767,13 @@ func parseAddProjectArgs(args []string) (addProjectArgs, error) {
 		case strings.HasPrefix(arg, "--env-cmd="):
 			a.envCmd, a.hasEnvCmd = strings.TrimPrefix(arg, "--env-cmd="), true
 		case strings.HasPrefix(arg, "--path="):
-			a.newPath = strings.TrimPrefix(arg, "--path=")
+			a.newPath = config.ExpandHome(strings.TrimPrefix(arg, "--path="))
 		case strings.HasPrefix(arg, "-"):
 			return a, fmt.Errorf("unknown flag '%s'", arg)
-		case a.path != "":
-			return a, fmt.Errorf("one path at most, got '%s' and '%s'", a.path, arg)
+		case a.url != "":
+			return a, fmt.Errorf("one url at most, got '%s' and '%s'", a.url, arg)
 		default:
-			a.path = arg
+			a.url = arg
 		}
 	}
 	return a, nil
@@ -796,8 +813,8 @@ func cmdAddProject() {
 		return
 	}
 	if clone {
-		fmt.Fprintf(human, "Cloning %s → %s\n", a.path, path)
-		if err := exec.Clone(a.path, path); err != nil {
+		fmt.Fprintf(human, "Cloning %s → %s\n", a.url, path)
+		if err := exec.Clone(a.url, path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -817,39 +834,40 @@ func cmdAddProject() {
 	}
 }
 
-// addProjectTarget decides where a new project's path comes from: the
-// path given, or — for a git URL — the clone crew will make, refused when
-// the name is taken (a URL cannot update a project: the clone is the fact,
-// and it is already registered as one path), when --path rides along, or
-// when the clone dir exists. An existing project with a plain path is the
-// update case — the caller's. Pure but for the stat in cloneAllowed.
+// addProjectTarget decides where a new project's checkout comes from: the
+// clone crew will make from a git URL — the default — or, with --path, a
+// checkout the user already has, taken absolute (the identity is read off
+// it later, from wherever crew is run). A bare path is refused so "the
+// default is a clone" stays true; a URL cannot update a project (the clone
+// is the fact, already registered as one path) or ride along with --path.
+// An existing project with --path is the update case — the caller's. Pure
+// but for the two stats: the adopted dir, and the clone dir.
 func addProjectTarget(a addProjectArgs, existing *project.Project) (path string, clone bool, err error) {
-	if !exec.IsGitURL(a.path) {
-		if existing == nil && a.path == "" {
-			return "", false, errors.New("usage: crew add project <name> <path-or-url> [--setup=<cmd>] [--env-cmd=<cmd>]")
+	switch {
+	case a.url != "" && !exec.IsGitURL(a.url):
+		return "", false, fmt.Errorf("a path is adopted with crew add project %s --path=%s; the default is a git URL", a.name, a.url)
+	case a.url == "":
+		if existing == nil && a.newPath == "" {
+			return "", false, errors.New("usage: crew add project <name> <url> | --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]")
 		}
-		return a.path, false, nil
-	}
-	if existing != nil {
+		if existing == nil {
+			if err := project.ValidateCheckoutDir(a.newPath); err != nil {
+				return "", false, fmt.Errorf("--path: %w", err)
+			}
+			if abs, err := filepath.Abs(a.newPath); err == nil {
+				return abs, false, nil
+			}
+		}
+		return a.newPath, false, nil
+	case existing != nil:
 		return "", false, fmt.Errorf("project '%s' already exists at %s — crew rm project %s first, or pick another name", a.name, existing.Path, a.name)
+	case a.newPath != "":
+		return "", false, fmt.Errorf("%s: a URL always clones to %s — drop --path to clone it, or drop the URL to adopt %s", a.name, project.ClonePath(a.name), a.newPath)
 	}
-	dir := project.ClonePath(a.name)
-	if a.newPath != "" {
-		return "", false, fmt.Errorf("--path means \"the repo moved\" on an existing project; a URL always clones to %s", dir)
-	}
-	if err := cloneAllowed(a.name, dir); err != nil {
+	if err := project.CloneAllowed(a.name); err != nil {
 		return "", false, err
 	}
-	return dir, true, nil
-}
-
-// cloneAllowed: the clone dir must not exist — never adopt what is there
-// silently. Names the two ways out.
-func cloneAllowed(name, dir string) error {
-	if _, err := os.Stat(dir); err == nil {
-		return fmt.Errorf("%s already exists — crew add project %s %s registers what is there, or delete it first", dir, name, dir)
-	}
-	return nil
+	return project.ClonePath(a.name), true, nil
 }
 
 // applyProjectUpdate is `crew add project` on a project already in the
@@ -875,7 +893,12 @@ func applyProjectUpdate(a addProjectArgs) ([]string, error) {
 		if err := project.SetPath(a.name, a.newPath); err != nil {
 			return nil, err
 		}
-		lines = append(lines, fmt.Sprintf("Path for %s: %s", a.name, a.newPath))
+		// SetPath records the path absolute; say what was recorded.
+		path := a.newPath
+		if p := project.Get(a.name); p != nil {
+			path = p.Path
+		}
+		lines = append(lines, fmt.Sprintf("Path for %s: %s", a.name, path))
 	}
 	return lines, nil
 }

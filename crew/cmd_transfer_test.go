@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,6 +51,7 @@ func TestParseExportArgs(t *testing.T) {
 }
 
 func TestParseImportArgs(t *testing.T) {
+	home, _ := os.UserHomeDir()
 	tests := []struct {
 		name    string
 		args    []string
@@ -57,20 +60,22 @@ func TestParseImportArgs(t *testing.T) {
 	}{
 		{name: "file only → wizard", args: []string{"b.json"}, want: importArgs{file: "b.json"}},
 		{name: "plan", args: []string{"b.json", "--plan"}, want: importArgs{file: "b.json", plan: true}},
-		{name: "all with clone and replace", args: []string{"--all", "b.json", "--clone", "--replace"},
-			want: importArgs{file: "b.json", all: true, project: transfer.ProjectOptions{Clone: true, Replace: true}}},
-		{name: "project with every flag", args: []string{"b.json", "project", "api", "--clone=/x/api", "--replace", "--name=api2", "--setup=make", "--env-cmd=make get-env", "--path=/p"},
-			want: importArgs{file: "b.json", item: "project", name: "api", project: transfer.ProjectOptions{Clone: true, CloneTo: "/x/api", Replace: true, Name: "api2", Setup: "make", EnvCmd: "make get-env", Path: "/p"}}},
+		{name: "all with replace", args: []string{"--all", "b.json", "--replace"},
+			want: importArgs{file: "b.json", all: true, project: transfer.ProjectOptions{Replace: true}}},
+		{name: "project with every flag", args: []string{"b.json", "project", "api", "--replace", "--name=api2", "--setup=make", "--env-cmd=make get-env", "--path=/p"},
+			want: importArgs{file: "b.json", item: "project", name: "api", project: transfer.ProjectOptions{Replace: true, Name: "api2", Setup: "make", EnvCmd: "make get-env", Path: "/p"}}},
+		{name: "tilde path", args: []string{"b.json", "project", "api", "--path=~/x"},
+			want: importArgs{file: "b.json", item: "project", name: "api", project: transfer.ProjectOptions{Path: filepath.Join(home, "x")}}},
 		{name: "env cmd on workspace", args: []string{"b.json", "workspace", "ws", "--env-cmd=x"}, wantErr: "belong to import <file> project"},
 		{name: "workspace", args: []string{"b.json", "workspace", "ws"}, want: importArgs{file: "b.json", item: "workspace", name: "ws"}},
 		{name: "no file", args: []string{"--plan"}, wantErr: "bundle file"},
 		{name: "item without name", args: []string{"b.json", "project"}, wantErr: "needs a name"},
 		{name: "two modes", args: []string{"b.json", "--plan", "--all"}, wantErr: "one of"},
 		{name: "path on all", args: []string{"b.json", "--all", "--path=/p"}, wantErr: "belong to import <file> project"},
-		{name: "clone on workspace", args: []string{"b.json", "workspace", "ws", "--clone"}, wantErr: "belong to project"},
-		{name: "clone on wizard", args: []string{"b.json", "--clone"}, wantErr: "need --all"},
-		{name: "clone on plan", args: []string{"b.json", "--plan", "--clone"}, wantErr: "need --all"},
-		{name: "replace on plan", args: []string{"b.json", "--plan", "--replace"}, wantErr: "need --all"},
+		{name: "clone is the default now", args: []string{"b.json", "--all", "--clone"}, wantErr: "clone is the default now; --path=<dir> adopts"},
+		{name: "clone= too", args: []string{"b.json", "project", "api", "--clone=/x"}, wantErr: "clone is the default now"},
+		{name: "replace on workspace", args: []string{"b.json", "workspace", "ws", "--replace"}, wantErr: "belongs to project"},
+		{name: "replace on plan", args: []string{"b.json", "--plan", "--replace"}, wantErr: "needs --all"},
 		{name: "unknown flag", args: []string{"b.json", "--nope"}, wantErr: "unknown flag"},
 		{name: "stray argument", args: []string{"b.json", "x"}, wantErr: "unexpected argument"},
 	}

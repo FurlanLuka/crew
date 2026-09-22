@@ -112,6 +112,73 @@ func IsGitURL(s string) bool {
 	return false
 }
 
+// OriginURL is the repo's origin URL, or "" — a plain repo has none, a
+// path that is gone has none, and neither is an error to anyone asking.
+func OriginURL(dir string) string {
+	out, err := RunGitCommand(dir, "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// RepoKey is the repo a URL names with the transport stripped, so
+// git@github.com:o/r.git and https://github.com/o/r are the same project:
+// scheme, user@, a port, .git and a trailing / go; the scp form's ":"
+// becomes "/"; the host is lower-cased (the path is not — only some hosts
+// fold it). A file:// URL or a bare path keys as its cleaned path. Pure;
+// "" for "".
+func RepoKey(url string) string {
+	s := strings.TrimSpace(url)
+	if s == "" {
+		return ""
+	}
+	if rest, ok := strings.CutPrefix(s, "file://"); ok {
+		return trimRepo(rest)
+	}
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, ".") {
+		return trimRepo(s)
+	}
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	} else if host, path, ok := strings.Cut(s, ":"); ok && !strings.Contains(host, "/") {
+		// scp form: [user@]host:path — the ":" is the separator whatever
+		// comes before it.
+		s = host + "/" + strings.TrimPrefix(path, "/")
+	}
+	if at := strings.LastIndex(s, "@"); at >= 0 && !strings.Contains(s[:at], "/") {
+		s = s[at+1:]
+	}
+	host, path, found := strings.Cut(s, "/")
+	if h, _, ok := strings.Cut(host, ":"); ok {
+		host = h // a port is transport, not identity
+	}
+	host = strings.ToLower(host)
+	if !found {
+		return host
+	}
+	return host + "/" + trimRepo(path)
+}
+
+// trimRepo drops what a remote's path carries that its identity does not.
+func trimRepo(path string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(path, "/"), ".git")
+}
+
+// RedactURL is a remote with its userinfo gone — what a log may carry: a
+// remote can hold a token, and CLAUDE.md's rule for bindings applies to it.
+func RedactURL(url string) string {
+	i := strings.Index(url, "://")
+	if i < 0 {
+		return url
+	}
+	rest := url[i+3:]
+	if at := strings.Index(rest, "@"); at >= 0 && !strings.Contains(rest[:at], "/") {
+		return url[:i+3] + rest[at+1:]
+	}
+	return url
+}
+
 // RemoteHeadBranch is the local name of the branch origin/HEAD points at —
 // what a clone checked out, whatever the repo calls it. Empty without one.
 func RemoteHeadBranch(dir string) string {
@@ -138,12 +205,12 @@ func Clone(remote, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
-	debug.Log("git", "clone %s %s", remote, target)
+	debug.Log("git", "clone %s %s", RedactURL(remote), target)
 	cmd := exec.Command("git", "clone", "--quiet", remote, target)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
-		debug.Log("git", "clone %s → error: %v: %s", remote, err, msg)
+		debug.Log("git", "clone %s → error: %v: %s", RedactURL(remote), err, msg)
 		if msg == "" {
 			msg = err.Error()
 		}
