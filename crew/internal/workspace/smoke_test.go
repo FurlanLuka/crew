@@ -288,10 +288,10 @@ func TestShellNotReady(t *testing.T) {
 	}
 }
 
-// A pane quiet all the way to the ceiling — a shell that never took the
-// command — is died, referenced or not, at the ceiling; on a single look
+// A pane quiet all the way — a shell that never took the command — is died,
+// referenced or not, at the hard cap of twice the ceiling; on a single look
 // (ceiling 0) it is died too, which the page's Settling window hides.
-func TestWaitForServers_QuietToTheCeilingIsDied(t *testing.T) {
+func TestWaitForServers_QuietPastTheCapIsDied(t *testing.T) {
 	routes := []dev.Route{
 		{Project: "ref", ServerName: "ref", InternalPort: 1},
 		{Project: "idle", ServerName: "idle", InternalPort: 2},
@@ -300,8 +300,8 @@ func TestWaitForServers_QuietToTheCeilingIsDied(t *testing.T) {
 	always := func(dev.Route) bool { return true }
 	got := waitForServers(routes, map[string]bool{"ref/ref": true}, never, always, smokeTiming{ceiling: 50 * time.Millisecond, tick: 10 * time.Millisecond, grace: time.Second})
 	for i, r := range got {
-		if r.State() != SmokeDied || r.TookMs < 50 || r.TookMs > 500 {
-			t.Errorf("%s: %v after %d ms, want died at the ceiling", routes[i].Project, r.State(), r.TookMs)
+		if r.State() != SmokeDied || r.TookMs < 100 || r.TookMs > 300 {
+			t.Errorf("%s: %v after %d ms, want died at twice the ceiling", routes[i].Project, r.State(), r.TookMs)
 		}
 	}
 	got = waitForServers(routes[:1], map[string]bool{"ref/ref": true}, never, always, smokeTiming{ceiling: 0, tick: time.Second, grace: time.Second})
@@ -323,5 +323,19 @@ func TestStripANSI(t *testing.T) {
 		if got := stripANSI(in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
 		}
+	}
+}
+
+// The ceiling is a running server's time to listen: a shell that takes a
+// while to start does not spend it. A referenced server whose shell is
+// quiet for 200 ms gets its 100 ms ceiling after that, not before.
+func TestWaitForServers_CeilingRunsFromReadiness(t *testing.T) {
+	routes := []dev.Route{{Project: "ref", ServerName: "ref", InternalPort: 1}}
+	start := time.Now()
+	quiet := func(dev.Route) bool { return time.Since(start) < 150*time.Millisecond }
+	look := func(dev.Route) (bool, bool) { return time.Since(start) >= 150*time.Millisecond, false }
+	got := waitForServers(routes, map[string]bool{"ref/ref": true}, look, quiet, smokeTiming{ceiling: 100 * time.Millisecond, tick: 10 * time.Millisecond, grace: time.Second})
+	if got[0].State() != SmokeUnreached || got[0].TookMs < 250 {
+		t.Errorf("%v after %d ms — the ceiling should start when the shell took the command", got[0].State(), got[0].TookMs)
 	}
 }

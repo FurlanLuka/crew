@@ -38,9 +38,10 @@ var Previewer PreviewFunc
 type bindingsLoadedMsg struct {
 	bindings  []Binding
 	proposals []dev.Proposal
-	previews  map[string][]BindingPreview
+	previews  map[dev.BindingKey][]BindingPreview
 	envKeys   []string
 	pool      []Project
+	servers   []DevServer
 }
 type bindingSavedMsg struct{ count int }
 type bindingRemovedMsg struct{}
@@ -61,6 +62,7 @@ type editField int
 
 const (
 	fieldVar editField = iota
+	fieldServer
 	fieldValue
 )
 
@@ -71,7 +73,7 @@ type BindingsView struct {
 	state    bindingState
 
 	bindings []Binding
-	previews map[string][]BindingPreview
+	previews map[dev.BindingKey][]BindingPreview
 	cursor   int
 
 	proposals []dev.Proposal
@@ -87,7 +89,10 @@ type BindingsView struct {
 	focus      editField
 	envKeys    []string
 	pool       []Project
-	editIdx    int
+	// servers are this project's own: a binding can be scoped to one of them.
+	// The scope field shows only when there are two or more to choose from.
+	servers []DevServer
+	editIdx int
 
 	draft        Binding
 	draftPreview []BindingPreview
@@ -134,6 +139,7 @@ func (v BindingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.previews = msg.previews
 		v.envKeys = msg.envKeys
 		v.pool = msg.pool
+		v.servers = msg.servers
 		if v.cursor >= len(v.bindings) {
 			v.cursor = max(0, len(v.bindings)-1)
 		}
@@ -245,7 +251,7 @@ func (v BindingsView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		v.state = bindingStateScan
 		v.accepted = map[int]bool{}
-		declared := v.declaredVars()
+		declared := v.boundProjectWide()
 		for i, p := range v.proposals {
 			v.accepted[i] = !p.Ambiguous && !declared[p.Var]
 		}
@@ -255,6 +261,8 @@ func (v BindingsView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
+// declaredVars is every var with a binding, whatever its scope — what the
+// var field's completion skips.
 func (v BindingsView) declaredVars() map[string]bool {
 	declared := make(map[string]bool, len(v.bindings))
 	for _, b := range v.bindings {
@@ -262,6 +270,10 @@ func (v BindingsView) declaredVars() map[string]bool {
 	}
 	return declared
 }
+
+// boundProjectWide is what the editor's scan (of the checkout root, always
+// project-wide) counts as already bound.
+func (v BindingsView) boundProjectWide() map[string]bool { return BoundFor(v.bindings, "") }
 
 // ── Scan ──
 
@@ -314,9 +326,20 @@ func (v BindingsView) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return v, v.syncDraft()
 			}
 		}
-		return v, v.setFocus(v.focus.other())
-	case "shift+tab", "up", "down":
-		return v, v.setFocus(v.focus.other())
+		return v, v.setFocus(v.nextField(v.focus, 1))
+	case "down":
+		return v, v.setFocus(v.nextField(v.focus, 1))
+	case "shift+tab", "up":
+		return v, v.setFocus(v.nextField(v.focus, -1))
+	case "left", "right", " ":
+		if v.focus == fieldServer {
+			step := 1
+			if msg.String() == "left" {
+				step = -1
+			}
+			v.cycleServer(step)
+			return v, v.syncDraft()
+		}
 	case "enter":
 		if err := v.validateVar(); err != nil {
 			v.err = err
@@ -336,12 +359,53 @@ func (v BindingsView) handleEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // the draft, and its preview, in step with what is on screen.
 func (v BindingsView) updateFocused(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	if v.focus == fieldVar {
+	switch v.focus {
+	case fieldVar:
 		v.varInput, cmd = v.varInput.Update(msg)
-	} else {
+	case fieldValue:
 		v.valueInput, cmd = v.valueInput.Update(msg)
 	}
 	return v, tea.Batch(cmd, v.syncDraft())
+}
+
+// hasScopeField: the scope is worth a field only when there is a choice.
+func (v BindingsView) hasScopeField() bool { return len(v.servers) >= 2 }
+
+// nextField steps through var → server → value, skipping the scope field
+// when the project has nothing to choose between.
+func (v BindingsView) nextField(f editField, step int) editField {
+	fields := []editField{fieldVar, fieldValue}
+	if v.hasScopeField() {
+		fields = []editField{fieldVar, fieldServer, fieldValue}
+	}
+	for i, x := range fields {
+		if x == f {
+			return fields[(i+step+len(fields))%len(fields)]
+		}
+	}
+	return fieldVar
+}
+
+// cycleServer moves the draft's scope through all / each server.
+func (v *BindingsView) cycleServer(step int) {
+	options := []string{""}
+	for _, ds := range v.servers {
+		options = append(options, ds.Name)
+	}
+	i := 0
+	for j, o := range options {
+		if o == v.draft.Server {
+			i = j
+		}
+	}
+	v.draft.Server = options[(i+step+len(options))%len(options)]
+}
+
+func scopeLabel(server string) string {
+	if server == "" {
+		return "all servers"
+	}
+	return server
 }
 
 func (v *BindingsView) syncDraft() tea.Cmd {
@@ -369,21 +433,17 @@ func draftState(d Binding) (previewable bool, err error) {
 
 func (v *BindingsView) setFocus(f editField) tea.Cmd {
 	v.focus = f
-	if f == fieldVar {
-		v.valueInput.Blur()
+	v.varInput.Blur()
+	v.valueInput.Blur()
+	switch f {
+	case fieldVar:
 		v.varInput.Focus()
 		return v.varInput.Cursor.BlinkCmd()
+	case fieldValue:
+		v.valueInput.Focus()
+		return v.valueInput.Cursor.BlinkCmd()
 	}
-	v.varInput.Blur()
-	v.valueInput.Focus()
-	return v.valueInput.Cursor.BlinkCmd()
-}
-
-func (f editField) other() editField {
-	if f == fieldVar {
-		return fieldValue
-	}
-	return fieldVar
+	return nil
 }
 
 func (v BindingsView) validateVar() error {
@@ -425,7 +485,7 @@ func (v BindingsView) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	case "y", "Y":
 		b := v.bindings[v.cursor]
 		v.state = bindingStateList
-		return v, v.removeBinding(b.Var)
+		return v, v.removeBinding(b.Key())
 	default:
 		v.state = bindingStateList
 		return v, nil
@@ -453,17 +513,17 @@ func (v BindingsView) load() tea.Cmd {
 			return errMsg{fmt.Errorf("project '%s' not found", projName)}
 		}
 
-		envValues := ScanEnv(projName)
+		envValues := ScanEnv(projName, "")
 		envKeys := make([]string, 0, len(envValues))
 		for k := range envValues {
 			envKeys = append(envKeys, k)
 		}
 		sort.Strings(envKeys)
 
-		previews := make(map[string][]BindingPreview)
+		previews := make(map[dev.BindingKey][]BindingPreview)
 		if Previewer != nil {
 			for _, b := range p.Bindings {
-				previews[b.Var] = Previewer(projName, b)
+				previews[b.Key()] = Previewer(projName, b)
 			}
 		}
 
@@ -475,6 +535,7 @@ func (v BindingsView) load() tea.Cmd {
 			previews:  previews,
 			envKeys:   envKeys,
 			pool:      pool,
+			servers:   p.DevServers,
 		}
 	}
 }
@@ -491,13 +552,16 @@ func (v BindingsView) previewDraft() tea.Cmd {
 
 func (v BindingsView) saveDraft() tea.Cmd {
 	projName, draft := v.projName, v.draft
-	origVar := ""
+	var orig *dev.BindingKey
 	if v.editIdx >= 0 && v.editIdx < len(v.bindings) {
-		origVar = v.bindings[v.editIdx].Var
+		k := v.bindings[v.editIdx].Key()
+		orig = &k
 	}
 	return func() tea.Msg {
-		if origVar != "" && origVar != draft.Var {
-			RemoveBinding(projName, origVar)
+		// An edit that changes the var or the scope is a new identity; the
+		// old one goes so both do not survive.
+		if orig != nil && *orig != draft.Key() {
+			RemoveBinding(projName, *orig)
 		}
 		if err := AddBinding(projName, draft); err != nil {
 			return errMsg{err}
@@ -526,10 +590,10 @@ func (v BindingsView) applyProposals() tea.Cmd {
 	}
 }
 
-func (v BindingsView) removeBinding(varName string) tea.Cmd {
+func (v BindingsView) removeBinding(key dev.BindingKey) tea.Cmd {
 	projName := v.projName
 	return func() tea.Msg {
-		if err := RemoveBinding(projName, varName); err != nil {
+		if err := RemoveBinding(projName, key); err != nil {
 			return errMsg{err}
 		}
 		return bindingRemovedMsg{}

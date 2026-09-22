@@ -44,6 +44,10 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   `~/.crew/projects/<name>`), configure it, then `crew check project <name> --wait` before
   it joins a workspace — `✗` means every worktree would fail the same way; `crew setup logs
   check/<name> <name>` has the output, `crew fix check/<name> --print` the evidence.
+- A binding's owner is `<project>` (every dev server) or `<project>/<server>` (that one —
+  a monorepo's web and worker want different siblings). `crew env <ref> <project>` is the
+  project-wide set; `crew env <ref> <project>/<server>` one server's, and the bare table
+  says which vars are per server.
 - Adding projects to a workspace: one call — `crew add workspace <ws> a:"role" b c`.
 - Creating anything (`add worktree`, `add workspace <p>…`, `duplicate`, `setup`, `verify`,
   `import … workspace`) returns at once with one runner per project in the background.

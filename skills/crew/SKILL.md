@@ -47,12 +47,12 @@ through crew — never start a server by hand, never `-f`.
 crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>
 crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev|installing][\t<recorded failure>]   --json adds issues[], installing
 crew ls projects                                           <name>\t<path>
-crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<template>[\t<resolved value>]
+crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<server|->\t<template>[\t<resolved value>]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
 crew show <workspace>[/<worktree>]                         <name>\t<path>\t<role>
 crew dev status [<workspace>[/<worktree>]]                 <workspace>/<worktree>\t<server>\t<port>\t<url>
 crew dev show <project>                                    <server-name>\t<port>\t<command>[\t<dir>]
-crew env <workspace>[/<worktree>] <project>                <VAR>=<value>
+crew env <workspace>[/<worktree>] <project>[/<server>]     <VAR>=<value>
 crew ps [--json]                                           <kind>\t<pid>\t<session|cwd>\t<command>
 crew trash [empty]                                         <path>\t<size>\t<n> entries\t<note>  |  <path>\tempty
 crew config show                                           <key>\t<value>
@@ -151,14 +151,14 @@ in a binding: bindings are exported. `{{url:x}}` / `{{port:x}}` is the pre-2.1 s
 still valid, never written by crew.
 
 ```
-crew add binding <project> --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) | --scan [--apply]
-crew rm binding <project> <var>
+crew add binding <project>[/<server>] --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) | --scan [--apply]
+crew rm binding <project>[/<server>] <var>
 crew ls bindings <project> [--check=<workspace>[/<worktree>]]
 crew add override <workspace>/<worktree> <VAR>=<value>
 crew rm override <workspace>/<worktree> <VAR>
 crew ls overrides <workspace>/<worktree>
-crew env <workspace>[/<worktree>] <project>
-crew run <workspace>[/<worktree>] <project> -- <command...>
+crew env <workspace>[/<worktree>] <project>[/<server>]
+crew run <workspace>[/<worktree>] <project>[/<server>] -- <command...>
 ```
 
 - `--url=x` writes `{{x}}`, `--host=x` writes `{{x.host}}`, `--port=x` writes `{{x.port}}`;
@@ -166,8 +166,22 @@ crew run <workspace>[/<worktree>] <project> -- <command...>
   checkout and proposes bindings for values pointing at ports crew allocates; `--apply` adds
   the unambiguous ones. `--scan --json` is one row per proposal with a `status` of `proposed`,
   `already bound`, `ambiguous`, `added` or `failed`.
-- Precedence per variable: worktree override > binding > left alone. A template that only
-  partly resolves is left alone whole — never a half-expanded URL.
+- **Scope.** The owner is `<project>` — every dev server of the project gets the var — or
+  `<project>/<server>` — that server alone. A monorepo registered as one project with a
+  `web` and a `worker` server binds `mono/web --var=STORE_API_URL --url=store-api` and
+  `mono/worker --var=QUEUE_URL …`; a scoped binding wins over a project-wide one on the same
+  var for its server. `ls bindings` shows the scope in its second column (`-` = every
+  server); a scan under `<project>/<server>` reads env files in that server's `--dir`.
+  `crew dev rm <p> <s>` takes the server's scoped bindings with it. Overrides are per var
+  and beat both scopes.
+- **`crew env <ref> <project>` is the project-wide set** — what an `eval` should take. A var
+  bound only for one server is not on its stdout; the stderr table labels such rows `VAR
+  (server)` and names `crew env <ref> <project>/<server>`, which prints that one server's
+  full set. `crew run` takes the same `<project>[/<server>]`.
+- Precedence per variable: worktree override > scoped binding (for its server) >
+  project-wide binding > left alone. A template that only partly resolves is left alone
+  whole — never a half-expanded URL; a scoped one that does not resolve leaves the var
+  alone for its server, it does not fall back to the project-wide value.
 - An override is also the acknowledgement for a binding that legitimately never resolves in
   one worktree. Override values can carry credentials: never print them back.
 - `crew run` is how evals, scripts and CLIs crew does not start get the same URLs the dev

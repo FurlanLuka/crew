@@ -103,7 +103,7 @@ func TestCovered(t *testing.T) {
 func TestWriteRead(t *testing.T) {
 	tmp := setupTestConfig(t)
 	path := filepath.Join(tmp, "x.json")
-	in := Bundle{Version: Version, Projects: []Exported{{Project: project.Project{Name: "a", Path: "/p"}, Remote: "git@x:a.git"}},
+	in := Bundle{Version: Version, Projects: []Exported{{Project: project.Project{Name: "a", Path: "/p", Bindings: []project.Binding{{Var: "X", Value: "{{b}}", Server: "web"}}}, Remote: "git@x:a.git"}},
 		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "a", Role: "r"}}}}}
 	if err := Write(path, in); err != nil {
 		t.Fatal(err)
@@ -112,8 +112,8 @@ func TestWriteRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Projects[0].Remote != "git@x:a.git" || out.Workspaces[0].Projects[0].Role != "r" {
-		t.Errorf("round trip = %+v", out)
+	if out.Projects[0].Remote != "git@x:a.git" || out.Workspaces[0].Projects[0].Role != "r" || out.Projects[0].Bindings[0].Server != "web" {
+		t.Errorf("round trip keeps a binding's scope: %+v", out)
 	}
 
 	os.WriteFile(path, []byte(`{"version": 99}`), 0o644)

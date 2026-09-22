@@ -42,12 +42,12 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 			params := res.ResolveParams(ports)
 			for i := range params.Projects {
 				if params.Projects[i].Name == projName {
-					params.Projects[i].Bindings = []dev.Binding{{Var: b.Var, Value: b.Value}}
+					params.Projects[i].Bindings = []dev.Binding{{Var: b.Var, Value: b.Value, Server: b.Server}}
 				}
 			}
 
 			for _, r := range dev.ResolveBindings(params) {
-				if r.Project != projName || r.Var != b.Var {
+				if r.Project != projName || r.Key() != b.Key() {
 					continue
 				}
 				previews = append(previews, project.BindingPreview{

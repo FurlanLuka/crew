@@ -126,7 +126,7 @@ func (r *Resolved) DevProjects() []dev.DevProject {
 		}
 		var bindings []dev.Binding
 		for _, b := range p.Bindings {
-			bindings = append(bindings, dev.Binding{Var: b.Var, Value: b.Value})
+			bindings = append(bindings, dev.Binding{Var: b.Var, Value: b.Value, Server: b.Server})
 		}
 		projects = append(projects, dev.DevProject{
 			Name:       p.Name,

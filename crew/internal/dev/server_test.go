@@ -498,3 +498,47 @@ func TestSessionsToStop(t *testing.T) {
 		t.Errorf("sessions = %v", got)
 	}
 }
+
+// The dev session's windows each get their own env: the web window's
+// command line carries the scoped var, the worker's does not. The pane
+// logs hold the command as typed — the positive line is checked first so
+// the absence is not vacuous.
+func TestStart_PerServerEnv(t *testing.T) {
+	if !crewExec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	setupTestConfig(t)
+	slug := Slug("ws--scope")
+	t.Cleanup(func() { crewExec.KillTmuxSession(SessionName(slug)) })
+
+	_, err := Start(StartParams{
+		Slug: slug, Workspace: "ws", Worktree: "scope", NoProxy: true,
+		Projects: []DevProject{{
+			Name: "mono", Path: t.TempDir(),
+			DevServers: []DevServerConfig{{Name: "web", Port: 3000, Command: "sleep 30"}, {Name: "worker", Port: 3001, Command: "sleep 30"}},
+			Bindings:   []Binding{{Var: "API_URL", Value: "http://example.test", Server: "web"}, {Var: "QUEUE_URL", Value: "amqp://q"}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(server string) string {
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			data, _ := os.ReadFile(LogFile(slug, server))
+			if strings.Contains(string(data), "PORT=") {
+				return string(data)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("%s's log never showed the command", server)
+		return ""
+	}
+	web, worker := read("web"), read("worker")
+	if !strings.Contains(web, "export API_URL=") || !strings.Contains(web, "export QUEUE_URL=") {
+		t.Errorf("web window:\n%s", web)
+	}
+	if strings.Contains(worker, "API_URL") || !strings.Contains(worker, "export QUEUE_URL=") {
+		t.Errorf("worker window:\n%s", worker)
+	}
+}

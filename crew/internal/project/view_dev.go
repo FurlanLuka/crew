@@ -356,12 +356,14 @@ func (v DevServerView) saveServer() tea.Cmd {
 			return errMsg{fmt.Errorf("invalid port number")}
 		}
 
-		// If editing and name changed, remove the old entry first
-		if origName != "" && origName != nameVal {
-			RemoveDevServer(projName, origName)
-		}
-
 		ds := DevServer{Name: nameVal, Port: port, Command: cmdVal, Dir: dirVal}
+		// A rename keeps the bindings scoped to the server on its new name.
+		if origName != "" && origName != nameVal {
+			if err := RenameDevServer(projName, origName, ds); err != nil {
+				return errMsg{err}
+			}
+			return devServerSavedMsg{}
+		}
 		if err := AddDevServer(projName, ds); err != nil {
 			return errMsg{err}
 		}
@@ -372,7 +374,7 @@ func (v DevServerView) saveServer() tea.Cmd {
 func (v DevServerView) removeServer(serverName string) tea.Cmd {
 	projName := v.projName
 	return func() tea.Msg {
-		if err := RemoveDevServer(projName, serverName); err != nil {
+		if _, err := RemoveDevServer(projName, serverName); err != nil {
 			return errMsg{err}
 		}
 		return devServerRemovedMsg{}

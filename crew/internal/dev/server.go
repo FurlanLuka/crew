@@ -262,7 +262,6 @@ func Start(p StartParams) (StartResult, error) {
 	})
 	LogResolutions(p.Slug, resolutions)
 
-	byProject := GroupResolutions(resolutions)
 	session := SessionName(p.Slug)
 
 	// Kill any existing session first so Start is idempotent. Without this, a
@@ -279,7 +278,7 @@ func Start(p StartParams) (StartResult, error) {
 	}
 
 	for _, ps := range planned {
-		if err := startServerWindow(session, fmt.Sprintf("%s/%s", p.Slug, ps.Server.Name), LogFile(p.Slug, ps.Server.Name), ps, byProject[ps.Project]); err != nil {
+		if err := startServerWindow(session, fmt.Sprintf("%s/%s", p.Slug, ps.Server.Name), LogFile(p.Slug, ps.Server.Name), ps, EnvFor(resolutions, ProjectServer{Project: ps.Project, Server: ps.Server.Name})); err != nil {
 			return StartResult{}, err
 		}
 	}
@@ -395,7 +394,6 @@ func StartProjectServers(p ProjectServersParams) ([]Route, []string, error) {
 		Overrides: p.Overrides,
 	})
 	LogResolutions(p.Slug, resolutions)
-	byProject := GroupResolutions(resolutions)
 
 	if !crewExec.TmuxSessionExists(p.Session) {
 		if err := crewExec.CreateTmuxSession(p.Session, ""); err != nil {
@@ -406,7 +404,7 @@ func StartProjectServers(p ProjectServersParams) ([]Route, []string, error) {
 	var windows []string
 	for _, ps := range planned {
 		window := fmt.Sprintf("%s/%s", ps.Project, ps.Server.Name)
-		if err := startServerWindow(p.Session, window, p.LogFile(ps.Server.Name), ps, byProject[ps.Project]); err != nil {
+		if err := startServerWindow(p.Session, window, p.LogFile(ps.Server.Name), ps, EnvFor(resolutions, ProjectServer{Project: ps.Project, Server: ps.Server.Name})); err != nil {
 			return routes, windows, err
 		}
 		routes = append(routes, ps.Route)

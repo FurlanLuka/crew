@@ -77,12 +77,12 @@ func importFixture(t *testing.T) (ImportView, string) {
 	here := filepath.Join(tmp, "dev", "store-api")
 	os.MkdirAll(here, 0o755)
 	os.MkdirAll(filepath.Join(tmp, "dev", "checkout-api"), 0o755)
-	project.Add(project.Project{Name: "store-api", Path: here, Bindings: []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}"}}})
+	project.Add(project.Project{Name: "store-api", Path: here, Bindings: []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}", Server: "store-api"}}})
 
 	b := Bundle{Version: 1, Projects: []Exported{
 		{Project: project.Project{Name: "store-api", Path: here,
 			DevServers: []project.DevServer{{Name: "store-api", Port: 3000, Command: "npm start"}},
-			Bindings:   []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}"}, {Var: "CHECKOUT_API_ASR_URL", Value: "{{checkout-api}}"}},
+			Bindings:   []project.Binding{{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}", Server: "store-api"}, {Var: "CHECKOUT_API_ASR_URL", Value: "{{checkout-api}}"}},
 			Setup:      "npm ci", EnvCmd: "npm run get-env"}},
 		{Project: project.Project{Name: "checkout-api", Path: "/Users/other/checkout-api",
 			DevServers: []project.DevServer{{Name: "checkout-api", Port: 8000}, {Name: "worker", Port: 8003}},
@@ -102,9 +102,9 @@ func TestImportView_AlreadyHereCard(t *testing.T) {
 		"  name      store-api                                  · already here",
 		"  path      " + padTo(here, pathCol) + " ✓ exists",
 		"  servers   store-api :3000  npm start",
-		"  bindings  CHECKOUT_API_URL      {{checkout-api}}",
-		"            CHECKOUT_API_ASR_URL  {{checkout-api}}",
-		"            local has 1 binding: CHECKOUT_API_URL",
+		"  bindings  CHECKOUT_API_URL (store-api)  {{checkout-api}}",
+		"            CHECKOUT_API_ASR_URL          {{checkout-api}}",
+		"            local has 1 binding: CHECKOUT_API_URL (store-api)",
 		"  setup     npm ci",
 		"  env       npm run get-env",
 		"",

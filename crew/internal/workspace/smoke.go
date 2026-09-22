@@ -199,13 +199,18 @@ func hasVerdict(alive, listening, referenced, seenAlive, withinGrace bool) bool 
 // command yet (shellNotReady) is a shell still starting: no verdict, and
 // nothing it runs meanwhile counts as the server — a prompt's precmd
 // running git reads as a busy pane, and would otherwise turn the idle
-// moment after it into "died". The grace runs from the look that found
-// the shell ready, not from the start. look and quiet are the
-// only I/O it does itself (quiet may be nil: never quiet); time is real.
-// The loop ends when every server has its verdict — a stack that comes up
-// in three seconds is judged in three.
+// moment after it into "died". The grace and the ceiling both run from
+// the look that found the shell ready, not from the start: the ceiling is
+// how long a running server gets to listen, and a shell still loading its
+// rc files has not started running anything — a shell still quiet at
+// twice the ceiling from the start is given up on and reads as died.
+// look and quiet are the only I/O it does itself (quiet may be nil: never
+// quiet); time is real. The loop ends when every server has its verdict —
+// a stack that comes up in three seconds is judged in three.
 func waitForServers(routes []dev.Route, referenced map[string]bool, look func(dev.Route) (alive, listening bool), quiet func(dev.Route) bool, t smokeTiming) []SmokeResult {
 	start := time.Now()
+	// quietCap: how long a shell may take to start before it is given up on.
+	quietCap := 2 * t.ceiling
 	results := make([]SmokeResult, len(routes))
 	decided := make([]bool, len(routes))
 	seenAlive := make([]bool, len(routes))
@@ -222,7 +227,9 @@ func waitForServers(routes []dev.Route, referenced map[string]bool, look func(de
 			alive, listening := look(r)
 			results[i].Alive, results[i].Listening = alive, listening
 			if !listening && !seenAlive[i] && quiet != nil && quiet(r) {
-				pending++
+				if time.Since(start) < quietCap {
+					pending++
+				}
 				continue
 			}
 			seenAlive[i] = seenAlive[i] || alive
@@ -234,9 +241,11 @@ func waitForServers(routes []dev.Route, referenced map[string]bool, look func(de
 				results[i].TookMs = time.Since(start).Milliseconds()
 				continue
 			}
-			pending++
+			if time.Since(readyAt[i]) < t.ceiling {
+				pending++
+			}
 		}
-		if pending == 0 || time.Since(start) >= t.ceiling {
+		if pending == 0 {
 			break
 		}
 		time.Sleep(t.tick)

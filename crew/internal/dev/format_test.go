@@ -128,3 +128,36 @@ func TestGroupResolutions(t *testing.T) {
 		t.Errorf("first var = %q, want STORE_API_URL", byProject["checkout-api"][0].Var)
 	}
 }
+
+// A scoped row is labelled VAR (server) wherever a var is shown, and the
+// column is as wide as the label.
+func TestFormat_ScopedRowsAreLabelled(t *testing.T) {
+	rs := append(mixedResolutions(), Resolution{Project: "checkout-api", Var: "Q", Server: "worker", Source: SourceUnresolved, Detail: "queue not in workspace"})
+	want := strings.Join([]string{
+		"Resolved env  3 vars across 2 projects",
+		"",
+		"  checkout-api",
+		"    CHECKOUT_API_URL  left alone — store-partner not in workspace",
+		"    Q (worker)        left alone — queue not in workspace",
+		"",
+	}, "\n")
+	if got := FormatResolutions(rs); got != want {
+		t.Errorf("FormatResolutions =\n%q\nwant\n%q", got, want)
+	}
+	if got := FormatAnomalies(rs); !strings.Contains(got, "    Q (worker)        left alone") {
+		t.Errorf("FormatAnomalies =\n%q", got)
+	}
+
+	table := []Resolution{
+		{Project: "mono", Var: "A", Value: "1", Source: SourceBinding},
+		{Project: "mono", Var: "A", Server: "web", Value: "2", Source: SourceBinding},
+	}
+	wantTable := strings.Join([]string{
+		"  A        1",
+		"  A (web)  2",
+		"",
+	}, "\n")
+	if got := FormatEnvTable(table); got != wantTable {
+		t.Errorf("FormatEnvTable =\n%q\nwant\n%q", got, wantTable)
+	}
+}

@@ -28,11 +28,21 @@ type DevServer struct {
 // STORE_API_URL in every workspace it ever appears in. Declaring it per
 // workspace means re-declaring the same edge everywhere and watching them drift.
 //
-// Value is a template; dev.ParseTokens is the grammar.
+// Value is a template; dev.ParseTokens is the grammar. Server narrows the
+// binding to one of the project's dev servers — a monorepo's web app and its
+// worker point at different siblings; empty is project-wide. See
+// dev.BindingKey for what the two mean on one var.
 type Binding struct {
-	Var   string `json:"var"`
-	Value string `json:"value"`
+	Var    string `json:"var"`
+	Value  string `json:"value"`
+	Server string `json:"server,omitempty"`
 }
+
+// Key is the binding's identity: (var, server).
+func (b Binding) Key() dev.BindingKey { return dev.BindingKey{Var: b.Var, Server: b.Server} }
+
+// Label is the binding as the editor and the import card show it.
+func (b Binding) Label() string { return b.Key().Label() }
 
 // Project is a global project entry (no role — role is workspace-specific).
 type Project struct {
@@ -165,10 +175,20 @@ func Update(proj Project) error {
 	return fmt.Errorf("project '%s' not found", proj.Name)
 }
 
+// validateServerName: a server name becomes a tmux window, a log file and
+// half of a {{project/server}} token, so it is kept to what all three can
+// carry.
+func validateServerName(name string) error {
+	if !validServerName.MatchString(name) {
+		return fmt.Errorf("server name '%s' is invalid — only lowercase letters, digits, and hyphens allowed", name)
+	}
+	return nil
+}
+
 // AddDevServer adds a dev server to a project in the pool.
 func AddDevServer(projName string, ds DevServer) error {
-	if !validServerName.MatchString(ds.Name) {
-		return fmt.Errorf("server name '%s' is invalid — only lowercase letters, digits, and hyphens allowed", ds.Name)
+	if err := validateServerName(ds.Name); err != nil {
+		return err
 	}
 	projects, err := List()
 	if err != nil {
@@ -191,10 +211,12 @@ func AddDevServer(projName string, ds DevServer) error {
 }
 
 // RemoveDevServer removes a dev server by name from a project in the pool.
-func RemoveDevServer(projName, serverName string) error {
+// The bindings scoped to it go in the same write — they have nowhere left
+// to apply — and come back so the caller can say so.
+func RemoveDevServer(projName, serverName string) (dropped []Binding, err error) {
 	projects, err := List()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for i, p := range projects {
 		if p.Name == projName {
@@ -205,8 +227,48 @@ func RemoveDevServer(projName, serverName string) error {
 				}
 			}
 			projects[i].DevServers = filtered
-			return save(projects)
+			dropped = scopedTo(p.Bindings, serverName)
+			var kept []Binding
+			for _, b := range p.Bindings {
+				if b.Server != serverName {
+					kept = append(kept, b)
+				}
+			}
+			projects[i].Bindings = kept
+			return dropped, save(projects)
 		}
+	}
+	return nil, fmt.Errorf("project '%s' not found", projName)
+}
+
+// RenameDevServer is the editor's rename: the server under its new name,
+// and the bindings scoped to it re-scoped in the same write, so a rename
+// never turns them into "no dev server" rows.
+func RenameDevServer(projName, oldName string, ds DevServer) error {
+	if err := validateServerName(ds.Name); err != nil {
+		return err
+	}
+	projects, err := List()
+	if err != nil {
+		return err
+	}
+	for i, p := range projects {
+		if p.Name != projName {
+			continue
+		}
+		var servers []DevServer
+		for _, s := range p.DevServers {
+			if s.Name != oldName && s.Name != ds.Name {
+				servers = append(servers, s)
+			}
+		}
+		projects[i].DevServers = append(servers, ds)
+		for j, b := range p.Bindings {
+			if b.Server == oldName {
+				projects[i].Bindings[j].Server = ds.Name
+			}
+		}
+		return save(projects)
 	}
 	return fmt.Errorf("project '%s' not found", projName)
 }

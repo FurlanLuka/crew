@@ -276,12 +276,24 @@ func cmdDevRm() {
 		os.Exit(1)
 	}
 
-	if err := project.RemoveDevServer(projName, serverName); err != nil {
+	dropped, err := project.RemoveDevServer(projName, serverName)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("Removed dev server '%s' from %s\n", serverName, projName)
+	if len(dropped) > 0 {
+		names := make([]string, 0, len(dropped))
+		for _, b := range dropped {
+			names = append(names, b.Var)
+		}
+		noun := "bindings"
+		if len(dropped) == 1 {
+			noun = "binding"
+		}
+		fmt.Printf("Removed %d %s scoped to %s: %s\n", len(dropped), noun, serverName, strings.Join(names, ", "))
+	}
 }
 
 func cmdDevShow() {

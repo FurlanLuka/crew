@@ -2,6 +2,7 @@ package project
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -21,6 +22,15 @@ func ValidateBinding(projName string, b Binding) error {
 	}
 	if b.Value == "" {
 		return fmt.Errorf("binding for %s has no value", b.Var)
+	}
+	if b.Server != "" {
+		p := Get(projName)
+		if p == nil {
+			return fmt.Errorf("project '%s' not found", projName)
+		}
+		if _, err := FindServer(projName, p.DevServers, b.Server); err != nil {
+			return err
+		}
 	}
 
 	tokens, err := dev.ParseTokens(b.Value)
@@ -46,13 +56,8 @@ func validateTarget(ref dev.TargetRef) error {
 	}
 
 	if ref.HasServer {
-		for _, ds := range target.DevServers {
-			if ds.Name == ref.Server {
-				return nil
-			}
-		}
-		return fmt.Errorf("project '%s' has no dev server '%s' (has: %s)",
-			ref.Project, ref.Server, serverNames(*target))
+		_, err := FindServer(ref.Project, target.DevServers, ref.Server)
+		return err
 	}
 
 	switch len(target.DevServers) {
@@ -61,16 +66,29 @@ func validateTarget(ref dev.TargetRef) error {
 	case 1:
 		return nil
 	default:
-		return dev.AmbiguousTargetError(ref.Project, len(target.DevServers), serverNames(*target))
+		return dev.AmbiguousTargetError(ref.Project, len(target.DevServers), serverNames(target.DevServers))
 	}
 }
 
-func serverNames(p Project) string {
-	names := make([]string, 0, len(p.DevServers))
-	for _, ds := range p.DevServers {
+func serverNames(servers []DevServer) string {
+	names := make([]string, 0, len(servers))
+	for _, ds := range servers {
 		names = append(names, ds.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+// FindServer names one of a project's dev servers, or says which ones it
+// has — the one check behind a binding's scope, a token's target and the
+// project/server argument of env and run.
+func FindServer(projName string, servers []DevServer, name string) (DevServer, error) {
+	for _, ds := range servers {
+		if ds.Name == name {
+			return ds, nil
+		}
+	}
+	return DevServer{}, fmt.Errorf("project '%s' has no dev server '%s' (has: %s)",
+		projName, name, serverNames(servers))
 }
 
 // AddBinding adds or replaces a binding on a project in the pool.
@@ -87,20 +105,27 @@ func AddBinding(projName string, b Binding) error {
 		if p.Name != projName {
 			continue
 		}
-		for j, existing := range p.Bindings {
-			if existing.Var == b.Var {
-				projects[i].Bindings[j] = b
-				return save(projects)
-			}
-		}
-		projects[i].Bindings = append(projects[i].Bindings, b)
+		projects[i].Bindings = upsertBinding(p.Bindings, b)
 		return save(projects)
 	}
 	return fmt.Errorf("project '%s' not found", projName)
 }
 
-// RemoveBinding drops a binding by variable name.
-func RemoveBinding(projName, varName string) error {
+// upsertBinding replaces the binding with b's key in place, or appends.
+// Pure.
+func upsertBinding(bindings []Binding, b Binding) []Binding {
+	out := append([]Binding(nil), bindings...)
+	for i, existing := range out {
+		if existing.Key() == b.Key() {
+			out[i] = b
+			return out
+		}
+	}
+	return append(out, b)
+}
+
+// RemoveBinding drops the binding with that identity.
+func RemoveBinding(projName string, key dev.BindingKey) error {
 	projects, err := List()
 	if err != nil {
 		return err
@@ -109,22 +134,67 @@ func RemoveBinding(projName, varName string) error {
 		if p.Name != projName {
 			continue
 		}
-		var filtered []Binding
-		found := false
-		for _, b := range p.Bindings {
-			if b.Var == varName {
-				found = true
-				continue
-			}
-			filtered = append(filtered, b)
-		}
-		if !found {
-			return fmt.Errorf("project '%s' has no binding for %s", projName, varName)
+		filtered, err := dropBinding(p.Bindings, key)
+		if err != nil {
+			return fmt.Errorf("project '%s' %w", projName, err)
 		}
 		projects[i].Bindings = filtered
 		return save(projects)
 	}
 	return fmt.Errorf("project '%s' not found", projName)
+}
+
+// dropBinding removes the binding with key. Pure. A miss where scoped
+// siblings share the var names them, so the error can point at the
+// project/server form.
+func dropBinding(bindings []Binding, key dev.BindingKey) ([]Binding, error) {
+	var filtered []Binding
+	var scoped []string
+	found := false
+	for _, b := range bindings {
+		if b.Key() == key {
+			found = true
+			continue
+		}
+		if b.Var == key.Var && b.Server != "" {
+			scoped = append(scoped, b.Server)
+		}
+		filtered = append(filtered, b)
+	}
+	if found {
+		return filtered, nil
+	}
+	if key.Server == "" && len(scoped) > 0 {
+		return nil, fmt.Errorf("has %s bound per server (%s) — crew rm binding <project>/<server> %s", key.Var, strings.Join(scoped, ", "), key.Var)
+	}
+	if key.Server != "" {
+		return nil, fmt.Errorf("has no binding for %s scoped to %s", key.Var, key.Server)
+	}
+	return nil, fmt.Errorf("has no binding for %s", key.Var)
+}
+
+// scopedTo is the bindings scoped to one server. Pure.
+func scopedTo(bindings []Binding, server string) []Binding {
+	var out []Binding
+	for _, b := range bindings {
+		if b.Server == server {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// BoundFor is what a scan for one scope counts as already declared: a var
+// bound project-wide covers every server, one bound for this same server is
+// the same binding; one bound for another server is not. Pure.
+func BoundFor(bindings []Binding, server string) map[string]bool {
+	declared := map[string]bool{}
+	for _, b := range bindings {
+		if b.Server == "" || b.Server == server {
+			declared[b.Var] = true
+		}
+	}
+	return declared
 }
 
 // ConfiguredPorts maps each configured dev-server port to the projects that
@@ -158,12 +228,14 @@ var CheckoutDirs = func(projName string) []string {
 }
 
 // ScanEnv reads env values across every checkout of a project for the
-// binding scan. A key given several values — in one file or across checkouts
-// — yields the one pointing at localhost when there is one.
-func ScanEnv(projName string) map[string]string {
+// binding scan — under subdir when a server's dir is given (that dir alone:
+// the root is the bare scan), the checkout root otherwise. A key given
+// several values — in one file or across checkouts — yields the one pointing
+// at localhost when there is one.
+func ScanEnv(projName, subdir string) map[string]string {
 	all := map[string][]string{}
 	for _, dir := range CheckoutDirs(projName) {
-		for k, vs := range dev.ReadEnvValuesAll(dir) {
+		for k, vs := range dev.ReadEnvValuesAll(filepath.Join(dir, subdir)) {
 			all[k] = append(all[k], vs...)
 		}
 	}

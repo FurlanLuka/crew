@@ -1,6 +1,10 @@
 package dev
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseLocalhostPort(t *testing.T) {
 	tests := []struct {
@@ -251,5 +255,26 @@ func TestDetectPortConflicts_SiblingOnItsConfiguredPortIsFine(t *testing.T) {
 	})
 	if len(conflicts) != 0 {
 		t.Errorf("got %+v, want none", conflicts)
+	}
+}
+
+// The conflict scan's "injected" set is per project but must hold for every
+// server: a var bound for web alone still reaches worker from the env file,
+// so a foreign port there is reported; bound project-wide it is skipped.
+func TestInspectEnvConflicts_ScopedVarIsNotInjectedEverywhere(t *testing.T) {
+	tmp := setupTestConfig(t)
+	saveRoutes("admin--main", []Route{{Project: "admin", ServerName: "homepage", InternalPort: 3000}})
+	dir := filepath.Join(tmp, "mono")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, ".env"), []byte("API_URL=http://localhost:3000\n"), 0o644)
+	mono := DevProject{Name: "mono", Path: dir, DevServers: []DevServerConfig{{Name: "web"}, {Name: "worker"}}}
+
+	scoped := []Resolution{{Project: "mono", Var: "API_URL", Server: "web", Value: "x", Source: SourceBinding}}
+	if got := InspectEnvConflicts("ws--wrk1", []DevProject{mono}, nil, scoped); len(got) != 1 || got[0].Var != "API_URL" {
+		t.Errorf("web-only binding leaves worker on the file value: %+v", got)
+	}
+	pw := []Resolution{{Project: "mono", Var: "API_URL", Value: "x", Source: SourceBinding}}
+	if got := InspectEnvConflicts("ws--wrk1", []DevProject{mono}, nil, pw); len(got) != 0 {
+		t.Errorf("project-wide binding covers every server: %+v", got)
 	}
 }

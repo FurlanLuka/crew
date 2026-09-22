@@ -20,7 +20,7 @@ func (v BindingsView) View() string {
 	case bindingStateEdit:
 		v.renderEdit(&b)
 	case bindingStateConfirmRemove:
-		b.WriteString(fmt.Sprintf("  Remove binding '%s'? (y/n)\n", v.bindings[v.cursor].Var))
+		b.WriteString(fmt.Sprintf("  Remove binding '%s'? (y/n)\n", v.bindings[v.cursor].Label()))
 	}
 	return b.String()
 }
@@ -41,21 +41,21 @@ func (v BindingsView) renderList(b *strings.Builder) {
 
 	width, valueWidth := 0, 0
 	for _, bd := range v.bindings {
-		width = max(width, len(bd.Var))
+		width = max(width, len(bd.Label()))
 		valueWidth = max(valueWidth, len(bd.Value))
 	}
 
 	for i, bd := range v.bindings {
-		pad := strings.Repeat(" ", width-len(bd.Var))
+		pad := strings.Repeat(" ", width-len(bd.Label()))
 
 		b.WriteString(app.RowPrefix(i == v.cursor))
-		b.WriteString(app.RowName(bd.Var, i == v.cursor) + pad)
+		b.WriteString(app.RowName(bd.Label(), i == v.cursor) + pad)
 		b.WriteString("  ")
 		b.WriteString(app.Subtle.Render(fmt.Sprintf("%-*s  ", valueWidth, bd.Value)))
 		if dev.IsLegacyToken(bd.Value) {
 			b.WriteString(app.Subtle.Render("· old form  "))
 		}
-		b.WriteString(renderPreviewInline(v.previews[bd.Var]))
+		b.WriteString(renderPreviewInline(v.previews[bd.Key()]))
 		b.WriteString("\n")
 	}
 
@@ -101,7 +101,7 @@ func (v BindingsView) renderScan(b *strings.Builder) {
 	b.WriteString("  Scanned .env — found ")
 	b.WriteString(fmt.Sprintf("%d vars pointing at ports crew allocates:\n\n", len(v.proposals)))
 
-	declared := v.declaredVars()
+	declared := v.boundProjectWide()
 	for i, p := range v.proposals {
 		mark := "○"
 		switch {
@@ -148,6 +148,20 @@ func (v BindingsView) renderEdit(b *strings.Builder) {
 			b.WriteString(app.Subtle.Render("tab → " + match))
 			b.WriteString("\n")
 		}
+	}
+
+	// The scope: which of this project's servers gets the var. Only a
+	// project with two or more has a choice to make; a monorepo's web app
+	// and its worker rarely want the same siblings.
+	if v.hasScopeField() {
+		b.WriteString("  server ")
+		if v.focus == fieldServer {
+			b.WriteString(app.Highlight.Render("‹ " + scopeLabel(v.draft.Server) + " ›"))
+			b.WriteString("  " + app.Subtle.Render("←/→ choose · all servers, or one of them"))
+		} else {
+			b.WriteString(scopeLabel(v.draft.Server))
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString("  value  ")

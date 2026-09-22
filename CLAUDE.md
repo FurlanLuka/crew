@@ -30,16 +30,33 @@ checkout-api / signals / admin / infra-ops set — never a real product.
 - **Ref** — how the user names a worktree: `<ws>/<wt>`, or bare `<ws>` when it has one.
   `/` is user-facing; `--` appears only where crew does not render (hostnames, filenames,
   tmux). Anything printed for a human goes through `dev.DisplayRef`.
-- **Binding** — `{var, value}` on a project. `value` is a template over `{{proj[/server]}}`
+- **Binding** — `{var, value, server?}` on a project. `value` is a template over `{{proj[/server]}}`
   (`http://localhost:<port>`), `{{proj[/server].host}}` (`localhost:<port>`),
   `{{proj[/server].port}}`, `{{worktree}}`, `{{workspace}}`; the server is optional when the
   target has one. `{{url:X}}` / `{{port:X}}` is the pre-2.1 spelling — still parsed, never
   written; `dev.TokenFor` is the one place that spells a token. `dev.ParseTokens` is the one
   grammar (a malformed token is an error there, not a kind nobody expands), used by both
-  the validator (`project.ValidateBinding`) and the resolver. Precedence per variable:
-  worktree override > binding > left alone. A template that only partly expands is discarded
-  whole. Resolved values are injected as `export`s ahead of `PORT=` in the tmux command;
-  env files are read (scan, conflict warning), never written.
+  the validator (`project.ValidateBinding`) and the resolver. `server` is the **scope**:
+  empty = project-wide (every server of the project; old files read unchanged), set = that
+  server alone (`crew add binding <p>/<server> …`; `ValidateBinding` checks it through
+  `project.FindServer`). Identity is `dev.BindingKey{var, server}` (`Binding.Key()`,
+  `Resolution.Key()`): a scoped and a project-wide binding coexist on a var, `AddBinding`
+  replaces by key (`upsertBinding`), `RemoveBinding(proj, key)` (`dropBinding` names the
+  scoped siblings when the bare form misses). `ResolveBindings` stays one row per binding
+  (`Resolution.Server`; a scope naming a server the project no longer has resolves as
+  unresolved "no dev server"); `dev.EnvFor(rows, ProjectServer)` is the pure effective set
+  for one window — a scoped row replaces the project-wide row of the same var in place,
+  unresolved included (no fallback); `Server == ""` is the project-wide set. Both start
+  sites inject `EnvFor` per window; `crew env|run <ref> <p>[/<server>]` go through
+  `resolveTarget` (`cmd_run.go`) — bare `<p>` stdout is the project-wide set, the stderr
+  table labels rows `VAR (server)` (`Resolution.Label()`, the one label rule) and names
+  the per-server form. Conflicts count a var as injected only when every server gets it
+  (`injectedEverywhere`). `crew dev rm <p> <s>` drops the server's scoped bindings. Precedence
+  per variable: worktree override > scoped binding (its server) > project-wide binding >
+  left alone; overrides stay per var (`VAR`, `proj.VAR` — no scoped keys). A template that
+  only partly expands is discarded whole. Resolved values are injected as `export`s ahead
+  of `PORT=` in the tmux command; env files are read (scan — under the server's `Dir` for a
+  scoped scan; conflict warning), never written.
 - **Ports** are always allocated by crew and remembered per worktree (`Worktree.Ports`), so a
   restart lands on the same ones. The configured `--port` is reference only. `--proxy` is
   opt-in; default URLs are `localhost:<port>`.
@@ -108,7 +125,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   idle-alive → done, dead → done (a pane never seen busy only after a 4 s `deadGrace`
   counted from the shell accepting the command — `shellNotReady`: fewer than two
   newlines in the pane log means the pty has echoed the sent keys but the shell has not
-  finished its rc files, judged never, however slow the machine),
+  finished its rc files; nothing it runs meanwhile counts as the server, and both the
+  grace and the `SmokeCeiling` run from that moment, with a shell still quiet at twice
+  the ceiling given up on),
   referenced-not-listening → `SmokeUnreached` at `SmokeCeiling` (60 s, a var tests
   shorten). `waitRoutes(session, routes, window, logFor, ceiling)` is the I/O around it —
   the dev session (`waitDevRoutes`) and a runner's smoke lay windows and logs out

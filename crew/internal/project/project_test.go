@@ -196,7 +196,7 @@ func TestRemoveDevServer(t *testing.T) {
 	AddDevServer("api", DevServer{Name: "web", Port: 3000, Command: "npm start"})
 	AddDevServer("api", DevServer{Name: "api", Port: 8080, Command: "go run ."})
 
-	if err := RemoveDevServer("api", "web"); err != nil {
+	if _, err := RemoveDevServer("api", "web"); err != nil {
 		t.Fatalf("RemoveDevServer: %v", err)
 	}
 

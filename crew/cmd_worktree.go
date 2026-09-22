@@ -811,58 +811,111 @@ func worktreeRow(ref, path string, sizeBytes int64, withSize, running, installin
 
 func cmdAddBinding() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add binding <project> --var=<VAR> --url=<proj>[/<server>]\n")
-		fmt.Fprintf(os.Stderr, "       crew add binding <project> --var=<VAR> --value=<template>\n")
-		fmt.Fprintf(os.Stderr, "       crew add binding <project> --scan [--apply]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add binding <project>[/<server>] --var=<VAR> --url=<proj>[/<server>]\n")
+		fmt.Fprintf(os.Stderr, "       crew add binding <project>[/<server>] --var=<VAR> --value=<template>\n")
+		fmt.Fprintf(os.Stderr, "       crew add binding <project>[/<server>] --scan [--apply]\n")
 		os.Exit(1)
 	}
 
-	projName := os.Args[3]
-	var varName, value, urlTarget, portTarget, hostTarget string
-	scan, apply := false, false
-
-	for _, arg := range os.Args[4:] {
-		switch {
-		case arg == "--scan":
-			scan = true
-		case arg == "--apply":
-			apply = true
-		case strings.HasPrefix(arg, "--var="):
-			varName = strings.TrimPrefix(arg, "--var=")
-		case strings.HasPrefix(arg, "--value="):
-			value = strings.TrimPrefix(arg, "--value=")
-		case strings.HasPrefix(arg, "--url="):
-			urlTarget = strings.TrimPrefix(arg, "--url=")
-		case strings.HasPrefix(arg, "--port="):
-			portTarget = strings.TrimPrefix(arg, "--port=")
-		case strings.HasPrefix(arg, "--host="):
-			hostTarget = strings.TrimPrefix(arg, "--host=")
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-			os.Exit(1)
-		}
-	}
-
-	if scan {
-		runBindingScan(projName, apply)
-		return
-	}
-
-	value, err := bindingValue(urlTarget, hostTarget, portTarget, value)
+	owner := mustBindingOwner(os.Args[3])
+	a, err := parseBindingArgs(os.Args[4:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if varName == "" {
+
+	if a.scan {
+		runBindingScan(owner, a.apply)
+		return
+	}
+
+	value, err := bindingValue(a.url, a.host, a.port, a.value)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if a.varName == "" {
 		fmt.Fprintf(os.Stderr, "Error: --var is required\n")
 		os.Exit(1)
 	}
 
-	if err := project.AddBinding(projName, project.Binding{Var: varName, Value: value}); err != nil {
+	if err := project.AddBinding(owner.Target.Project, project.Binding{Var: a.varName, Value: value, Server: owner.Target.Server}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Bound %s in %s to %s\n", varName, projName, value)
+	fmt.Printf("Bound %s for %s to %s\n", a.varName, owner.Target, value)
+}
+
+// bindingArgs is what the flags of `crew add binding` say.
+type bindingArgs struct {
+	varName, value, url, host, port string
+	scan, apply                     bool
+}
+
+func parseBindingArgs(args []string) (bindingArgs, error) {
+	var a bindingArgs
+	for _, arg := range args {
+		switch {
+		case arg == "--scan":
+			a.scan = true
+		case arg == "--apply":
+			a.apply = true
+		case strings.HasPrefix(arg, "--var="):
+			a.varName = strings.TrimPrefix(arg, "--var=")
+		case strings.HasPrefix(arg, "--value="):
+			a.value = strings.TrimPrefix(arg, "--value=")
+		case strings.HasPrefix(arg, "--url="):
+			a.url = strings.TrimPrefix(arg, "--url=")
+		case strings.HasPrefix(arg, "--port="):
+			a.port = strings.TrimPrefix(arg, "--port=")
+		case strings.HasPrefix(arg, "--host="):
+			a.host = strings.TrimPrefix(arg, "--host=")
+		default:
+			return a, fmt.Errorf("unknown flag '%s'", arg)
+		}
+	}
+	return a, nil
+}
+
+// bindingOwner is the `<project>[/<server>]` a binding belongs to, resolved
+// once: the project, the target, and the server's dir for a scoped scan.
+type bindingOwner struct {
+	Proj   *project.Project
+	Target dev.ProjectServer
+	Dir    string
+}
+
+// mustBindingOwner: the project must be in the pool and, for a scoped
+// owner, the server one of its dev servers — what add and scan need. A
+// removal takes mustBindingProject instead: a scope whose server is gone
+// must still be removable.
+func mustBindingOwner(arg string) bindingOwner {
+	owner := mustBindingProject(arg)
+	if owner.Target.Server != "" {
+		ds, err := project.FindServer(owner.Proj.Name, owner.Proj.DevServers, owner.Target.Server)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		owner.Dir = ds.Dir
+	}
+	return owner
+}
+
+// mustBindingProject parses `<project>[/<server>]` and finds the project;
+// the server is taken as written.
+func mustBindingProject(arg string) bindingOwner {
+	target, err := dev.ParseTarget(arg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	p := project.Get(target.Project)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", target.Project)
+		os.Exit(1)
+	}
+	return bindingOwner{Proj: p, Target: dev.ProjectServer{Project: target.Project, Server: target.Server}}
 }
 
 // bindingValue turns the --url/--host/--port shorthands, or --value, into the
@@ -897,16 +950,37 @@ func bindingValue(url, host, port, value string) (string, error) {
 
 func cmdRmBinding() {
 	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew rm binding <project> <var>\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew rm binding <project>[/<server>] <var>\n")
 		os.Exit(1)
 	}
 
-	projName, varName := os.Args[3], os.Args[4]
-	if err := project.RemoveBinding(projName, varName); err != nil {
+	owner, varName := mustBindingProject(os.Args[3]), os.Args[4]
+	if err := project.RemoveBinding(owner.Target.Project, dev.BindingKey{Var: varName, Server: owner.Target.Server}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Removed binding %s from %s\n", varName, projName)
+	fmt.Printf("Removed binding %s from %s%s\n", varName, owner.Target, stillBoundNote(owner.Proj.Bindings, varName, owner.Target.Server))
+}
+
+// stillBoundNote says which other scopes still bind the var once one was
+// removed from these (pre-removal) bindings, so a bare removal is not
+// mistaken for a full one. Pure.
+func stillBoundNote(bindings []project.Binding, varName, removedServer string) string {
+	var left []string
+	for _, b := range bindings {
+		if b.Var != varName || b.Server == removedServer {
+			continue
+		}
+		if b.Server == "" {
+			left = append(left, "all servers")
+		} else {
+			left = append(left, b.Server)
+		}
+	}
+	if len(left) == 0 {
+		return ""
+	}
+	return " (still bound for " + strings.Join(left, ", ") + ")"
 }
 
 func cmdLsBindings() {
@@ -936,39 +1010,59 @@ func cmdLsBindings() {
 	// Without --check the binding is shown as declared; with it, resolved
 	// against a real worktree, which is what makes an edge that won't resolve
 	// everywhere visible at declaration time instead of at start time.
-	resolved := map[string]dev.Resolution{}
+	resolved := map[dev.BindingKey]dev.Resolution{}
 	if checkRef != "" {
-		_, _, rs := mustResolveProject(checkRef, projName)
-		for _, r := range rs {
-			resolved[r.Var] = r
+		t := mustResolveTarget(checkRef, projName)
+		for _, r := range t.Rows {
+			resolved[r.Key()] = r
 		}
 	}
 
-	type bindingOut struct {
-		Var    string `json:"var"`
-		Value  string `json:"value"`
-		Result string `json:"result,omitempty"`
+	rows := bindingRows(p.Bindings, resolved)
+	if jsonOutput {
+		printJSON(rows)
+		return
 	}
-	out := []bindingOut{}
-	for _, b := range p.Bindings {
-		row := bindingOut{Var: b.Var, Value: b.Value}
-		if r, ok := resolved[b.Var]; ok {
+	for _, row := range rows {
+		fmt.Println(row.line())
+	}
+}
+
+// bindingRow is one line of crew ls bindings. Server is always present —
+// "" for project-wide — so a reader sees one shape whatever the project.
+type bindingRow struct {
+	Var    string `json:"var"`
+	Server string `json:"server"`
+	Value  string `json:"value"`
+	Result string `json:"result,omitempty"`
+}
+
+// bindingRows pairs each binding with its resolution, by identity: a
+// project-wide and a scoped binding on one var each get their own. Pure.
+func bindingRows(bindings []project.Binding, resolved map[dev.BindingKey]dev.Resolution) []bindingRow {
+	out := []bindingRow{}
+	for _, b := range bindings {
+		row := bindingRow{Var: b.Var, Server: b.Server, Value: b.Value}
+		if r, ok := resolved[b.Key()]; ok {
 			row.Result = bindingResult(r)
 		}
 		out = append(out, row)
 	}
+	return out
+}
 
-	if jsonOutput {
-		printJSON(out)
-		return
+// line is the tab-separated row: var, server or "-", template, and the
+// resolved value when a --check ref was given.
+func (r bindingRow) line() string {
+	server := r.Server
+	if server == "" {
+		server = "-"
 	}
-	for _, row := range out {
-		if row.Result != "" {
-			fmt.Printf("%s\t%s\t%s\n", row.Var, row.Value, row.Result)
-			continue
-		}
-		fmt.Printf("%s\t%s\n", row.Var, row.Value)
+	s := r.Var + "\t" + server + "\t" + r.Value
+	if r.Result != "" {
+		s += "\t" + r.Result
 	}
+	return s
 }
 
 func bindingResult(r dev.Resolution) string {
@@ -984,20 +1078,16 @@ func bindingResult(r dev.Resolution) string {
 // This is what a project with no bindings should see first: the work is mostly
 // done by the time you look, so setup is confirming what crew found rather
 // than declaring six edges by hand.
-func runBindingScan(projName string, apply bool) {
-	p := project.Get(projName)
-	if p == nil {
-		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
-		os.Exit(1)
-	}
+func runBindingScan(owner bindingOwner, apply bool) {
+	projName, p := owner.Target.Project, owner.Proj
 
+	// A scoped scan reads the server's own dir in every checkout — that dir
+	// alone; the root is what the bare scan reads.
+	subdir := owner.Dir
 	dirs := project.CheckoutDirs(projName)
-	proposals := dev.ProposeBindings(project.ScanEnv(projName), project.ConfiguredPorts())
+	proposals := dev.ProposeBindings(project.ScanEnv(projName, subdir), project.ConfiguredPorts())
 
-	declared := map[string]bool{}
-	for _, b := range p.Bindings {
-		declared[b.Var] = true
-	}
+	declared := project.BoundFor(p.Bindings, owner.Target.Server)
 
 	// One row per proposal, decided before anything prints, so the JSON and
 	// text forms cannot drift.
@@ -1019,7 +1109,7 @@ func runBindingScan(projName string, apply bool) {
 		case prop.Ambiguous:
 			row.Status, row.Detail = "ambiguous", fmt.Sprintf("two projects configured on :%d — pick one by hand", prop.Port)
 		case apply:
-			if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template}); err != nil {
+			if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template, Server: owner.Target.Server}); err != nil {
 				row.Status, row.Detail = "failed", err.Error()
 			} else {
 				row.Status = "added"
@@ -1035,11 +1125,15 @@ func runBindingScan(projName string, apply bool) {
 		printJSON(rows)
 		return
 	}
+	where := projName
+	if subdir != "" {
+		where = owner.Target.String() + " (" + subdir + ")"
+	}
 	if len(rows) == 0 {
-		fmt.Printf("Scanned %d checkouts of %s — nothing in their env files points at a port crew allocates.\n", len(dirs), projName)
+		fmt.Printf("Scanned %d checkouts of %s — nothing in their env files points at a port crew allocates.\n", len(dirs), where)
 		return
 	}
-	fmt.Printf("Scanned %d checkouts of %s\n\n", len(dirs), projName)
+	fmt.Printf("Scanned %d checkouts of %s\n\n", len(dirs), where)
 	for _, r := range rows {
 		switch r.Status {
 		case "already bound":
@@ -1054,7 +1148,7 @@ func runBindingScan(projName string, apply bool) {
 	}
 
 	if apply {
-		fmt.Printf("\nAdded %d bindings to %s.\n", applied, projName)
+		fmt.Printf("\nAdded %d bindings to %s.\n", applied, owner.Target)
 		return
 	}
 	fmt.Printf("\nRe-run with --apply to add these, or use the TUI to pick individually.\n")

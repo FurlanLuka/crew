@@ -99,19 +99,20 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "binding",
-					Description: "Declare an env variable a project needs, and how crew computes it at dev-server start. Value is a template: {{proj}} is http://localhost:<port> of that project's dev server, {{proj.host}} is localhost:<port> (for ws://, https://, or a path), {{proj.port}} the number; write {{proj/server}} when the project has more than one. {{worktree}} and {{workspace}} are the names. Resolved values are injected into the process env — env files are never rewritten. With --scan, propose bindings from the project's own .env.",
-					Usage:       "crew add binding <project> --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) | --scan [--apply]",
+					Description: "Declare an env variable a project needs, and how crew computes it at dev-server start. Value is a template: {{proj}} is http://localhost:<port> of that project's dev server, {{proj.host}} is localhost:<port> (for ws://, https://, or a path), {{proj.port}} the number; write {{proj/server}} when the project has more than one. {{worktree}} and {{workspace}} are the names. Resolved values are injected into the process env — env files are never rewritten. Name the owner as <project> for every dev server of the project, or <project>/<server> for that server alone — a monorepo's web app and its worker want different siblings; a scoped binding wins over the project-wide one for its server. With --scan, propose bindings from the project's own .env — under the server's dir when an owner server is named.",
+					Usage:       "crew add binding <project>[/<server>] --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) | --scan [--apply]",
 					Flags: []FlagInfo{
 						{Name: "--var=<VAR>", Description: "Environment variable to set"},
 						{Name: "--url=<p[/s]>", Description: "Shorthand for --value='{{p/s}}' — http://localhost:<port> of that dev server"},
 						{Name: "--host=<p[/s]>", Description: "Shorthand for --value='{{p/s.host}}' — localhost:<port>, for any other scheme"},
 						{Name: "--port=<p[/s]>", Description: "Shorthand for --value='{{p/s.port}}' — just the port number"},
 						{Name: "--value=<t>", Description: "Full template, for composition (e.g. ws://{{signals.host}}/rtc)"},
-						{Name: "--scan", Description: "Read the project's .env and propose bindings for values pointing at ports crew allocates"},
+						{Name: "--scan", Description: "Read the project's .env (the server's dir, for <project>/<server>) and propose bindings for values pointing at ports crew allocates"},
 						{Name: "--apply", Description: "With --scan, add every unambiguous proposal"},
 					},
 					Examples: []string{
 						"crew add binding checkout-api --var=STORE_API_URL --url=store-api",
+						"crew add binding admin/homepage --var=STORE_API_URL --url=store-api",
 						"crew add binding checkout-api --var=SIGNALS_URL --value='ws://{{signals.host}}/rtc'",
 						"crew add binding checkout-api --var=SIGNALS_AGENT_NAME --value='{{worktree}}'",
 						"crew add binding checkout-api --scan",
@@ -206,9 +207,9 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "bindings",
-					Description:  "List a project's bindings as declared. With --check, resolve each against a real worktree and show the value it would get there, or why it would be left alone.",
+					Description:  "List a project's bindings as declared: the var, the server it is scoped to (- when it applies to every server), the template. With --check, resolve each against a real worktree and show the value it would get there, or why it would be left alone.",
 					Usage:        "crew ls bindings <project> [--check=<workspace>[/<worktree>]]",
-					OutputFormat: "<var>\\t<template>[\\t<resolved value>]",
+					OutputFormat: "<var>\\t<server|->\\t<template>[\\t<resolved value>]",
 					Examples:     []string{"crew ls bindings checkout-api", "crew ls bindings checkout-api --check=store-front/wrk1"},
 				},
 				{
@@ -322,7 +323,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "rm",
-					Description: "Remove a dev server configuration from a project",
+					Description: "Remove a dev server configuration from a project. Bindings scoped to that server go with it, and are named.",
 					Usage:       "crew dev rm <project> <server-name>",
 					Examples:    []string{"crew dev rm my-api api"},
 				},
@@ -435,9 +436,9 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "binding",
-					Description: "Remove a binding from a project",
-					Usage:       "crew rm binding <project> <var>",
-					Examples:    []string{"crew rm binding checkout-api STORE_API_URL"},
+					Description: "Remove a binding from a project — the project-wide one, or with <project>/<server> the one scoped to that server. A var bound only per server is refused by the bare form, naming the servers.",
+					Usage:       "crew rm binding <project>[/<server>] <var>",
+					Examples:    []string{"crew rm binding checkout-api STORE_API_URL", "crew rm binding admin/homepage STORE_API_URL"},
 				},
 				{
 					Name:        "override",
@@ -456,15 +457,15 @@ var Root = CommandInfo{
 		},
 		{
 			Name:         "env",
-			Description:  "Print a project's resolved env for a worktree, against the dev servers currently running there. stdout is pure KEY=VALUE so it can be eval'd; the full table and any variables left alone go to stderr. Values are point-in-time — prefer `crew run` over pasting them anywhere.",
-			Usage:        "crew env <workspace>[/<worktree>] <project>",
+			Description:  "Print a project's resolved env for a worktree, against the dev servers currently running there. stdout is pure KEY=VALUE so it can be eval'd; the full table and any variables left alone go to stderr. <project> is the project-wide set; <project>/<server> is what that one dev server gets (its scoped bindings included) — the table under a bare <project> says which vars are bound per server. Values are point-in-time — prefer `crew run` over pasting them anywhere.",
+			Usage:        "crew env <workspace>[/<worktree>] <project>[/<server>]",
 			OutputFormat: "<VAR>=<value>",
-			Examples:     []string{"crew env store-front/wrk1 checkout-api", "eval \"$(crew env store-front/wrk1 checkout-api)\""},
+			Examples:     []string{"crew env store-front/wrk1 checkout-api", "crew env store-front/wrk1 admin/homepage", "eval \"$(crew env store-front/wrk1 checkout-api)\""},
 		},
 		{
 			Name:        "run",
-			Description: "Run a command inside a project's checkout with its bindings resolved into the environment. This is how evals, scripts and CLIs that crew does not start get the same URLs the dev servers got. Everything after -- is the command, untouched.",
-			Usage:       "crew run <workspace>[/<worktree>] <project> -- <command...>",
+			Description: "Run a command inside a project's checkout with its bindings resolved into the environment — the project-wide set, or one dev server's with <project>/<server>. This is how evals, scripts and CLIs that crew does not start get the same URLs the dev servers got. Everything after -- is the command, untouched.",
+			Usage:       "crew run <workspace>[/<worktree>] <project>[/<server>] -- <command...>",
 			Examples: []string{
 				"crew run store-front/wrk1 checkout-api -- make eval",
 				"crew run store-front/wrk2 checkout-api -- uv run python -m tests.smoke",

@@ -953,3 +953,30 @@ func TestRunner_EnvCommand(t *testing.T) {
 		t.Errorf("--no-install must skip the env command too: %s", got)
 	}
 }
+
+// Each window of a monorepo gets its own env: a var scoped to web must be
+// set in web's window and absent from worker's. The commands are the
+// verdict — a window with the wrong env exits at once and the smoke
+// records it.
+func TestRunner_SmokePerServerEnv(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	newRepoWorkspace(t, "ws", "mono")
+	project.AddDevServer("mono", project.DevServer{Name: "web", Port: 3000, Command: "test -n \"$API_URL\" && sleep 30"})
+	project.AddDevServer("mono", project.DevServer{Name: "worker", Port: 3001, Command: "test -z \"$API_URL\" && sleep 30"})
+	project.AddBinding("mono", project.Binding{Var: "API_URL", Value: "http://example.test", Server: "web"})
+	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
+	session := dev.SetupSessionName(ref.Slug())
+	t.Cleanup(func() { exec.KillTmuxSession(session); dev.StopAll(ref.Slug()) })
+
+	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Smoke: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(stepsOf(t, ref), ","); got != "mono:checkout,mono:smoke web,mono:smoke worker" {
+		t.Fatalf("the smoke must have run: steps = %s", got)
+	}
+	if h := recorded(t, ref); h != nil {
+		t.Errorf("web sees API_URL, worker does not: %+v", h)
+	}
+}

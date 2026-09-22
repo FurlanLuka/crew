@@ -628,14 +628,14 @@ func (v ImportView) renderProjectCard(b *strings.Builder) {
 	if len(p.Bindings) > 0 {
 		width := 0
 		for _, bd := range p.Bindings {
-			width = max(width, len(bd.Var))
+			width = max(width, len(bd.Label()))
 		}
 		for i, bd := range p.Bindings {
 			label := "            "
 			if i == 0 {
 				label = "  bindings  "
 			}
-			b.WriteString(label + app.Subtle.Render(fmt.Sprintf("%-*s  %s", width, bd.Var, bd.Value)) + "\n")
+			b.WriteString(label + app.Subtle.Render(fmt.Sprintf("%-*s  %s", width, bd.Label(), bd.Value)) + "\n")
 		}
 		if st.Exists && st.Local != nil && len(st.Local.Bindings) != len(p.Bindings) {
 			b.WriteString("            " + app.Subtle.Render(fmt.Sprintf("local has %s: %s", plural(len(st.Local.Bindings), "binding"), bindingNames(st.Local.Bindings))) + "\n")
@@ -913,7 +913,7 @@ func describeServers(servers []project.DevServer) string {
 func bindingNames(bindings []project.Binding) string {
 	names := make([]string, 0, len(bindings))
 	for _, bd := range bindings {
-		names = append(names, bd.Var)
+		names = append(names, bd.Label())
 	}
 	return strings.Join(names, ", ")
 }

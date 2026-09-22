@@ -31,7 +31,10 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
    `crew dev add <project> --name=<n> --port=<p> --cmd="<c>"`. Remind them the command must
    bind `$PORT`.
 4. Bindings: `crew add binding <project> --scan` for each project; show the proposals; apply
-   the unambiguous ones with `--apply`, ask about any marked ambiguous. A fresh clone has no
+   the unambiguous ones with `--apply`, ask about any marked ambiguous. A monorepo — one
+   project with several dev servers — binds per server when its servers want different
+   siblings: `crew add binding <project>/<server> --var=… --url=…`, and `crew add binding
+   <project>/<server> --scan` reads the env files under that server's `--dir`. A fresh clone has no
    env files to scan, so propose from the README instead (`crew add binding <project>
    --var=X --url=<proj[/server]>`) and run `--scan` again once a worktree exists.
 5. Prove it: `crew check project <name> --wait` per project — a fresh checkout through

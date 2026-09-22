@@ -112,14 +112,22 @@ crew add binding store-app --scan --apply        # propose from its .env, add th
 crew ls bindings store-app --check=store-front/wrk2
 ```
 
+A monorepo is one project with several dev servers, and its web app rarely wants the same
+siblings as its worker: bind for one server with `crew add binding mono/web --var=API_URL
+--url=store-api`. A binding on the bare project reaches every server; one on `mono/web`
+only that window, and wins there over the project-wide one on the same var. `crew env
+<ws>/<wt> mono/web` shows what that server gets; `crew add binding mono/web --scan` reads
+the env files under the server's `--dir`.
+
 At `crew dev start`, per variable: a worktree **override** wins, then the **binding**, else the
 variable is left as the project loads it. A template that only partly resolves is left alone
 whole. Env files are read, never written. After the URLs, start prints what was left alone and
 `!` blocks for anything pointing at a port that belongs to someone else — crew warns, never
 blocks, but this is where a wrong URL shows up before it fails at runtime.
 
-`crew env <ws>/<wt> <project>` shows the resolved table; `crew run <ws>/<wt> <project> -- make
-eval` runs anything with exactly that env.
+`crew env <ws>/<wt> <project>` shows the resolved table (the project-wide set on stdout; a
+var bound for one server only is named there and shown by `<project>/<server>`); `crew run
+<ws>/<wt> <project>[/<server>] -- make eval` runs anything with exactly that env.
 
 ### Checking the servers
 
@@ -252,7 +260,7 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 |---|---|
 | **See** | `ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings <p> [--check=<ref>]` · `ls overrides <ref>` · `show <ref>` · `env <ref> <p>` · `dev status` · `dev show <p>` · `dev check <ref>` · `ps` · `trash` · `config show` · `debug --tail=N` |
 | **Projects** | `add project <name> <path-or-url> [--setup=…] [--env-cmd=…]` · `rm project [--purge]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
-| **Bindings** | `add binding <p> --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p> --scan [--apply]` · `rm binding` · `add\|rm override <ref> VAR=value` · `run <ref> <p> -- <cmd>` |
+| **Bindings** | `add binding <p>[/<server>] --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p>[/<server>] --scan [--apply]` · `rm binding <p>[/<server>] X` · `add\|rm override <ref> VAR=value` · `env <ref> <p>[/<server>]` · `run <ref> <p>[/<server>] -- <cmd>` |
 | **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |

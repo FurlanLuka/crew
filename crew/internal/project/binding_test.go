@@ -129,14 +129,177 @@ func TestRemoveBinding(t *testing.T) {
 	setupPool(t)
 	AddBinding("checkout-api", Binding{Var: "A", Value: "{{url:store-api}}"})
 
-	if err := RemoveBinding("checkout-api", "A"); err != nil {
+	if err := RemoveBinding("checkout-api", dev.BindingKey{Var: "A"}); err != nil {
 		t.Fatalf("RemoveBinding: %v", err)
 	}
 	if p := Get("checkout-api"); len(p.Bindings) != 0 {
 		t.Errorf("bindings = %+v, want none", p.Bindings)
 	}
-	if err := RemoveBinding("checkout-api", "A"); err == nil {
+	if err := RemoveBinding("checkout-api", dev.BindingKey{Var: "A"}); err == nil {
 		t.Error("removing an absent binding should error")
+	}
+}
+
+func TestFindServer(t *testing.T) {
+	setupPool(t)
+	admin := Get("admin")
+	if ds, err := FindServer("admin", admin.DevServers, "homepage"); err != nil || ds.Port != 3001 {
+		t.Errorf("found = %+v, %v", ds, err)
+	}
+	if _, err := FindServer("admin", admin.DevServers, "nope"); err == nil || err.Error() != "project 'admin' has no dev server 'nope' (has: backend, homepage)" {
+		t.Errorf("unknown: %v", err)
+	}
+	if _, err := FindServer("checkout-api", nil, "x"); err == nil || !strings.Contains(err.Error(), "(has: )") {
+		t.Errorf("no servers: %v", err)
+	}
+}
+
+// A binding's scope must name one of its own project's servers.
+func TestValidateBinding_Scope(t *testing.T) {
+	setupPool(t)
+	if err := ValidateBinding("admin", Binding{Var: "A", Value: "{{store-api}}", Server: "backend"}); err != nil {
+		t.Errorf("scoped to an existing server: %v", err)
+	}
+	if err := ValidateBinding("admin", Binding{Var: "A", Value: "{{store-api}}", Server: "nope"}); err == nil || !strings.Contains(err.Error(), "no dev server 'nope' (has: backend, homepage)") {
+		t.Errorf("unknown server: %v", err)
+	}
+	if err := ValidateBinding("checkout-api", Binding{Var: "A", Value: "{{store-api}}", Server: "x"}); err == nil || !strings.Contains(err.Error(), "no dev server 'x'") {
+		t.Errorf("project without servers: %v", err)
+	}
+	if err := ValidateBinding("admin", Binding{Var: "A", Value: "{{url:store-api}}", Server: "backend"}); err != nil {
+		t.Errorf("scope and template grammar are independent: %v", err)
+	}
+}
+
+// Identity is (var, server): a scoped and a project-wide binding on one var
+// coexist, and each is replaced or removed on its own.
+func TestBindings_ByIdentity(t *testing.T) {
+	setupPool(t)
+	pw := Binding{Var: "A", Value: "{{store-api}}"}
+	scoped := Binding{Var: "A", Value: "{{admin/homepage}}", Server: "backend"}
+	for _, b := range []Binding{pw, scoped} {
+		if err := AddBinding("admin", b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p := Get("admin"); len(p.Bindings) != 2 {
+		t.Fatalf("both should be kept: %+v", p.Bindings)
+	}
+	scoped.Value = "{{store-api.host}}"
+	AddBinding("admin", scoped)
+	if p := Get("admin"); len(p.Bindings) != 2 || p.Bindings[1].Value != "{{store-api.host}}" || p.Bindings[0].Value != "{{store-api}}" {
+		t.Errorf("the scoped one is replaced in place, the project-wide one untouched: %+v", p.Bindings)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(config.ConfigDir, "projects.json"))
+	if strings.Count(string(data), `"server": "backend"`) != 1 || strings.Contains(string(data), `"server": ""`) {
+		t.Errorf("only the scoped binding writes a server key:\n%s", data)
+	}
+
+	if err := RemoveBinding("admin", dev.BindingKey{Var: "A", Server: "homepage"}); err == nil || !strings.Contains(err.Error(), "no binding for A scoped to homepage") {
+		t.Errorf("unknown scope: %v", err)
+	}
+	if err := RemoveBinding("admin", dev.BindingKey{Var: "A", Server: "backend"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := Get("admin"); len(p.Bindings) != 1 || p.Bindings[0].Server != "" {
+		t.Errorf("removing the scoped one leaves the project-wide one: %+v", p.Bindings)
+	}
+
+	AddBinding("admin", Binding{Var: "B", Value: "{{store-api}}", Server: "backend"})
+	AddBinding("admin", Binding{Var: "B", Value: "{{store-api}}", Server: "homepage"})
+	err := RemoveBinding("admin", dev.BindingKey{Var: "B"})
+	if err == nil || err.Error() != "project 'admin' has B bound per server (backend, homepage) — crew rm binding <project>/<server> B" {
+		t.Errorf("a bare removal of a var bound only per server names them: %v", err)
+	}
+	if p := Get("admin"); len(p.Bindings) != 3 {
+		t.Errorf("nothing removed on the refusal: %+v", p.Bindings)
+	}
+}
+
+// A projects.json from before scopes existed reads as project-wide.
+func TestBindings_LegacyFileIsProjectWide(t *testing.T) {
+	config.ConfigDir = t.TempDir()
+	os.WriteFile(filepath.Join(config.ConfigDir, "projects.json"), []byte(`[{"name":"api","path":"/p/api","bindings":[{"var":"A","value":"x"}]}]`), 0o644)
+	p := Get("api")
+	if p == nil || len(p.Bindings) != 1 || p.Bindings[0].Server != "" || p.Bindings[0].Label() != "A" {
+		t.Errorf("%+v", p)
+	}
+}
+
+func TestScopedToAndBoundFor(t *testing.T) {
+	bindings := []Binding{{Var: "A"}, {Var: "B", Server: "web"}, {Var: "C", Server: "worker"}, {Var: "D", Server: "web"}}
+	got := scopedTo(bindings, "web")
+	if len(got) != 2 || got[0].Var != "B" || got[1].Var != "D" {
+		t.Errorf("%+v", got)
+	}
+	if got := scopedTo(bindings, ""); len(got) != 1 || got[0].Var != "A" {
+		t.Errorf("the empty scope is the project-wide set: %+v", got)
+	}
+	if d := BoundFor(bindings, ""); !d["A"] || d["B"] {
+		t.Errorf("root scan: %v", d)
+	}
+	if d := BoundFor(bindings, "web"); !d["A"] || !d["B"] || d["C"] {
+		t.Errorf("web scan: %v", d)
+	}
+}
+
+// Removing a server takes its scoped bindings with it in the same write;
+// renaming one keeps them on the new name.
+func TestRemoveAndRenameDevServer_Scopes(t *testing.T) {
+	setupPool(t)
+	AddBinding("admin", Binding{Var: "A", Value: "x"})
+	AddBinding("admin", Binding{Var: "B", Value: "x", Server: "backend"})
+	AddBinding("admin", Binding{Var: "C", Value: "x", Server: "homepage"})
+	AddBinding("admin", Binding{Var: "D", Value: "x", Server: "backend"})
+
+	if err := RenameDevServer("admin", "backend", DevServer{Name: "Web App", Port: 3100, Command: "pnpm dev"}); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("a rename keeps the name rule: %v", err)
+	}
+	if p := Get("admin"); p.DevServers[0].Name != "backend" {
+		t.Errorf("a refused rename changes nothing: %+v", p.DevServers)
+	}
+	if err := RenameDevServer("admin", "backend", DevServer{Name: "api", Port: 3100, Command: "pnpm dev"}); err != nil {
+		t.Fatal(err)
+	}
+	p := Get("admin")
+	if len(p.DevServers) != 2 || p.DevServers[1].Name != "api" || p.Bindings[1].Server != "api" || p.Bindings[3].Server != "api" {
+		t.Errorf("rename re-scopes: %+v / %+v", p.DevServers, p.Bindings)
+	}
+
+	dropped, err := RemoveDevServer("admin", "api")
+	if err != nil || len(dropped) != 2 || dropped[0].Var != "B" || dropped[1].Var != "D" {
+		t.Fatalf("dropped = %+v, %v", dropped, err)
+	}
+	p = Get("admin")
+	if len(p.DevServers) != 1 || len(p.Bindings) != 2 || p.Bindings[0].Var != "A" || p.Bindings[1].Var != "C" {
+		t.Errorf("the rest stays: %+v / %+v", p.DevServers, p.Bindings)
+	}
+	if dropped, err := RemoveDevServer("admin", "homepage"); err != nil || len(dropped) != 1 {
+		t.Errorf("%+v, %v", dropped, err)
+	}
+	if dropped, err := RemoveDevServer("store-api", "store-api"); err != nil || dropped != nil {
+		t.Errorf("no scoped bindings: %+v, %v", dropped, err)
+	}
+}
+
+// A scoped scan reads the server's own dir in every checkout, and nothing
+// else.
+func TestScanEnv_Subdir(t *testing.T) {
+	setupPool(t)
+	checkout := t.TempDir()
+	os.WriteFile(filepath.Join(checkout, ".env"), []byte("ROOT=http://localhost:3000\n"), 0o644)
+	os.MkdirAll(filepath.Join(checkout, "apps", "web"), 0o755)
+	os.WriteFile(filepath.Join(checkout, "apps", "web", ".env"), []byte("WEB=http://localhost:3100\n"), 0o644)
+	prev := CheckoutDirs
+	CheckoutDirs = func(string) []string { return []string{checkout, filepath.Join(checkout, "missing")} }
+	t.Cleanup(func() { CheckoutDirs = prev })
+
+	if got := ScanEnv("admin", "apps/web"); len(got) != 1 || got["WEB"] != "http://localhost:3100" {
+		t.Errorf("subdir scan = %v", got)
+	}
+	if got := ScanEnv("admin", ""); len(got) != 1 || got["ROOT"] != "http://localhost:3000" {
+		t.Errorf("root scan = %v", got)
 	}
 }
 

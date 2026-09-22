@@ -13,17 +13,52 @@ import (
 )
 
 // Binding declares that a project needs Var set, and how to compute it.
-// Value is a template; see ExpandTemplate.
+// Value is a template; see ExpandTemplate. Server is the scope; see
+// BindingKey.
 type Binding struct {
-	Var   string
-	Value string
+	Var    string
+	Value  string
+	Server string
+}
+
+// Key is the binding's identity.
+func (b Binding) Key() BindingKey { return BindingKey{Var: b.Var, Server: b.Server} }
+
+// BindingKey is a binding's identity within its project: a var, project-wide
+// (Server == "", every dev server of the project) or scoped to one server —
+// a monorepo's web app and its worker want different siblings. The two
+// coexist on one var, the scoped one winning for its server, so every add,
+// remove, replace and lookup is keyed by this and never by the var alone.
+type BindingKey struct {
+	Var    string
+	Server string
+}
+
+// Label is the var as every table shows it: VAR, or VAR (server) when
+// scoped — the one spelling, so the start summary, the env table, the
+// editor and the import card agree.
+func (k BindingKey) Label() string {
+	if k.Server == "" {
+		return k.Var
+	}
+	return k.Var + " (" + k.Server + ")"
 }
 
 // ProjectServer names one dev server unambiguously. Server names are unique
-// only within a project, so the pair is the key.
+// only within a project, so the pair is the key. Server == "" names the
+// project as a whole where a binding's owner or an env target is meant.
 type ProjectServer struct {
 	Project string
 	Server  string
+}
+
+// String is how crew names the target everywhere: project, or
+// project/server.
+func (ps ProjectServer) String() string {
+	if ps.Server == "" {
+		return ps.Project
+	}
+	return ps.Project + "/" + ps.Server
 }
 
 // Source records how a variable got its value, and is the sentinel for whether
@@ -37,10 +72,12 @@ const (
 	SourceUnresolved Source = "unresolved"
 )
 
-// Resolution is one variable's outcome for one project in one worktree.
+// Resolution is one variable's outcome for one project in one worktree —
+// for one of its servers when the binding was scoped.
 type Resolution struct {
 	Project string `json:"project"`
 	Var     string `json:"var"`
+	Server  string `json:"server,omitempty"`
 	Value   string `json:"value"`
 	Source  Source `json:"source"`
 	Detail  string `json:"detail"`
@@ -48,6 +85,39 @@ type Resolution struct {
 
 // Resolved reports whether this variable should be injected.
 func (r Resolution) Resolved() bool { return r.Source != SourceUnresolved }
+
+// Key is the binding this row came from.
+func (r Resolution) Key() BindingKey { return BindingKey{Var: r.Var, Server: r.Server} }
+
+// Label is the row's var as the tables show it; see BindingKey.Label.
+func (r Resolution) Label() string { return r.Key().Label() }
+
+// EnvFor is the env one server gets: its project's rows in order, rows scoped
+// to another server dropped, a row scoped to this server replacing the
+// project-wide row of the same var in place — an unresolved scoped row too,
+// since a losing template leaves the var alone rather than falling back.
+// Server == "" is the project-wide set, what a bare `crew env <ref> <project>`
+// prints. Pure; with no scoped rows it is the project's rows unchanged.
+func EnvFor(resolutions []Resolution, ps ProjectServer) []Resolution {
+	var out []Resolution
+	at := map[string]int{}
+	for _, r := range resolutions {
+		if r.Project != ps.Project || (r.Server != "" && r.Server != ps.Server) {
+			continue
+		}
+		i, seen := at[r.Var]
+		switch {
+		case seen && r.Server != "":
+			out[i] = r
+		case seen && out[i].Server != "":
+			// A project-wide row after the scoped one: the scoped row stays.
+		default:
+			at[r.Var] = len(out)
+			out = append(out, r)
+		}
+	}
+	return out
+}
 
 // ResolveParams is everything ResolveBindings needs, all pre-resolved.
 //
@@ -121,8 +191,12 @@ func ResolveBindings(p ResolveParams) []Resolution {
 		seen := make(map[string]bool)
 
 		for _, b := range proj.Bindings {
-			seen[b.Var] = true
-			out = append(out, resolveOne(p, proj.Name, b, inWorktree))
+			// A scoped binding does not declare the var for the other
+			// servers: an override on it still reaches them, as an extra row.
+			if b.Server == "" {
+				seen[b.Var] = true
+			}
+			out = append(out, resolveOne(p, proj, b, inWorktree))
 		}
 
 		out = append(out, extraOverrides(p.Overrides, proj.Name, seen)...)
@@ -130,10 +204,19 @@ func ResolveBindings(p ResolveParams) []Resolution {
 	return out
 }
 
-func resolveOne(p ResolveParams, projName string, b Binding, inWorktree map[string]bool) Resolution {
+func resolveOne(p ResolveParams, proj DevProject, b Binding, inWorktree map[string]bool) Resolution {
+	projName := proj.Name
+	if b.Server != "" && !hasServer(proj, b.Server) {
+		// The server was removed or renamed after the binding was scoped to
+		// it: say so where the start summary and crew env will show it.
+		return Resolution{
+			Project: projName, Var: b.Var, Server: b.Server,
+			Source: SourceUnresolved, Detail: fmt.Sprintf("no dev server '%s' on %s", b.Server, projName),
+		}
+	}
 	if value, ok := lookupOverride(p.Overrides, projName, b.Var); ok {
 		return Resolution{
-			Project: projName, Var: b.Var, Value: value,
+			Project: projName, Var: b.Var, Server: b.Server, Value: value,
 			Source: SourceOverride, Detail: "worktree override",
 		}
 	}
@@ -146,15 +229,24 @@ func resolveOne(p ResolveParams, projName string, b Binding, inWorktree map[stri
 	})
 	if err != nil {
 		return Resolution{
-			Project: projName, Var: b.Var,
+			Project: projName, Var: b.Var, Server: b.Server,
 			Source: SourceUnresolved, Detail: err.Error(),
 		}
 	}
 
 	return Resolution{
-		Project: projName, Var: b.Var, Value: value,
+		Project: projName, Var: b.Var, Server: b.Server, Value: value,
 		Source: SourceBinding, Detail: describeTemplate(b.Value),
 	}
+}
+
+func hasServer(proj DevProject, name string) bool {
+	for _, ds := range proj.DevServers {
+		if ds.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // extraOverrides yields overrides naming variables no binding declared, in
@@ -495,6 +587,6 @@ func EnvPrefix(resolutions []Resolution) string {
 // service URLs and could carry credentials; the debug log is not the place.
 func LogResolutions(slug Slug, resolutions []Resolution) {
 	for _, r := range resolutions {
-		debug.Log("dev", "%s %s/%s → %s (%s)", slug, r.Project, r.Var, r.Source, r.Detail)
+		debug.Log("dev", "%s %s/%s → %s (%s)", slug, r.Project, r.Label(), r.Source, r.Detail)
 	}
 }

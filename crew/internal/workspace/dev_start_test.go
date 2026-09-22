@@ -357,8 +357,15 @@ func TestLoadWorktreePage_JoinsTheCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { dev.StopAll(res.Slug) })
-	// The pane's shell needs a moment to be running the command.
-	time.Sleep(time.Second)
+	// The pane's shell needs a moment to be running the command — on a
+	// loaded machine more than a moment, so wait for it rather than guess.
+	deadline := time.Now().Add(15 * time.Second)
+	for !exec.TmuxPaneBusy(dev.SessionName(res.Slug), string(res.Slug)+"/api") {
+		if time.Now().After(deadline) {
+			t.Fatal("the pane never became busy — tmux, not the join")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	page := loadWorktreePage(res, false, false)
 	if page.Items[0].Check != nil || page.CheckHealth != nil {
@@ -413,5 +420,58 @@ func TestAddProjects_SmokeRecordedUnlessRunning(t *testing.T) {
 	}
 	if got := strings.Join(stepsOf(t, ref), ","); strings.Contains(got, "smoke") {
 		t.Errorf("no smoke while servers run: %s", got)
+	}
+}
+
+// A scoped binding survives the trip from the pool through Resolved into
+// the resolver: the row carries the server, and a preview of the scoped
+// draft does not collide with its project-wide sibling.
+func TestResolveEnv_CarriesScope(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api", "mono")
+	project.AddDevServer("api", project.DevServer{Name: "api", Port: 3000, Command: "sleep 30"})
+	project.AddDevServer("mono", project.DevServer{Name: "web", Port: 3001, Command: "sleep 30"})
+	project.AddDevServer("mono", project.DevServer{Name: "worker", Port: 3002, Command: "sleep 30"})
+	project.AddBinding("mono", project.Binding{Var: "API_URL", Value: "literal"})
+	project.AddBinding("mono", project.Binding{Var: "API_URL", Value: "{{api}}", Server: "web"})
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+
+	res, err := Resolve(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scoped, pw bool
+	for _, p := range res.DevProjects() {
+		for _, b := range p.Bindings {
+			if p.Name == "mono" && b.Var == "API_URL" {
+				if b.Server == "web" {
+					scoped = true
+				} else if b.Server == "" {
+					pw = true
+				}
+			}
+		}
+	}
+	if !scoped || !pw {
+		t.Fatalf("DevProjects must copy the scope: scoped=%v pw=%v", scoped, pw)
+	}
+	rows := dev.GroupResolutions(res.ResolveEnv())["mono"]
+	if len(rows) != 2 || rows[1].Server != "web" || rows[0].Server != "" {
+		t.Errorf("rows = %+v", rows)
+	}
+	web := dev.EnvFor(rows, dev.ProjectServer{Project: "mono", Server: "web"})
+	if len(web) != 1 || web[0].Server != "web" {
+		t.Errorf("web gets its own row: %+v", web)
+	}
+
+	// No ports are reserved yet (the servers were added after the worktree),
+	// so the scoped draft's own outcome is "api not running" — never the
+	// project-wide sibling's literal.
+	previews := PreviewBinding("mono", project.Binding{Var: "API_URL", Value: "{{api.port}}", Server: "web"})
+	if len(previews) != 1 || previews[0].Resolved || previews[0].Value == "literal" || !strings.Contains(previews[0].Detail, "api") {
+		t.Errorf("a scoped draft previews as itself, not as the project-wide sibling: %+v", previews)
+	}
+	previews = PreviewBinding("mono", project.Binding{Var: "API_URL", Value: "other"})
+	if len(previews) != 1 || previews[0].Value != "other" {
+		t.Errorf("a project-wide draft previews as itself: %+v", previews)
 	}
 }
