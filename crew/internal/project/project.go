@@ -51,6 +51,13 @@ type Project struct {
 	EnvCmd string `json:"env_cmd,omitempty"`
 }
 
+// CrewOwned: the canonical checkout is a clone crew made under
+// config.ProjectsDir — the one kind of project path crew may remove.
+func CrewOwned(p Project) bool { return config.Under(p.Path, config.ProjectsDir) }
+
+// ClonePath is where `crew add project <name> <url>` puts the clone.
+func ClonePath(name string) string { return filepath.Join(config.ProjectsDir, name) }
+
 func poolFile() string {
 	return filepath.Join(config.ConfigDir, "projects.json")
 }

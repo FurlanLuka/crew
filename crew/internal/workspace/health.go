@@ -218,7 +218,7 @@ func Verify(res *Resolved, opts CheckoutOptions, only []string) error {
 	if dev.Running(res.Slug) {
 		return ErrServersRunning
 	}
-	ws, err := Load(res.Ref.Workspace)
+	ws, err := loadFor(res.Ref)
 	if err != nil {
 		return err
 	}

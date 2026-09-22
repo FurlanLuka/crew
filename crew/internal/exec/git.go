@@ -100,9 +100,40 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// IsGitURL: a remote git can clone, as opposed to a path on this machine.
+// Full URLs only — `owner/repo` is not one, since it is also a relative
+// path, and guessing GitHub from a typo would clone the wrong thing. Pure.
+func IsGitURL(s string) bool {
+	for _, prefix := range []string{"git@", "https://", "http://", "ssh://", "git://", "file://"} {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoteHeadBranch is the local name of the branch origin/HEAD points at —
+// what a clone checked out, whatever the repo calls it. Empty without one.
+func RemoteHeadBranch(dir string) string {
+	out, err := RunGitCommand(dir, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.TrimSpace(out), "refs/remotes/origin/")
+}
+
+// DeleteBranch removes a local branch, force — for the scratch branch of a
+// check that is being replaced. A missing branch is not an error.
+func DeleteBranch(dir, branch string) {
+	if _, err := RunGitCommand(dir, "branch", "-D", branch); err != nil {
+		debug.Log("git", "branch -D %s in %s → %v", branch, dir, err)
+	}
+}
+
 // Clone runs git clone into a directory that does not exist yet, which is
 // why RunGitCommand (which needs a cwd) is not used. Auth and network are
-// the user's; git's last line is what they need to read.
+// the user's; git's first "fatal:" line names the cause (the lines after
+// it are generic advice), the last line stands in when there is none.
 func Clone(remote, target string) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
@@ -117,7 +148,14 @@ func Clone(remote, target string) error {
 			msg = err.Error()
 		}
 		lines := strings.Split(msg, "\n")
-		return fmt.Errorf("git clone: %s", strings.TrimSpace(lines[len(lines)-1]))
+		reason := strings.TrimSpace(lines[len(lines)-1])
+		for _, l := range lines {
+			if strings.HasPrefix(strings.TrimSpace(l), "fatal:") {
+				reason = strings.TrimSpace(l)
+				break
+			}
+		}
+		return fmt.Errorf("git clone: %s", reason)
 	}
 	return nil
 }

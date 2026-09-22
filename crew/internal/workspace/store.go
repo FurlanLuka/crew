@@ -60,23 +60,66 @@ func Update(name string, fn func(*Workspace) error) error {
 }
 
 // lockWorkspace takes the file lock for one workspace; the returned func
-// releases it. flock is per open file description, so every caller opens
-// its own descriptor — two goroutines sharing one would not exclude each
-// other.
+// releases it.
 func lockWorkspace(name string) (func(), error) {
-	path := config.WorkspaceFile(name) + ".lock"
+	return lockFile(config.WorkspaceFile(name) + ".lock")
+}
+
+// lockFile takes an exclusive flock on path. flock is per open file
+// description, so every caller opens its own descriptor — two goroutines
+// sharing one would not exclude each other.
+func lockFile(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("lock %s: %w", name, err)
+		return nil, fmt.Errorf("lock %s: %w", filepath.Base(path), err)
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("lock %s: %w", name, err)
+		return nil, fmt.Errorf("lock %s: %w", filepath.Base(path), err)
 	}
 	return func() {
 		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
 	}, nil
+}
+
+// loadFor is Load for a ref: the workspace file, or — for a check ref —
+// the check record shaped as a workspace of one project with one
+// worktree. Everything keyed by a ref reads through here, so a check is
+// a worktree to the runner, the status, the health and the page; the
+// name-keyed CRUD and the lists stay on Load and never see one.
+func loadFor(ref Ref) (*Workspace, error) {
+	if !IsCheck(ref) {
+		return Load(ref.Workspace)
+	}
+	if ref.Worktree == "" {
+		return nil, fmt.Errorf("say which check: %s/<project>", CheckWorkspace)
+	}
+	c, err := loadCheck(ref.Worktree)
+	if err != nil {
+		return nil, err
+	}
+	return c.asWorkspace(), nil
+}
+
+// updateFor is Update for a ref: the locked read-modify-write on the
+// workspace file, or on the check record — only its worktree half is
+// written back.
+func updateFor(ref Ref, fn func(*Workspace) error) error {
+	if !IsCheck(ref) {
+		return Update(ref.Workspace, fn)
+	}
+	return updateCheck(ref.Worktree, func(c *Check) error {
+		ws := c.asWorkspace()
+		if err := fn(ws); err != nil {
+			return err
+		}
+		c.Worktree = ws.Worktrees[0]
+		return nil
+	})
 }
 
 // writeAtomic writes data to a temp file in the same directory and renames
@@ -177,19 +220,4 @@ func ListSummaries() ([]Summary, error) {
 		}
 	}
 	return summaries, nil
-}
-
-// devRoutesExist reports whether any of a workspace's worktrees has dev
-// servers running.
-func devRoutesExist(wsName string) bool {
-	ws, err := Load(wsName)
-	if err != nil {
-		return dev.Running(dev.Slug(wsName))
-	}
-	for _, ref := range Refs(ws) {
-		if dev.Running(ref.Slug()) {
-			return true
-		}
-	}
-	return false
 }

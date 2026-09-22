@@ -52,8 +52,8 @@ var Root = CommandInfo{
 			Subcommands: []CommandInfo{
 				{
 					Name:        "project",
-					Description: "Register a git repo in the global project pool. Projects can be added to multiple workspaces.",
-					Usage:       "crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
+					Description: "Register a git repo in the global project pool: a path registers what is there; a git URL (git@…, https://…, ssh://…, file://… — a full URL, not owner/repo) is cloned into ~/.crew/projects/<name> and that is the project's path. Refuses a URL when the name is taken or that directory exists. Projects can be added to multiple workspaces. crew check project <name> then proves the config reproduces from nothing.",
+					Usage:       "crew add project <name> <path-or-url> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
 					Flags: []FlagInfo{
 						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it; empty clears it."},
 						{Name: "--env-cmd=<cmd>", Description: "Command that writes a fresh checkout's env files (make get-env — sops, a vault); runs after the install, over the .env crew copied in. Must write files, not print values — its output is logged. On an existing project, updates it; empty clears it."},
@@ -63,6 +63,7 @@ var Root = CommandInfo{
 						"crew add project my-api /home/user/repos/api",
 						"crew add project frontend ~/repos/web-app",
 						"crew add project checkout-api ~/repos/checkout-api --setup=\"make sync\" --env-cmd=\"make get-env\"",
+						"crew add project signals git@github.com:example/signals.git --env-cmd=\"make get-env\"",
 						"crew add project checkout-api --path=~/code/checkout-api",
 					},
 				},
@@ -189,13 +190,13 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "worktrees",
-					Description:  "List every working copy — one row per worktree, across all workspaces or one. This is the 'what do I have checked out' view.",
+					Description:  "List every working copy — one row per worktree, across all workspaces or one, and a kept check (crew check project) as check/<project> after them. This is the 'what do I have checked out' view.",
 					Usage:        "crew ls worktrees [<workspace>] [--size]",
 					OutputFormat: "<workspace>/<worktree>\\t<path>\\t[<size>\\t][dev|installing][\\t<recorded failure>]",
 					Flags: []FlagInfo{
 						{Name: "--size", Description: "Add bytes on disk per worktree. Walks every file — slow on one with a full build inside"},
 					},
-					Examples: []string{"crew ls worktrees", "crew ls worktrees store-front", "crew ls worktrees --size"},
+					Examples: []string{"crew ls worktrees", "crew ls worktrees store-front", "crew ls worktrees check", "crew ls worktrees --size"},
 				},
 				{
 					Name:         "projects",
@@ -372,7 +373,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "check",
-					Description:  "Look at a worktree's running servers the way the smoke does: a pane that exited is died; one that runs without anything accepting on its port is not listening — a failure when some binding points at it, a note when nothing does. Bare, it is one look; --wait watches each server until it listens, dies, or a minute passes — the thing to run right after a start. Exit 1 on any failure; crew fix <ref> --print then carries the evidence.",
+					Description:  "Look at a worktree's running servers the way the smoke does: a pane that exited is died; one that runs without anything accepting on its port is not listening — a failure when some binding points at it, a note when nothing does. Bare, it is one look; --wait watches each server until it listens, dies, or a minute passes — the thing to run right after a start. Exit 1 on any failure; crew fix <ref> --print then carries the evidence. To prove a project's config from a fresh checkout instead, crew check project.",
 					Usage:        "crew dev check <workspace>[/<worktree>] [--wait]",
 					OutputFormat: "<project>/<server>\\t<running|died|not listening>\\t<port>\\t<took>\\t<detail>",
 					Flags: []FlagInfo{
@@ -413,9 +414,12 @@ var Root = CommandInfo{
 			Subcommands: []CommandInfo{
 				{
 					Name:        "project",
-					Description: "Remove a project from the global pool (does not affect workspaces that use it)",
-					Usage:       "crew rm project <name>",
-					Examples:    []string{"crew rm project my-api"},
+					Description: "Remove a project from the global pool (does not affect workspaces that use it). The repo stays; --purge also trashes a clone crew made under ~/.crew/projects (never a path of yours), and refuses while any workspace lists the project or a check of it is kept — every worktree is a git worktree off that clone.",
+					Usage:       "crew rm project <name> [--purge]",
+					Flags: []FlagInfo{
+						{Name: "--purge", Description: "Trash the clone crew made for a project added from a URL"},
+					},
+					Examples: []string{"crew rm project my-api", "crew rm project signals --purge"},
 				},
 				{
 					Name:        "workspace",
@@ -425,9 +429,9 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Remove one worktree — its checkouts, dev session, logs and prompt. Refuses to remove the last worktree; remove the workspace instead.",
+					Description: "Remove one worktree — its checkouts, dev session, logs and prompt. Refuses to remove the last worktree; remove the workspace instead. check/<project> removes a kept check.",
 					Usage:       "crew rm worktree <workspace>/<name>",
-					Examples:    []string{"crew rm worktree store-front/wrk3"},
+					Examples:    []string{"crew rm worktree store-front/wrk3", "crew rm worktree check/signals"},
 				},
 				{
 					Name:        "binding",
@@ -514,6 +518,34 @@ var Root = CommandInfo{
 				"crew import crew.json workspace store-front",
 				"crew import crew.json --all --clone",
 			},
+		},
+		{
+			Name:        "check",
+			Description: "Prove a project reproduces from nothing, before it joins a workspace.",
+			Usage:       "crew check project <name>",
+			Subcommands: []CommandInfo{
+				{
+					Name:        "project",
+					Description: "A fresh checkout of the project's canonical repo run through the setup runner — mise, install, env command, a smoke of its own servers — as the target check/<project>: one runner in the background, crew setup status check/<project> to watch. A pass removes the checkout, its branch and the record, and keeps the result files so that status still shows the ✓ table. A failure keeps the target: crew ls worktrees lists check/<project> with what failed, crew fix check/<project> --print carries the evidence and the checkout, crew verify check/<project> re-runs it in place (a pass removes it), crew check project <name> again replaces it from nothing, crew rm worktree check/<project> removes it. Refuses while a check of the project is running. In a terminal it lands on the page; --wait stays until the verdict, exit 1 on a failure. What crew dev check does for running servers, this does for a project's config.",
+					Usage:       "crew check project <name> [--pull] [--no-smoke] [--wait]",
+					Flags: []FlagInfo{
+						{Name: "--pull", Description: "Fast-forward the canonical repo's base branch first, as crew add worktree --pull does"},
+						{Name: "--no-smoke", Description: "Skip the smoke start"},
+						{Name: "--wait", Description: "Stay until the runner is done; then the issues, exit 1 on any"},
+					},
+					Examples: []string{"crew check project signals --wait", "crew check project signals --no-smoke", "crew setup status check/signals"},
+				},
+			},
+		},
+		{
+			Name:         "clean",
+			Description:  "Clear what crew leaves behind and nobody comes back for — the sweep every crew command runs at most once an hour, now, plus a git worktree prune on every pool repo: failed checks older than seven days; runner files, dev logs and route files of worktrees and checks that no longer exist (a slug whose dev or setup session is still alive is left alone); lock files with no record behind them, older than an hour; the trash. Every path is under ~/.crew or it is refused. --dry-run lists without removing.",
+			Usage:        "crew clean [--dry-run]",
+			OutputFormat: "<kind>\\t<path>\\t<removed|would remove|pruned|would prune|failed: <reason>>  |  nothing to clean",
+			Flags: []FlagInfo{
+				{Name: "--dry-run", Description: "List what the sweep would remove and remove nothing"},
+			},
+			Examples: []string{"crew clean --dry-run", "crew clean", "crew clean --json"},
 		},
 		{
 			Name:         "trash",

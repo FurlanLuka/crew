@@ -1,7 +1,9 @@
 package workspace
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -82,12 +84,17 @@ var SmokeCeiling = 60 * time.Second
 
 const (
 	smokeTick = time.Second
-	// deadGrace: right after a start the pane's shell has not launched the
-	// command yet, and "not busy" would read as "died". A pane never seen
-	// busy is only dead after this. Four seconds, not two: on a loaded
-	// machine (several runners starting smokes at once) zsh took longer
-	// than two to reach the command, and a false "died" is the one verdict
-	// crew must not hand out.
+	// deadGrace: once the pane's shell has accepted the command
+	// (shellNotReady), "not busy" still means "not forked yet" for a
+	// moment; a pane never seen busy is dead only this long after that.
+	// Before it the shell is still starting, however long that takes —
+	// an interactive shell (so the user can Up+Enter a restart) on a
+	// loaded machine took over six seconds through its rc files, and a
+	// false "died" is the one verdict crew must not hand out. A pane
+	// still quiet at the ceiling ends undecided and reads as died — a
+	// shell that never took the command, a genuinely broken pane, not a
+	// slow one; a shell that does not re-echo costs the ceiling instead
+	// of the grace on a silent crash, still the right verdict.
 	deadGrace = 4 * time.Second
 	smokeTail = 4
 	// A stack trace usually sits above the one line that says why; the
@@ -135,7 +142,8 @@ func waitRoutes(session string, routes []dev.Route, window, logFor func(dev.Rout
 		}
 		return alive, listening
 	}
-	results := waitForServers(routes, referencedServers(), look, smokeTiming{ceiling: ceiling, tick: smokeTick, grace: deadGrace})
+	quiet := func(r dev.Route) bool { return shellNotReady(logFor(r)) }
+	results := waitForServers(routes, referencedServers(), look, quiet, smokeTiming{ceiling: ceiling, tick: smokeTick, grace: deadGrace})
 	for i, r := range routes {
 		if results[i].Failed() {
 			results[i].Tail = tailLog(logFor(r), smokeTail)
@@ -145,9 +153,26 @@ func waitRoutes(session string, routes []dev.Route, window, logFor func(dev.Rout
 	return results
 }
 
+// shellNotReady reads the pane's log for whether its shell has taken the
+// command yet. The pty echoes the keys crew sent the moment they are
+// written — one line, before the shell has finished starting — and the
+// shell, once ready, re-echoes the line and ends it: the second newline
+// is the shell accepting the command. Until then an idle pane is a shell
+// still loading its rc files, not a command that exited.
+func shellNotReady(logPath string) bool {
+	f, err := os.Open(logPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, 64<<10)
+	n, _ := io.ReadFull(f, head)
+	return bytes.Count(head[:n], []byte("\n")) < 2
+}
+
 // smokeTiming is the loop's clock: how long a referenced server gets to
 // listen, how often to look, and how long a pane not yet seen busy gets
-// before "not busy" means "died".
+// after its first output before "not busy" means "died".
 type smokeTiming struct {
 	ceiling, tick, grace time.Duration
 }
@@ -170,14 +195,21 @@ func hasVerdict(alive, listening, referenced, seenAlive, withinGrace bool) bool 
 
 // waitForServers is the loop: every tick each undecided server is looked
 // at again until hasVerdict says so; a referenced one that never listens
-// is Unreached at the ceiling. look is the only I/O it does itself; time
-// is real. The loop ends when every server has its verdict — a stack that
-// comes up in three seconds is judged in three.
-func waitForServers(routes []dev.Route, referenced map[string]bool, look func(dev.Route) (alive, listening bool), t smokeTiming) []SmokeResult {
+// is Unreached at the ceiling. A pane whose shell has not taken the
+// command yet (shellNotReady) is a shell still starting: no verdict, and
+// nothing it runs meanwhile counts as the server — a prompt's precmd
+// running git reads as a busy pane, and would otherwise turn the idle
+// moment after it into "died". The grace runs from the look that found
+// the shell ready, not from the start. look and quiet are the
+// only I/O it does itself (quiet may be nil: never quiet); time is real.
+// The loop ends when every server has its verdict — a stack that comes up
+// in three seconds is judged in three.
+func waitForServers(routes []dev.Route, referenced map[string]bool, look func(dev.Route) (alive, listening bool), quiet func(dev.Route) bool, t smokeTiming) []SmokeResult {
 	start := time.Now()
 	results := make([]SmokeResult, len(routes))
 	decided := make([]bool, len(routes))
 	seenAlive := make([]bool, len(routes))
+	readyAt := make([]time.Time, len(routes))
 	for i, r := range routes {
 		results[i] = SmokeResult{Project: r.Project, Server: r.ServerName, Port: r.InternalPort, Referenced: referenced[dev.PortKey(r.Project, r.ServerName)]}
 	}
@@ -189,8 +221,15 @@ func waitForServers(routes []dev.Route, referenced map[string]bool, look func(de
 			}
 			alive, listening := look(r)
 			results[i].Alive, results[i].Listening = alive, listening
+			if !listening && !seenAlive[i] && quiet != nil && quiet(r) {
+				pending++
+				continue
+			}
 			seenAlive[i] = seenAlive[i] || alive
-			if hasVerdict(alive, listening, results[i].Referenced, seenAlive[i], time.Since(start) < t.grace) {
+			if readyAt[i].IsZero() {
+				readyAt[i] = time.Now()
+			}
+			if hasVerdict(alive, listening, results[i].Referenced, seenAlive[i], time.Since(readyAt[i]) < t.grace) {
 				decided[i] = true
 				results[i].TookMs = time.Since(start).Milliseconds()
 				continue
@@ -245,8 +284,10 @@ func isPromptNoise(line string) bool {
 		strings.HasPrefix(line, "%")
 }
 
-// stripANSI removes CSI sequences (ESC [ … letter) and OSC sequences
-// (ESC ] … BEL or ESC \), which is what a captured pane is full of.
+// stripANSI removes CSI sequences (ESC [ … letter), OSC sequences (ESC ]
+// … BEL or ESC \) and screen's title sequence (ESC k … ESC \, which tmux
+// panes emit before a command's own output — "shboom" is what a died
+// server's tail read as otherwise). What a captured pane is full of.
 func stripANSI(s string) string {
 	var out strings.Builder
 	rs := []rune(s)
@@ -264,7 +305,7 @@ func stripANSI(s string) string {
 			for i < len(rs) && !((rs[i] >= 'A' && rs[i] <= 'Z') || (rs[i] >= 'a' && rs[i] <= 'z')) {
 				i++
 			}
-		case ']':
+		case ']', 'k':
 			i += 2
 			for i < len(rs) && rs[i] != '\x07' && !(rs[i] == '\x1b' && i+1 < len(rs) && rs[i+1] == '\\') {
 				i++

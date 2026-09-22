@@ -47,7 +47,13 @@ func directBranches(res *Resolved) map[string]string {
 // the user's working tree.
 func RenderPrompt(res *Resolved, branches map[string]string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", res.Ref)
+	if IsCheck(res.Ref) {
+		// A check is a scratch checkout crew made to prove the project's
+		// config; the agent is here to make that config pass, not to build.
+		fmt.Fprintf(&b, "You are working in crew's check of `%s` (ref `%s`): a fresh checkout made to prove the project installs and its servers start from nothing. Fix the project's config — its setup command, env command, dev server command — not this checkout alone; it is thrown away once the check passes.\n\n", res.Ref.Worktree, res.Ref)
+	} else {
+		fmt.Fprintf(&b, "You are working in the `%s` workspace.\n\n", res.Ref)
+	}
 	b.WriteString("It contains the following projects:\n\n")
 
 	hasWorktree := false

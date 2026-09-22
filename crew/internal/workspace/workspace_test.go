@@ -23,6 +23,7 @@ func setupTestConfig(t *testing.T) string {
 	config.ConfigDir = tmp
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
 	config.TrashDir = filepath.Join(tmp, "trash")
+	config.ProjectsDir = filepath.Join(tmp, "projects")
 	config.ClaudeConfigDir = filepath.Join(tmp, "claude")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
 	os.MkdirAll(config.ClaudeConfigDir, 0o755)

@@ -108,6 +108,11 @@ func Create(name string) error {
 	if err := ValidateName("workspace", name); err != nil {
 		return err
 	}
+	if name == CheckWorkspace {
+		// Reserved here, not in ValidateName: check/<project> must still
+		// parse as a ref.
+		return fmt.Errorf("workspace name '%s' is reserved — it is where crew check project runs", name)
+	}
 	if _, err := os.Stat(config.WorkspaceFile(name)); err == nil {
 		return fmt.Errorf("workspace '%s' already exists", name)
 	}
@@ -124,13 +129,20 @@ func Create(name string) error {
 	return Save(ws)
 }
 
-// detectDefaultBranch returns the best base branch for a project repo.
-// Tries develop, main, then falls back to HEAD.
+// detectDefaultBranch returns the best base branch for a project repo:
+// develop, main, then whatever origin/HEAD points at (a clone of a
+// `master` repo, say) — a local name, so the base table and --pull can
+// fetch it — and HEAD only when there is no origin.
 func detectDefaultBranch(projectPath string) string {
 	for _, branch := range []string{"develop", "main"} {
 		out, err := exec.RunGitCommand(projectPath, "rev-parse", "--verify", branch)
 		if err == nil && strings.TrimSpace(out) != "" {
 			return branch
+		}
+	}
+	if head := exec.RemoteHeadBranch(projectPath); head != "" {
+		if out, err := exec.RunGitCommand(projectPath, "rev-parse", "--verify", head); err == nil && strings.TrimSpace(out) != "" {
+			return head
 		}
 	}
 	return "HEAD"

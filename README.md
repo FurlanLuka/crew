@@ -27,11 +27,12 @@ Linux installs pull in `tmux` and `git` if missing. `crew update` pulls the late
 ## Quick start
 
 ```bash
-crew add project store-api ~/code/store-api               # register the repos
-crew add project store-app ~/code/store-app
+crew add project store-api ~/code/store-api               # register a repo you have…
+crew add project store-app git@github.com:example/store-app.git   # …or clone one into ~/.crew/projects
 crew dev add store-api --name=store-api --port=3000 --cmd="npm run dev"
 crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
 crew add binding store-app --scan --apply                 # which env vars point at siblings
+crew check project store-app --wait                       # a fresh checkout: install, env, servers up?
 
 crew add workspace store-front store-api:"Backend API" store-app:"Web app"
 crew setup status store-front/main --wait                 # one runner per project: checkout, install, smoke
@@ -129,6 +130,16 @@ Not listening is a failure when some binding points at that server (crew handed 
 URL) and only a note when nothing does (a queue worker registered with a port). The worktree
 page does the same after a start — rows read `starting…` until each has its verdict.
 
+### Proving a project
+
+`crew check project <name>` is the same pipeline a worktree gets — checkout, mise, install,
+env command, a smoke of the project's servers — on a fresh checkout of the canonical repo,
+before the project joins any workspace. A pass removes the checkout and leaves the ✓ table
+under `crew setup status check/<name>`. A failure keeps it as `check/<name>`: `crew ls
+worktrees` lists it, `crew fix check/<name> --print` has the evidence, `crew verify
+check/<name>` re-runs it in place, `crew check project <name>` again replaces it from
+nothing, `crew rm worktree check/<name>` removes it.
+
 ### Making a worktree
 
 `crew add worktree` returns at once. It records the worktree, reserves its ports, and starts
@@ -194,6 +205,12 @@ checked as on the first.
 
 `crew rm worktree` returns at once: the checkout moves to `~/.crew/trash` and a background
 delete clears it (a full build can be 100 GB). `crew trash` shows what is still clearing.
+`crew rm project <name> --purge` also trashes a clone crew made from a URL — refused while a
+workspace still lists the project.
+
+Every crew command sweeps leftovers at most once an hour — failed checks older than a week,
+runner files, dev logs and route files of worktrees that no longer exist, stale locks, the
+trash. `crew clean [--dry-run]` runs it now and adds `git worktree prune` on every repo.
 
 ## Agents
 
@@ -234,13 +251,13 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | | |
 |---|---|
 | **See** | `ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings <p> [--check=<ref>]` · `ls overrides <ref>` · `show <ref>` · `env <ref> <p>` · `dev status` · `dev show <p>` · `dev check <ref>` · `ps` · `trash` · `config show` · `debug --tail=N` |
-| **Projects** | `add project <name> <path> [--setup=…]` · `rm project` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
+| **Projects** | `add project <name> <path-or-url> [--setup=…] [--env-cmd=…]` · `rm project [--purge]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p> --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p> --scan [--apply]` · `rm binding` · `add\|rm override <ref> VAR=value` · `run <ref> <p> -- <cmd>` |
 | **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
 | **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> … \| workspace <name> [--pull] [--wait] \| --all [--clone] [--replace] [--pull] [--wait]]` |
-| **Housekeeping** | `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
+| **Housekeeping** | `clean [--dry-run]` · `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
 
 Settings (`crew config set`): `server_ip` (LAN IP for proxy URLs, auto-detected), `domain`
 (custom proxy domain, needs wildcard DNS; default `<server_ip>.nip.io`), `proxy_port` (80),

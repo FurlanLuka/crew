@@ -37,6 +37,10 @@ type launchExecutedMsg struct{}
 // verifyStartedMsg: the verify's runners are up; the page follows them.
 type verifyStartedMsg struct{}
 
+// checkPassedMsg: the check this page was opened on passed and its target
+// is gone; the page leaves with the verdict.
+type checkPassedMsg struct{ project string }
+
 // claudeExecReadyMsg carries a Claude command to run directly in the current
 // terminal. Claude takes over the terminal until it exits — no tmux, no
 // session tracking, no reattach.
@@ -216,6 +220,11 @@ func (v WorktreeView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.loading = false
 		v.statusMsg = "verifying — one runner per project; esc leaves them running"
 		return v, v.load()
+
+	case checkPassedMsg:
+		return v, func() tea.Msg {
+			return app.ExitWithOutputMsg{Output: CheckPassedLine(msg.project)}
+		}
 
 	case claudeExecReadyMsg:
 		return v, tea.ExecProcess(msg.cmd, func(err error) tea.Msg {
@@ -672,6 +681,11 @@ func (v WorktreeView) loadWith(check bool) tea.Cmd {
 	return func() tea.Msg {
 		res, err := Resolve(ref)
 		if err != nil {
+			// A check that passed took its target with it: the page's job
+			// is done, and the verdict is the last thing it says.
+			if IsCheck(ref) && !CheckExists(ref.Worktree) {
+				return checkPassedMsg{project: ref.Worktree}
+			}
 			return errMsg{err}
 		}
 		return worktreeLoadedMsg{page: loadWorktreePage(res, check, settling)}

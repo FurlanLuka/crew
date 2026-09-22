@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -104,7 +106,7 @@ func TestWaitForServers(t *testing.T) {
 		}
 	}
 	start := time.Now()
-	got := waitForServers(routes, referenced, look, smokeTiming{ceiling: 200 * time.Millisecond, tick: 10 * time.Millisecond})
+	got := waitForServers(routes, referenced, look, nil, smokeTiming{ceiling: 200 * time.Millisecond, tick: 10 * time.Millisecond})
 	if took := time.Since(start); took < 200*time.Millisecond || took > time.Second {
 		t.Errorf("loop ran %s; should end at the ceiling set by web", took)
 	}
@@ -140,7 +142,7 @@ func TestWaitForServers(t *testing.T) {
 func TestWaitForServers_AllDecidedReturnsAtOnce(t *testing.T) {
 	routes := []dev.Route{{Project: "api", ServerName: "api", InternalPort: 1}}
 	start := time.Now()
-	got := waitForServers(routes, map[string]bool{"api/api": true}, func(dev.Route) (bool, bool) { return true, true }, smokeTiming{ceiling: 10 * time.Second, tick: time.Second})
+	got := waitForServers(routes, map[string]bool{"api/api": true}, func(dev.Route) (bool, bool) { return true, true }, nil, smokeTiming{ceiling: 10 * time.Second, tick: time.Second})
 	if time.Since(start) > 500*time.Millisecond || got[0].State() != SmokeOK {
 		t.Errorf("took %s, state %v", time.Since(start), got[0].State())
 	}
@@ -166,7 +168,7 @@ func TestWaitForServers_DeadGrace(t *testing.T) {
 			return false, false
 		}
 	}
-	got := waitForServers(routes, map[string]bool{"slow/slow": true, "crash/crash": true, "never/never": true}, look, smokeTiming{ceiling: time.Second, tick: 10 * time.Millisecond, grace: 100 * time.Millisecond})
+	got := waitForServers(routes, map[string]bool{"slow/slow": true, "crash/crash": true, "never/never": true}, look, nil, smokeTiming{ceiling: time.Second, tick: 10 * time.Millisecond, grace: 100 * time.Millisecond})
 	states := map[string]SmokeState{}
 	for _, r := range got {
 		states[r.Server] = r.State()
@@ -223,8 +225,103 @@ func TestWaitForServers_ZeroCeilingIsOneLook(t *testing.T) {
 	looks := 0
 	look := func(dev.Route) (bool, bool) { looks++; return true, false }
 	start := time.Now()
-	got := waitForServers(routes, map[string]bool{"api/api": true}, look, smokeTiming{ceiling: 0, tick: time.Second})
+	got := waitForServers(routes, map[string]bool{"api/api": true}, look, nil, smokeTiming{ceiling: 0, tick: time.Second})
 	if looks != 1 || time.Since(start) > 200*time.Millisecond || got[0].State() != SmokeUnreached {
 		t.Errorf("looks=%d took=%s state=%v", looks, time.Since(start), got[0].State())
+	}
+}
+
+// A quiet pane — nothing in its log yet — is a shell still starting: it
+// gets no verdict however long that takes, and its dead-grace runs from
+// its first output. A pane whose log has content is judged as before.
+func TestWaitForServers_QuietPaneIsStillStarting(t *testing.T) {
+	routes := []dev.Route{
+		{Project: "slow", ServerName: "slow", InternalPort: 1},
+		{Project: "crash", ServerName: "crash", InternalPort: 2},
+	}
+	start := time.Now()
+	quiet := func(r dev.Route) bool {
+		// The slow shell prints nothing for 300 ms — three graces.
+		return r.Project == "slow" && time.Since(start) < 300*time.Millisecond
+	}
+	look := func(r dev.Route) (bool, bool) {
+		if r.Project == "slow" {
+			// The prompt's precmd runs git at 150–250 ms (busy while still
+			// quiet); busy for real from 350 ms, the command forked 50 ms
+			// after the shell took it.
+			since := time.Since(start)
+			return (since > 150*time.Millisecond && since < 250*time.Millisecond) || since > 350*time.Millisecond, false
+		}
+		return false, false
+	}
+	got := waitForServers(routes, map[string]bool{}, look, quiet, smokeTiming{ceiling: time.Second, tick: 10 * time.Millisecond, grace: 100 * time.Millisecond})
+	if got[0].State() != SmokeIdle {
+		t.Errorf("slow: %v — a quiet pane must not be dead, whatever its shell ran meanwhile, and its grace starts when the shell took the command", got[0].State())
+	}
+	if got[1].State() != SmokeDied || got[1].TookMs > 500 {
+		t.Errorf("crash: %v after %d ms — a pane with output and no process is dead after the grace", got[1].State(), got[1].TookMs)
+	}
+}
+
+// The pty echoes the sent command before the shell is ready; the shell's
+// own echo ends a second line. Fewer than two newlines: still starting.
+func TestShellNotReady(t *testing.T) {
+	dir := t.TempDir()
+	write := func(content string) string {
+		p := filepath.Join(dir, "log")
+		os.WriteFile(p, []byte(content), 0o644)
+		return p
+	}
+	for content, want := range map[string]bool{
+		"":                       true,
+		"PORT=3000 sleep 30\r\n": true,
+		"PORT=3000 sleep 30\r\n\x1b[1m➜ api \x1b[K":                          true,
+		"PORT=3000 sleep 30\r\n➜ api PORT=3000 sleep 30\r\r\n":               false,
+		"PORT=3000 sh -c 'exit 1'\r\n➜ api PORT=3000 sh -c 'exit 1'\r\r\n➜ ": false,
+	} {
+		if got := shellNotReady(write(content)); got != want {
+			t.Errorf("%q → %v, want %v", content, got, want)
+		}
+	}
+	if shellNotReady(filepath.Join(dir, "missing")) {
+		t.Error("no log at all is not a starting shell")
+	}
+}
+
+// A pane quiet all the way to the ceiling — a shell that never took the
+// command — is died, referenced or not, at the ceiling; on a single look
+// (ceiling 0) it is died too, which the page's Settling window hides.
+func TestWaitForServers_QuietToTheCeilingIsDied(t *testing.T) {
+	routes := []dev.Route{
+		{Project: "ref", ServerName: "ref", InternalPort: 1},
+		{Project: "idle", ServerName: "idle", InternalPort: 2},
+	}
+	never := func(dev.Route) (bool, bool) { return false, false }
+	always := func(dev.Route) bool { return true }
+	got := waitForServers(routes, map[string]bool{"ref/ref": true}, never, always, smokeTiming{ceiling: 50 * time.Millisecond, tick: 10 * time.Millisecond, grace: time.Second})
+	for i, r := range got {
+		if r.State() != SmokeDied || r.TookMs < 50 || r.TookMs > 500 {
+			t.Errorf("%s: %v after %d ms, want died at the ceiling", routes[i].Project, r.State(), r.TookMs)
+		}
+	}
+	got = waitForServers(routes[:1], map[string]bool{"ref/ref": true}, never, always, smokeTiming{ceiling: 0, tick: time.Second, grace: time.Second})
+	if got[0].State() != SmokeDied {
+		t.Errorf("one look at a quiet pane: %v", got[0].State())
+	}
+}
+
+// A pane's log carries CSI colours, OSC cwd reports and screen's title
+// sequence around a server's output; the evidence is the output alone.
+func TestStripANSI(t *testing.T) {
+	for in, want := range map[string]string{
+		"\x1b[01;31mError\x1b[0m: x":        "Error: x",
+		"\x1b]7;file://host/dir\x1b\\Ready": "Ready",
+		"\x1bksh\x1b\\boom":                 "boom",
+		"\x1b]0;title\x07plain":             "plain",
+		"no escapes":                        "no escapes",
+	} {
+		if got := stripANSI(in); got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
 	}
 }

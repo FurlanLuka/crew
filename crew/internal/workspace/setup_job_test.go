@@ -34,6 +34,7 @@ func helperRunner(dir string) int {
 	config.ConfigDir = dir
 	config.WorkspacesDir = filepath.Join(dir, "workspaces")
 	config.TrashDir = filepath.Join(dir, "trash")
+	config.ProjectsDir = filepath.Join(dir, "projects")
 	config.ClaudeConfigDir = filepath.Join(dir, "claude")
 	// What the suite set in its own process, the runner has to be told.
 	if d, err := time.ParseDuration(os.Getenv("CREW_TEST_SMOKE_CEILING")); err == nil {
@@ -439,7 +440,7 @@ func TestRunFlat(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(WorktreePath(ref, "api"), ".git")); err != nil {
 		t.Error("flat checkout should exist")
 	}
-	if _, err := os.Stat(setupDir(ref.Slug())); !os.IsNotExist(err) {
+	if _, err := os.Stat(SetupDir(ref.Slug())); !os.IsNotExist(err) {
 		t.Error("a flat workspace has no setup dir")
 	}
 	if SetupRunning(ref) {
@@ -862,7 +863,7 @@ func TestRemoveWorktree_StopsLiveRunners(t *testing.T) {
 	if pidAlive(f.PID) {
 		t.Error("the runner should have been stopped before the removal returned")
 	}
-	if _, err := os.Stat(setupDir(ref.Slug())); !os.IsNotExist(err) {
+	if _, err := os.Stat(SetupDir(ref.Slug())); !os.IsNotExist(err) {
 		t.Error("the setup dir should go with the worktree")
 	}
 	if ws, _ := Load("ws"); len(ws.Worktrees) != 1 {
@@ -877,14 +878,14 @@ func TestRemoveWorktree_ClearsSetupArtifacts(t *testing.T) {
 	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(setupDir(ref.Slug())); err != nil {
+	if _, err := os.Stat(SetupDir(ref.Slug())); err != nil {
 		t.Fatal("the setup dir should exist after a creation")
 	}
 	trash.DisableSweepForTest(t)
 	if err := RemoveWorktree("ws", "wrk2"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(setupDir(ref.Slug())); !os.IsNotExist(err) {
+	if _, err := os.Stat(SetupDir(ref.Slug())); !os.IsNotExist(err) {
 		t.Error("the setup dir should go with the worktree")
 	}
 }

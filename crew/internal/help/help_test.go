@@ -207,7 +207,7 @@ func TestRmSubcommands(t *testing.T) {
 // Every top-level command main dispatches must be documented, or `crew help`
 // lies about what exists.
 func TestTopLevelCommandsDocumented(t *testing.T) {
-	for _, name := range []string{"env", "run", "migrate", "uninstall", "setup", "duplicate", "add", "rm", "ls", "dev", "export", "import", "claude", "edit", "open", "trash", "debug", "verify", "fix", "config", "code", "start", "launch", "show", "ps", "kill", "update"} {
+	for _, name := range []string{"env", "run", "migrate", "uninstall", "setup", "duplicate", "add", "rm", "ls", "dev", "export", "import", "claude", "edit", "open", "trash", "debug", "verify", "fix", "config", "code", "start", "launch", "show", "ps", "kill", "update", "check", "clean"} {
 		if findSubcommand(&Root, name) == nil {
 			t.Errorf("top-level command %q not documented", name)
 		}

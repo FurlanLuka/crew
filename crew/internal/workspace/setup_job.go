@@ -140,6 +140,10 @@ func (s Status) ExitCode() int {
 	return 0
 }
 
+// Passed: every runner is done and nothing is recorded — a check's clean
+// verdict, and what every "passed" line and removal decides on.
+func (s Status) Passed() bool { return len(s.Projects) > 0 && s.ExitCode() == 0 }
+
 // Health is the issues of every project as a Health, for a summary line.
 func (s Status) Health() *Health {
 	var issues []Issue
@@ -151,25 +155,26 @@ func (s Status) Health() *Health {
 
 // ── Files ──
 
-func setupDir(slug dev.Slug) string {
+// SetupDir holds a slug's runner result files and logs.
+func SetupDir(slug dev.Slug) string {
 	return filepath.Join(config.ConfigDir, "setup", string(slug))
 }
 
 func resultFile(slug dev.Slug, proj string) string {
-	return filepath.Join(setupDir(slug), proj+".json")
+	return filepath.Join(SetupDir(slug), proj+".json")
 }
 
 // RunnerLogFile is where a runner writes what it did and what its install
 // printed — what `crew setup logs` tails, live or afterwards.
 func RunnerLogFile(ref Ref, proj string) string {
-	return filepath.Join(setupDir(ref.Slug()), proj+".log")
+	return filepath.Join(SetupDir(ref.Slug()), proj+".log")
 }
 
 // smokeLogFile is a smoked server's output. Not the dev log path: `crew
 // dev logs` and the page's check read that one, and a smoke's last lines
 // there would pass for the last dev run.
 func smokeLogFile(slug dev.Slug, proj, server string) string {
-	return filepath.Join(setupDir(slug), proj+"-"+server+".log")
+	return filepath.Join(SetupDir(slug), proj+"-"+server+".log")
 }
 
 func readResult(path string) (RunResult, error) {
@@ -226,7 +231,7 @@ func NewRunner(ref Ref, job ProjectJob) (*Runner, error) {
 	}
 	r := &Runner{ref: ref, slug: ref.Slug(), job: job, started: map[string]time.Time{}}
 	r.result = RunResult{Project: job.Project, PID: os.Getpid(), StartedAt: time.Now()}
-	if err := os.MkdirAll(setupDir(r.slug), 0o755); err != nil {
+	if err := os.MkdirAll(SetupDir(r.slug), 0o755); err != nil {
 		return nil, err
 	}
 	log, err := os.OpenFile(RunnerLogFile(ref, job.Project), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
@@ -260,7 +265,7 @@ func RunProjectSetup(ref Ref, job ProjectJob) error {
 func (r *Runner) Run() error {
 	defer r.log.Close()
 
-	ws, err := Load(r.ref.Workspace)
+	ws, err := loadFor(r.ref)
 	if err != nil {
 		return r.fail(StageCheckout, err.Error())
 	}
@@ -642,7 +647,7 @@ func StartSetup(ref Ref, jobs []ProjectJob) error {
 	if len(jobs) == 0 {
 		return nil
 	}
-	ws, err := Load(ref.Workspace)
+	ws, err := loadFor(ref)
 	if err != nil {
 		return err
 	}
@@ -658,7 +663,7 @@ func StartSetup(ref Ref, jobs []ProjectJob) error {
 		return err
 	}
 
-	st, _ := readStatus(ref)
+	st, _ := ReadStatus(ref)
 	for _, job := range jobs {
 		if st.alive(job.Project) {
 			return fmt.Errorf("%w on %s: %s — crew setup status %s", ErrSetupRunning, ref, job.Project, ref)
@@ -680,7 +685,7 @@ func StartSetup(ref Ref, jobs []ProjectJob) error {
 	if err := clearIssues(ref, names); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(setupDir(ref.Slug()), 0o755); err != nil {
+	if err := os.MkdirAll(SetupDir(ref.Slug()), 0o755); err != nil {
 		return err
 	}
 	for _, job := range jobs {
@@ -728,7 +733,7 @@ func runFlat(ref Ref, jobs []ProjectJob) error {
 }
 
 func clearIssues(ref Ref, projects []string) error {
-	return Update(ref.Workspace, func(ws *Workspace) error {
+	return updateFor(ref, func(ws *Workspace) error {
 		for i := range ws.Worktrees {
 			if ws.Worktrees[i].Name != ref.Worktree {
 				continue
@@ -773,11 +778,12 @@ func pidAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
-// readStatus reads every result file of a worktree, in member order.
-// Pure over the files and the pids — it records nothing.
-func readStatus(ref Ref) (Status, error) {
+// ReadStatus reads every result file of a worktree, in member order.
+// Pure over the files and the pids — it records nothing; SetupStatus is
+// the one that does.
+func ReadStatus(ref Ref) (Status, error) {
 	st := Status{Ref: ref}
-	entries, err := os.ReadDir(setupDir(ref.Slug()))
+	entries, err := os.ReadDir(SetupDir(ref.Slug()))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return st, nil
@@ -790,7 +796,7 @@ func readStatus(ref Ref) (Status, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		f, err := readResult(filepath.Join(setupDir(ref.Slug()), e.Name()))
+		f, err := readResult(filepath.Join(SetupDir(ref.Slug()), e.Name()))
 		if err != nil {
 			// A file mid-write reads as garbage for a moment; a stale
 			// reader shows the last good state rather than an error.
@@ -805,7 +811,7 @@ func readStatus(ref Ref) (Status, error) {
 		names = append(names, f.Project)
 	}
 	var members []WorkspaceProject
-	if ws, err := Load(ref.Workspace); err == nil {
+	if ws, err := loadFor(ref); err == nil {
 		members = ws.Projects
 	}
 	for _, n := range memberOrder(names, members) {
@@ -853,7 +859,7 @@ func (s Status) alive(proj string) bool {
 // interrupted here — whoever looks first writes it, so a killed window
 // never leaves a clean row.
 func SetupStatus(ref Ref) (Status, error) {
-	st, err := readStatus(ref)
+	st, err := ReadStatus(ref)
 	if err != nil {
 		return st, err
 	}
@@ -862,6 +868,7 @@ func SetupStatus(ref Ref) (Status, error) {
 			st.Projects[i] = markInterrupted(ref, p)
 		}
 	}
+	checkVerdict(ref, st)
 	return st, nil
 }
 
@@ -891,7 +898,7 @@ func SetupRunning(ref Ref) bool {
 	if ref.Worktree == "" {
 		return false
 	}
-	st, _ := readStatus(ref)
+	st, _ := ReadStatus(ref)
 	return st.Running()
 }
 
@@ -936,20 +943,14 @@ func SetupLogs(ref Ref, proj string, n int) (string, error) {
 // directory under the removal.
 func removeSetupArtifacts(ref Ref) {
 	dev.StopSetup(ref.Slug())
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if !anyRunnerAlive(ref) {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	os.RemoveAll(setupDir(ref.Slug()))
+	waitRunnersGone(ref, 2*time.Second)
+	os.RemoveAll(SetupDir(ref.Slug()))
 }
 
 // anyRunnerAlive: a result file whose pid still answers — done or not,
 // since a runner is still writing for a moment after its verdict.
 func anyRunnerAlive(ref Ref) bool {
-	entries, err := os.ReadDir(setupDir(ref.Slug()))
+	entries, err := os.ReadDir(SetupDir(ref.Slug()))
 	if err != nil {
 		return false
 	}
@@ -957,7 +958,7 @@ func anyRunnerAlive(ref Ref) bool {
 		if !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		if f, err := readResult(filepath.Join(setupDir(ref.Slug()), e.Name())); err == nil && pidAlive(f.PID) {
+		if f, err := readResult(filepath.Join(SetupDir(ref.Slug()), e.Name())); err == nil && pidAlive(f.PID) {
 			return true
 		}
 	}

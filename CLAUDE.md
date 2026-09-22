@@ -14,7 +14,11 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   **bindings**, an optional **setup** command and an optional **env command** (`EnvCmd`,
   `--env-cmd`): `exec.SetupSteps(dir, setup, envCmd)` = `mise install?` → the install →
   `env: <cmd>`, so the env command is one more setup step with the same streaming, evidence
-  and failure rules; the `.env` copy at checkout is the baseline it overwrites.
+  and failure rules; the `.env` copy at checkout is the baseline it overwrites. The path is
+  a repo the user has, or — `add project <name> <url>` (`exec.IsGitURL`: full URLs only) —
+  a clone crew made under `config.ProjectsDir` (`~/.crew/projects/<name>`,
+  `project.CrewOwned`); `rm project --purge` trashes only those (`purgeAllowed`: not a
+  member anywhere, no check kept). `trash.Put` accepts `WorkspacesDir` or `ProjectsDir`.
 - **Workspace** — membership: which projects, with which roles. Pure config, nothing of its
   own on disk. `~/.crew/workspaces/<ws>.json`.
 - **Worktree** — one working copy of a workspace's projects, at
@@ -101,7 +105,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   points at it — a failure), `SmokeIdle` (same but nobody points at it — a note).
   `referencedIn` walks the pool's bindings through `dev.ParseTokens`. `waitForServers` is
   the loop, pure over a `look`: every tick each undecided server is looked at; listening or
-  idle-alive → done, dead → done (after a 4 s `deadGrace` for a pane not yet seen busy),
+  idle-alive → done, dead → done (a pane never seen busy only after a 4 s `deadGrace`
+  counted from the shell accepting the command — `shellNotReady`: fewer than two
+  newlines in the pane log means the pty has echoed the sent keys but the shell has not
+  finished its rc files, judged never, however slow the machine),
   referenced-not-listening → `SmokeUnreached` at `SmokeCeiling` (60 s, a var tests
   shorten). `waitRoutes(session, routes, window, logFor, ceiling)` is the I/O around it —
   the dev session (`waitDevRoutes`) and a runner's smoke lay windows and logs out
@@ -135,6 +142,34 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `WorkspacesDir`), prunes git, and a detached `rm -rf` clears the trash — a full build in a
   checkout can be 100+ GB. `main` sweeps leftovers on every start; Settings shows the size and
   can empty it. The TUI walks worktree sizes asynchronously and keeps them for the view's life.
+- **Check** — `crew check project <name>` proves a project reproduces from nothing: the
+  target `check/<name>` (`CheckWorkspace` is reserved in `Create` only, so `ParseRef`
+  passes), checkout at `~/.crew/workspaces/check/<name>/<name>`, slug `check--<name>`,
+  record `~/.crew/checks/<name>.json` = `Check{project, at, worktree}` with the `Worktree`
+  struct embedded (ports, health, overrides for free). One store seam: `loadFor(ref)` /
+  `updateFor(ref, fn)` return the workspace file or, for a check ref, the record shaped as
+  a one-project, one-worktree `Workspace` — every ref-keyed path (`Resolve`, the runner,
+  `ReadStatus`, `clearIssues`, `updateWorktree`, `Setup`, `Verify`) goes through them, so
+  the runner, `setup status|logs`, `fix`, `verify`, the page and overrides work on a check
+  unchanged; name-keyed CRUD and lists stay on `Load`/`Update` and never see one
+  (`cmdLsWorktrees` appends `ListChecks` rows itself). `StartCheck` replaces a kept check
+  from nothing (checkout trashed, scratch branch deleted); `checkVerdict`, run by
+  `SetupStatus`, applies a clean verdict: `FinishCheck` (idempotent under the record's
+  lock, waits ≤2 s for the runner pid) trashes the checkout, deletes the branch, removes
+  the record and **keeps** `setup/check--<name>` so a later poll still sees ✓. A failure
+  keeps the target locked with its evidence; `RemoveWorktree("check", name)` →
+  `RemoveCheck`. `Addressable(ref)` is what the `crew <ref>` shortcut asks.
+- **Housekeeping** — `internal/housekeeping`: `collect` → `plan(state, now, keep)` (pure)
+  → `apply`; every path under `ConfigDir` or refused. Kinds `check` (failed, older than
+  `KeepChecks` = 7 d, or passed and never looked at), `setup`/`logs`/`routes` of slugs with
+  no worktree and no check (live slugs come from the records plus any slug whose dev or
+  setup tmux session is alive — never parsed back from the name), `lock` (no record behind
+  it, older than an hour — creation holds the lock before the file exists), `trash`,
+  `prune` (`crew clean` only). `SweepOnStart(args)` in `main` runs it at most hourly
+  (stamp `~/.crew/housekeeping.json`), never for `_setup`, `dev _proxy`, `clean`,
+  `update` — those, and a start within the hour, get `trash.Sweep` alone; `uninstall`
+  gets nothing. `crew clean
+  [--dry-run]` prints `RenderReport` rows.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 
@@ -148,6 +183,7 @@ crew/
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   cmd_transfer.go      crew export, crew import (parseImportArgs: --plan | project | workspace | --all)
   cmd_launch.go        crew launch, claude, edit          cmd_trash.go  crew trash
+  cmd_housekeeping.go  crew clean
   cmd_setup_runner.go  crew _setup — the hidden per-project runner (exempt from help/SKILL)
   internal/
     app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
@@ -157,6 +193,7 @@ crew/
     dirsize/    bytes under a directory (pure)
     exec/       git, tmux, editor, ShellQuote, setup steps (mise + lockfile detection)
     help/       structured command tree (help_test pins every command)
+    housekeeping/ the sweep: collect → plan (pure) → apply; SweepOnStart, crew clean
     procs/      process inventory and reclaim
     project/    pool CRUD, bindings, setup; project TUI incl. the binding editor
     settings/   settings TUI, trash size + empty, uninstall entry
@@ -164,7 +201,8 @@ crew/
                 ApplyProject, ApplyWorkspace); picker + wizard TUIs
     trash/      removed checkouts: rename into ~/.crew/trash, detached rm, sweep on start
     uninstall/  crew uninstall
-    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, TUI
+    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, TUI;
+                check.go (the check target), setup_job.go (the runner), store.go (loadFor/updateFor)
 ```
 
 Import boundaries that shape the packages: `dev` cannot import `workspace` (it declares its own

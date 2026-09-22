@@ -183,6 +183,10 @@ func landOn(ref workspace.Ref, created string, wait bool) {
 		return
 	}
 	reportVerdict(ref, func(st workspace.Status, h *workspace.Health) (map[string]any, string) {
+		if workspace.IsCheck(ref) && h == nil {
+			// The target went with the pass; there is nothing to launch.
+			return map[string]any{"ref": ref.String(), "passed": true, "health": nil}, renderVerdict(ref, nil, "")
+		}
 		return finishedDoc(ref, projects, h), renderCreationSummary(res, created, h)
 	})
 }
@@ -343,6 +347,9 @@ func renderVerdict(ref workspace.Ref, h *workspace.Health, passed string) string
 	if h != nil {
 		return "\n" + renderIssues(h) + fixHint(ref)
 	}
+	if workspace.IsCheck(ref) {
+		return "\n" + workspace.CheckPassedLine(ref.Worktree) + "\n"
+	}
 	return fmt.Sprintf("\n%s %s\n", ref, passed)
 }
 
@@ -372,6 +379,21 @@ func jsonStatus(st workspace.Status, h *workspace.Health) map[string]any {
 	return map[string]any{"ref": st.Ref.String(), "running": st.Running(), "failed": st.Failed(), "projects": projects, "health": h}
 }
 
+// mustSetupRef is mustResolve for the two commands that read result files:
+// a passed check has no record left, but its ✓ table is still there to
+// show, so a check ref needs no resolve — only the syntax.
+func mustSetupRef(arg string) workspace.Ref {
+	ref, err := workspace.ParseRef(arg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if workspace.IsCheck(ref) && ref.Worktree != "" {
+		return ref
+	}
+	return mustResolve(arg).Ref
+}
+
 // cmdSetupStatus: what each runner has done. Exit 2 while any is alive,
 // 1 once all stopped with a failure, 0 otherwise; --wait stays to the end.
 func cmdSetupStatus() {
@@ -379,34 +401,38 @@ func cmdSetupStatus() {
 		fmt.Fprintf(os.Stderr, "Usage: crew setup status <workspace>[/<worktree>] [--wait]\n")
 		os.Exit(1)
 	}
-	res := mustResolve(os.Args[3])
+	ref := mustSetupRef(os.Args[3])
 	f := parseSetupFlags(os.Args[4:], false)
 	var st workspace.Status
 	if f.wait {
-		st = watchSetup(res.Ref)
+		st = watchSetup(ref)
 	} else {
 		var err error
-		st, err = workspace.SetupStatus(res.Ref)
+		st, err = workspace.SetupStatus(ref)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	}
 	if jsonOutput {
-		printJSON(jsonStatus(st, recordedHealth(res.Ref)))
+		printJSON(jsonStatus(st, recordedHealth(ref)))
 		os.Exit(st.ExitCode())
 	}
 	if !f.wait {
 		if len(st.Projects) == 0 {
-			fmt.Printf("no setup has run on %s\n", res.Ref)
+			fmt.Printf("no setup has run on %s\n", ref)
 			return
 		}
 		fmt.Print(workspace.RenderSetupTable(st, "▸", time.Now()))
 	}
-	if h := recordedHealth(res.Ref); h != nil && !st.Running() {
+	if h := recordedHealth(ref); h != nil && !st.Running() {
 		fmt.Println()
 		printIssues(h)
-		printFixHint(res.Ref)
+		printFixHint(ref)
+	}
+	// A check's ✓ table is all that is left of it — say where the rest went.
+	if workspace.IsCheck(ref) && st.Passed() && !workspace.CheckExists(ref.Worktree) {
+		fmt.Println(workspace.CheckPassedLine(ref.Worktree))
 	}
 	os.Exit(st.ExitCode())
 }
@@ -418,7 +444,7 @@ func cmdSetupLogs() {
 		fmt.Fprintf(os.Stderr, "Usage: crew setup logs <workspace>[/<worktree>] <project> [--lines=N]\n")
 		os.Exit(1)
 	}
-	res := mustResolve(os.Args[3])
+	ref := mustSetupRef(os.Args[3])
 	proj := os.Args[4]
 	lines := 50
 	for _, arg := range os.Args[5:] {
@@ -430,13 +456,13 @@ func cmdSetupLogs() {
 			os.Exit(1)
 		}
 	}
-	text, err := workspace.SetupLogs(res.Ref, proj, lines)
+	text, err := workspace.SetupLogs(ref, proj, lines)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: no runner log for %s on %s — crew setup status %s\n", proj, res.Ref, res.Ref)
+		fmt.Fprintf(os.Stderr, "Error: no runner log for %s on %s — crew setup status %s\n", proj, ref, ref)
 		os.Exit(1)
 	}
 	if jsonOutput {
-		printJSON(logsDoc(res.Ref, proj, text))
+		printJSON(logsDoc(ref, proj, text))
 		return
 	}
 	fmt.Println(text)
@@ -704,6 +730,24 @@ func cmdLsWorktrees() {
 		}
 	}
 
+	// Kept checks are checkouts with ports and health too — "what do I have
+	// checked out" includes them. Listed after the workspaces' worktrees;
+	// with a workspace argument, only when it is `check`.
+	if len(args) <= 3 || args[3] == workspace.CheckWorkspace {
+		checks, _ := workspace.ListChecks()
+		for _, c := range checks {
+			sm := workspace.CheckSummary(c)
+			row := worktreeOut{Ref: sm.Name, Path: sm.Path, DevRunning: sm.DevRunning, Installing: sm.Installing, Health: sm.Health}
+			if c.Worktree.Health != nil {
+				row.Issues = c.Worktree.Health.Issues
+			}
+			if withSize {
+				row.SizeBytes = dirsize.Of(row.Path)
+			}
+			out = append(out, row)
+		}
+	}
+
 	if jsonOutput {
 		printJSON(out)
 		return
@@ -711,6 +755,36 @@ func cmdLsWorktrees() {
 	for _, wt := range out {
 		fmt.Println(worktreeRow(wt.Ref, wt.Path, wt.SizeBytes, withSize, wt.DevRunning, wt.Installing, wt.Health))
 	}
+}
+
+// cmdCheck is `crew check project <name>`: prove the project reproduces
+// from nothing — a fresh checkout of its canonical repo through the setup
+// runner, as the target check/<name>. Ends the way add worktree does.
+func cmdCheck() {
+	if len(os.Args) < 4 || os.Args[2] != "project" {
+		fmt.Fprintf(os.Stderr, "Usage: crew check project <name> [--pull] [--no-smoke] [--wait]\n")
+		os.Exit(1)
+	}
+	name := os.Args[3]
+	f := parseSetupFlags(os.Args[4:], false)
+	p := project.Get(name)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", name)
+		os.Exit(1)
+	}
+	// StartCheck refuses this too; asking first spares the base fetch.
+	if ref := workspace.CheckRef(name); workspace.SetupRunning(ref) {
+		fmt.Fprintf(os.Stderr, "Error: %v on %s — crew setup status %s\n", workspace.ErrSetupRunning, ref, ref)
+		os.Exit(1)
+	}
+	printBases(&workspace.Workspace{Name: workspace.CheckWorkspace, Projects: []workspace.WorkspaceProject{{Name: name}}}, f.pull,
+		fmt.Sprintf("crew check project %s --pull fast-forwards the local base first.", name))
+	fmt.Fprintln(human)
+	if err := workspace.StartCheck(name, workspace.CheckoutOptions{Install: true, Smoke: f.smoke}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	landOn(workspace.CheckRef(name), fmt.Sprintf("Checking %s", name), f.wait)
 }
 
 // worktreeRow is one line of crew ls worktrees: the size column only when

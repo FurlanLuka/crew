@@ -16,6 +16,7 @@ func setup(t *testing.T) string {
 	config.ConfigDir = tmp
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
 	config.TrashDir = filepath.Join(tmp, "trash")
+	config.ProjectsDir = filepath.Join(tmp, "projects")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
 	DisableSweepForTest(t)
 	return tmp
@@ -122,5 +123,24 @@ func TestPut_RenameFailureRemovesInPlace(t *testing.T) {
 	}
 	if n := Entries(); n != 0 {
 		t.Errorf("Entries = %d, want 0", n)
+	}
+}
+
+// A crew-made clone under ProjectsDir may be trashed; the roots themselves
+// and anything else never.
+func TestPut_AcceptsProjectsDirOnly(t *testing.T) {
+	tmp := setup(t)
+	clone := filepath.Join(config.ProjectsDir, "api")
+	os.MkdirAll(clone, 0o755)
+	if _, err := Put(clone); err != nil {
+		t.Errorf("clone under ProjectsDir: %v", err)
+	}
+	if _, err := Put(config.ProjectsDir); err == nil {
+		t.Error("the projects root itself must be refused")
+	}
+	other := filepath.Join(tmp, "elsewhere")
+	os.MkdirAll(other, 0o755)
+	if _, err := Put(other); err == nil {
+		t.Error("a path outside both roots must be refused")
 	}
 }

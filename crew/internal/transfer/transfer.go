@@ -195,9 +195,10 @@ func Suggest(exported string, anchors []string) string {
 }
 
 // CloneTarget is where c would clone: beside the latest anchor, else into the
-// exported path when its parent exists here, else "" — the card asks for a
-// path first. Never a directory that is already there: git refuses those,
-// and the sibling Suggest found is what y is for. Pure over the fs.
+// exported path when its parent exists here, else crew's own projects dir,
+// else "" — the card asks for a path first. Never a directory that is
+// already there: git refuses those, and the sibling Suggest found is what y
+// is for. Pure over the fs.
 func CloneTarget(exported string, anchors []string) string {
 	base := filepath.Base(exported)
 	if len(anchors) > 0 {
@@ -207,6 +208,11 @@ func CloneTarget(exported string, anchors []string) string {
 	}
 	if dirExists(filepath.Dir(exported)) && !dirExists(exported) {
 		return exported
+	}
+	// Nowhere the bundle or the pool suggests: crew's own projects dir, so a
+	// fresh machine never has to refuse a clone it was asked for.
+	if own := project.ClonePath(base); !dirExists(own) {
+		return own
 	}
 	return ""
 }

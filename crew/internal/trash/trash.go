@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -21,21 +20,18 @@ import (
 )
 
 // Put moves path into the trash and returns where it went. Only paths under
-// config.WorkspacesDir are accepted: this is the one place a checkout is
-// moved out of the tree, so the guard against deleting something else lives
-// here. When the rename fails (another volume), the path is removed in place
-// and "" is returned.
+// config.WorkspacesDir or config.ProjectsDir are accepted — crew's own
+// checkouts and its own clones: this is the one place something is moved
+// out of the tree, so the guard against deleting anything else lives here.
+// When the rename fails (another volume), the path is removed in place and
+// "" is returned.
 func Put(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
 	}
-	root, err := filepath.Abs(config.WorkspacesDir)
-	if err != nil {
-		return "", err
-	}
-	if !strings.HasPrefix(abs, root+string(os.PathSeparator)) {
-		return "", fmt.Errorf("refusing to trash %s: not under %s", abs, root)
+	if !underCrewRoot(abs) {
+		return "", fmt.Errorf("refusing to trash %s: not under %s or %s", abs, config.WorkspacesDir, config.ProjectsDir)
 	}
 	if _, err := os.Lstat(abs); errors.Is(err, os.ErrNotExist) {
 		return "", nil
@@ -54,6 +50,11 @@ func Put(path string) (string, error) {
 		return "", os.RemoveAll(abs)
 	}
 	return dest, nil
+}
+
+// underCrewRoot: strictly inside one of the two roots, never a root itself.
+func underCrewRoot(abs string) bool {
+	return config.Under(abs, config.WorkspacesDir) || config.Under(abs, config.ProjectsDir)
 }
 
 // Sweep starts a detached delete of every trash entry and returns without

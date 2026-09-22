@@ -112,3 +112,18 @@ func TestRenderPrompt_CrewSection(t *testing.T) {
 		t.Error("the slug leaked into the prompt")
 	}
 }
+
+// crew fix check/<name> --print hands this to an agent: a check is a scratch
+// checkout, and the fix belongs in the project's config.
+func TestRenderPrompt_Check(t *testing.T) {
+	ref := CheckRef("api")
+	res := &Resolved{Ref: ref, Slug: ref.Slug(), Projects: []ResolvedProject{{Name: "api", Path: "/w/check/api/api", Role: "the project under check"}}}
+	got := RenderPrompt(res, nil)
+	want := "You are working in crew's check of `api` (ref `check/api`): a fresh checkout made to prove the project installs and its servers start from nothing. Fix the project's config — its setup command, env command, dev server command — not this checkout alone; it is thrown away once the check passes.\n\nIt contains the following projects:\n\n- **api** [worktree] (/w/check/api/api): the project under check\n"
+	if !strings.HasPrefix(got, want) {
+		t.Errorf("RenderPrompt(check) =\n%s\nwant prefix\n%s", got, want)
+	}
+	if strings.Contains(got, "workspace.") {
+		t.Error("a check is not called a workspace")
+	}
+}

@@ -159,18 +159,21 @@ func TestApplyProject_CloneIsFallbackOnly(t *testing.T) {
 	}
 }
 
-// With no repo crew knows and the exported parent absent, --clone has
-// nowhere to go and says so; nothing is created.
+// With no repo crew knows and the exported parent absent, --clone lands in
+// crew's own projects dir — a fresh machine never refuses a clone it was
+// asked for. Only when that dir is taken too is there nowhere to go.
 func TestApplyProject_CloneNowhere(t *testing.T) {
 	tmp := setupTestConfig(t)
 	remote, _ := repoWithOrigin(t, tmp, "api")
 	b := Bundle{Projects: []Exported{{Project: project.Project{Name: "api", Path: "/nope/nowhere/api"}, Remote: remote}}}
-	_, err := ApplyProject(b, Inspect(b), "api", ProjectOptions{Clone: true})
-	if err == nil || !strings.Contains(err.Error(), "nowhere to clone") {
-		t.Errorf("err = %v", err)
+	res, err := ApplyProject(b, Inspect(b), "api", ProjectOptions{Clone: true})
+	if err != nil || res.Path != project.ClonePath("api") || !res.Cloned || !project.CrewOwned(*project.Get("api")) {
+		t.Errorf("res = %+v, %v", res, err)
 	}
-	if _, statErr := os.Stat("/nope/nowhere/api"); statErr == nil {
-		t.Error("nothing should have been created")
+	project.Remove("api")
+	_, err = ApplyProject(b, Inspect(b), "api", ProjectOptions{Clone: true})
+	if err == nil || !strings.Contains(err.Error(), "nowhere to clone") {
+		t.Errorf("projects dir taken: err = %v", err)
 	}
 }
 
@@ -183,7 +186,7 @@ func TestPlanRows_NoAnchors(t *testing.T) {
 	}}
 	got := PlanRows(b, Inspect(b))
 	want := []PlanRow{
-		{Kind: "project", Name: "api", Status: "missing", Detail: "/nope/nowhere/api"},
+		{Kind: "project", Name: "api", Status: "clone", Detail: project.ClonePath("api")},
 		{Kind: "project", Name: "web", Status: "clone", Detail: filepath.Join(tmp, "have", "web")},
 	}
 	if !reflect.DeepEqual(got, want) {

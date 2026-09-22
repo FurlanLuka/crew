@@ -148,7 +148,7 @@ func memberNames(ws *Workspace) []string {
 // its own runner, with the smoke when asked — the same check creation
 // runs, installs forced. Returns once the runners are started.
 func Setup(ref Ref, opts CheckoutOptions, only []string) error {
-	ws, err := Load(ref.Workspace)
+	ws, err := loadFor(ref)
 	if err != nil {
 		return err
 	}
@@ -200,6 +200,13 @@ func SetupStepsFor(p project.Project) []exec.SetupStep {
 // a worktree that no longer exists.
 func removeWorktreeArtifacts(ref Ref) {
 	removeSetupArtifacts(ref)
+	removeDevArtifacts(ref)
+}
+
+// removeDevArtifacts is the half a passed check also takes: the dev
+// session, its logs, the prompt and the .code-workspace — not the setup
+// dir, which a check keeps for the ✓ table.
+func removeDevArtifacts(ref Ref) {
 	dev.StopAll(ref.Slug())
 	os.RemoveAll(dev.LogDir(ref.Slug()))
 	os.Remove(PromptFilePath(ref))
@@ -279,8 +286,12 @@ func TrashNotice() string {
 	return fmt.Sprintf("trash: %d removed checkouts still clearing in background", n)
 }
 
-// RemoveWorktree destroys a worktree's checkouts and forgets it.
+// RemoveWorktree destroys a worktree's checkouts and forgets it. On the
+// check workspace it is the kept check that goes.
 func RemoveWorktree(wsName, name string) error {
+	if wsName == CheckWorkspace {
+		return RemoveCheck(name)
+	}
 	ws, err := Load(wsName)
 	if err != nil {
 		return err
@@ -392,7 +403,7 @@ func SavePorts(ref Ref, ports map[string]int) error {
 // updateWorktree is Update narrowed to one worktree of the workspace,
 // resolved the way a Ref is (the only one when unnamed).
 func updateWorktree(ref Ref, fn func(*Worktree)) error {
-	return Update(ref.Workspace, func(ws *Workspace) error {
+	return updateFor(ref, func(ws *Workspace) error {
 		wt, err := selectWorktree(ws, ref.Worktree)
 		if err != nil {
 			return err

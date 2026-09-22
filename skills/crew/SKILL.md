@@ -75,9 +75,10 @@ crew debug [--tail=<n>]                                    <date> <time> [<categ
 ## 3. Projects and dev servers
 
 ```
-crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>]
+crew add project <name> <path-or-url> [--setup=<cmd>] [--env-cmd=<cmd>]
 crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]         re-run on an existing project updates it
-crew rm project <name>
+crew rm project <name> [--purge]
+crew check project <name> [--pull] [--no-smoke] [--wait]        one runner; crew setup status check/<name> watches it
 crew dev add <project> --name=<name> --port=<port> --cmd=<command> [--dir=<subdir>]
 crew dev rm <project> <server-name>
 crew dev setup <project> [--apply --port=<port>]               <detected|added>\t<name>\t<command>
@@ -85,6 +86,23 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
 
 - Project names: `a-z 0-9 -`, and not `worktree`, `workspace`, `url`, `host`, `port` — they
   are token words.
+- A **path** registers a repo that is already there. A **git URL** (`git@…`, `https://…`,
+  `ssh://…`, `file://…` — the full URL, never `owner/repo`) is cloned into
+  `~/.crew/projects/<name>` and that is the project's path; `crew rm project <name>
+  --purge` trashes that clone (never a path of yours), refused while a workspace still
+  lists the project or a check of it is kept. `gh repo list <owner> --json name,url` is
+  where URLs come from when the user has `gh`.
+- **`crew check project <name>`** proves the config reproduces from nothing: a fresh
+  checkout of the canonical repo through the setup runner (mise → install → `env: <cmd>` →
+  a smoke of its own servers) as the target `check/<name>`. Pass → the checkout, branch and
+  record are removed; `crew setup status check/<name>` still shows the ✓ table. Fail → kept:
+  `crew ls worktrees` lists `check/<name>` with what failed, `crew fix check/<name> --print`
+  has the evidence, `crew setup logs check/<name> <name>` the install output; fix the
+  project's config (`--setup`, `--env-cmd`, `dev add`) and `crew check project <name>
+  --wait` again (replaces it from nothing; `crew verify check/<name>` re-runs in place and
+  a pass removes it too). `crew rm worktree check/<name>` removes a kept one by hand. Run
+  it after configuring a project and before `add workspace`; a failure there is the same
+  failure every worktree would hit.
 - `--setup` is the install command for a fresh checkout when the lockfile alone is not the
   answer (`make sync` for a repo that also pulls model weights). Without it crew detects
   `uv sync`, `pnpm install`, `npm ci` or `yarn` from the lockfile; `mise install` runs first
@@ -248,7 +266,7 @@ crew migrate [--dry-run] [--yes]
   before its runners start; ports are never copied.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
   the background (a full Xcode build can be 100+ GB). Disk comes back a little later — `crew
-  trash` shows what is still clearing.
+  trash` shows what is still clearing. `rm worktree check/<project>` removes a kept check.
 - `migrate` moves pre-2.0 flat workspaces to the nested layout: backs up, prints the plan,
   moves checkouts with `git worktree move`. Always `--dry-run` first and show the user the
   plan; `--yes` applies without the prompt.
@@ -359,6 +377,7 @@ crew import <file> [--plan | --all [--clone] [--replace] [--pull] [--no-install]
 ## 9. Housekeeping
 
 ```
+crew clean [--dry-run]                                  <kind>\t<path>\t<removed|would remove|pruned|would prune|failed: <reason>>  |  nothing to clean
 crew trash [empty]
 crew ps [--json]
 crew kill [--dry-run]
@@ -369,6 +388,12 @@ crew uninstall [--purge] [--yes]
 crew help [<command>] [<subcommand>] [--json]
 ```
 
+- `clean` is the sweep every crew command runs at most once an hour, now, plus `git
+  worktree prune` on every pool repo: failed checks older than seven days, runner files /
+  dev logs / route files of worktrees and checks that no longer exist, stale lock files,
+  the trash. Kinds: `check`, `setup`, `logs`, `routes`, `lock`, `trash`, `prune`. Nothing
+  outside `~/.crew` is ever removed; a live dev or setup session keeps its slug's files.
+  `--dry-run` first when the user asks what it would do.
 - `ps` lists crew's tmux sessions and processes that leaked out of them; `kill` stops every
   session and reclaims the leaks (never anything with a live parent) and prints how to
   restore. `--dry-run` first.
@@ -438,8 +463,18 @@ crew help [<command>] [<subcommand>] [--json]
 
 **"Disk is full"**
 1. `crew trash` — anything still clearing? `crew trash empty` finishes it now.
-2. `crew ls worktrees --size` — which worktree; build output inside a checkout is what grows.
-3. `crew rm worktree <ws>/<wt>` for one that is done — returns at once, clears in background.
+2. `crew clean --dry-run`, then `crew clean` — leftovers of worktrees and checks that are gone.
+3. `crew ls worktrees --size` — which worktree; build output inside a checkout is what grows.
+4. `crew rm worktree <ws>/<wt>` for one that is done — returns at once, clears in background.
+
+**"Add this repo and make sure it runs"** (a URL, or a pick from `gh repo list`)
+1. `crew add project <name> <url> [--setup=…] [--env-cmd=…]` — clones to `~/.crew/projects/<name>`.
+2. Read the clone's README / Makefile / package.json / pyproject / mise.toml; `crew dev add
+   <name> --name=… --port=… --cmd=…` per server, `--setup` / `--env-cmd` when the lockfile
+   alone is not the answer.
+3. `crew check project <name> --wait` — `✓` means the config reproduces. `✗`: `crew setup
+   logs check/<name> <name>` or `crew fix check/<name> --print`, fix, check again.
+4. Then `crew add workspace <ws> <name>` or `crew add workspace <ws> <name> …`.
 
 ## Rules
 
@@ -447,7 +482,8 @@ crew help [<command>] [<subcommand>] [--json]
 - Relay `left alone` and `!` lines from `crew dev start` verbatim.
 - Never paste `crew env` output into a file; use `crew run`.
 - Never print override values or binding-resolved values that look like credentials.
-- Destructive, confirm first: `rm <ws>`, `rm worktree`, `rm project`, `uninstall --purge`,
-  `trash empty`, `migrate` (dry-run and show the plan), `kill`.
+- Destructive, confirm first: `rm <ws>`, `rm worktree`, `rm project` (`--purge` doubly),
+  `uninstall --purge`, `trash empty`, `clean` (dry-run first), `migrate` (dry-run and show
+  the plan), `kill`.
 - TUI commands and process-replacing ones (`claude`, `open`, bare `fix`) are for the user to
   run; give them the exact line. Everything they do has a flag form above — use that.

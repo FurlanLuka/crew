@@ -20,6 +20,7 @@ func setupTestConfig(t *testing.T) string {
 	config.ConfigDir = tmp
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
 	config.TrashDir = filepath.Join(tmp, "trash")
+	config.ProjectsDir = filepath.Join(tmp, "projects")
 	config.ClaudeConfigDir = filepath.Join(tmp, "claude")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
 	trash.DisableSweepForTest(t)
@@ -168,20 +169,26 @@ func TestCloneTarget(t *testing.T) {
 	if got := CloneTarget(filepath.Join(tmp, "web"), nil); got != filepath.Join(tmp, "web") {
 		t.Errorf("parent exists = %q", got)
 	}
-	if got := CloneTarget("/nope/nowhere/web", nil); got != "" {
+	// Nowhere else: crew's own projects dir, never a refusal on a fresh machine.
+	if got := CloneTarget("/nope/nowhere/web", nil); got != project.ClonePath("web") {
 		t.Errorf("no anchor, no parent = %q", got)
 	}
+	os.MkdirAll(project.ClonePath("web"), 0o755)
+	if got := CloneTarget("/nope/nowhere/web", nil); got != "" {
+		t.Errorf("projects dir taken = %q", got)
+	}
+	os.RemoveAll(project.ClonePath("web"))
 	// A sibling already beside the anchor is a suggestion, not a clone target.
 	os.MkdirAll(filepath.Join(tmp, "dev", "web"), 0o755)
-	if got := CloneTarget("/nope/nowhere/web", []string{filepath.Join(tmp, "dev", "api")}); got != "" {
+	if got := CloneTarget("/nope/nowhere/web", []string{filepath.Join(tmp, "dev", "api")}); got != project.ClonePath("web") {
 		t.Errorf("beside exists, no parent = %q", got)
 	}
 	if got := CloneTarget(filepath.Join(tmp, "web"), []string{filepath.Join(tmp, "dev", "api")}); got != filepath.Join(tmp, "web") {
 		t.Errorf("beside exists, parent exists = %q", got)
 	}
 	os.MkdirAll(filepath.Join(tmp, "web"), 0o755)
-	if got := CloneTarget(filepath.Join(tmp, "web"), nil); got != "" {
-		t.Errorf("exported exists = %q", got)
+	if got := CloneTarget(filepath.Join(tmp, "web"), nil); got != project.ClonePath("web") {
+		t.Errorf("exported exists → own dir = %q", got)
 	}
 }
 

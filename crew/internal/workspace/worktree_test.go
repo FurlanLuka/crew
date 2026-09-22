@@ -78,6 +78,14 @@ func TestAddWorktree_ChecksOutEveryProject(t *testing.T) {
 			t.Errorf("%s not checked out at %s", p.Name, p.Path)
 		}
 	}
+	// A passing workspace status is not a check verdict: nothing under
+	// ~/.crew/checks is touched.
+	if st, _ := SetupStatus(res.Ref); !st.Passed() {
+		t.Fatalf("%+v", st)
+	}
+	if _, err := os.Stat(ChecksDir()); !os.IsNotExist(err) {
+		t.Error("a workspace status must never reach the checks dir")
+	}
 }
 
 // The regression this whole branch-naming change exists for: without the

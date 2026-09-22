@@ -322,3 +322,54 @@ func TestIsEnvFile(t *testing.T) {
 		}
 	}
 }
+
+func TestIsGitURL(t *testing.T) {
+	for s, want := range map[string]bool{
+		"git@github.com:o/r.git": true, "https://github.com/o/r": true, "http://x/r.git": true,
+		"ssh://git@x/r.git": true, "git://x/r": true, "file:///tmp/r.git": true,
+		"/abs/path": false, "./x": false, "../x": false, "~/x": false, "name": false, "o/r": false, "a/b/c": false, "github.com/o/r": false,
+	} {
+		if got := IsGitURL(s); got != want {
+			t.Errorf("IsGitURL(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
+// Clone from a file:// remote lands a working copy whose origin/HEAD names
+// the remote's branch; a bad remote leaves nothing behind and git's last
+// line in the error. DeleteBranch tolerates a branch that is not there.
+func TestClone_RemoteHeadBranch_DeleteBranch(t *testing.T) {
+	if !hasGit() {
+		t.Skip("git not available")
+	}
+	seed := initGitRepo(t)
+	RunGitCommand(seed, "branch", "-M", "master")
+	target := filepath.Join(t.TempDir(), "clones", "api")
+	if err := Clone("file://"+seed, target); err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "README.md")); err != nil {
+		t.Error("the clone should have the seed's files")
+	}
+	if got := RemoteHeadBranch(target); got != "master" {
+		t.Errorf("RemoteHeadBranch = %q, want master", got)
+	}
+	if got := RemoteHeadBranch(seed); got != "" {
+		t.Errorf("no origin: %q", got)
+	}
+	RunGitCommand(target, "branch", "scratch")
+	DeleteBranch(target, "scratch")
+	DeleteBranch(target, "scratch")
+	if out, _ := RunGitCommand(target, "branch", "--list", "scratch"); strings.TrimSpace(out) != "" {
+		t.Errorf("scratch should be deleted: %q", out)
+	}
+
+	bad := filepath.Join(t.TempDir(), "nope")
+	err := Clone("file://"+filepath.Join(t.TempDir(), "missing.git"), bad)
+	if err == nil || !strings.HasPrefix(err.Error(), "git clone: fatal:") || !strings.Contains(err.Error(), "missing.git") {
+		t.Errorf("bad remote: the first fatal line names the cause, got %v", err)
+	}
+	if _, statErr := os.Stat(bad); !os.IsNotExist(statErr) {
+		t.Error("a failed clone leaves no directory")
+	}
+}

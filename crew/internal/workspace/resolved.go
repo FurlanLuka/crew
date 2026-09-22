@@ -41,8 +41,11 @@ type Resolved struct {
 // An empty ref.Worktree selects the workspace's only worktree, and errors when
 // there is more than one — the caller has to say which.
 func Resolve(ref Ref) (*Resolved, error) {
-	ws, err := Load(ref.Workspace)
+	ws, err := loadFor(ref)
 	if err != nil {
+		if IsCheck(ref) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("workspace '%s' not found", ref.Workspace)
 	}
 

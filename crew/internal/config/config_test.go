@@ -66,3 +66,23 @@ func TestWorkspaceFile(t *testing.T) {
 		})
 	}
 }
+
+func TestUnder(t *testing.T) {
+	root := t.TempDir()
+	for path, want := range map[string]bool{
+		root + "/api":         true,
+		root + "/api/deep":    true,
+		root:                  false,
+		root + "/":            false,
+		root + "-old/api":     false,
+		root + "/api/../../x": false,
+		"/tmp":                false,
+	} {
+		if got := Under(path, root); got != want {
+			t.Errorf("Under(%s, root) = %v, want %v", path, got, want)
+		}
+	}
+	if Under(root+"/api", "") {
+		t.Error("an empty root holds nothing")
+	}
+}

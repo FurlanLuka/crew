@@ -63,6 +63,22 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 	return previews
 }
 
+// WorkspacesWith names every workspace the project is a member of — what
+// stands between a project and its removal from the pool.
+func WorkspacesWith(projName string) ([]string, error) {
+	names, err := List()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, name := range names {
+		if ws, err := Load(name); err == nil && hasProject(ws, projName) {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
 func hasProject(ws *Workspace, projName string) bool {
 	for _, wp := range ws.Projects {
 		if wp.Name == projName {

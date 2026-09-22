@@ -13,6 +13,7 @@ func setupTestConfig(t *testing.T) {
 	tmp := t.TempDir()
 	config.ConfigDir = tmp
 	config.WorkspacesDir = filepath.Join(tmp, "workspaces")
+	config.ProjectsDir = filepath.Join(tmp, "projects")
 	config.ClaudeConfigDir = filepath.Join(tmp, "claude")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
 	os.MkdirAll(config.ClaudeConfigDir, 0o755)
@@ -241,5 +242,21 @@ func TestSetEnvCmd_RoundTripsAndClears(t *testing.T) {
 	}
 	if err := SetEnvCmd("nope", "x"); err == nil {
 		t.Error("unknown project must fail")
+	}
+}
+
+func TestCrewOwned(t *testing.T) {
+	setupTestConfig(t)
+	if !CrewOwned(Project{Path: ClonePath("api")}) {
+		t.Error("a clone under ProjectsDir is crew-owned")
+	}
+	if CrewOwned(Project{Path: config.ProjectsDir}) {
+		t.Error("the projects dir itself is not a project")
+	}
+	if CrewOwned(Project{Path: config.ProjectsDir + "-old/api"}) {
+		t.Error("a sibling dir with the prefix is not under it")
+	}
+	if CrewOwned(Project{Path: "repos/api"}) {
+		t.Error("a relative path elsewhere is not crew-owned")
 	}
 }

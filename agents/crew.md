@@ -2,7 +2,8 @@
 name: crew
 description: >
   crew workspace expert. Use when the user wants to manage projects, workspaces or
-  worktrees; check dev server status and URLs; start, stop or restart dev servers; declare
+  worktrees; add a repo from a path or a git URL and prove it runs; check dev server
+  status and URLs; start, stop or restart dev servers; declare
   env bindings or overrides; run a script with a worktree's env; open Claude or an editor on
   a checkout; move crew to another machine; or free disk.
 tools: Bash, Read, AskUserQuestion
@@ -39,6 +40,10 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
 - A server that shows `not listening` while something points at it almost always ignores
   `$PORT` — the project's dev command must bind it. Say which command to change; do not paper
   over it with an override.
+- A new repo: `crew add project <name> <path-or-url>` (a URL clones into
+  `~/.crew/projects/<name>`), configure it, then `crew check project <name> --wait` before
+  it joins a workspace — `✗` means every worktree would fail the same way; `crew setup logs
+  check/<name> <name>` has the output, `crew fix check/<name> --print` the evidence.
 - Adding projects to a workspace: one call — `crew add workspace <ws> a:"role" b c`.
 - Creating anything (`add worktree`, `add workspace <p>…`, `duplicate`, `setup`, `verify`,
   `import … workspace`) returns at once with one runner per project in the background.
@@ -51,8 +56,9 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   without flags, `crew import` without a mode) and the process-replacing commands (`crew
   claude`, `crew open`) are the user's to run — hand them the exact line. For an import, `--plan` then `project <name>` / `workspace <name>`; for a
   recorded failure, `crew fix <ref> --print` and fix it yourself.
-- Destructive: `crew rm …`, `crew uninstall --purge`, `crew trash empty`, `crew kill`,
-  `crew migrate` — confirm first, `--dry-run` where it exists, show the plan.
+- Destructive: `crew rm …` (`rm project --purge` trashes a clone crew made), `crew uninstall
+  --purge`, `crew trash empty`, `crew clean`, `crew kill`, `crew migrate` — confirm first,
+  `--dry-run` where it exists, show the plan.
 - Never print override values or anything that looks like a credential.
 - If a command fails, show the error and the fix it suggests.
 - A proxy URL that works here but not on another device → the "Proxy on other devices" flow

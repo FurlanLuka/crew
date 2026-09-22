@@ -21,6 +21,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/help"
+	"github.com/FurlanLuka/crew/crew/internal/housekeeping"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
@@ -113,9 +114,7 @@ func main() {
 		cmd = os.Args[1]
 	}
 
-	if shouldSweepTrash(cmd) {
-		trash.Sweep()
-	}
+	housekeeping.SweepOnStart(os.Args[1:])
 
 	// Check for updates in background (skip for dev builds and update command)
 	var updateCh chan string
@@ -209,6 +208,10 @@ func main() {
 		cmdSetup()
 		return
 
+	case "check":
+		cmdCheck()
+		return
+
 	case "_setup":
 		cmdSetupRunner()
 		return
@@ -261,6 +264,10 @@ func main() {
 		cmdTrash()
 		return
 
+	case "clean":
+		cmdClean()
+		return
+
 	case "show":
 		cmdShow()
 		return
@@ -278,19 +285,13 @@ func main() {
 
 	default:
 		// Try as workspace/worktree ref shortcut (launch directly)
-		if ref, err := workspace.ParseRef(cmd); err == nil && workspace.Exists(ref.Workspace) {
+		if ref, err := workspace.ParseRef(cmd); err == nil && workspace.Addressable(ref) {
 			runTUI(workspace.NewWorktreeView(mustResolve(ref.String()).Ref))
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown command '%s'. Run 'crew help' for usage.\n", cmd)
 			os.Exit(1)
 		}
 	}
-}
-
-// shouldSweepTrash: every run retries clearing removed checkouts an earlier
-// run did not finish — except uninstall, whose purge takes ~/.crew whole.
-func shouldSweepTrash(cmd string) bool {
-	return cmd != "uninstall"
 }
 
 func mainMenu() app.Menu {
@@ -612,16 +613,81 @@ func cmdRm() {
 }
 
 func cmdRmProject() {
-	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew rm project <name>\n")
+	name, purge, err := parseRmProjectArgs(os.Args[3:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew rm project <name> [--purge]\n", err)
 		os.Exit(1)
 	}
-	name := os.Args[3]
+	p := project.Get(name)
+	if p == nil {
+		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", name)
+		os.Exit(1)
+	}
+	if purge {
+		members, _ := workspace.WorkspacesWith(name)
+		if err := purgeAllowed(*p, members, workspace.CheckExists(name)); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	if err := project.Remove(name); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Removed project: %s\n", name)
+	if !purge {
+		if project.CrewOwned(*p) {
+			fmt.Fprintf(human, "clone kept at %s — crew rm project %s --purge removes it\n", p.Path, name)
+		}
+		return
+	}
+	if _, err := trash.Put(p.Path); err != nil {
+		// The pool entry is already gone; say where the clone still is.
+		fmt.Fprintf(os.Stderr, "Error: %v — clone left at %s\n", err, p.Path)
+		os.Exit(1)
+	}
+	trash.Sweep()
+	fmt.Fprintf(human, "clone at %s moved to the trash\n", p.Path)
+}
+
+// parseRmProjectArgs reads `<name> [--purge]`. Pure.
+func parseRmProjectArgs(args []string) (name string, purge bool, err error) {
+	for _, arg := range args {
+		switch {
+		case arg == "--purge":
+			purge = true
+		case strings.HasPrefix(arg, "-"):
+			return "", false, fmt.Errorf("unknown flag '%s'", arg)
+		case name == "":
+			name = arg
+		default:
+			return "", false, fmt.Errorf("unexpected argument '%s'", arg)
+		}
+	}
+	if name == "" {
+		return "", false, errors.New("a project name is needed")
+	}
+	return name, purge, nil
+}
+
+// purgeAllowed: only a clone crew made may be trashed, and not while any
+// workspace still lists the project or a check of it is kept — a trashed
+// canonical breaks every git worktree off it. Pure.
+func purgeAllowed(p project.Project, members []string, hasCheck bool) error {
+	if !project.CrewOwned(p) {
+		return fmt.Errorf("%s is not a clone crew made (not under %s) — --purge never touches it", p.Path, config.ProjectsDir)
+	}
+	if len(members) > 0 {
+		hints := make([]string, 0, len(members))
+		for _, m := range members {
+			hints = append(hints, "crew rm workspace "+m+" "+p.Name)
+		}
+		return fmt.Errorf("project '%s' is still in workspace %s — %s first", p.Name, strings.Join(members, ", "), strings.Join(hints, "; "))
+	}
+	if hasCheck {
+		return fmt.Errorf("a check of '%s' is kept — crew rm worktree check/%s first", p.Name, p.Name)
+	}
+	return nil
 }
 
 func cmdRmWorkspaceProject() {
@@ -711,9 +777,14 @@ func cmdAddProject() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	name, path := a.name, a.path
-
-	if existing := project.Get(name); existing != nil {
+	name := a.name
+	existing := project.Get(name)
+	path, clone, err := addProjectTarget(a, existing)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if existing != nil {
 		lines, err := applyProjectUpdate(a)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -724,9 +795,12 @@ func cmdAddProject() {
 		}
 		return
 	}
-	if path == "" {
-		fmt.Fprintf(os.Stderr, "Usage: crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>]\n")
-		os.Exit(1)
+	if clone {
+		fmt.Fprintf(human, "Cloning %s → %s\n", a.path, path)
+		if err := exec.Clone(a.path, path); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	p := project.Project{Name: name, Path: path, Setup: a.setup, EnvCmd: a.envCmd}
 	if err := project.Add(p); err != nil {
@@ -741,6 +815,41 @@ func cmdAddProject() {
 		}
 		fmt.Printf("New checkouts will run: %s\n", strings.Join(names, " → "))
 	}
+}
+
+// addProjectTarget decides where a new project's path comes from: the
+// path given, or — for a git URL — the clone crew will make, refused when
+// the name is taken (a URL cannot update a project: the clone is the fact,
+// and it is already registered as one path), when --path rides along, or
+// when the clone dir exists. An existing project with a plain path is the
+// update case — the caller's. Pure but for the stat in cloneAllowed.
+func addProjectTarget(a addProjectArgs, existing *project.Project) (path string, clone bool, err error) {
+	if !exec.IsGitURL(a.path) {
+		if existing == nil && a.path == "" {
+			return "", false, errors.New("usage: crew add project <name> <path-or-url> [--setup=<cmd>] [--env-cmd=<cmd>]")
+		}
+		return a.path, false, nil
+	}
+	if existing != nil {
+		return "", false, fmt.Errorf("project '%s' already exists at %s — crew rm project %s first, or pick another name", a.name, existing.Path, a.name)
+	}
+	dir := project.ClonePath(a.name)
+	if a.newPath != "" {
+		return "", false, fmt.Errorf("--path means \"the repo moved\" on an existing project; a URL always clones to %s", dir)
+	}
+	if err := cloneAllowed(a.name, dir); err != nil {
+		return "", false, err
+	}
+	return dir, true, nil
+}
+
+// cloneAllowed: the clone dir must not exist — never adopt what is there
+// silently. Names the two ways out.
+func cloneAllowed(name, dir string) error {
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("%s already exists — crew add project %s %s registers what is there, or delete it first", dir, name, dir)
+	}
+	return nil
 }
 
 // applyProjectUpdate is `crew add project` on a project already in the

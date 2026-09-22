@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -170,14 +171,6 @@ func TestExtractFlag_BeforeSeparatorStillWorks(t *testing.T) {
 	}
 }
 
-func TestShouldSweepTrash(t *testing.T) {
-	for cmd, want := range map[string]bool{"": true, "workspace": true, "rm": true, "uninstall": false} {
-		if got := shouldSweepTrash(cmd); got != want {
-			t.Errorf("shouldSweepTrash(%q) = %v, want %v", cmd, got, want)
-		}
-	}
-}
-
 func TestParseAddProjectArgs(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -309,5 +302,102 @@ func TestApplyProjectUpdate(t *testing.T) {
 	}
 	if _, err := applyProjectUpdate(addProjectArgs{name: "api"}); err == nil {
 		t.Error("no flags must be refused")
+	}
+}
+
+func TestParseRmProjectArgs(t *testing.T) {
+	for _, tt := range []struct {
+		args    []string
+		name    string
+		purge   bool
+		wantErr string
+	}{
+		{[]string{"api"}, "api", false, ""},
+		{[]string{"api", "--purge"}, "api", true, ""},
+		{[]string{"--purge", "api"}, "api", true, ""},
+		{nil, "", false, "a project name"},
+		{[]string{"api", "web"}, "", false, "unexpected argument"},
+		{[]string{"api", "--force"}, "", false, "unknown flag"},
+	} {
+		name, purge, err := parseRmProjectArgs(tt.args)
+		if tt.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("%v: err = %v, want %q", tt.args, err, tt.wantErr)
+			}
+			continue
+		}
+		if err != nil || name != tt.name || purge != tt.purge {
+			t.Errorf("%v: got %s %v %v", tt.args, name, purge, err)
+		}
+	}
+}
+
+// --purge is for clones crew made, and only once nothing depends on the
+// canonical any more.
+func TestPurgeAllowed(t *testing.T) {
+	prev := config.ProjectsDir
+	config.ProjectsDir = t.TempDir()
+	t.Cleanup(func() { config.ProjectsDir = prev })
+	owned := project.Project{Name: "api", Path: config.ProjectsDir + "/api"}
+	if err := purgeAllowed(project.Project{Name: "api", Path: "/home/me/api"}, nil, false); err == nil || !strings.Contains(err.Error(), "not a clone crew made") {
+		t.Errorf("user-owned: %v", err)
+	}
+	if err := purgeAllowed(owned, []string{"store", "admin"}, false); err == nil || !strings.Contains(err.Error(), "workspace store, admin — crew rm workspace store api; crew rm workspace admin api first") {
+		t.Errorf("member: %v", err)
+	}
+	if err := purgeAllowed(owned, nil, true); err == nil || !strings.Contains(err.Error(), "rm worktree check/api") {
+		t.Errorf("checked: %v", err)
+	}
+	if err := purgeAllowed(owned, nil, false); err != nil {
+		t.Errorf("clean: %v", err)
+	}
+}
+
+func TestCloneAllowed(t *testing.T) {
+	dir := t.TempDir()
+	if err := cloneAllowed("api", dir); err == nil || !strings.Contains(err.Error(), "crew add project api "+dir) {
+		t.Errorf("existing dir: %v", err)
+	}
+	if err := cloneAllowed("api", dir+"/new"); err != nil {
+		t.Errorf("free path: %v", err)
+	}
+}
+
+// Where a new project's path comes from, and what a URL refuses.
+func TestAddProjectTarget(t *testing.T) {
+	prev := config.ProjectsDir
+	config.ProjectsDir = t.TempDir()
+	t.Cleanup(func() { config.ProjectsDir = prev })
+	url := "git@github.com:example/signals.git"
+	existing := &project.Project{Name: "signals", Path: "/repos/signals"}
+	for _, tt := range []struct {
+		name     string
+		a        addProjectArgs
+		existing *project.Project
+		path     string
+		clone    bool
+		wantErr  string
+	}{
+		{"path", addProjectArgs{name: "signals", path: "/repos/signals"}, nil, "/repos/signals", false, ""},
+		{"update keeps the path decision to the caller", addProjectArgs{name: "signals", hasSetup: true}, existing, "", false, ""},
+		{"no path", addProjectArgs{name: "signals"}, nil, "", false, "usage"},
+		{"url", addProjectArgs{name: "signals", path: url}, nil, project.ClonePath("signals"), true, ""},
+		{"url on an existing project", addProjectArgs{name: "signals", path: url}, existing, "", false, "already exists at /repos/signals"},
+		{"url with --path", addProjectArgs{name: "signals", path: url, newPath: "/x"}, nil, "", false, "--path means"},
+	} {
+		path, clone, err := addProjectTarget(tt.a, tt.existing)
+		if tt.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("%s: err = %v, want %q", tt.name, err, tt.wantErr)
+			}
+			continue
+		}
+		if err != nil || path != tt.path || clone != tt.clone {
+			t.Errorf("%s: got %q %v %v", tt.name, path, clone, err)
+		}
+	}
+	os.MkdirAll(project.ClonePath("taken"), 0o755)
+	if _, _, err := addProjectTarget(addProjectArgs{name: "taken", path: url}, nil); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("clone dir taken: %v", err)
 	}
 }

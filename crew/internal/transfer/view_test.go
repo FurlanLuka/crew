@@ -354,7 +354,14 @@ func TestImportView_CloneWithoutAnchorAsksForPath(t *testing.T) {
 	tmp := setupTestConfig(t)
 	remote, _ := repoWithOrigin(t, tmp, "api")
 	b := Bundle{Version: 1, Projects: []Exported{{Project: project.Project{Name: "api", Path: "/nowhere/api"}, Remote: remote}}}
+	// With nowhere else, the card offers crew's own projects dir.
 	v := NewImportView("/x/b.json", b)
+	if got := plain(v.View()); !strings.Contains(got, "→ "+project.ClonePath("api")) || !strings.Contains(got, "c clones here") {
+		t.Fatalf("card with the projects dir free:\n%s", got)
+	}
+	// That dir taken: c asks where to clone.
+	os.MkdirAll(project.ClonePath("api"), 0o755)
+	v = NewImportView("/x/b.json", b)
 	if !strings.Contains(plain(v.View()), "✗ not here — c asks where to clone, e sets the path") {
 		t.Fatalf("card:\n%s", plain(v.View()))
 	}

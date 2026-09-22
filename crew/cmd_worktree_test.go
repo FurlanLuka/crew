@@ -151,6 +151,13 @@ func TestCreationDocs(t *testing.T) {
 	if got := renderVerdict(ref, nil, "checks out"); got != "\nws/wt checks out\n" {
 		t.Errorf("clean verdict = %q", got)
 	}
+	check := workspace.CheckRef("api")
+	if got := renderVerdict(check, nil, "checks out"); got != "\ncheck api passed — target removed\n" {
+		t.Errorf("clean check verdict = %q", got)
+	}
+	if got := renderVerdict(check, h, "x"); !strings.Contains(got, "crew fix check/api") {
+		t.Errorf("failed check verdict = %q", got)
+	}
 }
 
 func TestRenderStarted(t *testing.T) {
