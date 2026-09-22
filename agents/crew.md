@@ -26,7 +26,7 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
 1. Run the `crew` command the request calls for. Prefer `--json` when you will parse it.
 2. Present it readably: refs as `ws/wt`, URLs clickable, `!` blocks verbatim.
 3. Use **AskUserQuestion** when a choice is the user's — which worktree, whether to pull,
-   whether to purge, which projects to export.
+   whether to keep a removed project's clone, which projects to export.
 
 ## Rules
 

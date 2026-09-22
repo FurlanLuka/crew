@@ -34,7 +34,7 @@ crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
 crew add binding store-app --scan --apply                 # which env vars point at siblings
 crew check project store-app --wait                       # a fresh checkout: install, env, servers up?
 
-crew add workspace store-front store-api:"Backend API" store-app:"Web app"
+crew add workspace store-front store-api store-app
 crew setup status store-front/main --wait                 # one runner per project: checkout, install, smoke
 crew dev start store-front/main                           # servers up on stable ports
 crew dev check store-front/main --wait                    # did they come up?
@@ -192,9 +192,10 @@ and `v verify` while anything is recorded or still installing.
 - `crew verify <ref> [<project>…]` finishes what is missing, re-runs failed installs,
   smoke-starts, and clears the record on a pass — per project, so `crew verify <ref>
   store-app` re-checks the one you fixed and leaves the rest alone. Nothing else clears it.
-- While runners are alive, `dev start`, `verify`, `setup` and `duplicate` of that worktree
-  refuse — a dev server on top of an install writing the same checkout is corruption, not a
-  warning. It is the one refusal besides a verify under running servers.
+- While runners are alive, `dev start`, `verify`, `setup`, `duplicate` and `rm workspace
+  <ws> <p>` of that worktree refuse — a dev server on top of an install writing the same
+  checkout is corruption, not a warning, and a member cannot leave while its runner still
+  records on it. It is the one refusal besides a verify under running servers.
 
 ### Other devices
 
@@ -271,7 +272,7 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | | |
 |---|---|
 | **See** | `ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings <p> [--check=<ref>]` · `ls overrides <ref>` · `show <ref>` · `env <ref> <p>` · `dev status` · `dev show <p>` · `dev check <ref>` · `ps` · `trash` · `config show` · `debug --tail=N` |
-| **Projects** | `add project <name> <url> \| --path=<dir> [--setup=…] [--env-cmd=…]` · `rm project [--keep-clone]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
+| **Projects** | `add project <name> <url> \| --path=<dir> [--setup=…] [--env-cmd=…]` · `rm project [--keep-clone]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name [--port] --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p>[/<server>] --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p>[/<server>] --scan [--apply]` · `rm binding <p>[/<server>] X` · `add\|rm override <ref> VAR=value` · `env <ref> <p>[/<server>]` · `run <ref> <p>[/<server>] -- <cmd>` |
 | **Workspaces** | `add workspace <ws> [<p> …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |

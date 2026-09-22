@@ -56,10 +56,12 @@ claude login
 
 ---
 
-## 3. Clone Projects
+## 3. A checkout you already have
+
+crew clones each project itself when you give it a URL. One repo in this tutorial is adopted
+from a checkout that is already on disk, to show both forms:
 
 ```bash
-gh repo clone your-org/store-api ~/projects/store-api
 gh repo clone your-org/store-app ~/projects/store-app
 ```
 
@@ -101,11 +103,13 @@ crew add binding store-app --scan --apply  # adds the unambiguous ones
 ### Create a workspace
 
 ```bash
-crew add workspace store-front store-api:"Backend API" store-app:"Web app"
+crew add workspace store-front store-api store-app
 ```
 
-That checks both projects out, installs them, and smoke-starts the servers. `crew ls
-worktrees` lists what you have; a recorded failure shows in the row.
+That records the members and returns at once: one runner per project checks it out,
+installs it and smoke-starts its servers in the background. `crew setup status
+store-front/main --wait` watches them; `crew ls worktrees` lists what you have, and a
+recorded failure shows in the row.
 
 ### Configure settings
 

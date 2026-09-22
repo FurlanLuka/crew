@@ -288,7 +288,8 @@ crew migrate [--dry-run] [--yes]
 - **Refused while runners are alive** — the one thing crew blocks on besides a verify under
   running servers, because a dev server on top of an install still writing the same
   checkout is corruption, not a warning: `crew dev start`, `verify`, `setup`, `duplicate`
-  of that worktree, and a second runner for the same project. The error names `crew setup
+  of that worktree, `crew rm workspace <ws> <p>` while that project's runner is alive, and
+  a second runner for the same project. The error names `crew setup
   status <ref>`; wait for it (`--wait`) and retry. Adding a new project to a busy worktree
   is fine — it is one more runner. `crew rm worktree` and `crew kill` stop the runners.
 - `duplicate` is a new worktree of the same projects with the source's overrides copied
@@ -413,7 +414,8 @@ crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smo
   whole bundle: every project not here is cloned, the ones here kept unless `--replace`;
   any `blocked` or `missing` row — and, under `--replace`, an `other remote` row for a
   project a workspace still has — refuses the run up front, before a single clone; a
-  project that fails on the way is a `failed` row and exit 1. Output rows
+  project that fails on the way is a `failed` row and exit 1; a workspace already here is
+  a `kept local` row. Output rows
   `<kind>\t<name>\t<outcome>\t<detail>`. A replace on a project here whose bundle entry
   has no remote (a config-only export) swaps the config and keeps the checkout.
 
