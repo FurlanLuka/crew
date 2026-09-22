@@ -76,11 +76,15 @@ Everything is a command; `crew project` / `crew workspace` are the same things a
 ### Register projects and their dev servers
 
 ```bash
-crew add project store-api ~/projects/store-api
-crew add project store-app ~/projects/store-app
+crew add project store-api git@github.com:example/store-api.git   # cloned into ~/.crew/projects/store-api
+crew add project store-app --path=~/projects/store-app            # or adopt a checkout already on the VM
 crew dev add store-api --name=store-api --port=3000 --cmd="npm run dev"
 crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
+crew check project store-api --wait                               # proves a fresh checkout installs and runs
 ```
+
+A project is its git remote; a bare path is refused. In the TUI, `crew project` → `a` walks
+the same steps one card at a time and explains each.
 
 The `--port` is a reference; crew allocates a real port per worktree and runs the command
 with `PORT=<n>` set — the dev command must bind `$PORT`.
