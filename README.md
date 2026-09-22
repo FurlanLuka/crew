@@ -43,8 +43,9 @@ crew claude store-front/main                              # Claude, oriented, in
 crew add worktree store-front/wrk2 --pull                 # a second copy of everything
 ```
 
-Or from the TUI: `crew project` (`a` walks a new project through source → install → servers →
-bindings → check, explaining each step in place), `crew workspace`, `crew launch <ws>/<wt>`.
+Or from the TUI: `crew project` (enter opens a project's page — install commands, servers,
+bindings and the check on one screen, edited in place; `a` walks a new project through
+source → install → servers → bindings → check), `crew workspace`, `crew launch <ws>/<wt>`.
 
 ## Why
 

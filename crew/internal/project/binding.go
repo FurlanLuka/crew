@@ -177,7 +177,9 @@ func dropBinding(bindings []Binding, key dev.BindingKey) ([]Binding, error) {
 }
 
 // scopedTo is the bindings scoped to one server. Pure.
-func scopedTo(bindings []Binding, server string) []Binding {
+// ScopedTo is the bindings a server takes with it when it goes — the set
+// RemoveDevServer drops, and what a removal must name first. Pure.
+func ScopedTo(bindings []Binding, server string) []Binding {
 	var out []Binding
 	for _, b := range bindings {
 		if b.Server == server {
@@ -196,6 +198,16 @@ func BoundFor(bindings []Binding, server string) map[string]bool {
 		if b.Server == "" || b.Server == server {
 			declared[b.Var] = true
 		}
+	}
+	return declared
+}
+
+// DeclaredVars is every var with a binding, whatever its scope — what a
+// var field's completion skips. Pure.
+func DeclaredVars(bindings []Binding) map[string]bool {
+	declared := make(map[string]bool, len(bindings))
+	for _, b := range bindings {
+		declared[b.Var] = true
 	}
 	return declared
 }

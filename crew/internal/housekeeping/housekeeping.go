@@ -75,11 +75,15 @@ type State struct {
 	Checks    []CheckState
 	LiveSlugs map[dev.Slug]bool // every worktree's and every kept check's slug
 	SetupDirs []dev.Slug        // ~/.crew/setup/<slug>
-	LogDirs   []dev.Slug        // ~/.crew/logs/<slug>
-	Routes    []dev.Slug        // dev-routes-<slug>.json
-	Locks     []Lock            // workspaces/*.json.lock, checks/*.json.lock
-	Trash     int               // entries in the trash
-	Repos     []string          // pool repo paths, for prune
+	// SetupAges is when each setup dir was last written: a passed check
+	// keeps no record, only its ✓ table there, and the table is kept as
+	// long as a failed check would be.
+	SetupAges map[dev.Slug]time.Time
+	LogDirs   []dev.Slug // ~/.crew/logs/<slug>
+	Routes    []dev.Slug // dev-routes-<slug>.json
+	Locks     []Lock     // workspaces/*.json.lock, checks/*.json.lock
+	Trash     int        // entries in the trash
+	Repos     []string   // pool repo paths, for prune
 }
 
 // Lock is a record's lock file and whether the record is there.
@@ -112,9 +116,15 @@ func plan(s State, now time.Time, keep time.Duration) []Action {
 		}
 	}
 	for _, slug := range s.SetupDirs {
-		if !s.LiveSlugs[slug] {
-			out = append(out, Action{Kind: KindSetup, Path: workspace.SetupDir(slug)})
+		if s.LiveSlugs[slug] {
+			continue
 		}
+		// A check's table with no record behind it is a passed check's
+		// verdict; it stays for as long as a failed one is kept.
+		if isCheckSlug(slug) && now.Sub(s.SetupAges[slug]) <= keep {
+			continue
+		}
+		out = append(out, Action{Kind: KindSetup, Path: workspace.SetupDir(slug)})
 	}
 	for _, slug := range s.LogDirs {
 		if !s.LiveSlugs[slug] {
@@ -178,8 +188,12 @@ func collect(prune bool) State {
 			})
 		}
 	}
+	s.SetupAges = map[dev.Slug]time.Time{}
 	for _, slug := range slugDirs(filepath.Join(config.ConfigDir, "setup")) {
 		s.SetupDirs = append(s.SetupDirs, slug)
+		if info, err := os.Stat(workspace.SetupDir(slug)); err == nil {
+			s.SetupAges[slug] = info.ModTime()
+		}
 	}
 	for _, slug := range slugDirs(filepath.Join(config.ConfigDir, "logs")) {
 		s.LogDirs = append(s.LogDirs, slug)
@@ -237,6 +251,12 @@ func locks(dir string) []Lock {
 		out = append(out, Lock{Path: filepath.Join(dir, e.Name()), Orphan: os.IsNotExist(statErr), Modified: info.ModTime()})
 	}
 	return out
+}
+
+// isCheckSlug: the slug is a check target's — check--<project>. The one
+// place a slug is read by shape, and only to age it, never to name it.
+func isCheckSlug(slug dev.Slug) bool {
+	return strings.HasPrefix(string(slug), workspace.CheckWorkspace+"--")
 }
 
 func slugDirs(dir string) []dev.Slug {

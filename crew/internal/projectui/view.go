@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
@@ -16,10 +15,6 @@ import (
 
 type projectsLoadedMsg struct{ projects []project.Project }
 type projectRemovedMsg struct{ name string }
-type commandSavedMsg struct {
-	name  string
-	field commandField
-}
 
 // ── States ──
 
@@ -28,12 +23,11 @@ type viewState int
 const (
 	stateList viewState = iota
 	stateConfirmRemove
-	stateCommandForm
 )
 
-// commandField is which of a project's two commands the one-line form
-// edits: the install (`t`) or the env fetch (`e`). Same form, same save;
-// the enum owns everything that differs.
+// commandField is which of a project's two commands the page's one-line
+// form edits: the install (`t`) or the env fetch (`e`). Same form, same
+// save; the enum owns everything that differs.
 type commandField int
 
 const (
@@ -79,23 +73,15 @@ func (f commandField) save(name, command string) error {
 // ── Model ──
 
 type View struct {
-	state        viewState
-	projects     []project.Project
-	cursor       int
-	commandInput textinput.Model
-	editing      commandField
-	statusMsg    string
-	err          error
+	state     viewState
+	projects  []project.Project
+	cursor    int
+	statusMsg string
+	err       error
 }
 
 func NewView() View {
-	si := textinput.New()
-	si.CharLimit = 256
-
-	return View{
-		state:        stateList,
-		commandInput: si,
-	}
+	return View{state: stateList}
 }
 
 func (v View) Title() string { return "Projects" }
@@ -123,24 +109,12 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
 		return v, loadProjects
 
-	case commandSavedMsg:
-		v.state = stateList
-		v.statusMsg = fmt.Sprintf("%s for '%s' saved", msg.field.label(), msg.name)
-		v.commandInput.Blur()
-		return v, loadProjects
-
 	case errMsg:
 		v.err = msg.err
 		return v, nil
 
 	case tea.KeyMsg:
 		return v.handleKey(msg)
-	}
-
-	if v.state == stateCommandForm {
-		var cmd tea.Cmd
-		v.commandInput, cmd = v.commandInput.Update(msg)
-		return v, cmd
 	}
 
 	return v, nil
@@ -152,34 +126,8 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleListKey(msg)
 	case stateConfirmRemove:
 		return v.handleConfirmRemoveKey(msg)
-	case stateCommandForm:
-		return v.handleCommandFormKey(msg)
 	}
 	return v, nil
-}
-
-// handleCommandFormKey is the one-line form for the two commands worth
-// changing after the fact: the install and the env fetch.
-func (v View) handleCommandFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		v.state = stateList
-		v.commandInput.Blur()
-		return v, nil
-	case "enter":
-		name := v.projects[v.cursor].Name
-		command := strings.TrimSpace(v.commandInput.Value())
-		field := v.editing
-		return v, func() tea.Msg {
-			if err := field.save(name, command); err != nil {
-				return errMsg{err}
-			}
-			return commandSavedMsg{name, field}
-		}
-	}
-	var cmd tea.Cmd
-	v.commandInput, cmd = v.commandInput.Update(msg)
-	return v, cmd
 }
 
 func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -207,26 +155,28 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.statusMsg = ""
 		}
 		return v, nil
-	case msg.String() == "s":
-		if len(v.projects) > 0 {
-			p := v.projects[v.cursor]
-			page := NewDevServerView(p.Name)
-			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
-		}
-		return v, nil
-	case msg.String() == "b":
-		if len(v.projects) > 0 {
-			p := v.projects[v.cursor]
-			page := NewBindingsView(p.Name)
-			return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
-		}
-		return v, nil
+	case msg.String() == "enter":
+		return v.openPage(rowSetup)
 	case msg.String() == "t":
-		return v.openCommandForm(cmdSetup)
+		return v.openPage(rowSetup)
 	case msg.String() == "e":
-		return v.openCommandForm(cmdEnvCmd)
+		return v.openPage(rowEnv)
+	case msg.String() == "s":
+		return v.openPage(rowServer)
+	case msg.String() == "b":
+		return v.openPage(rowBinding)
 	}
 	return v, nil
+}
+
+// openPage is enter and the section letters: the project page, the cursor
+// on the section asked for.
+func (v View) openPage(jump rowKind) (tea.Model, tea.Cmd) {
+	if len(v.projects) == 0 {
+		return v, nil
+	}
+	page := NewPage(v.projects[v.cursor].Name, jump)
+	return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 }
 
 func (v View) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -254,35 +204,9 @@ func (v View) View() string {
 		v.renderList(&b)
 	case stateConfirmRemove:
 		v.renderConfirmRemove(&b)
-	case stateCommandForm:
-		v.renderCommandForm(&b)
 	}
 
 	return b.String()
-}
-
-func (v View) openCommandForm(field commandField) (tea.Model, tea.Cmd) {
-	if len(v.projects) == 0 {
-		return v, nil
-	}
-	v.state = stateCommandForm
-	v.editing = field
-	v.statusMsg = ""
-	v.err = nil
-	v.commandInput.Placeholder = field.placeholder()
-	v.commandInput.SetValue(field.value(v.projects[v.cursor]))
-	v.commandInput.Focus()
-	return v, v.commandInput.Cursor.BlinkCmd()
-}
-
-func (v View) renderCommandForm(b *strings.Builder) {
-	fmt.Fprintf(b, "  %s for %s\n\n", v.editing.label(), v.projects[v.cursor].Name)
-	b.WriteString("  " + v.editing.hint() + "\n\n")
-	b.WriteString("  ")
-	b.WriteString(v.commandInput.View())
-	b.WriteString("\n\n  ")
-	b.WriteString(app.HelpStyle.Render("enter save  esc cancel"))
-	b.WriteString("\n")
 }
 
 func (v View) renderList(b *strings.Builder) {
@@ -333,7 +257,7 @@ func (v View) renderList(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-const listHelp = "a add  d delete  s servers  b bindings  t setup  e env cmd  esc back"
+const listHelp = "enter open  a add  d delete  s servers  b bindings  t setup  e env cmd  esc back"
 
 func (v View) renderConfirmRemove(b *strings.Builder) {
 	name := v.projects[v.cursor].Name

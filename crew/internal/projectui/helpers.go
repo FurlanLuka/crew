@@ -3,6 +3,7 @@ package projectui
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/exec"
@@ -26,17 +27,6 @@ const (
 func (s step) label() string {
 	return [...]string{"source", "install", "servers", "bindings", "check", "finish"}[s]
 }
-
-// checkPhase is where the check step stands.
-type checkPhase int
-
-const (
-	checkIdle checkPhase = iota
-	checkRunning
-	checkPassed
-	checkFailed
-	checkConfirm // c on a checkout with unmerged fix commits asks first
-)
 
 // facts is what decides a card's keys — read by the handler and the
 // footer alike, so a key the help offers is always one the handler takes.
@@ -130,6 +120,16 @@ func cliFor(s step, name string, f facts) string {
 		return fmt.Sprintf("crew check project %s [--no-smoke] --wait", name)
 	}
 	return ""
+}
+
+// envKeysOf is the sorted var names of a scan, for completion. Pure.
+func envKeysOf(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // nameFromURL is the project name a URL suggests: the last segment of

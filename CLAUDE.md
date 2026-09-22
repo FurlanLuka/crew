@@ -237,8 +237,9 @@ crew/
     help/       structured command tree (help_test pins every command)
     housekeeping/ the sweep: collect → plan (pure) → apply; SweepOnStart, crew clean
     procs/      process inventory and reclaim
-    project/    pool CRUD, bindings, setup; project TUI incl. the binding editor (AddWizard var)
-    addproject/ the TUI's add-project walk: one card per step over project/exec/workspace; only main imports it
+    project/    pool CRUD, bindings, setup — data only, no TUI
+    projectui/  the project TUI above project and workspace: the list, the project page, the add-project
+                wizard, and the server form / binding editor / check card they share; only main imports it
     settings/   settings TUI, trash size + empty, uninstall entry
     transfer/   export/import bundle: Collect, Covered, Inspect, Clone, Import*; cli.go (PlanRows,
                 ApplyProject, ApplyWorkspace); picker + wizard TUIs
@@ -250,8 +251,8 @@ crew/
 
 Import boundaries that shape the packages: `dev` cannot import `workspace` (it declares its own
 inputs — `DevProject`, `ResolveParams` — and `workspace.Resolved` builds them). `project` cannot
-import `workspace`; the binding editor's live preview and checkout list are functions `main`
-wires in (`project.Previewer`, `project.CheckoutDirs`).
+import `workspace` and holds no TUI; everything that needs both sides — the project page, the
+wizard, the binding editor's live preview — lives in `projectui`, above them.
 
 ### Resolved
 
@@ -264,20 +265,29 @@ every project with its path decided and its pool config attached. Commands go
 
 `crew workspace` → workspaces → enter → that workspace's worktrees (+ new) → enter → the
 **worktree page** (`view_worktree.go`): servers with live status and URLs, the same anomaly
-block `crew dev start` prints, launch and open rows, one cursor. `crew project` → `s` servers,
-`b` bindings (scan-first editor with live preview), `t` setup command, `e` env command, `a`
-the **add-project wizard** (`internal/addproject`, wired in as `project.AddWizard` since
-`project` cannot import `workspace`): one card per step — source (URL → clone into
+block `crew dev start` prints, launch and open rows, one cursor. `crew project` → list → enter →
+the **project page** (`internal/projectui/page.go`): install (setup, env command, the plan
+`exec.ComposeSteps` previews), servers, bindings with their preview cell (`PreviewBindings`,
+one resolve per worktree) and the `○` rows the env files propose (`ScanEnv` +
+`ProposeBindings`, not yet bound; `A` adds them all), the check row — one cursor
+(`pageRows`, identity-keyed so a reload never moves it), each row edited in place: the
+one-line command form, the `serverForm`, the `bindingEditor` (scope, live preview, `ctrl+t`
+legend). `s`/`b`/`t`/`e` on the list open the page on that section (`jumpTo`). `c` runs
+`crew check project` in place through `checkCard` (shared with the wizard; the poll is what
+applies a verdict, `Init` re-arms it after a pop); `workspace.InspectCheck` is the one
+reading of a check at rest — `SetupStatus` first, then the record — and a failed check's
+health renders on top. `renderProjectPage` is pure and returns the cursor's line; `View`
+windows the body to the terminal minus `pageChrome`, and an open form collapses the other
+sections to one line each. `pageKeys`/`pageCLI` are read by the footer and the handler
+alike; an open form takes every key but esc and ctrl+c. `a` on the list is the
+**add-project wizard** (`wizard.go`): one card per step — source (URL → clone into
 `ClonePath`, `ctrl+p` adopts a path; `project.NewTarget` is the decision it shares with
-`crew add project`), install (`exec.ComposeSteps` previews the plan live), servers
-(`exec.DetectDevCommand` + a port, or the servers page), bindings (the bindings page, only
-with a target), check (`StartCheck` in place, polled like the import wizard's workspace
-card — `SetupStatus` applies the verdict, so the card keeps its last `Status`; `f` fix
-returns to the card; `c` asks when `exec.CommitsAhead` finds an unmerged fix on the scratch
-branch) — then the finish card with the exact `crew add workspace` line. Each card explains
-its concept (`copy.go`), applies its command when pressed, and names the CLI form; esc keeps
-what was recorded. `keysFor(step, facts)` is read by the footer and the handler alike;
-`Init` is idempotent and re-arms the poll, since a pushed sub-page eats the ticks.
+`crew add project`), install, servers (`exec.DetectDevCommand` + a port, or the server
+form in place), bindings (the editor in place, only with a target), check (`checkCard`) —
+then the finish card with the exact `crew add workspace` line. Each card explains its
+concept (`copy.go`), applies its command when pressed, and names the CLI form; esc keeps
+what was recorded. A passed check's ✓ table under `setup/check--*` keeps `KeepChecks` in
+housekeeping, so the page's check row can say when it last passed.
 
 ### New worktree
 

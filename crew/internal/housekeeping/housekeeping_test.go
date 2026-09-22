@@ -57,7 +57,10 @@ func TestPlan(t *testing.T) {
 			{Project: "pending", At: old}, // started, no result yet
 		},
 		LiveSlugs: map[dev.Slug]bool{live: true, "check--fresh-fail": true, "check--passed": true},
-		SetupDirs: []dev.Slug{live, gone, "check--fresh-fail", "check--passed"},
+		// Two passed checks with no record: one table still within the
+		// grace, one past it.
+		SetupDirs: []dev.Slug{live, gone, "check--fresh-fail", "check--passed", "check--recent-pass", "check--old-pass"},
+		SetupAges: map[dev.Slug]time.Time{"check--recent-pass": fresh, "check--old-pass": old},
 		LogDirs:   []dev.Slug{live, gone},
 		Routes:    []dev.Slug{live, gone},
 		Locks: []Lock{
@@ -71,7 +74,7 @@ func TestPlan(t *testing.T) {
 	got := plan(s, now, keep)
 	want := map[Kind][]string{
 		KindCheck:  {workspace.WorktreeDir(workspace.CheckRef("old-fail")), workspace.WorktreeDir(workspace.CheckRef("passed"))},
-		KindSetup:  {workspace.SetupDir(gone)},
+		KindSetup:  {workspace.SetupDir("check--old-pass"), workspace.SetupDir(gone)},
 		KindLogs:   {dev.LogDir(gone)},
 		KindRoutes: {dev.RoutesFilePath(gone)},
 		KindLock:   {"/l/stale.json.lock"},
@@ -83,8 +86,8 @@ func TestPlan(t *testing.T) {
 			t.Errorf("%s:\n got %v\nwant %v", kind, g, w)
 		}
 	}
-	if n := len(got); n != 9 {
-		t.Errorf("%d actions, want 9: %+v", n, got)
+	if n := len(got); n != 10 {
+		t.Errorf("%d actions, want 10: %+v", n, got)
 	}
 	if got := plan(State{}, now, keep); len(got) != 0 {
 		t.Errorf("empty state plans %+v", got)
@@ -438,5 +441,27 @@ func TestSweep_Prune(t *testing.T) {
 	}
 	if out, _ := exec.RunGitCommand(repo, "worktree", "list"); strings.Contains(out, "stale-wt") {
 		t.Error("the stale registration should be pruned")
+	}
+}
+
+// A passed check's table (a setup dir with no record) survives the sweep
+// for the grace, by the dir's mtime — collect carries it, plan reads it.
+func TestSweep_KeepsAPassedCheckTable(t *testing.T) {
+	setupTestConfig(t)
+	fresh := workspace.SetupDir("check--fresh")
+	old := workspace.SetupDir("check--old")
+	os.MkdirAll(fresh, 0o755)
+	os.MkdirAll(old, 0o755)
+	past := time.Now().Add(-8 * 24 * time.Hour)
+	os.Chtimes(old, past, past)
+	rep := Sweep(Options{})
+	if _, err := os.Stat(fresh); err != nil {
+		t.Error("a fresh table is kept")
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Error("a table past the grace goes")
+	}
+	if !strings.Contains(RenderReport(rep, false), workspace.SetupDir("check--old")) {
+		t.Errorf("report:\n%s", RenderReport(rep, false))
 	}
 }

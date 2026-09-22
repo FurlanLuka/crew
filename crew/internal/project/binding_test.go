@@ -229,11 +229,11 @@ func TestBindings_LegacyFileIsProjectWide(t *testing.T) {
 
 func TestScopedToAndBoundFor(t *testing.T) {
 	bindings := []Binding{{Var: "A"}, {Var: "B", Server: "web"}, {Var: "C", Server: "worker"}, {Var: "D", Server: "web"}}
-	got := scopedTo(bindings, "web")
+	got := ScopedTo(bindings, "web")
 	if len(got) != 2 || got[0].Var != "B" || got[1].Var != "D" {
 		t.Errorf("%+v", got)
 	}
-	if got := scopedTo(bindings, ""); len(got) != 1 || got[0].Var != "A" {
+	if got := ScopedTo(bindings, ""); len(got) != 1 || got[0].Var != "A" {
 		t.Errorf("the empty scope is the project-wide set: %+v", got)
 	}
 	if d := BoundFor(bindings, ""); !d["A"] || d["B"] {

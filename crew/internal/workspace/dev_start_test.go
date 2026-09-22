@@ -477,4 +477,9 @@ func TestResolveEnv_CarriesScope(t *testing.T) {
 	if len(previews) != 1 || previews[0].Value != "other" {
 		t.Errorf("a project-wide draft previews as itself: %+v", previews)
 	}
+	// Both at once resolve each worktree a single time, keyed by identity.
+	all := PreviewBindings("mono", []project.Binding{{Var: "API_URL", Value: "{{api.port}}", Server: "web"}, {Var: "API_URL", Value: "other"}})
+	if len(all) != 2 || all[dev.BindingKey{Var: "API_URL"}][0].Value != "other" || all[dev.BindingKey{Var: "API_URL", Server: "web"}][0].Resolved {
+		t.Errorf("PreviewBindings = %+v", all)
+	}
 }

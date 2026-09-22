@@ -192,7 +192,7 @@ func FinishCheck(projName string) error {
 		return nil
 	}
 	ref := CheckRef(projName)
-	waitRunnersGone(ref, 2*time.Second)
+	waitRunnersGone(ref, RunnerExitWait)
 	trashCheckTarget(ref)
 	trash.Sweep()
 	debug.Log("setup", "%s passed — target removed", ref)
@@ -224,6 +224,11 @@ func trashCheckTarget(ref Ref) {
 	}
 }
 
+// RunnerExitWait bounds how long a finished runner is given to exit before
+// its files are taken away. A var: under go test the runner's pid is the
+// test process, which never exits, so the wait always runs to its limit.
+var RunnerExitWait = 2 * time.Second
+
 // waitRunnersGone gives a runner that has written its verdict the moment
 // it needs to exit, bounded, before its files are taken away.
 func waitRunnersGone(ref Ref, limit time.Duration) {
@@ -242,6 +247,77 @@ func checkVerdict(ref Ref, st Status) {
 	if err := FinishCheck(ref.Worktree); err != nil {
 		debug.Log("setup", "%s: could not finish: %v", ref, err)
 	}
+}
+
+// CheckInfoState is where a project's check stands.
+type CheckInfoState int
+
+const (
+	CheckNone    CheckInfoState = iota // no check on record
+	CheckRunning                       // a runner is alive
+	CheckPassed                        // the ✓ table is kept, the target gone
+	CheckFailed                        // the target is kept with its evidence
+)
+
+// CheckInfo is a project's check as a screen shows it at rest.
+type CheckInfo struct {
+	State  CheckInfoState
+	Status *Status // the runner table, when there is one
+	Health *Health // the failed record's issues
+	At     time.Time
+	// Smoked: the run started the servers too (crew check without
+	// --no-smoke) — a ✓ that says "reproduces", not only "installs".
+	Smoked bool
+}
+
+// InspectCheck is the one reading of a check's state, in the one order that
+// is safe: SetupStatus first — it applies a pending verdict, and a pass
+// finishes the target, so whoever reads it after a runner ends is what
+// finishes a check — then the record. Read the other way round, a check
+// passing between the two reads would show as kept and failed.
+func InspectCheck(project string) CheckInfo {
+	ref := CheckRef(project)
+	st, err := SetupStatus(ref)
+	var status *Status
+	if err == nil && len(st.Projects) > 0 {
+		status = &st
+	}
+	if status != nil && st.Running() {
+		return CheckInfo{State: CheckRunning, Status: status, At: st.Projects[0].At}
+	}
+	if status != nil && st.Passed() {
+		// The table's verdict stands whether or not FinishCheck managed to
+		// take the record away.
+		return CheckInfo{State: CheckPassed, Status: status, At: st.Projects[0].At, Smoked: smoked(st)}
+	}
+	if c, err := loadCheck(project); err == nil {
+		h := c.Worktree.Health
+		if h == nil && status != nil {
+			h = st.Health()
+		}
+		at := c.At
+		if h != nil {
+			at = h.At
+		}
+		if h != nil || (status != nil && st.Failed()) {
+			return CheckInfo{State: CheckFailed, Status: status, Health: h, At: at}
+		}
+		// A record with no verdict yet: the runner is starting.
+		return CheckInfo{State: CheckRunning, Status: status, At: c.At}
+	}
+	return CheckInfo{}
+}
+
+// smoked: the table has a smoke step — the servers were started.
+func smoked(st Status) bool {
+	for _, p := range st.Projects {
+		for _, step := range p.Steps {
+			if stageOfStep(step.Name) == StageSmoke {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // CheckPassedLine is the one sentence a passed check ends on, wherever it

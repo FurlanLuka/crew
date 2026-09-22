@@ -452,3 +452,71 @@ func TestDetectDefaultBranch_OriginHead(t *testing.T) {
 		t.Errorf("no origin, no main: %s, want HEAD", got)
 	}
 }
+
+// InspectCheck is the one reading of a check at rest: the table first (a
+// pass applies its verdict), then the record.
+func TestInspectCheck(t *testing.T) {
+	ref := checkFixture(t, "true")
+	if info := InspectCheck("api"); info.State != CheckNone {
+		t.Errorf("nothing on disk → %+v", info)
+	}
+
+	// A record with no verdict yet: starting.
+	saveCheck(&Check{Project: "api", At: time.Now()})
+	if info := InspectCheck("api"); info.State != CheckRunning {
+		t.Errorf("record, no table → %+v", info)
+	}
+	os.Remove(checkFile("api"))
+
+	// A pass: the table stays, the record goes, the time is the finish.
+	if err := StartCheck("api", CheckoutOptions{Install: true, Smoke: true}); err != nil {
+		t.Fatal(err)
+	}
+	info := InspectCheck("api")
+	if info.State != CheckPassed || info.At.IsZero() || CheckExists("api") {
+		t.Fatalf("passed → %+v (record kept: %v)", info, CheckExists("api"))
+	}
+	if again := InspectCheck("api"); again.State != CheckPassed {
+		t.Errorf("a second reading is the same: %+v", again)
+	}
+	// A record that FinishCheck could not take away does not hide the pass.
+	saveCheck(&Check{Project: "api", At: time.Now()})
+	if info := InspectCheck("api"); info.State != CheckPassed {
+		t.Errorf("table passed, record lingering → %+v", info)
+	}
+	os.Remove(checkFile("api"))
+
+	// A failure: the record's health, its time.
+	project.SetSetup("api", "false")
+	if err := StartCheck("api", CheckoutOptions{Install: true}); err != nil {
+		t.Fatal(err)
+	}
+	info = InspectCheck("api")
+	if info.State != CheckFailed || info.Health == nil || info.Health.Summary() != "install failed: api" || info.At.IsZero() {
+		t.Errorf("failed → %+v", info)
+	}
+	// A running runner, from its table.
+	os.MkdirAll(SetupDir(ref.Slug()), 0o755)
+	writeResult(resultFile(ref.Slug(), "api"), RunResult{Project: "api", PID: os.Getpid(), StartedAt: time.Now()})
+	if info := InspectCheck("api"); info.State != CheckRunning || info.Status == nil {
+		t.Errorf("runner alive → %+v", info)
+	}
+}
+
+// ProjectStatus.At is the finish when there is one, the start otherwise.
+func TestReadStatus_At(t *testing.T) {
+	ref := checkFixture(t, "")
+	os.MkdirAll(SetupDir(ref.Slug()), 0o755)
+	started := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	finished := started.Add(time.Minute)
+	writeResult(resultFile(ref.Slug(), "api"), RunResult{Project: "api", StartedAt: started, Done: true, FinishedAt: &finished})
+	st, err := ReadStatus(ref)
+	if err != nil || len(st.Projects) != 1 || !st.Projects[0].At.Equal(finished) {
+		t.Errorf("finished → At = %v, %v", st.Projects, err)
+	}
+	writeResult(resultFile(ref.Slug(), "api"), RunResult{Project: "api", StartedAt: started})
+	st, _ = ReadStatus(ref)
+	if !st.Projects[0].At.Equal(started) {
+		t.Errorf("not finished → At = %v", st.Projects[0].At)
+	}
+}

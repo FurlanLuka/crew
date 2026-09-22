@@ -169,11 +169,11 @@ func TestRenderCheck(t *testing.T) {
 		t.Errorf("an env command answers the warning:\n%s", got)
 	}
 
-	w.check = checkState{phase: checkRunning, smoke: true}
+	w.check = checkCard{name: "store-api", phase: checkRunning, smoke: true}
 	if got := plain(w.View()); !strings.Contains(got, "checking store-api — one runner, a fresh checkout") || !strings.Contains(got, "l logs  esc leaves it running") {
 		t.Errorf("running card:\n%s", got)
 	}
-	w.check = checkState{}
+	w.check = checkCard{name: "store-api"}
 	w.applying, w.pending = true, "starting the check — a fresh checkout"
 	if got := plain(w.View()); !strings.Contains(got, "starting the check — a fresh checkout") || strings.Contains(got, "y check") {
 		t.Errorf("starting card offers no keys:\n%s", got)
@@ -190,7 +190,7 @@ func TestRenderCheck_FailedGolden(t *testing.T) {
 		Steps:  []workspace.RunStep{{Name: "checkout", Status: "ok", TookMs: 400}, {Name: "make sync", Status: "failed", TookMs: 1200, Detail: "make sync: no compiler"}},
 		Issues: []workspace.Issue{{Stage: "install", Project: "store-api", Reason: "make sync", Detail: "cc: command not found\nmake: *** [sync] Error 127"}},
 	}}}
-	w.check = checkState{phase: checkFailed, smoke: true, status: &st, health: st.Health(), now: at}
+	w.check = checkCard{name: "store-api", phase: checkFailed, smoke: true, status: &st, health: st.Health(), now: at}
 	w.check.health.At = at
 	got := plain(w.View())
 	want := strings.Join([]string{

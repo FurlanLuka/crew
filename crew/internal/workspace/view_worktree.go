@@ -617,11 +617,15 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 // stage and a few lines of evidence — the block every screen that shows a
 // failure opens with; the keys out of it are the caller's, they differ
 // per screen. f hands Claude all of the evidence.
-func RenderHealth(b *strings.Builder, h *Health) {
+func RenderHealth(b *strings.Builder, h *Health) { RenderHealthAt(b, h, time.Now()) }
+
+// RenderHealthAt is RenderHealth against a given clock — pure, for a page
+// that renders its facts as of one moment.
+func RenderHealthAt(b *strings.Builder, h *Health, now time.Time) {
 	if h == nil {
 		return
 	}
-	b.WriteString("\n  " + app.Error.Render("! "+h.Summary()) + app.Subtle.Render(" · "+ago(h.At)) + "\n")
+	b.WriteString("\n  " + app.Error.Render("! "+h.Summary()) + app.Subtle.Render(" · "+AgoAt(h.At, now)) + "\n")
 	width := 0
 	for _, issue := range h.Issues {
 		width = max(width, len(issue.Name()))
@@ -650,19 +654,29 @@ func RenderHealth(b *strings.Builder, h *Health) {
 // re-renders every couple of seconds, not every tick.
 const spinnerFrame = "▸"
 
-// ago is "2 minutes ago" for a timestamp; nothing older than days needs finer.
-func ago(t time.Time) string {
-	d := time.Since(t)
+// Ago is "2 minutes ago" for a timestamp; nothing older than days needs finer.
+func Ago(t time.Time) string { return AgoAt(t, time.Now()) }
+
+// AgoAt is Ago against a given clock, so a render can be pure over it.
+func AgoAt(t, now time.Time) string {
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "just now"
 	case d < time.Hour:
-		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+		return plural(int(d.Minutes()), "minute") + " ago"
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+		return plural(int(d.Hours()), "hour") + " ago"
 	default:
-		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+		return plural(int(d.Hours()/24), "day") + " ago"
 	}
+}
+
+func plural(n int, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
 }
 
 func leadHint(page worktreePage) string {

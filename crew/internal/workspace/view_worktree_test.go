@@ -173,13 +173,13 @@ func TestAgo(t *testing.T) {
 	tests := map[time.Duration]string{
 		10 * time.Second: "just now",
 		2 * time.Minute:  "2 minutes ago",
-		90 * time.Minute: "1 hours ago",
-		25 * time.Hour:   "1 days ago",
+		90 * time.Minute: "1 hour ago",
+		25 * time.Hour:   "1 day ago",
 		72 * time.Hour:   "3 days ago",
 	}
 	for d, want := range tests {
-		if got := ago(now.Add(-d)); got != want {
-			t.Errorf("ago(-%s) = %q, want %q", d, got, want)
+		if got := Ago(now.Add(-d)); got != want {
+			t.Errorf("Ago(-%s) = %q, want %q", d, got, want)
 		}
 	}
 }

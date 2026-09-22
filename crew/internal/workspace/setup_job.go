@@ -96,6 +96,9 @@ type ProjectStatus struct {
 	Steps   []RunStep    `json:"steps"`
 	Issues  []Issue      `json:"issues"`
 	TookMs  int64        `json:"took_ms,omitempty"`
+	// At is when the runner finished — started, while it is alive or when
+	// it vanished — so a verdict can say how old it is.
+	At time.Time `json:"at,omitempty"`
 }
 
 // Status is the whole worktree's setup as it stands.
@@ -803,9 +806,10 @@ func ReadStatus(ref Ref) (Status, error) {
 			debug.Log("setup", "%s: %v", ref, err)
 			continue
 		}
-		ps := ProjectStatus{Project: f.Project, State: deriveProjectState(f, pidAlive(f.PID), time.Since(f.StartedAt)), Steps: f.Steps, Issues: f.Issues}
+		ps := ProjectStatus{Project: f.Project, State: deriveProjectState(f, pidAlive(f.PID), time.Since(f.StartedAt)), Steps: f.Steps, Issues: f.Issues, At: f.StartedAt}
 		if f.FinishedAt != nil {
 			ps.TookMs = f.FinishedAt.Sub(f.StartedAt).Milliseconds()
+			ps.At = *f.FinishedAt
 		}
 		byName[f.Project] = ps
 		names = append(names, f.Project)

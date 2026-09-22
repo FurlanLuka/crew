@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -39,6 +40,11 @@ func setupTestConfig(t *testing.T) string {
 		dev.ProxySessionName = prev
 	})
 	inlineRunners(t)
+	// The runner's pid is this process, which never exits: the wait for
+	// it would always run to its limit.
+	prevExit := RunnerExitWait
+	RunnerExitWait = 50 * time.Millisecond
+	t.Cleanup(func() { RunnerExitWait = prevExit })
 	return tmp
 }
 

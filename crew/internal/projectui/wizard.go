@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -41,10 +40,9 @@ type factsMsg struct {
 	hasEnv   bool
 	// checkKept: a check record is on disk — a failed one f can work on.
 	checkKept bool
+	// envKeys are the checkout's env var names, for the editor's completion.
+	envKeys []string
 }
-
-// savedMsg: a step's command landed; re-read the facts.
-type savedMsg struct{}
 
 type errMsg struct{ err error }
 
@@ -81,8 +79,12 @@ type Wizard struct {
 	// they return there rather than walking forward.
 	fromCheck bool
 
-	check   checkState
+	check   checkCard
 	verdict verdict
+	// serverForm / editor: the servers and bindings steps' forms, open in
+	// place; nil when closed. An open form takes every key but esc/ctrl+c.
+	serverForm *serverForm
+	editor     *bindingEditor
 	// stoppedAt: the step esc ended the walk on; stepFinish when it ran out.
 	stoppedAt step
 
@@ -126,7 +128,7 @@ func (w Wizard) currentFacts() facts {
 		detected:  w.facts.devCmd != "",
 		targets:   len(targetsFor(w.facts.pool, w.name)) > 0,
 		phase:     w.check.phase,
-		canFix:    w.check.phase == checkFailed && w.facts.checkKept,
+		canFix:    w.check.canFix(),
 		fromCheck: w.fromCheck,
 	}
 }
@@ -147,6 +149,11 @@ func (w Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case factsMsg:
 		w.facts = msg
+		if w.check.name == "" {
+			w.check = newCheckCard(w.name, msg.proj.Path)
+		}
+		// The record is what f works on; a reload says whether it is still there.
+		w.check.kept = msg.checkKept
 		if w.check.phase == checkRunning {
 			return w, pollCheck(w.name)
 		}
@@ -154,16 +161,19 @@ func (w Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case savedMsg:
 		w.err = nil
+		w.serverForm, w.editor = nil, nil
 		return w, w.reload()
 
-	case checkStartedMsg:
-		w.applying, w.pending = false, ""
-		w.check = checkState{phase: checkRunning, smoke: msg.smoke}
-		w.err = nil
-		return w, tea.Batch(w.spinner.Tick, pollCheck(w.name))
+	case checkStartedMsg, checkPollMsg:
+		return w.updateCheck(msg)
 
-	case checkPollMsg:
-		return w.applyPoll(msg)
+	case bindingPreviewMsg:
+		if w.editor != nil {
+			e, cmd := w.editor.Update(msg)
+			w.editor = &e
+			return w, cmd
+		}
+		return w, nil
 
 	case fixReadyMsg:
 		return w, tea.ExecProcess(msg.cmd, func(err error) tea.Msg {
@@ -177,21 +187,20 @@ func (w Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		w.applying, w.pending = false, ""
-		if w.check.phase == checkRunning {
-			// Nothing to follow: the start was refused, or the runner's
-			// table could not be read. y is there to try again.
-			w.check.phase = checkIdle
-		}
+		w.check, _ = w.check.Update(msg)
 		w.err = msg.err
 		return w, nil
 
 	case spinner.TickMsg:
-		if !w.applying && w.check.phase != checkRunning {
-			return w, nil
+		var cmds []tea.Cmd
+		if w.applying {
+			var cmd tea.Cmd
+			w.spinner, cmd = w.spinner.Update(msg)
+			cmds = append(cmds, cmd)
 		}
 		var cmd tea.Cmd
-		w.spinner, cmd = w.spinner.Update(msg)
-		return w, cmd
+		w.check, cmd = w.check.Update(msg)
+		return w, tea.Batch(append(cmds, cmd)...)
 
 	case tea.KeyMsg:
 		// Keys wait for a running command — all but ctrl+c: raw mode means
@@ -211,10 +220,17 @@ func (w Wizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (w Wizard) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// q is a letter on the cards with a text field (the port field refuses
-	// it, but a typo there must not end the walk); ctrl+c quits everywhere.
-	if msg.String() == "ctrl+c" || (key.Matches(msg, app.Keys.Quit) && w.step >= stepBindings) {
+	// ctrl+c quits everywhere; q only where no field could be taking it.
+	if msg.String() == "ctrl+c" || (key.Matches(msg, app.Keys.Quit) && !w.formOpen() && w.step >= stepBindings) {
 		return w, tea.Quit
+	}
+	// An open form takes every key but esc, which closes it.
+	if w.formOpen() {
+		if msg.String() == "esc" {
+			w.serverForm, w.editor, w.err = nil, nil, nil
+			return w, nil
+		}
+		return w.updateForm(msg)
 	}
 	switch w.step {
 	case stepSource:
@@ -247,6 +263,7 @@ func (w Wizard) stop() (tea.Model, tea.Cmd) {
 		w.verdict = verdictRunning
 		w.check.phase = checkIdle
 	}
+	w.serverForm, w.editor = nil, nil
 	w.step = stepFinish
 	w.err = nil
 	return w, nil
@@ -388,7 +405,7 @@ func (w Wizard) handleInstallKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := project.SetEnvCmd(name, envCmd); err != nil {
 				return errMsg{err}
 			}
-			return savedMsg{}
+			return savedMsg{section: sectionInstall}
 		})
 	}
 	var cmd tea.Cmd
@@ -435,8 +452,10 @@ func (w Wizard) handleServersKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		w = w.leaveForm(stepBindings)
 		return w, nil
 	case "a":
-		page := NewDevServerView(w.name)
-		return w, func() tea.Msg { return app.PushPageMsg{Page: page} }
+		f := newServerForm(w.name, nil)
+		cmd := f.focusField(serverName)
+		w.serverForm, w.err = &f, nil
+		return w, cmd
 	case "enter":
 		if w.facts.devCmd == "" {
 			return w, nil
@@ -452,7 +471,7 @@ func (w Wizard) handleServersKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := project.AddDevServer(name, project.DevServer{Name: name, Port: port, Command: cmd}); err != nil {
 				return errMsg{err}
 			}
-			return savedMsg{}
+			return savedMsg{section: sectionServers}
 		}
 	}
 	// Digits only reach the port field: a letter is a mistyped key, not a
@@ -478,10 +497,106 @@ func (w Wizard) handleBindingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(targetsFor(w.facts.pool, w.name)) == 0 {
 			return w, nil
 		}
-		page := NewBindingsView(w.name)
-		return w, func() tea.Msg { return app.PushPageMsg{Page: page} }
+		e := newBindingEditor(editorFactsFor(w.name, w.facts.proj, w.facts.envKeys, w.facts.pool), nil)
+		cmd := e.open()
+		w.editor, w.err = &e, nil
+		return w, cmd
 	}
 	return w, nil
+}
+
+// formOpen: a sub-model has the keys.
+func (w Wizard) formOpen() bool { return w.serverForm != nil || w.editor != nil }
+
+// updateForm forwards a message to the open form.
+func (w Wizard) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch {
+	case w.serverForm != nil:
+		f, cmd := w.serverForm.Update(msg)
+		w.serverForm = &f
+		return w, cmd
+	case w.editor != nil:
+		e, cmd := w.editor.Update(msg)
+		w.editor = &e
+		return w, cmd
+	}
+	return w, nil
+}
+
+// ── Check ──
+
+// updateCheck forwards the runner's messages to the card and reads where
+// it landed: passed ends the walk on the finish card, failed reloads the
+// facts (the record is what f works on).
+func (w Wizard) updateCheck(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := w.check.phase
+	var cmd tea.Cmd
+	w.check, cmd = w.check.Update(msg)
+	w.applying, w.pending = false, ""
+	if w.check.phase == before || !w.check.done() {
+		return w, cmd
+	}
+	if w.check.phase == checkPassed {
+		w.verdict = w.check.verdict()
+		w.step = stepFinish
+	}
+	return w, tea.Batch(cmd, w.reload())
+}
+
+func (w Wizard) handleCheckKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch w.check.phase {
+	case checkRunning:
+		if msg.String() == "esc" {
+			return w.stop()
+		}
+	case checkFailed:
+		switch msg.String() {
+		case "esc", "n":
+			w.verdict = verdictFailed
+			if msg.String() == "esc" {
+				return w.stop()
+			}
+			w.step = stepFinish
+			return w, nil
+		case "t":
+			return w.reopen(stepInstall, fieldSetup)
+		case "s":
+			return w.reopen(stepServers, fieldPort)
+		}
+	case checkIdle:
+		switch msg.String() {
+		case "esc":
+			return w.stop()
+		case "y", "i":
+			w.err = nil
+			w.applying = true
+			c, cmd := w.check.start(msg.String() == "y")
+			w.check = c
+			return w, cmd
+		case "n":
+			w.step, w.err = stepFinish, nil
+			return w, nil
+		}
+		return w, nil
+	}
+	c, cmd, handled := w.check.handleKey(msg)
+	w.check = c
+	if handled {
+		w.err = nil
+	}
+	return w, cmd
+}
+
+// reopen takes the check card's t or s to its form, which returns here.
+func (w Wizard) reopen(s step, field int) (tea.Model, tea.Cmd) {
+	w.fromCheck, w.err = true, nil
+	w.step = s
+	w.inputs[fieldSetup].SetValue(w.facts.proj.Setup)
+	w.inputs[fieldSetup].CursorEnd()
+	w.inputs[fieldEnvCmd].SetValue(w.facts.proj.EnvCmd)
+	w.inputs[fieldEnvCmd].CursorEnd()
+	cmd := w.setFocus(field)
+	return w, cmd
 }
 
 // ── Commands ──
@@ -516,6 +631,7 @@ func (w Wizard) reload() tea.Cmd {
 			devCmd:    exec.DetectDevCommand(p.Path),
 			hasEnv:    exec.HasEnvFiles(p.Path),
 			checkKept: workspace.CheckExists(name),
+			envKeys:   envKeysOf(project.ScanEnv(workspace.ProjectCheckouts(name), "")),
 		}
 	}
 }
@@ -538,6 +654,3 @@ const wsPlaceholder = "<workspace>"
 func stepHeader(s step, suffix string) string {
 	return fmt.Sprintf("  Add project · %d of 5 · %s%s\n\n", int(s)+1, s.label(), suffix)
 }
-
-// pollEvery is how often the check card looks at the runner.
-const pollEvery = 2 * time.Second

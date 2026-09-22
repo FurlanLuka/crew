@@ -10,52 +10,34 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
-// t and e open the same one-line form on the project's two commands; enter
-// saves the one that was opened.
-func TestProjectView_CommandForms(t *testing.T) {
+// enter and the section letters open the project page, the cursor on the
+// section asked for; a pushes the wizard.
+func TestProjectView_OpensThePage(t *testing.T) {
 	setupTestConfig(t)
-	project.Add(project.Project{Name: "api", Path: "/p", Setup: "make sync"})
+	project.Add(project.Project{Name: "api", Path: "/p", Setup: "make sync", DevServers: []project.DevServer{{Name: "api", Port: 3000, Command: "x"}}})
 	v := NewView()
-	m, _ := v.Update(projectsLoadedMsg{projects: []project.Project{{Name: "api", Path: "/p", Setup: "make sync"}}})
+	m, _ := v.Update(projectsLoadedMsg{projects: []project.Project{*project.Get("api")}})
 	v = m.(View)
-	press := func(v View, k string) (View, tea.Cmd) {
-		m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
-		return m.(View), cmd
-	}
-
-	v, _ = press(v, "e")
-	if v.state != stateCommandForm || v.editing != cmdEnvCmd || v.commandInput.Value() != "" {
-		t.Fatalf("e: state=%v field=%v value=%q", v.state, v.editing, v.commandInput.Value())
-	}
-	if got := v.View(); !strings.Contains(got, "Env command for api") || !strings.Contains(got, "not print values") {
-		t.Errorf("env form:\n%s", got)
-	}
-	v.commandInput.SetValue("make get-env")
-	m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	v = m.(View)
-	saved := cmd()
-	if msg, ok := saved.(commandSavedMsg); !ok || msg.field != cmdEnvCmd {
-		t.Fatalf("enter → %T %+v", saved, saved)
-	}
-	if got := project.Get("api"); got.EnvCmd != "make get-env" || got.Setup != "make sync" {
-		t.Errorf("saved = %+v", got)
-	}
-	m, _ = v.Update(commandSavedMsg{name: "api", field: cmdEnvCmd})
-	v = m.(View)
-	if v.statusMsg != "Env command for 'api' saved" || v.state != stateList {
-		t.Errorf("after save: status=%q state=%v", v.statusMsg, v.state)
-	}
-
-	v, _ = press(v, "t")
-	if v.editing != cmdSetup || v.commandInput.Value() != "make sync" || !strings.HasPrefix(v.commandInput.Placeholder, "make sync") {
-		t.Errorf("t: field=%v value=%q placeholder=%q", v.editing, v.commandInput.Value(), v.commandInput.Placeholder)
-	}
-
-	m, _ = v.Update(projectsLoadedMsg{projects: []project.Project{{Name: "api", Path: "/p", Setup: "make sync", EnvCmd: "make get-env"}}})
-	v = m.(View)
-	v.state = stateList
-	if got := v.View(); !strings.Contains(got, "env: make get-env") || !strings.Contains(got, "e env cmd") {
+	if got := v.View(); !strings.Contains(got, "setup: make sync") || !strings.Contains(got, listHelp) {
 		t.Errorf("list:\n%s", got)
+	}
+	for k, want := range map[string]rowKind{"enter": rowSetup, "t": rowSetup, "e": rowEnv, "s": rowServer, "b": rowBinding} {
+		page, ok := pushed(v, k).(Page)
+		if !ok || page.name != "api" || page.pending == nil || page.pending.kind != want {
+			t.Errorf("%s pushed %+v", k, pushed(v, k))
+		}
+	}
+	if _, ok := pushed(v, "a").(Wizard); !ok {
+		t.Error("a pushes the wizard")
+	}
+	empty := NewView()
+	if pushed(empty, "enter") != nil || pushed(empty, "s") != nil {
+		t.Error("an empty pool has no page to open")
+	}
+	if _, cmd := empty.Update(tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+		t.Error("esc pops")
+	} else if _, ok := cmd().(app.PopPageMsg); !ok {
+		t.Error("esc pops the list")
 	}
 }
 
@@ -72,21 +54,5 @@ func TestCommandField(t *testing.T) {
 		if tt.f.label() != tt.label || tt.f.value(p) != tt.value || !strings.Contains(tt.f.placeholder(), tt.placeholderHas) {
 			t.Errorf("%v: %q %q %q", tt.f, tt.f.label(), tt.f.value(p), tt.f.placeholder())
 		}
-	}
-}
-
-// a pushes the wizard.
-func TestProjectView_AddWizard(t *testing.T) {
-	setupTestConfig(t)
-	v := NewView()
-	if got := v.View(); !strings.Contains(got, "a add  d delete") {
-		t.Errorf("help offers a:\n%s", got)
-	}
-	_, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if cmd == nil {
-		t.Fatal("a pushes the wizard")
-	}
-	if msg, ok := cmd().(app.PushPageMsg); !ok || msg.Page.Title() != "Add project" {
-		t.Errorf("a pushed %+v", cmd())
 	}
 }

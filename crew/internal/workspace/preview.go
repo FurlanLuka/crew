@@ -22,12 +22,25 @@ type BindingPreview struct {
 // saving, and the worktrees where it will not resolve — which is normal, and
 // far better seen at declaration time than at start time.
 func PreviewBinding(projName string, b project.Binding) []BindingPreview {
+	return PreviewBindings(projName, []project.Binding{b})[b.Key()]
+}
+
+// PreviewBindings is PreviewBinding for every binding of a project at
+// once: each worktree is resolved a single time with all of them
+// substituted, which is what a page showing every row needs.
+func PreviewBindings(projName string, bs []project.Binding) map[dev.BindingKey][]BindingPreview {
+	previews := map[dev.BindingKey][]BindingPreview{}
 	names, err := List()
-	if err != nil {
-		return nil
+	if err != nil || len(bs) == 0 {
+		return previews
+	}
+	drafts := make([]dev.Binding, 0, len(bs))
+	want := map[dev.BindingKey]bool{}
+	for _, b := range bs {
+		drafts = append(drafts, dev.Binding{Var: b.Var, Value: b.Value, Server: b.Server})
+		want[b.Key()] = true
 	}
 
-	var previews []BindingPreview
 	for _, wsName := range names {
 		ws, err := Load(wsName)
 		if err != nil || !hasProject(ws, projName) {
@@ -53,15 +66,15 @@ func PreviewBinding(projName string, b project.Binding) []BindingPreview {
 			params := res.ResolveParams(ports)
 			for i := range params.Projects {
 				if params.Projects[i].Name == projName {
-					params.Projects[i].Bindings = []dev.Binding{{Var: b.Var, Value: b.Value, Server: b.Server}}
+					params.Projects[i].Bindings = drafts
 				}
 			}
 
 			for _, r := range dev.ResolveBindings(params) {
-				if r.Project != projName || r.Key() != b.Key() {
+				if r.Project != projName || !want[r.Key()] {
 					continue
 				}
-				previews = append(previews, BindingPreview{
+				previews[r.Key()] = append(previews[r.Key()], BindingPreview{
 					Ref:      ref.String(),
 					Value:    r.Value,
 					Resolved: r.Resolved(),

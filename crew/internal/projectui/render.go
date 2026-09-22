@@ -109,6 +109,10 @@ func (w Wizard) renderServers(b *strings.Builder) {
 	}
 	renderRows(b, "servers", serverRows(w.facts.proj), "none yet")
 	b.WriteString("\n")
+	if w.serverForm != nil {
+		b.WriteString(w.serverForm.View())
+		return
+	}
 	w.errLine(b)
 	w.footer(b)
 }
@@ -126,6 +130,10 @@ func (w Wizard) renderBindings(b *strings.Builder) {
 	b.WriteString("  " + app.Subtle.Render(fmt.Sprintf(pointAtLine, w.name)) + "\n\n")
 	renderRows(b, "bindings", bindingRows(w.facts.proj), "none yet")
 	b.WriteString("\n")
+	if w.editor != nil {
+		b.WriteString(w.editor.View())
+		return
+	}
 	w.errLine(b)
 	w.footer(b)
 }
@@ -135,20 +143,18 @@ func (w Wizard) renderCheck(b *strings.Builder) {
 	concept(b, conceptCheck)
 	switch w.check.phase {
 	case checkRunning:
-		if w.check.status != nil {
-			b.WriteString(workspace.RenderSetupTable(*w.check.status, "▸", w.check.now))
+		if table := w.check.table(); table != "" {
+			b.WriteString(table)
 		} else {
-			b.WriteString("  " + w.runningLine() + "\n")
+			b.WriteString("  " + w.check.runningLine() + "\n")
 		}
 		b.WriteString("\n")
 	case checkFailed, checkConfirm:
-		if w.check.status != nil {
-			b.WriteString(workspace.RenderSetupTable(*w.check.status, "▸", w.check.now))
-		}
+		b.WriteString(w.check.table())
 		workspace.RenderHealth(b, w.check.health)
 		b.WriteString("\n")
 		if w.check.phase == checkConfirm {
-			b.WriteString("  " + app.Highlight.Render(fmt.Sprintf("the fix on crew/check/%s/%s is not merged into the base — checking again replaces the checkout and loses it", w.name, w.name)) + "\n\n")
+			b.WriteString("  " + app.Highlight.Render(w.check.confirmLine()) + "\n\n")
 		}
 	default:
 		b.WriteString("  install   " + app.Subtle.Render(orNone(exec.StepLine(exec.ComposeSteps(w.facts.detected, w.facts.proj.Setup, w.facts.proj.EnvCmd)))) + "\n")
@@ -163,7 +169,7 @@ func (w Wizard) renderCheck(b *strings.Builder) {
 	}
 	w.errLine(b)
 	if w.applying {
-		b.WriteString("  " + w.spinner.View() + " " + w.pending + "\n")
+		b.WriteString("  " + w.check.startingLine() + "\n")
 		return
 	}
 	w.footer(b)

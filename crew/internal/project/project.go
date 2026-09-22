@@ -291,7 +291,7 @@ func RemoveDevServer(projName, serverName string) (dropped []Binding, err error)
 				}
 			}
 			projects[i].DevServers = filtered
-			dropped = scopedTo(p.Bindings, serverName)
+			dropped = ScopedTo(p.Bindings, serverName)
 			var kept []Binding
 			for _, b := range p.Bindings {
 				if b.Server != serverName {

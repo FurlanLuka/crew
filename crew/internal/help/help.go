@@ -42,11 +42,12 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "project",
-			Description: "Interactive project manager — a is a wizard that walks a new project through every concept and proves it with a check; s / b / t / e change servers, bindings and the two commands later",
+			Description: "Interactive project manager — enter opens the project page: install commands, servers, bindings (with what the env files propose) and the check, all on one screen, each row edited in place; a is a wizard that walks a new project through every concept and proves it with a check; s / b / t / e open the page on that section",
 			TUI:         true,
 			Notes: []string{
-				"Same actions without the TUI: crew add project <name> <url> | --path (--setup, --env-cmd), crew dev setup / add / rm, crew add binding (--scan --apply), crew check project, crew rm project.",
-				"The wizard applies each step when its key is pressed — nothing is staged; esc keeps what was recorded and names where crew project picks the rest up.",
+				"Same actions without the TUI: crew add project <name> <url> | --path (--setup, --env-cmd), crew dev setup / add / rm, crew add binding (--scan --apply), crew check project, crew fix check/<name>, crew rm project.",
+				"On the page: enter edits the row under the cursor, a adds in its section, A adds every binding the env files propose, d removes after asking, c runs the check in place (f fix, l logs, c again on a failure); an open form takes every key but esc.",
+				"The wizard applies each step when its key is pressed — nothing is staged; esc keeps what was recorded and names where the page picks the rest up.",
 			},
 		},
 		{

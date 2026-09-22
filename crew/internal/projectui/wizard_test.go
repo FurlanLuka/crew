@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
@@ -42,6 +45,11 @@ func setupTestConfig(t *testing.T) string {
 	prev := workspace.SpawnRunner
 	workspace.SpawnRunner = func(ref workspace.Ref, job workspace.ProjectJob) error { return workspace.RunProjectSetup(ref, job) }
 	t.Cleanup(func() { workspace.SpawnRunner = prev })
+	// No two-second waits between polls: the harness feeds the tick's
+	// message straight back.
+	prevPoll, prevExit := pollEvery, workspace.RunnerExitWait
+	pollEvery, workspace.RunnerExitWait = time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { pollEvery, workspace.RunnerExitWait = prevPoll, prevExit })
 	return tmp
 }
 
@@ -108,32 +116,34 @@ func keyOf(k string) tea.Msg {
 	return keyRune(k)
 }
 
-// press sends a key and runs whatever it produced, feeding the wizard's
+// press sends a key and runs whatever it produced, feeding the model's
 // own messages back until it settles — every step applies through a
 // command, and tests want the settled state.
 func press(t *testing.T, w Wizard, k string) Wizard {
 	t.Helper()
-	return settle(t, w, keyOf(k))
+	return settle(t, w, keyOf(k)).(Wizard)
 }
 
-func settle(t *testing.T, w Wizard, msg tea.Msg) Wizard {
+func settle(t *testing.T, m tea.Model, msg tea.Msg) tea.Model {
 	t.Helper()
-	m, cmd := w.Update(msg)
-	w = m.(Wizard)
+	m, cmd := m.Update(msg)
 	for _, out := range runCmd(cmd) {
-		w = settle(t, w, out)
+		m = settle(t, m, out)
 	}
-	return w
+	return m
 }
 
-// runCmd runs a command tree and keeps the wizard's own messages; spinner
-// ticks, cursor blinks and the page pushes reschedule or leave.
+// runCmd runs a command tree and keeps the model's own messages. It drops
+// what would reschedule or leave — spinner ticks, cursor blinks, page
+// pushes and pops, quits — and keeps everything else, so a new message
+// type is fed back without the harness knowing it.
 func runCmd(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
 	}
 	var out []tea.Msg
 	switch msg := cmd().(type) {
+	case nil:
 	case tea.BatchMsg:
 		results := make([][]tea.Msg, len(msg))
 		var wg sync.WaitGroup
@@ -148,15 +158,21 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 		for _, r := range results {
 			out = append(out, r...)
 		}
-	case addedMsg, factsMsg, savedMsg, checkStartedMsg, checkPollMsg, errMsg:
+	case spinner.TickMsg, app.PushPageMsg, app.PopPageMsg, tea.QuitMsg, fixReadyMsg:
+	default:
+		// The cursor's blink messages reschedule themselves; the initial
+		// one is unexported, so the package is what to drop on.
+		if strings.HasSuffix(reflect.TypeOf(msg).PkgPath(), "bubbles/cursor") {
+			return nil
+		}
 		out = append(out, msg)
 	}
 	return out
 }
 
 // quits: the key ends the program.
-func quits(w Wizard, k string) bool {
-	_, cmd := w.Update(keyOf(k))
+func quits(m tea.Model, k string) bool {
+	_, cmd := m.Update(keyOf(k))
 	if cmd == nil {
 		return false
 	}
@@ -165,8 +181,8 @@ func quits(w Wizard, k string) bool {
 }
 
 // pushed returns the page a key pushes, or nil.
-func pushed(w Wizard, k string) app.Page {
-	_, cmd := w.Update(keyOf(k))
+func pushed(m tea.Model, k string) app.Page {
+	_, cmd := m.Update(keyOf(k))
 	if cmd == nil {
 		return nil
 	}
@@ -276,7 +292,7 @@ func TestWizard_KeysWaitForTheClone(t *testing.T) {
 		t.Error("esc during the clone is ignored")
 	}
 	for _, msg := range runCmd(cmd) {
-		w = settle(t, w, msg)
+		w = settle(t, w, msg).(Wizard)
 	}
 	if w.step != stepInstall || project.Get("admin") == nil {
 		t.Errorf("one clone, then the install card: step=%v", w.step)
@@ -356,8 +372,18 @@ func TestWizard_ServersDetectedAndByHand(t *testing.T) {
 	if got := plain(w.View()); !strings.Contains(got, "servers   store-api :3000  npm run dev") {
 		t.Errorf("the card lists what is recorded:\n%s", got)
 	}
-	if _, ok := pushed(w, "a").(DevServerView); !ok {
-		t.Error("a pushes the servers editor")
+	// a opens the server form in place; enter records through it and the
+	// card shows the new row after the reload.
+	w = press(t, w, "a")
+	if w.serverForm == nil || !strings.Contains(plain(w.View()), "Adding server") {
+		t.Fatalf("a opens the server form:\n%s", plain(w.View()))
+	}
+	w.serverForm.inputs[serverName].SetValue("worker")
+	w.serverForm.inputs[serverPort].SetValue("3001")
+	w.serverForm.inputs[serverCommand].SetValue("npm run worker")
+	w = press(t, w, "enter")
+	if w.serverForm != nil || !strings.Contains(plain(w.View()), "            worker :3001  npm run worker") {
+		t.Errorf("the form saves and the card re-reads:\n%s", plain(w.View()))
 	}
 	// Digits only, so a and n stay keys — and q is a typo, not a quit.
 	for _, k := range []string{"a", "q", "x"} {
@@ -372,11 +398,15 @@ func TestWizard_ServersDetectedAndByHand(t *testing.T) {
 	if !quits(w, "ctrl+c") {
 		t.Error("ctrl+c quits everywhere")
 	}
-	// A server recorded on the pushed page shows up on pop.
-	project.AddDevServer("store-api", project.DevServer{Name: "worker", Port: 3001, Command: "npm run worker"})
-	w = settle(t, w, w.Init()())
-	if got := plain(w.View()); !strings.Contains(got, "            worker :3001  npm run worker") {
-		t.Errorf("the card re-reads on pop:\n%s", got)
+	// Letters go to the open form, not the card: q in a field is a letter.
+	w = press(t, w, "a")
+	w = press(t, w, "q")
+	if w.serverForm == nil || w.serverForm.inputs[serverName].Value() != "q" {
+		t.Errorf("q typed into the open form: %+v", w.serverForm)
+	}
+	w = press(t, w, "esc")
+	if w.serverForm != nil {
+		t.Error("esc closes the form")
 	}
 	w = press(t, w, "n")
 	if w.step != stepBindings {
@@ -395,16 +425,34 @@ func TestWizard_BindingsNeedATarget(t *testing.T) {
 	if got := plain(w.View()); !strings.Contains(got, noTargetsLine) || strings.Contains(got, "b bindings") {
 		t.Errorf("only itself in the pool:\n%s", got)
 	}
-	if pushed(w, "b") != nil {
+	if w2 := press(t, w, "b"); w2.editor != nil {
 		t.Error("b is inert without a target")
 	}
 	project.Add(project.Project{Name: "signals", Path: tmp, DevServers: []project.DevServer{{Name: "signals", Port: 4000}}})
-	w = settle(t, w, w.Init()())
+	w = settle(t, w, w.Init()()).(Wizard)
 	if got := plain(w.View()); !strings.Contains(got, "b bindings  n next") {
 		t.Errorf("a target appeared on reload:\n%s", got)
 	}
-	if _, ok := pushed(w, "b").(BindingsView); !ok {
-		t.Error("b pushes the bindings editor")
+	w = press(t, w, "b")
+	if w.editor == nil || !strings.Contains(plain(w.View()), "Adding binding") {
+		t.Fatalf("b opens the binding editor in place:\n%s", plain(w.View()))
+	}
+	w = press(t, w, "esc")
+	if w.editor != nil {
+		t.Error("esc closes the editor")
+	}
+	// Saved through the editor, the card lists it after the reload.
+	w = press(t, w, "b")
+	for _, r := range "SIGNALS_URL" {
+		w = press(t, w, string(r))
+	}
+	w = press(t, w, "tab")
+	for _, r := range "{{signals}}" {
+		w = press(t, w, string(r))
+	}
+	w = press(t, w, "enter")
+	if w.editor != nil || !strings.Contains(plain(w.View()), "bindings  SIGNALS_URL  {{signals}}") {
+		t.Errorf("the editor saves and the card re-reads:\n%s", plain(w.View()))
 	}
 	w = press(t, w, "n")
 	if w.step != stepCheck {
@@ -685,7 +733,7 @@ func TestWizard_FixGate(t *testing.T) {
 		t.Errorf("f → %T", msg)
 	}
 	workspace.RemoveCheck("store-api")
-	w = settle(t, w, w.Init()())
+	w = settle(t, w, w.Init()()).(Wizard)
 	if got := plain(w.View()); strings.Contains(got, "f fix with Claude") {
 		t.Errorf("no record, no f offered:\n%s", got)
 	}
@@ -697,7 +745,7 @@ func TestWizard_FixGate(t *testing.T) {
 // The confirm card takes y, n and esc — nothing else dismisses it.
 func TestWizard_ConfirmTakesOnlyItsKeys(t *testing.T) {
 	w := fixtureWizard(stepCheck)
-	w.check = checkState{phase: checkConfirm, smoke: true}
+	w.check = checkCard{name: "store-api", phase: checkConfirm, smoke: true}
 	for _, k := range []string{"l", "t", "x", "enter"} {
 		m, _ := w.Update(keyOf(k))
 		if m.(Wizard).check.phase != checkConfirm {
