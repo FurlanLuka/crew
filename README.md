@@ -65,8 +65,8 @@ bindings → check, explaining each step in place), `crew workspace`, `crew laun
 
 ### Projects, workspaces, worktrees
 
-A **project** is a repo in a global pool with its dev servers, bindings and an optional setup
-command. A **workspace** is membership — which projects, with which roles. A **worktree** is
+A **project** is a repo in a global pool — its git remote is its identity, the path is crew's
+clone — with its dev servers, bindings and optional setup and env commands. A **workspace** is membership — which projects, with which roles. A **worktree** is
 one working copy: for each project a git worktree on branch `crew/<ws>/<wt>/<project>`, a
 copied `.env`, an install, and reserved ports.
 

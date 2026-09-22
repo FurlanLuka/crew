@@ -29,16 +29,18 @@ through crew — never start a server by hand, never `-f`.
 
 ## 1. Model
 
-- **Project** — a repo in the global pool: name, path, dev servers, **bindings**, optional
-  setup command, all shared by every workspace it appears in.
+- **Project** — a repo in the global pool, identified by its git remote: name, the path of
+  crew's clone (or an adopted checkout), dev servers, **bindings**, optional setup and env
+  commands, all shared by every workspace it appears in.
 - **Workspace** — membership: which projects, with which roles. Config only.
 - **Worktree** — one working copy of a workspace's projects: a git worktree per project under
   `~/.crew/workspaces/<ws>/<wt>/<project>`, branch `crew/<ws>/<wt>/<project>`. Owns its
   reserved **ports** (kept across restarts) and its **overrides**.
 - **Ref** — how you name a worktree: `<ws>/<wt>`, or bare `<ws>` when it has one worktree.
   `ws--wt` is the slug crew uses in hostnames, log dirs and tmux sessions; never type it.
-- **Binding** — `{var, template}` on a project: which env var crew computes and how, so a
-  project finds its siblings on the ports crew allocated. Resolved against the worktree's
+- **Binding** — `{var, template[, server]}` on a project: which env var crew computes and
+  how, so a project finds its siblings on the ports crew allocated — for every server of the
+  project, or for one of them. Resolved against the worktree's
   ports at `crew dev start` and exported into each server's env. Env files are read, never
   written. §4 has the grammar; the README's "Bindings" section has the why.
 
