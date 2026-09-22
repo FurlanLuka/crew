@@ -23,10 +23,20 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   third column, export, import matching), so it cannot drift from the clone; equality is by
   `exec.RepoKey` (transport, `user@`, `.git`, trailing `/` stripped, scp form folded, host
   lower-cased). `project.CloneAllowed(name)` is the one clone-dir rule for add and import.
-  `rm project --purge` trashes only crew-owned clones (`purgeAllowed`: not a member
-  anywhere, no check kept). `trash.Put` accepts `WorkspacesDir` or `ProjectsDir`.
-- **Workspace** — membership: which projects, with which roles. Pure config, nothing of its
-  own on disk. `~/.crew/workspaces/<ws>.json`.
+  `rm project` is `workspace.RemoveFromPool(name, TrashClone|KeepClone)` (`pool.go`):
+  `PoolRemovalAllowed` (not a member anywhere, no check kept — always, `--keep-clone`
+  included) → `project.Remove` → a crew-owned clone to the trash unless kept, an adopted
+  path never moved; `PoolRemovalLine` is the one wording, printed by the CLI and the TUI.
+  `--purge` still parses (a note, then the default). `trash.Put` accepts `WorkspacesDir`
+  or `ProjectsDir`.
+- **Workspace** — membership: which projects, each `worktree` (default) or `direct`
+  (`WorkspaceProject{Name, Mode}`, `ModeLabel`; a `role` key in a pre-4.0 file is ignored
+  and dropped on the next save). Pure config, nothing of its own on disk.
+  `~/.crew/workspaces/<ws>.json`. `CreateWith(name, specs, opts)` = `Create` +
+  `AddProjects` with the empty workspace taken back on a pre-flight failure — the CLI,
+  the wizard and an import all create through it. `DirectRefusals(ws, pool)` is the one
+  reading of why a project cannot join `ws` directly (held elsewhere, >1 worktree, not a
+  repo), over a pure `directRefusal`; `validateSpecs` and the picker both read it.
 - **Worktree** — one working copy of a workspace's projects, at
   `~/.crew/workspaces/<ws>/<wt>/<project>`, branch `crew/<ws>/<wt>/<project>`. Owns its
   **overrides** and its reserved **ports**. Everything crew keys per running unit — route
@@ -64,12 +74,17 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   of `PORT=` in the tmux command; env files are read (scan — under the server's `Dir` for a
   scoped scan; conflict warning), never written.
 - **Ports** are always allocated by crew and remembered per worktree (`Worktree.Ports`), so a
-  restart lands on the same ones. The configured `--port` is reference only. `--proxy` is
+  restart lands on the same ones. The configured `--port` is reference only; a server with
+  none (`DevServer.Port == 0`, `Listens()`, `PortLabel()`) is a process that does not
+  listen: `AllocatePorts` gives it 0, `ServerCommand` sets no `PORT`, the route has no URL
+  and is never proxied (`Route.Listens`), `IndexPorts` leaves it out so a token aimed at it
+  is unresolved (`has no port`, `TemplateContext.Portless`), and the smoke's `reached`
+  takes alive as the verdict. `--proxy` is
   opt-in; default URLs are `localhost:<port>`.
 - **Bundle** (`Version` 2) — `crew export` writes projects by remote (`Exported{Project
   with Path blanked, Remote}` — no path; `WithoutRemote` names the config-only ones, said
-  through `human` and as `no_remote` in `--json`) and workspace *membership* (projects,
-  roles, modes) to one JSON file; never worktrees, ports or overrides. A v1 bundle still
+  through `human` and as `no_remote` in `--json`) and workspace *membership* (projects
+  and modes) to one JSON file; never worktrees, ports or overrides. A v1 bundle still
   reads (its path is only a hint in a `missing` row); a v1 crew refuses a v2 bundle.
   `crew import` bare is the wizard (one card per item); `--plan` prints
   `transfer.PlanRows` — `exists` (same remote by `RepoKey`, or nothing to compare) ·
@@ -90,11 +105,13 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   front on `Refusals(b, plan, o)` — blocked or missing rows, and under `--replace` an
   `other remote` row for a project in a workspace — and clones nothing until the list is
   clean; `AllRows` is its loop, a failed row exits 1. A workspace import
-  (`ImportWorkspace(m, CheckoutOptions) (ref, started, err)`) is `Create` + `AddProjects`
+  (`ImportWorkspace(m, CheckoutOptions) (ref, started, err)`) is `workspace.CreateWith`
   — the add-worktree pipeline, runners started on `main`, a pre-flight failure takes the
-  empty workspace back; `WorkspaceRow(name, started, health, waited, err)` is the row; `BaseStatusesFor`/`PullBasesFor` give the callers (CLI, wizard card
-  with `ctrl+p`) the base table and `--pull`. `transfer` sits above `project` and
-  `workspace`; only `main` imports it.
+  empty workspace back; `WorkspaceRow(name, started, health, waited, err)` is the row;
+  `BaseStatuses`/`UpdateBases` give the callers (CLI, wizard card with `ctrl+p`) the base
+  table and `--pull`, `RenderBaseTable(statuses, BasePhase, spinner)` is the one drawing of
+  it (import card, new-worktree form, workspace wizard). `transfer` sits above `project`
+  and `workspace`; only `main` imports it.
 - **Setup runners** (`setup_job.go`) — a worktree is made one project at a time, each by
   its own runner: `StartSetup(ref, []ProjectJob{project, install, smoke})` pre-flights
   (members, no live runner for those projects), reserves every server's port
@@ -177,7 +194,7 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   logs --lines=N`; every creating command returns at once and takes `--wait`. `human` (`main.go`) is where
   progress and narration go: stdout normally, stderr under `--json` (and under `fix
   --print`) so the document on stdout stays parseable. Empty lists marshal as `[]`, never
-  null. `add workspace <ws> <p>[:<role>]…` creates the workspace when missing.
+  null. `add workspace <ws> <p>…` creates the workspace when missing (`CreateWith`).
 - **Removal never deletes inline.** `cleanupWorktree` is the one teardown primitive: it
   renames the checkout into `~/.crew/trash` (`trash.Put`, which refuses anything outside
   `WorkspacesDir`), prunes git, deletes the `crew/<ws>/<wt>/<project>` branch (crew's
@@ -239,20 +256,27 @@ crew/
     procs/      process inventory and reclaim
     project/    pool CRUD, bindings, setup — data only, no TUI
     projectui/  the project TUI above project and workspace: the list, the project page, the add-project
-                wizard, and the server form / binding editor / check card they share; only main imports it
+                wizard, and the server form / binding editor / check card they share; main and workspaceui import it
+    workspaceui/ the workspace TUI above workspace and projectui: the list, the new-workspace wizard, the
+                project picker they share, and the workspace page; only main imports it
     settings/   settings TUI, trash size + empty, uninstall entry
     transfer/   export/import bundle: Collect, Covered, Inspect, Clone, Import*; cli.go (PlanRows,
                 ApplyProject, ApplyWorkspace); picker + wizard TUIs
     trash/      removed checkouts: rename into ~/.crew/trash, detached rm, sweep on start
     uninstall/  crew uninstall
-    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, TUI;
-                check.go (the check target), setup_job.go (the runner), store.go (loadFor/updateFor)
+    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, the worktree page;
+                check.go (the check target), setup_job.go (the runner), store.go (loadFor/updateFor),
+                pool.go (RemoveFromPool, WorkspacesWith), direct.go (DirectRefusals)
 ```
 
 Import boundaries that shape the packages: `dev` cannot import `workspace` (it declares its own
 inputs — `DevProject`, `ResolveParams` — and `workspace.Resolved` builds them). `project` cannot
 import `workspace` and holds no TUI; everything that needs both sides — the project page, the
-wizard, the binding editor's live preview — lives in `projectui`, above them.
+wizard, the binding editor's live preview — lives in `projectui`, above them. `workspaceui`
+sits above `projectui` (its page pushes the project page, its picker pushes the add-project
+wizard); `workspace` keeps only the worktree page and the logs view, which `crew dev tui`
+and the `crew <ref>` shortcut open directly. `app.PopPageMsg{Status}` carries a popped
+page's last word to the one it reveals (`app.StatusMsg`).
 
 ### Resolved
 
@@ -263,8 +287,22 @@ every project with its path decided and its pool config attached. Commands go
 
 ### TUI
 
-`crew workspace` → workspaces → enter → that workspace's worktrees (+ new) → enter → the
-**worktree page** (`view_worktree.go`): servers with live status and URLs, the same anomaly
+`crew workspace` → workspaces → enter → the **workspace page**
+(`internal/workspaceui/page.go`): Projects (each member with its mode and pool path; `enter`
+opens the project page, `a` the picker, `d` removes from every worktree) and Worktrees
+(size, `[dev]`, `installing…`, `! health`; `enter` opens the worktree page, `u` duplicates,
+`n`/`+ new worktree` the base table + name in place, `d` removes — the last worktree
+removes the workspace and pops with its status) — one cursor landing on the first
+worktree, `pageRows` identity-keyed, `busy` gating keys while a removal runs, a flat
+pre-2.0 workspace shown with its migrate hint. `n` on the list is the **new-workspace
+wizard** (`wizard.go`), run *in place* in the list (the app stack has push and pop only;
+after `y` the list pushes the worktree page and drops the wizard): name → projects (the
+**picker**, `picker.go`: pool rows with tick and mode, `m` refused with the reason from
+`DirectRefusals`, `a` pushes `projectui.NewInWorkspace` and the host's `Init` reload
+ticks the name that came back; `bindingLines` says which wires between the ticked
+projects resolve) → create (`RenderBaseTable`, `ctrl+p`, `y` → `CreateWith`). The picker
+never acts — `enter` hands its specs to the host. The **worktree page**
+(`workspace/view_worktree.go`): servers with live status and URLs, the same anomaly
 block `crew dev start` prints, launch and open rows, one cursor. `crew project` → list → enter →
 the **project page** (`internal/projectui/page.go`): install (setup, env command, the plan
 `exec.ComposeSteps` previews), servers, bindings with their preview cell (`PreviewBindings`,

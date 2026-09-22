@@ -268,7 +268,7 @@ func TestApplyProject_Replace(t *testing.T) {
 	other, _ := repoWithOrigin(t, tmp, "fork")
 	b2 := Bundle{Projects: []Exported{{Project: project.Project{Name: "api"}, Remote: other}}}
 	workspace.Create("ws")
-	if err := workspace.AddProject("ws", "api", "api", "", workspace.CheckoutOptions{}); err != nil {
+	if _, err := workspace.AddProjects("ws", []workspace.ProjectSpec{{Name: "api"}}, workspace.CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	_, err = ApplyProject(b2, Inspect(b2), "api", ProjectOptions{Replace: true})
@@ -298,7 +298,7 @@ func TestApplyProject_Replace(t *testing.T) {
 	// A replace with --path is "the repo moved": allowed even under live
 	// worktrees, as crew add project --path is on an existing project.
 	workspace.Create("ws2")
-	if err := workspace.AddProject("ws2", "api", "api", "", workspace.CheckoutOptions{}); err != nil {
+	if _, err := workspace.AddProjects("ws2", []workspace.ProjectSpec{{Name: "api"}}, workspace.CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	// Both refusals apply: the worktrees come first, because --purge is
@@ -376,7 +376,7 @@ func TestAllRows(t *testing.T) {
 	// Another remote for a project in a workspace: refused up front, so
 	// the run never reaches AllRows and the local record stands.
 	workspace.Create("ws")
-	if err := workspace.AddProject("ws", "api", "api", "", workspace.CheckoutOptions{}); err != nil {
+	if _, err := workspace.AddProjects("ws", []workspace.ProjectSpec{{Name: "api"}}, workspace.CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	b2 := Bundle{Projects: []Exported{{Project: project.Project{Name: "api"}, Remote: forkRemote}}}
@@ -405,7 +405,7 @@ func TestMembershipOf(t *testing.T) {
 	initRepo(t, api)
 	b := Bundle{
 		Projects:   []Exported{{Project: project.Project{Name: "api"}}},
-		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "api"}}}},
+		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api"}}}},
 	}
 	if _, err := MembershipOf(b, "ws"); err == nil {
 		t.Fatal("members not in the pool yet must block")

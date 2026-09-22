@@ -26,7 +26,6 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/projectui"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
-	"github.com/FurlanLuka/crew/crew/internal/trash"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 	"github.com/FurlanLuka/crew/crew/internal/workspaceui"
 )
@@ -510,33 +509,35 @@ func cmdShow() {
 		os.Exit(1)
 	}
 
-	wsName := os.Args[2]
-
-	res := mustResolve(wsName)
-
-	type wsProjectOut struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
-		Mode string `json:"mode"`
-		Role string `json:"role"`
-	}
-
-	out := []wsProjectOut{}
-	for _, p := range res.Projects {
-		mode := "worktree"
-		if p.Direct {
-			mode = "direct"
-		}
-		out = append(out, wsProjectOut{Name: p.Name, Path: p.Path, Mode: mode, Role: p.Role})
-	}
-
+	out := showRows(mustResolve(os.Args[2]))
 	if jsonOutput {
 		printJSON(out)
 		return
 	}
 	for _, p := range out {
-		fmt.Printf("%s\t%s\t%s\t%s\n", p.Name, p.Path, p.Mode, p.Role)
+		fmt.Printf("%s\t%s\t%s\n", p.Name, p.Path, p.Mode)
 	}
+}
+
+// wsProjectOut is one crew show row: the member, where it is in this
+// worktree, how it got there.
+type wsProjectOut struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Mode string `json:"mode"`
+}
+
+// showRows is crew show's table. Pure.
+func showRows(res *workspace.Resolved) []wsProjectOut {
+	out := []wsProjectOut{}
+	for _, p := range res.Projects {
+		mode := workspace.ModeWorktree
+		if p.Direct {
+			mode = workspace.ModeDirect
+		}
+		out = append(out, wsProjectOut{Name: p.Name, Path: p.Path, Mode: mode})
+	}
+	return out
 }
 
 func cmdStart() {
@@ -628,81 +629,51 @@ func cmdRm() {
 }
 
 func cmdRmProject() {
-	name, purge, err := parseRmProjectArgs(os.Args[3:])
+	name, keep, purge, err := parseRmProjectArgs(os.Args[3:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew rm project <name> [--purge]\n", err)
-		os.Exit(1)
-	}
-	p := project.Get(name)
-	if p == nil {
-		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", name)
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew rm project <name> [--keep-clone]\n", err)
 		os.Exit(1)
 	}
 	if purge {
-		members, _ := workspace.WorkspacesWith(name)
-		if err := purgeAllowed(*p, members, workspace.CheckExists(name)); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		fmt.Fprintln(human, "--purge is the default now — --keep-clone keeps the clone")
 	}
-	if err := project.Remove(name); err != nil {
+	clone := workspace.TrashClone
+	if keep {
+		clone = workspace.KeepClone
+	}
+	r, err := workspace.RemoveFromPool(name, clone)
+	if r.Path != "" {
+		fmt.Printf("Removed project: %s\n", name)
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Removed project: %s\n", name)
-	if !purge {
-		if project.CrewOwned(*p) {
-			fmt.Fprintf(human, "clone kept at %s — crew rm project %s --purge removes it\n", p.Path, name)
-		}
-		return
-	}
-	if _, err := trash.Put(p.Path); err != nil {
-		// The pool entry is already gone; say where the clone still is.
-		fmt.Fprintf(os.Stderr, "Error: %v — clone left at %s\n", err, p.Path)
-		os.Exit(1)
-	}
-	trash.Sweep()
-	fmt.Fprintf(human, "clone at %s moved to the trash\n", p.Path)
+	fmt.Fprintln(human, workspace.PoolRemovalLine(r))
 }
 
-// parseRmProjectArgs reads `<name> [--purge]`. Pure.
-func parseRmProjectArgs(args []string) (name string, purge bool, err error) {
+// parseRmProjectArgs reads `<name> [--keep-clone]`. --purge, the pre-4.0
+// spelling of what is now the default, still parses so a script keeps
+// working; the caller says so. Pure.
+func parseRmProjectArgs(args []string) (name string, keepClone, purge bool, err error) {
 	for _, arg := range args {
 		switch {
+		case arg == "--keep-clone":
+			keepClone = true
 		case arg == "--purge":
 			purge = true
 		case strings.HasPrefix(arg, "-"):
-			return "", false, fmt.Errorf("unknown flag '%s'", arg)
+			return "", false, false, fmt.Errorf("unknown flag '%s'", arg)
 		case name == "":
 			name = arg
 		default:
-			return "", false, fmt.Errorf("unexpected argument '%s'", arg)
+			return "", false, false, fmt.Errorf("unexpected argument '%s'", arg)
 		}
 	}
 	if name == "" {
-		return "", false, errors.New("a project name is needed")
+		return "", false, false, errors.New("a project name is needed")
 	}
-	return name, purge, nil
-}
-
-// purgeAllowed: only a clone crew made may be trashed, and not while any
-// workspace still lists the project or a check of it is kept — a trashed
-// canonical breaks every git worktree off it. Pure.
-func purgeAllowed(p project.Project, members []string, hasCheck bool) error {
-	if !project.CrewOwned(p) {
-		return fmt.Errorf("%s is not a clone crew made (not under %s) — --purge never touches it", p.Path, config.ProjectsDir)
-	}
-	if len(members) > 0 {
-		hints := make([]string, 0, len(members))
-		for _, m := range members {
-			hints = append(hints, "crew rm workspace "+m+" "+p.Name)
-		}
-		return fmt.Errorf("project '%s' is still in workspace %s — %s first", p.Name, strings.Join(members, ", "), strings.Join(hints, "; "))
-	}
-	if hasCheck {
-		return fmt.Errorf("a check of '%s' is kept — crew rm worktree check/%s first", p.Name, p.Name)
-	}
-	return nil
+	return name, keepClone, purge, nil
 }
 
 func cmdRmWorkspaceProject() {
@@ -889,42 +860,29 @@ func applyProjectUpdate(a addProjectArgs) ([]string, error) {
 	return lines, nil
 }
 
-// parseProjectSpecs reads "<project>[:<role>]" arguments and the flags that
-// apply to the whole call. --role= is the single-project spelling; with
-// several projects the role rides on each name. Pure.
+// parseProjectSpecs reads the project names and the flags that apply to
+// the whole call. The pre-4.0 role forms — <project>:<role>, --role= —
+// are named in their error so a script written against them learns the
+// new shape. Pure.
 func parseProjectSpecs(args []string) ([]workspace.ProjectSpec, error) {
 	var specs []workspace.ProjectSpec
-	role, direct := "", false
+	direct := false
 	for _, arg := range args {
 		switch {
 		case strings.HasPrefix(arg, "--role="):
-			role = strings.TrimPrefix(arg, "--role=")
+			return nil, fmt.Errorf("unknown flag '%s' — roles are gone; write the project name alone", arg)
 		case arg == "--direct":
 			direct = true
 		case strings.HasPrefix(arg, "-"):
 			return nil, fmt.Errorf("unknown flag '%s'", arg)
+		case strings.Contains(arg, ":"):
+			return nil, fmt.Errorf("'%s': roles are gone — write the project name alone", arg)
 		default:
-			name, r, _ := strings.Cut(arg, ":")
-			if name == "" {
-				return nil, fmt.Errorf("'%s': a project name is needed before the colon", arg)
-			}
-			specs = append(specs, workspace.ProjectSpec{Name: name, Role: r})
+			specs = append(specs, workspace.ProjectSpec{Name: arg})
 		}
 	}
-	if role != "" {
-		if len(specs) != 1 {
-			return nil, errors.New("--role= names one project's role; with several, write <project>:<role>")
-		}
-		if specs[0].Role != "" {
-			return nil, errors.New("give the role once: --role= or <project>:<role>")
-		}
-		specs[0].Role = role
-	}
-	for i := range specs {
-		if specs[i].Role == "" {
-			specs[i].Role = "works on " + specs[i].Name
-		}
-		if direct {
+	if direct {
+		for i := range specs {
 			specs[i].Mode = workspace.ModeDirect
 		}
 	}
@@ -933,7 +891,7 @@ func parseProjectSpecs(args []string) ([]workspace.ProjectSpec, error) {
 
 func cmdAddWorkspace() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct] [--wait]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew add workspace <name> [<project> ...] [--direct] [--wait]\n")
 		os.Exit(1)
 	}
 	wsName := os.Args[3]
@@ -954,15 +912,19 @@ func cmdAddWorkspace() {
 		os.Exit(1)
 	}
 
-	// One command for "workspace with these projects": the create is implied.
-	if !workspace.Exists(wsName) {
-		if err := workspace.Create(wsName); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+	// One command for "workspace with these projects": the create is
+	// implied, and a pre-flight failure takes the new workspace back.
+	var refs []workspace.Ref
+	if workspace.Exists(wsName) {
+		refs, err = workspace.AddProjects(wsName, specs, workspace.CheckoutOptions{Install: true, Smoke: true})
+	} else {
+		var ref workspace.Ref
+		ref, _, err = workspace.CreateWith(wsName, specs, workspace.CheckoutOptions{Install: true, Smoke: true})
+		if err == nil {
+			fmt.Fprintf(human, "Created workspace: %s\n", wsName)
+			refs = []workspace.Ref{ref}
 		}
-		fmt.Fprintf(human, "Created workspace: %s\n", wsName)
 	}
-	refs, err := workspace.AddProjects(wsName, specs, workspace.CheckoutOptions{Install: true, Smoke: true})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -992,11 +954,7 @@ func cmdAddWorkspace() {
 	}
 	rows := make([]row, 0, len(specs))
 	for _, spec := range specs {
-		mode := "worktree"
-		if spec.Mode == workspace.ModeDirect {
-			mode = "direct"
-		}
-		r := row{Project: spec.Name, Outcome: "added", Mode: mode}
+		r := row{Project: spec.Name, Outcome: "added", Mode: workspace.ModeLabel(spec.Mode)}
 		if i, ok := failed[spec.Name]; ok {
 			r.Outcome, r.Detail = "failed", i.Summary()
 		} else if !wait && len(refs) > 0 {

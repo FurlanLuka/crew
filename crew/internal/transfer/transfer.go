@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/FurlanLuka/crew/crew/internal/debug"
 	crewexec "github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -36,7 +35,7 @@ type Exported struct {
 	Remote string `json:"remote,omitempty"`
 }
 
-// Membership is what a workspace is made of: projects with roles and modes.
+// Membership is what a workspace is made of: projects and their modes.
 // Worktrees are deliberately absent.
 type Membership struct {
 	Name     string                       `json:"name"`
@@ -317,34 +316,17 @@ func (m Membership) Workspace() *workspace.Workspace {
 }
 
 // ImportWorkspace creates the workspace and its main worktree the way crew
-// add workspace does: every member checked before anything happens, then
-// one runner per project — checkout, install, smoke — each failure recorded
-// on the worktree as it lands. Returns the main worktree's ref once the
+// add workspace does — workspace.CreateWith: every member checked before
+// anything happens, then one runner per project, each failure recorded on
+// the worktree as it lands. Returns the main worktree's ref once the
 // runners are started (false when the workspace was empty: nothing to
 // run); the error is pre-flight only.
 func ImportWorkspace(m Membership, opts workspace.CheckoutOptions) (workspace.Ref, bool, error) {
-	ref := workspace.Ref{Workspace: m.Name, Worktree: workspace.DefaultWorktree}
-	if workspace.Exists(m.Name) {
-		return ref, false, fmt.Errorf("workspace '%s' already exists", m.Name)
-	}
 	specs := make([]workspace.ProjectSpec, len(m.Projects))
 	for i, wp := range m.Projects {
-		specs[i] = workspace.ProjectSpec{Name: wp.Name, Role: wp.Role, Mode: wp.Mode}
+		specs[i] = workspace.ProjectSpec{Name: wp.Name, Mode: wp.Mode}
 	}
-	if err := workspace.Create(m.Name); err != nil {
-		return ref, false, err
-	}
-	if len(specs) == 0 {
-		return ref, false, nil // an empty workspace is a valid export; nothing to check out
-	}
-	if _, err := workspace.AddProjects(m.Name, specs, opts); err != nil {
-		// Pre-flight failed after the create: take the empty workspace back.
-		if rmErr := workspace.Remove(m.Name); rmErr != nil {
-			debug.Log("trash", "import %s: could not remove the empty workspace after a failed pre-flight: %v", m.Name, rmErr)
-		}
-		return ref, false, err
-	}
-	return ref, true, nil
+	return workspace.CreateWith(m.Name, specs, opts)
 }
 
 // WorkspaceRow is the import's row for a workspace and whether it counts

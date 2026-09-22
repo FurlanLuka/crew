@@ -66,6 +66,14 @@ type devItem struct {
 	Check *SmokeResult
 }
 
+// portLabel is the port the server runs on, or that it has none to reach.
+func (d devItem) portLabel() string {
+	if !d.Server.Listens() {
+		return "no port"
+	}
+	return fmt.Sprintf(":%d", d.Port)
+}
+
 // checked is the check's verdict, SmokeOK until there is one.
 func (d devItem) checked() SmokeState {
 	if d.Check == nil {
@@ -566,17 +574,20 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 		sel := selected(rowServer, i)
 		b.WriteString("  " + app.RowPrefix(sel))
 		b.WriteString(name(fmt.Sprintf("%-*s", width, item.Server.Name), rowServer, sel))
+		port := item.portLabel()
 		switch {
 		case item.checked() == SmokeDied:
-			fmt.Fprintf(b, "  %s :%d   %s", app.Error.Render("✗ died"), item.Port, app.Subtle.Render(firstLine(item.Check.Tail)))
+			fmt.Fprintf(b, "  %s %s   %s", app.Error.Render("✗ died"), port, app.Subtle.Render(firstLine(item.Check.Tail)))
 		case item.checked() == SmokeUnreached && page.Settling:
-			fmt.Fprintf(b, "  %s :%d   %s", app.Highlight.Render("● starting…"), item.Port, app.Subtle.Render(item.URL))
+			fmt.Fprintf(b, "  %s %s   %s", app.Highlight.Render("● starting…"), port, app.Subtle.Render(item.URL))
 		case item.checked() == SmokeUnreached:
-			fmt.Fprintf(b, "  %s :%d   %s", app.Error.Render("! not listening"), item.Port, app.Subtle.Render("something points at it"))
+			fmt.Fprintf(b, "  %s %s   %s", app.Error.Render("! not listening"), port, app.Subtle.Render("something points at it"))
 		case item.checked() == SmokeIdle:
-			fmt.Fprintf(b, "  %s :%d   %s", app.Highlight.Render("● not listening"), item.Port, app.Subtle.Render("nothing points at it"))
+			fmt.Fprintf(b, "  %s %s   %s", app.Highlight.Render("● not listening"), port, app.Subtle.Render("nothing points at it"))
+		case item.Running && !item.Server.Listens():
+			fmt.Fprintf(b, "  %s %s", app.Success.Render("●"), port)
 		case item.Running:
-			fmt.Fprintf(b, "  %s :%d   %s", app.Success.Render("●"), item.Port, app.Subtle.Render(item.URL))
+			fmt.Fprintf(b, "  %s %s   %s", app.Success.Render("●"), port, app.Subtle.Render(item.URL))
 		case locked:
 			fmt.Fprintf(b, "  %s", app.Subtle.Render("○"))
 		default:

@@ -729,21 +729,16 @@ func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
 	}
 	b.WriteString(name + "\n")
 
-	width, roleWidth := 0, 0
+	width := 0
 	for _, wp := range m.Projects {
 		width = max(width, len(wp.Name))
-		roleWidth = max(roleWidth, len(wp.Role))
 	}
 	for i, wp := range m.Projects {
 		label := "            "
 		if i == 0 {
 			label = "  projects  "
 		}
-		mode := wp.Mode
-		if mode == "" {
-			mode = workspace.ModeWorktree
-		}
-		b.WriteString(label + fmt.Sprintf("%-*s   %-*s   %-8s   ", width, wp.Name, roleWidth, wp.Role, mode))
+		b.WriteString(label + fmt.Sprintf("%-*s   %-8s   ", width, wp.Name, workspace.ModeLabel(wp.Mode)))
 		b.WriteString(v.memberOutcome(wp.Name) + "\n")
 	}
 	b.WriteString("\n")
@@ -764,20 +759,14 @@ func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
 		b.WriteString("  " + app.Highlight.Render(fmt.Sprintf("! needs %s, which %s not imported — n skips this workspace", strings.Join(missing, ", "), wasWere(len(missing)))) + "\n\n")
 		b.WriteString("  " + app.HelpStyle.Render("n skip  esc stop") + "\n")
 	default:
+		phase := workspace.BaseReady
 		switch {
 		case v.pulling:
-			b.WriteString(fmt.Sprintf("  %s pulling the latest into the local bases…\n\n", v.spinner.View()))
+			phase = workspace.BasePulling
 		case v.basesLoading():
-			b.WriteString(fmt.Sprintf("  %s checking the base branches against origin…\n\n", v.spinner.View()))
-		default:
-			b.WriteString("  " + app.Subtle.Render("Branching from") + "\n")
-			b.WriteString(workspace.FormatBaseStatuses(v.bases))
-			if warn := workspace.StaleWarning(v.bases); warn != "" {
-				b.WriteString("\n  " + app.Highlight.Render(warn) + "\n")
-				b.WriteString("  " + app.Subtle.Render("ctrl+p pulls the latest into the local bases (fast-forward only)") + "\n")
-			}
-			b.WriteString("\n")
+			phase = workspace.BaseLoading
 		}
+		b.WriteString(workspace.RenderBaseTable(v.bases, phase, v.spinner.View()) + "\n")
 		b.WriteString("  " + app.Subtle.Render("y creates the main worktree the way crew add worktree does: checkouts, installs, a smoke start; what fails is recorded.") + "\n\n")
 		if v.err != nil {
 			b.WriteString("  " + app.Error.Render("! "+v.err.Error()) + "\n\n")
@@ -920,7 +909,7 @@ func clonedNames(results []projectResult) []string {
 func describeServers(servers []project.DevServer) string {
 	parts := make([]string, 0, len(servers))
 	for _, ds := range servers {
-		s := fmt.Sprintf("%s :%d", ds.Name, ds.Port)
+		s := ds.Name + " " + ds.PortLabel()
 		if len(servers) == 1 && ds.Command != "" {
 			s += "  " + ds.Command
 		}

@@ -288,8 +288,7 @@ func buildURLsContent(ref Ref) string {
 			continue
 		}
 		for _, r := range wr.Routes {
-			url := dev.RouteURL(r, wr.Slug, domain, proxyPort)
-			b.WriteString(fmt.Sprintf("  %-12s %s\n", r.ServerName, url))
+			b.WriteString(fmt.Sprintf("  %-12s %s\n", r.ServerName, routeURLOrNoPort(r, wr.Slug, domain, proxyPort)))
 			found = true
 		}
 	}
@@ -309,8 +308,7 @@ func buildURLsContent(ref Ref) string {
 		b.WriteString("\n\n")
 		for _, wr := range others {
 			for _, r := range wr.Routes {
-				url := dev.RouteURL(r, wr.Slug, domain, proxyPort)
-				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", dev.DisplayRef(wr.Slug), r.ServerName, url))
+				b.WriteString(fmt.Sprintf("  %-12s %-12s %s\n", dev.DisplayRef(wr.Slug), r.ServerName, routeURLOrNoPort(r, wr.Slug, domain, proxyPort)))
 			}
 		}
 	}
@@ -322,4 +320,13 @@ func tickLogs() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickLogsMsg(t)
 	})
+}
+
+// routeURLOrNoPort is the URL column: a server with no port has none, and
+// the row says so rather than trailing off.
+func routeURLOrNoPort(r dev.Route, slug dev.Slug, domain string, proxyPort int) string {
+	if url := dev.RouteURL(r, slug, domain, proxyPort); url != "" {
+		return url
+	}
+	return app.Subtle.Render("no port")
 }

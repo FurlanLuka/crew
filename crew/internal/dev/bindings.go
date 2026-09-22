@@ -136,7 +136,9 @@ type ResolveParams struct {
 func IndexPorts(planned []PlannedServer) map[ProjectServer]int {
 	ports := make(map[ProjectServer]int, len(planned))
 	for _, ps := range planned {
-		ports[ProjectServer{Project: ps.Project, Server: ps.Server.Name}] = ps.Route.InternalPort
+		if ps.Route.Listens() {
+			ports[ProjectServer{Project: ps.Project, Server: ps.Server.Name}] = ps.Route.InternalPort
+		}
 	}
 	return ports
 }
@@ -165,7 +167,7 @@ func IndexReservedPorts(reserved map[string]int) map[ProjectServer]int {
 func IndexRoutePorts(routes []Route) map[ProjectServer]int {
 	ports := make(map[ProjectServer]int, len(routes))
 	for _, r := range routes {
-		if r.Project == "" {
+		if r.Project == "" || !r.Listens() {
 			continue
 		}
 		ports[ProjectServer{Project: r.Project, Server: r.ServerName}] = r.InternalPort
@@ -185,6 +187,7 @@ func ResolveBindings(p ResolveParams) []Resolution {
 	for _, proj := range p.Projects {
 		inWorktree[proj.Name] = true
 	}
+	portless := portlessServers(p.Projects)
 
 	var out []Resolution
 	for _, proj := range p.Projects {
@@ -196,7 +199,7 @@ func ResolveBindings(p ResolveParams) []Resolution {
 			if b.Server == "" {
 				seen[b.Var] = true
 			}
-			out = append(out, resolveOne(p, proj, b, inWorktree))
+			out = append(out, resolveOne(p, proj, b, inWorktree, portless))
 		}
 
 		out = append(out, extraOverrides(p.Overrides, proj.Name, seen)...)
@@ -204,7 +207,7 @@ func ResolveBindings(p ResolveParams) []Resolution {
 	return out
 }
 
-func resolveOne(p ResolveParams, proj DevProject, b Binding, inWorktree map[string]bool) Resolution {
+func resolveOne(p ResolveParams, proj DevProject, b Binding, inWorktree map[string]bool, portless map[ProjectServer]bool) Resolution {
 	projName := proj.Name
 	if b.Server != "" && !hasServer(proj, b.Server) {
 		// The server was removed or renamed after the binding was scoped to
@@ -226,6 +229,7 @@ func resolveOne(p ResolveParams, proj DevProject, b Binding, inWorktree map[stri
 		Worktree:   p.Worktree,
 		Ports:      p.Ports,
 		InWorktree: inWorktree,
+		Portless:   portless,
 	})
 	if err != nil {
 		return Resolution{
@@ -299,6 +303,38 @@ type TemplateContext struct {
 	Worktree   string
 	Ports      map[ProjectServer]int
 	InWorktree map[string]bool
+	// Portless names the servers that have no port to give — a token
+	// aimed at one is told so rather than "not running".
+	Portless map[ProjectServer]bool
+}
+
+// portless: the target names a server with no port, or a project with a
+// port-less server — asked only once no server of it was found in Ports,
+// so a project answering here has nothing else to offer.
+func (ctx TemplateContext) portless(target TargetRef) bool {
+	if target.HasServer {
+		return ctx.Portless[ProjectServer{Project: target.Project, Server: target.Server}]
+	}
+	for ps := range ctx.Portless {
+		if ps.Project == target.Project {
+			return true
+		}
+	}
+	return false
+}
+
+// portlessServers is every server of the worktree's projects that has no
+// port. Pure.
+func portlessServers(projects []DevProject) map[ProjectServer]bool {
+	out := map[ProjectServer]bool{}
+	for _, p := range projects {
+		for _, ds := range p.DevServers {
+			if ds.Port == 0 {
+				out[ProjectServer{Project: p.Name, Server: ds.Name}] = true
+			}
+		}
+	}
+	return out
 }
 
 var tokenPattern = regexp.MustCompile(`\{\{([^{}]*)\}\}`)
@@ -518,6 +554,9 @@ func (ctx TemplateContext) lookupPort(target TargetRef) (int, error) {
 	if target.HasServer {
 		port, ok := ctx.Ports[ProjectServer{Project: target.Project, Server: target.Server}]
 		if !ok {
+			if ctx.portless(target) {
+				return 0, fmt.Errorf("%s/%s has no port", target.Project, target.Server)
+			}
 			return 0, fmt.Errorf("%s/%s is not running", target.Project, target.Server)
 		}
 		return port, nil
@@ -534,6 +573,9 @@ func (ctx TemplateContext) lookupPort(target TargetRef) (int, error) {
 	}
 	switch len(names) {
 	case 0:
+		if ctx.portless(target) {
+			return 0, fmt.Errorf("%s has no port", target.Project)
+		}
 		return 0, fmt.Errorf("%s has no running dev server", target.Project)
 	case 1:
 		return found, nil

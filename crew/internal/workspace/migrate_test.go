@@ -52,8 +52,8 @@ func saveLegacy(t *testing.T, name string, projects ...WorkspaceProject) {
 
 func TestPlanMigration_MergesByConvention(t *testing.T) {
 	setupTestConfig(t)
-	saveLegacy(t, "store-front-wrk1", WorkspaceProject{Name: "api", Role: "backend"})
-	saveLegacy(t, "store-front-wrk2", WorkspaceProject{Name: "api", Role: "backend"}, WorkspaceProject{Name: "web"})
+	saveLegacy(t, "store-front-wrk1", WorkspaceProject{Name: "api"})
+	saveLegacy(t, "store-front-wrk2", WorkspaceProject{Name: "api"}, WorkspaceProject{Name: "web"})
 	saveLegacy(t, "admin", WorkspaceProject{Name: "admin"})
 
 	plan, err := PlanMigration()
@@ -160,7 +160,7 @@ func legacyWorkspaceWithCheckout(t *testing.T, wsName, projName string) string {
 	if err := exec.CreateGitWorktree(repo, WorktreePath(old, projName), BranchName(old, projName), "HEAD"); err != nil {
 		t.Fatalf("CreateGitWorktree: %v", err)
 	}
-	saveLegacy(t, wsName, WorkspaceProject{Name: projName, Role: "r"})
+	saveLegacy(t, wsName, WorkspaceProject{Name: projName})
 	return repo
 }
 
@@ -342,21 +342,20 @@ func TestMigratedPaths(t *testing.T) {
 	}
 }
 
-// Two old workspaces can disagree on a project's role. First wins, silently:
-// roles are prose for the orientation prompt, not config anything depends on.
-func TestPlanFrom_UnionKeepsFirstRole(t *testing.T) {
+// Two old workspaces naming the same project merge to one entry.
+func TestPlanFrom_UnionKeepsOneEntry(t *testing.T) {
 	plan := planFrom([]*Workspace{
-		{Name: "ws-wrk1", Projects: []WorkspaceProject{{Name: "api", Role: "backend"}}},
-		{Name: "ws-wrk2", Projects: []WorkspaceProject{{Name: "api", Role: "worker"}}},
+		{Name: "ws-wrk1", Projects: []WorkspaceProject{{Name: "api"}}},
+		{Name: "ws-wrk2", Projects: []WorkspaceProject{{Name: "api"}, {Name: "web"}}},
 	})
 
 	if len(plan.Conflicts) != 0 {
-		t.Errorf("role disagreement should not conflict: %v", plan.Conflicts)
+		t.Errorf("the same member twice should not conflict: %v", plan.Conflicts)
 	}
 	merged := unionProjects(nil, plan.Moves[0].Projects)
 	merged = unionProjects(merged, plan.Moves[1].Projects)
-	if len(merged) != 1 || merged[0].Role != "backend" {
-		t.Errorf("merged = %+v, want one api with the first role", merged)
+	if len(merged) != 2 || merged[0].Name != "api" || merged[1].Name != "web" {
+		t.Errorf("merged = %+v, want api and web once each", merged)
 	}
 }
 

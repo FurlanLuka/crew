@@ -140,6 +140,7 @@ func TestServerCommand(t *testing.T) {
 		{"expands $PORT", "uvicorn --port $PORT", 54021, "PORT=54021 uvicorn --port 54021"},
 		{"expands every $PORT", "a $PORT b $PORT", 8000, "PORT=8000 a 8000 b 8000"},
 		{"chained command", "cd worker && npm start", 3000, "PORT=3000 cd worker && npm start"},
+		{"no port: no PORT, $PORT left alone", "npm run worker $PORT", 0, "npm run worker $PORT"},
 	}
 
 	for _, tt := range tests {
@@ -296,5 +297,28 @@ func TestWaitPortsFree(t *testing.T) {
 	}
 	if !PortFree(port) {
 		t.Error("port should be free after the wait")
+	}
+}
+
+// A server with no port gets none — and keeps its place, so the pairing
+// by position holds for the servers after it.
+func TestAllocatePorts_SkipsPortlessServers(t *testing.T) {
+	projects := []DevProject{{Name: "api", DevServers: []DevServerConfig{
+		{Name: "worker"},
+		{Name: "web", Port: 3000},
+	}}}
+	ports, err := AllocatePorts(projects, nil)
+	if err != nil || len(ports) != 2 || ports[0] != 0 || ports[1] == 0 {
+		t.Fatalf("ports = %v, %v", ports, err)
+	}
+	planned := PlanServers(projects, ports, true)
+	if planned[0].Route.Listens() || !planned[1].Route.Listens() {
+		t.Errorf("planned = %+v", planned)
+	}
+	if got := IndexPorts(planned); len(got) != 1 || got[ProjectServer{Project: "api", Server: "web"}] != ports[1] {
+		t.Errorf("IndexPorts = %v", got)
+	}
+	if got := IndexRoutePorts([]Route{planned[0].Route, planned[1].Route}); len(got) != 1 {
+		t.Errorf("IndexRoutePorts = %v", got)
 	}
 }

@@ -303,14 +303,17 @@ func TestRenderWorktreePage_CheckedRows(t *testing.T) {
 	page.Anomalies = ""
 	page.HasEditor, page.HasSSH = false, false
 	page.Items = []devItem{
-		{ProjectName: "store-api", Server: project.DevServer{Name: "store-api"}, Running: true, Port: 54494, URL: "http://localhost:54494",
+		{ProjectName: "store-api", Server: project.DevServer{Name: "store-api", Port: 3000}, Running: true, Port: 54494, URL: "http://localhost:54494",
 			Check: &SmokeResult{Alive: true, Listening: true}},
-		{ProjectName: "checkout-api", Server: project.DevServer{Name: "checkout-api"}, Running: true, Port: 54496,
+		{ProjectName: "checkout-api", Server: project.DevServer{Name: "checkout-api", Port: 8000}, Running: true, Port: 54496,
 			Check: &SmokeResult{Alive: false, Tail: "ModuleNotFoundError: No module named 'x'\nmore"}},
-		{ProjectName: "checkout-api", Server: project.DevServer{Name: "worker"}, Running: true, Port: 54497,
+		{ProjectName: "checkout-api", Server: project.DevServer{Name: "worker", Port: 8001}, Running: true, Port: 54497,
 			Check: &SmokeResult{Alive: true, Listening: false, Referenced: true}},
-		{ProjectName: "signals", Server: project.DevServer{Name: "ingress"}, Running: true, Port: 54498,
+		{ProjectName: "signals", Server: project.DevServer{Name: "ingress", Port: 9000}, Running: true, Port: 54498,
 			Check: &SmokeResult{Alive: true, Listening: false}},
+		// A server with no port: running is the whole story.
+		{ProjectName: "signals", Server: project.DevServer{Name: "cron"}, Running: true,
+			Check: &SmokeResult{Alive: true, Listening: true}},
 	}
 	page.CheckHealth = CheckHealth([]SmokeResult{*page.Items[1].Check, *page.Items[2].Check})
 	rows := worktreeRows(page.Items, false, false)
@@ -327,6 +330,7 @@ func TestRenderWorktreePage_CheckedRows(t *testing.T) {
 		"    checkout-api  ✗ died :54496   ModuleNotFoundError: No module named 'x'",
 		"    worker        ! not listening :54497   something points at it",
 		"    ingress       ● not listening :54498   nothing points at it",
+		"    cron          ● no port",
 		"",
 		"  Launch",
 		"    Claude in terminal          store-api · feature/s4b-3071",
@@ -374,7 +378,7 @@ func TestRenderWorktreePage_StartingRow(t *testing.T) {
 	page.Anomalies, page.HasEditor, page.HasSSH = "", false, false
 	page.Settling = true
 	page.Items = []devItem{
-		{ProjectName: "api", Server: project.DevServer{Name: "api"}, Running: true, Port: 54494, URL: "http://localhost:54494",
+		{ProjectName: "api", Server: project.DevServer{Name: "api", Port: 3000}, Running: true, Port: 54494, URL: "http://localhost:54494",
 			Check: &SmokeResult{Alive: true, Referenced: true}},
 	}
 	var b strings.Builder

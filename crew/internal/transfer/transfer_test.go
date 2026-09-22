@@ -74,7 +74,7 @@ func TestCollect(t *testing.T) {
 	initRepo(t, local)
 	project.Add(project.Project{Name: "local", Path: local})
 	workspace.Create("ws")
-	workspace.AddProject("ws", "api", "backend", "", workspace.CheckoutOptions{})
+	workspace.AddProjects("ws", []workspace.ProjectSpec{{Name: "api"}}, workspace.CheckoutOptions{})
 
 	b, err := Collect([]string{"api", "local"}, []string{"ws"})
 	if err != nil {
@@ -88,7 +88,7 @@ func TestCollect(t *testing.T) {
 			t.Errorf("a bundle carries no path: %+v", e)
 		}
 	}
-	if len(b.Workspaces) != 1 || b.Workspaces[0].Projects[0].Role != "backend" {
+	if len(b.Workspaces) != 1 || b.Workspaces[0].Projects[0].Name != "api" {
 		t.Errorf("workspaces = %+v", b.Workspaces)
 	}
 	if got := WithoutRemote(b); len(got) != 1 || got[0] != "local" {
@@ -110,7 +110,7 @@ func TestWrite_Golden(t *testing.T) {
 	b := Bundle{Version: Version, Projects: []Exported{
 		{Project: project.Project{Name: "store-api", DevServers: []project.DevServer{{Name: "store-api", Port: 3000, Command: "npm start"}}, Setup: "npm ci"}, Remote: "git@x:store-api.git"},
 		{Project: project.Project{Name: "notes"}},
-	}, Workspaces: []Membership{{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api", Role: "api"}}}}}
+	}, Workspaces: []Membership{{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api"}}}}}
 	path := filepath.Join(tmp, "b.json")
 	if err := Write(path, b); err != nil {
 		t.Fatal(err)
@@ -141,8 +141,7 @@ func TestWrite_Golden(t *testing.T) {
 		`      "name": "store-front",`,
 		`      "projects": [`,
 		"        {",
-		`          "name": "store-api",`,
-		`          "role": "api"`,
+		`          "name": "store-api"`,
 		"        }",
 		"      ]",
 		"    }",
@@ -173,7 +172,7 @@ func TestWriteRead(t *testing.T) {
 	tmp := setupTestConfig(t)
 	path := filepath.Join(tmp, "x.json")
 	in := Bundle{Version: Version, Projects: []Exported{{Project: project.Project{Name: "a", Path: "/p", Bindings: []project.Binding{{Var: "X", Value: "{{b}}", Server: "web"}}}, Remote: "git@x:a.git"}},
-		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "a", Role: "r"}}}}}
+		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "a", Mode: workspace.ModeDirect}}}}}
 	if err := Write(path, in); err != nil {
 		t.Fatal(err)
 	}
@@ -181,8 +180,15 @@ func TestWriteRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Projects[0].Remote != "git@x:a.git" || out.Workspaces[0].Projects[0].Role != "r" || out.Projects[0].Bindings[0].Server != "web" {
-		t.Errorf("round trip keeps a binding's scope: %+v", out)
+	if out.Projects[0].Remote != "git@x:a.git" || !workspace.IsDirect(out.Workspaces[0].Projects[0]) || out.Projects[0].Bindings[0].Server != "web" {
+		t.Errorf("round trip keeps a member's mode and a binding's scope: %+v", out)
+	}
+
+	// A bundle written before 4.0 carries a role per member: ignored.
+	os.WriteFile(path, []byte(`{"version": 2, "projects": [], "workspaces": [{"name": "ws", "projects": [{"name": "a", "role": "backend"}]}]}`), 0o644)
+	legacy, err := Read(path)
+	if err != nil || len(legacy.Workspaces) != 1 || legacy.Workspaces[0].Projects[0].Name != "a" {
+		t.Errorf("a bundle with roles should still read: %+v, %v", legacy, err)
 	}
 
 	os.WriteFile(path, []byte(`{"version": 99}`), 0o644)
@@ -260,7 +266,7 @@ func TestImportWorkspace(t *testing.T) {
 	project.Add(project.Project{Name: "api", Path: api})
 	project.SetSetup("api", "exit 7")
 
-	ghost := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}, {Name: "ghost", Role: "x"}}}
+	ghost := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api"}, {Name: "ghost"}}}
 	if _, _, err := ImportWorkspace(ghost, workspace.CheckoutOptions{}); err == nil || !strings.Contains(err.Error(), "ghost") {
 		t.Fatalf("err = %v, want ghost to fail pre-flight", err)
 	}
@@ -268,7 +274,7 @@ func TestImportWorkspace(t *testing.T) {
 		t.Fatal("a pre-flight failure must leave no workspace behind")
 	}
 
-	m := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}
+	m := Membership{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api"}}}
 	ref, started, err := ImportWorkspace(m, workspace.CheckoutOptions{Install: true})
 	if err != nil {
 		t.Fatal(err)
@@ -386,7 +392,7 @@ func TestInspect(t *testing.T) {
 		t.Errorf("plan = %+v", plan)
 	}
 	// A local project's workspaces are on its status, read once.
-	workspace.AddProject("ws", "api", "api", "", workspace.CheckoutOptions{})
+	workspace.AddProjects("ws", []workspace.ProjectSpec{{Name: "api"}}, workspace.CheckoutOptions{})
 	if got := Inspect(b).Projects[0].Workspaces; len(got) != 1 || got[0] != "ws" {
 		t.Errorf("Workspaces = %v", got)
 	}

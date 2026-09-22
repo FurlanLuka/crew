@@ -130,6 +130,19 @@ func waitDevRoutes(slug dev.Slug, routes []dev.Route, ceiling time.Duration) []S
 	return waitRoutes(dev.SessionName(slug), routes, window, logFor, ceiling)
 }
 
+// reached: a running server counts as listening when something accepts on
+// its port — or, for one with no port, when it runs at all: there is
+// nothing to reach, so alive is the whole verdict. Pure over open.
+func reached(r dev.Route, alive bool, open func(int) bool) bool {
+	switch {
+	case !alive:
+		return false
+	case !r.Listens():
+		return true
+	}
+	return open(r.InternalPort)
+}
+
 // waitRoutes polls each route's pane and port until it has a verdict, and
 // keeps the log tail for the ones that failed. The session, the window a
 // route runs in and where its log is are the caller's — the dev session
@@ -137,10 +150,7 @@ func waitDevRoutes(slug dev.Slug, routes []dev.Route, ceiling time.Duration) []S
 func waitRoutes(session string, routes []dev.Route, window, logFor func(dev.Route) string, ceiling time.Duration) []SmokeResult {
 	look := func(r dev.Route) (alive, listening bool) {
 		alive = exec.TmuxPaneBusy(session, window(r))
-		if alive {
-			listening = portOpen(r.InternalPort)
-		}
-		return alive, listening
+		return alive, reached(r, alive, portOpen)
 	}
 	quiet := func(r dev.Route) bool { return shellNotReady(logFor(r)) }
 	results := waitForServers(routes, referencedServers(), look, quiet, smokeTiming{ceiling: ceiling, tick: smokeTick, grace: deadGrace})

@@ -150,7 +150,7 @@ func renderTokenLegend(b *strings.Builder, targets []project.Project) {
 	for _, p := range targets {
 		servers := make([]string, 0, len(p.DevServers))
 		for _, ds := range p.DevServers {
-			servers = append(servers, fmt.Sprintf("%s :%d", ds.Name, ds.Port))
+			servers = append(servers, ds.Name+" "+ds.PortLabel())
 		}
 		b.WriteString(fmt.Sprintf("    %-*s  %s\n", width, p.Name, app.Subtle.Render(strings.Join(servers, "  "))))
 	}

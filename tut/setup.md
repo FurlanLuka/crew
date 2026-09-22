@@ -172,7 +172,7 @@ crew edit store-front/main       # local Cursor / VS Code with the prompt and Cl
 crew launch store-front/main     # the worktree page (TUI): status, launch, logs
 ```
 
-Claude opens with the orientation prompt — the projects, roles, and a `## crew` section that
+Claude opens with the orientation prompt — the projects, their paths, and a `## crew` section that
 tells it to drive the servers through crew.
 
 ### Open in Cursor / VS Code from your laptop

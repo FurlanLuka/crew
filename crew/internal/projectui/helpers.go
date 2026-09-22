@@ -164,7 +164,7 @@ func validName(name string) error {
 func serverRows(p project.Project) []string {
 	var rows []string
 	for _, ds := range p.DevServers {
-		row := fmt.Sprintf("%s :%d  %s", ds.Name, ds.Port, ds.Command)
+		row := fmt.Sprintf("%s %s  %s", ds.Name, ds.PortLabel(), ds.Command)
 		if ds.Dir != "" {
 			row += "  dir:" + ds.Dir
 		}
@@ -187,16 +187,18 @@ func bindingRows(p project.Project) []string {
 }
 
 // targetRows lists the targets as the token that names each: the project
-// alone when it has one server, project/server otherwise. Pure.
+// alone when it has one server with a port, project/server otherwise. A
+// server with no port is not offered — the save would refuse it. Pure.
 func targetRows(targets []project.Project) []string {
 	var rows []string
 	for _, p := range targets {
-		for _, ds := range p.DevServers {
+		listening := project.ListeningServers(p.DevServers)
+		for _, ds := range listening {
 			token := "{{" + p.Name + "}}"
-			if len(p.DevServers) > 1 {
+			if len(listening) > 1 {
 				token = "{{" + p.Name + "/" + ds.Name + "}}"
 			}
-			rows = append(rows, fmt.Sprintf("%-32s %s :%d", token, ds.Name, ds.Port))
+			rows = append(rows, fmt.Sprintf("%-32s %s %s", token, ds.Name, ds.PortLabel()))
 		}
 	}
 	return rows
@@ -245,6 +247,9 @@ type finishCard struct {
 	Remote    string
 	Verdict   verdict
 	StoppedAt step // stepFinish when the walk completed
+	// InWorkspace: pushed from a workspace's picker, which ticks the
+	// project on the way back.
+	InWorkspace string
 }
 
 // resumeAll is every key crew project has for what the walk records.

@@ -127,7 +127,7 @@ func TestCreateLoadSave(t *testing.T) {
 		t.Errorf("Projects = %d, want 0", len(ws.Projects))
 	}
 
-	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "api", Role: "backend"})
+	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "api"})
 	if err := Save(ws); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -217,8 +217,8 @@ func TestListSummaries(t *testing.T) {
 	}
 	ws, _ := Load("sum-ws")
 	ws.Projects = append(ws.Projects,
-		WorkspaceProject{Name: "p1", Role: "r1"},
-		WorkspaceProject{Name: "p2", Role: "r2"},
+		WorkspaceProject{Name: "p1"},
+		WorkspaceProject{Name: "p2"},
 	)
 	Save(ws)
 
@@ -298,8 +298,8 @@ func TestResolvePathsPerMode(t *testing.T) {
 	project.Add(project.Project{Name: "api", Path: "/canonical/api"})
 	project.Add(project.Project{Name: "web", Path: "/canonical/web"})
 	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{
-		{Name: "api", Role: "r"},
-		{Name: "web", Role: "r", Mode: ModeDirect},
+		{Name: "api"},
+		{Name: "web", Mode: ModeDirect},
 	}})
 
 	res, err := Resolve(Ref{Workspace: "ws"})
@@ -335,7 +335,7 @@ func TestIsDirect(t *testing.T) {
 
 func TestWorkspaceProjectJSON_RoundTrip(t *testing.T) {
 	// Empty mode round-trips through "" (omitempty keeps JSON tidy).
-	worktree := WorkspaceProject{Name: "api", Role: "backend"}
+	worktree := WorkspaceProject{Name: "api"}
 	data, err := json.Marshal(worktree)
 	if err != nil {
 		t.Fatalf("marshal worktree: %v", err)
@@ -352,7 +352,7 @@ func TestWorkspaceProjectJSON_RoundTrip(t *testing.T) {
 	}
 
 	// Direct mode round-trips faithfully.
-	direct := WorkspaceProject{Name: "api", Role: "backend", Mode: ModeDirect}
+	direct := WorkspaceProject{Name: "api", Mode: ModeDirect}
 	data, err = json.Marshal(direct)
 	if err != nil {
 		t.Fatalf("marshal direct: %v", err)
@@ -368,13 +368,41 @@ func TestWorkspaceProjectJSON_RoundTrip(t *testing.T) {
 		t.Error("decoded direct should be direct")
 	}
 
-	// Old JSONs without mode decode as worktree.
+	// Old JSONs without mode decode as worktree; their role key is ignored
+	// and not written back.
 	var legacy WorkspaceProject
 	if err := json.Unmarshal([]byte(`{"name":"api","role":"r"}`), &legacy); err != nil {
 		t.Fatalf("unmarshal legacy: %v", err)
 	}
-	if IsDirect(legacy) {
-		t.Error("legacy entry without mode should not be direct")
+	if IsDirect(legacy) || legacy.Name != "api" {
+		t.Errorf("legacy entry = %+v", legacy)
+	}
+	if out, _ := json.Marshal(legacy); string(out) != `{"name":"api"}` {
+		t.Errorf("re-marshalled legacy entry = %s, want the role gone", out)
+	}
+}
+
+// A workspace file written before 4.0 carries a role per member: it loads,
+// resolves, and the next save drops the key.
+func TestLoad_LegacyRoleIgnoredAndDropped(t *testing.T) {
+	setupTestConfig(t)
+	raw := `{"name":"ws","projects":[{"name":"api","role":"backend"}],"worktrees":[{"name":"main"}]}`
+	if err := os.WriteFile(config.WorkspaceFile("ws"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws, err := Load("ws")
+	if err != nil || len(ws.Projects) != 1 || ws.Projects[0].Name != "api" {
+		t.Fatalf("Load = %+v, %v", ws, err)
+	}
+	if _, err := Resolve(Ref{Workspace: "ws"}); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if err := Update("ws", func(*Workspace) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(config.WorkspaceFile("ws"))
+	if strings.Contains(string(data), "role") {
+		t.Errorf("role key survived the save:\n%s", data)
 	}
 }
 
@@ -393,8 +421,8 @@ func TestGeneratePrompt(t *testing.T) {
 	setupTestConfig(t)
 
 	res := newTestWorkspace(t, "prompt-test", []WorkspaceProject{
-		{Name: "api", Role: "backend service"},
-		{Name: "web", Role: "frontend app"},
+		{Name: "api"},
+		{Name: "web"},
 	})
 
 	text, err := GeneratePrompt(res)
@@ -402,8 +430,8 @@ func TestGeneratePrompt(t *testing.T) {
 		t.Fatalf("GeneratePrompt: %v", err)
 	}
 
-	if !containsAll(text, "api", "web", "backend service") {
-		t.Error("prompt should contain project names and roles")
+	if !containsAll(text, "**api** [worktree]", "**web** [worktree]") {
+		t.Error("prompt should list each project with its mode")
 	}
 	if !containsAll(text, "worktree") {
 		t.Error("prompt should mention worktree (all workspace projects are worktrees now)")
@@ -416,7 +444,7 @@ func TestGeneratePrompt(t *testing.T) {
 func TestGeneratePrompt_WritesFile(t *testing.T) {
 	setupTestConfig(t)
 
-	res := newTestWorkspace(t, "file-test", []WorkspaceProject{{Name: "p", Role: "r"}})
+	res := newTestWorkspace(t, "file-test", []WorkspaceProject{{Name: "p"}})
 
 	GeneratePrompt(res)
 
@@ -442,8 +470,8 @@ func TestBuildDevProjects(t *testing.T) {
 	})
 
 	Save(&Workspace{Name: "test-ws", Projects: []WorkspaceProject{
-		{Name: "api", Role: "backend"},
-		{Name: "web", Role: "frontend"},
+		{Name: "api"},
+		{Name: "web"},
 	}})
 
 	res, err := Resolve(Ref{Workspace: "test-ws"})
@@ -512,7 +540,7 @@ func TestRemove_CleansUpDirectory(t *testing.T) {
 func TestDevProjects_MissingProject(t *testing.T) {
 	setupTestConfig(t)
 
-	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{{Name: "ghost", Role: "phantom"}}})
+	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{{Name: "ghost"}}})
 	res, err := Resolve(Ref{Workspace: "ws"})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -551,6 +579,12 @@ func TestCreateCreatesDirectory(t *testing.T) {
 
 // initRepo turns dir into a tiny git repo with an initial commit, so it can be
 // used as a project pool entry for direct-mode tests.
+// addProject is AddProjects with one spec — the tests' one-liner.
+func addProject(wsName, projName, mode string, opts CheckoutOptions) error {
+	_, err := AddProjects(wsName, []ProjectSpec{{Name: projName, Mode: mode}}, opts)
+	return err
+}
+
 func initRepo(t *testing.T, dir string) {
 	t.Helper()
 	for _, args := range [][]string{
@@ -577,7 +611,7 @@ func TestAddProject_DirectMode_NoWorktreeCreated(t *testing.T) {
 	if err := Create("ws"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := AddProject("ws", "api", "backend", ModeDirect, CheckoutOptions{}); err != nil {
+	if err := addProject("ws", "api", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
@@ -653,7 +687,7 @@ func TestRemoveProject_DirectMode_LeavesRepoIntact(t *testing.T) {
 	if err := Create("ws"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws", "api", "backend", ModeDirect, CheckoutOptions{}); err != nil {
+	if err := addProject("ws", "api", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
@@ -684,7 +718,7 @@ func TestRemove_DirectMode_LeavesRepoIntact(t *testing.T) {
 	if err := Create("ws"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws", "api", "backend", ModeDirect, CheckoutOptions{}); err != nil {
+	if err := addProject("ws", "api", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -714,10 +748,10 @@ func TestAddProject_DirectMode_CollisionRefused(t *testing.T) {
 	if err := Create("ws-b"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws-a", "api", "owner", ModeDirect, CheckoutOptions{}); err != nil {
+	if err := addProject("ws-a", "api", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("first direct add: %v", err)
 	}
-	err := AddProject("ws-b", "api", "owner", ModeDirect, CheckoutOptions{})
+	err := addProject("ws-b", "api", ModeDirect, CheckoutOptions{})
 	if err == nil {
 		t.Fatal("second direct add should have been refused")
 	}
@@ -737,7 +771,7 @@ func TestDuplicateWorktree_RefusesDirectCollision(t *testing.T) {
 	if err := Create("ws-src"); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddProject("ws-src", "api", "owner", ModeDirect, CheckoutOptions{}); err != nil {
+	if err := addProject("ws-src", "api", ModeDirect, CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject direct: %v", err)
 	}
 
@@ -758,7 +792,7 @@ func TestGeneratePrompt_DirectModeFraming(t *testing.T) {
 	project.Add(project.Project{Name: "api", Path: repo})
 
 	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{
-		{Name: "api", Role: "backend", Mode: ModeDirect},
+		{Name: "api", Mode: ModeDirect},
 	}})
 	res, err := Resolve(Ref{Workspace: "ws"})
 	if err != nil {
@@ -786,8 +820,8 @@ func TestGeneratePrompt_MixedModes(t *testing.T) {
 	project.Add(project.Project{Name: "web", Path: filepath.Join(tmp, "web")})
 
 	Save(&Workspace{Name: "ws", Projects: []WorkspaceProject{
-		{Name: "api", Role: "backend", Mode: ModeDirect},
-		{Name: "web", Role: "frontend"},
+		{Name: "api", Mode: ModeDirect},
+		{Name: "web"},
 	}})
 	res, err := Resolve(Ref{Workspace: "ws"})
 	if err != nil {
@@ -809,7 +843,7 @@ func TestRemove_DeletesPromptFiles(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	ws, _ := Load("two-prompts")
-	ws.Projects = []WorkspaceProject{{Name: "p", Role: "r"}}
+	ws.Projects = []WorkspaceProject{{Name: "p"}}
 	Save(ws)
 
 	res, err := Resolve(Ref{Workspace: "two-prompts"})
@@ -854,7 +888,7 @@ func TestAssertNoOtherDirect_IgnoresWorktreeEntries(t *testing.T) {
 	}
 	// Pre-seed ws-other with a worktree entry for "api" by hand (avoid worktree creation).
 	ws, _ := Load("ws-other")
-	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "api", Role: "r"})
+	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "api"})
 	if err := Save(ws); err != nil {
 		t.Fatal(err)
 	}

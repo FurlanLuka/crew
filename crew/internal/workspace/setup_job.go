@@ -434,6 +434,9 @@ func reservePorts(ref Ref, projects []dev.DevProject, reserved map[string]int) (
 	}
 	mine := map[string]int{}
 	for _, ps := range dev.PlanServers(projects, allocated, true) {
+		if !ps.Route.Listens() {
+			continue
+		}
 		key := dev.PortKey(ps.Project, ps.Server.Name)
 		ports[key], mine[key] = ps.Route.InternalPort, ps.Route.InternalPort
 	}

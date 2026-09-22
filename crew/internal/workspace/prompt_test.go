@@ -12,8 +12,8 @@ func mixedResolved() *Resolved {
 		Slug: ref.Slug(),
 		Dir:  "/w/store-front/wrk2",
 		Projects: []ResolvedProject{
-			{Name: "api", Role: "backend", Path: "/w/store-front/wrk2/api"},
-			{Name: "infra", Role: "", Direct: true, Path: "/repos/infra"},
+			{Name: "api", Path: "/w/store-front/wrk2/api"},
+			{Name: "infra", Direct: true, Path: "/repos/infra"},
 		},
 	}
 }
@@ -26,8 +26,8 @@ func TestRenderPrompt_Golden(t *testing.T) {
 		"",
 		"It contains the following projects:",
 		"",
-		"- **api** [worktree] (/w/store-front/wrk2/api): backend",
-		"- **infra** [direct] (/repos/infra): (no role specified)",
+		"- **api** [worktree] (/w/store-front/wrk2/api)",
+		"- **infra** [direct] (/repos/infra)",
 		"",
 		"IMPORTANT: `[worktree]` projects are git worktrees — isolated working copies with their own branches.",
 		"All changes in worktree projects stay isolated from the main codebase until explicitly merged.",
@@ -117,9 +117,9 @@ func TestRenderPrompt_CrewSection(t *testing.T) {
 // checkout, and the fix belongs in the project's config.
 func TestRenderPrompt_Check(t *testing.T) {
 	ref := CheckRef("api")
-	res := &Resolved{Ref: ref, Slug: ref.Slug(), Projects: []ResolvedProject{{Name: "api", Path: "/w/check/api/api", Role: "the project under check"}}}
+	res := &Resolved{Ref: ref, Slug: ref.Slug(), Projects: []ResolvedProject{{Name: "api", Path: "/w/check/api/api"}}}
 	got := RenderPrompt(res, nil)
-	want := "You are working in crew's check of `api` (ref `check/api`): a fresh checkout made to prove the project installs and its servers start from nothing. Fix the project's config — its setup command, env command, dev server command — not this checkout alone; it is thrown away once the check passes.\n\nIt contains the following projects:\n\n- **api** [worktree] (/w/check/api/api): the project under check\n"
+	want := "You are working in crew's check of `api` (ref `check/api`): a fresh checkout made to prove the project installs and its servers start from nothing. Fix the project's config — its setup command, env command, dev server command — not this checkout alone; it is thrown away once the check passes.\n\nIt contains the following projects:\n\n- **api** [worktree] (/w/check/api/api)\n"
 	if !strings.HasPrefix(got, want) {
 		t.Errorf("RenderPrompt(check) =\n%s\nwant prefix\n%s", got, want)
 	}

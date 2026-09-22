@@ -10,7 +10,7 @@ import (
 
 func TestClaudeTaskFor_SingleProject(t *testing.T) {
 	pinClaudeConfig(t, false)
-	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api"}})
 
 	task := ClaudeTaskFor(res)
 
@@ -34,8 +34,8 @@ func TestClaudeTaskFor_SingleProject(t *testing.T) {
 func TestClaudeTaskFor_MultiProject(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "multi", []WorkspaceProject{
-		{Name: "api", Role: "backend"},
-		{Name: "web", Role: "frontend"},
+		{Name: "api"},
+		{Name: "web"},
 	})
 
 	task := ClaudeTaskFor(res)
@@ -57,7 +57,7 @@ func TestClaudeTaskFor_MultiProject(t *testing.T) {
 func TestClaudeTaskFor_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{
-		{Name: "api", Role: "backend", Mode: ModeDirect},
+		{Name: "api", Mode: ModeDirect},
 	})
 
 	if task := ClaudeTaskFor(res); task.PromptFile != PromptFilePath(Ref{Workspace: "solo"}) {
@@ -67,7 +67,7 @@ func TestClaudeTaskFor_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 
 func TestClaudeTaskFor_ClaudeConfigDir(t *testing.T) {
 	pinClaudeConfig(t, true)
-	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api"}})
 
 	if task := ClaudeTaskFor(res); task.ClaudeConfigDir != config.ClaudeConfigDir {
 		t.Errorf("ClaudeConfigDir = %q, want %q", task.ClaudeConfigDir, config.ClaudeConfigDir)
@@ -85,9 +85,9 @@ func TestClaudeTaskFor_AgreesWithBuildClaudeParts(t *testing.T) {
 	pinClaudeConfig(t, false)
 
 	for _, projects := range [][]WorkspaceProject{
-		{{Name: "api", Role: "backend"}},
-		{{Name: "api", Role: "backend", Mode: ModeDirect}},
-		{{Name: "api", Role: "backend"}, {Name: "web", Role: "frontend"}},
+		{{Name: "api"}},
+		{{Name: "api", Mode: ModeDirect}},
+		{{Name: "api"}, {Name: "web"}},
 	} {
 		res := newTestWorkspace(t, "ws", projects)
 

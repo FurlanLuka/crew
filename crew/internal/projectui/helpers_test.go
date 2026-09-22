@@ -129,6 +129,12 @@ func TestRows(t *testing.T) {
 	if got := strings.Join(targetRows(append(targetsFor(pool, "store-api"), p)), "|"); got != "{{signals}}                      signals :4000|{{store-api/api}}                api :8000|{{store-api/worker}}             worker :8001" {
 		t.Errorf("targetRows = %q", got)
 	}
+	// A server that loses its port leaves the list, and the one left is
+	// named bare — the token the save accepts.
+	p.DevServers[1].Port = 0
+	if got := strings.Join(targetRows([]project.Project{p}), "|"); got != "{{store-api}}                    api :8000" {
+		t.Errorf("targetRows with a port-less server = %q", got)
+	}
 }
 
 func TestFinishCard_ResumeKeysAndVerdicts(t *testing.T) {

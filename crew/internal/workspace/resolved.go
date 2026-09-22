@@ -12,7 +12,6 @@ import (
 // up: its path decided, its pool config attached.
 type ResolvedProject struct {
 	Name       string
-	Role       string
 	Direct     bool
 	Path       string
 	DevServers []project.DevServer
@@ -65,7 +64,6 @@ func Resolve(ref Ref) (*Resolved, error) {
 	for _, wp := range ws.Projects {
 		rp := ResolvedProject{
 			Name:   wp.Name,
-			Role:   wp.Role,
 			Direct: IsDirect(wp),
 			Path:   WorktreePath(ref, wp.Name),
 		}
@@ -94,16 +92,6 @@ func Resolve(ref Ref) (*Resolved, error) {
 // is what decides between a flat Claude instance at the worktree root and one
 // started directly inside the single project.
 func (r *Resolved) MultiProject() bool { return len(r.Projects) > 1 }
-
-// HasDirect reports whether any project points at its canonical repository.
-func (r *Resolved) HasDirect() bool {
-	for _, p := range r.Projects {
-		if p.Direct {
-			return true
-		}
-	}
-	return false
-}
 
 // DevProjects converts to the shape dev.Start needs. dev cannot import
 // workspace, so it declares its own input type and this builds it.

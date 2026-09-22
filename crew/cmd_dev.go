@@ -97,7 +97,11 @@ func cmdDevCheck() {
 			case workspace.SmokeIdle:
 				state, detail = "not listening", "nothing points at it"
 			}
-			fmt.Printf("%s/%s\t%s\t%d\t%s\t%s\n", r.Project, r.Server, state, r.Port, r.Took().Round(100*time.Millisecond), detail)
+			port := "-"
+			if r.Port > 0 {
+				port = fmt.Sprint(r.Port)
+			}
+			fmt.Printf("%s/%s\t%s\t%s\t%s\t%s\n", r.Project, r.Server, state, port, r.Took().Round(100*time.Millisecond), detail)
 		}
 	}
 	if len(workspace.SmokeFailures(results)) > 0 {
@@ -217,7 +221,7 @@ type setupProposal struct {
 
 func cmdDevAdd() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> --port=<p> --cmd=<c> [--dir=<d>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> [--port=<p>] --cmd=<c> [--dir=<d>]\n")
 		os.Exit(1)
 	}
 
@@ -241,8 +245,8 @@ func cmdDevAdd() {
 		}
 	}
 
-	if name == "" || port == 0 || cmd == "" {
-		fmt.Fprintf(os.Stderr, "Error: --name, --port, and --cmd are required\n")
+	if name == "" || cmd == "" {
+		fmt.Fprintf(os.Stderr, "Error: --name and --cmd are required (--port only for a server that listens)\n")
 		os.Exit(1)
 	}
 
@@ -258,7 +262,11 @@ func cmdDevAdd() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Added dev server '%s' to %s (port %d)\n", name, projName, port)
+	if ds.Listens() {
+		fmt.Printf("Added dev server '%s' to %s (port %d)\n", name, projName, port)
+	} else {
+		fmt.Printf("Added dev server '%s' to %s (no port — it does not listen)\n", name, projName)
+	}
 }
 
 func cmdDevRm() {
@@ -318,10 +326,14 @@ func cmdDevShow() {
 		return
 	}
 	for _, ds := range p.DevServers {
+		port := "-"
+		if ds.Listens() {
+			port = fmt.Sprint(ds.Port)
+		}
 		if ds.Dir != "" {
-			fmt.Printf("%s\t%d\t%s\t%s\n", ds.Name, ds.Port, ds.Command, ds.Dir)
+			fmt.Printf("%s\t%s\t%s\t%s\n", ds.Name, port, ds.Command, ds.Dir)
 		} else {
-			fmt.Printf("%s\t%d\t%s\n", ds.Name, ds.Port, ds.Command)
+			fmt.Printf("%s\t%s\t%s\n", ds.Name, port, ds.Command)
 		}
 	}
 }
@@ -364,7 +376,11 @@ func cmdDevStatus() {
 		printJSON(rows)
 	} else {
 		for _, r := range rows {
-			fmt.Printf("%s\t%s\t%d\t%s\n", r.Worktree, r.ServerName, r.ExternalPort, r.URL)
+			port, url := fmt.Sprint(r.ExternalPort), r.URL
+			if r.URL == "" {
+				port, url = "-", "-"
+			}
+			fmt.Printf("%s\t%s\t%s\t%s\n", r.Worktree, r.ServerName, port, url)
 		}
 	}
 	// The hostnames above are the proxy's; without it they are dead URLs.

@@ -36,9 +36,13 @@ var Root = CommandInfo{
 	Subcommands: []CommandInfo{
 		{
 			Name:        "workspace",
-			Description: "Interactive workspace manager — create, configure, and launch workspaces",
+			Description: "Interactive workspace manager — enter opens the workspace page: its projects and its worktrees on one screen, one cursor (enter on a project opens the project page, on a worktree its page; a adds projects; + new worktree with the base table); n is a three-card wizard that makes a workspace with its projects and lands on the worktree page while the runners install",
 			TUI:         true,
-			Notes:       []string{"Same actions without the TUI: crew add workspace, crew add worktree, crew duplicate, crew rm, crew launch / claude / edit / open."},
+			Notes: []string{
+				"Same actions without the TUI: crew add workspace <ws> <p>… (the wizard), crew rm workspace <ws> <p>, crew add worktree, crew duplicate, crew rm worktree, crew rm <ws>, crew launch / claude / edit / open.",
+				"The wizard's project card ticks pool projects (space), switches a row to direct (m — refused with the reason when it cannot), pushes the add-project wizard (a — the new project comes back ticked) and shows which bindings between the ticked projects resolve; the create card shows the base branches (ctrl+p pulls) and y creates the way crew add worktree does.",
+				"On the page: d removes after asking (a project from every worktree, a worktree, or the last worktree = the workspace); u duplicates a worktree; an open form takes every key but esc.",
+			},
 		},
 		{
 			Name:        "project",
@@ -72,20 +76,19 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "workspace",
-					Description:  "Create a workspace, or add projects to one — any number in one call, the workspace created if it does not exist. Every name is checked before anything happens; then the members are recorded and, in every worktree of the workspace, one runner per new project starts in the background (checkout, install, smoke of its own servers) — `added` means recorded and installing. A checkout or install that fails keeps the member, recorded on the worktree for crew fix / verify. --wait stays until every runner is done and reports `failed` rows.",
-					Usage:        "crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct] [--wait]",
+					Description:  "Create a workspace, or add projects to one — any number in one call, the workspace created if it does not exist (and taken back if a name fails the pre-flight). Every name is checked before anything happens; then the members are recorded and, in every worktree of the workspace, one runner per new project starts in the background (checkout, install, smoke of its own servers) — `added` means recorded and installing. A checkout or install that fails keeps the member, recorded on the worktree for crew fix / verify. --wait stays until every runner is done and reports `failed` rows.",
+					Usage:        "crew add workspace <name> [<project> ...] [--direct] [--wait]",
 					OutputFormat: "<project>\\t<added|failed>\\t<worktree|direct>\\t<detail>",
 					Flags: []FlagInfo{
-						{Name: "<project>[:<role>]", Description: "A pool project, with its role in this workspace after a colon (\"store-api:Backend API\"); without one, \"works on <project>\""},
-						{Name: "--role=<r>", Description: "The role for a single project — the same as <project>:<role>"},
+						{Name: "<project>", Description: "A pool project (crew ls projects); the pre-4.0 colon form with a role after the name is refused — roles are gone"},
 						{Name: "--direct", Description: "Attach the canonical checkouts instead of creating worktrees. Changes are NOT isolated. Only one workspace at a time may direct-mount a given project."},
 						{Name: "--wait", Description: "Stay until every runner is done; rows then say added or failed, exit 1 on any failure"},
 					},
 					Examples: []string{
 						"crew add workspace feature-auth",
-						"crew add workspace feature-auth my-api --role=\"Auth service\"",
-						"crew add workspace store-front store-api:\"Backend API\" store-app:\"iOS app\" checkout-api",
-						"crew add workspace quickfix my-api --role=\"Hotfix\" --direct",
+						"crew add workspace feature-auth my-api",
+						"crew add workspace store-front store-api store-app checkout-api",
+						"crew add workspace quickfix my-api --direct",
 					},
 				},
 				{
@@ -226,9 +229,9 @@ var Root = CommandInfo{
 		},
 		{
 			Name:         "show",
-			Description:  "Show all projects in a workspace with their worktree paths and roles",
+			Description:  "Show all projects in a workspace with their paths in that worktree and their mode",
 			Usage:        "crew show <workspace>[/<worktree>]",
-			OutputFormat: "<name>\\t<path>\\t<role>",
+			OutputFormat: "<name>\\t<path>\\t<worktree|direct>",
 			Examples:     []string{"crew show feature-auth"},
 		},
 		{
@@ -252,7 +255,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "claude",
-			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected (projects, roles, and a crew section on driving the servers). Replaces the crew process.",
+			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected (the projects, their paths, and a crew section on driving the servers). Replaces the crew process.",
 			Usage:       "crew claude <workspace>[/<worktree>]",
 			Examples:    []string{"crew claude store-front/wrk1"},
 		},
@@ -279,7 +282,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "start",
-			Description: "Generate and print the orientation prompt for a workspace — the project list, working directories, roles, and worktree/direct framing. Ends with a crew section: the ref, and the commands that session should drive the servers with. Every launch (crew claude, crew edit, the page) injects it; paste it into a Claude opened some other way.",
+			Description: "Generate and print the orientation prompt for a workspace — the project list, working directories, and worktree/direct framing. Ends with a crew section: the ref, and the commands that session should drive the servers with. Every launch (crew claude, crew edit, the page) injects it; paste it into a Claude opened some other way.",
 			Usage:       "crew start <workspace>[/<worktree>]",
 			Examples:    []string{"crew start feature-auth"},
 		},
@@ -307,11 +310,11 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "add",
-					Description: "Add a dev server to a project. The --port is for reference only — at runtime, crew assigns a random free port via the PORT env var.",
-					Usage:       "crew dev add <project> --name=<name> --port=<port> --cmd=<command> [--dir=<subdir>]",
+					Description: "Add a dev server to a project. The --port is for reference only — at runtime, crew assigns a random free port via the PORT env var. Without --port the process does not listen (a worker, a queue consumer): crew runs it with no PORT, hands out no URL, and a smoke only checks it stays alive.",
+					Usage:       "crew dev add <project> --name=<name> [--port=<port>] --cmd=<command> [--dir=<subdir>]",
 					Flags: []FlagInfo{
 						{Name: "--name=<n>", Description: "Server name (used as subdomain)", Required: true},
-						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT", Required: true},
+						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT. Leave it out for a process that does not listen"},
 						{Name: "--cmd=<c>", Description: "Start command (use $PORT for the dynamic port)", Required: true},
 						{Name: "--dir=<d>", Description: "Subdirectory relative to project root (for monorepos)"},
 					},
@@ -322,6 +325,7 @@ var Root = CommandInfo{
 					Examples: []string{
 						"crew dev add my-api --name=api --port=3000 --cmd=\"npm run dev\"",
 						"crew dev add my-app --name=web --port=5173 --cmd=\"npm run dev\" --dir=packages/web",
+						"crew dev add my-api --name=worker --cmd=\"npm run worker\"",
 					},
 				},
 				{
@@ -418,12 +422,12 @@ var Root = CommandInfo{
 			Subcommands: []CommandInfo{
 				{
 					Name:        "project",
-					Description: "Remove a project from the global pool (does not affect workspaces that use it). The repo stays; --purge also trashes a clone crew made under ~/.crew/projects (never a path of yours), and refuses while any workspace lists the project or a check of it is kept — every worktree is a git worktree off that clone.",
-					Usage:       "crew rm project <name> [--purge]",
+					Description: "Remove a project from the global pool, and with it the clone crew made under ~/.crew/projects (to the trash — never a path of yours, which is left alone and said so). Refused while any workspace lists the project or a check of it is kept — the workspace names it, and every worktree is a git worktree off that clone: crew rm workspace <ws> <name> first.",
+					Usage:       "crew rm project <name> [--keep-clone]",
 					Flags: []FlagInfo{
-						{Name: "--purge", Description: "Trash the clone crew made for a project added from a URL"},
+						{Name: "--keep-clone", Description: "Remove the pool entry but leave crew's clone where it is"},
 					},
-					Examples: []string{"crew rm project my-api", "crew rm project signals --purge"},
+					Examples: []string{"crew rm project my-api", "crew rm project signals --keep-clone"},
 				},
 				{
 					Name:        "workspace",
@@ -486,7 +490,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "export",
-			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects with which roles. Worktrees, ports and overrides stay local. A project is written by its git remote — no path — so the other machine clones it; one whose checkout has no remote still exports (config only) and is named as such.",
+			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects, in which mode. Worktrees, ports and overrides stay local. A project is written by its git remote — no path — so the other machine clones it; one whose checkout has no remote still exports (config only) and is named as such.",
 			Usage:       "crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]",
 			Flags: []FlagInfo{
 				{Name: "--all", Description: "Every project and workspace, no picker"},

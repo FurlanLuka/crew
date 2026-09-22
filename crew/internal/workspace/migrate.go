@@ -270,7 +270,7 @@ func ApplyMigration(plan *MigrationPlan, backup string) error {
 	return nil
 }
 
-// unionProjects merges project lists by name; the first role seen wins.
+// unionProjects merges project lists by name; the first entry seen wins.
 func unionProjects(into, from []WorkspaceProject) []WorkspaceProject {
 	for _, wp := range from {
 		seen := false

@@ -202,22 +202,38 @@ func ListSummaries() ([]Summary, error) {
 		if err != nil {
 			continue
 		}
-		for _, ref := range Refs(ws) {
-			sm := Summary{
-				Ref:          ref,
-				Name:         ref.String(),
-				Workspace:    ref.Workspace,
-				Worktree:     ref.Worktree,
-				Path:         WorktreeDir(ref),
-				ProjectCount: len(ws.Projects),
-				DevRunning:   dev.Running(ref.Slug()),
-				Installing:   SetupRunning(ref),
-			}
-			if wt, err := selectWorktree(ws, ref.Worktree); err == nil {
-				sm.Health = wt.Health.Summary()
-			}
-			summaries = append(summaries, sm)
-		}
+		summaries = append(summaries, summariesOf(ws)...)
 	}
 	return summaries, nil
+}
+
+// SummariesOf is one workspace's rows — what its page shows, without
+// reading every other workspace file.
+func SummariesOf(name string) ([]Summary, error) {
+	ws, err := Load(name)
+	if err != nil {
+		return nil, err
+	}
+	return summariesOf(ws), nil
+}
+
+func summariesOf(ws *Workspace) []Summary {
+	var summaries []Summary
+	for _, ref := range Refs(ws) {
+		sm := Summary{
+			Ref:          ref,
+			Name:         ref.String(),
+			Workspace:    ref.Workspace,
+			Worktree:     ref.Worktree,
+			Path:         WorktreeDir(ref),
+			ProjectCount: len(ws.Projects),
+			DevRunning:   dev.Running(ref.Slug()),
+			Installing:   SetupRunning(ref),
+		}
+		if wt, err := selectWorktree(ws, ref.Worktree); err == nil {
+			sm.Health = wt.Health.Summary()
+		}
+		summaries = append(summaries, sm)
+	}
+	return summaries
 }

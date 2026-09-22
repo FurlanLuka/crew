@@ -140,7 +140,7 @@ func TestAddProject_FansOutToEveryWorktree(t *testing.T) {
 	initRepo(t, repo)
 	project.Add(project.Project{Name: "web", Path: repo})
 
-	if err := AddProject("ws", "web", "frontend", "", CheckoutOptions{}); err != nil {
+	if err := addProject("ws", "web", "", CheckoutOptions{}); err != nil {
 		t.Fatalf("AddProject: %v", err)
 	}
 
@@ -251,7 +251,7 @@ func TestAddProjects_ManyAtOnce(t *testing.T) {
 	// One runner per project: the two one-second installs overlap — the
 	// second starts before the first finishes.
 	backgroundRunners(t)
-	refs, err := AddProjects("ws", []ProjectSpec{{Name: "web", Role: "ui"}, {Name: "worker"}, {Name: "slow"}}, CheckoutOptions{Install: true})
+	refs, err := AddProjects("ws", []ProjectSpec{{Name: "web"}, {Name: "worker"}, {Name: "slow"}}, CheckoutOptions{Install: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,8 +278,8 @@ func TestAddProjects_ManyAtOnce(t *testing.T) {
 	if res.Health == nil || res.Health.Summary() != "install failed: web" {
 		t.Errorf("health = %+v", res.Health)
 	}
-	if wp := ws.Projects[1]; wp.Role != "ui" {
-		t.Errorf("role not kept: %+v", wp)
+	if wp := ws.Projects[1]; wp.Name != "web" || IsDirect(wp) {
+		t.Errorf("member not recorded as given: %+v", wp)
 	}
 }
 

@@ -386,3 +386,17 @@ func TestNewTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestDevServer_PortLabel(t *testing.T) {
+	if got := (DevServer{Name: "web", Port: 3000}).PortLabel(); got != ":3000" {
+		t.Errorf("with a port: %q", got)
+	}
+	worker := DevServer{Name: "worker"}
+	if worker.Listens() || worker.PortLabel() != "no port" {
+		t.Errorf("without: listens=%v label=%q", worker.Listens(), worker.PortLabel())
+	}
+	// The port key is left out of the file when there is none.
+	if data, _ := json.Marshal(worker); string(data) != `{"name":"worker","command":""}` {
+		t.Errorf("marshal = %s", data)
+	}
+}

@@ -8,13 +8,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 // ── Messages ──
 
 type projectsLoadedMsg struct{ projects []project.Project }
-type projectRemovedMsg struct{ name string }
+
+// projectRemovedMsg: the entry is gone; line says what happened to its
+// directory — a warning when the trash could not take the clone.
+type projectRemovedMsg struct {
+	name, line string
+	warn       bool
+}
 
 // ── States ──
 
@@ -77,7 +85,10 @@ type View struct {
 	projects  []project.Project
 	cursor    int
 	statusMsg string
-	err       error
+	// warn: the status is a "done, but" — the trash could not take a
+	// clone — drawn as a warning, not a success.
+	warn bool
+	err  error
 }
 
 func NewView() View {
@@ -106,7 +117,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case projectRemovedMsg:
 		v.state = stateList
-		v.statusMsg = fmt.Sprintf("Removed '%s'", msg.name)
+		v.statusMsg = fmt.Sprintf("Removed '%s' — %s", msg.name, msg.line)
+		v.warn = msg.warn
 		return v, loadProjects
 
 	case errMsg:
@@ -185,10 +197,16 @@ func (v View) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		name := v.projects[v.cursor].Name
 		v.state = stateList
 		return v, func() tea.Msg {
-			if err := project.Remove(name); err != nil {
-				return errMsg{err}
+			r, err := workspace.RemoveFromPool(name, workspace.TrashClone)
+			if err != nil {
+				if r.Path == "" {
+					return errMsg{err}
+				}
+				// The entry went; the clone did not — the list reloads and
+				// the line says why.
+				return projectRemovedMsg{name: name, line: err.Error(), warn: true}
 			}
-			return projectRemovedMsg{name}
+			return projectRemovedMsg{name: name, line: workspace.PoolRemovalLine(r)}
 		}
 	default:
 		v.state = stateList
@@ -243,7 +261,11 @@ func (v View) renderList(b *strings.Builder) {
 	b.WriteString("\n")
 	if v.statusMsg != "" {
 		b.WriteString("  ")
-		b.WriteString(app.Success.Render(v.statusMsg))
+		if v.warn {
+			b.WriteString(app.Highlight.Render(v.statusMsg))
+		} else {
+			b.WriteString(app.Success.Render(v.statusMsg))
+		}
 		b.WriteString("\n\n")
 	}
 	if v.err != nil {
@@ -260,8 +282,17 @@ func (v View) renderList(b *strings.Builder) {
 const listHelp = "enter open  a add  d delete  s servers  b bindings  t setup  e env cmd  esc back"
 
 func (v View) renderConfirmRemove(b *strings.Builder) {
-	name := v.projects[v.cursor].Name
-	b.WriteString(fmt.Sprintf("  project.Remove project '%s'? (y/n)\n", name))
+	b.WriteString("  " + poolRemovePrompt(v.projects[v.cursor]) + "\n")
+}
+
+// poolRemovePrompt is the (y/n) question d asks over a project, saying
+// what happens to its directory: a clone crew made goes to the trash, a
+// path the user adopted is never moved. Pure.
+func poolRemovePrompt(p project.Project) string {
+	if project.CrewOwned(p) {
+		return fmt.Sprintf("Remove %s? Its clone at %s goes to the trash. (y/n)", p.Name, config.Tildify(p.Path))
+	}
+	return fmt.Sprintf("Remove %s? Your checkout at %s is left alone. (y/n)", p.Name, config.Tildify(p.Path))
 }
 
 // ── Commands ──

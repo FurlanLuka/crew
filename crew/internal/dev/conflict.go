@@ -161,6 +161,9 @@ func AllocatedPorts() map[int]PortOwner {
 
 	for _, wr := range all {
 		for _, r := range wr.Routes {
+			if !r.Listens() {
+				continue
+			}
 			allocated[r.InternalPort] = PortOwner{
 				Slug:    wr.Slug,
 				Project: r.Project,

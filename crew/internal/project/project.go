@@ -14,12 +14,28 @@ import (
 
 var validServerName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
-// DevServer describes how to run a dev server for a project.
+// DevServer describes how to run a dev server for a project. Port is the
+// port it conventionally listens on — reference only, crew allocates the
+// real one — and 0 for a process that does not listen at all (a worker, a
+// queue consumer): crew runs it, passes no PORT, hands out no URL, and a
+// smoke only checks it stays alive.
 type DevServer struct {
 	Name    string `json:"name"`
-	Port    int    `json:"port"`
+	Port    int    `json:"port,omitempty"`
 	Command string `json:"command"`
 	Dir     string `json:"dir,omitempty"`
+}
+
+// Listens: the server has a port to be reached on.
+func (ds DevServer) Listens() bool { return ds.Port > 0 }
+
+// PortLabel is the port column wherever a server is listed: ":3000", or
+// "no port".
+func (ds DevServer) PortLabel() string {
+	if !ds.Listens() {
+		return "no port"
+	}
+	return fmt.Sprintf(":%d", ds.Port)
 }
 
 // Binding declares that this project needs Var set, and how to compute it.

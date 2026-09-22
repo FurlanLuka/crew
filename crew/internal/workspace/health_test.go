@@ -157,7 +157,7 @@ func TestSetupFailureRecordsHealthAndPassClears(t *testing.T) {
 func TestAddWorktree_CheckoutFailureIsRecorded(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 	ws, _ := Load("ws")
-	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "ghost", Role: "x"})
+	ws.Projects = append(ws.Projects, WorkspaceProject{Name: "ghost"})
 	Save(ws)
 
 	if err := AddWorktree("ws", "wrk2", CheckoutOptions{}); err != nil {

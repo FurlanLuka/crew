@@ -49,7 +49,7 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   a monorepo's web and worker want different siblings). `crew env <ref> <project>` is the
   project-wide set; `crew env <ref> <project>/<server>` one server's, and the bare table
   says which vars are per server.
-- Adding projects to a workspace: one call — `crew add workspace <ws> a:"role" b c`.
+- Adding projects to a workspace: one call — `crew add workspace <ws> a b c`.
 - Creating anything (`add worktree`, `add workspace <p>…`, `duplicate`, `setup`, `verify`,
   `import … workspace`) returns at once with one runner per project in the background.
   Poll `crew setup status <ref>` (exit 2 while running, 1 failed, 0 clean) and act on the
@@ -61,7 +61,7 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   without flags, `crew import` without a mode) and the process-replacing commands (`crew
   claude`, `crew open`) are the user's to run — hand them the exact line. For an import, `--plan` then `project <name>` (clones; `--path` adopts) / `workspace <name>`; for a
   recorded failure, `crew fix <ref> --print` and fix it yourself.
-- Destructive: `crew rm …` (`rm project --purge` trashes a clone crew made), `crew uninstall
+- Destructive: `crew rm …` (`rm project` trashes the clone crew made), `crew uninstall
   --purge`, `crew trash empty`, `crew clean`, `crew kill`, `crew migrate` — confirm first,
   `--dry-run` where it exists, show the plan.
 - Never print override values or anything that looks like a credential.

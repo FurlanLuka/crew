@@ -314,6 +314,12 @@ func TestConfiguredPorts(t *testing.T) {
 	if _, ok := ports[9999]; ok {
 		t.Error("unconfigured port should be absent")
 	}
+	// Servers without a port are not on any port — two of them do not
+	// collide on 0.
+	Add(Project{Name: "signals", Path: "/repos/signals", DevServers: []DevServer{{Name: "worker", Command: "a"}, {Name: "cron", Command: "b"}}})
+	if _, ok := ConfiguredPorts()[0]; ok {
+		t.Error("port-less servers should not key on 0")
+	}
 }
 
 // Two projects on the same port is what makes a proposal ambiguous rather than
@@ -373,12 +379,32 @@ func TestProposeThenAdd_RejectsUnusableVarName(t *testing.T) {
 }
 
 func TestWithDevServers(t *testing.T) {
-	pool := []Project{{Name: "docs"}, {Name: "api", DevServers: []DevServer{{Name: "api", Port: 3000}}}, {Name: "web", DevServers: []DevServer{{Name: "web", Port: 5173}}}}
+	pool := []Project{{Name: "docs"}, {Name: "api", DevServers: []DevServer{{Name: "api", Port: 3000}}}, {Name: "web", DevServers: []DevServer{{Name: "web", Port: 5173}}},
+		{Name: "jobs", DevServers: []DevServer{{Name: "worker"}}},                             // workers only: not a target
+		{Name: "mixed", DevServers: []DevServer{{Name: "worker"}, {Name: "web", Port: 3001}}}} // one server with a port: a target
 	got := WithDevServers(pool)
-	if len(got) != 2 || got[0].Name != "api" || got[1].Name != "web" {
+	if len(got) != 3 || got[0].Name != "api" || got[1].Name != "web" || got[2].Name != "mixed" {
 		t.Errorf("%+v", got)
 	}
 	if got := WithDevServers(nil); got != nil {
 		t.Errorf("empty pool → %+v", got)
+	}
+}
+
+// A server with no port is not a target: refused where the binding is
+// written, not at start time.
+func TestValidateBinding_PortlessTarget(t *testing.T) {
+	setupPool(t)
+	Add(Project{Name: "signals", Path: "/repos/signals", DevServers: []DevServer{{Name: "worker", Command: "a"}}})
+	Add(Project{Name: "jobs", Path: "/repos/jobs", DevServers: []DevServer{{Name: "worker", Command: "a"}, {Name: "web", Port: 3000, Command: "b"}}})
+	if err := ValidateBinding("store-api", Binding{Var: "X", Value: "{{signals/worker}}"}); err == nil || !strings.Contains(err.Error(), "has no port") {
+		t.Errorf("named port-less server: %v", err)
+	}
+	if err := ValidateBinding("store-api", Binding{Var: "X", Value: "{{signals}}"}); err == nil || !strings.Contains(err.Error(), "no dev server with a port") {
+		t.Errorf("project with only port-less servers: %v", err)
+	}
+	// The one server with a port makes the bare reference unambiguous.
+	if err := ValidateBinding("store-api", Binding{Var: "X", Value: "{{jobs}}"}); err != nil {
+		t.Errorf("bare ref with one listening server: %v", err)
 	}
 }

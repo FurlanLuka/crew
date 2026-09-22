@@ -36,8 +36,8 @@ func directBranches(res *Resolved) map[string]string {
 }
 
 // RenderPrompt builds the orientation prompt text. It orients a single Claude
-// instance to every project in the worktree by listing names, working
-// directories, and roles.
+// instance to every project in the worktree by listing names and working
+// directories.
 //
 // Projects are labelled [worktree] or [direct] because the distinction changes
 // what is safe to do: worktree projects are isolated copies, while direct
@@ -59,18 +59,14 @@ func RenderPrompt(res *Resolved, branches map[string]string) string {
 	hasWorktree := false
 	hasDirect := false
 	for _, p := range res.Projects {
-		role := p.Role
-		if role == "" {
-			role = "(no role specified)"
-		}
-		modeLabel := "worktree"
+		modeLabel := ModeWorktree
 		if p.Direct {
-			modeLabel = "direct"
+			modeLabel = ModeDirect
 			hasDirect = true
 		} else {
 			hasWorktree = true
 		}
-		fmt.Fprintf(&b, "- **%s** [%s] (%s): %s\n", p.Name, modeLabel, p.Path, role)
+		fmt.Fprintf(&b, "- **%s** [%s] (%s)\n", p.Name, modeLabel, p.Path)
 	}
 	b.WriteString("\n")
 

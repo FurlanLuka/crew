@@ -56,7 +56,7 @@ func (c *Check) asWorkspace() *Workspace {
 	wt.Name = c.Project
 	return &Workspace{
 		Name:      CheckWorkspace,
-		Projects:  []WorkspaceProject{{Name: c.Project, Role: "the project under check"}},
+		Projects:  []WorkspaceProject{{Name: c.Project}},
 		Worktrees: []Worktree{wt},
 	}
 }

@@ -45,7 +45,11 @@ type Route struct {
 }
 
 // Proxied reports whether the route should be served through the reverse proxy.
-func (r Route) Proxied() bool { return !r.NoProxy }
+func (r Route) Proxied() bool { return !r.NoProxy && r.Listens() }
+
+// Listens: the server was given a port; one without has no URL and
+// nothing to proxy.
+func (r Route) Listens() bool { return r.InternalPort > 0 }
 
 func RoutesFilePath(slug Slug) string {
 	return filepath.Join(config.ConfigDir, "dev-routes-"+string(slug)+".json")
@@ -106,6 +110,9 @@ func FormatURL(serverName string, slug Slug, domain string, port int) string {
 // RouteURL returns the user-facing URL for a route, choosing localhost for
 // no-proxy routes and the proxy subdomain otherwise.
 func RouteURL(r Route, slug Slug, domain string, proxyPort int) string {
+	if !r.Listens() {
+		return ""
+	}
 	if r.NoProxy {
 		return fmt.Sprintf("http://localhost:%d", r.InternalPort)
 	}

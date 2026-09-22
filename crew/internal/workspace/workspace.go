@@ -24,21 +24,32 @@ const (
 	ModeDirect   = "direct"
 )
 
-// WorkspaceProject references a global project with a workspace-specific role.
+// WorkspaceProject is one member of a workspace: a pool project by name.
 //
 // Mode controls path resolution:
 //   - "" or "worktree" — workspace gets its own git worktree (default).
 //   - "direct" — workspace points at the project's canonical checkout. No worktree
 //     is created, and removing the project does NOT touch the underlying repo.
+//
+// A "role" key in a file written before 4.0 is ignored on read and gone
+// on the next save.
 type WorkspaceProject struct {
 	Name string `json:"name"`
-	Role string `json:"role"`
 	Mode string `json:"mode,omitempty"`
 }
 
 // IsDirect reports whether a workspace project uses direct mode (no worktree).
 func IsDirect(wp WorkspaceProject) bool {
 	return wp.Mode == ModeDirect
+}
+
+// ModeLabel is the word for a member's mode wherever one is printed: the
+// empty (default) mode reads as worktree.
+func ModeLabel(mode string) string {
+	if mode == ModeDirect {
+		return ModeDirect
+	}
+	return ModeWorktree
 }
 
 // Worktree is one working copy of a workspace's projects. Overrides pin a
@@ -103,8 +114,10 @@ func WorktreeNames(ws *Workspace) []string {
 // convention to read.
 const DefaultWorktree = "main"
 
-// Create creates a new empty workspace with one worktree.
-func Create(name string) error {
+// NameAvailable is every reason a workspace cannot be made under name:
+// the shape, the reserved check name, one that exists. The wizard asks
+// before its first card is left; Create asks again.
+func NameAvailable(name string) error {
 	if err := ValidateName("workspace", name); err != nil {
 		return err
 	}
@@ -115,6 +128,14 @@ func Create(name string) error {
 	}
 	if _, err := os.Stat(config.WorkspaceFile(name)); err == nil {
 		return fmt.Errorf("workspace '%s' already exists", name)
+	}
+	return nil
+}
+
+// Create creates a new empty workspace with one worktree.
+func Create(name string) error {
+	if err := NameAvailable(name); err != nil {
+		return err
 	}
 
 	ref := Ref{Workspace: name, Worktree: DefaultWorktree}
@@ -149,17 +170,36 @@ func DefaultBranch(projectPath string) string {
 	return "HEAD"
 }
 
-// ProjectSpec is one project to add: name, role, and worktree or direct.
+// ProjectSpec is one project to add: name, and worktree or direct.
 type ProjectSpec struct {
 	Name string
-	Role string
 	Mode string
 }
 
-// AddProject adds one project to a workspace; AddProjects with one spec.
-func AddProject(wsName, projName, role, mode string, opts CheckoutOptions) error {
-	_, err := AddProjects(wsName, []ProjectSpec{{Name: projName, Role: role, Mode: mode}}, opts)
-	return err
+// CreateWith is a workspace made with its members in one go — what crew
+// add workspace <ws> <p>…, the TUI wizard and an import all do: Create,
+// then AddProjects. A pre-flight failure (a bad spec, nothing recorded)
+// takes the empty workspace back so the name is free to try again; a
+// failure after the members are recorded keeps the workspace and returns
+// the error with the ref, so crew setup status still reaches it. started
+// is false when there was nothing to run — an empty member list.
+func CreateWith(name string, specs []ProjectSpec, opts CheckoutOptions) (Ref, bool, error) {
+	ref := Ref{Workspace: name, Worktree: DefaultWorktree}
+	if err := Create(name); err != nil {
+		return ref, false, err
+	}
+	if len(specs) == 0 {
+		return ref, false, nil
+	}
+	if _, err := AddProjects(name, specs, opts); err != nil {
+		if ws, loadErr := Load(name); loadErr == nil && len(ws.Projects) == 0 {
+			if rmErr := Remove(name); rmErr != nil {
+				debug.Log("setup", "%s: could not remove the empty workspace after a failed pre-flight: %v", name, rmErr)
+			}
+		}
+		return ref, false, err
+	}
+	return ref, true, nil
 }
 
 // AddProjects adds several projects to a workspace in one pass. Every spec
@@ -183,7 +223,7 @@ func AddProjects(wsName string, specs []ProjectSpec, opts CheckoutOptions) ([]Re
 			return err
 		}
 		for _, spec := range specs {
-			loaded.Projects = append(loaded.Projects, WorkspaceProject{Name: spec.Name, Role: spec.Role, Mode: persistedMode(spec.Mode)})
+			loaded.Projects = append(loaded.Projects, WorkspaceProject{Name: spec.Name, Mode: persistedMode(spec.Mode)})
 		}
 		ws = loaded
 		return nil
@@ -228,6 +268,8 @@ func validateSpecs(ws *Workspace, specs []ProjectSpec) error {
 	for _, existing := range ws.Projects {
 		seen[existing.Name] = true
 	}
+	// The workspace files are swept once, and only if a spec asks for it.
+	var owners map[string]string
 	for _, spec := range specs {
 		mode := spec.Mode
 		if mode == "" {
@@ -245,14 +287,11 @@ func validateSpecs(ws *Workspace, specs []ProjectSpec) error {
 		}
 		seen[spec.Name] = true
 		if mode == ModeDirect {
-			if err := assertNoOtherDirect(spec.Name, ws.Name); err != nil {
-				return err
+			if owners == nil {
+				owners = directOwners()
 			}
-			if err := assertDirectFitsWorktrees(ws, spec.Name); err != nil {
-				return err
-			}
-			if err := assertGitRepo(p.Path); err != nil {
-				return fmt.Errorf("project '%s' cannot be used in direct mode: %w", spec.Name, err)
+			if reason := directRefusal(p.Name, ws.Name, owners, len(ws.Worktrees), assertGitRepo(p.Path)); reason != "" {
+				return errors.New(reason)
 			}
 		}
 	}

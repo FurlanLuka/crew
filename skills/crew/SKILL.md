@@ -16,7 +16,9 @@ any command, in any position. `crew help <cmd> [<sub>]` is authoritative; `crew 
 dumps the whole tree. Never guess state — run the command.
 
 Every action has a non-interactive form; nothing needs the TUI. The full-screen views are
-the **user's to run**, not yours — `crew workspace`, `crew project` (enter opens a project
+the **user's to run**, not yours — `crew workspace` (enter opens a workspace page with its
+projects and worktrees; `n` is a wizard: name → projects → create, landing on the worktree
+page), `crew project` (enter opens a project
 page with install, servers, bindings and the check edited in place; `a` is a wizard: source →
 install → servers → bindings → check — every row and step is a command below), `crew config` (bare),
 `crew launch`, `crew dev tui`, `crew debug` (bare), `crew export` without flags, `crew import`
@@ -33,7 +35,7 @@ through crew — never start a server by hand, never `-f`.
 - **Project** — a repo in the global pool, identified by its git remote: name, the path of
   crew's clone (or an adopted checkout), dev servers, **bindings**, optional setup and env
   commands, all shared by every workspace it appears in.
-- **Workspace** — membership: which projects, with which roles. Config only.
+- **Workspace** — membership: which projects, each as a worktree or direct. Config only.
 - **Worktree** — one working copy of a workspace's projects: a git worktree per project under
   `~/.crew/workspaces/<ws>/<wt>/<project>`, branch `crew/<ws>/<wt>/<project>`. Owns its
   reserved **ports** (kept across restarts) and its **overrides**.
@@ -53,7 +55,7 @@ crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree
 crew ls projects                                           <name>\t<path>\t<remote|->
 crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<server|->\t<template>[\t<resolved value>]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
-crew show <workspace>[/<worktree>]                         <name>\t<path>\t<role>
+crew show <workspace>[/<worktree>]                         <name>\t<path>\t<worktree|direct>
 crew dev status [<workspace>[/<worktree>]]                 <workspace>/<worktree>\t<server>\t<port>\t<url>
 crew dev show <project>                                    <server-name>\t<port>\t<command>[\t<dir>]
 crew env <workspace>[/<worktree>] <project>[/<server>]     <VAR>=<value>
@@ -82,9 +84,9 @@ crew debug [--tail=<n>]                                    <date> <time> [<categ
 crew add project <name> <url> [--setup=<cmd>] [--env-cmd=<cmd>]                  clones into ~/.crew/projects/<name>
 crew add project <name> --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]           adopts a checkout you already have
 crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]         re-run on an existing project updates it
-crew rm project <name> [--purge]
+crew rm project <name> [--keep-clone]                          the clone crew made goes to the trash; an adopted path is left alone
 crew check project <name> [--pull] [--no-smoke] [--wait]        one runner; crew setup status check/<name> watches it
-crew dev add <project> --name=<name> --port=<port> --cmd=<command> [--dir=<subdir>]
+crew dev add <project> --name=<name> [--port=<port>] --cmd=<command> [--dir=<subdir>]     no --port: a process that does not listen — no $PORT, no URL, smoke = stays alive
 crew dev rm <project> <server-name>
 crew dev setup <project> [--apply --port=<port>]               <detected|added>\t<name>\t<command>
 ```
@@ -96,9 +98,10 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
   `~/.crew/projects/<name>`, and the remote is what names the project in `ls projects`,
   in an export, on another machine. A bare path is refused — a checkout you already have
   is adopted with **`--path=<dir>`** (its own `origin` is its identity; one with no
-  remote exports as config only). `crew rm project <name> --purge` trashes a clone crew
-  made (never a path of yours), refused while a workspace still lists the project or a
-  check of it is kept. `gh repo list <owner> --json name,url` is where URLs come from
+  remote exports as config only). `crew rm project <name>` takes the clone crew made with
+  it (to the trash; `--keep-clone` leaves it; a path of yours is never moved) and is
+  refused while a workspace still lists the project or a check of it is kept — `crew rm
+  workspace <ws> <name>` first. `gh repo list <owner> --json name,url` is where URLs come from
   when the user has `gh`.
 - **`crew check project <name>`** proves the config reproduces from nothing: a fresh
   checkout of the canonical repo through the setup runner (mise → install → `env: <cmd>` →
@@ -130,6 +133,9 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
 - `dev setup` detects one server from `package.json` (`dev`, else `start`) and prints it;
   `--apply --port=<p>` records it. It cannot know the port; nothing detected is an error
   naming the `dev add` line to run instead. `dev add` is the full form.
+- A server without `--port` is a process that does not listen (a worker, a queue consumer):
+  crew runs it in its window with no `PORT`, hands out no URL, and a smoke only checks it
+  stays alive; a binding aimed at it is unresolved (`has no port`).
 - `dev add` on an existing server name replaces it. The port is **reference only**: crew
   allocates a free port per worktree and passes it as `$PORT`; the configured one is what
   `.env` files and bindings are matched against.
@@ -199,7 +205,7 @@ crew run <workspace>[/<worktree>] <project>[/<server>] -- <command...>
 ## 5. Workspaces and worktrees
 
 ```
-crew add workspace <name> [<project>[:<role>] ...] [--role=<role>] [--direct] [--wait]     <project>\t<added|failed>\t<worktree|direct>\t<detail>
+crew add workspace <name> [<project> ...] [--direct] [--wait]     <project>\t<added|failed>\t<worktree|direct>\t<detail>
 crew rm workspace <workspace> <project>                            remove a project from a workspace
 crew rm <workspace>                                                the whole workspace, every worktree
 crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]
@@ -234,8 +240,9 @@ crew migrate [--dry-run] [--yes]
   recorded. `--json` without `--wait` is `{ref, running: true, projects}` (no health yet);
   `--wait --json` is `{ref, projects, health}` as before. Without a terminal and without
   `--wait`, the command prints the `crew setup status` line and exits 0.
-- `add workspace` takes any number of projects in one call — `store-api:"Backend API"
-  store-app:"iOS app" checkout-api` — and creates the workspace if it is new. Names are
+- `add workspace` takes any number of projects in one call — `store-api store-app
+  checkout-api` — and creates the workspace if it is new (and takes it back when a name
+  fails the pre-flight). Names are
   checked before anything happens; then the members are recorded and their runners start
   in every worktree of the workspace. `added` means **recorded and installing**, not done —
   the `crew setup status <ws>/<wt>` line is printed per worktree; with `--wait` the rows say
@@ -358,7 +365,7 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
 - `claude` and `open` replace the crew process and refuse without a terminal — the user runs
   them, not you (bare `fix` prints instead). `claude` skips permissions, passes every project
   with `--add-dir`, sets `CREW_REF`, and injects the orientation prompt (`crew start` prints
-  it): the projects, their roles, and a `## crew` section telling that session to drive the
+  it): the projects, their paths, and a `## crew` section telling that session to drive the
   servers through crew.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
   say which they are in `crew help`.
@@ -372,7 +379,7 @@ crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smo
 ```
 
 - A bundle carries projects by **git remote** (dev servers, bindings, setup, env command —
-  no path) and workspace **membership** (projects, roles, modes). Never worktrees, ports or
+  no path) and workspace **membership** (projects and their modes). Never worktrees, ports or
   overrides. A project whose checkout has no remote still exports, as config only: `export`
   says so (`<name> has no git remote — it cannot be cloned on another machine`; `--json`
   lists them under `no_remote`).
@@ -522,7 +529,7 @@ crew help [<command>] [<subcommand>] [--json]
 - Relay `left alone` and `!` lines from `crew dev start` verbatim.
 - Never paste `crew env` output into a file; use `crew run`.
 - Never print override values or binding-resolved values that look like credentials.
-- Destructive, confirm first: `rm <ws>`, `rm worktree`, `rm project` (`--purge` doubly),
+- Destructive, confirm first: `rm <ws>`, `rm worktree`, `rm project` (crew's clone goes too),
   `uninstall --purge`, `trash empty`, `clean` (dry-run first), `migrate` (dry-run and show
   the plan), `kill`.
 - TUI commands and process-replacing ones (`claude`, `open`, bare `fix`) are for the user to

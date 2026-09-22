@@ -37,7 +37,7 @@ const (
 
 func newServerForm(proj string, edit *project.DevServer) serverForm {
 	var inputs [4]textinput.Model
-	placeholders := [4]string{"web", "5173", "npm run dev", "apps/web (optional)"}
+	placeholders := [4]string{"web", "5173 (empty: does not listen)", "npm run dev", "apps/web (optional)"}
 	limits := [4]int{32, 6, 128, 128}
 	for i := range inputs {
 		inputs[i] = textinput.New()
@@ -48,7 +48,9 @@ func newServerForm(proj string, edit *project.DevServer) serverForm {
 	if edit != nil {
 		f.orig = edit.Name
 		f.inputs[serverName].SetValue(edit.Name)
-		f.inputs[serverPort].SetValue(strconv.Itoa(edit.Port))
+		if edit.Listens() {
+			f.inputs[serverPort].SetValue(strconv.Itoa(edit.Port))
+		}
 		f.inputs[serverCommand].SetValue(edit.Command)
 		f.inputs[serverDir].SetValue(edit.Dir)
 		for i := range f.inputs {
@@ -114,12 +116,15 @@ func (f serverForm) Update(msg tea.Msg) (serverForm, tea.Cmd) {
 // are not one. Pure.
 func parseServerForm(name, port, command, dir string) (project.DevServer, error) {
 	name, port, command, dir = strings.TrimSpace(name), strings.TrimSpace(port), strings.TrimSpace(command), strings.TrimSpace(dir)
-	if name == "" || port == "" || command == "" {
-		return project.DevServer{}, errors.New("name, port, and command are required")
+	if name == "" || command == "" {
+		return project.DevServer{}, errors.New("name and command are required")
 	}
-	n, err := strconv.Atoi(port)
-	if err != nil || n <= 0 {
-		return project.DevServer{}, errors.New("invalid port number")
+	n := 0
+	if port != "" {
+		var err error
+		if n, err = strconv.Atoi(port); err != nil || n <= 0 {
+			return project.DevServer{}, errors.New("invalid port number")
+		}
 	}
 	return project.DevServer{Name: name, Port: n, Command: command, Dir: dir}, nil
 }
@@ -135,7 +140,7 @@ func (f serverForm) View() string {
 	for i, label := range labels {
 		b.WriteString("  " + label + f.inputs[i].View() + "\n")
 	}
-	b.WriteString("  " + app.Subtle.Render("the command must listen on $PORT — crew allocates the real port per worktree; this one is the reference") + "\n")
+	b.WriteString("  " + app.Subtle.Render("the command must listen on $PORT — crew allocates the real port per worktree; this one is the reference. No port: a process that does not listen (a worker) — no $PORT, no URL") + "\n")
 	if f.err != nil {
 		b.WriteString("  " + app.Error.Render(f.err.Error()) + "\n")
 	}

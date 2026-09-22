@@ -126,10 +126,10 @@ func TestAddSubcommands(t *testing.T) {
 	if ws.Usage == "" {
 		t.Error("add workspace missing usage")
 	}
-	if len(ws.Flags) != 4 {
-		t.Fatalf("add workspace should have 4 flags, got %d", len(ws.Flags))
+	if len(ws.Flags) != 3 {
+		t.Fatalf("add workspace should have 3 flags, got %d", len(ws.Flags))
 	}
-	wantFlags := map[string]bool{"<project>[:<role>]": true, "--role=<r>": true, "--direct": true, "--wait": true}
+	wantFlags := map[string]bool{"<project>": true, "--direct": true, "--wait": true}
 	for _, f := range ws.Flags {
 		if !wantFlags[f.Name] {
 			t.Errorf("unexpected flag %q on add workspace", f.Name)
@@ -311,5 +311,34 @@ func TestPrintHelp_NotesStayOffParentList(t *testing.T) {
 	printHelp(&b, parent, []string{"dev"})
 	if strings.Contains(b.String(), "Notes:") || strings.Contains(b.String(), "the long story") {
 		t.Errorf("parent list carries a note:\n%s", b.String())
+	}
+}
+
+// Roles and rm project --purge left in 4.0; no usage, flag or note may
+// still offer them.
+func TestNoRolesOrPurgeOnRmProject(t *testing.T) {
+	var walk func(c *CommandInfo, path string)
+	walk = func(c *CommandInfo, path string) {
+		texts := []string{c.Usage, c.Description}
+		texts = append(texts, c.Notes...)
+		texts = append(texts, c.Examples...)
+		for _, f := range c.Flags {
+			texts = append(texts, f.Name, f.Description)
+		}
+		for _, text := range texts {
+			if strings.Contains(text, "--role") || strings.Contains(text, ":<role>") {
+				t.Errorf("%s still offers roles: %q", path, text)
+			}
+			if path == "rm project" && strings.Contains(text, "--purge") {
+				t.Errorf("rm project still offers --purge: %q", text)
+			}
+		}
+		for i := range c.Subcommands {
+			walk(&c.Subcommands[i], strings.TrimSpace(path+" "+c.Subcommands[i].Name))
+		}
+	}
+	walk(&Root, "")
+	if rm := findSubcommand(findSubcommand(&Root, "rm"), "project"); rm.Usage != "crew rm project <name> [--keep-clone]" {
+		t.Errorf("rm project usage = %q", rm.Usage)
 	}
 }

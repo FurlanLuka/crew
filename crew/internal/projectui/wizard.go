@@ -87,6 +87,10 @@ type Wizard struct {
 	editor     *bindingEditor
 	// stoppedAt: the step esc ended the walk on; stepFinish when it ran out.
 	stoppedAt step
+	// inWorkspace: the workspace wizard's picker pushed this walk, so the
+	// finish card sends the reader back there instead of naming the crew
+	// add workspace line it is already in the middle of.
+	inWorkspace string
 
 	spinner spinner.Model
 	err     error
@@ -94,6 +98,18 @@ type Wizard struct {
 
 // New is the wizard as a page — what the list's a pushes.
 func New() app.Page { return newWizard() }
+
+// NewInWorkspace is the wizard pushed from a workspace's project picker:
+// the project comes back ticked there, and the finish card says so.
+func NewInWorkspace(ws string) app.Page {
+	w := newWizard()
+	w.inWorkspace = ws
+	return w
+}
+
+// OpenPage is the project page as a page — what a workspace page's enter
+// on a member pushes; it lands on the install section.
+func OpenPage(name string) app.Page { return NewPage(name, rowSetup) }
 
 func newWizard() Wizard {
 	var inputs [6]textinput.Model
@@ -645,7 +661,7 @@ func (w Wizard) envMissing() bool {
 
 // finish is the closing card's facts.
 func (w Wizard) finish() finishCard {
-	return finishCard{Project: w.facts.proj, Remote: w.facts.remote, Verdict: w.verdict, StoppedAt: w.stoppedAt}
+	return finishCard{Project: w.facts.proj, Remote: w.facts.remote, Verdict: w.verdict, StoppedAt: w.stoppedAt, InWorkspace: w.inWorkspace}
 }
 
 // wsPlaceholder is the workspace the finish card's next line names.

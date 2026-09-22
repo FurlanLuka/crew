@@ -71,7 +71,10 @@ func DevURLs(res *Resolved, routes []dev.Route) []string {
 
 	urls := make([]string, 0, len(routes))
 	for _, r := range routes {
-		urls = append(urls, dev.RouteURL(r, res.Slug, domain, proxyPort))
+		// A server with no port has no URL to hand out.
+		if url := dev.RouteURL(r, res.Slug, domain, proxyPort); url != "" {
+			urls = append(urls, url)
+		}
 	}
 	return urls
 }

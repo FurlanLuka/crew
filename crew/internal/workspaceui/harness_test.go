@@ -127,6 +127,15 @@ func keyOf(k string) tea.Msg {
 	return keyRune(k)
 }
 
+func keyMsgOf(k string) tea.KeyMsg { return keyOf(k).(tea.KeyMsg) }
+
+// runNav runs a command tree and returns only its pushes and pops.
+func runNav(cmd tea.Cmd) []tea.Msg {
+	var nav []tea.Msg
+	runCmd(cmd, &nav)
+	return nav
+}
+
 // settle sends a message and feeds the model's own messages back until
 // it settles — every step applies through a command, and tests want the
 // settled state. Pushes and pops are collected, not dropped.
@@ -148,6 +157,9 @@ func settle(t *testing.T, m tea.Model, msg tea.Msg) (tea.Model, []tea.Msg) {
 func runCmd(cmd tea.Cmd, nav *[]tea.Msg) []tea.Msg {
 	if cmd == nil {
 		return nil
+	}
+	if nav == nil {
+		nav = new([]tea.Msg)
 	}
 	var out []tea.Msg
 	switch msg := cmd().(type) {

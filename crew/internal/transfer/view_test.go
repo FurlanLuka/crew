@@ -92,7 +92,7 @@ func importFixture(t *testing.T) (ImportView, string, string) {
 			DevServers: []project.DevServer{{Name: "checkout-api", Port: 8000}, {Name: "worker", Port: 8003}},
 			Bindings:   []project.Binding{{Var: "STORE_API_URL", Value: "{{store-api}}"}}}, Remote: "git@x:ai.git"},
 		{Project: project.Project{Name: "infra-ops", Path: "/Users/other/infra-ops"}},
-	}, Workspaces: []Membership{{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api", Role: "api"}, {Name: "infra-ops", Role: "infra", Mode: workspace.ModeDirect}}}}}
+	}, Workspaces: []Membership{{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-api"}, {Name: "infra-ops", Mode: workspace.ModeDirect}}}}}
 	return NewImportView("/x/crew-export.json", b), tmp, remote
 }
 
@@ -242,8 +242,8 @@ func TestImportView_WorkspaceBlockedThenSummary(t *testing.T) {
 	}
 	got := plain(v.View())
 	if !strings.Contains(got, "workspace 1 of 1") ||
-		!strings.Contains(got, "store-api   api     worktree   already here") ||
-		!strings.Contains(got, "infra-ops   infra   direct     skipped") ||
+		!strings.Contains(got, "store-api   worktree   already here") ||
+		!strings.Contains(got, "infra-ops   direct     skipped") ||
 		!strings.Contains(got, "! needs infra-ops, which was not imported — n skips this workspace") ||
 		!strings.Contains(got, "  n skip  esc stop") {
 		t.Errorf("workspace card =\n%s", got)
@@ -538,12 +538,12 @@ func TestImportView_WorkspaceCreate(t *testing.T) {
 	project.Add(project.Project{Name: "api", Path: api})
 	b := Bundle{Version: 2,
 		Projects:   []Exported{{Project: project.Project{Name: "api"}}},
-		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}}}
+		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api"}}}}}
 	v := NewImportView("/x/b.json", b)
 	v = press(t, v, "n") // api is here: kept → workspace card
 	// The card opens on its base table (fetched in the background) and the
 	// same keys crew add worktree offers.
-	if got := plain(v.View()); !strings.Contains(got, "y create  ctrl+p pull first  n skip  esc stop") || !strings.Contains(got, "checking the base branches") {
+	if got := plain(v.View()); !strings.Contains(got, "y create  ctrl+p pull first  n skip  esc stop") || !strings.Contains(got, "checking base branches") {
 		t.Fatalf("workspace card:\n%s", plain(v.View()))
 	}
 	m0, _ := v.Update(wsBasesMsg{name: "ws", statuses: workspace.BaseStatuses(b.Workspaces[0].Workspace())})
@@ -652,7 +652,7 @@ func TestImportView_WorkspaceCardBasesAndPull(t *testing.T) {
 	project.Add(project.Project{Name: "api", Path: api})
 	b := Bundle{Version: 2,
 		Projects:   []Exported{{Project: project.Project{Name: "api"}}},
-		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api", Role: "backend"}}}}}
+		Workspaces: []Membership{{Name: "ws", Projects: []workspace.WorkspaceProject{{Name: "api"}}}}}
 	v := NewImportView("/x/b.json", b)
 	v = press(t, v, "n") // api is here: kept → workspace card
 

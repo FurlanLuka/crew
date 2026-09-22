@@ -39,7 +39,7 @@ func newTestWorkspace(t *testing.T, name string, projects []WorkspaceProject) *R
 
 func TestBuildClaudeParts_SingleProject(t *testing.T) {
 	pinClaudeConfig(t, false)
-	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api"}})
 
 	parts, workDir := buildClaudeParts(res, true)
 
@@ -62,8 +62,8 @@ func TestBuildClaudeParts_SingleProject(t *testing.T) {
 func TestBuildClaudeParts_MultiProject(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "multi", []WorkspaceProject{
-		{Name: "api", Role: "backend"},
-		{Name: "web", Role: "frontend"},
+		{Name: "api"},
+		{Name: "web"},
 	})
 
 	parts, workDir := buildClaudeParts(res, true)
@@ -84,7 +84,7 @@ func TestBuildClaudeParts_MultiProject(t *testing.T) {
 
 func TestBuildClaudeParts_ClaudeConfigDir(t *testing.T) {
 	pinClaudeConfig(t, true)
-	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api", Role: "backend"}})
+	res := newTestWorkspace(t, "solo", []WorkspaceProject{{Name: "api"}})
 
 	parts, _ := buildClaudeParts(res, true)
 
@@ -102,7 +102,7 @@ func TestBuildClaudeParts_ClaudeConfigDir(t *testing.T) {
 func TestBuildClaudeParts_SingleDirectProjectStillGetsPrompt(t *testing.T) {
 	pinClaudeConfig(t, false)
 	res := newTestWorkspace(t, "solo", []WorkspaceProject{
-		{Name: "api", Role: "backend", Mode: ModeDirect},
+		{Name: "api", Mode: ModeDirect},
 	})
 
 	parts, _ := buildClaudeParts(res, true)

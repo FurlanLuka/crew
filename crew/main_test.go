@@ -251,15 +251,14 @@ func TestParseProjectSpecs(t *testing.T) {
 		want    []workspace.ProjectSpec
 		wantErr string
 	}{
-		{name: "one with --role", args: []string{"api", "--role=Backend"}, want: []workspace.ProjectSpec{{Name: "api", Role: "Backend"}}},
-		{name: "one without role", args: []string{"api"}, want: []workspace.ProjectSpec{{Name: "api", Role: "works on api"}}},
-		{name: "several with inline roles", args: []string{"api:Backend API", "web:iOS app", "worker"},
-			want: []workspace.ProjectSpec{{Name: "api", Role: "Backend API"}, {Name: "web", Role: "iOS app"}, {Name: "worker", Role: "works on worker"}}},
+		{name: "one", args: []string{"api"}, want: []workspace.ProjectSpec{{Name: "api"}}},
+		{name: "several", args: []string{"api", "web", "worker"},
+			want: []workspace.ProjectSpec{{Name: "api"}, {Name: "web"}, {Name: "worker"}}},
 		{name: "direct applies to all", args: []string{"api", "web", "--direct"},
-			want: []workspace.ProjectSpec{{Name: "api", Role: "works on api", Mode: workspace.ModeDirect}, {Name: "web", Role: "works on web", Mode: workspace.ModeDirect}}},
-		{name: "--role with several", args: []string{"api", "web", "--role=x"}, wantErr: "names one project's role"},
-		{name: "role twice", args: []string{"api:x", "--role=y"}, wantErr: "give the role once"},
-		{name: "empty name", args: []string{":role"}, wantErr: "project name is needed"},
+			want: []workspace.ProjectSpec{{Name: "api", Mode: workspace.ModeDirect}, {Name: "web", Mode: workspace.ModeDirect}}},
+		{name: "the old role form", args: []string{"api:Backend API"}, wantErr: "'api:Backend API': roles are gone"},
+		{name: "the old role flag", args: []string{"api", "--role=x"}, wantErr: "unknown flag '--role=x' — roles are gone"},
+		{name: "empty name", args: []string{":role"}, wantErr: "roles are gone"},
 		{name: "unknown flag", args: []string{"api", "--nope"}, wantErr: "unknown flag"},
 	}
 	for _, tt := range tests {
@@ -312,49 +311,45 @@ func TestApplyProjectUpdate(t *testing.T) {
 
 func TestParseRmProjectArgs(t *testing.T) {
 	for _, tt := range []struct {
-		args    []string
-		name    string
-		purge   bool
-		wantErr string
+		args        []string
+		name        string
+		keep, purge bool
+		wantErr     string
 	}{
-		{[]string{"api"}, "api", false, ""},
-		{[]string{"api", "--purge"}, "api", true, ""},
-		{[]string{"--purge", "api"}, "api", true, ""},
-		{nil, "", false, "a project name"},
-		{[]string{"api", "web"}, "", false, "unexpected argument"},
-		{[]string{"api", "--force"}, "", false, "unknown flag"},
+		{[]string{"api"}, "api", false, false, ""},
+		{[]string{"api", "--keep-clone"}, "api", true, false, ""},
+		{[]string{"--keep-clone", "api"}, "api", true, false, ""},
+		{[]string{"api", "--purge"}, "api", false, true, ""},
+		{[]string{"api", "--purge", "--keep-clone"}, "api", true, true, ""},
+		{nil, "", false, false, "a project name"},
+		{[]string{"api", "web"}, "", false, false, "unexpected argument"},
+		{[]string{"api", "--force"}, "", false, false, "unknown flag"},
 	} {
-		name, purge, err := parseRmProjectArgs(tt.args)
+		name, keep, purge, err := parseRmProjectArgs(tt.args)
 		if tt.wantErr != "" {
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("%v: err = %v, want %q", tt.args, err, tt.wantErr)
 			}
 			continue
 		}
-		if err != nil || name != tt.name || purge != tt.purge {
-			t.Errorf("%v: got %s %v %v", tt.args, name, purge, err)
+		if err != nil || name != tt.name || keep != tt.keep || purge != tt.purge {
+			t.Errorf("%v: got %s keep=%v purge=%v %v", tt.args, name, keep, purge, err)
 		}
 	}
 }
 
-// --purge is for clones crew made, and only once nothing depends on the
-// canonical any more.
-func TestPurgeAllowed(t *testing.T) {
-	prev := config.ProjectsDir
-	config.ProjectsDir = t.TempDir()
-	t.Cleanup(func() { config.ProjectsDir = prev })
-	owned := project.Project{Name: "api", Path: config.ProjectsDir + "/api"}
-	if err := purgeAllowed(project.Project{Name: "api", Path: "/home/me/api"}, nil, false); err == nil || !strings.Contains(err.Error(), "not a clone crew made") {
-		t.Errorf("user-owned: %v", err)
+func TestShowRows(t *testing.T) {
+	res := &workspace.Resolved{Projects: []workspace.ResolvedProject{
+		{Name: "api", Path: "/w/ws/main/api"},
+		{Name: "infra", Path: "/repos/infra", Direct: true},
+	}}
+	got := showRows(res)
+	want := []wsProjectOut{{Name: "api", Path: "/w/ws/main/api", Mode: "worktree"}, {Name: "infra", Path: "/repos/infra", Mode: "direct"}}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("showRows = %+v, want %+v", got, want)
 	}
-	if err := purgeAllowed(owned, []string{"store", "admin"}, false); err == nil || !strings.Contains(err.Error(), "workspace store, admin — crew rm workspace store api; crew rm workspace admin api first") {
-		t.Errorf("member: %v", err)
-	}
-	if err := purgeAllowed(owned, nil, true); err == nil || !strings.Contains(err.Error(), "rm worktree check/api") {
-		t.Errorf("checked: %v", err)
-	}
-	if err := purgeAllowed(owned, nil, false); err != nil {
-		t.Errorf("clean: %v", err)
+	if data, _ := json.Marshal(got); strings.Contains(string(data), "role") {
+		t.Errorf("no role key: %s", data)
 	}
 }
 

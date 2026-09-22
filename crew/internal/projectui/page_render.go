@@ -155,7 +155,7 @@ func renderProjectPage(f pageFacts, rows []pageRow, cursor int, open formBlock, 
 			row(rowNoServers, 0, "", app.Subtle.Render("none — a adds one; the command must listen on $PORT"))
 		}
 		for i, ds := range f.proj.DevServers {
-			rest := fmt.Sprintf(":%-6d %s", ds.Port, ds.Command)
+			rest := fmt.Sprintf("%-7s %s", ds.PortLabel(), ds.Command)
 			if ds.Dir != "" {
 				rest += "  " + app.Subtle.Render("dir:"+ds.Dir)
 			}

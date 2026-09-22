@@ -15,8 +15,13 @@ type Page interface {
 // PushPageMsg pushes a new page onto the navigation stack.
 type PushPageMsg struct{ Page Page }
 
-// PopPageMsg pops the current page.
-type PopPageMsg struct{}
+// PopPageMsg pops the current page. Status, when set, is handed to the
+// revealed page as a StatusMsg — what the popped page did last (a
+// workspace removed from its own page) has nowhere else to show.
+type PopPageMsg struct{ Status string }
+
+// StatusMsg is the line a page shows after a pop back to it.
+type StatusMsg struct{ Status string }
 
 // ExitWithOutputMsg quits the TUI and prints output to stdout after exit.
 type ExitWithOutputMsg struct{ Output string }
@@ -73,6 +78,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		top := a.stack[len(a.stack)-1]
 		cmds := []tea.Cmd{top.Init()}
 		a.forwardWindowSize(&cmds)
+		if msg.Status != "" {
+			status := msg.Status
+			cmds = append(cmds, func() tea.Msg { return StatusMsg{Status: status} })
+		}
 		return a, tea.Batch(cmds...)
 	}
 

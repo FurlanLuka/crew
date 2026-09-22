@@ -27,6 +27,11 @@ func bindingFixture(bindings map[string][]Binding) ResolveParams {
 			DevServers: []DevServerConfig{{Name: "checkout-api", Port: 8000}},
 			Bindings:   bindings["checkout-api"],
 		},
+		{
+			// A worker: runs, never listens — nothing to point at.
+			Name:       "signals",
+			DevServers: []DevServerConfig{{Name: "worker"}},
+		},
 	}
 
 	return ResolveParams{
@@ -124,6 +129,8 @@ func TestResolveBindings_UnresolvableTargets(t *testing.T) {
 		{"project not in worktree", "{{url:store-partner}}", "not in workspace"},
 		{"named server not running", "{{url:store-api/other}}", "is not running"},
 		{"bare ref is ambiguous", "{{url:admin}}", "name one"},
+		{"server has no port", "{{signals/worker}}", "has no port"},
+		{"project has only portless servers", "{{signals}}", "signals has no port"},
 	}
 
 	for _, tt := range tests {

@@ -43,9 +43,11 @@ crew claude store-front/main                              # Claude, oriented, in
 crew add worktree store-front/wrk2 --pull                 # a second copy of everything
 ```
 
-Or from the TUI: `crew project` (enter opens a project's page — install commands, servers,
-bindings and the check on one screen, edited in place; `a` walks a new project through
-source → install → servers → bindings → check), `crew workspace`, `crew launch <ws>/<wt>`.
+Or from the TUI: `crew workspace` (`n` walks a new workspace through name → projects →
+create and lands on its worktree page; enter opens a workspace's page — its projects and
+worktrees on one screen), `crew project` (enter opens a project's page — install commands,
+servers, bindings and the check on one screen, edited in place; `a` walks a new project
+through source → install → servers → bindings → check), `crew launch <ws>/<wt>`.
 
 ## Why
 
@@ -67,11 +69,11 @@ source → install → servers → bindings → check), `crew workspace`, `crew 
 ### Projects, workspaces, worktrees
 
 A **project** is a repo in a global pool — its git remote is its identity, the path is crew's
-clone — with its dev servers, bindings and optional setup and env commands. A **workspace** is membership — which projects, with which roles. A **worktree** is
+clone — with its dev servers, bindings and optional setup and env commands. A **workspace** is membership — which projects, each as a worktree or direct. A **worktree** is
 one working copy: for each project a git worktree on branch `crew/<ws>/<wt>/<project>`, a
 copied `.env`, an install, and reserved ports.
 
-`crew add workspace <ws> <p1>[:<role>] <p2> …` adds any number of projects in one call —
+`crew add workspace <ws> <p1> <p2> …` adds any number of projects in one call —
 names checked first, then one runner per project. `crew add worktree <ws>/<name>` makes
 another copy of all of them; `--pull` fast-forwards the base branches first.
 
@@ -81,7 +83,8 @@ crew stays out of your code. Two things:
 
 1. **The dev server binds `$PORT`.** crew allocates a port per server per worktree and runs
    the command with `PORT=<n>` set — `next dev -p $PORT`, `uvicorn --port $PORT`,
-   `process.env.PORT`. The `--port` you configure is a reference for scans and conflict
+   `process.env.PORT`. A server added without `--port` is a process that does not listen — a
+   worker — and runs with no `PORT` and no URL. The `--port` you configure is a reference for scans and conflict
    checks, not what runs. A server that ignores `$PORT` collides with its siblings and shows
    as `not listening`.
 2. **Sibling URLs come from env vars**, read at start, never hard-coded. Those are what
@@ -221,8 +224,9 @@ checked as on the first.
 delete clears it (a full build can be 100 GB); its `crew/<ws>/<wt>/<project>` branch is
 deleted from the repo (commits not on the base stay in the reflog). `crew trash` shows what
 is still clearing.
-`crew rm project <name> --purge` also trashes a clone crew made from a URL — refused while a
-workspace still lists the project.
+`crew rm project <name>` takes the clone crew made from a URL with it (to the trash;
+`--keep-clone` leaves it; a checkout of yours is never moved) — refused while a workspace
+still lists the project.
 
 Every crew command sweeps leftovers at most once an hour — failed checks older than a week,
 runner files, dev logs and route files of worktrees that no longer exist, stale locks, the
@@ -237,7 +241,7 @@ replace the process (`crew claude`, `crew open`); those print the data alternati
 without one.
 
 **Inside a worktree.** Every launch (`crew claude`, `crew edit`, the page) opens Claude with an
-orientation prompt: the projects and roles, worktree/direct framing, and a `## crew` section —
+orientation prompt: the projects and their paths, worktree/direct framing, and a `## crew` section —
 you are in `<ws>/<wt>`, drive the servers with `crew dev …`, read logs with `--lines`, run
 tests through `crew run`, `crew fix <ref> --print` when something is recorded. `CREW_REF` is
 in the environment. `crew start <ref>` prints the same prompt for any other agent.
@@ -255,7 +259,7 @@ proxy"*), and four guided skills that trigger on their own or as `/crew:<name>`:
 
 | | |
 |---|---|
-| `setup` | which repos, roles, dev servers, bindings — builds the workspace and checks it |
+| `setup` | which repos, dev servers, bindings — builds the workspace and checks it |
 | `import` | where the export is, then each project's decision (path, clone, replace) with you |
 | `status` | worktrees, running servers with their check verdict, recorded issues |
 | `proxy` | a `--proxy` URL that opens here but not on the phone |
@@ -267,9 +271,9 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | | |
 |---|---|
 | **See** | `ls workspaces` · `ls worktrees [--size]` · `ls projects` · `ls bindings <p> [--check=<ref>]` · `ls overrides <ref>` · `show <ref>` · `env <ref> <p>` · `dev status` · `dev show <p>` · `dev check <ref>` · `ps` · `trash` · `config show` · `debug --tail=N` |
-| **Projects** | `add project <name> <url> \| --path=<dir> [--setup=…] [--env-cmd=…]` · `rm project [--purge]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
+| **Projects** | `add project <name> <url> \| --path=<dir> [--setup=…] [--env-cmd=…]` · `rm project [--keep-clone]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name --port --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p>[/<server>] --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p>[/<server>] --scan [--apply]` · `rm binding <p>[/<server>] X` · `add\|rm override <ref> VAR=value` · `env <ref> <p>[/<server>]` · `run <ref> <p>[/<server>] -- <cmd>` |
-| **Workspaces** | `add workspace <ws> [<p>[:<role>] …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
+| **Workspaces** | `add workspace <ws> [<p> …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
 | **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> [--path \| --replace] \| workspace <name> [--pull] [--wait] \| --all [--replace] [--pull] [--wait]]` |

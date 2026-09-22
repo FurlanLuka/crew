@@ -2,7 +2,7 @@
 name: setup
 description: >
   Guided crew workspace setup — which repos (paths on disk, git URLs, or picked from `gh repo
-  list`), what roles, which dev servers and bindings, then proves each project runs from a
+  list`), which dev servers and bindings, then proves each project runs from a
   fresh checkout, builds the workspace and checks the servers come up. Use when the user
   wants to set up, create or bootstrap a workspace, add several projects to one, register
   repos with crew, clone repos into crew, bootstrap from GitHub, or says "get this project
@@ -29,7 +29,8 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
    project.
 3. Dev servers, per project: `crew dev setup <project>` shows what `package.json` offers;
    confirm the port and command, then `crew dev setup <project> --apply --port=<p>` or
-   `crew dev add <project> --name=<n> --port=<p> --cmd="<c>"`. Remind them the command must
+   `crew dev add <project> --name=<n> --port=<p> --cmd="<c>"` (no `--port` for a worker
+   that does not listen). Remind them the command must
    bind `$PORT`.
 4. Bindings: `crew add binding <project> --scan` for each project; show the proposals; apply
    the unambiguous ones with `--apply`, ask about any marked ambiguous. A monorepo — one
@@ -43,8 +44,7 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
    check/<name> <name>` (or `crew fix check/<name> --print`) says what failed; fix the
    config (`--setup`, `--env-cmd`, the `dev add` command, `$PORT`), check again. Do not go
    on to the workspace with a failing check — every worktree would hit the same wall.
-6. Roles: ask one line per project ("Backend API", "iOS app"). Then one call:
-   `crew add workspace <ws> a:"role" b:"role" …`. It returns at once — one runner per
+6. One call: `crew add workspace <ws> a b …`. It returns at once — one runner per
    project installs in the background. Poll `crew setup status <ws>/main` (exit 2 while
    running); a `✗` row is recorded the moment it fails — `crew fix <ws>/main --print` has
    the evidence, fix it, `crew verify <ws>/main <project>` — while the others still
@@ -54,4 +54,4 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
    <ws>/main` (or `crew launch <ws>/main`). Otherwise fix what the check names.
 
 Ask with real options where they exist (which repos, which script, which port); free text
-for names and roles. Never print binding values.
+for names. Never print binding values.

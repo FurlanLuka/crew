@@ -115,6 +115,9 @@ func PlanServers(projects []DevProject, ports []int, noProxy bool) []PlannedServ
 // to tmux and never returned, and it is the only place resolution reaches a
 // process.
 func ServerCommand(ps PlannedServer, resolutions []Resolution) string {
+	if !ps.Route.Listens() {
+		return EnvPrefix(resolutions) + ps.Server.Command
+	}
 	portStr := fmt.Sprintf("%d", ps.Route.InternalPort)
 	return EnvPrefix(resolutions) + "PORT=" + portStr + " " + strings.ReplaceAll(ps.Server.Command, "$PORT", portStr)
 }
@@ -183,6 +186,12 @@ func AllocatePorts(projects []DevProject, reserved map[string]int) ([]int, error
 	var ports []int
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
+			if ds.Port == 0 {
+				// A process that does not listen gets no port, and keeps
+				// its place in the list so PlanServers pairs by position.
+				ports = append(ports, 0)
+				continue
+			}
 			if want := reserved[PortKey(p.Name, ds.Name)]; want > 0 && PortFree(want) {
 				ports = append(ports, want)
 				continue
@@ -374,6 +383,11 @@ func StartProjectServers(p ProjectServersParams) ([]Route, []string, error) {
 	var ports []int
 	for _, dp := range mine {
 		for _, ds := range dp.DevServers {
+			if ds.Port == 0 {
+				// Nothing was reserved for a server that does not listen.
+				ports = append(ports, 0)
+				continue
+			}
 			port, ok := p.Ports[PortKey(dp.Name, ds.Name)]
 			if !ok || port == 0 {
 				return nil, nil, fmt.Errorf("no port reserved for %s", PortKey(dp.Name, ds.Name))

@@ -59,17 +59,28 @@ func validateTarget(ref dev.TargetRef) error {
 	}
 
 	if ref.HasServer {
-		_, err := FindServer(ref.Project, target.DevServers, ref.Server)
-		return err
+		ds, err := FindServer(ref.Project, target.DevServers, ref.Server)
+		if err != nil {
+			return err
+		}
+		if !ds.Listens() {
+			return fmt.Errorf("%s/%s has no port — nothing to point at", ref.Project, ref.Server)
+		}
+		return nil
 	}
 
-	switch len(target.DevServers) {
+	// Only a server with a port can be pointed at; a worker is not a target.
+	listening := ListeningServers(target.DevServers)
+	switch len(listening) {
 	case 0:
+		if len(target.DevServers) > 0 {
+			return fmt.Errorf("project '%s' has no dev server with a port — nothing to point at", ref.Project)
+		}
 		return fmt.Errorf("project '%s' has no dev servers configured", ref.Project)
 	case 1:
 		return nil
 	default:
-		return dev.AmbiguousTargetError(ref.Project, len(target.DevServers), serverNames(target.DevServers))
+		return dev.AmbiguousTargetError(ref.Project, len(listening), serverNames(listening))
 	}
 }
 
@@ -213,12 +224,25 @@ func DeclaredVars(bindings []Binding) map[string]bool {
 }
 
 // WithDevServers is the pool narrowed to what a {{project}} token can
-// point at. Pure.
+// point at: a project with a server that has a port — a worker is not a
+// target. Pure.
 func WithDevServers(pool []Project) []Project {
 	var out []Project
 	for _, p := range pool {
-		if len(p.DevServers) > 0 {
+		if len(ListeningServers(p.DevServers)) > 0 {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ListeningServers is the servers a token can name: the ones with a port.
+// Pure.
+func ListeningServers(servers []DevServer) []DevServer {
+	var out []DevServer
+	for _, ds := range servers {
+		if ds.Listens() {
+			out = append(out, ds)
 		}
 	}
 	return out
@@ -236,6 +260,9 @@ func ConfiguredPorts() map[int][]dev.ProjectServer {
 	}
 	for _, p := range projects {
 		for _, ds := range p.DevServers {
+			if !ds.Listens() {
+				continue
+			}
 			ports[ds.Port] = append(ports[ds.Port], dev.ProjectServer{Project: p.Name, Server: ds.Name})
 		}
 	}

@@ -242,8 +242,9 @@ func TestServerForm(t *testing.T) {
 	}{
 		"ok":         {[4]string{"web", "3000", "pnpm dev", ""}, project.DevServer{Name: "web", Port: 3000, Command: "pnpm dev"}, ""},
 		"dir":        {[4]string{" web ", "3000", "pnpm dev", "apps/web"}, project.DevServer{Name: "web", Port: 3000, Command: "pnpm dev", Dir: "apps/web"}, ""},
-		"no name":    {[4]string{"", "3000", "pnpm dev", ""}, project.DevServer{}, "name, port, and command are required"},
-		"no command": {[4]string{"web", "3000", "", ""}, project.DevServer{}, "name, port, and command are required"},
+		"no port":    {[4]string{"worker", "", "pnpm worker", ""}, project.DevServer{Name: "worker", Command: "pnpm worker"}, ""},
+		"no name":    {[4]string{"", "3000", "pnpm dev", ""}, project.DevServer{}, "name and command are required"},
+		"no command": {[4]string{"web", "3000", "", ""}, project.DevServer{}, "name and command are required"},
 		"bad port":   {[4]string{"web", "abc", "pnpm dev", ""}, project.DevServer{}, "invalid port number"},
 		"zero port":  {[4]string{"web", "0", "pnpm dev", ""}, project.DevServer{}, "invalid port number"},
 	} {
@@ -278,7 +279,7 @@ func TestServerForm(t *testing.T) {
 	f = newServerForm("admin", nil)
 	f.inputs[serverPort].SetValue("x")
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if f.err == nil || !strings.Contains(plain(f.View()), "name, port, and command are required") {
+	if f.err == nil || !strings.Contains(plain(f.View()), "name and command are required") {
 		t.Errorf("the form says what is wrong:\n%s", plain(f.View()))
 	}
 }

@@ -206,7 +206,11 @@ func renderFinish(b *strings.Builder, c finishCard) {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("  crew add workspace " + wsPlaceholder + " " + p.Name + app.Subtle.Render("   the project joins a workspace; its first worktree is made then") + "\n")
+	if c.InWorkspace != "" {
+		b.WriteString("  " + app.Subtle.Render("esc goes back to "+c.InWorkspace+"'s projects — "+p.Name+" is ticked there") + "\n")
+	} else {
+		b.WriteString("  crew add workspace " + wsPlaceholder + " " + p.Name + app.Subtle.Render("   the project joins a workspace; its first worktree is made then") + "\n")
+	}
 	// Stopped early, the resume line above already names the keys; a walk
 	// that reached the check (or the end) gets the generic one.
 	if c.resumeKeys() == "" {

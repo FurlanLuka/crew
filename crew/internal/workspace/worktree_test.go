@@ -28,7 +28,7 @@ func newRepoWorkspace(t *testing.T, wsName string, projNames ...string) {
 		t.Fatalf("Create: %v", err)
 	}
 	for _, name := range projNames {
-		if err := AddProject(wsName, name, "role", "", CheckoutOptions{}); err != nil {
+		if err := addProject(wsName, name, "", CheckoutOptions{}); err != nil {
 			t.Fatalf("AddProject %s: %v", name, err)
 		}
 	}
@@ -196,7 +196,7 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 		project.Add(project.Project{Name: "api", Path: repo})
 
 		Create("ws")
-		if err := AddProject("ws", "api", "r", ModeDirect, CheckoutOptions{}); err != nil {
+		if err := addProject("ws", "api", ModeDirect, CheckoutOptions{}); err != nil {
 			t.Fatalf("AddProject direct: %v", err)
 		}
 
@@ -220,7 +220,7 @@ func TestDirectModePin_BothDirections(t *testing.T) {
 		initRepo(t, repo)
 		project.Add(project.Project{Name: "other", Path: repo})
 
-		err := AddProject("ws", "other", "r", ModeDirect, CheckoutOptions{})
+		err := addProject("ws", "other", ModeDirect, CheckoutOptions{})
 		if err == nil {
 			t.Fatal("adding a direct project to a multi-worktree workspace should be refused")
 		}

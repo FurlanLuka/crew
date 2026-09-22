@@ -28,6 +28,30 @@ func TestSmokeResult_State(t *testing.T) {
 	}
 }
 
+// reached: a port-less server is reached by running at all; one with a
+// port only when something accepts on it.
+func TestReached(t *testing.T) {
+	open := func(port int) bool { return port == 54001 }
+	listening := dev.Route{ServerName: "api", InternalPort: 54001}
+	closed := dev.Route{ServerName: "web", InternalPort: 54002}
+	worker := dev.Route{ServerName: "worker"}
+	for _, tt := range []struct {
+		r     dev.Route
+		alive bool
+		want  bool
+	}{
+		{listening, true, true},
+		{closed, true, false},
+		{worker, true, true},
+		{worker, false, false},
+		{listening, false, false},
+	} {
+		if got := reached(tt.r, tt.alive, open); got != tt.want {
+			t.Errorf("reached(%s, alive=%v) = %v, want %v", tt.r.ServerName, tt.alive, got, tt.want)
+		}
+	}
+}
+
 func TestSmokeNotesAndIssues(t *testing.T) {
 	results := []SmokeResult{
 		{Project: "api", Server: "api", Port: 54001, Alive: true, Listening: true},

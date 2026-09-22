@@ -133,6 +133,14 @@ func TestListAllRoutes(t *testing.T) {
 	}
 }
 
+// A route with no port has no URL and is never proxied.
+func TestRoute_Portless(t *testing.T) {
+	r := Route{Project: "api", ServerName: "worker"}
+	if r.Listens() || r.Proxied() || RouteURL(r, "ws--main", "dev.local", 8080) != "" {
+		t.Errorf("portless route: listens=%v proxied=%v url=%q", r.Listens(), r.Proxied(), RouteURL(r, "ws--main", "dev.local", 8080))
+	}
+}
+
 func TestRouteURL(t *testing.T) {
 	tests := []struct {
 		name      string
