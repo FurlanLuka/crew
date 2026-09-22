@@ -40,6 +40,10 @@ type worktreeAddedMsg struct {
 	duplicatedFrom string
 }
 type worktreeRemovedMsg struct{ ref workspace.Ref }
+type worktreeRenamedMsg struct {
+	from, to workspace.Ref
+	warnings []string
+}
 type membersAddedMsg struct {
 	names []string
 	refs  []workspace.Ref // the worktrees whose runners were started
@@ -87,6 +91,7 @@ const (
 	openPicker
 	openNewWorktree
 	openDuplicate
+	openRename
 )
 
 type confirmKind int
@@ -126,10 +131,12 @@ type Page struct {
 
 	open   openKind
 	picker picker
-	input  textinput.Model // the new worktree's or the duplicate's name
+	input  textinput.Model // the name field of the open form
 	// bases is the new-worktree form's table.
-	bases     basePane
-	dupSource workspace.Ref
+	bases basePane
+	// formRef is the worktree the open form acts on — duplicate's source,
+	// rename's subject.
+	formRef workspace.Ref
 
 	confirm *confirmAsk
 	// busy is the line shown while a removal or a creation runs; keys
@@ -224,6 +231,21 @@ func (p Page) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.pending = &pendingCursor{kind: rowWorktree}
 		return p, loadPageFacts(p.name)
 
+	case worktreeRenamedMsg:
+		p.busy, p.err = "", nil
+		p.closeForm()
+		p.status = fmt.Sprintf("Renamed %s → %s", msg.from, msg.to)
+		if len(msg.warnings) > 0 {
+			p.status += " — " + msg.warnings[0]
+		}
+		// The size is the same bytes under a new key.
+		if n, ok := p.facts.sizes[msg.from.String()]; ok {
+			p.facts.sizes[msg.to.String()] = n
+			delete(p.facts.sizes, msg.from.String())
+		}
+		p.pending = &pendingCursor{kind: rowWorktree, key: msg.to.String()}
+		return p, loadPageFacts(p.name)
+
 	case workspaceRemovedMsg:
 		return p, func() tea.Msg { return app.PopPageMsg{Status: fmt.Sprintf("Removed workspace '%s'", msg.name)} }
 
@@ -263,7 +285,7 @@ func (p Page) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return p.handleKey(msg)
 	}
-	if p.open == openNewWorktree || p.open == openDuplicate {
+	if p.open == openNewWorktree || p.open == openDuplicate || p.open == openRename {
 		var cmd tea.Cmd
 		p.input, cmd = p.input.Update(msg)
 		return p, cmd

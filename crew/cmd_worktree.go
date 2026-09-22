@@ -1217,3 +1217,74 @@ func cmdLsOverrides() {
 		fmt.Printf("%s\t%s\n", k, res.Overrides[k])
 	}
 }
+
+// cmdRename is crew rename worktree <ws>/<wt> <new-name>; the rules are
+// workspace.RenameWorktree's. Synchronous, so no --wait.
+func cmdRename() {
+	from, newName, err := parseRenameArgs(os.Args[2:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew rename worktree <workspace>/<worktree> <new-name>\n", err)
+		os.Exit(1)
+	}
+	from = mustResolve(from.String()).Ref
+	to, warnings, err := workspace.RenameWorktree(from, newName)
+	switch {
+	case errors.Is(err, workspace.ErrServersRunning):
+		fmt.Fprintf(os.Stderr, "Error: %s's servers are running — they hold the old paths. crew dev stop %s first.\n", from, from)
+		os.Exit(1)
+	case errors.Is(err, workspace.ErrSetupRunning):
+		fmt.Fprintf(os.Stderr, "Error: %s is still installing — crew setup status %s, then rename.\n", from, from)
+		os.Exit(1)
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if jsonOutput {
+		printJSON(renameDoc(from, to, warnings))
+		return
+	}
+	fmt.Printf("Renamed %s → %s\n", from, to)
+	for _, w := range warnings {
+		fmt.Fprintf(human, "! %s\n", w)
+	}
+	fmt.Fprintf(human, "shells, editors and agents opened on the old paths still hold them — crew claude %s / crew edit %s reopen on the new ones\n", to, to)
+	fmt.Fprintf(human, "crew verify %s re-checks it if anything baked the old path\n", to)
+}
+
+// parseRenameArgs reads `worktree <ws>[/<wt>] <new-name>`: the one noun
+// there is, the ref (bare when the workspace has one worktree), the name.
+// Pure.
+func parseRenameArgs(args []string) (workspace.Ref, string, error) {
+	if len(args) == 0 || args[0] != "worktree" {
+		what := "nothing"
+		if len(args) > 0 {
+			what = "'" + args[0] + "'"
+		}
+		return workspace.Ref{}, "", fmt.Errorf("crew rename takes 'worktree', not %s — crew rename worktree <workspace>/<worktree> <new-name>", what)
+	}
+	if len(args) < 3 {
+		return workspace.Ref{}, "", errors.New("a worktree and its new name are needed")
+	}
+	if len(args) > 3 {
+		return workspace.Ref{}, "", fmt.Errorf("unexpected argument '%s'", args[3])
+	}
+	ref, err := workspace.ParseRef(args[1])
+	if err != nil {
+		return workspace.Ref{}, "", err
+	}
+	return ref, args[2], nil
+}
+
+// renameOut is crew rename worktree --json.
+type renameOut struct {
+	From     string   `json:"from"`
+	To       string   `json:"to"`
+	Warnings []string `json:"warnings"`
+}
+
+func renameDoc(from, to workspace.Ref, warnings []string) renameOut {
+	if warnings == nil {
+		warnings = []string{}
+	}
+	return renameOut{From: from.String(), To: to.String(), Warnings: warnings}
+}

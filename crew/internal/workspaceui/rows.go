@@ -96,6 +96,8 @@ func pageKeys(rows []pageRow, cursor int, open openKind, flat, stale bool) []str
 		return []string{"enter create", "esc back"}
 	case openDuplicate:
 		return []string{"enter duplicate", "esc back"}
+	case openRename:
+		return []string{"enter rename", "esc back"}
 	}
 	if cursor < 0 || cursor >= len(rows) {
 		return []string{"esc back"}
@@ -110,7 +112,7 @@ func pageKeys(rows []pageRow, cursor int, open openKind, flat, stale bool) []str
 		if flat {
 			keys = []string{"enter open", "d remove"}
 		} else {
-			keys = []string{"enter open", "u duplicate", "n new", "d remove"}
+			keys = []string{"enter open", "r rename", "u duplicate", "n new", "d remove"}
 		}
 	case rowNewWorktree:
 		keys = []string{"enter create"}
@@ -133,7 +135,7 @@ func pageCLI(rows []pageRow, cursor int, ws string) string {
 			// A flat pre-2.0 workspace: the one command that applies.
 			return "crew migrate — names this workspace's checkout so worktrees can be added"
 		}
-		return fmt.Sprintf("crew %s · crew duplicate %s <name> · crew rm worktree %s", rows[cursor].Key, rows[cursor].Key, rows[cursor].Key)
+		return fmt.Sprintf("crew %s · crew rename worktree %s <name> · crew duplicate %s <name> · crew rm worktree %s", rows[cursor].Key, rows[cursor].Key, rows[cursor].Key, rows[cursor].Key)
 	case rowNewWorktree:
 		if len(rows) > 1 && rows[cursor-1].Kind == rowWorktree && !strings.Contains(rows[cursor-1].Key, "/") {
 			return "crew migrate first — a pre-2.0 workspace cannot take a worktree"

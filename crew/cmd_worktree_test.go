@@ -184,3 +184,30 @@ func TestParseSetupArgs(t *testing.T) {
 		t.Errorf("--no-install must also skip the smoke: %+v", o)
 	}
 }
+
+func TestParseRenameArgs(t *testing.T) {
+	ref, name, err := parseRenameArgs([]string{"worktree", "ws/main", "dev"})
+	if err != nil || ref.String() != "ws/main" || name != "dev" {
+		t.Errorf("full ref: %v %q %v", ref, name, err)
+	}
+	if ref, _, err := parseRenameArgs([]string{"worktree", "ws", "dev"}); err != nil || ref.Workspace != "ws" || ref.Worktree != "" {
+		t.Errorf("bare workspace ref: %v %v", ref, err)
+	}
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{nil, "crew rename takes 'worktree'"},
+		{[]string{"workspace", "ws", "x"}, "not 'workspace'"},
+		{[]string{"worktree", "ws/main"}, "new name are needed"},
+		{[]string{"worktree", "ws/main", "dev", "extra"}, "unexpected argument 'extra'"},
+	} {
+		if _, _, err := parseRenameArgs(tt.args); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%v: err = %v, want %q", tt.args, err, tt.want)
+		}
+	}
+	doc, _ := json.Marshal(renameDoc(workspace.Ref{Workspace: "ws", Worktree: "main"}, workspace.Ref{Workspace: "ws", Worktree: "dev"}, nil))
+	if string(doc) != `{"from":"ws/main","to":"ws/dev","warnings":[]}` {
+		t.Errorf("doc = %s", doc)
+	}
+}

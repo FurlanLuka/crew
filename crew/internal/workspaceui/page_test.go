@@ -72,7 +72,7 @@ func TestPageKeysAndCLI(t *testing.T) {
 	})
 	for i, want := range []string{
 		"enter open  a add project  d remove  esc back",
-		"enter open  u duplicate  n new  d remove  esc back",
+		"enter open  r rename  u duplicate  n new  d remove  esc back",
 		"enter create  esc back",
 	} {
 		if got := strings.Join(pageKeys(rows, i, openNone, false, false), "  "); got != want {
@@ -91,10 +91,13 @@ func TestPageKeysAndCLI(t *testing.T) {
 	if got := strings.Join(pageKeys(rows, 0, openNewWorktree, false, false), "  "); got != "enter create  esc back" {
 		t.Errorf("new keys up to date = %q", got)
 	}
+	if got := strings.Join(pageKeys(rows, 1, openRename, false, false), "  "); got != "enter rename  esc back" {
+		t.Errorf("rename keys = %q", got)
+	}
 	if got := pageCLI(rows, 0, "ws"); got != "crew rm workspace ws api · crew add workspace ws <project> [--direct]" {
 		t.Errorf("project cli = %q", got)
 	}
-	if got := pageCLI(rows, 1, "ws"); got != "crew ws/main · crew duplicate ws/main <name> · crew rm worktree ws/main" {
+	if got := pageCLI(rows, 1, "ws"); got != "crew ws/main · crew rename worktree ws/main <name> · crew duplicate ws/main <name> · crew rm worktree ws/main" {
 		t.Errorf("worktree cli = %q", got)
 	}
 	if got := pageCLI(rows, 2, "ws"); got != "crew add worktree ws/<name> [--pull]" {
@@ -122,7 +125,7 @@ func TestPage_OpensPages(t *testing.T) {
 		t.Fatalf("the cursor lands on the first worktree: %+v", p.rows[p.cursor])
 	}
 	got := plain(p.View())
-	for _, want := range []string{"1 project · 1 worktree", "store-api   worktree   ", "> main", "+ new worktree", "crew ws/main · crew duplicate ws/main <name>"} {
+	for _, want := range []string{"1 project · 1 worktree", "store-api   worktree   ", "> main", "+ new worktree", "crew ws/main · crew rename worktree ws/main <name> · crew duplicate ws/main <name>"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("page lacks %q:\n%s", want, got)
 		}
@@ -236,8 +239,8 @@ func TestPage_NewWorktreePushesThePage(t *testing.T) {
 	}
 	// Duplicate goes the same way.
 	p, _ = pressP(t, p, "u")
-	if p.open != openDuplicate || p.dupSource.String() != "ws/wrk2" {
-		t.Fatalf("u: open=%v src=%v", p.open, p.dupSource)
+	if p.open != openDuplicate || p.formRef.String() != "ws/wrk2" {
+		t.Fatalf("u: open=%v src=%v", p.open, p.formRef)
 	}
 	for _, r := range "wrk3" {
 		p, _ = pressP(t, p, string(r))
@@ -452,5 +455,71 @@ func TestPage_NewWorktreePull(t *testing.T) {
 	p = m.(Page)
 	if !p.bases.ready() || p.err == nil || !strings.Contains(p.err.Error(), "fast-forwarding main failed") {
 		t.Errorf("after the pull: phase=%v err=%v", p.bases.phase, p.err)
+	}
+}
+
+// r renames in place: the field opens with the current name as its
+// placeholder, enter renames through the command, the cursor follows the
+// new ref, nothing is pushed; a refusal leaves the form open.
+func TestPage_RenamesWorktree(t *testing.T) {
+	pageFixture(t)
+	if err := workspace.AddWorktree("ws", "wrk2", workspace.CheckoutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	p := settlePage(t, NewPage("ws"))
+	p.facts.sizes["ws/main"] = 42
+	p, _ = pressP(t, p, "r")
+	if p.open != openRename || p.input.Placeholder != "main" || p.input.Value() != "" {
+		t.Fatalf("r opens the field: open=%v placeholder=%q", p.open, p.input.Placeholder)
+	}
+	if got := plain(p.View()); !strings.Contains(got, "Rename worktree 'ws/main' to ws/") || !strings.Contains(got, "enter rename  esc back") {
+		t.Errorf("form:\n%s", got)
+	}
+	p, _ = pressP(t, p, "enter")
+	if p.open != openRename {
+		t.Error("enter on an empty name is inert")
+	}
+	for _, r := range "wrk2" {
+		p, _ = pressP(t, p, string(r))
+	}
+	p, _ = pressP(t, p, "enter")
+	if p.open != openRename || p.err == nil || !strings.Contains(p.err.Error(), "already has a worktree 'wrk2'") || p.input.Value() != "wrk2" {
+		t.Fatalf("a refusal keeps the form and the typed name: open=%v err=%v value=%q", p.open, p.err, p.input.Value())
+	}
+	p.input.SetValue("dev")
+	p, nav := pressP(t, p, "enter")
+	if pushedPage(nav) != nil {
+		t.Error("a rename pushes nothing")
+	}
+	if p.open != openNone || p.busy != "" || p.err != nil || p.status != "Renamed ws/main → ws/dev" {
+		t.Fatalf("after the rename: open=%v busy=%q status=%q err=%v", p.open, p.busy, p.status, p.err)
+	}
+	if p.rows[p.cursor].Key != "ws/dev" {
+		t.Errorf("the cursor follows the new ref: %+v", p.rows[p.cursor])
+	}
+	if _, old := p.facts.sizes["ws/main"]; old || p.facts.sizes["ws/dev"] != 42 {
+		t.Errorf("sizes re-keyed: %v", p.facts.sizes)
+	}
+	ws, _ := workspace.Load("ws")
+	if len(ws.Worktrees) != 2 || ws.Worktrees[0].Name != "dev" {
+		t.Errorf("worktrees = %+v", ws.Worktrees)
+	}
+	// A warning rides on the status line; busy gates a second enter.
+	m, _ := p.Update(worktreeRenamedMsg{from: workspace.Ref{Workspace: "ws", Worktree: "dev"}, to: workspace.Ref{Workspace: "ws", Worktree: "dev2"}, warnings: []string{"store-api kept — on feature/x"}})
+	if got := m.(Page).status; got != "Renamed ws/dev → ws/dev2 — store-api kept — on feature/x" {
+		t.Errorf("status with a warning = %q", got)
+	}
+	busy := p
+	busy.open, busy.busy = openRename, "renaming…"
+	if m, cmd := busy.Update(keyOf("enter")); cmd != nil || m.(Page).busy == "" {
+		t.Error("enter while a rename runs is ignored")
+	}
+
+	// A flat workspace has nothing to rename.
+	workspace.Save(&workspace.Workspace{Name: "old", Projects: []workspace.WorkspaceProject{{Name: "store-api"}}})
+	flat := settlePage(t, NewPage("old"))
+	flat, _ = pressP(t, flat, "r")
+	if flat.open != openNone {
+		t.Error("r on a flat row is inert")
 	}
 }

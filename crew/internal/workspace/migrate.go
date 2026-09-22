@@ -234,7 +234,7 @@ func ApplyMigration(plan *MigrationPlan, backup string) error {
 
 	merged := map[string]*Workspace{}
 	for _, m := range plan.Moves {
-		if err := moveWorktree(m); err != nil {
+		if err := moveCheckouts(Ref{Workspace: m.OldWorkspace}, m.Ref, m.Projects); err != nil {
 			return err
 		}
 
@@ -287,29 +287,36 @@ func unionProjects(into, from []WorkspaceProject) []WorkspaceProject {
 	return into
 }
 
-// moveWorktree relocates every checkout of one old workspace and renames its
-// branches.
-func moveWorktree(m MigrationMove) error {
-	if m.OldWorkspace == m.Ref.Workspace && m.Ref.Worktree == "" {
+// moveCheckouts relocates every non-direct checkout of one worktree to
+// another ref — the migration's move (a flat workspace into its named
+// worktree) and a rename (a sibling under the same workspace) alike.
+// Re-runnable: a checkout already gone from the old path is skipped, so a
+// second call finishes what a first one left. The branch follows the
+// checkout: renamed in place when it is checked out, in the canonical
+// repo otherwise, so a checkout sitting on a feature branch leaves no
+// stale crew/<ws>/<old>/<p> behind.
+func moveCheckouts(from, to Ref, members []WorkspaceProject) error {
+	if from == to {
 		return nil
 	}
 
-	if err := os.MkdirAll(WorktreeDir(m.Ref), 0o755); err != nil {
+	if err := os.MkdirAll(WorktreeDir(to), 0o755); err != nil {
 		return err
 	}
 
-	for _, wp := range m.Projects {
+	for _, wp := range members {
 		if IsDirect(wp) {
 			continue
 		}
 
 		p := project.Get(wp.Name)
 		if p == nil {
+			debug.Log("git", "%s: not in the pool — its directory moves with the loose entries, no git repair", wp.Name)
 			continue
 		}
 
-		oldPath := WorktreePath(Ref{Workspace: m.OldWorkspace}, wp.Name)
-		newPath := WorktreePath(m.Ref, wp.Name)
+		oldPath := WorktreePath(from, wp.Name)
+		newPath := WorktreePath(to, wp.Name)
 		if oldPath == newPath {
 			continue
 		}
@@ -323,9 +330,15 @@ func moveWorktree(m MigrationMove) error {
 		if err := exec.MoveGitWorktree(p.Path, oldPath, newPath); err != nil {
 			return fmt.Errorf("moving %s: %w", wp.Name, err)
 		}
-		exec.RenameGitBranch(newPath,
-			BranchName(Ref{Workspace: m.OldWorkspace}, wp.Name),
-			BranchName(m.Ref, wp.Name))
+		oldBranch, newBranch := BranchName(from, wp.Name), BranchName(to, wp.Name)
+		if currentBranch(newPath) == oldBranch {
+			exec.RenameGitBranch(newPath, oldBranch, newBranch)
+		} else if _, err := exec.RunGitCommand(p.Path, "branch", "-m", oldBranch, newBranch); err != nil {
+			// Not checked out here: renamed where it lives, best effort.
+			debug.Log("git", "%s: branch %s not renamed: %v", wp.Name, oldBranch, err)
+		}
+		// mise's trust is path-keyed; the moved checkout has to be trusted again.
+		exec.TrustMise(newPath)
 
 		for _, name := range []string{".venv", "venv"} {
 			venv := filepath.Join(newPath, name)
@@ -343,10 +356,10 @@ func moveWorktree(m MigrationMove) error {
 	// Anything else in the old directory — notes, audit folders, a checkout
 	// whose pool entry is gone — belongs to this working copy and travels with
 	// it rather than being stranded beside the new tree.
-	if err := moveLooseEntries(WorktreeDir(Ref{Workspace: m.OldWorkspace}), WorktreeDir(m.Ref)); err != nil {
+	if err := moveLooseEntries(WorktreeDir(from), WorktreeDir(to)); err != nil {
 		return err
 	}
-	os.Remove(WorktreeDir(Ref{Workspace: m.OldWorkspace}))
+	os.Remove(WorktreeDir(from))
 	return nil
 }
 

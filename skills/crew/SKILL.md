@@ -210,6 +210,7 @@ crew rm workspace <workspace> <project>                            remove a proj
 crew rm <workspace>                                                the whole workspace, every worktree
 crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]
 crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke] [--wait]
+crew rename worktree <workspace>/<worktree> <new-name>            Renamed <workspace>/<worktree> → <workspace>/<new-name>   --json: {from, to, warnings: []}
 crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]
 crew setup status <workspace>[/<worktree>] [--wait]               ✓|✗|▸ <project>  <step> <took> · <step> <took> · ▸ <running step> | <step> — <reason>
 crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]
@@ -250,6 +251,15 @@ crew migrate [--dry-run] [--yes]
   keeps the member, recorded on that worktree. One call, not one per project.
 - `--direct` adds the projects by their canonical paths instead of git worktrees — for a repo
   that must not be checked out twice.
+- `rename worktree` is synchronous: the directory, every checkout's `crew/<ws>/<wt>/<p>`
+  branch, the setup table, runner logs and dev logs move to the new name; overrides,
+  reserved ports and a recorded failure travel with the record; the prompt is regenerated.
+  Refused while its dev servers or a setup runner are alive, on a pre-2.0 workspace, on a
+  check target, and when the new name or a branch it would take exists. A checkout on its
+  own branch is kept and named in a `!` line. Interrupted, run it again with the same new
+  name to finish. Shells, editors and agents opened on the old paths keep them — `crew
+  claude` / `crew edit` the new ref. A pushed branch keeps its old upstream name; proxy
+  hostnames change with the slug.
 - `add worktree` prints each project's base branch and how far behind origin it is; `--pull`
   fast-forwards the local bases first (never touches a checked-out feature branch) — that
   part is in the foreground, before the runners start. Each runner: the checkout (with the

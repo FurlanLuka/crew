@@ -57,6 +57,11 @@ func (p Page) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return p.openDuplicate(p.facts.summaries[r.Index].Ref)
 		}
 		return p, nil
+	case msg.String() == "r":
+		if r := p.row(); r.Kind == rowWorktree && !p.facts.flat() {
+			return p.openRename(p.facts.summaries[r.Index].Ref)
+		}
+		return p, nil
 	case msg.String() == "d":
 		return p.remove()
 	}
@@ -106,9 +111,19 @@ func (p Page) openNewWorktree() (tea.Model, tea.Cmd) {
 
 func (p Page) openDuplicate(src workspace.Ref) (tea.Model, tea.Cmd) {
 	p.open = openDuplicate
-	p.dupSource = src
+	p.formRef = src
 	p.err, p.status = nil, ""
 	p.input.Placeholder = fmt.Sprintf("wrk%d", len(p.facts.summaries)+1)
+	p.input.SetValue("")
+	p.input.Focus()
+	return p, p.input.Cursor.BlinkCmd()
+}
+
+func (p Page) openRename(src workspace.Ref) (tea.Model, tea.Cmd) {
+	p.open = openRename
+	p.formRef = src
+	p.err, p.status = nil, ""
+	p.input.Placeholder = src.Worktree
 	p.input.SetValue("")
 	p.input.Focus()
 	return p, p.input.Cursor.BlinkCmd()
@@ -170,13 +185,33 @@ func (p Page) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			})
 		}
 
+	case openRename:
+		if msg.String() == "enter" {
+			name := strings.TrimSpace(p.input.Value())
+			if name == "" {
+				return p, nil
+			}
+			src := p.formRef
+			// A refusal leaves the form open with what was typed; busy
+			// keeps a second enter from renaming what just moved.
+			p.err = nil
+			p.busy = fmt.Sprintf("renaming %s → %s…", src, name)
+			return p, tea.Batch(p.spinner.Tick, func() tea.Msg {
+				to, warnings, err := workspace.RenameWorktree(src, name)
+				if err != nil {
+					return errMsg{err}
+				}
+				return worktreeRenamedMsg{from: src, to: to, warnings: warnings}
+			})
+		}
+
 	case openDuplicate:
 		if msg.String() == "enter" {
 			name := strings.TrimSpace(p.input.Value())
 			if name == "" {
 				return p, nil
 			}
-			src := p.dupSource
+			src := p.formRef
 			p.busy = "duplicating worktree — reserving ports, starting the runners…"
 			p.err = nil
 			return p, tea.Batch(p.spinner.Tick, func() tea.Msg {

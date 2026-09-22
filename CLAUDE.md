@@ -42,7 +42,12 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   **overrides** and its reserved **ports**. Everything crew keys per running unit — route
   file, log dir, tmux session, prompt, `.code-workspace` — is keyed by the worktree's
   **slug** `<ws>--<wt>` (`dev.Slug`, a distinct type so a bare workspace name cannot reach
-  those helpers).
+  those helpers). `RenameWorktree` (`rename.go`) is the one way a name changes: under the
+  workspace file's lock, `renameAllowed` (shape, records, no branch collision, nothing of
+  crew's alive, the resume rule) → `moveCheckouts` (the migration's move generalized to
+  any from/to ref: git worktree move, the crew branch renamed in place or in the repo,
+  venv relocation, mise trust) → `moveSlugArtifacts` (setup and dev logs move, never
+  merge; routes/prompt/.code-workspace dropped for both slugs) → the record last.
 - **Ref** — how the user names a worktree: `<ws>/<wt>`, or bare `<ws>` when it has one.
   `/` is user-facing; `--` appears only where crew does not render (hostnames, filenames,
   tmux). Anything printed for a human goes through `dev.DisplayRef`.
@@ -290,7 +295,7 @@ every project with its path decided and its pool config attached. Commands go
 `crew workspace` → workspaces → enter → the **workspace page**
 (`internal/workspaceui/page.go`): Projects (each member with its mode and pool path; `enter`
 opens the project page, `a` the picker, `d` removes from every worktree) and Worktrees
-(size, `[dev]`, `installing…`, `! health`; `enter` opens the worktree page, `u` duplicates,
+(size, `[dev]`, `installing…`, `! health`; `enter` opens the worktree page, `r` renames, `u` duplicates,
 `n`/`+ new worktree` the base table + name in place, `d` removes — the last worktree
 removes the workspace and pops with its status) — one cursor landing on the first
 worktree, `pageRows` identity-keyed, `busy` gating keys while a removal runs, a flat

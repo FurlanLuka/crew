@@ -160,7 +160,10 @@ func (p Page) View() string {
 		nb.WriteString(fmt.Sprintf("\n  New worktree: %s/", p.name) + p.input.View() + "\n")
 		open = formBlock{body: nb.String()}
 	case openDuplicate:
-		open = formBlock{body: fmt.Sprintf("  Duplicate worktree '%s' as %s/", p.dupSource, p.dupSource.Workspace) + p.input.View() + "\n"}
+		open = formBlock{body: fmt.Sprintf("  Duplicate worktree '%s' as %s/", p.formRef, p.formRef.Workspace) + p.input.View() + "\n"}
+	case openRename:
+		open = formBlock{body: fmt.Sprintf("  Rename worktree '%s' to %s/", p.formRef, p.formRef.Workspace) + p.input.View() + "\n" +
+			"  " + app.Subtle.Render("checkouts, branches and logs move — shells and editors opened on the old paths keep them") + "\n"}
 	}
 	body, cursorLine := renderWorkspacePage(f, p.rows, p.cursor, open)
 

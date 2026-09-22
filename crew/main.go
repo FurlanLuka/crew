@@ -231,6 +231,10 @@ func main() {
 		cmdDuplicate()
 		return
 
+	case "rename":
+		cmdRename()
+		return
+
 	case "rm":
 		cmdRm()
 		return

@@ -39,9 +39,9 @@ var Root = CommandInfo{
 			Description: "Interactive workspace manager — enter opens the workspace page: its projects and its worktrees on one screen, one cursor (enter on a project opens the project page, on a worktree its page; a adds projects; + new worktree with the base table); n is a three-card wizard that makes a workspace with its projects and lands on the worktree page while the runners install",
 			TUI:         true,
 			Notes: []string{
-				"Same actions without the TUI: crew add workspace <ws> <p>… (the wizard), crew rm workspace <ws> <p>, crew add worktree, crew duplicate, crew rm worktree, crew rm <ws>, crew launch / claude / edit / open.",
+				"Same actions without the TUI: crew add workspace <ws> <p>… (the wizard), crew rm workspace <ws> <p>, crew add worktree, crew rename worktree, crew duplicate, crew rm worktree, crew rm <ws>, crew launch / claude / edit / open.",
 				"The wizard's project card ticks pool projects (space), switches a row to direct (m — refused with the reason when it cannot), pushes the add-project wizard (a — the new project comes back ticked) and shows which bindings between the ticked projects resolve; the create card shows the base branches (ctrl+p pulls) and y creates the way crew add worktree does.",
-				"On the page: d removes after asking (a project from every worktree, a worktree, or the last worktree = the workspace); u duplicates a worktree; an open form takes every key but esc.",
+				"On the page: d removes after asking (a project from every worktree, a worktree, or the last worktree = the workspace); r renames a worktree, u duplicates one; an open form takes every key but esc.",
 			},
 		},
 		{
@@ -455,6 +455,21 @@ var Root = CommandInfo{
 				},
 			},
 			Examples: []string{"crew rm feature-auth"},
+		},
+		{
+			Name:        "rename",
+			Description: "Rename things. One noun so far: a worktree.",
+			Usage:       "crew rename worktree <workspace>/<worktree> <new-name>",
+			Subcommands: []CommandInfo{
+				{
+					Name:         "worktree",
+					Description:  "Rename a worktree: its directory, every checkout's crew/<ws>/<wt>/<project> branch (in place when checked out, in the repo otherwise — a checkout on its own branch is kept and said so), its setup table, runner logs and dev logs move to the new name; overrides, reserved ports and any recorded failure travel with the record; the prompt is regenerated and the .code-workspace on the next launch. Synchronous, and re-runnable under the same new name if it was interrupted. Refused while its dev servers or a setup runner are alive (crew owns those paths), on a pre-2.0 workspace, on a check target, and when the new name or a branch it would take already exists. Shells, editors and agents opened on the old paths keep them — reopen with crew claude / edit. A branch that was pushed keeps its old upstream name; proxy hostnames change with the slug.",
+					Usage:        "crew rename worktree <workspace>/<worktree> <new-name>",
+					OutputFormat: "Renamed <workspace>/<worktree> → <workspace>/<new-name>",
+					Notes:        []string{"--json: {from, to, warnings: []}"},
+					Examples:     []string{"crew rename worktree store-front/wrk2 payments", "crew rename worktree store-front/wrk2 payments --json"},
+				},
+			},
 		},
 		{
 			Name:        "duplicate",

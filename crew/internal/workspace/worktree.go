@@ -408,11 +408,9 @@ func updateWorktree(ref Ref, fn func(*Worktree)) error {
 		if err != nil {
 			return err
 		}
-		for i := range ws.Worktrees {
-			if ws.Worktrees[i].Name == wt.Name {
-				fn(&ws.Worktrees[i])
-				return nil
-			}
+		if i := worktreeIndex(ws, wt.Name); i >= 0 {
+			fn(&ws.Worktrees[i])
+			return nil
 		}
 		return fmt.Errorf("workspace '%s' has no worktree '%s'", ref.Workspace, wt.Name)
 	})
