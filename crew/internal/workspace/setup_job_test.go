@@ -901,19 +901,19 @@ func TestValidateName_ReservesSubcommands(t *testing.T) {
 	}
 }
 
-// The env command runs in the checkout before the install, as its own
-// named step, so an install that needs the vars has them; a failing one
-// ends the run as an install failure with its own tail; --no-install
-// skips it with the rest.
+// The env command runs in the checkout after the install, as its own named
+// step (a get-env that is a package script needs the install first); a
+// failing one ends the run as an install failure with its own tail;
+// --no-install skips it with the rest.
 func TestRunner_EnvCommand(t *testing.T) {
 	newRepoWorkspace(t, "ws", "api")
 	project.SetEnvCmd("api", "printf 'SECRET=1\\n' > .env")
-	project.SetSetup("api", "sh -c '. ./.env; test -n \"$SECRET\"'")
+	project.SetSetup("api", "true")
 	ref := Ref{Workspace: "ws", Worktree: "wrk2"}
 	if err := AddWorktree("ws", "wrk2", CheckoutOptions{Install: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(stepsOf(t, ref), ","); got != "api:checkout,api:env: printf 'SECRET=1\\n' > .env,api:sh -c '. ./.env; test -n \"$SECRET\"'" {
+	if got := strings.Join(stepsOf(t, ref), ","); got != "api:checkout,api:true,api:env: printf 'SECRET=1\\n' > .env" {
 		t.Errorf("steps = %s", got)
 	}
 	if data, err := os.ReadFile(filepath.Join(WorktreePath(ref, "api"), ".env")); err != nil || string(data) != "SECRET=1\n" {
@@ -933,7 +933,7 @@ func TestRunner_EnvCommand(t *testing.T) {
 		t.Errorf("the env command must run over the copied .env, got %q", data)
 	}
 
-	project.SetSetup("api", "sh -c '. ./.env; test -n \"$SECRET\"'")
+	project.SetSetup("api", "true")
 	project.SetEnvCmd("api", "sh -c 'echo sops: no key >&2; exit 2'")
 	if err := AddWorktree("ws", "wrk3", CheckoutOptions{Install: true}); err != nil {
 		t.Fatal(err)
@@ -942,9 +942,6 @@ func TestRunner_EnvCommand(t *testing.T) {
 	h := recorded(t, ref3)
 	if h == nil || h.Summary() != "install failed: api" || !strings.HasPrefix(h.Issues[0].Detail, "env: sh -c") || !strings.Contains(h.Issues[0].Detail, "sops: no key") {
 		t.Errorf("health after a failed env command = %+v", h)
-	}
-	if got := strings.Join(stepsOf(t, ref3), ","); strings.Contains(got, "test -n") {
-		t.Errorf("the install must not run after the env command failed: %s", got)
 	}
 
 	if err := AddWorktree("ws", "wrk4", CheckoutOptions{}); err != nil {

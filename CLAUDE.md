@@ -12,8 +12,8 @@ checkout-api / signals / admin / infra-ops set — never a real product.
 
 - **Project** — a repo in the global pool (`~/.crew/projects.json`): name, path, dev servers,
   **bindings**, an optional **setup** command and an optional **env command** (`EnvCmd`,
-  `--env-cmd`): `exec.SetupSteps(dir, setup, envCmd)` = `mise install?` → `env: <cmd>` →
-  the install, so the env command is one more setup step with the same streaming, evidence
+  `--env-cmd`): `exec.SetupSteps(dir, setup, envCmd)` = `mise install?` → the install →
+  `env: <cmd>`, so the env command is one more setup step with the same streaming, evidence
   and failure rules; the `.env` copy at checkout is the baseline it overwrites.
 - **Workspace** — membership: which projects, with which roles. Pure config, nothing of its
   own on disk. `~/.crew/workspaces/<ws>.json`.
@@ -101,7 +101,7 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   points at it — a failure), `SmokeIdle` (same but nobody points at it — a note).
   `referencedIn` walks the pool's bindings through `dev.ParseTokens`. `waitForServers` is
   the loop, pure over a `look`: every tick each undecided server is looked at; listening or
-  idle-alive → done, dead → done (after a 2 s `deadGrace` for a pane not yet seen busy),
+  idle-alive → done, dead → done (after a 4 s `deadGrace` for a pane not yet seen busy),
   referenced-not-listening → `SmokeUnreached` at `SmokeCeiling` (60 s, a var tests
   shorten). `waitRoutes(session, routes, window, logFor, ceiling)` is the I/O around it —
   the dev session (`waitDevRoutes`) and a runner's smoke lay windows and logs out

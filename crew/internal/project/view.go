@@ -68,7 +68,7 @@ func (f commandField) placeholder() string {
 
 func (f commandField) hint() string {
 	if f == fieldEnvCmd {
-		return "Writes the checkout's env files; runs after mise install, before the install. Must write files, not print values — its output is logged."
+		return "Writes the checkout's env files; runs after the install. Must write files, not print values — its output is logged."
 	}
 	return "Runs in every new checkout after mise install. Leave empty to detect from the lockfile."
 }

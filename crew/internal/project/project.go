@@ -46,8 +46,8 @@ type Project struct {
 	Setup string `json:"setup,omitempty"`
 	// EnvCmd writes a fresh checkout's env files — "make get-env" for a repo
 	// whose secrets come from sops or a vault. The copied .env is a stale
-	// snapshot; this runs after mise install and before the package manager
-	// so an install that needs the vars has them.
+	// snapshot; this runs after the install, so a get-env that is a package
+	// script or an installed tool has what it needs.
 	EnvCmd string `json:"env_cmd,omitempty"`
 }
 

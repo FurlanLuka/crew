@@ -84,8 +84,11 @@ const (
 	smokeTick = time.Second
 	// deadGrace: right after a start the pane's shell has not launched the
 	// command yet, and "not busy" would read as "died". A pane never seen
-	// busy is only dead after this.
-	deadGrace = 2 * time.Second
+	// busy is only dead after this. Four seconds, not two: on a loaded
+	// machine (several runners starting smokes at once) zsh took longer
+	// than two to reach the command, and a false "died" is the one verdict
+	// crew must not hand out.
+	deadGrace = 4 * time.Second
 	smokeTail = 4
 	// A stack trace usually sits above the one line that says why; the
 	// terminal shows the end, the recorded evidence keeps enough to read it.

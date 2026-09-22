@@ -70,24 +70,23 @@ func TestSetupSteps_ExplicitReplacesDetection(t *testing.T) {
 	}
 }
 
-// The env command sits between mise and the install — after the toolchain
-// it may need, before the install that needs its output — named apart from
-// a setup with the same text.
-func TestSetupSteps_EnvCommandBeforeInstall(t *testing.T) {
+// The env command comes last — after the install whose tools it may use —
+// named apart from a setup with the same text.
+func TestSetupSteps_EnvCommandAfterInstall(t *testing.T) {
 	dir := touch(t, t.TempDir(), "mise.toml", "uv.lock")
 	join := func(steps []SetupStep) string { return strings.Join(names(steps), ",") }
-	if got := join(SetupSteps(dir, "", "make get-env")); got != "mise install,env: make get-env,uv sync" {
+	if got := join(SetupSteps(dir, "", "make get-env")); got != "mise install,uv sync,env: make get-env" {
 		t.Errorf("detected: %s", got)
 	}
-	if got := join(SetupSteps(dir, "make sync", "make sync")); got != "mise install,env: make sync,make sync" {
+	if got := join(SetupSteps(dir, "make sync", "make sync")); got != "mise install,make sync,env: make sync" {
 		t.Errorf("explicit, same text: %s", got)
 	}
 	if got := join(SetupSteps(t.TempDir(), "", "make get-env")); got != "env: make get-env" {
 		t.Errorf("env alone: %s", got)
 	}
 	steps := SetupSteps(dir, "", "make get-env")
-	if steps[1].Command != "make get-env" {
-		t.Errorf("the step runs the command itself, got %q", steps[1].Command)
+	if steps[2].Command != "make get-env" {
+		t.Errorf("the step runs the command itself, got %q", steps[2].Command)
 	}
 	if got := join(SetupSteps(dir, "", "")); got != "mise install,uv sync" {
 		t.Errorf("no env command: %s", got)

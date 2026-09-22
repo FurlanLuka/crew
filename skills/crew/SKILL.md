@@ -90,8 +90,8 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
   `uv sync`, `pnpm install`, `npm ci` or `yarn` from the lockfile; `mise install` runs first
   either way.
 - `--env-cmd` is the command that **writes** a fresh checkout's env files — `make get-env`,
-  `npm run get-env`, whatever pulls from sops or a vault. Runs in the checkout after `mise
-  install` and before the install (so an install that needs the vars has them) as its own
+  `npm run get-env`, whatever pulls from sops or a vault. Runs in the checkout after the
+  install (so a get-env that is a package script or an installed tool works) as its own
   step `env: <cmd>` in `crew setup status`. The copied `.env` is the baseline it
   overwrites; a file it does not regenerate stays as copied. Ask for it when a README
   mentions secrets, sops, 1Password or a `get-env` target; most projects have none. **It
@@ -209,7 +209,7 @@ crew migrate [--dry-run] [--yes]
   repo's git hooks off — a hook written for a user's checkout does not get to fail crew's;
   `mise trust` when there is a `mise.toml`), `.env` copied from the canonical repo or a
   sibling worktree (`.env*` and the `.local.env` / `.local-overrides.env` files a get-env
-  script merges), the env command when the project has one, the install, then the smoke
+  script merges), the install, the env command when the project has one, then the smoke
   of that project's servers — each watched
   until it listens on its port, dies, or a minute passes. **Each server is smoked on its
   own**: siblings' URLs are resolved (ports were reserved first) but nothing answers on

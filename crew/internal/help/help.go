@@ -56,7 +56,7 @@ var Root = CommandInfo{
 					Usage:       "crew add project <name> <path> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
 					Flags: []FlagInfo{
 						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it; empty clears it."},
-						{Name: "--env-cmd=<cmd>", Description: "Command that writes a fresh checkout's env files (make get-env — sops, a vault); runs after mise install, before the install, over the .env crew copied in. Must write files, not print values — its output is logged. On an existing project, updates it; empty clears it."},
+						{Name: "--env-cmd=<cmd>", Description: "Command that writes a fresh checkout's env files (make get-env — sops, a vault); runs after the install, over the .env crew copied in. Must write files, not print values — its output is logged. On an existing project, updates it; empty clears it."},
 						{Name: "--path=<dir>", Description: "On an existing project, where its canonical checkout now lives (the repo moved)"},
 					},
 					Examples: []string{
@@ -86,7 +86,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "worktree",
-					Description: "Make a new working copy of every project, in the background: the worktree is recorded, its ports reserved, and one runner per project starts (a window of tmux session crew-setup-<ws>--<name>) doing checkout → .env → env command → install → a smoke of its own servers, each watched until it listens on its port, dies, or a minute passes. The command returns at once. In a terminal it lands on the worktree page, which shows the runners; without one it prints how to watch: crew setup status <ref>. A failure is recorded on the worktree the moment it happens, while the other runners continue — crew fix <ref> --print has it before the slowest install ends. --wait stays until every runner is done, prints the summary and exits 1 if anything is recorded. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
+					Description: "Make a new working copy of every project, in the background: the worktree is recorded, its ports reserved, and one runner per project starts (a window of tmux session crew-setup-<ws>--<name>) doing checkout → .env → install → env command → a smoke of its own servers, each watched until it listens on its port, dies, or a minute passes. The command returns at once. In a terminal it lands on the worktree page, which shows the runners; without one it prints how to watch: crew setup status <ref>. A failure is recorded on the worktree the moment it happens, while the other runners continue — crew fix <ref> --print has it before the slowest install ends. --wait stays until every runner is done, prints the summary and exits 1 if anything is recorded. .env comes from the canonical repo or a sibling worktree; --pull fast-forwards the local base branches first.",
 					Usage:       "crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]",
 					Flags: []FlagInfo{
 						{Name: "--pull", Description: "Fast-forward each project's local base branch to origin first. Never touches a checked-out feature branch; refuses when the base has diverged or is checked out with uncommitted changes."},
@@ -535,7 +535,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "setup",
-			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the project's env command when it has one, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
+			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command, then the project's env command when it has one, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
 			Usage:       "crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]",
 			Flags: []FlagInfo{
 				{Name: "<project>...", Description: "Only these projects"},
