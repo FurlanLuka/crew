@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
-	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dirsize"
 )
 
@@ -28,14 +27,12 @@ type baseStatusesMsg struct{ statuses []BaseStatus }
 type basesPulledMsg struct{ failed []error }
 
 type worktreeRemovedMsg struct{ ref Ref }
-type errMsg struct{ err error }
 
 // Project management messages
 type wsProjectsLoadedMsg struct {
 	wsProjects []WorkspaceProject
 	poolNames  []string // names from pool not yet in workspace
 }
-type codeOpenedMsg struct{ output string }
 type wsProjectsAddedMsg struct {
 	names []string
 	refs  []Ref // the worktrees whose runners were started
@@ -940,25 +937,5 @@ func removeWorktree(ref Ref) tea.Cmd {
 			return errMsg{err}
 		}
 		return worktreeRemovedMsg{ref}
-	}
-}
-
-func openCode(ref Ref) tea.Cmd {
-	return func() tea.Msg {
-		settings := config.LoadSettings()
-		if settings.SSHHost == "" {
-			return errMsg{fmt.Errorf("ssh_host not configured — set it in crew config")}
-		}
-
-		res, err := Resolve(ref)
-		if err != nil {
-			return errMsg{err}
-		}
-
-		links, err := EditorLinks(res, settings.SSHHost)
-		if err != nil {
-			return errMsg{err}
-		}
-		return codeOpenedMsg{output: links}
 	}
 }

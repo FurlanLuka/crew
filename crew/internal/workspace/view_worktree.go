@@ -20,6 +20,11 @@ import (
 
 // ── Messages ──
 
+type errMsg struct{ err error }
+
+// codeOpenedMsg carries the remote-editor links crew open printed.
+type codeOpenedMsg struct{ output string }
+
 // recheckMsg: look at the servers started a moment ago again.
 type recheckMsg struct{}
 
@@ -907,4 +912,24 @@ func launchClaude(res *Resolved) tea.Msg {
 		return errMsg{err}
 	}
 	return claudeExecReadyMsg{cmd: cmd}
+}
+
+func openCode(ref Ref) tea.Cmd {
+	return func() tea.Msg {
+		settings := config.LoadSettings()
+		if settings.SSHHost == "" {
+			return errMsg{fmt.Errorf("ssh_host not configured — set it in crew config")}
+		}
+
+		res, err := Resolve(ref)
+		if err != nil {
+			return errMsg{err}
+		}
+
+		links, err := EditorLinks(res, settings.SSHHost)
+		if err != nil {
+			return errMsg{err}
+		}
+		return codeOpenedMsg{output: links}
+	}
 }
