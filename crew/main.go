@@ -28,6 +28,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
+	"github.com/FurlanLuka/crew/crew/internal/workspaceui"
 )
 
 var Version = "dev"
@@ -154,7 +155,7 @@ func main() {
 		runTUI(settings.NewView())
 
 	case "workspace":
-		runTUI(workspace.NewView())
+		runTUI(workspaceui.NewView())
 
 	case "project":
 		runTUI(projectui.NewView())
@@ -298,7 +299,7 @@ func mainMenu() app.Menu {
 		{
 			Label:       "Workspace",
 			Description: "Manage workspaces and launch",
-			Page:        func() app.Page { return workspace.NewView() },
+			Page:        func() app.Page { return workspaceui.NewView() },
 		},
 		{
 			Label:       "Project",

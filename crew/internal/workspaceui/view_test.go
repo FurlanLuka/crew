@@ -1,4 +1,4 @@
-package workspace
+package workspaceui
 
 import (
 	"os"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 func TestRenderWorktrees_SizeColumnAndTrashNotice(t *testing.T) {
@@ -19,16 +20,16 @@ func TestRenderWorktrees_SizeColumnAndTrashNotice(t *testing.T) {
 	v := NewView()
 	v.state = stateWorktrees
 	v.selectedWs = "store-front"
-	v.summaries = []Summary{
-		{Ref: Ref{Workspace: "store-front", Worktree: "wrk1"}, Workspace: "store-front", Worktree: "wrk1", DevRunning: true},
-		{Ref: Ref{Workspace: "store-front", Worktree: "wrk10"}, Workspace: "store-front", Worktree: "wrk10"},
+	v.summaries = []workspace.Summary{
+		{Ref: workspace.Ref{Workspace: "store-front", Worktree: "wrk1"}, Workspace: "store-front", Worktree: "wrk1", DevRunning: true},
+		{Ref: workspace.Ref{Workspace: "store-front", Worktree: "wrk10"}, Workspace: "store-front", Worktree: "wrk10"},
 	}
 	v.sizes["store-front/wrk1"] = 161 << 30
 	v.summaries[1].Health = "server died: api/api"
 
 	var b strings.Builder
 	v.renderWorktrees(&b)
-	got := stripANSI(b.String())
+	got := plain(b.String())
 
 	// Sizes right-align in one column; a worktree still being walked shows the spinner.
 	if !strings.Contains(got, "> wrk1    161 GB  [dev]") {
@@ -48,7 +49,7 @@ func TestRenderWorktrees_SizeColumnAndTrashNotice(t *testing.T) {
 	checkoutInTrash(t, "x")
 	b.Reset()
 	v.renderWorktrees(&b)
-	if !strings.Contains(stripANSI(b.String()), "trash: 1 removed checkout still clearing in background") {
+	if !strings.Contains(plain(b.String()), "trash: 1 removed checkout still clearing in background") {
 		t.Errorf("trash notice missing:\n%s", b.String())
 	}
 }
@@ -57,15 +58,15 @@ func TestTrashNotice(t *testing.T) {
 	tmp := setupTestConfig(t)
 	config.TrashDir = tmp + "/trash"
 
-	if got := TrashNotice(); got != "" {
+	if got := workspace.TrashNotice(); got != "" {
 		t.Errorf("empty trash: %q", got)
 	}
 	checkoutInTrash(t, "a")
-	if got := TrashNotice(); got != "trash: 1 removed checkout still clearing in background" {
+	if got := workspace.TrashNotice(); got != "trash: 1 removed checkout still clearing in background" {
 		t.Errorf("one entry: %q", got)
 	}
 	checkoutInTrash(t, "b")
-	if got := TrashNotice(); got != "trash: 2 removed checkouts still clearing in background" {
+	if got := workspace.TrashNotice(); got != "trash: 2 removed checkouts still clearing in background" {
 		t.Errorf("two entries: %q", got)
 	}
 }
@@ -83,9 +84,9 @@ func TestLoadMissingSizes_OneCommandPerWorktree(t *testing.T) {
 	v := NewView()
 	v.state = stateWorktrees
 	v.selectedWs = "ws"
-	v.summaries = []Summary{
-		{Ref: Ref{Workspace: "ws", Worktree: "a"}, Workspace: "ws", Worktree: "a", Path: dirA},
-		{Ref: Ref{Workspace: "ws", Worktree: "b"}, Workspace: "ws", Worktree: "b", Path: dirB},
+	v.summaries = []workspace.Summary{
+		{Ref: workspace.Ref{Workspace: "ws", Worktree: "a"}, Workspace: "ws", Worktree: "a", Path: dirA},
+		{Ref: workspace.Ref{Workspace: "ws", Worktree: "b"}, Workspace: "ws", Worktree: "b", Path: dirB},
 	}
 
 	for _, msg := range runBatch(t, v.loadMissingSizes()) {
@@ -126,9 +127,9 @@ func TestLoadMissingSizes_OnlyWalksUnknownWorktrees(t *testing.T) {
 	v := NewView()
 	v.state = stateWorktrees
 	v.selectedWs = "ws"
-	v.summaries = []Summary{
-		{Ref: Ref{Workspace: "ws", Worktree: "a"}, Workspace: "ws", Worktree: "a"},
-		{Ref: Ref{Workspace: "ws", Worktree: "b"}, Workspace: "ws", Worktree: "b"},
+	v.summaries = []workspace.Summary{
+		{Ref: workspace.Ref{Workspace: "ws", Worktree: "a"}, Workspace: "ws", Worktree: "a"},
+		{Ref: workspace.Ref{Workspace: "ws", Worktree: "b"}, Workspace: "ws", Worktree: "b"},
 	}
 	v.sizes["ws/a"] = 1
 	if !v.sizesLoading() {
@@ -147,7 +148,7 @@ func TestWorktreeAdded_PushesThePage(t *testing.T) {
 	v := NewView()
 	v.state = stateAddingWorktree
 	v.sizes["ws/wt"] = 5
-	ref := Ref{Workspace: "ws", Worktree: "wt"}
+	ref := workspace.Ref{Workspace: "ws", Worktree: "wt"}
 
 	m, cmd := v.Update(worktreeAddedMsg{ref: ref})
 	v = m.(View)
@@ -157,21 +158,21 @@ func TestWorktreeAdded_PushesThePage(t *testing.T) {
 	if _, ok := v.sizes["ws/wt"]; ok {
 		t.Error("the new worktree's size should be invalidated")
 	}
-	var page WorktreeView
+	var page workspace.WorktreeView
 	found := false
 	for _, msg := range runBatch(t, cmd) {
 		if p, ok := msg.(app.PushPageMsg); ok {
-			page, found = p.Page.(WorktreeView)
+			page, found = p.Page.(workspace.WorktreeView)
 		}
 	}
-	if !found || page.ref != ref || page.statusMsg != "Created ws/wt — installing" {
-		t.Errorf("pushed page: found=%v ref=%v status=%q", found, page.ref, page.statusMsg)
+	if !found || page.Ref() != ref || page.Status() != "Created ws/wt — installing" {
+		t.Errorf("pushed page: found=%v ref=%v status=%q", found, page.Ref(), page.Status())
 	}
 
 	m, cmd = v.Update(worktreeAddedMsg{ref: ref, duplicatedFrom: "ws/main"})
 	for _, msg := range runBatch(t, cmd) {
 		if p, ok := msg.(app.PushPageMsg); ok {
-			if got := p.Page.(WorktreeView).statusMsg; got != "Duplicated ws/main → ws/wt — installing" {
+			if got := p.Page.(workspace.WorktreeView).Status(); got != "Duplicated ws/main → ws/wt — installing" {
 				t.Errorf("duplicate status = %q", got)
 			}
 		}
@@ -211,14 +212,14 @@ func TestProjectPick_MultiSelect(t *testing.T) {
 	step("down") // → web
 	step("down") // → worker
 	step(" ")    // tick worker
-	if got := stripANSI(v.View()); !strings.Contains(got, "✓ api") || !strings.Contains(got, "○ web") || !strings.Contains(got, "✓ worker") {
+	if got := plain(v.View()); !strings.Contains(got, "✓ api") || !strings.Contains(got, "○ web") || !strings.Contains(got, "✓ worker") {
 		t.Errorf("ticks not rendered:\n%s", got)
 	}
 	step("enter")
 	if v.state != stateProjectRole || v.pickedProject != "api" || len(v.queue) != 2 {
 		t.Fatalf("after enter: state=%v picked=%q queue=%v", v.state, v.pickedProject, v.queue)
 	}
-	if got := stripANSI(v.View()); !strings.Contains(got, "Adding 'api' (1 of 2)") {
+	if got := plain(v.View()); !strings.Contains(got, "Adding 'api' (1 of 2)") {
 		t.Errorf("role prompt should count:\n%s", got)
 	}
 	v.roleInput.SetValue("Backend")
@@ -230,11 +231,11 @@ func TestProjectPick_MultiSelect(t *testing.T) {
 	if v.state != stateProjectMode {
 		t.Fatalf("after the last role: state=%v", v.state)
 	}
-	want := []ProjectSpec{{Name: "api", Role: "Backend"}, {Name: "worker", Role: "works on worker"}}
+	want := []workspace.ProjectSpec{{Name: "api", Role: "Backend"}, {Name: "worker", Role: "works on worker"}}
 	if len(v.picked) != 2 || v.picked[0] != want[0] || v.picked[1] != want[1] {
 		t.Errorf("picked = %+v, want %+v", v.picked, want)
 	}
-	if got := stripANSI(v.View()); !strings.Contains(got, "Adding api, worker") {
+	if got := plain(v.View()); !strings.Contains(got, "Adding api, worker") {
 		t.Errorf("mode step names them all:\n%s", got)
 	}
 
@@ -247,7 +248,7 @@ func TestProjectPick_MultiSelect(t *testing.T) {
 	if v.state != stateProjectRole || v.pickedProject != "web" || len(v.queue) != 1 {
 		t.Errorf("single pick: state=%v picked=%q queue=%v", v.state, v.pickedProject, v.queue)
 	}
-	if got := stripANSI(v.View()); strings.Contains(got, "of 1") {
+	if got := plain(v.View()); strings.Contains(got, "of 1") {
 		t.Errorf("a single pick should not count:\n%s", got)
 	}
 }
@@ -256,11 +257,11 @@ func TestAddedStatus(t *testing.T) {
 	if got := addedStatus([]string{"api", "web"}, nil); got != "Added api, web" {
 		t.Errorf("flat workspace → %q", got)
 	}
-	one := []Ref{{Workspace: "ws", Worktree: "main"}}
+	one := []workspace.Ref{{Workspace: "ws", Worktree: "main"}}
 	if got := addedStatus([]string{"api", "web"}, one); got != "Added api, web — installing on ws/main (its page shows the runners)" {
 		t.Errorf("one worktree → %q", got)
 	}
-	two := append(one, Ref{Workspace: "ws", Worktree: "wrk2"})
+	two := append(one, workspace.Ref{Workspace: "ws", Worktree: "wrk2"})
 	if got := addedStatus([]string{"web"}, two); got != "Added web — installing on 2 worktrees (each page shows its runners)" {
 		t.Errorf("two worktrees → %q", got)
 	}

@@ -1,4 +1,4 @@
-package workspace
+package workspaceui
 
 import (
 	"fmt"
@@ -11,31 +11,34 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/dirsize"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 // ── Messages ──
 
-type workspacesLoadedMsg struct{ summaries []Summary }
+type workspacesLoadedMsg struct{ summaries []workspace.Summary }
 type workspaceCreatedMsg struct{ name string }
 type workspaceRemovedMsg struct{ name string }
 type worktreeAddedMsg struct {
-	ref            Ref
+	ref            workspace.Ref
 	duplicatedFrom string
 }
 type worktreeSizesMsg struct{ sizes map[string]int64 }
-type baseStatusesMsg struct{ statuses []BaseStatus }
+type baseStatusesMsg struct{ statuses []workspace.BaseStatus }
 type basesPulledMsg struct{ failed []error }
 
-type worktreeRemovedMsg struct{ ref Ref }
+type worktreeRemovedMsg struct{ ref workspace.Ref }
+type errMsg struct{ err error }
+type codeOpenedMsg struct{ output string }
 
 // Project management messages
 type wsProjectsLoadedMsg struct {
-	wsProjects []WorkspaceProject
+	wsProjects []workspace.WorkspaceProject
 	poolNames  []string // names from pool not yet in workspace
 }
 type wsProjectsAddedMsg struct {
 	names []string
-	refs  []Ref // the worktrees whose runners were started
+	refs  []workspace.Ref // the worktrees whose runners were started
 }
 type wsProjectRemovedMsg struct{ name string }
 
@@ -67,16 +70,16 @@ const (
 
 type View struct {
 	state     viewState
-	summaries []Summary // every worktree, across workspaces
-	cursor    int       // over workspaceRows()
-	wtCursor  int       // over the selected workspace's worktrees, plus the "+ new" row
+	summaries []workspace.Summary // every worktree, across workspaces
+	cursor    int                 // over workspaceRows()
+	wtCursor  int                 // over the selected workspace's worktrees, plus the "+ new" row
 	input     textinput.Model
 	err       error
 	statusMsg string
 	spinner   spinner.Model
 
 	// Base branches shown while naming a new worktree; nil while loading.
-	baseStatuses []BaseStatus
+	baseStatuses []workspace.BaseStatus
 	baseLoading  bool
 	// sizes is bytes on disk per worktree ref, filled in after the list shows
 	// and kept for the view's lifetime — a walk over a big build tree is slow
@@ -85,8 +88,8 @@ type View struct {
 
 	// Project management within workspace
 	selectedWs    string
-	selectedRef   Ref
-	wsProjects    []WorkspaceProject
+	selectedRef   workspace.Ref
+	wsProjects    []workspace.WorkspaceProject
 	projCursor    int
 	poolNames     []string // available from pool
 	poolCursor    int
@@ -96,7 +99,7 @@ type View struct {
 	// queue is every picked project, roles asked one after another; picked
 	// holds the ones already answered, in order.
 	queue      []string
-	picked     []ProjectSpec
+	picked     []workspace.ProjectSpec
 	modeCursor int // 0 = worktree, 1 = direct
 }
 
@@ -199,8 +202,8 @@ func (v View) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.duplicatedFrom != "" {
 			created = fmt.Sprintf("Duplicated %s → %s — installing", msg.duplicatedFrom, msg.ref)
 		}
-		page := NewWorktreeView(msg.ref)
-		page.statusMsg = created
+		page := workspace.NewWorktreeView(msg.ref)
+		page.SetStatus(created)
 		return v, tea.Batch(loadWorkspaces, func() tea.Msg { return app.PushPageMsg{Page: page} })
 
 	case codeOpenedMsg:
@@ -302,7 +305,7 @@ func (v View) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 type workspaceRow struct {
 	Name         string
 	ProjectCount int
-	Worktrees    []Summary
+	Worktrees    []workspace.Summary
 	DevRunning   bool
 }
 
@@ -433,7 +436,7 @@ func (v View) handleWorktreesKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if onNew {
 			return startNew()
 		}
-		page := NewWorktreeView(worktrees[v.wtCursor].Ref)
+		page := workspace.NewWorktreeView(worktrees[v.wtCursor].Ref)
 		return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 	}
 
@@ -493,10 +496,10 @@ func (v View) handleDuplicateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		src := v.selectedRef
 		v.state = stateDuplicating
 		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
-			if err := DuplicateWorktree(src, name, CheckoutOptions{Install: true, Smoke: true}); err != nil {
+			if err := workspace.DuplicateWorktree(src, name, workspace.CheckoutOptions{Install: true, Smoke: true}); err != nil {
 				return errMsg{err}
 			}
-			return worktreeAddedMsg{ref: Ref{Workspace: src.Workspace, Worktree: name}, duplicatedFrom: src.String()}
+			return worktreeAddedMsg{ref: workspace.Ref{Workspace: src.Workspace, Worktree: name}, duplicatedFrom: src.String()}
 		})
 	}
 
@@ -512,7 +515,7 @@ func (v View) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.input.Reset()
 		return v, nil
 	case "ctrl+p":
-		if v.baseLoading || !Stale(v.baseStatuses) {
+		if v.baseLoading || !workspace.Stale(v.baseStatuses) {
 			return v, nil
 		}
 		v.baseLoading = true
@@ -526,10 +529,10 @@ func (v View) handleNewWorktreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		wsName := v.selectedWs
 		v.state = stateAddingWorktree
 		return v, tea.Batch(v.spinner.Tick, func() tea.Msg {
-			if err := AddWorktree(wsName, name, CheckoutOptions{Install: true, Smoke: true}); err != nil {
+			if err := workspace.AddWorktree(wsName, name, workspace.CheckoutOptions{Install: true, Smoke: true}); err != nil {
 				return errMsg{err}
 			}
-			return worktreeAddedMsg{ref: Ref{Workspace: wsName, Worktree: name}}
+			return worktreeAddedMsg{ref: workspace.Ref{Workspace: wsName, Worktree: name}}
 		})
 	}
 
@@ -609,7 +612,7 @@ func (v View) View() string {
 	case stateWorktrees:
 		v.renderWorktrees(&b)
 	case stateConfirmRemoveWorktree:
-		b.WriteString(fmt.Sprintf("  Remove worktree '%s'? Its checkouts will be deleted; the workspace stays. (y/n)\n", v.selectedRef))
+		b.WriteString(fmt.Sprintf("  workspace.Remove worktree '%s'? Its checkouts will be deleted; the workspace stays. (y/n)\n", v.selectedRef))
 	case stateAddingWorktree:
 		b.WriteString(fmt.Sprintf("  %s Creating worktree — reserving ports, starting the runners…\n", v.spinner.View()))
 	case stateRemovingWorktree:
@@ -650,7 +653,7 @@ func (v View) renderList(b *strings.Builder) {
 
 // worktreeSummary reads "2 worktrees" or, for a pre-migration workspace, the
 // hint to migrate.
-func worktreeSummary(worktrees []Summary) string {
+func worktreeSummary(worktrees []workspace.Summary) string {
 	if len(worktrees) == 1 && worktrees[0].Worktree == "" {
 		return "run crew migrate"
 	}
@@ -721,7 +724,7 @@ func (v View) renderStatus(b *strings.Builder) {
 
 // renderSize is right-aligned so the column reads as numbers; a worktree
 // still being walked shows the spinner in its place.
-func (v View) renderSize(s Summary) string {
+func (v View) renderSize(s workspace.Summary) string {
 	n, ok := v.sizes[s.Ref.String()]
 	if !ok {
 		// %7s would count the glyph's bytes, not its width.
@@ -733,14 +736,14 @@ func (v View) renderSize(s Summary) string {
 // renderTrashNotice says when removed checkouts are still being cleared —
 // the bytes are not back yet, which matters right before creating the next.
 func renderTrashNotice(b *strings.Builder) {
-	if notice := TrashNotice(); notice != "" {
+	if notice := workspace.TrashNotice(); notice != "" {
 		b.WriteString("\n  " + app.Subtle.Render(notice) + "\n")
 	}
 }
 
 // renderSummaryName shows ws/wt with the worktree highlighted, or the bare
 // workspace with a migrate hint when it predates worktrees.
-func renderSummaryName(s Summary, selected bool) string {
+func renderSummaryName(s workspace.Summary, selected bool) string {
 	if s.Worktree == "" {
 		return app.RowName("(flat)", selected) + "  " + app.Subtle.Render("run crew migrate to name it")
 	}
@@ -770,10 +773,10 @@ func (v View) renderNewWorktree(b *strings.Builder) {
 	case v.baseLoading:
 		b.WriteString("  " + v.spinner.View() + " checking base branches against origin...\n")
 	default:
-		for _, line := range strings.Split(strings.TrimRight(FormatBaseStatuses(v.baseStatuses), "\n"), "\n") {
+		for _, line := range strings.Split(strings.TrimRight(workspace.FormatBaseStatuses(v.baseStatuses), "\n"), "\n") {
 			b.WriteString(styleBaseLine(line) + "\n")
 		}
-		if warn := StaleWarning(v.baseStatuses); warn != "" {
+		if warn := workspace.StaleWarning(v.baseStatuses); warn != "" {
 			b.WriteString("\n  " + app.Highlight.Render(warn) + "\n")
 			b.WriteString("  " + app.Subtle.Render("ctrl+p pulls the latest into the local bases (fast-forward only)") + "\n")
 		}
@@ -827,11 +830,11 @@ func (v View) renderConfirmRemove(b *strings.Builder) {
 	worktreeCount, directCount := countModes(name)
 	switch {
 	case worktreeCount == 0 && directCount > 0:
-		b.WriteString(fmt.Sprintf("  Remove workspace '%s'? No worktrees to delete; %d direct project(s) will be untouched. (y/n)\n", name, directCount))
+		b.WriteString(fmt.Sprintf("  workspace.Remove workspace '%s'? No worktrees to delete; %d direct project(s) will be untouched. (y/n)\n", name, directCount))
 	case worktreeCount > 0 && directCount > 0:
-		b.WriteString(fmt.Sprintf("  Remove workspace '%s'? Will delete %d worktree(s); %d direct project(s) untouched. (y/n)\n", name, worktreeCount, directCount))
+		b.WriteString(fmt.Sprintf("  workspace.Remove workspace '%s'? Will delete %d worktree(s); %d direct project(s) untouched. (y/n)\n", name, worktreeCount, directCount))
 	default:
-		b.WriteString(fmt.Sprintf("  Remove workspace '%s'? This will delete all worktrees. (y/n)\n", name))
+		b.WriteString(fmt.Sprintf("  workspace.Remove workspace '%s'? This will delete all worktrees. (y/n)\n", name))
 	}
 }
 
@@ -848,7 +851,7 @@ func (v View) loadMissingSizes() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	var missing []Summary
+	var missing []workspace.Summary
 	for _, s := range row.Worktrees {
 		// A flat pre-2.0 workspace has no size column to fill.
 		if _, done := v.sizes[s.Ref.String()]; !done && s.Worktree != "" {
@@ -886,7 +889,7 @@ func (v View) sizesLoading() bool {
 }
 
 func loadWorkspaces() tea.Msg {
-	summaries, err := ListSummaries()
+	summaries, err := workspace.ListSummaries()
 	if err != nil {
 		return errMsg{err}
 	}
@@ -895,7 +898,7 @@ func loadWorkspaces() tea.Msg {
 
 func createWorkspace(name string) tea.Cmd {
 	return func() tea.Msg {
-		if err := Create(name); err != nil {
+		if err := workspace.Create(name); err != nil {
 			return errMsg{err}
 		}
 		return workspaceCreatedMsg{name}
@@ -904,36 +907,36 @@ func createWorkspace(name string) tea.Cmd {
 
 func removeWorkspace(name string) tea.Cmd {
 	return func() tea.Msg {
-		if err := Remove(name); err != nil {
+		if err := workspace.Remove(name); err != nil {
 			return errMsg{err}
 		}
 		return workspaceRemovedMsg{name}
 	}
 }
 
-func pullBases(wsName string, statuses []BaseStatus) tea.Cmd {
+func pullBases(wsName string, statuses []workspace.BaseStatus) tea.Cmd {
 	return func() tea.Msg {
-		ws, err := Load(wsName)
+		ws, err := workspace.Load(wsName)
 		if err != nil {
 			return errMsg{err}
 		}
-		return basesPulledMsg{failed: UpdateBases(ws, statuses)}
+		return basesPulledMsg{failed: workspace.UpdateBases(ws, statuses)}
 	}
 }
 
 func loadBaseStatuses(wsName string) tea.Cmd {
 	return func() tea.Msg {
-		ws, err := Load(wsName)
+		ws, err := workspace.Load(wsName)
 		if err != nil {
 			return errMsg{err}
 		}
-		return baseStatusesMsg{statuses: BaseStatuses(ws)}
+		return baseStatusesMsg{statuses: workspace.BaseStatuses(ws)}
 	}
 }
 
-func removeWorktree(ref Ref) tea.Cmd {
+func removeWorktree(ref workspace.Ref) tea.Cmd {
 	return func() tea.Msg {
-		if err := RemoveWorktree(ref.Workspace, ref.Worktree); err != nil {
+		if err := workspace.RemoveWorktree(ref.Workspace, ref.Worktree); err != nil {
 			return errMsg{err}
 		}
 		return worktreeRemovedMsg{ref}

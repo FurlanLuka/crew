@@ -167,6 +167,11 @@ func NewWorktreeView(ref Ref) WorktreeView {
 // SetStatus is the line the page opens with — what creation just did.
 func (v *WorktreeView) SetStatus(msg string) { v.statusMsg = msg }
 
+// Ref is the worktree the page is on; Status the line it opens with —
+// what a host that pushed the page can check.
+func (v WorktreeView) Ref() Ref       { return v.ref }
+func (v WorktreeView) Status() string { return v.statusMsg }
+
 func (v WorktreeView) Title() string {
 	return v.ref.String()
 }

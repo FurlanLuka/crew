@@ -1,4 +1,4 @@
-package workspace
+package workspaceui
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 // Project management inside one workspace: the list of member projects and
@@ -120,7 +121,7 @@ func (v View) handleProjectRoleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if role == "" {
 			role = "works on " + name
 		}
-		v.picked = append(v.picked, ProjectSpec{Name: name, Role: role})
+		v.picked = append(v.picked, workspace.ProjectSpec{Name: name, Role: role})
 		return v.askRole()
 	}
 
@@ -151,13 +152,13 @@ func (v View) handleProjectModeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.modeCursor = 1
 		return v, nil
 	case msg.String() == "enter":
-		mode := ModeWorktree
+		mode := workspace.ModeWorktree
 		if v.modeCursor == 1 {
-			mode = ModeDirect
+			mode = workspace.ModeDirect
 		}
-		specs := make([]ProjectSpec, len(v.picked))
+		specs := make([]workspace.ProjectSpec, len(v.picked))
 		for i, p := range v.picked {
-			specs[i] = ProjectSpec{Name: p.Name, Role: p.Role, Mode: mode}
+			specs[i] = workspace.ProjectSpec{Name: p.Name, Role: p.Role, Mode: mode}
 		}
 		v.state = stateAddingProject
 		return v, tea.Batch(v.spinner.Tick, addProjectsToWorkspace(v.selectedWs, specs))
@@ -197,12 +198,12 @@ func (v View) renderProjects(b *strings.Builder) {
 
 			b.WriteString(cursor)
 			b.WriteString(name)
-			if IsDirect(wp) {
+			if workspace.IsDirect(wp) {
 				b.WriteString("  ")
 				b.WriteString(app.Highlight.Render("[direct]"))
 			}
 			b.WriteString("  ")
-			b.WriteString(app.Subtle.Render(WorktreePath(v.selectedRef, wp.Name)))
+			b.WriteString(app.Subtle.Render(workspace.WorktreePath(v.selectedRef, wp.Name)))
 			b.WriteString("\n")
 
 			if wp.Role != "" {
@@ -319,16 +320,16 @@ func (v View) renderProjectMode(b *strings.Builder) {
 
 func (v View) renderProjectConfirmRemove(b *strings.Builder) {
 	wp := v.wsProjects[v.projCursor]
-	if IsDirect(wp) {
-		b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? Project repo will not be touched. (y/n)\n", wp.Name))
+	if workspace.IsDirect(wp) {
+		b.WriteString(fmt.Sprintf("  workspace.Remove '%s' from workspace? Project repo will not be touched. (y/n)\n", wp.Name))
 		return
 	}
-	b.WriteString(fmt.Sprintf("  Remove '%s' from workspace? This will delete the worktree. (y/n)\n", wp.Name))
+	b.WriteString(fmt.Sprintf("  workspace.Remove '%s' from workspace? This will delete the worktree. (y/n)\n", wp.Name))
 }
 
 func loadWsProjects(wsName string) tea.Cmd {
 	return func() tea.Msg {
-		ws, err := Load(wsName)
+		ws, err := workspace.Load(wsName)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -352,9 +353,9 @@ func loadWsProjects(wsName string) tea.Cmd {
 	}
 }
 
-func addProjectsToWorkspace(wsName string, specs []ProjectSpec) tea.Cmd {
+func addProjectsToWorkspace(wsName string, specs []workspace.ProjectSpec) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := AddProjects(wsName, specs, CheckoutOptions{Install: true, Smoke: true})
+		refs, err := workspace.AddProjects(wsName, specs, workspace.CheckoutOptions{Install: true, Smoke: true})
 		if err != nil {
 			return errMsg{err}
 		}
@@ -368,7 +369,7 @@ func addProjectsToWorkspace(wsName string, specs []ProjectSpec) tea.Cmd {
 
 // addedStatus is the one line after an add: what went in, and where its
 // runners are going. Pure.
-func addedStatus(names []string, refs []Ref) string {
+func addedStatus(names []string, refs []workspace.Ref) string {
 	msg := "Added " + strings.Join(names, ", ")
 	if len(refs) == 0 {
 		return msg
@@ -381,7 +382,7 @@ func addedStatus(names []string, refs []Ref) string {
 
 func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 	return func() tea.Msg {
-		if err := RemoveProject(wsName, projName); err != nil {
+		if err := workspace.RemoveProject(wsName, projName); err != nil {
 			return errMsg{err}
 		}
 		return wsProjectRemovedMsg{projName}
@@ -389,12 +390,12 @@ func removeProjectFromWorkspace(wsName, projName string) tea.Cmd {
 }
 
 func countModes(wsName string) (worktree, direct int) {
-	ws, err := Load(wsName)
+	ws, err := workspace.Load(wsName)
 	if err != nil {
 		return 0, 0
 	}
 	for _, wp := range ws.Projects {
-		if IsDirect(wp) {
+		if workspace.IsDirect(wp) {
 			direct++
 		} else {
 			worktree++

@@ -11,6 +11,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
+	"github.com/FurlanLuka/crew/crew/internal/workspaceui"
 )
 
 // requireTerminal: claude and open hand the terminal to another program.
@@ -37,7 +38,7 @@ func terminalCheck(tty bool, what, alt string) (string, bool) {
 
 func cmdLaunch() {
 	if len(os.Args) < 3 {
-		runTUI(workspace.NewView())
+		runTUI(workspaceui.NewView())
 		return
 	}
 
