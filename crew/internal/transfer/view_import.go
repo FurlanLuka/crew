@@ -755,7 +755,7 @@ func (v ImportView) renderWorkspaceCard(b *strings.Builder) {
 			return
 		}
 		b.WriteString(fmt.Sprintf("  %s installing %s — one runner per project\n", v.spinner.View(), m.Name))
-		b.WriteString(workspace.RenderSetupTable(*v.setup, "▸"))
+		b.WriteString(workspace.RenderSetupTable(*v.setup, "▸", time.Now()))
 		return
 	case exists:
 		b.WriteString("  " + app.Subtle.Render("A workspace by this name is here already; an import never replaces one.") + "\n\n")

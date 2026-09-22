@@ -452,20 +452,21 @@ func TestRunFlat(t *testing.T) {
 }
 
 func TestRenderSetupTable(t *testing.T) {
+	now := time.Date(2026, 9, 22, 7, 0, 0, 0, time.UTC)
 	st := Status{Projects: []ProjectStatus{
 		{Project: "api", State: StateOK, Steps: []RunStep{{Name: "checkout", Status: StepOK, TookMs: 1200}, {Name: "npm ci", Status: StepOK, TookMs: 11400}, {Name: "smoke api", Status: StepOK, TookMs: 2100}}},
 		{Project: "web", State: StateFailed, Steps: []RunStep{{Name: "checkout", Status: StepSkipped, Detail: "present"}, {Name: "make sync", Status: StepFailed, TookMs: 900, Detail: "exit 3"}}},
-		{Project: "worker", State: StateRunning, Steps: []RunStep{{Name: "checkout", Status: StepOK, TookMs: 800}, {Name: "uv sync", Status: StepRunning}}},
+		{Project: "worker", State: StateRunning, Steps: []RunStep{{Name: "checkout", Status: StepOK, TookMs: 800}, {Name: "uv sync", Status: StepRunning, StartedAt: now.Add(-13 * time.Second)}}},
 		{Project: "admin", State: StateStarting},
 		{Project: "signals", State: StateInterrupted, Steps: []RunStep{{Name: "pnpm install", Status: StepFailed, Detail: "interrupted"}}, Issues: []Issue{{Detail: "runner interrupted during pnpm install (runner gone)"}}},
 		{Project: "infra-ops", State: StateFailed, Steps: []RunStep{{Name: "checkout", Status: StepFailed}}},
 		{Project: "store-app", State: StateOK},
 	}}
-	got := RenderSetupTable(st, "⣾")
+	got := RenderSetupTable(st, "⣾", now)
 	want := strings.Join([]string{
 		"  ✓ api        checkout 1s · npm ci 11s · smoke api 2s",
 		"  ✗ web        make sync — exit 3",
-		"  ⣾ worker     checkout 1s · ⣾ uv sync",
+		"  ⣾ worker     checkout 1s · ⣾ uv sync 13s",
 		"  ⣾ admin      starting",
 		"  ✗ signals    runner interrupted during pnpm install (runner gone)",
 		"  ✗ infra-ops  checkout — failed",
@@ -475,7 +476,7 @@ func TestRenderSetupTable(t *testing.T) {
 	if got != want {
 		t.Errorf("table =\n%s\nwant\n%s", got, want)
 	}
-	if RenderSetupTable(Status{}, "x") != "" {
+	if RenderSetupTable(Status{}, "x", now) != "" {
 		t.Error("no projects → nothing")
 	}
 }

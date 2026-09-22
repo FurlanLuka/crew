@@ -51,12 +51,15 @@ const (
 	StepSkipped = "skipped"
 )
 
-// RunStep is one step of a runner as its result file records it.
+// RunStep is one step of a runner as its result file records it. StartedAt
+// is what lets a reader show a running step's elapsed time — a long npm ci
+// with no clock on it reads as frozen.
 type RunStep struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	TookMs int64  `json:"took_ms,omitempty"`
-	Detail string `json:"detail,omitempty"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+	TookMs    int64     `json:"took_ms,omitempty"`
+	Detail    string    `json:"detail,omitempty"`
 }
 
 // RunResult is a runner's result file: written after every step, so a
@@ -435,8 +438,9 @@ func reservePorts(ref Ref, projects []dev.DevProject, reserved map[string]int) (
 func (r *Runner) begin(step string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.result.Steps = append(r.result.Steps, RunStep{Name: step, Status: StepRunning})
-	r.started[step] = time.Now()
+	now := time.Now()
+	r.result.Steps = append(r.result.Steps, RunStep{Name: step, Status: StepRunning, StartedAt: now})
+	r.started[step] = now
 	r.write()
 	r.logLine("▸ " + step)
 }
@@ -963,10 +967,11 @@ func anyRunnerAlive(ref Ref) bool {
 // ── Rendering ──
 
 // RenderSetupTable is one line per project: its state, then its steps in
-// order with how long each took — what `crew setup status` prints and the
-// page shows while a setup runs. frame is the spinner glyph for a running
-// step (a static one without a terminal). Pure.
-func RenderSetupTable(st Status, frame string) string {
+// order with how long each took (a running one: so far, against now) —
+// what `crew setup status` prints and the page shows while a setup runs.
+// frame is the spinner glyph for a running step (a static one without a
+// terminal). Pure.
+func RenderSetupTable(st Status, frame string, now time.Time) string {
 	if len(st.Projects) == 0 {
 		return ""
 	}
@@ -983,14 +988,14 @@ func RenderSetupTable(st Status, frame string) string {
 		case StateFailed, StateInterrupted:
 			glyph = "✗"
 		}
-		fmt.Fprintf(&b, "  %s %-*s  %s\n", glyph, width, p.Project, describeSteps(p, frame))
+		fmt.Fprintf(&b, "  %s %-*s  %s\n", glyph, width, p.Project, describeSteps(p, frame, now))
 	}
 	return b.String()
 }
 
 // describeSteps is a project's steps as one line: done steps with their
 // time, the running one with the frame, a failed one with its reason.
-func describeSteps(p ProjectStatus, frame string) string {
+func describeSteps(p ProjectStatus, frame string, now time.Time) string {
 	if p.State == StateStarting {
 		return "starting"
 	}
@@ -1009,7 +1014,11 @@ func describeSteps(p ProjectStatus, frame string) string {
 		case StepSkipped:
 			continue
 		case StepRunning:
-			parts = append(parts, frame+" "+s.Name)
+			elapsed := ""
+			if !s.StartedAt.IsZero() && now.After(s.StartedAt) {
+				elapsed = " " + now.Sub(s.StartedAt).Round(time.Second).String()
+			}
+			parts = append(parts, frame+" "+s.Name+elapsed)
 		case StepFailed:
 			detail := s.Detail
 			if detail == "" {

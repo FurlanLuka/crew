@@ -120,7 +120,7 @@ func watchSetup(ref workspace.Ref) workspace.Status {
 		if drawn > 0 {
 			fmt.Fprintf(human, "\033[%dA\033[J", drawn)
 		}
-		table := workspace.RenderSetupTable(st, frames[i%len(frames)])
+		table := workspace.RenderSetupTable(st, frames[i%len(frames)], time.Now())
 		fmt.Fprint(human, table)
 		drawn = strings.Count(table, "\n")
 		i++
@@ -130,7 +130,7 @@ func watchSetup(ref workspace.Ref) workspace.Status {
 		os.Exit(1)
 	}
 	if !tty {
-		fmt.Fprint(human, workspace.RenderSetupTable(st, "…"))
+		fmt.Fprint(human, workspace.RenderSetupTable(st, "…", time.Now()))
 	}
 	return st
 }
@@ -401,7 +401,7 @@ func cmdSetupStatus() {
 			fmt.Printf("no setup has run on %s\n", res.Ref)
 			return
 		}
-		fmt.Print(workspace.RenderSetupTable(st, "▸"))
+		fmt.Print(workspace.RenderSetupTable(st, "▸", time.Now()))
 	}
 	if h := recordedHealth(res.Ref); h != nil && !st.Running() {
 		fmt.Println()

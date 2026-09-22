@@ -81,8 +81,10 @@ type worktreePage struct {
 	// verdict — the page keeps looking until it is.
 	Settling bool
 	// Setup is the runners' progress while any is alive — the page's
-	// "installing" state; nil once they are done or when none ran.
+	// "installing" state; nil once they are done or when none ran. Now is
+	// when it was read, so a running step's elapsed time renders from it.
 	Setup       *Status
+	Now         time.Time
 	LeadProject string
 	LeadBranch  string
 	HasEditor   bool
@@ -493,7 +495,7 @@ func renderWorktreePage(b *strings.Builder, page worktreePage, rows []worktreeRo
 	renderHealth(b, page.Health, page.installing())
 	if page.installing() {
 		b.WriteString("\n  " + app.Highlight.Render("installing") + app.Subtle.Render(" · one runner per project") + "\n")
-		b.WriteString(RenderSetupTable(*page.Setup, spinnerFrame))
+		b.WriteString(RenderSetupTable(*page.Setup, spinnerFrame, page.Now))
 	}
 	b.WriteString("\n")
 
@@ -743,6 +745,7 @@ func loadWorktreePage(res *Resolved, check, settling bool) worktreePage {
 		CheckHealth: checkHealth,
 		Settling:    settling,
 		Setup:       liveSetup(res.Ref),
+		Now:         time.Now(),
 		Anomalies:   strings.TrimLeft(anomalies, "\n"),
 		Health:      res.Health,
 		HasEditor:   exec.DetectEditor() != "",
