@@ -1,4 +1,4 @@
-package project
+package projectui
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
 // ── Messages ──
@@ -31,7 +32,7 @@ const (
 // ── Data ──
 
 type devItem struct {
-	Server DevServer
+	Server project.DevServer
 }
 
 // ── Model ──
@@ -311,7 +312,7 @@ func (v DevServerView) renderForm(b *strings.Builder) {
 
 func (v DevServerView) renderConfirmRemove(b *strings.Builder) {
 	item := v.items[v.cursor]
-	b.WriteString(fmt.Sprintf("  Remove server '%s'? (y/n)\n", item.Server.Name))
+	b.WriteString(fmt.Sprintf("  project.Remove server '%s'? (y/n)\n", item.Server.Name))
 }
 
 // ── Commands ──
@@ -319,7 +320,7 @@ func (v DevServerView) renderConfirmRemove(b *strings.Builder) {
 func (v DevServerView) loadDevServers() tea.Cmd {
 	projName := v.projName
 	return func() tea.Msg {
-		p := Get(projName)
+		p := project.Get(projName)
 		if p == nil {
 			return errMsg{fmt.Errorf("project '%s' not found", projName)}
 		}
@@ -356,15 +357,15 @@ func (v DevServerView) saveServer() tea.Cmd {
 			return errMsg{fmt.Errorf("invalid port number")}
 		}
 
-		ds := DevServer{Name: nameVal, Port: port, Command: cmdVal, Dir: dirVal}
+		ds := project.DevServer{Name: nameVal, Port: port, Command: cmdVal, Dir: dirVal}
 		// A rename keeps the bindings scoped to the server on its new name.
 		if origName != "" && origName != nameVal {
-			if err := RenameDevServer(projName, origName, ds); err != nil {
+			if err := project.RenameDevServer(projName, origName, ds); err != nil {
 				return errMsg{err}
 			}
 			return devServerSavedMsg{}
 		}
-		if err := AddDevServer(projName, ds); err != nil {
+		if err := project.AddDevServer(projName, ds); err != nil {
 			return errMsg{err}
 		}
 		return devServerSavedMsg{}
@@ -374,7 +375,7 @@ func (v DevServerView) saveServer() tea.Cmd {
 func (v DevServerView) removeServer(serverName string) tea.Cmd {
 	projName := v.projName
 	return func() tea.Msg {
-		if _, err := RemoveDevServer(projName, serverName); err != nil {
+		if _, err := project.RemoveDevServer(projName, serverName); err != nil {
 			return errMsg{err}
 		}
 		return devServerRemovedMsg{}

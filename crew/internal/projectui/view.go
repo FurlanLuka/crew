@@ -1,4 +1,4 @@
-package project
+package projectui
 
 import (
 	"fmt"
@@ -9,17 +9,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
+	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
 // ── Messages ──
 
-type projectsLoadedMsg struct{ projects []Project }
+type projectsLoadedMsg struct{ projects []project.Project }
 type projectRemovedMsg struct{ name string }
 type commandSavedMsg struct {
 	name  string
 	field commandField
 }
-type errMsg struct{ err error }
 
 // ── States ──
 
@@ -37,56 +37,50 @@ const (
 type commandField int
 
 const (
-	fieldSetup commandField = iota
-	fieldEnvCmd
+	cmdSetup commandField = iota
+	cmdEnvCmd
 )
 
 func (f commandField) label() string {
-	if f == fieldEnvCmd {
+	if f == cmdEnvCmd {
 		return "Env command"
 	}
 	return "Setup command"
 }
 
-func (f commandField) value(p Project) string {
-	if f == fieldEnvCmd {
+func (f commandField) value(p project.Project) string {
+	if f == cmdEnvCmd {
 		return p.EnvCmd
 	}
 	return p.Setup
 }
 
 func (f commandField) placeholder() string {
-	if f == fieldEnvCmd {
+	if f == cmdEnvCmd {
 		return "make get-env   (empty: the copied .env is all)"
 	}
 	return "make sync   (empty: detect from lockfile)"
 }
 
 func (f commandField) hint() string {
-	if f == fieldEnvCmd {
+	if f == cmdEnvCmd {
 		return "Writes the checkout's env files; runs after the install. Must write files, not print values — its output is logged."
 	}
 	return "Runs in every new checkout after mise install. Leave empty to detect from the lockfile."
 }
 
 func (f commandField) save(name, command string) error {
-	if f == fieldEnvCmd {
-		return SetEnvCmd(name, command)
+	if f == cmdEnvCmd {
+		return project.SetEnvCmd(name, command)
 	}
-	return SetSetup(name, command)
+	return project.SetSetup(name, command)
 }
-
-// AddWizard opens the add-project walk — source, install, servers,
-// bindings, check. Its check step needs the workspace package, which
-// imports this one, so main wires the constructor in (as with Previewer);
-// nil leaves the list without an add key.
-var AddWizard func() app.Page
 
 // ── Model ──
 
 type View struct {
 	state        viewState
-	projects     []Project
+	projects     []project.Project
 	cursor       int
 	commandInput textinput.Model
 	editing      commandField
@@ -204,8 +198,8 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.cursor++
 		}
 		return v, nil
-	case msg.String() == "a" && AddWizard != nil:
-		page := AddWizard()
+	case msg.String() == "a":
+		page := New()
 		return v, func() tea.Msg { return app.PushPageMsg{Page: page} }
 	case msg.String() == "d":
 		if len(v.projects) > 0 {
@@ -228,9 +222,9 @@ func (v View) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return v, nil
 	case msg.String() == "t":
-		return v.openCommandForm(fieldSetup)
+		return v.openCommandForm(cmdSetup)
 	case msg.String() == "e":
-		return v.openCommandForm(fieldEnvCmd)
+		return v.openCommandForm(cmdEnvCmd)
 	}
 	return v, nil
 }
@@ -241,7 +235,7 @@ func (v View) handleConfirmRemoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		name := v.projects[v.cursor].Name
 		v.state = stateList
 		return v, func() tea.Msg {
-			if err := Remove(name); err != nil {
+			if err := project.Remove(name); err != nil {
 				return errMsg{err}
 			}
 			return projectRemovedMsg{name}
@@ -335,29 +329,21 @@ func (v View) renderList(b *strings.Builder) {
 	}
 
 	b.WriteString("  ")
-	b.WriteString(app.HelpStyle.Render(listHelp(AddWizard != nil)))
+	b.WriteString(app.HelpStyle.Render(listHelp))
 	b.WriteString("\n")
 }
 
-// listHelp is the list's key line; a is offered only when the wizard is
-// wired, so the help never names a key the handler drops. Pure.
-func listHelp(canAdd bool) string {
-	keys := "d delete  s servers  b bindings  t setup  e env cmd  esc back"
-	if canAdd {
-		return "a add  " + keys
-	}
-	return keys
-}
+const listHelp = "a add  d delete  s servers  b bindings  t setup  e env cmd  esc back"
 
 func (v View) renderConfirmRemove(b *strings.Builder) {
 	name := v.projects[v.cursor].Name
-	b.WriteString(fmt.Sprintf("  Remove project '%s'? (y/n)\n", name))
+	b.WriteString(fmt.Sprintf("  project.Remove project '%s'? (y/n)\n", name))
 }
 
 // ── Commands ──
 
 func loadProjects() tea.Msg {
-	projects, err := List()
+	projects, err := project.List()
 	if err != nil {
 		return errMsg{err}
 	}

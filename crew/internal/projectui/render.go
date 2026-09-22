@@ -1,4 +1,4 @@
-package addproject
+package projectui
 
 import (
 	"fmt"

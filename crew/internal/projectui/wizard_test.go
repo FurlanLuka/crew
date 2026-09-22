@@ -1,4 +1,4 @@
-package addproject
+package projectui
 
 import (
 	"fmt"
@@ -356,7 +356,7 @@ func TestWizard_ServersDetectedAndByHand(t *testing.T) {
 	if got := plain(w.View()); !strings.Contains(got, "servers   store-api :3000  npm run dev") {
 		t.Errorf("the card lists what is recorded:\n%s", got)
 	}
-	if _, ok := pushed(w, "a").(project.DevServerView); !ok {
+	if _, ok := pushed(w, "a").(DevServerView); !ok {
 		t.Error("a pushes the servers editor")
 	}
 	// Digits only, so a and n stay keys — and q is a typo, not a quit.
@@ -403,7 +403,7 @@ func TestWizard_BindingsNeedATarget(t *testing.T) {
 	if got := plain(w.View()); !strings.Contains(got, "b bindings  n next") {
 		t.Errorf("a target appeared on reload:\n%s", got)
 	}
-	if _, ok := pushed(w, "b").(project.BindingsView); !ok {
+	if _, ok := pushed(w, "b").(BindingsView); !ok {
 		t.Error("b pushes the bindings editor")
 	}
 	w = press(t, w, "n")

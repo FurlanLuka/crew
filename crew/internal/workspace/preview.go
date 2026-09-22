@@ -5,18 +5,29 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
+// BindingPreview is one binding resolved against one real worktree.
+type BindingPreview struct {
+	Ref      string
+	Value    string
+	Resolved bool
+	// Running is false when the value came from the worktree's reserved
+	// ports rather than live servers — right, but not yet true.
+	Running bool
+	Detail  string
+}
+
 // PreviewBinding resolves one binding against every worktree the project is in.
 //
 // This is what makes the binding editor trustworthy: the real value, before
 // saving, and the worktrees where it will not resolve — which is normal, and
 // far better seen at declaration time than at start time.
-func PreviewBinding(projName string, b project.Binding) []project.BindingPreview {
+func PreviewBinding(projName string, b project.Binding) []BindingPreview {
 	names, err := List()
 	if err != nil {
 		return nil
 	}
 
-	var previews []project.BindingPreview
+	var previews []BindingPreview
 	for _, wsName := range names {
 		ws, err := Load(wsName)
 		if err != nil || !hasProject(ws, projName) {
@@ -50,7 +61,7 @@ func PreviewBinding(projName string, b project.Binding) []project.BindingPreview
 				if r.Project != projName || r.Key() != b.Key() {
 					continue
 				}
-				previews = append(previews, project.BindingPreview{
+				previews = append(previews, BindingPreview{
 					Ref:      ref.String(),
 					Value:    r.Value,
 					Resolved: r.Resolved(),

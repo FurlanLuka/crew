@@ -1,4 +1,4 @@
-package project
+package projectui
 
 import (
 	"fmt"
@@ -11,41 +11,23 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
-
-// BindingPreview is one binding resolved against one real worktree.
-type BindingPreview struct {
-	Ref      string
-	Value    string
-	Resolved bool
-	// Running is false when the value came from the worktree's reserved
-	// ports rather than live servers — right, but not yet true.
-	Running bool
-	Detail  string
-}
-
-// PreviewFunc resolves a binding against every worktree the project is in.
-//
-// Resolution needs the workspace package, which imports this one, so the
-// editor receives the function rather than the package. main wires it.
-type PreviewFunc func(projName string, b Binding) []BindingPreview
-
-// Previewer is set by main; nil disables live preview in the editor.
-var Previewer PreviewFunc
 
 // ── Messages ──
 
 type bindingsLoadedMsg struct {
-	bindings  []Binding
+	bindings  []project.Binding
 	proposals []dev.Proposal
-	previews  map[dev.BindingKey][]BindingPreview
+	previews  map[dev.BindingKey][]workspace.BindingPreview
 	envKeys   []string
-	pool      []Project
-	servers   []DevServer
+	pool      []project.Project
+	servers   []project.DevServer
 }
 type bindingSavedMsg struct{ count int }
 type bindingRemovedMsg struct{}
-type bindingPreviewMsg struct{ previews []BindingPreview }
+type bindingPreviewMsg struct{ previews []workspace.BindingPreview }
 
 // ── States ──
 
@@ -72,8 +54,8 @@ type BindingsView struct {
 	projName string
 	state    bindingState
 
-	bindings []Binding
-	previews map[dev.BindingKey][]BindingPreview
+	bindings []project.Binding
+	previews map[dev.BindingKey][]workspace.BindingPreview
 	cursor   int
 
 	proposals []dev.Proposal
@@ -88,14 +70,14 @@ type BindingsView struct {
 	valueInput textinput.Model
 	focus      editField
 	envKeys    []string
-	pool       []Project
+	pool       []project.Project
 	// servers are this project's own: a binding can be scoped to one of them.
 	// The scope field shows only when there are two or more to choose from.
-	servers []DevServer
+	servers []project.DevServer
 	editIdx int
 
-	draft        Binding
-	draftPreview []BindingPreview
+	draft        project.Binding
+	draftPreview []workspace.BindingPreview
 
 	statusMsg string
 	err       error
@@ -158,7 +140,7 @@ func (v BindingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.state = bindingStateList
 		v.err = nil
 		if msg.count == 1 {
-			v.statusMsg = "Binding saved"
+			v.statusMsg = "project.Binding saved"
 		} else {
 			v.statusMsg = fmt.Sprintf("%d bindings saved", msg.count)
 		}
@@ -167,7 +149,7 @@ func (v BindingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bindingRemovedMsg:
 		v.state = bindingStateList
-		v.statusMsg = "Binding removed"
+		v.statusMsg = "project.Binding removed"
 		v.err = nil
 		return v, v.load()
 
@@ -203,7 +185,7 @@ func (v BindingsView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
-// ── List ──
+// ── project.List ──
 
 func (v BindingsView) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
@@ -273,7 +255,7 @@ func (v BindingsView) declaredVars() map[string]bool {
 
 // boundProjectWide is what the editor's scan (of the checkout root, always
 // project-wide) counts as already bound.
-func (v BindingsView) boundProjectWide() map[string]bool { return BoundFor(v.bindings, "") }
+func (v BindingsView) boundProjectWide() map[string]bool { return project.BoundFor(v.bindings, "") }
 
 // ── Scan ──
 
@@ -424,11 +406,11 @@ func (v *BindingsView) syncDraft() tea.Cmd {
 // malformed token is one fact about the value, not one per worktree, so it
 // is the error and there is no preview; an unfinished var name or empty
 // value is not an error at all, just nothing to preview yet.
-func draftState(d Binding) (previewable bool, err error) {
+func draftState(d project.Binding) (previewable bool, err error) {
 	if _, err := dev.ParseTokens(d.Value); err != nil {
 		return false, err
 	}
-	return validVarName.MatchString(d.Var) && d.Value != "", nil
+	return project.ValidVarName(d.Var) && d.Value != "", nil
 }
 
 func (v *BindingsView) setFocus(f editField) tea.Cmd {
@@ -448,7 +430,7 @@ func (v *BindingsView) setFocus(f editField) tea.Cmd {
 
 func (v BindingsView) validateVar() error {
 	name := strings.TrimSpace(v.varInput.Value())
-	if !validVarName.MatchString(name) {
+	if !project.ValidVarName(name) {
 		return fmt.Errorf("'%s' is not a valid environment variable name", name)
 	}
 	return nil
@@ -468,7 +450,7 @@ func (v BindingsView) completeVar(prefix string) string {
 }
 
 // projectsWithServers is what a {{project}} token can target.
-func (v BindingsView) projectsWithServers() []Project { return WithDevServers(v.pool) }
+func (v BindingsView) projectsWithServers() []project.Project { return project.WithDevServers(v.pool) }
 
 // ── Confirm ──
 
@@ -490,7 +472,7 @@ func (v *BindingsView) resetDraft() {
 	v.valueInput.Reset()
 	v.valueInput.Blur()
 	v.focus = fieldVar
-	v.draft = Binding{}
+	v.draft = project.Binding{}
 	v.draftPreview = nil
 	v.editIdx = -1
 }
@@ -500,30 +482,30 @@ func (v *BindingsView) resetDraft() {
 func (v BindingsView) load() tea.Cmd {
 	projName := v.projName
 	return func() tea.Msg {
-		p := Get(projName)
+		p := project.Get(projName)
 		if p == nil {
 			return errMsg{fmt.Errorf("project '%s' not found", projName)}
 		}
 
-		envValues := ScanEnv(projName, "")
+		envValues := project.ScanEnv(workspace.ProjectCheckouts(projName), "")
 		envKeys := make([]string, 0, len(envValues))
 		for k := range envValues {
 			envKeys = append(envKeys, k)
 		}
 		sort.Strings(envKeys)
 
-		previews := make(map[dev.BindingKey][]BindingPreview)
-		if Previewer != nil {
+		previews := make(map[dev.BindingKey][]workspace.BindingPreview)
+		if true {
 			for _, b := range p.Bindings {
-				previews[b.Key()] = Previewer(projName, b)
+				previews[b.Key()] = workspace.PreviewBinding(projName, b)
 			}
 		}
 
-		pool, _ := List()
+		pool, _ := project.List()
 
 		return bindingsLoadedMsg{
 			bindings:  p.Bindings,
-			proposals: dev.ProposeBindings(envValues, ConfiguredPorts()),
+			proposals: dev.ProposeBindings(envValues, project.ConfiguredPorts()),
 			previews:  previews,
 			envKeys:   envKeys,
 			pool:      pool,
@@ -533,12 +515,12 @@ func (v BindingsView) load() tea.Cmd {
 }
 
 func (v BindingsView) previewDraft() tea.Cmd {
-	if Previewer == nil || v.draft.Var == "" || v.draft.Value == "" {
+	if v.draft.Var == "" || v.draft.Value == "" {
 		return nil
 	}
 	projName, draft := v.projName, v.draft
 	return func() tea.Msg {
-		return bindingPreviewMsg{previews: Previewer(projName, draft)}
+		return bindingPreviewMsg{previews: workspace.PreviewBinding(projName, draft)}
 	}
 }
 
@@ -553,9 +535,9 @@ func (v BindingsView) saveDraft() tea.Cmd {
 		// An edit that changes the var or the scope is a new identity; the
 		// old one goes so both do not survive.
 		if orig != nil && *orig != draft.Key() {
-			RemoveBinding(projName, *orig)
+			project.RemoveBinding(projName, *orig)
 		}
-		if err := AddBinding(projName, draft); err != nil {
+		if err := project.AddBinding(projName, draft); err != nil {
 			return errMsg{err}
 		}
 		return bindingSavedMsg{count: 1}
@@ -564,16 +546,16 @@ func (v BindingsView) saveDraft() tea.Cmd {
 
 func (v BindingsView) applyProposals() tea.Cmd {
 	projName := v.projName
-	var chosen []Binding
+	var chosen []project.Binding
 	for i, p := range v.proposals {
 		if v.accepted[i] && !p.Ambiguous {
-			chosen = append(chosen, Binding{Var: p.Var, Value: p.Template})
+			chosen = append(chosen, project.Binding{Var: p.Var, Value: p.Template})
 		}
 	}
 	return func() tea.Msg {
 		saved := 0
 		for _, b := range chosen {
-			if err := AddBinding(projName, b); err != nil {
+			if err := project.AddBinding(projName, b); err != nil {
 				return errMsg{fmt.Errorf("%s: %w", b.Var, err)}
 			}
 			saved++
@@ -585,7 +567,7 @@ func (v BindingsView) applyProposals() tea.Cmd {
 func (v BindingsView) removeBinding(key dev.BindingKey) tea.Cmd {
 	projName := v.projName
 	return func() tea.Msg {
-		if err := RemoveBinding(projName, key); err != nil {
+		if err := project.RemoveBinding(projName, key); err != nil {
 			return errMsg{err}
 		}
 		return bindingRemovedMsg{}

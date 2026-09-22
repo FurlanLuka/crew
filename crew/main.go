@@ -15,7 +15,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/FurlanLuka/crew/crew/internal/addproject"
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -24,6 +23,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/housekeeping"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/projectui"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
@@ -100,9 +100,6 @@ func printJSON(v any) {
 
 func main() {
 	config.Init()
-	project.Previewer = workspace.PreviewBinding
-	project.CheckoutDirs = workspace.ProjectCheckouts
-	project.AddWizard = addproject.New
 
 	// Strip the global --json flag before computing cmd so it works in any
 	// position and is not rejected by strict per-command arg parsers.
@@ -160,7 +157,7 @@ func main() {
 		runTUI(workspace.NewView())
 
 	case "project":
-		runTUI(project.NewView())
+		runTUI(projectui.NewView())
 
 	case "add":
 		cmdAdd()
@@ -306,7 +303,7 @@ func mainMenu() app.Menu {
 		{
 			Label:       "Project",
 			Description: "Add/remove projects and configure dev servers",
-			Page:        func() app.Page { return project.NewView() },
+			Page:        func() app.Page { return projectui.NewView() },
 		},
 		{
 			Label:       "Export",

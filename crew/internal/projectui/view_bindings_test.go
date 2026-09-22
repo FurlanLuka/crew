@@ -1,7 +1,8 @@
-package project
+package projectui
 
 import (
-	"regexp"
+	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 	"strings"
 	"testing"
 
@@ -10,12 +11,10 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 )
 
-var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
 func TestRenderTokenLegend_Golden(t *testing.T) {
-	targets := []Project{
-		{Name: "store-api", DevServers: []DevServer{{Name: "store-api", Port: 3000}}},
-		{Name: "checkout-api", DevServers: []DevServer{{Name: "api", Port: 8000}, {Name: "worker", Port: 8001}}},
+	targets := []project.Project{
+		{Name: "store-api", DevServers: []project.DevServer{{Name: "store-api", Port: 3000}}},
+		{Name: "checkout-api", DevServers: []project.DevServer{{Name: "api", Port: 8000}, {Name: "worker", Port: 8001}}},
 	}
 
 	var b strings.Builder
@@ -56,16 +55,16 @@ func TestRenderTokenLegend_NoTargets(t *testing.T) {
 func TestDraftState(t *testing.T) {
 	tests := []struct {
 		name        string
-		draft       Binding
+		draft       project.Binding
 		previewable bool
 		wantErr     string
 	}{
-		{name: "complete", draft: Binding{Var: "A", Value: "{{store-api}}"}, previewable: true},
-		{name: "literal", draft: Binding{Var: "A", Value: "x"}, previewable: true},
-		{name: "var not yet valid", draft: Binding{Var: "not-a-var", Value: "{{store-api}}"}},
-		{name: "empty value", draft: Binding{Var: "A"}},
-		{name: "malformed token", draft: Binding{Var: "A", Value: "{{store-api.foo}}"}, wantErr: "a server is written"},
-		{name: "malformed token beats missing var", draft: Binding{Value: "{{}}"}, wantErr: "expected"},
+		{name: "complete", draft: project.Binding{Var: "A", Value: "{{store-api}}"}, previewable: true},
+		{name: "literal", draft: project.Binding{Var: "A", Value: "x"}, previewable: true},
+		{name: "var not yet valid", draft: project.Binding{Var: "not-a-var", Value: "{{store-api}}"}},
+		{name: "empty value", draft: project.Binding{Var: "A"}},
+		{name: "malformed token", draft: project.Binding{Var: "A", Value: "{{store-api.foo}}"}, wantErr: "a server is written"},
+		{name: "malformed token beats missing var", draft: project.Binding{Value: "{{}}"}, wantErr: "expected"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -86,7 +85,7 @@ func TestDraftState(t *testing.T) {
 func TestCompleteVar(t *testing.T) {
 	v := BindingsView{
 		envKeys:  []string{"SIGNALS_AGENT_NAME", "SIGNALS_URL", "STORE_API_URL"},
-		bindings: []Binding{{Var: "SIGNALS_AGENT_NAME", Value: "{{worktree}}"}},
+		bindings: []project.Binding{{Var: "SIGNALS_AGENT_NAME", Value: "{{worktree}}"}},
 	}
 	tests := map[string]string{
 		"":              "",
@@ -104,7 +103,7 @@ func TestCompleteVar(t *testing.T) {
 }
 
 func TestRenderList_MarksLegacyForm(t *testing.T) {
-	v := BindingsView{bindings: []Binding{
+	v := BindingsView{bindings: []project.Binding{
 		{Var: "OLD", Value: "{{url:store-api}}"},
 		{Var: "NEW", Value: "{{store-api}}"},
 	}}
@@ -121,10 +120,8 @@ func TestRenderList_MarksLegacyForm(t *testing.T) {
 }
 
 func TestRenderEdit_MalformedTokenShowsOneError(t *testing.T) {
-	prev := Previewer
-	Previewer = func(string, Binding) []BindingPreview { return nil }
-	t.Cleanup(func() { Previewer = prev })
-
+	// No workspace on disk: the preview is empty by fact, not by seam.
+	setupTestConfig(t)
 	v := NewBindingsView("checkout-api")
 	v.editIdx = -1
 	v.varInput.SetValue("A")
@@ -153,7 +150,7 @@ func TestRenderEdit_MalformedTokenShowsOneError(t *testing.T) {
 	}
 }
 
-func press(v BindingsView, k string) BindingsView {
+func pressB(v BindingsView, k string) BindingsView {
 	m, _ := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
 	return m.(BindingsView)
 }
@@ -167,8 +164,8 @@ func pressKey(v BindingsView, k tea.KeyType) BindingsView {
 // a project-wide binding on the same var is another row.
 func TestRenderList_ScopedRowsLabelled(t *testing.T) {
 	v := BindingsView{
-		bindings: []Binding{{Var: "A", Value: "{{store-api}}"}, {Var: "A", Value: "{{admin/homepage}}", Server: "backend"}},
-		previews: map[dev.BindingKey][]BindingPreview{
+		bindings: []project.Binding{{Var: "A", Value: "{{store-api}}"}, {Var: "A", Value: "{{admin/homepage}}", Server: "backend"}},
+		previews: map[dev.BindingKey][]workspace.BindingPreview{
 			{Var: "A"}:                    {{Ref: "ws/wrk1", Value: "http://localhost:1", Resolved: true, Running: true}},
 			{Var: "A", Server: "backend"}: {{Ref: "ws/wrk1", Value: "http://localhost:2", Resolved: true, Running: true}},
 		},
@@ -192,12 +189,9 @@ func TestRenderList_ScopedRowsLabelled(t *testing.T) {
 // The scope field exists only when the project has two or more servers;
 // ←/→ cycle all / each server, tab moves on to the value.
 func TestRenderEdit_ScopeField(t *testing.T) {
-	prev := Previewer
-	Previewer = nil
-	t.Cleanup(func() { Previewer = prev })
-
+	setupTestConfig(t)
 	one := NewBindingsView("store-api")
-	one.servers = []DevServer{{Name: "store-api"}}
+	one.servers = []project.DevServer{{Name: "store-api"}}
 	one.state = bindingStateEdit
 	one.setFocus(fieldVar)
 	one = pressKey(one, tea.KeyTab)
@@ -211,7 +205,7 @@ func TestRenderEdit_ScopeField(t *testing.T) {
 	}
 
 	v := NewBindingsView("admin")
-	v.servers = []DevServer{{Name: "backend"}, {Name: "homepage"}}
+	v.servers = []project.DevServer{{Name: "backend"}, {Name: "homepage"}}
 	v.state = bindingStateEdit
 	v.setFocus(fieldVar)
 	v = pressKey(v, tea.KeyTab)
@@ -258,15 +252,12 @@ func TestRenderEdit_ScopeField(t *testing.T) {
 // scope removes the old identity.
 func TestEditScopedBinding(t *testing.T) {
 	setupPool(t)
-	prev := Previewer
-	Previewer = nil
-	t.Cleanup(func() { Previewer = prev })
-	AddBinding("admin", Binding{Var: "A", Value: "{{store-api}}", Server: "backend"})
+	project.AddBinding("admin", project.Binding{Var: "A", Value: "{{store-api}}", Server: "backend"})
 
 	v := NewBindingsView("admin")
-	v.bindings = Get("admin").Bindings
-	v.servers = Get("admin").DevServers
-	v = press(v, "e")
+	v.bindings = project.Get("admin").Bindings
+	v.servers = project.Get("admin").DevServers
+	v = pressB(v, "e")
 	if v.state != bindingStateEdit || v.draft.Server != "backend" {
 		t.Fatalf("e on a scoped row: state %d, draft %+v", v.state, v.draft)
 	}
@@ -275,20 +266,20 @@ func TestEditScopedBinding(t *testing.T) {
 	if msg := cmd(); msg != (bindingSavedMsg{count: 1}) {
 		t.Fatalf("save: %+v", msg)
 	}
-	p := Get("admin")
+	p := project.Get("admin")
 	if len(p.Bindings) != 1 || p.Bindings[0].Server != "homepage" {
 		t.Errorf("the old scope goes, the new one stays: %+v", p.Bindings)
 	}
 
 	// d then y on the scoped row removes that identity alone.
-	AddBinding("admin", Binding{Var: "A", Value: "{{store-api}}"})
+	project.AddBinding("admin", project.Binding{Var: "A", Value: "{{store-api}}"})
 	v.state = bindingStateList
-	v.bindings = Get("admin").Bindings
+	v.bindings = project.Get("admin").Bindings
 	v.cursor = 0
 	if v.bindings[0].Server != "homepage" {
 		t.Fatalf("fixture order: %+v", v.bindings)
 	}
-	v = press(v, "d")
+	v = pressB(v, "d")
 	m, cmd := v.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	v = m.(BindingsView)
 	if cmd == nil {
@@ -297,15 +288,30 @@ func TestEditScopedBinding(t *testing.T) {
 	if msg := cmd(); msg != (bindingRemovedMsg{}) {
 		t.Fatalf("remove: %+v", msg)
 	}
-	if p := Get("admin"); len(p.Bindings) != 1 || p.Bindings[0].Server != "" {
+	if p := project.Get("admin"); len(p.Bindings) != 1 || p.Bindings[0].Server != "" {
 		t.Errorf("only the scoped identity goes: %+v", p.Bindings)
 	}
 	// A scan of the root counts only a project-wide binding as declared.
-	v.bindings = []Binding{{Var: "A", Value: "x", Server: "homepage"}}
+	v.bindings = []project.Binding{{Var: "A", Value: "x", Server: "homepage"}}
 	if v.boundProjectWide()["A"] {
 		t.Error("a var bound for one server is not project-wide bound")
 	}
 	if !v.declaredVars()["A"] {
 		t.Error("but it is declared, for completion")
 	}
+}
+
+// setupPool is the three-project pool the binding tests read: one server,
+// two servers, none.
+func setupPool(t *testing.T) {
+	t.Helper()
+	setupTestConfig(t)
+	project.Add(project.Project{Name: "store-api", Path: "/p/store-api", DevServers: []project.DevServer{
+		{Name: "store-api", Port: 3000, Command: "npm start"},
+	}})
+	project.Add(project.Project{Name: "admin", Path: "/p/admin", DevServers: []project.DevServer{
+		{Name: "backend", Port: 3100, Command: "pnpm dev"},
+		{Name: "homepage", Port: 3001, Command: "pnpm dev"},
+	}})
+	project.Add(project.Project{Name: "checkout-api", Path: "/p/checkout-api"})
 }

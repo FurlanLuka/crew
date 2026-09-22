@@ -1084,8 +1084,8 @@ func runBindingScan(owner bindingOwner, apply bool) {
 	// A scoped scan reads the server's own dir in every checkout — that dir
 	// alone; the root is what the bare scan reads.
 	subdir := owner.Dir
-	dirs := project.CheckoutDirs(projName)
-	proposals := dev.ProposeBindings(project.ScanEnv(projName, subdir), project.ConfiguredPorts())
+	dirs := workspace.ProjectCheckouts(projName)
+	proposals := dev.ProposeBindings(project.ScanEnv(dirs, subdir), project.ConfiguredPorts())
 
 	declared := project.BoundFor(p.Bindings, owner.Target.Server)
 

@@ -1,4 +1,4 @@
-package addproject
+package projectui
 
 // The concept block each card opens with: what the thing is, in the words
 // the CLI cannot afford. Every block fits a 24-line terminal beside the

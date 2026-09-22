@@ -11,6 +11,9 @@ import (
 
 var validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// ValidVarName: the name is one an environment variable can have.
+func ValidVarName(name string) bool { return validVarName.MatchString(name) }
+
 // ValidateBinding checks a binding against the project pool before it is saved.
 //
 // Every check here is one that would otherwise surface as a variable silently
@@ -227,26 +230,15 @@ func ConfiguredPorts() map[int][]dev.ProjectServer {
 	return ports
 }
 
-// CheckoutDirs lists every directory a project's env files might live in:
-// the canonical repo and each worktree checkout. Set by main, because the
-// checkouts are the workspace package's to know and it imports this one.
-// CopyEnvFiles puts .env into checkouts at creation, so the canonical repo
-// alone is usually empty.
-var CheckoutDirs = func(projName string) []string {
-	if p := Get(projName); p != nil {
-		return []string{p.Path}
-	}
-	return nil
-}
-
-// ScanEnv reads env values across every checkout of a project for the
-// binding scan — under subdir when a server's dir is given (that dir alone:
-// the root is the bare scan), the checkout root otherwise. A key given
-// several values — in one file or across checkouts — yields the one pointing
-// at localhost when there is one.
-func ScanEnv(projName, subdir string) map[string]string {
+// ScanEnv reads env values across every checkout of a project (dirs: the
+// canonical repo and each worktree — the workspace package knows them) for
+// the binding scan — under subdir when a server's dir is given (that dir
+// alone: the root is the bare scan), the checkout root otherwise. A key
+// given several values — in one file or across checkouts — yields the one
+// pointing at localhost when there is one. Pure over the files.
+func ScanEnv(dirs []string, subdir string) map[string]string {
 	all := map[string][]string{}
-	for _, dir := range CheckoutDirs(projName) {
+	for _, dir := range dirs {
 		for k, vs := range dev.ReadEnvValuesAll(filepath.Join(dir, subdir)) {
 			all[k] = append(all[k], vs...)
 		}

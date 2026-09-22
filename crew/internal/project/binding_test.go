@@ -291,14 +291,12 @@ func TestScanEnv_Subdir(t *testing.T) {
 	os.WriteFile(filepath.Join(checkout, ".env"), []byte("ROOT=http://localhost:3000\n"), 0o644)
 	os.MkdirAll(filepath.Join(checkout, "apps", "web"), 0o755)
 	os.WriteFile(filepath.Join(checkout, "apps", "web", ".env"), []byte("WEB=http://localhost:3100\n"), 0o644)
-	prev := CheckoutDirs
-	CheckoutDirs = func(string) []string { return []string{checkout, filepath.Join(checkout, "missing")} }
-	t.Cleanup(func() { CheckoutDirs = prev })
+	dirs := []string{checkout, filepath.Join(checkout, "missing")}
 
-	if got := ScanEnv("admin", "apps/web"); len(got) != 1 || got["WEB"] != "http://localhost:3100" {
+	if got := ScanEnv(dirs, "apps/web"); len(got) != 1 || got["WEB"] != "http://localhost:3100" {
 		t.Errorf("subdir scan = %v", got)
 	}
-	if got := ScanEnv("admin", ""); len(got) != 1 || got["ROOT"] != "http://localhost:3000" {
+	if got := ScanEnv(dirs, ""); len(got) != 1 || got["ROOT"] != "http://localhost:3000" {
 		t.Errorf("root scan = %v", got)
 	}
 }

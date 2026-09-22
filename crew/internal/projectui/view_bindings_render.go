@@ -1,4 +1,4 @@
-package project
+package projectui
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
 // ── View ──
@@ -20,7 +22,7 @@ func (v BindingsView) View() string {
 	case bindingStateEdit:
 		v.renderEdit(&b)
 	case bindingStateConfirmRemove:
-		b.WriteString(fmt.Sprintf("  Remove binding '%s'? (y/n)\n", v.bindings[v.cursor].Label()))
+		b.WriteString(fmt.Sprintf("  project.Remove binding '%s'? (y/n)\n", v.bindings[v.cursor].Label()))
 	}
 	return b.String()
 }
@@ -78,7 +80,7 @@ func (v BindingsView) renderList(b *strings.Builder) {
 
 // renderPreviewInline shows the first resolved value, or the first reason it
 // was left alone — enough to see at a glance, with the full picture in edit.
-func renderPreviewInline(previews []BindingPreview) string {
+func renderPreviewInline(previews []workspace.BindingPreview) string {
 	if len(previews) == 0 {
 		return app.Subtle.Render("→ no worktree to check against")
 	}
@@ -90,7 +92,7 @@ func renderPreviewInline(previews []BindingPreview) string {
 	return app.Highlight.Render("→ left alone") + "  " + app.Subtle.Render(previews[0].Detail)
 }
 
-func stoppedTag(p BindingPreview) string {
+func stoppedTag(p workspace.BindingPreview) string {
 	if p.Running {
 		return ""
 	}
@@ -184,7 +186,7 @@ func (v BindingsView) renderEdit(b *strings.Builder) {
 			}
 			b.WriteString("\n")
 		}
-	} else if v.err == nil && Previewer != nil && v.draft.Value != "" && validVarName.MatchString(v.draft.Var) {
+	} else if v.err == nil && true && v.draft.Value != "" && project.ValidVarName(v.draft.Var) {
 		b.WriteString("\n         ")
 		b.WriteString(app.Subtle.Render("→ not in any worktree yet"))
 		b.WriteString("\n")
@@ -220,7 +222,7 @@ var tokenLegend = []legendRow{
 
 // renderTokenLegend lists the tokens and the projects they can point at, so
 // a value can be typed without leaving the screen or knowing the grammar.
-func renderTokenLegend(b *strings.Builder, targets []Project) {
+func renderTokenLegend(b *strings.Builder, targets []project.Project) {
 	b.WriteString("  Tokens\n")
 	for _, r := range tokenLegend {
 		// Pad before styling: width counts the escape bytes otherwise.

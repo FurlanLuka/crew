@@ -1,10 +1,9 @@
-// Package addproject is the TUI's add-project walk: source, install,
-// servers, bindings, check — one card per step, each an existing command
-// applied when its key is pressed, each explaining the concept it asks
-// about. It sits above project and workspace the way transfer does; only
-// main imports it, and main wires it into the project list as
-// project.AddWizard.
-package addproject
+// Package projectui is the project TUI: the list, the project page and the
+// add-project wizard, with the server form, the binding editor and the
+// check card they share. It sits above project and workspace the way
+// transfer does — the page and the wizard read worktrees and run checks,
+// which project itself cannot import — and only main imports it.
+package projectui
 
 import (
 	"errors"
@@ -91,7 +90,7 @@ type Wizard struct {
 	err     error
 }
 
-// New is what main hands project.AddWizard.
+// New is the wizard as a page — what the list's a pushes.
 func New() app.Page { return newWizard() }
 
 func newWizard() Wizard {
@@ -436,7 +435,7 @@ func (w Wizard) handleServersKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		w = w.leaveForm(stepBindings)
 		return w, nil
 	case "a":
-		page := project.NewDevServerView(w.name)
+		page := NewDevServerView(w.name)
 		return w, func() tea.Msg { return app.PushPageMsg{Page: page} }
 	case "enter":
 		if w.facts.devCmd == "" {
@@ -479,7 +478,7 @@ func (w Wizard) handleBindingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(targetsFor(w.facts.pool, w.name)) == 0 {
 			return w, nil
 		}
-		page := project.NewBindingsView(w.name)
+		page := NewBindingsView(w.name)
 		return w, func() tea.Msg { return app.PushPageMsg{Page: page} }
 	}
 	return w, nil
