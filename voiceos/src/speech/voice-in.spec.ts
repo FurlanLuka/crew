@@ -11,9 +11,19 @@ import { configureLog } from '../log.js';
 
 configureLog({ quiet: true });
 
+// A finished hands-free turn waits this long before it is routed, in case the sentence goes on.
+const CONTINUE_MS = 2;
+const waitForSettle = () => Bun.sleep(CONTINUE_MS + 8);
+
 type HarnessExtras = Pick<
 	VoiceInputOptions,
-	'listSpokenLines' | 'now' | 'computeReconnectDelay' | 'quietMs' | 'holdMs'
+	| 'listSpokenLines'
+	| 'now'
+	| 'computeReconnectDelay'
+	| 'quietMs'
+	| 'holdMs'
+	| 'continueMs'
+	| 'maxWaitMs'
 >;
 
 interface CreateHarnessParams extends HarnessExtras {
@@ -52,6 +62,7 @@ const createHarness = ({
 	const cancelled: number[] = [];
 	const listenOffs: { client: string; reason: string }[] = [];
 	const input = new VoiceInput({
+		continueMs: CONTINUE_MS,
 		...extra,
 		onListenOff: (client, reason) => listenOffs.push({ client, reason }),
 		store,
@@ -352,7 +363,7 @@ describe('VoiceInput hands-free', () => {
 		expect(harness.sent).toEqual([960]);
 	});
 
-	it('two words of real speech → speech cut once; the turn ends → routed, speech may resume', () => {
+	it('two words of real speech → speech cut once; the turn ends → routed, speech may resume', async () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
 		harness.session?.onPartial('open');
@@ -363,17 +374,19 @@ describe('VoiceInput hands-free', () => {
 		expect(harness.store.state.transcript?.text).toBe('open store front');
 
 		harness.session?.onSegment?.('open store front');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['open store front']);
 		expect(harness.talkEnds).toEqual([1]);
 		expect(harness.store.state.transcript).toBeNull();
 	});
 
-	it('a one-word turn still cuts in when it ends', () => {
+	it('a one-word turn still cuts in when it ends', async () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
 		harness.session?.onPartial('push');
 		expect(harness.talkStarts).toEqual([]);
 		harness.session?.onSegment?.('push');
+		await waitForSettle();
 		expect(harness.talkStarts).toEqual([1]);
 		expect(harness.talkEnds).toEqual([1]);
 		expect(harness.utterances).toEqual(['push']);
@@ -413,7 +426,7 @@ describe('VoiceInput hands-free', () => {
 		expect(harness.utterances).toEqual([]);
 	});
 
-	it("a short answer in the words of the question still playing → routed as the developer's", () => {
+	it("a short answer in the words of the question still playing → routed as the developer's", async () => {
 		const harness = createHarness({
 			listSpokenLines: () =>
 				createSpoken("Which session — signals main that's on screen, or another one?"),
@@ -422,28 +435,33 @@ describe('VoiceInput hands-free', () => {
 		harness.input.listen('c1');
 		harness.session?.onPartial('signals main');
 		harness.session?.onSegment?.('Signals main.');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['Signals main.']);
 	});
 
-	it('several turns on one stream → each routed in order, the stream kept', () => {
+	it('several turns on one stream → each routed in order, the stream kept', async () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
 		harness.session?.onSegment?.('go home');
+		await waitForSettle();
 		harness.session?.onSegment?.('open store front');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['go home', 'open store front']);
 		expect(harness.sessions).toHaveLength(1);
 		expect(harness.cancelled).toEqual([]);
 	});
 
-	it('a turn behind a press still finalizing waits for it', () => {
+	it('a turn behind a press still finalizing waits for it', async () => {
 		const harness = createHarness();
 		harness.input.start('c1');
 		harness.input.stop('c1');
 		const press = harness.session;
 		harness.input.listen('c1');
 		harness.session?.onSegment?.('second');
+		await waitForSettle();
 		expect(harness.utterances).toEqual([]);
 		press?.onFinal('first');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['first', 'second']);
 	});
 
@@ -461,6 +479,7 @@ describe('VoiceInput hands-free', () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
 		harness.sessions[0]?.onFinal('half a thought');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['half a thought']);
 		expect(harness.sessions).toHaveLength(1);
 		await Bun.sleep(550);
@@ -558,18 +577,19 @@ describe('VoiceInput hands-free', () => {
 		expect(harness.talkEnds).toEqual([1]);
 	});
 
-	it('speech stays held while a press is live, even when a hands-free turn ends', () => {
+	it('speech stays held while a press is live, even when a hands-free turn ends', async () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
 		harness.input.start('c2');
 		harness.sessions[0]?.onPartial('open the store');
 		harness.sessions[0]?.onSegment?.('open the store');
+		await waitForSettle();
 		expect(harness.talkEnds).toEqual([]);
 		harness.input.stop('c2');
 		expect(harness.talkEnds).toEqual([1]);
 	});
 
-	it("answering in the line's own words after it ended → routed, not dropped as echo", () => {
+	it("answering in the line's own words after it ended → routed, not dropped as echo", async () => {
 		const harness = createHarness({
 			listSpokenLines: () => createSpoken('store front went down. Want Claude to fix it?', 6000),
 			now: () => 10_000,
@@ -578,6 +598,7 @@ describe('VoiceInput hands-free', () => {
 		harness.session?.onPartial('fix it');
 		expect(harness.talkStarts).toEqual([1]);
 		harness.session?.onSegment?.('Fix it.');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['Fix it.']);
 	});
 
@@ -592,6 +613,7 @@ describe('VoiceInput hands-free', () => {
 		await Bun.sleep(40);
 		expect(harness.talkEnds).toEqual([1]);
 		harness.session?.onSegment?.('open the store');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['open the store']);
 		expect(harness.talkStarts).toEqual([1, 1]);
 		expect(harness.talkEnds).toEqual([1, 1]);
@@ -608,7 +630,7 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		return harness;
 	};
 
-	it('a turn cut off mid-thought waits, and the next one completes it', () => {
+	it('a turn cut off mid-thought waits, and the next one completes it', async () => {
 		const harness = createHeldHarness();
 		harness.session?.onSegment?.('Switch to—');
 		expect(harness.utterances).toEqual([]);
@@ -618,16 +640,18 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 			target: 'waiting for the rest…',
 		});
 		harness.session?.onSegment?.('checkout api main.');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['Switch to checkout api main.']);
 		expect(harness.store.state.transcript).toBeNull();
 	});
 
-	it('speech stays held while waiting for the rest; it resumes once the turn is complete', () => {
+	it('speech stays held while waiting for the rest; it resumes once the turn is complete', async () => {
 		const harness = createHeldHarness();
 		harness.session?.onSegment?.('And can you.');
 		expect(harness.talkStarts).toEqual([1]);
 		expect(harness.talkEnds).toEqual([]);
 		harness.session?.onSegment?.('Restart the dev servers?');
+		await waitForSettle();
 		expect(harness.talkEnds).toEqual([1]);
 	});
 
@@ -651,6 +675,7 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		harness.session?.onPartial('restart the dev servers');
 		await Bun.sleep(HOLD_MS / 2 + 20);
 		harness.session?.onSegment?.('restart the dev servers');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['And can you restart the dev servers']);
 	});
 
@@ -661,6 +686,7 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		harness.session?.onSegment?.('and can you');
 		await Bun.sleep(HOLD_MS / 2 + 20);
 		harness.session?.onSegment?.('open checkout.');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(["Let's, um and can you open checkout."]);
 	});
 
@@ -680,9 +706,11 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		});
 		harness.session?.onSegment?.('And can you.');
 		harness.session?.onSegment?.('dev servers are already up');
+		await waitForSettle();
 		expect(harness.utterances).toEqual([]);
 		expect(harness.store.state.transcript?.text).toBe('And can you.');
 		harness.session?.onSegment?.('restart them');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['And can you restart them']);
 	});
 
@@ -695,12 +723,23 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		expect(harness.store.state.transcript).toBeNull();
 	});
 
-	it.each(['Hold on.', 'Stop.', 'Yes.', 'Show me everything.', 'Okay.'])(
-		'%p is acted on at once, never held',
-		(text) => {
+	it.each(['Hold on.', 'Stop.'])('%p is acted on at once, never held', (text) => {
+		const harness = createHeldHarness();
+		harness.session?.onSegment?.(text);
+		expect(harness.utterances).toEqual([text]);
+	});
+
+	it.each(['Yes.', 'Show me everything.', 'Okay.'])(
+		'%p waits a moment in case it goes on, then is acted on',
+		async (text) => {
 			const harness = createHeldHarness();
 			harness.session?.onSegment?.(text);
+			expect(harness.utterances).toEqual([]);
+			expect(harness.talkEnds).toEqual([]);
+			expect(harness.store.state.transcript?.target).not.toBe('waiting for the rest…');
+			await waitForSettle();
 			expect(harness.utterances).toEqual([text]);
+			expect(harness.talkEnds).toEqual([1]);
 		},
 	);
 
@@ -731,8 +770,10 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		harness.input.listen('c1');
 		harness.sessions[0]?.onSegment?.('Switch to—');
 		harness.sessions[0]?.onFinal('');
+		await waitForSettle();
 		await Bun.sleep(10);
 		harness.sessions[1]?.onSegment?.('checkout api main.');
+		await waitForSettle();
 		expect(harness.utterances).toEqual(['Switch to checkout api main.']);
 	});
 
@@ -742,5 +783,154 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		harness.input.stop('c2');
 		harness.sessions.at(-1)?.onFinal('and can you');
 		expect(harness.utterances).toEqual(['and can you']);
+	});
+});
+
+describe('VoiceInput hands-free: a sentence cut in two', () => {
+	const WAIT_MS = 30;
+
+	const createWaitHarness = (extra: HarnessExtras = {}) => {
+		const harness = createHarness({ continueMs: WAIT_MS, holdMs: 80, ...extra });
+		harness.input.listen('c1');
+
+		return harness;
+	};
+
+	it('speech that goes on inside the wait → one sentence to the kernel', async () => {
+		const harness = createWaitHarness();
+		harness.session?.onSegment?.('Check the conversation history for when you forward it.');
+		await Bun.sleep(WAIT_MS / 2);
+		harness.session?.onPartial('To a session, I want');
+		await Bun.sleep(WAIT_MS);
+		expect(harness.utterances).toEqual([]);
+		harness.session?.onSegment?.('To a session, I want an audible confirmation.');
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual([
+			'Check the conversation history for when you forward it. To a session, I want an audible confirmation.',
+		]);
+	});
+
+	it('"yes" and then the rest → never a bare yes', async () => {
+		const harness = createWaitHarness();
+		harness.session?.onSegment?.('Yes.');
+		harness.session?.onSegment?.('But not the migration.');
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual(['Yes. But not the migration.']);
+	});
+
+	it('"stop" inside the wait → the command is dropped and stop still goes', async () => {
+		const harness = createWaitHarness();
+		harness.session?.onSegment?.('Push the branch.');
+		harness.session?.onSegment?.('Stop.');
+		expect(harness.utterances).toEqual(['Stop.']);
+		expect(harness.store.state.transcript).toBeNull();
+		expect(harness.talkEnds).toEqual([1]);
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual(['Stop.']);
+	});
+
+	it.each(['Hold on.', 'Wait.'])(
+		'%p inside the wait → joined, so it reaches the kernel with the command',
+		async (word) => {
+			const harness = createWaitHarness();
+			harness.session?.onSegment?.('Push the branch.');
+			harness.session?.onSegment?.(word);
+			await Bun.sleep(WAIT_MS + 10);
+			expect(harness.utterances).toEqual([`Push the branch. ${word}`]);
+		},
+	);
+
+	it('two quick commands without punctuation → still two sentences', async () => {
+		const harness = createWaitHarness();
+		harness.session?.onSegment?.('go home');
+		harness.session?.onSegment?.('open store front');
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual(['go home. open store front']);
+	});
+
+	it('Voice OS heard back during the wait → it neither stretches nor joins', async () => {
+		const harness = createWaitHarness({
+			listSpokenLines: () => [{ text: 'Checking the logs, back shortly.', endedAt: null }],
+		});
+		harness.session?.onSegment?.('Run the tests.');
+		harness.session?.onPartial('checking the logs back');
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual(['Run the tests.']);
+	});
+
+	it('a finished command that background talk turns into an unfinished one → still capped', async () => {
+		const harness = createWaitHarness({ maxWaitMs: 60 });
+		harness.session?.onSegment?.('Go home.');
+		harness.session?.onSegment?.('so I was saying that the');
+
+		for (let i = 0; i < 8; i++) {
+			await Bun.sleep(15);
+			harness.session?.onPartial(`and then the recipe ${i}`);
+		}
+
+		expect(harness.utterances).toEqual(['Go home. so I was saying that the']);
+	});
+
+	it('an unfinished start is not capped: it waits for the rest as it always has', async () => {
+		const harness = createWaitHarness({ maxWaitMs: 20 });
+		harness.session?.onSegment?.('Switch to—');
+		await Bun.sleep(40);
+		harness.session?.onSegment?.('checkout api main.');
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual(['Switch to checkout api main.']);
+	});
+
+	it('a breath or an "mm" in the wait neither stretches it nor labels it', async () => {
+		const harness = createWaitHarness();
+		harness.session?.onSegment?.('Run the tests.');
+		harness.session?.onPartial('Mm.');
+		expect(harness.store.state.transcript?.target).not.toBe('waiting for the rest…');
+		await Bun.sleep(WAIT_MS + 10);
+		expect(harness.utterances).toEqual(['Run the tests.']);
+	});
+
+	it('background talk that never stops → the command still goes at the cap', async () => {
+		const harness = createWaitHarness({ maxWaitMs: 60 });
+		harness.session?.onSegment?.('Run the tests.');
+
+		for (let i = 0; i < 8; i++) {
+			await Bun.sleep(15);
+			harness.session?.onPartial(`and so the recipe needs ${i} cups`);
+		}
+
+		expect(harness.utterances).toEqual(['Run the tests.']);
+	});
+
+	it('hands-free off, or another tab taking over, inside the wait → the command still goes', () => {
+		const off = createWaitHarness();
+		off.session?.onSegment?.('Run the tests.');
+		off.input.unlisten('c1');
+		expect(off.utterances).toEqual(['Run the tests.']);
+
+		const moved = createWaitHarness();
+		moved.session?.onSegment?.('Run the tests.');
+		moved.input.listen('c2');
+		expect(moved.utterances).toEqual(['Run the tests.']);
+	});
+
+	it("the stream's last words, then hands-free gives up → those words still go", () => {
+		const harness = createWaitHarness({ computeReconnectDelay: () => null });
+		harness.session?.onFinal('Run the tests.');
+		expect(harness.utterances).toEqual(['Run the tests.']);
+	});
+
+	it('a turn cut off mid-thought is still dropped when listening ends, as before', () => {
+		const harness = createWaitHarness();
+		harness.session?.onSegment?.('Switch to—');
+		harness.input.unlisten('c1');
+		expect(harness.utterances).toEqual([]);
+	});
+
+	it('push-to-talk never waits', () => {
+		const harness = createHarness({ continueMs: 1000 });
+		harness.input.start('c1');
+		harness.input.stop('c1');
+		harness.session?.onFinal('Run the tests.');
+		expect(harness.utterances).toEqual(['Run the tests.']);
 	});
 });

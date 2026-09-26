@@ -3,7 +3,7 @@ import { INTERRUPT_PATTERN, normalizeUtterance, STANDALONE_WORDS } from '../shar
 import type { Store } from '../state/store.js';
 import { countWords } from './echo.js';
 import type { SttFailure, SttHandle, SttSessionOptions } from './stt.js';
-import { decideTurnAction, joinTurns } from './turns.js';
+import { decideTurnAction, hasRealWords, joinTurns, type HoldKind } from './turns.js';
 
 export interface HandsFreeHost {
 	openStream: (options: Omit<SttSessionOptions, 'terms'>) => SttHandle;
@@ -26,6 +26,10 @@ export interface HandsFreeOptions {
 	quietMs?: number;
 	// An unfinished turn waits this long in silence for the rest.
 	holdMs?: number;
+	// A finished turn waits this long in case the developer goes on: endpointing cuts sentences.
+	continueMs?: number;
+	// No turn waits longer than this in all, so background talk cannot hold a command back.
+	maxWaitMs?: number;
 }
 
 interface Listening {
@@ -39,8 +43,10 @@ interface Listening {
 	// The developer is mid-turn: Voice OS's speech is cut and held.
 	isTalking: boolean;
 	quietTimer: ReturnType<typeof setTimeout> | null;
-	// A turn that stopped mid-thought, waiting to be joined to the next one.
+	// A turn waiting to be joined to the next one: unfinished (hold) or finished (settle).
 	heldText: string | null;
+	holdKind: HoldKind | null;
+	heldSince: number | null;
 	holdTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -49,6 +55,8 @@ const log = createLogger('voice-in');
 const BARGE_IN_WORDS = 2;
 const QUIET_MS = 8_000;
 const HOLD_MS = 5_000;
+const CONTINUE_MS = 1_200;
+const MAX_WAIT_MS = 8_000;
 const HELD_LABEL = 'waiting for the rest…';
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000];
 
@@ -105,6 +113,8 @@ export class HandsFree {
 			isTalking: false,
 			quietTimer: null,
 			heldText: null,
+			holdKind: null,
+			heldSince: null,
 			holdTimer: null,
 		};
 		this.listening.set(client, listening);
@@ -123,6 +133,12 @@ export class HandsFree {
 
 		if (listening.retryTimer) {
 			clearTimeout(listening.retryTimer);
+		}
+
+		// A finished command still waiting is the developer's: listening ends, the command still goes.
+		if (listening.holdKind === 'settle' && listening.heldText) {
+			log.info('settled turn routed as listening ended', { client, text: listening.heldText });
+			this.host.queueTurn(client, listening.heldText);
 		}
 
 		this.dropHold(listening);
@@ -218,9 +234,16 @@ export class HandsFree {
 			return;
 		}
 
+		if (listening.holdKind === 'settle' && !hasRealWords(text)) {
+			return;
+		}
+
 		// Still speaking: the held start keeps waiting for this.
-		this.armHold(listening);
-		this.host.showPartial(joinTurns(listening.heldText, text), HELD_LABEL);
+		this.armHold(listening, this.options.holdMs ?? HOLD_MS);
+		this.host.showPartial(
+			joinTurns(listening.heldText, text, { keepBoundary: listening.holdKind === 'settle' }),
+			listening.holdKind === 'hold' ? HELD_LABEL : undefined,
+		);
 	}
 
 	private endTurn(listening: Listening, text: string): void {
@@ -240,12 +263,30 @@ export class HandsFree {
 			return;
 		}
 
-		const action = decideTurnAction({ held: listening.heldText, text });
+		const action = decideTurnAction({
+			held: listening.heldText,
+			heldKind: listening.holdKind,
+			text,
+		});
+
+		if (action.kind === 'cancel') {
+			// Nothing was sent yet: "stop" drops it, and still reaches whatever runs.
+			log.info('held turn cancelled', { client, held: listening.heldText, text });
+			this.dropHold(listening);
+			this.host.queueTurn(client, action.text);
+			this.lowerTalk(listening);
+			this.host.clearTranscript(client);
+
+			return;
+		}
 
 		if (listening.heldText) {
 			log.info('turn joined', { client, text: action.text });
 		}
 
+		// The cap counts from the first finished sentence, whatever the joins turn it into after;
+		// an unfinished hold with nothing finished before it waits as it always has.
+		const heldSince = listening.heldSince ?? (action.kind === 'settle' ? this.now() : null);
 		this.dropHold(listening);
 
 		// A one-word turn never reached the barge-in threshold; its end still cuts in.
@@ -253,11 +294,28 @@ export class HandsFree {
 			this.raiseTalk(listening);
 		}
 
-		if (action.kind === 'hold') {
-			log.info('turn held', { client, text: action.text });
+		const maxWaitMs = this.options.maxWaitMs ?? MAX_WAIT_MS;
+		const isCapped = heldSince !== null && this.now() - heldSince >= maxWaitMs;
+
+		if (isCapped) {
+			log.info('wait capped', { client, text: action.text });
+		}
+
+		if (action.kind !== 'route' && !isCapped) {
+			log.info(action.kind === 'hold' ? 'turn held' : 'turn settling', {
+				client,
+				text: action.text,
+			});
 			listening.heldText = action.text;
-			this.armHold(listening);
-			this.host.showPartial(action.text, HELD_LABEL);
+			listening.holdKind = action.kind;
+			listening.heldSince = heldSince;
+			this.armHold(
+				listening,
+				action.kind === 'hold'
+					? (this.options.holdMs ?? HOLD_MS)
+					: (this.options.continueMs ?? CONTINUE_MS),
+			);
+			this.host.showPartial(action.text, action.kind === 'hold' ? HELD_LABEL : undefined);
 
 			return;
 		}
@@ -268,26 +326,41 @@ export class HandsFree {
 		this.host.clearTranscript(client);
 	}
 
-	private armHold(listening: Listening): void {
+	private armHold(listening: Listening, ms: number): void {
 		if (listening.holdTimer) {
 			clearTimeout(listening.holdTimer);
 		}
 
-		listening.holdTimer = setTimeout(() => {
-			const text = listening.heldText;
-			listening.holdTimer = null;
+		// Never past the cap: background talk keeps re-arming this.
+		const maxWaitMs = this.options.maxWaitMs ?? MAX_WAIT_MS;
+		const left = listening.heldSince === null ? ms : maxWaitMs - (this.now() - listening.heldSince);
 
-			if (!text || this.listening.get(listening.client) !== listening) {
-				return;
-			}
+		listening.holdTimer = setTimeout(
+			() => {
+				const text = listening.heldText;
+				listening.holdTimer = null;
 
-			// Silence after a held start: routed as it is, so a command held by mistake is not lost.
-			listening.heldText = null;
-			log.info('held turn released to the kernel', { client: listening.client, text });
-			this.host.queueTurn(listening.client, text);
-			this.lowerTalk(listening);
-			this.host.clearTranscript(listening.client);
-		}, this.options.holdMs ?? HOLD_MS);
+				if (!text || this.listening.get(listening.client) !== listening) {
+					return;
+				}
+
+				// Silence: a finished sentence goes as it is; an unfinished one too, so a command held by
+				// mistake is not lost.
+				const waitMs = listening.heldSince === null ? null : this.now() - listening.heldSince;
+				const event =
+					waitMs !== null && waitMs >= maxWaitMs
+						? 'wait capped'
+						: listening.holdKind === 'settle'
+							? 'settled turn routed'
+							: 'held turn released to the kernel';
+				log.info(event, { client: listening.client, text, ...(waitMs === null ? {} : { waitMs }) });
+				this.dropHold(listening);
+				this.host.queueTurn(listening.client, text);
+				this.lowerTalk(listening);
+				this.host.clearTranscript(listening.client);
+			},
+			Math.max(0, Math.min(ms, left)),
+		);
 	}
 
 	private dropHold(listening: Listening): void {
@@ -297,6 +370,8 @@ export class HandsFree {
 
 		listening.holdTimer = null;
 		listening.heldText = null;
+		listening.holdKind = null;
+		listening.heldSince = null;
 	}
 
 	private reconnect(listening: Listening, reason: string): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { decideTurnAction, isUnfinished, joinTurns } from './turns.js';
+import { decideTurnAction, hasRealWords, isUnfinished, joinTurns } from './turns.js';
 
 describe('isUnfinished', () => {
 	it.each([
@@ -115,27 +115,59 @@ describe('joinTurns', () => {
 });
 
 describe('decideTurnAction', () => {
-	const decide = (text: string, held: string | null = null) => decideTurnAction({ held, text });
+	const decide = (text: string, held: string | null = null, heldKind: 'hold' | 'settle' = 'hold') =>
+		decideTurnAction({ held, heldKind, text });
 
-	it('an unfinished turn waits', () =>
+	it('an unfinished turn waits for the rest', () =>
 		expect(decide('And can you.')).toEqual({ kind: 'hold', text: 'And can you.' }));
-	it('a finished one goes on', () =>
-		expect(decide('Run the tests.')).toEqual({ kind: 'route', text: 'Run the tests.' }));
-	it('joined to what was held, it goes on as one sentence', () =>
+	it('a finished one settles: it waits a moment in case the developer goes on', () =>
+		expect(decide('Run the tests.')).toEqual({ kind: 'settle', text: 'Run the tests.' }));
+	it('joined to an unfinished start, it becomes one sentence', () =>
 		expect(decide('Restart the dev servers?', 'And can you.')).toEqual({
-			kind: 'route',
+			kind: 'settle',
 			text: 'And can you restart the dev servers?',
 		}));
 	it('a request held before its object, joined to the rest → one request', () =>
 		expect(decide('A workspace?', 'Can you set up.')).toEqual({
-			kind: 'route',
+			kind: 'settle',
 			text: 'Can you set up a workspace?',
+		}));
+	it('joined to a finished sentence, the boundary stays: two quick commands stay two sentences', () =>
+		expect(decide('Open store front.', 'Go home.', 'settle')).toEqual({
+			kind: 'settle',
+			text: 'Go home. Open store front.',
+		}));
+	it('a correction after a finished command joins it, so the kernel sees what it corrects', () =>
+		expect(decide('Wait, no, not yet.', 'Push it.', 'settle')).toEqual({
+			kind: 'settle',
+			text: 'Push it. Wait, no, not yet.',
 		}));
 	it('joined but still unfinished → waits again', () =>
 		expect(decide('and', "Let's, um.")).toEqual({ kind: 'hold', text: "Let's, um and" }));
-	it('finished commands go at once; one cut off mid-way waits for the rest', () => {
+	it.each(['Stop.', 'Cancel that.', 'Never mind.', 'Stop—'])(
+		'%p right after an unsent command → it is dropped, and the word itself goes',
+		(text) => expect(decide(text, 'Push the branch.', 'settle')).toEqual({ kind: 'cancel', text }),
+	);
+	it.each(['Wait.', 'Hold on.'])(
+		'%p right after a finished command joins it, never cancels',
+		(word) =>
+			expect(decide(word, 'Push it.', 'settle')).toEqual({
+				kind: 'settle',
+				text: `Push it. ${word}`,
+			}),
+	);
+	it('"stop" after an unfinished start drops it too', () =>
+		expect(decide('Stop.', 'Switch to—', 'hold')).toEqual({ kind: 'cancel', text: 'Stop.' }));
+	it('a finished sentence without its period still ends before the next', () =>
+		expect(decide('open store front', 'go home', 'settle').text).toBe('go home. open store front'));
+	it('one ending in a comma gets a period, not both', () =>
+		expect(decide('open store front', 'Go home,', 'settle').text).toBe(
+			'Go home. open store front',
+		));
+	it('with nothing waiting, interrupts go at once; one cut off mid-way waits for the rest', () => {
 		expect(decide('Hold on.').kind).toBe('route');
-		expect(decide('Show me everything.').kind).toBe('route');
+		expect(decide('Stop.').kind).toBe('route');
+		expect(decide('Show me everything.').kind).toBe('settle');
 		expect(decide('Stop and').kind).toBe('hold');
 		expect(decide('Show me everything—').kind).toBe('hold');
 	});
@@ -144,4 +176,17 @@ describe('decideTurnAction', () => {
 	it.each(['Hold on—', 'Stop…', 'Wait...'])('%p interrupts at once, never waits', (text) =>
 		expect(decide(text).kind).toBe('route'),
 	);
+});
+
+describe('hasRealWords', () => {
+	it.each(['Hmmm.', 'Mhm.', 'Uh-huh.'])('%p is a murmur, not speech going on', (text) =>
+		expect(hasRealWords(text)).toBe(false),
+	);
+
+	it('a breath or an "mm" is not speech going on; a word is', () => {
+		expect(hasRealWords('Mm.')).toBe(false);
+		expect(hasRealWords('um, uh')).toBe(false);
+		expect(hasRealWords('and')).toBe(true);
+		expect(hasRealWords('store-front')).toBe(true);
+	});
 });
