@@ -55,7 +55,9 @@ const log = createLogger('voice-in');
 const BARGE_IN_WORDS = 2;
 const QUIET_MS = 8_000;
 const HOLD_MS = 5_000;
-const CONTINUE_MS = 1_200;
+// Speech-to-text reports new words about half a second after they start: 1.2 s missed a
+// developer who went on 0.7 s after pausing.
+const CONTINUE_MS = 2_000;
 const MAX_WAIT_MS = 8_000;
 const HELD_LABEL = 'waiting for the rest…';
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000];
