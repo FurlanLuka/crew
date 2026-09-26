@@ -13,11 +13,11 @@ const createWorktreeInfo = (ref: string, isPinned = false): WorktreeInfo => ({
 });
 
 const createState = (patch: Partial<State> = {}): State => {
-	const refs = ['store-front/main', 'store-front/wrk1', 'checkout-api/main', 'voiceos'];
+	const refs = ['store-front/main', 'store-front/wrk1', 'checkout-api/main', 'setup'];
 	const sessions = Object.fromEntries(
 		refs.map((ref) => [
 			ref,
-			{ ...createSession(createWorktreeInfo(ref, ref === 'voiceos')), status: 'idle' as const },
+			{ ...createSession(createWorktreeInfo(ref, ref === 'setup')), status: 'idle' as const },
 		]),
 	);
 
@@ -60,7 +60,7 @@ describe('resolveRef', () => {
 		expect(resolveRef(state, 'store-front/wrk1')).toBe('store-front/wrk1');
 		expect(resolveRef(state, 'wrk1')).toBe('store-front/wrk1');
 		expect(resolveRef(state, 'work one')).toBe('store-front/wrk1');
-		expect(resolveRef(state, 'voice os')).toBe('voiceos');
+		expect(resolveRef(state, 'setup session')).toBe('setup');
 	});
 
 	it('"main" is ambiguous → the focused workspace decides', () => {
@@ -77,7 +77,7 @@ describe('resolveRef', () => {
 
 describe('writeSpokenRefs', () => {
 	const refs = [
-		'voiceos',
+		'setup',
 		'signals/main',
 		'signals/wrk1',
 		'store-front/main',

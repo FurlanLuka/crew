@@ -535,13 +535,13 @@ describe('worktrees', () => {
 				type: 'worktrees',
 				worktrees: [
 					worktree('store/wrk1'),
-					worktree('voiceos', { isPinned: true }),
+					worktree('setup', { isPinned: true }),
 					worktree('checkout/main'),
 				],
 			},
 		]);
 
-		expect(state.order).toEqual(['voiceos', 'checkout/main', 'store/wrk1']);
+		expect(state.order).toEqual(['setup', 'checkout/main', 'store/wrk1']);
 	});
 
 	it('a removed worktree with a live worker is kept until it exits', () => {

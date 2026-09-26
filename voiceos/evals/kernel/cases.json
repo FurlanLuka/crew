@@ -93,7 +93,7 @@
 			"calls": [
 				{
 					"name": "send_to",
-					"ref": "voiceos",
+					"ref": "setup",
 					"text_includes": "worktree"
 				}
 			]
@@ -105,7 +105,7 @@
 			"calls": [
 				{
 					"name": "send_to",
-					"ref": "voiceos",
+					"ref": "setup",
 					"text_includes": "worktree"
 				}
 			]
@@ -437,10 +437,10 @@
 			]
 		},
 		{
-			"id": "in-session-voiceos",
+			"id": "in-session-setup",
 			"utterance": "Why is this so slow?",
 			"context": {
-				"view": "voiceos"
+				"view": "setup"
 			},
 			"calls": [
 				{
@@ -679,13 +679,13 @@
 			"id": "filler-then-start",
 			"utterance": "Hmm, let's start this.",
 			"context": {
-				"view": "voiceos",
-				"stopped": ["voiceos"]
+				"view": "setup",
+				"stopped": ["setup"]
 			},
 			"calls": [
 				{
 					"name": "start_session",
-					"ref": "voiceos"
+					"ref": "setup"
 				}
 			]
 		},
@@ -1465,7 +1465,7 @@
 				"view": "store-front/wrk1",
 				"work": [
 					{
-						"ref": "voiceos",
+						"ref": "setup",
 						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
 						"minutesAgo": 4
 					}
@@ -1483,7 +1483,7 @@
 				"view": "store-front/wrk1",
 				"work": [
 					{
-						"ref": "voiceos",
+						"ref": "setup",
 						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
 						"minutesAgo": 6,
 						"idle": true,
@@ -1503,7 +1503,7 @@
 				"view": "store-front/wrk1",
 				"work": [
 					{
-						"ref": "voiceos",
+						"ref": "setup",
 						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
 						"minutesAgo": 4
 					}
@@ -1519,7 +1519,7 @@
 			"calls": [
 				{
 					"name": "read_state",
-					"ref": "voiceos"
+					"ref": "setup"
 				}
 			],
 			"forbid_mutation": true,
@@ -1657,7 +1657,7 @@
 			"id": "switch-back-by-task",
 			"utterance": "Can you switch back to where we're doing data analysis?",
 			"context": {
-				"view": "voiceos",
+				"view": "setup",
 				"work": [
 					{
 						"ref": "store-front/wrk1",
@@ -1699,7 +1699,7 @@
 			"id": "status-by-task",
 			"utterance": "Can you check the status of our data analysis?",
 			"context": {
-				"view": "voiceos",
+				"view": "setup",
 				"work": [
 					{
 						"ref": "store-front/wrk1",
@@ -2577,15 +2577,15 @@
 			"no_reply": true
 		},
 		{
-			"id": "voiceos-addressed-from-session",
-			"utterance": "Voice OS, make a worktree in store front for the search fix.",
+			"id": "setup-addressed-from-session",
+			"utterance": "Setup, make a worktree in store front for the search fix.",
 			"context": {
 				"view": "checkout-api/main"
 			},
 			"calls": [
 				{
 					"name": "send_to",
-					"ref": "voiceos",
+					"ref": "setup",
 					"text_includes": "worktree"
 				}
 			]

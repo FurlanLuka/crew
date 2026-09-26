@@ -119,3 +119,25 @@ export const forgetSession = (file: string, ref: string): Registry => {
 
 	return registry;
 };
+
+export interface RenameSessionParams {
+	file: string;
+	from: string;
+	to: string;
+}
+
+export const renameSession = ({ file, from, to }: RenameSessionParams): Registry => {
+	// A renamed ref keeps its conversation; a record already under the new name wins.
+	const registry = loadRegistry(file);
+	const record = registry[from];
+
+	if (!record || registry[to]) {
+		return registry;
+	}
+
+	registry[to] = record;
+	delete registry[from];
+	saveRegistry(file, registry);
+
+	return registry;
+};

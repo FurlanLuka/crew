@@ -194,8 +194,8 @@ export const isMisroutedToSetup = ({
 	forwardTo,
 	utterance,
 }: IsMisroutedToSetupParams): boolean => {
-	// "Voice OS" names both the app and the pinned setup session: "can you reinstall Voice OS" was
-	// sent to setup from crew/main's screen. Setup gets it only when addressed or when it is crew setup.
+	// "can you reinstall Voice OS" was sent to setup from crew/main's screen. Setup gets words from
+	// another session's screen only when addressed or when they are crew setup.
 	if (!state.sessions[ref]?.isPinned || !forwardTo || forwardTo === ref || !utterance) {
 		return false;
 	}

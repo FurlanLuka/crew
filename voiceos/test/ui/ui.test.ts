@@ -125,7 +125,7 @@ beforeAll(async () => {
 	store.dispatch({
 		type: 'worktrees',
 		worktrees: [
-			createWorktree('voiceos', true),
+			createWorktree('setup', true),
 			createWorktree('store-front/main'),
 			createWorktree('checkout-api/main'),
 		],
@@ -169,7 +169,7 @@ describe('voice os ui', () => {
 			.locator('.tile')
 			.evaluateAll((tiles) => tiles.map((tile) => tile.getAttribute('data-ref')));
 
-		expect(refs).toEqual(['voiceos', 'checkout-api/main', 'store-front/main']);
+		expect(refs).toEqual(['setup', 'checkout-api/main', 'store-front/main']);
 		await context.close();
 	}, 20_000);
 
@@ -493,10 +493,10 @@ describe('voice os ui', () => {
 
 	it("Claude's Markdown renders; the developer's own words stay literal; an aside shows its answer", async () => {
 		const { context, page } = await signIn();
-		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'voiceos' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });
 		store.dispatch({
 			type: 'assistant_text',
-			ref: 'voiceos',
+			ref: 'setup',
 			text: '## Report\n\n| file | lines |\n| --- | --- |\n| retry.ts | 42 |\n\nSee [docs](https://example.com).',
 		});
 		const stream = page.locator('.stream');
@@ -504,24 +504,24 @@ describe('voice os ui', () => {
 		expect(await stream.locator('h2', { hasText: 'Report' }).isVisible()).toBe(true);
 		expect(await stream.getByRole('link', { name: 'docs' }).getAttribute('target')).toBe('_blank');
 
-		await ensureIdle('voiceos');
-		store.dispatch({ type: 'send', ref: 'voiceos', text: 'make it **bold**' });
+		await ensureIdle('setup');
+		store.dispatch({ type: 'send', ref: 'setup', text: 'make it **bold**' });
 		await stream.getByText('› make it **bold**').waitFor({ timeout: 5000 });
 
-		store.dispatch({ type: 'send', ref: 'voiceos', text: 'which file?', aside: true });
+		store.dispatch({ type: 'send', ref: 'setup', text: 'which file?', aside: true });
 		await stream.getByText('asking aside…').waitFor({ timeout: 5000 });
 		const itemId =
-			store.state.sessions.voiceos?.stream.find((item) => item.kind === 'aside')?.id ?? '';
+			store.state.sessions.setup?.stream.find((item) => item.kind === 'aside')?.id ?? '';
 		store.dispatch({
 			type: 'aside_settled',
-			ref: 'voiceos',
+			ref: 'setup',
 			itemId,
 			question: 'which file?',
 			status: 'answered',
 			answer: 'The **retry** file.',
 		});
 		await stream.locator('.aside strong', { hasText: 'retry' }).waitFor({ timeout: 5000 });
-		store.dispatch({ type: 'turn_ended', ref: 'voiceos', costUsd: 0, text: '' });
+		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: '' });
 		await context.close();
 	}, 20_000);
 
@@ -816,26 +816,24 @@ describe('voice os ui', () => {
 
 	it('elsewhere lists another session at work; clicking it opens that session', async () => {
 		const { context, page } = await signIn();
-		await ensureIdle('voiceos');
+		await ensureIdle('setup');
 		store.dispatch({
 			type: 'send',
-			ref: 'voiceos',
+			ref: 'setup',
 			text: 'Set up a new worktree wrk3 for the store front.',
 		});
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 
-		const row = page.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'voiceos' });
+		const row = page.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'setup' });
 		await row.waitFor({ timeout: 5000 });
 		expect(await row.innerText()).toContain('Set up a new worktree wrk3');
 		await row.click();
-		await waitUntil(
-			() => store.state.view.kind === 'session' && store.state.view.ref === 'voiceos',
-		);
+		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === 'setup');
 		// On its own screen it is not "elsewhere".
 		await page
-			.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'voiceos' })
+			.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'setup' })
 			.waitFor({ state: 'detached', timeout: 5000 });
-		store.dispatch({ type: 'turn_ended', ref: 'voiceos', costUsd: 0, text: 'Done.' });
+		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: 'Done.' });
 		await context.close();
 	}, 20_000);
 
@@ -940,7 +938,7 @@ describe('voice os ui', () => {
 		store.dispatch({
 			type: 'worktrees',
 			worktrees: [
-				createWorktree('voiceos', true),
+				createWorktree('setup', true),
 				createWorktree('store-front/main'),
 				createWorktree('checkout-api/main'),
 				createWorktree('admin/main'),

@@ -33,7 +33,7 @@ const listAliases = (session: Session): string[] => {
 	);
 
 	if (session.isPinned) {
-		aliases.add('voice os');
+		aliases.add('setup session');
 	}
 
 	return [...aliases].map(normalizeName);

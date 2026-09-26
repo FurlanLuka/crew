@@ -54,18 +54,13 @@ export interface FixtureContext {
 }
 
 export const FIXTURE_TOPICS: Record<string, string> = {
-	voiceos: 'crew setup and housekeeping',
+	setup: 'crew setup and housekeeping',
 	'store-front/main': 'Locale placeholder cleanup',
 	'store-front/wrk1': 'Search ranking measurement',
 	'checkout-api/main': 'Checkout retry backoff',
 };
 
-export const FIXTURE_REFS = [
-	'voiceos',
-	'store-front/main',
-	'store-front/wrk1',
-	'checkout-api/main',
-];
+export const FIXTURE_REFS = ['setup', 'store-front/main', 'store-front/wrk1', 'checkout-api/main'];
 
 const createPermissionAsk = (id: string, ref: string, at: number): PendingAsk => ({
 	id,
@@ -179,7 +174,7 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 			branch: `crew/${ref}`,
 			cwd: `/w/${ref}`,
 			dirs: [],
-			isPinned: ref === 'voiceos',
+			isPinned: ref === 'setup',
 		}),
 		status,
 		topic: FIXTURE_TOPICS[ref] ?? null,

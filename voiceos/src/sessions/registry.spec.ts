@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { forgetSession, loadRegistry, markBriefed, recordSession } from './registry.js';
+import {
+	forgetSession,
+	loadRegistry,
+	markBriefed,
+	recordSession,
+	renameSession,
+} from './registry.js';
 
 const createTmpFile = () => join(mkdtempSync(join(tmpdir(), 'voiceos-reg-')), 'sessions.json');
 
@@ -69,5 +75,21 @@ describe('registry', () => {
 			'store/main': { sessionId: 'id-1', briefing: 'v3' },
 		});
 		expect(loadRegistry(file)['nope/main']).toBeUndefined();
+	});
+});
+
+describe('renameSession', () => {
+	it('moves the record to the new name; a record already there wins; nothing to move → unchanged', () => {
+		const file = createTmpFile();
+
+		recordSession({ file, ref: 'voiceos', sessionId: 's-old', briefing: 'b' });
+		expect(renameSession({ file, from: 'voiceos', to: 'setup' })).toEqual({
+			setup: expect.objectContaining({ sessionId: 's-old' }),
+		});
+		expect(loadRegistry(file).voiceos).toBeUndefined();
+
+		recordSession({ file, ref: 'voiceos', sessionId: 's-stray', briefing: 'b' });
+		expect(renameSession({ file, from: 'voiceos', to: 'setup' }).setup?.sessionId).toBe('s-old');
+		expect(renameSession({ file, from: 'gone', to: 'setup' }).setup?.sessionId).toBe('s-old');
 	});
 });

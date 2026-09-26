@@ -200,7 +200,7 @@ export const executeTool = async (
 				})
 			) {
 				return fail(
-					`Not sent: "Voice OS" here is the app, not the ${checked.ref} setup session, which only does crew setup (worktrees, workspaces, projects). Forward it to the session on screen.`,
+					`Not sent: ${checked.ref} only does crew setup (workspaces, projects, worktrees). Forward it to the session on screen.`,
 				);
 			}
 

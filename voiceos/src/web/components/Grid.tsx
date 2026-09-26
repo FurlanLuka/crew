@@ -12,7 +12,7 @@ export const Grid = ({ state, dispatch }: GridProps) => {
 	if (state.order.length === 0) {
 		return (
 			<div className="empty">
-				No crew worktrees yet. Create one with <code>crew add worktree</code>, or ask the voiceos
+				No crew worktrees yet. Create one with <code>crew add worktree</code>, or ask the setup
 				session.
 			</div>
 		);

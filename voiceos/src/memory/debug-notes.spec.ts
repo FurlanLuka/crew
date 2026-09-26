@@ -12,7 +12,7 @@ describe('createDebugNote', () => {
 			view: 'store-front/wrk1',
 			needs: 'store-front/wrk1',
 			ask: 'permission',
-			work: [{ ref: 'voiceos', request: 'Set up wrk3.', minutesAgo: 4 }],
+			work: [{ ref: 'setup', request: 'Set up wrk3.', minutesAgo: 4 }],
 			voiceLog: [
 				{ utterance: 'Yes, please.', did: [], reply: 'Should I start reviewing?', minutesAgo: 1 },
 			],
@@ -55,8 +55,8 @@ describe('createDebugNote', () => {
 
 	it('every session with its status, what it waits on and what it was last asked', () => {
 		const sessions = createDebugNote({ state, text: 'x', said: null, now }).sessions;
-		expect(sessions.find((session) => session.ref === 'voiceos')).toEqual({
-			ref: 'voiceos',
+		expect(sessions.find((session) => session.ref === 'setup')).toEqual({
+			ref: 'setup',
 			status: 'running',
 			queued: 0,
 			needsUser: null,

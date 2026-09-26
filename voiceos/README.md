@@ -51,8 +51,9 @@ environment.
   with the tools in `src/tools/`.
 - `src/memory/` — each session's topic, and an append-only journal of every turn (asked,
   done, cost, HEAD) that the kernel reads for "what did checkout do yesterday".
-- The pinned **voiceos** session runs in your home directory with the crew CLI: say
-  "voiceos, make a worktree in store-front for the search fix".
+- The pinned **setup** session runs in your home directory with the crew CLI, for crew setup
+  only — workspaces, projects and worktrees: say "setup, make a worktree in store-front for
+  the search fix". Dev servers and code belong to each worktree's own session.
 - While a session works, a question to it is answered **aside** (`src/sessions/side-answer.ts`):
   a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
   Instructions still queue. "By the way" forces an aside, "queue it" forces the queue, and a

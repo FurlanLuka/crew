@@ -78,7 +78,7 @@ describe('buildContextTerms', () => {
 	it('refs and their parts as they are said, topics, deduplicated', () => {
 		expect(
 			buildContextTerms({
-				refs: ['voiceos', 'store-front/main', 'store-front/wrk1'],
+				refs: ['setup', 'store-front/main', 'store-front/wrk1'],
 				topics: ['Checkout retries'],
 			}),
 		).toEqual([

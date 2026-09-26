@@ -14,7 +14,12 @@ import { configureLog, createLogger } from './log.js';
 import { UtteranceRouter } from './router/router.js';
 import { COMMAND_TTL_MS } from './shared/protocol.js';
 import { Kernel } from './router/kernel.js';
-import { SETUP_ORIENTATION, SETUP_REF, createSetupWorktree } from './sessions/setup-session.js';
+import {
+	LEGACY_SETUP_REF,
+	SETUP_ORIENTATION,
+	SETUP_REF,
+	createSetupWorktree,
+} from './sessions/setup-session.js';
 import { readHistory } from './memory/journal.js';
 import { createDebugNote, saveDebugNote } from './memory/debug-notes.js';
 import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
@@ -22,7 +27,7 @@ import { persistTopics } from './memory/topics.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
-import { loadRegistry } from './sessions/registry.js';
+import { loadRegistry, renameSession } from './sessions/registry.js';
 import { Store } from './state/store.js';
 import { createHandsFreeSwitch } from './speech/hands-free-switch.js';
 import { VoiceInput } from './speech/voice-in.js';
@@ -57,6 +62,8 @@ if (claudeBin === null) {
 
 store.dispatch({ type: 'setup', missing });
 log.info('claude executable', { bin: claudeBin ?? 'sdk-bundled' });
+
+renameSession({ file: paths.sessionsFile, from: LEGACY_SETUP_REF, to: SETUP_REF });
 
 const crew = new CrewAdapter();
 const manager = new SessionManager({
