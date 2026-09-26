@@ -10,6 +10,9 @@ import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
 
+// The kernel gave no ack phrase: Voice OS says the plain line for it.
+const UNNAMED_ACK = { task: null, kind: 'instruction' } as const;
+
 const createToolContext = (patch: Partial<State> = {}) => {
 	const refs = ['store-front/main', 'store-front/wrk1', 'checkout-api/main'];
 	const sessions: State['sessions'] = Object.fromEntries(
@@ -68,7 +71,9 @@ describe('executeTool', () => {
 		expect(
 			await executeTool('send_to', { ref: 'store-front/wrk1', text: '  run the tests ' }, tools),
 		).toEqual({ ok: true, content: 'sent to store-front/wrk1' });
-		expect(actions).toEqual([{ type: 'send', ref: 'store-front/wrk1', text: 'run the tests' }]);
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/wrk1', text: 'run the tests', ack: UNNAMED_ACK },
+		]);
 	});
 
 	it('unknown ref → error listing real sessions, nothing dispatched', async () => {
@@ -444,6 +449,38 @@ describe('forward', () => {
 		expect(hasHistory('store-front/main')).toBe(false);
 	});
 
+	it("an ack in the developer's words → on the send; a paraphrase or a question → none", async () => {
+		const { tools, actions } = createToolContext();
+		const forward = (input: Record<string, unknown>) =>
+			executeTool('forward', input, {
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: 'can you revert the last change',
+			});
+
+		await forward({
+			text: 'Revert the last change.',
+			kind: 'instruction',
+			ack: 'Reverting the last change',
+		});
+		await forward({
+			text: 'Revert the last change.',
+			kind: 'instruction',
+			ack: 'Reverting the last commit',
+		});
+		await forward({
+			text: 'Why revert the last change?',
+			kind: 'question',
+			ack: 'Reverting the last change',
+		});
+
+		expect(actions.map((action) => (action.type === 'send' ? action.ack : null))).toEqual([
+			{ task: 'Reverting the last change', kind: 'instruction' },
+			UNNAMED_ACK,
+			{ task: 'Reverting the last change', kind: 'question' },
+		]);
+	});
+
 	it('sends to the session captured at routing, even if the view changed since', async () => {
 		const { tools, actions } = createToolContext({
 			view: { kind: 'session', ref: 'checkout-api/main' },
@@ -457,7 +494,7 @@ describe('forward', () => {
 
 		expect(result.ok).toBe(true);
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/wrk1', text: 'why is this so slow' },
+			{ type: 'send', ref: 'store-front/wrk1', text: 'why is this so slow', ack: UNNAMED_ACK },
 		]);
 	});
 
@@ -681,7 +718,12 @@ describe('Voice OS note on a first message', () => {
 
 		await executeTool('send_to', { ref: 'checkout-api/main', text: 'Run the tests.' }, tools);
 
-		expect(actions[0]).toEqual({ type: 'send', ref: 'checkout-api/main', text: 'Run the tests.' });
+		expect(actions[0]).toEqual({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'Run the tests.',
+			ack: UNNAMED_ACK,
+		});
 	});
 });
 
@@ -839,8 +881,14 @@ describe('spoken sends', () => {
 		);
 
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: 'Run the tests.', isSpoken: true },
-			{ type: 'send', ref: 'store-front/wrk1', text: 'Run the tests.' },
+			{
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'Run the tests.',
+				ack: UNNAMED_ACK,
+				isSpoken: true,
+			},
+			{ type: 'send', ref: 'store-front/wrk1', text: 'Run the tests.', ack: UNNAMED_ACK },
 		]);
 	});
 });
@@ -1322,7 +1370,7 @@ describe('side answers', () => {
 		);
 
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: 'Also run the linter.' },
+			{ type: 'send', ref: 'store-front/main', text: 'Also run the linter.', ack: UNNAMED_ACK },
 		]);
 	});
 
@@ -1370,7 +1418,9 @@ describe('a held /clear', () => {
 		);
 
 		expect(result.ok).toBe(true);
-		expect(actions).toEqual([{ type: 'send', ref: 'store-front/main', text: 'Run the tests.' }]);
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: 'Run the tests.', ack: UNNAMED_ACK },
+		]);
 	});
 
 	it('a bare "yes" forwarded as words → refused: it answers the /clear', async () => {
@@ -1553,7 +1603,9 @@ describe('fixes from the live notes', () => {
 			ok: true,
 			recordAs: { name: 'send_to', input: { ref: 'checkout-api/main', text: 'Yes.' } },
 		});
-		expect(actions).toEqual([{ type: 'send', ref: 'checkout-api/main', text: 'Yes.' }]);
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'checkout-api/main', text: 'Yes.', ack: UNNAMED_ACK },
+		]);
 	});
 
 	it('a question called an unfinished thought → refused; a fragment still ignored', async () => {
@@ -1767,7 +1819,12 @@ describe('fixes from the live notes', () => {
 		);
 
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: "Yes, please. Let me know when you're done." },
+			{
+				type: 'send',
+				ref: 'store-front/main',
+				text: "Yes, please. Let me know when you're done.",
+				ack: UNNAMED_ACK,
+			},
 		]);
 		expect(result.recordAs?.input.text).toBe("Yes, please. Let me know when you're done.");
 	});

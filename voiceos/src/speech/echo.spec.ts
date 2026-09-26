@@ -21,6 +21,15 @@ describe('isEcho', () => {
 		).toBe(true);
 	});
 
+	it("an ack in the developer's own words: heard back → echo; a correction reusing them → theirs", () => {
+		const spoken = [createLine('Reverting the last change.', NOW_MS - 800)];
+
+		expect(isEcho({ heard: 'reverting the last change', spoken, now: NOW_MS })).toBe(true);
+		expect(isEcho({ heard: 'no, not the last change, the one before', spoken, now: NOW_MS })).toBe(
+			false,
+		);
+	});
+
 	it('case and punctuation do not matter', () =>
 		expect(
 			isEcho({

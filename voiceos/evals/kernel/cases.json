@@ -266,6 +266,7 @@
 		},
 		{
 			"id": "in-session-why-slow",
+			"ack": false,
 			"utterance": "Why is this so slow?",
 			"context": {
 				"view": "store-front/main"
@@ -279,6 +280,7 @@
 		},
 		{
 			"id": "in-session-run-tests",
+			"ack": ["test"],
 			"utterance": "Run the tests again.",
 			"context": {
 				"view": "store-front/main"
@@ -292,6 +294,7 @@
 		},
 		{
 			"id": "in-session-question",
+			"ack": false,
 			"utterance": "What does the retry function actually do?",
 			"context": {
 				"view": "store-front/main"
@@ -318,6 +321,7 @@
 		},
 		{
 			"id": "in-session-revert",
+			"ack": ["change"],
 			"utterance": "Hmm, I don't like that. Revert the last change.",
 			"context": {
 				"view": "store-front/main"
@@ -492,6 +496,7 @@
 		},
 		{
 			"id": "relay-check-logs",
+			"ack": ["log"],
 			"utterance": "Can you ask it to check the logs?",
 			"context": {
 				"view": "store-front/main"
@@ -790,6 +795,7 @@
 		},
 		{
 			"id": "stopped-session-forward",
+			"ack": ["file"],
 			"utterance": "Can you ask it to list the files in the source folder, one line each?",
 			"context": {
 				"view": "store-front/main",
@@ -2021,6 +2027,7 @@
 		},
 		{
 			"id": "aside-check-is-work",
+			"ack": ["test"],
 			"utterance": "Can you check whether the tests pass?",
 			"context": {
 				"view": "store-front/main",
@@ -2589,6 +2596,34 @@
 					"text_includes": "worktree"
 				}
 			]
+		},
+		{
+			"id": "ack-reword-roll-back",
+			"utterance": "Hmm, that broke the build. Roll it back.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["roll|revert|undo"]
+				}
+			],
+			"ack": ["back"]
+		},
+		{
+			"id": "ack-negation-fix-seed",
+			"utterance": "Don't touch the migrations, just fix the seed script.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["not|don", "migration", "seed"]
+				}
+			],
+			"ack": ["seed"]
 		}
 	]
 }

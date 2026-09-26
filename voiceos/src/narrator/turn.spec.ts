@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { readHistory } from '../memory/journal.js';
 import { Store } from '../state/store.js';
 import type { Narration } from './prompt.js';
-import { createAsideNarrator, createTurnNarrator } from './turn.js';
+import { createAsideNarrator, createTurnNarrator, settleOwedReport } from './turn.js';
 
 const createHarness = (narration: Narration) => {
 	const store = new Store();
@@ -28,6 +28,7 @@ const createHarness = (narration: Narration) => {
 	const asking: boolean[] = [];
 	const journalDir = mkdtempSync(join(tmpdir(), 'voiceos-turn-'));
 	const seen: { focused: boolean }[] = [];
+	const said: { priority: string; isOwed: boolean }[] = [];
 	const handle = createTurnNarrator({
 		store,
 		narrate: async (input) => {
@@ -35,16 +36,17 @@ const createHarness = (narration: Narration) => {
 
 			return narration;
 		},
-		say: ({ text, isAsking }) => {
+		say: ({ text, isAsking, priority, isOwed }) => {
 			spoken.push(text);
 			asking.push(isAsking);
+			said.push({ priority, isOwed: Boolean(isOwed) });
 		},
 		journalDir,
 		readGitHead: async () => 'abc1234',
 		now: () => new Date('2026-09-25T02:00:00Z'),
 	});
 
-	return { store, spoken, asking, journalDir, seen, handle };
+	return { store, spoken, asking, said, journalDir, seen, handle };
 };
 
 describe('turn narrator', () => {
@@ -61,6 +63,7 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'Backoff added. Deploy to staging?',
 			asked: 'add backoff',
+			owed: null,
 		});
 
 		expect(harness.store.state.sessions['checkout-api/main']).toMatchObject({
@@ -96,6 +99,7 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'All 96 tests pass.',
 			asked: 'run the tests',
+			owed: null,
 		});
 		expect(harness.spoken).toEqual(['checkout api, main: tests pass.']);
 		expect(harness.asking).toEqual([false]);
@@ -114,6 +118,7 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'Still running the suite. More soon.',
 			asked: null,
+			owed: null,
 		});
 
 		expect(harness.spoken).toEqual([]);
@@ -134,7 +139,13 @@ describe('turn narrator', () => {
 			type: 'switch_view',
 			view: { kind: 'session', ref: 'checkout-api/main' },
 		});
-		await harness.handle({ type: 'narrate', ref: 'checkout-api/main', text: 'Done.', asked: null });
+		await harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: 'Done.',
+			asked: null,
+			owed: null,
+		});
 		expect(harness.seen).toEqual([{ focused: true }]);
 	});
 
@@ -146,7 +157,13 @@ describe('turn narrator', () => {
 			text: 'x',
 			topic: null,
 		});
-		await harness.handle({ type: 'narrate', ref: 'gone/main', text: 'Done.', asked: null });
+		await harness.handle({
+			type: 'narrate',
+			ref: 'gone/main',
+			text: 'Done.',
+			asked: null,
+			owed: null,
+		});
 		expect(harness.spoken).toEqual([]);
 	});
 });
@@ -260,5 +277,100 @@ describe('aside narrator', () => {
 		await harness.handle({ type: 'narrate_aside', ref: 'gone/main', question: 'q', answer: 'a' });
 
 		expect(harness.lines).toEqual([]);
+	});
+});
+
+describe('settleOwedReport', () => {
+	const narration = (patch: Partial<Narration>): Narration => ({
+		speak: true,
+		needs_user: false,
+		priority: 'normal',
+		text: '',
+		topic: null,
+		...patch,
+	});
+	const LOGS = { tasks: ['Checking the logs'] };
+	const settle = (patch: Partial<Narration>, sessionText = 'Three timeouts in the last hour.') =>
+		settleOwedReport({ narration: narration(patch), owed: LOGS, sessionText });
+
+	it('nothing owed → the narration as it was', () => {
+		const quiet = narration({ speak: false, priority: 'low' });
+		expect(settleOwedReport({ narration: quiet, owed: null, sessionText: 'x' })).toBe(quiet);
+	});
+
+	it("the narrator stayed silent → spoken, high, the task and the session's first sentence", () => {
+		expect(settle({ speak: false, priority: 'low' })).toMatchObject({
+			speak: true,
+			priority: 'high',
+			text: 'Checking the logs: Three timeouts in the last hour.',
+		});
+	});
+
+	it('a failure is reported as said, never as done', () => {
+		expect(settle({ speak: false }, "I couldn't read the logs: permission denied.").text).toBe(
+			"Checking the logs: I couldn't read the logs: permission denied.",
+		);
+	});
+
+	it('nothing written at all → the task finished', () => {
+		expect(settle({ speak: false }, '').text).toBe('Checking the logs finished.');
+		expect(
+			settleOwedReport({
+				narration: narration({ speak: false }),
+				owed: { tasks: [] },
+				sessionText: '',
+			}).text,
+		).toBe('It finished.');
+	});
+
+	it('a report that does not name the task → the task in front', () => {
+		expect(settle({ text: 'Three timeouts in the last hour.' }).text).toBe(
+			'Checking the logs: Three timeouts in the last hour.',
+		);
+		expect(settle({ text: 'The logs show three timeouts.' }).text).toBe(
+			'The logs show three timeouts.',
+		);
+	});
+
+	it('two tasks, the line names one → both in front', () => {
+		expect(
+			settleOwedReport({
+				narration: narration({ text: 'The logs show three timeouts.' }),
+				owed: { tasks: ['Checking the logs', 'Running the tests'] },
+				sessionText: 'x',
+			}).text,
+		).toBe('Checking the logs and running the tests: The logs show three timeouts.');
+	});
+
+	it("waiting on the developer with nothing written → the task and the session's own question", () => {
+		expect(
+			settle({ needs_user: true, priority: 'high', text: '' }, 'Rotate the key now?').text,
+		).toBe('Checking the logs: Rotate the key now?');
+	});
+
+	it('a question is the report as it is', () => {
+		expect(
+			settle({ needs_user: true, priority: 'high', text: 'asks: rotate the key now?' }).text,
+		).toBe('asks: rotate the key now?');
+	});
+
+	it('the narrator call failed (fallback, silent) → still reported through the turn narrator', async () => {
+		const harness = createHarness({
+			speak: false,
+			needs_user: false,
+			priority: 'low',
+			text: '',
+			topic: null,
+		});
+
+		await harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: 'Three timeouts in the last hour.',
+			asked: 'check the logs',
+			owed: LOGS,
+		});
+		expect(harness.spoken).toEqual(['Checking the logs: Three timeouts in the last hour.']);
+		expect(harness.said).toEqual([{ priority: 'high', isOwed: true }]);
 	});
 });

@@ -21,6 +21,8 @@ interface Case {
 	not_includes?: string[];
 	// Words that must be spoken ("a|b" accepts either): what a choice is about, so it can be answered unseen.
 	includes?: string[];
+	// Voice OS said it passed these tasks on: the turn must be reported, naming them.
+	promised?: string[];
 }
 
 // Narration is a TL;DR: short, and shorter still for the session on screen.
@@ -191,6 +193,7 @@ export const runNarratorEval = async ({
 					asked: testCase.asked,
 					focused: testCase.focused,
 					topic: null,
+					promised: testCase.promised ?? null,
 				}),
 			);
 

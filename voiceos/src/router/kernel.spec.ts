@@ -5,6 +5,9 @@ import type { Action, VoiceEntry } from '../shared/protocol.js';
 import { createFixtureState, type FixtureContext } from '../../test/support/state.js';
 import { Kernel, buildKernelMessage, listWaitingItems, type KernelOptions } from './kernel.js';
 
+// The kernel gave no ack phrase: Voice OS says the plain line for it.
+const UNNAMED_ACK = { task: null, kind: 'instruction' } as const;
+
 configureLog({ quiet: true });
 
 type Block = Anthropic.ContentBlock;
@@ -83,7 +86,7 @@ describe('Kernel', () => {
 		expect(fake.calls()).toBe(1);
 		expect(result.reply).toBe('');
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: 'why is this so slow' },
+			{ type: 'send', ref: 'store-front/main', text: 'why is this so slow', ack: UNNAMED_ACK },
 		]);
 	});
 
@@ -97,7 +100,7 @@ describe('Kernel', () => {
 		expect(fake.calls()).toBe(1);
 		expect(result.reply).toBe('');
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: 'run the tests again' },
+			{ type: 'send', ref: 'store-front/main', text: 'run the tests again', ack: UNNAMED_ACK },
 		]);
 	});
 
@@ -204,7 +207,12 @@ describe('Kernel', () => {
 		expect(result.reply).toBe('');
 		expect(result.calls.at(-1)).toMatchObject({ name: 'forward', ok: true });
 		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: 'Okay. Can you, um, close the agent?' },
+			{
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'Okay. Can you, um, close the agent?',
+				ack: { task: null, kind: 'question' },
+			},
 		]);
 	});
 
@@ -278,6 +286,7 @@ describe('Kernel', () => {
 			type: 'send',
 			ref: 'store-front/main',
 			text: 'Check the logs for the timeout.',
+			ack: UNNAMED_ACK,
 		});
 	});
 
@@ -692,7 +701,13 @@ describe('Kernel', () => {
 
 			expect(actions).toEqual([
 				{ type: 'stop_session', ref: 'store-front/main' },
-				{ type: 'send', ref: 'store-front/main', text: 'Run the tests.', isSpoken: true },
+				{
+					type: 'send',
+					ref: 'store-front/main',
+					text: 'Run the tests.',
+					ack: UNNAMED_ACK,
+					isSpoken: true,
+				},
 			]);
 		});
 

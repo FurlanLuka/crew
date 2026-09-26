@@ -105,12 +105,14 @@ store.onEffect((effect) => {
 	if (effect.type === 'speak') {
 		voiceOut.say({
 			text: effect.text,
-			priority: effect.source === 'alert' ? 'alert' : 'normal',
+			priority: effect.priority ?? (effect.source === 'alert' ? 'alert' : 'normal'),
 			source: effect.source,
 			isReply: effect.isReply,
 			ref: effect.ref ?? null,
 			isAsking: effect.isAsking,
 			isNamed: effect.isNamed,
+			isOwed: effect.isOwed,
+			isAck: effect.isAck,
 		});
 	}
 

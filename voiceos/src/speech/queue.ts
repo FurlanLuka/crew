@@ -14,6 +14,10 @@ export interface SpeechItem {
 	// The answer to what the developer just said.
 	isReply?: boolean;
 	isAsking?: boolean;
+	// A report Voice OS promised when it passed work on: never replaced by a newer line.
+	isOwed?: boolean;
+	// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
+	isAck?: boolean;
 }
 
 export interface SpeechQueue {
@@ -53,6 +57,8 @@ export const enqueue = (queue: SpeechQueue, item: SpeechItem): Enqueued => {
 	// A newer line about a session replaces its older unspoken ones.
 	const kept = queue.items.filter(
 		(existing) =>
+			item.isAck ||
+			existing.isOwed ||
 			!(
 				item.ref &&
 				existing.ref === item.ref &&

@@ -6,8 +6,15 @@ import {
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
-import type { ReducerResult } from './reducer.js';
+import type { Effect, ReducerResult } from './reducer.js';
 import { sendNow, startWorker, updateSession, withoutEffects } from './helpers.js';
+import {
+	composeAckText,
+	mergeOwed,
+	type ReportOwed,
+	type SendAck,
+	type SendTiming,
+} from '../shared/ack.js';
 
 export const hasFollowUpWaiting = (session: Session): boolean => {
 	// The one signal that the running reply is being cut: the developer's follow-up waits at the head.
@@ -19,24 +26,73 @@ const isFollowUp = (session: Session, at: number): boolean =>
 	session.voiceTurnAt !== null &&
 	at - session.voiceTurnAt < FOLLOW_UP_MS;
 
+interface AckOutcome {
+	effects: Effect[];
+	owed: ReportOwed | null;
+}
+
+export const NO_ACK: AckOutcome = { effects: [], owed: null };
+
+interface DecideAckParams {
+	ref: string;
+	ack: SendAck | undefined;
+	timing: SendTiming;
+}
+
+export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => {
+	// Said from the branch the words actually took, so "after its current work" is always true.
+	// A question is answered soon enough on its own; only a cold start is worth saying.
+	if (!ack || (ack.kind === 'question' && timing !== 'starting')) {
+		return NO_ACK;
+	}
+
+	const tasks = ack.kind === 'instruction' && ack.task ? [ack.task] : [];
+
+	return {
+		effects: [
+			{
+				type: 'speak',
+				text: composeAckText(tasks, timing),
+				source: 'kernel',
+				isReply: true,
+				ref,
+				isNamed: true,
+				priority: 'high',
+				isAck: true,
+			},
+		],
+		owed: ack.kind === 'instruction' ? { tasks } : null,
+	};
+};
+
 interface QueueFollowUpParams {
 	state: State;
 	ref: string;
 	text: string;
 	note: string | undefined;
 	stamped: Stamped;
+	owed: ReportOwed | null;
 }
 
-const queueFollowUp = ({ state, ref, text, note, stamped }: QueueFollowUpParams): ReducerResult => {
+const queueFollowUp = ({
+	state,
+	ref,
+	text,
+	note,
+	stamped,
+	owed,
+}: QueueFollowUpParams): ReducerResult => {
 	// Only the first of a burst interrupts; later words join it, so Claude reads the request once.
 	const session = state.sessions[ref];
 	const head = session?.queue[0];
 
 	if (session && head && hasFollowUpWaiting(session)) {
+		const reportOwed = mergeOwed(head.reportOwed, owed);
 		const mergedHead = {
 			...head,
 			text: `${head.text} ${text}`,
 			...(note && !head.note ? { note } : {}),
+			...(reportOwed ? { reportOwed } : {}),
 		};
 
 		return withoutEffects(
@@ -53,18 +109,26 @@ const queueFollowUp = ({ state, ref, text, note, stamped }: QueueFollowUpParams)
 	const spokenEarlier = firstTypedIndex === -1 ? queue : queue.slice(0, firstTypedIndex);
 	const firstSpoken = spokenEarlier[0];
 	const carriedNote = spokenEarlier.find((message) => message.note)?.note ?? note;
+	// The cut-off turn is never narrated, so what it owed is reported with the follow-up.
+	const reportOwed = mergeOwed(
+		session?.reportOwed,
+		...spokenEarlier.map((message) => message.reportOwed),
+		owed,
+	);
 	const followUpMessage: QueuedMessage = {
 		id: firstSpoken?.id ?? stamped.id,
 		text: [...spokenEarlier.map((message) => message.text), text].join(' '),
 		at: firstSpoken?.at ?? stamped.at,
 		isFollowUp: true,
 		...(carriedNote ? { note: carriedNote } : {}),
+		...(reportOwed ? { reportOwed } : {}),
 	};
 
 	return {
 		state: updateSession(state, ref, (current) => ({
 			...current,
 			needsUser: null,
+			reportOwed: null,
 			queue: [followUpMessage, ...current.queue.slice(spokenEarlier.length)],
 		})),
 		effects: [{ type: 'worker_interrupt', ref, reason: 'follow-up' }],
@@ -80,7 +144,13 @@ export interface DeliverSendParams {
 	stamped: Stamped;
 	// A stopped session is started for it; false only queues it (a question set aside earlier).
 	shouldStart?: boolean;
+	ack?: SendAck;
 }
+
+const withEffects = (result: ReducerResult, effects: Effect[]): ReducerResult => ({
+	state: result.state,
+	effects: [...effects, ...result.effects],
+});
 
 export const deliverSend = ({
 	state,
@@ -90,6 +160,7 @@ export const deliverSend = ({
 	isSpoken,
 	stamped,
 	shouldStart = true,
+	ack,
 }: DeliverSendParams): ReducerResult => {
 	// Words that reach the session itself: sent now, cut into the running reply, or queued behind it.
 	const session = state.sessions[ref];
@@ -99,23 +170,41 @@ export const deliverSend = ({
 	}
 
 	if (session.status === 'idle') {
-		return sendNow({ state, ref, text, note, isSpoken, itemId: stamped.id, at: stamped.at });
+		const { effects, owed } = decideAck({ ref, ack, timing: 'now' });
+
+		return withEffects(
+			sendNow({
+				state,
+				ref,
+				text,
+				note,
+				isSpoken,
+				itemId: stamped.id,
+				at: stamped.at,
+				reportOwed: owed,
+			}),
+			effects,
+		);
 	}
 
 	// A follow-up already waiting behind the interrupted reply takes the rest of what is said, whatever the time.
 	const hasWaitingFollowUp = session.status === 'running' && hasFollowUpWaiting(session);
 
 	if (isSpoken && (hasWaitingFollowUp || isFollowUp(session, stamped.at))) {
-		return queueFollowUp({ state, ref, text, note, stamped });
+		const { effects, owed } = decideAck({ ref, ack, timing: 'now' });
+
+		return withEffects(queueFollowUp({ state, ref, text, note, stamped, owed }), effects);
 	}
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
+	const { effects, owed } = decideAck({ ref, ack, timing: isStarting ? 'starting' : 'queued' });
 	const queuedMessage: QueuedMessage = {
 		id: stamped.id,
 		text,
 		at: stamped.at,
 		...(note ? { note } : {}),
 		...(isSpoken && isStarting ? { isSpoken: true as const } : {}),
+		...(owed ? { reportOwed: owed } : {}),
 	};
 	const queued = updateSession(state, ref, (current) => ({
 		...current,
@@ -123,9 +212,10 @@ export const deliverSend = ({
 		queue: [...current.queue, queuedMessage],
 	}));
 
-	return session.status === 'stopped' && shouldStart
-		? startWorker(queued, ref)
-		: withoutEffects(queued);
+	return withEffects(
+		session.status === 'stopped' && shouldStart ? startWorker(queued, ref) : withoutEffects(queued),
+		effects,
+	);
 };
 
 const ASIDE_PATTERN = /\b(?:by the way|btw)\b/i;

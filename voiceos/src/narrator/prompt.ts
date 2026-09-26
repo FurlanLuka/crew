@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { joinTasks } from '../shared/ack.js';
 
 // Sonnet: it held every narration rule where Haiku slipped, for about a second more per line.
 export const NARRATOR_MODEL = 'claude-sonnet-5';
@@ -28,6 +29,7 @@ Fields:
 - speak: every turn ends in reply to something the developer sent, so say something about it — what was done, what it found, or that the work has started and will be reported ("Started reviewing both PRs; findings when done."). False only for startup greetings, "no response requested", and turns with nothing to report.
 - priority: "high" when needs_user is true; "normal" for finished work; "low" otherwise.
 - text: what to say, for the ear, WITHOUT the session name (it is added in front when the developer is not looking at this session). When the session waits on the developer: one short sentence, at most 20 words. Otherwise — a report of what was done or found — a spoken TL;DR in one to three short sentences, about 35 words and never more than 45: the first sentence carries the point on its own, the rest the one or two details the developer needs to act on it — the name, the number, the cause, what it recommends. Reuse the session's own words and terms; it usually opens with a plain summary, so start from that. A line the developer cannot use ("Summary ready.", "PR awaits review.") is wrong: say what the summary says. (Length only: whether to speak is decided by speak, as above.) Say the outcome, not the list — but with what matters: "Fixed two of three issues with tests; the third, routes that skip the audit log, is left as a TODO." not each issue in turn, and not "Fixed two of three issues." When the developer asked a direct question ("which version…", "is it done?", "how many…"), text is just the answer, in as few words as it takes: "Version 2.4.1." — not "The installed crew version is 2.4.1, built from the local checkout." — and the same words go in answer. When the session waits on the developer, start with "asks:" followed by the question. No code, no file paths, no URLs, no markdown, no numbers the listener cannot use. When needs_user is true, say the actual question or choice so it can be answered without looking ("asks: push the branch now?"). When the session offers a choice between options, never name any option — not listed, not folded into the question ("cache in Redis or a nightly job?" is wrong). Say what is being chosen and end with: say "options" to hear them — and put what is being chosen in choosing. The developer asks for the options when they want them. "Two ways to store uploads: a bucket per tenant, or one bucket with prefixes. … Which do you prefer?" is "asks: how should uploads be stored? Say options to hear them."  Say only what the text supports, using its own terms — never invent results, questions or details, and do not swap a precise term for a looser one. When speak is false, text may be empty.
+- promised: when the message says "voice os promised a report on", Voice OS told the developer it passed that task on, so speak is true — even for a small or empty result. A report (not a question) opens with that task in the same words, then the outcome: "Checking the logs: the worker crashed on a missing key." — never "done" unless the session says it succeeded. When the session waits on the developer, the question is the report: keep the "asks:" form.
 - topic: a short name for what this session is working on (at most 8 words, like "Checkout retry backoff"), or null if the text does not make it clear.
 - answer: only when the developer asked a direct question — the answer alone, in as few words as it takes ("Version 2.4.1.", "412 tests.", "Port 51049."): no breakdown, no reason, no second clause. It is spoken instead of text. Otherwise null.
 - choosing: only when the session asks the developer to choose between options — what is being chosen, as a short question without any option in it ("how should uploads be stored", not "a bucket per tenant or one bucket?"). It is heard without the reply, so it names what it is about in the developer's terms: "when should Voice OS confirm it passed your words to a session", not "when should the confirmation play". Voice OS speaks "asks: <choosing>? Say options to hear them." instead of text. Otherwise null.
@@ -40,6 +42,8 @@ export interface NarratorInput {
 	asked: string | null;
 	focused: boolean;
 	topic: string | null;
+	// The tasks Voice OS told the developer it passed on; null when it promised nothing.
+	promised?: string[] | null;
 }
 
 const MAX_INPUT_CHARS = 6000;
@@ -50,6 +54,7 @@ export const buildNarratorMessage = ({
 	asked,
 	focused,
 	topic,
+	promised = null,
 }: NarratorInput): string => {
 	// Cut in the middle: the opening says what was done and the ending carries the question.
 	const body =
@@ -62,6 +67,9 @@ export const buildNarratorMessage = ({
 		`focused: ${focused ? 'yes' : 'no'}`,
 		`current topic: ${topic ?? 'none'}`,
 		`developer asked: ${asked ? asked.slice(0, 500) : '(unknown)'}`,
+		...(promised
+			? [`voice os promised a report on: ${promised.length ? joinTasks(promised) : 'this request'}`]
+			: []),
 		'',
 		'session wrote:',
 		body,

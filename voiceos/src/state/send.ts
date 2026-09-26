@@ -1,10 +1,11 @@
 import { isSdkAsk, type Input, type Stamped, type State } from '../shared/protocol.js';
 import type { ReducerResult } from './reducer.js';
-import { answerInWords } from './asks.js';
+import { answerInWords, isAnsweredInWords } from './asks.js';
 import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
-import { deliverSend } from './delivery.js';
-import { pushNotice, withoutEffects } from './helpers.js';
+import { decideAck, deliverSend, NO_ACK } from './delivery.js';
+import { pushNotice, updateSession, withoutEffects } from './helpers.js';
+import { mergeOwed } from '../shared/ack.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
 
@@ -45,7 +46,21 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 	}
 
 	if (sdkAsk) {
-		return answerInWords({ state: focusedState, ask: sdkAsk, text, stamped });
+		const answered = answerInWords({ state: focusedState, ask: sdkAsk, text, stamped });
+		// The running turn takes the words, so it owes their report too.
+		const { effects, owed } = isAnsweredInWords(sdkAsk)
+			? decideAck({ ref: input.ref, ack: input.ack, timing: 'now' })
+			: NO_ACK;
+
+		return {
+			state: owed
+				? updateSession(answered.state, input.ref, (current) => ({
+						...current,
+						reportOwed: mergeOwed(current.reportOwed, owed),
+					}))
+				: answered.state,
+			effects: [...effects, ...answered.effects],
+		};
 	}
 
 	// Anything else said while a command waits means the developer moved on from it.
@@ -68,5 +83,6 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 		note: input.note?.trim() || undefined,
 		isSpoken: Boolean(input.isSpoken),
 		stamped,
+		ack: input.ack,
 	});
 };

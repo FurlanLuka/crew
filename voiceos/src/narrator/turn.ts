@@ -3,7 +3,8 @@ import type { Effect } from '../state/reducer.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { appendJournalEntry, describeTurnOutcome } from '../memory/journal.js';
 import type { NarrateFunction } from './narrator.js';
-import { cleanSpokenText } from './prompt.js';
+import { cleanSpokenText, type Narration } from './prompt.js';
+import { joinTasks, sharesContentWords, upperFirst, type ReportOwed } from '../shared/ack.js';
 
 interface NarratedLine {
 	text: string;
@@ -11,7 +12,53 @@ interface NarratedLine {
 	ref: string;
 	isNamed: boolean;
 	isAsking: boolean;
+	isOwed?: boolean;
 }
+
+const OWED_FALLBACK_WORDS = 30;
+
+const readFirstSentence = (text: string): string =>
+	cleanSpokenText(text.trim().split(/(?<=[.!?])\s+/)[0] ?? '', OWED_FALLBACK_WORDS);
+
+interface SettleOwedReportParams {
+	narration: Narration;
+	owed: ReportOwed | null;
+	sessionText: string;
+}
+
+export const settleOwedReport = ({
+	narration,
+	owed,
+	sessionText,
+}: SettleOwedReportParams): Narration => {
+	// Voice OS said "Checking the logs": the developer is waiting to hear how it went, even when
+	// the narrator found it too small to mention or its call failed.
+	if (!owed) {
+		return narration;
+	}
+
+	const tasks = upperFirst(joinTasks(owed.tasks));
+	const written = narration.text.trim();
+	const promised = { ...narration, speak: true, priority: 'high' as const };
+
+	if (!written) {
+		const outcome = readFirstSentence(sessionText);
+		const text = tasks
+			? outcome
+				? `${tasks}: ${outcome}`
+				: `${tasks} finished.`
+			: outcome || 'It finished.';
+
+		return { ...promised, text };
+	}
+
+	// A question is the report as it is; a report that does not say what it is about gets the task.
+	const namesTask = owed.tasks.every((task) => sharesContentWords(written, task));
+
+	return narration.needs_user || !tasks || namesTask
+		? promised
+		: { ...promised, text: `${tasks}: ${written}` };
+};
 
 export interface TurnNarratorOptions {
 	store: Store;
@@ -69,12 +116,17 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		}
 
 		const view = store.state.view;
-		const narration = await options.narrate({
-			label: session.label,
-			text: effect.text,
-			asked: effect.asked,
-			focused: view.kind === 'session' && view.ref === effect.ref,
-			topic: session.topic,
+		const narration = settleOwedReport({
+			narration: await options.narrate({
+				label: session.label,
+				text: effect.text,
+				asked: effect.asked,
+				focused: view.kind === 'session' && view.ref === effect.ref,
+				topic: session.topic,
+				promised: effect.owed?.tasks ?? null,
+			}),
+			owed: effect.owed,
+			sessionText: effect.text,
 		});
 
 		store.dispatch({
@@ -92,6 +144,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 				ref: effect.ref,
 				isNamed: true,
 				isAsking: narration.needs_user,
+				...(effect.owed ? { isOwed: true } : {}),
 			});
 		}
 

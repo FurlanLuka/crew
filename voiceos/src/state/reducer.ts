@@ -25,6 +25,8 @@ import {
 } from './helpers.js';
 import { hasFollowUpWaiting } from './delivery.js';
 import { reduceSend } from './send.js';
+import type { SpeechPriority } from '../speech/queue.js';
+import { joinTasks, lowerFirst, type ReportOwed } from '../shared/ack.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -44,7 +46,7 @@ export type Effect =
 	| { type: 'worker_interrupt'; ref: string; reason?: 'follow-up' }
 	| { type: 'worker_set_mode'; ref: string; mode: 'default' | 'auto' }
 	| { type: 'resolve_ask'; askId: string; result: AskResult }
-	| { type: 'narrate'; ref: string; text: string; asked: string | null }
+	| { type: 'narrate'; ref: string; text: string; asked: string | null; owed: ReportOwed | null }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string }
 	| { type: 'narrate_aside'; ref: string; question: string; answer: string }
@@ -60,6 +62,12 @@ export type Effect =
 			isAsking?: boolean;
 			// Said with the session's name in front unless it is on screen.
 			isNamed?: boolean;
+			// Default: alert for alerts, normal otherwise.
+			priority?: SpeechPriority;
+			// A report Voice OS promised: nothing newer replaces it before it plays.
+			isOwed?: boolean;
+			// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
+			isAck?: boolean;
 	  }
 	| { type: 'dev'; ref: string; action: 'start' | 'stop' | 'restart' }
 	| { type: 'fix_dev'; ref: string; servers: string[] };
@@ -103,7 +111,24 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	isFresh: false,
 	requests: [],
 	subagents: [],
+	reportOwed: null,
 });
+
+const describeUnfinished = (ref: string, owed: ReportOwed): Effect => {
+	const tasks = joinTasks(owed.tasks);
+
+	return {
+		type: 'speak',
+		text: tasks
+			? `Stopped before it finished ${lowerFirst(tasks)}.`
+			: 'Stopped before it finished.',
+		source: 'kernel',
+		ref,
+		isNamed: true,
+		priority: 'high',
+		isOwed: true,
+	};
+};
 
 const MAX_LOGGED_CHARS = 500;
 
@@ -235,6 +260,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					queue: [],
 					draft: '',
 					voiceTurnAt: null,
+					reportOwed: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_stop', ref: input.ref }],
 			};
@@ -254,6 +280,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					...current,
 					queue: [],
 					voiceTurnAt: null,
+					// The developer stopped the work: there is nothing to report.
+					reportOwed: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
 			};
@@ -363,21 +391,25 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A reply cut off by the developer's follow-up is not narrated: they are already past it.
 			const isCutOff = hasFollowUpWaiting(session);
 
-			if (input.text.trim() && !isCutOff) {
+			// A promised report is given even for a turn that wrote nothing.
+			if ((input.text.trim() || session.reportOwed) && !isCutOff) {
 				effects.push({
 					type: 'narrate',
 					ref: input.ref,
 					text: input.text,
 					asked: findLastUserText(session),
+					owed: session.reportOwed,
 				});
 			}
 
+			// Cleared here, before the queue head is sent: that next turn owes its own report.
 			const ended = updateSession(state, input.ref, (current) => ({
 				...current,
 				status: 'idle',
 				draft: '',
 				modeOverride: null,
 				voiceTurnAt: null,
+				reportOwed: null,
 				costUsd: current.costUsd + input.costUsd,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
@@ -389,18 +421,22 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'worker_exited': {
 			const settled = { ...state, asks: state.asks.filter((ask) => ask.ref !== input.ref) };
+			const owed = state.sessions[input.ref]?.reportOwed;
+			const stopped = updateSession(settled, input.ref, (session) => ({
+				...session,
+				status: 'stopped',
+				draft: '',
+				error: input.error,
+				voiceTurnAt: null,
+				queue: input.error ? session.queue : [],
+				subagents: [],
+				reportOwed: null,
+			}));
 
-			return withoutEffects(
-				updateSession(settled, input.ref, (session) => ({
-					...session,
-					status: 'stopped',
-					draft: '',
-					error: input.error,
-					voiceTurnAt: null,
-					queue: input.error ? session.queue : [],
-					subagents: [],
-				})),
-			);
+			// Voice OS said it passed the work on: a crash before the report is the report.
+			return input.error && owed
+				? { state: stopped, effects: [describeUnfinished(input.ref, owed)] }
+				: withoutEffects(stopped);
 		}
 
 		case 'limits':

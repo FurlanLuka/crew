@@ -1,5 +1,6 @@
 import type { Observation, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
+import type { ReportOwed } from '../shared/ack.js';
 
 export const STREAM_ITEMS_KEPT = 400;
 
@@ -69,6 +70,8 @@ export interface SendNowParams {
 	isSpoken?: boolean;
 	itemId: string;
 	at: number;
+	// Voice OS told the developer it passed this on: this turn's end is reported aloud.
+	reportOwed?: ReportOwed | null;
 }
 
 export const sendNow = ({
@@ -79,6 +82,7 @@ export const sendNow = ({
 	isSpoken = false,
 	itemId,
 	at,
+	reportOwed = null,
 }: SendNowParams): ReducerResult => {
 	// The note goes to the worker only: the stream records what the developer said.
 	const next = updateSession(state, ref, (session) =>
@@ -89,6 +93,7 @@ export const sendNow = ({
 				needsUser: null,
 				voiceTurnAt: isSpoken ? at : null,
 				isFresh: false,
+				reportOwed,
 				requests: [...session.requests, { text: truncateText(text, MAX_REQUEST_CHARS), at }].slice(
 					-REQUESTS_KEPT,
 				),
@@ -130,6 +135,7 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		text: head.text,
 		note: head.note,
 		isSpoken: head.isFollowUp === true || head.isSpoken === true,
+		reportOwed: head.reportOwed ?? null,
 		itemId: `${stamped.id}:q`,
 		at: stamped.at,
 	});

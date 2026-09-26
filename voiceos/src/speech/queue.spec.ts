@@ -38,6 +38,28 @@ describe('enqueue', () => {
 		expect(queue.items.map((queued) => queued.id)).toEqual(['other', 'new']);
 	});
 
+	it('a promised report waits its turn: the next ack about the session never replaces it', () => {
+		const queue = fillQueue(
+			{ ...createItem('report', 'high', 'store/main', 1), isOwed: true },
+			createItem('ack', 'high', 'store/main', 2),
+		);
+		expect(queue.items.map((queued) => queued.id)).toEqual(['report', 'ack']);
+	});
+
+	it('an ack replaces nothing still waiting about its session', () => {
+		const queue = fillQueue(createItem('result', 'normal', 'store/main', 1), {
+			...createItem('ack', 'high', 'store/main', 2),
+			isAck: true,
+		});
+		expect(queue.items.map((queued) => queued.id)).toEqual(['ack', 'result']);
+	});
+
+	it('a promised report survives talk and quiet, like any high line', () => {
+		const queue = fillQueue({ ...createItem('report', 'high', 'store/main'), isOwed: true });
+		expect(clearQueueForTalk(queue).items.map((queued) => queued.id)).toEqual(['report']);
+		expect(setMuted(queue, true).items.map((queued) => queued.id)).toEqual(['report']);
+	});
+
 	it('a low line never replaces a waiting high one for the same session', () => {
 		const queue = fillQueue(
 			createItem('question', 'high', 'store/main'),

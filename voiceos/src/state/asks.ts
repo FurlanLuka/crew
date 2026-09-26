@@ -186,6 +186,10 @@ interface AnswerInWordsParams {
 	stamped: Stamped;
 }
 
+// Several questions cannot be answered in one breath: they stay open for the screen.
+export const isAnsweredInWords = (ask: SdkAsk): boolean =>
+	ask.kind !== 'question' || ask.questions.length <= 1;
+
 export const answerInWords = ({
 	state,
 	ask,
@@ -195,8 +199,7 @@ export const answerInWords = ({
 	// The turn is blocked on the ask, so words queued behind it would never be read: they answer it.
 	switch (ask.kind) {
 		case 'question': {
-			// Several questions cannot be answered in one breath: they stay open for the screen.
-			if (ask.questions.length > 1) {
+			if (!isAnsweredInWords(ask)) {
 				return {
 					state,
 					effects: [{ type: 'speak', text: ON_SCREEN_MESSAGE, source: 'kernel', isReply: true }],

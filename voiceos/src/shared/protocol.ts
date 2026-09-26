@@ -1,5 +1,7 @@
 // Shared by the server and the browser: every type here must stay serializable.
 
+import type { ReportOwed, SendAck } from './ack.js';
+
 export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'blocked';
 
 export type StreamItem = { id: string; at: number } & (
@@ -38,6 +40,8 @@ export interface QueuedMessage {
 	isFollowUp?: true;
 	// Said while the session was starting: its reply is as interruptible as one sent at once.
 	isSpoken?: true;
+	// Voice OS said it passed this on: the turn that handles it must be reported aloud.
+	reportOwed?: ReportOwed;
 }
 
 export interface QuestionOption {
@@ -112,6 +116,8 @@ export interface Session {
 	// Its last few messages, oldest first, so "what's it doing?" can be answered from elsewhere.
 	requests: { text: string; at: number }[];
 	subagents: Subagent[];
+	// The running turn handles work Voice OS said it passed on: its end is reported aloud.
+	reportOwed: ReportOwed | null;
 }
 
 export interface VoiceEntry {
@@ -215,7 +221,16 @@ export type Action =
 	// Clicks and voice commands both dispatch exactly these, which keeps every browser and the kernel in sync.
 	// note, isSpoken: set only by the server; the gateway schema drops them from clients.
 	// aside: set by the kernel for a question a running session should answer beside its work.
-	| { type: 'send'; ref: string; text: string; note?: string; isSpoken?: boolean; aside?: boolean }
+	// ack: set by the kernel; spoken from the branch the send actually takes.
+	| {
+			type: 'send';
+			ref: string;
+			text: string;
+			note?: string;
+			isSpoken?: boolean;
+			aside?: boolean;
+			ack?: SendAck;
+	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
 	| { type: 'answer_question'; askId: string; answers: Record<string, string> }

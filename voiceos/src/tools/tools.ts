@@ -78,7 +78,14 @@ const sendRecorded = ({
 		utterance: toolContext.utterance,
 		isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
 	});
-	const result = sendText({ state, ref, text: sent, kind: input.kind, toolContext });
+	const result = sendText({
+		state,
+		ref,
+		text: sent,
+		kind: input.kind,
+		ack: input.ack,
+		toolContext,
+	});
 
 	// The voice log records what the session got, not what the model wrote.
 	return sent === text

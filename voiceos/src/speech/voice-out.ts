@@ -25,6 +25,8 @@ interface SayParams {
 	isNamed?: boolean;
 	isReply?: boolean;
 	isAsking?: boolean;
+	isOwed?: boolean;
+	isAck?: boolean;
 }
 
 interface FinishParams {
@@ -83,6 +85,8 @@ export class VoiceOut {
 		isNamed = false,
 		isReply = false,
 		isAsking = false,
+		isOwed = false,
+		isAck = false,
 	}: SayParams): void {
 		if (!text.trim()) {
 			return;
@@ -98,6 +102,8 @@ export class VoiceOut {
 			isNamed,
 			isReply,
 			isAsking,
+			...(isOwed ? { isOwed } : {}),
+			...(isAck ? { isAck } : {}),
 			at: this.now(),
 		});
 		this.queue = result.queue;

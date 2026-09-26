@@ -87,6 +87,30 @@ describe('buildNarratorMessage', () => {
 			'developer asked: run the tests',
 		);
 	});
+	it('a promised report → the tasks, in the words Voice OS said', () => {
+		expect(
+			buildNarratorMessage({
+				...input,
+				text: 'Clean.',
+				promised: ['Checking the logs', 'Running the tests'],
+			}),
+		).toBe(
+			[
+				'session: store-front/main',
+				'focused: no',
+				'current topic: none',
+				'developer asked: run the tests',
+				'voice os promised a report on: Checking the logs and running the tests',
+				'',
+				'session wrote:',
+				'Clean.',
+			].join('\n'),
+		);
+		expect(buildNarratorMessage({ ...input, text: 'Clean.', promised: [] })).toContain(
+			'voice os promised a report on: this request',
+		);
+		expect(buildNarratorMessage({ ...input, text: 'Clean.' })).not.toContain('promised');
+	});
 });
 
 describe('createFallbackNarration', () => {

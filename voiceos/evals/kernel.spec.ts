@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { judgeRun, findTextProblems } from './kernel.js';
+import { countRuns, judgeRun, findTextProblems } from './kernel.js';
 
 describe('findTextProblems', () => {
 	it('every required word must survive the rewrite; "a|b" accepts either', () => {
@@ -49,6 +49,40 @@ describe('judgeRun', () => {
 			ok: false,
 			why: 'missing forward() — sent "Ask it to check the logs." (still saying ask it)',
 		});
+	});
+
+	it("the ack: the kernel's own phrase with the words → ok; a fallback or a missing word → fails", () => {
+		const ackCase = { ...checkLogsCase, ack: ['log'] };
+		const judge = (acks: { task: string | null; kind: 'question' | 'instruction' }[]) =>
+			judgeRun({ calls: forward('Check the logs.'), reply: '', testCase: ackCase, acks });
+
+		expect(judge([{ task: 'Checking the logs', kind: 'instruction' }]).ok).toBe(true);
+		expect(judge([{ task: null, kind: 'instruction' }]).why).toBe(
+			'no ack with log: (fell back to "On it")',
+		);
+		expect(judge([{ task: 'Checking the output', kind: 'instruction' }]).ok).toBe(false);
+		expect(judge([]).why).toBe('no ack with log: no instruction sent');
+	});
+
+	it('the ack: false → a question stays a question', () => {
+		const questionAck = { ...checkLogsCase, ack: false as const };
+
+		expect(
+			judgeRun({
+				calls: forward('Check the logs.'),
+				reply: '',
+				testCase: questionAck,
+				acks: [{ task: null, kind: 'question' }],
+			}).ok,
+		).toBe(true);
+		expect(
+			judgeRun({
+				calls: forward('Check the logs.'),
+				reply: '',
+				testCase: questionAck,
+				acks: [{ task: 'Checking the logs', kind: 'instruction' }],
+			}).ok,
+		).toBe(false);
 	});
 
 	it('a required word dropped → fails, naming it', () =>
@@ -252,5 +286,15 @@ describe('judgeRun', () => {
 			ok: false,
 			why: 'spoke when asked for quiet: "Okay, going quiet."',
 		});
+	});
+});
+
+describe('countRuns', () => {
+	const base = { id: 'x', utterance: 'x', context: {}, calls: [] };
+
+	it('one run each; a case that must never act by voice → three', () => {
+		expect(countRuns(base)).toBe(1);
+		expect(countRuns({ ...base, forbid_mutation: true })).toBe(3);
+		expect(countRuns({ ...base, silent: true })).toBe(3);
 	});
 });

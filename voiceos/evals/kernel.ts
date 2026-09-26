@@ -4,6 +4,7 @@ import { Kernel, type KernelResult } from '../src/router/kernel.js';
 import { readActiveRef } from '../src/router/refs.js';
 import { reduce } from '../src/state/reducer.js';
 import { MUTATING_TOOLS, type ToolName } from '../src/tools/definitions.js';
+import type { SendAck } from '../src/shared/ack.js';
 import { createFixtureState, type FixtureContext } from '../test/support/state.js';
 import { attempt, mapPool } from './pool.js';
 
@@ -41,14 +42,24 @@ interface Case {
 	reply_includes?: string[];
 	// Words it must not contain: an invented detail.
 	reply_not_includes?: string[];
+	// The ack Voice OS says for an instruction: false — none (a question); a list — the kernel's own
+	// phrase kept the developer's words (readAckTask passed) and holds each entry ("a|b" accepts either).
+	ack?: string[] | false;
 }
 
 // A spoken reply longer than this is a lecture, not an answer.
 export const REPLY_WORDS = 25;
 
-export const RUNS = 3;
-export const PASSES_NEEDED = 2;
+// The kernel runs at temperature 0, so repeats mostly agree: one run each keeps a full run cheap.
+// A case that must never act by voice is still run three times, and must hold every time.
+const RUNS = 1;
+const MUST_HOLD_RUNS = 3;
 const CONCURRENCY = 4;
+
+const isMustHold = (testCase: Case): boolean =>
+	Boolean(testCase.forbid_mutation || testCase.silent);
+
+export const countRuns = (testCase: Case): number => (isMustHold(testCase) ? MUST_HOLD_RUNS : RUNS);
 
 type Call = KernelResult['calls'][number];
 
@@ -60,6 +71,7 @@ interface Verdict {
 interface KernelRun extends Verdict {
 	calls: KernelResult['calls'];
 	reply: string;
+	acks: SendAck[];
 }
 
 export interface KernelRow {
@@ -141,9 +153,37 @@ export interface JudgeRunParams {
 	calls: Call[];
 	reply: string;
 	testCase: Case;
+	// What each send carried to the reducer: the ack Voice OS speaks comes from these.
+	acks?: SendAck[];
 }
 
-export const judgeRun = ({ calls, reply, testCase }: JudgeRunParams): Verdict => {
+const judgeAck = (expected: Case['ack'], acks: SendAck[]): Verdict => {
+	const instructions = acks.filter((ack) => ack.kind === 'instruction');
+
+	if (expected === false) {
+		return instructions.length
+			? { ok: false, why: 'a question was sent as an instruction: Voice OS would ack it' }
+			: { ok: true, why: '' };
+	}
+
+	const tasks = instructions.map((ack) => ack.task);
+	const fits = (task: string | null) =>
+		task !== null &&
+		(expected ?? []).every((entry) =>
+			entry
+				.split('|')
+				.some((alternative) => task.toLowerCase().includes(alternative.toLowerCase())),
+		);
+
+	return tasks.some(fits)
+		? { ok: true, why: '' }
+		: {
+				ok: false,
+				why: `no ack with ${(expected ?? []).join(', ')}: ${tasks.length ? tasks.map((task) => (task === null ? '(fell back to "On it")' : `"${task}"`)).join(', ') : 'no instruction sent'}`,
+			};
+};
+
+export const judgeRun = ({ calls, reply, testCase, acks = [] }: JudgeRunParams): Verdict => {
 	for (const expected of testCase.calls) {
 		if (!calls.some((call) => matchesCall(call, expected))) {
 			return {
@@ -205,6 +245,14 @@ export const judgeRun = ({ calls, reply, testCase }: JudgeRunParams): Verdict =>
 		return { ok: false, why: `the reply says ${invented.join(', ')}: "${reply}"` };
 	}
 
+	if (testCase.ack !== undefined) {
+		const ackVerdict = judgeAck(testCase.ack, acks);
+
+		if (!ackVerdict.ok) {
+			return ackVerdict;
+		}
+	}
+
 	const replyWordCount = reply.split(/\s+/).filter(Boolean).length;
 
 	const maxWords = testCase.long_reply ? (testCase.max_words ?? Infinity) : REPLY_WORDS;
@@ -256,12 +304,17 @@ export const runKernelEval = async ({
 	const rows = await mapPool(cases, CONCURRENCY, async (testCase): Promise<KernelRow> => {
 		const runs: KernelRun[] = [];
 
-		for (let i = 0; i < RUNS; i++) {
+		for (let i = 0; i < countRuns(testCase); i++) {
 			// Actions change the state as they would live (an answered ask closes); effects go nowhere.
 			let state = createFixtureState(testCase.context);
 			const screen = readActiveRef(state);
+			const acks: SendAck[] = [];
 
 			const dispatch = (input: Parameters<typeof reduce>[1]['input']) => {
+				if (input.type === 'send' && input.ack) {
+					acks.push(input.ack);
+				}
+
 				state = reduce(state, {
 					seq: state.seq + 1,
 					at: Date.now(),
@@ -307,15 +360,13 @@ export const runKernelEval = async ({
 			runs.push({
 				calls: result.value.calls,
 				reply: result.value.reply,
-				...judgeRun({ calls: result.value.calls, reply: result.value.reply, testCase }),
+				acks,
+				...judgeRun({ calls: result.value.calls, reply: result.value.reply, testCase, acks }),
 			});
 		}
 
-		// One stray mutation in three is still a real action taken by voice, so it must hold every run.
-		const needed =
-			testCase.forbid_mutation || testCase.silent
-				? runs.length
-				: Math.min(PASSES_NEEDED, runs.length);
+		// One stray mutation in three is still a real action taken by voice: every run must pass.
+		const needed = runs.length;
 
 		return {
 			id: testCase.id,
@@ -324,7 +375,7 @@ export const runKernelEval = async ({
 			runs,
 			mutating: isMutatingCase(testCase),
 			// Every run that did not complete failed at the API.
-			infraErrors: RUNS - runs.length,
+			infraErrors: countRuns(testCase) - runs.length,
 		};
 	});
 
@@ -344,7 +395,9 @@ export const runKernelEval = async ({
 			mutating: mutatingRows.length
 				? mutatingRows.filter(hasPassed).length / mutatingRows.length
 				: 1,
-			infraErrors: rows.reduce((sum, row) => sum + row.infraErrors, 0) / (rows.length * RUNS),
+			infraErrors:
+				rows.reduce((sum, row) => sum + row.infraErrors, 0) /
+				cases.reduce((sum, testCase) => sum + countRuns(testCase), 0),
 		},
 	};
 };
