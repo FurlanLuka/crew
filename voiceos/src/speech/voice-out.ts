@@ -56,6 +56,8 @@ interface Playing {
 	record: SpokenRecord;
 }
 
+const SAID_PREVIEW_CHARS = 80;
+
 const log = createLogger('voice-out');
 export const REMINDER_MS = 5 * 60_000;
 const CHUNK_GAP_MS = 10_000;
@@ -93,8 +95,9 @@ export class VoiceOut {
 		}
 
 		clipCounter += 1;
+		const id = `s${clipCounter}`;
 		const result = enqueue(this.queue, {
-			id: `s${clipCounter}`,
+			id,
 			text,
 			priority,
 			ref,
@@ -107,10 +110,17 @@ export class VoiceOut {
 			at: this.now(),
 		});
 		this.queue = result.queue;
+		// Which line each clip is, and whether it plays: "why did I hear that twice" is answered here.
+		log.info('queued line', {
+			id,
+			source,
+			ref,
+			priority,
+			text: text.length > SAID_PREVIEW_CHARS ? `${text.slice(0, SAID_PREVIEW_CHARS)}…` : text,
+			...(result.isDropped ? { isDropped: true } : {}),
+		});
 
 		if (result.isDropped) {
-			log.debug('dropped (muted)', { priority });
-
 			return;
 		}
 

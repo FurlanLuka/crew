@@ -1,5 +1,6 @@
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { createLogger } from '../log.js';
+import { readSpokenTag } from '../shared/spoken-tags.js';
 import type { RawMessage } from './events.js';
 import { buildQueryOptions, type QueryLaunch } from './worker.js';
 
@@ -13,13 +14,14 @@ const CHANGES_WORK = 'CHANGES_WORK';
 export const buildSidePrompt = (question: string): string =>
 	[
 		'Side question from the developer while you work on something else. It is not a new task.',
-		`Answer only from this conversation, without tools, in one or two short spoken sentences. If you would need tools or files to answer, reply exactly ${NEEDS_TOOLS}. If the question means your current work should change, reply exactly ${CHANGES_WORK}.`,
+		`Answer only from this conversation, without tools, in one or two short spoken sentences. Your reply is that answer and nothing else: no progress or checkpoint about your current work — that is said on its own. If you would need tools or files to answer, reply exactly ${NEEDS_TOOLS}. If the question means your current work should change, reply exactly ${CHANGES_WORK}.`,
 		'',
 		question,
 	].join('\n');
 
 export type SideAnswerOutcome =
-	| { status: 'answered'; answer: string }
+	// dropped: earlier messages left out (a checkpoint the fork finished before answering).
+	| { status: 'answered'; answer: string; dropped: number }
 	| { status: 'queued'; reason: string }
 	| { status: 'failed'; reason: string };
 
@@ -61,20 +63,29 @@ export const classifySideAnswer = (messages: RawMessage[]): SideAnswerOutcome =>
 		return { status: 'failed', reason: result.subtype ?? 'error result' };
 	}
 
-	const answer = assistantMessages.map(readText).join('\n').trim();
+	const texts = assistantMessages.map(readText).filter((text) => text.trim());
+	const reply = texts.join('\n').trim();
 
-	if (!answer || result?.subtype === 'error_max_turns') {
-		return { status: 'queued', reason: answer ? 'ran out of turns' : 'no answer' };
+	if (!reply || result?.subtype === 'error_max_turns') {
+		return { status: 'queued', reason: reply ? 'ran out of turns' : 'no answer' };
 	}
 
 	// Anywhere in the reply: the model often explains first ("I'd have to open it — NEEDS_TOOLS").
-	const marker = [NEEDS_TOOLS, CHANGES_WORK].find((word) => answer.includes(word));
+	const marker = [NEEDS_TOOLS, CHANGES_WORK].find((word) => reply.includes(word));
 
 	if (marker) {
 		return { status: 'queued', reason: marker };
 	}
 
-	return { status: 'answered', answer };
+	// The fork resumes mid-work and may first finish a message it had started — a checkpoint, with
+	// its own spoken line. Those are left out; an answer split over several messages stays whole.
+	const kept = texts.filter((text, index) => index === texts.length - 1 || !readSpokenTag(text));
+
+	return {
+		status: 'answered',
+		answer: kept.join('\n').trim(),
+		dropped: texts.length - kept.length,
+	};
 };
 
 export interface RunSideAnswerParams {
@@ -173,7 +184,7 @@ export const runSideAnswer = async ({
 		sessionId,
 		status: outcome.status,
 		...(outcome.status === 'answered'
-			? { chars: outcome.answer.length }
+			? { chars: outcome.answer.length, dropped: outcome.dropped }
 			: { reason: outcome.reason }),
 		ms: Date.now() - startedAt,
 	});

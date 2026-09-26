@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import type { RawMessage } from './events.js';
-import { classifySideAnswer, runSideAnswer, type RunSideAnswerParams } from './side-answer.js';
+import {
+	buildSidePrompt,
+	classifySideAnswer,
+	runSideAnswer,
+	type RunSideAnswerParams,
+} from './side-answer.js';
 import { buildQueryOptions, type QueryLaunch } from './worker.js';
 
 const text = (value: string): RawMessage => ({
@@ -14,11 +19,58 @@ const toolUse: RawMessage = {
 const success: RawMessage = { type: 'result', subtype: 'success', result: '' };
 
 describe('classifySideAnswer', () => {
-	it('text → answered, several blocks joined', () =>
+	it('text → answered with the last message: the fork may first finish one it had started', () =>
+		expect(
+			classifySideAnswer([
+				text('<spoken>The pause-and-join is built; reviewers are checking it.</spoken>'),
+				text(
+					'<spoken>About half: 259 calls instead of 519.</spoken>\nThe must-hold cases still run three times.',
+				),
+				success,
+			]),
+		).toEqual({
+			status: 'answered',
+			answer:
+				'<spoken>About half: 259 calls instead of 519.</spoken>\nThe must-hold cases still run three times.',
+			dropped: 1,
+		}));
+
+	it('an answer split over several messages without a spoken line → kept whole', () =>
 		expect(classifySideAnswer([text('The router.'), text('In src/router.'), success])).toEqual({
 			status: 'answered',
 			answer: 'The router.\nIn src/router.',
+			dropped: 0,
 		}));
+
+	it('an empty last message is not the answer; blocks of one message are joined', () => {
+		expect(
+			classifySideAnswer([
+				text('<spoken>Checkpoint.</spoken>'),
+				text('The answer.'),
+				text('  '),
+				success,
+			]),
+		).toMatchObject({ status: 'answered', answer: 'The answer.' });
+		expect(
+			classifySideAnswer([
+				{
+					type: 'assistant',
+					message: {
+						content: [
+							{ type: 'text', text: 'The router.' },
+							{ type: 'text', text: 'In src/router.' },
+						],
+					},
+				},
+				success,
+			]),
+		).toMatchObject({ answer: 'The router.\nIn src/router.' });
+	});
+
+	it('a marker in an earlier message still sends it to the queue', () =>
+		expect(classifySideAnswer([text('NEEDS_TOOLS'), text('Anyway.'), success]).status).toBe(
+			'queued',
+		));
 
 	it('text then a tool call → queued, and the text is not the answer', () =>
 		expect(classifySideAnswer([text('Let me check.'), toolUse]).status).toBe('queued'));
@@ -117,7 +169,11 @@ describe('runSideAnswer', () => {
 	it('forks the session from its end, with the same launch as the session and no tools', async () => {
 		const fake = fakeQuery([text('The router.'), success]);
 
-		expect(await ask(fake.runQuery)).toEqual({ status: 'answered', answer: 'The router.' });
+		expect(await ask(fake.runQuery)).toEqual({
+			status: 'answered',
+			answer: 'The router.',
+			dropped: 0,
+		});
 
 		const [call] = fake.calls;
 
@@ -168,4 +224,11 @@ describe('runSideAnswer', () => {
 		});
 		expect(fake.calls[0]?.options.abortController.signal.aborted).toBe(true);
 	});
+});
+
+describe('buildSidePrompt', () => {
+	it('asks for the answer alone: no progress about the work it was forked from', () =>
+		expect(buildSidePrompt('how much cheaper is it?')).toContain(
+			'no progress or checkpoint about your current work',
+		));
 });
