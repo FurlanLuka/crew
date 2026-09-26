@@ -692,17 +692,6 @@ func cmdLsWorktrees() {
 		names = all
 	}
 
-	type worktreeOut struct {
-		Ref        string `json:"ref"`
-		Path       string `json:"path"`
-		DevRunning bool   `json:"dev_running"`
-		// Installing: setup runners are alive on it — crew setup status.
-		Installing bool              `json:"installing"`
-		SizeBytes  int64             `json:"size_bytes,omitempty"`
-		Health     string            `json:"health,omitempty"`
-		Issues     []workspace.Issue `json:"issues,omitempty"`
-	}
-
 	out := []worktreeOut{}
 	for _, wsName := range names {
 		ws, err := workspace.Load(wsName)
@@ -710,12 +699,7 @@ func cmdLsWorktrees() {
 			continue
 		}
 		for _, ref := range workspace.Refs(ws) {
-			row := worktreeOut{
-				Ref:        ref.String(),
-				Path:       workspace.WorktreeDir(ref),
-				DevRunning: dev.Running(ref.Slug()),
-				Installing: workspace.SetupRunning(ref),
-			}
+			row := worktreeJSONRow(ref, dev.Running(ref.Slug()), workspace.SetupRunning(ref))
 			if wt, err := workspace.WorktreeOf(ws, ref); err == nil {
 				row.Health = wt.Health.Summary()
 				if wt.Health != nil {
@@ -1287,4 +1271,23 @@ func renameDoc(from, to workspace.Ref, warnings []string) renameOut {
 		warnings = []string{}
 	}
 	return renameOut{From: from.String(), To: to.String(), Warnings: warnings}
+}
+
+// worktreeOut is one crew ls worktrees --json row. Voice OS parses it; the
+// golden file voiceos/testdata/ls-worktrees.json pins the shape both sides use.
+type worktreeOut struct {
+	Ref        string `json:"ref"`
+	Path       string `json:"path"`
+	DevRunning bool   `json:"dev_running"`
+	// Installing: setup runners are alive on it — crew setup status.
+	Installing bool              `json:"installing"`
+	SizeBytes  int64             `json:"size_bytes,omitempty"`
+	Health     string            `json:"health,omitempty"`
+	Issues     []workspace.Issue `json:"issues,omitempty"`
+}
+
+// worktreeJSONRow is the identity part of a crew ls worktrees --json row;
+// health and size are added by the caller.
+func worktreeJSONRow(ref workspace.Ref, devRunning, installing bool) worktreeOut {
+	return worktreeOut{Ref: ref.String(), Path: workspace.WorktreeDir(ref), DevRunning: devRunning, Installing: installing}
 }

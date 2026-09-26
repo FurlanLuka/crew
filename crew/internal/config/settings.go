@@ -10,7 +10,9 @@ type Settings struct {
 	ServerIP  string `json:"server_ip,omitempty"`
 	SSHHost   string `json:"ssh_host,omitempty"`
 	ProxyPort int    `json:"proxy_port,omitempty"`
-	Domain    string `json:"domain,omitempty"`
+	// ProxyHTTPSPort is where the proxy also serves TLS: 0 means 443, -1 off.
+	ProxyHTTPSPort int    `json:"proxy_https_port,omitempty"`
+	Domain         string `json:"domain,omitempty"`
 }
 
 // GetDomain returns the configured custom domain, or falls back to
@@ -27,6 +29,17 @@ func (s Settings) GetProxyPort() int {
 		return s.ProxyPort
 	}
 	return 80
+}
+
+// GetProxyHTTPSPort is the proxy's TLS port, or 0 when HTTPS is turned off.
+func (s Settings) GetProxyHTTPSPort() int {
+	switch {
+	case s.ProxyHTTPSPort < 0:
+		return 0
+	case s.ProxyHTTPSPort > 0:
+		return s.ProxyHTTPSPort
+	}
+	return 443
 }
 
 func SettingsFilePath() string {

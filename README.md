@@ -275,12 +275,15 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | **Projects** | `add project <name> <url> \| --path=<dir> [--setup=…] [--env-cmd=…]` · `rm project [--keep-clone]` · `check project <name> [--pull] [--no-smoke] [--wait]` · `dev add <p> --name [--port] --cmd [--dir]` · `dev rm` · `dev setup <p> [--apply --port=…]` |
 | **Bindings** | `add binding <p>[/<server>] --var=X --url\|--host\|--port=<proj[/server]> \| --value=…` · `add binding <p>[/<server>] --scan [--apply]` · `rm binding <p>[/<server>] X` · `add\|rm override <ref> VAR=value` · `env <ref> <p>[/<server>]` · `run <ref> <p>[/<server>] -- <cmd>` |
 | **Workspaces** | `add workspace <ws> [<p> …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `rename worktree <ref> <name>` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
-| **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|stop` |
+| **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|trust\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
+| **Voice** | `voice [start\|stop\|restart\|status\|logs] [--no-open] [--lines=N]` — Voice OS, the voice and web cockpit for every worktree's Claude session (see [`voiceos/README.md`](voiceos/README.md)) |
 | **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> [--path \| --replace] \| workspace <name> [--pull] [--wait] \| --all [--replace] [--pull] [--wait]]` |
 | **Housekeeping** | `clean [--dry-run]` · `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
 
 Settings (`crew config set`): `server_ip` (LAN IP for proxy URLs, auto-detected), `domain`
 (custom proxy domain, needs wildcard DNS; default `<server_ip>.nip.io`), `proxy_port` (80),
+`proxy_https_port` (443, `-1` off — the proxy's HTTPS, from crew's own CA; `crew dev proxy trust`
+shows how to trust it on each device),
 `ssh_host` (for `crew code`). `~/.crew/debug.log` holds every git, tmux, install and editor
 command crew ran; binding values are never logged.

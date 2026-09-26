@@ -1,0 +1,20 @@
+[
+  {
+    "ref": "store-front/main",
+    "path": "/w/store-front/main",
+    "dev_running": true,
+    "installing": false
+  },
+  {
+    "ref": "store-front/wrk1",
+    "path": "/w/store-front/wrk1",
+    "dev_running": false,
+    "installing": false
+  },
+  {
+    "ref": "check/checkout-api",
+    "path": "/w/check/checkout-api",
+    "dev_running": false,
+    "installing": false
+  }
+]

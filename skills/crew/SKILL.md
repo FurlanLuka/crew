@@ -62,8 +62,9 @@ crew env <workspace>[/<worktree>] <project>[/<server>]     <VAR>=<value>
 crew ps [--json]                                           <kind>\t<pid>\t<session|cwd>\t<command>
 crew trash [empty]                                         <path>\t<size>\t<n> entries\t<note>  |  <path>\tempty
 crew config show                                           <key>\t<value>
-crew dev proxy [status|stop]                               <up|up (not listening)|down>\t<domain>\t<port>\t<status url>
+crew dev proxy [status|trust [--install]|stop]            <up|up (not listening)|down>\t<domain>\t<port>\t<status url>\thttps <up|not listening|off>\t<https port>
 crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
+crew voice [start|stop|restart|status|logs] [--no-open] [--lines=<n>]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -321,7 +322,7 @@ crew dev stop [<workspace>[/<worktree>]]
 crew dev restart <workspace>[/<worktree>] [--proxy]
 crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]
 crew dev check <workspace>[/<worktree>] [--wait]                  <project>/<server>\t<running|died|not listening>\t<port>\t<took>\t<detail>
-crew dev proxy [status|stop]
+crew dev proxy [status|trust [--install]|stop]
 crew dev tui <workspace>[/<worktree>]                              the worktree page (TUI)
 ```
 
@@ -362,6 +363,15 @@ Verify first that it is not this side: `crew dev proxy status` — `up` with the
 domain and port, or `up (not listening)` (the port is taken; the pane's last line is in the
 `!` warning `dev start` printed) or `down`. `crew dev proxy stop` kills the proxy alone.
 
+**HTTPS on the proxy.** The proxy also serves every hostname over HTTPS on
+`proxy_https_port` (443; `-1` turns it off) with a certificate from crew's own CA in
+`~/.crew/tls/<domain>/` — one CA per domain, kept for good, and limited to that domain, so it
+can vouch for nothing else. A device trusts it once: `crew dev proxy trust` prints the CA, its
+SHA-256 and the steps (a phone downloads it from `http://<domain>/crew-ca.pem`, the status
+page links it); `--install` trusts it on this Mac. Pin `server_ip` first: while it is
+detected, the domain can flip between LAN and Tailscale IPs, and each domain has its own CA.
+`crew dev proxy status` ends with `https up|not listening|off` and the port.
+
 ## 7. Launching
 
 ```
@@ -380,6 +390,17 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
   servers through crew.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
   say which they are in `crew help`.
+
+### Voice OS
+
+`crew voice` runs Voice OS — a web and voice cockpit that holds one Claude Code session per
+worktree, streams their output, and takes permission answers, questions and dictation by
+voice or click. It runs in tmux session `crew-dev-os` on a remembered port and registers the
+proxy route `voice--os.<domain>`. Browsers only grant the microphone on localhost or HTTPS:
+the localhost link works on this Mac, and the proxy link is HTTPS whenever the proxy serves it,
+so it works on any device that trusts crew's CA (`crew dev proxy trust`). `crew voice` again
+reprints the link (sign-in is a cookie); `crew voice logs` shows its log; `crew voice stop`
+ends it and its sessions, which resume on the next start. `os` is a reserved workspace name.
 
 ## 8. Moving to another machine
 
@@ -452,8 +473,8 @@ crew help [<command>] [<subcommand>] [--json]
 - `ps` lists crew's tmux sessions and processes that leaked out of them; `kill` stops every
   session and reclaims the leaks (never anything with a live parent) and prints how to
   restore. `--dry-run` first.
-- `config set` keys: `server_ip`, `ssh_host`, `proxy_port`, `domain`. A changed `server_ip`,
-  `domain` or `proxy_port` takes effect on the next `dev start|restart --proxy`. `refresh`
+- `config set` keys: `server_ip`, `ssh_host`, `proxy_port`, `proxy_https_port`, `domain`. A
+  changed `server_ip`, `domain`, `proxy_port` or `proxy_https_port` takes effect on the next `dev start|restart --proxy`. `refresh`
   rewrites the managed tmux config.
 - `uninstall --purge` deletes every checkout — confirm with the user first; `--yes` skips
   crew's own prompt.

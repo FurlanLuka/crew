@@ -1,0 +1,503 @@
+{
+	"note": "Synthetic turn endings patterned on real Claude Code sessions (offers, choices, blocked-on-you, progress, reports that close with a question). Written with crew's generic names \u2014 never real transcript text. Labels are model-authored and marked for human review; 'holdout' cases are never used to tune the prompt. report-long-todo was moved from holdout to dev after it informed a prompt rule. Every turn end is a reply to the developer and is spoken in one short line, progress and \"started, will report back\" included; only greetings and \"no response requested\" stay silent.",
+	"cases": [
+		{
+			"id": "offer-push",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "fix the flaky checkout test",
+			"focused": false,
+			"text": "The flake came from a shared fixture mutating the cart between tests. I isolated it per test and ran the suite 20 times \u2014 green every time. Want me to push the branch?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "choice-two",
+			"split": "dev",
+			"label": "checkout-api/main",
+			"asked": "where should we store retry state",
+			"focused": false,
+			"text": "Two options. A new retry_attempts table keeps history but needs a migration. A JSON column on orders avoids the migration but loses per-attempt timing. Would you rather have the table or the column?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "blocked-credentials",
+			"split": "dev",
+			"label": "signals/main",
+			"asked": "deploy the worker to staging",
+			"focused": false,
+			"text": "The staging deploy needs a service-account key that isn't in the repo or the env files. I can't continue until you add it to .env.staging or tell me where it lives.",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "done-tests",
+			"split": "dev",
+			"label": "store-front/wrk1",
+			"asked": "run the full test suite",
+			"focused": false,
+			"text": "Full suite green: 412 tests across 38 files, 1m 42s. No flakes this run.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "waiting-reviewers",
+			"split": "dev",
+			"label": "checkout-api/main",
+			"asked": "implement the backoff",
+			"focused": false,
+			"text": "Backoff is implemented and all 96 tests pass. Waiting on the two reviewers before committing.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "no-response",
+			"split": "dev",
+			"label": "admin/main",
+			"asked": null,
+			"focused": false,
+			"text": "No response requested.",
+			"expect": {
+				"needs_user": false,
+				"speak": false
+			}
+		},
+		{
+			"id": "greeting",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": null,
+			"focused": false,
+			"text": "I'm ready. What would you like me to build?",
+			"expect": {
+				"needs_user": false,
+				"speak": false
+			}
+		},
+		{
+			"id": "progress-running",
+			"split": "dev",
+			"label": "signals/main",
+			"asked": "profile the ingest job",
+			"focused": false,
+			"text": "Profiling run started with 10k synthetic events; it takes about four minutes. I'll report back with the flame graph summary.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "report-then-question",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "why is the product page slow",
+			"focused": false,
+			"text": "The product page makes 14 sequential API calls on load; the slowest is the recommendations call at 900 ms. Batching them into one request brings first paint from 3.1 s to 1.2 s locally. The recommendations service also has no cache. Should I add a 60-second cache there too, or keep this change to batching only?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "say-the-word",
+			"split": "dev",
+			"label": "checkout-api/main",
+			"asked": "clean up old branches",
+			"focused": false,
+			"text": "Found 23 merged branches older than 90 days. Say the word and I'll delete them \u2014 nothing unmerged is in the list.",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "let-me-know-generic",
+			"split": "dev",
+			"label": "admin/main",
+			"asked": "rename the settings page",
+			"focused": false,
+			"text": "Renamed the settings page to Preferences in the nav, the route and the page title, and updated the two tests that referenced it. Let me know if you need anything else.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "pushed",
+			"split": "dev",
+			"label": "store-front/wrk1",
+			"asked": "push it",
+			"focused": false,
+			"text": "Pushed as 4f2c9e1 to crew/store-front/wrk1/store-front. CI is running.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "focused-done",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "add the empty state",
+			"focused": true,
+			"text": "Added an empty state to the cart with a link back to the catalog, plus a snapshot test. Typecheck and tests pass.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "multi-question",
+			"split": "dev",
+			"label": "signals/main",
+			"asked": "set up alerting",
+			"focused": false,
+			"text": "Before I wire alerting I need two decisions: should alerts go to Slack or email, and what error rate should trigger them \u2014 1% or 5%?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "rhetorical-mid",
+			"split": "dev",
+			"label": "checkout-api/main",
+			"asked": "why did the payment test fail",
+			"focused": false,
+			"text": "Why did it fail only on CI? Because CI runs in UTC and the test built a date at local midnight. I pinned the test clock to UTC and it passes in both time zones.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "plan-ready",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "plan the search refactor",
+			"focused": false,
+			"text": "Here's the plan: 1) extract the query builder, 2) move ranking into its own module, 3) add snapshot tests for the top 20 queries. Does that order work for you before I start?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "error-cannot-run",
+			"split": "dev",
+			"label": "admin/main",
+			"asked": "run the migrations",
+			"focused": false,
+			"text": "The migration failed: the database on port 5433 isn't running, so I stopped there. Start it with crew dev start admin/main and I'll rerun the migrations.",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "moving-to-qa",
+			"split": "dev",
+			"label": "signals/main",
+			"asked": "build the exporter",
+			"focused": false,
+			"text": "Both reviewers confirm no findings on the current revision. Moving on to QA now.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "summary-only",
+			"split": "dev",
+			"label": "store-front/wrk1",
+			"asked": "summarize what changed today",
+			"focused": false,
+			"text": "Today: the cart empty state, the catalog pagination fix, and the checkout button's loading spinner. Three PRs, all merged.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "offer-revert",
+			"split": "dev",
+			"label": "checkout-api/main",
+			"asked": "undo my last change",
+			"focused": false,
+			"text": "Your last commit touched the webhook handler and the retry config. Reverting it also drops the logging you added earlier in the same commit. Want me to revert the whole commit, or only the retry config?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-offer-deploy",
+			"split": "holdout",
+			"label": "signals/main",
+			"asked": "fix the dashboard query",
+			"focused": false,
+			"text": "The dashboard query was scanning the full events table; I added a date filter and an index hint. It now returns in 180 ms instead of 9 s. Should I deploy it to staging?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-done-lint",
+			"split": "holdout",
+			"label": "admin/main",
+			"asked": "fix the lint errors",
+			"focused": false,
+			"text": "Fixed all 31 lint errors; most were unused imports. Lint and typecheck are clean.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-progress",
+			"split": "holdout",
+			"label": "store-front/main",
+			"asked": "upgrade the framework",
+			"focused": false,
+			"text": "Upgrade is underway: dependencies bumped, now fixing the 12 type errors it introduced. Still working through them.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-choice-three",
+			"split": "holdout",
+			"label": "checkout-api/main",
+			"asked": "how should we handle duplicate webhooks",
+			"focused": false,
+			"text": "Three ways to handle duplicate webhooks: an idempotency key table, a unique constraint on the event id, or deduping in memory for five minutes. The constraint is simplest and survives restarts. Which one do you want?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			},
+			"not_includes": ["idempotency", "unique constraint", "in memory"]
+		},
+		{
+			"id": "h-blocked-review",
+			"split": "holdout",
+			"label": "store-front/wrk1",
+			"asked": "merge the PR",
+			"focused": false,
+			"text": "I can't merge: the branch needs one approving review and you're the only other maintainer. Could you approve it?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-greeting",
+			"split": "holdout",
+			"label": "signals/main",
+			"asked": null,
+			"focused": false,
+			"text": "Session started. Waiting for your instructions.",
+			"expect": {
+				"needs_user": false,
+				"speak": false
+			}
+		},
+		{
+			"id": "report-long-todo",
+			"split": "dev",
+			"label": "admin/main",
+			"asked": "audit the permissions code",
+			"focused": false,
+			"text": "The audit found three issues. First, the role check on the export endpoint compares strings case-sensitively, so 'Admin' slips through. Second, the session cookie lacks SameSite. Third, two admin routes skip the audit log. I fixed the first two and added tests; the third needs a product call on what to log, so I left it with a TODO.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-offer-soft",
+			"split": "holdout",
+			"label": "store-front/main",
+			"asked": "add dark mode",
+			"focused": true,
+			"text": "Dark mode is in: tokens for both themes, a toggle in the header, and the preference saved per user. If you want, I can also match the system setting by default.",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-waiting-ci",
+			"split": "holdout",
+			"label": "checkout-api/main",
+			"asked": "release it",
+			"focused": false,
+			"text": "Tagged v2.4.0; the release workflow is running and usually takes six minutes. I'll confirm once the artifacts are published.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-question-in-quote",
+			"split": "holdout",
+			"label": "signals/main",
+			"asked": "answer the support ticket",
+			"focused": false,
+			"text": "The customer asked 'why are my exports empty?' \u2014 their API key lacks the read:events scope. I drafted a reply explaining how to add the scope and saved it in the ticket as a draft.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-choice-rollback",
+			"split": "holdout",
+			"label": "store-front/wrk1",
+			"asked": "the deploy broke search",
+			"focused": false,
+			"text": "The deploy broke search because the new index mapping renamed the title field. I can roll back the deploy, or ship a hotfix that maps the old field name. Rolling back is faster; the hotfix keeps today's other changes live. Which do you prefer?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-done-migration",
+			"split": "holdout",
+			"label": "checkout-api/main",
+			"asked": "add the refunds table",
+			"focused": false,
+			"text": "Added the refunds table with a migration, a model and CRUD tests. The migration ran cleanly on the local database and all 58 tests pass.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "q-version",
+			"split": "dev",
+			"label": "crew/main",
+			"asked": "Which version of crew are we running?",
+			"focused": true,
+			"text": "crew is at version 2.4.1, installed from the local build on September 24. It matches the latest tag.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			},
+			"max_words": 8
+		},
+		{
+			"id": "q-test-count",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "How many tests do we have?",
+			"focused": false,
+			"text": "There are 412 tests across 38 files: 301 unit, 96 integration and 15 end-to-end.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			},
+			"max_words": 12
+		},
+		{
+			"id": "h-q-migration",
+			"split": "holdout",
+			"label": "checkout-api/main",
+			"asked": "Is the migration done?",
+			"focused": true,
+			"text": "Yes \u2014 the refunds migration ran cleanly on the local database, and the table has all 12 columns with their indexes.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			},
+			"max_words": 10
+		},
+		{
+			"id": "h-q-port",
+			"split": "holdout",
+			"label": "store-front/wrk1",
+			"asked": "Which port is the api on?",
+			"focused": false,
+			"text": "The api dev server listens on port 51049. crew allocated it; the configured port 3000 is only the reference.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			},
+			"max_words": 10
+		},
+		{
+			"id": "choice-cache",
+			"split": "dev",
+			"label": "checkout-api/main",
+			"asked": "make the rates endpoint faster",
+			"focused": false,
+			"text": "The rates endpoint spends most of its time on the currency lookup. Three fixes: cache the rates in Redis for a minute, precompute them in a nightly job, or keep an in-process LRU. The LRU needs no new infrastructure. Which approach should I take?",
+			"expect": {
+				"needs_user": true,
+				"speak": true
+			},
+			"not_includes": ["redis", "nightly", "lru"]
+		},
+		{
+			"id": "started-will-report",
+			"split": "dev",
+			"label": "store-front/wrk1",
+			"asked": "review both open PRs and let me know when you're done",
+			"focused": false,
+			"text": "I've started the review of #412 and #413. Both run in the background; I'll bring you the findings when they're done.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "h-started-audit",
+			"split": "holdout",
+			"label": "checkout-api/main",
+			"asked": "audit the dependencies",
+			"focused": false,
+			"text": "Started the dependency audit across all three packages. It runs in the background and I'll report what it finds when it finishes.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			}
+		},
+		{
+			"id": "ack-standing-by",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "thanks, that's all for now",
+			"focused": false,
+			"text": "Okay.",
+			"expect": {
+				"needs_user": false,
+				"speak": false
+			}
+		},
+		{
+			"id": "h-ack-noted",
+			"split": "holdout",
+			"label": "checkout-api/main",
+			"asked": "got it, leave it as is",
+			"focused": false,
+			"text": "Noted, standing by.",
+			"expect": {
+				"needs_user": false,
+				"speak": false
+			}
+		}
+	]
+}

@@ -1,0 +1,1827 @@
+{
+	"note": "Every utterance goes to the kernel; each case lists the tool calls it must produce. 'calls' must all appear; 'input' arguments must match exactly; text_includes words must survive the rewrite into a clean instruction ('a|b' accepts either) and not_includes relay words must be gone; 'forbid_mutation' fails any call that changes something; 'silent' also fails any reply; 'no_reply' fails a reply; read-only calls are always allowed. The context (test/support/state.ts) sets up asks, offers, busy sessions and what was said earlier on the screen (voiceLog). The phrases are from a real hands-free session with the names made generic.",
+	"cases": [
+		{
+			"id": "waiting",
+			"utterance": "Is anything waiting on me?",
+			"context": {
+				"ask": "permission"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "start-by-topic",
+			"utterance": "Start the checkout retry one.",
+			"context": {
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "status-by-topic",
+			"utterance": "What's the ranking work doing?",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "restart-servers",
+			"utterance": "Restart the servers for store front main.",
+			"context": {},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/main",
+					"action": "restart"
+				}
+			]
+		},
+		{
+			"id": "delegate",
+			"utterance": "Tell the checkout session to add backoff to the webhook retries.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": "backoff"
+				}
+			]
+		},
+		{
+			"id": "stop-by-topic",
+			"utterance": "Stop the search ranking session.",
+			"context": {},
+			"calls": [
+				{
+					"name": "stop_session",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "open-by-topic",
+			"utterance": "Show me the locale work.",
+			"context": {},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "ambiguous-tests",
+			"utterance": "Run the tests.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "delete-via-setup",
+			"utterance": "Delete the checkout worktree.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "voiceos",
+					"text_includes": "worktree"
+				}
+			]
+		},
+		{
+			"id": "create-via-setup",
+			"utterance": "Create a new worktree for the search fix.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "voiceos",
+					"text_includes": "worktree"
+				}
+			]
+		},
+		{
+			"id": "history",
+			"utterance": "What did the checkout session do yesterday?",
+			"context": {},
+			"calls": [
+				{
+					"name": "read_history",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "two-steps",
+			"utterance": "Bring up the dev servers for work one and open it.",
+			"context": {},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/wrk1",
+					"action": "start"
+				},
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			],
+			"allow": [
+				{
+					"name": "start_session",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "home",
+			"utterance": "Hey voice OS, go back to all sessions.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": null
+				}
+			]
+		},
+		{
+			"id": "is-running",
+			"utterance": "Is checkout running?",
+			"context": {
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "relay-question",
+			"utterance": "Ask the locale session whether the German strings are done.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main",
+					"text_includes": "german"
+				}
+			]
+		},
+		{
+			"id": "ambiguous-main",
+			"utterance": "Stop the main one.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "dev-status",
+			"utterance": "What's the state of the dev servers in checkout?",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "never-mind",
+			"utterance": "Never mind.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true
+		},
+		{
+			"id": "who-needs-me",
+			"utterance": "Which session needs me?",
+			"context": {
+				"needs": "checkout-api/main"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "open-waiting",
+			"utterance": "Open whatever is waiting on me.",
+			"context": {
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "start-and-servers",
+			"utterance": "Start checkout and bring up its servers.",
+			"context": {
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "checkout-api/main"
+				},
+				{
+					"name": "crew_dev",
+					"ref": "checkout-api/main",
+					"action": "start"
+				}
+			]
+		},
+		{
+			"id": "stop-servers-only",
+			"utterance": "Stop the dev servers in the ranking worktree but keep the session.",
+			"context": {},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/wrk1",
+					"action": "stop"
+				}
+			]
+		},
+		{
+			"id": "ambiguous-stop-main",
+			"utterance": "End the main session.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "in-session-why-slow",
+			"utterance": "Why is this so slow?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["slow"]
+				}
+			]
+		},
+		{
+			"id": "in-session-run-tests",
+			"utterance": "Run the tests again.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["test", "again|rerun|re-run"]
+				}
+			]
+		},
+		{
+			"id": "in-session-question",
+			"utterance": "What does the retry function actually do?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["retry"]
+				}
+			]
+		},
+		{
+			"id": "in-session-reply",
+			"utterance": "Yes, but use the table instead of the column.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["table", "column"]
+				}
+			]
+		},
+		{
+			"id": "in-session-revert",
+			"utterance": "Hmm, I don't like that. Revert the last change.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["revert", "like"]
+				}
+			]
+		},
+		{
+			"id": "in-session-open-other",
+			"utterance": "Can we open the checkout session?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "in-session-back",
+			"utterance": "Take me back to mission control.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": null
+				}
+			]
+		},
+		{
+			"id": "in-session-waiting",
+			"utterance": "What's waiting on me right now?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "checkout-api/main"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "in-session-start-other",
+			"utterance": "Start store front work one.",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["store-front/wrk1"]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "store-front/wrk1"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "in-session-switch-topic",
+			"utterance": "Switch to the checkout retry one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "in-session-delegate-other",
+			"utterance": "Tell checkout to deploy the fix to staging.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": "staging"
+				}
+			]
+		},
+		{
+			"id": "in-session-status-other",
+			"utterance": "Is the checkout session still running?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "in-session-multi-sentence",
+			"utterance": "Okay, the retry works but it's too aggressive. Cap it at three attempts and log each one. Then run the tests again.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["three|3", "log", "test", "aggressive"]
+				}
+			]
+		},
+		{
+			"id": "in-session-voiceos",
+			"utterance": "Why is this so slow?",
+			"context": {
+				"view": "voiceos"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["slow"]
+				}
+			]
+		},
+		{
+			"id": "in-session-dev-start",
+			"utterance": "Can you start the dev servers here?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/main",
+					"action": "start"
+				}
+			]
+		},
+		{
+			"id": "in-session-dev-restart",
+			"utterance": "Restart the dev servers.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/main",
+					"action": "restart"
+				}
+			]
+		},
+		{
+			"id": "in-session-polite-switch",
+			"utterance": "Could you switch to the checkout one please?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "relay-check-logs",
+			"utterance": "Can you ask it to check the logs?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["log"],
+					"not_includes": ["ask it", "tell it", "can you ask"]
+				}
+			]
+		},
+		{
+			"id": "relay-negation",
+			"utterance": "Tell it not to touch the migrations.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["not|don", "migration"],
+					"not_includes": ["ask it", "tell it", "can you ask"]
+				}
+			]
+		},
+		{
+			"id": "relay-number",
+			"utterance": "Only rerun the second test.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["second|2nd", "only"]
+				}
+			]
+		},
+		{
+			"id": "relay-reaction",
+			"utterance": "Ask it why the heck that's still failing.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["still", "fail"],
+					"not_includes": ["ask it", "tell it", "can you ask"]
+				}
+			]
+		},
+		{
+			"id": "no-repeat-after-restart",
+			"utterance": "Okay, also start the session.",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["store-front/main"],
+				"voiceLog": [
+					{
+						"utterance": "Restart the dev servers?",
+						"reply": "",
+						"did": ["crew_dev restart store-front/main"]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "switch-does-not-start",
+			"utterance": "Okay, so can you switch to checkout api main?",
+			"context": {
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_mutation": true
+		},
+		{
+			"id": "dev-failure-to-session",
+			"utterance": "Why were they failing before? Could you check logs?",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["log"],
+					"not_includes": ["ask it", "tell it", "can you ask"]
+				}
+			]
+		},
+		{
+			"id": "dev-whats-wrong",
+			"utterance": "What's wrong with the dev servers here?",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "chain-restart-then-logs",
+			"utterance": "Restart the dev servers and then ask it to check the logs.",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/main",
+					"action": "restart"
+				},
+				{
+					"name": "forward",
+					"text_includes": ["log"],
+					"not_includes": ["ask it", "tell it", "can you ask"]
+				}
+			]
+		},
+		{
+			"id": "silent-and-can-you",
+			"utterance": "And can you.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "silent-cut-off-name",
+			"utterance": "Store front main\u2014",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "silent-lets-um",
+			"utterance": "Let's, um.",
+			"context": {},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "silent-hey-session",
+			"utterance": "Hey.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "silent-hey-grid",
+			"utterance": "Hey.",
+			"context": {},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "filler-then-question",
+			"utterance": "And can you tell me what's running.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "filler-then-start",
+			"utterance": "Hmm, let's start this.",
+			"context": {
+				"view": "voiceos",
+				"stopped": ["voiceos"]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "voiceos"
+				}
+			]
+		},
+		{
+			"id": "end-this-session",
+			"utterance": "And end this session.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "stop_session",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "answer-after-disambiguation",
+			"utterance": "Store front main.",
+			"context": {
+				"voiceLog": [
+					{
+						"utterance": "End the main session.",
+						"reply": "Which one \u2014 store front main or checkout api main?",
+						"did": ["stop_session store-front/main (failed)"]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "stop_session",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "end-this-on-grid",
+			"utterance": "End this session.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "stop-named-not-this",
+			"utterance": "Stop the checkout one, not this one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "stop_session",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "hmm-start-on-grid",
+			"utterance": "Hmm, let's start this.",
+			"context": {
+				"stopped": ["store-front/main"]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "silent-okay-thanks-session",
+			"utterance": "Okay, thanks.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "options-after-narration-grid",
+			"utterance": "Options.",
+			"context": {
+				"needs": "checkout-api/main",
+				"said": "The rates endpoint spends most of its time on the currency lookup. Three fixes: cache the rates in Redis for a minute, precompute them in a nightly job, or keep an in-process LRU. The LRU needs no new infrastructure. Which approach should I take?"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"long_reply": true,
+			"reply_includes": ["redis", "nightly", "lru|in-process"]
+		},
+		{
+			"id": "options-after-narration-session",
+			"utterance": "What are the options?",
+			"context": {
+				"view": "checkout-api/main",
+				"needs": "checkout-api/main",
+				"said": "The rates endpoint spends most of its time on the currency lookup. Three fixes: cache the rates in Redis for a minute, precompute them in a nightly job, or keep an in-process LRU. The LRU needs no new infrastructure. Which approach should I take?"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"long_reply": true,
+			"reply_includes": ["redis", "nightly", "lru|in-process"]
+		},
+		{
+			"id": "stopped-session-forward",
+			"utterance": "Can you ask it to list the files in the source folder, one line each?",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["store-front/main"]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["file"],
+					"not_includes": ["ask it", "tell it", "can you ask"]
+				}
+			]
+		},
+		{
+			"id": "ask-with-question-tool",
+			"utterance": "Ask me with the question tool whether to sort them by size or by name.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["size", "name", "question tool|askuserquestion"]
+				}
+			]
+		},
+		{
+			"id": "options-nothing-pending",
+			"utterance": "Options.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Ask me with the question tool whether to sort them by size or by name.",
+						"reply": "",
+						"did": [
+							"forward \"Ask me with the question tool whether to sort them by size or by name.\""
+						]
+					}
+				]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_not_includes": ["size"],
+			"reply_includes": ["nothing|no options|not waiting|no question|hasn't"]
+		},
+		{
+			"id": "fp-open-named",
+			"utterance": "Open store front main.",
+			"context": {},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "fp-show-everything",
+			"utterance": "Show me everything.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": null
+				}
+			]
+		},
+		{
+			"id": "fp-go-back",
+			"utterance": "Go back.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": null
+				}
+			]
+		},
+		{
+			"id": "fp-start-named",
+			"utterance": "Start checkout API main.",
+			"context": {
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "checkout-api/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "fp-end-named",
+			"utterance": "End checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "stop_session",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "perm-yes-on-screen",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "perm-always",
+			"utterance": "Always.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "always"
+					}
+				}
+			]
+		},
+		{
+			"id": "perm-no-reason",
+			"utterance": "No, use a new branch.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "no"
+					},
+					"text_includes": "branch"
+				}
+			]
+		},
+		{
+			"id": "perm-yes-grid",
+			"utterance": "Yes.",
+			"context": {
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "perm-yes-docked-other-screen",
+			"utterance": "Yes.",
+			"context": {
+				"view": "checkout-api/main",
+				"ask": "permission",
+				"alert": {
+					"text": "store front, work one wants to run git push. Allow?",
+					"secondsAgo": 10,
+					"ref": "store-front/wrk1"
+				}
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "perm-okay",
+			"utterance": "Okay.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "perm-hmm",
+			"utterance": "Hmm.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "perm-yes-but",
+			"utterance": "Yes, but push to a new branch afterwards.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					},
+					"text_includes": "branch"
+				}
+			]
+		},
+		{
+			"id": "two-asks-yes",
+			"utterance": "Yes.",
+			"context": {
+				"ask": "permission",
+				"alsoAsk": "checkout-api/main"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "plan-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "plan"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "plan-no-reason",
+			"utterance": "No, keep the old schema.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "plan"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					},
+					"text_includes": "schema"
+				}
+			]
+		},
+		{
+			"id": "plan-no",
+			"utterance": "No.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "plan"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "q-second-one",
+			"utterance": "The second one.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "question"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "choose",
+						"text": "Reuse orders"
+					}
+				}
+			]
+		},
+		{
+			"id": "q-by-label",
+			"utterance": "Reuse orders.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "question"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "choose",
+						"text": "Reuse orders"
+					}
+				}
+			]
+		},
+		{
+			"id": "q-options",
+			"utterance": "Options.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "question"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"long_reply": true,
+			"reply_includes": ["new table", "reuse orders", "defer"]
+		},
+		{
+			"id": "turn-question-yes-screen",
+			"utterance": "Yes.",
+			"context": {
+				"view": "checkout-api/main",
+				"needs": "checkout-api/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "yes|go ahead|sure|deploy"
+				}
+			]
+		},
+		{
+			"id": "turn-question-yes-grid",
+			"utterance": "Yes.",
+			"context": {
+				"needs": "checkout-api/main"
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": "yes|go ahead|sure|deploy"
+				}
+			]
+		},
+		{
+			"id": "pr-yes-let-me-know",
+			"utterance": "Yes, please. Let me know when you're done.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"said": "Should I start reviewing both PRs now?",
+				"asked": "store front, work one asks: should I start reviewing both PRs now?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["yes|go|start|review", "let me know|tell me|when|report"]
+				}
+			],
+			"reply_not_includes": ["should i", "do you want", "?"]
+		},
+		{
+			"id": "pr-start-tell-me",
+			"utterance": "Start it, and tell me when you're done.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"said": "Should I start reviewing both PRs now?",
+				"asked": "store front, work one asks: should I start reviewing both PRs now?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "start|review|go"
+				}
+			],
+			"reply_not_includes": ["should i", "do you want", "?"],
+			"allow": [
+				{
+					"name": "start_session",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "offer-yes",
+			"utterance": "Yes, fix it.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 20
+				},
+				"alert": {
+					"text": "store front, main's api server died. Want Claude to fix it?",
+					"secondsAgo": 15,
+					"ref": "store-front/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "dev_offer",
+					"input": {
+						"accept": true
+					}
+				}
+			]
+		},
+		{
+			"id": "offer-no",
+			"utterance": "No.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 20
+				},
+				"alert": {
+					"text": "store front, main's api server died. Want Claude to fix it?",
+					"secondsAgo": 15,
+					"ref": "store-front/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "dev_offer",
+					"input": {
+						"accept": false
+					}
+				}
+			]
+		},
+		{
+			"id": "offer-newer-asker",
+			"utterance": "Yes.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 60
+				},
+				"needs": "checkout-api/main",
+				"needsSecondsAgo": 10,
+				"alert": {
+					"text": "checkout api, main asks: deploy the fix to staging?",
+					"secondsAgo": 10,
+					"ref": "checkout-api/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": "yes|go ahead|sure|deploy"
+				}
+			]
+		},
+		{
+			"id": "offer-stale",
+			"utterance": "Yes, fix it.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 300
+				}
+			},
+			"calls": [],
+			"answer": true,
+			"reply_includes": ["lapsed|expired|too old|old|again|no longer"],
+			"allow": [
+				{
+					"name": "dev_offer",
+					"input": {
+						"accept": false
+					}
+				}
+			]
+		},
+		{
+			"id": "allow-denied",
+			"utterance": "Allow it.",
+			"context": {
+				"view": "store-front/main",
+				"denied": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "allow_denied",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "stop-busy",
+			"utterance": "Stop.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "interrupt",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "wait-busy",
+			"utterance": "Wait.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "interrupt",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "stop-grid",
+			"utterance": "Stop.",
+			"context": {
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "quiet",
+			"utterance": "Quiet.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "mute"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "okay-no-ask",
+			"utterance": "Okay.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "addressed-grid",
+			"utterance": "Checkout, run the tests.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": "test"
+				}
+			]
+		},
+		{
+			"id": "addressed-other-screen",
+			"utterance": "Checkout, run the tests.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": "test"
+				}
+			]
+		},
+		{
+			"id": "voiceos-waiting-on-screen",
+			"utterance": "Voice OS, what's waiting on me?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "checkout-api/main"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "voiceos-open-on-screen",
+			"utterance": "Voice OS, open checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "setup-status-running",
+			"utterance": "What's the setup status?",
+			"context": {
+				"view": "store-front/wrk1",
+				"work": [
+					{
+						"ref": "voiceos",
+						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["wrk3|work three|worktree|setting up|still"]
+		},
+		{
+			"id": "setup-status-idle",
+			"utterance": "What's the setup status?",
+			"context": {
+				"view": "store-front/wrk1",
+				"work": [
+					{
+						"ref": "voiceos",
+						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
+						"minutesAgo": 6,
+						"idle": true,
+						"said": "wrk3 is ready: checkout done, install passed, both dev servers came up."
+					}
+				]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["ready|done|finished|passed"]
+		},
+		{
+			"id": "check-on-it",
+			"utterance": "Check on it.",
+			"context": {
+				"view": "store-front/wrk1",
+				"work": [
+					{
+						"ref": "voiceos",
+						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
+						"minutesAgo": 4
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "What's the setup status?",
+						"reply": "Voice OS is still setting up wrk3, four minutes in.",
+						"did": []
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "read_state",
+					"ref": "voiceos"
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "heard-open-wrk1",
+			"utterance": "Open work one.",
+			"context": {},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "heard-address-main",
+			"utterance": "Store front main, run the checkout tests.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main",
+					"text_includes": ["checkout", "test"]
+				}
+			]
+		},
+		{
+			"id": "heard-deny",
+			"utterance": "No, use a new branch instead.",
+			"context": {
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "no"
+					},
+					"text_includes": "branch"
+				}
+			]
+		},
+		{
+			"id": "heard-pick-second",
+			"utterance": "The second one.",
+			"context": {
+				"ask": "question"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "choose",
+						"text": "Reuse orders"
+					}
+				}
+			]
+		},
+		{
+			"id": "heard-stop",
+			"utterance": "Stop.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add a retry to the payment client.",
+						"minutesAgo": 1
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "interrupt",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "heard-dictation",
+			"utterance": "Add a retry with exponential backoff to the payment client, then run the tests.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["backoff", "payment", "test"]
+				}
+			]
+		},
+		{
+			"id": "heard-waiting-on-screen",
+			"utterance": "Is anything waiting on me?",
+			"context": {
+				"view": "store-front/main",
+				"ask": "permission"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "debug-note-grid",
+			"utterance": "Add debug note: it read out every option when I only wanted the question.",
+			"context": {},
+			"calls": [
+				{
+					"name": "debug_note",
+					"text_includes": ["option", "question"]
+				}
+			],
+			"reply_includes": ["noted|got it|saved"]
+		},
+		{
+			"id": "debug-note-on-session",
+			"utterance": "Debug note, it asked me to confirm three times.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"said": "Should I start reviewing both PRs now?"
+			},
+			"calls": [
+				{
+					"name": "debug_note",
+					"text_includes": ["three|3", "confirm"]
+				}
+			]
+		},
+		{
+			"id": "switch-back-by-task",
+			"utterance": "Can you switch back to where we're doing data analysis?",
+			"context": {
+				"view": "voiceos",
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Pull some of the data and run an analysis on all of it.",
+						"minutesAgo": 7
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "switch-back-by-task-idle",
+			"utterance": "Take me back to the data analysis.",
+			"context": {
+				"view": "checkout-api/main",
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Pull some of the data and run an analysis on all of it.",
+						"minutesAgo": 12,
+						"idle": true,
+						"said": "Here is the analysis: order volume is up 12% week over week, driven by the new locales."
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			]
+		},
+		{
+			"id": "status-by-task",
+			"utterance": "Can you check the status of our data analysis?",
+			"context": {
+				"view": "voiceos",
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Pull some of the data and run an analysis on all of it.",
+						"minutesAgo": 5
+					}
+				]
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["wrk1|work one|work 1|still|running|working"]
+		},
+		{
+			"id": "words-to-session-with-permission",
+			"utterance": "Also run the linter.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "two-asks-alert-says-which",
+			"utterance": "Yes.",
+			"context": {
+				"ask": "permission",
+				"alsoAsk": "checkout-api/main",
+				"alert": {
+					"text": "checkout api, main wants to run git push. Allow?",
+					"secondsAgo": 5,
+					"ref": "checkout-api/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "checkout-api/main",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "q-own-words",
+			"utterance": "Put them in a partitioned events table.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "question"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "choose"
+					},
+					"text_includes": "partition"
+				}
+			]
+		},
+		{
+			"id": "allow-nothing-blocked",
+			"utterance": "Allow it.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"forbid_mutation": true
+		},
+		{
+			"id": "reply-names-to-asked",
+			"utterance": "Um, S for B, and Mara.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"asked": "store front, work one asks: who should review the PR?",
+				"said": "The PR is ready: 14 files changed, tests pass. Who should review it?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "mara"
+				}
+			],
+			"reply_not_includes": ["not sure", "say that again", "what you mean"]
+		},
+		{
+			"id": "reply-one-name-to-asked",
+			"utterance": "Mara.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"asked": "store front, work one asks: who should review the PR?",
+				"said": "The PR is ready: 14 files changed, tests pass. Who should review it?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "mara"
+				}
+			],
+			"reply_not_includes": ["not sure", "say that again", "what you mean"]
+		},
+		{
+			"id": "reply-name-to-asked-grid",
+			"utterance": "Mara should review it.",
+			"context": {
+				"needs": "store-front/wrk1",
+				"asked": "store front, work one asks: who should review the PR?",
+				"said": "The PR is ready: 14 files changed, tests pass. Who should review it?"
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/wrk1",
+					"text_includes": "mara"
+				}
+			]
+		}
+	]
+}
