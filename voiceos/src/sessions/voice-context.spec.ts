@@ -56,6 +56,8 @@ describe('VOICE_OS_CONTEXT', () => {
 		expect(VOICE_OS_CONTEXT).toContain('<spoken asks>');
 		expect(VOICE_OS_CONTEXT).toContain('also give them the major checkpoints');
 		expect(VOICE_OS_CONTEXT).toContain('never for routine steps, files or commands');
+		expect(VOICE_OS_CONTEXT).toContain('written before your first tool call, skill or file read');
+		expect(VOICE_OS_CONTEXT).toContain('as soon as you reach it, before the next tool call');
 		expect(VOICE_OS_CONTEXT).toContain('Put one question in each call');
 	});
 });
