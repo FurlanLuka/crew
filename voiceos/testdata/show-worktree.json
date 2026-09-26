@@ -1,0 +1,12 @@
+[
+  {
+    "name": "store-api",
+    "path": "/w/store-front/main/store-api",
+    "mode": "worktree"
+  },
+  {
+    "name": "checkout-api",
+    "path": "/w/store-front/main/checkout-api",
+    "mode": "worktree"
+  }
+]

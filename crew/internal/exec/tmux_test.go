@@ -442,3 +442,42 @@ func TestTmuxRunInSession_CreatesThenAdds(t *testing.T) {
 		t.Errorf("windows = %q", got)
 	}
 }
+
+func TestTmuxSessionExistsIsExact(t *testing.T) {
+	if !HasTmux() {
+		t.Skip("tmux not available")
+	}
+	long := fmt.Sprintf("crew-test-exact-%d-long", os.Getpid())
+	short := strings.TrimSuffix(long, "-long")
+	if err := CreateTmuxSession(long, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { KillTmuxSession(long) })
+
+	if !TmuxSessionExists(long) {
+		t.Fatalf("%s should exist", long)
+	}
+	if TmuxSessionExists(short) {
+		t.Errorf("%s must not match the longer session %s", short, long)
+	}
+}
+
+func TestKillTmuxSessionNeverKillsAPrefixMatch(t *testing.T) {
+	if !HasTmux() {
+		t.Skip("tmux not available")
+	}
+	long := fmt.Sprintf("crew-test-kill-%d-long", os.Getpid())
+	if err := CreateTmuxSession(long, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { KillTmuxSession(long) })
+
+	KillTmuxSession(strings.TrimSuffix(long, "-long"))
+	if !TmuxSessionExists(long) {
+		t.Fatalf("killing a missing session took %s down with it", long)
+	}
+	KillTmuxSession(long)
+	if TmuxSessionExists(long) {
+		t.Errorf("%s still exists after its own kill", long)
+	}
+}

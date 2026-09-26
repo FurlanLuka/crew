@@ -7,22 +7,38 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
+	"time"
+
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 )
 
-// RunProxy starts the shared reverse proxy on a single port.
-// Routes are hot-reloaded from route files on each request.
-func RunProxy(domain string, port int) error {
+// RunProxy starts the shared reverse proxy on port, and on httpsPort (0 =
+// off) the same routes over TLS with a certificate from crew's own CA.
+// Routes are hot-reloaded from route files on each request. A TLS failure is
+// recorded and leaves plain HTTP serving: warn, never block.
+func RunProxy(domain string, port, httpsPort int) error {
 	if domain == "" {
 		domain = ResolveHostIP() + ".nip.io"
 	}
 
-	handler := &proxyHandler{domain: domain, port: port}
+	handler := &proxyHandler{domain: domain, port: port, httpsPort: httpsPort}
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	fmt.Printf("crew dev proxy\n")
 	fmt.Printf("Listening on %s\n", addr)
 	fmt.Printf("Domain: %s\n\n", domain)
+
+	if httpsPort > 0 {
+		go func() {
+			if err := serveTLS(handler, domain, httpsPort); err != nil {
+				fmt.Printf("HTTPS error: %v\n", err)
+				debug.Log("dev", "proxy https on :%d failed: %v", httpsPort, err)
+				RecordProxyTLSError(err)
+			}
+		}()
+	}
 
 	server := &http.Server{
 		Addr:    addr,
@@ -31,15 +47,32 @@ func RunProxy(domain string, port int) error {
 	return server.ListenAndServe()
 }
 
+func serveTLS(handler http.Handler, domain string, port int) error {
+	// Issued before listening, so a certificate problem is reported at once
+	// rather than on the first handshake.
+	if _, err := EnsureTLS(domain, time.Now()); err != nil {
+		return fmt.Errorf("certificate: %w", err)
+	}
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	fmt.Printf("Listening on %s (HTTPS)\n", addr)
+	server := &http.Server{Addr: addr, Handler: handler, TLSConfig: TLSConfig(domain, time.Now)}
+	return server.ListenAndServeTLS("", "")
+}
+
 type proxyHandler struct {
-	domain string
-	port   int
+	domain    string
+	port      int
+	httpsPort int
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	serverName, slug := extractSubdomainParts(r.Host, h.domain)
 
 	if serverName == "" || slug == "" {
+		if r.URL.Path == CAFileRoute {
+			h.serveCA(w)
+			return
+		}
 		h.serveStatusPage(w, r)
 		return
 	}
@@ -78,7 +111,25 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.proxyTo(w, r, target.InternalPort)
 }
 
+// serveCA hands out the CA certificate — public by nature — as the type iOS
+// and Android offer to install.
+func (h *proxyHandler) serveCA(w http.ResponseWriter) {
+	data, err := os.ReadFile(TLSFilesFor(h.domain).CA)
+	if err != nil {
+		http.Error(w, "crew has no CA for this domain yet: run crew dev proxy trust", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+	w.Header().Set("Content-Disposition", `attachment; filename="crew-ca.pem"`)
+	w.Write(data)
+}
+
 func (h *proxyHandler) proxyTo(w http.ResponseWriter, r *http.Request, port int) {
+	// Backends that build absolute URLs or check origins need to know the
+	// browser came in over TLS.
+	if r.TLS != nil {
+		r.Header.Set("X-Forwarded-Proto", "https")
+	}
 	targetURL := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("127.0.0.1:%d", port),
@@ -171,12 +222,21 @@ func (h *proxyHandler) serveStatusPage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			u := RouteURL(route, wr.Slug, h.domain, h.port)
-			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a></td></tr>`+"\n",
-				route.ServerName, DisplayRef(wr.Slug), u, u)
+			secure := ""
+			if h.httpsPort > 0 {
+				s := FormatHTTPSURL(route.ServerName, wr.Slug, h.domain, h.httpsPort)
+				secure = fmt.Sprintf(` · <a href="%s">https</a>`, s)
+			}
+			fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td><a href="%s">%s</a>%s</td></tr>`+"\n",
+				route.ServerName, DisplayRef(wr.Slug), u, u, secure)
 		}
 	}
 
-	fmt.Fprintf(w, "</table></body></html>\n")
+	fmt.Fprintf(w, "</table>\n")
+	if h.httpsPort > 0 {
+		fmt.Fprintf(w, `<p>HTTPS uses crew's own certificate authority. Trust it once per device: <a href="%s">download crew-ca.pem</a>, or run <code>crew dev proxy trust</code> on the server for the steps.</p>`+"\n", CAFileRoute)
+	}
+	fmt.Fprintf(w, "</body></html>\n")
 }
 
 // extractSubdomainParts parses the subdomain from the Host header.

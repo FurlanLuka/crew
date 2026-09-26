@@ -275,6 +275,9 @@ func main() {
 		cmdShow()
 		return
 
+	case "voice":
+		cmdVoice()
+		return
 	case "update":
 		cmdUpdate()
 		return
@@ -996,16 +999,18 @@ func cmdConfig() {
 		s := config.LoadSettings()
 		if jsonOutput {
 			printJSON(struct {
-				ServerIP  string `json:"server_ip"`
-				SSHHost   string `json:"ssh_host"`
-				ProxyPort int    `json:"proxy_port"`
-				Domain    string `json:"domain"`
-			}{s.ServerIP, s.SSHHost, s.ProxyPort, s.Domain})
+				ServerIP       string `json:"server_ip"`
+				SSHHost        string `json:"ssh_host"`
+				ProxyPort      int    `json:"proxy_port"`
+				ProxyHTTPSPort int    `json:"proxy_https_port"`
+				Domain         string `json:"domain"`
+			}{s.ServerIP, s.SSHHost, s.ProxyPort, s.ProxyHTTPSPort, s.Domain})
 			return
 		}
 		fmt.Printf("server_ip\t%s\n", s.ServerIP)
 		fmt.Printf("ssh_host\t%s\n", s.SSHHost)
 		fmt.Printf("proxy_port\t%d\n", s.ProxyPort)
+		fmt.Printf("proxy_https_port\t%d\n", s.ProxyHTTPSPort)
 		fmt.Printf("domain\t%s\n", s.Domain)
 	case "set":
 		if len(os.Args) < 5 {
@@ -1022,10 +1027,18 @@ func cmdConfig() {
 			s.SSHHost = value
 		case "proxy_port":
 			s.ProxyPort = intFlag("proxy_port", value, false)
+		case "proxy_https_port":
+			// -1 turns HTTPS off, so this one takes a negative value.
+			n, err := strconv.Atoi(value)
+			if err != nil || n < -1 {
+				fmt.Fprintf(os.Stderr, "Error: proxy_https_port must be a port, 0 for the default 443, or -1 to turn HTTPS off\n")
+				os.Exit(1)
+			}
+			s.ProxyHTTPSPort = n
 		case "domain":
 			s.Domain = value
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown key '%s'. Valid keys: server_ip, ssh_host, proxy_port, domain\n", key)
+			fmt.Fprintf(os.Stderr, "Unknown key '%s'. Valid keys: server_ip, ssh_host, proxy_port, proxy_https_port, domain\n", key)
 			os.Exit(1)
 		}
 		if err := config.SaveSettings(s); err != nil {

@@ -150,7 +150,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "set",
-					Description: "Set a config value. Valid keys: server_ip (LAN IP for dev proxy), ssh_host (for remote editor), proxy_port (reverse proxy port, default 80), domain (custom domain, default <ip>.nip.io)",
+					Description: "Set a config value. Valid keys: server_ip (LAN IP for dev proxy), ssh_host (for remote editor), proxy_port (reverse proxy port, default 80), proxy_https_port (the proxy's HTTPS port, default 443, -1 turns HTTPS off), domain (custom domain, default <ip>.nip.io)",
 					Usage:       "crew config set <key> <value>",
 					Examples: []string{
 						"crew config set server_ip 192.168.1.50",
@@ -391,10 +391,13 @@ var Root = CommandInfo{
 				},
 				{
 					Name:         "proxy",
-					Description:  "The shared reverse proxy: whether its session is up and answering, what domain and port it was launched with, and its status page URL. stop kills the proxy alone — worktrees keep running on their ports; crew dev restart <ref> --proxy brings the hostnames back.",
-					Usage:        "crew dev proxy [status|stop]",
-					OutputFormat: "<up|up (not listening)|down>\\t<domain>\\t<port>\\t<status url>",
-					Examples:     []string{"crew dev proxy status", "crew dev proxy stop"},
+					Description:  "The shared reverse proxy: whether its session is up and answering, what domain and port it was launched with, its status page URL, and whether HTTPS answers. The proxy also serves every hostname over HTTPS (default port 443) with a certificate from crew's own CA, one CA per domain, which can only vouch for that domain. trust prints the CA, its SHA-256 and the steps to trust it on a Mac, iPhone or Android — needed once per device, for example for the microphone in Voice OS; --install trusts it on this Mac. stop kills the proxy alone — worktrees keep running on their ports; crew dev restart <ref> --proxy brings the hostnames back.",
+					Usage:        "crew dev proxy [status|trust [--install]|stop]",
+					OutputFormat: "<up|up (not listening)|down>\\t<domain>\\t<port>\\t<status url>\\thttps <up|not listening|off>\\t<https port>",
+					Flags: []FlagInfo{
+						{Name: "--install", Description: "trust: add the CA to this Mac's login keychain (asks for the password)"},
+					},
+					Examples: []string{"crew dev proxy status", "crew dev proxy trust", "crew dev proxy trust --install", "crew dev proxy stop"},
 				},
 				{
 					Name:        "logs",
@@ -628,6 +631,17 @@ var Root = CommandInfo{
 				{Name: "--yes", Description: "Skip the confirmation prompt"},
 			},
 			Examples: []string{"crew uninstall", "crew uninstall --purge"},
+		},
+		{
+			Name:         "voice",
+			Description:  "Voice OS: a voice and web cockpit for the Claude Code sessions of every worktree. Bare crew voice starts it when needed (one tmux session, a remembered port, a route on the dev proxy) and prints the sign-in links — the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). stop also ends the Claude sessions it runs; they resume on the next start. crew kill and crew dev stop stop it too.",
+			Usage:        "crew voice [start|stop|restart|status|logs] [--no-open] [--lines=<n>]",
+			OutputFormat: "<up|up (not answering)|down>\\t<port>\\t<localhost url>\\t<proxy url>",
+			Flags: []FlagInfo{
+				{Name: "--no-open", Description: "Do not open the browser (start and restart open it when run in a terminal)"},
+				{Name: "--lines=<n>", Description: "logs only: the last n lines (default 80)"},
+			},
+			Examples: []string{"crew voice", "crew voice status --json", "crew voice logs --lines=200", "crew voice stop"},
 		},
 		{
 			Name:        "update",

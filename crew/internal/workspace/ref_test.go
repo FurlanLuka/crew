@@ -278,3 +278,13 @@ func TestDevProjects_CarriesBindings(t *testing.T) {
 		t.Errorf("bindings = %+v, want STORE_API_URL carried through", projects[0].Bindings)
 	}
 }
+
+func TestValidateNameReservesTheVoiceSlug(t *testing.T) {
+	err := ValidateName("workspace", VoiceSlug)
+	if err == nil || !strings.Contains(err.Error(), "Voice OS") {
+		t.Fatalf("ValidateName(workspace, %q) = %v, want the Voice OS reason", VoiceSlug, err)
+	}
+	if err := ValidateName("worktree", VoiceSlug); err != nil {
+		t.Errorf("a worktree may be called %q (its slug is <ws>--os): %v", VoiceSlug, err)
+	}
+}
