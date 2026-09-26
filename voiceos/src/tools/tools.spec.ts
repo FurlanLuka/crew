@@ -3,7 +3,7 @@ import type { Action, PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
-import { isDuplicateSend, isRewriteTooShort, prepareSentText } from './send.js';
+import { isDuplicateSend, isMisroutedToSetup, isRewriteTooShort, prepareSentText } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
@@ -1946,5 +1946,55 @@ describe('fixes from the live notes', () => {
 		expect(actions).toEqual([
 			{ type: 'send', ref: 'store-front/main', text: 'What does that command do?', aside: true },
 		]);
+	});
+
+	it.each([
+		['Can you reinstall Voice OS and restart it?', true],
+		['Rebuild Voice OS and crew, please.', true],
+		['Voice OS, make a worktree in store front for the search fix.', false],
+		['Okay, setup: register the new project.', false],
+		['Can you add a worktree for the search fix?', false],
+	])("from another session's screen, %p → misrouted to setup: %p", (utterance, isMisrouted) => {
+		const base = createToolContext().tools.getState();
+		const state = {
+			...base,
+			sessions: {
+				...base.sessions,
+				'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
+			},
+		};
+
+		expect(
+			isMisroutedToSetup({
+				state,
+				ref: 'checkout-api/main',
+				forwardTo: 'store-front/main',
+				utterance,
+			}),
+		).toBe(isMisrouted);
+	});
+
+	it('the setup session on screen, or no session on screen → never refused', () => {
+		const base = createToolContext().tools.getState();
+		const state = {
+			...base,
+			sessions: {
+				...base.sessions,
+				'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
+			},
+		};
+		const utterance = 'Can you reinstall Voice OS?';
+
+		expect(
+			isMisroutedToSetup({
+				state,
+				ref: 'checkout-api/main',
+				forwardTo: 'checkout-api/main',
+				utterance,
+			}),
+		).toBe(false);
+		expect(
+			isMisroutedToSetup({ state, ref: 'checkout-api/main', forwardTo: null, utterance }),
+		).toBe(false);
 	});
 });

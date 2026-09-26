@@ -174,6 +174,35 @@ export const prepareSentText = ({
 	return state.sessions[ref]?.needsUser && utterance ? keepLeadingAnswer(utterance, text) : text;
 };
 
+// "Voice OS, make a worktree…" addresses the setup session; "reinstall Voice OS" is about the app.
+const SETUP_ADDRESS_PATTERN =
+	/^\s*(?:(?:hey|okay|ok|so)[,\s]+)?(?:voice\s*os|voiceos|setup)\b\s*[,:]/i;
+const SETUP_WORK_PATTERN =
+	/\b(?:worktrees?|workspaces?|projects?|bindings?|crew (?:fix|verify|check)|register)\b/i;
+
+export interface IsMisroutedToSetupParams {
+	state: State;
+	ref: string;
+	// The session on screen when the words were said.
+	forwardTo: string | null;
+	utterance: string | undefined;
+}
+
+export const isMisroutedToSetup = ({
+	state,
+	ref,
+	forwardTo,
+	utterance,
+}: IsMisroutedToSetupParams): boolean => {
+	// "Voice OS" names both the app and the pinned setup session: "can you reinstall Voice OS" was
+	// sent to setup from crew/main's screen. Setup gets it only when addressed or when it is crew setup.
+	if (!state.sessions[ref]?.isPinned || !forwardTo || forwardTo === ref || !utterance) {
+		return false;
+	}
+
+	return !SETUP_ADDRESS_PATTERN.test(utterance) && !SETUP_WORK_PATTERN.test(utterance);
+};
+
 export const sendText = ({ state, ref, text, kind, toolContext }: SendTextParams): ToolResult => {
 	const session = state.sessions[ref];
 

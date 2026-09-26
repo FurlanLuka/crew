@@ -2547,6 +2547,48 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "reinstall-voiceos-is-session-work",
+			"utterance": "Can you reinstall Voice OS and restart it?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "reinstall"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "rebuild-voiceos-and-crew-is-session-work",
+			"utterance": "Uh, actually, could you maybe rebuild the Voice OS? I mean, and also crew?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "rebuild"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "voiceos-addressed-from-session",
+			"utterance": "Voice OS, make a worktree in store front for the search fix.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "voiceos",
+					"text_includes": "worktree"
+				}
+			]
 		}
 	]
 }

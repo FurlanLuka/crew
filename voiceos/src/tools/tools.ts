@@ -6,7 +6,7 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
-import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
+import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
 import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import type { HistoryQuery } from '../memory/journal.js';
@@ -189,6 +189,19 @@ export const executeTool = async (
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
+			}
+
+			if (
+				isMisroutedToSetup({
+					state,
+					ref: checked.ref,
+					forwardTo: toolContext.forwardTo ?? null,
+					utterance: toolContext.utterance,
+				})
+			) {
+				return fail(
+					`Not sent: "Voice OS" here is the app, not the ${checked.ref} setup session, which only does crew setup (worktrees, workspaces, projects). Forward it to the session on screen.`,
+				);
 			}
 
 			return sendRecorded({ state, ref: checked.ref, text, input, name: 'send_to', toolContext });
