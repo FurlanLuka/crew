@@ -1,4 +1,4 @@
-// Prompt evals. `bun evals/run.ts [narrator|kernel|all] [--only=id,id] [--update-baseline]`.
+// Prompt evals. `bun evals/run.ts [narrator|kernel|all] [--only=id,id] [--narrator-model=id] [--update-baseline]`.
 // Every run bills the Anthropic key: iterate with --only (no scores, no baseline), full suite before review.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,7 +19,12 @@ const onlyArg = process.argv.find((arg) => arg.startsWith('--only='));
 const onlyIds = onlyArg
 	? new Set(onlyArg.slice('--only='.length).split(',').filter(Boolean))
 	: null;
-const shouldUpdateBaseline = process.argv.includes('--update-baseline') && !onlyIds;
+// Compares the narrator on another model; its scores never become the baseline.
+const narratorModel = process.argv
+	.find((arg) => arg.startsWith('--narrator-model='))
+	?.slice('--narrator-model='.length);
+const shouldUpdateBaseline =
+	process.argv.includes('--update-baseline') && !onlyIds && !narratorModel;
 const apiKey = loadKeys(resolvePaths()).anthropic;
 
 if (!apiKey) {
@@ -92,7 +97,7 @@ if (suite === 'narrator' || suite === 'all') {
 	}
 
 	const rows = await runNarratorEval({
-		narrate: createNarrator(apiKey),
+		narrate: createNarrator(apiKey, narratorModel),
 		judgeKey: apiKey,
 		evalsDir,
 		onlyIds,
