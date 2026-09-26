@@ -111,6 +111,13 @@ export const buildAnswerActions = ({
 	}
 };
 
+const CONSENT_PATTERN =
+	/\b(?:yes|yeah|yep|yup|sure|ok|okay|alright|all right|fine|always|allow(?: it)?|approve[ds]?|go ahead|go for it|do it|let it|proceed|ship it|sounds good|absolutely|of course)\b/i;
+
+export const isConsent = (utterance: string): boolean => {
+	return CONSENT_PATTERN.test(utterance);
+};
+
 export interface AnswerAskParams {
 	state: State;
 	input: Record<string, unknown>;
@@ -140,6 +147,17 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 	if (!ANSWER_DECISIONS.includes(decision)) {
 		return fail(`decision must be one of ${ANSWER_DECISIONS.join(', ')}`);
+	}
+
+	// Approving a command or a plan is the one call that must never be guessed from other words.
+	const isApproval =
+		(heardAsk.kind === 'permission' || heardAsk.kind === 'plan') &&
+		(decision === 'yes' || decision === 'always');
+
+	if (isApproval && toolContext.utterance !== undefined && !isConsent(toolContext.utterance)) {
+		return fail(
+			`not answered: the developer did not say yes. ${checked.ref} waits on its ${heardAsk.kind} first — tell them so in a few words.`,
+		);
 	}
 
 	const answerResult = buildAnswerActions({

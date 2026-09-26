@@ -2,11 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { createLogger } from '../log.js';
 import {
-	cleanSpokenText,
+	composeNarration,
 	createFallbackNarration,
 	NARRATOR_MODEL,
 	NARRATOR_SYSTEM,
-	narrationSchema,
+	narratorOutputSchema,
 	buildNarratorMessage,
 	type Narration,
 	type NarratorInput,
@@ -32,7 +32,7 @@ export const createNarrator = (apiKey: string | null, model = NARRATOR_MODEL): N
 				max_tokens: 400,
 				system: [{ type: 'text', text: NARRATOR_SYSTEM, cache_control: { type: 'ephemeral' } }],
 				messages: [{ role: 'user', content: buildNarratorMessage(input) }],
-				output_config: { format: zodOutputFormat(narrationSchema) },
+				output_config: { format: zodOutputFormat(narratorOutputSchema) },
 			});
 			const parsed = response.parsed_output;
 
@@ -45,9 +45,11 @@ export const createNarrator = (apiKey: string | null, model = NARRATOR_MODEL): N
 				ms: Date.now() - startedAt,
 				speak: parsed.speak,
 				needsUser: parsed.needs_user,
+				isAnswer: parsed.answer !== null,
+				isChoice: parsed.choosing !== null,
 			});
 
-			return { ...parsed, text: cleanSpokenText(parsed.text) };
+			return composeNarration(parsed);
 		} catch (error) {
 			log.warn('narrator failed, using fallback', { ref: input.label, error: String(error) });
 

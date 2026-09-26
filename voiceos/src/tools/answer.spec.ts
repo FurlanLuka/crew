@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { PendingAsk } from '../shared/protocol.js';
-import { buildAnswerActions } from './answer.js';
+import { buildAnswerActions, isConsent } from './answer.js';
 
 const permission: PendingAsk = {
 	id: 'p1',
@@ -139,4 +139,25 @@ describe('buildAnswerActions', () => {
 
 		expect(result).toMatchObject({ ok: false, error: expect.stringContaining('on screen') });
 	});
+});
+
+describe('isConsent', () => {
+	it.each([
+		'Yes.',
+		'Yeah, go ahead.',
+		'Sure',
+		'okay',
+		'Do it.',
+		'Always.',
+		'Allow it.',
+		'Sounds good, ship it.',
+	])('%p → a yes', (utterance) => expect(isConsent(utterance)).toBe(true));
+
+	it.each([
+		'Also run the linter.',
+		'Hmm.',
+		'No, use a new branch.',
+		'What does it want to push?',
+		'Yesterday it failed.',
+	])('%p → no yes', (utterance) => expect(isConsent(utterance)).toBe(false));
 });

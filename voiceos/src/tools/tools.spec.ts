@@ -425,6 +425,14 @@ describe('forward', () => {
 		expect(listToolsFor('store-front/main')[0]?.name).toBe('forward');
 	});
 
+	it('history is offered on Mission Control, not while a session is on screen: that session holds its own', () => {
+		const hasHistory = (forwardTo: string | null) =>
+			listToolsFor(forwardTo).some((tool) => tool.name === 'read_history');
+
+		expect(hasHistory(null)).toBe(true);
+		expect(hasHistory('store-front/main')).toBe(false);
+	});
+
 	it('sends to the session captured at routing, even if the view changed since', async () => {
 		const { tools, actions } = createToolContext({
 			view: { kind: 'session', ref: 'checkout-api/main' },
@@ -866,6 +874,49 @@ describe('tools that replaced the fast path', () => {
 			),
 		).toEqual({ ok: true, content: 'answered store-front/main' });
 		expect(actions).toEqual([{ type: 'answer_permission', askId: 'p1', decision: 'allow' }]);
+	});
+
+	it('a yes to a permission from words that say no yes ("also run the linter") → refused, nothing approved', async () => {
+		const { tools, actions } = createToolContext({ asks: [permission] });
+
+		const result = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'yes', text: 'Run the linter afterwards.' },
+			{ ...tools, asks: [permission], utterance: 'Also run the linter.' },
+		);
+
+		expect(result).toMatchObject({
+			ok: false,
+			content: expect.stringContaining('did not say yes'),
+		});
+		expect(actions).toEqual([]);
+	});
+
+	it('a no to a permission needs no yes; a real yes approves', async () => {
+		const { tools, actions } = createToolContext({ asks: [permission] });
+
+		expect(
+			(
+				await executeTool(
+					'answer',
+					{ ref: 'store-front/main', decision: 'no', text: 'Use a new branch.' },
+					{ ...tools, asks: [permission], utterance: 'No, use a new branch.' },
+				)
+			).ok,
+		).toBe(true);
+		expect(
+			(
+				await executeTool(
+					'answer',
+					{ ref: 'store-front/main', decision: 'yes', text: '' },
+					{ ...tools, asks: [permission], utterance: 'Yeah, go ahead.' },
+				)
+			).ok,
+		).toBe(true);
+		expect(actions.map((action) => action.type)).toEqual([
+			'answer_permission',
+			'answer_permission',
+		]);
 	});
 
 	it('answer never lands on an ask that opened after the words were said', async () => {

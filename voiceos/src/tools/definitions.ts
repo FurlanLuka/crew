@@ -249,5 +249,8 @@ export const FORWARD_TOOL: ToolDefinition = {
 
 export const listToolsFor = (forwardTo: string | null): ToolDefinition[] => {
 	// Offered only while a session is on screen: a tool that needs no ref is chosen reliably and fast.
-	return forwardTo ? [FORWARD_TOOL, ...TOOL_DEFINITIONS] : TOOL_DEFINITIONS;
+	// History is left out there: that Claude holds its own, and the kernel answered from it instead of forwarding.
+	return forwardTo
+		? [FORWARD_TOOL, ...TOOL_DEFINITIONS.filter((tool) => tool.name !== 'read_history')]
+		: TOOL_DEFINITIONS;
 };
