@@ -348,6 +348,17 @@ describe('settleOwedReport', () => {
 		).toBe('Checking the logs: Rotate the key now?');
 	});
 
+	it('the ack was just heard with the session on screen → no task in front', () => {
+		expect(
+			settleOwedReport({
+				narration: narration({ text: 'Three timeouts in the last hour.' }),
+				owed: LOGS,
+				sessionText: 'x',
+				isAckFresh: true,
+			}).text,
+		).toBe('Three timeouts in the last hour.');
+	});
+
 	it('a question is the report as it is', () => {
 		expect(
 			settle({ needs_user: true, priority: 'high', text: 'asks: rotate the key now?' }).text,

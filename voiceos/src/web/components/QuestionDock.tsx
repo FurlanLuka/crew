@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import type { PendingAsk } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
+import { findOpenQuestion } from '../../state/asks.js';
 import { Reason } from './Reason.js';
 
 type QuestionAsk = Extract<PendingAsk, { kind: 'question' }>;
@@ -12,29 +12,18 @@ interface QuestionDockProps {
 }
 
 export const QuestionDock = ({ ask, label, dispatch }: QuestionDockProps) => {
-	const [answers, setAnswers] = useState<Record<string, string>>({});
-	const index = ask.questions.findIndex((entry) => !(entry.question in answers));
-	const question = ask.questions[index === -1 ? ask.questions.length - 1 : index];
+	// Answers live on the server, so one given by voice shows here too.
+	const open = findOpenQuestion(ask);
 
-	const handleChoose = (value: string) => {
-		if (!question) {
-			return;
-		}
-
-		const nextAnswers = { ...answers, [question.question]: value };
-
-		if (Object.keys(nextAnswers).length >= ask.questions.length) {
-			dispatch({ type: 'answer_question', askId: ask.id, answers: nextAnswers });
-
-			return;
-		}
-
-		setAnswers(nextAnswers);
-	};
-
-	if (!question) {
+	if (!open) {
 		return null;
 	}
+
+	const { question, index } = open;
+
+	const handleChoose = (value: string) => {
+		dispatch({ type: 'answer_question', askId: ask.id, answers: { [question.question]: value } });
+	};
 
 	return (
 		<section className="dock cyan" aria-label="question">

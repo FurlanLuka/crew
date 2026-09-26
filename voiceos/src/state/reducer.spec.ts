@@ -1269,32 +1269,78 @@ describe('questions are spoken without their options', () => {
 		]);
 	});
 
-	it('several questions → pointed to the screen: a spoken answer would settle only the first', () => {
+	it('several questions → the first read out, with how many there are', () => {
 		const ask = question([
 			{ question: 'Which table?', options: ['A'] },
 			{ question: 'Which index?', options: ['B'] },
 		]);
 		expect(run([{ type: 'ask_opened', ask }], idleSession()).effects[0]).toMatchObject({
-			text: 'store/main has 2 questions for you, on screen.',
+			text: 'store/main asks 2 questions. First: Which table? Answer it, or say "options".',
 		});
 	});
 
-	it('several questions: words are pointed to the screen, the ask stays open', () => {
+	it('several questions answered by voice → one at a time, the next read out, sent together', () => {
 		const ask = question([
 			{ question: 'Which table?', options: ['A', 'B'] },
 			{ question: 'Which index?', options: ['C'] },
 		]);
 		const opened = run([{ type: 'ask_opened', ask }], idleSession()).state;
-		const words = run([{ type: 'send', ref: 'store/main', text: 'the first one' }], opened);
-		expect(words.effects).toEqual([
+		const first = run([{ type: 'send', ref: 'store/main', text: 'the first one' }], opened);
+
+		expect(first.effects).toEqual([
 			{
 				type: 'speak',
-				text: 'Those questions need answering on screen.',
-				source: 'kernel',
-				isReply: true,
+				text: 'store/main, question 2 of 2: Which index? Answer it, or say "options".',
+				source: 'alert',
+				ref: 'store/main',
+				isAsking: true,
 			},
 		]);
-		expect(words.state.asks).toHaveLength(1);
+		expect(first.state.asks[0]).toMatchObject({ answers: { 'Which table?': 'the first one' } });
+
+		const second = run(
+			[
+				{
+					type: 'answer_question',
+					askId: ask.id,
+					answers: { 'Which index?': 'C' },
+					isSpoken: true,
+				},
+			],
+			first.state,
+		);
+
+		expect(second.state.asks).toHaveLength(0);
+		expect(second.effects).toContainEqual({
+			type: 'resolve_ask',
+			askId: ask.id,
+			result: {
+				behavior: 'allow',
+				updatedInput: { answers: { 'Which table?': 'the first one', 'Which index?': 'C' } },
+			},
+		});
+	});
+
+	it('a click on the page → stored quietly; an answer to a question it lacks → ignored', () => {
+		const ask = question([
+			{ question: 'Which table?', options: ['A'] },
+			{ question: 'Which index?', options: ['B'] },
+		]);
+		const opened = run([{ type: 'ask_opened', ask }], idleSession()).state;
+		const clicked = run(
+			[
+				{
+					type: 'answer_question',
+					askId: ask.id,
+					answers: { 'Which table?': 'A', 'Which view?': 'X' },
+				},
+			],
+			opened,
+		);
+
+		expect(clicked.effects).toEqual([]);
+		expect(clicked.state.asks[0]).toMatchObject({ answers: { 'Which table?': 'A' } });
+		expect(clicked.state.asks[0]).not.toMatchObject({ answers: { 'Which view?': 'X' } });
 	});
 
 	it('a question with no options → no offer to hear them', () =>

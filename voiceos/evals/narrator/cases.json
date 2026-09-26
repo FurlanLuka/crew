@@ -572,6 +572,32 @@
 			},
 			"includes": ["migration"],
 			"not_includes": ["done", "succeeded", "successfully"]
+		},
+		{
+			"id": "verdict-opening",
+			"split": "dev",
+			"label": "crew/main",
+			"asked": "check the latest debug note",
+			"focused": true,
+			"text": "The note is right. The spoken summary of my reply dropped the catch I had flagged, so you only heard it when you asked again. The narrator caps a focused line at 20 words and treated the caveat as detail. The fix is a rule that a flagged caveat is always spoken.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			},
+			"includes": ["catch|caveat"]
+		},
+		{
+			"id": "caveat-last",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "is the join window design good?",
+			"focused": true,
+			"text": "Yes, I think it's a good design, mainly because it reuses the follow-up path that already works. It measures the pause between your words, so the kernel's speed doesn't stretch it. The one risk is a false join: a separate request said within two seconds gets merged and restarts a turn that was fine.",
+			"expect": {
+				"needs_user": false,
+				"speak": true
+			},
+			"includes": ["false|merg|restart"]
 		}
 	]
 }

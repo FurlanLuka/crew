@@ -62,7 +62,7 @@ describe('the ack spoken for a send', () => {
 			priority: 'high',
 			isAck: true,
 		});
-		expect(owedOf(state)).toEqual({ tasks: ['Checking the logs'] });
+		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
 	});
 
 	it('no phrase from the kernel → "On it." and a report still owed', () => {
@@ -71,14 +71,16 @@ describe('the ack spoken for a send', () => {
 		});
 
 		expect(acks(effects)).toEqual(['On it.']);
-		expect(owedOf(state)).toEqual({ tasks: [] });
+		expect(owedOf(state)).toMatchObject({ tasks: [] });
 	});
 
 	it('busy → queued behind its work; the queued message carries the promise', () => {
 		const { state, effects } = run([send(LOGS)], { start: runningSession() });
 
 		expect(acks(effects)).toEqual(['Checking the logs, after its current work.']);
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toEqual({ tasks: ['Checking the logs'] });
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
+			tasks: ['Checking the logs'],
+		});
 		expect(owedOf(state)).toBeNull();
 	});
 
@@ -87,7 +89,9 @@ describe('the ack spoken for a send', () => {
 		const { state, effects } = run([send(LOGS)], { start: stopped });
 
 		expect(acks(effects)).toEqual(['Starting it up, then checking the logs.']);
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toEqual({ tasks: ['Checking the logs'] });
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
+			tasks: ['Checking the logs'],
+		});
 	});
 
 	it('still starting → the same "Starting it up, then …"', () => {
@@ -120,7 +124,7 @@ describe('the ack spoken for a send', () => {
 		);
 
 		expect(acks(effects)).toEqual(['Running the tests.']);
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toEqual({
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
 			tasks: ['Checking the logs', 'Running the tests'],
 		});
 		expect(owedOf(state)).toBeNull();
@@ -137,7 +141,7 @@ describe('the ack spoken for a send', () => {
 		expect(ended.effects).toContainEqual(
 			expect.objectContaining({
 				type: 'narrate',
-				owed: { tasks: ['Checking the logs', 'Running the tests'] },
+				owed: expect.objectContaining({ tasks: ['Checking the logs', 'Running the tests'] }),
 			}),
 		);
 	});
@@ -152,7 +156,7 @@ describe('the ack spoken for a send', () => {
 			{ start: idleSession() },
 		);
 
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toEqual({
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
 			tasks: ['Checking the logs', 'Running the tests', 'Running the linter'],
 		});
 	});
@@ -171,7 +175,7 @@ describe('the ack spoken for a send', () => {
 			start: started,
 		});
 
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toEqual({
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
 			tasks: ['Checking the logs', 'Running the tests', 'Running the linter'],
 		});
 		expect(owedOf(state)).toBeNull();
@@ -182,7 +186,7 @@ describe('the ack spoken for a send', () => {
 		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('a1') }], { start: acked }).state;
 		const { state } = run([send(TESTS, { text: 'no, run the tests first' })], { start: blocked });
 
-		expect(owedOf(state)).toEqual({ tasks: ['Checking the logs', 'Running the tests'] });
+		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs', 'Running the tests'] });
 	});
 
 	it('blocked, but its ask closed while the kernel thought → queued behind its work', () => {
@@ -213,7 +217,7 @@ describe('the ack spoken for a send', () => {
 		const { state, effects } = run([send(LOGS)], { start: blocked });
 
 		expect(acks(effects)).toEqual(['Checking the logs.']);
-		expect(owedOf(state)).toEqual({ tasks: ['Checking the logs'] });
+		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
 	});
 
 	it('several questions open → shown on screen, no ack and nothing owed', () => {
@@ -266,9 +270,12 @@ describe('the owed report', () => {
 		});
 
 		expect(effects).toContainEqual(
-			expect.objectContaining({ type: 'narrate', owed: { tasks: ['Checking the logs'] } }),
+			expect.objectContaining({
+				type: 'narrate',
+				owed: expect.objectContaining({ tasks: ['Checking the logs'] }),
+			}),
 		);
-		expect(state.sessions[REF]?.reportOwed).toEqual({ tasks: ['Running the tests'] });
+		expect(state.sessions[REF]?.reportOwed).toMatchObject({ tasks: ['Running the tests'] });
 	});
 
 	it('a turn that wrote nothing → still narrated', () => {

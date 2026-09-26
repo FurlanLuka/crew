@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { FOCUSED_WORDS, isFormatOk, NARRATION_WORDS } from './narrator.js';
+import { isFormatOk, NARRATION_WORDS } from './narrator.js';
 
 describe('isFormatOk', () => {
 	const ok = (
@@ -10,7 +10,7 @@ describe('isFormatOk', () => {
 	it('narration past its word limit fails', () => {
 		expect(ok('word '.repeat(NARRATION_WORDS).trim())).toBe(true);
 		expect(ok('word '.repeat(NARRATION_WORDS + 1).trim())).toBe(false);
-		expect(ok('word '.repeat(FOCUSED_WORDS + 1).trim(), { maxWords: FOCUSED_WORDS })).toBe(false);
+		expect(ok('word '.repeat(21).trim(), { maxWords: 20 })).toBe(false);
 	});
 
 	it('an option read out when only the question should be → fails', () => {

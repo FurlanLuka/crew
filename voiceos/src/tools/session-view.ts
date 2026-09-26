@@ -1,5 +1,6 @@
 import { type State, type PendingAsk, type Denial, isOfferFresh } from '../shared/protocol.js';
 import { describeWork, formatAge } from '../state/working.js';
+import { findOpenQuestion } from '../state/asks.js';
 
 const RECENT_TOOL_STEPS = 3;
 const LAST_REPLY_CHARS = 2000;
@@ -60,13 +61,15 @@ const describePending = (ask: PendingAsk): Record<string, unknown> => {
 			// Voice OS asked "say yes to confirm": the developer's yes or no answers it.
 			return { kind: 'confirm', command: `/${ask.command}` };
 		case 'question': {
-			const firstQuestion = ask.questions[0];
+			// The one asked now: several questions are answered one at a time.
+			const open = findOpenQuestion(ask);
+			const left = ask.questions.length - (open?.index ?? ask.questions.length);
 
 			return {
 				kind: 'question',
-				question: firstQuestion?.question ?? '',
-				options: firstQuestion?.options.map((option) => option.label) ?? [],
-				...(ask.questions.length > 1 ? { more_questions: ask.questions.length - 1 } : {}),
+				question: open?.question.question ?? '',
+				options: open?.question.options.map((option) => option.label) ?? [],
+				...(left > 1 ? { questions_left: left } : {}),
 			};
 		}
 	}

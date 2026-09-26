@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { DevServer } from '../shared/protocol.js';
-import { buildSituationNote } from './voice-context.js';
+import { buildSituationNote, VOICE_OS_CONTEXT } from './voice-context.js';
 
 const createServer = (
 	name: string,
@@ -46,4 +46,12 @@ describe('buildSituationNote', () => {
 
 	it('quotes in what was said are kept as said', () =>
 		expect(buildSituationNote({ servers: [], recent: ['say "hi"'] })).toContain('"say "hi""'));
+});
+
+describe('VOICE_OS_CONTEXT', () => {
+	it('the spoken opening carries substance, and questions come one per call', () => {
+		expect(VOICE_OS_CONTEXT).toContain('Never open with a bare verdict');
+		expect(VOICE_OS_CONTEXT).toContain('any risk or catch the developer must know');
+		expect(VOICE_OS_CONTEXT).toContain('Put one question in each call');
+	});
 });

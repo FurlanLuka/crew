@@ -73,6 +73,10 @@ describe('mergeOwed', () => {
 			tasks: ['Checking the logs', 'Running the tests'],
 		});
 		expect(mergeOwed(null, undefined)).toBeNull();
+		expect(mergeOwed({ tasks: ['a'], ackedAt: 5 }, { tasks: ['b'], ackedAt: 9 })).toEqual({
+			tasks: ['a', 'b'],
+			ackedAt: 9,
+		});
 		expect(mergeOwed({ tasks: [] })).toEqual({ tasks: [] });
 	});
 });

@@ -5,6 +5,8 @@ export type SendTiming = 'now' | 'queued' | 'starting';
 export interface ReportOwed {
 	// The developer's own words for each task ("Checking the logs"); empty when the kernel gave none.
 	tasks: string[];
+	// When the ack was spoken: a report right after it need not name the task again.
+	ackedAt?: number;
 }
 
 export interface SendAck {
@@ -156,5 +158,11 @@ export const composeAckText = (tasks: string[], timing: SendTiming): string => {
 export const mergeOwed = (...owed: (ReportOwed | null | undefined)[]): ReportOwed | null => {
 	const present = owed.filter((entry): entry is ReportOwed => Boolean(entry));
 
-	return present.length ? { tasks: present.flatMap((entry) => entry.tasks) } : null;
+	if (!present.length) {
+		return null;
+	}
+
+	const ackedAt = Math.max(...present.map((entry) => entry.ackedAt ?? 0));
+
+	return { tasks: present.flatMap((entry) => entry.tasks), ...(ackedAt ? { ackedAt } : {}) };
 };

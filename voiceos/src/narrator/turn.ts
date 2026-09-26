@@ -16,6 +16,7 @@ interface NarratedLine {
 }
 
 const OWED_FALLBACK_WORDS = 30;
+export const ACK_FRESH_MS = 10_000;
 
 const readFirstSentence = (text: string): string =>
 	cleanSpokenText(text.trim().split(/(?<=[.!?])\s+/)[0] ?? '', OWED_FALLBACK_WORDS);
@@ -24,12 +25,15 @@ interface SettleOwedReportParams {
 	narration: Narration;
 	owed: ReportOwed | null;
 	sessionText: string;
+	// The developer just heard the ack with the session on screen: the task need not be named again.
+	isAckFresh?: boolean;
 }
 
 export const settleOwedReport = ({
 	narration,
 	owed,
 	sessionText,
+	isAckFresh = false,
 }: SettleOwedReportParams): Narration => {
 	// Voice OS said "Checking the logs": the developer is waiting to hear how it went, even when
 	// the narrator found it too small to mention or its call failed.
@@ -55,7 +59,7 @@ export const settleOwedReport = ({
 	// A question is the report as it is; a report that does not say what it is about gets the task.
 	const namesTask = owed.tasks.every((task) => sharesContentWords(written, task));
 
-	return narration.needs_user || !tasks || namesTask
+	return narration.needs_user || !tasks || namesTask || isAckFresh
 		? promised
 		: { ...promised, text: `${tasks}: ${written}` };
 };
@@ -116,17 +120,20 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		}
 
 		const view = store.state.view;
+		const isFocused = view.kind === 'session' && view.ref === effect.ref;
+		const ackedAt = effect.owed?.ackedAt;
 		const narration = settleOwedReport({
 			narration: await options.narrate({
 				label: session.label,
 				text: effect.text,
 				asked: effect.asked,
-				focused: view.kind === 'session' && view.ref === effect.ref,
+				focused: isFocused,
 				topic: session.topic,
 				promised: effect.owed?.tasks ?? null,
 			}),
 			owed: effect.owed,
 			sessionText: effect.text,
+			isAckFresh: isFocused && ackedAt !== undefined && now().getTime() - ackedAt <= ACK_FRESH_MS,
 		});
 
 		store.dispatch({

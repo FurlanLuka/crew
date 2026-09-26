@@ -66,7 +66,13 @@ export type PendingAsk = { id: string; ref: string; at: number } & (
 			input: Record<string, unknown>;
 			suggestions: PermissionSuggestion[];
 	  }
-	| { kind: 'question'; input: Record<string, unknown>; questions: Question[] }
+	| {
+			kind: 'question';
+			input: Record<string, unknown>;
+			questions: Question[];
+			// Answered so far, by question text: several questions are answered one at a time.
+			answers?: Record<string, string>;
+	  }
 	| { kind: 'plan'; input: Record<string, unknown>; plan: string }
 	// Voice OS's own: a /clear or /compact held until the developer says yes. The SDK knows nothing of it.
 	| { kind: 'command'; command: GuardedCommand; text: string }
@@ -233,7 +239,13 @@ export type Action =
 	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
-	| { type: 'answer_question'; askId: string; answers: Record<string, string> }
+	// isSpoken: set by the kernel; the next open question is then read out.
+	| {
+			type: 'answer_question';
+			askId: string;
+			answers: Record<string, string>;
+			isSpoken?: boolean;
+	  }
 	| { type: 'answer_plan'; askId: string; isApproved: boolean; message?: string }
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	| { type: 'switch_view'; view: View }

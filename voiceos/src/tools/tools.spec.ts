@@ -541,6 +541,36 @@ describe('describeSession', () => {
 		expect(brief.last_reply).toBeUndefined();
 	});
 
+	it('several questions pending → the open one with its options, and how many are left', () => {
+		const ask: PendingAsk = {
+			id: 'q3',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: ['Which table?', 'Which index?', 'Which view?'].map((question) => ({
+				question,
+				multiSelect: false,
+				options: [{ label: `${question} A` }],
+			})),
+			answers: { 'Which table?': 'New' },
+		};
+		const { tools } = createToolContext({ asks: [ask] });
+		const view = describeSession({
+			state: tools.getState(),
+			ref: 'store-front/main',
+			isDetailed: false,
+			now: 0,
+		});
+
+		expect(view.pending).toEqual({
+			kind: 'question',
+			question: 'Which index?',
+			options: ['Which index? A'],
+			questions_left: 2,
+		});
+	});
+
 	it('a reply longer than 2000 characters is cut; a session that has not replied has none', () => {
 		const { tools } = createToolContext();
 		const state = tools.getState();
@@ -934,6 +964,46 @@ describe('tools that replaced the fast path', () => {
 			),
 		).toEqual({ ok: true, content: 'answered store-front/main' });
 		expect(actions).toEqual([{ type: 'answer_permission', askId: 'p1', decision: 'allow' }]);
+	});
+
+	it('several questions: the words answer the open one; answered on screen meanwhile → refused, never filed under the next', async () => {
+		const two: PendingAsk = {
+			id: 'q2',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{ question: 'Which table?', multiSelect: false, options: [{ label: 'New' }] },
+				{ question: 'Which index?', multiSelect: false, options: [{ label: 'Partial' }] },
+			],
+		};
+		const heard = createToolContext({ asks: [two] });
+
+		expect(
+			(
+				await executeTool(
+					'answer',
+					{ ref: 'store-front/main', decision: 'choose', text: 'New' },
+					{ ...heard.tools, asks: [two] },
+				)
+			).ok,
+		).toBe(true);
+		expect(heard.actions).toEqual([
+			{ type: 'answer_question', askId: 'q2', answers: { 'Which table?': 'New' }, isSpoken: true },
+		]);
+
+		const clicked = { ...two, answers: { 'Which table?': 'New' } };
+		const late = createToolContext({ asks: [clicked] });
+		const result = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'choose', text: 'New' },
+			{ ...late.tools, asks: [two] },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('already answered on screen');
+		expect(late.actions).toEqual([]);
 	});
 
 	it('a yes to a permission from words that say no yes ("also run the linter") → refused, nothing approved', async () => {

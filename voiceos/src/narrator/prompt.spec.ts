@@ -4,6 +4,7 @@ import {
 	composeNarration,
 	createFallbackNarration,
 	buildNarratorMessage,
+	NARRATOR_SYSTEM,
 	type NarratorOutput,
 } from './prompt.js';
 import { toSpokenName, prefixSessionName, stripSessionName } from '../shared/spoken.js';
@@ -154,5 +155,13 @@ describe('stripSessionName', () => {
 		expect(stripSessionName('asks: push the branch now?')).toBe('Push the branch now?');
 		expect(stripSessionName('tests pass.')).toBe('Tests pass.');
 		expect(stripSessionName('  ')).toBe('');
+	});
+});
+
+describe('NARRATOR_SYSTEM', () => {
+	it('every line works heard alone: no shorter cap on screen, no bare verdict, caveats kept', () => {
+		expect(NARRATOR_SYSTEM).not.toContain('at most 20 words: they can read the rest');
+		expect(NARRATOR_SYSTEM).toContain('Never speak a bare verdict as the whole line');
+		expect(NARRATOR_SYSTEM).toContain('is always spoken, ahead of other detail');
 	});
 });

@@ -25,10 +25,9 @@ interface Case {
 	promised?: string[];
 }
 
-// Narration is a TL;DR: short, and shorter still for the session on screen.
+// Narration is a TL;DR, heard alone even for the session on screen.
 // The prompt aims at about 35; past its ceiling of 45 a line stops being a TL;DR.
 export const NARRATION_WORDS = 45;
-export const FOCUSED_WORDS = 20;
 
 interface CalibrationCase {
 	id: string;
@@ -229,7 +228,7 @@ export const runNarratorEval = async ({
 					spoken: narration.text,
 					label: testCase.label,
 					speak: narration.speak,
-					maxWords: testCase.max_words ?? (testCase.focused ? FOCUSED_WORDS : NARRATION_WORDS),
+					maxWords: testCase.max_words ?? NARRATION_WORDS,
 					notIncludes: testCase.not_includes,
 					includes: testCase.includes,
 				}),

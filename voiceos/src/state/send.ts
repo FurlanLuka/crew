@@ -1,6 +1,6 @@
 import { isSdkAsk, type Input, type Stamped, type State } from '../shared/protocol.js';
 import type { ReducerResult } from './reducer.js';
-import { answerInWords, isAnsweredInWords } from './asks.js';
+import { answerInWords, completesAsk } from './asks.js';
 import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
 import { decideAck, deliverSend, NO_ACK } from './delivery.js';
@@ -48,8 +48,8 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 	if (sdkAsk) {
 		const answered = answerInWords({ state: focusedState, ask: sdkAsk, text, stamped });
 		// The running turn takes the words, so it owes their report too.
-		const { effects, owed } = isAnsweredInWords(sdkAsk)
-			? decideAck({ ref: input.ref, ack: input.ack, timing: 'now' })
+		const { effects, owed } = completesAsk(sdkAsk)
+			? decideAck({ ref: input.ref, ack: input.ack, timing: 'now', at: stamped.at })
 			: NO_ACK;
 
 		return {

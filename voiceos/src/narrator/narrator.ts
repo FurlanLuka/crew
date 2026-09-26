@@ -30,6 +30,9 @@ export const createNarrator = (apiKey: string | null, model = NARRATOR_MODEL): N
 			const response = await client.messages.parse({
 				model,
 				max_tokens: 400,
+				// A line to speak needs no reasoning pass: on Sonnet 5 thinking used up the budget and
+				// left no parsable output, so the turn was never reported.
+				thinking: { type: 'disabled' },
 				system: [{ type: 'text', text: NARRATOR_SYSTEM, cache_control: { type: 'ephemeral' } }],
 				messages: [{ role: 'user', content: buildNarratorMessage(input) }],
 				output_config: { format: zodOutputFormat(narratorOutputSchema) },

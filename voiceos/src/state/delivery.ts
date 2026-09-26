@@ -37,9 +37,10 @@ interface DecideAckParams {
 	ref: string;
 	ack: SendAck | undefined;
 	timing: SendTiming;
+	at: number;
 }
 
-export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => {
+export const decideAck = ({ ref, ack, timing, at }: DecideAckParams): AckOutcome => {
 	// Said from the branch the words actually took, so "after its current work" is always true.
 	// A question is answered soon enough on its own; only a cold start is worth saying.
 	if (!ack || (ack.kind === 'question' && timing !== 'starting')) {
@@ -61,7 +62,7 @@ export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => 
 				isAck: true,
 			},
 		],
-		owed: ack.kind === 'instruction' ? { tasks } : null,
+		owed: ack.kind === 'instruction' ? { tasks, ackedAt: at } : null,
 	};
 };
 
@@ -170,7 +171,7 @@ export const deliverSend = ({
 	}
 
 	if (session.status === 'idle') {
-		const { effects, owed } = decideAck({ ref, ack, timing: 'now' });
+		const { effects, owed } = decideAck({ ref, ack, timing: 'now', at: stamped.at });
 
 		return withEffects(
 			sendNow({
@@ -191,13 +192,18 @@ export const deliverSend = ({
 	const hasWaitingFollowUp = session.status === 'running' && hasFollowUpWaiting(session);
 
 	if (isSpoken && (hasWaitingFollowUp || isFollowUp(session, stamped.at))) {
-		const { effects, owed } = decideAck({ ref, ack, timing: 'now' });
+		const { effects, owed } = decideAck({ ref, ack, timing: 'now', at: stamped.at });
 
 		return withEffects(queueFollowUp({ state, ref, text, note, stamped, owed }), effects);
 	}
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
-	const { effects, owed } = decideAck({ ref, ack, timing: isStarting ? 'starting' : 'queued' });
+	const { effects, owed } = decideAck({
+		ref,
+		ack,
+		timing: isStarting ? 'starting' : 'queued',
+		at: stamped.at,
+	});
 	const queuedMessage: QueuedMessage = {
 		id: stamped.id,
 		text,

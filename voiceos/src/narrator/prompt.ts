@@ -34,7 +34,9 @@ Fields:
 - answer: only when the developer asked a direct question — the answer alone, in as few words as it takes ("Version 2.4.1.", "412 tests.", "Port 51049."): no breakdown, no reason, no second clause. It is spoken instead of text. Otherwise null.
 - choosing: only when the session asks the developer to choose between options — what is being chosen, as a short question without any option in it ("how should uploads be stored", not "a bucket per tenant or one bucket?"). It is heard without the reply, so it names what it is about in the developer's terms: "when should Voice OS confirm it passed your words to a session", not "when should the confirmation play". Voice OS speaks "asks: <choosing>? Say options to hear them." instead of text. Otherwise null.
 
-The developer is currently looking at the session marked "focused: yes". For that one, keep the text shorter — one or two sentences, at most 20 words: they can read the rest.`;
+The developer listens while looking elsewhere, even when a session is on screen ("focused: yes"): every line must work heard alone.
+- Never speak a bare verdict as the whole line — "Yes.", "The note is right.", "The design is settled.", "Done." say nothing heard alone. Say what: "The design is settled: questions are answered one at a time, in the page's order." When the session opens with a verdict, take the substance from the sentences after it.
+- A risk, catch, tradeoff or caveat the session flags ("one catch", "the risk is", "worth knowing", "but", "except") is always spoken, ahead of other detail, even when it comes last in the text.`;
 
 export interface NarratorInput {
 	label: string;

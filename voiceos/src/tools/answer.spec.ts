@@ -84,7 +84,14 @@ describe('buildAnswerActions', () => {
 			buildAnswerActions({ ask: createQuestion(), decision: 'choose', text: 'Reuse orders' }),
 		).toEqual({
 			ok: true,
-			actions: [{ type: 'answer_question', askId: 'q1', answers: { 'Which 0?': 'Reuse orders' } }],
+			actions: [
+				{
+					type: 'answer_question',
+					askId: 'q1',
+					answers: { 'Which 0?': 'Reuse orders' },
+					isSpoken: true,
+				},
+			],
 		});
 		expect(buildAnswerActions({ ask: createQuestion(), decision: 'no', text: '' })).toMatchObject({
 			actions: [{ answers: { 'Which 0?': 'No' } }],
@@ -144,10 +151,16 @@ describe('buildAnswerActions', () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it('several questions → pointed to the screen', () => {
-		const result = buildAnswerActions({ ask: createQuestion(2), decision: 'choose', text: 'x' });
+	it('several questions → the one asked now is answered, the first open one', () => {
+		const ask = createQuestion(2);
+		const partly = ask.kind === 'question' ? { ...ask, answers: { 'Which 0?': 'A' } } : ask;
 
-		expect(result).toMatchObject({ ok: false, error: expect.stringContaining('on screen') });
+		expect(buildAnswerActions({ ask, decision: 'choose', text: 'x' })).toMatchObject({
+			actions: [{ answers: { 'Which 0?': 'x' } }],
+		});
+		expect(buildAnswerActions({ ask: partly, decision: 'choose', text: 'y' })).toMatchObject({
+			actions: [{ answers: { 'Which 1?': 'y' } }],
+		});
 	});
 });
 

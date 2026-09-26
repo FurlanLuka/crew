@@ -31,7 +31,32 @@ const MAX_SUMMARY_WORDS = 15;
 const MAX_QUESTION_WORDS = 25;
 const DENIALS_KEPT = 20;
 
-export const ON_SCREEN_MESSAGE = 'Those questions need answering on screen.';
+type QuestionAsk = Extract<PendingAsk, { kind: 'question' }>;
+
+export interface OpenQuestion {
+	question: QuestionAsk['questions'][number];
+	index: number;
+}
+
+export const findOpenQuestion = (ask: QuestionAsk): OpenQuestion | null => {
+	// Answered one at a time, like the page: the first without an answer is the one asked now.
+	const answers = ask.answers ?? {};
+	const index = ask.questions.findIndex((entry) => !(entry.question in answers));
+	const question = ask.questions[index];
+
+	return question ? { question, index } : null;
+};
+
+export const completesAsk = (ask: PendingAsk): boolean => {
+	// Words for an ask reach the session only once they settle it: one open question or none left.
+	if (ask.kind !== 'question') {
+		return true;
+	}
+
+	const answers = ask.answers ?? {};
+
+	return ask.questions.filter((entry) => !(entry.question in answers)).length <= 1;
+};
 
 export const isAskInput = (input: Input): input is AskInput => ASK_INPUT_SET.has(input.type);
 
@@ -105,27 +130,25 @@ export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 	}
 };
 
-const describeQuestionAloud = (
-	ask: Extract<PendingAsk, { kind: 'question' }>,
-	label: string,
-): string => {
-	const firstQuestion = ask.questions[0];
+const describeQuestionAloud = (ask: QuestionAsk, label: string): string => {
+	const open = findOpenQuestion(ask);
 
-	if (!firstQuestion) {
+	if (!open) {
 		return `${label} has a question.`;
 	}
 
-	// Several questions are answered on screen: a spoken answer settles only the first.
-	if (ask.questions.length > 1) {
-		return `${label} has ${ask.questions.length} questions for you, on screen.`;
+	// Options are read only on request, so the developer can answer in their own words first.
+	const question = capWords(open.question.question, MAX_QUESTION_WORDS);
+	const prompt = open.question.options.length > 0 ? ' Answer it, or say "options".' : '';
+	const count = ask.questions.length;
+
+	if (count === 1) {
+		return `${label} asks: ${question}${prompt}`;
 	}
 
-	// Options are read only on request, so the developer can answer in their own words first.
-	const question = capWords(firstQuestion.question, MAX_QUESTION_WORDS);
-
-	return firstQuestion.options.length > 0
-		? `${label} asks: ${question} Answer it, or say "options".`
-		: `${label} asks: ${question}`;
+	return open.index === 0
+		? `${label} asks ${count} questions. First: ${question}${prompt}`
+		: `${label}, question ${open.index + 1} of ${count}: ${question}${prompt}`;
 };
 
 const resolveAsk = (state: State, ask: PendingAsk, result: AskResult): ReducerResult => ({
@@ -186,10 +209,6 @@ interface AnswerInWordsParams {
 	stamped: Stamped;
 }
 
-// Several questions cannot be answered in one breath: they stay open for the screen.
-export const isAnsweredInWords = (ask: SdkAsk): boolean =>
-	ask.kind !== 'question' || ask.questions.length <= 1;
-
 export const answerInWords = ({
 	state,
 	ask,
@@ -199,18 +218,22 @@ export const answerInWords = ({
 	// The turn is blocked on the ask, so words queued behind it would never be read: they answer it.
 	switch (ask.kind) {
 		case 'question': {
-			if (!isAnsweredInWords(ask)) {
-				return {
-					state,
-					effects: [{ type: 'speak', text: ON_SCREEN_MESSAGE, source: 'kernel', isReply: true }],
-				};
+			const open = findOpenQuestion(ask);
+
+			if (!open) {
+				return withoutEffects(state);
 			}
 
-			const answers = Object.fromEntries(
-				ask.questions.map((question, index) => [question.question, index === 0 ? text : '']),
+			return reduceAsk(
+				state,
+				{
+					type: 'answer_question',
+					askId: ask.id,
+					answers: { [open.question.question]: text },
+					isSpoken: true,
+				},
+				stamped,
 			);
-
-			return reduceAsk(state, { type: 'answer_question', askId: ask.id, answers }, stamped);
 		}
 
 		case 'plan':
@@ -241,12 +264,47 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 		case 'answer_question': {
 			const ask = findAsk(state, input.askId, 'question');
 
-			return ask
-				? resolveAsk(state, ask, {
-						behavior: 'allow',
-						updatedInput: { ...ask.input, answers: input.answers },
-					})
-				: withoutEffects(state);
+			if (!ask) {
+				return withoutEffects(state);
+			}
+
+			// Only answers to this ask's own questions count: nothing is filed under a question it lacks.
+			const asked = new Set(ask.questions.map((entry) => entry.question));
+			const answers = {
+				...ask.answers,
+				...Object.fromEntries(
+					Object.entries(input.answers).filter(([question]) => asked.has(question)),
+				),
+			};
+			const answered = { ...ask, answers };
+
+			if (!findOpenQuestion(answered)) {
+				return resolveAsk(state, ask, {
+					behavior: 'allow',
+					updatedInput: { ...ask.input, answers },
+				});
+			}
+
+			const next = {
+				...state,
+				asks: state.asks.map((pendingAsk) => (pendingAsk.id === ask.id ? answered : pendingAsk)),
+			};
+
+			// Said aloud only after a spoken answer: a click moves the page on by itself.
+			return input.isSpoken
+				? {
+						state: next,
+						effects: [
+							{
+								type: 'speak',
+								text: describeAskAloud(answered, readLabel(state, ask.ref)),
+								source: 'alert',
+								ref: ask.ref,
+								isAsking: true,
+							},
+						],
+					}
+				: withoutEffects(next);
 		}
 
 		case 'answer_plan': {

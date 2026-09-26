@@ -1,5 +1,5 @@
 import type { Action, PendingAsk, State } from '../shared/protocol.js';
-import { ON_SCREEN_MESSAGE } from '../state/asks.js';
+import { findOpenQuestion } from '../state/asks.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import { isConsent, isPlainConsent } from './consent.js';
 import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
@@ -99,12 +99,8 @@ export const buildAnswerActions = ({
 		}
 
 		case 'question': {
-			// Several questions cannot be answered in one breath.
-			if (ask.questions.length > 1) {
-				return { ok: false, error: `${ON_SCREEN_MESSAGE} Tell the developer so.` };
-			}
-
-			const question = ask.questions[0];
+			// Several questions are answered one at a time: the words answer the one asked now.
+			const question = findOpenQuestion(ask)?.question;
 
 			if (!question) {
 				return { ok: false, error: 'the question is empty' };
@@ -119,12 +115,22 @@ export const buildAnswerActions = ({
 			return {
 				ok: true,
 				actions: [
-					{ type: 'answer_question', askId: ask.id, answers: { [question.question]: answerValue } },
+					{
+						type: 'answer_question',
+						askId: ask.id,
+						answers: { [question.question]: answerValue },
+						isSpoken: true,
+					},
 				],
 			};
 		}
 	}
 };
+
+const isAnsweredMeanwhile = (heard: PendingAsk, live: PendingAsk): boolean =>
+	heard.kind === 'question' &&
+	live.kind === 'question' &&
+	findOpenQuestion(heard)?.index !== findOpenQuestion(live)?.index;
 
 interface IsAnswerForParams {
 	state: State;
@@ -202,8 +208,17 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		);
 	}
 
-	if (!state.asks.some((ask) => ask.id === heardAsk.id)) {
+	const liveAsk = state.asks.find((ask) => ask.id === heardAsk.id);
+
+	if (!liveAsk) {
 		return fail(`${checked.ref}'s question was already settled; tell the developer.`);
+	}
+
+	// Answered on screen while the words were being understood: they were meant for that question.
+	if (isAnsweredMeanwhile(heardAsk, liveAsk)) {
+		return fail(
+			`not answered: that question was already answered on screen. ${checked.ref} now asks the next one; tell the developer.`,
+		);
 	}
 
 	const decision = input.decision as AnswerDecision;
@@ -229,7 +244,7 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 	}
 
 	const answerResult = buildAnswerActions({
-		ask: heardAsk,
+		ask: liveAsk,
 		decision,
 		text: typeof input.text === 'string' ? input.text : '',
 	});
