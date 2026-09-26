@@ -23,7 +23,7 @@ switch every Claude Code session to per-token billing):
 | File | For |
 | --- | --- |
 | `~/.config/crew-voiceos/soniox.key` | speech in and out (Soniox) |
-| `~/.config/crew-voiceos/anthropic.key` | the kernel and narrator (Haiku) |
+| `~/.config/crew-voiceos/anthropic.key` | the kernel (Haiku) and narrator (Sonnet) |
 
 The Claude sessions themselves run on your Claude Code login, with no API key in their
 environment.
@@ -44,7 +44,7 @@ environment.
   the token in `~/.crew/voiceos/token`; the WebSocket also requires an exact Origin.
 - `src/web/` — React, bundled by Bun. Design: `design/mockups.html`.
 
-- `src/narrator/` — after every turn a Haiku narrator decides what to say and whether the
+- `src/narrator/` — after every turn a Sonnet narrator decides what to say and whether the
   session now waits on you; `src/speech/` queues it (alerts first, never over your voice)
   and streams it from Soniox TTS over one kept-open WebSocket; the browser plays the PCM
   chunks as they arrive (`src/web/use-speech-player.ts`). `src/router/kernel.ts` decides what each utterance does,
@@ -60,7 +60,7 @@ logs` tails the log.
 ## Evals
 
 ```bash
-bun evals/run.ts all          # narrator + kernel against real Haiku; fails below floors or baseline
+bun evals/run.ts all          # narrator (Sonnet) + kernel (Haiku) against the real models; fails below floors or baseline
 bun test test/live/audio.test.ts   # Soniox fixtures → STT
 bun test test/live/tts.test.ts     # Soniox streaming TTS: first-chunk latency, cancel then reuse
 bun scripts/gen-audio-fixtures.ts <id>…   # regenerate fixtures after editing evals/audio/cases.json

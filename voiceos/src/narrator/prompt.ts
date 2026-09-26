@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-export const NARRATOR_MODEL = 'claude-haiku-4-5';
+// Sonnet: it held every narration rule where Haiku slipped, for about a second more per line.
+export const NARRATOR_MODEL = 'claude-sonnet-5';
 
 export const narrationSchema = z.object({
 	speak: z.boolean(),
