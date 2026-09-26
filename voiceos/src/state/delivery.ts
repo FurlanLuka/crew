@@ -9,6 +9,7 @@ import {
 import type { Effect, ReducerResult } from './reducer.js';
 import { sendNow, startWorker, updateSession, withoutEffects } from './helpers.js';
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
+import { openRedirect } from './redirect.js';
 
 export const hasFollowUpWaiting = (session: Session): boolean => {
 	// The one signal that the running reply is being cut: the developer's follow-up waits at the head.
@@ -57,7 +58,7 @@ export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => 
 					},
 				]
 			: [],
-		isOwed: ack.kind === 'instruction',
+		isOwed: ack.kind !== 'question',
 	};
 };
 
@@ -188,6 +189,11 @@ export const deliverSend = ({
 		return withEffects(queueFollowUp({ state, ref, text, note, stamped, isOwed }), effects);
 	}
 
+	// Changing what a working session is doing is the developer's call: they are asked first.
+	if (ack?.kind === 'redirect' && session.status === 'running') {
+		return openRedirect({ state, ref, text, note, stamped });
+	}
+
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
 	const { effects, isOwed } = decideAck({ ref, ack, timing: isStarting ? 'starting' : 'queued' });
 	const queuedMessage: QueuedMessage = {
@@ -210,13 +216,58 @@ export const deliverSend = ({
 	);
 };
 
+interface ReplaceRunningParams {
+	state: State;
+	ref: string;
+	text: string;
+	note: string | undefined;
+	stamped: Stamped;
+	isOwed: boolean;
+}
+
+export const replaceRunning = ({
+	state,
+	ref,
+	text,
+	note,
+	stamped,
+	isOwed,
+}: ReplaceRunningParams): ReducerResult => {
+	// The running turn's work is replaced, not added to: it is cut like a follow-up cuts it (never
+	// narrated), and these words go first; whatever else waits keeps its place behind them.
+	const session = state.sessions[ref];
+
+	if (!session) {
+		return withoutEffects(state);
+	}
+
+	const message: QueuedMessage = {
+		id: stamped.id,
+		text,
+		at: stamped.at,
+		isFollowUp: true,
+		...(note ? { note } : {}),
+		...(session.reportOwed || isOwed ? { reportOwed: true as const } : {}),
+	};
+
+	return {
+		state: updateSession(state, ref, (current) => ({
+			...current,
+			needsUser: null,
+			reportOwed: false,
+			queue: [message, ...current.queue],
+		})),
+		effects: [{ type: 'worker_interrupt', ref, reason: 'follow-up' }],
+	};
+};
+
 const ASIDE_PATTERN = /\b(?:by the way|btw)\b/i;
 const QUEUE_PATTERN = /\bqueue it\b/i;
 
 export interface DecideDeliveryParams {
 	status: SessionStatus;
 	// The kernel's reading of the words; absent for typed text, which goes aside only when asked to.
-	kind?: 'question' | 'instruction';
+	kind?: 'question' | 'instruction' | 'redirect';
 	// What the developer actually said: the kernel drops "by the way" from what it forwards.
 	utterance: string;
 }

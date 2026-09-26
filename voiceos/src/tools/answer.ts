@@ -98,6 +98,25 @@ export const buildAnswerActions = ({
 			};
 		}
 
+		case 'redirect': {
+			if (decision === 'choose') {
+				return { ok: false, error: 'a switch is answered yes or no' };
+			}
+
+			// "Yes, and use staging" joins the instruction; "no, do X instead" is sent in its place.
+			return {
+				ok: true,
+				actions: [
+					{
+						type: 'answer_redirect',
+						askId: ask.id,
+						isApproved: decision !== 'no',
+						...(addedWords ? { message: addedWords } : {}),
+					},
+				],
+			};
+		}
+
 		case 'question': {
 			// Several questions are answered one at a time: the words answer the one asked now.
 			const question = findOpenQuestion(ask)?.question;
@@ -229,7 +248,8 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 	// Approving a command or a plan is the one call that must never be guessed from other words.
 	const isApproval = heardAsk.kind !== 'question' && (decision === 'yes' || decision === 'always');
-	const hasConsented = heardAsk.kind === 'command' ? isPlainConsent : isConsent;
+	const hasConsented =
+		heardAsk.kind === 'command' || heardAsk.kind === 'redirect' ? isPlainConsent : isConsent;
 
 	if (isApproval && toolContext.utterance !== undefined && !hasConsented(toolContext.utterance)) {
 		return fail(

@@ -61,9 +61,20 @@ const REF_PROPERTY = {
 
 const KIND_PROPERTY = {
 	type: 'string',
-	enum: ['question', 'instruction'],
+	enum: ['question', 'instruction', 'redirect'],
 	description:
-		'question: the developer asks something that Claude can answer from what it already knows or did. instruction: anything asking for work, a change or a check — and a question that means the current work should change ("shouldn\'t that use v2?").',
+		'question: the developer asks something that Claude can answer from what it already knows or did. instruction: anything asking for work, a change or a check — and a question that means the current work should change ("shouldn\'t that use v2?"). redirect: an instruction that stops or replaces what that Claude is doing right now, not something for after it ("actually, stop the refactor and fix the login bug first", "don\'t do the migration, do the seed script instead"); "also run the linter" is an instruction, not a redirect.',
+};
+
+const CONTINUES_PROPERTY = {
+	type: 'boolean',
+	description:
+		'true only when these words finish the sentence the developer began in their previous words on this screen (listed under "Earlier on this screen"), cut off by a pause — then text is the whole sentence, both parts, and rest is only the new part, written the same way. A new request, an added task or a reply is not this.',
+};
+
+const REST_PROPERTY = {
+	type: 'string',
+	description: 'With continues: only the new part, as a clear instruction or question.',
 };
 
 const CLEAN_INSTRUCTION =
@@ -132,6 +143,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				ref: REF_PROPERTY,
 				text: { type: 'string', description: CLEAN_INSTRUCTION },
 				kind: KIND_PROPERTY,
+				continues: CONTINUES_PROPERTY,
+				rest: REST_PROPERTY,
 			},
 			required: ['ref', 'text', 'kind'],
 			additionalProperties: false,
@@ -272,6 +285,8 @@ export const FORWARD_TOOL: ToolDefinition = {
 		properties: {
 			text: { type: 'string', description: CLEAN_INSTRUCTION },
 			kind: KIND_PROPERTY,
+			continues: CONTINUES_PROPERTY,
+			rest: REST_PROPERTY,
 		},
 		required: ['text', 'kind'],
 		additionalProperties: false,

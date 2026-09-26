@@ -17,6 +17,10 @@ import { describeSession, findLatestDenial } from './session-view.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
 
 const MIN_REQUEST_WORDS = 4;
+// "…and fix the login bug", "…then run the seeds": new work named. A pause ("stop and wait",
+// "stop, let me look") or "I'll do it myself instead" names none for the session: it still stops.
+const SAYS_WHAT_INSTEAD_PATTERN =
+	/\b(?:stop|cancel|halt|drop)\b[^.?!]*\b(?:and|then)\s+(?!(?:wait|hold|pause|listen|look|think|let)\b)\w+/i;
 const MIN_LONG_SPEECH_WORDS = 10;
 const REQUEST_OPENING_PATTERN =
 	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
@@ -78,11 +82,28 @@ const sendRecorded = ({
 		utterance: toolContext.utterance,
 		isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
 	});
+	const rest = typeof input.rest === 'string' && input.rest.trim() ? input.rest.trim() : null;
 	const result = sendText({
 		state,
 		ref,
 		text: sent,
 		kind: input.kind,
+		// Without the kernel's own rewrite of the new part, the words as said stand in for it.
+		...(input.continues === true
+			? {
+					continues: {
+						rest:
+							rest ??
+							prepareSentText({
+								state,
+								ref,
+								text: toolContext.utterance?.trim() || sent,
+								utterance: toolContext.utterance,
+								isOnlySend: true,
+							}),
+					},
+				}
+			: {}),
 		toolContext,
 	});
 
@@ -310,6 +331,17 @@ export const executeTool = async (
 			if (toolContext.utterance !== undefined && isAboutHandsFree(toolContext.utterance)) {
 				return fail(
 					'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
+				);
+			}
+
+			// "Stop the refactor and fix the login bug first" says what to do instead: a redirect,
+			// which Voice OS confirms before stopping anything.
+			if (
+				toolContext.utterance !== undefined &&
+				SAYS_WHAT_INSTEAD_PATTERN.test(toolContext.utterance)
+			) {
+				return fail(
+					'Not interrupted: they said what to do instead. Forward it with kind redirect: Voice OS asks them whether to stop the work and switch.',
 				);
 			}
 

@@ -15,7 +15,8 @@ export type StreamItem = { id: string; at: number } & (
 	| { kind: 'aside'; question: string; answer: string | null; status: AsideStatus }
 );
 
-export type AsideStatus = 'asking' | 'answered' | 'queued' | 'failed';
+// withdrawn: replaced by a continuation of the developer's words; it is never said or queued.
+export type AsideStatus = 'asking' | 'answered' | 'queued' | 'failed' | 'withdrawn';
 
 export interface Subagent {
 	taskId: string;
@@ -76,11 +77,18 @@ export type PendingAsk = { id: string; ref: string; at: number } & (
 	| { kind: 'plan'; input: Record<string, unknown>; plan: string }
 	// Voice OS's own: a /clear or /compact held until the developer says yes. The SDK knows nothing of it.
 	| { kind: 'command'; command: GuardedCommand; text: string }
+	// Voice OS's own: an instruction that would change a working session's course, held until the
+	// developer says whether to stop that work (target: the turn to stop) and switch to it.
+	| { kind: 'redirect'; text: string; note?: string; target: string | null }
 );
 
-export type SdkAsk = Exclude<PendingAsk, { kind: 'command' }>;
+export type HeldAsk = Extract<PendingAsk, { kind: 'command' | 'redirect' }>;
+export type SdkAsk = Exclude<PendingAsk, HeldAsk>;
 
-export const isSdkAsk = (ask: PendingAsk): ask is SdkAsk => ask.kind !== 'command';
+export const isHeldAsk = (ask: PendingAsk): ask is HeldAsk =>
+	ask.kind === 'command' || ask.kind === 'redirect';
+
+export const isSdkAsk = (ask: PendingAsk): ask is SdkAsk => !isHeldAsk(ask);
 
 // A held command lapses, so a stray "yes" much later clears nothing.
 export const COMMAND_TTL_MS = 2 * 60_000;
@@ -126,6 +134,10 @@ export interface Session {
 	reportOwed: boolean;
 	// The session's own spoken lines already said this turn, so none is said twice.
 	spokenInTurn: string[];
+	// Which message the running turn is working on: a continuation or a redirect replaces it.
+	currentSendId: string | null;
+	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
+	withdrawnAsides: string[];
 }
 
 export interface VoiceEntry {
@@ -221,6 +233,16 @@ export interface State {
 	devOffer: DevOffer | null;
 	// Per screen (a session ref, or GRID).
 	voiceLog: Record<string, VoiceEntry[]>;
+	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
+	// a continuation said soon after replaces them.
+	lastSpokenSend: LastSpokenSend | null;
+}
+
+export interface LastSpokenSend {
+	ref: string;
+	id: string;
+	text: string;
+	at: number;
 }
 
 export type PermissionDecision = 'allow' | 'always' | 'deny';
@@ -238,6 +260,10 @@ export type Action =
 			isSpoken?: boolean;
 			aside?: boolean;
 			ack?: SendAck;
+			// Set by the kernel: these words finish the developer's previous ones, which they replace;
+			// rest is what to send when those already ran their course.
+			// isAside: the new part alone would be asked aside (when the first half already ran).
+			continues?: { rest: string; isAside?: boolean };
 	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
@@ -250,6 +276,8 @@ export type Action =
 	  }
 	| { type: 'answer_plan'; askId: string; isApproved: boolean; message?: string }
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
+	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").
+	| { type: 'answer_redirect'; askId: string; isApproved: boolean; message?: string }
 	| { type: 'switch_view'; view: View }
 	| { type: 'start_session'; ref: string }
 	| { type: 'stop_session'; ref: string }

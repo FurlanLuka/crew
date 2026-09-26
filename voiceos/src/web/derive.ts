@@ -1,5 +1,5 @@
 import { stripStreamingTag } from '../shared/spoken-tags.js';
-import type { PendingAsk, Session, State } from '../shared/protocol.js';
+import { isHeldAsk, type PendingAsk, type Session, type State } from '../shared/protocol.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 
@@ -38,7 +38,7 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 		return { dot: 'blocked', label: 'plan', isAlarm: true };
 	}
 
-	if (sessionAsks.some((ask) => ask.kind === 'command')) {
+	if (sessionAsks.some(isHeldAsk)) {
 		return { dot: 'needs', label: 'confirm', isAlarm: true };
 	}
 
@@ -158,6 +158,8 @@ const describeAsk = (ask: PendingAsk): string => {
 			return 'has a plan to approve';
 		case 'command':
 			return `waits on your yes to /${ask.command}`;
+		case 'redirect':
+			return 'waits on your yes to switch';
 		case 'question':
 			return ask.questions[0]?.question ?? 'has a question';
 	}

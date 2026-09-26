@@ -7,6 +7,7 @@ const ASIDE_STATUS_TEXT = {
 	answered: 'aside',
 	queued: 'queued: needs its tools',
 	failed: 'could not answer aside: queued',
+	withdrawn: 'replaced by what you said next',
 } as const;
 
 interface StreamLineProps {

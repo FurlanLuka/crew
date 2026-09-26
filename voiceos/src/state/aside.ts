@@ -43,6 +43,15 @@ export const startAside = ({ state, ref, question, stamped }: StartAsideParams):
 	};
 };
 
+interface IsWithdrawnParams {
+	state: State;
+	ref: string;
+	itemId: string;
+}
+
+const isWithdrawn = ({ state, ref, itemId }: IsWithdrawnParams): boolean =>
+	state.sessions[ref]?.withdrawnAsides.includes(itemId) === true;
+
 export const isAsideInput = (input: Input): input is AsideSettledInput =>
 	input.type === 'aside_settled';
 
@@ -54,6 +63,11 @@ export const reduceAside = (
 	const { question } = input;
 
 	if (!state.sessions[input.ref]) {
+		return withoutEffects(state);
+	}
+
+	// Replaced by the developer's continuation: never said, never queued.
+	if (isWithdrawn({ state, ref: input.ref, itemId: input.itemId })) {
 		return withoutEffects(state);
 	}
 

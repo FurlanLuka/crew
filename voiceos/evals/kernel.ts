@@ -17,6 +17,8 @@ interface ExpectedCall {
 	text_includes?: string | string[];
 	// Relay words that must not be passed on ("ask it", "tell it").
 	not_includes?: string[];
+	// Arguments the call must not have with these values (a continuation flag on a new request).
+	not_input?: Record<string, unknown>;
 }
 
 interface Case {
@@ -120,6 +122,10 @@ const matchesCall = (call: Call, expected: ExpectedCall): boolean => {
 	}
 
 	if (Object.entries(expected.input ?? {}).some(([key, value]) => call.input[key] !== value)) {
+		return false;
+	}
+
+	if (Object.entries(expected.not_input ?? {}).some(([key, value]) => call.input[key] === value)) {
 		return false;
 	}
 

@@ -7,6 +7,7 @@ import { normalizeSaid } from '../state/helpers.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import { buildSituationNote } from '../sessions/voice-context.js';
 import { type ToolResult, fail, succeed } from './results.js';
+import type { SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
@@ -99,6 +100,8 @@ interface SendTextParams {
 	// The kernel's reading of the words: a question to a working session is answered aside.
 	kind: unknown;
 	toolContext: ToolContext;
+	// These words finish the developer's previous ones; rest is only the new part.
+	continues?: { rest: string };
 }
 
 const LEADING_ANSWER_PATTERN = /^\s*((?:yes|yeah|yep|sure|okay|ok|no|nope)\b[^.!?]*[.!?])\s*/i;
@@ -204,7 +207,17 @@ export const isMisroutedToSetup = ({
 	return !SETUP_ADDRESS_PATTERN.test(utterance) && !SETUP_WORK_PATTERN.test(utterance);
 };
 
-export const sendText = ({ state, ref, text, kind, toolContext }: SendTextParams): ToolResult => {
+const readKind = (kind: unknown): SendAck['kind'] =>
+	kind === 'question' || kind === 'redirect' ? kind : 'instruction';
+
+export const sendText = ({
+	state,
+	ref,
+	text,
+	kind,
+	continues,
+	toolContext,
+}: SendTextParams): ToolResult => {
 	const session = state.sessions[ref];
 
 	if (session && isDuplicateSend({ session, text })) {
@@ -213,17 +226,26 @@ export const sendText = ({ state, ref, text, kind, toolContext }: SendTextParams
 		return fail(`already sent to ${ref}; it is working on it: nothing was sent again`);
 	}
 
-	const delivery = session
-		? decideDelivery({
-				status: session.status,
-				kind: kind === 'question' ? 'question' : 'instruction',
-				utterance: toolContext.utterance ?? text,
-			})
-		: 'send';
+	const wouldGoAside =
+		session !== undefined &&
+		decideDelivery({
+			status: session.status,
+			kind: readKind(kind),
+			utterance: toolContext.utterance ?? text,
+		}) === 'aside';
+	// A continuation goes where its first half went (the reducer finds it), never aside on its own;
+	// if that half already ran, the new part goes as these words would have.
+	const delivery = wouldGoAside && !continues ? 'aside' : 'send';
 
 	if (delivery === 'aside') {
 		log.info('asked aside', { ref, chars: text.length });
-		toolContext.dispatch({ type: 'send', ref, text, aside: true });
+		toolContext.dispatch({
+			type: 'send',
+			ref,
+			text,
+			aside: true,
+			...(toolContext.isSpoken ? { isSpoken: true } : {}),
+		});
 
 		return {
 			...succeed(`asked ${ref} aside, beside its work: its answer is spoken when it comes`),
@@ -246,11 +268,19 @@ export const sendText = ({ state, ref, text, kind, toolContext }: SendTextParams
 	const note = session
 		? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
 		: undefined;
+
+	if (continues) {
+		log.info('continuation', { ref, chars: text.length });
+	}
+
 	toolContext.dispatch({
 		type: 'send',
 		ref,
 		text,
-		ack: { kind: kind === 'question' ? 'question' : 'instruction' },
+		ack: { kind: readKind(kind) },
+		...(continues
+			? { continues: { ...continues, ...(wouldGoAside ? { isAside: true } : {}) } }
+			: {}),
 		...(note ? { note } : {}),
 		...(toolContext.isSpoken ? { isSpoken: true } : {}),
 	});

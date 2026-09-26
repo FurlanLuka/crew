@@ -449,6 +449,169 @@ describe('forward', () => {
 		expect(hasHistory('store-front/main')).toBe(false);
 	});
 
+	it('a continuation → marked, with only the new part as rest; the words as said when the kernel gave none', async () => {
+		const { tools, actions } = createToolContext();
+		const forward = (input: Record<string, unknown>) =>
+			executeTool('forward', input, {
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: 'the checkout worker',
+			});
+
+		await forward({
+			text: 'Check the logs for the checkout worker.',
+			kind: 'instruction',
+			continues: true,
+			rest: 'The checkout worker.',
+		});
+		await forward({
+			text: 'Check the logs for the checkout worker.',
+			kind: 'question',
+			continues: true,
+		});
+
+		expect(actions.map((action) => (action.type === 'send' ? action.continues : null))).toEqual([
+			{ rest: 'The checkout worker.' },
+			{ rest: 'the checkout worker' },
+		]);
+		expect(actions.some((action) => action.type === 'send' && action.aside)).toBe(false);
+	});
+
+	it.each([
+		['Actually, stop the refactor and fix the login bug first.', false],
+		['Cancel that and do the seed script.', false],
+		['Stop.', true],
+		['Stop the tests.', true],
+		['Stop and wait.', true],
+		['Stop, first let me check.', true],
+		['Cancel that and hold on.', true],
+		['Stop and let me look at it.', true],
+		["Stop, I'll fix it myself instead.", true],
+	])('interrupt on %p → allowed: %p', async (utterance, isAllowed) => {
+		const { tools } = createToolContext();
+		const state = tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+		};
+
+		const result = await executeTool(
+			'interrupt',
+			{ ref: 'store-front/main' },
+			{ ...tools, screen: 'store-front/main', utterance },
+		);
+
+		expect(result.ok).toBe(isAllowed);
+	});
+
+	it('to a working session: a spoken question aside is marked spoken; a continuation is never aside', async () => {
+		const { tools, actions } = createToolContext();
+		const state = tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+		};
+		const context = { ...tools, forwardTo: 'store-front/main', isSpoken: true };
+
+		await executeTool('forward', { text: 'Which file?', kind: 'question' }, context);
+		await executeTool(
+			'forward',
+			{
+				text: 'Which file holds the retry?',
+				kind: 'question',
+				continues: true,
+				rest: 'Holds the retry?',
+			},
+			context,
+		);
+
+		expect(actions[0]).toMatchObject({ type: 'send', aside: true, isSpoken: true });
+		expect(actions[1]).toMatchObject({
+			type: 'send',
+			continues: { rest: 'Holds the retry?', isAside: true },
+		});
+		expect(actions[1]).not.toHaveProperty('aside');
+	});
+
+	it('a held switch: "choose" is refused; "no, do X" carries X', async () => {
+		const held: PendingAsk = {
+			id: 'r2',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'redirect',
+			text: 'Fix the login bug.',
+			target: 's1',
+		};
+		const choose = createToolContext({ asks: [held] });
+		const no = createToolContext({ asks: [held] });
+
+		const refused = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'choose', text: 'x' },
+			{ ...choose.tools, asks: [held] },
+		);
+		await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'no', text: 'Do the seed script.' },
+			{ ...no.tools, asks: [held] },
+		);
+
+		expect(refused.ok).toBe(false);
+		expect(no.actions).toEqual([
+			{ type: 'answer_redirect', askId: 'r2', isApproved: false, message: 'Do the seed script.' },
+		]);
+		expect(
+			describeSession({
+				state: createToolContext({ asks: [held] }).tools.getState(),
+				ref: 'store-front/main',
+				isDetailed: false,
+				now: 0,
+			}).pending,
+		).toEqual({ kind: 'confirm', switch_to: 'Fix the login bug.' });
+	});
+
+	it('a redirect → its kind reaches the reducer', async () => {
+		const { tools, actions } = createToolContext();
+
+		await executeTool(
+			'forward',
+			{ text: 'Stop that and fix the login bug.', kind: 'redirect' },
+			{ ...tools, forwardTo: 'store-front/main' },
+		);
+
+		expect(actions[0]).toMatchObject({ type: 'send', ack: { kind: 'redirect' } });
+	});
+
+	it('a held switch: a plain yes (with words joined) switches; "yes but wait" does not', async () => {
+		const held: PendingAsk = {
+			id: 'r1',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'redirect',
+			text: 'Fix the login bug.',
+			target: 's1',
+		};
+		const yes = createToolContext({ asks: [held] });
+		const hedged = createToolContext({ asks: [held] });
+
+		await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'yes', text: 'And use staging.' },
+			{ ...yes.tools, asks: [held], utterance: 'Yes, and use staging.' },
+		);
+		const refused = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'yes', text: '' },
+			{ ...hedged.tools, asks: [held], utterance: 'Yes but wait a second.' },
+		);
+
+		expect(yes.actions).toEqual([
+			{ type: 'answer_redirect', askId: 'r1', isApproved: true, message: 'And use staging.' },
+		]);
+		expect(refused.ok).toBe(false);
+		expect(hedged.actions).toEqual([]);
+	});
+
 	it('an instruction or a question → its kind on the send, for the reducer to act on', async () => {
 		const { tools, actions } = createToolContext();
 		const forward = (input: Record<string, unknown>) =>

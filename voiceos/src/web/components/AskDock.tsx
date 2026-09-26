@@ -115,5 +115,31 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 		);
 	}
 
+	if (ask.kind === 'redirect') {
+		return (
+			<section className="dock crit" aria-label="switch">
+				<span className="lbl c-crit">switch · {label}</span>
+				<div className="ask">Stop what {label} is doing and switch to this?</div>
+				<div className="cmd">{ask.text}</div>
+				<div className="btns">
+					<button
+						type="button"
+						className="btn primary"
+						onClick={() => dispatch({ type: 'answer_redirect', askId: ask.id, isApproved: true })}
+					>
+						Switch · “yes”
+					</button>
+					<button
+						type="button"
+						className="btn"
+						onClick={() => dispatch({ type: 'answer_redirect', askId: ask.id, isApproved: false })}
+					>
+						After · “no”
+					</button>
+				</div>
+			</section>
+		);
+	}
+
 	return <QuestionDock ask={ask} label={label} dispatch={dispatch} />;
 };

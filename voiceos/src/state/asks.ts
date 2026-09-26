@@ -12,6 +12,7 @@ import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
 import { readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
+import { findRedirectAsk, releaseRedirect } from './redirect.js';
 
 const ASK_INPUTS = [
 	'answer_permission',
@@ -105,6 +106,8 @@ export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 			return describeCommandAloud(ask.command, label);
 		case 'question':
 			return describeQuestionAloud(ask, label);
+		case 'redirect':
+			return `${label} is waiting to hear whether to switch: say yes, or it goes after.`;
 	}
 };
 
@@ -306,9 +309,22 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				return withoutEffects(state);
 			}
 
-			// A "yes" said next would be meant for this ask: a /clear still held must not take it.
+			// A "yes" said next would be meant for this ask: a /clear still held must not take it, and a
+			// held switch goes after the current work (said so) rather than wait behind it.
 			const heldCommand = findCommandAsk(state, ask.ref);
-			const cleared = heldCommand ? cancelCommand({ state, ask: heldCommand, stamped }) : state;
+			const heldRedirect = findRedirectAsk(state, ask.ref);
+			const withoutCommand = heldCommand
+				? cancelCommand({ state, ask: heldCommand, stamped })
+				: state;
+			const released = heldRedirect
+				? releaseRedirect({
+						state: withoutCommand,
+						ask: heldRedirect,
+						stamped: { ...stamped, id: `${stamped.id}:kept` },
+						isAnnounced: true,
+					})
+				: { state: withoutCommand, effects: [] };
+			const cleared = released.state;
 			const next = updateSession(
 				{ ...cleared, asks: [...cleared.asks, ask] },
 				ask.ref,
@@ -328,6 +344,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						ref: ask.ref,
 						isAsking: true,
 					},
+					...released.effects,
 				],
 			};
 		}

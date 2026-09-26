@@ -60,6 +60,9 @@ const describePending = (ask: PendingAsk): Record<string, unknown> => {
 		case 'command':
 			// Voice OS asked "say yes to confirm": the developer's yes or no answers it.
 			return { kind: 'confirm', command: `/${ask.command}` };
+		case 'redirect':
+			// Voice OS asked "stop it and switch?": the developer's yes or no answers it.
+			return { kind: 'confirm', switch_to: ask.text };
 		case 'question': {
 			// The one asked now: several questions are answered one at a time.
 			const open = findOpenQuestion(ask);

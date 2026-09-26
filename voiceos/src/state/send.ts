@@ -5,10 +5,12 @@ import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
 import { decideAck, deliverSend, NO_ACK } from './delivery.js';
 import { pushNotice, updateSession, withoutEffects } from './helpers.js';
+import { findRedirectAsk, releaseRedirect } from './redirect.js';
+import { continueFirstHalf } from './continuation.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
 
-export const reduceSend = (state: State, input: SendInput, stamped: Stamped): ReducerResult => {
+const deliverWords = (state: State, input: SendInput, stamped: Stamped): ReducerResult => {
 	const session = state.sessions[input.ref];
 	const text = input.text.trim();
 
@@ -34,7 +36,19 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 			);
 		}
 
-		return holdCommand({ state: focusedState, ref: input.ref, command, text, stamped });
+		// One held yes/no per session: a waiting switch is kept (queued) before the command is held.
+		const redirectAsk = findRedirectAsk(focusedState, input.ref);
+		const released = redirectAsk
+			? releaseRedirect({
+					state: focusedState,
+					ask: redirectAsk,
+					stamped: { ...stamped, id: `${stamped.id}:kept` },
+					isAnnounced: false,
+				})
+			: { state: focusedState, effects: [] };
+		const held = holdCommand({ state: released.state, ref: input.ref, command, text, stamped });
+
+		return { state: held.state, effects: [...released.effects, ...held.effects] };
 	}
 
 	// A question about what it waits on ("why step 3?") is answered aside: the plan keeps waiting.
@@ -59,11 +73,22 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 		};
 	}
 
-	// Anything else said while a command waits means the developer moved on from it.
+	// Anything else said while a command or a switch waits means the developer moved on from it:
+	// the command is dropped, the switch kept for after the current work (it holds their words).
 	const commandAsk = findCommandAsk(state, input.ref);
-	const current = commandAsk
+	const redirectAsk = findRedirectAsk(state, input.ref);
+	const withoutCommand = commandAsk
 		? cancelCommand({ state: focusedState, ask: commandAsk, stamped })
 		: focusedState;
+	const released = redirectAsk
+		? releaseRedirect({
+				state: withoutCommand,
+				ask: redirectAsk,
+				stamped: { ...stamped, id: `${stamped.id}:kept` },
+				isAnnounced: false,
+			})
+		: { state: withoutCommand, effects: [] };
+	const current = released.state;
 
 	// Checked again here: the session may have finished while the kernel was deciding.
 	if (input.aside && session.status === 'running') {
@@ -72,7 +97,7 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 			: startAside({ state: current, ref: input.ref, question: text, stamped });
 	}
 
-	return deliverSend({
+	const delivered = deliverSend({
 		state: current,
 		ref: input.ref,
 		text,
@@ -81,4 +106,87 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 		stamped,
 		ack: input.ack,
 	});
+
+	return { state: delivered.state, effects: [...released.effects, ...delivered.effects] };
+};
+
+interface FindCarrierIdParams {
+	state: State;
+	ref: string;
+	stamped: Stamped;
+	text: string;
+}
+
+const findCarrierId = ({ state, ref, stamped, text }: FindCarrierIdParams): string | null => {
+	// What now carries the words just said: a queued message, the running turn, an aside, a held
+	// switch — or the follow-up they were merged into.
+	const session = state.sessions[ref];
+
+	if (!session) {
+		return null;
+	}
+
+	const isHere =
+		session.queue.some((message) => message.id === stamped.id) ||
+		session.currentSendId === stamped.id ||
+		session.stream.some((item) => item.id === stamped.id && item.kind === 'aside') ||
+		state.asks.some((ask) => ask.id === stamped.id && ask.kind === 'redirect');
+
+	if (isHere) {
+		return stamped.id;
+	}
+
+	const head = session.queue[0];
+
+	return head?.isFollowUp && head.text.trimEnd().endsWith(text) ? head.id : null;
+};
+
+const rememberSpoken = (
+	result: ReducerResult,
+	input: SendInput,
+	stamped: Stamped,
+): ReducerResult => {
+	// Anything else the words became (an answer, a held command) is not replaceable: forgotten.
+	const text = input.text.trim();
+	const carrierId = findCarrierId({ state: result.state, ref: input.ref, stamped, text });
+
+	return {
+		...result,
+		state: {
+			...result.state,
+			lastSpokenSend: carrierId ? { ref: input.ref, id: carrierId, text, at: stamped.at } : null,
+		},
+	};
+};
+
+export const reduceSend = (state: State, input: SendInput, stamped: Stamped): ReducerResult => {
+	if (!input.isSpoken) {
+		return deliverWords(state, input, stamped);
+	}
+
+	if (input.continues) {
+		const continued = continueFirstHalf({ ...state, focus: input.ref }, input, stamped);
+
+		if (continued) {
+			return continued;
+		}
+
+		// The first half already ran its course: only the new words go, as any words would.
+		const rest = input.continues.rest.trim();
+
+		return rest
+			? reduceSend(
+					state,
+					{
+						...input,
+						text: rest,
+						continues: undefined,
+						...(input.continues.isAside ? { aside: true } : {}),
+					},
+					stamped,
+				)
+			: withoutEffects(state);
+	}
+
+	return rememberSpoken(deliverWords(state, input, stamped), input, stamped);
 };

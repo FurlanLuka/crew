@@ -239,6 +239,7 @@ describe('parseClientMessage', () => {
 			answers: { 'Which table?': 'New table' },
 		},
 		answer_command: { type: 'answer_command', askId: 'a1', isApproved: true },
+		answer_redirect: { type: 'answer_redirect', askId: 'a1', isApproved: false, message: 'do X' },
 		answer_plan: {
 			type: 'answer_plan',
 			askId: 'a1',

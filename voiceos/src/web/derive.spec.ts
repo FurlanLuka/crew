@@ -63,6 +63,12 @@ describe('describeSessionBadge', () => {
 				{ id: 'c', ref: 'store/main', at: 1, kind: 'command', command: 'clear', text: '/clear' },
 			]),
 		).toEqual({ dot: 'needs', label: 'confirm', isAlarm: true }));
+	it('a held switch → confirm', () =>
+		expect(
+			describeSessionBadge(createTestSession({ status: 'running' }), [
+				{ id: 'r', ref: 'store/main', at: 1, kind: 'redirect', text: 'fix login', target: 's1' },
+			]),
+		).toEqual({ dot: 'needs', label: 'confirm', isAlarm: true }));
 	it('another session’s ask does not flag this one', () =>
 		expect(
 			describeSessionBadge(createTestSession({ status: 'idle' }), [createTestAsk('a', 'other/x')])

@@ -2615,6 +2615,288 @@
 					"text_includes": ["not|don", "migration", "seed"]
 				}
 			]
+		},
+		{
+			"id": "continues-cut-request",
+			"utterance": "the checkout worker from this morning.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Check the logs for the timeout errors in",
+						"reply": "",
+						"did": ["forward \"Check the logs for the timeout errors in\""],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"continues": true
+					},
+					"text_includes": ["timeout", "checkout"]
+				}
+			]
+		},
+		{
+			"id": "continues-cut-aside",
+			"utterance": "slow on the checkout worker?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "By the way, why are the retries so",
+						"reply": "",
+						"did": ["forward \"Why are the retries so\" (aside)"],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"continues": true
+					},
+					"text_includes": ["retr", "slow"]
+				}
+			]
+		},
+		{
+			"id": "continues-not-new-question",
+			"utterance": "What's the branch name?",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Run the tests.",
+						"reply": "",
+						"did": ["forward \"Run the tests.\""],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"not_input": {
+						"continues": true
+					},
+					"text_includes": ["branch"]
+				}
+			]
+		},
+		{
+			"id": "continues-not-added-task",
+			"utterance": "Also run the linter.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Run the tests.",
+						"reply": "",
+						"did": ["forward \"Run the tests.\""],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"not_input": {
+						"continues": true
+					},
+					"text_includes": ["lint"]
+				}
+			]
+		},
+		{
+			"id": "redirect-stop-and-switch",
+			"utterance": "Actually, stop the refactor and fix the login bug first.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "redirect"
+					},
+					"text_includes": ["login"]
+				}
+			]
+		},
+		{
+			"id": "redirect-instead",
+			"utterance": "Don't do the migration, do the seed script instead.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the migration on staging.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "redirect"
+					},
+					"text_includes": ["seed"]
+				}
+			]
+		},
+		{
+			"id": "redirect-not-added-task",
+			"utterance": "Also run the linter when you're done.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "instruction"
+					},
+					"text_includes": ["lint"]
+				}
+			]
+		},
+		{
+			"id": "redirect-not-question",
+			"utterance": "Which file are you changing?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "question"
+					},
+					"text_includes": ["file"]
+				}
+			]
+		},
+		{
+			"id": "redirect-held-yes",
+			"utterance": "Yes, switch.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "redirect",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				],
+				"alert": {
+					"text": "store front, main is still on refactor the router. Stop it and switch? Say yes, or it goes after.",
+					"secondsAgo": 5,
+					"ref": "store-front/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "redirect-held-no",
+			"utterance": "No, finish that first.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "redirect",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				],
+				"alert": {
+					"text": "store front, main is still on refactor the router. Stop it and switch? Say yes, or it goes after.",
+					"secondsAgo": 5,
+					"ref": "store-front/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "redirect-held-bare-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "redirect",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				],
+				"alert": {
+					"text": "store front, main is still on refactor the router. Stop it and switch? Say yes, or it goes after.",
+					"secondsAgo": 5,
+					"ref": "store-front/main"
+				}
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
 		}
 	]
 }

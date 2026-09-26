@@ -73,6 +73,8 @@ export interface SendNowParams {
 	at: number;
 	// An instruction: this turn's end is reported aloud.
 	reportOwed?: boolean;
+	// Which message this turn works on (its queue id, or the send's id when sent at once).
+	sendId?: string;
 }
 
 export const sendNow = ({
@@ -84,6 +86,7 @@ export const sendNow = ({
 	itemId,
 	at,
 	reportOwed = false,
+	sendId,
 }: SendNowParams): ReducerResult => {
 	// The note goes to the worker only: the stream records what the developer said.
 	const next = updateSession(state, ref, (session) =>
@@ -96,6 +99,7 @@ export const sendNow = ({
 				isFresh: false,
 				reportOwed,
 				spokenInTurn: [],
+				currentSendId: sendId ?? itemId,
 				requests: [...session.requests, { text: truncateText(text, MAX_REQUEST_CHARS), at }].slice(
 					-REQUESTS_KEPT,
 				),
@@ -138,6 +142,7 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		note: head.note,
 		isSpoken: head.isFollowUp === true || head.isSpoken === true,
 		reportOwed: head.reportOwed === true,
+		sendId: head.id,
 		itemId: `${stamped.id}:q`,
 		at: stamped.at,
 	});

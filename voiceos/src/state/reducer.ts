@@ -1,6 +1,7 @@
 import {
 	GRID,
 	VOICE_LOG_ENTRIES_KEPT,
+	type PendingAsk,
 	type Session,
 	type Stamped,
 	type State,
@@ -10,6 +11,7 @@ import {
 import { isAskInput, reduceAsk, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
+import { findRedirectAsk, isRedirectInput, queueHeldRedirect, reduceRedirect } from './redirect.js';
 import { isSubagentInput, reduceSubagent } from './subagents.js';
 import { isDevInput, reduceDev } from './dev.js';
 import {
@@ -103,6 +105,7 @@ export const createInitialState = (): State => ({
 	devStarting: [],
 	devOffer: null,
 	voiceLog: {},
+	lastSpokenSend: null,
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -123,6 +126,8 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	subagents: [],
 	reportOwed: false,
 	spokenInTurn: [],
+	currentSendId: null,
+	withdrawnAsides: [],
 });
 
 const describeUnfinished = (ref: string): Effect => ({
@@ -134,6 +139,15 @@ const describeUnfinished = (ref: string): Effect => ({
 	priority: 'high',
 	isOwed: true,
 });
+
+const findAskKind = (state: State, askId: string): PendingAsk['kind'] | null =>
+	state.asks.find((ask) => ask.id === askId)?.kind ?? null;
+
+const moveHeldRedirectAhead = (state: State, ref: string, stamped: Stamped): State => {
+	const ask = findRedirectAsk(state, ref);
+
+	return ask ? queueHeldRedirect({ state, ask, at: stamped.at, isFirst: true }) : state;
+};
 
 const MAX_LOGGED_CHARS = 500;
 
@@ -194,17 +208,28 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
+	// Answering what a session asks is not a message a continuation could extend.
+	const answered = input.type.startsWith('answer_') ? { ...state, lastSpokenSend: null } : state;
 
 	if (isAskInput(input)) {
-		return reduceAsk(state, input, stamped);
+		return reduceAsk(answered, input, stamped);
 	}
 
 	if (isDevInput(input)) {
 		return reduceDev(state, input, stamped);
 	}
 
+	if (isRedirectInput(input)) {
+		return reduceRedirect(answered, input, stamped);
+	}
+
+	// A held switch lapses on the same timer as a held command.
+	if (input.type === 'command_expired' && findAskKind(state, input.askId) === 'redirect') {
+		return reduceRedirect(state, input, stamped);
+	}
+
 	if (isCommandInput(input)) {
-		return reduceCommand(state, input, stamped);
+		return reduceCommand(answered, input, stamped);
 	}
 
 	if (isAsideInput(input)) {
@@ -266,6 +291,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					draft: '',
 					voiceTurnAt: null,
 					reportOwed: false,
+					currentSendId: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_stop', ref: input.ref }],
 			};
@@ -287,6 +313,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					voiceTurnAt: null,
 					// The developer stopped the work: there is nothing to report.
 					reportOwed: false,
+					currentSendId: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
 			};
@@ -445,16 +472,21 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceTurnAt: null,
 				reportOwed: false,
 				spokenInTurn: [],
+				currentSendId: null,
 				costUsd: current.costUsd + input.costUsd,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
 			}));
-			const dispatched = dispatchQueueHead(ended, input.ref, stamped);
+			// The work a held switch asked about is over: what it wanted goes next, ahead of the queue.
+			const switched = moveHeldRedirectAhead(ended, input.ref, stamped);
+			const dispatched = dispatchQueueHead(switched, input.ref, stamped);
 
 			return { state: dispatched.state, effects: [...effects, ...dispatched.effects] };
 		}
 
 		case 'worker_exited': {
+			// A held switch keeps its words: queued for the next start, not dropped with the asks.
+			const heldRedirect = findRedirectAsk(state, input.ref);
 			const settled = { ...state, asks: state.asks.filter((ask) => ask.ref !== input.ref) };
 			const owed = state.sessions[input.ref]?.reportOwed;
 			const stopped = updateSession(settled, input.ref, (session) => ({
@@ -466,12 +498,16 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				queue: input.error ? session.queue : [],
 				subagents: [],
 				reportOwed: false,
+				currentSendId: null,
 			}));
+			const kept = heldRedirect
+				? queueHeldRedirect({ state: stopped, ask: heldRedirect, at: stamped.at, isFirst: false })
+				: stopped;
 
 			// A report was owed: a crash before it is the report.
 			return input.error && owed
-				? { state: stopped, effects: [describeUnfinished(input.ref)] }
-				: withoutEffects(stopped);
+				? { state: kept, effects: [describeUnfinished(input.ref)] }
+				: withoutEffects(kept);
 		}
 
 		case 'limits':

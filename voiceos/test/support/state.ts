@@ -29,7 +29,7 @@ export interface FixtureContext {
 	view?: string;
 	// Whose it is by default: permission on wrk1, the others on store-front/main.
 	// command: a /clear Voice OS holds until the developer says yes.
-	ask?: 'permission' | 'question' | 'plan' | 'command';
+	ask?: 'permission' | 'question' | 'plan' | 'command' | 'redirect';
 	askOn?: string;
 	// A second permission, on that ref.
 	alsoAsk?: string;
@@ -116,6 +116,18 @@ const listPendingAsks = (context: FixtureContext, at: number): PendingAsk[] => {
 			kind: 'command',
 			command: 'clear',
 			text: '/clear',
+		});
+	}
+
+	// redirect: Voice OS asked whether to stop the running work and switch to this.
+	if (context.ask === 'redirect') {
+		asks.push({
+			id: 'ask-1',
+			ref: context.askOn ?? 'store-front/main',
+			at,
+			kind: 'redirect',
+			text: 'Fix the login bug first.',
+			target: null,
 		});
 	}
 
