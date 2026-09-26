@@ -1,6 +1,6 @@
 import type { PendingAsk, Question } from '../shared/protocol.js';
 import type { AskResult } from '../state/reducer.js';
-import { summarizeTool } from './events.js';
+import { summarizeTool } from './tool-summary.js';
 
 interface PendingAnswer {
 	ref: string;

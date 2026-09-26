@@ -14,7 +14,7 @@ import { useSpeechPlayer } from './use-speech-player.js';
 
 const App = () => {
 	const player = useSpeechPlayer();
-	const { state, status, send, dispatch, sendBinary, listenOff } = useConnection((message) =>
+	const { state, status, send, dispatch, sendBinary, handsFreeCommand } = useConnection((message) =>
 		player.receive(message),
 	);
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
@@ -77,7 +77,7 @@ const App = () => {
 			<BottomBar
 				state={state}
 				isConnected={status === 'open'}
-				listenOff={listenOff}
+				handsFreeCommand={handsFreeCommand}
 				send={send}
 				sendBinary={sendBinary}
 				player={player}

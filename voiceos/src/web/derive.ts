@@ -1,5 +1,6 @@
 import type { PendingAsk, Session, State } from '../shared/protocol.js';
 import { describeWork } from '../state/working.js';
+import { stripMarkdown } from './markdown.js';
 
 export interface Badge {
 	dot: string;
@@ -36,6 +37,10 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 		return { dot: 'blocked', label: 'plan', isAlarm: true };
 	}
 
+	if (sessionAsks.some((ask) => ask.kind === 'command')) {
+		return { dot: 'needs', label: 'confirm', isAlarm: true };
+	}
+
 	if (session.needsUser) {
 		return { dot: 'needs', label: 'asked you', isAlarm: true };
 	}
@@ -60,7 +65,7 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 
 export const readLastLine = (session: Session): string => {
 	if (session.draft.trim()) {
-		return session.draft.trim();
+		return stripMarkdown(session.draft);
 	}
 
 	for (let i = session.stream.length - 1; i >= 0; i--) {
@@ -71,7 +76,7 @@ export const readLastLine = (session: Session): string => {
 		}
 
 		if (item.kind === 'text') {
-			return item.text;
+			return stripMarkdown(item.text);
 		}
 
 		if (item.kind === 'tool') {
@@ -136,21 +141,23 @@ export const formatDidLine = (did: string): string => {
 		dev_offer: `${rest[0] === 'accepted' ? 'accepted' : 'declined'} the fix offer`,
 		allow_denied: `allowed ${tail} once`,
 		debug_note: `noted for debugging ${tail}`,
+		hands_free: `turned hands-free ${tail}`,
 	};
 
 	return `${readableByName[name] ?? line}${isFailed ? ' — failed' : ''}`;
 };
 
 const describeAsk = (ask: PendingAsk): string => {
-	if (ask.kind === 'permission') {
-		return `wants to ${ask.summary}`;
+	switch (ask.kind) {
+		case 'permission':
+			return `wants to ${ask.summary}`;
+		case 'plan':
+			return 'has a plan to approve';
+		case 'command':
+			return `waits on your yes to /${ask.command}`;
+		case 'question':
+			return ask.questions[0]?.question ?? 'has a question';
 	}
-
-	if (ask.kind === 'plan') {
-		return 'has a plan to approve';
-	}
-
-	return ask.questions[0]?.question ?? 'has a question';
 };
 
 export const listOtherSessions = (

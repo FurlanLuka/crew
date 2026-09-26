@@ -292,7 +292,12 @@ export const runKernelEval = async ({
 				},
 			});
 			const result = await attempt(() =>
-				kernel.handle(testCase.utterance, { forwardTo: screen, screen, isSpoken: true }),
+				kernel.handle(testCase.utterance, {
+					forwardTo: screen,
+					screen,
+					isSpoken: true,
+					setHandsFree: () => 'changed',
+				}),
 			);
 
 			if (!result.ok) {

@@ -3,14 +3,14 @@ import type { ClientMessage, State } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { Mic, isMicAllowed } from '../audio.js';
 import { PRE_ROLL_MS } from '../ptt.js';
-import type { ListenOff, MicStatus } from '../types.js';
+import type { HandsFreeCommand, MicStatus } from '../types.js';
 import { useHandsFree } from '../use-hands-free.js';
 import type { PcmPlayer } from '../use-speech-player.js';
 
 interface BottomBarProps {
 	state: State;
 	isConnected: boolean;
-	listenOff: ListenOff | null;
+	handsFreeCommand: HandsFreeCommand | null;
 	send: (message: ClientMessage) => void;
 	sendBinary: (chunk: ArrayBuffer) => void;
 	player: PcmPlayer;
@@ -24,7 +24,7 @@ const isTypingInField = (event: KeyboardEvent) =>
 export const BottomBar = ({
 	state,
 	isConnected,
-	listenOff,
+	handsFreeCommand,
 	send,
 	sendBinary,
 	player,
@@ -59,7 +59,7 @@ export const BottomBar = ({
 
 	const { handsFree, handsFreeRef, toggleHandsFree } = useHandsFree({
 		isConnected,
-		listenOff,
+		handsFreeCommand,
 		getMic,
 		send,
 		onMicStatusChange,

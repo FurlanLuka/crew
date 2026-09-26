@@ -51,22 +51,25 @@ const listRecentLines = (state: State, ref: string, count: number): string[] => 
 };
 
 const describePending = (ask: PendingAsk): Record<string, unknown> => {
-	if (ask.kind === 'permission') {
-		return { kind: 'permission', summary: ask.summary };
+	switch (ask.kind) {
+		case 'permission':
+			return { kind: 'permission', summary: ask.summary };
+		case 'plan':
+			return { kind: 'plan' };
+		case 'command':
+			// Voice OS asked "say yes to confirm": the developer's yes or no answers it.
+			return { kind: 'confirm', command: `/${ask.command}` };
+		case 'question': {
+			const firstQuestion = ask.questions[0];
+
+			return {
+				kind: 'question',
+				question: firstQuestion?.question ?? '',
+				options: firstQuestion?.options.map((option) => option.label) ?? [],
+				...(ask.questions.length > 1 ? { more_questions: ask.questions.length - 1 } : {}),
+			};
+		}
 	}
-
-	if (ask.kind === 'plan') {
-		return { kind: 'plan' };
-	}
-
-	const firstQuestion = ask.questions[0];
-
-	return {
-		kind: 'question',
-		question: firstQuestion?.question ?? '',
-		options: firstQuestion?.options.map((option) => option.label) ?? [],
-		...(ask.questions.length > 1 ? { more_questions: ask.questions.length - 1 } : {}),
-	};
 };
 
 export const findLatestDenial = (state: State, ref: string): Denial | undefined => {

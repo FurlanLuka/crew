@@ -57,6 +57,12 @@ describe('describeSessionBadge', () => {
 		expect(
 			describeSessionBadge(createTestSession({ status: 'stopped', error: 'boom' }), []).label,
 		).toBe('crashed'));
+	it('a held /clear → confirm', () =>
+		expect(
+			describeSessionBadge(createTestSession({ status: 'idle' }), [
+				{ id: 'c', ref: 'store/main', at: 1, kind: 'command', command: 'clear', text: '/clear' },
+			]),
+		).toEqual({ dot: 'needs', label: 'confirm', isAlarm: true }));
 	it('another session’s ask does not flag this one', () =>
 		expect(
 			describeSessionBadge(createTestSession({ status: 'idle' }), [createTestAsk('a', 'other/x')])
@@ -67,6 +73,14 @@ describe('describeSessionBadge', () => {
 describe('readLastLine', () => {
 	it('streaming draft wins', () =>
 		expect(readLastLine(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
+	it('a Markdown reply → its words, without the signs', () =>
+		expect(
+			readLastLine(
+				createTestSession({
+					stream: [{ id: 't', at: 1, kind: 'text', text: '## Done\n**Tests pass.**' }],
+				}),
+			),
+		).toBe('Done\nTests pass.'));
 	it('never started → start hint names the session', () =>
 		expect(readLastLine(createTestSession())).toContain('start store/main'));
 });

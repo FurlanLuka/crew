@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { PendingAsk } from '../shared/protocol.js';
-import { buildAnswerActions, isConsent } from './answer.js';
+import { buildAnswerActions } from './answer.js';
+import { isConsent, isPlainConsent } from './consent.js';
 
 const permission: PendingAsk = {
 	id: 'p1',
@@ -20,6 +21,15 @@ const plan: PendingAsk = {
 	kind: 'plan',
 	input: {},
 	plan: 'do things',
+};
+
+const command: PendingAsk = {
+	id: 'c1',
+	ref: 'x/main',
+	at: 1,
+	kind: 'command',
+	command: 'clear',
+	text: '/clear',
 };
 
 const createQuestion = (count = 1): PendingAsk => ({
@@ -160,4 +170,36 @@ describe('isConsent', () => {
 		'What does it want to push?',
 		'Yesterday it failed.',
 	])('%p → no yes', (utterance) => expect(isConsent(utterance)).toBe(false));
+});
+
+describe('isPlainConsent', () => {
+	it.each(['Yes.', 'Yeah, do it.', 'Go ahead.', 'Okay, clear it.'])('%p → a yes', (utterance) =>
+		expect(isPlainConsent(utterance)).toBe(true),
+	);
+
+	it.each([
+		"Don't do it.",
+		'No, not okay.',
+		'Yes? No wait.',
+		'Never mind, do it later.',
+		'Cancel.',
+		'What does clear do?',
+	])('%p → no yes', (utterance) => expect(isPlainConsent(utterance)).toBe(false));
+});
+
+describe('buildAnswerActions: a held /clear', () => {
+	it('yes → approved', () =>
+		expect(buildAnswerActions({ ask: command, decision: 'yes', text: '' })).toEqual({
+			ok: true,
+			actions: [{ type: 'answer_command', askId: 'c1', isApproved: true }],
+		}));
+
+	it('no → declined', () =>
+		expect(buildAnswerActions({ ask: command, decision: 'no', text: '' })).toEqual({
+			ok: true,
+			actions: [{ type: 'answer_command', askId: 'c1', isApproved: false }],
+		}));
+
+	it('choose → refused', () =>
+		expect(buildAnswerActions({ ask: command, decision: 'choose', text: 'x' }).ok).toBe(false));
 });

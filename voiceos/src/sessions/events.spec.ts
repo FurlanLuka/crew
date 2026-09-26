@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { mapMessage, summarizeTool, type MapContext } from './events.js';
+import { createMapContext as createContextFor, mapMessage } from './events.js';
+import { summarizeTool } from './tool-summary.js';
 
-const createMapContext = (): MapContext => ({
-	ref: 'store/main',
-	toolSummaries: new Map(),
-	limits: { fiveHour: null, sevenDay: null, resetsAt: null },
-});
+const createMapContext = () => createContextFor('store/main');
 
 describe('summarizeTool', () => {
 	it('Bash → run + command', () =>
@@ -70,13 +67,13 @@ describe('mapMessage', () => {
 		expect(mapContext.toolSummaries.get('t1')).toBe('run npm test');
 	});
 
-	it('subagent traffic → dropped', () => {
+	it('traffic from an unknown sub-agent → dropped', () => {
 		expect(
 			mapMessage(
 				{
 					type: 'assistant',
 					parent_tool_use_id: 'x',
-					message: { content: [{ type: 'text', text: 'inner' }] },
+					message: { content: [{ type: 'tool_use', id: 'i', name: 'Read', input: {} }] },
 				},
 				createMapContext(),
 			),
@@ -162,5 +159,220 @@ describe('mapMessage', () => {
 	it('init and hook messages → no observations', () => {
 		expect(mapMessage({ type: 'system', subtype: 'init' }, createMapContext())).toEqual([]);
 		expect(mapMessage({ type: 'system', subtype: 'hook_started' }, createMapContext())).toEqual([]);
+	});
+});
+
+describe('sub-agents', () => {
+	const ref = 'store/main';
+	const taskStarted = (overrides: Record<string, unknown> = {}) => ({
+		type: 'system',
+		subtype: 'task_started',
+		task_id: 'task1',
+		tool_use_id: 'toolu_agent',
+		task_type: 'local_agent',
+		subagent_type: 'Explore',
+		description: 'Find the router',
+		...overrides,
+	});
+
+	const startedContext = () => {
+		const mapContext = createMapContext();
+
+		mapMessage(taskStarted(), mapContext);
+
+		return mapContext;
+	};
+
+	it('an agent task starts → a row with its type and description', () => {
+		expect(mapMessage(taskStarted({ is_backgrounded: true }), createMapContext())).toEqual([
+			{
+				type: 'subagent_started',
+				ref,
+				taskId: 'task1',
+				agentType: 'Explore',
+				description: 'Find the router',
+				isBackground: true,
+			},
+		]);
+	});
+
+	it.each([
+		['a background shell', { task_type: 'local_bash' }],
+		['an ambient task', { ambient: true }],
+		['a housekeeping task', { skip_transcript: true }],
+	])('%s → no row', (_, overrides) =>
+		expect(mapMessage(taskStarted(overrides), createMapContext())).toEqual([]),
+	);
+
+	it('its tool calls → the last one becomes its step; no parent tool line, no summary kept', () => {
+		const mapContext = startedContext();
+		const observations = mapMessage(
+			{
+				type: 'assistant',
+				parent_tool_use_id: 'toolu_agent',
+				message: {
+					content: [
+						{ type: 'text', text: 'Looking.' },
+						{ type: 'tool_use', id: 'a', name: 'Grep', input: { pattern: 'route' } },
+						{ type: 'tool_use', id: 'b', name: 'Read', input: { file_path: '/w/src/router.ts' } },
+					],
+				},
+			},
+			mapContext,
+			'/w',
+		);
+
+		expect(observations).toEqual([
+			{ type: 'subagent_step', ref, taskId: 'task1', step: 'read src/router.ts' },
+		]);
+		expect(mapContext.toolSummaries.size).toBe(0);
+	});
+
+	it('its text, results and stream deltas → dropped', () => {
+		const mapContext = startedContext();
+
+		for (const message of [
+			{
+				type: 'assistant',
+				parent_tool_use_id: 'toolu_agent',
+				message: { content: [{ type: 'text', text: 'inner' }] },
+			},
+			{
+				type: 'user',
+				parent_tool_use_id: 'toolu_agent',
+				message: { content: [{ type: 'tool_result', content: 'x' }] },
+			},
+			{
+				type: 'stream_event',
+				parent_tool_use_id: 'toolu_agent',
+				event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } },
+			},
+		]) {
+			expect(mapMessage(message, mapContext)).toEqual([]);
+		}
+	});
+
+	it('progress → its last tool as the step, only until a real step arrived', () => {
+		const mapContext = startedContext();
+		const progress = {
+			type: 'system',
+			subtype: 'task_progress',
+			task_id: 'task1',
+			last_tool_name: 'Bash',
+		};
+
+		expect(mapMessage(progress, mapContext)).toEqual([
+			{ type: 'subagent_step', ref, taskId: 'task1', step: 'use Bash' },
+		]);
+
+		mapMessage(
+			{
+				type: 'assistant',
+				parent_tool_use_id: 'toolu_agent',
+				message: {
+					content: [{ type: 'tool_use', id: 'a', name: 'Bash', input: { command: 'ls' } }],
+				},
+			},
+			mapContext,
+		);
+
+		expect(mapMessage(progress, mapContext)).toEqual([]);
+	});
+
+	it.each([
+		[
+			'a notification',
+			{ type: 'system', subtype: 'task_notification', task_id: 'task1', status: 'completed' },
+		],
+		[
+			'an update to killed',
+			{ type: 'system', subtype: 'task_updated', task_id: 'task1', patch: { status: 'killed' } },
+		],
+	])('%s → ended, and its later traffic is dropped', (_, message) => {
+		const mapContext = startedContext();
+
+		expect(mapMessage(message, mapContext)).toEqual([
+			{ type: 'subagent_ended', ref, taskId: 'task1' },
+		]);
+		expect(
+			mapMessage(
+				{
+					type: 'assistant',
+					parent_tool_use_id: 'toolu_agent',
+					message: { content: [{ type: 'tool_use', id: 'a', name: 'Bash', input: {} }] },
+				},
+				mapContext,
+			),
+		).toEqual([]);
+	});
+
+	it('an update that is not an end → only a move to the background counts', () => {
+		const mapContext = startedContext();
+
+		expect(
+			mapMessage(
+				{ type: 'system', subtype: 'task_updated', task_id: 'task1', patch: { status: 'running' } },
+				mapContext,
+			),
+		).toEqual([]);
+		expect(
+			mapMessage(
+				{
+					type: 'system',
+					subtype: 'task_updated',
+					task_id: 'task1',
+					patch: { is_backgrounded: true },
+				},
+				mapContext,
+			),
+		).toEqual([{ type: 'subagent_backgrounded', ref, taskId: 'task1' }]);
+	});
+
+	it("the parent's Agent call → still its own start line", () => {
+		expect(
+			mapMessage(
+				{
+					type: 'assistant',
+					message: {
+						content: [
+							{
+								type: 'tool_use',
+								id: 'toolu_agent',
+								name: 'Agent',
+								input: { description: 'Find the router' },
+							},
+						],
+					},
+				},
+				createMapContext(),
+			),
+		).toEqual([{ type: 'tool', ref, name: 'Agent', summary: 'start a subagent: Find the router' }]);
+	});
+});
+
+describe('slash commands', () => {
+	it('/clear → a conversation reset', () =>
+		expect(mapMessage({ type: 'conversation_reset' }, createMapContext())).toEqual([
+			{ type: 'conversation_reset', ref: 'store/main' },
+		]));
+
+	it('/compact → a notice', () =>
+		expect(mapMessage({ type: 'system', subtype: 'compact_boundary' }, createMapContext())).toEqual(
+			[{ type: 'session_notice', ref: 'store/main', text: 'Context compacted.' }],
+		));
+
+	it('local command output → a notice with it; empty output → nothing', () => {
+		expect(
+			mapMessage(
+				{ type: 'system', subtype: 'local_command_output', content: 'Usage: 12%' },
+				createMapContext(),
+			),
+		).toEqual([{ type: 'session_notice', ref: 'store/main', text: 'Usage: 12%' }]);
+		expect(
+			mapMessage(
+				{ type: 'system', subtype: 'local_command_output', content: ' ' },
+				createMapContext(),
+			),
+		).toEqual([]);
 	});
 });

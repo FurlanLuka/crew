@@ -4,6 +4,12 @@ import type { State } from '../shared/protocol.js';
 export interface ToolResult {
 	ok: boolean;
 	content: string;
+	// What the voice log adds to the call's line: how it was carried out ("aside").
+	note?: string;
+	// The kernel answers now, with no more tools: nothing else may happen after this result.
+	isFinal?: true;
+	// The call that actually happened, when a tool carried out another's job (answer → send_to).
+	recordAs?: { name: string; input: Record<string, unknown> };
 }
 
 export const succeed = (content: unknown): ToolResult => ({

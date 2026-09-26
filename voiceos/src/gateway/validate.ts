@@ -28,6 +28,7 @@ const actionSchema = z.discriminatedUnion('type', [
 		isApproved: z.boolean(),
 		message: z.string().max(4000).optional(),
 	}),
+	z.object({ type: z.literal('answer_command'), askId: z.string(), isApproved: z.boolean() }),
 	z.object({ type: z.literal('switch_view'), view: viewSchema }),
 	z.object({ type: z.literal('start_session'), ref: refSchema }),
 	z.object({ type: z.literal('stop_session'), ref: refSchema }),

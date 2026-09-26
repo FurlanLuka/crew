@@ -57,6 +57,20 @@ const waitUntil = async (check: () => boolean, timeoutMs = 5000): Promise<void> 
 	}
 };
 
+const ensureIdle = async (ref: string): Promise<void> => {
+	// Earlier tests leave sessions in any state: bring this one to a quiet idle.
+	const status = store.state.sessions[ref]?.status;
+
+	if (status === 'stopped') {
+		store.dispatch({ type: 'start_session', ref });
+	} else if (status === 'running' || status === 'blocked') {
+		store.dispatch({ type: 'interrupt', ref });
+		store.dispatch({ type: 'turn_ended', ref, costUsd: 0, text: '' });
+	}
+
+	await waitUntil(() => store.state.sessions[ref]?.status === 'idle');
+};
+
 const startServer = (port = 0): Gateway => {
 	return startGateway({
 		store,
@@ -400,6 +414,117 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('hands-free turned on by voice (listen_on) → the toggle goes on and the mic streams', async () => {
+		const { context, page, client } = await openMicTab();
+		const before = listFromClient(client, 'listen_start').length;
+
+		gateway.send(client, { type: 'listen_on' });
+		await page.waitForSelector('button.handsfree[aria-pressed="true"]', { timeout: 5000 });
+		await waitUntil(() => listFromClient(client, 'listen_start').length === before + 1);
+
+		gateway.send(client, { type: 'listen_off', reason: 'turned off by voice' });
+		await page.waitForSelector('button.handsfree[aria-pressed="false"]', { timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a held /clear → a confirm card; Yes approves it, No declines it', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		await ensureIdle('store-front/main');
+		const listCommandAnswers = () =>
+			received.flatMap((entry) =>
+				entry.message.type === 'action' && entry.message.action.type === 'answer_command'
+					? [entry.message.action]
+					: [],
+			);
+
+		store.dispatch({ type: 'send', ref: 'store-front/main', text: '/clear' });
+		const card = page.locator('section[aria-label="confirm"]');
+		await card.getByText("Clear store-front/main's context?").waitFor({ timeout: 5000 });
+		await card.getByRole('button', { name: /No/ }).click();
+		await card.waitFor({ state: 'detached', timeout: 5000 });
+		await page.getByText('Cancelled /clear.').waitFor({ timeout: 5000 });
+
+		store.dispatch({ type: 'send', ref: 'store-front/main', text: '/compact keep the notes' });
+		await card.getByText('/compact keep the notes').waitFor({ timeout: 5000 });
+		await card.getByRole('button', { name: /Yes/ }).click();
+		await card.waitFor({ state: 'detached', timeout: 5000 });
+
+		expect(listCommandAnswers().map((action) => action.isApproved)).toEqual([false, true]);
+		expect(effects).toContain('worker_send');
+		store.dispatch({ type: 'turn_ended', ref: 'store-front/main', costUsd: 0, text: '' });
+		await context.close();
+	}, 20_000);
+
+	it('sub-agents → a panel row with type, description and step; gone when it ends; the Stop button stays put', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
+		await ensureIdle('checkout-api/main');
+		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'look around' });
+		const stop = page.getByRole('button', { name: /Stop turn/ });
+		await stop.waitFor({ timeout: 5000 });
+		const stopBefore = await stop.boundingBox();
+
+		store.dispatch({
+			type: 'subagent_started',
+			ref: 'checkout-api/main',
+			taskId: 'ui-t1',
+			agentType: 'Explore',
+			description: 'Find the retry code',
+			isBackground: false,
+		});
+		store.dispatch({
+			type: 'subagent_step',
+			ref: 'checkout-api/main',
+			taskId: 'ui-t1',
+			step: 'read src/retry.ts',
+		});
+		const panel = page.locator('section[aria-label="sub-agents"]');
+		await panel.getByText('▸ read src/retry.ts').waitFor({ timeout: 5000 });
+		expect(await panel.getByText('Explore').isVisible()).toBe(true);
+		expect(await panel.getByText('Find the retry code').isVisible()).toBe(true);
+		expect((await stop.boundingBox())?.y).toBe(stopBefore?.y);
+
+		store.dispatch({ type: 'subagent_ended', ref: 'checkout-api/main', taskId: 'ui-t1' });
+		await panel.waitFor({ state: 'detached', timeout: 5000 });
+		store.dispatch({ type: 'turn_ended', ref: 'checkout-api/main', costUsd: 0, text: '' });
+		await context.close();
+	}, 20_000);
+
+	it("Claude's Markdown renders; the developer's own words stay literal; an aside shows its answer", async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'voiceos' } });
+		store.dispatch({
+			type: 'assistant_text',
+			ref: 'voiceos',
+			text: '## Report\n\n| file | lines |\n| --- | --- |\n| retry.ts | 42 |\n\nSee [docs](https://example.com).',
+		});
+		const stream = page.locator('.stream');
+		await stream.locator('table td', { hasText: 'retry.ts' }).waitFor({ timeout: 5000 });
+		expect(await stream.locator('h2', { hasText: 'Report' }).isVisible()).toBe(true);
+		expect(await stream.getByRole('link', { name: 'docs' }).getAttribute('target')).toBe('_blank');
+
+		await ensureIdle('voiceos');
+		store.dispatch({ type: 'send', ref: 'voiceos', text: 'make it **bold**' });
+		await stream.getByText('› make it **bold**').waitFor({ timeout: 5000 });
+
+		store.dispatch({ type: 'send', ref: 'voiceos', text: 'which file?', aside: true });
+		await stream.getByText('asking aside…').waitFor({ timeout: 5000 });
+		const itemId =
+			store.state.sessions.voiceos?.stream.find((item) => item.kind === 'aside')?.id ?? '';
+		store.dispatch({
+			type: 'aside_settled',
+			ref: 'voiceos',
+			itemId,
+			question: 'which file?',
+			status: 'answered',
+			answer: 'The **retry** file.',
+		});
+		await stream.locator('.aside strong', { hasText: 'retry' }).waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'turn_ended', ref: 'voiceos', costUsd: 0, text: '' });
+		await context.close();
+	}, 20_000);
+
 	it('an open permission docks under the stream: the stream stays on screen', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -691,8 +816,7 @@ describe('voice os ui', () => {
 
 	it('elsewhere lists another session at work; clicking it opens that session', async () => {
 		const { context, page } = await signIn();
-		store.dispatch({ type: 'start_session', ref: 'voiceos' });
-		await waitUntil(() => store.state.sessions.voiceos?.status === 'idle');
+		await ensureIdle('voiceos');
 		store.dispatch({
 			type: 'send',
 			ref: 'voiceos',

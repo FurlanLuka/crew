@@ -14,7 +14,8 @@ import { saveDebugWav } from './wav.js';
 
 // store, apiKey, the clock and the hands-free settings come from HandsFreeOptions.
 export type VoiceInputOptions = HandsFreeOptions & {
-	onUtterance: (text: string) => void;
+	// client: the tab whose microphone heard it.
+	onUtterance: (text: string, client: string) => void;
 	onTalkStart: () => void;
 	// Nobody is pressing and no hands-free turn is under way: speech may play again.
 	onTalkEnd?: () => void;
@@ -151,6 +152,10 @@ export class VoiceInput {
 		}
 
 		this.handsFree.listen(client, apiKey, sampleRate);
+	}
+
+	isListening(client: string): boolean {
+		return this.handsFree.hasClient(client);
 	}
 
 	unlisten(client: string): void {
@@ -295,7 +300,7 @@ export class VoiceInput {
 
 			// null: nothing to route (silence, an error, a cancelled stream).
 			if (text) {
-				this.options.onUtterance(text);
+				this.options.onUtterance(text, client);
 			}
 		}
 

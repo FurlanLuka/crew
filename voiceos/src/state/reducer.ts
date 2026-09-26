@@ -8,10 +8,14 @@ import {
 	type WorktreeInfo,
 } from '../shared/protocol.js';
 import { isAskInput, reduceAsk, settleAsksForSession } from './asks.js';
+import { isAsideInput, reduceAside } from './aside.js';
+import { isCommandInput, reduceCommand } from './commands.js';
+import { isSubagentInput, reduceSubagent } from './subagents.js';
 import { isDevInput, reduceDev } from './dev.js';
 import {
 	createStreamItem,
 	dispatchQueueHead,
+	pushNotice,
 	pushStreamItem,
 	startWorker,
 	STREAM_ITEMS_KEPT,
@@ -19,7 +23,8 @@ import {
 	updateSession,
 	withoutEffects,
 } from './helpers.js';
-import { hasFollowUpWaiting, reduceSend } from './send.js';
+import { hasFollowUpWaiting } from './delivery.js';
+import { reduceSend } from './send.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -40,6 +45,11 @@ export type Effect =
 	| { type: 'worker_set_mode'; ref: string; mode: 'default' | 'auto' }
 	| { type: 'resolve_ask'; askId: string; result: AskResult }
 	| { type: 'narrate'; ref: string; text: string; asked: string | null }
+	// A side question to run in a fork of the session, and its answer to say.
+	| { type: 'side_answer'; ref: string; itemId: string; question: string }
+	| { type: 'narrate_aside'; ref: string; question: string; answer: string }
+	// Lets a held command lapse: command_expired comes back after COMMAND_TTL_MS.
+	| { type: 'expire_command'; askId: string }
 	// reply: the answer to what the developer just said (no chime before it).
 	| {
 			type: 'speak';
@@ -48,6 +58,8 @@ export type Effect =
 			isReply?: boolean;
 			ref?: string;
 			isAsking?: boolean;
+			// Said with the session's name in front unless it is on screen.
+			isNamed?: boolean;
 	  }
 	| { type: 'dev'; ref: string; action: 'start' | 'stop' | 'restart' }
 	| { type: 'fix_dev'; ref: string; servers: string[] };
@@ -90,6 +102,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	voiceTurnAt: null,
 	isFresh: false,
 	requests: [],
+	subagents: [],
 });
 
 const MAX_LOGGED_CHARS = 500;
@@ -158,6 +171,18 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 	if (isDevInput(input)) {
 		return reduceDev(state, input, stamped);
+	}
+
+	if (isCommandInput(input)) {
+		return reduceCommand(state, input, stamped);
+	}
+
+	if (isAsideInput(input)) {
+		return reduceAside(state, input, stamped);
+	}
+
+	if (isSubagentInput(input)) {
+		return reduceSubagent(state, input, stamped.at);
 	}
 
 	switch (input.type) {
@@ -267,10 +292,12 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
+			// Sub-agents belong to a process: a new one starts with none.
 			const ready = updateSession(state, input.ref, (session) => ({
 				...session,
 				status: 'idle',
 				error: null,
+				subagents: [],
 			}));
 
 			return dispatchQueueHead(ready, input.ref, stamped);
@@ -352,6 +379,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				modeOverride: null,
 				voiceTurnAt: null,
 				costUsd: current.costUsd + input.costUsd,
+				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
+				subagents: current.subagents.filter((subagent) => subagent.isBackground),
 			}));
 			const dispatched = dispatchQueueHead(ended, input.ref, stamped);
 
@@ -369,6 +398,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					error: input.error,
 					voiceTurnAt: null,
 					queue: input.error ? session.queue : [],
+					subagents: [],
 				})),
 			);
 		}
@@ -416,6 +446,30 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceLog: { ...state.voiceLog, [input.screen]: screenLog },
 			});
 		}
+
+		case 'conversation_reset': {
+			// The next message is the new conversation's first, so it carries Voice OS's context again.
+			const reset = updateSession(state, input.ref, (session) => ({
+				...session,
+				isFresh: true,
+				subagents: [],
+			}));
+
+			return withoutEffects(
+				pushNotice({
+					state: reset,
+					ref: input.ref,
+					text: 'Context cleared.',
+					stamped,
+					suffix: 'reset',
+				}),
+			);
+		}
+
+		case 'session_notice':
+			return withoutEffects(
+				pushNotice({ state, ref: input.ref, text: input.text, stamped, suffix: 'notice' }),
+			);
 
 		case 'transcript':
 			return withoutEffects({ ...state, transcript: input.transcript });

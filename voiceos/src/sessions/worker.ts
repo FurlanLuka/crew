@@ -1,7 +1,8 @@
 import { query as sdkQuery, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Observation } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
-import { mapMessage, type MapContext, type RawMessage } from './events.js';
+import { readGuardedCommand } from '../state/commands.js';
+import { createMapContext, mapMessage, type RawMessage } from './events.js';
 import type { PermissionBridge } from './permissions.js';
 import { buildBriefing } from './voice-context.js';
 
@@ -94,6 +95,35 @@ class InputChannel implements AsyncIterable<SDKUserMessage> {
 	}
 }
 
+export interface QueryLaunch {
+	cwd: string;
+	dirs: string[];
+	env: Record<string, string | undefined>;
+	orientation: string;
+	model?: string;
+	claudeBin?: string;
+}
+
+export const buildQueryOptions = ({
+	cwd,
+	dirs,
+	env,
+	orientation,
+	model,
+	claudeBin,
+}: QueryLaunch) => {
+	// Shared by the session and its side-answer fork: the same prefix is what lets the fork hit the prompt cache.
+	return {
+		cwd,
+		additionalDirectories: dirs,
+		env,
+		settingSources: ['user', 'project', 'local'] as ('user' | 'project' | 'local')[],
+		systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: orientation },
+		...(model ? { model } : {}),
+		...(claudeBin ? { pathToClaudeCodeExecutable: claudeBin } : {}),
+	};
+};
+
 interface WorkerBriefing {
 	// A resumed session from before the current context gets it once, in front of its next message.
 	pending: boolean;
@@ -141,16 +171,25 @@ export class Worker {
 		return this.sessionId;
 	}
 
+	get launch(): QueryLaunch {
+		const { cwd, dirs, env, orientation, model, claudeBin } = this.options;
+
+		return { cwd, dirs, env, orientation, model, claudeBin };
+	}
+
 	start(): void {
 		void this.run(this.options.resumeId);
 	}
 
 	send(said: string, note?: string): void {
+		// A /clear or /compact must reach the CLI as typed, or it is read as prose; the briefing waits.
+		const isCommand = readGuardedCommand(said) !== null;
 		// The note is Voice OS context for Claude, read ahead of the developer's words.
-		const message = note ? `${note}\n\n${said}` : said;
-		const text = this.isBriefingPending ? buildBriefing(message) : message;
+		const message = note && !isCommand ? `${note}\n\n${said}` : said;
+		const shouldBrief = this.isBriefingPending && !isCommand;
+		const text = shouldBrief ? buildBriefing(message) : message;
 
-		if (this.isBriefingPending) {
+		if (shouldBrief) {
 			this.isBriefingPending = false;
 			this.isAwaitingBriefedTurn = true;
 			log.info('briefing on the current Voice OS context', { ref: this.options.ref });
@@ -209,13 +248,27 @@ export class Worker {
 		this.abort.abort();
 	}
 
+	private followConversation(raw: InitMessage): void {
+		// /clear starts a new conversation in the same process. Its id is not new_conversation_id:
+		// the CLI's next init names the transcript that resumes, so that is the one followed.
+		if (raw.type !== 'system' || raw.subtype !== 'init' || !raw.session_id) {
+			return;
+		}
+
+		if (raw.session_id !== this.sessionId) {
+			log.info('conversation changed', {
+				ref: this.options.ref,
+				from: this.sessionId,
+				to: raw.session_id,
+			});
+			this.sessionId = raw.session_id;
+			this.options.onSessionId(raw.session_id);
+		}
+	}
+
 	private async run(resumeId: string | null): Promise<void> {
-		const { ref, cwd, dirs, orientation, env, permissions, emit } = this.options;
-		const mapContext: MapContext = {
-			ref,
-			toolSummaries: new Map(),
-			limits: { fiveHour: null, sevenDay: null, resetsAt: null },
-		};
+		const { ref, cwd, permissions, emit } = this.options;
+		const mapContext = createMapContext(ref);
 		const runQuery = this.options.runQuery ?? sdkQuery;
 
 		log.info('starting', { ref, cwd, resume: Boolean(resumeId) });
@@ -224,18 +277,12 @@ export class Worker {
 			this.activeQuery = runQuery({
 				prompt: this.input,
 				options: {
-					cwd,
-					additionalDirectories: dirs,
-					env,
+					...buildQueryOptions(this.launch),
 					abortController: this.abort,
 					permissionMode: this.options.permissionMode ?? 'auto',
 					canUseTool: permissions.canUseTool(ref, cwd) as never,
 					includePartialMessages: true,
-					settingSources: ['user', 'project', 'local'],
-					systemPrompt: { type: 'preset', preset: 'claude_code', append: orientation },
 					...(resumeId ? { resume: resumeId } : {}),
-					...(this.options.model ? { model: this.options.model } : {}),
-					...(this.options.claudeBin ? { pathToClaudeCodeExecutable: this.options.claudeBin } : {}),
 					...(this.options.maxBudgetUsd ? { maxBudgetUsd: this.options.maxBudgetUsd } : {}),
 				},
 			});
@@ -257,6 +304,8 @@ export class Worker {
 					this.options.onSessionId(raw.session_id);
 					log.info('session id', { ref, sessionId: raw.session_id });
 				}
+
+				this.followConversation(raw);
 
 				for (const observation of mapMessage(raw, mapContext, cwd)) {
 					if (observation.type === 'turn_ended' && this.isAwaitingBriefedTurn) {

@@ -2,6 +2,8 @@ import type { Store } from '../state/store.js';
 import type { ToolCall } from '../tools/definitions.js';
 import { GRID, type VoiceEntry } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
+import { decideDelivery } from '../state/delivery.js';
+import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
 
@@ -23,13 +25,21 @@ export interface RouterOptions {
 	now?: () => number;
 }
 
+export interface UtteranceOrigin {
+	// Switches hands-free in the tab the words came from.
+	setHandsFree?: (isOn: boolean) => HandsFreeResult;
+}
+
 interface AskKernelParams {
 	kernel: KernelHandler | null;
 	text: string;
 	screen: string | null;
 	isSpoken: boolean;
 	saidAt: number;
+	setHandsFree: (isOn: boolean) => HandsFreeResult;
 }
+
+const NO_TAB = (): HandsFreeResult => 'no_tab';
 
 const NO_KERNEL_MESSAGE =
 	'Voice needs the Anthropic key — see the banner. Typing into a session still works.';
@@ -42,16 +52,20 @@ export class UtteranceRouter {
 		this.now = options.now ?? Date.now;
 	}
 
-	handle(text: string, source: UtteranceSource = 'voice'): Promise<void> {
+	handle(
+		text: string,
+		source: UtteranceSource = 'voice',
+		origin: UtteranceOrigin = {},
+	): Promise<void> {
 		// One utterance at a time, so two can never interleave their effects.
 		this.chain = this.chain
-			.then(() => this.run(text, source))
+			.then(() => this.run(text, source, origin))
 			.catch((error: unknown) => log.error('utterance failed', { error: String(error) }));
 
 		return this.chain;
 	}
 
-	private async run(text: string, source: UtteranceSource): Promise<void> {
+	private async run(text: string, source: UtteranceSource, origin: UtteranceOrigin): Promise<void> {
 		const { store, kernel } = this.options;
 		const trimmedText = text.trim();
 
@@ -67,8 +81,17 @@ export class UtteranceRouter {
 		const typedTarget = source === 'typed' ? resolveTypedTarget(store.state, trimmedText) : null;
 
 		if (typedTarget) {
-			log.info('route', { source, to: typedTarget, text: trimmedText });
-			store.dispatch({ type: 'send', ref: typedTarget, text: trimmedText });
+			// Typing is writing to that Claude: it goes aside only when the developer says "by the way".
+			const status = store.state.sessions[typedTarget]?.status ?? 'stopped';
+			const isAside = decideDelivery({ status, utterance: trimmedText }) === 'aside';
+
+			log.info('route', { source, to: typedTarget, aside: isAside, text: trimmedText });
+			store.dispatch({
+				type: 'send',
+				ref: typedTarget,
+				text: trimmedText,
+				...(isAside ? { aside: true } : {}),
+			});
 
 			return;
 		}
@@ -81,6 +104,7 @@ export class UtteranceRouter {
 			screen,
 			isSpoken: source === 'voice',
 			saidAt,
+			setHandsFree: origin.setHandsFree ?? NO_TAB,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
 	}
@@ -91,6 +115,7 @@ export class UtteranceRouter {
 		screen,
 		isSpoken,
 		saidAt,
+		setHandsFree,
 	}: AskKernelParams): Promise<VoiceEntry> {
 		const { store } = this.options;
 
@@ -101,7 +126,7 @@ export class UtteranceRouter {
 		}
 
 		try {
-			const turn = await kernel(text, { forwardTo: screen, screen, isSpoken });
+			const turn = await kernel(text, { forwardTo: screen, screen, isSpoken, setHandsFree });
 			const isIgnored =
 				!turn.reply &&
 				turn.calls.every((call) => call.name === 'ignore_words') &&

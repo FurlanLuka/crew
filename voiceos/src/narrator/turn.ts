@@ -3,6 +3,7 @@ import type { Effect } from '../state/reducer.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { appendJournalEntry, describeTurnOutcome } from '../memory/journal.js';
 import type { NarrateFunction } from './narrator.js';
+import { cleanSpokenText } from './prompt.js';
 
 interface NarratedLine {
 	text: string;
@@ -22,6 +23,39 @@ export interface TurnNarratorOptions {
 }
 
 type NarrateEffect = Extract<Effect, { type: 'narrate' }>;
+type NarrateAsideEffect = Extract<Effect, { type: 'narrate_aside' }>;
+
+const ASIDE_FALLBACK_WORDS = 40;
+
+export type AsideNarratorOptions = Pick<TurnNarratorOptions, 'store' | 'narrate' | 'say'>;
+
+export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOptions) => {
+	// Said like any answer to a direct question, but it is no turn: no topic, no needs-you, no journal.
+	return async ({ ref, question, answer }: NarrateAsideEffect): Promise<void> => {
+		const session = store.state.sessions[ref];
+
+		if (!session) {
+			return;
+		}
+
+		const view = store.state.view;
+		const narration = await narrate({
+			label: session.label,
+			text: answer,
+			asked: question,
+			focused: view.kind === 'session' && view.ref === ref,
+			topic: session.topic,
+		});
+
+		say({
+			text: narration.text.trim() || cleanSpokenText(answer, ASIDE_FALLBACK_WORDS),
+			priority: 'high',
+			ref,
+			isNamed: true,
+			isAsking: false,
+		});
+	};
+};
 
 export const createTurnNarrator = (options: TurnNarratorOptions) => {
 	const now = options.now ?? (() => new Date());

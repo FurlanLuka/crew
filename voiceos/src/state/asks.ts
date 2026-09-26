@@ -1,12 +1,15 @@
-import type {
-	Denial,
-	Input,
-	PendingAsk,
-	PermissionDecision,
-	Stamped,
-	State,
+import {
+	isSdkAsk,
+	type Denial,
+	type Input,
+	type PendingAsk,
+	type PermissionDecision,
+	type SdkAsk,
+	type Stamped,
+	type State,
 } from '../shared/protocol.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
+import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
 import { readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
 
 const ASK_INPUTS = [
@@ -40,7 +43,10 @@ export const closeAsk = (state: State, askId: string): State => {
 	}
 
 	const asks = state.asks.filter((pendingAsk) => pendingAsk.id !== askId);
-	const isStillBlocked = asks.some((pendingAsk) => pendingAsk.ref === ask.ref);
+	// A held command never blocks the turn: only the SDK's own asks do.
+	const isStillBlocked = asks.some(
+		(pendingAsk) => pendingAsk.ref === ask.ref && isSdkAsk(pendingAsk),
+	);
 
 	return updateSession({ ...state, asks }, ask.ref, (session) =>
 		session.status === 'blocked' && !isStillBlocked ? { ...session, status: 'running' } : session,
@@ -49,15 +55,16 @@ export const closeAsk = (state: State, askId: string): State => {
 
 export const settleAsksForSession = (state: State, ref: string, message: string): ReducerResult => {
 	// Stopping or interrupting a session denies all its asks at once; only the reducer settles them.
+	// A held command has no SDK side to answer: it only closes.
 	const effects: Effect[] = state.asks
-		.filter((ask) => ask.ref === ref)
+		.filter((ask) => ask.ref === ref && isSdkAsk(ask))
 		.map((ask) => ({ type: 'resolve_ask', askId: ask.id, result: { behavior: 'deny', message } }));
 
 	return { state: { ...state, asks: state.asks.filter((ask) => ask.ref !== ref) }, effects };
 };
 
 export const buildPermissionResult = (
-	ask: PendingAsk,
+	ask: SdkAsk,
 	decision: PermissionDecision,
 	message?: string,
 ): AskResult => {
@@ -83,16 +90,25 @@ const capWords = (text: string, maxWords: number): string => {
 
 export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 	// Kept short: the developer did not ask for it.
-	if (ask.kind === 'permission') {
-		const summary = capWords(ask.summary, MAX_SUMMARY_WORDS);
+	switch (ask.kind) {
+		case 'permission': {
+			const summary = capWords(ask.summary, MAX_SUMMARY_WORDS);
 
-		return `${label} wants to ${summary}${summary.endsWith('…') ? '' : '.'} Allow?`;
+			return `${label} wants to ${summary}${summary.endsWith('…') ? '' : '.'} Allow?`;
+		}
+		case 'plan':
+			return `${label} has a plan ready for approval.`;
+		case 'command':
+			return describeCommandAloud(ask.command, label);
+		case 'question':
+			return describeQuestionAloud(ask, label);
 	}
+};
 
-	if (ask.kind === 'plan') {
-		return `${label} has a plan ready for approval.`;
-	}
-
+const describeQuestionAloud = (
+	ask: Extract<PendingAsk, { kind: 'question' }>,
+	label: string,
+): string => {
 	const firstQuestion = ask.questions[0];
 
 	if (!firstQuestion) {
@@ -165,7 +181,7 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 
 interface AnswerInWordsParams {
 	state: State;
-	ask: PendingAsk;
+	ask: SdkAsk;
 	text: string;
 	stamped: Stamped;
 }
@@ -255,10 +271,17 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				return withoutEffects(state);
 			}
 
-			const next = updateSession({ ...state, asks: [...state.asks, ask] }, ask.ref, (session) => ({
-				...session,
-				status: 'blocked',
-			}));
+			// A "yes" said next would be meant for this ask: a /clear still held must not take it.
+			const heldCommand = findCommandAsk(state, ask.ref);
+			const cleared = heldCommand ? cancelCommand({ state, ask: heldCommand, stamped }) : state;
+			const next = updateSession(
+				{ ...cleared, asks: [...cleared.asks, ask] },
+				ask.ref,
+				(session) => ({
+					...session,
+					status: 'blocked',
+				}),
+			);
 
 			return {
 				state: next,

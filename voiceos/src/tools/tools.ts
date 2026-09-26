@@ -3,13 +3,11 @@ import {
 	OFFER_TTL_MS,
 	type Action,
 	type PendingAsk,
-	type QueuedMessage,
-	type Session,
 	type State,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
-import { createLogger } from '../log.js';
-import { buildSituationNote } from '../sessions/voice-context.js';
+import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
+import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import type { HistoryQuery } from '../memory/journal.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
@@ -18,7 +16,10 @@ import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
 
-const log = createLogger('tools');
+const MIN_REQUEST_WORDS = 4;
+const MIN_LONG_SPEECH_WORDS = 10;
+const REQUEST_OPENING_PATTERN =
+	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
 
 export interface HistoryEntry {
 	ts: string;
@@ -44,107 +45,45 @@ export interface ToolContext {
 	// Required so a server that forgets to wire them fails to compile, not a "Noted." that saved nothing.
 	mute: () => void;
 	saveDebugNote: (words: DebugNoteWords) => void;
+	// Calls that change something in this turn so far, this step's included: more than one splits the words.
+	actionsInTurn?: number;
+	// Bound to the tab the words came from; 'no_tab' when they came from none (evals, a closed tab).
+	setHandsFree: (isOn: boolean) => HandsFreeResult;
 	dispatch: (action: Action) => void;
 	now: () => number;
 	readHistory: (query: HistoryQuery) => HistoryEntry[];
 }
 
-interface BuildSessionNoteParams {
-	session: Session;
-	state: State;
-	recent: string[];
-}
-
-export const buildSessionNote = ({
-	session,
-	state,
-	recent,
-}: BuildSessionNoteParams): string | undefined => {
-	// A session's first message since it started carries what only Voice OS knows.
-	const isFirstMessage =
-		session.status === 'stopped' || (session.isFresh && session.queue.length === 0);
-
-	if (!isFirstMessage) {
-		return undefined;
-	}
-
-	return buildSituationNote({ servers: state.devServers[session.ref] ?? [], recent }) || undefined;
-};
-
-const describeBlockingAsk = (state: State, ref: string): string | null => {
-	// Words sent to an open permission or plan would answer it as a "no" carrying them.
-	const ask = state.asks.find((pendingAsk) => pendingAsk.ref === ref);
-
-	if (!ask || ask.kind === 'question') {
-		return null;
-	}
-
-	return `${ref} is waiting on ${ask.kind === 'permission' ? `a permission (${ask.summary})` : 'a plan approval'}: answer it with the answer tool, then send anything more.`;
-};
-
-const normalizeSentText = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
-
-const findRunningRequest = (session: Session): string | null => {
-	if (session.status !== 'running' && session.status !== 'blocked') {
-		return null;
-	}
-
-	const lastRequest = session.stream.findLast((item) => item.kind === 'user');
-
-	return lastRequest?.kind === 'user' ? lastRequest.text : null;
-};
-
-const isQueuedAlready = (message: QueuedMessage, sent: string): boolean => {
-	const queued = normalizeSentText(message.text);
-
-	// A spoken follow-up is merged onto the end of the message it follows, after a space.
-	return queued === sent || (Boolean(message.isFollowUp) && queued.endsWith(` ${sent}`));
-};
-
-interface IsDuplicateSendParams {
-	session: Session;
-	text: string;
-}
-
-export const isDuplicateSend = ({ session, text }: IsDuplicateSendParams): boolean => {
-	// Sending it again would interrupt the turn working on it; once that turn ends, a repeat is deliberate.
-	const sent = normalizeSentText(text);
-	const runningRequest = findRunningRequest(session);
-
-	return (
-		(runningRequest !== null && normalizeSentText(runningRequest) === sent) ||
-		session.queue.some((message) => isQueuedAlready(message, sent))
-	);
-};
-
-interface SendTextParams {
+interface SendRecordedParams {
 	state: State;
 	ref: string;
 	text: string;
+	input: Record<string, unknown>;
+	name: 'forward' | 'send_to';
 	toolContext: ToolContext;
 }
 
-const sendText = ({ state, ref, text, toolContext }: SendTextParams): ToolResult => {
-	const session = state.sessions[ref];
-
-	if (session && isDuplicateSend({ session, text })) {
-		log.info('duplicate send skipped', { ref, chars: text.length });
-
-		return fail(`already sent to ${ref}; it is working on it: nothing was sent again`);
-	}
-
-	const note = session
-		? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
-		: undefined;
-	toolContext.dispatch({
-		type: 'send',
+const sendRecorded = ({
+	state,
+	ref,
+	text,
+	input,
+	name,
+	toolContext,
+}: SendRecordedParams): ToolResult => {
+	const sent = prepareSentText({
+		state,
 		ref,
 		text,
-		...(note ? { note } : {}),
-		...(toolContext.isSpoken ? { isSpoken: true } : {}),
+		utterance: toolContext.utterance,
+		isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
 	});
+	const result = sendText({ state, ref, text: sent, kind: input.kind, toolContext });
 
-	return succeed(`sent to ${ref}`);
+	// The voice log records what the session got, not what the model wrote.
+	return sent === text
+		? result
+		: { ...result, recordAs: { name, input: { ...input, text: sent } } };
 };
 
 export const executeTool = async (
@@ -168,16 +107,37 @@ export const executeTool = async (
 				return fail('empty text');
 			}
 
-			const blockingAsk = describeBlockingAsk(state, target);
+			const misroutedAnswer = describeMisroutedAnswer(state, target, text);
 
-			if (blockingAsk) {
-				return fail(blockingAsk);
+			if (misroutedAnswer) {
+				return fail(misroutedAnswer);
 			}
 
-			return sendText({ state, ref: target, text, toolContext });
+			return sendRecorded({ state, ref: target, text, input, name: 'forward', toolContext });
 		}
 
 		case 'ignore_words': {
+			// A finished request is never an unfinished thought: "can you, um, close the agent?" and
+			// "and can you tell me what's running." were taken for ones. Short ones stay ignorable
+			// (speech-to-text punctuates a cut-off "and can you?" too), and so does a lyric or a video.
+			const said = (toolContext.utterance ?? '').trim();
+			const isRequest =
+				(/\?$/.test(said) || REQUEST_OPENING_PATTERN.test(said)) &&
+				said.split(/\s+/).length >= MIN_REQUEST_WORDS;
+
+			// Fragments are a few words ("and can you"); a long stretch of speech is a thought or not
+			// for anyone — the developer's own thinking aloud was ignored as "unfinished".
+			const isLong = said.split(/\s+/).length >= MIN_LONG_SPEECH_WORDS;
+
+			// A thought cut off mid-word ("…the thing with the—") is a fragment however long.
+			const isCutOff = /(?:—|-|…|\.\.\.)$/.test(said);
+
+			if (input.reason === 'unfinished thought' && !isCutOff && (isRequest || isLong)) {
+				return fail(
+					"Not ignored as unfinished: that is not a fragment. Does it have anything to do with the work on screen, a session or Voice OS? If not (a song lyric, a recipe, someone else talking), call ignore_words with 'not said to anyone'. If it does, forward it.",
+				);
+			}
+
 			return succeed('nothing done or said');
 		}
 
@@ -225,13 +185,13 @@ export const executeTool = async (
 				return fail('empty instruction');
 			}
 
-			const blockingAsk = describeBlockingAsk(state, checked.ref);
+			const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, text);
 
-			if (blockingAsk) {
-				return fail(blockingAsk);
+			if (misroutedAnswer) {
+				return fail(misroutedAnswer);
 			}
 
-			return sendText({ state, ref: checked.ref, text, toolContext });
+			return sendRecorded({ state, ref: checked.ref, text, input, name: 'send_to', toolContext });
 		}
 
 		case 'switch_view': {
@@ -327,6 +287,13 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
+			// "Stop listening" is about hands-free, whatever else "stop" means.
+			if (toolContext.utterance !== undefined && isAboutHandsFree(toolContext.utterance)) {
+				return fail(
+					'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
+				);
+			}
+
 			const isNamed =
 				toolContext.utterance === undefined ||
 				checked.ref === toolContext.screen ||
@@ -367,6 +334,31 @@ export const executeTool = async (
 			return succeed('noted with a snapshot of this moment');
 		}
 
+		case 'hands_free': {
+			const direction =
+				toolContext.utterance === undefined
+					? input.on === true
+					: readHandsFreeDirection(toolContext.utterance);
+
+			if (direction === null) {
+				return fail('Not changed: the developer did not clearly ask to turn hands-free on or off.');
+			}
+
+			const result = toolContext.setHandsFree(direction);
+
+			if (result === 'no_tab') {
+				return fail(
+					'Not changed: no browser tab to switch. Tell the developer to use the hands-free button.',
+				);
+			}
+
+			return succeed(
+				result === 'changed'
+					? `hands-free ${direction ? 'on' : 'off'}; Voice OS said so`
+					: `hands-free was already ${direction ? 'on' : 'off'}; Voice OS said so`,
+			);
+		}
+
 		case 'dev_offer': {
 			const devOffer = state.devOffer;
 
@@ -383,9 +375,13 @@ export const executeTool = async (
 			const offeredRef = devOffer.ref;
 
 			if (!isOfferFresh(devOffer, toolContext.now())) {
-				return fail(
-					`the fix offer for ${offeredRef} is over ${formatAge(OFFER_TTL_MS)} old; tell the developer it lapsed`,
-				);
+				// Final: with tools, the model "recovered" by sending the fix itself.
+				return {
+					...fail(
+						`the fix offer for ${offeredRef} lapsed (over ${formatAge(OFFER_TTL_MS)} old); nothing was sent. Tell the developer it lapsed; send nothing.`,
+					),
+					isFinal: true,
+				};
 			}
 
 			toolContext.dispatch({ type: 'fix_dev', ref: offeredRef });

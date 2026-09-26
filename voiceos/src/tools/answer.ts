@@ -1,6 +1,10 @@
 import type { Action, PendingAsk, State } from '../shared/protocol.js';
 import { ON_SCREEN_MESSAGE } from '../state/asks.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
+import { isConsent, isPlainConsent } from './consent.js';
+import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
+import { findLastAskedAloud } from './asked-aloud.js';
+import { findSessionsNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
 
 export const ANSWER_DECISIONS = ['yes', 'always', 'no', 'choose'] as const;
@@ -83,6 +87,17 @@ export const buildAnswerActions = ({
 			};
 		}
 
+		case 'command': {
+			if (decision === 'choose') {
+				return { ok: false, error: 'a /clear or /compact confirmation is answered yes or no' };
+			}
+
+			return {
+				ok: true,
+				actions: [{ type: 'answer_command', askId: ask.id, isApproved: decision !== 'no' }],
+			};
+		}
+
 		case 'question': {
 			// Several questions cannot be answered in one breath.
 			if (ask.questions.length > 1) {
@@ -111,11 +126,29 @@ export const buildAnswerActions = ({
 	}
 };
 
-const CONSENT_PATTERN =
-	/\b(?:yes|yeah|yep|yup|sure|ok|okay|alright|all right|fine|always|allow(?: it)?|approve[ds]?|go ahead|go for it|do it|let it|proceed|ship it|sounds good|absolutely|of course)\b/i;
+interface IsAnswerForParams {
+	state: State;
+	ref: string;
+	toolContext: ToolContext;
+}
 
-export const isConsent = (utterance: string): boolean => {
-	return CONSENT_PATTERN.test(utterance);
+const isClearlyAnswerFor = ({ state, ref, toolContext }: IsAnswerForParams): boolean => {
+	// With several sessions waiting, a bare "yes" is only theirs when they named it, look at it,
+	// or Voice OS just asked about it: approving the wrong push is the one mistake that cannot wait.
+	const { utterance, asks } = toolContext;
+	const isAlone = asks.every((ask) => ask.ref === ref);
+
+	if (isAlone || utterance === undefined || toolContext.screen === ref) {
+		return true;
+	}
+
+	const lastAskedAloud = findLastAskedAloud({
+		spoken: state.spoken,
+		waitingRefs: asks.map((ask) => ask.ref),
+		now: toolContext.now(),
+	});
+
+	return lastAskedAloud?.ref === ref || findSessionsNamedIn(state, utterance).includes(ref);
 };
 
 export interface AnswerAskParams {
@@ -134,6 +167,36 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 	const heardAsk = toolContext.asks.find((ask) => ask.ref === checked.ref);
 
 	if (!heardAsk) {
+		// The model reaches for answer when a session asked at the end of its turn: that reply is
+		// words for the session, so it goes there instead of failing into a made-up explanation.
+		const written = (typeof input.text === 'string' && input.text.trim()) || toolContext.utterance;
+		const reply = written
+			? prepareSentText({
+					state,
+					ref: checked.ref,
+					text: written,
+					utterance: toolContext.utterance,
+					isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
+				})
+			: written;
+
+		if (state.sessions[checked.ref]?.needsUser && reply) {
+			const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, reply);
+
+			if (misroutedAnswer) {
+				return fail(misroutedAnswer);
+			}
+
+			const isOnScreen = toolContext.forwardTo === checked.ref;
+
+			return {
+				...sendText({ state, ref: checked.ref, text: reply, kind: 'instruction', toolContext }),
+				recordAs: isOnScreen
+					? { name: 'forward', input: { text: reply } }
+					: { name: 'send_to', input: { ref: checked.ref, text: reply } },
+			};
+		}
+
 		return fail(
 			`${checked.ref} has nothing pending to answer: forward or send_to the words instead.`,
 		);
@@ -145,18 +208,23 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 	const decision = input.decision as AnswerDecision;
 
+	if (!isClearlyAnswerFor({ state, ref: checked.ref, toolContext })) {
+		return fail(
+			'Not answered: several sessions are waiting and the developer did not say which. Ask which one, in a few words.',
+		);
+	}
+
 	if (!ANSWER_DECISIONS.includes(decision)) {
 		return fail(`decision must be one of ${ANSWER_DECISIONS.join(', ')}`);
 	}
 
 	// Approving a command or a plan is the one call that must never be guessed from other words.
-	const isApproval =
-		(heardAsk.kind === 'permission' || heardAsk.kind === 'plan') &&
-		(decision === 'yes' || decision === 'always');
+	const isApproval = heardAsk.kind !== 'question' && (decision === 'yes' || decision === 'always');
+	const hasConsented = heardAsk.kind === 'command' ? isPlainConsent : isConsent;
 
-	if (isApproval && toolContext.utterance !== undefined && !isConsent(toolContext.utterance)) {
+	if (isApproval && toolContext.utterance !== undefined && !hasConsented(toolContext.utterance)) {
 		return fail(
-			`not answered: the developer did not say yes. ${checked.ref} waits on its ${heardAsk.kind} first — tell them so in a few words.`,
+			`not answered: the developer did not say yes. Their words are for ${checked.ref}: forward them as said (they decline its ${heardAsk.kind === 'command' ? `/${heardAsk.command}` : heardAsk.kind} and reach it).`,
 		);
 	}
 

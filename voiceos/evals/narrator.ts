@@ -19,6 +19,8 @@ interface Case {
 	max_words?: number;
 	// Words that must not be spoken: a question's options from earlier sentences.
 	not_includes?: string[];
+	// Words that must be spoken ("a|b" accepts either): what a choice is about, so it can be answered unseen.
+	includes?: string[];
 }
 
 // Narration is a TL;DR: short, and shorter still for the session on screen.
@@ -81,6 +83,7 @@ export interface IsFormatOkParams {
 	speak: boolean;
 	maxWords?: number;
 	notIncludes?: string[];
+	includes?: string[];
 }
 
 export const isFormatOk = ({
@@ -89,6 +92,7 @@ export const isFormatOk = ({
 	speak,
 	maxWords = NARRATION_WORDS,
 	notIncludes = [],
+	includes = [],
 }: IsFormatOkParams): boolean => {
 	if (!speak) {
 		return true;
@@ -101,12 +105,16 @@ export const isFormatOk = ({
 		lowerSpoken.startsWith(toSpokenName(label).toLowerCase()) ||
 		lowerSpoken.startsWith(label.toLowerCase());
 	const hasListedPhrase = notIncludes.some((phrase) => lowerSpoken.includes(phrase.toLowerCase()));
+	const hasRequiredWords = includes.every((entry) =>
+		entry.split('|').some((alternative) => lowerSpoken.includes(alternative.toLowerCase())),
+	);
 
 	return (
 		words.length > 0 &&
 		words.length <= maxWords &&
 		!isNamed &&
 		!hasListedPhrase &&
+		hasRequiredWords &&
 		!/[`]|https?:\/\//.test(spoken)
 	);
 };
@@ -220,6 +228,7 @@ export const runNarratorEval = async ({
 					speak: narration.speak,
 					maxWords: testCase.max_words ?? (testCase.focused ? FOCUSED_WORDS : NARRATION_WORDS),
 					notIncludes: testCase.not_includes,
+					includes: testCase.includes,
 				}),
 				faithful,
 				spoken: narration.text,

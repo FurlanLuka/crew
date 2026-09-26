@@ -1,5 +1,5 @@
 import { createLogger } from '../log.js';
-import type { SpeechMessage, SpokenLine, State } from '../shared/protocol.js';
+import { isSdkAsk, type SpeechMessage, type SpokenLine, type State } from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName } from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
 import type { Store } from '../state/store.js';
@@ -158,7 +158,8 @@ export class VoiceOut {
 	remind(state: State): void {
 		const now = this.now();
 		const waiting = new Set([
-			...state.asks.map((ask) => ask.ref),
+			// A held /clear is not nagged about: it lapses on its own.
+			...state.asks.filter(isSdkAsk).map((ask) => ask.ref),
 			...Object.values(state.sessions)
 				.filter((session) => session.needsUser)
 				.map((session) => session.ref),

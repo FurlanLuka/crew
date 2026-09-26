@@ -9,7 +9,24 @@ export type StreamItem = { id: string; at: number } & (
 	| { kind: 'tool_result'; ok: boolean; summary: string }
 	| { kind: 'diff'; filePath: string; lines: string[] }
 	| { kind: 'notice'; text: string }
+	// A question answered by a fork of the session while it worked, beside its turn.
+	| { kind: 'aside'; question: string; answer: string | null; status: AsideStatus }
 );
+
+export type AsideStatus = 'asking' | 'answered' | 'queued' | 'failed';
+
+export interface Subagent {
+	taskId: string;
+	agentType: string | null;
+	description: string;
+	startedAt: number;
+	// Its latest tool call, as a short line; null until it makes one.
+	step: string | null;
+	// A background agent outlives the turn that started it.
+	isBackground: boolean;
+}
+
+export type GuardedCommand = 'clear' | 'compact';
 
 export interface QueuedMessage {
 	id: string;
@@ -47,7 +64,16 @@ export type PendingAsk = { id: string; ref: string; at: number } & (
 	  }
 	| { kind: 'question'; input: Record<string, unknown>; questions: Question[] }
 	| { kind: 'plan'; input: Record<string, unknown>; plan: string }
+	// Voice OS's own: a /clear or /compact held until the developer says yes. The SDK knows nothing of it.
+	| { kind: 'command'; command: GuardedCommand; text: string }
 );
+
+export type SdkAsk = Exclude<PendingAsk, { kind: 'command' }>;
+
+export const isSdkAsk = (ask: PendingAsk): ask is SdkAsk => ask.kind !== 'command';
+
+// A held command lapses, so a stray "yes" much later clears nothing.
+export const COMMAND_TTL_MS = 2 * 60_000;
 
 export interface Denial {
 	id: string;
@@ -81,10 +107,11 @@ export interface Session {
 	error: string | null;
 	// Set when the developer's voice started the running turn: a follow-up within FOLLOW_UP_MS interrupts it.
 	voiceTurnAt: number | null;
-	// No message sent to it since it started: the next one is its first (see buildSessionNote).
+	// No message sent to it since it started: the next one is its first (see buildSessionNote in tools/send.ts).
 	isFresh: boolean;
 	// Its last few messages, oldest first, so "what's it doing?" can be answered from elsewhere.
 	requests: { text: string; at: number }[];
+	subagents: Subagent[];
 }
 
 export interface VoiceEntry {
@@ -187,11 +214,13 @@ export type PermissionDecision = 'allow' | 'always' | 'deny';
 export type Action =
 	// Clicks and voice commands both dispatch exactly these, which keeps every browser and the kernel in sync.
 	// note, isSpoken: set only by the server; the gateway schema drops them from clients.
-	| { type: 'send'; ref: string; text: string; note?: string; isSpoken?: boolean }
+	// aside: set by the kernel for a question a running session should answer beside its work.
+	| { type: 'send'; ref: string; text: string; note?: string; isSpoken?: boolean; aside?: boolean }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
 	| { type: 'answer_question'; askId: string; answers: Record<string, string> }
 	| { type: 'answer_plan'; askId: string; isApproved: boolean; message?: string }
+	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	| { type: 'switch_view'; view: View }
 	| { type: 'start_session'; ref: string }
 	| { type: 'stop_session'; ref: string }
@@ -249,7 +278,33 @@ export type Observation =
 	| { type: 'history_restored'; ref: string; items: StreamItem[] }
 	// isSettled: a start's watcher reached its verdict, or a routine look.
 	| { type: 'dev_servers'; ref: string; servers: DevServer[]; isSettled: boolean }
-	| { type: 'dev_offer'; offer: DevOffer };
+	| { type: 'dev_offer'; offer: DevOffer }
+	| {
+			type: 'subagent_started';
+			ref: string;
+			taskId: string;
+			agentType: string | null;
+			description: string;
+			isBackground: boolean;
+	  }
+	| { type: 'subagent_step'; ref: string; taskId: string; step: string }
+	| { type: 'subagent_backgrounded'; ref: string; taskId: string }
+	| { type: 'subagent_ended'; ref: string; taskId: string }
+	// A side question settled: answered, or handed back to the session's queue.
+	| {
+			type: 'aside_settled';
+			ref: string;
+			itemId: string;
+			// Carried here too: the item may have left the stream by the time the answer comes.
+			question: string;
+			status: Exclude<AsideStatus, 'asking'>;
+			answer: string | null;
+	  }
+	// /clear (or /reset, /new) started a new conversation in the same process.
+	| { type: 'conversation_reset'; ref: string }
+	| { type: 'session_notice'; ref: string; text: string }
+	// A held /clear or /compact went unanswered for COMMAND_TTL_MS.
+	| { type: 'command_expired'; askId: string };
 
 export type Input = Action | Observation;
 
@@ -275,6 +330,8 @@ export type ServerMessage =
 	| SpeechMessage
 	// Hands-free was turned off for this tab by the server: another tab took it, or the stream failed.
 	| { type: 'listen_off'; reason: string }
+	// Hands-free was turned on for this tab by voice.
+	| { type: 'listen_on' }
 	| { type: 'error'; message: string };
 
 export type ClientMessage =

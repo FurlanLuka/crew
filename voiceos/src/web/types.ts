@@ -4,6 +4,7 @@ export type Dispatch = (action: Action) => void;
 
 export type MicStatus = 'idle' | 'live' | 'denied';
 
-export interface ListenOff {
-	reason: string;
+// The server switched this tab's hands-free: another tab took it, the stream failed, or the developer said so.
+export interface HandsFreeCommand {
+	isOn: boolean;
 }

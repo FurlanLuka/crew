@@ -53,6 +53,15 @@ environment.
   done, cost, HEAD) that the kernel reads for "what did checkout do yesterday".
 - The pinned **voiceos** session runs in your home directory with the crew CLI: say
   "voiceos, make a worktree in store-front for the search fix".
+- While a session works, a question to it is answered **aside** (`src/sessions/side-answer.ts`):
+  a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
+  Instructions still queue. "By the way" forces an aside, "queue it" forces the queue, and a
+  question that needs tools or changes the work is queued after all. Asides are not saved:
+  they are gone after a restart.
+- `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
+- "Stop listening" / "hands-free on" switch hands-free in the tab you spoke from.
+- The session screen lists running sub-agents with their current step, from the SDK's task
+  events.
 
 State lives in `~/.crew/voiceos/` (token, sessions, topics, journal, logs). `crew voice
 logs` tails the log.

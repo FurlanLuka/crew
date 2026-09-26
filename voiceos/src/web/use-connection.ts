@@ -7,7 +7,7 @@ import type {
 	State,
 } from '../shared/protocol.js';
 import { reduce } from '../state/reducer.js';
-import type { ListenOff } from './types.js';
+import type { HandsFreeCommand } from './types.js';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'unauthorized' | 'closed';
 
@@ -93,8 +93,7 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 	const socket = useRef<WebSocket | null>(null);
 	const outbox = useRef<ClientMessage[]>([]);
 	const stateRef = useRef<State | null>(null);
-	// The server turned hands-free off for this tab; a new object each time, so every one is noticed.
-	const [listenOff, setListenOff] = useState<ListenOff | null>(null);
+	const [handsFreeCommand, setHandsFreeCommand] = useState<HandsFreeCommand | null>(null);
 	const speechRef = useRef(onSpeech);
 	speechRef.current = onSpeech;
 
@@ -140,8 +139,9 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 					return;
 				}
 
-				if (message.type === 'listen_off') {
-					setListenOff({ reason: message.reason });
+				// A fresh object each time, so saying it twice switches it twice.
+				if (message.type === 'listen_off' || message.type === 'listen_on') {
+					setHandsFreeCommand({ isOn: message.type === 'listen_on' });
 
 					return;
 				}
@@ -226,5 +226,5 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 		}
 	}, []);
 
-	return { state, status, send, dispatch, sendBinary, listenOff };
+	return { state, status, send, dispatch, sendBinary, handsFreeCommand };
 };

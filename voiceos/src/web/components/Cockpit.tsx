@@ -3,7 +3,9 @@ import type { Session, State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 import { DevPanel } from './DevPanel.js';
 import { ElsewherePanel } from './ElsewherePanel.js';
+import { Markdown } from './Markdown.js';
 import { StreamLine } from './StreamLine.js';
+import { SubagentsPanel } from './SubagentsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
 
 interface CockpitProps {
@@ -28,7 +30,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 				))}
 				{session.draft && (
 					<div className="line text">
-						{session.draft}
+						<Markdown text={session.draft} />
 						<span className="caret" />
 					</div>
 				)}
@@ -83,6 +85,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 						)}
 					</div>
 				</div>
+				<SubagentsPanel subagents={session.subagents} />
 				<DevPanel
 					worktree={session.ref}
 					servers={state.devServers[session.ref] ?? []}

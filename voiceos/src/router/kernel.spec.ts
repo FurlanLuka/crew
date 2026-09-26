@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
 import type { Action, VoiceEntry } from '../shared/protocol.js';
-import { createFixtureState } from '../../test/support/state.js';
+import { createFixtureState, type FixtureContext } from '../../test/support/state.js';
 import { Kernel, buildKernelMessage, listWaitingItems, type KernelOptions } from './kernel.js';
 
 configureLog({ quiet: true });
@@ -12,15 +12,18 @@ type FixtureState = ReturnType<typeof createFixtureState>;
 
 interface FakeCreateParams {
 	messages: { role: string; content: unknown }[];
+	tool_choice?: unknown;
 }
 
 const createFakeClient = (script: Block[][]) => {
 	// Counts model calls, and picks the next scripted response.
 	let callCount = 0;
 	const prompts: string[] = [];
+	const toolChoices: unknown[] = [];
 	const client = {
 		messages: {
 			create: async (params: FakeCreateParams) => {
+				toolChoices.push(params.tool_choice ?? null);
 				const firstContent = params.messages[0]?.content;
 
 				if (typeof firstContent === 'string') {
@@ -35,18 +38,24 @@ const createFakeClient = (script: Block[][]) => {
 		},
 	} as unknown as Anthropic;
 
-	return { client, calls: () => callCount, prompts };
+	return { client, calls: () => callCount, prompts, toolChoices };
 };
 
 const createToolUse = (id: string, name: string, input: Record<string, unknown>) =>
 	({ type: 'tool_use', id, name, input }) as unknown as Block;
 
-type CreateKernelExtra = Pick<KernelOptions, 'now'> & { log?: Record<string, VoiceEntry[]> };
+type CreateKernelExtra = Pick<KernelOptions, 'now'> & {
+	log?: Record<string, VoiceEntry[]>;
+	context?: FixtureContext;
+};
 
 const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 	const fake = createFakeClient(script);
 	const actions: Action[] = [];
-	const state = { ...createFixtureState({ view: 'store-front/main' }), voiceLog: extra.log ?? {} };
+	const state = {
+		...createFixtureState({ view: 'store-front/main', ...extra.context }),
+		voiceLog: extra.log ?? {},
+	};
 	const kernel = new Kernel({
 		apiKey: 'k',
 		client: fake.client,
@@ -136,6 +145,156 @@ describe('Kernel', () => {
 
 		expect(fake.calls()).toBe(2);
 		expect(result.reply).toBe('');
+	});
+
+	it('on a session screen the first step must call a tool; later steps and Mission Control choose freely', async () => {
+		const onScreen = createKernel([
+			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+			[{ type: 'text', text: 'Nothing is waiting.' } as Block],
+		]);
+
+		await onScreen.kernel.handle("what's waiting on me?", { forwardTo: 'store-front/main' });
+
+		expect(onScreen.fake.toolChoices).toEqual([{ type: 'any' }, null]);
+
+		const grid = createKernel([[{ type: 'text', text: 'Nothing is waiting.' } as Block]]);
+
+		await grid.kernel.handle("what's waiting on me?");
+
+		expect(grid.fake.toolChoices).toEqual([null]);
+	});
+
+	it('asked again with tools off → no tool choice but none', async () => {
+		const { kernel, fake } = createKernel([
+			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+			[],
+			[{ type: 'text', text: 'It is idle.' } as Block],
+		]);
+
+		const result = await kernel.handle('is it done?', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('It is idle.');
+		expect(fake.toolChoices).toEqual([{ type: 'any' }, null, { type: 'none' }]);
+	});
+
+	it('a forward beside an answer that failed → silent: the forward is what happened', async () => {
+		const { kernel } = createKernel([
+			[
+				createToolUse('t1', 'answer', { ref: 'store-front/main', decision: 'yes', text: '' }),
+				createToolUse('t2', 'forward', { text: 'Fix everything.' }),
+			],
+			[{ type: 'text', text: 'The session is no longer waiting — it moved on.' } as Block],
+		]);
+
+		const result = await kernel.handle('just fix everything', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('');
+	});
+
+	it('asking back on a session screen → the words go to the session instead, nothing spoken', async () => {
+		const { kernel, actions } = createKernel([
+			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+			[{ type: 'text', text: "I'm not sure which agent you mean. Can you name it?" } as Block],
+		]);
+
+		const result = await kernel.handle('Okay. Can you, um, close the agent?', {
+			forwardTo: 'store-front/main',
+		});
+
+		expect(result.reply).toBe('');
+		expect(result.calls.at(-1)).toMatchObject({ name: 'forward', ok: true });
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: 'Okay. Can you, um, close the agent?' },
+		]);
+	});
+
+	it('a lapsed fix offer beside a send_to in the same response → the send_to never runs', async () => {
+		const { kernel, fake, actions } = createKernel(
+			[
+				[
+					createToolUse('t1', 'send_to', { ref: 'store-front/main', text: 'Fix the api server.' }),
+					createToolUse('t2', 'dev_offer', { accept: true }),
+				],
+				[{ type: 'text', text: 'The fix offer lapsed.' } as Block],
+			],
+			{ context: { offer: { ref: 'store-front/main', secondsAgo: 600 } } },
+		);
+
+		const result = await kernel.handle('yes, fix it');
+
+		expect(result.reply).toBe('The fix offer lapsed.');
+		expect(actions).toEqual([]);
+		expect(fake.toolChoices).toEqual([null, { type: 'none' }]);
+	});
+
+	it('ignore_words refused on a session screen → the next step must act too, not speak', async () => {
+		const { kernel, fake, actions } = createKernel([
+			[createToolUse('t1', 'ignore_words', { reason: 'unfinished thought' })],
+			[
+				createToolUse('t2', 'forward', {
+					text: "Maybe we don't always need I'll get back to you.",
+				}),
+			],
+		]);
+		const said =
+			"Okay, so like, I'll get back to you maybe we don't always need, like, that, but just say okay.";
+
+		await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+		expect(fake.toolChoices).toEqual([{ type: 'any' }, { type: 'any' }]);
+		expect(actions).toHaveLength(1);
+	});
+
+	it('refused ignore_words, then a lookup → only the next step is forced; the answer is spoken', async () => {
+		const { kernel, fake } = createKernel([
+			[createToolUse('t1', 'ignore_words', { reason: 'unfinished thought' })],
+			[createToolUse('t2', 'read_state', { ref: 'store-front/main' })],
+			[{ type: 'text', text: 'It is still running the tests.' } as Block],
+		]);
+
+		const result = await kernel.handle(
+			'Okay so what is it actually doing right now with all of those tests running?',
+			{ forwardTo: 'store-front/main' },
+		);
+
+		expect(fake.toolChoices).toEqual([{ type: 'any' }, { type: 'any' }, null]);
+		expect(result.reply).toBe('It is still running the tests.');
+	});
+
+	it('a long sentence split between a restart and a forward → the forward keeps its own slice', async () => {
+		const { kernel, actions } = createKernel([
+			[
+				createToolUse('t1', 'crew_dev', { ref: 'store-front/main', action: 'restart' }),
+				createToolUse('t2', 'forward', { text: 'Check the logs for the timeout.' }),
+			],
+		]);
+
+		await kernel.handle(
+			'Okay so restart the dev servers for this one and after that have it go through the logs for that timeout please.',
+			{ forwardTo: 'store-front/main' },
+		);
+
+		expect(actions).toContainEqual({
+			type: 'send',
+			ref: 'store-front/main',
+			text: 'Check the logs for the timeout.',
+		});
+	});
+
+	it('a lapsed fix offer → answered with tools off, nothing else sent', async () => {
+		const { kernel, fake, actions } = createKernel(
+			[
+				[createToolUse('t1', 'dev_offer', { accept: true })],
+				[{ type: 'text', text: 'The fix offer lapsed.' } as Block],
+			],
+			{ context: { offer: { ref: 'store-front/main', secondsAgo: 600 } } },
+		);
+
+		const result = await kernel.handle('yes, fix it');
+
+		expect(result.reply).toBe('The fix offer lapsed.');
+		expect(fake.toolChoices.at(-1)).toEqual({ type: 'none' });
+		expect(actions).toEqual([]);
 	});
 
 	it('a forward beside a call that failed → the words explaining the failure are spoken', async () => {

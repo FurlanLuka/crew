@@ -85,5 +85,35 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 		);
 	}
 
+	if (ask.kind === 'command') {
+		return (
+			<section className="dock crit" aria-label="confirm">
+				<span className="lbl c-crit">
+					confirm · {label} · /{ask.command}
+				</span>
+				<div className="ask">
+					{ask.command === 'clear' ? 'Clear' : 'Compact'} {label}'s context?
+				</div>
+				<div className="cmd">{ask.text}</div>
+				<div className="btns">
+					<button
+						type="button"
+						className="btn primary"
+						onClick={() => dispatch({ type: 'answer_command', askId: ask.id, isApproved: true })}
+					>
+						Yes · “yes”
+					</button>
+					<button
+						type="button"
+						className="btn danger"
+						onClick={() => dispatch({ type: 'answer_command', askId: ask.id, isApproved: false })}
+					>
+						No · “no”
+					</button>
+				</div>
+			</section>
+		);
+	}
+
 	return <QuestionDock ask={ask} label={label} dispatch={dispatch} />;
 };

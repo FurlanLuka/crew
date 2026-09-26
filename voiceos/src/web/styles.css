@@ -359,6 +359,7 @@ textarea:focus-visible {
 .line.notice {
 	color: var(--amber);
 }
+
 .panel {
 	padding: 14px 17px;
 	border-bottom: 1px solid var(--line-soft);
@@ -818,4 +819,134 @@ textarea:focus-visible {
 	float: right;
 	color: var(--muted);
 	font-size: 10px;
+}
+
+/* Claude's replies: Markdown kept in the terminal's voice — one size, one face, structure by weight and colour. */
+.md {
+	white-space: normal;
+}
+.md > :first-child {
+	margin-top: 0;
+}
+.md > :last-child {
+	margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md table,
+.md blockquote {
+	margin: 0 0 0.6em;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+	margin: 0.8em 0 0.3em;
+	font-size: inherit;
+	font-weight: 600;
+	color: var(--cyan);
+}
+.md h1::before {
+	content: "# ";
+	color: var(--muted);
+}
+.md h2::before {
+	content: "## ";
+	color: var(--muted);
+}
+.md h3::before,
+.md h4::before,
+.md h5::before,
+.md h6::before {
+	content: "### ";
+	color: var(--muted);
+}
+.md strong {
+	color: #fff;
+	font-weight: 600;
+}
+.md em {
+	color: var(--ink-dim);
+}
+.md ul,
+.md ol {
+	padding-left: 2ch;
+}
+.md li::marker {
+	color: var(--muted);
+}
+.md li > p {
+	margin: 0;
+}
+.md input[type="checkbox"] {
+	margin: 0 0.8ch 0 0;
+	vertical-align: -1px;
+}
+.md li:has(> input[type="checkbox"]) {
+	list-style: none;
+	margin-left: -2ch;
+}
+.md code {
+	color: var(--amber);
+	background: var(--raised);
+	padding: 0 0.4ch;
+	border-radius: var(--r);
+}
+.md pre {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	padding: 8px 10px;
+	overflow-x: auto;
+	white-space: pre;
+}
+.md pre code {
+	color: var(--ink);
+	background: none;
+	padding: 0;
+}
+.md table {
+	border-collapse: collapse;
+	display: block;
+	overflow-x: auto;
+}
+.md th,
+.md td {
+	border: 1px solid var(--line);
+	padding: 2px 8px;
+	text-align: left;
+}
+.md th {
+	color: var(--ink);
+	font-weight: 600;
+	background: var(--surface);
+}
+.md blockquote {
+	border-left: 2px solid var(--line);
+	padding-left: 1ch;
+	color: var(--ink-dim);
+}
+.md a {
+	color: var(--cyan);
+}
+.md hr {
+	border: 0;
+	border-top: 1px solid var(--line);
+}
+.aside {
+	border-left: 2px solid var(--cyan-dim);
+	padding-left: 1ch;
+	margin: 4px 0;
+}
+.subagent + .subagent {
+	margin-top: 6px;
+}
+.subagent .step {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage } from '../shared/protocol.js';
 import type { Mic } from './audio.js';
-import type { ListenOff, MicStatus } from './types.js';
+import type { HandsFreeCommand, MicStatus } from './types.js';
 
 const HANDS_FREE_STORAGE_KEY = 'voiceos.handsFree';
 
@@ -24,7 +24,7 @@ const writeHandsFree = (isOn: boolean): void => {
 
 export interface UseHandsFreeParams {
 	isConnected: boolean;
-	listenOff: ListenOff | null;
+	handsFreeCommand: HandsFreeCommand | null;
 	getMic: () => Mic;
 	send: (message: ClientMessage) => void;
 	onMicStatusChange: (mic: MicStatus) => void;
@@ -32,7 +32,7 @@ export interface UseHandsFreeParams {
 
 export const useHandsFree = ({
 	isConnected,
-	listenOff,
+	handsFreeCommand,
 	getMic,
 	send,
 	onMicStatusChange,
@@ -45,10 +45,10 @@ export const useHandsFree = ({
 	useEffect(() => writeHandsFree(handsFree), [handsFree]);
 
 	useEffect(() => {
-		if (listenOff) {
-			setHandsFree(false);
+		if (handsFreeCommand) {
+			setHandsFree(handsFreeCommand.isOn);
 		}
-	}, [listenOff]);
+	}, [handsFreeCommand]);
 
 	// Announced on every (re)connect: a new socket, or a restarted server, knows nothing of it.
 	useEffect(() => {

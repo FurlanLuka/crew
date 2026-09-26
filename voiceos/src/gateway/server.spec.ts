@@ -238,6 +238,7 @@ describe('parseClientMessage', () => {
 			askId: 'a1',
 			answers: { 'Which table?': 'New table' },
 		},
+		answer_command: { type: 'answer_command', askId: 'a1', isApproved: true },
 		answer_plan: {
 			type: 'answer_plan',
 			askId: 'a1',

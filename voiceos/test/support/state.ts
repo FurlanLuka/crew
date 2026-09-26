@@ -5,7 +5,7 @@ import type {
 	State,
 	VoiceEntry,
 } from '../../src/shared/protocol.js';
-import { GRID } from '../../src/shared/protocol.js';
+import { GRID, isSdkAsk } from '../../src/shared/protocol.js';
 import { createInitialState, createSession } from '../../src/state/reducer.js';
 
 export interface FixtureWork {
@@ -27,8 +27,9 @@ export interface FixtureLogEntry {
 
 export interface FixtureContext {
 	view?: string;
-	// Whose it is by default: permission on wrk1, question and plan on store-front/main.
-	ask?: 'permission' | 'question' | 'plan';
+	// Whose it is by default: permission on wrk1, the others on store-front/main.
+	// command: a /clear Voice OS holds until the developer says yes.
+	ask?: 'permission' | 'question' | 'plan' | 'command';
 	askOn?: string;
 	// A second permission, on that ref.
 	alsoAsk?: string;
@@ -112,6 +113,17 @@ const listPendingAsks = (context: FixtureContext, at: number): PendingAsk[] => {
 		});
 	}
 
+	if (context.ask === 'command') {
+		asks.push({
+			id: 'ask-1',
+			ref: context.askOn ?? 'store-front/main',
+			at,
+			kind: 'command',
+			command: 'clear',
+			text: '/clear',
+		});
+	}
+
 	if (context.alsoAsk) {
 		asks.push(createPermissionAsk('ask-2', context.alsoAsk, at));
 	}
@@ -153,7 +165,7 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 	const isWaitingOnUser = context.needs === ref;
 	const said = isWaitingOnUser ? context.said : work?.said;
 	// A pending ask holds its session's turn open (the reducer's ask_opened).
-	const isBlocked = asks.some((ask) => ask.ref === ref);
+	const isBlocked = asks.some((ask) => ask.ref === ref && isSdkAsk(ask));
 	const status = resolveFixtureStatus({
 		isStopped: context.stopped?.includes(ref) ?? false,
 		isBlocked,

@@ -37,13 +37,15 @@ const createHarness = (
 		worktrees: [createWorktree('store-front/main'), createWorktree('checkout-api/main')],
 	});
 	const kernelCalls: KernelCall[] = [];
+	const handsFreeSwitches: ((isOn: boolean) => string)[] = [];
 	const inputs: Input[] = [];
 	store.subscribe((stamped) => inputs.push(stamped.input));
 	const router = new UtteranceRouter({
 		store,
 		now: () => 5000,
-		kernel: async (text, options) => {
+		kernel: async (text, { setHandsFree, ...options }) => {
 			kernelCalls.push({ text, ...options });
+			handsFreeSwitches.push(setHandsFree);
 
 			return turn(text);
 		},
@@ -54,7 +56,7 @@ const createHarness = (
 			view: ref ? { kind: 'session', ref } : { kind: 'grid' },
 		});
 
-	return { store, router, kernelCalls, inputs, view };
+	return { store, router, kernelCalls, handsFreeSwitches, inputs, view };
 };
 
 describe('UtteranceRouter', () => {
@@ -167,6 +169,34 @@ describe('UtteranceRouter', () => {
 			text: 'run the tests',
 		});
 		expect(harness.store.state.voiceLog['store-front/main']).toBeUndefined();
+	});
+
+	it('typed "by the way" into a working session\'s box → asked aside', async () => {
+		const harness = createHarness();
+		harness.view('store-front/main');
+		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'session_started', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'refactor it' });
+
+		await harness.router.handle('btw which file was that?', 'typed');
+
+		expect(harness.inputs.at(-1)).toEqual({
+			type: 'send',
+			ref: 'store-front/main',
+			text: 'btw which file was that?',
+			aside: true,
+		});
+	});
+
+	it('the kernel gets the switch for the tab the words came from; none → it says there is no tab', async () => {
+		const harness = createHarness();
+		const fromTab = () => 'changed' as const;
+
+		await harness.router.handle('stop listening', 'voice', { setHandsFree: fromTab });
+		await harness.router.handle('stop listening', 'voice');
+
+		expect(harness.handsFreeSwitches[0]).toBe(fromTab);
+		expect(harness.handsFreeSwitches[1]?.(false)).toBe('no_tab');
 	});
 
 	it('typed while that session waits on a permission → the kernel answers it (typing "yes" must not deny it)', async () => {

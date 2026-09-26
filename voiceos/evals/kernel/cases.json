@@ -1306,7 +1306,7 @@
 			},
 			"calls": [],
 			"answer": true,
-			"reply_includes": ["lapsed|expired|too old|old|again|no longer"],
+			"reply_includes": ["lapsed|expired|too old|no longer"],
 			"allow": [
 				{
 					"name": "dev_offer",
@@ -1721,8 +1721,20 @@
 				"ask": "permission"
 			},
 			"calls": [],
-			"forbid_mutation": true,
-			"answer": true
+			"no_reply": true,
+			"allow": [
+				{
+					"name": "forward",
+					"text_includes": "lint"
+				},
+				{
+					"name": "answer",
+					"input": {
+						"decision": "no"
+					},
+					"text_includes": "lint"
+				}
+			]
 		},
 		{
 			"id": "two-asks-alert-says-which",
@@ -1935,6 +1947,568 @@
 				{
 					"name": "forward",
 					"text_includes": ["retry"]
+				}
+			]
+		},
+		{
+			"id": "aside-question",
+			"utterance": "Which file did you change for the router?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "question"
+					},
+					"text_includes": ["file", "router"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "aside-instruction",
+			"utterance": "Also run the linter.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "instruction"
+					},
+					"text_includes": "lint"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "aside-by-the-way",
+			"utterance": "By the way, which branch are you on?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "branch"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "aside-check-is-work",
+			"utterance": "Can you check whether the tests pass?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "instruction"
+					},
+					"text_includes": "test"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "aside-correction-is-work",
+			"utterance": "Shouldn't that use the v2 API instead?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "v2"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "hands-free-off",
+			"utterance": "Turn off hands-free.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "hands_free"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "hands-free-on-grid",
+			"utterance": "Turn hands-free back on.",
+			"context": {},
+			"calls": [
+				{
+					"name": "hands_free"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "stop-listening-busy",
+			"utterance": "Stop listening.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "hands_free"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "slash-clear",
+			"utterance": "Slash clear.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "/clear"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "confirm-clear-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "command"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "confirm-clear-no",
+			"utterance": "No, leave it.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "command"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "confirm-clear-cancel-busy",
+			"utterance": "Cancel.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "command",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "confirm-clear-dont",
+			"utterance": "Don't do it.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "command"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "asked-long-answer",
+			"utterance": "I think the spoken confirmation should s—should be—so whenever we're doing, like, a call that's not, um, like, that won't be responded to right away. So basically, every time we do in-session calls, uh, we should probably do some sort of confirmation.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "store front, main asks: should the confirmation play every time, or only when the answer won't come back quickly?",
+				"said": "Should a spoken confirmation play every time, or only when the answer won't come back quickly?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "confirmation"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "asked-redirect",
+			"utterance": "Okay, let's get back to the session. I think there's a bug when you ask me a question and I'm redirecting.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "store front, main asks: should the confirmation play every time, or only when the answer won't come back quickly?",
+				"said": "Should a spoken confirmation play every time, or only when the answer won't come back quickly?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "bug"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "question-pending-redirect",
+			"utterance": "Actually, forget that, let's look at the router first.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "question"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "router"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "temp-subagent-is-session-work",
+			"utterance": "Can you create a temporary sub-agent to test?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["agent", "test"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "close-agent-is-session-work",
+			"utterance": "Okay. Can you, um, close the agent?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "close"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "redirect-to-analysis",
+			"utterance": "Okay, actually, let's redirect the session to something else. Um, can you analyze the debug notes from the past, like, 15 minutes in the last session of what went wrong and figure out what we can do to make this experience a bit better?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["debug notes", "15|fifteen"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "thinking-aloud-reaches-session",
+			"utterance": "Okay, so maybe we don't always need, like, I'll get back to you, but just say okay, or just something like that.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Let's brainstorm the spoken confirmation: when I ask the session to do something, say something like okay, I'm working on it.",
+						"reply": "",
+						"did": [
+							"forward \"Let's brainstorm the spoken confirmation when you pass work to a session.\""
+						]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["get back to you", "okay"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "thinking-aloud-no-context",
+			"utterance": "Okay, so maybe we don't always need, like, I'll get back to you, but just say okay, or just something like that.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["get back to you", "okay"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "background-recipe",
+			"utterance": "I'm going to be making one of my favorite recipes first. You're going to add in about that much ketchup. You don't have to be precise. And then you're going to add in water.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "background-lyrics",
+			"utterance": "Just a little closer, next to my come on and touch touch up with me.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [],
+			"silent": true
+		},
+		{
+			"id": "pronoun-kept",
+			"utterance": "And also, like, um, while doing that, also check the actual session transcripts so you see how much you messed up.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["you messed|you've messed|you made", "transcript"],
+					"not_includes": ["I messed", "I've messed", "I made"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "fix-everything-not-plan",
+			"utterance": "Okay, can you just fix everything and make sure to create evals for that so things like that don't happen anymore, please?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "asks: plan the fixes together with the lapsed-offer regression?",
+				"said": "What would help most: guard the silent cases in code, tighten the setup rule, and keep the subject in spoken choices. Want me to plan those together with the lapsed-offer fix?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["fix", "eval"],
+					"not_includes": ["plan"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "voiceos-named-is-session-work",
+			"utterance": "Voice OS shouldn't always say it'll get back to you, it should just say okay.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "okay"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "did-you-send-that",
+			"utterance": "Did that go to the session?",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Run the linter too.",
+						"reply": "",
+						"did": ["forward \"Run the linter too.\""]
+					}
+				]
+			},
+			"calls": [],
+			"answer": true,
+			"forbid_mutation": true,
+			"reply_includes": ["yes|went to|sent"],
+			"reply_not_includes": ["didn't", "did not", "haven't", "wasn't", "nothing"]
+		},
+		{
+			"id": "offer-yes-on-screen",
+			"utterance": "Yes, fix it.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 20
+				},
+				"alert": {
+					"text": "store front, main's api server died. Want Claude to fix it?",
+					"secondsAgo": 15,
+					"ref": "store-front/main"
+				},
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "dev_offer",
+					"input": {
+						"accept": true
+					}
+				}
+			]
+		},
+		{
+			"id": "offer-no-on-screen",
+			"utterance": "No.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 20
+				},
+				"alert": {
+					"text": "store front, main's api server died. Want Claude to fix it?",
+					"secondsAgo": 15,
+					"ref": "store-front/main"
+				},
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "dev_offer",
+					"input": {
+						"accept": false
+					}
+				}
+			]
+		},
+		{
+			"id": "offer-stale-on-screen",
+			"utterance": "Yes, fix it.",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 300
+				}
+			},
+			"calls": [],
+			"answer": true,
+			"reply_includes": ["lapsed|expired|too old|no longer"],
+			"allow": [
+				{
+					"name": "dev_offer",
+					"input": {
+						"accept": false
+					}
+				}
+			]
+		},
+		{
+			"id": "subagent-on-grid-asks-which",
+			"utterance": "Can you create a temporary sub-agent to test?",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["which"]
+		},
+		{
+			"id": "either-or-answered-grid",
+			"utterance": "The store front one.",
+			"context": {
+				"voiceLog": [
+					{
+						"utterance": "Have main run the tests.",
+						"reply": "Which one: store-front/main or checkout-api/main?",
+						"did": []
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main",
+					"text_includes": "test"
 				}
 			]
 		}

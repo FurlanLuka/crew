@@ -3,8 +3,9 @@ import type { Action, PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
-import { executeTool, isDuplicateSend, type ToolContext } from './tools.js';
-import { describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
+import { isDuplicateSend, isRewriteTooShort, prepareSentText } from './send.js';
+import { executeTool, type ToolContext } from './tools.js';
+import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
@@ -43,6 +44,7 @@ const createToolContext = (patch: Partial<State> = {}) => {
 		asks: state.asks,
 		mute: () => {},
 		saveDebugNote: () => {},
+		setHandsFree: () => 'changed' as const,
 	};
 
 	return { tools, actions };
@@ -416,6 +418,15 @@ describe('a message the session is already working on', () => {
 		expect(isAnsweredByForward([forwarded, { name: 'crew_dev', input: {}, ok: false }])).toBe(
 			false,
 		);
+		// A failed answer beside a forward is the kernel trying both: the forward is what happened.
+		expect(isAnsweredByForward([forwarded, { name: 'answer', input: {}, ok: false }])).toBe(true);
+		expect(isAnsweredByForward([forwarded, { name: 'send_to', input: {}, ok: false }])).toBe(false);
+		expect(
+			isAnsweredByForward([
+				{ ...forwarded, ok: false },
+				{ name: 'answer', input: {}, ok: false },
+			]),
+		).toBe(false);
 	});
 });
 
@@ -700,6 +711,7 @@ describe('Voice OS note through the real reducer', () => {
 			asks: [],
 			mute: () => {},
 			saveDebugNote: () => {},
+			setHandsFree: () => 'changed' as const,
 			recentUtterances: ['why were they failing?'],
 		};
 
@@ -979,24 +991,46 @@ describe('tools that replaced the fast path', () => {
 		expect(actions).toEqual([]);
 	});
 
-	it('forward / send_to refuse a session waiting on a permission or plan (words would deny it); a question takes words', async () => {
+	it('a bare yes or no sent as words to a permission or plan → refused: it is an answer', async () => {
 		for (const ask of [permission, plan]) {
-			const { tools, actions } = createToolContext({ asks: [ask] });
-			expect(
-				(await executeTool('forward', { text: 'yes' }, { ...tools, forwardTo: 'store-front/main' }))
-					.content,
-			).toContain('with the answer tool');
-			expect(
-				(await executeTool('send_to', { ref: 'store-front/main', text: 'yes' }, tools)).ok,
-			).toBe(false);
-			expect(actions).toEqual([]);
+			for (const text of ['yes', 'Go ahead.', 'no', "Don't."]) {
+				const { tools, actions } = createToolContext({ asks: [ask] });
+				const result = await executeTool(
+					'forward',
+					{ text },
+					{ ...tools, forwardTo: 'store-front/main' },
+				);
+
+				expect(result.content).toContain('use the answer tool');
+				expect(actions).toEqual([]);
+			}
 		}
+	});
 
-		const { tools, actions } = createToolContext({ asks: [question] });
+	it('anything else said while a permission, plan or question waits → it goes through: the developer moved on', async () => {
+		for (const ask of [permission, plan, question]) {
+			const { tools, actions } = createToolContext({ asks: [ask] });
 
-		await executeTool('forward', { text: 'B please' }, { ...tools, forwardTo: 'store-front/main' });
-
-		expect(actions).toHaveLength(1);
+			expect(
+				(
+					await executeTool(
+						'forward',
+						{ text: "Let's get back to the router work instead." },
+						{ ...tools, forwardTo: 'store-front/main' },
+					)
+				).ok,
+			).toBe(true);
+			expect(
+				(
+					await executeTool(
+						'send_to',
+						{ ref: 'store-front/main', text: 'Also run the linter.' },
+						tools,
+					)
+				).ok,
+			).toBe(true);
+			expect(actions).toHaveLength(2);
+		}
 	});
 
 	it('interrupt: the session on screen or one named, only while it works', async () => {
@@ -1240,5 +1274,645 @@ describe('describeSession: what it waits on, what it was asked', () => {
 			'step: Bash crew add worktree signals wrk3',
 			'step: Bash crew setup status store-front/wrk3',
 		]);
+	});
+});
+
+describe('side answers', () => {
+	const running = () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['store-front/main']!;
+
+		return createToolContext({
+			sessions: {
+				...base.tools.getState().sessions,
+				'store-front/main': { ...session, status: 'running' },
+			},
+		});
+	};
+
+	it('a question to a working session → asked aside, and the voice log says so', async () => {
+		const { tools, actions } = running();
+		const result = await executeTool(
+			'forward',
+			{ text: 'Which file did you change?', kind: 'question' },
+			{ ...tools, forwardTo: 'store-front/main', utterance: 'which file did you change?' },
+		);
+
+		expect(result).toMatchObject({ ok: true, note: 'aside' });
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: 'Which file did you change?', aside: true },
+		]);
+		expect(
+			describeToolCall({
+				name: 'forward',
+				input: { text: 'Which file?' },
+				ok: true,
+				note: 'aside',
+			}),
+		).toBe('forward "Which file?" (aside)');
+	});
+
+	it('an instruction to a working session → sent as always', async () => {
+		const { tools, actions } = running();
+
+		await executeTool(
+			'forward',
+			{ text: 'Also run the linter.', kind: 'instruction' },
+			{ ...tools, forwardTo: 'store-front/main', utterance: 'also run the linter' },
+		);
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: 'Also run the linter.' },
+		]);
+	});
+
+	it('"by the way" dropped from the forwarded text → still aside, read from what was said', async () => {
+		const { tools, actions } = running();
+
+		await executeTool(
+			'send_to',
+			{ ref: 'store-front/main', text: 'Run the linter too.', kind: 'instruction' },
+			{ ...tools, utterance: 'by the way, have store front run the linter too' },
+		);
+
+		expect(actions[0]).toMatchObject({ aside: true });
+	});
+
+	it('a question to an idle session → sent, not aside', async () => {
+		const { tools, actions } = createToolContext();
+
+		await executeTool(
+			'forward',
+			{ text: 'Which file?', kind: 'question' },
+			{ ...tools, forwardTo: 'store-front/main', utterance: 'which file?' },
+		);
+
+		expect(actions[0]).not.toHaveProperty('aside');
+	});
+});
+
+describe('a held /clear', () => {
+	const held: PendingAsk = {
+		id: 'c1',
+		ref: 'store-front/main',
+		at: 0,
+		kind: 'command',
+		command: 'clear',
+		text: '/clear',
+	};
+
+	it('words for the session while it waits → they go through (the reducer cancels the /clear)', async () => {
+		const { tools, actions } = createToolContext({ asks: [held] });
+		const result = await executeTool(
+			'forward',
+			{ text: 'Run the tests.', kind: 'instruction' },
+			{ ...tools, forwardTo: 'store-front/main' },
+		);
+
+		expect(result.ok).toBe(true);
+		expect(actions).toEqual([{ type: 'send', ref: 'store-front/main', text: 'Run the tests.' }]);
+	});
+
+	it('a bare "yes" forwarded as words → refused: it answers the /clear', async () => {
+		const { tools, actions } = createToolContext({ asks: [held] });
+
+		expect(
+			(await executeTool('forward', { text: 'Yes.' }, { ...tools, forwardTo: 'store-front/main' }))
+				.ok,
+		).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('"yes" → approved', async () => {
+		const { tools, actions } = createToolContext({ asks: [held] });
+
+		await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'yes', text: '' },
+			{ ...tools, asks: [held], utterance: 'yes' },
+		);
+
+		expect(actions).toEqual([{ type: 'answer_command', askId: 'c1', isApproved: true }]);
+	});
+
+	it('"don\'t do it" taken as yes by the model → not approved', async () => {
+		const { tools, actions } = createToolContext({ asks: [held] });
+		const result = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'yes', text: '' },
+			{ ...tools, asks: [held], utterance: "don't do it" },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+});
+
+describe('hands_free', () => {
+	const withSwitch = (result: 'changed' | 'already' | 'no_tab' = 'changed') => {
+		const { tools } = createToolContext();
+		const switched: boolean[] = [];
+
+		return {
+			switched,
+			tools: {
+				...tools,
+				setHandsFree: (isOn: boolean) => {
+					switched.push(isOn);
+
+					return result;
+				},
+			},
+		};
+	};
+
+	it.each([
+		['turn off hands-free', false],
+		['hands free off', false],
+		['stop listening', false],
+		['turn handsfree on', true],
+		['start listening', true],
+		['enable hands-free', true],
+	])('%p → switched %p, whatever the model said', async (utterance, isOn) => {
+		const { tools, switched } = withSwitch();
+		const result = await executeTool('hands_free', { on: !isOn }, { ...tools, utterance });
+
+		expect(result.ok).toBe(true);
+		expect(switched).toEqual([isOn]);
+	});
+
+	it.each(['stop', 'wait', 'cancel', 'listen, check the logs', 'hands-free'])(
+		'%p → not switched',
+		async (utterance) => {
+			const { tools, switched } = withSwitch();
+
+			expect((await executeTool('hands_free', { on: false }, { ...tools, utterance })).ok).toBe(
+				false,
+			);
+			expect(switched).toEqual([]);
+		},
+	);
+
+	it('no tab to switch → fails honestly', async () => {
+		const { tools } = withSwitch('no_tab');
+
+		expect(
+			(await executeTool('hands_free', { on: false }, { ...tools, utterance: 'stop listening' }))
+				.ok,
+		).toBe(false);
+	});
+
+	it.each(["stop, it's listening on the wrong port", 'wait, the server is listening on 3000'])(
+		'%p → still an interrupt',
+		async (utterance) => {
+			const base = createToolContext();
+			const session = base.tools.getState().sessions['store-front/main']!;
+			const { tools, actions } = createToolContext({
+				sessions: {
+					...base.tools.getState().sessions,
+					'store-front/main': { ...session, status: 'running' },
+				},
+			});
+
+			expect(
+				(
+					await executeTool(
+						'interrupt',
+						{ ref: 'store-front/main' },
+						{ ...tools, screen: 'store-front/main', utterance },
+					)
+				).ok,
+			).toBe(true);
+			expect(actions).toEqual([{ type: 'interrupt', ref: 'store-front/main' }]);
+		},
+	);
+
+	it('"stop listening" never interrupts', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['store-front/main']!;
+		const { tools, actions } = createToolContext({
+			sessions: {
+				...base.tools.getState().sessions,
+				'store-front/main': { ...session, status: 'running' },
+			},
+		});
+		const result = await executeTool(
+			'interrupt',
+			{ ref: 'store-front/main' },
+			{ ...tools, screen: 'store-front/main', utterance: 'stop listening' },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('a silent call, remembered as on or off', () => {
+		expect(isSilentCall('hands_free', { on: false })).toBe(true);
+		expect(MUTATING_TOOLS).toContain('hands_free');
+		expect(describeToolCall({ name: 'hands_free', input: { on: false }, ok: true })).toBe(
+			'hands_free off',
+		);
+	});
+});
+
+describe('fixes from the live notes', () => {
+	it('a lapsed fix offer → failed and final: the kernel answers with no more tools', async () => {
+		const { tools, actions } = createToolContext({
+			devOffer: { ref: 'store-front/main', servers: ['api'], at: -10 * 60_000 },
+		});
+		const result = await executeTool('dev_offer', { accept: true }, tools);
+
+		expect(result).toMatchObject({ ok: false, isFinal: true });
+		expect(result.content).toContain('send nothing');
+		expect(actions).toEqual([]);
+	});
+
+	it('ignore_words takes speech not said to anyone', () => {
+		const ignoreWords = TOOL_DEFINITIONS.find((tool) => tool.name === 'ignore_words');
+		const reason = ignoreWords?.input_schema.properties.reason as { enum: string[] } | undefined;
+
+		expect(reason?.enum).toContain('not said to anyone');
+	});
+
+	it('answer on a session that asked at the end of its turn → the words go to it instead', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['checkout-api/main']!;
+		const { tools, actions } = createToolContext({
+			sessions: {
+				...base.tools.getState().sessions,
+				'checkout-api/main': { ...session, needsUser: { text: 'asks: deploy to staging?', at: 0 } },
+			},
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+			{ ...tools, utterance: 'Yes.' },
+		);
+
+		expect(result).toMatchObject({
+			ok: true,
+			recordAs: { name: 'send_to', input: { ref: 'checkout-api/main', text: 'Yes.' } },
+		});
+		expect(actions).toEqual([{ type: 'send', ref: 'checkout-api/main', text: 'Yes.' }]);
+	});
+
+	it('a question called an unfinished thought → refused; a fragment still ignored', async () => {
+		const { tools } = createToolContext();
+
+		expect(
+			(
+				await executeTool(
+					'ignore_words',
+					{ reason: 'unfinished thought' },
+					{ ...tools, utterance: 'Okay. Can you, um, close the agent?' },
+				)
+			).ok,
+		).toBe(false);
+		expect(
+			(
+				await executeTool(
+					'ignore_words',
+					{ reason: 'unfinished thought' },
+					{ ...tools, utterance: "Let's, um." },
+				)
+			).ok,
+		).toBe(true);
+	});
+
+	describe('decideEnding', () => {
+		const ONE = 'store-front/main';
+		const call = (name: string, ok = true) => ({ name, input: {}, ok });
+		const base = {
+			reply: '',
+			calls: [] as { name: string; input: Record<string, unknown>; ok: boolean }[],
+			forwardTo: ONE as string | null,
+			utterance: 'set up a sub-agent to test',
+			namedRefs: [] as string[],
+			isSilent: false,
+			mustAnswerNow: false,
+		};
+
+		it.each([
+			[
+				'asked what they meant on a session screen → the words go to the session',
+				{ reply: 'Is this for crew/main or Voice OS setup?' },
+				{ kind: 'forward_utterance' },
+			],
+			[
+				'"which agent?" after a lookup → forwarded too',
+				{
+					reply: "I'm not sure which agent you mean. Can you name it?",
+					calls: [call('read_state')],
+				},
+				{ kind: 'forward_utterance' },
+			],
+			[
+				'"what are you referring to … or do you want to ask the session?" → forwarded',
+				{
+					reply:
+						'What are you referring to — is something slow, or do you want to ask the session about something?',
+					calls: [call('read_state')],
+				},
+				{ kind: 'forward_utterance' },
+			],
+			[
+				'a bare "yes" with several waiting → "which one?" stays: never forward a bare yes',
+				{ reply: 'Which one do you mean?', utterance: 'Yes.', calls: [call('answer', false)] },
+				{ kind: 'keep' },
+			],
+			[
+				'reading options out, ending "which one?" → an answer, kept',
+				{
+					reply: '1. Redis. 2. A nightly job. Which one do you want?',
+					calls: [call('read_state')],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'Mission Control may ask which session',
+				{ reply: 'Which session do you mean?', forwardTo: null },
+				{ kind: 'keep' },
+			],
+			[
+				'a forward beside a failed answer → reply dropped',
+				{ reply: 'It moved on.', calls: [call('forward'), call('answer', false)] },
+				{ kind: 'drop_reply' },
+			],
+			[
+				'a lapsed offer → answered with tools off',
+				{ calls: [call('dev_offer', false)], mustAnswerNow: true },
+				{ kind: 'answer_now', reason: 'final' },
+			],
+			[
+				'a lookup and no words → asked again',
+				{ calls: [call('read_state')] },
+				{ kind: 'answer_now', reason: 'empty' },
+			],
+			[
+				'a silent call → nothing said',
+				{ calls: [call('ignore_words')], isSilent: true },
+				{ kind: 'keep' },
+			],
+			[
+				"relaying the session's own question → an answer, kept",
+				{ reply: 'It asks: did you mean staging or production?', calls: [call('read_state')] },
+				{ kind: 'keep' },
+			],
+			[
+				'"it wants to know which session should own it?" → a relayed question, kept',
+				{
+					reply: 'It wants to know which session should own the migration?',
+					calls: [call('read_state')],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'"are you asking about the build or the tests?" → asking back, forwarded',
+				{ reply: 'Are you asking about the build or the tests?', calls: [call('read_state')] },
+				{ kind: 'forward_utterance' },
+			],
+			[
+				'the words name another session → "which one?" is fair',
+				{
+					reply: 'Which session do you mean: store-front/main or checkout-api/main?',
+					namedRefs: ['checkout-api/main'],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'a forward that failed ("already sent") → its explanation stays, the words are not sent again',
+				{ reply: 'Did you mean to send it again?', calls: [call('forward', false)] },
+				{ kind: 'keep' },
+			],
+		])('%s', (_, patch, ending) =>
+			expect(decideEnding({ ...base, ...patch })).toEqual(ending as never),
+		);
+	});
+
+	it('a short cut-off punctuated as a question is still ignorable', async () => {
+		const { tools } = createToolContext();
+
+		expect(
+			(
+				await executeTool(
+					'ignore_words',
+					{ reason: 'unfinished thought' },
+					{ ...tools, utterance: 'And can you?' },
+				)
+			).ok,
+		).toBe(true);
+	});
+
+	it('answer on an asked session with a bare "no" while a permission opened → not sent', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['checkout-api/main']!;
+		const permission = {
+			id: 'p9',
+			ref: 'checkout-api/main',
+			at: 0,
+			kind: 'permission' as const,
+			toolName: 'Bash',
+			summary: 'run git push',
+			input: {},
+			suggestions: [],
+		};
+		const { tools, actions } = createToolContext({
+			asks: [permission],
+			sessions: {
+				...base.tools.getState().sessions,
+				'checkout-api/main': { ...session, needsUser: { text: 'asks: deploy?', at: 0 } },
+			},
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'no', text: '' },
+			{ ...tools, asks: [], utterance: 'No.' },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('a finished sentence ending in a period → not an unfinished thought either', async () => {
+		const { tools } = createToolContext();
+
+		expect(
+			(
+				await executeTool(
+					'ignore_words',
+					{ reason: 'unfinished thought' },
+					{ ...tools, utterance: "And can you tell me what's running." },
+				)
+			).ok,
+		).toBe(false);
+	});
+
+	it('a yes the rewrite dropped, to a session that asked → put back, and recorded as sent', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['store-front/main']!;
+		const { tools, actions } = createToolContext({
+			sessions: {
+				...base.tools.getState().sessions,
+				'store-front/main': { ...session, needsUser: { text: 'asks: start reviewing?', at: 0 } },
+			},
+		});
+		const result = await executeTool(
+			'forward',
+			{ text: "Let me know when you're done.", kind: 'instruction' },
+			{
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: "Yes, please. Let me know when you're done.",
+			},
+		);
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: "Yes, please. Let me know when you're done." },
+		]);
+		expect(result.recordAs?.input.text).toBe("Yes, please. Let me know when you're done.");
+	});
+
+	it('long speech is never a fragment: a lyric is ignored as not said to anyone, not as unfinished', async () => {
+		const { tools } = createToolContext();
+		const utterance = 'Just a little closer, next to my come on and touch touch up with me.';
+
+		expect(
+			(await executeTool('ignore_words', { reason: 'unfinished thought' }, { ...tools, utterance }))
+				.ok,
+		).toBe(false);
+		expect(
+			(await executeTool('ignore_words', { reason: 'not said to anyone' }, { ...tools, utterance }))
+				.ok,
+		).toBe(true);
+	});
+
+	describe('prepareSentText', () => {
+		const withAsked = (asked: boolean) => {
+			const base = createToolContext();
+			const session = base.tools.getState().sessions['store-front/main']!;
+
+			return createToolContext({
+				sessions: {
+					...base.tools.getState().sessions,
+					'store-front/main': {
+						...session,
+						needsUser: asked ? { text: 'asks: go ahead?', at: 0 } : null,
+					},
+				},
+			}).tools.getState();
+		};
+
+		it.each([
+			[
+				"Yes, please. Let me know when you're done.",
+				"Let me know when you're done.",
+				"Yes, please. Let me know when you're done.",
+			],
+			['Okay. Run the tests.', 'Run the tests.', 'Okay. Run the tests.'],
+			['No, use the table instead.', 'Use the table instead.', 'Use the table instead.'],
+			['Yes, but only on staging.', 'Only on staging.', 'Only on staging.'],
+			[
+				'Okay, I think we should rename it.',
+				'I think we should rename it.',
+				'I think we should rename it.',
+			],
+			['Yes. Ship it.', 'Yes. Ship it.', 'Yes. Ship it.'],
+			['Yes, do it now.', 'Do it now.', 'Do it now.'],
+			['Yes, go.', 'Let me know how it goes.', 'Yes, go. Let me know how it goes.'],
+			['No, not that one.', 'Not that one.', 'Not that one.'],
+		])('%p rewritten %p → %p', (utterance, text, sent) =>
+			expect(
+				prepareSentText({
+					state: withAsked(true),
+					ref: 'store-front/main',
+					text,
+					utterance,
+					isOnlySend: true,
+				}),
+			).toBe(sent),
+		);
+
+		it('no question asked → the rewrite as is', () =>
+			expect(
+				prepareSentText({
+					state: withAsked(false),
+					ref: 'store-front/main',
+					text: 'Run the tests.',
+					utterance: 'Okay. Run the tests.',
+					isOnlySend: true,
+				}),
+			).toBe('Run the tests.'));
+	});
+
+	it('answer on the on-screen session that asked → recorded as a forward, so its reply is dropped', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['checkout-api/main']!;
+		const { tools } = createToolContext({
+			sessions: {
+				...base.tools.getState().sessions,
+				'checkout-api/main': { ...session, needsUser: { text: 'asks: deploy?', at: 0 } },
+			},
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+			{ ...tools, forwardTo: 'checkout-api/main', utterance: 'Yes.' },
+		);
+
+		expect(result.recordAs).toEqual({ name: 'forward', input: { text: 'Yes.' } });
+	});
+
+	it('a long thought rewritten into a few words → sent as said; a normal cleanup is kept', () => {
+		const rambling =
+			"Okay, so let— like, I'll get back to you maybe we don't always need, like, that, but just say, okay, or just something like that.";
+
+		expect(isRewriteTooShort(rambling, 'Okay, or just something like that.')).toBe(true);
+		expect(
+			isRewriteTooShort(
+				"Okay, can you just fix everything and make sure to create evals for that so things like that don't happen anymore, please?",
+				"Fix everything and create evals so things like that don't happen anymore.",
+			),
+		).toBe(false);
+		expect(isRewriteTooShort('Can you check the logs?', 'Check the logs.')).toBe(false);
+	});
+
+	it('a long request split across actions → each keeps its own rewrite, never the whole sentence', () => {
+		const state = createToolContext().tools.getState();
+		const split = (utterance: string, isOnlySend = true) =>
+			prepareSentText({
+				state,
+				ref: 'checkout-api/main',
+				text: 'Run the migrations on staging.',
+				utterance,
+				isOnlySend,
+			});
+
+		// Two sends in one step.
+		expect(
+			split(
+				'Have checkout run the migrations against staging, and tell store front to restart its dev server and check the logs for the timeout.',
+				false,
+			),
+		).toBe('Run the migrations on staging.');
+		// The words name another session.
+		expect(
+			split(
+				'Okay so have checkout run the migrations against staging and then store front wrk1 should restart its servers please.',
+			),
+		).toBe('Run the migrations on staging.');
+	});
+
+	it('a long thought cut off with a dash → still ignorable as unfinished', async () => {
+		const { tools } = createToolContext();
+
+		expect(
+			(
+				await executeTool(
+					'ignore_words',
+					{ reason: 'unfinished thought' },
+					{ ...tools, utterance: 'So what I was thinking is maybe the, um, the thing with the—' },
+				)
+			).ok,
+		).toBe(true);
 	});
 });

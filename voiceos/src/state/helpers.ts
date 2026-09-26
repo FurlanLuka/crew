@@ -134,3 +134,27 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		at: stamped.at,
 	});
 };
+
+interface PushNoticeParams {
+	state: State;
+	ref: string;
+	text: string;
+	stamped: Stamped;
+	// Several notices from one input need their own ids.
+	suffix: string;
+}
+
+export const pushNotice = ({ state, ref, text, stamped, suffix }: PushNoticeParams): State => {
+	return updateSession(state, ref, (session) =>
+		pushStreamItem(session, {
+			id: `${stamped.id}:${suffix}`,
+			at: stamped.at,
+			kind: 'notice',
+			text,
+		}),
+	);
+};
+
+// How the same words are recognised when said twice: case and spacing do not count.
+export const normalizeSaid = (text: string): string =>
+	text.trim().replace(/\s+/g, ' ').toLowerCase();

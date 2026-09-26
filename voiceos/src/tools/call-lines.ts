@@ -1,4 +1,5 @@
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
+import { isBareAnswer } from './send.js';
 
 const SILENT_TOOLS: ToolName[] = [
 	'forward',
@@ -11,6 +12,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'mute',
 	'dev_offer',
 	'allow_denied',
+	'hands_free',
 ];
 
 const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view'];
@@ -29,10 +31,14 @@ const describeCallAction = (input: Record<string, unknown>): string => {
 		return ` ${input.accept ? 'accepted' : 'declined'}`;
 	}
 
+	if (typeof input.on === 'boolean') {
+		return ` ${input.on ? 'on' : 'off'}`;
+	}
+
 	return '';
 };
 
-export const describeToolCall = ({ name, input, ok }: ToolCall): string | null => {
+export const describeToolCall = ({ name, input, ok, note }: ToolCall): string | null => {
 	// Remembered so a follow-up ("also start it") is not taken as a request to do it again.
 	if (!REMEMBERED_TOOLS.includes(name as ToolName)) {
 		return null;
@@ -49,7 +55,7 @@ export const describeToolCall = ({ name, input, ok }: ToolCall): string | null =
 				? ` ${input.ref}`
 				: '';
 
-	return `${name}${describeCallAction(input)}${target}${quotedText}${ok ? '' : ' (failed)'}`;
+	return `${name}${describeCallAction(input)}${target}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
 };
 
 export const isSilentCall = (name: string, input: Record<string, unknown>): boolean => {
@@ -63,6 +69,88 @@ export const isSilentCall = (name: string, input: Record<string, unknown>): bool
 
 export const isAnsweredByForward = (calls: ToolCall[]): boolean => {
 	// The session answers what was forwarded to it: words beside it only talk over that answer.
-	// A call that failed keeps them, since they explain the failure.
-	return calls.some((call) => call.name === 'forward') && calls.every((call) => call.ok);
+	// A call that failed keeps them, since they explain the failure — except a failed answer: that is
+	// the kernel trying both, and the forward is what happened.
+	return (
+		calls.some((call) => call.name === 'forward' && call.ok) &&
+		calls.every((call) => call.ok || call.name === 'answer')
+	);
+};
+
+// Asking what they meant, not asking which option they want ("which one?" after reading options out).
+const CLARIFYING_PATTERN =
+	/\b(?:need to clarify|do you mean|did you mean|are you asking|(?:are you|you're) referring to|do you want (?:me|to ask)|which (?:session|agent)|not sure (?:what|which|who)|can you (?:name|say|clarify)|could you (?:say|repeat|clarify)|is (?:this|that) for)\b/i;
+
+// Relaying a session's own question ("It asks: did you mean staging?") is an answer, not asking back.
+const RELAYED_QUESTION_PATTERN =
+	/\b(?:it|the session|claude|[\w-]+\/[\w-]+) (?:asks|is asking|wants to know)\b|\basks:/i;
+
+export interface IsAskingBackParams {
+	reply: string;
+	calls: ToolCall[];
+	// The session on screen, when there is one.
+	forwardTo: string | null;
+	utterance: string;
+	// Sessions the words name: naming another one, or two, makes "which one?" a fair question.
+	namedRefs: string[];
+}
+
+export const isAskingBack = ({
+	reply,
+	calls,
+	forwardTo,
+	utterance,
+	namedRefs,
+}: IsAskingBackParams): boolean => {
+	// On a session screen the words are that session's: asking the developer what they meant only
+	// loops ("crew/main or Voice OS?" — "Yes."). The session can ask back itself. A bare "yes" is
+	// the exception: when several things wait, "which one?" is the right answer, never a forward.
+	const namesAnother = namedRefs.some((ref) => ref !== forwardTo) || namedRefs.length > 1;
+
+	return (
+		forwardTo !== null &&
+		!isBareAnswer(utterance) &&
+		!namesAnother &&
+		reply.trim().endsWith('?') &&
+		CLARIFYING_PATTERN.test(reply) &&
+		!RELAYED_QUESTION_PATTERN.test(reply) &&
+		// A forward that failed ("already sent") explains itself: never send the raw words again.
+		!calls.some((call) => call.name === 'forward') &&
+		!calls.some((call) => call.ok && MUTATING_TOOLS.includes(call.name as ToolName))
+	);
+};
+
+export type TurnEnding =
+	| { kind: 'forward_utterance' }
+	| { kind: 'drop_reply' }
+	| { kind: 'answer_now'; reason: 'final' | 'empty' }
+	| { kind: 'keep' };
+
+export interface DecideEndingParams extends IsAskingBackParams {
+	isSilent: boolean;
+	// A tool asked for an answer with no more tools.
+	mustAnswerNow: boolean;
+}
+
+export const decideEnding = ({
+	isSilent,
+	mustAnswerNow,
+	...turn
+}: DecideEndingParams): TurnEnding => {
+	if (isAskingBack(turn)) {
+		return { kind: 'forward_utterance' };
+	}
+
+	if (isAnsweredByForward(turn.calls)) {
+		return { kind: 'drop_reply' };
+	}
+
+	if (mustAnswerNow) {
+		return { kind: 'answer_now', reason: 'final' };
+	}
+
+	// Silence after tools reads as broken.
+	return !turn.reply && !isSilent && turn.calls.length > 0
+		? { kind: 'answer_now', reason: 'empty' }
+		: { kind: 'keep' };
 };

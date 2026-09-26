@@ -3,7 +3,7 @@ import type { StreamItem } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
 import { STREAM_ITEMS_KEPT, createStreamItem } from '../state/helpers.js';
 import { createLogger } from '../log.js';
-import { mapMessage, type MapContext, type RawMessage } from './events.js';
+import { createMapContext, mapMessage, type RawMessage } from './events.js';
 
 const log = createLogger('history');
 
@@ -54,11 +54,7 @@ export const convertHistoryToStream = ({
 	now,
 }: ConvertHistoryToStreamParams): StreamItem[] => {
 	// Diffs are not in the transcript, so a restored edit shows as its tool line and result only.
-	const mapContext: MapContext = {
-		ref,
-		toolSummaries: new Map(),
-		limits: { fiveHour: null, sevenDay: null, resetsAt: null },
-	};
+	const mapContext = createMapContext(ref);
 	const items: StreamItem[] = [];
 
 	for (const message of messages) {

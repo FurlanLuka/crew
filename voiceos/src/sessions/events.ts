@@ -1,6 +1,6 @@
 import type { Limits, Observation } from '../shared/protocol.js';
-
-const MAX_SUMMARY_CHARS = 140;
+import { mapSubagentMessage, mapTaskMessage } from './subagent-events.js';
+import { clipText, getContentBlocks, readString, summarizeTool } from './tool-summary.js';
 
 export interface RawMessage {
 	// Only the fields read here are typed, so a CLI update that adds fields never breaks the mapping.
@@ -12,7 +12,19 @@ export interface RawMessage {
 	tool_use_result?: unknown;
 	tool_name?: string;
 	tool_use_id?: string;
+	uuid?: string;
 	result?: string;
+	// Task events (sub-agents): system subtypes task_started, task_progress, task_updated, task_notification.
+	task_id?: string;
+	task_type?: string;
+	subagent_type?: string;
+	description?: string;
+	is_backgrounded?: boolean;
+	ambient?: boolean;
+	skip_transcript?: boolean;
+	last_tool_name?: string;
+	patch?: { status?: string; is_backgrounded?: boolean };
+	content?: string;
 	total_cost_usd?: number;
 	is_error?: boolean;
 	rate_limit_info?: { rateLimitType?: string; utilization?: number; resetsAt?: number };
@@ -22,77 +34,24 @@ export interface MapContext {
 	ref: string;
 	toolSummaries: Map<string, string>;
 	limits: Limits;
+	// The tool call that started each running sub-agent → its task id, so its own calls find it.
+	subagentTasks: Map<string, string>;
+	// Sub-agents that already reported a tool step: a later progress tick must not overwrite it.
+	subagentsWithSteps: Set<string>;
 }
+
+export const createMapContext = (ref: string): MapContext => ({
+	ref,
+	toolSummaries: new Map(),
+	limits: { fiveHour: null, sevenDay: null, resetsAt: null },
+	subagentTasks: new Map(),
+	subagentsWithSteps: new Set(),
+});
 
 interface ToolResultWithPatch {
 	filePath?: unknown;
 	structuredPatch?: unknown;
 }
-
-const clipText = (text: string, limit = MAX_SUMMARY_CHARS): string => {
-	const flat = text.replace(/\s+/g, ' ').trim();
-
-	return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
-};
-
-const readString = (value: unknown): string => {
-	return typeof value === 'string' ? value : '';
-};
-
-const shortenPath = (path: string, cwd?: string): string => {
-	if (cwd && path.startsWith(`${cwd}/`)) {
-		return path.slice(cwd.length + 1);
-	}
-
-	const parts = path.split('/');
-
-	return parts.length > 3 ? parts.slice(-3).join('/') : path;
-};
-
-export const summarizeTool = (
-	name: string,
-	input: Record<string, unknown>,
-	cwd?: string,
-): string => {
-	switch (name) {
-		case 'Bash':
-			return `run ${clipText(readString(input.command))}`;
-		case 'Read':
-			return `read ${shortenPath(readString(input.file_path), cwd)}`;
-		case 'Edit':
-		case 'MultiEdit':
-			return `edit ${shortenPath(readString(input.file_path), cwd)}`;
-		case 'Write':
-			return `write ${shortenPath(readString(input.file_path), cwd)}`;
-		case 'NotebookEdit':
-			return `edit notebook ${shortenPath(readString(input.notebook_path), cwd)}`;
-		case 'Grep':
-			return `search for ${clipText(readString(input.pattern), 60)}`;
-		case 'Glob':
-			return `find files matching ${clipText(readString(input.pattern), 60)}`;
-		case 'WebFetch':
-			return `fetch ${clipText(readString(input.url), 80)}`;
-		case 'WebSearch':
-			return `search the web for ${clipText(readString(input.query), 60)}`;
-		case 'Agent':
-		case 'Task':
-			return `start a subagent: ${clipText(readString(input.description), 80)}`;
-		case 'ExitPlanMode':
-			return 'present its plan';
-		case 'AskUserQuestion':
-			return 'ask you a question';
-		default:
-			return name.startsWith('mcp__')
-				? `use ${name.split('__').slice(1).join(' ')}`
-				: `use ${name}`;
-	}
-};
-
-const getContentBlocks = (message: RawMessage): Record<string, unknown>[] => {
-	const content = message.message?.content;
-
-	return Array.isArray(content) ? (content as Record<string, unknown>[]) : [];
-};
 
 const extractResultText = (content: unknown): string => {
 	if (typeof content === 'string') {
@@ -148,6 +107,39 @@ const mergeLimits = (
 	return previous;
 };
 
+const mapSystemMessage = (message: RawMessage, mapContext: MapContext): Observation[] => {
+	const { ref } = mapContext;
+
+	switch (message.subtype) {
+		case 'task_started':
+		case 'task_progress':
+		case 'task_updated':
+		case 'task_notification':
+			return mapTaskMessage(message, mapContext);
+
+		case 'compact_boundary':
+			return [{ type: 'session_notice', ref, text: 'Context compacted.' }];
+
+		case 'local_command_output': {
+			const text = clipText(readString(message.content), 300);
+
+			return text ? [{ type: 'session_notice', ref, text }] : [];
+		}
+
+		case 'permission_denied': {
+			const toolName = readString(message.tool_name);
+			const summary =
+				mapContext.toolSummaries.get(readString(message.tool_use_id)) ??
+				summarizeTool(toolName, {});
+
+			return [{ type: 'denied', ref, toolName, summary }];
+		}
+
+		default:
+			return [];
+	}
+};
+
 export const mapMessage = (
 	message: RawMessage,
 	mapContext: MapContext,
@@ -155,9 +147,9 @@ export const mapMessage = (
 ): Observation[] => {
 	const { ref } = mapContext;
 
-	// Subagent traffic is dropped: a subagent shows as its single "start a subagent" line.
+	// A sub-agent's own traffic only feeds its row in the sub-agents panel.
 	if (message.parent_tool_use_id) {
-		return [];
+		return mapSubagentMessage(message, mapContext, cwd);
 	}
 
 	switch (message.type) {
@@ -243,18 +235,11 @@ export const mapMessage = (
 			return [{ type: 'limits', limits: mapContext.limits }];
 		}
 
-		case 'system': {
-			if (message.subtype !== 'permission_denied') {
-				return [];
-			}
+		case 'system':
+			return mapSystemMessage(message, mapContext);
 
-			const toolName = readString(message.tool_name);
-			const summary =
-				mapContext.toolSummaries.get(readString(message.tool_use_id)) ??
-				summarizeTool(toolName, {});
-
-			return [{ type: 'denied', ref, toolName, summary }];
-		}
+		case 'conversation_reset':
+			return [{ type: 'conversation_reset', ref }];
 
 		default:
 			return [];

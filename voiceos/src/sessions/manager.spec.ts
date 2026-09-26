@@ -13,6 +13,8 @@ configureLog({ quiet: true });
 interface FakeQueryParams {
 	failResume?: boolean;
 	holdTurns?: boolean;
+	// What a side-answer fork replies; an Error makes the fork throw.
+	sideReply?: unknown[] | Error;
 }
 
 interface FakeQueryCall {
@@ -21,19 +23,39 @@ interface FakeQueryCall {
 		abortController: AbortController;
 		cwd: string;
 		resume?: string;
+		forkSession?: boolean;
 		systemPrompt: { append: string };
 	};
 }
 
-const createFakeQuery = ({ failResume = false, holdTurns = false }: FakeQueryParams = {}) => {
+const createFakeQuery = ({
+	failResume = false,
+	holdTurns = false,
+	sideReply = [],
+}: FakeQueryParams = {}) => {
 	// Stands in for the Agent SDK; holdTurns: a turn only ends when interrupted, like a cut reply.
 	const started: string[] = [];
 	const prompts: string[] = [];
 	const sent: string[] = [];
 	// Counts interrupts across the fake's lifetime.
 	let interrupts = 0;
+	const forks: FakeQueryCall['options'][] = [];
 
 	const runQuery = ((call: FakeQueryCall) => {
+		if (call.options.forkSession) {
+			forks.push(call.options);
+
+			return {
+				async *[Symbol.asyncIterator]() {
+					if (sideReply instanceof Error) {
+						throw sideReply;
+					}
+
+					yield* sideReply;
+				},
+			};
+		}
+
 		if (failResume && call.options.resume) {
 			return {
 				[Symbol.asyncIterator]: () => ({
@@ -95,7 +117,7 @@ const createFakeQuery = ({ failResume = false, holdTurns = false }: FakeQueryPar
 		};
 	}) as never;
 
-	return { runQuery, started, prompts, sent, interrupts: () => interrupts };
+	return { runQuery, started, prompts, sent, forks, interrupts: () => interrupts };
 };
 
 const createHarness = () => {
@@ -404,5 +426,95 @@ describe('SessionManager', () => {
 		expect(fake.sent).toEqual(['run the tests', 'only the checkout ones and skip the slow ones']);
 		expect(store.state.sessions['store-front/main']?.status).toBe('running');
 		manager.stopAll();
+	});
+
+	describe('side answers', () => {
+		const createAsideHarness = (sideReply: FakeQueryParams['sideReply']) => {
+			const store = new Store();
+
+			store.dispatch({
+				type: 'worktrees',
+				worktrees: [
+					{
+						ref: 'store-front/main',
+						label: 'store-front/main',
+						branch: '',
+						cwd: '/w/main',
+						dirs: [],
+						isPinned: false,
+					},
+				],
+			});
+
+			const fake = createFakeQuery({ holdTurns: true, sideReply });
+			const manager = new SessionManager({
+				store,
+				registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json'),
+				home: '/h',
+				fetchOrientation: () => Promise.resolve('## crew'),
+				runQuery: fake.runQuery,
+			});
+
+			store.onEffect(manager.handle);
+
+			return { store, manager, fake };
+		};
+
+		const asideOf = (store: Store) =>
+			store.state.sessions['store-front/main']?.stream.find((item) => item.kind === 'aside');
+
+		const askWhileWorking = async ({ store }: { store: Store }) => {
+			store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			await waitTick();
+			store.dispatch({ type: 'send', ref: 'store-front/main', text: 'refactor the router' });
+			await waitTick();
+			store.dispatch({ type: 'send', ref: 'store-front/main', text: 'which file?', aside: true });
+			await waitTick();
+		};
+
+		it('answered → a fork of the running conversation answers, and the item holds it', async () => {
+			const harness = createAsideHarness([
+				{ type: 'assistant', message: { content: [{ type: 'text', text: 'The router.' }] } },
+				{ type: 'result', subtype: 'success' },
+			]);
+
+			await askWhileWorking(harness);
+
+			expect(harness.fake.forks).toEqual([
+				expect.objectContaining({ resume: 's-1', forkSession: true, cwd: '/w/main' }),
+			]);
+			expect(asideOf(harness.store)).toMatchObject({ status: 'answered', answer: 'The router.' });
+			expect(harness.store.state.sessions['store-front/main']?.queue).toEqual([]);
+			harness.manager.stopAll();
+		});
+
+		it('the fork throws → failed, and the question waits in the queue', async () => {
+			const harness = createAsideHarness(new Error('resume refused'));
+
+			await askWhileWorking(harness);
+
+			expect(asideOf(harness.store)).toMatchObject({ status: 'failed' });
+			expect(harness.store.state.sessions['store-front/main']?.queue.map((m) => m.text)).toEqual([
+				'which file?',
+			]);
+			harness.manager.stopAll();
+		});
+
+		it('no running session → queued without forking', async () => {
+			const harness = createAsideHarness([]);
+
+			harness.manager.handle({
+				type: 'side_answer',
+				ref: 'store-front/main',
+				itemId: 'x',
+				question: 'which file?',
+			});
+			await waitTick();
+
+			expect(harness.fake.forks).toEqual([]);
+			expect(harness.store.state.sessions['store-front/main']?.queue.map((m) => m.text)).toEqual([
+				'which file?',
+			]);
+		});
 	});
 });

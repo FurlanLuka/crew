@@ -15,7 +15,8 @@ export type ToolName =
 	| 'mute'
 	| 'dev_offer'
 	| 'allow_denied'
-	| 'debug_note';
+	| 'debug_note'
+	| 'hands_free';
 
 export const MUTATING_TOOLS: ToolName[] = [
 	'forward',
@@ -29,6 +30,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'dev_offer',
 	'allow_denied',
 	'debug_note',
+	'hands_free',
 ];
 
 interface JsonSchema {
@@ -42,6 +44,7 @@ export interface ToolCall {
 	name: string;
 	input: Record<string, unknown>;
 	ok: boolean;
+	note?: string;
 }
 
 export interface ToolDefinition {
@@ -56,20 +59,30 @@ const REF_PROPERTY = {
 	description: 'A session ref exactly as listed in the state, like "store-front/main".',
 };
 
+const KIND_PROPERTY = {
+	type: 'string',
+	enum: ['question', 'instruction'],
+	description:
+		'question: the developer asks something that Claude can answer from what it already knows or did. instruction: anything asking for work, a change or a check — and a question that means the current work should change ("shouldn\'t that use v2?").',
+};
+
 const CLEAN_INSTRUCTION =
-	'What the developer wants, written to that Claude in their voice as a clear instruction or question: drop relay words ("can you ask it to", "tell it"), filler and false starts; keep every detail, name, number, negation and reaction; add nothing they did not say.';
+	'What the developer wants, written to that Claude in their voice as a clear instruction or question: drop relay words ("can you ask it to", "tell it"), filler and false starts; keep every detail, name, number, negation and reaction, and a yes or no that answers what it asked ("Yes, please. Let me know when you\'re done."); add nothing they did not say. Keep who is who: "you" is that Claude, "I" is the developer ("so you see how much you messed up" stays "you"). The request stays the request, whatever that Claude asked last: "just fix everything" is not "plan the fixes".';
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ignore_words must be listed first: listed later, the model narrates its silence instead.
 	{
 		name: 'ignore_words',
 		description:
-			'Only when the words ask for nothing and want nothing done: a thought that stops before saying what it wants ("and can you", "let\'s, um", a name cut off with a dash), or only a greeting or acknowledgement ("hey", "okay", "thanks", "hmm"). Call it alone, with no text: nothing happens and nothing is said. Filler in front of a request does not make it this ("hmm, let\'s start this" is a request); a question, or an ambiguous name to ask about, is never this. A complete sentence is never an unfinished thought, even when what it refers to is unclear — ask which one instead.',
+			'Only when the words ask for nothing and want nothing done: a thought that stops before saying what it wants ("and can you", "let\'s, um", a name cut off with a dash), or only a greeting or acknowledgement ("hey", "okay", "thanks", "hmm"). Call it alone, with no text: nothing happens and nothing is said. Filler in front of a request does not make it this ("hmm, let\'s start this" is a request); a question, or an ambiguous name to ask about, is never this. A complete sentence is never an unfinished thought, even when what it refers to is unclear — ask which one instead. Also for speech not said to Voice OS or a session: a video, a song, someone else talking ("add in about that much ketchup"). Thinking out loud about the work is not this: it is for the session.',
 		input_schema: {
 			type: 'object',
 			properties: {
 				// The reason makes the model name what it heard; a question fits neither.
-				reason: { type: 'string', enum: ['unfinished thought', 'greeting or acknowledgement'] },
+				reason: {
+					type: 'string',
+					enum: ['unfinished thought', 'greeting or acknowledgement', 'not said to anyone'],
+				},
 			},
 			required: ['reason'],
 			additionalProperties: false,
@@ -115,8 +128,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			'Send the developer’s request to a session’s Claude as a clear instruction or question to it. Only when the developer clearly asked for work or an answer there. A stopped session starts by itself.',
 		input_schema: {
 			type: 'object',
-			properties: { ref: REF_PROPERTY, text: { type: 'string', description: CLEAN_INSTRUCTION } },
-			required: ['ref', 'text'],
+			properties: {
+				ref: REF_PROPERTY,
+				text: { type: 'string', description: CLEAN_INSTRUCTION },
+				kind: KIND_PROPERTY,
+			},
+			required: ['ref', 'text', 'kind'],
 			additionalProperties: false,
 		},
 	},
@@ -233,6 +250,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			additionalProperties: false,
 		},
 	},
+	{
+		name: 'hands_free',
+		description:
+			'Turn hands-free listening on or off in the developer\'s browser tab ("turn off hands-free", "stop listening", "hands-free on"). Voice OS confirms it aloud. Never for a bare "stop" or "wait": those interrupt.',
+		input_schema: {
+			type: 'object',
+			properties: { on: { type: 'boolean' } },
+			required: ['on'],
+			additionalProperties: false,
+		},
+	},
 ];
 
 export const FORWARD_TOOL: ToolDefinition = {
@@ -241,8 +269,8 @@ export const FORWARD_TOOL: ToolDefinition = {
 		'Send what the developer just said to the session on screen as a clear instruction or question to its Claude. Use it for anything they say to that session: instructions, questions about the code, logs or the work, replies, reactions. A stopped session starts by itself.',
 	input_schema: {
 		type: 'object',
-		properties: { text: { type: 'string', description: CLEAN_INSTRUCTION } },
-		required: ['text'],
+		properties: { text: { type: 'string', description: CLEAN_INSTRUCTION }, kind: KIND_PROPERTY },
+		required: ['text', 'kind'],
 		additionalProperties: false,
 	},
 };

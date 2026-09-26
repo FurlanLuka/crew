@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { readHistory } from '../memory/journal.js';
 import { Store } from '../state/store.js';
 import type { Narration } from './prompt.js';
-import { createTurnNarrator } from './turn.js';
+import { createAsideNarrator, createTurnNarrator } from './turn.js';
 
 const createHarness = (narration: Narration) => {
 	const store = new Store();
@@ -148,5 +148,117 @@ describe('turn narrator', () => {
 		});
 		await harness.handle({ type: 'narrate', ref: 'gone/main', text: 'Done.', asked: null });
 		expect(harness.spoken).toEqual([]);
+	});
+});
+
+describe('aside narrator', () => {
+	const createAsideHarness = (text: string) => {
+		const store = new Store();
+
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'checkout-api/main',
+					label: 'checkout-api/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+			],
+		});
+
+		const inputs: { asked: string | null; focused: boolean; text: string }[] = [];
+		const lines: {
+			text: string;
+			ref: string;
+			isNamed: boolean;
+			isAsking: boolean;
+			priority: string;
+		}[] = [];
+		const handle = createAsideNarrator({
+			store,
+			narrate: async (input) => {
+				inputs.push(input);
+
+				return { speak: true, needs_user: true, priority: 'low', text, topic: 'Another topic' };
+			},
+			say: (line) => lines.push(line),
+		});
+
+		return { store, inputs, lines, handle };
+	};
+
+	it('says the answer to the question, named, and never as a question to the developer', async () => {
+		const harness = createAsideHarness('The retry file.');
+
+		harness.store.dispatch({
+			type: 'switch_view',
+			view: { kind: 'session', ref: 'checkout-api/main' },
+		});
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'which file?',
+			answer: 'I changed `retry.ts`.',
+		});
+
+		expect(harness.inputs).toEqual([
+			expect.objectContaining({
+				asked: 'which file?',
+				focused: true,
+				text: 'I changed `retry.ts`.',
+			}),
+		]);
+		expect(harness.lines).toEqual([
+			{
+				text: 'The retry file.',
+				priority: 'high',
+				ref: 'checkout-api/main',
+				isNamed: true,
+				isAsking: false,
+			},
+		]);
+	});
+
+	it('is no turn: no needs-you, no topic change', async () => {
+		const harness = createAsideHarness('The retry file.');
+
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'which file?',
+			answer: 'retry.ts',
+		});
+
+		const session = harness.store.state.sessions['checkout-api/main'];
+
+		expect(session?.needsUser).toBeNull();
+		expect(session?.topic).toBeNull();
+	});
+
+	it('the narrator returned nothing → the answer itself, cleaned for speech', async () => {
+		const harness = createAsideHarness('  ');
+
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'which file?',
+			answer: 'The **retry** file, `src/retry.ts`.',
+		});
+
+		const said = harness.lines[0]?.text ?? '';
+
+		expect(said).toStartWith('The retry file');
+		expect(said).not.toMatch(/[*`]|src\//);
+	});
+
+	it('the session is gone → nothing said', async () => {
+		const harness = createAsideHarness('x');
+
+		await harness.handle({ type: 'narrate_aside', ref: 'gone/main', question: 'q', answer: 'a' });
+
+		expect(harness.lines).toEqual([]);
 	});
 });

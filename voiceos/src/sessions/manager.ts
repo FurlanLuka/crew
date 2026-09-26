@@ -3,6 +3,7 @@ import type { Effect } from '../state/reducer.js';
 import { createLogger } from '../log.js';
 import { PermissionBridge } from './permissions.js';
 import { forgetSession, loadRegistry, markBriefed, recordSession } from './registry.js';
+import { runSideAnswer } from './side-answer.js';
 import { Worker, buildWorkerEnv, type WorkerOptions } from './worker.js';
 import { BRIEFING_VERSION, appendVoiceContext } from './voice-context.js';
 
@@ -49,6 +50,8 @@ export class SessionManager {
 				return this.workers.get(effect.ref)?.interrupt(effect.reason);
 			case 'worker_set_mode':
 				return this.workers.get(effect.ref)?.setMode(effect.mode);
+			case 'side_answer':
+				return this.answerAside(effect);
 			case 'resolve_ask':
 				if (!this.permissions.answer(effect.askId, effect.result)) {
 					log.debug('ask already settled', { askId: effect.askId });
@@ -59,6 +62,31 @@ export class SessionManager {
 				return;
 		}
 	};
+
+	private async answerAside({
+		ref,
+		itemId,
+		question,
+	}: Extract<Effect, { type: 'side_answer' }>): Promise<void> {
+		const worker = this.workers.get(ref);
+		const outcome = worker
+			? await runSideAnswer({
+					launch: worker.launch,
+					sessionId: worker.id,
+					question,
+					runQuery: this.options.runQuery,
+				})
+			: ({ status: 'queued', reason: 'no running session' } as const);
+
+		this.options.store.dispatch({
+			type: 'aside_settled',
+			ref,
+			itemId,
+			question,
+			status: outcome.status,
+			answer: outcome.status === 'answered' ? outcome.answer : null,
+		});
+	}
 
 	listRunning(): string[] {
 		return [...this.workers.keys()];

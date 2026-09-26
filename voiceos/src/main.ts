@@ -12,17 +12,19 @@ import { listAllowedOrigins } from './gateway/auth.js';
 import { startGateway } from './gateway/server.js';
 import { configureLog, createLogger } from './log.js';
 import { UtteranceRouter } from './router/router.js';
+import { COMMAND_TTL_MS } from './shared/protocol.js';
 import { Kernel } from './router/kernel.js';
 import { SETUP_ORIENTATION, SETUP_REF, createSetupWorktree } from './sessions/setup-session.js';
 import { readHistory } from './memory/journal.js';
 import { createDebugNote, saveDebugNote } from './memory/debug-notes.js';
-import { createTurnNarrator, readGitHead } from './narrator/turn.js';
+import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
 import { persistTopics } from './memory/topics.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
 import { loadRegistry } from './sessions/registry.js';
 import { Store } from './state/store.js';
+import { createHandsFreeSwitch } from './speech/hands-free-switch.js';
 import { VoiceInput } from './speech/voice-in.js';
 import { VoiceOut } from './speech/voice-out.js';
 import { DevWatch } from './dev/watch.js';
@@ -90,6 +92,8 @@ const narrateTurn = createTurnNarrator({
 	readGitHead,
 });
 
+const narrateAside = createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) });
+
 store.onEffect((effect) => {
 	if (effect.type === 'speak') {
 		voiceOut.say({
@@ -99,11 +103,23 @@ store.onEffect((effect) => {
 			isReply: effect.isReply,
 			ref: effect.ref ?? null,
 			isAsking: effect.isAsking,
+			isNamed: effect.isNamed,
 		});
 	}
 
 	if (effect.type === 'narrate') {
 		return narrateTurn(effect);
+	}
+
+	if (effect.type === 'narrate_aside') {
+		return narrateAside(effect);
+	}
+
+	if (effect.type === 'expire_command') {
+		setTimeout(
+			() => store.dispatch({ type: 'command_expired', askId: effect.askId }),
+			COMMAND_TTL_MS,
+		);
 	}
 });
 
@@ -136,6 +152,14 @@ const kernel = keys.anthropic
 		})
 	: null;
 
+const handsFreeSwitchFor = createHandsFreeSwitch({
+	// voiceIn is assigned below; a switch only runs once an utterance arrived through it.
+	isListening: (client) => voiceIn.isListening(client),
+	unlisten: (client) => voiceIn.unlisten(client),
+	send: (client, message) => gateway?.send(client, message) ?? false,
+	say: (text) => voiceOut.say({ text, priority: 'high', source: 'kernel', isReply: true }),
+});
+
 const router = new UtteranceRouter({
 	store,
 	kernel: kernel
@@ -153,7 +177,8 @@ const router = new UtteranceRouter({
 const voiceIn = new VoiceInput({
 	store,
 	apiKey: keys.soniox,
-	onUtterance: (text) => void router.handle(text),
+	onUtterance: (text, client) =>
+		void router.handle(text, 'voice', { setHandsFree: handsFreeSwitchFor(client) }),
 	onTalkStart: () => voiceOut.talkStarted(),
 	onTalkEnd: () => voiceOut.talkEnded(),
 	onListenOff: (client, reason) => void gateway?.send(client, { type: 'listen_off', reason }),
@@ -210,7 +235,7 @@ gateway = startGateway({
 
 				return;
 			case 'utterance':
-				void router.handle(message.text, 'typed');
+				void router.handle(message.text, 'typed', { setHandsFree: handsFreeSwitchFor(client) });
 
 				return;
 			case 'ptt_start':
