@@ -35,6 +35,8 @@ interface Case {
 	no_reply?: boolean;
 	// The developer asked for detail or a list; otherwise replies stay short.
 	long_reply?: boolean;
+	// A cap for a long reply: a read-back is a few sentences, never the whole message.
+	max_words?: number;
 	// Words the spoken reply must contain ("a|b" accepts either).
 	reply_includes?: string[];
 	// Words it must not contain: an invented detail.
@@ -205,7 +207,9 @@ export const judgeRun = ({ calls, reply, testCase }: JudgeRunParams): Verdict =>
 
 	const replyWordCount = reply.split(/\s+/).filter(Boolean).length;
 
-	if (!testCase.long_reply && replyWordCount > REPLY_WORDS) {
+	const maxWords = testCase.long_reply ? (testCase.max_words ?? Infinity) : REPLY_WORDS;
+
+	if (replyWordCount > maxWords) {
 		return { ok: false, why: `a ${replyWordCount}-word reply: "${reply}"` };
 	}
 

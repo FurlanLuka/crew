@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import type { Action, PendingAsk, State } from '../shared/protocol.js';
+import type { Action, PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
-import { executeTool, type ToolContext } from './tools.js';
-import { describeToolCall, isSilentCall } from './call-lines.js';
+import type { DebugNoteWords } from '../memory/debug-notes.js';
+import { executeTool, isDuplicateSend, type ToolContext } from './tools.js';
+import { describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
@@ -320,6 +321,104 @@ describe('stop_session guard', () => {
 	});
 });
 
+describe('a message the session is already working on', () => {
+	const withSession = (patch: Partial<Session>) => {
+		const context = createToolContext();
+		const state = context.tools.getState();
+		state.sessions['store-front/main'] = { ...state.sessions['store-front/main']!, ...patch };
+
+		return { ...context, session: state.sessions['store-front/main']! };
+	};
+
+	const userItem = (text: string) => ({ id: 'u1', at: 1, kind: 'user' as const, text });
+
+	it('the running turn was sent the same words (spacing and case aside) → a duplicate', () => {
+		const { session } = withSession({
+			status: 'running',
+			stream: [userItem('Explain it  in more detail.')],
+		});
+
+		expect(isDuplicateSend({ session, text: ' explain it in more detail. ' })).toBe(true);
+		expect(isDuplicateSend({ session, text: 'Explain the other file.' })).toBe(false);
+	});
+
+	it('a turn blocked on a permission is still working on its words → a duplicate', () => {
+		const { session } = withSession({
+			status: 'blocked',
+			stream: [userItem('Push the branch.')],
+		});
+
+		expect(isDuplicateSend({ session, text: 'Push the branch.' })).toBe(true);
+	});
+
+	it('the same words after that turn ended → not a duplicate: a repeat is deliberate', () => {
+		const { session } = withSession({ status: 'idle', stream: [userItem('Run the tests again.')] });
+
+		expect(isDuplicateSend({ session, text: 'Run the tests again.' })).toBe(false);
+	});
+
+	it('the words wait in the queue, alone or merged onto the end of a follow-up → a duplicate', () => {
+		const { session } = withSession({
+			status: 'running',
+			queue: [
+				{ id: 'q1', at: 1, text: 'Check the logs. Then fix the test.', isFollowUp: true },
+				{ id: 'q2', at: 2, text: 'Run the linter.' },
+			],
+		});
+
+		expect(isDuplicateSend({ session, text: 'Then fix the test.' })).toBe(true);
+		expect(isDuplicateSend({ session, text: 'Run the linter.' })).toBe(true);
+		expect(isDuplicateSend({ session, text: 'Check the logs.' })).toBe(false);
+	});
+
+	it('words that only end another queued message → sent: short replies are not swallowed', () => {
+		const { session } = withSession({
+			status: 'running',
+			queue: [
+				{ id: 'q1', at: 1, text: 'Then prefix it.', isFollowUp: true },
+				{ id: 'q2', at: 2, text: 'Rename it and test.' },
+			],
+		});
+
+		expect(isDuplicateSend({ session, text: 'fix it.' })).toBe(false);
+		expect(isDuplicateSend({ session, text: 'test.' })).toBe(false);
+	});
+
+	it('forward and send_to of a duplicate → refused, nothing sent, no interrupt', async () => {
+		const { tools, actions } = withSession({
+			status: 'running',
+			stream: [userItem('Explain it in more detail.')],
+		});
+
+		const forwarded = await executeTool(
+			'forward',
+			{ text: 'Explain it in more detail.' },
+			{ ...tools, forwardTo: 'store-front/main', isSpoken: true },
+		);
+		const sent = await executeTool(
+			'send_to',
+			{ ref: 'store-front/main', text: 'Explain it in more detail.' },
+			tools,
+		);
+
+		expect(forwarded).toMatchObject({ ok: false });
+		expect(String(forwarded.content)).toContain('already sent');
+		expect(sent.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('a forward that went through, with nothing failing beside it, is the whole answer', () => {
+		const forwarded = { name: 'forward', input: {}, ok: true };
+
+		expect(isAnsweredByForward([forwarded])).toBe(true);
+		expect(isAnsweredByForward([{ ...forwarded, ok: false }])).toBe(false);
+		expect(isAnsweredByForward([{ name: 'send_to', input: {}, ok: true }])).toBe(false);
+		expect(isAnsweredByForward([forwarded, { name: 'crew_dev', input: {}, ok: false }])).toBe(
+			false,
+		);
+	});
+});
+
 describe('forward', () => {
 	it('offered only when routing captured a session to forward to', () => {
 		expect(listToolsFor(null).some((tool) => tool.name === 'forward')).toBe(false);
@@ -364,6 +463,48 @@ describe('describeSession', () => {
 		state: 'running' | 'died' | 'not listening' | 'starting',
 		detail: string | null = null,
 	) => ({ name, port: 3000, url: null, state, detail });
+
+	it('in detail, the last reply in full: "what did it say" reads it back, not a clipped line', () => {
+		const { tools } = createToolContext();
+		const state = tools.getState();
+		const longReply = `The flake came from a shared fixture. ${'More detail. '.repeat(40)}`;
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			stream: [
+				{ id: 'u1', at: 1, kind: 'user', text: 'Why is the test flaky?' },
+				{ id: 't1', at: 2, kind: 'text', text: longReply },
+				{ id: 's1', at: 3, kind: 'tool', name: 'Bash', summary: 'bun test' },
+			],
+		};
+
+		const detailed = describeSession({ state, ref: 'store-front/main', isDetailed: true, now: 0 });
+		const brief = describeSession({ state, ref: 'store-front/main', isDetailed: false, now: 0 });
+
+		expect(detailed.last_reply).toBe(longReply);
+		expect(String((detailed.recent as string[])[1]).length).toBeLessThan(longReply.length);
+		expect(brief.last_reply).toBeUndefined();
+	});
+
+	it('a reply longer than 2000 characters is cut; a session that has not replied has none', () => {
+		const { tools } = createToolContext();
+		const state = tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			stream: [{ id: 't1', at: 2, kind: 'text', text: 'x'.repeat(3000) }],
+		};
+
+		const lastReply = describeSession({
+			state,
+			ref: 'store-front/main',
+			isDetailed: true,
+			now: 0,
+		}).last_reply;
+
+		expect(String(lastReply)).toHaveLength(2001);
+		expect(
+			describeSession({ state, ref: 'store-front/wrk1', isDetailed: true, now: 0 }).last_reply,
+		).toBeUndefined();
+	});
 
 	it('dev servers appear only when some are not running, with what went wrong', () => {
 		const { tools } = createToolContext({
@@ -867,6 +1008,38 @@ describe('tools that replaced the fast path', () => {
 		expect(actions).toEqual([]);
 	});
 
+	it("debug_note keeps what the developer said beside the kernel's text", async () => {
+		const notes: DebugNoteWords[] = [];
+		const { tools } = createToolContext();
+
+		await executeTool(
+			'debug_note',
+			{ text: 'it dropped the skill name' },
+			{
+				...tools,
+				utterance: 'Add a debug note: it dropped proxy brainstorm.',
+				saveDebugNote: (words) => notes.push(words),
+			},
+		);
+
+		expect(notes).toEqual([
+			{ text: 'it dropped the skill name', said: 'Add a debug note: it dropped proxy brainstorm.' },
+		]);
+	});
+
+	it('debug_note from typed words with no utterance → said is null, never made up', async () => {
+		const notes: DebugNoteWords[] = [];
+		const { tools } = createToolContext();
+
+		await executeTool(
+			'debug_note',
+			{ text: 'it re-asked' },
+			{ ...tools, saveDebugNote: (words) => notes.push(words) },
+		);
+
+		expect(notes).toEqual([{ text: 'it re-asked', said: null }]);
+	});
+
 	it("debug_note hands the words to Voice OS's note-taker and dispatches nothing; an empty one is refused", async () => {
 		const notes: string[] = [];
 		const { tools, actions } = createToolContext();
@@ -875,7 +1048,7 @@ describe('tools that replaced the fast path', () => {
 			await executeTool(
 				'debug_note',
 				{ text: ' it re-asked the question ' },
-				{ ...tools, saveDebugNote: (text) => notes.push(text) },
+				{ ...tools, saveDebugNote: ({ text }) => notes.push(text) },
 			),
 		).toMatchObject({ ok: true });
 		expect(
@@ -883,7 +1056,7 @@ describe('tools that replaced the fast path', () => {
 				await executeTool(
 					'debug_note',
 					{ text: '' },
-					{ ...tools, saveDebugNote: (text) => notes.push(text) },
+					{ ...tools, saveDebugNote: ({ text }) => notes.push(text) },
 				)
 			).ok,
 		).toBe(false);

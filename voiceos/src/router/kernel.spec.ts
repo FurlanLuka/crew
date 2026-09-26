@@ -92,6 +92,92 @@ describe('Kernel', () => {
 		]);
 	});
 
+	it('words written beside a forward → dropped: the session answers, the kernel does not talk over it', async () => {
+		const { kernel, fake } = createKernel([
+			[
+				{ type: 'text', text: 'I understand, you want more detail. Sending it now.' } as Block,
+				createToolUse('t1', 'forward', { text: 'Explain it with more detail.' }),
+			],
+		]);
+
+		const result = await kernel.handle('explain it with more detail', {
+			forwardTo: 'store-front/main',
+		});
+
+		expect(fake.calls()).toBe(1);
+		expect(result.reply).toBe('');
+	});
+
+	it('a forward beside a checking tool → what the model says after it is dropped, and it is not asked again', async () => {
+		const { kernel, fake } = createKernel([
+			[
+				createToolUse('t1', 'read_state', { ref: 'store-front/main' }),
+				createToolUse('t2', 'forward', { text: 'Where is the code?' }),
+			],
+			[{ type: 'text', text: 'The branch is main.' } as Block],
+		]);
+
+		const result = await kernel.handle('where is the code', { forwardTo: 'store-front/main' });
+
+		expect(fake.calls()).toBe(2);
+		expect(result.reply).toBe('');
+	});
+
+	it('a forward beside a checking tool, then an empty step → not asked again for words to say', async () => {
+		const { kernel, fake } = createKernel([
+			[
+				createToolUse('t1', 'read_state', { ref: 'store-front/main' }),
+				createToolUse('t2', 'forward', { text: 'Where is the code?' }),
+			],
+			[],
+		]);
+
+		const result = await kernel.handle('where is the code', { forwardTo: 'store-front/main' });
+
+		expect(fake.calls()).toBe(2);
+		expect(result.reply).toBe('');
+	});
+
+	it('a forward beside a call that failed → the words explaining the failure are spoken', async () => {
+		const { kernel } = createKernel([
+			[
+				createToolUse('t1', 'crew_dev', { ref: 'nowhere/main', action: 'restart' }),
+				createToolUse('t2', 'forward', { text: 'Check the logs.' }),
+			],
+			[{ type: 'text', text: 'Could not restart: no such worktree.' } as Block],
+		]);
+
+		const result = await kernel.handle('restart the servers and have it check the logs', {
+			forwardTo: 'store-front/main',
+		});
+
+		expect(result.reply).toBe('Could not restart: no such worktree.');
+	});
+
+	it('a forward that fails → its words are kept, the developer hears why', async () => {
+		const { kernel } = createKernel([
+			[createToolUse('t1', 'forward', { text: 'run it' })],
+			[{ type: 'text', text: 'No session is open to send that to.' } as Block],
+		]);
+
+		const result = await kernel.handle('run it');
+
+		expect(result.reply).toBe('No session is open to send that to.');
+	});
+
+	it('words beside a send_to → still spoken: a question asked with it keeps its answer', async () => {
+		const { kernel } = createKernel([
+			[
+				{ type: 'text', text: 'Two sessions are running.' } as Block,
+				createToolUse('t1', 'send_to', { ref: 'store-front/main', text: 'Run the tests.' }),
+			],
+		]);
+
+		const result = await kernel.handle("what's running, and tell store front to run the tests");
+
+		expect(result.reply).toBe('Two sessions are running.');
+	});
+
 	it('send_to that fails → the model gets the error and a second turn to recover', async () => {
 		const { kernel, fake } = createKernel([
 			[createToolUse('t1', 'send_to', { ref: 'nowhere/main', text: 'x' })],

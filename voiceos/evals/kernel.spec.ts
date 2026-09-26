@@ -103,6 +103,25 @@ describe('judgeRun', () => {
 		).toBe(true);
 	});
 
+	it('a long reply with a word cap fails past it: a read-back is a few sentences, not the message', () => {
+		const readBackCase = {
+			id: 'r',
+			utterance: 'what did it say',
+			context: {},
+			calls: [],
+			answer: true,
+			long_reply: true,
+			max_words: 80,
+		};
+
+		expect(
+			judgeRun({ calls: [], reply: 'word '.repeat(80).trim(), testCase: readBackCase }).ok,
+		).toBe(true);
+		expect(
+			judgeRun({ calls: [], reply: 'word '.repeat(81).trim(), testCase: readBackCase }).ok,
+		).toBe(false);
+	});
+
 	it('reply_includes: every entry must be said ("a|b" either)', () => {
 		const optionsCase = {
 			id: 'q',

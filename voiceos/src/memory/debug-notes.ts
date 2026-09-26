@@ -30,7 +30,10 @@ interface SpokenSnapshot {
 
 export interface DebugNote {
 	at: string;
+	// The kernel's words for what went wrong.
 	text: string;
+	// What the developer actually said: the kernel's text can drop what mattered.
+	said: string | null;
 	view: string;
 	heardHere: HeardLine[];
 	sessions: SessionSnapshot[];
@@ -43,13 +46,24 @@ const SPOKEN_LINES_KEPT = 5;
 
 const toIsoString = (timestampMs: number) => new Date(timestampMs).toISOString();
 
-export const createDebugNote = (state: State, text: string, now: number): DebugNote => {
+export interface DebugNoteWords {
+	text: string;
+	said: string | null;
+}
+
+interface CreateDebugNoteParams extends DebugNoteWords {
+	state: State;
+	now: number;
+}
+
+export const createDebugNote = ({ state, text, said, now }: CreateDebugNoteParams): DebugNote => {
 	// The log around `at` tells what happened; the note says what the developer thought was wrong.
 	const view = state.view.kind === 'session' ? state.view.ref : GRID;
 
 	return {
 		at: toIsoString(now),
 		text,
+		said,
 		view,
 		heardHere: (state.voiceLog[view] ?? []).map((entry) => ({
 			utterance: entry.utterance,

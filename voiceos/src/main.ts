@@ -121,10 +121,10 @@ const kernel = keys.anthropic
 				dispatch: (action) => store.dispatch(action),
 				readHistory: (query) => readHistory(paths.journalDir, query),
 				mute: () => voiceOut.mute(),
-				saveDebugNote: (text) => {
-					const note = createDebugNote(store.state, text, Date.now());
+				saveDebugNote: ({ text, said }) => {
+					const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
 
-					log.warn('debug note', { text, view: note.view });
+					log.warn('debug note', { text, said, view: note.view });
 
 					try {
 						saveDebugNote(paths.debugNotesFile, note);

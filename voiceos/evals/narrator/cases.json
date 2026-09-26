@@ -498,6 +498,24 @@
 				"needs_user": false,
 				"speak": false
 			}
+		},
+		{
+			"id": "advice-not-question",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "do we build this in CI and release it? I want to push but not publish my API keys",
+			"focused": false,
+			"text": "No \u2014 pushing won't create a public build, and no keys are in the code or its history. Releases build only the Go binary; the voice app is compiled locally. Two things change once it's public: the CI workflow runs the evals on every push, about a dollar each, and the old history still names internal projects. Squash it before pushing, and if you don't want the CI cost yet, switch the workflow to manual runs.",
+			"expect": { "needs_user": false, "speak": true }
+		},
+		{
+			"id": "advice-then-question",
+			"split": "dev",
+			"label": "store-front/main",
+			"asked": "do we build this in CI and release it? I want to push but not publish my API keys",
+			"focused": false,
+			"text": "No \u2014 pushing won't create a public build, and no keys are in the code or its history. The CI workflow runs the evals on every push, about a dollar each, and the old history still names internal projects. Should I squash the history and switch CI to manual runs before pushing?",
+			"expect": { "needs_user": true, "speak": true }
 		}
 	]
 }

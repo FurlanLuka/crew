@@ -17,6 +17,9 @@ const DANGLING_WORDS = new Set([
 const FILLER_WORDS = new Set(['um', 'uh', 'erm']);
 const TRAILING_DASH_PATTERN = /(?:\s|^)?[—–-]\s*$|(?:…|\.\.\.)\s*$/;
 const ASKING_WHO_PATTERN = /\b(?:can|could|would|will) you[.?!,\s]*$/;
+// "Can you set up." — a request cut off before its object; "Can you push?" is complete.
+const OBJECT_MISSING_PATTERN =
+	/\b(?:can|could|would|will) you \w+ (?:up|out|into|through|with|about|for|to|from)[.?!,\s]*$/;
 
 const getLastWord = (text: string): string =>
 	text
@@ -38,7 +41,9 @@ export const isUnfinished = (raw: string): boolean => {
 		return true;
 	}
 
-	if (ASKING_WHO_PATTERN.test(text.toLowerCase())) {
+	const lowerText = text.toLowerCase();
+
+	if (ASKING_WHO_PATTERN.test(lowerText) || OBJECT_MISSING_PATTERN.test(lowerText)) {
 		return true;
 	}
 
@@ -55,7 +60,10 @@ export const joinTurns = (held: string, next: string): string => {
 		.trim();
 
 	// Speech-to-text capitalises every turn; mid-sentence it reads as a new one.
-	const rest = next.trim().replace(/^\p{Lu}(?=\p{Ll})/u, (letter) => letter.toLowerCase());
+	// A one-letter word ("A workspace?") too, but never "I".
+	const rest = next
+		.trim()
+		.replace(/^(?!I\b)\p{Lu}(?=\p{Ll}|\s)/u, (letter) => letter.toLowerCase());
 
 	return `${start} ${rest}`.trim();
 };

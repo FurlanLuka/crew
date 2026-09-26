@@ -3,17 +3,22 @@ import {
 	OFFER_TTL_MS,
 	type Action,
 	type PendingAsk,
+	type QueuedMessage,
 	type Session,
 	type State,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
+import { createLogger } from '../log.js';
 import { buildSituationNote } from '../sessions/voice-context.js';
 import { answerAsk } from './answer.js';
 import type { HistoryQuery } from '../memory/journal.js';
+import type { DebugNoteWords } from '../memory/debug-notes.js';
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
+
+const log = createLogger('tools');
 
 export interface HistoryEntry {
 	ts: string;
@@ -38,7 +43,7 @@ export interface ToolContext {
 	asks: PendingAsk[];
 	// Required so a server that forgets to wire them fails to compile, not a "Noted." that saved nothing.
 	mute: () => void;
-	saveDebugNote: (text: string) => void;
+	saveDebugNote: (words: DebugNoteWords) => void;
 	dispatch: (action: Action) => void;
 	now: () => number;
 	readHistory: (query: HistoryQuery) => HistoryEntry[];
@@ -77,6 +82,41 @@ const describeBlockingAsk = (state: State, ref: string): string | null => {
 	return `${ref} is waiting on ${ask.kind === 'permission' ? `a permission (${ask.summary})` : 'a plan approval'}: answer it with the answer tool, then send anything more.`;
 };
 
+const normalizeSentText = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const findRunningRequest = (session: Session): string | null => {
+	if (session.status !== 'running' && session.status !== 'blocked') {
+		return null;
+	}
+
+	const lastRequest = session.stream.findLast((item) => item.kind === 'user');
+
+	return lastRequest?.kind === 'user' ? lastRequest.text : null;
+};
+
+const isQueuedAlready = (message: QueuedMessage, sent: string): boolean => {
+	const queued = normalizeSentText(message.text);
+
+	// A spoken follow-up is merged onto the end of the message it follows, after a space.
+	return queued === sent || (Boolean(message.isFollowUp) && queued.endsWith(` ${sent}`));
+};
+
+interface IsDuplicateSendParams {
+	session: Session;
+	text: string;
+}
+
+export const isDuplicateSend = ({ session, text }: IsDuplicateSendParams): boolean => {
+	// Sending it again would interrupt the turn working on it; once that turn ends, a repeat is deliberate.
+	const sent = normalizeSentText(text);
+	const runningRequest = findRunningRequest(session);
+
+	return (
+		(runningRequest !== null && normalizeSentText(runningRequest) === sent) ||
+		session.queue.some((message) => isQueuedAlready(message, sent))
+	);
+};
+
 interface SendTextParams {
 	state: State;
 	ref: string;
@@ -84,8 +124,15 @@ interface SendTextParams {
 	toolContext: ToolContext;
 }
 
-const sendText = ({ state, ref, text, toolContext }: SendTextParams): void => {
+const sendText = ({ state, ref, text, toolContext }: SendTextParams): ToolResult => {
 	const session = state.sessions[ref];
+
+	if (session && isDuplicateSend({ session, text })) {
+		log.info('duplicate send skipped', { ref, chars: text.length });
+
+		return fail(`already sent to ${ref}; it is working on it: nothing was sent again`);
+	}
+
 	const note = session
 		? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
 		: undefined;
@@ -96,6 +143,8 @@ const sendText = ({ state, ref, text, toolContext }: SendTextParams): void => {
 		...(note ? { note } : {}),
 		...(toolContext.isSpoken ? { isSpoken: true } : {}),
 	});
+
+	return succeed(`sent to ${ref}`);
 };
 
 export const executeTool = async (
@@ -125,9 +174,7 @@ export const executeTool = async (
 				return fail(blockingAsk);
 			}
 
-			sendText({ state, ref: target, text, toolContext });
-
-			return succeed(`sent to ${target}`);
+			return sendText({ state, ref: target, text, toolContext });
 		}
 
 		case 'ignore_words': {
@@ -184,9 +231,7 @@ export const executeTool = async (
 				return fail(blockingAsk);
 			}
 
-			sendText({ state, ref: checked.ref, text, toolContext });
-
-			return succeed(`sent to ${checked.ref}`);
+			return sendText({ state, ref: checked.ref, text, toolContext });
 		}
 
 		case 'switch_view': {
@@ -317,7 +362,7 @@ export const executeTool = async (
 				return fail('the note is empty: ask what to note');
 			}
 
-			toolContext.saveDebugNote(text);
+			toolContext.saveDebugNote({ text, said: toolContext.utterance ?? null });
 
 			return succeed('noted with a snapshot of this moment');
 		}

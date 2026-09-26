@@ -1822,6 +1822,121 @@
 					"text_includes": "mara"
 				}
 			]
+		},
+		{
+			"id": "remember-what-next",
+			"utterance": "Okay, great. Do you remember what we said we'll do next here?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["next"]
+				}
+			]
+		},
+		{
+			"id": "check-transcripts-report",
+			"utterance": "So can you maybe check the transcripts for the chat and let me know?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["transcript"]
+				}
+			]
+		},
+		{
+			"id": "brainstorm-skill-kept",
+			"utterance": "Okay, um, could we brainstorm a bit? Maybe let's use proxy brainstorm.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["brainstorm", "proxy"]
+				}
+			]
+		},
+		{
+			"id": "where-is-code",
+			"utterance": "Um, where is the other code at? Which branch?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["branch"]
+				}
+			]
+		},
+		{
+			"id": "question-not-answer-to-asked",
+			"utterance": "Okay, so if we push, it won't expose the API keys?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "squash the history before pushing?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["key"]
+				}
+			]
+		},
+		{
+			"id": "what-did-it-say",
+			"utterance": "Okay, so can you tell me what the session said?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Why is the checkout test flaky?",
+						"minutesAgo": 2,
+						"idle": true,
+						"said": "The checkout test is flaky because two tests share one cart fixture, and the second one changes it while the first is still reading. I gave each test its own fixture and ran the suite 20 times, all green. I'd also drop the retry wrapper we added last week: it only hid this. The fix is on the branch, not pushed."
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "read_state"
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true,
+			"long_reply": true,
+			"max_words": 80,
+			"reply_includes": ["fixture", "20|twenty"]
+		},
+		{
+			"id": "tell-me-more-about-x",
+			"utterance": "Tell me more about the retry wrapper.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Why is the checkout test flaky?",
+						"minutesAgo": 2,
+						"idle": true,
+						"said": "The checkout test is flaky because two tests share one cart fixture, and the second one changes it while the first is still reading. I gave each test its own fixture and ran the suite 20 times, all green. I'd also drop the retry wrapper we added last week: it only hid this. The fix is on the branch, not pushed."
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["retry"]
+				}
+			]
 		}
 	]
 }

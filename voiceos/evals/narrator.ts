@@ -21,9 +21,10 @@ interface Case {
 	not_includes?: string[];
 }
 
-// Narration is unsolicited: short, and shorter still for the session on screen.
-export const NARRATION_WORDS = 20;
-export const FOCUSED_WORDS = 12;
+// Narration is a TL;DR: short, and shorter still for the session on screen.
+// The prompt aims at about 35; past its ceiling of 45 a line stops being a TL;DR.
+export const NARRATION_WORDS = 45;
+export const FOCUSED_WORDS = 20;
 
 interface CalibrationCase {
 	id: string;

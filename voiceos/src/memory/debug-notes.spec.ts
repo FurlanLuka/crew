@@ -21,10 +21,18 @@ describe('createDebugNote', () => {
 		now,
 	);
 
-	it("the developer's words and what the screen showed at that moment", () =>
-		expect(createDebugNote(state, 'it asked me the same question again', now)).toMatchObject({
+	it("the kernel's note, the developer's own words and what the screen showed at that moment", () =>
+		expect(
+			createDebugNote({
+				state,
+				text: 'it asked me the same question again',
+				said: 'Add a debug note that it asked me the same question again.',
+				now,
+			}),
+		).toMatchObject({
 			at: '2026-09-25T13:15:00.000Z',
 			text: 'it asked me the same question again',
+			said: 'Add a debug note that it asked me the same question again.',
 			view: 'store-front/wrk1',
 			heardHere: [
 				{
@@ -46,7 +54,7 @@ describe('createDebugNote', () => {
 		}));
 
 	it('every session with its status, what it waits on and what it was last asked', () => {
-		const sessions = createDebugNote(state, 'x', now).sessions;
+		const sessions = createDebugNote({ state, text: 'x', said: null, now }).sessions;
 		expect(sessions.find((session) => session.ref === 'voiceos')).toEqual({
 			ref: 'voiceos',
 			status: 'running',
@@ -60,12 +68,14 @@ describe('createDebugNote', () => {
 	});
 
 	it("on Mission Control → the grid's log", () =>
-		expect(createDebugNote(createFixtureState({}, now), 'x', now).view).toBe('grid'));
+		expect(
+			createDebugNote({ state: createFixtureState({}, now), text: 'x', said: null, now }).view,
+		).toBe('grid'));
 
 	it('saved one JSON line per note', () => {
 		const file = join(mkdtempSync(join(tmpdir(), 'notes-')), 'logs', 'debug-notes.jsonl');
-		saveDebugNote(file, createDebugNote(state, 'first', now));
-		saveDebugNote(file, createDebugNote(state, 'second', now));
+		saveDebugNote(file, createDebugNote({ state, text: 'first', said: null, now }));
+		saveDebugNote(file, createDebugNote({ state, text: 'second', said: null, now }));
 		expect(
 			readFileSync(file, 'utf8')
 				.trim()

@@ -423,6 +423,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		case 'setup':
 			return withoutEffects({ ...state, setup: { missing: input.missing } });
 	}
+
+	// A browser tab left open across an upgrade runs older code than the server: it must reload, not guess.
+	const unknownInput: never = input;
+	throw new Error(`unknown input: ${(unknownInput as { type: string }).type}`);
 };
 
 export const reduce = (state: State, stamped: Stamped): ReducerResult =>

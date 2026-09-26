@@ -1446,3 +1446,15 @@ describe('requests: what a session was last asked', () => {
 		]);
 	});
 });
+
+describe('an input this reducer does not know', () => {
+	it('throws: a client on older code must reload, never keep a state that drifts from the server', () =>
+		expect(() =>
+			reduce(createInitialState(), {
+				seq: 1,
+				at: 0,
+				id: 'i1',
+				input: { type: 'added_later' } as unknown as Input,
+			}),
+		).toThrow('unknown input: added_later'));
+});

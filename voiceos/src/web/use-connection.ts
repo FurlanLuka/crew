@@ -14,11 +14,25 @@ export type ConnectionStatus = 'connecting' | 'open' | 'unauthorized' | 'closed'
 export interface AppliedServerMessage {
 	state: State | null;
 	shouldResync: boolean;
+	// This tab's code cannot apply what the server sent: it predates the server's build.
+	shouldReload?: true;
 }
 
 const OUTBOX_MESSAGES_KEPT = 20;
 const FIRST_RETRY_MS = 500;
 const MAX_RETRY_MS = 8000;
+const RELOAD_KEY = 'voiceos-reloaded-at';
+// A reload that fetched the same stale code would loop; after one, fall back to resyncing.
+const RELOAD_GAP_MS = 60_000;
+
+interface ShouldReloadNowParams {
+	lastReloadAt: number | null;
+	now: number;
+}
+
+export const shouldReloadNow = ({ lastReloadAt, now }: ShouldReloadNowParams): boolean => {
+	return lastReloadAt === null || now - lastReloadAt > RELOAD_GAP_MS;
+};
 
 export const shouldKeepWhileOffline = (message: ClientMessage): boolean => {
 	// Clicks and typing are sent on reconnect; push-to-talk and playback reports are moment-bound.
@@ -46,7 +60,31 @@ export const applyServerMessage = (
 		return { state, shouldResync: true };
 	}
 
-	return { state: reduce(state, message.stamped).state, shouldResync: false };
+	try {
+		return { state: reduce(state, message.stamped).state, shouldResync: false };
+	} catch (error) {
+		// Unknown to this tab's code, or a bug in it: either way a fresh snapshot on the same code fails again.
+		console.warn('input not applied', message.stamped.input.type, error);
+
+		return { state, shouldResync: true, shouldReload: true };
+	}
+};
+
+const reloadIfNotRecent = (): boolean => {
+	const lastReloadAt = Number(sessionStorage.getItem(RELOAD_KEY)) || null;
+	const now = Date.now();
+
+	if (!shouldReloadNow({ lastReloadAt, now })) {
+		console.warn('reloaded under a minute ago: resyncing instead');
+
+		return false;
+	}
+
+	console.warn('reloading: this tab runs older code than the server');
+	sessionStorage.setItem(RELOAD_KEY, String(now));
+	location.reload();
+
+	return true;
 };
 
 export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
@@ -108,7 +146,15 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 					return;
 				}
 
-				const { state: nextState, shouldResync } = applyServerMessage(stateRef.current, message);
+				const {
+					state: nextState,
+					shouldResync,
+					shouldReload,
+				} = applyServerMessage(stateRef.current, message);
+
+				if (shouldReload && reloadIfNotRecent()) {
+					return;
+				}
 
 				if (shouldResync) {
 					webSocket.close();

@@ -2,6 +2,20 @@ import { type State, type PendingAsk, type Denial, isOfferFresh } from '../share
 import { describeWork, formatAge } from '../state/working.js';
 
 const RECENT_TOOL_STEPS = 3;
+const LAST_REPLY_CHARS = 2000;
+
+const findLastReply = (state: State, ref: string): string | null => {
+	// Read back in full on "what did it say": the recent lines clip every message to a line.
+	const lastText = state.sessions[ref]?.stream.findLast((item) => item.kind === 'text');
+
+	if (lastText?.kind !== 'text') {
+		return null;
+	}
+
+	return lastText.text.length > LAST_REPLY_CHARS
+		? `${lastText.text.slice(0, LAST_REPLY_CHARS)}…`
+		: lastText.text;
+};
 
 const listRecentLines = (state: State, ref: string, count: number): string[] => {
 	const session = state.sessions[ref];
@@ -86,6 +100,7 @@ export const describeSession = ({
 	);
 	const devOffer = state.devOffer?.ref === ref ? state.devOffer : null;
 	const work = describeWork(session, now);
+	const lastReply = isDetailed ? findLastReply(state, ref) : null;
 
 	return {
 		ref,
@@ -116,5 +131,6 @@ export const describeSession = ({
 				}
 			: {}),
 		...(isDetailed ? { recent: listRecentLines(state, ref, 6) } : {}),
+		...(lastReply ? { last_reply: lastReply } : {}),
 	};
 };

@@ -21,6 +21,13 @@ describe('isUnfinished', () => {
 		'Uh, um.',
 		'Um?',
 		'restart the servers and',
+		// A request cut off before its object: "Can you set up… a workspace?"
+		'Can you set up.',
+		'Could you look into?',
+		'Would you check out',
+		'Can you help with.',
+		// Complete but held too; the hold ends after 5 s or with the next words, so it is only delayed.
+		'Can you clean up?',
 	])('%p → unfinished', (text) => expect(isUnfinished(text)).toBe(true));
 
 	it.each([
@@ -35,6 +42,11 @@ describe('isUnfinished', () => {
 		'Thank you.',
 		'What are you up to?',
 		'Can you check the logs?',
+		'Can you push?',
+		'Could you revert it?',
+		'Can you help?',
+		'Can you set it up?',
+		'Can you set up the workspace?',
 		'Open store-front.',
 		'Show me the follow-up',
 		'Okay.',
@@ -96,6 +108,8 @@ describe('joinTurns', () => {
 			'And can you restart the dev servers?',
 		);
 		expect(joinTurns('Tell me about', 'API keys')).toBe('Tell me about API keys');
+		expect(joinTurns('Can you set up.', 'A workspace?')).toBe('Can you set up a workspace?');
+		expect(joinTurns('And', 'I think so.')).toBe('And I think so.');
 		expect(joinTurns("Let's, um…", 'open checkout')).toBe("Let's, um open checkout");
 	});
 });
@@ -111,6 +125,11 @@ describe('decideTurnAction', () => {
 		expect(decide('Restart the dev servers?', 'And can you.')).toEqual({
 			kind: 'route',
 			text: 'And can you restart the dev servers?',
+		}));
+	it('a request held before its object, joined to the rest → one request', () =>
+		expect(decide('A workspace?', 'Can you set up.')).toEqual({
+			kind: 'route',
+			text: 'Can you set up a workspace?',
 		}));
 	it('joined but still unfinished → waits again', () =>
 		expect(decide('and', "Let's, um.")).toEqual({ kind: 'hold', text: "Let's, um and" }));

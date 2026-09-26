@@ -60,3 +60,9 @@ export const isSilentCall = (name: string, input: Record<string, unknown>): bool
 
 	return SILENT_TOOLS.includes(name as ToolName);
 };
+
+export const isAnsweredByForward = (calls: ToolCall[]): boolean => {
+	// The session answers what was forwarded to it: words beside it only talk over that answer.
+	// A call that failed keeps them, since they explain the failure.
+	return calls.some((call) => call.name === 'forward') && calls.every((call) => call.ok);
+};

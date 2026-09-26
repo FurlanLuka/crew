@@ -17,8 +17,8 @@ describe('cleanSpokenText', () => {
 		expect(cleanSpokenText('**Tests pass.** _All_ green')).toBe('Tests pass. All green'));
 	it('caps the length', () =>
 		expect(cleanSpokenText('word '.repeat(60), 10).split(' ')).toHaveLength(10));
-	it('never more than 25 words by default: narration is unsolicited', () =>
-		expect(cleanSpokenText('word '.repeat(60)).split(' ')).toHaveLength(25));
+	it('never more than 70 words by default: a TL;DR, never the whole reply', () =>
+		expect(cleanSpokenText('word '.repeat(100)).split(' ')).toHaveLength(70));
 });
 
 describe('buildNarratorMessage', () => {
