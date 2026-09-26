@@ -54,6 +54,8 @@ describe('VOICE_OS_CONTEXT', () => {
 		expect(VOICE_OS_CONTEXT).toContain('any risk or catch they must know');
 		expect(VOICE_OS_CONTEXT).toContain('never a bare verdict');
 		expect(VOICE_OS_CONTEXT).toContain('<spoken asks>');
+		expect(VOICE_OS_CONTEXT).toContain('also give them the major checkpoints');
+		expect(VOICE_OS_CONTEXT).toContain('never for routine steps, files or commands');
 		expect(VOICE_OS_CONTEXT).toContain('Put one question in each call');
 	});
 });
