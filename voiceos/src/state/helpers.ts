@@ -1,6 +1,6 @@
 import type { Observation, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import type { ReportOwed } from '../shared/ack.js';
+import { readShownText } from '../shared/spoken-tags.js';
 
 export const STREAM_ITEMS_KEPT = 400;
 
@@ -47,7 +47,8 @@ export const createStreamItem = ({
 }: CreateStreamItemParams): StreamItem | null => {
 	switch (observation.type) {
 		case 'assistant_text':
-			return { id, at, kind: 'text', text: observation.text };
+			// The page shows the message without its spoken line (restored history included).
+			return { id, at, kind: 'text', text: readShownText(observation.text) };
 		case 'tool':
 			return { id, at, kind: 'tool', name: observation.name, summary: observation.summary };
 		case 'tool_result':
@@ -70,8 +71,8 @@ export interface SendNowParams {
 	isSpoken?: boolean;
 	itemId: string;
 	at: number;
-	// Voice OS told the developer it passed this on: this turn's end is reported aloud.
-	reportOwed?: ReportOwed | null;
+	// An instruction: this turn's end is reported aloud.
+	reportOwed?: boolean;
 }
 
 export const sendNow = ({
@@ -82,7 +83,7 @@ export const sendNow = ({
 	isSpoken = false,
 	itemId,
 	at,
-	reportOwed = null,
+	reportOwed = false,
 }: SendNowParams): ReducerResult => {
 	// The note goes to the worker only: the stream records what the developer said.
 	const next = updateSession(state, ref, (session) =>
@@ -94,6 +95,7 @@ export const sendNow = ({
 				voiceTurnAt: isSpoken ? at : null,
 				isFresh: false,
 				reportOwed,
+				spokenInTurn: [],
 				requests: [...session.requests, { text: truncateText(text, MAX_REQUEST_CHARS), at }].slice(
 					-REQUESTS_KEPT,
 				),
@@ -135,7 +137,7 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		text: head.text,
 		note: head.note,
 		isSpoken: head.isFollowUp === true || head.isSpoken === true,
-		reportOwed: head.reportOwed ?? null,
+		reportOwed: head.reportOwed === true,
 		itemId: `${stamped.id}:q`,
 		at: stamped.at,
 	});

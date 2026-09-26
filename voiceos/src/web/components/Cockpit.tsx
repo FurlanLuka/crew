@@ -1,3 +1,4 @@
+import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { useEffect, useRef } from 'react';
 import type { Session, State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
@@ -28,9 +29,9 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 				{session.stream.map((item) => (
 					<StreamLine key={item.id} item={item} />
 				))}
-				{session.draft && (
+				{stripStreamingTag(session.draft) && (
 					<div className="line text">
-						<Markdown text={session.draft} />
+						<Markdown text={stripStreamingTag(session.draft)} />
 						<span className="caret" />
 					</div>
 				)}

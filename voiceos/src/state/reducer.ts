@@ -26,7 +26,8 @@ import {
 import { hasFollowUpWaiting } from './delivery.js';
 import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
-import { joinTasks, lowerFirst, type ReportOwed } from '../shared/ack.js';
+import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
+import { speakNewTag } from './spoken-lines.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -46,7 +47,16 @@ export type Effect =
 	| { type: 'worker_interrupt'; ref: string; reason?: 'follow-up' }
 	| { type: 'worker_set_mode'; ref: string; mode: 'default' | 'auto' }
 	| { type: 'resolve_ask'; askId: string; result: AskResult }
-	| { type: 'narrate'; ref: string; text: string; asked: string | null; owed: ReportOwed | null }
+	// spoken: the session's own line for the turn's final message; null sends it to the narrator.
+	| {
+			type: 'narrate';
+			ref: string;
+			text: string;
+			asked: string | null;
+			isOwed: boolean;
+			spoken: SpokenTag | null;
+			isSpokenAlready: boolean;
+	  }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string }
 	| { type: 'narrate_aside'; ref: string; question: string; answer: string }
@@ -64,7 +74,7 @@ export type Effect =
 			isNamed?: boolean;
 			// Default: alert for alerts, normal otherwise.
 			priority?: SpeechPriority;
-			// A report Voice OS promised: nothing newer replaces it before it plays.
+			// A line the developer is waiting for: nothing newer replaces it before it plays.
 			isOwed?: boolean;
 			// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
 			isAck?: boolean;
@@ -111,24 +121,19 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	isFresh: false,
 	requests: [],
 	subagents: [],
-	reportOwed: null,
+	reportOwed: false,
+	spokenInTurn: [],
 });
 
-const describeUnfinished = (ref: string, owed: ReportOwed): Effect => {
-	const tasks = joinTasks(owed.tasks);
-
-	return {
-		type: 'speak',
-		text: tasks
-			? `Stopped before it finished ${lowerFirst(tasks)}.`
-			: 'Stopped before it finished.',
-		source: 'kernel',
-		ref,
-		isNamed: true,
-		priority: 'high',
-		isOwed: true,
-	};
-};
+const describeUnfinished = (ref: string): Effect => ({
+	type: 'speak',
+	text: 'Stopped before it finished.',
+	source: 'kernel',
+	ref,
+	isNamed: true,
+	priority: 'high',
+	isOwed: true,
+});
 
 const MAX_LOGGED_CHARS = 500;
 
@@ -260,7 +265,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					queue: [],
 					draft: '',
 					voiceTurnAt: null,
-					reportOwed: null,
+					reportOwed: false,
 				})),
 				effects: [...settled.effects, { type: 'worker_stop', ref: input.ref }],
 			};
@@ -281,7 +286,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					queue: [],
 					voiceTurnAt: null,
 					// The developer stopped the work: there is nothing to report.
-					reportOwed: null,
+					reportOwed: false,
 				})),
 				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
 			};
@@ -338,32 +343,56 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				),
 			);
 
-		case 'text_delta':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({
-					...session,
-					draft: session.draft + input.text,
-				})),
-			);
+		case 'text_delta': {
+			const session = state.sessions[input.ref];
+
+			if (!session) {
+				return withoutEffects(state);
+			}
+
+			const draft = session.draft + input.text;
+			// A reply the developer's follow-up is cutting says nothing more: they are already past it.
+			const { spokenInTurn, effects } = hasFollowUpWaiting(session)
+				? { spokenInTurn: session.spokenInTurn, effects: [] }
+				: speakNewTag(session, draft);
+
+			return {
+				state: updateSession(state, input.ref, (current) => ({ ...current, draft, spokenInTurn })),
+				effects,
+			};
+		}
 
 		case 'assistant_text':
 		case 'tool':
 		case 'tool_result':
 		case 'diff': {
+			const isText = input.type === 'assistant_text';
 			const item = createStreamItem({ observation: input, id: stamped.id, at: stamped.at });
+			const session = state.sessions[input.ref];
 
-			if (!item) {
+			if (!item || !session) {
 				return withoutEffects(state);
 			}
 
+			// A message that never streamed says its lines now; streamed ones were said already.
+			const spoken =
+				isText && !hasFollowUpWaiting(session) ? speakNewTag(session, input.text) : null;
 			// Text and a tool call end the streamed draft; results and diffs follow the tool line.
-			const shouldClearDraft = input.type === 'assistant_text' || input.type === 'tool';
+			const shouldClearDraft = isText || input.type === 'tool';
 
-			return withoutEffects(
-				updateSession(state, input.ref, (session) =>
-					pushStreamItem(shouldClearDraft ? { ...session, draft: '' } : session, item),
+			return {
+				state: updateSession(state, input.ref, (current) =>
+					pushStreamItem(
+						{
+							...current,
+							...(shouldClearDraft ? { draft: '' } : {}),
+							...(spoken ? { spokenInTurn: spoken.spokenInTurn } : {}),
+						},
+						item,
+					),
 				),
-			);
+				effects: spoken?.effects ?? [],
+			};
 		}
 
 		case 'history_restored':
@@ -391,6 +420,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A reply cut off by the developer's follow-up is not narrated: they are already past it.
 			const isCutOff = hasFollowUpWaiting(session);
 
+			// The final message's own line, when the session wrote one: the narrator only fills a gap.
+			const spoken = readSpokenTag(input.text);
+
 			// A promised report is given even for a turn that wrote nothing.
 			if ((input.text.trim() || session.reportOwed) && !isCutOff) {
 				effects.push({
@@ -398,7 +430,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					ref: input.ref,
 					text: input.text,
 					asked: findLastUserText(session),
-					owed: session.reportOwed,
+					isOwed: session.reportOwed,
+					spoken,
+					isSpokenAlready: spoken !== null && session.spokenInTurn.includes(spoken.text),
 				});
 			}
 
@@ -409,7 +443,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				draft: '',
 				modeOverride: null,
 				voiceTurnAt: null,
-				reportOwed: null,
+				reportOwed: false,
+				spokenInTurn: [],
 				costUsd: current.costUsd + input.costUsd,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
@@ -430,12 +465,12 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceTurnAt: null,
 				queue: input.error ? session.queue : [],
 				subagents: [],
-				reportOwed: null,
+				reportOwed: false,
 			}));
 
-			// Voice OS said it passed the work on: a crash before the report is the report.
+			// A report was owed: a crash before it is the report.
 			return input.error && owed
-				? { state: stopped, effects: [describeUnfinished(input.ref, owed)] }
+				? { state: stopped, effects: [describeUnfinished(input.ref)] }
 				: withoutEffects(stopped);
 		}
 

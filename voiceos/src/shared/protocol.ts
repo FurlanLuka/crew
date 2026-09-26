@@ -1,6 +1,6 @@
 // Shared by the server and the browser: every type here must stay serializable.
 
-import type { ReportOwed, SendAck } from './ack.js';
+import type { SendAck } from './ack.js';
 
 export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'blocked';
 
@@ -40,8 +40,8 @@ export interface QueuedMessage {
 	isFollowUp?: true;
 	// Said while the session was starting: its reply is as interruptible as one sent at once.
 	isSpoken?: true;
-	// Voice OS said it passed this on: the turn that handles it must be reported aloud.
-	reportOwed?: ReportOwed;
+	// An instruction: the turn that handles it must be reported aloud.
+	reportOwed?: true;
 }
 
 export interface QuestionOption {
@@ -122,8 +122,10 @@ export interface Session {
 	// Its last few messages, oldest first, so "what's it doing?" can be answered from elsewhere.
 	requests: { text: string; at: number }[];
 	subagents: Subagent[];
-	// The running turn handles work Voice OS said it passed on: its end is reported aloud.
-	reportOwed: ReportOwed | null;
+	// The running turn handles an instruction: its end is reported aloud.
+	reportOwed: boolean;
+	// The session's own spoken lines already said this turn, so none is said twice.
+	spokenInTurn: string[];
 }
 
 export interface VoiceEntry {

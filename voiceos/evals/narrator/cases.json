@@ -536,13 +536,13 @@
 			"label": "store-front/main",
 			"asked": "check the logs",
 			"focused": false,
-			"promised": ["Checking the logs"],
+			"promised": true,
 			"text": "Nothing unusual in the logs.",
 			"expect": {
 				"needs_user": false,
 				"speak": true
 			},
-			"includes": ["checking the log"]
+			"includes": ["log"]
 		},
 		{
 			"id": "promised-question",
@@ -550,7 +550,7 @@
 			"label": "store-front/main",
 			"asked": "fix the flaky checkout test",
 			"focused": false,
-			"promised": ["Fixing the flaky checkout test"],
+			"promised": true,
 			"text": "The flake came from a shared fixture mutating the cart between tests. I isolated it per test and ran the suite 20 times, green every time. Want me to push the branch?",
 			"expect": {
 				"needs_user": true,
@@ -564,7 +564,7 @@
 			"label": "checkout-api/main",
 			"asked": "run the migrations",
 			"focused": false,
-			"promised": ["Running the migrations"],
+			"promised": true,
 			"text": "The migration failed: the column discount_code already exists in orders. I stopped before touching the seed data.",
 			"expect": {
 				"needs_user": false,

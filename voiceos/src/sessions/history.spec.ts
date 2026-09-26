@@ -77,6 +77,19 @@ describe('convertHistoryToStream', () => {
 		]);
 	});
 
+	it('a message with its spoken line → restored without the tag', () =>
+		expect(
+			convertHistoryToStream({
+				messages: [
+					createAssistantMessage('a9', [
+						{ type: 'text', text: '<spoken>Tests pass.</spoken>\nAll 96.' },
+					]),
+				],
+				ref: 'store-front/main',
+				now: 0,
+			}),
+		).toEqual([{ id: 'h:a9:0', at, kind: 'text', text: 'All 96.' }]));
+
 	it('empty transcript → empty stream', () =>
 		expect(convertHistoryToStream({ messages: [], ref: 'r', now: 0 })).toEqual([]));
 

@@ -66,12 +66,6 @@ const KIND_PROPERTY = {
 		'question: the developer asks something that Claude can answer from what it already knows or did. instruction: anything asking for work, a change or a check — and a question that means the current work should change ("shouldn\'t that use v2?").',
 };
 
-const ACK_PROPERTY = {
-	type: 'string',
-	description:
-		'Only with kind instruction; leave it out for a question. The developer\'s request in 2 to 6 of their own words, an -ing verb first ("run the tests again" → "Running the tests again"), said aloud by Voice OS. It never changes text.',
-};
-
 const CLEAN_INSTRUCTION =
 	'What the developer wants, written to that Claude in their voice as a clear instruction or question: drop relay words ("can you ask it to", "tell it"), filler and false starts; keep every detail, name, number, negation and reaction, and a yes or no that answers what it asked ("Yes, please. Let me know when you\'re done."); add nothing they did not say. Keep who is who: "you" is that Claude, "I" is the developer ("so you see how much you messed up" stays "you"). The request stays the request, whatever that Claude asked last: "just fix everything" is not "plan the fixes".';
 
@@ -138,7 +132,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				ref: REF_PROPERTY,
 				text: { type: 'string', description: CLEAN_INSTRUCTION },
 				kind: KIND_PROPERTY,
-				ack: ACK_PROPERTY,
 			},
 			required: ['ref', 'text', 'kind'],
 			additionalProperties: false,
@@ -279,7 +272,6 @@ export const FORWARD_TOOL: ToolDefinition = {
 		properties: {
 			text: { type: 'string', description: CLEAN_INSTRUCTION },
 			kind: KIND_PROPERTY,
-			ack: ACK_PROPERTY,
 		},
 		required: ['text', 'kind'],
 		additionalProperties: false,

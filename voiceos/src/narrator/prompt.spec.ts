@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 import {
-	cleanSpokenText,
 	composeNarration,
 	createFallbackNarration,
 	buildNarratorMessage,
 	NARRATOR_SYSTEM,
 	type NarratorOutput,
 } from './prompt.js';
-import { toSpokenName, prefixSessionName, stripSessionName } from '../shared/spoken.js';
+import {
+	cleanSpokenText,
+	toSpokenName,
+	prefixSessionName,
+	stripSessionName,
+} from '../shared/spoken.js';
 
 const input = { label: 'store-front/main', asked: 'run the tests', focused: false, topic: null };
 
@@ -88,27 +92,18 @@ describe('buildNarratorMessage', () => {
 			'developer asked: run the tests',
 		);
 	});
-	it('a promised report → the tasks, in the words Voice OS said', () => {
-		expect(
-			buildNarratorMessage({
-				...input,
-				text: 'Clean.',
-				promised: ['Checking the logs', 'Running the tests'],
-			}),
-		).toBe(
+	it('a promised report → said so, in its own line', () => {
+		expect(buildNarratorMessage({ ...input, text: 'Clean.', isReportPromised: true })).toBe(
 			[
 				'session: store-front/main',
 				'focused: no',
 				'current topic: none',
 				'developer asked: run the tests',
-				'voice os promised a report on: Checking the logs and running the tests',
+				'voice os promised a report',
 				'',
 				'session wrote:',
 				'Clean.',
 			].join('\n'),
-		);
-		expect(buildNarratorMessage({ ...input, text: 'Clean.', promised: [] })).toContain(
-			'voice os promised a report on: this request',
 		);
 		expect(buildNarratorMessage({ ...input, text: 'Clean.' })).not.toContain('promised');
 	});

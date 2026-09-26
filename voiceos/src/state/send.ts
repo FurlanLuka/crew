@@ -5,7 +5,6 @@ import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
 import { decideAck, deliverSend, NO_ACK } from './delivery.js';
 import { pushNotice, updateSession, withoutEffects } from './helpers.js';
-import { mergeOwed } from '../shared/ack.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
 
@@ -48,16 +47,13 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 	if (sdkAsk) {
 		const answered = answerInWords({ state: focusedState, ask: sdkAsk, text, stamped });
 		// The running turn takes the words, so it owes their report too.
-		const { effects, owed } = completesAsk(sdkAsk)
-			? decideAck({ ref: input.ref, ack: input.ack, timing: 'now', at: stamped.at })
+		const { effects, isOwed } = completesAsk(sdkAsk)
+			? decideAck({ ref: input.ref, ack: input.ack, timing: 'now' })
 			: NO_ACK;
 
 		return {
-			state: owed
-				? updateSession(answered.state, input.ref, (current) => ({
-						...current,
-						reportOwed: mergeOwed(current.reportOwed, owed),
-					}))
+			state: isOwed
+				? updateSession(answered.state, input.ref, (current) => ({ ...current, reportOwed: true }))
 				: answered.state,
 			effects: [...effects, ...answered.effects],
 		};

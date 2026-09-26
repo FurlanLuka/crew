@@ -83,7 +83,6 @@ const sendRecorded = ({
 		ref,
 		text: sent,
 		kind: input.kind,
-		ack: input.ack,
 		toolContext,
 	});
 

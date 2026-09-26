@@ -73,6 +73,20 @@ describe('describeSessionBadge', () => {
 describe('readLastLine', () => {
 	it('streaming draft wins', () =>
 		expect(readLastLine(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
+
+	it('a draft shows without its spoken line, closed or still streaming', () => {
+		expect(readLastLine(createTestSession({ draft: '<spoken>Tests pass.</spoken>\nAll 40' }))).toBe(
+			'All 40',
+		);
+		expect(
+			readLastLine(
+				createTestSession({
+					draft: '<spoken>Tests pa',
+					stream: [{ id: 't', at: 1, kind: 'text', text: 'Earlier reply.' }],
+				}),
+			),
+		).toBe('Earlier reply.');
+	});
 	it('a Markdown reply → its words, without the signs', () =>
 		expect(
 			readLastLine(

@@ -34,10 +34,9 @@ describe('decideDelivery', () => {
 	);
 });
 
-describe('the ack spoken for a send', () => {
-	const LOGS: SendAck = { task: 'Checking the logs', kind: 'instruction' };
-	const TESTS: SendAck = { task: 'Running the tests', kind: 'instruction' };
-	const LINT: SendAck = { task: 'Running the linter', kind: 'instruction' };
+describe('what Voice OS says when it passes words on', () => {
+	const INSTRUCTION: SendAck = { kind: 'instruction' };
+	const QUESTION: SendAck = { kind: 'question' };
 	const send = (ack: SendAck, patch: Partial<Extract<Input, { type: 'send' }>> = {}): Input => ({
 		type: 'send',
 		ref: REF,
@@ -47,14 +46,22 @@ describe('the ack spoken for a send', () => {
 	});
 	const acks = (effects: Effect[]) =>
 		effects.filter((effect) => effect.type === 'speak').map((effect) => effect.text);
-	const owedOf = (state: State) => state.sessions[REF]?.reportOwed;
+	const isOwed = (state: State) => state.sessions[REF]?.reportOwed;
+	const stoppedSession = () => run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
 
-	it('idle → said now, named and high; the turn owes the report', () => {
-		const { state, effects } = run([send(LOGS)], { start: idleSession() });
+	it('idle → nothing said, the session acks itself; the turn owes a report', () => {
+		const { state, effects } = run([send(INSTRUCTION)], { start: idleSession() });
+
+		expect(acks(effects)).toEqual([]);
+		expect(isOwed(state)).toBe(true);
+	});
+
+	it('busy → "after its current work", named and high; the queued message carries the promise', () => {
+		const { state, effects } = run([send(INSTRUCTION)], { start: runningSession() });
 
 		expect(effects).toContainEqual({
 			type: 'speak',
-			text: 'Checking the logs.',
+			text: 'Okay, after its current work.',
 			source: 'kernel',
 			isReply: true,
 			ref: REF,
@@ -62,173 +69,96 @@ describe('the ack spoken for a send', () => {
 			priority: 'high',
 			isAck: true,
 		});
-		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toBe(true);
+		expect(isOwed(state)).toBe(false);
 	});
 
-	it('no phrase from the kernel → "On it." and a report still owed', () => {
-		const { state, effects } = run([send({ task: null, kind: 'instruction' })], {
-			start: idleSession(),
-		});
-
-		expect(acks(effects)).toEqual(['On it.']);
-		expect(owedOf(state)).toMatchObject({ tasks: [] });
-	});
-
-	it('busy → queued behind its work; the queued message carries the promise', () => {
-		const { state, effects } = run([send(LOGS)], { start: runningSession() });
-
-		expect(acks(effects)).toEqual(['Checking the logs, after its current work.']);
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
-			tasks: ['Checking the logs'],
-		});
-		expect(owedOf(state)).toBeNull();
-	});
-
-	it('stopped → "Starting it up, then …"', () => {
-		const stopped = run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
-		const { state, effects } = run([send(LOGS)], { start: stopped });
-
-		expect(acks(effects)).toEqual(['Starting it up, then checking the logs.']);
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
-			tasks: ['Checking the logs'],
-		});
-	});
-
-	it('still starting → the same "Starting it up, then …"', () => {
+	it('stopped or still starting → "Starting it up."', () => {
 		const starting = run([
 			{ type: 'worktrees', worktrees: [worktree(REF)] },
 			{ type: 'start_session', ref: REF },
 		]).state;
 
-		expect(acks(run([send(LOGS)], { start: starting }).effects)).toEqual([
-			'Starting it up, then checking the logs.',
+		expect(acks(run([send(INSTRUCTION)], { start: stoppedSession() }).effects)).toEqual([
+			'Starting it up.',
+		]);
+		expect(acks(run([send(INSTRUCTION)], { start: starting }).effects)).toEqual([
+			'Starting it up.',
 		]);
 	});
 
-	it('a question → nothing said, nothing owed; to a stopped session only "Starting it up."', () => {
-		const question: SendAck = { task: null, kind: 'question' };
-		const asked = run([send(question)], { start: idleSession() });
-		const stopped = run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
-		const cold = run([send(question)], { start: stopped });
+	it('a question → nothing said and nothing owed; to a stopped session only "Starting it up."', () => {
+		const asked = run([send(QUESTION)], { start: idleSession() });
+		const cold = run([send(QUESTION)], { start: stoppedSession() });
 
 		expect(acks(asked.effects)).toEqual([]);
-		expect(owedOf(asked.state)).toBeNull();
+		expect(isOwed(asked.state)).toBe(false);
 		expect(acks(cold.effects)).toEqual(['Starting it up.']);
 		expect(cold.state.sessions[REF]?.queue[0]?.reportOwed).toBeUndefined();
 	});
 
-	it('a spoken follow-up → said now; it owes both tasks, the cut-off turn is not narrated', () => {
-		const { state, effects } = run(
-			[send(LOGS, { isSpoken: true }), send(TESTS, { text: 'and run the tests', isSpoken: true })],
+	it("a spoken follow-up → it carries the cut turn's promise; the cut-off turn is not narrated", () => {
+		const { state } = run(
+			[
+				send(INSTRUCTION, { isSpoken: true }),
+				send(INSTRUCTION, { text: 'and run the tests', isSpoken: true }),
+			],
 			{ start: idleSession() },
 		);
 
-		expect(acks(effects)).toEqual(['Running the tests.']);
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
-			tasks: ['Checking the logs', 'Running the tests'],
-		});
-		expect(owedOf(state)).toBeNull();
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toBe(true);
+		expect(isOwed(state)).toBe(false);
 
 		const cut = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Looking at the logs' }], {
 			start: state,
 		});
 		expect(cut.effects.some((effect) => effect.type === 'narrate')).toBe(false);
 
-		const ended = run(
-			[{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Tests pass; logs are clean.' }],
-			{ start: cut.state },
-		);
-		expect(ended.effects).toContainEqual(
-			expect.objectContaining({
-				type: 'narrate',
-				owed: expect.objectContaining({ tasks: ['Checking the logs', 'Running the tests'] }),
-			}),
-		);
-	});
-
-	it('a burst of follow-ups → merged into the waiting one; it owes every task', () => {
-		const { state } = run(
-			[
-				send(LOGS, { isSpoken: true }),
-				send(TESTS, { text: 'and run the tests', isSpoken: true }),
-				send(LINT, { text: 'and the linter', isSpoken: true }),
-			],
-			{ start: idleSession() },
-		);
-
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
-			tasks: ['Checking the logs', 'Running the tests', 'Running the linter'],
+		const ended = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Tests pass.' }], {
+			start: cut.state,
 		});
+		expect(ended.effects).toContainEqual(
+			expect.objectContaining({ type: 'narrate', isOwed: true }),
+		);
 	});
 
-	it('words said while it started, then a follow-up → one request owing all three', () => {
-		const stopped = run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
+	it('words said while it started, then a follow-up → one request that owes the report', () => {
 		const started = run(
 			[
-				send(LOGS, { isSpoken: true }),
-				send(TESTS, { text: 'and run the tests', isSpoken: true }),
+				send(QUESTION, { isSpoken: true }),
+				send(INSTRUCTION, { text: 'and run the tests', isSpoken: true }),
 				{ type: 'session_started', ref: REF },
 			],
-			{ start: stopped },
+			{ start: stoppedSession() },
 		).state;
-		const { state } = run([send(LINT, { text: 'and the linter', isSpoken: true })], {
+		const { state } = run([send(QUESTION, { text: 'and the linter', isSpoken: true })], {
 			start: started,
 		});
 
-		expect(state.sessions[REF]?.queue[0]?.reportOwed).toMatchObject({
-			tasks: ['Checking the logs', 'Running the tests', 'Running the linter'],
-		});
-		expect(owedOf(state)).toBeNull();
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toBe(true);
 	});
 
-	it('an acked turn blocks on a permission, then words answer it → it owes both', () => {
-		const acked = run([send(LOGS)], { start: idleSession() }).state;
-		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('a1') }], { start: acked }).state;
-		const { state } = run([send(TESTS, { text: 'no, run the tests first' })], { start: blocked });
+	it('words that answer an open permission → nothing said, the blocked turn owes the report', () => {
+		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('a1') }], {
+			start: runningSession(),
+		}).state;
+		const { state, effects } = run([send(INSTRUCTION)], { start: blocked });
 
-		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs', 'Running the tests'] });
+		expect(effects.some((effect) => effect.type === 'speak' && effect.isAck)).toBe(false);
+		expect(isOwed(state)).toBe(true);
 	});
 
 	it('blocked, but its ask closed while the kernel thought → queued behind its work', () => {
 		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('a1') }], {
 			start: runningSession(),
 		}).state;
-		const closed = { ...blocked, asks: [] };
 
-		expect(acks(run([send(LOGS)], { start: closed }).effects)).toEqual([
-			'Checking the logs, after its current work.',
+		expect(acks(run([send(INSTRUCTION)], { start: { ...blocked, asks: [] } }).effects)).toEqual([
+			'Okay, after its current work.',
 		]);
 	});
 
-	it('a /clear beside an open permission → refused, no ack', () => {
-		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('a1') }], {
-			start: runningSession(),
-		}).state;
-		const { state, effects } = run([send(LOGS, { text: '/clear' })], { start: blocked });
-
-		expect(effects.some((effect) => effect.type === 'speak' && effect.isAck)).toBe(false);
-		expect(owedOf(state)).toBeNull();
-	});
-
-	it('words that answer an open permission → said now, the blocked turn owes the report', () => {
-		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('a1') }], {
-			start: runningSession(),
-		}).state;
-		const { state, effects } = run([send(LOGS)], { start: blocked });
-
-		expect(acks(effects)).toEqual(['Checking the logs.']);
-		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
-	});
-
-	it('the owed report remembers when the ack was said', () => {
-		expect(owedOf(run([send(LOGS)], { start: idleSession(), at: 5000 }).state)?.ackedAt).toBe(5000);
-		expect(
-			run([send(LOGS)], { start: runningSession(), at: 7000 }).state.sessions[REF]?.queue[0]
-				?.reportOwed?.ackedAt,
-		).toBe(7000);
-	});
-
-	it('words that answer the last open question → the ask resolves, the ack plays, the report is owed', () => {
+	it('several questions open → answered one at a time, nothing owed until the last', () => {
 		const ask: PendingAsk = {
 			id: 'q1',
 			ref: REF,
@@ -239,15 +169,15 @@ describe('the ack spoken for a send', () => {
 				{ question: 'Which table?', options: [], multiSelect: false },
 				{ question: 'Which index?', options: [], multiSelect: false },
 			],
-			answers: { 'Which table?': 'orders' },
 		};
 		const blocked = run([{ type: 'ask_opened', ask }], { start: runningSession() }).state;
-		const { state, effects } = run([send(LOGS, { text: 'a partial one' })], { start: blocked });
+		const first = run([send(INSTRUCTION, { text: 'orders' })], { start: blocked });
+		const last = run([send(INSTRUCTION, { text: 'a partial one' })], { start: first.state });
 
-		expect(acks(effects)).toContain('Checking the logs.');
-		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
-		expect(state.asks).toEqual([]);
-		expect(effects).toContainEqual(
+		expect(isOwed(first.state)).toBe(false);
+		expect(isOwed(last.state)).toBe(true);
+		expect(last.state.asks).toEqual([]);
+		expect(last.effects).toContainEqual(
 			expect.objectContaining({
 				type: 'resolve_ask',
 				result: {
@@ -258,62 +188,227 @@ describe('the ack spoken for a send', () => {
 		);
 	});
 
-	it('several questions open → answered one at a time, no ack and nothing owed yet', () => {
-		const ask: PendingAsk = {
-			id: 'q1',
-			ref: REF,
-			at: 1,
-			kind: 'question',
-			input: {},
-			questions: [
-				{ question: 'Which table?', options: [], multiSelect: false },
-				{ question: 'Which index?', options: [], multiSelect: false },
-			],
-		};
-		const blocked = run([{ type: 'ask_opened', ask }], { start: runningSession() }).state;
-		const { state, effects } = run([send(LOGS)], { start: blocked });
-
-		expect(acks(effects)).not.toContain('Checking the logs.');
-		expect(owedOf(state)).toBeNull();
-	});
-
-	it('a /clear → held for its own confirm, no ack', () => {
-		const { state, effects } = run([send(LOGS, { text: '/clear' })], { start: idleSession() });
+	it('a /clear → held for its own confirm, nothing owed', () => {
+		const { state, effects } = run([send(INSTRUCTION, { text: '/clear' })], {
+			start: idleSession(),
+		});
 
 		expect(effects.some((effect) => effect.type === 'speak' && effect.isAck)).toBe(false);
-		expect(owedOf(state)).toBeNull();
+		expect(isOwed(state)).toBe(false);
 	});
 });
 
-describe('the owed report', () => {
-	const LOGS: SendAck = { task: 'Checking the logs', kind: 'instruction' };
-	const acked = (): State =>
-		run([{ type: 'send', ref: REF, text: 'check the logs', ack: LOGS }], { start: idleSession() })
-			.state;
+describe("the session's own spoken lines", () => {
+	const said = (effects: Effect[]) =>
+		effects.filter((effect) => effect.type === 'speak').map((effect) => effect.text);
+	const delta = (text: string): Input => ({ type: 'text_delta', ref: REF, text });
 
-	it('turn ends → narrated with the promise, cleared before the next queued turn starts', () => {
-		const withNext = run(
+	it('a tag is said the moment it closes in the stream, once, named and high', () => {
+		const opening = run([delta('<spoken>Checking the logs,')], { start: runningSession() });
+		const closed = run([delta(' back shortly.</spoken>\n\nWork')], { start: opening.state });
+		const more = run([delta(' continues.')], { start: closed.state });
+
+		expect(said(opening.effects)).toEqual([]);
+		expect(closed.effects).toEqual([
+			{
+				type: 'speak',
+				text: 'Checking the logs, back shortly.',
+				source: 'narrator',
+				ref: REF,
+				isNamed: true,
+				priority: 'high',
+				isOwed: true,
+			},
+		]);
+		expect(said(more.effects)).toEqual([]);
+	});
+
+	it('the finished message → its streamed line is not said again; the page shows it without the tag', () => {
+		const streamed = run([delta('<spoken>Done: three timeouts.</spoken>\nDetails.')], {
+			start: runningSession(),
+		}).state;
+		const { state, effects } = run(
 			[
 				{
-					type: 'send',
+					type: 'assistant_text',
 					ref: REF,
-					text: 'run the tests',
-					ack: { task: 'Running the tests', kind: 'instruction' },
+					text: '<spoken>Done: three timeouts.</spoken>\nDetails.',
 				},
 			],
-			{ start: acked() },
-		).state;
-		const { state, effects } = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Clean.' }], {
-			start: withNext,
-		});
+			{ start: streamed },
+		);
+
+		expect(said(effects)).toEqual([]);
+		expect(state.sessions[REF]?.stream.at(-1)).toMatchObject({ kind: 'text', text: 'Details.' });
+	});
+
+	it('a message that never streamed says its line when it arrives; an ack-only message shows its words', () => {
+		const { state, effects } = run(
+			[{ type: 'assistant_text', ref: REF, text: '<spoken asks>Push the branch now?</spoken>' }],
+			{ start: runningSession() },
+		);
+
+		expect(effects).toEqual([
+			expect.objectContaining({ text: 'Push the branch now?', isAsking: true }),
+		]);
+		expect(state.sessions[REF]?.stream.at(-1)).toMatchObject({ text: 'Push the branch now?' });
+	});
+
+	it('turn ends → the final line goes to the narrator marked as said; the next turn starts fresh', () => {
+		const streamed = run([delta('<spoken>Tests pass.</spoken>')], {
+			start: runningSession(),
+		}).state;
+		const { state, effects } = run(
+			[{ type: 'turn_ended', ref: REF, costUsd: 0, text: '<spoken>Tests pass.</spoken>\nAll 40.' }],
+			{ start: streamed },
+		);
 
 		expect(effects).toContainEqual(
 			expect.objectContaining({
 				type: 'narrate',
-				owed: expect.objectContaining({ tasks: ['Checking the logs'] }),
+				spoken: { text: 'Tests pass.', isAsking: false },
+				isSpokenAlready: true,
 			}),
 		);
-		expect(state.sessions[REF]?.reportOwed).toMatchObject({ tasks: ['Running the tests'] });
+		expect(state.sessions[REF]?.spokenInTurn).toEqual([]);
+	});
+
+	it('real work: ack, then the report in a later message → each said once; the report goes to the narrator as said', () => {
+		const acked = run(
+			[
+				delta('<spoken>Checking the logs, back shortly.</spoken>'),
+				{
+					type: 'assistant_text',
+					ref: REF,
+					text: '<spoken>Checking the logs, back shortly.</spoken>',
+				},
+				{ type: 'tool', ref: REF, name: 'Bash', summary: 'tail logs' },
+			],
+			{ start: runningSession() },
+		).state;
+		const report = run(
+			[delta('<spoken>Three timeouts, all from the retry worker.</spoken>\nDetails')],
+			{
+				start: acked,
+			},
+		);
+		const ended = run(
+			[
+				{
+					type: 'turn_ended',
+					ref: REF,
+					costUsd: 0,
+					text: '<spoken>Three timeouts, all from the retry worker.</spoken>\nDetails',
+				},
+			],
+			{ start: report.state },
+		);
+
+		expect(said(report.effects)).toEqual(['Three timeouts, all from the retry worker.']);
+		expect(ended.effects).toContainEqual(
+			expect.objectContaining({
+				spoken: { text: 'Three timeouts, all from the retry worker.', isAsking: false },
+				isSpokenAlready: true,
+			}),
+		);
+	});
+
+	it("a final line seen only at the turn's end → the narrator says it", () => {
+		const { effects } = run(
+			[
+				{
+					type: 'turn_ended',
+					ref: REF,
+					costUsd: 0,
+					text: '<spoken>Pushed.</spoken>\nBranch updated.',
+				},
+			],
+			{ start: runningSession() },
+		);
+
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				spoken: { text: 'Pushed.', isAsking: false },
+				isSpokenAlready: false,
+			}),
+		);
+	});
+
+	it('a reply the developer is cutting with a follow-up → its lines are not said', () => {
+		const cutting = run(
+			[
+				{
+					type: 'send',
+					ref: REF,
+					text: 'check the logs',
+					isSpoken: true,
+					ack: { kind: 'instruction' },
+				},
+				{
+					type: 'send',
+					ref: REF,
+					text: 'and the tests',
+					isSpoken: true,
+					ack: { kind: 'instruction' },
+				},
+			],
+			{ start: idleSession() },
+		).state;
+
+		expect(
+			said(run([delta('<spoken>Checking the logs.</spoken>')], { start: cutting }).effects),
+		).toEqual([]);
+		expect(
+			said(
+				run([{ type: 'assistant_text', ref: REF, text: '<spoken>Checking the logs.</spoken>' }], {
+					start: cutting,
+				}).effects,
+			),
+		).toEqual([]);
+	});
+
+	it('a final message with no tag → the narrator summarizes it', () => {
+		const { effects } = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'All 40 pass.' }], {
+			start: runningSession(),
+		});
+
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'narrate', spoken: null, isSpokenAlready: false }),
+		);
+	});
+});
+
+describe('the owed report', () => {
+	const acked = (): State =>
+		run([{ type: 'send', ref: REF, text: 'check the logs', ack: { kind: 'instruction' } }], {
+			start: idleSession(),
+		}).state;
+
+	it('turn ends → narrated as owed, cleared before the next queued turn starts, which owes its own', () => {
+		const next = (kind: 'question' | 'instruction') =>
+			run([{ type: 'send', ref: REF, text: 'and then', ack: { kind } }], { start: acked() }).state;
+		const end = (start: State) =>
+			run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Clean.' }], { start });
+
+		expect(end(next('question')).effects).toContainEqual(
+			expect.objectContaining({ type: 'narrate', isOwed: true }),
+		);
+		expect(end(next('question')).state.sessions[REF]?.reportOwed).toBe(false);
+		expect(end(next('instruction')).state.sessions[REF]?.reportOwed).toBe(true);
+	});
+
+	it('a burst of spoken follow-ups → merged into the waiting one, which owes the report', () => {
+		const { state } = run(
+			[
+				{ type: 'send', ref: REF, text: 'why', isSpoken: true, ack: { kind: 'question' } },
+				{ type: 'send', ref: REF, text: 'fix it', isSpoken: true, ack: { kind: 'instruction' } },
+				{ type: 'send', ref: REF, text: 'and test', isSpoken: true, ack: { kind: 'question' } },
+			],
+			{ start: idleSession() },
+		);
+
+		expect(state.sessions[REF]?.queue).toHaveLength(1);
+		expect(state.sessions[REF]?.queue[0]?.reportOwed).toBe(true);
 	});
 
 	it('a turn that wrote nothing → still narrated', () => {
@@ -324,7 +419,7 @@ describe('the owed report', () => {
 		expect(effects).toContainEqual(expect.objectContaining({ type: 'narrate', text: '' }));
 	});
 
-	it('nothing owed and nothing written → not narrated, as before', () => {
+	it('nothing owed and nothing written → not narrated', () => {
 		const { effects } = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: '' }], {
 			start: runningSession(),
 		});
@@ -333,37 +428,29 @@ describe('the owed report', () => {
 	});
 
 	it('interrupted or stopped by the developer → nothing owed', () => {
-		const interrupted = run([{ type: 'interrupt', ref: REF }], { start: acked() }).state;
-		const stopped = run([{ type: 'stop_session', ref: REF }], { start: acked() }).state;
-
-		expect(interrupted.sessions[REF]?.reportOwed).toBeNull();
-		expect(stopped.sessions[REF]?.reportOwed).toBeNull();
+		expect(
+			run([{ type: 'interrupt', ref: REF }], { start: acked() }).state.sessions[REF]?.reportOwed,
+		).toBe(false);
+		expect(
+			run([{ type: 'stop_session', ref: REF }], { start: acked() }).state.sessions[REF]?.reportOwed,
+		).toBe(false);
 	});
 
-	it('a crash before the report → said, named', () => {
-		const { state, effects } = run([{ type: 'worker_exited', ref: REF, error: 'exit 1' }], {
-			start: acked(),
-		});
+	it('a crash before the report → said, named; a clean exit → nothing', () => {
+		const crashed = run([{ type: 'worker_exited', ref: REF, error: 'exit 1' }], { start: acked() });
+		const clean = run([{ type: 'worker_exited', ref: REF, error: null }], { start: acked() });
 
-		expect(effects).toContainEqual(
+		expect(crashed.effects).toEqual([
 			expect.objectContaining({
 				type: 'speak',
-				text: 'Stopped before it finished checking the logs.',
+				text: 'Stopped before it finished.',
 				ref: REF,
 				isNamed: true,
 				priority: 'high',
 				isOwed: true,
 			}),
-		);
-		expect(state.sessions[REF]?.reportOwed).toBeNull();
-	});
-
-	it('a clean exit → nothing said, nothing owed', () => {
-		const { state, effects } = run([{ type: 'worker_exited', ref: REF, error: null }], {
-			start: acked(),
-		});
-
-		expect(effects).toEqual([]);
-		expect(state.sessions[REF]?.reportOwed).toBeNull();
+		]);
+		expect(crashed.state.sessions[REF]?.reportOwed).toBe(false);
+		expect(clean.effects).toEqual([]);
 	});
 });

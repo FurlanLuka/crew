@@ -14,7 +14,7 @@ export interface SpeechItem {
 	// The answer to what the developer just said.
 	isReply?: boolean;
 	isAsking?: boolean;
-	// A report Voice OS promised when it passed work on: never replaced by a newer line.
+	// A line the developer is waiting for (a report, the session's own line): never replaced.
 	isOwed?: boolean;
 	// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
 	isAck?: boolean;

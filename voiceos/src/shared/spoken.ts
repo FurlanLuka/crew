@@ -62,3 +62,27 @@ export const normalizeUtterance = (text: string): string =>
 		.replace(/[.!?]+$/g, '')
 		.replace(/\s+/g, ' ')
 		.trim();
+
+const INLINE_CODE_PATTERN = /`[^`]*`/g;
+const URL_PATTERN = /https?:\/\/\S+/g;
+
+const isFilePath = (word: string): boolean => {
+	// A worktree ref like store-front/main is worth saying; a longer path or a file name is noise.
+	const bareWord = word.replace(/[.,;:!?)]+$/, '');
+
+	return (
+		bareWord.includes('/') && (bareWord.split('/').length > 2 || /\.[a-z0-9]{1,5}$/i.test(bareWord))
+	);
+};
+
+export const cleanSpokenText = (text: string, maxWords = 70): string => {
+	// Cleaned whatever the model returned: speech synthesis reads backticks and paths aloud.
+	const words = text
+		.replace(INLINE_CODE_PATTERN, '')
+		.replace(URL_PATTERN, '')
+		.replace(/[*_#>]/g, '')
+		.split(/\s+/)
+		.filter((word) => word && !isFilePath(word));
+
+	return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}…` : words.join(' ');
+};

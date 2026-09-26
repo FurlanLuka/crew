@@ -3,8 +3,10 @@ import type { Effect } from '../state/reducer.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { appendJournalEntry, describeTurnOutcome } from '../memory/journal.js';
 import type { NarrateFunction } from './narrator.js';
-import { cleanSpokenText, type Narration } from './prompt.js';
-import { joinTasks, sharesContentWords, upperFirst, type ReportOwed } from '../shared/ack.js';
+import type { Narration } from './prompt.js';
+import { cleanSpokenText } from '../shared/spoken.js';
+import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
+import type { Session } from '../shared/protocol.js';
 
 interface NarratedLine {
 	text: string;
@@ -16,53 +18,43 @@ interface NarratedLine {
 }
 
 const OWED_FALLBACK_WORDS = 30;
-export const ACK_FRESH_MS = 10_000;
 
 const readFirstSentence = (text: string): string =>
 	cleanSpokenText(text.trim().split(/(?<=[.!?])\s+/)[0] ?? '', OWED_FALLBACK_WORDS);
 
 interface SettleOwedReportParams {
 	narration: Narration;
-	owed: ReportOwed | null;
+	isOwed: boolean;
 	sessionText: string;
-	// The developer just heard the ack with the session on screen: the task need not be named again.
-	isAckFresh?: boolean;
 }
 
 export const settleOwedReport = ({
 	narration,
-	owed,
+	isOwed,
 	sessionText,
-	isAckFresh = false,
 }: SettleOwedReportParams): Narration => {
-	// Voice OS said "Checking the logs": the developer is waiting to hear how it went, even when
-	// the narrator found it too small to mention or its call failed.
-	if (!owed) {
+	// An instruction was passed on: the developer is waiting to hear how it
+	// went, even when the narrator found it too small to mention or its call failed.
+	if (!isOwed) {
 		return narration;
 	}
 
-	const tasks = upperFirst(joinTasks(owed.tasks));
-	const written = narration.text.trim();
 	const promised = { ...narration, speak: true, priority: 'high' as const };
 
-	if (!written) {
-		const outcome = readFirstSentence(sessionText);
-		const text = tasks
-			? outcome
-				? `${tasks}: ${outcome}`
-				: `${tasks} finished.`
-			: outcome || 'It finished.';
-
-		return { ...promised, text };
-	}
-
-	// A question is the report as it is; a report that does not say what it is about gets the task.
-	const namesTask = owed.tasks.every((task) => sharesContentWords(written, task));
-
-	return narration.needs_user || !tasks || namesTask || isAckFresh
+	return narration.text.trim()
 		? promised
-		: { ...promised, text: `${tasks}: ${written}` };
+		: { ...promised, text: readFirstSentence(sessionText) || 'It finished.' };
 };
+
+export const narrateFromTag = (spoken: SpokenTag, session: Session): Narration => ({
+	// The session said it itself: no summary, and the topic stays what it was.
+	speak: true,
+	needs_user: spoken.isAsking,
+	// Its own line answers what the developer asked: said like a reply, through "quiet" too.
+	priority: 'high',
+	text: cleanSpokenText(spoken.text),
+	topic: session.topic,
+});
 
 export interface TurnNarratorOptions {
 	store: Store;
@@ -89,17 +81,24 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 			return;
 		}
 
+		// The fork answers with the session's own spoken line: said as it is, no summary.
+		const tag = readSpokenTag(answer);
+		const body = stripSpokenTag(answer);
 		const view = store.state.view;
-		const narration = await narrate({
-			label: session.label,
-			text: answer,
-			asked: question,
-			focused: view.kind === 'session' && view.ref === ref,
-			topic: session.topic,
-		});
+		const text = tag
+			? cleanSpokenText(tag.text)
+			: (
+					await narrate({
+						label: session.label,
+						text: body,
+						asked: question,
+						focused: view.kind === 'session' && view.ref === ref,
+						topic: session.topic,
+					})
+				).text.trim() || cleanSpokenText(body, ASIDE_FALLBACK_WORDS);
 
 		say({
-			text: narration.text.trim() || cleanSpokenText(answer, ASIDE_FALLBACK_WORDS),
+			text,
 			priority: 'high',
 			ref,
 			isNamed: true,
@@ -120,21 +119,21 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		}
 
 		const view = store.state.view;
-		const isFocused = view.kind === 'session' && view.ref === effect.ref;
-		const ackedAt = effect.owed?.ackedAt;
-		const narration = settleOwedReport({
-			narration: await options.narrate({
-				label: session.label,
-				text: effect.text,
-				asked: effect.asked,
-				focused: isFocused,
-				topic: session.topic,
-				promised: effect.owed?.tasks ?? null,
-			}),
-			owed: effect.owed,
-			sessionText: effect.text,
-			isAckFresh: isFocused && ackedAt !== undefined && now().getTime() - ackedAt <= ACK_FRESH_MS,
-		});
+		const body = stripSpokenTag(effect.text);
+		const narration = effect.spoken
+			? narrateFromTag(effect.spoken, session)
+			: settleOwedReport({
+					narration: await options.narrate({
+						label: session.label,
+						text: body,
+						asked: effect.asked,
+						focused: view.kind === 'session' && view.ref === effect.ref,
+						topic: session.topic,
+						isReportPromised: effect.isOwed,
+					}),
+					isOwed: effect.isOwed,
+					sessionText: body,
+				});
 
 		store.dispatch({
 			type: 'narration',
@@ -144,14 +143,15 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			topic: narration.topic,
 		});
 
-		if (narration.speak) {
+		// A line the session wrote was said as soon as it streamed in.
+		if (narration.speak && !effect.isSpokenAlready) {
 			options.say({
 				text: narration.text,
-				priority: narration.priority,
+				priority: effect.isOwed ? 'high' : narration.priority,
 				ref: effect.ref,
 				isNamed: true,
 				isAsking: narration.needs_user,
-				...(effect.owed ? { isOwed: true } : {}),
+				...(effect.isOwed ? { isOwed: true } : {}),
 			});
 		}
 
@@ -159,7 +159,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			ts: now().toISOString(),
 			ref: effect.ref,
 			asked: effect.asked,
-			did: describeTurnOutcome(narration.text, effect.text),
+			did: describeTurnOutcome(narration.text, body),
 			costUsd: store.state.sessions[effect.ref]?.costUsd ?? 0,
 			head: await options.readGitHead(session.cwd),
 		});

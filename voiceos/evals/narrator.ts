@@ -21,8 +21,8 @@ interface Case {
 	not_includes?: string[];
 	// Words that must be spoken ("a|b" accepts either): what a choice is about, so it can be answered unseen.
 	includes?: string[];
-	// Voice OS said it passed these tasks on: the turn must be reported, naming them.
-	promised?: string[];
+	// The developer is waiting to hear how the work went: the turn must be reported.
+	promised?: boolean;
 }
 
 // Narration is a TL;DR, heard alone even for the session on screen.
@@ -192,7 +192,7 @@ export const runNarratorEval = async ({
 					asked: testCase.asked,
 					focused: testCase.focused,
 					topic: null,
-					promised: testCase.promised ?? null,
+					isReportPromised: Boolean(testCase.promised),
 				}),
 			);
 

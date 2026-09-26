@@ -4,7 +4,6 @@ import { Kernel, type KernelResult } from '../src/router/kernel.js';
 import { readActiveRef } from '../src/router/refs.js';
 import { reduce } from '../src/state/reducer.js';
 import { MUTATING_TOOLS, type ToolName } from '../src/tools/definitions.js';
-import type { SendAck } from '../src/shared/ack.js';
 import { createFixtureState, type FixtureContext } from '../test/support/state.js';
 import { attempt, mapPool } from './pool.js';
 
@@ -42,9 +41,6 @@ interface Case {
 	reply_includes?: string[];
 	// Words it must not contain: an invented detail.
 	reply_not_includes?: string[];
-	// The ack Voice OS says for an instruction: false — none (a question); a list — the kernel's own
-	// phrase kept the developer's words (readAckTask passed) and holds each entry ("a|b" accepts either).
-	ack?: string[] | false;
 }
 
 // A spoken reply longer than this is a lecture, not an answer.
@@ -71,7 +67,6 @@ interface Verdict {
 interface KernelRun extends Verdict {
 	calls: KernelResult['calls'];
 	reply: string;
-	acks: SendAck[];
 }
 
 export interface KernelRow {
@@ -153,37 +148,9 @@ export interface JudgeRunParams {
 	calls: Call[];
 	reply: string;
 	testCase: Case;
-	// What each send carried to the reducer: the ack Voice OS speaks comes from these.
-	acks?: SendAck[];
 }
 
-const judgeAck = (expected: Case['ack'], acks: SendAck[]): Verdict => {
-	const instructions = acks.filter((ack) => ack.kind === 'instruction');
-
-	if (expected === false) {
-		return instructions.length
-			? { ok: false, why: 'a question was sent as an instruction: Voice OS would ack it' }
-			: { ok: true, why: '' };
-	}
-
-	const tasks = instructions.map((ack) => ack.task);
-	const fits = (task: string | null) =>
-		task !== null &&
-		(expected ?? []).every((entry) =>
-			entry
-				.split('|')
-				.some((alternative) => task.toLowerCase().includes(alternative.toLowerCase())),
-		);
-
-	return tasks.some(fits)
-		? { ok: true, why: '' }
-		: {
-				ok: false,
-				why: `no ack with ${(expected ?? []).join(', ')}: ${tasks.length ? tasks.map((task) => (task === null ? '(fell back to "On it")' : `"${task}"`)).join(', ') : 'no instruction sent'}`,
-			};
-};
-
-export const judgeRun = ({ calls, reply, testCase, acks = [] }: JudgeRunParams): Verdict => {
+export const judgeRun = ({ calls, reply, testCase }: JudgeRunParams): Verdict => {
 	for (const expected of testCase.calls) {
 		if (!calls.some((call) => matchesCall(call, expected))) {
 			return {
@@ -245,14 +212,6 @@ export const judgeRun = ({ calls, reply, testCase, acks = [] }: JudgeRunParams):
 		return { ok: false, why: `the reply says ${invented.join(', ')}: "${reply}"` };
 	}
 
-	if (testCase.ack !== undefined) {
-		const ackVerdict = judgeAck(testCase.ack, acks);
-
-		if (!ackVerdict.ok) {
-			return ackVerdict;
-		}
-	}
-
 	const replyWordCount = reply.split(/\s+/).filter(Boolean).length;
 
 	const maxWords = testCase.long_reply ? (testCase.max_words ?? Infinity) : REPLY_WORDS;
@@ -308,13 +267,8 @@ export const runKernelEval = async ({
 			// Actions change the state as they would live (an answered ask closes); effects go nowhere.
 			let state = createFixtureState(testCase.context);
 			const screen = readActiveRef(state);
-			const acks: SendAck[] = [];
 
 			const dispatch = (input: Parameters<typeof reduce>[1]['input']) => {
-				if (input.type === 'send' && input.ack) {
-					acks.push(input.ack);
-				}
-
 				state = reduce(state, {
 					seq: state.seq + 1,
 					at: Date.now(),
@@ -360,8 +314,7 @@ export const runKernelEval = async ({
 			runs.push({
 				calls: result.value.calls,
 				reply: result.value.reply,
-				acks,
-				...judgeRun({ calls: result.value.calls, reply: result.value.reply, testCase, acks }),
+				...judgeRun({ calls: result.value.calls, reply: result.value.reply, testCase }),
 			});
 		}
 

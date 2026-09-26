@@ -63,7 +63,9 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'Backoff added. Deploy to staging?',
 			asked: 'add backoff',
-			owed: null,
+			isOwed: false,
+			spoken: null,
+			isSpokenAlready: false,
 		});
 
 		expect(harness.store.state.sessions['checkout-api/main']).toMatchObject({
@@ -99,7 +101,9 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'All 96 tests pass.',
 			asked: 'run the tests',
-			owed: null,
+			isOwed: false,
+			spoken: null,
+			isSpokenAlready: false,
 		});
 		expect(harness.spoken).toEqual(['checkout api, main: tests pass.']);
 		expect(harness.asking).toEqual([false]);
@@ -118,7 +122,9 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'Still running the suite. More soon.',
 			asked: null,
-			owed: null,
+			isOwed: false,
+			spoken: null,
+			isSpokenAlready: false,
 		});
 
 		expect(harness.spoken).toEqual([]);
@@ -144,7 +150,9 @@ describe('turn narrator', () => {
 			ref: 'checkout-api/main',
 			text: 'Done.',
 			asked: null,
-			owed: null,
+			isOwed: false,
+			spoken: null,
+			isSpokenAlready: false,
 		});
 		expect(harness.seen).toEqual([{ focused: true }]);
 	});
@@ -162,7 +170,9 @@ describe('turn narrator', () => {
 			ref: 'gone/main',
 			text: 'Done.',
 			asked: null,
-			owed: null,
+			isOwed: false,
+			spoken: null,
+			isSpokenAlready: false,
 		});
 		expect(harness.spoken).toEqual([]);
 	});
@@ -206,6 +216,22 @@ describe('aside narrator', () => {
 
 		return { store, inputs, lines, handle };
 	};
+
+	it('a tagged answer → its own line said as it is, no summary', async () => {
+		const harness = createAsideHarness('unused');
+
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'which file?',
+			answer: '<spoken>The retry file, `retry.ts`.</spoken>\nIt holds the backoff.',
+		});
+
+		expect(harness.inputs).toEqual([]);
+		expect(harness.lines).toEqual([
+			expect.objectContaining({ text: 'The retry file, .', priority: 'high' }),
+		]);
+	});
 
 	it('says the answer to the question, named, and never as a question to the developer', async () => {
 		const harness = createAsideHarness('The retry file.');
@@ -289,121 +315,95 @@ describe('settleOwedReport', () => {
 		topic: null,
 		...patch,
 	});
-	const LOGS = { tasks: ['Checking the logs'] };
-	const settle = (patch: Partial<Narration>, sessionText = 'Three timeouts in the last hour.') =>
-		settleOwedReport({ narration: narration(patch), owed: LOGS, sessionText });
 
 	it('nothing owed → the narration as it was', () => {
 		const quiet = narration({ speak: false, priority: 'low' });
-		expect(settleOwedReport({ narration: quiet, owed: null, sessionText: 'x' })).toBe(quiet);
+		expect(settleOwedReport({ narration: quiet, isOwed: false, sessionText: 'x' })).toBe(quiet);
 	});
 
-	it("the narrator stayed silent → spoken, high, the task and the session's first sentence", () => {
-		expect(settle({ speak: false, priority: 'low' })).toMatchObject({
-			speak: true,
-			priority: 'high',
-			text: 'Checking the logs: Three timeouts in the last hour.',
-		});
-	});
-
-	it('a failure is reported as said, never as done', () => {
-		expect(settle({ speak: false }, "I couldn't read the logs: permission denied.").text).toBe(
-			"Checking the logs: I couldn't read the logs: permission denied.",
-		);
-	});
-
-	it('nothing written at all → the task finished', () => {
-		expect(settle({ speak: false }, '').text).toBe('Checking the logs finished.');
+	it('the narrator stayed silent → spoken, high, its own words kept', () => {
 		expect(
 			settleOwedReport({
-				narration: narration({ speak: false }),
-				owed: { tasks: [] },
-				sessionText: '',
-			}).text,
-		).toBe('It finished.');
-	});
-
-	it('a report that does not name the task → the task in front', () => {
-		expect(settle({ text: 'Three timeouts in the last hour.' }).text).toBe(
-			'Checking the logs: Three timeouts in the last hour.',
-		);
-		expect(settle({ text: 'The logs show three timeouts.' }).text).toBe(
-			'The logs show three timeouts.',
-		);
-	});
-
-	it('two tasks, the line names one → both in front', () => {
-		expect(
-			settleOwedReport({
-				narration: narration({ text: 'The logs show three timeouts.' }),
-				owed: { tasks: ['Checking the logs', 'Running the tests'] },
+				narration: narration({ speak: false, priority: 'low', text: 'Three timeouts.' }),
+				isOwed: true,
 				sessionText: 'x',
-			}).text,
-		).toBe('Checking the logs and running the tests: The logs show three timeouts.');
+			}),
+		).toMatchObject({ speak: true, priority: 'high', text: 'Three timeouts.' });
 	});
 
-	it("waiting on the developer with nothing written → the task and the session's own question", () => {
-		expect(
-			settle({ needs_user: true, priority: 'high', text: '' }, 'Rotate the key now?').text,
-		).toBe('Checking the logs: Rotate the key now?');
-	});
+	it("nothing written by the narrator → the session's first sentence; nothing at all → it finished", () => {
+		const settle = (sessionText: string) =>
+			settleOwedReport({ narration: narration({ speak: false }), isOwed: true, sessionText }).text;
 
-	it.each<[string, boolean, number | undefined, boolean]>([
-		['on screen, acked 5 s ago', true, 5_000, false],
-		['on screen, acked exactly 10 s ago', true, 10_000, false],
-		['on screen, acked 11 s ago', true, 11_000, true],
-		['another session on screen, acked 1 s ago', false, 1_000, true],
-		['on screen, no ack time', true, undefined, true],
-	])('turn narrator: %s → task in front: %p', async (_why, isOnScreen, msAgo, hasPrefix) => {
+		expect(settle("I couldn't read the logs: permission denied. Details follow.")).toBe(
+			"I couldn't read the logs: permission denied.",
+		);
+		expect(settle('')).toBe('It finished.');
+	});
+});
+
+describe("turn narrator and the session's own line", () => {
+	const tagged = (text: string, isAsking = false) => ({ text, isAsking });
+
+	it('a tagged final message → no summary call; said, high and protected, unless it streamed already; the topic kept', async () => {
 		const harness = createHarness({
 			speak: true,
 			needs_user: false,
 			priority: 'normal',
-			text: 'Three timeouts.',
-			topic: null,
+			text: 'x',
+			topic: 'New topic',
 		});
-		const nowMs = new Date('2026-09-25T02:00:00Z').getTime();
-
-		if (isOnScreen) {
-			harness.store.dispatch({
-				type: 'switch_view',
-				view: { kind: 'session', ref: 'checkout-api/main' },
-			});
-		}
+		harness.store.dispatch({ type: 'pin_topic', ref: 'checkout-api/main', topic: 'Timeouts' });
 
 		await harness.handle({
 			type: 'narrate',
 			ref: 'checkout-api/main',
-			text: 'Three timeouts.',
-			asked: 'check the logs',
-			owed: {
-				tasks: ['Checking the logs'],
-				...(msAgo === undefined ? {} : { ackedAt: nowMs - msAgo }),
-			},
+			text: '<spoken>Tests pass: all 40.</spoken>\nDetails.',
+			asked: 'run the tests',
+			isOwed: true,
+			spoken: { text: 'Tests pass: all 40.', isAsking: false },
+			isSpokenAlready: false,
 		});
-		expect(harness.spoken).toEqual([
-			hasPrefix ? 'Checking the logs: Three timeouts.' : 'Three timeouts.',
-		]);
+		await harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: '<spoken>Done: pushed.</spoken>',
+			asked: 'push it',
+			isOwed: true,
+			spoken: { text: 'Done: pushed.', isAsking: false },
+			isSpokenAlready: true,
+		});
+
+		expect(harness.seen).toEqual([]);
+		expect(harness.spoken).toEqual(['Tests pass: all 40.']);
+		expect(harness.said).toEqual([{ priority: 'high', isOwed: true }]);
+		expect(harness.store.state.sessions['checkout-api/main']?.topic).toBe('Timeouts');
 	});
 
-	it('the ack was just heard with the session on screen → no task in front', () => {
-		expect(
-			settleOwedReport({
-				narration: narration({ text: 'Three timeouts in the last hour.' }),
-				owed: LOGS,
-				sessionText: 'x',
-				isAckFresh: true,
-			}).text,
-		).toBe('Three timeouts in the last hour.');
+	it('a tagged question → the session waits on the developer', async () => {
+		const harness = createHarness({
+			speak: true,
+			needs_user: false,
+			priority: 'normal',
+			text: 'x',
+			topic: null,
+		});
+
+		await harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: '<spoken asks>Push the branch now?</spoken>',
+			asked: null,
+			isOwed: false,
+			spoken: tagged('Push the branch now?', true),
+			isSpokenAlready: true,
+		});
+
+		expect(harness.store.state.sessions['checkout-api/main']?.needsUser).not.toBeNull();
+		expect(harness.spoken).toEqual([]);
 	});
 
-	it('a question is the report as it is', () => {
-		expect(
-			settle({ needs_user: true, priority: 'high', text: 'asks: rotate the key now?' }).text,
-		).toBe('asks: rotate the key now?');
-	});
-
-	it('the narrator call failed (fallback, silent) → still reported through the turn narrator', async () => {
+	it('no tag and owed → the summary runs on the text without tags, forced to speak', async () => {
 		const harness = createHarness({
 			speak: false,
 			needs_user: false,
@@ -417,9 +417,13 @@ describe('settleOwedReport', () => {
 			ref: 'checkout-api/main',
 			text: 'Three timeouts in the last hour.',
 			asked: 'check the logs',
-			owed: LOGS,
+			isOwed: true,
+			spoken: null,
+			isSpokenAlready: false,
 		});
-		expect(harness.spoken).toEqual(['Checking the logs: Three timeouts in the last hour.']);
+
+		expect(harness.seen).toHaveLength(1);
+		expect(harness.spoken).toEqual(['Three timeouts in the last hour.']);
 		expect(harness.said).toEqual([{ priority: 'high', isOwed: true }]);
 	});
 });

@@ -1,3 +1,4 @@
+import { stripStreamingTag } from '../shared/spoken-tags.js';
 import type { PendingAsk, Session, State } from '../shared/protocol.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
@@ -64,8 +65,10 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 };
 
 export const readLastLine = (session: Session): string => {
-	if (session.draft.trim()) {
-		return stripMarkdown(session.draft);
+	const draft = stripStreamingTag(session.draft);
+
+	if (draft) {
+		return stripMarkdown(draft);
 	}
 
 	for (let i = session.stream.length - 1; i >= 0; i--) {

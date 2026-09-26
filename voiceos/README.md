@@ -49,9 +49,11 @@ environment.
   and streams it from Soniox TTS over one kept-open WebSocket; the browser plays the PCM
   chunks as they arrive (`src/web/use-speech-player.ts`). `src/router/kernel.ts` decides what each utterance does,
   with the tools in `src/tools/`.
-- An instruction passed to a session is acknowledged aloud in your own words ("Checking the
-  logs", "…, after its current work", "Starting it up, then …"; `src/shared/ack.ts`), and
-  the turn that handles it is always reported, naming that task. Questions get no ack.
+- Sessions write their own spoken lines: each message for the developer opens with
+  `<spoken>…</spoken>` (`<spoken asks>` for a question), said the moment the tag closes in the
+  stream (`src/shared/spoken-tags.ts`). Work opens with a short ack line and ends with a report
+  line; a final message without one is summarized by the narrator. Voice OS adds only what the
+  session cannot know yet: "after its current work", "starting it up", a crash.
 - `src/memory/` — each session's topic, and an append-only journal of every turn (asked,
   done, cost, HEAD) that the kernel reads for "what did checkout do yesterday".
 - The pinned **setup** session runs in your home directory with the crew CLI, for crew setup

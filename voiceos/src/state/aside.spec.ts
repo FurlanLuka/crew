@@ -87,6 +87,16 @@ describe('aside_settled', () => {
 		);
 	};
 
+	it('a tagged answer → the page keeps the text without the tag', () => {
+		const { state } = settle(
+			askAside(runningSession()).state,
+			'answered',
+			'<spoken>The router.</spoken>\nIn src/router.ts.',
+		);
+
+		expect(asidesOf(state)[0]).toMatchObject({ answer: 'In src/router.ts.' });
+	});
+
 	it('answered → the item holds the answer and the narrator says it', () => {
 		const { state, effects } = settle(askAside(runningSession()).state, 'answered', 'The router.');
 

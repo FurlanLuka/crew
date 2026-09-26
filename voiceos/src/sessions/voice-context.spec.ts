@@ -49,9 +49,11 @@ describe('buildSituationNote', () => {
 });
 
 describe('VOICE_OS_CONTEXT', () => {
-	it('the spoken opening carries substance, and questions come one per call', () => {
-		expect(VOICE_OS_CONTEXT).toContain('Never open with a bare verdict');
-		expect(VOICE_OS_CONTEXT).toContain('any risk or catch the developer must know');
+	it('sessions write their own spoken lines, with substance, and ask one question per call', () => {
+		expect(VOICE_OS_CONTEXT).toContain('<spoken>…</spoken>` as its very first line');
+		expect(VOICE_OS_CONTEXT).toContain('any risk or catch they must know');
+		expect(VOICE_OS_CONTEXT).toContain('never a bare verdict');
+		expect(VOICE_OS_CONTEXT).toContain('<spoken asks>');
 		expect(VOICE_OS_CONTEXT).toContain('Put one question in each call');
 	});
 });

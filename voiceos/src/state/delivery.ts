@@ -8,13 +8,7 @@ import {
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { sendNow, startWorker, updateSession, withoutEffects } from './helpers.js';
-import {
-	composeAckText,
-	mergeOwed,
-	type ReportOwed,
-	type SendAck,
-	type SendTiming,
-} from '../shared/ack.js';
+import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
 
 export const hasFollowUpWaiting = (session: Session): boolean => {
 	// The one signal that the running reply is being cut: the developer's follow-up waits at the head.
@@ -28,41 +22,42 @@ const isFollowUp = (session: Session, at: number): boolean =>
 
 interface AckOutcome {
 	effects: Effect[];
-	owed: ReportOwed | null;
+	isOwed: boolean;
 }
 
-export const NO_ACK: AckOutcome = { effects: [], owed: null };
+export const NO_ACK: AckOutcome = { effects: [], isOwed: false };
 
 interface DecideAckParams {
 	ref: string;
 	ack: SendAck | undefined;
 	timing: SendTiming;
-	at: number;
 }
 
-export const decideAck = ({ ref, ack, timing, at }: DecideAckParams): AckOutcome => {
+export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => {
 	// Said from the branch the words actually took, so "after its current work" is always true.
-	// A question is answered soon enough on its own; only a cold start is worth saying.
-	if (!ack || (ack.kind === 'question' && timing !== 'starting')) {
+	// An instruction's turn must end with a spoken report.
+	if (!ack) {
 		return NO_ACK;
 	}
 
-	const tasks = ack.kind === 'instruction' && ack.task ? [ack.task] : [];
+	const text = composeAckText(ack, timing);
 
 	return {
-		effects: [
-			{
-				type: 'speak',
-				text: composeAckText(tasks, timing),
-				source: 'kernel',
-				isReply: true,
-				ref,
-				isNamed: true,
-				priority: 'high',
-				isAck: true,
-			},
-		],
-		owed: ack.kind === 'instruction' ? { tasks, ackedAt: at } : null,
+		effects: text
+			? [
+					{
+						type: 'speak',
+						text,
+						source: 'kernel',
+						isReply: true,
+						ref,
+						isNamed: true,
+						priority: 'high',
+						isAck: true,
+					},
+				]
+			: [],
+		isOwed: ack.kind === 'instruction',
 	};
 };
 
@@ -72,7 +67,7 @@ interface QueueFollowUpParams {
 	text: string;
 	note: string | undefined;
 	stamped: Stamped;
-	owed: ReportOwed | null;
+	isOwed: boolean;
 }
 
 const queueFollowUp = ({
@@ -81,19 +76,18 @@ const queueFollowUp = ({
 	text,
 	note,
 	stamped,
-	owed,
+	isOwed,
 }: QueueFollowUpParams): ReducerResult => {
 	// Only the first of a burst interrupts; later words join it, so Claude reads the request once.
 	const session = state.sessions[ref];
 	const head = session?.queue[0];
 
 	if (session && head && hasFollowUpWaiting(session)) {
-		const reportOwed = mergeOwed(head.reportOwed, owed);
 		const mergedHead = {
 			...head,
 			text: `${head.text} ${text}`,
 			...(note && !head.note ? { note } : {}),
-			...(reportOwed ? { reportOwed } : {}),
+			...(head.reportOwed || isOwed ? { reportOwed: true as const } : {}),
 		};
 
 		return withoutEffects(
@@ -111,25 +105,22 @@ const queueFollowUp = ({
 	const firstSpoken = spokenEarlier[0];
 	const carriedNote = spokenEarlier.find((message) => message.note)?.note ?? note;
 	// The cut-off turn is never narrated, so what it owed is reported with the follow-up.
-	const reportOwed = mergeOwed(
-		session?.reportOwed,
-		...spokenEarlier.map((message) => message.reportOwed),
-		owed,
-	);
+	const isReportOwed =
+		session?.reportOwed || spokenEarlier.some((message) => message.reportOwed) || isOwed;
 	const followUpMessage: QueuedMessage = {
 		id: firstSpoken?.id ?? stamped.id,
 		text: [...spokenEarlier.map((message) => message.text), text].join(' '),
 		at: firstSpoken?.at ?? stamped.at,
 		isFollowUp: true,
 		...(carriedNote ? { note: carriedNote } : {}),
-		...(reportOwed ? { reportOwed } : {}),
+		...(isReportOwed ? { reportOwed: true as const } : {}),
 	};
 
 	return {
 		state: updateSession(state, ref, (current) => ({
 			...current,
 			needsUser: null,
-			reportOwed: null,
+			reportOwed: false,
 			queue: [followUpMessage, ...current.queue.slice(spokenEarlier.length)],
 		})),
 		effects: [{ type: 'worker_interrupt', ref, reason: 'follow-up' }],
@@ -171,7 +162,7 @@ export const deliverSend = ({
 	}
 
 	if (session.status === 'idle') {
-		const { effects, owed } = decideAck({ ref, ack, timing: 'now', at: stamped.at });
+		const { effects, isOwed } = decideAck({ ref, ack, timing: 'now' });
 
 		return withEffects(
 			sendNow({
@@ -182,7 +173,7 @@ export const deliverSend = ({
 				isSpoken,
 				itemId: stamped.id,
 				at: stamped.at,
-				reportOwed: owed,
+				reportOwed: isOwed,
 			}),
 			effects,
 		);
@@ -192,25 +183,20 @@ export const deliverSend = ({
 	const hasWaitingFollowUp = session.status === 'running' && hasFollowUpWaiting(session);
 
 	if (isSpoken && (hasWaitingFollowUp || isFollowUp(session, stamped.at))) {
-		const { effects, owed } = decideAck({ ref, ack, timing: 'now', at: stamped.at });
+		const { effects, isOwed } = decideAck({ ref, ack, timing: 'now' });
 
-		return withEffects(queueFollowUp({ state, ref, text, note, stamped, owed }), effects);
+		return withEffects(queueFollowUp({ state, ref, text, note, stamped, isOwed }), effects);
 	}
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
-	const { effects, owed } = decideAck({
-		ref,
-		ack,
-		timing: isStarting ? 'starting' : 'queued',
-		at: stamped.at,
-	});
+	const { effects, isOwed } = decideAck({ ref, ack, timing: isStarting ? 'starting' : 'queued' });
 	const queuedMessage: QueuedMessage = {
 		id: stamped.id,
 		text,
 		at: stamped.at,
 		...(note ? { note } : {}),
 		...(isSpoken && isStarting ? { isSpoken: true as const } : {}),
-		...(owed ? { reportOwed: owed } : {}),
+		...(isOwed ? { reportOwed: true as const } : {}),
 	};
 	const queued = updateSession(state, ref, (current) => ({
 		...current,

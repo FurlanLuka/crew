@@ -479,7 +479,9 @@ describe('turn_ended', () => {
 			ref: 'store/main',
 			text: 'All 40 pass.',
 			asked: 'run the tests',
-			owed: null,
+			isOwed: false,
+			spoken: null,
+			isSpokenAlready: false,
 		});
 	});
 

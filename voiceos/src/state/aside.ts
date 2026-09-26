@@ -1,3 +1,4 @@
+import { readShownText } from '../shared/spoken-tags.js';
 import type { Input, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { ReducerResult } from './reducer.js';
 import { deliverSend } from './delivery.js';
@@ -60,7 +61,7 @@ export const reduceAside = (
 		...current,
 		stream: current.stream.map((item) =>
 			item.id === input.itemId && item.kind === 'aside'
-				? { ...item, status: input.status, answer: input.answer }
+				? { ...item, status: input.status, answer: input.answer && readShownText(input.answer) }
 				: item,
 		),
 	}));

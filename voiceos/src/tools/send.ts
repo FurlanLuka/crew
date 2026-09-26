@@ -7,7 +7,6 @@ import { normalizeSaid } from '../state/helpers.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import { buildSituationNote } from '../sessions/voice-context.js';
 import { type ToolResult, fail, succeed } from './results.js';
-import { readAckTask, type SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
@@ -99,8 +98,6 @@ interface SendTextParams {
 	text: string;
 	// The kernel's reading of the words: a question to a working session is answered aside.
 	kind: unknown;
-	// The kernel's few words for what the session will now do ("Checking the logs").
-	ack?: unknown;
 	toolContext: ToolContext;
 }
 
@@ -207,14 +204,7 @@ export const isMisroutedToSetup = ({
 	return !SETUP_ADDRESS_PATTERN.test(utterance) && !SETUP_WORK_PATTERN.test(utterance);
 };
 
-export const sendText = ({
-	state,
-	ref,
-	text,
-	kind,
-	ack,
-	toolContext,
-}: SendTextParams): ToolResult => {
+export const sendText = ({ state, ref, text, kind, toolContext }: SendTextParams): ToolResult => {
 	const session = state.sessions[ref];
 
 	if (session && isDuplicateSend({ session, text })) {
@@ -256,21 +246,11 @@ export const sendText = ({
 	const note = session
 		? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
 		: undefined;
-	const sendAck: SendAck = {
-		task: readAckTask(ack, toolContext.utterance ?? text),
-		kind: kind === 'question' ? 'question' : 'instruction',
-	};
-
-	if (sendAck.kind === 'instruction') {
-		// A phrase that fell back is the first thing to check when an ack said only "On it".
-		log.info('ack', { ref, fallback: sendAck.task === null, ...(ack ? { phrase: ack } : {}) });
-	}
-
 	toolContext.dispatch({
 		type: 'send',
 		ref,
 		text,
-		ack: sendAck,
+		ack: { kind: kind === 'question' ? 'question' : 'instruction' },
 		...(note ? { note } : {}),
 		...(toolContext.isSpoken ? { isSpoken: true } : {}),
 	});

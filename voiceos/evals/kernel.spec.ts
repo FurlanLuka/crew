@@ -51,40 +51,6 @@ describe('judgeRun', () => {
 		});
 	});
 
-	it("the ack: the kernel's own phrase with the words → ok; a fallback or a missing word → fails", () => {
-		const ackCase = { ...checkLogsCase, ack: ['log'] };
-		const judge = (acks: { task: string | null; kind: 'question' | 'instruction' }[]) =>
-			judgeRun({ calls: forward('Check the logs.'), reply: '', testCase: ackCase, acks });
-
-		expect(judge([{ task: 'Checking the logs', kind: 'instruction' }]).ok).toBe(true);
-		expect(judge([{ task: null, kind: 'instruction' }]).why).toBe(
-			'no ack with log: (fell back to "On it")',
-		);
-		expect(judge([{ task: 'Checking the output', kind: 'instruction' }]).ok).toBe(false);
-		expect(judge([]).why).toBe('no ack with log: no instruction sent');
-	});
-
-	it('the ack: false → a question stays a question', () => {
-		const questionAck = { ...checkLogsCase, ack: false as const };
-
-		expect(
-			judgeRun({
-				calls: forward('Check the logs.'),
-				reply: '',
-				testCase: questionAck,
-				acks: [{ task: null, kind: 'question' }],
-			}).ok,
-		).toBe(true);
-		expect(
-			judgeRun({
-				calls: forward('Check the logs.'),
-				reply: '',
-				testCase: questionAck,
-				acks: [{ task: 'Checking the logs', kind: 'instruction' }],
-			}).ok,
-		).toBe(false);
-	});
-
 	it('a required word dropped → fails, naming it', () =>
 		expect(
 			judgeRun({ calls: forward('Check the output.'), reply: '', testCase: checkLogsCase }).why,
