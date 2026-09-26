@@ -1,5 +1,5 @@
 import type { Action, PendingAsk, State } from '../shared/protocol.js';
-import { findOpenQuestion } from '../state/asks.js';
+import { findOpenQuestion, hasOpenQuestionMoved } from '../shared/questions.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import { isConsent, isPlainConsent } from './consent.js';
 import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
@@ -127,11 +127,6 @@ export const buildAnswerActions = ({
 	}
 };
 
-const isAnsweredMeanwhile = (heard: PendingAsk, live: PendingAsk): boolean =>
-	heard.kind === 'question' &&
-	live.kind === 'question' &&
-	findOpenQuestion(heard)?.index !== findOpenQuestion(live)?.index;
-
 interface IsAnswerForParams {
 	state: State;
 	ref: string;
@@ -214,10 +209,9 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		return fail(`${checked.ref}'s question was already settled; tell the developer.`);
 	}
 
-	// Answered on screen while the words were being understood: they were meant for that question.
-	if (isAnsweredMeanwhile(heardAsk, liveAsk)) {
+	if (hasOpenQuestionMoved(heardAsk, liveAsk)) {
 		return fail(
-			`not answered: that question was already answered on screen. ${checked.ref} now asks the next one; tell the developer.`,
+			`not answered: that question already has an answer and ${checked.ref} now asks the next one. Tell the developer in a few words that their words were not used for it; do not read the next question (it is on the page, or Voice OS already read it).`,
 		);
 	}
 

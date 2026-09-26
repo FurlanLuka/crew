@@ -220,7 +220,45 @@ describe('the ack spoken for a send', () => {
 		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
 	});
 
-	it('several questions open → shown on screen, no ack and nothing owed', () => {
+	it('the owed report remembers when the ack was said', () => {
+		expect(owedOf(run([send(LOGS)], { start: idleSession(), at: 5000 }).state)?.ackedAt).toBe(5000);
+		expect(
+			run([send(LOGS)], { start: runningSession(), at: 7000 }).state.sessions[REF]?.queue[0]
+				?.reportOwed?.ackedAt,
+		).toBe(7000);
+	});
+
+	it('words that answer the last open question → the ask resolves, the ack plays, the report is owed', () => {
+		const ask: PendingAsk = {
+			id: 'q1',
+			ref: REF,
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{ question: 'Which table?', options: [], multiSelect: false },
+				{ question: 'Which index?', options: [], multiSelect: false },
+			],
+			answers: { 'Which table?': 'orders' },
+		};
+		const blocked = run([{ type: 'ask_opened', ask }], { start: runningSession() }).state;
+		const { state, effects } = run([send(LOGS, { text: 'a partial one' })], { start: blocked });
+
+		expect(acks(effects)).toContain('Checking the logs.');
+		expect(owedOf(state)).toMatchObject({ tasks: ['Checking the logs'] });
+		expect(state.asks).toEqual([]);
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				type: 'resolve_ask',
+				result: {
+					behavior: 'allow',
+					updatedInput: { answers: { 'Which table?': 'orders', 'Which index?': 'a partial one' } },
+				},
+			}),
+		);
+	});
+
+	it('several questions open → answered one at a time, no ack and nothing owed yet', () => {
 		const ask: PendingAsk = {
 			id: 'q1',
 			ref: REF,

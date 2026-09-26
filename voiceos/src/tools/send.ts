@@ -1,4 +1,5 @@
 import type { QueuedMessage, Session, State } from '../shared/protocol.js';
+import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
 import { isPlainConsent } from './consent.js';
@@ -238,6 +239,18 @@ export const sendText = ({
 			...succeed(`asked ${ref} aside, beside its work: its answer is spoken when it comes`),
 			note: 'aside',
 		};
+	}
+
+	// Words for a waiting question answer the open one; one that moved since they were said is not theirs.
+	const heardAsk = toolContext.asks.find((ask) => ask.ref === ref);
+	const liveAsk = state.asks.find((ask) => ask.id === heardAsk?.id);
+
+	if (heardAsk && liveAsk && hasOpenQuestionMoved(heardAsk, liveAsk)) {
+		log.info('words for a question answered meanwhile: not sent', { ref });
+
+		return fail(
+			`not sent: ${ref}'s question already has an answer and it now asks the next one. Tell the developer in a few words that their words were not used for it; do not read the next question (it is on the page, or Voice OS already read it).`,
+		);
 	}
 
 	const note = session

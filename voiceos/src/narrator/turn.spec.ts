@@ -348,6 +348,44 @@ describe('settleOwedReport', () => {
 		).toBe('Checking the logs: Rotate the key now?');
 	});
 
+	it.each<[string, boolean, number | undefined, boolean]>([
+		['on screen, acked 5 s ago', true, 5_000, false],
+		['on screen, acked exactly 10 s ago', true, 10_000, false],
+		['on screen, acked 11 s ago', true, 11_000, true],
+		['another session on screen, acked 1 s ago', false, 1_000, true],
+		['on screen, no ack time', true, undefined, true],
+	])('turn narrator: %s → task in front: %p', async (_why, isOnScreen, msAgo, hasPrefix) => {
+		const harness = createHarness({
+			speak: true,
+			needs_user: false,
+			priority: 'normal',
+			text: 'Three timeouts.',
+			topic: null,
+		});
+		const nowMs = new Date('2026-09-25T02:00:00Z').getTime();
+
+		if (isOnScreen) {
+			harness.store.dispatch({
+				type: 'switch_view',
+				view: { kind: 'session', ref: 'checkout-api/main' },
+			});
+		}
+
+		await harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: 'Three timeouts.',
+			asked: 'check the logs',
+			owed: {
+				tasks: ['Checking the logs'],
+				...(msAgo === undefined ? {} : { ackedAt: nowMs - msAgo }),
+			},
+		});
+		expect(harness.spoken).toEqual([
+			hasPrefix ? 'Checking the logs: Three timeouts.' : 'Three timeouts.',
+		]);
+	});
+
 	it('the ack was just heard with the session on screen → no task in front', () => {
 		expect(
 			settleOwedReport({

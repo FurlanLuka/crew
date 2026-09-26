@@ -571,6 +571,32 @@ describe('describeSession', () => {
 		});
 	});
 
+	it('one question left → no count', () => {
+		const ask: PendingAsk = {
+			id: 'q6',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: ['Which table?', 'Which index?'].map((question) => ({
+				question,
+				multiSelect: false,
+				options: [],
+			})),
+			answers: { 'Which table?': 'New' },
+		};
+		const { tools } = createToolContext({ asks: [ask] });
+
+		expect(
+			describeSession({
+				state: tools.getState(),
+				ref: 'store-front/main',
+				isDetailed: false,
+				now: 0,
+			}).pending,
+		).toEqual({ kind: 'question', question: 'Which index?', options: [] });
+	});
+
 	it('a reply longer than 2000 characters is cut; a session that has not replied has none', () => {
 		const { tools } = createToolContext();
 		const state = tools.getState();
@@ -1002,8 +1028,98 @@ describe('tools that replaced the fast path', () => {
 		);
 
 		expect(result.ok).toBe(false);
-		expect(result.content).toContain('already answered on screen');
+		expect(result.content).toContain('already has an answer');
 		expect(late.actions).toEqual([]);
+	});
+
+	it('two answers in one breath → the first fills the open question; the second is not filed under the next', async () => {
+		const two: PendingAsk = {
+			id: 'q4',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{ question: 'Which table?', multiSelect: false, options: [{ label: 'New' }] },
+				{ question: 'Which index?', multiSelect: false, options: [{ label: 'Partial' }] },
+			],
+		};
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'store-front/main',
+					label: 'store-front/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+			],
+		});
+		store.dispatch({ type: 'ask_opened', ask: two });
+		const { tools } = createToolContext();
+		const context = {
+			...tools,
+			getState: () => store.state,
+			dispatch: (action: Action) => store.dispatch(action),
+			asks: [two],
+		};
+
+		const first = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'choose', text: 'New' },
+			context,
+		);
+		const second = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'choose', text: 'Partial' },
+			context,
+		);
+
+		expect(first.ok).toBe(true);
+		expect(second.ok).toBe(false);
+		expect(second.content).toContain('do not read the next question');
+		expect(store.state.asks[0]).toMatchObject({ answers: { 'Which table?': 'New' } });
+	});
+
+	it('words forwarded to a question answered on the page meanwhile → not sent, nothing filed', async () => {
+		const two: PendingAsk = {
+			id: 'q5',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{ question: 'Which table?', multiSelect: false, options: [] },
+				{ question: 'Which index?', multiSelect: false, options: [] },
+			],
+		};
+		const clicked = { ...two, answers: { 'Which table?': 'New' } };
+		const { tools, actions } = createToolContext({ asks: [clicked] });
+		const result = await executeTool(
+			'forward',
+			{ text: 'Use the orders table.', kind: 'instruction' },
+			{ ...tools, forwardTo: 'store-front/main', asks: [two] },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('already has an answer');
+		expect(actions).toEqual([]);
+
+		// The question the kernel saw open is still the open one: the words go through.
+		const same = createToolContext({ asks: [clicked] });
+		const sent = await executeTool(
+			'forward',
+			{ text: 'Use the orders table.', kind: 'instruction' },
+			{ ...same.tools, forwardTo: 'store-front/main', asks: [clicked] },
+		);
+
+		expect(sent.ok).toBe(true);
+		expect(same.actions).toContainEqual(
+			expect.objectContaining({ type: 'send', text: 'Use the orders table.' }),
+		);
 	});
 
 	it('a yes to a permission from words that say no yes ("also run the linter") → refused, nothing approved', async () => {

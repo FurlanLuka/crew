@@ -8,6 +8,7 @@ import {
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
+import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared/questions.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
 import { readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
@@ -31,32 +32,9 @@ const MAX_SUMMARY_WORDS = 15;
 const MAX_QUESTION_WORDS = 25;
 const DENIALS_KEPT = 20;
 
-type QuestionAsk = Extract<PendingAsk, { kind: 'question' }>;
-
-export interface OpenQuestion {
-	question: QuestionAsk['questions'][number];
-	index: number;
-}
-
-export const findOpenQuestion = (ask: QuestionAsk): OpenQuestion | null => {
-	// Answered one at a time, like the page: the first without an answer is the one asked now.
-	const answers = ask.answers ?? {};
-	const index = ask.questions.findIndex((entry) => !(entry.question in answers));
-	const question = ask.questions[index];
-
-	return question ? { question, index } : null;
-};
-
-export const completesAsk = (ask: PendingAsk): boolean => {
+export const completesAsk = (ask: PendingAsk): boolean =>
 	// Words for an ask reach the session only once they settle it: one open question or none left.
-	if (ask.kind !== 'question') {
-		return true;
-	}
-
-	const answers = ask.answers ?? {};
-
-	return ask.questions.filter((entry) => !(entry.question in answers)).length <= 1;
-};
+	ask.kind !== 'question' || readOpenQuestions(ask).length <= 1;
 
 export const isAskInput = (input: Input): input is AskInput => ASK_INPUT_SET.has(input.type);
 
@@ -220,16 +198,12 @@ export const answerInWords = ({
 		case 'question': {
 			const open = findOpenQuestion(ask);
 
-			if (!open) {
-				return withoutEffects(state);
-			}
-
 			return reduceAsk(
 				state,
 				{
 					type: 'answer_question',
 					askId: ask.id,
-					answers: { [open.question.question]: text },
+					answers: open ? { [open.question.question]: text } : {},
 					isSpoken: true,
 				},
 				stamped,

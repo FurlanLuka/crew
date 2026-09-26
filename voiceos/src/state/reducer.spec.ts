@@ -1321,6 +1321,57 @@ describe('questions are spoken without their options', () => {
 		});
 	});
 
+	it('three questions → "question 2 of 3", then "3 of 3" (no options, no offer), resolved with all', () => {
+		const ask = question([
+			{ question: 'Which table?', options: ['A'] },
+			{ question: 'Which index?', options: ['B'] },
+			{ question: 'What name?', options: [] },
+		]);
+		const opened = run([{ type: 'ask_opened', ask }], idleSession()).state;
+		const said = (answers: Record<string, string>, state: typeof opened) =>
+			run([{ type: 'answer_question', askId: ask.id, answers, isSpoken: true }], state);
+		const one = said({ 'Which table?': 'A' }, opened);
+		const two = said({ 'Which index?': 'B' }, one.state);
+		const three = said({ 'What name?': 'orders_idx' }, two.state);
+
+		expect(one.effects[0]).toMatchObject({
+			text: 'store/main, question 2 of 3: Which index? Answer it, or say "options".',
+		});
+		expect(two.effects[0]).toMatchObject({ text: 'store/main, question 3 of 3: What name?' });
+		expect(three.state.asks).toHaveLength(0);
+		expect(three.effects).toContainEqual(
+			expect.objectContaining({
+				type: 'resolve_ask',
+				result: {
+					behavior: 'allow',
+					updatedInput: {
+						answers: { 'Which table?': 'A', 'Which index?': 'B', 'What name?': 'orders_idx' },
+					},
+				},
+			}),
+		);
+	});
+
+	it('words for a question prompt with no questions → it resolves with no answers', () => {
+		const opened = run([{ type: 'ask_opened', ask: question([]) }], idleSession()).state;
+
+		expect(
+			run([{ type: 'send', ref: 'store/main', text: 'go ahead' }], opened).effects,
+		).toContainEqual({
+			type: 'resolve_ask',
+			askId: 'q1',
+			result: { behavior: 'allow', updatedInput: { answers: {} } },
+		});
+	});
+
+	it('an answer for an ask that is gone → nothing happens', () => {
+		const state = idleSession();
+
+		expect(
+			run([{ type: 'answer_question', askId: 'nope', answers: { x: 'y' }, isSpoken: true }], state),
+		).toEqual({ state: expect.anything(), effects: [] });
+	});
+
 	it('a click on the page → stored quietly; an answer to a question it lacks → ignored', () => {
 		const ask = question([
 			{ question: 'Which table?', options: ['A'] },

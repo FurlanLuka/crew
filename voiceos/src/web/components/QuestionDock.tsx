@@ -1,9 +1,6 @@
-import type { PendingAsk } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
-import { findOpenQuestion } from '../../state/asks.js';
+import { findOpenQuestion, type QuestionAsk } from '../../shared/questions.js';
 import { Reason } from './Reason.js';
-
-type QuestionAsk = Extract<PendingAsk, { kind: 'question' }>;
 
 interface QuestionDockProps {
 	ask: QuestionAsk;

@@ -1,6 +1,6 @@
 import { type State, type PendingAsk, type Denial, isOfferFresh } from '../shared/protocol.js';
 import { describeWork, formatAge } from '../state/working.js';
-import { findOpenQuestion } from '../state/asks.js';
+import { findOpenQuestion } from '../shared/questions.js';
 
 const RECENT_TOOL_STEPS = 3;
 const LAST_REPLY_CHARS = 2000;
