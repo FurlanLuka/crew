@@ -15,7 +15,8 @@ describe('decideDelivery', () => {
 		['running', 'instruction', 'check btwn the two files', 'send'],
 		['running', 'instruction', 'look at the subtweet handler', 'send'],
 		['idle', 'question', 'by the way, which file?', 'send'],
-		['blocked', 'question', 'which file?', 'send'],
+		['blocked', 'question', 'which file?', 'aside'],
+		['blocked', 'instruction', 'use the new table instead', 'send'],
 		['starting', 'question', 'which file?', 'send'],
 		['stopped', 'question', 'btw which file?', 'send'],
 	])('%s, %s, %p → %s', (status, kind, utterance, delivery) =>

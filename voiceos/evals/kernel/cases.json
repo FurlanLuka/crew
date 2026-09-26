@@ -2511,6 +2511,42 @@
 					"text_includes": "test"
 				}
 			]
+		},
+		{
+			"id": "plan-question-aside",
+			"utterance": "Why does step three touch the kernel?",
+			"context": {
+				"view": "store-front/main",
+				"ask": "plan"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "question"
+					},
+					"text_includes": "step"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "permission-question-aside",
+			"utterance": "What does that command do?",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"kind": "question"
+					},
+					"text_includes": "command"
+				}
+			],
+			"no_reply": true
 		}
 	]
 }

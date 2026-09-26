@@ -37,6 +37,13 @@ export const reduceSend = (state: State, input: SendInput, stamped: Stamped): Re
 		return holdCommand({ state: focusedState, ref: input.ref, command, text, stamped });
 	}
 
+	// A question about what it waits on ("why step 3?") is answered aside: the plan keeps waiting.
+	if (sdkAsk && input.aside) {
+		return isAsideInFlight(session, text)
+			? withoutEffects(focusedState)
+			: startAside({ state: focusedState, ref: input.ref, question: text, stamped });
+	}
+
 	if (sdkAsk) {
 		return answerInWords({ state: focusedState, ask: sdkAsk, text, stamped });
 	}

@@ -144,8 +144,9 @@ export const decideDelivery = ({
 	kind,
 	utterance,
 }: DecideDeliveryParams): 'send' | 'aside' => {
-	// Only a working session needs a side answer: an idle one answers the question itself, at once.
-	if (status !== 'running') {
+	// A working session, or one waiting on a plan or permission, answers a question aside: the work
+	// is not disturbed and the ask keeps waiting. An idle one answers the question itself, at once.
+	if (status !== 'running' && status !== 'blocked') {
 		return 'send';
 	}
 

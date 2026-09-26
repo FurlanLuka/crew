@@ -1915,4 +1915,36 @@ describe('fixes from the live notes', () => {
 			).ok,
 		).toBe(true);
 	});
+
+	it('a question about a waiting permission → asked aside; the permission is not answered', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['store-front/main']!;
+		const permission = {
+			id: 'p5',
+			ref: 'store-front/main',
+			at: 0,
+			kind: 'permission' as const,
+			toolName: 'Bash',
+			summary: 'run git push --force',
+			input: {},
+			suggestions: [],
+		};
+		const { tools, actions } = createToolContext({
+			asks: [permission],
+			sessions: {
+				...base.tools.getState().sessions,
+				'store-front/main': { ...session, status: 'blocked' },
+			},
+		});
+
+		await executeTool(
+			'forward',
+			{ text: 'What does that command do?', kind: 'question' },
+			{ ...tools, forwardTo: 'store-front/main', utterance: 'What does that command do?' },
+		);
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: 'What does that command do?', aside: true },
+		]);
+	});
 });

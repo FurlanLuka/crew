@@ -154,3 +154,38 @@ describe('aside_settled', () => {
 		]);
 	});
 });
+
+describe('asking aside while a plan or permission waits', () => {
+	it('a question about the waiting plan → answered aside, the plan still waits, nothing resolved', () => {
+		const planAsk = {
+			id: 'plan1',
+			ref: REF,
+			at: 1,
+			kind: 'plan' as const,
+			input: {},
+			plan: 'Move the kernel rules into code.',
+		};
+		const waiting = run([{ type: 'ask_opened', ask: planAsk }], { start: runningSession() }).state;
+		const { state, effects } = askAside(waiting, 'why does step three touch the kernel?');
+
+		expect(state.asks.map((ask) => ask.id)).toEqual(['plan1']);
+		expect(asidesOf(state)).toHaveLength(1);
+		expect(effects.map((effect) => effect.type)).toEqual(['side_answer']);
+	});
+
+	it('the same words without aside → they decline the plan, as before', () => {
+		const planAsk = { id: 'plan1', ref: REF, at: 1, kind: 'plan' as const, input: {}, plan: 'x' };
+		const waiting = run([{ type: 'ask_opened', ask: planAsk }], { start: runningSession() }).state;
+		const { state, effects } = run(
+			[{ type: 'send', ref: REF, text: 'use the new table instead' }],
+			{
+				start: waiting,
+			},
+		);
+
+		expect(state.asks).toEqual([]);
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'resolve_ask', askId: 'plan1' }),
+		);
+	});
+});
