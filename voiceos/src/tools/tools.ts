@@ -68,6 +68,7 @@ const START_THEN_MORE_PATTERN =
 
 export const saysMoreThanStart = (utterance: string | undefined): boolean =>
 	utterance !== undefined && START_THEN_MORE_PATTERN.test(utterance.trim());
+
 const MIN_LONG_SPEECH_WORDS = 10;
 const REQUEST_OPENING_PATTERN =
 	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
