@@ -13,6 +13,7 @@ import {
 	readLastLine,
 	describeSessionBadge,
 	classifyDiffLine,
+	listDocs,
 } from './derive.js';
 import { describeToolCall } from '../tools/call-lines.js';
 
@@ -366,5 +367,20 @@ describe('readNotesFor', () => {
 		expect(state.notes.store).toEqual(['- a', '- b']);
 		expect(readNotesFor(state, null)).toEqual(['- loose']);
 		expect(readNotesFor(state, 'checkout/main')).toEqual([]);
+	});
+});
+
+describe('listDocs', () => {
+	it('newest first, each doc once', () => {
+		const stream = [
+			{ id: 'a', at: 1, kind: 'doc' as const, url: 'https://claude.ai/a', title: 'A' },
+			{ id: 'b', at: 2, kind: 'doc' as const, url: 'https://claude.ai/b', title: 'B' },
+			{ id: 'c', at: 3, kind: 'doc' as const, url: 'https://claude.ai/a', title: 'A' },
+		];
+
+		expect(listDocs({ stream })).toEqual([
+			{ url: 'https://claude.ai/a', title: 'A' },
+			{ url: 'https://claude.ai/b', title: 'B' },
+		]);
 	});
 });

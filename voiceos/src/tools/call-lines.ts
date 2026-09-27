@@ -13,9 +13,10 @@ const SILENT_TOOLS: ToolName[] = [
 	'dev_offer',
 	'allow_denied',
 	'hands_free',
+	'open_doc',
 ];
 
-const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view'];
+const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc'];
 const MAX_QUOTED_CHARS = 120;
 
 const describeCallAction = (input: Record<string, unknown>): string => {

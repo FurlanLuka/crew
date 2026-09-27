@@ -49,4 +49,11 @@ describe('Markdown', () => {
 
 	it('a half-streamed reply with an open fence → renders without throwing', () =>
 		expect(render('Here:\n```ts\nconst a')).toContain('const a'));
+
+	it('a Markdown image renders nothing: a server path the browser cannot load, shown as its own line instead', () => {
+		const html = render('Look: ![login](/w/store/shots/login.png) done');
+
+		expect(html).not.toContain('<img');
+		expect(html).toContain('Look:');
+	});
 });

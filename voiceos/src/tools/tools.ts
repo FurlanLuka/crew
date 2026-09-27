@@ -12,6 +12,7 @@ import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText 
 import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import { handleQueuedMessage } from './queued.js';
+import { findDocToOpen, type OpenUrl } from './docs.js';
 import type { HistoryQuery } from '../memory/journal.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
 import type { NotesStore } from '../memory/notes.js';
@@ -112,6 +113,8 @@ export interface ToolContext {
 	heardFrom?: number;
 	// Bound to the tab the words came from; 'no_tab' when they came from none (evals, a closed tab).
 	setHandsFree: (isOn: boolean) => HandsFreeResult;
+	// Bound to the tab the words came from: opens a doc there. false when no tab took it.
+	openUrl: OpenUrl;
 	dispatch: (action: Action) => void;
 	now: () => number;
 	readHistory: (query: HistoryQuery) => HistoryEntry[];
@@ -576,6 +579,41 @@ export const executeTool = async (
 				if_asked_for_work:
 					"forward the developer's words to the session: it reads the notes file itself",
 			});
+		}
+
+		case 'open_doc': {
+			const named = typeof input.ref === 'string' ? checkRef(state, input.ref) : null;
+
+			if (named && !named.ok) {
+				return fail(named.error);
+			}
+
+			const ref = named?.ok ? named.ref : toolContext.screen;
+
+			if (!ref) {
+				return fail("No session on screen: ask which session's doc to open.");
+			}
+
+			const title = typeof input.title === 'string' && input.title.trim() ? input.title : null;
+			const doc = findDocToOpen({ state, ref, title });
+
+			if (!doc) {
+				return fail(
+					title
+						? `${ref} has no doc titled like "${title}": say which docs it has.`
+						: `${ref} has made no doc yet: tell the developer.`,
+				);
+			}
+
+			if (!toolContext.openUrl(doc.url, doc.title)) {
+				return fail(
+					'No browser tab to open it in: tell the developer to click the doc card in the session.',
+				);
+			}
+
+			log.info('doc opened', { ref, title: doc.title });
+
+			return succeed(`opened "${doc.title}" in the developer's browser`);
 		}
 
 		case 'hands_free': {

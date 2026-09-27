@@ -4,6 +4,7 @@ import { GRID, type VoiceEntry } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
+import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
 
@@ -28,6 +29,8 @@ export interface RouterOptions {
 export interface UtteranceOrigin {
 	// Switches hands-free in the tab the words came from.
 	setHandsFree?: (isOn: boolean) => HandsFreeResult;
+	// Opens a doc in the tab the words came from; false when there is none.
+	openUrl?: OpenUrl;
 	// When the developer began saying them; typed words are "said" when routed.
 	heardFrom?: number;
 }
@@ -40,9 +43,11 @@ interface AskKernelParams {
 	saidAt: number;
 	heardFrom: number;
 	setHandsFree: (isOn: boolean) => HandsFreeResult;
+	openUrl: OpenUrl;
 }
 
 const NO_TAB = (): HandsFreeResult => 'no_tab';
+const NO_TAB_TO_OPEN: OpenUrl = () => false;
 
 const NO_KERNEL_MESSAGE =
 	'Voice needs the Anthropic key — see the banner. Typing into a session still works.';
@@ -109,6 +114,7 @@ export class UtteranceRouter {
 			saidAt,
 			heardFrom: origin.heardFrom ?? saidAt,
 			setHandsFree: origin.setHandsFree ?? NO_TAB,
+			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
 	}
@@ -121,6 +127,7 @@ export class UtteranceRouter {
 		saidAt,
 		heardFrom,
 		setHandsFree,
+		openUrl,
 	}: AskKernelParams): Promise<VoiceEntry> {
 		const { store } = this.options;
 
@@ -137,6 +144,7 @@ export class UtteranceRouter {
 				isSpoken,
 				heardFrom,
 				setHandsFree,
+				openUrl,
 			});
 			const isIgnored =
 				!turn.reply &&

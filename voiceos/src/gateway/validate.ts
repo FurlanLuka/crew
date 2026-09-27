@@ -58,6 +58,11 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('utterance'), text: z.string().min(1).max(20_000) }),
 	z.object({ type: z.literal('ptt_start'), sampleRate: sampleRateSchema.optional() }),
 	z.object({ type: z.literal('ptt_stop') }),
+	z.object({
+		type: z.literal('simulate_speech'),
+		text: z.string().min(1).max(20_000),
+		holdMs: z.number().int().min(0).max(30_000).optional(),
+	}),
 	z.object({ type: z.literal('listen_start'), sampleRate: sampleRateSchema }),
 	z.object({ type: z.literal('listen_stop') }),
 	z.object({ type: z.literal('audio_done'), id: z.string() }),

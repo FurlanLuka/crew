@@ -1,9 +1,10 @@
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import type { StreamItem } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
-import { STREAM_ITEMS_KEPT, createStreamItem } from '../state/helpers.js';
+import { STREAM_ITEMS_KEPT, createStreamItem, isShownAlready } from '../state/helpers.js';
 import { createLogger } from '../log.js';
-import { createMapContext, mapMessage, type RawMessage } from './events.js';
+import { createMapContext, mapMessage, type MediaHooks, type RawMessage } from './events.js';
+import { createMediaHooks, type ImageSource } from './media.js';
 
 const log = createLogger('history');
 
@@ -45,6 +46,7 @@ export interface ConvertHistoryToStreamParams {
 	ref: string;
 	cwd?: string;
 	now: number;
+	media?: MediaHooks;
 }
 
 export const convertHistoryToStream = ({
@@ -52,9 +54,10 @@ export const convertHistoryToStream = ({
 	ref,
 	cwd,
 	now,
+	media,
 }: ConvertHistoryToStreamParams): StreamItem[] => {
 	// Diffs are not in the transcript, so a restored edit shows as its tool line and result only.
-	const mapContext = createMapContext(ref);
+	const mapContext = createMapContext(ref, media);
 	const items: StreamItem[] = [];
 
 	for (const message of messages) {
@@ -76,7 +79,10 @@ export const convertHistoryToStream = ({
 		}
 
 		for (const [index, observation] of mapMessage(message, mapContext, cwd).entries()) {
-			const item = createStreamItem({ observation, id: `h:${message.uuid}:${index}`, at });
+			// The same rule as live: a doc linked again or an image shown again is one line.
+			const item = isShownAlready(items, observation)
+				? null
+				: createStreamItem({ observation, id: `h:${message.uuid}:${index}`, at });
 
 			if (item) {
 				items.push(item);
@@ -102,6 +108,10 @@ export interface RestoreHistoryParams {
 	store: Store;
 	sessions: Record<string, StoredSession>;
 	getCwd: (ref: string) => string | null;
+	// The session's folders, for which images it may show again.
+	getImageSource: (ref: string) => ImageSource | undefined;
+	// Where tool screenshots are kept; unset restores no images.
+	mediaDir?: string;
 	loadMessages: LoadTranscript;
 	now?: () => number;
 }
@@ -110,6 +120,8 @@ export const restoreHistory = async ({
 	store,
 	sessions,
 	getCwd,
+	getImageSource,
+	mediaDir,
 	loadMessages,
 	now = Date.now,
 }: RestoreHistoryParams): Promise<void> => {
@@ -120,10 +132,27 @@ export const restoreHistory = async ({
 			continue;
 		}
 
+		// A session whose folders are unknown shows no images of its own: closed, never home by mistake.
+		const imageSource = getImageSource(ref);
+		const media =
+			mediaDir && imageSource
+				? createMediaHooks({
+						session: imageSource,
+						mediaDir,
+						log: (message, fields) => log.info(message, { ref, ...fields }),
+					})
+				: undefined;
+
 		// A transcript that cannot be read leaves that stream empty; the others still restore.
 		try {
 			const messages = await loadMessages(sessionId, cwd);
-			const items = convertHistoryToStream({ messages, ref, cwd, now: now() });
+			const items = convertHistoryToStream({
+				messages,
+				ref,
+				cwd,
+				now: now(),
+				...(media ? { media } : {}),
+			});
 
 			log.info('restored', { ref, messages: messages.length, items: items.length });
 

@@ -4,6 +4,7 @@ import type { Store } from '../state/store.js';
 import { createLogger } from '../log.js';
 import { isAuthorized, isOriginAllowed, createSessionCookie, areTokensEqual } from './auth.js';
 import { parseClientMessage } from './validate.js';
+import type { MediaFile } from '../sessions/media.js';
 
 const log = createLogger('gateway');
 const TOPIC = 'events';
@@ -22,6 +23,8 @@ export interface GatewayOptions {
 	onAudio: (chunk: Uint8Array, clientId: string) => void;
 	onDisconnect?: (clientId: string) => void;
 	readHealth: () => Record<string, unknown>;
+	// A stored image by its name in Voice OS's media folder — nothing else on disk is ever served.
+	readMedia?: (name: string) => MediaFile;
 	development?: boolean;
 }
 
@@ -63,6 +66,33 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 				isAuthorized(request, token)
 					? Response.json({ ok: true })
 					: createTextResponse(401, 'unauthorized'),
+			'/media': (request: Request) => {
+				if (!isAuthorized(request, token)) {
+					log.warn('media unauthorized');
+
+					return createTextResponse(401, 'unauthorized');
+				}
+
+				const name = new URL(request.url).searchParams.get('name') ?? '';
+				const file = options.readMedia?.(name) ?? { ok: false, reason: 'missing' };
+
+				if (!file.ok) {
+					log.warn('media refused', { name, reason: file.reason });
+
+					return createTextResponse(404, 'not found');
+				}
+
+				log.debug('media served', { name });
+
+				// Named by content: the same name is always the same picture.
+				return new Response(Bun.file(file.path), {
+					headers: {
+						'content-type': file.contentType,
+						'cache-control': 'private, max-age=31536000, immutable',
+						'x-content-type-options': 'nosniff',
+					},
+				});
+			},
 			'/login': (request: Request) => {
 				const provided = new URL(request.url).searchParams.get('token');
 

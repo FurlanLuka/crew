@@ -1,3 +1,5 @@
+import { findDocLinks } from './doc-links.js';
+import { findShownImages } from './media.js';
 import type { Limits, Observation } from '../shared/protocol.js';
 import { mapSubagentMessage, mapTaskMessage } from './subagent-events.js';
 import { clipText, getContentBlocks, readString, summarizeTool } from './tool-summary.js';
@@ -38,10 +40,23 @@ export interface MapContext {
 	subagentTasks: Map<string, string>;
 	// Sub-agents that already reported a tool step: a later progress tick must not overwrite it.
 	subagentsWithSteps: Set<string>;
+	// Each tool call's name, so a result knows which tool made it (an image Read is not shown).
+	toolNames: Map<string, string>;
+	// Disk access for what a session shows; absent (tests, a bare map) nothing is shown.
+	media?: MediaHooks;
 }
 
-export const createMapContext = (ref: string): MapContext => ({
+export interface MediaHooks {
+	// A path the session named: stored when it is an image inside its worktree; its media name.
+	showImage: (path: string) => string | null;
+	// A tool's image, stored; its media name.
+	saveImage: (data: string, mediaType: string) => string | null;
+}
+
+export const createMapContext = (ref: string, media?: MediaHooks): MapContext => ({
 	ref,
+	toolNames: new Map(),
+	...(media ? { media } : {}),
 	toolSummaries: new Map(),
 	limits: { fiveHour: null, sevenDay: null, resetsAt: null },
 	subagentTasks: new Map(),
@@ -140,6 +155,48 @@ const mapSystemMessage = (message: RawMessage, mapContext: MapContext): Observat
 	}
 };
 
+const toDocObservations = (text: string, ref: string): Observation[] =>
+	findDocLinks(text).map((link) => ({ type: 'doc', ref, url: link.url, title: link.title }));
+
+const findShownMedia = (text: string, mapContext: MapContext): Observation[] => {
+	const { ref, media } = mapContext;
+	const images = media
+		? findShownImages(text).flatMap((image): Observation[] => {
+				const name = media.showImage(image.path);
+
+				return name ? [{ type: 'image', ref, name, alt: image.alt }] : [];
+			})
+		: [];
+
+	return [...images, ...toDocObservations(text, ref)];
+};
+
+const findToolImages = (content: unknown, mapContext: MapContext): Observation[] => {
+	const { ref, media } = mapContext;
+
+	if (!media || !Array.isArray(content)) {
+		return [];
+	}
+
+	return content.flatMap((part): Observation[] => {
+		const block = part as {
+			type?: unknown;
+			source?: { type?: unknown; data?: unknown; media_type?: unknown };
+		};
+
+		if (block.type !== 'image' || block.source?.type !== 'base64') {
+			return [];
+		}
+
+		const name = media.saveImage(
+			readString(block.source.data),
+			readString(block.source.media_type),
+		);
+
+		return name ? [{ type: 'image', ref, name, alt: '' }] : [];
+	});
+};
+
 export const mapMessage = (
 	message: RawMessage,
 	mapContext: MapContext,
@@ -172,7 +229,12 @@ export const mapMessage = (
 
 			for (const block of getContentBlocks(message)) {
 				if (block.type === 'text' && readString(block.text).trim()) {
-					observations.push({ type: 'assistant_text', ref, text: readString(block.text) });
+					const text = readString(block.text);
+
+					observations.push(
+						{ type: 'assistant_text', ref, text },
+						...findShownMedia(text, mapContext),
+					);
 				}
 
 				if (block.type === 'tool_use') {
@@ -180,6 +242,7 @@ export const mapMessage = (
 					const summary = summarizeTool(name, (block.input ?? {}) as Record<string, unknown>, cwd);
 
 					mapContext.toolSummaries.set(readString(block.id), summary);
+					mapContext.toolNames.set(readString(block.id), name);
 					observations.push({ type: 'tool', ref, name, summary });
 				}
 			}
@@ -204,6 +267,20 @@ export const mapMessage = (
 					ok: isOk,
 					summary: clipText(text.split('\n')[0] ?? '', 160) || (isOk ? 'done' : 'failed'),
 				});
+
+				const toolName = mapContext.toolNames.get(readString(block.tool_use_id)) ?? '';
+
+				// A screenshot or chart a tool made is shown; an image the session only read is not.
+				if (isOk && toolName !== 'Read') {
+					observations.push(...findToolImages(block.content, mapContext));
+				}
+
+				// Docs come back from the connectors that make them (Claude Docs, Drive, Notion — all
+				// MCP tools); a link a grep, a README or a web page happens to contain is not the
+				// session's doc.
+				if (isOk && toolName.startsWith('mcp__')) {
+					observations.push(...toDocObservations(text, ref));
+				}
 			}
 
 			const diff = buildDiffObservation(ref, message.tool_use_result);

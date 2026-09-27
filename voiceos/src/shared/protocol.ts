@@ -11,6 +11,10 @@ export type StreamItem = { id: string; at: number } & (
 	| { kind: 'tool_result'; ok: boolean; summary: string }
 	| { kind: 'diff'; filePath: string; lines: string[] }
 	| { kind: 'notice'; text: string }
+	// An image the session showed: its name in Voice OS's media folder, loaded through /media.
+	| { kind: 'image'; name: string; alt: string }
+	// A document or artifact the session made or linked (claude.ai, Google Docs, Notion).
+	| { kind: 'doc'; url: string; title: string }
 	// A question answered by a fork of the session while it worked, beside its turn.
 	| {
 			kind: 'aside';
@@ -358,6 +362,8 @@ export type Observation =
 	| { type: 'tool'; ref: string; name: string; summary: string }
 	| { type: 'tool_result'; ref: string; ok: boolean; summary: string }
 	| { type: 'diff'; ref: string; filePath: string; lines: string[] }
+	| { type: 'image'; ref: string; name: string; alt: string }
+	| { type: 'doc'; ref: string; url: string; title: string }
 	| { type: 'turn_ended'; ref: string; costUsd: number; text: string }
 	| { type: 'denied'; ref: string; toolName: string; summary: string }
 	| { type: 'ask_opened'; ask: PendingAsk }
@@ -438,6 +444,8 @@ export type ServerMessage =
 	| { type: 'listen_off'; reason: string }
 	// Hands-free was turned on for this tab by voice.
 	| { type: 'listen_on' }
+	// "Open the doc": opened in this tab's browser, since the developer may be anywhere.
+	| { type: 'open_url'; url: string; title: string }
 	| { type: 'error'; message: string };
 
 export type ClientMessage =

@@ -344,6 +344,7 @@ export const runKernelEval = async ({
 					screen,
 					isSpoken: true,
 					setHandsFree: () => 'changed',
+					openUrl: () => true,
 				}),
 			);
 

@@ -62,6 +62,7 @@ Voice OS itself:
 - "Sorry, I meant that for X" → send_to X with the words they meant, and queued_message drop on the session that got them — never send that session a correction. When they meant a note instead, it is note or debug_note beside the drop.
 - quiet, shut up, mute → mute.
 - hands-free on or off, "stop listening", "start listening" → hands_free. A bare "stop" is never this.
+- "open the doc", "show me the artifact", "open the risks doc" → open_doc: a doc a session made (its docs are listed on it), opened in the developer's browser. Changing a doc ("add a section on risks to the doc") is work for the session: forward it.
 - Asking a session to go through, pick from or work on "my notes" ("go through my notes and pick one") is work for it: forward that — the session reads them (Voice OS tells it where they are); never read_notes for it.
 - "note: …", "add a note …", "note that …" → note with their words after it, as said, when it is their own idea or reminder, never for the session. Reply "Noted." But a note describing Voice OS itself going wrong — its speech, routing, timing, what it said or did ("add a note that I get double TTS when a plan opens") — is debug_note, with or without the word "debug". More words for a note just taken go to the same kind of note: right after a debug note, "add this to the notes too" is debug_note. "What are my notes?" → read_notes, then read them back briefly: only to hear them. A "note that …" that goes on to ask for work ("note that the API changed, update the client") is for the session: forward it.
 - "debug note: …", "add a debug note …" → debug_note with their words after it, as said. It is for Voice OS's own debugging: never forward it to a session. Reply "Debug note saved." Asking the session to read, check or analyze the debug notes is work for it: forward the words as said, keeping "debug notes" — the session reads them itself. Never say Voice OS lacks access, and never ask whether to forward.
@@ -246,6 +247,7 @@ export type KernelTools = Omit<
 	| 'isSpoken'
 	| 'asks'
 	| 'setHandsFree'
+	| 'openUrl'
 >;
 
 export interface KernelOptions {
@@ -264,6 +266,8 @@ export interface KernelHandleParams {
 	isSpoken?: boolean;
 	// Switches hands-free in the tab the words came from.
 	setHandsFree?: ToolContext['setHandsFree'];
+	// Opens a doc in the tab the words came from.
+	openUrl?: ToolContext['openUrl'];
 	// When the developer began saying the words: what Voice OS started saying after that, they had
 	// not heard. Defaults to when the kernel got them.
 	heardFrom?: number;
@@ -310,6 +314,7 @@ export class Kernel {
 			screen = null,
 			isSpoken = false,
 			setHandsFree = () => 'no_tab',
+			openUrl = () => false,
 			heardFrom,
 		}: KernelHandleParams = {},
 	): Promise<KernelResult> {
@@ -338,6 +343,7 @@ export class Kernel {
 			screen,
 			isSpoken,
 			setHandsFree,
+			openUrl,
 			// The asks as they stood when the words were said: an answer never lands on one that opened since.
 			asks: state.asks,
 			lastSpokenSend: state.lastSpokenSend,

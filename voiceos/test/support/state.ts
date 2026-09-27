@@ -58,6 +58,8 @@ export interface FixtureContext {
 	announced?: { ref: string; question: string; about: string; secondsAgo: number };
 	// What a session said while the developer looked elsewhere, held and not yet heard.
 	update?: { ref: string; text: string };
+	// Docs and artifacts sessions made, oldest first.
+	docs?: { ref: string; url: string; title: string }[];
 	// Lines sessions said shortly before the developer spoke, oldest first.
 	heard?: {
 		text: string;
@@ -239,7 +241,19 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 				}
 			: null,
 		requests: work ? [{ text: work.request, at: now - work.minutesAgo * 60_000 }] : [],
-		stream: said ? [{ id: 'said', at: now - 1000, kind: 'text' as const, text: said }] : [],
+		stream: [
+			...(said ? [{ id: 'said', at: now - 1000, kind: 'text' as const, text: said }] : []),
+			// Docs this session made, oldest first (the newest is what "open the doc" opens).
+			...(context.docs ?? [])
+				.filter((doc) => doc.ref === ref)
+				.map((doc, index) => ({
+					id: `doc-${index}`,
+					at: now - 5000 + index,
+					kind: 'doc' as const,
+					url: doc.url,
+					title: doc.title,
+				})),
+		],
 		queue: (work?.queued ?? []).map((text, index) => ({
 			id: `queued-${index}`,
 			text,

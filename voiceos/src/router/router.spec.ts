@@ -42,13 +42,15 @@ const createHarness = (
 	const handsFreeSwitches: ((isOn: boolean) => string)[] = [];
 	const inputs: Input[] = [];
 	store.subscribe((stamped) => inputs.push(stamped.input));
+	const docOpeners: unknown[] = [];
 	const router = new UtteranceRouter({
 		store,
 		now: () => 5000,
-		kernel: async (text, { setHandsFree, heardFrom, ...options }) => {
+		kernel: async (text, { setHandsFree, openUrl, heardFrom, ...options }) => {
 			kernelCalls.push({ text, ...options });
 			heardFroms.push(heardFrom);
 			handsFreeSwitches.push(setHandsFree);
+			docOpeners.push(openUrl);
 
 			return turn(text);
 		},
@@ -59,7 +61,7 @@ const createHarness = (
 			view: ref ? { kind: 'session', ref } : { kind: 'grid' },
 		});
 
-	return { store, router, kernelCalls, handsFreeSwitches, heardFroms, inputs, view };
+	return { store, router, kernelCalls, handsFreeSwitches, docOpeners, heardFroms, inputs, view };
 };
 
 describe('UtteranceRouter', () => {
@@ -209,6 +211,22 @@ describe('UtteranceRouter', () => {
 
 		expect(harness.handsFreeSwitches[0]).toBe(fromTab);
 		expect(harness.handsFreeSwitches[1]?.(false)).toBe('no_tab');
+	});
+
+	it('the kernel opens docs in the tab the words came from; none → nothing opens', async () => {
+		const harness = createHarness();
+		const fromTab = () => true;
+
+		await harness.router.handle('open the doc', 'voice', { openUrl: fromTab });
+		await harness.router.handle('open the doc', 'voice');
+
+		expect(harness.docOpeners[0]).toBe(fromTab);
+		expect(
+			(harness.docOpeners[1] as (url: string, title: string) => boolean)(
+				'https://claude.ai/x',
+				'x',
+			),
+		).toBe(false);
 	});
 
 	it('typed while that session waits on a permission → the kernel answers it (typing "yes" must not deny it)', async () => {

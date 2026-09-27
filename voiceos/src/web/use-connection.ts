@@ -94,6 +94,8 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 	const outbox = useRef<ClientMessage[]>([]);
 	const stateRef = useRef<State | null>(null);
 	const [handsFreeCommand, setHandsFreeCommand] = useState<HandsFreeCommand | null>(null);
+	// A fresh object each time, so asking twice opens it twice.
+	const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
 	const speechRef = useRef(onSpeech);
 	speechRef.current = onSpeech;
 
@@ -135,6 +137,12 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 
 				if (message.type === 'audio' || message.type === 'audio_cancel') {
 					speechRef.current(message);
+
+					return;
+				}
+
+				if (message.type === 'open_url') {
+					setOpenRequest({ url: message.url, title: message.title });
 
 					return;
 				}
@@ -226,5 +234,10 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 		}
 	}, []);
 
-	return { state, status, send, dispatch, sendBinary, handsFreeCommand };
+	return { state, status, send, dispatch, sendBinary, handsFreeCommand, openRequest };
 };
+
+export interface OpenRequest {
+	url: string;
+	title: string;
+}

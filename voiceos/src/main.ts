@@ -1,3 +1,6 @@
+import { join } from 'node:path';
+import { readMediaFile, sweepMedia } from './sessions/media.js';
+import type { OpenUrl } from './tools/docs.js';
 import { writeFileSync } from 'node:fs';
 import index from './web/index.html';
 import {
@@ -71,8 +74,19 @@ log.info('claude executable', { bin: claudeBin ?? 'sdk-bundled' });
 renameSession({ file: paths.sessionsFile, from: LEGACY_SETUP_REF, to: SETUP_REF });
 
 const crew = new CrewAdapter();
+// Every image a session shows is stored here, by content; /media serves this folder alone.
+const mediaDir = join(paths.voiceDir, 'media');
+const MEDIA_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
+// Before the histories restore: a restore stores again any old picture a stream still shows.
+const sweptMedia = sweepMedia({ dir: mediaDir, maxAgeMs: MEDIA_KEPT_MS, now: Date.now() });
+
+if (sweptMedia > 0) {
+	log.info('old media removed', { count: sweptMedia });
+}
+
 const manager = new SessionManager({
 	claudeBin: claudeBin ?? undefined,
+	mediaDir,
 	store,
 	registryFile: paths.sessionsFile,
 	home: paths.home,
@@ -196,6 +210,17 @@ const kernel = keys.anthropic
 		})
 	: null;
 
+// "Open the doc" opens in the tab that asked: the developer may be on a phone, far from this Mac.
+const openUrlFor =
+	(client: string): OpenUrl =>
+	(url, title) => {
+		const isSent = gateway?.send(client, { type: 'open_url', url, title }) ?? false;
+
+		log.info(isSent ? 'doc sent to open' : 'doc not opened: tab gone', { client, title });
+
+		return isSent;
+	};
+
 const handsFreeSwitchFor = createHandsFreeSwitch({
 	// voiceIn is assigned below; a switch only runs once an utterance arrived through it.
 	isListening: (client) => voiceIn.isListening(client),
@@ -224,6 +249,7 @@ const voiceIn = new VoiceInput({
 	onUtterance: (text, client, startedAt) =>
 		void router.handle(text, 'voice', {
 			setHandsFree: handsFreeSwitchFor(client),
+			openUrl: openUrlFor(client),
 			heardFrom: startedAt,
 		}),
 	onTalkStart: () => voiceOut.talkStarted(),
@@ -266,6 +292,7 @@ gateway = startGateway({
 	token,
 	port: Number(process.env.PORT) || 0,
 	index,
+	readMedia: (name) => readMediaFile({ name, dir: mediaDir }),
 	listAllowedOrigins: (port) =>
 		listAllowedOrigins({
 			port,
@@ -282,7 +309,10 @@ gateway = startGateway({
 
 				return;
 			case 'utterance':
-				void router.handle(message.text, 'typed', { setHandsFree: handsFreeSwitchFor(client) });
+				void router.handle(message.text, 'typed', {
+					setHandsFree: handsFreeSwitchFor(client),
+					openUrl: openUrlFor(client),
+				});
 
 				return;
 			case 'ptt_start':
@@ -352,6 +382,8 @@ void restoreHistory({
 	store,
 	sessions: loadRegistry(paths.sessionsFile),
 	getCwd: (ref) => store.state.sessions[ref]?.cwd ?? null,
+	getImageSource: (ref) => store.state.sessions[ref],
+	mediaDir,
 	loadMessages: loadTranscript,
 });
 

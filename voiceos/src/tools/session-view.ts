@@ -1,3 +1,4 @@
+import { listDocTitles } from './docs.js';
 import { type State, type PendingAsk, type Denial, isOfferFresh } from '../shared/protocol.js';
 import { describeWork, formatAge } from '../state/working.js';
 import { findOpenQuestion } from '../shared/questions.js';
@@ -111,12 +112,15 @@ export const describeSession = ({
 	const devOffer = state.devOffer?.ref === ref ? state.devOffer : null;
 	const work = describeWork(session, now);
 	const lastReply = isDetailed ? findLastReply(state, ref) : null;
+	// What "open the doc" or "the risks doc" can mean on this session, newest first.
+	const docTitles = listDocTitles(state, ref);
 
 	return {
 		ref,
 		status: session.status,
 		topic: session.topic,
 		...(work.requests.length > 0 ? { last_messages_to_it: work.requests } : {}),
+		...(docTitles.length > 0 ? { docs: docTitles } : {}),
 		// What it said while the developer looked elsewhere, not yet heard: only read in detail.
 		...(isDetailed && session.heldLine?.kind === 'line'
 			? { latest_update: session.heldLine.text }

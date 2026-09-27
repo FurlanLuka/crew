@@ -1,6 +1,8 @@
 import type { StreamItem } from '../../shared/protocol.js';
 import { classifyDiffLine } from '../derive.js';
 import { Markdown } from './Markdown.js';
+import { DocCard } from './DocCard.js';
+import { buildMediaUrl } from '../media.js';
 
 const ASIDE_STATUS_TEXT = {
 	asking: 'asking aside…',
@@ -44,6 +46,17 @@ export const StreamLine = ({ item }: StreamLineProps) => {
 			);
 		case 'notice':
 			return <div className="line notice">{item.text}</div>;
+		case 'image': {
+			const src = buildMediaUrl(item.name);
+
+			return (
+				<a className="line shown-image" href={src} target="_blank" rel="noopener noreferrer">
+					<img src={src} alt={item.alt || 'image from the session'} loading="lazy" />
+				</a>
+			);
+		}
+		case 'doc':
+			return <DocCard url={item.url} title={item.title} />;
 		case 'aside':
 			return (
 				<div className="aside" data-status={item.status}>
