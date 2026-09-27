@@ -21,13 +21,21 @@ export interface TopicInput {
 	topic: string | null;
 }
 
-export type WriteTopic = (input: TopicInput) => Promise<string | null>;
+export interface TopicResult {
+	topic: string | null;
+	// When the session asks the developer something: what the decision is about, in a few words.
+	about: string | null;
+}
 
-const topicSchema = z.object({ topic: z.string().nullable() });
+export type WriteTopic = (input: TopicInput) => Promise<TopicResult>;
+
+const topicSchema = z.object({ topic: z.string().nullable(), about: z.string().nullable() });
 
 export const TOPIC_SYSTEM = `You name what a coding session is working on, for a developer who runs several at once. You get what the developer last asked it, the line it said back, the rest of its message, and its current topic.
 
-Return topic: at most 8 words, like "Checkout retry backoff" or "Voice notes per workspace" — the work itself, in the session's terms, never a status ("Waiting on review") or a verdict. Keep the current topic, word for word, while the session is still on that work; change it when the work moved on. null only when nothing says what the work is.`;
+Return topic: at most 8 words, like "Checkout retry backoff" or "Voice notes per workspace" — the work itself, in the session's terms, never a status ("Waiting on review") or a verdict. Keep the current topic, word for word, while the session is still on that work; change it when the work moved on. null only when nothing says what the work is.
+
+Return about: only when the line asks the developer something (a question, a choice, an approval) — at most 5 words naming what the decision is about, like "where notes should live" or "pushing to main". Otherwise null.`;
 
 export const buildTopicMessage = ({ label, asked, spoken, body, topic }: TopicInput): string =>
 	[
@@ -42,8 +50,10 @@ export const createTopicWriter = (apiKey: string | null, model = TOPIC_MODEL): W
 	const client = apiKey ? new Anthropic({ apiKey, maxRetries: 1, timeout: 15_000 }) : null;
 
 	return async (input) => {
+		const unchanged: TopicResult = { topic: input.topic, about: null };
+
 		if (!client) {
-			return input.topic;
+			return unchanged;
 		}
 
 		const startedAt = Date.now();
@@ -51,24 +61,26 @@ export const createTopicWriter = (apiKey: string | null, model = TOPIC_MODEL): W
 		try {
 			const response = await client.messages.parse({
 				model,
-				max_tokens: 60,
+				max_tokens: 80,
 				system: [{ type: 'text', text: TOPIC_SYSTEM, cache_control: { type: 'ephemeral' } }],
 				messages: [{ role: 'user', content: buildTopicMessage(input) }],
 				output_config: { format: zodOutputFormat(topicSchema) },
 			});
 			const topic = response.parsed_output?.topic?.trim() || null;
+			const about = response.parsed_output?.about?.trim() || null;
 
 			log.info('topic written', {
 				ref: input.ref,
 				ms: Date.now() - startedAt,
 				isChanged: topic !== null && topic !== input.topic,
+				hasAbout: about !== null,
 			});
 
-			return topic ?? input.topic;
+			return { topic: topic ?? input.topic, about };
 		} catch (error) {
 			log.warn('topic not written', { ref: input.ref, error: String(error) });
 
-			return input.topic;
+			return unchanged;
 		}
 	};
 };

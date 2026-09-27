@@ -13,6 +13,13 @@ import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
 import { readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
+import {
+	clearHeldAsk,
+	describeAnnouncement,
+	holdLine,
+	isOnScreen,
+	isShortLine,
+} from './held-lines.js';
 
 const ASK_INPUTS = [
 	'answer_permission',
@@ -47,12 +54,13 @@ export const closeAsk = (state: State, askId: string): State => {
 	}
 
 	const asks = state.asks.filter((pendingAsk) => pendingAsk.id !== askId);
+	const settled = clearHeldAsk({ ...state, asks }, askId);
 	// A held command never blocks the turn: only the SDK's own asks do.
 	const isStillBlocked = asks.some(
 		(pendingAsk) => pendingAsk.ref === ask.ref && isSdkAsk(pendingAsk),
 	);
 
-	return updateSession({ ...state, asks }, ask.ref, (session) =>
+	return updateSession(settled, ask.ref, (session) =>
 		session.status === 'blocked' && !isStillBlocked ? { ...session, status: 'running' } : session,
 	);
 };
@@ -109,6 +117,41 @@ export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 		case 'redirect':
 			return `${label} is waiting to hear whether to switch: say yes, or it goes after.`;
 	}
+};
+
+const ABOUT_WORDS = 6;
+
+const describeAskAbout = (ask: PendingAsk): string | null => {
+	// What the decision is about, in a few words: enough to choose whether to switch now.
+	if (ask.kind === 'plan') {
+		return 'a plan to approve';
+	}
+
+	if (ask.kind !== 'question') {
+		return null;
+	}
+
+	const open = findOpenQuestion(ask)?.question;
+
+	return open
+		? open.header?.trim() || capWords(open.question, ABOUT_WORDS).replace(/[?…]+$/, '')
+		: null;
+};
+
+const isAnnouncedOnly = (state: State, ask: PendingAsk): boolean => {
+	// Off screen a plan, and a question too long to take in there, wait for the developer to switch;
+	// a permission and a short question are said as always.
+	if (isOnScreen(state, ask.ref)) {
+		return false;
+	}
+
+	if (ask.kind === 'plan') {
+		return true;
+	}
+
+	const open = ask.kind === 'question' ? findOpenQuestion(ask)?.question : undefined;
+
+	return open !== undefined && !isShortLine(open.question);
 };
 
 const describeQuestionAloud = (ask: QuestionAsk, label: string): string => {
@@ -333,6 +376,33 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 					status: 'blocked',
 				}),
 			);
+
+			if (isAnnouncedOnly(state, ask)) {
+				// High, not an alert: it never cuts off the session on screen.
+				return {
+					state: holdLine({
+						state: next,
+						ref: ask.ref,
+						content: { kind: 'ask', askId: ask.id },
+						stamped,
+					}),
+					effects: [
+						{
+							type: 'speak',
+							text: describeAnnouncement({
+								label: readLabel(state, ask.ref),
+								kind: 'needs',
+								about: describeAskAbout(ask),
+							}),
+							source: 'alert',
+							ref: ask.ref,
+							priority: 'high',
+							chime: 'needs',
+						},
+						...released.effects,
+					],
+				};
+			}
 
 			return {
 				state: next,

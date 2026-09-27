@@ -2,6 +2,12 @@ import { createLogger } from '../log.js';
 import { isSdkAsk, type SpeechMessage, type SpokenLine, type State } from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName } from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
+import {
+	describeAnnouncement,
+	isHeldQuestion,
+	isOnScreen,
+	isShortLine,
+} from '../state/held-lines.js';
 import type { Store } from '../state/store.js';
 import { isRecent, type SpokenRecord } from './echo.js';
 import {
@@ -28,6 +34,8 @@ interface SayParams {
 	isAsking?: boolean;
 	isOwed?: boolean;
 	isAck?: boolean;
+	isHoldable?: boolean;
+	chime?: 'needs';
 }
 
 interface FinishParams {
@@ -94,6 +102,8 @@ export class VoiceOut {
 		isAsking = false,
 		isOwed = false,
 		isAck = false,
+		isHoldable = false,
+		chime,
 	}: SayParams): void {
 		if (!text.trim()) {
 			return;
@@ -112,6 +122,8 @@ export class VoiceOut {
 			isAsking,
 			...(isOwed ? { isOwed } : {}),
 			...(isAck ? { isAck } : {}),
+			...(isHoldable ? { isHoldable } : {}),
+			...(chime ? { chime } : {}),
 			at: this.now(),
 		});
 		this.queue = result.queue;
@@ -208,11 +220,13 @@ export class VoiceOut {
 				continue;
 			}
 
+			// One phrase for "waits on you". Only a question already heard makes it something a bare
+			// "yes" answers; one only announced has not been heard.
 			this.say({
-				text: `${readLabel(state, ref)} is still waiting on you.`,
+				text: `${readLabel(state, ref)} still needs you.`,
 				priority: 'high',
 				ref,
-				isAsking: true,
+				isAsking: !isHeldQuestion(state.sessions[ref]),
 			});
 		}
 
@@ -254,6 +268,51 @@ export class VoiceOut {
 		}
 	}
 
+	private holdIfOffScreen(item: SpeechItem): boolean {
+		// Queued while its session was on screen; the developer went elsewhere before it played.
+		const { store } = this.options;
+
+		if (
+			!item.isHoldable ||
+			!item.ref ||
+			isOnScreen(store.state, item.ref) ||
+			isShortLine(item.text)
+		) {
+			return false;
+		}
+
+		const session = store.state.sessions[item.ref];
+
+		// Its session stopped meanwhile: nothing is kept for it, and nothing announced.
+		if (session?.status === 'stopped') {
+			log.info('line dropped: session stopped', { id: item.id, ref: item.ref });
+
+			return true;
+		}
+
+		store.dispatch({
+			type: 'line_held',
+			ref: item.ref,
+			text: item.text,
+			isAsking: Boolean(item.isAsking),
+		});
+		log.info('line held', { id: item.id, ref: item.ref });
+
+		// Its turn already ended, so no announcement is coming from it: this is the announcement.
+		if (session && session.status !== 'running' && session.status !== 'blocked') {
+			const kind = item.isAsking ? 'needs' : 'done';
+			this.say({
+				text: describeAnnouncement({ label: session.label, kind }),
+				priority: kind === 'needs' ? 'high' : 'normal',
+				source: 'narrator',
+				ref: item.ref,
+				...(kind === 'needs' ? { chime: 'needs' as const } : {}),
+			});
+		}
+
+		return true;
+	}
+
 	private resolveSpokenText(item: SpeechItem): string {
 		if (!item.isNamed || !item.ref) {
 			return item.text;
@@ -282,6 +341,12 @@ export class VoiceOut {
 		this.queue = queue;
 
 		if (!item) {
+			return;
+		}
+
+		if (this.holdIfOffScreen(item)) {
+			void this.pump();
+
 			return;
 		}
 
@@ -353,6 +418,7 @@ export class VoiceOut {
 						base64: Buffer.from(pcm).toString('base64'),
 						isLast: false,
 						...(shouldPlayChime ? { hasChime: shouldPlayChime } : {}),
+						...(shouldPlayChime && item.chime ? { chime: item.chime } : {}),
 					});
 					shouldPlayChime = false;
 				},

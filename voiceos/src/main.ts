@@ -117,6 +117,8 @@ store.onEffect((effect) => {
 			isNamed: effect.isNamed,
 			isOwed: effect.isOwed,
 			isAck: effect.isAck,
+			isHoldable: effect.isHoldable,
+			chime: effect.chime,
 		});
 	}
 

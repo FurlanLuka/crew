@@ -17,6 +17,7 @@ import type { NotesStore } from '../memory/notes.js';
 import { GENERAL_NOTES, nameNotes, readNoteText, readWorkspace } from '../shared/notes.js';
 import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
+import { hasOfferedSwitch, isNamedIn, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
@@ -235,9 +236,20 @@ export const executeTool = async (
 
 			const checked = checkRef(state, input.ref);
 
-			return checked.ok
-				? succeed(describeSession({ state, ref: checked.ref, isDetailed: true, now }))
-				: fail(checked.error);
+			if (!checked.ok) {
+				return fail(checked.error);
+			}
+
+			const held = state.sessions[checked.ref]?.heldLine;
+			// Asked about by name ("how's crew research doing?"): the developer now hears its update, so
+			// it does not replay when they switch there. Read for any other reason, it stays held.
+			const isAskedAbout = isNamedIn({ state, ref: checked.ref, utterance: toolContext.utterance });
+
+			if (held?.kind === 'line' && isAskedAbout) {
+				toolContext.dispatch({ type: 'held_line_heard', ref: checked.ref, id: held.id });
+			}
+
+			return succeed(describeSession({ state, ref: checked.ref, isDetailed: true, now }));
 		}
 
 		case 'read_history': {
@@ -301,6 +313,21 @@ export const executeTool = async (
 
 			if (!checked.ok) {
 				return fail(checked.error);
+			}
+
+			// A session whose question was only announced is opened when the developer names it, or
+			// after they said yes to "Switch to …?": never on a bare "yes" or "what's waiting?".
+			const refused = hasOfferedSwitch({
+				state,
+				ref: checked.ref,
+				screen: toolContext.screen,
+				now: toolContext.now(),
+			})
+				? null
+				: refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'switched' });
+
+			if (refused) {
+				return refused;
 			}
 
 			toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });

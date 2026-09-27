@@ -18,6 +18,10 @@ export interface SpeechItem {
 	isOwed?: boolean;
 	// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
 	isAck?: boolean;
+	// A session's own line queued while it was on screen: held instead if the developer has gone
+	// elsewhere by the time it plays.
+	isHoldable?: boolean;
+	chime?: 'needs';
 }
 
 export interface SpeechQueue {

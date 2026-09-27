@@ -13,6 +13,7 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('cancel_queued'), ref: refSchema, queuedId: z.string() }),
 	z.object({ type: z.literal('promote_queued'), ref: refSchema, queuedId: z.string() }),
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
+	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({
 		type: z.literal('answer_permission'),
 		askId: z.string(),

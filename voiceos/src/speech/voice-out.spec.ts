@@ -184,6 +184,142 @@ describe('VoiceOut', () => {
 		expect(harness.store.state.spoken.every((line) => line.endedAt !== undefined)).toBe(true);
 	});
 
+	it('a session line queued on screen, played after the developer left → held, and announced if its turn is over', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		const long =
+			'The router refactor is done, the tests pass, and the branch is pushed for review now.';
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: long,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main is done.']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
+			kind: 'line',
+			text: long,
+		});
+	});
+
+	it('the same while its session still works → held silently: its turn end will announce it', async () => {
+		const harness = createHarness();
+		const long =
+			'Plan approved; building the notes panel, its tests, and the page wiring right now.';
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({ type: 'send', ref: 'store/main', text: 'build the notes' });
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: long,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: long });
+	});
+
+	it('its session stopped before it played → neither held nor announced', async () => {
+		const harness = createHarness();
+		const long =
+			'The router refactor is done, the tests pass, and the branch is pushed for review now.';
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: long,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
+	});
+
+	it('a short line plays wherever the developer is', async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({
+			text: 'Tests pass.',
+			priority: 'high',
+			ref: 'store/main',
+			isHoldable: true,
+		});
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['Tests pass.']);
+	});
+
+	it('"needs you" carries its chime to the tab, and never cuts the line playing', async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({ text: 'long update', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: 'store/main needs you: notes location.',
+			priority: 'high',
+			ref: 'store/main',
+			chime: 'needs',
+		});
+		await flush();
+
+		expect(harness.listSentKinds().some((kind) => kind.includes(':cancel:'))).toBe(false);
+
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+		harness.streamChunk();
+
+		expect(harness.sent.at(-1)?.message).toMatchObject({ hasChime: true, chime: 'needs' });
+	});
+
+	it('the reminder of a question only announced is not something a bare yes answers', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'q1',
+				ref: 'store/main',
+				at: 0,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question:
+							'Where should notes live: the Voice OS folder or a file inside the project itself?',
+						header: 'Notes location',
+						multiSelect: false,
+						options: [],
+					},
+				],
+			},
+		});
+		harness.voiceOut.remind(harness.store.state);
+		harness.tick(REMINDER_MS + 1);
+		harness.voiceOut.remind(harness.store.state);
+		await flush();
+
+		const reminder = harness.store.state.spoken.find((line) =>
+			line.text.includes('still needs you'),
+		);
+
+		expect(reminder?.text).toBe('store/main still needs you.');
+		expect(reminder?.isAsking).toBeUndefined();
+	});
+
 	it('no speaker tab → line still shown, nothing synthesized, queue keeps moving', async () => {
 		const harness = createHarness({ tab: null });
 		harness.voiceOut.say({ text: 'a', priority: 'normal' });
@@ -221,7 +357,7 @@ describe('VoiceOut', () => {
 		harness.tick(REMINDER_MS + 1);
 		harness.voiceOut.remind(harness.store.state);
 		await flush();
-		expect(harness.listSynthesized()).toEqual(['store/main is still waiting on you.']);
+		expect(harness.listSynthesized()).toEqual(['store/main still needs you.']);
 		expect(harness.store.state.spoken.at(-1)).toMatchObject({ ref: 'store/main', isAsking: true });
 
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');

@@ -117,6 +117,10 @@ export const describeSession = ({
 		status: session.status,
 		topic: session.topic,
 		...(work.requests.length > 0 ? { last_messages_to_it: work.requests } : {}),
+		// What it said while the developer looked elsewhere, not yet heard: only read in detail.
+		...(isDetailed && session.heldLine?.kind === 'line'
+			? { latest_update: session.heldLine.text }
+			: {}),
 		...(work.for ? { working_for: work.for } : {}),
 		...(ask ? { pending: describePending(ask) } : {}),
 		...(session.needsUser ? { asked: session.needsUser.text, asked_ago: work.waitingFor } : {}),

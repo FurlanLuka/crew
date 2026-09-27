@@ -31,6 +31,7 @@ import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
+import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-lines.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -59,6 +60,8 @@ export type Effect =
 			isOwed: boolean;
 			spoken: SpokenTag | null;
 			isSpokenAlready: boolean;
+			// Its final line was held while the developer looked elsewhere.
+			isHeld: boolean;
 	  }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string; note?: string }
@@ -81,6 +84,10 @@ export type Effect =
 			isOwed?: boolean;
 			// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
 			isAck?: boolean;
+			// A session that needs the developer: its own rising chime.
+			chime?: 'needs';
+			// Held instead if its session is off screen when it plays (a long line).
+			isHoldable?: boolean;
 	  }
 	// The developer spoke to this session again: its lines still waiting to be said (older than
 	// before) are out of date. They stay on the page.
@@ -132,6 +139,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	reportOwed: false,
 	spokenInTurn: [],
 	currentSendId: null,
+	heldLine: null,
 	withdrawnAsides: [],
 });
 
@@ -273,11 +281,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
-			return withoutEffects({
-				...state,
-				view,
-				focus: view.kind === 'session' ? view.ref : state.focus,
-			});
+			const shown = { ...state, view, focus: view.kind === 'session' ? view.ref : state.focus };
+
+			return view.kind === 'session' ? replayHeldLine(shown, view.ref) : withoutEffects(shown);
 		}
 
 		case 'start_session':
@@ -303,6 +309,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					voiceTurnAt: null,
 					reportOwed: false,
 					currentSendId: null,
+					heldLine: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_stop', ref: input.ref }],
 			};
@@ -322,9 +329,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					...current,
 					queue: [],
 					voiceTurnAt: null,
-					// The developer stopped the work: there is nothing to report.
+					// The developer stopped the work: there is nothing to report, nor to replay.
 					reportOwed: false,
 					currentSendId: null,
+					heldLine: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
 			};
@@ -332,7 +340,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'dismiss_needs_user':
 			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({ ...session, needsUser: null })),
+				updateSession(state, input.ref, (session) => ({
+					...session,
+					needsUser: null,
+					heldLine: null,
+				})),
 			);
 
 		case 'pin_topic':
@@ -390,12 +402,19 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 			const draft = session.draft + input.text;
 			// A reply the developer's follow-up is cutting says nothing more: they are already past it.
-			const { spokenInTurn, effects } = hasFollowUpWaiting(session)
-				? { spokenInTurn: session.spokenInTurn, effects: [] }
-				: speakNewTag(session, draft);
+			const { spokenInTurn, effects, held } = hasFollowUpWaiting(session)
+				? { spokenInTurn: session.spokenInTurn, effects: [], held: null }
+				: speakNewTag(session, draft, isOnScreen(state, input.ref));
+			const drafted = updateSession(state, input.ref, (current) => ({
+				...current,
+				draft,
+				spokenInTurn,
+			}));
 
 			return {
-				state: updateSession(state, input.ref, (current) => ({ ...current, draft, spokenInTurn })),
+				state: held
+					? holdLine({ state: drafted, ref: input.ref, content: held, stamped })
+					: drafted,
 				effects,
 			};
 		}
@@ -414,21 +433,27 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 			// A message that never streamed says its lines now; streamed ones were said already.
 			const spoken =
-				isText && !hasFollowUpWaiting(session) ? speakNewTag(session, input.text) : null;
+				isText && !hasFollowUpWaiting(session)
+					? speakNewTag(session, input.text, isOnScreen(state, input.ref))
+					: null;
 			// Text and a tool call end the streamed draft; results and diffs follow the tool line.
 			const shouldClearDraft = isText || input.type === 'tool';
 
-			return {
-				state: updateSession(state, input.ref, (current) =>
-					pushStreamItem(
-						{
-							...current,
-							...(shouldClearDraft ? { draft: '' } : {}),
-							...(spoken ? { spokenInTurn: spoken.spokenInTurn } : {}),
-						},
-						item,
-					),
+			const pushed = updateSession(state, input.ref, (current) =>
+				pushStreamItem(
+					{
+						...current,
+						...(shouldClearDraft ? { draft: '' } : {}),
+						...(spoken ? { spokenInTurn: spoken.spokenInTurn } : {}),
+					},
+					item,
 				),
+			);
+
+			return {
+				state: spoken?.held
+					? holdLine({ state: pushed, ref: input.ref, content: spoken.held, stamped })
+					: pushed,
 				effects: spoken?.effects ?? [],
 			};
 		}
@@ -460,6 +485,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 			// The final message's own line, when the session wrote one: the narrator only fills a gap.
 			const spoken = readSpokenTag(input.text);
+			const isHeld =
+				spoken !== null &&
+				session.heldLine?.kind === 'line' &&
+				session.heldLine.text === spoken.text;
 
 			// A promised report is given even for a turn that wrote nothing.
 			if ((input.text.trim() || session.reportOwed) && !isCutOff) {
@@ -470,7 +499,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					asked: findLastUserText(session),
 					isOwed: session.reportOwed,
 					spoken,
-					isSpokenAlready: spoken !== null && session.spokenInTurn.includes(spoken.text),
+					// Held while the developer looked elsewhere: streamed, but never said.
+					isHeld,
+					isSpokenAlready: spoken !== null && session.spokenInTurn.includes(spoken.text) && !isHeld,
 				});
 			}
 
@@ -510,6 +541,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				subagents: [],
 				reportOwed: false,
 				currentSendId: null,
+				heldLine: null,
 			}));
 			const kept = heldRedirect
 				? queueHeldRedirect({ state: stopped, ask: heldRedirect, at: stamped.at, isFirst: false })
@@ -537,6 +569,23 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					needsUser: input.needsUser ? { text: input.text, at: stamped.at } : null,
 					topic: session.isTopicPinned || !input.topic ? session.topic : input.topic,
 				})),
+			);
+
+		case 'line_held':
+			return withoutEffects(
+				holdLine({
+					state,
+					ref: input.ref,
+					content: { kind: 'line', text: input.text, isAsking: input.isAsking },
+					stamped,
+				}),
+			);
+
+		case 'held_line_heard':
+			return withoutEffects(
+				state.sessions[input.ref]?.heldLine?.id === input.id
+					? clearHeldLine(state, input.ref)
+					: state,
 			);
 
 		case 'spoken_ended':

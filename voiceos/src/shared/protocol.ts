@@ -113,6 +113,13 @@ export interface NeedsUser {
 	at: number;
 }
 
+// What a session said while the developer looked elsewhere, kept for when they switch to it: its
+// latest spoken line, or an ask only announced. missed: earlier lines it replaced.
+export type HeldLine = { id: string; at: number; missed: number } & (
+	| { kind: 'line'; text: string; isAsking: boolean }
+	| { kind: 'ask'; askId: string }
+);
+
 export interface Session {
 	ref: string;
 	label: string;
@@ -145,6 +152,7 @@ export interface Session {
 	currentSendId: string | null;
 	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
 	withdrawnAsides: string[];
+	heldLine: HeldLine | null;
 }
 
 export interface VoiceEntry {
@@ -282,6 +290,8 @@ export type Action =
 	| { type: 'promote_queued'; ref: string; queuedId: string }
 	// Set by the kernel: the developer takes back words not yet acted on (queued, asked aside, held).
 	| { type: 'take_back'; ref: string; id: string }
+	// Set by the kernel: the developer heard a held line another way (asked about that session by name).
+	| { type: 'held_line_heard'; ref: string; id: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
 	// isSpoken: set by the kernel; the next open question is then read out.
 	| {
@@ -334,6 +344,8 @@ export type Observation =
 	| { type: 'topic_written'; ref: string; topic: string }
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean }
+	// A line queued while its session was on screen reached play time with the developer elsewhere.
+	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
 	| { type: 'session_started'; ref: string }
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }
@@ -400,8 +412,16 @@ export interface Stamped {
 export const SPEECH_SAMPLE_RATE = 24_000;
 
 export type SpeechMessage =
-	// 16-bit PCM at SPEECH_SAMPLE_RATE; hasChime, on a clip's first chunk: play the chime before it.
-	| { type: 'audio'; id: string; base64: string; isLast: boolean; hasChime?: boolean }
+	// 16-bit PCM at SPEECH_SAMPLE_RATE; hasChime, on a clip's first chunk: play the chime before it
+	// (chime 'needs': the rising one of a session that needs the developer).
+	| {
+			type: 'audio';
+			id: string;
+			base64: string;
+			isLast: boolean;
+			hasChime?: boolean;
+			chime?: 'needs';
+	  }
 	// Drops a clip the server cut off.
 	| { type: 'audio_cancel'; id: string };
 

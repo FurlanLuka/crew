@@ -202,9 +202,13 @@ describe("the session's own spoken lines", () => {
 	const said = (effects: Effect[]) =>
 		effects.filter((effect) => effect.type === 'speak').map((effect) => effect.text);
 	const delta = (text: string): Input => ({ type: 'text_delta', ref: REF, text });
+	// Said where the developer is looking; off screen a line is held (held-lines.spec).
+	const onScreen = (state: State): State => ({ ...state, view: { kind: 'session', ref: REF } });
 
 	it('a tag is said the moment it closes in the stream, once, named and high', () => {
-		const opening = run([delta('<spoken>Checking the logs,')], { start: runningSession() });
+		const opening = run([delta('<spoken>Checking the logs,')], {
+			start: onScreen(runningSession()),
+		});
 		const closed = run([delta(' back shortly.</spoken>\n\nWork')], { start: opening.state });
 		const more = run([delta(' continues.')], { start: closed.state });
 
@@ -218,6 +222,7 @@ describe("the session's own spoken lines", () => {
 				isNamed: true,
 				priority: 'high',
 				isOwed: true,
+				isHoldable: true,
 			},
 		]);
 		expect(said(more.effects)).toEqual([]);
@@ -225,7 +230,7 @@ describe("the session's own spoken lines", () => {
 
 	it('the finished message → its streamed line is not said again; the page shows it without the tag', () => {
 		const streamed = run([delta('<spoken>Done: three timeouts.</spoken>\nDetails.')], {
-			start: runningSession(),
+			start: onScreen(runningSession()),
 		}).state;
 		const { state, effects } = run(
 			[
@@ -245,7 +250,7 @@ describe("the session's own spoken lines", () => {
 	it('a message that never streamed says its line when it arrives; an ack-only message shows its words', () => {
 		const { state, effects } = run(
 			[{ type: 'assistant_text', ref: REF, text: '<spoken asks>Push the branch now?</spoken>' }],
-			{ start: runningSession() },
+			{ start: onScreen(runningSession()) },
 		);
 
 		expect(effects).toEqual([
@@ -256,7 +261,7 @@ describe("the session's own spoken lines", () => {
 
 	it('turn ends → the final line goes to the narrator marked as said; the next turn starts fresh', () => {
 		const streamed = run([delta('<spoken>Tests pass.</spoken>')], {
-			start: runningSession(),
+			start: onScreen(runningSession()),
 		}).state;
 		const { state, effects } = run(
 			[{ type: 'turn_ended', ref: REF, costUsd: 0, text: '<spoken>Tests pass.</spoken>\nAll 40.' }],
@@ -284,7 +289,7 @@ describe("the session's own spoken lines", () => {
 				},
 				{ type: 'tool', ref: REF, name: 'Bash', summary: 'tail logs' },
 			],
-			{ start: runningSession() },
+			{ start: onScreen(runningSession()) },
 		).state;
 		const report = run(
 			[delta('<spoken>Three timeouts, all from the retry worker.</spoken>\nDetails')],
@@ -323,7 +328,7 @@ describe("the session's own spoken lines", () => {
 					text: '<spoken>Pushed.</spoken>\nBranch updated.',
 				},
 			],
-			{ start: runningSession() },
+			{ start: onScreen(runningSession()) },
 		);
 
 		expect(effects).toContainEqual(
@@ -352,7 +357,7 @@ describe("the session's own spoken lines", () => {
 					ack: { kind: 'instruction' },
 				},
 			],
-			{ start: idleSession() },
+			{ start: onScreen(idleSession()) },
 		).state;
 
 		expect(
@@ -369,7 +374,7 @@ describe("the session's own spoken lines", () => {
 
 	it('a final message with no tag → the narrator summarizes it', () => {
 		const { effects } = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'All 40 pass.' }], {
-			start: runningSession(),
+			start: onScreen(runningSession()),
 		});
 
 		expect(effects).toContainEqual(

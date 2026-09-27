@@ -10,6 +10,7 @@ import type { Effect, ReducerResult } from './reducer.js';
 import { sendNow, startWorker, updateSession, withoutEffects } from './helpers.js';
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
 import { openRedirect } from './redirect.js';
+import { clearHeldLine } from './held-lines.js';
 
 export const joinNotes = (
 	carried: string | undefined,
@@ -161,7 +162,8 @@ const withEffects = (result: ReducerResult, effects: Effect[]): ReducerResult =>
 });
 
 export const deliverSend = (params: DeliverSendParams): ReducerResult => {
-	const delivered = deliverWords(params);
+	// The developer moved on: a line held from before these words would answer something older.
+	const delivered = deliverWords({ ...params, state: clearHeldLine(params.state, params.ref) });
 
 	// Whatever it still had to say predates these words: said now, it would answer something older.
 	return params.isSpoken && params.state.sessions[params.ref]

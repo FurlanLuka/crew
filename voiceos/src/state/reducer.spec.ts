@@ -482,6 +482,7 @@ describe('turn_ended', () => {
 			isOwed: false,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 	});
 
@@ -1417,7 +1418,8 @@ describe('questions are spoken without their options', () => {
 		const text = (
 			run(
 				[{ type: 'ask_opened', ask: question([{ question: long, options: ['A'] }]) }],
-				idleSession(),
+				// On screen: off screen a long question is only announced (held-lines.spec).
+				{ ...idleSession(), view: { kind: 'session', ref: 'store/main' } },
 			).effects[0] as { text: string }
 		).text;
 		expect(text).toContain(`${Array.from({ length: 25 }, (_, i) => `w${i}`).join(' ')}…`);

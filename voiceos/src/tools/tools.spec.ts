@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import type { NoteWords } from '../memory/notes.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { createNullNotes } from '../../test/support/notes.js';
-import type { Action, PendingAsk, Session, State } from '../shared/protocol.js';
+import {
+	GRID,
+	type Action,
+	type PendingAsk,
+	type Session,
+	type State,
+} from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
@@ -1090,6 +1096,203 @@ describe('a start that asks for more', () => {
 				sentTo: new Set(['checkout-api/main']),
 			}),
 		).toBe('starting checkout-api/main');
+	});
+});
+
+describe('a question only announced', () => {
+	const withHeldQuestion = (kind: 'ask' | 'line') => {
+		const context = createToolContext();
+		const state = context.tools.getState();
+		state.sessions['checkout-api/main'] = {
+			...state.sessions['checkout-api/main']!,
+			status: kind === 'ask' ? 'blocked' : 'idle',
+			needsUser: kind === 'line' ? { text: 'asks: cap the backoff?', at: 0 } : null,
+			heldLine:
+				kind === 'ask'
+					? { id: 'h1', at: 0, missed: 0, kind: 'ask', askId: 'q1' }
+					: {
+							id: 'h1',
+							at: 0,
+							missed: 0,
+							kind: 'line',
+							text: 'asks: cap the backoff?',
+							isAsking: true,
+						},
+		};
+		state.asks =
+			kind === 'ask'
+				? [
+						{
+							id: 'q1',
+							ref: 'checkout-api/main',
+							at: 0,
+							kind: 'question',
+							input: {},
+							questions: [{ question: 'Cap the backoff?', multiSelect: false, options: [] }],
+						},
+					]
+				: [];
+		context.tools.asks = state.asks;
+
+		return context;
+	};
+
+	it('a bare yes from elsewhere answers nothing, sends nothing, and offers the switch (both kinds)', async () => {
+		for (const kind of ['ask', 'line'] as const) {
+			const { tools, actions } = withHeldQuestion(kind);
+			const bare = { ...tools, screen: null, forwardTo: null, utterance: 'yes' };
+			const answered = await executeTool(
+				'answer',
+				{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+				bare,
+			);
+			const sent = await executeTool('send_to', { ref: 'checkout-api/main', text: 'Yes.' }, bare);
+
+			expect(answered.ok).toBe(false);
+			expect(String(answered.content)).toContain('Switch to checkout-api/main?');
+			expect(sent.ok).toBe(false);
+			expect(actions).toEqual([]);
+		}
+	});
+
+	it('switching there: refused on a bare yes; allowed after Voice OS offered it, or when named', async () => {
+		const offer = (reply: string, at: number) => ({
+			[GRID]: [{ utterance: 'yes', did: [], reply, at }],
+		});
+		const refused = withHeldQuestion('line');
+		const offered = withHeldQuestion('line');
+		const offeredInPassing = withHeldQuestion('line');
+		const stale = withHeldQuestion('line');
+		const elsewhere = withHeldQuestion('line');
+		const named = withHeldQuestion('line');
+		offered.tools.getState().voiceLog = offer('Switch to checkout-api/main?', 150_000);
+		offeredInPassing.tools.getState().voiceLog = offer(
+			'checkout api main needs you, about the backoff cap — switch to it?',
+			150_000,
+		);
+		stale.tools.getState().voiceLog = offer('Switch to checkout-api/main?', 0);
+		elsewhere.tools.getState().voiceLog = offer('Switch to store-front/main?', 150_000);
+		const yes = { screen: null, utterance: 'yes', now: () => 180_000 };
+
+		for (const context of [refused, offered, offeredInPassing, stale, elsewhere]) {
+			await executeTool('switch_view', { ref: 'checkout-api/main' }, { ...context.tools, ...yes });
+		}
+
+		await executeTool(
+			'switch_view',
+			{ ref: 'checkout-api/main' },
+			{ ...named.tools, screen: null, utterance: 'open checkout api main' },
+		);
+		const switched = {
+			type: 'switch_view',
+			view: { kind: 'session', ref: 'checkout-api/main' },
+		} as const;
+
+		expect(refused.actions).toEqual([]);
+		expect(stale.actions).toEqual([]);
+		expect(elsewhere.actions).toEqual([]);
+		expect(offered.actions).toEqual([switched]);
+		expect(offeredInPassing.actions).toEqual([switched]);
+		expect(named.actions).toEqual([switched]);
+	});
+
+	it('the answer tool with the session named answers it; other words from elsewhere still go', async () => {
+		const named = withHeldQuestion('line');
+		const other = withHeldQuestion('line');
+
+		await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: 'Cap it.' },
+			{ ...named.tools, screen: null, utterance: 'checkout api main, yes, cap it' },
+		);
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', text: 'Also run the linter.' },
+			{ ...other.tools, screen: null, utterance: 'also have it run the linter' },
+		);
+
+		expect(named.actions).toContainEqual(
+			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
+		);
+		expect(other.actions).toContainEqual(
+			expect.objectContaining({ type: 'send', text: 'Also run the linter.' }),
+		);
+	});
+
+	it('naming the session answers it as usual', async () => {
+		const { tools, actions } = withHeldQuestion('line');
+
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', text: 'Yes, cap it.' },
+			{ ...tools, screen: null, utterance: 'tell checkout api main yes, cap it' },
+		);
+
+		expect(actions).toContainEqual(
+			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
+		);
+	});
+});
+
+describe('status from another screen', () => {
+	const withHeldUpdate = () => {
+		const context = createToolContext();
+		const state = context.tools.getState();
+		state.sessions['checkout-api/main'] = {
+			...state.sessions['checkout-api/main']!,
+			heldLine: {
+				id: 'h1',
+				at: 0,
+				missed: 0,
+				kind: 'line',
+				text: 'Tests pass; wiring the page.',
+				isAsking: false,
+			},
+		};
+
+		return context;
+	};
+
+	it('asked about by name → its latest update, and it counts as heard', async () => {
+		const { tools, actions } = withHeldUpdate();
+		const result = await executeTool(
+			'read_state',
+			{ ref: 'checkout-api/main' },
+			{ ...tools, utterance: "how's checkout api main doing?" },
+		);
+
+		expect(result.content).toContain('Tests pass; wiring the page.');
+		expect(actions).toEqual([{ type: 'held_line_heard', ref: 'checkout-api/main', id: 'h1' }]);
+	});
+
+	it('asked about by its topic is asking about it too', async () => {
+		const { tools, actions } = withHeldUpdate();
+		tools.getState().sessions['checkout-api/main']!.topic = 'Checkout retry backoff';
+
+		await executeTool(
+			'read_state',
+			{ ref: 'checkout-api/main' },
+			{ ...tools, utterance: 'any news on the retry backoff?' },
+		);
+
+		expect(actions).toEqual([{ type: 'held_line_heard', ref: 'checkout-api/main', id: 'h1' }]);
+	});
+
+	it('read for any other reason, or in the overview → nothing cleared, no update in the overview', async () => {
+		const { tools, actions } = withHeldUpdate();
+		const overview = await executeTool(
+			'read_state',
+			{ ref: null },
+			{ ...tools, utterance: "what's waiting?" },
+		);
+		await executeTool(
+			'read_state',
+			{ ref: 'checkout-api/main' },
+			{ ...tools, utterance: "what's waiting?" },
+		);
+
+		expect(String(overview.content)).not.toContain('latest_update');
+		expect(actions).toEqual([]);
 	});
 });
 

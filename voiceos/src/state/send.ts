@@ -7,6 +7,7 @@ import { decideAck, deliverSend, NO_ACK } from './delivery.js';
 import { pushNotice, updateSession, withoutEffects } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import { continueFirstHalf } from './continuation.js';
+import { clearHeldLine } from './held-lines.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
 
@@ -76,10 +77,12 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 			? [{ type: 'drop_speech', ref: input.ref, before: stamped.at }]
 			: [];
 
+		const heard = clearHeldLine(answered.state, input.ref);
+
 		return {
 			state: isOwed
-				? updateSession(answered.state, input.ref, (current) => ({ ...current, reportOwed: true }))
-				: answered.state,
+				? updateSession(heard, input.ref, (current) => ({ ...current, reportOwed: true }))
+				: heard,
 			effects: [...dropped, ...effects, ...answered.effects],
 		};
 	}

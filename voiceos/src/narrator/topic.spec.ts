@@ -21,5 +21,8 @@ describe('topic writer', () => {
 	});
 
 	it('no API key → the topic stays what it was', async () =>
-		expect(await createTopicWriter(null)(input)).toBe('Spoken checkpoint evals'));
+		expect(await createTopicWriter(null)(input)).toEqual({
+			topic: 'Spoken checkpoint evals',
+			about: null,
+		}));
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { SPEECH_SAMPLE_RATE, type SpeechMessage } from '../shared/protocol.js';
-import { base64ToBytes, createChimeSamples, pcmToFloat } from './pcm.js';
+import { base64ToBytes, createChimeSamples, type ChimeKind, pcmToFloat } from './pcm.js';
 
 interface Clip {
 	id: string;
@@ -19,7 +19,7 @@ export class PcmPlayer {
 	private notify: ClipDoneListener = () => {
 		// Nothing listens until setNotify is called.
 	};
-	private chime: Float32Array | null = null;
+	private chimes = new Map<ChimeKind, Float32Array>();
 
 	setNotify(listener: ClipDoneListener): void {
 		this.notify = listener;
@@ -45,8 +45,10 @@ export class PcmPlayer {
 
 		// Part of the clip: cutting the clip cuts its chime too.
 		if (message.hasChime) {
-			this.chime ??= createChimeSamples(SPEECH_SAMPLE_RATE);
-			this.play(clip, this.chime);
+			const kind: ChimeKind = message.chime ?? 'plain';
+			const samples = this.chimes.get(kind) ?? createChimeSamples(SPEECH_SAMPLE_RATE, kind);
+			this.chimes.set(kind, samples);
+			this.play(clip, samples);
 		}
 
 		if (message.base64) {

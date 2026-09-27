@@ -11,7 +11,11 @@ import { createAsideNarrator, createTurnNarrator, settleOwedReport } from './tur
 // What the topic writer returns; by default it keeps the topic it was given.
 type TopicReply = (input: TopicInput) => string | null;
 
-const createHarness = (narration: Narration, topicReply: TopicReply = (input) => input.topic) => {
+const createHarness = (
+	narration: Narration,
+	topicReply: TopicReply = (input) => input.topic,
+	aboutReply: string | null = null,
+) => {
 	const store = new Store();
 
 	store.dispatch({
@@ -44,7 +48,7 @@ const createHarness = (narration: Narration, topicReply: TopicReply = (input) =>
 		writeTopic: async (input) => {
 			topicCalls.push(input);
 
-			return topicReply(input);
+			return { topic: topicReply(input), about: aboutReply };
 		},
 		say: ({ text, isAsking, priority, isOwed }) => {
 			spoken.push(text);
@@ -76,6 +80,7 @@ describe('turn narrator', () => {
 			isOwed: false,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 
 		expect(harness.store.state.sessions['checkout-api/main']).toMatchObject({
@@ -114,6 +119,7 @@ describe('turn narrator', () => {
 			isOwed: false,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 		expect(harness.spoken).toEqual(['checkout api, main: tests pass.']);
 		expect(harness.asking).toEqual([false]);
@@ -135,6 +141,7 @@ describe('turn narrator', () => {
 			isOwed: false,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 
 		expect(harness.spoken).toEqual([]);
@@ -163,6 +170,7 @@ describe('turn narrator', () => {
 			isOwed: false,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 		expect(harness.seen).toEqual([{ focused: true }]);
 	});
@@ -184,6 +192,7 @@ describe('turn narrator', () => {
 			isOwed: true,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 		harness.store.dispatch({
 			type: 'send',
@@ -213,6 +222,7 @@ describe('turn narrator', () => {
 			isOwed: false,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 		expect(harness.spoken).toEqual([]);
 	});
@@ -403,6 +413,7 @@ describe("turn narrator and the session's own line", () => {
 			isOwed: true,
 			spoken: { text: 'Tests pass: all 40.', isAsking: false },
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 		await harness.handle({
 			type: 'narrate',
@@ -412,6 +423,7 @@ describe("turn narrator and the session's own line", () => {
 			isOwed: true,
 			spoken: { text: 'Done: pushed.', isAsking: false },
 			isSpokenAlready: true,
+			isHeld: false,
 		});
 
 		expect(harness.seen).toEqual([]);
@@ -437,6 +449,7 @@ describe("turn narrator and the session's own line", () => {
 			isOwed: false,
 			spoken: tagged('Push the branch now?', true),
 			isSpokenAlready: true,
+			isHeld: false,
 		});
 
 		expect(harness.store.state.sessions['checkout-api/main']?.needsUser).not.toBeNull();
@@ -460,6 +473,7 @@ describe("turn narrator and the session's own line", () => {
 			isOwed: true,
 			spoken: null,
 			isSpokenAlready: false,
+			isHeld: false,
 		});
 
 		expect(harness.seen).toHaveLength(1);
@@ -484,6 +498,7 @@ describe('the topic of a turn the session spoke for itself', () => {
 		isOwed: true,
 		spoken: { text: 'Notes are built and committed.', isAsking: false },
 		isSpokenAlready: true,
+		isHeld: false,
 	};
 	const topicOf = (harness: ReturnType<typeof createHarness>) =>
 		harness.store.state.sessions['checkout-api/main']?.topic;
@@ -507,7 +522,7 @@ describe('the topic of a turn the session spoke for itself', () => {
 		expect(topicOf(harness)).toBe('Voice notes per workspace');
 	});
 
-	it('the writer returns nothing or throws → the topic stays; a pinned topic is never asked about', async () => {
+	it('the writer returns nothing or throws → the topic stays; a pinned topic is kept, and a line that asks nothing needs no call', async () => {
 		const empty = createHarness(unused, () => null);
 		const throwing = createHarness(unused, () => {
 			throw new Error('overloaded');
@@ -527,6 +542,7 @@ describe('the topic of a turn the session spoke for itself', () => {
 		expect(topicOf(empty)).toBe('Notes');
 		expect(throwing.topicCalls).toHaveLength(1);
 		expect(topicOf(throwing)).toBe('Notes');
+		// A pinned topic needs no call for a line that asks nothing.
 		expect(pinned.topicCalls).toEqual([]);
 		expect(topicOf(pinned)).toBe('Timeouts');
 	});
@@ -538,5 +554,345 @@ describe('the topic of a turn the session spoke for itself', () => {
 
 		expect(harness.topicCalls).toEqual([]);
 		expect(topicOf(harness)).toBe('Checkout retries');
+	});
+});
+
+describe('a session off screen at the end of its turn', () => {
+	const REF_ = 'checkout-api/main';
+	const LONG_ =
+		'The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.';
+	const ASK_ =
+		'asks: should the backoff cap stay at thirty seconds, or follow the provider limit we found?';
+
+	interface OffScreenHarnessParams {
+		narration?: Partial<Narration>;
+		about?: string | null;
+		// Runs while the narrator waits, as the developer might.
+		duringWait?: (store: Store) => void;
+	}
+
+	const createOffScreenHarness = ({
+		narration = {},
+		about = null,
+		duringWait,
+	}: OffScreenHarnessParams = {}) => {
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{ ref: REF_, label: 'checkout', branch: '', cwd: '/w', dirs: [], isPinned: false },
+			],
+		});
+		const lines: NarratedLineSeen[] = [];
+		const handle = createTurnNarrator({
+			store,
+			narrate: async () => {
+				duringWait?.(store);
+
+				return {
+					speak: true,
+					needs_user: false,
+					priority: 'normal',
+					text: LONG_,
+					topic: null,
+					...narration,
+				};
+			},
+			writeTopic: async (input) => {
+				duringWait?.(store);
+
+				return { topic: input.topic, about };
+			},
+			say: (line) => lines.push(line),
+			journalDir: mkdtempSync(join(tmpdir(), 'voiceos-off-')),
+			readGitHead: async () => null,
+		});
+
+		return { store, lines, handle };
+	};
+
+	type NarratedLineSeen = {
+		text: string;
+		ref: string;
+		isAsking: boolean;
+		isNamed: boolean;
+		chime?: 'needs';
+		priority: string;
+	};
+
+	const tagless = {
+		type: 'narrate' as const,
+		ref: REF_,
+		text: 'Long report.',
+		asked: 'add backoff',
+		isOwed: false,
+		spoken: null,
+		isSpokenAlready: false,
+		isHeld: false,
+	};
+	const heldOf = (store: Store) => store.state.sessions[REF_]?.heldLine;
+
+	it('a short line is said where the developer is, named', async () => {
+		const harness = createOffScreenHarness({ narration: { text: 'All 96 tests pass.' } });
+		await harness.handle(tagless);
+
+		expect(harness.lines.map((line) => [line.text, line.isNamed])).toEqual([
+			['All 96 tests pass.', true],
+		]);
+		expect(heldOf(harness.store)).toBeNull();
+	});
+
+	it('a long report → held, and only "checkout is done." said, not asked, today\'s chime', async () => {
+		const harness = createOffScreenHarness();
+		await harness.handle(tagless);
+
+		expect(harness.lines).toEqual([
+			{ text: 'checkout is done.', priority: 'normal', ref: REF_, isNamed: false, isAsking: false },
+		]);
+		expect(heldOf(harness.store)).toMatchObject({
+			kind: 'line',
+			text: LONG_,
+			isAsking: false,
+			missed: 0,
+		});
+	});
+
+	it('a long question → "checkout needs you: <about>", high, the needs chime; the topic when no about', async () => {
+		const withAbout = createOffScreenHarness({
+			narration: { needs_user: true, text: ASK_, about: 'the backoff cap' },
+		});
+		const withTopic = createOffScreenHarness({ narration: { needs_user: true, text: ASK_ } });
+		withTopic.store.dispatch({ type: 'pin_topic', ref: REF_, topic: 'Retry backoff' });
+		await withAbout.handle(tagless);
+		await withTopic.handle(tagless);
+
+		expect(withAbout.lines).toEqual([
+			{
+				text: 'checkout needs you: the backoff cap.',
+				priority: 'high',
+				ref: REF_,
+				isNamed: false,
+				isAsking: false,
+				chime: 'needs',
+			},
+		]);
+		expect(withTopic.lines[0]?.text).toBe('checkout needs you: Retry backoff.');
+		expect(heldOf(withAbout.store)).toMatchObject({ isAsking: true });
+	});
+
+	it('a tagged line held as it streamed → announced once, not held twice; about from the topic writer', async () => {
+		const harness = createOffScreenHarness({ about: 'the backoff cap' });
+		harness.store.dispatch({ type: 'line_held', ref: REF_, text: ASK_, isAsking: true });
+		await harness.handle({ ...tagless, spoken: { text: ASK_, isAsking: true }, isHeld: true });
+
+		expect(harness.lines.map((line) => line.text)).toEqual([
+			'checkout needs you: the backoff cap.',
+		]);
+		expect(heldOf(harness.store)).toMatchObject({ text: ASK_, missed: 0 });
+	});
+
+	it('the developer switched there while it thought → the replay was the line: nothing more', async () => {
+		const harness = createOffScreenHarness({
+			duringWait: (store) =>
+				store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF_ } }),
+		});
+		harness.store.dispatch({
+			type: 'line_held',
+			ref: REF_,
+			text: 'Plan approved; building now.',
+			isAsking: false,
+		});
+		await harness.handle(tagless);
+
+		expect(harness.lines).toEqual([]);
+	});
+
+	it('switched there (nothing held) while it thought → said in full, on screen', async () => {
+		const harness = createOffScreenHarness({
+			duringWait: (store) =>
+				store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF_ } }),
+		});
+		await harness.handle(tagless);
+
+		expect(harness.lines.map((line) => line.text)).toEqual([LONG_]);
+		expect(heldOf(harness.store)).toBeNull();
+	});
+
+	it('a stale narration is neither said, held nor announced', async () => {
+		const harness = createOffScreenHarness({
+			duringWait: (store) => {
+				store.dispatch({ type: 'session_started', ref: REF_ });
+				store.dispatch({ type: 'send', ref: REF_, text: 'now the docs' });
+			},
+		});
+		await harness.handle(tagless);
+
+		expect(harness.lines).toEqual([]);
+		expect(heldOf(harness.store)).toBeNull();
+	});
+
+	it('a side question asked from elsewhere is answered where the developer is, in full', async () => {
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{ ref: REF_, label: 'checkout', branch: '', cwd: '/w', dirs: [], isPinned: false },
+			],
+		});
+		const lines: string[] = [];
+		const narrateAside = createAsideNarrator({
+			store,
+			narrate: async () => ({
+				speak: true,
+				needs_user: false,
+				priority: 'high',
+				text: '',
+				topic: null,
+			}),
+			say: (line) => lines.push(line.text),
+		});
+		await narrateAside({
+			type: 'narrate_aside',
+			ref: REF_,
+			question: 'which cap?',
+			answer: `<spoken>${LONG_}</spoken>`,
+		});
+
+		expect(lines).toEqual([LONG_]);
+		expect(store.state.sessions[REF_]?.heldLine).toBeNull();
+	});
+});
+
+describe('off screen, from the stream to what is said', () => {
+	const REF_ = 'checkout-api/main';
+	const LONG_ =
+		'The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.';
+
+	interface TurnParams {
+		lines: string[];
+		// Views the session before the final line when set.
+		isShownFirst?: boolean;
+		finalText: string;
+		writeTopic?: (input: TopicInput) => Promise<{ topic: string | null; about: string | null }>;
+	}
+
+	const runTurn = async ({ lines, isShownFirst = false, finalText, writeTopic }: TurnParams) => {
+		const store = new Store();
+		const effects: NarrateEffectSeen[] = [];
+		store.onEffect((effect) => {
+			if (effect.type === 'narrate') {
+				effects.push(effect);
+			}
+		});
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{ ref: REF_, label: 'checkout', branch: '', cwd: '/w', dirs: [], isPinned: false },
+			],
+		});
+		store.dispatch({ type: 'session_started', ref: REF_ });
+		store.dispatch({ type: 'send', ref: REF_, text: 'add backoff' });
+
+		if (isShownFirst) {
+			store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF_ } });
+		}
+
+		for (const text of lines) {
+			store.dispatch({ type: 'assistant_text', ref: REF_, text: `<spoken>${text}</spoken>` });
+		}
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		store.dispatch({ type: 'turn_ended', ref: REF_, costUsd: 0, text: finalText });
+
+		const said: string[] = [];
+		const handle = createTurnNarrator({
+			store,
+			narrate: async () => ({
+				speak: false,
+				needs_user: false,
+				priority: 'low',
+				text: '',
+				topic: null,
+			}),
+			writeTopic: writeTopic ?? (async (input) => ({ topic: input.topic, about: null })),
+			say: (line) => said.push(line.text),
+			journalDir: mkdtempSync(join(tmpdir(), 'voiceos-flow-')),
+			readGitHead: async () => null,
+		});
+
+		for (const effect of effects) {
+			await handle(effect);
+		}
+
+		return { store, said, held: store.state.sessions[REF_]?.heldLine };
+	};
+
+	type NarrateEffectSeen = Parameters<ReturnType<typeof createTurnNarrator>>[0];
+
+	it('a short final line → said once, named, and nothing left held', async () => {
+		const { said, held } = await runTurn({
+			lines: ['All 96 tests pass.'],
+			finalText: '<spoken>All 96 tests pass.</spoken>',
+		});
+
+		expect(said).toEqual(['All 96 tests pass.']);
+		expect(held).toBeNull();
+	});
+
+	it('a checkpoint, then a long final → one "is done", the final held with one missed update', async () => {
+		const { said, held } = await runTurn({
+			lines: ['Plan approved; building now.', LONG_],
+			finalText: `<spoken>${LONG_}</spoken>`,
+		});
+
+		expect(said).toEqual(['checkout is done.']);
+		expect(held).toMatchObject({ kind: 'line', text: LONG_, missed: 1 });
+	});
+
+	it('the final line heard on screen, then the developer left → nothing more is said', async () => {
+		const { said, held } = await runTurn({
+			lines: [LONG_],
+			isShownFirst: true,
+			finalText: `<spoken>${LONG_}</spoken>`,
+		});
+
+		expect(said).toEqual([]);
+		expect(held).toBeNull();
+	});
+
+	it('a checkpoint held, then the turn ends saying nothing → the replay does not say "still working"', async () => {
+		const { store } = await runTurn({
+			lines: ['Plan approved; building the notes panel and its tests now.'],
+			finalText: '',
+		});
+		const replayed: string[] = [];
+		store.onEffect((effect) => {
+			if (effect.type === 'speak') {
+				replayed.push(effect.text);
+			}
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF_ } });
+
+		expect(replayed).toEqual(['Plan approved; building the notes panel and its tests now.']);
+	});
+
+	it('a long question: the writer names it; the writer throws → plain "needs you"', async () => {
+		const ASK =
+			'Should the backoff cap stay at thirty seconds, or follow the provider limit we found yesterday?';
+		const named = await runTurn({
+			lines: [],
+			finalText: `<spoken asks>${ASK}</spoken>`,
+			writeTopic: async () => ({ topic: 'Something else', about: 'the backoff cap' }),
+		});
+		const failed = await runTurn({
+			lines: [],
+			finalText: `<spoken asks>${ASK}</spoken>`,
+			writeTopic: async () => {
+				throw new Error('overloaded');
+			},
+		});
+
+		expect(named.said).toEqual(['checkout needs you: the backoff cap.']);
+		expect(failed.said).toEqual(['checkout needs you.']);
 	});
 });

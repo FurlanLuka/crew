@@ -8,6 +8,7 @@ import type { Narration } from './prompt.js';
 import { cleanSpokenText } from '../shared/spoken.js';
 import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import type { Session } from '../shared/protocol.js';
+import { describeAnnouncement, isOnScreen, isShortLine } from '../state/held-lines.js';
 import { createLogger } from '../log.js';
 
 const log = createLogger('narrator');
@@ -19,6 +20,8 @@ interface NarratedLine {
 	isNamed: boolean;
 	isAsking: boolean;
 	isOwed?: boolean;
+	chime?: 'needs';
+	isHoldable?: boolean;
 }
 
 const OWED_FALLBACK_WORDS = 30;
@@ -113,23 +116,111 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 	};
 };
 
+interface SpeakOutcomeParams {
+	options: TurnNarratorOptions;
+	effect: NarrateEffect;
+	narration: Narration;
+	// What a question is about, for its announcement: waited for only if it is announced.
+	readAbout: () => Promise<string | null>;
+	// Rechecked after that wait: a newer turn ends it.
+	isNewerTurn: () => boolean;
+}
+
+const speakOutcome = async ({
+	options,
+	effect,
+	narration,
+	readAbout,
+	isNewerTurn,
+}: SpeakOutcomeParams): Promise<void> => {
+	// Said where the developer is looking; from elsewhere only when short, else announced and held
+	// for when they switch there. Decided now, after the narrator's wait: the view may have changed.
+	const { store } = options;
+	const session = store.state.sessions[effect.ref];
+
+	if (!session || !narration.speak || effect.isSpokenAlready) {
+		return;
+	}
+
+	const text = narration.text;
+	const held = session.heldLine;
+	const isShown = isOnScreen(store.state, effect.ref);
+
+	if (isShown || isShortLine(text)) {
+		if (held) {
+			store.dispatch({ type: 'held_line_heard', ref: effect.ref, id: held.id });
+		}
+
+		options.say({
+			text,
+			isHoldable: isShown,
+			priority: effect.isOwed ? 'high' : narration.priority,
+			ref: effect.ref,
+			isNamed: true,
+			isAsking: narration.needs_user,
+			...(effect.isOwed ? { isOwed: true } : {}),
+		});
+
+		return;
+	}
+
+	// A tagged line was held as it streamed; a narrator's line is held here.
+	if (!effect.isHeld) {
+		store.dispatch({
+			type: 'line_held',
+			ref: effect.ref,
+			text,
+			isAsking: narration.needs_user,
+		});
+	}
+
+	const kind = narration.needs_user ? 'needs' : 'done';
+	const about = kind === 'needs' ? await readAbout() : null;
+
+	// Switching there meanwhile replayed the line (and cleared it): nothing left to announce.
+	if (isNewerTurn() || !store.state.sessions[effect.ref]?.heldLine) {
+		return;
+	}
+
+	log.info('announced', { ref: effect.ref, kind });
+	// Never asked aloud or owed: the developer has not heard the question, and a switch's replay
+	// replaces this if it is still waiting to be said.
+	options.say({
+		text: describeAnnouncement({
+			label: session.label,
+			kind,
+			about: about ?? (kind === 'needs' ? session.topic : null),
+		}),
+		priority: kind === 'needs' ? 'high' : 'normal',
+		ref: effect.ref,
+		isNamed: false,
+		isAsking: false,
+		...(kind === 'needs' ? { chime: 'needs' as const } : {}),
+	});
+};
+
 export const createTurnNarrator = (options: TurnNarratorOptions) => {
 	const now = options.now ?? (() => new Date());
 
-	interface RefreshTopicParams {
+	interface WriteTurnTopicParams {
 		effect: NarrateEffect;
 		spoken: SpokenTag;
 		body: string;
 	}
 
-	const refreshTopic = async ({ effect, spoken, body }: RefreshTopicParams): Promise<void> => {
+	const writeTurnTopic = async ({
+		effect,
+		spoken,
+		body,
+	}: WriteTurnTopicParams): Promise<string | null> => {
+		// One call names the work and, for a question, what it is about; a pinned topic stays.
 		const session = options.store.state.sessions[effect.ref];
 
-		if (!session || session.isTopicPinned) {
-			return;
+		if (!session) {
+			return null;
 		}
 
-		const topic = await options.writeTopic({
+		const { topic, about } = await options.writeTopic({
 			ref: effect.ref,
 			label: session.label,
 			asked: effect.asked,
@@ -137,10 +228,13 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			body,
 			topic: session.topic,
 		});
+		const current = options.store.state.sessions[effect.ref];
 
-		if (topic && topic !== options.store.state.sessions[effect.ref]?.topic) {
+		if (topic && current && !current.isTopicPinned && topic !== current.topic) {
 			options.store.dispatch({ type: 'topic_written', ref: effect.ref, topic });
 		}
+
+		return about;
 	};
 
 	return async (effect: NarrateEffect): Promise<void> => {
@@ -154,6 +248,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		const view = store.state.view;
 		const body = stripSpokenTag(effect.text);
 		const narratedSendId = session.currentSendId;
+		const heldIdBefore = session.heldLine?.id ?? null;
 		const narration = effect.spoken
 			? narrateFromTag(effect.spoken, session)
 			: settleOwedReport({
@@ -168,10 +263,24 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 					isOwed: effect.isOwed,
 					sessionText: body,
 				});
+		// Off the speech path: only an announced question waits for what it is about. A pinned topic
+		// needs the call only for that. A writer that throws keeps the topic it had.
+		const needsAbout = effect.spoken?.isAsking === true;
+		const topicCall =
+			effect.spoken && (needsAbout || !session.isTopicPinned)
+				? writeTurnTopic({ effect, spoken: effect.spoken, body }).catch((error: unknown) => {
+						log.warn('topic not refreshed', { ref: effect.ref, error: String(error) });
 
-		// A newer turn started while the narrator thought: this report answers older words,
-		// so it is neither said nor left as a question the session waits on.
-		const isStale = store.state.sessions[effect.ref]?.currentSendId !== narratedSendId;
+						return null;
+					})
+				: Promise.resolve(null);
+		// A newer turn started while the narrator thought: this report answers older words, so it is
+		// neither said nor left as a question the session waits on.
+		const isNewerTurn = () => store.state.sessions[effect.ref]?.currentSendId !== narratedSendId;
+		const isStale = isNewerTurn();
+		// The developer switched there meanwhile and heard the held line in the replay.
+		const wasReplayed =
+			heldIdBefore !== null && store.state.sessions[effect.ref]?.heldLine?.id !== heldIdBefore;
 
 		if (isStale) {
 			log.info('stale narration not said', { ref: effect.ref });
@@ -185,23 +294,14 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			});
 		}
 
-		// A line the session wrote was said as soon as it streamed in.
-		if (narration.speak && !effect.isSpokenAlready && !isStale) {
-			options.say({
-				text: narration.text,
-				priority: effect.isOwed ? 'high' : narration.priority,
-				ref: effect.ref,
-				isNamed: true,
-				isAsking: narration.needs_user,
-				...(effect.isOwed ? { isOwed: true } : {}),
+		if (!isStale && !wasReplayed) {
+			await speakOutcome({
+				options,
+				effect,
+				narration,
+				readAbout: () => (effect.spoken ? topicCall : Promise.resolve(narration.about ?? null)),
+				isNewerTurn,
 			});
-		}
-
-		if (effect.spoken) {
-			// Off the speech path; a writer that throws keeps the topic it had.
-			refreshTopic({ effect, spoken: effect.spoken, body }).catch((error: unknown) =>
-				log.warn('topic not refreshed', { ref: effect.ref, error: String(error) }),
-			);
 		}
 
 		appendJournalEntry(options.journalDir, {

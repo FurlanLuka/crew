@@ -21,6 +21,7 @@ import {
 import { fail } from '../tools/results.js';
 import { describeSession } from '../tools/session-view.js';
 import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from '../tools/asked-aloud.js';
+import { isHeldQuestion } from '../state/held-lines.js';
 import { findSessionsNamedIn } from '../tools/session-naming.js';
 
 const log = createLogger('kernel');
@@ -44,6 +45,7 @@ Answering what a session waits on (see "pending", "asked" and "Voice OS last ask
 - "pending" is an open permission, plan or question: answer it with the answer tool, never by forward. Only a clear yes, no, always or choice answers it — "hmm" is thinking. A question about what it waits on ("why does step 3 touch the kernel?", "what does that command do?") is forward with kind question: it is answered aside and the plan or permission keeps waiting. Anything else the developer says for that session — a new instruction, a change of subject ("also run the linter") — is them moving on: forward it as said. It reaches the session and declines the permission or plan with their words. Never tell them it is waiting, never ask them to answer it first. For a permission or plan, "yes", "okay", "sure", "go ahead", "do it" are yes; "always" is always; "no …" is no with the rest as text ("No, use a new branch" is no with "use a new branch"). "Yes, but only on staging" is answer yes with text "Only on staging." — the text reaches the session with the answer. For a question, choose the listed option the developer meant — "the second one" is the second label, "reuse it" is "Reuse orders" — or their own words when none fits; keep detail they add to an option ("New table, partitioned").
 - "asked" is a question a session ended its turn on: the developer's reply is its answer. forward it (or send_to when that session is not on screen) as they said it; never ask them the question again, never read_state first. Whatever they say next for that session — a full answer, part of one, a correction or something else entirely — goes to it as said: never ask them to choose, confirm what they meant, or answer it first. A question from the developer is never an answer — "so pushing won't expose the keys?" is a new question: forward it, and never call answer or say the session is waiting on them.
 - A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer). That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does. One bare reply answers one thing, never several.
+- An item marked "announced only — not heard": the developer heard only "<session> needs you", never the question. A bare reply ("yes", "no", "do it") is not its answer: reply only "Switch to <session>?" and change nothing. When the developer says yes to your "Switch to <session>?" (see "Earlier on this screen"), switch_view to it — its question plays there. Words that name the session ("tell crew main: use the docs folder") answer it as usual. Asked what waits, say what it is about in a few words and offer the switch ("checkout needs you, about the backoff cap — switch to it?"); never switch to show it.
 - When nothing waits, a reply on a session's screen ("yes, but use the table", "no, the other file") is for that session: forward it.
 - A yes meant for a fix offer is always dev_offer, however old: it says when the offer lapsed, and then you tell the developer. Never crew_dev, send_to or forward in its place.
 - "Options", "what are the options": a pending question lists its options — read them out, briefly and numbered. Otherwise read_state the session that asked and list the options it actually offered in its recent output — that list may be longer than one sentence. If it offered none, reply exactly "Nothing is waiting on a choice." and nothing more — what the developer asked a session for is not a question it asked back; never take options from your own earlier words or the developer's. Never forward it.
@@ -60,7 +62,7 @@ Voice OS itself:
 - "note: …", "add a note …", "note that …" (without "debug") → note with their words after it, as said; it is their own idea or reminder, never for the session. Reply "Noted." "What are my notes?" → read_notes, then read them back briefly: only to hear them. A "note that …" that goes on to ask for work ("note that the API changed, update the client") is for the session: forward it. Asking a session to go through, pick from or work on "my notes" is work for it: forward that (Voice OS tells it where they are).
 - "debug note: …", "add a debug note …" → debug_note with their words after it, as said. It is for Voice OS's own debugging: never forward it to a session. Reply "Noted." Asking the session to read or analyze the debug notes is work for it: forward that.
 - Words that add to a note just taken — "add this too", "add that to the note", "like the debug note", or more explaining of it — when "Earlier on this screen" shows debug_note or note: call that same tool again with only the new words, as said — after a debug_note, "add this to notes" is still debug_note, not note. Never forward them to the session.
-- What another session is doing — "what's the setup status?", "what's checkout doing?", "check on it", "is it done?": find the session by what it was asked (last_messages_to_it; the setup session is setup) or its topic, and answer from its status, working_for and those messages. For more detail call read_state on it — it shows its latest steps. Never send a busy session a question to find out: it would wait behind its work or disturb it. A question about the work itself ("which file did you change?") is for the session: forward it with kind question, and a working session answers it aside.
+- What another session is doing — "what's the setup status?", "what's checkout doing?", "check on it", "is it done?": find the session by what it was asked (last_messages_to_it; the setup session is setup) or its topic, and answer from its status, working_for and those messages. For more detail call read_state on it — it shows its latest steps and, as latest_update, what it said while the developer looked elsewhere: say that briefly. Answering never switches the view. Never send a busy session a question to find out: it would wait behind its work or disturb it. A question about the work itself ("which file did you change?") is for the session: forward it with kind question, and a working session answers it aside.
 
 Rules:
 - Never remind the developer that a session waits on them unless they asked what is waiting.
@@ -126,17 +128,44 @@ const describeAskedAloud = (line: SpokenLine | null, now: number): string => {
 		: '(nothing)';
 };
 
-const formatWaitingLine = (
-	waiting: WaitingItem[],
-	now: number,
-	askedAloudRef: string | null,
-): string => {
+interface FormatWaitingLineParams {
+	state: State;
+	waiting: WaitingItem[];
+	now: number;
+	askedAloudRef: string | null;
+}
+
+const describeWaitingItem = ({
+	state,
+	item,
+	now,
+	askedAloudRef,
+}: Omit<FormatWaitingLineParams, 'waiting'> & { item: WaitingItem }): string => {
+	const notes = [
+		item.what,
+		`${formatAge(now - item.at)} ago`,
+		...(item.ref === askedAloudRef ? ['just asked aloud'] : []),
+		// Heard only as "<session> needs you": its question itself was never said.
+		...(item.what !== 'fix_offer' && isHeldQuestion(state.sessions[item.ref])
+			? ['announced only — not heard']
+			: []),
+	];
+
+	return `${item.ref} (${notes.join(', ')})`;
+};
+
+const formatWaitingLine = ({
+	state,
+	waiting,
+	now,
+	askedAloudRef,
+}: FormatWaitingLineParams): string => {
 	if (waiting.length === 0) {
 		return 'nothing';
 	}
 
 	// Counted, so a lone "yes" is never met with "which one?" when only one thing waits.
-	return `${waiting.length}, newest first: ${waiting.map((item) => `${item.ref} (${item.what}, ${formatAge(now - item.at)} ago${item.ref === askedAloudRef ? ', just asked aloud' : ''})`).join('; ')}`;
+	return `${waiting.length}, newest first: ${waiting.map((item) => describeWaitingItem({ state, item, now, askedAloudRef })).join('; ')}`;
 };
 
 interface BuildKernelMessageParams {
@@ -175,7 +204,7 @@ export const buildKernelMessage = ({
 	return [
 		`Screen: ${screenDescription}.`,
 		`Sessions: ${JSON.stringify(sessions)}`,
-		`Waiting on the developer: ${formatWaitingLine(waiting, now, lastAskedLine?.ref ?? null)}`,
+		`Waiting on the developer: ${formatWaitingLine({ state, waiting, now, askedAloudRef: lastAskedLine?.ref ?? null })}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,
 		// Only when there is something: an empty line of it made the model reach for more tools.
 		...(heardBefore.length > 0

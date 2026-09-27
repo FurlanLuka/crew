@@ -1930,6 +1930,98 @@
 			"no_reply": true
 		},
 		{
+			"id": "announced-only-yes",
+			"utterance": "Yes.",
+			"context": {
+				"announced": {
+					"ref": "checkout-api/main",
+					"question": "asks: should the backoff cap stay at thirty seconds, or follow the provider limit we found?",
+					"about": "the backoff cap",
+					"secondsAgo": 20
+				}
+			},
+			"calls": [],
+			"reply_includes": ["switch"],
+			"forbid_mutation": true
+		},
+		{
+			"id": "announced-only-switch-confirmed",
+			"utterance": "Yes.",
+			"context": {
+				"announced": {
+					"ref": "checkout-api/main",
+					"question": "asks: should the backoff cap stay at thirty seconds, or follow the provider limit we found?",
+					"about": "the backoff cap",
+					"secondsAgo": 20
+				},
+				"voiceLog": [
+					{
+						"utterance": "Yes.",
+						"reply": "Switch to checkout-api/main?",
+						"did": [],
+						"minutesAgo": 0.1
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "announced-only-named-answer",
+			"utterance": "Tell checkout to keep the thirty second cap.",
+			"context": {
+				"announced": {
+					"ref": "checkout-api/main",
+					"question": "asks: should the backoff cap stay at thirty seconds, or follow the provider limit we found?",
+					"about": "the backoff cap",
+					"secondsAgo": 20
+				}
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["thirty|30"]
+				}
+			],
+			"allow": [{ "name": "answer" }]
+		},
+		{
+			"id": "whats-waiting-announced",
+			"utterance": "What's waiting on me?",
+			"context": {
+				"announced": {
+					"ref": "checkout-api/main",
+					"question": "asks: should the backoff cap stay at thirty seconds, or follow the provider limit we found?",
+					"about": "the backoff cap",
+					"secondsAgo": 20
+				}
+			},
+			"calls": [],
+			"answer": true,
+			"reply_includes": ["checkout", "backoff"]
+		},
+		{
+			"id": "status-from-elsewhere",
+			"utterance": "How's checkout doing?",
+			"context": {
+				"view": "store-front/main",
+				"work": [{ "ref": "checkout-api/main", "request": "Add retry backoff", "minutesAgo": 4 }],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff with jitter is in; now running the flaky payment tests."
+				}
+			},
+			"calls": [],
+			"allow": [{ "name": "read_state" }],
+			"answer": true,
+			"reply_includes": ["jitter|flaky|payment"]
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

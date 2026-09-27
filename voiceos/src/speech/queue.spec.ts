@@ -143,3 +143,15 @@ describe('dropQueued', () => {
 		expect(filled.items).toHaveLength(5);
 	});
 });
+
+describe('an announcement and the line it stands for', () => {
+	it('the replay on switching replaces an announcement still waiting to be said', () => {
+		const announced = fillQueue({ ...createItem('announce', 'normal', 'store/main', 1) });
+		const replay = enqueue(announced, {
+			...createItem('replay', 'high', 'store/main', 2),
+			isOwed: true,
+		});
+
+		expect(replay.queue.items.map((item) => item.id)).toEqual(['replay']);
+	});
+});

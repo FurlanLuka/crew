@@ -6,6 +6,7 @@ import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
 import { findLastAskedAloud } from './asked-aloud.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
+import { refuseAnnouncedOnly } from './announced.js';
 
 export const ANSWER_DECISIONS = ['yes', 'always', 'no', 'choose'] as const;
 export type AnswerDecision = (typeof ANSWER_DECISIONS)[number];
@@ -182,6 +183,12 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 	if (!checked.ok) {
 		return fail(checked.error);
+	}
+
+	const refused = refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'answered' });
+
+	if (refused) {
+		return refused;
 	}
 
 	const heardAsk = toolContext.asks.find((ask) => ask.ref === checked.ref);

@@ -11,6 +11,7 @@ import type { ToolContext } from './tools.js';
 import type { NotesStore } from '../memory/notes.js';
 import { decideDelivery, joinNotes } from '../state/delivery.js';
 import { nameNotes, readWorkspace } from '../shared/notes.js';
+import { refuseAnnouncedOnly } from './announced.js';
 
 const log = createLogger('tools');
 
@@ -249,6 +250,15 @@ export const sendText = ({
 	toolContext,
 }: SendTextParams): ToolResult => {
 	const session = state.sessions[ref];
+
+	// A bare yes or no for a question only announced there answers nothing the developer heard.
+	const refused = isBareAnswer(toolContext.utterance ?? text)
+		? refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
+		: null;
+
+	if (refused) {
+		return refused;
+	}
 
 	if (session && isDuplicateSend({ session, text })) {
 		log.info('duplicate send skipped', { ref, chars: text.length });

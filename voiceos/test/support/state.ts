@@ -53,6 +53,11 @@ export interface FixtureContext {
 	voiceLog?: FixtureLogEntry[];
 	// The last thing Voice OS asked aloud.
 	alert?: { text: string; secondsAgo: number; ref?: string };
+	// A session that asked while the developer looked elsewhere: only "<ref> needs you: <about>" was
+	// said; its question is held for when they switch there.
+	announced?: { ref: string; question: string; about: string; secondsAgo: number };
+	// What a session said while the developer looked elsewhere, held and not yet heard.
+	update?: { ref: string; text: string };
 	// Lines sessions said shortly before the developer spoke, oldest first.
 	heard?: {
 		text: string;
@@ -179,7 +184,8 @@ interface CreateFixtureSessionParams {
 
 const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionParams): Session => {
 	const work = context.work?.find((candidate) => candidate.ref === ref);
-	const isWaitingOnUser = context.needs === ref;
+	const announced = context.announced?.ref === ref ? context.announced : undefined;
+	const isWaitingOnUser = context.needs === ref || announced !== undefined;
 	const said = isWaitingOnUser ? context.said : work?.said;
 	// A pending ask holds its session's turn open (the reducer's ask_opened).
 	const isBlocked = asks.some((ask) => ask.ref === ref && isSdkAsk(ask));
@@ -200,14 +206,36 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 		}),
 		status,
 		topic: FIXTURE_TOPICS[ref] ?? null,
+		heldLine:
+			context.update?.ref === ref
+				? {
+						id: 'update',
+						at: now - 10_000,
+						missed: 0,
+						kind: 'line',
+						text: context.update.text,
+						isAsking: false,
+					}
+				: announced
+					? {
+							id: 'held',
+							at: now - announced.secondsAgo * 1000,
+							missed: 0,
+							kind: 'line',
+							text: announced.question,
+							isAsking: true,
+						}
+					: null,
 		needsUser: isWaitingOnUser
 			? {
-					text: context.asked
-						? context.asked
-						: context.said
-							? 'asks: which approach should I take? Say options to hear them.'
-							: 'checkout api, main asks: deploy the fix to staging?',
-					at: now - (context.needsSecondsAgo ?? 60) * 1000,
+					text: announced
+						? announced.question
+						: context.asked
+							? context.asked
+							: context.said
+								? 'asks: which approach should I take? Say options to hear them.'
+								: 'checkout api, main asks: deploy the fix to staging?',
+					at: now - (announced?.secondsAgo ?? context.needsSecondsAgo ?? 60) * 1000,
 				}
 			: null,
 		requests: work ? [{ text: work.request, at: now - work.minutesAgo * 60_000 }] : [],
@@ -278,6 +306,17 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 					: { endedAt: now - heard.endedSecondsAgo * 1000 }),
 				...(heard.cut ? { isCut: true as const } : {}),
 			})),
+			...(context.announced
+				? [
+						{
+							id: 'announced',
+							text: `${context.announced.ref} needs you: ${context.announced.about}.`,
+							source: 'narrator' as const,
+							at: now - context.announced.secondsAgo * 1000,
+							ref: context.announced.ref,
+						},
+					]
+				: []),
 			...(context.alert
 				? [
 						{

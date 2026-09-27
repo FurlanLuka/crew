@@ -12,12 +12,14 @@ export const narrationSchema = z.object({
 	topic: z.string().nullable(),
 });
 
-export type Narration = z.infer<typeof narrationSchema>;
+// about: what a question to the developer is about, in a few words (announced from another screen).
+export type Narration = z.infer<typeof narrationSchema> & { about?: string | null };
 
 // What the model returns: a direct answer and a choice come apart from text, so code can keep them short.
 export const narratorOutputSchema = narrationSchema.extend({
 	answer: z.string().nullable(),
 	choosing: z.string().nullable(),
+	about: z.string().nullable(),
 });
 
 export type NarratorOutput = z.infer<typeof narratorOutputSchema>;
@@ -32,6 +34,7 @@ Fields:
 - promised: when the message says "voice os promised a report", the developer is waiting to hear how the work went, so speak is true — even for a small or empty result. Say the outcome in the session's terms — never "done" unless the session says it succeeded. When the session waits on the developer, the question is the report: keep the "asks:" form.
 - topic: a short name for what this session is working on (at most 8 words, like "Checkout retry backoff"), or null if the text does not make it clear.
 - answer: only when the developer asked a direct question — the answer alone, in as few words as it takes ("Version 2.4.1.", "412 tests.", "Port 51049."): no breakdown, no reason, no second clause. It is spoken instead of text. Otherwise null.
+- about: only when needs_user is true — at most 5 words naming what the decision is about, heard from another screen before the question itself ("where notes should live", "pushing to main"). Otherwise null.
 - choosing: only when the session asks the developer to choose between options — what is being chosen, as a short question without any option in it ("how should uploads be stored", not "a bucket per tenant or one bucket?"). It is heard without the reply, so it names what it is about in the developer's terms: "when should Voice OS confirm it passed your words to a session", not "when should the confirmation play". Voice OS speaks "asks: <choosing>? Say options to hear them." instead of text. Otherwise null.
 
 The developer listens while looking elsewhere, even when a session is on screen ("focused: yes"): every line must work heard alone.

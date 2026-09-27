@@ -22,6 +22,7 @@ describe('composeNarration', () => {
 		priority: 'normal',
 		text: 'The api dev server is on port 51049; crew allocated it instead of 3000.',
 		topic: null,
+		about: null,
 		answer: null,
 		choosing: null,
 		...patch,
@@ -49,7 +50,8 @@ describe('composeNarration', () => {
 
 		expect(narration.text).toBe('Fixed the loop.');
 		expect(Object.keys(narration).sort()).toEqual(
-			['needs_user', 'priority', 'speak', 'text', 'topic'].sort(),
+			// about goes on to the turn narrator, for announcing a question from another screen.
+			['about', 'needs_user', 'priority', 'speak', 'text', 'topic'].sort(),
 		);
 	});
 

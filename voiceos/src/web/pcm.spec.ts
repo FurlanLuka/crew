@@ -73,3 +73,13 @@ describe('createChimeSamples', () => {
 		expect(samples.slice(-24 * 50).every((sample) => sample === 0)).toBe(true);
 	});
 });
+
+describe('the needs-you chime', () => {
+	it('is its own sound, as long as the plain one', () => {
+		const plain = createChimeSamples(24_000);
+		const needs = createChimeSamples(24_000, 'needs');
+
+		expect(needs.length).toBe(plain.length);
+		expect(needs.some((sample, index) => Math.abs(sample - (plain[index] ?? 0)) > 1e-3)).toBe(true);
+	});
+});

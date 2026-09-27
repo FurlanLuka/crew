@@ -750,6 +750,29 @@ describe('Kernel', () => {
 			expect(probe.prompts[0]).toContain('store-front/main (pending, 10s ago, just asked aloud)');
 		});
 
+		it('a question only announced is marked so in what waits', () => {
+			const message = buildKernelMessage({
+				state: createFixtureState(
+					{
+						view: 'store-front/main',
+						announced: {
+							ref: 'checkout-api/main',
+							question: 'asks: cap the backoff at thirty seconds or follow the provider limit?',
+							about: 'the backoff cap',
+							secondsAgo: 5,
+						},
+					},
+					10_000,
+				),
+				utterance: 'yes',
+				memory: [],
+				now: 10_000,
+			});
+
+			expect(message).toContain('checkout-api/main (asked, 5s ago, announced only — not heard)');
+			expect(message).toContain('Voice OS last asked aloud: (nothing)');
+		});
+
 		it('what the developer heard before speaking: lines from other sessions, not ones started after', () => {
 			const state = createFixtureState(
 				{
