@@ -209,14 +209,16 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 		// Asked while the developer was already speaking, and not said aloud before they began: they never
 		// heard it, so these words are not its answer (they were said to someone else). needsUser is
-		// written when the turn ends; a question spoken earlier in the turn was heard.
+		// written when the turn ends; a question spoken earlier in that turn was heard — one from an
+		// earlier turn says nothing about this one.
+		const turnStartedAt = state.sessions[checked.ref]?.requests.at(-1)?.at ?? 0;
 		const isUnheard =
 			asked !== null &&
 			asked !== undefined &&
 			toolContext.heardFrom !== undefined &&
 			asked.at >= toolContext.heardFrom &&
 			!findLastAskedAloud({
-				spoken: state.spoken,
+				spoken: state.spoken.filter((line) => line.at >= turnStartedAt),
 				waitingRefs: [checked.ref],
 				now: toolContext.now(),
 				heardFrom: toolContext.heardFrom,

@@ -989,6 +989,35 @@ describe('an answer to a question asked while the developer spoke', () => {
 		expect(spokenEarly.actions).toEqual([
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		]);
+
+		// A question from its previous turn, answered already, says nothing about this one.
+		const earlierTurn = ask(5000);
+		const earlierState = earlierTurn.tools.getState();
+		earlierState.spoken = [
+			{
+				id: 'l0',
+				text: 'asks: first question?',
+				source: 'narrator',
+				at: 1000,
+				ref: 'checkout-api/main',
+				isAsking: true,
+			},
+		];
+		earlierState.sessions['checkout-api/main'] = {
+			...earlierState.sessions['checkout-api/main']!,
+			requests: [{ text: 'yes, the first one', at: 2000 }],
+		};
+
+		expect(
+			(
+				await executeTool('answer', input, {
+					...earlierTurn.tools,
+					heardFrom: 4000,
+					now: () => 6000,
+				})
+			).ok,
+		).toBe(false);
+		expect(earlierTurn.actions).toEqual([]);
 		expect(heard.actions).toEqual([
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		]);
