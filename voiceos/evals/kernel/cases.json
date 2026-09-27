@@ -1898,6 +1898,22 @@
 			]
 		},
 		{
+			"id": "start-and-ask",
+			"utterance": "Uh, can I— can I start the session and tell me what's the last thing you've done?",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["store-front/main"]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["last"]
+				}
+			],
+			"allow": [{ "name": "start_session" }],
+			"no_reply": true
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

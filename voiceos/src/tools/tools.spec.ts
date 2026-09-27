@@ -14,7 +14,7 @@ import {
 	isRewriteTooShort,
 	prepareSentText,
 } from './send.js';
-import { executeTool, type ToolContext } from './tools.js';
+import { executeTool, saysMoreThanStart, type ToolContext } from './tools.js';
 import { NOT_FOR_YOU } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
@@ -1021,6 +1021,29 @@ describe('an answer to a question asked while the developer spoke', () => {
 		expect(heard.actions).toEqual([
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		]);
+	});
+});
+
+describe('a start that asks for more', () => {
+	it.each([
+		["Uh, can I— can I start the session and tell me what's the last thing you've done?", true],
+		['start checkout, then run the tests', true],
+		['Start it. What did you do last?', true],
+		['start the session', false],
+		['start it and open it', false],
+		['can you start checkout?', false],
+	])('%p → %p', (utterance, expected) => expect(saysMoreThanStart(utterance)).toBe(expected));
+
+	it('still starts, and tells the kernel to forward the rest', async () => {
+		const { tools, actions } = createToolContext();
+		const result = await executeTool(
+			'start_session',
+			{ ref: 'checkout-api/main' },
+			{ ...tools, utterance: 'start checkout and tell me what you did last' },
+		);
+
+		expect(actions[0]).toEqual({ type: 'start_session', ref: 'checkout-api/main' });
+		expect(String(result.content)).toContain('forward the rest');
 	});
 });
 

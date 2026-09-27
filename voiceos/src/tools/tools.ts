@@ -60,6 +60,13 @@ const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): s
 const SAYS_WHAT_INSTEAD_PATTERN =
 	/\b(?:stop|cancel|halt|drop)\b[^.?!]*\b(?:and|then)\s+(?!(?:wait|hold|pause|listen|look|think|let)\b)\w+/i;
 const MIN_LONG_SPEECH_WORDS = 10;
+// "Start it and tell me what you did last", "start checkout, then run the tests", "Start it. What…?":
+// more than a start. "And open it" is what starting does anyway.
+const START_THEN_MORE_PATTERN =
+	/\bstart\b[^.?!]*?(?:,?\s+(?:and|then)\s+(?:also\s+)?(?!(?:open|show|switch|go)\b)\w+|[.?!]\s+\S)/i;
+
+export const saysMoreThanStart = (utterance: string | undefined): boolean =>
+	utterance !== undefined && START_THEN_MORE_PATTERN.test(utterance.trim());
 const REQUEST_OPENING_PATTERN =
 	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
 
@@ -312,6 +319,16 @@ export const executeTool = async (
 			toolContext.dispatch({ type: 'start_session', ref: checked.ref });
 			// "Start X" also shows it, as it always has.
 			toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });
+
+			// "Start it and tell me what you did last": the rest is for the session, which the start alone
+			// never gives it.
+			if (saysMoreThanStart(toolContext.utterance)) {
+				log.info('start with more', { ref: checked.ref });
+
+				return succeed(
+					`starting ${checked.ref}. The developer also asked it something: forward the rest of their words to ${checked.ref} now — it waits until the session is up.`,
+				);
+			}
 
 			return succeed(`starting ${checked.ref}`);
 		}
