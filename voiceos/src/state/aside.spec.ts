@@ -271,6 +271,16 @@ describe('an aside that changes the work', () => {
 		);
 	});
 
+	it("the developer's words stay findable as the switch question (a take-back finds it)", () => {
+		const asked = run(
+			[{ type: 'send', ref: REF, text: 'can we use proxy pair?', aside: true, isSpoken: true }],
+			{ start: runningSession() },
+		).state;
+		const { state } = settle(asked, { isChangingWork: true });
+
+		expect(state.lastSpokenSend?.id).toBe(state.asks[0]?.id);
+	});
+
 	it('its turn ended while the fork thought → sent at once, no switch question', () => {
 		const asked = askAside(runningSession(), 'can we use proxy pair?').state;
 		const idle = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Done.' }], {

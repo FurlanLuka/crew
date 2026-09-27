@@ -1074,6 +1074,9 @@ describe('queued_message', () => {
 				)
 			).ok,
 		).toBe(false);
+		expect(
+			(await executeTool('queued_message', { ref: 'store-front/main', action: 'drop' }, tools)).ok,
+		).toBe(false);
 		expect(actions).toEqual([]);
 		expect(queued.actions).toEqual([]);
 	});

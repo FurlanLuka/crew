@@ -285,7 +285,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'note',
 		description:
-			'The developer\'s own note — an idea or a reminder ("note: try a tone per session", "add a note to check the retries", "note that…"). Saved as plain text in a workspace\'s notes. Not a debug note: that is for something that went wrong. text: their words after the trigger, as said. workspace: only when they name one ("note for store front: …"), else null for the one on screen. Reply "Noted."',
+			'The developer\'s own note — an idea or a reminder ("note: try a tone per session", "add a note to check the retries", "note that…"). Saved as plain text in a workspace\'s notes. Not a debug note: that is for something that went wrong — and words that add to a debug_note just taken ("add this to notes too", "like the debug note") are debug_note again, not this. text: their words after the trigger, as said. workspace: only when they name one ("note for store front: …"), else null for the one on screen. Reply "Noted."',
 		input_schema: {
 			type: 'object',
 			properties: {

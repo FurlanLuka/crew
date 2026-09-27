@@ -1755,6 +1755,52 @@
 			]
 		},
 		{
+			"id": "debug-note-addendum",
+			"utterance": "Because I was checked out on the other screen and I thought it would smartly detect it. Add this to notes too, like the debug note?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+				],
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Noted.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "debug_note",
+					"text_includes": ["detect"]
+				}
+			]
+		},
+		{
+			"id": "note-addendum",
+			"utterance": "Oh, and also with a different voice for each one.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+				],
+				"voiceLog": [
+					{
+						"utterance": "Note: try a different tone per session.",
+						"reply": "Noted.",
+						"did": ["note \"try a different tone per session\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "note",
+					"text_includes": ["voice"]
+				}
+			]
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {
