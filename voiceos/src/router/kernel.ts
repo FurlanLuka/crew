@@ -284,6 +284,7 @@ export class Kernel {
 			setHandsFree,
 			// The asks as they stood when the words were said: an answer never lands on one that opened since.
 			asks: state.asks,
+			lastSpokenSend: state.lastSpokenSend,
 			sentTo: new Set(),
 			now: this.now,
 		};

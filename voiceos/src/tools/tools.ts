@@ -2,6 +2,7 @@ import {
 	isOfferFresh,
 	OFFER_TTL_MS,
 	type Action,
+	type LastSpokenSend,
 	type PendingAsk,
 	type State,
 } from '../shared/protocol.js';
@@ -92,6 +93,8 @@ export interface ToolContext {
 	actionsInTurn?: number;
 	// Sessions this turn already sent words to: an answer that would send them again does not.
 	sentTo?: Set<string>;
+	// The developer's last words to a session as they stood when these were said.
+	lastSpokenSend?: LastSpokenSend | null;
 	// Bound to the tab the words came from; 'no_tab' when they came from none (evals, a closed tab).
 	setHandsFree: (isOn: boolean) => HandsFreeResult;
 	dispatch: (action: Action) => void;

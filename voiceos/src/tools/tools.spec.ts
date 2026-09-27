@@ -1058,6 +1058,51 @@ describe('queued_message', () => {
 		expect(running.actions).toEqual([]);
 	});
 
+	it('take back uses the last words as they were when said: a send earlier in the turn does not move them', async () => {
+		const context = withQueue(null);
+		const state = context.tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			stream: [
+				{
+					id: 'aside-1',
+					at: 1,
+					kind: 'aside',
+					question: 'wrong one',
+					answer: null,
+					status: 'asking',
+				},
+			],
+		};
+		// Moved by the send_to that ran first in this turn; the snapshot still names the aside.
+		state.lastSpokenSend = { ref: 'checkout-api/main', id: 'new', text: 'x', at: 2 };
+		const tools = {
+			...context.tools,
+			lastSpokenSend: { ref: 'store-front/main', id: 'aside-1', text: 'wrong one', at: 1 },
+		};
+
+		await executeTool('queued_message', { ref: 'store-front/main', action: 'drop' }, tools);
+
+		expect(context.actions).toEqual([
+			{ type: 'take_back', ref: 'store-front/main', id: 'aside-1' },
+		]);
+	});
+
+	it('last words being worked on (even blocked) or already sent → nothing else is taken instead', async () => {
+		const blocked = withQueue('running-1');
+		blocked.tools.getState().sessions['store-front/main'] = {
+			...blocked.tools.getState().sessions['store-front/main']!,
+			status: 'blocked',
+			currentSendId: 'running-1',
+		};
+		const finished = withQueue('done-1');
+		const drop = { ref: 'store-front/main', action: 'drop' };
+
+		expect((await executeTool('queued_message', drop, blocked.tools)).ok).toBe(false);
+		expect((await executeTool('queued_message', drop, finished.tools)).ok).toBe(false);
+		expect([...blocked.actions, ...finished.actions]).toEqual([]);
+	});
+
 	it('nothing queued, or an unknown action → fails, nothing dispatched', async () => {
 		const { tools, actions } = createToolContext();
 		const queued = withQueue(null);
