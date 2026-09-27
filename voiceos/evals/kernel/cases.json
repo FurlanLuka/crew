@@ -387,6 +387,21 @@
 			]
 		},
 		{
+			"id": "quoted-example-forwarded-whole",
+			"utterance": "Um, okay. So what happens now? For example, if I ask you to, uh, \"Can you start the checkout api session?\"",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["what happens|happen", "start"]
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "in-session-start-other",
 			"utterance": "Start store front work one.",
 			"context": {

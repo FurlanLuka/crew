@@ -17,6 +17,7 @@ import {
 	buildSessionNote,
 	isDuplicateSend,
 	isMisroutedToSetup,
+	isOnlyTheQuote,
 	isRewriteTooShort,
 	prepareSentText,
 } from './send.js';
@@ -3028,6 +3029,39 @@ describe('fixes from the live notes', () => {
 			(await executeTool('ignore_words', { reason: 'not said to anyone' }, { ...tools, utterance }))
 				.ok,
 		).toBe(true);
+	});
+
+	describe('isOnlyTheQuote', () => {
+		const SAID =
+			'Um, okay. So what happens now? For example, if I ask you to, uh, "Can you start the crew research session?"';
+
+		it.each([
+			[SAID, 'Can you start the crew research session?', true],
+			[SAID, 'What happens if I ask you to start the crew research session?', false],
+			['Tell it "use the docs folder".', 'Use the docs folder.', false],
+			[
+				'"Can you start the crew research session?"',
+				'Can you start the crew research session?',
+				false,
+			],
+			['start the crew research session', 'Start the crew research session.', false],
+		])('%p sent as %p → %p', (said, sent, expected) =>
+			expect(isOnlyTheQuote(said, sent)).toBe(expected),
+		);
+	});
+
+	it('a forward of only the quote → the whole question goes, as said', async () => {
+		const { tools, actions } = createToolContext();
+		const said =
+			'So what happens now? For example, if I ask you to, uh, "Can you start the checkout api session?"';
+
+		await executeTool(
+			'forward',
+			{ text: 'Can you start the checkout api session?' },
+			{ ...tools, forwardTo: 'store-front/main', utterance: said, actionsInTurn: 1 },
+		);
+
+		expect(actions).toEqual([expect.objectContaining({ type: 'send', text: said })]);
 	});
 
 	describe('prepareSentText', () => {
