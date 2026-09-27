@@ -153,6 +153,14 @@ describe('copyShownImage', () => {
 		expect(readdirSync(media)).toHaveLength(1);
 	});
 
+	it('a bare name the session saved inside one of its project folders → found there', () => {
+		const { second, media, session } = setup();
+
+		writeFileSync(join(second, 'search.png'), PNG);
+
+		expect(copyShownImage({ path: 'search.png', session, dir: media }).ok).toBe(true);
+	});
+
 	it("an image in another of the worktree's project folders → copied", () => {
 		const { second, media, session } = setup();
 

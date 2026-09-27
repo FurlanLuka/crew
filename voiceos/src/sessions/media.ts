@@ -201,7 +201,12 @@ interface CopyShownImageParams {
 // stored — what was checked is what is kept.
 export const copyShownImage = ({ path, session, dir }: CopyShownImageParams): Stored => {
 	const expanded = path.startsWith('~/') ? join(process.env.HOME ?? '', path.slice(2)) : path;
-	const real = toRealPath(resolve(session.cwd, expanded));
+	// A session works inside one project folder or another, and names a file relative to the one
+	// it was in: the worktree root first, then each project folder.
+	const real =
+		[session.cwd, ...session.dirs]
+			.map((base) => toRealPath(resolve(base, expanded)))
+			.find((candidate): candidate is string => candidate !== null) ?? null;
 
 	if (!real) {
 		return { ok: false, reason: 'missing' };
