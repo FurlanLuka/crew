@@ -308,6 +308,27 @@ describe('Kernel', () => {
 		expect(actions).toContainEqual({ type: 'take_back', ref: 'store-front/main', id: 'aside-1' });
 	});
 
+	it('when the words began reaches the message: a question asked after that is not "asked aloud"', async () => {
+		const { kernel, fake } = createKernel([[{ type: 'text', text: '' } as Block]], {
+			context: {
+				view: 'store-front/main',
+				needs: 'checkout-api/main',
+				alert: {
+					text: 'checkout asks: did you mean another session?',
+					secondsAgo: 0.5,
+					ref: 'checkout-api/main',
+				},
+			},
+		});
+
+		await kernel.handle('sorry, I meant that for store front', {
+			forwardTo: 'store-front/main',
+			heardFrom: Date.now() - 3000,
+		});
+
+		expect(fake.prompts[0]).toContain('Voice OS last asked aloud: (nothing)');
+	});
+
 	it('asking back on a session screen → the words go to the session instead, nothing spoken', async () => {
 		const { kernel, actions } = createKernel([
 			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],

@@ -44,11 +44,15 @@ interface ListHeardBeforeParams {
 }
 
 export const listHeardBefore = ({ spoken, heardFrom }: ListHeardBeforeParams): SpokenLine[] =>
-	// Session lines that started playing before the developer spoke, newest few, oldest first.
+	// Session lines that started playing before the developer spoke, newest few, oldest first. Voice
+	// OS's own acks and replies are not what they answer.
 	spoken
 		.filter(
 			(line) =>
-				line.ref !== undefined && line.at < heardFrom && heardFrom - line.at <= HEARD_BEFORE_MS,
+				line.ref !== undefined &&
+				line.source !== 'kernel' &&
+				line.at < heardFrom &&
+				heardFrom - line.at <= HEARD_BEFORE_MS,
 		)
 		.slice(-HEARD_BEFORE_KEPT);
 

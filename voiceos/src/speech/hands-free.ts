@@ -10,8 +10,9 @@ export interface HandsFreeHost {
 	isEcho: (heard: string, isPartial: boolean) => boolean;
 	showPartial: (text: string, label?: string) => void;
 	clearTranscript: (client: string) => void;
-	queueTurn: (client: string, text: string) => void;
-	onTalkStarted: (client: string) => void;
+	// startedAt: when the turn's first words began (a joined turn: the first part's).
+	queueTurn: (client: string, text: string, startedAt: number) => void;
+	onTalkStarted: () => void;
 	onTalkMaybeOver: () => void;
 }
 
@@ -48,6 +49,8 @@ interface Listening {
 	holdKind: HoldKind | null;
 	heldSince: number | null;
 	holdTimer: ReturnType<typeof setTimeout> | null;
+	// When the words of the turn under way began; null between turns.
+	turnStartedAt: number | null;
 }
 
 const log = createLogger('voice-in');
@@ -118,6 +121,7 @@ export class HandsFree {
 			holdKind: null,
 			heldSince: null,
 			holdTimer: null,
+			turnStartedAt: null,
 		};
 		this.listening.set(client, listening);
 		log.info('listen start', { client, sampleRate });
@@ -140,7 +144,7 @@ export class HandsFree {
 		// A finished command still waiting is the developer's: listening ends, the command still goes.
 		if (listening.holdKind === 'settle' && listening.heldText) {
 			log.info('settled turn routed as listening ended', { client, text: listening.heldText });
-			this.host.queueTurn(client, listening.heldText);
+			this.route(listening, listening.heldText);
 		}
 
 		this.dropHold(listening);
@@ -275,7 +279,7 @@ export class HandsFree {
 			// Nothing was sent yet: "stop" drops it, and still reaches whatever runs.
 			log.info('held turn cancelled', { client, held: listening.heldText, text });
 			this.dropHold(listening);
-			this.host.queueTurn(client, action.text);
+			this.route(listening, action.text);
 			this.lowerTalk(listening);
 			this.host.clearTranscript(client);
 
@@ -323,7 +327,7 @@ export class HandsFree {
 		}
 
 		log.info('heard', { client, text: action.text });
-		this.host.queueTurn(client, action.text);
+		this.route(listening, action.text);
 		this.lowerTalk(listening);
 		this.host.clearTranscript(client);
 	}
@@ -357,7 +361,7 @@ export class HandsFree {
 							: 'held turn released to the kernel';
 				log.info(event, { client: listening.client, text, ...(waitMs === null ? {} : { waitMs }) });
 				this.dropHold(listening);
-				this.host.queueTurn(listening.client, text);
+				this.route(listening, text);
 				this.lowerTalk(listening);
 				this.host.clearTranscript(listening.client);
 			},
@@ -413,10 +417,17 @@ export class HandsFree {
 		this.options.onListenOff?.(listening.client, message);
 	}
 
+	private route(listening: Listening, text: string): void {
+		const startedAt = listening.turnStartedAt ?? this.now();
+		listening.turnStartedAt = null;
+		this.host.queueTurn(listening.client, text, startedAt);
+	}
+
 	private raiseTalk(listening: Listening): void {
 		listening.isTalking = true;
+		listening.turnStartedAt ??= this.now();
 		log.info('speech start', { client: listening.client });
-		this.host.onTalkStarted(listening.client);
+		this.host.onTalkStarted();
 		this.armQuiet(listening);
 	}
 
@@ -426,6 +437,11 @@ export class HandsFree {
 		}
 
 		listening.quietTimer = null;
+
+		// Speech that became no turn (a murmur, echo, background talk): the next turn starts afresh.
+		if (!listening.heldText) {
+			listening.turnStartedAt = null;
+		}
 
 		if (!listening.isTalking) {
 			return;

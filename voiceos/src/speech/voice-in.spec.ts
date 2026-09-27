@@ -157,6 +157,26 @@ describe('VoiceInput', () => {
 		expect(harness.startedAts).toEqual([1000, 4000]);
 	});
 
+	it('a press that heard nothing leaves no start behind; a press begun before the last is routed keeps its own', () => {
+		let clock = 1000;
+		const harness = createHarness({ now: () => clock });
+		harness.input.start('c1');
+		harness.input.stop('c1');
+		harness.session?.onFinal('   ');
+		clock = 9000;
+		harness.input.start('c1');
+		const first = harness.session;
+		harness.input.stop('c1');
+		clock = 9500;
+		harness.input.start('c1');
+		const second = harness.session;
+		second?.onFinal('and the linter');
+		first?.onFinal('run the tests');
+
+		expect(harness.utterances).toEqual(['run the tests', 'and the linter']);
+		expect(harness.startedAts).toEqual([9000, 9500]);
+	});
+
 	it('silence → no utterance', () => {
 		const harness = createHarness();
 		harness.input.start('c1');
@@ -709,6 +729,20 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 
 		expect(harness.utterances).toEqual(["Let's, um open checkout."]);
 		expect(harness.startedAts).toEqual([1000]);
+	});
+
+	it('speech that became no turn leaves no start behind for the next one', async () => {
+		let clock = 1000;
+		const harness = createHeldHarness({ now: () => clock, quietMs: 5 });
+		harness.session?.onPartial('um so, like');
+		await Bun.sleep(20);
+		clock = 6000;
+		harness.session?.onPartial('open checkout');
+		harness.session?.onSegment?.('open checkout.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['open checkout.']);
+		expect(harness.startedAts).toEqual([6000]);
 	});
 
 	it('two fragments in a row, then the rest → one utterance', async () => {

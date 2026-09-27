@@ -39,9 +39,13 @@ interface Utterance {
 	sampleRate: number;
 	chunks: Uint8Array[] | null;
 	pressCap: ReturnType<typeof setTimeout>;
+	// When the press began: what Voice OS started saying after that, the developer had not heard.
+	startedAt: number;
 }
 
-type Pending = { kind: 'press'; utterance: Utterance } | { kind: 'turn'; text: string };
+type Pending =
+	| { kind: 'press'; utterance: Utterance }
+	| { kind: 'turn'; text: string; startedAt: number };
 
 const log = createLogger('voice-in');
 
@@ -49,8 +53,6 @@ const MAX_PRESS_MS = 60_000;
 
 export class VoiceInput {
 	private livePresses = new Map<string, Utterance>();
-	// When the words not yet routed began, per tab: set by the first speech, taken by the route.
-	private speechStartedAt = new Map<string, number>();
 	private pendingByClient = new Map<string, Pending[]>();
 	private handsFree: HandsFree;
 	private now: () => number;
@@ -68,11 +70,8 @@ export class VoiceInput {
 				}),
 			showPartial: (text, label) => this.showPartial(text, label),
 			clearTranscript: (client) => this.clearTranscript(client),
-			queueTurn: (client, text) => this.queue(client, { kind: 'turn', text }),
-			onTalkStarted: (client) => {
-				this.markSpeechStart(client);
-				this.options.onTalkStart();
-			},
+			queueTurn: (client, text, startedAt) => this.queue(client, { kind: 'turn', text, startedAt }),
+			onTalkStarted: () => this.options.onTalkStart(),
 			onTalkMaybeOver: () => this.talkMaybeOver(),
 		});
 	}
@@ -102,7 +101,7 @@ export class VoiceInput {
 			this.drop(abandoned);
 		}
 
-		this.markSpeechStart(client);
+		const startedAt = this.now();
 		this.options.onTalkStart();
 
 		log.info('talk start', { client, sampleRate });
@@ -144,6 +143,7 @@ export class VoiceInput {
 			chunks: this.options.debugAudioDir ? [] : null,
 			outcome: { state: 'streaming' },
 			pressCap,
+			startedAt,
 		};
 		this.livePresses.set(client, utterance);
 		this.queue(client, { kind: 'press', utterance });
@@ -282,12 +282,6 @@ export class VoiceInput {
 		this.flush(utterance.client);
 	}
 
-	private markSpeechStart(client: string): void {
-		if (!this.speechStartedAt.has(client)) {
-			this.speechStartedAt.set(client, this.now());
-		}
-	}
-
 	private queue(client: string, pending: Pending): void {
 		this.pendingByClient.set(client, [...(this.pendingByClient.get(client) ?? []), pending]);
 		this.flush(client);
@@ -314,9 +308,11 @@ export class VoiceInput {
 
 			// null: nothing to route (silence, an error, a cancelled stream).
 			if (text) {
-				const startedAt = this.speechStartedAt.get(client) ?? this.now();
-				this.speechStartedAt.delete(client);
-				this.options.onUtterance(text, client, startedAt);
+				this.options.onUtterance(
+					text,
+					client,
+					head.kind === 'turn' ? head.startedAt : head.utterance.startedAt,
+				);
 			}
 		}
 

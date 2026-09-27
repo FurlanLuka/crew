@@ -33,6 +33,7 @@ describe('heard before the developer spoke', () => {
 			line('too-old', 0),
 			line('a', 20_000),
 			line('no-session', 30_000, { ref: undefined }),
+			line('ack', 45_000, { source: 'kernel' }),
 			line('b', 40_000),
 			line('c', 50_000),
 			line('d', 60_000),
