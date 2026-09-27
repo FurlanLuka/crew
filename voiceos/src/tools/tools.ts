@@ -59,14 +59,16 @@ const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): s
 // "stop, let me look") or "I'll do it myself instead" names none for the session: it still stops.
 const SAYS_WHAT_INSTEAD_PATTERN =
 	/\b(?:stop|cancel|halt|drop)\b[^.?!]*\b(?:and|then)\s+(?!(?:wait|hold|pause|listen|look|think|let)\b)\w+/i;
-const MIN_LONG_SPEECH_WORDS = 10;
+
 // "Start it and tell me what you did last", "start checkout, then run the tests", "Start it. What…?":
-// more than a start. "And open it" is what starting does anyway.
+// more than a start. "And open it" is what starting does anyway. Whether the rest is for the session
+// (not "and bring up its servers", "and store-front") is the model's call: the hint only asks.
 const START_THEN_MORE_PATTERN =
-	/\bstart\b[^.?!]*?(?:,?\s+(?:and|then)\s+(?:also\s+)?(?!(?:open|show|switch|go)\b)\w+|[.?!]\s+\S)/i;
+	/\bstart\b[^.?!]*?(?:,?\s+(?:and\s+then|and|then)\s+(?:also\s+)?(?!(?:then\b|(?:open|show)\s+(?:it|them|that)\b))\w+|[.?!]\s+\S)/i;
 
 export const saysMoreThanStart = (utterance: string | undefined): boolean =>
 	utterance !== undefined && START_THEN_MORE_PATTERN.test(utterance.trim());
+const MIN_LONG_SPEECH_WORDS = 10;
 const REQUEST_OPENING_PATTERN =
 	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
 
@@ -312,25 +314,42 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			if (state.sessions[checked.ref]?.status !== 'stopped') {
-				return succeed(`${checked.ref} is already ${state.sessions[checked.ref]?.status}`);
+			const isStopped = state.sessions[checked.ref]?.status === 'stopped';
+
+			if (isStopped) {
+				toolContext.dispatch({ type: 'start_session', ref: checked.ref });
+				// "Start X" also shows it, as it always has.
+				toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });
 			}
 
-			toolContext.dispatch({ type: 'start_session', ref: checked.ref });
-			// "Start X" also shows it, as it always has.
-			toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });
+			const started = isStopped
+				? `starting ${checked.ref}`
+				: `${checked.ref} is already ${state.sessions[checked.ref]?.status}`;
 
-			// "Start it and tell me what you did last": the rest is for the session, which the start alone
-			// never gives it.
-			if (saysMoreThanStart(toolContext.utterance)) {
+			// "Start it and tell me what you did last": the start alone never gives the session the rest —
+			// unless the words already went, or name another session ("start checkout and store-front").
+			const namesAnother =
+				toolContext.utterance !== undefined &&
+				findSessionsNamedIn(state, toolContext.utterance).some((named) => named !== checked.ref);
+
+			if (
+				saysMoreThanStart(toolContext.utterance) &&
+				!namesAnother &&
+				!toolContext.sentTo?.has(checked.ref)
+			) {
+				// forward reaches only the session on screen: from elsewhere it is send_to.
+				const how =
+					toolContext.forwardTo === checked.ref
+						? 'forward that part'
+						: `send_to ${checked.ref} that part`;
 				log.info('start with more', { ref: checked.ref });
 
 				return succeed(
-					`starting ${checked.ref}. The developer also asked it something: forward the rest of their words to ${checked.ref} now — it waits until the session is up.`,
+					`${started}. If the developer also asked ${checked.ref} something (not a command for Voice OS, like its dev servers), ${how} now — it waits until the session is up.`,
 				);
 			}
 
-			return succeed(`starting ${checked.ref}`);
+			return succeed(started);
 		}
 
 		case 'stop_session': {

@@ -1029,8 +1029,11 @@ describe('a start that asks for more', () => {
 		["Uh, can I— can I start the session and tell me what's the last thing you've done?", true],
 		['start checkout, then run the tests', true],
 		['Start it. What did you do last?', true],
+		['start it and show me what you did last', true],
+		['start checkout and go fix the login bug', true],
 		['start the session', false],
 		['start it and open it', false],
+		['start it and then open it', false],
 		['can you start checkout?', false],
 	])('%p → %p', (utterance, expected) => expect(saysMoreThanStart(utterance)).toBe(expected));
 
@@ -1039,11 +1042,54 @@ describe('a start that asks for more', () => {
 		const result = await executeTool(
 			'start_session',
 			{ ref: 'checkout-api/main' },
-			{ ...tools, utterance: 'start checkout and tell me what you did last' },
+			{
+				...tools,
+				forwardTo: 'checkout-api/main',
+				utterance: 'start checkout and tell me what you did last',
+			},
 		);
 
-		expect(actions[0]).toEqual({ type: 'start_session', ref: 'checkout-api/main' });
-		expect(String(result.content)).toContain('forward the rest');
+		expect(actions).toEqual([
+			{ type: 'start_session', ref: 'checkout-api/main' },
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
+		]);
+		expect(String(result.content)).toContain('forward that part');
+	});
+
+	it('already running → nothing started, and the rest is still asked for', async () => {
+		const { tools, actions } = createToolContext();
+		const result = await executeTool(
+			'start_session',
+			{ ref: 'store-front/main' },
+			{ ...tools, utterance: 'start store front and tell me what you did last' },
+		);
+
+		expect(actions).toEqual([]);
+		expect(String(result.content)).toContain('already idle. If the developer also asked');
+	});
+
+	it('from another screen it is send_to; two sessions named, or the words already sent → no hint', async () => {
+		const start = async (patch: Partial<ToolContext>) => {
+			const { tools } = createToolContext();
+
+			return String(
+				(await executeTool('start_session', { ref: 'checkout-api/main' }, { ...tools, ...patch }))
+					.content,
+			);
+		};
+
+		expect(
+			await start({ forwardTo: null, utterance: 'start checkout and tell me what you did last' }),
+		).toContain('send_to checkout-api/main that part');
+		expect(await start({ utterance: 'start checkout and store front main' })).toBe(
+			'starting checkout-api/main',
+		);
+		expect(
+			await start({
+				utterance: 'start checkout and tell me what you did last',
+				sentTo: new Set(['checkout-api/main']),
+			}),
+		).toBe('starting checkout-api/main');
 	});
 });
 

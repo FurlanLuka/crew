@@ -1914,6 +1914,22 @@
 			"no_reply": true
 		},
 		{
+			"id": "start-and-ask-from-grid",
+			"utterance": "Start checkout and tell me what's the last thing it did.",
+			"context": {
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["last"]
+				}
+			],
+			"allow": [{ "name": "start_session" }, { "name": "switch_view" }],
+			"no_reply": true
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {
