@@ -6,6 +6,8 @@ import type { ToolContext } from './tools.js';
 const log = createLogger('tools');
 
 const PREVIEW_CHARS = 60;
+export const NOT_FOR_YOU =
+	'That last message was not meant for you: the developer sent it to the wrong session. Ignore it and carry on; no reply needed.';
 
 export const QUEUED_ACTIONS = ['now', 'drop'] as const;
 export type QueuedAction = (typeof QUEUED_ACTIONS)[number];
@@ -95,9 +97,15 @@ const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
 		return fail(`nothing from the developer is waiting at ${ref}: there is nothing to take back`);
 	}
 
+	// Already delivered: it is told to ignore them, so it does not act on words that were not for it.
 	if (!('id' in carrier)) {
-		return fail(
-			`${ref} already has those words (${carrier.kind === 'working' ? 'it is working on them' : 'they were sent'}): they cannot be taken back. If it should stop, that is interrupt.`,
+		log.info('taken back after delivery', { ref, carrier: carrier.kind });
+		toolContext.dispatch({ type: 'send', ref, text: NOT_FOR_YOU });
+
+		return succeed(
+			carrier.kind === 'working'
+				? `${ref} was already working on those words: it was told they were not meant for it (it reads that after its current turn; if it should stop now, that is interrupt)`
+				: `${ref} already had those words: it was told they were not meant for it`,
 		);
 	}
 

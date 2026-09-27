@@ -1873,6 +1873,31 @@
 			"no_reply": true
 		},
 		{
+			"id": "meant-for-another-session",
+			"utterance": "Um, sorry, I meant this for store front main.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+						"reply": "",
+						"did": ["forward \"After commit, rebuild and restart right away.\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main",
+					"text_includes": ["rebuild"]
+				},
+				{
+					"name": "queued_message",
+					"input": { "ref": "checkout-api/main", "action": "drop" }
+				}
+			]
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

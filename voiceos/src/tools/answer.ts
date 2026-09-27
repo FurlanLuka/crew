@@ -205,7 +205,17 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 			return succeed(`the words already went to ${checked.ref} in this turn`);
 		}
 
-		if (state.sessions[checked.ref]?.needsUser && reply) {
+		const asked = state.sessions[checked.ref]?.needsUser;
+
+		// Asked while the developer was already speaking: they never heard it, so these words are not
+		// its answer (they were said to someone else).
+		if (asked && toolContext.heardFrom !== undefined && asked.at >= toolContext.heardFrom) {
+			return fail(
+				`${checked.ref} asked that while the developer was speaking: they had not heard it, so their words are not its answer. Nothing was sent.`,
+			);
+		}
+
+		if (asked && reply) {
 			const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, reply);
 
 			if (misroutedAnswer) {

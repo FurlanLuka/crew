@@ -15,6 +15,7 @@ import {
 	prepareSentText,
 } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
+import { NOT_FOR_YOU } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
@@ -947,6 +948,35 @@ describe('the notes path for a session', () => {
 	});
 });
 
+describe('an answer to a question asked while the developer spoke', () => {
+	it('is not its answer: nothing sent; asked before they spoke, it is', async () => {
+		const ask = (askedAt: number) => {
+			const context = createToolContext();
+			context.tools.getState().sessions['checkout-api/main'] = {
+				...context.tools.getState().sessions['checkout-api/main']!,
+				status: 'idle',
+				needsUser: { text: 'asks: did you mean another session?', at: askedAt },
+			};
+
+			return context;
+		};
+
+		const unheard = ask(5000);
+		const heard = ask(3000);
+		const input = { ref: 'checkout-api/main', decision: 'yes', text: 'That was for crew main.' };
+
+		expect((await executeTool('answer', input, { ...unheard.tools, heardFrom: 4000 })).ok).toBe(
+			false,
+		);
+		await executeTool('answer', input, { ...heard.tools, heardFrom: 4000 });
+
+		expect(unheard.actions).toEqual([]);
+		expect(heard.actions).toEqual([
+			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
+		]);
+	});
+});
+
 describe('queued_message', () => {
 	const withQueue = (lastSpoken: string | null) => {
 		const context = createToolContext();
@@ -1056,8 +1086,8 @@ describe('queued_message', () => {
 			{ type: 'take_back', ref: 'store-front/main', id: 'aside-1' },
 			{ type: 'take_back', ref: 'store-front/main', id: 'held-1' },
 		]);
-		expect((await executeTool('queued_message', drop, running.tools)).ok).toBe(false);
-		expect(running.actions).toEqual([]);
+		expect((await executeTool('queued_message', drop, running.tools)).ok).toBe(true);
+		expect(running.actions).toEqual([{ type: 'send', ref: 'store-front/main', text: NOT_FOR_YOU }]);
 	});
 
 	it('take back uses the last words as they were when said: a send earlier in the turn does not move them', async () => {
@@ -1090,7 +1120,7 @@ describe('queued_message', () => {
 		]);
 	});
 
-	it('last words being worked on (even blocked) or already sent → nothing else is taken instead', async () => {
+	it('last words being worked on (even blocked) or already sent → it is told they were not for it; nothing else is taken', async () => {
 		const blocked = withQueue('running-1');
 		blocked.tools.getState().sessions['store-front/main'] = {
 			...blocked.tools.getState().sessions['store-front/main']!,
@@ -1100,9 +1130,13 @@ describe('queued_message', () => {
 		const finished = withQueue('done-1');
 		const drop = { ref: 'store-front/main', action: 'drop' };
 
-		expect((await executeTool('queued_message', drop, blocked.tools)).ok).toBe(false);
-		expect((await executeTool('queued_message', drop, finished.tools)).ok).toBe(false);
-		expect([...blocked.actions, ...finished.actions]).toEqual([]);
+		await executeTool('queued_message', drop, blocked.tools);
+		await executeTool('queued_message', drop, finished.tools);
+
+		expect([...blocked.actions, ...finished.actions]).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: NOT_FOR_YOU },
+			{ type: 'send', ref: 'store-front/main', text: NOT_FOR_YOU },
+		]);
 	});
 
 	it('nothing queued, or an unknown action → fails, nothing dispatched', async () => {

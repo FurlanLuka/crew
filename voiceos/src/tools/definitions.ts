@@ -232,7 +232,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'queued_message',
 		description:
-			'Words already queued for a session, waiting behind its current work (see queued in read_state). action "now": "don\'t queue it", "I want it now", "do that first" — they cut the current work and go now; never interrupt alone for this. action "drop": "take that back", "don\'t send that", "that wasn\'t for it" — they are removed. It acts on the developer\'s last words for that session when they wait there, else on the newest queued message.',
+			'Words already queued for a session, waiting behind its current work (see queued in read_state). action "now": "don\'t queue it", "I want it now", "do that first" — they cut the current work and go now; never interrupt alone for this. action "drop": "take that back", "don\'t send that", "that wasn\'t for it", "I meant that for X" (on the session that got them) — they are removed if still waiting, and a session that already got them is told to ignore them. It acts on the developer\'s last words for that session when they wait there, else on the newest queued message.',
 		input_schema: {
 			type: 'object',
 			properties: {
