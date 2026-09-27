@@ -3517,6 +3517,52 @@
 					}
 				}
 			]
+		},
+		{
+			"id": "guide-stop-servers-on-screen",
+			"utterance": "Stop the servers.",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "crew_dev",
+					"ref": "store-front/main",
+					"action": "stop"
+				}
+			]
+		},
+		{
+			"id": "guide-take-that-back",
+			"utterance": "Take that back.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router",
+						"minutesAgo": 2,
+						"queued": ["Also rename the helpers."]
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Also rename the helpers.",
+						"reply": "",
+						"did": ["forward \"Also rename the helpers.\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "queued_message",
+					"input": {
+						"ref": "store-front/main",
+						"action": "drop"
+					}
+				}
+			]
 		}
 	]
 }

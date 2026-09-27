@@ -71,6 +71,14 @@ func TestCommandWithHTTPS(t *testing.T) {
 	}
 }
 
+func TestCommandWithClaudeBin(t *testing.T) {
+	got := Command(LaunchSpec{Binary: "/b/voiceos", CrewBin: "/c/crew", Home: "/h", Port: 1, ProxyHost: "voice--os.d", ProxyPort: 80, ClaudeBin: "/Users/x/.local/bin/claude"})
+	want := "HOME='/h' CREW_BIN='/c/crew' PORT=1 VOICEOS_PROXY_HOST='voice--os.d' VOICEOS_PROXY_PORT=80 VOICEOS_CLAUDE_BIN='/Users/x/.local/bin/claude' VOICEOS_RECORD_STATE=1 '/b/voiceos'"
+	if got != want {
+		t.Errorf("Command =\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestPickPortKeepsAFreeRememberedPort(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

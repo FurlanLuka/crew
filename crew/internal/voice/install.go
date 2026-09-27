@@ -1,122 +1,75 @@
 package voice
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
 	"os"
-	osexec "os/exec"
-	"path/filepath"
 	"runtime"
-	"time"
+	"strings"
 
-	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
+	"github.com/FurlanLuka/crew/crew/internal/release"
 )
 
-// Voice OS ships in crew's own release, one archive per platform, so the
-// Voice OS a crew downloads always matches that crew: they talk to each other.
 const binaryName = "voiceos"
 
-// releaseBase is a var so tests serve archives from a local server.
-var releaseBase = "https://github.com/" + config.Repo + "/releases/download"
-
-var installClient = &http.Client{Timeout: 10 * time.Minute}
-
-// AssetURL is where the Voice OS build for a platform lives in a release. Pure.
-func AssetURL(version, goos, goarch string) string {
-	return fmt.Sprintf("%s/v%s/%s_%s_%s_%s.tar.gz", releaseBase, version, binaryName, version, goos, goarch)
-}
+// ErrDevBuild: a crew built from source has no release to take Voice OS from.
+var ErrDevBuild = errors.New("a dev build of crew has no release to download Voice OS from")
 
 func IsInstalled() bool {
 	_, err := os.Stat(Binary())
 	return err == nil
 }
 
-// Install puts the Voice OS of that crew version at Binary(), replacing any
-// build already there — a dev build included. A running Voice OS keeps the
-// file it started from; the new one is used from the next start.
+// stampFile records which release is installed; a build from source has none.
+func stampFile() string { return Binary() + ".version" }
+
+func installedVersion() string {
+	data, err := os.ReadFile(stampFile())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// Install puts the Voice OS of that crew version at Binary() — from the same
+// release as crew, so the two always match — replacing whatever is there, a
+// build from source included. A running Voice OS keeps the file it started
+// from; the new one is used from the next start.
 func Install(version string) error {
-	url := AssetURL(version, runtime.GOOS, runtime.GOARCH)
-	debug.Log("voice", "download %s", url)
-	resp, err := installClient.Get(url)
-	if err != nil {
-		debug.Log("voice", "download failed: %v", err)
-		return fmt.Errorf("downloading Voice OS: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		debug.Log("voice", "download failed: %d", resp.StatusCode)
-		return fmt.Errorf("downloading Voice OS: %s answered %d (no build for %s/%s in v%s?)", url, resp.StatusCode, runtime.GOOS, runtime.GOARCH, version)
-	}
-
-	target := Binary()
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	url := release.AssetURL(binaryName, version, runtime.GOOS, runtime.GOARCH)
+	if err := release.InstallBinary(url, binaryName, Binary()); err != nil {
 		return err
 	}
-	// Written beside the old binary and renamed over it: macOS kills a signed
-	// binary that is rewritten in place, a new file under the same name is fine.
-	staged := target + ".new"
-	if err := extractBinary(resp.Body, staged); err != nil {
-		os.Remove(staged)
-		debug.Log("voice", "extract failed: %v", err)
-		return fmt.Errorf("unpacking Voice OS: %w", err)
-	}
-	if err := os.Rename(staged, target); err != nil {
-		os.Remove(staged)
-		return fmt.Errorf("installing Voice OS: %w", err)
-	}
-	debug.Log("voice", "installed v%s at %s", version, target)
-	return signBinary(target)
-}
-
-// extractBinary writes the archive's voiceos entry to dest, executable.
-func extractBinary(archive io.Reader, dest string) error {
-	gz, err := gzip.NewReader(archive)
-	if err != nil {
-		return err
-	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
-	for {
-		header, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			return fmt.Errorf("no %s in the archive", binaryName)
-		}
-		if err != nil {
-			return err
-		}
-		if header.Typeflag != tar.TypeReg || filepath.Base(header.Name) != binaryName {
-			continue
-		}
-		out, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(out, tr); err != nil {
-			out.Close()
-			return err
-		}
-		return out.Close()
-	}
-}
-
-// signBinary is a var so tests install plain files on a Mac.
-var signBinary = signAdHoc
-
-// signAdHoc: a binary built on another machine carries no signature this Mac
-// accepts; an ad-hoc one lets it run.
-func signAdHoc(path string) error {
-	if runtime.GOOS != "darwin" {
-		return nil
-	}
-	debug.Log("voice", "codesign --force --sign - %s", path)
-	if out, err := osexec.Command("codesign", "--force", "--sign", "-", path).CombinedOutput(); err != nil {
-		debug.Log("voice", "codesign failed: %v: %s", err, out)
-		return fmt.Errorf("signing Voice OS: %v", err)
+	if err := os.WriteFile(stampFile(), []byte(version+"\n"), 0o644); err != nil {
+		debug.Log("voice", "version stamp not written: %v", err)
 	}
 	return nil
+}
+
+// EnsureInstalled is the first run: the Voice OS of that crew version, unless
+// one is already there (a release or a build from source). announce is said
+// just before a download starts.
+func EnsureInstalled(version string, announce func()) (downloaded bool, err error) {
+	if IsInstalled() {
+		return false, nil
+	}
+	if version == "dev" {
+		return false, ErrDevBuild
+	}
+	announce()
+	return true, Install(version)
+}
+
+// Refresh keeps an installed Voice OS on that crew version: it downloads only
+// when what is installed is not that release (a failed earlier refresh, a
+// build from source), never installs one nobody asked for, and never touches
+// a running one.
+func Refresh(version string) (updated bool, err error) {
+	if !IsInstalled() || installedVersion() == version {
+		return false, nil
+	}
+	if err := Install(version); err != nil {
+		return false, err
+	}
+	return true, nil
 }

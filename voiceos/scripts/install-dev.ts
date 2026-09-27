@@ -1,6 +1,6 @@
 // Compiles Voice OS from source into the executable `crew voice` runs, replacing a downloaded release
 // build (and replaced by the next `crew update`).
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -30,5 +30,9 @@ const exitCode = await build.exited;
 if (exitCode !== 0) {
 	process.exit(exitCode);
 }
+
+// A build from source is no release: the stamp crew update compares against goes, so the next
+// update brings the release back.
+rmSync(`${targetPath}.version`, { force: true });
 
 console.log(`Installed Voice OS at ${targetPath}. Start it with: crew voice`);

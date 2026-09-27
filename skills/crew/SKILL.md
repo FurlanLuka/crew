@@ -45,7 +45,7 @@ through crew — never start a server by hand, never `-f`.
   how, so a project finds its siblings on the ports crew allocated — for every server of the
   project, or for one of them. Resolved against the worktree's
   ports at `crew dev start` and exported into each server's env. Env files are read, never
-  written. §4 has the grammar; the README's "Bindings" section has the why.
+  written. §4 has the grammar; `docs/concepts.md` ("Bindings") has the why.
 
 ## 2. Read state
 
@@ -402,8 +402,13 @@ so it works on any device that trusts crew's CA (`crew dev proxy trust`). `crew 
 reprints the link (sign-in is a cookie); `crew voice logs` shows its log; `crew voice stop`
 ends it and its sessions, which resume on the next start. `os` is a reserved workspace name.
 
-The first `crew voice` downloads Voice OS (about 30 MB) from the release matching this crew;
-`crew update` refreshes it once it is installed and never restarts a running one (`crew voice
+Every `crew voice` start (unless Voice OS already answers) first checks what Voice OS needs —
+tmux, and Claude Code (`claude` on PATH or `VOICEOS_CLAUDE_BIN`, handed to Voice OS as found) —
+and stops with the fix for anything missing (`--json`: `{"missing":[{name, why, install}]}`,
+exit 1). The first `crew voice` downloads
+Voice OS (about 30 MB) from the release matching this crew;
+`crew update` refreshes it once it is installed (a version stamp beside the binary says which
+release it is, so a failed refresh is retried by the next update) and never restarts a running one (`crew voice
 restart` picks the new version up). A dev build of crew has no release to take it from:
 `cd voiceos && bun run install-dev`. It needs two API keys, stored in `~/.config/crew-voiceos` (owner-only, never exported to a
 shell — an exported `ANTHROPIC_API_KEY` would bill every Claude Code session per token):

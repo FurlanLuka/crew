@@ -139,13 +139,16 @@ type LaunchSpec struct {
 	ProxyPort int
 	// ProxyHTTPSPort is 0 when the proxy serves no HTTPS.
 	ProxyHTTPSPort int
+	// ClaudeBin is the claude crew found (ClaudeBin()); empty leaves Voice OS to look.
+	ClaudeBin string
 }
 
 // Command is the line the tmux session runs. HOME is explicit because the
 // tmux server's environment belongs to whoever started it; CREW_BIN makes
 // Voice OS call back into this crew, not whichever one PATH finds;
 // VOICEOS_RECORD_STATE lets only this instance write state.json, so a manual
-// run cannot overwrite the port and pid crew tracks. Pure.
+// run cannot overwrite the port and pid crew tracks; VOICEOS_CLAUDE_BIN is the
+// claude crew checked, since the tmux server's PATH may not find it. Pure.
 func Command(spec LaunchSpec) string {
 	parts := []string{
 		"HOME=" + crewExec.ShellQuote(spec.Home),
@@ -156,6 +159,9 @@ func Command(spec LaunchSpec) string {
 	}
 	if spec.ProxyHTTPSPort > 0 {
 		parts = append(parts, fmt.Sprintf("VOICEOS_PROXY_HTTPS_PORT=%d", spec.ProxyHTTPSPort))
+	}
+	if spec.ClaudeBin != "" {
+		parts = append(parts, "VOICEOS_CLAUDE_BIN="+crewExec.ShellQuote(spec.ClaudeBin))
 	}
 	parts = append(parts, "VOICEOS_RECORD_STATE=1", crewExec.ShellQuote(spec.Binary))
 	return strings.Join(parts, " ")
@@ -247,7 +253,7 @@ func Start() (Status, error) {
 	}
 	binary := Binary()
 	if _, err := os.Stat(binary); err != nil {
-		return Status{}, fmt.Errorf("Voice OS is not installed at %s — build it with: cd voiceos && bun run install-dev", binary)
+		return Status{}, fmt.Errorf("Voice OS is not installed at %s — crew voice downloads it (a dev crew: cd voiceos && bun run install-dev)", binary)
 	}
 	if crewExec.TmuxSessionExists(SessionName) {
 		// A session that exists but does not answer is a hung or crashed server.
@@ -273,7 +279,7 @@ func Start() (Status, error) {
 	if err != nil {
 		crewBin = "crew"
 	}
-	cmd := Command(LaunchSpec{Binary: binary, CrewBin: crewBin, Home: home, Port: port, ProxyHost: ProxyHost(domain), ProxyPort: proxyPort, ProxyHTTPSPort: httpsPort})
+	cmd := Command(LaunchSpec{Binary: binary, CrewBin: crewBin, Home: home, Port: port, ProxyHost: ProxyHost(domain), ProxyPort: proxyPort, ProxyHTTPSPort: httpsPort, ClaudeBin: ClaudeBin()})
 	debug.Log("voice", "start → %s", cmd)
 	if err := crewExec.TmuxRunInSession(SessionName, "voiceos", home, cmd); err != nil {
 		return Status{}, fmt.Errorf("failed to start the Voice OS session: %w", err)

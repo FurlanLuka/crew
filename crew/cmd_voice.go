@@ -62,8 +62,13 @@ func hasFlag(args []string, flag string) bool {
 }
 
 func voiceStart(open bool) {
-	installVoiceIfMissing()
-	askMissingKeys()
+	// A Voice OS already answering only needs its links again: nothing to check,
+	// even from a shell whose PATH lacks claude.
+	if !voice.Inspect().Healthy {
+		requireVoiceDeps()
+		installVoiceIfMissing()
+		askMissingKeys()
+	}
 	st, err := voice.Start()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -158,18 +163,16 @@ func askMissingKeys() {
 // saveCheckedKey keeps a key the service accepts, or one it could not be asked
 // about (offline); a rejected one is not written.
 func saveCheckedKey(name, value string) bool {
-	value = strings.TrimSpace(value)
-	err := voice.CheckKey(name, value)
-	if errors.Is(err, voice.ErrKeyRejected) {
+	verified, err := voice.SaveChecked(name, value)
+	switch {
+	case errors.Is(err, voice.ErrKeyRejected):
 		fmt.Fprintf(os.Stderr, "%s rejected that key — check it and try again.\n", keyLabel(name))
 		return false
-	}
-	if saveErr := voice.SaveKey(name, value); saveErr != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", saveErr)
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return false
-	}
-	if err != nil {
-		fmt.Fprintf(human, "Saved the %s key, but %v — it is checked again when Voice OS uses it.\n", name, err)
+	case !verified:
+		fmt.Fprintf(human, "Saved the %s key, but it could not be checked (offline?) — Voice OS tells you if it is refused.\n", name)
 		return true
 	}
 	fmt.Fprintf(human, "Saved the %s key (%s).\n", name, voice.KeyPath(name))
@@ -249,29 +252,31 @@ func readSecret(prompt string) (string, error) {
 // installVoiceIfMissing is the first run: the Voice OS of this crew's own
 // release, so the two always match. A dev crew has no release to take it from.
 func installVoiceIfMissing() {
-	if voice.IsInstalled() {
-		return
-	}
-	if Version == "dev" {
-		fmt.Fprintf(os.Stderr, "Error: Voice OS is not installed at %s, and a dev build of crew has no release to download it from — build it with: cd voiceos && bun run install-dev\n", voice.Binary())
+	downloaded, err := voice.EnsureInstalled(Version, func() {
+		fmt.Fprintf(human, "Downloading Voice OS v%s for %s/%s (about 30 MB)…\n", Version, runtime.GOOS, runtime.GOARCH)
+	})
+	switch {
+	case errors.Is(err, voice.ErrDevBuild):
+		fmt.Fprintf(os.Stderr, "Error: Voice OS is not installed at %s, and %v — build it with: cd voiceos && bun run install-dev\n", voice.Binary(), err)
 		os.Exit(1)
-	}
-	fmt.Fprintf(human, "Downloading Voice OS v%s for %s/%s (about 30 MB)…\n", Version, runtime.GOOS, runtime.GOARCH)
-	if err := voice.Install(Version); err != nil {
+	case err != nil:
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	case downloaded:
+		fmt.Fprintf(human, "Installed Voice OS at %s.\n", voice.Binary())
 	}
-	fmt.Fprintf(human, "Installed Voice OS at %s.\n", voice.Binary())
 }
 
-// refreshVoice keeps an installed Voice OS on the crew version just installed.
-// It never restarts a running one: that would end every Claude session in it.
+// refreshVoice keeps an installed Voice OS on the crew version now in place,
+// whether crew just updated or already was current. It never restarts a
+// running one: that would end every Claude session in it.
 func refreshVoice(version string) {
-	if !voice.IsInstalled() {
+	updated, err := voice.Refresh(version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "! Voice OS was not updated: %v\n", err)
 		return
 	}
-	if err := voice.Install(version); err != nil {
-		fmt.Fprintf(os.Stderr, "! crew is updated, but Voice OS was not: %v\n", err)
+	if !updated {
 		return
 	}
 	if voice.Inspect().Running {
@@ -279,4 +284,22 @@ func refreshVoice(version string) {
 		return
 	}
 	fmt.Printf("Voice OS updated to v%s.\n", version)
+}
+
+// requireVoiceDeps stops before any download or key prompt when Voice OS could
+// not run anyway, naming each missing piece with its fix.
+func requireVoiceDeps() {
+	unmet := voice.UnmetRequirements()
+	if len(unmet) == 0 {
+		return
+	}
+	if jsonOutput {
+		printJSON(map[string]any{"missing": unmet})
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stderr, "Voice OS needs a few things first:")
+	for _, req := range unmet {
+		fmt.Fprintf(os.Stderr, "  %s — %s. Install: %s\n", req.Name, req.Why, req.Install)
+	}
+	os.Exit(1)
 }

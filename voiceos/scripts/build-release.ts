@@ -50,7 +50,12 @@ for (const target of TARGETS) {
 	]);
 	// Only the binary: the compiled executable carries its own source map.
 	await run(
-		['tar', '-czf', join(dist, `voiceos_${version}_${target.goos}_${target.goarch}.tar.gz`), 'voiceos'],
+		[
+			'tar',
+			'-czf',
+			join(dist, `voiceos_${version}_${target.goos}_${target.goarch}.tar.gz`),
+			'voiceos',
+		],
 		dir,
 	);
 	console.log(`built voiceos_${version}_${target.goos}_${target.goarch}.tar.gz`);

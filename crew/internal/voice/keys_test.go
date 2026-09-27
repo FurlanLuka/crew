@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 func isolateKeys(t *testing.T) string {
@@ -15,6 +17,10 @@ func isolateKeys(t *testing.T) string {
 	t.Setenv("VOICEOS_KEYS_DIR", filepath.Join(dir, "keys"))
 	t.Setenv("VOICEOS_ANTHROPIC_API_KEY", "")
 	t.Setenv("SONIOX_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	savedDir := config.ConfigDir
+	config.ConfigDir = t.TempDir()
+	t.Cleanup(func() { config.ConfigDir = savedDir })
 	return filepath.Join(dir, "keys")
 }
 
@@ -77,6 +83,79 @@ func TestInspectKeys_FileThenEnvThenMissing(t *testing.T) {
 	}
 	if got := MissingKeys(); len(got) != 0 {
 		t.Errorf("missing = %v, want none", got)
+	}
+
+	// Both for one key: the file is what Voice OS reads first.
+	t.Setenv("VOICEOS_ANTHROPIC_API_KEY", "from-env")
+	for _, st := range InspectKeys() {
+		if st.Name == "anthropic" && st.Source != "file" {
+			t.Errorf("anthropic with a file and env = %+v, want source file", st)
+		}
+	}
+}
+
+// An exported ANTHROPIC_API_KEY bills every Claude Code session per token: it
+// is never taken as Voice OS's key.
+func TestInspectKeys_IgnoresTheSharedAnthropicVariable(t *testing.T) {
+	isolateKeys(t)
+	t.Setenv("ANTHROPIC_API_KEY", "sk-shared")
+
+	missing := MissingKeys()
+
+	if len(missing) == 0 || missing[0] != "anthropic" {
+		t.Errorf("missing = %v, want anthropic still missing", missing)
+	}
+}
+
+func pointCheckAt(t *testing.T, url string) {
+	t.Helper()
+	saved := keyCheckURL["anthropic"]
+	keyCheckURL["anthropic"] = url
+	t.Cleanup(func() { keyCheckURL["anthropic"] = saved })
+}
+
+func TestSaveChecked(t *testing.T) {
+	status := func(code int) string {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+		}))
+		t.Cleanup(server.Close)
+		return server.URL
+	}
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedURL := closed.URL
+	closed.Close()
+
+	cases := []struct {
+		name         string
+		url          string
+		wantSaved    bool
+		wantVerified bool
+		wantErr      error
+	}{
+		{"accepted → saved, verified", status(http.StatusOK), true, true, nil},
+		{"rejected → not saved", status(http.StatusUnauthorized), false, false, ErrKeyRejected},
+		{"an outage → saved unverified", status(http.StatusServiceUnavailable), true, false, nil},
+		{"offline → saved unverified", closedURL, true, false, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := isolateKeys(t)
+			pointCheckAt(t, tc.url)
+
+			verified, err := SaveChecked("anthropic", " sk-test ")
+
+			if !errors.Is(err, tc.wantErr) || (tc.wantErr == nil && err != nil) {
+				t.Errorf("err = %v, want %v", err, tc.wantErr)
+			}
+			if verified != tc.wantVerified {
+				t.Errorf("verified = %v, want %v", verified, tc.wantVerified)
+			}
+			_, statErr := os.Stat(filepath.Join(dir, "anthropic.key"))
+			if saved := statErr == nil; saved != tc.wantSaved {
+				t.Errorf("saved = %v, want %v", saved, tc.wantSaved)
+			}
+		})
 	}
 }
 

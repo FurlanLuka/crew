@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/housekeeping"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/projectui"
+	"github.com/FurlanLuka/crew/crew/internal/release"
 	"github.com/FurlanLuka/crew/crew/internal/settings"
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -1119,51 +1119,20 @@ func cmdUpdate() {
 		os.Exit(1)
 	}
 
-	current := Version
-	if current == latest {
-		fmt.Printf("crew is already up to date (v%s)\n", current)
+	if Version == latest {
+		fmt.Printf("crew is already up to date (v%s)\n", Version)
+		// A Voice OS refresh that failed last time, or a build from source, is
+		// brought in line even when crew itself has nothing new.
+		refreshVoice(latest)
 		return
 	}
 
-	fmt.Printf("Updating crew v%s → v%s\n", current, latest)
-
-	osName := strings.ToLower(runtime.GOOS)
-	arch := runtime.GOARCH
-
-	url := fmt.Sprintf("https://github.com/%s/releases/download/v%s/crew_%s_%s_%s.tar.gz",
-		config.Repo, latest, latest, osName, arch)
-
-	tmpDir, err := os.MkdirTemp("", "crew-update-*")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating temp dir: %v\n", err)
+	fmt.Printf("Updating crew v%s → v%s\n", Version, latest)
+	url := release.AssetURL("crew", latest, runtime.GOOS, runtime.GOARCH)
+	if err := release.InstallBinary(url, "crew", selfPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
-
-	tarPath := filepath.Join(tmpDir, "crew.tar.gz")
-	dlCmd := osexec.Command("curl", "-fsSL", "-o", tarPath, url)
-	dlCmd.Stderr = os.Stderr
-	if err := dlCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error downloading release: %v\n", err)
-		os.Exit(1)
-	}
-
-	extractCmd := osexec.Command("tar", "-xzf", tarPath, "-C", tmpDir)
-	if err := extractCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error extracting release: %v\n", err)
-		os.Exit(1)
-	}
-
-	newBin := filepath.Join(tmpDir, "crew")
-	if err := os.Rename(newBin, selfPath); err != nil {
-		// rename may fail across filesystems; fall back to copy
-		if err := copyFile(newBin, selfPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Error replacing binary: %v\n", err)
-			os.Exit(1)
-		}
-	}
-	os.Chmod(selfPath, 0o755)
-
 	fmt.Printf("crew updated to v%s\n", latest)
 	refreshVoice(latest)
 }
@@ -1176,12 +1145,4 @@ func fetchLatestVersion() (string, error) {
 	}
 	tag := strings.TrimSpace(string(out))
 	return strings.TrimPrefix(tag, "v"), nil
-}
-
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0o755)
 }

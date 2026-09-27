@@ -162,3 +162,18 @@ func CheckKey(name, value string) error {
 		return fmt.Errorf("could not verify: %s answered %d", name, resp.StatusCode)
 	}
 }
+
+// SaveChecked keeps a key the service accepts, or one it could not be asked
+// about (offline, an outage): verified says which. A rejected key is not
+// written — ErrKeyRejected.
+func SaveChecked(name, value string) (verified bool, err error) {
+	value = strings.TrimSpace(value)
+	checkErr := CheckKey(name, value)
+	if errors.Is(checkErr, ErrKeyRejected) {
+		return false, checkErr
+	}
+	if err := SaveKey(name, value); err != nil {
+		return false, err
+	}
+	return checkErr == nil, nil
+}
