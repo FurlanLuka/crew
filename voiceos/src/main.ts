@@ -50,6 +50,8 @@ const log = createLogger('main');
 
 const token = ensureToken(paths);
 const keys = loadKeys(paths);
+// Lets a page inject heard words (window.voiceos.say) — demos and screenshots, never by default.
+const isSpeechSimulated = process.env.VOICEOS_DEBUG_SPEECH === '1';
 const store = new Store();
 
 const claudeBin = resolveClaudeBin({
@@ -289,6 +291,16 @@ gateway = startGateway({
 				return;
 			case 'ptt_stop':
 				voiceIn.stop(client);
+
+				return;
+			case 'simulate_speech':
+				if (!isSpeechSimulated) {
+					log.warn('simulated speech refused: VOICEOS_DEBUG_SPEECH is not set');
+
+					return;
+				}
+
+				voiceIn.simulate(client, message.text, message.holdMs);
 
 				return;
 			// The listening tab also plays speech, so its echo canceller knows what to remove.

@@ -445,6 +445,8 @@ export type ClientMessage =
 	| { type: 'utterance'; text: string }
 	| { type: 'ptt_start'; sampleRate?: number }
 	| { type: 'ptt_stop' }
+	// Debug only (VOICEOS_DEBUG_SPEECH=1): words taken as heard, for demos and screenshots.
+	| { type: 'simulate_speech'; text: string; holdMs?: number }
 	| { type: 'listen_start'; sampleRate: number }
 	| { type: 'listen_stop' }
 	| { type: 'audio_done'; id: string };

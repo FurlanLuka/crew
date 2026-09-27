@@ -19,6 +19,20 @@ const App = () => {
 	);
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
 
+	// Demos and screenshots: window.voiceos.say("…") is heard like speech. The server ignores it
+	// unless it runs with VOICEOS_DEBUG_SPEECH=1.
+	useEffect(() => {
+		const debug = {
+			say: (text: string, holdMs?: number) => send({ type: 'simulate_speech', text, holdMs }),
+		};
+
+		Object.assign(window, { voiceos: debug });
+
+		return () => {
+			Reflect.deleteProperty(window, 'voiceos');
+		};
+	}, [send]);
+
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape' && !(event.target instanceof HTMLInputElement)) {

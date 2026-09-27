@@ -51,6 +51,9 @@ const log = createLogger('voice-in');
 
 const MAX_PRESS_MS = 60_000;
 
+// Long enough for the heard words to be seen (and captured) before they are routed.
+const SIMULATED_TALK_MS = 1_200;
+
 export class VoiceInput {
 	private livePresses = new Map<string, Utterance>();
 	private pendingByClient = new Map<string, Pending[]>();
@@ -198,6 +201,21 @@ export class VoiceInput {
 		clearTimeout(utterance.pressCap);
 		this.endPress(client);
 		void utterance.stream.end();
+	}
+
+	// Debug: words go the way a finished spoken turn goes — shown as heard while "said", then
+	// routed — without a microphone or Soniox. main.ts only lets this through behind a flag.
+	simulate(client: string, text: string, holdMs = SIMULATED_TALK_MS): void {
+		const startedAt = this.now();
+
+		log.info('simulated speech', { client, chars: text.length });
+		this.options.onTalkStart();
+		this.showPartial(text);
+		setTimeout(() => {
+			this.clearTranscript(client);
+			this.queue(client, { kind: 'turn', text, startedAt });
+			this.talkMaybeOver();
+		}, holdMs);
 	}
 
 	disconnect(client: string): void {

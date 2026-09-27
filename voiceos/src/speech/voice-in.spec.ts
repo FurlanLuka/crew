@@ -1024,3 +1024,22 @@ describe('VoiceInput hands-free: a sentence cut in two', () => {
 		expect(harness.utterances).toEqual(['Run the tests.']);
 	});
 });
+
+describe('simulated speech (debug)', () => {
+	it('shows the words as heard, then routes them like a spoken turn, with no stream opened', async () => {
+		const harness = createHarness();
+
+		harness.input.simulate('tab', 'run the tests', 5);
+
+		expect(harness.store.state.transcript?.text).toBe('run the tests');
+		expect(harness.talkStarts).toHaveLength(1);
+		expect(harness.utterances).toEqual([]);
+
+		await Bun.sleep(15);
+
+		expect(harness.utterances).toEqual(['run the tests']);
+		expect(harness.store.state.transcript).toBeNull();
+		expect(harness.talkEnds).toHaveLength(1);
+		expect(harness.sessions).toHaveLength(0);
+	});
+});
