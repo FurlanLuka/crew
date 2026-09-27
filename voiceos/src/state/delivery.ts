@@ -355,7 +355,11 @@ export const promoteQueued = ({
 		});
 	}
 
-	return withoutEffects(
-		updateSession(rest, ref, (current) => ({ ...current, queue: [message, ...current.queue] })),
-	);
+	const first = updateSession(rest, ref, (current) => ({
+		...current,
+		queue: [message, ...current.queue],
+	}));
+
+	// "Now" on a stopped session starts it, as any words sent to it would.
+	return session.status === 'stopped' ? startWorker(first, ref) : withoutEffects(first);
 };

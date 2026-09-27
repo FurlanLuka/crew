@@ -228,6 +228,7 @@ describe('parseClientMessage', () => {
 		send: { type: 'send', ref: 'store/main', text: 'run the tests' },
 		cancel_queued: { type: 'cancel_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_queued: { type: 'promote_queued', ref: 'store/main', queuedId: 'q1' },
+		take_back: { type: 'take_back', ref: 'store/main', id: 'q1' },
 		answer_permission: {
 			type: 'answer_permission',
 			askId: 'a1',

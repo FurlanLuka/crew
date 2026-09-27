@@ -976,13 +976,91 @@ describe('queued_message', () => {
 		expect(spoken.actions).toEqual([
 			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q1' },
 		]);
-		expect(newest.actions).toEqual([
-			{ type: 'cancel_queued', ref: 'store-front/main', queuedId: 'q2' },
+		expect(newest.actions).toEqual([{ type: 'take_back', ref: 'store-front/main', id: 'q2' }]);
+	});
+
+	it('last words already delivered, or said to another session → the newest queued message', async () => {
+		const gone = withQueue('q-gone');
+		const elsewhere = withQueue(null);
+		elsewhere.tools.getState().lastSpokenSend = {
+			ref: 'checkout-api/main',
+			id: 'q1',
+			text: 'x',
+			at: 1,
+		};
+
+		await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, gone.tools);
+		await executeTool(
+			'queued_message',
+			{ ref: 'store-front/main', action: 'now' },
+			elsewhere.tools,
+		);
+
+		expect([...gone.actions, ...elsewhere.actions]).toEqual([
+			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q2' },
+			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q2' },
 		]);
+	});
+
+	it('take back: a side question still asking, a held switch, or words already being worked on', async () => {
+		const withCarrier = (patch: (state: State) => void) => {
+			const context = createToolContext();
+			const state = context.tools.getState();
+			state.sessions['store-front/main'] = {
+				...state.sessions['store-front/main']!,
+				status: 'running',
+				currentSendId: 'running-1',
+				stream: [
+					{
+						id: 'aside-1',
+						at: 1,
+						kind: 'aside',
+						question: 'which file?',
+						answer: null,
+						status: 'asking',
+					},
+				],
+			};
+			patch(state);
+
+			return context;
+		};
+
+		const aside = withCarrier((state) => {
+			state.lastSpokenSend = { ref: 'store-front/main', id: 'aside-1', text: 'x', at: 1 };
+		});
+		const held = withCarrier((state) => {
+			state.asks = [
+				{
+					id: 'held-1',
+					ref: 'store-front/main',
+					at: 1,
+					kind: 'redirect',
+					text: 'use proxy pair',
+					target: null,
+				},
+			];
+			state.lastSpokenSend = { ref: 'store-front/main', id: 'held-1', text: 'x', at: 1 };
+		});
+		const running = withCarrier((state) => {
+			state.lastSpokenSend = { ref: 'store-front/main', id: 'running-1', text: 'x', at: 1 };
+		});
+		const drop = { ref: 'store-front/main', action: 'drop' };
+
+		await executeTool('queued_message', drop, aside.tools);
+		await executeTool('queued_message', drop, held.tools);
+
+		expect([...aside.actions, ...held.actions]).toEqual([
+			{ type: 'take_back', ref: 'store-front/main', id: 'aside-1' },
+			{ type: 'take_back', ref: 'store-front/main', id: 'held-1' },
+		]);
+		expect((await executeTool('queued_message', drop, running.tools)).ok).toBe(false);
+		expect(running.actions).toEqual([]);
 	});
 
 	it('nothing queued, or an unknown action → fails, nothing dispatched', async () => {
 		const { tools, actions } = createToolContext();
+		const queued = withQueue(null);
 
 		expect(
 			(await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, tools)).ok,
@@ -992,11 +1070,12 @@ describe('queued_message', () => {
 				await executeTool(
 					'queued_message',
 					{ ref: 'store-front/main', action: 'later' },
-					withQueue(null).tools,
+					queued.tools,
 				)
 			).ok,
 		).toBe(false);
 		expect(actions).toEqual([]);
+		expect(queued.actions).toEqual([]);
 	});
 });
 

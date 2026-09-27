@@ -277,6 +277,8 @@ export type Action =
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	// "I want it now" (or the page's button): the queued words cut the running work and go first.
 	| { type: 'promote_queued'; ref: string; queuedId: string }
+	// Set by the kernel: the developer takes back words not yet acted on (queued, asked aside, held).
+	| { type: 'take_back'; ref: string; id: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
 	// isSpoken: set by the kernel; the next open question is then read out.
 	| {

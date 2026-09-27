@@ -550,14 +550,15 @@ describe('promote_queued', () => {
 		]);
 	});
 
-	it('not working → moved to the front; an unknown id changes nothing', () => {
+	it('stopped → moved to the front and the session started; an unknown id changes nothing', () => {
 		const stopped = run([{ type: 'worker_exited', ref: REF, error: 'exit 1' }], {
 			start: queuedBehind(),
 		}).state;
 		const last = stopped.sessions[REF]?.queue.at(-1);
-		const moved = run([{ type: 'promote_queued', ref: REF, queuedId: last?.id ?? '' }], {
-			start: stopped,
-		}).state;
+		const { state: moved, effects } = run(
+			[{ type: 'promote_queued', ref: REF, queuedId: last?.id ?? '' }],
+			{ start: stopped },
+		);
 		const unknown = run([{ type: 'promote_queued', ref: REF, queuedId: 'nope' }], {
 			start: stopped,
 		});
@@ -566,6 +567,7 @@ describe('promote_queued', () => {
 			'then the tests',
 			'use proxy pair',
 		]);
+		expect(effects).toEqual([{ type: 'worker_start', ref: REF }]);
 		expect(unknown.state.sessions[REF]).toEqual(stopped.sessions[REF]);
 		expect(unknown.effects).toEqual([]);
 	});

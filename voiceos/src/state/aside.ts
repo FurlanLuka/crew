@@ -3,7 +3,13 @@ import type { Input, Session, Stamped, State, StreamItem } from '../shared/proto
 import type { ReducerResult } from './reducer.js';
 import { deliverSend } from './delivery.js';
 import { openRedirect } from './redirect.js';
-import { normalizeSaid, pushStreamItem, updateSession, withoutEffects } from './helpers.js';
+import {
+	normalizeSaid,
+	pointLastSpokenAt,
+	pushStreamItem,
+	updateSession,
+	withoutEffects,
+} from './helpers.js';
 
 type AsideSettledInput = Extract<Input, { type: 'aside_settled' }>;
 
@@ -84,14 +90,18 @@ export const reduceAside = (
 
 	const asked = state.sessions[input.ref]?.stream.find((item) => item.id === input.itemId);
 	const note = asked?.kind === 'aside' ? asked.note : undefined;
-	const settled = updateSession(state, input.ref, (current) => ({
-		...current,
-		stream: current.stream.map((item) =>
-			item.id === input.itemId && item.kind === 'aside'
-				? { ...item, status: input.status, answer: input.answer && readShownText(input.answer) }
-				: item,
-		),
-	}));
+	const settled = updateSession(
+		pointLastSpokenAt(state, input.itemId, stamped.id),
+		input.ref,
+		(current) => ({
+			...current,
+			stream: current.stream.map((item) =>
+				item.id === input.itemId && item.kind === 'aside'
+					? { ...item, status: input.status, answer: input.answer && readShownText(input.answer) }
+					: item,
+			),
+		}),
+	);
 
 	if (input.status === 'answered' && input.answer) {
 		return {

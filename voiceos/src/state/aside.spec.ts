@@ -271,6 +271,30 @@ describe('an aside that changes the work', () => {
 		);
 	});
 
+	it('its turn ended while the fork thought → sent at once, no switch question', () => {
+		const asked = askAside(runningSession(), 'can we use proxy pair?').state;
+		const idle = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: 'Done.' }], {
+			start: asked,
+		}).state;
+		const { state, effects } = settle(idle, { isChangingWork: true });
+
+		expect(state.asks).toEqual([]);
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'worker_send', text: 'can we use proxy pair?' }),
+		);
+	});
+
+	it('the note asked with it rides into the switch question', () => {
+		const asked = run(
+			[{ type: 'send', ref: REF, text: 'can we use my notes?', aside: true, note: 'notes path' }],
+			{ start: runningSession() },
+		).state;
+
+		expect(settle(asked, { isChangingWork: true }).state.asks).toEqual([
+			expect.objectContaining({ kind: 'redirect', note: 'notes path' }),
+		]);
+	});
+
 	it('it needed tools, or the fork failed → queued as before', () => {
 		for (const status of ['queued', 'failed'] as const) {
 			const { state } = settle(askAside(runningSession(), 'can we use proxy pair?').state, {
@@ -282,5 +306,82 @@ describe('an aside that changes the work', () => {
 				'can we use proxy pair?',
 			]);
 		}
+	});
+});
+
+describe('take_back', () => {
+	it('a side question still asking → withdrawn: its answer is never said or queued', () => {
+		const asked = askAside(runningSession()).state;
+		const itemId = asidesOf(asked)[0]?.id ?? '';
+		const taken = run([{ type: 'take_back', ref: REF, id: itemId }], { start: asked }).state;
+		const late = run(
+			[
+				{
+					type: 'aside_settled',
+					ref: REF,
+					itemId,
+					question: 'which file did you change?',
+					status: 'queued',
+					answer: null,
+				},
+			],
+			{ start: taken },
+		);
+
+		expect(asidesOf(taken)[0]?.status).toBe('withdrawn');
+		expect(late.effects).toEqual([]);
+		expect(late.state.sessions[REF]?.queue).toEqual([]);
+	});
+
+	it('a queued message or a held switch → removed; the rest stays', () => {
+		const queued = run(
+			[
+				{ type: 'send', ref: REF, text: 'first' },
+				{ type: 'send', ref: REF, text: 'second' },
+			],
+			{ start: runningSession() },
+		).state;
+		const first = queued.sessions[REF]?.queue[0]?.id ?? '';
+		const held = run(
+			[{ type: 'send', ref: REF, text: 'use proxy pair', ack: { kind: 'redirect' } }],
+			{
+				start: runningSession(),
+			},
+		).state;
+		const heldId = held.asks[0]?.id ?? '';
+
+		expect(
+			run([{ type: 'take_back', ref: REF, id: first }], { start: queued }).state.sessions[
+				REF
+			]?.queue.map((message) => message.text),
+		).toEqual(['second']);
+		expect(run([{ type: 'take_back', ref: REF, id: heldId }], { start: held }).state.asks).toEqual(
+			[],
+		);
+	});
+
+	it("a side question that became a queued message keeps the developer's words findable", () => {
+		const asked = run(
+			[{ type: 'send', ref: REF, text: 'which file?', aside: true, isSpoken: true }],
+			{
+				start: runningSession(),
+			},
+		).state;
+		const itemId = asidesOf(asked)[0]?.id ?? '';
+		const queued = run(
+			[
+				{
+					type: 'aside_settled',
+					ref: REF,
+					itemId,
+					question: 'which file?',
+					status: 'queued',
+					answer: null,
+				},
+			],
+			{ start: asked },
+		).state;
+
+		expect(queued.lastSpokenSend?.id).toBe(queued.sessions[REF]?.queue[0]?.id);
 	});
 });

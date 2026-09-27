@@ -3,6 +3,7 @@ import type { RawMessage } from './events.js';
 import {
 	buildSidePrompt,
 	classifySideAnswer,
+	isChangingWork,
 	runSideAnswer,
 	type RunSideAnswerParams,
 } from './side-answer.js';
@@ -231,4 +232,16 @@ describe('buildSidePrompt', () => {
 		expect(buildSidePrompt('how much cheaper is it?')).toContain(
 			'no progress or checkpoint about your current work',
 		));
+});
+
+describe('isChangingWork', () => {
+	it.each([
+		['CHANGES_WORK', true],
+		['CHANGES_WORK: it should use v2', true],
+		['NEEDS_TOOLS', false],
+		['NEEDS_TOOLS, and CHANGES_WORK too', false],
+		['The router.', false],
+	])('%p → %p', (reply, expected) =>
+		expect(isChangingWork(classifySideAnswer([text(reply), success]))).toBe(expected),
+	);
 });

@@ -2,6 +2,9 @@ import type { Observation, Session, Stamped, State, StreamItem } from '../shared
 import type { Effect, ReducerResult } from './reducer.js';
 import { readShownText } from '../shared/spoken-tags.js';
 
+// Withdrawn side questions remembered, so a late answer to one is never said or queued.
+export const WITHDRAWN_KEPT = 20;
+
 export const STREAM_ITEMS_KEPT = 400;
 
 const REQUESTS_KEPT = 3;
@@ -171,3 +174,10 @@ export const pushNotice = ({ state, ref, text, stamped, suffix }: PushNoticePara
 // How the same words are recognised when said twice: case and spacing do not count.
 export const normalizeSaid = (text: string): string =>
 	text.trim().replace(/\s+/g, ' ').toLowerCase();
+
+export const pointLastSpokenAt = (state: State, from: string, to: string): State =>
+	// The developer's words moved into another carrier (a held switch or an aside became a message, an
+	// aside became a switch): a continuation or a take-back still finds them.
+	state.lastSpokenSend?.id === from
+		? { ...state, lastSpokenSend: { ...state.lastSpokenSend, id: to } }
+		: state;

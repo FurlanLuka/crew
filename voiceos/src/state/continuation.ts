@@ -2,14 +2,13 @@ import type { Input, LastSpokenSend, Session, Stamped, State } from '../shared/p
 import type { ReducerResult } from './reducer.js';
 import { startAside } from './aside.js';
 import { deliverSend, joinNotes, replaceRunning } from './delivery.js';
-import { normalizeSaid, updateSession, withoutEffects } from './helpers.js';
+import { normalizeSaid, updateSession, WITHDRAWN_KEPT, withoutEffects } from './helpers.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
 
 // Soon enough after the first half that the developer is still finishing the same thought.
 export const CONTINUATION_MS = 15_000;
 const MIN_SHARE = 0.6;
-const WITHDRAWN_KEPT = 20;
 const SHORT_HALF_WORDS = 2;
 const FILLER = new Set([
 	'the',

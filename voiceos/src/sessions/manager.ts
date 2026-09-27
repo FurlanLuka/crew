@@ -3,7 +3,7 @@ import type { Effect } from '../state/reducer.js';
 import { createLogger } from '../log.js';
 import { PermissionBridge } from './permissions.js';
 import { forgetSession, loadRegistry, markBriefed, recordSession } from './registry.js';
-import { CHANGES_WORK, runSideAnswer } from './side-answer.js';
+import { isChangingWork, runSideAnswer } from './side-answer.js';
 import { Worker, buildWorkerEnv, type WorkerOptions } from './worker.js';
 import { BRIEFING_VERSION, appendVoiceContext } from './voice-context.js';
 
@@ -87,9 +87,7 @@ export class SessionManager {
 			question,
 			status: outcome.status,
 			answer: outcome.status === 'answered' ? outcome.answer : null,
-			...(outcome.status === 'queued' && outcome.reason === CHANGES_WORK
-				? { isChangingWork: true }
-				: {}),
+			...(isChangingWork(outcome) ? { isChangingWork: true } : {}),
 		});
 	}
 

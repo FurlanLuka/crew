@@ -9,7 +9,7 @@ const log = createLogger('side-answer');
 export const SIDE_ANSWER_TIMEOUT_MS = 60_000;
 
 const NEEDS_TOOLS = 'NEEDS_TOOLS';
-export const CHANGES_WORK = 'CHANGES_WORK';
+const CHANGES_WORK = 'CHANGES_WORK';
 
 export const buildSidePrompt = (question: string): string =>
 	[
@@ -95,6 +95,10 @@ export interface RunSideAnswerParams {
 	runQuery?: typeof sdkQuery;
 	timeoutMs?: number;
 }
+
+export const isChangingWork = (outcome: SideAnswerOutcome): boolean =>
+	// The fork found the question means the current work should change: a switch, not a queue.
+	outcome.status === 'queued' && outcome.reason === CHANGES_WORK;
 
 export const runSideAnswer = async ({
 	launch,

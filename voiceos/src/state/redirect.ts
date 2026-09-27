@@ -7,7 +7,13 @@ import {
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { deliverSend, replaceRunning } from './delivery.js';
-import { pushNotice, readLabel, updateSession, withoutEffects } from './helpers.js';
+import {
+	pointLastSpokenAt,
+	pushNotice,
+	readLabel,
+	updateSession,
+	withoutEffects,
+} from './helpers.js';
 
 export type RedirectAsk = Extract<PendingAsk, { kind: 'redirect' }>;
 
@@ -113,12 +119,6 @@ const removeAsk = (state: State, ask: RedirectAsk): State => ({
 	...state,
 	asks: state.asks.filter((pending) => pending.id !== ask.id),
 });
-
-const pointLastSpokenAt = (state: State, from: string, to: string): State =>
-	// The developer's words moved from the held ask into a message: a continuation still finds them.
-	state.lastSpokenSend?.id === from
-		? { ...state, lastSpokenSend: { ...state.lastSpokenSend, id: to } }
-		: state;
 
 interface ReleaseRedirectParams {
 	state: State;

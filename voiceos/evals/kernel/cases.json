@@ -1724,6 +1724,37 @@
 			]
 		},
 		{
+			"id": "take-back-queued",
+			"utterance": "No, don't queue it. Add it to debug notes, don't put it to the session.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3,
+						"queued": ["Add this to notes too, like the debug note."]
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Add this to notes too, like the debug note?",
+						"reply": "",
+						"did": ["forward \"Add this to notes too, like the debug note.\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "queued_message",
+					"input": { "ref": "store-front/main", "action": "drop" }
+				},
+				{
+					"name": "debug_note"
+				}
+			]
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {
