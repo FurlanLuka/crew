@@ -64,7 +64,7 @@ crew trash [empty]                                         <path>\t<size>\t<n> e
 crew config show                                           <key>\t<value>
 crew dev proxy [status|trust [--install]|stop]            <up|up (not listening)|down>\t<domain>\t<port>\t<status url>\thttps <up|not listening|off>\t<https port>
 crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
-crew voice [start|stop|restart|status|logs] [--no-open] [--lines=<n>]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
+crew voice [start|stop|restart|status|logs|keys [set <anthropic|soniox>]] [--no-open] [--lines=<n>]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -401,6 +401,14 @@ the localhost link works on this Mac, and the proxy link is HTTPS whenever the p
 so it works on any device that trusts crew's CA (`crew dev proxy trust`). `crew voice` again
 reprints the link (sign-in is a cookie); `crew voice logs` shows its log; `crew voice stop`
 ends it and its sessions, which resume on the next start. `os` is a reserved workspace name.
+
+It needs two API keys, stored in `~/.config/crew-voiceos` (owner-only, never exported to a
+shell — an exported `ANTHROPIC_API_KEY` would bill every Claude Code session per token):
+Anthropic for the kernel and narrator, Soniox for speech. The first `crew voice` at a terminal
+asks for any missing one and checks it with the service. Without a tty, `crew voice keys` lists
+them (`<name>\t<set (file|env)|missing>\t<path>`, never a value) and `crew voice keys set
+<anthropic|soniox>` reads one from stdin — a rejected key is not saved, one that could not be
+checked (offline) is. `crew voice restart` picks a new key up.
 
 ## 8. Moving to another machine
 

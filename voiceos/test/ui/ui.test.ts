@@ -658,7 +658,7 @@ describe('voice os ui', () => {
 		const item = page.locator('[aria-label="queued"] .qitem', {
 			hasText: 'then deploy to staging',
 		});
-		await item.getByRole('button').click();
+		await item.getByRole('button', { name: /cancel/ }).click();
 		await waitUntil(() => listSentActions('cancel_queued').length > 0);
 		expect(listSentActions('cancel_queued').at(-1)).toEqual({
 			type: 'cancel_queued',

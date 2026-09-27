@@ -1,4 +1,4 @@
-// Compiles Voice OS into one executable where `crew voice` looks for it; releases download it there too.
+// Compiles Voice OS into one executable where `crew voice` looks for it. Releases do not ship it yet.
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';

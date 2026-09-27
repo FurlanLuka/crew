@@ -17,8 +17,11 @@ localhost link works on this Mac, and the proxy link (`https://voice--os.<domain
 device that trusts crew's CA — `crew dev proxy trust` shows how, once per device. Hold **Space** to
 talk; type in the bar at the bottom otherwise. **Esc** goes back to Mission Control.
 
-Keys live in files, never in your shell environment (an exported `ANTHROPIC_API_KEY` would
-switch every Claude Code session to per-token billing):
+The first `crew voice` at a terminal asks for the two API keys it needs and checks each with its
+service before saving it; `crew voice keys` shows which are set, and `crew voice keys set
+<anthropic|soniox>` sets one from stdin. Keys live in files readable by you alone, never in your
+shell environment (an exported `ANTHROPIC_API_KEY` would switch every Claude Code session to
+per-token billing):
 
 | File | For |
 | --- | --- |

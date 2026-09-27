@@ -7,8 +7,6 @@ on:
   pull_request:
     branches: [main]
     paths: ["voiceos/**", "crew/cmd_voice*.go", "crew/internal/voice/**", ".github/workflows/voiceos.yml"]
-  schedule:
-    - cron: "17 4 * * *"
   workflow_dispatch:
 
 jobs:
@@ -38,57 +36,3 @@ jobs:
           cache-dependency-path: crew/go.sum
       - working-directory: crew
         run: go test -run 'Golden' .
-
-  # Real Soniox: STT over the committed fixtures, and streaming TTS. Secrets are never passed to
-  # pull requests from forks, so those skip; never switch to pull_request_target.
-  audio:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: voiceos
-    env:
-      SONIOX_API_KEY: ${{ secrets.SONIOX_API_KEY }}
-      VOICEOS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test test/live/audio.test.ts test/live/tts.test.ts
-
-  # Prompt evals against real Haiku (judge: Sonnet 5). Same fork rule as audio.
-  evals:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: voiceos
-    env:
-      VOICEOS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun evals/run.ts all
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: eval-results
-          path: voiceos/evals/results/
-
-  # Real Claude Code sessions on Haiku. Costs money, so nightly and on demand.
-  live:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: voiceos
-    env:
-      VOICEOS_LIVE: "1"
-      VOICEOS_WORKER_AUTH: apikey
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test test/live/session.test.ts

@@ -58,8 +58,9 @@ const App = () => {
 				{status !== 'open' && <div className="banner">Reconnecting to the Voice OS server…</div>}
 				{state.setup.missing.length > 0 && (
 					<div className="banner">
-						Voice is off until these key files exist: {state.setup.missing.join(', ')}. Text and
-						clicks still work.
+						Voice is off until these are set: {state.setup.missing.join(', ')}. Run crew voice keys
+						set anthropic (or soniox) in a terminal, then crew voice restart. Text and clicks still
+						work.
 					</div>
 				)}
 				{micStatus === 'denied' && (

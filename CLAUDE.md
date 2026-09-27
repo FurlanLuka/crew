@@ -234,6 +234,13 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `update` — those, and a start within the hour, get `trash.Sweep` alone; `uninstall`
   gets nothing. `crew clean
   [--dry-run]` prints `RenderReport` rows.
+- **Voice OS** — `voiceos/` (Bun/TypeScript, its own README and tests) is the voice and web
+  cockpit: one Claude Code session per worktree, a Haiku kernel routing speech, Soniox for speech
+  in and out. `crew voice` owns its lifecycle like the proxy's (`internal/voice`); the binary is
+  `~/.crew/bin/voiceos`, built by `bun run install-dev` — releases do not ship it yet. Its keys
+  live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
+  at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
+  else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 
@@ -247,7 +254,7 @@ crew/
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   cmd_transfer.go      crew export, crew import (parseImportArgs: --plan | project | workspace | --all)
   cmd_launch.go        crew launch, claude, edit          cmd_trash.go  crew trash
-  cmd_housekeeping.go  crew clean
+  cmd_housekeeping.go  crew clean          cmd_voice.go  crew voice (start/stop/status/logs, keys + first-run prompt)
   cmd_setup_runner.go  crew _setup — the hidden per-project runner (exempt from help/SKILL)
   internal/
     app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
@@ -269,6 +276,8 @@ crew/
                 ApplyProject, ApplyWorkspace); picker + wizard TUIs
     trash/      removed checkouts: rename into ~/.crew/trash, detached rm, sweep on start
     uninstall/  crew uninstall
+    voice/      Voice OS lifecycle (tmux session, remembered port, proxy route, login link) and its
+                API keys (keys.go: InspectKeys, SaveKey, CheckKey)
     workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, the worktree page;
                 check.go (the check target), setup_job.go (the runner), store.go (loadFor/updateFor),
                 pool.go (RemoveFromPool, WorkspacesWith), direct.go (DirectRefusals)

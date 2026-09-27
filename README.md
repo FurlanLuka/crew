@@ -277,7 +277,7 @@ Every list prints tab-separated rows; `--json` anywhere. `crew help <cmd>` for f
 | **Workspaces** | `add workspace <ws> [<p> …] [--direct] [--wait]` · `rm workspace <ws> <p>` · `rm <ws>` · `add worktree <ws>/<name> [--pull] [--no-install] [--no-smoke] [--wait]` · `rename worktree <ref> <name>` · `duplicate <ref> <name>` · `rm worktree` · `setup <ref> [<p>…] [--wait]` · `setup status <ref> [--wait]` · `setup logs <ref> <p>` · `verify <ref> [<p>…] [--wait]` · `fix <ref> [--print]` · `migrate [--dry-run] [--yes]` |
 | **Servers** | `dev start\|stop\|restart <ref> [--proxy]` · `dev check <ref> [--wait]` · `dev logs <ref> <server> [-f \| --lines=N]` · `dev proxy status\|trust\|stop` |
 | **Launch** | `claude <ref>` · `edit <ref> [--editor=cursor\|code]` · `open <ref>` · `code <ref>` · `start <ref>` · `launch [<ref>]` |
-| **Voice** | `voice [start\|stop\|restart\|status\|logs] [--no-open] [--lines=N]` — Voice OS, the voice and web cockpit for every worktree's Claude session (see [`voiceos/README.md`](voiceos/README.md)) |
+| **Voice** | `voice [start\|stop\|restart\|status\|logs\|keys [set <anthropic\|soniox>]] [--no-open] [--lines=N]` — Voice OS, the voice and web cockpit for every worktree's Claude session; the first start asks for its Anthropic and Soniox keys (see [`voiceos/README.md`](voiceos/README.md)) |
 | **Elsewhere** | `export [file] [--all \| --projects=… [--workspaces=…]]` · `import <file> [--plan \| project <name> [--path \| --replace] \| workspace <name> [--pull] [--wait] \| --all [--replace] [--pull] [--wait]]` |
 | **Housekeeping** | `clean [--dry-run]` · `trash [empty]` · `kill [--dry-run]` · `config set <key> <value>` · `config refresh` · `update` · `uninstall [--purge] [--yes]` |
 

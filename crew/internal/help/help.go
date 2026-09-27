@@ -634,14 +634,14 @@ var Root = CommandInfo{
 		},
 		{
 			Name:         "voice",
-			Description:  "Voice OS: a voice and web cockpit for the Claude Code sessions of every worktree. Bare crew voice starts it when needed (one tmux session, a remembered port, a route on the dev proxy) and prints the sign-in links — the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). stop also ends the Claude sessions it runs; they resume on the next start. crew kill and crew dev stop stop it too.",
-			Usage:        "crew voice [start|stop|restart|status|logs] [--no-open] [--lines=<n>]",
+			Description:  "Voice OS: a voice and web cockpit for the Claude Code sessions of every worktree. Bare crew voice starts it when needed (one tmux session, a remembered port, a route on the dev proxy) and prints the sign-in links — the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). stop also ends the Claude sessions it runs; they resume on the next start. crew kill and crew dev stop stop it too. It needs an Anthropic key (kernel and narrator) and a Soniox key (speech): the first start at a terminal asks for any that is missing and checks it with the service; keys lists them (never their values) and keys set reads one from stdin — a rejected key is not saved. They live in ~/.config/crew-voiceos, readable by you alone, never in the shell environment.",
+			Usage:        "crew voice [start|stop|restart|status|logs|keys [set <anthropic|soniox>]] [--no-open] [--lines=<n>]",
 			OutputFormat: "<up|up (not answering)|down>\\t<port>\\t<localhost url>\\t<proxy url>",
 			Flags: []FlagInfo{
 				{Name: "--no-open", Description: "Do not open the browser (start and restart open it when run in a terminal)"},
 				{Name: "--lines=<n>", Description: "logs only: the last n lines (default 80)"},
 			},
-			Examples: []string{"crew voice", "crew voice status --json", "crew voice logs --lines=200", "crew voice stop"},
+			Examples: []string{"crew voice", "crew voice status --json", "crew voice logs --lines=200", "crew voice keys", "pbpaste | crew voice keys set anthropic", "crew voice stop"},
 		},
 		{
 			Name:        "update",
