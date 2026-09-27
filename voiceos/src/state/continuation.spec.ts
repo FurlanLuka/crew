@@ -251,6 +251,32 @@ describe('a continuation replaces its first half', () => {
 		);
 	});
 
+	it('a note on the continuation rides with the whole sentence: sent, or asked aside', () => {
+		const idleFirst = run([said(FIRST)], { start: runningSession(), at: 1000 });
+		const queued = run([said(JOINED, { continues: { rest: REST }, note: 'n' })], {
+			start: idleFirst.state,
+			at: 4000,
+		});
+		const asideFirst = run([said('why are the timeout errors in', { aside: true })], {
+			start: runningSession(),
+			at: 1000,
+		});
+		const asked = run(
+			[
+				said('Why are the timeout errors in the checkout worker?', {
+					continues: { rest: 'The checkout worker?', isAside: true },
+					note: 'n',
+				}),
+			],
+			{ start: asideFirst.state, at: 4000 },
+		);
+
+		expect(sessionOf(queued.state)?.queue.at(-1)).toMatchObject({ text: JOINED, note: 'n' });
+		expect(asked.effects).toContainEqual(
+			expect.objectContaining({ type: 'side_answer', note: 'n' }),
+		);
+	});
+
 	it('an ask answered in between → the first half is no longer the last words: only the new ones', () => {
 		const first = run([said(FIRST)], { start: runningSession(), at: 1000 });
 		const asked = run(

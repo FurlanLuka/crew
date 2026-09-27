@@ -1,7 +1,6 @@
 import type { QueuedMessage, Session, State } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
-import { decideDelivery } from '../state/delivery.js';
 import { isPlainConsent } from './consent.js';
 import { normalizeSaid } from '../state/helpers.js';
 import { findSessionsNamedIn } from './session-naming.js';
@@ -9,6 +8,9 @@ import { buildSituationNote } from '../sessions/voice-context.js';
 import { type ToolResult, fail, succeed } from './results.js';
 import type { SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
+import type { NotesStore } from '../memory/notes.js';
+import { decideDelivery, joinNotes } from '../state/delivery.js';
+import { nameNotes, readWorkspace } from '../shared/notes.js';
 
 const log = createLogger('tools');
 
@@ -32,6 +34,34 @@ export const buildSessionNote = ({
 	}
 
 	return buildSituationNote({ servers: state.devServers[session.ref] ?? [], recent }) || undefined;
+};
+
+// "my notes", "my own notes": the developer's. "the release notes", "debug notes" are not.
+const MY_NOTES_PATTERN = /\bmy (?:own )?notes\b/i;
+
+interface BuildNotesPathNoteParams {
+	ref: string;
+	utterance: string | undefined;
+	notes: NotesStore;
+}
+
+export const buildNotesPathNote = ({
+	ref,
+	utterance,
+	notes,
+}: BuildNotesPathNoteParams): string | undefined => {
+	// Only when the developer asked about their notes, as said (never the kernel's rewrite): a
+	// session is never handed them unasked.
+	if (!utterance || !MY_NOTES_PATTERN.test(utterance)) {
+		return undefined;
+	}
+
+	const workspace = readWorkspace(ref);
+	const path = notes.pathFor(workspace);
+
+	return notes.has(workspace)
+		? `The developer's notes for ${nameNotes(workspace)} are in ${path}.`
+		: `The developer has no notes for ${nameNotes(workspace)} yet (they would be in ${path}).`;
 };
 
 const BARE_REFUSAL_PATTERN = /^(?:no|nope|nah|deny|decline|don't|do not|cancel|reject)\b/i;
@@ -239,11 +269,18 @@ export const sendText = ({
 
 	if (delivery === 'aside') {
 		log.info('asked aside', { ref, chars: text.length });
+		const notesPath = buildNotesPathNote({
+			ref,
+			utterance: toolContext.utterance,
+			notes: toolContext.notes,
+		});
+
 		toolContext.dispatch({
 			type: 'send',
 			ref,
 			text,
 			aside: true,
+			...(notesPath ? { note: notesPath } : {}),
 			...(toolContext.isSpoken ? { isSpoken: true } : {}),
 		});
 
@@ -265,9 +302,12 @@ export const sendText = ({
 		);
 	}
 
-	const note = session
-		? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
-		: undefined;
+	const note = joinNotes(
+		session
+			? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
+			: undefined,
+		buildNotesPathNote({ ref, utterance: toolContext.utterance, notes: toolContext.notes }),
+	);
 
 	if (continues) {
 		log.info('continuation', { ref, chars: text.length });

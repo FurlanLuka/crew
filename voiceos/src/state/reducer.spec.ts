@@ -1558,3 +1558,16 @@ describe('an input this reducer does not know', () => {
 			}),
 		).toThrow('unknown input: added_later'));
 });
+
+describe('notes', () => {
+	it("a workspace's notes are replaced as they now stand; a new workspace gets an entry", () => {
+		const { state, effects } = run([
+			{ type: 'notes', workspace: 'store', lines: ['- a'] },
+			{ type: 'notes', workspace: 'checkout', lines: ['- x'] },
+			{ type: 'notes', workspace: 'store', lines: ['- a', '- b'] },
+		]);
+
+		expect(state.notes).toEqual({ store: ['- a', '- b'], checkout: ['- x'] });
+		expect(effects).toEqual([]);
+	});
+});

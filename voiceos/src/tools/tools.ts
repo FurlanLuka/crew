@@ -11,12 +11,48 @@ import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from '
 import { answerAsk } from './answer.js';
 import type { HistoryQuery } from '../memory/journal.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
+import type { NotesStore } from '../memory/notes.js';
+import { GENERAL_NOTES, nameNotes, readNoteText, readWorkspace } from '../shared/notes.js';
+import { createLogger } from '../log.js';
+import { normalizeName } from '../router/refs.js';
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
 
 const MIN_REQUEST_WORDS = 4;
+const log = createLogger('tools');
+
+const NOTES_READ_BACK = 10;
+
+interface ReadNoteWorkspaceParams {
+	state: State;
+	named: unknown;
+	screen: string | null | undefined;
+}
+
+const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): string | null => {
+	// A workspace the developer named — matched the way session names are ("storefront" is
+	// store-front) — else the one on screen; on Mission Control, the general notes. null: the name
+	// matched none.
+	if (typeof named !== 'string' || !named.trim()) {
+		return readWorkspace(screen);
+	}
+
+	const known = [...state.order.map((ref) => readWorkspace(ref)), ...Object.keys(state.notes)];
+	const spoken = normalizeName(named);
+	// The general notes only when no workspace answers to the name: a real "general" wins it.
+	const workspace = known
+		.filter((key) => key !== GENERAL_NOTES)
+		.find((key) => normalizeName(key) === spoken);
+
+	if (workspace) {
+		return workspace;
+	}
+
+	return spoken === normalizeName(GENERAL_NOTES) ? GENERAL_NOTES : null;
+};
+
 // "…and fix the login bug", "…then run the seeds": new work named. A pause ("stop and wait",
 // "stop, let me look") or "I'll do it myself instead" names none for the session: it still stops.
 const SAYS_WHAT_INSTEAD_PATTERN =
@@ -49,6 +85,8 @@ export interface ToolContext {
 	// Required so a server that forgets to wire them fails to compile, not a "Noted." that saved nothing.
 	mute: () => void;
 	saveDebugNote: (words: DebugNoteWords) => void;
+	// The developer's own notes, per workspace.
+	notes: NotesStore;
 	// Calls that change something in this turn so far, this step's included: more than one splits the words.
 	actionsInTurn?: number;
 	// Bound to the tab the words came from; 'no_tab' when they came from none (evals, a closed tab).
@@ -383,6 +421,64 @@ export const executeTool = async (
 			toolContext.saveDebugNote({ text, said: toolContext.utterance ?? null });
 
 			return succeed('noted with a snapshot of this moment');
+		}
+
+		case 'note': {
+			const text = typeof input.text === 'string' ? input.text.trim() : '';
+
+			if (!text) {
+				return fail('the note is empty: ask what to note');
+			}
+
+			const named = readNoteWorkspace({
+				state,
+				named: input.workspace,
+				screen: toolContext.screen,
+			});
+			const workspace = named ?? GENERAL_NOTES;
+
+			try {
+				toolContext.notes.save({ workspace, text });
+			} catch (error) {
+				log.error('note not saved', { workspace, error: String(error) });
+
+				return fail('could not save the note: tell the developer it was not kept');
+			}
+
+			// A name that matched no workspace lands in the general notes: said, so it is not missed.
+			return succeed(
+				named === null
+					? 'no such workspace: noted in the general notes. Say "Noted in your general notes."'
+					: `noted in ${nameNotes(workspace)}'s notes`,
+			);
+		}
+
+		case 'read_notes': {
+			const named = readNoteWorkspace({
+				state,
+				named: input.workspace,
+				screen: toolContext.screen,
+			});
+
+			if (named === null) {
+				return fail('no workspace by that name has notes: ask which one');
+			}
+
+			const workspace = named;
+			const notes = toolContext.notes.read(workspace, NOTES_READ_BACK).map(readNoteText);
+
+			if (!notes.length) {
+				return succeed(`no notes in ${nameNotes(workspace)} yet`);
+			}
+
+			// The model may read them first when asked to have a session work from them: the result says
+			// that is the session's job, so the words still reach it.
+			return succeed({
+				workspace: nameNotes(workspace),
+				notes,
+				if_asked_for_work:
+					"forward the developer's words to the session: it reads the notes file itself",
+			});
 		}
 
 		case 'hands_free': {

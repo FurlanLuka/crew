@@ -55,7 +55,13 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 	if (sdkAsk && input.aside) {
 		return isAsideInFlight(session, text)
 			? withoutEffects(focusedState)
-			: startAside({ state: focusedState, ref: input.ref, question: text, stamped });
+			: startAside({
+					state: focusedState,
+					ref: input.ref,
+					question: text,
+					note: input.note?.trim() || undefined,
+					stamped,
+				});
 	}
 
 	if (sdkAsk) {
@@ -94,7 +100,13 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 	if (input.aside && session.status === 'running') {
 		return isAsideInFlight(session, text)
 			? withoutEffects(current)
-			: startAside({ state: current, ref: input.ref, question: text, stamped });
+			: startAside({
+					state: current,
+					ref: input.ref,
+					question: text,
+					note: input.note?.trim() || undefined,
+					stamped,
+				});
 	}
 
 	const delivered = deliverSend({

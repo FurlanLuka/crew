@@ -199,3 +199,36 @@ describe('asking aside while a plan or permission waits', () => {
 		);
 	});
 });
+
+describe('a note that came with the question', () => {
+	const withNote = () =>
+		run([{ type: 'send', ref: REF, text: 'which note first?', aside: true, note: 'notes path' }], {
+			start: runningSession(),
+		});
+
+	it('goes to the fork, and to the turn it becomes when the fork cannot answer', () => {
+		const asked = withNote();
+		const itemId = asidesOf(asked.state)[0]?.id ?? '';
+		const queued = run(
+			[
+				{
+					type: 'aside_settled',
+					ref: REF,
+					itemId,
+					question: 'which note first?',
+					status: 'queued',
+					answer: null,
+				},
+			],
+			{ start: asked.state },
+		);
+
+		expect(asked.effects).toEqual([
+			{ type: 'side_answer', ref: REF, itemId, question: 'which note first?', note: 'notes path' },
+		]);
+		expect(queued.state.sessions[REF]?.queue.at(-1)).toMatchObject({
+			text: 'which note first?',
+			note: 'notes path',
+		});
+	});
+});

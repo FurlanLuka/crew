@@ -24,10 +24,17 @@ interface StartAsideParams {
 	state: State;
 	ref: string;
 	question: string;
+	note?: string | undefined;
 	stamped: Stamped;
 }
 
-export const startAside = ({ state, ref, question, stamped }: StartAsideParams): ReducerResult => {
+export const startAside = ({
+	state,
+	ref,
+	question,
+	note,
+	stamped,
+}: StartAsideParams): ReducerResult => {
 	const item: StreamItem = {
 		id: stamped.id,
 		at: stamped.at,
@@ -35,11 +42,14 @@ export const startAside = ({ state, ref, question, stamped }: StartAsideParams):
 		question,
 		answer: null,
 		status: 'asking',
+		...(note ? { note } : {}),
 	};
 
 	return {
 		state: updateSession(state, ref, (session) => pushStreamItem(session, item)),
-		effects: [{ type: 'side_answer', ref, itemId: stamped.id, question }],
+		effects: [
+			{ type: 'side_answer', ref, itemId: stamped.id, question, ...(note ? { note } : {}) },
+		],
 	};
 };
 
@@ -71,6 +81,8 @@ export const reduceAside = (
 		return withoutEffects(state);
 	}
 
+	const asked = state.sessions[input.ref]?.stream.find((item) => item.id === input.itemId);
+	const note = asked?.kind === 'aside' ? asked.note : undefined;
 	const settled = updateSession(state, input.ref, (current) => ({
 		...current,
 		stream: current.stream.map((item) =>
@@ -101,6 +113,7 @@ export const reduceAside = (
 		state: settled,
 		ref: input.ref,
 		text: question,
+		note,
 		isSpoken: false,
 		stamped,
 		shouldStart: false,

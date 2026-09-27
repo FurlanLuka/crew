@@ -12,6 +12,7 @@ export interface Paths {
 	stateFile: string;
 	logFile: string;
 	debugNotesFile: string;
+	notesDir: string;
 	journalDir: string;
 	debugAudioDir: string;
 	topicsFile: string;
@@ -37,6 +38,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		stateFile: join(voiceDir, 'state.json'),
 		logFile: join(voiceDir, 'logs', 'voiceos.log'),
 		debugNotesFile: join(voiceDir, 'logs', 'debug-notes.jsonl'),
+		notesDir: join(voiceDir, 'notes'),
 		journalDir: join(voiceDir, 'journal'),
 		debugAudioDir: join(voiceDir, 'debug'),
 		topicsFile: join(voiceDir, 'topics.json'),

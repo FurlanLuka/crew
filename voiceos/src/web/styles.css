@@ -193,6 +193,25 @@ textarea:focus-visible {
 	color: var(--ink);
 	padding-left: 10px;
 }
+.notes-toggle {
+	align-self: flex-start;
+	background: none;
+	border: 0;
+	padding: 0;
+}
+.notes-toggle:hover {
+	color: var(--ink-dim);
+}
+.notes .note {
+	font-size: 11.5px;
+	color: var(--ink-dim);
+	padding: 3px 0;
+	border-bottom: 1px dashed var(--line-soft);
+	overflow-wrap: anywhere;
+}
+.notes .note:last-child {
+	border-bottom: 0;
+}
 .elsewhere-row {
 	display: block;
 	width: 100%;

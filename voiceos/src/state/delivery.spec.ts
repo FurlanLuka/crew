@@ -411,6 +411,38 @@ describe('the owed report', () => {
 		expect(state.sessions[REF]?.queue[0]?.reportOwed).toBe(true);
 	});
 
+	it('merged follow-ups keep every note they carried, the same one once', () => {
+		const { state } = run(
+			[
+				{ type: 'send', ref: REF, text: 'why', isSpoken: true },
+				{ type: 'send', ref: REF, text: 'no wait', isSpoken: true, note: 'situation' },
+				{ type: 'send', ref: REF, text: 'fix it', isSpoken: true, note: 'notes path' },
+				{ type: 'send', ref: REF, text: 'and test', isSpoken: true, note: 'notes path' },
+			],
+			{ start: idleSession() },
+		);
+
+		expect(state.sessions[REF]?.queue[0]?.note).toBe('situation\n\nnotes path');
+	});
+
+	it('words queued behind the first while it starts, each with a note, then a follow-up → every note, in order', () => {
+		const { state } = run(
+			[
+				{ type: 'send', ref: REF, text: 'first', isSpoken: true },
+				{ type: 'send', ref: REF, text: 'one', isSpoken: true, note: 'a' },
+				{ type: 'send', ref: REF, text: 'two', isSpoken: true, note: 'b' },
+				{ type: 'session_started', ref: REF },
+				{ type: 'send', ref: REF, text: 'three', isSpoken: true, note: 'c' },
+			],
+			{ start: run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state },
+		);
+
+		expect(state.sessions[REF]?.queue[0]).toMatchObject({
+			text: 'one two three',
+			note: 'a\n\nb\n\nc',
+		});
+	});
+
 	it('a turn that wrote nothing → still narrated', () => {
 		const { effects } = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: '' }], {
 			start: acked(),

@@ -12,7 +12,14 @@ export type StreamItem = { id: string; at: number } & (
 	| { kind: 'diff'; filePath: string; lines: string[] }
 	| { kind: 'notice'; text: string }
 	// A question answered by a fork of the session while it worked, beside its turn.
-	| { kind: 'aside'; question: string; answer: string | null; status: AsideStatus }
+	| {
+			kind: 'aside';
+			question: string;
+			answer: string | null;
+			status: AsideStatus;
+			// Voice OS context that came with the question: the fork reads it, and so does the turn it may become.
+			note?: string;
+	  }
 );
 
 // withdrawn: replaced by a continuation of the developer's words; it is never said or queued.
@@ -236,6 +243,8 @@ export interface State {
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
 	// a continuation said soon after replaces them.
 	lastSpokenSend: LastSpokenSend | null;
+	// The developer's own notes, by workspace key (shared/notes.ts), newest last.
+	notes: Record<string, string[]>;
 }
 
 export interface LastSpokenSend {
@@ -312,6 +321,8 @@ export interface WorktreeInfo {
 export type Observation =
 	// What the server observes: never sent by a client.
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
+	// The developer's notes of a workspace as they now stand (its newest lines), for the page.
+	| { type: 'notes'; workspace: string; lines: string[] }
 	| { type: 'session_started'; ref: string }
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }

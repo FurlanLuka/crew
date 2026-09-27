@@ -7,7 +7,7 @@ const DIGIT_WORDS: Record<string, string> = Object.fromEntries(
 	NUMBER_WORDS.map((word, digit) => [word, String(digit)]),
 );
 
-const normalizeName = (text: string): string => {
+export const normalizeName = (text: string): string => {
 	const words = text
 		.toLowerCase()
 		.split(/[\s\-_/]+/)

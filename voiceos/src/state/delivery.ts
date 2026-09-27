@@ -11,6 +11,18 @@ import { sendNow, startWorker, updateSession, withoutEffects } from './helpers.j
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
 import { openRedirect } from './redirect.js';
 
+export const joinNotes = (
+	carried: string | undefined,
+	added: string | undefined,
+): string | undefined => {
+	// Words merged into one message keep what each carried; the same note twice is read once.
+	if (!carried || !added || carried.includes(added)) {
+		return carried || added;
+	}
+
+	return `${carried}\n\n${added}`;
+};
+
 export const hasFollowUpWaiting = (session: Session): boolean => {
 	// The one signal that the running reply is being cut: the developer's follow-up waits at the head.
 	return session.queue[0]?.isFollowUp === true;
@@ -87,7 +99,7 @@ const queueFollowUp = ({
 		const mergedHead = {
 			...head,
 			text: `${head.text} ${text}`,
-			...(note && !head.note ? { note } : {}),
+			...(head.note || note ? { note: joinNotes(head.note, note) } : {}),
 			...(head.reportOwed || isOwed ? { reportOwed: true as const } : {}),
 		};
 
@@ -104,7 +116,10 @@ const queueFollowUp = ({
 	const firstTypedIndex = queue.findIndex((message) => !message.isSpoken);
 	const spokenEarlier = firstTypedIndex === -1 ? queue : queue.slice(0, firstTypedIndex);
 	const firstSpoken = spokenEarlier[0];
-	const carriedNote = spokenEarlier.find((message) => message.note)?.note ?? note;
+	const carriedNote = [...spokenEarlier.map((message) => message.note), note].reduce(
+		joinNotes,
+		undefined,
+	);
 	// The cut-off turn is never narrated, so what it owed is reported with the follow-up.
 	const isReportOwed =
 		session?.reportOwed || spokenEarlier.some((message) => message.reportOwed) || isOwed;

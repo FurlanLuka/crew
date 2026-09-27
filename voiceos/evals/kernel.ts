@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Kernel, type KernelResult } from '../src/router/kernel.js';
 import { readActiveRef } from '../src/router/refs.js';
+import { createNullNotes } from '../test/support/notes.js';
 import { reduce } from '../src/state/reducer.js';
 import { MUTATING_TOOLS, type ToolName } from '../src/tools/definitions.js';
 import { createFixtureState, type FixtureContext } from '../test/support/state.js';
@@ -290,6 +291,15 @@ export const runKernelEval = async ({
 					dispatch,
 					mute: () => {
 						// Effects go nowhere in an eval.
+					},
+					// Two notes on file: "go through my notes" means something only when there are some.
+					notes: {
+						...createNullNotes(),
+						read: () => [
+							'- 2026-09-27 07:05 — try a tone per session',
+							'- 2026-09-27 07:09 — cache the worktree list',
+						],
+						has: () => true,
 					},
 					saveDebugNote: () => {
 						// Effects go nowhere in an eval.

@@ -1,7 +1,7 @@
 import type { Input, LastSpokenSend, Session, Stamped, State } from '../shared/protocol.js';
 import type { ReducerResult } from './reducer.js';
 import { startAside } from './aside.js';
-import { deliverSend, replaceRunning } from './delivery.js';
+import { deliverSend, joinNotes, replaceRunning } from './delivery.js';
 import { normalizeSaid, updateSession, withoutEffects } from './helpers.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
@@ -136,6 +136,8 @@ const readRunningRequest = (session: Session): string => {
 	return request?.kind === 'user' ? request.text : '';
 };
 
+const withNote = (note: string | undefined): { note?: string } => (note ? { note } : {});
+
 const remember = (state: State, spoken: LastSpokenSend): State => ({
 	...state,
 	lastSpokenSend: spoken,
@@ -161,6 +163,9 @@ export const continueFirstHalf = (
 		return withoutEffects(state);
 	}
 
+	// The whole sentence may ask for what its first half did not ("…from my notes"): its note joins.
+	const note = input.note?.trim() || undefined;
+
 	switch (firstHalf.kind) {
 		case 'held':
 			return withoutEffects(
@@ -172,6 +177,7 @@ export const continueFirstHalf = (
 								? {
 										...ask,
 										text: spliceTail({ carried: ask.text, fragment: last.text, joined }) ?? joined,
+										...withNote(joinNotes(ask.note, note)),
 									}
 								: ask,
 						),
@@ -193,7 +199,9 @@ export const continueFirstHalf = (
 			const edited = updateSession(state, ref, (current) => ({
 				...current,
 				queue: current.queue.map((queued, index) =>
-					index === firstHalf.index ? { ...queued, text } : queued,
+					index === firstHalf.index
+						? { ...queued, text, ...withNote(joinNotes(queued.note, note)) }
+						: queued,
 				),
 			}));
 
@@ -207,7 +215,7 @@ export const continueFirstHalf = (
 				state,
 				ref,
 				text,
-				note: input.note?.trim() || undefined,
+				note,
 				stamped,
 				isOwed: input.ack?.kind !== 'question',
 			});
@@ -231,12 +239,19 @@ export const continueFirstHalf = (
 			}));
 			const asked =
 				session.status === 'running' || session.status === 'blocked'
-					? startAside({ state: withdrawn, ref, question: joined, stamped })
+					? startAside({
+							state: withdrawn,
+							ref,
+							question: joined,
+							note,
+							stamped,
+						})
 					: deliverSend({
 							state: withdrawn,
 							ref,
 							text: joined,
 							isSpoken: true,
+							note,
 							stamped,
 							ack: input.ack,
 						});

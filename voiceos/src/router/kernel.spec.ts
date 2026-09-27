@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
 import type { Action, VoiceEntry } from '../shared/protocol.js';
+import { createNullNotes } from '../../test/support/notes.js';
 import { createFixtureState, type FixtureContext } from '../../test/support/state.js';
 import { Kernel, buildKernelMessage, listWaitingItems, type KernelOptions } from './kernel.js';
 
@@ -68,6 +69,7 @@ const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 			readHistory: () => [],
 			mute: () => {},
 			saveDebugNote: () => {},
+			notes: createNullNotes(),
 		},
 		now: extra.now,
 	});
@@ -579,6 +581,7 @@ describe('Kernel', () => {
 					readHistory: () => [],
 					mute: () => {},
 					saveDebugNote: () => {},
+					notes: createNullNotes(),
 				},
 				now: () => 10_000,
 			});
@@ -795,6 +798,7 @@ describe('answers go only to what the developer could have heard', () => {
 				readHistory: () => [],
 				mute: () => {},
 				saveDebugNote: () => {},
+				notes: createNullNotes(),
 			},
 		});
 

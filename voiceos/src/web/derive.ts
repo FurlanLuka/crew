@@ -2,6 +2,7 @@ import { stripStreamingTag } from '../shared/spoken-tags.js';
 import { isHeldAsk, type PendingAsk, type Session, type State } from '../shared/protocol.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
+import { readWorkspace } from '../shared/notes.js';
 
 export interface Badge {
 	dot: string;
@@ -144,11 +145,16 @@ export const formatDidLine = (did: string): string => {
 		dev_offer: `${rest[0] === 'accepted' ? 'accepted' : 'declined'} the fix offer`,
 		allow_denied: `allowed ${tail} once`,
 		debug_note: `noted for debugging ${tail}`,
+		note: `noted ${tail}`,
 		hands_free: `turned hands-free ${tail}`,
 	};
 
 	return `${readableByName[name] ?? line}${isFailed ? ' — failed' : ''}`;
 };
+
+export const readNotesFor = (state: State, screen: string | null): string[] =>
+	// Newest first, of the workspace on screen; Mission Control shows the general notes.
+	[...(state.notes[readWorkspace(screen)] ?? [])].reverse();
 
 const describeAsk = (ask: PendingAsk): string => {
 	switch (ask.kind) {

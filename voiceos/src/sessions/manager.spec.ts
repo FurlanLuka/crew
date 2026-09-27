@@ -40,10 +40,13 @@ const createFakeQuery = ({
 	// Counts interrupts across the fake's lifetime.
 	let interrupts = 0;
 	const forks: FakeQueryCall['options'][] = [];
+	// A fork is asked with one prompt string: the side question.
+	const forkPrompts: unknown[] = [];
 
 	const runQuery = ((call: FakeQueryCall) => {
 		if (call.options.forkSession) {
 			forks.push(call.options);
+			forkPrompts.push(call.prompt);
 
 			return {
 				async *[Symbol.asyncIterator]() {
@@ -117,7 +120,7 @@ const createFakeQuery = ({
 		};
 	}) as never;
 
-	return { runQuery, started, prompts, sent, forks, interrupts: () => interrupts };
+	return { runQuery, started, prompts, sent, forks, forkPrompts, interrupts: () => interrupts };
 };
 
 const createHarness = () => {
@@ -496,6 +499,32 @@ describe('SessionManager', () => {
 			expect(asideOf(harness.store)).toMatchObject({ status: 'failed' });
 			expect(harness.store.state.sessions['store-front/main']?.queue.map((m) => m.text)).toEqual([
 				'which file?',
+			]);
+			harness.manager.stopAll();
+		});
+
+		it('a note with the question → the fork reads it first; failed, it waits beside the bare question', async () => {
+			const harness = createAsideHarness(new Error('resume refused'));
+			const { store } = harness;
+
+			store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			await waitTick();
+			store.dispatch({ type: 'send', ref: 'store-front/main', text: 'refactor the router' });
+			await waitTick();
+			store.dispatch({
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'which of my notes first?',
+				aside: true,
+				note: 'notes path',
+			});
+			await waitTick();
+
+			expect(harness.fake.forkPrompts).toEqual([
+				expect.stringMatching(/\n\nnotes path\n\nwhich of my notes first\?$/),
+			]);
+			expect(store.state.sessions['store-front/main']?.queue).toEqual([
+				expect.objectContaining({ text: 'which of my notes first?', note: 'notes path' }),
 			]);
 			harness.manager.stopAll();
 		});

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { createNullNotes } from '../../test/support/notes.js';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
 import type { Input, PendingAsk } from '../shared/protocol.js';
@@ -296,6 +297,7 @@ describe('UtteranceRouter', () => {
 				readHistory: () => [],
 				mute: () => {},
 				saveDebugNote: () => {},
+				notes: createNullNotes(),
 			},
 		});
 		const router = new UtteranceRouter({

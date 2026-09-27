@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'bun:test';
+import type { NoteWords } from '../memory/notes.js';
+import { GENERAL_NOTES } from '../shared/notes.js';
+import { createNullNotes } from '../../test/support/notes.js';
 import type { Action, PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
-import { isDuplicateSend, isMisroutedToSetup, isRewriteTooShort, prepareSentText } from './send.js';
+import {
+	buildNotesPathNote,
+	buildSessionNote,
+	isDuplicateSend,
+	isMisroutedToSetup,
+	isRewriteTooShort,
+	prepareSentText,
+} from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
@@ -47,6 +57,7 @@ const createToolContext = (patch: Partial<State> = {}) => {
 		asks: state.asks,
 		mute: () => {},
 		saveDebugNote: () => {},
+		notes: createNullNotes(),
 		setHandsFree: () => 'changed' as const,
 	};
 
@@ -658,6 +669,284 @@ describe('forward', () => {
 	});
 });
 
+describe('notes', () => {
+	const withNotes = () => {
+		const saved: NoteWords[] = [];
+		const { tools } = createToolContext();
+
+		return {
+			saved,
+			tools: {
+				...tools,
+				notes: {
+					...createNullNotes(),
+					save: (words: NoteWords) => {
+						saved.push(words);
+					},
+					read: (workspace: string, limit: number) =>
+						workspace === 'store-front'
+							? Array.from(
+									{ length: 12 },
+									(_, index) => `- 2026-09-27 07:${String(index).padStart(2, '0')} — idea ${index}`,
+								).slice(-limit)
+							: [],
+				},
+			},
+		};
+	};
+
+	it('saved to the workspace on screen, a named one, or the general notes', async () => {
+		const { saved, tools } = withNotes();
+
+		await executeTool(
+			'note',
+			{ text: 'try a tone', workspace: null },
+			{ ...tools, screen: 'store-front/main' },
+		);
+		await executeTool(
+			'note',
+			{ text: 'check retries', workspace: 'Checkout API' },
+			{ ...tools, screen: null },
+		);
+		await executeTool('note', { text: 'loose idea', workspace: null }, { ...tools, screen: null });
+		await executeTool(
+			'note',
+			{ text: 'x', workspace: 'no such space' },
+			{ ...tools, screen: null },
+		);
+
+		expect(saved).toEqual([
+			{ workspace: 'store-front', text: 'try a tone' },
+			{ workspace: 'checkout-api', text: 'check retries' },
+			{ workspace: GENERAL_NOTES, text: 'loose idea' },
+			{ workspace: GENERAL_NOTES, text: 'x' },
+		]);
+	});
+
+	it('a name that matches no workspace is said to land in the general notes', async () => {
+		const { tools } = withNotes();
+
+		expect(
+			(await executeTool('note', { text: 'x', workspace: 'no such space' }, tools)).content,
+		).toContain('Noted in your general notes');
+		expect((await executeTool('note', { text: 'x', workspace: 'storefront' }, tools)).content).toBe(
+			"noted in store-front's notes",
+		);
+	});
+
+	it('a workspace known only by its notes, or the general notes, named aloud → saved there', async () => {
+		const { saved, tools } = withNotes();
+		const withInfra = {
+			...tools,
+			getState: () => ({ ...tools.getState(), notes: { 'infra-ops': ['- x'] } }),
+		};
+
+		expect(
+			(await executeTool('note', { text: 'rotate keys', workspace: 'infra ops' }, withInfra))
+				.content,
+		).toBe("noted in infra-ops's notes");
+		expect(
+			(await executeTool('note', { text: 'loose', workspace: 'general' }, withInfra)).content,
+		).toBe("noted in general's notes");
+		expect(saved).toEqual([
+			{ workspace: 'infra-ops', text: 'rotate keys' },
+			{ workspace: GENERAL_NOTES, text: 'loose' },
+		]);
+	});
+
+	it('"general" spoken with a workspace of that name → that workspace, not the general notes', async () => {
+		const { saved, tools } = withNotes();
+		const withGeneral = {
+			...tools,
+			getState: () => ({
+				...tools.getState(),
+				order: [...tools.getState().order, 'general/main'],
+			}),
+		};
+
+		const onlyItsNotes = {
+			...tools,
+			getState: () => ({
+				...tools.getState(),
+				notes: { [GENERAL_NOTES]: ['- a'], general: ['- b'] },
+			}),
+		};
+
+		await executeTool('note', { text: 'x', workspace: 'general' }, withGeneral);
+		await executeTool('note', { text: 'y', workspace: 'general' }, onlyItsNotes);
+
+		expect(saved).toEqual([
+			{ workspace: 'general', text: 'x' },
+			{ workspace: 'general', text: 'y' },
+		]);
+	});
+
+	it('a save that fails is said to have failed; reading an unknown workspace asks which', async () => {
+		const { tools } = withNotes();
+		const broken = {
+			...tools,
+			notes: {
+				...tools.notes,
+				save: () => {
+					throw new Error('EACCES');
+				},
+			},
+		};
+
+		expect(await executeTool('note', { text: 'x', workspace: null }, broken)).toMatchObject({
+			ok: false,
+		});
+		expect((await executeTool('read_notes', { workspace: 'no such space' }, tools)).ok).toBe(false);
+	});
+
+	it('an empty note is refused; the last ten are read back without their stamps', async () => {
+		const { saved, tools } = withNotes();
+
+		expect((await executeTool('note', { text: ' ', workspace: null }, tools)).ok).toBe(false);
+		expect(saved).toEqual([]);
+		expect(
+			(
+				await executeTool(
+					'read_notes',
+					{ workspace: null },
+					{ ...tools, screen: 'store-front/wrk1' },
+				)
+			).content,
+		).toBe(
+			JSON.stringify({
+				workspace: 'store-front',
+				notes: Array.from({ length: 10 }, (_, index) => `idea ${index + 2}`),
+				if_asked_for_work:
+					"forward the developer's words to the session: it reads the notes file itself",
+			}),
+		);
+		expect(
+			(
+				await executeTool(
+					'read_notes',
+					{ workspace: null },
+					{ ...tools, screen: 'checkout-api/main' },
+				)
+			).content,
+		).toBe('no notes in checkout-api yet');
+	});
+});
+
+describe('the notes path for a session', () => {
+	const diedServers = {
+		'checkout-api/main': [
+			{ name: 'api', port: 3000, url: null, state: 'died' as const, detail: 'exit 1' },
+		],
+	};
+	const notesIn = (existing: string[]) => ({
+		...createNullNotes(),
+		pathFor: (workspace: string) => `/n/${workspace}.md`,
+		has: (workspace: string) => existing.includes(workspace),
+	});
+	const sentNote = (actions: Action[]) =>
+		(actions.find((action) => action.type === 'send') as Extract<Action, { type: 'send' }>)?.note;
+
+	it('asked about "my notes" mid-conversation → the target\'s workspace notes path, nothing else', async () => {
+		const { tools, actions } = createToolContext();
+		const state = tools.getState();
+		state.sessions['checkout-api/main'] = {
+			...state.sessions['checkout-api/main']!,
+			status: 'idle',
+			isFresh: false,
+		};
+
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', text: 'Go through my notes and pick one.' },
+			{
+				...tools,
+				notes: notesIn(['checkout-api']),
+				screen: 'store-front/main',
+				utterance: 'checkout, go through my notes and pick one',
+				recentUtterances: ['restart the servers'],
+			},
+		);
+
+		expect(sentNote(actions)).toBe(
+			"The developer's notes for checkout-api are in /n/checkout-api.md.",
+		);
+	});
+
+	it('the first message to a session with servers down → the situation first, then the path', async () => {
+		const { tools, actions } = createToolContext({ devServers: diedServers });
+
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', text: 'Go through my notes.' },
+			{ ...tools, notes: notesIn([]), utterance: 'checkout, go through my notes' },
+		);
+
+		const note = sentNote(actions) ?? '';
+
+		expect(
+			note.startsWith(
+				buildSessionNote({
+					session: tools.getState().sessions['checkout-api/main']!,
+					state: tools.getState(),
+					recent: [],
+				}) ?? 'missing',
+			),
+		).toBe(true);
+		expect(
+			note.endsWith(
+				'\n\nThe developer has no notes for checkout-api yet (they would be in /n/checkout-api.md).',
+			),
+		).toBe(true);
+	});
+
+	it('a question aside to a working session carries it too', async () => {
+		const { tools, actions } = createToolContext();
+		const state = tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+		};
+
+		await executeTool(
+			'forward',
+			{ text: 'Which of my notes is quickest?', kind: 'question' },
+			{
+				...tools,
+				notes: notesIn([]),
+				forwardTo: 'store-front/main',
+				utterance: 'which of my notes is quickest?',
+			},
+		);
+
+		expect(actions).toEqual([
+			{
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'Which of my notes is quickest?',
+				aside: true,
+				note: 'The developer has no notes for store-front yet (they would be in /n/store-front.md).',
+			},
+		]);
+	});
+
+	it("the setup session reads the general notes; other notes are not the developer's", () => {
+		const notes = notesIn([GENERAL_NOTES]);
+
+		expect(buildNotesPathNote({ ref: 'setup', utterance: 'read my own notes', notes })).toBe(
+			"The developer's notes for general are in /n/(general).md.",
+		);
+
+		for (const utterance of [
+			'add a notes column',
+			'fix the release notes',
+			'analyze the debug notes',
+			undefined,
+		]) {
+			expect(buildNotesPathNote({ ref: 'store-front/main', utterance, notes })).toBeUndefined();
+		}
+	});
+});
+
 describe('describeSession', () => {
 	const createServer = (
 		name: string,
@@ -954,6 +1243,7 @@ describe('Voice OS note through the real reducer', () => {
 			asks: [],
 			mute: () => {},
 			saveDebugNote: () => {},
+			notes: createNullNotes(),
 			setHandsFree: () => 'changed' as const,
 			recentUtterances: ['why were they failing?'],
 		};

@@ -22,6 +22,8 @@ import {
 } from './sessions/setup-session.js';
 import { readHistory } from './memory/journal.js';
 import { createDebugNote, saveDebugNote } from './memory/debug-notes.js';
+import { createNotesStore, type NotesStore } from './memory/notes.js';
+import { toNotesKey } from './shared/notes.js';
 import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
 import { persistTopics } from './memory/topics.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
@@ -138,6 +140,28 @@ const devWatch = new DevWatch({ store, crew, say: (line) => voiceOut.say(line) }
 
 store.onEffect((effect) => void devWatch.handle(effect));
 
+const NOTES_ON_PAGE = 50;
+const notesFiles = createNotesStore(paths.notesDir);
+
+const notes: NotesStore = {
+	...notesFiles,
+	save: (words) => {
+		notesFiles.save(words);
+
+		const workspace = toNotesKey(words.workspace);
+		log.info('note saved', { workspace, chars: words.text.length });
+		store.dispatch({ type: 'notes', workspace, lines: notesFiles.read(workspace, NOTES_ON_PAGE) });
+	},
+};
+
+const loadedNotes = Object.entries(notesFiles.readAll(NOTES_ON_PAGE));
+
+for (const [workspace, lines] of loadedNotes) {
+	store.dispatch({ type: 'notes', workspace, lines });
+}
+
+log.info('notes loaded', { workspaces: loadedNotes.length });
+
 const kernel = keys.anthropic
 	? new Kernel({
 			apiKey: keys.anthropic,
@@ -146,6 +170,7 @@ const kernel = keys.anthropic
 				dispatch: (action) => store.dispatch(action),
 				readHistory: (query) => readHistory(paths.journalDir, query),
 				mute: () => voiceOut.mute(),
+				notes,
 				saveDebugNote: ({ text, said }) => {
 					const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
 

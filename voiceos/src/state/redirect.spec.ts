@@ -187,6 +187,24 @@ describe('a redirect to a working session', () => {
 		expect(effects).toEqual([]);
 	});
 
+	it('a note on either half joins the waiting instruction and goes with it once switched', () => {
+		const heldWithNote = run([redirect({ note: 'a' })], { start: runningSession(), at: 1000 });
+		const continued = run(
+			[
+				redirect({
+					text: `${REDIRECT.slice(0, -1)} and skip the seed.`,
+					continues: { rest: 'And skip the seed.' },
+					note: 'b',
+				}),
+			],
+			{ start: heldWithNote.state, at: 4000 },
+		);
+		const switched = answer(continued.state, true, undefined, 5000);
+
+		expect(askOf(continued.state)?.note).toBe('a\n\nb');
+		expect(switched.state.sessions[REF]?.queue[0]?.note).toBe('a\n\nb');
+	});
+
 	it('no recorded request → "its current work"', () => {
 		const started = run([{ type: 'send', ref: REF, text: 'x' }], { start: idleSession() }).state;
 		const blank = {

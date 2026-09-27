@@ -60,7 +60,7 @@ export type Effect =
 			isSpokenAlready: boolean;
 	  }
 	// A side question to run in a fork of the session, and its answer to say.
-	| { type: 'side_answer'; ref: string; itemId: string; question: string }
+	| { type: 'side_answer'; ref: string; itemId: string; question: string; note?: string }
 	| { type: 'narrate_aside'; ref: string; question: string; answer: string }
 	// Lets a held command lapse: command_expired comes back after COMMAND_TTL_MS.
 	| { type: 'expire_command'; askId: string }
@@ -106,6 +106,7 @@ export const createInitialState = (): State => ({
 	devOffer: null,
 	voiceLog: {},
 	lastSpokenSend: null,
+	notes: {},
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -509,6 +510,12 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				? { state: kept, effects: [describeUnfinished(input.ref)] }
 				: withoutEffects(kept);
 		}
+
+		case 'notes':
+			return withoutEffects({
+				...state,
+				notes: { ...state.notes, [input.workspace]: input.lines },
+			});
 
 		case 'limits':
 			return withoutEffects({ ...state, limits: input.limits });

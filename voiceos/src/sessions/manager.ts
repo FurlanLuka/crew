@@ -67,13 +67,15 @@ export class SessionManager {
 		ref,
 		itemId,
 		question,
+		note,
 	}: Extract<Effect, { type: 'side_answer' }>): Promise<void> {
 		const worker = this.workers.get(ref);
 		const outcome = worker
 			? await runSideAnswer({
 					launch: worker.launch,
 					sessionId: worker.id,
-					question,
+					// Read ahead of the question, as a turn reads it (worker.send).
+					question: note ? `${note}\n\n${question}` : question,
 					runQuery: this.options.runQuery,
 				})
 			: ({ status: 'queued', reason: 'no running session' } as const);

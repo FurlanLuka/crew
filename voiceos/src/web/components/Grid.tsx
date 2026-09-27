@@ -1,6 +1,7 @@
 import type { State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 import { Tile } from './Tile.js';
+import { NotesPanel } from './NotesPanel.js';
 import { VoicePanel } from './VoicePanel.js';
 
 interface GridProps {
@@ -31,6 +32,7 @@ export const Grid = ({ state, dispatch }: GridProps) => {
 			</div>
 			<aside className="side">
 				<VoicePanel state={state} screen={null} />
+				<NotesPanel state={state} screen={null} />
 			</aside>
 		</main>
 	);

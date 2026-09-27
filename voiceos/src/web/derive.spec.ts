@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 import type { PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
+import { GENERAL_NOTES } from '../shared/notes.js';
 import { findCurrentAsk, describeRouteChip } from '../shared/route-chip.js';
 import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 
 import {
 	countSessions,
 	formatDidLine,
+	readNotesFor,
 	listOtherSessions,
 	readLastLine,
 	describeSessionBadge,
@@ -158,6 +160,7 @@ describe('formatDidLine', () => {
 		['dev_offer declined', 'declined the fix offer'],
 		['mute', 'went quiet'],
 		['debug_note "it re-asked"', 'noted for debugging "it re-asked"'],
+		['note "try a tone"', 'noted "try a tone"'],
 		['stop_session store/main (failed)', 'ended store/main — failed'],
 		['something_new x', 'something_new x'],
 	])('%p → %p', (did, text) => expect(formatDidLine(did)).toBe(text));
@@ -350,4 +353,18 @@ describe('isRemembered', () => {
 	});
 	it('words the kernel ignored are never remembered', () =>
 		expect(isRemembered(createEntry(0, true), now)).toBe(false));
+});
+
+describe('readNotesFor', () => {
+	it('the workspace on screen, newest first, the state left as it was; Mission Control → general', () => {
+		const state: State = {
+			...createInitialState(),
+			notes: { store: ['- a', '- b'], [GENERAL_NOTES]: ['- loose'] },
+		};
+
+		expect(readNotesFor(state, 'store/main')).toEqual(['- b', '- a']);
+		expect(state.notes.store).toEqual(['- a', '- b']);
+		expect(readNotesFor(state, null)).toEqual(['- loose']);
+		expect(readNotesFor(state, 'checkout/main')).toEqual([]);
+	});
 });

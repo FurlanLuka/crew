@@ -16,6 +16,8 @@ export type ToolName =
 	| 'dev_offer'
 	| 'allow_denied'
 	| 'debug_note'
+	| 'note'
+	| 'read_notes'
 	| 'hands_free';
 
 export const MUTATING_TOOLS: ToolName[] = [
@@ -30,6 +32,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'dev_offer',
 	'allow_denied',
 	'debug_note',
+	'note',
 	'hands_free',
 ];
 
@@ -260,6 +263,31 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			type: 'object',
 			properties: { text: { type: 'string' } },
 			required: ['text'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'note',
+		description:
+			'The developer\'s own note — an idea or a reminder ("note: try a tone per session", "add a note to check the retries", "note that…"). Saved as plain text in a workspace\'s notes. Not a debug note: that is for something that went wrong. text: their words after the trigger, as said. workspace: only when they name one ("note for store front: …"), else null for the one on screen. Reply "Noted."',
+		input_schema: {
+			type: 'object',
+			properties: {
+				text: { type: 'string' },
+				workspace: { type: ['string', 'null'] },
+			},
+			required: ['text', 'workspace'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'read_notes',
+		description:
+			'The developer\'s recent notes for a workspace ("what are my notes?", "read my crew notes"): read them back briefly, newest last. Only to hear them: asking to go through them, pick one, or work from them ("go through my notes and pick one") is work for the session — forward it. workspace: only when named, else null for the one on screen.',
+		input_schema: {
+			type: 'object',
+			properties: { workspace: { type: ['string', 'null'] } },
+			required: ['workspace'],
 			additionalProperties: false,
 		},
 	},

@@ -1639,6 +1639,60 @@
 			"reply_includes": ["noted|got it|saved"]
 		},
 		{
+			"id": "note-own-idea",
+			"utterance": "Note: try a different tone per session.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"calls": [
+				{
+					"name": "note",
+					"text_includes": ["tone"]
+				}
+			],
+			"reply_includes": ["noted|got it|saved"]
+		},
+		{
+			"id": "note-read-back",
+			"utterance": "What are my notes?",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"calls": [
+				{
+					"name": "read_notes"
+				}
+			]
+		},
+		{
+			"id": "note-work-from-notes",
+			"utterance": "Go through my notes and pick one to build next.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["notes"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "note-that-asks-for-work",
+			"utterance": "Note that the API changed, update the client.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["client"]
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "debug-note-on-session",
 			"utterance": "Debug note, it asked me to confirm three times.",
 			"context": {
