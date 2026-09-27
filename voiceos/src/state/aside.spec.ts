@@ -232,3 +232,55 @@ describe('a note that came with the question', () => {
 		});
 	});
 });
+
+describe('an aside that changes the work', () => {
+	const settle = (
+		start: State,
+		patch: { isChangingWork?: boolean; status?: 'queued' | 'failed' },
+	) =>
+		run(
+			[
+				{
+					type: 'aside_settled',
+					ref: REF,
+					itemId: asidesOf(start)[0]?.id ?? '',
+					question: 'can we use proxy pair?',
+					status: patch.status ?? 'queued',
+					answer: null,
+					...(patch.isChangingWork ? { isChangingWork: true } : {}),
+				},
+			],
+			{ start },
+		);
+
+	it('while it works → asks to switch, like a redirect; nothing queued yet', () => {
+		const { state, effects } = settle(askAside(runningSession(), 'can we use proxy pair?').state, {
+			isChangingWork: true,
+		});
+
+		expect(state.asks).toEqual([
+			expect.objectContaining({ kind: 'redirect', text: 'can we use proxy pair?' }),
+		]);
+		expect(state.sessions[REF]?.queue).toEqual([]);
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				type: 'speak',
+				isAsking: true,
+				text: expect.stringContaining('Stop it and switch?'),
+			}),
+		);
+	});
+
+	it('it needed tools, or the fork failed → queued as before', () => {
+		for (const status of ['queued', 'failed'] as const) {
+			const { state } = settle(askAside(runningSession(), 'can we use proxy pair?').state, {
+				status,
+			});
+
+			expect(state.asks).toEqual([]);
+			expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual([
+				'can we use proxy pair?',
+			]);
+		}
+	});
+});

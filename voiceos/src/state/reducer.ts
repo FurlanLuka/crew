@@ -25,7 +25,7 @@ import {
 	updateSession,
 	withoutEffects,
 } from './helpers.js';
-import { hasFollowUpWaiting } from './delivery.js';
+import { hasFollowUpWaiting, promoteQueued } from './delivery.js';
 import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
@@ -258,6 +258,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					queue: session.queue.filter((message) => message.id !== input.queuedId),
 				})),
 			);
+
+		case 'promote_queued':
+			return promoteQueued({ state, ref: input.ref, queuedId: input.queuedId, stamped });
 
 		case 'switch_view': {
 			const { view } = input;

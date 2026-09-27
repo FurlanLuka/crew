@@ -517,3 +517,56 @@ describe('speech waiting about a session', () => {
 		expect(typed.effects.some((effect) => effect.type === 'drop_speech')).toBe(false);
 	});
 });
+
+describe('promote_queued', () => {
+	const queuedBehind = () =>
+		run(
+			[
+				{ type: 'send', ref: REF, text: 'use proxy pair', ack: { kind: 'instruction' } },
+				{ type: 'send', ref: REF, text: 'then the tests', ack: { kind: 'instruction' } },
+			],
+			{ start: runningSession() },
+		).state;
+
+	it('while it works → the words cut the work and go first, owed; the rest keeps its place', () => {
+		const start = queuedBehind();
+		const target = start.sessions[REF]?.queue[0];
+		const { state, effects } = run(
+			[{ type: 'promote_queued', ref: REF, queuedId: target?.id ?? '' }],
+			{
+				start,
+			},
+		);
+
+		expect(effects).toEqual([{ type: 'worker_interrupt', ref: REF, reason: 'follow-up' }]);
+		expect(state.sessions[REF]?.queue).toEqual([
+			expect.objectContaining({
+				id: target?.id,
+				text: 'use proxy pair',
+				isFollowUp: true,
+				reportOwed: true,
+			}),
+			expect.objectContaining({ text: 'then the tests' }),
+		]);
+	});
+
+	it('not working → moved to the front; an unknown id changes nothing', () => {
+		const stopped = run([{ type: 'worker_exited', ref: REF, error: 'exit 1' }], {
+			start: queuedBehind(),
+		}).state;
+		const last = stopped.sessions[REF]?.queue.at(-1);
+		const moved = run([{ type: 'promote_queued', ref: REF, queuedId: last?.id ?? '' }], {
+			start: stopped,
+		}).state;
+		const unknown = run([{ type: 'promote_queued', ref: REF, queuedId: 'nope' }], {
+			start: stopped,
+		});
+
+		expect(moved.sessions[REF]?.queue.map((message) => message.text)).toEqual([
+			'then the tests',
+			'use proxy pair',
+		]);
+		expect(unknown.state.sessions[REF]).toEqual(stopped.sessions[REF]);
+		expect(unknown.effects).toEqual([]);
+	});
+});

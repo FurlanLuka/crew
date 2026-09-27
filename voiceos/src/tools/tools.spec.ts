@@ -947,6 +947,59 @@ describe('the notes path for a session', () => {
 	});
 });
 
+describe('queued_message', () => {
+	const withQueue = (lastSpoken: string | null) => {
+		const context = createToolContext();
+		const state = context.tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+			queue: [
+				{ id: 'q1', text: 'use proxy pair', at: 1 },
+				{ id: 'q2', text: 'then the tests', at: 2 },
+			],
+		};
+		state.lastSpokenSend = lastSpoken
+			? { ref: 'store-front/main', id: lastSpoken, text: 'x', at: 1 }
+			: null;
+
+		return context;
+	};
+
+	it("the developer's last words when they wait there, else the newest; now or drop", async () => {
+		const spoken = withQueue('q1');
+		const newest = withQueue(null);
+
+		await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, spoken.tools);
+		await executeTool('queued_message', { ref: 'store-front/main', action: 'drop' }, newest.tools);
+
+		expect(spoken.actions).toEqual([
+			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q1' },
+		]);
+		expect(newest.actions).toEqual([
+			{ type: 'cancel_queued', ref: 'store-front/main', queuedId: 'q2' },
+		]);
+	});
+
+	it('nothing queued, or an unknown action → fails, nothing dispatched', async () => {
+		const { tools, actions } = createToolContext();
+
+		expect(
+			(await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, tools)).ok,
+		).toBe(false);
+		expect(
+			(
+				await executeTool(
+					'queued_message',
+					{ ref: 'store-front/main', action: 'later' },
+					withQueue(null).tools,
+				)
+			).ok,
+		).toBe(false);
+		expect(actions).toEqual([]);
+	});
+});
+
 describe('describeSession', () => {
 	const createServer = (
 		name: string,

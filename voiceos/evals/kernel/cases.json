@@ -1669,6 +1669,61 @@
 			"no_reply": true
 		},
 		{
+			"id": "redirect-question-form",
+			"utterance": "Can we use proxy, um, proxy pair?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": { "kind": "redirect" }
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "redirect-no-use",
+			"utterance": "No, use proxy pair.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": { "kind": "redirect" }
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "queued-now-not-interrupt",
+			"utterance": "Why are you queuing it after the current work? I want it right now.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3,
+						"queued": ["Use proxy pair."]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "queued_message",
+					"input": { "ref": "store-front/main", "action": "now" }
+				}
+			]
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

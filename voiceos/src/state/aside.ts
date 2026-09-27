@@ -2,6 +2,7 @@ import { readShownText } from '../shared/spoken-tags.js';
 import type { Input, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { ReducerResult } from './reducer.js';
 import { deliverSend } from './delivery.js';
+import { openRedirect } from './redirect.js';
 import { normalizeSaid, pushStreamItem, updateSession, withoutEffects } from './helpers.js';
 
 type AsideSettledInput = Extract<Input, { type: 'aside_settled' }>;
@@ -97,6 +98,11 @@ export const reduceAside = (
 			state: settled,
 			effects: [{ type: 'narrate_aside', ref: input.ref, question, answer: input.answer }],
 		};
+	}
+
+	// The question changes what the session is doing: that is the developer's call, asked like a redirect.
+	if (input.isChangingWork && state.sessions[input.ref]?.status === 'running') {
+		return openRedirect({ state: settled, ref: input.ref, text: question, note, stamped });
 	}
 
 	// Its turn may have ended while the fork thought: then the question goes to it at once.

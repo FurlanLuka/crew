@@ -18,6 +18,15 @@ export const QueueList = ({ session, dispatch }: QueueListProps) => {
 					<span className="c-cyan">queued {index + 1}</span> {item.text}
 					<button
 						type="button"
+						className="btn small"
+						onClick={() =>
+							dispatch({ type: 'promote_queued', ref: session.ref, queuedId: item.id })
+						}
+					>
+						▲ now
+					</button>
+					<button
+						type="button"
 						className="btn small x"
 						onClick={() => dispatch({ type: 'cancel_queued', ref: session.ref, queuedId: item.id })}
 					>

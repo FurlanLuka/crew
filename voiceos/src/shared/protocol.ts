@@ -275,6 +275,8 @@ export type Action =
 			continues?: { rest: string; isAside?: boolean };
 	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
+	// "I want it now" (or the page's button): the queued words cut the running work and go first.
+	| { type: 'promote_queued'; ref: string; queuedId: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
 	// isSpoken: set by the kernel; the next open question is then read out.
 	| {
@@ -369,6 +371,8 @@ export type Observation =
 			question: string;
 			status: Exclude<AsideStatus, 'asking'>;
 			answer: string | null;
+			// The fork found the question means the current work should change: a switch, not a queue.
+			isChangingWork?: boolean;
 	  }
 	// /clear (or /reset, /new) started a new conversation in the same process.
 	| { type: 'conversation_reset'; ref: string }

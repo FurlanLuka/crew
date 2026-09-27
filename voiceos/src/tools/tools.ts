@@ -9,6 +9,7 @@ import { formatAge } from '../state/working.js';
 import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
 import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
+import { handleQueuedMessage } from './queued.js';
 import type { HistoryQuery } from '../memory/journal.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
 import type { NotesStore } from '../memory/notes.js';
@@ -359,6 +360,9 @@ export const executeTool = async (
 
 		case 'answer':
 			return answerAsk({ state, input, toolContext });
+
+		case 'queued_message':
+			return handleQueuedMessage({ state, input, toolContext });
 
 		case 'interrupt': {
 			const checked = checkRef(state, input.ref);

@@ -4,6 +4,7 @@ import { findOpenQuestion } from '../shared/questions.js';
 
 const RECENT_TOOL_STEPS = 3;
 const LAST_REPLY_CHARS = 2000;
+const QUEUED_PREVIEW_CHARS = 80;
 
 const findLastReply = (state: State, ref: string): string | null => {
 	// Read back in full on "what did it say": the recent lines clip every message to a line.
@@ -120,7 +121,12 @@ export const describeSession = ({
 		...(ask ? { pending: describePending(ask) } : {}),
 		...(session.needsUser ? { asked: session.needsUser.text, asked_ago: work.waitingFor } : {}),
 		...(denial ? { blocked: denial.summary } : {}),
-		queued: session.queue.length,
+		// The words, not a count: "I want it now" and "take that back" name one of them.
+		queued: session.queue.map((message) =>
+			message.text.length > QUEUED_PREVIEW_CHARS
+				? `${message.text.slice(0, QUEUED_PREVIEW_CHARS)}…`
+				: message.text,
+		),
 		...(troubledServers.length > 0
 			? {
 					dev_servers: troubledServers.map((server) => ({

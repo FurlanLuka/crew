@@ -18,6 +18,7 @@ export type ToolName =
 	| 'debug_note'
 	| 'note'
 	| 'read_notes'
+	| 'queued_message'
 	| 'hands_free';
 
 export const MUTATING_TOOLS: ToolName[] = [
@@ -33,6 +34,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'allow_denied',
 	'debug_note',
 	'note',
+	'queued_message',
 	'hands_free',
 ];
 
@@ -66,7 +68,7 @@ const KIND_PROPERTY = {
 	type: 'string',
 	enum: ['question', 'instruction', 'redirect'],
 	description:
-		'question: the developer asks something that Claude can answer from what it already knows or did. instruction: anything asking for work, a change or a check — and a question that means the current work should change ("shouldn\'t that use v2?"). redirect: an instruction that stops or replaces what that Claude is doing right now, not something for after it ("actually, stop the refactor and fix the login bug first", "don\'t do the migration, do the seed script instead"); "also run the linter" is an instruction, not a redirect.',
+		'question: the developer asks something that Claude can answer from what it already knows or did. instruction: anything asking for work, a change or a check — and a question that means the current work should change ("shouldn\'t that use v2?"). redirect: an instruction that stops or replaces what that Claude is doing right now, or changes how it does it, not something for after it ("actually, stop the refactor and fix the login bug first", "don\'t do the migration, do the seed script instead", "can we use proxy pair for this?", "no, use proxy pair"); "also run the linter" is an instruction, not a redirect.',
 };
 
 const CONTINUES_PROPERTY = {
@@ -224,6 +226,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			type: 'object',
 			properties: { ref: REF_PROPERTY },
 			required: ['ref'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'queued_message',
+		description:
+			'Words already queued for a session, waiting behind its current work (see queued in read_state). action "now": "don\'t queue it", "I want it now", "do that first" — they cut the current work and go now; never interrupt alone for this. action "drop": "take that back", "don\'t send that", "that wasn\'t for it" — they are removed. It acts on the developer\'s last words for that session when they wait there, else on the newest queued message.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: REF_PROPERTY,
+				action: { type: 'string', enum: ['now', 'drop'] },
+			},
+			required: ['ref', 'action'],
 			additionalProperties: false,
 		},
 	},

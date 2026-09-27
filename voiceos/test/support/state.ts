@@ -16,6 +16,8 @@ export interface FixtureWork {
 	idle?: boolean;
 	// What the session last said.
 	said?: string;
+	// Words waiting behind its current work.
+	queued?: string[];
 }
 
 export interface FixtureLogEntry {
@@ -202,6 +204,11 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 			: null,
 		requests: work ? [{ text: work.request, at: now - work.minutesAgo * 60_000 }] : [],
 		stream: said ? [{ id: 'said', at: now - 1000, kind: 'text' as const, text: said }] : [],
+		queue: (work?.queued ?? []).map((text, index) => ({
+			id: `queued-${index}`,
+			text,
+			at: now - 10_000,
+		})),
 	};
 };
 

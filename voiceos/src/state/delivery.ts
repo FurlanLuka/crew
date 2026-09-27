@@ -317,3 +317,45 @@ export const decideDelivery = ({
 
 	return kind === 'question' ? 'aside' : 'send';
 };
+
+interface PromoteQueuedParams {
+	state: State;
+	ref: string;
+	queuedId: string;
+	stamped: Stamped;
+}
+
+export const promoteQueued = ({
+	state,
+	ref,
+	queuedId,
+	stamped,
+}: PromoteQueuedParams): ReducerResult => {
+	// The developer wants queued words now: they replace the running work, as a switch they confirmed.
+	const session = state.sessions[ref];
+	const message = session?.queue.find((queued) => queued.id === queuedId);
+
+	if (!session || !message) {
+		return withoutEffects(state);
+	}
+
+	const rest = updateSession(state, ref, (current) => ({
+		...current,
+		queue: current.queue.filter((queued) => queued.id !== queuedId),
+	}));
+
+	if (session.status === 'running') {
+		return replaceRunning({
+			state: rest,
+			ref,
+			text: message.text,
+			note: message.note,
+			stamped: { ...stamped, id: message.id },
+			isOwed: true,
+		});
+	}
+
+	return withoutEffects(
+		updateSession(rest, ref, (current) => ({ ...current, queue: [message, ...current.queue] })),
+	);
+};
