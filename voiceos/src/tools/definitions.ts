@@ -274,7 +274,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'debug_note',
 		description:
-			'The developer flags something that just went wrong, for debugging later ("debug note: …", "add a debug note …"). Voice OS saves their words with a snapshot of this moment beside its log. text: what they said after the trigger, as said.',
+			'The developer flags Voice OS itself going wrong — now or again and again: its speech, routing, timing, what it said or did — for debugging later ("debug note: …", "add a debug note …", and "add a note that I get double TTS" without the word "debug"). Voice OS saves their words with a snapshot of this moment beside its log. text: what they said after the trigger, as said. Reply "Debug note saved."',
 		input_schema: {
 			type: 'object',
 			properties: { text: { type: 'string' } },

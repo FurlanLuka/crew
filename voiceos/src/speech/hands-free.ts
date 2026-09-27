@@ -61,7 +61,9 @@ const HOLD_MS = 5_000;
 // Speech-to-text reports new words about half a second after they start: 1.2 s missed a
 // developer who went on 0.7 s after pausing.
 const CONTINUE_MS = 2_000;
-const MAX_WAIT_MS = 8_000;
+// Only a backstop against background talk that never pauses: the developer's own turn goes when
+// they pause, however long it runs (8 s cut a developer mid-sentence into two requests).
+export const MAX_WAIT_MS = 120_000;
 const HELD_LABEL = 'waiting for the rest…';
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000];
 

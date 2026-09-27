@@ -1,3 +1,4 @@
+import { MAX_WAIT_MS } from './hands-free.js';
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -922,6 +923,29 @@ describe('VoiceInput hands-free: a sentence cut in two', () => {
 		harness.session?.onPartial('checking the logs back');
 		await Bun.sleep(WAIT_MS + 10);
 		expect(harness.utterances).toEqual(['Run the tests.']);
+	});
+
+	it("the cap is a two-minute backstop, not a limit on the developer's turn", () =>
+		expect(MAX_WAIT_MS).toBe(120_000));
+
+	it('a developer who keeps talking long past the old cap → one request, sent at their pause', async () => {
+		// The default cap, and a clock that moves 1 s per word burst: 12 s of talking, past the old 8 s.
+		let clock = 0;
+		const harness = createWaitHarness({ now: () => clock });
+		harness.session?.onSegment?.('Add to debug that it feels like turns get committed twice.');
+
+		for (let i = 0; i < 12; i++) {
+			await Bun.sleep(15);
+			clock += 1_000;
+			harness.session?.onPartial(`because right now I just started ${i}`);
+		}
+
+		harness.session?.onSegment?.('because right now I just started to say something.');
+		await Bun.sleep(WAIT_MS + 20);
+
+		expect(harness.utterances).toEqual([
+			'Add to debug that it feels like turns get committed twice. because right now I just started to say something.',
+		]);
 	});
 
 	it('a finished command that background talk turns into an unfinished one → still capped', async () => {

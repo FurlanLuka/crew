@@ -298,7 +298,8 @@ export class VoiceOut {
 		});
 		log.info('line held', { id: item.id, ref: item.ref });
 
-		// Its turn already ended, so no announcement is coming from it: this is the announcement.
+		// Its turn already ended, so no announcement is coming from it: this is the announcement. A
+		// question or plan it waits on was not skipped (this line was never heard): its own alert tells it.
 		if (session && session.status !== 'running' && session.status !== 'blocked') {
 			const kind = item.isAsking ? 'needs' : 'done';
 			this.say({

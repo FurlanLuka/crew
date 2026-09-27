@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Input, PendingAsk, State } from '../shared/protocol.js';
 import type { Effect } from './reducer.js';
 import { REF, idleSession, permissionAsk, run, runningSession } from '../../test/support/reduce.js';
+import { findLastAskedAloud } from '../tools/asked-aloud.js';
 import { describeAnnouncement, describeHeldLine, isShortLine } from './held-lines.js';
 
 const LONG =
@@ -273,5 +274,201 @@ describe('a held question replayed', () => {
 		});
 
 		expect(effects[0]).toMatchObject({ type: 'speak', isAsking: true, isOwed: true });
+	});
+});
+
+describe('a question or plan the session already asked in its own line', () => {
+	const ASKED = 'One choice for you: should needs you get its own chime?';
+	const question = (id = 'q1', ref = REF): PendingAsk => ({
+		id,
+		ref,
+		at: 1,
+		kind: 'question',
+		input: {},
+		questions: [
+			{
+				question: 'Chimes: which sounds do you want?',
+				header: 'Chimes',
+				multiSelect: false,
+				options: [{ label: 'One' }],
+			},
+		],
+	});
+	const plan: PendingAsk = {
+		id: 'p1',
+		ref: REF,
+		at: 1,
+		kind: 'plan',
+		input: {},
+		plan: 'Do X.',
+	} as PendingAsk;
+	const heard = (ref = REF): Input => ({ type: 'spoken', text: ASKED, source: 'narrator', ref });
+	// The session on screen says its line, and the developer hears it start.
+	const saidAndHeard = (start = onScreen(runningSession())) =>
+		run([tagged(ASKED, true), heard()], { start }).state;
+	const open = (ask: PendingAsk, start: State) =>
+		run([{ type: 'ask_opened', ask }], { start, at: 5_000 });
+
+	it('heard just before a question or a plan opens → Voice OS says nothing more; that line now counts as asked', () => {
+		for (const ask of [question(), plan]) {
+			const { state, effects } = open(ask, saidAndHeard());
+
+			expect(said(effects)).toEqual([]);
+			expect(state.asks.map((pending) => pending.id)).toEqual([ask.id]);
+			expect(state.sessions[REF]?.status).toBe('blocked');
+			expect(state.spoken.at(-1)).toMatchObject({ text: ASKED, isAsking: true });
+		}
+	});
+
+	it('the session did something else after its line, or the line has not played yet → asked as always', () => {
+		const afterTool = run([{ type: 'tool', ref: REF, name: 'Read', summary: 'read a file' }], {
+			start: saidAndHeard(),
+		}).state;
+		const notYetPlayed = run([tagged(ASKED, true)], { start: onScreen(runningSession()) }).state;
+
+		for (const start of [afterTool, notYetPlayed]) {
+			expect(said(open(question(), start).effects)).toEqual([expect.stringContaining('asks:')]);
+		}
+	});
+
+	it('a line from the turn before → asked as always', () => {
+		const lastTurn = run([{ type: 'turn_ended', ref: REF, costUsd: 0, text: '' }], {
+			start: saidAndHeard(),
+		}).state;
+		const busyAgain = run([{ type: 'send', ref: REF, text: 'go on' }], { start: lastTurn }).state;
+
+		expect(said(open(question(), busyAgain).effects)).toHaveLength(1);
+	});
+
+	it('a permission right after a line → asked as always', () =>
+		expect(said(open(permissionAsk('a1'), saidAndHeard()).effects)).toHaveLength(1));
+
+	it('the developer left before hearing it: the line held becomes the question, replayed as it', () => {
+		const asked = open(question(), saidAndHeard()).state;
+		const left = run(
+			[
+				{ type: 'switch_view', view: { kind: 'grid' } },
+				{ type: 'line_held', ref: REF, text: ASKED, isAsking: true },
+			],
+			{ start: asked },
+		).state;
+		const back = run([{ type: 'switch_view', view: { kind: 'session', ref: REF } }], {
+			start: left,
+		});
+
+		expect(heldOf(left)).toMatchObject({ kind: 'ask', askId: 'q1' });
+		expect(said(back.effects)[0]).toContain('Chimes: which sounds do you want?');
+	});
+
+	it('off screen, a short question said in full → the line held with it is not told again', () => {
+		const held = run([tagged('Push it now?', true)], { start: runningSession() }).state;
+		const short = {
+			...question(),
+			questions: [{ question: 'Push it now?', multiSelect: false, options: [] }],
+		} as PendingAsk;
+		const { state, effects } = open(short, held);
+
+		expect(said(effects)).toHaveLength(1);
+		expect(heldOf(state)).toBeNull();
+	});
+
+	it('two sessions waiting → the one whose own line asked is the one asked aloud', () => {
+		const otherAsked = run(
+			[
+				{ type: 'ask_opened', ask: permissionAsk('a1', 'store/wrk1') },
+				{
+					type: 'spoken',
+					text: 'store/wrk1 wants to push. Allow?',
+					source: 'alert',
+					ref: 'store/wrk1',
+					isAsking: true,
+				},
+				tagged(ASKED, true),
+				heard(),
+			],
+			{ start: onScreen(runningSession()), at: 1_000 },
+		).state;
+		const { state } = open(question(), otherAsked);
+
+		expect(
+			findLastAskedAloud({ spoken: state.spoken, waitingRefs: [REF, 'store/wrk1'], now: 6_000 }),
+		).toMatchObject({ ref: REF, text: ASKED });
+	});
+
+	it('an older line that started playing after the asking one was written is not it → asked as always', () => {
+		const older = run(
+			[
+				tagged('Checking the logs first.'),
+				{ type: 'tool', ref: REF, name: 'Read', summary: 'read a file' },
+				tagged(ASKED, true),
+				{ type: 'spoken', text: 'Checking the logs first.', source: 'narrator', ref: REF },
+			],
+			{ start: onScreen(runningSession()) },
+		).state;
+
+		expect(said(open(question(), older).effects)).toHaveLength(1);
+	});
+
+	it('a second question right after the first, with no new line → Voice OS asks it', () => {
+		const first = open(question(), saidAndHeard()).state;
+		const answered = run(
+			[
+				{
+					type: 'answer_question',
+					askId: 'q1',
+					answers: { 'Chimes: which sounds do you want?': 'One' },
+				},
+			],
+			{ start: first },
+		).state;
+		const second = run([{ type: 'ask_opened', ask: question('q2') }], {
+			start: answered,
+			at: 8_000,
+		});
+
+		expect(said(second.effects)).toHaveLength(1);
+	});
+
+	it('a line starting "asks:" is still the line that asked', () => {
+		const asksLine = run(
+			[
+				tagged('asks: should needs you get its own chime?', true),
+				{
+					type: 'spoken',
+					text: 'Should needs you get its own chime?',
+					source: 'narrator',
+					ref: REF,
+				},
+			],
+			{ start: onScreen(runningSession()) },
+		).state;
+
+		expect(said(open(question(), asksLine).effects)).toEqual([]);
+	});
+
+	it('heard more than 30 s before the question opened → asked as always', () => {
+		const long = run([{ type: 'ask_opened', ask: question() }], {
+			start: saidAndHeard(),
+			at: 40_000,
+		});
+
+		expect(said(long.effects)).toHaveLength(1);
+	});
+
+	it('a question with more to answer, answered by voice → the next one is still said', () => {
+		const two = {
+			...question(),
+			questions: [
+				{ question: 'First?', header: 'One', multiSelect: false, options: [] },
+				{ question: 'Second?', header: 'Two', multiSelect: false, options: [] },
+			],
+		} as PendingAsk;
+		const asked = open(two, saidAndHeard()).state;
+		const { effects } = run(
+			[{ type: 'answer_question', askId: 'q1', answers: { 'First?': 'yes' }, isSpoken: true }],
+			{ start: asked },
+		);
+
+		expect(said(effects)[0]).toContain('Second?');
 	});
 });

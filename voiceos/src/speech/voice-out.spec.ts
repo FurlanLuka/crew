@@ -252,6 +252,55 @@ describe('VoiceOut', () => {
 		expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
 	});
 
+	it('the line of a question whose alert was said, played after the developer left → dropped: the alert told it', async () => {
+		const harness = createHarness();
+		const long =
+			'One choice for you before I start: should the notes live in the Voice OS folder or the project?';
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({ type: 'send', ref: 'store/main', text: 'build the notes' });
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: long,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+			isAsking: true,
+		});
+		harness.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'q1',
+				ref: 'store/main',
+				at: 0,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question: 'Where should notes live?',
+						header: 'Notes location',
+						multiSelect: false,
+						options: [],
+					},
+				],
+			},
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		// The alert was said (the line was never heard): it tells the question, once, and nothing is kept.
+		await flush();
+		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized().filter((text) => text.includes('needs you'))).toEqual([]);
+		// The alert itself goes through the store's effects (main.ts), which this harness does not wire.
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
+	});
+
 	it('a short line plays wherever the developer is', async () => {
 		const harness = createHarness();
 		harness.voiceOut.say({

@@ -81,6 +81,11 @@ export const isAnsweredByForward = (calls: ToolCall[]): boolean => {
 const CLARIFYING_PATTERN =
 	/\b(?:need to clarify|do you mean|did you mean|are you asking|(?:are you|you're) referring to|do you want (?:me|to ask)|which (?:session|agent)|not sure (?:what|which|who)|can you (?:name|say|clarify)|could you (?:say|repeat|clarify)|is (?:this|that) for)\b/i;
 
+// "Should I forward that to it?": offering to pass the developer's words on is asking back too —
+// not "should I send it the next step?", an offer of new work.
+const OFFER_TO_PASS_ON_PATTERN =
+	/\b(?:should I|(?:do you )?want me to) (?:forward|send|pass) (?:that|this|it|them)(?: on| along)?(?:\s+to\b|\s*\?)/i;
+
 // Relaying a session's own question ("It asks: did you mean staging?") is an answer, not asking back.
 const RELAYED_QUESTION_PATTERN =
 	/\b(?:it|the session|claude|[\w-]+\/[\w-]+) (?:asks|is asking|wants to know)\b|\basks:/i;
@@ -112,7 +117,7 @@ export const isAskingBack = ({
 		!isBareAnswer(utterance) &&
 		!namesAnother &&
 		reply.trim().endsWith('?') &&
-		CLARIFYING_PATTERN.test(reply) &&
+		(CLARIFYING_PATTERN.test(reply) || OFFER_TO_PASS_ON_PATTERN.test(reply)) &&
 		!RELAYED_QUESTION_PATTERN.test(reply) &&
 		// A forward that failed ("already sent") explains itself: never send the raw words again.
 		!calls.some((call) => call.name === 'forward') &&

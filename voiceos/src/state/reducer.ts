@@ -31,6 +31,7 @@ import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
+import { cleanSpokenText } from '../shared/spoken.js';
 import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-lines.js';
 
 export const SPOKEN_LINES_KEPT = 20;
@@ -140,8 +141,13 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	spokenInTurn: [],
 	currentSendId: null,
 	heldLine: null,
+	lineBeforeAsk: null,
+	askedByLine: null,
 	withdrawnAsides: [],
 });
+
+// The tools that open a question or a plan: they follow the line that announced them.
+const ASK_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
 const describeUnfinished = (ref: string): Effect => ({
 	type: 'speak',
@@ -310,6 +316,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					reportOwed: false,
 					currentSendId: null,
 					heldLine: null,
+					lineBeforeAsk: null,
+					askedByLine: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_stop', ref: input.ref }],
 			};
@@ -333,6 +341,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					reportOwed: false,
 					currentSendId: null,
 					heldLine: null,
+					lineBeforeAsk: null,
+					askedByLine: null,
 				})),
 				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
 			};
@@ -409,6 +419,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...current,
 				draft,
 				spokenInTurn,
+				...(spokenInTurn.length > current.spokenInTurn.length
+					? { lineBeforeAsk: { at: stamped.at, text: cleanSpokenText(spokenInTurn.at(-1) ?? '') } }
+					: {}),
 			}));
 
 			return {
@@ -439,12 +452,25 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// Text and a tool call end the streamed draft; results and diffs follow the tool line.
 			const shouldClearDraft = isText || input.type === 'tool';
 
+			const isNewLine = spoken !== null && spoken.spokenInTurn.length > session.spokenInTurn.length;
+			// Anything the session did after its line, but opening the question or plan it announced,
+			// means the line was not that ask.
+			const isOtherTool = input.type === 'tool' && !ASK_TOOLS.has(input.name);
 			const pushed = updateSession(state, input.ref, (current) =>
 				pushStreamItem(
 					{
 						...current,
 						...(shouldClearDraft ? { draft: '' } : {}),
 						...(spoken ? { spokenInTurn: spoken.spokenInTurn } : {}),
+						...(isNewLine
+							? {
+									lineBeforeAsk: {
+										at: stamped.at,
+										text: cleanSpokenText(spoken.spokenInTurn.at(-1) ?? ''),
+									},
+								}
+							: {}),
+						...(isOtherTool ? { lineBeforeAsk: null } : {}),
 					},
 					item,
 				),
@@ -514,6 +540,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceTurnAt: null,
 				reportOwed: false,
 				spokenInTurn: [],
+				lineBeforeAsk: null,
+				askedByLine: null,
 				currentSendId: null,
 				costUsd: current.costUsd + input.costUsd,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
@@ -542,6 +570,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				reportOwed: false,
 				currentSendId: null,
 				heldLine: null,
+				lineBeforeAsk: null,
+				askedByLine: null,
 			}));
 			const kept = heldRedirect
 				? queueHeldRedirect({ state: stopped, ask: heldRedirect, at: stamped.at, isFirst: false })
@@ -571,15 +601,29 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 			);
 
-		case 'line_held':
+		case 'line_held': {
+			// A line that asked the question now open is held as that question: switching there reads the
+			// question itself, not "— still working".
+			const openAsk = state.asks.find(
+				(ask) => ask.ref === input.ref && (ask.kind === 'question' || ask.kind === 'plan'),
+			);
+
+			// Its alert told that question (the line was never heard): nothing more to keep.
+			if (openAsk && state.sessions[input.ref]?.askedByLine !== openAsk.id) {
+				return withoutEffects(state);
+			}
+
 			return withoutEffects(
 				holdLine({
 					state,
 					ref: input.ref,
-					content: { kind: 'line', text: input.text, isAsking: input.isAsking },
+					content: openAsk
+						? { kind: 'ask', askId: openAsk.id }
+						: { kind: 'line', text: input.text, isAsking: input.isAsking },
 					stamped,
 				}),
 			);
+		}
 
 		case 'held_line_heard':
 			return withoutEffects(

@@ -1671,7 +1671,7 @@
 					"text_includes": ["option", "question"]
 				}
 			],
-			"reply_includes": ["noted|got it|saved"]
+			"reply_includes": ["debug note saved"]
 		},
 		{
 			"id": "last-thing-done-forward",
@@ -1800,7 +1800,7 @@
 				"voiceLog": [
 					{
 						"utterance": "Add a debug note that it sent it to the wrong session.",
-						"reply": "Noted.",
+						"reply": "Debug note saved.",
 						"did": ["debug_note \"it sent it to the wrong session\""]
 					}
 				]
@@ -1810,7 +1810,8 @@
 					"name": "debug_note",
 					"text_includes": ["detect"]
 				}
-			]
+			],
+			"reply_includes": ["debug note saved"]
 		},
 		{
 			"id": "note-addendum",
@@ -2055,6 +2056,56 @@
 			"allow": [{ "name": "read_state" }],
 			"answer": true,
 			"reply_includes": ["jitter|flaky|payment"]
+		},
+		{
+			"id": "debug-notes-check-forwarded",
+			"utterance": "Um, can you check all the latest debug notes and figure out what's wrong?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["debug notes"]
+				}
+			],
+			"allow": [{ "name": "read_state" }],
+			"reply_not_includes": ["access", "should i"]
+		},
+		{
+			"id": "note-about-voice-os-is-debug",
+			"utterance": "Add a note that when the plan is added for approval, I also get double TTS.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "debug_note",
+					"text_includes": ["plan", "double|twice"]
+				}
+			],
+			"reply_includes": ["debug note saved"]
+		},
+		{
+			"id": "read-back-keeps-choice",
+			"utterance": "Okay, and what did you say about adding some context to it?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Brainstorm announcements",
+						"minutesAgo": 2,
+						"idle": true,
+						"said": "For needs you, I'd add a few words about what the decision is, like needs you: where notes should live, so you know whether to switch now. Do you want that, or should it stay just needs you?"
+					}
+				]
+			},
+			"calls": [],
+			"allow": [{ "name": "read_state" }],
+			"answer": true,
+			"long_reply": true,
+			"reply_includes": ["stay|just needs you|as it is|keep it"]
 		},
 		{
 			"id": "note-own-idea",

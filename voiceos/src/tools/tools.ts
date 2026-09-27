@@ -495,7 +495,7 @@ export const executeTool = async (
 
 			toolContext.saveDebugNote({ text, said: toolContext.utterance ?? null });
 
-			return succeed('noted with a snapshot of this moment');
+			return succeed('debug note saved with a snapshot of this moment. Say "Debug note saved."');
 		}
 
 		case 'note': {

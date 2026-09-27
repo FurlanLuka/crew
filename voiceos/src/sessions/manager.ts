@@ -33,7 +33,14 @@ export class SessionManager {
 		const { store } = options;
 
 		this.permissions = new PermissionBridge(
-			(ask) => store.dispatch({ type: 'ask_opened', ask }),
+			(ask) => {
+				const opened = store.dispatch({ type: 'ask_opened', ask });
+
+				// Said already in the session's own line: Voice OS did not ask it again (see asks.ts).
+				if (opened.sessions[ask.ref]?.askedByLine === ask.id) {
+					log.info('ask not read: the session asked it', { ref: ask.ref, kind: ask.kind });
+				}
+			},
 			(askId) => store.dispatch({ type: 'ask_closed', askId }),
 		);
 	}

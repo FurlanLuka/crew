@@ -8,6 +8,7 @@ import {
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
+import { stripSessionName } from '../shared/spoken.js';
 import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared/questions.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
@@ -15,6 +16,7 @@ import { readLabel, sendNow, updateSession, withoutEffects } from './helpers.js'
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import {
 	clearHeldAsk,
+	clearHeldLine,
 	describeAnnouncement,
 	holdLine,
 	isOnScreen,
@@ -152,6 +154,44 @@ const isAnnouncedOnly = (state: State, ask: PendingAsk): boolean => {
 	const open = ask.kind === 'question' ? findOpenQuestion(ask)?.question : undefined;
 
 	return open !== undefined && !isShortLine(open.question);
+};
+
+// The session's own line and the ask it announced come together; later than this, it was about
+// something else.
+const ASKED_BY_LINE_MS = 30_000;
+
+interface FindLineThatAskedParams {
+	state: State;
+	ask: PendingAsk;
+	now: number;
+}
+
+export const findLineThatAsked = ({ state, ask, now }: FindLineThatAskedParams): string | null => {
+	// A question or plan the session asked in its own line, just before opening it, that the
+	// developer heard start on screen: Voice OS does not ask it again. Returns that spoken line's id.
+	const session = state.sessions[ask.ref];
+	const line = session?.lineBeforeAsk;
+
+	if (
+		!line ||
+		(ask.kind !== 'question' && ask.kind !== 'plan') ||
+		!isOnScreen(state, ask.ref) ||
+		now - line.at > ASKED_BY_LINE_MS
+	) {
+		return null;
+	}
+
+	// That very line, not an older one that happened to start playing after it was written.
+	const heard = state.spoken.findLast(
+		(spoken) =>
+			spoken.ref === ask.ref &&
+			spoken.source === 'narrator' &&
+			spoken.at >= line.at &&
+			!spoken.isCut &&
+			stripSessionName(spoken.text).endsWith(stripSessionName(line.text)),
+	);
+
+	return heard?.id ?? null;
 };
 
 const describeQuestionAloud = (ask: QuestionAsk, label: string): string => {
@@ -374,8 +414,30 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				(session) => ({
 					...session,
 					status: 'blocked',
+					// One line asks one question: a second question after it is asked by Voice OS.
+					...(ask.kind === 'question' || ask.kind === 'plan' ? { lineBeforeAsk: null } : {}),
 				}),
 			);
+
+			const askedBy = findLineThatAsked({ state, ask, now: stamped.at });
+
+			// Asked already in the session's own words: said once is enough. That line now counts as the
+			// question asked aloud, so a bare "yes" still finds it.
+			if (askedBy) {
+				return {
+					state: updateSession(
+						{
+							...next,
+							spoken: next.spoken.map((spoken) =>
+								spoken.id === askedBy ? { ...spoken, isAsking: true as const } : spoken,
+							),
+						},
+						ask.ref,
+						(session) => ({ ...session, askedByLine: ask.id }),
+					),
+					effects: released.effects,
+				};
+			}
 
 			if (isAnnouncedOnly(state, ask)) {
 				// High, not an alert: it never cuts off the session on screen.
@@ -404,8 +466,16 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				};
 			}
 
+			// Off screen, a short question said in full now: the session's held line would only repeat it.
+			const said =
+				ask.kind === 'question' &&
+				!isOnScreen(state, ask.ref) &&
+				state.sessions[ask.ref]?.lineBeforeAsk
+					? clearHeldLine(next, ask.ref)
+					: next;
+
 			return {
-				state: next,
+				state: said,
 				effects: [
 					{
 						type: 'speak',

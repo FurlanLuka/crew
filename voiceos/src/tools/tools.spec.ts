@@ -2855,6 +2855,39 @@ describe('fixes from the live notes', () => {
 				{ kind: 'forward_utterance' },
 			],
 			[
+				'an offer to pass the words on ("Should I forward that to it?") → forwarded instead',
+				{
+					reply:
+						"I don't have access to debug notes directly. What I can do is have the session check them. Should I forward that to it?",
+					utterance: "can you check all the latest debug notes and figure out what's wrong?",
+					calls: [call('read_state')],
+				},
+				{ kind: 'forward_utterance' },
+			],
+			[
+				'"want me to send this along?" → forwarded instead',
+				{ reply: 'Want me to send this along?', calls: [call('read_state')] },
+				{ kind: 'forward_utterance' },
+			],
+			[
+				'an offer of new work after a status answer → kept: it is not asking about their words',
+				{
+					reply: 'It finished the migration. Should I send it the next step?',
+					utterance: "what's it doing?",
+					calls: [call('read_state')],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'"should I have it run the tests?" → kept',
+				{
+					reply: 'It finished. Should I have it run the tests?',
+					utterance: "what's it doing?",
+					calls: [call('read_state')],
+				},
+				{ kind: 'keep' },
+			],
+			[
 				'a bare "yes" with several waiting → "which one?" stays: never forward a bare yes',
 				{ reply: 'Which one do you mean?', utterance: 'Yes.', calls: [call('answer', false)] },
 				{ kind: 'keep' },

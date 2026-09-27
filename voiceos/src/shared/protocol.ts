@@ -153,6 +153,11 @@ export interface Session {
 	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
 	withdrawnAsides: string[];
 	heldLine: HeldLine | null;
+	// When its latest spoken line came, if nothing but a question or plan has come since: such a line
+	// asked it, and Voice OS does not ask it again.
+	lineBeforeAsk: { at: number; text: string } | null;
+	// The question or plan that line asked, so Voice OS did not: held as that ask if the developer leaves.
+	askedByLine: string | null;
 }
 
 export interface VoiceEntry {
