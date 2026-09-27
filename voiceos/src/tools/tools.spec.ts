@@ -971,6 +971,24 @@ describe('an answer to a question asked while the developer spoke', () => {
 		await executeTool('answer', input, { ...heard.tools, heardFrom: 4000 });
 
 		expect(unheard.actions).toEqual([]);
+
+		// Said aloud before they spoke (the turn went on, so needsUser came later): heard, answered.
+		const spokenEarly = ask(5000);
+		spokenEarly.tools.getState().spoken = [
+			{
+				id: 'l1',
+				text: 'asks: push it?',
+				source: 'narrator',
+				at: 2000,
+				ref: 'checkout-api/main',
+				isAsking: true,
+			},
+		];
+		await executeTool('answer', input, { ...spokenEarly.tools, heardFrom: 4000, now: () => 6000 });
+
+		expect(spokenEarly.actions).toEqual([
+			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
+		]);
 		expect(heard.actions).toEqual([
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		]);

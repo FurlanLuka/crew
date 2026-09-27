@@ -207,9 +207,22 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 		const asked = state.sessions[checked.ref]?.needsUser;
 
-		// Asked while the developer was already speaking: they never heard it, so these words are not
-		// its answer (they were said to someone else).
-		if (asked && toolContext.heardFrom !== undefined && asked.at >= toolContext.heardFrom) {
+		// Asked while the developer was already speaking, and not said aloud before they began: they never
+		// heard it, so these words are not its answer (they were said to someone else). needsUser is
+		// written when the turn ends; a question spoken earlier in the turn was heard.
+		const isUnheard =
+			asked !== null &&
+			asked !== undefined &&
+			toolContext.heardFrom !== undefined &&
+			asked.at >= toolContext.heardFrom &&
+			!findLastAskedAloud({
+				spoken: state.spoken,
+				waitingRefs: [checked.ref],
+				now: toolContext.now(),
+				heardFrom: toolContext.heardFrom,
+			});
+
+		if (isUnheard) {
 			return fail(
 				`${checked.ref} asked that while the developer was speaking: they had not heard it, so their words are not its answer. Nothing was sent.`,
 			);
