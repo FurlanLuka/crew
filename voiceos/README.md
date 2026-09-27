@@ -8,9 +8,12 @@ browser, and lets you answer permissions and questions, dictate, and hear "done"
 ## Use it
 
 ```bash
-cd voiceos && bun install && bun run install-dev   # compiles into ~/.crew/bin/voiceos
-crew voice                                          # starts it and opens the sign-in link
+crew voice    # downloads Voice OS on first run, asks for its keys, starts it, opens the sign-in link
 ```
+
+The download matches your crew version and `crew update` keeps it current. To run your own
+build instead: `cd voiceos && bun install && bun run install-dev` (it compiles into
+`~/.crew/bin/voiceos`; the next `crew update` replaces it with the release).
 
 Open a link `crew voice` prints. Browsers grant the microphone only on localhost or HTTPS: the
 localhost link works on this Mac, and the proxy link (`https://voice--os.<domain>`) works on any

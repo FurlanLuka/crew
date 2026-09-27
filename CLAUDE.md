@@ -237,7 +237,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
 - **Voice OS** — `voiceos/` (Bun/TypeScript, its own README and tests) is the voice and web
   cockpit: one Claude Code session per worktree, a Haiku kernel routing speech, Soniox for speech
   in and out. `crew voice` owns its lifecycle like the proxy's (`internal/voice`); the binary is
-  `~/.crew/bin/voiceos`, built by `bun run install-dev` — releases do not ship it yet. Its keys
+  `~/.crew/bin/voiceos`, downloaded on the first `crew voice` from the release of the same version (`voice.Install`:
+staged beside, renamed, ad-hoc signed on macOS) and refreshed by `crew update` once installed;
+`voiceos/scripts/build-release.ts` builds the per-platform archives GoReleaser attaches
+(`release.extra_files`). `bun run install-dev` builds it from source into the same path. Its keys
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.

@@ -1165,6 +1165,7 @@ func cmdUpdate() {
 	os.Chmod(selfPath, 0o755)
 
 	fmt.Printf("crew updated to v%s\n", latest)
+	refreshVoice(latest)
 }
 
 func fetchLatestVersion() (string, error) {

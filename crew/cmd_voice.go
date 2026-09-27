@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/x/term"
@@ -61,6 +62,7 @@ func hasFlag(args []string, flag string) bool {
 }
 
 func voiceStart(open bool) {
+	installVoiceIfMissing()
 	askMissingKeys()
 	st, err := voice.Start()
 	if err != nil {
@@ -242,4 +244,39 @@ func readSecret(prompt string) (string, error) {
 		err = nil
 	}
 	return line, err
+}
+
+// installVoiceIfMissing is the first run: the Voice OS of this crew's own
+// release, so the two always match. A dev crew has no release to take it from.
+func installVoiceIfMissing() {
+	if voice.IsInstalled() {
+		return
+	}
+	if Version == "dev" {
+		fmt.Fprintf(os.Stderr, "Error: Voice OS is not installed at %s, and a dev build of crew has no release to download it from — build it with: cd voiceos && bun run install-dev\n", voice.Binary())
+		os.Exit(1)
+	}
+	fmt.Fprintf(human, "Downloading Voice OS v%s for %s/%s (about 30 MB)…\n", Version, runtime.GOOS, runtime.GOARCH)
+	if err := voice.Install(Version); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(human, "Installed Voice OS at %s.\n", voice.Binary())
+}
+
+// refreshVoice keeps an installed Voice OS on the crew version just installed.
+// It never restarts a running one: that would end every Claude session in it.
+func refreshVoice(version string) {
+	if !voice.IsInstalled() {
+		return
+	}
+	if err := voice.Install(version); err != nil {
+		fmt.Fprintf(os.Stderr, "! crew is updated, but Voice OS was not: %v\n", err)
+		return
+	}
+	if voice.Inspect().Running {
+		fmt.Printf("Voice OS updated to v%s — crew voice restart to use it.\n", version)
+		return
+	}
+	fmt.Printf("Voice OS updated to v%s.\n", version)
 }

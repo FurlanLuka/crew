@@ -15,3 +15,13 @@ builds:
       - -s -w -X main.Version={{.Version}}
     env:
       - CGO_ENABLED=0
+
+# Voice OS rides the same release: built by voiceos/scripts/build-release.ts before
+# GoReleaser runs, downloaded by `crew voice` for the matching version.
+release:
+  extra_files:
+    - glob: ../voiceos/dist/voiceos_*.tar.gz
+
+checksum:
+  extra_files:
+    - glob: ../voiceos/dist/voiceos_*.tar.gz

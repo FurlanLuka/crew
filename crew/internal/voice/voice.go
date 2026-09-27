@@ -53,8 +53,8 @@ func Dir() string { return filepath.Join(config.ConfigDir, "voiceos") }
 
 func LogFile() string { return filepath.Join(Dir(), "logs", "voiceos.log") }
 
-// Binary is where the Voice OS executable lives. Development builds are
-// compiled into it with `bun run install-dev`; releases will download it there.
+// Binary is where the Voice OS executable lives: downloaded there on the first
+// crew voice (Install), or compiled there from source with `bun run install-dev`.
 func Binary() string {
 	if bin := os.Getenv("CREW_VOICEOS_BIN"); bin != "" {
 		return bin

@@ -23,6 +23,15 @@ jobs:
           go-version: "1.23"
           cache-dependency-path: crew/go.sum
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build Voice OS
+        working-directory: voiceos
+        run: |
+          bun install --frozen-lockfile
+          bun scripts/build-release.ts "${GITHUB_REF_NAME}"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:

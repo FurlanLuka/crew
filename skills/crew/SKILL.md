@@ -402,7 +402,10 @@ so it works on any device that trusts crew's CA (`crew dev proxy trust`). `crew 
 reprints the link (sign-in is a cookie); `crew voice logs` shows its log; `crew voice stop`
 ends it and its sessions, which resume on the next start. `os` is a reserved workspace name.
 
-It needs two API keys, stored in `~/.config/crew-voiceos` (owner-only, never exported to a
+The first `crew voice` downloads Voice OS (about 30 MB) from the release matching this crew;
+`crew update` refreshes it once it is installed and never restarts a running one (`crew voice
+restart` picks the new version up). A dev build of crew has no release to take it from:
+`cd voiceos && bun run install-dev`. It needs two API keys, stored in `~/.config/crew-voiceos` (owner-only, never exported to a
 shell — an exported `ANTHROPIC_API_KEY` would bill every Claude Code session per token):
 Anthropic for the kernel and narrator, Soniox for speech. The first `crew voice` at a terminal
 asks for any missing one and checks it with the service. Without a tty, `crew voice keys` lists
