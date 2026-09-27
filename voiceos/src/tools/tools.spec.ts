@@ -979,7 +979,7 @@ describe('queued_message', () => {
 		expect(newest.actions).toEqual([{ type: 'take_back', ref: 'store-front/main', id: 'q2' }]);
 	});
 
-	it('last words already delivered, or said to another session → the newest queued message', async () => {
+	it('last words said to another session → the newest queued; already delivered here → nothing sent now', async () => {
 		const gone = withQueue('q-gone');
 		const elsewhere = withQueue(null);
 		elsewhere.tools.getState().lastSpokenSend = {
@@ -989,7 +989,10 @@ describe('queued_message', () => {
 			at: 1,
 		};
 
-		await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, gone.tools);
+		expect(
+			(await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, gone.tools))
+				.ok,
+		).toBe(false);
 		await executeTool(
 			'queued_message',
 			{ ref: 'store-front/main', action: 'now' },
@@ -997,7 +1000,6 @@ describe('queued_message', () => {
 		);
 
 		expect([...gone.actions, ...elsewhere.actions]).toEqual([
-			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q2' },
 			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q2' },
 		]);
 	});

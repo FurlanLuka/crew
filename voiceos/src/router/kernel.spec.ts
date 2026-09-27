@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
-import type { Action, VoiceEntry } from '../shared/protocol.js';
+import type { Action, State, VoiceEntry } from '../shared/protocol.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { createFixtureState, type FixtureContext } from '../../test/support/state.js';
 import { Kernel, buildKernelMessage, listWaitingItems, type KernelOptions } from './kernel.js';
@@ -51,6 +51,8 @@ const createToolUse = (id: string, name: string, input: Record<string, unknown>)
 type CreateKernelExtra = Pick<KernelOptions, 'now'> & {
 	log?: Record<string, VoiceEntry[]>;
 	context?: FixtureContext;
+	// Changes the state as the reducer would, for a tool that reads what an earlier one did.
+	onDispatch?: (action: Action, state: State) => void;
 };
 
 const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
@@ -65,7 +67,10 @@ const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 		client: fake.client,
 		tools: {
 			getState: () => state,
-			dispatch: (action) => actions.push(action),
+			dispatch: (action) => {
+				actions.push(action);
+				extra.onDispatch?.(action, state);
+			},
 			readHistory: () => [],
 			mute: () => {},
 			saveDebugNote: () => {},
@@ -74,7 +79,7 @@ const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 		now: extra.now,
 	});
 
-	return { kernel, fake, actions };
+	return { kernel, fake, actions, state };
 };
 
 describe('Kernel', () => {
@@ -256,6 +261,50 @@ describe('Kernel', () => {
 
 		expect(actions.map((action) => action.type)).toEqual(['answer_permission', 'send']);
 		expect(actions[0]).toMatchObject({ decision: 'allow' });
+	});
+
+	it('take back beside a send_to that ran first → the words as they were said are taken back', async () => {
+		const { kernel, actions, state } = createKernel(
+			[
+				[
+					createToolUse('t1', 'send_to', {
+						ref: 'checkout-api/main',
+						text: 'Rebuild after commit.',
+					}),
+					createToolUse('t2', 'queued_message', { ref: 'store-front/main', action: 'drop' }),
+				],
+				[{ type: 'text', text: '' } as Block],
+			],
+			{
+				onDispatch: (action, current) => {
+					if (action.type === 'send') {
+						current.lastSpokenSend = { ref: action.ref, id: 'new', text: action.text, at: 2 };
+					}
+				},
+			},
+		);
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+			stream: [
+				{
+					id: 'aside-1',
+					at: 1,
+					kind: 'aside',
+					question: 'rebuild after commit',
+					answer: null,
+					status: 'asking',
+				},
+			],
+			queue: [{ id: 'typed-1', text: 'typed earlier', at: 1 }],
+		};
+		state.lastSpokenSend = { ref: 'store-front/main', id: 'aside-1', text: 'x', at: 1 };
+
+		await kernel.handle('sorry, I meant this for checkout — take it back', {
+			forwardTo: 'store-front/main',
+		});
+
+		expect(actions).toContainEqual({ type: 'take_back', ref: 'store-front/main', id: 'aside-1' });
 	});
 
 	it('asking back on a session screen → the words go to the session instead, nothing spoken', async () => {

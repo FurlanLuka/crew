@@ -1,4 +1,4 @@
-import type { LastSpokenSend, QueuedMessage, State } from '../shared/protocol.js';
+import type { LastSpokenSend, State } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
@@ -20,14 +20,6 @@ interface FindTargetParams {
 
 const readLastFor = (last: LastSpokenSend | null, ref: string): LastSpokenSend | null =>
 	last?.ref === ref ? last : null;
-
-export const findQueuedTarget = ({ state, ref, last }: FindTargetParams): QueuedMessage | null => {
-	// The developer's own last words when they wait there, else what was queued last.
-	const queue = state.sessions[ref]?.queue ?? [];
-	const lastId = readLastFor(last, ref)?.id;
-
-	return queue.find((message) => message.id === lastId) ?? queue.at(-1) ?? null;
-};
 
 type Waiting = { id: string; text: string } & { kind: 'queued' | 'aside' | 'held' };
 
@@ -72,6 +64,20 @@ export const findCarrier = ({ state, ref, last: lastSaid }: FindTargetParams): C
 
 const preview = (text: string): string =>
 	text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}…` : text;
+
+const describeNotQueued = (ref: string, carrier: Carrier): string => {
+	switch (carrier?.kind) {
+		case 'held':
+			return `those words wait as a switch question at ${ref}: answer it yes to have them go now`;
+		case 'aside':
+			return `those words were asked aside at ${ref}: to have them done now, forward them with kind redirect`;
+		case 'working':
+		case 'sent':
+			return `${ref} already has those words: nothing queued to send now`;
+		default:
+			return `nothing is queued for ${ref}. To have words go now, forward them with kind redirect.`;
+	}
+};
 
 const readLastSaid = (state: State, toolContext: ToolContext): LastSpokenSend | null =>
 	toolContext.lastSpokenSend === undefined ? state.lastSpokenSend : toolContext.lastSpokenSend;
@@ -128,17 +134,13 @@ export const handleQueuedMessage = ({
 		return takeBack({ state, ref: checked.ref, toolContext });
 	}
 
-	const target = findQueuedTarget({
-		state,
-		ref: checked.ref,
-		last: readLastSaid(state, toolContext),
-	});
+	const carrier = findCarrier({ state, ref: checked.ref, last: readLastSaid(state, toolContext) });
 
-	if (!target) {
-		return fail(
-			`nothing is queued for ${checked.ref}. To have words go now, forward them with kind redirect.`,
-		);
+	if (carrier?.kind !== 'queued') {
+		return fail(describeNotQueued(checked.ref, carrier));
 	}
+
+	const target = carrier;
 
 	log.info('queued message now', { ref: checked.ref, chars: target.text.length });
 	toolContext.dispatch({ type: 'promote_queued', ref: checked.ref, queuedId: target.id });
