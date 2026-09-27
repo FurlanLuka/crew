@@ -29,3 +29,7 @@ jobs:
       - name: Test version flag
         working-directory: crew
         run: ./crew --version | grep -q "crew"
+
+      - name: Test
+        working-directory: crew
+        run: go test ./...

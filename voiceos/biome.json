@@ -1,0 +1,126 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": false,
+		"includes": [
+			"**/*",
+			"!dist",
+			"!node_modules",
+			"!*.tsbuildinfo",
+			"!coverage",
+			"!.claude",
+			"!evals/results",
+			"!evals/audio",
+			"!testdata",
+			"!design",
+			"!bun.lock",
+			"!**/*.wav"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"formatWithErrors": false,
+		"indentStyle": "tab",
+		"lineEnding": "lf",
+		"lineWidth": 100,
+		"attributePosition": "auto"
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "off"
+			}
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"style": {
+				"noNonNullAssertion": "off",
+				"useImportType": "error",
+				"noDefaultExport": "error",
+				"useBlockStatements": "error"
+			},
+			"a11y": {
+				"noSvgWithoutTitle": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "warn",
+				"noArrayIndexKey": "off",
+				"noEmptyBlockStatements": "warn",
+				"noTemplateCurlyInString": "off"
+			},
+			"correctness": {
+				"noUnusedVariables": "warn",
+				"noUnusedImports": "off",
+				"useExhaustiveDependencies": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"jsxQuoteStyle": "double",
+			"quoteProperties": "asNeeded",
+			"trailingCommas": "all",
+			"semicolons": "always",
+			"arrowParentheses": "always",
+			"bracketSpacing": true,
+			"bracketSameLine": false,
+			"quoteStyle": "single",
+			"attributePosition": "auto"
+		}
+	},
+	"json": {
+		"formatter": {
+			"trailingCommas": "none"
+		}
+	},
+	"overrides": [
+		{
+			"includes": [
+				"**/vite.config.*",
+				"**/vitest.config.*",
+				"**/eslint.config.*",
+				"**/next.config.*",
+				"**/source.config.*",
+				"**/postcss.config.*"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noDefaultExport": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["**/*.d.ts"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noDefaultExport": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["**/*.test.*", "**/*.spec.*", "**/test-helpers.*", "**/mock-*.*"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "off",
+						"noEmptyBlockStatements": "off",
+						"noTemplateCurlyInString": "off"
+					}
+				}
+			}
+		}
+	]
+}

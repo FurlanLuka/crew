@@ -1,0 +1,38 @@
+name: Voice OS
+
+on:
+  push:
+    branches: [main]
+    paths: ["voiceos/**", "crew/cmd_voice*.go", "crew/internal/voice/**", ".github/workflows/voiceos.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["voiceos/**", "crew/cmd_voice*.go", "crew/internal/voice/**", ".github/workflows/voiceos.yml"]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: voiceos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      - run: bun test src evals
+      - run: bunx playwright install --with-deps chromium
+      - run: bun test test/ui
+
+  # The JSON crew prints and the goldens Voice OS parses must agree; an edit
+  # to voiceos/testdata alone would otherwise only trigger this workflow.
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: crew/go.mod
+          cache-dependency-path: crew/go.sum
+      - working-directory: crew
+        run: go test -run 'Golden' .

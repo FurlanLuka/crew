@@ -137,13 +137,22 @@ func cmdDevProxyCtl() {
 		case st.Running:
 			state = "up (not listening)"
 		}
-		fmt.Printf("%s\t%s\t%d\t%s\n", state, st.Domain, st.Port, st.URL)
+		fmt.Printf("%s\t%s\t%d\t%s\thttps %s\t%d\n", state, st.Domain, st.Port, st.URL, st.TLS, st.HTTPSPort)
 		switch {
 		case st.Error != "" && !st.Listening:
 			fmt.Fprintf(os.Stderr, "! %s\n", st.Error)
 		case st.Running && !st.Listening:
 			fmt.Fprintf(os.Stderr, "! another server holds the port? lsof -nP -iTCP:%d -sTCP:LISTEN\n", st.Port)
 		}
+		if st.Running && st.TLS == "not listening" {
+			reason := st.TLSError
+			if reason == "" {
+				reason = fmt.Sprintf("another server holds the port? lsof -nP -iTCP:%d -sTCP:LISTEN", st.HTTPSPort)
+			}
+			fmt.Fprintf(os.Stderr, "! https: %s\n", reason)
+		}
+	case "trust":
+		cmdDevProxyTrust()
 	case "stop":
 		dev.StopProxy()
 		if jsonOutput {
@@ -152,7 +161,7 @@ func cmdDevProxyCtl() {
 		}
 		fmt.Println("Stopped the proxy. Worktrees started with --proxy keep running; their hostnames answer again after crew dev restart <ref> --proxy.")
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew dev proxy [status|stop]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev proxy [status|trust|stop]\n")
 		os.Exit(1)
 	}
 }
@@ -631,7 +640,8 @@ func cmdDevTui() {
 
 func cmdDevProxy() {
 	domain := ""
-	port := config.LoadSettings().GetProxyPort()
+	settings := config.LoadSettings()
+	port, httpsPort := settings.GetProxyPort(), settings.GetProxyHTTPSPort()
 
 	for _, arg := range os.Args[3:] {
 		switch {
@@ -639,10 +649,12 @@ func cmdDevProxy() {
 			domain = strings.TrimPrefix(arg, "--domain=")
 		case strings.HasPrefix(arg, "--port="):
 			port = intFlag("--port", strings.TrimPrefix(arg, "--port="), true)
+		case strings.HasPrefix(arg, "--https-port="):
+			httpsPort = intFlag("--https-port", strings.TrimPrefix(arg, "--https-port="), false)
 		}
 	}
 
-	if err := dev.RunProxy(domain, port); err != nil {
+	if err := dev.RunProxy(domain, port, httpsPort); err != nil {
 		debug.Log("dev", "proxy exited: %v", err)
 		dev.RecordProxyError(err)
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

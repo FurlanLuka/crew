@@ -1,0 +1,63 @@
+import { describe, expect, it } from 'bun:test';
+import type { DevServer } from '../shared/protocol.js';
+import { buildSituationNote, VOICE_OS_CONTEXT } from './voice-context.js';
+
+const createServer = (
+	name: string,
+	state: DevServer['state'],
+	detail: string | null = null,
+): DevServer => ({ name, port: 3000, url: null, state, detail });
+
+describe('buildSituationNote', () => {
+	it('down servers with their detail, then what the developer was saying', () => {
+		const note = buildSituationNote({
+			servers: [
+				createServer('api', 'died', 'exit 1: missing DATABASE_URL'),
+				createServer('web', 'running'),
+				createServer('worker', 'not listening'),
+				createServer('jobs', 'starting'),
+			],
+			recent: ['Restart the dev servers?', 'Why were they failing?'],
+		});
+		expect(note).toBe(
+			'(Voice OS, not the developer — context for the message below: dev servers down: api died (exit 1: missing DATABASE_URL); worker not listening. ' +
+				'the developer was just saying to Voice OS: "Restart the dev servers?", "Why were they failing?".)',
+		);
+	});
+
+	it('nothing down and nothing said → no note', () =>
+		expect(
+			buildSituationNote({
+				servers: [createServer('web', 'running'), createServer('jobs', 'starting')],
+				recent: [],
+			}),
+		).toBe(''));
+
+	it('only the last few things said, long ones cut', () => {
+		const note = buildSituationNote({
+			servers: [],
+			recent: ['one', 'two', 'three', 'four', 'five', 'x'.repeat(300)],
+		});
+		expect(note).not.toContain('"one"');
+		expect(note).not.toContain('"two"');
+		expect(note).toContain('"three"');
+		expect(note).toContain(`${'x'.repeat(200)}…`);
+	});
+
+	it('quotes in what was said are kept as said', () =>
+		expect(buildSituationNote({ servers: [], recent: ['say "hi"'] })).toContain('"say "hi""'));
+});
+
+describe('VOICE_OS_CONTEXT', () => {
+	it('sessions write their own spoken lines, with substance, and ask one question per call', () => {
+		expect(VOICE_OS_CONTEXT).toContain('<spoken>…</spoken>` as its very first line');
+		expect(VOICE_OS_CONTEXT).toContain('any risk or catch they must know');
+		expect(VOICE_OS_CONTEXT).toContain('never a bare verdict');
+		expect(VOICE_OS_CONTEXT).toContain('<spoken asks>');
+		expect(VOICE_OS_CONTEXT).toContain('also give them the major checkpoints');
+		expect(VOICE_OS_CONTEXT).toContain('never for routine steps, files or commands');
+		expect(VOICE_OS_CONTEXT).toContain('written before your first tool call, skill or file read');
+		expect(VOICE_OS_CONTEXT).toContain('as soon as you reach it, before the next tool call');
+		expect(VOICE_OS_CONTEXT).toContain('Put one question in each call');
+	});
+});

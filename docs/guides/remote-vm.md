@@ -1,4 +1,4 @@
-# Crew VM Setup Guide
+# Running crew on a remote VM
 
 Complete setup for running crew on a GCP VM: dev servers, Claude Code (or any agent with a shell), and remote editor access.
 

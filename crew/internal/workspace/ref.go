@@ -63,11 +63,18 @@ func ValidateName(kind, name string) error {
 	if strings.Contains(name, "--") {
 		return fmt.Errorf("%s name '%s' is invalid — '--' is reserved as the workspace/worktree separator", kind, name)
 	}
+	if kind == "workspace" && name == VoiceSlug {
+		return fmt.Errorf("workspace name '%s' is reserved — Voice OS serves its proxy route (voice--%s.<domain>) under it", name, name)
+	}
 	if kind == "workspace" && reservedNames[name] {
 		return fmt.Errorf("workspace name '%s' is reserved — it is a subcommand (crew setup %s, crew rm %s)", name, name, name)
 	}
 	return nil
 }
+
+// VoiceSlug is the route slug Voice OS registers with the dev proxy; a
+// workspace by that name would share its hostnames and route file.
+const VoiceSlug = "os"
 
 // reservedNames are words that follow a verb as a subcommand — `crew setup
 // status <ref>`, `crew rm worktree <ref>` — so a workspace by that name

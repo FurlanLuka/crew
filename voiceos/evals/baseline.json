@@ -1,0 +1,14 @@
+{
+	"narrator": {
+		"needsUser": 1.0,
+		"speak": 1.0,
+		"format": 1.0,
+		"faithful": 1.0,
+		"holdoutNeedsUser": 1.0,
+		"judgeCalibration": 1.0
+	},
+	"kernel": {
+		"overall": 1.0,
+		"mutating": 1.0
+	}
+}

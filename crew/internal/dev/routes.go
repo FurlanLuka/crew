@@ -82,6 +82,10 @@ func saveRoutes(slug Slug, routes []Route) error {
 	return os.WriteFile(RoutesFilePath(slug), data, 0o644)
 }
 
+// SaveRoutes records routes for a slug crew does not start through dev start —
+// Voice OS registers its own server this way so the proxy can serve it.
+func SaveRoutes(slug Slug, routes []Route) error { return saveRoutes(slug, routes) }
+
 func removeRoutesFile(slug Slug) {
 	os.Remove(RoutesFilePath(slug))
 }
@@ -105,6 +109,14 @@ func FormatURL(serverName string, slug Slug, domain string, port int) string {
 		return fmt.Sprintf("http://%s--%s.%s", serverName, slug, domain)
 	}
 	return fmt.Sprintf("http://%s--%s.%s:%d", serverName, slug, domain, port)
+}
+
+// FormatHTTPSURL is FormatURL on the proxy's TLS port, omitting 443.
+func FormatHTTPSURL(serverName string, slug Slug, domain string, port int) string {
+	if port == 443 {
+		return fmt.Sprintf("https://%s--%s.%s", serverName, slug, domain)
+	}
+	return fmt.Sprintf("https://%s--%s.%s:%d", serverName, slug, domain, port)
 }
 
 // RouteURL returns the user-facing URL for a route, choosing localhost for

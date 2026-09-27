@@ -19,9 +19,11 @@ func HasTmux() bool {
 	return err == nil
 }
 
-// TmuxSessionExists checks if a tmux session exists.
+// TmuxSessionExists checks if a tmux session exists. The "=" makes tmux match
+// the name exactly: a bare -t also accepts a prefix, so a stopped
+// crew-dev-ws--main would read as running while crew-dev-ws--main2 runs.
 func TmuxSessionExists(session string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", session)
+	cmd := exec.Command("tmux", "has-session", "-t", "="+session)
 	exists := cmd.Run() == nil
 	debug.Log("tmux", "has-session -t %s → %v", session, exists)
 	return exists
@@ -155,9 +157,12 @@ func TmuxRestartLastCommand(target string) {
 // pane dies and the slot can be reused by an unrelated terminal, so resolving
 // ttys afterwards would risk killing someone else's processes.
 func KillTmuxSession(session string) {
-	killPaneProcesses("-s", "-t", session)
-	debug.Log("tmux", "kill-session -t %s", session)
-	exec.Command("tmux", "kill-session", "-t", session).Run()
+	// Exact target: a prefix match would sweep and kill a different session
+	// (crew-dev-ws--main2) when the one named here is already gone.
+	target := "=" + session
+	killPaneProcesses("-s", "-t", target)
+	debug.Log("tmux", "kill-session -t %s", target)
+	exec.Command("tmux", "kill-session", "-t", target).Run()
 }
 
 // killPaneProcesses kills the processes running in every pane matched by the

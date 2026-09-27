@@ -1,0 +1,53 @@
+{
+	"note": "Lines with a known verdict. The judge must get every one right before its faithfulness scores are trusted.",
+	"cases": [
+		{
+			"id": "invented-number",
+			"label": "store-front/main",
+			"needs_user": false,
+			"text": "Full suite green: 412 tests across 38 files.",
+			"spoken": "store front, main: all 500 tests pass.",
+			"faithful": false
+		},
+		{
+			"id": "wrong-question",
+			"label": "checkout-api/main",
+			"needs_user": true,
+			"text": "Want me to push the branch?",
+			"spoken": "checkout api, main asks: should I delete the branch?",
+			"faithful": false
+		},
+		{
+			"id": "invented-result",
+			"label": "signals/main",
+			"needs_user": false,
+			"text": "Profiling run started; it takes about four minutes.",
+			"spoken": "signals, main: profiling finished, ingest is 40% faster.",
+			"faithful": false
+		},
+		{
+			"id": "missing-question",
+			"label": "store-front/wrk1",
+			"needs_user": true,
+			"text": "Two options: a new table or a JSON column. Which do you want?",
+			"spoken": "store front, work 1: looked at storage options.",
+			"faithful": false
+		},
+		{
+			"id": "faithful-summary",
+			"label": "admin/main",
+			"needs_user": false,
+			"text": "Fixed all 31 lint errors; most were unused imports. Lint and typecheck are clean.",
+			"spoken": "admin, main: fixed all 31 lint errors, lint and typecheck are clean.",
+			"faithful": true
+		},
+		{
+			"id": "faithful-question",
+			"label": "checkout-api/main",
+			"needs_user": true,
+			"text": "Backoff is in and tests pass. Should I deploy to staging?",
+			"spoken": "checkout api, main asks: deploy to staging?",
+			"faithful": true
+		}
+	]
+}

@@ -234,10 +234,10 @@ func TestEnsureProxy_RelaunchesWhenSettingsChange(t *testing.T) {
 	if err := EnsureProxy("10.0.0.1.nip.io", 18080); err != nil {
 		t.Fatalf("first EnsureProxy: %v", err)
 	}
-	if st, ok := loadProxyState(); !ok || st != (proxyState{Domain: "10.0.0.1.nip.io", Port: 18080}) {
+	if st, ok := loadProxyState(); !ok || st.Domain != "10.0.0.1.nip.io" || st.Port != 18080 || st.HTTPSPort == nil || *st.HTTPSPort != 443 {
 		t.Fatalf("state after first start = %+v, %v", st, ok)
 	}
-	if !proxyPaneShows(t, "--domain=10.0.0.1.nip.io --port=18080") {
+	if !proxyPaneShows(t, "--domain=10.0.0.1.nip.io --port=18080 --https-port=443") {
 		t.Fatal("proxy pane should show the launch command")
 	}
 
@@ -265,6 +265,23 @@ func TestEnsureProxy_RelaunchesWhenSettingsChange(t *testing.T) {
 	}
 	if !proxyPaneShows(t, "--domain=100.64.0.9.nip.io") {
 		t.Error("proxy pane should show the new domain")
+	}
+
+	// A changed HTTPS port relaunches too.
+	before = proxyPanePID(t)
+	s := config.LoadSettings()
+	s.ProxyHTTPSPort = 18443
+	if err := config.SaveSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureProxy("100.64.0.9.nip.io", 18080); err != nil {
+		t.Fatalf("https relaunch: %v", err)
+	}
+	if after := proxyPanePID(t); after == before {
+		t.Error("a changed HTTPS port should relaunch the proxy")
+	}
+	if st, _ := loadProxyState(); st.HTTPSPort == nil || *st.HTTPSPort != 18443 {
+		t.Errorf("state after HTTPS relaunch = %+v", st)
 	}
 
 	StopProxy()
@@ -540,5 +557,37 @@ func TestStart_PerServerEnv(t *testing.T) {
 	}
 	if strings.Contains(worker, "API_URL") || !strings.Contains(worker, "export QUEUE_URL=") {
 		t.Errorf("worker window:\n%s", worker)
+	}
+}
+
+func TestSameLaunch(t *testing.T) {
+	p := func(n int) *int { return &n }
+	base := proxyState{Domain: "d", Port: 80, HTTPSPort: p(443)}
+	cases := []struct {
+		name string
+		have proxyState
+		want bool
+	}{
+		{"same settings → kept", proxyState{Domain: "d", Port: 80, HTTPSPort: p(443)}, true},
+		{"other HTTPS port → relaunch", proxyState{Domain: "d", Port: 80, HTTPSPort: p(8443)}, false},
+		{"HTTPS was off, now on → relaunch", proxyState{Domain: "d", Port: 80, HTTPSPort: p(0)}, false},
+		{"record from before HTTPS existed → relaunch", proxyState{Domain: "d", Port: 80}, false},
+		{"other domain → relaunch", proxyState{Domain: "e", Port: 80, HTTPSPort: p(443)}, false},
+	}
+	for _, c := range cases {
+		if got := sameLaunch(c.have, base); got != c.want {
+			t.Errorf("%s: sameLaunch = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestProxyStateReadsPreHTTPSRecord(t *testing.T) {
+	setupTestConfig(t)
+	if err := os.WriteFile(proxyStatePath(), []byte(`{"domain":"d","port":80}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, ok := loadProxyState()
+	if !ok || st.HTTPSPort != nil || st.Domain != "d" {
+		t.Fatalf("old record = %+v, %v; want it read with no HTTPS port", st, ok)
 	}
 }
