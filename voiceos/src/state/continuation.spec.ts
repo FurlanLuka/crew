@@ -73,7 +73,10 @@ describe('a continuation replaces its first half', () => {
 			at: 5000,
 		});
 
-		expect(replaced.effects).toEqual([{ type: 'worker_interrupt', ref: REF, reason: 'follow-up' }]);
+		expect(replaced.effects).toEqual([
+			{ type: 'drop_speech', ref: REF, before: 4000 },
+			{ type: 'worker_interrupt', ref: REF, reason: 'follow-up' },
+		]);
 		expect(sessionOf(replaced.state)?.queue[0]).toMatchObject({
 			text: JOINED,
 			isFollowUp: true,

@@ -194,6 +194,7 @@ describe('turn narrator', () => {
 		await narrated;
 
 		expect(harness.spoken).toEqual([]);
+		expect(harness.store.state.sessions['checkout-api/main']?.needsUser).toBeNull();
 	});
 
 	it('session gone → nothing happens', async () => {

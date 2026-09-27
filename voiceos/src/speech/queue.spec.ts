@@ -132,13 +132,14 @@ describe('dropQueued', () => {
 			{ ...createItem('old', 'high', 'store/main', 100), isOwed: true },
 			createItem('other', 'normal', 'checkout/main', 100),
 			createItem('newer', 'normal', 'store/main', 500),
+			createItem('same-moment', 'normal', 'store/main', 300),
 			createItem('none', 'normal', null, 100),
 		];
 		const filled = { ...queue, items };
 
 		expect(
 			dropQueued(filled, { ref: 'store/main', before: 300 }).items.map((item) => item.id),
-		).toEqual(['other', 'newer', 'none']);
-		expect(filled.items).toHaveLength(4);
+		).toEqual(['other', 'newer', 'same-moment', 'none']);
+		expect(filled.items).toHaveLength(5);
 	});
 });

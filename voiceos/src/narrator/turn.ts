@@ -168,19 +168,20 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 					sessionText: body,
 				});
 
-		store.dispatch({
-			type: 'narration',
-			ref: effect.ref,
-			needsUser: narration.needs_user,
-			text: narration.text,
-			topic: narration.topic,
-		});
-
-		// The developer spoke to it again while the narrator thought: this report answers older words.
+		// A newer turn started while the narrator thought: this report answers older words,
+		// so it is neither said nor left as a question the session waits on.
 		const isStale = store.state.sessions[effect.ref]?.currentSendId !== narratedSendId;
 
 		if (isStale) {
 			log.info('stale narration not said', { ref: effect.ref });
+		} else {
+			store.dispatch({
+				type: 'narration',
+				ref: effect.ref,
+				needsUser: narration.needs_user,
+				text: narration.text,
+				topic: narration.topic,
+			});
 		}
 
 		// A line the session wrote was said as soon as it streamed in.

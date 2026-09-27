@@ -153,6 +153,20 @@ describe('VoiceOut', () => {
 		expect(harness.listSynthesized().at(-1)).toBe('store/main asks: where should notes live?');
 	});
 
+	it("dropping a session's waiting lines leaves the one playing alone", async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({ text: 'playing', priority: 'normal', ref: 'store/main' });
+		await flush();
+		harness.voiceOut.say({ text: 'waiting', priority: 'normal', ref: 'store/main' });
+		harness.tick(10);
+		harness.voiceOut.dropQueuedAbout('store/main', 10);
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing']);
+		expect(harness.listSentKinds().some((kind) => kind.includes(':cancel:'))).toBe(false);
+	});
+
 	it('no speaker tab → line still shown, nothing synthesized, queue keeps moving', async () => {
 		const harness = createHarness({ tab: null });
 		harness.voiceOut.say({ text: 'a', priority: 'normal' });

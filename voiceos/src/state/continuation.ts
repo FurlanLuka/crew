@@ -220,8 +220,9 @@ export const continueFirstHalf = (
 				isOwed: input.ack?.kind !== 'question',
 			});
 
+			// What the cut turn said since its first half was sent answers only that half.
 			return {
-				...replaced,
+				effects: [{ type: 'drop_speech', ref, before: stamped.at }, ...replaced.effects],
 				state: remember(replaced.state, { ref, id: stamped.id, text: joined, at: stamped.at }),
 			};
 		}

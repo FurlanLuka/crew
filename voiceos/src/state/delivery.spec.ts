@@ -489,7 +489,9 @@ describe('the owed report', () => {
 
 describe('speech waiting about a session', () => {
 	it('spoken words to it → its older lines are dropped (idle, working, stopped); typed words drop nothing', () => {
-		for (const start of [idleSession(), runningSession()]) {
+		const stopped = run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
+
+		for (const start of [idleSession(), runningSession(), stopped]) {
 			const spoken = run([{ type: 'send', ref: REF, text: 'actually do X', isSpoken: true }], {
 				start,
 				at: 5000,
@@ -499,5 +501,19 @@ describe('speech waiting about a session', () => {
 			expect(spoken.effects[0]).toEqual({ type: 'drop_speech', ref: REF, before: 5000 });
 			expect(typed.effects.some((effect) => effect.type === 'drop_speech')).toBe(false);
 		}
+	});
+
+	it('a spoken answer to what it waits on drops them too; a typed one does not', () => {
+		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('p1') }], {
+			start: runningSession(),
+		}).state;
+		const spoken = run([{ type: 'send', ref: REF, text: 'no, use staging', isSpoken: true }], {
+			start: blocked,
+			at: 7000,
+		});
+		const typed = run([{ type: 'send', ref: REF, text: 'no, use staging' }], { start: blocked });
+
+		expect(spoken.effects[0]).toEqual({ type: 'drop_speech', ref: REF, before: 7000 });
+		expect(typed.effects.some((effect) => effect.type === 'drop_speech')).toBe(false);
 	});
 });

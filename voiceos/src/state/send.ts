@@ -1,5 +1,5 @@
 import { isSdkAsk, type Input, type Stamped, type State } from '../shared/protocol.js';
-import type { ReducerResult } from './reducer.js';
+import type { Effect, ReducerResult } from './reducer.js';
 import { answerInWords, completesAsk } from './asks.js';
 import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
@@ -71,11 +71,16 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 			? decideAck({ ref: input.ref, ack: input.ack, timing: 'now' })
 			: NO_ACK;
 
+		// Answered by voice: what it still had to say about the question is out of date.
+		const dropped: Effect[] = input.isSpoken
+			? [{ type: 'drop_speech', ref: input.ref, before: stamped.at }]
+			: [];
+
 		return {
 			state: isOwed
 				? updateSession(answered.state, input.ref, (current) => ({ ...current, reportOwed: true }))
 				: answered.state,
-			effects: [...effects, ...answered.effects],
+			effects: [...dropped, ...effects, ...answered.effects],
 		};
 	}
 
