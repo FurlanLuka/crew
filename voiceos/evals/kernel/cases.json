@@ -1653,6 +1653,22 @@
 			"no_reply": true
 		},
 		{
+			"id": "rebuild-after-asked-once",
+			"utterance": "Okay. Okay, you re- can you, uh, rebuild and restart?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "rebuild so you can try it live?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["rebuild"]
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

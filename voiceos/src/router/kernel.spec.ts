@@ -196,6 +196,30 @@ describe('Kernel', () => {
 		expect(result.reply).toBe('');
 	});
 
+	it('an answer that falls back to sending beside a forward → the words are sent once, cleaned', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[
+					createToolUse('t1', 'answer', { ref: 'store-front/main', decision: 'yes', text: '' }),
+					createToolUse('t2', 'forward', { text: 'Rebuild and restart Voice OS.' }),
+				],
+				[{ type: 'text', text: '' } as Block],
+			],
+			{ context: { view: 'store-front/main', needs: 'store-front/main' } },
+		);
+
+		await kernel.handle('Okay. Okay, you re- can you, uh, rebuild and restart?', {
+			forwardTo: 'store-front/main',
+		});
+
+		expect(actions.filter((action) => action.type === 'send')).toEqual([
+			expect.objectContaining({
+				ref: 'store-front/main',
+				text: 'Okay. Rebuild and restart Voice OS.',
+			}),
+		]);
+	});
+
 	it('asking back on a session screen → the words go to the session instead, nothing spoken', async () => {
 		const { kernel, actions } = createKernel([
 			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],

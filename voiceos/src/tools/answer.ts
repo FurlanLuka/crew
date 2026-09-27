@@ -200,6 +200,11 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 				})
 			: written;
 
+		// A forward beside it already took the words there, cleaned: they are not sent twice.
+		if (toolContext.sentTo?.has(checked.ref)) {
+			return succeed(`the words already went to ${checked.ref} in this turn`);
+		}
+
 		if (state.sessions[checked.ref]?.needsUser && reply) {
 			const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, reply);
 

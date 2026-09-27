@@ -227,6 +227,11 @@ interface RequestParams {
 	toolChoice?: Anthropic.ToolChoice;
 }
 
+const RUN_ORDER: Partial<Record<string, number>> = { dev_offer: 0, forward: 1, send_to: 1 };
+const LATER = 2;
+
+const readRunOrder = (name: string): number => RUN_ORDER[name] ?? LATER;
+
 export class Kernel {
 	private client: Anthropic;
 	private now: () => number;
@@ -264,6 +269,7 @@ export class Kernel {
 			setHandsFree,
 			// The asks as they stood when the words were said: an answer never lands on one that opened since.
 			asks: state.asks,
+			sentTo: new Set(),
 			now: this.now,
 		};
 		// Built up step by step: a later step's text replaces an earlier one, a silent step ends the loop.
@@ -310,9 +316,10 @@ export class Kernel {
 
 			messages.push({ role: 'assistant', content: response.content });
 			// One at a time, a fix offer first: once a result is final, nothing else that changes
-			// anything may run (a lapsed offer beside a send_to would still send the fix).
+			// anything may run (a lapsed offer beside a send_to would still send the fix). Sends before
+			// answers: an answer that falls back to sending finds the words already sent.
 			const ordered = [...toolUses].sort(
-				(left, right) => Number(right.name === 'dev_offer') - Number(left.name === 'dev_offer'),
+				(left, right) => readRunOrder(left.name) - readRunOrder(right.name),
 			);
 			const resultsById = new Map<string, Anthropic.ToolResultBlockParam>();
 

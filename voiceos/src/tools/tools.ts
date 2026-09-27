@@ -89,6 +89,8 @@ export interface ToolContext {
 	notes: NotesStore;
 	// Calls that change something in this turn so far, this step's included: more than one splits the words.
 	actionsInTurn?: number;
+	// Sessions this turn already sent words to: an answer that would send them again does not.
+	sentTo?: Set<string>;
 	// Bound to the tab the words came from; 'no_tab' when they came from none (evals, a closed tab).
 	setHandsFree: (isOn: boolean) => HandsFreeResult;
 	dispatch: (action: Action) => void;

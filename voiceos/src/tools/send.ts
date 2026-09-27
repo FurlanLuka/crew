@@ -275,6 +275,7 @@ export const sendText = ({
 			notes: toolContext.notes,
 		});
 
+		toolContext.sentTo?.add(ref);
 		toolContext.dispatch({
 			type: 'send',
 			ref,
@@ -313,6 +314,7 @@ export const sendText = ({
 		log.info('continuation', { ref, chars: text.length });
 	}
 
+	toolContext.sentTo?.add(ref);
 	toolContext.dispatch({
 		type: 'send',
 		ref,

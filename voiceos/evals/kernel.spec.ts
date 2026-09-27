@@ -34,6 +34,15 @@ describe('judgeRun', () => {
 	};
 	const forward = (text: string) => [{ name: 'forward', input: { text }, ok: true }];
 
+	it('two sends to one session (an answer fallback beside a forward) → fails', () =>
+		expect(
+			judgeRun({
+				calls: [...forward('Okay. Check the logs.'), ...forward('Check the logs.')],
+				reply: '',
+				testCase: checkLogsCase,
+			}),
+		).toEqual({ ok: false, why: 'sent twice to the screen' }));
+
 	it('a clean instruction keeping the detail → ok', () =>
 		expect(
 			judgeRun({ calls: forward('Check the logs.'), reply: '', testCase: checkLogsCase }).ok,

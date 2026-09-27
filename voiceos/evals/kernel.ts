@@ -181,6 +181,17 @@ export const judgeRun = ({ calls, reply, testCase }: JudgeRunParams): Verdict =>
 		};
 	}
 
+	// An answer that fell back to sending is recorded as a forward: two of them to one session
+	// match the expected call and still sent the words twice.
+	const sentTo = calls
+		.filter((call) => call.ok && (call.name === 'forward' || call.name === 'send_to'))
+		.map((call) => (call.name === 'forward' ? 'the screen' : String(call.input.ref)));
+	const twice = sentTo.find((ref, index) => sentTo.indexOf(ref) !== index);
+
+	if (twice) {
+		return { ok: false, why: `sent twice to ${twice}` };
+	}
+
 	if (
 		(testCase.forbid_mutation || testCase.silent) &&
 		calls.some((call) => call.ok && isMutation(call))
