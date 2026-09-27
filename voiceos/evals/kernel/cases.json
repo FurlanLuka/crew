@@ -367,6 +367,26 @@
 			"answer": true
 		},
 		{
+			"id": "in-session-start-other-quoted",
+			"utterance": "\"Can you start the checkout api session?\"",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "start_session",
+					"ref": "checkout-api/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
 			"id": "in-session-start-other",
 			"utterance": "Start store front work one.",
 			"context": {
