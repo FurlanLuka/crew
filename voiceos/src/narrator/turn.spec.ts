@@ -157,6 +157,35 @@ describe('turn narrator', () => {
 		expect(harness.seen).toEqual([{ focused: true }]);
 	});
 
+	it('the developer spoke to it again while the narrator thought → the old report is not said', async () => {
+		const harness = createHarness({
+			speak: true,
+			needs_user: true,
+			priority: 'high',
+			text: 'checkout api, main asks: what should it research?',
+			topic: null,
+		});
+		harness.store.dispatch({ type: 'session_started', ref: 'checkout-api/main' });
+		const narrated = harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: 'Your message cut off. What should I research?',
+			asked: 'how hard would it be to',
+			isOwed: true,
+			spoken: null,
+			isSpokenAlready: false,
+		});
+		harness.store.dispatch({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'how hard would it be to run Voice OS remotely',
+			isSpoken: true,
+		});
+		await narrated;
+
+		expect(harness.spoken).toEqual([]);
+	});
+
 	it('session gone → nothing happens', async () => {
 		const harness = createHarness({
 			speak: true,

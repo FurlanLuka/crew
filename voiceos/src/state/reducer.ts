@@ -81,6 +81,9 @@ export type Effect =
 			// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
 			isAck?: boolean;
 	  }
+	// The developer spoke to this session again: its lines still waiting to be said (older than
+	// before) are out of date. They stay on the page.
+	| { type: 'drop_speech'; ref: string; before: number }
 	| { type: 'dev'; ref: string; action: 'start' | 'stop' | 'restart' }
 	| { type: 'fix_dev'; ref: string; servers: string[] };
 

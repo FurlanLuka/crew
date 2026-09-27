@@ -802,7 +802,8 @@ describe('spoken follow-ups', () => {
 			});
 
 			state = result.state;
-			effects.push(result.effects);
+			// What happens to the speech queue is tested with delivery: here, only what reaches the worker.
+			effects.push(result.effects.filter((effect) => effect.type !== 'drop_speech'));
 		}
 
 		return { state, effects };

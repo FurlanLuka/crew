@@ -7,6 +7,7 @@ import { isRecent, type SpokenRecord } from './echo.js';
 import {
 	clearQueueForTalk,
 	createEmptyQueue,
+	dropQueued,
 	enqueue,
 	setMuted,
 	shouldChime,
@@ -135,6 +136,15 @@ export class VoiceOut {
 		}
 
 		void this.pump();
+	}
+
+	dropQueuedAbout(ref: string, before: number): void {
+		const count = this.queue.items.length;
+		this.queue = dropQueued(this.queue, { ref, before });
+
+		if (this.queue.items.length < count) {
+			log.info('dropped stale lines', { ref, count: count - this.queue.items.length });
+		}
 	}
 
 	clipDone(id: string): void {

@@ -486,3 +486,18 @@ describe('the owed report', () => {
 		expect(clean.effects).toEqual([]);
 	});
 });
+
+describe('speech waiting about a session', () => {
+	it('spoken words to it → its older lines are dropped (idle, working, stopped); typed words drop nothing', () => {
+		for (const start of [idleSession(), runningSession()]) {
+			const spoken = run([{ type: 'send', ref: REF, text: 'actually do X', isSpoken: true }], {
+				start,
+				at: 5000,
+			});
+			const typed = run([{ type: 'send', ref: REF, text: 'actually do X' }], { start, at: 5000 });
+
+			expect(spoken.effects[0]).toEqual({ type: 'drop_speech', ref: REF, before: 5000 });
+			expect(typed.effects.some((effect) => effect.type === 'drop_speech')).toBe(false);
+		}
+	});
+});

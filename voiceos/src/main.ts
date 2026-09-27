@@ -118,6 +118,10 @@ store.onEffect((effect) => {
 		});
 	}
 
+	if (effect.type === 'drop_speech') {
+		voiceOut.dropQueuedAbout(effect.ref, effect.before);
+	}
+
 	if (effect.type === 'narrate') {
 		return narrateTurn(effect);
 	}

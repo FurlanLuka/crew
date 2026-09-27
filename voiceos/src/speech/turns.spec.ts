@@ -28,6 +28,9 @@ describe('isUnfinished', () => {
 		'Can you help with.',
 		// Complete but held too; the hold ends after 5 s or with the next words, so it is only delayed.
 		'Can you clean up?',
+		'So how hard would it be to.',
+		'Let me tell you about.',
+		'We could build it with.',
 	])('%p → unfinished', (text) => expect(isUnfinished(text)).toBe(true));
 
 	it.each([
@@ -39,6 +42,9 @@ describe('isUnfinished', () => {
 		'Okay then.',
 		'Plan A.',
 		"I'd like to.",
+		'We have to.',
+		'What is it for?',
+		'Where does it come from?',
 		'Thank you.',
 		'What are you up to?',
 		'Can you check the logs?',

@@ -11,6 +11,10 @@ describe('readSpokenTag', () => {
 			text: 'Push it now?',
 			isAsking: true,
 		});
+		expect(readSpokenTag('<spoken asks>What should I research?</spoken asks>\nMore.')).toEqual({
+			text: 'What should I research?',
+			isAsking: true,
+		});
 		expect(readSpokenTag('<spoken></spoken>')).toBeNull();
 		expect(readSpokenTag('<spoken>Three timeouts in the')).toBeNull();
 	});

@@ -37,6 +37,7 @@ describe('a redirect to a working session', () => {
 
 		expect(askOf(state)).toMatchObject({ text: REDIRECT });
 		expect(effects).toEqual([
+			{ type: 'drop_speech', ref: REF, before: 1000 },
 			{
 				type: 'speak',
 				text: 'store/main is still on refactor the router. Stop it and switch? Say yes, or it goes after.',

@@ -95,6 +95,17 @@ export const takeNextItem = (queue: SpeechQueue, now: number): TakenItem => {
 	return { item, queue: { ...queue, items: rest } };
 };
 
+interface DropQueuedParams {
+	ref: string;
+	before: number;
+}
+
+export const dropQueued = (queue: SpeechQueue, { ref, before }: DropQueuedParams): SpeechQueue => ({
+	...queue,
+	// Owed ones too: the developer moved on before hearing them.
+	items: queue.items.filter((queued) => queued.ref !== ref || queued.at >= before),
+});
+
 export const clearQueueForTalk = (queue: SpeechQueue): SpeechQueue => ({
 	...queue,
 	items: queue.items.filter((queued) => PRIORITY_RANK[queued.priority] <= PRIORITY_RANK.high),

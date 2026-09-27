@@ -15,6 +15,11 @@ const DANGLING_WORDS = new Set([
 	'i',
 ]);
 const FILLER_WORDS = new Set(['um', 'uh', 'erm']);
+// "…how hard would it be to." — never a sentence's end, unless asked ("what is it for?") or a
+// wish that is whole ("I'd like to.", "we have to.").
+const TRAILING_PREPOSITIONS = new Set(['to', 'of', 'for', 'with', 'about', 'from', 'into']);
+const WHOLE_TO_PATTERN =
+	/\b(?:like|love|want|need|have|got|going|ought|used|hate|try|plan)\s+to[.!]?$/i;
 // "mm", "hmmm", "mhm", "uh-huh": a breath or a murmur, not the developer going on.
 const MURMUR_PATTERN = /^(?:m+|h+m+|m+h+m+|huh)$/;
 // Said alone right after a command not yet sent, these drop it. "Wait" and "hold on" are not here:
@@ -56,7 +61,11 @@ export const isUnfinished = (raw: string): boolean => {
 	// Only words that almost never end a spoken sentence: a finished command held by mistake waits.
 	const lastWord = getLastWord(text);
 
-	return DANGLING_WORDS.has(lastWord) || FILLER_WORDS.has(lastWord);
+	return (
+		DANGLING_WORDS.has(lastWord) ||
+		FILLER_WORDS.has(lastWord) ||
+		(TRAILING_PREPOSITIONS.has(lastWord) && !text.endsWith('?') && !WHOLE_TO_PATTERN.test(text))
+	);
 };
 
 export interface JoinTurnsOptions {

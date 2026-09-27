@@ -7,6 +7,9 @@ import type { Narration } from './prompt.js';
 import { cleanSpokenText } from '../shared/spoken.js';
 import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import type { Session } from '../shared/protocol.js';
+import { createLogger } from '../log.js';
+
+const log = createLogger('narrator');
 
 interface NarratedLine {
 	text: string;
@@ -120,6 +123,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 
 		const view = store.state.view;
 		const body = stripSpokenTag(effect.text);
+		const narratedSendId = session.currentSendId;
 		const narration = effect.spoken
 			? narrateFromTag(effect.spoken, session)
 			: settleOwedReport({
@@ -143,8 +147,15 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			topic: narration.topic,
 		});
 
+		// The developer spoke to it again while the narrator thought: this report answers older words.
+		const isStale = store.state.sessions[effect.ref]?.currentSendId !== narratedSendId;
+
+		if (isStale) {
+			log.info('stale narration not said', { ref: effect.ref });
+		}
+
 		// A line the session wrote was said as soon as it streamed in.
-		if (narration.speak && !effect.isSpokenAlready) {
+		if (narration.speak && !effect.isSpokenAlready && !isStale) {
 			options.say({
 				text: narration.text,
 				priority: effect.isOwed ? 'high' : narration.priority,

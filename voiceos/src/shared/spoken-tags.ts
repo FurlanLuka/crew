@@ -7,7 +7,8 @@ export interface SpokenTag {
 	isAsking: boolean;
 }
 
-const LEADING_TAG_PATTERN = /^\s*<spoken(\s+asks)?\s*>([\s\S]*?)<\/spoken\s*>/i;
+// A session sometimes closes <spoken asks> with </spoken asks>: the same tag.
+const LEADING_TAG_PATTERN = /^\s*<spoken(\s+asks)?\s*>([\s\S]*?)<\/spoken(?:\s+asks)?\s*>/i;
 // Still streaming at the top: the start of "<spoken", or an open tag with its line so far.
 const LEADING_OPEN_TAG_PATTERN =
 	/^\s*<(?:s(?:p(?:o(?:k(?:e(?:n(?:\s[^>]*)?(?:>[\s\S]*)?)?)?)?)?)?)?$/i;

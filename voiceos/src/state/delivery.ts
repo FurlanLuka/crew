@@ -160,7 +160,16 @@ const withEffects = (result: ReducerResult, effects: Effect[]): ReducerResult =>
 	effects: [...effects, ...result.effects],
 });
 
-export const deliverSend = ({
+export const deliverSend = (params: DeliverSendParams): ReducerResult => {
+	const delivered = deliverWords(params);
+
+	// Whatever it still had to say predates these words: said now, it would answer something older.
+	return params.isSpoken && params.state.sessions[params.ref]
+		? withEffects(delivered, [{ type: 'drop_speech', ref: params.ref, before: params.stamped.at }])
+		: delivered;
+};
+
+const deliverWords = ({
 	state,
 	ref,
 	text,

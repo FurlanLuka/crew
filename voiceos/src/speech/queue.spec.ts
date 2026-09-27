@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
 	clearQueueForTalk,
 	createEmptyQueue,
+	dropQueued,
 	enqueue,
 	shouldChime,
 	REPLY_FRESH_MS,
@@ -122,4 +123,22 @@ describe('shouldChime', () => {
 		expect(shouldChime(createChimeItem(true, 1000), 1001 + REPLY_FRESH_MS)).toBe(true));
 	it('an announcement → chime', () =>
 		expect(shouldChime(createChimeItem(false, 1000), 1000)).toBe(true));
+});
+
+describe('dropQueued', () => {
+	it("that session's lines from before the words go, owed ones too; others and newer stay", () => {
+		const queue = createEmptyQueue();
+		const items = [
+			{ ...createItem('old', 'high', 'store/main', 100), isOwed: true },
+			createItem('other', 'normal', 'checkout/main', 100),
+			createItem('newer', 'normal', 'store/main', 500),
+			createItem('none', 'normal', null, 100),
+		];
+		const filled = { ...queue, items };
+
+		expect(
+			dropQueued(filled, { ref: 'store/main', before: 300 }).items.map((item) => item.id),
+		).toEqual(['other', 'newer', 'none']);
+		expect(filled.items).toHaveLength(4);
+	});
 });
