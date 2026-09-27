@@ -304,6 +304,7 @@ describe('Kernel', () => {
 			forwardTo: 'store-front/main',
 		});
 
+		expect(state.lastSpokenSend?.ref).toBe('checkout-api/main');
 		expect(actions).toContainEqual({ type: 'take_back', ref: 'store-front/main', id: 'aside-1' });
 	});
 
@@ -703,6 +704,45 @@ describe('Kernel', () => {
 				'Voice OS last asked aloud: "store front, main wants to run git push. Allow?" (about store-front/main, 6s ago)',
 			);
 			expect(probe.prompts[0]).toContain('store-front/main (pending, 10s ago, just asked aloud)');
+		});
+
+		it('what the developer heard before speaking: lines from other sessions, not ones started after', () => {
+			const state = createFixtureState(
+				{
+					view: 'store-front/main',
+					heard: [
+						{
+							text: "It's doable without a rewrite.",
+							ref: 'checkout-api/main',
+							secondsAgo: 20,
+							endedSecondsAgo: 8,
+						},
+						{ text: 'Plan approved.', ref: 'store-front/main', secondsAgo: 5, endedSecondsAgo: 2 },
+						{ text: 'did you mean another session?', ref: 'checkout-api/main', secondsAgo: 0.5 },
+					],
+				},
+				10_000,
+			);
+			const message = buildKernelMessage({
+				state,
+				utterance: 'what does that mean?',
+				memory: [],
+				now: 10_000,
+				heardFrom: 9_000,
+			});
+
+			expect(message).toContain(
+				'Heard just before the developer spoke (oldest first): checkout-api/main: "It\'s doable without a rewrite." (ended 7s before they spoke); store-front/main: "Plan approved." (ended 1s before they spoke)',
+			);
+			expect(message).not.toContain('did you mean another session?');
+			expect(
+				buildKernelMessage({
+					state: createFixtureState({ view: 'store-front/main' }, 10_000),
+					utterance: 'run the tests',
+					memory: [],
+					now: 10_000,
+				}),
+			).not.toContain('Heard just before the developer spoke');
 		});
 
 		it('a status line about a waiting session is not what was asked aloud', () => {

@@ -217,8 +217,11 @@ const router = new UtteranceRouter({
 const voiceIn = new VoiceInput({
 	store,
 	apiKey: keys.soniox,
-	onUtterance: (text, client) =>
-		void router.handle(text, 'voice', { setHandsFree: handsFreeSwitchFor(client) }),
+	onUtterance: (text, client, startedAt) =>
+		void router.handle(text, 'voice', {
+			setHandsFree: handsFreeSwitchFor(client),
+			heardFrom: startedAt,
+		}),
 	onTalkStart: () => voiceOut.talkStarted(),
 	onTalkEnd: () => voiceOut.talkEnded(),
 	onListenOff: (client, reason) => void gateway?.send(client, { type: 'listen_off', reason }),

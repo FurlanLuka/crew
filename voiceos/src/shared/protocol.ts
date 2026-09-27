@@ -194,6 +194,9 @@ export interface SpokenLine {
 	ref?: string;
 	// It asked the developer something a bare "yes" answers, not a status line.
 	isAsking?: true;
+	// When it stopped playing; isCut: before its end (the developer spoke, an alert, a failure).
+	endedAt?: number;
+	isCut?: true;
 }
 
 export interface Setup {
@@ -329,6 +332,8 @@ export type Observation =
 	| { type: 'notes'; workspace: string; lines: string[] }
 	// What a session is working on, named after a turn it spoke for itself.
 	| { type: 'topic_written'; ref: string; topic: string }
+	// A spoken line stopped playing: what the developer heard of it, for the kernel.
+	| { type: 'spoken_ended'; lineId: string; isCut: boolean }
 	| { type: 'session_started'; ref: string }
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }

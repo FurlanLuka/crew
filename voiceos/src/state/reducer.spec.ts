@@ -1592,3 +1592,25 @@ describe('topic_written', () => {
 		expect(pinned.state.sessions['store/main']?.topic).toBe('Timeouts');
 	});
 });
+
+describe('spoken_ended', () => {
+	it('marks when the line stopped and whether it was cut; other lines untouched', () => {
+		const { state } = run([
+			{ type: 'spoken', text: 'one', source: 'narrator' },
+			{ type: 'spoken', text: 'two', source: 'narrator' },
+		]);
+		const [first, second] = state.spoken;
+		const ended = run(
+			[
+				{ type: 'spoken_ended', lineId: first?.id ?? '', isCut: false },
+				{ type: 'spoken_ended', lineId: second?.id ?? '', isCut: true },
+			],
+			state,
+		).state;
+
+		expect(ended.spoken.map(({ endedAt, isCut }) => ({ endedAt, isCut }))).toEqual([
+			{ endedAt: expect.any(Number), isCut: undefined },
+			{ endedAt: expect.any(Number), isCut: true },
+		]);
+	});
+});

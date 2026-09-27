@@ -37,6 +37,7 @@ const createHarness = (
 		type: 'worktrees',
 		worktrees: [createWorktree('store-front/main'), createWorktree('checkout-api/main')],
 	});
+	const heardFroms: number[] = [];
 	const kernelCalls: KernelCall[] = [];
 	const handsFreeSwitches: ((isOn: boolean) => string)[] = [];
 	const inputs: Input[] = [];
@@ -44,8 +45,9 @@ const createHarness = (
 	const router = new UtteranceRouter({
 		store,
 		now: () => 5000,
-		kernel: async (text, { setHandsFree, ...options }) => {
+		kernel: async (text, { setHandsFree, heardFrom, ...options }) => {
 			kernelCalls.push({ text, ...options });
+			heardFroms.push(heardFrom);
 			handsFreeSwitches.push(setHandsFree);
 
 			return turn(text);
@@ -57,10 +59,19 @@ const createHarness = (
 			view: ref ? { kind: 'session', ref } : { kind: 'grid' },
 		});
 
-	return { store, router, kernelCalls, handsFreeSwitches, inputs, view };
+	return { store, router, kernelCalls, handsFreeSwitches, heardFroms, inputs, view };
 };
 
 describe('UtteranceRouter', () => {
+	it('when the words began reaches the kernel; typed words began when routed', async () => {
+		const harness = createHarness(() => ({ reply: '', did: [], calls: [] }));
+
+		await harness.router.handle('run the tests', 'voice', { heardFrom: 1200 });
+		await harness.router.handle('run the tests', 'typed');
+
+		expect(harness.heardFroms).toEqual([1200, 5000]);
+	});
+
 	it("everything spoken goes to the kernel, with the screen it was said on, and lands in that screen's voice log", async () => {
 		const harness = createHarness(() => ({ reply: 'Nothing is waiting.', did: [], calls: [] }));
 		harness.view('store-front/main');

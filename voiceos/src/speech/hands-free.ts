@@ -11,7 +11,7 @@ export interface HandsFreeHost {
 	showPartial: (text: string, label?: string) => void;
 	clearTranscript: (client: string) => void;
 	queueTurn: (client: string, text: string) => void;
-	onTalkStarted: () => void;
+	onTalkStarted: (client: string) => void;
 	onTalkMaybeOver: () => void;
 }
 
@@ -416,7 +416,7 @@ export class HandsFree {
 	private raiseTalk(listening: Listening): void {
 		listening.isTalking = true;
 		log.info('speech start', { client: listening.client });
-		this.host.onTalkStarted();
+		this.host.onTalkStarted(listening.client);
 		this.armQuiet(listening);
 	}
 

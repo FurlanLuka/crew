@@ -55,6 +55,8 @@ interface Playing {
 	abort: AbortController;
 	hasEnded: boolean;
 	record: SpokenRecord;
+	// Its line in the state, told when it stops playing.
+	lineId: string | null;
 	// A line the developer waits for plays out: an alert waits behind it instead of cutting it off.
 	isOwed: boolean;
 }
@@ -232,6 +234,10 @@ export class VoiceOut {
 		this.playing = null;
 		playing.record.endedAt = this.now();
 
+		if (playing.lineId) {
+			this.options.store.dispatch({ type: 'spoken_ended', lineId: playing.lineId, isCut });
+		}
+
 		// Even when every chunk was sent: a short clip is fully streamed while it still plays.
 		if (isCut) {
 			playing.abort.abort();
@@ -291,18 +297,20 @@ export class VoiceOut {
 			abort: new AbortController(),
 			hasEnded: false,
 			record,
+			lineId: null,
 			isOwed: Boolean(item.isOwed),
 		};
 		this.playing = playing;
 		// Silence from Soniox this long mid-clip means the clip is stuck.
 		this.armTimer(playing, CHUNK_GAP_MS);
-		this.options.store.dispatch({
+		const spokenState = this.options.store.dispatch({
 			type: 'spoken',
 			text,
 			source: item.source,
 			...(item.ref ? { ref: item.ref } : {}),
 			...(item.isAsking ? { isAsking: true as const } : {}),
 		});
+		playing.lineId = spokenState.spoken.at(-1)?.id ?? null;
 
 		const synthesize = this.options.synthesize;
 

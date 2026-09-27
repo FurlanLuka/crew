@@ -53,6 +53,7 @@ const createHarness = ({
 		],
 	});
 	const utterances: string[] = [];
+	const startedAts: number[] = [];
 	const talkStarts: number[] = [];
 	const talkEnds: number[] = [];
 	let session: SttSessionOptions | null = null;
@@ -67,7 +68,10 @@ const createHarness = ({
 		onListenOff: (client, reason) => listenOffs.push({ client, reason }),
 		store,
 		apiKey,
-		onUtterance: (text) => utterances.push(text),
+		onUtterance: (text, _client, startedAt) => {
+			utterances.push(text);
+			startedAts.push(startedAt);
+		},
 		onTalkStart: () => talkStarts.push(1),
 		onTalkEnd: () => talkEnds.push(1),
 		debugAudioDir,
@@ -92,6 +96,7 @@ const createHarness = ({
 		store,
 		input,
 		utterances,
+		startedAts,
 		talkStarts,
 		talkEnds,
 		sent,
@@ -137,6 +142,19 @@ describe('VoiceInput', () => {
 		harness.session?.onFinal('open store-front/main');
 		expect(harness.store.state.transcript).toBeNull();
 		expect(harness.utterances).toEqual(['open store-front/main']);
+	});
+
+	it('each utterance carries when it began: the press, not the final', () => {
+		let clock = 1000;
+		const harness = createHarness({ now: () => clock });
+		harness.input.start('c1');
+		clock = 4000;
+		harness.input.stop('c1');
+		harness.session?.onFinal('open store-front/main');
+		harness.input.start('c1');
+		harness.session?.onFinal('and run the tests');
+
+		expect(harness.startedAts).toEqual([1000, 4000]);
 	});
 
 	it('silence → no utterance', () => {
@@ -677,6 +695,20 @@ describe('VoiceInput hands-free: unfinished turns', () => {
 		harness.session?.onSegment?.('restart the dev servers');
 		await waitForSettle();
 		expect(harness.utterances).toEqual(['And can you restart the dev servers']);
+	});
+
+	it('a joined turn began with its first words', async () => {
+		let clock = 1000;
+		const harness = createHeldHarness({ now: () => clock });
+		harness.session?.onPartial("Let's");
+		harness.session?.onSegment?.("Let's, um.");
+		clock = 3000;
+		harness.session?.onPartial('open');
+		harness.session?.onSegment?.('open checkout.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(["Let's, um open checkout."]);
+		expect(harness.startedAts).toEqual([1000]);
 	});
 
 	it('two fragments in a row, then the rest → one utterance', async () => {

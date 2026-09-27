@@ -539,6 +539,16 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 			);
 
+		case 'spoken_ended':
+			return withoutEffects({
+				...state,
+				spoken: state.spoken.map((line) =>
+					line.id === input.lineId
+						? { ...line, endedAt: stamped.at, ...(input.isCut ? { isCut: true as const } : {}) }
+						: line,
+				),
+			});
+
 		case 'topic_written':
 			return withoutEffects(
 				updateSession(state, input.ref, (session) =>

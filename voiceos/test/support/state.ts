@@ -53,6 +53,14 @@ export interface FixtureContext {
 	voiceLog?: FixtureLogEntry[];
 	// The last thing Voice OS asked aloud.
 	alert?: { text: string; secondsAgo: number; ref?: string };
+	// Lines sessions said shortly before the developer spoke, oldest first.
+	heard?: {
+		text: string;
+		ref: string;
+		secondsAgo: number;
+		endedSecondsAgo?: number;
+		cut?: boolean;
+	}[];
 }
 
 export const FIXTURE_TOPICS: Record<string, string> = {
@@ -258,17 +266,30 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 		devOffer: context.offer
 			? { ref: context.offer.ref, servers: ['api'], at: now - context.offer.secondsAgo * 1000 }
 			: null,
-		spoken: context.alert
-			? [
-					{
-						id: 'alert',
-						text: context.alert.text,
-						source: 'alert',
-						at: now - context.alert.secondsAgo * 1000,
-						...(context.alert.ref ? { ref: context.alert.ref, isAsking: true as const } : {}),
-					},
-				]
-			: [],
+		spoken: [
+			...(context.heard ?? []).map((heard, index) => ({
+				id: `heard-${index}`,
+				text: heard.text,
+				source: 'narrator' as const,
+				at: now - heard.secondsAgo * 1000,
+				ref: heard.ref,
+				...(heard.endedSecondsAgo === undefined
+					? {}
+					: { endedAt: now - heard.endedSecondsAgo * 1000 }),
+				...(heard.cut ? { isCut: true as const } : {}),
+			})),
+			...(context.alert
+				? [
+						{
+							id: 'alert',
+							text: context.alert.text,
+							source: 'alert' as const,
+							at: now - context.alert.secondsAgo * 1000,
+							...(context.alert.ref ? { ref: context.alert.ref, isAsking: true as const } : {}),
+						},
+					]
+				: []),
+		],
 		voiceLog: voiceLog.length ? { [context.view ?? GRID]: voiceLog } : {},
 		view: context.view ? { kind: 'session', ref: context.view } : { kind: 'grid' },
 		focus: context.view ?? null,

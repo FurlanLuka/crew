@@ -28,6 +28,8 @@ export interface RouterOptions {
 export interface UtteranceOrigin {
 	// Switches hands-free in the tab the words came from.
 	setHandsFree?: (isOn: boolean) => HandsFreeResult;
+	// When the developer began saying them; typed words are "said" when routed.
+	heardFrom?: number;
 }
 
 interface AskKernelParams {
@@ -36,6 +38,7 @@ interface AskKernelParams {
 	screen: string | null;
 	isSpoken: boolean;
 	saidAt: number;
+	heardFrom: number;
 	setHandsFree: (isOn: boolean) => HandsFreeResult;
 }
 
@@ -104,6 +107,7 @@ export class UtteranceRouter {
 			screen,
 			isSpoken: source === 'voice',
 			saidAt,
+			heardFrom: origin.heardFrom ?? saidAt,
 			setHandsFree: origin.setHandsFree ?? NO_TAB,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
@@ -115,6 +119,7 @@ export class UtteranceRouter {
 		screen,
 		isSpoken,
 		saidAt,
+		heardFrom,
 		setHandsFree,
 	}: AskKernelParams): Promise<VoiceEntry> {
 		const { store } = this.options;
@@ -126,7 +131,13 @@ export class UtteranceRouter {
 		}
 
 		try {
-			const turn = await kernel(text, { forwardTo: screen, screen, isSpoken, setHandsFree });
+			const turn = await kernel(text, {
+				forwardTo: screen,
+				screen,
+				isSpoken,
+				heardFrom,
+				setHandsFree,
+			});
 			const isIgnored =
 				!turn.reply &&
 				turn.calls.every((call) => call.name === 'ignore_words') &&

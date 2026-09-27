@@ -167,6 +167,23 @@ describe('VoiceOut', () => {
 		expect(harness.listSentKinds().some((kind) => kind.includes(':cancel:'))).toBe(false);
 	});
 
+	it('a line that plays out, and one cut off, are marked so in the state', async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({ text: 'played', priority: 'normal' });
+		await flush();
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+		harness.voiceOut.say({ text: 'cut', priority: 'normal' });
+		await flush();
+		harness.voiceOut.talkStarted();
+
+		expect(harness.store.state.spoken.map(({ text, isCut }) => ({ text, isCut }))).toEqual([
+			{ text: 'played', isCut: undefined },
+			{ text: 'cut', isCut: true },
+		]);
+		expect(harness.store.state.spoken.every((line) => line.endedAt !== undefined)).toBe(true);
+	});
+
 	it('no speaker tab → line still shown, nothing synthesized, queue keeps moving', async () => {
 		const harness = createHarness({ tab: null });
 		harness.voiceOut.say({ text: 'a', priority: 'normal' });

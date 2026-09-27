@@ -1801,6 +1801,78 @@
 			]
 		},
 		{
+			"id": "reply-to-earlier-line-elsewhere",
+			"utterance": "Okay, but if it's doable without a schema change, what does that mean? Would the checkout keep its old tables?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "It's doable without a schema change: the checkout reads both formats for a release.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 12
+					},
+					{
+						"text": "Plan approved; building the notes now.",
+						"ref": "store-front/main",
+						"secondsAgo": 8,
+						"endedSecondsAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "unrelated-words-stay-on-screen",
+			"utterance": "Run the tests.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "It's doable without a schema change: the checkout reads both formats for a release.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 12
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["test"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "after-commit-for-the-other-session",
+			"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+			"context": {
+				"view": "checkout-api/main",
+				"heard": [
+					{
+						"text": "Tests pass; the reviewers are checking it, then I'll commit.",
+						"ref": "store-front/main",
+						"secondsAgo": 12,
+						"endedSecondsAgo": 5
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main"
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

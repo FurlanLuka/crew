@@ -20,7 +20,7 @@ import {
 } from '../tools/definitions.js';
 import { fail } from '../tools/results.js';
 import { describeSession } from '../tools/session-view.js';
-import { findLastAskedAloud } from '../tools/asked-aloud.js';
+import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from '../tools/asked-aloud.js';
 import { findSessionsNamedIn } from '../tools/session-naming.js';
 
 const log = createLogger('kernel');
@@ -36,7 +36,7 @@ When the screen shows one session (see "Screen:"):
 - "Voice OS" is this app (you and the cockpit): rebuilding, reinstalling, restarting, fixing or changing Voice OS is work for the session on screen — forward it.
 - When unsure whether speech is for the session on screen, forward it: the session can ask back. Do not ask the developer which session they mean while one is on screen, unless they named two, and never ask who something is for ("crew/main or Voice OS?"): forward it.
 - On a session screen your first step always calls a tool. To answer a question yourself from the message (what's waiting, is it done, what did it say, did you send that), call read_state first, then answer. ignore_words only for words that ask for nothing or were not said to anyone (a video, a song, someone else talking). Never forward a command for Voice OS: opening, switching or going back, starting, stopping or interrupting sessions, quiet, and questions about which sessions are waiting, running or doing what — those are yours, even when they begin "Voice OS, …".
-- Words that happen to match another session's topic do not make it about that session: the developer is talking to the session in front of them. Only an explicit reference switches the target — "tell checkout…", "in the ranking one…", "checkout, run the tests", "open…".
+- Words that pick up a line in "Heard just before the developer spoke" — its words or its point, a reply to what it said ("if it's doable without a rewrite, what does that mean?") — go to the session that said it: send_to it, even when another session is on screen and even when that line was not the newest. Words about the next step a session just announced (it said it will commit; they say "after commit, …") are for that session. Other words that happen to match another session's topic do not make it about that session: the developer is talking to the session in front of them. Only such a reply or an explicit reference switches the target — "tell checkout…", "in the ranking one…", "checkout, run the tests", "open…".
 - An instruction that names another session goes to it: "have checkout run the migrations" while store front is on screen is send_to the checkout session.
 - Instructions about how the session should work or talk to the developer — "ask me with the question tool…", "use a table", "reply in one line" — are for that session: forward them.
 
@@ -144,6 +144,8 @@ interface BuildKernelMessageParams {
 	utterance: string;
 	memory: VoiceEntry[];
 	now: number;
+	// When the developer began speaking (default: now).
+	heardFrom?: number;
 }
 
 export const buildKernelMessage = ({
@@ -151,11 +153,12 @@ export const buildKernelMessage = ({
 	utterance,
 	memory,
 	now,
+	heardFrom = now,
 }: BuildKernelMessageParams): string => {
 	const sessionOnScreen =
 		state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 	const screenDescription = sessionOnScreen
-		? `looking at ${sessionOnScreen.ref}${sessionOnScreen.isPinned ? ' (the crew setup session: a separate Claude, not you)' : ''}${sessionOnScreen.topic ? ` (${sessionOnScreen.topic})` : ''}. What the developer says is for ${sessionOnScreen.ref} unless they name another session, answer something that waits, or give you a command`
+		? `looking at ${sessionOnScreen.ref}${sessionOnScreen.isPinned ? ' (the crew setup session: a separate Claude, not you)' : ''}${sessionOnScreen.topic ? ` (${sessionOnScreen.topic})` : ''}. What the developer says is for ${sessionOnScreen.ref} unless they name another session, pick up a line another session just said (see "Heard just before"), answer something that waits, or give you a command`
 		: 'looking at all sessions (Mission Control)';
 	const sessions = state.order.map((ref) =>
 		describeSession({ state, ref, isDetailed: false, now }),
@@ -165,13 +168,21 @@ export const buildKernelMessage = ({
 		spoken: state.spoken,
 		waitingRefs: waiting.map((item) => item.ref),
 		now,
+		heardFrom,
 	});
+	const heardBefore = listHeardBefore({ spoken: state.spoken, heardFrom });
 
 	return [
 		`Screen: ${screenDescription}.`,
 		`Sessions: ${JSON.stringify(sessions)}`,
 		`Waiting on the developer: ${formatWaitingLine(waiting, now, lastAskedLine?.ref ?? null)}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,
+		// Only when there is something: an empty line of it made the model reach for more tools.
+		...(heardBefore.length > 0
+			? [
+					`Heard just before the developer spoke (oldest first): ${formatHeardBefore(heardBefore, heardFrom)}`,
+				]
+			: []),
 		`Earlier on this screen (already done — act only on what the developer says now):\n${formatRememberedLines(memory)}`,
 		'',
 		`Developer said: ${utterance}`,
@@ -221,6 +232,9 @@ export interface KernelHandleParams {
 	isSpoken?: boolean;
 	// Switches hands-free in the tab the words came from.
 	setHandsFree?: ToolContext['setHandsFree'];
+	// When the developer began saying the words: what Voice OS started saying after that, they had
+	// not heard. Defaults to when the kernel got them.
+	heardFrom?: number;
 }
 
 interface RequestParams {
@@ -264,6 +278,7 @@ export class Kernel {
 			screen = null,
 			isSpoken = false,
 			setHandsFree = () => 'no_tab',
+			heardFrom,
 		}: KernelHandleParams = {},
 	): Promise<KernelResult> {
 		const startedAt = this.now();
@@ -272,7 +287,16 @@ export class Kernel {
 		// screen was captured at routing: a switch_view during this call does not move the words.
 		const memory = recallVoiceEntries(state, screen, startedAt);
 		const messages: Anthropic.MessageParam[] = [
-			{ role: 'user', content: buildKernelMessage({ state, utterance, memory, now: startedAt }) },
+			{
+				role: 'user',
+				content: buildKernelMessage({
+					state,
+					utterance,
+					memory,
+					now: startedAt,
+					heardFrom: heardFrom ?? startedAt,
+				}),
+			},
 		];
 		const toolContext: ToolContext = {
 			...this.options.tools,
