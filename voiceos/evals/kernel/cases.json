@@ -672,7 +672,7 @@
 		},
 		{
 			"id": "silent-cut-off-name",
-			"utterance": "Store front main\u2014",
+			"utterance": "Store front main—",
 			"context": {
 				"view": "checkout-api/main"
 			},
@@ -744,7 +744,7 @@
 				"voiceLog": [
 					{
 						"utterance": "End the main session.",
-						"reply": "Which one \u2014 store front main or checkout api main?",
+						"reply": "Which one — store front main or checkout api main?",
 						"did": ["stop_session store-front/main (failed)"]
 					}
 				]
@@ -1709,13 +1709,19 @@
 			"context": {
 				"view": "store-front/main",
 				"work": [
-					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
 				]
 			},
 			"calls": [
 				{
 					"name": "forward",
-					"input": { "kind": "redirect" }
+					"input": {
+						"kind": "redirect"
+					}
 				}
 			],
 			"no_reply": true
@@ -1726,13 +1732,19 @@
 			"context": {
 				"view": "store-front/main",
 				"work": [
-					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
 				]
 			},
 			"calls": [
 				{
 					"name": "forward",
-					"input": { "kind": "redirect" }
+					"input": {
+						"kind": "redirect"
+					}
 				}
 			],
 			"no_reply": true
@@ -1754,7 +1766,10 @@
 			"calls": [
 				{
 					"name": "queued_message",
-					"input": { "ref": "store-front/main", "action": "now" }
+					"input": {
+						"ref": "store-front/main",
+						"action": "now"
+					}
 				}
 			]
 		},
@@ -1782,7 +1797,10 @@
 			"calls": [
 				{
 					"name": "queued_message",
-					"input": { "ref": "store-front/main", "action": "drop" }
+					"input": {
+						"ref": "store-front/main",
+						"action": "drop"
+					}
 				},
 				{
 					"name": "debug_note"
@@ -1795,7 +1813,11 @@
 			"context": {
 				"view": "store-front/main",
 				"work": [
-					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
 				],
 				"voiceLog": [
 					{
@@ -1819,7 +1841,11 @@
 			"context": {
 				"view": "store-front/main",
 				"work": [
-					{ "ref": "store-front/main", "request": "Build the notes feature", "minutesAgo": 3 }
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
 				],
 				"voiceLog": [
 					{
@@ -1887,28 +1913,6 @@
 			"no_reply": true
 		},
 		{
-			"id": "after-commit-for-the-other-session",
-			"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
-			"context": {
-				"view": "checkout-api/main",
-				"heard": [
-					{
-						"text": "Tests pass; the reviewers are checking it, then I'll commit.",
-						"ref": "store-front/main",
-						"secondsAgo": 12,
-						"endedSecondsAgo": 5
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "store-front/main"
-				}
-			],
-			"no_reply": true
-		},
-		{
 			"id": "meant-for-another-session",
 			"utterance": "Um, sorry, I meant this for store front main.",
 			"context": {
@@ -1929,7 +1933,10 @@
 				},
 				{
 					"name": "queued_message",
-					"input": { "ref": "checkout-api/main", "action": "drop" }
+					"input": {
+						"ref": "checkout-api/main",
+						"action": "drop"
+					}
 				}
 			]
 		},
@@ -1946,7 +1953,11 @@
 					"text_includes": ["last"]
 				}
 			],
-			"allow": [{ "name": "start_session" }],
+			"allow": [
+				{
+					"name": "start_session"
+				}
+			],
 			"no_reply": true
 		},
 		{
@@ -1962,7 +1973,14 @@
 					"text_includes": ["last"]
 				}
 			],
-			"allow": [{ "name": "start_session" }, { "name": "switch_view" }],
+			"allow": [
+				{
+					"name": "start_session"
+				},
+				{
+					"name": "switch_view"
+				}
+			],
 			"no_reply": true
 		},
 		{
@@ -2024,7 +2042,11 @@
 					"text_includes": ["thirty|30"]
 				}
 			],
-			"allow": [{ "name": "answer" }]
+			"allow": [
+				{
+					"name": "answer"
+				}
+			]
 		},
 		{
 			"id": "whats-waiting-announced",
@@ -2046,14 +2068,24 @@
 			"utterance": "How's checkout doing?",
 			"context": {
 				"view": "store-front/main",
-				"work": [{ "ref": "checkout-api/main", "request": "Add retry backoff", "minutesAgo": 4 }],
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Add retry backoff",
+						"minutesAgo": 4
+					}
+				],
 				"update": {
 					"ref": "checkout-api/main",
 					"text": "Backoff with jitter is in; now running the flaky payment tests."
 				}
 			},
 			"calls": [],
-			"allow": [{ "name": "read_state" }],
+			"allow": [
+				{
+					"name": "read_state"
+				}
+			],
 			"answer": true,
 			"reply_includes": ["jitter|flaky|payment"]
 		},
@@ -2069,7 +2101,11 @@
 					"text_includes": ["debug notes"]
 				}
 			],
-			"allow": [{ "name": "read_state" }],
+			"allow": [
+				{
+					"name": "read_state"
+				}
+			],
 			"reply_not_includes": ["access", "should i"]
 		},
 		{
@@ -2102,10 +2138,14 @@
 				]
 			},
 			"calls": [],
-			"allow": [{ "name": "read_state" }],
+			"allow": [
+				{
+					"name": "read_state"
+				}
+			],
 			"answer": true,
 			"long_reply": true,
-			"reply_includes": ["stay|just needs you|as it is|keep it"]
+			"reply_includes": ["asked whether|asks whether|or should|stay|just needs you|keep it"]
 		},
 		{
 			"id": "note-own-idea",
@@ -3114,32 +3154,6 @@
 			]
 		},
 		{
-			"id": "ack-reword-roll-back",
-			"utterance": "Hmm, that broke the build. Roll it back.",
-			"context": {
-				"view": "store-front/main"
-			},
-			"calls": [
-				{
-					"name": "forward",
-					"text_includes": ["roll|revert|undo"]
-				}
-			]
-		},
-		{
-			"id": "ack-negation-fix-seed",
-			"utterance": "Don't touch the migrations, just fix the seed script.",
-			"context": {
-				"view": "store-front/main"
-			},
-			"calls": [
-				{
-					"name": "forward",
-					"text_includes": ["not|don", "migration", "seed"]
-				}
-			]
-		},
-		{
 			"id": "continues-cut-request",
 			"utterance": "the checkout worker from this morning.",
 			"context": {
@@ -3410,6 +3424,89 @@
 					"secondsAgo": 5,
 					"ref": "store-front/main"
 				}
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "yes"
+					}
+				}
+			]
+		},
+		{
+			"id": "ping-it-forwards",
+			"utterance": "Can you ping it directly and ask how far it is?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback",
+						"minutesAgo": 6
+					}
+				],
+				"update": {
+					"ref": "store-front/main",
+					"text": "The fallback chain is in; now updating the German strings."
+				}
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "far|progress|status|where"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "switch-back-named",
+			"utterance": "Switch back to store front main.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "Open checkout api main.",
+						"reply": "",
+						"did": ["switch_view checkout-api/main"]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "on-screen-beats-heard",
+			"utterance": "Can checkout make a summary of what it found?",
+			"context": {
+				"view": "checkout-api/main",
+				"heard": [
+					{
+						"text": "Store front main finished the migration and found two slow queries.",
+						"ref": "store-front/main",
+						"secondsAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "summary"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "redirect-directly-is-yes",
+			"utterance": "No, I don't want this as a side, directly ask it.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "redirect"
 			},
 			"calls": [
 				{

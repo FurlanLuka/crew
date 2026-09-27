@@ -7,6 +7,7 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
+import { normalizeSaid } from '../state/helpers.js';
 import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
 import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
@@ -27,6 +28,7 @@ const MIN_REQUEST_WORDS = 4;
 const log = createLogger('tools');
 
 const NOTES_READ_BACK = 10;
+const DEBUG_NOTE_SAVED = 'Debug note saved.';
 
 interface ReadNoteWorkspaceParams {
 	state: State;
@@ -124,6 +126,23 @@ interface SendRecordedParams {
 	toolContext: ToolContext;
 }
 
+interface JoinCutSentenceParams {
+	text: string;
+	input: Record<string, unknown>;
+	// The developer's previous words on this screen: the sentence's first half.
+	previous: string | undefined;
+}
+
+export const joinCutSentence = ({ text, input, previous }: JoinCutSentenceParams): string => {
+	// continues says these words finish the previous ones; a text holding only the new part would
+	// replace the first half with the second, and the session would get half a sentence.
+	const rest = typeof input.rest === 'string' ? input.rest : '';
+
+	return input.continues === true && previous && rest && normalizeSaid(text) === normalizeSaid(rest)
+		? `${previous.trim()} ${text.trim()}`
+		: text;
+};
+
 const sendRecorded = ({
 	state,
 	ref,
@@ -135,7 +154,7 @@ const sendRecorded = ({
 	const sent = prepareSentText({
 		state,
 		ref,
-		text,
+		text: joinCutSentence({ text, input, previous: toolContext.recentUtterances?.at(-1) }),
 		utterance: toolContext.utterance,
 		isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
 	});
@@ -495,7 +514,10 @@ export const executeTool = async (
 
 			toolContext.saveDebugNote({ text, said: toolContext.utterance ?? null });
 
-			return succeed('debug note saved with a snapshot of this moment. Say "Debug note saved."');
+			return {
+				...succeed('debug note saved with a snapshot of this moment. Say "Debug note saved."'),
+				reply: DEBUG_NOTE_SAVED,
+			};
 		}
 
 		case 'note': {

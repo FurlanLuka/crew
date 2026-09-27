@@ -20,7 +20,7 @@ import {
 	isRewriteTooShort,
 	prepareSentText,
 } from './send.js';
-import { executeTool, saysMoreThanStart, type ToolContext } from './tools.js';
+import { executeTool, joinCutSentence, saysMoreThanStart, type ToolContext } from './tools.js';
 import { NOT_FOR_YOU } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
@@ -3273,5 +3273,40 @@ describe('fixes from the live notes', () => {
 		expect(
 			isMisroutedToSetup({ state, ref: 'checkout-api/main', forwardTo: null, utterance }),
 		).toBe(false);
+	});
+});
+
+describe('joinCutSentence', () => {
+	const previous = 'Check the logs for the timeout errors in';
+
+	it.each([
+		[
+			'continues with only the new part as text → both halves',
+			{ continues: true, rest: 'the checkout worker.' },
+			'the checkout worker.',
+			'Check the logs for the timeout errors in the checkout worker.',
+		],
+		[
+			'continues with the whole sentence already → kept',
+			{ continues: true, rest: 'the checkout worker.' },
+			'Check the logs for the timeout errors in the checkout worker.',
+			'Check the logs for the timeout errors in the checkout worker.',
+		],
+		[
+			'not a continuation → kept',
+			{ rest: 'the checkout worker.' },
+			'the checkout worker.',
+			'the checkout worker.',
+		],
+	])('%s', (_label, input, text, expected) => {
+		expect(joinCutSentence({ text, input, previous })).toBe(expected);
+	});
+
+	it('no earlier words on this screen → kept', () => {
+		const input = { continues: true, rest: 'the checkout worker.' };
+
+		expect(joinCutSentence({ text: 'the checkout worker.', input, previous: undefined })).toBe(
+			'the checkout worker.',
+		);
 	});
 });

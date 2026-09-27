@@ -10,6 +10,8 @@ export interface ToolResult {
 	isFinal?: true;
 	// The call that actually happened, when a tool carried out another's job (answer → send_to).
 	recordAs?: { name: string; input: Record<string, unknown> };
+	// What Voice OS says for it, whatever the model wrote: a fixed line the developer listens for.
+	reply?: string;
 }
 
 export const succeed = (content: unknown): ToolResult => ({

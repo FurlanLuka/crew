@@ -1,4 +1,4 @@
-// Prompt evals. `bun evals/run.ts [narrator|kernel|all] [--only=id,id] [--narrator-model=id] [--update-baseline]`.
+// Prompt evals. `bun evals/run.ts [narrator|kernel|all] [--only=id,id] [--narrator-model=id] [--kernel-model=id] [--update-baseline]`.
 // Every run bills the Anthropic key: iterate with --only (no scores, no baseline), full suite before review.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,11 +20,14 @@ const onlyIds = onlyArg
 	? new Set(onlyArg.slice('--only='.length).split(',').filter(Boolean))
 	: null;
 // Compares the narrator on another model; its scores never become the baseline.
+const kernelModel = process.argv
+	.find((arg) => arg.startsWith('--kernel-model='))
+	?.slice('--kernel-model='.length);
 const narratorModel = process.argv
 	.find((arg) => arg.startsWith('--narrator-model='))
 	?.slice('--narrator-model='.length);
 const shouldUpdateBaseline =
-	process.argv.includes('--update-baseline') && !onlyIds && !narratorModel;
+	process.argv.includes('--update-baseline') && !onlyIds && !narratorModel && !kernelModel;
 const apiKey = loadKeys(resolvePaths()).anthropic;
 
 if (!apiKey) {
@@ -155,7 +158,7 @@ if (suite === 'narrator' || suite === 'all') {
 
 if (suite === 'kernel' || suite === 'all') {
 	const { runKernelEval } = await import('./kernel.js');
-	const kernelEval = await runKernelEval({ apiKey, evalsDir, onlyIds });
+	const kernelEval = await runKernelEval({ apiKey, evalsDir, onlyIds, model: kernelModel });
 	results.kernel = kernelEval.rows;
 
 	if (onlyIds) {

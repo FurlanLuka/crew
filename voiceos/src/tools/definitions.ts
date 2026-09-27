@@ -83,7 +83,7 @@ const REST_PROPERTY = {
 };
 
 const CLEAN_INSTRUCTION =
-	'What the developer wants, written to that Claude in their voice as a clear instruction or question: drop relay words ("can you ask it to", "tell it"), filler and false starts; keep every detail, name, number, negation and reaction, and a yes or no that answers what it asked ("Yes, please. Let me know when you\'re done."); add nothing they did not say. Keep who is who: "you" is that Claude, "I" is the developer ("so you see how much you messed up" stays "you"). The request stays the request, whatever that Claude asked last: "just fix everything" is not "plan the fixes".';
+	'What the developer wants, written to that Claude in their voice as a clear instruction or question: drop relay words ("can you ask it to", "tell it"), filler and stutters; keep every detail, name, number, negation and reaction, and a yes or no that answers what it asked ("Yes, please. Let me know when you\'re done."); add nothing they did not say. Keep who is who: "you" is that Claude, "I" is the developer ("so you see what you broke" stays "you"). The request stays the request, whatever that Claude asked last: "just ship it" is not "plan the release".';
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ignore_words must be listed first: listed later, the model narrates its silence instead.
@@ -274,7 +274,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'debug_note',
 		description:
-			'The developer flags Voice OS itself going wrong — now or again and again: its speech, routing, timing, what it said or did — for debugging later ("debug note: …", "add a debug note …", and "add a note that I get double TTS" without the word "debug"). Voice OS saves their words with a snapshot of this moment beside its log. text: what they said after the trigger, as said. Reply "Debug note saved."',
+			'The developer flags Voice OS itself going wrong — now or again and again: its speech, routing, timing, what it said or did — for debugging later ("debug note: …", "add a debug note …", and "add a note that I get double TTS" without the word "debug"). Voice OS saves their words with a snapshot of this moment beside its log. text: what they said after the trigger, as said. Reply "Debug note saved." More words for the debug note just taken ("add this too", "like the debug note") are this tool again, with those words.',
 		input_schema: {
 			type: 'object',
 			properties: { text: { type: 'string' } },
@@ -285,7 +285,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'note',
 		description:
-			'The developer\'s own note — an idea or a reminder ("note: try a tone per session", "add a note to check the retries", "note that…"). Saved as plain text in a workspace\'s notes. Not a debug note: that is for something that went wrong — and words that add to a debug_note just taken ("add this to notes too", "like the debug note") are debug_note again, not this. text: their words after the trigger, as said. workspace: only when they name one ("note for store front: …"), else null for the one on screen. Reply "Noted."',
+			'The developer\'s own note — an idea or a reminder ("note: try a tone per session", "add a note to check the retries", "note that…"). Saved as plain text in a workspace\'s notes. Not a debug note: that is for something that went wrong — and words that add to a debug_note just taken ("add this to notes too", "like the debug note") are debug_note again, not this. More words for the note just taken ("add this too") are this tool again, with those words. text: their words after the trigger, as said. workspace: only when they name one ("note for store front: …"), else null for the one on screen. Reply "Noted."',
 		input_schema: {
 			type: 'object',
 			properties: {

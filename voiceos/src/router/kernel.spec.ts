@@ -960,6 +960,36 @@ describe('Kernel', () => {
 			expect(result.reply).toBe('The api server died.');
 		});
 
+		it('a saved debug note → "Debug note saved." whatever the model wrote', async () => {
+			const { kernel } = createKernel([
+				[createToolUse('t1', 'debug_note', { text: 'it sent it to the wrong session' })],
+				[createTextBlock('Noted.')],
+			]);
+
+			const result = await kernel.handle('Add a debug note that it sent it to the wrong session.', {
+				screen: 'store-front/main',
+			});
+
+			expect(result.reply).toBe('Debug note saved.');
+		});
+
+		it('a debug note beside a forward → still "Debug note saved."', async () => {
+			const { kernel } = createKernel([
+				[
+					createToolUse('t1', 'debug_note', { text: 'it read every option aloud' }),
+					createToolUse('t2', 'forward', { text: 'Run the tests.', kind: 'instruction' }),
+				],
+				[createTextBlock('Sent.')],
+			]);
+
+			const result = await kernel.handle('Debug note: it read every option aloud. Run the tests.', {
+				forwardTo: 'store-front/main',
+				screen: 'store-front/main',
+			});
+
+			expect(result.reply).toBe('Debug note saved.');
+		});
+
 		it('an utterance that needs nothing → no tools, no reply, and no second call', async () => {
 			const { kernel, fake } = createKernel([[]]);
 

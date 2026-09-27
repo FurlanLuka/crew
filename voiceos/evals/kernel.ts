@@ -157,7 +157,14 @@ export interface JudgeRunParams {
 	testCase: Case;
 }
 
-export const judgeRun = ({ calls, reply, testCase }: JudgeRunParams): Verdict => {
+export const judgeRun = ({ calls: made, reply, testCase }: JudgeRunParams): Verdict => {
+	// send_to the session on screen does what forward does: the same words reach the same session.
+	const calls = made.map((call) =>
+		call.name === 'send_to' && call.input.ref === testCase.context.view
+			? { ...call, name: 'forward' }
+			: call,
+	);
+
 	for (const expected of testCase.calls) {
 		if (!calls.some((call) => matchesCall(call, expected))) {
 			return {
@@ -261,12 +268,15 @@ interface RunKernelEvalParams {
 	apiKey: string;
 	evalsDir: string;
 	onlyIds?: Set<string> | null;
+	// Another kernel model to compare against the one it runs on.
+	model?: string;
 }
 
 export const runKernelEval = async ({
 	apiKey,
 	evalsDir,
 	onlyIds = null,
+	model,
 }: RunKernelEvalParams): Promise<KernelEvalResult> => {
 	// onlyIds: case ids to run, for iterating on a prompt without paying for the whole suite.
 	const allCases = (
@@ -299,6 +309,7 @@ export const runKernelEval = async ({
 
 			const kernel = new Kernel({
 				apiKey,
+				...(model ? { model } : {}),
 				tools: {
 					getState: () => state,
 					dispatch,
