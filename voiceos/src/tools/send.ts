@@ -182,31 +182,6 @@ export const isRewriteTooShort = (utterance: string, text: string): boolean => {
 	return saidWords >= MIN_LONG_UTTERANCE_WORDS && countWords(text) < saidWords * MIN_KEPT_SHARE;
 };
 
-const QUOTED_PATTERN = /["“]([^"”]+)["”]/g;
-const MIN_FRAMING_WORDS = 3;
-
-const toBareWords = (text: string): string =>
-	normalizeSaid(text)
-		.replace(/[^\p{L}\p{N}\s']/gu, ' ')
-		.replace(/\s+/g, ' ')
-		.trim();
-
-export const isOnlyTheQuote = (utterance: string, text: string): boolean => {
-	// "What happens if I ask you to 'start crew research'?" rewritten as the quote alone turns a
-	// question about the words into the words themselves.
-	const quotes = [...utterance.matchAll(QUOTED_PATTERN)].map((match) => match[1] ?? '');
-	const sent = toBareWords(text);
-	const quote = quotes.find((quoted) => toBareWords(quoted) === sent);
-
-	if (!quote) {
-		return false;
-	}
-
-	const framing = toBareWords(utterance.replace(quote, ' '));
-
-	return framing.split(' ').filter(Boolean).length >= MIN_FRAMING_WORDS;
-};
-
 export const prepareSentText = ({
 	state,
 	ref,
@@ -214,12 +189,6 @@ export const prepareSentText = ({
 	utterance,
 	isOnlySend,
 }: PrepareSentTextParams): string => {
-	if (utterance && isOnlySend && isOnlyTheQuote(utterance, text)) {
-		log.info('quote without its question: sent as said', { ref });
-
-		return utterance.trim();
-	}
-
 	// As said only when the words were all for this session: split across sessions or tools, each
 	// part is short on purpose, and the whole would hand one session the other's instruction.
 	const namesAnother = utterance
