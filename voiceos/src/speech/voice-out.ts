@@ -54,6 +54,8 @@ interface Playing {
 	abort: AbortController;
 	hasEnded: boolean;
 	record: SpokenRecord;
+	// A line the developer waits for plays out: an alert waits behind it instead of cutting it off.
+	isOwed: boolean;
 }
 
 const SAID_PREVIEW_CHARS = 80;
@@ -128,7 +130,7 @@ export class VoiceOut {
 			this.lastSpokenAbout.set(ref, this.now());
 		}
 
-		if (result.shouldInterrupt && this.playing && !this.isTalking) {
+		if (result.shouldInterrupt && this.playing && !this.playing.isOwed && !this.isTalking) {
 			this.finish(this.playing.id, { isCut: true });
 		}
 
@@ -279,6 +281,7 @@ export class VoiceOut {
 			abort: new AbortController(),
 			hasEnded: false,
 			record,
+			isOwed: Boolean(item.isOwed),
 		};
 		this.playing = playing;
 		// Silence from Soniox this long mid-clip means the clip is stuck.

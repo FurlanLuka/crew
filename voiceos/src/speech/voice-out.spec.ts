@@ -133,6 +133,26 @@ describe('VoiceOut', () => {
 		expect(harness.listSynthesized().at(-1)).toBe('store/main wants to push. Allow?');
 	});
 
+	it("an alert waits for the session's own line to play out, then plays next", async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({
+			text: 'I like it. Where should notes live?',
+			priority: 'high',
+			isOwed: true,
+		});
+		await flush();
+		harness.voiceOut.say({ text: 'store/main asks: where should notes live?', priority: 'alert' });
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['I like it. Where should notes live?']);
+		expect(harness.listSentKinds().some((kind) => kind.includes(':cancel:'))).toBe(false);
+
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized().at(-1)).toBe('store/main asks: where should notes live?');
+	});
+
 	it('no speaker tab → line still shown, nothing synthesized, queue keeps moving', async () => {
 		const harness = createHarness({ tab: null });
 		harness.voiceOut.say({ text: 'a', priority: 'normal' });
