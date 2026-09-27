@@ -1,7 +1,9 @@
 # Getting set up: a workspace, its projects, a worktree
 
-This takes you from an empty crew to two copies of your stack running side by side. The example is
-a store with an API and a web app; use your own repos.
+This takes you from an empty crew to two copies of your stack running side by side, typed out as
+commands. The quickest way is to say it instead: Voice OS's setup session runs these same steps for
+you — see [the walkthrough](voice-os.md#from-two-repos-to-a-working-feature). The example is a store
+with an API and a web app; use your own repos.
 
 ## 1. Install
 

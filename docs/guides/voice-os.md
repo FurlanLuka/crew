@@ -11,6 +11,62 @@ crew voice      # first run: checks tmux and Claude Code, downloads Voice OS, as
 Open the link it prints. **Hold Space** to talk, or turn on hands-free and just speak. **Esc**
 goes back to Mission Control, where every session is on one screen.
 
+## From two repos to a working feature
+
+Everything below happened by voice (the words in quotes are what was said), on two small repos: a
+store API that serves products, and a store front page that lists them from `API_URL`.
+
+**1. Ask the setup session.** "Add the store api and store app repos from ~/code to crew with their
+dev servers, wire the store app's API URL to the store API, and make a store front workspace with
+both." The setup session runs crew for you: it reads each repo, registers it, and works out how its
+dev server starts.
+
+![The setup session reading the two repos and registering them with crew](../images/voice-os/02-setup-working.png)
+
+**2. It reports back.** Both projects are registered with their dev servers (`npm run dev`, on a port
+crew picks), the store front's `API_URL` is bound to the store API, and a fresh copy of both was
+installed and started once to prove it works. You hear the summary; the details are on the page.
+
+![The setup session's report: projects, dev servers, the API_URL link and the workspace](../images/voice-os/03-setup-done.png)
+
+**3. The new worktree appears.** store-front/main shows up on Mission Control by itself, ready to
+open.
+
+![Mission Control with the new store-front/main worktree next to the setup session](../images/voice-os/04-worktree-appears.png)
+
+**4. Open it and start its servers.** "Open store front main." "Start the dev servers." Both come up
+on this copy's own ports, and Voice OS says so.
+
+![The store-front/main page with both dev servers up](../images/voice-os/05-dev-servers-up.png)
+
+**5. Build something.** "Add a search box to the store front page that filters the products by name
+as you type. When it works, take a screenshot of the page in the browser and show it to me." The
+session writes the code, restarts the servers through crew, tries it in a browser, and fixes what
+it finds on the way.
+
+![The session building the search box, testing it in a browser and reporting what changed](../images/voice-os/06-building.png)
+
+**6. See the result where you are.** Its screenshot shows in the session's page — served by Voice OS
+itself, so it shows on your phone too.
+
+![The session's own screenshot of the store front, filtered to "mug"](../images/voice-os/07-session-shows-screenshot.png)
+
+## What a session shows you
+
+A screenshot, chart or diagram a session makes shows inline in its page. Docs and artifacts it
+writes — Claude Docs, Google Docs, Notion — become cards, and a **Docs** list per session keeps
+them together.
+
+![A chart the session made, and a doc card for the doc it linked](../images/voice-os/08-chart-and-doc-card.png)
+
+"Open the doc" opens the session's newest doc — or "open the risks doc" the one you name — in the
+browser you're using. When the browser holds back a new tab (a phone usually does), a banner offers
+it to tap.
+
+![The "Open Doc card test" banner at the top, after "open the doc"](../images/voice-os/09-open-the-doc.png)
+
+"Add a section on the rollout risks to the doc" goes to the session, which edits the doc itself.
+
 The examples below are the kind of thing people actually say — filler, restarts and all. You
 don't need to phrase anything carefully.
 
@@ -102,7 +158,7 @@ hands that worktree's session the failure with its log.
 
 ## New workspaces and worktrees
 
-The pinned **setup** session runs crew itself. Ask it from anywhere:
+The pinned **setup** session runs crew itself (see the walkthrough above). Ask it from anywhere:
 
 - "Setup, make a worktree in store front for the search fix."
 - "Create a new worktree for the search fix."
