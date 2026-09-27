@@ -43,6 +43,34 @@ describe('judgeRun', () => {
 			}),
 		).toEqual({ ok: false, why: 'sent twice to the screen' }));
 
+	it('a forward and a send_to naming the screen are one session; two sessions are fine', () => {
+		const onScreen = {
+			...checkLogsCase,
+			context: { view: 'store-front/main' },
+			allow: [{ name: 'send_to' as const }],
+		};
+		const sendTo = (ref: string) => ({
+			name: 'send_to',
+			input: { ref, text: 'Check the logs.' },
+			ok: true,
+		});
+
+		expect(
+			judgeRun({
+				calls: [...forward('Check the logs.'), sendTo('store-front/main')],
+				reply: '',
+				testCase: onScreen,
+			}),
+		).toEqual({ ok: false, why: 'sent twice to store-front/main' });
+		expect(
+			judgeRun({
+				calls: [...forward('Check the logs.'), sendTo('checkout-api/main')],
+				reply: '',
+				testCase: onScreen,
+			}).ok,
+		).toBe(true);
+	});
+
 	it('a clean instruction keeping the detail → ok', () =>
 		expect(
 			judgeRun({ calls: forward('Check the logs.'), reply: '', testCase: checkLogsCase }).ok,

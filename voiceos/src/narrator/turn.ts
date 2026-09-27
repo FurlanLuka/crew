@@ -130,6 +130,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		}
 
 		const topic = await options.writeTopic({
+			ref: effect.ref,
 			label: session.label,
 			asked: effect.asked,
 			spoken: spoken.text,
@@ -197,7 +198,10 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		}
 
 		if (effect.spoken) {
-			void refreshTopic({ effect, spoken: effect.spoken, body });
+			// Off the speech path; a writer that throws keeps the topic it had.
+			refreshTopic({ effect, spoken: effect.spoken, body }).catch((error: unknown) =>
+				log.warn('topic not refreshed', { ref: effect.ref, error: String(error) }),
+			);
 		}
 
 		appendJournalEntry(options.journalDir, {

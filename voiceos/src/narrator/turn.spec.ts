@@ -496,6 +496,7 @@ describe('the topic of a turn the session spoke for itself', () => {
 
 		expect(harness.topicCalls).toEqual([
 			{
+				ref: 'checkout-api/main',
 				label: 'checkout-api/main',
 				asked: 'build notes',
 				spoken: 'Notes are built and committed.',
@@ -506,16 +507,26 @@ describe('the topic of a turn the session spoke for itself', () => {
 		expect(topicOf(harness)).toBe('Voice notes per workspace');
 	});
 
-	it('the writer keeps it or fails → unchanged; a pinned topic is never asked about', async () => {
-		const kept = createHarness(unused);
+	it('the writer returns nothing or throws → the topic stays; a pinned topic is never asked about', async () => {
+		const empty = createHarness(unused, () => null);
+		const throwing = createHarness(unused, () => {
+			throw new Error('overloaded');
+		});
 		const pinned = createHarness(unused, () => 'Something else');
-		pinned.store.dispatch({ type: 'pin_topic', ref: 'checkout-api/main', topic: 'Timeouts' });
 
-		await kept.handle(taggedTurn);
+		for (const harness of [empty, throwing]) {
+			harness.store.dispatch({ type: 'topic_written', ref: 'checkout-api/main', topic: 'Notes' });
+			await harness.handle(taggedTurn);
+		}
+
+		pinned.store.dispatch({ type: 'pin_topic', ref: 'checkout-api/main', topic: 'Timeouts' });
 		await pinned.handle(taggedTurn);
 		await settle();
 
-		expect(topicOf(kept)).toBeNull();
+		expect(empty.topicCalls).toHaveLength(1);
+		expect(topicOf(empty)).toBe('Notes');
+		expect(throwing.topicCalls).toHaveLength(1);
+		expect(topicOf(throwing)).toBe('Notes');
 		expect(pinned.topicCalls).toEqual([]);
 		expect(topicOf(pinned)).toBe('Timeouts');
 	});

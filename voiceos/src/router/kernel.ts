@@ -3,6 +3,7 @@ import {
 	GRID,
 	isOfferFresh,
 	isRemembered,
+	type PendingAsk,
 	type SpokenLine,
 	type State,
 	type VoiceEntry,
@@ -227,10 +228,23 @@ interface RequestParams {
 	toolChoice?: Anthropic.ToolChoice;
 }
 
-const RUN_ORDER: Partial<Record<string, number>> = { dev_offer: 0, forward: 1, send_to: 1 };
-const LATER = 2;
+interface ReadRunOrderParams {
+	name: string;
+	input: unknown;
+	asks: PendingAsk[];
+}
 
-const readRunOrder = (name: string): number => RUN_ORDER[name] ?? LATER;
+export const readRunOrder = ({ name, input, asks }: ReadRunOrderParams): number => {
+	// A fix offer first; an answer with nothing pending to answer (it falls back to sending the
+	// words) last, after any forward beside it. Everything else keeps the model's order.
+	if (name === 'dev_offer') {
+		return 0;
+	}
+
+	const ref = (input as { ref?: unknown } | null)?.ref;
+
+	return name === 'answer' && !asks.some((ask) => ask.ref === ref) ? 2 : 1;
+};
 
 export class Kernel {
 	private client: Anthropic;
@@ -315,12 +329,11 @@ export class Kernel {
 			}
 
 			messages.push({ role: 'assistant', content: response.content });
-			// One at a time, a fix offer first: once a result is final, nothing else that changes
-			// anything may run (a lapsed offer beside a send_to would still send the fix). Sends before
-			// answers: an answer that falls back to sending finds the words already sent.
-			const ordered = [...toolUses].sort(
-				(left, right) => readRunOrder(left.name) - readRunOrder(right.name),
-			);
+			// One at a time: once a result is final, nothing else that changes anything may run (a
+			// lapsed offer beside a send_to would still send the fix).
+			const runOrderOf = (toolUse: Anthropic.ToolUseBlock) =>
+				readRunOrder({ name: toolUse.name, input: toolUse.input, asks: toolContext.asks });
+			const ordered = [...toolUses].sort((left, right) => runOrderOf(left) - runOrderOf(right));
 			const resultsById = new Map<string, Anthropic.ToolResultBlockParam>();
 
 			// A long sentence split across several actions is not one rewrite that lost its point.

@@ -10,7 +10,8 @@ import {
 	readHistory,
 	type JournalEntry,
 } from './journal.js';
-import { loadTopics, saveTopics, collectTopics } from './topics.js';
+import { loadTopics, saveTopics, collectTopics, persistTopics } from './topics.js';
+import { Store } from '../state/store.js';
 
 const createDir = () => mkdtempSync(join(tmpdir(), 'voiceos-journal-'));
 const createEntry = (ref: string, ts: string, asked: string, did: string): JournalEntry => ({
@@ -126,5 +127,29 @@ describe('topics', () => {
 
 	it('missing or corrupt file → empty', () => {
 		expect(loadTopics(join(createDir(), 'none.json'))).toEqual({});
+	});
+});
+
+describe('persistTopics', () => {
+	it('a topic written after a turn is saved, so a restart keeps it', () => {
+		const file = join(mkdtempSync(join(tmpdir(), 'voiceos-topics-')), 'topics.json');
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'store/main',
+					label: 'store/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+			],
+		});
+		persistTopics({ store, file });
+		store.dispatch({ type: 'topic_written', ref: 'store/main', topic: 'Voice notes' });
+
+		expect(loadTopics(file)).toEqual({ 'store/main': { topic: 'Voice notes', pinned: false } });
 	});
 });

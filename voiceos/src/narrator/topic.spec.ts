@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { buildTopicMessage, createTopicWriter } from './topic.js';
 
 const input = {
+	ref: 'store/main',
 	label: 'store/main',
 	asked: 'build notes',
 	spoken: 'Notes are built.',

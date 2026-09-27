@@ -220,6 +220,44 @@ describe('Kernel', () => {
 		]);
 	});
 
+	it('the answer fallback to another session still sends there, beside a forward to the screen', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[
+					createToolUse('t1', 'answer', { ref: 'checkout-api/main', decision: 'yes', text: '' }),
+					createToolUse('t2', 'forward', { text: 'Run the tests.' }),
+				],
+				[{ type: 'text', text: '' } as Block],
+			],
+			{ context: { view: 'store-front/main', needs: 'checkout-api/main' } },
+		);
+
+		await kernel.handle('yes, and run the tests', { forwardTo: 'store-front/main' });
+
+		expect(actions.filter((action) => action.type === 'send').map((action) => action.ref)).toEqual([
+			'store-front/main',
+			'checkout-api/main',
+		]);
+	});
+
+	it('a real pending ask answered beside a forward → the answer runs first, in the model order', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[
+					createToolUse('t1', 'answer', { ref: 'store-front/wrk1', decision: 'yes', text: '' }),
+					createToolUse('t2', 'send_to', { ref: 'store-front/wrk1', text: 'Also run the linter.' }),
+				],
+				[{ type: 'text', text: '' } as Block],
+			],
+			{ context: { view: 'store-front/wrk1', ask: 'permission' } },
+		);
+
+		await kernel.handle('yes, and also run the linter', { forwardTo: 'store-front/wrk1' });
+
+		expect(actions.map((action) => action.type)).toEqual(['answer_permission', 'send']);
+		expect(actions[0]).toMatchObject({ decision: 'allow' });
+	});
+
 	it('asking back on a session screen → the words go to the session instead, nothing spoken', async () => {
 		const { kernel, actions } = createKernel([
 			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],

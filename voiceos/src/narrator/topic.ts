@@ -13,6 +13,7 @@ export const TOPIC_MODEL = 'claude-haiku-4-5';
 const MAX_BODY_CHARS = 2_000;
 
 export interface TopicInput {
+	ref: string;
 	label: string;
 	asked: string | null;
 	spoken: string;
@@ -58,14 +59,14 @@ export const createTopicWriter = (apiKey: string | null, model = TOPIC_MODEL): W
 			const topic = response.parsed_output?.topic?.trim() || null;
 
 			log.info('topic written', {
-				ref: input.label,
+				ref: input.ref,
 				ms: Date.now() - startedAt,
 				isChanged: topic !== null && topic !== input.topic,
 			});
 
 			return topic ?? input.topic;
 		} catch (error) {
-			log.warn('topic not written', { ref: input.label, error: String(error) });
+			log.warn('topic not written', { ref: input.ref, error: String(error) });
 
 			return input.topic;
 		}
