@@ -1139,6 +1139,37 @@ describe('queued_message', () => {
 		]);
 	});
 
+	it('delivered words that now wait on a permission → nothing sent (it would answer it); the kernel answers it no', async () => {
+		const context = withQueue('running-1');
+		const state = context.tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'blocked',
+			currentSendId: 'running-1',
+		};
+		state.asks = [
+			{
+				id: 'p1',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run the migration',
+				input: {},
+				suggestions: [],
+			},
+		];
+		const result = await executeTool(
+			'queued_message',
+			{ ref: 'store-front/main', action: 'drop' },
+			context.tools,
+		);
+
+		expect(result.ok).toBe(false);
+		expect(String(result.content)).toContain('answer it no');
+		expect(context.actions).toEqual([]);
+	});
+
 	it('nothing queued, or an unknown action → fails, nothing dispatched', async () => {
 		const { tools, actions } = createToolContext();
 		const queued = withQueue(null);

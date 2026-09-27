@@ -329,6 +329,29 @@ describe('Kernel', () => {
 		expect(fake.prompts[0]).toContain('Voice OS last asked aloud: (nothing)');
 	});
 
+	it('when the words began reaches the tools: a question asked after that is not answered with them', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[
+					createToolUse('t1', 'answer', {
+						ref: 'checkout-api/main',
+						decision: 'yes',
+						text: 'That was for store front.',
+					}),
+				],
+				[{ type: 'text', text: '' } as Block],
+			],
+			{ context: { view: 'checkout-api/main', needs: 'checkout-api/main', needsSecondsAgo: 0.5 } },
+		);
+
+		await kernel.handle('sorry, that was for store front', {
+			forwardTo: 'checkout-api/main',
+			heardFrom: Date.now() - 3000,
+		});
+
+		expect(actions.filter((action) => action.type === 'send')).toEqual([]);
+	});
+
 	it('asking back on a session screen → the words go to the session instead, nothing spoken', async () => {
 		const { kernel, actions } = createKernel([
 			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],

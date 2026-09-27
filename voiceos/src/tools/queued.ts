@@ -1,4 +1,4 @@
-import type { LastSpokenSend, State } from '../shared/protocol.js';
+import { isSdkAsk, type LastSpokenSend, type State } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
@@ -95,6 +95,16 @@ const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
 
 	if (!carrier) {
 		return fail(`nothing from the developer is waiting at ${ref}: there is nothing to take back`);
+	}
+
+	// Waiting on a permission, plan or question those words led to: anything sent now would answer
+	// it, so the kernel answers it no instead.
+	const pendingAsk = state.asks.find((ask) => ask.ref === ref && isSdkAsk(ask));
+
+	if (!('id' in carrier) && pendingAsk) {
+		return fail(
+			`${ref} already got those words and now waits on a ${pendingAsk.kind} from them: answer it no, with text "That was not meant for you."`,
+		);
 	}
 
 	// Already delivered: it is told to ignore them, so it does not act on words that were not for it.
