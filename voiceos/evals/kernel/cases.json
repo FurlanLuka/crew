@@ -1639,6 +1639,20 @@
 			"reply_includes": ["noted|got it|saved"]
 		},
 		{
+			"id": "last-thing-done-forward",
+			"utterance": "Okay, what is the last thing we've done?",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["last"]
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "note-own-idea",
 			"utterance": "Note: try a different tone per session.",
 			"context": {

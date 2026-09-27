@@ -532,6 +532,13 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 			);
 
+		case 'topic_written':
+			return withoutEffects(
+				updateSession(state, input.ref, (session) =>
+					session.isTopicPinned ? session : { ...session, topic: input.topic },
+				),
+			);
+
 		case 'spoken':
 			return withoutEffects({
 				...state,

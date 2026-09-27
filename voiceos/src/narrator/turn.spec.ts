@@ -5,9 +5,13 @@ import { join } from 'node:path';
 import { readHistory } from '../memory/journal.js';
 import { Store } from '../state/store.js';
 import type { Narration } from './prompt.js';
+import type { TopicInput } from './topic.js';
 import { createAsideNarrator, createTurnNarrator, settleOwedReport } from './turn.js';
 
-const createHarness = (narration: Narration) => {
+// What the topic writer returns; by default it keeps the topic it was given.
+type TopicReply = (input: TopicInput) => string | null;
+
+const createHarness = (narration: Narration, topicReply: TopicReply = (input) => input.topic) => {
 	const store = new Store();
 
 	store.dispatch({
@@ -29,12 +33,18 @@ const createHarness = (narration: Narration) => {
 	const journalDir = mkdtempSync(join(tmpdir(), 'voiceos-turn-'));
 	const seen: { focused: boolean }[] = [];
 	const said: { priority: string; isOwed: boolean }[] = [];
+	const topicCalls: TopicInput[] = [];
 	const handle = createTurnNarrator({
 		store,
 		narrate: async (input) => {
 			seen.push({ focused: input.focused });
 
 			return narration;
+		},
+		writeTopic: async (input) => {
+			topicCalls.push(input);
+
+			return topicReply(input);
 		},
 		say: ({ text, isAsking, priority, isOwed }) => {
 			spoken.push(text);
@@ -46,7 +56,7 @@ const createHarness = (narration: Narration) => {
 		now: () => new Date('2026-09-25T02:00:00Z'),
 	});
 
-	return { store, spoken, asking, said, journalDir, seen, handle };
+	return { store, spoken, asking, said, journalDir, seen, handle, topicCalls };
 };
 
 describe('turn narrator', () => {
@@ -454,5 +464,67 @@ describe("turn narrator and the session's own line", () => {
 		expect(harness.seen).toHaveLength(1);
 		expect(harness.spoken).toEqual(['Three timeouts in the last hour.']);
 		expect(harness.said).toEqual([{ priority: 'high', isOwed: true }]);
+	});
+});
+
+describe('the topic of a turn the session spoke for itself', () => {
+	const unused: Narration = {
+		speak: false,
+		needs_user: false,
+		priority: 'low',
+		text: '',
+		topic: null,
+	};
+	const taggedTurn = {
+		type: 'narrate' as const,
+		ref: 'checkout-api/main',
+		text: '<spoken>Notes are built and committed.</spoken>\nDetails.',
+		asked: 'build notes',
+		isOwed: true,
+		spoken: { text: 'Notes are built and committed.', isAsking: false },
+		isSpokenAlready: true,
+	};
+	const topicOf = (harness: ReturnType<typeof createHarness>) =>
+		harness.store.state.sessions['checkout-api/main']?.topic;
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+	it('named from what was asked and said, and saved on the session', async () => {
+		const harness = createHarness(unused, () => 'Voice notes per workspace');
+		await harness.handle(taggedTurn);
+		await settle();
+
+		expect(harness.topicCalls).toEqual([
+			{
+				label: 'checkout-api/main',
+				asked: 'build notes',
+				spoken: 'Notes are built and committed.',
+				body: 'Details.',
+				topic: null,
+			},
+		]);
+		expect(topicOf(harness)).toBe('Voice notes per workspace');
+	});
+
+	it('the writer keeps it or fails → unchanged; a pinned topic is never asked about', async () => {
+		const kept = createHarness(unused);
+		const pinned = createHarness(unused, () => 'Something else');
+		pinned.store.dispatch({ type: 'pin_topic', ref: 'checkout-api/main', topic: 'Timeouts' });
+
+		await kept.handle(taggedTurn);
+		await pinned.handle(taggedTurn);
+		await settle();
+
+		expect(topicOf(kept)).toBeNull();
+		expect(pinned.topicCalls).toEqual([]);
+		expect(topicOf(pinned)).toBe('Timeouts');
+	});
+
+	it('a turn without its own line → the narrator names it; no topic call', async () => {
+		const harness = createHarness({ ...unused, topic: 'Checkout retries' });
+		await harness.handle({ ...taggedTurn, text: 'Done.', spoken: null, isSpokenAlready: false });
+		await settle();
+
+		expect(harness.topicCalls).toEqual([]);
+		expect(topicOf(harness)).toBe('Checkout retries');
 	});
 });

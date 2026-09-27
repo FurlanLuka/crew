@@ -3,6 +3,7 @@ import type { Effect } from '../state/reducer.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { appendJournalEntry, describeTurnOutcome } from '../memory/journal.js';
 import type { NarrateFunction } from './narrator.js';
+import type { WriteTopic } from './topic.js';
 import type { Narration } from './prompt.js';
 import { cleanSpokenText } from '../shared/spoken.js';
 import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
@@ -62,6 +63,8 @@ export const narrateFromTag = (spoken: SpokenTag, session: Session): Narration =
 export interface TurnNarratorOptions {
 	store: Store;
 	narrate: NarrateFunction;
+	// Names the work after a turn the session spoke for itself (the narrator names it otherwise).
+	writeTopic: WriteTopic;
 	say: (line: NarratedLine) => void;
 	journalDir: string;
 	readGitHead: (cwd: string) => Promise<string | null>;
@@ -112,6 +115,32 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 
 export const createTurnNarrator = (options: TurnNarratorOptions) => {
 	const now = options.now ?? (() => new Date());
+
+	interface RefreshTopicParams {
+		effect: NarrateEffect;
+		spoken: SpokenTag;
+		body: string;
+	}
+
+	const refreshTopic = async ({ effect, spoken, body }: RefreshTopicParams): Promise<void> => {
+		const session = options.store.state.sessions[effect.ref];
+
+		if (!session || session.isTopicPinned) {
+			return;
+		}
+
+		const topic = await options.writeTopic({
+			label: session.label,
+			asked: effect.asked,
+			spoken: spoken.text,
+			body,
+			topic: session.topic,
+		});
+
+		if (topic && topic !== options.store.state.sessions[effect.ref]?.topic) {
+			options.store.dispatch({ type: 'topic_written', ref: effect.ref, topic });
+		}
+	};
 
 	return async (effect: NarrateEffect): Promise<void> => {
 		const { store } = options;
@@ -164,6 +193,10 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 				isAsking: narration.needs_user,
 				...(effect.isOwed ? { isOwed: true } : {}),
 			});
+		}
+
+		if (effect.spoken) {
+			void refreshTopic({ effect, spoken: effect.spoken, body });
 		}
 
 		appendJournalEntry(options.journalDir, {

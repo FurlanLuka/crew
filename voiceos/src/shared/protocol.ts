@@ -323,6 +323,8 @@ export type Observation =
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
 	// The developer's notes of a workspace as they now stand (its newest lines), for the page.
 	| { type: 'notes'; workspace: string; lines: string[] }
+	// What a session is working on, named after a turn it spoke for itself.
+	| { type: 'topic_written'; ref: string; topic: string }
 	| { type: 'session_started'; ref: string }
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }

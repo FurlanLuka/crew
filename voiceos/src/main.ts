@@ -37,6 +37,7 @@ import { VoiceOut } from './speech/voice-out.js';
 import { DevWatch } from './dev/watch.js';
 import { SonioxTts } from './speech/tts.js';
 import { createNarrator } from './narrator/narrator.js';
+import { createTopicWriter } from './narrator/topic.js';
 
 const WORKTREE_POLL_MS = 10_000;
 const REMINDER_INTERVAL_MS = 30_000;
@@ -96,6 +97,7 @@ const narrate = createNarrator(keys.anthropic);
 const narrateTurn = createTurnNarrator({
 	store,
 	narrate,
+	writeTopic: createTopicWriter(keys.anthropic),
 	say: (line) => voiceOut.say(line),
 	journalDir: paths.journalDir,
 	readGitHead,

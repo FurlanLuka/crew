@@ -67,7 +67,11 @@ export const persistTopics = ({ store, file }: PersistTopicsParams): void => {
 	}
 
 	store.subscribe((stamped, state) => {
-		if (stamped.input.type === 'narration' || stamped.input.type === 'pin_topic') {
+		if (
+			stamped.input.type === 'narration' ||
+			stamped.input.type === 'topic_written' ||
+			stamped.input.type === 'pin_topic'
+		) {
 			saveTopics(file, collectTopics(state));
 		}
 	});

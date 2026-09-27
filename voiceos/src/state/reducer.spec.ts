@@ -1572,3 +1572,23 @@ describe('notes', () => {
 		expect(effects).toEqual([]);
 	});
 });
+
+describe('topic_written', () => {
+	it('names the work; a pinned topic stays', () => {
+		const started = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }]).state;
+		const written = run(
+			[{ type: 'topic_written', ref: 'store/main', topic: 'Voice notes' }],
+			started,
+		);
+		const pinned = run(
+			[
+				{ type: 'pin_topic', ref: 'store/main', topic: 'Timeouts' },
+				{ type: 'topic_written', ref: 'store/main', topic: 'Voice notes' },
+			],
+			started,
+		);
+
+		expect(written.state.sessions['store/main']?.topic).toBe('Voice notes');
+		expect(pinned.state.sessions['store/main']?.topic).toBe('Timeouts');
+	});
+});
