@@ -1,3 +1,6 @@
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'bun:test';
 import type { Observation } from '../shared/protocol.js';
 import { PermissionBridge } from './permissions.js';
@@ -57,7 +60,10 @@ describe('buildWorkerEnv', () => {
 });
 
 describe('Worker', () => {
-	const createWorker = (messages: unknown[]) => {
+	const createWorker = (
+		messages: unknown[],
+		extra: { mediaDir?: string; isPinned?: boolean } = {},
+	) => {
 		const prompts: string[] = [];
 		const sessionIds: string[] = [];
 		const observations: Observation[] = [];
@@ -66,6 +72,8 @@ describe('Worker', () => {
 			ref: 'store/main',
 			cwd: '/w',
 			dirs: [],
+			isPinned: false,
+			...extra,
 			orientation: '',
 			resumeId: null,
 			env: {},
@@ -132,5 +140,78 @@ describe('Worker', () => {
 
 		expect(worker.id).toBe('new');
 		expect(sessionIds).toEqual(['old', 'new']);
+	});
+
+	it("with a media folder, a tool's screenshot is stored and shown", async () => {
+		const mediaDir = mkdtempSync(join(tmpdir(), 'worker-media-'));
+		const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9]).toString('base64');
+		const { worker, observations, finished } = createWorker(
+			[
+				{ type: 'system', subtype: 'init', session_id: 's1' },
+				{
+					type: 'assistant',
+					message: {
+						content: [
+							{
+								type: 'tool_use',
+								id: 't1',
+								name: 'mcp__playwright__browser_take_screenshot',
+								input: {},
+							},
+						],
+					},
+				},
+				{
+					type: 'user',
+					message: {
+						content: [
+							{
+								type: 'tool_result',
+								tool_use_id: 't1',
+								content: [
+									{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } },
+								],
+							},
+						],
+					},
+				},
+			],
+			{ mediaDir },
+		);
+
+		worker.start();
+		await finished;
+
+		const image = observations.find((observation) => observation.type === 'image');
+		expect(image).toMatchObject({ type: 'image', ref: 'store/main' });
+		expect(readdirSync(mediaDir)).toEqual([image?.type === 'image' ? image.name : 'none']);
+		rmSync(mediaDir, { recursive: true, force: true });
+	});
+
+	it('the pinned setup session (its folder is home) shows no image named from it', async () => {
+		const mediaDir = mkdtempSync(join(tmpdir(), 'worker-media-'));
+		const home = mkdtempSync(join(tmpdir(), 'worker-home-'));
+		writeFileSync(
+			join(home, 'shot.png'),
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]),
+		);
+		const { worker, observations, finished } = createWorker(
+			[
+				{ type: 'system', subtype: 'init', session_id: 's1' },
+				{
+					type: 'assistant',
+					message: { content: [{ type: 'text', text: `Look: ![x](${join(home, 'shot.png')})` }] },
+				},
+			],
+			{ mediaDir, isPinned: true },
+		);
+
+		worker.start();
+		await finished;
+
+		expect(observations.some((observation) => observation.type === 'image')).toBe(false);
+		expect(readdirSync(mediaDir)).toEqual([]);
+		rmSync(mediaDir, { recursive: true, force: true });
+		rmSync(home, { recursive: true, force: true });
 	});
 });

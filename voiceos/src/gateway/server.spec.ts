@@ -9,7 +9,11 @@ import {
 	parseCookies,
 	areTokensEqual,
 } from './auth.js';
-import { startGateway, type Gateway } from './server.js';
+import { startGateway, type Gateway, type GatewayOptions } from './server.js';
+import { copyShownImage, readMediaFile } from '../sessions/media.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseClientMessage } from './validate.js';
 import { configureLog } from '../log.js';
 
@@ -31,8 +35,13 @@ interface ConnectedClient {
 
 type ActionsByType = { [T in Action['type']]: Extract<Action, { type: T }> };
 
-const bootGateway = (store = new Store(), onMessage = (_: unknown) => {}) => {
+const bootGateway = (
+	store = new Store(),
+	onMessage = (_: unknown) => {},
+	readMedia?: GatewayOptions['readMedia'],
+) => {
 	gateway = startGateway({
+		...(readMedia ? { readMedia } : {}),
 		store,
 		token: TOKEN,
 		port: 0,
@@ -271,6 +280,8 @@ describe('parseClientMessage', () => {
 		{ type: 'ptt_start', sampleRate: 48000 },
 		{ type: 'ptt_start' },
 		{ type: 'ptt_stop' },
+		{ type: 'simulate_speech', text: 'run the tests' },
+		{ type: 'simulate_speech', text: 'run the tests', holdMs: 2500 },
 		{ type: 'listen_start', sampleRate: 48000 },
 		{ type: 'listen_stop' },
 		{ type: 'audio_done', id: 's1' },
@@ -375,5 +386,65 @@ describe('offline outbox', () => {
 		expect(applyServerMessage(oldState, { type: 'snapshot', state: freshState }).state).toBe(
 			freshState,
 		);
+	});
+});
+
+describe('gateway /media', () => {
+	const cookie = `${COOKIE_NAME}=${TOKEN}`;
+	const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+	// The real wiring: a stored image, and main's reader over that one folder.
+	const mediaDir = mkdtempSync(join(tmpdir(), 'media-route-'));
+	const worktree = mkdtempSync(join(tmpdir(), 'media-worktree-'));
+	writeFileSync(join(worktree, 'shot.png'), png);
+	writeFileSync(join(worktree, 'secret.png'), png);
+	const stored = copyShownImage({
+		path: 'shot.png',
+		session: { cwd: worktree, dirs: [], isPinned: false },
+		dir: mediaDir,
+	});
+	const name = stored.ok ? stored.name : '';
+	const readMedia: GatewayOptions['readMedia'] = (asked) =>
+		readMediaFile({ name: asked, dir: mediaDir });
+	const url = (port: number, query: string) => `http://localhost:${port}/media?${query}`;
+
+	it('without the cookie → 401', async () => {
+		const { port } = bootGateway(undefined, undefined, readMedia);
+
+		const response = await fetch(url(port, `name=${name}`));
+
+		expect(response.status).toBe(401);
+	});
+
+	it('a stored image by its name → 200, its type, cached for good, nosniff', async () => {
+		const { port } = bootGateway(undefined, undefined, readMedia);
+
+		const response = await fetch(url(port, `name=${name}`), { headers: { cookie } });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toBe('image/png');
+		expect(response.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+		expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+		expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+	});
+
+	it.each([
+		['a climb out, encoded', `name=${encodeURIComponent('../secret.png')}`],
+		['a path into the worktree', `name=${encodeURIComponent(join(worktree, 'secret.png'))}`],
+		['a name not stored', `name=${'a'.repeat(32)}.png`],
+		['no name', ''],
+	])('%s → 404', async (_label, query) => {
+		const { port } = bootGateway(undefined, undefined, readMedia);
+
+		const response = await fetch(url(port, query), { headers: { cookie } });
+
+		expect(response.status).toBe(404);
+	});
+
+	it('no reader wired → 404', async () => {
+		const { port } = bootGateway();
+
+		const response = await fetch(url(port, `name=${name}`), { headers: { cookie } });
+
+		expect(response.status).toBe(404);
 	});
 });

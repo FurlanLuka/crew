@@ -2,6 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { Store } from '../state/store.js';
 import { convertHistoryToStream, restoreHistory, type TranscriptMessage } from './history.js';
+import { createMediaHooks } from './media.js';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 configureLog({ quiet: true });
 
@@ -143,6 +147,7 @@ describe('restoreHistory', () => {
 			store,
 			sessions: { 'store-front/main': { sessionId: 'abc' } },
 			getCwd: createCwdOf(store),
+			getImageSource: () => undefined,
 			loadMessages: async (sessionId, cwd) => {
 				reads.push(`${sessionId}@${cwd}`);
 
@@ -164,6 +169,7 @@ describe('restoreHistory', () => {
 			store,
 			sessions: {},
 			getCwd: createCwdOf(store),
+			getImageSource: () => undefined,
 			loadMessages: async () => [],
 		});
 		expect(store.state.seq).toBe(seqBefore);
@@ -178,6 +184,7 @@ describe('restoreHistory', () => {
 				'checkout-api/main': { sessionId: 'ok' },
 			},
 			getCwd: createCwdOf(store),
+			getImageSource: () => undefined,
 			loadMessages: async (sessionId) => {
 				if (sessionId === 'gone') {
 					throw new Error('Session gone not found');
@@ -198,6 +205,7 @@ describe('restoreHistory', () => {
 			store,
 			sessions: { 'old/main': { sessionId: 'x' } },
 			getCwd: createCwdOf(store),
+			getImageSource: () => undefined,
 			loadMessages: async () => {
 				reads++;
 
@@ -205,5 +213,141 @@ describe('restoreHistory', () => {
 			},
 		});
 		expect(reads).toBe(0);
+	});
+});
+
+describe('convertHistoryToStream: what a session showed', () => {
+	const PNG_BASE64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 7]).toString(
+		'base64',
+	);
+	const screenshot = [
+		{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: PNG_BASE64 } },
+	];
+	const transcript: TranscriptMessage[] = [
+		createAssistantMessage('a1', [
+			{ type: 'tool_use', id: 't1', name: 'mcp__playwright__browser_take_screenshot', input: {} },
+		]),
+		createUserMessage('r1', [{ type: 'tool_result', tool_use_id: 't1', content: screenshot }]),
+		createAssistantMessage('a2', [{ type: 'tool_use', id: 't2', name: 'Read', input: {} }]),
+		createUserMessage('r2', [{ type: 'tool_result', tool_use_id: 't2', content: screenshot }]),
+		createAssistantMessage('a3', [
+			{ type: 'text', text: 'Plan: [Retry plan](https://claude.ai/artifact/p1)' },
+		]),
+		createAssistantMessage('a4', [
+			{ type: 'text', text: 'Updated [Retry plan](https://claude.ai/artifact/p1)' },
+		]),
+	];
+
+	const restore = (mediaDir: string | null) =>
+		convertHistoryToStream({
+			messages: transcript,
+			ref: 'store-front/main',
+			cwd: '/w/store-front',
+			now: 0,
+			...(mediaDir
+				? {
+						media: createMediaHooks({
+							session: { cwd: '/w/store-front', dirs: [], isPinned: false },
+							mediaDir,
+						}),
+					}
+				: {}),
+		}).filter((item) => item.kind === 'image' || item.kind === 'doc');
+
+	it('a screenshot is restored as the same stored image, however often; an image only read is not; a doc linked twice is one card', () => {
+		const mediaDir = mkdtempSync(join(tmpdir(), 'history-media-'));
+
+		const first = restore(mediaDir);
+		const second = restore(mediaDir);
+
+		expect(first).toEqual([
+			{
+				id: 'h:r1:1',
+				at,
+				kind: 'image',
+				name: expect.stringMatching(/^[0-9a-f]{32}\.png$/),
+				alt: '',
+			},
+			{ id: 'h:a3:1', at, kind: 'doc', url: 'https://claude.ai/artifact/p1', title: 'Retry plan' },
+		]);
+		expect(second).toEqual(first);
+		expect(readdirSync(mediaDir)).toHaveLength(1);
+		rmSync(mediaDir, { recursive: true, force: true });
+	});
+
+	it('without a media folder → docs still restored, no images', () => {
+		expect(restore(null).map((item) => item.kind)).toEqual(['doc']);
+	});
+});
+
+describe('restoreHistory: images', () => {
+	const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 3, 3]);
+
+	const restoreImages = async (isPinned: boolean | null) => {
+		const worktree = mkdtempSync(join(tmpdir(), 'history-worktree-'));
+		const mediaDir = mkdtempSync(join(tmpdir(), 'history-media-'));
+		writeFileSync(join(worktree, 'chart.png'), PNG);
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'store-front/main',
+					label: 'store-front/main',
+					branch: '',
+					cwd: worktree,
+					dirs: [],
+					isPinned: isPinned ?? false,
+				},
+			],
+		});
+		const params = {
+			store,
+			sessions: { 'store-front/main': { sessionId: 'abc' } },
+			getCwd: (ref: string) => store.state.sessions[ref]?.cwd ?? null,
+			getImageSource: (ref: string) => (isPinned === null ? undefined : store.state.sessions[ref]),
+			mediaDir,
+			loadMessages: async () => [
+				createAssistantMessage('a1', [{ type: 'text', text: 'Here: ![chart](./chart.png)' }]),
+			],
+		};
+
+		await restoreHistory(params);
+		const first =
+			store.state.sessions['store-front/main']?.stream.filter((item) => item.kind === 'image') ??
+			[];
+		await restoreHistory(params);
+		const second =
+			store.state.sessions['store-front/main']?.stream.filter((item) => item.kind === 'image') ??
+			[];
+		const files = readdirSync(mediaDir);
+
+		rmSync(worktree, { recursive: true, force: true });
+		rmSync(mediaDir, { recursive: true, force: true });
+
+		return { first, second, files };
+	};
+
+	it('an image named in the text is stored again from the worktree: the same name, one file', async () => {
+		const { first, second, files } = await restoreImages(false);
+
+		expect(first).toEqual([
+			expect.objectContaining({
+				kind: 'image',
+				alt: 'chart',
+				name: expect.stringMatching(/\.png$/),
+			}),
+		]);
+		expect(second).toEqual(first);
+		expect(files).toHaveLength(1);
+	});
+
+	it('the pinned setup session, or a session whose folders are unknown → no image', async () => {
+		for (const isPinned of [true, null]) {
+			const { first, files } = await restoreImages(isPinned);
+
+			expect(first).toEqual([]);
+			expect(files).toEqual([]);
+		}
 	});
 });

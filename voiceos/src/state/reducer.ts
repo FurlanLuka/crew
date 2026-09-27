@@ -24,6 +24,7 @@ import {
 	truncateText,
 	updateSession,
 	withoutEffects,
+	isShownAlready,
 } from './helpers.js';
 import { hasFollowUpWaiting, promoteQueued } from './delivery.js';
 import { reduceTakeBack } from './take-back.js';
@@ -435,12 +436,19 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		case 'assistant_text':
 		case 'tool':
 		case 'tool_result':
-		case 'diff': {
+		case 'diff':
+		case 'image':
+		case 'doc': {
 			const isText = input.type === 'assistant_text';
 			const item = createStreamItem({ observation: input, id: stamped.id, at: stamped.at });
 			const session = state.sessions[input.ref];
 
 			if (!item || !session) {
+				return withoutEffects(state);
+			}
+
+			// A doc linked again (every edit links it) or an image shown again is still the one line.
+			if (isShownAlready(session.stream, input)) {
 				return withoutEffects(state);
 			}
 

@@ -1616,3 +1616,39 @@ describe('spoken_ended', () => {
 		]);
 	});
 });
+
+describe('what a session shows', () => {
+	it('an image and a doc become lines; the same doc or picture again stays one line', () => {
+		const { state } = run([
+			{ type: 'worktrees', worktrees: [worktree('store/main')] },
+			{ type: 'image', ref: 'store/main', name: 'a.png', alt: 'login' },
+			{ type: 'doc', ref: 'store/main', url: 'https://claude.ai/artifact/a1', title: 'Retry plan' },
+			{ type: 'doc', ref: 'store/main', url: 'https://claude.ai/artifact/a1', title: 'Retry plan' },
+			{ type: 'image', ref: 'store/main', name: 'a.png', alt: 'login' },
+			{ type: 'image', ref: 'store/main', name: 'b.png', alt: '' },
+		]);
+
+		expect(
+			state.sessions['store/main']?.stream.map((item) =>
+				item.kind === 'image' ? item.name : item.kind === 'doc' ? item.url : item.kind,
+			),
+		).toEqual(['a.png', 'https://claude.ai/artifact/a1', 'b.png']);
+	});
+});
+
+describe('what a session shows: the same picture in a later turn', () => {
+	it('shows again — the developer asked for it again', () => {
+		const { state } = run([
+			{ type: 'worktrees', worktrees: [worktree('store/main')] },
+			{ type: 'session_started', ref: 'store/main' },
+			{ type: 'image', ref: 'store/main', name: 'a.png', alt: '' },
+			{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: '' },
+			{ type: 'send', ref: 'store/main', text: 'show me the page again' },
+			{ type: 'image', ref: 'store/main', name: 'a.png', alt: '' },
+		]);
+
+		expect(
+			state.sessions['store/main']?.stream.filter((item) => item.kind === 'image'),
+		).toHaveLength(2);
+	});
+});

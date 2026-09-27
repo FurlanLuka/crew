@@ -66,6 +66,7 @@ const createToolContext = (patch: Partial<State> = {}) => {
 		saveDebugNote: () => {},
 		notes: createNullNotes(),
 		setHandsFree: () => 'changed' as const,
+		openUrl: () => true,
 	};
 
 	return { tools, actions };
@@ -1811,6 +1812,7 @@ describe('Voice OS note through the real reducer', () => {
 			saveDebugNote: () => {},
 			notes: createNullNotes(),
 			setHandsFree: () => 'changed' as const,
+			openUrl: () => true,
 			recentUtterances: ['why were they failing?'],
 		};
 
@@ -3308,5 +3310,158 @@ describe('joinCutSentence', () => {
 		expect(joinCutSentence({ text: 'the checkout worker.', input, previous: undefined })).toBe(
 			'the checkout worker.',
 		);
+	});
+});
+
+describe('open_doc', () => {
+	const withDocs = () => {
+		const { tools } = createToolContext();
+		const state = tools.getState();
+		const session = state.sessions['store-front/main']!;
+
+		state.sessions['store-front/main'] = {
+			...session,
+			stream: [
+				{
+					id: 'd1',
+					at: 1,
+					kind: 'doc',
+					url: 'https://claude.ai/artifact/risks',
+					title: 'Retry risks',
+				},
+				{
+					id: 'd2',
+					at: 2,
+					kind: 'doc',
+					url: 'https://claude.ai/artifact/plan',
+					title: 'Checkout plan',
+				},
+			],
+		};
+		const opened: [string, string][] = [];
+
+		return {
+			opened,
+			context: {
+				...tools,
+				screen: 'store-front/main',
+				openUrl: (url: string, title: string) => {
+					opened.push([url, title]);
+
+					return true;
+				},
+			},
+		};
+	};
+
+	it("no title → the session's newest doc, opened in the developer's tab", async () => {
+		const { context, opened } = withDocs();
+
+		const result = await executeTool('open_doc', { ref: null, title: null }, context);
+
+		expect(result.ok).toBe(true);
+		expect(opened).toEqual([['https://claude.ai/artifact/plan', 'Checkout plan']]);
+	});
+
+	it('words from a title → that doc', async () => {
+		const { context, opened } = withDocs();
+
+		await executeTool('open_doc', { ref: 'store-front/main', title: 'risks' }, context);
+
+		expect(opened).toEqual([['https://claude.ai/artifact/risks', 'Retry risks']]);
+	});
+
+	it.each([
+		['a session with no doc', { ref: 'checkout-api/main', title: null }, 'no doc yet'],
+		['a title that matches none', { ref: null, title: 'budget' }, 'no doc titled like "budget"'],
+	])('%s → says so, opens nothing', async (_label, input, message) => {
+		const { context, opened } = withDocs();
+
+		const result = await executeTool('open_doc', input, context);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain(message);
+		expect(opened).toEqual([]);
+	});
+
+	it('no tab took it → says to click the card', async () => {
+		const { context } = withDocs();
+
+		const result = await executeTool(
+			'open_doc',
+			{ ref: null, title: null },
+			{ ...context, openUrl: () => false },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('click the doc card');
+	});
+
+	it('"the risks doc" → the doc about risks: words that name the kind of thing are left out', async () => {
+		const { context, opened } = withDocs();
+
+		await executeTool('open_doc', { ref: null, title: 'the risks doc' }, context);
+
+		expect(opened).toEqual([['https://claude.ai/artifact/risks', 'Retry risks']]);
+	});
+
+	it('"the risk doc", as spoken, → the doc titled "Retry risks"', async () => {
+		const { context, opened } = withDocs();
+
+		await executeTool('open_doc', { ref: null, title: 'the risk doc' }, context);
+
+		expect(opened).toEqual([['https://claude.ai/artifact/risks', 'Retry risks']]);
+	});
+
+	it('an unknown session, or no session on screen → says so, opens nothing', async () => {
+		const { context, opened } = withDocs();
+
+		const unknown = await executeTool('open_doc', { ref: 'signals/main', title: null }, context);
+		const noScreen = await executeTool(
+			'open_doc',
+			{ ref: null, title: null },
+			{ ...context, screen: null },
+		);
+
+		expect(unknown.ok).toBe(false);
+		expect(noScreen.content).toContain('No session on screen');
+		expect(opened).toEqual([]);
+	});
+
+	it('the kernel is told the three newest doc titles, each once', () => {
+		const { context } = withDocs();
+		const state = context.getState();
+		const session = state.sessions['store-front/main']!;
+		const doc = (id: string, title: string) => ({
+			id,
+			at: 3,
+			kind: 'doc' as const,
+			url: `https://claude.ai/artifact/${id}`,
+			title,
+		});
+
+		state.sessions['store-front/main'] = {
+			...session,
+			stream: [...session.stream, doc('c', 'C'), doc('d', 'D'), doc('e', 'E')],
+		};
+
+		expect(
+			describeSession({ state, ref: 'store-front/main', isDetailed: false, now: 4 }),
+		).toMatchObject({
+			docs: ['E', 'D', 'C'],
+		});
+	});
+
+	it('the session description lists its docs, newest first, for the kernel', () => {
+		const { context } = withDocs();
+
+		expect(
+			describeSession({
+				state: context.getState(),
+				ref: 'store-front/main',
+				isDetailed: false,
+				now: 3,
+			}),
+		).toMatchObject({ docs: ['Checkout plan', 'Retry risks'] });
 	});
 });

@@ -8,6 +8,7 @@ import { Markdown } from './Markdown.js';
 import { StreamLine } from './StreamLine.js';
 import { SubagentsPanel } from './SubagentsPanel.js';
 import { NotesPanel } from './NotesPanel.js';
+import { DocsPanel } from './DocsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
 
 interface CockpitProps {
@@ -101,6 +102,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 				</div>
 				<VoicePanel state={state} screen={session.ref} />
 				<NotesPanel state={state} screen={session.ref} />
+				<DocsPanel session={session} />
 				<ElsewherePanel state={state} screen={session.ref} dispatch={dispatch} />
 				<div className="panel">
 					<span className="lbl">where</span>

@@ -3,6 +3,7 @@ import type { Observation } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { readGuardedCommand } from '../state/commands.js';
 import { createMapContext, mapMessage, type RawMessage } from './events.js';
+import { createMediaHooks } from './media.js';
 import type { PermissionBridge } from './permissions.js';
 import { buildBriefing } from './voice-context.js';
 
@@ -150,6 +151,10 @@ export interface WorkerOptions {
 	maxBudgetUsd?: number;
 	permissionMode?: 'auto' | 'default';
 	claudeBin?: string;
+	// Where tool screenshots are kept for the page; unset shows no images.
+	mediaDir?: string;
+	// The pinned setup session shows no images from its folder (the home folder).
+	isPinned: boolean;
 }
 
 export class Worker {
@@ -267,8 +272,17 @@ export class Worker {
 	}
 
 	private async run(resumeId: string | null): Promise<void> {
-		const { ref, cwd, permissions, emit } = this.options;
-		const mapContext = createMapContext(ref);
+		const { ref, cwd, dirs, isPinned, mediaDir, permissions, emit } = this.options;
+		const mapContext = createMapContext(
+			ref,
+			mediaDir
+				? createMediaHooks({
+						session: { cwd, dirs, isPinned },
+						mediaDir,
+						log: (message, fields) => log.info(message, { ref, ...fields }),
+					})
+				: undefined,
+		);
 		const runQuery = this.options.runQuery ?? sdkQuery;
 
 		log.info('starting', { ref, cwd, resume: Boolean(resumeId) });

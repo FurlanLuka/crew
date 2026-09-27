@@ -3563,6 +3563,88 @@
 					}
 				}
 			]
+		},
+		{
+			"id": "open-the-doc",
+			"utterance": "Open the doc.",
+			"context": {
+				"view": "store-front/main",
+				"docs": [
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/risks-1",
+						"title": "Retry risks"
+					},
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/plan-2",
+						"title": "Checkout plan"
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "open_doc",
+					"input": {
+						"title": null
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "open-doc-by-title",
+			"utterance": "Can you open the risks doc?",
+			"context": {
+				"view": "store-front/main",
+				"docs": [
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/risks-1",
+						"title": "Retry risks"
+					},
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/plan-2",
+						"title": "Checkout plan"
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "open_doc",
+					"not_input": {
+						"title": null
+					}
+				}
+			],
+			"allow": []
+		},
+		{
+			"id": "change-doc-is-session-work",
+			"utterance": "Add a section on the rollout risks to the doc.",
+			"context": {
+				"view": "store-front/main",
+				"docs": [
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/risks-1",
+						"title": "Retry risks"
+					},
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/plan-2",
+						"title": "Checkout plan"
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["risk"]
+				}
+			],
+			"no_reply": true
 		}
 	]
 }

@@ -376,3 +376,148 @@ describe('slash commands', () => {
 		).toEqual([]);
 	});
 });
+
+describe('mapMessage: what a session shows', () => {
+	const createShowing = () => {
+		const saved: string[] = [];
+		const shown: string[] = [];
+		const context = createContextFor('store/main', {
+			// Only paths under shots/ are images inside the worktree here.
+			showImage: (path) => {
+				shown.push(path);
+
+				return path.startsWith('shots/') ? `${path.length}.png` : null;
+			},
+			saveImage: (data, mediaType) => {
+				saved.push(`${mediaType}:${data}`);
+
+				return 'tool.png';
+			},
+		});
+
+		return { context, saved, shown };
+	};
+
+	const toolCall = (context: ReturnType<typeof createContextFor>, id: string, name: string) =>
+		mapMessage(
+			{ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input: {} }] } },
+			context,
+		);
+
+	const toolResult = (id: string, content: unknown, isError = false) => ({
+		type: 'user' as const,
+		message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: isError, content }] },
+	});
+
+	const screenshot = [
+		{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBOR' } },
+	];
+	const typesOf = (observations: { type: string }[]) =>
+		observations.map((observation) => observation.type);
+
+	it('an image named in the reply → its stored name; one the hook refuses → nothing', () => {
+		const { context, shown } = createShowing();
+
+		const observations = mapMessage(
+			{
+				type: 'assistant',
+				message: {
+					content: [{ type: 'text', text: 'Here: ![login](shots/login.png) and /etc/x/y.png' }],
+				},
+			},
+			context,
+		);
+
+		expect(shown).toEqual(['shots/login.png', '/etc/x/y.png']);
+		expect(observations.filter((observation) => observation.type === 'image')).toEqual([
+			{ type: 'image', ref: 'store/main', name: '15.png', alt: 'login' },
+		]);
+	});
+
+	it("a tool's screenshot → stored and shown", () => {
+		const { context, saved } = createShowing();
+		toolCall(context, 't1', 'mcp__playwright__browser_take_screenshot');
+
+		const observations = mapMessage(toolResult('t1', screenshot), context);
+
+		expect(saved).toEqual(['image/png:iVBOR']);
+		expect(observations).toContainEqual({
+			type: 'image',
+			ref: 'store/main',
+			name: 'tool.png',
+			alt: '',
+		});
+	});
+
+	it('an image the session only read, or from a failed call → not shown, nothing stored', () => {
+		const { context, saved } = createShowing();
+		toolCall(context, 't2', 'Read');
+		toolCall(context, 't3', 'mcp__playwright__browser_take_screenshot');
+
+		const read = mapMessage(toolResult('t2', screenshot), context);
+		const failed = mapMessage(toolResult('t3', screenshot, true), context);
+
+		expect(saved).toEqual([]);
+		expect(typesOf([...read, ...failed])).not.toContain('image');
+	});
+
+	it('a doc linked in the reply, or returned by a connector → a doc', () => {
+		const { context } = createShowing();
+		toolCall(context, 't4', 'mcp__claude_ai_Claude_Docs__batch');
+
+		const fromText = mapMessage(
+			{
+				type: 'assistant',
+				message: {
+					content: [{ type: 'text', text: 'Plan: [Retry plan](https://claude.ai/artifact/a1)' }],
+				},
+			},
+			context,
+		);
+		const fromConnector = mapMessage(
+			toolResult('t4', 'Created https://claude.ai/code/artifact/a2'),
+			context,
+		);
+
+		expect(fromText).toContainEqual({
+			type: 'doc',
+			ref: 'store/main',
+			url: 'https://claude.ai/artifact/a1',
+			title: 'Retry plan',
+		});
+		expect(fromConnector).toContainEqual({
+			type: 'doc',
+			ref: 'store/main',
+			url: 'https://claude.ai/code/artifact/a2',
+			title: 'Claude artifact',
+		});
+	});
+
+	it("a doc link inside a file read or a command output is not the session's doc", () => {
+		const { context } = createShowing();
+		toolCall(context, 't5', 'Read');
+		toolCall(context, 't6', 'Bash');
+
+		const read = mapMessage(
+			toolResult('t5', 'See https://docs.google.com/document/d/x/edit'),
+			context,
+		);
+		const bash = mapMessage(toolResult('t6', 'https://claude.ai/artifact/from-readme'), context);
+
+		expect(typesOf([...read, ...bash])).not.toContain('doc');
+	});
+
+	it('without media hooks (a bare map) → docs still found, no images', () => {
+		const observations = mapMessage(
+			{
+				type: 'assistant',
+				message: {
+					content: [{ type: 'text', text: '![x](shots/a.png) https://claude.ai/artifact/z' }],
+				},
+			},
+			createMapContext(),
+		);
+
+		expect(typesOf(observations)).toEqual(['assistant_text', 'doc']);
+	});
+});

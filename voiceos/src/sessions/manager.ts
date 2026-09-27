@@ -20,6 +20,7 @@ export interface SessionManagerOptions {
 	permissionMode?: 'auto' | 'default';
 	claudeBin?: string;
 	runQuery?: WorkerOptions['runQuery'];
+	mediaDir?: string;
 }
 
 export class SessionManager {
@@ -154,6 +155,8 @@ export class SessionManager {
 			ref,
 			cwd: session.cwd,
 			dirs: session.dirs,
+			...(this.options.mediaDir ? { mediaDir: this.options.mediaDir } : {}),
+			isPinned: session.isPinned,
 			// Even without crew's orientation, a session must know it is driven by voice.
 			orientation: appendVoiceContext(orientation),
 			resumeId,

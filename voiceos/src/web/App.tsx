@@ -9,15 +9,51 @@ import { LastSpokenLine } from './components/LastSpokenLine.js';
 import { Tabs } from './components/Tabs.js';
 import { TopBar } from './components/TopBar.js';
 import type { MicStatus } from './types.js';
-import { useConnection } from './use-connection.js';
+import { useConnection, type OpenRequest } from './use-connection.js';
 import { useSpeechPlayer } from './use-speech-player.js';
+
+// "Open the doc" by voice: a new tab when the browser allows it; a phone, or any browser that
+// wants a tap first, gets a banner to tap instead.
+const useOpenRequest = (request: OpenRequest | null): OpenRequest | null => {
+	const [blocked, setBlocked] = useState<OpenRequest | null>(null);
+
+	useEffect(() => {
+		if (!request) {
+			return;
+		}
+
+		const opened = window.open(request.url, '_blank');
+
+		if (opened) {
+			opened.opener = null;
+		}
+
+		setBlocked(opened ? null : request);
+	}, [request]);
+
+	return blocked;
+};
 
 const App = () => {
 	const player = useSpeechPlayer();
-	const { state, status, send, dispatch, sendBinary, handsFreeCommand } = useConnection((message) =>
-		player.receive(message),
-	);
+	const { state, status, send, dispatch, sendBinary, handsFreeCommand, openRequest } =
+		useConnection((message) => player.receive(message));
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
+	const blockedOpen = useOpenRequest(openRequest);
+
+	// Demos and screenshots: window.voiceos.say("…") is heard like speech. The server ignores it
+	// unless it runs with VOICEOS_DEBUG_SPEECH=1.
+	useEffect(() => {
+		const debug = {
+			say: (text: string, holdMs?: number) => send({ type: 'simulate_speech', text, holdMs }),
+		};
+
+		Object.assign(window, { voiceos: debug });
+
+		return () => {
+			Reflect.deleteProperty(window, 'voiceos');
+		};
+	}, [send]);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -61,6 +97,14 @@ const App = () => {
 						Voice is off until these are set: {state.setup.missing.join(', ')}. Run crew voice keys
 						set anthropic (or soniox) in a terminal, then crew voice restart. Text and clicks still
 						work.
+					</div>
+				)}
+				{blockedOpen && (
+					<div className="banner">
+						<a href={blockedOpen.url} target="_blank" rel="noopener noreferrer">
+							Open {blockedOpen.title} ↗
+						</a>{' '}
+						— the browser held back opening it for you.
 					</div>
 				)}
 				{micStatus === 'denied' && (

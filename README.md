@@ -6,6 +6,8 @@ on me?", "yes, but only on staging".
 
 <!-- Demo video: three sessions, spoken commands, "checkout is done". -->
 
+![A Voice OS session that just added a search box to a store front, showing its own screenshot of the result](docs/images/voice-os/07-session-shows-screenshot.png)
+
 ## Try it
 
 ```bash
@@ -20,6 +22,19 @@ opens in your browser: hold **Space** and talk.
 Your Claude sessions run on your own Claude Code login. The keys pay only for the router and the
 voice: a spoken turn costs about a third of a cent.
 
+## Set up by talking
+
+Voice OS has a **setup** session that runs crew for you. Point it at your repos — folders you
+already have, or git URLs — and say what you want:
+
+> "Add the store api and store app repos from ~/code to crew with their dev servers, wire the
+> store app's API URL to the store API, and make a store front workspace with both."
+
+It registers each project, finds how its dev server runs, points the services at each other,
+installs a fresh copy and checks every server starts. The new worktree appears on its own; then
+"open store front main", "start the dev servers", and ask for whatever you're building.
+[The walkthrough](docs/guides/voice-os.md#from-two-repos-to-a-working-feature) shows every step.
+
 ## What it does
 
 - **One session per piece of work.** Each worktree has its own Claude Code session; Voice OS keeps
@@ -33,14 +48,18 @@ voice: a spoken turn costs about a third of a cent.
   "checkout needs you: the backoff cap"; the full message plays when you switch there.
 - **Your dev servers, watched.** When one dies after a start, Voice OS tells you and offers to have
   that worktree's Claude fix it — "yes" hands it the failure with its logs.
+- **See what they make.** A screenshot or chart a session takes shows right in its page, and the
+  docs and artifacts it writes (Claude Docs, Google Docs, Notion) become cards — "open the doc"
+  opens one in the browser you're using, phone included.
 - **Notes as you think.** "Note: try a tone per session" — kept per workspace.
 
 [The Voice OS guide](docs/guides/voice-os.md) has what you can say, from real use.
 
 ## How it works: crew
 
-Voice OS sits on crew, which gives every piece of work a real, isolated copy of your stack — with
-its dev servers running and the agent inside knowing how to reach them.
+Voice OS is the part you talk to; crew is the bones underneath. It gives every piece of work a
+real, isolated copy of your stack — with its dev servers running and the agent inside knowing how to
+reach them.
 
 A **workspace** groups the repos a feature touches. A **worktree** is one working copy of all of
 them: a git worktree per repo, dev servers on stable ports, and env vars that point the services at
@@ -62,6 +81,8 @@ reach everything: `crew dev logs` for any server's output, `crew dev check` for 
 run` to run tests or scripts with the same URLs the servers got, and `crew fix` to pick up a
 recorded failure with all its evidence. No hunting for which terminal ran what.
 
+Prefer typing? The setup session runs these same commands, and you can too:
+
 ```bash
 crew add project store-api git@github.com:example/store-api.git
 crew add project store-app git@github.com:example/store-app.git
@@ -72,9 +93,6 @@ crew add workspace store-front store-api store-app    # checkout, install, serve
 crew add worktree store-front/wrk1                    # a second copy of everything
 crew dev start store-front/wrk1                       # its servers, on its own ports
 ```
-
-Or skip the commands: in Voice OS, ask the setup session — "make a worktree in store front for the
-search fix".
 
 ## Without voice
 
@@ -90,7 +108,7 @@ skill, a `crew` agent and guided setup:
 ## Learn more
 
 - [Getting set up](docs/guides/getting-set-up.md) — a workspace, its projects, a second worktree
-- [Voice OS](docs/guides/voice-os.md) — what you can say, from real use
+- [Voice OS](docs/guides/voice-os.md) — a walkthrough from two repos to a working feature, and what you can say
 - [How crew works](docs/concepts.md) — projects, bindings, checks, failures, other devices, moving machines
 - [Commands](docs/commands.md) — every command and its output
 - [Running crew on a remote VM](docs/guides/remote-vm.md)

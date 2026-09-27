@@ -1,5 +1,6 @@
 import { stripStreamingTag } from '../shared/spoken-tags.js';
 import { isHeldAsk, type PendingAsk, type Session, type State } from '../shared/protocol.js';
+import { listSessionDocs, type SessionDoc } from '../shared/session-docs.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { readWorkspace } from '../shared/notes.js';
@@ -204,3 +205,7 @@ export const listOtherSessions = (
 
 	return [...rows.filter((row) => row.isWaiting), ...rows.filter((row) => !row.isWaiting)];
 };
+
+// The session's docs, newest first, each once.
+export const listDocs = (session: Pick<Session, 'stream'>): SessionDoc[] =>
+	listSessionDocs(session.stream);

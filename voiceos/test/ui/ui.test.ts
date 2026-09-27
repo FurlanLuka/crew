@@ -101,8 +101,13 @@ const watchErrors = (page: Page): void => {
 	);
 };
 
-const signIn = async (): Promise<SignedInTab> => {
+const signIn = async (beforeLoad?: () => void): Promise<SignedInTab> => {
 	const context = await browser.newContext({ permissions: ['microphone'] });
+
+	if (beforeLoad) {
+		await context.addInitScript(beforeLoad);
+	}
+
 	const page = await context.newPage();
 	watchErrors(page);
 	await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
@@ -522,6 +527,79 @@ describe('voice os ui', () => {
 		});
 		await stream.locator('.aside strong', { hasText: 'retry' }).waitFor({ timeout: 5000 });
 		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: '' });
+		await context.close();
+	}, 20_000);
+
+	it('what a session shows: an image through /media, a doc card, the docs list', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const name = `${'c'.repeat(32)}.png`;
+		store.dispatch({ type: 'image', ref: 'store-front/main', name, alt: 'login page' });
+		store.dispatch({
+			type: 'doc',
+			ref: 'store-front/main',
+			url: 'https://claude.ai/code/artifact/ui-doc',
+			title: 'Retry plan',
+		});
+		const stream = page.locator('.stream');
+
+		const image = stream.locator('.shown-image img[alt="login page"]').first();
+		await image.waitFor({ state: 'attached', timeout: 5000 });
+		expect(await image.getAttribute('src')).toBe(`/media?name=${name}`);
+		const card = stream.locator('.doc-card', { hasText: 'Retry plan' }).first();
+		expect(await card.getAttribute('href')).toBe('https://claude.ai/code/artifact/ui-doc');
+		expect(await page.locator('[aria-label="docs"]').getByText('Retry plan').isVisible()).toBe(
+			true,
+		);
+		await context.close();
+	}, 20_000);
+
+	it('"open the doc" where the browser blocks a new tab → a banner to tap, with the link', async () => {
+		const { context, page } = await signIn(() => {
+			window.open = () => null;
+		});
+
+		gateway.broadcast({
+			type: 'open_url',
+			url: 'https://claude.ai/code/artifact/ui-doc',
+			title: 'Retry plan',
+		});
+
+		const banner = page.locator('.banner a', { hasText: 'Open Retry plan' });
+		await banner.waitFor({ timeout: 5000 });
+		expect(await banner.getAttribute('href')).toBe('https://claude.ai/code/artifact/ui-doc');
+		await context.close();
+	}, 20_000);
+
+	it('"open the doc" where the browser allows it → opened in a new tab, cut off from the cockpit', async () => {
+		const { context, page } = await signIn(() => {
+			const record = window as unknown as { opened: unknown[] };
+			record.opened = [];
+			window.open = ((url: string, target: string) => {
+				const opened = { url, target, opener: 'cockpit' };
+				record.opened.push(opened);
+
+				return opened;
+			}) as unknown as typeof window.open;
+		});
+
+		gateway.broadcast({
+			type: 'open_url',
+			url: 'https://claude.ai/code/artifact/ui-doc',
+			title: 'Retry plan',
+		});
+
+		await page.waitForFunction(
+			() => (window as unknown as { opened: unknown[] }).opened.length > 0,
+			null,
+			{
+				timeout: 5000,
+			},
+		);
+		expect(await page.evaluate(() => (window as unknown as { opened: unknown[] }).opened)).toEqual([
+			{ url: 'https://claude.ai/code/artifact/ui-doc', target: '_blank', opener: null },
+		]);
+		expect(await page.locator('.banner', { hasText: 'Open Retry plan' }).count()).toBe(0);
 		await context.close();
 	}, 20_000);
 

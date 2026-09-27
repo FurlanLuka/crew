@@ -58,6 +58,10 @@ export const createStreamItem = ({
 			return { id, at, kind: 'tool_result', ok: observation.ok, summary: observation.summary };
 		case 'diff':
 			return { id, at, kind: 'diff', filePath: observation.filePath, lines: observation.lines };
+		case 'image':
+			return { id, at, kind: 'image', name: observation.name, alt: observation.alt };
+		case 'doc':
+			return { id, at, kind: 'doc', url: observation.url, title: observation.title };
 		default:
 			return null;
 	}
@@ -181,3 +185,22 @@ export const pointLastSpokenAt = (state: State, from: string, to: string): State
 	state.lastSpokenSend?.id === from
 		? { ...state, lastSpokenSend: { ...state.lastSpokenSend, id: to } }
 		: state;
+
+// A doc linked again, or the same picture shown again, adds no second line: live, and when a
+// history is restored.
+export const isShownAlready = (stream: StreamItem[], observation: Observation): boolean => {
+	switch (observation.type) {
+		case 'doc':
+			return stream.some((item) => item.kind === 'doc' && item.url === observation.url);
+		case 'image': {
+			// Within the turn: the same picture asked for again later is shown again.
+			const turnStart = stream.findLastIndex((item) => item.kind === 'user');
+
+			return stream
+				.slice(turnStart + 1)
+				.some((item) => item.kind === 'image' && item.name === observation.name);
+		}
+		default:
+			return false;
+	}
+};

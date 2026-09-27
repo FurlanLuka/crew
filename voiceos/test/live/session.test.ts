@@ -266,6 +266,7 @@ describe.skipIf(!isLive)('live session core', () => {
 				store: freshStore,
 				sessions: loadRegistry(registryFile),
 				getCwd: (ref) => freshStore.state.sessions[ref]?.cwd ?? null,
+				getImageSource: (ref) => freshStore.state.sessions[ref],
 				loadMessages: loadTranscript,
 			});
 			const stream = freshStore.state.sessions[REF]?.stream ?? [];

@@ -19,7 +19,8 @@ export type ToolName =
 	| 'note'
 	| 'read_notes'
 	| 'queued_message'
-	| 'hands_free';
+	| 'hands_free'
+	| 'open_doc';
 
 export const MUTATING_TOOLS: ToolName[] = [
 	'forward',
@@ -304,6 +305,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			type: 'object',
 			properties: { workspace: { type: ['string', 'null'] } },
 			required: ['workspace'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'open_doc',
+		description:
+			'Open a doc or artifact a session made in the developer\'s browser ("open the doc", "show me the artifact", "open the risks doc"). ref: the session, null for the one on screen. title: words from the doc\'s title when they named one, else null for its newest doc. Changing a doc ("add a section on risks to the doc") is work for the session: forward it.',
+		input_schema: {
+			type: 'object',
+			properties: { ref: { type: ['string', 'null'] }, title: { type: ['string', 'null'] } },
+			required: ['ref', 'title'],
 			additionalProperties: false,
 		},
 	},

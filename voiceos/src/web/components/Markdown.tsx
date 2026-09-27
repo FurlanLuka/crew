@@ -7,6 +7,9 @@ const REMARK_PLUGINS = [remarkGfm];
 // Links leave the cockpit: it holds live sessions that a navigation would drop.
 const COMPONENTS: Components = {
 	a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+	// An image in the text would point at a path on the server the browser cannot reach; the
+	// session's shown images come as their own lines, served through /media.
+	img: () => null,
 };
 
 interface MarkdownProps {
