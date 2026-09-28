@@ -114,6 +114,7 @@ export const describeSession = ({
 	const lastReply = isDetailed ? findLastReply(state, ref) : null;
 	// What "open the doc" or "the risks doc" can mean on this session, newest first.
 	const docTitles = listDocTitles(state, ref);
+	const backgroundAgents = session.subagents.filter((subagent) => subagent.isBackground).length;
 
 	return {
 		ref,
@@ -126,6 +127,11 @@ export const describeSession = ({
 			? { latest_update: session.heldLine.text }
 			: {}),
 		...(work.for ? { working_for: work.for } : {}),
+		// Its turn may have ended while these still work: it is not done yet.
+		...(backgroundAgents > 0 ? { background_agents: backgroundAgents } : {}),
+		...(session.compactingSince !== null
+			? { compacting_for: formatAge(now - session.compactingSince) }
+			: {}),
 		...(ask ? { pending: describePending(ask) } : {}),
 		...(session.needsUser ? { asked: session.needsUser.text, asked_ago: work.waitingFor } : {}),
 		...(denial ? { blocked: denial.summary } : {}),

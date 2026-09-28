@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createMapContext as createContextFor, mapMessage } from './events.js';
+import { createMapContext as createContextFor, describeCompaction, mapMessage } from './events.js';
 import { summarizeTool } from './tool-summary.js';
 
 const createMapContext = () => createContextFor('store/main');
@@ -356,10 +356,43 @@ describe('slash commands', () => {
 			{ type: 'conversation_reset', ref: 'store/main' },
 		]));
 
-	it('/compact → a notice', () =>
+	it('/compact → compaction over, and a notice; the sizes when the SDK gives them', () => {
 		expect(mapMessage({ type: 'system', subtype: 'compact_boundary' }, createMapContext())).toEqual(
-			[{ type: 'session_notice', ref: 'store/main', text: 'Context compacted.' }],
-		));
+			[
+				{ type: 'compacting', ref: 'store/main', isCompacting: false },
+				{ type: 'session_notice', ref: 'store/main', text: 'Context compacted.' },
+			],
+		);
+		expect(describeCompaction({ pre_tokens: 181_400, post_tokens: 22_300 })).toBe(
+			'Context compacted: 181k → 22k tokens.',
+		);
+		expect(describeCompaction({ pre_tokens: 181_400 })).toBe(
+			'Context compacted: 181k tokens before.',
+		);
+		expect(describeCompaction({ pre_tokens: 900, post_tokens: 400 })).toBe(
+			'Context compacted: 900 → 400 tokens.',
+		);
+	});
+
+	it("status 'compacting' → compacting; null → over; failed → over and a notice; 'requesting' → nothing", () => {
+		const status = (fields: Record<string, unknown>) =>
+			mapMessage({ type: 'system', subtype: 'status', ...fields }, createMapContext());
+
+		expect(status({ status: 'compacting' })).toEqual([
+			{ type: 'compacting', ref: 'store/main', isCompacting: true },
+		]);
+		expect(status({ status: null, compact_result: 'success' })).toEqual([
+			{ type: 'compacting', ref: 'store/main', isCompacting: false },
+		]);
+		expect(
+			status({ status: null, compact_result: 'failed', compact_error: 'prompt too long' }),
+		).toEqual([
+			{ type: 'compacting', ref: 'store/main', isCompacting: false },
+			{ type: 'session_notice', ref: 'store/main', text: 'Compaction failed: prompt too long' },
+		]);
+		expect(status({ status: 'requesting' })).toEqual([]);
+		expect(status({})).toEqual([]);
+	});
 
 	it('local command output → a notice with it; empty output → nothing', () => {
 		expect(

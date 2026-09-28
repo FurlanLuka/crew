@@ -483,6 +483,7 @@ describe('turn_ended', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 	});
 
@@ -627,6 +628,42 @@ describe('determinism', () => {
 		];
 
 		expect(run(inputs).state).toEqual(run(inputs).state);
+	});
+});
+
+describe('compaction', () => {
+	const since = (state: State) => state.sessions['store/main']?.compactingSince;
+	const compacting = (isCompacting: boolean): Input => ({
+		type: 'compacting',
+		ref: 'store/main',
+		isCompacting,
+	});
+
+	it('starts at its first "compacting", keeps that time, ends on false', () => {
+		const started = run([compacting(true)], idleSession()).state;
+		const again = run([compacting(true)], started).state;
+
+		expect(since(started)).toBe(1000);
+		expect(since(again)).toBe(1000);
+		expect(since(run([compacting(false)], again).state)).toBeNull();
+	});
+
+	it('the turn ending, an interrupt, a stop, the worker exiting, a new process or a /clear clear it', () => {
+		const running = run(
+			[{ type: 'send', ref: 'store/main', text: 'compact' }, compacting(true)],
+			idleSession(),
+		).state;
+
+		for (const input of [
+			{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: '' },
+			{ type: 'interrupt', ref: 'store/main' },
+			{ type: 'stop_session', ref: 'store/main' },
+			{ type: 'worker_exited', ref: 'store/main', error: null },
+			{ type: 'session_started', ref: 'store/main' },
+			{ type: 'conversation_reset', ref: 'store/main' },
+		] as Input[]) {
+			expect(since(run([input], running).state)).toBeNull();
+		}
 	});
 });
 

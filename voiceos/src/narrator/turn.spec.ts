@@ -81,6 +81,7 @@ describe('turn narrator', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 
 		expect(harness.store.state.sessions['checkout-api/main']).toMatchObject({
@@ -120,6 +121,7 @@ describe('turn narrator', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 		expect(harness.spoken).toEqual(['checkout api, main: tests pass.']);
 		expect(harness.asking).toEqual([false]);
@@ -142,6 +144,7 @@ describe('turn narrator', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 
 		expect(harness.spoken).toEqual([]);
@@ -171,6 +174,7 @@ describe('turn narrator', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 		expect(harness.seen).toEqual([{ focused: true }]);
 	});
@@ -193,6 +197,7 @@ describe('turn narrator', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 		harness.store.dispatch({
 			type: 'send',
@@ -223,6 +228,7 @@ describe('turn narrator', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 		expect(harness.spoken).toEqual([]);
 	});
@@ -414,6 +420,7 @@ describe("turn narrator and the session's own line", () => {
 			spoken: { text: 'Tests pass: all 40.', isAsking: false },
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 		await harness.handle({
 			type: 'narrate',
@@ -424,6 +431,7 @@ describe("turn narrator and the session's own line", () => {
 			spoken: { text: 'Done: pushed.', isAsking: false },
 			isSpokenAlready: true,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 
 		expect(harness.seen).toEqual([]);
@@ -450,6 +458,7 @@ describe("turn narrator and the session's own line", () => {
 			spoken: tagged('Push the branch now?', true),
 			isSpokenAlready: true,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 
 		expect(harness.store.state.sessions['checkout-api/main']?.needsUser).not.toBeNull();
@@ -474,6 +483,7 @@ describe("turn narrator and the session's own line", () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 
 		expect(harness.seen).toHaveLength(1);
@@ -499,6 +509,7 @@ describe('the topic of a turn the session spoke for itself', () => {
 		spoken: { text: 'Notes are built and committed.', isAsking: false },
 		isSpokenAlready: true,
 		isHeld: false,
+		hasBackgroundAgents: false,
 	};
 	const topicOf = (harness: ReturnType<typeof createHarness>) =>
 		harness.store.state.sessions['checkout-api/main']?.topic;
@@ -629,6 +640,7 @@ describe('a session off screen at the end of its turn', () => {
 		spoken: null,
 		isSpokenAlready: false,
 		isHeld: false,
+		hasBackgroundAgents: false,
 	};
 	const heldOf = (store: Store) => store.state.sessions[REF_]?.heldLine;
 
@@ -705,6 +717,27 @@ describe('a session off screen at the end of its turn', () => {
 		await harness.handle(tagless);
 
 		expect(harness.lines).toEqual([]);
+	});
+
+	it('a newer line held while it thought (another turn streamed) is no replay → still announced', async () => {
+		const harness = createOffScreenHarness({
+			duringWait: (store) =>
+				store.dispatch({
+					type: 'line_held',
+					ref: REF_,
+					text: 'Started the follow-up: checking the two paid tools against the same list.',
+					isAsking: false,
+				}),
+		});
+		harness.store.dispatch({
+			type: 'line_held',
+			ref: REF_,
+			text: 'Plan approved; building the retry backoff and its tests now.',
+			isAsking: false,
+		});
+		await harness.handle(tagless);
+
+		expect(harness.lines.map((line) => line.text)).toEqual(['checkout is done.']);
 	});
 
 	it('switched there (nothing held) while it thought → said in full, on screen', async () => {
@@ -894,5 +927,122 @@ describe('off screen, from the stream to what is said', () => {
 
 		expect(named.said).toEqual(['checkout needs you: the backoff cap.']);
 		expect(failed.said).toEqual(['checkout needs you.']);
+	});
+});
+
+describe('background sub-agents and follow-up turns off screen (research that outlives its turn)', () => {
+	const REF_ = 'checkout-api/main';
+	const STARTED =
+		'Started the competitor research in the background: worktree tools, agent cockpits and voice control.';
+	const REPORT =
+		'Found four close competitors; none runs one agent per worktree with its own ports, and none is voice-first.';
+
+	const createFlow = () => {
+		const store = new Store();
+		const effects: NarrateEffectSeen[] = [];
+		const said: string[] = [];
+		store.onEffect((effect) => {
+			if (effect.type === 'narrate') {
+				effects.push(effect);
+			}
+		});
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{ ref: REF_, label: 'checkout', branch: '', cwd: '/w', dirs: [], isPinned: false },
+			],
+		});
+		store.dispatch({ type: 'session_started', ref: REF_ });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const handle = createTurnNarrator({
+			store,
+			narrate: async () => ({
+				speak: false,
+				needs_user: false,
+				priority: 'low',
+				text: '',
+				topic: null,
+			}),
+			writeTopic: async (input) => ({ topic: input.topic, about: null }),
+			say: (line) => said.push(line.text),
+			journalDir: mkdtempSync(join(tmpdir(), 'voiceos-bg-')),
+			readGitHead: async () => null,
+		});
+
+		const endTurn = async (line: string, isAsking = false) => {
+			const text = `<spoken${isAsking ? ' asks' : ''}>${line}</spoken>`;
+			store.dispatch({ type: 'assistant_text', ref: REF_, text });
+			store.dispatch({ type: 'turn_ended', ref: REF_, costUsd: 0, text });
+
+			for (const effect of effects.splice(0)) {
+				await handle(effect);
+			}
+		};
+
+		return { store, said, endTurn };
+	};
+
+	type NarrateEffectSeen = Parameters<ReturnType<typeof createTurnNarrator>>[0];
+
+	it('the turn ends while a background sub-agent works → held, nothing announced', async () => {
+		const { store, said, endTurn } = createFlow();
+		store.dispatch({ type: 'send', ref: REF_, text: 'find open-source competitors' });
+		store.dispatch({
+			type: 'subagent_started',
+			ref: REF_,
+			taskId: 't1',
+			agentType: 'general-purpose',
+			description: 'competitor research',
+			isBackground: true,
+		});
+		await endTurn(STARTED);
+
+		expect(said).toEqual([]);
+		expect(store.state.sessions[REF_]?.heldLine).toMatchObject({ text: STARTED });
+	});
+
+	it('then the report turn → one "is done"; a short afterword turn → neither said nor replacing it', async () => {
+		const { store, said, endTurn } = createFlow();
+		store.dispatch({ type: 'send', ref: REF_, text: 'find open-source competitors' });
+		store.dispatch({
+			type: 'subagent_started',
+			ref: REF_,
+			taskId: 't1',
+			agentType: null,
+			description: 'competitor research',
+			isBackground: true,
+		});
+		await endTurn(STARTED);
+		store.dispatch({ type: 'subagent_ended', ref: REF_, taskId: 't1' });
+		await endTurn(REPORT);
+		await endTurn('The competitor research is wrapped up, covered in the answer above.');
+
+		expect(said).toEqual(['checkout is done.']);
+		expect(store.state.sessions[REF_]?.heldLine).toMatchObject({
+			text: REPORT,
+			isAnnounced: true,
+		});
+
+		const replayed: string[] = [];
+		store.onEffect((effect) => {
+			if (effect.type === 'speak') {
+				replayed.push(effect.text);
+			}
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF_ } });
+
+		expect(replayed[0]).toStartWith(REPORT.replace(/\.$/, ''));
+	});
+
+	it('a second long report before the switch → still one "is done"; a question after it → announced', async () => {
+		const { said, endTurn } = createFlow();
+		await endTurn(REPORT);
+		await endTurn(`${REPORT} Also checked two paid tools; same result there.`);
+
+		expect(said).toEqual(['checkout is done.']);
+
+		await endTurn('Should I write the comparison into a doc for the README?', true);
+
+		expect(said.at(-1)).toStartWith('checkout needs you');
 	});
 });

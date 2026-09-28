@@ -12,7 +12,7 @@ import { isAskInput, reduceAsk, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
 import { findRedirectAsk, isRedirectInput, queueHeldRedirect, reduceRedirect } from './redirect.js';
-import { isSubagentInput, reduceSubagent } from './subagents.js';
+import { hasBackgroundWork, isSubagentInput, reduceSubagent } from './subagents.js';
 import { isDevInput, reduceDev } from './dev.js';
 import {
 	createStreamItem,
@@ -64,6 +64,8 @@ export type Effect =
 			isSpokenAlready: boolean;
 			// Its final line was held while the developer looked elsewhere.
 			isHeld: boolean;
+			// Background sub-agents still work: the turn ended, the work did not.
+			hasBackgroundAgents: boolean;
 	  }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string; note?: string }
@@ -138,6 +140,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	isFresh: false,
 	requests: [],
 	subagents: [],
+	compactingSince: null,
 	reportOwed: false,
 	spokenInTurn: [],
 	currentSendId: null,
@@ -314,6 +317,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					queue: [],
 					draft: '',
 					voiceTurnAt: null,
+					compactingSince: null,
 					reportOwed: false,
 					currentSendId: null,
 					heldLine: null,
@@ -340,6 +344,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					voiceTurnAt: null,
 					// The developer stopped the work: there is nothing to report, nor to replay.
 					reportOwed: false,
+					compactingSince: null,
 					currentSendId: null,
 					heldLine: null,
 					lineBeforeAsk: null,
@@ -392,6 +397,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				status: 'idle',
 				error: null,
 				subagents: [],
+				compactingSince: null,
 			}));
 
 			return dispatchQueueHead(ready, input.ref, stamped);
@@ -536,6 +542,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					// Held while the developer looked elsewhere: streamed, but never said.
 					isHeld,
 					isSpokenAlready: spoken !== null && session.spokenInTurn.includes(spoken.text) && !isHeld,
+					hasBackgroundAgents: hasBackgroundWork(session),
 				});
 			}
 
@@ -554,6 +561,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				costUsd: current.costUsd + input.costUsd,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
+				compactingSince: null,
 			}));
 			// The work a held switch asked about is over: what it wanted goes next, ahead of the queue.
 			const switched = moveHeldRedirectAhead(ended, input.ref, stamped);
@@ -575,6 +583,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceTurnAt: null,
 				queue: input.error ? session.queue : [],
 				subagents: [],
+				compactingSince: null,
 				reportOwed: false,
 				currentSendId: null,
 				heldLine: null,
@@ -632,6 +641,16 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				}),
 			);
 		}
+
+		case 'held_line_announced':
+			return withoutEffects(
+				state.sessions[input.ref]?.heldLine?.id === input.id
+					? updateSession(state, input.ref, (session) => ({
+							...session,
+							heldLine: session.heldLine ? { ...session.heldLine, isAnnounced: true } : null,
+						}))
+					: state,
+			);
 
 		case 'held_line_heard':
 			return withoutEffects(
@@ -695,6 +714,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...session,
 				isFresh: true,
 				subagents: [],
+				compactingSince: null,
 			}));
 
 			return withoutEffects(
@@ -707,6 +727,15 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				}),
 			);
 		}
+
+		case 'compacting':
+			return withoutEffects(
+				updateSession(state, input.ref, (session) => ({
+					...session,
+					// A second "compacting" keeps the time it began.
+					compactingSince: input.isCompacting ? (session.compactingSince ?? stamped.at) : null,
+				})),
+			);
 
 		case 'session_notice':
 			return withoutEffects(

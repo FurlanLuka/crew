@@ -119,10 +119,13 @@ export interface NeedsUser {
 
 // What a session said while the developer looked elsewhere, kept for when they switch to it: its
 // latest spoken line, or an ask only announced. missed: earlier lines it replaced.
-export type HeldLine = { id: string; at: number; missed: number } & (
-	| { kind: 'line'; text: string; isAsking: boolean }
-	| { kind: 'ask'; askId: string }
-);
+export type HeldLine = {
+	id: string;
+	at: number;
+	missed: number;
+	// The developer was told "<session> is done" or "needs you" about it: that is not said twice.
+	isAnnounced: boolean;
+} & ({ kind: 'line'; text: string; isAsking: boolean } | { kind: 'ask'; askId: string });
 
 export interface Session {
 	ref: string;
@@ -157,6 +160,8 @@ export interface Session {
 	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
 	withdrawnAsides: string[];
 	heldLine: HeldLine | null;
+	// When its context compaction began; null when none runs. The SDK reports no progress.
+	compactingSince: number | null;
 	// When its latest spoken line came, if nothing but a question or plan has come since: such a line
 	// asked it, and Voice OS does not ask it again.
 	lineBeforeAsk: { at: number; text: string } | null;
@@ -355,6 +360,8 @@ export type Observation =
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
+	// The held line was announced ("<session> is done", "needs you").
+	| { type: 'held_line_announced'; ref: string; id: string }
 	| { type: 'session_started'; ref: string }
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }
@@ -406,6 +413,8 @@ export type Observation =
 	  }
 	// /clear (or /reset, /new) started a new conversation in the same process.
 	| { type: 'conversation_reset'; ref: string }
+	// The session's context is being compacted (true), or that ended (false).
+	| { type: 'compacting'; ref: string; isCompacting: boolean }
 	| { type: 'session_notice'; ref: string; text: string }
 	// A held /clear or /compact went unanswered for COMMAND_TTL_MS.
 	| { type: 'command_expired'; askId: string };

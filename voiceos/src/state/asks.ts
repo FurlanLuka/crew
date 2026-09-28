@@ -19,6 +19,7 @@ import {
 	clearHeldLine,
 	describeAnnouncement,
 	holdLine,
+	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
 } from './held-lines.js';
@@ -125,28 +126,37 @@ const ABOUT_WORDS = 6;
 
 const describeAskAbout = (ask: PendingAsk): string | null => {
 	// What the decision is about, in a few words: enough to choose whether to switch now.
-	if (ask.kind === 'plan') {
-		return 'a plan to approve';
+	switch (ask.kind) {
+		case 'plan':
+			return 'a plan to approve';
+		case 'permission':
+			return `approval to ${capWords(ask.summary, ABOUT_WORDS).replace(/[.…]+$/, '')}`;
+		case 'question': {
+			const open = findOpenQuestion(ask)?.question;
+
+			return open
+				? open.header?.trim() || capWords(open.question, ABOUT_WORDS).replace(/[?…]+$/, '')
+				: null;
+		}
+
+		default:
+			return null;
 	}
-
-	if (ask.kind !== 'question') {
-		return null;
-	}
-
-	const open = findOpenQuestion(ask)?.question;
-
-	return open
-		? open.header?.trim() || capWords(open.question, ABOUT_WORDS).replace(/[?…]+$/, '')
-		: null;
 };
 
 const isAnnouncedOnly = (state: State, ask: PendingAsk): boolean => {
-	// Off screen a plan, and a question too long to take in there, wait for the developer to switch;
-	// a permission and a short question are said as always.
 	if (isOnScreen(state, ask.ref)) {
 		return false;
 	}
 
+	// On another session's screen the session's own asks wait for the developer to switch, like its
+	// lines: never read out, or docked, over the session they are looking at. Voice OS's own asks (a
+	// held /clear, a redirect) answer the developer's words and are said where they are.
+	if (isOnAnotherSession(state, ask.ref)) {
+		return isSdkAsk(ask);
+	}
+
+	// Mission Control is the overview: only a plan, and a question too long to take in there, wait.
 	if (ask.kind === 'plan') {
 		return true;
 	}
@@ -447,6 +457,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						ref: ask.ref,
 						content: { kind: 'ask', askId: ask.id },
 						stamped,
+						isAnnounced: true,
 					}),
 					effects: [
 						{
@@ -466,7 +477,8 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				};
 			}
 
-			// Off screen, a short question said in full now: the session's held line would only repeat it.
+			// On Mission Control, a short question said in full now: the session's held line would only
+			// repeat it.
 			const said =
 				ask.kind === 'question' &&
 				!isOnScreen(state, ask.ref) &&

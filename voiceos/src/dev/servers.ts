@@ -194,7 +194,9 @@ export const formatVerdictLine = (servers: DevServer[]): VerdictLine => {
 			text:
 				servers.length === 1
 					? 'the dev server is up.'
-					: `all ${countInWords(servers.length)} dev servers are up.`,
+					: servers.length === 2
+						? 'both dev servers are up.'
+						: `all ${countInWords(servers.length)} dev servers are up.`,
 			failing: [],
 		};
 	}

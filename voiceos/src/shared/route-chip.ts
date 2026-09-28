@@ -9,11 +9,15 @@ export interface RouteChip {
 }
 
 export const findCurrentAsk = (state: State): PendingAsk | null => {
-	// The viewed session's oldest ask, else the oldest anywhere: asks preempt the grid, like speech.
-	const viewedRef = state.view.kind === 'session' ? state.view.ref : null;
-	const viewedAsk = viewedRef ? state.asks.find((ask) => ask.ref === viewedRef) : undefined;
+	// On a session, only its own ask: another session's is announced and waits for the developer to
+	// switch there. Mission Control is the overview, so the oldest anywhere preempts it, like speech.
+	if (state.view.kind === 'session') {
+		const viewedRef = state.view.ref;
 
-	return viewedAsk ?? state.asks[0] ?? null;
+		return state.asks.find((ask) => ask.ref === viewedRef) ?? null;
+	}
+
+	return state.asks[0] ?? null;
 };
 
 interface DescribeRouteChipParams {

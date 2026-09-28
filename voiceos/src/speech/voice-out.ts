@@ -2,9 +2,12 @@ import { createLogger } from '../log.js';
 import { isSdkAsk, type SpeechMessage, type SpokenLine, type State } from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName } from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
+import { hasBackgroundWork } from '../state/subagents.js';
 import {
+	decideTurnLine,
 	describeAnnouncement,
 	isHeldQuestion,
+	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
 } from '../state/held-lines.js';
@@ -272,16 +275,23 @@ export class VoiceOut {
 		// Queued while its session was on screen; the developer went elsewhere before it played.
 		const { store } = this.options;
 
-		if (
-			!item.isHoldable ||
-			!item.ref ||
-			isOnScreen(store.state, item.ref) ||
-			isShortLine(item.text)
-		) {
+		if (!item.isHoldable || !item.ref || isOnScreen(store.state, item.ref)) {
 			return false;
 		}
 
 		const session = store.state.sessions[item.ref];
+		const decision = decideTurnLine({
+			isShown: false,
+			isShort: isShortLine(item.text),
+			isHeldAnnounced: session?.heldLine?.isAnnounced === true,
+			hasBackgroundAgents: session ? hasBackgroundWork(session) : false,
+			needsUser: Boolean(item.isAsking),
+			isOnAnotherSession: isOnAnotherSession(store.state, item.ref),
+		});
+
+		if (decision.kind === 'say') {
+			return false;
+		}
 
 		// Its session stopped meanwhile: nothing is kept for it, and nothing announced.
 		if (session?.status === 'stopped') {
@@ -300,16 +310,28 @@ export class VoiceOut {
 
 		// Its turn already ended, so no announcement is coming from it: this is the announcement. A
 		// question or plan it waits on was not skipped (this line was never heard): its own alert tells it.
-		if (session && session.status !== 'running' && session.status !== 'blocked') {
-			const kind = item.isAsking ? 'needs' : 'done';
-			this.say({
-				text: describeAnnouncement({ label: session.label, kind }),
-				priority: kind === 'needs' ? 'high' : 'normal',
-				source: 'narrator',
-				ref: item.ref,
-				...(kind === 'needs' ? { chime: 'needs' as const } : {}),
-			});
+		const held = store.state.sessions[item.ref]?.heldLine;
+		const kind = decision.announce;
+		const isTurnOver = session && session.status !== 'running' && session.status !== 'blocked';
+
+		if (!isTurnOver || !held) {
+			return true;
 		}
+
+		if (!kind) {
+			log.info('not announced', { id: item.id, ref: item.ref });
+
+			return true;
+		}
+
+		store.dispatch({ type: 'held_line_announced', ref: item.ref, id: held.id });
+		this.say({
+			text: describeAnnouncement({ label: session.label, kind }),
+			priority: kind === 'needs' ? 'high' : 'normal',
+			source: 'narrator',
+			ref: item.ref,
+			...(kind === 'needs' ? { chime: 'needs' as const } : {}),
+		});
 
 		return true;
 	}

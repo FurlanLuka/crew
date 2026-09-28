@@ -3,7 +3,15 @@ import type { Input, PendingAsk, State } from '../shared/protocol.js';
 import type { Effect } from './reducer.js';
 import { REF, idleSession, permissionAsk, run, runningSession } from '../../test/support/reduce.js';
 import { findLastAskedAloud } from '../tools/asked-aloud.js';
-import { describeAnnouncement, describeHeldLine, isShortLine } from './held-lines.js';
+import {
+	decideTurnLine,
+	describeAnnouncement,
+	describeHeldLine,
+	holdLine,
+	isOnAnotherSession,
+	isShortLine,
+	type TurnLineDecision,
+} from './held-lines.js';
 
 const LONG =
 	'The notes panel is built, the reviewers signed off, and it is committed on the voice-os branch.';
@@ -228,7 +236,7 @@ describe('asks off screen', () => {
 		expect(said(open(plan).effects)).toEqual(['store/main needs you: a plan to approve.']);
 	});
 
-	it('a short question, a permission, or anything on screen → said as always, nothing held', () => {
+	it('on Mission Control a short question or a permission, or anything on screen → said as always', () => {
 		const short = {
 			...longQuestion(),
 			questions: [{ question: 'Postgres or SQLite?', multiSelect: false, options: [] }],
@@ -242,6 +250,31 @@ describe('asks off screen', () => {
 			expect(heldOf(result.state)).toBeNull();
 			expect(result.effects[0]).toMatchObject({ isAsking: true, source: 'alert' });
 		}
+	});
+
+	it("on another session's screen a short question and a permission are announced and held too", () => {
+		const elsewhere: State = {
+			...idleSession(),
+			view: { kind: 'session', ref: 'store/wrk1' },
+		};
+		const short = {
+			...longQuestion(),
+			questions: [{ question: 'Postgres or SQLite?', multiSelect: false, options: [] }],
+		} as PendingAsk;
+		const asked = open(short, elsewhere);
+		const permission = open(permissionAsk('a1'), elsewhere);
+
+		expect(said(asked.effects)).toEqual(['store/main needs you: Postgres or SQLite.']);
+		expect(said(permission.effects)).toEqual(['store/main needs you: approval to run git push.']);
+		expect(heldOf(asked.state)).toMatchObject({ kind: 'ask', askId: 'q1' });
+		expect(heldOf(permission.state)).toMatchObject({ kind: 'ask', askId: 'a1' });
+		expect(
+			said(
+				run([{ type: 'switch_view', view: { kind: 'session', ref: REF } }], {
+					start: permission.state,
+				}).effects,
+			),
+		).toEqual(['store/main wants to run git push. Allow?']);
 	});
 
 	it('answered or closed before the switch → nothing replays', () => {
@@ -471,4 +504,144 @@ describe('a question or plan the session already asked in its own line', () => {
 
 		expect(said(effects)[0]).toContain('Second?');
 	});
+});
+
+describe('decideTurnLine', () => {
+	const base = {
+		isShown: false,
+		isShort: false,
+		isHeldAnnounced: false,
+		hasBackgroundAgents: false,
+		needsUser: false,
+		isOnAnotherSession: true,
+	};
+
+	const cases: [string, Partial<typeof base>, TurnLineDecision][] = [
+		['on screen', { isShown: true, isHeldAnnounced: true }, { kind: 'say' }],
+		['short, off screen', { isShort: true }, { kind: 'say' }],
+		['long report', {}, { kind: 'hold', announce: 'done' }],
+		[
+			'background sub-agents still work',
+			{ hasBackgroundAgents: true },
+			{ kind: 'hold', announce: null },
+		],
+		[
+			'after a report already announced',
+			{ isHeldAnnounced: true },
+			{ kind: 'hold', announce: null },
+		],
+		[
+			'short, after a report already announced',
+			{ isShort: true, isHeldAnnounced: true },
+			{ kind: 'hold', announce: null },
+		],
+		['a question', { needsUser: true, isHeldAnnounced: true }, { kind: 'hold', announce: 'needs' }],
+		[
+			'a question while background sub-agents work',
+			{ needsUser: true, hasBackgroundAgents: true },
+			{ kind: 'hold', announce: 'needs' },
+		],
+		[
+			'short, while background sub-agents work',
+			{ isShort: true, hasBackgroundAgents: true },
+			{ kind: 'say' },
+		],
+		[
+			'a short question over another session',
+			{ needsUser: true, isShort: true },
+			{ kind: 'hold', announce: 'needs' },
+		],
+		[
+			'a short question on Mission Control',
+			{ needsUser: true, isShort: true, isOnAnotherSession: false },
+			{ kind: 'say' },
+		],
+	];
+
+	it.each(cases)('%s', (_, params, expected) =>
+		expect(decideTurnLine({ ...base, ...params })).toEqual(expected),
+	);
+});
+
+describe('holdLine after an announced report', () => {
+	const stamped = (id: string) => ({ id, at: 1 });
+
+	const announced = (): State => {
+		const held = holdLine({
+			state: idleSession(),
+			ref: REF,
+			content: { kind: 'line', text: LONG, isAsking: false },
+			stamped: stamped('h1'),
+		});
+
+		return run([{ type: 'held_line_announced', ref: REF, id: 'h1' }], { start: held }).state;
+	};
+
+	it('a short afterword leaves the report held, counted as one more update on the page', () => {
+		const state = holdLine({
+			state: announced(),
+			ref: REF,
+			content: { kind: 'line', text: 'Covered in the answer above.', isAsking: false },
+			stamped: stamped('h2'),
+		});
+
+		expect(heldOf(state)).toMatchObject({ id: 'h1', text: LONG, missed: 1, isAnnounced: true });
+	});
+
+	it('a longer line or a question replaces it and keeps it announced', () => {
+		for (const content of [
+			{ kind: 'line' as const, text: `${LONG} And the docs are updated too.`, isAsking: false },
+			{ kind: 'line' as const, text: 'Push it now?', isAsking: true },
+		]) {
+			expect(
+				heldOf(holdLine({ state: announced(), ref: REF, content, stamped: stamped('h2') })),
+			).toMatchObject({ id: 'h2', missed: 1, isAnnounced: true });
+		}
+	});
+
+	it('held_line_announced for a line no longer held changes nothing', () => {
+		const held = holdLine({
+			state: idleSession(),
+			ref: REF,
+			content: { kind: 'line', text: LONG, isAsking: false },
+			stamped: stamped('h1'),
+		});
+		const state = run([{ type: 'held_line_announced', ref: REF, id: 'old' }], {
+			start: held,
+		}).state;
+
+		expect(heldOf(state)).toMatchObject({ id: 'h1', isAnnounced: false });
+	});
+});
+
+describe('a held line replayed while background sub-agents work', () => {
+	it('says "still working"', () => {
+		const state = run(
+			[
+				{
+					type: 'subagent_started',
+					ref: REF,
+					taskId: 't1',
+					agentType: null,
+					description: 'research',
+					isBackground: true,
+				},
+				tagged(LONG),
+				{ type: 'switch_view', view: { kind: 'session', ref: REF } },
+			],
+			{ start: idleSession() },
+		);
+
+		expect(said(state.effects)[0]).toContain('still working');
+	});
+});
+
+describe('isOnAnotherSession', () => {
+	it.each([
+		['Mission Control', { kind: 'grid' as const }, false],
+		['the session itself', { kind: 'session' as const, ref: REF }, false],
+		['another session', { kind: 'session' as const, ref: 'store/wrk1' }, true],
+	])('%s → %p', (_, view, expected) =>
+		expect(isOnAnotherSession({ ...idleSession(), view }, REF)).toBe(expected),
+	);
 });

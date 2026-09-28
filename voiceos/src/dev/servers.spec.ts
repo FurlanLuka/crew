@@ -147,6 +147,9 @@ describe('formatVerdictLine', () => {
 				createServer('w', 'running'),
 			]),
 		).toEqual({ text: 'all four dev servers are up.', failing: [] });
+		expect(
+			formatVerdictLine([createServer('api', 'running'), createServer('web', 'running')]).text,
+		).toBe('both dev servers are up.');
 		expect(formatVerdictLine([createServer('api', 'running')])).toEqual({
 			text: 'the dev server is up.',
 			failing: [],

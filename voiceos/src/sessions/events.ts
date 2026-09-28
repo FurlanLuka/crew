@@ -30,7 +30,53 @@ export interface RawMessage {
 	total_cost_usd?: number;
 	is_error?: boolean;
 	rate_limit_info?: { rateLimitType?: string; utilization?: number; resetsAt?: number };
+	// system/status: 'compacting' while the context is compacted, null when that ends.
+	status?: string | null;
+	compact_result?: string;
+	compact_error?: string;
+	compact_metadata?: { pre_tokens?: number; post_tokens?: number };
 }
+
+const formatTokens = (tokens: number): string =>
+	tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
+
+export const describeCompaction = (metadata: RawMessage['compact_metadata']): string => {
+	// The SDK may leave out the size after, and older ones send no sizes at all.
+	const before = metadata?.pre_tokens;
+	const after = metadata?.post_tokens;
+
+	if (typeof before !== 'number') {
+		return 'Context compacted.';
+	}
+
+	return typeof after === 'number'
+		? `Context compacted: ${formatTokens(before)} → ${formatTokens(after)} tokens.`
+		: `Context compacted: ${formatTokens(before)} tokens before.`;
+};
+
+const mapStatusMessage = (message: RawMessage, ref: string): Observation[] => {
+	// 'requesting' and anything newer say nothing about compaction.
+	if (message.status === 'compacting') {
+		return [{ type: 'compacting', ref, isCompacting: true }];
+	}
+
+	if (message.status !== null) {
+		return [];
+	}
+
+	const ended: Observation = { type: 'compacting', ref, isCompacting: false };
+
+	return message.compact_result === 'failed'
+		? [
+				ended,
+				{
+					type: 'session_notice',
+					ref,
+					text: `Compaction failed${message.compact_error ? `: ${clipText(message.compact_error, 200)}` : '.'}`,
+				},
+			]
+		: [ended];
+};
 
 export interface MapContext {
 	ref: string;
@@ -132,8 +178,14 @@ const mapSystemMessage = (message: RawMessage, mapContext: MapContext): Observat
 		case 'task_notification':
 			return mapTaskMessage(message, mapContext);
 
+		case 'status':
+			return mapStatusMessage(message, ref);
+
 		case 'compact_boundary':
-			return [{ type: 'session_notice', ref, text: 'Context compacted.' }];
+			return [
+				{ type: 'compacting', ref, isCompacting: false },
+				{ type: 'session_notice', ref, text: describeCompaction(message.compact_metadata) },
+			];
 
 		case 'local_command_output': {
 			const text = clipText(readString(message.content), 300);
