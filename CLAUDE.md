@@ -393,7 +393,7 @@ until the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
   elsewhere, is a conflict.
 - **Debug logging** — every external command (tmux, git, editor, package managers, mise)
   goes through `debug.Log(category, …)`: `"tmux"`, `"git"`, `"editor"`, `"dev"`, `"setup"`,
-  `"procs"`, `"trash"`, `"uninstall"`, `"voice"`, `"release"`. Log the command before running it; log errors inline.
+  `"procs"`, `"trash"`, `"uninstall"`, `"voice"`, `"release"`, `"requirements"`. Log the command before running it; log errors inline.
 - **Never log binding values** — names, sources and targets only. Values carry URLs and can
   carry credentials.
 - **Comments say why, not what.** A comment earns its place with a constraint, a product

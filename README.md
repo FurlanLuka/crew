@@ -131,7 +131,7 @@ skill, a `crew` agent and guided setup:
 - [Voice OS internals](voiceos/README.md) — the router, keys, development
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
-Requires macOS or Linux, git and tmux (installed for you on Linux), and
+Requires macOS or Linux, git and tmux (`crew doctor` checks, and offers to install them), and
 [Claude Code](https://code.claude.com/docs) for the sessions. `crew update` keeps crew — and Voice
 OS, once installed — current; it asks GitHub through the `gh` CLI, so it needs `gh auth login`
 once.

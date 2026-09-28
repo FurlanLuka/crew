@@ -573,6 +573,18 @@ var Root = CommandInfo{
 			Examples: []string{"crew clean --dry-run", "crew clean", "crew clean --json"},
 		},
 		{
+			Name:         "doctor",
+			Description:  "What crew needs on this machine and whether it is there: tmux (dev servers, setup runners and checks run in it) and git are required, Claude Code is optional (Voice OS and crew claude run it). Exits 1 when a required tool is missing. --install shows the install commands (Homebrew or xcode-select on macOS, apt-get, dnf or pacman on Linux) and runs them after asking; Claude Code is asked for separately. Without a terminal, --install needs --yes and installs Claude Code only with --with-claude. The first crew command that needs tmux or git offers this once.",
+			Usage:        "crew doctor [--install [--yes] [--with-claude]]",
+			OutputFormat: "<name>\\t<ok|missing>\\t<required|optional>\\t<why>\\t<install>",
+			Flags: []FlagInfo{
+				{Name: "--install", Description: "Install what is missing, asking first at a terminal"},
+				{Name: "--yes", Description: "With --install: no questions (the required tools only)"},
+				{Name: "--with-claude", Description: "With --install --yes: install Claude Code too"},
+			},
+			Examples: []string{"crew doctor", "crew doctor --json", "crew doctor --install", "crew doctor --install --yes"},
+		},
+		{
 			Name:         "trash",
 			Description:  "Removed checkouts are moved to ~/.crew/trash and deleted in the background, so removal returns at once. This shows what is still clearing; 'crew trash empty' deletes it now, for when the background delete never finished.",
 			Usage:        "crew trash [empty]",

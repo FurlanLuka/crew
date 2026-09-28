@@ -11,8 +11,9 @@ with an API and a web app; use your own repos.
 curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
 ```
 
-crew needs git and tmux (installed for you on Linux). For agents in the worktrees you'll want
-[Claude Code](https://code.claude.com/docs), though any agent with a shell can drive crew.
+crew needs git and tmux: `crew doctor` says whether they are there, and `crew doctor --install`
+installs them (the first crew command that needs them offers it). For agents in the worktrees you'll
+want [Claude Code](https://code.claude.com/docs), though any agent with a shell can drive crew.
 
 ## 2. Add your projects
 
