@@ -18,10 +18,10 @@ func TestParseCWDs(t *testing.T) {
 	// Shape of `lsof -a -d cwd -Fpn`: p/f/n triplets.
 	out := "p91036\n" +
 		"fcwd\n" +
-		"n/Users/luka/Documents/crew\n" +
+		"n/Users/dev/Documents/crew\n" +
 		"p91040\n" +
 		"fcwd\n" +
-		"n/Users/luka/.crew/workspaces/ws/a path with spaces\n" +
+		"n/Users/dev/.crew/workspaces/ws/a path with spaces\n" +
 		// Directory could not be read: p with no n. Must not inherit the next
 		// record's path.
 		"p91041\n" +
@@ -33,8 +33,8 @@ func TestParseCWDs(t *testing.T) {
 		"p91043\n"
 
 	want := map[int]string{
-		91036: "/Users/luka/Documents/crew",
-		91040: "/Users/luka/.crew/workspaces/ws/a path with spaces",
+		91036: "/Users/dev/Documents/crew",
+		91040: "/Users/dev/.crew/workspaces/ws/a path with spaces",
 		91042: "/tmp",
 	}
 

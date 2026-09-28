@@ -1,5 +1,9 @@
 # crew
 
+[![Test](https://github.com/FurlanLuka/crew/actions/workflows/test.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/test.yml)
+[![Voice OS](https://github.com/FurlanLuka/crew/actions/workflows/voiceos.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/voiceos.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Talk to your coding agents.** Every feature you're working on gets its own copy of your stack and
 its own Claude — and you run them all by voice: "tell checkout to run the tests", "what's waiting
 on me?", "yes, but only on staging".
@@ -19,8 +23,20 @@ The first `crew voice` checks you have tmux and Claude Code, downloads Voice OS,
 Anthropic key and a Soniox key — checked before they're saved, stored only on this machine. Then it
 opens in your browser: hold **Space** and talk.
 
-Your Claude sessions run on your own Claude Code login. The keys pay only for the router and the
-voice: a spoken turn costs about a third of a cent.
+### What you need
+
+- **macOS or Linux, git and tmux.** tmux is installed for you on Linux; on a Mac, `brew install tmux`.
+- **[Claude Code](https://code.claude.com/docs)**, signed in. Every session runs on your own Claude
+  Code login.
+- **An Anthropic API key**, for the router that decides where your words go and for the short spoken
+  summaries. A spoken turn costs the router about a third of a cent.
+- **A [Soniox](https://soniox.com) API key**, for speech in and out. Soniox bills by audio time.
+
+**Where your data goes:**
+- **Your voice** goes to Soniox to become text, and spoken replies come back from it.
+- **What you say, and short excerpts of what sessions write**, go to Anthropic for routing and summaries.
+- **Everything else stays on your machine:** the keys (readable by you alone), your notes, and the
+  voice log. Recordings are kept only if you switch on debug audio.
 
 ## Set up by talking
 
@@ -113,6 +129,7 @@ skill, a `crew` agent and guided setup:
 - [Commands](docs/commands.md) — every command and its output
 - [Running crew on a remote VM](docs/guides/remote-vm.md)
 - [Voice OS internals](voiceos/README.md) — the router, keys, development
+- [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
 Requires macOS or Linux, git and tmux (installed for you on Linux), and
 [Claude Code](https://code.claude.com/docs) for the sessions. `crew update` keeps crew — and Voice
