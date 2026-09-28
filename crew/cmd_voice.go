@@ -18,7 +18,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|keys].
+// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|keys|remote|machines].
 // Bare `crew voice` starts it when needed and always reprints the sign-in
 // link, so a lost cookie is one command away.
 func cmdVoice() {
@@ -54,8 +54,15 @@ func cmdVoice() {
 		voiceLogs(args)
 	case "keys":
 		voiceKeys(args)
+	case "remote":
+		voiceRemote(args)
+	case "_attach":
+		// The end of a main's SSH login (voiceos/src/remote/ssh.ts): stdout is the link.
+		voiceAttach()
+	case "machines":
+		voiceMachines(args)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|keys] [--no-open] [--lines=<n>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|keys|remote|machines] [--no-open] [--lines=<n>]\n")
 		os.Exit(1)
 	}
 }
@@ -70,6 +77,7 @@ func hasFlag(args []string, flag string) bool {
 }
 
 func voiceStart(open bool) {
+	refuseIfRemote()
 	// A Voice OS already answering only needs its links again: nothing to check,
 	// even from a shell whose PATH lacks claude.
 	if !voice.Inspect().Healthy {
@@ -92,6 +100,7 @@ func voiceStart(open bool) {
 // is detached (its own session), outlives this process, and is waited for when
 // this one survives.
 func voiceRestart(open bool) {
+	refuseIfRemote()
 	requireVoiceDeps()
 	installVoiceIfMissing()
 	askMissingKeys()

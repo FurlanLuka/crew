@@ -267,3 +267,127 @@ describe('DevWatch fix', () => {
 		expect(harness.said.at(-1)?.text).toBe('fixing api: starting its Claude to fix it.');
 	});
 });
+
+describe('DevWatch per machine', () => {
+	it("this Mac's look → another machine's servers are never cleared", async () => {
+		const harness = createHarness({ routes: [] });
+
+		harness.store.dispatch({
+			type: 'dev_servers',
+			ref: 'vm1:store/main',
+			servers: [{ name: 'api', port: 3000, url: null, state: 'running', detail: null }],
+			isSettled: true,
+		});
+		await harness.watch.monitor();
+
+		expect(harness.store.state.devServers['vm1:store/main']).toHaveLength(1);
+	});
+
+	it("a dev start for another machine's session → not this watch's to run", async () => {
+		const harness = createHarness();
+
+		await harness.watch.handle({ type: 'dev', ref: 'vm1:store/main', action: 'start' });
+
+		expect(harness.calls).toEqual([]);
+	});
+
+	it('a machine out of reach → no look at all, nothing cleared or announced', async () => {
+		const store = new Store();
+		const calls: string[] = [];
+		const watch = new DevWatch({
+			store,
+			crew: {
+				readDevRoutes: async () => {
+					calls.push('routes');
+
+					return [];
+				},
+			} as unknown as DevCrew,
+			say: () => undefined,
+			isMine: (ref) => ref.startsWith('vm1:'),
+			isAvailable: () => false,
+		});
+
+		await watch.monitor();
+
+		expect(calls).toEqual([]);
+	});
+});
+
+describe('DevWatch per machine, when the link fails', () => {
+	const createRemoteWatch = (crew: Partial<DevCrew>, isAvailable = true) => {
+		const store = new Store();
+		const said: string[] = [];
+
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'vm1:store/main',
+					label: 'store/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+			],
+		});
+		store.dispatch({
+			type: 'dev_servers',
+			ref: 'vm1:store/main',
+			servers: [{ name: 'api', port: 3000, url: null, state: 'running', detail: null }],
+			isSettled: true,
+		});
+		store.dispatch({
+			type: 'dev_servers',
+			ref: 'store/main',
+			servers: [{ name: 'web', port: 5173, url: null, state: 'running', detail: null }],
+			isSettled: true,
+		});
+
+		const watch = new DevWatch({
+			store,
+			crew: crew as DevCrew,
+			say: (line) => said.push(line.text),
+			isMine: (ref) => ref.startsWith('vm1:'),
+			isAvailable: () => isAvailable,
+		});
+
+		return { store, said, watch };
+	};
+
+	it('out of reach → its servers kept as they were, nothing said', async () => {
+		const { store, said, watch } = createRemoteWatch({}, false);
+
+		await watch.monitor();
+
+		expect(store.state.devServers['vm1:store/main']).toHaveLength(1);
+		expect(said).toEqual([]);
+	});
+
+	it('the link drops mid-look → nothing cleared, no crash announced', async () => {
+		const { store, said, watch } = createRemoteWatch({
+			readDevRoutes: async () =>
+				[
+					{ worktree: 'vm1:store/main', server_name: 'api', url: 'http://localhost:3000' },
+				] as RouteRow[],
+			checkServers: async () => {
+				throw new Error('Build box went out of reach');
+			},
+		});
+
+		await watch.monitor();
+
+		expect(store.state.devServers['vm1:store/main']).toHaveLength(1);
+		expect(said).toEqual([]);
+	});
+
+	it("another machine's look → this Mac's servers untouched", async () => {
+		const { store, watch } = createRemoteWatch({ readDevRoutes: async () => [] });
+
+		await watch.monitor();
+
+		expect(store.state.devServers['store/main']).toHaveLength(1);
+		expect(store.state.devServers['vm1:store/main'] ?? []).toEqual([]);
+	});
+});

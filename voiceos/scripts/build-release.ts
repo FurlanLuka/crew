@@ -44,6 +44,8 @@ for (const target of TARGETS) {
 		'--minify',
 		'--sourcemap',
 		`--target=${target.bun}`,
+		// A main and a remote talk only when both run the same release (remote/protocol.ts).
+		`--define=VOICEOS_VERSION=${JSON.stringify(version)}`,
 		join(root, 'src', 'main.ts'),
 		'--outfile',
 		join(dir, 'voiceos'),

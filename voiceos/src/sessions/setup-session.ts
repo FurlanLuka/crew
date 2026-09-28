@@ -1,7 +1,8 @@
+import { SETUP_REF } from '../shared/machine-ref.js';
 import type { WorktreeInfo } from '../shared/protocol.js';
 
 // "Voice OS" named both the app and this session, so words about the app reached it.
-export const SETUP_REF = 'setup';
+export { SETUP_REF };
 export const LEGACY_SETUP_REF = 'voiceos';
 
 export const createSetupWorktree = (home: string): WorktreeInfo => {

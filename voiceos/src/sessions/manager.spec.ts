@@ -4,124 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configureLog } from '../log.js';
 import { Store } from '../state/store.js';
-import { SessionManager } from './manager.js';
+import { SessionManager, connectStore } from './manager.js';
 import { loadRegistry, recordSession } from './registry.js';
 import { BRIEFING_VERSION } from './voice-context.js';
+import { createFakeQuery, type FakeQueryParams } from '../../test/support/fake-query.js';
 
 configureLog({ quiet: true });
-
-interface FakeQueryParams {
-	failResume?: boolean;
-	holdTurns?: boolean;
-	// What a side-answer fork replies; an Error makes the fork throw.
-	sideReply?: unknown[] | Error;
-}
-
-interface FakeQueryCall {
-	prompt: AsyncIterable<{ message: { content: string } }>;
-	options: {
-		abortController: AbortController;
-		cwd: string;
-		resume?: string;
-		forkSession?: boolean;
-		systemPrompt: { append: string };
-	};
-}
-
-const createFakeQuery = ({
-	failResume = false,
-	holdTurns = false,
-	sideReply = [],
-}: FakeQueryParams = {}) => {
-	// Stands in for the Agent SDK; holdTurns: a turn only ends when interrupted, like a cut reply.
-	const started: string[] = [];
-	const prompts: string[] = [];
-	const sent: string[] = [];
-	// Counts interrupts across the fake's lifetime.
-	let interrupts = 0;
-	const forks: FakeQueryCall['options'][] = [];
-	// A fork is asked with one prompt string: the side question.
-	const forkPrompts: unknown[] = [];
-
-	const runQuery = ((call: FakeQueryCall) => {
-		if (call.options.forkSession) {
-			forks.push(call.options);
-			forkPrompts.push(call.prompt);
-
-			return {
-				async *[Symbol.asyncIterator]() {
-					if (sideReply instanceof Error) {
-						throw sideReply;
-					}
-
-					yield* sideReply;
-				},
-			};
-		}
-
-		if (failResume && call.options.resume) {
-			return {
-				[Symbol.asyncIterator]: () => ({
-					next: () => Promise.reject(new Error('No conversation found with session ID')),
-				}),
-				interrupt: async () => undefined,
-				setPermissionMode: async () => undefined,
-			};
-		}
-
-		started.push(call.options.cwd);
-		prompts.push(call.options.systemPrompt.append);
-
-		const { signal } = call.options.abortController;
-		const queued: unknown[] = [
-			{ type: 'system', subtype: 'init', session_id: `s-${started.length}` },
-		];
-
-		// Replaced by each wait so a new message or interrupt wakes the stream.
-		let wake: () => void = () => {
-			// Nothing is waiting yet.
-		};
-
-		void (async () => {
-			for await (const message of call.prompt) {
-				sent.push(message.message.content);
-
-				if (!holdTurns) {
-					queued.push({ type: 'result', subtype: 'success', result: 'ok', total_cost_usd: 0 });
-				}
-
-				wake();
-			}
-		})();
-
-		const interrupt = async () => {
-			interrupts++;
-			queued.push({ type: 'result', subtype: 'error_during_execution', total_cost_usd: 0 });
-			wake();
-
-			return { still_queued: [] };
-		};
-
-		return {
-			async *[Symbol.asyncIterator]() {
-				while (!signal.aborted) {
-					while (queued.length) {
-						yield queued.shift();
-					}
-
-					await new Promise<void>((resolve) => {
-						wake = resolve;
-						signal.addEventListener('abort', () => resolve(), { once: true });
-					});
-				}
-			},
-			interrupt,
-			setPermissionMode: async () => undefined,
-		};
-	}) as never;
-
-	return { runQuery, started, prompts, sent, forks, forkPrompts, interrupts: () => interrupts };
-};
 
 const createHarness = () => {
 	const store = new Store();
@@ -143,7 +31,7 @@ const createHarness = () => {
 	const orientation = Promise.withResolvers<string>();
 	const fake = createFakeQuery();
 	const manager = new SessionManager({
-		store,
+		...connectStore(store),
 		registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json'),
 		home: '/h',
 		fetchOrientation: () => orientation.promise,
@@ -187,7 +75,7 @@ describe('SessionManager', () => {
 		});
 		const fake = createFakeQuery();
 		const manager = new SessionManager({
-			store,
+			...connectStore(store),
 			registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json'),
 			home: '/h',
 			fetchOrientation: () => Promise.reject(new Error('crew start failed')),
@@ -286,7 +174,7 @@ describe('SessionManager', () => {
 			recordSession({ file: registryFile, ref: 'store-front/main', sessionId: 's-1', briefing });
 			const fake = createFakeQuery({ failResume });
 			const manager = new SessionManager({
-				store,
+				...connectStore(store),
 				registryFile,
 				home: '/h',
 				fetchOrientation: async () => '',
@@ -394,7 +282,7 @@ describe('SessionManager', () => {
 		});
 		const fake = createFakeQuery({ holdTurns: true });
 		const manager = new SessionManager({
-			store,
+			...connectStore(store),
 			registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json'),
 			home: '/h',
 			fetchOrientation: async () => '',
@@ -451,7 +339,7 @@ describe('SessionManager', () => {
 
 			const fake = createFakeQuery({ holdTurns: true, sideReply });
 			const manager = new SessionManager({
-				store,
+				...connectStore(store),
 				registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json'),
 				home: '/h',
 				fetchOrientation: () => Promise.resolve('## crew'),

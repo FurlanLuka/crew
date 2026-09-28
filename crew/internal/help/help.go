@@ -654,6 +654,25 @@ var Root = CommandInfo{
 				{Name: "--lines=<n>", Description: "logs only: the last n lines (default 80)"},
 			},
 			Examples: []string{"crew voice", "crew voice status --json", "crew voice logs --lines=200", "crew voice keys", "pbpaste | crew voice keys set anthropic", "crew voice stop"},
+			Subcommands: []CommandInfo{
+				{
+					Name:         "remote",
+					Description:  "Make this machine a remote: another machine's Voice OS (the main) drives the Claude sessions of its worktrees over SSH, and it runs no voice or kernel of its own. Bare, it checks tmux and Claude Code, installs Voice OS if needed, and starts the daemon (a tmux session that outlives any SSH link, listening on a socket only you can open); status reports it, stop ends it and every session it runs. A machine is a main or a remote, never both: each refuses while the other runs. After crew update the daemon moves to the new release on the next connect, once no session is working. The main reaches it with ssh <host> … crew voice _attach — a hidden command that prints nothing on stdout but the link.",
+					Usage:        "crew voice remote [status|stop]",
+					OutputFormat: "<up|down>\\t<version>\\t<busy|idle>\\t<socket>",
+					Examples:     []string{"crew voice remote", "crew voice remote status --json", "crew voice remote stop"},
+				},
+				{
+					Name:         "machines",
+					Description:  "The other machines this Voice OS drives (~/.crew/voiceos/machines.json; the page's + Add machine and \"rename vm1 to build box\" write the same list). add takes an SSH host — an alias from ~/.ssh/config or user@host, reached with your keys and never a password prompt — and prints the machine's id (from the host); --name is what you call it aloud. A running Voice OS picks a change up within a second. ls shows each machine's status as the running Voice OS last saw it (connecting, syncing, connected, unreachable, error), or stopped when Voice OS is not running. rm stops driving that machine; its sessions keep running there.",
+					Usage:        "crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>",
+					OutputFormat: "<id>\\t<name>\\t<host>\\t<status>",
+					Flags: []FlagInfo{
+						{Name: "--name=<name>", Description: "add only: what the machine is called (default: its id)"},
+					},
+					Examples: []string{"crew voice machines add dev@vm1.example.com --name=\"Build box\"", "crew voice machines", "crew voice machines rename vm1 GPU box", "crew voice machines rm vm1"},
+				},
+			},
 		},
 		{
 			Name:        "update",

@@ -1083,3 +1083,84 @@ describe('background sub-agents and follow-up turns off screen (research that ou
 		expect(said.at(-1)).toStartWith('checkout needs you');
 	});
 });
+
+describe('turn narrator, another machine', () => {
+	const createRemote = () => {
+		const store = new Store();
+
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'vm1:store/main',
+					label: 'store/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+			],
+		});
+
+		const spoken: string[] = [];
+		const heads: string[] = [];
+		const journalDir = mkdtempSync(join(tmpdir(), 'voiceos-turn-remote-'));
+		const handle = createTurnNarrator({
+			store,
+			narrate: async () => ({
+				speak: true,
+				needs_user: true,
+				priority: 'high',
+				text: 'store main asks: ship it?',
+				topic: null,
+			}),
+			writeTopic: async (input) => ({ topic: input.topic, about: null }),
+			say: ({ text }) => spoken.push(text),
+			journalDir,
+			readGitHead: async (cwd) => {
+				heads.push(cwd);
+
+				return 'local-head';
+			},
+			now: () => new Date('2026-09-25T02:00:00Z'),
+		});
+
+		return { store, spoken, heads, journalDir, handle };
+	};
+
+	const effect = {
+		type: 'narrate' as const,
+		ref: 'vm1:store/main',
+		text: 'Done. Ship it?',
+		asked: 'finish it',
+		isOwed: false,
+		spoken: null,
+		isSpokenAlready: false,
+		isHeld: false,
+		hasBackgroundAgents: false,
+		head: 'remote-head',
+	};
+
+	it("its commit comes with the turn → journaled; git never runs on that machine's path here", async () => {
+		const harness = createRemote();
+
+		await harness.handle(effect);
+
+		expect(harness.heads).toEqual([]);
+		expect(
+			readHistory(harness.journalDir, { ref: 'vm1:store/main', query: null, limit: 1 })[0]?.head,
+		).toBe('remote-head');
+	});
+
+	it('reported while its machine came back → recorded and held, never said', async () => {
+		const harness = createRemote();
+
+		await harness.handle({ ...effect, isQuiet: true });
+
+		expect(harness.spoken).toEqual([]);
+		expect(harness.store.state.sessions['vm1:store/main']).toMatchObject({
+			needsUser: { text: 'store main asks: ship it?' },
+			heldLine: { kind: 'line', text: 'store main asks: ship it?', isAsking: true },
+		});
+	});
+});

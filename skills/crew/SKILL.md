@@ -65,6 +65,8 @@ crew config show                                           <key>\t<value>
 crew dev proxy [status|trust [--install]|stop]            <up|up (not listening)|down>\t<domain>\t<port>\t<status url>\thttps <up|not listening|off>\t<https port>
 crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
 crew voice [start|stop|restart|status|logs|keys [set <anthropic|soniox>]] [--no-open] [--lines=<n>]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
+crew voice remote [status|stop]                            <up|down>\t<version>\t<busy|idle>\t<socket>
+crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>   <id>\t<name>\t<host>\t<status>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -417,6 +419,20 @@ asks for any missing one and checks it with the service. Without a tty, `crew vo
 them (`<name>\t<set (file|env)|missing>\t<path>`, never a value) and `crew voice keys set
 <anthropic|soniox>` reads one from stdin — a rejected key is not saved, one that could not be
 checked (offline) is. `crew voice restart` picks a new key up.
+
+**Other machines.** One Voice OS (the main) can drive the sessions of another machine's
+worktrees — a VM, a second computer — over SSH. On that machine (the remote), install crew and
+run `crew voice remote` once: it checks tmux and Claude Code, installs Voice OS and starts a
+daemon in tmux that outlives any SSH link (`crew voice remote status|stop`). On the main,
+`crew voice machines add <ssh host> [--name=<name>]` (or + Add machine on the page) records it
+in `~/.crew/voiceos/machines.json`, and a running Voice OS connects within a second with
+`ssh <host> … crew voice _attach` — BatchMode, so the host must be reachable with your keys and
+its host key trusted (run `ssh <host>` once). How the machine is reachable is its own business:
+LAN, a VPN, an SSH config alias. Its sessions show under their machine (`vm1:store-front/main`,
+named aloud with the machine's name), its dev servers are its own crew's, and a dropped link
+never stops them: the main reconnects, catches up from a snapshot and says one recap line.
+`crew voice machines` lists `<id>\t<name>\t<host>\t<status>` (status as the running Voice OS
+last saw it, `stopped` when it is not running). A machine is a main or a remote, never both.
 
 ## 8. Moving to another machine
 

@@ -144,7 +144,7 @@ describe('restoreHistory', () => {
 		const store = createStore();
 		const reads: string[] = [];
 		await restoreHistory({
-			store,
+			dispatch: (observation) => store.dispatch(observation),
 			sessions: { 'store-front/main': { sessionId: 'abc' } },
 			getCwd: createCwdOf(store),
 			getImageSource: () => undefined,
@@ -166,7 +166,7 @@ describe('restoreHistory', () => {
 		const seqBefore = store.state.seq;
 
 		await restoreHistory({
-			store,
+			dispatch: (observation) => store.dispatch(observation),
 			sessions: {},
 			getCwd: createCwdOf(store),
 			getImageSource: () => undefined,
@@ -178,7 +178,7 @@ describe('restoreHistory', () => {
 	it('a transcript that cannot be read → skipped, the others still restore', async () => {
 		const store = createStore();
 		await restoreHistory({
-			store,
+			dispatch: (observation) => store.dispatch(observation),
 			sessions: {
 				'store-front/main': { sessionId: 'gone' },
 				'checkout-api/main': { sessionId: 'ok' },
@@ -202,7 +202,7 @@ describe('restoreHistory', () => {
 		// Counts loads; the stale ref must never reach one.
 		let reads = 0;
 		await restoreHistory({
-			store,
+			dispatch: (observation) => store.dispatch(observation),
 			sessions: { 'old/main': { sessionId: 'x' } },
 			getCwd: createCwdOf(store),
 			getImageSource: () => undefined,
@@ -302,7 +302,9 @@ describe('restoreHistory: images', () => {
 			],
 		});
 		const params = {
-			store,
+			dispatch: (observation: Parameters<typeof store.dispatch>[0]) => {
+				store.dispatch(observation);
+			},
 			sessions: { 'store-front/main': { sessionId: 'abc' } },
 			getCwd: (ref: string) => store.state.sessions[ref]?.cwd ?? null,
 			getImageSource: (ref: string) => (isPinned === null ? undefined : store.state.sessions[ref]),

@@ -53,3 +53,26 @@ describe('shouldReloadNow', () => {
 	it('reloaded over a minute ago → reload again', () =>
 		expect(shouldReloadNow({ lastReloadAt: 1_000, now: 62_000 })).toBe(true));
 });
+
+describe('a restarted Voice OS', () => {
+	const state = createInitialState();
+
+	it('the first snapshot → just applied', () => {
+		expect(applyServerMessage(null, { type: 'snapshot', state, serverId: 'a' }, null)).toEqual({
+			state,
+			shouldResync: false,
+		});
+	});
+
+	it('the same server again (a dropped socket) → applied, no reload', () => {
+		expect(
+			applyServerMessage(state, { type: 'snapshot', state, serverId: 'a' }, 'a').shouldReload,
+		).toBeUndefined();
+	});
+
+	it('another server (restarted, maybe newer) → this tab reloads its page', () => {
+		expect(
+			applyServerMessage(state, { type: 'snapshot', state, serverId: 'b' }, 'a').shouldReload,
+		).toBe(true);
+	});
+});

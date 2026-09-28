@@ -1,5 +1,7 @@
 // The developer's own notes, one list per workspace: what the page, the files and the tools agree on.
 
+import { splitRef } from './machine-ref.js';
+
 // Never a workspace's key (toNotesKey turns parentheses into dashes): a workspace named "general" keeps its own.
 export const GENERAL_NOTES = '(general)';
 
@@ -13,9 +15,13 @@ export const toNotesKey = (name: string): string =>
 		? name
 		: name.trim().toLowerCase().replace(/\s+/g, '-').replace(UNSAFE_PATTERN, '-') || GENERAL_NOTES;
 
-export const readWorkspace = (ref: string | null | undefined): string =>
-	// "store-front/main" → "store-front"; the pinned setup session and no session → general.
-	ref?.includes('/') ? toNotesKey(ref.split('/')[0] ?? '') : GENERAL_NOTES;
+export const readWorkspace = (ref: string | null | undefined): string => {
+	// "store-front/main" → "store-front"; a setup session and no session → general. The machine is
+	// left out: notes are the developer's, one list per workspace name wherever it runs.
+	const parts = ref ? splitRef(ref) : null;
+
+	return parts?.worktree ? toNotesKey(parts.workspace) : GENERAL_NOTES;
+};
 
 export const toNotesFileName = (key: string): string =>
 	key === GENERAL_NOTES ? '_general.md' : `${key}.md`;

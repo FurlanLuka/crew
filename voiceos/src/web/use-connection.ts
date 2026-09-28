@@ -39,12 +39,24 @@ export const shouldKeepWhileOffline = (message: ClientMessage): boolean => {
 	return message.type === 'action' || message.type === 'utterance';
 };
 
+// knownServerId: the server this tab's page came from, once seen.
 export const applyServerMessage = (
 	state: State | null,
 	message: ServerMessage,
+	knownServerId: string | null = null,
 ): AppliedServerMessage => {
 	if (message.type === 'snapshot') {
-		return { state: message.state, shouldResync: false };
+		// Reconnected to a restarted Voice OS: its page may be newer than this tab's.
+		const isRestarted =
+			knownServerId !== null &&
+			message.serverId !== undefined &&
+			message.serverId !== knownServerId;
+
+		return {
+			state: message.state,
+			shouldResync: false,
+			...(isRestarted ? { shouldReload: true as const } : {}),
+		};
 	}
 
 	if (message.type !== 'input' || !state) {
@@ -93,6 +105,7 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 	const socket = useRef<WebSocket | null>(null);
 	const outbox = useRef<ClientMessage[]>([]);
 	const stateRef = useRef<State | null>(null);
+	const serverIdRef = useRef<string | null>(null);
 	const [listenCommand, setListenCommand] = useState<ListenCommand | null>(null);
 	// On demand: "Voice OS" was heard and the words are going to it; ignoredAt: speech left alone.
 	const [isAwake, setIsAwake] = useState(false);
@@ -174,10 +187,14 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 					state: nextState,
 					shouldResync,
 					shouldReload,
-				} = applyServerMessage(stateRef.current, message);
+				} = applyServerMessage(stateRef.current, message, serverIdRef.current);
 
 				if (shouldReload && reloadIfNotRecent()) {
 					return;
+				}
+
+				if (message.type === 'snapshot' && message.serverId) {
+					serverIdRef.current = message.serverId;
 				}
 
 				if (shouldResync) {

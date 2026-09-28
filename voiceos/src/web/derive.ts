@@ -1,10 +1,23 @@
 import { stripStreamingTag } from '../shared/spoken-tags.js';
-import { isHeldAsk, type PendingAsk, type Session, type State } from '../shared/protocol.js';
+import {
+	isHeldAsk,
+	type MachineStatus,
+	type PendingAsk,
+	type Session,
+	type State,
+} from '../shared/protocol.js';
 import { listSessionDocs, type SessionDoc } from '../shared/session-docs.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { readWorkspace } from '../shared/notes.js';
+import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
+import {
+	listMachineRefs,
+	listWaitingRefs,
+	readMachineName,
+	readMachineTitle,
+} from '../shared/machines.js';
 
 export interface Badge {
 	dot: string;
@@ -108,18 +121,101 @@ export const readLastLine = (session: Session): string => {
 		: '';
 };
 
-export const countSessions = (state: State): SessionCounts => {
-	const sessions = Object.values(state.sessions);
-	const waitingRefs = new Set([
-		...state.asks.map((ask) => ask.ref),
-		...sessions.filter((session) => session.needsUser).map((session) => session.ref),
-	]);
+// machine: one machine's (LOCAL_MACHINE for this Mac); absent for every machine.
+export const countSessions = (state: State, machine?: string): SessionCounts => {
+	const refs =
+		machine === undefined ? Object.keys(state.sessions) : listMachineRefs(state, machine);
 
 	return {
-		total: sessions.length,
-		running: sessions.filter((session) => session.status === 'running').length,
-		waiting: waitingRefs.size,
+		total: refs.length,
+		running: refs.filter((ref) => state.sessions[ref]?.status === 'running').length,
+		waiting: listWaitingRefs(state, machine).length,
 	};
+};
+
+export interface MachineCard {
+	id: string;
+	name: string;
+	// host · SSH · status, or "this Mac".
+	where: string;
+	dot: 'good' | 'crit' | 'warn' | 'dim';
+	counts: SessionCounts;
+	// The first thing waiting there, as "store-front/wrk2: approve the migration?".
+	waiting: string | null;
+	detail: string | null;
+	isRemote: boolean;
+}
+
+const STATUS_WORDS: Record<MachineStatus, string> = {
+	connecting: 'connecting',
+	syncing: 'catching up',
+	connected: 'connected',
+	unreachable: 'out of reach',
+	error: 'needs a fix',
+};
+
+const describeFirstWaiting = (state: State, machine: string): string | null => {
+	const ref = listWaitingRefs(state, machine)[0];
+	const session = ref ? state.sessions[ref] : undefined;
+
+	if (!ref || !session) {
+		return null;
+	}
+
+	const ask = state.asks.find((pendingAsk) => pendingAsk.ref === ref);
+
+	return `${session.label}: ${ask ? describeAsk(ask) : (session.needsUser?.text ?? 'needs you')}`;
+};
+
+const machineDot = (status: MachineStatus | 'local', isWaiting: boolean): MachineCard['dot'] => {
+	if (isWaiting) {
+		return 'crit';
+	}
+
+	if (status === 'local' || status === 'connected') {
+		return 'good';
+	}
+
+	return status === 'unreachable' || status === 'error' ? 'warn' : 'dim';
+};
+
+// This Mac first, then each machine in the order they were added.
+export const listMachineCards = (state: State): MachineCard[] => {
+	const localWaiting = describeFirstWaiting(state, LOCAL_MACHINE);
+	const local: MachineCard = {
+		id: LOCAL_MACHINE,
+		name: readMachineTitle(state, LOCAL_MACHINE),
+		where: 'main · this Mac',
+		dot: machineDot('local', localWaiting !== null),
+		counts: countSessions(state, LOCAL_MACHINE),
+		waiting: localWaiting,
+		detail: null,
+		isRemote: false,
+	};
+	const remotes = Object.values(state.machines).map((machine): MachineCard => {
+		const waiting = describeFirstWaiting(state, machine.id);
+
+		return {
+			id: machine.id,
+			name: machine.name,
+			where: `${machine.host} · SSH · ${STATUS_WORDS[machine.status]}`,
+			dot: machineDot(machine.status, waiting !== null),
+			counts: countSessions(state, machine.id),
+			waiting,
+			detail: machine.detail,
+			isRemote: true,
+		};
+	});
+
+	return [local, ...remotes];
+};
+
+// A ref shown beside others from several machines: another machine's carries its name.
+export const labelAcrossMachines = (state: State, ref: string, here: string | null): string => {
+	const label = state.sessions[ref]?.label ?? ref;
+	const name = readMachineName(state, ref);
+
+	return name && readMachine(ref) !== here ? `${name} · ${label}` : label;
 };
 
 export const classifyDiffLine = (line: string): 'add' | 'del' | 'h' | 'ctx' => {
@@ -182,30 +278,35 @@ const describeAsk = (ask: PendingAsk): string => {
 	}
 };
 
+// gridMachine: on a machine's grid, what the other machines have (its own sessions are the grid).
 export const listOtherSessions = (
 	state: State,
 	screen: string | null,
 	now: number,
+	gridMachine?: string,
 ): OtherSessionRow[] => {
 	const rows: OtherSessionRow[] = [];
+	const here = gridMachine ?? (screen ? readMachine(screen) : null);
 
 	for (const ref of state.order) {
 		const session = state.sessions[ref];
 
-		if (!session || ref === screen) {
+		if (!session || ref === screen || (gridMachine && readMachine(ref) === gridMachine)) {
 			continue;
 		}
 
 		const ask = state.asks.find((pendingAsk) => pendingAsk.ref === ref);
 		const work = describeWork(session, now);
 
+		const label = labelAcrossMachines(state, ref, here);
+
 		if (ask || session.needsUser) {
 			const text = ask ? describeAsk(ask) : (session.needsUser?.text ?? '');
-			rows.push({ ref, label: session.label, isWaiting: true, text, age: work.waitingFor });
+			rows.push({ ref, label, isWaiting: true, text, age: work.waitingFor });
 		} else if (work.for) {
 			rows.push({
 				ref,
-				label: session.label,
+				label,
 				isWaiting: false,
 				text: work.requests.at(-1) ?? session.topic ?? session.status,
 				age: work.for,

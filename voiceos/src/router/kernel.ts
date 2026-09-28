@@ -1,3 +1,5 @@
+import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
+import { LOCAL_MACHINE } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,
@@ -57,6 +59,7 @@ Answering what a session waits on (see "pending", "asked" and "Voice OS last ask
 
 Voice OS itself:
 - open, switch to, show, go to X → switch_view X; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it and topic. Home, go back, Mission Control, show me everything → switch_view with null.
+- Other machines: a session with a machine field runs there, its ref starting with the machine's id ("vm1:store-front/main"). A session named alone means the one on the machine the developer is looking at; a machine's name in front ("build box, allow it", "build box store front main") means that machine's. Go to a machine ("show me build box", "go to this Mac") → switch_view with ref null and machine; a session with its machine named ("crew main on my Mac") → switch_view with that ref and machine. "Rename vm1 to build box" → rename_machine. A session whose machine_out_of_reach is set cannot act now: its messages wait for it, anything else fails, say so in a few words.
 - start X → start_session (it also opens X) — only when starting the session is all they asked. "Start it" in reply to a session's question is its answer: forward all of it, "start it" included. "Start X and <anything for it>" ("start it and tell me what you did last", "start checkout and run the tests") → forward or send_to the rest: sending starts the session. Its dev servers are yours, not the session's: "start X and bring up its servers" is start_session and crew_dev. end, close, stop session X → stop_session.
 - stop, wait, hold on, cancel → interrupt the session on screen when it is working (status running or blocked). Only when that is all they say: "stop the refactor and fix the login bug first" names what to do instead — forward it with kind redirect and do not interrupt; Voice OS asks them whether to switch. A question or instruction that changes how the running work is done ("can we use proxy pair?", "no, use X for this") is kind redirect too. "Don't queue it", "I want it now", "do that first" about words already queued → queued_message now, never interrupt alone; "take that back", "don't send that", "don't put it to the session" → queued_message drop. On Mission Control, with no session named, never interrupt: when a session is working, ask in a few words whether to stop it; otherwise it only meant Voice OS should stop talking — ignore_words.
 - "Sorry, I meant that for X" → send_to X with the words they meant, and queued_message drop on the session that got them — never send that session a correction. When they meant a note instead, it is note or debug_note beside the drop.
@@ -183,6 +186,37 @@ interface BuildKernelMessageParams {
 	heardFrom?: number;
 }
 
+const describeOtherScreen = (state: State): string => {
+	const { view } = state;
+
+	if (view.kind === 'machines') {
+		return 'looking at Mission Control: a card per machine';
+	}
+
+	if (view.kind === 'grid' && view.machine) {
+		const name = readMachineTitle(state, view.machine);
+
+		return `looking at ${name}'s sessions (Mission Control › ${name})`;
+	}
+
+	return 'looking at all sessions (Mission Control)';
+};
+
+const describeMachines = (state: State): string => {
+	const here = currentMachine(state);
+	const machines = [
+		{ id: LOCAL_MACHINE, status: 'connected' },
+		...Object.values(state.machines).map(({ id, status }) => ({ id, status })),
+	];
+
+	return machines
+		.map(
+			({ id, status }) =>
+				`${readMachineTitle(state, id)}${id === here ? ' (the developer is in it: a session named alone is its)' : ''}${status === 'connected' ? '' : ` (${status})`}`,
+		)
+		.join('; ');
+};
+
 export const buildKernelMessage = ({
 	state,
 	utterance,
@@ -194,7 +228,7 @@ export const buildKernelMessage = ({
 		state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 	const screenDescription = sessionOnScreen
 		? `looking at ${sessionOnScreen.ref}${sessionOnScreen.isPinned ? ' (the crew setup session: a separate Claude, not you)' : ''}${sessionOnScreen.topic ? ` (${sessionOnScreen.topic})` : ''}. What the developer says is for ${sessionOnScreen.ref} unless they name another session, answer something that waits, or give you a command`
-		: 'looking at all sessions (Mission Control)';
+		: describeOtherScreen(state);
 	const sessions = state.order.map((ref) =>
 		describeSession({ state, ref, isDetailed: false, now }),
 	);
@@ -209,6 +243,8 @@ export const buildKernelMessage = ({
 
 	return [
 		`Screen: ${screenDescription}.`,
+		// Only with other machines: without them the line would only cost attention.
+		...(hasMachines(state) ? [`Machines: ${describeMachines(state)}`] : []),
 		`Sessions: ${JSON.stringify(sessions)}`,
 		`Waiting on the developer: ${formatWaitingLine({ state, waiting, now, askedAloudRef: lastAskedLine?.ref ?? null })}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,

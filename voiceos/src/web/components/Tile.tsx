@@ -1,5 +1,6 @@
 import type { Session, State } from '../../shared/protocol.js';
-import { describeSessionBadge, readLastLine } from '../derive.js';
+import { describeSessionBadge, labelAcrossMachines, readLastLine } from '../derive.js';
+import { currentMachine } from '../../shared/machines.js';
 import type { Dispatch } from '../types.js';
 import { DevBadge } from './DevBadge.js';
 
@@ -33,7 +34,9 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 		>
 			<div className="tile-head">
 				<i className={`dot ${badge.dot}`} />
-				<span className="ref">{session.label}</span>
+				<span className="ref">
+					{labelAcrossMachines(state, session.ref, currentMachine(state))}
+				</span>
 				<span className={`st ${badge.isAlarm ? 'c-crit' : ''}`}>{badge.label}</span>
 			</div>
 			<div className="topic">

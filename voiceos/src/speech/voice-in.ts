@@ -254,6 +254,7 @@ export class VoiceInput {
 		const terms = buildContextTerms({
 			refs: state.order,
 			topics: Object.values(state.sessions).map((session) => session.topic ?? ''),
+			machineNames: Object.values(state.machines).map((machine) => machine.name),
 		});
 		const createSession =
 			this.options.createSession ??

@@ -360,3 +360,39 @@ export const createMediaHooks = ({ session, mediaDir, log }: CreateMediaHooksPar
 		}
 	},
 });
+
+export interface StoreMediaBytesParams {
+	name: string;
+	bytes: Buffer;
+	dir: string;
+}
+
+// Another machine's picture, sent over the link: kept only under the name its own bytes give it,
+// by the same rules as a picture a session here showed.
+export const storeMediaBytes = ({ name, bytes, dir }: StoreMediaBytesParams): boolean => {
+	// Checked before anything is written: bytes that are not what they claim are kept under no name.
+	if (
+		!MEDIA_NAME_PATTERN.test(name) ||
+		createHash('sha256').update(bytes).digest('hex').slice(0, 32) !== name.slice(0, 32)
+	) {
+		return false;
+	}
+
+	const stored = storeImage(bytes, extname(name), dir);
+
+	return stored.ok && stored.name === name;
+};
+
+export const readMediaBytes = (name: string, dir: string): Buffer | null => {
+	const file = readMediaFile({ name, dir });
+
+	if (!file.ok) {
+		return null;
+	}
+
+	try {
+		return readFileSync(file.path);
+	} catch {
+		return null;
+	}
+};

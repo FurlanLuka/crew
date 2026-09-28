@@ -4,6 +4,7 @@ import type { Effect } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { createLogger } from '../log.js';
+import { machineOf } from '../shared/machine-ref.js';
 import {
 	confirmServersDown,
 	buildFallbackFixPrompt,
@@ -42,6 +43,10 @@ export interface DevWatchOptions {
 	say: DevSay;
 	now?: () => number;
 	fixPromptTimeoutMs?: number;
+	// One watch per machine: which refs are its own (default: this Mac's), and whether that machine
+	// can be asked now. A machine out of reach clears nothing and announces no crash.
+	isMine?: (ref: string) => boolean;
+	isAvailable?: () => boolean;
 }
 
 interface SayParams {
@@ -63,7 +68,15 @@ export class DevWatch {
 		this.now = options.now ?? Date.now;
 	}
 
+	private isMine(ref: string): boolean {
+		return (this.options.isMine ?? ((candidate) => machineOf(candidate) === null))(ref);
+	}
+
 	handle = async (effect: Effect): Promise<void> => {
+		if ((effect.type === 'dev' || effect.type === 'fix_dev') && !this.isMine(effect.ref)) {
+			return;
+		}
+
 		if (effect.type === 'dev') {
 			return this.run(effect.ref, effect.action);
 		}
@@ -93,6 +106,11 @@ export class DevWatch {
 
 	private async lookAll(): Promise<void> {
 		const { store, crew } = this.options;
+
+		if (this.options.isAvailable && !this.options.isAvailable()) {
+			return;
+		}
+
 		const routes = await this.loadRoutes();
 
 		if (routes === null) {
@@ -104,7 +122,7 @@ export class DevWatch {
 		);
 
 		for (const ref of Object.keys(store.state.devServers)) {
-			if (!running.has(ref) && !store.state.devStarting.includes(ref)) {
+			if (this.isMine(ref) && !running.has(ref) && !store.state.devStarting.includes(ref)) {
 				store.dispatch({ type: 'dev_servers', ref, servers: [], isSettled: true });
 			}
 		}

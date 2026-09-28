@@ -122,7 +122,7 @@ describe('executeTool', () => {
 
 		await executeTool('switch_view', { ref: null }, tools);
 
-		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'grid' } }]);
+		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'machines' } }]);
 	});
 
 	it('start_session on a running session → no dispatch, says so', async () => {

@@ -4,7 +4,7 @@ import { parseCheckRows, parseRouteRows, type CheckRow, type RouteRow } from '..
 
 const log = createLogger('crew');
 
-interface CrewRunOptions {
+export interface CrewRunOptions {
 	cwd?: string;
 	timeoutMs?: number;
 }

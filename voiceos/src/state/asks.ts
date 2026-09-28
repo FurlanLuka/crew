@@ -82,7 +82,12 @@ export const settleAsksForSession = (state: State, ref: string, message: string)
 	// A held command has no SDK side to answer: it only closes.
 	const effects: Effect[] = state.asks
 		.filter((ask) => ask.ref === ref && isSdkAsk(ask))
-		.map((ask) => ({ type: 'resolve_ask', askId: ask.id, result: { behavior: 'deny', message } }));
+		.map((ask) => ({
+			type: 'resolve_ask',
+			ref: ask.ref,
+			askId: ask.id,
+			result: { behavior: 'deny', message },
+		}));
 
 	return { state: { ...state, asks: state.asks.filter((ask) => ask.ref !== ref) }, effects };
 };
@@ -230,7 +235,7 @@ const describeQuestionAloud = (ask: QuestionAsk, label: string): string => {
 
 const resolveAsk = (state: State, ask: PendingAsk, result: AskResult): ReducerResult => ({
 	state: closeAsk(state, ask.id),
-	effects: [{ type: 'resolve_ask', askId: ask.id, result }],
+	effects: [{ type: 'resolve_ask', ref: ask.ref, askId: ask.id, result }],
 });
 
 const findAsk = <Kind extends PendingAsk['kind']>(
@@ -474,7 +479,12 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				return {
 					state: ended.state,
 					effects: [
-						{ type: 'resolve_ask', askId: ask.id, result: buildPermissionResult(ask, 'allow') },
+						{
+							type: 'resolve_ask',
+							ref: ask.ref,
+							askId: ask.id,
+							result: buildPermissionResult(ask, 'allow'),
+						},
 						...ended.effects,
 					],
 				};

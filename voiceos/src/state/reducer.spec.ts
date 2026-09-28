@@ -209,6 +209,7 @@ describe('asks', () => {
 		expect(effects).toEqual([
 			{
 				type: 'resolve_ask',
+				ref: 'store/main',
 				askId: 'a1',
 				result: { behavior: 'allow', updatedInput: { command: 'git push' } },
 			},
@@ -251,6 +252,7 @@ describe('asks', () => {
 		const interrupted = run([{ type: 'interrupt', ref: 'store/main' }], blocked().state);
 		expect(interrupted.effects).toContainEqual({
 			type: 'resolve_ask',
+			ref: 'store/main',
 			askId: 'a1',
 			result: { behavior: 'deny', message: 'The user interrupted.' },
 		});
@@ -269,6 +271,7 @@ describe('asks', () => {
 		expect(effects).toEqual([
 			{
 				type: 'resolve_ask',
+				ref: 'store/main',
 				askId: 'a1',
 				result: { behavior: 'deny', message: 'The session was stopped.' },
 			},
@@ -351,6 +354,7 @@ describe('asks', () => {
 
 		expect(effects[0]).toMatchObject({
 			type: 'resolve_ask',
+			ref: 'store/main',
 			askId: 'q1',
 			result: {
 				behavior: 'allow',
@@ -518,6 +522,7 @@ describe('denials', () => {
 		expect(effects).toEqual([
 			{
 				type: 'resolve_ask',
+				ref: 'store/main',
 				askId: 'p1',
 				result: { behavior: 'allow', updatedInput: { command: 'git push' } },
 			},
@@ -814,14 +819,14 @@ describe('worktrees', () => {
 		expect(state.order).toContain('store/main');
 	});
 
-	it('viewing a worktree that disappears → back to the grid', () => {
+	it("viewing a worktree that disappears → back to its machine's grid", () => {
 		const viewing = run(
 			[{ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } }],
 			idleSession(),
 		).state;
 		const { state } = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }], viewing);
 
-		expect(state.view).toEqual({ kind: 'grid' });
+		expect(state.view).toEqual({ kind: 'grid', machine: 'local' });
 	});
 });
 
@@ -936,11 +941,28 @@ describe('history_restored', () => {
 		expect(state.sessions['store/main']?.stream).toEqual(restored);
 	});
 
-	it('stream already has live lines → left alone', () => {
+	it('stream already has live lines → the older history goes before them, the live lines stay', () => {
 		const live = run([{ type: 'send', ref: 'store/main', text: 'hello' }], idleSession()).state;
 		const { state } = run([{ type: 'history_restored', ref: 'store/main', items: restored }], live);
+		expect(state.sessions['store/main']?.stream).toEqual([
+			...restored,
+			expect.objectContaining({ kind: 'user', text: 'hello' }),
+		]);
+	});
+
+	it('history no older than what shows → nothing added', () => {
+		const live = run([{ type: 'send', ref: 'store/main', text: 'hello' }], idleSession()).state;
+		const { state } = run(
+			[
+				{
+					type: 'history_restored',
+					ref: 'store/main',
+					items: [{ id: 'late', at: 99_999, kind: 'text', text: 'later' }],
+				},
+			],
+			live,
+		);
 		expect(state.sessions['store/main']?.stream.map((item) => item.kind)).toEqual(['user']);
-		expect(state.sessions['store/main']?.stream[0]).toMatchObject({ text: 'hello' });
 	});
 
 	it('second restore → ignored', () => {
@@ -1431,6 +1453,7 @@ describe('spoken follow-ups', () => {
 		);
 		expect(effects[3]).toContainEqual({
 			type: 'resolve_ask',
+			ref: 'store/main',
 			askId: 'p9',
 			result: { behavior: 'deny', message: 'use the staging db instead' },
 		});
@@ -1609,6 +1632,7 @@ describe('questions are spoken without their options', () => {
 		expect(second.state.asks).toHaveLength(0);
 		expect(second.effects).toContainEqual({
 			type: 'resolve_ask',
+			ref: 'store/main',
 			askId: ask.id,
 			result: {
 				behavior: 'allow',
@@ -1638,6 +1662,7 @@ describe('questions are spoken without their options', () => {
 		expect(three.effects).toContainEqual(
 			expect.objectContaining({
 				type: 'resolve_ask',
+				ref: 'store/main',
 				result: {
 					behavior: 'allow',
 					updatedInput: {
@@ -1655,6 +1680,7 @@ describe('questions are spoken without their options', () => {
 			run([{ type: 'send', ref: 'store/main', text: 'go ahead' }], opened).effects,
 		).toContainEqual({
 			type: 'resolve_ask',
+			ref: 'store/main',
 			askId: 'q1',
 			result: { behavior: 'allow', updatedInput: { answers: {} } },
 		});

@@ -51,6 +51,7 @@ const createTextResponse = (
 
 export const startGateway = (options: GatewayOptions): Gateway => {
 	const { store, token } = options;
+	const serverId = `${process.pid}-${Date.now()}`;
 	// Known only once the server has its port; the /ws route reads it on each handshake.
 	let origins: string[] = [];
 	const clients = new Map<string, ServerWebSocket<ClientData>>();
@@ -140,7 +141,11 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 			open(socket: ServerWebSocket<ClientData>) {
 				// Snapshot and subscribe in the same tick so no input slips between; the client replays from seq + 1.
 				socket.send(
-					JSON.stringify({ type: 'snapshot', state: store.state } satisfies ServerMessage),
+					JSON.stringify({
+						type: 'snapshot',
+						state: store.state,
+						serverId,
+					} satisfies ServerMessage),
 				);
 				socket.subscribe(TOPIC);
 				clients.set(socket.data.id, socket);

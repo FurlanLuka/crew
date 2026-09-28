@@ -20,6 +20,7 @@ export type ToolName =
 	| 'read_notes'
 	| 'queued_message'
 	| 'hands_free'
+	| 'rename_machine'
 	| 'open_doc';
 
 export const MUTATING_TOOLS: ToolName[] = [
@@ -37,6 +38,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'note',
 	'queued_message',
 	'hands_free',
+	'rename_machine',
 ];
 
 interface JsonSchema {
@@ -158,10 +160,18 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'switch_view',
-		description: 'Show one session on screen, or every session (Mission Control) when ref is null.',
+		description:
+			'Show one session on screen; or, with ref null, one machine\'s sessions when machine names one, else Mission Control. A session with its machine named ("crew main on my Mac") → that ref and that machine.',
 		input_schema: {
 			type: 'object',
-			properties: { ref: { type: ['string', 'null'] } },
+			properties: {
+				ref: { type: ['string', 'null'] },
+				machine: {
+					type: 'string',
+					description:
+						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
+				},
+			},
 			required: ['ref'],
 			additionalProperties: false,
 		},
@@ -316,6 +326,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			type: 'object',
 			properties: { ref: { type: ['string', 'null'] }, title: { type: ['string', 'null'] } },
 			required: ['ref', 'title'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'rename_machine',
+		description:
+			'Give another machine the name the developer calls it ("rename vm1 to build box", "call the GPU box training rig"). Only when they clearly asked to rename a machine.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				machine: { type: 'string', description: "The machine's current name or id." },
+				name: { type: 'string', description: 'The new name, as the developer said it.' },
+			},
+			required: ['machine', 'name'],
 			additionalProperties: false,
 		},
 	},

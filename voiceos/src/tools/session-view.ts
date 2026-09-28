@@ -1,3 +1,5 @@
+import { isReachable, readMachineTitle } from '../shared/machines.js';
+import { machineOf } from '../shared/machine-ref.js';
 import { listDocTitles } from './docs.js';
 import { type State, type PendingAsk, type Denial, isOfferFresh } from '../shared/protocol.js';
 import { describeWork, formatAge } from '../state/working.js';
@@ -116,8 +118,16 @@ export const describeSession = ({
 	const docTitles = listDocTitles(state, ref);
 	const backgroundAgents = session.subagents.filter((subagent) => subagent.isBackground).length;
 
+	const machine = machineOf(ref);
+
 	return {
 		ref,
+		...(machine
+			? {
+					machine: readMachineTitle(state, machine),
+					...(isReachable(state, ref) ? {} : { machine_out_of_reach: true }),
+				}
+			: {}),
 		status: session.status,
 		topic: session.topic,
 		...(work.requests.length > 0 ? { last_messages_to_it: work.requests } : {}),

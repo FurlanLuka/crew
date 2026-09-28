@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import type { ClientMessage } from '../shared/protocol.js';
+import { isValidHost } from '../shared/machines.js';
 
 const sampleRateSchema = z.number().int().min(8000).max(192000);
 const refSchema = z.string().min(1).max(200);
+const machineIdSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
 const viewSchema = z.discriminatedUnion('kind', [
-	z.object({ kind: z.literal('grid') }),
+	z.object({ kind: z.literal('grid'), machine: machineIdSchema.optional() }),
 	z.object({ kind: z.literal('session'), ref: refSchema }),
+	z.object({ kind: z.literal('machines') }),
 ]);
 
 const actionSchema = z.discriminatedUnion('type', [
@@ -51,6 +54,17 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('dev_restart'), ref: refSchema }),
 	z.object({ type: z.literal('fix_dev'), ref: refSchema }),
 	z.object({ type: z.literal('dismiss_dev_offer') }),
+	z.object({
+		type: z.literal('add_machine'),
+		host: z.string().refine(isValidHost),
+		name: z.string().max(60).optional(),
+	}),
+	z.object({
+		type: z.literal('rename_machine'),
+		id: machineIdSchema,
+		name: z.string().min(1).max(60),
+	}),
+	z.object({ type: z.literal('remove_machine'), id: machineIdSchema }),
 ]);
 
 const clientMessageSchema = z.discriminatedUnion('type', [

@@ -1,6 +1,8 @@
 import type { Observation, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readShownText } from '../shared/spoken-tags.js';
+import { currentMachine, isReachable, readMachineName } from '../shared/machines.js';
+import { machineOf, toLocalRef } from '../shared/machine-ref.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -12,7 +14,14 @@ const MAX_REQUEST_CHARS = 200;
 
 export const withoutEffects = (state: State): ReducerResult => ({ state, effects: [] });
 
-export const readLabel = (state: State, ref: string): string => state.sessions[ref]?.label ?? ref;
+// How a session is named aloud: another machine's session carries that machine's name, unless the
+// developer is in that machine already.
+export const readLabel = (state: State, ref: string): string => {
+	const label = state.sessions[ref]?.label ?? toLocalRef(ref);
+	const name = readMachineName(state, ref);
+
+	return name && currentMachine(state) !== machineOf(ref) ? `${name} ${label}` : label;
+};
 
 export const updateSession = (
 	state: State,
@@ -147,7 +156,8 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 	// The only place a queued message leaves the queue, so cancel_queued can never race a send.
 	const [head, ...remainingQueue] = state.sessions[ref]?.queue ?? [];
 
-	if (!head) {
+	// A machine out of reach, or still applying its snapshot, keeps its queue until it is connected.
+	if (!head || !isReachable(state, ref)) {
 		return withoutEffects(state);
 	}
 
@@ -211,6 +221,7 @@ export const isShownAlready = (stream: StreamItem[], observation: Observation): 
 				.slice(turnStart + 1)
 				.some((item) => item.kind === 'image' && item.name === observation.name);
 		}
+
 		default:
 			return false;
 	}

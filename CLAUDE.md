@@ -245,7 +245,14 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   (`release.extra_files`); `bun run install-dev` builds from source into the same path and drops
   the stamp. `crew voice` checks tmux and `claude` first (`UnmetRequirements`) and hands the
   `claude` it found to Voice OS (`VOICEOS_CLAUDE_BIN`): the tmux server's PATH is not the
-  caller's. Its keys
+  caller's. **Remote machines:** the same binary is a remote with `voiceos remote serve` (a
+  daemon in tmux `crew-dev-os-remote`, its own `~/.crew/voiceos/remote/`, a 0600 unix socket) that
+  runs only the session manager; `crew voice remote` starts it, `crew voice _attach` (hidden, stdout
+  is the link) is what a main runs over `ssh <host>`. The main keeps the one reducer: refs carry the
+  machine (`vm1:store-front/main`, `shared/machine-ref.ts`), `remote/mapping.ts` routes hands
+  effects and prefixes reports, and a reconnect is a snapshot the main reconciles (`remote/resync.ts`),
+  never an event replay; unacked effects ride in the next hello. `~/.crew/voiceos/machines.json` is
+  the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS. Its keys
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
