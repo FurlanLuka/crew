@@ -633,6 +633,45 @@ describe('denials', () => {
 });
 
 describe('a turn the session starts by itself (a background agent reported back)', () => {
+	it('ended without a spoken tag → not narrated; with one → narrated; a sent turn always is', () => {
+		const narrates = (inputs: Input[], start: State) =>
+			run(inputs, start).effects.some((effect) => effect.type === 'narrate');
+		const selfStarted = (text: string): Input[] => [
+			{ type: 'tool', ref: 'store/main', name: 'Read', summary: 'read the review' },
+			{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text },
+		];
+
+		expect(narrates(selfStarted('Still waiting on the other reviewer.'), idleSession())).toBe(
+			false,
+		);
+		const owed = idleSession();
+		const withReportOwed: State = {
+			...owed,
+			sessions: {
+				...owed.sessions,
+				'store/main': { ...owed.sessions['store/main']!, reportOwed: true },
+			},
+		};
+		expect(narrates(selfStarted('Still waiting on the other reviewer.'), withReportOwed)).toBe(
+			true,
+		);
+		expect(
+			narrates(
+				selfStarted('<spoken>Both reviews are in; fixing their points.</spoken>'),
+				idleSession(),
+			),
+		).toBe(true);
+		expect(
+			narrates(
+				[
+					{ type: 'send', ref: 'store/main', text: 'run the tests' },
+					{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: 'All 40 pass.' },
+				],
+				idleSession(),
+			),
+		).toBe(true);
+	});
+
 	const activity: Input[] = [
 		{ type: 'text_delta', ref: 'store/main', text: 'The research is back.' },
 		{ type: 'assistant_text', ref: 'store/main', text: 'The research is back.' },

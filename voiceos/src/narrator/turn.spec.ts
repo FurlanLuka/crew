@@ -578,6 +578,8 @@ describe('a session off screen at the end of its turn', () => {
 	interface OffScreenHarnessParams {
 		narration?: Partial<Narration>;
 		about?: string | null;
+		// The topic the writer names for this turn; by default it keeps the one it was given.
+		topic?: string;
 		// Runs while the narrator waits, as the developer might.
 		duringWait?: (store: Store) => void;
 	}
@@ -585,6 +587,7 @@ describe('a session off screen at the end of its turn', () => {
 	const createOffScreenHarness = ({
 		narration = {},
 		about = null,
+		topic,
 		duringWait,
 	}: OffScreenHarnessParams = {}) => {
 		const store = new Store();
@@ -612,7 +615,7 @@ describe('a session off screen at the end of its turn', () => {
 			writeTopic: async (input) => {
 				duringWait?.(store);
 
-				return { topic: input.topic, about };
+				return { topic: topic ?? input.topic, about };
 			},
 			say: (line) => lines.push(line),
 			journalDir: mkdtempSync(join(tmpdir(), 'voiceos-off-')),
@@ -701,6 +704,39 @@ describe('a session off screen at the end of its turn', () => {
 			'checkout needs you: the backoff cap.',
 		]);
 		expect(heldOf(harness.store)).toMatchObject({ text: ASK_, missed: 0 });
+	});
+
+	it('a tagged report off screen → "done" names this turn\'s topic, not the one before', async () => {
+		const harness = createOffScreenHarness({ topic: 'Retry backoff with jitter' });
+		harness.store.dispatch({ type: 'topic_written', ref: REF_, topic: 'Checkout page layout' });
+		harness.store.dispatch({ type: 'line_held', ref: REF_, text: LONG_, isAsking: false });
+		await harness.handle({ ...tagless, spoken: { text: LONG_, isAsking: false }, isHeld: true });
+
+		expect(harness.lines.map((line) => line.text)).toEqual([
+			'checkout is done: Retry backoff with jitter.',
+		]);
+	});
+
+	it('a pinned topic → "done" names the request instead, and no topic call is waited for', async () => {
+		let calls = 0;
+		const harness = createOffScreenHarness({
+			duringWait: () => {
+				calls += 1;
+			},
+		});
+		harness.store.dispatch({ type: 'pin_topic', ref: REF_, topic: 'Checkout' });
+		harness.store.dispatch({ type: 'line_held', ref: REF_, text: LONG_, isAsking: false });
+		await harness.handle({
+			...tagless,
+			asked: 'add jitter to the retry backoff',
+			spoken: { text: LONG_, isAsking: false },
+			isHeld: true,
+		});
+
+		expect(harness.lines.map((line) => line.text)).toEqual([
+			'checkout is done: add jitter to the retry backoff.',
+		]);
+		expect(calls).toBe(0);
 	});
 
 	it('the developer switched there while it thought → the replay was the line: nothing more', async () => {
@@ -1017,7 +1053,8 @@ describe('background sub-agents and follow-up turns off screen (research that ou
 		await endTurn(REPORT);
 		await endTurn('The competitor research is wrapped up, covered in the answer above.');
 
-		expect(said).toEqual(['checkout is done.']);
+		// No topic was written, so the request the work answered names it.
+		expect(said).toEqual(['checkout is done: find open-source competitors.']);
 		expect(store.state.sessions[REF_]?.heldLine).toMatchObject({
 			text: REPORT,
 			isAnnounced: true,

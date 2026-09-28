@@ -536,8 +536,13 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				session.heldLine?.kind === 'line' &&
 				session.heldLine.text === spoken.text;
 
+			// A turn nobody sent (a background agent reporting back) speaks only through its own tag: its
+			// untagged "still waiting" lines, narrated one after another, were noise.
+			const isSelfStarted = session.currentSendId === null && !session.reportOwed;
+			const isSilent = isSelfStarted && spoken === null;
+
 			// A promised report is given even for a turn that wrote nothing.
-			if ((input.text.trim() || session.reportOwed) && !isCutOff) {
+			if ((input.text.trim() || session.reportOwed) && !isCutOff && !isSilent) {
 				effects.push({
 					type: 'narrate',
 					ref: input.ref,

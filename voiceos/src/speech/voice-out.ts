@@ -6,6 +6,7 @@ import { hasBackgroundWork } from '../state/subagents.js';
 import {
 	decideTurnLine,
 	describeAnnouncement,
+	describeDoneAbout,
 	isHeldQuestion,
 	isOnAnotherSession,
 	isOnScreen,
@@ -326,7 +327,18 @@ export class VoiceOut {
 
 		store.dispatch({ type: 'held_line_announced', ref: item.ref, id: held.id });
 		this.say({
-			text: describeAnnouncement({ label: session.label, kind }),
+			text: describeAnnouncement({
+				label: session.label,
+				kind,
+				about:
+					kind === 'done'
+						? describeDoneAbout({
+								topic: session.topic,
+								isTopicPinned: session.isTopicPinned,
+								asked: session.requests.at(-1)?.text ?? null,
+							})
+						: null,
+			}),
 			priority: kind === 'needs' ? 'high' : 'normal',
 			source: 'narrator',
 			ref: item.ref,
