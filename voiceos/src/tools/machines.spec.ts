@@ -4,6 +4,7 @@ import { createInitialState, createSession } from '../state/reducer.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { executeTool, type ToolContext } from './tools.js';
 import { findMachine } from './machines.js';
+import { listToolsFor } from './definitions.js';
 import { describeSession } from './session-view.js';
 
 const buildMachine = (patch: Partial<Machine> = {}): Machine => ({
@@ -285,5 +286,26 @@ describe('a session named with its machine', () => {
 		);
 
 		expect(actions[0]).toEqual({ type: 'start_session', ref: 'crew/main' });
+	});
+});
+
+describe('what the kernel is offered', () => {
+	it('this Mac alone → the tools as before machines: no machine tool, the plain switch_view', () => {
+		const plain = listToolsFor(null, false);
+
+		expect(plain.some((tool) => tool.name === 'rename_machine')).toBe(false);
+		expect(plain.find((tool) => tool.name === 'switch_view')?.input_schema.properties).toEqual({
+			ref: { type: ['string', 'null'] },
+		});
+	});
+
+	it('with other machines → rename_machine, and switch_view takes a machine', () => {
+		const withMachines = listToolsFor(null, true);
+
+		expect(withMachines.some((tool) => tool.name === 'rename_machine')).toBe(true);
+		expect(
+			withMachines.find((tool) => tool.name === 'switch_view')?.input_schema.properties,
+		).toHaveProperty('machine');
+		expect(withMachines.filter((tool) => tool.name === 'switch_view')).toHaveLength(1);
 	});
 });

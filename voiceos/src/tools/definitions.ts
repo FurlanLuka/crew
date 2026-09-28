@@ -160,18 +160,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'switch_view',
-		description:
-			'Show one session on screen; or, with ref null, one machine\'s sessions when machine names one, else Mission Control. A session with its machine named ("crew main on my Mac") → that ref and that machine.',
+		description: 'Show one session on screen, or every session (Mission Control) when ref is null.',
 		input_schema: {
 			type: 'object',
-			properties: {
-				ref: { type: ['string', 'null'] },
-				machine: {
-					type: 'string',
-					description:
-						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
-				},
-			},
+			properties: { ref: { type: ['string', 'null'] } },
 			required: ['ref'],
 			additionalProperties: false,
 		},
@@ -330,20 +322,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		},
 	},
 	{
-		name: 'rename_machine',
-		description:
-			'Give another machine the name the developer calls it ("rename vm1 to build box", "call the GPU box training rig"). Only when they clearly asked to rename a machine.',
-		input_schema: {
-			type: 'object',
-			properties: {
-				machine: { type: 'string', description: "The machine's current name or id." },
-				name: { type: 'string', description: 'The new name, as the developer said it.' },
-			},
-			required: ['machine', 'name'],
-			additionalProperties: false,
-		},
-	},
-	{
 		name: 'hands_free',
 		description:
 			'Set how the developer\'s browser tab listens: push (push to talk; "turn off hands-free", "stop listening", "push to talk"), on-demand (always listening, acting only on what follows "Voice OS"; "on demand mode", "listen for Voice OS", "wake word"), hands-free (always listening; "hands-free on", "start listening"). Voice OS confirms it aloud. Never for a bare "stop" or "wait": those interrupt.',
@@ -373,10 +351,54 @@ export const FORWARD_TOOL: ToolDefinition = {
 	},
 };
 
-export const listToolsFor = (forwardTo: string | null): ToolDefinition[] => {
+// Offered only once other machines exist: without them, what the kernel reads stays exactly as it
+// was, and machine words cannot pull a plain route astray.
+export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
+	{
+		name: 'switch_view',
+		description:
+			'Show one session on screen; or, with ref null, one machine\'s sessions when machine names one, else Mission Control. A session with its machine named ("crew main on my Mac") → that ref and that machine.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: { type: ['string', 'null'] },
+				machine: {
+					type: 'string',
+					description:
+						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
+				},
+			},
+			required: ['ref'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'rename_machine',
+		description:
+			'Give another machine the name the developer calls it ("rename vm1 to build box", "call the GPU box training rig"). Only when they clearly asked to rename a machine.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				machine: { type: 'string', description: "The machine's current name or id." },
+				name: { type: 'string', description: 'The new name, as the developer said it.' },
+			},
+			required: ['machine', 'name'],
+			additionalProperties: false,
+		},
+	},
+];
+
+export const listToolsFor = (forwardTo: string | null, hasMachines = false): ToolDefinition[] => {
+	const tools = hasMachines
+		? [
+				...TOOL_DEFINITIONS.filter((tool) => tool.name !== 'switch_view'),
+				...MACHINE_TOOL_DEFINITIONS,
+			]
+		: TOOL_DEFINITIONS;
+
 	// Offered only while a session is on screen: a tool that needs no ref is chosen reliably and fast.
 	// History is left out there: that Claude holds its own, and the kernel answered from it instead of forwarding.
 	return forwardTo
-		? [FORWARD_TOOL, ...TOOL_DEFINITIONS.filter((tool) => tool.name !== 'read_history')]
-		: TOOL_DEFINITIONS;
+		? [FORWARD_TOOL, ...tools.filter((tool) => tool.name !== 'read_history')]
+		: tools;
 };
