@@ -18,7 +18,8 @@ build instead: `cd voiceos && bun install && bun run install-dev` (it compiles i
 Open a link `crew voice` prints. Browsers grant the microphone only on localhost or HTTPS: the
 localhost link works on this Mac, and the proxy link (`https://voice--os.<domain>`) works on any
 device that trusts crew's CA — `crew dev proxy trust` shows how, once per device. Hold **Space** to
-talk; type in the bar at the bottom otherwise. **Esc** goes back to Mission Control.
+talk; type in the bar at the bottom otherwise. **Esc** goes up a level: a session → its machine →
+Mission Control, where each machine has a card and **+ Add machine** adds another one over SSH.
 
 The first `crew voice` at a terminal asks for the two API keys it needs and checks each with its
 service before saving it; `crew voice keys` shows which are set, and `crew voice keys set
@@ -76,8 +77,18 @@ environment.
 - The session screen lists running sub-agents with their current step, from the SDK's task
   events.
 
-State lives in `~/.crew/voiceos/` (token, sessions, topics, journal, logs). `crew voice
-logs` tails the log.
+- `src/remote/` — other machines. A remote runs the same binary as `voiceos remote serve` (a
+  daemon crew keeps in tmux, `crew voice remote`), which runs only the session manager behind a
+  0600 unix socket; `voiceos remote attach` bridges an SSH login to it (`crew voice _attach` execs
+  it). The main keeps the one reducer: refs carry the machine (`vm1:store-front/main`,
+  `src/shared/machine-ref.ts`), `mapping.ts` routes effects out and prefixes reports in, and a
+  reconnect is a snapshot the main reconciles (`resync.ts`) with one recap line — never an event
+  replay; effects not yet acknowledged ride in the next hello and are applied once. The machine
+  list is `~/.crew/voiceos/machines.json`, written only by `crew voice machines` (the page and
+  voice go through it) and watched while running.
+
+State lives in `~/.crew/voiceos/` (token, sessions, topics, journal, logs; a remote's own under
+`remote/`). `crew voice logs` tails the log.
 
 ## Evals
 

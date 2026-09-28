@@ -5,7 +5,8 @@ description: >
   worktrees; add a repo from a path or a git URL and prove it runs; check dev server
   status and URLs; start, stop or restart dev servers; declare
   env bindings or overrides; run a script with a worktree's env; open Claude or an editor on
-  a checkout; run Voice OS or set its API keys; move crew to another machine; or free disk.
+  a checkout; run Voice OS or set its API keys; make a machine a Voice OS remote or add one
+  (crew voice remote, crew voice machines); move crew to another machine; or free disk.
 tools: Bash, Read, AskUserQuestion
 model: sonnet
 skills:

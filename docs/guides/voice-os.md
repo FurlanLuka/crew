@@ -185,14 +185,16 @@ You keep talking to the one on your Mac; the other machine runs its sessions and
 3. On your Mac: `crew voice machines add <host> --name="Build box"`, or **+ Add machine** on
    Mission Control.
 
-Mission Control then shows a card per machine: what runs there, and what waits on you. Inside a
-machine it is the grid you know; Esc goes back up. Alerts from every machine play, with the
+Mission Control is a card per machine — This Mac first, then each one you added — with what runs
+there and what waits on you. Click a card (or say its name) and it is the grid you know; Esc goes
+back up. Alerts from every machine play, with the
 machine's name in front ("Build box, store front main needs you"), and switching to a machine
 says what waits there.
 
-- "Show me build box." · "Go to this Mac." · "Rename vm1 to build box."
+- "Show me build box." · "Switch to the personal server." · "Go to this Mac." · "Rename vm1 to
+  build box."
 - "Build box store front main, run the tests." — a name that exists on two machines means the one
-  you are looking at; say the machine to reach the other.
+  you are looking at; say the machine to reach the other: "crew main on my Mac".
 - Its dev servers are its own: "start the dev servers" works as here, and the links are that
   machine's addresses.
 
