@@ -2,7 +2,7 @@ import { cleanSpokenText } from '../shared/spoken.js';
 import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
-import { readLabel, updateSession, withoutEffects } from './helpers.js';
+import { capWords, readLabel, updateSession, withoutEffects } from './helpers.js';
 import { hasBackgroundWork } from './subagents.js';
 
 // A session the developer isn't looking at does not speak its lines: they wait until the developer
@@ -75,13 +75,43 @@ export const describeAnnouncement = ({
 	kind,
 	about,
 }: DescribeAnnouncementParams): string => {
-	if (kind === 'done') {
-		return `${label} is done.`;
+	const topic = about?.trim().replace(/[.!?]+$/, '');
+	const verb = kind === 'done' ? 'is done' : 'needs you';
+
+	if (!topic) {
+		return `${label} ${verb}.`;
 	}
 
-	const topic = about?.trim().replace(/[.!?]+$/, '');
+	// A capped topic ends on its ellipsis: the pause says it was cut, a full stop would not.
+	return `${label} ${verb}: ${topic}${topic.endsWith('…') ? '' : '.'}`;
+};
 
-	return topic ? `${label} needs you: ${topic}.` : `${label} needs you.`;
+const DONE_ABOUT_WORDS = 8;
+const MIN_REQUEST_WORDS = 3;
+
+interface DescribeDoneAboutParams {
+	topic: string | null;
+	isTopicPinned: boolean;
+	// What the turn was asked, in the developer's words.
+	asked: string | null;
+}
+
+export const describeDoneAbout = ({
+	topic,
+	isTopicPinned,
+	asked,
+}: DescribeDoneAboutParams): string | null => {
+	// "Done" with nothing tying it to the work sounds random. A pinned topic stays put however the
+	// work moves on, so it never says what just finished; a reply like "no" says nothing either.
+	if (topic && !isTopicPinned) {
+		return topic;
+	}
+
+	const request = cleanSpokenText(asked ?? '');
+
+	return request.split(/\s+/).filter(Boolean).length >= MIN_REQUEST_WORDS
+		? capWords(request, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
+		: null;
 };
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];

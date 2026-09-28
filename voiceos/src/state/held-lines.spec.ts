@@ -6,6 +6,7 @@ import { findLastAskedAloud } from '../tools/asked-aloud.js';
 import {
 	decideTurnLine,
 	describeAnnouncement,
+	describeDoneAbout,
 	describeHeldLine,
 	holdLine,
 	isOnAnotherSession,
@@ -644,4 +645,78 @@ describe('isOnAnotherSession', () => {
 	])('%s → %p', (_, view, expected) =>
 		expect(isOnAnotherSession({ ...idleSession(), view }, REF)).toBe(expected),
 	);
+});
+
+describe('what a "done" names', () => {
+	it('the announcement: with what finished, or bare when nothing says it', () => {
+		expect(
+			describeAnnouncement({
+				label: 'speak/main',
+				kind: 'done',
+				about: 'Telephony branches pushed.',
+			}),
+		).toBe('speak/main is done: Telephony branches pushed.');
+		expect(describeAnnouncement({ label: 'speak/main', kind: 'done', about: '  ' })).toBe(
+			'speak/main is done.',
+		);
+		expect(
+			describeAnnouncement({
+				label: 'speak/main',
+				kind: 'done',
+				about: describeDoneAbout({
+					topic: null,
+					isTopicPinned: false,
+					asked: 'can you give me full context so i can copy it over',
+				}),
+			}),
+		).toBe('speak/main is done: can you give me full context so i…');
+	});
+
+	it.each([
+		[
+			'a topic written for the work',
+			{ topic: 'Search box on the right', isTopicPinned: false, asked: 'move it' },
+			'Search box on the right',
+		],
+		[
+			'a pinned topic → the request instead',
+			{ topic: 'Voice OS', isTopicPinned: true, asked: 'push everything to the existing branches' },
+			'push everything to the existing branches',
+		],
+		[
+			'a reply too short to say anything → nothing',
+			{ topic: null, isTopicPinned: false, asked: 'no' },
+			null,
+		],
+		[
+			'a long request → its first eight words',
+			{
+				topic: null,
+				isTopicPinned: false,
+				asked: 'can you give me full context so i can copy it to a different session',
+			},
+			'can you give me full context so i…',
+		],
+		[
+			'trailing punctuation dropped',
+			{ topic: null, isTopicPinned: false, asked: 'push the telephony branches.' },
+			'push the telephony branches',
+		],
+		['nothing at all', { topic: null, isTopicPinned: false, asked: null }, null],
+		['two words → nothing', { topic: null, isTopicPinned: false, asked: 'push it' }, null],
+		[
+			'three words → said',
+			{ topic: null, isTopicPinned: false, asked: 'push it now' },
+			'push it now',
+		],
+		[
+			'punctuation where the cap cuts → dropped before the ellipsis',
+			{
+				topic: null,
+				isTopicPinned: false,
+				asked: 'first the api, then the app, then the docs please',
+			},
+			'first the api, then the app, then the…',
+		],
+	])('%s', (_, params, expected) => expect(describeDoneAbout(params)).toBe(expected));
 });

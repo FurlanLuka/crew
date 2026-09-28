@@ -305,6 +305,11 @@ gateway = startGateway({
 
 		switch (message.type) {
 			case 'action':
+				// Several pages can be open; the view is shared, so a switch names the page that made it.
+				if (message.action.type === 'switch_view') {
+					log.info('view switched', { client, view: message.action.view });
+				}
+
 				store.dispatch(message.action);
 
 				return;

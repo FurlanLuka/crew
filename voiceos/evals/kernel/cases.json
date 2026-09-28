@@ -3791,6 +3791,30 @@
 			"forbid_calls": ["forward", "send_to", "allow_denied", "interrupt"],
 			"answer": true,
 			"reply_not_includes": ["because", "classifier", "you said", "you turned"]
+		},
+		{
+			"id": "produce-context-forwards",
+			"utterance": "Can you now give me the context so I can copy it over?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Push the search branch and open a draft PR.",
+						"minutesAgo": 3,
+						"idle": true,
+						"said": "The search branch is pushed and the draft PR is open."
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "context"
+				}
+			],
+			"forbid_calls": ["send_to"],
+			"no_reply": true
 		}
 	]
 }

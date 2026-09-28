@@ -14,7 +14,14 @@ import { stripSessionName } from '../shared/spoken.js';
 import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared/questions.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
-import { pushStreamItem, readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
+import {
+	capWords,
+	pushStreamItem,
+	readLabel,
+	sendNow,
+	updateSession,
+	withoutEffects,
+} from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import {
 	clearHeldAsk,
@@ -97,12 +104,6 @@ export const buildPermissionResult = (
 		updatedInput: ask.input,
 		...(shouldRemember ? { updatedPermissions: ask.suggestions } : {}),
 	};
-};
-
-const capWords = (text: string, maxWords: number): string => {
-	const words = text.trim().split(/\s+/);
-
-	return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}…` : words.join(' ');
 };
 
 export const describeAskAloud = (ask: PendingAsk, label: string): string => {

@@ -67,6 +67,12 @@ export const createStreamItem = ({
 	}
 };
 
+export const capWords = (text: string, maxWords: number): string => {
+	const words = text.trim().split(/\s+/);
+
+	return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}…` : words.join(' ');
+};
+
 export const truncateText = (text: string, maxLength: number): string =>
 	text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 

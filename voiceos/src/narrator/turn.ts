@@ -11,6 +11,7 @@ import type { Session } from '../shared/protocol.js';
 import {
 	decideTurnLine,
 	describeAnnouncement,
+	describeDoneAbout,
 	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
@@ -126,7 +127,8 @@ interface SpeakOutcomeParams {
 	options: TurnNarratorOptions;
 	effect: NarrateEffect;
 	narration: Narration;
-	// What a question is about, for its announcement: waited for only if it is announced.
+	// What a question is about; for a tagged turn it also waits for the turn's topic. Waited for only
+	// when the line is announced.
 	readAbout: () => Promise<string | null>;
 	// Rechecked after that wait: a newer turn ends it.
 	isNewerTurn: () => boolean;
@@ -196,9 +198,11 @@ const speakOutcome = async ({
 		return;
 	}
 
-	const about = kind === 'needs' ? await readAbout() : null;
+	// Waits for this turn's topic too: "done" names the work that just finished, not the one before.
+	const about = await readAbout();
 	// Read after the wait: a switch there meanwhile replayed the line (and cleared it).
-	const current = store.state.sessions[effect.ref]?.heldLine;
+	const settled = store.state.sessions[effect.ref];
+	const current = settled?.heldLine;
 
 	if (isNewerTurn() || !current) {
 		return;
@@ -212,7 +216,14 @@ const speakOutcome = async ({
 		text: describeAnnouncement({
 			label: session.label,
 			kind,
-			about: about ?? (kind === 'needs' ? session.topic : null),
+			about:
+				kind === 'needs'
+					? (about ?? settled?.topic ?? null)
+					: describeDoneAbout({
+							topic: settled?.topic ?? null,
+							isTopicPinned: settled?.isTopicPinned === true,
+							asked: effect.asked,
+						}),
 		}),
 		priority: kind === 'needs' ? 'high' : 'normal',
 		ref: effect.ref,
@@ -286,8 +297,9 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 					isOwed: effect.isOwed,
 					sessionText: body,
 				});
-		// Off the speech path: only an announced question waits for what it is about. A pinned topic
-		// needs the call only for that. A writer that throws keeps the topic it had.
+		// Off the speech path: only an announcement waits for it (what a question is about, what a done
+		// turn did). A pinned topic needs the call only for a question. A writer that throws keeps the
+		// topic it had.
 		const needsAbout = effect.spoken?.isAsking === true;
 		const topicCall =
 			effect.spoken && (needsAbout || !session.isTopicPinned)

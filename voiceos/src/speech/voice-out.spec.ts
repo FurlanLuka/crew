@@ -207,6 +207,25 @@ describe('VoiceOut', () => {
 			kind: 'line',
 			text: long,
 		});
+
+		harness.store.dispatch({ type: 'topic_written', ref: 'store/main', topic: 'Router refactor' });
+		harness.store.dispatch({
+			type: 'held_line_heard',
+			ref: 'store/main',
+			id: harness.store.state.sessions['store/main']?.heldLine?.id ?? '',
+		});
+		harness.voiceOut.say({
+			text: `${long} Again.`,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		await flush();
+		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized().at(-1)).toBe('store/main is done: Router refactor.');
 	});
 
 	it('the same while its session still works → held silently: its turn end will announce it', async () => {
@@ -428,6 +447,37 @@ describe('VoiceOut', () => {
 
 		expect(harness.listSynthesized()).toEqual(['playing now']);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: long });
+	});
+
+	it('no topic → "done" names the newest request', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({ type: 'send', ref: 'store/main', text: 'run the whole test suite' });
+		harness.store.dispatch({ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: '' });
+		harness.store.dispatch({
+			type: 'send',
+			ref: 'store/main',
+			text: 'push the telephony branches',
+		});
+		harness.store.dispatch({ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: '' });
+		const long =
+			'The router refactor is done, the tests pass, and the branch is pushed for review now.';
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: long,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized().at(-1)).toBe(
+			'store/main is done: push the telephony branches.',
+		);
 	});
 
 	it('a short line plays wherever the developer is', async () => {

@@ -37,7 +37,13 @@ export class Store {
 		this.current = state;
 
 		if (input.type !== 'text_delta') {
-			log.debug('input', { seq, type: input.type, ref: 'ref' in input ? input.ref : undefined });
+			log.debug('input', {
+				seq,
+				type: input.type,
+				ref: 'ref' in input ? input.ref : undefined,
+				// Who looks where decides what is said aloud: every switch names its target.
+				...(input.type === 'switch_view' ? { view: input.view } : {}),
+			});
 		}
 
 		for (const listener of this.listeners) {
