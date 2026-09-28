@@ -25,6 +25,9 @@ const MURMUR_PATTERN = /^(?:m+|h+m+|m+h+m+|huh)$/;
 // Said alone right after a command not yet sent, these drop it. "Wait" and "hold on" are not here:
 // they start a correction, which should reach the kernel with what it corrects.
 const CANCEL_PATTERN = /^(?:stop|stop it|cancel|cancel that|halt|abort|never ?mind)$/;
+// Said at the very end of a turn, it sends the turn now instead of waiting for a pause; inside a
+// sentence ("check the end of turn logic") it is just words.
+const END_OF_TURN_PATTERN = /[\s,.;:!—–-]*\bend of (?:the )?turn[.!]*\s*$/i;
 const TRAILING_CUT_PATTERN = /(?:[—–-]|…|\.\.\.)\s*$/;
 const TRAILING_DASH_PATTERN = /(?:\s|^)?[—–-]\s*$|(?:…|\.\.\.)\s*$/;
 const ASKING_WHO_PATTERN = /\b(?:can|could|would|will) you[.?!,\s]*$/;
@@ -117,8 +120,9 @@ export interface DecideTurnActionParams {
 
 export interface TurnAction {
 	// hold: unfinished, waits for the rest; settle: finished, waits a moment in case it goes on;
-	// route: goes now; cancel: drops what was held and routes the word itself.
-	kind: HoldKind | 'route' | 'cancel';
+	// route: goes now; cancel: drops what was held and routes the word itself; drop: nothing to send
+	// ("end of turn" said alone).
+	kind: HoldKind | 'route' | 'cancel' | 'drop';
 	text: string;
 }
 
@@ -127,6 +131,13 @@ export const decideTurnAction = ({
 	heldKind = null,
 	text,
 }: DecideTurnActionParams): TurnAction => {
+	if (END_OF_TURN_PATTERN.test(text)) {
+		const said = text.replace(END_OF_TURN_PATTERN, '').trim();
+		const sent = held ? joinTurns(held, said, { keepBoundary: heldKind === 'settle' }) : said;
+
+		return sent.trim() ? { kind: 'route', text: sent.trim() } : { kind: 'drop', text: '' };
+	}
+
 	const said = normalizeUtterance(text.replace(TRAILING_CUT_PATTERN, ''));
 
 	if (held && CANCEL_PATTERN.test(said)) {

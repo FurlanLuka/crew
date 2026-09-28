@@ -34,7 +34,7 @@ import { SessionManager } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
 import { loadRegistry, renameSession } from './sessions/registry.js';
 import { Store } from './state/store.js';
-import { createHandsFreeSwitch } from './speech/hands-free-switch.js';
+import { createListenSwitch } from './speech/hands-free-switch.js';
 import { VoiceInput } from './speech/voice-in.js';
 import { VoiceOut } from './speech/voice-out.js';
 import { DevWatch } from './dev/watch.js';
@@ -221,9 +221,9 @@ const openUrlFor =
 		return isSent;
 	};
 
-const handsFreeSwitchFor = createHandsFreeSwitch({
+const listenSwitchFor = createListenSwitch({
 	// voiceIn is assigned below; a switch only runs once an utterance arrived through it.
-	isListening: (client) => voiceIn.isListening(client),
+	modeOf: (client) => voiceIn.listenModeOf(client),
 	unlisten: (client) => voiceIn.unlisten(client),
 	send: (client, message) => gateway?.send(client, message) ?? false,
 	say: (text) => voiceOut.say({ text, priority: 'high', source: 'kernel', isReply: true }),
@@ -248,13 +248,15 @@ const voiceIn = new VoiceInput({
 	apiKey: keys.soniox,
 	onUtterance: (text, client, startedAt) =>
 		void router.handle(text, 'voice', {
-			setHandsFree: handsFreeSwitchFor(client),
+			setListenMode: listenSwitchFor(client),
 			openUrl: openUrlFor(client),
 			heardFrom: startedAt,
 		}),
 	onTalkStart: () => voiceOut.talkStarted(),
 	onTalkEnd: () => voiceOut.talkEnded(),
 	onListenOff: (client, reason) => void gateway?.send(client, { type: 'listen_off', reason }),
+	onListenState: (client, isAwake) => void gateway?.send(client, { type: 'listen_state', isAwake }),
+	onHeardIgnored: (client) => void gateway?.send(client, { type: 'heard_ignored' }),
 	listSpokenLines: () => voiceOut.listRecentSpeech(),
 	debugAudioDir: process.env.VOICEOS_DEBUG_AUDIO === '1' ? paths.debugAudioDir : null,
 });
@@ -315,7 +317,7 @@ gateway = startGateway({
 				return;
 			case 'utterance':
 				void router.handle(message.text, 'typed', {
-					setHandsFree: handsFreeSwitchFor(client),
+					setListenMode: listenSwitchFor(client),
 					openUrl: openUrlFor(client),
 				});
 
@@ -340,7 +342,7 @@ gateway = startGateway({
 				return;
 			// The listening tab also plays speech, so its echo canceller knows what to remove.
 			case 'listen_start':
-				voiceIn.listen(client, message.sampleRate);
+				voiceIn.listen(client, message.sampleRate, message.mode ?? 'hands-free');
 
 				return;
 			case 'listen_stop':

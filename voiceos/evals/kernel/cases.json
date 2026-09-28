@@ -2613,7 +2613,10 @@
 			},
 			"calls": [
 				{
-					"name": "hands_free"
+					"name": "hands_free",
+					"input": {
+						"mode": "push"
+					}
 				}
 			],
 			"no_reply": true
@@ -2624,7 +2627,10 @@
 			"context": {},
 			"calls": [
 				{
-					"name": "hands_free"
+					"name": "hands_free",
+					"input": {
+						"mode": "hands-free"
+					}
 				}
 			],
 			"no_reply": true
@@ -2644,7 +2650,10 @@
 			},
 			"calls": [
 				{
-					"name": "hands_free"
+					"name": "hands_free",
+					"input": {
+						"mode": "push"
+					}
 				}
 			],
 			"no_reply": true
@@ -3814,6 +3823,51 @@
 				}
 			],
 			"forbid_calls": ["send_to"],
+			"no_reply": true
+		},
+		{
+			"id": "listen-mode-on-demand",
+			"utterance": "Switch to on demand mode.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "hands_free",
+					"input": {
+						"mode": "on-demand"
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "listen-for-voice-os",
+			"utterance": "Only listen for Voice OS from now on.",
+			"context": {},
+			"calls": [
+				{
+					"name": "hands_free",
+					"input": {
+						"mode": "on-demand"
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-demand-in-work-is-not-a-mode",
+			"utterance": "Make the workers scale on demand instead of keeping ten running.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "on demand"
+				}
+			],
+			"forbid_calls": ["hands_free"],
 			"no_reply": true
 		}
 	]

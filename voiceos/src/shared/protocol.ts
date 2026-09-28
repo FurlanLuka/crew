@@ -453,14 +453,29 @@ export type SpeechMessage =
 	// Drops a clip the server cut off.
 	| { type: 'audio_cancel'; id: string };
 
+// How the mic is used. push: held to talk. on-demand: always listening, acting only on what follows
+// "Voice OS". hands-free: always listening, every turn is acted on.
+export type ListenMode = 'push' | 'on-demand' | 'hands-free';
+
+export type ListeningMode = Exclude<ListenMode, 'push'>;
+
+export const LISTEN_MODES: ListenMode[] = ['push', 'on-demand', 'hands-free'];
+
+export const isListenMode = (value: unknown): value is ListenMode =>
+	LISTEN_MODES.some((mode) => mode === value);
+
 export type ServerMessage =
 	| { type: 'snapshot'; state: State }
 	| { type: 'input'; stamped: Stamped }
 	| SpeechMessage
-	// Hands-free was turned off for this tab by the server: another tab took it, or the stream failed.
+	// Listening was turned off for this tab by the server: another tab took it, or the stream failed.
 	| { type: 'listen_off'; reason: string }
-	// Hands-free was turned on for this tab by voice.
-	| { type: 'listen_on' }
+	// A listening mode was turned on for this tab by voice.
+	| { type: 'listen_on'; mode: ListeningMode }
+	// On demand: "Voice OS" was heard and a turn is open (true), or it closed (false).
+	| { type: 'listen_state'; isAwake: boolean }
+	// On demand: speech without "Voice OS" was heard and left alone.
+	| { type: 'heard_ignored' }
 	// "Open the doc": opened in this tab's browser, since the developer may be anywhere.
 	| { type: 'open_url'; url: string; title: string }
 	| { type: 'error'; message: string };
@@ -472,6 +487,7 @@ export type ClientMessage =
 	| { type: 'ptt_stop' }
 	// Debug only (VOICEOS_DEBUG_SPEECH=1): words taken as heard, for demos and screenshots.
 	| { type: 'simulate_speech'; text: string; holdMs?: number }
-	| { type: 'listen_start'; sampleRate: number }
+	// No mode: a tab from before the modes, which only knew hands-free.
+	| { type: 'listen_start'; sampleRate: number; mode?: ListeningMode }
 	| { type: 'listen_stop' }
 	| { type: 'audio_done'; id: string };

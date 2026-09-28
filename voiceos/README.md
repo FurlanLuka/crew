@@ -71,7 +71,8 @@ environment.
   question that needs tools or changes the work is queued after all. Asides are not saved:
   they are gone after a restart.
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
-- "Stop listening" / "hands-free on" switch hands-free in the tab you spoke from.
+- "Stop listening" / "hands-free on" / "on demand" switch the listening mode (push to talk, on demand
+  after "Voice OS", hands-free) in the tab you spoke from.
 - The session screen lists running sub-agents with their current step, from the SDK's task
   events.
 

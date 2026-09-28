@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import type { ServerMessage } from '../shared/protocol.js';
-import { createHandsFreeSwitch } from './hands-free-switch.js';
+import type { ListenMode, ServerMessage } from '../shared/protocol.js';
+import { createListenSwitch } from './hands-free-switch.js';
 
-const createSwitch = ({ isListening = false, isTabOpen = true } = {}) => {
+const createSwitch = ({ mode = 'push' as ListenMode, isTabOpen = true } = {}) => {
 	const sent: ServerMessage[] = [];
 	const said: string[] = [];
 	const unlistened: string[] = [];
-	const switchFor = createHandsFreeSwitch({
-		isListening: () => isListening,
+	const switchFor = createListenSwitch({
+		modeOf: () => mode,
 		unlisten: (client) => unlistened.push(client),
 		send: (_, message) => {
 			sent.push(message);
@@ -20,40 +20,47 @@ const createSwitch = ({ isListening = false, isTabOpen = true } = {}) => {
 	return { toggle: switchFor('tab1'), sent, said, unlistened };
 };
 
-describe('createHandsFreeSwitch', () => {
-	it('off while listening → the tab is told, the server stops hearing it, and it is said', () => {
-		const { toggle, sent, said, unlistened } = createSwitch({ isListening: true });
+describe('createListenSwitch', () => {
+	it('to push to talk while listening → the tab is told, the server stops hearing it, and it is said', () => {
+		const { toggle, sent, said, unlistened } = createSwitch({ mode: 'hands-free' });
 
-		expect(toggle(false)).toBe('changed');
+		expect(toggle('push')).toBe('changed');
 		expect(sent).toEqual([{ type: 'listen_off', reason: 'turned off by voice' }]);
 		expect(unlistened).toEqual(['tab1']);
-		expect(said).toEqual(['Hands-free off.']);
+		expect(said).toEqual(['Push to talk.']);
 	});
 
-	it('on while not listening → the tab is told to start', () => {
-		const { toggle, sent, said, unlistened } = createSwitch();
+	it('to hands-free or on demand → the tab is told which', () => {
+		const handsFree = createSwitch();
+		const onDemand = createSwitch({ mode: 'hands-free' });
 
-		expect(toggle(true)).toBe('changed');
-		expect(sent).toEqual([{ type: 'listen_on' }]);
-		expect(unlistened).toEqual([]);
-		expect(said).toEqual(['Hands-free on.']);
+		expect(handsFree.toggle('hands-free')).toBe('changed');
+		expect(handsFree.sent).toEqual([{ type: 'listen_on', mode: 'hands-free' }]);
+		expect(handsFree.said).toEqual(['Hands-free.']);
+		// From one listening mode to the other is a change, not "already".
+		expect(onDemand.toggle('on-demand')).toBe('changed');
+		expect(onDemand.sent).toEqual([{ type: 'listen_on', mode: 'on-demand' }]);
+		expect(onDemand.unlistened).toEqual([]);
+		// Its own name is never said: heard back, it would open a turn.
+		expect(onDemand.said).toEqual(['On demand. Say my name first.']);
 	});
 
 	it.each([
-		[true, 'Hands-free is already on.'],
-		[false, 'Hands-free is already off.'],
-	])('already %p → said so, nothing sent', (isOn, line) => {
-		const { toggle, sent, said } = createSwitch({ isListening: isOn });
+		['push', 'Already push to talk.'],
+		['hands-free', 'Already hands-free.'],
+		['on-demand', 'Already on demand.'],
+	] as [ListenMode, string][])('already %p → said so, nothing sent', (mode, line) => {
+		const { toggle, sent, said } = createSwitch({ mode });
 
-		expect(toggle(isOn)).toBe('already');
+		expect(toggle(mode)).toBe('already');
 		expect(sent).toEqual([]);
 		expect(said).toEqual([line]);
 	});
 
 	it('the tab is gone → no_tab, nothing said, nothing unlistened', () => {
-		const { toggle, said, unlistened } = createSwitch({ isListening: true, isTabOpen: false });
+		const { toggle, said, unlistened } = createSwitch({ mode: 'hands-free', isTabOpen: false });
 
-		expect(toggle(false)).toBe('no_tab');
+		expect(toggle('push')).toBe('no_tab');
 		expect(said).toEqual([]);
 		expect(unlistened).toEqual([]);
 	});

@@ -353,7 +353,7 @@ export const runKernelEval = async ({
 					forwardTo: screen,
 					screen,
 					isSpoken: true,
-					setHandsFree: () => 'changed',
+					setListenMode: () => 'changed',
 					openUrl: () => true,
 				}),
 			);

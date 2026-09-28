@@ -341,6 +341,23 @@ describe('parseClientMessage', () => {
 			parseClientMessage(JSON.stringify({ type: 'listen_start', sampleRate: 1_000_000 })).ok,
 		).toBe(false);
 	});
+
+	it('listening names its mode; push to talk or anything else is not a listening mode', () => {
+		expect(
+			parseClientMessage(
+				JSON.stringify({ type: 'listen_start', sampleRate: 48000, mode: 'on-demand' }),
+			),
+		).toEqual({
+			ok: true,
+			message: { type: 'listen_start', sampleRate: 48000, mode: 'on-demand' },
+		});
+
+		for (const mode of ['push', 'bogus']) {
+			expect(
+				parseClientMessage(JSON.stringify({ type: 'listen_start', sampleRate: 48000, mode })).ok,
+			).toBe(false);
+		}
+	});
 });
 
 describe('applyServerMessage', () => {

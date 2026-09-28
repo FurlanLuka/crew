@@ -36,8 +36,17 @@ const useOpenRequest = (request: OpenRequest | null): OpenRequest | null => {
 
 const App = () => {
 	const player = useSpeechPlayer();
-	const { state, status, send, dispatch, sendBinary, handsFreeCommand, openRequest } =
-		useConnection((message) => player.receive(message));
+	const {
+		state,
+		status,
+		send,
+		dispatch,
+		sendBinary,
+		listenCommand,
+		isAwake,
+		ignoredAt,
+		openRequest,
+	} = useConnection((message) => player.receive(message));
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
 	const blockedOpen = useOpenRequest(openRequest);
 
@@ -122,7 +131,9 @@ const App = () => {
 			<BottomBar
 				state={state}
 				isConnected={status === 'open'}
-				handsFreeCommand={handsFreeCommand}
+				listenCommand={listenCommand}
+				isAwake={isAwake && status === 'open'}
+				ignoredAt={ignoredAt}
 				send={send}
 				sendBinary={sendBinary}
 				player={player}

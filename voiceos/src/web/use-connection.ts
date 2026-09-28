@@ -7,7 +7,7 @@ import type {
 	State,
 } from '../shared/protocol.js';
 import { reduce } from '../state/reducer.js';
-import type { HandsFreeCommand } from './types.js';
+import type { ListenCommand } from './types.js';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'unauthorized' | 'closed';
 
@@ -93,7 +93,10 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 	const socket = useRef<WebSocket | null>(null);
 	const outbox = useRef<ClientMessage[]>([]);
 	const stateRef = useRef<State | null>(null);
-	const [handsFreeCommand, setHandsFreeCommand] = useState<HandsFreeCommand | null>(null);
+	const [listenCommand, setListenCommand] = useState<ListenCommand | null>(null);
+	// On demand: "Voice OS" was heard and the words are going to it; ignoredAt: speech left alone.
+	const [isAwake, setIsAwake] = useState(false);
+	const [ignoredAt, setIgnoredAt] = useState(0);
 	// A fresh object each time, so asking twice opens it twice.
 	const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
 	const speechRef = useRef(onSpeech);
@@ -149,7 +152,20 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 
 				// A fresh object each time, so saying it twice switches it twice.
 				if (message.type === 'listen_off' || message.type === 'listen_on') {
-					setHandsFreeCommand({ isOn: message.type === 'listen_on' });
+					setListenCommand({ mode: message.type === 'listen_on' ? message.mode : 'push' });
+					setIsAwake(false);
+
+					return;
+				}
+
+				if (message.type === 'listen_state') {
+					setIsAwake(message.isAwake);
+
+					return;
+				}
+
+				if (message.type === 'heard_ignored') {
+					setIgnoredAt(Date.now());
 
 					return;
 				}
@@ -175,6 +191,8 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 			};
 
 			webSocket.onclose = () => {
+				// A call open on the old socket is not open on the next: no false chime on reconnect.
+				setIsAwake(false);
 				socket.current = null;
 
 				if (lifetime.signal.aborted) {
@@ -234,7 +252,17 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 		}
 	}, []);
 
-	return { state, status, send, dispatch, sendBinary, handsFreeCommand, openRequest };
+	return {
+		state,
+		status,
+		send,
+		dispatch,
+		sendBinary,
+		listenCommand,
+		isAwake,
+		ignoredAt,
+		openRequest,
+	};
 };
 
 export interface OpenRequest {

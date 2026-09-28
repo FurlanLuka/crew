@@ -61,6 +61,19 @@ export class PcmPlayer {
 		}
 	}
 
+	// A chime of its own (the call was heard), not part of a clip the server waits on.
+	playChime(): void {
+		const context = this.getAudioContext();
+		const samples = this.chimes.get('plain') ?? createChimeSamples(SPEECH_SAMPLE_RATE, 'plain');
+		this.chimes.set('plain', samples);
+		const buffer = context.createBuffer(1, samples.length, SPEECH_SAMPLE_RATE);
+		buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
+		const source = context.createBufferSource();
+		source.buffer = buffer;
+		source.connect(context.destination);
+		source.start(context.currentTime);
+	}
+
 	stop(): void {
 		for (const id of [...this.clips.keys()]) {
 			this.cancel(id);

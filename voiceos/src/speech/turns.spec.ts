@@ -184,6 +184,40 @@ describe('decideTurnAction', () => {
 	);
 });
 
+describe('decideTurnAction: "end of turn"', () => {
+	it('at the end of a turn → sent now, the phrase taken out', () =>
+		expect(
+			decideTurnAction({ held: null, text: 'Tell checkout to run the tests, end of turn.' }),
+		).toEqual({ kind: 'route', text: 'Tell checkout to run the tests' }));
+
+	it('an unfinished sentence ended by it goes too: the developer said it is done', () =>
+		expect(decideTurnAction({ held: null, text: 'Push it to the. End of turn' })).toEqual({
+			kind: 'route',
+			text: 'Push it to the',
+		}));
+
+	it('alone after held words → those words go now', () =>
+		expect(
+			decideTurnAction({
+				held: 'Rename the payment helper so',
+				heldKind: 'hold',
+				text: 'End of turn.',
+			}),
+		).toEqual({ kind: 'route', text: 'Rename the payment helper so' }));
+
+	it('alone with nothing held → nothing to send', () =>
+		expect(decideTurnAction({ held: null, text: 'End of turn.' })).toEqual({
+			kind: 'drop',
+			text: '',
+		}));
+
+	it('inside a sentence → just words', () =>
+		expect(decideTurnAction({ held: null, text: 'Check the end of turn logic.' })).toEqual({
+			kind: 'settle',
+			text: 'Check the end of turn logic.',
+		}));
+});
+
 describe('hasRealWords', () => {
 	it.each(['Hmmm.', 'Mhm.', 'Uh-huh.'])('%p is a murmur, not speech going on', (text) =>
 		expect(hasRealWords(text)).toBe(false),

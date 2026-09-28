@@ -709,7 +709,7 @@ textarea:focus-visible {
 .mic.off {
 	opacity: 0.5;
 }
-.handsfree {
+.listen-mode {
 	flex: none;
 	background: none;
 	border: 1px solid var(--line);
@@ -722,13 +722,25 @@ textarea:focus-visible {
 	text-transform: uppercase;
 	cursor: pointer;
 }
-.handsfree:hover {
+.listen-mode:hover {
 	color: var(--ink-dim);
 }
-.handsfree.on {
+.listen-mode.on {
 	color: var(--cyan);
 	border-color: var(--cyan-dim);
 	background: rgba(78, 201, 217, 0.08);
+}
+.listen-mode.awake {
+	color: var(--amber);
+	border-color: var(--amber-dim);
+}
+.listen-mode.ignored {
+	box-shadow: 0 0 0 2px var(--line);
+}
+.listen-mode option {
+	background: var(--surface);
+	color: var(--ink);
+	text-transform: none;
 }
 .wave {
 	display: flex;

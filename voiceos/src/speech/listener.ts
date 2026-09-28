@@ -1,11 +1,13 @@
 import { createLogger } from '../log.js';
 import { INTERRUPT_PATTERN, normalizeUtterance, STANDALONE_WORDS } from '../shared/spoken.js';
+import type { ListeningMode } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
 import { countWords } from './echo.js';
 import type { SttFailure, SttHandle, SttSessionOptions } from './stt.js';
 import { decideTurnAction, hasRealWords, joinTurns, type HoldKind } from './turns.js';
+import { gateHeard, stripLeadingWakePhrase } from './wake.js';
 
-export interface HandsFreeHost {
+export interface ListenerHost {
 	openStream: (options: Omit<SttSessionOptions, 'terms'>) => SttHandle;
 	isEcho: (heard: string, isPartial: boolean) => boolean;
 	showPartial: (text: string, label?: string) => void;
@@ -14,12 +16,15 @@ export interface HandsFreeHost {
 	queueTurn: (client: string, text: string, startedAt: number) => void;
 	onTalkStarted: () => void;
 	onTalkMaybeOver: () => void;
+	// On demand: a turn opened by "Voice OS" (true) or closed (false); speech left alone.
+	onListenState?: (client: string, isAwake: boolean) => void;
+	onHeardIgnored?: (client: string) => void;
 }
 
-export interface HandsFreeOptions {
+export interface ListenerOptions {
 	store: Store;
 	apiKey: string | null;
-	// Hands-free turned off for this tab unasked: another tab took over, or the stream failed.
+	// Listening turned off for this tab unasked: another tab took over, or the stream failed.
 	onListenOff?: (client: string, reason: string) => void;
 	now?: () => number;
 	computeReconnectDelay?: (attempt: number) => number | null;
@@ -31,10 +36,26 @@ export interface HandsFreeOptions {
 	continueMs?: number;
 	// No turn waits longer than this in all, so background talk cannot hold a command back.
 	maxWaitMs?: number;
+	// On demand: called and then silent this long, it goes back to waiting for its name.
+	awakeMs?: number;
+	// On demand: a called turn goes after this long, however much talk around it keeps it open.
+	awakeCapMs?: number;
 }
 
 interface Listening {
 	client: string;
+	mode: ListeningMode;
+	// On demand: "Voice OS" was heard and the words are the developer's until the turn goes.
+	isAwake: boolean;
+	awakeTimer: ReturnType<typeof setTimeout> | null;
+	awakeCapTimer: ReturnType<typeof setTimeout> | null;
+	// The called words still being said, so a turn capped mid-sentence goes with them.
+	openWords: string;
+	// The last finished segment was only "Voice": an "OS" opening the next is the rest of the name.
+	isAfterNameHead: boolean;
+	// Sent at the cap before speech-to-text finished the segment: its final text, name and all, is
+	// the same words again and is dropped once.
+	isSegmentSent: boolean;
 	apiKey: string;
 	sampleRate: number;
 	stream: SttHandle | null;
@@ -65,6 +86,9 @@ const CONTINUE_MS = 2_000;
 // they pause, however long it runs (8 s cut a developer mid-sentence into two requests).
 export const MAX_WAIT_MS = 120_000;
 const HELD_LABEL = 'waiting for the rest…';
+const AWAKE_MS = 8_000;
+// Background talk right after the call would otherwise hold the turn to MAX_WAIT_MS.
+const AWAKE_CAP_MS = 15_000;
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000];
 
 export const computeReconnectDelay = (attempt: number): number | null => {
@@ -72,13 +96,13 @@ export const computeReconnectDelay = (attempt: number): number | null => {
 	return RECONNECT_DELAYS_MS[attempt] ?? null;
 };
 
-export class HandsFree {
+export class Listener {
 	private listening = new Map<string, Listening>();
 	private now: () => number;
 
 	constructor(
-		private options: HandsFreeOptions,
-		private host: HandsFreeHost,
+		private options: ListenerOptions,
+		private host: ListenerHost,
 	) {
 		this.now = options.now ?? Date.now;
 	}
@@ -97,7 +121,11 @@ export class HandsFree {
 		return false;
 	}
 
-	listen(client: string, apiKey: string, sampleRate: number): void {
+	modeOf(client: string): ListeningMode | null {
+		return this.listening.get(client)?.mode ?? null;
+	}
+
+	listen(client: string, apiKey: string, sampleRate: number, mode: ListeningMode): void {
 		// apiKey is checked by the caller. Only one tab listens at a time.
 		for (const otherClient of this.listening.keys()) {
 			if (otherClient === client) {
@@ -105,12 +133,19 @@ export class HandsFree {
 			}
 
 			this.unlisten(otherClient);
-			this.options.onListenOff?.(otherClient, 'hands-free moved to another tab');
+			this.options.onListenOff?.(otherClient, 'listening moved to another tab');
 		}
 
 		this.unlisten(client);
 		const listening: Listening = {
 			client,
+			mode,
+			isAwake: false,
+			awakeTimer: null,
+			awakeCapTimer: null,
+			openWords: '',
+			isAfterNameHead: false,
+			isSegmentSent: false,
 			apiKey,
 			sampleRate,
 			stream: null,
@@ -126,7 +161,9 @@ export class HandsFree {
 			turnStartedAt: null,
 		};
 		this.listening.set(client, listening);
-		log.info('listen start', { client, sampleRate });
+		log.info('listen start', { client, sampleRate, mode });
+		// A tab that reconnects may still show a call that was open: it starts closed, and is told.
+		this.sleep(listening, 'listen start', { isAnnounced: true });
 		this.connect(listening);
 	}
 
@@ -150,6 +187,7 @@ export class HandsFree {
 		}
 
 		this.dropHold(listening);
+		this.sleep(listening, 'listen stop');
 		listening.stream?.cancel();
 		// Soniox bills by the second of audio: the stream's length is its cost.
 		log.info('listen stop', {
@@ -216,12 +254,26 @@ export class HandsFree {
 		listening.stream = stream;
 	}
 
-	private hearPartial(listening: Listening, text: string): void {
-		if (this.host.isEcho(text, true)) {
+	private hearPartial(listening: Listening, heard: string): void {
+		if (this.host.isEcho(heard, true)) {
 			return;
 		}
 
 		listening.attempt = 0;
+
+		// The capped segment is still being said: its words, name and all, were sent already.
+		if (listening.isSegmentSent) {
+			return;
+		}
+
+		const text = this.gate(listening, heard, true);
+
+		if (text === null) {
+			return;
+		}
+
+		listening.openWords = text;
+
 		// "stop" and "wait" cut speech as soon as they are heard, not a second later when the turn ends.
 		const isStandalone =
 			INTERRUPT_PATTERN.test(normalizeUtterance(text)) ||
@@ -254,11 +306,11 @@ export class HandsFree {
 		);
 	}
 
-	private endTurn(listening: Listening, text: string): void {
+	private endTurn(listening: Listening, heard: string): void {
 		const { client } = listening;
 
-		if (this.host.isEcho(text, false)) {
-			log.info('echo dropped', { client, text });
+		if (this.host.isEcho(heard, false)) {
+			log.info('echo dropped', { client, text: heard });
 
 			// A held start still waits for the developer, not for this.
 			if (listening.heldText) {
@@ -271,11 +323,40 @@ export class HandsFree {
 			return;
 		}
 
+		if (listening.isSegmentSent) {
+			listening.isSegmentSent = false;
+			log.info('capped segment finished, already sent', { client });
+
+			return;
+		}
+
+		const text = this.gate(listening, heard, false);
+
+		if (text === null) {
+			return;
+		}
+
+		listening.openWords = '';
+
+		// "Voice OS." said on its own: the call is open, the command comes next.
+		if (!text.trim() && !listening.heldText) {
+			return;
+		}
+
 		const action = decideTurnAction({
 			held: listening.heldText,
 			heldKind: listening.holdKind,
 			text,
 		});
+
+		if (action.kind === 'drop') {
+			log.info('end of turn with nothing to send', { client });
+			this.lowerTalk(listening);
+			this.host.clearTranscript(client);
+			this.sleep(listening, 'nothing to send');
+
+			return;
+		}
 
 		if (action.kind === 'cancel') {
 			// Nothing was sent yet: "stop" drops it, and still reaches whatever runs.
@@ -309,7 +390,12 @@ export class HandsFree {
 			log.info('wait capped', { client, text: action.text });
 		}
 
-		if (action.kind !== 'route' && !isCapped) {
+		// On demand the turn ends where the sentence does: waiting to see whether the developer goes on
+		// only let the talk around them in (a TV line straight after a command joined it). An unfinished
+		// sentence still waits for the rest.
+		const isEndOfCall = listening.mode === 'on-demand' && action.kind === 'settle';
+
+		if (action.kind !== 'route' && !isCapped && !isEndOfCall) {
 			log.info(action.kind === 'hold' ? 'turn held' : 'turn settling', {
 				client,
 				text: action.text,
@@ -384,6 +470,14 @@ export class HandsFree {
 
 	private reconnect(listening: Listening, reason: string): void {
 		listening.stream = null;
+		// A new stream never finishes the old one's segment.
+		listening.isSegmentSent = false;
+
+		// Words held for the rest still wait on the new stream, the call with them.
+		if (!listening.heldText) {
+			this.sleep(listening, 'stream dropped');
+		}
+
 		const computeDelay = this.options.computeReconnectDelay ?? computeReconnectDelay;
 		const delay = computeDelay(listening.attempt);
 		listening.attempt += 1;
@@ -413,7 +507,7 @@ export class HandsFree {
 		this.unlisten(listening.client);
 		this.options.store.dispatch({
 			type: 'spoken',
-			text: `Hands-free stopped: ${message}`,
+			text: `Listening stopped: ${message}`,
 			source: 'alert',
 		});
 		this.options.onListenOff?.(listening.client, message);
@@ -422,7 +516,130 @@ export class HandsFree {
 	private route(listening: Listening, text: string): void {
 		const startedAt = listening.turnStartedAt ?? this.now();
 		listening.turnStartedAt = null;
-		this.host.queueTurn(listening.client, text, startedAt);
+		this.host.queueTurn(
+			listening.client,
+			listening.mode === 'on-demand' ? stripLeadingWakePhrase(text) : text,
+			startedAt,
+		);
+		this.sleep(listening, 'turn sent');
+	}
+
+	// On demand, the words that are the developer's: null for talk around them before "Voice OS";
+	// once called, what follows (the name taken out). Hands-free passes everything.
+	private gate(listening: Listening, text: string, isPartial: boolean): string | null {
+		if (listening.mode !== 'on-demand') {
+			return text;
+		}
+
+		const result = gateHeard({
+			isAwake: listening.isAwake,
+			text,
+			isAfterNameHead: listening.isAfterNameHead,
+		});
+
+		if (!isPartial) {
+			listening.isAfterNameHead = result.kind === 'pass' && result.isNameHead === true;
+		}
+
+		if (result.kind === 'drop') {
+			if (!isPartial) {
+				log.info('ignored, no wake phrase', { client: listening.client, words: countWords(text) });
+				this.host.onHeardIgnored?.(listening.client);
+			}
+
+			return null;
+		}
+
+		if (result.kind === 'wake') {
+			this.wake(listening);
+
+			return result.rest;
+		}
+
+		this.armAwake(listening);
+
+		return result.text;
+	}
+
+	private wake(listening: Listening): void {
+		listening.isAwake = true;
+		log.info('wake', { client: listening.client });
+		this.host.onListenState?.(listening.client, true);
+
+		if (!listening.isTalking) {
+			this.raiseTalk(listening);
+		}
+
+		this.armAwake(listening);
+		listening.awakeCapTimer = setTimeout(() => {
+			listening.awakeCapTimer = null;
+
+			if (this.listening.get(listening.client) !== listening || !listening.isAwake) {
+				return;
+			}
+
+			// Held words and the sentence still being said: a long command goes, not lost.
+			const held = listening.heldText;
+			const open = listening.openWords.trim();
+			const text = held && open ? joinTurns(held, open) : held || open;
+			log.info('called turn capped', { client: listening.client, hasText: Boolean(text) });
+			listening.isSegmentSent = Boolean(open);
+			listening.openWords = '';
+			this.dropHold(listening);
+
+			if (text) {
+				this.route(listening, text);
+			} else {
+				this.sleep(listening, 'cap');
+			}
+
+			this.lowerTalk(listening);
+			this.host.clearTranscript(listening.client);
+		}, this.options.awakeCapMs ?? AWAKE_CAP_MS);
+	}
+
+	// Words keep a call open; silence after it closes it.
+	private armAwake(listening: Listening): void {
+		if (listening.awakeTimer) {
+			clearTimeout(listening.awakeTimer);
+		}
+
+		listening.awakeTimer = setTimeout(() => {
+			listening.awakeTimer = null;
+
+			if (this.listening.get(listening.client) !== listening || listening.heldText) {
+				return;
+			}
+
+			this.sleep(listening, 'silence');
+			this.lowerTalk(listening);
+			this.host.clearTranscript(listening.client);
+		}, this.options.awakeMs ?? AWAKE_MS);
+	}
+
+	private sleep(listening: Listening, why: string, { isAnnounced = false } = {}): void {
+		for (const timer of [listening.awakeTimer, listening.awakeCapTimer]) {
+			if (timer) {
+				clearTimeout(timer);
+			}
+		}
+
+		listening.awakeTimer = null;
+		listening.awakeCapTimer = null;
+
+		if (listening.mode !== 'on-demand') {
+			return;
+		}
+
+		const wasAwake = listening.isAwake;
+		listening.isAwake = false;
+
+		listening.openWords = '';
+
+		if (wasAwake || isAnnounced) {
+			log.info('sleep', { client: listening.client, why });
+			this.host.onListenState?.(listening.client, false);
+		}
 	}
 
 	private raiseTalk(listening: Listening): void {

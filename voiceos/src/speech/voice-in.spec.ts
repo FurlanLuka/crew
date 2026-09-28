@@ -1,4 +1,4 @@
-import { MAX_WAIT_MS } from './hands-free.js';
+import { MAX_WAIT_MS } from './listener.js';
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,7 +7,7 @@ import { decodeWav } from './wav.js';
 import { Store } from '../state/store.js';
 import type { SttSessionOptions } from './stt.js';
 import { VoiceInput, type VoiceInputOptions } from './voice-in.js';
-import { computeReconnectDelay } from './hands-free.js';
+import { computeReconnectDelay } from './listener.js';
 import { configureLog } from '../log.js';
 
 configureLog({ quiet: true });
@@ -25,6 +25,8 @@ type HarnessExtras = Pick<
 	| 'holdMs'
 	| 'continueMs'
 	| 'maxWaitMs'
+	| 'awakeMs'
+	| 'awakeCapMs'
 >;
 
 interface CreateHarnessParams extends HarnessExtras {
@@ -63,10 +65,16 @@ const createHarness = ({
 	let ended = false;
 	const cancelled: number[] = [];
 	const listenOffs: { client: string; reason: string }[] = [];
+	const listenStates: boolean[] = [];
+	let ignored = 0;
 	const input = new VoiceInput({
 		continueMs: CONTINUE_MS,
 		...extra,
 		onListenOff: (client, reason) => listenOffs.push({ client, reason }),
+		onListenState: (_client, isAwake) => listenStates.push(isAwake),
+		onHeardIgnored: () => {
+			ignored += 1;
+		},
 		store,
 		apiKey,
 		onUtterance: (text, _client, startedAt) => {
@@ -104,6 +112,10 @@ const createHarness = ({
 		sessions,
 		cancelled,
 		listenOffs,
+		listenStates,
+		get ignored() {
+			return ignored;
+		},
 		get session() {
 			return session;
 		},
@@ -543,7 +555,7 @@ describe('VoiceInput hands-free', () => {
 		harness.input.listen('c1');
 		harness.session?.onError('Soniox 401: bad key', 'soniox');
 		expect(harness.listenOffs).toEqual([{ client: 'c1', reason: 'Soniox 401: bad key' }]);
-		expect(harness.store.state.spoken.at(-1)?.text).toBe('Hands-free stopped: Soniox 401: bad key');
+		expect(harness.store.state.spoken.at(-1)?.text).toBe('Listening stopped: Soniox 401: bad key');
 		harness.input.pushAudio('c1', new Uint8Array(4));
 		expect(harness.sent).toEqual([]);
 	});
@@ -600,7 +612,7 @@ describe('VoiceInput hands-free', () => {
 		harness.input.listen('c2');
 		expect(harness.cancelled).toEqual([0]);
 		expect(harness.listenOffs).toEqual([
-			{ client: 'c1', reason: 'hands-free moved to another tab' },
+			{ client: 'c1', reason: 'listening moved to another tab' },
 		]);
 		harness.input.pushAudio('c1', new Uint8Array(4));
 		harness.input.pushAudio('c2', new Uint8Array(8));
@@ -1041,5 +1053,219 @@ describe('simulated speech (debug)', () => {
 		expect(harness.store.state.transcript).toBeNull();
 		expect(harness.talkEnds).toHaveLength(1);
 		expect(harness.sessions).toHaveLength(0);
+	});
+});
+
+describe('VoiceInput on demand', () => {
+	const onDemand = (extra: CreateHarnessParams = {}) => {
+		const harness = createHarness(extra);
+		harness.input.listen('c1', 16000, 'on-demand');
+
+		return harness;
+	};
+
+	it('talk around the developer without "Voice OS" → left alone: no barge-in, no transcript, nothing sent', async () => {
+		const harness = onDemand();
+		harness.session?.onPartial('Tonight on the evening news, heavy rain');
+		harness.session?.onSegment?.('Tonight on the evening news, heavy rain is expected.');
+		await waitForSettle();
+
+		expect(harness.talkStarts).toEqual([]);
+		expect(harness.store.state.transcript).toBeNull();
+		expect(harness.utterances).toEqual([]);
+		expect(harness.ignored).toBe(1);
+		expect(harness.input.listenModeOf('c1')).toBe('on-demand');
+	});
+
+	it('"Voice OS, …" → the call opens, the command is routed without the name, and it waits for its name again', async () => {
+		const harness = onDemand();
+		harness.session?.onPartial('Voice OS, tell checkout');
+		expect(harness.talkStarts).toEqual([1]);
+		expect(harness.store.state.transcript?.text).toBe('tell checkout');
+		harness.session?.onSegment?.('Voice OS, tell checkout to run the tests.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['tell checkout to run the tests.']);
+		// false at listen start, true on the call, false once the turn went.
+		expect(harness.listenStates).toEqual([false, true, false]);
+
+		harness.session?.onSegment?.('And the weather tomorrow is sunny.');
+		await waitForSettle();
+		expect(harness.utterances).toHaveLength(1);
+	});
+
+	it('"Voice OS, stop." → a one-word command still goes', async () => {
+		const harness = onDemand();
+		harness.session?.onSegment?.('Voice OS, stop.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['stop.']);
+	});
+
+	it('"Voice OS." on its own, a pause, then the command → one turn', async () => {
+		const harness = onDemand({ awakeMs: 200 });
+		harness.session?.onSegment?.('Voice OS.');
+		// Well past the settle wait: nothing is sent for the name alone, and the call stays open.
+		await Bun.sleep(30);
+		expect(harness.utterances).toEqual([]);
+		harness.session?.onSegment?.('Tell checkout to run the tests.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['Tell checkout to run the tests.']);
+		expect(harness.listenStates).toEqual([false, true, false]);
+	});
+
+	it('the name split across segments ("Voice" | "OS, open the doc") is a call too', async () => {
+		const harness = onDemand();
+		harness.session?.onPartial('Voice OS, open');
+		harness.session?.onSegment?.('Voice');
+		harness.session?.onSegment?.('OS, open the doc.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['open the doc.']);
+	});
+
+	it('woken by a partial, the final segment rewritten without the name → still the turn', async () => {
+		const harness = onDemand();
+		harness.session?.onPartial('Voice OS, what is');
+		harness.session?.onSegment?.('Boys, what is running?');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['Boys, what is running?']);
+	});
+
+	it('Voice OS saying its own name, heard back → no call', async () => {
+		const harness = onDemand({
+			listSpokenLines: () => [
+				{ text: 'store front main is done. Voice OS is ready.', endedAt: null },
+			],
+			now: () => 1000,
+		});
+		harness.session?.onSegment?.('Voice OS is ready.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual([]);
+		expect(harness.listenStates).toEqual([false]);
+	});
+
+	it('called and then silent → it goes back to waiting for its name, speech may play', async () => {
+		const harness = onDemand({ awakeMs: 20 });
+		harness.session?.onSegment?.('Voice OS.');
+		await Bun.sleep(40);
+
+		expect(harness.listenStates).toEqual([false, true, false]);
+		expect(harness.talkEnds).toEqual([1]);
+		harness.session?.onSegment?.('Heavy rain is expected.');
+		await waitForSettle();
+		expect(harness.utterances).toEqual([]);
+	});
+
+	it('called, and still talking at the cap → what was held and what is being said go together', async () => {
+		const harness = onDemand({ awakeCapMs: 30, continueMs: 1_000, holdMs: 1_000 });
+		harness.session?.onSegment?.('Voice OS, push the branch and');
+		harness.session?.onPartial('the tag, please');
+		await Bun.sleep(60);
+
+		expect(harness.utterances).toEqual(['push the branch and the tag, please']);
+		expect(harness.listenStates.at(-1)).toBe(false);
+		expect(harness.talkEnds).toEqual([1]);
+
+		// The rest of that sentence, finalized after the cap, is not a second turn.
+		harness.session?.onSegment?.('the tag, please.');
+		await waitForSettle();
+		expect(harness.utterances).toHaveLength(1);
+	});
+
+	it('a command said in one breath past the cap → sent, not lost', async () => {
+		const harness = onDemand({ awakeCapMs: 30 });
+		harness.session?.onPartial('Voice OS, tell checkout to run the whole');
+		await Bun.sleep(60);
+
+		expect(harness.utterances).toEqual(['tell checkout to run the whole']);
+
+		// The words that keep coming, then the segment speech-to-text finishes, name and all, are
+		// those words again: sent once, and no second call opens.
+		harness.session?.onPartial('Voice OS, tell checkout to run the whole test');
+		harness.session?.onSegment?.('Voice OS, tell checkout to run the whole test suite.');
+		expect(harness.listenStates).toEqual([false, true, false]);
+		expect(harness.talkStarts).toEqual([1]);
+		await waitForSettle();
+		expect(harness.utterances).toHaveLength(1);
+		expect(harness.listenStates.at(-1)).toBe(false);
+
+		// The next call works as usual.
+		harness.session?.onSegment?.('Voice OS, stop.');
+		await waitForSettle();
+		expect(harness.utterances).toEqual(['tell checkout to run the whole', 'stop.']);
+	});
+
+	it("called, then 'voice os' later in a sentence → kept as the developer's words", async () => {
+		const harness = onDemand();
+		harness.session?.onSegment?.('Voice OS.');
+		harness.session?.onSegment?.('Check the voice OS logs.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['Check the voice OS logs.']);
+	});
+
+	it('a finished sentence ends the call at once: talk straight after it is not joined', async () => {
+		const harness = onDemand({ continueMs: 1_000 });
+		harness.session?.onSegment?.('Voice OS, tell checkout to run the tests.');
+		expect(harness.utterances).toEqual(['tell checkout to run the tests.']);
+		harness.session?.onSegment?.('Tonight on the evening news, heavy rain is expected.');
+		await Bun.sleep(20);
+
+		expect(harness.utterances).toHaveLength(1);
+	});
+
+	it('an unfinished sentence still waits for the rest', async () => {
+		const harness = onDemand({ holdMs: 200 });
+		harness.session?.onSegment?.('Voice OS, tell checkout to');
+		expect(harness.utterances).toEqual([]);
+		harness.session?.onSegment?.('run the tests.');
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(['tell checkout to run the tests.']);
+	});
+
+	it('"end of turn" → sent at once, without waiting for the pause, the phrase taken out', () => {
+		const harness = onDemand({ continueMs: 1_000 });
+		harness.session?.onSegment?.('Voice OS, run the tests, end of turn.');
+
+		expect(harness.utterances).toEqual(['run the tests']);
+	});
+
+	it('listening stops while called → the call closes', () => {
+		const harness = onDemand();
+		harness.session?.onSegment?.('Voice OS.');
+		harness.input.unlisten('c1');
+
+		expect(harness.listenStates).toEqual([false, true, false]);
+	});
+
+	it('the stream drops while called → the call closes; with words held, it waits on the new stream', async () => {
+		const idle = onDemand({ computeReconnectDelay: () => 0 });
+		idle.session?.onSegment?.('Voice OS.');
+		idle.session?.onError('dropped', 'connection');
+		expect(idle.listenStates).toEqual([false, true, false]);
+
+		const held = onDemand({ computeReconnectDelay: () => 0, holdMs: 200, continueMs: 200 });
+		held.session?.onSegment?.('Voice OS, tell checkout to');
+		held.session?.onError('dropped', 'connection');
+		await Bun.sleep(5);
+		held.session?.onSegment?.('run the tests.');
+		await Bun.sleep(260);
+		expect(held.utterances).toEqual(['tell checkout to run the tests.']);
+	});
+
+	it('hands-free is unchanged: every turn goes, and "end of turn" sends at once there too', () => {
+		const harness = createHarness({ continueMs: 1_000 });
+		harness.input.listen('c1', 16000, 'hands-free');
+		harness.session?.onSegment?.('Open the doc, end of turn');
+
+		expect(harness.utterances).toEqual(['Open the doc']);
+		expect(harness.listenStates).toEqual([]);
+		expect(harness.input.listenModeOf('c1')).toBe('hands-free');
+		expect(harness.input.listenModeOf('c2')).toBe('push');
 	});
 });
