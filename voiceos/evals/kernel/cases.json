@@ -3731,6 +3731,66 @@
 			"calls": [],
 			"reply_includes": ["switch"],
 			"forbid_mutation": true
+		},
+		{
+			"id": "why-auto-off-no-guess",
+			"utterance": "Why is auto mode off?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["allow_denied", "send_to", "interrupt"],
+			"no_reply": true
+		},
+		{
+			"id": "why-auto-off-after-denial",
+			"utterance": "Why do you keep asking me? Aren't you using auto mode?",
+			"context": {
+				"view": "store-front/main",
+				"denied": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["allow_denied", "send_to", "interrupt"],
+			"no_reply": true
+		},
+		{
+			"id": "why-auto-off-grid",
+			"utterance": "Why is auto mode off in checkout?",
+			"context": {
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [],
+			"forbid_calls": ["forward", "send_to", "allow_denied", "interrupt"],
+			"answer": true,
+			"reply_not_includes": ["because", "classifier", "you said", "you turned"]
 		}
 	]
 }

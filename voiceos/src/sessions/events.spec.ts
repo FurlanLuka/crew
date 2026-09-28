@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { createMapContext as createContextFor, describeCompaction, mapMessage } from './events.js';
+import {
+	createMapContext as createContextFor,
+	describeCompaction,
+	mapMessage,
+	readDenial,
+	type RawMessage,
+} from './events.js';
 import { summarizeTool } from './tool-summary.js';
 
 const createMapContext = () => createContextFor('store/main');
@@ -133,6 +139,58 @@ describe('mapMessage', () => {
 				mapContext,
 			),
 		).toEqual([{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary: 'run git push' }]);
+	});
+
+	it('the safety check could not decide (no verdict) → a quiet notice, not a denial to allow', () => {
+		const mapContext = createMapContext();
+		mapContext.toolSummaries.set('t9', 'run git push');
+		const transient = {
+			type: 'system',
+			subtype: 'permission_denied',
+			tool_name: 'Bash',
+			tool_use_id: 't9',
+			decision_reason_type: 'classifier',
+			message:
+				'The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash. This is a transient failure of the check, not a judgment about the action.',
+		} as RawMessage;
+		const refused = {
+			...transient,
+			message: 'Blocked: pushing to a shared branch without review.',
+		} as RawMessage;
+
+		expect(mapMessage(transient, mapContext)).toEqual([
+			{
+				type: 'session_notice',
+				ref: 'store/main',
+				text: 'Safety check unavailable for run git push; Claude can try again.',
+			},
+		]);
+		expect(mapMessage(refused, mapContext)).toEqual([
+			{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary: 'run git push' },
+		]);
+		expect(
+			readDenial(
+				{
+					...refused,
+					decision_reason_type: 'other',
+					decision_reason_code: 'outside_reads_blocked',
+				},
+				mapContext.toolSummaries,
+			),
+		).toEqual({
+			toolName: 'Bash',
+			summary: 'run git push',
+			isTransient: false,
+			reasonType: 'other',
+			reasonCode: 'outside_reads_blocked',
+		});
+		expect(readDenial(transient, mapContext.toolSummaries)).toEqual({
+			toolName: 'Bash',
+			summary: 'run git push',
+			isTransient: true,
+			reasonType: 'classifier',
+			reasonCode: null,
+		});
 	});
 
 	it('rate limit events → percentages merged per window', () => {

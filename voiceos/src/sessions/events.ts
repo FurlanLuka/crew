@@ -35,7 +35,37 @@ export interface RawMessage {
 	compact_result?: string;
 	compact_error?: string;
 	compact_metadata?: { pre_tokens?: number; post_tokens?: number };
+	// system/permission_denied: why auto mode refused a tool call.
+	decision_reason_type?: string;
+	decision_reason_code?: string;
 }
+
+export interface Denial {
+	toolName: string;
+	summary: string;
+	// The safety check could not decide (it was unavailable): no judgment was made about the call.
+	isTransient: boolean;
+	reasonType: string | null;
+	reasonCode: string | null;
+}
+
+// The CLI sends no reason code when its classifier is unavailable, only this wording in the message.
+const TRANSIENT_DENIAL_PATTERN = /gave no verdict/i;
+
+export const readDenial = (message: RawMessage, toolSummaries: Map<string, string>): Denial => {
+	const toolName = readString(message.tool_name);
+
+	return {
+		toolName,
+		summary: toolSummaries.get(readString(message.tool_use_id)) ?? summarizeTool(toolName, {}),
+		// Here `message` is the rejection text, not an assistant message.
+		isTransient: TRANSIENT_DENIAL_PATTERN.test(
+			readString((message as { message?: unknown }).message),
+		),
+		reasonType: readString(message.decision_reason_type) || null,
+		reasonCode: readString(message.decision_reason_code) || null,
+	};
+};
 
 const formatTokens = (tokens: number): string =>
 	tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
@@ -194,12 +224,18 @@ const mapSystemMessage = (message: RawMessage, mapContext: MapContext): Observat
 		}
 
 		case 'permission_denied': {
-			const toolName = readString(message.tool_name);
-			const summary =
-				mapContext.toolSummaries.get(readString(message.tool_use_id)) ??
-				summarizeTool(toolName, {});
+			const { toolName, summary, isTransient } = readDenial(message, mapContext.toolSummaries);
 
-			return [{ type: 'denied', ref, toolName, summary }];
+			// Not a refusal: nothing for the developer to allow, and Claude may simply try again.
+			return isTransient
+				? [
+						{
+							type: 'session_notice',
+							ref,
+							text: `Safety check unavailable for ${summary}; Claude can try again.`,
+						},
+					]
+				: [{ type: 'denied', ref, toolName, summary }];
 		}
 
 		default:

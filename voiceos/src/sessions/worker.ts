@@ -2,7 +2,7 @@ import { query as sdkQuery, type Query, type SDKUserMessage } from '@anthropic-a
 import type { Observation } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { readGuardedCommand } from '../state/commands.js';
-import { createMapContext, mapMessage, type RawMessage } from './events.js';
+import { createMapContext, mapMessage, readDenial, type RawMessage } from './events.js';
 import { createMediaHooks } from './media.js';
 import type { PermissionBridge } from './permissions.js';
 import { buildBriefing } from './voice-context.js';
@@ -320,6 +320,15 @@ export class Worker {
 				}
 
 				this.followConversation(raw);
+
+				if (raw.type === 'system' && raw.subtype === 'permission_denied') {
+					// Why auto mode refused, never the command or the rejection text.
+					const { toolName, isTransient, reasonType, reasonCode } = readDenial(
+						raw,
+						mapContext.toolSummaries,
+					);
+					log.info('permission denied', { ref, toolName, isTransient, reasonType, reasonCode });
+				}
 
 				for (const observation of mapMessage(raw, mapContext, cwd)) {
 					if (observation.type === 'turn_ended' && this.isAwaitingBriefedTurn) {
