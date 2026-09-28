@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -58,4 +59,17 @@ func TestVoiceGoldenShow(t *testing.T) {
 		{Name: "checkout-api", Path: "/w/store-front/main/checkout-api"},
 	}}
 	checkGolden(t, "show-worktree.json", showRows(res))
+}
+
+func TestRestartCommand_RunsDetached(t *testing.T) {
+	cmd := restartCommand("/usr/local/bin/crew")
+
+	if got := strings.Join(cmd.Args, " "); got != "/usr/local/bin/crew voice _restart" {
+		t.Fatalf("args: %q", got)
+	}
+	// Its own session: stopping Voice OS kills the session a restart is usually
+	// asked from, and the helper must outlive it to start Voice OS again.
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setsid {
+		t.Fatal("the restart helper is not detached")
+	}
 }

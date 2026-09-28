@@ -9,10 +9,12 @@ import (
 	osexec "os/exec"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/charmbracelet/x/term"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
+	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
@@ -31,8 +33,14 @@ func cmdVoice() {
 	case "start":
 		voiceStart(!hasFlag(args, "--no-open"))
 	case "restart":
+		voiceRestart(!hasFlag(args, "--no-open"))
+	case "_restart":
+		// The detached half of restart (restartCommand): nothing waits on its output.
 		voice.Stop()
-		voiceStart(!hasFlag(args, "--no-open"))
+		if _, err := voice.Start(); err != nil {
+			debug.Log("voice", "restart: %v", err)
+			os.Exit(1)
+		}
 	case "stop":
 		voice.Stop()
 		if jsonOutput {
@@ -75,6 +83,41 @@ func voiceStart(open bool) {
 		os.Exit(1)
 	}
 	voicePrint(st)
+	openVoiceLink(st, open)
+}
+
+// voiceRestart runs the stop and the start in a crew of its own: a Claude
+// session Voice OS runs dies when Voice OS stops, so a restart asked for from
+// one (the usual case) would die before it started Voice OS again. The helper
+// is detached (its own session), outlives this process, and is waited for when
+// this one survives.
+func voiceRestart(open bool) {
+	requireVoiceDeps()
+	installVoiceIfMissing()
+	askMissingKeys()
+	bin, err := exec.CrewBinary()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	cmd := restartCommand(bin)
+	debug.Log("voice", "%s voice _restart (detached)", bin)
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Voice OS did not restart (%v) — crew debug --tail=20 says why\n", err)
+		os.Exit(1)
+	}
+	st := voice.Inspect()
+	voicePrint(st)
+	openVoiceLink(st, open)
+}
+
+func restartCommand(bin string) *osexec.Cmd {
+	cmd := osexec.Command(bin, "voice", "_restart")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	return cmd
+}
+
+func openVoiceLink(st voice.Status, open bool) {
 	if open && !jsonOutput && term.IsTerminal(os.Stdout.Fd()) && st.LocalhostURL != "" {
 		debug.Log("voice", "open %s", st.LocalhostURL)
 		if err := osexec.Command("open", st.LocalhostURL).Start(); err != nil {
