@@ -8,7 +8,7 @@ import {
 	type VoiceEntry,
 	type WorktreeInfo,
 } from '../shared/protocol.js';
-import { isAskInput, reduceAsk, settleAsksForSession } from './asks.js';
+import { isAskInput, reduceAsk, restoreAutoEffects, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
 import { findRedirectAsk, isRedirectInput, queueHeldRedirect, reduceRedirect } from './redirect.js';
@@ -18,6 +18,7 @@ import {
 	createStreamItem,
 	dispatchQueueHead,
 	pushNotice,
+	markSelfStarted,
 	pushStreamItem,
 	startWorker,
 	STREAM_ITEMS_KEPT,
@@ -133,7 +134,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	stream: [],
 	draft: '',
 	needsUser: null,
-	modeOverride: null,
+	allowOnce: null,
 	costUsd: 0,
 	error: null,
 	voiceTurnAt: null,
@@ -318,6 +319,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					draft: '',
 					voiceTurnAt: null,
 					compactingSince: null,
+					allowOnce: null,
 					reportOwed: false,
 					currentSendId: null,
 					heldLine: null,
@@ -345,12 +347,18 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					// The developer stopped the work: there is nothing to report, nor to replay.
 					reportOwed: false,
 					compactingSince: null,
+					allowOnce: null,
 					currentSendId: null,
 					heldLine: null,
 					lineBeforeAsk: null,
 					askedByLine: null,
 				})),
-				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
+				effects: [
+					...settled.effects,
+					{ type: 'worker_interrupt', ref: input.ref },
+					// An allowance still waiting goes with the work it was for.
+					...restoreAutoEffects(session),
+				],
 			};
 		}
 
@@ -423,7 +431,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				? { spokenInTurn: session.spokenInTurn, effects: [], held: null }
 				: speakNewTag(session, draft, isOnScreen(state, input.ref));
 			const drafted = updateSession(state, input.ref, (current) => ({
-				...current,
+				...markSelfStarted(current),
 				draft,
 				spokenInTurn,
 				...(spokenInTurn.length > current.spokenInTurn.length
@@ -470,10 +478,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// Anything the session did after its line, but opening the question or plan it announced,
 			// means the line was not that ask.
 			const isOtherTool = input.type === 'tool' && !ASK_TOOLS.has(input.name);
+			const isActivity = input.type === 'assistant_text' || input.type === 'tool';
 			const pushed = updateSession(state, input.ref, (current) =>
 				pushStreamItem(
 					{
-						...current,
+						...(isActivity ? markSelfStarted(current) : current),
 						...(shouldClearDraft ? { draft: '' } : {}),
 						...(spoken ? { spokenInTurn: spoken.spokenInTurn } : {}),
 						...(isNewLine
@@ -514,11 +523,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
-			const effects: Effect[] = [];
-
-			if (session.modeOverride === 'default-once') {
-				effects.push({ type: 'worker_set_mode', ref: input.ref, mode: 'auto' });
-			}
+			// An allowance still waiting ends with the turn: the next one runs in auto mode again.
+			const effects: Effect[] = restoreAutoEffects(session);
 
 			// A reply cut off by the developer's follow-up is not narrated: they are already past it.
 			const isCutOff = hasFollowUpWaiting(session);
@@ -551,7 +557,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...current,
 				status: 'idle',
 				draft: '',
-				modeOverride: null,
+				allowOnce: null,
 				voiceTurnAt: null,
 				reportOwed: false,
 				spokenInTurn: [],
@@ -582,6 +588,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				error: input.error,
 				voiceTurnAt: null,
 				queue: input.error ? session.queue : [],
+				allowOnce: null,
 				subagents: [],
 				compactingSince: null,
 				reportOwed: false,

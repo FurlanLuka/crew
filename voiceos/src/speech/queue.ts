@@ -74,7 +74,7 @@ export const enqueue = (queue: SpeechQueue, item: SpeechItem): Enqueued => {
 			PRIORITY_RANK[first.priority] - PRIORITY_RANK[second.priority] || first.at - second.at,
 	);
 
-	// Alerts (permissions, questions, denials) cut off whatever is playing.
+	// Alerts (permissions, questions) cut off whatever is playing.
 	return {
 		queue: { ...queue, items },
 		shouldInterrupt: item.priority === 'alert',

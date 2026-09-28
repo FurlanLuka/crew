@@ -84,6 +84,11 @@ export interface SendNowParams {
 	sendId?: string;
 }
 
+// A turn the session began by itself (a background agent reported back) is work under way, though
+// nothing was sent: never a spoken turn, so the developer's words do not cut into it.
+export const markSelfStarted = (session: Session): Session =>
+	session.status === 'idle' ? { ...session, status: 'running' } : session;
+
 export const sendNow = ({
 	state,
 	ref,

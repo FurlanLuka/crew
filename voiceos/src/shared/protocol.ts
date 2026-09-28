@@ -127,6 +127,13 @@ export type HeldLine = {
 	isAnnounced: boolean;
 } & ({ kind: 'line'; text: string; isAsking: boolean } | { kind: 'ask'; askId: string });
 
+export interface AllowOnce {
+	toolName: string;
+	summary: string;
+	// Asks already open when it was given: answering one of them does not use it up.
+	earlierAskIds: string[];
+}
+
 export interface Session {
 	ref: string;
 	label: string;
@@ -141,7 +148,8 @@ export interface Session {
 	stream: StreamItem[];
 	draft: string;
 	needsUser: NeedsUser | null;
-	modeOverride: 'default-once' | null;
+	// "Allow it" after auto mode blocked a call: that one call, retried, is approved without asking.
+	allowOnce: AllowOnce | null;
 	costUsd: number;
 	error: string | null;
 	// Set when the developer's voice started the running turn: a follow-up within FOLLOW_UP_MS interrupts it.

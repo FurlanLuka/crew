@@ -1,9 +1,11 @@
 import {
 	isSdkAsk,
+	type AllowOnce,
 	type Denial,
 	type Input,
 	type PendingAsk,
 	type PermissionDecision,
+	type Session,
 	type SdkAsk,
 	type Stamped,
 	type State,
@@ -12,7 +14,7 @@ import { stripSessionName } from '../shared/spoken.js';
 import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared/questions.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
-import { readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
+import { pushStreamItem, readLabel, sendNow, updateSession, withoutEffects } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import {
 	clearHeldAsk,
@@ -240,6 +242,30 @@ const findAsk = <Kind extends PendingAsk['kind']>(
 	return ask?.kind === kind ? (ask as Extract<PendingAsk, { kind: Kind }>) : null;
 };
 
+export const isAllowedOnce = (
+	allowOnce: AllowOnce | null,
+	ask: PendingAsk,
+): ask is Extract<PendingAsk, { kind: 'permission' }> =>
+	allowOnce !== null &&
+	ask.kind === 'permission' &&
+	ask.toolName === allowOnce.toolName &&
+	ask.summary === allowOnce.summary;
+
+export const restoreAutoEffects = (session: Session | undefined): Effect[] =>
+	// Auto mode is back as soon as the allowance is used or given up: one call, not the whole turn.
+	session?.allowOnce ? [{ type: 'worker_set_mode', ref: session.ref, mode: 'auto' }] : [];
+
+export const endAllowOnce = (state: State, ref: string): ReducerResult => {
+	const effects = restoreAutoEffects(state.sessions[ref]);
+
+	return effects.length > 0
+		? {
+				state: updateSession(state, ref, (session) => ({ ...session, allowOnce: null })),
+				effects,
+			}
+		: withoutEffects(state);
+};
+
 const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerResult => {
 	const denial = state.denials.find((entry) => entry.id === denialId);
 	const session = denial ? state.sessions[denial.ref] : undefined;
@@ -248,12 +274,20 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 		return withoutEffects(state);
 	}
 
-	const retryText = `The user allows this once: retry "${denial.summary}". It will now ask for approval instead of being blocked.`;
+	const retryText = `The user allows this once: retry "${denial.summary}" now.`;
+	// Default mode routes the retried call to Voice OS, which approves it without asking.
 	const setModeEffect: Effect = { type: 'worker_set_mode', ref: denial.ref, mode: 'default' };
 	const cleared = updateSession(
 		{ ...state, denials: state.denials.filter((entry) => entry.id !== denial.id) },
 		denial.ref,
-		(deniedSession) => ({ ...deniedSession, modeOverride: 'default-once' }),
+		(deniedSession) => ({
+			...deniedSession,
+			allowOnce: {
+				toolName: denial.toolName,
+				summary: denial.summary,
+				earlierAskIds: state.asks.filter((ask) => ask.ref === denial.ref).map((ask) => ask.id),
+			},
+		}),
 	);
 
 	if (session.status === 'idle') {
@@ -266,6 +300,22 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 		});
 
 		return { state: sent.state, effects: [setModeEffect, ...sent.effects] };
+	}
+
+	// Pushed into the running turn, which takes it at once: queued, it would run after the turn ends
+	// in auto mode again, and be blocked again.
+	if (session.status === 'running' || session.status === 'blocked') {
+		return {
+			state: updateSession(cleared, denial.ref, (runningSession) =>
+				pushStreamItem(runningSession, {
+					id: stamped.id,
+					at: stamped.at,
+					kind: 'user',
+					text: retryText,
+				}),
+			),
+			effects: [setModeEffect, { type: 'worker_send', ref: denial.ref, text: retryText }],
+		};
 	}
 
 	const queued = updateSession(cleared, denial.ref, (deniedSession) => ({
@@ -326,9 +376,23 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 		case 'answer_permission': {
 			const ask = findAsk(state, input.askId, 'permission');
 
-			return ask
-				? resolveAsk(state, ask, buildPermissionResult(ask, input.decision, input.message))
-				: withoutEffects(state);
+			if (!ask) {
+				return withoutEffects(state);
+			}
+
+			const answered = resolveAsk(
+				state,
+				ask,
+				buildPermissionResult(ask, input.decision, input.message),
+			);
+			// Another call asked while an allowance waited: once answered, auto mode is back. One that was
+			// already open when it was given is not that call, and leaves it waiting.
+			const isEarlier = state.sessions[ask.ref]?.allowOnce?.earlierAskIds.includes(ask.id) === true;
+			const ended = isEarlier
+				? withoutEffects(answered.state)
+				: endAllowOnce(answered.state, ask.ref);
+
+			return { state: ended.state, effects: [...answered.effects, ...ended.effects] };
 		}
 
 		case 'answer_question': {
@@ -400,6 +464,19 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 
 			if (!state.sessions[ask.ref] || state.asks.some((pendingAsk) => pendingAsk.id === ask.id)) {
 				return withoutEffects(state);
+			}
+
+			// The call the developer allowed, retried: approved at once, nothing said, nothing held.
+			if (isAllowedOnce(state.sessions[ask.ref]?.allowOnce ?? null, ask)) {
+				const ended = endAllowOnce(state, ask.ref);
+
+				return {
+					state: ended.state,
+					effects: [
+						{ type: 'resolve_ask', askId: ask.id, result: buildPermissionResult(ask, 'allow') },
+						...ended.effects,
+					],
+				};
 			}
 
 			// A "yes" said next would be meant for this ask: a /clear still held must not take it, and a
@@ -521,6 +598,8 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						text: `Auto mode blocked ${readLabel(state, input.ref)}: ${input.summary}.`,
 						source: 'alert',
 						ref: input.ref,
+						// Heard after the line playing, never cutting it: a burst of them cut each other off.
+						priority: 'high',
 					},
 				],
 			};
