@@ -225,6 +225,8 @@ describe('voice os ui', () => {
 
 	it('question → clicking an option answers with its label', async () => {
 		const { context, page } = await signIn();
+		// Another session's question docks only on its own screen.
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		store.dispatch({
 			type: 'ask_opened',
 			ask: {
@@ -429,6 +431,30 @@ describe('voice os ui', () => {
 
 		gateway.send(client, { type: 'listen_off', reason: 'turned off by voice' });
 		await page.waitForSelector('button.handsfree[aria-pressed="false"]', { timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('compacting → a moving bar with the time at the end of the stream; gone when it ends', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		store.dispatch({ type: 'compacting', ref: 'store-front/main', isCompacting: true });
+		const bar = page.getByRole('status', { name: 'compacting context' });
+		await bar.getByText('Compacting context…').waitFor({ timeout: 5000 });
+		expect(await bar.locator('.bar.indeterminate i').count()).toBe(1);
+
+		store.dispatch({ type: 'compacting', ref: 'store-front/main', isCompacting: false });
+		await bar.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('the setup session → no dev servers panel; a worktree session has one', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });
+		await page.locator('.cockpit').waitFor({ timeout: 5000 });
+		expect(await page.locator('section[aria-label="dev servers"]').count()).toBe(0);
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		await page.locator('section[aria-label="dev servers"]').waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 

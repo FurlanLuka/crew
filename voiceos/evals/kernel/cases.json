@@ -1010,28 +1010,6 @@
 			]
 		},
 		{
-			"id": "perm-yes-docked-other-screen",
-			"utterance": "Yes.",
-			"context": {
-				"view": "checkout-api/main",
-				"ask": "permission",
-				"alert": {
-					"text": "store front, work one wants to run git push. Allow?",
-					"secondsAgo": 10,
-					"ref": "store-front/wrk1"
-				}
-			},
-			"calls": [
-				{
-					"name": "answer",
-					"ref": "store-front/wrk1",
-					"input": {
-						"decision": "yes"
-					}
-				}
-			]
-		},
-		{
 			"id": "perm-okay",
 			"utterance": "Okay.",
 			"context": {
@@ -3645,6 +3623,174 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "reply-to-on-screen-newest-line",
+			"utterance": "Oh, I don't have access to the old one anymore, unfortunately.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "The competitor research is wrapped up, covered in the earlier answer above.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 75,
+						"endedSecondsAgo": 70
+					},
+					{
+						"text": "Good, no rewrite needed. It's a two-step change in the account settings: remove the old email from the old account, then add it to the new one.",
+						"ref": "store-front/main",
+						"secondsAgo": 14,
+						"endedSecondsAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "old one"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "bare-name-switches",
+			"utterance": "To checkout api.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "take-back-before-note",
+			"utterance": "Switch to—uh, can you add the debug— ah, forget it. Ignore. Can you add to debug notes that I asked you to switch to checkout, and you sent it a message instead?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"forbid_calls": ["switch_view"],
+			"calls": [
+				{
+					"name": "debug_note",
+					"text_includes": "switch"
+				}
+			]
+		},
+		{
+			"id": "take-back-word-inside-instruction",
+			"utterance": "Tell it to ignore the flaky checkout test for now.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["ignore", "flaky"]
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "grid-named-setup-request",
+			"utterance": "Setup, before anything else run crew ls projects and tell me exactly what it prints.",
+			"context": {},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "setup",
+					"text_includes": "crew ls projects"
+				}
+			],
+			"allow": [
+				{
+					"name": "start_session",
+					"ref": "setup"
+				},
+				{
+					"name": "switch_view",
+					"ref": "setup"
+				}
+			]
+		},
+		{
+			"id": "announced-permission-yes-other-screen",
+			"utterance": "Yes.",
+			"context": {
+				"view": "checkout-api/main",
+				"announced": {
+					"ref": "store-front/wrk1",
+					"question": "wants to run git push. Allow?",
+					"about": "approval to run git push",
+					"secondsAgo": 10
+				}
+			},
+			"calls": [],
+			"reply_includes": ["switch"],
+			"forbid_mutation": true
+		},
+		{
+			"id": "why-auto-off-no-guess",
+			"utterance": "Why is auto mode off?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["allow_denied", "send_to", "interrupt"],
+			"no_reply": true
+		},
+		{
+			"id": "why-auto-off-after-denial",
+			"utterance": "Why do you keep asking me? Aren't you using auto mode?",
+			"context": {
+				"view": "store-front/main",
+				"denied": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["allow_denied", "send_to", "interrupt"],
+			"no_reply": true
+		},
+		{
+			"id": "why-auto-off-grid",
+			"utterance": "Why is auto mode off in checkout?",
+			"context": {
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [],
+			"forbid_calls": ["forward", "send_to", "allow_denied", "interrupt"],
+			"answer": true,
+			"reply_not_includes": ["because", "classifier", "you said", "you turned"]
 		}
 	]
 }

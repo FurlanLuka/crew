@@ -443,7 +443,11 @@ describe('denials', () => {
 
 		expect(effects[0]).toEqual({ type: 'worker_set_mode', ref: 'store/main', mode: 'default' });
 		expect(effects[1]).toMatchObject({ type: 'worker_send', ref: 'store/main' });
-		expect(state.sessions['store/main']?.modeOverride).toBe('default-once');
+		expect(state.sessions['store/main']?.allowOnce).toEqual({
+			toolName: 'Bash',
+			summary: 'run git push',
+			earlierAskIds: [],
+		});
 		// The retry is sent on the developer's behalf: it shows in the stream and clears needs_user.
 		expect(state.sessions['store/main']?.stream.at(-1)).toMatchObject({
 			kind: 'user',
@@ -460,7 +464,219 @@ describe('denials', () => {
 			ref: 'store/main',
 			mode: 'auto',
 		});
-		expect(ended.state.sessions['store/main']?.modeOverride).toBeNull();
+		expect(ended.state.sessions['store/main']?.allowOnce).toBeNull();
+	});
+
+	const deny = (start: State, summary = 'run git push'): State =>
+		run([{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary }], start).state;
+	const allow = (denied: State): ReducerResult =>
+		run([{ type: 'allow_denied', denialId: denied.denials.at(-1)?.id ?? '' }], denied);
+	const running = (): State =>
+		run([{ type: 'send', ref: 'store/main', text: 'push it' }], idleSession()).state;
+	const opened = (id: string, summary = 'run git push', ref = 'store/main'): Input => ({
+		type: 'ask_opened',
+		ask: { ...permissionAsk(id, ref), summary } as PendingAsk,
+	});
+
+	it('denied → announced at high priority: a burst never cuts the line playing', () => {
+		const { effects } = run(
+			[{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary: 'run git push' }],
+			idleSession(),
+		);
+
+		expect(effects[0]).toMatchObject({ source: 'alert', priority: 'high' });
+	});
+
+	it('allow it on a running session → pushed into the turn now, not queued', () => {
+		const { state, effects } = allow(deny(running()));
+
+		expect(effects).toEqual([
+			{ type: 'worker_set_mode', ref: 'store/main', mode: 'default' },
+			{
+				type: 'worker_send',
+				ref: 'store/main',
+				text: 'The user allows this once: retry "run git push" now.',
+			},
+		]);
+		expect(state.sessions['store/main']?.queue).toEqual([]);
+		expect(state.sessions['store/main']?.status).toBe('running');
+	});
+
+	it('allow it on a stopped session → queued for its start', () => {
+		const stopped = run([{ type: 'stop_session', ref: 'store/main' }], deny(idleSession())).state;
+		const { state } = allow(stopped);
+
+		expect(state.sessions['store/main']?.queue.map((message) => message.text)).toEqual([
+			'The user allows this once: retry "run git push" now.',
+		]);
+	});
+
+	it('the retried call asks → allowed at once, nothing said or held, auto mode back', () => {
+		const allowed = allow(deny(running())).state;
+		const { state, effects } = run([opened('p1')], allowed);
+
+		expect(effects).toEqual([
+			{
+				type: 'resolve_ask',
+				askId: 'p1',
+				result: { behavior: 'allow', updatedInput: { command: 'git push' } },
+			},
+			{ type: 'worker_set_mode', ref: 'store/main', mode: 'auto' },
+		]);
+		expect(state.asks).toEqual([]);
+		expect(state.sessions['store/main']?.allowOnce).toBeNull();
+	});
+
+	it('another call asks first → asked as usual; once answered, auto mode is back', () => {
+		const allowed = allow(deny(running())).state;
+		const asked = run([opened('p2', 'run rm -rf dist')], allowed);
+
+		expect(asked.state.asks.map((ask) => ask.id)).toEqual(['p2']);
+		expect(asked.effects.some((effect) => effect.type === 'speak')).toBe(true);
+
+		const answered = run(
+			[{ type: 'answer_permission', askId: 'p2', decision: 'deny' }],
+			asked.state,
+		);
+
+		expect(answered.effects).toContainEqual({
+			type: 'worker_set_mode',
+			ref: 'store/main',
+			mode: 'auto',
+		});
+		expect(answered.state.sessions['store/main']?.allowOnce).toBeNull();
+	});
+
+	it('the same call from another session is still asked', () => {
+		const withWrk1 = run(
+			[
+				{ type: 'start_session', ref: 'store/wrk1' },
+				{ type: 'session_started', ref: 'store/wrk1' },
+			],
+			allow(deny(running())).state,
+		).state;
+		const { state } = run([opened('p3', 'run git push', 'store/wrk1')], withWrk1);
+
+		expect(state.asks.map((ask) => ask.id)).toEqual(['p3']);
+		expect(state.sessions['store/main']?.allowOnce).not.toBeNull();
+	});
+
+	it('a second denial and allow while one waits → the newer call is the one allowed', () => {
+		const first = allow(deny(running())).state;
+		const second = allow(deny(first, 'run npm publish')).state;
+
+		expect(second.sessions['store/main']?.allowOnce).toEqual({
+			toolName: 'Bash',
+			summary: 'run npm publish',
+			earlierAskIds: [],
+		});
+		expect(run([opened('p4')], second).state.asks.map((ask) => ask.id)).toEqual(['p4']);
+	});
+
+	it('allow it on a blocked session → pushed now; on a starting one → queued', () => {
+		const blocked = run([opened('p5', 'run ls')], running()).state;
+		const pushed = allow(deny(blocked));
+		const startingState = run([
+			{ type: 'worktrees', worktrees: [worktree('store/main')] },
+			{ type: 'start_session', ref: 'store/main' },
+		]).state;
+		const starting = allow(deny(startingState));
+
+		expect(pushed.effects.map((effect) => effect.type)).toEqual(['worker_set_mode', 'worker_send']);
+		expect(pushed.state.sessions['store/main']?.queue).toEqual([]);
+		expect(starting.state.sessions['store/main']?.queue).toHaveLength(1);
+		expect(starting.effects.map((effect) => effect.type)).toEqual(['worker_set_mode']);
+	});
+
+	it('blocked on another call when allowed → answering that one keeps the allowance for the retry', () => {
+		const blocked = run([opened('p7', 'run ls')], running()).state;
+		const allowed = allow(deny(blocked)).state;
+		const answered = run([{ type: 'answer_permission', askId: 'p7', decision: 'allow' }], allowed);
+		const retried = run([opened('p8')], answered.state);
+
+		expect(answered.effects.some((effect) => effect.type === 'worker_set_mode')).toBe(false);
+		expect(answered.state.sessions['store/main']?.allowOnce).not.toBeNull();
+		expect(retried.effects.map((effect) => effect.type)).toEqual([
+			'resolve_ask',
+			'worker_set_mode',
+		]);
+	});
+
+	it('the retried call asks while a /clear is held → allowed, and the /clear stays held', () => {
+		const held = run(
+			[{ type: 'send', ref: 'store/main', text: '/clear' }],
+			allow(deny(running())).state,
+		).state;
+		const heldIds = held.asks.map((ask) => ask.id);
+		const { state, effects } = run([opened('p6')], held);
+
+		expect(heldIds).toHaveLength(1);
+		expect(state.asks.map((ask) => ask.id)).toEqual(heldIds);
+		expect(effects.map((effect) => effect.type)).toEqual(['resolve_ask', 'worker_set_mode']);
+	});
+
+	it('an interrupt, a stop or the worker exiting ends the allowance', () => {
+		const allowed = allow(deny(running())).state;
+		const interrupted = run([{ type: 'interrupt', ref: 'store/main' }], allowed);
+		const exited = run([{ type: 'worker_exited', ref: 'store/main', error: null }], allowed);
+		const stopped = run([{ type: 'stop_session', ref: 'store/main' }], allowed);
+
+		expect(interrupted.effects).toContainEqual({
+			type: 'worker_set_mode',
+			ref: 'store/main',
+			mode: 'auto',
+		});
+		expect(interrupted.state.sessions['store/main']?.allowOnce).toBeNull();
+		expect(exited.state.sessions['store/main']?.allowOnce).toBeNull();
+		expect(stopped.state.sessions['store/main']?.allowOnce).toBeNull();
+	});
+});
+
+describe('a turn the session starts by itself (a background agent reported back)', () => {
+	const activity: Input[] = [
+		{ type: 'text_delta', ref: 'store/main', text: 'The research is back.' },
+		{ type: 'assistant_text', ref: 'store/main', text: 'The research is back.' },
+		{ type: 'tool', ref: 'store/main', name: 'Read', summary: 'read notes.md' },
+	];
+
+	it('idle + text or a tool → running, with no spoken-turn window', () => {
+		for (const input of activity) {
+			const session = run([input], idleSession()).state.sessions['store/main'];
+
+			expect(session?.status).toBe('running');
+			expect(session?.voiceTurnAt).toBeNull();
+		}
+	});
+
+	it('words said meanwhile queue behind it; they never cut into it', () => {
+		const working = run([activity[2] as Input], idleSession()).state;
+		const { state, effects } = run(
+			[{ type: 'send', ref: 'store/main', text: 'Valid.', isSpoken: true }],
+			working,
+		);
+
+		expect(state.sessions['store/main']?.queue.map((message) => message.text)).toEqual(['Valid.']);
+		expect(effects.some((effect) => effect.type === 'worker_interrupt')).toBe(false);
+	});
+
+	it('blocked, starting or stopped stay as they are', () => {
+		const stopped = createInitialState();
+		const withSession = run(
+			[{ type: 'worktrees', worktrees: [worktree('store/main')] }],
+			stopped,
+		).state;
+		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('b1') }], idleSession()).state;
+		const starting = run([{ type: 'start_session', ref: 'store/main' }], withSession).state;
+
+		expect(run([activity[2] as Input], withSession).state.sessions['store/main']?.status).toBe(
+			'stopped',
+		);
+		expect(run([activity[2] as Input], blocked).state.sessions['store/main']?.status).toBe(
+			'blocked',
+		);
+		expect(run([activity[2] as Input], starting).state.sessions['store/main']?.status).toBe(
+			'starting',
+		);
 	});
 });
 
@@ -483,6 +699,7 @@ describe('turn_ended', () => {
 			spoken: null,
 			isSpokenAlready: false,
 			isHeld: false,
+			hasBackgroundAgents: false,
 		});
 	});
 
@@ -627,6 +844,42 @@ describe('determinism', () => {
 		];
 
 		expect(run(inputs).state).toEqual(run(inputs).state);
+	});
+});
+
+describe('compaction', () => {
+	const since = (state: State) => state.sessions['store/main']?.compactingSince;
+	const compacting = (isCompacting: boolean): Input => ({
+		type: 'compacting',
+		ref: 'store/main',
+		isCompacting,
+	});
+
+	it('starts at its first "compacting", keeps that time, ends on false', () => {
+		const started = run([compacting(true)], idleSession()).state;
+		const again = run([compacting(true)], started).state;
+
+		expect(since(started)).toBe(1000);
+		expect(since(again)).toBe(1000);
+		expect(since(run([compacting(false)], again).state)).toBeNull();
+	});
+
+	it('the turn ending, an interrupt, a stop, the worker exiting, a new process or a /clear clear it', () => {
+		const running = run(
+			[{ type: 'send', ref: 'store/main', text: 'compact' }, compacting(true)],
+			idleSession(),
+		).state;
+
+		for (const input of [
+			{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: '' },
+			{ type: 'interrupt', ref: 'store/main' },
+			{ type: 'stop_session', ref: 'store/main' },
+			{ type: 'worker_exited', ref: 'store/main', error: null },
+			{ type: 'session_started', ref: 'store/main' },
+			{ type: 'conversation_reset', ref: 'store/main' },
+		] as Input[]) {
+			expect(since(run([input], running).state)).toBeNull();
+		}
 	});
 });
 

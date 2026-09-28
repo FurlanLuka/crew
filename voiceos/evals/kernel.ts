@@ -30,6 +30,8 @@ interface Case {
 	// Calls that are fine but not required (starting a session before opening it is harmless).
 	allow?: ExpectedCall[];
 	forbid_mutation?: boolean;
+	// Tools that must not be called at all, mutating or not (a switch the developer took back).
+	forbid_calls?: ToolName[];
 	// A question, which must get a spoken reply: silence reads as broken.
 	answer?: boolean;
 	// Words that ask for nothing (a fragment, "hey"): no change and no reply, on every run.
@@ -199,6 +201,14 @@ export const judgeRun = ({ calls: made, reply, testCase }: JudgeRunParams): Verd
 
 	if (twice) {
 		return { ok: false, why: `sent twice to ${twice}` };
+	}
+
+	const forbidden = calls.find(
+		(call) => call.ok && (testCase.forbid_calls ?? []).includes(call.name as ToolName),
+	);
+
+	if (forbidden) {
+		return { ok: false, why: `called ${forbidden.name}, which the case forbids` };
 	}
 
 	if (

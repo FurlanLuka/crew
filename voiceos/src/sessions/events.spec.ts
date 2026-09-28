@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { createMapContext as createContextFor, mapMessage } from './events.js';
+import {
+	createMapContext as createContextFor,
+	describeCompaction,
+	mapMessage,
+	readDenial,
+	type RawMessage,
+} from './events.js';
 import { summarizeTool } from './tool-summary.js';
 
 const createMapContext = () => createContextFor('store/main');
@@ -133,6 +139,58 @@ describe('mapMessage', () => {
 				mapContext,
 			),
 		).toEqual([{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary: 'run git push' }]);
+	});
+
+	it('the safety check could not decide (no verdict) → a quiet notice, not a denial to allow', () => {
+		const mapContext = createMapContext();
+		mapContext.toolSummaries.set('t9', 'run git push');
+		const transient = {
+			type: 'system',
+			subtype: 'permission_denied',
+			tool_name: 'Bash',
+			tool_use_id: 't9',
+			decision_reason_type: 'classifier',
+			message:
+				'The server-side auto mode classifier gave no verdict (error), so auto mode cannot determine the safety of Bash. This is a transient failure of the check, not a judgment about the action.',
+		} as RawMessage;
+		const refused = {
+			...transient,
+			message: 'Blocked: pushing to a shared branch without review.',
+		} as RawMessage;
+
+		expect(mapMessage(transient, mapContext)).toEqual([
+			{
+				type: 'session_notice',
+				ref: 'store/main',
+				text: 'Safety check unavailable for run git push; Claude can try again.',
+			},
+		]);
+		expect(mapMessage(refused, mapContext)).toEqual([
+			{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary: 'run git push' },
+		]);
+		expect(
+			readDenial(
+				{
+					...refused,
+					decision_reason_type: 'other',
+					decision_reason_code: 'outside_reads_blocked',
+				},
+				mapContext.toolSummaries,
+			),
+		).toEqual({
+			toolName: 'Bash',
+			summary: 'run git push',
+			isTransient: false,
+			reasonType: 'other',
+			reasonCode: 'outside_reads_blocked',
+		});
+		expect(readDenial(transient, mapContext.toolSummaries)).toEqual({
+			toolName: 'Bash',
+			summary: 'run git push',
+			isTransient: true,
+			reasonType: 'classifier',
+			reasonCode: null,
+		});
 	});
 
 	it('rate limit events → percentages merged per window', () => {
@@ -356,10 +414,43 @@ describe('slash commands', () => {
 			{ type: 'conversation_reset', ref: 'store/main' },
 		]));
 
-	it('/compact → a notice', () =>
+	it('/compact → compaction over, and a notice; the sizes when the SDK gives them', () => {
 		expect(mapMessage({ type: 'system', subtype: 'compact_boundary' }, createMapContext())).toEqual(
-			[{ type: 'session_notice', ref: 'store/main', text: 'Context compacted.' }],
-		));
+			[
+				{ type: 'compacting', ref: 'store/main', isCompacting: false },
+				{ type: 'session_notice', ref: 'store/main', text: 'Context compacted.' },
+			],
+		);
+		expect(describeCompaction({ pre_tokens: 181_400, post_tokens: 22_300 })).toBe(
+			'Context compacted: 181k → 22k tokens.',
+		);
+		expect(describeCompaction({ pre_tokens: 181_400 })).toBe(
+			'Context compacted: 181k tokens before.',
+		);
+		expect(describeCompaction({ pre_tokens: 900, post_tokens: 400 })).toBe(
+			'Context compacted: 900 → 400 tokens.',
+		);
+	});
+
+	it("status 'compacting' → compacting; null → over; failed → over and a notice; 'requesting' → nothing", () => {
+		const status = (fields: Record<string, unknown>) =>
+			mapMessage({ type: 'system', subtype: 'status', ...fields }, createMapContext());
+
+		expect(status({ status: 'compacting' })).toEqual([
+			{ type: 'compacting', ref: 'store/main', isCompacting: true },
+		]);
+		expect(status({ status: null, compact_result: 'success' })).toEqual([
+			{ type: 'compacting', ref: 'store/main', isCompacting: false },
+		]);
+		expect(
+			status({ status: null, compact_result: 'failed', compact_error: 'prompt too long' }),
+		).toEqual([
+			{ type: 'compacting', ref: 'store/main', isCompacting: false },
+			{ type: 'session_notice', ref: 'store/main', text: 'Compaction failed: prompt too long' },
+		]);
+		expect(status({ status: 'requesting' })).toEqual([]);
+		expect(status({})).toEqual([]);
+	});
 
 	it('local command output → a notice with it; empty output → nothing', () => {
 		expect(

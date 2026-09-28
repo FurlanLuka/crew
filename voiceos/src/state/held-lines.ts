@@ -3,9 +3,11 @@ import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
 import { readLabel, updateSession, withoutEffects } from './helpers.js';
+import { hasBackgroundWork } from './subagents.js';
 
 // A session the developer isn't looking at does not speak its lines: they wait until the developer
-// switches there. Only a short one (a one-sentence answer) is still said where they are.
+// switches there. Only a short one (a one-sentence answer) is still said where they are, unless a
+// report they were told about waits unheard: alone, it would be heard without it.
 const SHORT_LINE_WORDS = 12;
 
 export const isShortLine = (text: string): boolean =>
@@ -14,11 +16,53 @@ export const isShortLine = (text: string): boolean =>
 export const isOnScreen = (state: State, ref: string): boolean =>
 	state.view.kind === 'session' && state.view.ref === ref;
 
+// Looking at a different session, not Mission Control: a question from elsewhere waits there.
+export const isOnAnotherSession = (state: State, ref: string): boolean =>
+	state.view.kind === 'session' && state.view.ref !== ref;
+
 export const isHeldQuestion = (session: Session | undefined): boolean =>
 	session?.heldLine?.kind === 'ask' ||
 	(session?.heldLine?.kind === 'line' && session.heldLine.isAsking);
 
 export type AnnouncementKind = 'done' | 'needs';
+
+export type TurnLineDecision =
+	| { kind: 'say' }
+	| { kind: 'hold'; announce: AnnouncementKind | null };
+
+interface DecideTurnLineParams {
+	isShown: boolean;
+	isShort: boolean;
+	// What the session holds was announced already ("is done", "needs you") and is not yet heard.
+	isHeldAnnounced: boolean;
+	hasBackgroundAgents: boolean;
+	needsUser: boolean;
+	// The developer looks at another session, not Mission Control.
+	isOnAnotherSession: boolean;
+}
+
+export const decideTurnLine = ({
+	isShown,
+	isShort,
+	isHeldAnnounced,
+	hasBackgroundAgents,
+	needsUser,
+	isOnAnotherSession,
+}: DecideTurnLineParams): TurnLineDecision => {
+	// A question, however short, is not asked over another session: like its asks, it waits there.
+	const isQuestionElsewhere = needsUser && isOnAnotherSession;
+
+	if (isShown || (isShort && !isHeldAnnounced && !isQuestionElsewhere)) {
+		return { kind: 'say' };
+	}
+
+	if (needsUser) {
+		return { kind: 'hold', announce: 'needs' };
+	}
+
+	// "Done" is said once, and only when the work is: background sub-agents still work after the turn.
+	return { kind: 'hold', announce: hasBackgroundAgents || isHeldAnnounced ? null : 'done' };
+};
 
 interface DescribeAnnouncementParams {
 	label: string;
@@ -78,19 +122,43 @@ interface HoldParams {
 	ref: string;
 	content: HeldContent;
 	stamped: Pick<Stamped, 'id' | 'at'>;
+	// Held as it is announced (an ask's "needs you").
+	isAnnounced?: boolean;
 }
 
-export const holdLine = ({ state, ref, content, stamped }: HoldParams): State =>
+export const holdLine = ({
+	state,
+	ref,
+	content,
+	stamped,
+	isAnnounced = false,
+}: HoldParams): State =>
 	// The latest line replaces the one before; the page keeps them all.
-	updateSession(state, ref, (session) => ({
-		...session,
-		heldLine: {
-			id: stamped.id,
-			at: stamped.at,
-			missed: session.heldLine ? session.heldLine.missed + 1 : 0,
-			...content,
-		} as HeldLine,
-	}));
+	updateSession(state, ref, (session) => {
+		const held = session.heldLine;
+
+		// A short afterword ("covered in the answer above") never takes the place of a report the
+		// developer was told about: replayed alone, it would say nothing. A question always does.
+		if (
+			held?.isAnnounced &&
+			content.kind === 'line' &&
+			!content.isAsking &&
+			isShortLine(content.text)
+		) {
+			return { ...session, heldLine: { ...held, missed: held.missed + 1 } };
+		}
+
+		return {
+			...session,
+			heldLine: {
+				id: stamped.id,
+				at: stamped.at,
+				missed: held ? held.missed + 1 : 0,
+				isAnnounced: isAnnounced || held?.isAnnounced === true,
+				...content,
+			} as HeldLine,
+		};
+	});
 
 export const clearHeldLine = (state: State, ref: string): State =>
 	state.sessions[ref]?.heldLine
@@ -106,7 +174,7 @@ export const clearHeldAsk = (state: State, askId: string): State => {
 };
 
 const isWorkingStatus = (session: Session): boolean =>
-	session.status === 'running' || session.status === 'blocked';
+	session.status === 'running' || session.status === 'blocked' || hasBackgroundWork(session);
 
 export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 	// The developer switched to it: what it said meanwhile plays now, once, and counts as heard.
