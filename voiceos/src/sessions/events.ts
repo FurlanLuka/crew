@@ -30,7 +30,83 @@ export interface RawMessage {
 	total_cost_usd?: number;
 	is_error?: boolean;
 	rate_limit_info?: { rateLimitType?: string; utilization?: number; resetsAt?: number };
+	// system/status: 'compacting' while the context is compacted, null when that ends.
+	status?: string | null;
+	compact_result?: string;
+	compact_error?: string;
+	compact_metadata?: { pre_tokens?: number; post_tokens?: number };
+	// system/permission_denied: why auto mode refused a tool call.
+	decision_reason_type?: string;
+	decision_reason_code?: string;
 }
+
+export interface Denial {
+	toolName: string;
+	summary: string;
+	// The safety check could not decide (it was unavailable): no judgment was made about the call.
+	isTransient: boolean;
+	reasonType: string | null;
+	reasonCode: string | null;
+}
+
+// The CLI sends no reason code when its classifier is unavailable, only this wording in the message.
+const TRANSIENT_DENIAL_PATTERN = /gave no verdict/i;
+
+export const readDenial = (message: RawMessage, toolSummaries: Map<string, string>): Denial => {
+	const toolName = readString(message.tool_name);
+
+	return {
+		toolName,
+		summary: toolSummaries.get(readString(message.tool_use_id)) ?? summarizeTool(toolName, {}),
+		// Here `message` is the rejection text, not an assistant message.
+		isTransient: TRANSIENT_DENIAL_PATTERN.test(
+			readString((message as { message?: unknown }).message),
+		),
+		reasonType: readString(message.decision_reason_type) || null,
+		reasonCode: readString(message.decision_reason_code) || null,
+	};
+};
+
+const formatTokens = (tokens: number): string =>
+	tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
+
+export const describeCompaction = (metadata: RawMessage['compact_metadata']): string => {
+	// The SDK may leave out the size after, and older ones send no sizes at all.
+	const before = metadata?.pre_tokens;
+	const after = metadata?.post_tokens;
+
+	if (typeof before !== 'number') {
+		return 'Context compacted.';
+	}
+
+	return typeof after === 'number'
+		? `Context compacted: ${formatTokens(before)} → ${formatTokens(after)} tokens.`
+		: `Context compacted: ${formatTokens(before)} tokens before.`;
+};
+
+const mapStatusMessage = (message: RawMessage, ref: string): Observation[] => {
+	// 'requesting' and anything newer say nothing about compaction.
+	if (message.status === 'compacting') {
+		return [{ type: 'compacting', ref, isCompacting: true }];
+	}
+
+	if (message.status !== null) {
+		return [];
+	}
+
+	const ended: Observation = { type: 'compacting', ref, isCompacting: false };
+
+	return message.compact_result === 'failed'
+		? [
+				ended,
+				{
+					type: 'session_notice',
+					ref,
+					text: `Compaction failed${message.compact_error ? `: ${clipText(message.compact_error, 200)}` : '.'}`,
+				},
+			]
+		: [ended];
+};
 
 export interface MapContext {
 	ref: string;
@@ -132,8 +208,14 @@ const mapSystemMessage = (message: RawMessage, mapContext: MapContext): Observat
 		case 'task_notification':
 			return mapTaskMessage(message, mapContext);
 
+		case 'status':
+			return mapStatusMessage(message, ref);
+
 		case 'compact_boundary':
-			return [{ type: 'session_notice', ref, text: 'Context compacted.' }];
+			return [
+				{ type: 'compacting', ref, isCompacting: false },
+				{ type: 'session_notice', ref, text: describeCompaction(message.compact_metadata) },
+			];
 
 		case 'local_command_output': {
 			const text = clipText(readString(message.content), 300);
@@ -142,12 +224,18 @@ const mapSystemMessage = (message: RawMessage, mapContext: MapContext): Observat
 		}
 
 		case 'permission_denied': {
-			const toolName = readString(message.tool_name);
-			const summary =
-				mapContext.toolSummaries.get(readString(message.tool_use_id)) ??
-				summarizeTool(toolName, {});
+			const { toolName, summary, isTransient } = readDenial(message, mapContext.toolSummaries);
 
-			return [{ type: 'denied', ref, toolName, summary }];
+			// Not a refusal: nothing for the developer to allow, and Claude may simply try again.
+			return isTransient
+				? [
+						{
+							type: 'session_notice',
+							ref,
+							text: `Safety check unavailable for ${summary}; Claude can try again.`,
+						},
+					]
+				: [{ type: 'denied', ref, toolName, summary }];
 		}
 
 		default:

@@ -301,6 +301,135 @@ describe('VoiceOut', () => {
 		expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
 	});
 
+	it('held after its turn, a second line of a session already announced → no second "is done"', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		const first =
+			'The router refactor is done, the tests pass, and the branch is pushed for review now.';
+		const second =
+			'Also rebased on main and resolved the two conflicts in the router config files just now.';
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+
+		for (const text of [first, second]) {
+			harness.voiceOut.say({
+				text,
+				priority: 'high',
+				ref: 'store/main',
+				isOwed: true,
+				isHoldable: true,
+			});
+		}
+
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main is done.']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
+			text: second,
+			isAnnounced: true,
+		});
+	});
+
+	it('a short line after an announced report still unheard → held with it, not played', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		const report =
+			'The router refactor is done, the tests pass, and the branch is pushed for review now.';
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: report,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.voiceOut.say({
+			text: 'Covered in the answer above.',
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main is done.']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: report });
+	});
+
+	it('a short question queued on screen, played after the developer opened another session → held, "needs you"', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({
+			type: 'worktrees',
+			worktrees: ['store/main', 'store/wrk1'].map((ref) => ({
+				ref,
+				label: ref,
+				branch: '',
+				cwd: '/w',
+				dirs: [],
+				isPinned: false,
+			})),
+		});
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: 'Push it now?',
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+			isAsking: true,
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main needs you.']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
+			text: 'Push it now?',
+			isAnnounced: true,
+		});
+	});
+
+	it('a long line held after its turn while a background sub-agent works → no "is done"', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({
+			type: 'subagent_started',
+			ref: 'store/main',
+			taskId: 't1',
+			agentType: null,
+			description: 'research',
+			isBackground: true,
+		});
+		const long =
+			'Started the competitor research in the background: worktree tools, cockpits and voice control.';
+		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
+		await flush();
+		harness.voiceOut.say({
+			text: long,
+			priority: 'high',
+			ref: 'store/main',
+			isOwed: true,
+			isHoldable: true,
+		});
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: long });
+	});
+
 	it('a short line plays wherever the developer is', async () => {
 		const harness = createHarness();
 		harness.voiceOut.say({

@@ -56,6 +56,29 @@ describe('describeSessionBadge', () => {
 		expect(
 			describeSessionBadge(createTestSession({ isPinned: true, status: 'idle' }), []).dot,
 		).toBe('setup'));
+	it('compacting → compacting, even while running', () =>
+		expect(
+			describeSessionBadge(createTestSession({ status: 'running', compactingSince: 1 }), []).label,
+		).toBe('compacting'));
+	it('turn over, background sub-agents still working → sub-agents, not idle', () =>
+		expect(
+			describeSessionBadge(
+				createTestSession({
+					status: 'idle',
+					subagents: [
+						{
+							taskId: 't',
+							agentType: null,
+							description: 'research',
+							startedAt: 0,
+							step: null,
+							isBackground: true,
+						},
+					],
+				}),
+				[],
+			),
+		).toEqual({ dot: 'running', label: 'sub-agents', isAlarm: false }));
 	it('stopped after a crash → crashed', () =>
 		expect(
 			describeSessionBadge(createTestSession({ status: 'stopped', error: 'boom' }), []).label,
@@ -116,6 +139,14 @@ describe('findCurrentAsk', () => {
 			asks: [createTestAsk('1', 'a/x'), createTestAsk('2', 'b/x')],
 		};
 		expect(findCurrentAsk(state)?.id).toBe('2');
+	});
+	it("viewing a session → never another session's ask", () => {
+		const state: State = {
+			...createInitialState(),
+			view: { kind: 'session', ref: 'b/x' },
+			asks: [createTestAsk('1', 'a/x')],
+		};
+		expect(findCurrentAsk(state)).toBeNull();
 	});
 	it('grid → oldest ask anywhere', () => {
 		expect(
@@ -294,10 +325,10 @@ describe("routeChip: typing beats another session's ask", () => {
 				{ draft: 'run the tests' },
 			).label,
 		).toBe('→ store/main'));
-	it('same, nothing typed → answering it', () =>
+	it('same, nothing typed → Voice OS: that ask waits for a switch there', () =>
 		expect(
 			describeRouteChip({ ...createBaseState(), asks: [createTestAsk('p', 'store/wrk1')] }).label,
-		).toBe('answering store/wrk1'));
+		).toBe('→ Voice OS'));
 	it('this session waits, typing "yes" → answering it', () =>
 		expect(
 			describeRouteChip(

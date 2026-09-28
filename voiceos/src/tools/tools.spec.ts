@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { NoteWords } from '../memory/notes.js';
+import { formatAge } from '../state/working.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import {
@@ -1110,11 +1111,12 @@ describe('a question only announced', () => {
 			needsUser: kind === 'line' ? { text: 'asks: cap the backoff?', at: 0 } : null,
 			heldLine:
 				kind === 'ask'
-					? { id: 'h1', at: 0, missed: 0, kind: 'ask', askId: 'q1' }
+					? { id: 'h1', at: 0, missed: 0, isAnnounced: false, kind: 'ask', askId: 'q1' }
 					: {
 							id: 'h1',
 							at: 0,
 							missed: 0,
+							isAnnounced: false,
 							kind: 'line',
 							text: 'asks: cap the backoff?',
 							isAsking: true,
@@ -1245,6 +1247,7 @@ describe('status from another screen', () => {
 				id: 'h1',
 				at: 0,
 				missed: 0,
+				isAnnounced: false,
 				kind: 'line',
 				text: 'Tests pass; wiring the page.',
 				isAsking: false,
@@ -1540,6 +1543,37 @@ describe('describeSession', () => {
 		expect(detailed.last_reply).toBe(longReply);
 		expect(String((detailed.recent as string[])[1]).length).toBeLessThan(longReply.length);
 		expect(brief.last_reply).toBeUndefined();
+	});
+
+	it('compacting and background sub-agents are said; neither → neither key', () => {
+		const { tools } = createToolContext();
+		const state = tools.getState();
+		const idle = describeSession({ state, ref: 'store-front/main', isDetailed: false, now: 0 });
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			compactingSince: 1_000,
+			subagents: [
+				{
+					taskId: 't1',
+					agentType: null,
+					description: 'research',
+					startedAt: 0,
+					step: null,
+					isBackground: true,
+				},
+			],
+		};
+		const busy = describeSession({
+			state,
+			ref: 'store-front/main',
+			isDetailed: false,
+			now: 13_000,
+		});
+
+		expect(idle.compacting_for).toBeUndefined();
+		expect(idle.background_agents).toBeUndefined();
+		expect(busy.background_agents).toBe(1);
+		expect(busy.compacting_for).toBe(formatAge(12_000));
 	});
 
 	it('several questions pending → the open one with its options, and how many are left', () => {

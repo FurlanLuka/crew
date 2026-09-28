@@ -2,6 +2,7 @@ import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { useEffect, useRef } from 'react';
 import type { Session, State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
+import { CompactingLine } from './CompactingLine.js';
 import { DevPanel } from './DevPanel.js';
 import { ElsewherePanel } from './ElsewherePanel.js';
 import { Markdown } from './Markdown.js';
@@ -20,9 +21,10 @@ interface CockpitProps {
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	const streamEndRef = useRef<HTMLDivElement>(null);
 
+	// The compaction bar is added at the end of the stream too: it must come into view like a line.
 	useEffect(() => {
 		streamEndRef.current?.scrollIntoView({ block: 'end' });
-	}, [session.stream.length, session.draft]);
+	}, [session.stream.length, session.draft, session.compactingSince]);
 
 	return (
 		<main className="cockpit">
@@ -37,6 +39,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 						<span className="caret" />
 					</div>
 				)}
+				{session.compactingSince !== null && <CompactingLine since={session.compactingSince} />}
 				{session.status === 'stopped' && (
 					<div className="btns">
 						<span className="c-dim">
@@ -89,13 +92,16 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					</div>
 				</div>
 				<SubagentsPanel subagents={session.subagents} />
-				<DevPanel
-					worktree={session.ref}
-					servers={state.devServers[session.ref] ?? []}
-					isStarting={state.devStarting.includes(session.ref)}
-					offer={state.devOffer}
-					dispatch={dispatch}
-				/>
+				{/* The setup session has no worktree, so no dev servers to start. */}
+				{!session.isPinned && (
+					<DevPanel
+						worktree={session.ref}
+						servers={state.devServers[session.ref] ?? []}
+						isStarting={state.devStarting.includes(session.ref)}
+						offer={state.devOffer}
+						dispatch={dispatch}
+					/>
+				)}
 				<div className="panel">
 					<span className="lbl">topic</span>
 					<div className="row">{session.topic ?? 'none yet'}</div>

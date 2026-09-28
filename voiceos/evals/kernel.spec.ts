@@ -43,6 +43,22 @@ describe('judgeRun', () => {
 			}),
 		).toEqual({ ok: false, why: 'sent twice to the screen' }));
 
+	it('a forbidden call fails even when it changes nothing (a switch taken back)', () => {
+		const noSwitch = { ...checkLogsCase, forbid_calls: ['switch_view' as const] };
+		const switched = [
+			...forward('Check the logs.'),
+			{ name: 'switch_view', input: { ref: 'store-front/main' }, ok: true },
+		];
+
+		expect(judgeRun({ calls: switched, reply: '', testCase: noSwitch })).toEqual({
+			ok: false,
+			why: 'called switch_view, which the case forbids',
+		});
+		expect(judgeRun({ calls: forward('Check the logs.'), reply: '', testCase: noSwitch }).ok).toBe(
+			true,
+		);
+	});
+
 	it('a forward and a send_to naming the screen are one session; two sessions are fine', () => {
 		const onScreen = {
 			...checkLogsCase,

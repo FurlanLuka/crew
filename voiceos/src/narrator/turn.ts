@@ -8,7 +8,13 @@ import type { Narration } from './prompt.js';
 import { cleanSpokenText } from '../shared/spoken.js';
 import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import type { Session } from '../shared/protocol.js';
-import { describeAnnouncement, isOnScreen, isShortLine } from '../state/held-lines.js';
+import {
+	decideTurnLine,
+	describeAnnouncement,
+	isOnAnotherSession,
+	isOnScreen,
+	isShortLine,
+} from '../state/held-lines.js';
 import { createLogger } from '../log.js';
 
 const log = createLogger('narrator');
@@ -133,8 +139,8 @@ const speakOutcome = async ({
 	readAbout,
 	isNewerTurn,
 }: SpeakOutcomeParams): Promise<void> => {
-	// Said where the developer is looking; from elsewhere only when short, else announced and held
-	// for when they switch there. Decided now, after the narrator's wait: the view may have changed.
+	// Said where the developer is looking; from elsewhere held for when they switch there, and
+	// announced (see decideTurnLine). Decided now, after the narrator's wait: the view may have changed.
 	const { store } = options;
 	const session = store.state.sessions[effect.ref];
 
@@ -145,8 +151,16 @@ const speakOutcome = async ({
 	const text = narration.text;
 	const held = session.heldLine;
 	const isShown = isOnScreen(store.state, effect.ref);
+	const decision = decideTurnLine({
+		isShown,
+		isShort: isShortLine(text),
+		isHeldAnnounced: held?.isAnnounced === true,
+		hasBackgroundAgents: effect.hasBackgroundAgents,
+		needsUser: narration.needs_user,
+		isOnAnotherSession: isOnAnotherSession(store.state, effect.ref),
+	});
 
-	if (isShown || isShortLine(text)) {
+	if (decision.kind === 'say') {
 		if (held) {
 			store.dispatch({ type: 'held_line_heard', ref: effect.ref, id: held.id });
 		}
@@ -174,14 +188,23 @@ const speakOutcome = async ({
 		});
 	}
 
-	const kind = narration.needs_user ? 'needs' : 'done';
-	const about = kind === 'needs' ? await readAbout() : null;
+	const kind = decision.announce;
 
-	// Switching there meanwhile replayed the line (and cleared it): nothing left to announce.
-	if (isNewerTurn() || !store.state.sessions[effect.ref]?.heldLine) {
+	if (!kind) {
+		log.info('not announced', { ref: effect.ref });
+
 		return;
 	}
 
+	const about = kind === 'needs' ? await readAbout() : null;
+	// Read after the wait: a switch there meanwhile replayed the line (and cleared it).
+	const current = store.state.sessions[effect.ref]?.heldLine;
+
+	if (isNewerTurn() || !current) {
+		return;
+	}
+
+	store.dispatch({ type: 'held_line_announced', ref: effect.ref, id: current.id });
 	log.info('announced', { ref: effect.ref, kind });
 	// Never asked aloud or owed: the developer has not heard the question, and a switch's replay
 	// replaces this if it is still waiting to be said.
@@ -279,8 +302,8 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 		const isNewerTurn = () => store.state.sessions[effect.ref]?.currentSendId !== narratedSendId;
 		const isStale = isNewerTurn();
 		// The developer switched there meanwhile and heard the held line in the replay.
-		const wasReplayed =
-			heldIdBefore !== null && store.state.sessions[effect.ref]?.heldLine?.id !== heldIdBefore;
+		// A newer line held meanwhile is not a replay: only a hold that is gone was heard.
+		const wasReplayed = heldIdBefore !== null && !store.state.sessions[effect.ref]?.heldLine;
 
 		if (isStale) {
 			log.info('stale narration not said', { ref: effect.ref });

@@ -8,16 +8,17 @@ import {
 	type VoiceEntry,
 	type WorktreeInfo,
 } from '../shared/protocol.js';
-import { isAskInput, reduceAsk, settleAsksForSession } from './asks.js';
+import { isAskInput, reduceAsk, restoreAutoEffects, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
 import { findRedirectAsk, isRedirectInput, queueHeldRedirect, reduceRedirect } from './redirect.js';
-import { isSubagentInput, reduceSubagent } from './subagents.js';
+import { hasBackgroundWork, isSubagentInput, reduceSubagent } from './subagents.js';
 import { isDevInput, reduceDev } from './dev.js';
 import {
 	createStreamItem,
 	dispatchQueueHead,
 	pushNotice,
+	markSelfStarted,
 	pushStreamItem,
 	startWorker,
 	STREAM_ITEMS_KEPT,
@@ -64,6 +65,8 @@ export type Effect =
 			isSpokenAlready: boolean;
 			// Its final line was held while the developer looked elsewhere.
 			isHeld: boolean;
+			// Background sub-agents still work: the turn ended, the work did not.
+			hasBackgroundAgents: boolean;
 	  }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string; note?: string }
@@ -131,13 +134,14 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	stream: [],
 	draft: '',
 	needsUser: null,
-	modeOverride: null,
+	allowOnce: null,
 	costUsd: 0,
 	error: null,
 	voiceTurnAt: null,
 	isFresh: false,
 	requests: [],
 	subagents: [],
+	compactingSince: null,
 	reportOwed: false,
 	spokenInTurn: [],
 	currentSendId: null,
@@ -314,6 +318,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					queue: [],
 					draft: '',
 					voiceTurnAt: null,
+					compactingSince: null,
+					allowOnce: null,
 					reportOwed: false,
 					currentSendId: null,
 					heldLine: null,
@@ -340,12 +346,19 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					voiceTurnAt: null,
 					// The developer stopped the work: there is nothing to report, nor to replay.
 					reportOwed: false,
+					compactingSince: null,
+					allowOnce: null,
 					currentSendId: null,
 					heldLine: null,
 					lineBeforeAsk: null,
 					askedByLine: null,
 				})),
-				effects: [...settled.effects, { type: 'worker_interrupt', ref: input.ref }],
+				effects: [
+					...settled.effects,
+					{ type: 'worker_interrupt', ref: input.ref },
+					// An allowance still waiting goes with the work it was for.
+					...restoreAutoEffects(session),
+				],
 			};
 		}
 
@@ -392,6 +405,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				status: 'idle',
 				error: null,
 				subagents: [],
+				compactingSince: null,
 			}));
 
 			return dispatchQueueHead(ready, input.ref, stamped);
@@ -417,7 +431,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				? { spokenInTurn: session.spokenInTurn, effects: [], held: null }
 				: speakNewTag(session, draft, isOnScreen(state, input.ref));
 			const drafted = updateSession(state, input.ref, (current) => ({
-				...current,
+				...markSelfStarted(current),
 				draft,
 				spokenInTurn,
 				...(spokenInTurn.length > current.spokenInTurn.length
@@ -464,10 +478,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// Anything the session did after its line, but opening the question or plan it announced,
 			// means the line was not that ask.
 			const isOtherTool = input.type === 'tool' && !ASK_TOOLS.has(input.name);
+			const isActivity = input.type === 'assistant_text' || input.type === 'tool';
 			const pushed = updateSession(state, input.ref, (current) =>
 				pushStreamItem(
 					{
-						...current,
+						...(isActivity ? markSelfStarted(current) : current),
 						...(shouldClearDraft ? { draft: '' } : {}),
 						...(spoken ? { spokenInTurn: spoken.spokenInTurn } : {}),
 						...(isNewLine
@@ -508,11 +523,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
-			const effects: Effect[] = [];
-
-			if (session.modeOverride === 'default-once') {
-				effects.push({ type: 'worker_set_mode', ref: input.ref, mode: 'auto' });
-			}
+			// An allowance still waiting ends with the turn: the next one runs in auto mode again.
+			const effects: Effect[] = restoreAutoEffects(session);
 
 			// A reply cut off by the developer's follow-up is not narrated: they are already past it.
 			const isCutOff = hasFollowUpWaiting(session);
@@ -536,6 +548,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					// Held while the developer looked elsewhere: streamed, but never said.
 					isHeld,
 					isSpokenAlready: spoken !== null && session.spokenInTurn.includes(spoken.text) && !isHeld,
+					hasBackgroundAgents: hasBackgroundWork(session),
 				});
 			}
 
@@ -544,7 +557,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...current,
 				status: 'idle',
 				draft: '',
-				modeOverride: null,
+				allowOnce: null,
 				voiceTurnAt: null,
 				reportOwed: false,
 				spokenInTurn: [],
@@ -554,6 +567,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				costUsd: current.costUsd + input.costUsd,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
+				compactingSince: null,
 			}));
 			// The work a held switch asked about is over: what it wanted goes next, ahead of the queue.
 			const switched = moveHeldRedirectAhead(ended, input.ref, stamped);
@@ -574,7 +588,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				error: input.error,
 				voiceTurnAt: null,
 				queue: input.error ? session.queue : [],
+				allowOnce: null,
 				subagents: [],
+				compactingSince: null,
 				reportOwed: false,
 				currentSendId: null,
 				heldLine: null,
@@ -632,6 +648,16 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				}),
 			);
 		}
+
+		case 'held_line_announced':
+			return withoutEffects(
+				state.sessions[input.ref]?.heldLine?.id === input.id
+					? updateSession(state, input.ref, (session) => ({
+							...session,
+							heldLine: session.heldLine ? { ...session.heldLine, isAnnounced: true } : null,
+						}))
+					: state,
+			);
 
 		case 'held_line_heard':
 			return withoutEffects(
@@ -695,6 +721,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...session,
 				isFresh: true,
 				subagents: [],
+				compactingSince: null,
 			}));
 
 			return withoutEffects(
@@ -707,6 +734,15 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				}),
 			);
 		}
+
+		case 'compacting':
+			return withoutEffects(
+				updateSession(state, input.ref, (session) => ({
+					...session,
+					// A second "compacting" keeps the time it began.
+					compactingSince: input.isCompacting ? (session.compactingSince ?? stamped.at) : null,
+				})),
+			);
 
 		case 'session_notice':
 			return withoutEffects(

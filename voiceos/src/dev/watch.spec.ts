@@ -91,7 +91,7 @@ describe('DevWatch start', () => {
 		expect(harness.calls).toEqual([`dev start ${REF}`, `check ${REF} --wait`]);
 		expect(harness.said.map((line) => line.text)).toEqual([
 			'starting dev servers.',
-			'all two dev servers are up.',
+			'both dev servers are up.',
 		]);
 		// Status lines ask nothing: a bare "yes" after them is not for this worktree.
 		expect(harness.said.map((line) => line.isAsking)).toEqual([false, false]);

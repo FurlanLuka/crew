@@ -16,6 +16,10 @@ const SUBAGENT_INPUT_SET = new Set<string>(SUBAGENT_INPUTS);
 export const isSubagentInput = (input: Input): input is SubagentInput =>
 	SUBAGENT_INPUT_SET.has(input.type);
 
+// A foreground sub-agent ends with the turn; a background one outlives it, so the work goes on.
+export const hasBackgroundWork = (session: Pick<Session, 'subagents'>): boolean =>
+	session.subagents.some((subagent) => subagent.isBackground);
+
 const updateSubagent = (
 	session: Session,
 	taskId: string,

@@ -55,6 +55,8 @@ describe('VOICE_OS_CONTEXT', () => {
 		expect(VOICE_OS_CONTEXT).toContain('never a bare verdict');
 		expect(VOICE_OS_CONTEXT).toContain('<spoken asks>');
 		expect(VOICE_OS_CONTEXT).toContain('also give them the major checkpoints');
+		expect(VOICE_OS_CONTEXT).toContain('never restate what your previous one said');
+		expect(VOICE_OS_CONTEXT).toContain('a tag says only what it adds');
 		expect(VOICE_OS_CONTEXT).toContain('never for routine steps, files or commands');
 		expect(VOICE_OS_CONTEXT).toContain('written before your first tool call, skill or file read');
 		expect(VOICE_OS_CONTEXT).toContain('as soon as you reach it, before the next tool call');

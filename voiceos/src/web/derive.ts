@@ -1,6 +1,7 @@
 import { stripStreamingTag } from '../shared/spoken-tags.js';
 import { isHeldAsk, type PendingAsk, type Session, type State } from '../shared/protocol.js';
 import { listSessionDocs, type SessionDoc } from '../shared/session-docs.js';
+import { hasBackgroundWork } from '../state/subagents.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { readWorkspace } from '../shared/notes.js';
@@ -46,6 +47,15 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 
 	if (session.needsUser) {
 		return { dot: 'needs', label: 'asked you', isAlarm: true };
+	}
+
+	if (session.compactingSince !== null) {
+		return { dot: 'running', label: 'compacting', isAlarm: false };
+	}
+
+	// Its turn ended but its background sub-agents still work: not idle yet.
+	if (session.status === 'idle' && hasBackgroundWork(session)) {
+		return { dot: 'running', label: 'sub-agents', isAlarm: false };
 	}
 
 	if (session.isPinned && session.status !== 'running') {
