@@ -57,6 +57,10 @@ add evals or anything else that spends API credit to CI.
 
 ## Pull requests
 
+By opening a pull request you agree that your contribution is licensed under this repository's
+[license](LICENSE) (FSL-1.1-MIT).
+
+
 - One feature or fix per PR, with its tests.
 - Say what you verified and how (commands run, what you saw).
 - CI must be green: Go tests, the Voice OS unit and UI tests, and lint.
