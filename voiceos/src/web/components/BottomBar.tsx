@@ -1,16 +1,25 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type { ClientMessage, State } from '../../shared/protocol.js';
+import {
+	type ClientMessage,
+	isListenMode,
+	type ListenMode,
+	type State,
+} from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { Mic, isMicAllowed } from '../audio.js';
 import { PRE_ROLL_MS } from '../ptt.js';
-import type { HandsFreeCommand, MicStatus } from '../types.js';
-import { useHandsFree } from '../use-hands-free.js';
+import { describeListening } from '../listen-mode.js';
+import type { ListenCommand, MicStatus } from '../types.js';
+import { useListenMode } from '../use-listen-mode.js';
 import type { PcmPlayer } from '../use-speech-player.js';
 
 interface BottomBarProps {
 	state: State;
 	isConnected: boolean;
-	handsFreeCommand: HandsFreeCommand | null;
+	listenCommand: ListenCommand | null;
+	// On demand: "Voice OS" was heard; ignoredAt: when speech without it was last left alone.
+	isAwake: boolean;
+	ignoredAt: number;
 	send: (message: ClientMessage) => void;
 	sendBinary: (chunk: ArrayBuffer) => void;
 	player: PcmPlayer;
@@ -18,13 +27,24 @@ interface BottomBarProps {
 	onMicStatusChange: (micStatus: MicStatus) => void;
 }
 
+const IGNORED_DOT_MS = 900;
+
+const MIC_TITLES: Record<ListenMode, string> = {
+	push: 'Hold Space or this button to talk',
+	'on-demand':
+		'On demand: always listening, but only what follows “Voice OS” is taken; say “end of turn” to send at once',
+	'hands-free': 'Hands-free: always listening, speak over Voice OS to interrupt it',
+};
+
 const isTypingInField = (event: KeyboardEvent) =>
 	event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 
 export const BottomBar = ({
 	state,
 	isConnected,
-	handsFreeCommand,
+	listenCommand,
+	isAwake,
+	ignoredAt,
 	send,
 	sendBinary,
 	player,
@@ -57,18 +77,18 @@ export const BottomBar = ({
 		return micRef.current;
 	}, [send, sendBinary, onMicStatusChange]);
 
-	const { handsFree, handsFreeRef, toggleHandsFree } = useHandsFree({
+	const { listenMode, listenModeRef, chooseListenMode } = useListenMode({
 		isConnected,
-		handsFreeCommand,
+		listenCommand,
 		getMic,
 		send,
 		onMicStatusChange,
 	});
 
 	useEffect(() => {
-		// Already allowed: open now so the first press has its pre-roll; hands-free opens its own.
+		// Already allowed: open now so the first press has its pre-roll; a listening mode opens its own.
 		void isMicAllowed().then((isAllowed) =>
-			isAllowed && !handsFreeRef.current
+			isAllowed && listenModeRef.current === 'push'
 				? getMic()
 						.ensure()
 						.catch(() => {
@@ -79,8 +99,8 @@ export const BottomBar = ({
 	}, [getMic]);
 
 	const handleTalkStart = useCallback(async () => {
-		// The mic already streams hands-free.
-		if (isPressedRef.current || handsFreeRef.current) {
+		// The mic already streams in the listening modes.
+		if (isPressedRef.current || listenModeRef.current !== 'push') {
 			return;
 		}
 
@@ -161,15 +181,37 @@ export const BottomBar = ({
 	};
 
 	const transcript = state.transcript;
-	const isListening = handsFree && micStatus === 'live';
+	const isListening = listenMode !== 'push' && micStatus === 'live';
+	const [isIgnoredShown, setIsIgnoredShown] = useState(false);
+
+	// The call is heard: a chime, as a press would give the feeling of.
+	useEffect(() => {
+		if (isAwake) {
+			player.playChime();
+		}
+	}, [isAwake, player]);
+
+	// Speech without "Voice OS" was heard and left alone: a brief dot, so the mic is seen to work.
+	useEffect(() => {
+		if (!ignoredAt) {
+			return;
+		}
+
+		setIsIgnoredShown(true);
+		const timer = setTimeout(() => setIsIgnoredShown(false), IGNORED_DOT_MS);
+
+		return () => clearTimeout(timer);
+	}, [ignoredAt]);
 
 	return (
 		<footer className={`botbar ${isAlarm ? 'alarm' : ''}`}>
 			<button
 				type="button"
 				className={`mic ${micStatus === 'live' ? 'live' : ''} ${micStatus === 'denied' ? 'off' : ''}`}
-				aria-label={handsFree ? 'Listening' : 'Hold to talk'}
-				title={handsFree ? 'Hands-free: just talk' : 'Hold Space or this button to talk'}
+				aria-label={
+					listenMode === 'push' ? 'Hold to talk' : isAwake ? 'Listening to you' : 'Listening'
+				}
+				title={MIC_TITLES[listenMode]}
 				onPointerDown={() => void handleTalkStart()}
 				onPointerUp={handleTalkStop}
 				onPointerLeave={handleTalkStop}
@@ -180,24 +222,31 @@ export const BottomBar = ({
 					<i style={{ animationDelay: '.2s' }} />
 				</span>
 			</button>
-			<button
-				type="button"
-				className={`handsfree ${handsFree ? 'on' : ''}`}
-				aria-pressed={handsFree}
-				title="Hands-free: always listening, speak over Voice OS to interrupt it"
-				onClick={toggleHandsFree}
+			<select
+				className={`listen-mode ${listenMode === 'push' ? '' : 'on'} ${isAwake ? 'awake' : ''} ${
+					isIgnoredShown ? 'ignored' : ''
+				}`}
+				value={listenMode}
+				aria-label="Listening mode"
+				title={MIC_TITLES[listenMode]}
+				onChange={(event) => {
+					if (isListenMode(event.target.value)) {
+						chooseListenMode(event.target.value);
+					}
+				}}
 			>
-				hands-free
-			</button>
+				<option value="push">Push to talk</option>
+				<option value="on-demand">On demand · “Voice OS…”</option>
+				<option value="hands-free">Hands-free</option>
+			</select>
 			<form onSubmit={handleSubmit}>
 				<input
 					value={micStatus === 'live' && transcript ? transcript.text : draft}
 					onChange={(event) => setDraft(event.target.value)}
-					placeholder={
-						isListening
-							? 'Listening — just talk, or type here…'
-							: 'Hold Space to talk, or type here…'
-					}
+					placeholder={describeListening({
+						mode: isListening ? listenMode : 'push',
+						isAwake,
+					})}
 					aria-label="Say or type a command"
 				/>
 			</form>

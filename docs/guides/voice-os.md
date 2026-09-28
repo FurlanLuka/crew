@@ -8,7 +8,7 @@ the time that is simply the session on your screen.
 crew voice      # first run: checks tmux and Claude Code, downloads Voice OS, asks for its two keys
 ```
 
-Open the link it prints. **Hold Space** to talk, or turn on hands-free and just speak. **Esc**
+Open the link it prints. **Hold Space** to talk, or pick another listening mode (below). **Esc**
 goes back to Mission Control, where every session is on one screen.
 
 ## From two repos to a working feature
@@ -175,7 +175,20 @@ The pinned **setup** session runs crew itself (see the walkthrough above). Ask i
 ## Voice and listening
 
 - "Quiet." — stops Voice OS talking.
-- "Turn off hands-free." · "Turn hands-free back on."
+- The menu next to the mic picks how Voice OS listens:
+  - **Push to talk** — hold Space or the mic button.
+  - **On demand** — always listening, but only what you say after "Voice OS" is taken: "Voice OS,
+    tell checkout to run the tests." The turn ends with your sentence, or at once when you say "end
+    of turn"; a second sentence needs "Voice OS" again. A chime says it heard its name, and the
+    input shows "Listening to you" until the turn goes. With the TV on, say the name and the
+    command in one breath: a pause after "Voice OS" lets whatever is said next in. The TV and people around you are left alone until someone says its name — answers too
+    ("Voice OS, yes").
+  - **Hands-free** — always listening, every sentence is a turn.
+  
+  Both listening modes stream the mic to Soniox the whole time the page is open, so they cost the
+  same. Phones may stop the mic when the tab is in the background.
+- "Switch to on demand." · "Turn off hands-free." · "Turn hands-free back on." · "Push to talk."
+- "End of turn." — sends what you said now, in either listening mode, without waiting for the pause.
 - Background talk, music and a half-finished "and can you—" are ignored, and nothing is said about
   it.
 

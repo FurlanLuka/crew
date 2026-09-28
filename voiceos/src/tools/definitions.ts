@@ -322,11 +322,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'hands_free',
 		description:
-			'Turn hands-free listening on or off in the developer\'s browser tab ("turn off hands-free", "stop listening", "hands-free on"). Voice OS confirms it aloud. Never for a bare "stop" or "wait": those interrupt.',
+			'Set how the developer\'s browser tab listens: push (push to talk; "turn off hands-free", "stop listening", "push to talk"), on-demand (always listening, acting only on what follows "Voice OS"; "on demand mode", "listen for Voice OS", "wake word"), hands-free (always listening; "hands-free on", "start listening"). Voice OS confirms it aloud. Never for a bare "stop" or "wait": those interrupt.',
 		input_schema: {
 			type: 'object',
-			properties: { on: { type: 'boolean' } },
-			required: ['on'],
+			properties: { mode: { type: 'string', enum: ['push', 'on-demand', 'hands-free'] } },
+			required: ['mode'],
 			additionalProperties: false,
 		},
 	},

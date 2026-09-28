@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { createNullNotes } from '../../test/support/notes.js';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
-import type { Input, PendingAsk } from '../shared/protocol.js';
+import type { Input, ListenMode, PendingAsk } from '../shared/protocol.js';
 import { Store } from '../state/store.js';
 import { Kernel } from './kernel.js';
 import { UtteranceRouter, type KernelTurn } from './router.js';
@@ -39,17 +39,17 @@ const createHarness = (
 	});
 	const heardFroms: number[] = [];
 	const kernelCalls: KernelCall[] = [];
-	const handsFreeSwitches: ((isOn: boolean) => string)[] = [];
+	const listenSwitches: ((mode: ListenMode) => string)[] = [];
 	const inputs: Input[] = [];
 	store.subscribe((stamped) => inputs.push(stamped.input));
 	const docOpeners: unknown[] = [];
 	const router = new UtteranceRouter({
 		store,
 		now: () => 5000,
-		kernel: async (text, { setHandsFree, openUrl, heardFrom, ...options }) => {
+		kernel: async (text, { setListenMode, openUrl, heardFrom, ...options }) => {
 			kernelCalls.push({ text, ...options });
 			heardFroms.push(heardFrom);
-			handsFreeSwitches.push(setHandsFree);
+			listenSwitches.push(setListenMode);
 			docOpeners.push(openUrl);
 
 			return turn(text);
@@ -61,7 +61,7 @@ const createHarness = (
 			view: ref ? { kind: 'session', ref } : { kind: 'grid' },
 		});
 
-	return { store, router, kernelCalls, handsFreeSwitches, docOpeners, heardFroms, inputs, view };
+	return { store, router, kernelCalls, listenSwitches, docOpeners, heardFroms, inputs, view };
 };
 
 describe('UtteranceRouter', () => {
@@ -206,11 +206,11 @@ describe('UtteranceRouter', () => {
 		const harness = createHarness();
 		const fromTab = () => 'changed' as const;
 
-		await harness.router.handle('stop listening', 'voice', { setHandsFree: fromTab });
+		await harness.router.handle('stop listening', 'voice', { setListenMode: fromTab });
 		await harness.router.handle('stop listening', 'voice');
 
-		expect(harness.handsFreeSwitches[0]).toBe(fromTab);
-		expect(harness.handsFreeSwitches[1]?.(false)).toBe('no_tab');
+		expect(harness.listenSwitches[0]).toBe(fromTab);
+		expect(harness.listenSwitches[1]?.('push')).toBe('no_tab');
 	});
 
 	it('the kernel opens docs in the tab the words came from; none → nothing opens', async () => {

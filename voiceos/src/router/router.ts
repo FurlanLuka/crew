@@ -1,6 +1,6 @@
 import type { Store } from '../state/store.js';
 import type { ToolCall } from '../tools/definitions.js';
-import { GRID, type VoiceEntry } from '../shared/protocol.js';
+import { GRID, type ListenMode, type VoiceEntry } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
@@ -27,8 +27,8 @@ export interface RouterOptions {
 }
 
 export interface UtteranceOrigin {
-	// Switches hands-free in the tab the words came from.
-	setHandsFree?: (isOn: boolean) => HandsFreeResult;
+	// Switches how the tab the words came from listens.
+	setListenMode?: (mode: ListenMode) => HandsFreeResult;
 	// Opens a doc in the tab the words came from; false when there is none.
 	openUrl?: OpenUrl;
 	// When the developer began saying them; typed words are "said" when routed.
@@ -42,7 +42,7 @@ interface AskKernelParams {
 	isSpoken: boolean;
 	saidAt: number;
 	heardFrom: number;
-	setHandsFree: (isOn: boolean) => HandsFreeResult;
+	setListenMode: (mode: ListenMode) => HandsFreeResult;
 	openUrl: OpenUrl;
 }
 
@@ -113,7 +113,7 @@ export class UtteranceRouter {
 			isSpoken: source === 'voice',
 			saidAt,
 			heardFrom: origin.heardFrom ?? saidAt,
-			setHandsFree: origin.setHandsFree ?? NO_TAB,
+			setListenMode: origin.setListenMode ?? NO_TAB,
 			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
@@ -126,7 +126,7 @@ export class UtteranceRouter {
 		isSpoken,
 		saidAt,
 		heardFrom,
-		setHandsFree,
+		setListenMode,
 		openUrl,
 	}: AskKernelParams): Promise<VoiceEntry> {
 		const { store } = this.options;
@@ -143,7 +143,7 @@ export class UtteranceRouter {
 				screen,
 				isSpoken,
 				heardFrom,
-				setHandsFree,
+				setListenMode,
 				openUrl,
 			});
 			const isIgnored =

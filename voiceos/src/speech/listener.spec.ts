@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { computeReconnectDelay } from './hands-free.js';
+import { computeReconnectDelay } from './listener.js';
 
 describe('computeReconnectDelay', () => {
 	it('backs off 0.5, 1, 2, 4 s, then gives up', () =>

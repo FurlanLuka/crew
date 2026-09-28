@@ -5,11 +5,13 @@ import {
 	type LastSpokenSend,
 	type PendingAsk,
 	type State,
+	isListenMode,
+	type ListenMode,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
 import { normalizeSaid } from '../state/helpers.js';
 import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
-import { isAboutHandsFree, readHandsFreeDirection, type HandsFreeResult } from './hands-free.js';
+import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
@@ -112,7 +114,7 @@ export interface ToolContext {
 	// When the developer began saying these words: anything a session asked after that, unheard.
 	heardFrom?: number;
 	// Bound to the tab the words came from; 'no_tab' when they came from none (evals, a closed tab).
-	setHandsFree: (isOn: boolean) => HandsFreeResult;
+	setListenMode: (mode: ListenMode) => HandsFreeResult;
 	// Bound to the tab the words came from: opens a doc there. false when no tab took it.
 	openUrl: OpenUrl;
 	dispatch: (action: Action) => void;
@@ -617,27 +619,32 @@ export const executeTool = async (
 		}
 
 		case 'hands_free': {
-			const direction =
+			const mode =
 				toolContext.utterance === undefined
-					? input.on === true
-					: readHandsFreeDirection(toolContext.utterance);
+					? // Without the developer's words (typed tests, replays) the model's choice is taken.
+						isListenMode(input.mode)
+						? input.mode
+						: null
+					: readListenMode(toolContext.utterance);
 
-			if (direction === null) {
-				return fail('Not changed: the developer did not clearly ask to turn hands-free on or off.');
+			if (mode === null) {
+				return fail(
+					'Not changed: the developer did not clearly ask for push to talk, on demand or hands-free.',
+				);
 			}
 
-			const result = toolContext.setHandsFree(direction);
+			const result = toolContext.setListenMode(mode);
 
 			if (result === 'no_tab') {
 				return fail(
-					'Not changed: no browser tab to switch. Tell the developer to use the hands-free button.',
+					'Not changed: no browser tab to switch. Tell the developer to use the listening menu.',
 				);
 			}
 
 			return succeed(
 				result === 'changed'
-					? `hands-free ${direction ? 'on' : 'off'}; Voice OS said so`
-					: `hands-free was already ${direction ? 'on' : 'off'}; Voice OS said so`,
+					? `listening is now ${mode}; Voice OS said so`
+					: `listening was already ${mode}; Voice OS said so`,
 			);
 		}
 

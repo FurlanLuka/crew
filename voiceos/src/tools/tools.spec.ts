@@ -6,6 +6,7 @@ import { createNullNotes } from '../../test/support/notes.js';
 import {
 	GRID,
 	type Action,
+	type ListenMode,
 	type PendingAsk,
 	type Session,
 	type State,
@@ -66,7 +67,7 @@ const createToolContext = (patch: Partial<State> = {}) => {
 		mute: () => {},
 		saveDebugNote: () => {},
 		notes: createNullNotes(),
-		setHandsFree: () => 'changed' as const,
+		setListenMode: () => 'changed' as const,
 		openUrl: () => true,
 	};
 
@@ -1845,7 +1846,7 @@ describe('Voice OS note through the real reducer', () => {
 			mute: () => {},
 			saveDebugNote: () => {},
 			notes: createNullNotes(),
-			setHandsFree: () => 'changed' as const,
+			setListenMode: () => 'changed' as const,
 			openUrl: () => true,
 			recentUtterances: ['why were they failing?'],
 		};
@@ -2684,14 +2685,14 @@ describe('a held /clear', () => {
 describe('hands_free', () => {
 	const withSwitch = (result: 'changed' | 'already' | 'no_tab' = 'changed') => {
 		const { tools } = createToolContext();
-		const switched: boolean[] = [];
+		const switched: ListenMode[] = [];
 
 		return {
 			switched,
 			tools: {
 				...tools,
-				setHandsFree: (isOn: boolean) => {
-					switched.push(isOn);
+				setListenMode: (mode: ListenMode) => {
+					switched.push(mode);
 
 					return result;
 				},
@@ -2700,37 +2701,61 @@ describe('hands_free', () => {
 	};
 
 	it.each([
-		['turn off hands-free', false],
-		['hands free off', false],
-		['stop listening', false],
-		['turn handsfree on', true],
-		['start listening', true],
-		['enable hands-free', true],
-	])('%p → switched %p, whatever the model said', async (utterance, isOn) => {
-		const { tools, switched } = withSwitch();
-		const result = await executeTool('hands_free', { on: !isOn }, { ...tools, utterance });
-
-		expect(result.ok).toBe(true);
-		expect(switched).toEqual([isOn]);
-	});
-
-	it.each(['stop', 'wait', 'cancel', 'listen, check the logs', 'hands-free'])(
-		'%p → not switched',
-		async (utterance) => {
+		['turn off hands-free', 'push'],
+		['hands free off', 'push'],
+		['stop listening', 'push'],
+		['switch to push to talk', 'push'],
+		['turn handsfree on', 'hands-free'],
+		['start listening', 'hands-free'],
+		['enable hands-free', 'hands-free'],
+		['switch to on demand', 'on-demand'],
+		['on demand mode please', 'on-demand'],
+		['listen for Voice OS', 'on-demand'],
+		['use the wake word', 'on-demand'],
+		['stop listening for Voice OS', 'push'],
+		['turn off on demand mode', 'push'],
+		['switch to hands-free', 'hands-free'],
+		['go hands-free', 'hands-free'],
+	] as [string, ListenMode][])(
+		'%p → switched to %p, whatever the model said',
+		async (utterance, mode) => {
 			const { tools, switched } = withSwitch();
+			const other = mode === 'push' ? 'hands-free' : 'push';
+			const result = await executeTool('hands_free', { mode: other }, { ...tools, utterance });
 
-			expect((await executeTool('hands_free', { on: false }, { ...tools, utterance })).ok).toBe(
-				false,
-			);
-			expect(switched).toEqual([]);
+			expect(result.ok).toBe(true);
+			expect(switched).toEqual([mode]);
 		},
 	);
+
+	it("without the developer's words, the model's mode is taken", async () => {
+		const { tools, switched } = withSwitch();
+
+		expect((await executeTool('hands_free', { mode: 'on-demand' }, tools)).ok).toBe(true);
+		expect(switched).toEqual(['on-demand']);
+	});
+
+	it.each([
+		'stop',
+		'wait',
+		'cancel',
+		'listen, check the logs',
+		'hands-free',
+		'scale the workers on demand',
+	])('%p → not switched', async (utterance) => {
+		const { tools, switched } = withSwitch();
+
+		expect((await executeTool('hands_free', { mode: 'push' }, { ...tools, utterance })).ok).toBe(
+			false,
+		);
+		expect(switched).toEqual([]);
+	});
 
 	it('no tab to switch → fails honestly', async () => {
 		const { tools } = withSwitch('no_tab');
 
 		expect(
-			(await executeTool('hands_free', { on: false }, { ...tools, utterance: 'stop listening' }))
+			(await executeTool('hands_free', { mode: 'push' }, { ...tools, utterance: 'stop listening' }))
 				.ok,
 		).toBe(false);
 	});

@@ -368,18 +368,21 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('hands-free on → echo-cancelled mic, listen_start at the device rate, audio with no key held; Space starts no press; off → listen_stop', async () => {
+	it('hands-free chosen → echo-cancelled mic, listen_start at the device rate with the mode, audio with no key held; Space starts no press; push to talk → listen_stop', async () => {
 		const { context, page, client } = await openMicTab();
-		const toggle = page.getByRole('button', { name: 'hands-free' });
-		await toggle.click();
+		const mode = page.getByRole('combobox', { name: 'Listening mode' });
+		await mode.selectOption('hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 		const firstChunk = audioChunks.length;
 		await Bun.sleep(600);
 		expect(audioChunks.length - firstChunk).toBeGreaterThan(3);
-		expect(await toggle.getAttribute('aria-pressed')).toBe('true');
-		expect(
-			(listFromClient(client, 'listen_start')[0]!.message as { sampleRate: number }).sampleRate,
-		).toBeGreaterThanOrEqual(16000);
+		expect(await mode.inputValue()).toBe('hands-free');
+		const start = listFromClient(client, 'listen_start')[0]!.message as {
+			sampleRate: number;
+			mode: string;
+		};
+		expect(start.sampleRate).toBeGreaterThanOrEqual(16000);
+		expect(start.mode).toBe('hands-free');
 		expect(
 			await page.evaluate(() => (window as unknown as { __echo: unknown[] }).__echo.at(-1)),
 		).toBe(true);
@@ -391,7 +394,7 @@ describe('voice os ui', () => {
 		await Bun.sleep(400);
 		expect(listFromClient(client, 'ptt_start')).toHaveLength(0);
 
-		await toggle.click();
+		await mode.selectOption('push');
 		await waitUntil(() => listFromClient(client, 'listen_stop').length === 1);
 		// Back to the raw mic for push-to-talk.
 		await page.waitForFunction(
@@ -402,10 +405,30 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('server turns hands-free off (another tab took it) → the toggle goes off; a reload of the tab keeps its own choice', async () => {
+	it('hands-free, then on demand from the menu → the stream reopens in the new mode', async () => {
 		const { context, page, client } = await openMicTab();
-		const toggle = page.getByRole('button', { name: 'hands-free' });
-		await toggle.click();
+		const mode = page.getByRole('combobox', { name: 'Listening mode' });
+		await mode.selectOption('hands-free');
+		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
+
+		await mode.selectOption('on-demand');
+		await waitUntil(() => listFromClient(client, 'listen_start').length === 2);
+		expect(listFromClient(client, 'listen_stop')).toHaveLength(1);
+		expect((listFromClient(client, 'listen_start').at(-1)!.message as { mode: string }).mode).toBe(
+			'on-demand',
+		);
+		expect(
+			await page
+				.getByRole('textbox', { name: 'Say or type a command' })
+				.getAttribute('placeholder'),
+		).toContain('Say “Voice OS”');
+		await context.close();
+	}, 20_000);
+
+	it('server turns listening off (another tab took it) → back to push to talk; a reload of the tab keeps its own choice', async () => {
+		const { context, page, client } = await openMicTab();
+		const mode = page.getByRole('combobox', { name: 'Listening mode' });
+		await mode.selectOption('hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 		const listListenStarts = () =>
 			received.filter((entry) => entry.message.type === 'listen_start');
@@ -416,21 +439,55 @@ describe('voice os ui', () => {
 		const reloadedClient = listListenStarts().at(-1)?.client ?? '';
 		expect(reloadedClient).not.toBe(client);
 
-		gateway.send(reloadedClient, { type: 'listen_off', reason: 'hands-free moved to another tab' });
-		await page.waitForSelector('button.handsfree[aria-pressed="false"]', { timeout: 5000 });
+		gateway.send(reloadedClient, { type: 'listen_off', reason: 'listening moved to another tab' });
+		await page.waitForFunction(
+			(value) => document.querySelector<HTMLSelectElement>('select.listen-mode')?.value === value,
+			'push',
+			{ timeout: 5000 },
+		);
 		await context.close();
 	}, 20_000);
 
-	it('hands-free turned on by voice (listen_on) → the toggle goes on and the mic streams', async () => {
+	it('on demand turned on by voice (listen_on) → the menu shows it and the mic streams in that mode; a call shows "listening to you"', async () => {
 		const { context, page, client } = await openMicTab();
 		const before = listFromClient(client, 'listen_start').length;
 
-		gateway.send(client, { type: 'listen_on' });
-		await page.waitForSelector('button.handsfree[aria-pressed="true"]', { timeout: 5000 });
+		gateway.send(client, { type: 'listen_on', mode: 'on-demand' });
+		await page.waitForFunction(
+			(value) => document.querySelector<HTMLSelectElement>('select.listen-mode')?.value === value,
+			'on-demand',
+			{ timeout: 5000 },
+		);
 		await waitUntil(() => listFromClient(client, 'listen_start').length === before + 1);
+		expect((listFromClient(client, 'listen_start').at(-1)!.message as { mode: string }).mode).toBe(
+			'on-demand',
+		);
+		const input = page.getByRole('textbox', { name: 'Say or type a command' });
+		expect(await input.getAttribute('placeholder')).toContain('Say “Voice OS”');
+
+		gateway.send(client, { type: 'listen_state', isAwake: true });
+		await page.waitForFunction(
+			(text) =>
+				document.querySelector<HTMLInputElement>('footer input')?.placeholder.includes(text) ===
+				true,
+			'Listening to you',
+			{ timeout: 5000 },
+		);
+		gateway.send(client, { type: 'listen_state', isAwake: false });
+		await page.waitForFunction(
+			(text) =>
+				document.querySelector<HTMLInputElement>('footer input')?.placeholder.includes(text) ===
+				true,
+			'Say “Voice OS”',
+			{ timeout: 5000 },
+		);
 
 		gateway.send(client, { type: 'listen_off', reason: 'turned off by voice' });
-		await page.waitForSelector('button.handsfree[aria-pressed="false"]', { timeout: 5000 });
+		await page.waitForFunction(
+			(value) => document.querySelector<HTMLSelectElement>('select.listen-mode')?.value === value,
+			'push',
+			{ timeout: 5000 },
+		);
 		await context.close();
 	}, 20_000);
 

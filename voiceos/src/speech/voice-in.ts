@@ -1,8 +1,9 @@
 import { createLogger } from '../log.js';
 import { writeSpokenRefs } from '../router/refs.js';
+import type { ListenMode, ListeningMode } from '../shared/protocol.js';
 import { describeRouteChip } from '../shared/route-chip.js';
 import { isEcho, type SpokenRecord } from './echo.js';
-import { HandsFree, type HandsFreeOptions } from './hands-free.js';
+import { Listener, type ListenerOptions } from './listener.js';
 import {
 	DEFAULT_SAMPLE_RATE_HZ,
 	SttSession,
@@ -12,14 +13,14 @@ import {
 import { buildContextTerms } from './tokens.js';
 import { saveDebugWav } from './wav.js';
 
-// store, apiKey, the clock and the hands-free settings come from HandsFreeOptions.
-export type VoiceInputOptions = HandsFreeOptions & {
+// store, apiKey, the clock and the listening settings come from ListenerOptions.
+export type VoiceInputOptions = ListenerOptions & {
 	// client: the tab whose microphone heard it.
 	// startedAt: when the developer began saying it (a joined turn: its first words); lines Voice OS
 	// started after that were not heard before they spoke.
 	onUtterance: (text: string, client: string, startedAt: number) => void;
 	onTalkStart: () => void;
-	// Nobody is pressing and no hands-free turn is under way: speech may play again.
+	// Nobody is pressing and no listened turn is under way: speech may play again.
 	onTalkEnd?: () => void;
 	// VOICEOS_DEBUG_AUDIO=1: each utterance is saved here as a WAV, to replay a bad transcript.
 	debugAudioDir?: string | null;
@@ -28,6 +29,9 @@ export type VoiceInputOptions = HandsFreeOptions & {
 	createSession?: (options: SttSessionOptions) => SttHandle;
 	// What Voice OS said lately: heard again through the open mic, it is echo.
 	listSpokenLines?: () => SpokenRecord[];
+	// On demand: a call opened or closed, and speech left alone, for the tab to show.
+	onListenState?: (client: string, isAwake: boolean) => void;
+	onHeardIgnored?: (client: string) => void;
 };
 
 type Outcome = { state: 'streaming' } | { state: 'settled'; text: string | null };
@@ -57,12 +61,12 @@ const SIMULATED_TALK_MS = 1_200;
 export class VoiceInput {
 	private livePresses = new Map<string, Utterance>();
 	private pendingByClient = new Map<string, Pending[]>();
-	private handsFree: HandsFree;
+	private listener: Listener;
 	private now: () => number;
 
 	constructor(private options: VoiceInputOptions) {
 		this.now = options.now ?? Date.now;
-		this.handsFree = new HandsFree(options, {
+		this.listener = new Listener(options, {
 			openStream: (streamOptions) => this.openStream(streamOptions),
 			isEcho: (heard, isPartial) =>
 				isEcho({
@@ -76,6 +80,8 @@ export class VoiceInput {
 			queueTurn: (client, text, startedAt) => this.queue(client, { kind: 'turn', text, startedAt }),
 			onTalkStarted: () => this.options.onTalkStart(),
 			onTalkMaybeOver: () => this.talkMaybeOver(),
+			onListenState: (client, isAwake) => this.options.onListenState?.(client, isAwake),
+			onHeardIgnored: (client) => this.options.onHeardIgnored?.(client),
 		});
 	}
 
@@ -88,9 +94,9 @@ export class VoiceInput {
 			return;
 		}
 
-		// The tab's mic already streams hands-free; a press would send the same audio twice.
-		if (this.handsFree.hasClient(client)) {
-			log.info('push-to-talk ignored while hands-free', { client });
+		// The tab's mic already streams (on demand or hands-free); a press would send the same audio twice.
+		if (this.listener.hasClient(client)) {
+			log.info('push-to-talk ignored while listening', { client });
 
 			return;
 		}
@@ -152,7 +158,11 @@ export class VoiceInput {
 		this.queue(client, { kind: 'press', utterance });
 	}
 
-	listen(client: string, sampleRate = DEFAULT_SAMPLE_RATE_HZ): void {
+	listen(
+		client: string,
+		sampleRate = DEFAULT_SAMPLE_RATE_HZ,
+		mode: ListeningMode = 'hands-free',
+	): void {
 		const { apiKey, onListenOff } = this.options;
 
 		if (!apiKey) {
@@ -162,20 +172,20 @@ export class VoiceInput {
 			return;
 		}
 
-		this.handsFree.listen(client, apiKey, sampleRate);
+		this.listener.listen(client, apiKey, sampleRate, mode);
 	}
 
-	isListening(client: string): boolean {
-		return this.handsFree.hasClient(client);
+	listenModeOf(client: string): ListenMode {
+		return this.listener.modeOf(client) ?? 'push';
 	}
 
 	unlisten(client: string): void {
-		this.handsFree.unlisten(client);
+		this.listener.unlisten(client);
 	}
 
 	pushAudio(client: string, chunk: Uint8Array): void {
-		if (this.handsFree.hasClient(client)) {
-			this.handsFree.pushAudio(client, chunk);
+		if (this.listener.hasClient(client)) {
+			this.listener.pushAudio(client, chunk);
 
 			return;
 		}
@@ -219,10 +229,10 @@ export class VoiceInput {
 	}
 
 	disconnect(client: string): void {
-		this.handsFree.unlisten(client);
+		this.listener.unlisten(client);
 
 		// A copy: settling an utterance shifts the queue this walks.
-		// Only presses stream; a hands-free turn is queued already settled.
+		// Only presses stream; a listened turn is queued already settled.
 		for (const pending of [...(this.pendingByClient.get(client) ?? [])]) {
 			if (pending.kind === 'press' && pending.utterance.outcome.state === 'streaming') {
 				this.drop(pending.utterance);
@@ -231,8 +241,8 @@ export class VoiceInput {
 	}
 
 	private talkMaybeOver(): void {
-		// Speech may play again only once nobody is pressing and no hands-free turn is under way.
-		if (this.livePresses.size > 0 || this.handsFree.isTalking) {
+		// Speech may play again only once nobody is pressing and no listened turn is under way.
+		if (this.livePresses.size > 0 || this.listener.isTalking) {
 			return;
 		}
 
