@@ -1,0 +1,16 @@
+name: Idea or feature request
+description: Something crew or Voice OS should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do
+      description: The situation and what gets in the way today, rather than the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you imagine it working, what you'd type or say, and what should happen.

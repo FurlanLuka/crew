@@ -1,0 +1,32 @@
+name: Bug report
+description: Something in crew or Voice OS doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. For Voice OS, include what you said and where it went.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Commands or spoken steps, from a clean start if you can.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        For crew: the output of `crew debug --tail=50`.
+        For Voice OS: `crew voice status` and `crew voice logs --lines=100`.
+        Check that nothing private is in them before pasting.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`crew --version`, your OS, and whether Voice OS is from a release or built from source."
+    validations:
+      required: true

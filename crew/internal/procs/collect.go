@@ -112,7 +112,7 @@ func processCWDs() (map[int]string, error) {
 //
 //	p91036
 //	fcwd
-//	n/Users/luka/Documents/crew
+//	n/Users/dev/Documents/crew
 //
 // A process whose directory could not be read yields a p line with no n line.
 // Its path must be dropped rather than paired with the next record's, or a

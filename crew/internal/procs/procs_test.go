@@ -95,17 +95,17 @@ func TestWorkspacesRoot_MissingDirIsNotAnError(t *testing.T) {
 }
 
 func TestUnderDir(t *testing.T) {
-	dir := "/Users/luka/.crew/workspaces"
+	dir := "/Users/dev/.crew/workspaces"
 	tests := []struct {
 		path string
 		want bool
 	}{
-		{"/Users/luka/.crew/workspaces", true},
-		{"/Users/luka/.crew/workspaces/ws/api", true},
+		{"/Users/dev/.crew/workspaces", true},
+		{"/Users/dev/.crew/workspaces/ws/api", true},
 		// A sibling directory must not match on prefix alone.
-		{"/Users/luka/.crew/workspaces-backup/ws", false},
-		{"/Users/luka/.crew/workspacesX", false},
-		{"/Users/luka/Documents/crew", false},
+		{"/Users/dev/.crew/workspaces-backup/ws", false},
+		{"/Users/dev/.crew/workspacesX", false},
+		{"/Users/dev/Documents/crew", false},
 		{"", false},
 	}
 
@@ -125,7 +125,7 @@ func TestUnderDir(t *testing.T) {
 // while a crew workspace was open in an editor with a Claude session running.
 // Hand-written fixtures are what let a classifier keep passing years after real
 // process shapes have moved on, so these stay as they came out.
-const wsRoot = "/Users/luka/.crew/workspaces"
+const wsRoot = "/Users/dev/.crew/workspaces"
 
 func liveMachineRows() ([]crewExec.ProcRow, map[int]string) {
 	rows := []crewExec.ProcRow{
@@ -134,7 +134,7 @@ func liveMachineRows() ([]crewExec.ProcRow, map[int]string) {
 		{PID: 8119, PPID: 8030, Command: "Cursor Helper: terminal pty-host"},
 		{PID: 89947, PPID: 8030, Command: "Cursor Helper (Plugin).app/Contents/MacOS/Cursor Helper (Plugin)"},
 		{PID: 68397, PPID: 8119, TTY: "ttys014", Command: "claude --dangerously-skip-permissions --add-dir " + wsRoot + "/store-front-wrk1/store-api"},
-		{PID: 93389, PPID: 68397, Command: "/bin/zsh -c source /Users/luka/.claude/shell-snapshots/snapshot-zsh.sh"},
+		{PID: 93389, PPID: 68397, Command: "/bin/zsh -c source /Users/dev/.claude/shell-snapshots/snapshot-zsh.sh"},
 		{PID: 93391, PPID: 93389, Command: "uv run python -m pytest apps/signals_worker/tests/unit/store_front/ -q"},
 		{PID: 93394, PPID: 93391, Command: wsRoot + "/store-front-wrk1/checkout-api/.venv/bin/python3 -m pytest"},
 		{PID: 68011, PPID: 8119, TTY: "ttys010", Command: "/opt/homebrew/bin/zsh -i"},
