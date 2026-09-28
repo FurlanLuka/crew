@@ -470,6 +470,7 @@ crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smo
 
 ```
 crew clean [--dry-run]                                  <kind>\t<path>\t<removed|would remove|pruned|would prune|failed: <reason>>  |  nothing to clean
+crew doctor [--install [--yes] [--with-claude]]         <name>\t<ok|missing>\t<required|optional>\t<why>\t<install>
 crew trash [empty]
 crew ps [--json]
 crew kill [--dry-run]
@@ -480,6 +481,10 @@ crew uninstall [--purge] [--yes]
 crew help [<command>] [<subcommand>] [--json]
 ```
 
+- `doctor` says whether tmux and git (required) and Claude Code (optional) are there and how to get
+  them; exits 1 when a required one is missing. `--install` asks, then installs; without a terminal
+  it needs `--yes` (`--with-claude` adds Claude Code). The first crew command that needs tmux or git
+  offers it once at a terminal.
 - `clean` is the sweep every crew command runs at most once an hour, now, plus `git
   worktree prune` on every pool repo: failed checks older than seven days, runner files /
   dev logs / route files of worktrees and checks that no longer exist, stale lock files,

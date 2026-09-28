@@ -114,6 +114,7 @@ func main() {
 	}
 
 	housekeeping.SweepOnStart(os.Args[1:])
+	checkRequirementsOnStart(os.Args[1:])
 
 	// Check for updates in background (skip for dev builds and update command)
 	var updateCh chan string
@@ -269,6 +270,10 @@ func main() {
 
 	case "clean":
 		cmdClean()
+		return
+
+	case "doctor":
+		cmdDoctor()
 		return
 
 	case "show":
