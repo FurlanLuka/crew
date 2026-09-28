@@ -117,4 +117,8 @@ skill, a `crew` agent and guided setup:
 Requires macOS or Linux, git and tmux (installed for you on Linux), and
 [Claude Code](https://code.claude.com/docs) for the sessions. `crew update` keeps crew — and Voice
 OS, once installed — current; it asks GitHub through the `gh` CLI, so it needs `gh auth login`
-once. MIT licensed.
+once.
+
+**License:** [Functional Source License 1.1, MIT future](LICENSE) (FSL-1.1-MIT). Use it, change
+it, run it at work; don't sell it or offer it as a competing product or service. Each release becomes
+MIT two years after it ships. Releases made before this change stay MIT.
