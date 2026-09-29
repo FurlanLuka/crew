@@ -34,7 +34,7 @@ export const findMachine = (state: State, said: string): string | null => {
 	return (exact ?? loose)?.id ?? null;
 };
 
-const THIS_MAC_SAID = /\b(?:on|in|at)\s+(?:my|this)\s+mac\b/i;
+const THIS_MAC_SAID = /\b(?:on|in|into|at)\s+(?:my|this)\s+mac\b/i;
 
 // The machine the developer's words put a session on ("crew main on my Mac", "sch in Personal"),
 // when they said one. null: they named none.
@@ -50,7 +50,7 @@ export const findMachineSaid = (state: State, utterance: string | undefined): st
 	const words = ` ${normalizeSpaces(utterance)} `;
 	const named = Object.values(state.machines).find((machine) =>
 		[machine.name, machine.id].some((name) =>
-			new RegExp(`\\b(?:on|in|at)\\s+(?:the\\s+)?${escapeRegExp(name.toLowerCase())}\\b`).test(
+			new RegExp(`\\b(?:on|in|into|at)\\s+(?:the\\s+)?${escapeRegExp(name.toLowerCase())}\\b`).test(
 				words,
 			),
 		),

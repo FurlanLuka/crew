@@ -27,13 +27,13 @@ import {
 	withoutEffects,
 	isShownAlready,
 } from './helpers.js';
-import { hasFollowUpWaiting, promoteQueued } from './delivery.js';
+import { hasFollowUpWaiting, promoteAllQueued, promoteQueued } from './delivery.js';
 import { reduceTakeBack } from './take-back.js';
 import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
-import { cleanSpokenText } from '../shared/spoken.js';
+import { cleanSessionLine } from '../shared/spoken.js';
 import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-lines.js';
 import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
 import { HOME_VIEW } from '../shared/machines.js';
@@ -318,6 +318,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'promote_queued':
 			return promoteQueued({ state, ref: input.ref, queuedId: input.queuedId, stamped });
+		case 'promote_all_queued':
+			return promoteAllQueued({ state, ref: input.ref, stamped });
 
 		case 'switch_view': {
 			const { view } = input;
@@ -471,7 +473,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				draft,
 				spokenInTurn,
 				...(spokenInTurn.length > current.spokenInTurn.length
-					? { lineBeforeAsk: { at: stamped.at, text: cleanSpokenText(spokenInTurn.at(-1) ?? '') } }
+					? { lineBeforeAsk: { at: stamped.at, text: cleanSessionLine(spokenInTurn.at(-1) ?? '') } }
 					: {}),
 			}));
 
@@ -525,7 +527,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 							? {
 									lineBeforeAsk: {
 										at: stamped.at,
-										text: cleanSpokenText(spoken.spokenInTurn.at(-1) ?? ''),
+										text: cleanSessionLine(spoken.spokenInTurn.at(-1) ?? ''),
 									},
 								}
 							: {}),

@@ -3,7 +3,7 @@ import type { Action, Machine, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { executeTool, type ToolContext } from './tools.js';
-import { findMachine } from './machines.js';
+import { findMachine, findMachineSaid } from './machines.js';
 import { listToolsFor } from './definitions.js';
 import { describeSession } from './session-view.js';
 
@@ -286,6 +286,19 @@ describe('a session named with its machine', () => {
 		);
 
 		expect(actions[0]).toEqual({ type: 'start_session', ref: 'crew/main' });
+	});
+
+	it('"into my Mac" and "into Personal" → that machine, as "on" does', () => {
+		const { state } = both();
+
+		expect(findMachineSaid(state, 'go into crew main into my Mac')).toBe('local');
+		expect(findMachineSaid(state, 'switch into crew main into Personal')).toBe('personal');
+	});
+
+	it('"go into crew main" alone → no machine said', () => {
+		const { state } = both();
+
+		expect(findMachineSaid(state, 'go into crew main')).toBeNull();
 	});
 });
 

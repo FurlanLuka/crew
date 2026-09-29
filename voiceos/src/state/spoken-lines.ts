@@ -1,5 +1,5 @@
 import type { Session } from '../shared/protocol.js';
-import { cleanSpokenText } from '../shared/spoken.js';
+import { cleanSessionLine } from '../shared/spoken.js';
 import { readSpokenTag } from '../shared/spoken-tags.js';
 import type { Effect } from './reducer.js';
 
@@ -34,7 +34,7 @@ export const speakNewTag = (session: Session, text: string, isOnScreen: boolean)
 		effects: [
 			{
 				type: 'speak',
-				text: cleanSpokenText(tag.text),
+				text: cleanSessionLine(tag.text),
 				source: 'narrator',
 				ref: session.ref,
 				isNamed: true,

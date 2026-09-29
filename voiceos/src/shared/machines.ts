@@ -146,8 +146,9 @@ export const describeMachineWaiting = (state: State, machine: string): string =>
 	const name = readMachineTitle(state, machine);
 	const waiting = readLabels(state, listWaitingRefs(state, machine));
 
+	// The name alone says where the developer landed; "nothing is waiting" read as a problem.
 	if (waiting.length === 0) {
-		return `${name}. Nothing is waiting on you.`;
+		return `${name}.`;
 	}
 
 	return `${name}. ${listNames(waiting)} ${waiting.length === 1 ? 'is' : 'are'} waiting on you.`;

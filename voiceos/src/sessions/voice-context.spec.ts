@@ -63,4 +63,10 @@ describe('VOICE_OS_CONTEXT', () => {
 		expect(VOICE_OS_CONTEXT).toContain('as soon as you reach it, before the next tool call');
 		expect(VOICE_OS_CONTEXT).toContain('Put one question in each call');
 	});
+
+	it('words arriving mid-work → a short tag saying what comes next, before the next tool call', () => {
+		expect(VOICE_OS_CONTEXT).toContain(
+			'an interruption, a follow-up, an answer, a withdrawn question — open your next message with a short tag saying what you do next, before the next tool call',
+		);
+	});
 });

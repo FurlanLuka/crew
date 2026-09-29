@@ -233,7 +233,7 @@ const describeQuestionAloud = (ask: QuestionAsk, label: string): string => {
 		: `${label}, question ${open.index + 1} of ${count}: ${question}${prompt}`;
 };
 
-const resolveAsk = (state: State, ask: PendingAsk, result: AskResult): ReducerResult => ({
+export const resolveAsk = (state: State, ask: PendingAsk, result: AskResult): ReducerResult => ({
 	state: closeAsk(state, ask.id),
 	effects: [{ type: 'resolve_ask', ref: ask.ref, askId: ask.id, result }],
 });
@@ -326,7 +326,10 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 
 	const queued = updateSession(cleared, denial.ref, (deniedSession) => ({
 		...deniedSession,
-		queue: [...deniedSession.queue, { id: stamped.id, text: retryText, at: stamped.at }],
+		queue: [
+			...deniedSession.queue,
+			{ id: stamped.id, text: retryText, at: stamped.at, isRetry: true as const },
+		],
 	}));
 
 	return { state: queued, effects: [setModeEffect] };

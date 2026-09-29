@@ -1,3 +1,5 @@
+import { endsInQuestion } from './spoken.js';
+
 // A session opens a message for the developer with <spoken>…</spoken>, what Voice OS says aloud;
 // <spoken asks> marks a question it waits on. The rest of the message is for the screen. Only a
 // tag at the very top counts: one quoted further down (in code, in an explanation) is just text.
@@ -17,7 +19,8 @@ export const readSpokenTag = (text: string): SpokenTag | null => {
 	const match = LEADING_TAG_PATTERN.exec(text);
 	const spoken = match?.[2]?.trim();
 
-	return spoken ? { text: spoken, isAsking: Boolean(match?.[1]) } : null;
+	// A line ending in a question waits on the developer even when the session forgot "asks".
+	return spoken ? { text: spoken, isAsking: Boolean(match?.[1]) || endsInQuestion(spoken) } : null;
 };
 
 export const stripSpokenTag = (text: string): string =>

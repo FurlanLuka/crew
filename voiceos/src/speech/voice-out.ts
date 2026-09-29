@@ -57,11 +57,14 @@ export interface VoiceOutOptions {
 	play: AudioSink;
 	// The tab the developer used last; a clip keeps the tab it started in.
 	speaker: () => string | null;
+	// Whether any page is open: a reminder nobody can hear is not said, and not counted.
+	hasPage?: () => boolean;
 	now?: () => number;
 }
 
 interface Playing {
 	id: string;
+	item: SpeechItem;
 	tab: string | null;
 	timer?: ReturnType<typeof setTimeout>;
 	abort: AbortController;
@@ -77,6 +80,8 @@ const SAID_PREVIEW_CHARS = 80;
 
 const log = createLogger('voice-out');
 export const REMINDER_MS = 5 * 60_000;
+// Per ask: a question left overnight is not repeated every five minutes until morning.
+export const MAX_REMINDERS = 3;
 const CHUNK_GAP_MS = 10_000;
 const PLAYBACK_MARGIN_SECONDS = 3;
 
@@ -89,11 +94,19 @@ export class VoiceOut {
 	private isTalking = false;
 	private playing: Playing | null = null;
 	private lastSpokenAbout = new Map<string, number>();
+	// Reminders said, by what waits (the ask, or the line that asked): a new question starts over.
+	private remindersSaid = new Map<string, number>();
 	private spokenRecords: SpokenRecord[] = [];
 	private now: () => number;
 
 	constructor(private options: VoiceOutOptions) {
 		this.now = options.now ?? Date.now;
+		options.store.subscribe((stamped) => {
+			// After the dispatch that switched: a line held from inside it would reach the pages first.
+			if (stamped.input.type === 'switch_view') {
+				queueMicrotask(() => this.viewChanged());
+			}
+		});
 	}
 
 	say({
@@ -203,15 +216,24 @@ export class VoiceOut {
 
 	remind(state: State): void {
 		const now = this.now();
-		const waiting = new Set([
-			// A held /clear is not nagged about: it lapses on its own.
-			...state.asks.filter(isSdkAsk).map((ask) => ask.ref),
-			...Object.values(state.sessions)
-				.filter((session) => session.needsUser)
-				.map((session) => session.ref),
-		]);
+		const waiting = new Map<string, string>();
 
-		for (const ref of waiting) {
+		// A held /clear is not nagged about: it lapses on its own.
+		for (const ask of state.asks.filter(isSdkAsk)) {
+			if (!waiting.has(ask.ref)) {
+				waiting.set(ask.ref, ask.id);
+			}
+		}
+
+		for (const session of Object.values(state.sessions)) {
+			if (session.needsUser && !waiting.has(session.ref)) {
+				waiting.set(session.ref, `${session.ref}@${session.needsUser.at}`);
+			}
+		}
+
+		const hasPage = this.options.hasPage?.() ?? true;
+
+		for (const [ref, waitKey] of waiting) {
 			const lastSpokenAt = this.lastSpokenAbout.get(ref);
 
 			if (lastSpokenAt === undefined) {
@@ -220,10 +242,13 @@ export class VoiceOut {
 				continue;
 			}
 
-			if (now - lastSpokenAt < REMINDER_MS) {
+			const said = this.remindersSaid.get(waitKey) ?? 0;
+
+			if (!hasPage || now - lastSpokenAt < REMINDER_MS || said >= MAX_REMINDERS) {
 				continue;
 			}
 
+			this.remindersSaid.set(waitKey, said + 1);
 			// One phrase for "waits on you". Only a question already heard makes it something a bare
 			// "yes" answers; one only announced has not been heard.
 			this.say({
@@ -239,6 +264,43 @@ export class VoiceOut {
 				this.lastSpokenAbout.delete(ref);
 			}
 		}
+
+		const waitKeys = new Set(waiting.values());
+
+		for (const waitKey of this.remindersSaid.keys()) {
+			if (!waitKeys.has(waitKey)) {
+				this.remindersSaid.delete(waitKey);
+			}
+		}
+	}
+
+	private viewChanged(): void {
+		// The developer clicked away from the session whose line plays: it stops, and waits there to
+		// be heard on return. Mission Control hears every session, and a question still waits on them.
+		const playing = this.playing;
+		const item = playing?.item;
+		const { store } = this.options;
+
+		if (
+			!playing ||
+			!item?.ref ||
+			!item.isHoldable ||
+			item.isAsking ||
+			item.source !== 'narrator' ||
+			!isOnAnotherSession(store.state, item.ref)
+		) {
+			return;
+		}
+
+		// Its session stopped meanwhile: nothing is kept for it, as when a queued line is held.
+		if (store.state.sessions[item.ref]?.status === 'stopped') {
+			log.info('line cut: view left, session stopped', { id: item.id, ref: item.ref });
+		} else {
+			store.dispatch({ type: 'line_held', ref: item.ref, text: item.text, isAsking: false });
+			log.info('line cut and held: view left', { id: item.id, ref: item.ref });
+		}
+
+		this.finish(playing.id, { isCut: true });
 	}
 
 	private finish(id: string, { isCut = false, shouldPlayNext = true }: FinishParams = {}): void {
@@ -393,6 +455,7 @@ export class VoiceOut {
 		this.spokenRecords = [...this.spokenRecords.filter((line) => isRecent(line, now)), record];
 		const playing: Playing = {
 			id: item.id,
+			item,
 			tab,
 			abort: new AbortController(),
 			hasEnded: false,

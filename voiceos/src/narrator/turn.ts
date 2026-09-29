@@ -5,7 +5,7 @@ import { appendJournalEntry, describeTurnOutcome } from '../memory/journal.js';
 import type { NarrateFunction } from './narrator.js';
 import type { WriteTopic } from './topic.js';
 import type { Narration } from './prompt.js';
-import { cleanSpokenText } from '../shared/spoken.js';
+import { cleanSessionLine, cleanSpokenText } from '../shared/spoken.js';
 import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import type { Session } from '../shared/protocol.js';
 import {
@@ -67,7 +67,7 @@ export const narrateFromTag = (spoken: SpokenTag, session: Session): Narration =
 	needs_user: spoken.isAsking,
 	// Its own line answers what the developer asked: said like a reply, through "quiet" too.
 	priority: 'high',
-	text: cleanSpokenText(spoken.text),
+	text: cleanSessionLine(spoken.text),
 	topic: session.topic,
 });
 
@@ -103,7 +103,7 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 		const body = stripSpokenTag(answer);
 		const view = store.state.view;
 		const text = tag
-			? cleanSpokenText(tag.text)
+			? cleanSessionLine(tag.text)
 			: (
 					await narrate({
 						label: session.label,

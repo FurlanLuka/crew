@@ -1,5 +1,6 @@
-import type { QueuedMessage, Session, State } from '../shared/protocol.js';
+import { isSdkAsk, type QueuedMessage, type Session, type State } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
+import { endsInQuestion } from '../shared/spoken.js';
 import { createLogger } from '../log.js';
 import { isPlainConsent } from './consent.js';
 import { normalizeSaid } from '../state/helpers.js';
@@ -166,6 +167,8 @@ interface PrepareSentTextParams {
 	utterance: string | undefined;
 	// The words go to this session alone: nothing else in the turn changed anything.
 	isOnlySend: boolean;
+	// The text joins two utterances: the one heard now is only its second half.
+	isContinuation?: boolean;
 }
 
 // A sentence that asked for two things keeps only its half for the session: that is not a loss.
@@ -173,6 +176,11 @@ const MIN_KEPT_SHARE = 0.3;
 const MIN_LONG_UTTERANCE_WORDS = 15;
 
 const countWords = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
+
+export const isQuestionRewritten = (utterance: string, text: string): boolean =>
+	// "Does the router still drop the header?" rewritten as "Check whether the router drops the
+	// header." sets it to work on what was only asked.
+	endsInQuestion(utterance) && !endsInQuestion(text);
 
 export const isRewriteTooShort = (utterance: string, text: string): boolean => {
 	// A long, rambling thought rewritten into a few words lost its point ("Okay, or just something
@@ -188,6 +196,7 @@ export const prepareSentText = ({
 	text,
 	utterance,
 	isOnlySend,
+	isContinuation = false,
 }: PrepareSentTextParams): string => {
 	// As said only when the words were all for this session: split across sessions or tools, each
 	// part is short on purpose, and the whole would hand one session the other's instruction.
@@ -195,12 +204,20 @@ export const prepareSentText = ({
 		? findSessionsNamedIn(state, utterance).some((named) => named !== ref)
 		: false;
 
-	if (utterance && isOnlySend && !namesAnother && isRewriteTooShort(utterance, text)) {
+	const isWhole = Boolean(utterance) && isOnlySend && !namesAnother;
+
+	if (utterance && isWhole && isRewriteTooShort(utterance, text)) {
 		log.info('rewrite too short: sent as said', {
 			ref,
 			said: countWords(utterance),
 			kept: countWords(text),
 		});
+
+		return utterance.trim();
+	}
+
+	if (utterance && isWhole && !isContinuation && isQuestionRewritten(utterance, text)) {
+		log.info('question rewritten as a statement: sent as said', { ref });
 
 		return utterance.trim();
 	}
@@ -238,6 +255,17 @@ export const isMisroutedToSetup = ({
 	return !SETUP_ADDRESS_PATTERN.test(utterance) && !SETUP_WORK_PATTERN.test(utterance);
 };
 
+// "Add a debug note: …" is Voice OS's own tool; talk about debug notes ("read the debug notes") is
+// work for the session.
+const DEBUG_NOTE_REQUEST_PATTERN =
+	/^\s*(?:(?:okay|ok|so|hey|and|please)[,\s]+)*(?:(?:can|could|would) you\s+)?(?:add|take|make)\s+(?:a\s+|another\s+)?debug\s*notes?\b/i;
+
+export const describeDebugNoteRequest = (utterance: string | undefined): string | null =>
+	// Read off the words as said: the kernel's rewrite may have dropped the request.
+	utterance !== undefined && DEBUG_NOTE_REQUEST_PATTERN.test(utterance)
+		? 'that is debug_note: the developer asked Voice OS for a debug note, not the session. Call debug_note with their words. Nothing was sent.'
+		: null;
+
 const readKind = (kind: unknown): SendAck['kind'] =>
 	kind === 'question' || kind === 'redirect' ? kind : 'instruction';
 
@@ -250,6 +278,13 @@ export const sendText = ({
 	toolContext,
 }: SendTextParams): ToolResult => {
 	const session = state.sessions[ref];
+	const debugNoteRequest = describeDebugNoteRequest(toolContext.utterance);
+
+	if (debugNoteRequest) {
+		log.info('debug note request not sent', { ref });
+
+		return fail(debugNoteRequest);
+	}
 
 	// A bare yes or no for a question only announced there answers nothing the developer heard.
 	const refused = isBareAnswer(toolContext.utterance ?? text)
@@ -266,13 +301,15 @@ export const sendText = ({
 		return fail(`already sent to ${ref}; it is working on it: nothing was sent again`);
 	}
 
-	const wouldGoAside =
-		session !== undefined &&
-		decideDelivery({
-			status: session.status,
-			kind: readKind(kind),
-			utterance: toolContext.utterance ?? text,
-		}) === 'aside';
+	const decided = session
+		? decideDelivery({
+				status: session.status,
+				kind: readKind(kind),
+				utterance: toolContext.utterance ?? text,
+			})
+		: 'send';
+	const wouldGoAside = decided === 'aside';
+	const isNow = decided === 'now' && !continues;
 	// A continuation goes where its first half went (the reducer finds it), never aside on its own;
 	// if that half already ran, the new part goes as these words would have.
 	const delivery = wouldGoAside && !continues ? 'aside' : 'send';
@@ -295,10 +332,22 @@ export const sendText = ({
 			...(toolContext.isSpoken ? { isSpoken: true } : {}),
 		});
 
-		return {
-			...succeed(`asked ${ref} aside, beside its work: its answer is spoken when it comes`),
-			note: 'aside',
-		};
+		// A question about a pending question withdraws it (the reducer denies it with these words):
+		// the session answers, then asks again.
+		const isWithdrawing =
+			state.asks.filter(isSdkAsk).find((ask) => ask.ref === ref)?.kind === 'question';
+
+		return isWithdrawing
+			? {
+					...succeed(
+						`${ref}'s question is withdrawn: the developer's words went to it instead, and it answers them, then asks the question again`,
+					),
+					note: 'question withdrawn',
+				}
+			: {
+					...succeed(`asked ${ref} aside, beside its work: its answer is spoken when it comes`),
+					note: 'aside',
+				};
 	}
 
 	// Words for a waiting question answer the open one; one that moved since they were said is not theirs.
@@ -335,7 +384,12 @@ export const sendText = ({
 			: {}),
 		...(note ? { note } : {}),
 		...(toolContext.isSpoken ? { isSpoken: true } : {}),
+		...(isNow ? { isNow: true } : {}),
 	});
 
-	return succeed(`sent to ${ref}`);
+	return succeed(
+		isNow
+			? `sent to ${ref}: it stops its current work and takes these words now`
+			: `sent to ${ref}`,
+	);
 };

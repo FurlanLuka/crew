@@ -301,6 +301,7 @@ const readActionRef = (state: State, input: Input): string | null => {
 		case 'stop_session':
 		case 'interrupt':
 		case 'promote_queued':
+		case 'promote_all_queued':
 		case 'dev_start':
 		case 'dev_stop':
 		case 'dev_restart':

@@ -779,6 +779,31 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('plan dock → the plan renders as Markdown, not as raw text', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ui-plan3',
+				ref: 'store-front/main',
+				at: 3,
+				kind: 'plan',
+				input: {},
+				plan: '## Steps\n\n1. **Add** an events table\n2. Backfill it',
+			},
+		});
+		const quote = page.locator('section[aria-label="plan"] .quote');
+		await quote.locator('ol li strong', { hasText: 'Add' }).waitFor({ timeout: 5000 });
+		expect(await quote.locator('h2', { hasText: 'Steps' }).isVisible()).toBe(true);
+		expect(await quote.getByText('## Steps').count()).toBe(0);
+		expect(await quote.evaluate((element) => getComputedStyle(element).whiteSpace)).not.toBe(
+			'pre-wrap',
+		);
+		store.dispatch({ type: 'ask_closed', askId: 'ui-plan3' });
+		await context.close();
+	}, 20_000);
+
 	it('blocked strip → "Allow it" lets it through once; "Leave it blocked" dismisses it', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -841,6 +866,32 @@ describe('voice os ui', () => {
 			.locator('.speech .said', { hasText: 'checkout api, main is running the tests.' })
 			.waitFor({ timeout: 5000 });
 		store.dispatch({ type: 'turn_ended', ref: 'checkout-api/main', costUsd: 0, text: 'Done.' });
+		await context.close();
+	}, 20_000);
+
+	it("the spoken line on a session's screen → another session's narration hidden; Voice OS and alerts shown; Mission Control shows all", async () => {
+		const { context, page } = await signIn();
+		const said = page.locator('.speech .said');
+		const speak = (text: string, source: 'narrator' | 'kernel' | 'alert', ref?: string) =>
+			store.dispatch({ type: 'spoken', text, source, ...(ref ? { ref } : {}) });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+
+		speak('Store front: the tests pass.', 'narrator', 'store-front/main');
+		speak('Checkout: the migration is written.', 'narrator', 'checkout-api/main');
+		await said.getByText('Store front: the tests pass.').waitFor({ timeout: 5000 });
+
+		speak('Nothing else is waiting.', 'kernel');
+		await said.getByText('Nothing else is waiting.').waitFor({ timeout: 5000 });
+
+		speak('Checkout wants to push. Allow?', 'alert', 'checkout-api/main');
+		await said.getByText('Checkout wants to push. Allow?').waitFor({ timeout: 5000 });
+
+		speak('Checkout: pushed.', 'narrator', 'checkout-api/main');
+		await Bun.sleep(200);
+		expect(await said.innerText()).toBe('Checkout wants to push. Allow?');
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		await said.getByText('Checkout: pushed.').waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 

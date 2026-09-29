@@ -83,6 +83,7 @@ describe('buildContextTerms', () => {
 			}),
 		).toEqual([
 			'Voice OS',
+			'debug note',
 			'store front main',
 			'store front',
 			'main',

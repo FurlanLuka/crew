@@ -7,7 +7,13 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { sendNow, startWorker, updateSession, withoutEffects } from './helpers.js';
+import {
+	pointLastSpokenAt,
+	sendNow,
+	startWorker,
+	updateSession,
+	withoutEffects,
+} from './helpers.js';
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
 import { openRedirect } from './redirect.js';
 import { clearHeldLine } from './held-lines.js';
@@ -154,6 +160,8 @@ export interface DeliverSendParams {
 	// A stopped session is started for it; false only queues it (a question set aside earlier).
 	shouldStart?: boolean;
 	ack?: SendAck;
+	// Said to go right now: a running turn is replaced instead of queued behind.
+	isNow?: boolean;
 }
 
 const withEffects = (result: ReducerResult, effects: Effect[]): ReducerResult => ({
@@ -180,6 +188,7 @@ const deliverWords = ({
 	stamped,
 	shouldStart = true,
 	ack,
+	isNow = false,
 }: DeliverSendParams): ReducerResult => {
 	// Words that reach the session itself: sent now, cut into the running reply, or queued behind it.
 	const session = state.sessions[ref];
@@ -213,6 +222,13 @@ const deliverWords = ({
 		const { effects, isOwed } = decideAck({ ref, ack, timing: 'now' });
 
 		return withEffects(queueFollowUp({ state, ref, text, note, stamped, isOwed }), effects);
+	}
+
+	// The developer already said to go now: no switch question, the running turn is replaced.
+	if (isNow && session.status === 'running') {
+		const { effects, isOwed } = decideAck({ ref, ack, timing: 'now' });
+
+		return withEffects(replaceRunning({ state, ref, text, note, stamped, isOwed }), effects);
 	}
 
 	// Changing what a working session is doing is the developer's call: they are asked first.
@@ -289,6 +305,26 @@ export const replaceRunning = ({
 
 const ASIDE_PATTERN = /\b(?:by the way|btw)\b/i;
 const QUEUE_PATTERN = /\bqueue it\b/i;
+// "ask it right now: …", "tell it directly to …", "send this to it immediately", "send it now: …".
+// Only the unambiguous words may stand a few words off: a bare "now" further along is content
+// ("tell them the build now passes"), and so is anything after "that" or a question word ("tell it
+// that right now the tests are red", "ask it why tests fail right now").
+const NOW_PATTERN =
+	/\b(?:send|ask|tell)\s+(?:it|them|claude|this|that)\b(?:(?:\s+(?!(?:that|why|what|how|whether|if|when|where|which|who)\b)\w+){0,3}?\s+(?:right now|directly|immediately)|\s+now)\b/i;
+// The phrase alone ("send it now") names no words: that is the queued message, not new content.
+const MIN_NOW_CONTENT_WORDS = 2;
+
+const isSendNow = (utterance: string): boolean => {
+	const phrase = NOW_PATTERN.exec(utterance);
+
+	if (!phrase) {
+		return false;
+	}
+
+	const content = utterance.replace(phrase[0], ' ').match(/[\p{L}\p{N}']+/gu) ?? [];
+
+	return content.length >= MIN_NOW_CONTENT_WORDS;
+};
 
 export interface DecideDeliveryParams {
 	status: SessionStatus;
@@ -298,11 +334,9 @@ export interface DecideDeliveryParams {
 	utterance: string;
 }
 
-export const decideDelivery = ({
-	status,
-	kind,
-	utterance,
-}: DecideDeliveryParams): 'send' | 'aside' => {
+export type Delivery = 'send' | 'aside' | 'now';
+
+export const decideDelivery = ({ status, kind, utterance }: DecideDeliveryParams): Delivery => {
 	// A working session, or one waiting on a plan or permission, answers a question aside: the work
 	// is not disturbed and the ask keeps waiting. An idle one answers the question itself, at once.
 	if (status !== 'running' && status !== 'blocked') {
@@ -317,7 +351,48 @@ export const decideDelivery = ({
 		return 'send';
 	}
 
+	// Said to go right now: the running turn is replaced, not queued behind. A blocked session is
+	// waiting on the developer, so its words already go at once.
+	if (status === 'running' && isSendNow(utterance)) {
+		return 'now';
+	}
+
 	return kind === 'question' ? 'aside' : 'send';
+};
+
+interface SendFirstParams {
+	state: State;
+	ref: string;
+	message: QueuedMessage;
+	stamped: Stamped;
+}
+
+const sendFirst = ({ state, ref, message, stamped }: SendFirstParams): ReducerResult => {
+	// Words wanted now replace the running work, as a switch the developer confirmed.
+	const session = state.sessions[ref];
+
+	if (!session) {
+		return withoutEffects(state);
+	}
+
+	if (session.status === 'running') {
+		return replaceRunning({
+			state,
+			ref,
+			text: message.text,
+			note: message.note,
+			stamped: { ...stamped, id: message.id },
+			isOwed: true,
+		});
+	}
+
+	const first = updateSession(state, ref, (current) => ({
+		...current,
+		queue: [message, ...current.queue],
+	}));
+
+	// "Now" on a stopped session starts it, as any words sent to it would.
+	return session.status === 'stopped' ? startWorker(first, ref) : withoutEffects(first);
 };
 
 interface PromoteQueuedParams {
@@ -333,11 +408,9 @@ export const promoteQueued = ({
 	queuedId,
 	stamped,
 }: PromoteQueuedParams): ReducerResult => {
-	// The developer wants queued words now: they replace the running work, as a switch they confirmed.
-	const session = state.sessions[ref];
-	const message = session?.queue.find((queued) => queued.id === queuedId);
+	const message = state.sessions[ref]?.queue.find((queued) => queued.id === queuedId);
 
-	if (!session || !message) {
+	if (!message) {
 		return withoutEffects(state);
 	}
 
@@ -346,22 +419,48 @@ export const promoteQueued = ({
 		queue: current.queue.filter((queued) => queued.id !== queuedId),
 	}));
 
-	if (session.status === 'running') {
-		return replaceRunning({
-			state: rest,
-			ref,
-			text: message.text,
-			note: message.note,
-			stamped: { ...stamped, id: message.id },
-			isOwed: true,
-		});
+	return sendFirst({ state: rest, ref, message, stamped });
+};
+
+export const isDevelopersMessage = (message: QueuedMessage): boolean => !message.isRetry;
+
+interface PromoteAllQueuedParams {
+	state: State;
+	ref: string;
+	stamped: Stamped;
+}
+
+export const promoteAllQueued = ({
+	state,
+	ref,
+	stamped,
+}: PromoteAllQueuedParams): ReducerResult => {
+	// "Send both now": the developer's queued messages become one, in the order they were said, so
+	// Claude reads the request once. A retry Voice OS queued keeps its place: it was never theirs.
+	const waiting = state.sessions[ref]?.queue.filter(isDevelopersMessage) ?? [];
+	const [first] = waiting;
+
+	if (!first) {
+		return withoutEffects(state);
 	}
 
-	const first = updateSession(rest, ref, (current) => ({
+	const note = waiting.map((message) => message.note).reduce(joinNotes, undefined);
+	const merged: QueuedMessage = {
+		id: first.id,
+		text: waiting.map((message) => message.text).join('\n\n'),
+		at: first.at,
+		...(note ? { note } : {}),
+		...(waiting.some((message) => message.reportOwed) ? { reportOwed: true as const } : {}),
+	};
+	const rest = updateSession(state, ref, (current) => ({
 		...current,
-		queue: [message, ...current.queue],
+		queue: current.queue.filter((message) => !isDevelopersMessage(message)),
 	}));
+	// "Take that back" after the merge takes back the merged words, whichever of them it pointed at.
+	const pointed = waiting.reduce(
+		(current, message) => pointLastSpokenAt(current, message.id, merged.id),
+		rest,
+	);
 
-	// "Now" on a stopped session starts it, as any words sent to it would.
-	return session.status === 'stopped' ? startWorker(first, ref) : withoutEffects(first);
+	return sendFirst({ state: pointed, ref, message: merged, stamped });
 };

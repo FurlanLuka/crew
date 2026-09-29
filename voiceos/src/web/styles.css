@@ -476,7 +476,6 @@ textarea:focus-visible {
 	border-left: 2px solid var(--line);
 	padding-left: 12px;
 	line-height: 1.7;
-	white-space: pre-wrap;
 	max-height: 24vh;
 	overflow-y: auto;
 }

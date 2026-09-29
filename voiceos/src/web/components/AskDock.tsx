@@ -1,5 +1,6 @@
 import type { PendingAsk } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
+import { Markdown } from './Markdown.js';
 import { QuestionDock } from './QuestionDock.js';
 import { Reason } from './Reason.js';
 
@@ -65,7 +66,9 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 		return (
 			<section className="dock amber" aria-label="plan">
 				<span className="lbl c-amber">plan ready · {label}</span>
-				<div className="quote">{ask.plan}</div>
+				<div className="quote">
+					<Markdown text={ask.plan} />
+				</div>
 				<div className="btns">
 					<button
 						type="button"

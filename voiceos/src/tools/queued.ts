@@ -1,5 +1,6 @@
 import { isSdkAsk, type LastSpokenSend, type State } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
+import { isDevelopersMessage } from '../state/delivery.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
 
@@ -29,7 +30,7 @@ export type Carrier = Waiting | { kind: 'working' } | { kind: 'sent' } | null;
 
 export const findCarrier = ({ state, ref, last: lastSaid }: FindTargetParams): Carrier => {
 	// Where the developer's last words to this session are: queued, asked aside, held as a switch
-	// question, being worked on, or already sent. With none said to it, the newest queued message.
+	// question, being worked on, or already sent. With none said to it, the newest they queued.
 	const session = state.sessions[ref];
 	const last = readLastFor(lastSaid, ref);
 
@@ -38,7 +39,7 @@ export const findCarrier = ({ state, ref, last: lastSaid }: FindTargetParams): C
 	}
 
 	if (!last) {
-		const queued = session.queue.at(-1);
+		const queued = session.queue.filter(isDevelopersMessage).at(-1);
 
 		return queued ? { kind: 'queued', id: queued.id, text: queued.text } : null;
 	}
@@ -159,12 +160,26 @@ export const handleQueuedMessage = ({
 	}
 
 	const target = carrier;
+	const isRunning = state.sessions[checked.ref]?.status === 'running';
+	const waiting = state.sessions[checked.ref]?.queue.filter(isDevelopersMessage) ?? [];
+
+	// "Send both now": with more than one of theirs waiting, "now" means all of them, as one message.
+	if (waiting.length > 1) {
+		log.info('all queued messages now', { ref: checked.ref, count: waiting.length });
+		toolContext.dispatch({ type: 'promote_all_queued', ref: checked.ref });
+
+		return succeed(
+			isRunning
+				? `${checked.ref} stops its current work and takes all ${waiting.length} queued messages now, as one`
+				: `all ${waiting.length} queued messages go first to ${checked.ref}, as one`,
+		);
+	}
 
 	log.info('queued message now', { ref: checked.ref, chars: target.text.length });
 	toolContext.dispatch({ type: 'promote_queued', ref: checked.ref, queuedId: target.id });
 
 	return succeed(
-		state.sessions[checked.ref]?.status === 'running'
+		isRunning
 			? `${checked.ref} stops its current work and takes "${preview(target.text)}" now`
 			: `"${preview(target.text)}" goes first to ${checked.ref}`,
 	);

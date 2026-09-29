@@ -1,12 +1,18 @@
 import type { Action, PendingAsk, State } from '../shared/protocol.js';
-import { findOpenQuestion, hasOpenQuestionMoved } from '../shared/questions.js';
+import { findOpenQuestion, hasOpenQuestionMoved, type QuestionAsk } from '../shared/questions.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import { isConsent, isPlainConsent } from './consent.js';
-import { describeMisroutedAnswer, prepareSentText, sendText } from './send.js';
+import {
+	describeDebugNoteRequest,
+	describeMisroutedAnswer,
+	prepareSentText,
+	sendText,
+} from './send.js';
 import { findLastAskedAloud } from './asked-aloud.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
 import { refuseAnnouncedOnly } from './announced.js';
+import { endsInQuestion } from '../shared/spoken.js';
 
 export const ANSWER_DECISIONS = ['yes', 'always', 'no', 'choose'] as const;
 export type AnswerDecision = (typeof ANSWER_DECISIONS)[number];
@@ -147,6 +153,65 @@ export const buildAnswerActions = ({
 	}
 };
 
+const OPTION_FILLER_PATTERN =
+	/^(?:(?:um|uh|so|and|maybe|the|option|number)\s+)+|\s+(?:one|option|please)$/g;
+const ORDINALS = new Set([
+	...['first', 'second', 'third', 'fourth', 'fifth', 'last'],
+	...['one', 'two', 'three', 'four', 'five', '1', '2', '3', '4', '5'],
+]);
+
+const readBareOption = (said: string): string =>
+	said
+		.toLowerCase()
+		.replace(/\([^)]*\)/g, ' ')
+		.replace(/[?.!,"“”)\]]+/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.replace(OPTION_FILLER_PATTERN, '');
+
+const QUESTION_LEAD_PATTERN =
+	/^(?:what|what's|whats|why|how|which|who|when|where|does|do|is|are|can|could|should|would|will)\b/;
+// "Use Postgres?" for the label "Postgres", or "Postgres?" for "Use Postgres": a pick said with a
+// few words around it. Longer, it is a sentence about the option ("what does Postgres do").
+const MAX_PICK_EXTRA_WORDS = 2;
+
+const countWords = (text: string): number => text.split(' ').filter(Boolean).length;
+
+const hasPhrase = (text: string, phrase: string): boolean => ` ${text} `.includes(` ${phrase} `);
+
+const isSpokenPick = (bare: string, labels: string[]): boolean => {
+	// Exactly one label, even when another contains it ("Postgres" beside "Postgres + Redis") or it
+	// opens like a question ("Do both").
+	if (ORDINALS.has(bare) || labels.includes(bare)) {
+		return true;
+	}
+
+	if (!bare || QUESTION_LEAD_PATTERN.test(bare)) {
+		return false;
+	}
+
+	// Naming two options is weighing them, not choosing one.
+	const named = labels.filter(
+		(label) => label && (hasPhrase(bare, label) || hasPhrase(label, bare)),
+	);
+
+	return named.length === 1 && countWords(bare) <= countWords(named[0]!) + MAX_PICK_EXTRA_WORDS;
+};
+
+export const isClarifyingQuestion = (ask: QuestionAsk, utterance: string | undefined): boolean => {
+	// "What does option two do?" asks about the options; "the second?", "Postgres?" or "use
+	// Postgres?" picks one with a questioning voice.
+	if (!utterance || !endsInQuestion(utterance)) {
+		return false;
+	}
+
+	const labels = (findOpenQuestion(ask)?.question.options ?? []).map((option) =>
+		readBareOption(option.label),
+	);
+
+	return !isSpokenPick(readBareOption(utterance), labels);
+};
+
 interface IsAnswerForParams {
 	state: State;
 	ref: string;
@@ -189,6 +254,12 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 	if (refused) {
 		return refused;
+	}
+
+	const debugNoteRequest = describeDebugNoteRequest(toolContext.utterance);
+
+	if (debugNoteRequest) {
+		return fail(debugNoteRequest);
 	}
 
 	const heardAsk = toolContext.asks.find((ask) => ask.ref === checked.ref);
@@ -281,6 +352,25 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 
 	if (!ANSWER_DECISIONS.includes(decision)) {
 		return fail(`decision must be one of ${ANSWER_DECISIONS.join(', ')}`);
+	}
+
+	// A question about the options is not a pick: it goes to the session, which withdraws its
+	// question, answers, and asks again.
+	if (
+		decision === 'choose' &&
+		liveAsk.kind === 'question' &&
+		toolContext.utterance !== undefined &&
+		isClarifyingQuestion(liveAsk, toolContext.utterance)
+	) {
+		const said = toolContext.utterance.trim();
+		const isOnScreen = toolContext.forwardTo === checked.ref;
+
+		return {
+			...sendText({ state, ref: checked.ref, text: said, kind: 'question', toolContext }),
+			recordAs: isOnScreen
+				? { name: 'forward', input: { text: said, kind: 'question' } }
+				: { name: 'send_to', input: { ref: checked.ref, text: said, kind: 'question' } },
+		};
 	}
 
 	// Approving a command or a plan is the one call that must never be guessed from other words.

@@ -1,6 +1,6 @@
 import { isSdkAsk, type Input, type Stamped, type State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { answerInWords, completesAsk } from './asks.js';
+import { answerInWords, completesAsk, resolveAsk } from './asks.js';
 import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
 import { decideAck, deliverSend, NO_ACK } from './delivery.js';
@@ -8,8 +8,41 @@ import { pushNotice, updateSession, withoutEffects } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import { continueFirstHalf } from './continuation.js';
 import { clearHeldLine } from './held-lines.js';
+import type { QuestionAsk } from '../shared/questions.js';
 
 type SendInput = Extract<Input, { type: 'send' }>;
+
+export const describeWithdrawal = (ask: QuestionAsk, text: string): string => {
+	// Answers already given are kept in the denial: asked again, the session need not ask them twice.
+	const given = Object.entries(ask.answers ?? {}).map(
+		([question, answer]) => `"${question}": "${answer}"`,
+	);
+	const denial = `The developer asked instead of choosing: "${text}". Answer in a <spoken> tag, then ask again.`;
+
+	return given.length > 0 ? `${denial} Already answered, keep these: ${given.join('; ')}.` : denial;
+};
+
+interface WithdrawQuestionParams {
+	state: State;
+	ask: QuestionAsk;
+	text: string;
+	stamped: Stamped;
+}
+
+const withdrawQuestion = ({ state, ask, text, stamped }: WithdrawQuestionParams): ReducerResult => {
+	// Asked about instead of answered: the session answers in its own turn and asks again, so the
+	// developer hears the options again with the answer in mind (a plan or permission keeps waiting).
+	const withdrawn = resolveAsk(state, ask, {
+		behavior: 'deny',
+		message: describeWithdrawal(ask, text),
+	});
+
+	// The line that asked it is out of date: the session asks again after answering.
+	return {
+		state: clearHeldLine(withdrawn.state, ask.ref),
+		effects: [{ type: 'drop_speech', ref: ask.ref, before: stamped.at }, ...withdrawn.effects],
+	};
+};
 
 const deliverWords = (state: State, input: SendInput, stamped: Stamped): ReducerResult => {
 	const session = state.sessions[input.ref];
@@ -50,6 +83,10 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 		const held = holdCommand({ state: released.state, ref: input.ref, command, text, stamped });
 
 		return { state: held.state, effects: [...released.effects, ...held.effects] };
+	}
+
+	if (sdkAsk?.kind === 'question' && input.aside) {
+		return withdrawQuestion({ state: focusedState, ask: sdkAsk, text, stamped });
 	}
 
 	// A question about what it waits on ("why step 3?") is answered aside: the plan keeps waiting.
@@ -125,6 +162,7 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 		isSpoken: Boolean(input.isSpoken),
 		stamped,
 		ack: input.ack,
+		isNow: Boolean(input.isNow),
 	});
 
 	return { state: delivered.state, effects: [...released.effects, ...delivered.effects] };
