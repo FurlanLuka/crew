@@ -17,6 +17,7 @@ export interface Paths {
 	debugAudioDir: string;
 	voiceGateDir: string;
 	voiceprintFile: string;
+	voiceRecordingsDir: string;
 	topicsFile: string;
 	keysDir: string;
 }
@@ -46,6 +47,8 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		voiceGateDir: join(voiceDir, 'voice-gate'),
 		// Beside the pack folder, not in it: installing a pack clears that folder.
 		voiceprintFile: join(voiceDir, 'voiceprint.json'),
+		// Beside the pack folder, not in it: installing a pack clears that folder.
+		voiceRecordingsDir: join(voiceDir, 'voice-recordings'),
 		topicsFile: join(voiceDir, 'topics.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
 	};
@@ -115,6 +118,11 @@ export const ensureToken = (paths: Paths): string => {
 
 	return token;
 };
+
+// VOICEOS_RECORD_VOICE=1 (passed by crew voice): the voice gate keeps what the mic heard, labelled,
+// to test other models on. Off unless asked: it records everyone in the room.
+export const shouldRecordVoice = (env: Record<string, string | undefined>): boolean =>
+	env.VOICEOS_RECORD_VOICE === '1';
 
 export const shouldRecordState = (env: Record<string, string | undefined>): boolean => {
 	// Only the instance crew launched records its port and pid; a manual run must not overwrite it.

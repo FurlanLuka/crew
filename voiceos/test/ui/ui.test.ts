@@ -518,7 +518,13 @@ describe('voice os ui', () => {
 
 		store.dispatch({
 			type: 'voice_gate',
-			status: { phase: 'scoring', lastScore: 0.82, average: 0.84, isTrained: true },
+			status: {
+				phase: 'scoring',
+				lastScore: 0.82,
+				turnScore: null,
+				average: 0.84,
+				isTrained: true,
+			},
 		});
 		await chip.getByText('voice 0.82').waitFor({ timeout: 5000 });
 		expect(await chip.getAttribute('title')).toContain('Nothing is filtered yet');
@@ -539,7 +545,13 @@ describe('voice os ui', () => {
 
 		store.dispatch({
 			type: 'voice_gate',
-			status: { phase: 'scoring', lastScore: 0.64, average: 0.7, isTrained: false },
+			status: {
+				phase: 'scoring',
+				lastScore: 0.64,
+				turnScore: null,
+				average: 0.7,
+				isTrained: false,
+			},
 		});
 
 		const button = page.locator('button.route.voice-gate');

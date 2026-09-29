@@ -40,6 +40,10 @@ export const speechInSpan = ({ ring, from, to, speechOn }: SpeechInSpanParams): 
 	return { audio, frames: kept.length, skipped: inSpan.length - kept.length };
 };
 
+// A listened turn's start is when its first transcript arrived, about half a second after the words
+// began: anything reading audio by a turn's span pads its start by this much.
+export const TURN_PAD_MS = 1_000;
+
 // A gate score placed on the stream's clock.
 export interface TimedScore {
 	at: number;

@@ -70,11 +70,35 @@ const loadRuntime = async (packDir: string): Promise<typeof Ort> => {
 	return import('onnxruntime-node');
 };
 
+// Every speaker model keeps ECAPA's contract: `wav` [1, samples] of raw 16 kHz audio in, `embedding`
+// out, L2-normalized.
+const embedFrom =
+	(ort: typeof Ort, session: Ort.InferenceSession): Embed =>
+	async (audio) => {
+		const out = await session.run({ wav: new ort.Tensor('float32', audio, [1, audio.length]) });
+
+		return Float32Array.from((out.embedding as Ort.Tensor).data as Float32Array);
+	};
+
+// Any speaker model on the pack's runtime: ECAPA, and the offline comparison's candidates.
+export const loadEmbedModel = async (packDir: string, modelPath: string): Promise<Embed> => {
+	const ort = await loadRuntime(packDir);
+	const session = await ort.InferenceSession.create(modelPath, SESSION_OPTIONS);
+
+	if (session.inputNames.join() !== 'wav' || session.outputNames.join() !== 'embedding') {
+		throw new Error(
+			`${modelPath} takes ${session.inputNames.join()} and gives ${session.outputNames.join()}, not wav → embedding`,
+		);
+	}
+
+	return embedFrom(ort, session);
+};
+
 export const loadModels = async (packDir: string): Promise<Models> => {
 	const ort = await loadRuntime(packDir);
-	const [vadSession, ecapaSession] = await Promise.all([
+	const [vadSession, embed] = await Promise.all([
 		ort.InferenceSession.create(join(packDir, PACK_FILES.vad), SESSION_OPTIONS),
-		ort.InferenceSession.create(join(packDir, PACK_FILES.ecapa), SESSION_OPTIONS),
+		loadEmbedModel(packDir, join(packDir, PACK_FILES.ecapa)),
 	]);
 	const sampleRate = new ort.Tensor('int64', BigInt64Array.from([BigInt(SAMPLE_RATE)]), []);
 
@@ -97,14 +121,6 @@ export const loadModels = async (packDir: string): Promise<Models> => {
 				return Number((out.output as Ort.Tensor).data[0]);
 			},
 		};
-	};
-
-	const embed: Embed = async (audio) => {
-		const out = await ecapaSession.run({
-			wav: new ort.Tensor('float32', audio, [1, audio.length]),
-		});
-
-		return Float32Array.from((out.embedding as Ort.Tensor).data as Float32Array);
 	};
 
 	return { createVad, embed };

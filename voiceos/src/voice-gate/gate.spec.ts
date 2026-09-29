@@ -186,4 +186,37 @@ describe('Gate', () => {
 
 		expect(gate.scores).toHaveLength(1);
 	});
+
+	it('flipMedianOf 3 → one odd low window does not cut the speaker; two in a row do', async () => {
+		const scores = [0.8, 0.8, 0.1, 0.8, 0.1, 0.1];
+		const scorer = () => Promise.resolve(scores.shift() ?? 0.8);
+		const { decideFrames, recheckFrames } = DEFAULT_GATE_CONFIG;
+		const steady = new Gate(scorer, { flipMedianOf: 3 });
+
+		await run(steady, [[0.5, SPEECH, decideFrames + 3 * recheckFrames]]);
+		expect(steady.verdicts.map((verdict) => verdict.accepted)).toEqual([true]);
+
+		await run(steady, [[0.5, SPEECH, 2 * recheckFrames]]);
+		expect(steady.verdicts.map((verdict) => verdict.accepted)).toEqual([true, false]);
+	});
+
+	it('flipMedianOf 1 (today) → the one odd window flips it', async () => {
+		const scores = [0.8, 0.8, 0.1];
+		const gate = new Gate(() => Promise.resolve(scores.shift() ?? 0.8));
+		const { decideFrames, recheckFrames } = DEFAULT_GATE_CONFIG;
+
+		await run(gate, [[0.5, SPEECH, decideFrames + 2 * recheckFrames]]);
+
+		expect(gate.verdicts.map((verdict) => verdict.accepted)).toEqual([true, false]);
+	});
+
+	it('flipMedianOf 3, one odd window right after the decision (only two scores) → still no flip', async () => {
+		const scores = [0.8, 0.1];
+		const gate = new Gate(() => Promise.resolve(scores.shift() ?? 0.8), { flipMedianOf: 3 });
+		const { decideFrames, recheckFrames } = DEFAULT_GATE_CONFIG;
+
+		await run(gate, [[0.5, SPEECH, decideFrames + recheckFrames]]);
+
+		expect(gate.verdicts.map((verdict) => verdict.accepted)).toEqual([true]);
+	});
 });

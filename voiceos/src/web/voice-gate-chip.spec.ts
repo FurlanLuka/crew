@@ -27,11 +27,22 @@ describe('describeVoiceGate', () => {
 
 	it('scoring, not trained yet → the last score, still learning; it can be forgotten', () => {
 		expect(
-			describeVoiceGate({ phase: 'scoring', lastScore: 0.6412, average: 0.72, isTrained: false }),
+			describeVoiceGate({
+				phase: 'scoring',
+				lastScore: 0.6412,
+				turnScore: null,
+				average: 0.72,
+				isTrained: false,
+			}),
 		).toMatchObject({ label: 'voice 0.64 · learning', canForget: true });
 		expect(
-			describeVoiceGate({ phase: 'scoring', lastScore: null, average: null, isTrained: false })
-				?.label,
+			describeVoiceGate({
+				phase: 'scoring',
+				lastScore: null,
+				turnScore: null,
+				average: null,
+				isTrained: false,
+			})?.label,
 		).toBe('voice · learning');
 	});
 
@@ -39,6 +50,7 @@ describe('describeVoiceGate', () => {
 		const chip = describeVoiceGate({
 			phase: 'scoring',
 			lastScore: 0.83,
+			turnScore: null,
 			average: 0.84,
 			isTrained: true,
 		});
@@ -51,6 +63,7 @@ describe('describeVoiceGate', () => {
 		const title = describeVoiceGate({
 			phase: 'scoring',
 			lastScore: 0.5,
+			turnScore: null,
 			average: 0.72,
 			isTrained: false,
 		})?.title;
@@ -63,8 +76,26 @@ describe('describeVoiceGate', () => {
 
 	it('trained, no turn scored yet this run → learned', () => {
 		expect(
-			describeVoiceGate({ phase: 'scoring', lastScore: null, average: 0.85, isTrained: true })
-				?.label,
+			describeVoiceGate({
+				phase: 'scoring',
+				lastScore: null,
+				turnScore: null,
+				average: 0.85,
+				isTrained: true,
+			})?.label,
 		).toBe('voice learned');
+	});
+
+	it('a whole-turn score → shown instead of the last window, and the hover says so', () => {
+		const chip = describeVoiceGate({
+			phase: 'scoring',
+			lastScore: 0.61,
+			turnScore: 0.87,
+			average: 0.84,
+			isTrained: true,
+		});
+
+		expect(chip?.label).toBe('voice 0.87');
+		expect(chip?.title).toContain('last turn as a whole');
 	});
 });

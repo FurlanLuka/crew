@@ -9,6 +9,7 @@ import {
 	findMissingKeys,
 	resolvePaths,
 	shouldRecordState,
+	shouldRecordVoice,
 } from './config.js';
 import { CrewAdapter, spawnRunner } from './crew/adapter.js';
 import { listAllowedOrigins } from './gateway/auth.js';
@@ -265,7 +266,7 @@ const voiceIn = new VoiceInput({
 	onUtterance: (text, client, startedAt, heard) => {
 		voiceGate?.turnDelivered(
 			client,
-			heard ? { from: startedAt, to: heard.endedAt, source: heard.source } : null,
+			heard ? { from: startedAt, to: heard.endedAt, source: heard.source, text } : null,
 		);
 		void router.handle(text, 'voice', {
 			setListenMode: listenSwitchFor(client),
@@ -415,6 +416,8 @@ const port = gateway.port;
 
 voiceGate = startVoiceGate({
 	root: paths.voiceGateDir,
+	recordingsDir: paths.voiceRecordingsDir,
+	isRecording: shouldRecordVoice(process.env),
 	voiceprintFile: paths.voiceprintFile,
 	env: process.env,
 	setStatus: (status) => store.dispatch({ type: 'voice_gate', status }),

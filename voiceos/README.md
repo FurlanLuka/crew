@@ -113,11 +113,53 @@ silenced, and what Soniox gets is untouched.
   source, the tab's sample rate, every raw score, and what the gate would have done at 0.40 (`kept`,
   `silenced` or `unscored`). These lines are the data for picking the real threshold:
   `crew voice logs | grep 'turn scored'`.
-- **The chip** beside the route chip shows `voice 12/30 s` until lock-in, then the last turn's score:
-  `voice 0.64 · learning` until trained, `voice 0.82` after.
+- **The chip** beside the route chip shows `voice 12/30 s` until lock-in, then your last turn's score
+  as a whole (the last short window when the turn was too short to measure):
+  `voice 0.86 · learning` until trained, `voice 0.88` after.
 - `VOICEOS_VOICE_GATE=0` turns it off, as an escape hatch: the models run inside Voice OS's own
   process. `VOICEOS_VOICE_GATE_PACK_DIR=<dir>` uses a pack already unpacked there instead of
   downloading one.
+
+### Recording for testing (`VOICEOS_RECORD_VOICE=1`)
+
+Short windows are where the model is weakest, and comparing other voiceprints, decision rules or
+models needs your real voice. With `VOICEOS_RECORD_VOICE=1 crew voice restart`, every stretch of speech
+the mic hears is kept in `~/.crew/voiceos/voice-recordings/` (0700, files 0600, never uploaded):
+
+- a 16 kHz WAV plus a JSON beside it: the label, the VAD probability of each 32 ms frame, whether
+  Voice OS was speaking, the gate's scores and, for turns, the transcript;
+- labelled `turn` when a delivered turn overlaps it, `other` when none did within the two minutes a
+  turn can take to be delivered — a TV, people nearby, or you talking to someone else;
+- capped at 400 turn and 200 other recordings, 300 MB in all, oldest first. **Forget my voice** deletes
+  them too.
+
+It records everyone the mic hears: it is off unless the variable is set, and a start with it off but
+recordings left says so in the log. A restart asked for by voice keeps the setting; one from a plain
+shell without the variable turns it off.
+
+`bun scripts/voice-gate/eval-recordings.ts [dir] [--pack <dir>] [--candidates <dir>]` replays the
+recordings through the real gate, once per speaker model: ECAPA from the pack, plus every model in
+`~/.crew/voiceos/voice-gate-candidates/`. The earlier half of your turns builds the voiceprint; the later
+half and the `other` recordings are judged. Per model and variant (3 s / 1.5 s / 0.8 s voiceprint pieces,
+a median of three windows, a window growing to 3 s, deciding at 1.2 s), it prints:
+
+- your first-decision scores against others', and the equal error rate;
+- how much of your speech would be silenced;
+- the highest-scoring `other` files, to listen to.
+
+Each model scores on its own scale, so each is judged at its own threshold: the point where it turns
+you away as often as it lets others in. That point is picked on the same recordings, which makes it
+fair for ranking the models but not a threshold to run live. The run ends with one row per model: its
+best variant, its error rate, and how long it takes to embed a 0.8 s window and a 3 s piece.
+
+The candidates are CAM++ (3D-Speaker) and WavLM speaker verification. They are local only, never
+packed. Export them once, which checks each against its original at three lengths:
+
+```bash
+uv run --python 3.12 --with torch==2.14.0 --with torchaudio==2.11.0 --with onnx==1.23.0 \
+  --with onnxscript==0.7.2 --with onnxruntime==1.30.0 --with transformers==5.17.0 \
+  python scripts/voice-gate/export_candidates.py
+```
 
 The packs are built by `scripts/voice-gate/export_models.py` (the ONNX export and the reference
 numbers) and `scripts/voice-gate/build-packs.ts`, and hosted on the `voice-gate-pack-1` release.

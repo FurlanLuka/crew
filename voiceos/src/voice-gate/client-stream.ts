@@ -8,6 +8,7 @@ import { MAX_WAIT_MS } from '../speech/listener.js';
 import { FRAME, Gate, SAMPLE_RATE, type Scorer } from './gate.js';
 import type { Vad } from './models.js';
 import { Framer, Resampler } from './resample.js';
+import { Segmenter } from './segmenter.js';
 import type { RingFrame, TimedScore } from './turns.js';
 
 const log = createLogger('voice-gate');
@@ -28,6 +29,8 @@ export interface ClientStreamParams {
 	createVad: () => Vad;
 	now: () => number;
 	isVoiceOsSpeaking: () => boolean;
+	// VOICEOS_RECORD_VOICE: each speech segment as it closes, for the recordings.
+	onSegment?: (frames: RingFrame[]) => void;
 }
 
 type Job = { kind: 'frame'; frame: RingFrame } | { kind: 'task'; run: () => Promise<void> };
@@ -47,6 +50,7 @@ export class ClientStream {
 	private isPumping = false;
 	private lastChunkAt: number | null = null;
 	private isClosed = false;
+	private segmenter = new Segmenter();
 
 	constructor(private params: ClientStreamParams) {}
 
@@ -91,6 +95,8 @@ export class ClientStream {
 
 	// The voice was forgotten: nothing is scored until a new one is learned, a reset included.
 	stopScoring(): void {
+		// Audio heard before the voice was forgotten is never recorded after it.
+		this.segmenter = new Segmenter();
 		this.scorer = null;
 		this.gate = null;
 		this.scores.length = 0;
@@ -114,6 +120,7 @@ export class ClientStream {
 	}
 
 	close(): void {
+		this.endSegment();
 		this.isClosed = true;
 		this.queue = this.queue.filter((job) => job.kind === 'task');
 	}
@@ -131,6 +138,8 @@ export class ClientStream {
 		this.queue.push({
 			kind: 'task',
 			run: async () => {
+				// The audio before the reset is not continuous with what follows.
+				this.endSegment();
 				this.vad = this.params.createVad();
 				this.gate = this.scorer ? new Gate(this.scorer) : null;
 			},
@@ -156,6 +165,8 @@ export class ClientStream {
 
 			return true;
 		});
+		// The frames dropped were the next to be heard: what is open ends before the gap.
+		this.queue.unshift({ kind: 'task', run: async () => this.endSegment() });
 		log.warn('behind', { client: this.client, droppedFrames: dropped });
 	}
 
@@ -213,9 +224,27 @@ export class ClientStream {
 			const heard = { ...frame, prob: await this.vad.prob(frame.samples) };
 
 			this.remember(heard);
+			this.segment(heard);
 			await this.score(heard);
 		} catch (error) {
 			log.warn('frame not heard', { client: this.client, error: String(error) });
+		}
+	}
+
+	private segment(frame: RingFrame): void {
+		if (this.params.onSegment) {
+			for (const frames of this.segmenter.push(frame)) {
+				this.params.onSegment(frames);
+			}
+		}
+	}
+
+	// The audio stopped (a released key): whatever segment is open ends here.
+	endSegment(): void {
+		if (this.params.onSegment) {
+			for (const frames of this.segmenter.close()) {
+				this.params.onSegment(frames);
+			}
 		}
 	}
 

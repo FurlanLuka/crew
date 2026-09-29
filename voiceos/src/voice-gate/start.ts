@@ -2,11 +2,13 @@
 // microphone's audio and the delivered turns to the gate. Nothing here may slow or break voice: until
 // the models are loaded, and whenever they failed, every call is a no-op.
 
+import { existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '../log.js';
 import type { VoiceGateStatus } from '../shared/protocol.js';
 import { isTrained, rollingAverage } from './adaptation.js';
 import type { Embed, Models } from './models.js';
 import { ensurePack, PACK_MANIFEST, packFor } from './pack.js';
+import { deleteRecordings, RECORDING_WAIT_MS, Recorder } from './recorder.js';
 import { type HeardTurn, type LearnedVoice, VoiceGate, type VoiceStore } from './voice-gate.js';
 import { deleteVoiceprint, loadVoiceprint, saveVoiceprint } from './voiceprint-store.js';
 
@@ -29,6 +31,11 @@ export interface StartVoiceGateParams {
 	root: string;
 	// The learned voice (~/.crew/voiceos/voiceprint.json).
 	voiceprintFile: string;
+	// Where recordings go (~/.crew/voiceos/voice-recordings), and whether VOICEOS_RECORD_VOICE is on.
+	recordingsDir?: string;
+	isRecording?: boolean;
+	// Tests shorten how long a segment waits for a turn to claim it.
+	recordingWaitMs?: number;
 	env: Record<string, string | undefined>;
 	setStatus: (status: VoiceGateStatus) => void;
 	now: () => number;
@@ -162,9 +169,55 @@ const loadVoice = (file: string): LearnedVoice | null => {
 	}
 };
 
+const RECORDER_TICK_MS = 5_000;
+
+// Recording is opt-in: it keeps everyone the mic hears. Off, recordings left from before are said
+// at start, so they are never forgotten on disk.
+interface StartedRecorder {
+	recorder: Recorder;
+	stop: () => void;
+}
+
+const startRecorder = (params: StartVoiceGateParams): StartedRecorder | undefined => {
+	const dir = params.recordingsDir;
+
+	if (!dir) {
+		return undefined;
+	}
+
+	if (!params.isRecording) {
+		const kept = existsSync(dir) ? readdirSync(dir).filter((name) => name.endsWith('.wav')) : [];
+
+		if (kept.length > 0) {
+			log.info('voice recordings kept', { dir, files: kept.length });
+		}
+
+		return undefined;
+	}
+
+	try {
+		const recorder = new Recorder({
+			dir,
+			now: params.now,
+			waitMs: params.recordingWaitMs ?? RECORDING_WAIT_MS,
+		});
+		const tick = setInterval(() => recorder.tick(), RECORDER_TICK_MS);
+
+		tick.unref();
+		log.info('recording voice', { dir, files: recorder.files });
+
+		return { recorder, stop: () => clearInterval(tick) };
+	} catch (error) {
+		log.warn('recording not started', { dir, error: String(error) });
+
+		return undefined;
+	}
+};
+
 export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle => {
 	let gate: VoiceGate | null = null;
 	let stopHealth: (() => void) | null = null;
+	let recording: StartedRecorder | undefined;
 
 	// An escape hatch, not a setting: the native runtime shares Voice OS's process.
 	if (params.env.VOICEOS_VOICE_GATE === '0') {
@@ -188,6 +241,7 @@ export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle =>
 
 				stopHealth = health.stop;
 				log.info('models loaded', { packDir, ms: Date.now() - startedAt });
+				recording = startRecorder(params);
 				gate = new VoiceGate({
 					createVad: models.createVad,
 					embed: health.embed,
@@ -196,6 +250,14 @@ export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle =>
 					isVoiceOsSpeaking: params.isVoiceOsSpeaking,
 					store: createVoiceStore(params.voiceprintFile),
 					initial: loadVoice(params.voiceprintFile),
+					recorder: recording?.recorder,
+					forgetRecordings: () => {
+						if (recording) {
+							recording.recorder.deleteAll();
+						} else if (params.recordingsDir) {
+							deleteRecordings(params.recordingsDir);
+						}
+					},
 				});
 			} catch (error) {
 				log.warn('unavailable', { error: String(error) });
@@ -217,6 +279,9 @@ export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle =>
 		},
 		forget: (client) => gate?.forget(client),
 		forgetVoice: () => gate?.forgetVoice(),
-		stop: () => stopHealth?.(),
+		stop: () => {
+			stopHealth?.();
+			recording?.stop();
+		},
 	};
 };
