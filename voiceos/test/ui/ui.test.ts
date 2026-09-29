@@ -168,8 +168,13 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('mission control lists every worktree, pinned setup session first', async () => {
+	it('home → the machine cards; This Mac opens its grid: every worktree, pinned setup session first', async () => {
 		const { context, page } = await signIn();
+
+		// Home is the machine cards: this Mac's opens its grid.
+		await page.locator('section.machine[aria-label="This Mac"] .machine-name').click();
+		await page.locator('.tile').first().waitFor({ timeout: 5000 });
+
 		const refs = await page
 			.locator('.tile')
 			.evaluateAll((tiles) => tiles.map((tile) => tile.getAttribute('data-ref')));
