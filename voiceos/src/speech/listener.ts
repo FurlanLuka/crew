@@ -1,11 +1,17 @@
 import { createLogger } from '../log.js';
 import { INTERRUPT_PATTERN, normalizeUtterance, STANDALONE_WORDS } from '../shared/spoken.js';
-import type { ListeningMode } from '../shared/protocol.js';
+import type { ListenMode, ListeningMode } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
 import { countWords } from './echo.js';
 import type { SttFailure, SttHandle, SttSessionOptions } from './stt.js';
 import { decideTurnAction, hasRealWords, joinTurns, type HoldKind } from './turns.js';
 import { gateHeard, stripLeadingWakePhrase } from './wake.js';
+
+// When a spoken turn's words ended, and how the mic heard them: what the voice gate reads audio by.
+export interface HeardSpan {
+	endedAt: number;
+	source: ListenMode;
+}
 
 export interface ListenerHost {
 	openStream: (options: Omit<SttSessionOptions, 'terms'>) => SttHandle;
@@ -13,7 +19,7 @@ export interface ListenerHost {
 	showPartial: (text: string, label?: string) => void;
 	clearTranscript: (client: string) => void;
 	// startedAt: when the turn's first words began (a joined turn: the first part's).
-	queueTurn: (client: string, text: string, startedAt: number) => void;
+	queueTurn: (client: string, text: string, startedAt: number, heard: HeardSpan) => void;
 	onTalkStarted: () => void;
 	onTalkMaybeOver: () => void;
 	// On demand: a turn opened by "Voice OS" (true) or closed (false); speech left alone.
@@ -72,6 +78,8 @@ interface Listening {
 	holdTimer: ReturnType<typeof setTimeout> | null;
 	// When the words of the turn under way began; null between turns.
 	turnStartedAt: number | null;
+	// When its latest words were heard: the turn may be sent well after, once a pause confirms it.
+	lastWordsAt: number | null;
 }
 
 const log = createLogger('voice-in');
@@ -159,6 +167,7 @@ export class Listener {
 			heldSince: null,
 			holdTimer: null,
 			turnStartedAt: null,
+			lastWordsAt: null,
 		};
 		this.listening.set(client, listening);
 		log.info('listen start', { client, sampleRate, mode });
@@ -196,6 +205,10 @@ export class Listener {
 		});
 		this.lowerTalk(listening);
 		this.host.clearTranscript(client);
+	}
+
+	sampleRateOf(client: string): number | null {
+		return this.listening.get(client)?.sampleRate ?? null;
 	}
 
 	pushAudio(client: string, chunk: Uint8Array): void {
@@ -273,6 +286,7 @@ export class Listener {
 		}
 
 		listening.openWords = text;
+		listening.lastWordsAt = this.now();
 
 		// "stop" and "wait" cut speech as soon as they are heard, not a second later when the turn ends.
 		const isStandalone =
@@ -337,6 +351,7 @@ export class Listener {
 		}
 
 		listening.openWords = '';
+		listening.lastWordsAt = this.now();
 
 		// "Voice OS." said on its own: the call is open, the command comes next.
 		if (!text.trim() && !listening.heldText) {
@@ -515,11 +530,14 @@ export class Listener {
 
 	private route(listening: Listening, text: string): void {
 		const startedAt = listening.turnStartedAt ?? this.now();
+		const endedAt = listening.lastWordsAt ?? this.now();
 		listening.turnStartedAt = null;
+		listening.lastWordsAt = null;
 		this.host.queueTurn(
 			listening.client,
 			listening.mode === 'on-demand' ? stripLeadingWakePhrase(text) : text,
 			startedAt,
+			{ endedAt, source: listening.mode },
 		);
 		this.sleep(listening, 'turn sent');
 	}

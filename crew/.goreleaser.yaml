@@ -2,6 +2,12 @@ version: 2
 
 project_name: crew
 
+# The voice gate's model packs live on a release of their own (voiceos/src/voice-gate/pack.ts):
+# never the previous tag a crew release's changelog counts from.
+git:
+  ignore_tags:
+    - "voice-gate-pack-*"
+
 builds:
   - main: .
     binary: crew

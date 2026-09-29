@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { SPEECH_SAMPLE_RATE, type SpeechMessage } from '../shared/protocol.js';
-import { base64ToBytes, createChimeSamples, type ChimeKind, pcmToFloat } from './pcm.js';
+import { pcmToFloat } from '../shared/pcm.js';
+import { base64ToBytes, createChimeSamples, type ChimeKind } from './pcm.js';
 
 interface Clip {
 	id: string;

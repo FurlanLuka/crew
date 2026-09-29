@@ -1970,3 +1970,22 @@ describe('what a session shows: the same picture in a later turn', () => {
 		).toHaveLength(2);
 	});
 });
+
+describe('voice_gate', () => {
+	it('a status → kept for every page; the next replaces it; no effects', () => {
+		const learning = run([
+			{ type: 'voice_gate', status: { phase: 'learning', seconds: 12, of: 30 } },
+		]);
+
+		expect(createInitialState().voiceGate).toBeNull();
+		expect(learning.state.voiceGate).toEqual({ phase: 'learning', seconds: 12, of: 30 });
+		expect(learning.effects).toEqual([]);
+
+		const scoring = run(
+			[{ type: 'voice_gate', status: { phase: 'scoring', lastScore: 0.82 } }],
+			learning.state,
+		);
+
+		expect(scoring.state.voiceGate).toEqual({ phase: 'scoring', lastScore: 0.82 });
+	});
+});

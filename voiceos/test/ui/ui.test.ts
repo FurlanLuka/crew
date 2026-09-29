@@ -509,6 +509,22 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('voice gate → learning, then the last score beside the route chip; gone when unavailable', async () => {
+		const { context, page } = await signIn();
+		const chip = page.locator('.route.voice-gate');
+
+		store.dispatch({ type: 'voice_gate', status: { phase: 'learning', seconds: 12, of: 30 } });
+		await chip.getByText('voice 12/30 s').waitFor({ timeout: 5000 });
+
+		store.dispatch({ type: 'voice_gate', status: { phase: 'scoring', lastScore: 0.82 } });
+		await chip.getByText('voice 0.82').waitFor({ timeout: 5000 });
+		expect(await chip.getAttribute('title')).toContain('Nothing is filtered yet');
+
+		store.dispatch({ type: 'voice_gate', status: { phase: 'unavailable' } });
+		await chip.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
 	it('the setup session → no dev servers panel; a worktree session has one', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });

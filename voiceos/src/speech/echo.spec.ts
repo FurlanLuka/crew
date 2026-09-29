@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { ECHO_WINDOW_MS, isEcho } from './echo.js';
+import { ECHO_WINDOW_MS, isEcho, isSpeakingAt } from './echo.js';
 
 const NOW_MS = 100_000;
 
@@ -201,5 +201,22 @@ describe('isEcho', () => {
 			false,
 		);
 		expect(isEcho({ heard: 'open store front', spoken: [], now: NOW_MS })).toBe(false);
+	});
+});
+
+describe('isSpeakingAt', () => {
+	it('a line still playing → speaking', () => {
+		expect(isSpeakingAt([{ text: 'hi', endedAt: null }], 5000, 500)).toBe(true);
+	});
+
+	it('within the tail after a line ended → still speaking; past it → not', () => {
+		const lines = [{ text: 'hi', endedAt: 1000 }];
+
+		expect(isSpeakingAt(lines, 1300, 500)).toBe(true);
+		expect(isSpeakingAt(lines, 1800, 500)).toBe(false);
+	});
+
+	it('nothing said → not speaking', () => {
+		expect(isSpeakingAt([], 1000, 500)).toBe(false);
 	});
 });

@@ -259,6 +259,14 @@ export interface Setup {
 	missing: string[];
 }
 
+// The voice gate's dry run: getting its models, learning the developer's voice, then scoring what the
+// mic hears against it (nothing is silenced yet). lastScore: the latest delivered turn's.
+export type VoiceGateStatus =
+	| { phase: 'preparing'; isDownloading: boolean }
+	| { phase: 'learning'; seconds: number; of: number }
+	| { phase: 'scoring'; lastScore: number | null }
+	| { phase: 'unavailable' };
+
 export type DevServerState = 'running' | 'died' | 'not listening' | 'starting';
 
 export interface DevServer {
@@ -294,6 +302,7 @@ export interface State {
 	spoken: SpokenLine[];
 	limits: Limits;
 	setup: Setup;
+	voiceGate: VoiceGateStatus | null;
 	devServers: Record<string, DevServer[]>;
 	devStarting: string[];
 	devOffer: DevOffer | null;
@@ -431,6 +440,7 @@ export type Observation =
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }
 	| { type: 'transcript'; transcript: Transcript | null }
 	| { type: 'setup'; missing: string[] }
+	| { type: 'voice_gate'; status: VoiceGateStatus }
 	| { type: 'topics_restored'; topics: SavedTopics }
 	| { type: 'history_restored'; ref: string; items: StreamItem[] }
 	// isSettled: a start's watcher reached its verdict, or a routine look.

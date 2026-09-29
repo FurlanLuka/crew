@@ -131,6 +131,7 @@ export const createInitialState = (): State => ({
 	spoken: [],
 	limits: { fiveHour: null, sevenDay: null, resetsAt: null },
 	setup: { missing: [] },
+	voiceGate: null,
 	devServers: {},
 	devStarting: [],
 	devOffer: null,
@@ -802,6 +803,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'setup':
 			return withoutEffects({ ...state, setup: { missing: input.missing } });
+
+		case 'voice_gate':
+			return withoutEffects({ ...state, voiceGate: input.status });
 	}
 
 	// A browser tab left open across an upgrade runs older code than the server: it must reload, not guess.
