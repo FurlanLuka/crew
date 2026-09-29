@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { ClientStream } from './client-stream.js';
+import type { RingFrame } from './turns.js';
 import { captureLog, fakeVads, pcm, QUIET, DEVELOPER, OTHER } from './test-support.js';
 
 let clock: number;
@@ -227,5 +228,65 @@ describe('ClientStream', () => {
 
 		expect(await stream.after(() => stream.scores)).toEqual([]);
 		expect(readLog().some((line) => line.msg === 'score')).toBe(false);
+	});
+
+	it('speech with a long pause in it (a new press) → two segments, not one spanning the gap', async () => {
+		const segments: RingFrame[][] = [];
+		const vads = fakeVads();
+		const stream = new ClientStream({
+			client: 'c1',
+			createVad: vads.createVad,
+			now: () => clock,
+			isVoiceOsSpeaking: () => false,
+			onSegment: (frames) => segments.push(frames),
+		});
+
+		send(stream, DEVELOPER, 1_000);
+		clock += 5_000;
+		send(stream, DEVELOPER, 1_000);
+		send(stream, QUIET, 700);
+		await stream.after(() => undefined);
+
+		expect(segments).toHaveLength(2);
+		// Each in the stream's own clock, on its side of the gap.
+		expect((segments[1]?.[0]?.at ?? 0) - (segments[0]?.at(-1)?.at ?? 0)).toBeGreaterThan(4_000);
+	});
+
+	it('audio dropped for falling behind → the open segment ends before the gap', async () => {
+		let release = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let isHolding = false;
+		const segments: RingFrame[][] = [];
+		const stream = new ClientStream({
+			client: 'c1',
+			createVad: () => ({
+				prob: async (frame) => {
+					if (isHolding) {
+						await held;
+					}
+
+					return (frame.at(-1) ?? 0) > 0.2 ? 0.9 : 0;
+				},
+			}),
+			now: () => clock,
+			isVoiceOsSpeaking: () => false,
+			onSegment: (frames) => segments.push(frames),
+		});
+
+		send(stream, DEVELOPER, 1_000);
+		await stream.after(() => undefined);
+		isHolding = true;
+		send(stream, DEVELOPER, 8_000);
+		release();
+		await stream.after(() => undefined);
+
+		expect(segments.length).toBeGreaterThanOrEqual(1);
+		expect(
+			segments[0]?.every(
+				(frame, index, all) => index === 0 || frame.at - (all[index - 1]?.at ?? 0) < 1_000,
+			),
+		).toBe(true);
 	});
 });

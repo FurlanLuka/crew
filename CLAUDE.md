@@ -259,7 +259,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   The **voice gate** (`voiceos/src/voice-gate/`) is a dry run: it learns the developer's voice
   from delivered turns, keeps learning from confident ones (`adaptation.ts`; trained = last 10 turns
   ≥ 0.6, averaging 0.8), saves it to `~/.crew/voiceos/voiceprint.json` (the chip forgets it) and logs
-  `turn scored` lines, silencing nothing; its models and
+  `turn scored` lines, silencing nothing; `VOICEOS_RECORD_VOICE=1` (passed through by `crew voice`,
+  `LaunchSpec.RecordVoice`) keeps labelled speech segments in `~/.crew/voiceos/voice-recordings/` for
+  `scripts/voice-gate/eval-recordings.ts` to compare variants and speaker models on (candidates from
+  `export_candidates.py`, local only, each judged at its own EER threshold); its models and
   onnxruntime come as a sha-pinned pack from the `voice-gate-pack-*` release (GoReleaser ignores
   those tags), and only `models.ts` loads the native runtime.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until

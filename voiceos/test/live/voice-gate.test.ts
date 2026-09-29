@@ -1,21 +1,25 @@
 // The voice gate's real models, run from an unpacked pack: free, but needs the pack on disk.
 //   VOICEOS_VOICE_GATE_PACK_DIR=<pack dir> bun test test/live/voice-gate.test.ts
 // (dist/voice-gate/<os>-<arch> after scripts/voice-gate/build-packs.ts, or ~/.crew/voiceos/voice-gate/<id>)
+// The offline comparison's other models also need VOICEOS_VOICE_GATE_CANDIDATES=<dir> (what
+// scripts/voice-gate/export_candidates.py wrote); the pack still supplies the runtime.
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { configureLog } from '../../src/log.js';
 import { decodeWav } from '../../src/speech/wav.js';
 import { blend } from '../../src/voice-gate/adaptation.js';
 import { cosine } from '../../src/voice-gate/enrollment.js';
+import { evaluate, type Recording } from '../../src/voice-gate/evaluate.js';
 import { FRAME, SAMPLE_RATE } from '../../src/voice-gate/gate.js';
-import { loadModels } from '../../src/voice-gate/models.js';
+import { loadEmbedModel, loadModels } from '../../src/voice-gate/models.js';
 import { Resampler } from '../../src/voice-gate/resample.js';
 import references from '../../src/voice-gate/testdata/references.json';
 import { VoiceGate } from '../../src/voice-gate/voice-gate.js';
 import type { VoiceGateStatus } from '../../src/shared/protocol.js';
 
 const packDir = process.env.VOICEOS_VOICE_GATE_PACK_DIR;
+const candidatesDir = process.env.VOICEOS_VOICE_GATE_CANDIDATES;
 const FIXTURES = join(import.meta.dir, '..', '..', 'evals', 'audio', 'fixtures');
 
 // The audio evals' Soniox TTS clips: three of one voice, the rest of others.
@@ -200,4 +204,115 @@ describe.skipIf(!packDir)('voice gate models (live)', () => {
 		expect(developer?.phase === 'scoring' && (developer.lastScore ?? 0) >= 0.4).toBe(true);
 		expect(other?.phase === 'scoring' && (other.lastScore ?? 1) < 0.4).toBe(true);
 	}, 60_000);
+
+	it('the offline comparison on recordings made from the fixtures → a result per variant, the voice told apart', async () => {
+		const { createVad, embed } = await models;
+
+		const toRecording = async (
+			name: string,
+			label: 'turn' | 'other',
+			at: number,
+		): Promise<Recording> => {
+			const audio = toFloat(readPcm(name));
+			const vad = createVad();
+			const frames: Float32Array[] = [];
+			const probs: number[] = [];
+
+			for (let offset = 0; offset + FRAME <= audio.length; offset += FRAME) {
+				const frame = audio.slice(offset, offset + FRAME);
+
+				frames.push(frame);
+				probs.push(await vad.prob(frame));
+			}
+
+			return {
+				name,
+				label,
+				at,
+				frames,
+				probs,
+				voiceOsSpeaking: frames.map(() => false),
+				turnCoverage: label === 'turn' ? 1 : 0,
+				source: label === 'turn' ? 'push' : null,
+			};
+		};
+
+		const recordings = await Promise.all([
+			...[...SAME_VOICE, ...SAME_VOICE].map((name, index) => toRecording(name, 'turn', index)),
+			...OTHER_VOICES.map((name, index) => toRecording(name, 'other', 100 + index)),
+		]);
+		const results = await evaluate(recordings, embed);
+
+		for (const result of results) {
+			console.info(
+				result.variant.padEnd(20),
+				'you median',
+				result.you.median?.toFixed(2),
+				'others median',
+				result.others.median?.toFixed(2),
+				'EER',
+				result.eer?.rate.toFixed(2),
+			);
+		}
+
+		expect(results).toHaveLength(6);
+		expect(results.every((result) => result.others.count === OTHER_VOICES.length)).toBe(true);
+		expect(results[0]?.you.median ?? 0).toBeGreaterThan(results[0]?.others.median ?? 1);
+	}, 120_000);
+
+	it('a graph without the wav → embedding contract → refused, naming what it has', async () => {
+		await expect(
+			loadEmbedModel(packDir as string, join(packDir as string, 'silero_vad.onnx')),
+		).rejects.toThrow('not wav → embedding');
+	});
+});
+
+describe.skipIf(!packDir || !candidatesDir)('candidate speaker models (live)', () => {
+	const names = candidatesDir
+		? readdirSync(candidatesDir)
+				.filter((name) => name.endsWith('.onnx'))
+				.map((name) => name.slice(0, -'.onnx'.length))
+		: [];
+
+	it('some were exported', () => {
+		expect(names.length).toBeGreaterThan(0);
+	});
+
+	for (const name of names) {
+		const load = () =>
+			loadEmbedModel(packDir as string, join(candidatesDir as string, `${name}.onnx`));
+
+		it(`${name} in Bun → the embedding Python gave for the same clip, unit length`, async () => {
+			const embed = await load();
+			const reference = JSON.parse(
+				readFileSync(join(candidatesDir as string, `${name}.reference.json`), 'utf8'),
+			) as { clip: string; embedding: number[] };
+			const got = await embed(toFloat(readPcm(reference.clip.replace('.clean.wav', ''))));
+			const norm = Math.hypot(...got);
+
+			expect(norm).toBeCloseTo(1, 4);
+			expect(cosine(got, Float32Array.from(reference.embedding))).toBeGreaterThan(0.999);
+		});
+
+		it(`${name}: the same voice → scores above every other voice`, async () => {
+			const embed = await load();
+			const [first, second, held] = SAME_VOICE.map((clip) => toFloat(readPcm(clip)));
+			const voiceprint = await embed(
+				Float32Array.from([...(first as Float32Array), ...(second as Float32Array)]),
+			);
+			const same = cosine(await embed(held as Float32Array), voiceprint);
+			const others = await Promise.all(
+				OTHER_VOICES.map(async (clip) => cosine(await embed(toFloat(readPcm(clip))), voiceprint)),
+			);
+
+			console.info(
+				name,
+				'same voice',
+				same.toFixed(3),
+				'others',
+				others.map((s) => s.toFixed(3)).join(' '),
+			);
+			expect(same).toBeGreaterThan(Math.max(...others));
+		});
+	}
 });

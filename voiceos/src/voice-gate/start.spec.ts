@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { VoiceGateStatus } from '../shared/protocol.js';
@@ -171,6 +179,7 @@ describe('startVoiceGate', () => {
 		expect(await settled()).toEqual({
 			phase: 'scoring',
 			lastScore: null,
+			turnScore: null,
 			average: 0.85,
 			isTrained: false,
 		});
@@ -266,4 +275,96 @@ describe('startVoiceGate', () => {
 		expect(await settled()).toMatchObject({ phase: 'scoring' });
 		second.stop();
 	});
+
+	it('recording not asked for → no folder made, nothing recorded', async () => {
+		const recordingsDir = join(root, 'voiceos', 'voice-recordings');
+		const handle = start({
+			env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' },
+			recordingsDir,
+			isRecording: false,
+		});
+
+		await settled();
+
+		for (let chunk = 0; chunk < 20; chunk++) {
+			handle.observe('c1', pcm(DEVELOPER, 100), 16_000);
+		}
+
+		expect(existsSync(recordingsDir)).toBe(false);
+		handle.stop();
+	});
+
+	it('recording asked for → the folder made and said, with what is already in it', async () => {
+		const recordingsDir = join(root, 'voiceos', 'voice-recordings');
+		const handle = start({
+			env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' },
+			recordingsDir,
+			isRecording: true,
+		});
+
+		await settled();
+
+		expect(existsSync(recordingsDir)).toBe(true);
+		expect(readLog().find((line) => line.msg === 'recording voice')).toMatchObject({ files: 0 });
+		handle.stop();
+	});
+
+	it('recording off but recordings left from before → said at start, so they are not forgotten', async () => {
+		const recordingsDir = join(root, 'voiceos', 'voice-recordings');
+
+		mkdirSync(recordingsDir, { recursive: true });
+		writeFileSync(join(recordingsDir, 'old.wav'), 'x');
+
+		const handle = start({
+			env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' },
+			recordingsDir,
+			isRecording: false,
+		});
+
+		await settled();
+
+		expect(readLog().find((line) => line.msg === 'voice recordings kept')).toMatchObject({
+			files: 1,
+		});
+		handle.stop();
+	});
+
+	it('recording on, speech and a turn → a labelled recording on disk once the wait is over', async () => {
+		let clock = 1_000_000;
+		const recordingsDir = join(root, 'voiceos', 'voice-recordings');
+		const handle = start({
+			env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' },
+			recordingsDir,
+			isRecording: true,
+			recordingWaitMs: 50,
+			now: () => clock,
+		});
+
+		await settled();
+
+		const from = clock;
+
+		for (let chunk = 0; chunk < 26; chunk++) {
+			handle.observe('c1', pcm(chunk < 20 ? DEVELOPER : 0.01, 100), 16_000);
+			clock += 100;
+		}
+
+		handle.turnDelivered('c1', { from, to: clock, source: 'push', text: 'run the tests' });
+		clock += 1_000;
+
+		for (
+			let tries = 0;
+			tries < 200 && !readdirSync(recordingsDir).some((name) => name.endsWith('.json'));
+			tries++
+		) {
+			// The recorder's own clock moves on while it waits for a turn to claim the segment.
+			clock += 100;
+			await Bun.sleep(50);
+		}
+
+		const [name] = readdirSync(recordingsDir).filter((file) => file.endsWith('.json'));
+
+		expect(name).toContain('-turn');
+		handle.stop();
+	}, 30_000);
 });

@@ -33,6 +33,17 @@ func TestRemoteCommand(t *testing.T) {
 	}
 }
 
+func TestCommandRecordsVoiceOnlyWhenAsked(t *testing.T) {
+	without := Command(LaunchSpec{Binary: "/b", CrewBin: "/c", Home: "/h", Port: 1})
+	with := Command(LaunchSpec{Binary: "/b", CrewBin: "/c", Home: "/h", Port: 1, RecordVoice: true})
+	if want := "HOME='/h' CREW_BIN='/c' PORT=1 VOICEOS_PROXY_HOST='' VOICEOS_PROXY_PORT=0 VOICEOS_RECORD_STATE=1 '/b'"; without != want {
+		t.Errorf("without:\n got %q\nwant %q", without, want)
+	}
+	if want := "HOME='/h' CREW_BIN='/c' PORT=1 VOICEOS_PROXY_HOST='' VOICEOS_PROXY_PORT=0 VOICEOS_RECORD_VOICE=1 VOICEOS_RECORD_STATE=1 '/b'"; with != want {
+		t.Errorf("with:\n got %q\nwant %q", with, want)
+	}
+}
+
 func TestCommandPassesTheSSHAgent(t *testing.T) {
 	got := Command(LaunchSpec{Binary: "/b", CrewBin: "/c", Home: "/h", Port: 1, SSHAuthSock: "/tmp/agent.sock"})
 	want := "HOME='/h' CREW_BIN='/c' PORT=1 VOICEOS_PROXY_HOST='' VOICEOS_PROXY_PORT=0 SSH_AUTH_SOCK='/tmp/agent.sock' VOICEOS_RECORD_STATE=1 '/b'"

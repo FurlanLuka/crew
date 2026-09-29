@@ -266,7 +266,15 @@ export interface Setup {
 export type VoiceGateStatus =
 	| { phase: 'preparing'; isDownloading: boolean }
 	| { phase: 'learning'; seconds: number; of: number }
-	| { phase: 'scoring'; lastScore: number | null; average: number | null; isTrained: boolean }
+	| {
+			phase: 'scoring';
+			lastScore: number | null;
+			// The last turn, when it was long enough to score whole (3 s of speech): steadier than a
+			// window, so the chip shows it.
+			turnScore: number | null;
+			average: number | null;
+			isTrained: boolean;
+	  }
 	| { phase: 'unavailable' };
 
 export type DevServerState = 'running' | 'died' | 'not listening' | 'starting';

@@ -227,6 +227,8 @@ that is driven, never both.
   mic reads `voice 12/30 s`, then `voice 0.64 · learning` until it is trained, then just your score;
   click it to forget your voice and start over. For now this only measures how well your voice can be
   told from others, and nothing is filtered. The models (about 90 MB) download on the first start.
+  `VOICEOS_RECORD_VOICE=1 crew voice restart` keeps what the mic hears, locally, to compare other
+  settings and models on your voice (voiceos README).
 
 ## Keys and cost
 

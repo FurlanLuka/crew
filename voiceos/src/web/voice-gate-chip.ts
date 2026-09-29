@@ -12,9 +12,20 @@ const formatScore = (score: number): string => score.toFixed(2);
 
 type ScoringStatus = Extract<VoiceGateStatus, { phase: 'scoring' }>;
 
-const describeScoring = ({ lastScore, average, isTrained }: ScoringStatus): VoiceGateChip => {
+const describeScoring = ({
+	lastScore,
+	turnScore,
+	average,
+	isTrained,
+}: ScoringStatus): VoiceGateChip => {
+	// The whole turn when it was long enough to score whole (3 s of speech): a short window is noisy.
+	const shown = turnScore ?? lastScore;
 	// No turn scored yet in this run (just locked in, or resumed after a restart).
-	const score = lastScore === null ? '' : ` ${formatScore(lastScore)}`;
+	const score = shown === null ? '' : ` ${formatScore(shown)}`;
+	const which =
+		turnScore !== null
+			? 'Your last turn as a whole against your voice (1 is you).'
+			: 'Your last words against your voice (1 is you).';
 	const recent = average === null ? '' : ` Your recent turns average ${formatScore(average)}.`;
 	const progress = isTrained
 		? 'Trained: it keeps learning, slowly.'
@@ -22,7 +33,7 @@ const describeScoring = ({ lastScore, average, isTrained }: ScoringStatus): Voic
 
 	return {
 		label: isTrained ? `voice${score || ' learned'}` : `voice${score} · learning`,
-		title: `Your last turn against your voice (1 is you).${recent} ${progress} Nothing is filtered yet. Click to forget your voice.`,
+		title: `${which}${recent} ${progress} Nothing is filtered yet. Click to forget your voice.`,
 		canForget: true,
 	};
 };

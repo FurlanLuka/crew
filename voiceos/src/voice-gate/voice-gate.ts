@@ -12,16 +12,15 @@ import type { ListenMode, VoiceGateStatus } from '../shared/protocol.js';
 import { ClientStream } from './client-stream.js';
 import { adaptVoice, isTrained, type LearnedVoice, rollingAverage } from './adaptation.js';
 import { CHUNK_SECONDS, chunkSpeech, cosine, decideLockIn, LOCK_IN_RULE } from './enrollment.js';
-import { SAMPLE_RATE } from './gate.js';
+import { DEFAULT_GATE_CONFIG, SAMPLE_RATE } from './gate.js';
 import type { Embed, Vad } from './models.js';
-import { scoreTurn, speechInSpan } from './turns.js';
+import type { MarkedTurn, SegmentToRecord } from './recorder.js';
+import { type RingFrame, scoreTurn, speechInSpan, TURN_PAD_MS } from './turns.js';
 
 const log = createLogger('voice-gate');
 
-const SPEECH_ON = 0.5;
+const SPEECH_ON = DEFAULT_GATE_CONFIG.speechOn;
 const LEARN_SECONDS = LOCK_IN_RULE.minChunks * CHUNK_SECONDS;
-// The first transcript reaches a listened turn about half a second after the words began.
-const TURN_PAD_MS = 1_000;
 // A long turn is judged by its latest words: each chunk is one embed on the event loop.
 const MAX_TURN_CHUNKS = 5;
 
@@ -30,6 +29,14 @@ export interface HeardTurn {
 	from: number;
 	to: number;
 	source: ListenMode;
+	// What speech-to-text heard: kept only in the recordings, never logged.
+	text?: string;
+}
+
+// The recordings (recorder.ts), when VOICEOS_RECORD_VOICE is on.
+export interface VoiceRecorder {
+	add: (segment: SegmentToRecord) => void;
+	markTurn: (turn: MarkedTurn) => void;
 }
 
 export type { LearnedVoice } from './adaptation.js';
@@ -48,6 +55,9 @@ export interface VoiceGateParams {
 	store: VoiceStore;
 	// A voice saved by an earlier run: scoring starts at once.
 	initial?: LearnedVoice | null;
+	recorder?: VoiceRecorder;
+	// Forget my voice: every recording deleted, recording on or not.
+	forgetRecordings?: () => void;
 }
 
 const round = (value: number): number => Math.round(value * 1000) / 1000;
@@ -61,6 +71,9 @@ export class VoiceGate {
 	private learning: Promise<void> = Promise.resolve();
 	private status: VoiceGateStatus | null = null;
 	private lastScore: number | null = null;
+	// The last turn's score, when it was long enough to score whole (3 s of speech): what the chip
+	// shows, steadier than a window.
+	private turnScore: number | null = null;
 	private skippedSince = 0;
 	// Bumped by forgetVoice: a turn begun before it finds the number changed and leaves everything be.
 	private generation = 0;
@@ -79,9 +92,28 @@ export class VoiceGate {
 	turnDelivered(client: string, turn: HeardTurn): Promise<void> {
 		const stream = this.streams.get(client);
 
+		// Marked now, not behind the learning chain: a segment waiting to be labelled may be saved first.
+		this.params.recorder?.markTurn({
+			client,
+			from: turn.from,
+			to: turn.to,
+			source: turn.source,
+			text: turn.text ?? '',
+		});
+
 		// Typed words, or a tab whose audio never reached the gate.
 		if (!stream) {
 			return Promise.resolve();
+		}
+
+		if (turn.source === 'push') {
+			// No quiet follows a released key, so its recording would stay open until the next press:
+			// it ends with the turn (unless that next press already began).
+			void stream.after(() => {
+				if ((stream.ring.at(-1)?.at ?? 0) <= turn.to) {
+					stream.endSegment();
+				}
+			});
 		}
 
 		const generation = this.generation;
@@ -114,10 +146,18 @@ export class VoiceGate {
 		this.embeddings = [];
 		this.rest = new Float32Array(0);
 		this.lastScore = null;
+		this.turnScore = null;
 		this.skippedSince = 0;
 
 		for (const stream of this.streams.values()) {
 			stream.stopScoring();
+		}
+
+		// Recordings made while recording was on go too, whether or not it is on now.
+		try {
+			this.params.forgetRecordings?.();
+		} catch (error) {
+			log.warn('recordings not deleted', { error: String(error) });
 		}
 
 		try {
@@ -139,6 +179,7 @@ export class VoiceGate {
 				createVad: this.params.createVad,
 				now: this.params.now,
 				isVoiceOsSpeaking: this.params.isVoiceOsSpeaking,
+				onSegment: this.params.recorder ? (frames) => this.record(client, frames) : undefined,
 			});
 
 			if (this.voice) {
@@ -159,6 +200,7 @@ export class VoiceGate {
 		return {
 			phase: 'scoring',
 			lastScore: this.lastScore,
+			turnScore: this.turnScore,
 			average: this.average,
 			isTrained: isTrained(this.voice?.recentScores ?? []),
 		};
@@ -287,6 +329,9 @@ export class VoiceGate {
 			verdict: scored.verdict,
 		});
 
+		// A turn too short to score whole leaves no turn score: the chip must not keep an older one.
+		this.turnScore = null;
+
 		if (lastScore !== undefined) {
 			this.lastScore = round(lastScore);
 			// Shown now: learning from the turn takes several embeds, and may fail.
@@ -333,6 +378,8 @@ export class VoiceGate {
 			source: turn.source,
 		});
 		const { decision, scores, isDeveloper } = adapted;
+
+		this.turnScore = round(scores.turnScore);
 		const fields = {
 			client: stream.client,
 			source: turn.source,
@@ -361,6 +408,19 @@ export class VoiceGate {
 		if (isDeveloper) {
 			this.save();
 		}
+	}
+
+	private record(client: string, frames: RingFrame[]): void {
+		const stream = this.streams.get(client);
+
+		this.params.recorder?.add({
+			client,
+			sampleRate: stream?.sampleRate ?? 0,
+			frames,
+			// The stream's own list: rechecks after the segment closed still land in it before it is saved.
+			scores: stream?.scores ?? [],
+			voiceprintTurns: this.voice?.turns ?? null,
+		});
 	}
 
 	// A write that fails leaves the learning in memory: this run goes on, the next starts from the last save.

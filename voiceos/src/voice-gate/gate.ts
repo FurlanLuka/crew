@@ -29,6 +29,9 @@ export interface GateConfig {
 	recheckFrames: number;
 	// ~1.5 s of recent speech is what gets scored.
 	windowFrames: number;
+	// A flip needs the median of this many latest scores past the threshold, so one odd window cannot
+	// cut a sentence. 1: the latest score alone.
+	flipMedianOf: number;
 }
 
 export const DEFAULT_GATE_CONFIG: GateConfig = {
@@ -42,6 +45,7 @@ export const DEFAULT_GATE_CONFIG: GateConfig = {
 	minFrames: 12,
 	recheckFrames: 31,
 	windowFrames: 47,
+	flipMedianOf: 1,
 };
 
 // An utterance's opening decision, or a flip after a re-check.
@@ -63,6 +67,15 @@ export interface GateScore {
 export type Scorer = (audio: Float32Array) => Promise<number>;
 
 const silence = (frame: Float32Array): Float32Array => new Float32Array(frame.length);
+
+// With an even count the middle value on the staying side is taken: two windows, one of them odd,
+// never flip the verdict on their own.
+const medianFor = (values: number[], isAccepted: boolean | null): number => {
+	const sorted = [...values].sort((left, right) => left - right);
+	const middle = (sorted.length - 1) / 2;
+
+	return sorted[isAccepted ? Math.ceil(middle) : Math.floor(middle)] ?? 0;
+};
 
 const concat = (frames: Float32Array[]): Float32Array => {
 	const joined = new Float32Array(frames.reduce((sum, frame) => sum + frame.length, 0));
@@ -89,6 +102,8 @@ export class Gate {
 	private quiet = 0;
 	private sinceCheck = 0;
 	private pushed = 0;
+	// This utterance's scores, for flipMedianOf.
+	private utteranceScores: number[] = [];
 
 	constructor(
 		private score: Scorer,
@@ -136,6 +151,7 @@ export class Gate {
 		}
 
 		this.inSpeech = true;
+		this.utteranceScores = [];
 		this.accepted = null;
 		this.voiced = 1;
 		this.quiet = 0;
@@ -195,6 +211,7 @@ export class Gate {
 	private async decide(): Promise<Float32Array[]> {
 		const score = await this.score(concat(this.window));
 
+		this.utteranceScores.push(score);
 		this.accepted = score >= this.config.threshold;
 		this.verdicts.push({ accepted: this.accepted, score, isFirst: true });
 		this.scores.push({ score, kind: 'first', accepted: this.accepted, frame: this.pushed });
@@ -223,9 +240,13 @@ export class Gate {
 
 		const score = await this.score(concat(this.window));
 		const { threshold, hysteresis } = this.config;
+
+		this.utteranceScores.push(score);
+
+		const judged = medianFor(this.utteranceScores.slice(-this.config.flipMedianOf), this.accepted);
 		const isFlipped = this.accepted
-			? score < threshold - hysteresis
-			: score >= threshold + hysteresis;
+			? judged < threshold - hysteresis
+			: judged >= threshold + hysteresis;
 
 		if (isFlipped) {
 			this.accepted = !this.accepted;

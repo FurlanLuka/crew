@@ -144,6 +144,9 @@ type LaunchSpec struct {
 	// SSHAuthSock is the caller's ssh-agent: other machines are reached over
 	// SSH with no prompt, and the tmux server may have none or a stale one.
 	SSHAuthSock string
+	// RecordVoice: the caller set VOICEOS_RECORD_VOICE=1, and Voice OS keeps its
+	// voice gate's recordings for testing other models on them.
+	RecordVoice bool
 }
 
 // Command is the line the tmux session runs. HOME is explicit because the
@@ -166,6 +169,9 @@ func Command(spec LaunchSpec) string {
 	}
 	if spec.SSHAuthSock != "" {
 		parts = append(parts, "SSH_AUTH_SOCK="+crewExec.ShellQuote(spec.SSHAuthSock))
+	}
+	if spec.RecordVoice {
+		parts = append(parts, "VOICEOS_RECORD_VOICE=1")
 	}
 	parts = append(parts, "VOICEOS_RECORD_STATE=1", crewExec.ShellQuote(spec.Binary))
 	return strings.Join(parts, " ")
@@ -288,7 +294,7 @@ func Start() (Status, error) {
 	if err != nil {
 		crewBin = "crew"
 	}
-	cmd := Command(LaunchSpec{Binary: binary, CrewBin: crewBin, Home: home, Port: port, ProxyHost: ProxyHost(domain), ProxyPort: proxyPort, ProxyHTTPSPort: httpsPort, ClaudeBin: ClaudeBin(), SSHAuthSock: os.Getenv("SSH_AUTH_SOCK")})
+	cmd := Command(LaunchSpec{Binary: binary, CrewBin: crewBin, Home: home, Port: port, ProxyHost: ProxyHost(domain), ProxyPort: proxyPort, ProxyHTTPSPort: httpsPort, ClaudeBin: ClaudeBin(), SSHAuthSock: os.Getenv("SSH_AUTH_SOCK"), RecordVoice: os.Getenv("VOICEOS_RECORD_VOICE") == "1"})
 	debug.Log("voice", "start → %s", cmd)
 	if err := crewExec.TmuxRunInSession(SessionName, "voiceos", home, cmd); err != nil {
 		return Status{}, fmt.Errorf("failed to start the Voice OS session: %w", err)

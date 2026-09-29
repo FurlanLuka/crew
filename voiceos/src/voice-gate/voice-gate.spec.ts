@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import type { VoiceGateStatus } from '../shared/protocol.js';
 import type { Embed } from './models.js';
+import type { MarkedTurn, SegmentToRecord } from './recorder.js';
 import {
 	captureLog,
 	DEVELOPER,
@@ -14,7 +15,13 @@ import {
 	TALKING,
 	WEAK,
 } from './test-support.js';
-import { type HeardTurn, type LearnedVoice, VoiceGate, type VoiceStore } from './voice-gate.js';
+import {
+	type HeardTurn,
+	type LearnedVoice,
+	VoiceGate,
+	type VoiceRecorder,
+	type VoiceStore,
+} from './voice-gate.js';
 
 let clock: number;
 let statuses: VoiceGateStatus[];
@@ -26,6 +33,8 @@ interface CreateGateParams {
 	embed?: Embed;
 	vads?: ReturnType<typeof fakeVads>;
 	isVoiceOsSpeaking?: () => boolean;
+	recorder?: VoiceRecorder;
+	forgetRecordings?: () => void;
 }
 
 const createGate = (params: CreateGateParams = {}) =>
@@ -37,6 +46,8 @@ const createGate = (params: CreateGateParams = {}) =>
 		setStatus: (status) => statuses.push(status),
 		now: () => clock,
 		isVoiceOsSpeaking: params.isVoiceOsSpeaking ?? (() => false),
+		recorder: params.recorder,
+		forgetRecordings: params.forgetRecordings,
 	});
 
 // A push-to-talk turn: level for ms in 100 ms chunks, then some quiet before the key is released;
@@ -437,7 +448,7 @@ describe('VoiceGate: learning after lock-in', () => {
 		});
 
 		expect(statuses).toEqual([
-			{ phase: 'scoring', lastScore: null, average: 0.82, isTrained: true },
+			{ phase: 'scoring', lastScore: null, turnScore: null, average: 0.82, isTrained: true },
 		]);
 
 		// Trained already: the first turn is folded in slowly.
@@ -534,6 +545,7 @@ describe('VoiceGate: forgetting the voice', () => {
 		const isEmbedding = new Promise<void>((resolve) => {
 			entered = resolve;
 		});
+
 		const embed: Embed = async (audio) => {
 			// Only 3 s chunks (learning, adapting) wait; the gate's 1.5 s windows go through.
 			if (isHolding && audio.length === 48_000) {
@@ -595,5 +607,129 @@ describe('VoiceGate: forgetting the voice', () => {
 		// Learning really starts over: one more turn is 4 s, not 32.
 		await gate.turnDelivered('c1', say(gate, 'c1', DEVELOPER, 4_000));
 		expect(statuses.at(-1)).toEqual({ phase: 'learning', seconds: 4, of: 30 });
+	});
+});
+
+describe('VoiceGate: recording', () => {
+	const fakeRecorder = () => {
+		const segments: SegmentToRecord[] = [];
+		const turns: MarkedTurn[] = [];
+		let deletes = 0;
+
+		return {
+			segments,
+			turns,
+			deletes: () => deletes,
+			recorder: {
+				add: (segment: SegmentToRecord) => segments.push(segment),
+				markTurn: (turn: MarkedTurn) => turns.push(turn),
+			},
+			forgetRecordings: () => {
+				deletes += 1;
+			},
+		};
+	};
+
+	it('speech → segments handed over, before any voice is learned too', async () => {
+		const recording = fakeRecorder();
+		const gate = createGate({ recorder: recording.recorder });
+
+		await gate.turnDelivered('c1', say(gate, 'c1', DEVELOPER, 2_000));
+
+		expect(recording.segments).toHaveLength(1);
+		expect(recording.segments[0]).toMatchObject({ client: 'c1', voiceprintTurns: null });
+		expect(recording.segments[0]?.scores).toEqual([]);
+	});
+
+	it('a press released with no quiet after it → its segment handed over with the turn, not at the next press', async () => {
+		const recording = fakeRecorder();
+		const gate = createGate({ recorder: recording.recorder });
+		const turn = say(gate, 'c1', DEVELOPER, 2_000, 0);
+
+		await gate.turnDelivered('c1', turn);
+
+		expect(recording.segments).toHaveLength(1);
+
+		const frames = recording.segments[0]?.frames ?? [];
+
+		// On the turn's own clock: the segment and the turn overlap.
+		expect(frames[0]?.at ?? 0).toBeLessThanOrEqual(turn.to);
+		expect(frames.at(-1)?.at ?? 0).toBeGreaterThanOrEqual(turn.from);
+	});
+
+	it('a turn → marked at once, with its text, even while the learning chain is busy', async () => {
+		let release = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const recording = fakeRecorder();
+		const gate = createGate({
+			recorder: recording.recorder,
+			embed: async (audio) => {
+				await held;
+
+				return fakeEmbed(audio);
+			},
+		});
+		const busy = gate.turnDelivered('c1', say(gate, 'c1', DEVELOPER, 3_500));
+
+		gate.turnDelivered('c1', { ...say(gate, 'c1', DEVELOPER, 1_000), text: 'run the tests' });
+
+		expect(recording.turns.map((turn) => turn.text)).toEqual(['', 'run the tests']);
+		release();
+		await busy;
+	});
+
+	it('forget my voice → the recordings deleted too', async () => {
+		const recording = fakeRecorder();
+		const gate = createGate({
+			recorder: recording.recorder,
+			forgetRecordings: recording.forgetRecordings,
+		});
+
+		await learnVoice(gate);
+		gate.forgetVoice();
+
+		expect(recording.deletes()).toBe(1);
+	});
+
+	it('a learned-from turn → its whole-turn score in the status for the chip', async () => {
+		const gate = createGate({ embed: gradedEmbed });
+
+		await learnVoice(gate);
+		await gate.turnDelivered('c1', say(gate, 'c1', TALKING, 4_000));
+
+		expect(statuses.at(-1)).toMatchObject({ phase: 'scoring', turnScore: 0.64 });
+	});
+
+	it('deleting the recordings fails → logged; the voice is still forgotten and scoring stops', async () => {
+		const gate = createGate({
+			embed: gradedEmbed,
+			forgetRecordings: () => {
+				throw new Error('EACCES');
+			},
+		});
+
+		await learnVoice(gate);
+
+		const scoresBefore = lines('score').length;
+
+		gate.forgetVoice();
+		await gate.turnDelivered('c1', say(gate, 'c1', DEVELOPER, 2_000));
+
+		expect(lines('recordings not deleted')).toHaveLength(1);
+		expect(lines('score')).toHaveLength(scoresBefore);
+		expect(statuses.at(-1)).toMatchObject({ phase: 'learning' });
+	});
+
+	it('a long turn, then a short one → the chip drops the older whole-turn score', async () => {
+		const gate = createGate({ embed: gradedEmbed });
+
+		await learnVoice(gate);
+		await gate.turnDelivered('c1', say(gate, 'c1', TALKING, 4_000));
+		await gate.turnDelivered('c1', say(gate, 'c1', TALKING, 1_200));
+
+		expect(statuses.at(-1)).toMatchObject({ phase: 'scoring', turnScore: null });
+		expect((statuses.at(-1) as { lastScore: number }).lastScore).not.toBeNull();
 	});
 });
