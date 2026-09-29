@@ -6,7 +6,7 @@ import {
 	type State,
 } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
-import { describeVoiceGate } from '../voice-gate-chip.js';
+import { describeVoiceGate, FORGET_VOICE_CONFIRM } from '../voice-gate-chip.js';
 import { Mic, isMicAllowed } from '../audio.js';
 import { PRE_ROLL_MS } from '../ptt.js';
 import { describeListening } from '../listen-mode.js';
@@ -252,7 +252,21 @@ export const BottomBar = ({
 					aria-label="Say or type a command"
 				/>
 			</form>
-			{voiceGate && (
+			{voiceGate?.canForget && (
+				<button
+					type="button"
+					className="route voice-gate"
+					title={voiceGate.title}
+					onClick={() => {
+						if (window.confirm(FORGET_VOICE_CONFIRM)) {
+							send({ type: 'forget_voice' });
+						}
+					}}
+				>
+					{voiceGate.label}
+				</button>
+			)}
+			{voiceGate && !voiceGate.canForget && (
 				<span className="route voice-gate" title={voiceGate.title}>
 					{voiceGate.label}
 				</span>

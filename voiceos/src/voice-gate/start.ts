@@ -4,9 +4,11 @@
 
 import { createLogger } from '../log.js';
 import type { VoiceGateStatus } from '../shared/protocol.js';
+import { isTrained, rollingAverage } from './adaptation.js';
 import type { Embed, Models } from './models.js';
 import { ensurePack, PACK_MANIFEST, packFor } from './pack.js';
-import { type HeardTurn, VoiceGate } from './voice-gate.js';
+import { type HeardTurn, type LearnedVoice, VoiceGate, type VoiceStore } from './voice-gate.js';
+import { deleteVoiceprint, loadVoiceprint, saveVoiceprint } from './voiceprint-store.js';
 
 const log = createLogger('voice-gate');
 
@@ -18,12 +20,15 @@ export interface VoiceGateHandle {
 	// turn: null for words that were not heard (typed, simulated).
 	turnDelivered: (client: string, turn: HeardTurn | null) => void;
 	forget: (client: string) => void;
+	forgetVoice: () => void;
 	stop: () => void;
 }
 
 export interface StartVoiceGateParams {
 	// Where packs are kept (~/.crew/voiceos/voice-gate).
 	root: string;
+	// The learned voice (~/.crew/voiceos/voiceprint.json).
+	voiceprintFile: string;
 	env: Record<string, string | undefined>;
 	setStatus: (status: VoiceGateStatus) => void;
 	now: () => number;
@@ -124,6 +129,39 @@ const findPackDir = async (params: StartVoiceGateParams): Promise<string | null>
 	return pack.dir;
 };
 
+// With VOICEOS_VOICE_GATE_PACK_DIR the pack there is taken to hold the manifest's models.
+const createVoiceStore = (file: string): VoiceStore => ({
+	save: (voice) =>
+		saveVoiceprint(file, {
+			...voice,
+			packId: PACK_MANIFEST.id,
+			updatedAt: new Date().toISOString(),
+		}),
+	delete: () => deleteVoiceprint(file),
+});
+
+const loadVoice = (file: string): LearnedVoice | null => {
+	const loaded = loadVoiceprint(file, PACK_MANIFEST.id);
+
+	switch (loaded.kind) {
+		case 'none':
+			return null;
+		case 'ignored':
+			// Left on disk until a new voice is learned and saved over it.
+			log.warn('voiceprint ignored', { reason: loaded.reason });
+
+			return null;
+		case 'found':
+			log.info('voiceprint loaded', {
+				turns: loaded.record.turns,
+				average: rollingAverage(loaded.record.recentScores),
+				isTrained: isTrained(loaded.record.recentScores),
+			});
+
+			return loaded.record;
+	}
+};
+
 export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle => {
 	let gate: VoiceGate | null = null;
 	let stopHealth: (() => void) | null = null;
@@ -156,6 +194,8 @@ export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle =>
 					setStatus: params.setStatus,
 					now: params.now,
 					isVoiceOsSpeaking: params.isVoiceOsSpeaking,
+					store: createVoiceStore(params.voiceprintFile),
+					initial: loadVoice(params.voiceprintFile),
 				});
 			} catch (error) {
 				log.warn('unavailable', { error: String(error) });
@@ -176,6 +216,7 @@ export const startVoiceGate = (params: StartVoiceGateParams): VoiceGateHandle =>
 			});
 		},
 		forget: (client) => gate?.forget(client),
+		forgetVoice: () => gate?.forgetVoice(),
 		stop: () => stopHealth?.(),
 	};
 };

@@ -288,6 +288,7 @@ describe('parseClientMessage', () => {
 		{ type: 'listen_start', sampleRate: 48000 },
 		{ type: 'listen_stop' },
 		{ type: 'audio_done', id: 's1' },
+		{ type: 'forget_voice' },
 	];
 
 	it.each(messages.map((message) => [JSON.stringify(message), message] as const))(

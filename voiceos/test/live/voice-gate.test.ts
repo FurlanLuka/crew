@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { configureLog } from '../../src/log.js';
 import { decodeWav } from '../../src/speech/wav.js';
+import { blend } from '../../src/voice-gate/adaptation.js';
 import { cosine } from '../../src/voice-gate/enrollment.js';
 import { FRAME, SAMPLE_RATE } from '../../src/voice-gate/gate.js';
 import { loadModels } from '../../src/voice-gate/models.js';
@@ -99,6 +100,29 @@ describe.skipIf(!packDir)('voice gate models (live)', () => {
 		expect(same).toBeGreaterThan(Math.max(...others));
 	});
 
+	it('learning from one more clip of the voice → the gap to other voices widens', async () => {
+		const { embed } = await models;
+		const [enrolledClip, learnedClip, heldOutClip] = await Promise.all(
+			SAME_VOICE.map(async (name) => embed(toFloat(readPcm(name)))),
+		);
+		const others = await Promise.all(
+			OTHER_VOICES.map(async (name) => embed(toFloat(readPcm(name)))),
+		);
+		const gap = (voiceprint: Float32Array) =>
+			cosine(heldOutClip as Float32Array, voiceprint) -
+			Math.max(...others.map((other) => cosine(other, voiceprint)));
+		const enrolled = enrolledClip as Float32Array;
+		const learned = blend(enrolled, learnedClip as Float32Array, 0.2);
+
+		const closestOther = (voiceprint: Float32Array) =>
+			Math.max(...others.map((other) => cosine(other, voiceprint)));
+
+		console.info('gap before', gap(enrolled).toFixed(3), 'after', gap(learned).toFixed(3));
+		expect(gap(learned)).toBeGreaterThan(gap(enrolled));
+		// Learning one voice does not draw the others closer.
+		expect(closestOther(learned)).toBeLessThanOrEqual(closestOther(enrolled) + 0.01);
+	});
+
 	it('48 kHz from the browser, resampled → the same speaker as the 16 kHz original', async () => {
 		const { embed } = await models;
 		const native = toFloat(readPcm('dictation'));
@@ -138,6 +162,7 @@ describe.skipIf(!packDir)('voice gate models (live)', () => {
 			setStatus: (status) => statuses.push(status),
 			now: () => clock,
 			isVoiceOsSpeaking: () => false,
+			store: { save: () => undefined, delete: () => undefined },
 		});
 
 		const say = async (name: string) => {
@@ -164,7 +189,7 @@ describe.skipIf(!packDir)('voice gate models (live)', () => {
 			}
 		}
 
-		expect(statuses.at(-1)).toEqual({ phase: 'scoring', lastScore: null });
+		expect(statuses.at(-1)).toMatchObject({ phase: 'scoring', lastScore: null });
 
 		await say('why-slow');
 		const developer = statuses.at(-1);

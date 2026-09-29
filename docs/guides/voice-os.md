@@ -222,10 +222,11 @@ that is driven, never both.
 - "End of turn." — sends what you said now, in either listening mode, without waiting for the pause.
 - Background talk, music and a half-finished "and can you—" are ignored, and nothing is said about
   it.
-- **Learning your voice.** Each run learns your voice from your first half-minute of turns; the chip
-  beside the mic reads `voice 12/30 s`, then a score. For now this only measures how well your voice
-  can be told from others, and nothing is filtered. The models (about 90 MB) download on the first
-  start.
+- **Learning your voice.** Voice OS learns your voice from your first half-minute of turns, then
+  keeps learning from turns that are clearly you; it remembers it across restarts. The chip beside the
+  mic reads `voice 12/30 s`, then `voice 0.64 · learning` until it is trained, then just your score;
+  click it to forget your voice and start over. For now this only measures how well your voice can be
+  told from others, and nothing is filtered. The models (about 90 MB) download on the first start.
 
 ## Keys and cost
 

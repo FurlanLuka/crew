@@ -696,6 +696,11 @@ textarea:focus-visible {
 	color: var(--muted);
 	border-color: var(--line);
 }
+button.route.voice-gate {
+	background: none;
+	font: inherit;
+	cursor: pointer;
+}
 .mic {
 	width: 34px;
 	height: 34px;

@@ -202,4 +202,30 @@ describe('ClientStream', () => {
 
 		expect(scores.map((score) => score.kind)).toEqual(['first']);
 	});
+
+	it('forgotten while a window is being scored → that late score is dropped, never logged', async () => {
+		let release = () => {};
+		let entered = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const isScoring = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		const { stream } = streamWith();
+
+		stream.startScoring(async () => {
+			entered();
+			await held;
+
+			return 0.8;
+		});
+		send(stream, DEVELOPER, 1_500);
+		await isScoring;
+		stream.stopScoring();
+		release();
+
+		expect(await stream.after(() => stream.scores)).toEqual([]);
+		expect(readLog().some((line) => line.msg === 'score')).toBe(false);
+	});
 });

@@ -384,6 +384,11 @@ gateway = startGateway({
 				voiceIn.unlisten(client);
 
 				return;
+			case 'forget_voice':
+				log.info('forget voice asked', { client });
+				voiceGate?.forgetVoice();
+
+				return;
 			case 'audio_done':
 				voiceOut.clipDone(message.id);
 
@@ -410,6 +415,7 @@ const port = gateway.port;
 
 voiceGate = startVoiceGate({
 	root: paths.voiceGateDir,
+	voiceprintFile: paths.voiceprintFile,
 	env: process.env,
 	setStatus: (status) => store.dispatch({ type: 'voice_gate', status }),
 	now: Date.now,

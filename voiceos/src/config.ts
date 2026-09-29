@@ -16,6 +16,7 @@ export interface Paths {
 	journalDir: string;
 	debugAudioDir: string;
 	voiceGateDir: string;
+	voiceprintFile: string;
 	topicsFile: string;
 	keysDir: string;
 }
@@ -43,6 +44,8 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		journalDir: join(voiceDir, 'journal'),
 		debugAudioDir: join(voiceDir, 'debug'),
 		voiceGateDir: join(voiceDir, 'voice-gate'),
+		// Beside the pack folder, not in it: installing a pack clears that folder.
+		voiceprintFile: join(voiceDir, 'voiceprint.json'),
 		topicsFile: join(voiceDir, 'topics.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
 	};

@@ -257,7 +257,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
   The **voice gate** (`voiceos/src/voice-gate/`) is a dry run: it learns the developer's voice
-  from delivered turns each run and logs `turn scored` lines, silencing nothing; its models and
+  from delivered turns, keeps learning from confident ones (`adaptation.ts`; trained = last 10 turns
+  ≥ 0.6, averaging 0.8), saves it to `~/.crew/voiceos/voiceprint.json` (the chip forgets it) and logs
+  `turn scored` lines, silencing nothing; its models and
   onnxruntime come as a sha-pinned pack from the `voice-gate-pack-*` release (GoReleaser ignores
   those tags), and only `models.ts` loads the native runtime.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until

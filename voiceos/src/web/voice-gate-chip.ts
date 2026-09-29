@@ -1,12 +1,34 @@
 import type { VoiceGateStatus } from '../shared/protocol.js';
+import { TRAINED_RULE } from '../voice-gate/adaptation.js';
 
 export interface VoiceGateChip {
 	label: string;
 	title: string;
+	// A voice is learned: the chip offers to forget it.
+	canForget: boolean;
 }
 
+const formatScore = (score: number): string => score.toFixed(2);
+
+type ScoringStatus = Extract<VoiceGateStatus, { phase: 'scoring' }>;
+
+const describeScoring = ({ lastScore, average, isTrained }: ScoringStatus): VoiceGateChip => {
+	// No turn scored yet in this run (just locked in, or resumed after a restart).
+	const score = lastScore === null ? '' : ` ${formatScore(lastScore)}`;
+	const recent = average === null ? '' : ` Your recent turns average ${formatScore(average)}.`;
+	const progress = isTrained
+		? 'Trained: it keeps learning, slowly.'
+		: `Still learning, ${TRAINED_RULE}.`;
+
+	return {
+		label: isTrained ? `voice${score || ' learned'}` : `voice${score} · learning`,
+		title: `Your last turn against your voice (1 is you).${recent} ${progress} Nothing is filtered yet. Click to forget your voice.`,
+		canForget: true,
+	};
+};
+
 // The bottom bar's one line about the voice gate: short on the bar, the meaning on hover. Hidden
-// where there is nothing to show yet or nothing the developer can act on (the log says why).
+// where there is nothing the developer can act on (the log says why).
 export const describeVoiceGate = (status: VoiceGateStatus | null): VoiceGateChip | null => {
 	switch (status?.phase) {
 		case 'preparing':
@@ -14,22 +36,22 @@ export const describeVoiceGate = (status: VoiceGateStatus | null): VoiceGateChip
 				? {
 						label: 'voice models…',
 						title: 'Downloading the models that learn your voice (once, about 90 MB)',
+						canForget: false,
 					}
 				: null;
+		// Shown from 0 s: after "forget my voice" the chip must visibly start over.
 		case 'learning':
-			return status.seconds > 0
-				? {
-						label: `voice ${status.seconds}/${status.of} s`,
-						title: 'Learning your voice from what you say to Voice OS',
-					}
-				: null;
-		case 'scoring':
 			return {
-				label: status.lastScore === null ? 'voice learned' : `voice ${status.lastScore.toFixed(2)}`,
-				title:
-					'Your last turn scored against your voice (1 is you). Nothing is filtered yet: this only measures',
+				label: `voice ${status.seconds}/${status.of} s`,
+				title: 'Learning your voice from what you say to Voice OS',
+				canForget: false,
 			};
+		case 'scoring':
+			return describeScoring(status);
 		default:
 			return null;
 	}
 };
+
+export const FORGET_VOICE_CONFIRM =
+	'Forget your voice? Voice OS will learn it again from what you say.';
