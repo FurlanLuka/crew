@@ -20,6 +20,7 @@ import { VERSION } from '../version.js';
 import { RemoteHost } from './host.js';
 import { createLineDecoder } from './protocol.js';
 import { createSocketWriter, type SocketWriter } from './socket-writer.js';
+import { forEachChunk } from './streams.js';
 
 const WORKTREE_POLL_MS = 10_000;
 const SILENCE_CHECK_MS = 5_000;
@@ -213,9 +214,7 @@ const attach = async (): Promise<void> => {
 		process.exit(5);
 	});
 
-	for await (const chunk of Bun.stdin.stream()) {
-		socket.data.writer.write(chunk);
-	}
+	await forEachChunk(Bun.stdin.stream(), (chunk) => socket.data.writer.write(chunk));
 
 	// The main hung up: what the daemon still sends drains out, and its close ends this process.
 	socket.end();

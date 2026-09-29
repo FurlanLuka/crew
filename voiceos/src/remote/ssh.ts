@@ -2,6 +2,7 @@
 
 import { createLogger } from '../log.js';
 import type { OpenTransport } from './link.js';
+import { forEachChunk } from './streams.js';
 
 const log = createLogger('remote');
 
@@ -44,17 +45,15 @@ export const openSshTransport: OpenTransport = (host, { onData, onExit }) => {
 	let stderr = '';
 
 	const stdoutRead = (async () => {
-		for await (const chunk of child.stdout) {
-			onData(chunk);
-		}
+		await forEachChunk(child.stdout, onData);
 	})();
 
 	const stderrRead = (async () => {
 		const decoder = new TextDecoder();
 
-		for await (const chunk of child.stderr) {
+		await forEachChunk(child.stderr, (chunk) => {
 			stderr = (stderr + decoder.decode(chunk, { stream: true })).slice(-STDERR_KEPT);
-		}
+		});
 	})();
 
 	// Everything it said comes first (a refusal on stdout, its reason on stderr), then its exit. An
