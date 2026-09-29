@@ -260,11 +260,13 @@ export interface Setup {
 }
 
 // The voice gate's dry run: getting its models, learning the developer's voice, then scoring what the
-// mic hears against it (nothing is silenced yet). lastScore: the latest delivered turn's.
+// mic hears against it (nothing is silenced yet). lastScore: the latest delivered turn's; average:
+// the developer's recent turns; isTrained: voice-gate/adaptation.ts's rule. It keeps learning
+// either way, slower once trained.
 export type VoiceGateStatus =
 	| { phase: 'preparing'; isDownloading: boolean }
 	| { phase: 'learning'; seconds: number; of: number }
-	| { phase: 'scoring'; lastScore: number | null }
+	| { phase: 'scoring'; lastScore: number | null; average: number | null; isTrained: boolean }
 	| { phase: 'unavailable' };
 
 export type DevServerState = 'running' | 'died' | 'not listening' | 'starting';
@@ -548,4 +550,6 @@ export type ClientMessage =
 	// No mode: a tab from before the modes, which only knew hands-free.
 	| { type: 'listen_start'; sampleRate: number; mode?: ListeningMode }
 	| { type: 'listen_stop' }
+	// The chip's "Forget my voice": the saved voiceprint is deleted and learning starts again.
+	| { type: 'forget_voice' }
 	| { type: 'audio_done'; id: string };

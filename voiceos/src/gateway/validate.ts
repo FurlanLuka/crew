@@ -83,6 +83,7 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 		mode: z.enum(['on-demand', 'hands-free']).optional(),
 	}),
 	z.object({ type: z.literal('listen_stop') }),
+	z.object({ type: z.literal('forget_voice') }),
 	z.object({ type: z.literal('audio_done'), id: z.string() }),
 ]) satisfies z.ZodType<ClientMessage>;
 

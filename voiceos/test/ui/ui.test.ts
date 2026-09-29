@@ -516,12 +516,56 @@ describe('voice os ui', () => {
 		store.dispatch({ type: 'voice_gate', status: { phase: 'learning', seconds: 12, of: 30 } });
 		await chip.getByText('voice 12/30 s').waitFor({ timeout: 5000 });
 
-		store.dispatch({ type: 'voice_gate', status: { phase: 'scoring', lastScore: 0.82 } });
+		store.dispatch({
+			type: 'voice_gate',
+			status: { phase: 'scoring', lastScore: 0.82, average: 0.84, isTrained: true },
+		});
 		await chip.getByText('voice 0.82').waitFor({ timeout: 5000 });
 		expect(await chip.getAttribute('title')).toContain('Nothing is filtered yet');
 
 		store.dispatch({ type: 'voice_gate', status: { phase: 'unavailable' } });
 		await chip.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('forget my voice → only offered once a voice is learned; a cancelled confirm sends nothing, an accepted one asks the server', async () => {
+		const { context, page } = await signIn();
+		const chip = page.locator('.route.voice-gate');
+		const forgets = () => received.filter(({ message }) => message.type === 'forget_voice');
+
+		store.dispatch({ type: 'voice_gate', status: { phase: 'learning', seconds: 4, of: 30 } });
+		await chip.getByText('voice 4/30 s').waitFor({ timeout: 5000 });
+		expect(await page.locator('button.route.voice-gate').count()).toBe(0);
+
+		store.dispatch({
+			type: 'voice_gate',
+			status: { phase: 'scoring', lastScore: 0.64, average: 0.7, isTrained: false },
+		});
+
+		const button = page.locator('button.route.voice-gate');
+
+		await button.getByText('voice 0.64 · learning').waitFor({ timeout: 5000 });
+
+		const before = forgets().length;
+		const dialogs: string[] = [];
+
+		page.once('dialog', (dialog) => {
+			dialogs.push(dialog.message());
+			void dialog.dismiss();
+		});
+		await button.click();
+		await page.waitForTimeout(300);
+		expect(forgets()).toHaveLength(before);
+
+		page.once('dialog', (dialog) => void dialog.accept());
+		await button.click();
+
+		for (let tries = 0; tries < 50 && forgets().length === before; tries++) {
+			await page.waitForTimeout(50);
+		}
+
+		expect(dialogs).toEqual(['Forget your voice? Voice OS will learn it again from what you say.']);
+		expect(forgets()).toHaveLength(before + 1);
 		await context.close();
 	}, 20_000);
 

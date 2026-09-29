@@ -227,6 +227,23 @@ describe('ensurePack', () => {
 		expect(readdirSync(root)).toEqual([ID]);
 	});
 
+	it('installing a pack → the saved voiceprint beside its folder is left alone', async () => {
+		const bytes = await buildArchive(listPackFiles(PLATFORM));
+		const voiceprint = join(work, 'voiceprint.json');
+
+		writeFileSync(voiceprint, '{"kept":true}');
+		mkdirSync(join(root, 'voice-gate-pack-0'), { recursive: true });
+		await ensurePack({
+			root,
+			id: ID,
+			entry: entryFor(bytes),
+			platform: PLATFORM,
+			fetch: serving(bytes).fetchPack,
+		});
+
+		expect(readFileSync(voiceprint, 'utf8')).toBe('{"kept":true}');
+	});
+
 	it('an older pack and an old crashed temp → removed; a fresh temp → left alone', async () => {
 		const bytes = await buildArchive(listPackFiles(PLATFORM));
 		const oldTemp = join(root, '.tmp-crashed');

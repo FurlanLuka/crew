@@ -37,7 +37,7 @@ export const cosine = (left: Float32Array, right: Float32Array): number => {
 	return dot / lengths;
 };
 
-const normalizedMean = (vectors: Float32Array[]): Float32Array => {
+export const normalizedMean = (vectors: Float32Array[]): Float32Array => {
 	const mean = new Float32Array(vectors[0]?.length ?? 0);
 
 	for (const vector of vectors) {

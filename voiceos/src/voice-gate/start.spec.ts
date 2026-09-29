@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { VoiceGateStatus } from '../shared/protocol.js';
 import type { Models } from './models.js';
 import { type StartVoiceGateParams, startVoiceGate } from './start.js';
-import { captureLog, fakeEmbed, fakeVads, pcm, DEVELOPER } from './test-support.js';
+import { captureLog, DEVELOPER, fakeEmbed, fakeVads, gradedEmbed, pcm } from './test-support.js';
+import { PACK_MANIFEST } from './pack.js';
+import { saveVoiceprint, VOICEPRINT_LENGTH } from './voiceprint-store.js';
 
 let root: string;
 let statuses: VoiceGateStatus[];
@@ -18,6 +20,7 @@ const fakeModels = (): Promise<Models> =>
 const start = (overrides: Partial<StartVoiceGateParams> = {}) =>
 	startVoiceGate({
 		root,
+		voiceprintFile: join(root, 'voiceos', 'voiceprint.json'),
 		env: {},
 		setStatus: (status) => statuses.push(status),
 		now: () => Date.now(),
@@ -149,5 +152,118 @@ describe('startVoiceGate', () => {
 		handle.observe('c1', pcm(DEVELOPER, 100), 16_000);
 		handle.turnDelivered('c1', { from: 0, to: 1, source: 'push' });
 		expect(statuses).toEqual([{ phase: 'preparing', isDownloading: false }]);
+	});
+
+	it('a voice saved by an earlier run → scoring as soon as the models load, with its average', async () => {
+		const voiceprint = new Float32Array(VOICEPRINT_LENGTH).fill(1);
+
+		saveVoiceprint(join(root, 'voiceos', 'voiceprint.json'), {
+			packId: PACK_MANIFEST.id,
+			voiceprint,
+			enrolled: voiceprint,
+			recentScores: [0.8, 0.9],
+			turns: 2,
+			updatedAt: 'then',
+		});
+
+		const handle = start({ env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' } });
+
+		expect(await settled()).toEqual({
+			phase: 'scoring',
+			lastScore: null,
+			average: 0.85,
+			isTrained: false,
+		});
+		expect(statuses.some((status) => status.phase === 'learning')).toBe(false);
+		expect(readLog().find((line) => line.msg === 'voiceprint loaded')).toMatchObject({ turns: 2 });
+		handle.stop();
+	});
+
+	it('a voiceprint this Voice OS cannot read → ignored and left until a new voice is saved over it', async () => {
+		const file = join(root, 'voiceos', 'voiceprint.json');
+
+		mkdirSync(join(root, 'voiceos'), { recursive: true });
+		writeFileSync(file, JSON.stringify({ version: 2 }));
+
+		const handle = start({ env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' } });
+
+		expect(await settled()).toEqual({ phase: 'learning', seconds: 0, of: 30 });
+		expect(readLog().find((line) => line.msg === 'voiceprint ignored')?.reason).toContain(
+			'version 2',
+		);
+		expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 2 });
+		handle.stop();
+	});
+
+	it('forget my voice → reaches the gate: the saved file is gone, learning from zero', async () => {
+		const file = join(root, 'voiceos', 'voiceprint.json');
+		const voiceprint = new Float32Array(VOICEPRINT_LENGTH).fill(1);
+
+		saveVoiceprint(file, {
+			packId: PACK_MANIFEST.id,
+			voiceprint,
+			enrolled: voiceprint,
+			recentScores: [],
+			turns: 0,
+			updatedAt: 'then',
+		});
+
+		const handle = start({ env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' } });
+
+		await settled();
+		handle.forgetVoice();
+
+		expect(existsSync(file)).toBe(false);
+		expect(statuses.at(-1)).toEqual({ phase: 'learning', seconds: 0, of: 30 });
+		handle.stop();
+	});
+
+	it('a voice learned through the handle → saved with this pack’s id; the next start resumes scoring', async () => {
+		let clock = 1_000_000;
+		const file = join(root, 'voiceos', 'voiceprint.json');
+		const models = (): Promise<Models> =>
+			Promise.resolve({ createVad: fakeVads().createVad, embed: gradedEmbed });
+		const first = start({
+			env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' },
+			loadModels: models,
+			now: () => clock,
+		});
+
+		await settled();
+
+		for (let turn = 0; turn < 8 && !existsSync(file); turn++) {
+			const from = clock;
+
+			for (let chunk = 0; chunk < 46; chunk++) {
+				first.observe('c1', pcm(chunk < 40 ? DEVELOPER : 0.01, 100), 16_000);
+				clock += 100;
+			}
+
+			const learned = readLog().filter((line) => line.msg === 'learn').length;
+
+			first.turnDelivered('c1', { from, to: clock, source: 'push' });
+
+			for (
+				let tries = 0;
+				tries < 200 && readLog().filter((line) => line.msg === 'learn').length === learned;
+				tries++
+			) {
+				await Bun.sleep(5);
+			}
+		}
+
+		first.stop();
+		expect(JSON.parse(readFileSync(file, 'utf8')).packId).toBe(PACK_MANIFEST.id);
+
+		statuses = [];
+
+		const second = start({
+			env: { VOICEOS_VOICE_GATE_PACK_DIR: '/packs/here' },
+			loadModels: models,
+			now: () => clock,
+		});
+
+		expect(await settled()).toMatchObject({ phase: 'scoring' });
+		second.stop();
 	});
 });

@@ -89,6 +89,13 @@ export class ClientStream {
 		this.gate = new Gate(scorer);
 	}
 
+	// The voice was forgotten: nothing is scored until a new one is learned, a reset included.
+	stopScoring(): void {
+		this.scorer = null;
+		this.gate = null;
+		this.scores.length = 0;
+	}
+
 	// Runs once every frame observed so far has been through the models.
 	after<T>(read: () => T | Promise<T>): Promise<T> {
 		return new Promise<T>((resolve, reject) => {
@@ -191,7 +198,10 @@ export class ClientStream {
 		}
 
 		await gate.finish();
-		this.collectScores(gate, at);
+
+		if (gate === this.gate) {
+			this.collectScores(gate, at);
+		}
 	}
 
 	private async hear(frame: RingFrame): Promise<void> {
@@ -226,7 +236,11 @@ export class ClientStream {
 
 		// The forwarded frames are what real gating will send; a dry run only reads the scores.
 		await gate.push(frame.samples, frame.prob);
-		this.collectScores(gate, frame.at);
+
+		// Forgotten while this window was scored: its score belongs to a voice that is gone.
+		if (gate === this.gate) {
+			this.collectScores(gate, frame.at);
+		}
 	}
 
 	private collectScores(gate: Gate, at: number): void {

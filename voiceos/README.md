@@ -99,15 +99,22 @@ silenced, and what Soniox gets is untouched.
   `src/voice-gate/pack.ts`. There is no pack for Intel Macs, where the gate stays off.
 - **Learning.** Voice OS learns your voice from turns that are provably yours: push-to-talk
   presses, and listened turns that became a command. Speech heard while Voice OS was talking is left
-  out. After about 30 s, once 80% of the 3 s chunks agree, their mean is your voiceprint for this run.
-  Nothing is written to disk.
+  out. After about 30 s, once 80% of the 3 s chunks agree, their mean is your voiceprint.
+- **It keeps learning.** Each later turn is measured the same way (3 s chunks, averaged) and folded
+  in when it is clearly you: a push-to-talk turn scoring at least 0.4, a listened one at least 0.6,
+  and always within 0.5 of the enrollment, so a partner or a video can't pull it away. It counts as
+  **trained** once your last 10 turns all reach 0.6 and average 0.8; from then on it learns more
+  slowly, never stopping (`adaptation.ts`).
+- **Saved.** The voiceprint (192 numbers, never audio) is kept in `~/.crew/voiceos/voiceprint.json`,
+  readable by you alone, so a restart resumes. Clicking the chip offers **Forget my voice**, which
+  deletes it and starts learning again.
 - **Scoring.** From then on, every utterance any tab's mic hears is scored against it with the
   prototype's gate (`src/voice-gate/gate.ts`). Each delivered turn logs one `turn scored` line: its
   source, the tab's sample rate, every raw score, and what the gate would have done at 0.40 (`kept`,
   `silenced` or `unscored`). These lines are the data for picking the real threshold:
   `crew voice logs | grep 'turn scored'`.
-- **The chip** beside the route chip shows `voice 12/30 s` while learning, then `voice 0.82`, the last
-  turn's score.
+- **The chip** beside the route chip shows `voice 12/30 s` until lock-in, then the last turn's score:
+  `voice 0.64 · learning` until trained, `voice 0.82` after.
 - `VOICEOS_VOICE_GATE=0` turns it off, as an escape hatch: the models run inside Voice OS's own
   process. `VOICEOS_VOICE_GATE_PACK_DIR=<dir>` uses a pack already unpacked there instead of
   downloading one.

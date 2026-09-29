@@ -1982,10 +1982,20 @@ describe('voice_gate', () => {
 		expect(learning.effects).toEqual([]);
 
 		const scoring = run(
-			[{ type: 'voice_gate', status: { phase: 'scoring', lastScore: 0.82 } }],
+			[
+				{
+					type: 'voice_gate',
+					status: { phase: 'scoring', lastScore: 0.82, average: 0.84, isTrained: true },
+				},
+			],
 			learning.state,
 		);
 
-		expect(scoring.state.voiceGate).toEqual({ phase: 'scoring', lastScore: 0.82 });
+		expect(scoring.state.voiceGate).toEqual({
+			phase: 'scoring',
+			lastScore: 0.82,
+			average: 0.84,
+			isTrained: true,
+		});
 	});
 });
