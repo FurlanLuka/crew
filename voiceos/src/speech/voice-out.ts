@@ -456,14 +456,7 @@ export class VoiceOut {
 			type: 'meanwhile_added',
 			ref: item.ref,
 			kind,
-			about:
-				kind === 'done'
-					? describeDoneAbout({
-							topic: session.topic,
-							isTopicPinned: session.isTopicPinned,
-							asked: session.requests.at(-1)?.text ?? null,
-						})
-					: null,
+			about: kind === 'done' ? describeDoneAbout(held.kind === 'line' ? held.text : null) : null,
 		});
 
 		return true;

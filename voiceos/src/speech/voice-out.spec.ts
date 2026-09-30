@@ -211,7 +211,11 @@ describe('VoiceOut', () => {
 
 		expect(harness.listSynthesized()).toEqual(['playing now']);
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			['store/main', 'done', null],
+			[
+				'store/main',
+				'done',
+				'The router refactor is done, the tests pass, and the branch is pushed for…',
+			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
 			kind: 'line',
@@ -236,7 +240,12 @@ describe('VoiceOut', () => {
 		await flush();
 
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			['store/main', 'done', 'Router refactor'],
+			// A topic is written, but the line says what happened: never the topic.
+			[
+				'store/main',
+				'done',
+				'The router refactor is done, the tests pass, and the branch is pushed for…',
+			],
 		]);
 	});
 
@@ -360,7 +369,11 @@ describe('VoiceOut', () => {
 
 		expect(harness.listSynthesized()).toEqual(['playing now']);
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			['store/main', 'done', null],
+			[
+				'store/main',
+				'done',
+				'The router refactor is done, the tests pass, and the branch is pushed for…',
+			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
 			text: second,
@@ -397,7 +410,11 @@ describe('VoiceOut', () => {
 
 		expect(harness.listSynthesized()).toEqual(['playing now']);
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			['store/main', 'done', null],
+			[
+				'store/main',
+				'done',
+				'The router refactor is done, the tests pass, and the branch is pushed for…',
+			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: report });
 	});
@@ -470,7 +487,7 @@ describe('VoiceOut', () => {
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: long });
 	});
 
-	it('no topic → "done" names the newest request', async () => {
+	it('"done" says its own last line, not the request or a topic', async () => {
 		const harness = createHarness();
 		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
 		harness.store.dispatch({ type: 'send', ref: 'store/main', text: 'run the whole test suite' });
@@ -497,7 +514,11 @@ describe('VoiceOut', () => {
 		await flush();
 
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			['store/main', 'done', 'push the telephony branches'],
+			[
+				'store/main',
+				'done',
+				'The router refactor is done, the tests pass, and the branch is pushed for…',
+			],
 		]);
 	});
 
@@ -1168,7 +1189,11 @@ describe('VoiceOut, voice tags', () => {
 
 		expect(harness.listSynthesized()).toEqual([]);
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			['store/main', 'done', null],
+			[
+				'store/main',
+				'done',
+				'The flaky test was a stale lockfile all along. Every suite passes now, pushed',
+			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: PLAIN });
 	});

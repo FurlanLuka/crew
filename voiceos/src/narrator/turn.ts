@@ -212,8 +212,9 @@ const speakOutcome = async ({
 		return;
 	}
 
-	// Waits for this turn's topic too: "done" names the work that just finished, not the one before.
-	const about = await readAbout();
+	// "Needs you" waits for what the question is about; "done" says the session's own line, so waits
+	// for nothing.
+	const about = kind === 'needs' ? await readAbout() : null;
 	// Read after the wait: a switch there meanwhile replayed the line (and cleared it).
 	const settled = store.state.sessions[effect.ref];
 	const current = settled?.heldLine;
@@ -229,11 +230,7 @@ const speakOutcome = async ({
 	const aboutText =
 		kind === 'needs'
 			? (about ?? settled?.topic ?? null)
-			: describeDoneAbout({
-					topic: settled?.topic ?? null,
-					isTopicPinned: settled?.isTopicPinned === true,
-					asked: effect.asked,
-				});
+			: describeDoneAbout(current.kind === 'line' ? current.text : null);
 
 	options.say({
 		text: describeAnnouncement({

@@ -177,7 +177,7 @@ describe('conversations', () => {
 		await convo.wait(6_000);
 
 		expect(convo.heard.at(-1)).toBe(
-			'Meanwhile, checkout api, main finished add backoff to the retries.',
+			'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry…',
 		);
 		expect(convo.store.state.meanwhile).toEqual([]);
 	});
@@ -189,7 +189,7 @@ describe('conversations', () => {
 			type: 'meanwhile_added',
 			ref: 'checkout-api/main',
 			kind: 'done',
-			about: 'the retry backoff',
+			about: 'all retry tests pass',
 		});
 
 		convo.script([toolUse('t1', 'play_missed', {})]);
@@ -197,7 +197,7 @@ describe('conversations', () => {
 
 		expect(convo.heard).toEqual([
 			'> What did I miss?',
-			'Meanwhile, checkout api, main finished the retry backoff.',
+			'Meanwhile, checkout api, main said: all retry tests pass.',
 		]);
 	});
 
@@ -359,14 +359,14 @@ describe('conversations', () => {
 				type: 'meanwhile_added',
 				ref: 'checkout-api/main',
 				kind: 'done',
-				about: 'the retries',
+				about: 'all retry tests pass',
 			});
 
 			await convo.wait(9_000);
 			expect(convo.heard).toEqual([]);
 
 			await convo.wait(3_100);
-			expect(convo.heard).toEqual(['Meanwhile, checkout api, main finished the retries.']);
+			expect(convo.heard).toEqual(['Meanwhile, checkout api, main said: all retry tests pass.']);
 		});
 
 		it('never quiet for long → the update still comes at the first gap after 50 s', async () => {
@@ -376,7 +376,7 @@ describe('conversations', () => {
 				type: 'meanwhile_added',
 				ref: 'checkout-api/main',
 				kind: 'done',
-				about: 'the retries',
+				about: 'all retry tests pass',
 			});
 
 			for (let second = 0; second < 55; second += 5) {
@@ -390,13 +390,13 @@ describe('conversations', () => {
 			}
 
 			const meanwhileAt = convo.heard.indexOf(
-				'Meanwhile, checkout api, main finished the retries.',
+				'Meanwhile, checkout api, main said: all retry tests pass.',
 			);
 
 			// Never 8 s of quiet, but at 50 s the gap after "line at 45" is the one.
 			expect(convo.heard.slice(meanwhileAt - 1, meanwhileAt + 2)).toEqual([
 				'line at 45',
-				'Meanwhile, checkout api, main finished the retries.',
+				'Meanwhile, checkout api, main said: all retry tests pass.',
 				'line at 50',
 			]);
 		});

@@ -13,24 +13,24 @@ const nameOf = (ref: string) => ref.split('/')[0] ?? ref;
 describe('describeMeanwhile', () => {
 	it.each([
 		[
-			[item('checkout/main', 'done', 'the retry backoff.')],
-			'Meanwhile, checkout finished the retry backoff.',
+			[item('checkout/main', 'done', 'all retry tests pass.')],
+			'Meanwhile, checkout said: all retry tests pass.',
 		],
 		[
 			[
-				item('checkout/main', 'done', 'the retry backoff'),
+				item('checkout/main', 'done', 'all retry tests pass'),
 				item('ranking/main', 'needs', 'the index'),
 			],
-			'Meanwhile, ranking needs you about the index, and checkout finished the retry backoff.',
+			'Meanwhile, ranking needs you about the index, and checkout said: all retry tests pass.',
 		],
 		[
 			[
-				item('checkout/main', 'done', 'the retry backoff'),
+				item('checkout/main', 'done', 'all retry tests pass'),
 				item('ranking/main', 'needs', 'the index'),
 				item('signals/main', 'done'),
 				item('admin/main', 'done'),
 			],
-			'Meanwhile, ranking needs you about the index, checkout finished the retry backoff, and two others finished.',
+			'Meanwhile, ranking needs you about the index, checkout said: all retry tests pass, and two others finished.',
 		],
 		[
 			[item('a/main', 'done'), item('b/main', 'done'), item('c/main', 'needs')],

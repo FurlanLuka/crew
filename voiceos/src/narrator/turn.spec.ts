@@ -704,19 +704,22 @@ describe('a session off screen at the end of its turn', () => {
 		expect(heldOf(harness.store)).toBeNull();
 	});
 
-	it('a long report → held, and only "checkout is done." said, not asked, today\'s chime', async () => {
+	it('a long report → held, and only "checkout: <its own words, cut>" said, not asked', async () => {
 		const harness = createOffScreenHarness();
 		await harness.handle(tagless);
 
 		expect(harness.lines).toEqual([
 			{
-				text: 'checkout is done.',
+				text: 'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
 				priority: 'normal',
 				ref: REF_,
 				isNamed: false,
 				isAsking: false,
 				// The voice holds it for the meanwhile line.
-				announcement: { kind: 'done', about: null },
+				announcement: {
+					kind: 'done',
+					about: 'The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+				},
 			},
 		]);
 		expect(heldOf(harness.store)).toMatchObject({
@@ -727,20 +730,24 @@ describe('a session off screen at the end of its turn', () => {
 		});
 	});
 
-	it('a pinned session\'s long report → "Your pinned checkout is done."', async () => {
+	it('a pinned session\'s long report → "Your pinned checkout: …"', async () => {
 		const harness = createOffScreenHarness();
 		harness.store.dispatch({ type: 'pin_session', ref: REF_ });
 		await harness.handle(tagless);
 
-		expect(harness.lines.map((line) => line.text)).toEqual(['Your pinned checkout is done.']);
+		expect(harness.lines.map((line) => line.text)).toEqual([
+			'Your pinned checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+		]);
 	});
 
-	it('a named, unpinned session\'s long report → "voice os dev is done."', async () => {
+	it('a named, unpinned session\'s long report → "voice os dev: …"', async () => {
 		const harness = createOffScreenHarness();
 		harness.store.dispatch({ type: 'rename_session', ref: REF_, name: 'voice os dev' });
 		await harness.handle(tagless);
 
-		expect(harness.lines.map((line) => line.text)).toEqual(['voice os dev is done.']);
+		expect(harness.lines.map((line) => line.text)).toEqual([
+			'voice os dev: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+		]);
 	});
 
 	it('a long question → "checkout needs you: <about>", high, the needs chime; the topic when no about', async () => {
@@ -778,18 +785,18 @@ describe('a session off screen at the end of its turn', () => {
 		expect(heldOf(harness.store)).toMatchObject({ text: ASK_, missed: 0 });
 	});
 
-	it('a tagged report off screen → "done" names this turn\'s topic, not the one before', async () => {
+	it('a tagged report off screen → "done" says its own words, never a topic (topics go stale)', async () => {
 		const harness = createOffScreenHarness({ topic: 'Retry backoff with jitter' });
 		harness.store.dispatch({ type: 'topic_written', ref: REF_, topic: 'Checkout page layout' });
 		harness.store.dispatch({ type: 'line_held', ref: REF_, text: LONG_, isAsking: false });
 		await harness.handle({ ...tagless, spoken: { text: LONG_, isAsking: false }, isHeld: true });
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'checkout is done: Retry backoff with jitter.',
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
 		]);
 	});
 
-	it('a pinned topic → "done" names the request instead, and no topic call is waited for', async () => {
+	it('a pinned topic → "done" still says its own words, and no topic call is waited for', async () => {
 		let calls = 0;
 		const harness = createOffScreenHarness({
 			duringWait: () => {
@@ -806,7 +813,7 @@ describe('a session off screen at the end of its turn', () => {
 		});
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'checkout is done: add jitter to the retry backoff.',
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
 		]);
 		expect(calls).toBe(0);
 	});
@@ -845,7 +852,9 @@ describe('a session off screen at the end of its turn', () => {
 		});
 		await harness.handle(tagless);
 
-		expect(harness.lines.map((line) => line.text)).toEqual(['checkout is done.']);
+		expect(harness.lines.map((line) => line.text)).toEqual([
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+		]);
 	});
 
 	it('switched there (nothing held) while it thought → said in full, on screen', async () => {
@@ -980,13 +989,15 @@ describe('off screen, from the stream to what is said', () => {
 		expect(held).toBeNull();
 	});
 
-	it('a checkpoint, then a long final → one "is done", the final held with one missed update', async () => {
+	it('a checkpoint, then a long final → one announcement, the final held with one missed update', async () => {
 		const { said, held } = await runTurn({
 			lines: ['Plan approved; building now.', LONG_],
 			finalText: `<spoken>${LONG_}</spoken>`,
 		});
 
-		expect(said).toEqual(['checkout is done.']);
+		expect(said).toEqual([
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+		]);
 		expect(held).toMatchObject({ kind: 'line', text: LONG_, missed: 1 });
 	});
 
@@ -1125,8 +1136,10 @@ describe('background sub-agents and follow-up turns off screen (research that ou
 		await endTurn(REPORT);
 		await endTurn('The competitor research is wrapped up, covered in the answer above.');
 
-		// No topic was written, so the request the work answered names it.
-		expect(said).toEqual(['checkout is done: find open-source competitors.']);
+		// Its own report names it, not the request or a topic.
+		expect(said).toEqual([
+			'checkout: Found four close competitors; none runs one agent per worktree with its own ports…',
+		]);
 		expect(store.state.sessions[REF_]?.heldLine).toMatchObject({
 			text: REPORT,
 			isAnnounced: true,
@@ -1143,12 +1156,14 @@ describe('background sub-agents and follow-up turns off screen (research that ou
 		expect(replayed[0]).toStartWith(REPORT.replace(/\.$/, ''));
 	});
 
-	it('a second long report before the switch → still one "is done"; a question after it → announced', async () => {
+	it('a second long report before the switch → still one announcement; a question after it → announced', async () => {
 		const { said, endTurn } = createFlow();
 		await endTurn(REPORT);
 		await endTurn(`${REPORT} Also checked two paid tools; same result there.`);
 
-		expect(said).toEqual(['checkout is done.']);
+		expect(said).toEqual([
+			'checkout: Found four close competitors; none runs one agent per worktree with its own ports…',
+		]);
 
 		await endTurn('Should I write the comparison into a doc for the README?', true);
 

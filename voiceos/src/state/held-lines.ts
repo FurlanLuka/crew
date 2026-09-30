@@ -99,35 +99,24 @@ export const describeAnnouncement = ({
 		return `${label} ${verb}.`;
 	}
 
-	// A capped topic ends on its ellipsis: the pause says it was cut, a full stop would not.
-	return `${label} ${verb}: ${topic}${topic.endsWith('…') ? '' : '.'}`;
+	// A capped line ends on its ellipsis: the pause says it was cut, a full stop would not. A done
+	// turn is announced with its own words, not as "done": its work may go on.
+	const lead = kind === 'done' ? `${label}:` : `${label} ${verb}:`;
+
+	return `${lead} ${topic}${topic.endsWith('…') ? '' : '.'}`;
 };
 
-const DONE_ABOUT_WORDS = 8;
-const MIN_REQUEST_WORDS = 3;
+const DONE_ABOUT_WORDS = 14;
+const MIN_SAID_WORDS = 2;
 
-interface DescribeDoneAboutParams {
-	topic: string | null;
-	isTopicPinned: boolean;
-	// What the turn was asked, in the developer's words.
-	asked: string | null;
-}
+// What a finished turn is announced with: the session's own last line, shortened. A topic is the
+// session's long-running subject and goes stale ("finished the architecture docs" for a turn that
+// ended "checking whether the eval runs finished"), and a turn ending is not the work finishing.
+export const describeDoneAbout = (said: string | null): string | null => {
+	const line = stripTags(cleanSpokenText(said ?? ''));
 
-export const describeDoneAbout = ({
-	topic,
-	isTopicPinned,
-	asked,
-}: DescribeDoneAboutParams): string | null => {
-	// "Done" with nothing tying it to the work sounds random. A pinned topic stays put however the
-	// work moves on, so it never says what just finished; a reply like "no" says nothing either.
-	if (topic && !isTopicPinned) {
-		return topic;
-	}
-
-	const request = cleanSpokenText(asked ?? '');
-
-	return request.split(/\s+/).filter(Boolean).length >= MIN_REQUEST_WORDS
-		? capWords(request, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
+	return line.split(/\s+/).filter(Boolean).length >= MIN_SAID_WORDS
+		? capWords(line, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
 		: null;
 };
 
