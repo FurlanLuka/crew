@@ -11,7 +11,9 @@ import { createSetupWorktree } from '../sessions/setup-session.js';
 import { Store } from '../state/store.js';
 import { createNetwork, until } from '../../test/support/link.js';
 import { RemoteHost } from './host.js';
+import type { OpenTransport } from './link.js';
 import { MachineLinks } from './links.js';
+import { createLineDecoder } from './protocol.js';
 import { listenQuerySocket, parseQueryRequest, type QueryAnswer } from './query-socket.js';
 
 configureLog({ quiet: true });
@@ -62,13 +64,37 @@ const startRemote = ({ queryTimeoutMs }: RemoteOptions = {}) => {
 	return { host, path };
 };
 
+// Counts the calls that reached the main's link: a line is counted once the link has read it whole.
+const tapCalls = (open: OpenTransport) => {
+	let calls = 0;
+
+	const tapped: OpenTransport = (target, handlers) => {
+		const count = createLineDecoder((line) => {
+			if (line.includes('"type":"call"')) {
+				calls++;
+			}
+		});
+
+		return open(target, {
+			...handlers,
+			onData: (chunk) => {
+				handlers.onData(chunk);
+				count(chunk);
+			},
+		});
+	};
+
+	return { open: tapped, calls: () => calls };
+};
+
 const startMain = (host: RemoteHost, runLocalCrew: CrewRunner) => {
 	const store = new Store();
+	const network = tapCalls(createNetwork(host).open);
 	const links = new MachineLinks({
 		version: 'test',
 		mainId: 'main-1',
 		runId: 'run-1',
-		open: createNetwork(host).open,
+		open: network.open,
 		updateRemote: async () => ({ code: 0, output: '', isTimedOut: false }),
 		runLocalCrew,
 		setup: createSetupWorktree('/h'),
@@ -84,7 +110,7 @@ const startMain = (host: RemoteHost, runLocalCrew: CrewRunner) => {
 	store.dispatch({ type: 'machines', machines: [VM1] });
 	stops.push(() => links.stopAll());
 
-	return { store, links };
+	return { store, links, calls: network.calls };
 };
 
 const connectedMain = async (host: RemoteHost, runLocalCrew: CrewRunner) => {
@@ -175,23 +201,30 @@ describe('a query from a remote to the main', () => {
 
 	it('several queries at once → the main runs one at a time, and answers them all', async () => {
 		const { host, path } = startRemote();
+		const allArrived = Promise.withResolvers<void>();
 		let running = 0;
 		let mostAtOnce = 0;
 
-		await connectedMain(host, async (args) => {
+		const { calls } = await connectedMain(host, async (args) => {
 			running++;
 			mostAtOnce = Math.max(mostAtOnce, running);
-			await delay(10);
+			// Held until all three are at the main, so they overlap there.
+			await allArrived.promise;
 			running--;
 
 			return { code: 0, stdout: args[2] ?? '', stderr: '' };
 		});
 
-		const answers = await Promise.all(
+		const pending = Promise.all(
 			['--grep=a', '--grep=b', '--grep=c'].map((grep) =>
 				askArgs(path, ['voice', 'logs', grep, '--lines=80']),
 			),
 		);
+
+		await until(() => calls() === 3, 'all three calls at the main');
+		allArrived.resolve();
+
+		const answers = await pending;
 
 		expect(answers.map((answer) => (answer.ok ? answer.value.stdout : answer.error))).toEqual([
 			'--grep=a',
@@ -205,7 +238,7 @@ describe('a query from a remote to the main', () => {
 		const { host, path } = startRemote();
 		const held = Promise.withResolvers<CrewRunResult>();
 		const ran: string[][] = [];
-		const { links } = await connectedMain(host, (args) => {
+		const { links, calls } = await connectedMain(host, (args) => {
 			ran.push(args);
 
 			return held.promise;
@@ -217,8 +250,7 @@ describe('a query from a remote to the main', () => {
 
 		const second = askArgs(path, ['voice', 'logs', '--grep=b', '--lines=80']);
 
-		// The second reached the main and waits behind the first.
-		await delay(20);
+		await until(() => calls() === 2, 'the second call at the main, queued behind the first');
 		links.stopAll();
 
 		expect(await Promise.all([first, second])).toEqual([
@@ -227,6 +259,7 @@ describe('a query from a remote to the main', () => {
 		]);
 
 		held.resolve({ code: 0, stdout: '', stderr: '' });
+		// Long enough for the queue to move on, were it still going to run the second.
 		await delay(20);
 
 		expect(ran.map((args) => args[2])).toEqual(['--grep=a']);
