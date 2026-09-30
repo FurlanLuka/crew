@@ -1,6 +1,5 @@
 import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { readSessionLabel } from '../../shared/machines.js';
-import { useEffect, useRef } from 'react';
 import type { Session, State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 import { CompactingLine } from './CompactingLine.js';
@@ -12,6 +11,7 @@ import { SubagentsPanel } from './SubagentsPanel.js';
 import { NotesPanel } from './NotesPanel.js';
 import { DocsPanel } from './DocsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
+import { useStickToBottom } from '../use-stick-to-bottom.js';
 
 interface CockpitProps {
 	session: Session;
@@ -20,16 +20,12 @@ interface CockpitProps {
 }
 
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
-	const streamEndRef = useRef<HTMLDivElement>(null);
-
-	// The compaction bar is added at the end of the stream too: it must come into view like a line.
-	useEffect(() => {
-		streamEndRef.current?.scrollIntoView({ block: 'end' });
-	}, [session.stream.length, session.draft, session.compactingSince]);
+	// The compaction bar is added at the end of the stream too: it comes into view like a line.
+	const streamRef = useStickToBottom<HTMLElement>(session.ref);
 
 	return (
 		<main className="cockpit">
-			<section className="stream" aria-label="stream">
+			<section className="stream" aria-label="stream" ref={streamRef}>
 				<span className="lbl">stream</span>
 				{session.stream.map((item) => (
 					<StreamLine key={item.id} item={item} />
@@ -57,7 +53,6 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 						</button>
 					</div>
 				)}
-				<div ref={streamEndRef} />
 			</section>
 			<aside className="side">
 				<div className="panel">
