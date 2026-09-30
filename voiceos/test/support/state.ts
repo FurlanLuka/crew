@@ -70,6 +70,8 @@ export interface FixtureContext {
 		secondsAgo: number;
 		endedSecondsAgo?: number;
 		cut?: boolean;
+		// Voice OS's report of that session's update (the meanwhile line), not the session's own words.
+		update?: boolean;
 	}[];
 	// Sessions the developer pinned, in pin order.
 	pinned?: string[];
@@ -81,7 +83,8 @@ export interface FixtureContext {
 	// request), and what it answered, heard that many seconds ago.
 	talkingWith?: { ref: string; asked: string; answered: string; secondsAgo: number };
 	// Voice OS asked "Switch to <ref>?" that many seconds ago.
-	switchOffer?: { ref: string; secondsAgo: number };
+	// text: what Voice OS said to offer it ("Sent to checkout. Switch there?"), else "Switch to X?".
+	switchOffer?: { ref: string; secondsAgo: number; text?: string };
 	// Other sessions' updates waiting for the meanwhile line.
 	meanwhile?: { ref: string; kind: 'done' | 'needs'; about: string }[];
 }
@@ -354,6 +357,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 					? {}
 					: { endedAt: now - heard.endedSecondsAgo * 1000 }),
 				...(heard.cut ? { isCut: true as const } : {}),
+				...(heard.update ? { isUpdate: true as const, refs: [heard.ref] } : {}),
 			})),
 			...(context.announced
 				? [
@@ -363,6 +367,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 							source: 'narrator' as const,
 							at: now - context.announced.secondsAgo * 1000,
 							ref: context.announced.ref,
+							isUpdate: true as const,
 						},
 					]
 				: []),
@@ -370,7 +375,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 				? [
 						{
 							id: 'offer',
-							text: `Switch to ${context.switchOffer.ref}?`,
+							text: context.switchOffer.text ?? `Switch to ${context.switchOffer.ref}?`,
 							source: 'kernel' as const,
 							at: now - context.switchOffer.secondsAgo * 1000,
 							endedAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
@@ -417,6 +422,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 					switchOffer: {
 						ref: context.switchOffer.ref,
 						at: now - context.switchOffer.secondsAgo * 1000,
+						heardAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
 					},
 				}
 			: {}),
