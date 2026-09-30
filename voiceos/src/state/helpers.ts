@@ -97,6 +97,8 @@ export interface SendNowParams {
 	reportOwed?: boolean;
 	// Which message this turn works on (its queue id, or the send's id when sent at once).
 	sendId?: string;
+	// Voice OS's retry of a call the developer allowed once: shown as the approval, not as their words.
+	isApproval?: boolean;
 }
 
 // A turn the session began by itself (a background agent reported back) is work under way, though
@@ -114,6 +116,7 @@ export const sendNow = ({
 	at,
 	reportOwed = false,
 	sendId,
+	isApproval = false,
 }: SendNowParams): ReducerResult => {
 	// The note goes to the worker only: the stream records what the developer said.
 	const next = updateSession(state, ref, (session) =>
@@ -131,7 +134,7 @@ export const sendNow = ({
 					-REQUESTS_KEPT,
 				),
 			},
-			{ id: itemId, at, kind: 'user', text },
+			{ id: itemId, at, kind: 'user', text, ...(isApproval ? { isApproval: true as const } : {}) },
 		),
 	);
 
@@ -171,6 +174,7 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		isSpoken: head.isFollowUp === true || head.isSpoken === true,
 		reportOwed: head.reportOwed === true,
 		sendId: head.id,
+		isApproval: head.isRetry === true,
 		itemId: `${stamped.id}:q`,
 		at: stamped.at,
 	});

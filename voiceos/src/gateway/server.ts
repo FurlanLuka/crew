@@ -21,6 +21,8 @@ export interface GatewayOptions {
 	index: Bun.HTMLBundle | Response;
 	onMessage: (message: ClientMessage, clientId: string) => void;
 	onAudio: (chunk: Uint8Array, clientId: string) => void;
+	// After the snapshot is sent: a page (re)connected, so anything said now has a tab to play in.
+	onConnect?: (clientId: string) => void;
 	onDisconnect?: (clientId: string) => void;
 	readHealth: () => Record<string, unknown>;
 	// A stored image by its name in Voice OS's media folder — nothing else on disk is ever served.
@@ -151,6 +153,7 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 				socket.subscribe(TOPIC);
 				clients.set(socket.data.id, socket);
 				log.info('client connected', { client: socket.data.id, seq: store.state.seq });
+				options.onConnect?.(socket.data.id);
 			},
 			message(socket, raw) {
 				if (typeof raw !== 'string') {

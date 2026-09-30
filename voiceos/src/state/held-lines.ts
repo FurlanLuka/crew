@@ -1,4 +1,4 @@
-import { cleanSessionLine, cleanSpokenText } from '../shared/spoken.js';
+import { cleanSessionLine, cleanSpokenText, stripTags } from '../shared/spoken.js';
 import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
@@ -11,7 +11,7 @@ import { hasBackgroundWork } from './subagents.js';
 const SHORT_LINE_WORDS = 12;
 
 export const isShortLine = (text: string): boolean =>
-	cleanSpokenText(text).split(/\s+/).filter(Boolean).length <= SHORT_LINE_WORDS;
+	stripTags(cleanSpokenText(text)).split(/\s+/).filter(Boolean).length <= SHORT_LINE_WORDS;
 
 export const isOnScreen = (state: State, ref: string): boolean =>
 	state.view.kind === 'session' && state.view.ref === ref;

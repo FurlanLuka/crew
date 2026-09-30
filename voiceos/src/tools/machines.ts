@@ -2,6 +2,7 @@
 
 import { LOCAL_MACHINE, joinRef, toLocalRef } from '../shared/machine-ref.js';
 import type { State } from '../shared/protocol.js';
+import { describeMachineWaiting } from '../shared/machines.js';
 import { normalizeName } from '../router/refs.js';
 
 // Never a word a machine's own id could be (machineIdFor reserves only local).
@@ -72,3 +73,10 @@ export const onMachine = (state: State, ref: string, machine: string): string | 
 
 export const listMachineNames = (state: State): string =>
 	['this Mac', ...Object.values(state.machines).map((machine) => machine.name)].join(', ');
+
+// The reducer says what waits there, or nothing: the reply adds no words either way ("nothing is
+// waiting" read as a problem).
+export const describeMachineSwitch = (state: State, machine: string): string =>
+	describeMachineWaiting(state, machine)
+		? 'switched to that machine; Voice OS says what waits there — say nothing'
+		: 'switched to that machine; nothing waits there — say nothing';

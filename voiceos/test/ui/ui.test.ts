@@ -830,6 +830,30 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('"Allow it" on an idle session → the stream shows "Allowed once" in its own style, not as your words', async () => {
+		const { context, page } = await signIn();
+		await ensureIdle('checkout-api/main');
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
+		store.dispatch({
+			type: 'denied',
+			ref: 'checkout-api/main',
+			toolName: 'Bash',
+			summary: 'run git push',
+		});
+		await page
+			.locator('section[aria-label="denied"]')
+			.getByRole('button', { name: /Allow it/ })
+			.click();
+		const stream = page.locator('.stream');
+		const approval = stream.locator('.line.approval');
+		await approval.waitFor({ timeout: 5000 });
+
+		expect(await approval.textContent()).toBe('✓ Allowed once: run git push');
+		expect(await stream.getByText(/The user allows this once/).count()).toBe(0);
+		store.dispatch({ type: 'turn_ended', ref: 'checkout-api/main', costUsd: 0, text: '' });
+		await context.close();
+	}, 20_000);
+
 	it('queued message → its x cancels exactly that one; the spoken line shows what Voice OS last said', async () => {
 		const { context, page } = await signIn();
 		// Whatever state earlier tests left checkout in, a message sent behind a turn waits in its queue.

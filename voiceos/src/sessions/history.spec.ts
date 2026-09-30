@@ -81,6 +81,27 @@ describe('convertHistoryToStream', () => {
 		]);
 	});
 
+	it('the retry sent after "allow it" → restored as the approval; the developer\'s words stay theirs', () =>
+		expect(
+			convertHistoryToStream({
+				messages: [
+					createUserMessage('u1', 'push it'),
+					createUserMessage('u2', 'The user allows this once: retry "run git push" now.'),
+				],
+				ref: 'store-front/main',
+				now: 0,
+			}),
+		).toEqual([
+			{ id: 'h:u1', at, kind: 'user', text: 'push it' },
+			{
+				id: 'h:u2',
+				at,
+				kind: 'user',
+				text: 'The user allows this once: retry "run git push" now.',
+				isApproval: true,
+			},
+		]));
+
 	it('a message with its spoken line → restored without the tag', () =>
 		expect(
 			convertHistoryToStream({

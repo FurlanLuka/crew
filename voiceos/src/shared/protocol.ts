@@ -4,8 +4,10 @@ import type { SendAck } from './ack.js';
 
 export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'blocked';
 
+// A user item's isApproval: Voice OS's retry of a call the developer allowed once; still the turn's
+// opening words.
 export type StreamItem = { id: string; at: number } & (
-	| { kind: 'user'; text: string }
+	| { kind: 'user'; text: string; isApproval?: true }
 	| { kind: 'text'; text: string }
 	| { kind: 'tool'; name: string; summary: string }
 	| { kind: 'tool_result'; ok: boolean; summary: string }
@@ -438,6 +440,8 @@ export type Observation =
 	| { type: 'transcript'; transcript: Transcript | null }
 	| { type: 'setup'; missing: string[] }
 	| { type: 'topics_restored'; topics: SavedTopics }
+	// The view saved before a restart, put back without a word: nobody asked to look anywhere.
+	| { type: 'restore_view'; view: View }
 	| { type: 'history_restored'; ref: string; items: StreamItem[] }
 	// isSettled: a start's watcher reached its verdict, or a routine look.
 	| { type: 'dev_servers'; ref: string; servers: DevServer[]; isSettled: boolean }

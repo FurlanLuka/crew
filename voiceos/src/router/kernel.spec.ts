@@ -53,6 +53,7 @@ type CreateKernelExtra = Pick<KernelOptions, 'now'> & {
 	context?: FixtureContext;
 	// Changes the state as the reducer would, for a tool that reads what an earlier one did.
 	onDispatch?: (action: Action, state: State) => void;
+	mute?: () => void;
 };
 
 const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
@@ -72,7 +73,7 @@ const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 				extra.onDispatch?.(action, state);
 			},
 			readHistory: () => [],
-			mute: () => {},
+			mute: extra.mute ?? (() => {}),
 			saveDebugNote: () => {},
 			notes: createNullNotes(),
 		},
@@ -1111,5 +1112,54 @@ describe('listWaitingItems', () => {
 			{ ref: 'store-front/main', what: 'fix_offer', at: now - 10_000 },
 		]);
 		expect(listWaitingItems(lapsedState, now)).toEqual([]);
+	});
+});
+
+describe('a long request forwarded beside a mute (note 83)', () => {
+	const SAID =
+		"Okay, can you can you paste this to Voi. To crew main, like the debug notes, and just the notes? Uh, and also so when I select remote, which doesn't have anything, I don't want it to connect, like, uh, I don't want it to tell me that nothing is waiting for me. Just be silent, okay? Only say things if there's actually anything to do. But yeah, ask crew main to check debug notes and notes, um, and give me a list, and I'll decide on what to do, okay?";
+	const REWRITE = "Check the debug notes and notes, and give me a list. I'll decide what to do.";
+
+	it('forward + mute → the forward is the only send: the words go as said, and nothing is muted', async () => {
+		let muted = 0;
+		const { kernel, actions } = createKernel(
+			[[createToolUse('t1', 'forward', { text: REWRITE }), createToolUse('t2', 'mute', {})]],
+			{ mute: () => muted++ },
+		);
+
+		await kernel.handle(SAID, { forwardTo: 'store-front/main' });
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: SAID, ack: INSTRUCTION_ACK },
+		]);
+		expect(muted).toBe(0);
+	});
+
+	it('forward + interrupt → interrupt carries no words either: the send carries the words as said', async () => {
+		const { kernel, actions } = createKernel([
+			[
+				createToolUse('t1', 'forward', { text: REWRITE }),
+				createToolUse('t2', 'interrupt', { ref: 'store-front/main' }),
+			],
+		]);
+
+		await kernel.handle(SAID, { forwardTo: 'store-front/main' });
+
+		expect(actions.filter((action) => action.type === 'send')).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: SAID, ack: INSTRUCTION_ACK },
+		]);
+	});
+
+	it('the same words naming another session → still split: the rewrite goes', async () => {
+		const said = SAID.replace('To crew main', 'To checkout api');
+		const { kernel, actions } = createKernel([
+			[createToolUse('t1', 'forward', { text: REWRITE }), createToolUse('t2', 'mute', {})],
+		]);
+
+		await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: REWRITE, ack: INSTRUCTION_ACK },
+		]);
 	});
 });

@@ -240,12 +240,26 @@ describe('guardUnreachable', () => {
 });
 
 describe('switch_view to a machine', () => {
-	it('from elsewhere, nothing waiting → says the machine name alone', () => {
+	it('from elsewhere, nothing waiting → nothing said', () => {
 		const { effects } = run([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }], {
 			start: connected(),
 		});
 
-		expect(effects).toEqual([expect.objectContaining({ type: 'speak', text: 'Build box.' })]);
+		expect(effects).toEqual([]);
+	});
+
+	it('from elsewhere, a session there waiting → names it', () => {
+		const start: State = {
+			...connected(),
+			asks: [{ id: 'a', ref: REMOTE, at: 1, kind: 'plan', input: {}, plan: 'p' }],
+		};
+		const { effects } = run([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }], {
+			start,
+		});
+
+		expect(effects).toEqual([
+			expect.objectContaining({ type: 'speak', text: 'Build box. store/main is waiting on you.' }),
+		]);
 	});
 
 	it('up from one of its sessions → nothing more to say', () => {

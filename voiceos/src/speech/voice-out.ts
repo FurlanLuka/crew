@@ -1,6 +1,6 @@
 import { createLogger } from '../log.js';
 import { isSdkAsk, type SpeechMessage, type SpokenLine, type State } from '../shared/protocol.js';
-import { prefixSessionName, stripSessionName } from '../shared/spoken.js';
+import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import {
@@ -296,7 +296,12 @@ export class VoiceOut {
 		if (store.state.sessions[item.ref]?.status === 'stopped') {
 			log.info('line cut: view left, session stopped', { id: item.id, ref: item.ref });
 		} else {
-			store.dispatch({ type: 'line_held', ref: item.ref, text: item.text, isAsking: false });
+			store.dispatch({
+				type: 'line_held',
+				ref: item.ref,
+				text: stripTags(item.text),
+				isAsking: false,
+			});
 			log.info('line cut and held: view left', { id: item.id, ref: item.ref });
 		}
 
@@ -366,7 +371,7 @@ export class VoiceOut {
 		store.dispatch({
 			type: 'line_held',
 			ref: item.ref,
-			text: item.text,
+			text: stripTags(item.text),
 			isAsking: Boolean(item.isAsking),
 		});
 		log.info('line held', { id: item.id, ref: item.ref });
@@ -449,7 +454,10 @@ export class VoiceOut {
 
 		// Audio goes only to the tab used last, so two open tabs never talk over each other.
 		const tab = this.options.speaker();
-		const text = this.resolveSpokenText(item);
+		const voiced = this.resolveSpokenText(item);
+		// Tags reach the voice only; in a short line one can swallow the words after it.
+		const text = stripTags(voiced);
+		const synthesized = isShortLine(voiced) ? text : voiced;
 		const record: SpokenRecord = { text, endedAt: null };
 		const now = this.now();
 		this.spokenRecords = [...this.spokenRecords.filter((line) => isRecent(line, now)), record];
@@ -501,7 +509,7 @@ export class VoiceOut {
 		try {
 			await synthesize({
 				id: item.id,
-				text,
+				text: synthesized,
 				signal: playing.abort.signal,
 				onAudio: (pcm) => {
 					if (this.playing !== playing) {

@@ -29,6 +29,7 @@ import { createNotesStore, type NotesStore } from './memory/notes.js';
 import { toNotesKey } from './shared/notes.js';
 import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
 import { persistTopics } from './memory/topics.js';
+import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
@@ -270,7 +271,10 @@ const voiceIn = new VoiceInput({
 	debugAudioDir: process.env.VOICEOS_DEBUG_AUDIO === '1' ? paths.debugAudioDir : null,
 });
 
-const startedAt = new Date().toISOString();
+const bootAt = Date.now();
+const startedAt = new Date(bootAt).toISOString();
+// Pages reconnect by themselves after a restart: the first one hears why the page blinked.
+let isRestartSaid = false;
 
 // crew reads the port and pid from here, and `crew voice machines ls` each machine's status.
 function recordState(): void {
@@ -301,6 +305,7 @@ await machines.refreshWorktrees();
 void machines.monitorDevServers();
 
 persistTopics({ store, file: paths.topicsFile });
+const hadSavedView = persistView({ store, file: paths.viewFile });
 
 const pollTimer = setInterval(async () => {
 	machines.loadMachines();
@@ -378,6 +383,19 @@ gateway = startGateway({
 		}
 	},
 	onAudio: (chunk, client) => voiceIn.pushAudio(client, chunk),
+	onConnect: (client) => {
+		// A second tab opening must not take the audio from the one in use; only an empty seat is taken.
+		if (speaker === null) {
+			speaker = client;
+		}
+
+		if (!shouldAnnounceRestart({ bootAt, now: Date.now(), isSaid: isRestartSaid, hadSavedView })) {
+			return;
+		}
+
+		isRestartSaid = true;
+		voiceOut.say({ text: 'Voice OS restarted.', priority: 'high', source: 'kernel' });
+	},
 	onDisconnect: (client) => {
 		voiceIn.disconnect(client);
 

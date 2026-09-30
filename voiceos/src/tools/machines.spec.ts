@@ -78,6 +78,27 @@ describe('switch_view with a machine', () => {
 		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }]);
 	});
 
+	it('a machine with nothing waiting, by machine or named as the ref → the kernel says nothing', async () => {
+		const { tools } = createContext();
+
+		for (const input of [{ ref: null, machine: 'build box' }, { ref: 'Build box' }]) {
+			expect((await executeTool('switch_view', input, tools)).content).toBe(
+				'switched to that machine; nothing waits there — say nothing',
+			);
+		}
+	});
+
+	it('a machine with a session waiting → Voice OS names it, the kernel still says nothing', async () => {
+		const { tools } = createContext({
+			asks: [{ id: 'a', ref: 'vm1:store/main', at: 1, kind: 'plan', input: {}, plan: 'p' }],
+		});
+		const result = await executeTool('switch_view', { ref: null, machine: 'build box' }, tools);
+
+		expect(result.content).toBe(
+			'switched to that machine; Voice OS says what waits there — say nothing',
+		);
+	});
+
 	it('an unknown machine → nothing, and the machines named', async () => {
 		const { tools, actions } = createContext();
 		const result = await executeTool('switch_view', { ref: null, machine: 'gpu box' }, tools);

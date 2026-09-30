@@ -5,7 +5,9 @@ import { isConsent, isPlainConsent } from './consent.js';
 import {
 	describeDebugNoteRequest,
 	describeMisroutedAnswer,
+	isBareAnswer,
 	prepareSentText,
+	recordAsSent,
 	sendText,
 } from './send.js';
 import { findLastAskedAloud } from './asked-aloud.js';
@@ -308,26 +310,34 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 			);
 		}
 
-		if (asked && reply) {
-			const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, reply);
-
-			if (misroutedAnswer) {
-				return fail(misroutedAnswer);
-			}
-
-			const isOnScreen = toolContext.forwardTo === checked.ref;
-
-			return {
-				...sendText({ state, ref: checked.ref, text: reply, kind: 'instruction', toolContext }),
-				recordAs: isOnScreen
-					? { name: 'forward', input: { text: reply } }
-					: { name: 'send_to', input: { ref: checked.ref, text: reply } },
-			};
+		if (!reply) {
+			return fail(
+				`${checked.ref} has nothing pending to answer: forward or send_to the words instead.`,
+			);
 		}
 
-		return fail(
-			`${checked.ref} has nothing pending to answer: forward or send_to the words instead.`,
-		);
+		// A bare "yes" with another session asking is that session's answer, picked on the wrong ref:
+		// failing lets the kernel answer it there, where a forward would hand this one a stray yes.
+		const askingElsewhere = toolContext.asks.find((ask) => ask.ref !== checked.ref);
+
+		if (askingElsewhere && isBareAnswer(toolContext.utterance ?? reply)) {
+			return fail(
+				`${checked.ref} has nothing pending to answer; ${askingElsewhere.ref} is the one asking: answer it there. Nothing was sent.`,
+			);
+		}
+
+		const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, reply);
+
+		if (misroutedAnswer) {
+			return fail(misroutedAnswer);
+		}
+
+		// "Yes, do that" to a session that asked nothing still means something to it: the
+		// words go there instead of failing into "nothing is waiting".
+		return {
+			...sendText({ state, ref: checked.ref, text: reply, kind: 'instruction', toolContext }),
+			recordAs: recordAsSent({ ref: checked.ref, text: reply, toolContext }),
+		};
 	}
 
 	const liveAsk = state.asks.find((ask) => ask.id === heardAsk.id);
@@ -363,13 +373,10 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		isClarifyingQuestion(liveAsk, toolContext.utterance)
 	) {
 		const said = toolContext.utterance.trim();
-		const isOnScreen = toolContext.forwardTo === checked.ref;
 
 		return {
 			...sendText({ state, ref: checked.ref, text: said, kind: 'question', toolContext }),
-			recordAs: isOnScreen
-				? { name: 'forward', input: { text: said, kind: 'question' } }
-				: { name: 'send_to', input: { ref: checked.ref, text: said, kind: 'question' } },
+			recordAs: recordAsSent({ ref: checked.ref, text: said, kind: 'question', toolContext }),
 		};
 	}
 

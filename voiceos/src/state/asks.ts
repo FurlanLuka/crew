@@ -10,7 +10,8 @@ import {
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
-import { stripSessionName } from '../shared/spoken.js';
+import { buildRetryText } from '../shared/approval.js';
+import { stripSessionName, toSpokenName } from '../shared/spoken.js';
 import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared/questions.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
 import { cancelCommand, describeCommandAloud, findCommandAsk } from './commands.js';
@@ -280,9 +281,19 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 		return withoutEffects(state);
 	}
 
-	const retryText = `The user allows this once: retry "${denial.summary}" now.`;
+	const retryText = buildRetryText(denial.summary);
 	// Default mode routes the retried call to Voice OS, which approves it without asking.
 	const setModeEffect: Effect = { type: 'worker_set_mode', ref: denial.ref, mode: 'default' };
+	// The retry is the session's to report: Voice OS only says the allowance went through.
+	const saidEffect: Effect = {
+		type: 'speak',
+		text: `Allowed. ${toSpokenName(readLabel(state, denial.ref))} retries it.`,
+		source: 'kernel',
+		isReply: true,
+		ref: denial.ref,
+		priority: 'high',
+		isAck: true,
+	};
 	const cleared = updateSession(
 		{ ...state, denials: state.denials.filter((entry) => entry.id !== denial.id) },
 		denial.ref,
@@ -303,9 +314,10 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 			text: retryText,
 			itemId: stamped.id,
 			at: stamped.at,
+			isApproval: true,
 		});
 
-		return { state: sent.state, effects: [setModeEffect, ...sent.effects] };
+		return { state: sent.state, effects: [setModeEffect, ...sent.effects, saidEffect] };
 	}
 
 	// Pushed into the running turn, which takes it at once: queued, it would run after the turn ends
@@ -318,9 +330,14 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 					at: stamped.at,
 					kind: 'user',
 					text: retryText,
+					isApproval: true,
 				}),
 			),
-			effects: [setModeEffect, { type: 'worker_send', ref: denial.ref, text: retryText }],
+			effects: [
+				setModeEffect,
+				{ type: 'worker_send', ref: denial.ref, text: retryText },
+				saidEffect,
+			],
 		};
 	}
 
@@ -332,7 +349,7 @@ const allowDenied = (state: State, denialId: string, stamped: Stamped): ReducerR
 		],
 	}));
 
-	return { state: queued, effects: [setModeEffect] };
+	return { state: queued, effects: [setModeEffect, saidEffect] };
 };
 
 interface AnswerInWordsParams {

@@ -1,3 +1,4 @@
+import { readApprovalSummary } from '../shared/approval.js';
 import { stripStreamingTag } from '../shared/spoken-tags.js';
 import {
 	isHeldAsk,
@@ -112,7 +113,9 @@ export const readLastLine = (session: Session): string => {
 		}
 
 		if (item.kind === 'user') {
-			return `you: ${item.text}`;
+			return item.isApproval
+				? `allowed once: ${readApprovalSummary(item.text)}`
+				: `you: ${item.text}`;
 		}
 	}
 

@@ -501,6 +501,15 @@ describe('denials', () => {
 				ref: 'store/main',
 				text: 'The user allows this once: retry "run git push" now.',
 			},
+			{
+				type: 'speak',
+				text: 'Allowed. store, main retries it.',
+				source: 'kernel',
+				isReply: true,
+				ref: 'store/main',
+				priority: 'high',
+				isAck: true,
+			},
 		]);
 		expect(state.sessions['store/main']?.queue).toEqual([]);
 		expect(state.sessions['store/main']?.status).toBe('running');
@@ -587,10 +596,68 @@ describe('denials', () => {
 		]).state;
 		const starting = allow(deny(startingState));
 
-		expect(pushed.effects.map((effect) => effect.type)).toEqual(['worker_set_mode', 'worker_send']);
+		expect(pushed.effects.map((effect) => effect.type)).toEqual([
+			'worker_set_mode',
+			'worker_send',
+			'speak',
+		]);
 		expect(pushed.state.sessions['store/main']?.queue).toEqual([]);
 		expect(starting.state.sessions['store/main']?.queue).toHaveLength(1);
-		expect(starting.effects.map((effect) => effect.type)).toEqual(['worker_set_mode']);
+		expect(starting.effects.map((effect) => effect.type)).toEqual(['worker_set_mode', 'speak']);
+	});
+
+	const RETRY = 'The user allows this once: retry "run git push" now.';
+	const retrySends = (effects: Effect[]): Effect[] =>
+		effects.filter((effect) => effect.type === 'worker_send');
+
+	it('allow it on an idle session → the stream shows an approval; the worker gets the retry as before', () => {
+		const { state, effects } = allow(deny(idleSession()));
+
+		expect(state.sessions['store/main']?.stream.at(-1)).toMatchObject({
+			kind: 'user',
+			text: RETRY,
+			isApproval: true,
+		});
+		expect(retrySends(effects)).toEqual([{ type: 'worker_send', ref: 'store/main', text: RETRY }]);
+	});
+
+	it("allow it on a running session → an approval in the turn; the running request is still the developer's", () => {
+		const { state, effects } = allow(deny(running()));
+		const session = state.sessions['store/main'];
+
+		expect(session?.stream.at(-1)).toMatchObject({ kind: 'user', text: RETRY, isApproval: true });
+		expect(session?.requests.at(-1)?.text).toBe('push it');
+		expect(retrySends(effects)).toEqual([{ type: 'worker_send', ref: 'store/main', text: RETRY }]);
+	});
+
+	it('allow it on a starting session → queued; once drained it shows as the approval', () => {
+		const startingState = run([
+			{ type: 'worktrees', worktrees: [worktree('store/main')] },
+			{ type: 'start_session', ref: 'store/main' },
+		]).state;
+		const queued = allow(deny(startingState)).state;
+		const { state, effects } = run([{ type: 'session_started', ref: 'store/main' }], queued);
+
+		expect(state.sessions['store/main']?.stream.at(-1)).toMatchObject({
+			kind: 'user',
+			text: RETRY,
+			isApproval: true,
+		});
+		expect(retrySends(effects)).toEqual([{ type: 'worker_send', ref: 'store/main', text: RETRY }]);
+	});
+
+	it("allow it → Voice OS says it went through, in the session's spoken name", () => {
+		const { effects } = allow(deny(idleSession()));
+
+		expect(effects.filter((effect) => effect.type === 'speak')).toEqual([
+			expect.objectContaining({ text: 'Allowed. store, main retries it.', ref: 'store/main' }),
+		]);
+	});
+
+	it("the developer's own words → no approval flag", () => {
+		expect(running().sessions['store/main']?.stream.at(-1)).toEqual(
+			expect.not.objectContaining({ isApproval: true }),
+		);
 	});
 
 	it('blocked on another call when allowed → answering that one keeps the allowance for the retry', () => {
@@ -827,6 +894,27 @@ describe('worktrees', () => {
 		const { state } = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }], viewing);
 
 		expect(state.view).toEqual({ kind: 'grid', machine: 'local' });
+	});
+
+	it('restore_view of a known session → shown and focused, nothing said', () => {
+		const { state, effects } = run(
+			[{ type: 'restore_view', view: { kind: 'session', ref: 'store/main' } }],
+			idleSession(),
+		);
+
+		expect(state.view).toEqual({ kind: 'session', ref: 'store/main' });
+		expect(state.focus).toBe('store/main');
+		expect(effects).toEqual([]);
+	});
+
+	it('restore_view of a session that is gone → the view stays', () => {
+		const start = idleSession();
+		const { state } = run(
+			[{ type: 'restore_view', view: { kind: 'session', ref: 'store/wrk9' } }],
+			start,
+		);
+
+		expect(state.view).toEqual(start.view);
 	});
 });
 

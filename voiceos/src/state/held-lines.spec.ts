@@ -50,6 +50,8 @@ describe('the words', () => {
 		['one two three four five six seven eight nine ten eleven twelve thirteen', false],
 		['Tests pass. Pushed.', true],
 		['Push it now?', true],
+		// A tag is no word: twelve words and a tag are still short.
+		['one two three four five six. [laughs] seven eight nine ten eleven twelve', true],
 	])('%p short → %p', (text, expected) => expect(isShortLine(text)).toBe(expected));
 
 	it('announcements: done, needs you with or without what about', () => {
