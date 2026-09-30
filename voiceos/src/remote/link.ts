@@ -9,7 +9,6 @@ import { toMainInput } from './mapping.js';
 import {
 	ackOutbox,
 	classifyExit,
-	lastLine,
 	createOutbox,
 	nextBackoff,
 	pushEffect,
@@ -26,7 +25,12 @@ import {
 } from './protocol.js';
 import { planResync } from './resync.js';
 import type { UpdateRemote } from './ssh.js';
-import { decideVersionFix, readRemoteVersion } from './versions.js';
+import {
+	planVersionFix,
+	readRemoteVersion,
+	readUpdateOutcome,
+	type UpdateOutcome,
+} from './versions.js';
 
 const log = createLogger('remote');
 
@@ -88,7 +92,7 @@ export class RemoteLink {
 	private versionRefusal: VersionRefusal | null = null;
 	// Remote versions this run already updated from, with how it went: an update is never repeated
 	// on every reconnect, and a daemon kept busy on the old release is waited for, not updated again.
-	private updates = new Map<string, { ok: true } | { ok: false; reason: string }>();
+	private updates = new Map<string, UpdateOutcome>();
 	private retryTimer: ReturnType<typeof setTimeout> | null = null;
 	private pingTimer: ReturnType<typeof setInterval> | null = null;
 	private calls = new Map<number, PendingCall>();
@@ -193,7 +197,8 @@ export class RemoteLink {
 		// A retry keeps "out of reach" and its time: the card says how long, not the last attempt.
 		const current = this.options.getState().machines[machine.id]?.status;
 
-		if (current !== 'unreachable' && current !== 'error') {
+		// A wait with its reason ("updated; switches once its sessions finish") keeps it on the card.
+		if (current !== 'unreachable' && current !== 'error' && !this.isWaitingOnVersion()) {
 			this.status('connecting');
 		}
 
@@ -381,27 +386,25 @@ export class RemoteLink {
 		const failure = this.refusedDetail
 			? { status: 'error' as const, detail: this.refusedDetail }
 			: classifyExit(this.options.machine.host, code, stderr);
-		const delay =
-			this.options.retryMs ??
-			(failure.status === 'error' ? ERROR_RETRY_MS : nextBackoff(this.attempt));
 
 		log.warn('link closed', {
 			machine: this.id,
 			code,
 			status: failure.status,
 			detail: failure.detail,
-			retryMs: delay,
 		});
-		this.status(failure.status, failure.detail);
-		this.attempt++;
-		this.retryTimer = setTimeout(() => this.connect(), delay);
+		this.retryLater(failure.status, failure.detail);
 	}
 
-	private retryLater(
-		status: 'connecting' | 'error',
-		detail: string,
-		delay = this.options.retryMs ?? ERROR_RETRY_MS,
-	): void {
+	private isWaitingOnVersion(): boolean {
+		return [...this.updates.values()].some((outcome) => outcome.ok);
+	}
+
+	private retryLater(status: 'connecting' | 'unreachable' | 'error', detail: string): void {
+		const delay =
+			this.options.retryMs ??
+			(status === 'unreachable' ? nextBackoff(this.attempt) : ERROR_RETRY_MS);
+
 		this.status(status, detail);
 		this.attempt++;
 		this.retryTimer = setTimeout(() => this.connect(), delay);
@@ -411,69 +414,54 @@ export class RemoteLink {
 	// daemon moves to the new release on the next connect, as soon as none of its sessions is working.
 	private async fixVersion(refusal: VersionRefusal): Promise<void> {
 		const { name, host } = this.options.machine;
-		const { version } = this.options;
-		const fix = decideVersionFix(version, refusal.remote);
-		const tried = refusal.remote === null ? undefined : this.updates.get(refusal.remote);
+		const plan = planVersionFix({
+			main: this.options.version,
+			remote: refusal.remote,
+			name,
+			detail: refusal.detail,
+			tried: (remote) => this.updates.get(remote),
+		});
 
 		log.info('version mismatch', {
 			machine: this.id,
-			main: version,
+			main: this.options.version,
 			remote: refusal.remote,
-			fix,
-			tried: tried ? (tried.ok ? 'updated' : 'failed') : 'no',
+			plan: plan.kind === 'update' ? 'update' : plan.status,
 		});
 
-		if (fix === 'update-main') {
-			this.retryLater(
-				'error',
-				`${name} runs Voice OS ${refusal.remote}, newer than this one (${version}): run crew update here, then crew voice restart.`,
-			);
+		if (plan.kind === 'wait') {
+			this.retryLater(plan.status, plan.detail);
 
 			return;
 		}
 
-		if (fix === 'none' || refusal.remote === null) {
-			this.retryLater('error', refusal.detail);
-
-			return;
-		}
-
-		if (tried) {
-			this.retryLater(
-				tried.ok ? 'connecting' : 'error',
-				tried.ok
-					? `${name} is updated; it switches to ${version} once its sessions finish their work.`
-					: tried.reason,
-			);
-
-			return;
-		}
-
-		this.status('connecting', `Updating ${name} to ${version}…`);
-		log.info('updating remote', { machine: this.id, from: refusal.remote, to: version });
+		this.status('connecting', `Updating ${name}…`);
+		log.info('updating remote', { machine: this.id, from: plan.from });
 
 		const result = await this.options
 			.updateRemote(host)
-			.catch((error: unknown) => ({ code: null, output: String(error) }));
+			.catch((error: unknown) => ({ code: null, output: String(error), isTimedOut: false }));
+		const outcome = readUpdateOutcome({ name, ...result });
+
+		this.updates.set(plan.from, outcome);
 
 		if (this.isStopped) {
 			return;
 		}
 
-		if (result.code === 0) {
-			log.info('remote updated', { machine: this.id, to: version });
-			this.updates.set(refusal.remote, { ok: true });
-			this.attempt = 0;
-			this.connect();
+		if (!outcome.ok) {
+			log.warn('remote update failed', {
+				machine: this.id,
+				code: result.code,
+				reason: outcome.reason,
+			});
+			this.retryLater('error', outcome.reason);
 
 			return;
 		}
 
-		const why = lastLine(result.output) || `exit ${result.code}`;
-		const reason = `Could not update ${name}: ${why}. Run crew update there, then crew voice remote.`;
-
-		log.warn('remote update failed', { machine: this.id, code: result.code, why });
-		this.updates.set(refusal.remote, { ok: false, reason });
-		this.retryLater('error', reason);
+		log.info('remote updated', { machine: this.id });
+		this.attempt = 0;
+		this.connect();
 	}
 }

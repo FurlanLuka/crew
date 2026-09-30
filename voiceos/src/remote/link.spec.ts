@@ -272,7 +272,7 @@ describe('a remote over a link', () => {
 					updated.push(host);
 					await swapTo('5.1.0');
 
-					return { code: 0, output: '' };
+					return { code: 0, output: '', isTimedOut: false };
 				},
 			});
 
@@ -290,7 +290,7 @@ describe('a remote over a link', () => {
 				retryMs: 60_000,
 				updateRemote: () =>
 					new Promise((resolve) => {
-						finish = () => resolve({ code: 0, output: '' });
+						finish = () => resolve({ code: 0, output: '', isTimedOut: false });
 					}),
 			});
 
@@ -298,7 +298,7 @@ describe('a remote over a link', () => {
 
 			expect(store.state.machines.vm1).toMatchObject({
 				status: 'connecting',
-				detail: 'Updating Build box to 5.1.0…',
+				detail: 'Updating Build box…',
 			});
 			finish();
 		});
@@ -313,18 +313,18 @@ describe('a remote over a link', () => {
 				updateRemote: async () => {
 					updates++;
 
-					return { code: 0, output: '' };
+					return { code: 0, output: '', isTimedOut: false };
 				},
 			});
 
 			await until(
-				() => store.state.machines.vm1?.detail?.includes('switches to 5.1.0') === true,
+				() => store.state.machines.vm1?.detail?.includes('is updated') === true,
 				'waiting for its sessions',
 			);
 
 			expect(updates).toBe(1);
 			expect(store.state.machines.vm1?.detail).toBe(
-				'Build box is updated; it switches to 5.1.0 once its sessions finish their work.',
+				'Build box is updated; it switches to the new release once its sessions finish their work.',
 			);
 		});
 
@@ -338,7 +338,11 @@ describe('a remote over a link', () => {
 				updateRemote: async () => {
 					updates++;
 
-					return { code: 1, output: 'Downloading…\nError: no release for linux/riscv64\n' };
+					return {
+						code: 1,
+						output: 'Downloading…\nError: no release for linux/riscv64\n',
+						isTimedOut: false,
+					};
 				},
 			});
 
@@ -347,6 +351,51 @@ describe('a remote over a link', () => {
 			expect(updates).toBe(1);
 			expect(store.state.machines.vm1?.detail).toBe(
 				'Could not update Build box: Error: no release for linux/riscv64. Run crew update there, then crew voice remote.',
+			);
+		});
+
+		it('the machine removed while its update runs → no reconnect after it', async () => {
+			const { open } = await startSwappable('5.0.1');
+			let opens = 0;
+			let finish = (): void => undefined;
+			const { store } = startMain({
+				open: (target, handlers) => {
+					opens++;
+
+					return open(target, handlers);
+				},
+				version: '5.1.0',
+				retryMs: 60_000,
+				updateRemote: () =>
+					new Promise((resolve) => {
+						finish = () => resolve({ code: 0, output: '', isTimedOut: false });
+					}),
+			});
+
+			await until(() => store.state.machines.vm1?.detail === 'Updating Build box…', 'updating');
+			store.dispatch({ type: 'machines', machines: [] });
+			await until(() => store.state.machines.vm1 === undefined, 'removed');
+			finish();
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(opens).toBe(1);
+		});
+
+		it('the update cannot even start → the failure on the card', async () => {
+			const { open } = await startSwappable('5.0.1');
+			const { store } = startMain({
+				open,
+				version: '5.1.0',
+				retryMs: 60_000,
+				updateRemote: async () => {
+					throw new Error('spawn ssh ENOENT');
+				},
+			});
+
+			await until(() => store.state.machines.vm1?.status === 'error', 'the failure');
+
+			expect(store.state.machines.vm1?.detail).toBe(
+				'Could not update Build box: Error: spawn ssh ENOENT. Run crew update there, then crew voice remote.',
 			);
 		});
 

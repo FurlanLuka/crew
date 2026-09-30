@@ -76,6 +76,7 @@ With a key missing, Voice OS still starts: the page shows a banner, and text and
 | `VOICEOS_DEBUG_AUDIO=1` | Saves every push-to-talk press as a WAV (with what was heard) under `~/.crew/voiceos/debug/`. Contributor switch for speech bugs. `crew voice` never sets it, so run from source to use it. |
 | `VOICEOS_DEBUG_SPEECH=1` | Lets a page inject heard words with `window.voiceos.say("…")`, for demos and screenshots. Refused otherwise. |
 | `VOICEOS_REMOTE_EXEC` | Tests and QA: a shell command run instead of `ssh` for a machine link. |
+| `VOICEOS_REMOTE_UPDATE_EXEC` | Tests and QA: a shell command run instead of `ssh … crew update` when a remote is behind. |
 | `VOICEOS_LIVE=1` | Enables the live Claude session tests. |
 
 ## How it is built
