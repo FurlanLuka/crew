@@ -216,6 +216,7 @@ export class RemoteHost {
 			this.send(attachment, {
 				type: 'refused',
 				reason: 'version',
+				version: this.options.version,
 				detail: `This machine runs Voice OS ${this.options.version} and the main ${message.version}: run crew update on the older one, then crew voice remote there.`,
 			});
 			attachment.connection.close();

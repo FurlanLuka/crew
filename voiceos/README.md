@@ -76,6 +76,7 @@ With a key missing, Voice OS still starts: the page shows a banner, and text and
 | `VOICEOS_DEBUG_AUDIO=1` | Saves every push-to-talk press as a WAV (with what was heard) under `~/.crew/voiceos/debug/`. Contributor switch for speech bugs. `crew voice` never sets it, so run from source to use it. |
 | `VOICEOS_DEBUG_SPEECH=1` | Lets a page inject heard words with `window.voiceos.say("…")`, for demos and screenshots. Refused otherwise. |
 | `VOICEOS_REMOTE_EXEC` | Tests and QA: a shell command run instead of `ssh` for a machine link. |
+| `VOICEOS_REMOTE_UPDATE_EXEC` | Tests and QA: a shell command run instead of `ssh … crew update` when a remote is behind. |
 | `VOICEOS_LIVE=1` | Enables the live Claude session tests. |
 
 ## How it is built
@@ -163,6 +164,10 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
 - A reconnect is a snapshot the main reconciles (`resync.ts`), with one recap line, and never an
   event replay. Effects not yet acknowledged ride in the next hello and are applied once.
 - `link-state.ts` turns an SSH exit into the reason the machine card shows.
+- A remote on another release refuses the main. When the remote is behind, the main runs `crew update`
+  there over SSH (`ssh.ts` `updateRemoteCrew`, `versions.ts` `decideVersionFix`), once per remote
+  version per run, and reconnects; the daemon switches release once its sessions are idle. A newer
+  remote is never downgraded, and a `dev` build on either side updates nothing.
 
 The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew voice machines`
 (the page and voice go through it) and watched while running (`cockpit-machines.ts`).

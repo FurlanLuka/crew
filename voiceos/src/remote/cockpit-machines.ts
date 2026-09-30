@@ -20,7 +20,7 @@ import { createRemoteDevCrew } from './dev-crew.js';
 import type { OpenTransport } from './link.js';
 import { MachineLinks } from './links.js';
 import { readMachinesFile, readMainId, sameMachines } from './machines-file.js';
-import { openSshTransport } from './ssh.js';
+import { openSshTransport, updateRemoteCrew, type UpdateRemote } from './ssh.js';
 
 const log = createLogger('remote');
 
@@ -36,8 +36,9 @@ export interface CockpitMachinesOptions {
 	sayLine: DevSay;
 	// A machine's status changed: crew voice machines ls reads it from the recorded state.
 	onStatusesChanged: () => void;
-	// How a machine is reached; SSH unless a test says otherwise.
+	// How a machine is reached, and updated; SSH unless a test says otherwise.
 	open?: OpenTransport;
+	updateRemote?: UpdateRemote;
 }
 
 // Each machine's status as recorded for crew voice machines ls.
@@ -75,6 +76,7 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		mainId: readMainId(join(options.voiceDir, 'main-id')),
 		runId: randomUUID(),
 		open: options.open ?? openSshTransport,
+		updateRemote: options.updateRemote ?? updateRemoteCrew,
 		setup: createSetupWorktree(options.home),
 		getState: () => store.state,
 		dispatch: (input) => store.dispatch(input),
