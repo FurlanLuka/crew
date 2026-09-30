@@ -78,6 +78,8 @@ export interface FixtureContext {
 	// The developer is talking with this session without switching to it: what they asked (its work
 	// request), and what it answered, heard that many seconds ago.
 	talkingWith?: { ref: string; asked: string; answered: string; secondsAgo: number };
+	// Voice OS asked "Switch to <ref>?" that many seconds ago.
+	switchOffer?: { ref: string; secondsAgo: number };
 }
 
 export const FIXTURE_TOPICS: Record<string, string> = {
@@ -358,6 +360,19 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 						},
 					]
 				: []),
+			...(context.switchOffer
+				? [
+						{
+							id: 'offer',
+							text: `Switch to ${context.switchOffer.ref}?`,
+							source: 'kernel' as const,
+							at: now - context.switchOffer.secondsAgo * 1000,
+							endedAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
+							ref: context.switchOffer.ref,
+							isAsking: true as const,
+						},
+					]
+				: []),
 			...(context.talkingWith
 				? [
 						{
@@ -388,6 +403,14 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 		focus: context.view ?? null,
 		...(context.pinned ? { pinned: context.pinned } : {}),
 		...(context.names ? { names: context.names } : {}),
+		...(context.switchOffer
+			? {
+					switchOffer: {
+						ref: context.switchOffer.ref,
+						at: now - context.switchOffer.secondsAgo * 1000,
+					},
+				}
+			: {}),
 		...(context.talkingWith
 			? {
 					exchange: {

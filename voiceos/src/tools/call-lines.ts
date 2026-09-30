@@ -1,3 +1,4 @@
+import { SWITCH_OFFERED_NOTE } from './announced.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isBareAnswer } from './send.js';
@@ -172,8 +173,12 @@ export const decideEnding = ({
 		return { kind: 'forward_utterance' };
 	}
 
-	// On a session's screen Voice OS says "Sent to X" itself (exchange.ts).
-	if (isAnsweredByForward(turn.calls) || (turn.forwardTo && isAcknowledgedInCode(turn.calls))) {
+	// On a session's screen Voice OS says "Sent to X" itself (exchange.ts), and "Switch to X?" too.
+	if (
+		isAnsweredByForward(turn.calls) ||
+		(turn.forwardTo && isAcknowledgedInCode(turn.calls)) ||
+		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE)
+	) {
 		return { kind: 'drop_reply' };
 	}
 

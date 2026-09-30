@@ -1,15 +1,14 @@
-import { GRID, type State } from '../shared/protocol.js';
+import { isSwitchOfferFresh, type State } from '../shared/protocol.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { readLabel } from '../state/helpers.js';
 import { type ToolResult, fail } from './results.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
 
+export const SWITCH_OFFERED_NOTE = 'switch offered';
+
 // A question heard only as "<session> needs you" is not answered, and its session not opened, by
 // words that do not name it: the developer is offered the switch instead.
-
-const SWITCH_OFFER_MS = 2 * 60_000;
-const SWITCH_OFFER_PATTERN = /\bswitch\b/i;
 
 interface NamedParams {
 	state: State;
@@ -20,24 +19,9 @@ interface NamedParams {
 export const isNamedIn = ({ state, ref, utterance }: NamedParams): boolean =>
 	utterance !== undefined && findSessionsNamedIn(state, utterance).includes(ref);
 
-interface HasOfferedSwitchParams {
-	state: State;
-	ref: string;
-	screen: string | null | undefined;
-	now: number;
-}
-
-export const hasOfferedSwitch = ({ state, ref, screen, now }: HasOfferedSwitchParams): boolean => {
-	// Voice OS's own last reply on this screen offered it ("Switch to crew main?", "…switch to it?").
-	const last = state.voiceLog[screen ?? GRID]?.at(-1);
-
-	return (
-		last !== undefined &&
-		now - last.at <= SWITCH_OFFER_MS &&
-		SWITCH_OFFER_PATTERN.test(last.reply) &&
-		isNamedIn({ state, ref, utterance: last.reply })
-	);
-};
+// A yes to Voice OS's own "Switch to X?" opens X, whatever it holds.
+export const hasOfferedSwitch = (state: State, ref: string, now: number): boolean =>
+	isSwitchOfferFresh(state.switchOffer, now) && state.switchOffer.ref === ref;
 
 interface RefuseAnnouncedOnlyParams {
 	state: State;
@@ -60,7 +44,13 @@ export const refuseAnnouncedOnly = ({
 		return null;
 	}
 
-	return fail(
-		`Nothing was ${what}: ${ref}'s question was only announced and the developer has not heard it. Ask them in a few words: "Switch to ${readLabel(state, ref)}?" — a yes to that switches.`,
-	);
+	// Voice OS asks it in code: a yes to it is a real offer the next turn can find.
+	toolContext.dispatch({ type: 'offer_switch', ref });
+
+	return {
+		...fail(
+			`Nothing was ${what}: ${ref}'s question was only announced and the developer has not heard it. Voice OS asked them "Switch to ${readLabel(state, ref)}?" itself: say nothing.`,
+		),
+		note: SWITCH_OFFERED_NOTE,
+	};
 };

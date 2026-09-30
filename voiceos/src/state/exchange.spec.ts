@@ -151,4 +151,102 @@ describe('the exchange', () => {
 		expect(pruneExchange(talking.exchange, (ref) => ref !== OTHER)).toBeNull();
 		expect(pruneExchange(talking.exchange, () => true)).toBe(talking.exchange);
 	});
+
+	describe('the switch offer', () => {
+		// Two turns of the subject answered, each heard to the end.
+		const twoTurns = (): State => {
+			const first = heardAnswer(
+				runAt(
+					[
+						[10, said(OTHER)],
+						[12, { type: 'turn_ended', ref: OTHER, costUsd: 0, text: 'Yes.' }],
+					],
+					onScreen(),
+				),
+				20,
+			);
+
+			return runAt([[30, said(OTHER)]], first);
+		};
+
+		const lastEffects = (state: State, at: number, patch: Partial<Input> = {}) => {
+			const withLine = runAt(
+				[
+					[
+						at,
+						{
+							type: 'spoken',
+							text: 'Lint is clean.',
+							source: 'narrator',
+							ref: OTHER,
+							isAnswer: true,
+							...patch,
+						} as Input,
+					],
+				],
+				state,
+			);
+			const lineId = withLine.spoken.at(-1)?.id ?? '';
+			const seq = withLine.seq + 1;
+
+			return reduce(withLine, {
+				seq,
+				at: at + 1,
+				id: `i${seq}`,
+				input: { type: 'spoken_ended', lineId, isCut: false },
+			});
+		};
+
+		it('the second turn answered → "Switch to …?" asked once, as a real offer', () => {
+			const { state, effects } = lastEffects(twoTurns(), 40);
+
+			expect(state.switchOffer).toEqual({ ref: OTHER, at: 41 });
+			expect(state.exchange?.hasOfferedSwitch).toBe(true);
+			expect(effects).toContainEqual(
+				expect.objectContaining({
+					type: 'speak',
+					text: 'Switch to checkout, main?',
+					isAsking: true,
+				}),
+			);
+
+			const closed = runAt([[42, { type: 'switch_offer_closed', at: 41 }]], state);
+			const third = lastEffects(runAt([[50, said(OTHER)]], closed), 60);
+
+			expect(third.state.switchOffer).toBeNull();
+		});
+
+		it('an answer that asks something → no offer: the yes belongs to that question', () => {
+			const { state } = lastEffects(twoTurns(), 40, { isAsking: true });
+
+			expect(state.switchOffer).toBeNull();
+		});
+
+		it('a switch closes it; a stale close for an older offer changes nothing', () => {
+			const { state } = lastEffects(twoTurns(), 40);
+
+			expect(
+				runAt([[45, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }]], state)
+					.switchOffer,
+			).toBeNull();
+			expect(
+				runAt([[45, { type: 'switch_offer_closed', at: 10 }]], state).switchOffer,
+			).not.toBeNull();
+		});
+
+		it('offered for a question only announced → said the same way', () => {
+			const seq = onScreen().seq + 1;
+			const { state, effects } = reduce(onScreen(), {
+				seq,
+				at: 10,
+				id: `i${seq}`,
+				input: { type: 'offer_switch', ref: OTHER },
+			});
+
+			expect(state.switchOffer).toEqual({ ref: OTHER, at: 10 });
+			expect(effects).toContainEqual(
+				expect.objectContaining({ text: 'Switch to checkout, main?' }),
+			);
+		});
+	});
 });

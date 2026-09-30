@@ -208,6 +208,8 @@ export const createConversation = ({ refs, view }: CreateConversationParams) => 
 		},
 		// The developer speaks (push to talk): what plays is cut, and nothing plays until they finish.
 		say: async (text: string) => {
+			// Speaking takes a moment: turns said one after another are never at the same instant.
+			now += 1000;
 			voiceOut.talkStarted();
 			heard.push(`> ${text}`);
 			voiceOut.talkEnded();

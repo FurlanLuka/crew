@@ -1180,7 +1180,7 @@ describe('a question only announced', () => {
 		return context;
 	};
 
-	it('a bare yes from elsewhere answers nothing, sends nothing, and offers the switch (both kinds)', async () => {
+	it('a bare yes from elsewhere answers nothing, sends nothing, and Voice OS offers the switch itself (both kinds)', async () => {
 		for (const kind of ['ask', 'line'] as const) {
 			const { tools, actions } = withHeldQuestion(kind);
 			const bare = { ...tools, screen: null, forwardTo: null, utterance: 'yes' };
@@ -1191,33 +1191,29 @@ describe('a question only announced', () => {
 			);
 			const sent = await executeTool('send_to', { ref: 'checkout-api/main', text: 'Yes.' }, bare);
 
-			expect(answered.ok).toBe(false);
-			expect(String(answered.content)).toContain('Switch to checkout-api/main?');
+			expect(answered).toMatchObject({ ok: false, note: 'switch offered' });
+			expect(String(answered.content)).toContain('say nothing');
 			expect(sent.ok).toBe(false);
-			expect(actions).toEqual([]);
+			expect(actions).toEqual([
+				{ type: 'offer_switch', ref: 'checkout-api/main' },
+				{ type: 'offer_switch', ref: 'checkout-api/main' },
+			]);
 		}
 	});
 
-	it('switching there: refused on a bare yes; allowed after Voice OS offered it, or when named', async () => {
-		const offer = (reply: string, at: number) => ({
-			[GRID]: [{ utterance: 'yes', did: [], reply, at }],
-		});
+	it("switching there: refused on a bare yes; allowed while Voice OS's offer for it is fresh, or when named", async () => {
+		const offer = (ref: string, at: number) => ({ ref, at });
 		const refused = withHeldQuestion('line');
 		const offered = withHeldQuestion('line');
-		const offeredInPassing = withHeldQuestion('line');
 		const stale = withHeldQuestion('line');
 		const elsewhere = withHeldQuestion('line');
 		const named = withHeldQuestion('line');
-		offered.tools.getState().voiceLog = offer('Switch to checkout-api/main?', 150_000);
-		offeredInPassing.tools.getState().voiceLog = offer(
-			'checkout api main needs you, about the backoff cap — switch to it?',
-			150_000,
-		);
-		stale.tools.getState().voiceLog = offer('Switch to checkout-api/main?', 0);
-		elsewhere.tools.getState().voiceLog = offer('Switch to store-front/main?', 150_000);
+		offered.tools.getState().switchOffer = offer('checkout-api/main', 175_000);
+		stale.tools.getState().switchOffer = offer('checkout-api/main', 150_000);
+		elsewhere.tools.getState().switchOffer = offer('store-front/main', 175_000);
 		const yes = { screen: null, utterance: 'yes', now: () => 180_000 };
 
-		for (const context of [refused, offered, offeredInPassing, stale, elsewhere]) {
+		for (const context of [refused, offered, stale, elsewhere]) {
 			await executeTool('switch_view', { ref: 'checkout-api/main' }, { ...context.tools, ...yes });
 		}
 
@@ -1230,13 +1226,33 @@ describe('a question only announced', () => {
 			type: 'switch_view',
 			view: { kind: 'session', ref: 'checkout-api/main' },
 		} as const;
+		const offering = { type: 'offer_switch', ref: 'checkout-api/main' } as const;
 
-		expect(refused.actions).toEqual([]);
-		expect(stale.actions).toEqual([]);
-		expect(elsewhere.actions).toEqual([]);
+		expect(refused.actions).toEqual([offering]);
+		expect(stale.actions).toEqual([offering]);
+		expect(elsewhere.actions).toEqual([offering]);
 		expect(offered.actions).toEqual([switched]);
-		expect(offeredInPassing.actions).toEqual([switched]);
 		expect(named.actions).toEqual([switched]);
+	});
+
+	it('"no" right after "Switch to …?" → not sent to anyone; "no, use the table" still goes', async () => {
+		const context = createToolContext();
+		context.tools.getState().switchOffer = { ref: 'checkout-api/main', at: 175_000 };
+		const now = () => 180_000;
+
+		const bare = await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main' },
+			{ ...context.tools, now, utterance: 'No.' },
+		);
+		const more = await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main' },
+			{ ...context.tools, now, utterance: 'No, use the table instead of the view.' },
+		);
+
+		expect(bare.ok).toBe(false);
+		expect(more.ok).toBe(true);
 	});
 
 	it('the answer tool with the session named answers it; other words from elsewhere still go', async () => {

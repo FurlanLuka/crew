@@ -48,6 +48,7 @@ describe('conversations', () => {
 			'> And the lint?',
 			'Sent to checkout api, main.',
 			`checkout api, main: ${longAnswer}`,
+			'Switch to checkout api, main?',
 			'> Okay, run the tests here.',
 			'Sent to store front, main.',
 		]);

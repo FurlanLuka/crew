@@ -2,6 +2,7 @@
 // goes to, whose answer plays first, and whether they are mid-conversation with the screen.
 import {
 	EXCHANGE_IDLE_MS,
+	isSwitchOfferFresh,
 	type Exchange,
 	type ExchangeReason,
 	type Input,
@@ -87,6 +88,41 @@ const end = (state: State, why: string): State => {
 	return { ...state, exchange: null };
 };
 
+// "Switch to checkout?": asked aloud once, answered with a yes or let go.
+export const offerSwitch = (state: State, ref: string, at: number): ReducerResult => {
+	log.info('switch offered', { ref });
+
+	return {
+		state: {
+			...state,
+			switchOffer: { ref, at },
+			exchange:
+				state.exchange?.ref === ref
+					? { ...state.exchange, hasOfferedSwitch: true }
+					: state.exchange,
+		},
+		effects: [
+			{
+				type: 'speak',
+				text: `Switch to ${toSpokenName(readLabel(state, ref))}?`,
+				source: 'kernel',
+				ref,
+				isAsking: true,
+				priority: 'high',
+			},
+		],
+	};
+};
+
+// A real back-and-forth has started (a second answer heard), and nothing else waits on a yes.
+const shouldOfferSwitch = (state: State, exchange: Exchange, isAsking: boolean): boolean =>
+	exchange.answeredTurns >= 2 &&
+	!exchange.hasOfferedSwitch &&
+	!isAsking &&
+	exchange.ref !== readScreenRef(state) &&
+	state.asks.length === 0 &&
+	!state.switchOffer;
+
 const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => {
 	const { exchange } = state;
 	const line = state.spoken.find((spoken) => spoken.id === lineId);
@@ -106,7 +142,12 @@ const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => 
 		countedTurnAt: turnAt,
 	};
 
-	return { state: { ...state, exchange: heard }, effects: [] };
+	const next = { ...state, exchange: heard };
+
+	// Its answer asked something: the developer's yes belongs to that, so the offer waits a turn.
+	return shouldOfferSwitch(next, heard, Boolean(line.isAsking))
+		? offerSwitch(next, heard.ref, at)
+		: { state: next, effects: [] };
 };
 
 interface DescribeSentToParams {
@@ -182,15 +223,32 @@ export const followExchange = (
 		}
 
 		case 'switch_view': {
-			const { exchange } = state;
+			const settled = state.switchOffer ? { ...state, switchOffer: null } : state;
+			const { exchange } = settled;
 
 			// Switching to the session they talk with carries the conversation onto the screen.
 			if (!exchange || (input.view.kind === 'session' && input.view.ref === exchange.ref)) {
+				return { ...result, state: settled };
+			}
+
+			return { ...result, state: end(settled, 'view switched') };
+		}
+
+		case 'offer_switch': {
+			if (!state.sessions[input.ref] || isSwitchOfferFresh(state.switchOffer, stamped.at)) {
 				return result;
 			}
 
-			return { ...result, state: end(state, 'view switched') };
+			const offered = offerSwitch(state, input.ref, stamped.at);
+
+			return { state: offered.state, effects: [...result.effects, ...offered.effects] };
 		}
+
+		// Answered, let go, or lapsed: a later "yes" is not for it. `at` names the offer it closes.
+		case 'switch_offer_closed':
+			return state.switchOffer?.at === input.at
+				? { ...result, state: { ...state, switchOffer: null } }
+				: result;
 
 		case 'spoken_ended': {
 			if (input.isCut || input.isUnplayed) {

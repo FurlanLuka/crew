@@ -480,12 +480,7 @@ export const executeTool = async (
 
 			// A session whose question was only announced is opened when the developer names it, or
 			// after they said yes to "Switch to …?": never on a bare "yes" or "what's waiting?".
-			const refused = hasOfferedSwitch({
-				state,
-				ref: checked.ref,
-				screen: toolContext.screen,
-				now: toolContext.now(),
-			})
+			const refused = hasOfferedSwitch(state, checked.ref, toolContext.now())
 				? null
 				: refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'switched' });
 

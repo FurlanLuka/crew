@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,
 	isOfferFresh,
+	isSwitchOfferFresh,
 	isRemembered,
 	type PendingAsk,
 	type SpokenLine,
@@ -52,8 +53,8 @@ Forwarding:
 Answering what a session waits on (see "pending", "asked" and "Voice OS last asked aloud"):
 - "pending" is an open permission, plan or question: answer it with the answer tool, never by forward. Only a clear yes, no, always or choice answers it — "hmm" is thinking. A question about what it waits on ("why does step 3 touch the kernel?", "what does that command do?") is forward with kind question, never answered by you from the pending text: the session answers it aside and the plan or permission keeps waiting. Anything else the developer says for that session — a new instruction, a change of subject ("also run the linter") — is them moving on: forward it as said. It reaches the session and declines the permission or plan with their words. Never tell them it is waiting, never ask them to answer it first. For a permission or plan, "yes", "okay", "sure", "go ahead", "do it" are yes; "always" is always; "no …" is no with the rest as text ("No, use a new branch" is no with "use a new branch"). "Yes, but only on staging" is answer yes with text "Only on staging." — the text reaches the session with the answer. For a question, choose the listed option the developer meant — "the second one" is the second label, "reuse it" is "Reuse orders" — or their own words when none fits; keep detail they add to an option ("New table, partitioned").
 - "asked" is a question a session ended its turn on: the developer's reply is its answer. forward it (or send_to when that session is not on screen) as they said it, whole — never shortened to one of the options it offered; never ask them the question again, never read_state first. Whatever they say next for that session — a full answer, part of one, a correction or something else entirely — goes to it as said: never ask them to choose, confirm what they meant, or answer it first. A question from the developer is never an answer — "so pushing won't expose the keys?" is a new question: forward it, and never call answer or say the session is waiting on them.
-- A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer). That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does, in a few words by topic ("Yes to which — ranking or checkout?"). One bare reply answers one thing, never several.
-- An item marked "announced only — not heard": the developer heard only "<session> needs you", never the question. A bare reply ("yes", "no", "do it") is not its answer: reply only "Switch to <session>?" and change nothing. When the developer says yes to your "Switch to <session>?" (see "Earlier on this screen"), switch_view to it — its question plays there. Words that name the session ("tell crew main: use the docs folder") answer it as usual. Asked what waits, say what it is about in a few words and offer the switch ("checkout needs you, about the backoff cap — switch to it?"); never switch to show it.
+- A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer), or its switch offer ("Switch to checkout?" — switch_offer: yes is switch_view to it, no changes nothing). That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does, in a few words by topic ("Yes to which — ranking or checkout?"). One bare reply answers one thing, never several.
+- An item marked "announced only — not heard": the developer heard only "<session> needs you", never the question. A bare reply ("yes", "no", "do it") is not its answer: call answer as you would, and Voice OS asks "Switch to <session>?" itself — say nothing. A yes to that (switch_offer under "Waiting on the developer") is switch_view to it — its question plays there. Words that name the session ("tell crew main: use the docs folder") answer it as usual. Asked what waits, say what it is about in a few words ("checkout needs you, about the backoff cap"); never switch to show it.
 - When nothing waits, a reply on a session's screen ("yes, but use the table", "no, the other file") is for that session: forward it.
 - A yes or no meant for a fix offer is always dev_offer, however old: it says when the offer lapsed, and then you tell the developer. Never crew_dev, send_to or forward in its place.
 - "Options", "what are the options": a pending question lists its options — read them out, briefly and numbered. Otherwise read_state the session that asked and list the options it actually offered in its recent output — that list may be longer than one sentence. If it offered none, reply exactly "Nothing is waiting on a choice." and nothing more — what the developer asked a session for is not a question it asked back; never take options from your own earlier words or the developer's. Never forward it.
@@ -118,7 +119,7 @@ const formatRememberedLines = (memory: VoiceEntry[]): string => {
 
 interface WaitingItem {
 	ref: string;
-	what: 'pending' | 'asked' | 'fix_offer';
+	what: 'pending' | 'asked' | 'fix_offer' | 'switch_offer';
 	at: number;
 }
 
@@ -132,6 +133,9 @@ export const listWaitingItems = (state: State, now: number): WaitingItem[] => {
 		}),
 		...(isOfferFresh(state.devOffer, now)
 			? [{ ref: state.devOffer.ref, what: 'fix_offer' as const, at: state.devOffer.at }]
+			: []),
+		...(isSwitchOfferFresh(state.switchOffer, now)
+			? [{ ref: state.switchOffer.ref, what: 'switch_offer' as const, at: state.switchOffer.at }]
 			: []),
 	].sort((first, second) => second.at - first.at);
 };

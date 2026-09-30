@@ -634,6 +634,48 @@
 			]
 		},
 		{
+			"id": "switch-offer-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "checkout-api/main",
+					"asked": "is the build green?",
+					"answered": "Yes, all 214 tests pass.",
+					"secondsAgo": 10
+				},
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 2
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
+			"id": "switch-offer-no",
+			"utterance": "No.",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "checkout-api/main",
+					"asked": "is the build green?",
+					"answered": "Yes, all 214 tests pass.",
+					"secondsAgo": 10
+				},
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 2
+				}
+			},
+			"calls": [],
+			"forbid_mutation": true
+		},
+		{
 			"id": "relay-negation",
 			"utterance": "Tell it not to touch the migrations.",
 			"context": {
@@ -2064,8 +2106,19 @@
 				}
 			},
 			"calls": [],
-			"reply_includes": ["switch"],
-			"forbid_mutation": true
+			"forbid_mutation": true,
+			"no_reply": true,
+			"allow": [
+				{
+					"name": "answer"
+				},
+				{
+					"name": "switch_view"
+				},
+				{
+					"name": "send_to"
+				}
+			]
 		},
 		{
 			"id": "announced-only-switch-confirmed",
@@ -2077,14 +2130,10 @@
 					"about": "the backoff cap",
 					"secondsAgo": 20
 				},
-				"voiceLog": [
-					{
-						"utterance": "Yes.",
-						"reply": "Switch to checkout-api/main?",
-						"did": [],
-						"minutesAgo": 0.1
-					}
-				]
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3
+				}
 			},
 			"calls": [
 				{
@@ -3829,8 +3878,19 @@
 				}
 			},
 			"calls": [],
-			"reply_includes": ["switch"],
-			"forbid_mutation": true
+			"forbid_mutation": true,
+			"no_reply": true,
+			"allow": [
+				{
+					"name": "answer"
+				},
+				{
+					"name": "switch_view"
+				},
+				{
+					"name": "send_to"
+				}
+			]
 		},
 		{
 			"id": "why-auto-off-no-guess",

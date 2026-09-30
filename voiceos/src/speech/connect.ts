@@ -1,4 +1,4 @@
-import { COMMAND_TTL_MS, EXCHANGE_IDLE_MS } from '../shared/protocol.js';
+import { COMMAND_TTL_MS, EXCHANGE_IDLE_MS, SWITCH_OFFER_MS } from '../shared/protocol.js';
 import type { Effect } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
 import type { KernelHandler, KernelTurn } from '../router/router.js';
@@ -28,16 +28,22 @@ export const connectSpeech = ({
 	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
 	// and a stale timer finds a newer lastAt and changes nothing.
 	let armedAt: number | null = null;
+	let offeredAt: number | null = null;
 	store.subscribe((_stamped, state) => {
-		const exchange = state.exchange;
+		const { exchange, switchOffer } = state;
 
-		if (!exchange || exchange.lastAt === armedAt) {
-			return;
+		if (exchange && exchange.lastAt !== armedAt) {
+			armedAt = exchange.lastAt;
+			const { ref, lastAt } = exchange;
+			setTimer(() => store.dispatch({ type: 'exchange_expired', ref, lastAt }), EXCHANGE_IDLE_MS);
 		}
 
-		armedAt = exchange.lastAt;
-		const { ref, lastAt } = exchange;
-		setTimer(() => store.dispatch({ type: 'exchange_expired', ref, lastAt }), EXCHANGE_IDLE_MS);
+		// "Switch to checkout?" is answered at once or let go.
+		if (switchOffer && switchOffer.at !== offeredAt) {
+			offeredAt = switchOffer.at;
+			const { at } = switchOffer;
+			setTimer(() => store.dispatch({ type: 'switch_offer_closed', at }), SWITCH_OFFER_MS);
+		}
 	});
 
 	store.onEffect((effect) => {

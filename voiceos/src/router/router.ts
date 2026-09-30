@@ -126,6 +126,8 @@ export class UtteranceRouter {
 		}
 
 		log.info('route', { source, to: 'kernel', screen, text: trimmedText });
+		// "Switch to checkout?" is answered by these words or let go: a yes switches in this turn.
+		const offerAt = store.state.switchOffer?.at ?? null;
 
 		const entry = await this.askKernel({
 			kernel,
@@ -138,6 +140,10 @@ export class UtteranceRouter {
 			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
+
+		if (offerAt !== null) {
+			store.dispatch({ type: 'switch_offer_closed', at: offerAt });
+		}
 	}
 
 	private sendDictation(

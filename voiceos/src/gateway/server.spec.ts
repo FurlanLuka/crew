@@ -278,6 +278,8 @@ describe('parseClientMessage', () => {
 		pin_session: { type: 'pin_session', ref: 'vm1:store/main' },
 		unpin_session: { type: 'unpin_session', ref: 'vm1:store/main' },
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
+		clear_exchange: { type: 'clear_exchange' },
+		offer_switch: { type: 'offer_switch', ref: 'store/main' },
 	};
 	const messages: ClientMessage[] = [
 		...Object.values(actions).map((action): ClientMessage => ({ type: 'action', action })),

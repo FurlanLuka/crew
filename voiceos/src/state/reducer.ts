@@ -141,6 +141,7 @@ export const createInitialState = (): State => ({
 	devServers: {},
 	devStarting: [],
 	devOffer: null,
+	switchOffer: null,
 	voiceLog: {},
 	lastSpokenSend: null,
 	notes: {},
@@ -851,6 +852,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		// followExchange (exchange.ts) owns these.
 		case 'exchange_expired':
 		case 'clear_exchange':
+		case 'offer_switch':
+		case 'switch_offer_closed':
 			return withoutEffects(state);
 	}
 

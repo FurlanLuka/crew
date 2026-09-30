@@ -265,6 +265,17 @@ export interface Exchange {
 
 export const EXCHANGE_IDLE_MS = 60_000;
 
+export interface SwitchOffer {
+	ref: string;
+	at: number;
+}
+
+// Answered at once or not at all: a later "yes" belongs to something else.
+export const SWITCH_OFFER_MS = 8_000;
+
+export const isSwitchOfferFresh = (offer: SwitchOffer | null, now: number): offer is SwitchOffer =>
+	offer !== null && now - offer.at < SWITCH_OFFER_MS;
+
 export interface SpokenLine {
 	id: string;
 	text: string;
@@ -327,6 +338,8 @@ export interface State {
 	devServers: Record<string, DevServer[]>;
 	devStarting: string[];
 	devOffer: DevOffer | null;
+	// "Switch to checkout?", asked aloud by Voice OS: a yes switches, anything else lets it go.
+	switchOffer: SwitchOffer | null;
 	// Per screen (a session ref, or GRID).
 	voiceLog: Record<string, VoiceEntry[]>;
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
@@ -411,7 +424,11 @@ export type Action =
 	| { type: 'pin_session'; ref: string }
 	| { type: 'unpin_session'; ref: string }
 	// An empty name clears it: the session shows its crew label again.
-	| { type: 'rename_session'; ref: string; name: string };
+	| { type: 'rename_session'; ref: string; name: string }
+	// The page's × on "Talking with checkout": follow-ups go to the screen again.
+	| { type: 'clear_exchange' }
+	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced).
+	| { type: 'offer_switch'; ref: string };
 
 export interface SavedTopic {
 	topic: string;
@@ -440,7 +457,7 @@ export type Observation =
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
 	| { type: 'exchange_expired'; ref: string; lastAt: number }
-	| { type: 'clear_exchange' }
+	| { type: 'switch_offer_closed'; at: number }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
 	// The held line was announced ("<session> is done", "needs you").
