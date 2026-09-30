@@ -5,6 +5,7 @@ import { describePinnedCard, listMachineCards, type MachineCard } from '../deriv
 import type { Dispatch } from '../types.js';
 import { VoicePanel } from './VoicePanel.js';
 import { NotesPanel } from './NotesPanel.js';
+import { focusOnMount } from './focus-on-mount.js';
 
 interface MachinesProps {
 	state: State;
@@ -59,7 +60,7 @@ const MachineCardView = ({ card, dispatch }: CardProps) => {
 					<form onSubmit={rename} className="machine-rename">
 						<input
 							// The name field opens by the rename button: typing goes straight into it.
-							ref={(input) => input?.focus()}
+							ref={focusOnMount}
 							value={name}
 							maxLength={60}
 							aria-label="machine name"
@@ -167,7 +168,7 @@ const AddMachineDialog = ({ dispatch, onClose }: AddMachineDialogProps) => {
 					<span>SSH host</span>
 					<input
 						// Opened to type the host: focus goes straight there.
-						ref={(input) => input?.focus()}
+						ref={focusOnMount}
 						value={host}
 						onChange={(event) => setHost(event.target.value)}
 						placeholder="vm1, or dev@vm1.example.com"

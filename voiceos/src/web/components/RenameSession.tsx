@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { MAX_NAME_LENGTH, toSessionName } from '../../state/names.js';
 import type { Dispatch } from '../types.js';
+import { focusOnMount } from './focus-on-mount.js';
 
 interface RenameSessionProps {
 	sessionRef: string;
@@ -30,7 +31,7 @@ export const RenameSession = ({ sessionRef, current, dispatch, onDone }: RenameS
 		<form onSubmit={save} className="session-rename">
 			<input
 				// Opened by the rename button: typing goes straight into it.
-				ref={(input) => input?.focus()}
+				ref={focusOnMount}
 				value={name}
 				maxLength={MAX_NAME_LENGTH}
 				aria-label="session name"
