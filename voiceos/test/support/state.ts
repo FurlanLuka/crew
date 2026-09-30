@@ -7,6 +7,7 @@ import type {
 } from '../../src/shared/protocol.js';
 import { GRID, isSdkAsk } from '../../src/shared/protocol.js';
 import { createInitialState, createSession } from '../../src/state/reducer.js';
+import { toLocalRef } from '../../src/shared/machine-ref.js';
 
 export interface FixtureWork {
 	ref: string;
@@ -68,6 +69,12 @@ export interface FixtureContext {
 		endedSecondsAgo?: number;
 		cut?: boolean;
 	}[];
+	// Sessions the developer pinned, in pin order.
+	pinned?: string[];
+	// The developer's own names for sessions, by full ref.
+	names?: Record<string, string>;
+	// Another machine, connected, with sessions of its own (full refs: "personal:store-front/main").
+	machine?: { id: string; name: string; refs: string[] };
 }
 
 export const FIXTURE_TOPICS: Record<string, string> = {
@@ -267,8 +274,14 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 export const createFixtureState = (context: FixtureContext = {}, now = Date.now()): State => {
 	// Crew's generic example worktrees, all idle, plus whatever the context sets up.
 	const asks = listPendingAsks(context, now - 30_000);
+	const order = [...FIXTURE_REFS, ...(context.machine?.refs ?? [])];
 	const sessions = Object.fromEntries(
-		FIXTURE_REFS.map((ref) => [ref, createFixtureSession({ ref, context, asks, now })]),
+		order.map((ref) => {
+			const session = createFixtureSession({ ref, context, asks, now });
+
+			// Another machine's session is labelled by its local ref, as the remote reports it.
+			return [ref, { ...session, label: toLocalRef(ref) }];
+		}),
 	);
 	const voiceLog: VoiceEntry[] = (context.voiceLog ?? []).map((entry) => ({
 		utterance: entry.utterance,
@@ -280,7 +293,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 	return {
 		...createInitialState(),
 		sessions,
-		order: FIXTURE_REFS,
+		order,
 		asks,
 		denials: context.denied
 			? [
@@ -348,5 +361,21 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 		voiceLog: voiceLog.length ? { [context.view ?? GRID]: voiceLog } : {},
 		view: context.view ? { kind: 'session', ref: context.view } : { kind: 'grid' },
 		focus: context.view ?? null,
+		...(context.pinned ? { pinned: context.pinned } : {}),
+		...(context.names ? { names: context.names } : {}),
+		...(context.machine
+			? {
+					machines: {
+						[context.machine.id]: {
+							id: context.machine.id,
+							host: `dev@${context.machine.id}`,
+							name: context.machine.name,
+							status: 'connected' as const,
+							detail: null,
+							since: 0,
+						},
+					},
+				}
+			: {}),
 	};
 };

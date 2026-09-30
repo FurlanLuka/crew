@@ -157,6 +157,24 @@ describe('planResync', () => {
 	});
 });
 
+describe('pins across a resync', () => {
+	it('vm1 back, its snapshot without one pinned ref → every pin kept, in order', () => {
+		const main = mainWith([
+			{ type: 'pin_session', ref: REMOTE },
+			// Pinned in an earlier run; the snapshot never had it.
+			{ type: 'pinned_loaded', refs: [REMOTE, 'vm1:store/wrk9'] },
+		]);
+		const { inputs } = planResync(
+			main,
+			'vm1',
+			snapshot({ sessions: [{ ref: 'store/main', status: 'running', lastTurn: null }] }),
+		);
+		const { state } = run([{ type: 'machine_resynced', id: 'vm1', inputs }], { start: main });
+
+		expect(state.pinned).toEqual([REMOTE, 'vm1:store/wrk9']);
+	});
+});
+
 describe('planResync keeps to its machine', () => {
 	const REMOTE2 = 'vm2:store/main';
 	const busy = (): State =>

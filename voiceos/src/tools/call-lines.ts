@@ -19,7 +19,12 @@ const SILENT_TOOLS: ToolName[] = [
 const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc'];
 const MAX_QUOTED_CHARS = 120;
 
-const describeCallAction = (input: Record<string, unknown>): string => {
+const describeCallAction = (name: string, input: Record<string, unknown>): string => {
+	// Named either way: "unpin this" right after a pin must read as a change, not the same call again.
+	if (name === 'pin_session') {
+		return input.unpin === true ? ' unpin' : ' pin';
+	}
+
 	if (typeof input.action === 'string') {
 		return ` ${input.action}`;
 	}
@@ -51,12 +56,16 @@ export const describeToolCall = ({ name, input, ok, note }: ToolCall): string | 
 			: '';
 	const target =
 		name === 'switch_view'
-			? ` ${typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
+			? ` ${input.pinned === true ? 'pinned' : typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
 			: typeof input.ref === 'string'
 				? ` ${input.ref}`
 				: '';
 
-	return `${name}${describeCallAction(input)}${target}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
+	const newName = typeof input.name === 'string' ? input.name.trim() : '';
+	// "Call it api work" right after a rename is a new name, not the same call again.
+	const renamed = name === 'rename_session' ? (newName ? ` to "${newName}"` : ' cleared') : '';
+
+	return `${name}${describeCallAction(name, input)}${target}${renamed}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
 };
 
 export const isSilentCall = (name: string, input: Record<string, unknown>): boolean => {

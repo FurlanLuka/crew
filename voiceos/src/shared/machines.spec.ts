@@ -9,11 +9,13 @@ import {
 	describeRecap,
 	diffMachines,
 	HOME_VIEW,
+	isKnownMachineRef,
 	isReachable,
 	isValidHost,
 	listWaitingRefs,
 	machineIdFor,
 	parentView,
+	readElsewhereMachine,
 } from './machines.js';
 
 const machine = (id: string, patch: Partial<Machine> = {}): Machine => ({
@@ -94,6 +96,37 @@ describe('diffMachines', () => {
 	});
 });
 
+describe('readElsewhereMachine', () => {
+	const remote = 'vm1:crew/main';
+	const base = withSessions(['crew/main', remote], {
+		machines: { vm1: machine('vm1', { name: 'Personal' }) },
+	});
+
+	it('a local session → null', () => expect(readElsewhereMachine(base, 'crew/main')).toBeNull());
+	it('a remote session, the developer inside that machine → null', () =>
+		expect(
+			readElsewhereMachine({ ...base, view: { kind: 'grid', machine: 'vm1' } }, remote),
+		).toBeNull());
+	it('a remote session the developer named → null', () =>
+		expect(
+			readElsewhereMachine({ ...base, names: { [remote]: 'voice os dev' } }, remote),
+		).toBeNull());
+	it('a remote unnamed session seen from elsewhere → its machine name', () =>
+		expect(readElsewhereMachine(base, remote)).toBe('Personal'));
+	it('a machine the state does not know → null', () =>
+		expect(readElsewhereMachine(base, 'gpu:crew/main')).toBeNull());
+});
+
+describe('isKnownMachineRef', () => {
+	const state = withSessions([], { machines: { vm1: machine('vm1') } });
+
+	it('this Mac or a known machine → true; an unknown machine → false', () => {
+		expect(isKnownMachineRef(state, 'crew/main')).toBe(true);
+		expect(isKnownMachineRef(state, 'vm1:crew/main')).toBe(true);
+		expect(isKnownMachineRef(state, 'gpu:crew/main')).toBe(false);
+	});
+});
+
 describe('isReachable', () => {
 	it('this Mac always; another machine only when connected', () => {
 		const state = withSessions([], { machines: { vm1: machine('vm1', { status: 'syncing' }) } });
@@ -133,6 +166,16 @@ describe('views', () => {
 		expect(parentView(inSession)).toEqual({ kind: 'grid', machine: 'vm1' });
 		expect(parentView(inGrid)).toEqual({ kind: 'machines' });
 		expect(parentView(local)).toEqual({ kind: 'grid', machine: 'local' });
+	});
+
+	it('up from a session opened from Pinned → Pinned → home', () => {
+		const fromPinned: State = {
+			...state,
+			view: { kind: 'session', ref: 'vm1:store/main', from: 'pinned' },
+		};
+
+		expect(parentView(fromPinned)).toEqual({ kind: 'pinned' });
+		expect(parentView({ ...state, view: { kind: 'pinned' } })).toEqual(HOME_VIEW);
 	});
 
 	it('currentMachine → the machine of the session or grid; none on views of all', () => {

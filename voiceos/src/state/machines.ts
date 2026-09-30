@@ -64,7 +64,11 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		(state.view.kind === 'grid' &&
 			state.view.machine !== undefined &&
 			removed.includes(state.view.machine));
-	const view: View = isViewGone ? HOME_VIEW : state.view;
+	const view: View = !isViewGone
+		? state.view
+		: state.view.kind === 'session' && state.view.from === 'pinned'
+			? { kind: 'pinned' }
+			: HOME_VIEW;
 
 	return {
 		...state,
@@ -73,6 +77,8 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		devOffer: state.devOffer && isKept(state.devOffer.ref) ? state.devOffer : null,
 		sessions,
 		order: state.order.filter(isKept),
+		pinned: state.pinned.filter(isKept),
+		names: Object.fromEntries(Object.entries(state.names).filter(([ref]) => isKept(ref))),
 		asks: state.asks.filter((ask) => isKept(ask.ref)),
 		denials: state.denials.filter((denial) => isKept(denial.ref)),
 		devServers: Object.fromEntries(Object.entries(state.devServers).filter(([ref]) => isKept(ref))),

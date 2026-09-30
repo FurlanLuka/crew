@@ -14,7 +14,7 @@ interface ExpectedCall {
 	action?: string;
 	// Arguments that must match exactly (an answer's decision, a fix offer's accept).
 	input?: Record<string, unknown>;
-	// The kernel rewrites what it forwards, so every entry must survive; "not|don't" accepts either.
+	// The kernel rewrites what it forwards (or a rename's name), so every entry must survive; "not|don't" accepts either.
 	text_includes?: string | string[];
 	// Relay words that must not be passed on ("ask it", "tell it").
 	not_includes?: string[];
@@ -132,7 +132,11 @@ const matchesCall = (call: Call, expected: ExpectedCall): boolean => {
 		return false;
 	}
 
-	const { missing, relayed } = findTextProblems(String(call.input.text ?? ''), expected);
+	// A rename carries its words as name: the same check, case and spelling left to the model.
+	const { missing, relayed } = findTextProblems(
+		String(call.input.text ?? call.input.name ?? ''),
+		expected,
+	);
 
 	return missing.length === 0 && relayed.length === 0;
 };

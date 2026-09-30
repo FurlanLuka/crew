@@ -39,6 +39,8 @@ import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-line
 import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
 import { HOME_VIEW } from '../shared/machines.js';
 import { machineOf, readMachine } from '../shared/machine-ref.js';
+import { isPinInput, reducePin, toShownView } from './pins.js';
+import { isNameInput, reduceName } from './names.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -139,6 +141,8 @@ export const createInitialState = (): State => ({
 	lastSpokenSend: null,
 	notes: {},
 	machines: {},
+	pinned: [],
+	names: {},
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -239,13 +243,13 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 				left.ref.localeCompare(right.ref),
 		)
 		.map((session) => session.ref);
-	const view =
-		state.view.kind === 'session' && !sessions[state.view.ref]
-			? {
-					kind: 'grid' as const,
-					machine: readMachine(state.view.ref),
-				}
-			: state.view;
+	const gone = state.view.kind === 'session' && !sessions[state.view.ref] ? state.view : null;
+	// A session opened from Pinned falls back to Pinned, where its pin stays as a "gone" tile.
+	const view: View = !gone
+		? state.view
+		: gone.from === 'pinned'
+			? { kind: 'pinned' }
+			: { kind: 'grid', machine: readMachine(gone.ref) };
 	const focus = state.focus && sessions[state.focus] ? state.focus : null;
 	const voiceLog = Object.fromEntries(
 		Object.entries(state.voiceLog).filter(([screen]) => screen === GRID || sessions[screen]),
@@ -258,13 +262,27 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 const showView = (state: State, view: View): State | null =>
 	view.kind === 'session' && !state.sessions[view.ref]
 		? null
-		: { ...state, view, focus: view.kind === 'session' ? view.ref : state.focus };
+		: {
+				...state,
+				view: toShownView(state, view),
+				focus: view.kind === 'session' ? view.ref : state.focus,
+			};
 
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
 
 	if (isMachineInput(input)) {
 		return reduceMachine(state, input, stamped, reduceInput);
+	}
+
+	// Pins are this Voice OS's own: they never reach a machine, reachable or not.
+	if (isPinInput(input)) {
+		return reducePin(state, input);
+	}
+
+	// Names are this Voice OS's own too: a session out of reach is renamed like any other.
+	if (isNameInput(input)) {
+		return reduceName(state, input);
 	}
 
 	const unreachable = guardUnreachable(state, input, stamped);

@@ -10,6 +10,8 @@ export type ToolName =
 	| 'stop_session'
 	| 'crew_dev'
 	| 'ignore_words'
+	| 'pin_session'
+	| 'rename_session'
 	| 'answer'
 	| 'interrupt'
 	| 'mute'
@@ -39,6 +41,8 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'queued_message',
 	'hands_free',
 	'rename_machine',
+	'pin_session',
+	'rename_session',
 ];
 
 interface JsonSchema {
@@ -83,6 +87,13 @@ const CONTINUES_PROPERTY = {
 const REST_PROPERTY = {
 	type: 'string',
 	description: 'With continues: only the new part, as a clear instruction or question.',
+};
+
+// One property for both switch_view definitions: a machine switch must not lose "go to pinned".
+const PINNED_VIEW_PROPERTY = {
+	type: 'boolean',
+	description:
+		'true for Pinned, the developer\'s pinned sessions from every machine ("go to pinned", "show my pinned sessions"); ref and machine are then ignored.',
 };
 
 const CLEAN_INSTRUCTION =
@@ -160,10 +171,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'switch_view',
-		description: 'Show one session on screen, or every session (Mission Control) when ref is null.',
+		description:
+			"Show one session on screen, or every session (Mission Control) when ref is null, or the developer's pinned sessions with pinned true.",
 		input_schema: {
 			type: 'object',
-			properties: { ref: { type: ['string', 'null'] } },
+			properties: { ref: { type: ['string', 'null'] }, pinned: PINNED_VIEW_PROPERTY },
 			required: ['ref'],
 			additionalProperties: false,
 		},
@@ -332,6 +344,36 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			additionalProperties: false,
 		},
 	},
+	// Listed last: placed right after ignore_words they pulled the kernel off two older cases in the
+	// evals (a lapsed fix offer, "rebuild and restart"). The order is prompt: moving it means re-running them.
+	{
+		name: 'pin_session',
+		description:
+			'Pin a session to Pinned, the developer\'s own view of chosen sessions across machines ("pin this", "pin crew main"), or take it off with unpin ("unpin this", "unpin the setup session"). ref: the session named, or null for the one on screen. Only about pinning a session: pinning something in the work ("pin the version in package.json", "pin that dependency") is for the session — forward it.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: { type: ['string', 'null'] },
+				unpin: { type: 'boolean' },
+			},
+			required: ['ref'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'rename_session',
+		description:
+			'Give a session the name the developer calls it in Voice OS ("rename this to voice os dev", "call crew main api work", "call crew main on Personal api work": that machine\'s session); an empty name clears it and the crew name comes back. ref: the session renamed, or null for the one on screen. name: the new name as said. Only the name Voice OS shows and hears: renaming something in the work ("rename the function to parseRef") is for the session — forward it; a machine ("rename vm1 to build box") is rename_machine.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: { type: ['string', 'null'] },
+				name: { type: 'string' },
+			},
+			required: ['ref', 'name'],
+			additionalProperties: false,
+		},
+	},
 ];
 
 export const FORWARD_TOOL: ToolDefinition = {
@@ -367,6 +409,7 @@ export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
 					description:
 						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
 				},
+				pinned: PINNED_VIEW_PROPERTY,
 			},
 			required: ['ref'],
 			additionalProperties: false,

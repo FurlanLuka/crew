@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { writeJsonAtomic } from '../memory/json-file.js';
 import { createLogger } from '../log.js';
 
 const log = createLogger('registry');
@@ -59,13 +59,7 @@ export const loadRegistry = (file: string): Registry => {
 };
 
 export const saveRegistry = (file: string, registry: Registry): void => {
-	mkdirSync(dirname(file), { recursive: true });
-
-	// Write-then-rename: a crash mid-write leaves the previous file intact.
-	const temporaryFile = `${file}.${process.pid}.tmp`;
-
-	writeFileSync(temporaryFile, JSON.stringify(registry, null, 2));
-	renameSync(temporaryFile, file);
+	writeJsonAtomic(file, registry);
 };
 
 export interface RecordSessionParams {

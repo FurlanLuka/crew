@@ -32,6 +32,7 @@ import {
 	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
+	readAnnouncedLabel,
 } from './held-lines.js';
 
 const ASK_INPUTS = [
@@ -571,7 +572,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						{
 							type: 'speak',
 							text: describeAnnouncement({
-								label: readLabel(state, ask.ref),
+								label: readAnnouncedLabel(state, ask.ref, readLabel(state, ask.ref)),
 								kind: 'needs',
 								about: describeAskAbout(ask),
 							}),

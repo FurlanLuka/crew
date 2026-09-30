@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { writeJsonAtomic } from './json-file.js';
 import { createLogger } from '../log.js';
 import { LOCAL_MACHINE, machineOf } from '../shared/machine-ref.js';
 import type { State, View } from '../shared/protocol.js';
@@ -23,11 +23,12 @@ const isView = (value: unknown): value is View => {
 
 	switch (view.kind) {
 		case 'machines':
+		case 'pinned':
 			return true;
 		case 'grid':
 			return view.machine === undefined || typeof view.machine === 'string';
 		case 'session':
-			return typeof view.ref === 'string';
+			return typeof view.ref === 'string' && (view.from === undefined || view.from === 'pinned');
 		default:
 			return false;
 	}
@@ -45,17 +46,12 @@ export const loadView = (file: string): View | null => {
 };
 
 export const saveView = (file: string, view: View): void => {
-	mkdirSync(dirname(file), { recursive: true });
-
-	// Write-then-rename: a crash mid-write leaves the previous file intact.
-	const temporaryFile = `${file}.${process.pid}.tmp`;
-
-	writeFileSync(temporaryFile, JSON.stringify(view, null, 2));
-	renameSync(temporaryFile, file);
+	writeJsonAtomic(file, view);
 };
 
 export const restoredView = (saved: View, state: State, waitedMs = 0): ViewRestore => {
-	if (saved.kind === 'machines') {
+	// Neither waits on a machine: Pinned shows an out-of-reach pin as its own tile.
+	if (saved.kind === 'machines' || saved.kind === 'pinned') {
 		return { kind: 'apply', view: saved };
 	}
 

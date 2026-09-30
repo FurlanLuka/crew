@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'bun:test';
-import type { PendingAsk, Session, State } from '../shared/protocol.js';
+import type { Machine, MachineStatus, PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { findCurrentAsk, describeRouteChip } from '../shared/route-chip.js';
 import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 
 import {
+	countPinned,
 	countSessions,
+	describePinnedCard,
+	labelAcrossMachines,
+	readRefTitle,
+	describeMissingPin,
 	formatDidLine,
+	listPinnedTiles,
+	listTabRefs,
 	readNotesFor,
 	listOtherSessions,
 	readLastLine,
@@ -189,6 +196,125 @@ describe('countSessions', () => {
 	});
 });
 
+const createTestMachine = (status: MachineStatus): Machine => ({
+	id: 'vm1',
+	host: 'vm1',
+	name: 'Build box',
+	status,
+	detail: null,
+	since: 1,
+});
+
+const createPinnedState = (patch: Partial<State> = {}): State => ({
+	...createInitialState(),
+	machines: { vm1: createTestMachine('connected') },
+	sessions: {
+		'store/main': createTestSession({ status: 'running' }),
+		'store/wrk1': createTestSession({ ref: 'store/wrk1', label: 'store/wrk1' }),
+		'vm1:api/main': createTestSession({ ref: 'vm1:api/main', label: 'api/main' }),
+	},
+	order: ['store/main', 'store/wrk1', 'vm1:api/main'],
+	pinned: ['vm1:api/main', 'store/main'],
+	...patch,
+});
+
+describe('countPinned', () => {
+	it('a remote pin and a local one, one waiting → both counted, only the pins', () =>
+		expect(countPinned(createPinnedState({ asks: [createTestAsk('1', 'vm1:api/main')] }))).toEqual({
+			total: 2,
+			running: 1,
+			waiting: 1,
+		}));
+	it('a pin with no session → not counted', () =>
+		expect(countPinned(createPinnedState({ pinned: ['store/main', 'gone/main'] }))).toEqual({
+			total: 1,
+			running: 1,
+			waiting: 0,
+		}));
+});
+
+describe('describeMissingPin', () => {
+	it('its machine out of reach → "<label> · <machine> out of reach"', () =>
+		expect(
+			describeMissingPin(
+				createPinnedState({ machines: { vm1: createTestMachine('unreachable') } }),
+				'vm1:api/wrk2',
+			),
+		).toBe('api/wrk2 · Build box out of reach'));
+	it('its machine connected, the session gone → "· gone" with the machine', () =>
+		expect(describeMissingPin(createPinnedState(), 'vm1:api/wrk2')).toBe(
+			'Build box · api/wrk2 · gone',
+		));
+	it('a local pin gone → "<label> · gone"', () =>
+		expect(describeMissingPin(createPinnedState(), 'store/wrk9')).toBe('store/wrk9 · gone'));
+	it('a named pin gone → its name, not the crew ref', () =>
+		expect(
+			describeMissingPin(createPinnedState({ names: { 'store/wrk9': 'ghost' } }), 'store/wrk9'),
+		).toBe('ghost · gone'));
+});
+
+describe('listPinnedTiles', () => {
+	it('pins in pin order → a session each, a placeholder where none is here', () =>
+		expect(
+			listPinnedTiles(createPinnedState({ pinned: ['vm1:api/main', 'store/gone'] })).map((tile) =>
+				'session' in tile ? tile.session.ref : tile.missing,
+			),
+		).toEqual(['vm1:api/main', 'store/gone · gone']));
+});
+
+describe('listTabRefs', () => {
+	it('on Pinned → the pins that have a session, in pin order', () =>
+		expect(
+			listTabRefs(
+				createPinnedState({
+					view: { kind: 'pinned' },
+					pinned: ['vm1:api/main', 'x/gone', 'store/main'],
+				}),
+			),
+		).toEqual(['vm1:api/main', 'store/main']));
+	it('on a session opened from Pinned → the pins', () =>
+		expect(
+			listTabRefs(
+				createPinnedState({ view: { kind: 'session', ref: 'store/main', from: 'pinned' } }),
+			),
+		).toEqual(['vm1:api/main', 'store/main']));
+	it("on a session without from → its machine's sessions", () =>
+		expect(
+			listTabRefs(createPinnedState({ view: { kind: 'session', ref: 'store/main' } })),
+		).toEqual(['store/main', 'store/wrk1']));
+	it("on a machine's grid → that machine's sessions", () =>
+		expect(listTabRefs(createPinnedState({ view: { kind: 'grid', machine: 'vm1' } }))).toEqual([
+			'vm1:api/main',
+		]));
+});
+
+describe('named sessions', () => {
+	const named = createPinnedState({ names: { 'vm1:api/main': 'voice os dev' } });
+
+	it("another machine's session, named → the name alone, no machine prefix", () =>
+		expect(labelAcrossMachines(named, 'vm1:api/main', null)).toBe('voice os dev'));
+	it("another machine's session, unnamed → its machine's name before crew's label", () =>
+		expect(labelAcrossMachines(createPinnedState(), 'vm1:api/main', null)).toBe(
+			'Build box · api/main',
+		));
+	it('a named session → the crew ref on hover; an unnamed one → none', () => {
+		expect(readRefTitle(named, 'vm1:api/main')).toBe('vm1:api/main');
+		expect(readRefTitle(named, 'store/main')).toBeUndefined();
+	});
+	it('a named pin waiting → the Pinned card says it by its name', () =>
+		expect(
+			describePinnedCard({ ...named, asks: [createTestAsk('1', 'vm1:api/main')] }).waiting,
+		).toBe('voice os dev: wants to run x'));
+	it('an unnamed remote pin waiting → the Pinned card names its machine', () =>
+		expect(
+			describePinnedCard(createPinnedState({ asks: [createTestAsk('1', 'vm1:api/main')] })).waiting,
+		).toBe('Build box · api/main: wants to run x'));
+	it('a stopped named session → its last line says to start it by its name', () =>
+		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev')).toBe(
+			'Not started. Open it and say something, or say “start voice os dev”.',
+		));
+});
+
 describe('classifyDiffLine', () => {
 	it('classifies hunk header, add, delete, context', () =>
 		expect(['@@ -1 +1 @@', '+a', '-b', ' c'].map(classifyDiffLine)).toEqual([
@@ -204,6 +330,10 @@ describe('formatDidLine', () => {
 		['forward store/main: run the tests', 'forwarded store/main: run the tests'],
 		['switch_view mission control', 'went to Mission Control'],
 		['switch_view store/wrk1', 'opened store/wrk1'],
+		['switch_view pinned', 'went to Pinned'],
+		['pin_session pin vm1:store/main', 'pinned vm1:store/main'],
+		['pin_session pin', 'pinned this session'],
+		['pin_session unpin store/main', 'unpinned store/main'],
 		['answer yes store/main', 'answered yes store/main'],
 		['dev_offer accepted', 'accepted the fix offer'],
 		['dev_offer declined', 'declined the fix offer'],

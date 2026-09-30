@@ -1,6 +1,7 @@
 import { createLogger } from '../log.js';
 import { isSdkAsk, type SpeechMessage, type SpokenLine, type State } from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
+import { readSessionLabel } from '../shared/machines.js';
 import { readLabel } from '../state/helpers.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import {
@@ -11,6 +12,7 @@ import {
 	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
+	readAnnouncedLabel,
 } from '../state/held-lines.js';
 import type { Store } from '../state/store.js';
 import { isRecent, type SpokenRecord } from './echo.js';
@@ -252,7 +254,7 @@ export class VoiceOut {
 			// One phrase for "waits on you". Only a question already heard makes it something a bare
 			// "yes" answers; one only announced has not been heard.
 			this.say({
-				text: `${readLabel(state, ref)} still needs you.`,
+				text: `${readAnnouncedLabel(state, ref, readLabel(state, ref))} still needs you.`,
 				priority: 'high',
 				ref,
 				isAsking: !isHeldQuestion(state.sessions[ref]),
@@ -395,7 +397,7 @@ export class VoiceOut {
 		store.dispatch({ type: 'held_line_announced', ref: item.ref, id: held.id });
 		this.say({
 			text: describeAnnouncement({
-				label: session.label,
+				label: readAnnouncedLabel(store.state, item.ref, readSessionLabel(store.state, item.ref)),
 				kind,
 				about:
 					kind === 'done'

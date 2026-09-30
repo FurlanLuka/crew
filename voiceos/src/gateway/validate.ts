@@ -7,8 +7,9 @@ const refSchema = z.string().min(1).max(200);
 const machineIdSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
 const viewSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('grid'), machine: machineIdSchema.optional() }),
-	z.object({ kind: z.literal('session'), ref: refSchema }),
+	z.object({ kind: z.literal('session'), ref: refSchema, from: z.literal('pinned').optional() }),
 	z.object({ kind: z.literal('machines') }),
+	z.object({ kind: z.literal('pinned') }),
 ]);
 
 const actionSchema = z.discriminatedUnion('type', [
@@ -66,6 +67,9 @@ const actionSchema = z.discriminatedUnion('type', [
 		name: z.string().min(1).max(60),
 	}),
 	z.object({ type: z.literal('remove_machine'), id: machineIdSchema }),
+	z.object({ type: z.literal('pin_session'), ref: refSchema }),
+	z.object({ type: z.literal('unpin_session'), ref: refSchema }),
+	z.object({ type: z.literal('rename_session'), ref: refSchema, name: z.string().max(60) }),
 ]);
 
 const clientMessageSchema = z.discriminatedUnion('type', [

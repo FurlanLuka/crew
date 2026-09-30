@@ -59,14 +59,31 @@ export const isSessionNamed = ({
 	return topicWords.filter((word) => words.has(word)).length >= 2;
 };
 
+// Words only, each side padded: "voice os dev" is said in "go to voice-os dev.", never inside "devops".
+const toPlainWords = (text: string): string =>
+	` ${text
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()} `;
+
+// A display name names its session in full: the developer chose it to be told apart.
+const isDisplayNameSaid = (name: string | undefined, plain: string): boolean => {
+	const words = name ? toPlainWords(name) : '';
+
+	return words.trim() !== '' && plain.includes(words);
+};
+
 export const findSessionsNamedIn = (state: State, utterance: string): string[] => {
 	const text = ` ${utterance
 		.toLowerCase()
 		.replace(/[^a-z0-9/\s-]/g, ' ')
 		.replace(/\s+/g, ' ')} `;
 	const words = new Set(text.split(/[\s/-]+/).filter(Boolean));
-	const refsNamedInFull = state.order.filter((ref) =>
-		text.includes(splitRef(ref).local.toLowerCase()),
+	const plain = toPlainWords(utterance);
+	const refsNamedInFull = state.order.filter(
+		(ref) =>
+			text.includes(splitRef(ref).local.toLowerCase()) ||
+			isDisplayNameSaid(state.names[ref], plain),
 	);
 
 	if (refsNamedInFull.length > 0) {

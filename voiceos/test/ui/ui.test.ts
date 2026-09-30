@@ -1233,3 +1233,235 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 40_000);
 });
+
+describe('pinned', () => {
+	const REMOTE = 'vm1:api/main';
+
+	const readTileRefs = (page: Page): Promise<(string | null)[]> =>
+		page
+			.locator('.tile')
+			.evaluateAll((tiles) => tiles.map((tile) => tile.getAttribute('data-ref')));
+
+	const readCrumbs = (page: Page): Promise<string> => page.locator('.topbar .ws').innerText();
+
+	const readTabs = (page: Page): Promise<string[]> => page.locator('.tabs .tab').allInnerTexts();
+
+	const goHome = (): void => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'machines' } });
+	};
+
+	beforeAll(() => {
+		for (const ref of [...store.state.pinned]) {
+			store.dispatch({ type: 'unpin_session', ref });
+		}
+
+		store.dispatch({ type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] });
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				createWorktree('setup', true),
+				createWorktree('store-front/main'),
+				createWorktree('checkout-api/main'),
+				// Another machine's session is labelled as that machine knows it.
+				{ ...createWorktree(REMOTE), label: 'api/main' },
+			],
+		});
+		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
+	});
+
+	it('nothing pinned → the Pinned card first on Mission Control, with no status dot', async () => {
+		goHome();
+		const { context, page } = await signIn();
+		const first = page.locator('section.machine').first();
+
+		expect(await first.getAttribute('aria-label')).toBe('Pinned');
+		expect(await first.innerText()).toContain('0 sessions');
+		expect(await first.innerText()).toContain('Pin a session to keep it here');
+		expect(await first.locator('.dot').count()).toBe(0);
+		expect(await first.getByRole('button', { name: 'rename' }).count()).toBe(0);
+		await context.close();
+	}, 20_000);
+
+	it('pin on a machine grid tile → pinned without opening it; the Pinned card counts it', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
+		const { context, page } = await signIn();
+		const tile = page.locator('.tile[data-ref="store-front/main"]');
+
+		await tile.getByRole('button', { name: 'pin', exact: true }).click();
+		await waitUntil(() => store.state.pinned.includes('store-front/main'));
+		await tile.getByRole('button', { name: 'unpin' }).waitFor({ timeout: 5000 });
+		expect(store.state.view).toEqual({ kind: 'grid', machine: 'local' });
+
+		await page.locator('.topbar .crumb', { hasText: 'Mission Control' }).click();
+		const card = page.locator('section.machine[aria-label="Pinned"]');
+		await card.getByText('1 session').waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('Pinned → the pinned sessions from every machine, in pin order, another machine named', async () => {
+		store.dispatch({ type: 'pin_session', ref: REMOTE });
+		goHome();
+		const { context, page } = await signIn();
+		await page.locator('section.machine[aria-label="Pinned"] .machine-name').click();
+		await waitUntil(() => store.state.view.kind === 'pinned');
+		await page.locator(`.tile[data-ref="${REMOTE}"]`).waitFor({ timeout: 5000 });
+
+		expect(await readTileRefs(page)).toEqual(['store-front/main', REMOTE]);
+		expect(await page.locator(`.tile[data-ref="${REMOTE}"] .ref`).innerText()).toBe(
+			'Build box · api/main',
+		);
+		expect(await readCrumbs(page)).toBe('Mission Control › Pinned');
+		expect(await page.locator('.topbar').innerText()).toContain('2 sessions');
+		await context.close();
+	}, 20_000);
+
+	it('a tile on Pinned → the session inside Pinned: Pinned crumbs, the pins as tabs, a tab click stays there', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+		const { context, page } = await signIn();
+		await page.locator('.tile[data-ref="store-front/main"] .tile-open').click();
+		await waitUntil(
+			() => store.state.view.kind === 'session' && store.state.view.from === 'pinned',
+		);
+		await page.getByRole('navigation').waitFor({ timeout: 5000 });
+
+		expect(await readCrumbs(page)).toBe('Mission Control › Pinned › store-front/main');
+		expect(await readTabs(page)).toEqual([
+			expect.stringContaining('store-front/main'),
+			expect.stringContaining('Build box · api/main'),
+		]);
+		expect(await page.locator('.topbar .home').innerText()).toBe('Esc → Pinned');
+
+		await page.locator('.tabs .tab', { hasText: 'api/main' }).click();
+		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === REMOTE);
+		expect(store.state.view).toEqual({ kind: 'session', ref: REMOTE, from: 'pinned' });
+		await context.close();
+	}, 20_000);
+
+	it("a pinned session opened from its machine's grid → inside Pinned all the same", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
+		const { context, page } = await signIn();
+		await page.locator('.tile[data-ref="store-front/main"] .ref').click();
+		await waitUntil(
+			() => store.state.view.kind === 'session' && store.state.view.ref === 'store-front/main',
+		);
+
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'pinned' });
+		await page.getByText('Mission Control › Pinned › store-front/main').waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a pinned session opened from Elsewhere → inside Pinned', async () => {
+		await ensureIdle('setup');
+		store.dispatch({ type: 'pin_session', ref: 'setup' });
+		store.dispatch({ type: 'send', ref: 'setup', text: 'Tidy the old worktrees.' });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
+		const { context, page } = await signIn();
+		await page
+			.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'setup' })
+			.click({ timeout: 5000 });
+		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === 'setup');
+
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'setup', from: 'pinned' });
+		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: 'Done.' });
+		store.dispatch({ type: 'unpin_session', ref: 'setup' });
+		await context.close();
+	}, 20_000);
+
+	it("the TopBar's pin on an unpinned session → pinned; unpin → gone from the pins", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
+		const { context, page } = await signIn();
+		await page
+			.getByText('Mission Control › This Mac › checkout-api/main')
+			.waitFor({ timeout: 5000 });
+
+		await page.locator('.topbar').getByRole('button', { name: 'pin', exact: true }).click();
+		await waitUntil(() => store.state.pinned.includes('checkout-api/main'));
+		await page.locator('.topbar').getByRole('button', { name: 'unpin' }).click();
+		await waitUntil(() => !store.state.pinned.includes('checkout-api/main'));
+		await page
+			.locator('.topbar')
+			.getByRole('button', { name: 'pin', exact: true })
+			.waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a pin whose machine is out of reach → a placeholder tile; its unpin lets it go', async () => {
+		store.dispatch({ type: 'machine_status', id: 'vm1', status: 'unreachable' });
+		store.dispatch({ type: 'pinned_loaded', refs: ['vm1:api/wrk2'] });
+		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+		const { context, page } = await signIn();
+		const placeholder = page.locator('.tile.missing[data-ref="vm1:api/wrk2"]');
+
+		await placeholder.waitFor({ timeout: 5000 });
+		expect(await placeholder.locator('.ref').innerText()).toBe('api/wrk2 · Build box out of reach');
+		await placeholder.getByRole('button', { name: 'unpin' }).click();
+		await waitUntil(() => !store.state.pinned.includes('vm1:api/wrk2'));
+		await placeholder.waitFor({ state: 'detached', timeout: 5000 });
+		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
+		await context.close();
+	}, 20_000);
+});
+
+describe('named sessions', () => {
+	const REMOTE = 'vm1:api/main';
+
+	const readCrumbs = (page: Page): Promise<string> => page.locator('.topbar .ws').innerText();
+
+	const renameInTopBar = async (page: Page, name: string): Promise<void> => {
+		await page.locator('.topbar').getByRole('button', { name: 'rename' }).click();
+		await page.getByLabel('session name').fill(name);
+		await page.getByLabel('session name').press('Enter');
+	};
+
+	it("rename on another machine's tile → the name alone on the tile, the tab and the crumbs; the ref on hover", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+		const { context, page } = await signIn();
+		const tile = page.locator(`.tile[data-ref="${REMOTE}"]`);
+
+		await tile.getByRole('button', { name: 'rename' }).click();
+		await page.getByLabel('session name').fill('voice os dev');
+		await page.getByLabel('session name').press('Enter');
+		await waitUntil(() => store.state.names[REMOTE] === 'voice os dev');
+
+		await tile.locator('.ref', { hasText: 'voice os dev' }).waitFor({ timeout: 5000 });
+		expect(await tile.locator('.ref').innerText()).toBe('voice os dev');
+		expect(await tile.locator('.ref').getAttribute('title')).toBe(REMOTE);
+		expect(store.state.view).toEqual({ kind: 'pinned' });
+
+		await tile.locator('.tile-open').click();
+		await page.getByText('Mission Control › Pinned › voice os dev').waitFor({ timeout: 5000 });
+		expect(await page.locator('.tabs .tab.on').innerText()).toStartWith('voice os dev');
+		await context.close();
+	}, 20_000);
+
+	it('rename in the TopBar → shown in the crumbs and the tab; a name already taken is refused; empty clears it', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const { context, page } = await signIn();
+
+		await renameInTopBar(page, 'shop');
+		await waitUntil(() => store.state.names['store-front/main'] === 'shop');
+		await page.getByText('Mission Control › Pinned › shop').waitFor({ timeout: 5000 });
+		expect(await page.locator('.tabs .tab.on').innerText()).toStartWith('shop');
+
+		const before = received.length;
+		await renameInTopBar(page, 'Voice OS dev');
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some(
+					(entry) =>
+						entry.message.type === 'action' && entry.message.action.type === 'rename_session',
+				),
+		);
+		expect(store.state.names['store-front/main']).toBe('shop');
+		expect(await readCrumbs(page)).toBe('Mission Control › Pinned › shop');
+
+		await renameInTopBar(page, '');
+		await waitUntil(() => store.state.names['store-front/main'] === undefined);
+		await page.getByText('Mission Control › Pinned › store-front/main').waitFor({ timeout: 5000 });
+		expect(await page.locator('.topbar .ws span[title]').count()).toBe(0);
+
+		store.dispatch({ type: 'rename_session', ref: REMOTE, name: '' });
+		await context.close();
+	}, 20_000);
+});

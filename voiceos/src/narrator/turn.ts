@@ -15,8 +15,10 @@ import {
 	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
+	readAnnouncedLabel,
 } from '../state/held-lines.js';
 import { createLogger } from '../log.js';
+import { readSessionLabel } from '../shared/machines.js';
 import { machineOf } from '../shared/machine-ref.js';
 
 const log = createLogger('narrator');
@@ -106,7 +108,7 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 			? cleanSessionLine(tag.text)
 			: (
 					await narrate({
-						label: session.label,
+						label: readSessionLabel(store.state, ref),
 						text: body,
 						asked: question,
 						focused: view.kind === 'session' && view.ref === ref,
@@ -215,7 +217,7 @@ const speakOutcome = async ({
 	// replaces this if it is still waiting to be said.
 	options.say({
 		text: describeAnnouncement({
-			label: session.label,
+			label: readAnnouncedLabel(store.state, effect.ref, readSessionLabel(store.state, effect.ref)),
 			kind,
 			about:
 				kind === 'needs'
@@ -257,7 +259,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 
 		const { topic, about } = await options.writeTopic({
 			ref: effect.ref,
-			label: session.label,
+			label: readSessionLabel(options.store.state, effect.ref),
 			asked: effect.asked,
 			spoken: spoken.text,
 			body,
@@ -288,7 +290,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			? narrateFromTag(effect.spoken, session)
 			: settleOwedReport({
 					narration: await options.narrate({
-						label: session.label,
+						label: readSessionLabel(store.state, effect.ref),
 						text: body,
 						asked: effect.asked,
 						focused: view.kind === 'session' && view.ref === effect.ref,

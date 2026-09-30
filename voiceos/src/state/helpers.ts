@@ -1,8 +1,7 @@
 import type { Observation, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readShownText } from '../shared/spoken-tags.js';
-import { currentMachine, isReachable, readMachineName } from '../shared/machines.js';
-import { machineOf, toLocalRef } from '../shared/machine-ref.js';
+import { isReachable, readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -14,13 +13,12 @@ const MAX_REQUEST_CHARS = 200;
 
 export const withoutEffects = (state: State): ReducerResult => ({ state, effects: [] });
 
-// How a session is named aloud: another machine's session carries that machine's name, unless the
-// developer is in that machine already.
+// How a session is named aloud: prefixed with its machine when readElsewhereMachine says so.
 export const readLabel = (state: State, ref: string): string => {
-	const label = state.sessions[ref]?.label ?? toLocalRef(ref);
-	const name = readMachineName(state, ref);
+	const label = readSessionLabel(state, ref);
+	const machine = readElsewhereMachine(state, ref);
 
-	return name && currentMachine(state) !== machineOf(ref) ? `${name} ${label}` : label;
+	return machine ? `${machine} ${label}` : label;
 };
 
 export const updateSession = (

@@ -3869,6 +3869,239 @@
 			],
 			"forbid_calls": ["hands_free"],
 			"no_reply": true
+		},
+		{
+			"id": "pin-this-on-session",
+			"utterance": "Pin this.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "pin_session",
+					"ref": "store-front/main",
+					"not_input": {
+						"unpin": true
+					}
+				}
+			]
+		},
+		{
+			"id": "pin-this-on-grid-asks",
+			"utterance": "Pin this.",
+			"context": {},
+			"calls": [],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "unpin-this",
+			"utterance": "Unpin this.",
+			"context": {
+				"view": "store-front/main",
+				"pinned": ["store-front/main", "checkout-api/main"]
+			},
+			"calls": [
+				{
+					"name": "pin_session",
+					"ref": "store-front/main",
+					"input": {
+						"unpin": true
+					}
+				}
+			]
+		},
+		{
+			"id": "pin-named-from-grid",
+			"utterance": "Pin store front main.",
+			"context": {},
+			"calls": [
+				{
+					"name": "pin_session",
+					"ref": "store-front/main",
+					"not_input": {
+						"unpin": true
+					}
+				}
+			]
+		},
+		{
+			"id": "go-to-pinned",
+			"utterance": "Go to pinned.",
+			"context": {
+				"pinned": ["store-front/main"]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"input": {
+						"pinned": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "show-pinned-sessions",
+			"utterance": "Show my pinned sessions.",
+			"context": {
+				"view": "checkout-api/main",
+				"pinned": ["store-front/main", "store-front/wrk1"]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"input": {
+						"pinned": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "open-setup-session",
+			"utterance": "Open the setup session.",
+			"context": {},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "setup"
+				}
+			],
+			"forbid_calls": ["pin_session"],
+			"no_reply": true
+		},
+		{
+			"id": "pin-setup-session",
+			"utterance": "Pin the setup session.",
+			"context": {},
+			"calls": [
+				{
+					"name": "pin_session",
+					"ref": "setup",
+					"not_input": {
+						"unpin": true
+					}
+				}
+			]
+		},
+		{
+			"id": "pin-in-work-is-forwarded",
+			"utterance": "Pin the version of react in package.json so it stops drifting.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["package.json|package", "react"]
+				}
+			],
+			"forbid_calls": ["pin_session"],
+			"no_reply": true
+		},
+		{
+			"id": "rename-this",
+			"utterance": "Rename this to voice os dev.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "rename_session",
+					"ref": "store-front/main",
+					"text_includes": "voice os dev|voiceos dev|voice-os dev"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "rename-on-other-machine",
+			"utterance": "Call store front main on Personal voice os dev.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:store-front/main"]
+				}
+			},
+			"calls": [
+				{
+					"name": "rename_session",
+					"ref": "personal:store-front/main",
+					"text_includes": "voice os dev|voiceos dev|voice-os dev"
+				}
+			]
+		},
+		{
+			"id": "go-to-display-name",
+			"utterance": "Go to voice os dev.",
+			"context": {
+				"names": {
+					"store-front/wrk1": "voice os dev"
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "store-front/wrk1"
+				}
+			],
+			"forbid_calls": ["rename_session"],
+			"no_reply": true
+		},
+		{
+			"id": "clear-the-name",
+			"utterance": "Clear the name.",
+			"context": {
+				"view": "store-front/main",
+				"names": {
+					"store-front/main": "voice os dev"
+				}
+			},
+			"calls": [
+				{
+					"name": "rename_session",
+					"ref": "store-front/main",
+					"input": {
+						"name": ""
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "rename-in-code-is-forwarded",
+			"utterance": "Rename the function to parseRef.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "parseRef"
+				}
+			],
+			"forbid_calls": ["rename_session"],
+			"no_reply": true
+		},
+		{
+			"id": "rename-machine-not-session",
+			"utterance": "Rename personal to build box.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:store-front/main"]
+				}
+			},
+			"calls": [
+				{
+					"name": "rename_machine",
+					"text_includes": "build box"
+				}
+			],
+			"forbid_calls": ["rename_session"]
 		}
 	]
 }

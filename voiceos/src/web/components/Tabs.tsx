@@ -1,7 +1,11 @@
 import type { State } from '../../shared/protocol.js';
-import { describeSessionBadge, labelAcrossMachines } from '../derive.js';
-import { currentMachine } from '../../shared/machines.js';
-import { readMachine } from '../../shared/machine-ref.js';
+import {
+	describeSessionBadge,
+	labelAcrossMachines,
+	listTabRefs,
+	readLabelMachine,
+	readRefTitle,
+} from '../derive.js';
 import type { Dispatch } from '../types.js';
 
 interface TabsProps {
@@ -11,13 +15,11 @@ interface TabsProps {
 
 export const Tabs = ({ state, dispatch }: TabsProps) => {
 	const currentRef = state.view.kind === 'session' ? state.view.ref : null;
-	// Inside a machine its tabs are its sessions; another machine is a switch on Mission Control.
-	const machine = currentMachine(state);
-	const refs = machine ? state.order.filter((ref) => readMachine(ref) === machine) : state.order;
+	const here = readLabelMachine(state);
 
 	return (
 		<nav className="tabs">
-			{refs.map((ref) => {
+			{listTabRefs(state).map((ref) => {
 				const session = state.sessions[ref];
 
 				if (!session) {
@@ -26,15 +28,16 @@ export const Tabs = ({ state, dispatch }: TabsProps) => {
 
 				const badge = describeSessionBadge(session, state.asks);
 
+				// A pinned target opens inside Pinned: the reducer adds from, whichever tab is clicked.
 				return (
 					<button
 						type="button"
 						key={ref}
 						className={`tab ${ref === currentRef ? 'on' : ''} ${badge.isAlarm ? 'alarm' : ''}`}
+						title={readRefTitle(state, ref)}
 						onClick={() => dispatch({ type: 'switch_view', view: { kind: 'session', ref } })}
 					>
-						<i className={`dot ${badge.dot}`} />{' '}
-						{labelAcrossMachines(state, session.ref, currentMachine(state))}{' '}
+						<i className={`dot ${badge.dot}`} /> {labelAcrossMachines(state, session.ref, here)}{' '}
 						<span className="act">{badge.label}</span>
 					</button>
 				);

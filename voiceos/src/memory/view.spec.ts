@@ -120,6 +120,29 @@ describe('restoredView', () => {
 			view: { kind: 'machines' },
 		});
 	});
+
+	it('Pinned → applied at once and at the limit: it waits on no machine', () => {
+		const state = withState([], { vm1: vm1('unreachable') });
+
+		expect(restoredView({ kind: 'pinned' }, state)).toEqual({
+			kind: 'apply',
+			view: { kind: 'pinned' },
+		});
+		expect(restoredView({ kind: 'pinned' }, state, VIEW_RESTORE_MS)).toEqual({
+			kind: 'apply',
+			view: { kind: 'pinned' },
+		});
+	});
+
+	it('a remote session opened from Pinned → waits like any session, keeping from', () => {
+		const saved: View = { kind: 'session', ref: 'vm1:store/main', from: 'pinned' };
+
+		expect(restoredView(saved, withState([], { vm1: vm1('syncing') }))).toEqual({ kind: 'wait' });
+		expect(restoredView(saved, withState(['vm1:store/main'], { vm1: vm1('connected') }))).toEqual({
+			kind: 'apply',
+			view: saved,
+		});
+	});
 });
 
 describe('shouldAnnounceRestart', () => {
@@ -238,6 +261,35 @@ describe('persistView', () => {
 		await flush();
 
 		expect(store.state.view).toEqual({ kind: 'grid' });
+	});
+
+	it('a session from Pinned, its pin loaded → restored from Pinned once its machine is back', async () => {
+		const { store } = bootStore(['store/main']);
+
+		store.dispatch({ type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'build box' }] });
+		store.dispatch({ type: 'pinned_loaded', refs: ['vm1:store/main'] });
+		persistView({
+			store,
+			file: createViewFile({ kind: 'session', ref: 'vm1:store/main', from: 'pinned' }),
+		});
+		await flush();
+		expect(store.state.view).toEqual({ kind: 'machines' });
+
+		remoteArrives(store);
+		await flush();
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'vm1:store/main', from: 'pinned' });
+	});
+
+	it('Pinned and a session from Pinned → read back; any other from → nothing restored', () => {
+		expect(loadView(createViewFile({ kind: 'pinned' }))).toEqual({ kind: 'pinned' });
+		expect(
+			loadView(createViewFile({ kind: 'session', ref: 'store/main', from: 'pinned' })),
+		).toEqual({ kind: 'session', ref: 'store/main', from: 'pinned' });
+
+		const other = createViewFile();
+
+		writeFileSync(other, '{"kind":"session","ref":"store/main","from":"grid"}');
+		expect(loadView(other)).toBeNull();
 	});
 
 	it('missing or corrupt file → nothing restored', () => {
