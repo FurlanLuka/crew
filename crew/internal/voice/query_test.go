@@ -90,7 +90,7 @@ func TestLogFilterMatch(t *testing.T) {
 		{"since is inclusive", LogFilter{Since: at("2026-09-30T08:00:00Z")}, line("2026-09-30T08:00:00.000Z", "info", "a", "m"), true},
 		{"until is inclusive", LogFilter{Until: at("2026-09-30T08:00:00Z")}, line("2026-09-30T08:00:00.000Z", "info", "a", "m"), true},
 		{"after until", LogFilter{Until: at("2026-09-30T08:00:00Z")}, line("2026-09-30T08:00:00.001Z", "info", "a", "m"), false},
-		{"no leading ts", LogFilter{}, []byte(`{"level":"info","ts":"2026-09-30T08:00:00.000Z"}`), false},
+		{"ts later in the line", LogFilter{}, []byte(`{"level":"info","ts":"2026-09-30T08:00:00.000Z"}`), true},
 		{"malformed", LogFilter{}, []byte(`{"ts":"2026-09-30T08:00:00.000Z",`), false},
 	}
 	for _, c := range cases {

@@ -220,10 +220,18 @@ func searchText(l LogLine) string {
 
 var tsPrefix = []byte(`{"ts":"`)
 
-// leadingTS: Voice OS writes "ts" first (voiceos/src/log.ts), as toISOString. Pure.
+// leadingTS: Voice OS writes "ts" first (voiceos/src/log.ts), as toISOString, so
+// the prefix is read without decoding; any other spelling of a JSON line (spaces,
+// ts later on) is decoded rather than dropped. Pure.
 func leadingTS(raw []byte) (string, bool) {
 	if !bytes.HasPrefix(raw, tsPrefix) {
-		return "", false
+		var line struct {
+			TS string `json:"ts"`
+		}
+		if json.Unmarshal(raw, &line) != nil || line.TS == "" {
+			return "", false
+		}
+		return line.TS, true
 	}
 	rest := raw[len(tsPrefix):]
 	end := bytes.IndexByte(rest, '"')

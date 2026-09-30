@@ -48,6 +48,7 @@ func TestClassifyRemote(t *testing.T) {
 		{"JSON after login-shell text", 0, "Welcome to vm1\nLast login: today\n" + doc + "\n", "", remoteAnswered, ""},
 		{"an old crew's raw tail", 0, `{"ts":"2026-09-30T08:00:00.000Z","level":"info","cat":"a","msg":"m"}` + "\n", "", remoteTooOld, tooOldReason},
 		{"an old crew's usage error", 1, "", "Usage: crew voice [start|stop|restart|status|logs|keys|remote|machines]\n", remoteTooOld, tooOldReason},
+		{"an old crew where no main ever ran", 1, "", "No Voice OS log yet at /root/.crew/voiceos/logs/voiceos.log\n", remoteTooOld, tooOldReason},
 		{"ssh could not connect", 255, "", "ssh: connect to host vm2 port 22: Connection refused\n", remoteUnreachable, "unreachable: ssh: connect to host vm2 port 22: Connection refused"},
 		{"no crew there", 127, "", "sh: 1: exec: /home/dev/.local/bin/crew: not found\n", remoteUnreachable, "unreachable: sh: 1: exec: /home/dev/.local/bin/crew: not found"},
 		{"crew failed", 1, "", "Error: permission denied\n", remoteUnreachable, "failed: permission denied"},

@@ -206,3 +206,21 @@ func TestReadNotes(t *testing.T) {
 		t.Fatalf("a workspace without notes is an empty list: %+v %v", one, err)
 	}
 }
+
+// Voice OS writes ts first with no spaces; a line spelled otherwise is still a
+// line, only a slower one to read.
+func TestLeadingTSReadsAnySpellingOfALine(t *testing.T) {
+	cases := map[string]string{
+		`{"ts":"2026-09-30T08:00:00.000Z","msg":"m"}`:    "2026-09-30T08:00:00.000Z",
+		`{"ts": "2026-09-30T08:00:00.000Z", "msg": "m"}`: "2026-09-30T08:00:00.000Z",
+		`{"msg":"m","ts":"2026-09-30T08:00:00.000Z"}`:    "2026-09-30T08:00:00.000Z",
+		`not json`:          "",
+		`{"msg":"no time"}`: "",
+	}
+	for raw, want := range cases {
+		got, ok := leadingTS([]byte(raw))
+		if got != want || ok != (want != "") {
+			t.Errorf("%s: got (%q, %v), want %q", raw, got, ok, want)
+		}
+	}
+}

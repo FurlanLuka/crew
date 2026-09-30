@@ -152,7 +152,9 @@ func classifyRemote(code int, stdout, stderr string) remoteAnswer {
 			last = fmt.Sprintf("ssh exited %d", code)
 		}
 		return remoteAnswer{kind: remoteUnreachable, reason: "unreachable: " + last}
-	case code == 0, strings.Contains(stderr, "Usage: crew voice"):
+	// An older crew ignores the new flags and tails the main's log: exit 0 with raw
+	// lines, or, where no main ever ran, its "No Voice OS log yet" on stderr.
+	case code == 0, strings.Contains(stderr, "Usage: crew voice"), strings.Contains(stderr, "No Voice OS log yet at"):
 		return remoteAnswer{kind: remoteTooOld, reason: tooOldReason}
 	}
 	if last == "" {
