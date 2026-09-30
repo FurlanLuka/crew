@@ -36,14 +36,19 @@ import { loadRegistry, renameSession } from './sessions/registry.js';
 import { Store } from './state/store.js';
 import { createListenSwitch } from './speech/hands-free-switch.js';
 import { VoiceInput } from './speech/voice-in.js';
+import { isSpeakingAt } from './speech/echo.js';
 import { VoiceOut } from './speech/voice-out.js';
 import { DevWatch } from './dev/watch.js';
 import { SonioxTts } from './speech/tts.js';
 import { createNarrator } from './narrator/narrator.js';
 import { createTopicWriter } from './narrator/topic.js';
+import { loadModels } from './voice-gate/models.js';
+import { startVoiceGate, type VoiceGateHandle } from './voice-gate/start.js';
 import { connectMachines, readMachineStatuses } from './remote/cockpit-machines.js';
 
 const WORKTREE_POLL_MS = 10_000;
+// Room lag: the mic still hears a line this long after it ended, and the voice gate must not learn it.
+const VOICE_OS_SPEECH_TAIL_MS = 500;
 const REMINDER_INTERVAL_MS = 30_000;
 
 const paths = resolvePaths();
@@ -251,15 +256,24 @@ const router = new UtteranceRouter({
 			}
 		: null,
 });
+// Started once the gateway is up; until its models are loaded it ignores what it is given.
+let voiceGate: VoiceGateHandle | null = null;
+
 const voiceIn = new VoiceInput({
 	store,
 	apiKey: keys.soniox,
-	onUtterance: (text, client, startedAt) =>
+	onUtterance: (text, client, startedAt, heard) => {
+		voiceGate?.turnDelivered(
+			client,
+			heard ? { from: startedAt, to: heard.endedAt, source: heard.source } : null,
+		);
 		void router.handle(text, 'voice', {
 			setListenMode: listenSwitchFor(client),
 			openUrl: openUrlFor(client),
 			heardFrom: startedAt,
-		}),
+		});
+	},
+	observeAudio: (client, chunk, sampleRate) => voiceGate?.observe(client, chunk, sampleRate),
 	onTalkStart: () => voiceOut.talkStarted(),
 	onTalkEnd: () => voiceOut.talkEnded(),
 	onListenOff: (client, reason) => void gateway?.send(client, { type: 'listen_off', reason }),
@@ -379,6 +393,7 @@ gateway = startGateway({
 	onAudio: (chunk, client) => voiceIn.pushAudio(client, chunk),
 	onDisconnect: (client) => {
 		voiceIn.disconnect(client);
+		voiceGate?.forget(client);
 
 		if (speaker === client) {
 			speaker = null;
@@ -392,6 +407,16 @@ gateway = startGateway({
 });
 
 const port = gateway.port;
+
+voiceGate = startVoiceGate({
+	root: paths.voiceGateDir,
+	env: process.env,
+	setStatus: (status) => store.dispatch({ type: 'voice_gate', status }),
+	now: Date.now,
+	isVoiceOsSpeaking: () =>
+		isSpeakingAt(voiceOut.listRecentSpeech(), Date.now(), VOICE_OS_SPEECH_TAIL_MS),
+	loadModels,
+});
 
 if (shouldRecordState(process.env)) {
 	recordState();
@@ -419,6 +444,7 @@ const shutdown = (signal: string): void => {
 	manager.stopAll();
 	machines.stop();
 	tts?.close();
+	voiceGate?.stop();
 	gateway?.stop();
 	process.exit(0);
 };

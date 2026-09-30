@@ -87,6 +87,34 @@ environment.
   list is `~/.crew/voiceos/machines.json`, written only by `crew voice machines` (the page and
   voice go through it) and watched while running.
 
+## Voice gate (dry run)
+
+The goal is that only your voice reaches Soniox: the TV, a call, and Voice OS's own speech through
+the open mic would be silenced before transcription. This first step only **measures**. Nothing is
+silenced, and what Soniox gets is untouched.
+
+- **Automatic, every run.** The first start downloads one pack for the platform (about 90 MB: the
+  Silero VAD and SpeechBrain ECAPA models and the onnxruntime library) into
+  `~/.crew/voiceos/voice-gate/<pack id>/`. It is checked against the sha256 pinned in
+  `src/voice-gate/pack.ts`. There is no pack for Intel Macs, where the gate stays off.
+- **Learning.** Voice OS learns your voice from turns that are provably yours: push-to-talk
+  presses, and listened turns that became a command. Speech heard while Voice OS was talking is left
+  out. After about 30 s, once 80% of the 3 s chunks agree, their mean is your voiceprint for this run.
+  Nothing is written to disk.
+- **Scoring.** From then on, every utterance any tab's mic hears is scored against it with the
+  prototype's gate (`src/voice-gate/gate.ts`). Each delivered turn logs one `turn scored` line: its
+  source, the tab's sample rate, every raw score, and what the gate would have done at 0.40 (`kept`,
+  `silenced` or `unscored`). These lines are the data for picking the real threshold:
+  `crew voice logs | grep 'turn scored'`.
+- **The chip** beside the route chip shows `voice 12/30 s` while learning, then `voice 0.82`, the last
+  turn's score.
+- `VOICEOS_VOICE_GATE=0` turns it off, as an escape hatch: the models run inside Voice OS's own
+  process. `VOICEOS_VOICE_GATE_PACK_DIR=<dir>` uses a pack already unpacked there instead of
+  downloading one.
+
+The packs are built by `scripts/voice-gate/export_models.py` (the ONNX export and the reference
+numbers) and `scripts/voice-gate/build-packs.ts`, and hosted on the `voice-gate-pack-1` release.
+
 State lives in `~/.crew/voiceos/` (token, sessions, topics, journal, logs; a remote's own under
 `remote/`). `crew voice logs` tails the log.
 
@@ -108,5 +136,6 @@ copied from them.
 bun test src                       # unit specs (no network)
 bun test test/ui                   # browser tests (Playwright Chromium)
 VOICEOS_LIVE=1 bun test test/live  # real Claude sessions on Haiku — costs a little
+VOICEOS_VOICE_GATE_PACK_DIR=<pack dir> bun test test/live/voice-gate.test.ts  # the gate's real models, free
 bunx tsc --noEmit
 ```

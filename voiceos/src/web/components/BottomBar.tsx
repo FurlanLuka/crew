@@ -6,6 +6,7 @@ import {
 	type State,
 } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
+import { describeVoiceGate } from '../voice-gate-chip.js';
 import { Mic, isMicAllowed } from '../audio.js';
 import { PRE_ROLL_MS } from '../ptt.js';
 import { describeListening } from '../listen-mode.js';
@@ -56,6 +57,7 @@ export const BottomBar = ({
 	// Set synchronously on key down/up: a release while the mic is still opening must not be lost.
 	const isPressedRef = useRef(false);
 	const route = describeRouteChip(state, { draft });
+	const voiceGate = describeVoiceGate(state.voiceGate);
 	const isAlarm = route.isAnswering;
 
 	useEffect(() => {
@@ -250,6 +252,11 @@ export const BottomBar = ({
 					aria-label="Say or type a command"
 				/>
 			</form>
+			{voiceGate && (
+				<span className="route voice-gate" title={voiceGate.title}>
+					{voiceGate.label}
+				</span>
+			)}
 			<span className={`route ${isAlarm ? 'alarm' : route.isForKernel ? 'kernel' : ''}`}>
 				{route.label}
 			</span>

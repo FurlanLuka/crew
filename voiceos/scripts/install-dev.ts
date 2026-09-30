@@ -3,6 +3,7 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { packFor } from '../src/voice-gate/pack.js';
 
 const targetPath =
 	process.env.CREW_VOICEOS_BIN ||
@@ -16,6 +17,8 @@ const build = Bun.spawn(
 		'--compile',
 		'--minify',
 		'--sourcemap',
+		// No onnxruntime addon for this platform (an Intel Mac): the voice gate stays off.
+		...(packFor(process.platform, process.arch) ? [] : ['--external', 'onnxruntime-node']),
 		join(import.meta.dir, '..', 'src', 'main.ts'),
 		'--outfile',
 		targetPath,

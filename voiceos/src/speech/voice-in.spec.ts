@@ -1,4 +1,4 @@
-import { MAX_WAIT_MS } from './listener.js';
+import { type HeardSpan, MAX_WAIT_MS } from './listener.js';
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -27,6 +27,7 @@ type HarnessExtras = Pick<
 	| 'maxWaitMs'
 	| 'awakeMs'
 	| 'awakeCapMs'
+	| 'observeAudio'
 >;
 
 interface CreateHarnessParams extends HarnessExtras {
@@ -57,6 +58,8 @@ const createHarness = ({
 	});
 	const utterances: string[] = [];
 	const startedAts: number[] = [];
+	const heards: (HeardSpan | null)[] = [];
+	const observed: { client: string; bytes: number; sampleRate: number }[] = [];
 	const talkStarts: number[] = [];
 	const talkEnds: number[] = [];
 	let session: SttSessionOptions | null = null;
@@ -69,6 +72,8 @@ const createHarness = ({
 	let ignored = 0;
 	const input = new VoiceInput({
 		continueMs: CONTINUE_MS,
+		observeAudio: (client, chunk, sampleRate) =>
+			observed.push({ client, bytes: chunk.byteLength, sampleRate }),
 		...extra,
 		onListenOff: (client, reason) => listenOffs.push({ client, reason }),
 		onListenState: (_client, isAwake) => listenStates.push(isAwake),
@@ -77,9 +82,10 @@ const createHarness = ({
 		},
 		store,
 		apiKey,
-		onUtterance: (text, _client, startedAt) => {
+		onUtterance: (text, _client, startedAt, heard) => {
 			utterances.push(text);
 			startedAts.push(startedAt);
+			heards.push(heard);
 		},
 		onTalkStart: () => talkStarts.push(1),
 		onTalkEnd: () => talkEnds.push(1),
@@ -106,6 +112,8 @@ const createHarness = ({
 		input,
 		utterances,
 		startedAts,
+		heards,
+		observed,
 		talkStarts,
 		talkEnds,
 		sent,
@@ -1267,5 +1275,106 @@ describe('VoiceInput on demand', () => {
 		expect(harness.listenStates).toEqual([]);
 		expect(harness.input.listenModeOf('c1')).toBe('hands-free');
 		expect(harness.input.listenModeOf('c2')).toBe('push');
+	});
+});
+
+describe('VoiceInput and the voice gate', () => {
+	it('press audio → sent to speech-to-text, then shown to the gate at the press rate', () => {
+		const harness = createHarness();
+		harness.input.start('c1', 44_100);
+		harness.input.pushAudio('c1', new Uint8Array(882));
+		expect(harness.sent).toEqual([882]);
+		expect(harness.observed).toEqual([{ client: 'c1', bytes: 882, sampleRate: 44_100 }]);
+	});
+
+	it('listened audio → shown to the gate at the listening rate', () => {
+		const harness = createHarness();
+		harness.input.listen('c1', 48_000);
+		harness.input.pushAudio('c1', new Uint8Array(960));
+		expect(harness.observed).toEqual([{ client: 'c1', bytes: 960, sampleRate: 48_000 }]);
+	});
+
+	it('audio with no press and no listening → neither sent nor shown to the gate', () => {
+		const harness = createHarness();
+		harness.input.pushAudio('c1', new Uint8Array(960));
+		harness.input.start('c1');
+		harness.input.stop('c1');
+		harness.input.pushAudio('c1', new Uint8Array(960));
+		expect(harness.sent).toEqual([]);
+		expect(harness.observed).toEqual([]);
+	});
+
+	it('a gate that throws → speech-to-text still gets every chunk, and the gate the next', () => {
+		const shown: number[] = [];
+		const harness = createHarness({
+			observeAudio: (_client, chunk) => {
+				shown.push(chunk.byteLength);
+				throw new Error('gate broke');
+			},
+		});
+		harness.input.start('c1');
+		harness.input.pushAudio('c1', new Uint8Array(4));
+		harness.input.pushAudio('c1', new Uint8Array(2));
+		expect(harness.sent).toEqual([4, 2]);
+		expect(shown).toEqual([4, 2]);
+	});
+
+	it('a press → its words carry its release time and push as the source', () => {
+		let clock = 1000;
+		const harness = createHarness({ now: () => clock });
+		harness.input.start('c1');
+		clock = 3500;
+		harness.input.stop('c1');
+		clock = 4200;
+		harness.session?.onFinal('run the tests');
+		expect(harness.heards).toEqual([{ endedAt: 3500, source: 'push' }]);
+	});
+
+	it('a listened turn → its words carry when they were last heard, not when it was sent', async () => {
+		let clock = 1000;
+		const harness = createHarness({ now: () => clock });
+		harness.input.listen('c1', 48_000, 'hands-free');
+		harness.session?.onPartial('open store front');
+		clock = 2000;
+		harness.session?.onSegment?.('open store front');
+		clock = 5000;
+		await waitForSettle();
+		expect(harness.heards).toEqual([{ endedAt: 2000, source: 'hands-free' }]);
+	});
+
+	it('simulated speech → no heard span: no microphone heard it', async () => {
+		const harness = createHarness();
+		harness.input.simulate('c1', 'run the tests', 1);
+		await Bun.sleep(10);
+		expect(harness.heards).toEqual([null]);
+	});
+});
+
+describe('VoiceInput: when heard words ended, for the voice gate', () => {
+	it('an on-demand turn → its words carry on-demand as the source', async () => {
+		const harness = createHarness();
+		harness.input.listen('c1', 16000, 'on-demand');
+		harness.session?.onPartial('Voice OS, run the tests');
+		harness.session?.onSegment?.('Voice OS, run the tests.');
+		await waitForSettle();
+
+		expect(harness.heards.map((heard) => heard?.source)).toEqual(['on-demand']);
+	});
+
+	it('a joined turn → ends when its last part was heard, not its first', async () => {
+		let clock = 1000;
+		const harness = createHarness({ now: () => clock, holdMs: 50 });
+		harness.input.listen('c1');
+		harness.session?.onPartial("Let's");
+		harness.session?.onSegment?.("Let's, um.");
+		clock = 3000;
+		harness.session?.onPartial('open');
+		clock = 3400;
+		harness.session?.onSegment?.('open checkout.');
+		clock = 6000;
+		await waitForSettle();
+
+		expect(harness.utterances).toEqual(["Let's, um open checkout."]);
+		expect(harness.heards).toEqual([{ endedAt: 3400, source: 'hands-free' }]);
 	});
 });

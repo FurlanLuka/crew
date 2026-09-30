@@ -35,6 +35,10 @@ export const isRecent = (line: SpokenRecord, now: number): boolean => {
 	return line.endedAt === null || now - line.endedAt <= ECHO_WINDOW_MS;
 };
 
+// Voice OS is heard through an open mic while a line plays and for a moment after (room lag).
+export const isSpeakingAt = (lines: SpokenRecord[], now: number, tailMs: number): boolean =>
+	lines.some((line) => line.endedAt === null || now - line.endedAt <= tailMs);
+
 export interface IsEchoParams {
 	heard: string;
 	spoken: SpokenRecord[];

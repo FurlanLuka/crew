@@ -3,7 +3,7 @@ import { writeSpokenRefs } from '../router/refs.js';
 import type { ListenMode, ListeningMode } from '../shared/protocol.js';
 import { describeRouteChip } from '../shared/route-chip.js';
 import { isEcho, type SpokenRecord } from './echo.js';
-import { Listener, type ListenerOptions } from './listener.js';
+import { type HeardSpan, Listener, type ListenerOptions } from './listener.js';
 import {
 	DEFAULT_SAMPLE_RATE_HZ,
 	SttSession,
@@ -17,8 +17,11 @@ import { saveDebugWav } from './wav.js';
 export type VoiceInputOptions = ListenerOptions & {
 	// client: the tab whose microphone heard it.
 	// startedAt: when the developer began saying it (a joined turn: its first words); lines Voice OS
-	// started after that were not heard before they spoke.
-	onUtterance: (text: string, client: string, startedAt: number) => void;
+	// started after that were not heard before they spoke. heard: null for words no mic heard.
+	onUtterance: (text: string, client: string, startedAt: number, heard: HeardSpan | null) => void;
+	// Every chunk sent to speech-to-text, at its rate, for the voice gate. It must not keep or change
+	// the chunk: speech-to-text may still be sending it.
+	observeAudio?: (client: string, chunk: Uint8Array, sampleRate: number) => void;
 	onTalkStart: () => void;
 	// Nobody is pressing and no listened turn is under way: speech may play again.
 	onTalkEnd?: () => void;
@@ -45,11 +48,13 @@ interface Utterance {
 	pressCap: ReturnType<typeof setTimeout>;
 	// When the press began: what Voice OS started saying after that, the developer had not heard.
 	startedAt: number;
+	// When the key was released; null while held.
+	endedAt: number | null;
 }
 
 type Pending =
 	| { kind: 'press'; utterance: Utterance }
-	| { kind: 'turn'; text: string; startedAt: number };
+	| { kind: 'turn'; text: string; startedAt: number; heard: HeardSpan | null };
 
 const log = createLogger('voice-in');
 
@@ -77,7 +82,8 @@ export class VoiceInput {
 				}),
 			showPartial: (text, label) => this.showPartial(text, label),
 			clearTranscript: (client) => this.clearTranscript(client),
-			queueTurn: (client, text, startedAt) => this.queue(client, { kind: 'turn', text, startedAt }),
+			queueTurn: (client, text, startedAt, heard) =>
+				this.queue(client, { kind: 'turn', text, startedAt, heard }),
 			onTalkStarted: () => this.options.onTalkStart(),
 			onTalkMaybeOver: () => this.talkMaybeOver(),
 			onListenState: (client, isAwake) => this.options.onListenState?.(client, isAwake),
@@ -153,6 +159,7 @@ export class VoiceInput {
 			outcome: { state: 'streaming' },
 			pressCap,
 			startedAt,
+			endedAt: null,
 		};
 		this.livePresses.set(client, utterance);
 		this.queue(client, { kind: 'press', utterance });
@@ -184,8 +191,11 @@ export class VoiceInput {
 	}
 
 	pushAudio(client: string, chunk: Uint8Array): void {
-		if (this.listener.hasClient(client)) {
+		const listenRate = this.listener.sampleRateOf(client);
+
+		if (listenRate !== null) {
 			this.listener.pushAudio(client, chunk);
+			this.observe(client, chunk, listenRate);
 
 			return;
 		}
@@ -198,6 +208,7 @@ export class VoiceInput {
 
 		utterance.stream.send(chunk);
 		utterance.chunks?.push(new Uint8Array(chunk));
+		this.observe(client, chunk, utterance.sampleRate);
 	}
 
 	stop(client: string): void {
@@ -208,6 +219,7 @@ export class VoiceInput {
 		}
 
 		log.info('talk stop', { client });
+		utterance.endedAt = this.now();
 		clearTimeout(utterance.pressCap);
 		this.endPress(client);
 		void utterance.stream.end();
@@ -223,7 +235,7 @@ export class VoiceInput {
 		this.showPartial(text);
 		setTimeout(() => {
 			this.clearTranscript(client);
-			this.queue(client, { kind: 'turn', text, startedAt });
+			this.queue(client, { kind: 'turn', text, startedAt, heard: null });
 			this.talkMaybeOver();
 		}, holdMs);
 	}
@@ -237,6 +249,15 @@ export class VoiceInput {
 			if (pending.kind === 'press' && pending.utterance.outcome.state === 'streaming') {
 				this.drop(pending.utterance);
 			}
+		}
+	}
+
+	// After the send: the gate only reads a copy, and whatever it does, speech-to-text has the chunk.
+	private observe(client: string, chunk: Uint8Array, sampleRate: number): void {
+		try {
+			this.options.observeAudio?.(client, chunk, sampleRate);
+		} catch (error) {
+			log.warn('audio observer failed', { client, error: String(error) });
 		}
 	}
 
@@ -341,6 +362,7 @@ export class VoiceInput {
 					text,
 					client,
 					head.kind === 'turn' ? head.startedAt : head.utterance.startedAt,
+					this.heardOf(head),
 				);
 			}
 		}
@@ -348,6 +370,14 @@ export class VoiceInput {
 		if (queue.length === 0) {
 			this.pendingByClient.delete(client);
 		}
+	}
+
+	private heardOf(pending: Pending): HeardSpan | null {
+		if (pending.kind === 'turn') {
+			return pending.heard;
+		}
+
+		return { endedAt: pending.utterance.endedAt ?? this.now(), source: 'push' };
 	}
 
 	private saveRecording(utterance: Utterance, text: string): void {
