@@ -153,7 +153,7 @@ export interface WorkerOptions {
 	claudeBin?: string;
 	// Where tool screenshots are kept for the page; unset shows no images.
 	mediaDir?: string;
-	// The pinned setup session shows no images from its folder (the home folder).
+	// The setup session (isPinned) shows no images from its folder (the home folder).
 	isPinned: boolean;
 }
 

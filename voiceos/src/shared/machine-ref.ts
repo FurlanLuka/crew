@@ -2,7 +2,7 @@
 // "vm1:store-front/wrk1". crew never allows ':' in a workspace or worktree name, so the prefix
 // cannot be confused with a local ref, and an ask id ("ask-<ref>-…") takes the same prefix.
 
-// The pinned setup session's ref (sessions/setup-session.ts re-exports it for the server side).
+// The setup session's ref (sessions/setup-session.ts re-exports it for the server side).
 export const SETUP_REF = 'setup';
 
 // The id used in views for this Mac's own sessions: never a machine id (machineIdFor refuses it).

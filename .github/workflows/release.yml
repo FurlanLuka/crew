@@ -20,17 +20,31 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: crew/go.mod
           cache-dependency-path: crew/go.sum
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      # A tag is a release: nothing ships that the tests have not passed on.
+      - name: Test crew
+        working-directory: crew
+        run: go test ./...
+
+      - name: Install Voice OS dependencies
+        working-directory: voiceos
+        run: bun install --frozen-lockfile
+
+      # The unit and offline eval suites only; the paid evals and live audio tests never run in CI.
+      - name: Test Voice OS
+        working-directory: voiceos
+        run: bun test src evals
 
       - name: Build Voice OS
         working-directory: voiceos
-        run: |
-          bun install --frozen-lockfile
-          bun scripts/build-release.ts "${GITHUB_REF_NAME}"
+        run: bun scripts/build-release.ts "${GITHUB_REF_NAME}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

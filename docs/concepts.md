@@ -158,17 +158,52 @@ worktree exactly the way `crew add worktree` does — base table, `--pull`, one 
 project, failures recorded — so what you get on the second machine is as current and as
 checked as on the first.
 
-## Voice OS on other machines
+## Voice OS
 
-Voice OS can drive the Claude sessions of another machine's worktrees — a VM, a second
-computer. That machine is a **remote**: `crew voice remote` there starts a daemon that runs only
-the sessions (no voice, no router) and outlives any connection. Your Mac is the **main**:
-`crew voice machines add <ssh host>` (or **+ Add machine** on the page) and it connects with
-`ssh <host> … crew voice _attach`, so the host only needs to be reachable with your keys — LAN, VPN
-or an SSH alias, its choice. Its sessions show under the machine (`vm1:store-front/main`), its dev
-servers are its own crew's, and a dropped link stops nothing there: the main reconnects, catches
-up from a snapshot and says one line about what happened. A machine is a main or a remote, never
-both. [The guide](guides/voice-os.md#other-machines) has the steps.
+Voice OS (`crew voice`) is a voice and web cockpit on top of crew. It holds one Claude Code
+session per worktree, runs them through the Claude Agent SDK on your own Claude Code login, and
+puts them in one page you can talk to. [The guide](guides/voice-os.md) is how to use it; this is
+the model underneath.
+
+- **Sessions.** A worktree's session runs in that worktree, opened with the same orientation
+  prompt `crew claude` gets, and resumes where it left off after a restart. Besides the
+  worktrees there is always a **setup** session: it runs in your home directory with the crew
+  CLI and is for crew itself — projects, workspaces, worktrees ("setup, make a worktree in
+  store-front for the search fix"). Dev servers and code belong to each worktree's own session.
+- **Kernel and narrator.** Every spoken sentence goes to the **kernel** (a small, fast model
+  with tools), which decides what it is: words for a session, an answer to what a session is
+  waiting on, a switch of view, a note. Anything about the work is forwarded in your words,
+  never acted on by the kernel itself. Sessions write their own short spoken lines; when a
+  reply comes without one, the **narrator** decides what to say and whether the session now
+  waits on you. Both run on your Anthropic API key; speech in and out runs on Soniox.
+- **Auto mode.** Sessions run in Claude Code's auto permission mode: routine steps go ahead,
+  and Claude Code's own safety check blocks what looks risky. A blocked action is shown and
+  said with its reason; "allow it" approves exactly that one retried call and then auto mode
+  is back. Plans (`ExitPlanMode`) and questions (`AskUserQuestion`) always wait for you.
+- **Pins and names.** Pinned is a view of the sessions you pinned, from any machine, in pin
+  order; a pinned session opens inside it, with the other pins as its tabs. A name you give a
+  session replaces its crew ref everywhere on the page and in what you can say. Both are
+  Voice OS preferences, not crew state: they have no crew command, and crew never sees them.
+- **Other machines.** Voice OS can drive the sessions of another machine's worktrees — a VM,
+  a second computer. That machine is a **remote**: `crew voice remote` there starts a daemon
+  that runs only the sessions (no voice, no kernel) and outlives any connection. Your Mac is
+  the **main**: `crew voice machines add <ssh host>` (or **+ Add machine** on the page), and it
+  connects with `ssh <host> … crew voice _attach`, so the host only needs to be reachable with
+  your keys — LAN, VPN or an SSH alias, its choice. Its sessions show under the machine
+  (`store-vm:store-front/main`), its dev servers are its own crew's, and a dropped link stops
+  nothing there: the main reconnects, catches up from a snapshot and says one line about what
+  happened. A machine is a main or a remote, never both. [The
+  guide](guides/voice-os.md#other-machines) has the steps.
+
+**Where its state lives.** `~/.crew/voiceos/`: `token` (the page's sign-in, owner-only),
+`sessions.json` (which Claude session each worktree resumes), `pinned.json`, `names.json`,
+`view.json` (the screen a restart comes back to), `topics.json`, `machines.json` (written by
+`crew voice machines`), `notes/<workspace>.md`, `journal/` (every turn, for "what did checkout
+do yesterday"), `media/` (images sessions showed, swept after 30 days) and `logs/` (the log and
+your debug notes). A remote keeps its own under `~/.crew/voiceos/remote/`. The binary is
+`~/.crew/bin/voiceos`, and the API keys are in `~/.config/crew-voiceos/` (owner-only, never in
+the environment: an exported `ANTHROPIC_API_KEY` would switch every Claude Code session to
+per-token billing).
 
 ## Removal
 
@@ -223,4 +258,10 @@ Settings (`crew config set`): `server_ip` (LAN IP for proxy URLs, auto-detected)
 `proxy_https_port` (443, `-1` off — the proxy's HTTPS, from crew's own CA; `crew dev proxy trust`
 shows how to trust it on each device),
 `ssh_host` (for `crew code`). `~/.crew/debug.log` holds every git, tmux, install and editor
-command crew ran; binding values are never logged.
+command crew ran; binding values are never logged. `~/.crew/update-check.json` remembers the
+last background check for a newer release (at most once a day; `crew update` always checks
+fresh).
+
+Voice OS has no settings of its own in `crew config`: its state is in `~/.crew/voiceos/` and
+its API keys in `~/.config/crew-voiceos/` (see [Voice OS](#voice-os)); `crew voice keys` shows
+which keys are set, and `crew voice logs` tails its log.

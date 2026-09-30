@@ -127,12 +127,23 @@ func restartCommand(bin string) *osexec.Cmd {
 }
 
 func openVoiceLink(st voice.Status, open bool) {
-	if open && !jsonOutput && term.IsTerminal(os.Stdout.Fd()) && st.LocalhostURL != "" {
-		debug.Log("voice", "open %s", st.LocalhostURL)
-		if err := osexec.Command("open", st.LocalhostURL).Start(); err != nil {
-			debug.Log("voice", "open failed: %v", err)
-		}
+	if !open || jsonOutput || !term.IsTerminal(os.Stdout.Fd()) || st.LocalhostURL == "" {
+		return
 	}
+	opener := browserOpener(runtime.GOOS)
+	debug.Log("voice", "%s %s", opener, st.LocalhostURL)
+	// The link is already printed; a machine without an opener (a headless
+	// Linux box) loses nothing but the convenience.
+	if err := osexec.Command(opener, st.LocalhostURL).Start(); err != nil {
+		debug.Log("voice", "%s failed: %v", opener, err)
+	}
+}
+
+func browserOpener(goos string) string {
+	if goos == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
 }
 
 func voicePrint(st voice.Status) {
@@ -305,7 +316,7 @@ func readSecret(prompt string) (string, error) {
 // release, so the two always match. A dev crew has no release to take it from.
 func installVoiceIfMissing() {
 	downloaded, err := voice.EnsureInstalled(Version, func() {
-		fmt.Fprintf(human, "Downloading Voice OS v%s for %s/%s (about 30 MB)…\n", Version, runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(human, "Downloading Voice OS v%s for %s/%s (25–40 MB)…\n", Version, runtime.GOOS, runtime.GOARCH)
 	})
 	switch {
 	case errors.Is(err, voice.ErrDevBuild):

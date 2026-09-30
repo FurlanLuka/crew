@@ -3,8 +3,8 @@ name: crew
 description: >
   crew workspace expert. Use when the user wants to manage projects, workspaces or
   worktrees; add a repo from a path or a git URL and prove it runs; check dev server
-  status and URLs; start, stop or restart dev servers; declare
-  env bindings or overrides; run a script with a worktree's env; open Claude or an editor on
+  status and URLs; check or install what crew needs (crew doctor); start, stop or restart
+  dev servers; declare env bindings or overrides; run a script with a worktree's env; open Claude or an editor on
   a checkout; run Voice OS or set its API keys; make a machine a Voice OS remote or add one
   (crew voice remote, crew voice machines); move crew to another machine; or free disk.
 tools: Bash, Read, AskUserQuestion
@@ -66,6 +66,17 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   --purge`, `crew trash empty`, `crew clean`, `crew kill`, `crew migrate` — confirm first,
   `--dry-run` where it exists, show the plan.
 - Never print override values or anything that looks like a credential.
+- Missing tools: `crew doctor` says what is missing (tmux and git required, Claude Code
+  optional). `crew doctor --install` asks at a terminal, which you don't have: say what it will
+  install and get a yes first, then run `crew doctor --install --yes` (add `--with-claude` only
+  when Claude Code should be installed too). It may need sudo; if it stops there, hand the user
+  the exact line.
+- Voice OS keys: `crew voice keys` shows which are set, never their values. A key goes in on
+  stdin and only there: hand the user the line to run after copying it — `pbpaste | crew voice
+  keys set anthropic` (or `soniox`) — or `crew voice` at their terminal, which asks. Never put a
+  key in a command line, a file or your reply, and never echo one back; if the user pastes one
+  to you, don't repeat it — give them the line instead. A rejected key is not saved; `crew
+  voice restart` picks a new one up.
 - If a command fails, show the error and the fix it suggests.
 - A proxy URL that works here but not on another device → the "Proxy on other devices" flow
   in the skill; crew cannot see that device's network, the user runs the test there.

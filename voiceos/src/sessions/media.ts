@@ -172,7 +172,7 @@ export interface ImageSource {
 	isPinned: boolean;
 }
 
-// Its worktree. Never the pinned setup session's: its "worktree" is the home folder, and a
+// Its worktree. Never the setup session's: its "worktree" is the home folder, and a
 // picture from there could be anything on the machine.
 export const listImageRoots = (session: ImageSource): string[] =>
 	session.isPinned ? [] : [session.cwd, ...session.dirs];

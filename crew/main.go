@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -120,14 +121,19 @@ func main() {
 	var updateCh chan string
 	if Version != "dev" && cmd != "update" {
 		updateCh = make(chan string, 1)
-		go func() {
-			latest, err := fetchLatestVersion()
-			if err != nil || latest == Version {
-				updateCh <- ""
-				return
+		// Only a newer release is news: a cache from before the last update must not offer a downgrade.
+		newer := func(latest string) string {
+			if release.IsNewer(latest, Version) {
+				return latest
 			}
-			updateCh <- latest
-		}()
+			return ""
+		}
+		cached, due := release.StartUpdateCheck(time.Now())
+		if due {
+			go func() { updateCh <- newer(release.FinishUpdateCheck(time.Now())) }()
+		} else {
+			updateCh <- newer(cached)
+		}
 	}
 	defer func() {
 		if updateCh == nil {
@@ -1118,11 +1124,12 @@ func cmdUpdate() {
 		}
 	}
 
-	latest, err := fetchLatestVersion()
+	latest, err := release.LatestVersion()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching latest version: %v\n", err)
 		os.Exit(1)
 	}
+	release.Remember(latest, time.Now())
 
 	if Version == latest {
 		fmt.Printf("crew is already up to date (v%s)\n", Version)
@@ -1140,14 +1147,4 @@ func cmdUpdate() {
 	}
 	fmt.Printf("crew updated to v%s\n", latest)
 	refreshVoice(latest)
-}
-
-func fetchLatestVersion() (string, error) {
-	cmd := osexec.Command("gh", "api", "repos/"+config.Repo+"/releases/latest", "--jq", ".tag_name")
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("gh api failed: %w (is gh installed and authenticated?)", err)
-	}
-	tag := strings.TrimSpace(string(out))
-	return strings.TrimPrefix(tag, "v"), nil
 }

@@ -4,3 +4,6 @@ debug.log
 
 # Browser automation output (screenshots, page snapshots)
 .playwright-mcp/
+
+# Local QA screenshots
+.qa/

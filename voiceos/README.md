@@ -3,110 +3,243 @@
 A voice and web cockpit for crew. It runs one Claude Code session per worktree through the
 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk), streams their output to the
 browser, and lets you answer permissions and questions, dictate, and hear "done" and
-"waiting on you" — by voice or by click. crew starts it: `crew voice`.
+"waiting on you", by voice or by click. crew owns its lifecycle: `crew voice`.
 
-## Use it
+**Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Mission
+Control, listening modes, Pinned, approvals, other machines, troubleshooting and privacy. This
+README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md) covers the
+repository-wide rules.
+
+## Run it
 
 ```bash
 crew voice    # downloads Voice OS on first run, asks for its keys, starts it, opens the sign-in link
 ```
 
 The download matches your crew version and `crew update` keeps it current. To run your own
-build instead: `cd voiceos && bun install && bun run install-dev` (it compiles into
-`~/.crew/bin/voiceos`; the next `crew update` replaces it with the release).
+build instead:
 
-Open a link `crew voice` prints. Browsers grant the microphone only on localhost or HTTPS: the
-localhost link works on this Mac, and the proxy link (`https://voice--os.<domain>`) works on any
-device that trusts crew's CA — `crew dev proxy trust` shows how, once per device. Hold **Space** to
-talk; type in the bar at the bottom otherwise. **Esc** goes up a level: a session → its machine →
-Mission Control, where each machine has a card and **+ Add machine** adds another one over SSH.
+```bash
+cd voiceos && bun install && bun run install-dev
+crew voice restart
+```
 
-The first `crew voice` at a terminal asks for the two API keys it needs and checks each with its
-service before saving it; `crew voice keys` shows which are set, and `crew voice keys set
-<anthropic|soniox>` sets one from stdin. Keys live in files readable by you alone, never in your
-shell environment (an exported `ANTHROPIC_API_KEY` would switch every Claude Code session to
-per-token billing):
+`install-dev` compiles into `~/.crew/bin/voiceos` (or `$CREW_VOICEOS_BIN`) and removes the
+`.version` stamp, so the next `crew update` replaces it with the release.
+
+To run from source with its own state (token, sessions, pins, logs) instead of your real
+`~/.crew/voiceos`, point its config folders at a scratch directory and sign in with the token it
+writes. The crew CLI it calls still reads your real `~/.crew`, so it shows your real worktrees. Use
+a throwaway `HOME` (see [CONTRIBUTING.md](../CONTRIBUTING.md)) to isolate crew too.
+
+```bash
+export CREW_CONFIG_DIR=/tmp/voiceos-dev/.crew VOICEOS_KEYS_DIR=/tmp/voiceos-dev/keys
+PORT=4100 bun run dev
+open "http://localhost:4100/login?token=$(cat /tmp/voiceos-dev/.crew/voiceos/token)"
+```
+
+A Voice OS that crew did not launch (`VOICEOS_RECORD_STATE` unset) never writes `state.json`, so
+it cannot take over the port and pid crew tracks. It calls whichever `crew` is on PATH, or
+`$CREW_BIN`.
+
+## Keys and environment
+
+Keys live in files readable by you alone, never in your shell environment. An exported
+`ANTHROPIC_API_KEY` would switch every Claude Code session to per-token billing, so workers have
+it (and the other keys) removed from their environment (`sessions/worker.ts`, `buildWorkerEnv`).
 
 | File | For |
 | --- | --- |
 | `~/.config/crew-voiceos/soniox.key` | speech in and out (Soniox) |
-| `~/.config/crew-voiceos/anthropic.key` | the kernel (Haiku) and narrator (Sonnet) |
+| `~/.config/crew-voiceos/anthropic.key` | the kernel and topic writer (Haiku) and the narrator (Sonnet) |
 
-The Claude sessions themselves run on your Claude Code login, with no API key in their
-environment.
+`crew voice` asks for missing keys at a terminal and checks each with its service
+(`crew/internal/voice/keys.go`). `crew voice keys` lists them, and `crew voice keys set
+<anthropic|soniox>` reads one from stdin. Voice OS's own lookup (`src/config.ts`, `loadKeys`), in
+order:
+
+- **anthropic:** `VOICEOS_ANTHROPIC_API_KEY`, then `anthropic.key`, then `ANTHROPIC_API_KEY` in
+  Voice OS's own environment.
+- **soniox:** `SONIOX_API_KEY`, then `soniox.key`.
+
+With a key missing, Voice OS still starts: the page shows a banner, and text and clicks work.
+
+| Variable | Effect |
+| --- | --- |
+| `VOICEOS_KEYS_DIR` | Where the key files are (default `~/.config/crew-voiceos`). crew reads the same variable. |
+| `CREW_CONFIG_DIR` | Voice OS's view of crew's folder (default `$HOME/.crew`). Its state goes in `voiceos/` under it. The crew CLI does not read this variable. |
+| `VOICEOS_CLAUDE_BIN` | The `claude` to run. crew sets it from the `claude` it found, because the tmux server's PATH is not the caller's. |
+| `CREW_BIN` | The crew binary Voice OS calls back into (crew sets it). |
+| `PORT` | The gateway's port (crew passes the remembered one; `0` picks one). |
+| `VOICEOS_PROXY_HOST`, `VOICEOS_PROXY_PORT`, `VOICEOS_PROXY_HTTPS_PORT` | The dev proxy's address, for the allowed WebSocket origins. |
+| `VOICEOS_RECORD_STATE=1` | Set by crew only: this instance writes `state.json`. |
+| `VOICEOS_DEBUG_AUDIO=1` | Saves every push-to-talk press as a WAV (with what was heard) under `~/.crew/voiceos/debug/`. Contributor switch for speech bugs. `crew voice` never sets it, so run from source to use it. |
+| `VOICEOS_DEBUG_SPEECH=1` | Lets a page inject heard words with `window.voiceos.say("…")`, for demos and screenshots. Refused otherwise. |
+| `VOICEOS_REMOTE_EXEC` | Tests and QA: a shell command run instead of `ssh` for a machine link. |
+| `VOICEOS_LIVE=1` | Enables the live Claude session tests. |
 
 ## How it is built
 
-- `src/state/reducer.ts` — one pure reducer. Clicks, voice commands, worker events and
-  speech all become inputs; it returns the next state and the effects to run. The store
-  stamps every input, and each browser replays the same stamped inputs, so every tab and
-  device shows the same thing.
-- `src/sessions/` — one Agent SDK session per worktree: permissions and `AskUserQuestion`
-  bridged to the UI, queued messages sent only after a turn ends, interrupt, resume by
-  session id. On start, each resumed session's cockpit stream is rebuilt from Claude Code's
-  own transcript (`history.ts`).
-- `src/router/router.ts` — every utterance goes to the kernel, one at a time; text typed
-  into a session's own box goes straight to that session.
-- `src/gateway/` — HTTP and WebSocket on 127.0.0.1. Sign-in is a host-only cookie set from
-  the token in `~/.crew/voiceos/token`; the WebSocket also requires an exact Origin.
-- `src/web/` — React, bundled by Bun. Design: `design/mockups.html`.
+One pure reducer owns the state. Clicks, voice commands, worker events and speech all become
+**inputs**. The reducer returns the next state and the **effects** to run (send to a worker, speak,
+start dev servers, and so on). The store stamps every input, and each browser replays the same
+stamped inputs, so every tab and device shows the same thing.
 
-- `src/narrator/` — after every turn a Sonnet narrator decides what to say and whether the
-  session now waits on you; `src/speech/` queues it (alerts first, never over your voice)
-  and streams it from Soniox TTS over one kept-open WebSocket; the browser plays the PCM
-  chunks as they arrive (`src/web/use-speech-player.ts`). `src/router/kernel.ts` decides what each utterance does,
-  with the tools in `src/tools/`.
-- Sessions write their own spoken lines: each message for the developer opens with
-  `<spoken>…</spoken>` (`<spoken asks>` for a question), said the moment the tag closes in the
-  stream (`src/shared/spoken-tags.ts`). Work opens with a short ack line and ends with a report
-  line; a final message without one is summarized by the narrator. Voice OS adds only what the
-  session cannot know yet: "after its current work", "starting it up", a crash.
-- `src/memory/` — each session's topic, and an append-only journal of every turn (asked,
-  done, cost, HEAD) that the kernel reads for "what did checkout do yesterday".
-- The pinned **setup** session runs in your home directory with the crew CLI, for crew setup
-  only — workspaces, projects and worktrees: say "setup, make a worktree in store-front for
-  the search fix". Dev servers and code belong to each worktree's own session.
-- While a session works, a question to it is answered **aside** (`src/sessions/side-answer.ts`):
-  a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
-  Instructions still queue. "By the way" forces an aside, "queue it" forces the queue, and a
-  question that needs tools or changes the work is queued after all. Asides are not saved:
-  they are gone after a restart.
-- `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
-- "Stop listening" / "hands-free on" / "on demand" switch the listening mode (push to talk, on demand
-  after "Voice OS", hands-free) in the tab you spoke from.
-- The session screen lists running sub-agents with their current step, from the SDK's task
-  events.
-
-- `src/remote/` — other machines. A remote runs the same binary as `voiceos remote serve` (a
-  daemon crew keeps in tmux, `crew voice remote`), which runs only the session manager behind a
-  0600 unix socket; `voiceos remote attach` bridges an SSH login to it (`crew voice _attach` execs
-  it). The main keeps the one reducer: refs carry the machine (`vm1:store-front/main`,
-  `src/shared/machine-ref.ts`), `mapping.ts` routes effects out and prefixes reports in, and a
-  reconnect is a snapshot the main reconciles (`resync.ts`) with one recap line — never an event
-  replay; effects not yet acknowledged ride in the next hello and are applied once. The machine
-  list is `~/.crew/voiceos/machines.json`, written only by `crew voice machines` (the page and
-  voice go through it) and watched while running.
-
-State lives in `~/.crew/voiceos/` (token, sessions, topics, journal, logs; a remote's own under
-`remote/`). `crew voice logs` tails the log.
-
-## Evals
-
-```bash
-bun evals/run.ts all          # narrator (Sonnet) + kernel (Haiku) against the real models; fails below floors or baseline
-bun test test/live/audio.test.ts   # Soniox fixtures → STT
-bun test test/live/tts.test.ts     # Soniox streaming TTS: first-chunk latency, cancel then reuse
-bun scripts/gen-audio-fixtures.ts <id>…   # regenerate fixtures after editing evals/audio/cases.json
+```
+browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (Haiku, src/tools) ──▶ store/reducer
+                                                                                    │ effects
+              speech in/out (Soniox) ◀── voice-in / voice-out ◀── narrator ◀────────┤
+                                                   sessions (Agent SDK, one per worktree)
+                                                   remote machines (SSH links)
 ```
 
-Eval cases use crew's generic example names and are patterned on real sessions, never
-copied from them.
+### Module map
+
+| Path | What it owns |
+| --- | --- |
+| `src/app.ts` | The cockpit's wiring: paths, keys, store, sessions, speech, kernel, gateway, persistence, shutdown. |
+| `src/main.ts` | One binary, two roles: no arguments is the cockpit, `remote serve` / `remote attach` a remote. |
+| `src/config.ts` | Paths under `~/.crew/voiceos/`, key lookup, the sign-in token. |
+| `src/state/reducer.ts` | The reducer and its effects. The inputs are split by concern into `asks.ts` (permissions, plans, questions, allow-once), `delivery.ts` (send, queue, aside, now), `held-lines.ts` (what a session off screen may say), `machines.ts`, `pins.ts`, `names.ts`, `commands.ts` (`/clear`, `/compact`), `redirect.ts`, `take-back.ts`, `continuation.ts`, `subagents.ts`. `store.ts` stamps and fans out. |
+| `src/shared/` | Types and pure helpers shared by server and page: `protocol.ts` (state, inputs, messages), `machine-ref.ts` (`vm1:store-front/main`), `machines.ts` (labels, `parentView`, waiting lists), `spoken.ts` / `spoken-tags.ts`, `notes.ts`, `route-chip.ts`. |
+| `src/router/` | `router.ts` routes each utterance, one at a time. Typed text on a session page goes straight to that session, and everything else goes to the kernel. `kernel.ts` is the Haiku kernel and its prompt. `refs.ts` resolves spoken names to sessions. |
+| `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `pin.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
+| `src/sessions/` | One Agent SDK session per worktree (`worker.ts`), started, resumed and stopped by `manager.ts`, with session ids kept in `registry.ts`. `events.ts` maps SDK messages to observations, `permissions.ts` bridges `canUseTool` to the page, `side-answer.ts` runs asides, `history.ts` rebuilds streams from Claude Code's transcripts at boot, `media.ts` stores images, `doc-links.ts` finds docs, `setup-session.ts` defines the setup session, and `voice-context.ts` holds the orientation every session gets. |
+| `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `topic.ts` keeps each session's topic (Haiku). |
+| `src/speech/` | `voice-in.ts` handles push to talk, and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. |
+| `src/memory/` | Files that outlive a restart: `journal.ts`, `topics.ts`, `view.ts`, `pinned.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
+| `src/dev/` | Dev servers through crew: `servers.ts` and `watch.ts` (crash detection, the fix offer). |
+| `src/crew/adapter.ts` | Every call into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`). |
+| `src/gateway/` | HTTP and WebSocket on 127.0.0.1. `auth.ts` handles sign-in (a host-only cookie set from `~/.crew/voiceos/token`) and the exact Origin check, `validate.ts` checks inbound messages, and `/media` serves the media folder and nothing else. |
+| `src/remote/` | Other machines (see below). |
+| `src/web/` | The React page, bundled by Bun: `App.tsx`, `components/`, `derive.ts` (pure view logic), `use-connection.ts`, the mic (`audio.ts`, `ptt.ts`, `listen-mode.ts`) and the player (`use-speech-player.ts`, `pcm.ts`). The design mockups are in `design/mockups.html`. |
+
+### Behaviours worth knowing before you change them
+
+- **Spoken lines come from the sessions.** Every message a session writes for the developer opens
+  with `<spoken>…</spoken>` (`<spoken asks>` for a question), which is said the moment the tag
+  closes in the stream (`src/shared/spoken-tags.ts`). Work opens with a short acknowledgement and
+  ends with a report line. A final message without a tag is summarized by the narrator. Voice OS
+  adds only what the session cannot know yet: "after its current work", "starting it up", a crash.
+  `sessions/voice-context.ts` is where sessions are told this.
+- **Voice tags.** A spoken line may carry one bracketed cue that Soniox reads as delivery, not
+  words. Only the tags in `ALLOWED_TAGS` (`src/shared/spoken.ts`) are kept: `laughs`, `chuckles`,
+  `sighs`, `pause`, `warm`, `reassuringly`, `excited`, `curious`, `relieved`. Any other `[tag]` and
+  any SSML is removed before speech, because Soniox would read it aloud. Stored, shown and matched
+  text goes through `stripTags`. The same list is given to sessions in their orientation, so
+  changing it changes the prompt.
+- **Auto mode.** Workers run in the SDK's `auto` permission mode. A `permission_denied` becomes a
+  denial on the page. "Allow it" switches that worker to `default` mode for one retried call, which
+  Voice OS approves without asking, and then back to `auto` (`state/asks.ts`, `allowDenied`,
+  `restoreAutoEffects`).
+- **Asides.** While a session works, a question to it is answered aside (`sessions/side-answer.ts`):
+  a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
+  "By the way" forces an aside, "queue it" forces the queue, and a question that needs tools or
+  changes the work is queued after all (`state/delivery.ts`, `decideDelivery`). Asides are not saved.
+- **Held lines.** A session off screen does not speak its lines. It gets a short announcement, and
+  the full line plays on switch (`state/held-lines.ts`).
+- **The setup session** (ref `setup`) runs in the home folder with the crew CLI, for crew setup
+  only. On the wire it is `Session.isPinned`, a name that predates Pinned. It is kept because
+  remotes of other versions read it, so it means "the setup session" and has nothing to do with
+  `state.pinned`.
+- **Pins and names are cockpit preferences**, not crew state, and have no CLI form. Both are keyed
+  by machine ref, dropped at load for machines the state does not know, and saved only after the
+  saved list has been merged (`memory/pinned.ts`, `memory/names.ts`). A name is unique across
+  sessions, because voice routes by it (`state/names.ts`).
+- **Restart keeps the screen.** `memory/view.ts` saves the view on every `switch_view` and restores
+  it at boot. For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
+  connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
+- `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
+
+### Remote machines
+
+`src/remote/`: a remote runs the same binary as `voiceos remote serve`, a daemon that crew keeps in
+tmux (`crew voice remote`). It runs only the session manager (`host.ts`), behind a 0600 unix
+socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _attach` execs it
+(`ssh.ts` builds the SSH command, with `BatchMode=yes`). The main keeps the one reducer:
+
+- Refs carry the machine (`vm1:store-front/main`, `src/shared/machine-ref.ts`).
+- `mapping.ts` routes effects out and prefixes reports in.
+- A reconnect is a snapshot the main reconciles (`resync.ts`), with one recap line, and never an
+  event replay. Effects not yet acknowledged ride in the next hello and are applied once.
+- `link-state.ts` turns an SSH exit into the reason the machine card shows.
+
+The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew voice machines`
+(the page and voice go through it) and watched while running (`cockpit-machines.ts`).
+
+### State on disk
+
+Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
+
+| Path | What |
+| --- | --- |
+| `token` | The sign-in token (0600, tightened if looser). |
+| `state.json` | Port, pid, start time and machine statuses, for crew (`VOICEOS_RECORD_STATE` only). |
+| `sessions.json` | The registry: each ref's Claude Code session id and briefing version. |
+| `view.json` | The last view the developer chose. |
+| `pinned.json` | Pinned refs, in pin order. |
+| `names.json` | Session names by ref. |
+| `topics.json` | Each session's topic. |
+| `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
+| `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each. |
+| `media/` | Images by content hash, swept after 30 days. |
+| `machines.json` | Other machines (crew writes it). |
+| `logs/voiceos.log` | The log (`crew voice logs`). It contains what the developer said. |
+| `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`). |
+| `debug/` | WAVs, only with `VOICEOS_DEBUG_AUDIO=1`. |
+| `remote/` | A remote daemon's own registry, media, socket (`remote.sock`), `daemon.json` and log. |
 
 ## Develop and test
 
 ```bash
-bun test src                       # unit specs (no network)
+bun install
+bun run check                      # biome + eslint
+bun run typecheck                  # native TypeScript (tsgo)
+bunx tsc --noEmit                  # classic tsc
+bun test src evals                 # unit specs, no network (bun run test)
 bun test test/ui                   # browser tests (Playwright Chromium)
-VOICEOS_LIVE=1 bun test test/live  # real Claude sessions on Haiku — costs a little
-bunx tsc --noEmit
 ```
+
+The live tests cost money, never run in CI, and run only when asked with `VOICEOS_LIVE=1`
+(`bun run test:live` runs them all):
+
+```bash
+VOICEOS_LIVE=1 bun test test/live/session.test.ts   # real Claude sessions on Haiku
+VOICEOS_LIVE=1 bun test test/live/audio.test.ts     # Soniox fixtures → STT; bills Soniox
+VOICEOS_LIVE=1 bun test test/live/tts.test.ts       # Soniox streaming TTS: first-chunk latency, cancel then reuse; bills Soniox
+```
+
+Without `VOICEOS_LIVE=1` they skip, so a bare `bun test` costs nothing. The Soniox ones also need a
+Soniox key (`~/.config/crew-voiceos/soniox.key` or `SONIOX_API_KEY`); each run costs a fraction of a
+cent.
+
+## Evals
+
+The kernel and narrator prompts are tested against the real models. Every eval run bills your
+Anthropic key, so work with `--only` and run the full suite once before review:
+
+```bash
+bun evals/run.ts kernel --only=pin-this-on-session,unpin-this   # just the cases your change touches: no scores, no baseline
+bun evals/run.ts all                                   # narrator (Sonnet) + kernel (Haiku); fails below floors or baseline
+bun evals/run.ts all --update-baseline                 # after an intended change, full run only
+```
+
+A full run is a few hundred cases and costs about $1–2. [CONTRIBUTING.md](../CONTRIBUTING.md) has
+the current figure. `--kernel-model=` and `--narrator-model=` try another model without touching
+the baseline. Cases live in `evals/kernel/cases.json` and `evals/narrator/cases.json`.
+
+Speech fixtures:
+
+```bash
+bun scripts/gen-audio-fixtures.ts <id>…   # regenerate after editing evals/audio/cases.json (bills Soniox TTS)
+```
+
+Eval cases use crew's generic example names (store-front, store-api, checkout-api, signals, admin,
+infra-ops) and are patterned on real sessions, never copied from them.
+
+## Release
+
+`scripts/build-release.ts <version>` builds `voiceos_<version>_<os>_<arch>.tar.gz` for
+darwin and linux, arm64 and amd64. GoReleaser attaches the archives to the crew release
+(`release.extra_files`), and crew downloads the one that matches its own version. The Linux builds
+target glibc.

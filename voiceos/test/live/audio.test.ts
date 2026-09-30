@@ -35,12 +35,9 @@ const { cases } = JSON.parse(readFileSync(join(audioDir, 'cases.json'), 'utf8'))
 	cases: AudioCase[];
 };
 const sonioxKey = loadKeys(resolvePaths()).soniox;
+// Bills Soniox: only a run that asks for the live tests (VOICEOS_LIVE=1, bun run test:live) pays.
+const isLive = process.env.VOICEOS_LIVE === '1';
 const VARIANTS = ['clean', 'noise', 'fast'] as const;
-
-// In CI a missing secret must fail the job, not skip every test and pass.
-if (process.env.CI && !sonioxKey) {
-	throw new Error('SONIOX_API_KEY is required in CI');
-}
 
 const loadFixture = (id: string, variant: string): Int16Array =>
 	decodeWav(new Uint8Array(readFileSync(join(audioDir, 'fixtures', `${id}.${variant}.wav`))));
@@ -88,7 +85,7 @@ export const findMissingWords = (heard: string, words: string[]): string[] => {
 	return words.filter((entry) => !entry.split('|').some(wasSaid));
 };
 
-describe.skipIf(!sonioxKey || process.env.VOICEOS_AUDIO === '0')(
+describe.skipIf(!isLive || !sonioxKey || process.env.VOICEOS_AUDIO === '0')(
 	'spoken commands → actions (Soniox)',
 	() => {
 		const results: VariantResult[] = [];

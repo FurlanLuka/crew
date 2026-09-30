@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { GRID, type State, type VoiceEntry } from '../shared/protocol.js';
 import { createInitialState } from '../state/reducer.js';
-import { describeRecentAction, RECENT_ACTION_MS } from './recent-action.js';
+import { describeRecentAction, MAX_QUOTED_CHARS, RECENT_ACTION_MS } from './recent-action.js';
 
 const NOW = 1_000_000;
 const NOTE_SAID =
@@ -62,6 +62,39 @@ describe('describeRecentAction', () => {
 		for (const [did, screen, summary] of cases) {
 			expect(summaryOf(did, screen)).toBe(lineFor('Do the thing.', summary));
 		}
+	});
+
+	it('notes read back just before "tell it to do that" → the line carries what was read', () => {
+		const read = entry({
+			utterance: 'What are my notes?',
+			did: ['read_notes'],
+			reply: 'Two notes: fix the login redirect, then tidy the cart copy.',
+		});
+
+		expect(describeFor(withLog({ 'crew/main': [read] }), 'Tell it to do that.')).toBe(
+			lineFor(
+				'What are my notes?',
+				`read the developer's notes back: "Two notes: fix the login redirect, then tidy the cart copy."`,
+			),
+		);
+	});
+
+	it('a long notes reply → quoted up to the cap, with an ellipsis', () => {
+		const reply = `Notes: ${'fix the login redirect, '.repeat(10)}`;
+		const read = entry({ utterance: 'What are my notes?', did: ['read_notes'], reply });
+
+		expect(describeFor(withLog({ 'crew/main': [read] }), 'Tell it to do that.')).toBe(
+			lineFor(
+				'What are my notes?',
+				`read the developer's notes back: "${reply.slice(0, MAX_QUOTED_CHARS)}…"`,
+			),
+		);
+	});
+
+	it('notes read with no reply → nothing', () => {
+		expect(
+			describeFor(withLog({ 'crew/main': [entry({ did: ['read_notes'], reply: '' })] })),
+		).toBeUndefined();
 	});
 
 	it('a forward to the screen session, then words for another session → "sent it to" the first', () => {
