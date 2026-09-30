@@ -1,5 +1,13 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import {
+	decideGoBack,
+	describeGoBack,
+	describeSwitching,
+	isSameView,
+	pruneViewHistory,
+	pushViewHistory,
+} from './view-history.js';
+import {
 	GRID,
 	VOICE_LOG_ENTRIES_KEPT,
 	type PendingAsk,
@@ -132,6 +140,7 @@ export const createInitialState = (): State => ({
 	view: HOME_VIEW,
 	focus: null,
 	exchange: null,
+	viewHistory: [],
 	asks: [],
 	denials: [],
 	transcript: null,
@@ -260,24 +269,64 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		Object.entries(state.voiceLog).filter(([screen]) => screen === GRID || sessions[screen]),
 	);
 
-	const exchange = pruneExchange(state.exchange, (ref) => Boolean(sessions[ref]));
+	const isKept = (ref: string) => Boolean(sessions[ref]);
+	const exchange = pruneExchange(state.exchange, isKept);
+	const viewHistory = pruneViewHistory(state.viewHistory, isKept);
 
-	return { ...state, sessions, order, view, focus, exchange, voiceLog };
+	return { ...state, sessions, order, view, focus, exchange, viewHistory, voiceLog };
 };
 
 // Its lines are said as they come: on screen, or the session the developer talks with elsewhere.
 const isHeardNow = (state: State, ref: string, at: number): boolean =>
 	isOnScreen(state, ref) || readSubject(state, at) === ref;
 
-// A session that is gone cannot be shown: null leaves the screen where it is.
-const showView = (state: State, view: View): State | null =>
-	view.kind === 'session' && !state.sessions[view.ref]
-		? null
-		: {
-				...state,
-				view: toShownView(state, view),
-				focus: view.kind === 'session' ? view.ref : state.focus,
-			};
+// A session that is gone cannot be shown: null leaves the screen where it is. The view left goes
+// on the history, for "go back", unless this is a restore or a step back itself.
+const showView = (state: State, view: View, { isRemembered = true } = {}): State | null => {
+	if (view.kind === 'session' && !state.sessions[view.ref]) {
+		return null;
+	}
+
+	const shown = toShownView(state, view);
+
+	return {
+		...state,
+		view: shown,
+		focus: view.kind === 'session' ? view.ref : state.focus,
+		viewHistory: isRemembered ? pushViewHistory(state, shown) : state.viewHistory,
+	};
+};
+
+const goBack = (state: State, at: number): ReducerResult => {
+	const decision = decideGoBack({ state, now: at });
+
+	if (decision.kind === 'empty') {
+		return { state, effects: [describeGoBack(state, decision)] };
+	}
+
+	const shown = showView({ ...state, viewHistory: decision.rest }, decision.view, {
+		isRemembered: false,
+	});
+
+	if (!shown) {
+		return {
+			state,
+			effects: [describeGoBack(state, { kind: 'empty', skipped: decision.skipped })],
+		};
+	}
+
+	// The conversation they had there comes back with it, while it is still live.
+	const restored = { ...shown, exchange: decision.exchange, switchOffer: null };
+	const said = describeGoBack(state, decision);
+
+	if (decision.view.kind !== 'session') {
+		return { state: restored, effects: [said] };
+	}
+
+	const replayed = replayHeldLine(restored, decision.view.ref);
+
+	return { state: replayed.state, effects: [said, ...replayed.effects] };
+};
 
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
@@ -365,13 +414,22 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
-			return view.kind === 'session'
-				? replayHeldLine(shown, view.ref)
-				: { state: shown, effects: describeSwitch(state, view) };
+			const switched =
+				view.kind === 'session'
+					? replayHeldLine(shown, view.ref)
+					: { state: shown, effects: describeSwitch(state, view) };
+
+			// Said first: whatever plays there next is heard as coming from there.
+			return input.announce && !isSameView(state.view, shown.view)
+				? { ...switched, effects: [describeSwitching(state, shown.view), ...switched.effects] }
+				: switched;
 		}
 
+		case 'go_back':
+			return goBack(state, stamped.at);
+
 		case 'restore_view':
-			return withoutEffects(showView(state, input.view) ?? state);
+			return withoutEffects(showView(state, input.view, { isRemembered: false }) ?? state);
 
 		case 'start_session':
 			return state.sessions[input.ref]?.status === 'stopped'

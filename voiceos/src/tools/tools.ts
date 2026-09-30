@@ -596,6 +596,11 @@ export const executeTool = async (
 		case 'answer':
 			return answerAsk({ state, input, toolContext });
 
+		case 'go_back':
+			toolContext.dispatch({ type: 'go_back' });
+
+			return succeed('went back: Voice OS says where to');
+
 		case 'pin_session':
 			return pinSession({
 				state,

@@ -676,6 +676,19 @@
 			"forbid_mutation": true
 		},
 		{
+			"id": "go-back-previous-session",
+			"utterance": "Previous session, please.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"calls": [
+				{
+					"name": "go_back"
+				}
+			],
+			"forbid_calls": ["switch_view"]
+		},
+		{
 			"id": "relay-negation",
 			"utterance": "Tell it not to touch the migrations.",
 			"context": {
@@ -1035,10 +1048,10 @@
 			},
 			"calls": [
 				{
-					"name": "switch_view",
-					"ref": null
+					"name": "go_back"
 				}
-			]
+			],
+			"forbid_calls": ["switch_view"]
 		},
 		{
 			"id": "fp-start-named",

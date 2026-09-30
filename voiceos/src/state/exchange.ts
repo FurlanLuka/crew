@@ -11,8 +11,7 @@ import {
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { readLabel } from './helpers.js';
-import { toSpokenName } from '../shared/spoken.js';
+import { sayRef } from './helpers.js';
 
 const log = createLogger('exchange');
 
@@ -104,7 +103,7 @@ export const offerSwitch = (state: State, ref: string, at: number): ReducerResul
 		effects: [
 			{
 				type: 'speak',
-				text: `Switch to ${toSpokenName(readLabel(state, ref))}?`,
+				text: `Switch to ${sayRef(state, ref)}?`,
 				source: 'kernel',
 				ref,
 				isAsking: true,
@@ -173,7 +172,7 @@ const describeSentTo = ({ before, state, ref, at, effects }: DescribeSentToParam
 	return [
 		{
 			type: 'speak',
-			text: `Sent to ${toSpokenName(readLabel(state, ref))}.`,
+			text: `Sent to ${sayRef(state, ref)}.`,
 			source: 'kernel',
 			isReply: true,
 			isAck: true,

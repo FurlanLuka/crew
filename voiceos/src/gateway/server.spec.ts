@@ -279,6 +279,7 @@ describe('parseClientMessage', () => {
 		unpin_session: { type: 'unpin_session', ref: 'vm1:store/main' },
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
 		clear_exchange: { type: 'clear_exchange' },
+		go_back: { type: 'go_back' },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
 	};
 	const messages: ClientMessage[] = [

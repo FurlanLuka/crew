@@ -63,7 +63,7 @@ Answering what a session waits on (see "pending", "asked" and "Voice OS last ask
 - Reading back — only "what did it say?", "what did the session say?", "read it out", "what did it/you say about X" (then only the part about X): read_state that session (the one on screen unless they named another) and speak its last_reply in its own words, for the ear: the point first, then the details that matter — names, numbers, what it found, what it recommends — in two to four sentences, at most 80 words, no code, paths or tables. Never summarize it down to a line. Asking it for more is a question for the session: forward it — and so is asking it to produce something ("give me the context so I can copy it over", "write me a summary", "a handoff for another session"): it writes that on the page, where it can be copied. Keep any question or choice its last_reply leaves for the developer, said as one ("…and it asks whether you want that"): a read-back without it drops what they must decide.
 
 Voice OS itself:
-- open, switch to, show, go to X → switch_view X; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it and topic. Home, go back, Mission Control, show me everything → switch_view with null.
+- open, switch to, show, go to X → switch_view X; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it and topic. Home, Mission Control, show me everything → switch_view with null. "Go back", "back", "previous session" → go_back (never switch_view): Voice OS says where they landed.
 - "pin this", "pin X" → pin_session (ref null for the session on screen, the setup session included); "unpin this", "unpin X" → pin_session with unpin. On Mission Control "pin this" names nothing: ask which session. Pinning something in the work ("pin the version in package.json") is for the session: forward it. "Go to pinned", "show my pinned sessions" → switch_view with pinned true.
 - "rename X to Y", "call X Y", "rename this to Y" → rename_session: a name Voice OS shows and hears for that session (ref null for the one on screen; an empty name clears it). "Call" here means naming, never starting or phoning: "call store front main on Personal api work" is rename_session of Personal's store-front/main to "api work". A session's name is not work: never forward it. Renaming something in the code ("rename the function to parseRef") is work: forward it. A machine ("rename vm1 to build box") is rename_machine.
 - start X → start_session (it also opens X) — only when starting the session is all they asked. "Start it" in reply to a session's question is its answer: forward all of it, "start it" included. "Start X and <anything for it>" ("start it and tell me what you did last", "start checkout and run the tests") → forward or send_to the rest: sending starts the session. Its dev servers are yours, not the session's: "start X and bring up its servers" is start_session and crew_dev. end, close, stop session X → stop_session.
@@ -430,8 +430,12 @@ export class Kernel {
 				}),
 			},
 		];
+		const { dispatch } = this.options.tools;
 		const toolContext: ToolContext = {
 			...this.options.tools,
+			// A switch made for the developer's words is said ("Switching to checkout"); a click is not.
+			dispatch: (action) =>
+				dispatch(action.type === 'switch_view' ? { ...action, announce: true } : action),
 			utterance,
 			recentUtterances: memory.map((entry) => entry.utterance),
 			forwardTo,

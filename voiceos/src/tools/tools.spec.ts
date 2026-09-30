@@ -475,6 +475,7 @@ describe('forward', () => {
 			'read_history',
 			'send_to',
 			'switch_view',
+			'go_back',
 			'start_session',
 			'stop_session',
 			'crew_dev',

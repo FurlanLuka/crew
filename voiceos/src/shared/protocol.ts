@@ -265,6 +265,13 @@ export interface Exchange {
 
 export const EXCHANGE_IDLE_MS = 60_000;
 
+export interface ViewHistoryEntry {
+	view: View;
+	exchange: Exchange | null;
+}
+
+export const VIEW_HISTORY_KEPT = 5;
+
 export interface SwitchOffer {
 	ref: string;
 	at: number;
@@ -340,6 +347,8 @@ export interface State {
 	devOffer: DevOffer | null;
 	// "Switch to checkout?", asked aloud by Voice OS: a yes switches, anything else lets it go.
 	switchOffer: SwitchOffer | null;
+	// Where the developer has been, newest first, with who they talked with there: "go back".
+	viewHistory: ViewHistoryEntry[];
 	// Per screen (a session ref, or GRID).
 	voiceLog: Record<string, VoiceEntry[]>;
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
@@ -405,7 +414,9 @@ export type Action =
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").
 	| { type: 'answer_redirect'; askId: string; isApproved: boolean; message?: string }
-	| { type: 'switch_view'; view: View }
+	// announce: Voice OS made the switch (a voice command), so it says so; a click is silent.
+	| { type: 'switch_view'; view: View; announce?: true }
+	| { type: 'go_back' }
 	| { type: 'start_session'; ref: string }
 	| { type: 'stop_session'; ref: string }
 	| { type: 'interrupt'; ref: string }

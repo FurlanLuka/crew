@@ -71,6 +71,7 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('unpin_session'), ref: refSchema }),
 	z.object({ type: z.literal('rename_session'), ref: refSchema, name: z.string().max(60) }),
 	z.object({ type: z.literal('clear_exchange') }),
+	z.object({ type: z.literal('go_back') }),
 	z.object({ type: z.literal('offer_switch'), ref: refSchema }),
 ]);
 

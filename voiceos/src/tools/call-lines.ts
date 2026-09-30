@@ -7,6 +7,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'forward',
 	'send_to',
 	'switch_view',
+	'go_back',
 	'start_session',
 	'ignore_words',
 	'answer',
@@ -99,8 +100,10 @@ const isQuestionWavedOff = ({ reply, calls, utterance }: IsAskingBackParams): bo
 	/\?\s*$/.test(utterance) &&
 	utterance.trim().split(/\s+/).length >= MIN_QUESTION_WORDS;
 
-// Words passed on to other sessions and nothing else: Voice OS already says "Sent to X".
-export const isAcknowledgedInCode = (calls: ToolCall[]): boolean =>
+// Words passed on and nothing else, on a session's screen: Voice OS already says "Sent to X". A switch
+// needs no such rule: the kernel says nothing beside one, and an answer it writes there is kept.
+export const isAcknowledgedInCode = (calls: ToolCall[], forwardTo: string | null): boolean =>
+	forwardTo !== null &&
 	calls.some((call) => call.name === 'send_to') &&
 	calls.every((call) => call.ok && (call.name === 'send_to' || call.name === 'forward'));
 
@@ -176,7 +179,7 @@ export const decideEnding = ({
 	// On a session's screen Voice OS says "Sent to X" itself (exchange.ts), and "Switch to X?" too.
 	if (
 		isAnsweredByForward(turn.calls) ||
-		(turn.forwardTo && isAcknowledgedInCode(turn.calls)) ||
+		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
 		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE)
 	) {
 		return { kind: 'drop_reply' };

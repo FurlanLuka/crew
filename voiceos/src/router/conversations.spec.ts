@@ -66,4 +66,27 @@ describe('conversations', () => {
 
 		expect(convo.store.state.exchange).toBeNull();
 	});
+
+	it('switch by voice, then go back: each move is said, and a stopped session is passed over', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main', 'signals/main');
+
+		convo.script([toolUse('t1', 'switch_view', { ref: 'checkout-api/main' })]);
+		await convo.say('Switch to checkout api.');
+		convo.script([toolUse('t2', 'switch_view', { ref: 'signals/main' })]);
+		await convo.say('Now signals.');
+		convo.store.dispatch({ type: 'worker_exited', ref: 'checkout-api/main', error: null });
+		convo.script([toolUse('t3', 'go_back', {})]);
+		await convo.say('Go back.');
+
+		expect(convo.heard).toEqual([
+			'> Switch to checkout api.',
+			'Switching to checkout api, main.',
+			'> Now signals.',
+			'Switching to signals, main.',
+			'> Go back.',
+			'checkout api, main stopped. Back to store front, main.',
+		]);
+		expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
+	});
 });

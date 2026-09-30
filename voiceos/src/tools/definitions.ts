@@ -6,6 +6,7 @@ export type ToolName =
 	| 'read_history'
 	| 'send_to'
 	| 'switch_view'
+	| 'go_back'
 	| 'start_session'
 	| 'stop_session'
 	| 'crew_dev'
@@ -28,6 +29,7 @@ export type ToolName =
 export const MUTATING_TOOLS: ToolName[] = [
 	'forward',
 	'send_to',
+	'go_back',
 	'start_session',
 	'stop_session',
 	'crew_dev',
@@ -177,6 +179,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			required: ['ref'],
 			additionalProperties: false,
 		},
+	},
+	{
+		name: 'go_back',
+		description:
+			'"Go back", "back", "previous session": return to the view the developer was on before this one; said again, it walks further back. Voice OS says where they landed. Not for "home" or Mission Control: that is switch_view with null.',
+		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
 	},
 	{
 		name: 'start_session',

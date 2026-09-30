@@ -1,4 +1,5 @@
 import { pruneExchange } from './exchange.js';
+import { pruneViewHistory } from './view-history.js';
 import { machineOf } from '../shared/machine-ref.js';
 import {
 	currentMachine,
@@ -86,6 +87,11 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		devStarting: state.devStarting.filter(isKept),
 		focus: state.focus && isKept(state.focus) ? state.focus : null,
 		exchange: pruneExchange(state.exchange, isKept),
+		viewHistory: pruneViewHistory(
+			state.viewHistory,
+			isKept,
+			(machine) => !removed.includes(machine),
+		),
 		voiceLog: Object.fromEntries(
 			Object.entries(state.voiceLog).filter(([screen]) => isKept(screen)),
 		),

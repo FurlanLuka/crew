@@ -549,7 +549,7 @@ describe('Kernel', () => {
 		expect(fake.calls()).toBe(1);
 		expect(result.reply).toBe('');
 		expect(actions).toEqual([
-			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' }, announce: true },
 		]);
 	});
 
