@@ -272,6 +272,17 @@ export interface ViewHistoryEntry {
 
 export const VIEW_HISTORY_KEPT = 5;
 
+export interface TargetAsk {
+	ref: string;
+	// The session on screen when the words were said: where they go on a no, or on silence.
+	screen: string;
+	text: string;
+	at: number;
+}
+
+// Asked and answered in a breath; silence keeps the words on the screen.
+export const TARGET_ASK_MS = 8_000;
+
 export interface SwitchOffer {
 	ref: string;
 	at: number;
@@ -349,6 +360,9 @@ export interface State {
 	switchOffer: SwitchOffer | null;
 	// Where the developer has been, newest first, with who they talked with there: "go back".
 	viewHistory: ViewHistoryEntry[];
+	// "For checkout?": words that were either a reply to checkout's notification or for the screen,
+	// held until the developer says which.
+	targetAsk: TargetAsk | null;
 	// Per screen (a session ref, or GRID).
 	voiceLog: Record<string, VoiceEntry[]>;
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
@@ -415,7 +429,8 @@ export type Action =
 	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").
 	| { type: 'answer_redirect'; askId: string; isApproved: boolean; message?: string }
 	// announce: Voice OS made the switch (a voice command), so it says so; a click is silent.
-	| { type: 'switch_view'; view: View; announce?: true }
+	// skipHeld: the switch also sends a question, so the old held update is not replayed first.
+	| { type: 'switch_view'; view: View; announce?: true; skipHeld?: true }
 	| { type: 'go_back' }
 	| { type: 'start_session'; ref: string }
 	| { type: 'stop_session'; ref: string }
@@ -439,7 +454,11 @@ export type Action =
 	// The page's × on "Talking with checkout": follow-ups go to the screen again.
 	| { type: 'clear_exchange' }
 	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced).
-	| { type: 'offer_switch'; ref: string };
+	| { type: 'offer_switch'; ref: string }
+	// Voice OS asks "For X?" and holds the words until the developer says which.
+	| { type: 'ask_target'; ref: string; screen: string; text: string }
+	// toTarget: yes, send them to X; otherwise they are kept on the screen. `at` names the ask.
+	| { type: 'settle_target'; at: number; toTarget: boolean };
 
 export interface SavedTopic {
 	topic: string;

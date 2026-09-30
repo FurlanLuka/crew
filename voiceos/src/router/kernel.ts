@@ -12,7 +12,7 @@ import {
 	type VoiceEntry,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
-import { describeExchangeLines } from './exchange-lines.js';
+import { describeExchangeLines, describeNotificationLines } from './exchange-lines.js';
 import { createLogger } from '../log.js';
 import { executeTool, type ToolContext } from '../tools/tools.js';
 import { isSilentCall, describeToolCall, decideEnding } from '../tools/call-lines.js';
@@ -296,6 +296,7 @@ export const buildKernelMessage = ({
 			: []),
 		`Sessions: ${JSON.stringify(sessions)}`,
 		...describeExchangeLines({ state, now, nameRef: (ref) => nameRef(state, ref) }),
+		...describeNotificationLines({ heardBefore, nameRef: (ref) => nameRef(state, ref) }),
 		`Waiting on the developer: ${formatWaitingLine({ state, waiting, now, askedAloudRef: lastAskedLine?.ref ?? null })}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,
 		// Only when there is something: an empty line of it made the model reach for more tools.

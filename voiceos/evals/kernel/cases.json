@@ -689,6 +689,145 @@
 			"forbid_calls": ["switch_view"]
 		},
 		{
+			"id": "notif-general-question",
+			"utterance": "Tell me about that.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "checkout api, main is done: the retry backoff.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 6,
+						"endedSecondsAgo": 3
+					}
+				],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["send_to", "forward"]
+		},
+		{
+			"id": "notif-specific-question",
+			"utterance": "What did it change in the backoff cap?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "checkout api, main is done: the retry backoff.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 6,
+						"endedSecondsAgo": 3
+					}
+				],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main",
+					"input": {
+						"skip_held": true
+					}
+				},
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["cap"]
+				}
+			]
+		},
+		{
+			"id": "notif-thanks",
+			"utterance": "Okay, thanks.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "checkout api, main is done: the retry backoff.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 6,
+						"endedSecondsAgo": 3
+					}
+				],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"calls": [],
+			"forbid_mutation": true,
+			"silent": true
+		},
+		{
+			"id": "notif-ambiguous-asks",
+			"utterance": "Okay, can you do a deep review of all of this?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "checkout api, main is done: the retry backoff.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 6,
+						"endedSecondsAgo": 3
+					}
+				],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"calls": [
+				{
+					"name": "ask_target",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["switch_view", "send_to"]
+		},
+		{
+			"id": "notif-mid-exchange-no-switch",
+			"utterance": "What did it change in the backoff cap?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "checkout api, main is done: the retry backoff.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 6,
+						"endedSecondsAgo": 3
+					}
+				],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				},
+				"talkingWith": {
+					"ref": "store-front/main",
+					"asked": "clean up the locale placeholders",
+					"answered": "Done, twelve placeholders removed.",
+					"secondsAgo": 20
+				}
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["cap"]
+				}
+			]
+		},
+		{
 			"id": "relay-negation",
 			"utterance": "Tell it not to touch the migrations.",
 			"context": {

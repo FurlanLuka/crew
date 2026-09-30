@@ -1,4 +1,10 @@
-import { COMMAND_TTL_MS, EXCHANGE_IDLE_MS, SWITCH_OFFER_MS } from '../shared/protocol.js';
+import {
+	COMMAND_TTL_MS,
+	EXCHANGE_IDLE_MS,
+	SWITCH_OFFER_MS,
+	TARGET_ASK_MS,
+} from '../shared/protocol.js';
+import { settleTarget } from '../router/target.js';
 import type { Effect } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
 import type { KernelHandler, KernelTurn } from '../router/router.js';
@@ -29,8 +35,20 @@ export const connectSpeech = ({
 	// and a stale timer finds a newer lastAt and changes nothing.
 	let armedAt: number | null = null;
 	let offeredAt: number | null = null;
+	let targetAskedAt: number | null = null;
 	store.subscribe((_stamped, state) => {
-		const { exchange, switchOffer } = state;
+		const { exchange, switchOffer, targetAsk } = state;
+
+		// "For checkout?" unanswered: silence keeps the words on the screen.
+		if (targetAsk && targetAsk.at !== targetAskedAt) {
+			targetAskedAt = targetAsk.at;
+			const { at } = targetAsk;
+			setTimer(() => {
+				if (store.state.targetAsk?.at === at) {
+					settleTarget(store, false);
+				}
+			}, TARGET_ASK_MS);
+		}
 
 		if (exchange && exchange.lastAt !== armedAt) {
 			armedAt = exchange.lastAt;

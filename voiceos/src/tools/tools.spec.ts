@@ -476,6 +476,7 @@ describe('forward', () => {
 			'send_to',
 			'switch_view',
 			'go_back',
+			'ask_target',
 			'start_session',
 			'stop_session',
 			'crew_dev',

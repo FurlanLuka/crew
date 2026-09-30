@@ -73,6 +73,13 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('clear_exchange') }),
 	z.object({ type: z.literal('go_back') }),
 	z.object({ type: z.literal('offer_switch'), ref: refSchema }),
+	z.object({
+		type: z.literal('ask_target'),
+		ref: refSchema,
+		screen: refSchema,
+		text: z.string().min(1).max(20_000),
+	}),
+	z.object({ type: z.literal('settle_target'), at: z.number(), toTarget: z.boolean() }),
 ]);
 
 const clientMessageSchema = z.discriminatedUnion('type', [

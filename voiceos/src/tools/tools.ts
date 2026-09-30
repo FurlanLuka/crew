@@ -21,6 +21,7 @@ import {
 import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
+import { askTarget, decideNotificationReply } from './notification-reply.js';
 import { renameSession } from './rename.js';
 import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
@@ -488,10 +489,29 @@ export const executeTool = async (
 				return refused;
 			}
 
-			toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });
+			const reply = decideNotificationReply({ state, ref: checked.ref, toolContext });
 
-			return succeed(`showing ${checked.ref}`);
+			if (reply.kind === 'refuse') {
+				return fail(reply.why);
+			}
+
+			const skipHeld = input.skip_held === true || reply.kind === 'stale_held';
+
+			toolContext.dispatch({
+				type: 'switch_view',
+				view: { kind: 'session', ref: checked.ref },
+				...(skipHeld ? { skipHeld: true as const } : {}),
+			});
+
+			return succeed(
+				reply.kind === 'stale_held'
+					? `showing ${checked.ref}. Its held update is older than five minutes and was not replayed: send_to it with the developer's question.`
+					: `showing ${checked.ref}`,
+			);
 		}
+
+		case 'ask_target':
+			return askTarget({ state, input, toolContext });
 
 		case 'start_session': {
 			const found = checkRef(state, input.ref);

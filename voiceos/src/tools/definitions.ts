@@ -7,6 +7,7 @@ export type ToolName =
 	| 'send_to'
 	| 'switch_view'
 	| 'go_back'
+	| 'ask_target'
 	| 'start_session'
 	| 'stop_session'
 	| 'crew_dev'
@@ -30,6 +31,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'forward',
 	'send_to',
 	'go_back',
+	'ask_target',
 	'start_session',
 	'stop_session',
 	'crew_dev',
@@ -84,6 +86,12 @@ const CONTINUES_PROPERTY = {
 	type: 'boolean',
 	description:
 		'true only when these words finish the sentence the developer began in their previous words on this screen (listed under "Earlier on this screen"), cut off by a pause — their previous words stop mid-sentence ("why are the retries so") and these pick up where they stopped ("slow on the checkout worker?"). Voice OS joins the two halves as said. A new request, an added task or a reply is not this.',
+};
+
+const SKIP_HELD_PROPERTY = {
+	type: 'boolean',
+	description:
+		"true when you also send_to that session the developer's question in this turn: its old held update is not replayed first.",
 };
 
 // One property for both switch_view definitions: a machine switch must not lose "go to pinned".
@@ -175,7 +183,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			"Show one session on screen, or every session (Mission Control) when ref is null, or the developer's pinned sessions with pinned true.",
 		input_schema: {
 			type: 'object',
-			properties: { ref: { type: ['string', 'null'] }, pinned: PINNED_VIEW_PROPERTY },
+			properties: {
+				ref: { type: ['string', 'null'] },
+				pinned: PINNED_VIEW_PROPERTY,
+				skip_held: SKIP_HELD_PROPERTY,
+			},
 			required: ['ref'],
 			additionalProperties: false,
 		},
@@ -185,6 +197,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		description:
 			'"Go back", "back", "previous session": return to the view the developer was on before this one; said again, it walks further back. Voice OS says where they landed. Not for "home" or Mission Control: that is switch_view with null.',
 		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+	},
+	{
+		name: 'ask_target',
+		description:
+			'"For <session>?": only right after that session\'s notification ("… is done", "… needs you" under "Heard just before"), when the developer\'s words could be a reply to it or for the session on screen and you cannot tell which. Voice OS asks and sends the words where they answer; say nothing. Never for words that name a session or clearly continue the work on screen.',
+		input_schema: {
+			type: 'object',
+			properties: { ref: REF_PROPERTY },
+			required: ['ref'],
+			additionalProperties: false,
+		},
 	},
 	{
 		name: 'start_session',
@@ -415,6 +438,7 @@ export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
 						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
 				},
 				pinned: PINNED_VIEW_PROPERTY,
+				skip_held: SKIP_HELD_PROPERTY,
 			},
 			required: ['ref'],
 			additionalProperties: false,

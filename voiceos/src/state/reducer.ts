@@ -1,4 +1,5 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
+import { isTargetInput, reduceTargetAsk } from './target-ask.js';
 import {
 	decideGoBack,
 	describeGoBack,
@@ -141,6 +142,7 @@ export const createInitialState = (): State => ({
 	focus: null,
 	exchange: null,
 	viewHistory: [],
+	targetAsk: null,
 	asks: [],
 	denials: [],
 	transcript: null,
@@ -331,6 +333,10 @@ const goBack = (state: State, at: number): ReducerResult => {
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
 
+	if (isTargetInput(input)) {
+		return reduceTargetAsk(state, input, stamped);
+	}
+
 	if (isMachineInput(input)) {
 		return reduceMachine(state, input, stamped, reduceInput);
 	}
@@ -415,9 +421,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			}
 
 			const switched =
-				view.kind === 'session'
+				view.kind === 'session' && !input.skipHeld
 					? replayHeldLine(shown, view.ref)
-					: { state: shown, effects: describeSwitch(state, view) };
+					: view.kind === 'session'
+						? { state: shown, effects: [] }
+						: { state: shown, effects: describeSwitch(state, view) };
 
 			// Said first: whatever plays there next is heard as coming from there.
 			return input.announce && !isSameView(state.view, shown.view)

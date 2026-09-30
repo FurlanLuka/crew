@@ -7,6 +7,7 @@ import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
+import { readTargetAnswer, settleTarget } from './target.js';
 
 const log = createLogger('router');
 
@@ -94,6 +95,19 @@ export class UtteranceRouter {
 
 		if (!trimmedText) {
 			return;
+		}
+
+		// "For checkout?" waits on these words: a yes or no settles it, anything else keeps the held
+		// words on the screen and is routed as usual.
+		if (store.state.targetAsk) {
+			const answer = readTargetAnswer(trimmedText);
+
+			settleTarget(store, answer === 'yes');
+			log.info('target answered', { answer });
+
+			if (answer !== 'other') {
+				return;
+			}
 		}
 
 		// Captured before anything runs: a switch_view during the turn does not move it.

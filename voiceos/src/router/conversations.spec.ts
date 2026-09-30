@@ -89,4 +89,65 @@ describe('conversations', () => {
 		]);
 		expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
 	});
+
+	it('the incident done right: words that could be for the notifier → "For …?"; no keeps them on the screen', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'spoken',
+			text: 'checkout api, main is done: the retry backoff.',
+			source: 'narrator',
+			ref: 'checkout-api/main',
+		});
+
+		convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+		await convo.say('Okay, can you do a deep review of all of this?');
+		await convo.say('No.');
+
+		expect(convo.heard).toEqual([
+			'> Okay, can you do a deep review of all of this?',
+			'For checkout api, main?',
+			'> No.',
+			'Kept on store front, main.',
+		]);
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'Okay, can you do a deep review of all of this?',
+			}),
+		);
+	});
+
+	it('"For …?" answered yes → the words go there, said; silence keeps them on the screen', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		const notify = () =>
+			convo.store.dispatch({
+				type: 'spoken',
+				text: 'checkout api, main is done: the retry backoff.',
+				source: 'narrator',
+				ref: 'checkout-api/main',
+			});
+
+		notify();
+		convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+		await convo.say('Can you review all of it?');
+		await convo.say('Yes.');
+
+		notify();
+		convo.script([toolUse('t2', 'ask_target', { ref: 'checkout-api/main' })]);
+		await convo.say('And the docs too?');
+		await convo.wait(9_000);
+
+		expect(convo.heard).toEqual([
+			'> Can you review all of it?',
+			'For checkout api, main?',
+			'> Yes.',
+			'Sent to checkout api, main.',
+			'> And the docs too?',
+			'For checkout api, main?',
+			'Kept on store front, main.',
+		]);
+	});
 });

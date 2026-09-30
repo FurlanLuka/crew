@@ -1,4 +1,5 @@
 import { SWITCH_OFFERED_NOTE } from './announced.js';
+import { ASK_TARGET_NOTE } from './notification-reply.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isBareAnswer } from './send.js';
@@ -8,6 +9,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'send_to',
 	'switch_view',
 	'go_back',
+	'ask_target',
 	'start_session',
 	'ignore_words',
 	'answer',
@@ -180,7 +182,7 @@ export const decideEnding = ({
 	if (
 		isAnsweredByForward(turn.calls) ||
 		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
-		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE)
+		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE || call.note === ASK_TARGET_NOTE)
 	) {
 		return { kind: 'drop_reply' };
 	}

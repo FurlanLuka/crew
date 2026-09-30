@@ -281,6 +281,13 @@ describe('parseClientMessage', () => {
 		clear_exchange: { type: 'clear_exchange' },
 		go_back: { type: 'go_back' },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
+		ask_target: {
+			type: 'ask_target',
+			ref: 'store/main',
+			screen: 'store/wrk1',
+			text: 'review this',
+		},
+		settle_target: { type: 'settle_target', at: 5, toTarget: true },
 	};
 	const messages: ClientMessage[] = [
 		...Object.values(actions).map((action): ClientMessage => ({ type: 'action', action })),
