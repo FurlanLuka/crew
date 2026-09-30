@@ -10,6 +10,7 @@ describe('readStoredListenMode', () => {
 		[{}, 'push'],
 		[{ 'voiceos.listenMode': 'on-demand' }, 'on-demand'],
 		[{ 'voiceos.listenMode': 'hands-free' }, 'hands-free'],
+		[{ 'voiceos.listenMode': 'dictation' }, 'dictation'],
 		[{ 'voiceos.listenMode': 'nonsense' }, 'push'],
 		// A tab from before the modes: its hands-free switch carries over.
 		[{ 'voiceos.handsFree': '1' }, 'hands-free'],
@@ -38,5 +39,9 @@ describe('describeListening', () => {
 		expect(describeListening({ mode: 'on-demand', isAwake: false })).toContain('Say “Voice OS”');
 		expect(describeListening({ mode: 'on-demand', isAwake: true })).toContain('Listening to you');
 		expect(describeListening({ mode: 'hands-free', isAwake: false })).toContain('just talk');
+		expect(describeListening({ mode: 'dictation', isAwake: false })).toContain('to dictate');
+		expect(describeListening({ mode: 'dictation', isAwake: false, isDictating: true })).toContain(
+			'Send when you are done',
+		);
 	});
 });

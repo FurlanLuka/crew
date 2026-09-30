@@ -33,12 +33,14 @@ interface CreateHarnessParams extends HarnessExtras {
 	apiKey?: string | null;
 	debugAudioDir?: string | null;
 	maxPressMs?: number;
+	maxDictationMs?: number;
 }
 
 const createHarness = ({
 	apiKey = 'k',
 	debugAudioDir = null,
 	maxPressMs,
+	maxDictationMs,
 	...extra
 }: CreateHarnessParams = {}) => {
 	const store = new Store();
@@ -56,6 +58,7 @@ const createHarness = ({
 		],
 	});
 	const utterances: string[] = [];
+	const dictated: boolean[] = [];
 	const startedAts: number[] = [];
 	const talkStarts: number[] = [];
 	const talkEnds: number[] = [];
@@ -77,14 +80,16 @@ const createHarness = ({
 		},
 		store,
 		apiKey,
-		onUtterance: (text, _client, startedAt) => {
+		onUtterance: (text, _client, startedAt, { isDictated }) => {
 			utterances.push(text);
+			dictated.push(isDictated);
 			startedAts.push(startedAt);
 		},
 		onTalkStart: () => talkStarts.push(1),
 		onTalkEnd: () => talkEnds.push(1),
 		debugAudioDir,
 		maxPressMs,
+		maxDictationMs,
 		createSession: (options) => {
 			session = options;
 			const index = sessions.push(options) - 1;
@@ -105,6 +110,7 @@ const createHarness = ({
 		store,
 		input,
 		utterances,
+		dictated,
 		startedAts,
 		talkStarts,
 		talkEnds,
@@ -1267,5 +1273,95 @@ describe('VoiceInput on demand', () => {
 		expect(harness.listenStates).toEqual([]);
 		expect(harness.input.listenModeOf('c1')).toBe('hands-free');
 		expect(harness.input.listenModeOf('c2')).toBe('push');
+	});
+
+	describe('dictation', () => {
+		const dictate = (harness: ReturnType<typeof createHarness>, client = 'c1') =>
+			harness.input.start(client, undefined, { isDictation: true });
+
+		it('sent → routed as dictated, once its final arrives', () => {
+			const harness = createHarness();
+			dictate(harness);
+			harness.input.stop('c1');
+			harness.sessions[0]?.onFinal('so the thing about the retries is');
+			expect(harness.utterances).toEqual(['so the thing about the retries is']);
+			expect(harness.dictated).toEqual([true]);
+		});
+
+		it('a plain press is not dictated', () => {
+			const harness = createHarness();
+			harness.input.start('c1');
+			harness.input.stop('c1');
+			harness.sessions[0]?.onFinal('run the tests');
+			expect(harness.dictated).toEqual([false]);
+		});
+
+		it('reaches its cap → ended and sent, never dropped; a plain press past the press cap still drops', async () => {
+			const harness = createHarness({ maxPressMs: 10, maxDictationMs: 20 });
+			dictate(harness);
+			await Bun.sleep(40);
+			expect(harness.cancelled).toEqual([]);
+			expect(harness.ended).toBe(true);
+			harness.sessions[0]?.onFinal('a long brain dump');
+			expect(harness.utterances).toEqual(['a long brain dump']);
+		});
+
+		it('discarded → the stream cancelled, nothing routed; the next press works', () => {
+			const harness = createHarness();
+			dictate(harness);
+			harness.session?.onPartial('never mind all of this');
+			harness.input.cancel('c1');
+			expect(harness.cancelled).toEqual([0]);
+			expect(harness.store.state.transcript).toBeNull();
+			harness.sessions[0]?.onFinal('never mind all of this');
+
+			harness.input.start('c1');
+			harness.input.stop('c1');
+			harness.sessions[1]?.onFinal('run the tests');
+			expect(harness.utterances).toEqual(['run the tests']);
+		});
+
+		it('discard with nothing under way → nothing happens', () => {
+			const harness = createHarness();
+			harness.input.cancel('c1');
+			expect(harness.cancelled).toEqual([]);
+		});
+
+		it('a new press while dictating → the dictation is sent first, then the press', () => {
+			const harness = createHarness();
+			dictate(harness);
+			harness.input.start('c1');
+			expect(harness.cancelled).toEqual([]);
+			harness.input.stop('c1');
+			harness.sessions[1]?.onFinal('stop');
+			harness.sessions[0]?.onFinal('the whole dump');
+			expect(harness.utterances).toEqual(['the whole dump', 'stop']);
+			expect(harness.dictated).toEqual([true, false]);
+		});
+
+		it('the tab goes away mid-dictation, or after Send → its words are still sent', () => {
+			const live = createHarness();
+			dictate(live);
+			live.input.disconnect('c1');
+			expect(live.cancelled).toEqual([]);
+			live.sessions[0]?.onFinal('what I had so far');
+			expect(live.utterances).toEqual(['what I had so far']);
+
+			const sent = createHarness();
+			dictate(sent);
+			sent.input.stop('c1');
+			sent.input.disconnect('c1');
+			sent.sessions[0]?.onFinal('all of it');
+			expect(sent.utterances).toEqual(['all of it']);
+		});
+
+		it('listening turned on while dictating → the dictation is sent, not starved', () => {
+			const harness = createHarness();
+			dictate(harness);
+			harness.input.listen('c1', 16000, 'hands-free');
+			expect(harness.cancelled).toEqual([]);
+			harness.sessions[0]?.onFinal('before listening');
+			expect(harness.utterances).toEqual(['before listening']);
+		});
 	});
 });

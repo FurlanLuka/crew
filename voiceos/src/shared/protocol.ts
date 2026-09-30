@@ -548,6 +548,9 @@ export type ServerMessage =
 	| { type: 'listen_state'; isAwake: boolean }
 	// On demand: speech without "Voice OS" was heard and left alone.
 	| { type: 'heard_ignored' }
+	// A dictation that had nowhere to go (no session on screen, or it waits on an answer): its words
+	// come back into this tab's input, to send from there.
+	| { type: 'dictation_kept'; text: string; reason: string }
 	// "Open the doc": opened in this tab's browser, since the developer may be anywhere.
 	| { type: 'open_url'; url: string; title: string }
 	| { type: 'error'; message: string };
@@ -555,8 +558,11 @@ export type ServerMessage =
 export type ClientMessage =
 	| { type: 'action'; action: Action }
 	| { type: 'utterance'; text: string }
-	| { type: 'ptt_start'; sampleRate?: number }
+	// dictation: a press held open for a brain dump, sent word for word to the session on screen.
+	| { type: 'ptt_start'; sampleRate?: number; dictation?: true }
 	| { type: 'ptt_stop' }
+	// Throws away the dictation under way: nothing is sent.
+	| { type: 'ptt_cancel' }
 	// Debug only (VOICEOS_DEBUG_SPEECH=1): words taken as heard, for demos and screenshots.
 	| { type: 'simulate_speech'; text: string; holdMs?: number }
 	// No mode: a tab from before the modes, which only knew hands-free.

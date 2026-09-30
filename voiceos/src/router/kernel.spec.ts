@@ -202,7 +202,7 @@ describe('Kernel', () => {
 		expect(result.reply).toBe('');
 	});
 
-	it('an answer that falls back to sending beside a forward → the words are sent once, cleaned', async () => {
+	it('an answer that falls back to sending beside a forward → the words are sent once, as said', async () => {
 		const { kernel, actions } = createKernel(
 			[
 				[
@@ -221,7 +221,7 @@ describe('Kernel', () => {
 		expect(actions.filter((action) => action.type === 'send')).toEqual([
 			expect.objectContaining({
 				ref: 'store-front/main',
-				text: 'Okay. Rebuild and restart Voice OS.',
+				text: 'Okay. Okay, you re- can you, uh, rebuild and restart?',
 			}),
 		]);
 	});
@@ -428,11 +428,13 @@ describe('Kernel', () => {
 		expect(result.reply).toBe('It is still running the tests.');
 	});
 
-	it('a long sentence split between a restart and a forward → the forward keeps its own slice', async () => {
+	it('a long sentence split between a restart and a forward → the forward keeps its own slice, word for word', async () => {
 		const { kernel, actions } = createKernel([
 			[
 				createToolUse('t1', 'crew_dev', { ref: 'store-front/main', action: 'restart' }),
-				createToolUse('t2', 'forward', { text: 'Check the logs for the timeout.' }),
+				createToolUse('t2', 'forward', {
+					text: 'have it go through the logs for that timeout please.',
+				}),
 			],
 		]);
 
@@ -444,7 +446,27 @@ describe('Kernel', () => {
 		expect(actions).toContainEqual({
 			type: 'send',
 			ref: 'store-front/main',
-			text: 'Check the logs for the timeout.',
+			text: 'have it go through the logs for that timeout please.',
+			ack: INSTRUCTION_ACK,
+		});
+	});
+
+	it('a slice beside a restart that was reworded → the words as said, never the rewrite', async () => {
+		const said =
+			'Restart the dev servers and after that have it go through the logs for that timeout.';
+		const { kernel, actions } = createKernel([
+			[
+				createToolUse('t1', 'crew_dev', { ref: 'store-front/main', action: 'restart' }),
+				createToolUse('t2', 'forward', { text: 'Check the logs for the timeout.' }),
+			],
+		]);
+
+		await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+		expect(actions).toContainEqual({
+			type: 'send',
+			ref: 'store-front/main',
+			text: said,
 			ack: INSTRUCTION_ACK,
 		});
 	});
@@ -1220,16 +1242,25 @@ describe('a long request forwarded beside a mute (note 83)', () => {
 		]);
 	});
 
-	it('the same words naming another session → still split: the rewrite goes', async () => {
+	it('the same words naming another session → split: a part copied word for word goes, a rewrite never', async () => {
 		const said = SAID.replace('To crew main', 'To checkout api');
-		const { kernel, actions } = createKernel([
-			[createToolUse('t1', 'forward', { text: REWRITE }), createToolUse('t2', 'mute', {})],
+		const part = 'ask crew main to check debug notes and notes, um, and give me a list';
+
+		const send = async (text: string) => {
+			const { kernel, actions } = createKernel([
+				[createToolUse('t1', 'forward', { text }), createToolUse('t2', 'mute', {})],
+			]);
+
+			await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+			return actions;
+		};
+
+		expect(await send(part)).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: part, ack: INSTRUCTION_ACK },
 		]);
-
-		await kernel.handle(said, { forwardTo: 'store-front/main' });
-
-		expect(actions).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: REWRITE, ack: INSTRUCTION_ACK },
+		expect(await send(REWRITE)).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: said, ack: INSTRUCTION_ACK },
 		]);
 	});
 });

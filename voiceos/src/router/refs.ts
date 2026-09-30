@@ -3,7 +3,8 @@ import { NUMBER_WORDS } from '../shared/spoken.js';
 import { readMachine, splitRef } from '../shared/machine-ref.js';
 import { currentMachine, readMachineName } from '../shared/machines.js';
 
-export type UtteranceSource = 'voice' | 'typed';
+// dictated: a brain dump held open by the developer, sent word for word like typing.
+export type UtteranceSource = 'voice' | 'typed' | 'dictated';
 
 const DIGIT_WORDS: Record<string, string> = Object.fromEntries(
 	NUMBER_WORDS.map((word, digit) => [word, String(digit)]),

@@ -258,11 +258,13 @@ const router = new UtteranceRouter({
 const voiceIn = new VoiceInput({
 	store,
 	apiKey: keys.soniox,
-	onUtterance: (text, client, startedAt) =>
-		void router.handle(text, 'voice', {
+	onUtterance: (text, client, startedAt, { isDictated }) =>
+		void router.handle(text, isDictated ? 'dictated' : 'voice', {
 			setListenMode: listenSwitchFor(client),
 			openUrl: openUrlFor(client),
 			heardFrom: startedAt,
+			keepDictation: (kept, reason) =>
+				void gateway?.send(client, { type: 'dictation_kept', text: kept, reason }),
 		}),
 	onTalkStart: () => voiceOut.talkStarted(),
 	onTalkEnd: () => voiceOut.talkEnded(),
@@ -355,11 +357,15 @@ gateway = startGateway({
 
 				return;
 			case 'ptt_start':
-				voiceIn.start(client, message.sampleRate);
+				voiceIn.start(client, message.sampleRate, { isDictation: message.dictation === true });
 
 				return;
 			case 'ptt_stop':
 				voiceIn.stop(client);
+
+				return;
+			case 'ptt_cancel':
+				voiceIn.cancel(client);
 
 				return;
 			case 'simulate_speech':

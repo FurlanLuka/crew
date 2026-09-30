@@ -180,16 +180,17 @@ By voice:
 
 ## Listening modes
 
-The menu next to the mic button chooses how the tab listens. Each tab remembers its own mode, so a
+The round button next to the mic opens the menu that chooses how the tab listens. Each tab remembers its own mode, so a
 second tab never starts listening on its own.
 
-![The listening-mode menu in the bottom bar: Push to talk, On demand, Hands-free](../images/voice-os/listening-modes.png)
+![The listening-mode menu in the bottom bar: Push to talk, On demand, Hands-free, Dictation](../images/voice-os/listening-modes.png)
 
 | Mode | How it works |
 | --- | --- |
 | **Push to talk** | Hold **Space** (anywhere except in a text field), or hold the mic button. Release to send. |
 | **On demand** | Always listening, but Voice OS only acts on what follows "Voice OS": "Voice OS, tell checkout to run the tests." A chime says it heard its name and the input shows *Listening to you*. The turn ends when you pause, or at once when you say "end of turn". A second request needs "Voice OS" again. |
 | **Hands-free** | Always listening. Every sentence is a turn. |
+| **Dictation** | For brain dumps. Click the mic (or press **Space**) to start and talk as long as you like: pauses never end it, and "stop" or "wait" are just words. **Send** sends everything, word for word, to the session on screen, marked as dictated. It never goes through Voice OS's routing. **Discard** throws it away (it asks once more when there are words). With no session on screen, or one waiting on your answer, the words land in the text box to send from there. |
 
 You can also switch modes by voice: "Switch to on demand." · "Hands-free on." · "Turn off
 hands-free." · "Push to talk." Voice OS confirms the change aloud.
@@ -207,7 +208,8 @@ Tips:
 - Background talk, music and a half-finished "and can you—" are ignored, and Voice OS says nothing
   about them.
 - **Cost.** Both always-listening modes stream your microphone to Soniox for as long as listening
-  is on, so they cost the same. Push to talk streams only while you hold the key.
+  is on, so they cost the same. Push to talk streams only while you hold the key, and dictation
+  only until you send it.
 - **Phones.** A phone may stop the microphone when the tab goes to the background or the screen
   locks. Bring the tab back to the front to continue.
 
@@ -236,9 +238,10 @@ and half-formed thoughts.
 - "Could we brainstorm a bit first?"
 - "What's the last thing we've done?" The session remembers its own conversation.
 
-Relay words are dropped, so "can you ask it to check the logs" becomes "Check the logs." Everything
-else is kept: names, numbers, negations and the skill you named. Voice OS does not answer these
-questions itself and does not ask what you meant. If the session needs more, it asks you.
+The session gets your words exactly as heard, never a rewrite, so nothing you said is lost. When
+one sentence did two things ("restart the servers and have it check the logs"), the session gets
+its part, copied word for word. Voice OS does not answer these questions itself and does not ask
+what you meant. If the session needs more, it asks you.
 
 **Other sessions**, without leaving the one you are in:
 

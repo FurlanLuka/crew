@@ -1,5 +1,5 @@
 {
-	"note": "Every utterance goes to the kernel; each case lists the tool calls it must produce. 'calls' must all appear; 'input' arguments must match exactly; text_includes words must survive the rewrite into a clean instruction ('a|b' accepts either) and not_includes relay words must be gone; 'forbid_mutation' fails any call that changes something; 'silent' also fails any reply; 'no_reply' fails a reply; read-only calls are always allowed. The context (test/support/state.ts) sets up asks, offers, busy sessions and what was said earlier on the screen (voiceLog). The phrases are from a real hands-free session with the names made generic.",
+	"note": "Every utterance goes to the kernel; each case lists the tool calls it must produce. 'calls' must all appear; 'input' arguments must match exactly; text_includes words must reach the session in what was sent, which is the words as said or a part copied word for word ('a|b' accepts either), and not_includes words must not; 'forbid_mutation' fails any call that changes something; 'silent' also fails any reply; 'no_reply' fails a reply; read-only calls are always allowed. The context (test/support/state.ts) sets up asks, offers, busy sessions and what was said earlier on the screen (voiceLog). The phrases are from a real hands-free session with the names made generic.",
 	"cases": [
 		{
 			"id": "waiting",
@@ -534,8 +534,26 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["log"],
-					"not_includes": ["ask it", "tell it", "can you ask"]
+					"text_includes": ["log"]
+				}
+			]
+		},
+		{
+			"id": "switch-then-request",
+			"utterance": "Switch to checkout api main and tell it to run the migrations on staging.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				},
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["migrations"],
+					"not_includes": ["switch to"]
 				}
 			]
 		},
@@ -548,8 +566,7 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["not|don", "migration"],
-					"not_includes": ["ask it", "tell it", "can you ask"]
+					"text_includes": ["not|don", "migration"]
 				}
 			]
 		},
@@ -575,8 +592,7 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["still", "fail"],
-					"not_includes": ["ask it", "tell it", "can you ask"]
+					"text_includes": ["still", "fail"]
 				}
 			]
 		},
@@ -625,8 +641,7 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["log"],
-					"not_includes": ["ask it", "tell it", "can you ask"]
+					"text_includes": ["log"]
 				}
 			]
 		},
@@ -656,8 +671,7 @@
 				},
 				{
 					"name": "forward",
-					"text_includes": ["log"],
-					"not_includes": ["ask it", "tell it", "can you ask"]
+					"text_includes": ["log"]
 				}
 			]
 		},
@@ -833,8 +847,7 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["file"],
-					"not_includes": ["ask it", "tell it", "can you ask"]
+					"text_includes": ["file"]
 				}
 			]
 		},
@@ -1899,7 +1912,9 @@
 					{
 						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
 						"reply": "",
-						"did": ["forward \"After commit, rebuild and restart right away.\""]
+						"did": [
+							"forward \"After commit, can you just directly rebuild and restart so we can have it right away?\""
+						]
 					}
 				]
 			},

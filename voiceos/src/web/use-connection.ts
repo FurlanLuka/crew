@@ -112,6 +112,8 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 	const [ignoredAt, setIgnoredAt] = useState(0);
 	// A fresh object each time, so asking twice opens it twice.
 	const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
+	// A dictation with nowhere to go, back for the input: a fresh object each time.
+	const [keptDictation, setKeptDictation] = useState<KeptDictation | null>(null);
 	const speechRef = useRef(onSpeech);
 	speechRef.current = onSpeech;
 
@@ -173,6 +175,12 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 
 				if (message.type === 'listen_state') {
 					setIsAwake(message.isAwake);
+
+					return;
+				}
+
+				if (message.type === 'dictation_kept') {
+					setKeptDictation({ text: message.text, reason: message.reason });
 
 					return;
 				}
@@ -279,8 +287,14 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 		isAwake,
 		ignoredAt,
 		openRequest,
+		keptDictation,
 	};
 };
+
+export interface KeptDictation {
+	text: string;
+	reason: string;
+}
 
 export interface OpenRequest {
 	url: string;

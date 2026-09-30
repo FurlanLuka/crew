@@ -20,10 +20,8 @@ import {
 	buildSessionNote,
 	isDuplicateSend,
 	isMisroutedToSetup,
-	isRewriteTooShort,
-	prepareSentText,
 } from './send.js';
-import { executeTool, joinCutSentence, saysMoreThanStart, type ToolContext } from './tools.js';
+import { executeTool, saysMoreThanStart, type ToolContext } from './tools.js';
 import { TAKEN_BACK } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
@@ -95,7 +93,7 @@ describe('executeTool', () => {
 
 		expect(
 			await executeTool('send_to', { ref: 'store-front/wrk1', text: '  run the tests ' }, tools),
-		).toEqual({ ok: true, content: 'sent to store-front/wrk1' });
+		).toMatchObject({ ok: true, content: 'sent to store-front/wrk1' });
 		expect(actions).toEqual([
 			{ type: 'send', ref: 'store-front/wrk1', text: 'run the tests', ack: INSTRUCTION_ACK },
 		]);
@@ -511,31 +509,30 @@ describe('forward', () => {
 		expect(hasHistory('store-front/main')).toBe(false);
 	});
 
-	it('a continuation → marked, with only the new part as rest; the words as said when the kernel gave none', async () => {
+	it('a continuation → both halves joined as said, the new part as rest; without earlier words, a plain send', async () => {
 		const { tools, actions } = createToolContext();
-		const forward = (input: Record<string, unknown>) =>
-			executeTool('forward', input, {
-				...tools,
-				forwardTo: 'store-front/main',
-				utterance: 'the checkout worker',
-			});
+		const forward = (recentUtterances: string[]) =>
+			executeTool(
+				'forward',
+				{ kind: 'instruction', continues: true },
+				{
+					...tools,
+					forwardTo: 'store-front/main',
+					utterance: 'the checkout worker.',
+					recentUtterances,
+				},
+			);
 
-		await forward({
-			text: 'Check the logs for the checkout worker.',
-			kind: 'instruction',
-			continues: true,
-			rest: 'The checkout worker.',
-		});
-		await forward({
-			text: 'Check the logs for the checkout worker.',
-			kind: 'question',
-			continues: true,
-		});
+		await forward(['Check the logs for the timeout errors in']);
+		await forward([]);
 
-		expect(actions.map((action) => (action.type === 'send' ? action.continues : null))).toEqual([
-			{ rest: 'The checkout worker.' },
-			{ rest: 'the checkout worker' },
-		]);
+		expect(actions[0]).toMatchObject({
+			type: 'send',
+			text: 'Check the logs for the timeout errors in the checkout worker.',
+			continues: { rest: 'the checkout worker.' },
+		});
+		expect(actions[1]).toMatchObject({ type: 'send', text: 'the checkout worker.' });
+		expect(actions[1]).not.toHaveProperty('continues');
 		expect(actions.some((action) => action.type === 'send' && action.aside)).toBe(false);
 	});
 
@@ -573,24 +570,25 @@ describe('forward', () => {
 			...state.sessions['store-front/main']!,
 			status: 'running',
 		};
-		const context = { ...tools, forwardTo: 'store-front/main', isSpoken: true };
+		const context = {
+			...tools,
+			forwardTo: 'store-front/main',
+			isSpoken: true,
+			recentUtterances: ['Which file'],
+		};
 
-		await executeTool('forward', { text: 'Which file?', kind: 'question' }, context);
+		await executeTool('forward', { kind: 'question' }, { ...context, utterance: 'Which file?' });
 		await executeTool(
 			'forward',
-			{
-				text: 'Which file holds the retry?',
-				kind: 'question',
-				continues: true,
-				rest: 'Holds the retry?',
-			},
-			context,
+			{ kind: 'question', continues: true },
+			{ ...context, utterance: 'holds the retry?' },
 		);
 
 		expect(actions[0]).toMatchObject({ type: 'send', aside: true, isSpoken: true });
 		expect(actions[1]).toMatchObject({
 			type: 'send',
-			continues: { rest: 'Holds the retry?', isAside: true },
+			text: 'Which file holds the retry?',
+			continues: { rest: 'holds the retry?', isAside: true },
 		});
 		expect(actions[1]).not.toHaveProperty('aside');
 	});
@@ -1260,7 +1258,7 @@ describe('a question only announced', () => {
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		);
 		expect(other.actions).toContainEqual(
-			expect.objectContaining({ type: 'send', text: 'Also run the linter.' }),
+			expect.objectContaining({ type: 'send', text: 'also have it run the linter' }),
 		);
 	});
 
@@ -2073,7 +2071,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 		expect(actions).toEqual([
 			expect.objectContaining({
 				type: 'send',
-				text: 'Check this debug note.',
+				text: SAID,
 				note: expect.stringContaining(
 					`the developer told Voice OS: "${noteSaved.utterance}", and Voice OS saved it as a debug note.`,
 				),
@@ -2111,7 +2109,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 		]);
 	});
 
-	it('through the real reducer → the stream shows only the words', async () => {
+	it('through the real reducer → the stream shows only the words, not the note', async () => {
 		const store = new Store();
 		store.dispatch({
 			type: 'worktrees',
@@ -2153,7 +2151,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 		);
 
 		expect(sent[0]).toMatchObject({ note: expect.stringContaining(noteSaved.utterance) });
-		expect(user).toMatchObject({ text: 'Check this debug note.' });
+		expect(user).toMatchObject({ text: SAID });
 	});
 });
 
@@ -2930,7 +2928,7 @@ describe('side answers', () => {
 			{
 				type: 'send',
 				ref: 'store-front/main',
-				text: 'Why is the build red?',
+				text: 'ask it right now, why is the build red?',
 				ack: { kind: 'question' },
 				isNow: true,
 			},
@@ -3523,64 +3521,6 @@ describe('fixes from the live notes', () => {
 		).toBe(true);
 	});
 
-	describe('prepareSentText', () => {
-		const withAsked = (asked: boolean) => {
-			const base = createToolContext();
-			const session = base.tools.getState().sessions['store-front/main']!;
-
-			return createToolContext({
-				sessions: {
-					...base.tools.getState().sessions,
-					'store-front/main': {
-						...session,
-						needsUser: asked ? { text: 'asks: go ahead?', at: 0 } : null,
-					},
-				},
-			}).tools.getState();
-		};
-
-		it.each([
-			[
-				"Yes, please. Let me know when you're done.",
-				"Let me know when you're done.",
-				"Yes, please. Let me know when you're done.",
-			],
-			['Okay. Run the tests.', 'Run the tests.', 'Okay. Run the tests.'],
-			['No, use the table instead.', 'Use the table instead.', 'Use the table instead.'],
-			['Yes, but only on staging.', 'Only on staging.', 'Only on staging.'],
-			[
-				'Okay, I think we should rename it.',
-				'I think we should rename it.',
-				'I think we should rename it.',
-			],
-			['Yes. Ship it.', 'Yes. Ship it.', 'Yes. Ship it.'],
-			['Yes, do it now.', 'Do it now.', 'Do it now.'],
-			['Yes, go.', 'Let me know how it goes.', 'Yes, go. Let me know how it goes.'],
-			['No, not that one.', 'Not that one.', 'Not that one.'],
-		])('%p rewritten %p → %p', (utterance, text, sent) =>
-			expect(
-				prepareSentText({
-					state: withAsked(true),
-					ref: 'store-front/main',
-					text,
-					utterance,
-					isOnlySend: true,
-				}),
-			).toBe(sent),
-		);
-
-		it('no question asked → the rewrite as is', () =>
-			expect(
-				prepareSentText({
-					state: withAsked(false),
-					ref: 'store-front/main',
-					text: 'Run the tests.',
-					utterance: 'Okay. Run the tests.',
-					isOnlySend: true,
-				}),
-			).toBe('Run the tests.'));
-	});
-
 	it('answer on the on-screen session that asked → recorded as a forward, so its reply is dropped', async () => {
 		const base = createToolContext();
 		const session = base.tools.getState().sessions['checkout-api/main']!;
@@ -3597,46 +3537,6 @@ describe('fixes from the live notes', () => {
 		);
 
 		expect(result.recordAs).toEqual({ name: 'forward', input: { text: 'Yes.' } });
-	});
-
-	it('a long thought rewritten into a few words → sent as said; a normal cleanup is kept', () => {
-		const rambling =
-			"Okay, so let— like, I'll get back to you maybe we don't always need, like, that, but just say, okay, or just something like that.";
-
-		expect(isRewriteTooShort(rambling, 'Okay, or just something like that.')).toBe(true);
-		expect(
-			isRewriteTooShort(
-				"Okay, can you just fix everything and make sure to create evals for that so things like that don't happen anymore, please?",
-				"Fix everything and create evals so things like that don't happen anymore.",
-			),
-		).toBe(false);
-		expect(isRewriteTooShort('Can you check the logs?', 'Check the logs.')).toBe(false);
-	});
-
-	it('a long request split across actions → each keeps its own rewrite, never the whole sentence', () => {
-		const state = createToolContext().tools.getState();
-		const split = (utterance: string, isOnlySend = true) =>
-			prepareSentText({
-				state,
-				ref: 'checkout-api/main',
-				text: 'Run the migrations on staging.',
-				utterance,
-				isOnlySend,
-			});
-
-		// Two sends in one step.
-		expect(
-			split(
-				'Have checkout run the migrations against staging, and tell store front to restart its dev server and check the logs for the timeout.',
-				false,
-			),
-		).toBe('Run the migrations on staging.');
-		// The words name another session.
-		expect(
-			split(
-				'Okay so have checkout run the migrations against staging and then store front wrk1 should restart its servers please.',
-			),
-		).toBe('Run the migrations on staging.');
 	});
 
 	it('a long thought cut off with a dash → still ignorable as unfinished', async () => {
@@ -3733,41 +3633,6 @@ describe('fixes from the live notes', () => {
 		expect(
 			isMisroutedToSetup({ state, ref: 'checkout-api/main', forwardTo: null, utterance }),
 		).toBe(false);
-	});
-});
-
-describe('joinCutSentence', () => {
-	const previous = 'Check the logs for the timeout errors in';
-
-	it.each([
-		[
-			'continues with only the new part as text → both halves',
-			{ continues: true, rest: 'the checkout worker.' },
-			'the checkout worker.',
-			'Check the logs for the timeout errors in the checkout worker.',
-		],
-		[
-			'continues with the whole sentence already → kept',
-			{ continues: true, rest: 'the checkout worker.' },
-			'Check the logs for the timeout errors in the checkout worker.',
-			'Check the logs for the timeout errors in the checkout worker.',
-		],
-		[
-			'not a continuation → kept',
-			{ rest: 'the checkout worker.' },
-			'the checkout worker.',
-			'the checkout worker.',
-		],
-	])('%s', (_label, input, text, expected) => {
-		expect(joinCutSentence({ text, input, previous })).toBe(expected);
-	});
-
-	it('no earlier words on this screen → kept', () => {
-		const input = { continues: true, rest: 'the checkout worker.' };
-
-		expect(joinCutSentence({ text: 'the checkout worker.', input, previous: undefined })).toBe(
-			'the checkout worker.',
-		);
 	});
 });
 
@@ -4092,41 +3957,6 @@ describe('words that ask about a waiting question', () => {
 		expect((await forward(question)).content).toContain('withdrawn');
 		expect(await forward(plan)).toMatchObject({ ok: true, note: 'aside' });
 	});
-});
-
-describe('a question rewritten into a command', () => {
-	const REF = 'store-front/main';
-	const state = createToolContext().tools.getState();
-	const prepare = (text: string, isContinuation = false) =>
-		prepareSentText({
-			state,
-			ref: REF,
-			text,
-			utterance: 'Does the router still drop the header?',
-			isOnlySend: true,
-			isContinuation,
-		});
-
-	it('the rewrite dropped the "?" → the words as said', () =>
-		expect(prepare('Check whether the router drops the header.')).toBe(
-			'Does the router still drop the header?',
-		));
-
-	it('a rewrite that still asks → kept', () =>
-		expect(prepare('Does the router drop the header?')).toBe('Does the router drop the header?'));
-
-	it('a continuation, whose text joins two utterances → untouched', () =>
-		expect(prepare('Fix the proxy. Check whether the router drops the header.', true)).toBe(
-			'Fix the proxy. Check whether the router drops the header.',
-		));
-
-	it.each([
-		['Can you ask it to check the logs?', 'Check the logs.'],
-		['Um, could you list the files in the source folder?', 'List the files in the source folder.'],
-		['Would you run the tests again?', 'Run the tests again.'],
-	])('a request put as a question, %p → the rewrite', (utterance, text) =>
-		expect(prepareSentText({ state, ref: REF, text, utterance, isOnlySend: true })).toBe(text),
-	);
 });
 
 describe('a debug note said to a session', () => {

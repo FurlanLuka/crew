@@ -291,7 +291,9 @@ describe('parseClientMessage', () => {
 		{ type: 'utterance', text: 'open checkout' },
 		{ type: 'ptt_start', sampleRate: 48000 },
 		{ type: 'ptt_start' },
+		{ type: 'ptt_start', sampleRate: 48000, dictation: true },
 		{ type: 'ptt_stop' },
+		{ type: 'ptt_cancel' },
 		{ type: 'simulate_speech', text: 'run the tests' },
 		{ type: 'simulate_speech', text: 'run the tests', holdMs: 2500 },
 		{ type: 'listen_start', sampleRate: 48000 },
@@ -304,6 +306,11 @@ describe('parseClientMessage', () => {
 		(_, message) =>
 			expect(parseClientMessage(JSON.stringify(message))).toEqual({ ok: true, message }),
 	);
+
+	it('a dictation flag other than true → refused', () =>
+		expect(parseClientMessage(JSON.stringify({ type: 'ptt_start', dictation: false })).ok).toBe(
+			false,
+		));
 
 	it('a client cannot attach a Voice OS note to a message', () => {
 		const parsed = parseClientMessage(
@@ -421,6 +428,7 @@ describe('offline outbox', () => {
 		).toBe(true);
 		expect(shouldKeepWhileOffline({ type: 'utterance', text: 'yes' })).toBe(true);
 		expect(shouldKeepWhileOffline({ type: 'ptt_start' })).toBe(false);
+		expect(shouldKeepWhileOffline({ type: 'ptt_cancel' })).toBe(false);
 		expect(shouldKeepWhileOffline({ type: 'listen_start', sampleRate: 48000 })).toBe(false);
 		expect(shouldKeepWhileOffline({ type: 'audio_done', id: 's1' })).toBe(false);
 	});
