@@ -27,6 +27,10 @@ func RemoteDir() string { return filepath.Join(Dir(), "remote") }
 
 func RemoteSocket() string { return filepath.Join(RemoteDir(), "remote.sock") }
 
+// RemoteQuerySocket is where a remote's crew asks the main a query through
+// the daemon's link (voiceos/src/remote/cli.ts).
+func RemoteQuerySocket() string { return filepath.Join(RemoteDir(), "query.sock") }
+
 func RemoteLogFile() string { return filepath.Join(RemoteDir(), "logs", "voiceos-remote.log") }
 
 func daemonFile() string { return filepath.Join(RemoteDir(), "daemon.json") }

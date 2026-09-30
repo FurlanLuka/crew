@@ -1,0 +1,4 @@
+{"at":"2026-09-30T08:00:30.000Z","text":"it misheard store front","said":"store front please","view":"grid","heardHere":[],"sessions":[],"asks":[],"spoken":[],"devOffer":null}
+garbage line
+{"at":"2026-09-30T08:01:30.000Z","text":"double speech on a plan","said":null,"view":"store-front/main","heardHere":[{"utterance":"approve","did":["answer"],"reply":"Approved.","at":"2026-09-30T08:01:20.000Z"}],"sessions":[{"ref":"store-front/main","status":"working","queued":0,"needsUser":null,"lastAsked":"ship it"}],"asks":[{"ref":"store-front/main","kind":"plan"}],"spoken":[{"source":"narrator","text":"Plan ready.","at":"2026-09-30T08:01:25.000Z"}],"devOffer":null}
+{"at":"2026-09-30T08:02:30.000Z","text":"read every option","said":"just the question","view":"grid","heardHere":[],"sessions":[],"asks":[],"spoken":[],"devOffer":null}

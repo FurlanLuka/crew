@@ -197,6 +197,17 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
   there over SSH (`ssh.ts` `updateRemoteCrew`, `versions.ts` `decideVersionFix`), once per remote
   version per run, and reconnects; the daemon switches release on that connect, at once. A newer
   remote is never downgraded, and a `dev` build on either side updates nothing.
+- Either side may run the other's crew with a `call` / `result` pair (`protocol.ts`). Calls are
+  never effects: not queued in the outbox, not replayed after a reconnect. `pending-calls.ts` keeps
+  the ids and timers on both ends, and rejects what is in flight when the link goes.
+  - Main → remote: `dev …` and `fix --print` for the dev watch (`host.ts` `isAllowedCrewCall`).
+  - Remote → main: `crew voice logs|debug-notes|notes` run on a remote asks the daemon's second
+    0600 socket, `query.sock` (`query-socket.ts`: one `{"args":[…]}` line in, one answer line out,
+    shapes in `test/fixtures/shared/query-socket.json`, shared with crew's Go client). The host
+    forwards it to the attached main, answering `no-main` at once when none is attached or the link
+    drops, `timeout` after 30 s. The main admits only those read-only commands (`link.ts`
+    `isAllowedQuery`, never `--local`), runs its own crew one query at a time with a 25 s deadline,
+    and relays `{code, stdout, stderr}` as they are; output over 2 MB comes back as an error.
 
 The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew voice machines`
 (the page and voice go through it) and watched while running (`cockpit-machines.ts`).
@@ -215,13 +226,13 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `names.json` | Session names by ref. |
 | `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
-| `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each. |
+| `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew voice notes`). |
 | `media/` | Images by content hash, swept after 30 days. |
 | `machines.json` | Other machines (crew writes it). |
-| `logs/voiceos.log` | The log (`crew voice logs`). It contains what the developer said. |
-| `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`). |
+| `logs/voiceos.log` | The log (`crew voice logs`). It contains what the developer said. Rotated at 20 MB into `voiceos.log.1` … `.5`, newest first (`log.ts`); `ts` stays the first key of each line, since crew compares it before decoding. |
+| `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`, `crew voice debug-notes`). Never rotated. |
 | `debug/` | WAVs, only with `VOICEOS_DEBUG_AUDIO=1`. |
-| `remote/` | A remote daemon's own registry, media, socket (`remote.sock`), `daemon.json` and log. |
+| `remote/` | A remote daemon's own registry, media, sockets (`remote.sock` for the link, `query.sock` for crew's queries), `daemon.json` and log (rotated the same way). |
 
 ## Develop and test
 

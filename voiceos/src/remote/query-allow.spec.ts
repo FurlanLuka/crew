@@ -1,0 +1,62 @@
+import { describe, expect, it } from 'bun:test';
+import { isAllowedQuery } from './query-allow.js';
+
+describe('isAllowedQuery', () => {
+	it.each([
+		// What crew sends: positionals first, --lines always, --json last when asked.
+		[['voice', 'logs', '--lines=80'], true],
+		[
+			[
+				'voice',
+				'logs',
+				'--since=2026-09-30T08:02:00Z',
+				'--until=2026-09-30T09:00:00.5Z',
+				'--cat=remote,main',
+				'--level=warn',
+				"--grep=it's $x; -y",
+				'--lines=1000',
+				'--machine=vm1,main',
+				'--exclude=vm2',
+				'--json',
+			],
+			true,
+		],
+		[['voice', 'debug-notes', '--since=2026-09-30T08:02:00Z', '--grep=x', '--lines=20'], true],
+		[['voice', 'debug-notes', 'show', '3', '--around=1m30s', '--json'], true],
+		[['voice', 'notes', 'store-front', '--since=2026-09-30T08:02:00Z', '--lines=20'], true],
+		[['voice', 'notes', '--all', '--lines=20'], true],
+		[['voice', 'notes', '--lines=20'], true],
+		// Bounds and shapes.
+		[['voice', 'logs', '--lines=1001'], false],
+		[['voice', 'logs', '--lines=0'], false],
+		[['voice', 'logs', '--lines=ten'], false],
+		[['voice', 'logs', '--grep='], false],
+		[['voice', 'logs', '--since', '10m'], false],
+		[['voice', 'notes', '--all=yes'], false],
+		// Never --local, --, unknown flags or extra words.
+		[['voice', 'logs', '--local', '--json'], false],
+		[['voice', 'logs', '--', '--json'], false],
+		[['voice', 'logs', '--follow'], false],
+		[['voice', 'logs', 'extra'], false],
+		[['voice', 'notes', 'store-front', 'extra'], false],
+		// A flag of another command.
+		[['voice', 'notes', '--machine=vm1'], false],
+		[['voice', 'logs', '--around=1m'], false],
+		[['voice', 'debug-notes', '--around=1m'], false],
+		[['voice', 'debug-notes', 'show', '3', '--lines=20'], false],
+		[['voice', 'notes', '--until=2026-09-30T08:02:00Z'], false],
+		// show only right after debug-notes, with one number.
+		[['voice', 'debug-notes', '--grep=x', 'show', '3'], false],
+		[['voice', 'logs', 'show', '3'], false],
+		[['voice', 'debug-notes', 'show', 'abc'], false],
+		[['voice', 'debug-notes', 'show'], false],
+		[['voice', 'debug-notes', '3'], false],
+		// Anything else.
+		[['voice', 'start'], false],
+		[['voice', 'debug-notes show'], false],
+		[['dev', 'status', '--json'], false],
+		[['voice'], false],
+	])('%p → %p', (args, isAllowed) => {
+		expect(isAllowedQuery(args as string[])).toBe(isAllowed);
+	});
+});

@@ -94,6 +94,7 @@ const startMain = ({
 		dispatch: (input) => store.dispatch(input),
 		storeMedia: () => true,
 		say: (text) => said.push(text),
+		runLocalCrew: async () => ({ code: 0, stdout: '', stderr: '' }),
 		handleLocal: () => undefined,
 		retryMs,
 	});
@@ -573,4 +574,33 @@ describe('a remote over a link', () => {
 	it('cut after any frame, the host left half open → the same main takes its link back', async () => {
 		await sweep(true);
 	}, 60_000);
+});
+
+describe('a line from the remote that does not parse', () => {
+	it('→ dropped; the link stays up and still answers', async () => {
+		const { host } = startHost({
+			runCrew: async () => ({ code: 0, stdout: 'still here', stderr: '' }),
+		});
+
+		await host.refreshWorktrees();
+
+		const network = createNetwork(host);
+		let inject = (_text: string): void => undefined;
+
+		const open: OpenTransport = (target, handlers) => {
+			inject = (text) => handlers.onData(text);
+
+			return network.open(target, handlers);
+		};
+
+		const { store, links } = startMain({ open, retryMs: 60_000 });
+
+		await until(() => isConnected(store), 'connected');
+		inject('not json at all\n{"type":"nonsense"}\n');
+
+		expect(await links.get('vm1')?.runCrew(['dev', 'status', '--json'])).toMatchObject({
+			stdout: 'still here',
+		});
+		expect(isConnected(store)).toBe(true);
+	});
 });

@@ -8,6 +8,9 @@ export const SETUP_REF = 'setup';
 // The id used in views for this Mac's own sessions: never a machine id (machineIdFor refuses it).
 export const LOCAL_MACHINE = 'local';
 
+// What `crew voice logs --machine=main` names: never a machine id either.
+export const MAIN_MACHINE = 'main';
+
 const SEPARATOR = ':';
 
 export interface RefParts {

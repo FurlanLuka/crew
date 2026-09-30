@@ -65,7 +65,12 @@ crew trash [empty]                                         <path>\t<size>\t<n> e
 crew config show                                           <key>\t<value>
 crew dev proxy [status|trust [--install]|stop]            <up|up (not listening)|down>\t<domain>\t<port>\t<status url>\thttps <up|not listening|off>\t<https port>
 crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
-crew voice [start|stop|restart|status|logs|keys [set <anthropic|soniox>]] [--no-open] [--lines=<n>]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
+crew voice [start|stop|restart|status|keys [set <anthropic|soniox>]] [--no-open]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
+crew voice logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]
+                                                         <ts>\t<machine>\t<level>\t<cat>\t<msg>\t<other fields as JSON>
+crew voice debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]   <n>\t<at>\t<view>\t<text>
+crew voice debug-notes show <n> [--around=30s] [--json]   debug note <n>\t<at>\t<view>, the note's parts, then log <from> … <to>: and the log rows
+crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]   <workspace>\t<date time>\t<text>
 crew voice remote [status|stop]                            <up|down>\t<version>\t<busy|idle>\t<socket>
 crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>   <id>\t<name>\t<host>\t<status>
 ```
@@ -402,7 +407,7 @@ voice or click. It runs in tmux session `crew-dev-os` on a remembered port and r
 proxy route `voice--os.<domain>`. Browsers only grant the microphone on localhost or HTTPS:
 the localhost link works on this Mac, and the proxy link is HTTPS whenever the proxy serves it,
 so it works on any device that trusts crew's CA (`crew dev proxy trust`). `crew voice` again
-reprints the link (sign-in is a cookie); `crew voice logs` shows its log; `crew voice stop`
+reprints the link (sign-in is a cookie); `crew voice stop`
 ends it and its sessions, which resume on the next start. `os` is a reserved workspace name.
 
 Every `crew voice` start (unless Voice OS already answers) first checks what Voice OS needs —
@@ -434,6 +439,35 @@ named aloud with the machine's name), its dev servers are its own crew's, and a 
 never stops them: the main reconnects, catches up from a snapshot and says one recap line.
 `crew voice machines` lists `<id>\t<name>\t<host>\t<status>` (status as the running Voice OS
 last saw it, `stopped` when it is not running). A machine is a main or a remote, never both.
+
+**Debugging Voice OS: logs, debug notes, notes.** Read these through crew, never by grepping
+the files (the log rotates at 20 MB into `voiceos.log.1` … `.5`, and a remote's log is on
+another machine):
+
+- `crew voice logs` — the log from every machine at once, merged by time, newest `--lines`
+  (80) printed oldest first. Filters: `--since`/`--until` (a span back `10m`/`2h`/`3d`, a clock
+  time `10:02` — one still ahead means yesterday — or an ISO time; converted to UTC where you
+  typed it), `--cat=router,kernel`, `--level=warn` (and above), `--grep` (the message and field values, any case),
+  `--machine=`/`--exclude=` (an id, a name, or `main`). On the main it asks each remote over SSH
+  in parallel (20 s each; `! asking 2 machines…` on stderr): a machine that does not answer is a
+  `! vm2 (build box) unreachable: …` line on stderr and a row in `unreachable`, the others still
+  print; `! vm1 runs an older crew; run crew update there` when its crew predates this. Exit 1
+  only when no machine answered. `--machine=main` is the fast look, no SSH. On a remote it asks
+  the main through the daemon's link and prints what the main would; with the main not connected
+  it prints its own log after `! the main is not connected; showing only this machine's logs`
+  (`! restart the remote daemon with crew voice remote` for a daemon from before this).
+  `--json`: `{"lines":[{ts,machine,level,cat,msg,fields}],"unreachable":[{machine,name,reason}]}`.
+- `crew voice debug-notes` — what the developer flagged (`n` is the note's line in
+  `debug-notes.jsonl` and survives filters); `debug-notes show <n>` prints the whole note (said,
+  the kernel's words, heard here, sessions, asks, spoken) and then the main's log within
+  `at ± --around` (30s), saying so when that stretch has rotated out. `--json`:
+  `{"notes":[{n,at,view,text}]}` / `{"note":{…},"lines":[…]}`.
+- `crew voice notes [<workspace>|--all]` — the developer's own notes (bare: the general ones; a
+  workspace any way Voice OS names it). `--json`: `{"notes":[{workspace,at,text}]}`.
+
+Notes and debug notes live on the main; on a remote they come through the link and fail with the
+reason (exit 1) when the main is not connected. Unknown flags are an error. Start from a debug
+note: `crew voice debug-notes`, then `show <n>`, then widen with `crew voice logs --since=… --until=…`.
 
 ## 8. Moving to another machine
 

@@ -1,0 +1,14 @@
+[
+	{ "name": "store-front", "key": "store-front", "file": "store-front.md" },
+	{ "name": "Store Front", "key": "store-front", "file": "store-front.md" },
+	{ "name": "  checkout api  ", "key": "checkout-api", "file": "checkout-api.md" },
+	{ "name": "signals/wrk1", "key": "signals-wrk1", "file": "signals-wrk1.md" },
+	{ "name": "admin (old)", "key": "admin--old-", "file": "admin--old-.md" },
+	{ "name": "general", "key": "general", "file": "general.md" },
+	{ "name": "(general)", "key": "(general)", "file": "_general.md" },
+	{ "name": "", "key": "(general)", "file": "_general.md" },
+	{ "name": "store\u00a0front", "key": "store-front", "file": "store-front.md" },
+	{ "name": "checkout\tapi", "key": "checkout-api", "file": "checkout-api.md" },
+	{ "name": "admin\n", "key": "admin", "file": "admin.md" },
+	{ "name": "Café Admin", "key": "caf--admin", "file": "caf--admin.md" }
+]

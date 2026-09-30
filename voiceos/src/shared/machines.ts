@@ -1,6 +1,6 @@
 // Other machines, read the same way by the server, the kernel's tools and the page.
 
-import { LOCAL_MACHINE, machineOf, readMachine, toLocalRef } from './machine-ref.js';
+import { LOCAL_MACHINE, MAIN_MACHINE, machineOf, readMachine, toLocalRef } from './machine-ref.js';
 import type { MachineConfig, State, View } from './protocol.js';
 
 // What ssh is given as its destination: a host alias or user@host, never something it would read as
@@ -23,7 +23,7 @@ export const machineIdFor = (host: string, taken: string[]): string => {
 			.replace(/[^a-z0-9-]+/g, '-')
 			.slice(0, MAX_ID_BASE)
 			.replace(/^-+|-+$/g, '') || 'remote';
-	const reserved = new Set([...taken, LOCAL_MACHINE]);
+	const reserved = new Set([...taken, LOCAL_MACHINE, MAIN_MACHINE]);
 
 	if (!reserved.has(base)) {
 		return base;

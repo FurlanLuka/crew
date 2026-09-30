@@ -77,6 +77,11 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   key in a command line, a file or your reply, and never echo one back; if the user pastes one
   to you, don't repeat it — give them the line instead. A rejected key is not saved; `crew
   voice restart` picks a new one up.
+- Voice OS misbehaving: read it through crew, not the files — `crew voice debug-notes`, then
+  `crew voice debug-notes show <n>` (the note and the log around it), then `crew voice logs
+  --since=… --until=… [--level=warn] [--cat=…] [--grep=…]` (every machine at once;
+  `--machine=main` skips SSH). The user's own notes: `crew voice notes [<workspace>|--all]`. All
+  read-only; they work on a remote too, through the main.
 - If a command fails, show the error and the fix it suggests.
 - A proxy URL that works here but not on another device → the "Proxy on other devices" flow
   in the skill; crew cannot see that device's network, the user runs the test there.

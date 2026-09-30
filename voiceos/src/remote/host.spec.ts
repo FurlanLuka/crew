@@ -205,6 +205,27 @@ describe('RemoteHost', () => {
 	});
 });
 
+describe('a line from the main that does not parse', () => {
+	it('→ dropped; the main stays attached and its next call is answered', async () => {
+		const { host } = createHost();
+		const main = connect(host);
+
+		main.say(hello());
+		main.link.receive('not json at all');
+		main.link.receive('{"type":"nonsense"}');
+		main.say({ type: 'call', id: 1, method: 'crew', args: ['dev', 'status', '--json'] });
+		await tick();
+
+		expect(main.isClosed()).toBe(false);
+		expect(main.received).toContainEqual({
+			type: 'result',
+			id: 1,
+			ok: true,
+			value: { code: 0, stdout: 'dev status --json', stderr: '' },
+		});
+	});
+});
+
 describe('isAllowedCrewCall', () => {
 	it.each([
 		[['dev', 'status', '--json'], true],

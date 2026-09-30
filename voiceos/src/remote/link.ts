@@ -1,7 +1,7 @@
 // The main's end of one machine's link: SSH to it, keep it up, and carry effects out and reports in.
 
 import { createLogger } from '../log.js';
-import type { CrewRunOptions, CrewRunResult } from '../crew/adapter.js';
+import type { CrewRunOptions, CrewRunResult, CrewRunner } from '../crew/adapter.js';
 import { describeRecap, listWaitingRefs, readSessionLabel } from '../shared/machines.js';
 import type { MachineConfig, Observation, State, WorktreeInfo } from '../shared/protocol.js';
 import type { HandsEffect } from './mapping.js';
@@ -20,9 +20,12 @@ import {
 	createLineDecoder,
 	encodeLine,
 	parseRemoteLine,
+	type CrewCall,
 	type RemoteMessage,
 	type Snapshot,
 } from './protocol.js';
+import { PendingCalls } from './pending-calls.js';
+import { isAllowedQuery } from './query-allow.js';
 import { planResync } from './resync.js';
 import type { UpdateRemote } from './ssh.js';
 import {
@@ -38,6 +41,11 @@ const ERROR_RETRY_MS = 60_000;
 const CALL_TIMEOUT_MS = 90_000;
 // A dev check may wait a minute for servers to decide; the call waits past that.
 const CALL_MARGIN_MS = 15_000;
+// A remote's query runs crew here, which may ask every machine over SSH (20 s each); the remote's
+// daemon waits 30 s for the answer.
+const QUERY_TIMEOUT_MS = 25_000;
+// Past this the answer is refused whole, never cut into JSON that does not parse.
+const MAX_QUERY_OUTPUT_BYTES = 2 * 1024 * 1024;
 
 export interface Transport {
 	write: (text: string) => void;
@@ -64,6 +72,8 @@ export interface RemoteLinkOptions {
 	say: (text: string) => void;
 	// crew update on that machine, when it runs an older release than this one.
 	updateRemote: UpdateRemote;
+	// This machine's own crew, for what a remote asks the main (crew voice logs there).
+	runLocalCrew: CrewRunner;
 	now?: () => number;
 	// Tests reconnect at once.
 	retryMs?: number;
@@ -72,12 +82,6 @@ export interface RemoteLinkOptions {
 interface VersionRefusal {
 	remote: string | null;
 	detail: string;
-}
-
-interface PendingCall {
-	resolve: (result: CrewRunResult) => void;
-	reject: (error: Error) => void;
-	timer: ReturnType<typeof setTimeout>;
 }
 
 export class RemoteLink {
@@ -95,8 +99,9 @@ export class RemoteLink {
 	private updates = new Map<string, UpdateOutcome>();
 	private retryTimer: ReturnType<typeof setTimeout> | null = null;
 	private pingTimer: ReturnType<typeof setInterval> | null = null;
-	private calls = new Map<number, PendingCall>();
-	private nextCallId = 1;
+	private calls = new PendingCalls<CrewRunResult>();
+	// A remote's queries run one at a time: each spawns crew and its SSH fan-out.
+	private queries: Promise<void> = Promise.resolve();
 
 	constructor(private options: RemoteLinkOptions) {}
 
@@ -153,24 +158,20 @@ export class RemoteLink {
 			return Promise.reject(new Error(`${this.options.machine.name} is out of reach`));
 		}
 
-		const id = this.nextCallId++;
-		const waitMs = options?.timeoutMs ? options.timeoutMs + CALL_MARGIN_MS : CALL_TIMEOUT_MS;
-
-		return new Promise((resolve, reject) => {
-			const timer = setTimeout(() => {
-				this.calls.delete(id);
-				reject(new Error('the remote did not answer'));
-			}, waitMs);
-
-			this.calls.set(id, { resolve, reject, timer });
-			this.write({
-				type: 'call',
-				id,
-				method: 'crew',
-				args,
-				...(options?.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
-			});
+		const { id, promise } = this.calls.open({
+			timeoutMs: options?.timeoutMs ? options.timeoutMs + CALL_MARGIN_MS : CALL_TIMEOUT_MS,
+			onTimeout: () => new Error('the remote did not answer'),
 		});
+
+		this.write({
+			type: 'call',
+			id,
+			method: 'crew',
+			args,
+			...(options?.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+		});
+
+		return promise;
 	};
 
 	private write(message: Parameters<typeof encodeLine>[0]): void {
@@ -294,21 +295,21 @@ export class RemoteLink {
 				}
 
 				return;
-			case 'result': {
-				const call = this.calls.get(message.id);
-
+			case 'result':
 				// A late answer to a call that already gave up is dropped.
-				if (!call) {
-					return;
-				}
+				this.calls.settle(
+					message.id,
+					message.ok
+						? { ok: true, value: message.value }
+						: { ok: false, error: new Error(message.error) },
+				);
 
-				this.calls.delete(message.id);
-				clearTimeout(call.timer);
+				return;
+			case 'call': {
+				const transport = this.transport;
 
-				if (message.ok) {
-					call.resolve(message.value);
-				} else {
-					call.reject(new Error(message.error));
+				if (transport) {
+					this.queries = this.queries.then(() => this.answerQuery(message, transport));
 				}
 
 				return;
@@ -361,12 +362,75 @@ export class RemoteLink {
 			this.pingTimer = null;
 		}
 
-		for (const call of this.calls.values()) {
-			clearTimeout(call.timer);
-			call.reject(new Error(`${this.options.machine.name} went out of reach`));
+		this.calls.rejectAll(new Error(`${this.options.machine.name} went out of reach`));
+	}
+
+	// Runs a remote's query with this machine's crew and relays its output as it is: the remote's crew
+	// prints it and exits with its code, so there it reads exactly as it would here.
+	private async answerQuery(call: CrewCall, transport: Transport): Promise<void> {
+		const reply = (message: Parameters<typeof encodeLine>[0]): void => {
+			// Only on the link that asked: after a reconnect nobody waits for it.
+			if (this.transport === transport) {
+				transport.write(encodeLine(message));
+			}
+		};
+
+		const command = call.args.slice(0, 2).join(' ');
+
+		// Queued behind another query while the link dropped: whoever asked is gone.
+		if (this.transport !== transport) {
+			return;
 		}
 
-		this.calls.clear();
+		if (!isAllowedQuery(call.args)) {
+			log.warn('query refused', { machine: this.id, command });
+			reply({ type: 'result', id: call.id, ok: false, error: 'not allowed' });
+
+			return;
+		}
+
+		const startedAt = this.now();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timedOut = new Promise<never>((_resolve, reject) => {
+			timer = setTimeout(
+				() => reject(new Error(`crew did not answer in ${QUERY_TIMEOUT_MS / 1000}s`)),
+				QUERY_TIMEOUT_MS,
+			);
+		});
+
+		try {
+			const value = await Promise.race([
+				this.options.runLocalCrew(call.args, { timeoutMs: QUERY_TIMEOUT_MS }),
+				timedOut,
+			]);
+			const bytes = Buffer.byteLength(value.stdout) + Buffer.byteLength(value.stderr);
+
+			log.info('query', {
+				machine: this.id,
+				command,
+				code: value.code,
+				bytes,
+				ms: this.now() - startedAt,
+			});
+
+			if (bytes > MAX_QUERY_OUTPUT_BYTES) {
+				reply({
+					type: 'result',
+					id: call.id,
+					ok: false,
+					error: 'output over 2 MB; narrow the filters',
+				});
+
+				return;
+			}
+
+			reply({ type: 'result', id: call.id, ok: true, value });
+		} catch (error) {
+			log.warn('query failed', { machine: this.id, command, error: String(error) });
+			reply({ type: 'result', id: call.id, ok: false, error: String(error) });
+		} finally {
+			clearTimeout(timer);
+		}
 	}
 
 	private exited(code: number | null, stderr: string): void {

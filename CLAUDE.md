@@ -254,6 +254,18 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   never an event replay; unacked effects ride in the next hello. A remote behind the main's release is
   updated by the main (`crew update` over SSH, once per version; never a downgrade). `~/.crew/voiceos/machines.json` is
   the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS.
+  **Queries** (`cmd_voice_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew voice
+  logs|debug-notes [show <n>]|notes` are read-only, `parseQueryArgs` pure (unknown flags fail,
+  times made absolute UTC where typed, `--lines` 1–1000), the path by `DecideRole` (`--local` →
+  cockpit = main → daemon = remote → machines.json = main → alone). The main reads its own
+  rotated log (`RotatedFiles`: base, `.1`…`.5`, all opened before any is read; `ts` prefix compared
+  before decoding) and asks each remote `voice logs --local --json …` over SSH in parallel
+  (`RemoteCrewCommand` quotes twice, same crew fallback as `remote/ssh.ts`; 20 s each;
+  `classifyRemote` answered / older crew / unreachable), merged by time (`GatherLogs`). A remote
+  asks the main through `~/.crew/voiceos/remote/query.sock` (`AskMain`: one line each way, 35 s),
+  relays its stdout, stderr and code verbatim; with no main, logs fall back to its own files and
+  notes fail. `main` is a reserved machine id. The notes key rule (`ToNotesKey`) and the socket
+  lines are pinned by `voiceos/test/fixtures/shared/`.
   **Conversations:** state keeps the `exchange` (the session the developer talks with; off screen,
   the subject whose follow-ups and answers are theirs), a five-view `viewHistory` for "go back", a
   `switchOffer`, a `targetAsk` ("For checkout?") and a `meanwhile` list of other sessions' updates
