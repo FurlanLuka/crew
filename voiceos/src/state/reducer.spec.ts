@@ -1832,16 +1832,33 @@ describe('questions are spoken without their options', () => {
 		expect(text).not.toContain('w25');
 	});
 
-	it('a long permission summary is cut short', () => {
-		const base = permissionAsk('a2');
+	it('a permission is said as what it does: the program, never the command and its paths', () => {
+		const command =
+			'grep -rn "unaccounted\\|vouch" packages/shared-utils/sdk-react/src apps/social/src | grep -v test';
 		const ask = {
-			...base,
-			summary: Array.from({ length: 30 }, (_, i) => `word${i}`).join(' '),
+			...permissionAsk('a2'),
+			toolName: 'Bash',
+			summary: `run ${command}`,
+			input: { command },
+		} as PendingAsk;
+		const text = (run([{ type: 'ask_opened', ask }], idleSession()).effects[0] as { text: string })
+			.text;
+		expect(text).toBe('store/main wants to run grep. Allow?');
+	});
+
+	it("a permission with Claude's own description → that, cut short", () => {
+		const ask = {
+			...permissionAsk('a2'),
+			toolName: 'Bash',
+			input: {
+				command: 'grep -rn vouch apps',
+				description: Array.from({ length: 30 }, (_, i) => `word${i}`).join(' '),
+			},
 		} as PendingAsk;
 		const text = (run([{ type: 'ask_opened', ask }], idleSession()).effects[0] as { text: string })
 			.text;
 		expect(text).toBe(
-			`store/main wants to ${Array.from({ length: 15 }, (_, i) => `word${i}`).join(' ')}… Allow?`,
+			`store/main wants to ${Array.from({ length: 12 }, (_, i) => `word${i}`).join(' ')}… Allow?`,
 		);
 	});
 });
