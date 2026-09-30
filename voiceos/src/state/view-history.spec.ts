@@ -17,7 +17,10 @@ const runAt = (steps: [number, Input][], start: State): { state: State; effects:
 		{ state: start, effects: [] as Effect[] },
 	);
 
-const show = (ref: string): Input => ({ type: 'switch_view', view: { kind: 'session', ref } });
+const show = (ref: string): Extract<Input, { type: 'switch_view' }> => ({
+	type: 'switch_view',
+	view: { kind: 'session', ref },
+});
 
 const said = (effects: Effect[]) =>
 	effects.flatMap((effect) => (effect.type === 'speak' ? [effect.text] : []));
