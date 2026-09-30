@@ -128,7 +128,7 @@ const DELIVER_PROPERTY = {
 const PART_PROPERTY = {
 	type: 'string',
 	description:
-		'Leave out: Voice OS sends everything the developer said, exactly as heard. Only when the same words also did something else (a switch, a note, words for another session): the part for this session, copied word for word from what they said — never reworded, shortened or cleaned up. To resend their earlier words ("I meant this for store front main"): those words, copied word for word.',
+		'Leave out: Voice OS sends everything the developer said, exactly as heard. Only when the same words also did something else (a switch, a note, words for another session): the part for this session, copied word for word from what they said — never reworded, shortened or cleaned up. To resend their earlier words ("I meant this for store front main", or a yes to your own "want me to ask it?"): those words, copied word for word.',
 };
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [

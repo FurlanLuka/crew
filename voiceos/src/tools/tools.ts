@@ -14,6 +14,7 @@ import {
 	chooseSentWords,
 	describeMisroutedAnswer,
 	isMisroutedToSetup,
+	isShortEnoughToAnswer,
 	isWholeSend,
 	sendText,
 	type SentWords,
@@ -132,6 +133,9 @@ export interface ToolContext {
 	utterance?: string;
 	// Oldest first: the follow-up check, and the context a newly started session is given.
 	recentUtterances?: string[];
+	// The developer's last words on this screen when Voice OS answered them only with a question of its
+	// own ("Want me to ask it?"): a plain yes now means those words, not "yes".
+	askedBack?: string;
 	// Captured at routing, so a view that changes while the model thinks cannot redirect forward.
 	forwardTo?: string | null;
 	// The session on screen when the words were said: "end this session" names it.
@@ -170,12 +174,26 @@ interface ChooseWordsForParams {
 	toolContext: ToolContext;
 }
 
-const chooseWordsFor = ({
+const chooseWordsFor = async ({
 	state,
 	input,
 	toolContext,
 }: ChooseWordsForParams): Promise<SentWords> => {
 	const utterance = toolContext.utterance;
+
+	// "Want me to ask it?" — "Yes." The model sends the yes, or its own rewording of the question (which
+	// the word-for-word rule then drops for the yes): the question as the developer said it is what
+	// they agreed to send.
+	if (
+		toolContext.askedBack &&
+		utterance &&
+		isShortEnoughToAnswer(utterance) &&
+		(await toolContext.judge({ key: 'approves', utterance })) === 'yes'
+	) {
+		log.info('yes to an offer to ask: its question sent', { chars: toolContext.askedBack.length });
+
+		return { text: toolContext.askedBack, source: 'earlier' };
+	}
 
 	return chooseSentWords({
 		judge: toolContext.judge,

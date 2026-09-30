@@ -5204,6 +5204,59 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "yes-to-ask-it-offer",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Check the logs for regressions from the last two releases.",
+						"minutesAgo": 9
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Okay. How long do you think checkout is going to take?",
+						"reply": "I don't know — checkout hasn't said how long the regression check will take. Want me to ask it?",
+						"did": []
+					}
+				],
+				"alert": {
+					"text": "I don't know — checkout hasn't said how long the regression check will take. Want me to ask it?",
+					"secondsAgo": 6
+				}
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["how long"]
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "find-doc-is-session-work",
+			"utterance": "Could you find that Notion document, um, around \"Apply Lesson\" work in progress for phone. Speak?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Write up the agent architecture.",
+						"minutesAgo": 12
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
 		}
 	]
 }

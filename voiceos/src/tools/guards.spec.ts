@@ -534,3 +534,37 @@ describe('which session the words name', () => {
 		expect(result).toMatchObject({ ok: true, content: 'starting checkout-api/main' });
 	});
 });
+
+describe('a yes to Voice OS\'s own "Want me to ask it?"', () => {
+	const ASKED = 'Okay. How long do you think checkout is going to take?';
+
+	const sendYes = async (judge: Judge, utterance = 'Yes.') => {
+		const { tools, actions } = toolsFor({ judge, utterance });
+
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', kind: 'question', text: 'How long will it take?' },
+			{ ...tools, askedBack: ASKED },
+		);
+
+		return actions.find((action) => action.type === 'send');
+	};
+
+	it('a plain yes (judge approves) → the question it offered to ask goes, as the developer said it', async () => {
+		expect(await sendYes(judgeWith({ approves: 'yes', take_back_before: 'no' }))).toMatchObject({
+			ref: 'checkout-api/main',
+			text: ASKED,
+		});
+	});
+
+	it('not a clear yes, or more than a few words → the words as said, never the old question', async () => {
+		const unclear = await sendYes(judgeWith({ approves: 'unclear', take_back_before: 'no' }));
+		const long = await sendYes(
+			judgeWith({ take_back_before: 'no' }),
+			'Yes, and also ask it why the build is red.',
+		);
+
+		expect(unclear?.text).not.toBe(ASKED);
+		expect(long?.text).not.toBe(ASKED);
+	});
+});
