@@ -638,6 +638,18 @@ describe('a yes to Voice OS\'s "Switch to …?"', () => {
 		expect(unheard.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
 	});
 
+	it('a yes said before the offer was made → words for the session, sent', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ take_back_before: 'no' }),
+			utterance: 'Ja.',
+			patch: { switchOffer: { ref: 'checkout-api/main', at: 5_000, heardAt: 6_000 } },
+		});
+
+		await executeTool('forward', { kind: 'instruction' }, { ...tools, heardFrom: 4_000 });
+
+		expect(actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+	});
+
 	it('judged at the moment it was said: a kernel turn that ends past the window still counts', async () => {
 		const { tools, actions } = toolsFor({
 			judge: judgeWith({ refuses: 'no', bare_answer: 'yes', approves: 'yes' }),
@@ -652,5 +664,59 @@ describe('a yes to Voice OS\'s "Switch to …?"', () => {
 		);
 
 		expect(actions).toEqual([]);
+	});
+});
+
+describe('a question only announced, while Voice OS offers the switch to it', () => {
+	const held = (): Partial<State> => {
+		const { tools } = createToolContext();
+		const sessions = tools.getState().sessions;
+
+		return {
+			switchOffer: { ref: 'checkout-api/main', at: 0, heardAt: 1_000 },
+			sessions: {
+				...sessions,
+				'checkout-api/main': {
+					...sessions['checkout-api/main']!,
+					status: 'blocked',
+					heldLine: { id: 'h1', at: 0, missed: 0, isAnnounced: true, kind: 'ask', askId: 'q9' },
+				},
+			},
+		};
+	};
+
+	it('a bare yes the kernel took as its answer → switched there instead, its question plays', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ bare_answer: 'yes', approves: 'yes', refuses: 'no' }),
+			utterance: 'Ja.',
+			patch: held(),
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+			{ ...tools, heardFrom: 2_000 },
+		);
+
+		expect(actions).toEqual([
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' }, announce: true },
+		]);
+		expect(result.ok).toBe(true);
+	});
+
+	it('an instruction for it → not dropped in silence: the kernel is told to say its question comes first', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ bare_answer: 'no', refuses: 'no', take_back_before: 'no' }),
+			utterance: 'Tell it to use staging.',
+			patch: held(),
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+			{ ...tools, heardFrom: 2_000 },
+		);
+
+		expect(actions).toEqual([]);
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('its question comes first');
 	});
 });

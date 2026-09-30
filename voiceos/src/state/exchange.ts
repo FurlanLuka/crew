@@ -2,6 +2,7 @@
 // goes to, whose answer plays first, and whether they are mid-conversation with the screen.
 import {
 	EXCHANGE_IDLE_MS,
+	EXCHANGE_WORK_MS,
 	isSwitchOfferFresh,
 	type Exchange,
 	type ExchangeReason,
@@ -12,6 +13,7 @@ import {
 import type { Effect, ReducerResult } from './reducer.js';
 import { sayAck, sayRef } from './helpers.js';
 import { forgetHeardUpdate } from './held-lines.js';
+import { isReachable } from '../shared/machines.js';
 
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
@@ -218,7 +220,13 @@ export const followExchange = (
 				moved.state.exchange?.startedAt === stamped.at;
 			const replied = forgetHeardUpdate(moved.state, input.ref);
 
-			if (isReplyToHeard && replied.asks.length === 0 && !replied.switchOffer) {
+			// Not to a machine out of reach (the words wait for it), and not over a question still open.
+			if (
+				isReplyToHeard &&
+				isReachable(state, input.ref) &&
+				replied.asks.length === 0 &&
+				!isSwitchOfferFresh(replied.switchOffer, stamped.at)
+			) {
 				const offered = offerSwitch(replied, input.ref, stamped.at);
 
 				return {
@@ -281,11 +289,18 @@ export const followExchange = (
 				return result;
 			}
 
-			// Still working on what they asked: the conversation waits for its answer, and the minute
-			// starts again from there. A slow answer is still the reply they are waiting for.
-			const status = state.sessions[input.ref]?.status;
+			// Still working on what they asked in this conversation: it waits for the answer, the minute
+			// counted again, but never past ten minutes since they last spoke to it. Waiting on the
+			// developer (blocked) is not working on their question: it lapses as usual.
+			const session = state.sessions[input.ref];
+			const askedAt = session?.requests.at(-1)?.at ?? null;
+			const isWorkingOnIt =
+				session?.status === 'running' &&
+				askedAt !== null &&
+				askedAt >= state.exchange.startedAt &&
+				stamped.at - askedAt < EXCHANGE_WORK_MS;
 
-			return status === 'running' || status === 'blocked'
+			return isWorkingOnIt
 				? { ...result, state: { ...state, exchange: { ...state.exchange, lastAt: stamped.at } } }
 				: { ...result, state: end(state) };
 		}

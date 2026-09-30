@@ -43,10 +43,9 @@ interface ListHeardBeforeParams {
 	heardFrom: number;
 }
 
-// The meanwhile line names several sessions: a reply to it may be for any of them, so each counts
-// as heard, with the line's words.
-const bySession = (line: SpokenLine): SpokenLine[] =>
-	line.ref === undefined && line.refs ? line.refs.map((ref) => ({ ...line, ref })) : [line];
+// The sessions a heard line was about: its own, or every one the meanwhile line named.
+export const readLineRefs = (line: SpokenLine): string[] =>
+	line.ref !== undefined ? [line.ref] : (line.refs ?? []);
 
 export const listHeardBefore = ({ spoken, heardFrom }: ListHeardBeforeParams): SpokenLine[] =>
 	// Session lines that started playing before the developer spoke, newest few, oldest first. Voice
@@ -59,7 +58,6 @@ export const listHeardBefore = ({ spoken, heardFrom }: ListHeardBeforeParams): S
 				line.at < heardFrom &&
 				heardFrom - line.at <= HEARD_BEFORE_MS,
 		)
-		.flatMap(bySession)
 		.slice(-HEARD_BEFORE_KEPT);
 
 const describeEnding = (line: SpokenLine, heardFrom: number): string => {
@@ -84,6 +82,6 @@ export const formatHeardBefore = (lines: SpokenLine[], heardFrom: number): strin
 							? `${line.text.slice(0, HEARD_PREVIEW_CHARS)}…`
 							: line.text;
 
-					return `${line.ref}: "${text}" (${describeEnding(line, heardFrom)})`;
+					return `${readLineRefs(line).join(' and ')}: "${text}" (${describeEnding(line, heardFrom)})`;
 				})
 				.join('; ');

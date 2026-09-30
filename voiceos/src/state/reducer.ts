@@ -873,7 +873,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			};
 			const line = state.spoken.find((spoken) => spoken.id === input.lineId);
 
-			return withoutEffects(line && !input.isUnplayed ? markHeard(ended, line, stamped.at) : ended);
+			return withoutEffects(
+				line && !input.isUnplayed ? markHeard(ended, line, stamped.at, input.isCut) : ended,
+			);
 		}
 
 		case 'topic_written':

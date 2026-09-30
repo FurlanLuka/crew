@@ -87,6 +87,39 @@ export const connectSpeech = ({
 
 	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
 	// and a stale timer finds a newer lastAt and changes nothing.
+	// A question that played in no tab was never asked: it lets go at once rather than holding the
+	// developer's next yes or no, or their held words, for half a minute.
+	store.subscribe((stamped, state) => {
+		if (stamped.input.type !== 'spoken_ended' || !stamped.input.isUnplayed) {
+			return;
+		}
+
+		const lineId = stamped.input.lineId;
+		const line = state.spoken.find((spoken) => spoken.id === lineId);
+
+		if (!line?.isAsking || !line.ref) {
+			return;
+		}
+
+		const { switchOffer, targetAsk } = state;
+		const ref = line.ref;
+
+		queueMicrotask(() => {
+			if (switchOffer && switchOffer.ref === ref && switchOffer.heardAt === undefined) {
+				store.dispatch({ type: 'switch_offer_closed', at: switchOffer.at });
+			}
+
+			if (
+				targetAsk &&
+				targetAsk.ref === ref &&
+				targetAsk.heardAt === undefined &&
+				store.state.targetAsk === targetAsk
+			) {
+				settleTarget(store, false);
+			}
+		});
+	});
+
 	let armedAt: number | null = null;
 	let offeredAt: string | null = null;
 	let targetAskedAt: string | null = null;

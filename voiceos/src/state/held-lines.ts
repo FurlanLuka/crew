@@ -280,8 +280,9 @@ export const forgetHeardUpdate = (state: State, ref: string): State =>
 
 // What finishing a line means beyond itself: an update heard, or a question heard (its window
 // for a yes starts now, not when it was queued).
-export const markHeard = (state: State, line: SpokenLine, at: number): State => {
-	const refs = line.isUpdate ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
+export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
+	// An update talked over was not heard to its end; a question talked over is being answered.
+	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
 	const updated = refs.reduce((next, ref) => markUpdateHeard(next, ref, at), state);
 	const offer = updated.switchOffer;
 	const target = updated.targetAsk;

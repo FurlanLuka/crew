@@ -384,7 +384,7 @@ export const sendText = async ({
 	// A bare yes or no for a question only announced there answers nothing the developer heard.
 	const refused =
 		isHeldQuestion(session) && (await isBareAnswer(judge, said))
-			? refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
+			? await refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
 			: null;
 
 	if (refused) {

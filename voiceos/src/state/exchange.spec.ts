@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { EXCHANGE_IDLE_MS, SWITCH_OFFER_MS, type Input, type State } from '../shared/protocol.js';
+import {
+	EXCHANGE_IDLE_MS,
+	EXCHANGE_WORK_MS,
+	SWITCH_OFFER_MS,
+	type Input,
+	type State,
+} from '../shared/protocol.js';
 import { createInitialState, reduce } from './reducer.js';
 import { isMidExchangeWithScreen, pruneExchange, readSubject } from './exchange.js';
 import { worktree } from '../../test/support/reduce.js';
@@ -338,9 +344,9 @@ describe('updates heard, and the meanwhile line', () => {
 		expect(played.state.meanwhile).toEqual([]);
 	});
 
-	it('a subject waiting on the developer (blocked) keeps the conversation past the minute', () => {
+	it('waiting on the developer (blocked) is not working on their question → lapses at the minute', () => {
 		const talking = runAt([[10, said(OTHER)]], onScreen());
-		const kept = runAt(
+		const lapsed = runAt(
 			[
 				[11, { type: 'turn_started', ref: OTHER }],
 				[
@@ -355,8 +361,29 @@ describe('updates heard, and the meanwhile line', () => {
 			talking,
 		);
 
-		expect(kept.sessions[OTHER]?.status).toBe('blocked');
-		expect(kept.exchange?.ref).toBe(OTHER);
+		expect(lapsed.sessions[OTHER]?.status).toBe('blocked');
+		expect(lapsed.exchange).toBeNull();
+	});
+
+	it('still at work on it → kept, but never past ten minutes since the developer spoke to it', () => {
+		const talking = runAt(
+			[
+				[10, said(OTHER)],
+				[11, { type: 'turn_started', ref: OTHER }],
+			],
+			onScreen(),
+		);
+		const early = runAt(
+			[[EXCHANGE_IDLE_MS + 10, { type: 'exchange_expired', ref: OTHER, lastAt: 10 }]],
+			talking,
+		);
+		const late = runAt(
+			[[EXCHANGE_WORK_MS + 10, { type: 'exchange_expired', ref: OTHER, lastAt: 10 }]],
+			talking,
+		);
+
+		expect(early.exchange?.ref).toBe(OTHER);
+		expect(late.exchange).toBeNull();
 	});
 });
 

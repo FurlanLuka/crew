@@ -267,6 +267,8 @@ export interface Exchange {
 }
 
 export const EXCHANGE_IDLE_MS = 60_000;
+// The longest a conversation waits on its session's work before it lapses anyway.
+export const EXCHANGE_WORK_MS = 10 * 60_000;
 
 export interface ViewHistoryEntry {
 	view: View;
@@ -318,9 +320,11 @@ export const MAX_TEXT_CHARS = 20_000;
 
 export const SWITCH_OFFER_MS = 8_000;
 
-// Counted from when it was heard: a question still queued behind a long answer has not been asked.
+// Counted from when it was heard: a question still queued behind a long answer has not been asked,
+// and words said before it was asked at all are never its answer.
 export const isSwitchOfferFresh = (offer: SwitchOffer | null, now: number): offer is SwitchOffer =>
 	offer !== null &&
+	now >= offer.at &&
 	(offer.heardAt === undefined
 		? now - offer.at < QUESTION_UNHEARD_MS
 		: now - offer.heardAt < SWITCH_OFFER_MS);

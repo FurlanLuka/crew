@@ -365,7 +365,7 @@ describe('conversations', () => {
 		expect(said[0]).not.toStartWith('Sent to');
 	});
 
-	it('a meanwhile line naming two sessions → a reply to either is a reply to a heard update', async () => {
+	it('a meanwhile line naming two sessions → the kernel asks which unless one is named; a reply to either offers the switch', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main', 'signals/main');
 		await convo.answer('checkout-api/main', UPDATE);
@@ -379,8 +379,9 @@ describe('conversations', () => {
 		convo.script([toolUse('t1', 'send_to', { ref: 'signals/main', kind: 'instruction' })]);
 		await convo.say('Nice, ship it.');
 
-		expect(convo.kernelSaw()).toMatch(/checkout-api\/main: "Meanwhile/);
-		expect(convo.kernelSaw()).toMatch(/signals\/main: "Meanwhile/);
+		// One line about both: the kernel is told to ask which, never to pick the newest.
+		expect(convo.kernelSaw()).toContain('checkout-api/main and signals/main: "Meanwhile');
+		expect(convo.kernelSaw()).toContain('never pick one yourself');
 		expect(convo.heard.at(-1)).toBe('Sent to signals, main. Switch there?');
 	});
 

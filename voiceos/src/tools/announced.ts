@@ -3,6 +3,7 @@ import { isHeldQuestion } from '../state/held-lines.js';
 import { readLabel } from '../state/helpers.js';
 import { type ToolResult, fail } from './results.js';
 import { findSessionsNamedIn } from './session-naming.js';
+import { isBareAnswer } from './send.js';
 import type { ToolContext } from './tools.js';
 
 export const SWITCH_OFFERED_NOTE = 'switch offered';
@@ -30,12 +31,12 @@ interface RefuseAnnouncedOnlyParams {
 	what: 'answered' | 'sent' | 'switched';
 }
 
-export const refuseAnnouncedOnly = ({
+export const refuseAnnouncedOnly = async ({
 	state,
 	ref,
 	toolContext,
 	what,
-}: RefuseAnnouncedOnlyParams): ToolResult | null => {
+}: RefuseAnnouncedOnlyParams): Promise<ToolResult | null> => {
 	if (
 		!isHeldQuestion(state.sessions[ref]) ||
 		toolContext.screen === ref ||
@@ -47,15 +48,27 @@ export const refuseAnnouncedOnly = ({
 	// When the words were said, not now: the kernel's own turn must not use up the developer's window.
 	const saidAt = toolContext.heardFrom ?? toolContext.now();
 
-	// Their yes answered Voice OS's "Switch to X?": they go there and hear the question, then answer it.
 	if (isSwitchOfferedFor(state, ref, saidAt)) {
-		toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref }, announce: true });
+		const said = toolContext.utterance ?? '';
+		const isYes =
+			(await isBareAnswer(toolContext.judge, said)) &&
+			(await toolContext.judge({ key: 'approves', utterance: said })) === 'yes';
 
-		return {
-			ok: true,
-			content: `Switched to ${ref}: its question plays there now, and nothing was ${what}. Say nothing.`,
-			note: SWITCH_OFFERED_NOTE,
-		};
+		// Their yes answered Voice OS's "Switch to X?": they go there and hear the question, then answer it.
+		if (isYes) {
+			toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref }, announce: true });
+
+			return {
+				ok: true,
+				content: `Switched to ${ref}: its question plays there now, and nothing was ${what}. Say nothing.`,
+				note: SWITCH_OFFERED_NOTE,
+			};
+		}
+
+		// Other words while that offer is open are not dropped in silence: they are told why.
+		return fail(
+			`Nothing was ${what}: ${ref}'s question was only announced, and Voice OS has just asked "Switch to ${readLabel(state, ref)}?". Tell them in a few words that its question comes first: a yes plays it.`,
+		);
 	}
 
 	// Another switch is already offered: a second question would drop one of them unheard.

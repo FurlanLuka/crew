@@ -3,6 +3,7 @@
 import type { SpokenLine, State } from '../shared/protocol.js';
 import { readSubject } from '../state/exchange.js';
 import { formatAge } from '../state/working.js';
+import { readLineRefs } from '../tools/asked-aloud.js';
 
 const QUOTE_CHARS = 160;
 
@@ -52,18 +53,28 @@ export const describeNotificationLines = ({
 	heardBefore,
 	nameRef,
 }: DescribeNotificationLinesParams): string[] => {
-	const notifications = heardBefore.filter(
-		// "checkout needs you: …", the meanwhile line: Voice OS's notifications, not a session's own line.
-		(line) => line.ref !== undefined && line.isUpdate === true,
-	);
+	// "checkout needs you: …", the meanwhile line: Voice OS's notifications, not a session's own line.
+	const notifications = heardBefore.filter((line) => line.isUpdate === true);
 	const newest = notifications.at(-1);
+	const refs = newest ? readLineRefs(newest) : [];
 
-	if (!newest?.ref) {
+	// The meanwhile line named several: a reply names one of them, or is asked about, never guessed.
+	if (refs.length > 1) {
+		return [
+			`Replying to the meanwhile line, which named ${refs.map(nameRef).join(' and ')}: words that name one of them are for it (send_to, or switch_view to hear it). "Okay", "thanks" → ignore_words. Anything else that could be for either → ask in a few words which one ("For ${nameRef(refs[0]!)} or ${nameRef(refs[1]!)}?"); never pick one yourself.`,
+		];
+	}
+
+	const ref = refs[0];
+
+	if (!ref) {
 		return [];
 	}
 
-	const ref = newest.ref;
-	const older = notifications.slice(0, -1).findLast((line) => line.ref !== ref)?.ref;
+	const older = notifications
+		.slice(0, -1)
+		.flatMap(readLineRefs)
+		.findLast((other) => other !== ref);
 
 	return [
 		`Replying to ${nameRef(ref)}'s notification (the newest one heard): "okay", "got it", "thanks" → ignore_words. "Switch to it" → switch_view ${ref}. A general question about it ("tell me about that", "what happened?") → switch_view ${ref} alone: its update plays there, nothing is sent. A specific question ("what did it change in the redirect?") → switch_view ${ref} with skip_held true and send_to ${ref} with the words. An instruction that follows from its update ("great, push it", "then open a PR") → send_to ${ref} with the words. Words that could be that reply or for the work on screen ("review all of this") → ask_target ${ref}, and nothing else. Words clearly about the work on screen stay there.${older ? ` "No, the other one" → the same for ${older}.` : ''}`,

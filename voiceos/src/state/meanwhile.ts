@@ -1,6 +1,6 @@
 // The waiting updates in state: the page counts them, "what did I miss?" and the quiet play them.
 import type { Input, MeanwhileItem, State } from '../shared/protocol.js';
-import { describeMeanwhile } from '../speech/meanwhile.js';
+import { describeMeanwhile, listNamedRefs } from '../speech/meanwhile.js';
 import { readAnnouncedLabel } from './held-lines.js';
 import { sayRef, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
@@ -83,7 +83,7 @@ export const playMeanwhile = (state: State): ReducerResult => {
 				priority: 'normal',
 				isOwed: true,
 				isUpdate: true,
-				refs: items.map((item) => item.ref),
+				refs: listNamedRefs(items),
 			},
 		],
 	};

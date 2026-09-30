@@ -1,6 +1,12 @@
 import type { Store } from '../state/store.js';
 import type { ToolCall } from '../tools/definitions.js';
-import { GRID, type ListenMode, type State, type VoiceEntry } from '../shared/protocol.js';
+import {
+	GRID,
+	isSwitchOfferFresh,
+	type ListenMode,
+	type State,
+	type VoiceEntry,
+} from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
@@ -103,11 +109,12 @@ export class UtteranceRouter {
 		}
 
 		// "For checkout?" waits on these words: a yes or no settles it, anything else keeps the held
-		// words on the screen and is routed as usual. Only spoken words answer a spoken question: text
-		// typed into a session's box is for that session.
+		// words on the screen and is routed as usual. Only spoken words answer a spoken question (text
+		// typed into a session's box is for that session), and only words said after it was asked.
 		const { targetAsk } = store.state;
+		const heardFrom = origin.heardFrom ?? this.now();
 
-		if (targetAsk && source === 'voice') {
+		if (targetAsk && source === 'voice' && heardFrom >= targetAsk.at) {
 			const answer = await readTargetAnswer(
 				this.options.judge,
 				trimmedText,
@@ -155,8 +162,11 @@ export class UtteranceRouter {
 		}
 
 		log.info('route', { source, to: 'kernel', screen, text: trimmedText });
-		// "Switch to checkout?" is answered by these words or let go: a yes switches in this turn.
-		const offerAt = store.state.switchOffer?.at ?? null;
+		// "Switch to checkout?" is answered by these words or let go: a yes switches in this turn. Words
+		// said before it was asked leave it to its own lapse.
+		const offerAt = isSwitchOfferFresh(store.state.switchOffer, origin.heardFrom ?? this.now())
+			? store.state.switchOffer.at
+			: null;
 
 		const entry = await this.askKernel({
 			kernel,
