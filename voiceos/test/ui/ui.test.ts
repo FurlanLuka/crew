@@ -792,6 +792,65 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('long streams → each session opens at its end, stays there as lines arrive, and not once scrolled up', async () => {
+		const { context, page } = await signIn();
+
+		const fill = (ref: string, count: number) => {
+			for (let index = 0; index < count; index++) {
+				store.dispatch({ type: 'assistant_text', ref, text: `${ref} line ${index}` });
+			}
+		};
+
+		// Past what a session keeps, so both lengths stop at the same cap.
+		fill('store-front/main', 450);
+		fill('checkout-api/main', 450);
+
+		const stream = page.locator('.stream');
+		const distanceFromEnd = () =>
+			stream.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight);
+
+		const openAtEnd = async (ref: string) => {
+			store.dispatch({ type: 'switch_view', view: { kind: 'session', ref } });
+			await stream.getByText(`${ref} line 449`).waitFor({ timeout: 5000 });
+			await page.waitForFunction(() => {
+				const element = document.querySelector('.stream');
+
+				return (
+					element !== null && element.scrollHeight - element.scrollTop - element.clientHeight < 2
+				);
+			});
+		};
+
+		await openAtEnd('store-front/main');
+		await openAtEnd('checkout-api/main');
+		await openAtEnd('store-front/main');
+
+		// At the cap the length no longer changes: the new line still comes into view.
+		store.dispatch({ type: 'assistant_text', ref: 'store-front/main', text: 'the newest line' });
+		await stream.getByText('the newest line').waitFor({ timeout: 5000 });
+		await page.waitForFunction(() => {
+			const element = document.querySelector('.stream');
+
+			return (
+				element !== null && element.scrollHeight - element.scrollTop - element.clientHeight < 2
+			);
+		});
+
+		// Scrolled up to read: a new line does not pull them back down.
+		await stream.evaluate((element) => {
+			element.scrollTop = 0;
+		});
+		// The scroll event lands a frame later, as it does for a hand on the wheel.
+		await Bun.sleep(100);
+		store.dispatch({ type: 'assistant_text', ref: 'store-front/main', text: 'while reading' });
+		await stream.getByText('while reading').waitFor({ timeout: 5000 });
+		await Bun.sleep(100);
+
+		expect(await stream.evaluate((element) => element.scrollTop)).toBe(0);
+		expect(await distanceFromEnd()).toBeGreaterThan(100);
+		await context.close();
+	}, 30_000);
+
 	it("Claude's Markdown renders; the developer's own words stay literal; an aside shows its answer", async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });
