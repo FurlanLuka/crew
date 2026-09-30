@@ -10,13 +10,13 @@ import type { Store } from '../state/store.js';
 import type { KernelHandler, KernelTurn } from '../router/router.js';
 import type { VoiceOut } from './voice-out.js';
 import { createLogger } from '../log.js';
-import type { State } from '../shared/protocol.js';
+import type { Input, State } from '../shared/protocol.js';
 
 const log = createLogger('exchange');
 
 // Each change to who the developer talks with, with the input that made it: how often a guess was
 // wrong is read from these and the debug notes.
-const logConversation = (before: State, after: State, input: string): void => {
+const logConversation = (before: State, after: State, input: Input): void => {
 	if (
 		before.exchange?.ref !== after.exchange?.ref ||
 		before.exchange?.reason !== after.exchange?.reason
@@ -25,7 +25,7 @@ const logConversation = (before: State, after: State, input: string): void => {
 			from: before.exchange?.ref ?? null,
 			to: after.exchange?.ref ?? null,
 			reason: after.exchange?.reason ?? null,
-			input,
+			input: input.type,
 		});
 	}
 
@@ -39,14 +39,20 @@ const logConversation = (before: State, after: State, input: string): void => {
 		});
 	}
 
-	if (before.meanwhile.length !== after.meanwhile.length) {
-		log.info(after.meanwhile.length > before.meanwhile.length ? 'update waits' : 'meanwhile said', {
-			waiting: after.meanwhile.length,
-		});
+	if (input.type === 'meanwhile_added') {
+		log.info('update waits', { ref: input.ref, kind: input.kind, waiting: after.meanwhile.length });
 	}
 
-	if (input === 'go_back') {
-		log.info('go back', { to: after.view, history: after.viewHistory.length });
+	if (input.type === 'play_meanwhile' && before.meanwhile.length > 0) {
+		log.info('meanwhile said', { count: before.meanwhile.length });
+	}
+
+	if (input.type === 'go_back') {
+		log.info('go back', {
+			to: after.view,
+			// Entries passed over (stopped since, or gone) beside the one returned to.
+			skipped: Math.max(0, before.viewHistory.length - after.viewHistory.length - 1),
+		});
 	}
 };
 
@@ -71,15 +77,15 @@ export const connectSpeech = ({
 	narrateAside,
 	setTimer = setTimeout,
 }: ConnectSpeechParams): void => {
-	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
-	// and a stale timer finds a newer lastAt and changes nothing.
 	// The reducer runs in the page too, so it cannot log: what the conversation did is logged here.
 	let previous = store.state;
 	store.subscribe((stamped, state) => {
-		logConversation(previous, state, stamped.input.type);
+		logConversation(previous, state, stamped.input);
 		previous = state;
 	});
 
+	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
+	// and a stale timer finds a newer lastAt and changes nothing.
 	let armedAt: number | null = null;
 	let offeredAt: number | null = null;
 	let targetAskedAt: number | null = null;
