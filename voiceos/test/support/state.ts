@@ -33,6 +33,8 @@ export interface FixtureContext {
 	// Whose it is by default: permission on wrk1, the others on store-front/main.
 	// command: a /clear Voice OS holds until the developer says yes.
 	ask?: 'permission' | 'question' | 'plan' | 'command' | 'redirect';
+	// The open question's option labels, when a case depends on them.
+	options?: string[];
 	askOn?: string;
 	// A second permission, on that ref.
 	alsoAsk?: string;
@@ -68,6 +70,8 @@ export interface FixtureContext {
 		secondsAgo: number;
 		endedSecondsAgo?: number;
 		cut?: boolean;
+		// Voice OS's report of that session's update (the meanwhile line), not the session's own words.
+		update?: boolean;
 	}[];
 	// Sessions the developer pinned, in pin order.
 	pinned?: string[];
@@ -79,16 +83,19 @@ export interface FixtureContext {
 	// request), and what it answered, heard that many seconds ago.
 	talkingWith?: { ref: string; asked: string; answered: string; secondsAgo: number };
 	// Voice OS asked "Switch to <ref>?" that many seconds ago.
-	switchOffer?: { ref: string; secondsAgo: number };
+	// text: what Voice OS said to offer it ("Sent to checkout. Switch there?"), else "Switch to X?".
+	switchOffer?: { ref: string; secondsAgo: number; text?: string };
 	// Other sessions' updates waiting for the meanwhile line.
 	meanwhile?: { ref: string; kind: 'done' | 'needs'; about: string }[];
 }
 
-export const FIXTURE_TOPICS: Record<string, string> = {
-	setup: 'crew setup and housekeeping',
-	'store-front/main': 'Locale placeholder cleanup',
-	'store-front/wrk1': 'Search ranking measurement',
-	'checkout-api/main': 'Checkout retry backoff',
+// What each idle fixture session was last asked: the work the developer names it by ("the ranking
+// work") when the context gives it none of its own.
+export const FIXTURE_REQUESTS: Record<string, string> = {
+	setup: 'Check the crew setup and clean up housekeeping.',
+	'store-front/main': 'Clean up the locale placeholders.',
+	'store-front/wrk1': 'Measure the new search ranking.',
+	'checkout-api/main': 'Add retry backoff to checkout.',
 };
 
 export const FIXTURE_REFS = ['setup', 'store-front/main', 'store-front/wrk1', 'checkout-api/main'];
@@ -122,7 +129,9 @@ const listPendingAsks = (context: FixtureContext, at: number): PendingAsk[] => {
 				{
 					question: 'Where should events go?',
 					multiSelect: false,
-					options: [{ label: 'New table' }, { label: 'Reuse orders' }, { label: 'Defer' }],
+					options: (context.options ?? ['New table', 'Reuse orders', 'Defer']).map((label) => ({
+						label,
+					})),
 				},
 			],
 		});
@@ -221,7 +230,6 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 			isPinned: ref === 'setup',
 		}),
 		status,
-		topic: FIXTURE_TOPICS[ref] ?? null,
 		heldLine:
 			context.update?.ref === ref
 				? {
@@ -265,7 +273,9 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 							at: now - (context.talkingWith.secondsAgo + 20) * 1000,
 						},
 					]
-				: [],
+				: FIXTURE_REQUESTS[ref]
+					? [{ text: FIXTURE_REQUESTS[ref], at: now - 30 * 60_000 }]
+					: [],
 		stream: [
 			...(said ? [{ id: 'said', at: now - 1000, kind: 'text' as const, text: said }] : []),
 			// Docs this session made, oldest first (the newest is what "open the doc" opens).
@@ -350,6 +360,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 					? {}
 					: { endedAt: now - heard.endedSecondsAgo * 1000 }),
 				...(heard.cut ? { isCut: true as const } : {}),
+				...(heard.update ? { isUpdate: true as const, refs: [heard.ref] } : {}),
 			})),
 			...(context.announced
 				? [
@@ -359,6 +370,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 							source: 'narrator' as const,
 							at: now - context.announced.secondsAgo * 1000,
 							ref: context.announced.ref,
+							isUpdate: true as const,
 						},
 					]
 				: []),
@@ -366,7 +378,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 				? [
 						{
 							id: 'offer',
-							text: `Switch to ${context.switchOffer.ref}?`,
+							text: context.switchOffer.text ?? `Switch to ${context.switchOffer.ref}?`,
 							source: 'kernel' as const,
 							at: now - context.switchOffer.secondsAgo * 1000,
 							endedAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
@@ -413,6 +425,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 					switchOffer: {
 						ref: context.switchOffer.ref,
 						at: now - context.switchOffer.secondsAgo * 1000,
+						heardAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
 					},
 				}
 			: {}),

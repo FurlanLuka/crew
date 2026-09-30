@@ -56,30 +56,38 @@
 			"utterance": "Mute that and tell it to run the linter.",
 			"expect": "no"
 		},
+		{
+			"key": "about_listening",
+			"utterance": "Okay. Can you stop?",
+			"context": "A coding session is at work right now.",
+			"expect": "no"
+		},
+		{
+			"key": "says_instead",
+			"utterance": "Okay. Can you stop?",
+			"context": "A coding session is at work right now.",
+			"expect": "no"
+		},
 		{ "key": "about_listening", "utterance": "Hör auf zuzuhören.", "expect": "yes" },
 		{ "key": "about_listening", "utterance": "The server is listening on 3000.", "expect": "no" },
 		{ "key": "listen_mode", "utterance": "Stop listening.", "expect": "off" },
 		{ "key": "listen_mode", "utterance": "Schalte Freisprechen ein.", "expect": "hands-free" },
 		{ "key": "listen_mode", "utterance": "Preklopi na push to talk.", "expect": "push" },
 		{
-			"key": "asks_about_options",
+			"key": "option_reply",
 			"utterance": "¿Qué hace la opción dos?",
 			"context": "The options: \"postgres\", \"sqlite\"",
-			"expect": "yes"
+			"expect": "question"
 		},
 		{
-			"key": "asks_about_options",
+			"key": "option_reply",
 			"utterance": "Die zweite?",
 			"context": "The options: \"postgres\", \"sqlite\"",
-			"expect": "no"
+			"expect": "pick"
 		},
 		{ "key": "target_answer", "utterance": "Ja.", "expect": "yes" },
 		{ "key": "target_answer", "utterance": "Ne, tukaj.", "expect": "no" },
-		{
-			"key": "target_answer",
-			"utterance": "Run the linter first.",
-			"expect": "other"
-		},
+		{ "key": "target_answer", "utterance": "Run the linter first.", "expect": "other" },
 		{
 			"key": "take_back_before",
 			"utterance": "Rename the file to utils, scratch that, run the linter instead.",
@@ -129,6 +137,18 @@
 			"utterance": "Odpri checkout.",
 			"context": "The session: checkout-api/main",
 			"expect": "no"
+		},
+		{
+			"key": "option_reply",
+			"utterance": "Can you go into crew session?",
+			"context": "The options: \"crew project\", \"phone speak project\". Sessions the developer can go to: crew/main, crew/research, phone-speak/wrk1.",
+			"expect": "other"
+		},
+		{
+			"key": "target_answer",
+			"utterance": "The checkout one.",
+			"context": "The session asked about: checkout api, main",
+			"expect": "yes"
 		}
 	]
 }

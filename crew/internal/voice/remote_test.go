@@ -7,19 +7,17 @@ func TestDecideDaemon(t *testing.T) {
 		name                      string
 		running                   bool
 		runningVersion, installed string
-		busy                      bool
 		want                      DaemonAction
 	}{
-		{"not running → start", false, "", "1.4.0", false, DaemonStart},
-		{"same release → keep", true, "1.4.0", "1.4.0", false, DaemonKeep},
-		{"a leading v is the same release", true, "1.4.0", "v1.4.0", false, DaemonKeep},
-		{"another release, idle → restart", true, "1.3.0", "1.4.0", false, DaemonRestart},
-		{"another release, sessions working → keep until quiet", true, "1.3.0", "1.4.0", true, DaemonKeepBusy},
-		{"a dev build → never forced", true, "dev", "1.4.0", false, DaemonKeep},
-		{"no stamp → never forced", true, "1.3.0", "", false, DaemonKeep},
+		{"not running → start", false, "", "1.4.0", DaemonStart},
+		{"same release → keep", true, "1.4.0", "1.4.0", DaemonKeep},
+		{"a leading v is the same release", true, "1.4.0", "v1.4.0", DaemonKeep},
+		{"another release → restart at once, sessions working or not", true, "1.3.0", "1.4.0", DaemonRestart},
+		{"a dev build → never forced", true, "dev", "1.4.0", DaemonKeep},
+		{"no stamp → never forced", true, "1.3.0", "", DaemonKeep},
 	}
 	for _, c := range cases {
-		if got := DecideDaemon(c.running, c.runningVersion, c.installed, c.busy); got != c.want {
+		if got := DecideDaemon(c.running, c.runningVersion, c.installed); got != c.want {
 			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
 		}
 	}

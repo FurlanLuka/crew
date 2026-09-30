@@ -2,6 +2,7 @@
 // goes to, whose answer plays first, and whether they are mid-conversation with the screen.
 import {
 	EXCHANGE_IDLE_MS,
+	EXCHANGE_WORK_MS,
 	isSwitchOfferFresh,
 	type Exchange,
 	type ExchangeReason,
@@ -11,6 +12,8 @@ import {
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { sayAck, sayRef } from './helpers.js';
+import { forgetHeardUpdate } from './held-lines.js';
+import { isReachable } from '../shared/machines.js';
 
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
@@ -102,15 +105,6 @@ export const offerSwitch = (state: State, ref: string, at: number): ReducerResul
 	};
 };
 
-// A real back-and-forth has started (a second answer heard), and nothing else waits on a yes.
-const shouldOfferSwitch = (state: State, exchange: Exchange, isAsking: boolean): boolean =>
-	exchange.answeredTurns >= 2 &&
-	!exchange.hasOfferedSwitch &&
-	!isAsking &&
-	exchange.ref !== readScreenRef(state) &&
-	state.asks.length === 0 &&
-	!state.switchOffer;
-
 const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => {
 	const { exchange } = state;
 	const line = state.spoken.find((spoken) => spoken.id === lineId);
@@ -130,12 +124,9 @@ const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => 
 		countedTurnAt: turnAt,
 	};
 
-	const next = { ...state, exchange: heard };
-
-	// Its answer asked something: the developer's yes belongs to that, so the offer waits a turn.
-	return shouldOfferSwitch(next, heard, Boolean(line.isAsking))
-		? offerSwitch(next, heard.ref, at)
-		: { state: next, effects: [] };
+	// No switch is offered for a back-and-forth: the answers are said in full, follow-ups go there,
+	// and "switch to it" works any time. The one offer is the one a reply to a heard update makes.
+	return { state: { ...state, exchange: heard }, effects: [] };
 };
 
 interface DescribeSentToParams {
@@ -159,6 +150,31 @@ const describeSentTo = ({ before, state, ref, at, effects }: DescribeSentToParam
 	}
 
 	return [sayAck(`Sent to ${sayRef(state, ref)}.`)];
+};
+
+// How long after hearing an update a reply to it still offers the switch.
+const UPDATE_REPLY_MS = 10 * 60_000;
+
+interface WithSwitchAskedParams {
+	effects: Effect[];
+	ref: string;
+	sentTo: string;
+}
+
+// The line that says where the words went asks the switch too ("Sent to crew. Switch there?",
+// "Okay, after its current work. Switch there?"): one line, whichever ack it is.
+const withSwitchAsked = ({ effects, ref, sentTo }: WithSwitchAskedParams): Effect[] => {
+	const ackAt = effects.findLastIndex((effect) => effect.type === 'speak' && effect.isAck === true);
+
+	if (ackAt < 0) {
+		return [...effects, sayAck(`Sent to ${sentTo}. Switch there?`, { isAsking: true, ref })];
+	}
+
+	return effects.map((effect, index) =>
+		index === ackAt && effect.type === 'speak'
+			? { ...effect, text: `${effect.text.trim()} Switch there?`, isAsking: true, ref }
+			: effect,
+	);
 };
 
 // Runs after the input's own reducer: `before` is the state it started from.
@@ -191,14 +207,42 @@ export const followExchange = (
 				return { state, effects: acked };
 			}
 
-			const moved = talkTo({
-				state,
-				ref: input.ref,
-				at: stamped.at,
-				screenRef: readScreenRef(before),
-			});
+			const screenRef = readScreenRef(before);
+			const moved = talkTo({ state, ref: input.ref, at: stamped.at, screenRef });
+			const heardAt = before.sessions[input.ref]?.heldLine?.updateHeardAt;
+			// A reply to an update they heard ("crew needs you: …", the meanwhile line), sent from another
+			// screen: without the page they would not know their words now go there. Once per update.
+			const isReplyToHeard =
+				screenRef !== null &&
+				input.ref !== screenRef &&
+				heardAt !== undefined &&
+				stamped.at - heardAt <= UPDATE_REPLY_MS &&
+				moved.state.exchange?.startedAt === stamped.at;
+			const replied = forgetHeardUpdate(moved.state, input.ref);
 
-			return { state: moved.state, effects: [...acked, ...moved.effects] };
+			// Not to a machine out of reach (the words wait for it), and not over a question still open.
+			if (
+				isReplyToHeard &&
+				isReachable(state, input.ref) &&
+				replied.asks.length === 0 &&
+				!isSwitchOfferFresh(replied.switchOffer, stamped.at)
+			) {
+				const offered = offerSwitch(replied, input.ref, stamped.at);
+
+				return {
+					state: offered.state,
+					effects: [
+						...withSwitchAsked({
+							effects: acked,
+							ref: input.ref,
+							sentTo: sayRef(state, input.ref),
+						}),
+						...moved.effects,
+					],
+				};
+			}
+
+			return { state: replied, effects: [...acked, ...moved.effects] };
 		}
 
 		case 'switch_view': {
@@ -225,7 +269,8 @@ export const followExchange = (
 
 		// Answered, let go, or lapsed: a later "yes" is not for it. `at` names the offer it closes.
 		case 'switch_offer_closed':
-			return state.switchOffer?.at === input.at
+			return state.switchOffer?.at === input.at &&
+				!(input.isLapse && isSwitchOfferFresh(state.switchOffer, stamped.at))
 				? { ...result, state: { ...state, switchOffer: null } }
 				: result;
 
@@ -239,10 +284,26 @@ export const followExchange = (
 			return { state: heard.state, effects: [...result.effects, ...heard.effects] };
 		}
 
-		case 'exchange_expired':
-			return state.exchange?.ref === input.ref && state.exchange.lastAt === input.lastAt
-				? { ...result, state: end(state) }
-				: result;
+		case 'exchange_expired': {
+			if (state.exchange?.ref !== input.ref || state.exchange.lastAt !== input.lastAt) {
+				return result;
+			}
+
+			// Still working on what they asked in this conversation: it waits for the answer, the minute
+			// counted again, but never past ten minutes since they last spoke to it. Waiting on the
+			// developer (blocked) is not working on their question: it lapses as usual.
+			const session = state.sessions[input.ref];
+			const askedAt = session?.requests.at(-1)?.at ?? null;
+			const isWorkingOnIt =
+				session?.status === 'running' &&
+				askedAt !== null &&
+				askedAt >= state.exchange.startedAt &&
+				stamped.at - askedAt < EXCHANGE_WORK_MS;
+
+			return isWorkingOnIt
+				? { ...result, state: { ...state, exchange: { ...state.exchange, lastAt: stamped.at } } }
+				: { ...result, state: end(state) };
+		}
 
 		case 'clear_exchange':
 			return { ...result, state: end(state) };

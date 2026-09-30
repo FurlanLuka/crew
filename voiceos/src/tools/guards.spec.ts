@@ -5,7 +5,13 @@ import { describe, expect, it } from 'bun:test';
 import { judgeNever, judgeWith } from '../../test/support/english-judge.js';
 import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
 import type { Judge, JudgeKey } from '../judge/judge.js';
-import type { ListenMode, PendingAsk, State } from '../shared/protocol.js';
+import {
+	QUESTION_UNHEARD_MS,
+	SWITCH_OFFER_MS,
+	type ListenMode,
+	type PendingAsk,
+	type State,
+} from '../shared/protocol.js';
 import { TAKEN_BACK } from './queued.js';
 import { isMisroutedToSetup } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
@@ -337,14 +343,25 @@ describe('answering a question with a question', () => {
 		expect(actions).toEqual([expect.objectContaining({ type: 'answer_question' })]);
 	});
 
-	it('"Die zweite?" (no label named): judge no → the pick; unclear → forwarded as a question', async () => {
-		const picked = await answerWith('Die zweite?', judgeWith({ asks_about_options: 'no' }));
-		const unclear = await answerWith('Die zweite?', judgeWith({ asks_about_options: 'unclear' }));
+	it('"Die zweite?" (no label named): the judge hears a pick → answered; unclear → forwarded as a question', async () => {
+		const picked = await answerWith('Die zweite?', judgeWith({ option_reply: 'pick' }));
+		const unclear = await answerWith('Die zweite?', judgeWith({ option_reply: 'unclear' }));
 
 		expect(picked.actions).toEqual([expect.objectContaining({ type: 'answer_question' })]);
 		expect(unclear.actions).toEqual([
 			expect.objectContaining({ type: 'send', text: 'Die zweite?', ack: { kind: 'question' } }),
 		]);
+	});
+
+	it('"Can you go into crew session?" beside an option "Crew project" → no answer: the words are for something else', async () => {
+		const other = await answerWith(
+			'Can you go into crew session?',
+			judgeWith({ option_reply: 'other' }),
+		);
+
+		expect(other.actions).toEqual([]);
+		expect(other.result.ok).toBe(false);
+		expect(other.result.content).toContain('choose none of the options');
 	});
 });
 
@@ -479,7 +496,11 @@ describe('a bare answer sent as words', () => {
 
 		// Unclear: the words reach the session rather than vanish.
 		for (const answer of ['no', 'unclear']) {
-			const sent = await forward('Nein.', judgeWith({ refuses: answer }), offer);
+			const sent = await forward(
+				'Nein.',
+				judgeWith({ refuses: answer, bare_answer: 'yes', approves: 'no' }),
+				offer,
+			);
 
 			expect(sent.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Nein.' })]);
 		}
@@ -521,5 +542,181 @@ describe('which session the words name', () => {
 		const result = await executeTool('start_session', { ref: 'checkout-api/main' }, tools);
 
 		expect(result).toMatchObject({ ok: true, content: 'starting checkout-api/main' });
+	});
+});
+
+describe('a yes to Voice OS\'s own "Want me to ask it?"', () => {
+	const ASKED = 'Okay. How long do you think checkout is going to take?';
+
+	const sendYes = async (judge: Judge, utterance = 'Yes.') => {
+		const { tools, actions } = toolsFor({ judge, utterance });
+
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', kind: 'question', text: 'How long will it take?' },
+			{ ...tools, askedBack: ASKED },
+		);
+
+		return actions.find((action) => action.type === 'send');
+	};
+
+	it('a plain yes (judge approves) → the question it offered to ask goes, as the developer said it', async () => {
+		expect(await sendYes(judgeWith({ approves: 'yes', take_back_before: 'no' }))).toMatchObject({
+			ref: 'checkout-api/main',
+			text: ASKED,
+		});
+	});
+
+	it('not a clear yes, or more than a few words → the words as said, never the old question', async () => {
+		const unclear = await sendYes(judgeWith({ approves: 'unclear', take_back_before: 'no' }));
+		const long = await sendYes(
+			judgeWith({ take_back_before: 'no' }),
+			'Yes, and also ask it why the build is red.',
+		);
+
+		expect(unclear?.text).toBe('Yes.');
+		expect(long?.text).toBe('Yes, and also ask it why the build is red.');
+	});
+});
+
+describe('a yes to Voice OS\'s "Switch to …?"', () => {
+	const offer = { switchOffer: { ref: 'checkout-api/main', at: 0, heardAt: 1_000 } };
+
+	it('forwarded as words → not sent: it answers the offer, switch_view is named', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ refuses: 'no', bare_answer: 'yes', approves: 'yes' }),
+			utterance: 'Ja.',
+			patch: offer,
+		});
+		const result = await executeTool(
+			'forward',
+			{ kind: 'instruction' },
+			{ ...tools, heardFrom: 5_000 },
+		);
+
+		expect(actions).toEqual([]);
+		expect(result.content).toContain('call switch_view checkout-api/main');
+	});
+
+	it('"yes, push it" while the offer is open → words for the session, sent (to the offered one or the screen)', async () => {
+		for (const [tool, input] of [
+			['send_to', { ref: 'checkout-api/main', kind: 'instruction' }],
+			['forward', { kind: 'instruction' }],
+		] as const) {
+			const { tools, actions } = toolsFor({
+				judge: judgeWith({ refuses: 'no', bare_answer: 'no', take_back_before: 'no' }),
+				utterance: 'Yes, push it.',
+				patch: offer,
+			});
+
+			await executeTool(tool, input, { ...tools, heardFrom: 5_000 });
+
+			expect(actions).toEqual([expect.objectContaining({ type: 'send', text: 'Yes, push it.' })]);
+		}
+	});
+
+	it('past its window, or never heard and given up on → a bare yes is words again', async () => {
+		const late = toolsFor({ judge: judgeNever, utterance: 'Ja.', patch: offer });
+		const unheard = toolsFor({
+			judge: judgeNever,
+			utterance: 'Ja.',
+			patch: { switchOffer: { ref: 'checkout-api/main', at: 0 } },
+		});
+
+		await executeTool(
+			'forward',
+			{ kind: 'instruction' },
+			{ ...late.tools, heardFrom: 1_000 + SWITCH_OFFER_MS },
+		);
+		await executeTool(
+			'forward',
+			{ kind: 'instruction' },
+			{ ...unheard.tools, heardFrom: QUESTION_UNHEARD_MS },
+		);
+
+		expect(late.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+		expect(unheard.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+	});
+
+	it('a yes said before the offer was made → words for the session, sent', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ take_back_before: 'no' }),
+			utterance: 'Ja.',
+			patch: { switchOffer: { ref: 'checkout-api/main', at: 5_000, heardAt: 6_000 } },
+		});
+
+		await executeTool('forward', { kind: 'instruction' }, { ...tools, heardFrom: 4_000 });
+
+		expect(actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+	});
+
+	it('judged at the moment it was said: a kernel turn that ends past the window still counts', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ refuses: 'no', bare_answer: 'yes', approves: 'yes' }),
+			utterance: 'Ja.',
+			patch: offer,
+		});
+
+		await executeTool(
+			'forward',
+			{ kind: 'instruction' },
+			{ ...tools, heardFrom: 5_000, now: () => 12_000 },
+		);
+
+		expect(actions).toEqual([]);
+	});
+});
+
+describe('a question only announced, while Voice OS offers the switch to it', () => {
+	const held = (): Partial<State> => {
+		const { tools } = createToolContext();
+		const sessions = tools.getState().sessions;
+
+		return {
+			switchOffer: { ref: 'checkout-api/main', at: 0, heardAt: 1_000 },
+			sessions: {
+				...sessions,
+				'checkout-api/main': {
+					...sessions['checkout-api/main']!,
+					status: 'blocked',
+					heldLine: { id: 'h1', at: 0, missed: 0, isAnnounced: true, kind: 'ask', askId: 'q9' },
+				},
+			},
+		};
+	};
+
+	it('a bare yes the kernel took as its answer → switched there instead, its question plays', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ bare_answer: 'yes', approves: 'yes', refuses: 'no' }),
+			utterance: 'Ja.',
+			patch: held(),
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+			{ ...tools, heardFrom: 2_000 },
+		);
+
+		expect(actions).toEqual([
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' }, announce: true },
+		]);
+		expect(result.ok).toBe(true);
+	});
+
+	it('an instruction for it → not dropped in silence: the kernel is told to say its question comes first', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ bare_answer: 'no', refuses: 'no', take_back_before: 'no' }),
+			utterance: 'Tell it to use staging.',
+			patch: held(),
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: '' },
+			{ ...tools, heardFrom: 2_000 },
+		);
+
+		expect(actions).toEqual([]);
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('its question comes first');
 	});
 });

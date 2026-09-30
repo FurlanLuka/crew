@@ -1,5 +1,5 @@
 import { cleanSessionLine, cleanSpokenText, stripTags } from '../shared/spoken.js';
-import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
+import type { HeldLine, Session, SpokenLine, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
 import { capWords, readLabel, updateSession, withoutEffects } from './helpers.js';
@@ -99,35 +99,24 @@ export const describeAnnouncement = ({
 		return `${label} ${verb}.`;
 	}
 
-	// A capped topic ends on its ellipsis: the pause says it was cut, a full stop would not.
-	return `${label} ${verb}: ${topic}${topic.endsWith('…') ? '' : '.'}`;
+	// A capped line ends on its ellipsis: the pause says it was cut, a full stop would not. A done
+	// turn is announced with its own words, not as "done": its work may go on.
+	const lead = kind === 'done' ? `${label}:` : `${label} ${verb}:`;
+
+	return `${lead} ${topic}${topic.endsWith('…') ? '' : '.'}`;
 };
 
-const DONE_ABOUT_WORDS = 8;
-const MIN_REQUEST_WORDS = 3;
+const DONE_ABOUT_WORDS = 14;
+const MIN_SAID_WORDS = 2;
 
-interface DescribeDoneAboutParams {
-	topic: string | null;
-	isTopicPinned: boolean;
-	// What the turn was asked, in the developer's words.
-	asked: string | null;
-}
+// What a finished turn is announced with: the session's own last line, shortened. A summary of the
+// session's long-running work goes stale ("finished the architecture docs" for a turn that
+// ended "checking whether the eval runs finished"), and a turn ending is not the work finishing.
+export const describeDoneAbout = (said: string | null): string | null => {
+	const line = stripTags(cleanSpokenText(said ?? ''));
 
-export const describeDoneAbout = ({
-	topic,
-	isTopicPinned,
-	asked,
-}: DescribeDoneAboutParams): string | null => {
-	// "Done" with nothing tying it to the work sounds random. A pinned topic stays put however the
-	// work moves on, so it never says what just finished; a reply like "no" says nothing either.
-	if (topic && !isTopicPinned) {
-		return topic;
-	}
-
-	const request = cleanSpokenText(asked ?? '');
-
-	return request.split(/\s+/).filter(Boolean).length >= MIN_REQUEST_WORDS
-		? capWords(request, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
+	return line.split(/\s+/).filter(Boolean).length >= MIN_SAID_WORDS
+		? capWords(line, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
 		: null;
 };
 
@@ -263,4 +252,53 @@ export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 	};
 
 	return { state: cleared, effects: [effect] };
+};
+
+// A held line's update was heard to its end: a reply to it from another screen may now offer the switch.
+const markUpdateHeard = (state: State, ref: string, at: number): State =>
+	state.sessions[ref]?.heldLine
+		? updateSession(state, ref, (session) =>
+				session.heldLine
+					? { ...session, heldLine: { ...session.heldLine, updateHeardAt: at } }
+					: session,
+			)
+		: state;
+
+// Replied to, or opened past its line: the update has been answered, and offers no switch again.
+export const forgetHeardUpdate = (state: State, ref: string): State =>
+	state.sessions[ref]?.heldLine?.updateHeardAt === undefined
+		? state
+		: updateSession(state, ref, (session) => {
+				if (!session.heldLine) {
+					return session;
+				}
+
+				const { updateHeardAt: _heard, ...heldLine } = session.heldLine;
+
+				return { ...session, heldLine };
+			});
+
+// What finishing a line means beyond itself: an update heard, or a question heard (its window
+// for a yes starts now, not when it was queued).
+export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
+	// An update talked over was not heard to its end; a question talked over is being answered.
+	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
+	const updated = refs.reduce((next, ref) => markUpdateHeard(next, ref, at), state);
+	const offer = updated.switchOffer;
+	const target = updated.targetAsk;
+
+	return line.isAsking && line.ref
+		? {
+				...updated,
+				...(offer && offer.ref === line.ref && offer.heardAt === undefined && line.at >= offer.at
+					? { switchOffer: { ...offer, heardAt: at } }
+					: {}),
+				...(target &&
+				target.ref === line.ref &&
+				target.heardAt === undefined &&
+				line.at >= target.at
+					? { targetAsk: { ...target, heardAt: at } }
+					: {}),
+			}
+		: updated;
 };

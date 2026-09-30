@@ -43,13 +43,17 @@ interface ListHeardBeforeParams {
 	heardFrom: number;
 }
 
+// The sessions a heard line was about: its own, or every one the meanwhile line named.
+export const readLineRefs = (line: SpokenLine): string[] =>
+	line.ref !== undefined ? [line.ref] : (line.refs ?? []);
+
 export const listHeardBefore = ({ spoken, heardFrom }: ListHeardBeforeParams): SpokenLine[] =>
 	// Session lines that started playing before the developer spoke, newest few, oldest first. Voice
 	// OS's own acks and replies are not what they answer.
 	spoken
 		.filter(
 			(line) =>
-				line.ref !== undefined &&
+				(line.ref !== undefined || line.refs !== undefined) &&
 				line.source !== 'kernel' &&
 				line.at < heardFrom &&
 				heardFrom - line.at <= HEARD_BEFORE_MS,
@@ -78,6 +82,6 @@ export const formatHeardBefore = (lines: SpokenLine[], heardFrom: number): strin
 							? `${line.text.slice(0, HEARD_PREVIEW_CHARS)}…`
 							: line.text;
 
-					return `${line.ref}: "${text}" (${describeEnding(line, heardFrom)})`;
+					return `${readLineRefs(line).join(' and ')}: "${text}" (${describeEnding(line, heardFrom)})`;
 				})
 				.join('; ');

@@ -115,8 +115,12 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 			);
 		case 'listen_mode':
 			return readListenMode(said);
-		case 'asks_about_options':
-			return yesIf(QUESTION_LEAD_PATTERN.test(bare(said)));
+		case 'option_reply':
+			return QUESTION_LEAD_PATTERN.test(bare(said))
+				? /\b(?:go|switch|open)\b.*\b(?:session|into|to)\b/i.test(said)
+					? 'other'
+					: 'question'
+				: 'pick';
 		case 'for_setup':
 			return yesIf(SETUP_ADDRESS_PATTERN.test(said) || SETUP_WORK_PATTERN.test(said));
 		case 'this_session':

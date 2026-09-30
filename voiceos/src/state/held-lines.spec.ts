@@ -282,6 +282,8 @@ describe('asks off screen', () => {
 				text: 'store/main needs you: Notes location.',
 				source: 'alert',
 				ref: REF,
+				// A reply to it is for store/main: the kernel reads it as a notification.
+				isUpdate: true,
 				priority: 'high',
 				chime: 'needs',
 				waitsForGap: true,
@@ -763,7 +765,7 @@ describe('what a "done" names', () => {
 				kind: 'done',
 				about: 'Telephony branches pushed.',
 			}),
-		).toBe('speak/main is done: Telephony branches pushed.');
+		).toBe('speak/main: Telephony branches pushed.');
 		expect(describeAnnouncement({ label: 'speak/main', kind: 'done', about: '  ' })).toBe(
 			'speak/main is done.',
 		);
@@ -771,60 +773,28 @@ describe('what a "done" names', () => {
 			describeAnnouncement({
 				label: 'speak/main',
 				kind: 'done',
-				about: describeDoneAbout({
-					topic: null,
-					isTopicPinned: false,
-					asked: 'can you give me full context so i can copy it over',
-				}),
+				about: describeDoneAbout(
+					'Checking whether the detached eval runs finished before deciding which shards to rerun.',
+				),
 			}),
-		).toBe('speak/main is done: can you give me full context so i…');
+		).toBe(
+			'speak/main: Checking whether the detached eval runs finished before deciding which shards to rerun.',
+		);
 	});
 
 	it.each([
 		[
-			'a topic written for the work',
-			{ topic: 'Search box on the right', isTopicPinned: false, asked: 'move it' },
-			'Search box on the right',
+			'its own last line',
+			'Checking whether the detached eval runs finished before deciding.',
+			'Checking whether the detached eval runs finished before deciding',
 		],
 		[
-			'a pinned topic → the request instead',
-			{ topic: 'Voice OS', isTopicPinned: true, asked: 'push everything to the existing branches' },
-			'push everything to the existing branches',
+			'a long line → its first fourteen words',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today.',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from…',
 		],
-		[
-			'a reply too short to say anything → nothing',
-			{ topic: null, isTopicPinned: false, asked: 'no' },
-			null,
-		],
-		[
-			'a long request → its first eight words',
-			{
-				topic: null,
-				isTopicPinned: false,
-				asked: 'can you give me full context so i can copy it to a different session',
-			},
-			'can you give me full context so i…',
-		],
-		[
-			'trailing punctuation dropped',
-			{ topic: null, isTopicPinned: false, asked: 'push the telephony branches.' },
-			'push the telephony branches',
-		],
-		['nothing at all', { topic: null, isTopicPinned: false, asked: null }, null],
-		['two words → nothing', { topic: null, isTopicPinned: false, asked: 'push it' }, null],
-		[
-			'three words → said',
-			{ topic: null, isTopicPinned: false, asked: 'push it now' },
-			'push it now',
-		],
-		[
-			'punctuation where the cap cuts → dropped before the ellipsis',
-			{
-				topic: null,
-				isTopicPinned: false,
-				asked: 'first the api, then the app, then the docs please',
-			},
-			'first the api, then the app, then the…',
-		],
-	])('%s', (_, params, expected) => expect(describeDoneAbout(params)).toBe(expected));
+		['voice tags dropped', '[relieved] Tests pass now.', 'Tests pass now'],
+		['one word → nothing', 'Done.', null],
+		['nothing at all', null, null],
+	])('%s', (_, said, expected) => expect(describeDoneAbout(said)).toBe(expected));
 });

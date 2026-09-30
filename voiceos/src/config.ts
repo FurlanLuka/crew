@@ -15,7 +15,6 @@ export interface Paths {
 	notesDir: string;
 	journalDir: string;
 	debugAudioDir: string;
-	topicsFile: string;
 	viewFile: string;
 	pinnedFile: string;
 	namesFile: string;
@@ -45,7 +44,6 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		notesDir: join(voiceDir, 'notes'),
 		journalDir: join(voiceDir, 'journal'),
 		debugAudioDir: join(voiceDir, 'debug'),
-		topicsFile: join(voiceDir, 'topics.json'),
 		viewFile: join(voiceDir, 'view.json'),
 		pinnedFile: join(voiceDir, 'pinned.json'),
 		namesFile: join(voiceDir, 'names.json'),

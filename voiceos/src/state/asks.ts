@@ -580,6 +580,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 							}),
 							source: 'alert',
 							ref: ask.ref,
+							isUpdate: true,
 							priority: 'high',
 							chime: 'needs',
 							waitsForGap: true,

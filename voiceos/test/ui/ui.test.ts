@@ -546,6 +546,32 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('text over the limit → not sent, kept in the field, and the page says why', async () => {
+		const { context, page, client } = await openMicTab();
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		const sentBefore = listFromClient(client, 'utterance').length;
+		const long = 'x'.repeat(20_001);
+
+		await field.fill(long);
+		await page
+			.getByRole('alert')
+			.filter({ hasText: 'Too long to send' })
+			.waitFor({ timeout: 5000 });
+		expect(await page.getByRole('alert').filter({ hasText: 'Too long' }).textContent()).toBe(
+			'Too long to send: 20,001 of 20,000 characters',
+		);
+
+		await field.press('Enter');
+		await Bun.sleep(200);
+
+		expect(listFromClient(client, 'utterance')).toHaveLength(sentBefore);
+		expect(await field.inputValue()).toBe(long);
+
+		await field.fill('short again');
+		expect(await page.getByRole('alert').filter({ hasText: 'Too long' }).count()).toBe(0);
+		await context.close();
+	}, 20_000);
+
 	it('dictation → click the mic starts a dictation press; Send ends it; Space starts one too; the mode is kept across a reload', async () => {
 		const { context, page, client } = await openMicTab();
 		await chooseMode(page, 'Dictation');
@@ -1194,7 +1220,6 @@ describe('voice os ui', () => {
 			ref: 'store-front/main',
 			needsUser: true,
 			text: 'store front asks: push it?',
-			topic: null,
 		});
 		const strip = page.locator('section[aria-label="needs you"]');
 		await strip.waitFor({ timeout: 5000 });
@@ -1481,12 +1506,12 @@ describe('voice os ui', () => {
 		await page.getByText('Reconnecting to the Voice OS server').waitFor({ timeout: 5000 });
 
 		store.dispatch({
-			type: 'pin_topic',
+			type: 'rename_session',
 			ref: 'checkout-api/main',
-			topic: 'Retry backoff after restart',
+			name: 'retry backoff after restart',
 		});
 		gateway = startServer(previousPort);
-		await page.getByText('Retry backoff after restart').waitFor({ timeout: 15_000 });
+		await page.getByText('retry backoff after restart').waitFor({ timeout: 15_000 });
 
 		const before = received.length;
 		await page.locator('.tile[data-ref="checkout-api/main"]').click();
@@ -1497,6 +1522,8 @@ describe('voice os ui', () => {
 					(entry) => entry.message.type === 'action' && entry.message.action.type === 'switch_view',
 				),
 		);
+		// The store is shared: later tests read this session by its ref.
+		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: '' });
 		await context.close();
 	}, 40_000);
 });

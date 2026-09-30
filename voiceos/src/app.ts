@@ -28,7 +28,6 @@ import { createDebugNote, saveDebugNote } from './memory/debug-notes.js';
 import { createNotesStore, type NotesStore } from './memory/notes.js';
 import { toNotesKey } from './shared/notes.js';
 import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
-import { persistTopics } from './memory/topics.js';
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistPinned } from './memory/pinned.js';
 import { persistNames } from './memory/names.js';
@@ -45,7 +44,7 @@ import { connectSpeech, speakKernelReplies } from './speech/connect.js';
 import { DevWatch } from './dev/watch.js';
 import { SonioxTts } from './speech/tts.js';
 import { createNarrator } from './narrator/narrator.js';
-import { createTopicWriter } from './narrator/topic.js';
+import { createAboutWriter } from './narrator/about.js';
 import { connectMachines, readMachineStatuses } from './remote/cockpit-machines.js';
 
 const WORKTREE_POLL_MS = 10_000;
@@ -122,7 +121,7 @@ const narrate = createNarrator(keys.anthropic);
 const narrateTurn = createTurnNarrator({
 	store,
 	narrate,
-	writeTopic: createTopicWriter(keys.anthropic),
+	writeAbout: createAboutWriter(keys.anthropic),
 	say: (line) => voiceOut.say(line),
 	journalDir: paths.journalDir,
 	readGitHead,
@@ -273,7 +272,6 @@ function recordState(): void {
 await machines.refreshWorktrees();
 void machines.monitorDevServers();
 
-persistTopics({ store, file: paths.topicsFile });
 // Before the view: a saved session view opened from Pinned finds its pin already there.
 persistPinned({ store, file: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });

@@ -91,7 +91,7 @@ export const writeSpokenRefs = ({ text, refs }: WriteSpokenRefsParams): string =
 };
 
 export const resolveRef = (state: State, phrase: string): string | null => {
-	// Exact alias matches only: anything fuzzier (topics, "the checkout work") belongs to the kernel.
+	// Exact alias matches only: anything fuzzier ("the checkout work") belongs to the kernel.
 	// "the crew main session" names crew/main as much as "crew main" does.
 	const wantedName = normalizeName(
 		phrase.replace(/^the\s+/, '').replace(/\s+(?:session|worktree|workspace)$/, ''),

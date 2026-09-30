@@ -75,11 +75,10 @@ describe('TranscriptAccumulator in segment mode', () => {
 });
 
 describe('buildContextTerms', () => {
-	it('base terms, then refs and their parts as they are said, topics, deduplicated', () => {
+	it('base terms, then refs and their parts as they are said, deduplicated', () => {
 		expect(
 			buildContextTerms({
 				refs: ['setup', 'store-front/main', 'store-front/wrk1'],
-				topics: ['Checkout retries'],
 			}),
 		).toEqual([
 			'Voice OS',
@@ -90,7 +89,6 @@ describe('buildContextTerms', () => {
 			'main',
 			'store front work 1',
 			'work 1',
-			'Checkout retries',
 		]);
 	});
 
@@ -98,7 +96,6 @@ describe('buildContextTerms', () => {
 		expect(
 			buildContextTerms({
 				refs: ['crew/main'],
-				topics: [],
 				machineNames: ['Personal'],
 				sessionNames: ['voice os dev'],
 			}),

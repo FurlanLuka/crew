@@ -1,6 +1,7 @@
 import {
 	COMMAND_TTL_MS,
 	EXCHANGE_IDLE_MS,
+	QUESTION_UNHEARD_MS,
 	SWITCH_OFFER_MS,
 	TARGET_ASK_MS,
 } from '../shared/protocol.js';
@@ -86,21 +87,68 @@ export const connectSpeech = ({
 
 	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
 	// and a stale timer finds a newer lastAt and changes nothing.
+	// A question that played in no tab was never asked: it lets go at once rather than holding the
+	// developer's next yes or no, or their held words, for half a minute.
+	store.subscribe((stamped, state) => {
+		if (stamped.input.type !== 'spoken_ended' || !stamped.input.isUnplayed) {
+			return;
+		}
+
+		const lineId = stamped.input.lineId;
+		const line = state.spoken.find((spoken) => spoken.id === lineId);
+
+		if (!line?.isAsking || !line.ref) {
+			return;
+		}
+
+		const { switchOffer, targetAsk } = state;
+		const ref = line.ref;
+
+		queueMicrotask(() => {
+			// Its own line, not an older question about the same session.
+			if (
+				switchOffer &&
+				switchOffer.ref === ref &&
+				switchOffer.heardAt === undefined &&
+				line.at >= switchOffer.at
+			) {
+				store.dispatch({ type: 'switch_offer_closed', at: switchOffer.at });
+			}
+
+			if (
+				targetAsk &&
+				targetAsk.ref === ref &&
+				targetAsk.heardAt === undefined &&
+				line.at >= targetAsk.at &&
+				store.state.targetAsk === targetAsk
+			) {
+				settleTarget(store, false);
+			}
+		});
+	});
+
 	let armedAt: number | null = null;
-	let offeredAt: number | null = null;
-	let targetAskedAt: number | null = null;
+	let offeredAt: string | null = null;
+	let targetAskedAt: string | null = null;
 	store.subscribe((_stamped, state) => {
 		const { exchange, switchOffer, targetAsk } = state;
 
-		// "For checkout?" unanswered: silence keeps the words on the screen.
-		if (targetAsk && targetAsk.at !== targetAskedAt) {
-			targetAskedAt = targetAsk.at;
-			const { at } = targetAsk;
-			setTimer(() => {
-				if (store.state.targetAsk?.at === at) {
-					settleTarget(store, false);
-				}
-			}, TARGET_ASK_MS);
+		// "For checkout?" unanswered: silence keeps the words on the screen. The wait starts once the
+		// question was heard (or is given up on if it never plays).
+		const targetKey = targetAsk ? `${targetAsk.at}:${targetAsk.heardAt ?? ''}` : null;
+
+		if (targetAsk && targetKey !== targetAskedAt) {
+			targetAskedAt = targetKey;
+			const { at, heardAt } = targetAsk;
+			setTimer(
+				() => {
+					// A timer armed before the question was heard gives way to the one armed after.
+					if (store.state.targetAsk?.at === at && store.state.targetAsk.heardAt === heardAt) {
+						settleTarget(store, false);
+					}
+				},
+				targetAsk.heardAt === undefined ? QUESTION_UNHEARD_MS : TARGET_ASK_MS,
+			);
 		}
 
 		if (exchange && exchange.lastAt !== armedAt) {
@@ -109,11 +157,16 @@ export const connectSpeech = ({
 			setTimer(() => store.dispatch({ type: 'exchange_expired', ref, lastAt }), EXCHANGE_IDLE_MS);
 		}
 
-		// "Switch to checkout?" is answered at once or let go.
-		if (switchOffer && switchOffer.at !== offeredAt) {
-			offeredAt = switchOffer.at;
+		// "Switch to checkout?" is answered at once or let go, counted from when it was heard.
+		const offerKey = switchOffer ? `${switchOffer.at}:${switchOffer.heardAt ?? ''}` : null;
+
+		if (switchOffer && offerKey !== offeredAt) {
+			offeredAt = offerKey;
 			const { at } = switchOffer;
-			setTimer(() => store.dispatch({ type: 'switch_offer_closed', at }), SWITCH_OFFER_MS);
+			setTimer(
+				() => store.dispatch({ type: 'switch_offer_closed', at, isLapse: true }),
+				switchOffer.heardAt === undefined ? QUESTION_UNHEARD_MS : SWITCH_OFFER_MS,
+			);
 		}
 	});
 
@@ -129,6 +182,8 @@ export const connectSpeech = ({
 					waitsForGap: effect.waitsForGap,
 					ref: effect.ref ?? null,
 					isAsking: effect.isAsking,
+					isUpdate: effect.isUpdate,
+					refs: effect.refs,
 					isNamed: effect.isNamed,
 					isOwed: effect.isOwed,
 					isAck: effect.isAck,

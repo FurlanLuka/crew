@@ -57,9 +57,9 @@ const JUDGE_QUESTIONS = {
 		ask: "Which way of listening do these words ask for? hands-free: always listening. on-demand: listening for its name. push: push to talk. off: stop listening, or turn hands-free off. unclear: they mute Voice OS's voice, or say nothing about how it listens.",
 		answers: ['hands-free', 'on-demand', 'push', 'off'],
 	},
-	asks_about_options: {
-		ask: 'Voice OS asked the developer to choose one of the options named below. Do these words ask something about the options (what one does, how they differ) rather than choose one? A choice said with a questioning voice ("the second?", "Postgres?") is a choice: no.',
-		answers: ['yes', 'no'],
+	option_reply: {
+		ask: 'A session asked the developer to choose one of the options named below. pick: these words choose one (by name, place or meaning, even with a questioning voice: "the second?", "Postgres?"). question: they ask something about the options (what one does, how they differ). other: they ask to go to, open or switch to a session named in the context, or for other work. Going somewhere is never a pick, even when the place shares a word with an option.',
+		answers: ['pick', 'question', 'other'],
 	},
 	for_setup: {
 		ask: "Are these words addressed to Voice OS's setup, or about crew workspaces, projects, worktrees or bindings?",
@@ -74,7 +74,7 @@ const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	target_answer: {
-		ask: 'Voice OS asked "For <another session>?": whether the developer\'s last words were meant for it. yes: only agrees (yes, ja, that one). no: only declines (no, nein, here, this one). other: anything that is not just a yes or a no — an instruction, a question, new words.',
+		ask: 'Voice OS asked "For <another session>?": whether the developer\'s last words were meant for it. yes: only agrees (yes, ja, that one, or names the session asked about). no: only declines (no, nein, here, this one). other: anything that is not just a yes or a no — an instruction, a question, new words.',
 		answers: ['yes', 'no', 'other'],
 	},
 } as const;

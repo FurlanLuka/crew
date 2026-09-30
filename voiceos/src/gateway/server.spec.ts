@@ -191,7 +191,7 @@ describe('gateway', () => {
 
 		const secondClient = await connectClient(port, { origin: createOrigin(port), cookie });
 
-		store.dispatch({ type: 'pin_topic', ref: 'store/main', topic: 'Checkout retries' });
+		store.dispatch({ type: 'rename_session', ref: 'store/main', name: 'checkout retries' });
 		await waitUntil(() => firstClient.messages.length >= 3 && secondClient.messages.length >= 2);
 
 		const replay = (messages: ServerMessage[]) =>
@@ -269,7 +269,6 @@ describe('parseClientMessage', () => {
 		allow_denied: { type: 'allow_denied', denialId: 'd1' },
 		dismiss_denial: { type: 'dismiss_denial', denialId: 'd1' },
 		dismiss_needs_user: { type: 'dismiss_needs_user', ref: 'store/main' },
-		pin_topic: { type: 'pin_topic', ref: 'store/main', topic: 'Retry backoff' },
 		dev_start: { type: 'dev_start', ref: 'store/main' },
 		dev_stop: { type: 'dev_stop', ref: 'store/main' },
 		dev_restart: { type: 'dev_restart', ref: 'store/main' },

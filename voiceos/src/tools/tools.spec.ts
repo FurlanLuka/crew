@@ -30,7 +30,7 @@ import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
 import { carriesWords } from '../router/kernel.js';
-import { isClarifyingQuestion } from './answer.js';
+import { readOptionReply } from './answer.js';
 import type { QuestionAsk } from '../shared/questions.js';
 
 describe('tool definitions', () => {
@@ -151,7 +151,6 @@ describe('executeTool', () => {
 		expect(all[2]).toMatchObject({
 			ref: 'checkout-api/main',
 			status: 'stopped',
-			topic: 'Checkout retry backoff',
 		});
 
 		const one = JSON.parse(
@@ -197,25 +196,16 @@ describe('findSessionsNamedIn', () => {
 		expect(findNamed('stop wrk1')).toEqual(['store-front/wrk1']);
 	});
 
-	it('two topic words → that session', () => {
-		expect(findNamed('stop the retry backoff one')).toEqual(['checkout-api/main']);
-	});
-
 	it('full ref → that session', () => {
 		expect(findNamed('end store-front/main')).toEqual(['store-front/main']);
 	});
 });
 
 describe('isSessionNamed', () => {
-	const isNamed = (
-		ref: string,
-		utterance: string,
-		order: string[],
-		topic: string | null = null,
-	) => {
+	const isNamed = (ref: string, utterance: string, order: string[]) => {
 		const text = ` ${utterance} `;
 
-		return isSessionNamed({ ref, topic, text, words: new Set(utterance.split(' ')), order });
+		return isSessionNamed({ ref, text, words: new Set(utterance.split(' ')), order });
 	};
 
 	it('workspace word, lone worktree → named', () => {
@@ -233,25 +223,6 @@ describe('isSessionNamed', () => {
 		expect(isNamed('store-front/wrk1', 'stop work 1', ['store-front/wrk1'])).toBe(true);
 		expect(
 			isNamed('store-front/main', 'stop main', ['store-front/main', 'checkout-api/main']),
-		).toBe(false);
-	});
-
-	it('two topic words → named; one → not', () => {
-		expect(
-			isNamed(
-				'admin/main',
-				'stop the ranking search',
-				['admin/main', 'store-front/main'],
-				'Search ranking',
-			),
-		).toBe(true);
-		expect(
-			isNamed(
-				'admin/main',
-				'stop the ranking',
-				['admin/main', 'store-front/main'],
-				'Search ranking',
-			),
 		).toBe(false);
 	});
 });
@@ -1186,7 +1157,8 @@ describe('a question only announced', () => {
 
 		expect(refused.actions).toEqual([offering]);
 		expect(stale.actions).toEqual([offering]);
-		expect(elsewhere.actions).toEqual([offering]);
+		// Another switch already offered: no second question over it, the kernel says it in words.
+		expect(elsewhere.actions).toEqual([]);
 		expect(offered.actions).toEqual([switched]);
 		expect(named.actions).toEqual([switched]);
 	});
@@ -1278,19 +1250,6 @@ describe('status from another screen', () => {
 		);
 
 		expect(result.content).toContain('Tests pass; wiring the page.');
-		expect(actions).toEqual([{ type: 'held_line_heard', ref: 'checkout-api/main', id: 'h1' }]);
-	});
-
-	it('asked about by its topic is asking about it too', async () => {
-		const { tools, actions } = withHeldUpdate();
-		tools.getState().sessions['checkout-api/main']!.topic = 'Checkout retry backoff';
-
-		await executeTool(
-			'read_state',
-			{ ref: 'checkout-api/main' },
-			{ ...tools, utterance: 'any news on the retry backoff?' },
-		);
-
 		expect(actions).toEqual([{ type: 'held_line_heard', ref: 'checkout-api/main', id: 'h1' }]);
 	});
 
@@ -3930,8 +3889,13 @@ describe('words that ask about a waiting question', () => {
 		],
 	});
 
-	const isForwarded = (labels: string[], utterance: string) =>
-		isClarifyingQuestion({ ask: labelled(labels), utterance, judge: englishJudge });
+	const isForwarded = async (labels: string[], utterance: string) =>
+		(await readOptionReply({
+			ask: labelled(labels),
+			utterance,
+			judge: englishJudge,
+			sessions: [],
+		})) === 'question';
 
 	it.each([
 		[['Postgres (Recommended)', 'SQLite'], 'Postgres?'],
@@ -4018,5 +3982,26 @@ describe('words that ask about a waiting question', () => {
 		expect(await forward(question)).toMatchObject({ ok: true, note: 'question withdrawn' });
 		expect((await forward(question)).content).toContain('withdrawn');
 		expect(await forward(plan)).toMatchObject({ ok: true, note: 'aside' });
+	});
+});
+
+describe('read_state on the session on screen', () => {
+	it('carries the rule that its own Claude answers questions about its work; another session does not', async () => {
+		const { tools } = createToolContext();
+		const onScreen = await executeTool(
+			'read_state',
+			{ ref: 'store-front/main' },
+			{ ...tools, screen: 'store-front/main' },
+		);
+		const other = await executeTool(
+			'read_state',
+			{ ref: 'store-front/wrk1' },
+			{ ...tools, screen: 'store-front/main' },
+		);
+
+		expect(JSON.parse(onScreen.content).on_screen).toContain(
+			'forward the words with kind question',
+		);
+		expect(JSON.parse(other.content).on_screen).toBeUndefined();
 	});
 });

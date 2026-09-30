@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ClientMessage } from '../shared/protocol.js';
+import { MAX_TEXT_CHARS, type ClientMessage } from '../shared/protocol.js';
 import { isValidHost } from '../shared/machines.js';
 
 const sampleRateSchema = z.number().int().min(8000).max(192000);
@@ -13,7 +13,11 @@ const viewSchema = z.discriminatedUnion('kind', [
 ]);
 
 const actionSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('send'), ref: refSchema, text: z.string().min(1).max(20_000) }),
+	z.object({
+		type: z.literal('send'),
+		ref: refSchema,
+		text: z.string().min(1).max(MAX_TEXT_CHARS),
+	}),
 	z.object({ type: z.literal('cancel_queued'), ref: refSchema, queuedId: z.string() }),
 	z.object({ type: z.literal('promote_queued'), ref: refSchema, queuedId: z.string() }),
 	z.object({ type: z.literal('promote_all_queued'), ref: refSchema }),
@@ -50,7 +54,6 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('allow_denied'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_denial'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_needs_user'), ref: refSchema }),
-	z.object({ type: z.literal('pin_topic'), ref: refSchema, topic: z.string().max(200) }),
 	z.object({ type: z.literal('dev_start'), ref: refSchema }),
 	z.object({ type: z.literal('dev_stop'), ref: refSchema }),
 	z.object({ type: z.literal('dev_restart'), ref: refSchema }),
@@ -82,14 +85,14 @@ const actionSchema = z.discriminatedUnion('type', [
 		type: z.literal('ask_target'),
 		ref: refSchema,
 		screen: refSchema,
-		text: z.string().min(1).max(20_000),
+		text: z.string().min(1).max(MAX_TEXT_CHARS),
 	}),
 	z.object({ type: z.literal('settle_target'), at: z.number(), toTarget: z.boolean() }),
 ]);
 
 const clientMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('action'), action: actionSchema }),
-	z.object({ type: z.literal('utterance'), text: z.string().min(1).max(20_000) }),
+	z.object({ type: z.literal('utterance'), text: z.string().min(1).max(MAX_TEXT_CHARS) }),
 	z.object({
 		type: z.literal('ptt_start'),
 		sampleRate: sampleRateSchema.optional(),
@@ -99,7 +102,7 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('ptt_cancel') }),
 	z.object({
 		type: z.literal('simulate_speech'),
-		text: z.string().min(1).max(20_000),
+		text: z.string().min(1).max(MAX_TEXT_CHARS),
 		holdMs: z.number().int().min(0).max(30_000).optional(),
 	}),
 	z.object({

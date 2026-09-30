@@ -191,7 +191,6 @@ export const runNarratorEval = async ({
 					text: testCase.text,
 					asked: testCase.asked,
 					focused: testCase.focused,
-					topic: null,
 					isReportPromised: Boolean(testCase.promised),
 				}),
 			);

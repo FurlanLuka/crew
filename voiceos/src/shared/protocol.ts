@@ -129,6 +129,9 @@ export type HeldLine = {
 	missed: number;
 	// The developer was told "<session> is done" or "needs you" about it: that is not said twice.
 	isAnnounced: boolean;
+	// When the developer heard that update to its end (the announcement or meanwhile line), until
+	// they reply to it: the first reply from another screen offers the switch.
+	updateHeardAt?: number;
 } & ({ kind: 'line'; text: string; isAsking: boolean } | { kind: 'ask'; askId: string });
 
 export interface AllowOnce {
@@ -145,8 +148,6 @@ export interface Session {
 	cwd: string;
 	dirs: string[];
 	isPinned: boolean;
-	topic: string | null;
-	isTopicPinned: boolean;
 	status: SessionStatus;
 	queue: QueuedMessage[];
 	stream: StreamItem[];
@@ -264,6 +265,8 @@ export interface Exchange {
 }
 
 export const EXCHANGE_IDLE_MS = 60_000;
+// The longest a conversation waits on its session's work before it lapses anyway.
+export const EXCHANGE_WORK_MS = 10 * 60_000;
 
 export interface ViewHistoryEntry {
 	view: View;
@@ -294,21 +297,35 @@ export interface TargetAsk {
 	screen: string;
 	text: string;
 	at: number;
+	// When the question finished playing: its window for an answer starts here, not in the queue.
+	heardAt?: number;
 }
 
 // Asked and answered in a breath; silence keeps the words on the screen.
 export const TARGET_ASK_MS = 8_000;
+// A question still waiting to be said is given up on after this, heard or not.
+export const QUESTION_UNHEARD_MS = 30_000;
 
 export interface SwitchOffer {
 	ref: string;
 	at: number;
+	heardAt?: number;
 }
 
 // Answered at once or not at all: a later "yes" belongs to something else.
+// The most text one message carries: the gateway refuses more, so the page never sends it.
+export const MAX_TEXT_CHARS = 20_000;
+
 export const SWITCH_OFFER_MS = 8_000;
 
+// Counted from when it was heard: a question still queued behind a long answer has not been asked,
+// and words said before it was asked at all are never its answer.
 export const isSwitchOfferFresh = (offer: SwitchOffer | null, now: number): offer is SwitchOffer =>
-	offer !== null && now - offer.at < SWITCH_OFFER_MS;
+	offer !== null &&
+	now >= offer.at &&
+	(offer.heardAt === undefined
+		? now - offer.at < QUESTION_UNHEARD_MS
+		: now - offer.heardAt < SWITCH_OFFER_MS);
 
 export interface SpokenLine {
 	id: string;
@@ -326,6 +343,10 @@ export interface SpokenLine {
 	isAnswer?: true;
 	// No tab played it: nobody heard it.
 	isUnplayed?: true;
+	// Voice OS telling the developer about other sessions' updates ("checkout needs you: …", the
+	// meanwhile line): a reply to it is for them. refs: every session the meanwhile line named.
+	isUpdate?: true;
+	refs?: string[];
 }
 
 export interface Setup {
@@ -459,7 +480,6 @@ export type Action =
 	| { type: 'allow_denied'; denialId: string }
 	| { type: 'dismiss_denial'; denialId: string }
 	| { type: 'dismiss_needs_user'; ref: string }
-	| { type: 'pin_topic'; ref: string; topic: string }
 	| { type: 'dev_start'; ref: string }
 	| { type: 'dev_stop'; ref: string }
 	| { type: 'dev_restart'; ref: string }
@@ -485,14 +505,6 @@ export type Action =
 	// toTarget: yes, send them to X; otherwise they are kept on the screen. `at` names the ask.
 	| { type: 'settle_target'; at: number; toTarget: boolean };
 
-export interface SavedTopic {
-	topic: string;
-	// topics.json's own key.
-	pinned: boolean;
-}
-
-export type SavedTopics = Record<string, SavedTopic>;
-
 export interface WorktreeInfo {
 	ref: string;
 	label: string;
@@ -508,12 +520,12 @@ export type Observation =
 	// The developer's notes of a workspace as they now stand (its newest lines), for the page.
 	| { type: 'notes'; workspace: string; lines: string[] }
 	// What a session is working on, named after a turn it spoke for itself.
-	| { type: 'topic_written'; ref: string; topic: string }
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
 	| { type: 'exchange_expired'; ref: string; lastAt: number }
 	| { type: 'meanwhile_added'; ref: string; kind: MeanwhileItem['kind']; about: string | null }
-	| { type: 'switch_offer_closed'; at: number }
+	// isLapse: the timer's, which leaves an offer still fresh (heard later than it was queued) alone.
+	| { type: 'switch_offer_closed'; at: number; isLapse?: true }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
 	// The held line was announced ("<session> is done", "needs you").
@@ -542,7 +554,7 @@ export type Observation =
 	| { type: 'ask_closed'; askId: string }
 	| { type: 'worker_exited'; ref: string; error: string | null }
 	| { type: 'limits'; limits: Limits }
-	| { type: 'narration'; ref: string; needsUser: boolean; text: string; topic: string | null }
+	| { type: 'narration'; ref: string; needsUser: boolean; text: string }
 	| {
 			type: 'spoken';
 			text: string;
@@ -550,12 +562,13 @@ export type Observation =
 			ref?: string;
 			isAsking?: true;
 			isAnswer?: true;
+			isUpdate?: true;
+			refs?: string[];
 	  }
 	// Written by the router after it handled an utterance; never from a client.
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }
 	| { type: 'transcript'; transcript: Transcript | null }
 	| { type: 'setup'; missing: string[] }
-	| { type: 'topics_restored'; topics: SavedTopics }
 	// The view saved before a restart, put back without a word: nobody asked to look anywhere.
 	| { type: 'restore_view'; view: View }
 	| { type: 'history_restored'; ref: string; items: StreamItem[] }

@@ -47,8 +47,8 @@ func voiceRemote(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if action == voice.DaemonKeepBusy {
-			fmt.Fprintln(human, "! A newer Voice OS is installed; the daemon keeps the running one until its sessions are idle.")
+		if action == voice.DaemonRestart {
+			fmt.Fprintln(human, "Restarted the daemon on the installed Voice OS; its sessions resume on the next message.")
 		}
 		printRemote(voice.InspectRemote())
 		fmt.Fprintf(human, "Ready: add this machine on the main (crew voice machines add <ssh host>, or + Add machine on the page).\n")

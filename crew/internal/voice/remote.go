@@ -44,7 +44,7 @@ type RemoteStatus struct {
 	PID       int    `json:"pid"`
 	Version   string `json:"version"`
 	Installed string `json:"installed"`
-	// Busy: a Claude session is working, so an update waits.
+	// Busy: a Claude session is working (a restart would end its turn; it resumes after).
 	Busy   bool   `json:"busy"`
 	Socket string `json:"socket"`
 }
@@ -88,26 +88,21 @@ const (
 	DaemonStart   DaemonAction = "start"
 	DaemonKeep    DaemonAction = "keep"
 	DaemonRestart DaemonAction = "restart"
-	// DaemonKeepBusy: another version is installed, but restarting would end
-	// the Claude sessions at work; it waits for a quiet moment.
-	DaemonKeepBusy DaemonAction = "keep-busy"
 )
 
 func normalizeVersion(v string) string { return strings.TrimPrefix(strings.TrimSpace(v), "v") }
 
 // DecideDaemon picks the action: a daemon of another release than the one
-// installed restarts when idle. A dev build or a missing stamp is unknown and
-// never forces one. Pure.
-func DecideDaemon(running bool, runningVersion, installed string, busy bool) DaemonAction {
+// installed restarts at once — its sessions resume on the new release, and a
+// main of the new release cannot attach to the old one. A dev build or a
+// missing stamp is unknown and never forces one. Pure.
+func DecideDaemon(running bool, runningVersion, installed string) DaemonAction {
 	if !running {
 		return DaemonStart
 	}
 	have, want := normalizeVersion(runningVersion), normalizeVersion(installed)
 	if have == "" || want == "" || have == "dev" || want == "dev" || have == want {
 		return DaemonKeep
-	}
-	if busy {
-		return DaemonKeepBusy
 	}
 	return DaemonRestart
 }
@@ -135,10 +130,10 @@ func RemoteCommand(spec RemoteSpec) string {
 // until it listens.
 func EnsureRemote() (DaemonAction, error) {
 	st := InspectRemote()
-	action := DecideDaemon(st.Running, st.Version, st.Installed, st.Busy)
+	action := DecideDaemon(st.Running, st.Version, st.Installed)
 	debug.Log("voice", "remote daemon: %s (running %q, installed %q, busy %v)", action, st.Version, st.Installed, st.Busy)
 	switch action {
-	case DaemonKeep, DaemonKeepBusy:
+	case DaemonKeep:
 		return action, nil
 	case DaemonRestart:
 		StopRemote()

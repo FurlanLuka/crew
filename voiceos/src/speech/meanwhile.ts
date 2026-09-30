@@ -1,4 +1,4 @@
-// "Meanwhile, ranking needs you about the index, checkout finished the retry backoff, and two others
+// "Meanwhile, ranking needs you about the index, checkout said: all tests pass, and two others
 // finished." Other sessions' updates wait for a quiet moment and arrive as one line, so the
 // developer's own conversation is never interrupted by them.
 import {
@@ -11,15 +11,18 @@ import { NUMBER_WORDS } from '../shared/spoken.js';
 
 const NAMED_AT_MOST = 2;
 
+// A cut line keeps its ellipsis: the pause says it was cut.
 const trimAbout = (about: string | null): string | null =>
-	about?.trim().replace(/[.!?…]+$/, '') || null;
+	about?.trim().replace(/[.!?]+$/, '') || null;
 
 const describeItem = (name: string, item: MeanwhileItem): string => {
 	const about = trimAbout(item.about);
 
 	return item.kind === 'needs'
 		? `${name} needs you${about ? ` about ${about}` : ''}`
-		: `${name} finished${about ? ` ${about}` : ''}`;
+		: about
+			? `${name} said: ${about}`
+			: `${name} finished`;
 };
 
 const countOthers = (rest: MeanwhileItem[]): string => {
@@ -46,12 +49,20 @@ interface DescribeMeanwhileParams {
 	nameOf: (ref: string) => string;
 }
 
+const orderItems = (items: MeanwhileItem[]): MeanwhileItem[] => [
+	...items.filter((item) => item.kind === 'needs'),
+	...items.filter((item) => item.kind === 'done'),
+];
+
+// The sessions the line says by name, in the order it says them: a reply can only mean one of these.
+export const listNamedRefs = (items: MeanwhileItem[]): string[] =>
+	orderItems(items)
+		.slice(0, NAMED_AT_MOST)
+		.map((item) => item.ref);
+
 // What needs the developer comes first, at most two sessions are named, the rest are counted.
 export const describeMeanwhile = ({ items, nameOf }: DescribeMeanwhileParams): string => {
-	const ordered = [
-		...items.filter((item) => item.kind === 'needs'),
-		...items.filter((item) => item.kind === 'done'),
-	];
+	const ordered = orderItems(items);
 	const named = ordered.slice(0, NAMED_AT_MOST);
 	const rest = ordered.slice(NAMED_AT_MOST);
 	const parts = [
@@ -59,7 +70,9 @@ export const describeMeanwhile = ({ items, nameOf }: DescribeMeanwhileParams): s
 		...(rest.length > 0 ? [countOthers(rest)] : []),
 	];
 
-	return `Meanwhile, ${joinSpoken(parts)}.`;
+	const line = `Meanwhile, ${joinSpoken(parts)}`;
+
+	return line.endsWith('…') ? line : `${line}.`;
 };
 
 interface DecideMeanwhileParams {

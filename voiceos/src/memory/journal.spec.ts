@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createInitialState, createSession } from '../state/reducer.js';
 import {
 	appendJournalEntry,
 	describeTurnOutcome,
@@ -10,8 +9,6 @@ import {
 	readHistory,
 	type JournalEntry,
 } from './journal.js';
-import { loadTopics, saveTopics, collectTopics, persistTopics } from './topics.js';
-import { Store } from '../state/store.js';
 
 const createDir = () => mkdtempSync(join(tmpdir(), 'voiceos-journal-'));
 const createEntry = (ref: string, ts: string, asked: string, did: string): JournalEntry => ({
@@ -98,58 +95,5 @@ describe('journal', () => {
 		);
 		expect(describeTurnOutcome('', 'Fixed the flake. Then more detail.')).toBe('Fixed the flake.');
 		expect(describeTurnOutcome('', 'x'.repeat(300)).length).toBe(200);
-	});
-});
-
-describe('topics', () => {
-	it('state → saved map → loaded back; pinned kept', () => {
-		const file = join(createDir(), 'topics.json');
-		const session = {
-			...createSession({
-				ref: 'store-front/main',
-				label: 'store-front/main',
-				branch: '',
-				cwd: '/w',
-				dirs: [],
-				isPinned: false,
-			}),
-			topic: 'Locale cleanup',
-			isTopicPinned: true,
-		};
-		saveTopics(
-			file,
-			collectTopics({ ...createInitialState(), sessions: { 'store-front/main': session } }),
-		);
-		expect(loadTopics(file)).toEqual({
-			'store-front/main': { topic: 'Locale cleanup', pinned: true },
-		});
-	});
-
-	it('missing or corrupt file → empty', () => {
-		expect(loadTopics(join(createDir(), 'none.json'))).toEqual({});
-	});
-});
-
-describe('persistTopics', () => {
-	it('a topic written after a turn is saved, so a restart keeps it', () => {
-		const file = join(mkdtempSync(join(tmpdir(), 'voiceos-topics-')), 'topics.json');
-		const store = new Store();
-		store.dispatch({
-			type: 'worktrees',
-			worktrees: [
-				{
-					ref: 'store/main',
-					label: 'store/main',
-					branch: '',
-					cwd: '/w',
-					dirs: [],
-					isPinned: false,
-				},
-			],
-		});
-		persistTopics({ store, file });
-		store.dispatch({ type: 'topic_written', ref: 'store/main', topic: 'Voice notes' });
-
-		expect(loadTopics(file)).toEqual({ 'store/main': { topic: 'Voice notes', pinned: false } });
 	});
 });

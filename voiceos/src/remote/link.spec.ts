@@ -303,7 +303,7 @@ describe('a remote over a link', () => {
 			finish();
 		});
 
-		it('updated, but its sessions keep the old release running → waited for, never updated again', async () => {
+		it('updated, but still on the old release → never updated again, told to restart it there', async () => {
 			const { open } = await startSwappable('5.0.1');
 			let updates = 0;
 			const { store } = startMain({
@@ -324,7 +324,7 @@ describe('a remote over a link', () => {
 
 			expect(updates).toBe(1);
 			expect(store.state.machines.vm1?.detail).toBe(
-				'Build box is updated; it switches to the new release once its sessions finish their work.',
+				'Build box is updated but still runs its old release: run crew voice remote there.',
 			);
 		});
 
