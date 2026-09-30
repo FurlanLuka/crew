@@ -128,3 +128,32 @@ describe('message kinds', () => {
 		expect(parseRemoteLine(lines[0] ?? '')).toMatchObject({ ok: true, message: { base64 } });
 	});
 });
+
+describe('crew calls, both ways', () => {
+	const call = { type: 'call' as const, id: 1, method: 'crew' as const, args: ['voice', 'logs'] };
+	const answered = {
+		type: 'result' as const,
+		id: 1,
+		ok: true as const,
+		value: { code: 0, stdout: '', stderr: '' },
+	};
+	const tooManyArgs = { ...call, args: Array.from({ length: 21 }, () => 'x') };
+	const noValue = { type: 'result', id: 1, ok: true };
+
+	it('a remote asking the main → its call and the answer read', () => {
+		expect(parseRemoteLine(JSON.stringify(call))).toEqual({ ok: true, message: call });
+		expect(parseMainLine(JSON.stringify(answered))).toEqual({ ok: true, message: answered });
+	});
+
+	it('the main asking a remote → its call and the answer read', () => {
+		expect(parseMainLine(JSON.stringify(call))).toEqual({ ok: true, message: call });
+		expect(parseRemoteLine(JSON.stringify(answered))).toEqual({ ok: true, message: answered });
+	});
+
+	it('past the bounds, or an answer without its output → refused either way', () => {
+		expect(parseRemoteLine(JSON.stringify(tooManyArgs)).ok).toBe(false);
+		expect(parseMainLine(JSON.stringify(tooManyArgs)).ok).toBe(false);
+		expect(parseRemoteLine(JSON.stringify(noValue)).ok).toBe(false);
+		expect(parseMainLine(JSON.stringify(noValue)).ok).toBe(false);
+	});
+});

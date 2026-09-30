@@ -1,0 +1,14 @@
+{
+	"request": { "args": ["voice", "logs", "--since=2026-09-30T08:02:00Z", "--lines=80", "--json"] },
+	"answered": {
+		"ok": true,
+		"value": {
+			"code": 0,
+			"stdout": "{\"lines\":[],\"unreachable\":[]}\n",
+			"stderr": "! vm2 (build box) unreachable over SSH: Connection refused\n"
+		}
+	},
+	"noMain": { "ok": false, "reason": "no-main", "error": "the main is not connected" },
+	"timeout": { "ok": false, "reason": "timeout", "error": "the main did not answer in 30s" },
+	"failed": { "ok": false, "reason": "error", "error": "output over 2 MB; narrow the filters" }
+}

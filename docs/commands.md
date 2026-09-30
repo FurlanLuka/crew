@@ -996,21 +996,111 @@ crew uninstall --purge
 Voice OS: a voice and web cockpit for the Claude Code sessions of every worktree. Bare crew voice starts it when needed (one tmux session, a remembered port, a route on the dev proxy) and prints the sign-in links — the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). stop also ends the Claude sessions it runs; they resume on the next start. crew kill and crew dev stop stop it too. Every start first checks what Voice OS needs (tmux, and Claude Code on PATH) and names what is missing with its fix. The first run downloads Voice OS from the release matching this crew (crew update refreshes it once installed, never restarting a running one). It needs an Anthropic key (kernel and narrator) and a Soniox key (speech): the first start at a terminal asks for any that is missing and checks it with the service; keys lists them (never their values) and keys set reads one from stdin — a rejected key is not saved. They live in ~/.config/crew-voiceos, readable by you alone, never in the shell environment.
 
 ```
-crew voice [start|stop|restart|status|logs|keys [set <anthropic|soniox>]] [--no-open] [--lines=<n>]
+crew voice [start|stop|restart|status|keys [set <anthropic|soniox>]] [--no-open]
 ```
 
 Output: `<up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>`
 
 - `--no-open` — Do not open the browser (start and restart open it when run in a terminal)
-- `--lines=<n>` — logs only: the last n lines (default 80)
 
 ```bash
 crew voice
 crew voice status --json
-crew voice logs --lines=200
 crew voice keys
 pbpaste | crew voice keys set anthropic
 crew voice stop
+```
+
+### `crew voice logs`
+
+Voice OS's log, filtered, from every machine at once. On the main (Voice OS runs here, or machines.json lists machines) it reads the main's own log and asks every remote over SSH in parallel (BatchMode, 20 s each), merging the lines by time; a machine that does not answer is named on stderr and in unreachable, and the rest still print (exit 1 only when no machine answered). On a remote it asks the main through the remote daemon's link and prints what the main would; when the main is not connected it shows this machine's own log with a warning. Reads the rotated files too (voiceos.log, .1 … .5) and never the debug notes beside them. Unknown flags are an error.
+
+```
+crew voice logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]
+```
+
+Output: `<ts>\t<machine>\t<level>\t<cat>\t<msg>\t<other fields as JSON>`
+
+- `--since=<when>` — From this time: a span back (10m, 2h, 3d), a clock time today (10:02; one still ahead is yesterday's) or an ISO time (local without a zone). Converted to UTC where you typed it, so every machine reads the same moment
+- `--until=<when>` — Up to this time, same forms; before --since is an error
+- `--cat=<c,…>` — Only these categories, e.g. gateway, kernel, router, worker, speech, remote; an unknown one matches nothing
+- `--level=<level>` — This level and above: warn is warn and error
+- `--grep=<text>` — Lines holding this text, any case
+- `--lines=<n>` — The newest n across every machine, printed oldest first (at most 1000) (default 80)
+- `--machine=<id|name|main,…>` — Only these machines; main is the main's own log — --machine=main is the fast look, no SSH
+- `--exclude=<id|name|main,…>` — Every machine but these
+
+--json: {"lines":[{ts,machine,level,cat,msg,fields}],"unreachable":[{machine,name,reason}]}. Warnings go to stderr ("! asking 2 machines…", "! vm2 (build box) unreachable: …", "! vm1 runs an older crew; run crew update there").
+
+```bash
+crew voice logs --since=10m --level=warn
+crew voice logs --since=10:02 --until=10:05 --cat=router,kernel
+crew voice logs --machine=main --grep=signals --lines=200
+crew voice logs --machine=vm1 --json
+```
+
+### `crew voice debug-notes`
+
+The debug notes said to Voice OS ("debug note: …"), newest last. n is the note's position in debug-notes.jsonl, so a filtered list keeps the numbers show takes. They live on the main; a remote asks the main through its link and fails with the reason when the main is not connected.
+
+```
+crew voice debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]
+```
+
+Output: `<n>\t<at>\t<view>\t<text>`
+
+- `--since=<when>` — As on logs
+- `--until=<when>` — As on logs
+- `--grep=<text>` — Notes whose text, what was said or view holds this, any case
+- `--lines=<n>` — The newest n (at most 1000) (default 20)
+
+--json: {"notes":[{n,at,view,text}]}.
+
+```bash
+crew voice debug-notes
+crew voice debug-notes --since=2h --grep=speech
+```
+
+#### `crew voice debug-notes show`
+
+One debug note whole — what was said, the kernel's words, what was heard on that screen, the sessions, what was waiting, what was said last — then the main's log lines within its time ± --around. Says so when that stretch of the log has rotated out.
+
+```
+crew voice debug-notes show <n> [--around=30s] [--json]
+```
+
+Output: `debug note <n>\t<at>\t<view>, the note's parts, then log <from> … <to>: and the log rows`
+
+- `--around=<span>` — How much log on each side of the note (default 30s)
+
+--json: {"note":{n,at,text,said,view,heardHere,sessions,asks,spoken,devOffer},"lines":[…as logs]}.
+
+```bash
+crew voice debug-notes show 3
+crew voice debug-notes show 3 --around=2m --json
+```
+
+### `crew voice notes`
+
+Your own notes said to Voice OS ("note for store front: …"), one list per workspace. Bare, the general notes; a workspace is named as Voice OS names it (any case, spaces become dashes); --all lists every workspace's. They live on the main; a remote asks the main through its link and fails with the reason when the main is not connected.
+
+```
+crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]
+```
+
+Output: `<workspace>\t<date time>\t<text>`
+
+- `--all` — Every workspace with notes, one after another
+- `--since=<when>` — As on logs
+- `--grep=<text>` — Notes holding this text, any case
+- `--lines=<n>` — The newest n, per workspace with --all (at most 1000) (default 20)
+
+--json: {"notes":[{workspace,at,text}]}. A note's time is the main's local clock.
+
+```bash
+crew voice notes store-front
+crew voice notes
+crew voice notes --all --since=3d
 ```
 
 ### `crew voice remote`

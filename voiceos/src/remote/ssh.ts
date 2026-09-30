@@ -7,7 +7,8 @@ import { forEachChunk } from './streams.js';
 const log = createLogger('remote');
 
 // The remote user's own shell parses this first (bash, zsh, fish alike read single quotes), then sh.
-// crew may be on the login PATH or only in ~/.local/bin, where install.sh puts it.
+// crew may be on the login PATH or only in ~/.local/bin, where install.sh puts it. The same fallback
+// is copied in crew/internal/voice/remote_query.go (RemoteCrewCommand): the two change together.
 const buildRemoteCrewCommand = (args: string): string =>
 	`sh -lc 'command -v crew >/dev/null 2>&1 && exec crew ${args}; exec "$HOME/.local/bin/crew" ${args}'`;
 

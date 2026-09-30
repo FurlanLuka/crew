@@ -647,14 +647,74 @@ var Root = CommandInfo{
 		{
 			Name:         "voice",
 			Description:  "Voice OS: a voice and web cockpit for the Claude Code sessions of every worktree. Bare crew voice starts it when needed (one tmux session, a remembered port, a route on the dev proxy) and prints the sign-in links — the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). stop also ends the Claude sessions it runs; they resume on the next start. crew kill and crew dev stop stop it too. Every start first checks what Voice OS needs (tmux, and Claude Code on PATH) and names what is missing with its fix. The first run downloads Voice OS from the release matching this crew (crew update refreshes it once installed, never restarting a running one). It needs an Anthropic key (kernel and narrator) and a Soniox key (speech): the first start at a terminal asks for any that is missing and checks it with the service; keys lists them (never their values) and keys set reads one from stdin — a rejected key is not saved. They live in ~/.config/crew-voiceos, readable by you alone, never in the shell environment.",
-			Usage:        "crew voice [start|stop|restart|status|logs|keys [set <anthropic|soniox>]] [--no-open] [--lines=<n>]",
+			Usage:        "crew voice [start|stop|restart|status|keys [set <anthropic|soniox>]] [--no-open]",
 			OutputFormat: "<up|up (not answering)|down>\\t<port>\\t<localhost url>\\t<proxy url>",
 			Flags: []FlagInfo{
 				{Name: "--no-open", Description: "Do not open the browser (start and restart open it when run in a terminal)"},
-				{Name: "--lines=<n>", Description: "logs only: the last n lines (default 80)"},
 			},
-			Examples: []string{"crew voice", "crew voice status --json", "crew voice logs --lines=200", "crew voice keys", "pbpaste | crew voice keys set anthropic", "crew voice stop"},
+			Examples: []string{"crew voice", "crew voice status --json", "crew voice keys", "pbpaste | crew voice keys set anthropic", "crew voice stop"},
 			Subcommands: []CommandInfo{
+				{
+					Name:         "logs",
+					Description:  "Voice OS's log, filtered, from every machine at once. On the main (Voice OS runs here, or machines.json lists machines) it reads the main's own log and asks every remote over SSH in parallel (BatchMode, 20 s each), merging the lines by time; a machine that does not answer is named on stderr and in unreachable, and the rest still print (exit 1 only when no machine answered). On a remote it asks the main through the remote daemon's link and prints what the main would; when the main is not connected it shows this machine's own log with a warning. Reads the rotated files too (voiceos.log, .1 … .5) and never the debug notes beside them. Unknown flags are an error.",
+					Usage:        "crew voice logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]",
+					OutputFormat: "<ts>\\t<machine>\\t<level>\\t<cat>\\t<msg>\\t<other fields as JSON>",
+					Flags: []FlagInfo{
+						{Name: "--since=<when>", Description: "From this time: a span back (10m, 2h, 3d), a clock time today (10:02; one still ahead is yesterday's) or an ISO time (local without a zone). Converted to UTC where you typed it, so every machine reads the same moment"},
+						{Name: "--until=<when>", Description: "Up to this time, same forms; before --since is an error"},
+						{Name: "--cat=<c,…>", Description: "Only these categories, e.g. gateway, kernel, router, worker, speech, remote; an unknown one matches nothing"},
+						{Name: "--level=<level>", Description: "This level and above: warn is warn and error"},
+						{Name: "--grep=<text>", Description: "Lines holding this text, any case"},
+						{Name: "--lines=<n>", Description: "The newest n across every machine, printed oldest first (at most 1000)", Default: "80"},
+						{Name: "--machine=<id|name|main,…>", Description: "Only these machines; main is the main's own log — --machine=main is the fast look, no SSH"},
+						{Name: "--exclude=<id|name|main,…>", Description: "Every machine but these"},
+					},
+					Notes: []string{
+						"--json: {\"lines\":[{ts,machine,level,cat,msg,fields}],\"unreachable\":[{machine,name,reason}]}. Warnings go to stderr (\"! asking 2 machines…\", \"! vm2 (build box) unreachable: …\", \"! vm1 runs an older crew; run crew update there\").",
+					},
+					Examples: []string{"crew voice logs --since=10m --level=warn", "crew voice logs --since=10:02 --until=10:05 --cat=router,kernel", "crew voice logs --machine=main --grep=signals --lines=200", "crew voice logs --machine=vm1 --json"},
+				},
+				{
+					Name:         "debug-notes",
+					Description:  "The debug notes said to Voice OS (\"debug note: …\"), newest last. n is the note's position in debug-notes.jsonl, so a filtered list keeps the numbers show takes. They live on the main; a remote asks the main through its link and fails with the reason when the main is not connected.",
+					Usage:        "crew voice debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]",
+					OutputFormat: "<n>\\t<at>\\t<view>\\t<text>",
+					Flags: []FlagInfo{
+						{Name: "--since=<when>", Description: "As on logs"},
+						{Name: "--until=<when>", Description: "As on logs"},
+						{Name: "--grep=<text>", Description: "Notes whose text, what was said or view holds this, any case"},
+						{Name: "--lines=<n>", Description: "The newest n (at most 1000)", Default: "20"},
+					},
+					Notes:    []string{"--json: {\"notes\":[{n,at,view,text}]}."},
+					Examples: []string{"crew voice debug-notes", "crew voice debug-notes --since=2h --grep=speech"},
+					Subcommands: []CommandInfo{
+						{
+							Name:         "show",
+							Description:  "One debug note whole — what was said, the kernel's words, what was heard on that screen, the sessions, what was waiting, what was said last — then the main's log lines within its time ± --around. Says so when that stretch of the log has rotated out.",
+							Usage:        "crew voice debug-notes show <n> [--around=30s] [--json]",
+							OutputFormat: "debug note <n>\\t<at>\\t<view>, the note's parts, then log <from> … <to>: and the log rows",
+							Flags: []FlagInfo{
+								{Name: "--around=<span>", Description: "How much log on each side of the note", Default: "30s"},
+							},
+							Notes:    []string{"--json: {\"note\":{n,at,text,said,view,heardHere,sessions,asks,spoken,devOffer},\"lines\":[…as logs]}."},
+							Examples: []string{"crew voice debug-notes show 3", "crew voice debug-notes show 3 --around=2m --json"},
+						},
+					},
+				},
+				{
+					Name:         "notes",
+					Description:  "Your own notes said to Voice OS (\"note for store front: …\"), one list per workspace. Bare, the general notes; a workspace is named as Voice OS names it (any case, spaces become dashes); --all lists every workspace's. They live on the main; a remote asks the main through its link and fails with the reason when the main is not connected.",
+					Usage:        "crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]",
+					OutputFormat: "<workspace>\\t<date time>\\t<text>",
+					Flags: []FlagInfo{
+						{Name: "--all", Description: "Every workspace with notes, one after another"},
+						{Name: "--since=<when>", Description: "As on logs"},
+						{Name: "--grep=<text>", Description: "Notes holding this text, any case"},
+						{Name: "--lines=<n>", Description: "The newest n, per workspace with --all (at most 1000)", Default: "20"},
+					},
+					Notes:    []string{"--json: {\"notes\":[{workspace,at,text}]}. A note's time is the main's local clock."},
+					Examples: []string{"crew voice notes store-front", "crew voice notes", "crew voice notes --all --since=3d"},
+				},
 				{
 					Name:         "remote",
 					Description:  "Make this machine a remote: another machine's Voice OS (the main) drives the Claude sessions of its worktrees over SSH, and it runs no voice or kernel of its own. Bare, it checks tmux and Claude Code, installs Voice OS if needed, and starts the daemon (a tmux session that outlives any SSH link, listening on a socket only you can open); status reports it, stop ends it and every session it runs. A machine is a main or a remote, never both: each refuses while the other runs. After crew update the daemon moves to the new release on the next connect, at once (sessions at work are cut off and resume on the new release); a main on a newer release runs crew update here itself when this machine is behind. The main reaches it with ssh <host> … crew voice _attach — a hidden command that prints nothing on stdout but the link.",

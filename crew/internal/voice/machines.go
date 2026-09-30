@@ -31,6 +31,9 @@ type MachineRow struct {
 // LocalMachine is the id a main's own sessions use in views: never a machine's.
 const LocalMachine = "local"
 
+// MainMachine is how a query names the main's own log (--machine=main): never a machine's.
+const MainMachine = "main"
+
 // validHost is what ssh is given as its destination: an alias or user@host,
 // never something it could read as an option. Voice OS checks the same.
 var validHost = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._@-]{0,199}$`)
@@ -67,7 +70,7 @@ func MachineIDFor(host string, taken []string) string {
 	if base == "" {
 		base = "remote"
 	}
-	reserved := map[string]bool{LocalMachine: true}
+	reserved := map[string]bool{LocalMachine: true, MainMachine: true}
 	for _, id := range taken {
 		reserved[id] = true
 	}
@@ -234,4 +237,59 @@ func machineRows(machines []Machine, recorded recordedMachines, isRunning bool) 
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// SelectMachines is which machines a query reads: every one and the main when
+// include is empty, less exclude. A word is `main`, a machine's id, or its name
+// (any case); an id wins over another machine's name. Pure.
+func SelectMachines(machines []Machine, include, exclude []string) (withMain bool, picked []Machine, err error) {
+	find := func(word string) (int, error) {
+		if word == MainMachine {
+			return -1, nil
+		}
+		for i, m := range machines {
+			if m.ID == word {
+				return i, nil
+			}
+		}
+		for i, m := range machines {
+			if strings.EqualFold(m.Name, word) {
+				return i, nil
+			}
+		}
+		known := []string{MainMachine}
+		for _, m := range machines {
+			known = append(known, m.ID)
+		}
+		return 0, fmt.Errorf("no machine %q (known: %s)", word, strings.Join(known, ", "))
+	}
+
+	chosen := map[int]bool{}
+	if len(include) == 0 {
+		chosen[-1] = true
+		for i := range machines {
+			chosen[i] = true
+		}
+	}
+	for _, word := range include {
+		i, err := find(word)
+		if err != nil {
+			return false, nil, err
+		}
+		chosen[i] = true
+	}
+	for _, word := range exclude {
+		i, err := find(word)
+		if err != nil {
+			return false, nil, err
+		}
+		delete(chosen, i)
+	}
+	picked = []Machine{}
+	for i, m := range machines {
+		if chosen[i] {
+			picked = append(picked, m)
+		}
+	}
+	return chosen[-1], picked, nil
 }

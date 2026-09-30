@@ -3,6 +3,7 @@
 	{"host": "GPU_Box", "taken": [], "id": "gpu-box"},
 	{"host": "vm1", "taken": ["vm1"], "id": "vm1-2"},
 	{"host": "local", "taken": [], "id": "local-2"},
+	{"host": "main", "taken": [], "id": "main-2"},
 	{"host": "@@@", "taken": [], "id": "remote"},
 	{"host": "dev@10.0.0.5", "taken": [], "id": "10-0-0-5"},
 	{"host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com", "taken": [], "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}

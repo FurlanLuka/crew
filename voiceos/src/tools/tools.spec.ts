@@ -917,6 +917,20 @@ describe('the notes path for a session', () => {
 		);
 		expect(buildNotesPathNote({ ref: 'store-front/main', isAsked: false, notes })).toBeUndefined();
 	});
+
+	it('a session on another machine → the crew command, not a path it cannot read; nothing unasked', () => {
+		const notes = notesIn([]);
+
+		expect(buildNotesPathNote({ ref: 'vm1:store-front/main', isAsked: true, notes })).toBe(
+			"The developer's notes for store-front are on the main machine: run `crew voice notes store-front` to read them.",
+		);
+		expect(buildNotesPathNote({ ref: 'vm1:setup', isAsked: true, notes })).toBe(
+			"The developer's notes for general are on the main machine: run `crew voice notes` to read them.",
+		);
+		expect(
+			buildNotesPathNote({ ref: 'vm1:store-front/main', isAsked: false, notes }),
+		).toBeUndefined();
+	});
 });
 
 describe('an answer to a question asked while the developer spoke', () => {

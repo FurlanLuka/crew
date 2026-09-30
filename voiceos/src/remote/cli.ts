@@ -19,6 +19,7 @@ import { SETUP_ORIENTATION, SETUP_REF, createSetupWorktree } from '../sessions/s
 import { VERSION } from '../version.js';
 import { RemoteHost } from './host.js';
 import { createLineDecoder } from './protocol.js';
+import { listenQuerySocket } from './query-socket.js';
 import { createSocketWriter, type SocketWriter } from './socket-writer.js';
 import { forEachChunk } from './streams.js';
 
@@ -28,6 +29,8 @@ const SILENCE_CHECK_MS = 5_000;
 export interface RemotePaths {
 	dir: string;
 	socket: string;
+	// crew voice logs (debug-notes, notes) here, asking the main through this daemon's link.
+	querySocket: string;
 	daemonFile: string;
 	registryFile: string;
 	mediaDir: string;
@@ -41,6 +44,7 @@ export const resolveRemotePaths = (voiceDir: string): RemotePaths => {
 	return {
 		dir,
 		socket: join(dir, 'remote.sock'),
+		querySocket: join(dir, 'query.sock'),
 		daemonFile: join(dir, 'daemon.json'),
 		registryFile: join(dir, 'sessions.json'),
 		mediaDir: join(dir, 'media'),
@@ -160,6 +164,9 @@ const serve = async (): Promise<void> => {
 
 	// Only this user may drive these sessions.
 	chmodSync(remote.socket, 0o600);
+
+	const querySocket = listenQuerySocket({ path: remote.querySocket, askMain: host.query });
+
 	writeDaemonFile(false);
 	log.info('remote serving', { version: VERSION, socket: remote.socket, pid: process.pid });
 
@@ -172,6 +179,7 @@ const serve = async (): Promise<void> => {
 		clearInterval(silenceTimer);
 		host.stopAll();
 		server.stop(true);
+		querySocket.stop();
 		rmSync(remote.socket, { force: true });
 		rmSync(remote.daemonFile, { force: true });
 		process.exit(0);

@@ -18,7 +18,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|keys|remote|machines].
+// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines].
 // Bare `crew voice` starts it when needed and always reprints the sign-in
 // link, so a lost cookie is one command away.
 func cmdVoice() {
@@ -50,8 +50,8 @@ func cmdVoice() {
 		fmt.Println("Stopped Voice OS and the Claude sessions it was running. Their conversations resume on the next start.")
 	case "status":
 		voicePrint(voice.Inspect())
-	case "logs":
-		voiceLogs(args)
+	case "logs", "debug-notes", "notes":
+		voiceQuery(append([]string{sub}, args...))
 	case "keys":
 		voiceKeys(args)
 	case "remote":
@@ -62,7 +62,7 @@ func cmdVoice() {
 	case "machines":
 		voiceMachines(args)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|keys|remote|machines] [--no-open] [--lines=<n>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines] [--no-open]\n")
 		os.Exit(1)
 	}
 }
@@ -167,23 +167,6 @@ func voicePrint(st voice.Status) {
 		fmt.Fprintf(human, "Open %s — the microphone works there on any device that trusts crew's CA (crew dev proxy trust); %s works on this Mac.\n", st.URL, st.LocalhostURL)
 	case st.Healthy:
 		fmt.Fprintf(human, "Open %s — the localhost link is the one with microphone access; the proxy link is text only until HTTPS is up (crew dev proxy status).\n", st.LocalhostURL)
-	}
-}
-
-func voiceLogs(args []string) {
-	lines := "80"
-	for _, a := range args {
-		if strings.HasPrefix(a, "--lines=") {
-			lines = strings.TrimPrefix(a, "--lines=")
-		}
-	}
-	debug.Log("voice", "tail -n %s %s", lines, voice.LogFile())
-	cmd := osexec.Command("tail", "-n", lines, voice.LogFile())
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "No Voice OS log yet at %s\n", voice.LogFile())
-		os.Exit(1)
 	}
 }
 

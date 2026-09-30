@@ -508,6 +508,14 @@ Each debug note is saved with a snapshot of the moment (what you said and what V
 screen, the sessions, what was waiting, what was said last) to
 `~/.crew/voiceos/logs/debug-notes.jsonl`, next to the log. Include them if you report a bug.
 
+Read both from a terminal, or have an agent read them:
+
+- `crew voice notes store-front` · `crew voice notes` (general) · `crew voice notes --all`
+- `crew voice debug-notes` lists the debug notes, numbered; `crew voice debug-notes show 3` prints
+  one whole, then the log around it (`--around=2m` for more).
+
+Notes and debug notes live on the main. On a remote these commands ask the main through the link.
+
 ## Other machines
 
 One Voice OS can drive the sessions on other machines too, such as a VM or a second computer, over
@@ -556,14 +564,16 @@ stops driving a machine. Its sessions keep running there.
 | `crew voice restart` | Stops and starts it. Use it after changing a key or after `crew update`. |
 | `crew voice stop` | Stops Voice OS **and every Claude session it runs**. Their conversations resume the next time each session starts. |
 | `crew voice status` | Prints `up`, `up (not answering)` or `down`, with the port and both links. |
-| `crew voice logs [--lines=N]` | Shows the end of the log (80 lines by default). |
+| `crew voice logs [--since=…] [--level=…] [--machine=…]` | The log of every machine, filtered and merged by time (80 lines by default). See [Reading the log](#troubleshooting). |
+| `crew voice debug-notes [show <n>]` | Lists your debug notes, or prints one with the log around it. |
+| `crew voice notes [<workspace>\|--all]` | Prints your notes. |
 | `crew voice keys` | Shows which keys are set and where (never their values). |
 | `crew voice keys set <anthropic\|soniox>` | Sets a key from stdin, for example `pbpaste \| crew voice keys set soniox`. |
 | `crew voice machines [ls\|add\|rm\|rename]` | Manages the other machines. |
 | `crew voice remote [status\|stop]` | Makes this machine a remote, or reports or stops it. |
 
 Add `--no-open` to `start` or `restart` to skip opening the browser. `--json` gives
-machine-readable output (except for `logs`). [Every crew command](../commands.md#crew-voice) has the details.
+machine-readable output. [Every crew command](../commands.md#crew-voice) has the details.
 
 **A restart keeps your place.** Voice OS remembers the screen you were on and returns to it. For
 another machine's session, it waits up to a minute for that machine to reconnect. Open pages
@@ -598,8 +608,8 @@ you to update this machine instead.
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |
 | `~/.crew/voiceos/machines.json` | The other machines. |
-| `~/.crew/voiceos/logs/voiceos.log` | The log (`crew voice logs`). |
-| `~/.crew/voiceos/logs/debug-notes.jsonl` | Debug notes. |
+| `~/.crew/voiceos/logs/voiceos.log` | The log, rotated into `.1` … `.5` (`crew voice logs`). |
+| `~/.crew/voiceos/logs/debug-notes.jsonl` | Debug notes (`crew voice debug-notes`). |
 | `~/.crew/voiceos/remote/` | A remote's own daemon state, socket and log. |
 
 The conversations themselves are Claude Code's, stored where Claude Code keeps them.
@@ -656,9 +666,24 @@ restarted or stopped. It reconnects by itself. If it doesn't, run `crew voice st
 **The mic stops on a phone.** Phones pause the microphone when the tab goes to the background or
 the screen locks. Bring the tab back. Push to talk is the most reliable mode on a phone.
 
-**It misheard or did the wrong thing.** Say "debug note: …" right away, and then look at
-`crew voice logs` and `~/.crew/voiceos/logs/debug-notes.jsonl`. `crew debug --tail=20` shows what
-crew itself ran (starts, stops, key checks).
+**It misheard or did the wrong thing.** Say "debug note: …" right away. Then
+`crew voice debug-notes` finds it and `crew voice debug-notes show <n>` prints it with the log
+around it. `crew debug --tail=20` shows what crew itself ran (starts, stops, key checks).
+
+**Reading the log.** `crew voice logs` reads the log of every machine at once and merges it by
+time, newest 80 lines. Narrow it down:
+
+- `--since=10m`, `--since=10:02 --until=10:05`, or an ISO time. Times are yours; crew converts
+  them for every machine.
+- `--level=warn` (warn and error), `--cat=router,kernel`, `--grep=signals` (any case).
+- `--machine=vm1` or `--exclude=vm2`; `--machine=main` reads the main alone, without SSH.
+- `--lines=200` for more, `--json` for a document.
+
+On the main, crew asks each remote over SSH, even while Voice OS is down. A machine that does not
+answer is named on stderr (`! vm2 (build box) unreachable: …`) and the others still print. One on
+an older crew says `run crew update there`. On a remote, crew asks the main through the link; with
+the main away you get that machine's own log and a warning. The log rotates at 20 MB and keeps
+five older files (`voiceos.log.1` … `.5`); `crew voice logs` reads them all.
 
 ## Privacy and cost
 

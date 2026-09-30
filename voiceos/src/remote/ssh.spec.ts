@@ -160,6 +160,7 @@ describe('a refusal over a real process', () => {
 			dispatch: (input) => store.dispatch(input),
 			storeMedia: () => true,
 			say: () => undefined,
+			runLocalCrew: async () => ({ code: 0, stdout: '', stderr: '' }),
 			handleLocal: () => undefined,
 			retryMs: 60_000,
 		});

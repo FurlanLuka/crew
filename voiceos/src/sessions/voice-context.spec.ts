@@ -70,6 +70,13 @@ describe('VOICE_OS_CONTEXT', () => {
 		);
 	});
 
+	it('logs, debug notes and notes → the crew commands, never file paths', () => {
+		expect(VOICE_OS_CONTEXT).toContain('`crew voice logs --since=10m`');
+		expect(VOICE_OS_CONTEXT).toContain('`crew voice debug-notes`');
+		expect(VOICE_OS_CONTEXT).toContain('`crew voice notes <workspace>`');
+		expect(VOICE_OS_CONTEXT).not.toContain('.crew/voiceos');
+	});
+
 	it('voice cues → one optional allowed tag inside a full sentence, never SSML', () => {
 		expect(VOICE_OS_CONTEXT).toContain(
 			'A line may carry one voice cue in brackets, only where it fits and only inside a full sentence',

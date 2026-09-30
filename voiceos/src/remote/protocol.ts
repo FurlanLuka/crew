@@ -46,7 +46,8 @@ export type MainMessage =
 	// runId: this main process; pending: effects sent before and not acknowledged, applied first.
 	| { type: 'hello'; version: string; mainId: string; runId: string; pending: SequencedEffect[] }
 	| { type: 'effect'; seq: number; effect: HandsEffect }
-	| { type: 'call'; id: number; method: 'crew'; args: string[]; timeoutMs?: number }
+	| CrewCall
+	| CallResult
 	| { type: 'ping' };
 
 export type RemoteMessage =
@@ -59,8 +60,9 @@ export type RemoteMessage =
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
 	// An image's bytes, sent before the input that names it.
 	| { type: 'media'; name: string; base64: string }
-	| { type: 'result'; id: number; ok: true; value: CrewCallResult }
-	| { type: 'result'; id: number; ok: false; error: string }
+	// A remote's own crew asking the main (crew voice logs on a remote reads every machine).
+	| CrewCall
+	| CallResult
 	| { type: 'pong' };
 
 export interface CrewCallResult {
@@ -68,6 +70,20 @@ export interface CrewCallResult {
 	stdout: string;
 	stderr: string;
 }
+
+// Either side may call the other's crew. A call is never an effect: it is not queued in the outbox
+// nor replayed after a reconnect, since whoever asked has given up by then.
+export interface CrewCall {
+	type: 'call';
+	id: number;
+	method: 'crew';
+	args: string[];
+	timeoutMs?: number;
+}
+
+export type CallResult =
+	| { type: 'result'; id: number; ok: true; value: CrewCallResult }
+	| { type: 'result'; id: number; ok: false; error: string };
 
 // What a remote may report. Anything else (limits, narration, the cockpit's own inputs) is dropped.
 export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
@@ -128,7 +144,33 @@ const snapshotSchema = z.object({
 	asides: z.array(z.object({ ref: z.string(), itemId: z.string() })).max(500),
 });
 
-// A plain union: a result is two shapes under one type (answered, or failed).
+// A crew command line, bounded the same wherever it arrives (a link, the query socket).
+export const crewArgsSchema = z.array(z.string().max(1000)).max(20);
+
+const callSchema = z.object({
+	type: z.literal('call'),
+	id: z.number().int(),
+	method: z.literal('crew'),
+	args: crewArgsSchema,
+	timeoutMs: z.number().int().positive().max(300_000).optional(),
+});
+
+// One type, two shapes (answered, or failed): the unions below are plain for it.
+const resultSchema = z.union([
+	z.object({
+		type: z.literal('result'),
+		id: z.number().int(),
+		ok: z.literal(true),
+		value: z.object({ code: z.number(), stdout: z.string(), stderr: z.string() }),
+	}),
+	z.object({
+		type: z.literal('result'),
+		id: z.number().int(),
+		ok: z.literal(false),
+		error: z.string(),
+	}),
+]);
+
 const remoteSchema = z.union([
 	z.object({
 		type: z.literal('hello'),
@@ -150,18 +192,8 @@ const remoteSchema = z.union([
 		name: z.string().max(200),
 		base64: z.string(),
 	}),
-	z.object({
-		type: z.literal('result'),
-		id: z.number().int(),
-		ok: z.literal(true),
-		value: z.object({ code: z.number(), stdout: z.string(), stderr: z.string() }),
-	}),
-	z.object({
-		type: z.literal('result'),
-		id: z.number().int(),
-		ok: z.literal(false),
-		error: z.string(),
-	}),
+	callSchema,
+	resultSchema,
 	z.object({ type: z.literal('pong') }),
 ]);
 
@@ -170,7 +202,7 @@ const sequencedSchema = z.object({
 	effect: looseObject.extend({ type: z.string(), ref: z.string() }),
 });
 
-const mainSchema = z.discriminatedUnion('type', [
+const mainSchema = z.union([
 	z.object({
 		type: z.literal('hello'),
 		version: z.string(),
@@ -183,13 +215,8 @@ const mainSchema = z.discriminatedUnion('type', [
 		seq: z.number().int().positive(),
 		effect: sequencedSchema.shape.effect,
 	}),
-	z.object({
-		type: z.literal('call'),
-		id: z.number().int(),
-		method: z.literal('crew'),
-		args: z.array(z.string().max(1000)).max(20),
-		timeoutMs: z.number().int().positive().max(300_000).optional(),
-	}),
+	callSchema,
+	resultSchema,
 	z.object({ type: z.literal('ping') }),
 ]);
 

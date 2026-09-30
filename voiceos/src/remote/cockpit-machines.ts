@@ -82,6 +82,7 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		dispatch: (input) => store.dispatch(input),
 		storeMedia: (name, bytes) => storeMediaBytes({ name, bytes, dir: options.mediaDir }),
 		say: options.say,
+		runLocalCrew: options.runCrew,
 		handleLocal: options.manager.handle,
 		onLinkStarted: (link) => {
 			devWatches.set(

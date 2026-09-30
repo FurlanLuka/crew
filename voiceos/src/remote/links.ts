@@ -9,6 +9,7 @@ import { RemoteLink, type OpenTransport } from './link.js';
 import { routeEffect, type HandsEffect } from './mapping.js';
 import { composeWorktrees } from './worktrees.js';
 import type { UpdateRemote } from './ssh.js';
+import type { CrewRunner } from '../crew/adapter.js';
 
 const log = createLogger('remote');
 
@@ -23,6 +24,8 @@ export interface MachineLinksOptions {
 	storeMedia: (name: string, bytes: Buffer) => boolean;
 	say: (text: string) => void;
 	updateRemote: UpdateRemote;
+	// This machine's crew, for what a remote asks the main.
+	runLocalCrew: CrewRunner;
 	handleLocal: (effect: HandsEffect) => void | Promise<void>;
 	// A machine's link started or stopped: its dev watch follows.
 	onLinkStarted?: (link: RemoteLink) => void;
@@ -74,6 +77,7 @@ export class MachineLinks {
 				storeMedia: this.options.storeMedia,
 				say: (text) => this.options.say(text),
 				updateRemote: this.options.updateRemote,
+				runLocalCrew: this.options.runLocalCrew,
 				...(this.options.retryMs !== undefined ? { retryMs: this.options.retryMs } : {}),
 			});
 

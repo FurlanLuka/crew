@@ -53,6 +53,25 @@ func Dir() string { return filepath.Join(config.ConfigDir, "voiceos") }
 
 func LogFile() string { return filepath.Join(Dir(), "logs", "voiceos.log") }
 
+// DebugNotesFile and NotesDir live on the main, where the kernel writes them
+// (voiceos/src/config.ts).
+func DebugNotesFile() string { return filepath.Join(Dir(), "logs", "debug-notes.jsonl") }
+
+func NotesDir() string { return filepath.Join(Dir(), "notes") }
+
+// keptLogs is how many rotated files Voice OS keeps beside a log (voiceos/src/log.ts).
+const keptLogs = 5
+
+// RotatedFiles is a log and its rotations, newest first: base, base.1 … base.5.
+// Named, never globbed, so debug-notes.jsonl beside it is never read as a log.
+func RotatedFiles(base string) []string {
+	files := []string{base}
+	for i := 1; i <= keptLogs; i++ {
+		files = append(files, fmt.Sprintf("%s.%d", base, i))
+	}
+	return files
+}
+
 // Binary is where the Voice OS executable lives: downloaded there on the first
 // crew voice (Install), or compiled there from source with `bun run install-dev`.
 func Binary() string {

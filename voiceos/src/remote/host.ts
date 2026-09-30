@@ -16,17 +16,23 @@ import {
 	type HostState,
 	type Inbox,
 } from './host-state.js';
+import { PendingCalls } from './pending-calls.js';
+import type { QueryAnswer, QueryFailureReason } from './query-socket.js';
 import {
 	encodeLine,
 	parseMainLine,
 	REMOTE_OBSERVATIONS,
 	SILENCE_LIMIT_MS,
 	type MainMessage,
+	type CrewCallResult,
 	type RemoteMessage,
 	type SequencedEffect,
 } from './protocol.js';
 
 const log = createLogger('remote');
+
+// Inside the main's own 25 s for running crew, and inside crew's 35 s for reading query.sock.
+const QUERY_TIMEOUT_MS = 30_000;
 
 const DEV_ACTIONS = new Set(['status', 'check', 'start', 'stop', 'restart']);
 const DEV_FLAGS = new Set(['--json', '--wait']);
@@ -76,6 +82,18 @@ export interface RemoteHostOptions {
 	restoreHistory: (dispatch: (observation: Observation) => void) => Promise<void>;
 	onBusyChanged?: (isBusy: boolean) => void;
 	now?: () => number;
+	// Tests shorten it.
+	queryTimeoutMs?: number;
+}
+
+// Why a query to the main failed, carried to the query socket's answer.
+class QueryFailure extends Error {
+	constructor(
+		readonly reason: QueryFailureReason,
+		message: string,
+	) {
+		super(message);
+	}
 }
 
 interface Attachment {
@@ -95,6 +113,8 @@ export class RemoteHost {
 	private turnCount = 0;
 	private readonly bootId: string;
 	private wasBusy = false;
+	// This machine's crew asking the main (query.sock); they go when the main does.
+	private queries = new PendingCalls<CrewCallResult>();
 
 	constructor(private options: RemoteHostOptions) {
 		this.bootId = (options.now ?? Date.now)().toString(36);
@@ -147,7 +167,7 @@ export class RemoteHost {
 			receive: (line) => this.receive(attachment, line),
 			closed: () => {
 				if (this.attached === attachment) {
-					this.attached = null;
+					this.detach();
 					log.info('main detached', { mainId: attachment.mainId });
 				}
 			},
@@ -160,10 +180,47 @@ export class RemoteHost {
 
 		if (attached && this.now() - attached.lastHeard > SILENCE_LIMIT_MS) {
 			log.warn('main silent, detached', { mainId: attached.mainId });
-			this.attached = null;
+			this.detach();
 			attached.connection.close();
 		}
 	}
+
+	// A query in flight goes with the main that was asked: the answer would come on a link that is gone.
+	private detach(): void {
+		this.attached = null;
+		this.queries.rejectAll(new QueryFailure('no-main', 'the main disconnected'));
+	}
+
+	// This machine's crew asking the main to run crew there. Never rejects: every failure is an answer.
+	query = (args: string[]): Promise<QueryAnswer> => {
+		const attached = this.attached;
+
+		if (!attached?.mainId) {
+			return Promise.resolve({
+				ok: false,
+				reason: 'no-main',
+				error: 'the main is not connected',
+			});
+		}
+
+		const timeoutMs = this.options.queryTimeoutMs ?? QUERY_TIMEOUT_MS;
+		const { id, promise } = this.queries.open({
+			timeoutMs,
+			onTimeout: () =>
+				new QueryFailure('timeout', `the main did not answer in ${Math.round(timeoutMs / 1000)}s`),
+		});
+
+		this.send(attached, { type: 'call', id, method: 'crew', args });
+
+		return promise.then(
+			(value): QueryAnswer => ({ ok: true, value }),
+			(error: unknown): QueryAnswer => ({
+				ok: false,
+				reason: error instanceof QueryFailure ? error.reason : 'error',
+				error: error instanceof Error ? error.message : String(error),
+			}),
+		);
+	};
 
 	private send(attachment: Attachment, message: RemoteMessage): void {
 		attachment.connection.write(encodeLine(message));
@@ -201,6 +258,16 @@ export class RemoteHost {
 				return;
 			case 'call':
 				void this.call(attachment, message);
+
+				return;
+			case 'result':
+				// A late answer (the query timed out) finds nothing waiting and is dropped.
+				this.queries.settle(
+					message.id,
+					message.ok
+						? { ok: true, value: message.value }
+						: { ok: false, error: new QueryFailure('error', message.error) },
+				);
 
 				return;
 			case 'ping':
@@ -241,6 +308,7 @@ export class RemoteHost {
 		// The same main again (its old link never closed): the new link takes over.
 		if (current && current !== attachment) {
 			log.info('main took over its own stale link', { mainId: message.mainId });
+			this.detach();
 			current.connection.close();
 		}
 

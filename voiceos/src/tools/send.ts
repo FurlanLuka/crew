@@ -17,7 +17,8 @@ import type { SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
 import type { NotesStore } from '../memory/notes.js';
 import { decideDelivery, type DeliverWish, joinNotes } from '../state/delivery.js';
-import { nameNotes, readWorkspace } from '../shared/notes.js';
+import { GENERAL_NOTES, nameNotes, readWorkspace } from '../shared/notes.js';
+import { machineOf } from '../shared/machine-ref.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { describeRecentAction } from './recent-action.js';
 
@@ -64,6 +65,16 @@ export const buildNotesPathNote = ({
 	}
 
 	const workspace = readWorkspace(ref);
+
+	// The files are on this machine: a session on another one reads them through crew, which asks
+	// the main over its link.
+	if (machineOf(ref) !== null) {
+		const command =
+			workspace === GENERAL_NOTES ? 'crew voice notes' : `crew voice notes ${workspace}`;
+
+		return `The developer's notes for ${nameNotes(workspace)} are on the main machine: run \`${command}\` to read them.`;
+	}
+
 	const path = notes.pathFor(workspace);
 
 	return notes.has(workspace)

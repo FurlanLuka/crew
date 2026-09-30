@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 func TestMachineIDFor(t *testing.T) {
@@ -96,5 +98,64 @@ func TestMachineRows(t *testing.T) {
 	stopped := machineRows(machines, recorded, false)
 	if stopped[0].Status != "stopped" || stopped[1].Status != "stopped" {
 		t.Fatalf("stopped rows %+v", stopped)
+	}
+}
+
+func TestSelectMachines(t *testing.T) {
+	machines := []Machine{
+		{ID: "vm1", Host: "vm1", Name: "Build box"},
+		{ID: "vm2", Host: "vm2", Name: "vm2"},
+		// Named like another machine's id: the id wins.
+		{ID: "gpu", Host: "gpu", Name: "vm1"},
+	}
+	ids := func(ms []Machine) []string {
+		out := []string{}
+		for _, m := range ms {
+			out = append(out, m.ID)
+		}
+		return out
+	}
+	cases := []struct {
+		name             string
+		include, exclude []string
+		wantMain         bool
+		wantIDs          []string
+	}{
+		{"nothing named: every machine and the main", nil, nil, true, []string{"vm1", "vm2", "gpu"}},
+		{"by id", []string{"vm2"}, nil, false, []string{"vm2"}},
+		{"by name, any case", []string{"build BOX"}, nil, false, []string{"vm1"}},
+		{"main alone", []string{"main"}, nil, true, []string{}},
+		{"an id beats a name", []string{"vm1"}, nil, false, []string{"vm1"}},
+		{"exclude from all", nil, []string{"main", "gpu"}, false, []string{"vm1", "vm2"}},
+	}
+	for _, c := range cases {
+		withMain, picked, err := SelectMachines(machines, c.include, c.exclude)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if withMain != c.wantMain || !reflect.DeepEqual(ids(picked), c.wantIDs) {
+			t.Errorf("%s: got (%v, %v), want (%v, %v)", c.name, withMain, ids(picked), c.wantMain, c.wantIDs)
+		}
+	}
+	_, _, err := SelectMachines(machines, []string{"nope"}, nil)
+	if err == nil || err.Error() != `no machine "nope" (known: main, vm1, vm2, gpu)` {
+		t.Fatalf("unknown machine: %v", err)
+	}
+	if _, _, err := SelectMachines(machines, nil, []string{"nope"}); err == nil {
+		t.Fatal("an unknown exclude must fail too")
+	}
+}
+
+func TestAddMachineNeverTakesMain(t *testing.T) {
+	saved := config.ConfigDir
+	config.ConfigDir = t.TempDir()
+	t.Cleanup(func() { config.ConfigDir = saved })
+	m, err := AddMachine("dev@main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "main-2" {
+		t.Fatalf("id %q: main names the main's own log", m.ID)
 	}
 }
