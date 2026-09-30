@@ -178,10 +178,17 @@ const MIN_LONG_UTTERANCE_WORDS = 15;
 
 const countWords = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
 
+// "Can you ask it to check the logs?" is a request put politely: its rewrite into "Check the logs."
+// is the point, not a question lost.
+const POLITE_REQUEST_PATTERN =
+	/^(?:(?:um|uh|so|okay|ok|and|hey|oh)[,\s]+)*(?:can|could|would|will) (?:you|we)\b/i;
+
 export const isQuestionRewritten = (utterance: string, text: string): boolean =>
 	// "Does the router still drop the header?" rewritten as "Check whether the router drops the
 	// header." sets it to work on what was only asked.
-	endsInQuestion(utterance) && !endsInQuestion(text);
+	endsInQuestion(utterance) &&
+	!endsInQuestion(text) &&
+	!POLITE_REQUEST_PATTERN.test(utterance.trim());
 
 export const isRewriteTooShort = (utterance: string, text: string): boolean => {
 	// A long, rambling thought rewritten into a few words lost its point ("Okay, or just something

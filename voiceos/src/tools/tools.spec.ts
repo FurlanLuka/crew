@@ -4070,6 +4070,14 @@ describe('a question rewritten into a command', () => {
 		expect(prepare('Fix the proxy. Check whether the router drops the header.', true)).toBe(
 			'Fix the proxy. Check whether the router drops the header.',
 		));
+
+	it.each([
+		['Can you ask it to check the logs?', 'Check the logs.'],
+		['Um, could you list the files in the source folder?', 'List the files in the source folder.'],
+		['Would you run the tests again?', 'Run the tests again.'],
+	])('a request put as a question, %p → the rewrite', (utterance, text) =>
+		expect(prepareSentText({ state, ref: REF, text, utterance, isOnlySend: true })).toBe(text),
+	);
 });
 
 describe('a debug note said to a session', () => {
