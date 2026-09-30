@@ -797,6 +797,11 @@ textarea:focus-visible {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+.too-long {
+	font-size: 10.5px;
+	color: var(--amber);
+	white-space: nowrap;
+}
 .talking-with {
 	display: inline-flex;
 	align-items: center;

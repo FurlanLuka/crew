@@ -305,6 +305,9 @@ export interface SwitchOffer {
 }
 
 // Answered at once or not at all: a later "yes" belongs to something else.
+// The most text one message carries: the gateway refuses more, so the page never sends it.
+export const MAX_TEXT_CHARS = 20_000;
+
 export const SWITCH_OFFER_MS = 8_000;
 
 export const isSwitchOfferFresh = (offer: SwitchOffer | null, now: number): offer is SwitchOffer =>
