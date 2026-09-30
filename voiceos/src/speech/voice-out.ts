@@ -62,13 +62,16 @@ export interface VoiceOutOptions {
 	// Whether any page is open: a reminder nobody can hear is not said, and not counted.
 	hasPage?: () => boolean;
 	now?: () => number;
+	// Tests run the clock themselves; returns what clearTimer takes.
+	setTimer?: (run: () => void, ms: number) => unknown;
+	clearTimer?: (timer: unknown) => void;
 }
 
 interface Playing {
 	id: string;
 	item: SpeechItem;
 	tab: string | null;
-	timer?: ReturnType<typeof setTimeout>;
+	timer?: unknown;
 	abort: AbortController;
 	hasEnded: boolean;
 	record: SpokenRecord;
@@ -100,9 +103,15 @@ export class VoiceOut {
 	private remindersSaid = new Map<string, number>();
 	private spokenRecords: SpokenRecord[] = [];
 	private now: () => number;
+	private setTimer: (run: () => void, ms: number) => unknown;
+	private clearTimer: (timer: unknown) => void;
 
 	constructor(private options: VoiceOutOptions) {
 		this.now = options.now ?? Date.now;
+		this.setTimer = options.setTimer ?? ((run, ms) => setTimeout(run, ms));
+		this.clearTimer =
+			options.clearTimer ??
+			((timer) => clearTimeout(timer as ReturnType<typeof setTimeout> | undefined));
 		options.store.subscribe((stamped) => {
 			// After the dispatch that switched: a line held from inside it would reach the pages first.
 			if (stamped.input.type === 'switch_view') {
@@ -317,7 +326,7 @@ export class VoiceOut {
 			return;
 		}
 
-		clearTimeout(playing.timer);
+		this.clearTimer(playing.timer);
 		this.playing = null;
 		playing.record.endedAt = this.now();
 
@@ -432,8 +441,8 @@ export class VoiceOut {
 	}
 
 	private armTimer(playing: Playing, ms: number): void {
-		clearTimeout(playing.timer);
-		playing.timer = setTimeout(() => this.finish(playing.id, { isCut: !playing.hasEnded }), ms);
+		this.clearTimer(playing.timer);
+		playing.timer = this.setTimer(() => this.finish(playing.id, { isCut: !playing.hasEnded }), ms);
 	}
 
 	private async pump(): Promise<void> {
