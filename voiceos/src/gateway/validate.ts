@@ -73,6 +73,10 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('clear_exchange') }),
 	z.object({ type: z.literal('go_back') }),
 	z.object({ type: z.literal('play_meanwhile') }),
+	z.object({
+		type: z.literal('set_languages'),
+		languages: z.array(z.string().max(8)).max(20),
+	}),
 	z.object({ type: z.literal('offer_switch'), ref: refSchema }),
 	z.object({
 		type: z.literal('ask_target'),

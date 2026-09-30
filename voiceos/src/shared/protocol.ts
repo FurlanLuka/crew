@@ -394,6 +394,8 @@ export interface State {
 	pinned: string[];
 	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
 	names: Record<string, string>;
+	// What speech-to-text expects the developer to speak (Soniox language hints).
+	languages: string[];
 }
 
 export interface LastSpokenSend {
@@ -470,6 +472,8 @@ export type Action =
 	| { type: 'unpin_session'; ref: string }
 	// An empty name clears it: the session shows its crew label again.
 	| { type: 'rename_session'; ref: string; name: string }
+	// The languages the developer speaks, from the listening menu (and loaded at boot).
+	| { type: 'set_languages'; languages: string[] }
 	// The page's × on "Talking with checkout": follow-ups go to the screen again.
 	| { type: 'clear_exchange' }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.

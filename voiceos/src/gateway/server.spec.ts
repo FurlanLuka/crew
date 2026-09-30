@@ -281,6 +281,7 @@ describe('parseClientMessage', () => {
 		clear_exchange: { type: 'clear_exchange' },
 		go_back: { type: 'go_back' },
 		play_meanwhile: { type: 'play_meanwhile' },
+		set_languages: { type: 'set_languages', languages: ['en', 'sl'] },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
 		ask_target: {
 			type: 'ask_target',

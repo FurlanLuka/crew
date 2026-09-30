@@ -427,6 +427,10 @@ export const BottomBar = ({
 					isIgnored={isIgnoredShown}
 					isDenied={micStatus === 'denied'}
 					title={MIC_TITLES[listenMode]}
+					languages={state.languages}
+					onLanguages={(languages) =>
+						send({ type: 'action', action: { type: 'set_languages', languages } })
+					}
 				/>
 			</div>
 			<form

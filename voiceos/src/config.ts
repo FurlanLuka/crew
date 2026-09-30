@@ -19,6 +19,7 @@ export interface Paths {
 	viewFile: string;
 	pinnedFile: string;
 	namesFile: string;
+	languagesFile: string;
 	keysDir: string;
 }
 
@@ -48,6 +49,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		viewFile: join(voiceDir, 'view.json'),
 		pinnedFile: join(voiceDir, 'pinned.json'),
 		namesFile: join(voiceDir, 'names.json'),
+		languagesFile: join(voiceDir, 'languages.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
 	};
 };

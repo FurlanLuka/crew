@@ -14,6 +14,7 @@ type Script = (socket: FakeSocket, frames: (string | number)[]) => void;
 
 interface CreateSessionParams {
 	sampleRate?: number;
+	languages?: string[];
 	finalizeTimeoutMs?: number;
 	onSegment?: (text: string) => void;
 }
@@ -100,10 +101,23 @@ describe('SttSession', () => {
 			model: 'stt-rt-v5',
 			audio_format: 'pcm_s16le',
 			sample_rate: 48000,
+			// The developer's languages when set; English otherwise.
+			language_hints: ['en'],
 			context: { terms: ['store-front/main'] },
 		});
 		expect(fake.frames.slice(1)).toEqual([3200, JSON.stringify({ type: 'finalize' }), '']);
 		expect(captured.finals).toEqual(['why is this so slow']);
+	});
+
+	it("the developer's languages → Soniox is told to expect them", async () => {
+		const fake = createFakeSoniox(() => {});
+		stop = fake.stop;
+		const { session } = createSession(fake.url, { languages: ['en', 'sl'] });
+		session.send(new Uint8Array(3200));
+		await waitUntil(() => fake.frames.length > 0);
+
+		expect(JSON.parse(String(fake.frames[0]))).toMatchObject({ language_hints: ['en', 'sl'] });
+		session.cancel();
 	});
 
 	it('no sample rate given → 16 kHz, what the audio fixtures are', async () => {

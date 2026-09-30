@@ -32,6 +32,7 @@ import { persistTopics } from './memory/topics.js';
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistPinned } from './memory/pinned.js';
 import { persistNames } from './memory/names.js';
+import { persistLanguages } from './memory/languages.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
@@ -276,6 +277,7 @@ persistTopics({ store, file: paths.topicsFile });
 // Before the view: a saved session view opened from Pinned finds its pin already there.
 persistPinned({ store, file: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
+persistLanguages({ store, file: paths.languagesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });
 
 const pollTimer = setInterval(async () => {

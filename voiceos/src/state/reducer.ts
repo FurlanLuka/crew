@@ -2,6 +2,7 @@ import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
 import { addMeanwhile, playMeanwhile } from './meanwhile.js';
+import { DEFAULT_LANGUAGES, toLanguages } from '../shared/languages.js';
 import {
 	decideGoBack,
 	describeGoBack,
@@ -164,6 +165,7 @@ export const createInitialState = (): State => ({
 	machines: {},
 	pinned: [],
 	names: {},
+	languages: DEFAULT_LANGUAGES,
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -927,6 +929,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'play_meanwhile':
 			return playMeanwhile(state);
+
+		case 'set_languages':
+			return withoutEffects({ ...state, languages: toLanguages(input.languages) });
 
 		// followExchange (exchange.ts) owns these.
 		case 'exchange_expired':
