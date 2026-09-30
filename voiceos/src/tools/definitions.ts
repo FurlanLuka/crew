@@ -20,6 +20,7 @@ export type ToolName =
 	| 'read_notes'
 	| 'queued_message'
 	| 'hands_free'
+	| 'rename_machine'
 	| 'open_doc';
 
 export const MUTATING_TOOLS: ToolName[] = [
@@ -37,6 +38,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'note',
 	'queued_message',
 	'hands_free',
+	'rename_machine',
 ];
 
 interface JsonSchema {
@@ -349,10 +351,54 @@ export const FORWARD_TOOL: ToolDefinition = {
 	},
 };
 
-export const listToolsFor = (forwardTo: string | null): ToolDefinition[] => {
+// Offered only once other machines exist: without them, what the kernel reads stays exactly as it
+// was, and machine words cannot pull a plain route astray.
+export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
+	{
+		name: 'switch_view',
+		description:
+			'Show one session on screen; or, with ref null, one machine\'s sessions when machine names one, else Mission Control. A session with its machine named ("crew main on my Mac") → that ref and that machine.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: { type: ['string', 'null'] },
+				machine: {
+					type: 'string',
+					description:
+						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
+				},
+			},
+			required: ['ref'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'rename_machine',
+		description:
+			'Give another machine the name the developer calls it ("rename vm1 to build box", "call the GPU box training rig"). Only when they clearly asked to rename a machine.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				machine: { type: 'string', description: "The machine's current name or id." },
+				name: { type: 'string', description: 'The new name, as the developer said it.' },
+			},
+			required: ['machine', 'name'],
+			additionalProperties: false,
+		},
+	},
+];
+
+export const listToolsFor = (forwardTo: string | null, hasMachines = false): ToolDefinition[] => {
+	const tools = hasMachines
+		? [
+				...TOOL_DEFINITIONS.filter((tool) => tool.name !== 'switch_view'),
+				...MACHINE_TOOL_DEFINITIONS,
+			]
+		: TOOL_DEFINITIONS;
+
 	// Offered only while a session is on screen: a tool that needs no ref is chosen reliably and fast.
 	// History is left out there: that Claude holds its own, and the kernel answered from it instead of forwarding.
 	return forwardTo
-		? [FORWARD_TOOL, ...TOOL_DEFINITIONS.filter((tool) => tool.name !== 'read_history')]
-		: TOOL_DEFINITIONS;
+		? [FORWARD_TOOL, ...tools.filter((tool) => tool.name !== 'read_history')]
+		: tools;
 };

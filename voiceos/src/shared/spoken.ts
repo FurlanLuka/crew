@@ -1,3 +1,5 @@
+import { splitRef } from './machine-ref.js';
+
 // One table for spoken numbers, so resolveRef and the kernel's stop guard hear "work one" alike.
 export const NUMBER_WORDS = [
 	'zero',
@@ -19,7 +21,7 @@ export const toSpokenPart = (part: string): string => {
 };
 
 export const toSpokenName = (label: string): string => {
-	const [workspace = '', worktree = ''] = label.split('/');
+	const { workspace, worktree } = splitRef(label);
 	const spokenWorkspace = toSpokenPart(workspace);
 
 	return worktree ? `${spokenWorkspace}, ${toSpokenPart(worktree)}` : spokenWorkspace;

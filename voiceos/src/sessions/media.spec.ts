@@ -13,13 +13,16 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import {
 	MAX_IMAGE_BYTES,
 	copyShownImage,
 	findShownImages,
 	listImageRoots,
+	readMediaBytes,
 	readMediaFile,
 	saveToolImage,
+	storeMediaBytes,
 	sweepMedia,
 	type ImageSource,
 } from './media.js';
@@ -326,5 +329,33 @@ describe('sweepMedia', () => {
 		expect(sweepMedia({ dir: join(makeDir('media-'), 'none'), maxAgeMs: 1, now: Date.now() })).toBe(
 			0,
 		);
+	});
+});
+
+describe('storeMediaBytes', () => {
+	const nameOf = (bytes: Buffer, extension = '.png'): string =>
+		`${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}${extension}`;
+
+	it("another machine's picture, named by its bytes → kept under that name, readable", () => {
+		const dir = makeDir('voiceos-remote-media-');
+		const name = nameOf(PNG);
+
+		expect(storeMediaBytes({ name, bytes: PNG, dir })).toBe(true);
+		expect(readMediaBytes(name, dir)).toEqual(PNG);
+	});
+
+	it('bytes that are not what the name says → refused, nothing written', () => {
+		const dir = makeDir('voiceos-remote-media-');
+		const other = Buffer.concat([PNG, Buffer.from([1])]);
+
+		expect(storeMediaBytes({ name: nameOf(PNG), bytes: other, dir })).toBe(false);
+		expect(readdirSync(dir)).toEqual([]);
+	});
+
+	it('a name outside the pattern (a path, another type) → refused', () => {
+		const dir = makeDir('voiceos-remote-media-');
+
+		expect(storeMediaBytes({ name: '../evil.png', bytes: PNG, dir })).toBe(false);
+		expect(storeMediaBytes({ name: nameOf(PNG, '.svg'), bytes: PNG, dir })).toBe(false);
 	});
 });

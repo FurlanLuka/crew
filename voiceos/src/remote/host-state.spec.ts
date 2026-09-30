@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'bun:test';
+import {
+	acceptEffects,
+	buildSnapshot,
+	createHostState,
+	isBusy,
+	openInbox,
+	trackEffect,
+	trackObservation,
+} from './host-state.js';
+
+const send = (seq: number) => ({
+	seq,
+	effect: { type: 'worker_send' as const, ref: 'a/b', text: `m${seq}` },
+});
+
+describe('inbox', () => {
+	it('effects past the last applied → taken in order; earlier ones skipped', () => {
+		const inbox = { mainId: 'm', runId: 'r', lastSeq: 2 };
+		const accepted = acceptEffects(inbox, [send(3), send(2), send(4)]);
+
+		expect(accepted.effects.map((effect) => effect.type === 'worker_send' && effect.text)).toEqual([
+			'm3',
+			'm4',
+		]);
+		expect(accepted.inbox.lastSeq).toBe(4);
+	});
+
+	it('the same main process again → keeps counting', () => {
+		expect(openInbox({ mainId: 'm', runId: 'r', lastSeq: 7 }, 'm', 'r').lastSeq).toBe(7);
+	});
+
+	it('a restarted main (new runId) → counts from 1 again', () => {
+		expect(openInbox({ mainId: 'm', runId: 'r', lastSeq: 7 }, 'm', 'r2').lastSeq).toBe(0);
+	});
+});
+
+describe('host state', () => {
+	it('a turn → running, then idle with its last turn kept', () => {
+		let state = trackEffect(createHostState(), { type: 'worker_start', ref: 'a/b' });
+
+		state = trackObservation(state, { type: 'session_started', ref: 'a/b' });
+		state = trackObservation(state, { type: 'turn_started', ref: 'a/b' });
+		expect(isBusy(state)).toBe(true);
+
+		state = trackObservation(state, {
+			type: 'turn_ended',
+			ref: 'a/b',
+			costUsd: 1,
+			text: 'Done.',
+			turnId: 'x-1',
+			head: 'abc',
+		});
+
+		expect(isBusy(state)).toBe(false);
+		expect(buildSnapshot(state, []).sessions).toEqual([
+			{
+				ref: 'a/b',
+				status: 'idle',
+				lastTurn: { id: 'x-1', text: 'Done.', costUsd: 1, head: 'abc' },
+			},
+		]);
+	});
+
+	it('asks and asides in flight → in the snapshot until settled', () => {
+		let state = trackObservation(createHostState(), {
+			type: 'ask_opened',
+			ask: { id: 'k', ref: 'a/b', at: 1, kind: 'plan', input: {}, plan: 'p' },
+		});
+
+		state = trackEffect(state, { type: 'side_answer', ref: 'a/b', itemId: 'i1', question: 'q' });
+		expect(buildSnapshot(state, []).asks.map((ask) => ask.id)).toEqual(['k']);
+		expect(buildSnapshot(state, []).asides).toEqual([{ ref: 'a/b', itemId: 'i1' }]);
+
+		state = trackObservation(state, { type: 'ask_closed', askId: 'k' });
+		state = trackObservation(state, {
+			type: 'aside_settled',
+			ref: 'a/b',
+			itemId: 'i1',
+			question: 'q',
+			status: 'answered',
+			answer: 'a',
+		});
+		expect(buildSnapshot(state, []).asks).toEqual([]);
+		expect(buildSnapshot(state, []).asides).toEqual([]);
+	});
+
+	it('a stopped session → out of the snapshot', () => {
+		let state = trackObservation(createHostState(), { type: 'session_started', ref: 'a/b' });
+
+		state = trackObservation(state, { type: 'worker_exited', ref: 'a/b', error: null });
+		expect(buildSnapshot(state, []).sessions).toEqual([]);
+	});
+});
+
+describe('a message taken', () => {
+	it('an idle session given words → working at once, before its own report of it', () => {
+		let state = trackObservation(createHostState(), { type: 'session_started', ref: 'a/b' });
+
+		state = trackEffect(state, { type: 'worker_send', ref: 'a/b', text: 'go' });
+
+		expect(buildSnapshot(state, []).sessions[0]?.status).toBe('running');
+	});
+});

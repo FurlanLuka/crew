@@ -7,11 +7,13 @@ interface ElsewherePanelProps {
 	state: State;
 	screen: string | null;
 	dispatch: Dispatch;
+	// On a machine's grid: the other machines' sessions.
+	gridMachine?: string;
 }
 
-export const ElsewherePanel = ({ state, screen, dispatch }: ElsewherePanelProps) => {
+export const ElsewherePanel = ({ state, screen, dispatch, gridMachine }: ElsewherePanelProps) => {
 	const now = useNow();
-	const rows = listOtherSessions(state, screen, now);
+	const rows = listOtherSessions(state, screen, now, gridMachine);
 
 	if (rows.length === 0) {
 		return null;

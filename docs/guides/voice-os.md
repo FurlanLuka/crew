@@ -172,6 +172,37 @@ The pinned **setup** session runs crew itself (see the walkthrough above). Ask i
 - "Add a debug note: it read out every option when I only wanted the question." — for when Voice
   OS itself gets something wrong; saved with a snapshot of the moment.
 
+## Other machines
+
+One Voice OS can drive the sessions on other machines too — a VM, a second computer — over SSH.
+You keep talking to the one on your Mac; the other machine runs its sessions and nothing else.
+
+1. On the other machine: install crew, then run `crew voice remote`. It checks tmux and Claude
+   Code, installs Voice OS and starts it in the background. Sign in to Claude Code there once.
+2. Make sure your Mac reaches it with `ssh <host>` and no password prompt (your key, and the host
+   key accepted once). How it is reachable is up to it: the LAN, a VPN, an alias in
+   `~/.ssh/config`.
+3. On your Mac: `crew voice machines add <host> --name="Build box"`, or **+ Add machine** on
+   Mission Control.
+
+Mission Control is a card per machine — This Mac first, then each one you added — with what runs
+there and what waits on you. Click a card (or say its name) and it is the grid you know; Esc goes
+back up. Alerts from every machine play, with the
+machine's name in front ("Build box, store front main needs you"), and switching to a machine
+says what waits there.
+
+- "Show me build box." · "Switch to the personal server." · "Go to this Mac." · "Rename vm1 to
+  build box."
+- "Build box store front main, run the tests." — a name that exists on two machines means the one
+  you are looking at; say the machine to reach the other: "crew main on my Mac".
+- Its dev servers are its own: "start the dev servers" works as here, and the links are that
+  machine's addresses.
+
+When the link drops, the sessions there keep working. The card says it is out of reach and why;
+what you say to it waits and goes when it is back, with one line on what happened meanwhile
+("Build box is back: store front main finished"). A machine is either the one you talk to or one
+that is driven, never both.
+
 ## Voice and listening
 
 - "Quiet." — stops Voice OS talking.

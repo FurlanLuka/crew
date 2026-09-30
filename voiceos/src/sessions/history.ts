@@ -1,6 +1,6 @@
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import type { StreamItem } from '../shared/protocol.js';
-import type { Store } from '../state/store.js';
+import type { Observation } from '../shared/protocol.js';
 import { STREAM_ITEMS_KEPT, createStreamItem, isShownAlready } from '../state/helpers.js';
 import { createLogger } from '../log.js';
 import { createMapContext, mapMessage, type MediaHooks, type RawMessage } from './events.js';
@@ -105,7 +105,7 @@ interface StoredSession {
 }
 
 export interface RestoreHistoryParams {
-	store: Store;
+	dispatch: (observation: Observation) => void;
 	sessions: Record<string, StoredSession>;
 	getCwd: (ref: string) => string | null;
 	// The session's folders, for which images it may show again.
@@ -117,7 +117,7 @@ export interface RestoreHistoryParams {
 }
 
 export const restoreHistory = async ({
-	store,
+	dispatch,
 	sessions,
 	getCwd,
 	getImageSource,
@@ -157,7 +157,7 @@ export const restoreHistory = async ({
 			log.info('restored', { ref, messages: messages.length, items: items.length });
 
 			if (items.length) {
-				store.dispatch({ type: 'history_restored', ref, items });
+				dispatch({ type: 'history_restored', ref, items });
 			}
 		} catch (error) {
 			log.warn('history unreadable', { ref, error: String(error) });

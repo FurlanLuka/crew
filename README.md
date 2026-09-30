@@ -68,6 +68,10 @@ installs a fresh copy and checks every server starts. The new worktree appears o
   docs and artifacts it writes (Claude Docs, Google Docs, Notion) become cards — "open the doc"
   opens one in the browser you're using, phone included.
 - **Notes as you think.** "Note: try a tone per session" — kept per workspace.
+- **Sessions on other machines too.** A VM or a second computer runs its own worktrees and
+  sessions; your Mac drives them over SSH with the same voice and page — a card per machine on
+  Mission Control, alerts from all of them, and a dropped link that never stops the work there.
+  [Other machines](docs/guides/voice-os.md#other-machines) has the three steps.
 
 [The Voice OS guide](docs/guides/voice-os.md) has what you can say, from real use.
 

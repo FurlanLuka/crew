@@ -1,5 +1,5 @@
-import type { Store } from '../state/store.js';
 import type { Effect } from '../state/reducer.js';
+import type { Observation, Session, State } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { PermissionBridge } from './permissions.js';
 import { forgetSession, loadRegistry, markBriefed, recordSession } from './registry.js';
@@ -9,8 +9,39 @@ import { BRIEFING_VERSION, appendVoiceContext } from './voice-context.js';
 
 const log = createLogger('sessions');
 
+// What the manager needs to know of a session to start it: the cockpit reads its store, a remote
+// host its own worktree list.
+export type SessionFacts = Pick<Session, 'cwd' | 'dirs' | 'isPinned' | 'status'>;
+
+interface StoreLike {
+	readonly state: State;
+	dispatch: (input: Observation) => State;
+}
+
+// The cockpit's wiring: sessions read from and report to its store.
+export const connectStore = (
+	store: StoreLike,
+): Pick<SessionManagerOptions, 'readSession' | 'emit'> => ({
+	readSession: (ref) => store.state.sessions[ref],
+	emit: (observation) => {
+		const next = store.dispatch(observation);
+
+		// Said already in the session's own line: Voice OS did not ask it again (see asks.ts).
+		if (
+			observation.type === 'ask_opened' &&
+			next.sessions[observation.ask.ref]?.askedByLine === observation.ask.id
+		) {
+			log.info('ask not read: the session asked it', {
+				ref: observation.ask.ref,
+				kind: observation.ask.kind,
+			});
+		}
+	},
+});
+
 export interface SessionManagerOptions {
-	store: Store;
+	readSession: (ref: string) => SessionFacts | undefined;
+	emit: (observation: Observation) => void;
 	registryFile: string;
 	home: string;
 	fetchOrientation: (ref: string) => Promise<string>;
@@ -24,25 +55,18 @@ export interface SessionManagerOptions {
 }
 
 export class SessionManager {
-	// Owns processes, never state: every change it observes goes back through store.dispatch.
+	// Owns processes, never state: every change it observes goes back through emit.
 	private workers = new Map<string, Worker>();
 	private pendingStarts = new Map<string, number>();
 	private generation = 0;
 	readonly permissions: PermissionBridge;
 
 	constructor(private options: SessionManagerOptions) {
-		const { store } = options;
+		const { emit } = options;
 
 		this.permissions = new PermissionBridge(
-			(ask) => {
-				const opened = store.dispatch({ type: 'ask_opened', ask });
-
-				// Said already in the session's own line: Voice OS did not ask it again (see asks.ts).
-				if (opened.sessions[ask.ref]?.askedByLine === ask.id) {
-					log.info('ask not read: the session asked it', { ref: ask.ref, kind: ask.kind });
-				}
-			},
-			(askId) => store.dispatch({ type: 'ask_closed', askId }),
+			(ask) => emit({ type: 'ask_opened', ask }),
+			(askId) => emit({ type: 'ask_closed', askId }),
 		);
 	}
 
@@ -88,7 +112,7 @@ export class SessionManager {
 				})
 			: ({ status: 'queued', reason: 'no running session' } as const);
 
-		this.options.store.dispatch({
+		this.options.emit({
 			type: 'aside_settled',
 			ref,
 			itemId,
@@ -122,9 +146,9 @@ export class SessionManager {
 	}
 
 	private async start(ref: string): Promise<void> {
-		const { store, registryFile, home } = this.options;
+		const { readSession, registryFile, home } = this.options;
 
-		if (!store.state.sessions[ref] || this.workers.has(ref) || this.pendingStarts.has(ref)) {
+		if (!readSession(ref) || this.workers.has(ref) || this.pendingStarts.has(ref)) {
 			return;
 		}
 
@@ -143,7 +167,7 @@ export class SessionManager {
 
 		this.pendingStarts.delete(ref);
 
-		const session = store.state.sessions[ref];
+		const session = readSession(ref);
 
 		if (!session || session.status === 'stopped') {
 			return;
@@ -172,7 +196,7 @@ export class SessionManager {
 					this.workers.delete(ref);
 				}
 
-				store.dispatch(observation);
+				this.options.emit(observation);
 			},
 			onSessionId: (sessionId) =>
 				recordSession({ file: registryFile, ref, sessionId, briefing: BRIEFING_VERSION }),

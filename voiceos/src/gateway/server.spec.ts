@@ -235,6 +235,9 @@ describe('parseClientMessage', () => {
 	// A field the schema does not know is dropped silently, so every action must come back as sent.
 	const actions: ActionsByType = {
 		send: { type: 'send', ref: 'store/main', text: 'run the tests' },
+		add_machine: { type: 'add_machine', host: 'dev@vm1.example.com', name: 'Build box' },
+		rename_machine: { type: 'rename_machine', id: 'vm1', name: 'Build box' },
+		remove_machine: { type: 'remove_machine', id: 'vm1' },
 		cancel_queued: { type: 'cancel_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_queued: { type: 'promote_queued', ref: 'store/main', queuedId: 'q1' },
 		take_back: { type: 'take_back', ref: 'store/main', id: 'q1' },

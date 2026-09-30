@@ -1,4 +1,5 @@
 import type { State } from '../shared/protocol.js';
+import { splitRef } from '../shared/machine-ref.js';
 import { toSpokenPart, NUMBER_WORDS } from '../shared/spoken.js';
 import type { ToolContext } from './tools.js';
 
@@ -35,10 +36,10 @@ export const isSessionNamed = ({
 	words,
 	order,
 }: IsSessionNamedParams): boolean => {
-	const [workspace = '', worktree = ''] = ref.split('/');
+	const { workspace, worktree } = splitRef(ref);
 
 	if (workspace.split('-').some((part) => part.length >= 4 && words.has(part))) {
-		const siblingRefs = order.filter((other) => other.startsWith(`${workspace}/`));
+		const siblingRefs = order.filter((other) => splitRef(other).workspace === workspace);
 
 		if (siblingRefs.length === 1 || worktree === '' || isWorktreeSaid(text, worktree)) {
 			return true;
@@ -64,7 +65,9 @@ export const findSessionsNamedIn = (state: State, utterance: string): string[] =
 		.replace(/[^a-z0-9/\s-]/g, ' ')
 		.replace(/\s+/g, ' ')} `;
 	const words = new Set(text.split(/[\s/-]+/).filter(Boolean));
-	const refsNamedInFull = state.order.filter((ref) => text.includes(ref.toLowerCase()));
+	const refsNamedInFull = state.order.filter((ref) =>
+		text.includes(splitRef(ref).local.toLowerCase()),
+	);
 
 	if (refsNamedInFull.length > 0) {
 		return refsNamedInFull;

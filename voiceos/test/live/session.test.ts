@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configureLog } from '../../src/log.js';
 import { loadTranscript, restoreHistory } from '../../src/sessions/history.js';
-import { SessionManager } from '../../src/sessions/manager.js';
+import { SessionManager, connectStore } from '../../src/sessions/manager.js';
 import { loadRegistry } from '../../src/sessions/registry.js';
 import type { Session, State } from '../../src/shared/protocol.js';
 import { Store } from '../../src/state/store.js';
@@ -66,7 +66,7 @@ describe.skipIf(!isLive)('live session core', () => {
 	const bootManager = (permissionMode: 'auto' | 'default') => {
 		store = new Store();
 		manager = new SessionManager({
-			store,
+			...connectStore(store),
 			registryFile,
 			home: process.env.HOME ?? dir,
 			fetchOrientation: async () =>
@@ -263,7 +263,7 @@ describe.skipIf(!isLive)('live session core', () => {
 				worktrees: [{ ref: REF, label: REF, branch: 'main', cwd: dir, dirs: [], isPinned: false }],
 			});
 			await restoreHistory({
-				store: freshStore,
+				dispatch: (observation) => freshStore.dispatch(observation),
 				sessions: loadRegistry(registryFile),
 				getCwd: (ref) => freshStore.state.sessions[ref]?.cwd ?? null,
 				getImageSource: (ref) => freshStore.state.sessions[ref],

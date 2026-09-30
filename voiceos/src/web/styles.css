@@ -1050,3 +1050,166 @@ textarea:focus-visible {
 	color: inherit;
 	text-decoration: none;
 }
+
+/* machines: Mission Control once other machines exist */
+.topbar .crumb {
+	border: 0;
+	background: none;
+	padding: 0;
+	color: var(--ink-dim);
+}
+.topbar .crumb:hover {
+	color: var(--ink);
+}
+.grid.machines {
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+.machine {
+	background: var(--surface);
+	padding: 13px 15px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 148px;
+}
+.machine.crit {
+	background: linear-gradient(180deg, rgba(224, 108, 95, 0.07), transparent 55%), var(--surface);
+	box-shadow: inset 2px 0 0 var(--crit);
+}
+.machine.warn {
+	box-shadow: inset 2px 0 0 var(--amber);
+}
+.machine-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.machine-dot.good {
+	background: var(--good);
+}
+.machine-dot.crit {
+	background: var(--crit);
+}
+.machine-dot.warn {
+	background: var(--amber);
+}
+.machine-dot.dim {
+	background: var(--muted);
+}
+.machine-name {
+	border: 0;
+	background: none;
+	padding: 0;
+	font-family: var(--ui);
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--ink);
+	text-align: left;
+}
+.machine-rename input {
+	font: inherit;
+	font-family: var(--ui);
+	font-size: 15px;
+	background: var(--raised);
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	padding: 2px 6px;
+}
+.machine-actions {
+	margin-left: auto;
+	display: flex;
+	gap: 6px;
+}
+.machine-body {
+	border: 0;
+	background: none;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	text-align: left;
+}
+.machine-where {
+	font-size: 11px;
+	color: var(--muted);
+}
+.machine-counts {
+	font-size: 12px;
+	color: var(--ink);
+}
+.machine-waiting {
+	font-size: 12px;
+	color: var(--crit);
+}
+.machine-quiet {
+	font-size: 12px;
+	color: var(--muted);
+}
+.machine.add {
+	border: 1px dashed var(--line);
+	justify-content: center;
+	align-items: center;
+	text-align: center;
+	color: var(--ink-dim);
+}
+.machine.add:hover {
+	border-color: var(--ink-dim);
+	color: var(--ink);
+}
+.dialog {
+	width: min(440px, calc(100vw - 32px));
+	background: var(--surface);
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	padding: 20px;
+}
+.dialog::backdrop {
+	background: rgba(8, 10, 14, 0.7);
+}
+.dialog-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.dialog-title {
+	margin: 0;
+	font-family: var(--ui);
+	font-size: 16px;
+	font-weight: 600;
+}
+.dialog .hint {
+	margin: 0;
+	line-height: 1.6;
+}
+.dialog-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 11px;
+	color: var(--muted);
+}
+.dialog-field input {
+	font: inherit;
+	font-size: 13px;
+	background: var(--raised);
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	padding: 6px 8px;
+}
+.dialog-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+.machine-add-title {
+	font-family: var(--ui);
+	font-size: 15px;
+	font-weight: 600;
+}
+.btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}

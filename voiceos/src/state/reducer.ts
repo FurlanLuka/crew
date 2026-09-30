@@ -35,6 +35,9 @@ import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
 import { cleanSpokenText } from '../shared/spoken.js';
 import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-lines.js';
+import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
+import { HOME_VIEW } from '../shared/machines.js';
+import { machineOf, readMachine } from '../shared/machine-ref.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -53,7 +56,7 @@ export type Effect =
 	// reason: 'follow-up' when the developer's own spoken follow-up cut the reply.
 	| { type: 'worker_interrupt'; ref: string; reason?: 'follow-up' }
 	| { type: 'worker_set_mode'; ref: string; mode: 'default' | 'auto' }
-	| { type: 'resolve_ask'; askId: string; result: AskResult }
+	| { type: 'resolve_ask'; ref: string; askId: string; result: AskResult }
 	// spoken: the session's own line for the turn's final message; null sends it to the narrator.
 	| {
 			type: 'narrate';
@@ -67,6 +70,10 @@ export type Effect =
 			isHeld: boolean;
 			// Background sub-agents still work: the turn ended, the work did not.
 			hasBackgroundAgents: boolean;
+			// A remote session's commit, read there: git never runs here on another machine's path.
+			head?: string | null;
+			// Reported while its machine came back: recorded and held, not said (the recap says it).
+			isQuiet?: boolean;
 	  }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string; note?: string }
@@ -98,7 +105,14 @@ export type Effect =
 	// before) are out of date. They stay on the page.
 	| { type: 'drop_speech'; ref: string; before: number }
 	| { type: 'dev'; ref: string; action: 'start' | 'stop' | 'restart' }
-	| { type: 'fix_dev'; ref: string; servers: string[] };
+	| { type: 'fix_dev'; ref: string; servers: string[] }
+	// crew voice machines writes it to machines.json (crew is the one writer, under its lock).
+	| { type: 'machines_changed'; change: MachineChange };
+
+export type MachineChange =
+	| { kind: 'add'; host: string; name: string }
+	| { kind: 'rename'; id: string; name: string }
+	| { kind: 'remove'; id: string };
 
 export interface ReducerResult {
 	state: State;
@@ -109,7 +123,7 @@ export const createInitialState = (): State => ({
 	seq: 0,
 	sessions: {},
 	order: [],
-	view: { kind: 'grid' },
+	view: HOME_VIEW,
 	focus: null,
 	asks: [],
 	denials: [],
@@ -123,6 +137,7 @@ export const createInitialState = (): State => ({
 	voiceLog: {},
 	lastSpokenSend: null,
 	notes: {},
+	machines: {},
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -149,6 +164,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	lineBeforeAsk: null,
 	askedByLine: null,
 	withdrawnAsides: [],
+	lastTurnId: null,
 });
 
 // The tools that open a question or a plan: they follow the line that announced them.
@@ -212,15 +228,22 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		}
 	}
 
+	// This Mac's sessions first, then each machine's; within one, the setup session leads.
 	const order = Object.values(sessions)
 		.sort(
 			(left, right) =>
-				Number(right.isPinned) - Number(left.isPinned) || left.ref.localeCompare(right.ref),
+				Number(machineOf(left.ref) !== null) - Number(machineOf(right.ref) !== null) ||
+				(machineOf(left.ref) ?? '').localeCompare(machineOf(right.ref) ?? '') ||
+				Number(right.isPinned) - Number(left.isPinned) ||
+				left.ref.localeCompare(right.ref),
 		)
 		.map((session) => session.ref);
 	const view =
 		state.view.kind === 'session' && !sessions[state.view.ref]
-			? { kind: 'grid' as const }
+			? {
+					kind: 'grid' as const,
+					machine: readMachine(state.view.ref),
+				}
 			: state.view;
 	const focus = state.focus && sessions[state.focus] ? state.focus : null;
 	const voiceLog = Object.fromEntries(
@@ -232,6 +255,17 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
+
+	if (isMachineInput(input)) {
+		return reduceMachine(state, input, stamped, reduceInput);
+	}
+
+	const unreachable = guardUnreachable(state, input, stamped);
+
+	if (unreachable) {
+		return unreachable;
+	}
+
 	// Answering what a session asks is not a message a continuation could extend.
 	const answered = input.type.startsWith('answer_') ? { ...state, lastSpokenSend: null } : state;
 
@@ -294,7 +328,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 			const shown = { ...state, view, focus: view.kind === 'session' ? view.ref : state.focus };
 
-			return view.kind === 'session' ? replayHeldLine(shown, view.ref) : withoutEffects(shown);
+			return view.kind === 'session'
+				? replayHeldLine(shown, view.ref)
+				: { state: shown, effects: describeSwitch(state, view) };
 		}
 
 		case 'start_session':
@@ -508,12 +544,17 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		}
 
 		case 'history_restored':
+			// What came live before the history (another machine's reconnect notice, an ask) stays after
+			// it; only history older than all of it is added, so nothing shows twice.
 			return withoutEffects(
-				updateSession(state, input.ref, (session) =>
-					session.stream.length > 0
+				updateSession(state, input.ref, (session) => {
+					const firstAt = session.stream[0]?.at ?? Number.POSITIVE_INFINITY;
+					const older = input.items.filter((item) => item.at < firstAt);
+
+					return older.length === 0
 						? session
-						: { ...session, stream: input.items.slice(-STREAM_ITEMS_KEPT) },
-				),
+						: { ...session, stream: [...older, ...session.stream].slice(-STREAM_ITEMS_KEPT) };
+				}),
 			);
 
 		case 'turn_ended': {
@@ -554,6 +595,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					isHeld,
 					isSpokenAlready: spoken !== null && session.spokenInTurn.includes(spoken.text) && !isHeld,
 					hasBackgroundAgents: hasBackgroundWork(session),
+					...(input.head !== undefined ? { head: input.head } : {}),
 				});
 			}
 
@@ -570,6 +612,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				askedByLine: null,
 				currentSendId: null,
 				costUsd: current.costUsd + input.costUsd,
+				lastTurnId: input.turnId ?? current.lastTurnId,
 				// A foreground sub-agent blocks the turn's tool call, so the turn's end is its end too.
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
 				compactingSince: null,

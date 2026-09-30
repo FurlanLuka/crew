@@ -1,4 +1,4 @@
-import { SETUP_REF } from '../sessions/setup-session.js';
+import { isSetupRef, splitRef } from '../shared/machine-ref.js';
 import { toSpokenPart } from '../shared/spoken.js';
 
 export interface SonioxToken {
@@ -72,18 +72,25 @@ export class TranscriptAccumulator {
 export interface BuildContextTermsParams {
 	refs: string[];
 	topics: string[];
+	// The names the developer gave other machines ("build box").
+	machineNames?: string[];
 }
 
-export const buildContextTerms = ({ refs, topics }: BuildContextTermsParams): string[] => {
+export const buildContextTerms = ({
+	refs,
+	topics,
+	machineNames = [],
+}: BuildContextTermsParams): string[] => {
 	// Each term goes in as it is said: one spelled but never said biases toward mishearing it.
-	const terms = new Set<string>(['Voice OS']);
+	const terms = new Set<string>(['Voice OS', ...machineNames]);
 
 	for (const ref of refs) {
-		if (ref === SETUP_REF) {
+		if (isSetupRef(ref)) {
 			continue;
 		}
 
-		const parts = ref.split('/').filter(Boolean).map(toSpokenPart);
+		const { workspace, worktree } = splitRef(ref);
+		const parts = [workspace, worktree].filter(Boolean).map(toSpokenPart);
 		terms.add(parts.join(' '));
 
 		for (const part of parts) {

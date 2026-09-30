@@ -203,6 +203,21 @@ prints it; `crew verify <ref>` finishes what is missing and re-checks.
 
 ---
 
+## Optional: drive it from Voice OS on your laptop
+
+Talk to this VM's sessions from the Voice OS on your laptop instead of SSH-ing in:
+
+```bash
+crew voice remote                                   # on the VM: sessions only, kept running
+crew voice machines add <vm-ssh-host> --name="VM"   # on your laptop (or + Add machine on the page)
+```
+
+The laptop reaches it over the same SSH as section 1 (no password prompt). Its worktrees then
+show on Mission Control under the VM's card — see
+[Other machines](voice-os.md#other-machines).
+
+---
+
 ## Optional: the Claude Code plugin
 
 On your laptop, in Claude Code:

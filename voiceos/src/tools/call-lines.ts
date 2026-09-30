@@ -51,7 +51,7 @@ export const describeToolCall = ({ name, input, ok, note }: ToolCall): string | 
 			: '';
 	const target =
 		name === 'switch_view'
-			? ` ${typeof input.ref === 'string' ? input.ref : 'mission control'}`
+			? ` ${typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
 			: typeof input.ref === 'string'
 				? ` ${input.ref}`
 				: '';

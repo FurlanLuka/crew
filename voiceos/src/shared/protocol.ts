@@ -175,6 +175,8 @@ export interface Session {
 	lineBeforeAsk: { at: number; text: string } | null;
 	// The question or plan that line asked, so Voice OS did not: held as that ask if the developer leaves.
 	askedByLine: string | null;
+	// The last turn this session reported (remote sessions only): a reconnect reports a newer one once.
+	lastTurnId: string | null;
 }
 
 export interface VoiceEntry {
@@ -201,7 +203,31 @@ export const isRemembered = (entry: VoiceEntry, now: number): boolean =>
 // Speech this soon after the words that started Claude's reply is the rest of that request.
 export const FOLLOW_UP_MS = 60_000;
 
-export type View = { kind: 'grid' } | { kind: 'session'; ref: string };
+// grid: every session, or one machine's (LOCAL_MACHINE for this Mac). machines: a card per machine,
+// home once another machine is added.
+export type View =
+	| { kind: 'grid'; machine?: string }
+	| { kind: 'session'; ref: string }
+	| { kind: 'machines' };
+
+// Another machine whose sessions this Voice OS drives, as machines.json keeps it.
+export interface MachineConfig {
+	// Prefixes its sessions' refs ("vm1:store-front/wrk1"); from the SSH host (machineIdFor).
+	id: string;
+	host: string;
+	// What the developer calls it ("build box"); spoken and shown.
+	name: string;
+}
+
+// syncing: connected, its snapshot being applied; nothing is sent to it until that is done.
+export type MachineStatus = 'connecting' | 'syncing' | 'connected' | 'unreachable' | 'error';
+
+export interface Machine extends MachineConfig {
+	status: MachineStatus;
+	// Why it is unreachable or failed, for the card and the developer ("run ssh vm1 once").
+	detail: string | null;
+	since: number;
+}
 
 export interface Transcript {
 	text: string;
@@ -278,6 +304,8 @@ export interface State {
 	lastSpokenSend: LastSpokenSend | null;
 	// The developer's own notes, by workspace key (shared/notes.ts), newest last.
 	notes: Record<string, string[]>;
+	// Other machines, by id. Empty: Voice OS drives this Mac alone, as before machines existed.
+	machines: Record<string, Machine>;
 }
 
 export interface LastSpokenSend {
@@ -338,7 +366,10 @@ export type Action =
 	| { type: 'dev_stop'; ref: string }
 	| { type: 'dev_restart'; ref: string }
 	| { type: 'fix_dev'; ref: string }
-	| { type: 'dismiss_dev_offer' };
+	| { type: 'dismiss_dev_offer' }
+	| { type: 'add_machine'; host: string; name?: string }
+	| { type: 'rename_machine'; id: string; name: string }
+	| { type: 'remove_machine'; id: string };
 
 export interface SavedTopic {
 	topic: string;
@@ -379,7 +410,16 @@ export type Observation =
 	| { type: 'diff'; ref: string; filePath: string; lines: string[] }
 	| { type: 'image'; ref: string; name: string; alt: string }
 	| { type: 'doc'; ref: string; url: string; title: string }
-	| { type: 'turn_ended'; ref: string; costUsd: number; text: string }
+	// turnId, head: from a remote session, so a reconnect reports a turn once and the journal needs
+	// no git of its own on that machine's paths.
+	| {
+			type: 'turn_ended';
+			ref: string;
+			costUsd: number;
+			text: string;
+			turnId?: string;
+			head?: string | null;
+	  }
 	| { type: 'denied'; ref: string; toolName: string; summary: string }
 	| { type: 'ask_opened'; ask: PendingAsk }
 	| { type: 'ask_closed'; askId: string }
@@ -425,7 +465,13 @@ export type Observation =
 	| { type: 'compacting'; ref: string; isCompacting: boolean }
 	| { type: 'session_notice'; ref: string; text: string }
 	// A held /clear or /compact went unanswered for COMMAND_TTL_MS.
-	| { type: 'command_expired'; askId: string };
+	| { type: 'command_expired'; askId: string }
+	// machines.json as it now stands.
+	| { type: 'machines'; machines: MachineConfig[] }
+	| { type: 'machine_status'; id: string; status: MachineStatus; detail?: string | null }
+	// A machine came back: what its snapshot says, applied as one step without speaking, then its
+	// queues move again (remote/resync.ts plans the inputs).
+	| { type: 'machine_resynced'; id: string; inputs: Observation[] };
 
 export type Input = Action | Observation;
 
@@ -465,7 +511,9 @@ export const isListenMode = (value: unknown): value is ListenMode =>
 	LISTEN_MODES.some((mode) => mode === value);
 
 export type ServerMessage =
-	| { type: 'snapshot'; state: State }
+	// serverId: this server process. A tab that sees it change is talking to a restarted, possibly
+	// newer Voice OS while still running the old page, and reloads.
+	| { type: 'snapshot'; state: State; serverId?: string }
 	| { type: 'input'; stamped: Stamped }
 	| SpeechMessage
 	// Listening was turned off for this tab by the server: another tab took it, or the stream failed.

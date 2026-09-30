@@ -1,3 +1,5 @@
+import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
+import { LOCAL_MACHINE } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,
@@ -183,6 +185,44 @@ interface BuildKernelMessageParams {
 	heardFrom?: number;
 }
 
+const describeOtherScreen = (state: State): string => {
+	const { view } = state;
+
+	// This Mac alone: its cards are Mission Control as it always was.
+	if (view.kind === 'machines') {
+		return hasMachines(state)
+			? 'looking at Mission Control: a card per machine'
+			: 'looking at all sessions (Mission Control)';
+	}
+
+	if (view.kind === 'grid' && view.machine) {
+		const name = readMachineTitle(state, view.machine);
+
+		return `looking at ${name}'s sessions (Mission Control › ${name})`;
+	}
+
+	return 'looking at all sessions (Mission Control)';
+};
+
+// Said only when other machines exist, beside the Machines line: a Mac alone never reads it.
+const MACHINE_RULES =
+	'Machine rules: a session with a machine field runs there, its ref starting with the machine\'s id ("vm1:store-front/main"). A session named alone means the one on the machine the developer is in; a machine named with it ("build box store front main", "crew main on my Mac") means that machine\'s — switch_view takes the machine with the ref. Go to a machine ("show me build box", "switch to the personal server") → switch_view with ref null and machine. "Rename vm1 to build box" → rename_machine. A session whose machine_out_of_reach is set cannot act now: its messages wait for it, anything else fails; say so in a few words.';
+
+const describeMachines = (state: State): string => {
+	const here = currentMachine(state);
+	const machines = [
+		{ id: LOCAL_MACHINE, status: 'connected' },
+		...Object.values(state.machines).map(({ id, status }) => ({ id, status })),
+	];
+
+	return machines
+		.map(
+			({ id, status }) =>
+				`${readMachineTitle(state, id)}${id === here ? ' (the developer is in it: a session named alone is its)' : ''}${status === 'connected' ? '' : ` (${status})`}`,
+		)
+		.join('; ');
+};
+
 export const buildKernelMessage = ({
 	state,
 	utterance,
@@ -194,7 +234,7 @@ export const buildKernelMessage = ({
 		state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 	const screenDescription = sessionOnScreen
 		? `looking at ${sessionOnScreen.ref}${sessionOnScreen.isPinned ? ' (the crew setup session: a separate Claude, not you)' : ''}${sessionOnScreen.topic ? ` (${sessionOnScreen.topic})` : ''}. What the developer says is for ${sessionOnScreen.ref} unless they name another session, answer something that waits, or give you a command`
-		: 'looking at all sessions (Mission Control)';
+		: describeOtherScreen(state);
 	const sessions = state.order.map((ref) =>
 		describeSession({ state, ref, isDetailed: false, now }),
 	);
@@ -209,6 +249,8 @@ export const buildKernelMessage = ({
 
 	return [
 		`Screen: ${screenDescription}.`,
+		// Only with other machines: without them the line would only cost attention.
+		...(hasMachines(state) ? [`Machines: ${describeMachines(state)}.`, MACHINE_RULES] : []),
 		`Sessions: ${JSON.stringify(sessions)}`,
 		`Waiting on the developer: ${formatWaitingLine({ state, waiting, now, askedAloudRef: lastAskedLine?.ref ?? null })}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,
@@ -557,7 +599,10 @@ export class Kernel {
 				{ type: 'text', text: KERNEL_SYSTEM, cache_control: { type: 'ephemeral', ttl: '1h' } },
 			],
 			// The history can hold tool calls, so the tools stay declared even when none may run.
-			tools: listToolsFor(forwardTo) as unknown as Anthropic.Tool[],
+			tools: listToolsFor(
+				forwardTo,
+				hasMachines(this.options.tools.getState()),
+			) as unknown as Anthropic.Tool[],
 			...(toolChoice ? { tool_choice: toolChoice } : {}),
 			messages,
 		});

@@ -169,3 +169,58 @@ describe('resolveTypedTarget', () => {
 		expect(resolveTypedTarget(state, 'hi')).toBeNull();
 	});
 });
+
+describe('resolveRef across machines', () => {
+	const machineState = (view: State['view']): State => {
+		const refs = ['store-front/main', 'vm1:store-front/main', 'vm1:setup'];
+		const sessions = Object.fromEntries(
+			refs.map((ref) => [
+				ref,
+				{
+					...createSession({
+						...createWorktreeInfo(ref, ref.endsWith('setup')),
+						label: ref.replace(/^vm1:/, ''),
+					}),
+					status: 'idle' as const,
+				},
+			]),
+		);
+
+		return {
+			...createInitialState(),
+			sessions,
+			order: refs,
+			view,
+			machines: {
+				vm1: {
+					id: 'vm1',
+					host: 'vm1',
+					name: 'Build box',
+					status: 'connected',
+					detail: null,
+					since: 0,
+				},
+			},
+		};
+	};
+
+	it("the machine named in front → that machine's session", () => {
+		expect(resolveRef(machineState({ kind: 'grid' }), 'build box store front main')).toBe(
+			'vm1:store-front/main',
+		);
+		expect(resolveRef(machineState({ kind: 'grid' }), 'build box setup')).toBe('vm1:setup');
+	});
+
+	it('the same name on two machines → the one the developer is in', () => {
+		expect(resolveRef(machineState({ kind: 'grid', machine: 'vm1' }), 'store front main')).toBe(
+			'vm1:store-front/main',
+		);
+		expect(resolveRef(machineState({ kind: 'grid', machine: 'local' }), 'store front main')).toBe(
+			'store-front/main',
+		);
+	});
+
+	it('the same name on two machines, looking at all → nobody guessed', () => {
+		expect(resolveRef(machineState({ kind: 'grid' }), 'store front main')).toBeNull();
+	});
+});

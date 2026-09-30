@@ -158,6 +158,18 @@ worktree exactly the way `crew add worktree` does — base table, `--pull`, one 
 project, failures recorded — so what you get on the second machine is as current and as
 checked as on the first.
 
+## Voice OS on other machines
+
+Voice OS can drive the Claude sessions of another machine's worktrees — a VM, a second
+computer. That machine is a **remote**: `crew voice remote` there starts a daemon that runs only
+the sessions (no voice, no router) and outlives any connection. Your Mac is the **main**:
+`crew voice machines add <ssh host>` (or **+ Add machine** on the page) and it connects with
+`ssh <host> … crew voice _attach`, so the host only needs to be reachable with your keys — LAN, VPN
+or an SSH alias, its choice. Its sessions show under the machine (`vm1:store-front/main`), its dev
+servers are its own crew's, and a dropped link stops nothing there: the main reconnects, catches
+up from a snapshot and says one line about what happened. A machine is a main or a remote, never
+both. [The guide](guides/voice-os.md#other-machines) has the steps.
+
 ## Removal
 
 `crew rm worktree` returns at once: the checkout moves to `~/.crew/trash` and a background

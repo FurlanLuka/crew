@@ -17,6 +17,7 @@ import {
 	isShortLine,
 } from '../state/held-lines.js';
 import { createLogger } from '../log.js';
+import { machineOf } from '../shared/machine-ref.js';
 
 const log = createLogger('narrator');
 
@@ -329,7 +330,15 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			});
 		}
 
-		if (!isStale && !wasReplayed) {
+		// Reported while its machine came back: the recap told it; the line waits for a switch there.
+		if (!isStale && effect.isQuiet) {
+			store.dispatch({
+				type: 'line_held',
+				ref: effect.ref,
+				text: narration.text,
+				isAsking: narration.needs_user,
+			});
+		} else if (!isStale && !wasReplayed) {
 			await speakOutcome({
 				options,
 				effect,
@@ -345,7 +354,8 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			asked: effect.asked,
 			did: describeTurnOutcome(narration.text, body),
 			costUsd: store.state.sessions[effect.ref]?.costUsd ?? 0,
-			head: await options.readGitHead(session.cwd),
+			// Another machine's session read its own commit: its path means nothing here.
+			head: machineOf(effect.ref) ? (effect.head ?? null) : await options.readGitHead(session.cwd),
 		});
 	};
 };

@@ -25,6 +25,9 @@ import { hasOfferedSwitch, isNamedIn, refuseAnnouncedOnly } from './announced.js
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
+import { findMachine, findMachineSaid, listMachineNames, onMachine } from './machines.js';
+import { HOME_VIEW, currentMachine, readMachineTitle } from '../shared/machines.js';
+import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
 
 const MIN_REQUEST_WORDS = 4;
@@ -194,6 +197,54 @@ const sendRecorded = ({
 		: { ...result, recordAs: { name, input: { ...input, text: sent } } };
 };
 
+// A machine the developer named with the session wins over the one a bare name resolved to:
+// "crew main on my Mac" while inside Personal is this Mac's crew main, not Personal's.
+const scopeToMachine = (
+	state: State,
+	ref: string,
+	machine: unknown,
+	toolContext: ToolContext,
+): string => {
+	const wanted =
+		(typeof machine === 'string' && machine.trim() ? findMachine(state, machine) : null) ??
+		findMachineSaid(state, toolContext.utterance);
+
+	return (wanted && onMachine(state, ref, wanted)) || ref;
+};
+
+interface RefuseOtherMachineParams {
+	state: State;
+	ref: string;
+	toolContext: ToolContext;
+}
+
+// A session on another machine than the one the developer is in is acted on only when they named
+// it: a bare "start the cutgrid session" means this machine's, never a same-looking one elsewhere.
+const refuseOtherMachine = ({
+	state,
+	ref,
+	toolContext,
+}: RefuseOtherMachineParams): ToolResult | null => {
+	const here = currentMachine(state);
+
+	if (!here || readMachine(ref) === here || toolContext.utterance === undefined) {
+		return null;
+	}
+
+	if (
+		findSessionsNamedIn(state, toolContext.utterance).includes(ref) ||
+		findMachineSaid(state, toolContext.utterance) === readMachine(ref)
+	) {
+		return null;
+	}
+
+	const onThisMachine = state.order.filter((candidate) => readMachine(candidate) === here);
+
+	return fail(
+		`${ref} is on ${readMachineTitle(state, readMachine(ref))}, and the developer is in ${readMachineTitle(state, here)}. Its sessions: ${onThisMachine.join(', ')}. Pick from those, or ask which one.`,
+	);
+};
+
 export const executeTool = async (
 	name: string,
 	input: Record<string, unknown>,
@@ -328,14 +379,41 @@ export const executeTool = async (
 
 		case 'switch_view': {
 			if (input.ref === null || input.ref === undefined) {
-				toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+				if (typeof input.machine === 'string' && input.machine.trim()) {
+					const machine = findMachine(state, input.machine);
 
-				return succeed('showing every session');
+					if (!machine) {
+						return fail(
+							`No machine called ${input.machine}. Machines: ${listMachineNames(state)}.`,
+						);
+					}
+
+					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
+
+					// Switching there from elsewhere says what waits: the reply need not.
+					return succeed('showing that machine');
+				}
+
+				toolContext.dispatch({ type: 'switch_view', view: HOME_VIEW });
+
+				return succeed('showing Mission Control');
 			}
 
-			const checked = checkRef(state, input.ref);
+			const found = checkRef(state, input.ref);
+			const checked = found.ok
+				? { ...found, ref: scopeToMachine(state, found.ref, input.machine, toolContext) }
+				: found;
 
 			if (!checked.ok) {
+				// "Switch to personal server": a machine named where a session was expected is that machine.
+				const machine = findMachine(state, String(input.ref));
+
+				if (machine) {
+					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
+
+					return succeed('showing that machine');
+				}
+
 				return fail(checked.error);
 			}
 
@@ -360,10 +438,18 @@ export const executeTool = async (
 		}
 
 		case 'start_session': {
-			const checked = checkRef(state, input.ref);
+			const found = checkRef(state, input.ref);
 
-			if (!checked.ok) {
-				return fail(checked.error);
+			if (!found.ok) {
+				return fail(found.error);
+			}
+
+			const checked = { ...found, ref: scopeToMachine(state, found.ref, undefined, toolContext) };
+
+			const elsewhere = refuseOtherMachine({ state, ref: checked.ref, toolContext });
+
+			if (elsewhere) {
+				return elsewhere;
 			}
 
 			const isStopped = state.sessions[checked.ref]?.status === 'stopped';
@@ -616,6 +702,25 @@ export const executeTool = async (
 			log.info('doc opened', { ref, title: doc.title });
 
 			return succeed(`opened "${doc.title}" in the developer's browser`);
+		}
+
+		case 'rename_machine': {
+			const machine = typeof input.machine === 'string' ? findMachine(state, input.machine) : null;
+			const name = typeof input.name === 'string' ? input.name.trim() : '';
+
+			if (!machine || machine === LOCAL_MACHINE) {
+				return fail(
+					`No other machine called ${String(input.machine)}. Machines: ${listMachineNames(state)}.`,
+				);
+			}
+
+			if (!name) {
+				return fail('No new name was given.');
+			}
+
+			toolContext.dispatch({ type: 'rename_machine', id: machine, name });
+
+			return succeed(`renamed to ${name}`);
 		}
 
 		case 'hands_free': {

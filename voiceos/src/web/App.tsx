@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BottomBar } from './components/BottomBar.js';
 import { Card } from './components/Card.js';
@@ -11,6 +11,7 @@ import { TopBar } from './components/TopBar.js';
 import type { MicStatus } from './types.js';
 import { useConnection, type OpenRequest } from './use-connection.js';
 import { useSpeechPlayer } from './use-speech-player.js';
+import { parentView } from '../shared/machines.js';
 
 // "Open the doc" by voice: a new tab when the browser allows it; a phone, or any browser that
 // wants a tap first, gets a banner to tap instead.
@@ -48,6 +49,9 @@ const App = () => {
 		openRequest,
 	} = useConnection((message) => player.receive(message));
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
+	const stateRef = useRef(state);
+
+	stateRef.current = state;
 	const blockedOpen = useOpenRequest(openRequest);
 
 	// Demos and screenshots: window.voiceos.say("…") is heard like speech. The server ignores it
@@ -67,7 +71,10 @@ const App = () => {
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === 'Escape' && !(event.target instanceof HTMLInputElement)) {
-				dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+				// Up one level: a session → its machine → Mission Control.
+				if (stateRef.current) {
+					dispatch({ type: 'switch_view', view: parentView(stateRef.current) });
+				}
 			}
 		};
 
