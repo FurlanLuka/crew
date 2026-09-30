@@ -39,6 +39,21 @@ const resolveRenameTarget = (
 	return named ? { ok: true, ref: named } : checked;
 };
 
+// Words Voice OS acts on by themselves: a session named one of them is heard as the command.
+const COMMAND_WORDS = new Set([
+	'back',
+	'go back',
+	'switch',
+	'stop',
+	'wait',
+	'home',
+	'yes',
+	'no',
+	'previous',
+]);
+
+const isCommandWord = (name: string): boolean => COMMAND_WORDS.has(name.trim().toLowerCase());
+
 export const renameSession = ({
 	state,
 	input,
@@ -82,7 +97,12 @@ export const renameSession = ({
 	const renamed = isUnchanged
 		? `Already named ${name}.`
 		: `Renamed ${toSpokenName(readLabel(state, ref))} to ${name}.`;
-	const reply = name ? renamed : `Cleared the name of ${toSpokenName(readCrewLabel(state, ref))}.`;
+	const warning = isCommandWord(name)
+		? ` Heads up: "${name}" is also something you say to Voice OS, so it may be taken that way.`
+		: '';
+	const reply = name
+		? `${renamed}${warning}`
+		: `Cleared the name of ${toSpokenName(readCrewLabel(state, ref))}.`;
 
 	if (!isUnchanged) {
 		toolContext.dispatch({ type: 'rename_session', ref, name });

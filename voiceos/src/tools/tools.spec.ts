@@ -1552,6 +1552,44 @@ describe('queued_message', () => {
 		]);
 	});
 
+	it('"that was for checkout" while its words are being worked on → it is stopped and told; words that only correct it go to it', async () => {
+		const running = () => {
+			const context = withQueue('running-1');
+			context.tools.getState().sessions['store-front/main'] = {
+				...context.tools.getState().sessions['store-front/main']!,
+				status: 'running',
+				queue: [],
+				currentSendId: 'running-1',
+			};
+
+			return context;
+		};
+
+		const drop = { ref: 'store-front/main', action: 'drop' };
+		const misrouted = running();
+		const corrected = running();
+
+		await executeTool('queued_message', drop, {
+			...misrouted.tools,
+			utterance: 'Sorry, that was for checkout api main.',
+		});
+		await executeTool('queued_message', drop, {
+			...corrected.tools,
+			utterance: 'No, remove that, use the other file instead.',
+		});
+
+		expect(misrouted.actions).toEqual([
+			{ type: 'interrupt', ref: 'store-front/main', isCorrection: true },
+			{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK },
+		]);
+		expect(corrected.actions).toEqual([
+			expect.objectContaining({
+				type: 'send',
+				text: 'No, remove that, use the other file instead.',
+			}),
+		]);
+	});
+
 	it('delivered words that now wait on a permission → nothing sent (it would answer it); the kernel answers it no', async () => {
 		const context = withQueue('running-1');
 		const state = context.tools.getState();

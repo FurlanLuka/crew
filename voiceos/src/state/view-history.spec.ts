@@ -98,3 +98,16 @@ describe('go back', () => {
 		expect(said(clicked.effects)).not.toContain('Switching to crew, main.');
 	});
 });
+
+describe('a correction', () => {
+	it('the session that got words meant elsewhere is stopped, and Voice OS says so', () => {
+		const sent = runAt([[20, { type: 'send', ref: CHECKOUT, text: 'rebuild it' }]], walked()).state;
+		const { effects } = runAt(
+			[[21, { type: 'interrupt', ref: CHECKOUT, isCorrection: true }]],
+			sent,
+		);
+
+		expect(said(effects)).toEqual(['Stopped checkout, main.']);
+		expect(effects).toContainEqual({ type: 'worker_interrupt', ref: CHECKOUT });
+	});
+});

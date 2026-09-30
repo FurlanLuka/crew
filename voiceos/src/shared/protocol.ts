@@ -434,7 +434,8 @@ export type Action =
 	| { type: 'go_back' }
 	| { type: 'start_session'; ref: string }
 	| { type: 'stop_session'; ref: string }
-	| { type: 'interrupt'; ref: string }
+	// isCorrection: the developer's words went there by mistake; Voice OS says it stopped it.
+	| { type: 'interrupt'; ref: string; isCorrection?: true }
 	| { type: 'allow_denied'; denialId: string }
 	| { type: 'dismiss_denial'; denialId: string }
 	| { type: 'dismiss_needs_user'; ref: string }

@@ -1,4 +1,5 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
+import { sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
 import {
 	decideGoBack,
@@ -497,6 +498,18 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 				effects: [
 					...settled.effects,
+					...(input.isCorrection
+						? [
+								{
+									type: 'speak' as const,
+									text: `Stopped ${sayRef(state, input.ref)}.`,
+									source: 'kernel' as const,
+									isReply: true,
+									isAck: true,
+									priority: 'high' as const,
+								},
+							]
+						: []),
 					{ type: 'worker_interrupt', ref: input.ref },
 					// An allowance still waiting goes with the work it was for.
 					...restoreAutoEffects(session),
