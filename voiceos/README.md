@@ -150,9 +150,11 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   spoken words went to last. Off screen it is the subject: its lines are always said, named;
   follow-ups go there (`router/exchange-lines.ts` tells the kernel); it lapses a minute after its
   last answer heard (a timer in `speech/connect.ts`), never while its session still works on the
-  question. Voice OS offers a switch in one case only: the first reply to an update the developer heard
-  to its end (`HeldLine.updateHeardAt`, ten minutes), in its ack: "Sent to X. Switch there?"
-  (`state.switchOffer`). Its window, and "For X?"'s, count from when the question was heard (`heardAt`,
+  question. Voice OS offers a switch in one case only: the first reply to news of X the developer heard
+  to its end — its announcement, the meanwhile line, or the kernel reading X back (`read_state` /
+  `read_history`, `listReadBackRefs`) — within ten minutes (`Session.updateHeardAt`), in its ack:
+  "Sent to X. Switch there?" (`state.switchOffer`). Only X's own open question holds it back; a bare
+  yes after it never approves another session's permission (`isClearlyAnswerFor`). Its window, and "For X?"'s, count from when the question was heard (`heardAt`,
   8 s; 30 s if it never plays). Speech ranks the exchange's lines first
   (`speech/queue.ts`) and holds everything, never drops it, while the developer talks.
 - **Words go where they were said.** Voice OS says "Sent to X" when X is not on screen, "Switching

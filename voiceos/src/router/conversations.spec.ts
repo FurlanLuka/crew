@@ -486,6 +486,108 @@ describe('conversations', () => {
 		expect(convo.store.state.switchOffer).toBeNull();
 	});
 
+	describe('told about a session by the kernel, then a reply to it', () => {
+		const READ_BACK = 'Checkout api finished the retries and asks whether to push.';
+
+		// Checkout's update is held, not yet said: the developer hears of it from the kernel instead.
+		const withUpdateWaiting = async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'send',
+				ref: 'checkout-api/main',
+				text: 'add backoff to the retries',
+			});
+			await convo.answer('checkout-api/main', UPDATE);
+
+			return convo;
+		};
+
+		const replyToCheckout = async (convo: ReturnType<typeof createConversation>) => {
+			convo.script([toolUse('t9', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+			await convo.say('Tell it to push.');
+		};
+
+		it('"where\'s the status?" read back → the reply to it offers the switch, and no meanwhile line repeats it', async () => {
+			const convo = await withUpdateWaiting();
+			convo.script([toolUse('t1', 'read_state', { ref: 'checkout-api/main' })], [reply(READ_BACK)]);
+			await convo.say("Where's the status?");
+			expect(convo.store.state.meanwhile).toEqual([]);
+			await replyToCheckout(convo);
+
+			expect(convo.heard.slice(-3)).toEqual([
+				READ_BACK,
+				'> Tell it to push.',
+				'Sent to checkout api, main. Switch there?',
+			]);
+
+			await convo.wait(60_000);
+			expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
+		});
+
+		it('asked about by name → the same', async () => {
+			const convo = await withUpdateWaiting();
+			convo.script([toolUse('t1', 'read_state', { ref: 'checkout-api/main' })], [reply(READ_BACK)]);
+			await convo.say("How's checkout api doing?");
+			await replyToCheckout(convo);
+
+			expect(convo.heard.at(-1)).toBe('Sent to checkout api, main. Switch there?');
+		});
+
+		it('read from its history → the same', async () => {
+			const convo = await withUpdateWaiting();
+			convo.script(
+				[toolUse('t1', 'read_history', { ref: 'checkout-api/main' })],
+				[reply(READ_BACK)],
+			);
+			await convo.say('What did checkout do earlier?');
+			await replyToCheckout(convo);
+
+			expect(convo.heard.at(-1)).toBe('Sent to checkout api, main. Switch there?');
+		});
+
+		it('an answer that read every session, none by name → "Sent to …" alone', async () => {
+			const convo = await withUpdateWaiting();
+			convo.script([toolUse('t1', 'read_state', {})], [reply('Checkout api is idle.')]);
+			await convo.say("What's waiting?");
+			await replyToCheckout(convo);
+
+			expect(convo.heard.at(-1)).toBe('Sent to checkout api, main.');
+		});
+
+		it("another session's permission open, then the offer → a bare yes switches and approves nothing", async () => {
+			const convo = await withUpdateWaiting();
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'p1',
+					ref: 'signals/main',
+					at: 0,
+					kind: 'permission',
+					toolName: 'Bash',
+					summary: 'run git push',
+					input: {},
+					suggestions: [],
+				},
+			});
+			await convo.listen();
+			convo.script([toolUse('t1', 'read_state', { ref: 'checkout-api/main' })], [reply(READ_BACK)]);
+			await convo.say("Where's the status?");
+			await replyToCheckout(convo);
+			expect(convo.heard.at(-1)).toBe('Sent to checkout api, main. Switch there?');
+
+			// The model reaches for the permission: the guard sends it to the offer instead.
+			convo.script(
+				[toolUse('t2', 'answer', { ref: 'signals/main', decision: 'yes', text: '' })],
+				[toolUse('t3', 'switch_view', { ref: 'checkout-api/main' })],
+			);
+			await convo.say('Yes.');
+
+			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['p1']);
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'checkout-api/main' });
+		});
+	});
+
 	it('"what did I miss?" → the waiting updates now, without waiting for the quiet', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

@@ -1,6 +1,11 @@
 import type { Judge } from '../judge/judge.js';
 import { createLogger } from '../log.js';
-import type { Action, PendingAsk, State } from '../shared/protocol.js';
+import {
+	isSwitchOfferFresh,
+	type Action,
+	type PendingAsk,
+	type State,
+} from '../shared/protocol.js';
 import { findOpenQuestion, hasOpenQuestionMoved, type QuestionAsk } from '../shared/questions.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import {
@@ -247,7 +252,15 @@ const isClearlyAnswerFor = ({ state, ref, toolContext }: IsAnswerForParams): boo
 	// With several sessions waiting, a bare "yes" is only theirs when they named it, look at it,
 	// or Voice OS just asked about it: approving the wrong push is the one mistake that cannot wait.
 	const { utterance, asks } = toolContext;
-	const isAlone = asks.every((ask) => ask.ref === ref);
+	const now = toolContext.now();
+	const offer = state.switchOffer;
+	// "Switch there?" asked after its question: a bare yes may be the switch's, so the question is no
+	// longer alone.
+	const isOfferedSince =
+		isSwitchOfferFresh(offer, now) &&
+		offer.ref !== ref &&
+		asks.every((ask) => ask.ref !== ref || ask.at < offer.at);
+	const isAlone = asks.every((ask) => ask.ref === ref) && !isOfferedSince;
 
 	if (isAlone || utterance === undefined || toolContext.screen === ref) {
 		return true;
@@ -255,8 +268,8 @@ const isClearlyAnswerFor = ({ state, ref, toolContext }: IsAnswerForParams): boo
 
 	const lastAskedAloud = findLastAskedAloud({
 		spoken: state.spoken,
-		waitingRefs: asks.map((ask) => ask.ref),
-		now: toolContext.now(),
+		waitingRefs: [...asks.map((ask) => ask.ref), ...(isOfferedSince ? [offer.ref] : [])],
+		now,
 	});
 
 	return lastAskedAloud?.ref === ref || findSessionsNamedIn(state, utterance).includes(ref);

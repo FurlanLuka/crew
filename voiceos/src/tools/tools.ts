@@ -404,11 +404,15 @@ export const executeTool = async (
 
 			// Read with the answer in hand, "status" was answered from these lines all day instead of by the
 			// session that holds the whole conversation: the rule rides with the read.
-			return succeed(
-				checked.ref === toolContext.screen
-					? { on_screen: ON_SCREEN_READ_RULE, ...described }
-					: described,
-			);
+			return {
+				...succeed(
+					checked.ref === toolContext.screen
+						? { on_screen: ON_SCREEN_READ_RULE, ...described }
+						: described,
+				),
+				// The session as resolved, not as spoken: the reply that reads it back is its news.
+				recordAs: { name: 'read_state', input: { ...input, ref: checked.ref } },
+			};
 		}
 
 		case 'read_history': {
@@ -420,10 +424,13 @@ export const executeTool = async (
 			}
 
 			const query = typeof input.query === 'string' && input.query.trim() ? input.query : null;
+			const ref = checked?.ok ? checked.ref : null;
 
-			return succeed(
-				toolContext.readHistory({ ref: checked?.ok ? checked.ref : null, query, limit }),
-			);
+			return {
+				...succeed(toolContext.readHistory({ ref, query, limit })),
+				// As resolved, like read_state's: the reply that reads it back is its news.
+				recordAs: { name: 'read_history', input: { ...input, ref } },
+			};
 		}
 
 		case 'send_to': {

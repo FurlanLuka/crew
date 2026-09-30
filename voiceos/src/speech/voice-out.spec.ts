@@ -191,6 +191,29 @@ describe('VoiceOut', () => {
 		expect(harness.store.state.spoken.every((line) => line.endedAt !== undefined)).toBe(true);
 	});
 
+	it('an update arriving when it is already quiet → every listener sees it before its play', async () => {
+		const harness = createHarness();
+		harness.tick(60_000);
+		const seen: string[] = [];
+		// Registered after VoiceOut, like the gateway: a play dispatched from inside the update reached it first.
+		harness.store.subscribe((stamped) => {
+			seen.push(`${stamped.seq}:${stamped.input.type}`);
+		});
+
+		harness.voiceOut.say({
+			text: 'The retry backoff is done.',
+			priority: 'normal',
+			ref: 'store/wrk1',
+			announcement: { kind: 'done', about: 'The retry backoff is done.' },
+		});
+		await flush();
+
+		const types = seen.map((entry) => entry.split(':')[1]);
+		const seqs = seen.map((entry) => Number(entry.split(':')[0]));
+		expect(types.slice(0, 2)).toEqual(['meanwhile_added', 'play_meanwhile']);
+		expect(seqs).toEqual([...seqs].sort((first, second) => first - second));
+	});
+
 	it('a session line queued on screen, played after the developer left → held, and announced if its turn is over', async () => {
 		const harness = createHarness();
 		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });

@@ -23,7 +23,8 @@ const log = createLogger('router');
 export interface KernelTurn {
 	reply: string;
 	did: string[];
-	calls: Pick<ToolCall, 'name'>[];
+	// input and ok: what a read was about, so a reply that reads a session back counts as its news.
+	calls: (Pick<ToolCall, 'name'> & Partial<Pick<ToolCall, 'input' | 'ok'>>)[];
 }
 
 type KernelHandlerOptions = Required<KernelHandleParams>;

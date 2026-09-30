@@ -140,8 +140,10 @@ export class VoiceOut {
 				queueMicrotask(() => this.viewChanged());
 			}
 
+			// Played at once, from inside this dispatch the page would get the play before the update it
+			// plays, see a gap, reconnect and cut the line.
 			if (stamped.input.type === 'meanwhile_added') {
-				this.scheduleMeanwhile();
+				queueMicrotask(() => this.scheduleMeanwhile());
 			}
 		});
 	}

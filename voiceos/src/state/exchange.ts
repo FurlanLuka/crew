@@ -209,7 +209,7 @@ export const followExchange = (
 
 			const screenRef = readScreenRef(before);
 			const moved = talkTo({ state, ref: input.ref, at: stamped.at, screenRef });
-			const heardAt = before.sessions[input.ref]?.heldLine?.updateHeardAt;
+			const heardAt = before.sessions[input.ref]?.updateHeardAt;
 			// A reply to an update they heard ("crew needs you: …", the meanwhile line), sent from another
 			// screen: without the page they would not know their words now go there. Once per update.
 			const isReplyToHeard =
@@ -220,11 +220,13 @@ export const followExchange = (
 				moved.state.exchange?.startedAt === stamped.at;
 			const replied = forgetHeardUpdate(moved.state, input.ref);
 
-			// Not to a machine out of reach (the words wait for it), and not over a question still open.
+			// Not to a machine out of reach (the words wait for it), and not over its own open question.
+			// Another session's question does not hold it back: a bare yes goes to whichever was asked last
+			// (answer.ts, isClearlyAnswerFor).
 			if (
 				isReplyToHeard &&
 				isReachable(state, input.ref) &&
-				replied.asks.length === 0 &&
+				!replied.asks.some((ask) => ask.ref === input.ref) &&
 				!isSwitchOfferFresh(replied.switchOffer, stamped.at)
 			) {
 				const offered = offerSwitch(replied, input.ref, stamped.at);
