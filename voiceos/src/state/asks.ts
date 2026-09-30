@@ -11,6 +11,7 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import { buildRetryText } from '../shared/approval.js';
+import { describeSummaryAloud, describeToolAloud } from '../shared/tool-aloud.js';
 import { stripSessionName, toSpokenName } from '../shared/spoken.js';
 import { findOpenQuestion, readOpenQuestions, type QuestionAsk } from '../shared/questions.js';
 import type { AskResult, Effect, ReducerResult } from './reducer.js';
@@ -117,7 +118,8 @@ export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 	// Kept short: the developer did not ask for it.
 	switch (ask.kind) {
 		case 'permission': {
-			const summary = capWords(ask.summary, MAX_SUMMARY_WORDS);
+			// The page shows the command; aloud, only what it does.
+			const summary = capWords(describeToolAloud(ask.toolName, ask.input), MAX_SUMMARY_WORDS);
 
 			return `${label} wants to ${summary}${summary.endsWith('…') ? '' : '.'} Allow?`;
 		}
@@ -140,7 +142,7 @@ const describeAskAbout = (ask: PendingAsk): string | null => {
 		case 'plan':
 			return 'a plan to approve';
 		case 'permission':
-			return `approval to ${capWords(ask.summary, ABOUT_WORDS).replace(/[.…]+$/, '')}`;
+			return `approval to ${capWords(describeToolAloud(ask.toolName, ask.input), ABOUT_WORDS).replace(/[.…]+$/, '')}`;
 		case 'question': {
 			const open = findOpenQuestion(ask)?.question;
 
@@ -627,7 +629,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				effects: [
 					{
 						type: 'speak',
-						text: `Auto mode blocked ${readLabel(state, input.ref)}: ${input.summary}.`,
+						text: `Auto mode blocked ${readLabel(state, input.ref)}: ${describeSummaryAloud(input.toolName, input.summary)}.`,
 						source: 'alert',
 						ref: input.ref,
 						// Heard after the line playing, never cutting it: a burst of them cut each other off.
