@@ -80,6 +80,8 @@ export interface FixtureContext {
 	talkingWith?: { ref: string; asked: string; answered: string; secondsAgo: number };
 	// Voice OS asked "Switch to <ref>?" that many seconds ago.
 	switchOffer?: { ref: string; secondsAgo: number };
+	// Other sessions' updates waiting for the meanwhile line.
+	meanwhile?: { ref: string; kind: 'done' | 'needs'; about: string }[];
 }
 
 export const FIXTURE_TOPICS: Record<string, string> = {
@@ -403,6 +405,9 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 		focus: context.view ?? null,
 		...(context.pinned ? { pinned: context.pinned } : {}),
 		...(context.names ? { names: context.names } : {}),
+		...(context.meanwhile
+			? { meanwhile: context.meanwhile.map((item) => ({ ...item, at: now - 20_000 })) }
+			: {}),
 		...(context.switchOffer
 			? {
 					switchOffer: {

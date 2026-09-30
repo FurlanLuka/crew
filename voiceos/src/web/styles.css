@@ -691,6 +691,18 @@ textarea:focus-visible {
 	color: var(--ink);
 	line-height: 1.45;
 }
+.updates-waiting {
+	background: none;
+	border: 1px solid var(--cyan-dim);
+	border-radius: 100px;
+	color: var(--cyan);
+	font: inherit;
+	font-size: 10.5px;
+	padding: 1px 9px;
+}
+.updates-waiting:hover {
+	background: rgba(78, 201, 217, 0.08);
+}
 .botbar {
 	display: flex;
 	align-items: flex-end;

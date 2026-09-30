@@ -218,6 +218,10 @@ export class VoiceInput {
 		this.listener.listen(client, apiKey, sampleRate, mode);
 	}
 
+	isListening(): boolean {
+		return this.listener.hasListeners;
+	}
+
 	listenModeOf(client: string): ListenMode {
 		return this.listener.modeOf(client) ?? 'push';
 	}

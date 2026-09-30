@@ -828,6 +828,26 @@
 			]
 		},
 		{
+			"id": "what-did-i-miss",
+			"utterance": "What did I miss?",
+			"context": {
+				"view": "store-front/main",
+				"meanwhile": [
+					{
+						"ref": "checkout-api/main",
+						"kind": "done",
+						"about": "the retry backoff"
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "play_missed"
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "relay-negation",
 			"utterance": "Tell it not to touch the migrations.",
 			"context": {

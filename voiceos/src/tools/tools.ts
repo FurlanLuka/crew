@@ -513,6 +513,17 @@ export const executeTool = async (
 		case 'ask_target':
 			return askTarget({ state, input, toolContext });
 
+		case 'play_missed':
+			if (state.meanwhile.length === 0) {
+				return { ...succeed('nothing is waiting: say "Nothing new."'), reply: 'Nothing new.' };
+			}
+
+			toolContext.dispatch({ type: 'play_meanwhile' });
+
+			return succeed(
+				`Voice OS says the ${state.meanwhile.length} waiting updates now: say nothing`,
+			);
+
 		case 'start_session': {
 			const found = checkRef(state, input.ref);
 

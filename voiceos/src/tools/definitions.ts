@@ -8,6 +8,7 @@ export type ToolName =
 	| 'switch_view'
 	| 'go_back'
 	| 'ask_target'
+	| 'play_missed'
 	| 'start_session'
 	| 'stop_session'
 	| 'crew_dev'
@@ -208,6 +209,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			required: ['ref'],
 			additionalProperties: false,
 		},
+	},
+	{
+		name: 'play_missed',
+		description:
+			'"What did I miss?", "any updates?": Voice OS says the other sessions\' updates that wait for a quiet moment (the meanwhile line) now, or that nothing is new. Say nothing yourself.',
+		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
 	},
 	{
 		name: 'start_session',

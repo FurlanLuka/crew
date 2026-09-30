@@ -87,6 +87,7 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		devStarting: state.devStarting.filter(isKept),
 		focus: state.focus && isKept(state.focus) ? state.focus : null,
 		exchange: pruneExchange(state.exchange, isKept),
+		meanwhile: state.meanwhile.filter((item) => isKept(item.ref)),
 		viewHistory: pruneViewHistory(
 			state.viewHistory,
 			isKept,

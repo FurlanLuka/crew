@@ -280,6 +280,7 @@ describe('parseClientMessage', () => {
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
 		clear_exchange: { type: 'clear_exchange' },
 		go_back: { type: 'go_back' },
+		play_meanwhile: { type: 'play_meanwhile' },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
 		ask_target: {
 			type: 'ask_target',

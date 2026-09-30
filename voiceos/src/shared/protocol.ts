@@ -272,6 +272,20 @@ export interface ViewHistoryEntry {
 
 export const VIEW_HISTORY_KEPT = 5;
 
+export interface MeanwhileItem {
+	ref: string;
+	kind: 'done' | 'needs';
+	about: string | null;
+	at: number;
+}
+
+// Quiet before the waiting updates are said: push to talk is quiet the moment the key is up;
+// listening needs a longer gap to be sure the developer finished.
+export const MEANWHILE_QUIET_MS = 8_000;
+export const MEANWHILE_QUIET_LISTENING_MS = 12_000;
+// An update never waits longer than this: it plays at the next gap, however short.
+export const MEANWHILE_MAX_WAIT_MS = 50_000;
+
 export interface TargetAsk {
 	ref: string;
 	// The session on screen when the words were said: where they go on a no, or on silence.
@@ -363,6 +377,8 @@ export interface State {
 	// "For checkout?": words that were either a reply to checkout's notification or for the screen,
 	// held until the developer says which.
 	targetAsk: TargetAsk | null;
+	// Other sessions' "is done" / "needs you", waiting for a quiet moment to be said as one line.
+	meanwhile: MeanwhileItem[];
 	// Per screen (a session ref, or GRID).
 	voiceLog: Record<string, VoiceEntry[]>;
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
@@ -454,6 +470,8 @@ export type Action =
 	| { type: 'rename_session'; ref: string; name: string }
 	// The page's × on "Talking with checkout": follow-ups go to the screen again.
 	| { type: 'clear_exchange' }
+	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
+	| { type: 'play_meanwhile' }
 	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced).
 	| { type: 'offer_switch'; ref: string }
 	// Voice OS asks "For X?" and holds the words until the developer says which.
@@ -488,6 +506,7 @@ export type Observation =
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
 	| { type: 'exchange_expired'; ref: string; lastAt: number }
+	| { type: 'meanwhile_added'; ref: string; kind: MeanwhileItem['kind']; about: string | null }
 	| { type: 'switch_offer_closed'; at: number }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }

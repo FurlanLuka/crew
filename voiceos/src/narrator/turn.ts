@@ -34,6 +34,8 @@ interface NarratedLine {
 	isOwed?: boolean;
 	chime?: 'needs';
 	isHoldable?: boolean;
+	// Another session's update: said later, with the others', in the meanwhile line.
+	announcement?: { kind: 'done' | 'needs'; about: string | null };
 }
 
 const OWED_FALLBACK_WORDS = 30;
@@ -224,23 +226,26 @@ const speakOutcome = async ({
 	log.info('announced', { ref: effect.ref, kind });
 	// Never asked aloud or owed: the developer has not heard the question, and a switch's replay
 	// replaces this if it is still waiting to be said.
+	const aboutText =
+		kind === 'needs'
+			? (about ?? settled?.topic ?? null)
+			: describeDoneAbout({
+					topic: settled?.topic ?? null,
+					isTopicPinned: settled?.isTopicPinned === true,
+					asked: effect.asked,
+				});
+
 	options.say({
 		text: describeAnnouncement({
 			label: readAnnouncedLabel(store.state, effect.ref, readSessionLabel(store.state, effect.ref)),
 			kind,
-			about:
-				kind === 'needs'
-					? (about ?? settled?.topic ?? null)
-					: describeDoneAbout({
-							topic: settled?.topic ?? null,
-							isTopicPinned: settled?.isTopicPinned === true,
-							asked: effect.asked,
-						}),
+			about: aboutText,
 		}),
 		priority: kind === 'needs' ? 'high' : 'normal',
 		ref: effect.ref,
 		isNamed: false,
 		isAsking: false,
+		announcement: { kind, about: aboutText },
 		...(kind === 'needs' ? { chime: 'needs' as const } : {}),
 	});
 };

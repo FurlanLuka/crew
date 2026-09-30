@@ -1,6 +1,7 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import { sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
+import { addMeanwhile, playMeanwhile } from './meanwhile.js';
 import {
 	decideGoBack,
 	describeGoBack,
@@ -144,6 +145,7 @@ export const createInitialState = (): State => ({
 	exchange: null,
 	viewHistory: [],
 	targetAsk: null,
+	meanwhile: [],
 	asks: [],
 	denials: [],
 	transcript: null,
@@ -275,8 +277,9 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 	const isKept = (ref: string) => Boolean(sessions[ref]);
 	const exchange = pruneExchange(state.exchange, isKept);
 	const viewHistory = pruneViewHistory(state.viewHistory, isKept);
+	const meanwhile = state.meanwhile.filter((item) => isKept(item.ref));
 
-	return { ...state, sessions, order, view, focus, exchange, viewHistory, voiceLog };
+	return { ...state, sessions, order, view, focus, exchange, viewHistory, meanwhile, voiceLog };
 };
 
 // Its lines are said as they come: on screen, or the session the developer talks with elsewhere.
@@ -927,6 +930,12 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'setup':
 			return withoutEffects({ ...state, setup: { missing: input.missing } });
+
+		case 'meanwhile_added':
+			return withoutEffects(addMeanwhile(state, input, stamped.at));
+
+		case 'play_meanwhile':
+			return playMeanwhile(state);
 
 		// followExchange (exchange.ts) owns these.
 		case 'exchange_expired':

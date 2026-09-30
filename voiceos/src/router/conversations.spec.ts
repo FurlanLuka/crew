@@ -150,4 +150,51 @@ describe('conversations', () => {
 			'Kept on store front, main.',
 		]);
 	});
+
+	it('another session finishes mid-conversation → it waits for the quiet, then comes as one "meanwhile" line', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		const report =
+			'The retry backoff now doubles from one second up to thirty, and every retry test passes again.';
+
+		convo.store.dispatch({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'add backoff to the retries',
+		});
+		convo.script([toolUse('t1', 'forward', { kind: 'instruction' })]);
+		await convo.say('Run the tests here.');
+		await convo.answer('checkout-api/main', report);
+		await convo.answer('store-front/main', 'All 40 tests pass.');
+		await convo.wait(3_000);
+
+		expect(convo.heard).toEqual(['> Run the tests here.', 'All 40 tests pass.']);
+		expect(convo.store.state.meanwhile.map((item) => item.ref)).toEqual(['checkout-api/main']);
+
+		await convo.wait(6_000);
+
+		expect(convo.heard.at(-1)).toBe(
+			'Meanwhile, checkout api, main finished add backoff to the retries.',
+		);
+		expect(convo.store.state.meanwhile).toEqual([]);
+	});
+
+	it('"what did I miss?" → the waiting updates now, without waiting for the quiet', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'checkout-api/main',
+			kind: 'done',
+			about: 'the retry backoff',
+		});
+
+		convo.script([toolUse('t1', 'play_missed', {})]);
+		await convo.say('What did I miss?');
+
+		expect(convo.heard).toEqual([
+			'> What did I miss?',
+			'Meanwhile, checkout api, main finished the retry backoff.',
+		]);
+	});
 });

@@ -110,6 +110,8 @@ const voiceOut = new VoiceOut({
 	play: (tab, message) => gateway?.send(tab, message) ?? false,
 	speaker: () => speaker,
 	hasPage: () => (gateway?.countClients() ?? 0) > 0,
+	// voiceIn is assigned below; it is only asked once speech is under way.
+	isListening: () => voiceIn.isListening(),
 });
 const narrate = createNarrator(keys.anthropic);
 

@@ -1,5 +1,11 @@
 import { createLogger } from '../log.js';
-import { isSdkAsk, type SpeechMessage, type SpokenLine, type State } from '../shared/protocol.js';
+import {
+	isSdkAsk,
+	type MeanwhileItem,
+	type SpeechMessage,
+	type SpokenLine,
+	type State,
+} from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { readLabel } from '../state/helpers.js';
@@ -29,6 +35,7 @@ import {
 	type SpeechQueue,
 } from './queue.js';
 import { computePcmSeconds, type Synthesize } from './tts.js';
+import { decideMeanwhile } from './meanwhile.js';
 
 interface SayParams {
 	text: string;
@@ -43,6 +50,8 @@ interface SayParams {
 	isAck?: boolean;
 	isHoldable?: boolean;
 	chime?: 'needs';
+	// "checkout is done: …": another session's update, said later in the meanwhile line instead.
+	announcement?: { kind: MeanwhileItem['kind']; about: string | null };
 }
 
 interface FinishParams {
@@ -68,6 +77,8 @@ export interface VoiceOutOptions {
 	// Tests run the clock themselves; returns what clearTimer takes.
 	setTimer?: (run: () => void, ms: number) => unknown;
 	clearTimer?: (timer: unknown) => void;
+	// A tab listens all the time (on demand, hands-free): the quiet before "meanwhile" is longer.
+	isListening?: () => boolean;
 }
 
 interface Playing {
@@ -108,6 +119,9 @@ export class VoiceOut {
 	private now: () => number;
 	private setTimer: (run: () => void, ms: number) => unknown;
 	private clearTimer: (timer: unknown) => void;
+	// Since nothing was said either way: the meanwhile line waits for enough of it.
+	private quietSince: number;
+	private meanwhileTimer: unknown = undefined;
 
 	constructor(private options: VoiceOutOptions) {
 		this.now = options.now ?? Date.now;
@@ -115,10 +129,15 @@ export class VoiceOut {
 		this.clearTimer =
 			options.clearTimer ??
 			((timer) => clearTimeout(timer as ReturnType<typeof setTimeout> | undefined));
+		this.quietSince = this.now();
 		options.store.subscribe((stamped) => {
 			// After the dispatch that switched: a line held from inside it would reach the pages first.
 			if (stamped.input.type === 'switch_view') {
 				queueMicrotask(() => this.viewChanged());
+			}
+
+			if (stamped.input.type === 'meanwhile_added') {
+				this.scheduleMeanwhile();
 			}
 		});
 	}
@@ -136,8 +155,16 @@ export class VoiceOut {
 		isAck = false,
 		isHoldable = false,
 		chime,
+		announcement,
 	}: SayParams): void {
 		if (!text.trim()) {
+			return;
+		}
+
+		// Another session's update waits for a quiet moment, with the others', as one line.
+		if (announcement && ref) {
+			this.options.store.dispatch({ type: 'meanwhile_added', ref, ...announcement });
+
 			return;
 		}
 
@@ -203,6 +230,7 @@ export class VoiceOut {
 	talkStarted(): void {
 		// Nothing queued is dropped: it waits for the developer to finish, behind what answers them.
 		this.isTalking = true;
+		this.quietSince = this.now();
 
 		if (this.playing) {
 			this.finish(this.playing.id, { isCut: true, shouldPlayNext: false });
@@ -215,6 +243,7 @@ export class VoiceOut {
 		}
 
 		this.isTalking = false;
+		this.quietSince = this.now();
 		void this.pump();
 	}
 
@@ -337,6 +366,7 @@ export class VoiceOut {
 		this.clearTimer(playing.timer);
 		this.playing = null;
 		playing.record.endedAt = this.now();
+		this.quietSince = this.now();
 
 		if (playing.lineId) {
 			this.options.store.dispatch({
@@ -418,26 +448,45 @@ export class VoiceOut {
 		}
 
 		store.dispatch({ type: 'held_line_announced', ref: item.ref, id: held.id });
-		this.say({
-			text: describeAnnouncement({
-				label: readAnnouncedLabel(store.state, item.ref, readSessionLabel(store.state, item.ref)),
-				kind,
-				about:
-					kind === 'done'
-						? describeDoneAbout({
-								topic: session.topic,
-								isTopicPinned: session.isTopicPinned,
-								asked: session.requests.at(-1)?.text ?? null,
-							})
-						: null,
-			}),
-			priority: kind === 'needs' ? 'high' : 'normal',
-			source: 'narrator',
+		store.dispatch({
+			type: 'meanwhile_added',
 			ref: item.ref,
-			...(kind === 'needs' ? { chime: 'needs' as const } : {}),
+			kind,
+			about:
+				kind === 'done'
+					? describeDoneAbout({
+							topic: session.topic,
+							isTopicPinned: session.isTopicPinned,
+							asked: session.requests.at(-1)?.text ?? null,
+						})
+					: null,
 		});
 
 		return true;
+	}
+
+	// Plays the waiting updates once the developer and Voice OS have both been quiet long enough, or
+	// once the oldest has waited too long; only ever between turns, never over speech.
+	private scheduleMeanwhile(): void {
+		this.clearTimer(this.meanwhileTimer);
+		this.meanwhileTimer = undefined;
+
+		if (this.playing || this.isTalking || this.queue.items.length > 0) {
+			return;
+		}
+
+		const timing = decideMeanwhile({
+			items: this.options.store.state.meanwhile,
+			now: this.now(),
+			quietSince: this.quietSince,
+			isListening: this.options.isListening?.() ?? false,
+		});
+
+		if (timing.kind === 'now') {
+			this.options.store.dispatch({ type: 'play_meanwhile' });
+		} else if (timing.kind === 'wait') {
+			this.meanwhileTimer = this.setTimer(() => this.scheduleMeanwhile(), timing.ms);
+		}
 	}
 
 	private resolveSpokenText(item: SpeechItem): string {
@@ -471,6 +520,8 @@ export class VoiceOut {
 		this.queue = queue;
 
 		if (!item) {
+			this.scheduleMeanwhile();
+
 			return;
 		}
 
