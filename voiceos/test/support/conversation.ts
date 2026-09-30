@@ -143,6 +143,7 @@ export const createConversation = ({
 	});
 	const router = new UtteranceRouter({
 		store,
+		judge: englishJudge,
 		kernel: speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut),
 		now: clock,
 	});

@@ -97,9 +97,11 @@ export const findSessionsNamedIn = (state: State, utterance: string): string[] =
 	);
 };
 
-const THIS_SESSION_PATTERN = /\b(?:this|the current) (?:session|one|claude)\b/i;
-
-export const findNamedRefs = (state: State, toolContext: ToolContext, ref: string): string[] => {
+export const findNamedRefs = async (
+	state: State,
+	toolContext: ToolContext,
+	ref: string,
+): Promise<string[]> => {
 	if (toolContext.utterance === undefined) {
 		return [ref];
 	}
@@ -110,7 +112,7 @@ export const findNamedRefs = (state: State, toolContext: ToolContext, ref: strin
 	if (
 		namedRefs.length === 0 &&
 		toolContext.screen &&
-		THIS_SESSION_PATTERN.test(toolContext.utterance)
+		(await toolContext.judge({ key: 'this_session', utterance: toolContext.utterance })) === 'yes'
 	) {
 		return [toolContext.screen];
 	}

@@ -1,9 +1,8 @@
+import type { Judge } from '../judge/judge.js';
 import type { Action, PendingAsk, State } from '../shared/protocol.js';
 import { findOpenQuestion, hasOpenQuestionMoved, type QuestionAsk } from '../shared/questions.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
-import { isConsent, isPlainConsent } from './consent.js';
 import {
-	describeDebugNoteRequest,
 	describeMisroutedAnswer,
 	isBareAnswer,
 	chooseSentWords,
@@ -172,8 +171,6 @@ const readBareOption = (said: string): string =>
 		.trim()
 		.replace(OPTION_FILLER_PATTERN, '');
 
-const QUESTION_LEAD_PATTERN =
-	/^(?:what|what's|whats|why|how|which|who|when|where|does|do|is|are|can|could|should|would|will)\b/;
 // "Use Postgres?" for the label "Postgres", or "Postgres?" for "Use Postgres": a pick said with a
 // few words around it. Longer, it is a sentence about the option ("what does Postgres do").
 const MAX_PICK_EXTRA_WORDS = 2;
@@ -189,7 +186,7 @@ const isSpokenPick = (bare: string, labels: string[]): boolean => {
 		return true;
 	}
 
-	if (!bare || QUESTION_LEAD_PATTERN.test(bare)) {
+	if (!bare) {
 		return false;
 	}
 
@@ -201,7 +198,11 @@ const isSpokenPick = (bare: string, labels: string[]): boolean => {
 	return named.length === 1 && countWords(bare) <= countWords(named[0]!) + MAX_PICK_EXTRA_WORDS;
 };
 
-export const isClarifyingQuestion = (ask: QuestionAsk, utterance: string | undefined): boolean => {
+export const isClarifyingQuestion = async (
+	ask: QuestionAsk,
+	utterance: string | undefined,
+	judge: Judge,
+): Promise<boolean> => {
 	// "What does option two do?" asks about the options; "the second?", "Postgres?" or "use
 	// Postgres?" picks one with a questioning voice.
 	if (!utterance || !endsInQuestion(utterance)) {
@@ -212,7 +213,18 @@ export const isClarifyingQuestion = (ask: QuestionAsk, utterance: string | undef
 		readBareOption(option.label),
 	);
 
-	return !isSpokenPick(readBareOption(utterance), labels);
+	const bare = readBareOption(utterance);
+
+	// An option's label or place said back ("Postgres?", "the second?") is a pick in any language;
+	// one named with words around it ("why Postgres?", "use Postgres?") is a pick only if the judge
+	// hears no question about it.
+	if (ORDINALS.has(bare) || labels.includes(bare)) {
+		return false;
+	}
+
+	return (
+		!isSpokenPick(bare, labels) || (await judge({ key: 'asks_about_options', utterance })) !== 'no'
+	);
 };
 
 interface IsAnswerForParams {
@@ -246,7 +258,11 @@ export interface AnswerAskParams {
 	toolContext: ToolContext;
 }
 
-export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolResult => {
+export const answerAsk = async ({
+	state,
+	input,
+	toolContext,
+}: AnswerAskParams): Promise<ToolResult> => {
 	const checked = checkRef(state, input.ref);
 
 	if (!checked.ok) {
@@ -259,19 +275,14 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		return refused;
 	}
 
-	const debugNoteRequest = describeDebugNoteRequest(toolContext.utterance);
-
-	if (debugNoteRequest) {
-		return fail(debugNoteRequest);
-	}
-
 	const heardAsk = toolContext.asks.find((ask) => ask.ref === checked.ref);
 
 	if (!heardAsk) {
 		// The model reaches for answer when a session asked at the end of its turn: that reply is
 		// words for the session, so it goes there instead of failing into a made-up explanation.
 		const utterance = toolContext.utterance;
-		const reply = chooseSentWords({
+		const { text: reply } = await chooseSentWords({
+			judge: toolContext.judge,
 			utterance,
 			part: typeof input.text === 'string' ? input.text : undefined,
 			earlier: toolContext.recentUtterances ?? [],
@@ -282,7 +293,7 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 						isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
 					})
 				: false,
-		}).text;
+		});
 
 		// A forward beside it already took the words there, cleaned: they are not sent twice.
 		if (toolContext.sentTo?.has(checked.ref)) {
@@ -324,13 +335,21 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		// failing lets the kernel answer it there, where a forward would hand this one a stray yes.
 		const askingElsewhere = toolContext.asks.find((ask) => ask.ref !== checked.ref);
 
-		if (askingElsewhere && isBareAnswer(toolContext.utterance ?? reply)) {
+		if (
+			askingElsewhere &&
+			(await isBareAnswer(toolContext.judge, toolContext.utterance ?? reply))
+		) {
 			return fail(
 				`${checked.ref} has nothing pending to answer; ${askingElsewhere.ref} is the one asking: answer it there. Nothing was sent.`,
 			);
 		}
 
-		const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, reply);
+		const misroutedAnswer = await describeMisroutedAnswer(
+			state,
+			checked.ref,
+			reply,
+			toolContext.judge,
+		);
 
 		if (misroutedAnswer) {
 			return fail(misroutedAnswer);
@@ -339,7 +358,13 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		// "Yes, do that" to a session that asked nothing still means something to it: the
 		// words go there instead of failing into "nothing is waiting".
 		return {
-			...sendText({ state, ref: checked.ref, text: reply, kind: 'instruction', toolContext }),
+			...(await sendText({
+				state,
+				ref: checked.ref,
+				text: reply,
+				kind: 'instruction',
+				toolContext,
+			})),
 			recordAs: recordAsSent({ ref: checked.ref, text: reply, toolContext }),
 		};
 	}
@@ -374,22 +399,28 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 		decision === 'choose' &&
 		liveAsk.kind === 'question' &&
 		toolContext.utterance !== undefined &&
-		isClarifyingQuestion(liveAsk, toolContext.utterance)
+		(await isClarifyingQuestion(liveAsk, toolContext.utterance, toolContext.judge))
 	) {
 		const said = toolContext.utterance.trim();
 
 		return {
-			...sendText({ state, ref: checked.ref, text: said, kind: 'question', toolContext }),
+			...(await sendText({ state, ref: checked.ref, text: said, kind: 'question', toolContext })),
 			recordAs: recordAsSent({ ref: checked.ref, text: said, kind: 'question', toolContext }),
 		};
 	}
 
-	// Approving a command or a plan is the one call that must never be guessed from other words.
+	// Approving a command or a plan is the one call that must never be guessed from other words: the
+	// judge, not the kernel, says whether they said yes. Clearing context or stopping work needs a
+	// yes with no holding back in it at all.
 	const isApproval = heardAsk.kind !== 'question' && (decision === 'yes' || decision === 'always');
-	const hasConsented =
-		heardAsk.kind === 'command' || heardAsk.kind === 'redirect' ? isPlainConsent : isConsent;
+	const consentKey =
+		heardAsk.kind === 'command' || heardAsk.kind === 'redirect' ? 'approves_plainly' : 'approves';
 
-	if (isApproval && toolContext.utterance !== undefined && !hasConsented(toolContext.utterance)) {
+	if (
+		isApproval &&
+		toolContext.utterance !== undefined &&
+		(await toolContext.judge({ key: consentKey, utterance: toolContext.utterance })) !== 'yes'
+	) {
 		return fail(
 			`not answered: the developer did not say yes. Their words are for ${checked.ref}: forward them as said (they decline its ${heardAsk.kind === 'command' ? `/${heardAsk.command}` : heardAsk.kind} and reach it).`,
 		);

@@ -46,6 +46,7 @@ const createHarness = (
 	const docOpeners: unknown[] = [];
 	const router = new UtteranceRouter({
 		store,
+		judge: englishJudge,
 		now: () => 5000,
 		kernel: async (text, { setListenMode, openUrl, heardFrom, ...options }) => {
 			kernelCalls.push({ text, ...options });
@@ -130,6 +131,7 @@ describe('UtteranceRouter', () => {
 		const harness = createHarness();
 		const router = new UtteranceRouter({
 			store: harness.store,
+			judge: englishJudge,
 			kernel: async () => {
 				harness.view('checkout-api/main');
 
@@ -282,7 +284,7 @@ describe('UtteranceRouter', () => {
 
 	it('no kernel → says what is missing, and logs it', async () => {
 		const store = new Store();
-		const router = new UtteranceRouter({ store, kernel: null, now: () => 1 });
+		const router = new UtteranceRouter({ store, judge: englishJudge, kernel: null, now: () => 1 });
 
 		await router.handle('open checkout');
 
@@ -333,6 +335,7 @@ describe('UtteranceRouter', () => {
 		});
 		const router = new UtteranceRouter({
 			store,
+			judge: englishJudge,
 			kernel: (text, options) => kernel.handle(text, options),
 		});
 

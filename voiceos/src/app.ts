@@ -114,6 +114,8 @@ const voiceOut = new VoiceOut({
 	// voiceIn is assigned below; it is only asked once speech is under way.
 	isListening: () => voiceIn.isListening(),
 });
+// The narrow check behind the guards (approvals, take-backs, mute, listening), in any language.
+const judge = createJudge({ apiKey: keys.anthropic });
 const narrate = createNarrator(keys.anthropic);
 
 const narrateTurn = createTurnNarrator({
@@ -175,7 +177,7 @@ const kernel = keys.anthropic
 				readHistory: (query) => readHistory(paths.journalDir, query),
 				mute: () => voiceOut.mute(),
 				notes,
-				judge: createJudge({ apiKey: keys.anthropic }),
+				judge,
 				saveDebugNote: ({ text, said }) => {
 					const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
 
@@ -212,6 +214,7 @@ const listenSwitchFor = createListenSwitch({
 
 const router = new UtteranceRouter({
 	store,
+	judge,
 	kernel: kernel
 		? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
 		: null,

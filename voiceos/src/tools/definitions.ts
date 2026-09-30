@@ -102,6 +102,19 @@ const PINNED_VIEW_PROPERTY = {
 		'true for Pinned, the developer\'s pinned sessions from every machine ("go to pinned", "show my pinned sessions"); ref and machine are then ignored.',
 };
 
+// Judged by the kernel in the developer's own language: no English keyword decides these.
+const MY_NOTES_PROPERTY = {
+	type: 'boolean',
+	description:
+		'true only when the developer mentions their own notes ("my notes", in any language): the session is told where they are. Not the release notes, not debug notes.',
+};
+
+const ABOUT_LAST_ACTION_PROPERTY = {
+	type: 'boolean',
+	description:
+		'true when the words point back at what Voice OS itself just did or saved ("check this debug note", "look at that note"): the session is told what it was.',
+};
+
 // The kernel never writes what a session reads: Voice OS sends the words as heard.
 const PART_PROPERTY = {
 	type: 'string',
@@ -173,6 +186,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				text: PART_PROPERTY,
 				kind: KIND_PROPERTY,
 				continues: CONTINUES_PROPERTY,
+				my_notes: MY_NOTES_PROPERTY,
+				about_last_action: ABOUT_LAST_ACTION_PROPERTY,
 			},
 			required: ['ref', 'kind'],
 			additionalProperties: false,
@@ -422,6 +437,8 @@ export const FORWARD_TOOL: ToolDefinition = {
 			text: PART_PROPERTY,
 			kind: KIND_PROPERTY,
 			continues: CONTINUES_PROPERTY,
+			my_notes: MY_NOTES_PROPERTY,
+			about_last_action: ABOUT_LAST_ACTION_PROPERTY,
 		},
 		required: ['kind'],
 		additionalProperties: false,

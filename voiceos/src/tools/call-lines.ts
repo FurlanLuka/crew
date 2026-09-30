@@ -2,7 +2,7 @@ import { SWITCH_OFFERED_NOTE } from './announced.js';
 import { ASK_TARGET_NOTE } from './notification-reply.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
-import { isBareAnswer } from './send.js';
+import { isShortEnoughToAnswer } from './send.js';
 
 const SILENT_TOOLS: ToolName[] = [
 	'forward',
@@ -147,7 +147,7 @@ export const isAskingBack = ({
 
 	return (
 		forwardTo !== null &&
-		!isBareAnswer(utterance) &&
+		!isShortEnoughToAnswer(utterance) &&
 		!namesAnother &&
 		reply.trim().endsWith('?') &&
 		(CLARIFYING_PATTERN.test(reply) || OFFER_TO_PASS_ON_PATTERN.test(reply)) &&

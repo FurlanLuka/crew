@@ -18,7 +18,7 @@ import {
 	sendText,
 	type SentWords,
 } from './send.js';
-import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
+import type { HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
 import { askTarget, decideNotificationReply } from './notification-reply.js';
@@ -81,38 +81,21 @@ const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): s
 	return spoken === normalizeName(GENERAL_NOTES) ? GENERAL_NOTES : null;
 };
 
-// "…and fix the login bug", "…then run the seeds": new work named. A pause ("stop and wait",
-// "stop, let me look") or "I'll do it myself instead" names none for the session: it still stops.
-const SAYS_WHAT_INSTEAD_PATTERN =
-	/\b(?:stop|cancel|halt|drop)\b[^.?!]*\b(?:and|then)\s+(?!(?:wait|hold|pause|listen|look|think|let)\b)\w+/i;
-
-// "Start it and tell me what you did last", "start checkout, then run the tests", "Start it. What…?":
-// more than a start. "And open it" is what starting does anyway. Whether the rest is for the session
-// (not "and bring up its servers", "and store-front") is the model's call: the hint only asks.
-const START_THEN_MORE_PATTERN =
-	/\bstart\b[^.?!]*?(?:,?\s+(?:and\s+then|and|then)\s+(?:also\s+)?(?!(?:then\b|(?:open|show)\s+(?:it|them|that)\b))\w+|[.?!]\s+\S)/i;
-
-// The whole utterance is the command: "make the tests quiet" or a long request that ends "…just be
-// silent, okay?" is words for a session, and muting on it swallowed what came after.
-const MUTE_REQUEST_PATTERN =
-	/^(?:(?:hey|okay|ok) )?(?:voice ?os )?(?:(?:okay|ok) )?(?:please )?(?:mute|be quiet|quiet|shut up|stop talking|shush|hush|silence|be silent|quiet please)(?: please)?(?: voice ?os)?(?: please)?$/;
-
-export const isMuteRequest = (utterance: string | undefined): boolean =>
-	// Typed or replayed without words: the tool call is the only word there is.
-	utterance === undefined ||
-	MUTE_REQUEST_PATTERN.test(
-		normalizeUtterance(utterance)
-			.replace(/[,.!?;:]+/g, ' ')
-			.replace(/\s+/g, ' ')
-			.trim(),
-	);
-
-export const saysMoreThanStart = (utterance: string | undefined): boolean =>
-	utterance !== undefined && START_THEN_MORE_PATTERN.test(utterance.trim());
+// "off" is push to talk: listening stops, the key still talks.
+const toListenMode = (answer: string): ListenMode | null => {
+	switch (answer) {
+		case 'hands-free':
+		case 'on-demand':
+		case 'push':
+			return answer;
+		case 'off':
+			return 'push';
+		default:
+			return null;
+	}
+};
 
 const MIN_LONG_SPEECH_WORDS = 10;
-const REQUEST_OPENING_PATTERN =
-	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
 
 export interface HistoryEntry {
 	ts: string;
@@ -166,10 +149,15 @@ interface ChooseWordsForParams {
 	toolContext: ToolContext;
 }
 
-const chooseWordsFor = ({ state, input, toolContext }: ChooseWordsForParams): SentWords => {
+const chooseWordsFor = ({
+	state,
+	input,
+	toolContext,
+}: ChooseWordsForParams): Promise<SentWords> => {
 	const utterance = toolContext.utterance;
 
 	return chooseSentWords({
+		judge: toolContext.judge,
 		utterance,
 		part: typeof input.text === 'string' ? input.text : undefined,
 		earlier: toolContext.recentUtterances ?? [],
@@ -193,14 +181,14 @@ interface SendRecordedParams {
 	toolContext: ToolContext;
 }
 
-const sendRecorded = ({
+const sendRecorded = async ({
 	state,
 	ref,
 	words,
 	input,
 	name,
 	toolContext,
-}: SendRecordedParams): ToolResult => {
+}: SendRecordedParams): Promise<ToolResult> => {
 	// These words finish the sentence the previous ones began: the session gets it whole, joined as
 	// said, and the reducer replaces the first half with it.
 	const previous = toolContext.recentUtterances?.at(-1)?.trim();
@@ -210,13 +198,15 @@ const sendRecorded = ({
 
 	log.info('words chosen', { ref, source: words.source, continues: isContinuation });
 
-	const result = sendText({
+	const result = await sendText({
 		state,
 		ref,
 		text,
 		kind: input.kind,
 		...(isContinuation ? { continues: { rest: words.text } } : {}),
 		toolContext,
+		isAboutMyNotes: input.my_notes === true,
+		isAboutLastAction: input.about_last_action === true,
 	});
 
 	// The voice log records what the session got, not what the model wrote (often nothing).
@@ -299,13 +289,18 @@ export const executeTool = async (
 				return fail('no session to forward to: use send_to with a ref');
 			}
 
-			const words = chooseWordsFor({ state, input, toolContext });
+			const words = await chooseWordsFor({ state, input, toolContext });
 
 			if (!words.text) {
 				return fail('empty text');
 			}
 
-			const misroutedAnswer = describeMisroutedAnswer(state, target, words.text);
+			const misroutedAnswer = await describeMisroutedAnswer(
+				state,
+				target,
+				words.text,
+				toolContext.judge,
+			);
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
@@ -319,9 +314,8 @@ export const executeTool = async (
 			// "and can you tell me what's running." were taken for ones. Short ones stay ignorable
 			// (speech-to-text punctuates a cut-off "and can you?" too), and so does a lyric or a video.
 			const said = (toolContext.utterance ?? '').trim();
-			const isRequest =
-				(/\?$/.test(said) || REQUEST_OPENING_PATTERN.test(said)) &&
-				said.split(/\s+/).length >= MIN_REQUEST_WORDS;
+			// A sentence that ends (a question mark, a full stop) is finished, in any language.
+			const isRequest = /[?.!]$/.test(said) && said.split(/\s+/).length >= MIN_REQUEST_WORDS;
 
 			// Fragments are a few words ("and can you"); a long stretch of speech is a thought or not
 			// for anyone — the developer's own thinking aloud was ignored as "unfinished".
@@ -402,24 +396,30 @@ export const executeTool = async (
 				log.info('continuation kept on the screen', { named: checked.ref, to: ref });
 			}
 
-			const words = chooseWordsFor({ state, input, toolContext });
+			const words = await chooseWordsFor({ state, input, toolContext });
 
 			if (!words.text) {
 				return fail('empty instruction');
 			}
 
-			const misroutedAnswer = describeMisroutedAnswer(state, ref, words.text);
+			const misroutedAnswer = await describeMisroutedAnswer(
+				state,
+				ref,
+				words.text,
+				toolContext.judge,
+			);
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
 			}
 
 			if (
-				isMisroutedToSetup({
+				await isMisroutedToSetup({
 					state,
 					ref,
 					forwardTo: toolContext.forwardTo ?? null,
 					utterance: toolContext.utterance,
+					judge: toolContext.judge,
 				})
 			) {
 				return fail(
@@ -562,9 +562,11 @@ export const executeTool = async (
 				findSessionsNamedIn(state, toolContext.utterance).some((named) => named !== checked.ref);
 
 			if (
-				saysMoreThanStart(toolContext.utterance) &&
+				toolContext.utterance !== undefined &&
 				!namesAnother &&
-				!toolContext.sentTo?.has(checked.ref)
+				!toolContext.sentTo?.has(checked.ref) &&
+				(await toolContext.judge({ key: 'more_than_start', utterance: toolContext.utterance })) ===
+					'yes'
 			) {
 				// forward reaches only the session on screen: from elsewhere it is send_to.
 				const how =
@@ -588,7 +590,7 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			const namedRefs = findNamedRefs(state, toolContext, checked.ref);
+			const namedRefs = await findNamedRefs(state, toolContext, checked.ref);
 
 			if (namedRefs.length !== 1 || namedRefs[0] !== checked.ref) {
 				return fail(
@@ -663,7 +665,11 @@ export const executeTool = async (
 			}
 
 			// "Stop listening" is about hands-free, whatever else "stop" means.
-			if (toolContext.utterance !== undefined && isAboutHandsFree(toolContext.utterance)) {
+			if (
+				toolContext.utterance !== undefined &&
+				(await toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance })) ===
+					'yes'
+			) {
 				return fail(
 					'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
 				);
@@ -673,7 +679,8 @@ export const executeTool = async (
 			// which Voice OS confirms before stopping anything.
 			if (
 				toolContext.utterance !== undefined &&
-				SAYS_WHAT_INSTEAD_PATTERN.test(toolContext.utterance)
+				(await toolContext.judge({ key: 'says_instead', utterance: toolContext.utterance })) ===
+					'yes'
 			) {
 				return fail(
 					'Not interrupted: they said what to do instead. Forward it with kind redirect: Voice OS asks them whether to stop the work and switch.',
@@ -703,7 +710,12 @@ export const executeTool = async (
 		}
 
 		case 'mute': {
-			if (!isMuteRequest(toolContext.utterance)) {
+			// The whole utterance is the command: "make the tests quiet" or a long request that ends
+			// "…just be silent, okay?" is words for a session, and muting on it swallowed what came after.
+			if (
+				toolContext.utterance !== undefined &&
+				(await toolContext.judge({ key: 'mute_only', utterance: toolContext.utterance })) !== 'yes'
+			) {
 				return fail('not a mute request; do nothing more');
 			}
 
@@ -840,13 +852,16 @@ export const executeTool = async (
 		}
 
 		case 'hands_free': {
+			// The words decide the mode, not the kernel: "stop listening" must never turn listening on.
 			const mode =
 				toolContext.utterance === undefined
 					? // Without the developer's words (typed tests, replays) the model's choice is taken.
 						isListenMode(input.mode)
 						? input.mode
 						: null
-					: readListenMode(toolContext.utterance);
+					: toListenMode(
+							await toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
+						);
 
 			if (mode === null) {
 				return fail(

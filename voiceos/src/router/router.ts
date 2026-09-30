@@ -8,6 +8,7 @@ import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
 import { readTargetAnswer, settleTarget } from './target.js';
+import type { Judge } from '../judge/judge.js';
 
 const log = createLogger('router');
 
@@ -24,6 +25,8 @@ export type KernelHandler = (text: string, options: KernelHandlerOptions) => Pro
 export interface RouterOptions {
 	store: Store;
 	kernel: KernelHandler | null;
+	// Reads the answer to "For checkout?" in any language.
+	judge: Judge;
 	now?: () => number;
 }
 
@@ -100,7 +103,7 @@ export class UtteranceRouter {
 		// "For checkout?" waits on these words: a yes or no settles it, anything else keeps the held
 		// words on the screen and is routed as usual.
 		if (store.state.targetAsk) {
-			const answer = readTargetAnswer(trimmedText);
+			const answer = await readTargetAnswer(this.options.judge, trimmedText);
 
 			settleTarget(store, answer === 'yes');
 			log.info('target answered', { answer });

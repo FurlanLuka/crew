@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { PendingAsk } from '../shared/protocol.js';
 import { buildAnswerActions } from './answer.js';
-import { isConsent, isPlainConsent } from './consent.js';
 
 const permission: PendingAsk = {
 	id: 'p1',
@@ -162,42 +161,6 @@ describe('buildAnswerActions', () => {
 			actions: [{ answers: { 'Which 1?': 'y' } }],
 		});
 	});
-});
-
-describe('isConsent', () => {
-	it.each([
-		'Yes.',
-		'Yeah, go ahead.',
-		'Sure',
-		'okay',
-		'Do it.',
-		'Always.',
-		'Allow it.',
-		'Sounds good, ship it.',
-	])('%p → a yes', (utterance) => expect(isConsent(utterance)).toBe(true));
-
-	it.each([
-		'Also run the linter.',
-		'Hmm.',
-		'No, use a new branch.',
-		'What does it want to push?',
-		'Yesterday it failed.',
-	])('%p → no yes', (utterance) => expect(isConsent(utterance)).toBe(false));
-});
-
-describe('isPlainConsent', () => {
-	it.each(['Yes.', 'Yeah, do it.', 'Go ahead.', 'Okay, clear it.'])('%p → a yes', (utterance) =>
-		expect(isPlainConsent(utterance)).toBe(true),
-	);
-
-	it.each([
-		"Don't do it.",
-		'No, not okay.',
-		'Yes? No wait.',
-		'Never mind, do it later.',
-		'Cancel.',
-		'What does clear do?',
-	])('%p → no yes', (utterance) => expect(isPlainConsent(utterance)).toBe(false));
 });
 
 describe('buildAnswerActions: a held /clear', () => {
