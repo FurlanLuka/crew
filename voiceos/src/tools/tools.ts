@@ -541,8 +541,8 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			// A session whose question was only announced is opened when the developer names it, or
-			// after they said yes to "Switch to …?": never on a bare "yes" or "what's waiting?".
+			// A session whose question was only announced is opened when the developer asks for it: named,
+			// "switch to it" right after its update, or a yes to it. Never to show "what's waiting?".
 			const refused = isSwitchOfferedFor(
 				state,
 				checked.ref,

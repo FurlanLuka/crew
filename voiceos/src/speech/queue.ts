@@ -1,4 +1,4 @@
-import type { SpokenLine } from '../shared/protocol.js';
+import type { SpokenLine, ToldAsk } from '../shared/protocol.js';
 
 export type SpeechPriority = 'alert' | 'high' | 'normal' | 'low';
 
@@ -21,6 +21,7 @@ export interface SpeechItem {
 	isAsking?: boolean;
 	isUpdate?: boolean;
 	refs?: string[];
+	toldAsks?: ToldAsk[];
 	// A line the developer is waiting for (a report, the session's own line): never replaced.
 	isOwed?: boolean;
 	// Voice OS saying it passed words on: it replaces nothing still waiting to be said.

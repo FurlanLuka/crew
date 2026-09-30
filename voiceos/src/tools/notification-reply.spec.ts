@@ -59,6 +59,38 @@ describe('replies to a notification', () => {
 		expect(actions).toEqual([]);
 	});
 
+	it('mid-conversation, a plan heard only as its gist → "switch to it" switches: it is answered only once heard', async () => {
+		const state = notified({
+			talkingWith: { ref: SCREEN, asked: 'x', answered: 'y', secondsAgo: 10 },
+		});
+		const session = state.sessions[NOTIFIER];
+
+		if (session) {
+			state.sessions[NOTIFIER] = {
+				...session,
+				status: 'blocked',
+				heldLine: {
+					id: 'h1',
+					at: NOW - 6000,
+					missed: 0,
+					isAnnounced: true,
+					kind: 'ask',
+					askId: 'pl1',
+				},
+			};
+		}
+
+		state.asks = [
+			{ id: 'pl1', ref: NOTIFIER, at: NOW - 6000, kind: 'plan', input: {}, plan: '# Retries' },
+		];
+
+		const { tools, actions } = createContext(state, 'Switch to it.');
+		const result = await executeTool('switch_view', { ref: NOTIFIER }, tools);
+
+		expect(result.ok).toBe(true);
+		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'session', ref: NOTIFIER } }]);
+	});
+
 	it('a question after a held update older than five minutes → switched without replaying it', async () => {
 		const state = notified();
 		const session = state.sessions[NOTIFIER];

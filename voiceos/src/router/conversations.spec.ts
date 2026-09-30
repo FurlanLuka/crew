@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
-import { SWITCH_OFFER_MS } from '../shared/protocol.js';
+import { SWITCH_OFFER_MS, type PendingAsk } from '../shared/protocol.js';
 import { englishJudge } from '../../test/support/english-judge.js';
 import type { Judge } from '../judge/judge.js';
 
@@ -486,6 +486,197 @@ describe('conversations', () => {
 		expect(convo.store.state.switchOffer).toBeNull();
 	});
 
+	describe("another session's question, plan or permission, in the meanwhile line", () => {
+		const CHECKOUT = 'checkout-api/main';
+		const permission = (id = 'p1'): PendingAsk => ({
+			id,
+			ref: CHECKOUT,
+			at: 1,
+			kind: 'permission',
+			toolName: 'Bash',
+			summary: 'run git push origin main',
+			input: { command: 'git push origin main' },
+			suggestions: [],
+		});
+		const question = (text: string, id = 'q1'): PendingAsk => ({
+			id,
+			ref: CHECKOUT,
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [{ question: text, multiSelect: false, options: [] }],
+		});
+		const plan: PendingAsk = {
+			id: 'pl1',
+			ref: CHECKOUT,
+			at: 1,
+			kind: 'plan',
+			input: {},
+			plan: '# Retry backoff with jitter\n\n1. Cap at thirty seconds.',
+		};
+
+		const onStoreFront = async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', CHECKOUT);
+
+			return convo;
+		};
+
+		it('a permission → after a breath, said in full; a yes allows it without switching', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: permission() });
+			await convo.wait(3_100);
+
+			expect(convo.heard.at(-1)).toBe('Meanwhile, checkout api, main wants to run git push.');
+
+			convo.script([toolUse('t1', 'answer', { ref: CHECKOUT, decision: 'yes', text: '' })]);
+			await convo.say('Yes.');
+
+			expect(convo.store.state.asks).toEqual([]);
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		});
+
+		it('a short question → said in full; an answer lands on it without switching', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: question('Postgres or SQLite?') });
+			await convo.wait(3_100);
+
+			expect(convo.heard.at(-1)).toBe('Meanwhile, checkout api, main asks: Postgres or SQLite?');
+
+			convo.script([
+				toolUse('t1', 'answer', { ref: CHECKOUT, decision: 'choose', text: 'Postgres' }),
+			]);
+			await convo.say('Postgres.');
+
+			expect(convo.store.state.asks).toEqual([]);
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		});
+
+		it('a plan → its title only; a bare yes asks "Switch to …?", and a yes to that plays the plan there, unapproved', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: plan });
+			await convo.wait(3_100);
+
+			expect(convo.heard.at(-1)).toBe(
+				'Meanwhile, checkout api, main has a plan ready: Retry backoff with jitter.',
+			);
+
+			convo.script([toolUse('t1', 'answer', { ref: CHECKOUT, decision: 'yes', text: '' })]);
+			await convo.say('Yes.');
+
+			expect(convo.heard.at(-1)).toBe('Switch to checkout api, main?');
+			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['pl1']);
+
+			convo.script([toolUse('t2', 'switch_view', { ref: CHECKOUT })]);
+			await convo.say('Yes.');
+
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: CHECKOUT });
+			expect(convo.heard.at(-1)).toBe('checkout-api/main has a plan ready for approval.');
+			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['pl1']);
+		});
+
+		it('"switch to it" right after the line → switched once, announced, no second question', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: plan });
+			await convo.wait(3_100);
+
+			convo.script([toolUse('t1', 'switch_view', { ref: CHECKOUT })]);
+			await convo.say('Switch to it.');
+
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: CHECKOUT });
+			expect(convo.heard.some((line) => line.endsWith('?') && line.startsWith('Switch to'))).toBe(
+				false,
+			);
+		});
+
+		it('two asks said in full in one line → the kernel is told a bare yes is for neither', async () => {
+			const convo = await onStoreFront();
+			await convo.startSessions('signals/main');
+			convo.store.dispatch({ type: 'ask_opened', ask: permission() });
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: { ...question('Ship tonight?', 'q2'), ref: 'signals/main' },
+			});
+			await convo.wait(3_100);
+
+			expect(convo.heard.at(-1)).toBe(
+				'Meanwhile, checkout api, main wants to run git push, and signals, main asks: Ship tonight?',
+			);
+
+			convo.script([reply('For which one?')]);
+			await convo.say('Yes.');
+
+			expect(convo.kernelSaw()).toContain('ask which');
+			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['p1', 'q2']);
+		});
+
+		it('three asks → the line tells two by name and counts the third, which stays only announced', async () => {
+			const convo = createConversation({ refs: [...REFS, 'admin/main'], view: 'store-front/main' });
+			await convo.startSessions('store-front/main', CHECKOUT, 'signals/main', 'admin/main');
+			convo.store.dispatch({ type: 'ask_opened', ask: permission() });
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: { ...question('Ship tonight?', 'q2'), ref: 'signals/main' },
+			});
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: { ...question('Keep the old admin?', 'q3'), ref: 'admin/main' },
+			});
+			await convo.wait(3_100);
+
+			expect(convo.heard.at(-1)).toEndWith('and one other needs you.');
+			expect(convo.store.state.sessions['admin/main']?.heldLine).toMatchObject({
+				kind: 'ask',
+				askId: 'q3',
+			});
+			expect(convo.store.state.sessions[CHECKOUT]?.heldLine).toBeNull();
+		});
+
+		it('a newer ask from the same session before the breath → one line, with the newer words', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: question('Postgres or SQLite?') });
+			convo.store.dispatch({ type: 'ask_closed', askId: 'q1' });
+			convo.store.dispatch({ type: 'ask_opened', ask: permission('p2') });
+			await convo.wait(3_100);
+
+			const lines = convo.heard.filter((line) => line.startsWith('Meanwhile'));
+			expect(lines).toEqual(['Meanwhile, checkout api, main wants to run git push.']);
+		});
+
+		it('"switch to it" long after the line → no longer about it: not switched, the kernel says what waits', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: plan });
+			await convo.wait(3_100);
+			await convo.wait(120_000);
+
+			convo.script([toolUse('t1', 'switch_view', { ref: CHECKOUT })]);
+			await convo.say('Switch to it.');
+
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		});
+
+		it('answered on the page before the breath → never said', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: permission() });
+			convo.store.dispatch({ type: 'answer_permission', askId: 'p1', decision: 'allow' });
+			await convo.wait(20_000);
+
+			expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
+		});
+
+		it('talking with checkout → its question is asked now, not saved for the meanwhile line', async () => {
+			const convo = await onStoreFront();
+			convo.script([toolUse('t1', 'send_to', { ref: CHECKOUT, kind: 'question' })]);
+			await convo.say('Checkout api, which database?');
+			convo.store.dispatch({ type: 'ask_opened', ask: question('Postgres or SQLite?') });
+			await convo.wait(3_100);
+
+			expect(convo.store.state.meanwhile).toEqual([]);
+			expect(convo.heard.some((line) => line.includes('Postgres or SQLite?'))).toBe(true);
+			expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
+		});
+	});
+
 	describe('told about a session by the kernel, then a reply to it', () => {
 		const READ_BACK = 'Checkout api finished the retries and asks whether to push.';
 
@@ -640,11 +831,11 @@ describe('conversations', () => {
 			'Deep links go through a separate handler.',
 		]);
 
-		await convo.wait(2_100);
+		await convo.wait(3_100);
 
-		// On another session's screen the ask is announced, not asked: its question waits there. It
-		// says what the call does, never the whole command.
-		expect(convo.heard.at(-1)).toBe('checkout-api/main needs you: approval to run git push.');
+		// On another session's screen the ask comes in the meanwhile line after a breath, said in full:
+		// what the call does, never the whole command.
+		expect(convo.heard.at(-1)).toBe('Meanwhile, checkout api, main wants to run git push.');
 	});
 
 	describe('timing', () => {

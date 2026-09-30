@@ -66,6 +66,17 @@ describe('decideMeanwhile', () => {
 		});
 	});
 
+	it('a session blocked on the developer → only a breath: 3 s, listening or not', () => {
+		const asking = [{ ...item('checkout/main', 'needs', null, 1000), askId: 'p1' }];
+
+		expect(
+			decideMeanwhile({ items: asking, now: 4000, quietSince: 1000, isListening: true }),
+		).toEqual({ kind: 'now' });
+		expect(
+			decideMeanwhile({ items: asking, now: 3000, quietSince: 1000, isListening: false }),
+		).toEqual({ kind: 'wait', ms: 1000 });
+	});
+
 	it('waited 50 s → this gap, however short', () =>
 		expect(decideMeanwhile({ items, now: 51_000, quietSince: 50_500, isListening: false })).toEqual(
 			{

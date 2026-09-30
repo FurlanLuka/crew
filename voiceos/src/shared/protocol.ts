@@ -283,12 +283,23 @@ export interface MeanwhileItem {
 	kind: 'done' | 'needs';
 	about: string | null;
 	at: number;
+	// A question, plan or permission it stands for: its words are read from the live ask when said.
+	askId?: string;
+}
+
+// An ask the meanwhile line said in full (a permission, a short question): heard, it is answered like
+// any question asked aloud.
+export interface ToldAsk {
+	ref: string;
+	askId: string;
 }
 
 // Quiet before the waiting updates are said: push to talk is quiet the moment the key is up;
 // listening needs a longer gap to be sure the developer finished.
 export const MEANWHILE_QUIET_MS = 8_000;
 export const MEANWHILE_QUIET_LISTENING_MS = 12_000;
+// A session blocked on the developer waits only for a breath, not for the quiet.
+export const MEANWHILE_ASK_QUIET_MS = 3_000;
 // An update never waits longer than this: it plays at the next gap, however short.
 export const MEANWHILE_MAX_WAIT_MS = 50_000;
 
@@ -348,6 +359,7 @@ export interface SpokenLine {
 	// meanwhile line): a reply to it is for them. refs: every session the meanwhile line named.
 	isUpdate?: true;
 	refs?: string[];
+	toldAsks?: ToldAsk[];
 }
 
 export interface Setup {
@@ -524,7 +536,13 @@ export type Observation =
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
 	| { type: 'exchange_expired'; ref: string; lastAt: number }
-	| { type: 'meanwhile_added'; ref: string; kind: MeanwhileItem['kind']; about: string | null }
+	| {
+			type: 'meanwhile_added';
+			ref: string;
+			kind: MeanwhileItem['kind'];
+			about: string | null;
+			askId?: string;
+	  }
 	// isLapse: the timer's, which leaves an offer still fresh (heard later than it was queued) alone.
 	| { type: 'switch_offer_closed'; at: number; isLapse?: true }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
@@ -565,6 +583,7 @@ export type Observation =
 			isAnswer?: true;
 			isUpdate?: true;
 			refs?: string[];
+			toldAsks?: ToldAsk[];
 	  }
 	// Written by the router after it handled an utterance; never from a client.
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }

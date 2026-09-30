@@ -1,4 +1,5 @@
 import { isSwitchOfferFresh, type State } from '../shared/protocol.js';
+import { wasJustHeardAbout } from './asked-aloud.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { readLabel } from '../state/helpers.js';
 import { type ToolResult, fail } from './results.js';
@@ -8,8 +9,9 @@ import type { ToolContext } from './tools.js';
 
 export const SWITCH_OFFERED_NOTE = 'switch offered';
 
-// A question heard only as "<session> needs you" is not answered, and its session not opened, by
-// words that do not name it: the developer is offered the switch instead.
+// A question heard only as its gist ("checkout needs you", "checkout has a plan ready: retries") is not
+// answered, and its session not opened, by a bare yes: that may only acknowledge it, so the developer
+// is offered the switch instead. Asking to go there ("switch to it" right after it) is not asked again.
 
 interface NamedParams {
 	state: State;
@@ -47,6 +49,14 @@ export const refuseAnnouncedOnly = async ({
 
 	// When the words were said, not now: the kernel's own turn must not use up the developer's window.
 	const saidAt = toolContext.heardFrom ?? toolContext.now();
+
+	if (
+		what === 'switched' &&
+		wasJustHeardAbout({ spoken: state.spoken, ref, heardFrom: saidAt }) &&
+		!(await isBareAnswer(toolContext.judge, toolContext.utterance ?? ''))
+	) {
+		return null;
+	}
 
 	if (isSwitchOfferedFor(state, ref, saidAt)) {
 		const said = toolContext.utterance ?? '';

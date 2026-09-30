@@ -27,6 +27,46 @@ describe('findLastAskedAloud', () => {
 	});
 });
 
+describe('findLastAskedAloud and the meanwhile line', () => {
+	const meanwhile = (toldRefs: string[]) =>
+		line('meanwhile', 1000, {
+			ref: undefined,
+			isAsking: true,
+			isUpdate: true,
+			refs: toldRefs,
+			toldAsks: toldRefs.map((ref, index) => ({ ref, askId: `a${index}` })),
+		});
+
+	it('it asked for one session → that session is the one a bare yes answers', () =>
+		expect(
+			findLastAskedAloud({
+				spoken: [meanwhile(['checkout/main'])],
+				waitingRefs: ['checkout/main'],
+				now: 2000,
+			})?.ref,
+		).toBe('checkout/main'));
+
+	it('it asked for two still waiting → the line, but about neither', () => {
+		const found = findLastAskedAloud({
+			spoken: [meanwhile(['checkout/main', 'signals/main'])],
+			waitingRefs: ['checkout/main', 'signals/main'],
+			now: 2000,
+		});
+
+		expect(found?.id).toBe('meanwhile');
+		expect(found?.ref).toBeUndefined();
+	});
+
+	it('one of the two already answered → the one still waiting', () =>
+		expect(
+			findLastAskedAloud({
+				spoken: [meanwhile(['checkout/main', 'signals/main'])],
+				waitingRefs: ['signals/main'],
+				now: 2000,
+			})?.ref,
+		).toBe('signals/main'));
+});
+
 describe('heard before the developer spoke', () => {
 	it('session lines that started before, within 90 s, the newest three, oldest first', () => {
 		const spoken = [

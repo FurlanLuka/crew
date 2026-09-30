@@ -18,6 +18,7 @@ import {
 	type Session,
 	type Stamped,
 	type State,
+	type ToldAsk,
 	type View,
 	type VoiceEntry,
 	type WorktreeInfo,
@@ -114,6 +115,7 @@ export type Effect =
 			// Other sessions' updates (see SpokenLine.isUpdate); refs: the sessions it named.
 			isUpdate?: boolean;
 			refs?: string[];
+			toldAsks?: ToldAsk[];
 			// Said with the session's name in front unless it is on screen.
 			isNamed?: boolean;
 			// Default: alert for alerts, normal otherwise.
@@ -867,6 +869,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 						...(input.isAnswer ? { isAnswer: true as const } : {}),
 						...(input.isUpdate ? { isUpdate: true as const } : {}),
 						...(input.refs?.length ? { refs: input.refs } : {}),
+						...(input.toldAsks?.length ? { toldAsks: input.toldAsks } : {}),
 					},
 				].slice(-SPOKEN_LINES_KEPT),
 			});

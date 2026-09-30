@@ -326,7 +326,7 @@ describe('asks off screen', () => {
 		}
 	});
 
-	it("on another session's screen a short question and a permission are announced and held too", () => {
+	it("on another session's screen a short question and a permission wait for the meanwhile line, held", () => {
 		const elsewhere: State = {
 			...idleSession(),
 			view: { kind: 'session', ref: 'store/wrk1' },
@@ -338,8 +338,10 @@ describe('asks off screen', () => {
 		const asked = open(short, elsewhere);
 		const permission = open(permissionAsk('a1'), elsewhere);
 
-		expect(said(asked.effects)).toEqual(['store/main needs you: Postgres or SQLite.']);
-		expect(said(permission.effects)).toEqual(['store/main needs you: approval to run git push.']);
+		expect(said(asked.effects)).toEqual([]);
+		expect(said(permission.effects)).toEqual([]);
+		expect(asked.state.meanwhile).toMatchObject([{ ref: REF, kind: 'needs', askId: 'q1' }]);
+		expect(permission.state.meanwhile).toMatchObject([{ ref: REF, kind: 'needs', askId: 'a1' }]);
 		expect(heldOf(asked.state)).toMatchObject({ kind: 'ask', askId: 'q1' });
 		expect(heldOf(permission.state)).toMatchObject({ kind: 'ask', askId: 'a1' });
 		expect(
@@ -349,6 +351,91 @@ describe('asks off screen', () => {
 				}).effects,
 			),
 		).toEqual(['store/main wants to run git push. Allow?']);
+	});
+
+	it('the line: an ask in it rings the needs chime and is told; an update alone rings nothing', () => {
+		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
+		const asking = run([{ type: 'play_meanwhile' }], {
+			start: open(permissionAsk('a1'), elsewhere).state,
+		}).effects;
+		const updateOnly = run(
+			[
+				{ type: 'meanwhile_added', ref: REF, kind: 'done', about: 'tests pass' },
+				{ type: 'play_meanwhile' },
+			],
+			{ start: elsewhere },
+		).effects;
+
+		expect(asking[0]).toMatchObject({
+			type: 'speak',
+			chime: 'needs',
+			isAsking: true,
+			toldAsks: [{ ref: REF, askId: 'a1' }],
+		});
+		expect(updateOnly[0]).toMatchObject({ type: 'speak' });
+		expect(updateOnly[0]).not.toHaveProperty('chime');
+		expect(updateOnly[0]).not.toHaveProperty('toldAsks');
+	});
+
+	it('a question that moved on before the line plays → its next question is said', () => {
+		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
+		const twoQuestions: PendingAsk = {
+			id: 'q1',
+			ref: REF,
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{ question: 'Postgres or SQLite?', multiSelect: false, options: [] },
+				{ question: 'Ship tonight?', multiSelect: false, options: [] },
+			],
+			answers: { 'Postgres or SQLite?': 'Postgres' },
+		};
+		const noneOpen: PendingAsk = {
+			...twoQuestions,
+			id: 'q2',
+			answers: { 'Postgres or SQLite?': 'x', 'Ship tonight?': 'y' },
+		};
+
+		expect(
+			said(
+				run([{ type: 'play_meanwhile' }], { start: open(twoQuestions, elsewhere).state }).effects,
+			),
+		).toEqual(['Meanwhile, store, main asks: Ship tonight?']);
+
+		const empty = run([{ type: 'play_meanwhile' }], {
+			start: open(noneOpen, elsewhere).state,
+		}).effects;
+		expect(said(empty)).toEqual(['Meanwhile, store, main has a question.']);
+		expect(empty[0]).not.toHaveProperty('toldAsks');
+	});
+
+	it('its line said in full, even cut short → answerable at once; a newer ask from it stays held', () => {
+		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
+		const held = open(permissionAsk('a1'), elsewhere).state;
+
+		const tell = (askId: string, start: State): State => {
+			const said = run(
+				[
+					{
+						type: 'spoken',
+						text: 'Meanwhile, store main wants to run git push.',
+						source: 'narrator',
+						isUpdate: true,
+						isAsking: true,
+						refs: [REF],
+						toldAsks: [{ ref: REF, askId }],
+					},
+				],
+				{ start },
+			).state;
+			const lineId = said.spoken.at(-1)?.id ?? '';
+
+			return run([{ type: 'spoken_ended', lineId, isCut: true }], { start: said }).state;
+		};
+
+		expect(heldOf(tell('a1', held))).toBeNull();
+		expect(heldOf(tell('older', held))).toMatchObject({ kind: 'ask', askId: 'a1' });
 	});
 
 	it('answered or closed before the switch → nothing replays', () => {
