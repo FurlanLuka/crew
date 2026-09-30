@@ -8,6 +8,7 @@ import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
 import { readTargetAnswer, settleTarget } from './target.js';
+import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
 import { isShortEnoughToAnswer } from '../tools/send.js';
 
@@ -102,9 +103,16 @@ export class UtteranceRouter {
 		}
 
 		// "For checkout?" waits on these words: a yes or no settles it, anything else keeps the held
-		// words on the screen and is routed as usual.
-		if (store.state.targetAsk) {
-			const answer = await readTargetAnswer(this.options.judge, trimmedText);
+		// words on the screen and is routed as usual. Only spoken words answer a spoken question: text
+		// typed into a session's box is for that session.
+		const { targetAsk } = store.state;
+
+		if (targetAsk && source === 'voice') {
+			const answer = await readTargetAnswer(
+				this.options.judge,
+				trimmedText,
+				readSessionLabel(store.state, targetAsk.ref),
+			);
 
 			// More than a short answer is new words too, whatever it answered: never swallowed.
 			const isOnlyAnswer = answer !== 'other' && isShortEnoughToAnswer(trimmedText);

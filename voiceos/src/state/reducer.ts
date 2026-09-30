@@ -292,8 +292,26 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 	const exchange = pruneExchange(state.exchange, isKept);
 	const viewHistory = pruneViewHistory(state.viewHistory, isKept);
 	const meanwhile = state.meanwhile.filter((item) => isKept(item.ref));
+	// A question about a session that is gone: its answer would go nowhere, or say a gone name.
+	const targetAsk =
+		state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)
+			? state.targetAsk
+			: null;
+	const switchOffer = state.switchOffer && isKept(state.switchOffer.ref) ? state.switchOffer : null;
 
-	return { ...state, sessions, order, view, focus, exchange, viewHistory, meanwhile, voiceLog };
+	return {
+		...state,
+		sessions,
+		order,
+		view,
+		focus,
+		exchange,
+		viewHistory,
+		meanwhile,
+		targetAsk,
+		switchOffer,
+		voiceLog,
+	};
 };
 
 // Its lines are said as they come: on screen, or the session the developer talks with elsewhere.

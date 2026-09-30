@@ -246,6 +246,12 @@ export const createConversation = ({
 			await router.handle(text, 'voice', { heardFrom: now });
 			await listen();
 		},
+		// The developer types into the box (a session page routes it straight to that session).
+		type: async (text: string) => {
+			now += 1000;
+			await router.handle(text, 'typed', { heardFrom: now });
+			await listen();
+		},
 		// A session ends its turn with its own spoken line.
 		answer: async (ref: string, line: string) => {
 			store.dispatch({ type: 'turn_ended', ref, costUsd: 0, text: `<spoken>${line}</spoken>` });

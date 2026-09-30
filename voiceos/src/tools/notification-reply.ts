@@ -78,6 +78,11 @@ export const askTarget = ({ state, input, toolContext }: AskTargetParams): ToolR
 
 	// Only right after that session's notification, and only on a session's screen: anywhere else it
 	// would start asking about everything.
+	// Words already sent this turn cannot also be held for the question.
+	if ((toolContext.sentTo?.size ?? 0) > 0) {
+		return fail('Not asked: the words were already sent this turn. Say nothing more.');
+	}
+
 	if (
 		!screen ||
 		screen === checked.ref ||

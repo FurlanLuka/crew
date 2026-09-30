@@ -114,17 +114,18 @@ export const updateRemoteCrew = async (
 		stderr: 'pipe',
 		env: { ...process.env, REMOTE_HOST: host },
 	});
-	const decoder = new TextDecoder();
 	let output = '';
 
-	const keep = (chunk: Uint8Array): void => {
-		output = (output + decoder.decode(chunk, { stream: true })).slice(-STDERR_KEPT);
+	// One decoder per stream: a character split across chunks never borrows the other stream's bytes.
+	const keepFrom = (stream: ReadableStream<Uint8Array>) => {
+		const decoder = new TextDecoder();
+
+		return forEachChunk(stream, (chunk) => {
+			output = (output + decoder.decode(chunk, { stream: true })).slice(-STDERR_KEPT);
+		}).catch(() => undefined);
 	};
 
-	const reads = Promise.all([
-		forEachChunk(child.stdout, keep).catch(() => undefined),
-		forEachChunk(child.stderr, keep).catch(() => undefined),
-	]);
+	const reads = Promise.all([keepFrom(child.stdout), keepFrom(child.stderr)]);
 	// As with the link: a ControlMaster can hold the pipes past the exit, so the reads get a grace.
 	const exited = child.exited.then(async (code) => {
 		await Promise.race([reads, new Promise((resolve) => setTimeout(resolve, READ_GRACE_MS))]);

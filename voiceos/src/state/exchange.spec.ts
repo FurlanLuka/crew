@@ -284,6 +284,26 @@ describe('the exchange', () => {
 });
 
 describe('what goes when sessions go', () => {
+	it('a question about a session that is gone → gone with it', () => {
+		const asked = runAt(
+			[
+				[10, { type: 'offer_switch', ref: OTHER }],
+				[11, { type: 'ask_target', ref: OTHER, screen: SCREEN, text: 'review it' }],
+				// Its worker gone too: a running one stays until it exits.
+				[11.5, { type: 'worker_exited', ref: OTHER, error: null }],
+			],
+			onScreen(),
+		);
+		const removed = runAt(
+			[[12, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree('signals/main')] }]],
+			asked,
+		);
+
+		expect(asked.targetAsk?.ref).toBe(OTHER);
+		expect(removed.switchOffer).toBeNull();
+		expect(removed.targetAsk).toBeNull();
+	});
+
 	it('a worktree removed → its conversation, update and history entry go; the others stay', () => {
 		const state = runAt(
 			[
