@@ -1,5 +1,5 @@
 import { cleanSessionLine, cleanSpokenText, stripTags } from '../shared/spoken.js';
-import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
+import type { HeldLine, Session, SpokenLine, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
 import { capWords, readLabel, updateSession, withoutEffects } from './helpers.js';
@@ -252,4 +252,52 @@ export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 	};
 
 	return { state: cleared, effects: [effect] };
+};
+
+// A held line's update was heard to its end: a reply to it from another screen may now offer the switch.
+const markUpdateHeard = (state: State, ref: string, at: number): State =>
+	state.sessions[ref]?.heldLine
+		? updateSession(state, ref, (session) =>
+				session.heldLine
+					? { ...session, heldLine: { ...session.heldLine, updateHeardAt: at } }
+					: session,
+			)
+		: state;
+
+// Replied to, or opened past its line: the update has been answered, and offers no switch again.
+export const forgetHeardUpdate = (state: State, ref: string): State =>
+	state.sessions[ref]?.heldLine?.updateHeardAt === undefined
+		? state
+		: updateSession(state, ref, (session) => {
+				if (!session.heldLine) {
+					return session;
+				}
+
+				const { updateHeardAt: _heard, ...heldLine } = session.heldLine;
+
+				return { ...session, heldLine };
+			});
+
+// What finishing a line means beyond itself: an update heard, or a question heard (its window
+// for a yes starts now, not when it was queued).
+export const markHeard = (state: State, line: SpokenLine, at: number): State => {
+	const refs = line.isUpdate ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
+	const updated = refs.reduce((next, ref) => markUpdateHeard(next, ref, at), state);
+	const offer = updated.switchOffer;
+	const target = updated.targetAsk;
+
+	return line.isAsking && line.ref
+		? {
+				...updated,
+				...(offer && offer.ref === line.ref && offer.heardAt === undefined && line.at >= offer.at
+					? { switchOffer: { ...offer, heardAt: at } }
+					: {}),
+				...(target &&
+				target.ref === line.ref &&
+				target.heardAt === undefined &&
+				line.at >= target.at
+					? { targetAsk: { ...target, heardAt: at } }
+					: {}),
+			}
+		: updated;
 };

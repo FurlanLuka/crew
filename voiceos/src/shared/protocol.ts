@@ -129,6 +129,9 @@ export type HeldLine = {
 	missed: number;
 	// The developer was told "<session> is done" or "needs you" about it: that is not said twice.
 	isAnnounced: boolean;
+	// When the developer heard that update to its end (the announcement or meanwhile line), until
+	// they reply to it: the first reply from another screen offers the switch.
+	updateHeardAt?: number;
 } & ({ kind: 'line'; text: string; isAsking: boolean } | { kind: 'ask'; askId: string });
 
 export interface AllowOnce {
@@ -294,14 +297,19 @@ export interface TargetAsk {
 	screen: string;
 	text: string;
 	at: number;
+	// When the question finished playing: its window for an answer starts here, not in the queue.
+	heardAt?: number;
 }
 
 // Asked and answered in a breath; silence keeps the words on the screen.
 export const TARGET_ASK_MS = 8_000;
+// A question still waiting to be said is given up on after this, heard or not.
+export const QUESTION_UNHEARD_MS = 30_000;
 
 export interface SwitchOffer {
 	ref: string;
 	at: number;
+	heardAt?: number;
 }
 
 // Answered at once or not at all: a later "yes" belongs to something else.
@@ -310,8 +318,12 @@ export const MAX_TEXT_CHARS = 20_000;
 
 export const SWITCH_OFFER_MS = 8_000;
 
+// Counted from when it was heard: a question still queued behind a long answer has not been asked.
 export const isSwitchOfferFresh = (offer: SwitchOffer | null, now: number): offer is SwitchOffer =>
-	offer !== null && now - offer.at < SWITCH_OFFER_MS;
+	offer !== null &&
+	(offer.heardAt === undefined
+		? now - offer.at < QUESTION_UNHEARD_MS
+		: now - offer.heardAt < SWITCH_OFFER_MS);
 
 export interface SpokenLine {
 	id: string;
@@ -520,7 +532,8 @@ export type Observation =
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
 	| { type: 'exchange_expired'; ref: string; lastAt: number }
 	| { type: 'meanwhile_added'; ref: string; kind: MeanwhileItem['kind']; about: string | null }
-	| { type: 'switch_offer_closed'; at: number }
+	// isLapse: the timer's, which leaves an offer still fresh (heard later than it was queued) alone.
+	| { type: 'switch_offer_closed'; at: number; isLapse?: true }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
 	// The held line was announced ("<session> is done", "needs you").

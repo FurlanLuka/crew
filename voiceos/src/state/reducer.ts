@@ -48,7 +48,14 @@ import type { SpeechPriority } from '../speech/queue.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
 import { cleanSessionLine } from '../shared/spoken.js';
-import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-lines.js';
+import {
+	clearHeldLine,
+	forgetHeardUpdate,
+	holdLine,
+	isOnScreen,
+	markHeard,
+	replayHeldLine,
+} from './held-lines.js';
 import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
 import { HOME_VIEW } from '../shared/machines.js';
 import { machineOf, readMachine } from '../shared/machine-ref.js';
@@ -435,7 +442,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				view.kind !== 'session'
 					? { state: shown, effects: describeSwitch(state, view) }
 					: input.skipHeld
-						? withoutEffects(shown)
+						? withoutEffects(forgetHeardUpdate(shown, view.ref))
 						: replayHeldLine(shown, view.ref);
 
 			// Said first: whatever plays there next is heard as coming from there.
@@ -832,8 +839,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					: state,
 			);
 
-		case 'spoken_ended':
-			return withoutEffects({
+		case 'spoken_ended': {
+			const ended = {
 				...state,
 				spoken: state.spoken.map((line) =>
 					line.id === input.lineId
@@ -845,7 +852,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 							}
 						: line,
 				),
-			});
+			};
+			const line = state.spoken.find((spoken) => spoken.id === input.lineId);
+
+			return withoutEffects(line && !input.isUnplayed ? markHeard(ended, line, stamped.at) : ended);
+		}
 
 		case 'topic_written':
 			return withoutEffects(

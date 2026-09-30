@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { EXCHANGE_IDLE_MS, type Input, type State } from '../shared/protocol.js';
+import { EXCHANGE_IDLE_MS, SWITCH_OFFER_MS, type Input, type State } from '../shared/protocol.js';
 import { createInitialState, reduce } from './reducer.js';
 import { isMidExchangeWithScreen, pruneExchange, readSubject } from './exchange.js';
 import { worktree } from '../../test/support/reduce.js';
@@ -204,23 +204,13 @@ describe('the exchange', () => {
 			});
 		};
 
-		it('the second turn answered → "Switch to …?" asked once, as a real offer', () => {
+		it('two turns answered → no offer: a back-and-forth never asks to switch by itself', () => {
 			const { state, effects } = lastEffects(twoTurns(), 40);
 
-			expect(state.switchOffer).toEqual({ ref: OTHER, at: 41 });
-			expect(state.exchange?.hasOfferedSwitch).toBe(true);
-			expect(effects).toContainEqual(
-				expect.objectContaining({
-					type: 'speak',
-					text: 'Switch to checkout, main?',
-					isAsking: true,
-				}),
+			expect(state.switchOffer).toBeNull();
+			expect(effects).not.toContainEqual(
+				expect.objectContaining({ type: 'speak', text: 'Switch to checkout, main?' }),
 			);
-
-			const closed = runAt([[42, { type: 'switch_offer_closed', at: 41 }]], state);
-			const third = lastEffects(runAt([[50, said(OTHER)]], closed), 60);
-
-			expect(third.state.switchOffer).toBeNull();
 		});
 
 		it('an answer that asks something → no offer: the yes belongs to that question', () => {
@@ -229,8 +219,10 @@ describe('the exchange', () => {
 			expect(state.switchOffer).toBeNull();
 		});
 
+		const offered = (): State => runAt([[40, { type: 'offer_switch', ref: OTHER }]], onScreen());
+
 		it('a switch closes it; a stale close for an older offer changes nothing', () => {
-			const { state } = lastEffects(twoTurns(), 40);
+			const state = offered();
 
 			expect(
 				runAt([[45, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }]], state)
@@ -239,6 +231,39 @@ describe('the exchange', () => {
 			expect(
 				runAt([[45, { type: 'switch_offer_closed', at: 10 }]], state).switchOffer,
 			).not.toBeNull();
+		});
+
+		it('its window starts when the question was heard, not when it was queued', () => {
+			const asked = runAt(
+				[
+					[
+						40,
+						{
+							type: 'spoken',
+							text: 'Switch to checkout, main?',
+							source: 'kernel',
+							ref: OTHER,
+							isAsking: true,
+						},
+					],
+				],
+				offered(),
+			);
+			const lineId = asked.spoken.at(-1)?.id ?? '';
+			// Said only at 55, after a long answer ahead of it in the queue.
+			const heard = runAt([[55, { type: 'spoken_ended', lineId, isCut: false }]], asked);
+
+			expect(heard.switchOffer).toEqual({ ref: OTHER, at: 40, heardAt: 55 });
+			// The first lapse was armed for an unheard question: it leaves a fresh one alone.
+			expect(
+				runAt([[60, { type: 'switch_offer_closed', at: 40, isLapse: true }]], heard).switchOffer,
+			).not.toBeNull();
+			expect(
+				runAt(
+					[[55 + SWITCH_OFFER_MS, { type: 'switch_offer_closed', at: 40, isLapse: true }]],
+					heard,
+				).switchOffer,
+			).toBeNull();
 		});
 
 		it('offered for a question only announced → said the same way', () => {

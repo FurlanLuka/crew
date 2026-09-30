@@ -11,6 +11,7 @@ import {
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { sayAck, sayRef } from './helpers.js';
+import { forgetHeardUpdate } from './held-lines.js';
 
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
@@ -102,15 +103,6 @@ export const offerSwitch = (state: State, ref: string, at: number): ReducerResul
 	};
 };
 
-// A real back-and-forth has started (a second answer heard), and nothing else waits on a yes.
-const shouldOfferSwitch = (state: State, exchange: Exchange, isAsking: boolean): boolean =>
-	exchange.answeredTurns >= 2 &&
-	!exchange.hasOfferedSwitch &&
-	!isAsking &&
-	exchange.ref !== readScreenRef(state) &&
-	state.asks.length === 0 &&
-	!state.switchOffer;
-
 const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => {
 	const { exchange } = state;
 	const line = state.spoken.find((spoken) => spoken.id === lineId);
@@ -130,12 +122,9 @@ const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => 
 		countedTurnAt: turnAt,
 	};
 
-	const next = { ...state, exchange: heard };
-
-	// Its answer asked something: the developer's yes belongs to that, so the offer waits a turn.
-	return shouldOfferSwitch(next, heard, Boolean(line.isAsking))
-		? offerSwitch(next, heard.ref, at)
-		: { state: next, effects: [] };
+	// No switch is offered for a back-and-forth: the answers are said in full, follow-ups go there,
+	// and "switch to it" works any time. The one offer is the one a reply to a heard update makes.
+	return { state: { ...state, exchange: heard }, effects: [] };
 };
 
 interface DescribeSentToParams {
@@ -159,6 +148,31 @@ const describeSentTo = ({ before, state, ref, at, effects }: DescribeSentToParam
 	}
 
 	return [sayAck(`Sent to ${sayRef(state, ref)}.`)];
+};
+
+// How long after hearing an update a reply to it still offers the switch.
+const UPDATE_REPLY_MS = 10 * 60_000;
+
+interface WithSwitchAskedParams {
+	effects: Effect[];
+	ref: string;
+	sentTo: string;
+}
+
+// The line that says where the words went asks the switch too ("Sent to crew. Switch there?",
+// "Okay, after its current work. Switch there?"): one line, whichever ack it is.
+const withSwitchAsked = ({ effects, ref, sentTo }: WithSwitchAskedParams): Effect[] => {
+	const ackAt = effects.findLastIndex((effect) => effect.type === 'speak' && effect.isAck === true);
+
+	if (ackAt < 0) {
+		return [...effects, sayAck(`Sent to ${sentTo}. Switch there?`, { isAsking: true, ref })];
+	}
+
+	return effects.map((effect, index) =>
+		index === ackAt && effect.type === 'speak'
+			? { ...effect, text: `${effect.text.trim()} Switch there?`, isAsking: true, ref }
+			: effect,
+	);
 };
 
 // Runs after the input's own reducer: `before` is the state it started from.
@@ -193,37 +207,34 @@ export const followExchange = (
 
 			const screenRef = readScreenRef(before);
 			const moved = talkTo({ state, ref: input.ref, at: stamped.at, screenRef });
-			// A reply to an update they only heard ("crew is done: …", the meanwhile line), sent from
-			// another screen: without the page they would not know their words now go there.
-			const isReplyToAnnounced =
+			const heardAt = before.sessions[input.ref]?.heldLine?.updateHeardAt;
+			// A reply to an update they heard ("crew needs you: …", the meanwhile line), sent from another
+			// screen: without the page they would not know their words now go there. Once per update.
+			const isReplyToHeard =
 				screenRef !== null &&
 				input.ref !== screenRef &&
-				before.sessions[input.ref]?.heldLine?.isAnnounced === true &&
-				moved.state.exchange?.ref === input.ref &&
-				moved.state.exchange.startedAt === stamped.at;
+				heardAt !== undefined &&
+				stamped.at - heardAt <= UPDATE_REPLY_MS &&
+				moved.state.exchange?.startedAt === stamped.at;
+			const replied = forgetHeardUpdate(moved.state, input.ref);
 
-			// Said once, with the switch offered in the same line ("Sent to crew. Switch there?").
-			if (isReplyToAnnounced && moved.state.asks.length === 0 && !moved.state.switchOffer) {
-				const offered = offerSwitch(moved.state, input.ref, stamped.at);
-				const withoutAck = acked.filter(
-					(effect) =>
-						!(effect.type === 'speak' && effect.isAck && effect.text.startsWith('Sent to')),
-				);
+			if (isReplyToHeard && replied.asks.length === 0 && !replied.switchOffer) {
+				const offered = offerSwitch(replied, input.ref, stamped.at);
 
 				return {
 					state: offered.state,
 					effects: [
-						...withoutAck,
-						...moved.effects,
-						sayAck(`Sent to ${sayRef(state, input.ref)}. Switch there?`, {
-							isAsking: true,
+						...withSwitchAsked({
+							effects: acked,
 							ref: input.ref,
+							sentTo: sayRef(state, input.ref),
 						}),
+						...moved.effects,
 					],
 				};
 			}
 
-			return { state: moved.state, effects: [...acked, ...moved.effects] };
+			return { state: replied, effects: [...acked, ...moved.effects] };
 		}
 
 		case 'switch_view': {
@@ -250,7 +261,8 @@ export const followExchange = (
 
 		// Answered, let go, or lapsed: a later "yes" is not for it. `at` names the offer it closes.
 		case 'switch_offer_closed':
-			return state.switchOffer?.at === input.at
+			return state.switchOffer?.at === input.at &&
+				!(input.isLapse && isSwitchOfferFresh(state.switchOffer, stamped.at))
 				? { ...result, state: { ...state, switchOffer: null } }
 				: result;
 
