@@ -27,6 +27,7 @@ import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
 import type { HistoryQuery } from '../memory/journal.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
+import type { Judge } from '../judge/judge.js';
 import type { NotesStore } from '../memory/notes.js';
 import { GENERAL_NOTES, nameNotes, readNoteText, readWorkspace } from '../shared/notes.js';
 import { createLogger } from '../log.js';
@@ -137,6 +138,9 @@ export interface ToolContext {
 	// Required so a server that forgets to wire them fails to compile, not a "Noted." that saved nothing.
 	mute: () => void;
 	saveDebugNote: (words: DebugNoteWords) => void;
+	// What the developer's words mean, asked of a small model on its own, in any language: the guard
+	// before an approval, a take-back, a mute, a change of listening.
+	judge: Judge;
 	// The developer's own notes, per workspace.
 	notes: NotesStore;
 	// Calls that change something in this turn so far, this step's included: more than one splits the words.

@@ -1,6 +1,7 @@
 // A whole voice conversation in a test: the real store, kernel (scripted model), router, narrator
 // and voice, wired as the app wires them. What the developer hears is the list of clips that played
 // to the end, in order, with their own words marked in between.
+import { englishJudge } from './english-judge.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -136,6 +137,7 @@ export const createConversation = ({
 			readHistory: () => [],
 			mute: () => voiceOut.mute(),
 			saveDebugNote: () => undefined,
+			judge: englishJudge,
 			notes: createNullNotes(),
 		},
 	});

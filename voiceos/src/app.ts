@@ -1,3 +1,4 @@
+import { createJudge } from './judge/judge.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
@@ -174,6 +175,7 @@ const kernel = keys.anthropic
 				readHistory: (query) => readHistory(paths.journalDir, query),
 				mute: () => voiceOut.mute(),
 				notes,
+				judge: createJudge({ apiKey: keys.anthropic }),
 				saveDebugNote: ({ text, said }) => {
 					const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
 

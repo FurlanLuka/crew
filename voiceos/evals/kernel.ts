@@ -1,3 +1,4 @@
+import { createJudge } from '../src/judge/judge.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Kernel, type KernelResult } from '../src/router/kernel.js';
@@ -292,6 +293,8 @@ export const runKernelEval = async ({
 	onlyIds = null,
 	model,
 }: RunKernelEvalParams): Promise<KernelEvalResult> => {
+	// The guards ask the real judge too: an eval measures what the developer would get.
+	const judge = createJudge({ apiKey });
 	// onlyIds: case ids to run, for iterating on a prompt without paying for the whole suite.
 	const allCases = (
 		JSON.parse(readFileSync(join(evalsDir, 'kernel', 'cases.json'), 'utf8')) as { cases: Case[] }
@@ -339,6 +342,7 @@ export const runKernelEval = async ({
 						],
 						has: () => true,
 					},
+					judge,
 					saveDebugNote: () => {
 						// Effects go nowhere in an eval.
 					},

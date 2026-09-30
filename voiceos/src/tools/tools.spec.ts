@@ -1,3 +1,4 @@
+import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type { NoteWords } from '../memory/notes.js';
 import { formatAge } from '../state/working.js';
@@ -68,6 +69,7 @@ const createToolContext = (patch: Partial<State> = {}) => {
 		asks: state.asks,
 		mute: () => {},
 		saveDebugNote: () => {},
+		judge: englishJudge,
 		notes: createNullNotes(),
 		setListenMode: () => 'changed' as const,
 		openUrl: () => true,
@@ -2053,6 +2055,7 @@ describe('Voice OS note through the real reducer', () => {
 			asks: [],
 			mute: () => {},
 			saveDebugNote: () => {},
+			judge: englishJudge,
 			notes: createNullNotes(),
 			setListenMode: () => 'changed' as const,
 			openUrl: () => true,
@@ -2724,6 +2727,7 @@ describe('tools that replaced the fast path', () => {
 				...tools,
 				utterance: 'Add a debug note: it dropped proxy brainstorm.',
 				saveDebugNote: (words) => notes.push(words),
+				judge: englishJudge,
 			},
 		);
 

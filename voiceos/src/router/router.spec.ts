@@ -1,3 +1,4 @@
+import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import { createNullNotes } from '../../test/support/notes.js';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -326,6 +327,7 @@ describe('UtteranceRouter', () => {
 				readHistory: () => [],
 				mute: () => {},
 				saveDebugNote: () => {},
+				judge: englishJudge,
 				notes: createNullNotes(),
 			},
 		});

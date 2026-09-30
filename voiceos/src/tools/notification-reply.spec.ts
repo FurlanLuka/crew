@@ -1,3 +1,4 @@
+import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type { Action, State } from '../shared/protocol.js';
 import { createNullNotes } from '../../test/support/notes.js';
@@ -19,6 +20,7 @@ const createContext = (state: State, utterance: string) => {
 		asks: state.asks,
 		mute: () => undefined,
 		saveDebugNote: () => undefined,
+		judge: englishJudge,
 		notes: createNullNotes(),
 		setListenMode: () => 'changed' as const,
 		openUrl: () => true,
