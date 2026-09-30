@@ -234,10 +234,9 @@ describe('conversations', () => {
 
 		await convo.wait(2_100);
 
-		// On another session's screen the ask is announced, not asked: its question waits there.
-		expect(convo.heard.at(-1)).toBe(
-			'checkout-api/main needs you: approval to run git push origin main.',
-		);
+		// On another session's screen the ask is announced, not asked: its question waits there. It
+		// says what the call does, never the whole command.
+		expect(convo.heard.at(-1)).toBe('checkout-api/main needs you: approval to run git push.');
 	});
 
 	describe('timing', () => {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { REMOTE_COMMAND, buildSshArgv, openSshTransport } from './ssh.js';
+import {
+	REMOTE_COMMAND,
+	REMOTE_UPDATE_COMMAND,
+	buildSshArgv,
+	openSshTransport,
+	updateRemoteCrew,
+} from './ssh.js';
 import { Store } from '../state/store.js';
 import { MachineLinks } from './links.js';
 import { until } from '../../test/support/link.js';
@@ -29,6 +35,74 @@ describe('buildSshArgv', () => {
 		expect(REMOTE_COMMAND).toBe(
 			`sh -lc 'command -v crew >/dev/null 2>&1 && exec crew voice _attach; exec "$HOME/.local/bin/crew" voice _attach'`,
 		);
+	});
+
+	it('an update → crew update there, found the same way, over the same options', () => {
+		expect(REMOTE_UPDATE_COMMAND).toBe(
+			`sh -lc 'command -v crew >/dev/null 2>&1 && exec crew update; exec "$HOME/.local/bin/crew" update'`,
+		);
+		expect(buildSshArgv('dev@vm1', REMOTE_UPDATE_COMMAND).at(-1)).toBe(REMOTE_UPDATE_COMMAND);
+		expect(buildSshArgv('dev@vm1', REMOTE_UPDATE_COMMAND).slice(0, -1)).toEqual(
+			buildSshArgv('dev@vm1').slice(0, -1),
+		);
+	});
+});
+
+describe('updateRemoteCrew', () => {
+	const withOverride = async <T>(command: string, run: () => Promise<T>): Promise<T> => {
+		const saved = process.env.VOICEOS_REMOTE_UPDATE_EXEC;
+
+		process.env.VOICEOS_REMOTE_UPDATE_EXEC = command;
+
+		try {
+			return await run();
+		} finally {
+			if (saved === undefined) {
+				delete process.env.VOICEOS_REMOTE_UPDATE_EXEC;
+			} else {
+				process.env.VOICEOS_REMOTE_UPDATE_EXEC = saved;
+			}
+		}
+	};
+
+	it('exits while something it started holds the pipes (a ControlMaster) → answered anyway', async () => {
+		const startedAt = Date.now();
+		const result = await withOverride('sleep 30 & echo "crew updated"; exit 0', () =>
+			updateRemoteCrew('vm1'),
+		);
+
+		expect(result).toMatchObject({ code: 0, isTimedOut: false });
+		expect(result.output).toContain('crew updated');
+		expect(Date.now() - startedAt).toBeLessThan(10_000);
+	});
+
+	it('never finishes → given up on, and said to have timed out', async () => {
+		const result = await withOverride('echo "Downloading…"; sleep 30', () =>
+			updateRemoteCrew('vm1', 200),
+		);
+
+		expect(result).toMatchObject({ code: null, isTimedOut: true });
+	});
+
+	it('a real process: its exit code, and what it printed on either stream', async () => {
+		const saved = process.env.VOICEOS_REMOTE_UPDATE_EXEC;
+
+		process.env.VOICEOS_REMOTE_UPDATE_EXEC =
+			'echo "Downloading crew for $REMOTE_HOST"; echo "Error: disk full" >&2; exit 3';
+
+		try {
+			const result = await updateRemoteCrew('vm1');
+
+			expect(result.code).toBe(3);
+			expect(result.output).toContain('Downloading crew for vm1');
+			expect(result.output.trim().endsWith('Error: disk full')).toBe(true);
+		} finally {
+			if (saved === undefined) {
+				delete process.env.VOICEOS_REMOTE_UPDATE_EXEC;
+			} else {
+				process.env.VOICEOS_REMOTE_UPDATE_EXEC = saved;
+			}
+		}
 	});
 });
 
@@ -80,6 +154,7 @@ describe('a refusal over a real process', () => {
 			mainId: 'main-1',
 			runId: 'run-1',
 			open: openSshTransport,
+			updateRemote: async () => ({ code: 0, output: '', isTimedOut: false }),
 			setup: { ref: 'setup', label: 'setup', branch: '', cwd: '/h', dirs: [], isPinned: true },
 			getState: () => store.state,
 			dispatch: (input) => store.dispatch(input),
