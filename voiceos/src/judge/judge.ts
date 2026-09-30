@@ -42,19 +42,19 @@ const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	mute_only: {
-		ask: 'Voice OS talks aloud. Is the whole of these words a request for Voice OS itself to be quiet (mute, stop talking, be still, hush), with nothing else asked?',
-		answers: ['yes', 'no'],
+		ask: 'Voice OS talks aloud and was asked to go quiet. What do these words ask for? yes: all of it is for Voice OS itself to be quiet (mute, be quiet, stop talking, be still, hush), nothing else. stop: only a bare "stop", "wait" or "halt" (or a translation), which is about the work, not the voice. no: something else, or quiet plus more.',
+		answers: ['yes', 'stop', 'no'],
 	},
 	says_instead: {
 		ask: 'Do these words say what to do instead, beyond just stopping or waiting?',
 		answers: ['yes', 'no'],
 	},
 	about_listening: {
-		ask: 'Are these words about how Voice OS listens (hands-free, on demand, push to talk, listening on or off)?',
+		ask: "Are these words about how Voice OS listens to the developer, its microphone (hands-free, on demand, push to talk, listening on or off)? Muting Voice OS's own voice is not this.",
 		answers: ['yes', 'no'],
 	},
 	listen_mode: {
-		ask: 'Which way of listening do these words ask for? hands-free: always listening. on-demand: listening for its name. push: push to talk. off: stop listening.',
+		ask: "Which way of listening do these words ask for? hands-free: always listening. on-demand: listening for its name. push: push to talk. off: stop listening, or turn hands-free off. unclear: they mute Voice OS's voice, or say nothing about how it listens.",
 		answers: ['hands-free', 'on-demand', 'push', 'off'],
 	},
 	asks_about_options: {

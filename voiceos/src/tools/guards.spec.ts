@@ -133,9 +133,10 @@ describe('mute', () => {
 		return { result, isMuted };
 	};
 
-	it('a word or two ("Tiho.", "sei still") is the command itself: muted, the judge not asked', async () => {
-		expect((await mute('Tiho.', judgeNever)).isMuted).toBe(true);
-		expect((await mute('Sei still!', judgeNever)).isMuted).toBe(true);
+	it('short words: "Tiho." mutes on yes or unclear; a bare "Stop." (the judge hears stop) does not', async () => {
+		expect((await mute('Tiho.', judgeWith({ mute_only: 'yes' }))).isMuted).toBe(true);
+		expect((await mute('Tiho.', judgeWith({ mute_only: 'unclear' }))).isMuted).toBe(true);
+		expect((await mute('Stop.', judgeWith({ mute_only: 'stop' }))).isMuted).toBe(false);
 	});
 
 	it('longer: mute_only yes → muted; no or unclear → not muted', async () => {

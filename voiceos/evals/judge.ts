@@ -38,7 +38,8 @@ const results = await Promise.all(
 		}),
 	})),
 );
-const failed = results.filter((result) => result.got !== result.expect);
+// "yes|unclear": either answer leads the guard to the same action.
+const failed = results.filter((result) => !result.expect.split('|').includes(result.got));
 
 for (const result of failed) {
 	console.log(

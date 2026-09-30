@@ -84,9 +84,10 @@ const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): s
 };
 
 const MIN_LONG_SPEECH_WORDS = 10;
-const MAX_MUTE_WORDS = 2;
 // "Stop listening" is two words: one is a stop and nothing else.
 const MAX_STOP_WORDS = 1;
+// "Tiho", "sei still": short enough that only a clear no from the judge keeps it from muting.
+const MAX_MUTE_WORDS = 2;
 
 const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): ToolResult => {
 	if (mode === null) {
@@ -739,18 +740,24 @@ export const executeTool = async (
 		case 'mute': {
 			// The whole utterance is the command: "make the tests quiet" or a long request that ends
 			// "…just be silent, okay?" is words for a session, and muting on it swallowed what came after.
-			// A word or two ("quiet", "tiho", "sei still") is the command itself in any language; only
-			// something longer ("make the tests quiet") asks the judge whether all of it was.
-			if (
-				toolContext.utterance !== undefined &&
-				countSpokenWords(toolContext.utterance) > MAX_MUTE_WORDS &&
-				(await toolContext.judge({ key: 'mute_only', utterance: toolContext.utterance })) !== 'yes'
-			) {
+			// A word or two the kernel took for a mute ("tiho", "sei still") mutes unless the judge hears a
+			// bare "stop" (about the work) or something else. Anything longer mutes only on a clear yes.
+			const said = toolContext.utterance;
+			const verdict =
+				said === undefined ? 'yes' : await toolContext.judge({ key: 'mute_only', utterance: said });
+			const isShort = said !== undefined && countSpokenWords(said) <= MAX_MUTE_WORDS;
+			const isMute = verdict === 'yes' || (isShort && verdict === 'unclear');
+
+			if (said !== undefined && !isMute) {
+				if (verdict === 'stop') {
+					return fail('not a mute request: a bare stop is about the work; do nothing more');
+				}
+
 				// "Stop listening" in another language reached for mute: it is a change of listening, made
 				// here, so the model has nothing to explain and a second call to get wrong.
 				const [aboutListening, listenMode] = await Promise.all([
-					toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance }),
-					toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
+					toolContext.judge({ key: 'about_listening', utterance: said }),
+					toolContext.judge({ key: 'listen_mode', utterance: said }),
 				]);
 
 				if (aboutListening !== 'yes') {
