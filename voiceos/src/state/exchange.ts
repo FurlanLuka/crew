@@ -264,10 +264,19 @@ export const followExchange = (
 			return { state: heard.state, effects: [...result.effects, ...heard.effects] };
 		}
 
-		case 'exchange_expired':
-			return state.exchange?.ref === input.ref && state.exchange.lastAt === input.lastAt
-				? { ...result, state: end(state) }
-				: result;
+		case 'exchange_expired': {
+			if (state.exchange?.ref !== input.ref || state.exchange.lastAt !== input.lastAt) {
+				return result;
+			}
+
+			// Still working on what they asked: the conversation waits for its answer, and the minute
+			// starts again from there. A slow answer is still the reply they are waiting for.
+			const status = state.sessions[input.ref]?.status;
+
+			return status === 'running' || status === 'blocked'
+				? { ...result, state: { ...state, exchange: { ...state.exchange, lastAt: stamped.at } } }
+				: { ...result, state: end(state) };
+		}
 
 		case 'clear_exchange':
 			return { ...result, state: end(state) };

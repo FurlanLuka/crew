@@ -182,6 +182,24 @@ describe('conversations', () => {
 		expect(convo.store.state.meanwhile).toEqual([]);
 	});
 
+	it('a question to another session that takes minutes → still the conversation; its answer comes in full, named', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'question' })]);
+		await convo.say('Checkout api, run the full suite and tell me if it is green.');
+		convo.store.dispatch({ type: 'turn_started', ref: 'checkout-api/main' });
+
+		await convo.wait(180_000);
+		expect(convo.store.state.exchange?.ref).toBe('checkout-api/main');
+
+		const answer =
+			'212 of 214 pass; the two failures are in the retry jitter tests, both timing out on the slow runner.';
+		await convo.answer('checkout-api/main', answer);
+
+		expect(convo.heard.at(-1)).toBe(`checkout api, main: ${answer}`);
+		expect(convo.store.state.meanwhile).toEqual([]);
+	});
+
 	it('an update waiting for the quiet, then the developer switches there → heard once, never again in the meanwhile line', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

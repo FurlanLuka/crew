@@ -107,13 +107,20 @@ describe('the exchange', () => {
 			[[EXCHANGE_IDLE_MS + 10, { type: 'exchange_expired', ref: OTHER, lastAt: 10 }]],
 			answered,
 		);
+		const expire: [number, Input] = [
+			EXCHANGE_IDLE_MS + 31,
+			{ type: 'exchange_expired', ref: OTHER, lastAt: 31 },
+		];
 		const lapsed = runAt(
-			[[EXCHANGE_IDLE_MS + 31, { type: 'exchange_expired', ref: OTHER, lastAt: 31 }]],
+			[[32, { type: 'turn_ended', ref: OTHER, costUsd: 0, text: '' }], expire],
 			answered,
 		);
+		// Still at work on it: the conversation waits for the answer, the minute counted anew.
+		const working = runAt([[32, { type: 'turn_started', ref: OTHER }], expire], answered);
 
 		expect(stale.exchange?.ref).toBe(OTHER);
 		expect(lapsed.exchange).toBeNull();
+		expect(working.exchange).toMatchObject({ ref: OTHER, lastAt: EXCHANGE_IDLE_MS + 31 });
 		// Read with the clock too, before the timer fires.
 		expect(readSubject(answered, 31 + EXCHANGE_IDLE_MS)).toBeNull();
 	});
