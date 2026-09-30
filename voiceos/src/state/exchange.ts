@@ -11,7 +11,7 @@ import {
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { sayRef } from './helpers.js';
+import { sayAck, sayRef } from './helpers.js';
 
 const log = createLogger('exchange');
 
@@ -169,16 +169,7 @@ const describeSentTo = ({ before, state, ref, at, effects }: DescribeSentToParam
 		return [];
 	}
 
-	return [
-		{
-			type: 'speak',
-			text: `Sent to ${sayRef(state, ref)}.`,
-			source: 'kernel',
-			isReply: true,
-			isAck: true,
-			priority: 'high',
-		},
-	];
+	return [sayAck(`Sent to ${sayRef(state, ref)}.`)];
 };
 
 // Runs after the input's own reducer: `before` is the state it started from.

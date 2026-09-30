@@ -31,7 +31,7 @@ import type { NotesStore } from '../memory/notes.js';
 import { GENERAL_NOTES, nameNotes, readNoteText, readWorkspace } from '../shared/notes.js';
 import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
-import { hasOfferedSwitch, isNamedIn, refuseAnnouncedOnly } from './announced.js';
+import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
@@ -481,7 +481,7 @@ export const executeTool = async (
 
 			// A session whose question was only announced is opened when the developer names it, or
 			// after they said yes to "Switch to …?": never on a bare "yes" or "what's waiting?".
-			const refused = hasOfferedSwitch(state, checked.ref, toolContext.now())
+			const refused = isSwitchOfferedFor(state, checked.ref, toolContext.now())
 				? null
 				: refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'switched' });
 

@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, toolUse } from '../../test/support/conversation.js';
+import { SWITCH_OFFER_MS } from '../shared/protocol.js';
 
 configureLog({ quiet: true });
 
@@ -237,5 +238,113 @@ describe('conversations', () => {
 		expect(convo.heard.at(-1)).toBe(
 			'checkout-api/main needs you: approval to run git push origin main.',
 		);
+	});
+
+	describe('timing', () => {
+		const offerAfterTwoTurns = async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'question' })]);
+			await convo.say('checkout api, is the build green?');
+			await convo.answer('checkout-api/main', 'Yes, all 214 tests pass.');
+			convo.script([toolUse('t2', 'send_to', { ref: 'checkout-api/main', kind: 'question' })]);
+			await convo.say('And the lint?');
+			await convo.answer('checkout-api/main', 'Lint is clean.');
+
+			return convo;
+		};
+
+		it('"Switch to …?" unanswered → let go after 8 s', async () => {
+			const convo = await offerAfterTwoTurns();
+			expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+
+			await convo.wait(SWITCH_OFFER_MS + 1);
+
+			expect(convo.store.state.switchOffer).toBeNull();
+		});
+
+		it('"Switch to …?" answered yes → switched there, and said', async () => {
+			const convo = await offerAfterTwoTurns();
+
+			convo.script([toolUse('t3', 'switch_view', { ref: 'checkout-api/main' })]);
+			await convo.say('Yes.');
+
+			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
+			expect(convo.heard.slice(-2)).toEqual(['> Yes.', 'Switching to checkout api, main.']);
+		});
+
+		it('"For …?" answered with new words → the held ones stay on the screen, the new ones are routed', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'spoken',
+				text: 'checkout api, main is done: the retry backoff.',
+				source: 'narrator',
+				ref: 'checkout-api/main',
+			});
+
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+			convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+			await convo.say('Actually, run the linter on the whole repo first.');
+
+			const sends = convo.inputs.flatMap((input) =>
+				input.type === 'send' ? [[input.ref, input.text]] : [],
+			);
+
+			expect(sends).toEqual([
+				['store-front/main', 'Review all of this.'],
+				['store-front/main', 'Actually, run the linter on the whole repo first.'],
+			]);
+		});
+
+		it('listening: the meanwhile line waits 12 s of quiet, not 8', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main', isListening: true });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'meanwhile_added',
+				ref: 'checkout-api/main',
+				kind: 'done',
+				about: 'the retries',
+			});
+
+			await convo.wait(9_000);
+			expect(convo.heard).toEqual([]);
+
+			await convo.wait(3_100);
+			expect(convo.heard).toEqual(['Meanwhile, checkout api, main finished the retries.']);
+		});
+
+		it('never quiet for long → the update still comes at the first gap after 50 s', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'meanwhile_added',
+				ref: 'checkout-api/main',
+				kind: 'done',
+				about: 'the retries',
+			});
+
+			for (let second = 0; second < 55; second += 5) {
+				convo.voiceOut.say({
+					text: `line at ${second}`,
+					priority: 'normal',
+					ref: 'store-front/main',
+				});
+				await convo.listen();
+				await convo.wait(5_000);
+			}
+
+			const meanwhileAt = convo.heard.indexOf(
+				'Meanwhile, checkout api, main finished the retries.',
+			);
+
+			// Never 8 s of quiet, but at 50 s the gap after "line at 45" is the one.
+			expect(convo.heard.slice(meanwhileAt - 1, meanwhileAt + 2)).toEqual([
+				'line at 45',
+				'Meanwhile, checkout api, main finished the retries.',
+				'line at 50',
+			]);
+		});
 	});
 });

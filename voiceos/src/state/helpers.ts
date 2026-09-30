@@ -22,6 +22,20 @@ export const readLabel = (state: State, ref: string): string => {
 	return machine ? `${machine} ${label}` : label;
 };
 
+type SpeakEffect = Extract<Effect, { type: 'speak' }>;
+
+// Voice OS's own word on what it just did ("Sent to checkout.", "Back to crew."): the answer to the
+// developer, heard before older lines.
+export const sayAck = (text: string, extra: Partial<SpeakEffect> = {}): Effect => ({
+	type: 'speak',
+	text,
+	source: 'kernel',
+	isReply: true,
+	isAck: true,
+	priority: 'high',
+	...extra,
+});
+
 // How Voice OS names a session aloud: its name, and its machine when the developer is elsewhere.
 export const sayRef = (state: State, ref: string): string => {
 	const machine = readElsewhereMachine(state, ref);

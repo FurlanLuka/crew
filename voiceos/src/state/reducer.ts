@@ -1,5 +1,5 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
-import { sayRef } from './helpers.js';
+import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
 import { addMeanwhile, playMeanwhile } from './meanwhile.js';
 import {
@@ -427,11 +427,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			}
 
 			const switched =
-				view.kind === 'session' && !input.skipHeld
-					? replayHeldLine(shown, view.ref)
-					: view.kind === 'session'
-						? { state: shown, effects: [] }
-						: { state: shown, effects: describeSwitch(state, view) };
+				view.kind !== 'session'
+					? { state: shown, effects: describeSwitch(state, view) }
+					: input.skipHeld
+						? withoutEffects(shown)
+						: replayHeldLine(shown, view.ref);
 
 			// Said first: whatever plays there next is heard as coming from there.
 			return input.announce && !isSameView(state.view, shown.view)
@@ -503,18 +503,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 				effects: [
 					...settled.effects,
-					...(input.isCorrection
-						? [
-								{
-									type: 'speak' as const,
-									text: `Stopped ${sayRef(state, input.ref)}.`,
-									source: 'kernel' as const,
-									isReply: true,
-									isAck: true,
-									priority: 'high' as const,
-								},
-							]
-						: []),
+					...(input.isCorrection ? [sayAck(`Stopped ${sayRef(state, input.ref)}.`)] : []),
 					{ type: 'worker_interrupt', ref: input.ref },
 					// An allowance still waiting goes with the work it was for.
 					...restoreAutoEffects(session),

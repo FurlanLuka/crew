@@ -250,3 +250,81 @@ describe('the exchange', () => {
 		});
 	});
 });
+
+describe('what goes when sessions go', () => {
+	it('a worktree removed → its conversation, update and history entry go; the others stay', () => {
+		const state = runAt(
+			[
+				[10, said(OTHER)],
+				[11, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'the retries' }],
+				[12, { type: 'meanwhile_added', ref: SCREEN, kind: 'done', about: 'the locale' }],
+				[13, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }],
+				[14, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				[15, { type: 'worker_exited', ref: OTHER, error: null }],
+				[16, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree('signals/main')] }],
+			],
+			onScreen(),
+		);
+
+		expect(state.exchange).toBeNull();
+		expect(state.meanwhile.map((item) => item.ref)).toEqual([SCREEN]);
+		expect(
+			state.viewHistory.some(({ view }) => view.kind === 'session' && view.ref === OTHER),
+		).toBe(false);
+	});
+
+	it("a machine removed → its sessions' conversation, updates and views go, this Mac's stay", () => {
+		const REMOTE = 'vm1:crew/main';
+		const state = runAt(
+			[
+				[1, { type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] }],
+				[2, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree(REMOTE)] }],
+				[3, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				[4, { type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }],
+				[5, { type: 'switch_view', view: { kind: 'session', ref: REMOTE } }],
+				[6, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				[7, { type: 'send', ref: REMOTE, text: 'hi', isSpoken: true }],
+				[8, { type: 'meanwhile_added', ref: REMOTE, kind: 'done', about: null }],
+				[9, { type: 'remove_machine', id: 'vm1' }],
+			],
+			createInitialState(),
+		);
+
+		expect(state.exchange).toBeNull();
+		expect(state.meanwhile).toEqual([]);
+		// Build box's grid and its session are gone; this Mac's session and the start stay.
+		expect(state.viewHistory.map(({ view }) => view)).toEqual([
+			{ kind: 'session', ref: SCREEN },
+			{ kind: 'machines' },
+		]);
+	});
+});
+
+describe("a busy session's update", () => {
+	it('a newer update replaces its older one but keeps its place in the wait', () => {
+		const state = runAt(
+			[
+				[0, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'first' }],
+				[30, { type: 'meanwhile_added', ref: OTHER, kind: 'needs', about: 'second' }],
+			],
+			onScreen(),
+		);
+
+		expect(state.meanwhile).toEqual([{ ref: OTHER, kind: 'needs', about: 'second', at: 0 }]);
+	});
+});
+
+describe('switch, then send in one turn', () => {
+	it("the words go to the session now on screen: no subject, the screen's conversation", () => {
+		const state = runAt(
+			[
+				[10, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }],
+				[11, said(OTHER)],
+			],
+			onScreen(),
+		);
+
+		expect(readSubject(state, 20)).toBeNull();
+		expect(state.exchange?.reason).toBe('screen');
+	});
+});

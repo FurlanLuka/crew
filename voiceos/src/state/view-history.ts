@@ -10,7 +10,7 @@ import {
 import { createLogger } from '../log.js';
 import { isExchangeLive, pruneExchange } from './exchange.js';
 import type { Effect } from './reducer.js';
-import { sayRef } from './helpers.js';
+import { sayAck, sayRef } from './helpers.js';
 
 const log = createLogger('view-history');
 
@@ -80,9 +80,8 @@ export const decideGoBack = ({ state, now }: DecideGoBackParams): GoBackDecision
 	for (const [index, entry] of state.viewHistory.entries()) {
 		const { view } = entry;
 		const session = view.kind === 'session' ? state.sessions[view.ref] : undefined;
-		const isGone = view.kind === 'session' && (!session || session.status === 'stopped');
 
-		if (isGone && view.kind === 'session') {
+		if (view.kind === 'session' && (!session || session.status === 'stopped')) {
 			skipped.push(view.ref);
 			continue;
 		}
@@ -99,15 +98,6 @@ export const decideGoBack = ({ state, now }: DecideGoBackParams): GoBackDecision
 	return { kind: 'empty', skipped };
 };
 
-const say = (text: string): Effect => ({
-	type: 'speak',
-	text,
-	source: 'kernel',
-	isReply: true,
-	isAck: true,
-	priority: 'high',
-});
-
 export const describeGoBack = (state: State, decision: GoBackDecision): Effect => {
 	const skipped = decision.skipped.map((ref) => `${sayRef(state, ref)} stopped.`).join(' ');
 	const said =
@@ -120,9 +110,9 @@ export const describeGoBack = (state: State, decision: GoBackDecision): Effect =
 		skipped: decision.skipped.length,
 	});
 
-	return say(skipped ? `${skipped} ${said}` : said);
+	return sayAck(skipped ? `${skipped} ${said}` : said);
 };
 
 // A switch Voice OS made for the developer is said before anything else plays there.
 export const describeSwitching = (state: State, view: View): Effect =>
-	say(`Switching to ${sayView(state, view)}.`);
+	sayAck(`Switching to ${sayView(state, view)}.`);

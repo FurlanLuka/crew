@@ -105,7 +105,7 @@ const isQuestionWavedOff = ({ reply, calls, utterance }: IsAskingBackParams): bo
 
 // Words passed on and nothing else, on a session's screen: Voice OS already says "Sent to X". A switch
 // needs no such rule: the kernel says nothing beside one, and an answer it writes there is kept.
-export const isAcknowledgedInCode = (calls: ToolCall[], forwardTo: string | null): boolean =>
+const isAcknowledgedInCode = (calls: ToolCall[], forwardTo: string | null): boolean =>
 	forwardTo !== null &&
 	calls.some((call) => call.name === 'send_to') &&
 	calls.every((call) => call.ok && (call.name === 'send_to' || call.name === 'forward'));

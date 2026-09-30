@@ -40,9 +40,15 @@ interface CreateConversationParams {
 	refs: string[];
 	// The session on screen; null is Mission Control.
 	view: string | null;
+	// A tab listens all the time (on demand, hands-free).
+	isListening?: boolean;
 }
 
-export const createConversation = ({ refs, view }: CreateConversationParams) => {
+export const createConversation = ({
+	refs,
+	view,
+	isListening = false,
+}: CreateConversationParams) => {
 	let now = 1_000_000;
 	const clock = () => now;
 	const store = new Store(clock);
@@ -96,6 +102,7 @@ export const createConversation = ({ refs, view }: CreateConversationParams) => 
 		hasPage: () => true,
 		now: clock,
 		setTimer,
+		isListening: () => isListening,
 	});
 	const narrate = async () => ({
 		speak: false,

@@ -7,12 +7,10 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
-import { readSessionLabel } from '../shared/machines.js';
 import { readLabel } from '../state/helpers.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import {
 	decideTurnLine,
-	describeAnnouncement,
 	describeDoneAbout,
 	isHeldQuestion,
 	isOnAnotherSession,

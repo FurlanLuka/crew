@@ -248,7 +248,7 @@ export interface Limits {
 }
 
 // Why the developer's words went where they did, logged with every change.
-export type ExchangeReason = 'screen' | 'named' | 'follow_up' | 'notification';
+export type ExchangeReason = 'screen' | 'named' | 'follow_up';
 
 export interface Exchange {
 	ref: string;
