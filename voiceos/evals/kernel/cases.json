@@ -4970,6 +4970,140 @@
 				}
 			],
 			"forbid_calls": ["forward", "send_to"]
+		},
+		{
+			"id": "go-into-remote-0",
+			"utterance": "Can you go into signals?",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to", "answer"]
+		},
+		{
+			"id": "go-into-remote-1",
+			"utterance": "Wait, can you go into signals?",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to", "answer"]
+		},
+		{
+			"id": "go-into-remote-2",
+			"utterance": "Can you checkout signals?",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to", "answer"]
+		},
+		{
+			"id": "go-into-remote-3",
+			"utterance": "Also, checkout signals—",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [],
+			"forbid_calls": ["forward", "send_to", "answer"],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				},
+				{
+					"name": "ignore_words"
+				}
+			]
+		},
+		{
+			"id": "go-into-remote-4",
+			"utterance": "Could you go into signals main?",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to", "answer"]
 		}
 	]
 }
