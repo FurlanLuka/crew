@@ -5327,6 +5327,79 @@
 			},
 			"calls": [],
 			"forbid_mutation": true
+		},
+		{
+			"id": "check-latest-debug-note-then-fix",
+			"utterance": "Check latest debug note, then fix the issue.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that when a note was just added and I say send this note to the crew session, it should send the note.",
+						"reply": "Debug note saved.",
+						"did": [
+							"debug_note \"when a note was just added and I say send this note to the crew session, it should send the note\""
+						]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"about_last_action": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "send-this-note-to-session",
+			"utterance": "Can you send this note to checkout?",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Note: retry the payment webhook with backoff.",
+						"reply": "Noted.",
+						"did": ["note \"retry the payment webhook with backoff\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"input": {
+						"ref": "checkout-api/main",
+						"about_last_action": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "send-this-debug-note-to-session-grid",
+			"utterance": "Can you send this debug note to store front main?",
+			"context": {
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that when a note was just added and I say send this note to the crew session, it should send the note.",
+						"reply": "Debug note saved.",
+						"did": [
+							"debug_note \"when a note was just added and I say send this note to the crew session, it should send the note\""
+						]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"input": {
+						"ref": "store-front/main",
+						"about_last_action": true
+					}
+				}
+			]
 		}
 	]
 }
