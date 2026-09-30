@@ -5,6 +5,7 @@ import {
 	type SpeechMessage,
 	type SpokenLine,
 	type State,
+	type ToldAsk,
 } from '../shared/protocol.js';
 import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
@@ -37,6 +38,9 @@ import {
 import { computePcmSeconds, type Synthesize } from './tts.js';
 import { decideMeanwhile } from './meanwhile.js';
 
+const readWaitingKey = (items: MeanwhileItem[]): string =>
+	items.map((item) => `${item.ref}@${item.at}:${item.askId ?? ''}`).join('|');
+
 interface SayParams {
 	text: string;
 	priority: SpeechPriority;
@@ -48,6 +52,7 @@ interface SayParams {
 	isAsking?: boolean;
 	isUpdate?: boolean;
 	refs?: string[];
+	toldAsks?: ToldAsk[];
 	isOwed?: boolean;
 	waitsForGap?: boolean;
 	isAck?: boolean;
@@ -134,16 +139,24 @@ export class VoiceOut {
 			options.clearTimer ??
 			((timer) => clearTimeout(timer as ReturnType<typeof setTimeout> | undefined));
 		this.quietSince = this.now();
-		options.store.subscribe((stamped) => {
+		let waitingKey = '';
+		options.store.subscribe((stamped, state) => {
 			// After the dispatch that switched: a line held from inside it would reach the pages first.
 			if (stamped.input.type === 'switch_view') {
 				queueMicrotask(() => this.viewChanged());
 			}
 
-			// Played at once, from inside this dispatch the page would get the play before the update it
-			// plays, see a gap, reconnect and cut the line.
-			if (stamped.input.type === 'meanwhile_added') {
-				queueMicrotask(() => this.scheduleMeanwhile());
+			// An update arrives from its own input or with an ask; a newer one replaces a session's older one
+			// in place, so the list is compared item by item. Played at once, from inside this dispatch the
+			// page would get the play before the update it plays, see a gap, reconnect and cut the line.
+			const key = readWaitingKey(state.meanwhile);
+
+			if (key !== waitingKey) {
+				waitingKey = key;
+
+				if (state.meanwhile.length > 0) {
+					queueMicrotask(() => this.scheduleMeanwhile());
+				}
 			}
 		});
 	}
@@ -159,6 +172,7 @@ export class VoiceOut {
 		isAsking = false,
 		isUpdate = false,
 		refs,
+		toldAsks,
 		waitsForGap = false,
 		isOwed = false,
 		isAck = false,
@@ -191,6 +205,7 @@ export class VoiceOut {
 			...(isAnswer ? { isAnswer } : {}),
 			...(isUpdate ? { isUpdate } : {}),
 			...(refs?.length ? { refs } : {}),
+			...(toldAsks?.length ? { toldAsks } : {}),
 			...(waitsForGap ? { waitsForGap } : {}),
 			...(isOwed ? { isOwed } : {}),
 			...(isAck ? { isAck } : {}),
@@ -583,6 +598,7 @@ export class VoiceOut {
 			...(item.isAnswer ? { isAnswer: true as const } : {}),
 			...(item.isUpdate ? { isUpdate: true as const } : {}),
 			...(item.refs?.length ? { refs: item.refs } : {}),
+			...(item.toldAsks?.length ? { toldAsks: item.toldAsks } : {}),
 		});
 		playing.lineId = spokenState.spoken.at(-1)?.id ?? null;
 

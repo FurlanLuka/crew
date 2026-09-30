@@ -2,6 +2,7 @@
 // finished." Other sessions' updates wait for a quiet moment and arrive as one line, so the
 // developer's own conversation is never interrupted by them.
 import {
+	MEANWHILE_ASK_QUIET_MS,
 	MEANWHILE_MAX_WAIT_MS,
 	MEANWHILE_QUIET_LISTENING_MS,
 	MEANWHILE_QUIET_MS,
@@ -15,7 +16,14 @@ const NAMED_AT_MOST = 2;
 const trimAbout = (about: string | null): string | null =>
 	about?.trim().replace(/[.!?]+$/, '') || null;
 
-const describeItem = (name: string, item: MeanwhileItem): string => {
+// An ask's own words, read from it when the line is said: "asks: Postgres or SQLite?".
+export type SaidItem = MeanwhileItem & { phrase?: string };
+
+const describeItem = (name: string, item: SaidItem): string => {
+	if (item.phrase) {
+		return `${name} ${item.phrase}`;
+	}
+
 	const about = trimAbout(item.about);
 
 	return item.kind === 'needs'
@@ -45,20 +53,21 @@ const joinSpoken = (parts: string[]): string =>
 	parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')}, and ${parts.at(-1)}`;
 
 interface DescribeMeanwhileParams {
-	items: MeanwhileItem[];
+	items: SaidItem[];
 	nameOf: (ref: string) => string;
 }
 
-const orderItems = (items: MeanwhileItem[]): MeanwhileItem[] => [
+const orderItems = <Item extends MeanwhileItem>(items: Item[]): Item[] => [
 	...items.filter((item) => item.kind === 'needs'),
 	...items.filter((item) => item.kind === 'done'),
 ];
 
 // The sessions the line says by name, in the order it says them: a reply can only mean one of these.
+export const listNamedItems = <Item extends MeanwhileItem>(items: Item[]): Item[] =>
+	orderItems(items).slice(0, NAMED_AT_MOST);
+
 export const listNamedRefs = (items: MeanwhileItem[]): string[] =>
-	orderItems(items)
-		.slice(0, NAMED_AT_MOST)
-		.map((item) => item.ref);
+	listNamedItems(items).map((item) => item.ref);
 
 // What needs the developer comes first, at most two sessions are named, the rest are counted.
 export const describeMeanwhile = ({ items, nameOf }: DescribeMeanwhileParams): string => {
@@ -72,7 +81,8 @@ export const describeMeanwhile = ({ items, nameOf }: DescribeMeanwhileParams): s
 
 	const line = `Meanwhile, ${joinSpoken(parts)}`;
 
-	return line.endsWith('…') ? line : `${line}.`;
+	// A cut line keeps its ellipsis, a question its question mark.
+	return /[…?]$/.test(line) ? line : `${line}.`;
 };
 
 interface DecideMeanwhileParams {
@@ -98,7 +108,12 @@ export const decideMeanwhile = ({
 		return { kind: 'none' };
 	}
 
-	const quietNeeded = isListening ? MEANWHILE_QUIET_LISTENING_MS : MEANWHILE_QUIET_MS;
+	const hasAsk = items.some((item) => item.askId !== undefined);
+	const quietNeeded = hasAsk
+		? MEANWHILE_ASK_QUIET_MS
+		: isListening
+			? MEANWHILE_QUIET_LISTENING_MS
+			: MEANWHILE_QUIET_MS;
 	const quietLeft = quietNeeded - (now - quietSince);
 	const waitLeft = MEANWHILE_MAX_WAIT_MS - (now - oldest);
 

@@ -1,6 +1,12 @@
 // The waiting updates in state: the page counts them, "what did I miss?" and the quiet play them.
-import type { Input, MeanwhileItem, State } from '../shared/protocol.js';
-import { describeMeanwhile, listNamedRefs } from '../speech/meanwhile.js';
+import type { Input, MeanwhileItem, State, ToldAsk } from '../shared/protocol.js';
+import {
+	describeMeanwhile,
+	listNamedItems,
+	listNamedRefs,
+	type SaidItem,
+} from '../speech/meanwhile.js';
+import { describeAskForMeanwhile } from './asks.js';
 import { readAnnouncedLabel } from './held-lines.js';
 import { sayRef, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
@@ -13,7 +19,13 @@ export const addMeanwhile = (state: State, input: MeanwhileAdded, at: number): S
 		return state;
 	}
 
-	const item: MeanwhileItem = { ref: input.ref, kind: input.kind, about: input.about, at };
+	const item: MeanwhileItem = {
+		ref: input.ref,
+		kind: input.kind,
+		about: input.about,
+		at,
+		...(input.askId ? { askId: input.askId } : {}),
+	};
 	const kept = state.meanwhile.filter((waiting) => waiting.ref !== input.ref);
 	const oldest = state.meanwhile.find((waiting) => waiting.ref === input.ref)?.at ?? at;
 
@@ -59,10 +71,32 @@ export const settleMeanwhile = (before: State, after: State, input: Input): Stat
 	return ref ? dropMeanwhileFor(after, ref) : after;
 };
 
+// An ask is said as it stands when the line plays: one answered or closed meanwhile is left out, and
+// one that moved on to its next question says that one.
+const readSaidItems = (state: State, items: MeanwhileItem[]): (SaidItem & { isTold?: true })[] =>
+	items.flatMap((item) => {
+		if (item.askId === undefined) {
+			return [item];
+		}
+
+		const ask = state.asks.find((pending) => pending.id === item.askId);
+
+		if (!ask) {
+			return [];
+		}
+
+		const { phrase, isTold } = describeAskForMeanwhile(ask);
+
+		return [{ ...item, phrase, ...(isTold ? { isTold: true as const } : {}) }];
+	});
+
 export const playMeanwhile = (state: State): ReducerResult => {
 	// The session on screen says its own updates.
 	const screenRef = state.view.kind === 'session' ? state.view.ref : null;
-	const items = state.meanwhile.filter((item) => item.ref !== screenRef);
+	const items = readSaidItems(
+		state,
+		state.meanwhile.filter((item) => item.ref !== screenRef),
+	);
 
 	if (items.length === 0) {
 		return withoutEffects({ ...state, meanwhile: [] });
@@ -72,6 +106,11 @@ export const playMeanwhile = (state: State): ReducerResult => {
 		items,
 		nameOf: (ref) => readAnnouncedLabel(state, ref, sayRef(state, ref)),
 	});
+	// Only what the line says by name is told: an ask it only counts was not heard.
+	const toldAsks: ToldAsk[] = listNamedItems(items).flatMap((item) =>
+		item.isTold && item.askId ? [{ ref: item.ref, askId: item.askId }] : [],
+	);
+	const hasAsk = items.some((item) => item.askId !== undefined);
 
 	return {
 		state: { ...state, meanwhile: [] },
@@ -84,6 +123,8 @@ export const playMeanwhile = (state: State): ReducerResult => {
 				isOwed: true,
 				isUpdate: true,
 				refs: listNamedRefs(items),
+				...(toldAsks.length > 0 ? { toldAsks, isAsking: true } : {}),
+				...(hasAsk ? { chime: 'needs' as const } : {}),
 			},
 		],
 	};

@@ -25,6 +25,8 @@ import {
 	withoutEffects,
 } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
+import { addMeanwhile } from './meanwhile.js';
+import { readSubject } from './exchange.js';
 import {
 	clearHeldAsk,
 	clearHeldLine,
@@ -135,6 +137,53 @@ export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 };
 
 const ABOUT_WORDS = 6;
+const PLAN_TITLE_WORDS = 8;
+
+// A plan is long: the meanwhile line says only what it is for, from its first heading or line.
+const readPlanTitle = (plan: string): string | null => {
+	const first = plan
+		.split('\n')
+		.map((line) => line.replace(/^#+\s*/, '').trim())
+		.find(Boolean);
+
+	return first ? capWords(first, PLAN_TITLE_WORDS).replace(/[.:]+$/, '') : null;
+};
+
+interface AskForMeanwhile {
+	// After the session's name: "asks: Postgres or SQLite?".
+	phrase: string;
+	// Said in full, so a reply can answer it; a plan or a long question is only its gist.
+	isTold: boolean;
+}
+
+export const describeAskForMeanwhile = (ask: PendingAsk): AskForMeanwhile => {
+	switch (ask.kind) {
+		case 'permission': {
+			const summary = capWords(describeToolAloud(ask.toolName, ask.input), MAX_SUMMARY_WORDS);
+
+			return { phrase: `wants to ${summary.replace(/[.]+$/, '')}`, isTold: true };
+		}
+		case 'question': {
+			const open = findOpenQuestion(ask)?.question;
+
+			if (!open) {
+				return { phrase: 'has a question', isTold: false };
+			}
+
+			return isShortLine(open.question)
+				? { phrase: `asks: ${open.question.trim()}`, isTold: true }
+				: { phrase: `asks about ${describeAskAbout(ask) ?? 'something'}`, isTold: false };
+		}
+		case 'plan': {
+			const title = readPlanTitle(ask.plan);
+
+			return { phrase: title ? `has a plan ready: ${title}` : 'has a plan ready', isTold: false };
+		}
+
+		default:
+			return { phrase: 'needs you', isTold: false };
+	}
+};
 
 const describeAskAbout = (ask: PendingAsk): string | null => {
 	// What the decision is about, in a few words: enough to choose whether to switch now.
@@ -560,7 +609,29 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				};
 			}
 
-			if (isAnnouncedOnly(state, ask)) {
+			const isSubject = readSubject(state, stamped.at) === ask.ref;
+
+			// Another session's ask while the developer is on a session's screen: held there, and said
+			// with the other waiting updates once there is a breath. Talking with that session, it is
+			// part of the conversation and asked now.
+			if (isOnAnotherSession(state, ask.ref) && isSdkAsk(ask) && !isSubject) {
+				return {
+					state: addMeanwhile(
+						holdLine({
+							state: next,
+							ref: ask.ref,
+							content: { kind: 'ask', askId: ask.id },
+							stamped,
+							isAnnounced: true,
+						}),
+						{ type: 'meanwhile_added', ref: ask.ref, kind: 'needs', about: null, askId: ask.id },
+						stamped.at,
+					),
+					effects: released.effects,
+				};
+			}
+
+			if (!isSubject && isAnnouncedOnly(state, ask)) {
 				// High, not an alert: it never cuts off the session on screen.
 				return {
 					state: holdLine({

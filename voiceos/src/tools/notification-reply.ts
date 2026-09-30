@@ -3,6 +3,7 @@
 // words could be either.
 import { createLogger } from '../log.js';
 import { isMidExchangeWithScreen } from '../state/exchange.js';
+import { isHeldQuestion } from '../state/held-lines.js';
 import { endsInQuestion } from '../shared/spoken.js';
 import { isNamedIn } from './announced.js';
 import { listHeardBefore, readLineRefs } from './asked-aloud.js';
@@ -44,8 +45,9 @@ export const decideNotificationReply = (params: NotificationParams): Notificatio
 		return { kind: 'none' };
 	}
 
-	// Mid-conversation with the screen, a notification does not pull the developer away.
-	if (isMidExchangeWithScreen(state, toolContext.now())) {
+	// Mid-conversation with the screen, a notification does not pull the developer away; a question or
+	// plan they only heard the gist of does, when they reply to it: it is answered only once heard.
+	if (isMidExchangeWithScreen(state, toolContext.now()) && !isHeldQuestion(state.sessions[ref])) {
 		log.info('notification reply kept off screen', { ref });
 
 		return {

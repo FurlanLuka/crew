@@ -19,18 +19,29 @@ export const findLastAskedAloud = ({
 	heardFrom = now,
 }: FindLastAskedAloudParams): SpokenLine | null => {
 	// The newest line about a session that still waits is what a bare "yes" most likely answers.
-	return (
-		spoken
-			.filter(
-				(line) =>
-					line.isAsking &&
-					line.ref !== undefined &&
-					now - line.at <= ASKED_ALOUD_MS &&
-					line.at < heardFrom &&
-					waitingRefs.includes(line.ref),
-			)
-			.at(-1) ?? null
-	);
+	const askedRefsOf = (line: SpokenLine): string[] =>
+		(line.ref !== undefined ? [line.ref] : (line.toldAsks ?? []).map((told) => told.ref)).filter(
+			(ref) => waitingRefs.includes(ref),
+		);
+	const line = spoken
+		.filter(
+			(candidate) =>
+				candidate.isAsking &&
+				askedRefsOf(candidate).length > 0 &&
+				now - candidate.at <= ASKED_ALOUD_MS &&
+				candidate.at < heardFrom,
+		)
+		.at(-1);
+
+	if (!line) {
+		return null;
+	}
+
+	// The meanwhile line may ask for two sessions at once: then it names neither, and a bare yes is
+	// for no one until they say which.
+	const [only, ...others] = askedRefsOf(line);
+
+	return others.length === 0 && only !== undefined ? { ...line, ref: only } : line;
 };
 
 // What the developer heard shortly before they spoke is what their words most likely pick up.

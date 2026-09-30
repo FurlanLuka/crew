@@ -146,6 +146,14 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   on switch (`state/held-lines.ts`). An item is dropped once the developer meets that update another
   way (`settleMeanwhile`). The line is spoken with `isUpdate` and the `refs` it named, like a "needs
   you" announcement: `listHeardBefore` counts each as heard, so a reply to it is routed to them.
+  Another session's question, plan or permission, on a session's screen, joins it too (`ask_opened`,
+  `askId` on the item) unless the developer is talking with that session: needs-you first, after a
+  3 s breath (`MEANWHILE_ASK_QUIET_MS`), with the needs chime, in words read from the live ask when
+  the line plays (`describeAskForMeanwhile`) — one answered meanwhile is left out. A permission or a
+  short question is said in full (`toldAsks` on the line): heard, even cut short, it is answered like
+  any question asked aloud; a line asking for two sessions answers neither on a bare yes. A plan or a
+  long question is only its gist: a bare yes to it asks "Switch to X?" (it may only acknowledge),
+  while "switch to it" right after it switches at once (`refuseAnnouncedOnly`).
 - **The exchange** (`state/exchange.ts`) is who the developer is talking with: the session their
   spoken words went to last. Off screen it is the subject: its lines are always said, named;
   follow-ups go there (`router/exchange-lines.ts` tells the kernel); it lapses a minute after its

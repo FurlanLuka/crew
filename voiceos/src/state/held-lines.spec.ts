@@ -326,7 +326,7 @@ describe('asks off screen', () => {
 		}
 	});
 
-	it("on another session's screen a short question and a permission are announced and held too", () => {
+	it("on another session's screen a short question and a permission wait for the meanwhile line, held", () => {
 		const elsewhere: State = {
 			...idleSession(),
 			view: { kind: 'session', ref: 'store/wrk1' },
@@ -338,8 +338,10 @@ describe('asks off screen', () => {
 		const asked = open(short, elsewhere);
 		const permission = open(permissionAsk('a1'), elsewhere);
 
-		expect(said(asked.effects)).toEqual(['store/main needs you: Postgres or SQLite.']);
-		expect(said(permission.effects)).toEqual(['store/main needs you: approval to run git push.']);
+		expect(said(asked.effects)).toEqual([]);
+		expect(said(permission.effects)).toEqual([]);
+		expect(asked.state.meanwhile).toMatchObject([{ ref: REF, kind: 'needs', askId: 'q1' }]);
+		expect(permission.state.meanwhile).toMatchObject([{ ref: REF, kind: 'needs', askId: 'a1' }]);
 		expect(heldOf(asked.state)).toMatchObject({ kind: 'ask', askId: 'q1' });
 		expect(heldOf(permission.state)).toMatchObject({ kind: 'ask', askId: 'a1' });
 		expect(
@@ -349,6 +351,34 @@ describe('asks off screen', () => {
 				}).effects,
 			),
 		).toEqual(['store/main wants to run git push. Allow?']);
+	});
+
+	it('its line said in full, even cut short → answerable at once; a newer ask from it stays held', () => {
+		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
+		const held = open(permissionAsk('a1'), elsewhere).state;
+
+		const tell = (askId: string, start: State): State => {
+			const said = run(
+				[
+					{
+						type: 'spoken',
+						text: 'Meanwhile, store main wants to run git push.',
+						source: 'narrator',
+						isUpdate: true,
+						isAsking: true,
+						refs: [REF],
+						toldAsks: [{ ref: REF, askId }],
+					},
+				],
+				{ start },
+			).state;
+			const lineId = said.spoken.at(-1)?.id ?? '';
+
+			return run([{ type: 'spoken_ended', lineId, isCut: true }], { start: said }).state;
+		};
+
+		expect(heldOf(tell('a1', held))).toBeNull();
+		expect(heldOf(tell('older', held))).toMatchObject({ kind: 'ask', askId: 'a1' });
 	});
 
 	it('answered or closed before the switch → nothing replays', () => {

@@ -273,10 +273,22 @@ export const forgetHeardUpdate = (state: State, ref: string): State =>
 
 // What finishing a line means beyond itself: an update heard, or a question heard (its window
 // for a yes starts now, not when it was queued).
+// An ask the meanwhile line said in full is no longer only announced: a reply answers it. Only while
+// it is still the ask the session holds; a newer one from it was not what the line said.
+const hearToldAsks = (state: State, line: SpokenLine): State =>
+	(line.toldAsks ?? []).reduce((next, { ref, askId }) => {
+		const held = next.sessions[ref]?.heldLine;
+
+		return held?.kind === 'ask' && held.askId === askId ? clearHeldLine(next, ref) : next;
+	}, state);
+
 export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
 	// An update talked over was not heard to its end; a question talked over is being answered.
 	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
-	const updated = refs.reduce((next, ref) => markNewsHeard(next, ref, at), state);
+	const updated = refs.reduce(
+		(next, ref) => markNewsHeard(next, ref, at),
+		hearToldAsks(state, line),
+	);
 	const offer = updated.switchOffer;
 	const target = updated.targetAsk;
 

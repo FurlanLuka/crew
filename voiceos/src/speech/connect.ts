@@ -184,6 +184,7 @@ export const connectSpeech = ({
 					isAsking: effect.isAsking,
 					isUpdate: effect.isUpdate,
 					refs: effect.refs,
+					toldAsks: effect.toldAsks,
 					isNamed: effect.isNamed,
 					isOwed: effect.isOwed,
 					isAck: effect.isAck,
