@@ -698,7 +698,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -724,7 +725,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -757,7 +759,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -779,7 +782,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -805,7 +809,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -5223,11 +5228,7 @@
 						"reply": "I don't know — checkout hasn't said how long the regression check will take. Want me to ask it?",
 						"did": []
 					}
-				],
-				"alert": {
-					"text": "I don't know — checkout hasn't said how long the regression check will take. Want me to ask it?",
-					"secondsAgo": 6
-				}
+				]
 			},
 			"calls": [
 				{
@@ -5257,6 +5258,75 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "reply-after-meanwhile",
+			"utterance": "Great, push it.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Tidy the locale placeholders.",
+						"minutesAgo": 5
+					}
+				],
+				"heard": [
+					{
+						"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 4,
+						"endedSecondsAgo": 1,
+						"update": true
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to|ask_target",
+					"ref": "checkout-api/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "combined-offer-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"text": "Sent to checkout api, main. Switch there?"
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to"]
+		},
+		{
+			"id": "combined-offer-no",
+			"utterance": "No.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"text": "Sent to checkout api, main. Switch there?"
+				}
+			},
+			"calls": [],
+			"forbid_mutation": true
 		}
 	]
 }

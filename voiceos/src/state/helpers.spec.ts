@@ -55,10 +55,9 @@ describe('what a session is called', () => {
 	});
 
 	it("what waits on a machine → said by the sessions' names", () => {
-		const waiting = run(
-			[{ type: 'narration', ref: REMOTE, needsUser: true, text: 'Push it?', topic: null }],
-			{ start: named() },
-		).state;
+		const waiting = run([{ type: 'narration', ref: REMOTE, needsUser: true, text: 'Push it?' }], {
+			start: named(),
+		}).state;
 
 		expect(describeMachineWaiting(waiting, 'vm1')).toBe(
 			'Personal. voice os dev is waiting on you.',

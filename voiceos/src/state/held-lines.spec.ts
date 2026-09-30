@@ -282,6 +282,8 @@ describe('asks off screen', () => {
 				text: 'store/main needs you: Notes location.',
 				source: 'alert',
 				ref: REF,
+				// A reply to it is for store/main: the kernel reads it as a notification.
+				isUpdate: true,
 				priority: 'high',
 				chime: 'needs',
 				waitsForGap: true,
@@ -782,7 +784,7 @@ describe('what a "done" names', () => {
 
 	it.each([
 		[
-			'its own last line, not a topic',
+			'its own last line',
 			'Checking whether the detached eval runs finished before deciding.',
 			'Checking whether the detached eval runs finished before deciding',
 		],

@@ -54,7 +54,6 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('allow_denied'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_denial'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_needs_user'), ref: refSchema }),
-	z.object({ type: z.literal('pin_topic'), ref: refSchema, topic: z.string().max(200) }),
 	z.object({ type: z.literal('dev_start'), ref: refSchema }),
 	z.object({ type: z.literal('dev_stop'), ref: refSchema }),
 	z.object({ type: z.literal('dev_restart'), ref: refSchema }),

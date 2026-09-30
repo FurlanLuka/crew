@@ -3,8 +3,6 @@ import { splitRef } from '../shared/machine-ref.js';
 import { toSpokenPart, NUMBER_WORDS } from '../shared/spoken.js';
 import type { ToolContext } from './tools.js';
 
-const TOPIC_WORD_PATTERN = /^[a-z]{4,}$/;
-
 const listSpokenForms = (worktree: string): string[] => {
 	const numbered = worktree.match(/^wrk(\d)$/);
 
@@ -23,19 +21,12 @@ const isWorktreeSaid = (text: string, worktree: string): boolean => {
 
 interface IsSessionNamedParams {
 	ref: string;
-	topic: string | null;
 	text: string;
 	words: Set<string>;
 	order: string[];
 }
 
-export const isSessionNamed = ({
-	ref,
-	topic,
-	text,
-	words,
-	order,
-}: IsSessionNamedParams): boolean => {
+export const isSessionNamed = ({ ref, text, words, order }: IsSessionNamedParams): boolean => {
 	const { workspace, worktree } = splitRef(ref);
 
 	if (workspace.split('-').some((part) => part.length >= 4 && words.has(part))) {
@@ -47,16 +38,7 @@ export const isSessionNamed = ({
 	}
 
 	// "main" alone names nothing: every workspace has one.
-	if (worktree && worktree !== 'main' && isWorktreeSaid(text, worktree)) {
-		return true;
-	}
-
-	const topicWords = (topic ?? '')
-		.toLowerCase()
-		.split(/\s+/)
-		.filter((word) => TOPIC_WORD_PATTERN.test(word));
-
-	return topicWords.filter((word) => words.has(word)).length >= 2;
+	return Boolean(worktree && worktree !== 'main' && isWorktreeSaid(text, worktree));
 };
 
 // Words only, each side padded: "voice os dev" is said in "go to voice-os dev.", never inside "devops".
@@ -91,9 +73,7 @@ export const findSessionsNamedIn = (state: State, utterance: string): string[] =
 	}
 
 	return state.order.filter(
-		(ref) =>
-			state.sessions[ref] &&
-			isSessionNamed({ ref, topic: state.sessions[ref].topic, text, words, order: state.order }),
+		(ref) => state.sessions[ref] && isSessionNamed({ ref, text, words, order: state.order }),
 	);
 };
 

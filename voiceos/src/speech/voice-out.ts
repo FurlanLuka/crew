@@ -46,6 +46,8 @@ interface SayParams {
 	isReply?: boolean;
 	isAnswer?: boolean;
 	isAsking?: boolean;
+	isUpdate?: boolean;
+	refs?: string[];
 	isOwed?: boolean;
 	waitsForGap?: boolean;
 	isAck?: boolean;
@@ -153,6 +155,8 @@ export class VoiceOut {
 		isReply = false,
 		isAnswer = false,
 		isAsking = false,
+		isUpdate = false,
+		refs,
 		waitsForGap = false,
 		isOwed = false,
 		isAck = false,
@@ -183,6 +187,8 @@ export class VoiceOut {
 			isReply,
 			isAsking,
 			...(isAnswer ? { isAnswer } : {}),
+			...(isUpdate ? { isUpdate } : {}),
+			...(refs?.length ? { refs } : {}),
 			...(waitsForGap ? { waitsForGap } : {}),
 			...(isOwed ? { isOwed } : {}),
 			...(isAck ? { isAck } : {}),
@@ -573,6 +579,8 @@ export class VoiceOut {
 			...(item.ref ? { ref: item.ref } : {}),
 			...(item.isAsking ? { isAsking: true as const } : {}),
 			...(item.isAnswer ? { isAnswer: true as const } : {}),
+			...(item.isUpdate ? { isUpdate: true as const } : {}),
+			...(item.refs?.length ? { refs: item.refs } : {}),
 		});
 		playing.lineId = spokenState.spoken.at(-1)?.id ?? null;
 

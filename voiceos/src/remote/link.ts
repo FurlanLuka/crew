@@ -406,7 +406,7 @@ export class RemoteLink {
 	}
 
 	// The two releases differ, so the remote refused. One that is behind is updated from here once; its
-	// daemon moves to the new release on the next connect, as soon as none of its sessions is working.
+	// daemon moves to the new release on the next connect, at once.
 	private async fixVersion(refusal: VersionRefusal): Promise<void> {
 		const { name, host } = this.options.machine;
 		const plan = planVersionFix({

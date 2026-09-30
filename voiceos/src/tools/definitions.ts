@@ -153,7 +153,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'read_state',
 		description:
-			'Recent output lines of one session, or of all. Status, topic and what each session waits on are already in the message; call this only when the answer needs what a session actually printed.',
+			'Recent output lines of one session, or of all. Status, what each session was asked and what it waits on are already in the message; call this only when the answer needs what a session actually printed.',
 		input_schema: {
 			type: 'object',
 			properties: {

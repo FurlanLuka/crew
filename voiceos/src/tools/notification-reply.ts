@@ -5,7 +5,7 @@ import { createLogger } from '../log.js';
 import { isMidExchangeWithScreen } from '../state/exchange.js';
 import { endsInQuestion } from '../shared/spoken.js';
 import { isNamedIn } from './announced.js';
-import { listHeardBefore } from './asked-aloud.js';
+import { listHeardBefore, readLineRefs } from './asked-aloud.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
 import type { State } from '../shared/protocol.js';
@@ -27,7 +27,9 @@ interface NotificationParams {
 const wasJustHeard = ({ state, ref, toolContext }: NotificationParams): boolean => {
 	const heardFrom = toolContext.heardFrom ?? toolContext.now();
 
-	return listHeardBefore({ spoken: state.spoken, heardFrom }).some((line) => line.ref === ref);
+	return listHeardBefore({ spoken: state.spoken, heardFrom }).some((line) =>
+		readLineRefs(line).includes(ref),
+	);
 };
 
 export type NotificationReply =
@@ -75,6 +77,11 @@ export const askTarget = ({ state, input, toolContext }: AskTargetParams): ToolR
 	}
 
 	const screen = toolContext.screen;
+
+	// Words already sent this turn cannot also be held for the question.
+	if ((toolContext.sentTo?.size ?? 0) > 0) {
+		return fail('Not asked: the words were already sent this turn. Say nothing more.');
+	}
 
 	// Only right after that session's notification, and only on a session's screen: anywhere else it
 	// would start asking about everything.

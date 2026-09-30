@@ -143,6 +143,12 @@
 			"utterance": "Can you go into crew session?",
 			"context": "The options: \"crew project\", \"phone speak project\". Sessions the developer can go to: crew/main, crew/research, phone-speak/wrk1.",
 			"expect": "other"
+		},
+		{
+			"key": "target_answer",
+			"utterance": "The checkout one.",
+			"context": "The session asked about: checkout api, main",
+			"expect": "yes"
 		}
 	]
 }

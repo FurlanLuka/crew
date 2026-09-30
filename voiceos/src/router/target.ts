@@ -6,8 +6,17 @@ export type TargetAnswer = 'yes' | 'no' | 'other';
 
 // "Yes", "ja", "no", "ne", "here": an answer in any language. Anything else, or a check that did not
 // come back, is new words.
-export const readTargetAnswer = async (judge: Judge, utterance: string): Promise<TargetAnswer> => {
-	const answer = await judge({ key: 'target_answer', utterance });
+// session: how the session asked about is named, so "checkout" or "the checkout one" is a yes.
+export const readTargetAnswer = async (
+	judge: Judge,
+	utterance: string,
+	session?: string,
+): Promise<TargetAnswer> => {
+	const answer = await judge({
+		key: 'target_answer',
+		utterance,
+		...(session ? { context: `The session asked about: ${session}` } : {}),
+	});
 
 	return answer === 'yes' || answer === 'no' ? answer : 'other';
 };

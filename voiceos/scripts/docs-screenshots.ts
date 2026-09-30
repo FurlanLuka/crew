@@ -164,7 +164,6 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 			refs: ['checkout-api/main', 'signals/wrk1', `${REMOTE}:store-front/wrk2`],
 		},
 		{ type: 'names_loaded', names: { 'checkout-api/main': 'checkout' } },
-		{ type: 'topic_written', ref: 'admin/main', topic: 'Orders table pagination' },
 	);
 
 	for (const ref of [
@@ -200,13 +199,11 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 			text: 'Added **signals** to crew. Its worktree `signals/wrk1` is set up and its dev server answers on :4300.',
 		},
 		{ type: 'turn_ended', ref: 'setup', costUsd: 0.18, text: '' },
-		{ type: 'topic_written', ref: 'setup', topic: 'crew setup and housekeeping' },
 	);
 
 	// store-front/main: building the search box, mid-turn.
 	at(
 		420,
-		{ type: 'topic_written', ref: 'store-front/main', topic: 'Catalog search box' },
 		{
 			type: 'send',
 			ref: 'store-front/main',
@@ -289,7 +286,6 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 	// checkout-api/main: its turn ended with an answer.
 	at(
 		1500,
-		{ type: 'topic_written', ref: 'checkout-api/main', topic: 'Checkout retry backoff' },
 		{
 			type: 'send',
 			ref: 'checkout-api/main',
@@ -318,7 +314,6 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 	// signals/wrk1: asks the developer where the clicks should go.
 	at(
 		900,
-		{ type: 'topic_written', ref: 'signals/wrk1', topic: 'Click event storage' },
 		{
 			type: 'send',
 			ref: 'signals/wrk1',
@@ -354,7 +349,6 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 				ref: 'signals/wrk1',
 				needsUser: true,
 				text: 'asks: a new events table for clicks, or the orders table?',
-				topic: null,
 			},
 		);
 	}
@@ -362,12 +356,6 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 	// Build box: its store-front worktree is moving images to the CDN.
 	at(
 		600,
-		{ type: 'topic_written', ref: `${REMOTE}:setup`, topic: 'crew setup and housekeeping' },
-		{
-			type: 'topic_written',
-			ref: `${REMOTE}:store-front/wrk2`,
-			topic: 'Product images on the CDN',
-		},
 		{
 			type: 'send',
 			ref: `${REMOTE}:store-front/wrk2`,

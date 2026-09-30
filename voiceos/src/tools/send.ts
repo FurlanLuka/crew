@@ -338,13 +338,32 @@ export const sendText = async ({
 	const said = toolContext.utterance ?? text;
 	const { judge } = toolContext;
 
-	// "No" to Voice OS's own "Switch to checkout?" is an answer to Voice OS, not words for checkout.
-	if (isSwitchOfferFresh(state.switchOffer, toolContext.now()) && (await isBareNo(judge, said))) {
-		log.info('no to the switch offer: not sent', { ref });
+	// "No" or "yes" to Voice OS's own "Switch to checkout?" answers Voice OS, not words for a session.
+	// Fresh when the words were said: the kernel's own turn does not use up the developer's window.
+	const saidAt = toolContext.heardFrom ?? toolContext.now();
 
-		return fail(
-			`That "no" answers Voice OS's "Switch to ${state.switchOffer.ref}?": the developer stays where they are. Nothing was sent; say nothing.`,
-		);
+	if (isSwitchOfferFresh(state.switchOffer, saidAt)) {
+		const offered = state.switchOffer.ref;
+
+		if (await isBareNo(judge, said)) {
+			log.info('no to the switch offer: not sent', { ref });
+
+			return fail(
+				`That "no" answers Voice OS's "Switch to ${offered}?": the developer stays where they are. Nothing was sent; say nothing.`,
+			);
+		}
+
+		// Only a bare yes: "yes, push it" is words for a session, even while the offer is open.
+		if (
+			(await isBareAnswer(judge, said)) &&
+			(await judge({ key: 'approves', utterance: said })) === 'yes'
+		) {
+			log.info('yes to the switch offer: not sent', { ref });
+
+			return fail(
+				`That yes answers Voice OS's "Switch to ${offered}?": call switch_view ${offered}. Nothing was sent.`,
+			);
+		}
 	}
 
 	// "Yes, fix it" after Voice OS offered to fix this session's servers answers Voice OS, even once
@@ -365,7 +384,7 @@ export const sendText = async ({
 	// A bare yes or no for a question only announced there answers nothing the developer heard.
 	const refused =
 		isHeldQuestion(session) && (await isBareAnswer(judge, said))
-			? refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
+			? await refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
 			: null;
 
 	if (refused) {

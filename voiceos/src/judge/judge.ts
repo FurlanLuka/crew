@@ -74,7 +74,7 @@ const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	target_answer: {
-		ask: 'Voice OS asked "For <another session>?": whether the developer\'s last words were meant for it. yes: only agrees (yes, ja, that one). no: only declines (no, nein, here, this one). other: anything that is not just a yes or a no — an instruction, a question, new words.',
+		ask: 'Voice OS asked "For <another session>?": whether the developer\'s last words were meant for it. yes: only agrees (yes, ja, that one, or names the session asked about). no: only declines (no, nein, here, this one). other: anything that is not just a yes or a no — an instruction, a question, new words.',
 		answers: ['yes', 'no', 'other'],
 	},
 } as const;
