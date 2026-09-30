@@ -9,14 +9,14 @@ import {
 } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
-import { normalizeSaid } from '../state/helpers.js';
+import { countSpokenWords, normalizeSaid } from '../state/helpers.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import { buildSituationNote } from '../sessions/voice-context.js';
 import { type ToolResult, fail, succeed } from './results.js';
 import type { SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
 import type { NotesStore } from '../memory/notes.js';
-import { decideDelivery, joinNotes } from '../state/delivery.js';
+import { decideDelivery, type DeliverWish, joinNotes } from '../state/delivery.js';
 import { nameNotes, readWorkspace } from '../shared/notes.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { describeRecentAction } from './recent-action.js';
@@ -71,16 +71,13 @@ export const buildNotesPathNote = ({
 		: `The developer has no notes for ${nameNotes(workspace)} yet (they would be in ${path}).`;
 };
 
-export const MAX_BARE_ANSWER_WORDS = 4;
+const MAX_BARE_ANSWER_WORDS = 4;
 // A yes this long after Voice OS's fix offer is still about it: the offer itself lapses sooner.
 const OFFER_ANSWER_MS = 30 * 60_000;
 
 // A few words at most: anything longer is more than a yes or a no, in any language.
 export const isShortEnoughToAnswer = (text: string): boolean =>
-	normalizeSaid(text)
-		.replace(/[.!?,]+/g, '')
-		.split(' ')
-		.filter(Boolean).length <= MAX_BARE_ANSWER_WORDS;
+	countSpokenWords(text) <= MAX_BARE_ANSWER_WORDS;
 
 // Only a yes or a no, nothing more: the shape in code, the meaning from the judge.
 export const isBareAnswer = async (judge: Judge, text: string): Promise<boolean> =>
@@ -90,12 +87,19 @@ export const isBareAnswer = async (judge: Judge, text: string): Promise<boolean>
 export const isBareNo = async (judge: Judge, text: string): Promise<boolean> =>
 	isShortEnoughToAnswer(text) && (await judge({ key: 'refuses', utterance: text })) === 'yes';
 
-export const describeMisroutedAnswer = async (
-	state: State,
-	ref: string,
-	text: string,
-	judge: Judge,
-): Promise<string | null> => {
+interface DescribeMisroutedAnswerParams {
+	state: State;
+	ref: string;
+	text: string;
+	judge: Judge;
+}
+
+export const describeMisroutedAnswer = async ({
+	state,
+	ref,
+	text,
+	judge,
+}: DescribeMisroutedAnswerParams): Promise<string | null> => {
 	// Anything else the developer says goes through, declining the permission or plan with their words:
 	// they moved on. Only a bare yes or no sent as words is a routing slip that would decide the wrong way.
 	const ask = state.asks.find((pendingAsk) => pendingAsk.ref === ref);
@@ -153,6 +157,8 @@ interface SendTextParams {
 	isAboutMyNotes?: boolean;
 	// The words point back at what Voice OS just did (the kernel's about_last_action).
 	isAboutLastAction?: boolean;
+	// How the developer said the words should reach a busy session (the kernel's deliver).
+	deliver?: DeliverWish;
 }
 
 const toSaidWords = (text: string): string[] =>
@@ -184,7 +190,7 @@ const isAfterTakeBack = async (judge: Judge, said: string, part: string): Promis
 	(await judge({
 		key: 'take_back_before',
 		utterance: said,
-		context: `The part that would be sent: "${part}"`,
+		context: `The part: "${part}"`,
 	})) === 'yes';
 
 const isSameWords = (part: string, words: string): boolean =>
@@ -292,9 +298,6 @@ export const isMisroutedToSetup = async ({
 	return (await judge({ key: 'for_setup', utterance })) === 'no';
 };
 
-const isBusy = (session: Session): boolean =>
-	session.status === 'running' || session.status === 'blocked';
-
 const readKind = (kind: unknown): SendAck['kind'] =>
 	kind === 'question' || kind === 'redirect' ? kind : 'instruction';
 
@@ -329,6 +332,7 @@ export const sendText = async ({
 	toolContext,
 	isAboutMyNotes = false,
 	isAboutLastAction = false,
+	deliver,
 }: SendTextParams): Promise<ToolResult> => {
 	const session = state.sessions[ref];
 	const said = toolContext.utterance ?? text;
@@ -379,8 +383,7 @@ export const sendText = async ({
 				status: session.status,
 				kind: readKind(kind),
 				utterance: said,
-				// Asked only of a busy session: an idle one takes the words as they come.
-				wanted: isBusy(session) ? await judge({ key: 'delivery', utterance: said }) : 'default',
+				wanted: deliver ?? 'default',
 			})
 		: 'send';
 	const wouldGoAside = decided === 'aside';

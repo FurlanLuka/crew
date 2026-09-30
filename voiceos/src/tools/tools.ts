@@ -18,7 +18,9 @@ import {
 	sendText,
 	type SentWords,
 } from './send.js';
-import type { HandsFreeResult } from './hands-free.js';
+import { type HandsFreeResult, toListenMode } from './hands-free.js';
+import { countSpokenWords } from '../state/helpers.js';
+import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
 import { askTarget, decideNotificationReply } from './notification-reply.js';
@@ -81,28 +83,32 @@ const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): s
 	return spoken === normalizeName(GENERAL_NOTES) ? GENERAL_NOTES : null;
 };
 
-// "off" is push to talk: listening stops, the key still talks.
-const toListenMode = (answer: string): ListenMode | null => {
-	switch (answer) {
-		case 'hands-free':
-		case 'on-demand':
-		case 'push':
-			return answer;
-		case 'off':
-			return 'push';
-		default:
-			return null;
-	}
-};
-
 const MIN_LONG_SPEECH_WORDS = 10;
 const MAX_MUTE_WORDS = 2;
+// "Stop listening" is two words: one is a stop and nothing else.
+const MAX_STOP_WORDS = 1;
 
-const countSpokenWords = (text: string): number =>
-	text
-		.replace(/[^\p{L}\p{N}\s']+/gu, ' ')
-		.split(/\s+/)
-		.filter(Boolean).length;
+const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): ToolResult => {
+	if (mode === null) {
+		return fail(
+			'Not changed: the developer did not clearly ask for push to talk, on demand or hands-free.',
+		);
+	}
+
+	const result = toolContext.setListenMode(mode);
+
+	if (result === 'no_tab') {
+		return fail(
+			'Not changed: no browser tab to switch. Tell the developer to use the listening menu.',
+		);
+	}
+
+	return succeed(
+		result === 'changed'
+			? `listening is now ${mode}; Voice OS said so`
+			: `listening was already ${mode}; Voice OS said so`,
+	);
+};
 
 export interface HistoryEntry {
 	ts: string;
@@ -128,8 +134,7 @@ export interface ToolContext {
 	// Required so a server that forgets to wire them fails to compile, not a "Noted." that saved nothing.
 	mute: () => void;
 	saveDebugNote: (words: DebugNoteWords) => void;
-	// What the developer's words mean, asked of a small model on its own, in any language: the guard
-	// before an approval, a take-back, a mute, a change of listening.
+	// What the developer's words mean, in any language (judge/judge.ts says who asks).
 	judge: Judge;
 	// The developer's own notes, per workspace.
 	notes: NotesStore;
@@ -214,6 +219,7 @@ const sendRecorded = async ({
 		toolContext,
 		isAboutMyNotes: input.my_notes === true,
 		isAboutLastAction: input.about_last_action === true,
+		...(isDeliverWish(input.deliver) ? { deliver: input.deliver } : {}),
 	});
 
 	// The voice log records what the session got, not what the model wrote (often nothing).
@@ -302,12 +308,12 @@ export const executeTool = async (
 				return fail('empty text');
 			}
 
-			const misroutedAnswer = await describeMisroutedAnswer(
+			const misroutedAnswer = await describeMisroutedAnswer({
 				state,
-				target,
-				words.text,
-				toolContext.judge,
-			);
+				ref: target,
+				text: words.text,
+				judge: toolContext.judge,
+			});
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
@@ -322,11 +328,14 @@ export const executeTool = async (
 			// (speech-to-text punctuates a cut-off "and can you?" too), and so does a lyric or a video.
 			const said = (toolContext.utterance ?? '').trim();
 			// A sentence that ends (a question mark, a full stop) is finished, in any language.
-			const isRequest = /[?.!]$/.test(said) && said.split(/\s+/).length >= MIN_REQUEST_WORDS;
+			// Speech-to-text closes nearly everything with a full stop, so this refuses more than it
+			// must: a refusal only costs the kernel a second look, and it can still ignore words that
+			// were not said to anyone. Swallowing a request costs the developer the request.
+			const isRequest = /[?.!]$/.test(said) && countSpokenWords(said) >= MIN_REQUEST_WORDS;
 
 			// Fragments are a few words ("and can you"); a long stretch of speech is a thought or not
 			// for anyone — the developer's own thinking aloud was ignored as "unfinished".
-			const isLong = said.split(/\s+/).length >= MIN_LONG_SPEECH_WORDS;
+			const isLong = countSpokenWords(said) >= MIN_LONG_SPEECH_WORDS;
 
 			// A thought cut off mid-word ("…the thing with the—") is a fragment however long.
 			const isCutOff = /(?:—|-|…|\.\.\.)$/.test(said);
@@ -409,12 +418,12 @@ export const executeTool = async (
 				return fail('empty instruction');
 			}
 
-			const misroutedAnswer = await describeMisroutedAnswer(
+			const misroutedAnswer = await describeMisroutedAnswer({
 				state,
 				ref,
-				words.text,
-				toolContext.judge,
-			);
+				text: words.text,
+				judge: toolContext.judge,
+			});
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
@@ -572,8 +581,11 @@ export const executeTool = async (
 				toolContext.utterance !== undefined &&
 				!namesAnother &&
 				!toolContext.sentTo?.has(checked.ref) &&
-				(await toolContext.judge({ key: 'more_than_start', utterance: toolContext.utterance })) ===
-					'yes'
+				(await toolContext.judge({
+					key: 'more_than_start',
+					utterance: toolContext.utterance,
+					context: `The session: ${checked.ref}`,
+				})) === 'yes'
 			) {
 				// forward reaches only the session on screen: from elsewhere it is send_to.
 				const how =
@@ -671,27 +683,30 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			// "Stop listening" is about hands-free, whatever else "stop" means.
+			// "Stop" alone is only a stop, in any language: the judge is asked only when there is more.
 			if (
 				toolContext.utterance !== undefined &&
-				(await toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance })) ===
-					'yes'
+				countSpokenWords(toolContext.utterance) > MAX_STOP_WORDS
 			) {
-				return fail(
-					'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
-				);
-			}
+				const [aboutListening, saysInstead] = await Promise.all([
+					toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance }),
+					toolContext.judge({ key: 'says_instead', utterance: toolContext.utterance }),
+				]);
 
-			// "Stop the refactor and fix the login bug first" says what to do instead: a redirect,
-			// which Voice OS confirms before stopping anything.
-			if (
-				toolContext.utterance !== undefined &&
-				(await toolContext.judge({ key: 'says_instead', utterance: toolContext.utterance })) ===
-					'yes'
-			) {
-				return fail(
-					'Not interrupted: they said what to do instead. Forward it with kind redirect: Voice OS asks them whether to stop the work and switch.',
-				);
+				// "Stop listening" is about hands-free, whatever else "stop" means.
+				if (aboutListening === 'yes') {
+					return fail(
+						'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
+					);
+				}
+
+				// "Stop the refactor and fix the login bug first" says what to do instead: a redirect,
+				// which Voice OS confirms before stopping anything.
+				if (saysInstead === 'yes') {
+					return fail(
+						'Not interrupted: they said what to do instead. Forward it with kind redirect: Voice OS asks them whether to stop the work and switch.',
+					);
+				}
 			}
 
 			const isNamed =
@@ -726,18 +741,23 @@ export const executeTool = async (
 				countSpokenWords(toolContext.utterance) > MAX_MUTE_WORDS &&
 				(await toolContext.judge({ key: 'mute_only', utterance: toolContext.utterance })) !== 'yes'
 			) {
-				// "Stop listening" in another language reached for mute: point it at the right tool.
+				// "Stop listening" in another language reached for mute: it is a change of listening, made
+				// here, so the model has nothing to explain and a second call to get wrong.
 				const isAboutListening =
 					(await toolContext.judge({
 						key: 'about_listening',
 						utterance: toolContext.utterance,
 					})) === 'yes';
 
-				return fail(
-					isAboutListening
-						? 'Not muted: the developer spoke about how Voice OS listens. Call hands_free with the mode they asked for, and reply nothing: Voice OS says the change itself.'
-						: 'not a mute request; do nothing more',
+				if (!isAboutListening) {
+					return fail('not a mute request; do nothing more');
+				}
+
+				const mode = toListenMode(
+					await toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
 				);
+
+				return applyListenMode(toolContext, mode);
 			}
 
 			toolContext.mute();
@@ -884,25 +904,7 @@ export const executeTool = async (
 							await toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
 						);
 
-			if (mode === null) {
-				return fail(
-					'Not changed: the developer did not clearly ask for push to talk, on demand or hands-free.',
-				);
-			}
-
-			const result = toolContext.setListenMode(mode);
-
-			if (result === 'no_tab') {
-				return fail(
-					'Not changed: no browser tab to switch. Tell the developer to use the listening menu.',
-				);
-			}
-
-			return succeed(
-				result === 'changed'
-					? `listening is now ${mode}; Voice OS said so`
-					: `listening was already ${mode}; Voice OS said so`,
-			);
+			return applyListenMode(toolContext, mode);
 		}
 
 		case 'dev_offer': {

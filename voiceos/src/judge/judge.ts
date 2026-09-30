@@ -1,17 +1,18 @@
 // One narrow question about what the developer's words mean, asked of a small model on its own: the
-// guards that stop the kernel acting on words it misread, in any language. Only a guarded action
-// asks (an approval, a take-back, a mute, listening), so a plain forward costs nothing extra.
+// guards that stop the kernel acting on words it misread, in any language. Only a guard about to act
+// asks (an approval, a take-back, a mute, a change of listening, a stop, "For X?", a setup misroute),
+// after the code's own language-neutral checks, so a plain forward costs nothing extra.
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../log.js';
 
 const log = createLogger('judge');
 
-export const JUDGE_MODEL = 'claude-haiku-4-5';
+const JUDGE_MODEL = 'claude-haiku-4-5';
 // Past this the guard falls back to its safe side: a slow check never holds the developer up long.
-export const JUDGE_TIMEOUT_MS = 3_000;
+const JUDGE_TIMEOUT_MS = 3_000;
 
 // Each question with the answers it allows; 'unclear' is always allowed and always the safe side.
-export const JUDGE_QUESTIONS = {
+const JUDGE_QUESTIONS = {
 	approves: {
 		ask: 'Do these words say yes to what was asked (yes, go ahead, allow it)? A yes with a condition or more words after it is still a yes.',
 		answers: ['yes', 'no'],
@@ -37,7 +38,7 @@ export const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	take_back_before: {
-		ask: 'Do these words take back something said earlier in them, and then say something else instead?',
+		ask: 'Did the developer take something back ("scratch that", "vergiss das") and then say the part named below instead? no when the part is itself what they took back, or when nothing was taken back.',
 		answers: ['yes', 'no'],
 	},
 	mute_only: {
@@ -53,44 +54,28 @@ export const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	listen_mode: {
-		ask: 'Which way of listening do these words ask for?',
+		ask: 'Which way of listening do these words ask for? hands-free: always listening. on-demand: listening for its name. push: push to talk. off: stop listening.',
 		answers: ['hands-free', 'on-demand', 'push', 'off'],
 	},
 	asks_about_options: {
-		ask: 'Do these words ask a question about the options on offer, rather than choose one?',
-		answers: ['yes', 'no'],
-	},
-	debug_note: {
-		ask: 'Do these words ask Voice OS to save (add, take, make) a debug note?',
+		ask: 'Voice OS asked the developer to choose one of the options named below. Do these words ask something about the options (what one does, how they differ) rather than choose one? A choice said with a questioning voice ("the second?", "Postgres?") is a choice: no.',
 		answers: ['yes', 'no'],
 	},
 	for_setup: {
 		ask: "Are these words addressed to Voice OS's setup, or about crew workspaces, projects, worktrees or bindings?",
 		answers: ['yes', 'no'],
 	},
-	my_notes: {
-		ask: "Do these words mention the developer's own notes (their notes, not other notes)?",
-		answers: ['yes', 'no'],
-	},
-	back_reference: {
-		ask: 'Do these words point back at something just done or said ("this", "that", "it")?',
-		answers: ['yes', 'no'],
-	},
 	this_session: {
-		ask: 'Do these words name "this session", "the current one" or "the one on screen"?',
+		ask: 'Do these words refer to the session on screen with a word like "this" or "current" ("this session", "this one", "diese Sitzung", "ta seja"), rather than by a name?',
 		answers: ['yes', 'no'],
 	},
 	more_than_start: {
-		ask: 'Besides starting the session, do these words ask it for something more?',
+		ask: 'The developer asked Voice OS to start (open, run, launch) a coding session. Besides starting it, do these words ask that session to do some work?',
 		answers: ['yes', 'no'],
 	},
 	target_answer: {
-		ask: "Voice OS asked whether the developer's last words were for another session. yes: they say it was for that session. no: they say no, or that it was for this one, here. other: they say something new instead of answering.",
+		ask: 'Voice OS asked "For <another session>?": whether the developer\'s last words were meant for it. yes: only agrees (yes, ja, that one). no: only declines (no, nein, here, this one). other: anything that is not just a yes or a no — an instruction, a question, new words.',
 		answers: ['yes', 'no', 'other'],
-	},
-	delivery: {
-		ask: 'The session is busy. Should these words be answered on the side (a quick question), queued after its work, or taken right now instead of its work?',
-		answers: ['aside', 'queue', 'now', 'default'],
 	},
 } as const;
 
@@ -99,7 +84,7 @@ export type JudgeAnswer<K extends JudgeKey> =
 	| (typeof JUDGE_QUESTIONS)[K]['answers'][number]
 	| 'unclear';
 
-export interface JudgeParams<K extends JudgeKey> {
+interface JudgeParams<K extends JudgeKey> {
 	key: K;
 	utterance: string;
 	// What the question is about, when the words need it ("Voice OS asked: For checkout?").

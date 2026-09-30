@@ -115,7 +115,7 @@ const voiceOut = new VoiceOut({
 	// voiceIn is assigned below; it is only asked once speech is under way.
 	isListening: () => voiceIn.isListening(),
 });
-// The narrow check behind the guards (approvals, take-backs, mute, listening), in any language.
+// One judge for the kernel's guards and the router's "For X?".
 const judge = createJudge({ apiKey: keys.anthropic });
 const narrate = createNarrator(keys.anthropic);
 

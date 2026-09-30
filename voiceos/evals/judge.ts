@@ -9,6 +9,7 @@ import { createJudge, type JudgeKey } from '../src/judge/judge.js';
 interface JudgeCase {
 	key: JudgeKey;
 	utterance: string;
+	context?: string;
 	expect: string;
 }
 
@@ -30,7 +31,11 @@ const picked = cases.filter((testCase) => !onlyKeys || onlyKeys.has(testCase.key
 const results = await Promise.all(
 	picked.map(async (testCase) => ({
 		...testCase,
-		got: await judge({ key: testCase.key, utterance: testCase.utterance }),
+		got: await judge({
+			key: testCase.key,
+			utterance: testCase.utterance,
+			...(testCase.context ? { context: testCase.context } : {}),
+		}),
 	})),
 );
 const failed = results.filter((result) => result.got !== result.expect);

@@ -139,6 +139,13 @@ describe('VoiceInput', () => {
 		expect(harness.talkStarts).toHaveLength(1);
 	});
 
+	it('press → the languages the developer picked go to speech-to-text as they stand then', () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'set_languages', languages: ['sl', 'en'] });
+		harness.input.start('c1');
+		expect(harness.session?.languages).toEqual(['en', 'sl']);
+	});
+
 	it('partial → transcript, visible to every client, headed for Voice OS', () => {
 		const harness = createHarness();
 		harness.input.start('c1');

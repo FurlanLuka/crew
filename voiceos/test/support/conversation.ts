@@ -2,6 +2,7 @@
 // and voice, wired as the app wires them. What the developer hears is the list of clips that played
 // to the end, in order, with their own words marked in between.
 import { englishJudge } from './english-judge.js';
+import type { Judge } from '../../src/judge/judge.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,12 +44,15 @@ interface CreateConversationParams {
 	view: string | null;
 	// A tab listens all the time (on demand, hands-free).
 	isListening?: boolean;
+	// The English patterns unless a conversation needs the judge to hear something else.
+	judge?: Judge;
 }
 
 export const createConversation = ({
 	refs,
 	view,
 	isListening = false,
+	judge = englishJudge,
 }: CreateConversationParams) => {
 	let now = 1_000_000;
 	const clock = () => now;
@@ -137,13 +141,13 @@ export const createConversation = ({
 			readHistory: () => [],
 			mute: () => voiceOut.mute(),
 			saveDebugNote: () => undefined,
-			judge: englishJudge,
+			judge,
 			notes: createNullNotes(),
 		},
 	});
 	const router = new UtteranceRouter({
 		store,
-		judge: englishJudge,
+		judge,
 		kernel: speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut),
 		now: clock,
 	});

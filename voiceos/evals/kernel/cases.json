@@ -1070,7 +1070,8 @@
 			},
 			"calls": [
 				{
-					"name": "hands_free"
+					"name": "hands_free|mute",
+					"ok": true
 				}
 			],
 			"forbid_calls": ["interrupt"]
@@ -1091,7 +1092,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": "Branch"
+					"text_includes": "Branch",
+					"input": {
+						"deliver": "aside"
+					}
 				}
 			],
 			"no_reply": true
@@ -3095,7 +3099,10 @@
 					"input": {
 						"kind": "instruction"
 					},
-					"text_includes": "lint"
+					"text_includes": "lint",
+					"not_input": {
+						"deliver": "aside"
+					}
 				}
 			],
 			"no_reply": true
@@ -3116,7 +3123,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": "branch"
+					"text_includes": "branch",
+					"input": {
+						"deliver": "aside"
+					}
 				}
 			],
 			"no_reply": true
@@ -4674,6 +4684,146 @@
 				}
 			],
 			"forbid_calls": ["rename_session"]
+		},
+		{
+			"id": "deliver-now-de",
+			"utterance": "Schick ihm das sofort: nimm die neue Tabelle.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"deliver": "now"
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "my-notes-de",
+			"utterance": "Schau in meine Notizen und mach das Nächste davon.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"my_notes": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "release-notes-not-my-notes",
+			"utterance": "Update the release notes for the retry fix.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"not_input": {
+						"my_notes": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "check-this-debug-note-sl",
+			"utterance": "Poglej si ta debug zapisek in ga popravi.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"about_last_action": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "run-tests-not-last-action",
+			"utterance": "Run the tests.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"not_input": {
+						"about_last_action": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "my-notes",
+			"utterance": "Check my notes and do the next one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"my_notes": true
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "check-this-debug-note",
+			"utterance": "Check this debug note and fix it.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"input": {
+						"about_last_action": true
+					}
+				}
+			],
+			"no_reply": true
 		}
 	]
 }

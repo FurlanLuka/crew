@@ -2,7 +2,7 @@ import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
 import { addMeanwhile, playMeanwhile } from './meanwhile.js';
-import { DEFAULT_LANGUAGES, toLanguages } from '../shared/languages.js';
+import { defaultLanguages, toLanguages } from '../shared/languages.js';
 import {
 	decideGoBack,
 	describeGoBack,
@@ -165,7 +165,7 @@ export const createInitialState = (): State => ({
 	machines: {},
 	pinned: [],
 	names: {},
-	languages: DEFAULT_LANGUAGES,
+	languages: defaultLanguages(),
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({

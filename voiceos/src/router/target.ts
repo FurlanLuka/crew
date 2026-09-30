@@ -1,4 +1,4 @@
-// The developer's answer to "For checkout?", settled in code: the held words go where they said.
+// The developer's answer to "For checkout?", read by the judge: the held words go where they said.
 import type { Judge } from '../judge/judge.js';
 import type { Store } from '../state/store.js';
 

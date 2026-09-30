@@ -25,11 +25,18 @@ const isBareTakeBack = async (toolContext: ToolContext): Promise<boolean> => {
 // "That was for store front", "das war für checkout": the words went to the wrong session, so the
 // one that got them is not sent them again as a correction. A named other session says so in any
 // language.
-const isSaidToBeMisrouted = async (
-	state: State,
-	ref: string,
-	toolContext: ToolContext,
-): Promise<boolean> => {
+interface IsSaidToBeMisroutedParams {
+	state: State;
+	// The session that got the words.
+	ref: string;
+	toolContext: ToolContext;
+}
+
+const isSaidToBeMisrouted = async ({
+	state,
+	ref,
+	toolContext,
+}: IsSaidToBeMisroutedParams): Promise<boolean> => {
 	const said = toolContext.utterance;
 
 	if (said === undefined) {
@@ -168,7 +175,7 @@ const takeBack = async ({ state, ref, toolContext }: TakeBackParams): Promise<To
 	// correction for the session, which undoing would lose ("remove that, I meant the TTS tags") —
 	// unless it says the words were for someone else ("that was for store front").
 	if (!('id' in carrier)) {
-		const isMisroute = await isSaidToBeMisrouted(state, ref, toolContext);
+		const isMisroute = await isSaidToBeMisrouted({ state, ref, toolContext });
 
 		if (!isMisroute && !(await isBareTakeBack(toolContext))) {
 			return sendCorrection({ state, ref, toolContext });

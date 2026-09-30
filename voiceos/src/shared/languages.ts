@@ -19,18 +19,18 @@ export const SPOKEN_LANGUAGES = [
 	{ code: 'hi', name: 'Hindi' },
 ] as const;
 
-export const DEFAULT_LANGUAGES = ['en'];
+export const DEFAULT_LANGUAGES: readonly string[] = ['en'];
 
-const KNOWN = new Set<string>(SPOKEN_LANGUAGES.map((language) => language.code));
+export const defaultLanguages = (): string[] => [...DEFAULT_LANGUAGES];
 
 // Known codes, each once, in the list's order; never empty.
 export const toLanguages = (codes: unknown): string[] => {
 	const picked = Array.isArray(codes)
 		? new Set(codes.filter((code) => typeof code === 'string'))
 		: new Set();
-	const known = SPOKEN_LANGUAGES.map((language) => language.code).filter(
-		(code) => picked.has(code) && KNOWN.has(code),
+	const known = SPOKEN_LANGUAGES.map((language) => language.code).filter((code) =>
+		picked.has(code),
 	);
 
-	return known.length > 0 ? known : DEFAULT_LANGUAGES;
+	return known.length > 0 ? known : defaultLanguages();
 };

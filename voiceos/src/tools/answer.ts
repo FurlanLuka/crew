@@ -179,30 +179,31 @@ const countWords = (text: string): number => text.split(' ').filter(Boolean).len
 
 const hasPhrase = (text: string, phrase: string): boolean => ` ${text} `.includes(` ${phrase} `);
 
-const isSpokenPick = (bare: string, labels: string[]): boolean => {
-	// Exactly one label, even when another contains it ("Postgres" beside "Postgres + Redis") or it
-	// opens like a question ("Do both").
-	if (ORDINALS.has(bare) || labels.includes(bare)) {
-		return true;
-	}
-
-	if (!bare) {
-		return false;
-	}
-
-	// Naming two options is weighing them, not choosing one.
+// Could be a pick: one option named with a few words around it ("use Postgres?"), or none named at
+// all ("die zweite?", an ordinal in another language). Two named is weighing them; a long sentence
+// around one is about it ("what does Postgres do for us here?").
+const couldBePick = (bare: string, labels: string[]): boolean => {
 	const named = labels.filter(
 		(label) => label && (hasPhrase(bare, label) || hasPhrase(label, bare)),
 	);
 
-	return named.length === 1 && countWords(bare) <= countWords(named[0]!) + MAX_PICK_EXTRA_WORDS;
+	return (
+		named.length === 0 ||
+		(named.length === 1 && countWords(bare) <= countWords(named[0]!) + MAX_PICK_EXTRA_WORDS)
+	);
 };
 
-export const isClarifyingQuestion = async (
-	ask: QuestionAsk,
-	utterance: string | undefined,
-	judge: Judge,
-): Promise<boolean> => {
+interface IsClarifyingQuestionParams {
+	ask: QuestionAsk;
+	utterance: string | undefined;
+	judge: Judge;
+}
+
+export const isClarifyingQuestion = async ({
+	ask,
+	utterance,
+	judge,
+}: IsClarifyingQuestionParams): Promise<boolean> => {
 	// "What does option two do?" asks about the options; "the second?", "Postgres?" or "use
 	// Postgres?" picks one with a questioning voice.
 	if (!utterance || !endsInQuestion(utterance)) {
@@ -212,18 +213,21 @@ export const isClarifyingQuestion = async (
 	const labels = (findOpenQuestion(ask)?.question.options ?? []).map((option) =>
 		readBareOption(option.label),
 	);
-
 	const bare = readBareOption(utterance);
 
-	// An option's label or place said back ("Postgres?", "the second?") is a pick in any language;
-	// one named with words around it ("why Postgres?", "use Postgres?") is a pick only if the judge
-	// hears no question about it.
+	// A label said back, or an English ordinal, is a pick without asking.
 	if (ORDINALS.has(bare) || labels.includes(bare)) {
 		return false;
 	}
 
+	// Unclear forwards it as a question: the session answers, and the question keeps waiting.
 	return (
-		!isSpokenPick(bare, labels) || (await judge({ key: 'asks_about_options', utterance })) !== 'no'
+		!couldBePick(bare, labels) ||
+		(await judge({
+			key: 'asks_about_options',
+			utterance,
+			context: `The options: ${labels.map((label) => `"${label}"`).join(', ')}`,
+		})) !== 'no'
 	);
 };
 
@@ -344,12 +348,12 @@ export const answerAsk = async ({
 			);
 		}
 
-		const misroutedAnswer = await describeMisroutedAnswer(
+		const misroutedAnswer = await describeMisroutedAnswer({
 			state,
-			checked.ref,
-			reply,
-			toolContext.judge,
-		);
+			ref: checked.ref,
+			text: reply,
+			judge: toolContext.judge,
+		});
 
 		if (misroutedAnswer) {
 			return fail(misroutedAnswer);
@@ -399,7 +403,11 @@ export const answerAsk = async ({
 		decision === 'choose' &&
 		liveAsk.kind === 'question' &&
 		toolContext.utterance !== undefined &&
-		(await isClarifyingQuestion(liveAsk, toolContext.utterance, toolContext.judge))
+		(await isClarifyingQuestion({
+			ask: liveAsk,
+			utterance: toolContext.utterance,
+			judge: toolContext.judge,
+		}))
 	) {
 		const said = toolContext.utterance.trim();
 

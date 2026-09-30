@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { writeJsonAtomic } from './json-file.js';
 import { createLogger } from '../log.js';
-import { DEFAULT_LANGUAGES, toLanguages } from '../shared/languages.js';
+import { defaultLanguages, toLanguages } from '../shared/languages.js';
 import type { Store } from '../state/store.js';
 
 const log = createLogger('languages');
@@ -11,7 +11,7 @@ export const loadLanguages = (file: string): string[] => {
 		return toLanguages(JSON.parse(readFileSync(file, 'utf8')));
 	} catch {
 		// A missing or corrupt file is English, as before the setting.
-		return DEFAULT_LANGUAGES;
+		return defaultLanguages();
 	}
 };
 

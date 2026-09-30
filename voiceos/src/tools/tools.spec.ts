@@ -1,3 +1,4 @@
+import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
 import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type { NoteWords } from '../memory/notes.js';
@@ -31,52 +32,6 @@ import { describeSession } from './session-view.js';
 import { carriesWords } from '../router/kernel.js';
 import { isClarifyingQuestion } from './answer.js';
 import type { QuestionAsk } from '../shared/questions.js';
-
-// What every instruction carries to the reducer, which says the situation line when there is one.
-const INSTRUCTION_ACK = { kind: 'instruction' } as const;
-
-const createToolContext = (patch: Partial<State> = {}) => {
-	const refs = ['store-front/main', 'store-front/wrk1', 'checkout-api/main'];
-	const sessions: State['sessions'] = Object.fromEntries(
-		refs.map((ref) => [
-			ref,
-			{
-				...createSession({ ref, label: ref, branch: '', cwd: '/w', dirs: [], isPinned: false }),
-				status: 'idle' as const,
-			},
-		]),
-	);
-	sessions['checkout-api/main'] = {
-		...sessions['checkout-api/main']!,
-		status: 'stopped',
-		topic: 'Checkout retry backoff',
-	};
-	const state: State = {
-		...createInitialState(),
-		sessions,
-		order: refs,
-		focus: 'store-front/main',
-		...patch,
-	};
-	const actions: Action[] = [];
-	const tools: ToolContext = {
-		getState: () => state,
-		dispatch: (action) => actions.push(action),
-		readHistory: ({ ref, query, limit }) => [
-			{ ts: '2026-09-24', ref: ref ?? 'store-front/main', asked: query, did: `limit ${limit}` },
-		],
-		now: () => 0,
-		asks: state.asks,
-		mute: () => {},
-		saveDebugNote: () => {},
-		judge: englishJudge,
-		notes: createNullNotes(),
-		setListenMode: () => 'changed' as const,
-		openUrl: () => true,
-	};
-
-	return { tools, actions };
-};
 
 describe('tool definitions', () => {
 	it('every tool has an object schema that forbids extra keys', () => {
@@ -2957,23 +2912,28 @@ describe('side answers', () => {
 		]);
 	});
 
-	it('"by the way" dropped from the forwarded text → still aside, read from what was said', async () => {
+	it('deliver aside ("by the way", read by the kernel) → an instruction still goes aside', async () => {
 		const { tools, actions } = running();
 
 		await executeTool(
 			'send_to',
-			{ ref: 'store-front/main', text: 'Run the linter too.', kind: 'instruction' },
+			{
+				ref: 'store-front/main',
+				text: 'Run the linter too.',
+				kind: 'instruction',
+				deliver: 'aside',
+			},
 			{ ...tools, utterance: 'by the way, have store front run the linter too' },
 		);
 
 		expect(actions[0]).toMatchObject({ aside: true });
 	});
 
-	it('"ask it right now: …" to a working session → sent with isNow, and the result says it stops for them', async () => {
+	it('deliver now to a working session → sent with isNow, and the result says it stops for them', async () => {
 		const { tools, actions } = running();
 		const result = await executeTool(
 			'forward',
-			{ text: 'Why is the build red?', kind: 'question' },
+			{ text: 'Why is the build red?', kind: 'question', deliver: 'now' },
 			{
 				...tools,
 				forwardTo: 'store-front/main',
@@ -3968,7 +3928,7 @@ describe('words that ask about a waiting question', () => {
 	});
 
 	const isForwarded = (labels: string[], utterance: string) =>
-		isClarifyingQuestion(labelled(labels), utterance, englishJudge);
+		isClarifyingQuestion({ ask: labelled(labels), utterance, judge: englishJudge });
 
 	it.each([
 		[['Postgres (Recommended)', 'SQLite'], 'Postgres?'],

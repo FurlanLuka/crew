@@ -221,6 +221,14 @@ export const pushNotice = ({ state, ref, text, stamped, suffix }: PushNoticePara
 	);
 };
 
+// Words in any script, punctuation and dashes not counted: the one measure the language-neutral
+// checks use ("a word or two", "a few words at most").
+export const countSpokenWords = (text: string): number =>
+	text
+		.replace(/[^\p{L}\p{N}\s']+/gu, ' ')
+		.split(/\s+/)
+		.filter(Boolean).length;
+
 // How the same words are recognised when said twice: case and spacing do not count.
 export const normalizeSaid = (text: string): string =>
 	text.trim().replace(/\s+/g, ' ').toLowerCase();

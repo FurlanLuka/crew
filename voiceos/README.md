@@ -135,8 +135,10 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   `restoreAutoEffects`).
 - **Asides.** While a session works, a question to it is answered aside (`sessions/side-answer.ts`):
   a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
-  "By the way" forces an aside, "queue it" forces the queue, and a question that needs tools or
-  changes the work is queued after all (`state/delivery.ts`, `decideDelivery`). Asides are not saved.
+  "By the way" forces an aside, "queue it" forces the queue, "send it now" replaces the work (the
+  kernel's `deliver` argument for spoken words, in any language; typed text keeps the English
+  keywords), and a question that needs tools or changes the work is queued after all
+  (`state/delivery.ts`, `decideDelivery`). Asides are not saved.
 - **Held lines.** A session off screen does not speak its lines. Its update waits in `meanwhile`
   and is said with the others' in one line once it is quiet (`speech/meanwhile.ts`, `state/meanwhile.ts`),
   and the full line plays on switch (`state/held-lines.ts`).
@@ -163,9 +165,10 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
 - **No English patterns over what the developer means.** A guard that reads the developer's words
-  (consent, take-back, misroute, mute, listening, delivery, "For X?") asks the judge, after
+  (consent, take-back, misroute, mute, listening, a stop, "For X?") asks the judge, after
   language-neutral fast paths in code: word counts, a closing `?`, verbatim spans, session names,
-  option labels. The speech layer (`speech/turns.ts` stop words and "end of turn", `wake.ts`, filler)
+  option labels. What the kernel already reads while routing is a tool argument instead, at no extra
+  call: `deliver`, `my_notes` (required, so it is always decided), `about_last_action`. The speech layer (`speech/turns.ts` stop words and "end of turn", `wake.ts`, filler)
   and typed keywords stay English on purpose. The languages Soniox expects are `state.languages`
   (`shared/languages.ts`, saved in `languages.json`), sent as `language_hints`.
 

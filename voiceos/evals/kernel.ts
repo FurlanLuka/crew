@@ -10,7 +10,8 @@ import { createFixtureState, type FixtureContext } from '../test/support/state.j
 import { attempt, mapPool } from './pool.js';
 
 interface ExpectedCall {
-	name: ToolName;
+	// A tool, or tools joined by "|" when either does what the developer asked.
+	name: ToolName | `${ToolName}|${ToolName}`;
 	ref?: string | null;
 	action?: string;
 	// Arguments that must match exactly (an answer's decision, a fix offer's accept).
@@ -115,7 +116,8 @@ export const findTextProblems = (text: string, expected: ExpectedCall): TextProb
 };
 
 const matchesCall = (call: Call, expected: ExpectedCall): boolean => {
-	if (call.name !== expected.name) {
+	// "hands_free|mute": either tool gets the developer what they asked for.
+	if (!expected.name.split('|').includes(call.name)) {
 		return false;
 	}
 

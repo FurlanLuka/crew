@@ -106,13 +106,21 @@ const PINNED_VIEW_PROPERTY = {
 const MY_NOTES_PROPERTY = {
 	type: 'boolean',
 	description:
-		'true only when the developer mentions their own notes ("my notes", in any language): the session is told where they are. Not the release notes, not debug notes.',
+		'Whether the developer mentions their own notes, in any language ("my notes", "meine Notizen", "moje beležke"): the session is told where they are. Not the release notes, not debug notes.',
 };
 
 const ABOUT_LAST_ACTION_PROPERTY = {
 	type: 'boolean',
 	description:
-		'true when the words point back at what Voice OS itself just did or saved ("check this debug note", "look at that note"): the session is told what it was.',
+		'true when the words point back at what Voice OS itself just did or saved, in any language ("check this debug note", "schau dir die Notiz an", "poglej ta zapisek"): the session is told what it was.',
+};
+
+// Read by the kernel in whatever language was spoken; only a busy session is affected.
+const DELIVER_PROPERTY = {
+	type: 'string',
+	enum: ['aside', 'queue', 'now'],
+	description:
+		'Only when the developer says how the words should reach a working session, in any language: aside — "by the way", "übrigens", a quick side question; queue — after its current work ("queue it"); now — instead of its current work ("send it now"). Leave out otherwise.',
 };
 
 // The kernel never writes what a session reads: Voice OS sends the words as heard.
@@ -188,8 +196,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				continues: CONTINUES_PROPERTY,
 				my_notes: MY_NOTES_PROPERTY,
 				about_last_action: ABOUT_LAST_ACTION_PROPERTY,
+				deliver: DELIVER_PROPERTY,
 			},
-			required: ['ref', 'kind'],
+			required: ['ref', 'kind', 'my_notes'],
 			additionalProperties: false,
 		},
 	},
@@ -439,8 +448,9 @@ export const FORWARD_TOOL: ToolDefinition = {
 			continues: CONTINUES_PROPERTY,
 			my_notes: MY_NOTES_PROPERTY,
 			about_last_action: ABOUT_LAST_ACTION_PROPERTY,
+			deliver: DELIVER_PROPERTY,
 		},
-		required: ['kind'],
+		required: ['kind', 'my_notes'],
 		additionalProperties: false,
 	},
 };

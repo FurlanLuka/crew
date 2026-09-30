@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Input, PendingAsk, SessionStatus, State } from '../shared/protocol.js';
 import type { SendAck } from '../shared/ack.js';
 import type { Effect } from './reducer.js';
-import { decideDelivery, type Delivery } from './delivery.js';
+import { decideDelivery, type DeliverWish, type Delivery } from './delivery.js';
 import {
 	idleSession,
 	permissionAsk,
@@ -50,6 +50,20 @@ describe('decideDelivery', () => {
 		['running', 'instruction', 'tell it that right now the tests are red', 'send'],
 	])('%s, %s, %p → %s', (status, kind, utterance, delivery) =>
 		expect(decideDelivery({ status, kind, utterance })).toBe(delivery),
+	);
+	// Spoken words: the kernel's deliver decides, and no English keyword in them is read.
+	it.each<[SessionStatus, 'question' | 'instruction', DeliverWish | 'default', string, Delivery]>([
+		['running', 'instruction', 'aside', 'übrigens, lint auch', 'aside'],
+		['running', 'question', 'queue', 'welche Datei?', 'send'],
+		['running', 'instruction', 'now', 'mach das sofort', 'now'],
+		['blocked', 'instruction', 'now', 'mach das sofort', 'send'],
+		['running', 'question', 'default', 'by the way, which file?', 'aside'],
+		['running', 'instruction', 'default', 'by the way, run the linter', 'send'],
+		['running', 'instruction', 'default', 'send it now: use the new table', 'send'],
+		['idle', 'question', 'aside', 'welche Datei?', 'send'],
+		['idle', 'instruction', 'now', 'mach das sofort', 'send'],
+	])('spoken: %s, %s, deliver %s, %p → %s', (status, kind, wanted, utterance, delivery) =>
+		expect(decideDelivery({ status, kind, utterance, wanted })).toBe(delivery),
 	);
 });
 

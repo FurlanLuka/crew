@@ -345,14 +345,20 @@ const decideWanted = (
 	}
 };
 
+export const DELIVER_WISHES = ['aside', 'queue', 'now'] as const;
+export type DeliverWish = (typeof DELIVER_WISHES)[number];
+
+export const isDeliverWish = (value: unknown): value is DeliverWish =>
+	DELIVER_WISHES.includes(value as DeliverWish);
+
 export interface DecideDeliveryParams {
 	status: SessionStatus;
 	// The kernel's reading of the words; absent for typed text, which goes aside only when asked to.
 	kind?: 'question' | 'instruction' | 'redirect';
 	// What the developer actually said: typed words go aside on "by the way", queue on "queue it".
 	utterance: string;
-	// Spoken words, judged in their own language (the judge's delivery answer): no keywords read.
-	wanted?: 'aside' | 'queue' | 'now' | 'default' | 'unclear';
+	// Spoken words, read by the kernel in their own language (its deliver argument): no keywords read.
+	wanted?: DeliverWish | 'default';
 }
 
 export type Delivery = 'send' | 'aside' | 'now';

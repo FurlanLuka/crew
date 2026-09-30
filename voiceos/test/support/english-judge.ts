@@ -29,20 +29,12 @@ const ON_PATTERN = /\b(?:on|start|enable|resume)\b/i;
 const OFF_PATTERN = /\b(?:off|stop|disable|pause)\b/i;
 const QUESTION_LEAD_PATTERN =
 	/^(?:what|what's|whats|why|how|which|who|when|where|does|do|is|are|can|could|should|would|will)\b/;
-const DEBUG_NOTE_REQUEST_PATTERN =
-	/^\s*(?:(?:okay|ok|so|hey|and|please)[,\s]+)*(?:(?:can|could|would) you\s+)?(?:add|take|make)\s+(?:a\s+|another\s+)?debug\s*notes?\b/i;
 const SETUP_ADDRESS_PATTERN =
 	/^\s*(?:(?:hey|okay|ok|so)[,\s]+)?(?:voice\s*os|voiceos|setup)\b\s*[,:]/i;
 const SETUP_WORK_PATTERN =
 	/\b(?:worktrees?|workspaces?|projects?|bindings?|crew (?:fix|verify|check)|register)\b/i;
-const MY_NOTES_PATTERN = /\bmy (?:own )?notes\b/i;
-const BACK_REFERENCE_PATTERN = /\b(?:this|that|it|the last one|the note|what (?:you|i) just)\b/i;
 const THIS_SESSION_PATTERN = /\b(?:this|the current) (?:session|one|claude)\b/i;
 const BARE_NO_PATTERN = /^(?:no|nope|nah|not that one|here|stay|keep it here)\b/i;
-const ASIDE_PATTERN = /\b(?:by the way|btw)\b/i;
-const QUEUE_PATTERN = /\bqueue it\b/i;
-const NOW_PATTERN =
-	/\b(?:send|ask|tell)\s+(?:it|them|claude|this|that)\b(?:(?:\s+(?!(?:that|why|what|how|whether|if|when|where|which|who)\b)\w+){0,3}?\s+(?:right now|directly|immediately)|\s+now)\b/i;
 
 const bare = (text: string): string =>
 	text
@@ -77,17 +69,17 @@ const readListenMode = (said: string): JudgeAnswer<'listen_mode'> => {
 	return isOn === isOff ? 'unclear' : isOn ? 'hands-free' : 'off';
 };
 
-const isSendNow = (said: string): boolean => {
-	const phrase = NOW_PATTERN.exec(said);
-
-	return (
-		phrase !== null && (said.replace(phrase[0], ' ').match(/[\p{L}\p{N}']+/gu) ?? []).length >= 2
-	);
-};
-
 const yesIf = (isYes: boolean): 'yes' | 'no' => (isYes ? 'yes' : 'no');
 
-const readEnglish = (key: JudgeKey, said: string): string => {
+// Where the part named in the context starts: a take-back only counts before it.
+const findPart = (said: string, context = ''): number => {
+	const part = /"(.*)"$/.exec(context)?.[1] ?? '';
+	const at = said.toLowerCase().indexOf(part.toLowerCase());
+
+	return part && at >= 0 ? at : said.length;
+};
+
+const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 	switch (key) {
 		case 'approves':
 			return yesIf(CONSENT_PATTERN.test(said));
@@ -102,7 +94,7 @@ const readEnglish = (key: JudgeKey, said: string): string => {
 		case 'misrouted':
 			return yesIf(MISROUTE_PATTERN.test(said));
 		case 'take_back_before':
-			return yesIf(TAKE_BACK_PATTERN.test(said));
+			return yesIf(TAKE_BACK_PATTERN.test(said.slice(0, findPart(said, context))));
 		case 'mute_only':
 			return yesIf(
 				MUTE_REQUEST_PATTERN.test(
@@ -123,14 +115,8 @@ const readEnglish = (key: JudgeKey, said: string): string => {
 			return readListenMode(said);
 		case 'asks_about_options':
 			return yesIf(QUESTION_LEAD_PATTERN.test(bare(said)));
-		case 'debug_note':
-			return yesIf(DEBUG_NOTE_REQUEST_PATTERN.test(said));
 		case 'for_setup':
 			return yesIf(SETUP_ADDRESS_PATTERN.test(said) || SETUP_WORK_PATTERN.test(said));
-		case 'my_notes':
-			return yesIf(MY_NOTES_PATTERN.test(said));
-		case 'back_reference':
-			return yesIf(BACK_REFERENCE_PATTERN.test(said));
 		case 'this_session':
 			return yesIf(THIS_SESSION_PATTERN.test(said));
 		case 'more_than_start':
@@ -141,22 +127,33 @@ const readEnglish = (key: JudgeKey, said: string): string => {
 				: bare(said).split(' ').length <= 4 && isPlainConsent(bare(said))
 					? 'yes'
 					: 'other';
-		case 'delivery':
-			return ASIDE_PATTERN.test(said)
-				? 'aside'
-				: QUEUE_PATTERN.test(said)
-					? 'queue'
-					: isSendNow(said)
-						? 'now'
-						: 'default';
 	}
 };
 
-export const englishJudge: Judge = async ({ key, utterance }) =>
-	readEnglish(key, utterance) as JudgeAnswer<typeof key>;
+export const englishJudge: Judge = async ({ key, utterance, context }) =>
+	readEnglish(key, utterance, context) as JudgeAnswer<typeof key>;
 
 // For a spec that means one answer whatever the words are.
 export const judgeAlways =
 	(answer: string): Judge =>
 	async () =>
 		answer as never;
+
+// A fast path that decides alone: the spec fails if the judge is asked at all.
+export const judgeNever: Judge = async ({ key }) => {
+	throw new Error(`the judge was asked ${key}`);
+};
+
+// One answer per question, for guards that ask two ("not muted" asks whether it was about listening);
+// a question not listed is a mistake in the spec.
+export const judgeWith =
+	(answers: Partial<Record<JudgeKey, string>>): Judge =>
+	async ({ key }) => {
+		const answer = answers[key];
+
+		if (answer === undefined) {
+			throw new Error(`the judge was asked ${key}, which the spec did not expect`);
+		}
+
+		return answer as never;
+	};

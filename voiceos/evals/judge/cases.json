@@ -47,20 +47,74 @@
 		{ "key": "listen_mode", "utterance": "Stop listening.", "expect": "off" },
 		{ "key": "listen_mode", "utterance": "Schalte Freisprechen ein.", "expect": "hands-free" },
 		{ "key": "listen_mode", "utterance": "Preklopi na push to talk.", "expect": "push" },
-		{ "key": "asks_about_options", "utterance": "¿Qué hace la opción dos?", "expect": "yes" },
-		{ "key": "asks_about_options", "utterance": "Die zweite.", "expect": "no" },
+		{
+			"key": "asks_about_options",
+			"utterance": "¿Qué hace la opción dos?",
+			"context": "The options: \"postgres\", \"sqlite\"",
+			"expect": "yes"
+		},
+		{
+			"key": "asks_about_options",
+			"utterance": "Die zweite?",
+			"context": "The options: \"postgres\", \"sqlite\"",
+			"expect": "no"
+		},
 		{ "key": "target_answer", "utterance": "Ja.", "expect": "yes" },
 		{ "key": "target_answer", "utterance": "Ne, tukaj.", "expect": "no" },
 		{
 			"key": "target_answer",
-			"utterance": "Actually, run the linter on the whole repo first.",
+			"utterance": "Run the linter first.",
 			"expect": "other"
 		},
 		{
-			"key": "delivery",
-			"utterance": "Übrigens, welche Datei hast du geändert?",
-			"expect": "aside"
+			"key": "take_back_before",
+			"utterance": "Rename the file to utils, scratch that, run the linter instead.",
+			"context": "The part: \"run the linter instead.\"",
+			"expect": "yes"
 		},
-		{ "key": "delivery", "utterance": "Pošlji mu to takoj: ustavi migracijo.", "expect": "now" }
+		{
+			"key": "take_back_before",
+			"utterance": "Benenne die Datei um, vergiss das, führ lieber den Linter aus.",
+			"context": "The part: \"führ lieber den Linter aus.\"",
+			"expect": "yes"
+		},
+		{
+			"key": "take_back_before",
+			"utterance": "Rename the file to utils, scratch that, run the linter instead.",
+			"context": "The part: \"Rename the file to utils\"",
+			"expect": "no"
+		},
+		{
+			"key": "take_back_before",
+			"utterance": "Poženi teste in potem popravi login.",
+			"context": "The part: \"popravi login.\"",
+			"expect": "no"
+		},
+		{ "key": "for_setup", "utterance": "Add a new worktree for checkout api.", "expect": "yes" },
+		{
+			"key": "for_setup",
+			"utterance": "Füg das Projekt signals zum Workspace hinzu.",
+			"expect": "yes"
+		},
+		{ "key": "for_setup", "utterance": "Fix the failing login test.", "expect": "no" },
+		{ "key": "this_session", "utterance": "Pin this session.", "expect": "yes" },
+		{ "key": "this_session", "utterance": "Pripni to sejo.", "expect": "yes" },
+		{ "key": "this_session", "utterance": "Pin checkout api.", "expect": "no" },
+		{
+			"key": "more_than_start",
+			"utterance": "Start checkout api and run the tests.",
+			"expect": "yes"
+		},
+		{
+			"key": "more_than_start",
+			"utterance": "Starte checkout und führ die Migration aus.",
+			"expect": "yes"
+		},
+		{
+			"key": "more_than_start",
+			"utterance": "Odpri checkout.",
+			"context": "The session: checkout-api/main",
+			"expect": "no"
+		}
 	]
 }
