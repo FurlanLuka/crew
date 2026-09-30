@@ -54,12 +54,11 @@ describe('planVersionFix', () => {
 		expect(plan('5.1.0', '5.0.1')).toEqual({ kind: 'update', from: '5.0.1' });
 	});
 
-	it('behind and updated this run → wait for its sessions, never update again', () => {
+	it('behind and updated this run, still refused → never updated again, told to restart it there', () => {
 		expect(plan('5.1.0', '5.0.1', { ok: true })).toEqual({
 			kind: 'wait',
-			status: 'connecting',
-			detail:
-				'Build box is updated; it switches to the new release once its sessions finish their work.',
+			status: 'error',
+			detail: 'Build box is updated but still runs its old release: run crew voice remote there.',
 		});
 	});
 

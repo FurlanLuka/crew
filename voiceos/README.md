@@ -187,7 +187,7 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
 - `link-state.ts` turns an SSH exit into the reason the machine card shows.
 - A remote on another release refuses the main. When the remote is behind, the main runs `crew update`
   there over SSH (`ssh.ts` `updateRemoteCrew`, `versions.ts` `decideVersionFix`), once per remote
-  version per run, and reconnects; the daemon switches release once its sessions are idle. A newer
+  version per run, and reconnects; the daemon switches release on that connect, at once. A newer
   remote is never downgraded, and a `dev` build on either side updates nothing.
 
 The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew voice machines`

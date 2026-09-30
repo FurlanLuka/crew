@@ -1015,7 +1015,7 @@ crew voice stop
 
 ### `crew voice remote`
 
-Make this machine a remote: another machine's Voice OS (the main) drives the Claude sessions of its worktrees over SSH, and it runs no voice or kernel of its own. Bare, it checks tmux and Claude Code, installs Voice OS if needed, and starts the daemon (a tmux session that outlives any SSH link, listening on a socket only you can open); status reports it, stop ends it and every session it runs. A machine is a main or a remote, never both: each refuses while the other runs. After crew update the daemon moves to the new release on the next connect, once no session is working; a main on a newer release runs crew update here itself when this machine is behind. The main reaches it with ssh <host> … crew voice _attach — a hidden command that prints nothing on stdout but the link.
+Make this machine a remote: another machine's Voice OS (the main) drives the Claude sessions of its worktrees over SSH, and it runs no voice or kernel of its own. Bare, it checks tmux and Claude Code, installs Voice OS if needed, and starts the daemon (a tmux session that outlives any SSH link, listening on a socket only you can open); status reports it, stop ends it and every session it runs. A machine is a main or a remote, never both: each refuses while the other runs. After crew update the daemon moves to the new release on the next connect, at once (sessions at work are cut off and resume on the new release); a main on a newer release runs crew update here itself when this machine is behind. The main reaches it with ssh <host> … crew voice _attach — a hidden command that prints nothing on stdout but the link.
 
 ```
 crew voice remote [status|stop]
