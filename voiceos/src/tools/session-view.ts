@@ -129,7 +129,6 @@ export const describeSession = ({
 				}
 			: {}),
 		status: session.status,
-		topic: session.topic,
 		...(work.requests.length > 0 ? { last_messages_to_it: work.requests } : {}),
 		...(docTitles.length > 0 ? { docs: docTitles } : {}),
 		// What it said while the developer looked elsewhere, not yet heard: only read in detail.

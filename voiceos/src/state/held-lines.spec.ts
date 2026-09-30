@@ -784,7 +784,7 @@ describe('what a "done" names', () => {
 
 	it.each([
 		[
-			'its own last line, not a topic',
+			'its own last line',
 			'Checking whether the detached eval runs finished before deciding.',
 			'Checking whether the detached eval runs finished before deciding',
 		],

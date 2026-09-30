@@ -1161,7 +1161,6 @@ describe('voice os ui', () => {
 			ref: 'store-front/main',
 			needsUser: true,
 			text: 'store front asks: push it?',
-			topic: null,
 		});
 		const strip = page.locator('section[aria-label="needs you"]');
 		await strip.waitFor({ timeout: 5000 });
@@ -1448,12 +1447,12 @@ describe('voice os ui', () => {
 		await page.getByText('Reconnecting to the Voice OS server').waitFor({ timeout: 5000 });
 
 		store.dispatch({
-			type: 'pin_topic',
+			type: 'rename_session',
 			ref: 'checkout-api/main',
-			topic: 'Retry backoff after restart',
+			name: 'retry backoff after restart',
 		});
 		gateway = startServer(previousPort);
-		await page.getByText('Retry backoff after restart').waitFor({ timeout: 15_000 });
+		await page.getByText('retry backoff after restart').waitFor({ timeout: 15_000 });
 
 		const before = received.length;
 		await page.locator('.tile[data-ref="checkout-api/main"]').click();
@@ -1464,6 +1463,8 @@ describe('voice os ui', () => {
 					(entry) => entry.message.type === 'action' && entry.message.action.type === 'switch_view',
 				),
 		);
+		// The store is shared: later tests read this session by its ref.
+		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: '' });
 		await context.close();
 	}, 40_000);
 });

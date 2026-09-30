@@ -89,11 +89,13 @@ export interface FixtureContext {
 	meanwhile?: { ref: string; kind: 'done' | 'needs'; about: string }[];
 }
 
-export const FIXTURE_TOPICS: Record<string, string> = {
-	setup: 'crew setup and housekeeping',
-	'store-front/main': 'Locale placeholder cleanup',
-	'store-front/wrk1': 'Search ranking measurement',
-	'checkout-api/main': 'Checkout retry backoff',
+// What each idle fixture session was last asked: the work the developer names it by ("the ranking
+// work") when the context gives it none of its own.
+export const FIXTURE_REQUESTS: Record<string, string> = {
+	setup: 'Check the crew setup and clean up housekeeping.',
+	'store-front/main': 'Clean up the locale placeholders.',
+	'store-front/wrk1': 'Measure the new search ranking.',
+	'checkout-api/main': 'Add retry backoff to checkout.',
 };
 
 export const FIXTURE_REFS = ['setup', 'store-front/main', 'store-front/wrk1', 'checkout-api/main'];
@@ -228,7 +230,6 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 			isPinned: ref === 'setup',
 		}),
 		status,
-		topic: FIXTURE_TOPICS[ref] ?? null,
 		heldLine:
 			context.update?.ref === ref
 				? {
@@ -272,7 +273,9 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 							at: now - (context.talkingWith.secondsAgo + 20) * 1000,
 						},
 					]
-				: [],
+				: FIXTURE_REQUESTS[ref]
+					? [{ text: FIXTURE_REQUESTS[ref], at: now - 30 * 60_000 }]
+					: [],
 		stream: [
 			...(said ? [{ id: 'said', at: now - 1000, kind: 'text' as const, text: said }] : []),
 			// Docs this session made, oldest first (the newest is what "open the doc" opens).

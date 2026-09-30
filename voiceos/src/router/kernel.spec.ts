@@ -1214,7 +1214,7 @@ describe('kernel context: session names', () => {
 		const message = readMessage(state);
 
 		expect(message).toContain('Named sessions: voice os dev (store-front/main).');
-		expect(message).toContain('Screen: looking at voice os dev (store-front/main) (');
+		expect(message).toContain('Screen: looking at voice os dev (store-front/main). ');
 	});
 });
 

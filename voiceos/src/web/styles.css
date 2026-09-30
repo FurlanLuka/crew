@@ -321,7 +321,7 @@ textarea:focus-visible {
 	text-transform: uppercase;
 	color: var(--muted);
 }
-.tile .topic {
+.tile .work {
 	font-family: var(--ui);
 	font-size: 13.5px;
 	color: var(--ink);

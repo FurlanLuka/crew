@@ -109,8 +109,8 @@ export const describeAnnouncement = ({
 const DONE_ABOUT_WORDS = 14;
 const MIN_SAID_WORDS = 2;
 
-// What a finished turn is announced with: the session's own last line, shortened. A topic is the
-// session's long-running subject and goes stale ("finished the architecture docs" for a turn that
+// What a finished turn is announced with: the session's own last line, shortened. A summary of the
+// session's long-running work goes stale ("finished the architecture docs" for a turn that
 // ended "checking whether the eval runs finished"), and a turn ending is not the work finishing.
 export const describeDoneAbout = (said: string | null): string | null => {
 	const line = stripTags(cleanSpokenText(said ?? ''));

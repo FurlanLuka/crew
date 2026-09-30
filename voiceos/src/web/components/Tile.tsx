@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Session, State } from '../../shared/protocol.js';
 import { readSessionLabel } from '../../shared/machines.js';
+import { readWorkLabel } from '../../shared/work-label.js';
 import {
 	describeSessionBadge,
 	labelAcrossMachines,
@@ -82,8 +83,9 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 				/>
 			</div>
 			<button type="button" className="tile-open" onClick={handleOpen}>
-				<span className="topic">
-					{session.topic ?? (session.isPinned ? 'crew setup and housekeeping' : 'No topic yet')}
+				<span className="work">
+					{readWorkLabel(session) ??
+						(session.isPinned ? 'crew setup and housekeeping' : 'Nothing asked yet')}
 				</span>
 				<span className="br">
 					{session.branch || session.cwd}

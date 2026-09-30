@@ -180,8 +180,6 @@ export const createInitialState = (): State => ({
 
 export const createSession = (info: WorktreeInfo): Session => ({
 	...info,
-	topic: null,
-	isTopicPinned: false,
 	status: 'stopped',
 	queue: [],
 	stream: [],
@@ -550,29 +548,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 			);
 
-		case 'pin_topic':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({
-					...session,
-					topic: input.topic.trim() || null,
-					isTopicPinned: Boolean(input.topic.trim()),
-				})),
-			);
-
-		case 'topics_restored': {
-			const restored = Object.entries(input.topics).reduce(
-				(next, [ref, saved]) =>
-					updateSession(next, ref, (session) =>
-						session.topic
-							? session
-							: { ...session, topic: saved.topic, isTopicPinned: saved.pinned },
-					),
-				state,
-			);
-
-			return withoutEffects(restored);
-		}
-
 		case 'session_started': {
 			if (!state.sessions[input.ref]) {
 				return withoutEffects(state);
@@ -812,7 +787,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				updateSession(state, input.ref, (session) => ({
 					...session,
 					needsUser: input.needsUser ? { text: input.text, at: stamped.at } : null,
-					topic: session.isTopicPinned || !input.topic ? session.topic : input.topic,
 				})),
 			);
 
@@ -877,13 +851,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				line && !input.isUnplayed ? markHeard(ended, line, stamped.at, input.isCut) : ended,
 			);
 		}
-
-		case 'topic_written':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) =>
-					session.isTopicPinned ? session : { ...session, topic: input.topic },
-				),
-			);
 
 		case 'spoken':
 			return withoutEffects({
