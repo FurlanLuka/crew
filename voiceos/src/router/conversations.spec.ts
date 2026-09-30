@@ -182,6 +182,43 @@ describe('conversations', () => {
 		expect(convo.store.state.meanwhile).toEqual([]);
 	});
 
+	it('a reply to an update heard in the meanwhile line → sent there, and the switch offered in the same line', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'add backoff to the retries',
+		});
+		await convo.answer(
+			'checkout-api/main',
+			'The retry backoff now doubles from one second up to thirty, and every retry test passes again.',
+		);
+		await convo.wait(9_000);
+		expect(convo.heard.at(-1)).toStartWith('Meanwhile, checkout api, main said:');
+
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+		await convo.say('Great, push it.');
+
+		expect(convo.heard.at(-1)).toBe('Sent to checkout api, main. Switch there?');
+		expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+
+		convo.script([toolUse('t2', 'switch_view', { ref: 'checkout-api/main' })]);
+		await convo.say('Yes.');
+
+		expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'checkout-api/main' });
+	});
+
+	it('a quick question to another session, nothing announced from it → "Sent to …" alone, no offer', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'question' })]);
+		await convo.say('Checkout api, is the build green?');
+
+		expect(convo.heard.at(-1)).toBe('Sent to checkout api, main.');
+		expect(convo.store.state.switchOffer).toBeNull();
+	});
+
 	it('"what did I miss?" → the waiting updates now, without waiting for the quiet', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

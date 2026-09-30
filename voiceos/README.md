@@ -147,7 +147,8 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   spoken words went to last. Off screen it is the subject: its lines are always said, named;
   follow-ups go there (`router/exchange-lines.ts` tells the kernel); it lapses a minute after its
   last answer heard (a timer in `speech/connect.ts`); after its second answered turn Voice OS asks
-  "Switch to X?" (`state.switchOffer`, 8 s). Speech ranks the exchange's lines first
+  "Switch to X?" (`state.switchOffer`, 8 s); a reply to an update only heard (announced, or in the
+  meanwhile line) asks at once, in its ack: "Sent to X. Switch there?". Speech ranks the exchange's lines first
   (`speech/queue.ts`) and holds everything, never drops it, while the developer talks.
 - **Words go where they were said.** Voice OS says "Sent to X" when X is not on screen, "Switching
   to X" for a switch it makes, "Back to X" for `go_back` (`state/view-history.ts`, five views with

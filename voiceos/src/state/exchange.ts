@@ -191,12 +191,37 @@ export const followExchange = (
 				return { state, effects: acked };
 			}
 
-			const moved = talkTo({
-				state,
-				ref: input.ref,
-				at: stamped.at,
-				screenRef: readScreenRef(before),
-			});
+			const screenRef = readScreenRef(before);
+			const moved = talkTo({ state, ref: input.ref, at: stamped.at, screenRef });
+			// A reply to an update they only heard ("crew is done: …", the meanwhile line), sent from
+			// another screen: without the page they would not know their words now go there.
+			const isReplyToAnnounced =
+				screenRef !== null &&
+				input.ref !== screenRef &&
+				before.sessions[input.ref]?.heldLine?.isAnnounced === true &&
+				moved.state.exchange?.ref === input.ref &&
+				moved.state.exchange.startedAt === stamped.at;
+
+			// Said once, with the switch offered in the same line ("Sent to crew. Switch there?").
+			if (isReplyToAnnounced && moved.state.asks.length === 0 && !moved.state.switchOffer) {
+				const offered = offerSwitch(moved.state, input.ref, stamped.at);
+				const withoutAck = acked.filter(
+					(effect) =>
+						!(effect.type === 'speak' && effect.isAck && effect.text.startsWith('Sent to')),
+				);
+
+				return {
+					state: offered.state,
+					effects: [
+						...withoutAck,
+						...moved.effects,
+						sayAck(`Sent to ${sayRef(state, input.ref)}. Switch there?`, {
+							isAsking: true,
+							ref: input.ref,
+						}),
+					],
+				};
+			}
 
 			return { state: moved.state, effects: [...acked, ...moved.effects] };
 		}
