@@ -47,7 +47,7 @@ describe('planVersionFix', () => {
 			remote,
 			name: 'Build box',
 			detail: RELEASED_REFUSAL,
-			tried: () => tried,
+			tried,
 		});
 
 	it('behind and not yet updated → update it', () => {
@@ -127,7 +127,7 @@ describe('readUpdateOutcome', () => {
 		});
 		expect(read(null, 'Downloading…', true)).toMatchObject({
 			reason:
-				'Could not update Build box: crew update timed out after 5 minutes. Run crew update there, then crew voice remote.',
+				'Could not update Build box: crew update did not finish in time. Run crew update there, then crew voice remote.',
 		});
 	});
 });

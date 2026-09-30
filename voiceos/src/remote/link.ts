@@ -320,6 +320,13 @@ export class RemoteLink {
 	}
 
 	private ready(snapshot: Snapshot): void {
+		// On the new release now: nothing is waited on any more.
+		for (const [version, outcome] of this.updates) {
+			if (outcome.ok) {
+				this.updates.delete(version);
+			}
+		}
+
 		const { machine } = this.options;
 
 		// Its refs exist on the main before anything about them is applied.
@@ -396,6 +403,7 @@ export class RemoteLink {
 		this.retryLater(failure.status, failure.detail);
 	}
 
+	// Updated this run and still refused: the daemon waits for its sessions. Cleared once it answers.
 	private isWaitingOnVersion(): boolean {
 		return [...this.updates.values()].some((outcome) => outcome.ok);
 	}
@@ -419,7 +427,7 @@ export class RemoteLink {
 			remote: refusal.remote,
 			name,
 			detail: refusal.detail,
-			tried: (remote) => this.updates.get(remote),
+			tried: refusal.remote === null ? undefined : this.updates.get(refusal.remote),
 		});
 
 		log.info('version mismatch', {

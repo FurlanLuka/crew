@@ -44,7 +44,8 @@ interface PlanVersionFixParams {
 	name: string;
 	// The remote's own words, for a mismatch this side cannot fix.
 	detail: string;
-	tried: (remote: string) => UpdateOutcome | undefined;
+	// How this run's update from that remote version went, if it ran.
+	tried: UpdateOutcome | undefined;
 }
 
 // crew update installs the latest release, which is the main's in the normal case but may be newer:
@@ -70,7 +71,7 @@ export const planVersionFix = ({
 		return { kind: 'wait', status: 'error', detail };
 	}
 
-	const outcome = tried(remote);
+	const outcome = tried;
 
 	if (!outcome) {
 		return { kind: 'update', from: remote };
@@ -112,7 +113,7 @@ export const readUpdateOutcome = ({
 	}
 
 	const why = isTimedOut
-		? 'crew update timed out after 5 minutes'
+		? 'crew update did not finish in time'
 		: (voiceLine ?? lines.at(-1) ?? `crew update exited ${code}`);
 
 	return {
