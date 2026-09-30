@@ -182,6 +182,29 @@ describe('conversations', () => {
 		expect(convo.store.state.meanwhile).toEqual([]);
 	});
 
+	it('an update waiting for the quiet, then the developer switches there → heard once, never again in the meanwhile line', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		const report =
+			'The retry backoff now doubles from one second up to thirty, and every retry test passes again.';
+		convo.store.dispatch({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'add backoff to the retries',
+		});
+		await convo.answer('checkout-api/main', report);
+		expect(convo.store.state.meanwhile.map((item) => item.ref)).toEqual(['checkout-api/main']);
+
+		convo.script([toolUse('t1', 'switch_view', { ref: 'checkout-api/main' })]);
+		await convo.say('Switch to checkout.');
+		await convo.wait(20_000);
+
+		expect(convo.heard.filter((line) => line.includes('retry backoff now doubles'))).toHaveLength(
+			1,
+		);
+		expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
+	});
+
 	it('a reply to the meanwhile line → the kernel is told checkout was just heard, as a notification', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

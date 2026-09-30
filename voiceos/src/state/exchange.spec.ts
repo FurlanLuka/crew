@@ -256,9 +256,10 @@ describe('what goes when sessions go', () => {
 		const state = runAt(
 			[
 				[11, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'the retries' }],
-				[12, { type: 'meanwhile_added', ref: SCREEN, kind: 'done', about: 'the locale' }],
 				[13, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }],
 				[14, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				// After the switches: going to a session settles its own waiting update.
+				[14.5, { type: 'meanwhile_added', ref: SCREEN, kind: 'done', about: 'the locale' }],
 				[15, said(OTHER)],
 				[16, { type: 'worker_exited', ref: OTHER, error: null }],
 			],

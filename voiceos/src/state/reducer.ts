@@ -1,7 +1,7 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
-import { addMeanwhile, playMeanwhile } from './meanwhile.js';
+import { addMeanwhile, playMeanwhile, settleMeanwhile } from './meanwhile.js';
 import { defaultLanguages, toLanguages } from '../shared/languages.js';
 import {
 	decideGoBack,
@@ -954,5 +954,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 export const reduce = (state: State, stamped: Stamped): ReducerResult => {
 	const before = { ...state, seq: stamped.seq };
 
-	return followExchange(before, reduceInput(before, stamped), stamped);
+	const result = followExchange(before, reduceInput(before, stamped), stamped);
+
+	return { ...result, state: settleMeanwhile(before, result.state, stamped.input) };
 };
