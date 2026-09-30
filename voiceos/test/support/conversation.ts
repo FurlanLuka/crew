@@ -114,6 +114,7 @@ export const createConversation = ({ refs, view }: CreateConversationParams) => 
 			say: (line) => voiceOut.say(line),
 			journalDir: mkdtempSync(join(tmpdir(), 'voiceos-journal-')),
 			readGitHead: async () => null,
+			clock,
 		}),
 		narrateAside: createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) }),
 		setTimer,

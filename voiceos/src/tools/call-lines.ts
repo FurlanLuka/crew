@@ -85,6 +85,11 @@ export const isAnsweredByForward = (calls: ToolCall[]): boolean => {
 	);
 };
 
+// Words passed on to other sessions and nothing else: Voice OS already says "Sent to X".
+export const isAcknowledgedInCode = (calls: ToolCall[]): boolean =>
+	calls.some((call) => call.name === 'send_to') &&
+	calls.every((call) => call.ok && (call.name === 'send_to' || call.name === 'forward'));
+
 // Asking what they meant, not asking which option they want ("which one?" after reading options out).
 const CLARIFYING_PATTERN =
 	/\b(?:need to clarify|do you mean|did you mean|are you asking|(?:are you|you're) referring to|do you want (?:me|to ask)|which (?:session|agent)|not sure (?:what|which|who)|can you (?:name|say|clarify)|could you (?:say|repeat|clarify)|is (?:this|that) for)\b/i;
@@ -154,7 +159,8 @@ export const decideEnding = ({
 		return { kind: 'forward_utterance' };
 	}
 
-	if (isAnsweredByForward(turn.calls)) {
+	// On a session's screen Voice OS says "Sent to X" itself (exchange.ts).
+	if (isAnsweredByForward(turn.calls) || (turn.forwardTo && isAcknowledgedInCode(turn.calls))) {
 		return { kind: 'drop_reply' };
 	}
 

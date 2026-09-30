@@ -40,6 +40,8 @@ interface DecideTurnLineParams {
 	needsUser: boolean;
 	// The developer looks at another session, not Mission Control.
 	isOnAnotherSession: boolean;
+	// The developer is talking with this session without switching to it: its answers are theirs.
+	isSubject?: boolean;
 }
 
 export const decideTurnLine = ({
@@ -49,11 +51,12 @@ export const decideTurnLine = ({
 	hasBackgroundAgents,
 	needsUser,
 	isOnAnotherSession,
+	isSubject = false,
 }: DecideTurnLineParams): TurnLineDecision => {
 	// A question, however short, is not asked over another session: like its asks, it waits there.
 	const isQuestionElsewhere = needsUser && isOnAnotherSession;
 
-	if (isShown || (isShort && !isHeldAnnounced && !isQuestionElsewhere)) {
+	if (isShown || isSubject || (isShort && !isHeldAnnounced && !isQuestionElsewhere)) {
 		return { kind: 'say' };
 	}
 

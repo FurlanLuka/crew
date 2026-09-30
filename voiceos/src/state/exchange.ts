@@ -9,7 +9,9 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
-import type { ReducerResult } from './reducer.js';
+import type { Effect, ReducerResult } from './reducer.js';
+import { readLabel } from './helpers.js';
+import { toSpokenName } from '../shared/spoken.js';
 
 const log = createLogger('exchange');
 
@@ -107,6 +109,38 @@ const hearAnswer = (state: State, lineId: string, at: number): ReducerResult => 
 	return { state: { ...state, exchange: heard }, effects: [] };
 };
 
+interface DescribeSentToParams {
+	before: State;
+	state: State;
+	ref: string;
+	at: number;
+	effects: Effect[];
+}
+
+// Voice OS says where words went when the session that got them is not on screen, and when a
+// conversation elsewhere just ended; the session on screen answers for itself.
+const describeSentTo = ({ before, state, ref, at, effects }: DescribeSentToParams): Effect[] => {
+	const screenRef = readScreenRef(before);
+	const isAcked = effects.some((effect) => effect.type === 'speak' && effect.isAck);
+	const wasElsewhere = readSubject(before, at) !== null;
+
+	// On Mission Control nothing is on screen: the kernel's own reply says where words went.
+	if (isAcked || screenRef === null || (ref === screenRef && !wasElsewhere)) {
+		return [];
+	}
+
+	return [
+		{
+			type: 'speak',
+			text: `Sent to ${toSpokenName(readLabel(state, ref))}.`,
+			source: 'kernel',
+			isReply: true,
+			isAck: true,
+			priority: 'high',
+		},
+	];
+};
+
 // Runs after the input's own reducer: `before` is the state it started from.
 export const followExchange = (
 	before: State,
@@ -118,8 +152,23 @@ export const followExchange = (
 
 	switch (input.type) {
 		case 'send': {
-			if (!input.isSpoken || !state.sessions[input.ref]) {
+			if (!state.sessions[input.ref]) {
 				return result;
+			}
+
+			const acked = [
+				...result.effects,
+				...describeSentTo({
+					before,
+					state,
+					ref: input.ref,
+					at: stamped.at,
+					effects: result.effects,
+				}),
+			];
+
+			if (!input.isSpoken) {
+				return { state, effects: acked };
 			}
 
 			const moved = talkTo({
@@ -129,7 +178,7 @@ export const followExchange = (
 				screenRef: readScreenRef(before),
 			});
 
-			return { state: moved.state, effects: [...result.effects, ...moved.effects] };
+			return { state: moved.state, effects: [...acked, ...moved.effects] };
 		}
 
 		case 'switch_view': {

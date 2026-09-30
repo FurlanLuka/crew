@@ -1,4 +1,4 @@
-import { followExchange, pruneExchange } from './exchange.js';
+import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import {
 	GRID,
 	VOICE_LOG_ENTRIES_KEPT,
@@ -264,6 +264,10 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 	return { ...state, sessions, order, view, focus, exchange, voiceLog };
 };
 
+// Its lines are said as they come: on screen, or the session the developer talks with elsewhere.
+const isHeardNow = (state: State, ref: string, at: number): boolean =>
+	isOnScreen(state, ref) || readSubject(state, at) === ref;
+
 // A session that is gone cannot be shown: null leaves the screen where it is.
 const showView = (state: State, view: View): State | null =>
 	view.kind === 'session' && !state.sessions[view.ref]
@@ -500,7 +504,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A reply the developer's follow-up is cutting says nothing more: they are already past it.
 			const { spokenInTurn, effects, held } = hasFollowUpWaiting(session)
 				? { spokenInTurn: session.spokenInTurn, effects: [], held: null }
-				: speakNewTag(session, draft, isOnScreen(state, input.ref));
+				: speakNewTag(session, draft, isHeardNow(state, input.ref, stamped.at));
 			const drafted = updateSession(state, input.ref, (current) => ({
 				...markSelfStarted(current),
 				draft,
@@ -540,7 +544,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A message that never streamed says its lines now; streamed ones were said already.
 			const spoken =
 				isText && !hasFollowUpWaiting(session)
-					? speakNewTag(session, input.text, isOnScreen(state, input.ref))
+					? speakNewTag(session, input.text, isHeardNow(state, input.ref, stamped.at))
 					: null;
 			// Text and a tool call end the streamed draft; results and diffs follow the tool line.
 			const shouldClearDraft = isText || input.type === 'tool';
