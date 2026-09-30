@@ -282,7 +282,6 @@ const hearToldAsks = (state: State, line: SpokenLine): State =>
 
 // What finishing a line means beyond itself: an update heard, or a question heard (its window
 // for a yes starts now, not when it was queued).
-
 export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
 	// An update talked over was not heard to its end; a question talked over is being answered.
 	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
