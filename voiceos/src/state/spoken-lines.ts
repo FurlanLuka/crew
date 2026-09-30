@@ -42,6 +42,7 @@ export const speakNewTag = (session: Session, text: string, isOnScreen: boolean)
 				// The developer asked for this work: a newer line about the session never drops it.
 				isOwed: true,
 				isHoldable: true,
+				isAnswer: true,
 				...(tag.isAsking ? { isAsking: true } : {}),
 			},
 		],

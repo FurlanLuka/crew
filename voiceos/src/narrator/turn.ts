@@ -20,6 +20,7 @@ import {
 import { createLogger } from '../log.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { machineOf } from '../shared/machine-ref.js';
+import { readSubject } from '../state/exchange.js';
 
 const log = createLogger('narrator');
 
@@ -29,9 +30,12 @@ interface NarratedLine {
 	ref: string;
 	isNamed: boolean;
 	isAsking: boolean;
+	isAnswer?: boolean;
 	isOwed?: boolean;
 	chime?: 'needs';
 	isHoldable?: boolean;
+	// Another session's update: said later, with the others', in the meanwhile line.
+	announcement?: { kind: 'done' | 'needs'; about: string | null };
 }
 
 const OWED_FALLBACK_WORDS = 30;
@@ -82,6 +86,8 @@ export interface TurnNarratorOptions {
 	journalDir: string;
 	readGitHead: (cwd: string) => Promise<string | null>;
 	now?: () => Date;
+	// Milliseconds, as the store stamps inputs: whether a conversation is still live.
+	clock?: () => number;
 }
 
 type NarrateEffect = Extract<Effect, { type: 'narrate' }>;
@@ -122,6 +128,7 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 			ref,
 			isNamed: true,
 			isAsking: false,
+			isAnswer: true,
 		});
 	};
 };
@@ -156,8 +163,10 @@ const speakOutcome = async ({
 	const text = narration.text;
 	const held = session.heldLine;
 	const isShown = isOnScreen(store.state, effect.ref);
+	const isSubject = readSubject(store.state, options.clock?.() ?? Date.now()) === effect.ref;
 	const decision = decideTurnLine({
 		isShown,
+		isSubject,
 		isShort: isShortLine(text),
 		isHeldAnnounced: held?.isAnnounced === true,
 		hasBackgroundAgents: effect.hasBackgroundAgents,
@@ -170,13 +179,15 @@ const speakOutcome = async ({
 			store.dispatch({ type: 'held_line_heard', ref: effect.ref, id: held.id });
 		}
 
+		// A subject's line is checked again as it plays: words for the screen meanwhile end the subject.
 		options.say({
 			text,
-			isHoldable: isShown,
+			isHoldable: isShown || isSubject,
 			priority: effect.isOwed ? 'high' : narration.priority,
 			ref: effect.ref,
 			isNamed: true,
 			isAsking: narration.needs_user,
+			isAnswer: true,
 			...(effect.isOwed ? { isOwed: true } : {}),
 		});
 
@@ -215,23 +226,26 @@ const speakOutcome = async ({
 	log.info('announced', { ref: effect.ref, kind });
 	// Never asked aloud or owed: the developer has not heard the question, and a switch's replay
 	// replaces this if it is still waiting to be said.
+	const aboutText =
+		kind === 'needs'
+			? (about ?? settled?.topic ?? null)
+			: describeDoneAbout({
+					topic: settled?.topic ?? null,
+					isTopicPinned: settled?.isTopicPinned === true,
+					asked: effect.asked,
+				});
+
 	options.say({
 		text: describeAnnouncement({
 			label: readAnnouncedLabel(store.state, effect.ref, readSessionLabel(store.state, effect.ref)),
 			kind,
-			about:
-				kind === 'needs'
-					? (about ?? settled?.topic ?? null)
-					: describeDoneAbout({
-							topic: settled?.topic ?? null,
-							isTopicPinned: settled?.isTopicPinned === true,
-							asked: effect.asked,
-						}),
+			about: aboutText,
 		}),
 		priority: kind === 'needs' ? 'high' : 'normal',
 		ref: effect.ref,
 		isNamed: false,
 		isAsking: false,
+		announcement: { kind, about: aboutText },
 		...(kind === 'needs' ? { chime: 'needs' as const } : {}),
 	});
 };

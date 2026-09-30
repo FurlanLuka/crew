@@ -247,6 +247,69 @@ export interface Limits {
 	resetsAt: number | null;
 }
 
+// Why the developer's words went where they did, logged with every change.
+export type ExchangeReason = 'screen' | 'named' | 'follow_up';
+
+export interface Exchange {
+	ref: string;
+	startedAt: number;
+	// The last send or answer heard: it lapses EXCHANGE_IDLE_MS after this.
+	lastAt: number;
+	// Turns of that session whose answer the developer heard: the switch offer waits for two.
+	answeredTurns: number;
+	// The turn (its request's time) whose answer was last counted.
+	countedTurnAt: number | null;
+	hasOfferedSwitch: boolean;
+	reason: ExchangeReason;
+}
+
+export const EXCHANGE_IDLE_MS = 60_000;
+
+export interface ViewHistoryEntry {
+	view: View;
+	exchange: Exchange | null;
+	// Its session was running when the developer left it: stopped since, "go back" passes it over.
+	wasLive?: true;
+}
+
+export const VIEW_HISTORY_KEPT = 5;
+
+export interface MeanwhileItem {
+	ref: string;
+	kind: 'done' | 'needs';
+	about: string | null;
+	at: number;
+}
+
+// Quiet before the waiting updates are said: push to talk is quiet the moment the key is up;
+// listening needs a longer gap to be sure the developer finished.
+export const MEANWHILE_QUIET_MS = 8_000;
+export const MEANWHILE_QUIET_LISTENING_MS = 12_000;
+// An update never waits longer than this: it plays at the next gap, however short.
+export const MEANWHILE_MAX_WAIT_MS = 50_000;
+
+export interface TargetAsk {
+	ref: string;
+	// The session on screen when the words were said: where they go on a no, or on silence.
+	screen: string;
+	text: string;
+	at: number;
+}
+
+// Asked and answered in a breath; silence keeps the words on the screen.
+export const TARGET_ASK_MS = 8_000;
+
+export interface SwitchOffer {
+	ref: string;
+	at: number;
+}
+
+// Answered at once or not at all: a later "yes" belongs to something else.
+export const SWITCH_OFFER_MS = 8_000;
+
+export const isSwitchOfferFresh = (offer: SwitchOffer | null, now: number): offer is SwitchOffer =>
+	offer !== null && now - offer.at < SWITCH_OFFER_MS;
+
 export interface SpokenLine {
 	id: string;
 	text: string;
@@ -259,6 +322,10 @@ export interface SpokenLine {
 	// When it stopped playing; isCut: before its end (the developer spoke, an alert, a failure).
 	endedAt?: number;
 	isCut?: true;
+	// The session's own answer to the developer, not an announcement, reminder or acknowledgement.
+	isAnswer?: true;
+	// No tab played it: nobody heard it.
+	isUnplayed?: true;
 }
 
 export interface Setup {
@@ -294,6 +361,8 @@ export interface State {
 	order: string[];
 	view: View;
 	focus: string | null;
+	// Who the developer is talking with: on screen, or a session they spoke to without switching.
+	exchange: Exchange | null;
 	asks: PendingAsk[];
 	denials: Denial[];
 	transcript: Transcript | null;
@@ -303,6 +372,15 @@ export interface State {
 	devServers: Record<string, DevServer[]>;
 	devStarting: string[];
 	devOffer: DevOffer | null;
+	// "Switch to checkout?", asked aloud by Voice OS: a yes switches, anything else lets it go.
+	switchOffer: SwitchOffer | null;
+	// Where the developer has been, newest first, with who they talked with there: "go back".
+	viewHistory: ViewHistoryEntry[];
+	// "For checkout?": words that were either a reply to checkout's notification or for the screen,
+	// held until the developer says which.
+	targetAsk: TargetAsk | null;
+	// Other sessions' "is done" / "needs you", waiting for a quiet moment to be said as one line.
+	meanwhile: MeanwhileItem[];
 	// Per screen (a session ref, or GRID).
 	voiceLog: Record<string, VoiceEntry[]>;
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
@@ -368,10 +446,14 @@ export type Action =
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").
 	| { type: 'answer_redirect'; askId: string; isApproved: boolean; message?: string }
-	| { type: 'switch_view'; view: View }
+	// announce: Voice OS made the switch (a voice command), so it says so; a click is silent.
+	// skipHeld: the switch also sends a question, so the old held update is not replayed first.
+	| { type: 'switch_view'; view: View; announce?: true; skipHeld?: true }
+	| { type: 'go_back' }
 	| { type: 'start_session'; ref: string }
 	| { type: 'stop_session'; ref: string }
-	| { type: 'interrupt'; ref: string }
+	// isCorrection: the developer's words went there by mistake; Voice OS says it stopped it.
+	| { type: 'interrupt'; ref: string; isCorrection?: true }
 	| { type: 'allow_denied'; denialId: string }
 	| { type: 'dismiss_denial'; denialId: string }
 	| { type: 'dismiss_needs_user'; ref: string }
@@ -387,7 +469,17 @@ export type Action =
 	| { type: 'pin_session'; ref: string }
 	| { type: 'unpin_session'; ref: string }
 	// An empty name clears it: the session shows its crew label again.
-	| { type: 'rename_session'; ref: string; name: string };
+	| { type: 'rename_session'; ref: string; name: string }
+	// The page's × on "Talking with checkout": follow-ups go to the screen again.
+	| { type: 'clear_exchange' }
+	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
+	| { type: 'play_meanwhile' }
+	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced).
+	| { type: 'offer_switch'; ref: string }
+	// Voice OS asks "For X?" and holds the words until the developer says which.
+	| { type: 'ask_target'; ref: string; screen: string; text: string }
+	// toTarget: yes, send them to X; otherwise they are kept on the screen. `at` names the ask.
+	| { type: 'settle_target'; at: number; toTarget: boolean };
 
 export interface SavedTopic {
 	topic: string;
@@ -414,7 +506,10 @@ export type Observation =
 	// What a session is working on, named after a turn it spoke for itself.
 	| { type: 'topic_written'; ref: string; topic: string }
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
-	| { type: 'spoken_ended'; lineId: string; isCut: boolean }
+	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
+	| { type: 'exchange_expired'; ref: string; lastAt: number }
+	| { type: 'meanwhile_added'; ref: string; kind: MeanwhileItem['kind']; about: string | null }
+	| { type: 'switch_offer_closed'; at: number }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
 	// The held line was announced ("<session> is done", "needs you").
@@ -444,7 +539,14 @@ export type Observation =
 	| { type: 'worker_exited'; ref: string; error: string | null }
 	| { type: 'limits'; limits: Limits }
 	| { type: 'narration'; ref: string; needsUser: boolean; text: string; topic: string | null }
-	| { type: 'spoken'; text: string; source: SpokenLine['source']; ref?: string; isAsking?: true }
+	| {
+			type: 'spoken';
+			text: string;
+			source: SpokenLine['source'];
+			ref?: string;
+			isAsking?: true;
+			isAnswer?: true;
+	  }
 	// Written by the router after it handled an utterance; never from a client.
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }
 	| { type: 'transcript'; transcript: Transcript | null }

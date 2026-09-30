@@ -216,3 +216,16 @@ describe('findSessionsNamedIn with display names', () => {
 		expect(findSessionsNamedIn(state, 'ask the devops folks')).toEqual([]);
 	});
 });
+
+describe('a name that is also a command', () => {
+	it('"back" → renamed, with a warning that it may be heard as the command', async () => {
+		const { tools } = createContext({ utterance: 'call store front work one back' });
+		const result = await executeTool(
+			'rename_session',
+			{ ref: 'store-front/wrk1', name: 'back' },
+			tools,
+		);
+
+		expect(result.reply).toContain('Heads up: "back" is also something you say to Voice OS');
+	});
+});

@@ -1672,6 +1672,9 @@ describe('questions are spoken without their options', () => {
 				source: 'alert',
 				ref: 'store/main',
 				isAsking: true,
+				// Mission Control: not the session on screen, so it waits for a breath after any line.
+				priority: 'high',
+				waitsForGap: true,
 			},
 		]);
 	});

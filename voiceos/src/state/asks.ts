@@ -582,6 +582,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 							ref: ask.ref,
 							priority: 'high',
 							chime: 'needs',
+							waitsForGap: true,
 						},
 						...released.effects,
 					],
@@ -606,6 +607,8 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						source: 'alert',
 						ref: ask.ref,
 						isAsking: true,
+						// The session on screen interrupts; another one waits for a breath after the line.
+						...(isOnScreen(state, ask.ref) ? {} : { priority: 'high' as const, waitsForGap: true }),
 					},
 					...released.effects,
 				],

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
 import {
-	clearQueueForTalk,
 	createEmptyQueue,
 	dropQueued,
 	enqueue,
@@ -55,9 +54,8 @@ describe('enqueue', () => {
 		expect(queue.items.map((queued) => queued.id)).toEqual(['ack', 'result']);
 	});
 
-	it('a promised report survives talk and quiet, like any high line', () => {
+	it('a promised report survives quiet, like any high line', () => {
 		const queue = fillQueue({ ...createItem('report', 'high', 'store/main'), isOwed: true });
-		expect(clearQueueForTalk(queue).items.map((queued) => queued.id)).toEqual(['report']);
 		expect(setMuted(queue, true).items.map((queued) => queued.id)).toEqual(['report']);
 	});
 
@@ -78,32 +76,54 @@ describe('enqueue', () => {
 });
 
 describe('takeNextItem', () => {
+	const take = (
+		queue: ReturnType<typeof fillQueue>,
+		now: number,
+		exchangeRef: string | null = null,
+	) => takeNextItem(queue, { now, exchangeRef });
+
 	it('stale progress (>5 s) and stale completions (>2 min) are skipped', () => {
 		const queue = fillQueue(
 			createItem('progress', 'low', null, 0),
 			createItem('done', 'normal', null, 0),
 			createItem('ask', 'high', null, 0),
 		);
-		const first = takeNextItem(queue, 10_000);
+		const first = take(queue, 10_000);
 		expect(first.item?.id).toBe('ask');
-		expect(takeNextItem(first.queue, 10_000).item?.id).toBe('done');
-		expect(takeNextItem(takeNextItem(first.queue, 200_000).queue, 200_000).item).toBeNull();
+		expect(take(first.queue, 10_000).item?.id).toBe('done');
+		expect(take(take(first.queue, 200_000).queue, 200_000).item).toBeNull();
 	});
 
-	it('empty → null', () => expect(takeNextItem(createEmptyQueue(), 0).item).toBeNull());
-});
+	it('empty → null', () => expect(take(createEmptyQueue(), 0).item).toBeNull());
 
-describe('clearQueueForTalk', () => {
-	it('keeps questions and alerts, drops chatter', () => {
-		const queue = clearQueueForTalk(
-			fillQueue(
-				createItem('a', 'alert'),
-				createItem('h', 'high'),
-				createItem('n', 'normal'),
-				createItem('l', 'low'),
-			),
+	it('the session the developer talks with, and the word that it got theirs, come before older lines', () => {
+		const queue = fillQueue(
+			createItem('older-high', 'high', 'signals/main', 1),
+			createItem('older-normal', 'normal', 'store/main', 2),
+			createItem('answer', 'normal', 'checkout/main', 3),
+			{ ...createItem('ack', 'normal', null, 4), isAck: true },
 		);
-		expect(queue.items.map((queued) => queued.id)).toEqual(['a', 'h']);
+		const order: string[] = [];
+		let rest = queue;
+
+		for (
+			let next = take(rest, 10, 'checkout/main');
+			next.item;
+			next = take(rest, 10, 'checkout/main')
+		) {
+			order.push(next.item.id);
+			rest = next.queue;
+		}
+
+		expect(order).toEqual(['answer', 'ack', 'older-high', 'older-normal']);
+	});
+
+	it('an alert still goes first, before the exchange', () => {
+		const queue = fillQueue(
+			createItem('answer', 'high', 'checkout/main', 1),
+			createItem('permission', 'alert', 'signals/main', 2),
+		);
+		expect(take(queue, 10, 'checkout/main').item?.id).toBe('permission');
 	});
 });
 

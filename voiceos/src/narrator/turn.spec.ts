@@ -262,6 +262,7 @@ describe('aside narrator', () => {
 			isNamed: boolean;
 			isAsking: boolean;
 			priority: string;
+			isAnswer?: boolean;
 		}[] = [];
 		const handle = createAsideNarrator({
 			store,
@@ -333,6 +334,7 @@ describe('aside narrator', () => {
 				ref: 'checkout-api/main',
 				isNamed: true,
 				isAsking: false,
+				isAnswer: true,
 			},
 		]);
 	});
@@ -676,6 +678,7 @@ describe('a session off screen at the end of its turn', () => {
 		isNamed: boolean;
 		chime?: 'needs';
 		priority: string;
+		announcement?: { kind: 'done' | 'needs'; about: string | null };
 	};
 
 	const tagless = {
@@ -706,7 +709,15 @@ describe('a session off screen at the end of its turn', () => {
 		await harness.handle(tagless);
 
 		expect(harness.lines).toEqual([
-			{ text: 'checkout is done.', priority: 'normal', ref: REF_, isNamed: false, isAsking: false },
+			{
+				text: 'checkout is done.',
+				priority: 'normal',
+				ref: REF_,
+				isNamed: false,
+				isAsking: false,
+				// The voice holds it for the meanwhile line.
+				announcement: { kind: 'done', about: null },
+			},
 		]);
 		expect(heldOf(harness.store)).toMatchObject({
 			kind: 'line',
@@ -748,6 +759,7 @@ describe('a session off screen at the end of its turn', () => {
 				ref: REF_,
 				isNamed: false,
 				isAsking: false,
+				announcement: { kind: 'needs', about: 'the backoff cap' },
 				chime: 'needs',
 			},
 		]);

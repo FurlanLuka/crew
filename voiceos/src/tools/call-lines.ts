@@ -1,3 +1,5 @@
+import { SWITCH_OFFERED_NOTE } from './announced.js';
+import { ASK_TARGET_NOTE } from './notification-reply.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isBareAnswer } from './send.js';
@@ -6,6 +8,9 @@ const SILENT_TOOLS: ToolName[] = [
 	'forward',
 	'send_to',
 	'switch_view',
+	'go_back',
+	'ask_target',
+	'play_missed',
 	'start_session',
 	'ignore_words',
 	'answer',
@@ -85,6 +90,26 @@ export const isAnsweredByForward = (calls: ToolCall[]): boolean => {
 	);
 };
 
+const MIN_QUESTION_WORDS = 3;
+
+// "Where am I?" waved off as a greeting, with nothing said: a question of three words or more is
+// answered, never met with silence.
+const isQuestionWavedOff = ({ reply, calls, utterance }: IsAskingBackParams): boolean =>
+	!reply.trim() &&
+	calls.length > 0 &&
+	calls.every(
+		(call) => call.name === 'ignore_words' && call.input.reason === 'greeting or acknowledgement',
+	) &&
+	/\?\s*$/.test(utterance) &&
+	utterance.trim().split(/\s+/).length >= MIN_QUESTION_WORDS;
+
+// Words passed on and nothing else, on a session's screen: Voice OS already says "Sent to X". A switch
+// needs no such rule: the kernel says nothing beside one, and an answer it writes there is kept.
+const isAcknowledgedInCode = (calls: ToolCall[], forwardTo: string | null): boolean =>
+	forwardTo !== null &&
+	calls.some((call) => call.name === 'send_to') &&
+	calls.every((call) => call.ok && (call.name === 'send_to' || call.name === 'forward'));
+
 // Asking what they meant, not asking which option they want ("which one?" after reading options out).
 const CLARIFYING_PATTERN =
 	/\b(?:need to clarify|do you mean|did you mean|are you asking|(?:are you|you're) referring to|do you want (?:me|to ask)|which (?:session|agent)|not sure (?:what|which|who)|can you (?:name|say|clarify)|could you (?:say|repeat|clarify)|is (?:this|that) for)\b/i;
@@ -154,12 +179,21 @@ export const decideEnding = ({
 		return { kind: 'forward_utterance' };
 	}
 
-	if (isAnsweredByForward(turn.calls)) {
+	// On a session's screen Voice OS says "Sent to X" itself (exchange.ts), and "Switch to X?" too.
+	if (
+		isAnsweredByForward(turn.calls) ||
+		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
+		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE || call.note === ASK_TARGET_NOTE)
+	) {
 		return { kind: 'drop_reply' };
 	}
 
 	if (mustAnswerNow) {
 		return { kind: 'answer_now', reason: 'final' };
+	}
+
+	if (isQuestionWavedOff(turn)) {
+		return { kind: 'answer_now', reason: 'empty' };
 	}
 
 	// Silence after tools reads as broken.

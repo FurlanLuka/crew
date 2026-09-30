@@ -15,7 +15,6 @@ import { listAllowedOrigins } from './gateway/auth.js';
 import { startGateway } from './gateway/server.js';
 import { configureLog, createLogger } from './log.js';
 import { UtteranceRouter } from './router/router.js';
-import { COMMAND_TTL_MS } from './shared/protocol.js';
 import { Kernel } from './router/kernel.js';
 import {
 	LEGACY_SETUP_REF,
@@ -40,6 +39,7 @@ import { Store } from './state/store.js';
 import { createListenSwitch } from './speech/hands-free-switch.js';
 import { VoiceInput } from './speech/voice-in.js';
 import { VoiceOut } from './speech/voice-out.js';
+import { connectSpeech, speakKernelReplies } from './speech/connect.js';
 import { DevWatch } from './dev/watch.js';
 import { SonioxTts } from './speech/tts.js';
 import { createNarrator } from './narrator/narrator.js';
@@ -104,12 +104,14 @@ let speaker: string | null = null;
 let gateway: ReturnType<typeof startGateway> | null = null;
 
 const tts = keys.soniox ? new SonioxTts({ apiKey: keys.soniox }) : null;
-const voiceOut = new VoiceOut({
+const voiceOut: VoiceOut = new VoiceOut({
 	store,
 	synthesize: tts?.synthesize ?? null,
 	play: (tab, message) => gateway?.send(tab, message) ?? false,
 	speaker: () => speaker,
 	hasPage: () => (gateway?.countClients() ?? 0) > 0,
+	// voiceIn is assigned below; it is only asked once speech is under way.
+	isListening: () => voiceIn.isListening(),
 });
 const narrate = createNarrator(keys.anthropic);
 
@@ -124,42 +126,7 @@ const narrateTurn = createTurnNarrator({
 
 const narrateAside = createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) });
 
-store.onEffect((effect) => {
-	if (effect.type === 'speak') {
-		voiceOut.say({
-			text: effect.text,
-			priority: effect.priority ?? (effect.source === 'alert' ? 'alert' : 'normal'),
-			source: effect.source,
-			isReply: effect.isReply,
-			ref: effect.ref ?? null,
-			isAsking: effect.isAsking,
-			isNamed: effect.isNamed,
-			isOwed: effect.isOwed,
-			isAck: effect.isAck,
-			isHoldable: effect.isHoldable,
-			chime: effect.chime,
-		});
-	}
-
-	if (effect.type === 'drop_speech') {
-		voiceOut.dropQueuedAbout(effect.ref, effect.before);
-	}
-
-	if (effect.type === 'narrate') {
-		return narrateTurn(effect);
-	}
-
-	if (effect.type === 'narrate_aside') {
-		return narrateAside(effect);
-	}
-
-	if (effect.type === 'expire_command') {
-		setTimeout(
-			() => store.dispatch({ type: 'command_expired', askId: effect.askId }),
-			COMMAND_TTL_MS,
-		);
-	}
-});
+connectSpeech({ store, voiceOut, narrateTurn, narrateAside });
 
 const reminderTimer = setInterval(() => voiceOut.remind(store.state), REMINDER_INTERVAL_MS);
 
@@ -244,18 +211,10 @@ const listenSwitchFor = createListenSwitch({
 const router = new UtteranceRouter({
 	store,
 	kernel: kernel
-		? async (text, options) => {
-				const turn = await kernel.handle(text, options);
-
-				if (turn.reply) {
-					voiceOut.say({ text: turn.reply, priority: 'high', source: 'kernel', isReply: true });
-				}
-
-				return turn;
-			}
+		? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
 		: null,
 });
-const voiceIn = new VoiceInput({
+const voiceIn: VoiceInput = new VoiceInput({
 	store,
 	apiKey: keys.soniox,
 	onUtterance: (text, client, startedAt, { isDictated }) =>

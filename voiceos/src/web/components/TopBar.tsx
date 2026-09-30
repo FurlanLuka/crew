@@ -115,6 +115,16 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 			</span>
 			{counts.running > 0 && <span className="c-amber">{counts.running} running</span>}
 			{counts.waiting > 0 && <span className="c-crit">{counts.waiting} waiting on you</span>}
+			{state.meanwhile.length > 0 && (
+				<button
+					type="button"
+					className="updates-waiting"
+					title="Other sessions' updates, said together at the next quiet moment. Click to hear them now."
+					onClick={() => dispatch({ type: 'play_meanwhile' })}
+				>
+					{state.meanwhile.length} {state.meanwhile.length === 1 ? 'update' : 'updates'} waiting
+				</button>
+			)}
 			<span className="sp">
 				{sevenDay !== null && `${limitsOwner}weekly ${sevenDay}%`}
 				{fiveHour !== null && ` · 5h ${fiveHour}%`}

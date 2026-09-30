@@ -111,6 +111,11 @@ export class Listener {
 		return this.listening.has(client);
 	}
 
+	// Some tab listens all the time (on demand or hands-free).
+	get hasListeners(): boolean {
+		return this.listening.size > 0;
+	}
+
 	get isTalking(): boolean {
 		for (const listening of this.listening.values()) {
 			if (listening.isTalking) {

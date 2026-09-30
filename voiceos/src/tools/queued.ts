@@ -4,6 +4,7 @@ import { isDevelopersMessage } from '../state/delivery.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
 import { recordAsSent, sendText } from './send.js';
+import { findSessionsNamedIn } from './session-naming.js';
 
 const log = createLogger('tools');
 
@@ -19,6 +20,22 @@ const BARE_TAKE_BACK_PATTERN =
 export const isBareTakeBack = (utterance: string | undefined): boolean =>
 	// Typed or replayed without words: the tool call is the only word there is.
 	!utterance?.trim() || BARE_TAKE_BACK_PATTERN.test(utterance.trim());
+
+// "That was for store front", "I meant this for checkout", "no, that was for here": the words went
+// to the wrong session, so the one that got them is not sent them again as a correction.
+const MISROUTE_PATTERN =
+	/\b(?:(?:that|this|it) (?:was|is) (?:meant )?for|I meant (?:that|this|it) for|(?:that|this|it) wasn'?t for|not (?:meant )?for (?:you|it|them))\b/i;
+
+interface IsSaidToBeMisroutedParams {
+	state: State;
+	ref: string;
+	utterance: string | undefined;
+}
+
+const isSaidToBeMisrouted = ({ state, ref, utterance }: IsSaidToBeMisroutedParams): boolean =>
+	utterance !== undefined &&
+	(MISROUTE_PATTERN.test(utterance) ||
+		findSessionsNamedIn(state, utterance).some((named) => named !== ref));
 
 export const QUEUED_ACTIONS = ['now', 'drop'] as const;
 export type QueuedAction = (typeof QUEUED_ACTIONS)[number];
@@ -143,14 +160,33 @@ const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
 	}
 
 	// Already delivered: words that only take it back tell it to ignore them. Anything more is a
-	// correction for the session, which undoing would lose ("remove that, I meant the TTS tags").
+	// correction for the session, which undoing would lose ("remove that, I meant the TTS tags") —
+	// unless it says the words were for someone else ("that was for store front").
 	if (!('id' in carrier)) {
-		if (!isBareTakeBack(toolContext.utterance)) {
+		const isMisroute = isSaidToBeMisrouted({ state, ref, utterance: toolContext.utterance });
+
+		if (!isBareTakeBack(toolContext.utterance) && !isMisroute) {
 			return sendCorrection({ state, ref, toolContext });
+		}
+
+		// Still on the words meant elsewhere, with nothing else of the developer's waiting: stopped.
+		const session = state.sessions[ref];
+		const isStoppable =
+			isMisroute &&
+			carrier.kind === 'working' &&
+			!(session?.queue.some(isDevelopersMessage) ?? false);
+
+		if (isStoppable) {
+			log.info('misrouted words stopped', { ref });
+			toolContext.dispatch({ type: 'interrupt', ref, isCorrection: true });
 		}
 
 		log.info('taken back after delivery', { ref, carrier: carrier.kind });
 		toolContext.dispatch({ type: 'send', ref, text: TAKEN_BACK });
+
+		if (isStoppable) {
+			return succeed(`${ref} was stopped and told the developer took those words back`);
+		}
 
 		return succeed(
 			carrier.kind === 'working'

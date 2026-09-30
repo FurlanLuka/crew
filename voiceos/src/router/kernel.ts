@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,
 	isOfferFresh,
+	isSwitchOfferFresh,
 	isRemembered,
 	type PendingAsk,
 	type SpokenLine,
@@ -11,6 +12,7 @@ import {
 	type VoiceEntry,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
+import { describeExchangeLines, describeNotificationLines } from './exchange-lines.js';
 import { createLogger } from '../log.js';
 import { executeTool, type ToolContext } from '../tools/tools.js';
 import { isSilentCall, describeToolCall, decideEnding } from '../tools/call-lines.js';
@@ -36,7 +38,7 @@ On a session's screen (see "Screen:"), decide in this order — the first that f
 1. A Voice OS command (see "Voice OS itself") → its tool, even when it begins "Voice OS, …".
 2. A reply to something waiting — a pending ask (answer), a question a session asked (forward), a fix offer (dev_offer) — see "Answering what a session waits on".
 3. Words that name another session ("tell checkout…", "in the ranking one…", "checkout, run the tests") → send_to it. Words that pick up a line in "Heard just before the developer spoke" — its words or its point, a reply to what it said ("if it's doable without a rewrite, what does that mean?") — go to the session that said it: send_to it, even when that line was not the newest — but only when they clearly pick up that line. A reply that fits the newest line goes to the session that said it, and one that fits what the session on screen just said stays with it ("I don't have access to the old one anymore" after its line about the old account). Naming the session on screen keeps the words there, and words that only happen to match another session's topic stay with the session on screen.
-4. A question for you — only these: what is waiting on the developer; how another session (not the one on screen) is doing; whether this worktree's dev servers are up and what is wrong with them; whether you sent their words ("did that go to the session?"); "options"; a read-back ("what did it say?"). Call read_state first, then answer in words — never ignore_words for a question.
+4. A question for you — only these: what is waiting on the developer; how another session (not the one on screen) is doing; whether this worktree's dev servers are up and what is wrong with them; whether you sent their words ("did that go to the session?"); where they are ("where am I?", "who am I talking to?": the Screen line, and the session they talk with off screen if a line says so); "options"; a read-back ("what did it say?"). Call read_state first, then answer in words — never ignore_words for a question.
 5. Everything else is for the session on screen: forward it — instructions, questions about the code, its logs or the work, replies, reactions, thinking out loud about the task, and how it should work or talk ("ask me with the question tool", "use a table"). "why does this take so long?", "run the tests", "what's the last thing we've done?", "do you remember what we said we'd do next?", "check the transcripts and let me know", "could we brainstorm, use proxy brainstorm", "go through my notes and pick one", "look through the debug notes", "ping it and ask how far it is" are all for the session, and so is any "can you …" about the work ("can you look into why the build broke?"). That Claude holds the whole conversation and you see only its last lines: never answer these yourself, never read_state or read_history for them, never ask back. The setup session is a session like any other here. "Voice OS" is this app: rebuilding, reinstalling, restarting, fixing or changing it is work for the session on screen. When unsure whether words are for the session on screen, forward them — it can ask back; never ask who something is for.
 On a session's screen your first step always calls a tool. ignore_words only for words that ask for nothing or were not said to anyone (a video, a song, someone else talking).
 
@@ -51,8 +53,8 @@ Forwarding:
 Answering what a session waits on (see "pending", "asked" and "Voice OS last asked aloud"):
 - "pending" is an open permission, plan or question: answer it with the answer tool, never by forward. Only a clear yes, no, always or choice answers it — "hmm" is thinking. A question about what it waits on ("why does step 3 touch the kernel?", "what does that command do?") is forward with kind question, never answered by you from the pending text: the session answers it aside and the plan or permission keeps waiting. Anything else the developer says for that session — a new instruction, a change of subject ("also run the linter") — is them moving on: forward it as said. It reaches the session and declines the permission or plan with their words. Never tell them it is waiting, never ask them to answer it first. For a permission or plan, "yes", "okay", "sure", "go ahead", "do it" are yes; "always" is always; "no …" is no with the rest as text ("No, use a new branch" is no with "use a new branch"). "Yes, but only on staging" is answer yes with text "Only on staging." — the text reaches the session with the answer. For a question, choose the listed option the developer meant — "the second one" is the second label, "reuse it" is "Reuse orders" — or their own words when none fits; keep detail they add to an option ("New table, partitioned").
 - "asked" is a question a session ended its turn on: the developer's reply is its answer. forward it (or send_to when that session is not on screen) as they said it, whole — never shortened to one of the options it offered; never ask them the question again, never read_state first. Whatever they say next for that session — a full answer, part of one, a correction or something else entirely — goes to it as said: never ask them to choose, confirm what they meant, or answer it first. A question from the developer is never an answer — "so pushing won't expose the keys?" is a new question: forward it, and never call answer or say the session is waiting on them.
-- A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer). That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does, in a few words by topic ("Yes to which — ranking or checkout?"). One bare reply answers one thing, never several.
-- An item marked "announced only — not heard": the developer heard only "<session> needs you", never the question. A bare reply ("yes", "no", "do it") is not its answer: reply only "Switch to <session>?" and change nothing. When the developer says yes to your "Switch to <session>?" (see "Earlier on this screen"), switch_view to it — its question plays there. Words that name the session ("tell crew main: use the docs folder") answer it as usual. Asked what waits, say what it is about in a few words and offer the switch ("checkout needs you, about the backoff cap — switch to it?"); never switch to show it.
+- A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer), or its switch offer ("Switch to checkout?" — switch_offer: yes is switch_view to it, no changes nothing). That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does, in a few words by topic ("Yes to which — ranking or checkout?"). One bare reply answers one thing, never several.
+- An item marked "announced only — not heard": the developer heard only "<session> needs you", never the question. A bare reply ("yes", "no", "do it") is not its answer: call answer as you would, and Voice OS asks "Switch to <session>?" itself — say nothing. A yes to that (switch_offer under "Waiting on the developer") is switch_view to it — its question plays there. Words that name the session ("tell crew main: use the docs folder") answer it as usual. Asked what waits, say what it is about in a few words ("checkout needs you, about the backoff cap"); never switch to show it.
 - When nothing waits, a reply on a session's screen ("yes, but use the table", "no, the other file") is for that session: forward it.
 - A yes or no meant for a fix offer is always dev_offer, however old: it says when the offer lapsed, and then you tell the developer. Never crew_dev, send_to or forward in its place.
 - "Options", "what are the options": a pending question lists its options — read them out, briefly and numbered. Otherwise read_state the session that asked and list the options it actually offered in its recent output — that list may be longer than one sentence. If it offered none, reply exactly "Nothing is waiting on a choice." and nothing more — what the developer asked a session for is not a question it asked back; never take options from your own earlier words or the developer's. Never forward it.
@@ -61,7 +63,7 @@ Answering what a session waits on (see "pending", "asked" and "Voice OS last ask
 - Reading back — only "what did it say?", "what did the session say?", "read it out", "what did it/you say about X" (then only the part about X): read_state that session (the one on screen unless they named another) and speak its last_reply in its own words, for the ear: the point first, then the details that matter — names, numbers, what it found, what it recommends — in two to four sentences, at most 80 words, no code, paths or tables. Never summarize it down to a line. Asking it for more is a question for the session: forward it — and so is asking it to produce something ("give me the context so I can copy it over", "write me a summary", "a handoff for another session"): it writes that on the page, where it can be copied. Keep any question or choice its last_reply leaves for the developer, said as one ("…and it asks whether you want that"): a read-back without it drops what they must decide.
 
 Voice OS itself:
-- open, switch to, show, go to X → switch_view X; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it and topic. Home, go back, Mission Control, show me everything → switch_view with null.
+- open, switch to, show, go to X → switch_view X; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it and topic. Home, Mission Control, show me everything → switch_view with null. "Go back", "back", "previous session" → go_back (never switch_view): Voice OS says where they landed.
 - "pin this", "pin X" → pin_session (ref null for the session on screen, the setup session included); "unpin this", "unpin X" → pin_session with unpin. On Mission Control "pin this" names nothing: ask which session. Pinning something in the work ("pin the version in package.json") is for the session: forward it. "Go to pinned", "show my pinned sessions" → switch_view with pinned true.
 - "rename X to Y", "call X Y", "rename this to Y" → rename_session: a name Voice OS shows and hears for that session (ref null for the one on screen; an empty name clears it). "Call" here means naming, never starting or phoning: "call store front main on Personal api work" is rename_session of Personal's store-front/main to "api work". A session's name is not work: never forward it. Renaming something in the code ("rename the function to parseRef") is work: forward it. A machine ("rename vm1 to build box") is rename_machine.
 - start X → start_session (it also opens X) — only when starting the session is all they asked. "Start it" in reply to a session's question is its answer: forward all of it, "start it" included. "Start X and <anything for it>" ("start it and tell me what you did last", "start checkout and run the tests") → forward or send_to the rest: sending starts the session. Its dev servers are yours, not the session's: "start X and bring up its servers" is start_session and crew_dev. end, close, stop session X → stop_session.
@@ -117,7 +119,7 @@ const formatRememberedLines = (memory: VoiceEntry[]): string => {
 
 interface WaitingItem {
 	ref: string;
-	what: 'pending' | 'asked' | 'fix_offer';
+	what: 'pending' | 'asked' | 'fix_offer' | 'switch_offer';
 	at: number;
 }
 
@@ -131,6 +133,9 @@ export const listWaitingItems = (state: State, now: number): WaitingItem[] => {
 		}),
 		...(isOfferFresh(state.devOffer, now)
 			? [{ ref: state.devOffer.ref, what: 'fix_offer' as const, at: state.devOffer.at }]
+			: []),
+		...(isSwitchOfferFresh(state.switchOffer, now)
+			? [{ ref: state.switchOffer.ref, what: 'switch_offer' as const, at: state.switchOffer.at }]
 			: []),
 	].sort((first, second) => second.at - first.at);
 };
@@ -290,6 +295,8 @@ export const buildKernelMessage = ({
 			? [`Named sessions: ${namedRefs.map((ref) => nameRef(state, ref)).join(', ')}.`]
 			: []),
 		`Sessions: ${JSON.stringify(sessions)}`,
+		...describeExchangeLines({ state, now, nameRef: (ref) => nameRef(state, ref) }),
+		...describeNotificationLines({ heardBefore, nameRef: (ref) => nameRef(state, ref) }),
 		`Waiting on the developer: ${formatWaitingLine({ state, waiting, now, askedAloudRef: lastAskedLine?.ref ?? null })}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,
 		// Only when there is something: an empty line of it made the model reach for more tools.
@@ -424,8 +431,12 @@ export class Kernel {
 				}),
 			},
 		];
+		const { dispatch } = this.options.tools;
 		const toolContext: ToolContext = {
 			...this.options.tools,
+			// A switch made for the developer's words is said ("Switching to checkout"); a click is not.
+			dispatch: (action) =>
+				dispatch(action.type === 'switch_view' ? { ...action, announce: true } : action),
 			utterance,
 			recentUtterances: memory.map((entry) => entry.utterance),
 			forwardTo,

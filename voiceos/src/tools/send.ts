@@ -1,4 +1,10 @@
-import { isSdkAsk, type QueuedMessage, type Session, type State } from '../shared/protocol.js';
+import {
+	isSdkAsk,
+	isSwitchOfferFresh,
+	type QueuedMessage,
+	type Session,
+	type State,
+} from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
 import { isPlainConsent } from './consent.js';
@@ -330,6 +336,19 @@ export const sendText = ({
 		log.info('debug note request not sent', { ref });
 
 		return fail(debugNoteRequest);
+	}
+
+	// "No" to Voice OS's own "Switch to checkout?" is an answer to Voice OS, not words for checkout.
+	if (
+		isSwitchOfferFresh(state.switchOffer, toolContext.now()) &&
+		BARE_REFUSAL_PATTERN.test(normalizeSaid(toolContext.utterance ?? text)) &&
+		isBareAnswer(toolContext.utterance ?? text)
+	) {
+		log.info('no to the switch offer: not sent', { ref });
+
+		return fail(
+			`That "no" answers Voice OS's "Switch to ${state.switchOffer.ref}?": the developer stays where they are. Nothing was sent; say nothing.`,
+		);
 	}
 
 	// A bare yes or no for a question only announced there answers nothing the developer heard.

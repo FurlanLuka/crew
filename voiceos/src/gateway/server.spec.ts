@@ -278,6 +278,17 @@ describe('parseClientMessage', () => {
 		pin_session: { type: 'pin_session', ref: 'vm1:store/main' },
 		unpin_session: { type: 'unpin_session', ref: 'vm1:store/main' },
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
+		clear_exchange: { type: 'clear_exchange' },
+		go_back: { type: 'go_back' },
+		play_meanwhile: { type: 'play_meanwhile' },
+		offer_switch: { type: 'offer_switch', ref: 'store/main' },
+		ask_target: {
+			type: 'ask_target',
+			ref: 'store/main',
+			screen: 'store/wrk1',
+			text: 'review this',
+		},
+		settle_target: { type: 'settle_target', at: 5, toTarget: true },
 	};
 	const messages: ClientMessage[] = [
 		...Object.values(actions).map((action): ClientMessage => ({ type: 'action', action })),

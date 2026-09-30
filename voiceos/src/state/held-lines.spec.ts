@@ -284,6 +284,7 @@ describe('asks off screen', () => {
 				ref: REF,
 				priority: 'high',
 				chime: 'needs',
+				waitsForGap: true,
 			},
 		]);
 		expect(heldOf(state)).toMatchObject({ kind: 'ask', askId: 'q1' });

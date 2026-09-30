@@ -21,6 +21,7 @@ import {
 import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
+import { askTarget, decideNotificationReply } from './notification-reply.js';
 import { renameSession } from './rename.js';
 import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
@@ -30,7 +31,7 @@ import type { NotesStore } from '../memory/notes.js';
 import { GENERAL_NOTES, nameNotes, readNoteText, readWorkspace } from '../shared/notes.js';
 import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
-import { hasOfferedSwitch, isNamedIn, refuseAnnouncedOnly } from './announced.js';
+import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
@@ -480,12 +481,7 @@ export const executeTool = async (
 
 			// A session whose question was only announced is opened when the developer names it, or
 			// after they said yes to "Switch to …?": never on a bare "yes" or "what's waiting?".
-			const refused = hasOfferedSwitch({
-				state,
-				ref: checked.ref,
-				screen: toolContext.screen,
-				now: toolContext.now(),
-			})
+			const refused = isSwitchOfferedFor(state, checked.ref, toolContext.now())
 				? null
 				: refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'switched' });
 
@@ -493,10 +489,40 @@ export const executeTool = async (
 				return refused;
 			}
 
-			toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });
+			const reply = decideNotificationReply({ state, ref: checked.ref, toolContext });
 
-			return succeed(`showing ${checked.ref}`);
+			if (reply.kind === 'refuse') {
+				return fail(reply.why);
+			}
+
+			const skipHeld = input.skip_held === true || reply.kind === 'stale_held';
+
+			toolContext.dispatch({
+				type: 'switch_view',
+				view: { kind: 'session', ref: checked.ref },
+				...(skipHeld ? { skipHeld: true as const } : {}),
+			});
+
+			return succeed(
+				reply.kind === 'stale_held'
+					? `showing ${checked.ref}. Its held update is older than five minutes and was not replayed: send_to it with the developer's question.`
+					: `showing ${checked.ref}`,
+			);
 		}
+
+		case 'ask_target':
+			return askTarget({ state, input, toolContext });
+
+		case 'play_missed':
+			if (state.meanwhile.length === 0) {
+				return { ...succeed('nothing is waiting: say "Nothing new."'), reply: 'Nothing new.' };
+			}
+
+			toolContext.dispatch({ type: 'play_meanwhile' });
+
+			return succeed(
+				`Voice OS says the ${state.meanwhile.length} waiting updates now: say nothing`,
+			);
 
 		case 'start_session': {
 			const found = checkRef(state, input.ref);
@@ -600,6 +626,11 @@ export const executeTool = async (
 
 		case 'answer':
 			return answerAsk({ state, input, toolContext });
+
+		case 'go_back':
+			toolContext.dispatch({ type: 'go_back' });
+
+			return succeed('went back: Voice OS says where to');
 
 		case 'pin_session':
 			return pinSession({

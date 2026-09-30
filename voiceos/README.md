@@ -137,8 +137,19 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
   "By the way" forces an aside, "queue it" forces the queue, and a question that needs tools or
   changes the work is queued after all (`state/delivery.ts`, `decideDelivery`). Asides are not saved.
-- **Held lines.** A session off screen does not speak its lines. It gets a short announcement, and
-  the full line plays on switch (`state/held-lines.ts`).
+- **Held lines.** A session off screen does not speak its lines. Its update waits in `meanwhile`
+  and is said with the others' in one line once it is quiet (`speech/meanwhile.ts`, `state/meanwhile.ts`),
+  and the full line plays on switch (`state/held-lines.ts`).
+- **The exchange** (`state/exchange.ts`) is who the developer is talking with: the session their
+  spoken words went to last. Off screen it is the subject: its lines are always said, named;
+  follow-ups go there (`router/exchange-lines.ts` tells the kernel); it lapses a minute after its
+  last answer heard (a timer in `speech/connect.ts`); after its second answered turn Voice OS asks
+  "Switch to X?" (`state.switchOffer`, 8 s). Speech ranks the exchange's lines first
+  (`speech/queue.ts`) and holds everything, never drops it, while the developer talks.
+- **Words go where they were said.** Voice OS says "Sent to X" when X is not on screen, "Switching
+  to X" for a switch it makes, "Back to X" for `go_back` (`state/view-history.ts`, five views with
+  their exchanges). "For X?" (`state/target-ask.ts`, settled by `router/target.ts`) holds words that
+  could be a reply to X's notification until the developer says which.
 - **The setup session** (ref `setup`) runs in the home folder with the crew CLI, for crew setup
   only. On the wire it is `Session.isPinned`, a name that predates Pinned. It is kept because
   remotes of other versions read it, so it means "the setup session" and has nothing to do with

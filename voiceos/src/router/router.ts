@@ -7,6 +7,7 @@ import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
+import { readTargetAnswer, settleTarget } from './target.js';
 
 const log = createLogger('router');
 
@@ -96,6 +97,19 @@ export class UtteranceRouter {
 			return;
 		}
 
+		// "For checkout?" waits on these words: a yes or no settles it, anything else keeps the held
+		// words on the screen and is routed as usual.
+		if (store.state.targetAsk) {
+			const answer = readTargetAnswer(trimmedText);
+
+			settleTarget(store, answer === 'yes');
+			log.info('target answered', { answer });
+
+			if (answer !== 'other') {
+				return;
+			}
+		}
+
 		// Captured before anything runs: a switch_view during the turn does not move it.
 		const screen = readActiveRef(store.state);
 		const saidAt = this.now();
@@ -126,6 +140,8 @@ export class UtteranceRouter {
 		}
 
 		log.info('route', { source, to: 'kernel', screen, text: trimmedText });
+		// "Switch to checkout?" is answered by these words or let go: a yes switches in this turn.
+		const offerAt = store.state.switchOffer?.at ?? null;
 
 		const entry = await this.askKernel({
 			kernel,
@@ -138,6 +154,10 @@ export class UtteranceRouter {
 			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
+
+		if (offerAt !== null) {
+			store.dispatch({ type: 'switch_offer_closed', at: offerAt });
+		}
 	}
 
 	private sendDictation(

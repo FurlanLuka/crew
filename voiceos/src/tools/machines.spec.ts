@@ -330,7 +330,7 @@ describe('what the kernel is offered', () => {
 		expect(plain.some((tool) => tool.name === 'rename_machine')).toBe(false);
 		expect(
 			Object.keys(plain.find((tool) => tool.name === 'switch_view')?.input_schema.properties ?? {}),
-		).toEqual(['ref', 'pinned']);
+		).toEqual(['ref', 'pinned', 'skip_held']);
 	});
 
 	it('with other machines → rename_machine, and switch_view takes a machine', () => {

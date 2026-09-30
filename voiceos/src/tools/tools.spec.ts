@@ -475,6 +475,9 @@ describe('forward', () => {
 			'read_history',
 			'send_to',
 			'switch_view',
+			'go_back',
+			'ask_target',
+			'play_missed',
 			'start_session',
 			'stop_session',
 			'crew_dev',
@@ -1180,7 +1183,7 @@ describe('a question only announced', () => {
 		return context;
 	};
 
-	it('a bare yes from elsewhere answers nothing, sends nothing, and offers the switch (both kinds)', async () => {
+	it('a bare yes from elsewhere answers nothing, sends nothing, and Voice OS offers the switch itself (both kinds)', async () => {
 		for (const kind of ['ask', 'line'] as const) {
 			const { tools, actions } = withHeldQuestion(kind);
 			const bare = { ...tools, screen: null, forwardTo: null, utterance: 'yes' };
@@ -1191,33 +1194,29 @@ describe('a question only announced', () => {
 			);
 			const sent = await executeTool('send_to', { ref: 'checkout-api/main', text: 'Yes.' }, bare);
 
-			expect(answered.ok).toBe(false);
-			expect(String(answered.content)).toContain('Switch to checkout-api/main?');
+			expect(answered).toMatchObject({ ok: false, note: 'switch offered' });
+			expect(String(answered.content)).toContain('say nothing');
 			expect(sent.ok).toBe(false);
-			expect(actions).toEqual([]);
+			expect(actions).toEqual([
+				{ type: 'offer_switch', ref: 'checkout-api/main' },
+				{ type: 'offer_switch', ref: 'checkout-api/main' },
+			]);
 		}
 	});
 
-	it('switching there: refused on a bare yes; allowed after Voice OS offered it, or when named', async () => {
-		const offer = (reply: string, at: number) => ({
-			[GRID]: [{ utterance: 'yes', did: [], reply, at }],
-		});
+	it("switching there: refused on a bare yes; allowed while Voice OS's offer for it is fresh, or when named", async () => {
+		const offer = (ref: string, at: number) => ({ ref, at });
 		const refused = withHeldQuestion('line');
 		const offered = withHeldQuestion('line');
-		const offeredInPassing = withHeldQuestion('line');
 		const stale = withHeldQuestion('line');
 		const elsewhere = withHeldQuestion('line');
 		const named = withHeldQuestion('line');
-		offered.tools.getState().voiceLog = offer('Switch to checkout-api/main?', 150_000);
-		offeredInPassing.tools.getState().voiceLog = offer(
-			'checkout api main needs you, about the backoff cap — switch to it?',
-			150_000,
-		);
-		stale.tools.getState().voiceLog = offer('Switch to checkout-api/main?', 0);
-		elsewhere.tools.getState().voiceLog = offer('Switch to store-front/main?', 150_000);
+		offered.tools.getState().switchOffer = offer('checkout-api/main', 175_000);
+		stale.tools.getState().switchOffer = offer('checkout-api/main', 150_000);
+		elsewhere.tools.getState().switchOffer = offer('store-front/main', 175_000);
 		const yes = { screen: null, utterance: 'yes', now: () => 180_000 };
 
-		for (const context of [refused, offered, offeredInPassing, stale, elsewhere]) {
+		for (const context of [refused, offered, stale, elsewhere]) {
 			await executeTool('switch_view', { ref: 'checkout-api/main' }, { ...context.tools, ...yes });
 		}
 
@@ -1230,13 +1229,33 @@ describe('a question only announced', () => {
 			type: 'switch_view',
 			view: { kind: 'session', ref: 'checkout-api/main' },
 		} as const;
+		const offering = { type: 'offer_switch', ref: 'checkout-api/main' } as const;
 
-		expect(refused.actions).toEqual([]);
-		expect(stale.actions).toEqual([]);
-		expect(elsewhere.actions).toEqual([]);
+		expect(refused.actions).toEqual([offering]);
+		expect(stale.actions).toEqual([offering]);
+		expect(elsewhere.actions).toEqual([offering]);
 		expect(offered.actions).toEqual([switched]);
-		expect(offeredInPassing.actions).toEqual([switched]);
 		expect(named.actions).toEqual([switched]);
+	});
+
+	it('"no" right after "Switch to …?" → not sent to anyone; "no, use the table" still goes', async () => {
+		const context = createToolContext();
+		context.tools.getState().switchOffer = { ref: 'checkout-api/main', at: 175_000 };
+		const now = () => 180_000;
+
+		const bare = await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main' },
+			{ ...context.tools, now, utterance: 'No.' },
+		);
+		const more = await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main' },
+			{ ...context.tools, now, utterance: 'No, use the table instead of the view.' },
+		);
+
+		expect(bare.ok).toBe(false);
+		expect(more.ok).toBe(true);
 	});
 
 	it('the answer tool with the session named answers it; other words from elsewhere still go', async () => {
@@ -1531,6 +1550,44 @@ describe('queued_message', () => {
 		expect([...blocked.actions, ...finished.actions]).toEqual([
 			{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK },
 			{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK },
+		]);
+	});
+
+	it('"that was for checkout" while its words are being worked on → it is stopped and told; words that only correct it go to it', async () => {
+		const running = () => {
+			const context = withQueue('running-1');
+			context.tools.getState().sessions['store-front/main'] = {
+				...context.tools.getState().sessions['store-front/main']!,
+				status: 'running',
+				queue: [],
+				currentSendId: 'running-1',
+			};
+
+			return context;
+		};
+
+		const drop = { ref: 'store-front/main', action: 'drop' };
+		const misrouted = running();
+		const corrected = running();
+
+		await executeTool('queued_message', drop, {
+			...misrouted.tools,
+			utterance: 'Sorry, that was for checkout api main.',
+		});
+		await executeTool('queued_message', drop, {
+			...corrected.tools,
+			utterance: 'No, remove that, use the other file instead.',
+		});
+
+		expect(misrouted.actions).toEqual([
+			{ type: 'interrupt', ref: 'store-front/main', isCorrection: true },
+			{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK },
+		]);
+		expect(corrected.actions).toEqual([
+			expect.objectContaining({
+				type: 'send',
+				text: 'No, remove that, use the other file instead.',
+			}),
 		]);
 	});
 
@@ -3412,6 +3469,37 @@ describe('fixes from the live notes', () => {
 			[
 				'a forward that failed ("already sent") → its explanation stays, the words are not sent again',
 				{ reply: 'Did you mean to send it again?', calls: [call('forward', false)] },
+				{ kind: 'keep' },
+			],
+			[
+				'"where am I?" waved off as a greeting → answered after all',
+				{
+					utterance: 'Where am I?',
+					calls: [
+						{ name: 'ignore_words', input: { reason: 'greeting or acknowledgement' }, ok: true },
+					],
+				},
+				{ kind: 'answer_now', reason: 'empty' },
+			],
+			[
+				'"thanks?" waved off → still silent: too short to be a question',
+				{
+					utterance: 'Thanks?',
+					calls: [
+						{ name: 'ignore_words', input: { reason: 'greeting or acknowledgement' }, ok: true },
+					],
+					isSilent: true,
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'only send_to on a session screen → the reply is dropped: Voice OS says "Sent to X" itself',
+				{ reply: 'Sent to checkout.', calls: [call('send_to')] },
+				{ kind: 'drop_reply' },
+			],
+			[
+				'only send_to on Mission Control → the reply stays: nothing else says where the words went',
+				{ reply: 'Sent to checkout.', calls: [call('send_to')], forwardTo: null },
 				{ kind: 'keep' },
 			],
 		])('%s', (_, patch, ending) =>

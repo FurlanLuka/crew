@@ -209,7 +209,10 @@ describe('VoiceOut', () => {
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
-		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main is done.']);
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'done', null],
+		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
 			kind: 'line',
 			text: long,
@@ -232,7 +235,9 @@ describe('VoiceOut', () => {
 		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
 		await flush();
 
-		expect(harness.listSynthesized().at(-1)).toBe('store/main is done: Router refactor.');
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'done', 'Router refactor'],
+		]);
 	});
 
 	it('the same while its session still works → held silently: its turn end will announce it', async () => {
@@ -353,7 +358,10 @@ describe('VoiceOut', () => {
 		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
 		await flush();
 
-		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main is done.']);
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'done', null],
+		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
 			text: second,
 			isAnnounced: true,
@@ -387,7 +395,10 @@ describe('VoiceOut', () => {
 		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
 		await flush();
 
-		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main is done.']);
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'done', null],
+		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: report });
 	});
 
@@ -419,7 +430,10 @@ describe('VoiceOut', () => {
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
-		expect(harness.listSynthesized()).toEqual(['playing now', 'store/main needs you.']);
+		expect(harness.listSynthesized()).toEqual(['playing now']);
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'needs', null],
+		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
 			text: 'Push it now?',
 			isAnnounced: true,
@@ -482,9 +496,9 @@ describe('VoiceOut', () => {
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
-		expect(harness.listSynthesized().at(-1)).toBe(
-			'store/main is done: push the telephony branches.',
-		);
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'done', 'push the telephony branches'],
+		]);
 	});
 
 	it('a short line plays wherever the developer is', async () => {
@@ -1152,7 +1166,10 @@ describe('VoiceOut, voice tags', () => {
 		});
 		await flush();
 
-		expect(harness.listSynthesized()).toEqual(['store/main is done.']);
+		expect(harness.listSynthesized()).toEqual([]);
+		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
+			['store/main', 'done', null],
+		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: PLAIN });
 	});
 

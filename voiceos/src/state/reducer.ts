@@ -1,3 +1,15 @@
+import { followExchange, pruneExchange, readSubject } from './exchange.js';
+import { sayAck, sayRef } from './helpers.js';
+import { isTargetInput, reduceTargetAsk } from './target-ask.js';
+import { addMeanwhile, playMeanwhile } from './meanwhile.js';
+import {
+	decideGoBack,
+	describeGoBack,
+	describeSwitching,
+	isSameView,
+	pruneViewHistory,
+	pushViewHistory,
+} from './view-history.js';
 import {
 	GRID,
 	VOICE_LOG_ENTRIES_KEPT,
@@ -103,6 +115,10 @@ export type Effect =
 			chime?: 'needs';
 			// Held instead if its session is off screen when it plays (a long line).
 			isHoldable?: boolean;
+			// The session's own answer: heard to the end, it keeps the conversation with it going.
+			isAnswer?: boolean;
+			// Another session's permission or question: it waits for a short gap, never cutting in.
+			waitsForGap?: boolean;
 	  }
 	// The developer spoke to this session again: its lines still waiting to be said (older than
 	// before) are out of date. They stay on the page.
@@ -128,6 +144,10 @@ export const createInitialState = (): State => ({
 	order: [],
 	view: HOME_VIEW,
 	focus: null,
+	exchange: null,
+	viewHistory: [],
+	targetAsk: null,
+	meanwhile: [],
 	asks: [],
 	denials: [],
 	transcript: null,
@@ -137,6 +157,7 @@ export const createInitialState = (): State => ({
 	devServers: {},
 	devStarting: [],
 	devOffer: null,
+	switchOffer: null,
 	voiceLog: {},
 	lastSpokenSend: null,
 	notes: {},
@@ -255,21 +276,72 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		Object.entries(state.voiceLog).filter(([screen]) => screen === GRID || sessions[screen]),
 	);
 
-	return { ...state, sessions, order, view, focus, voiceLog };
+	const isKept = (ref: string) => Boolean(sessions[ref]);
+	const exchange = pruneExchange(state.exchange, isKept);
+	const viewHistory = pruneViewHistory(state.viewHistory, isKept);
+	const meanwhile = state.meanwhile.filter((item) => isKept(item.ref));
+
+	return { ...state, sessions, order, view, focus, exchange, viewHistory, meanwhile, voiceLog };
 };
 
-// A session that is gone cannot be shown: null leaves the screen where it is.
-const showView = (state: State, view: View): State | null =>
-	view.kind === 'session' && !state.sessions[view.ref]
-		? null
-		: {
-				...state,
-				view: toShownView(state, view),
-				focus: view.kind === 'session' ? view.ref : state.focus,
-			};
+// Its lines are said as they come: on screen, or the session the developer talks with elsewhere.
+const isHeardNow = (state: State, ref: string, at: number): boolean =>
+	isOnScreen(state, ref) || readSubject(state, at) === ref;
+
+// A session that is gone cannot be shown: null leaves the screen where it is. The view left goes
+// on the history, for "go back", unless this is a restore or a step back itself.
+const showView = (state: State, view: View, { isRemembered = true } = {}): State | null => {
+	if (view.kind === 'session' && !state.sessions[view.ref]) {
+		return null;
+	}
+
+	const shown = toShownView(state, view);
+
+	return {
+		...state,
+		view: shown,
+		focus: view.kind === 'session' ? view.ref : state.focus,
+		viewHistory: isRemembered ? pushViewHistory(state, shown) : state.viewHistory,
+	};
+};
+
+const goBack = (state: State, at: number): ReducerResult => {
+	const decision = decideGoBack({ state, now: at });
+
+	if (decision.kind === 'empty') {
+		return { state, effects: [describeGoBack(state, decision)] };
+	}
+
+	const shown = showView({ ...state, viewHistory: decision.rest }, decision.view, {
+		isRemembered: false,
+	});
+
+	if (!shown) {
+		return {
+			state,
+			effects: [describeGoBack(state, { kind: 'empty', skipped: decision.skipped })],
+		};
+	}
+
+	// The conversation they had there comes back with it, while it is still live.
+	const restored = { ...shown, exchange: decision.exchange, switchOffer: null };
+	const said = describeGoBack(state, decision);
+
+	if (decision.view.kind !== 'session') {
+		return { state: restored, effects: [said] };
+	}
+
+	const replayed = replayHeldLine(restored, decision.view.ref);
+
+	return { state: replayed.state, effects: [said, ...replayed.effects] };
+};
 
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
+
+	if (isTargetInput(input)) {
+		return reduceTargetAsk(state, input, stamped);
+	}
 
 	if (isMachineInput(input)) {
 		return reduceMachine(state, input, stamped, reduceInput);
@@ -354,13 +426,24 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
-			return view.kind === 'session'
-				? replayHeldLine(shown, view.ref)
-				: { state: shown, effects: describeSwitch(state, view) };
+			const switched =
+				view.kind !== 'session'
+					? { state: shown, effects: describeSwitch(state, view) }
+					: input.skipHeld
+						? withoutEffects(shown)
+						: replayHeldLine(shown, view.ref);
+
+			// Said first: whatever plays there next is heard as coming from there.
+			return input.announce && !isSameView(state.view, shown.view)
+				? { ...switched, effects: [describeSwitching(state, shown.view), ...switched.effects] }
+				: switched;
 		}
 
+		case 'go_back':
+			return goBack(state, stamped.at);
+
 		case 'restore_view':
-			return withoutEffects(showView(state, input.view) ?? state);
+			return withoutEffects(showView(state, input.view, { isRemembered: false }) ?? state);
 
 		case 'start_session':
 			return state.sessions[input.ref]?.status === 'stopped'
@@ -420,6 +503,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 				effects: [
 					...settled.effects,
+					...(input.isCorrection ? [sayAck(`Stopped ${sayRef(state, input.ref)}.`)] : []),
 					{ type: 'worker_interrupt', ref: input.ref },
 					// An allowance still waiting goes with the work it was for.
 					...restoreAutoEffects(session),
@@ -494,7 +578,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A reply the developer's follow-up is cutting says nothing more: they are already past it.
 			const { spokenInTurn, effects, held } = hasFollowUpWaiting(session)
 				? { spokenInTurn: session.spokenInTurn, effects: [], held: null }
-				: speakNewTag(session, draft, isOnScreen(state, input.ref));
+				: speakNewTag(session, draft, isHeardNow(state, input.ref, stamped.at));
 			const drafted = updateSession(state, input.ref, (current) => ({
 				...markSelfStarted(current),
 				draft,
@@ -534,7 +618,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A message that never streamed says its lines now; streamed ones were said already.
 			const spoken =
 				isText && !hasFollowUpWaiting(session)
-					? speakNewTag(session, input.text, isOnScreen(state, input.ref))
+					? speakNewTag(session, input.text, isHeardNow(state, input.ref, stamped.at))
 					: null;
 			// Text and a tool call end the streamed draft; results and diffs follow the tool line.
 			const shouldClearDraft = isText || input.type === 'tool';
@@ -748,7 +832,12 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...state,
 				spoken: state.spoken.map((line) =>
 					line.id === input.lineId
-						? { ...line, endedAt: stamped.at, ...(input.isCut ? { isCut: true as const } : {}) }
+						? {
+								...line,
+								endedAt: stamped.at,
+								...(input.isCut ? { isCut: true as const } : {}),
+								...(input.isUnplayed ? { isUnplayed: true as const } : {}),
+							}
 						: line,
 				),
 			});
@@ -772,6 +861,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 						at: stamped.at,
 						...(input.ref ? { ref: input.ref } : {}),
 						...(input.isAsking ? { isAsking: true as const } : {}),
+						...(input.isAnswer ? { isAnswer: true as const } : {}),
 					},
 				].slice(-SPOKEN_LINES_KEPT),
 			});
@@ -831,6 +921,19 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'setup':
 			return withoutEffects({ ...state, setup: { missing: input.missing } });
+
+		case 'meanwhile_added':
+			return withoutEffects(addMeanwhile(state, input, stamped.at));
+
+		case 'play_meanwhile':
+			return playMeanwhile(state);
+
+		// followExchange (exchange.ts) owns these.
+		case 'exchange_expired':
+		case 'clear_exchange':
+		case 'offer_switch':
+		case 'switch_offer_closed':
+			return withoutEffects(state);
 	}
 
 	// A browser tab left open across an upgrade runs older code than the server: it must reload, not guess.
@@ -838,5 +941,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	throw new Error(`unknown input: ${(unknownInput as { type: string }).type}`);
 };
 
-export const reduce = (state: State, stamped: Stamped): ReducerResult =>
-	reduceInput({ ...state, seq: stamped.seq }, stamped);
+export const reduce = (state: State, stamped: Stamped): ReducerResult => {
+	const before = { ...state, seq: stamped.seq };
+
+	return followExchange(before, reduceInput(before, stamped), stamped);
+};
