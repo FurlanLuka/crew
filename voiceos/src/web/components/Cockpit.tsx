@@ -103,10 +103,6 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 						dispatch={dispatch}
 					/>
 				)}
-				<div className="panel">
-					<span className="lbl">topic</span>
-					<div className="row">{session.topic ?? 'none yet'}</div>
-				</div>
 				<VoicePanel state={state} screen={session.ref} />
 				<NotesPanel state={state} screen={session.ref} />
 				<DocsPanel session={session} />

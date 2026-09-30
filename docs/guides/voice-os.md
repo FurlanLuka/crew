@@ -178,8 +178,8 @@ and the first thing that is waiting ("store-front/main: approve the migration?")
 ![Mission Control: the Pinned card, This Mac, a second machine and + Add machine](../images/voice-os/mission-control.png)
 
 Click a card, or say its name, to open that machine's **grid**. The grid has one tile per
-worktree, with the setup session first. A tile shows the session's status, the topic it is working
-on, its branch, its dev servers and its last line. Each tile has **rename** and **pin** buttons.
+worktree, with the setup session first. A tile shows the session's status, what you last asked
+it, its branch, its dev servers and its last line. Each tile has **rename** and **pin** buttons.
 
 ![This Mac's grid: the setup session first, then admin/main, a session renamed checkout, signals/wrk1 waiting on you and store-front/main running, each with rename and pin](../images/voice-os/machine-grid.png)
 
@@ -191,7 +191,7 @@ and from a grid to Mission Control. The **Esc →** button in the top bar does t
 also shows session counts and your Claude usage (weekly and 5-hour).
 
 The session page shows the conversation as it streams, a tab for each session on the same machine
-(or for each pin, inside Pinned), and side panels: status and cost, sub-agents, dev servers, topic,
+(or for each pin, inside Pinned), and side panels: status and cost, sub-agents, dev servers,
 what you said here, notes, docs, and **elsewhere** (sessions on other screens that need you).
 
 ![A session page: the stream, its last spoken line, dev servers and a named tab](../images/voice-os/session.png)
@@ -309,7 +309,7 @@ you. Nothing is dropped while you talk: what was queued waits, and the answer to
 plays first. Other sessions' updates wait for a quiet moment (8 seconds with push to talk, 12 when
 listening, never more than 50 seconds) and come as one line: "Meanwhile, ranking needs you about the
 index, checkout said: all retry tests pass, and two others finished." Each session is described in
-its own words (its last line, shortened), never by an old topic. An update you already met (you
+its own words (its last line, shortened), never by an old summary. An update you already met (you
 switched there, answered it, or spoke to that session) is not said again. The top bar shows **N updates
 waiting** until then; click it, or say "What did I miss?", to hear them now. The full message of a
 session plays when you switch there. Another session's permission or question waits for the line
@@ -594,7 +594,6 @@ you to update this machine instead.
 | `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. |
 | `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart. |
 | `~/.crew/voiceos/pinned.json`, `names.json` | Your pins and session names. |
-| `~/.crew/voiceos/topics.json` | Each session's topic line. |
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |
@@ -668,8 +667,8 @@ crew itself ran (starts, stops, key checks).
 - **Audio** goes to Soniox for speech-to-text while you talk (for as long as listening is on in the
   always-listening modes), and Voice OS's spoken lines go to Soniox to be turned into speech.
 - **Text** goes to the Anthropic API, using your key. The kernel gets what you said, together with
-  a summary of the sessions (their status, topics, what is waiting, their recent lines). After a
-  turn, the session's final message goes to the narrator or to the topic writer.
+  a summary of the sessions (their status, what you asked them, what is waiting, their recent lines). After a
+  turn, the session's final message goes to the narrator when it has no spoken line.
 - **Your Claude Code sessions** talk to Anthropic as Claude Code always does, on your login.
 
 **What stays on your machine:** everything under `~/.crew/voiceos/` (see
@@ -689,8 +688,8 @@ carries your token.
   session's turns. On a Claude subscription that is an API-price estimate, not a bill.
 - **The kernel** (Claude Haiku) handles every spoken turn, and every typed one that does not go
   straight to a session. **The narrator** (Claude Sonnet) summarizes a turn only when a session's
-  final message has no spoken line of its own. Otherwise a short Haiku call updates the session's
-  topic. All of them bill your Anthropic key. A spoken turn costs the kernel roughly a third of a
+  final message has no spoken line of its own. When a session asks you something, a short Haiku call names what
+  the question is about. All of them bill your Anthropic key. A spoken turn costs the kernel roughly a third of a
   cent. The language check (Haiku, see [Languages](#languages)) runs only on turns where Voice OS
   acts on what you meant, and costs a small fraction of that.
 - **Soniox** bills audio: speech-to-text for as long as the microphone streams, and text-to-speech

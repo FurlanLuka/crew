@@ -118,7 +118,6 @@ export const createConversation = ({
 		needs_user: false,
 		priority: 'normal' as const,
 		text: '',
-		topic: null,
 	});
 	connectSpeech({
 		store,
@@ -126,7 +125,7 @@ export const createConversation = ({
 		narrateTurn: createTurnNarrator({
 			store,
 			narrate,
-			writeTopic: async () => ({ topic: null, about: null }),
+			writeAbout: async () => null,
 			say: (line) => voiceOut.say(line),
 			journalDir: mkdtempSync(join(tmpdir(), 'voiceos-journal-')),
 			readGitHead: async () => null,

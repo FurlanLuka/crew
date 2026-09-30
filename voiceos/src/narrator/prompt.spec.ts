@@ -13,7 +13,7 @@ import {
 	stripSessionName,
 } from '../shared/spoken.js';
 
-const input = { label: 'store-front/main', asked: 'run the tests', focused: false, topic: null };
+const input = { label: 'store-front/main', asked: 'run the tests', focused: false };
 
 describe('composeNarration', () => {
 	const output = (patch: Partial<NarratorOutput>): NarratorOutput => ({
@@ -21,7 +21,6 @@ describe('composeNarration', () => {
 		needs_user: false,
 		priority: 'normal',
 		text: 'The api dev server is on port 51049; crew allocated it instead of 3000.',
-		topic: null,
 		about: null,
 		answer: null,
 		choosing: null,
@@ -51,7 +50,7 @@ describe('composeNarration', () => {
 		expect(narration.text).toBe('Fixed the loop.');
 		expect(Object.keys(narration).sort()).toEqual(
 			// about goes on to the turn narrator, for announcing a question from another screen.
-			['about', 'needs_user', 'priority', 'speak', 'text', 'topic'].sort(),
+			['about', 'needs_user', 'priority', 'speak', 'text'].sort(),
 		);
 	});
 
@@ -103,7 +102,6 @@ describe('buildNarratorMessage', () => {
 			[
 				'session: store-front/main',
 				'focused: no',
-				'current topic: none',
 				'developer asked: run the tests',
 				'voice os promised a report',
 				'',
@@ -124,7 +122,6 @@ describe('createFallbackNarration', () => {
 			needs_user: true,
 			priority: 'high',
 			text: 'asks: Want me to push the branch?',
-			topic: null,
 		});
 	});
 	it('plain report → silent', () =>

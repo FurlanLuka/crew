@@ -51,7 +51,7 @@ it (and the other keys) removed from their environment (`sessions/worker.ts`, `b
 | File | For |
 | --- | --- |
 | `~/.config/crew-voiceos/soniox.key` | speech in and out (Soniox) |
-| `~/.config/crew-voiceos/anthropic.key` | the kernel and topic writer (Haiku) and the narrator (Sonnet) |
+| `~/.config/crew-voiceos/anthropic.key` | the kernel, the judge and the question writer (Haiku) and the narrator (Sonnet) |
 
 `crew voice` asks for missing keys at a terminal and checks each with its service
 (`crew/internal/voice/keys.go`). `crew voice keys` lists them, and `crew voice keys set
@@ -107,9 +107,9 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `pin.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
 | `src/sessions/` | One Agent SDK session per worktree (`worker.ts`), started, resumed and stopped by `manager.ts`, with session ids kept in `registry.ts`. `events.ts` maps SDK messages to observations, `permissions.ts` bridges `canUseTool` to the page, `side-answer.ts` runs asides, `history.ts` rebuilds streams from Claude Code's transcripts at boot, `media.ts` stores images, `doc-links.ts` finds docs, `setup-session.ts` defines the setup session, and `voice-context.ts` holds the orientation every session gets. |
 | `src/judge/` | `judge.ts`: one narrow Haiku question about what the developer's words mean, in any language (`JUDGE_QUESTIONS`, a forced `verdict` tool with an enum answer). Asked only by a guard about to act; a timeout or failure is `unclear`, every guard's safe side. It logs the question key, verdict and ms, never the words. Specs use `test/support/english-judge.ts`. |
-| `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `topic.ts` keeps each session's topic (Haiku). |
+| `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `about.ts` names what a session's question is about (Haiku). |
 | `src/speech/` | `voice-in.ts` handles push to talk and dictation (a press held open until sent), and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. |
-| `src/memory/` | Files that outlive a restart: `journal.ts`, `topics.ts`, `view.ts`, `pinned.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
+| `src/memory/` | Files that outlive a restart: `journal.ts`, `view.ts`, `pinned.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
 | `src/dev/` | Dev servers through crew: `servers.ts` and `watch.ts` (crash detection, the fix offer). |
 | `src/crew/adapter.ts` | Every call into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`). |
 | `src/gateway/` | HTTP and WebSocket on 127.0.0.1. `auth.ts` handles sign-in (a host-only cookie set from `~/.crew/voiceos/token`) and the exact Origin check, `validate.ts` checks inbound messages, and `/media` serves the media folder and nothing else. |
@@ -212,7 +212,6 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `pinned.json` | Pinned refs, in pin order. |
 | `names.json` | Session names by ref. |
 | `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
-| `topics.json` | Each session's topic. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each. |
 | `media/` | Images by content hash, swept after 30 days. |

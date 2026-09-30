@@ -197,7 +197,7 @@ the model underneath.
 
 **Where its state lives.** `~/.crew/voiceos/`: `token` (the page's sign-in, owner-only),
 `sessions.json` (which Claude session each worktree resumes), `pinned.json`, `names.json`,
-`view.json` (the screen a restart comes back to), `topics.json`, `machines.json` (written by
+`view.json` (the screen a restart comes back to), `machines.json` (written by
 `crew voice machines`), `notes/<workspace>.md`, `journal/` (every turn, for "what did checkout
 do yesterday"), `media/` (images sessions showed, swept after 30 days) and `logs/` (the log and
 your debug notes). A remote keeps its own under `~/.crew/voiceos/remote/`. The binary is

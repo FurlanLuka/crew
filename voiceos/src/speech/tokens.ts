@@ -71,7 +71,6 @@ export class TranscriptAccumulator {
 
 export interface BuildContextTermsParams {
 	refs: string[];
-	topics: string[];
 	// The names the developer gave other machines ("build box").
 	machineNames?: string[];
 	// The names the developer gave sessions ("voice os dev"): ahead of the refs, so the cap keeps them.
@@ -80,7 +79,6 @@ export interface BuildContextTermsParams {
 
 export const buildContextTerms = ({
 	refs,
-	topics,
 	machineNames = [],
 	sessionNames = [],
 }: BuildContextTermsParams): string[] => {
@@ -106,12 +104,6 @@ export const buildContextTerms = ({
 
 		for (const part of parts) {
 			terms.add(part);
-		}
-	}
-
-	for (const topic of topics) {
-		if (topic) {
-			terms.add(topic);
 		}
 	}
 
