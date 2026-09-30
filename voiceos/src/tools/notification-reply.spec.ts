@@ -93,4 +93,16 @@ describe('replies to a notification', () => {
 		expect(refused.ok).toBe(false);
 		expect(quiet.actions).toEqual([]);
 	});
+
+	it('the words already sent this turn → "For …?" refused: they cannot also be held', async () => {
+		const heard = createContext(notified(), 'review all of this');
+		const result = await executeTool(
+			'ask_target',
+			{ ref: NOTIFIER },
+			{ ...heard.tools, sentTo: new Set([SCREEN]) },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(heard.actions).toEqual([]);
+	});
 });

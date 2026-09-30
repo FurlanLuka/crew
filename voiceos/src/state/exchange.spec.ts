@@ -283,6 +283,83 @@ describe('the exchange', () => {
 	});
 });
 
+describe('updates heard, and the meanwhile line', () => {
+	const updateLine = (ref: string): [number, Input][] => [
+		[10, { type: 'meanwhile_added', ref, kind: 'done', about: 'tests pass' }],
+		[11, { type: 'line_held', ref, text: 'All tests pass.', isAsking: false } as Input],
+		[
+			12,
+			{
+				type: 'spoken',
+				text: 'Meanwhile, checkout said: all tests pass.',
+				source: 'narrator',
+				isUpdate: true,
+				refs: [ref],
+			},
+		],
+	];
+
+	it('an update line nobody heard (played in no tab) → not heard: no offer follows a reply', () => {
+		const said = runAt(updateLine(OTHER), onScreen());
+		const lineId = said.spoken.at(-1)?.id ?? '';
+		const unplayed = runAt(
+			[[13, { type: 'spoken_ended', lineId, isCut: false, isUnplayed: true }]],
+			said,
+		);
+		const heard = runAt([[13, { type: 'spoken_ended', lineId, isCut: false }]], said);
+
+		expect(unplayed.sessions[OTHER]?.heldLine?.updateHeardAt).toBeUndefined();
+		expect(heard.sessions[OTHER]?.heldLine?.updateHeardAt).toBe(13);
+	});
+
+	it('the session on screen is left out of the meanwhile line', () => {
+		const waiting = runAt(
+			[
+				[10, { type: 'meanwhile_added', ref: SCREEN, kind: 'done', about: 'locale done' }],
+				[11, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'tests pass' }],
+			],
+			onScreen(),
+		);
+		const seq = waiting.seq + 1;
+		const played = reduce(waiting, {
+			seq,
+			at: 20,
+			id: `i${seq}`,
+			input: { type: 'play_meanwhile' },
+		});
+
+		expect(played.effects).toEqual([
+			expect.objectContaining({
+				type: 'speak',
+				refs: [OTHER],
+				text: 'Meanwhile, checkout, main said: tests pass.',
+			}),
+		]);
+		expect(played.state.meanwhile).toEqual([]);
+	});
+
+	it('a subject waiting on the developer (blocked) keeps the conversation past the minute', () => {
+		const talking = runAt([[10, said(OTHER)]], onScreen());
+		const kept = runAt(
+			[
+				[11, { type: 'turn_started', ref: OTHER }],
+				[
+					12,
+					{
+						type: 'ask_opened',
+						ask: { id: 'p1', ref: OTHER, at: 12, kind: 'plan', input: {}, plan: 'x' },
+					},
+				],
+				[EXCHANGE_IDLE_MS + 10, { type: 'exchange_expired', ref: OTHER, lastAt: 10 }],
+			],
+			talking,
+		);
+
+		expect(kept.sessions[OTHER]?.status).toBe('blocked');
+		expect(kept.exchange?.ref).toBe(OTHER);
+	});
+});
+
 describe('what goes when sessions go', () => {
 	it('a question about a session that is gone → gone with it', () => {
 		const asked = runAt(

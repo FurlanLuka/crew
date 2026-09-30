@@ -5,7 +5,13 @@ import { describe, expect, it } from 'bun:test';
 import { judgeNever, judgeWith } from '../../test/support/english-judge.js';
 import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
 import type { Judge, JudgeKey } from '../judge/judge.js';
-import type { ListenMode, PendingAsk, State } from '../shared/protocol.js';
+import {
+	QUESTION_UNHEARD_MS,
+	SWITCH_OFFER_MS,
+	type ListenMode,
+	type PendingAsk,
+	type State,
+} from '../shared/protocol.js';
 import { TAKEN_BACK } from './queued.js';
 import { isMisroutedToSetup } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
@@ -490,7 +496,11 @@ describe('a bare answer sent as words', () => {
 
 		// Unclear: the words reach the session rather than vanish.
 		for (const answer of ['no', 'unclear']) {
-			const sent = await forward('Nein.', judgeWith({ refuses: answer, approves: 'no' }), offer);
+			const sent = await forward(
+				'Nein.',
+				judgeWith({ refuses: answer, bare_answer: 'yes', approves: 'no' }),
+				offer,
+			);
 
 			expect(sent.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Nein.' })]);
 		}
@@ -574,7 +584,7 @@ describe('a yes to Voice OS\'s "Switch to …?"', () => {
 
 	it('forwarded as words → not sent: it answers the offer, switch_view is named', async () => {
 		const { tools, actions } = toolsFor({
-			judge: judgeWith({ refuses: 'no', approves: 'yes' }),
+			judge: judgeWith({ refuses: 'no', bare_answer: 'yes', approves: 'yes' }),
 			utterance: 'Ja.',
 			patch: offer,
 		});
@@ -588,9 +598,49 @@ describe('a yes to Voice OS\'s "Switch to …?"', () => {
 		expect(result.content).toContain('call switch_view checkout-api/main');
 	});
 
+	it('"yes, push it" while the offer is open → words for the session, sent (to the offered one or the screen)', async () => {
+		for (const [tool, input] of [
+			['send_to', { ref: 'checkout-api/main', kind: 'instruction' }],
+			['forward', { kind: 'instruction' }],
+		] as const) {
+			const { tools, actions } = toolsFor({
+				judge: judgeWith({ refuses: 'no', bare_answer: 'no', take_back_before: 'no' }),
+				utterance: 'Yes, push it.',
+				patch: offer,
+			});
+
+			await executeTool(tool, input, { ...tools, heardFrom: 5_000 });
+
+			expect(actions).toEqual([expect.objectContaining({ type: 'send', text: 'Yes, push it.' })]);
+		}
+	});
+
+	it('past its window, or never heard and given up on → a bare yes is words again', async () => {
+		const late = toolsFor({ judge: judgeNever, utterance: 'Ja.', patch: offer });
+		const unheard = toolsFor({
+			judge: judgeNever,
+			utterance: 'Ja.',
+			patch: { switchOffer: { ref: 'checkout-api/main', at: 0 } },
+		});
+
+		await executeTool(
+			'forward',
+			{ kind: 'instruction' },
+			{ ...late.tools, heardFrom: 1_000 + SWITCH_OFFER_MS },
+		);
+		await executeTool(
+			'forward',
+			{ kind: 'instruction' },
+			{ ...unheard.tools, heardFrom: QUESTION_UNHEARD_MS },
+		);
+
+		expect(late.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+		expect(unheard.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+	});
+
 	it('judged at the moment it was said: a kernel turn that ends past the window still counts', async () => {
 		const { tools, actions } = toolsFor({
-			judge: judgeWith({ refuses: 'no', approves: 'yes' }),
+			judge: judgeWith({ refuses: 'no', bare_answer: 'yes', approves: 'yes' }),
 			utterance: 'Ja.',
 			patch: offer,
 		});

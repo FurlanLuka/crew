@@ -72,7 +72,8 @@ export const createConversation = ({
 	const client = {
 		messages: {
 			create: async (params: { messages: { role: string; content: unknown }[] }) => {
-				requests.push(params);
+				// A copy: the kernel keeps pushing to the same array as the turn goes on.
+				requests.push({ messages: [...params.messages] });
 				const content = script.shift() ?? [reply('')];
 				const hasToolUse = content.some((block) => block.type === 'tool_use');
 

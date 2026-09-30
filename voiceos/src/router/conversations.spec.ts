@@ -259,7 +259,6 @@ describe('conversations', () => {
 		await convo.say('Great, push it.');
 
 		// No routing is scripted here: what matters is that the model can see whose update it was.
-		expect(convo.kernelSaw()).toContain('Heard just before the developer spoke');
 		expect(convo.kernelSaw()).toMatch(/checkout-api\/main[^\n]*Meanwhile, checkout api, main said/);
 		expect(convo.kernelSaw()).toContain("Replying to checkout-api/main's notification");
 	});
@@ -309,6 +308,10 @@ describe('conversations', () => {
 
 		expect(convo.heard.at(-1)).toBe('Sent to checkout api, main.');
 		expect(convo.store.state.switchOffer).toBeNull();
+
+		// Spoken to, its waiting update is settled: no meanwhile line repeats it later.
+		await convo.wait(20_000);
+		expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
 	});
 
 	it('the offer is made once per update: a later conversation with it is "Sent to …" alone', async () => {
@@ -360,6 +363,72 @@ describe('conversations', () => {
 		expect(said).toHaveLength(1);
 		expect(said[0]).toEndWith('Switch there?');
 		expect(said[0]).not.toStartWith('Sent to');
+	});
+
+	it('a meanwhile line naming two sessions → a reply to either is a reply to a heard update', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main', 'signals/main');
+		await convo.answer('checkout-api/main', UPDATE);
+		await convo.answer(
+			'signals/main',
+			'The ingest queue drains in under a minute now, and the dashboard shows it live.',
+		);
+		await convo.wait(9_000);
+		expect(convo.heard.at(-1)).toContain('signals, main said:');
+
+		convo.script([toolUse('t1', 'send_to', { ref: 'signals/main', kind: 'instruction' })]);
+		await convo.say('Nice, ship it.');
+
+		expect(convo.kernelSaw()).toMatch(/checkout-api\/main: "Meanwhile/);
+		expect(convo.kernelSaw()).toMatch(/signals\/main: "Meanwhile/);
+		expect(convo.heard.at(-1)).toBe('Sent to signals, main. Switch there?');
+	});
+
+	it('an update heard more than ten minutes ago → a reply to it is "Sent to …" alone', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		await hearUpdate(convo);
+		await convo.wait(10 * 60_000 + 1);
+
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+		await convo.say('Push it.');
+
+		expect(convo.heard.at(-1)).toBe('Sent to checkout api, main.');
+	});
+
+	it('its permission answered → its waiting update is settled; a typed message to it leaves it waiting', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'checkout-api/main',
+			kind: 'done',
+			about: 'x y',
+		});
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'p1',
+				ref: 'checkout-api/main',
+				at: 0,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push',
+				input: {},
+				suggestions: [],
+			},
+		});
+		convo.store.dispatch({ type: 'answer_permission', askId: 'p1', decision: 'allow' });
+		expect(convo.store.state.meanwhile).toEqual([]);
+
+		convo.store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'checkout-api/main',
+			kind: 'done',
+			about: 'x y',
+		});
+		convo.store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'typed words' });
+		expect(convo.store.state.meanwhile.map((item) => item.ref)).toEqual(['checkout-api/main']);
 	});
 
 	it('a quick question to another session, nothing announced from it → "Sent to …" alone, no offer', async () => {

@@ -353,8 +353,9 @@ export const sendText = async ({
 			);
 		}
 
+		// Only a bare yes: "yes, push it" is words for a session, even while the offer is open.
 		if (
-			isShortEnoughToAnswer(said) &&
+			(await isBareAnswer(judge, said)) &&
 			(await judge({ key: 'approves', utterance: said })) === 'yes'
 		) {
 			log.info('yes to the switch offer: not sent', { ref });
