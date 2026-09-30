@@ -106,7 +106,7 @@ let speaker: string | null = null;
 let gateway: ReturnType<typeof startGateway> | null = null;
 
 const tts = keys.soniox ? new SonioxTts({ apiKey: keys.soniox }) : null;
-const voiceOut = new VoiceOut({
+const voiceOut: VoiceOut = new VoiceOut({
 	store,
 	synthesize: tts?.synthesize ?? null,
 	play: (tab, message) => gateway?.send(tab, message) ?? false,
@@ -220,7 +220,7 @@ const router = new UtteranceRouter({
 		? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
 		: null,
 });
-const voiceIn = new VoiceInput({
+const voiceIn: VoiceInput = new VoiceInput({
 	store,
 	apiKey: keys.soniox,
 	onUtterance: (text, client, startedAt, { isDictated }) =>

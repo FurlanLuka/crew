@@ -573,7 +573,10 @@ resumes its conversation the next time you send it something.
 **Updating.** `crew update` also updates Voice OS to the matching version, but never restarts it,
 because that would end your sessions. It says so when an update is waiting. Run
 `crew voice restart` when you are ready. A remote picks up the new version on its next connect,
-once none of its sessions is working.
+once none of its sessions is working. You don't have to update a remote yourself: when one runs an
+older release than this Voice OS, Voice OS runs `crew update` there over SSH and reconnects. Its card
+says "Updating …" while that runs. A remote on a *newer* release is never downgraded; its card tells
+you to update this machine instead.
 
 ## Where state lives
 

@@ -251,7 +251,8 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   is the link) is what a main runs over `ssh <host>`. The main keeps the one reducer: refs carry the
   machine (`vm1:store-front/main`, `shared/machine-ref.ts`), `remote/mapping.ts` routes hands
   effects and prefixes reports, and a reconnect is a snapshot the main reconciles (`remote/resync.ts`),
-  never an event replay; unacked effects ride in the next hello. `~/.crew/voiceos/machines.json` is
+  never an event replay; unacked effects ride in the next hello. A remote behind the main's release is
+  updated by the main (`crew update` over SSH, once per version; never a downgrade). `~/.crew/voiceos/machines.json` is
   the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS.
   **Conversations:** state keeps the `exchange` (the session the developer talks with; off screen,
   the subject whose follow-ups and answers are theirs), a five-view `viewHistory` for "go back", a

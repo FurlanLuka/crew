@@ -24,6 +24,13 @@ import {
 	type Snapshot,
 } from './protocol.js';
 import { planResync } from './resync.js';
+import type { UpdateRemote } from './ssh.js';
+import {
+	planVersionFix,
+	readRemoteVersion,
+	readUpdateOutcome,
+	type UpdateOutcome,
+} from './versions.js';
 
 const log = createLogger('remote');
 
@@ -55,9 +62,16 @@ export interface RemoteLinkOptions {
 	setWorktrees: (machine: string, worktrees: WorktreeInfo[]) => void;
 	storeMedia: (name: string, bytes: Buffer) => boolean;
 	say: (text: string) => void;
+	// crew update on that machine, when it runs an older release than this one.
+	updateRemote: UpdateRemote;
 	now?: () => number;
 	// Tests reconnect at once.
 	retryMs?: number;
+}
+
+interface VersionRefusal {
+	remote: string | null;
+	detail: string;
 }
 
 interface PendingCall {
@@ -75,6 +89,10 @@ export class RemoteLink {
 	private attempt = 0;
 	private lastHeard = 0;
 	private refusedDetail: string | null = null;
+	private versionRefusal: VersionRefusal | null = null;
+	// Remote versions this run already updated from, with how it went: an update is never repeated
+	// on every reconnect, and a daemon kept busy on the old release is waited for, not updated again.
+	private updates = new Map<string, UpdateOutcome>();
 	private retryTimer: ReturnType<typeof setTimeout> | null = null;
 	private pingTimer: ReturnType<typeof setInterval> | null = null;
 	private calls = new Map<number, PendingCall>();
@@ -179,11 +197,13 @@ export class RemoteLink {
 		// A retry keeps "out of reach" and its time: the card says how long, not the last attempt.
 		const current = this.options.getState().machines[machine.id]?.status;
 
-		if (current !== 'unreachable' && current !== 'error') {
+		// A wait with its reason ("updated; switches once its sessions finish") keeps it on the card.
+		if (current !== 'unreachable' && current !== 'error' && !this.isWaitingOnVersion()) {
 			this.status('connecting');
 		}
 
 		this.refusedDetail = null;
+		this.versionRefusal = null;
 		this.lastHeard = this.now();
 
 		const decode = createLineDecoder((line) => {
@@ -244,6 +264,11 @@ export class RemoteLink {
 			case 'refused':
 				log.warn('refused', { machine: this.id, reason: message.reason });
 				this.refusedDetail = message.detail;
+
+				if (message.reason === 'version') {
+					this.versionRefusal = { remote: readRemoteVersion(message), detail: message.detail };
+				}
+
 				this.transport?.close();
 
 				return;
@@ -295,6 +320,13 @@ export class RemoteLink {
 	}
 
 	private ready(snapshot: Snapshot): void {
+		// On the new release now: nothing is waited on any more.
+		for (const [version, outcome] of this.updates) {
+			if (outcome.ok) {
+				this.updates.delete(version);
+			}
+		}
+
 		const { machine } = this.options;
 
 		// Its refs exist on the main before anything about them is applied.
@@ -352,22 +384,92 @@ export class RemoteLink {
 			return;
 		}
 
+		if (this.versionRefusal) {
+			void this.fixVersion(this.versionRefusal);
+
+			return;
+		}
+
 		const failure = this.refusedDetail
 			? { status: 'error' as const, detail: this.refusedDetail }
 			: classifyExit(this.options.machine.host, code, stderr);
-		const delay =
-			this.options.retryMs ??
-			(failure.status === 'error' ? ERROR_RETRY_MS : nextBackoff(this.attempt));
 
 		log.warn('link closed', {
 			machine: this.id,
 			code,
 			status: failure.status,
 			detail: failure.detail,
-			retryMs: delay,
 		});
-		this.status(failure.status, failure.detail);
+		this.retryLater(failure.status, failure.detail);
+	}
+
+	// Updated this run and still refused: the daemon waits for its sessions. Cleared once it answers.
+	private isWaitingOnVersion(): boolean {
+		return [...this.updates.values()].some((outcome) => outcome.ok);
+	}
+
+	private retryLater(status: 'connecting' | 'unreachable' | 'error', detail: string): void {
+		const delay =
+			this.options.retryMs ??
+			(status === 'unreachable' ? nextBackoff(this.attempt) : ERROR_RETRY_MS);
+
+		this.status(status, detail);
 		this.attempt++;
 		this.retryTimer = setTimeout(() => this.connect(), delay);
+	}
+
+	// The two releases differ, so the remote refused. One that is behind is updated from here once; its
+	// daemon moves to the new release on the next connect, as soon as none of its sessions is working.
+	private async fixVersion(refusal: VersionRefusal): Promise<void> {
+		const { name, host } = this.options.machine;
+		const plan = planVersionFix({
+			main: this.options.version,
+			remote: refusal.remote,
+			name,
+			detail: refusal.detail,
+			tried: refusal.remote === null ? undefined : this.updates.get(refusal.remote),
+		});
+
+		log.info('version mismatch', {
+			machine: this.id,
+			main: this.options.version,
+			remote: refusal.remote,
+			plan: plan.kind === 'update' ? 'update' : plan.status,
+		});
+
+		if (plan.kind === 'wait') {
+			this.retryLater(plan.status, plan.detail);
+
+			return;
+		}
+
+		this.status('connecting', `Updating ${name}…`);
+		log.info('updating remote', { machine: this.id, from: plan.from });
+
+		const result = await this.options
+			.updateRemote(host)
+			.catch((error: unknown) => ({ code: null, output: String(error), isTimedOut: false }));
+		const outcome = readUpdateOutcome({ name, ...result });
+
+		this.updates.set(plan.from, outcome);
+
+		if (this.isStopped) {
+			return;
+		}
+
+		if (!outcome.ok) {
+			log.warn('remote update failed', {
+				machine: this.id,
+				code: result.code,
+				reason: outcome.reason,
+			});
+			this.retryLater('error', outcome.reason);
+
+			return;
+		}
+
+		log.info('remote updated', { machine: this.id });
+		this.attempt = 0;
+		this.connect();
 	}
 }

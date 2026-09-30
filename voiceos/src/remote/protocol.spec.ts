@@ -101,6 +101,12 @@ describe('message kinds', () => {
 			reason: 'held' as const,
 			detail: 'Another Voice OS drives this machine.',
 		},
+		{
+			type: 'refused' as const,
+			reason: 'version' as const,
+			detail: 'This machine runs Voice OS 5.0.1 and the main 5.1.0: …',
+			version: '5.0.1',
+		},
 		{ type: 'ack' as const, upTo: 4 },
 		{ type: 'result' as const, id: 3, ok: false as const, error: 'not allowed' },
 		{ type: 'media' as const, name: 'a.png', base64: 'iVBORw0K' },

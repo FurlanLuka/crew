@@ -8,9 +8,13 @@ const log = createLogger('remote');
 
 // The remote user's own shell parses this first (bash, zsh, fish alike read single quotes), then sh.
 // crew may be on the login PATH or only in ~/.local/bin, where install.sh puts it.
-export const REMOTE_COMMAND = `sh -lc 'command -v crew >/dev/null 2>&1 && exec crew voice _attach; exec "$HOME/.local/bin/crew" voice _attach'`;
+const buildRemoteCrewCommand = (args: string): string =>
+	`sh -lc 'command -v crew >/dev/null 2>&1 && exec crew ${args}; exec "$HOME/.local/bin/crew" ${args}'`;
 
-export const buildSshArgv = (host: string): string[] => [
+export const REMOTE_COMMAND = buildRemoteCrewCommand('voice _attach');
+export const REMOTE_UPDATE_COMMAND = buildRemoteCrewCommand('update');
+
+export const buildSshArgv = (host: string, command = REMOTE_COMMAND): string[] => [
 	'ssh',
 	// Never a password prompt: there is no terminal to type it in.
 	'-o',
@@ -23,7 +27,7 @@ export const buildSshArgv = (host: string): string[] => [
 	'ServerAliveCountMax=3',
 	'--',
 	host,
-	REMOTE_COMMAND,
+	command,
 ];
 
 const STDERR_KEPT = 4_000;
@@ -78,4 +82,66 @@ export const openSshTransport: OpenTransport = (host, { onData, onExit }) => {
 		},
 		close: () => child.kill(),
 	};
+};
+
+export interface RemoteUpdateResult {
+	code: number | null;
+	// What it printed, both streams, the end kept: crew's own last line says what went wrong.
+	output: string;
+	isTimedOut: boolean;
+}
+
+export type UpdateRemote = (host: string) => Promise<RemoteUpdateResult>;
+
+// A download and an install: minutes at worst, never forever.
+const UPDATE_TIMEOUT_MS = 5 * 60_000;
+
+// crew update on that machine, over the same SSH as the link. VOICEOS_REMOTE_UPDATE_EXEC (tests and QA)
+// runs a shell command instead of ssh.
+export const updateRemoteCrew = async (
+	host: string,
+	timeoutMs = UPDATE_TIMEOUT_MS,
+): Promise<RemoteUpdateResult> => {
+	const override = process.env.VOICEOS_REMOTE_UPDATE_EXEC;
+	const argv = override ? ['sh', '-c', override] : buildSshArgv(host, REMOTE_UPDATE_COMMAND);
+	const startedAt = Date.now();
+
+	log.info('update spawn', { host, command: override ? 'override' : 'ssh' });
+
+	const child = Bun.spawn(argv, {
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe',
+		env: { ...process.env, REMOTE_HOST: host },
+	});
+	const decoder = new TextDecoder();
+	let output = '';
+
+	const keep = (chunk: Uint8Array): void => {
+		output = (output + decoder.decode(chunk, { stream: true })).slice(-STDERR_KEPT);
+	};
+
+	const reads = Promise.all([
+		forEachChunk(child.stdout, keep).catch(() => undefined),
+		forEachChunk(child.stderr, keep).catch(() => undefined),
+	]);
+	// As with the link: a ControlMaster can hold the pipes past the exit, so the reads get a grace.
+	const exited = child.exited.then(async (code) => {
+		await Promise.race([reads, new Promise((resolve) => setTimeout(resolve, READ_GRACE_MS))]);
+
+		return { code, isTimedOut: false };
+	});
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timedOut = new Promise<{ code: null; isTimedOut: true }>((resolve) => {
+		timer = setTimeout(() => {
+			child.kill();
+			resolve({ code: null, isTimedOut: true });
+		}, timeoutMs);
+	});
+	const { code, isTimedOut } = await Promise.race([exited, timedOut]);
+
+	clearTimeout(timer);
+	log.info('update exit', { host, code, isTimedOut, ms: Date.now() - startedAt });
+
+	return { code, output, isTimedOut };
 };
