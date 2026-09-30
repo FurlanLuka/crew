@@ -85,6 +85,19 @@ export const isAnsweredByForward = (calls: ToolCall[]): boolean => {
 	);
 };
 
+const MIN_QUESTION_WORDS = 3;
+
+// "Where am I?" waved off as a greeting, with nothing said: a question of three words or more is
+// answered, never met with silence.
+const isQuestionWavedOff = ({ reply, calls, utterance }: IsAskingBackParams): boolean =>
+	!reply.trim() &&
+	calls.length > 0 &&
+	calls.every(
+		(call) => call.name === 'ignore_words' && call.input.reason === 'greeting or acknowledgement',
+	) &&
+	/\?\s*$/.test(utterance) &&
+	utterance.trim().split(/\s+/).length >= MIN_QUESTION_WORDS;
+
 // Words passed on to other sessions and nothing else: Voice OS already says "Sent to X".
 export const isAcknowledgedInCode = (calls: ToolCall[]): boolean =>
 	calls.some((call) => call.name === 'send_to') &&
@@ -166,6 +179,10 @@ export const decideEnding = ({
 
 	if (mustAnswerNow) {
 		return { kind: 'answer_now', reason: 'final' };
+	}
+
+	if (isQuestionWavedOff(turn)) {
+		return { kind: 'answer_now', reason: 'empty' };
 	}
 
 	// Silence after tools reads as broken.

@@ -558,6 +558,82 @@
 			]
 		},
 		{
+			"id": "subject-unclear-follow-up",
+			"utterance": "And the lint?",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "checkout-api/main",
+					"asked": "is the build green?",
+					"answered": "Yes, all 214 tests pass.",
+					"secondsAgo": 10
+				}
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["lint"]
+				}
+			]
+		},
+		{
+			"id": "subject-screen-work",
+			"utterance": "Okay, run the tests here.",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "checkout-api/main",
+					"asked": "is the build green?",
+					"answered": "Yes, all 214 tests pass.",
+					"secondsAgo": 10
+				}
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["test"]
+				}
+			],
+			"forbid_calls": ["send_to"]
+		},
+		{
+			"id": "subject-where-am-i",
+			"utterance": "Where am I?",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "checkout-api/main",
+					"asked": "is the build green?",
+					"answered": "Yes, all 214 tests pass.",
+					"secondsAgo": 10
+				}
+			},
+			"calls": [],
+			"answer": true,
+			"forbid_mutation": true,
+			"reply_includes": ["store", "checkout"]
+		},
+		{
+			"id": "subject-switch-to-it",
+			"utterance": "Switch to it.",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "checkout-api/main",
+					"asked": "is the build green?",
+					"answered": "Yes, all 214 tests pass.",
+					"secondsAgo": 10
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			]
+		},
+		{
 			"id": "relay-negation",
 			"utterance": "Tell it not to touch the migrations.",
 			"context": {

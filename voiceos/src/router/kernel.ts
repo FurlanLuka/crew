@@ -11,6 +11,7 @@ import {
 	type VoiceEntry,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
+import { describeExchangeLines } from './exchange-lines.js';
 import { createLogger } from '../log.js';
 import { executeTool, type ToolContext } from '../tools/tools.js';
 import { isSilentCall, describeToolCall, decideEnding } from '../tools/call-lines.js';
@@ -36,7 +37,7 @@ On a session's screen (see "Screen:"), decide in this order — the first that f
 1. A Voice OS command (see "Voice OS itself") → its tool, even when it begins "Voice OS, …".
 2. A reply to something waiting — a pending ask (answer), a question a session asked (forward), a fix offer (dev_offer) — see "Answering what a session waits on".
 3. Words that name another session ("tell checkout…", "in the ranking one…", "checkout, run the tests") → send_to it. Words that pick up a line in "Heard just before the developer spoke" — its words or its point, a reply to what it said ("if it's doable without a rewrite, what does that mean?") — go to the session that said it: send_to it, even when that line was not the newest — but only when they clearly pick up that line. A reply that fits the newest line goes to the session that said it, and one that fits what the session on screen just said stays with it ("I don't have access to the old one anymore" after its line about the old account). Naming the session on screen keeps the words there, and words that only happen to match another session's topic stay with the session on screen.
-4. A question for you — only these: what is waiting on the developer; how another session (not the one on screen) is doing; whether this worktree's dev servers are up and what is wrong with them; whether you sent their words ("did that go to the session?"); "options"; a read-back ("what did it say?"). Call read_state first, then answer in words — never ignore_words for a question.
+4. A question for you — only these: what is waiting on the developer; how another session (not the one on screen) is doing; whether this worktree's dev servers are up and what is wrong with them; whether you sent their words ("did that go to the session?"); where they are ("where am I?", "who am I talking to?": the Screen line, and the session they talk with off screen if a line says so); "options"; a read-back ("what did it say?"). Call read_state first, then answer in words — never ignore_words for a question.
 5. Everything else is for the session on screen: forward it — instructions, questions about the code, its logs or the work, replies, reactions, thinking out loud about the task, and how it should work or talk ("ask me with the question tool", "use a table"). "why does this take so long?", "run the tests", "what's the last thing we've done?", "do you remember what we said we'd do next?", "check the transcripts and let me know", "could we brainstorm, use proxy brainstorm", "go through my notes and pick one", "look through the debug notes", "ping it and ask how far it is" are all for the session, and so is any "can you …" about the work ("can you look into why the build broke?"). That Claude holds the whole conversation and you see only its last lines: never answer these yourself, never read_state or read_history for them, never ask back. The setup session is a session like any other here. "Voice OS" is this app: rebuilding, reinstalling, restarting, fixing or changing it is work for the session on screen. When unsure whether words are for the session on screen, forward them — it can ask back; never ask who something is for.
 On a session's screen your first step always calls a tool. ignore_words only for words that ask for nothing or were not said to anyone (a video, a song, someone else talking).
 
@@ -290,6 +291,7 @@ export const buildKernelMessage = ({
 			? [`Named sessions: ${namedRefs.map((ref) => nameRef(state, ref)).join(', ')}.`]
 			: []),
 		`Sessions: ${JSON.stringify(sessions)}`,
+		...describeExchangeLines({ state, now, nameRef: (ref) => nameRef(state, ref) }),
 		`Waiting on the developer: ${formatWaitingLine({ state, waiting, now, askedAloudRef: lastAskedLine?.ref ?? null })}`,
 		`Voice OS last asked aloud: ${describeAskedAloud(lastAskedLine, now)}`,
 		// Only when there is something: an empty line of it made the model reach for more tools.

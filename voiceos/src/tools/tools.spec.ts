@@ -3414,6 +3414,37 @@ describe('fixes from the live notes', () => {
 				{ reply: 'Did you mean to send it again?', calls: [call('forward', false)] },
 				{ kind: 'keep' },
 			],
+			[
+				'"where am I?" waved off as a greeting → answered after all',
+				{
+					utterance: 'Where am I?',
+					calls: [
+						{ name: 'ignore_words', input: { reason: 'greeting or acknowledgement' }, ok: true },
+					],
+				},
+				{ kind: 'answer_now', reason: 'empty' },
+			],
+			[
+				'"thanks?" waved off → still silent: too short to be a question',
+				{
+					utterance: 'Thanks?',
+					calls: [
+						{ name: 'ignore_words', input: { reason: 'greeting or acknowledgement' }, ok: true },
+					],
+					isSilent: true,
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'only send_to on a session screen → the reply is dropped: Voice OS says "Sent to X" itself',
+				{ reply: 'Sent to checkout.', calls: [call('send_to')] },
+				{ kind: 'drop_reply' },
+			],
+			[
+				'only send_to on Mission Control → the reply stays: nothing else says where the words went',
+				{ reply: 'Sent to checkout.', calls: [call('send_to')], forwardTo: null },
+				{ kind: 'keep' },
+			],
 		])('%s', (_, patch, ending) =>
 			expect(decideEnding({ ...base, ...patch })).toEqual(ending as never),
 		);
