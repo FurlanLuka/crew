@@ -353,6 +353,63 @@ describe('asks off screen', () => {
 		).toEqual(['store/main wants to run git push. Allow?']);
 	});
 
+	it('the line: an ask in it rings the needs chime and is told; an update alone rings nothing', () => {
+		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
+		const asking = run([{ type: 'play_meanwhile' }], {
+			start: open(permissionAsk('a1'), elsewhere).state,
+		}).effects;
+		const updateOnly = run(
+			[
+				{ type: 'meanwhile_added', ref: REF, kind: 'done', about: 'tests pass' },
+				{ type: 'play_meanwhile' },
+			],
+			{ start: elsewhere },
+		).effects;
+
+		expect(asking[0]).toMatchObject({
+			type: 'speak',
+			chime: 'needs',
+			isAsking: true,
+			toldAsks: [{ ref: REF, askId: 'a1' }],
+		});
+		expect(updateOnly[0]).toMatchObject({ type: 'speak' });
+		expect(updateOnly[0]).not.toHaveProperty('chime');
+		expect(updateOnly[0]).not.toHaveProperty('toldAsks');
+	});
+
+	it('a question that moved on before the line plays → its next question is said', () => {
+		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
+		const twoQuestions: PendingAsk = {
+			id: 'q1',
+			ref: REF,
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{ question: 'Postgres or SQLite?', multiSelect: false, options: [] },
+				{ question: 'Ship tonight?', multiSelect: false, options: [] },
+			],
+			answers: { 'Postgres or SQLite?': 'Postgres' },
+		};
+		const noneOpen: PendingAsk = {
+			...twoQuestions,
+			id: 'q2',
+			answers: { 'Postgres or SQLite?': 'x', 'Ship tonight?': 'y' },
+		};
+
+		expect(
+			said(
+				run([{ type: 'play_meanwhile' }], { start: open(twoQuestions, elsewhere).state }).effects,
+			),
+		).toEqual(['Meanwhile, store, main asks: Ship tonight?']);
+
+		const empty = run([{ type: 'play_meanwhile' }], {
+			start: open(noneOpen, elsewhere).state,
+		}).effects;
+		expect(said(empty)).toEqual(['Meanwhile, store, main has a question.']);
+		expect(empty[0]).not.toHaveProperty('toldAsks');
+	});
+
 	it('its line said in full, even cut short → answerable at once; a newer ask from it stays held', () => {
 		const elsewhere: State = { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } };
 		const held = open(permissionAsk('a1'), elsewhere).state;

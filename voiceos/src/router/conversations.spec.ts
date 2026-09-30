@@ -610,6 +610,51 @@ describe('conversations', () => {
 			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['p1', 'q2']);
 		});
 
+		it('three asks → the line tells two by name and counts the third, which stays only announced', async () => {
+			const convo = createConversation({ refs: [...REFS, 'admin/main'], view: 'store-front/main' });
+			await convo.startSessions('store-front/main', CHECKOUT, 'signals/main', 'admin/main');
+			convo.store.dispatch({ type: 'ask_opened', ask: permission() });
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: { ...question('Ship tonight?', 'q2'), ref: 'signals/main' },
+			});
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: { ...question('Keep the old admin?', 'q3'), ref: 'admin/main' },
+			});
+			await convo.wait(3_100);
+
+			expect(convo.heard.at(-1)).toEndWith('and one other needs you.');
+			expect(convo.store.state.sessions['admin/main']?.heldLine).toMatchObject({
+				kind: 'ask',
+				askId: 'q3',
+			});
+			expect(convo.store.state.sessions[CHECKOUT]?.heldLine).toBeNull();
+		});
+
+		it('a newer ask from the same session before the breath → one line, with the newer words', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: question('Postgres or SQLite?') });
+			convo.store.dispatch({ type: 'ask_closed', askId: 'q1' });
+			convo.store.dispatch({ type: 'ask_opened', ask: permission('p2') });
+			await convo.wait(3_100);
+
+			const lines = convo.heard.filter((line) => line.startsWith('Meanwhile'));
+			expect(lines).toEqual(['Meanwhile, checkout api, main wants to run git push.']);
+		});
+
+		it('"switch to it" long after the line → no longer about it: not switched, the kernel says what waits', async () => {
+			const convo = await onStoreFront();
+			convo.store.dispatch({ type: 'ask_opened', ask: plan });
+			await convo.wait(3_100);
+			await convo.wait(120_000);
+
+			convo.script([toolUse('t1', 'switch_view', { ref: CHECKOUT })]);
+			await convo.say('Switch to it.');
+
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		});
+
 		it('answered on the page before the breath → never said', async () => {
 			const convo = await onStoreFront();
 			convo.store.dispatch({ type: 'ask_opened', ask: permission() });

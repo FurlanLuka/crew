@@ -210,11 +210,10 @@ const isAnnouncedOnly = (state: State, ask: PendingAsk): boolean => {
 		return false;
 	}
 
-	// On another session's screen the session's own asks wait for the developer to switch, like its
-	// lines: never read out, or docked, over the session they are looking at. Voice OS's own asks (a
-	// held /clear, a redirect) answer the developer's words and are said where they are.
+	// On another session's screen a session's own asks go through the meanwhile line (ask_opened);
+	// Voice OS's own (a held /clear, a redirect) answer the developer's words and are said where they are.
 	if (isOnAnotherSession(state, ask.ref)) {
-		return isSdkAsk(ask);
+		return false;
 	}
 
 	// Mission Control is the overview: only a plan, and a question too long to take in there, wait.
@@ -610,6 +609,14 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 			}
 
 			const isSubject = readSubject(state, stamped.at) === ask.ref;
+			const held = (): State =>
+				holdLine({
+					state: next,
+					ref: ask.ref,
+					content: { kind: 'ask', askId: ask.id },
+					stamped,
+					isAnnounced: true,
+				});
 
 			// Another session's ask while the developer is on a session's screen: held there, and said
 			// with the other waiting updates once there is a breath. Talking with that session, it is
@@ -617,13 +624,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 			if (isOnAnotherSession(state, ask.ref) && isSdkAsk(ask) && !isSubject) {
 				return {
 					state: addMeanwhile(
-						holdLine({
-							state: next,
-							ref: ask.ref,
-							content: { kind: 'ask', askId: ask.id },
-							stamped,
-							isAnnounced: true,
-						}),
+						held(),
 						{ type: 'meanwhile_added', ref: ask.ref, kind: 'needs', about: null, askId: ask.id },
 						stamped.at,
 					),
@@ -634,13 +635,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 			if (!isSubject && isAnnouncedOnly(state, ask)) {
 				// High, not an alert: it never cuts off the session on screen.
 				return {
-					state: holdLine({
-						state: next,
-						ref: ask.ref,
-						content: { kind: 'ask', askId: ask.id },
-						stamped,
-						isAnnounced: true,
-					}),
+					state: held(),
 					effects: [
 						{
 							type: 'speak',

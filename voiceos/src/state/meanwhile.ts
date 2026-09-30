@@ -73,7 +73,7 @@ export const settleMeanwhile = (before: State, after: State, input: Input): Stat
 
 // An ask is said as it stands when the line plays: one answered or closed meanwhile is left out, and
 // one that moved on to its next question says that one.
-const readSaidItems = (state: State, items: MeanwhileItem[]): (SaidItem & { isTold?: true })[] =>
+const readSaidItems = (state: State, items: MeanwhileItem[]): SaidItem[] =>
 	items.flatMap((item) => {
 		if (item.askId === undefined) {
 			return [item];

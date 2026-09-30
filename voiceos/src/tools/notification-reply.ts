@@ -6,7 +6,7 @@ import { isMidExchangeWithScreen } from '../state/exchange.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { endsInQuestion } from '../shared/spoken.js';
 import { isNamedIn } from './announced.js';
-import { listHeardBefore, readLineRefs } from './asked-aloud.js';
+import { wasJustHeardAbout } from './asked-aloud.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
 import type { State } from '../shared/protocol.js';
@@ -25,13 +25,12 @@ interface NotificationParams {
 	toolContext: ToolContext;
 }
 
-const wasJustHeard = ({ state, ref, toolContext }: NotificationParams): boolean => {
-	const heardFrom = toolContext.heardFrom ?? toolContext.now();
-
-	return listHeardBefore({ spoken: state.spoken, heardFrom }).some((line) =>
-		readLineRefs(line).includes(ref),
-	);
-};
+const wasJustHeard = ({ state, ref, toolContext }: NotificationParams): boolean =>
+	wasJustHeardAbout({
+		spoken: state.spoken,
+		ref,
+		heardFrom: toolContext.heardFrom ?? toolContext.now(),
+	});
 
 export type NotificationReply =
 	| { kind: 'none' }

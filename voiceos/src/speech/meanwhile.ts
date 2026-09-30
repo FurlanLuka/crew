@@ -16,8 +16,9 @@ const NAMED_AT_MOST = 2;
 const trimAbout = (about: string | null): string | null =>
 	about?.trim().replace(/[.!?]+$/, '') || null;
 
-// An ask's own words, read from it when the line is said: "asks: Postgres or SQLite?".
-export type SaidItem = MeanwhileItem & { phrase?: string };
+// An ask's own words, read from it when the line is said: "asks: Postgres or SQLite?"; isTold: said in
+// full, so a reply can answer it.
+export type SaidItem = MeanwhileItem & { phrase?: string; isTold?: true };
 
 const describeItem = (name: string, item: SaidItem): string => {
 	if (item.phrase) {

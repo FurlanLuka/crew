@@ -1,5 +1,5 @@
 import { isSwitchOfferFresh, type State } from '../shared/protocol.js';
-import { listHeardBefore, readLineRefs } from './asked-aloud.js';
+import { wasJustHeardAbout } from './asked-aloud.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { readLabel } from '../state/helpers.js';
 import { type ToolResult, fail } from './results.js';
@@ -25,12 +25,6 @@ export const isNamedIn = ({ state, ref, utterance }: NamedParams): boolean =>
 // A yes to Voice OS's own "Switch to X?" opens X, whatever it holds.
 export const isSwitchOfferedFor = (state: State, ref: string, now: number): boolean =>
 	isSwitchOfferFresh(state.switchOffer, now) && state.switchOffer.ref === ref;
-
-// Heard about in the last moments (the meanwhile line, "checkout needs you"): "switch to it" means it.
-const wasJustHeardAbout = (state: State, ref: string, heardFrom: number): boolean =>
-	listHeardBefore({ spoken: state.spoken, heardFrom }).some((line) =>
-		readLineRefs(line).includes(ref),
-	);
 
 interface RefuseAnnouncedOnlyParams {
 	state: State;
@@ -58,7 +52,7 @@ export const refuseAnnouncedOnly = async ({
 
 	if (
 		what === 'switched' &&
-		wasJustHeardAbout(state, ref, saidAt) &&
+		wasJustHeardAbout({ spoken: state.spoken, ref, heardFrom: saidAt }) &&
 		!(await isBareAnswer(toolContext.judge, toolContext.utterance ?? ''))
 	) {
 		return null;

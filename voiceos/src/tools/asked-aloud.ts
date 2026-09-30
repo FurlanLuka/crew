@@ -96,3 +96,14 @@ export const formatHeardBefore = (lines: SpokenLine[], heardFrom: number): strin
 					return `${readLineRefs(line).join(' and ')}: "${text}" (${describeEnding(line, heardFrom)})`;
 				})
 				.join('; ');
+
+interface WasJustHeardAboutParams {
+	spoken: SpokenLine[];
+	ref: string;
+	heardFrom: number;
+}
+
+// Heard about in the last moments (its own line, "checkout needs you", the meanwhile line naming it):
+// "switch to it", "what did it change?" mean that session.
+export const wasJustHeardAbout = ({ spoken, ref, heardFrom }: WasJustHeardAboutParams): boolean =>
+	listHeardBefore({ spoken, heardFrom }).some((line) => readLineRefs(line).includes(ref));
