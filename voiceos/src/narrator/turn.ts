@@ -5,7 +5,7 @@ import { appendJournalEntry, describeTurnOutcome } from '../memory/journal.js';
 import type { NarrateFunction } from './narrator.js';
 import type { WriteTopic } from './topic.js';
 import type { Narration } from './prompt.js';
-import { cleanSessionLine, cleanSpokenText } from '../shared/spoken.js';
+import { cleanSessionLine, cleanSpokenText, stripTags } from '../shared/spoken.js';
 import { readSpokenTag, stripSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import type { Session } from '../shared/protocol.js';
 import {
@@ -186,7 +186,7 @@ const speakOutcome = async ({
 		store.dispatch({
 			type: 'line_held',
 			ref: effect.ref,
-			text,
+			text: stripTags(text),
 			isAsking: narration.needs_user,
 		});
 	}
@@ -325,7 +325,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 				type: 'narration',
 				ref: effect.ref,
 				needsUser: narration.needs_user,
-				text: narration.text,
+				text: stripTags(narration.text),
 				topic: narration.topic,
 			});
 		}
@@ -335,7 +335,7 @@ export const createTurnNarrator = (options: TurnNarratorOptions) => {
 			store.dispatch({
 				type: 'line_held',
 				ref: effect.ref,
-				text: narration.text,
+				text: stripTags(narration.text),
 				isAsking: narration.needs_user,
 			});
 		} else if (!isStale && !wasReplayed) {

@@ -103,6 +103,23 @@ describe('describeSessionBadge', () => {
 });
 
 describe('readLastLine', () => {
+	it('an approval last → what was allowed, not "you:"', () =>
+		expect(
+			readLastLine(
+				createTestSession({
+					stream: [
+						{
+							id: 'u',
+							at: 1,
+							kind: 'user',
+							text: 'The user allows this once: retry "run git push" now.',
+							isApproval: true,
+						},
+					],
+				}),
+			),
+		).toBe('allowed once: run git push'));
+
 	it('streaming draft wins', () =>
 		expect(readLastLine(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
 

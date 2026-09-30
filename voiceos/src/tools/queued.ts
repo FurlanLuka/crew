@@ -3,12 +3,22 @@ import { createLogger } from '../log.js';
 import { isDevelopersMessage } from '../state/delivery.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
+import { recordAsSent, sendText } from './send.js';
 
 const log = createLogger('tools');
 
 const PREVIEW_CHARS = 60;
-export const NOT_FOR_YOU =
-	'That last message was not meant for you: the developer sent it to the wrong session. Ignore it and carry on; no reply needed.';
+// Neutral on purpose: a take-back is not always a misroute, and a false reason sent the session
+// explaining a mistake nobody made.
+export const TAKEN_BACK = 'The developer took back their last message: ignore it; no reply needed.';
+
+// The whole utterance, so "no, remove that, what I meant is…" is a correction, not a take-back.
+const BARE_TAKE_BACK_PATTERN =
+	/^(?:(?:oh|no|sorry|actually|okay|ok|wait|um|uh)[,.!\s]+)*(?:take (?:that|it) back|cancel that|never ?mind|scratch that|forget (?:that|it)|ignore that)(?:[,\s]+please)?[.!\s]*$/i;
+
+export const isBareTakeBack = (utterance: string | undefined): boolean =>
+	// Typed or replayed without words: the tool call is the only word there is.
+	!utterance?.trim() || BARE_TAKE_BACK_PATTERN.test(utterance.trim());
 
 export const QUEUED_ACTIONS = ['now', 'drop'] as const;
 export type QueuedAction = (typeof QUEUED_ACTIONS)[number];
@@ -91,6 +101,30 @@ interface TakeBackParams {
 	toolContext: ToolContext;
 }
 
+const sendCorrection = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
+	if (toolContext.sentTo?.has(ref)) {
+		return succeed(
+			`not taken back: those words correct what ${ref} already has, and they went to it in this turn`,
+		);
+	}
+
+	const said = (toolContext.utterance ?? '').trim();
+	const sent = sendText({ state, ref, text: said, kind: 'instruction', toolContext });
+
+	if (!sent.ok) {
+		return sent;
+	}
+
+	log.info('take-back was a correction: sent as said', { ref, chars: said.length });
+
+	return {
+		...succeed(
+			`not taken back: those words correct what ${ref} already has, so they went to it as said instead`,
+		),
+		recordAs: recordAsSent({ ref, text: said, toolContext }),
+	};
+};
+
 const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
 	const carrier = findCarrier({ state, ref, last: readLastSaid(state, toolContext) });
 
@@ -108,15 +142,20 @@ const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
 		);
 	}
 
-	// Already delivered: it is told to ignore them, so it does not act on words that were not for it.
+	// Already delivered: words that only take it back tell it to ignore them. Anything more is a
+	// correction for the session, which undoing would lose ("remove that, I meant the TTS tags").
 	if (!('id' in carrier)) {
+		if (!isBareTakeBack(toolContext.utterance)) {
+			return sendCorrection({ state, ref, toolContext });
+		}
+
 		log.info('taken back after delivery', { ref, carrier: carrier.kind });
-		toolContext.dispatch({ type: 'send', ref, text: NOT_FOR_YOU });
+		toolContext.dispatch({ type: 'send', ref, text: TAKEN_BACK });
 
 		return succeed(
 			carrier.kind === 'working'
-				? `${ref} was already working on those words: it was told they were not meant for it (it reads that after its current turn; if it should stop now, that is interrupt)`
-				: `${ref} already had those words: it was told they were not meant for it`,
+				? `${ref} was already working on those words: it was told the developer took them back (it reads that after its current turn; if it should stop now, that is interrupt)`
+				: `${ref} already had those words: it was told the developer took them back`,
 		);
 	}
 

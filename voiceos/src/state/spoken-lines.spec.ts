@@ -38,4 +38,20 @@ describe('speakNewTag', () => {
 
 		expect(spoken).toEqual([LONG_ASKING_LINE]);
 	});
+
+	it('a tagged line on screen → its tag goes to the voice; held off screen → without it', () => {
+		const line = 'The lockfile was stale all along. [relieved] Every suite passes now, pushed.';
+		const text = `<spoken>${line}</spoken>\nDetails.`;
+		const shown = run([{ type: 'assistant_text', ref: REF, text }], {
+			start: onScreen(runningSession()),
+		});
+		const elsewhere = run([{ type: 'assistant_text', ref: REF, text }], {
+			start: runningSession(),
+		});
+
+		expect(said(shown.effects)).toEqual([line]);
+		expect(elsewhere.state.sessions[REF]?.heldLine).toMatchObject({
+			text: 'The lockfile was stale all along. Every suite passes now, pushed.',
+		});
+	});
 });

@@ -5,6 +5,7 @@ import {
 	type Session,
 	type Stamped,
 	type State,
+	type View,
 	type VoiceEntry,
 	type WorktreeInfo,
 } from '../shared/protocol.js';
@@ -253,6 +254,12 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 	return { ...state, sessions, order, view, focus, voiceLog };
 };
 
+// A session that is gone cannot be shown: null leaves the screen where it is.
+const showView = (state: State, view: View): State | null =>
+	view.kind === 'session' && !state.sessions[view.ref]
+		? null
+		: { ...state, view, focus: view.kind === 'session' ? view.ref : state.focus };
+
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
 
@@ -323,17 +330,19 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'switch_view': {
 			const { view } = input;
+			const shown = showView(state, view);
 
-			if (view.kind === 'session' && !state.sessions[view.ref]) {
+			if (!shown) {
 				return withoutEffects(state);
 			}
-
-			const shown = { ...state, view, focus: view.kind === 'session' ? view.ref : state.focus };
 
 			return view.kind === 'session'
 				? replayHeldLine(shown, view.ref)
 				: { state: shown, effects: describeSwitch(state, view) };
 		}
+
+		case 'restore_view':
+			return withoutEffects(showView(state, input.view) ?? state);
 
 		case 'start_session':
 			return state.sessions[input.ref]?.status === 'stopped'

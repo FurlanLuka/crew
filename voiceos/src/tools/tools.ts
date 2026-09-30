@@ -10,6 +10,7 @@ import {
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
 import { normalizeSaid } from '../state/helpers.js';
+import { normalizeUtterance } from '../shared/spoken.js';
 import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
 import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
@@ -25,7 +26,13 @@ import { hasOfferedSwitch, isNamedIn, refuseAnnouncedOnly } from './announced.js
 import type { ToolName } from './definitions.js';
 import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
-import { findMachine, findMachineSaid, listMachineNames, onMachine } from './machines.js';
+import {
+	describeMachineSwitch,
+	findMachine,
+	findMachineSaid,
+	listMachineNames,
+	onMachine,
+} from './machines.js';
 import { HOME_VIEW, currentMachine, readMachineTitle } from '../shared/machines.js';
 import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
@@ -74,6 +81,21 @@ const SAYS_WHAT_INSTEAD_PATTERN =
 // (not "and bring up its servers", "and store-front") is the model's call: the hint only asks.
 const START_THEN_MORE_PATTERN =
 	/\bstart\b[^.?!]*?(?:,?\s+(?:and\s+then|and|then)\s+(?:also\s+)?(?!(?:then\b|(?:open|show)\s+(?:it|them|that)\b))\w+|[.?!]\s+\S)/i;
+
+// The whole utterance is the command: "make the tests quiet" or a long request that ends "…just be
+// silent, okay?" is words for a session, and muting on it swallowed what came after.
+const MUTE_REQUEST_PATTERN =
+	/^(?:(?:hey|okay|ok) )?(?:voice ?os )?(?:(?:okay|ok) )?(?:please )?(?:mute|be quiet|quiet|shut up|stop talking|shush|hush|silence|be silent|quiet please)(?: please)?(?: voice ?os)?(?: please)?$/;
+
+export const isMuteRequest = (utterance: string | undefined): boolean =>
+	// Typed or replayed without words: the tool call is the only word there is.
+	utterance === undefined ||
+	MUTE_REQUEST_PATTERN.test(
+		normalizeUtterance(utterance)
+			.replace(/[,.!?;:]+/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim(),
+	);
 
 export const saysMoreThanStart = (utterance: string | undefined): boolean =>
 	utterance !== undefined && START_THEN_MORE_PATTERN.test(utterance.trim());
@@ -391,8 +413,7 @@ export const executeTool = async (
 
 					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
 
-					// Switching there from elsewhere says what waits: the reply need not.
-					return succeed('showing that machine');
+					return succeed(describeMachineSwitch(state, machine));
 				}
 
 				toolContext.dispatch({ type: 'switch_view', view: HOME_VIEW });
@@ -412,7 +433,7 @@ export const executeTool = async (
 				if (machine) {
 					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
 
-					return succeed('showing that machine');
+					return succeed(describeMachineSwitch(state, machine));
 				}
 
 				return fail(checked.error);
@@ -592,6 +613,10 @@ export const executeTool = async (
 		}
 
 		case 'mute': {
+			if (!isMuteRequest(toolContext.utterance)) {
+				return fail('not a mute request; do nothing more');
+			}
+
 			toolContext.mute();
 
 			return succeed('quiet: only questions that need the developer are spoken');

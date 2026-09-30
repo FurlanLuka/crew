@@ -341,6 +341,13 @@ export const readRunOrder = ({ name, input, asks }: ReadRunOrderParams): number 
 	return name === 'answer' && !asks.some((ask) => ask.ref === ref) ? 2 : 1;
 };
 
+// A mute or an interrupt beside a forward takes none of the words: counted, it made a long request
+// look split, so the forward's few words went instead of what was said.
+const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt'];
+
+export const carriesWords = (name: string): boolean =>
+	MUTATING_TOOLS.includes(name as ToolName) && !WORDLESS_TOOLS.includes(name as ToolName);
+
 export class Kernel {
 	private client: Anthropic;
 	private now: () => number;
@@ -449,10 +456,9 @@ export class Kernel {
 			const resultsById = new Map<string, Anthropic.ToolResultBlockParam>();
 
 			// A long sentence split across several actions is not one rewrite that lost its point.
-			const isAction = (name: string) => MUTATING_TOOLS.includes(name as ToolName);
 			toolContext.actionsInTurn =
-				calls.filter((call) => call.ok && isAction(call.name)).length +
-				toolUses.filter((toolUse) => isAction(toolUse.name)).length;
+				calls.filter((call) => call.ok && carriesWords(call.name)).length +
+				toolUses.filter((toolUse) => carriesWords(toolUse.name)).length;
 
 			for (const toolUse of ordered) {
 				const input = (toolUse.input ?? {}) as Record<string, unknown>;

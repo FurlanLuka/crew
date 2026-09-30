@@ -83,7 +83,8 @@ export const buildContextTerms = ({
 }: BuildContextTermsParams): string[] => {
 	// Each term goes in as it is said: one spelled but never said biases toward mishearing it.
 	// "debug note" is a Voice OS tool the developer names; misheard, it reached a session as words.
-	const terms = new Set<string>(['Voice OS', 'debug note', ...machineNames]);
+	// The developer calls the sessions "Claude"; a name outside the terms is heard as a nearby word.
+	const terms = new Set<string>(['Voice OS', 'debug note', 'Claude', ...machineNames]);
 
 	for (const ref of refs) {
 		if (isSetupRef(ref)) {

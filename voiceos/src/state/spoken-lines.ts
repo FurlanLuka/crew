@@ -1,5 +1,5 @@
 import type { Session } from '../shared/protocol.js';
-import { cleanSessionLine } from '../shared/spoken.js';
+import { cleanSessionLine, stripTags } from '../shared/spoken.js';
 import { readSpokenTag } from '../shared/spoken-tags.js';
 import type { Effect } from './reducer.js';
 
@@ -24,7 +24,7 @@ export const speakNewTag = (session: Session, text: string, isOnScreen: boolean)
 		return {
 			spokenInTurn,
 			effects: [],
-			held: { kind: 'line', text: tag.text, isAsking: tag.isAsking },
+			held: { kind: 'line', text: stripTags(tag.text), isAsking: tag.isAsking },
 		};
 	}
 

@@ -72,10 +72,14 @@ describe('cleanSpokenText', () => {
 		expect(cleanSpokenText('Updated README.md and pushed')).toBe('Updated README.md and pushed'));
 	it('strips markdown emphasis', () =>
 		expect(cleanSpokenText('**Tests pass.** _All_ green')).toBe('Tests pass. All green'));
-	it('caps the length', () =>
-		expect(cleanSpokenText('word '.repeat(60), 10).split(' ')).toHaveLength(10));
+	it('60 words without a sentence end, cap 10 → the first 10, "…", "More on screen."', () =>
+		expect(cleanSpokenText('word '.repeat(60), 10)).toBe(
+			`${'word '.repeat(10).trim()}… More on screen.`,
+		));
 	it('never more than 70 words by default: a TL;DR, never the whole reply', () =>
-		expect(cleanSpokenText('word '.repeat(100)).split(' ')).toHaveLength(70));
+		expect(cleanSpokenText('word '.repeat(100))).toBe(
+			`${'word '.repeat(70).trim()}… More on screen.`,
+		));
 });
 
 describe('buildNarratorMessage', () => {

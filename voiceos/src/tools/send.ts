@@ -13,6 +13,7 @@ import type { NotesStore } from '../memory/notes.js';
 import { decideDelivery, joinNotes } from '../state/delivery.js';
 import { nameNotes, readWorkspace } from '../shared/notes.js';
 import { refuseAnnouncedOnly } from './announced.js';
+import { describeRecentAction } from './recent-action.js';
 
 const log = createLogger('tools');
 
@@ -177,10 +178,17 @@ const MIN_LONG_UTTERANCE_WORDS = 15;
 
 const countWords = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
 
+// "Can you ask it to check the logs?" is a request put politely: its rewrite into "Check the logs."
+// is the point, not a question lost.
+const POLITE_REQUEST_PATTERN =
+	/^(?:(?:um|uh|so|okay|ok|and|hey|oh)[,\s]+)*(?:can|could|would|will) (?:you|we)\b/i;
+
 export const isQuestionRewritten = (utterance: string, text: string): boolean =>
 	// "Does the router still drop the header?" rewritten as "Check whether the router drops the
 	// header." sets it to work on what was only asked.
-	endsInQuestion(utterance) && !endsInQuestion(text);
+	endsInQuestion(utterance) &&
+	!endsInQuestion(text) &&
+	!POLITE_REQUEST_PATTERN.test(utterance.trim());
 
 export const isRewriteTooShort = (utterance: string, text: string): boolean => {
 	// A long, rambling thought rewritten into a few words lost its point ("Okay, or just something
@@ -269,6 +277,28 @@ export const describeDebugNoteRequest = (utterance: string | undefined): string 
 const readKind = (kind: unknown): SendAck['kind'] =>
 	kind === 'question' || kind === 'redirect' ? kind : 'instruction';
 
+interface RecordAsSentParams {
+	ref: string;
+	text: string;
+	kind?: 'question';
+	toolContext: ToolContext;
+}
+
+// Words another tool sent on are remembered as the send they were, so a follow-up ("send that
+// again") is read against what the session actually got.
+export const recordAsSent = ({
+	ref,
+	text,
+	kind,
+	toolContext,
+}: RecordAsSentParams): NonNullable<ToolResult['recordAs']> => {
+	const extra = kind ? { kind } : {};
+
+	return toolContext.forwardTo === ref
+		? { name: 'forward', input: { text, ...extra } }
+		: { name: 'send_to', input: { ref, text, ...extra } };
+};
+
 export const sendText = ({
 	state,
 	ref,
@@ -313,14 +343,19 @@ export const sendText = ({
 	// A continuation goes where its first half went (the reducer finds it), never aside on its own;
 	// if that half already ran, the new part goes as these words would have.
 	const delivery = wouldGoAside && !continues ? 'aside' : 'send';
+	const recentAction = describeRecentAction(state, {
+		ref,
+		screen: toolContext.screen,
+		now: toolContext.now(),
+		utterance: toolContext.utterance,
+	});
 
 	if (delivery === 'aside') {
 		log.info('asked aside', { ref, chars: text.length });
-		const notesPath = buildNotesPathNote({
-			ref,
-			utterance: toolContext.utterance,
-			notes: toolContext.notes,
-		});
+		const asideNote = joinNotes(
+			buildNotesPathNote({ ref, utterance: toolContext.utterance, notes: toolContext.notes }),
+			recentAction,
+		);
 
 		toolContext.sentTo?.add(ref);
 		toolContext.dispatch({
@@ -328,7 +363,7 @@ export const sendText = ({
 			ref,
 			text,
 			aside: true,
-			...(notesPath ? { note: notesPath } : {}),
+			...(asideNote ? { note: asideNote } : {}),
 			...(toolContext.isSpoken ? { isSpoken: true } : {}),
 		});
 
@@ -362,12 +397,13 @@ export const sendText = ({
 		);
 	}
 
-	const note = joinNotes(
+	const note = [
 		session
 			? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
 			: undefined,
 		buildNotesPathNote({ ref, utterance: toolContext.utterance, notes: toolContext.notes }),
-	);
+		recentAction,
+	].reduce(joinNotes, undefined);
 
 	if (continues) {
 		log.info('continuation', { ref, chars: text.length });

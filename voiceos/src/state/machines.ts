@@ -365,13 +365,15 @@ export const guardUnreachable = (
 	return { state, effects: [say(`${name} is out of reach right now.`)] };
 };
 
-// Switching to a machine says what waits there; moving within that machine says nothing new.
+// Switching to a machine says what waits there, and nothing when nothing does; moving within that
+// machine says nothing new.
 export const describeSwitch = (state: State, next: View): Effect[] => {
 	if (next.kind !== 'grid' || !next.machine || !hasMachines(state)) {
 		return [];
 	}
 
-	return currentMachine(state) === next.machine
-		? []
-		: [say(describeMachineWaiting(state, next.machine))];
+	const waiting =
+		currentMachine(state) === next.machine ? '' : describeMachineWaiting(state, next.machine);
+
+	return waiting ? [say(waiting)] : [];
 };

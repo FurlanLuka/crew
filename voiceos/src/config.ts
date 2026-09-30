@@ -16,6 +16,7 @@ export interface Paths {
 	journalDir: string;
 	debugAudioDir: string;
 	topicsFile: string;
+	viewFile: string;
 	keysDir: string;
 }
 
@@ -42,6 +43,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		journalDir: join(voiceDir, 'journal'),
 		debugAudioDir: join(voiceDir, 'debug'),
 		topicsFile: join(voiceDir, 'topics.json'),
+		viewFile: join(voiceDir, 'view.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
 	};
 };

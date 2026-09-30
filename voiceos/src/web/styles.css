@@ -378,6 +378,10 @@ textarea:focus-visible {
 .line.notice {
 	color: var(--amber);
 }
+/* Voice OS's retry after "allow it": marked apart from the developer's own words. */
+.line.approval {
+	color: var(--good);
+}
 
 .panel {
 	padding: 14px 17px;

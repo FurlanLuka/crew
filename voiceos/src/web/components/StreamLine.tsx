@@ -1,3 +1,4 @@
+import { readApprovalSummary } from '../../shared/approval.js';
 import type { StreamItem } from '../../shared/protocol.js';
 import { classifyDiffLine } from '../derive.js';
 import { Markdown } from './Markdown.js';
@@ -19,7 +20,11 @@ interface StreamLineProps {
 export const StreamLine = ({ item }: StreamLineProps) => {
 	switch (item.kind) {
 		case 'user':
-			return <div className="line user">› {item.text}</div>;
+			return item.isApproval ? (
+				<div className="line approval">✓ Allowed once: {readApprovalSummary(item.text)}</div>
+			) : (
+				<div className="line user">› {item.text}</div>
+			);
 		case 'text':
 			return (
 				<div className="line text">

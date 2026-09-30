@@ -69,4 +69,12 @@ describe('VOICE_OS_CONTEXT', () => {
 			'an interruption, a follow-up, an answer, a withdrawn question — open your next message with a short tag saying what you do next, before the next tool call',
 		);
 	});
+
+	it('voice cues → one optional allowed tag inside a full sentence, never SSML', () => {
+		expect(VOICE_OS_CONTEXT).toContain(
+			'A line may carry one voice cue in brackets, only where it fits and only inside a full sentence',
+		);
+		expect(VOICE_OS_CONTEXT).toContain('[laughs], [chuckles], [sighs], [pause], [warm]');
+		expect(VOICE_OS_CONTEXT).toContain('never SSML or other markup, which is read aloud');
+	});
 });

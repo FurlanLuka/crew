@@ -1,4 +1,5 @@
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
+import { isRetryText } from '../shared/approval.js';
 import type { StreamItem } from '../shared/protocol.js';
 import type { Observation } from '../shared/protocol.js';
 import { STREAM_ITEMS_KEPT, createStreamItem, isShownAlready } from '../state/helpers.js';
@@ -72,7 +73,14 @@ export const convertHistoryToStream = ({
 		if (prompt !== null) {
 			// Harness text is what Claude Code adds to the user's turn that the developer never typed.
 			if (prompt.trim() && !HARNESS_TEXT_PATTERN.test(prompt)) {
-				items.push({ id: `h:${message.uuid}`, at, kind: 'user', text: prompt });
+				items.push({
+					id: `h:${message.uuid}`,
+					at,
+					kind: 'user',
+					text: prompt,
+					// The transcript keeps no flag: the retry's own words are what mark it.
+					...(isRetryText(prompt) ? { isApproval: true as const } : {}),
+				});
 			}
 
 			continue;

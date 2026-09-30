@@ -1097,3 +1097,62 @@ describe('VoiceOut reminders', () => {
 		expect(countReminders(harness)).toBe(MAX_REMINDERS);
 	});
 });
+
+describe('VoiceOut, voice tags', () => {
+	const TAGGED =
+		'The flaky test was a stale lockfile all along. [relieved] Every suite passes now, pushed.';
+	const PLAIN = 'The flaky test was a stale lockfile all along. Every suite passes now, pushed.';
+
+	it('a long line → its tag reaches the voice; state.spoken and echo read the words', async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({ text: TAGGED, priority: 'high', ref: 'store/main' });
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual([TAGGED]);
+		expect(harness.store.state.spoken.at(-1)).toMatchObject({ text: PLAIN });
+		expect(harness.voiceOut.listRecentSpeech()).toEqual([{ text: PLAIN, endedAt: null }]);
+	});
+
+	it('a short line with a tag → still short, and its tag is not sent', async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({ text: 'Ha, fair. [laughs] Pushing it.', priority: 'high' });
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['Ha, fair. Pushing it.']);
+	});
+
+	it('held off screen → the held line has no tag', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } });
+		harness.voiceOut.say({
+			text: TAGGED,
+			priority: 'high',
+			ref: 'store/main',
+			isHoldable: true,
+			source: 'narrator',
+		});
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['store/main is done.']);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: PLAIN });
+	});
+
+	it('cut and held as the view leaves → the held line has no tag', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/main' } });
+		harness.voiceOut.say({
+			text: TAGGED,
+			priority: 'high',
+			ref: 'store/main',
+			source: 'narrator',
+			isHoldable: true,
+		});
+		await flush();
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } });
+		await flush();
+
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: PLAIN });
+	});
+});

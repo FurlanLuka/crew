@@ -10,6 +10,7 @@ import {
 	type PendingAsk,
 	type Session,
 	type State,
+	type VoiceEntry,
 } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
@@ -23,7 +24,7 @@ import {
 	prepareSentText,
 } from './send.js';
 import { executeTool, joinCutSentence, saysMoreThanStart, type ToolContext } from './tools.js';
-import { NOT_FOR_YOU } from './queued.js';
+import { TAKEN_BACK } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
@@ -1445,7 +1446,7 @@ describe('queued_message', () => {
 			{ type: 'take_back', ref: 'store-front/main', id: 'held-1' },
 		]);
 		expect((await executeTool('queued_message', drop, running.tools)).ok).toBe(true);
-		expect(running.actions).toEqual([{ type: 'send', ref: 'store-front/main', text: NOT_FOR_YOU }]);
+		expect(running.actions).toEqual([{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK }]);
 	});
 
 	it('take back uses the last words as they were when said: a send earlier in the turn does not move them', async () => {
@@ -1478,7 +1479,7 @@ describe('queued_message', () => {
 		]);
 	});
 
-	it('last words being worked on (even blocked) or already sent → it is told they were not for it; nothing else is taken', async () => {
+	it('last words being worked on (even blocked) or already sent → it is told they were taken back; nothing else is taken', async () => {
 		const blocked = withQueue('running-1');
 		blocked.tools.getState().sessions['store-front/main'] = {
 			...blocked.tools.getState().sessions['store-front/main']!,
@@ -1492,8 +1493,8 @@ describe('queued_message', () => {
 		await executeTool('queued_message', drop, finished.tools);
 
 		expect([...blocked.actions, ...finished.actions]).toEqual([
-			{ type: 'send', ref: 'store-front/main', text: NOT_FOR_YOU },
-			{ type: 'send', ref: 'store-front/main', text: NOT_FOR_YOU },
+			{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK },
+			{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK },
 		]);
 	});
 
@@ -1526,6 +1527,86 @@ describe('queued_message', () => {
 		expect(result.ok).toBe(false);
 		expect(String(result.content)).toContain('answer it no');
 		expect(context.actions).toEqual([]);
+	});
+
+	describe('take back of words already delivered (note 86)', () => {
+		const CORRECTION =
+			"Oh, no, no, no. Let's remove that. I don't want that. What I meant by Soniox is, like, to add a Soniox tags like the TTS tags.";
+		const drop = { ref: 'store-front/main', action: 'drop' };
+
+		const delivered = () => {
+			const context = createToolContext();
+			context.tools.getState().lastSpokenSend = {
+				ref: 'store-front/main',
+				id: 'done-1',
+				text: 'x',
+				at: 1,
+			};
+
+			return context;
+		};
+
+		it('bare take-back words → it is told, neutrally, that the developer took them back', async () => {
+			for (const utterance of [
+				'Never mind.',
+				'Scratch that.',
+				'Oh, take that back.',
+				'Forget it',
+			]) {
+				const { tools, actions } = delivered();
+
+				expect((await executeTool('queued_message', drop, { ...tools, utterance })).ok).toBe(true);
+				expect(actions).toEqual([{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK }]);
+			}
+
+			expect(TAKEN_BACK).not.toContain('wrong session');
+		});
+
+		it('a correction → its words go to the session as said, nothing is taken back', async () => {
+			const { tools, actions } = delivered();
+			const result = await executeTool('queued_message', drop, {
+				...tools,
+				utterance: CORRECTION,
+				forwardTo: 'store-front/main',
+			});
+
+			expect(result).toMatchObject({
+				ok: true,
+				content: expect.stringContaining('went to it as said instead'),
+				recordAs: { name: 'forward', input: { text: CORRECTION } },
+			});
+			expect(actions).toEqual([
+				{ type: 'send', ref: 'store-front/main', text: CORRECTION, ack: INSTRUCTION_ACK },
+			]);
+		});
+
+		it('a correction whose words already went there this turn → not sent twice', async () => {
+			const { tools, actions } = delivered();
+			const result = await executeTool('queued_message', drop, {
+				...tools,
+				utterance: CORRECTION,
+				sentTo: new Set(['store-front/main']),
+			});
+
+			expect(result.ok).toBe(true);
+			expect(actions).toEqual([]);
+		});
+
+		it('words still queued → taken back, whatever was said', async () => {
+			const queued = withQueue(null);
+
+			await executeTool('queued_message', drop, { ...queued.tools, utterance: CORRECTION });
+
+			expect(queued.actions).toEqual([{ type: 'take_back', ref: 'store-front/main', id: 'q2' }]);
+		});
+
+		it('no utterance (typed or replayed) → taken back', async () => {
+			const { tools, actions } = delivered();
+
+			await executeTool('queued_message', drop, tools);
+
+			expect(actions).toEqual([{ type: 'send', ref: 'store-front/main', text: TAKEN_BACK }]);
+		});
 	});
 
 	it('nothing queued, or an unknown action → fails, nothing dispatched', async () => {
@@ -1930,6 +2011,111 @@ describe('Voice OS note through the real reducer', () => {
 		);
 
 		expect(listNoteFlags(sent)).toEqual([true, false]);
+	});
+});
+
+describe('what Voice OS just did goes with "check this debug note" (note 84)', () => {
+	const noteSaved: VoiceEntry = {
+		utterance: 'Add a debug note that only the request was forwarded.',
+		did: ['debug_note "Only the request was forwarded."'],
+		reply: 'Debug note saved.',
+		at: 0,
+	};
+	const SAID = 'Also tell the session to check this debug note.';
+
+	it("forwarded to an idle session → the note carries the debug note's words", async () => {
+		const { tools, actions } = createToolContext({ voiceLog: { 'store-front/main': [noteSaved] } });
+
+		await executeTool(
+			'forward',
+			{ text: 'Check this debug note.' },
+			{ ...tools, forwardTo: 'store-front/main', screen: 'store-front/main', utterance: SAID },
+		);
+
+		expect(actions).toEqual([
+			expect.objectContaining({
+				type: 'send',
+				text: 'Check this debug note.',
+				note: expect.stringContaining(
+					`the developer told Voice OS: "${noteSaved.utterance}", and Voice OS saved it as a debug note.`,
+				),
+			}),
+		]);
+	});
+
+	it('asked aside of a working session → the aside carries it too', async () => {
+		const base = createToolContext();
+		const session = base.tools.getState().sessions['store-front/main']!;
+		const { tools, actions } = createToolContext({
+			voiceLog: { 'store-front/main': [noteSaved] },
+			sessions: {
+				...base.tools.getState().sessions,
+				'store-front/main': { ...session, status: 'running' },
+			},
+		});
+
+		await executeTool(
+			'forward',
+			{ text: 'What do you make of this debug note?', kind: 'question' },
+			{
+				...tools,
+				forwardTo: 'store-front/main',
+				screen: 'store-front/main',
+				utterance: 'What do you make of this debug note?',
+			},
+		);
+
+		expect(actions).toEqual([
+			expect.objectContaining({
+				aside: true,
+				note: expect.stringContaining(noteSaved.utterance),
+			}),
+		]);
+	});
+
+	it('through the real reducer → the stream shows only the words', async () => {
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'store-front/main',
+					label: 'store-front/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+			],
+		});
+		store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		store.dispatch({ type: 'session_started', ref: 'store-front/main' } as unknown as Action);
+		store.dispatch({ type: 'voice_logged', screen: 'store-front/main', entry: noteSaved });
+		const sent: Action[] = [];
+		const { tools } = createToolContext();
+
+		await executeTool(
+			'forward',
+			{ text: 'Check this debug note.' },
+			{
+				...tools,
+				getState: () => store.state,
+				dispatch: (action) => {
+					sent.push(action);
+					store.dispatch(action);
+				},
+				forwardTo: 'store-front/main',
+				screen: 'store-front/main',
+				utterance: SAID,
+			},
+		);
+
+		const user = store.state.sessions['store-front/main']!.stream.findLast(
+			(item) => item.kind === 'user',
+		);
+
+		expect(sent[0]).toMatchObject({ note: expect.stringContaining(noteSaved.utterance) });
+		expect(user).toMatchObject({ text: 'Check this debug note.' });
 	});
 });
 
@@ -2397,6 +2583,41 @@ describe('tools that replaced the fast path', () => {
 
 		expect(muted).toBe(1);
 		expect(actions).toEqual([]);
+	});
+
+	it('mute runs only on a whole mute command (note 83); with no words it mutes', async () => {
+		const note83 =
+			"Okay, can you can you paste this to Voi. To crew main, like the debug notes, and just the notes? Uh, and also so when I select remote, which doesn't have anything, I don't want it to connect, like, uh, I don't want it to tell me that nothing is waiting for me. Just be silent, okay? Only say things if there's actually anything to do. But yeah, ask crew main to check debug notes and notes, um, and give me a list, and I'll decide on what to do, okay?";
+		const { tools } = createToolContext();
+
+		const mutes = async (utterance: string | undefined) => {
+			let muted = 0;
+			const result = await executeTool('mute', {}, { ...tools, utterance, mute: () => muted++ });
+
+			return result.ok && muted === 1;
+		};
+
+		for (const said of [
+			'mute',
+			'Be quiet.',
+			'Shut up!',
+			'Be silent.',
+			'Voice OS, stop talking',
+			'Mute, Voice OS.',
+			'Shut up Voice OS',
+			'Quiet please, VoiceOS.',
+		]) {
+			expect(await mutes(said)).toBe(true);
+		}
+
+		for (const said of ['Make the tests quiet.', 'Mute Voice OS for the tests.', note83]) {
+			expect(await mutes(said)).toBe(false);
+		}
+
+		expect(await mutes(undefined)).toBe(true);
+		expect((await executeTool('mute', {}, { ...tools, utterance: note83 })).content).toBe(
+			'not a mute request; do nothing more',
+		);
 	});
 
 	it("debug_note keeps what the developer said beside the kernel's text", async () => {
@@ -2915,6 +3136,74 @@ describe('fixes from the live notes', () => {
 		expect(actions).toEqual([
 			{ type: 'send', ref: 'checkout-api/main', text: 'Yes.', ack: INSTRUCTION_ACK },
 		]);
+	});
+
+	describe('answer on a session with nothing waiting (note 81)', () => {
+		const answerYes = { ref: 'store-front/main', decision: 'yes', text: '' };
+
+		it('on screen → the words are forwarded there', async () => {
+			const { tools, actions } = createToolContext();
+			const result = await executeTool('answer', answerYes, {
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: 'Yes, do that.',
+			});
+
+			expect(result).toMatchObject({
+				ok: true,
+				recordAs: { name: 'forward', input: { text: 'Yes, do that.' } },
+			});
+			expect(actions).toEqual([
+				{ type: 'send', ref: 'store-front/main', text: 'Yes, do that.', ack: INSTRUCTION_ACK },
+			]);
+		});
+
+		it('off screen → sent to it', async () => {
+			const { tools, actions } = createToolContext();
+			const result = await executeTool('answer', answerYes, {
+				...tools,
+				forwardTo: 'checkout-api/main',
+				utterance: 'Yes, do that.',
+			});
+
+			expect(result.recordAs).toEqual({
+				name: 'send_to',
+				input: { ref: 'store-front/main', text: 'Yes, do that.' },
+			});
+			expect(actions).toHaveLength(1);
+		});
+
+		it('a bare "yes" while another session asks → fails naming it, nothing sent', async () => {
+			const asking: PendingAsk = {
+				id: 'p1',
+				ref: 'store-front/wrk1',
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push',
+				input: {},
+				suggestions: [],
+			};
+			const { tools, actions } = createToolContext({ asks: [asking] });
+			const result = await executeTool('answer', answerYes, {
+				...tools,
+				asks: [asking],
+				utterance: 'Yes.',
+			});
+
+			expect(result).toMatchObject({
+				ok: false,
+				content: expect.stringContaining('store-front/wrk1 is the one asking'),
+			});
+			expect(actions).toEqual([]);
+		});
+
+		it('no words at all → fails, nothing sent', async () => {
+			const { tools, actions } = createToolContext();
+
+			expect((await executeTool('answer', answerYes, tools)).ok).toBe(false);
+			expect(actions).toEqual([]);
+		});
 	});
 
 	it('a question called an unfinished thought → refused; a fragment still ignored', async () => {
@@ -3781,6 +4070,14 @@ describe('a question rewritten into a command', () => {
 		expect(prepare('Fix the proxy. Check whether the router drops the header.', true)).toBe(
 			'Fix the proxy. Check whether the router drops the header.',
 		));
+
+	it.each([
+		['Can you ask it to check the logs?', 'Check the logs.'],
+		['Um, could you list the files in the source folder?', 'List the files in the source folder.'],
+		['Would you run the tests again?', 'Run the tests again.'],
+	])('a request put as a question, %p → the rewrite', (utterance, text) =>
+		expect(prepareSentText({ state, ref: REF, text, utterance, isOnlySend: true })).toBe(text),
+	);
 });
 
 describe('a debug note said to a session', () => {
