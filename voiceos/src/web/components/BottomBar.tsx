@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { ClientMessage, State } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
+import { readSessionLabel } from '../../shared/machines.js';
 import { Mic, isMicAllowed } from '../audio.js';
 import { PRE_ROLL_MS } from '../ptt.js';
 import { describeListening, type InputMode, isListeningMode } from '../listen-mode.js';
@@ -368,6 +369,12 @@ export const BottomBar = ({
 	}, [ignoredAt]);
 
 	const isDictationMode = listenMode === 'dictation';
+	// A conversation with a session not on screen: the chip says so, and lapses with it.
+	const screenRef = state.view.kind === 'session' ? state.view.ref : null;
+	const subjectRef =
+		state.exchange && state.exchange.ref !== screenRef && !isDictationMode
+			? state.exchange.ref
+			: null;
 	const routeLabel = isDictationMode ? describeDictationTarget(state) : route.label;
 	const routeClass = isDictationMode
 		? 'dictation'
@@ -459,7 +466,34 @@ export const BottomBar = ({
 							</button>
 						</>
 					) : null}
-					<span className={`route ${routeClass}`}>{routeLabel}</span>
+					{subjectRef ? (
+						<span className="talking-with">
+							<button
+								type="button"
+								className="talking-with-name"
+								title="Your follow-ups go to this session. Click to switch to it."
+								onClick={() =>
+									send({
+										type: 'action',
+										action: { type: 'switch_view', view: { kind: 'session', ref: subjectRef } },
+									})
+								}
+							>
+								Talking with {readSessionLabel(state, subjectRef)}
+							</button>
+							<button
+								type="button"
+								className="talking-with-clear"
+								aria-label="Stop talking with it"
+								title="Follow-ups go to the session on screen again"
+								onClick={() => send({ type: 'action', action: { type: 'clear_exchange' } })}
+							>
+								×
+							</button>
+						</span>
+					) : (
+						<span className={`route ${routeClass}`}>{routeLabel}</span>
+					)}
 				</div>
 			</form>
 		</footer>
