@@ -261,6 +261,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
+  **Any language:** a guard that reads what the developer means asks the judge
+  (`voiceos/src/judge/`, one narrow Haiku question, `unclear` on timeout = the safe side), never an
+  English regex; the speech layer (stop words, "end of turn", the wake word) stays English.
   **Pinned and session names** are Voice OS's own preferences, with no crew command:
   `state.pinned` (full refs in pin order, any machine; a pin outlives its session and a removed
   machine's pins are dropped) and `state.names` (full ref → name, unique; an empty name clears),

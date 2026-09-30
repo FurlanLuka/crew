@@ -105,6 +105,7 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/router/` | `router.ts` routes each utterance, one at a time. Typed text on a session page goes straight to that session, and everything else goes to the kernel. `kernel.ts` is the Haiku kernel and its prompt. `refs.ts` resolves spoken names to sessions. |
 | `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `pin.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
 | `src/sessions/` | One Agent SDK session per worktree (`worker.ts`), started, resumed and stopped by `manager.ts`, with session ids kept in `registry.ts`. `events.ts` maps SDK messages to observations, `permissions.ts` bridges `canUseTool` to the page, `side-answer.ts` runs asides, `history.ts` rebuilds streams from Claude Code's transcripts at boot, `media.ts` stores images, `doc-links.ts` finds docs, `setup-session.ts` defines the setup session, and `voice-context.ts` holds the orientation every session gets. |
+| `src/judge/` | `judge.ts`: one narrow Haiku question about what the developer's words mean, in any language (`JUDGE_QUESTIONS`, a forced `verdict` tool with an enum answer). Asked only by a guard about to act; a timeout or failure is `unclear`, every guard's safe side. It logs the question key, verdict and ms, never the words. Specs use `test/support/english-judge.ts`. |
 | `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `topic.ts` keeps each session's topic (Haiku). |
 | `src/speech/` | `voice-in.ts` handles push to talk and dictation (a press held open until sent), and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. |
 | `src/memory/` | Files that outlive a restart: `journal.ts`, `topics.ts`, `view.ts`, `pinned.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
@@ -161,6 +162,12 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   it at boot. For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
+- **No English patterns over what the developer means.** A guard that reads the developer's words
+  (consent, take-back, misroute, mute, listening, delivery, "For X?") asks the judge, after
+  language-neutral fast paths in code: word counts, a closing `?`, verbatim spans, session names,
+  option labels. The speech layer (`speech/turns.ts` stop words and "end of turn", `wake.ts`, filler)
+  and typed keywords stay English on purpose. The languages Soniox expects are `state.languages`
+  (`shared/languages.ts`, saved in `languages.json`), sent as `language_hints`.
 
 ### Remote machines
 
@@ -190,6 +197,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `view.json` | The last view the developer chose. |
 | `pinned.json` | Pinned refs, in pin order. |
 | `names.json` | Session names by ref. |
+| `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
 | `topics.json` | Each session's topic. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each. |
@@ -237,7 +245,13 @@ bun evals/run.ts all --update-baseline                 # after an intended chang
 
 A full run is a few hundred cases and costs about $1–2. [CONTRIBUTING.md](../CONTRIBUTING.md) has
 the current figure. `--kernel-model=` and `--narrator-model=` try another model without touching
-the baseline. Cases live in `evals/kernel/cases.json` and `evals/narrator/cases.json`.
+the baseline. Cases live in `evals/kernel/cases.json` and `evals/narrator/cases.json`; kernel cases
+with a `-de`, `-sl` or `-es` suffix are the same situations in another language. The judge has its
+own eval over its questions in four languages (`evals/judge/cases.json`, a few cents a run):
+
+```bash
+bun evals/judge.ts --only=approves,take_back
+```
 
 Speech fixtures:
 
