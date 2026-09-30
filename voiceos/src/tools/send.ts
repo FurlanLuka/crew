@@ -1,6 +1,5 @@
 import { isSdkAsk, type QueuedMessage, type Session, type State } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
-import { endsInQuestion } from '../shared/spoken.js';
 import { createLogger } from '../log.js';
 import { isPlainConsent } from './consent.js';
 import { normalizeSaid } from '../state/helpers.js';
@@ -137,101 +136,118 @@ interface SendTextParams {
 	continues?: { rest: string };
 }
 
-const LEADING_ANSWER_PATTERN = /^\s*((?:yes|yeah|yep|sure|okay|ok|no|nope)\b[^.!?]*[.!?])\s*/i;
+const toSaidWords = (text: string): string[] =>
+	text
+		.toLowerCase()
+		// "/clear" is how "slash clear" is written: the same words.
+		.replace(/\//g, ' slash ')
+		.replace(/[^\p{L}\p{N}'\s]+/gu, ' ')
+		.replace(/'/g, '')
+		.split(/\s+/)
+		.filter(Boolean);
 
-const keepLeadingAnswer = (utterance: string, text: string): string => {
-	// "Yes, please. Let me know when you're done." answers the session's question: the rewrite kept
-	// only the second sentence, and the session never heard the yes. Only a sentence that is an answer
-	// on its own comes back: "No, use the table." rewritten as "Use the table." is already whole.
-	const leading = LEADING_ANSWER_PATTERN.exec(utterance)?.[1];
+// Word for word, whole words only: "test" is no span of "run the tests".
+export const isVerbatimSpan = (part: string, words: string): boolean => {
+	const partWords = toSaidWords(part);
+	const saidWords = toSaidWords(words);
 
-	if (!leading || !isBareAnswer(leading)) {
-		return text;
+	if (partWords.length === 0 || partWords.length > saidWords.length) {
+		return false;
 	}
 
-	// What follows the answer word ("do it now" in "Yes, do it now.") may already be in the rewrite.
-	const bare = (words: string): string => normalizeSaid(words).replace(/[.!?,]+/g, '');
-	const written = bare(text);
-	const rest = bare(leading).split(' ').slice(1).join(' ');
-
-	if (written.startsWith(bare(leading)) || (rest && ` ${written} `.includes(` ${rest} `))) {
-		return text;
-	}
-
-	return `${leading} ${text}`;
+	return saidWords.some((_, start) =>
+		partWords.every((word, offset) => saidWords[start + offset] === word),
+	);
 };
 
-interface PrepareSentTextParams {
+// "…scratch that, run the linter instead": what came before is taken back, not sent. A bare
+// "ignore" only as its own sentence: "ignore the flaky test" is an instruction.
+const TAKE_BACK_PATTERN =
+	/\b(?:scratch that|never ?mind|forget that|ignore that|ignore(?=\s*[.!;:—-]))\b[.,!;:—-]*/gi;
+
+const readAfterTakeBack = (said: string): string | null => {
+	const matches = [...said.matchAll(TAKE_BACK_PATTERN)];
+	const last = matches.at(-1);
+
+	return last?.index === undefined ? null : said.slice(last.index + last[0].length);
+};
+
+const isSameWords = (part: string, words: string): boolean =>
+	toSaidWords(part).join(' ') === toSaidWords(words).join(' ');
+
+interface IsWholeSendParams {
 	state: State;
-	ref: string;
-	text: string;
-	utterance: string | undefined;
-	// The words go to this session alone: nothing else in the turn changed anything.
+	utterance: string;
+	// Nothing else in the turn carried words: the utterance was all for this session.
 	isOnlySend: boolean;
-	// The text joins two utterances: the one heard now is only its second half.
-	isContinuation?: boolean;
 }
 
-// A sentence that asked for two things keeps only its half for the session: that is not a loss.
-const MIN_KEPT_SHARE = 0.3;
-const MIN_LONG_UTTERANCE_WORDS = 15;
+export const isWholeSend = ({ state, utterance, isOnlySend }: IsWholeSendParams): boolean =>
+	// Split across sessions or tools, the whole would hand one session the other's instruction; a
+	// session named at all ("switch to checkout and tell it to…") means some words were routing.
+	isOnlySend && findSessionsNamedIn(state, utterance).length === 0;
 
-const countWords = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
+export interface ChooseSentWordsParams {
+	// The words as heard.
+	utterance: string | undefined;
+	// What the kernel copied out of them, when the words did more than this send.
+	part: string | undefined;
+	// The developer's earlier words on this screen, oldest first: "I meant this for store front
+	// main" resends them.
+	earlier: string[];
+	isWhole: boolean;
+}
 
-// "Can you ask it to check the logs?" is a request put politely: its rewrite into "Check the logs."
-// is the point, not a question lost.
-const POLITE_REQUEST_PATTERN =
-	/^(?:(?:um|uh|so|okay|ok|and|hey|oh)[,\s]+)*(?:can|could|would|will) (?:you|we)\b/i;
+export type SentWords = { text: string; source: 'said' | 'part' | 'earlier' };
 
-export const isQuestionRewritten = (utterance: string, text: string): boolean =>
-	// "Does the router still drop the header?" rewritten as "Check whether the router drops the
-	// header." sets it to work on what was only asked.
-	endsInQuestion(utterance) &&
-	!endsInQuestion(text) &&
-	!POLITE_REQUEST_PATTERN.test(utterance.trim());
-
-export const isRewriteTooShort = (utterance: string, text: string): boolean => {
-	// A long, rambling thought rewritten into a few words lost its point ("Okay, or just something
-	// like that." for twenty-five words about confirmations): the session reads the words as said.
-	const saidWords = countWords(utterance);
-
-	return saidWords >= MIN_LONG_UTTERANCE_WORDS && countWords(text) < saidWords * MIN_KEPT_SHARE;
-};
-
-export const prepareSentText = ({
-	state,
-	ref,
-	text,
+// The kernel chooses where words go, never what they say: a model's rewrite lost the point of long
+// thoughts. It may only copy a part out, word for word; anything else sends the words as said.
+export const chooseSentWords = ({
 	utterance,
-	isOnlySend,
-	isContinuation = false,
-}: PrepareSentTextParams): string => {
-	// As said only when the words were all for this session: split across sessions or tools, each
-	// part is short on purpose, and the whole would hand one session the other's instruction.
-	const namesAnother = utterance
-		? findSessionsNamedIn(state, utterance).some((named) => named !== ref)
-		: false;
+	part,
+	earlier,
+	isWhole,
+}: ChooseSentWordsParams): SentWords => {
+	const said = utterance?.trim() ?? '';
+	const copied = part?.trim() ?? '';
 
-	const isWhole = Boolean(utterance) && isOnlySend && !namesAnother;
-
-	if (utterance && isWhole && isRewriteTooShort(utterance, text)) {
-		log.info('rewrite too short: sent as said', {
-			ref,
-			said: countWords(utterance),
-			kept: countWords(text),
-		});
-
-		return utterance.trim();
+	if (!said) {
+		return { text: copied, source: 'part' };
 	}
 
-	if (utterance && isWhole && !isContinuation && isQuestionRewritten(utterance, text)) {
-		log.info('question rewritten as a statement: sent as said', { ref });
-
-		return utterance.trim();
+	if (!copied) {
+		return { text: said, source: 'said' };
 	}
 
-	// Only when the session asked something: elsewhere a leading "okay" is filler.
-	return state.sessions[ref]?.needsUser && utterance ? keepLeadingAnswer(utterance, text) : text;
+	if (!isVerbatimSpan(copied, said) && earlier.some((words) => isVerbatimSpan(copied, words))) {
+		return { text: copied, source: 'earlier' };
+	}
+
+	// The same words, written: "Slash clear." goes as /clear.
+	if (isSameWords(copied, said)) {
+		return { text: copied, source: 'part' };
+	}
+
+	const afterTakeBack = readAfterTakeBack(said);
+
+	if (afterTakeBack !== null && isVerbatimSpan(copied, afterTakeBack)) {
+		return { text: copied, source: 'part' };
+	}
+
+	if (isWhole) {
+		return { text: said, source: 'said' };
+	}
+
+	if (isVerbatimSpan(copied, said)) {
+		return { text: copied, source: 'part' };
+	}
+
+	log.warn('part not word for word: sent as said', {
+		said: toSaidWords(said).length,
+		part: toSaidWords(copied).length,
+	});
+
+	return { text: said, source: 'said' };
 };
 
 // "Voice OS, make a worktree…" addresses the setup session; "reinstall Voice OS" is about the app.

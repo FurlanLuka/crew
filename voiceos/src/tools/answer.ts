@@ -6,7 +6,8 @@ import {
 	describeDebugNoteRequest,
 	describeMisroutedAnswer,
 	isBareAnswer,
-	prepareSentText,
+	chooseSentWords,
+	isWholeSend,
 	recordAsSent,
 	sendText,
 } from './send.js';
@@ -269,16 +270,19 @@ export const answerAsk = ({ state, input, toolContext }: AnswerAskParams): ToolR
 	if (!heardAsk) {
 		// The model reaches for answer when a session asked at the end of its turn: that reply is
 		// words for the session, so it goes there instead of failing into a made-up explanation.
-		const written = (typeof input.text === 'string' && input.text.trim()) || toolContext.utterance;
-		const reply = written
-			? prepareSentText({
-					state,
-					ref: checked.ref,
-					text: written,
-					utterance: toolContext.utterance,
-					isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
-				})
-			: written;
+		const utterance = toolContext.utterance;
+		const reply = chooseSentWords({
+			utterance,
+			part: typeof input.text === 'string' ? input.text : undefined,
+			earlier: toolContext.recentUtterances ?? [],
+			isWhole: utterance
+				? isWholeSend({
+						state,
+						utterance,
+						isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
+					})
+				: false,
+		}).text;
 
 		// A forward beside it already took the words there, cleaned: they are not sent twice.
 		if (toolContext.sentTo?.has(checked.ref)) {

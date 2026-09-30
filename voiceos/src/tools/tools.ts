@@ -9,9 +9,15 @@ import {
 	type ListenMode,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
-import { normalizeSaid } from '../state/helpers.js';
 import { normalizeUtterance } from '../shared/spoken.js';
-import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
+import {
+	chooseSentWords,
+	describeMisroutedAnswer,
+	isMisroutedToSetup,
+	isWholeSend,
+	sendText,
+	type SentWords,
+} from './send.js';
 import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
@@ -36,7 +42,7 @@ import {
 	onMachine,
 } from './machines.js';
 import { HOME_VIEW, currentMachine, readMachineTitle } from '../shared/machines.js';
-import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
 import { type ToolResult, fail, succeed, checkRef } from './results.js';
 
 const MIN_REQUEST_WORDS = 4;
@@ -149,77 +155,80 @@ export interface ToolContext {
 	readHistory: (query: HistoryQuery) => HistoryEntry[];
 }
 
+interface ChooseWordsForParams {
+	state: State;
+	input: Record<string, unknown>;
+	toolContext: ToolContext;
+}
+
+const chooseWordsFor = ({ state, input, toolContext }: ChooseWordsForParams): SentWords => {
+	const utterance = toolContext.utterance;
+
+	return chooseSentWords({
+		utterance,
+		part: typeof input.text === 'string' ? input.text : undefined,
+		earlier: toolContext.recentUtterances ?? [],
+		isWhole: utterance
+			? isWholeSend({
+					state,
+					utterance,
+					isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
+				})
+			: false,
+	});
+};
+
 interface SendRecordedParams {
 	state: State;
 	ref: string;
-	text: string;
+	// The words chosen for this session (chooseWordsFor).
+	words: SentWords;
 	input: Record<string, unknown>;
 	name: 'forward' | 'send_to';
 	toolContext: ToolContext;
 }
 
-interface JoinCutSentenceParams {
-	text: string;
-	input: Record<string, unknown>;
-	// The developer's previous words on this screen: the sentence's first half.
-	previous: string | undefined;
-}
-
-export const joinCutSentence = ({ text, input, previous }: JoinCutSentenceParams): string => {
-	// continues says these words finish the previous ones; a text holding only the new part would
-	// replace the first half with the second, and the session would get half a sentence.
-	const rest = typeof input.rest === 'string' ? input.rest : '';
-
-	return input.continues === true && previous && rest && normalizeSaid(text) === normalizeSaid(rest)
-		? `${previous.trim()} ${text.trim()}`
-		: text;
-};
-
 const sendRecorded = ({
 	state,
 	ref,
-	text,
+	words,
 	input,
 	name,
 	toolContext,
 }: SendRecordedParams): ToolResult => {
-	const sent = prepareSentText({
-		state,
-		ref,
-		text: joinCutSentence({ text, input, previous: toolContext.recentUtterances?.at(-1) }),
-		utterance: toolContext.utterance,
-		isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
-		isContinuation: input.continues === true,
-	});
-	const rest = typeof input.rest === 'string' && input.rest.trim() ? input.rest.trim() : null;
+	// These words finish the sentence the previous ones began: the session gets it whole, joined as
+	// said, and the reducer replaces the first half with it.
+	const previous = toolContext.recentUtterances?.at(-1)?.trim();
+	const isContinuation =
+		input.continues === true && Boolean(previous) && words.source !== 'earlier';
+	const text = isContinuation ? `${previous} ${words.text}` : words.text;
+
+	log.info('words chosen', { ref, source: words.source, continues: isContinuation });
+
 	const result = sendText({
 		state,
 		ref,
-		text: sent,
+		text,
 		kind: input.kind,
-		// Without the kernel's own rewrite of the new part, the words as said stand in for it.
-		...(input.continues === true
-			? {
-					continues: {
-						rest:
-							rest ??
-							prepareSentText({
-								state,
-								ref,
-								text: toolContext.utterance?.trim() || sent,
-								utterance: toolContext.utterance,
-								isOnlySend: true,
-							}),
-					},
-				}
-			: {}),
+		...(isContinuation ? { continues: { rest: words.text } } : {}),
 		toolContext,
 	});
 
-	// The voice log records what the session got, not what the model wrote.
-	return sent === text
-		? result
-		: { ...result, recordAs: { name, input: { ...input, text: sent } } };
+	// The voice log records what the session got, not what the model wrote (often nothing).
+	const { ref: _named, ...unaddressed } = input;
+	const recorded = name === 'forward' ? { ...unaddressed, text } : { ...input, text };
+
+	return { ...result, recordAs: { name, input: recorded } };
+};
+
+// "checkout api", never just "checkout": a word of a workspace's name is also a word of the work.
+const isWorkspaceSaidInFull = (ref: string, utterance: string): boolean => {
+	const plain = ` ${utterance
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()} `;
+
+	return plain.includes(` ${splitRef(ref).workspace.replace(/-/g, ' ')} `);
 };
 
 // A machine the developer named with the session wins over the one a bare name resolved to:
@@ -285,19 +294,19 @@ export const executeTool = async (
 				return fail('no session to forward to: use send_to with a ref');
 			}
 
-			const text = typeof input.text === 'string' ? input.text.trim() : '';
+			const words = chooseWordsFor({ state, input, toolContext });
 
-			if (!text) {
+			if (!words.text) {
 				return fail('empty text');
 			}
 
-			const misroutedAnswer = describeMisroutedAnswer(state, target, text);
+			const misroutedAnswer = describeMisroutedAnswer(state, target, words.text);
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
 			}
 
-			return sendRecorded({ state, ref: target, text, input, name: 'forward', toolContext });
+			return sendRecorded({ state, ref: target, words, input, name: 'forward', toolContext });
 		}
 
 		case 'ignore_words': {
@@ -374,13 +383,27 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			const text = typeof input.text === 'string' ? input.text.trim() : '';
+			// A sentence cut by a pause goes where its first half went, the session on screen, whatever it
+			// mentions ("…slow on the checkout worker?" is not for checkout) unless that session is named.
+			const screen = toolContext.forwardTo;
+			const isContinuationElsewhere =
+				input.continues === true &&
+				Boolean(screen && state.sessions[screen]) &&
+				screen !== checked.ref &&
+				!isWorkspaceSaidInFull(checked.ref, toolContext.utterance ?? '');
+			const ref = isContinuationElsewhere && screen ? screen : checked.ref;
 
-			if (!text) {
+			if (isContinuationElsewhere) {
+				log.info('continuation kept on the screen', { named: checked.ref, to: ref });
+			}
+
+			const words = chooseWordsFor({ state, input, toolContext });
+
+			if (!words.text) {
 				return fail('empty instruction');
 			}
 
-			const misroutedAnswer = describeMisroutedAnswer(state, checked.ref, text);
+			const misroutedAnswer = describeMisroutedAnswer(state, ref, words.text);
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
@@ -389,17 +412,24 @@ export const executeTool = async (
 			if (
 				isMisroutedToSetup({
 					state,
-					ref: checked.ref,
+					ref,
 					forwardTo: toolContext.forwardTo ?? null,
 					utterance: toolContext.utterance,
 				})
 			) {
 				return fail(
-					`Not sent: ${checked.ref} only does crew setup (workspaces, projects, worktrees). Forward it to the session on screen.`,
+					`Not sent: ${ref} only does crew setup (workspaces, projects, worktrees). Forward it to the session on screen.`,
 				);
 			}
 
-			return sendRecorded({ state, ref: checked.ref, text, input, name: 'send_to', toolContext });
+			return sendRecorded({
+				state,
+				ref,
+				words,
+				input,
+				name: isContinuationElsewhere ? 'forward' : 'send_to',
+				toolContext,
+			});
 		}
 
 		case 'switch_view': {

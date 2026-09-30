@@ -47,6 +47,7 @@ const App = () => {
 		isAwake,
 		ignoredAt,
 		openRequest,
+		keptDictation,
 	} = useConnection((message) => player.receive(message));
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
 	const stateRef = useRef(state);
@@ -141,6 +142,7 @@ const App = () => {
 				listenCommand={listenCommand}
 				isAwake={isAwake && status === 'open'}
 				ignoredAt={ignoredAt}
+				keptDictation={keptDictation}
 				send={send}
 				sendBinary={sendBinary}
 				player={player}

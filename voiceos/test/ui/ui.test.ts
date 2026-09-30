@@ -101,6 +101,14 @@ const watchErrors = (page: Page): void => {
 	);
 };
 
+const chooseMode = async (page: Page, name: string): Promise<void> => {
+	await page.getByRole('button', { name: 'Listening mode' }).click();
+	await page.getByRole('menuitemradio', { name }).click();
+};
+
+const readMode = (page: Page): Promise<string | null> =>
+	page.locator('.mode-button').getAttribute('data-mode');
+
 const signIn = async (beforeLoad?: () => void): Promise<SignedInTab> => {
 	const context = await browser.newContext({ permissions: ['microphone'] });
 
@@ -375,13 +383,12 @@ describe('voice os ui', () => {
 
 	it('hands-free chosen → echo-cancelled mic, listen_start at the device rate with the mode, audio with no key held; Space starts no press; push to talk → listen_stop', async () => {
 		const { context, page, client } = await openMicTab();
-		const mode = page.getByRole('combobox', { name: 'Listening mode' });
-		await mode.selectOption('hands-free');
+		await chooseMode(page, 'Hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 		const firstChunk = audioChunks.length;
 		await Bun.sleep(600);
 		expect(audioChunks.length - firstChunk).toBeGreaterThan(3);
-		expect(await mode.inputValue()).toBe('hands-free');
+		expect(await readMode(page)).toBe('hands-free');
 		const start = listFromClient(client, 'listen_start')[0]!.message as {
 			sampleRate: number;
 			mode: string;
@@ -399,7 +406,7 @@ describe('voice os ui', () => {
 		await Bun.sleep(400);
 		expect(listFromClient(client, 'ptt_start')).toHaveLength(0);
 
-		await mode.selectOption('push');
+		await chooseMode(page, 'Push to talk');
 		await waitUntil(() => listFromClient(client, 'listen_stop').length === 1);
 		// Back to the raw mic for push-to-talk.
 		await page.waitForFunction(
@@ -412,11 +419,10 @@ describe('voice os ui', () => {
 
 	it('hands-free, then on demand from the menu → the stream reopens in the new mode', async () => {
 		const { context, page, client } = await openMicTab();
-		const mode = page.getByRole('combobox', { name: 'Listening mode' });
-		await mode.selectOption('hands-free');
+		await chooseMode(page, 'Hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 
-		await mode.selectOption('on-demand');
+		await chooseMode(page, 'On demand');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 2);
 		expect(listFromClient(client, 'listen_stop')).toHaveLength(1);
 		expect((listFromClient(client, 'listen_start').at(-1)!.message as { mode: string }).mode).toBe(
@@ -432,8 +438,7 @@ describe('voice os ui', () => {
 
 	it('server turns listening off (another tab took it) → back to push to talk; a reload of the tab keeps its own choice', async () => {
 		const { context, page, client } = await openMicTab();
-		const mode = page.getByRole('combobox', { name: 'Listening mode' });
-		await mode.selectOption('hands-free');
+		await chooseMode(page, 'Hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 		const listListenStarts = () =>
 			received.filter((entry) => entry.message.type === 'listen_start');
@@ -446,9 +451,153 @@ describe('voice os ui', () => {
 
 		gateway.send(reloadedClient, { type: 'listen_off', reason: 'listening moved to another tab' });
 		await page.waitForFunction(
-			(value) => document.querySelector<HTMLSelectElement>('select.listen-mode')?.value === value,
+			(value) => document.querySelector('.mode-button')?.getAttribute('data-mode') === value,
 			'push',
 			{ timeout: 5000 },
+		);
+		await context.close();
+	}, 20_000);
+
+	it('the mode menu → opens on the chosen mode; arrows move, Enter picks, Esc closes back to the button, a click outside closes', async () => {
+		const { context, page } = await openMicTab();
+		const button = page.getByRole('button', { name: 'Listening mode' });
+		const menu = page.getByRole('menu', { name: 'Listening mode' });
+
+		await button.click();
+		expect(await menu.getByRole('menuitemradio', { checked: true }).innerText()).toContain(
+			'Push to talk',
+		);
+		expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-checked'))).toBe(
+			'true',
+		);
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('Enter');
+		await menu.waitFor({ state: 'detached' });
+		expect(await readMode(page)).toBe('dictation');
+
+		await button.click();
+		await page.keyboard.press('Escape');
+		await menu.waitFor({ state: 'detached' });
+		expect(await page.evaluate(() => document.activeElement?.className)).toContain('mode-button');
+
+		await button.click();
+		await page.locator('.topbar').click();
+		await menu.waitFor({ state: 'detached' });
+		expect(await readMode(page)).toBe('dictation');
+		await context.close();
+	}, 20_000);
+
+	it('the input grows with the words up to six lines, then scrolls; Shift+Enter is a new line, Enter sends', async () => {
+		const { context, page, client } = await openMicTab();
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		const height = () => field.evaluate((element) => element.getBoundingClientRect().height);
+		const oneLine = await height();
+
+		await field.click();
+		await page.keyboard.type('first line');
+		await page.keyboard.press('Shift+Enter');
+		await page.keyboard.type('second line');
+		expect(await height()).toBeGreaterThan(oneLine);
+		expect(await field.inputValue()).toBe('first line\nsecond line');
+
+		await field.fill(Array.from({ length: 20 }, (_, index) => `line ${index}`).join('\n'));
+		const capped = await height();
+		expect(capped).toBeLessThan(oneLine * 8);
+		expect(await field.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(
+			true,
+		);
+
+		await field.fill('run the tests');
+		await field.press('Enter');
+		await waitUntil(() =>
+			listFromClient(client, 'utterance').some(
+				(entry) => (entry.message as { text: string }).text === 'run the tests',
+			),
+		);
+		expect(await field.inputValue()).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('dictation → click the mic starts a dictation press; Send ends it; Space starts one too; the mode is kept across a reload', async () => {
+		const { context, page, client } = await openMicTab();
+		await chooseMode(page, 'Dictation');
+		const mic = page.getByRole('button', { name: 'Start dictating' });
+
+		await mic.click();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+		expect(listFromClient(client, 'ptt_start')[0]!.message).toMatchObject({ dictation: true });
+		// A pause is not an end: it keeps going until Send.
+		await Bun.sleep(700);
+		expect(listFromClient(client, 'ptt_stop')).toHaveLength(0);
+		expect(await page.locator('.dictation-clock').isVisible()).toBe(true);
+		expect(await page.locator('.route').innerText()).toBe('Stays in the box');
+
+		await page.getByRole('button', { name: 'Send', exact: true }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 1);
+		expect(await page.locator('.dictation-clock').count()).toBe(0);
+
+		await page.locator('body').click();
+		await page.keyboard.down('Space');
+		await page.keyboard.up('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 2);
+		await Bun.sleep(400);
+		// Space starts a dictation; letting go of it ends nothing.
+		expect(listFromClient(client, 'ptt_stop')).toHaveLength(1);
+		await page.getByRole('button', { name: 'Send the dictation' }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 2);
+
+		await page.reload();
+		await page.waitForSelector('.topbar');
+		expect(await readMode(page)).toBe('dictation');
+		await context.close();
+	}, 20_000);
+
+	it('dictation discarded → nothing heard yet goes at once; with words, a second click confirms; ptt_cancel either way', async () => {
+		const { context, page, client } = await openMicTab();
+		await chooseMode(page, 'Dictation');
+		const mic = page.getByRole('button', { name: 'Start dictating' });
+
+		await mic.click();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_cancel').length === 1);
+
+		await mic.click();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 2);
+		store.dispatch({
+			type: 'transcript',
+			transcript: { text: 'so the retries should back off longer', isFinal: false, target: null },
+		});
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		await page.waitForFunction(
+			() =>
+				document.querySelector<HTMLTextAreaElement>('footer textarea')?.value ===
+				'so the retries should back off longer',
+		);
+		expect(await field.getAttribute('readonly')).not.toBeNull();
+
+		await page.getByRole('button', { name: 'Discard' }).click();
+		await page.getByRole('button', { name: 'Discard all?' }).waitFor();
+		expect(listFromClient(client, 'ptt_cancel')).toHaveLength(1);
+		await page.getByRole('button', { name: 'Discard all?' }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_cancel').length === 2);
+		store.dispatch({ type: 'transcript', transcript: null });
+		await context.close();
+	}, 20_000);
+
+	it('a dictation with nowhere to go comes back into the input, to send from there', async () => {
+		const { context, page, client } = await openMicTab();
+		gateway.send(client, {
+			type: 'dictation_kept',
+			text: 'the whole brain dump',
+			reason: 'no session on screen',
+		});
+		await page.waitForFunction(
+			() =>
+				document.querySelector<HTMLTextAreaElement>('footer textarea')?.value ===
+				'the whole brain dump',
 		);
 		await context.close();
 	}, 20_000);
@@ -459,7 +608,7 @@ describe('voice os ui', () => {
 
 		gateway.send(client, { type: 'listen_on', mode: 'on-demand' });
 		await page.waitForFunction(
-			(value) => document.querySelector<HTMLSelectElement>('select.listen-mode')?.value === value,
+			(value) => document.querySelector('.mode-button')?.getAttribute('data-mode') === value,
 			'on-demand',
 			{ timeout: 5000 },
 		);
@@ -473,23 +622,25 @@ describe('voice os ui', () => {
 		gateway.send(client, { type: 'listen_state', isAwake: true });
 		await page.waitForFunction(
 			(text) =>
-				document.querySelector<HTMLInputElement>('footer input')?.placeholder.includes(text) ===
-				true,
+				document
+					.querySelector<HTMLTextAreaElement>('footer textarea')
+					?.placeholder.includes(text) === true,
 			'Listening to you',
 			{ timeout: 5000 },
 		);
 		gateway.send(client, { type: 'listen_state', isAwake: false });
 		await page.waitForFunction(
 			(text) =>
-				document.querySelector<HTMLInputElement>('footer input')?.placeholder.includes(text) ===
-				true,
+				document
+					.querySelector<HTMLTextAreaElement>('footer textarea')
+					?.placeholder.includes(text) === true,
 			'Say “Voice OS”',
 			{ timeout: 5000 },
 		);
 
 		gateway.send(client, { type: 'listen_off', reason: 'turned off by voice' });
 		await page.waitForFunction(
-			(value) => document.querySelector<HTMLSelectElement>('select.listen-mode')?.value === value,
+			(value) => document.querySelector('.mode-button')?.getAttribute('data-mode') === value,
 			'push',
 			{ timeout: 5000 },
 		);

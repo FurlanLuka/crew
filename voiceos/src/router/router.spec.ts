@@ -5,7 +5,7 @@ import { configureLog } from '../log.js';
 import type { Input, ListenMode, PendingAsk } from '../shared/protocol.js';
 import { Store } from '../state/store.js';
 import { Kernel } from './kernel.js';
-import { UtteranceRouter, type KernelTurn } from './router.js';
+import { DICTATION_NOTE, UtteranceRouter, type KernelTurn } from './router.js';
 
 configureLog({ quiet: true });
 
@@ -338,5 +338,89 @@ describe('UtteranceRouter', () => {
 		await router.handle('And now?');
 
 		expect(prompts[1]).toContain('developer: Is anything waiting?\nyou: Nothing is waiting.');
+	});
+
+	describe('dictated', () => {
+		const DUMP =
+			'So checkout-api/main keeps timing out, and I think the retries, um, should back off longer.';
+
+		const handleDictation = (harness: ReturnType<typeof createHarness>) => {
+			const kept: { text: string; reason: string }[] = [];
+
+			return harness.router
+				.handle(DUMP, 'dictated', {
+					heardFrom: 1200,
+					keepDictation: (text, reason) => kept.push({ text, reason }),
+				})
+				.then(() => kept);
+		};
+
+		it('a session on screen → sent word for word with the dictation note, never through the kernel, and logged', async () => {
+			const harness = createHarness();
+			harness.view('store-front/main');
+
+			const kept = await handleDictation(harness);
+
+			expect(harness.kernelCalls).toEqual([]);
+			expect(kept).toEqual([]);
+			expect(harness.inputs).toContainEqual({
+				type: 'send',
+				ref: 'store-front/main',
+				text: DUMP,
+				note: DICTATION_NOTE,
+			});
+			expect(harness.store.state.voiceLog['store-front/main']?.at(-1)).toMatchObject({
+				utterance: DUMP,
+				did: ['dictated to store-front/main'],
+			});
+		});
+
+		it('another session named inside the dump → still the session on screen', async () => {
+			const harness = createHarness();
+			harness.view('store-front/main');
+
+			await handleDictation(harness);
+
+			expect(harness.inputs).toContainEqual(expect.objectContaining({ ref: 'store-front/main' }));
+		});
+
+		it('no session on screen → kept in the input, said once, nothing sent', async () => {
+			const harness = createHarness();
+			harness.view(null);
+
+			const kept = await handleDictation(harness);
+
+			expect(kept).toEqual([{ text: DUMP, reason: 'no session on screen' }]);
+			expect(harness.kernelCalls).toEqual([]);
+			expect(harness.inputs.some((input) => input.type === 'send')).toBe(false);
+			expect(harness.inputs).toContainEqual(
+				expect.objectContaining({ type: 'spoken', source: 'alert' }),
+			);
+		});
+
+		it('the session waits on a permission → kept in the input: a dump must never answer it', async () => {
+			const harness = createHarness();
+			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'session_started', ref: 'store-front/main' });
+			harness.store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'p1',
+					ref: 'store-front/main',
+					at: 1,
+					kind: 'permission',
+					toolName: 'Bash',
+					summary: 'run git push',
+					input: {},
+					suggestions: [],
+				},
+			});
+			harness.view('store-front/main');
+
+			const kept = await handleDictation(harness);
+
+			expect(kept).toEqual([{ text: DUMP, reason: 'store-front/main waits on an answer' }]);
+			expect(harness.kernelCalls).toEqual([]);
+		});
 	});
 });

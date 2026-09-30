@@ -1,6 +1,6 @@
 import type { Store } from '../state/store.js';
 import type { ToolCall } from '../tools/definitions.js';
-import { GRID, type ListenMode, type VoiceEntry } from '../shared/protocol.js';
+import { GRID, type ListenMode, type State, type VoiceEntry } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
@@ -33,7 +33,13 @@ export interface UtteranceOrigin {
 	openUrl?: OpenUrl;
 	// When the developer began saying them; typed words are "said" when routed.
 	heardFrom?: number;
+	// A dictation with nowhere to go goes back into the input of the tab it came from.
+	keepDictation?: (text: string, reason: string) => void;
 }
+
+// Read ahead of the words by that Claude (worker.send): it knows what it is reading.
+export const DICTATION_NOTE =
+	'(Voice OS note — dictated by voice: a brain dump, as heard. Speech to text may have misheard some words.)';
 
 interface AskKernelParams {
 	kernel: KernelHandler | null;
@@ -45,6 +51,15 @@ interface AskKernelParams {
 	setListenMode: (mode: ListenMode) => HandsFreeResult;
 	openUrl: OpenUrl;
 }
+
+// Why a dictation cannot go to the session on screen; null when it can.
+export const decideDictationRefusal = (state: State, screen: string | null): string | null => {
+	if (!screen || !state.sessions[screen]) {
+		return 'no session on screen';
+	}
+
+	return state.asks.some((ask) => ask.ref === screen) ? `${screen} waits on an answer` : null;
+};
 
 const NO_TAB = (): HandsFreeResult => 'no_tab';
 const NO_TAB_TO_OPEN: OpenUrl = () => false;
@@ -85,6 +100,12 @@ export class UtteranceRouter {
 		const screen = readActiveRef(store.state);
 		const saidAt = this.now();
 
+		if (source === 'dictated') {
+			this.sendDictation(trimmedText, screen, saidAt, origin);
+
+			return;
+		}
+
 		// Text typed into a session's own box is typing to that Claude, not a kernel turn.
 		const typedTarget = source === 'typed' ? resolveTypedTarget(store.state, trimmedText) : null;
 
@@ -117,6 +138,46 @@ export class UtteranceRouter {
 			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
 		});
 		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
+	}
+
+	private sendDictation(
+		text: string,
+		screen: string | null,
+		saidAt: number,
+		origin: UtteranceOrigin,
+	): void {
+		const { store } = this.options;
+		const reason = decideDictationRefusal(store.state, screen);
+
+		// Never through the kernel: a long dump would be read for commands, and could answer a permission.
+		if (reason || !screen) {
+			log.info('dictation kept in the input', { reason, chars: text.length });
+			origin.keepDictation?.(text, reason ?? 'no session on screen');
+			store.dispatch({
+				type: 'spoken',
+				text: 'Dictation not sent — it is in the text box.',
+				source: 'alert',
+			});
+
+			return;
+		}
+
+		const status = store.state.sessions[screen]?.status ?? 'stopped';
+		const isAside = decideDelivery({ status, utterance: text }) === 'aside';
+
+		log.info('route', { source: 'dictated', to: screen, aside: isAside, chars: text.length });
+		store.dispatch({
+			type: 'send',
+			ref: screen,
+			text,
+			note: DICTATION_NOTE,
+			...(isAside ? { aside: true } : {}),
+		});
+		store.dispatch({
+			type: 'voice_logged',
+			screen,
+			entry: { utterance: text, did: [`dictated to ${screen}`], reply: '', at: saidAt },
+		});
 	}
 
 	private async askKernel({

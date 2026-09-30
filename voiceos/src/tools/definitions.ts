@@ -81,12 +81,7 @@ const KIND_PROPERTY = {
 const CONTINUES_PROPERTY = {
 	type: 'boolean',
 	description:
-		'true only when these words finish the sentence the developer began in their previous words on this screen (listed under "Earlier on this screen"), cut off by a pause — then text is the whole sentence, both parts, and rest is only the new part, written the same way. A new request, an added task or a reply is not this.',
-};
-
-const REST_PROPERTY = {
-	type: 'string',
-	description: 'With continues: only the new part, as a clear instruction or question.',
+		'true only when these words finish the sentence the developer began in their previous words on this screen (listed under "Earlier on this screen"), cut off by a pause — their previous words stop mid-sentence ("why are the retries so") and these pick up where they stopped ("slow on the checkout worker?"). Voice OS joins the two halves as said. A new request, an added task or a reply is not this.',
 };
 
 // One property for both switch_view definitions: a machine switch must not lose "go to pinned".
@@ -96,8 +91,12 @@ const PINNED_VIEW_PROPERTY = {
 		'true for Pinned, the developer\'s pinned sessions from every machine ("go to pinned", "show my pinned sessions"); ref and machine are then ignored.',
 };
 
-const CLEAN_INSTRUCTION =
-	'What the developer wants, written to that Claude in their voice as a clear instruction or question: drop relay words ("can you ask it to", "tell it"), filler and stutters; keep every detail, name, number, negation and reaction, and a yes or no that answers what it asked ("Yes, please. Let me know when you\'re done."); add nothing they did not say. Keep who is who: "you" is that Claude, "I" is the developer ("so you see what you broke" stays "you"). The request stays the request, whatever that Claude asked last: "just ship it" is not "plan the release".';
+// The kernel never writes what a session reads: Voice OS sends the words as heard.
+const PART_PROPERTY = {
+	type: 'string',
+	description:
+		'Leave out: Voice OS sends everything the developer said, exactly as heard. Only when the same words also did something else (a switch, a note, words for another session): the part for this session, copied word for word from what they said — never reworded, shortened or cleaned up. To resend their earlier words ("I meant this for store front main"): those words, copied word for word.',
+};
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ignore_words must be listed first: listed later, the model narrates its silence instead.
@@ -155,17 +154,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'send_to',
 		description:
-			'Send the developer’s request to a session’s Claude as a clear instruction or question to it. Only when the developer clearly asked for work or an answer there. A stopped session starts by itself.',
+			'Send the developer’s words to a session’s Claude, as they said them. Only when the developer clearly asked for work or an answer there. A stopped session starts by itself.',
 		input_schema: {
 			type: 'object',
 			properties: {
 				ref: REF_PROPERTY,
-				text: { type: 'string', description: CLEAN_INSTRUCTION },
+				text: PART_PROPERTY,
 				kind: KIND_PROPERTY,
 				continues: CONTINUES_PROPERTY,
-				rest: REST_PROPERTY,
 			},
-			required: ['ref', 'text', 'kind'],
+			required: ['ref', 'kind'],
 			additionalProperties: false,
 		},
 	},
@@ -379,16 +377,15 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 export const FORWARD_TOOL: ToolDefinition = {
 	name: 'forward',
 	description:
-		'Send what the developer just said to the session on screen as a clear instruction or question to its Claude. Use it for anything they say to that session: instructions, questions about the code, logs or the work, replies, reactions. A stopped session starts by itself.',
+		'Send what the developer just said to the session on screen, as they said it. Use it for anything they say to that session: instructions, questions about the code, logs or the work, replies, reactions. A stopped session starts by itself.',
 	input_schema: {
 		type: 'object',
 		properties: {
-			text: { type: 'string', description: CLEAN_INSTRUCTION },
+			text: PART_PROPERTY,
 			kind: KIND_PROPERTY,
 			continues: CONTINUES_PROPERTY,
-			rest: REST_PROPERTY,
 		},
-		required: ['text', 'kind'],
+		required: ['kind'],
 		additionalProperties: false,
 	},
 };

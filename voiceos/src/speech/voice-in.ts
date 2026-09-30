@@ -18,7 +18,13 @@ export type VoiceInputOptions = ListenerOptions & {
 	// client: the tab whose microphone heard it.
 	// startedAt: when the developer began saying it (a joined turn: its first words); lines Voice OS
 	// started after that were not heard before they spoke.
-	onUtterance: (text: string, client: string, startedAt: number) => void;
+	// isDictated: a dictation, sent word for word to the session on screen rather than routed.
+	onUtterance: (
+		text: string,
+		client: string,
+		startedAt: number,
+		heard: { isDictated: boolean },
+	) => void;
 	onTalkStart: () => void;
 	// Nobody is pressing and no listened turn is under way: speech may play again.
 	onTalkEnd?: () => void;
@@ -26,6 +32,8 @@ export type VoiceInputOptions = ListenerOptions & {
 	debugAudioDir?: string | null;
 	// A press whose release never arrives (a key-up lost on blur) is dropped after this.
 	maxPressMs?: number;
+	// A dictation is sent after this, never dropped.
+	maxDictationMs?: number;
 	createSession?: (options: SttSessionOptions) => SttHandle;
 	// What Voice OS said lately: heard again through the open mic, it is echo.
 	listSpokenLines?: () => SpokenRecord[];
@@ -45,6 +53,10 @@ interface Utterance {
 	pressCap: ReturnType<typeof setTimeout>;
 	// When the press began: what Voice OS started saying after that, the developer had not heard.
 	startedAt: number;
+	// A dictation: held open until sent, and never dropped with its words — ended and sent instead.
+	isDictation: boolean;
+	// Released (or ended for it): its stream is finalizing, and ending it again would do nothing good.
+	isReleased: boolean;
 }
 
 type Pending =
@@ -54,6 +66,13 @@ type Pending =
 const log = createLogger('voice-in');
 
 const MAX_PRESS_MS = 60_000;
+
+// A brain dump runs long; Soniox takes 300 minutes a stream, so this cap is about a forgotten mic.
+const MAX_DICTATION_MS = 30 * 60_000;
+
+export interface StartOptions {
+	isDictation?: boolean;
+}
 
 // Long enough for the heard words to be seen (and captured) before they are routed.
 const SIMULATED_TALK_MS = 1_200;
@@ -85,7 +104,11 @@ export class VoiceInput {
 		});
 	}
 
-	start(client: string, sampleRate = DEFAULT_SAMPLE_RATE_HZ): void {
+	start(
+		client: string,
+		sampleRate = DEFAULT_SAMPLE_RATE_HZ,
+		{ isDictation = false }: StartOptions = {},
+	): void {
 		const { store, apiKey } = this.options;
 
 		if (!apiKey) {
@@ -107,13 +130,13 @@ export class VoiceInput {
 
 		if (abandoned) {
 			this.livePresses.delete(client);
-			this.drop(abandoned);
+			this.letGo(abandoned, 'a new press');
 		}
 
 		const startedAt = this.now();
 		this.options.onTalkStart();
 
-		log.info('talk start', { client, sampleRate });
+		log.info(isDictation ? 'dictation start' : 'talk start', { client, sampleRate });
 		// The callbacks only run after the stream exists, so they can close over it.
 		let utterance: Utterance;
 		const stream = this.openStream({
@@ -137,14 +160,26 @@ export class VoiceInput {
 				this.settle(utterance, null);
 			},
 		});
-		const pressCap = setTimeout(() => {
-			if (this.livePresses.get(client) !== utterance) {
-				return;
-			}
+		const pressCap = setTimeout(
+			() => {
+				if (this.livePresses.get(client) !== utterance) {
+					return;
+				}
 
-			log.warn('press never released, dropping it', { client });
-			this.drop(utterance);
-		}, this.options.maxPressMs ?? MAX_PRESS_MS);
+				if (utterance.isDictation) {
+					log.warn('dictation reached its cap: sent', { client });
+					this.finish(utterance);
+
+					return;
+				}
+
+				log.warn('press never released, dropping it', { client });
+				this.drop(utterance);
+			},
+			isDictation
+				? (this.options.maxDictationMs ?? MAX_DICTATION_MS)
+				: (this.options.maxPressMs ?? MAX_PRESS_MS),
+		);
 		utterance = {
 			client,
 			stream,
@@ -153,6 +188,8 @@ export class VoiceInput {
 			outcome: { state: 'streaming' },
 			pressCap,
 			startedAt,
+			isDictation,
+			isReleased: false,
 		};
 		this.livePresses.set(client, utterance);
 		this.queue(client, { kind: 'press', utterance });
@@ -164,6 +201,12 @@ export class VoiceInput {
 		mode: ListeningMode = 'hands-free',
 	): void {
 		const { apiKey, onListenOff } = this.options;
+		const dictation = this.livePresses.get(client);
+
+		// Listening takes the mic's audio from here on: a dictation under way is sent, not starved.
+		if (dictation?.isDictation) {
+			this.letGo(dictation, 'listening turned on');
+		}
 
 		if (!apiKey) {
 			this.announceMissingKey();
@@ -207,10 +250,22 @@ export class VoiceInput {
 			return;
 		}
 
-		log.info('talk stop', { client });
-		clearTimeout(utterance.pressCap);
-		this.endPress(client);
-		void utterance.stream.end();
+		this.finish(utterance);
+	}
+
+	// Discard: the dictation (or press) under way is thrown away, nothing is routed.
+	cancel(client: string): void {
+		const utterance = this.livePresses.get(client);
+
+		if (!utterance) {
+			return;
+		}
+
+		log.info(utterance.isDictation ? 'dictation discarded' : 'talk discarded', {
+			client,
+			durationMs: this.now() - utterance.startedAt,
+		});
+		this.drop(utterance);
 	}
 
 	// Debug: words go the way a finished spoken turn goes — shown as heard while "said", then
@@ -235,7 +290,7 @@ export class VoiceInput {
 		// Only presses stream; a listened turn is queued already settled.
 		for (const pending of [...(this.pendingByClient.get(client) ?? [])]) {
 			if (pending.kind === 'press' && pending.utterance.outcome.state === 'streaming') {
-				this.drop(pending.utterance);
+				this.letGo(pending.utterance, 'the tab went away');
 			}
 		}
 	}
@@ -291,6 +346,38 @@ export class VoiceInput {
 		this.talkMaybeOver();
 	}
 
+	// Ends the press and sends what it heard.
+	private finish(utterance: Utterance): void {
+		if (utterance.isReleased) {
+			return;
+		}
+
+		utterance.isReleased = true;
+		log.info(utterance.isDictation ? 'dictation stop' : 'talk stop', {
+			client: utterance.client,
+			durationMs: this.now() - utterance.startedAt,
+		});
+		clearTimeout(utterance.pressCap);
+
+		if (this.livePresses.get(utterance.client) === utterance) {
+			this.endPress(utterance.client);
+		}
+
+		void utterance.stream.end();
+	}
+
+	// A press cut short by something else: a dictation's words are sent, a plain press is dropped.
+	private letGo(utterance: Utterance, why: string): void {
+		if (utterance.isDictation) {
+			log.info('dictation ended early: sent', { client: utterance.client, why });
+			this.finish(utterance);
+
+			return;
+		}
+
+		this.drop(utterance);
+	}
+
 	private drop(utterance: Utterance): void {
 		utterance.stream.cancel();
 		this.settle(utterance, null);
@@ -342,6 +429,7 @@ export class VoiceInput {
 					text,
 					client,
 					head.kind === 'turn' ? head.startedAt : head.utterance.startedAt,
+					{ isDictated: head.kind === 'press' && head.utterance.isDictation },
 				);
 			}
 		}

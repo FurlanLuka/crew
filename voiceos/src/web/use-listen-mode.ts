@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ClientMessage, ListenMode } from '../shared/protocol.js';
+import type { ClientMessage } from '../shared/protocol.js';
 import type { Mic } from './audio.js';
-import { listenModeStorageKey, listenStartMessage, readStoredListenMode } from './listen-mode.js';
+import {
+	type InputMode,
+	isListeningMode,
+	listenModeStorageKey,
+	listenStartMessage,
+	readStoredListenMode,
+} from './listen-mode.js';
 import type { ListenCommand, MicStatus } from './types.js';
 
-const readListenMode = (): ListenMode => {
+const readListenMode = (): InputMode => {
 	try {
 		return readStoredListenMode(sessionStorage);
 	} catch {
@@ -12,7 +18,7 @@ const readListenMode = (): ListenMode => {
 	}
 };
 
-const writeListenMode = (mode: ListenMode): void => {
+const writeListenMode = (mode: InputMode): void => {
 	try {
 		sessionStorage.setItem(listenModeStorageKey, mode);
 	} catch {
@@ -50,7 +56,7 @@ export const useListenMode = ({
 
 	// Announced on every (re)connect: a new socket, or a restarted server, knows nothing of it.
 	useEffect(() => {
-		if (listenMode === 'push' || !isConnected) {
+		if (!isListeningMode(listenMode) || !isConnected) {
 			return;
 		}
 
@@ -84,11 +90,11 @@ export const useListenMode = ({
 	}, [listenMode, isConnected, getMic, send, onMicStatusChange]);
 
 	const chooseListenMode = useCallback(
-		(mode: ListenMode) => {
+		(mode: InputMode) => {
 			setListenMode(mode);
 
-			// Back to the raw mic for push-to-talk, open before the next press.
-			if (mode === 'push') {
+			// Back to the raw mic for a press, open before the next one.
+			if (!isListeningMode(mode)) {
 				void getMic()
 					.ensure()
 					.catch(() => {

@@ -617,16 +617,10 @@ const SHOTS: Shot[] = [
 		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
 		listenMode: 'on-demand',
 		prepare: async (page) => {
-			// A native select's menu is drawn outside the page, where no screenshot sees it: the same
-			// options are shown as a list in place, the chosen one highlighted.
-			await page.locator('select.listen-mode').evaluate((select) => {
-				if (select instanceof HTMLSelectElement) {
-					select.size = 3;
-					select.focus();
-				}
-			});
+			await page.getByRole('button', { name: 'Listening mode' }).click();
+			await page.getByRole('menu', { name: 'Listening mode' }).waitFor();
 		},
-		around: ['.speech', '.botbar'],
+		around: ['.mode-menu', '.speech', '.botbar'],
 	},
 	{
 		name: 'hero',
