@@ -42,6 +42,20 @@
 		},
 		{ "key": "says_instead", "utterance": "Hör auf und warte.", "expect": "no" },
 		{ "key": "says_instead", "utterance": "Ustavi in popravi prijavo.", "expect": "yes" },
+		{ "key": "mute_only", "utterance": "Tiho.", "expect": "yes|unclear" },
+		{ "key": "mute_only", "utterance": "Sei still!", "expect": "yes" },
+		{ "key": "mute_only", "utterance": "Stop.", "expect": "stop" },
+		{ "key": "listen_mode", "utterance": "Turn off hands-free.", "expect": "off" },
+		{
+			"key": "listen_mode",
+			"utterance": "Mute that and tell it to run the linter.",
+			"expect": "unclear"
+		},
+		{
+			"key": "about_listening",
+			"utterance": "Mute that and tell it to run the linter.",
+			"expect": "no"
+		},
 		{ "key": "about_listening", "utterance": "Hör auf zuzuhören.", "expect": "yes" },
 		{ "key": "about_listening", "utterance": "The server is listening on 3000.", "expect": "no" },
 		{ "key": "listen_mode", "utterance": "Stop listening.", "expect": "off" },

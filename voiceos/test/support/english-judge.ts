@@ -96,15 +96,17 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 		case 'take_back_before':
 			return yesIf(TAKE_BACK_PATTERN.test(said.slice(0, findPart(said, context))));
 		case 'mute_only':
-			return yesIf(
-				MUTE_REQUEST_PATTERN.test(
-					said
-						.toLowerCase()
-						.replace(/[,.!?;:]+/g, ' ')
-						.replace(/\s+/g, ' ')
-						.trim(),
-				),
-			);
+			return /^(?:stop|wait|halt|hold on)[.!]?$/i.test(said.trim())
+				? 'stop'
+				: yesIf(
+						MUTE_REQUEST_PATTERN.test(
+							said
+								.toLowerCase()
+								.replace(/[,.!?;:]+/g, ' ')
+								.replace(/\s+/g, ' ')
+								.trim(),
+						),
+					);
 		case 'says_instead':
 			return yesIf(SAYS_WHAT_INSTEAD_PATTERN.test(said));
 		case 'about_listening':
