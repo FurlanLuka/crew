@@ -289,6 +289,141 @@ describe('the exchange', () => {
 	});
 });
 
+describe('the one switch offer', () => {
+	// OTHER's update held and said in the meanwhile line; ended as given; then a spoken reply to it.
+	const replyAfter = (
+		ended: Partial<Extract<Input, { type: 'spoken_ended' }>>,
+		start = onScreen(),
+	) => {
+		const said = runAt(
+			[
+				[10, { type: 'line_held', ref: OTHER, text: 'All tests pass.', isAsking: false } as Input],
+				[
+					11,
+					{
+						type: 'spoken',
+						text: 'Meanwhile, checkout said: all tests pass.',
+						source: 'narrator',
+						isUpdate: true,
+						refs: [OTHER],
+					},
+				],
+			],
+			start,
+		);
+		const lineId = said.spoken.at(-1)?.id ?? '';
+
+		return runAt(
+			[
+				[12, { type: 'spoken_ended', lineId, isCut: false, ...ended }],
+				[13, said_(OTHER)],
+			],
+			said,
+		);
+	};
+
+	const said_ = (ref: string): Input => ({ type: 'send', ref, text: 'push it', isSpoken: true });
+
+	it('heard to its end → the reply offers the switch', () => {
+		expect(replyAfter({}).switchOffer?.ref).toBe(OTHER);
+	});
+
+	it('talked over (cut) → not heard to its end: no offer', () => {
+		expect(replyAfter({ isCut: true }).switchOffer).toBeNull();
+	});
+
+	it('a lapsed offer still in state does not block the one offer', () => {
+		// Asked and heard long ago, never closed (its lapse never came).
+		const stale: State = {
+			...onScreen(),
+			switchOffer: { ref: 'signals/main', at: -100_000, heardAt: -99_000 },
+		};
+
+		expect(stale.switchOffer?.ref).toBe('signals/main');
+		expect(replyAfter({}, stale).switchOffer?.ref).toBe(OTHER);
+	});
+
+	it('a session on a machine out of reach → the words wait for it, and no switch is offered', () => {
+		const REMOTE = 'vm1:crew/main';
+		const start = runAt(
+			[
+				[1, { type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] }],
+				[2, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree(REMOTE)] }],
+				[3, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+			],
+			createInitialState(),
+		);
+		const held = runAt(
+			[
+				[10, { type: 'line_held', ref: REMOTE, text: 'All tests pass.', isAsking: false } as Input],
+				[
+					11,
+					{
+						type: 'spoken',
+						text: 'Meanwhile, crew said: all tests pass.',
+						source: 'narrator',
+						isUpdate: true,
+						refs: [REMOTE],
+					},
+				],
+			],
+			start,
+		);
+		const lineId = held.spoken.at(-1)?.id ?? '';
+		const heard = runAt([[12, { type: 'spoken_ended', lineId, isCut: false }]], held);
+		const seq = heard.seq + 1;
+		const replied = reduce(heard, {
+			seq,
+			at: 13,
+			id: `i${seq}`,
+			input: { type: 'send', ref: REMOTE, text: 'push it', isSpoken: true },
+		});
+
+		expect(replied.state.switchOffer).toBeNull();
+		expect(
+			replied.effects
+				.filter((effect) => effect.type === 'speak')
+				.map((effect) => effect.type === 'speak' && effect.text),
+		).toEqual(["Build box is out of reach. I'll send it when it's back."]);
+	});
+
+	it('only the sessions the meanwhile line named are heard: one it only counted offers nothing', () => {
+		const waiting = runAt(
+			[
+				[10, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'a b' }],
+				[10.1, { type: 'meanwhile_added', ref: 'signals/main', kind: 'done', about: 'c d' }],
+				[10.2, { type: 'meanwhile_added', ref: 'admin/main', kind: 'done', about: 'e f' }],
+			],
+			runAt(
+				[
+					[
+						0.5,
+						{
+							type: 'worktrees',
+							worktrees: [
+								worktree(SCREEN),
+								worktree(OTHER),
+								worktree('signals/main'),
+								worktree('admin/main'),
+							],
+						},
+					],
+				],
+				onScreen(),
+			),
+		);
+		const seq = waiting.seq + 1;
+		const played = reduce(waiting, {
+			seq,
+			at: 20,
+			id: `i${seq}`,
+			input: { type: 'play_meanwhile' },
+		});
+
+		expect(played.effects).toEqual([expect.objectContaining({ refs: [OTHER, 'signals/main'] })]);
+	});
+});
+
 describe('updates heard, and the meanwhile line', () => {
 	const updateLine = (ref: string): [number, Input][] => [
 		[10, { type: 'meanwhile_added', ref, kind: 'done', about: 'tests pass' }],

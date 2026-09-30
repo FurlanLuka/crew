@@ -143,6 +143,50 @@ describe('conversations', () => {
 		);
 	});
 
+	it('"For …?" asked while the developer was already saying something else → those words are not its answer', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		await hearUpdate(convo);
+		convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+		await convo.say('Can you review all of it?');
+
+		convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+		await convo.say('Yes.', { startedAgoMs: 5_000 });
+
+		// Still open for an answer said after it: this yes began before the question existed.
+		expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+	});
+
+	it('"For …?" that played in no tab → let go at once, the words kept on the screen', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'ask_target',
+			ref: 'checkout-api/main',
+			screen: 'store-front/main',
+			text: 'review all of this',
+		});
+		const asked = convo.store.dispatch({
+			type: 'spoken',
+			text: 'For checkout api, main?',
+			source: 'kernel',
+			ref: 'checkout-api/main',
+			isAsking: true,
+		});
+		const lineId = asked.spoken.at(-1)?.id ?? '';
+		convo.store.dispatch({ type: 'spoken_ended', lineId, isCut: false, isUnplayed: true });
+		await convo.listen();
+
+		expect(convo.store.state.targetAsk).toBeNull();
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'review all of this',
+			}),
+		);
+	});
+
 	it('"For …?" answered yes → the words go there, said; silence keeps them on the screen', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

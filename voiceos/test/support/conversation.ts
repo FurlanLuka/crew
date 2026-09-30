@@ -238,13 +238,14 @@ export const createConversation = ({
 			script.push(...calls);
 		},
 		// The developer speaks (push to talk): what plays is cut, and nothing plays until they finish.
-		say: async (text: string) => {
+		// startedAgoMs: the developer began speaking that long before these words reach the router.
+		say: async (text: string, { startedAgoMs = 0 }: { startedAgoMs?: number } = {}) => {
 			// Speaking takes a moment: turns said one after another are never at the same instant.
 			now += 1000;
 			voiceOut.talkStarted();
 			heard.push(`> ${text}`);
 			voiceOut.talkEnded();
-			await router.handle(text, 'voice', { heardFrom: now });
+			await router.handle(text, 'voice', { heardFrom: now - startedAgoMs });
 			await listen();
 		},
 		// The developer types into the box (a session page routes it straight to that session).
