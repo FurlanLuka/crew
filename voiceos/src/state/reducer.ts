@@ -117,6 +117,8 @@ export type Effect =
 			isHoldable?: boolean;
 			// The session's own answer: heard to the end, it keeps the conversation with it going.
 			isAnswer?: boolean;
+			// Another session's permission or question: it waits for a short gap, never cutting in.
+			waitsForGap?: boolean;
 	  }
 	// The developer spoke to this session again: its lines still waiting to be said (older than
 	// before) are out of date. They stay on the page.

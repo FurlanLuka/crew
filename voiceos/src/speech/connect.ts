@@ -73,6 +73,7 @@ export const connectSpeech = ({
 					source: effect.source,
 					isReply: effect.isReply,
 					isAnswer: effect.isAnswer,
+					waitsForGap: effect.waitsForGap,
 					ref: effect.ref ?? null,
 					isAsking: effect.isAsking,
 					isNamed: effect.isNamed,

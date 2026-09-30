@@ -15,6 +15,9 @@ export interface SpeechItem {
 	isReply?: boolean;
 	// A session's own answer to the developer: heard to the end, it keeps their conversation going.
 	isAnswer?: boolean;
+	// Another session's permission or question: played after the line playing ends plus a short
+	// gap (never cutting an answer), but never held longer than MAX_GAP_WAIT_MS.
+	waitsForGap?: boolean;
 	isAsking?: boolean;
 	// A line the developer is waiting for (a report, the session's own line): never replaced.
 	isOwed?: boolean;
@@ -44,6 +47,8 @@ interface TakenItem {
 
 const PRIORITY_RANK: Record<SpeechPriority, number> = { alert: 0, high: 1, normal: 2, low: 3 };
 export const LOW_TTL_MS = 5_000;
+export const GAP_BEFORE_ASK_MS = 2_000;
+export const MAX_GAP_WAIT_MS = 20_000;
 export const NORMAL_TTL_MS = 120_000;
 export const REPLY_FRESH_MS = 3_000;
 

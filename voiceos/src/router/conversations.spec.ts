@@ -197,4 +197,45 @@ describe('conversations', () => {
 			'Meanwhile, checkout api, main finished the retry backoff.',
 		]);
 	});
+
+	it('a permission from another session mid-answer (design 5) → after that answer and a breath, never over it', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'push the fix' });
+
+		convo.script([toolUse('t1', 'forward', { kind: 'question' })]);
+		await convo.say('Do deep links go through the same handler?');
+		convo.voiceOut.say({
+			text: 'Deep links go through a separate handler.',
+			priority: 'high',
+			ref: 'store-front/main',
+			isAnswer: true,
+		});
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'p1',
+				ref: 'checkout-api/main',
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push origin main',
+				input: { command: 'git push origin main' },
+				suggestions: [],
+			},
+		});
+		await convo.listen();
+
+		expect(convo.heard).toEqual([
+			'> Do deep links go through the same handler?',
+			'Deep links go through a separate handler.',
+		]);
+
+		await convo.wait(2_100);
+
+		// On another session's screen the ask is announced, not asked: its question waits there.
+		expect(convo.heard.at(-1)).toBe(
+			'checkout-api/main needs you: approval to run git push origin main.',
+		);
+	});
 });

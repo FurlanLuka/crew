@@ -25,6 +25,8 @@ import { readSubject } from '../state/exchange.js';
 import { isRecent, type SpokenRecord } from './echo.js';
 import {
 	createEmptyQueue,
+	GAP_BEFORE_ASK_MS,
+	MAX_GAP_WAIT_MS,
 	dropQueued,
 	enqueue,
 	setMuted,
@@ -47,6 +49,7 @@ interface SayParams {
 	isAnswer?: boolean;
 	isAsking?: boolean;
 	isOwed?: boolean;
+	waitsForGap?: boolean;
 	isAck?: boolean;
 	isHoldable?: boolean;
 	chime?: 'needs';
@@ -122,6 +125,7 @@ export class VoiceOut {
 	// Since nothing was said either way: the meanwhile line waits for enough of it.
 	private quietSince: number;
 	private meanwhileTimer: unknown = undefined;
+	private gapTimer: unknown = undefined;
 
 	constructor(private options: VoiceOutOptions) {
 		this.now = options.now ?? Date.now;
@@ -151,6 +155,7 @@ export class VoiceOut {
 		isReply = false,
 		isAnswer = false,
 		isAsking = false,
+		waitsForGap = false,
 		isOwed = false,
 		isAck = false,
 		isHoldable = false,
@@ -180,6 +185,7 @@ export class VoiceOut {
 			isReply,
 			isAsking,
 			...(isAnswer ? { isAnswer } : {}),
+			...(waitsForGap ? { waitsForGap } : {}),
 			...(isOwed ? { isOwed } : {}),
 			...(isAck ? { isAck } : {}),
 			...(isHoldable ? { isHoldable } : {}),
@@ -521,6 +527,22 @@ export class VoiceOut {
 
 		if (!item) {
 			this.scheduleMeanwhile();
+
+			return;
+		}
+
+		// Another session's ask waits for a breath after the last line, not the whole quiet.
+		const gapLeft = item.waitsForGap
+			? Math.min(
+					GAP_BEFORE_ASK_MS - (this.now() - this.quietSince),
+					MAX_GAP_WAIT_MS - (this.now() - item.at),
+				)
+			: 0;
+
+		if (gapLeft > 0) {
+			this.queue = { ...this.queue, items: [item, ...this.queue.items] };
+			this.clearTimer(this.gapTimer);
+			this.gapTimer = this.setTimer(() => void this.pump(), gapLeft);
 
 			return;
 		}
