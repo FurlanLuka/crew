@@ -5104,6 +5104,106 @@
 				}
 			],
 			"forbid_calls": ["forward", "send_to", "answer"]
+		},
+		{
+			"id": "on-screen-status-0",
+			"utterance": "Status.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-1",
+			"utterance": "What's going on here?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-2",
+			"utterance": "How far are you with this?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-3",
+			"utterance": "Okay, so what is the latest state here? Do we have to re-run everything?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-4",
+			"utterance": "Can you check the status?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
 		}
 	]
 }

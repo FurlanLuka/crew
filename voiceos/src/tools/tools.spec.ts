@@ -4025,3 +4025,24 @@ describe('words that ask about a waiting question', () => {
 		expect(await forward(plan)).toMatchObject({ ok: true, note: 'aside' });
 	});
 });
+
+describe('read_state on the session on screen', () => {
+	it('carries the rule that its own Claude answers questions about its work; another session does not', async () => {
+		const { tools } = createToolContext();
+		const onScreen = await executeTool(
+			'read_state',
+			{ ref: 'store-front/main' },
+			{ ...tools, screen: 'store-front/main' },
+		);
+		const other = await executeTool(
+			'read_state',
+			{ ref: 'store-front/wrk1' },
+			{ ...tools, screen: 'store-front/main' },
+		);
+
+		expect(JSON.parse(onScreen.content).on_screen).toContain(
+			'forward the words with kind question',
+		);
+		expect(JSON.parse(other.content).on_screen).toBeUndefined();
+	});
+});

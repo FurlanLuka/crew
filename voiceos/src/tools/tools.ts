@@ -89,6 +89,8 @@ const MAX_STOP_WORDS = 1;
 // "Tiho", "sei still": short enough that only a clear no from the judge keeps it from muting.
 const MAX_MUTE_WORDS = 2;
 const WORK_UNDER_WAY = 'A coding session is at work right now.';
+const ON_SCREEN_READ_RULE =
+	'This is the session on screen. A question about its work, status or progress — "status", even said alone, "how far are you?", "what\'s going on here?" — is answered by its own Claude: forward the words with kind question, and say nothing. Answer from this only a read-back ("what did it say?"), what it waits on, its options or its dev servers.';
 
 const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): ToolResult => {
 	if (mode === null) {
@@ -380,7 +382,15 @@ export const executeTool = async (
 				toolContext.dispatch({ type: 'held_line_heard', ref: checked.ref, id: held.id });
 			}
 
-			return succeed(describeSession({ state, ref: checked.ref, isDetailed: true, now }));
+			const described = describeSession({ state, ref: checked.ref, isDetailed: true, now });
+
+			// Read with the answer in hand, "status" was answered from these lines all day instead of by the
+			// session that holds the whole conversation: the rule rides with the read.
+			return succeed(
+				checked.ref === toolContext.screen
+					? { on_screen: ON_SCREEN_READ_RULE, ...described }
+					: described,
+			);
 		}
 
 		case 'read_history': {
