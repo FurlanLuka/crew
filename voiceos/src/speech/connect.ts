@@ -105,7 +105,13 @@ export const connectSpeech = ({
 		const ref = line.ref;
 
 		queueMicrotask(() => {
-			if (switchOffer && switchOffer.ref === ref && switchOffer.heardAt === undefined) {
+			// Its own line, not an older question about the same session.
+			if (
+				switchOffer &&
+				switchOffer.ref === ref &&
+				switchOffer.heardAt === undefined &&
+				line.at >= switchOffer.at
+			) {
 				store.dispatch({ type: 'switch_offer_closed', at: switchOffer.at });
 			}
 
@@ -113,6 +119,7 @@ export const connectSpeech = ({
 				targetAsk &&
 				targetAsk.ref === ref &&
 				targetAsk.heardAt === undefined &&
+				line.at >= targetAsk.at &&
 				store.state.targetAsk === targetAsk
 			) {
 				settleTarget(store, false);
