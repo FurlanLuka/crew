@@ -212,14 +212,44 @@ export const connectSpeech = ({
 };
 
 // The kernel's own reply to the developer is said at once, as the answer to what they just said.
+const READ_TOOLS = new Set(['read_state', 'read_history']);
+
+// The sessions a reply read back: heard to its end, it is their news as surely as their announcement
+// (a reply to it from another screen offers the switch). The screen's own session and a read of every
+// session name nothing.
+export const listReadBackRefs = (calls: KernelTurn['calls'], screen: string | null): string[] => [
+	...new Set(
+		calls.flatMap((call) => {
+			const ref = call.input?.ref;
+
+			return READ_TOOLS.has(call.name) &&
+				call.ok === true &&
+				typeof ref === 'string' &&
+				ref !== screen
+				? [ref]
+				: [];
+		}),
+	),
+];
+
 export const speakKernelReplies =
 	(handle: KernelHandler, voiceOut: VoiceOut): KernelHandler =>
 	async (text, options): Promise<KernelTurn> => {
 		const turn = await handle(text, options);
 
-		if (turn.reply) {
-			voiceOut.say({ text: turn.reply, priority: 'high', source: 'kernel', isReply: true });
+		if (!turn.reply) {
+			return turn;
 		}
+
+		const refs = listReadBackRefs(turn.calls, options.screen);
+
+		voiceOut.say({
+			text: turn.reply,
+			priority: 'high',
+			source: 'kernel',
+			isReply: true,
+			...(refs.length > 0 ? { isUpdate: true, refs } : {}),
+		});
 
 		return turn;
 	};

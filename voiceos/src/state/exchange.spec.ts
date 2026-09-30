@@ -332,6 +332,56 @@ describe('the one switch offer', () => {
 		expect(replyAfter({ isCut: true }).switchOffer).toBeNull();
 	});
 
+	const openPermission = (ref: string): Input => ({
+		type: 'ask_opened',
+		ask: {
+			id: `p-${ref}`,
+			ref,
+			at: 5,
+			kind: 'permission',
+			toolName: 'Bash',
+			summary: 'run git push',
+			input: {},
+			suggestions: [],
+		},
+	});
+
+	it("another session's open question → still offered: it only waits on its own", () => {
+		const start = runAt([[5, openPermission('signals/main')]], onScreen());
+
+		expect(replyAfter({}, start).switchOffer?.ref).toBe(OTHER);
+	});
+
+	it("the kernel's read-back heard to its end → its news heard, with no held line needed", () => {
+		const said = runAt(
+			[
+				[
+					11,
+					{
+						type: 'spoken',
+						text: 'Checkout finished the retries and asks whether to push.',
+						source: 'kernel',
+						isUpdate: true,
+						refs: [OTHER],
+					},
+				],
+			],
+			onScreen(),
+		);
+		const lineId = said.spoken.at(-1)?.id ?? '';
+		const replied = runAt(
+			[
+				[12, { type: 'spoken_ended', lineId, isCut: false }],
+				[13, said_(OTHER)],
+			],
+			said,
+		);
+
+		expect(said.sessions[OTHER]?.heldLine).toBeNull();
+		expect(replied.switchOffer?.ref).toBe(OTHER);
+		expect(replied.sessions[OTHER]?.updateHeardAt).toBeUndefined();
+	});
+
 	it('a lapsed offer still in state does not block the one offer', () => {
 		// Asked and heard long ago, never closed (its lapse never came).
 		const stale: State = {
@@ -449,8 +499,8 @@ describe('updates heard, and the meanwhile line', () => {
 		);
 		const heard = runAt([[13, { type: 'spoken_ended', lineId, isCut: false }]], said);
 
-		expect(unplayed.sessions[OTHER]?.heldLine?.updateHeardAt).toBeUndefined();
-		expect(heard.sessions[OTHER]?.heldLine?.updateHeardAt).toBe(13);
+		expect(unplayed.sessions[OTHER]?.updateHeardAt).toBeUndefined();
+		expect(heard.sessions[OTHER]?.updateHeardAt).toBe(13);
 	});
 
 	it('the session on screen is left out of the meanwhile line', () => {

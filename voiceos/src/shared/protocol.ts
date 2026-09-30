@@ -129,9 +129,6 @@ export type HeldLine = {
 	missed: number;
 	// The developer was told "<session> is done" or "needs you" about it: that is not said twice.
 	isAnnounced: boolean;
-	// When the developer heard that update to its end (the announcement or meanwhile line), until
-	// they reply to it: the first reply from another screen offers the switch.
-	updateHeardAt?: number;
 } & ({ kind: 'line'; text: string; isAsking: boolean } | { kind: 'ask'; askId: string });
 
 export interface AllowOnce {
@@ -173,6 +170,10 @@ export interface Session {
 	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
 	withdrawnAsides: string[];
 	heldLine: HeldLine | null;
+	// When the developer heard news of it to its end (an announcement, the meanwhile line, or the kernel
+	// reading it back), until they reply: the first reply from another screen offers the switch. Kept
+	// on the session, not the held line: asking about it by name clears that line before the answer.
+	updateHeardAt?: number;
 	// When its context compaction began; null when none runs. The SDK reports no progress.
 	compactingSince: number | null;
 	// When its latest spoken line came, if nothing but a question or plan has come since: such a line

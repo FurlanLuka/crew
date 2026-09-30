@@ -254,29 +254,22 @@ export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 	return { state: cleared, effects: [effect] };
 };
 
-// A held line's update was heard to its end: a reply to it from another screen may now offer the switch.
+// Its news was heard to its end: a reply to it from another screen may now offer the switch, and the
+// meanwhile line has nothing left to say about it.
 const markUpdateHeard = (state: State, ref: string, at: number): State =>
-	state.sessions[ref]?.heldLine
-		? updateSession(state, ref, (session) =>
-				session.heldLine
-					? { ...session, heldLine: { ...session.heldLine, updateHeardAt: at } }
-					: session,
+	state.sessions[ref]
+		? updateSession(
+				{ ...state, meanwhile: state.meanwhile.filter((item) => item.ref !== ref) },
+				ref,
+				(session) => ({ ...session, updateHeardAt: at }),
 			)
 		: state;
 
-// Replied to, or opened past its line: the update has been answered, and offers no switch again.
+// Replied to, or opened: the news has been answered, and offers no switch again.
 export const forgetHeardUpdate = (state: State, ref: string): State =>
-	state.sessions[ref]?.heldLine?.updateHeardAt === undefined
+	state.sessions[ref]?.updateHeardAt === undefined
 		? state
-		: updateSession(state, ref, (session) => {
-				if (!session.heldLine) {
-					return session;
-				}
-
-				const { updateHeardAt: _heard, ...heldLine } = session.heldLine;
-
-				return { ...session, heldLine };
-			});
+		: updateSession(state, ref, ({ updateHeardAt: _heard, ...session }) => session);
 
 // What finishing a line means beyond itself: an update heard, or a question heard (its window
 // for a yes starts now, not when it was queued).
