@@ -62,6 +62,21 @@ describe('go back', () => {
 		expect(said(back.effects)).toEqual(['checkout, main stopped. Back to crew, main.']);
 	});
 
+	it('a session that was never running when left → still gone back to', () => {
+		const idle = runAt(
+			[
+				[1, { type: 'worktrees', worktrees: [worktree(CREW), worktree(CHECKOUT)] }],
+				[2, show(CREW)],
+				[3, show(CHECKOUT)],
+			],
+			createInitialState(),
+		).state;
+		const back = runAt([[20, { type: 'go_back' }]], idle);
+
+		expect(back.state.view).toEqual({ kind: 'session', ref: CREW });
+		expect(said(back.effects)).toEqual(['Back to crew, main.']);
+	});
+
 	it('nowhere to go → said, nothing moves', () => {
 		const start = runAt(
 			[[1, { type: 'worktrees', worktrees: [worktree(CREW)] }]],

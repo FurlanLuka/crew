@@ -9,6 +9,46 @@ import type { Effect } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
 import type { KernelHandler, KernelTurn } from '../router/router.js';
 import type { VoiceOut } from './voice-out.js';
+import { createLogger } from '../log.js';
+import type { State } from '../shared/protocol.js';
+
+const log = createLogger('exchange');
+
+// Each change to who the developer talks with, with the input that made it: how often a guess was
+// wrong is read from these and the debug notes.
+const logConversation = (before: State, after: State, input: string): void => {
+	if (
+		before.exchange?.ref !== after.exchange?.ref ||
+		before.exchange?.reason !== after.exchange?.reason
+	) {
+		log.info('exchange', {
+			from: before.exchange?.ref ?? null,
+			to: after.exchange?.ref ?? null,
+			reason: after.exchange?.reason ?? null,
+			input,
+		});
+	}
+
+	if (after.switchOffer && after.switchOffer !== before.switchOffer) {
+		log.info('switch offered', { ref: after.switchOffer.ref });
+	}
+
+	if (before.targetAsk !== after.targetAsk) {
+		log.info(after.targetAsk ? 'asked which session' : 'which session settled', {
+			ref: after.targetAsk?.ref ?? before.targetAsk?.ref ?? null,
+		});
+	}
+
+	if (before.meanwhile.length !== after.meanwhile.length) {
+		log.info(after.meanwhile.length > before.meanwhile.length ? 'update waits' : 'meanwhile said', {
+			waiting: after.meanwhile.length,
+		});
+	}
+
+	if (input === 'go_back') {
+		log.info('go back', { to: after.view, history: after.viewHistory.length });
+	}
+};
 
 type NarrateEffect = Extract<Effect, { type: 'narrate' }>;
 type NarrateAsideEffect = Extract<Effect, { type: 'narrate_aside' }>;
@@ -33,6 +73,13 @@ export const connectSpeech = ({
 }: ConnectSpeechParams): void => {
 	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
 	// and a stale timer finds a newer lastAt and changes nothing.
+	// The reducer runs in the page too, so it cannot log: what the conversation did is logged here.
+	let previous = store.state;
+	store.subscribe((stamped, state) => {
+		logConversation(previous, state, stamped.input.type);
+		previous = state;
+	});
+
 	let armedAt: number | null = null;
 	let offeredAt: number | null = null;
 	let targetAskedAt: number | null = null;

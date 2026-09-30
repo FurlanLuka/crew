@@ -268,6 +268,8 @@ export const EXCHANGE_IDLE_MS = 60_000;
 export interface ViewHistoryEntry {
 	view: View;
 	exchange: Exchange | null;
+	// Its session was running when the developer left it: stopped since, "go back" passes it over.
+	wasLive?: true;
 }
 
 export const VIEW_HISTORY_KEPT = 5;

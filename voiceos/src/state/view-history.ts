@@ -7,12 +7,9 @@ import {
 	type View,
 	type ViewHistoryEntry,
 } from '../shared/protocol.js';
-import { createLogger } from '../log.js';
 import { isExchangeLive, pruneExchange } from './exchange.js';
 import type { Effect } from './reducer.js';
 import { sayAck, sayRef } from './helpers.js';
-
-const log = createLogger('view-history');
 
 export const isSameView = (first: View, second: View): boolean =>
 	JSON.stringify(first) === JSON.stringify(second);
@@ -37,7 +34,12 @@ export const pushViewHistory = (state: State, next: View): ViewHistoryEntry[] =>
 		return state.viewHistory;
 	}
 
-	const entry: ViewHistoryEntry = { view: state.view, exchange: state.exchange };
+	const left = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
+	const entry: ViewHistoryEntry = {
+		view: state.view,
+		exchange: state.exchange,
+		...(left && left.status !== 'stopped' ? { wasLive: true as const } : {}),
+	};
 
 	return [entry, ...state.viewHistory.filter((kept) => !isSameView(kept.view, state.view))].slice(
 		0,
@@ -81,7 +83,9 @@ export const decideGoBack = ({ state, now }: DecideGoBackParams): GoBackDecision
 		const { view } = entry;
 		const session = view.kind === 'session' ? state.sessions[view.ref] : undefined;
 
-		if (view.kind === 'session' && (!session || session.status === 'stopped')) {
+		// Gone, or stopped since the developer left it; a session that was never running is still a
+		// screen to go back to.
+		if (view.kind === 'session' && (!session || (entry.wasLive && session.status === 'stopped'))) {
 			skipped.push(view.ref);
 			continue;
 		}
@@ -104,11 +108,6 @@ export const describeGoBack = (state: State, decision: GoBackDecision): Effect =
 		decision.kind === 'back'
 			? `Back to ${sayView(state, decision.view)}.`
 			: 'Nothing to go back to.';
-
-	log.info('go back', {
-		to: decision.kind === 'back' ? decision.view.kind : null,
-		skipped: decision.skipped.length,
-	});
 
 	return sayAck(skipped ? `${skipped} ${said}` : said);
 };

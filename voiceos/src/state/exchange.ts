@@ -9,11 +9,8 @@ import {
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
-import { createLogger } from '../log.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { sayAck, sayRef } from './helpers.js';
-
-const log = createLogger('exchange');
 
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
@@ -70,27 +67,19 @@ const talkTo = (params: TalkToParams): ReducerResult => {
 					reason,
 				};
 
-	if (!isSame) {
-		log.info('exchange', { ref, reason, from: state.exchange?.ref ?? null });
-	}
-
 	return { state: { ...state, exchange }, effects: [] };
 };
 
-const end = (state: State, why: string): State => {
+const end = (state: State): State => {
 	if (!state.exchange) {
 		return state;
 	}
-
-	log.info('exchange ended', { ref: state.exchange.ref, why });
 
 	return { ...state, exchange: null };
 };
 
 // "Switch to checkout?": asked aloud once, answered with a yes or let go.
 export const offerSwitch = (state: State, ref: string, at: number): ReducerResult => {
-	log.info('switch offered', { ref });
-
 	return {
 		state: {
 			...state,
@@ -221,7 +210,7 @@ export const followExchange = (
 				return { ...result, state: settled };
 			}
 
-			return { ...result, state: end(settled, 'view switched') };
+			return { ...result, state: end(settled) };
 		}
 
 		case 'offer_switch': {
@@ -252,11 +241,11 @@ export const followExchange = (
 
 		case 'exchange_expired':
 			return state.exchange?.ref === input.ref && state.exchange.lastAt === input.lastAt
-				? { ...result, state: end(state, 'lapsed') }
+				? { ...result, state: end(state) }
 				: result;
 
 		case 'clear_exchange':
-			return { ...result, state: end(state, 'cleared') };
+			return { ...result, state: end(state) };
 
 		default:
 			return result;
