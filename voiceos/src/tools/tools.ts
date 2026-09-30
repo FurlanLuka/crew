@@ -88,6 +88,7 @@ const MIN_LONG_SPEECH_WORDS = 10;
 const MAX_STOP_WORDS = 1;
 // "Tiho", "sei still": short enough that only a clear no from the judge keeps it from muting.
 const MAX_MUTE_WORDS = 2;
+const WORK_UNDER_WAY = 'A coding session is at work right now.';
 
 const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): ToolResult => {
 	if (mode === null) {
@@ -695,8 +696,17 @@ export const executeTool = async (
 				countSpokenWords(toolContext.utterance) > MAX_STOP_WORDS
 			) {
 				const [aboutListening, saysInstead] = await Promise.all([
-					toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance }),
-					toolContext.judge({ key: 'says_instead', utterance: toolContext.utterance }),
+					// Told that work is under way, "can you stop?" reads as that work, not the microphone.
+					toolContext.judge({
+						key: 'about_listening',
+						utterance: toolContext.utterance,
+						context: WORK_UNDER_WAY,
+					}),
+					toolContext.judge({
+						key: 'says_instead',
+						utterance: toolContext.utterance,
+						context: WORK_UNDER_WAY,
+					}),
 				]);
 
 				// "Stop listening" is about hands-free, whatever else "stop" means.

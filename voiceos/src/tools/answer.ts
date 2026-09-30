@@ -1,4 +1,5 @@
 import type { Judge } from '../judge/judge.js';
+import { createLogger } from '../log.js';
 import type { Action, PendingAsk, State } from '../shared/protocol.js';
 import { findOpenQuestion, hasOpenQuestionMoved, type QuestionAsk } from '../shared/questions.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
@@ -15,6 +16,8 @@ import { findSessionsNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { endsInQuestion } from '../shared/spoken.js';
+
+const log = createLogger('tools');
 
 export const ANSWER_DECISIONS = ['yes', 'always', 'no', 'choose'] as const;
 export type AnswerDecision = (typeof ANSWER_DECISIONS)[number];
@@ -179,56 +182,59 @@ const countWords = (text: string): number => text.split(' ').filter(Boolean).len
 
 const hasPhrase = (text: string, phrase: string): boolean => ` ${text} `.includes(` ${phrase} `);
 
-// Could be a pick: one option named with a few words around it ("use Postgres?"), or none named at
-// all ("die zweite?", an ordinal in another language). Two named is weighing them; a long sentence
-// around one is about it ("what does Postgres do for us here?").
-const couldBePick = (bare: string, labels: string[]): boolean => {
-	const named = labels.filter(
-		(label) => label && (hasPhrase(bare, label) || hasPhrase(label, bare)),
-	);
+export type OptionReply = 'pick' | 'question' | 'other';
 
-	return (
-		named.length === 0 ||
-		(named.length === 1 && countWords(bare) <= countWords(named[0]!) + MAX_PICK_EXTRA_WORDS)
-	);
-};
-
-interface IsClarifyingQuestionParams {
+interface ReadOptionReplyParams {
 	ask: QuestionAsk;
-	utterance: string | undefined;
+	utterance: string;
 	judge: Judge;
+	// Where the developer could go instead: "go into crew" beside an option "Crew project" is a place.
+	sessions: string[];
 }
 
-export const isClarifyingQuestion = async ({
+// Whether words the kernel answered a question with pick an option, ask about them, or are about
+// something else ("go into crew" beside an option named "Crew project").
+export const readOptionReply = async ({
 	ask,
 	utterance,
 	judge,
-}: IsClarifyingQuestionParams): Promise<boolean> => {
-	// "What does option two do?" asks about the options; "the second?", "Postgres?" or "use
-	// Postgres?" picks one with a questioning voice.
-	if (!utterance || !endsInQuestion(utterance)) {
-		return false;
-	}
-
+	sessions,
+}: ReadOptionReplyParams): Promise<OptionReply> => {
 	const labels = (findOpenQuestion(ask)?.question.options ?? []).map((option) =>
 		readBareOption(option.label),
 	);
 	const bare = readBareOption(utterance);
+	const isQuestion = endsInQuestion(utterance);
 
 	// A label said back, or an English ordinal, is a pick without asking.
 	if (ORDINALS.has(bare) || labels.includes(bare)) {
-		return false;
+		return 'pick';
 	}
 
-	// Unclear forwards it as a question: the session answers, and the question keeps waiting.
-	return (
-		!couldBePick(bare, labels) ||
-		(await judge({
-			key: 'asks_about_options',
-			utterance,
-			context: `The options: ${labels.map((label) => `"${label}"`).join(', ')}`,
-		})) !== 'no'
+	const named = labels.filter(
+		(label) => label && (hasPhrase(bare, label) || hasPhrase(label, bare)),
 	);
+
+	// One or more options named in a statement is the kernel's reading to trust; two named, or one
+	// inside a longer question, is weighing them.
+	if (named.length > 0) {
+		if (!isQuestion) {
+			return 'pick';
+		}
+
+		if (named.length > 1 || countWords(bare) > countWords(named[0]!) + MAX_PICK_EXTRA_WORDS) {
+			return 'question';
+		}
+	}
+
+	const reply = await judge({
+		key: 'option_reply',
+		utterance,
+		context: `The options: ${labels.map((label) => `"${label}"`).join(', ')}. Sessions the developer can go to: ${sessions.join(', ')}.`,
+	});
+
+	// Unclear never answers on a guess: a question goes to the session, anything else back to routing.
+	return reply === 'unclear' ? (isQuestion ? 'question' : 'other') : reply;
 };
 
 interface IsAnswerForParams {
@@ -397,18 +403,27 @@ export const answerAsk = async ({
 		return fail(`decision must be one of ${ANSWER_DECISIONS.join(', ')}`);
 	}
 
+	const optionReply =
+		decision === 'choose' && liveAsk.kind === 'question' && toolContext.utterance !== undefined
+			? await readOptionReply({
+					ask: liveAsk,
+					utterance: toolContext.utterance,
+					judge: toolContext.judge,
+					sessions: Object.keys(state.sessions),
+				})
+			: 'pick';
+
+	if (optionReply === 'other') {
+		log.info('answer refused: the words pick no option', { ref: checked.ref });
+
+		return fail(
+			'Not answered: those words choose none of the options; they are about something else. Do what they ask (a switch, words for another session); the question keeps waiting.',
+		);
+	}
+
 	// A question about the options is not a pick: it goes to the session, which withdraws its
 	// question, answers, and asks again.
-	if (
-		decision === 'choose' &&
-		liveAsk.kind === 'question' &&
-		toolContext.utterance !== undefined &&
-		(await isClarifyingQuestion({
-			ask: liveAsk,
-			utterance: toolContext.utterance,
-			judge: toolContext.judge,
-		}))
-	) {
+	if (optionReply === 'question' && toolContext.utterance !== undefined) {
 		const said = toolContext.utterance.trim();
 
 		return {

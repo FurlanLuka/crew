@@ -33,6 +33,8 @@ export interface FixtureContext {
 	// Whose it is by default: permission on wrk1, the others on store-front/main.
 	// command: a /clear Voice OS holds until the developer says yes.
 	ask?: 'permission' | 'question' | 'plan' | 'command' | 'redirect';
+	// The open question's option labels, when a case depends on them.
+	options?: string[];
 	askOn?: string;
 	// A second permission, on that ref.
 	alsoAsk?: string;
@@ -122,7 +124,9 @@ const listPendingAsks = (context: FixtureContext, at: number): PendingAsk[] => {
 				{
 					question: 'Where should events go?',
 					multiSelect: false,
-					options: [{ label: 'New table' }, { label: 'Reuse orders' }, { label: 'Defer' }],
+					options: (context.options ?? ['New table', 'Reuse orders', 'Defer']).map((label) => ({
+						label,
+					})),
 				},
 			],
 		});

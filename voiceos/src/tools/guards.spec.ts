@@ -337,14 +337,25 @@ describe('answering a question with a question', () => {
 		expect(actions).toEqual([expect.objectContaining({ type: 'answer_question' })]);
 	});
 
-	it('"Die zweite?" (no label named): judge no → the pick; unclear → forwarded as a question', async () => {
-		const picked = await answerWith('Die zweite?', judgeWith({ asks_about_options: 'no' }));
-		const unclear = await answerWith('Die zweite?', judgeWith({ asks_about_options: 'unclear' }));
+	it('"Die zweite?" (no label named): the judge hears a pick → answered; unclear → forwarded as a question', async () => {
+		const picked = await answerWith('Die zweite?', judgeWith({ option_reply: 'pick' }));
+		const unclear = await answerWith('Die zweite?', judgeWith({ option_reply: 'unclear' }));
 
 		expect(picked.actions).toEqual([expect.objectContaining({ type: 'answer_question' })]);
 		expect(unclear.actions).toEqual([
 			expect.objectContaining({ type: 'send', text: 'Die zweite?', ack: { kind: 'question' } }),
 		]);
+	});
+
+	it('"Can you go into crew session?" beside an option "Crew project" → no answer: the words are for something else', async () => {
+		const other = await answerWith(
+			'Can you go into crew session?',
+			judgeWith({ option_reply: 'other' }),
+		);
+
+		expect(other.actions).toEqual([]);
+		expect(other.result.ok).toBe(false);
+		expect(other.result.content).toContain('choose none of the options');
 	});
 });
 

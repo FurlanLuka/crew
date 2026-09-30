@@ -30,7 +30,7 @@ import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
 import { carriesWords } from '../router/kernel.js';
-import { isClarifyingQuestion } from './answer.js';
+import { readOptionReply } from './answer.js';
 import type { QuestionAsk } from '../shared/questions.js';
 
 describe('tool definitions', () => {
@@ -3930,8 +3930,13 @@ describe('words that ask about a waiting question', () => {
 		],
 	});
 
-	const isForwarded = (labels: string[], utterance: string) =>
-		isClarifyingQuestion({ ask: labelled(labels), utterance, judge: englishJudge });
+	const isForwarded = async (labels: string[], utterance: string) =>
+		(await readOptionReply({
+			ask: labelled(labels),
+			utterance,
+			judge: englishJudge,
+			sessions: [],
+		})) === 'question';
 
 	it.each([
 		[['Postgres (Recommended)', 'SQLite'], 'Postgres?'],

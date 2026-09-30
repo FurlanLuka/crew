@@ -4824,6 +4824,152 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "go-into-while-talking",
+			"utterance": "Wait, can you go into checkout?",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "store-front/wrk1",
+					"asked": "is the ranking measured yet?",
+					"answered": "Yes, the new ranking wins on 7 of 10 queries.",
+					"secondsAgo": 15
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["send_to", "forward"]
+		},
+		{
+			"id": "go-into-session-while-talking",
+			"utterance": "Can you go into checkout session?",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "store-front/wrk1",
+					"asked": "is the ranking measured yet?",
+					"answered": "Yes, the new ranking wins on 7 of 10 queries.",
+					"secondsAgo": 15
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["send_to", "forward"]
+		},
+		{
+			"id": "go-into-with-question-open",
+			"utterance": "Can you go into checkout session?",
+			"context": {
+				"view": "store-front/main",
+				"ask": "question"
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["answer", "forward"]
+		},
+		{
+			"id": "stop-question-form",
+			"utterance": "Okay. Can you stop?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "interrupt",
+					"ref": "store-front/main",
+					"ok": true
+				}
+			]
+		},
+		{
+			"id": "go-into-named-like-an-option",
+			"utterance": "Can you go into checkout session?",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "question",
+				"askOn": "store-front/wrk1",
+				"options": ["Checkout project", "Store front project"]
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["answer", "forward"]
+		},
+		{
+			"id": "go-into-other-machine-with-question",
+			"utterance": "Can you go into signals session?",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "question",
+				"askOn": "store-front/wrk1",
+				"options": ["Signals project", "Store front project"],
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/wrk1"]
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/wrk1"
+				}
+			],
+			"forbid_calls": ["answer", "forward", "send_to"]
+		},
+		{
+			"id": "go-into-other-machine-while-talking",
+			"utterance": "Wait, can you go into signals?",
+			"context": {
+				"view": "store-front/main",
+				"talkingWith": {
+					"ref": "store-front/wrk1",
+					"asked": "which project should this go in?",
+					"answered": "Signals project or store front project?",
+					"secondsAgo": 20
+				},
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/wrk1"]
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "remote-mac:signals/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to"]
 		}
 	]
 }
