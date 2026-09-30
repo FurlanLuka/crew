@@ -282,6 +282,8 @@ describe('asks off screen', () => {
 				text: 'store/main needs you: Notes location.',
 				source: 'alert',
 				ref: REF,
+				// A reply to it is for store/main: the kernel reads it as a notification.
+				isUpdate: true,
 				priority: 'high',
 				chime: 'needs',
 				waitsForGap: true,

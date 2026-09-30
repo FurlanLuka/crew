@@ -67,9 +67,12 @@ export const createConversation = ({
 
 	// The model's answers, one list of blocks per call, in the order the calls come.
 	const script: Block[][] = [];
+	// What the model was sent on each call: routing is its decision, so a test asserts what it was told.
+	const requests: { messages: { role: string; content: unknown }[] }[] = [];
 	const client = {
 		messages: {
-			create: async () => {
+			create: async (params: { messages: { role: string; content: unknown }[] }) => {
+				requests.push(params);
 				const content = script.shift() ?? [reply('')];
 				const hasToolUse = content.some((block) => block.type === 'tool_use');
 
@@ -194,10 +197,23 @@ export const createConversation = ({
 		await listen();
 	};
 
+	// The first message of the kernel's last turn: the state and the words, as the model read them.
+	const kernelSaw = (): string => {
+		const first = requests.findLast((request) => request.messages.length === 1)?.messages[0];
+		const content = first?.content;
+
+		return typeof content === 'string'
+			? content
+			: Array.isArray(content)
+				? content.map((block: { text?: string }) => block.text ?? '').join('\n')
+				: '';
+	};
+
 	return {
 		store,
 		inputs,
 		heard,
+		kernelSaw,
 		voiceOut,
 		wait,
 		listen,

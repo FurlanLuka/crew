@@ -129,6 +129,8 @@ export const connectSpeech = ({
 					waitsForGap: effect.waitsForGap,
 					ref: effect.ref ?? null,
 					isAsking: effect.isAsking,
+					isUpdate: effect.isUpdate,
+					refs: effect.refs,
 					isNamed: effect.isNamed,
 					isOwed: effect.isOwed,
 					isAck: effect.isAck,

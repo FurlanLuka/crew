@@ -2,7 +2,7 @@
 // with only the model scripted. Each list is what the developer hears, their own words as "> …".
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
-import { createConversation, toolUse } from '../../test/support/conversation.js';
+import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
 import { SWITCH_OFFER_MS } from '../shared/protocol.js';
 import { englishJudge } from '../../test/support/english-judge.js';
 import type { Judge } from '../judge/judge.js';
@@ -180,6 +180,30 @@ describe('conversations', () => {
 			'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry…',
 		);
 		expect(convo.store.state.meanwhile).toEqual([]);
+	});
+
+	it('a reply to the meanwhile line → the kernel is told checkout was just heard, as a notification', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'add backoff to the retries',
+		});
+		await convo.answer(
+			'checkout-api/main',
+			'The retry backoff now doubles from one second up to thirty, and every retry test passes again.',
+		);
+		await convo.wait(9_000);
+		expect(convo.heard.at(-1)).toStartWith('Meanwhile, checkout api, main said:');
+
+		convo.script([reply('')]);
+		await convo.say('Great, push it.');
+
+		// No routing is scripted here: what matters is that the model can see whose update it was.
+		expect(convo.kernelSaw()).toContain('Heard just before the developer spoke');
+		expect(convo.kernelSaw()).toMatch(/checkout-api\/main[^\n]*Meanwhile, checkout api, main said/);
+		expect(convo.kernelSaw()).toContain("Replying to checkout-api/main's notification");
 	});
 
 	it('a reply to an update heard in the meanwhile line → sent there, and the switch offered in the same line', async () => {

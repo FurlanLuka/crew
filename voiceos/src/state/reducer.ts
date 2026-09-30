@@ -104,6 +104,9 @@ export type Effect =
 			isReply?: boolean;
 			ref?: string;
 			isAsking?: boolean;
+			// Other sessions' updates (see SpokenLine.isUpdate); refs: the sessions it named.
+			isUpdate?: boolean;
+			refs?: string[];
 			// Said with the session's name in front unless it is on screen.
 			isNamed?: boolean;
 			// Default: alert for alerts, normal otherwise.
@@ -864,6 +867,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 						...(input.ref ? { ref: input.ref } : {}),
 						...(input.isAsking ? { isAsking: true as const } : {}),
 						...(input.isAnswer ? { isAnswer: true as const } : {}),
+						...(input.isUpdate ? { isUpdate: true as const } : {}),
+						...(input.refs?.length ? { refs: input.refs } : {}),
 					},
 				].slice(-SPOKEN_LINES_KEPT),
 			});

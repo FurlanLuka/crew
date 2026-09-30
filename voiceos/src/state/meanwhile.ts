@@ -33,6 +33,16 @@ export const playMeanwhile = (state: State): ReducerResult => {
 
 	return {
 		state: { ...state, meanwhile: [] },
-		effects: [{ type: 'speak', text, source: 'narrator', priority: 'normal', isOwed: true }],
+		effects: [
+			{
+				type: 'speak',
+				text,
+				source: 'narrator',
+				priority: 'normal',
+				isOwed: true,
+				isUpdate: true,
+				refs: state.meanwhile.map((item) => item.ref),
+			},
+		],
 	};
 };

@@ -43,17 +43,23 @@ interface ListHeardBeforeParams {
 	heardFrom: number;
 }
 
+// The meanwhile line names several sessions: a reply to it may be for any of them, so each counts
+// as heard, with the line's words.
+const bySession = (line: SpokenLine): SpokenLine[] =>
+	line.ref === undefined && line.refs ? line.refs.map((ref) => ({ ...line, ref })) : [line];
+
 export const listHeardBefore = ({ spoken, heardFrom }: ListHeardBeforeParams): SpokenLine[] =>
 	// Session lines that started playing before the developer spoke, newest few, oldest first. Voice
 	// OS's own acks and replies are not what they answer.
 	spoken
 		.filter(
 			(line) =>
-				line.ref !== undefined &&
+				(line.ref !== undefined || line.refs !== undefined) &&
 				line.source !== 'kernel' &&
 				line.at < heardFrom &&
 				heardFrom - line.at <= HEARD_BEFORE_MS,
 		)
+		.flatMap(bySession)
 		.slice(-HEARD_BEFORE_KEPT);
 
 const describeEnding = (line: SpokenLine, heardFrom: number): string => {

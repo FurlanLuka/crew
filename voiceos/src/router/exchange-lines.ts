@@ -42,9 +42,6 @@ export const describeExchangeLines = ({
 	];
 };
 
-// "checkout is done: …", "checkout needs you: …" — Voice OS's notifications, not a session's own line.
-const NOTIFICATION_PATTERN = /\b(?:is done|needs you)\b/i;
-
 interface DescribeNotificationLinesParams {
 	heardBefore: SpokenLine[];
 	nameRef: (ref: string) => string;
@@ -56,7 +53,8 @@ export const describeNotificationLines = ({
 	nameRef,
 }: DescribeNotificationLinesParams): string[] => {
 	const notifications = heardBefore.filter(
-		(line) => line.ref !== undefined && NOTIFICATION_PATTERN.test(line.text),
+		// "checkout needs you: …", the meanwhile line: Voice OS's notifications, not a session's own line.
+		(line) => line.ref !== undefined && line.isUpdate === true,
 	);
 	const newest = notifications.at(-1);
 

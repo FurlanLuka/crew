@@ -329,6 +329,10 @@ export interface SpokenLine {
 	isAnswer?: true;
 	// No tab played it: nobody heard it.
 	isUnplayed?: true;
+	// Voice OS telling the developer about other sessions' updates ("checkout needs you: …", the
+	// meanwhile line): a reply to it is for them. refs: every session the meanwhile line named.
+	isUpdate?: true;
+	refs?: string[];
 }
 
 export interface Setup {
@@ -553,6 +557,8 @@ export type Observation =
 			ref?: string;
 			isAsking?: true;
 			isAnswer?: true;
+			isUpdate?: true;
+			refs?: string[];
 	  }
 	// Written by the router after it handled an utterance; never from a client.
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }
