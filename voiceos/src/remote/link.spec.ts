@@ -281,6 +281,28 @@ describe('a remote over a link', () => {
 			expect(updated).toEqual(['vm1']);
 		});
 
+		it('while the update runs → the card says so', async () => {
+			const { open } = await startSwappable('5.0.1');
+			let finish = (): void => undefined;
+			const { store } = startMain({
+				open,
+				version: '5.1.0',
+				retryMs: 60_000,
+				updateRemote: () =>
+					new Promise((resolve) => {
+						finish = () => resolve({ code: 0, output: '' });
+					}),
+			});
+
+			await until(() => store.state.machines.vm1?.detail !== null, 'the update started');
+
+			expect(store.state.machines.vm1).toMatchObject({
+				status: 'connecting',
+				detail: 'Updating Build box to 5.1.0…',
+			});
+			finish();
+		});
+
 		it('updated, but its sessions keep the old release running → waited for, never updated again', async () => {
 			const { open } = await startSwappable('5.0.1');
 			let updates = 0;
