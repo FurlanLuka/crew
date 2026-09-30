@@ -262,6 +262,7 @@ describe('aside narrator', () => {
 			isNamed: boolean;
 			isAsking: boolean;
 			priority: string;
+			isAnswer?: boolean;
 		}[] = [];
 		const handle = createAsideNarrator({
 			store,
@@ -333,6 +334,7 @@ describe('aside narrator', () => {
 				ref: 'checkout-api/main',
 				isNamed: true,
 				isAsking: false,
+				isAnswer: true,
 			},
 		]);
 	});

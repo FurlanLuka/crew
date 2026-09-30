@@ -1,3 +1,4 @@
+import { followExchange, pruneExchange } from './exchange.js';
 import {
 	GRID,
 	VOICE_LOG_ENTRIES_KEPT,
@@ -103,6 +104,8 @@ export type Effect =
 			chime?: 'needs';
 			// Held instead if its session is off screen when it plays (a long line).
 			isHoldable?: boolean;
+			// The session's own answer: heard to the end, it keeps the conversation with it going.
+			isAnswer?: boolean;
 	  }
 	// The developer spoke to this session again: its lines still waiting to be said (older than
 	// before) are out of date. They stay on the page.
@@ -128,6 +131,7 @@ export const createInitialState = (): State => ({
 	order: [],
 	view: HOME_VIEW,
 	focus: null,
+	exchange: null,
 	asks: [],
 	denials: [],
 	transcript: null,
@@ -255,7 +259,9 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		Object.entries(state.voiceLog).filter(([screen]) => screen === GRID || sessions[screen]),
 	);
 
-	return { ...state, sessions, order, view, focus, voiceLog };
+	const exchange = pruneExchange(state.exchange, (ref) => Boolean(sessions[ref]));
+
+	return { ...state, sessions, order, view, focus, exchange, voiceLog };
 };
 
 // A session that is gone cannot be shown: null leaves the screen where it is.
@@ -748,7 +754,12 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...state,
 				spoken: state.spoken.map((line) =>
 					line.id === input.lineId
-						? { ...line, endedAt: stamped.at, ...(input.isCut ? { isCut: true as const } : {}) }
+						? {
+								...line,
+								endedAt: stamped.at,
+								...(input.isCut ? { isCut: true as const } : {}),
+								...(input.isUnplayed ? { isUnplayed: true as const } : {}),
+							}
 						: line,
 				),
 			});
@@ -772,6 +783,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 						at: stamped.at,
 						...(input.ref ? { ref: input.ref } : {}),
 						...(input.isAsking ? { isAsking: true as const } : {}),
+						...(input.isAnswer ? { isAnswer: true as const } : {}),
 					},
 				].slice(-SPOKEN_LINES_KEPT),
 			});
@@ -831,6 +843,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'setup':
 			return withoutEffects({ ...state, setup: { missing: input.missing } });
+
+		// followExchange (exchange.ts) owns these.
+		case 'exchange_expired':
+		case 'clear_exchange':
+			return withoutEffects(state);
 	}
 
 	// A browser tab left open across an upgrade runs older code than the server: it must reload, not guess.
@@ -838,5 +855,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	throw new Error(`unknown input: ${(unknownInput as { type: string }).type}`);
 };
 
-export const reduce = (state: State, stamped: Stamped): ReducerResult =>
-	reduceInput({ ...state, seq: stamped.seq }, stamped);
+export const reduce = (state: State, stamped: Stamped): ReducerResult => {
+	const before = { ...state, seq: stamped.seq };
+
+	return followExchange(before, reduceInput(before, stamped), stamped);
+};

@@ -17,7 +17,6 @@ import {
 import type { Store } from '../state/store.js';
 import { isRecent, type SpokenRecord } from './echo.js';
 import {
-	clearQueueForTalk,
 	createEmptyQueue,
 	dropQueued,
 	enqueue,
@@ -37,6 +36,7 @@ interface SayParams {
 	source?: SpokenLine['source'];
 	isNamed?: boolean;
 	isReply?: boolean;
+	isAnswer?: boolean;
 	isAsking?: boolean;
 	isOwed?: boolean;
 	isAck?: boolean;
@@ -47,6 +47,8 @@ interface SayParams {
 interface FinishParams {
 	// The clip stops before it played out: Soniox stops generating and the tab drops it.
 	isCut?: boolean;
+	// No tab or voice: the line is on the page, but nobody heard it.
+	isUnplayed?: boolean;
 	shouldPlayNext?: boolean;
 }
 
@@ -127,6 +129,7 @@ export class VoiceOut {
 		source = 'narrator',
 		isNamed = false,
 		isReply = false,
+		isAnswer = false,
 		isAsking = false,
 		isOwed = false,
 		isAck = false,
@@ -148,6 +151,7 @@ export class VoiceOut {
 			isNamed,
 			isReply,
 			isAsking,
+			...(isAnswer ? { isAnswer } : {}),
 			...(isOwed ? { isOwed } : {}),
 			...(isAck ? { isAck } : {}),
 			...(isHoldable ? { isHoldable } : {}),
@@ -196,8 +200,8 @@ export class VoiceOut {
 	}
 
 	talkStarted(): void {
+		// Nothing queued is dropped: it waits for the developer to finish, behind what answers them.
 		this.isTalking = true;
-		this.queue = clearQueueForTalk(this.queue);
 
 		if (this.playing) {
 			this.finish(this.playing.id, { isCut: true, shouldPlayNext: false });
@@ -319,7 +323,10 @@ export class VoiceOut {
 		this.finish(playing.id, { isCut: true });
 	}
 
-	private finish(id: string, { isCut = false, shouldPlayNext = true }: FinishParams = {}): void {
+	private finish(
+		id: string,
+		{ isCut = false, isUnplayed = false, shouldPlayNext = true }: FinishParams = {},
+	): void {
 		const playing = this.playing;
 
 		if (playing?.id !== id) {
@@ -331,7 +338,12 @@ export class VoiceOut {
 		playing.record.endedAt = this.now();
 
 		if (playing.lineId) {
-			this.options.store.dispatch({ type: 'spoken_ended', lineId: playing.lineId, isCut });
+			this.options.store.dispatch({
+				type: 'spoken_ended',
+				lineId: playing.lineId,
+				isCut,
+				...(isUnplayed ? { isUnplayed: true as const } : {}),
+			});
 		}
 
 		// Even when every chunk was sent: a short clip is fully streamed while it still plays.
@@ -450,7 +462,10 @@ export class VoiceOut {
 			return;
 		}
 
-		const { item, queue } = takeNextItem(this.queue, this.now());
+		const { item, queue } = takeNextItem(this.queue, {
+			now: this.now(),
+			exchangeRef: this.options.store.state.exchange?.ref ?? null,
+		});
 		this.queue = queue;
 
 		if (!item) {
@@ -491,13 +506,14 @@ export class VoiceOut {
 			source: item.source,
 			...(item.ref ? { ref: item.ref } : {}),
 			...(item.isAsking ? { isAsking: true as const } : {}),
+			...(item.isAnswer ? { isAnswer: true as const } : {}),
 		});
 		playing.lineId = spokenState.spoken.at(-1)?.id ?? null;
 
 		const synthesize = this.options.synthesize;
 
 		if (!synthesize || !tab) {
-			this.finish(item.id);
+			this.finish(item.id, { isUnplayed: true });
 
 			return;
 		}

@@ -29,6 +29,7 @@ interface NarratedLine {
 	ref: string;
 	isNamed: boolean;
 	isAsking: boolean;
+	isAnswer?: boolean;
 	isOwed?: boolean;
 	chime?: 'needs';
 	isHoldable?: boolean;
@@ -122,6 +123,7 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 			ref,
 			isNamed: true,
 			isAsking: false,
+			isAnswer: true,
 		});
 	};
 };
@@ -177,6 +179,7 @@ const speakOutcome = async ({
 			ref: effect.ref,
 			isNamed: true,
 			isAsking: narration.needs_user,
+			isAnswer: true,
 			...(effect.isOwed ? { isOwed: true } : {}),
 		});
 

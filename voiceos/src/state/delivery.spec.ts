@@ -242,6 +242,7 @@ describe("the session's own spoken lines", () => {
 				priority: 'high',
 				isOwed: true,
 				isHoldable: true,
+				isAnswer: true,
 			},
 		]);
 		expect(said(more.effects)).toEqual([]);

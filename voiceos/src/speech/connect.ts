@@ -1,4 +1,4 @@
-import { COMMAND_TTL_MS } from '../shared/protocol.js';
+import { COMMAND_TTL_MS, EXCHANGE_IDLE_MS } from '../shared/protocol.js';
 import type { Effect } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
 import type { KernelHandler, KernelTurn } from '../router/router.js';
@@ -25,6 +25,21 @@ export const connectSpeech = ({
 	narrateAside,
 	setTimer = setTimeout,
 }: ConnectSpeechParams): void => {
+	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
+	// and a stale timer finds a newer lastAt and changes nothing.
+	let armedAt: number | null = null;
+	store.subscribe((_stamped, state) => {
+		const exchange = state.exchange;
+
+		if (!exchange || exchange.lastAt === armedAt) {
+			return;
+		}
+
+		armedAt = exchange.lastAt;
+		const { ref, lastAt } = exchange;
+		setTimer(() => store.dispatch({ type: 'exchange_expired', ref, lastAt }), EXCHANGE_IDLE_MS);
+	});
+
 	store.onEffect((effect) => {
 		switch (effect.type) {
 			case 'speak':
@@ -33,6 +48,7 @@ export const connectSpeech = ({
 					priority: effect.priority ?? (effect.source === 'alert' ? 'alert' : 'normal'),
 					source: effect.source,
 					isReply: effect.isReply,
+					isAnswer: effect.isAnswer,
 					ref: effect.ref ?? null,
 					isAsking: effect.isAsking,
 					isNamed: effect.isNamed,

@@ -247,6 +247,24 @@ export interface Limits {
 	resetsAt: number | null;
 }
 
+// Why the developer's words went where they did, logged with every change.
+export type ExchangeReason = 'screen' | 'named' | 'follow_up' | 'notification';
+
+export interface Exchange {
+	ref: string;
+	startedAt: number;
+	// The last send or answer heard: it lapses EXCHANGE_IDLE_MS after this.
+	lastAt: number;
+	// Turns of that session whose answer the developer heard: the switch offer waits for two.
+	answeredTurns: number;
+	// The turn (its request's time) whose answer was last counted.
+	countedTurnAt: number | null;
+	hasOfferedSwitch: boolean;
+	reason: ExchangeReason;
+}
+
+export const EXCHANGE_IDLE_MS = 60_000;
+
 export interface SpokenLine {
 	id: string;
 	text: string;
@@ -259,6 +277,10 @@ export interface SpokenLine {
 	// When it stopped playing; isCut: before its end (the developer spoke, an alert, a failure).
 	endedAt?: number;
 	isCut?: true;
+	// The session's own answer to the developer, not an announcement, reminder or acknowledgement.
+	isAnswer?: true;
+	// No tab played it: nobody heard it.
+	isUnplayed?: true;
 }
 
 export interface Setup {
@@ -294,6 +316,8 @@ export interface State {
 	order: string[];
 	view: View;
 	focus: string | null;
+	// Who the developer is talking with: on screen, or a session they spoke to without switching.
+	exchange: Exchange | null;
 	asks: PendingAsk[];
 	denials: Denial[];
 	transcript: Transcript | null;
@@ -414,7 +438,9 @@ export type Observation =
 	// What a session is working on, named after a turn it spoke for itself.
 	| { type: 'topic_written'; ref: string; topic: string }
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
-	| { type: 'spoken_ended'; lineId: string; isCut: boolean }
+	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
+	| { type: 'exchange_expired'; ref: string; lastAt: number }
+	| { type: 'clear_exchange' }
 	// A line queued while its session was on screen reached play time with the developer elsewhere.
 	| { type: 'line_held'; ref: string; text: string; isAsking: boolean }
 	// The held line was announced ("<session> is done", "needs you").
@@ -444,7 +470,14 @@ export type Observation =
 	| { type: 'worker_exited'; ref: string; error: string | null }
 	| { type: 'limits'; limits: Limits }
 	| { type: 'narration'; ref: string; needsUser: boolean; text: string; topic: string | null }
-	| { type: 'spoken'; text: string; source: SpokenLine['source']; ref?: string; isAsking?: true }
+	| {
+			type: 'spoken';
+			text: string;
+			source: SpokenLine['source'];
+			ref?: string;
+			isAsking?: true;
+			isAnswer?: true;
+	  }
 	// Written by the router after it handled an utterance; never from a client.
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }
 	| { type: 'transcript'; transcript: Transcript | null }

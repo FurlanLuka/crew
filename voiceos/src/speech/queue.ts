@@ -13,6 +13,8 @@ export interface SpeechItem {
 	isNamed?: boolean;
 	// The answer to what the developer just said.
 	isReply?: boolean;
+	// A session's own answer to the developer: heard to the end, it keeps their conversation going.
+	isAnswer?: boolean;
 	isAsking?: boolean;
 	// A line the developer is waiting for (a report, the session's own line): never replaced.
 	isOwed?: boolean;
@@ -82,7 +84,30 @@ export const enqueue = (queue: SpeechQueue, item: SpeechItem): Enqueued => {
 	};
 };
 
-export const takeNextItem = (queue: SpeechQueue, now: number): TakenItem => {
+interface TakeNextItemParams {
+	now: number;
+	// The session the developer is talking with: its lines, and Voice OS's word that they went there,
+	// come before older lines from anyone else — never before an alert.
+	exchangeRef: string | null;
+}
+
+const isExchangeLine = (item: SpeechItem, exchangeRef: string | null): boolean =>
+	Boolean(item.isAck) ||
+	(item.source === 'kernel' && Boolean(item.isReply)) ||
+	(exchangeRef !== null && item.ref === exchangeRef);
+
+const rankFor = (item: SpeechItem, exchangeRef: string | null): number => {
+	if (item.priority === 'alert') {
+		return 0;
+	}
+
+	return isExchangeLine(item, exchangeRef) ? 1 : 1 + PRIORITY_RANK[item.priority];
+};
+
+export const takeNextItem = (
+	queue: SpeechQueue,
+	{ now, exchangeRef }: TakeNextItemParams,
+): TakenItem => {
 	const fresh = queue.items.filter((queued) => {
 		if (queued.priority === 'low') {
 			return now - queued.at <= LOW_TTL_MS;
@@ -94,9 +119,13 @@ export const takeNextItem = (queue: SpeechQueue, now: number): TakenItem => {
 
 		return true;
 	});
-	const [item = null, ...rest] = fresh;
+	const ordered = [...fresh].sort(
+		(first, second) =>
+			rankFor(first, exchangeRef) - rankFor(second, exchangeRef) || first.at - second.at,
+	);
+	const [item = null] = ordered;
 
-	return { item, queue: { ...queue, items: rest } };
+	return { item, queue: { ...queue, items: fresh.filter((queued) => queued !== item) } };
 };
 
 interface DropQueuedParams {
@@ -108,11 +137,6 @@ export const dropQueued = (queue: SpeechQueue, { ref, before }: DropQueuedParams
 	...queue,
 	// Owed ones too: the developer moved on before hearing them.
 	items: queue.items.filter((queued) => queued.ref !== ref || queued.at >= before),
-});
-
-export const clearQueueForTalk = (queue: SpeechQueue): SpeechQueue => ({
-	...queue,
-	items: queue.items.filter((queued) => PRIORITY_RANK[queued.priority] <= PRIORITY_RANK.high),
 });
 
 export const setMuted = (queue: SpeechQueue, isMuted: boolean): SpeechQueue => ({
