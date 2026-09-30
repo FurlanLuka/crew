@@ -19,6 +19,17 @@ describe('readSpokenTag', () => {
 		expect(readSpokenTag('<spoken>Three timeouts in the')).toBeNull();
 	});
 
+	it('a line ending in "?" without asks → asking; a question mid-line is not', () => {
+		expect(readSpokenTag('<spoken>Done. Should I push it?</spoken>')).toEqual({
+			text: 'Done. Should I push it?',
+			isAsking: true,
+		});
+		expect(readSpokenTag('<spoken>Why did it fail? A stale lockfile.</spoken>')).toEqual({
+			text: 'Why did it fail? A stale lockfile.',
+			isAsking: false,
+		});
+	});
+
 	it('a tag quoted further down is just text, never said', () =>
 		expect(
 			readSpokenTag('Open each reply with `<spoken>…</spoken>`, like <spoken>this</spoken>.'),

@@ -1,4 +1,4 @@
-import { cleanSpokenText } from '../shared/spoken.js';
+import { cleanSessionLine, cleanSpokenText } from '../shared/spoken.js';
 import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
@@ -137,7 +137,7 @@ interface DescribeHeldLineParams {
 
 export const describeHeldLine = ({ text, missed, isWorking }: DescribeHeldLineParams): string => {
 	// Heard on arrival: a line from work still under way is not its result.
-	const line = cleanSpokenText(text).replace(/[.!?]*$/, '');
+	const line = cleanSessionLine(text).replace(/[.!?]*$/, '');
 	const ending = isWorking ? ' — still working.' : '.';
 
 	return `${line}${ending}${describeMissed(missed)}`;

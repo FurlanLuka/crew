@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, jest } from 'bun:test';
-import type { SpeechMessage } from '../shared/protocol.js';
+import type { SpeechMessage, View } from '../shared/protocol.js';
 import { Store } from '../state/store.js';
 import type { SynthesizeParams } from './tts.js';
-import { REMINDER_MS, VoiceOut } from './voice-out.js';
+import type { Effect } from '../state/reducer.js';
+import { MAX_REMINDERS, REMINDER_MS, VoiceOut } from './voice-out.js';
 
 type PendingClip = SynthesizeParams & { finish: () => void; fail: (error: Error) => void };
 
@@ -17,8 +18,10 @@ const createHarness = ({ delivered = true, tab = 'tab-a' }: CreateHarnessParams 
 		type: 'worktrees',
 		worktrees: [
 			{ ref: 'store/main', label: 'store/main', branch: '', cwd: '/w', dirs: [], isPinned: false },
+			{ ref: 'store/wrk1', label: 'store/wrk1', branch: '', cwd: '/w1', dirs: [], isPinned: false },
 		],
 	});
+	let hasPage = true;
 	const sent: { tab: string; message: SpeechMessage }[] = [];
 	const clips: PendingClip[] = [];
 	let now = 0;
@@ -36,6 +39,7 @@ const createHarness = ({ delivered = true, tab = 'tab-a' }: CreateHarnessParams 
 			return delivered;
 		},
 		speaker: () => speaker,
+		hasPage: () => hasPage,
 		now: () => now,
 	});
 	const listSynthesized = () => clips.map((clip) => clip.text);
@@ -61,6 +65,9 @@ const createHarness = ({ delivered = true, tab = 'tab-a' }: CreateHarnessParams 
 		},
 		setSpeaker: (nextSpeaker: string | null) => {
 			speaker = nextSpeaker;
+		},
+		setHasPage: (isOpen: boolean) => {
+			hasPage = isOpen;
 		},
 	};
 };
@@ -879,5 +886,214 @@ describe('VoiceOut', () => {
 			id: harness.getLastClip().id,
 			hasChime: true,
 		});
+	});
+});
+
+describe('VoiceOut, a click away from the session whose line plays', () => {
+	const LONG =
+		'The router refactor is done, the tests pass, and the branch is pushed for review now.';
+
+	interface PlayParams {
+		source?: 'narrator' | 'kernel' | 'alert';
+		isAsking?: boolean;
+	}
+
+	const playOnScreen = async ({ source = 'narrator', isAsking = false }: PlayParams = {}) => {
+		const harness = createHarness();
+		const effects: Effect[] = [];
+		harness.store.onEffect((effect) => {
+			effects.push(effect);
+		});
+		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/main' } });
+		harness.voiceOut.say({
+			text: LONG,
+			priority: 'high',
+			ref: 'store/main',
+			source,
+			isNamed: true,
+			isOwed: true,
+			isHoldable: true,
+			isAsking,
+		});
+		await flush();
+
+		return { ...harness, effects };
+	};
+
+	const leaveFor = async (harness: Awaited<ReturnType<typeof playOnScreen>>, view: View) => {
+		harness.store.dispatch({ type: 'switch_view', view });
+		await flush();
+	};
+
+	it('to another session → the line is cut and held; back there → replayed', async () => {
+		const harness = await playOnScreen();
+		await leaveFor(harness, { kind: 'session', ref: 'store/wrk1' });
+
+		expect(harness.listSentKinds().at(-1)).toBe(`tab-a:cancel:${harness.clips[0]?.id}`);
+		expect(harness.store.state.spoken.at(-1)).toMatchObject({ ref: 'store/main', isCut: true });
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
+			kind: 'line',
+			text: LONG,
+		});
+
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/main' } });
+
+		expect(harness.effects.at(-1)).toMatchObject({ type: 'speak', text: LONG, ref: 'store/main' });
+		expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
+	});
+
+	it('to another session, its own session stopped meanwhile → the line is cut and not held', async () => {
+		const harness = await playOnScreen();
+		harness.store.dispatch({ type: 'stop_session', ref: 'store/main' });
+		await leaveFor(harness, { kind: 'session', ref: 'store/wrk1' });
+
+		expect(harness.listSentKinds().at(-1)).toBe(`tab-a:cancel:${harness.clips[0]?.id}`);
+		expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
+	});
+
+	it('the switch alone, before its dispatch returns → nothing cut yet: the page sees the switch first', async () => {
+		const harness = await playOnScreen();
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } });
+
+		expect(harness.listSentKinds().some((kind) => kind.includes('cancel'))).toBe(false);
+
+		await flush();
+
+		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: LONG });
+	});
+
+	it('to Mission Control → it plays on: lines are said there', async () => {
+		for (const view of [{ kind: 'grid' }, { kind: 'machines' }] satisfies View[]) {
+			const harness = await playOnScreen();
+			await leaveFor(harness, view);
+
+			expect(harness.listSentKinds().some((kind) => kind.includes('cancel'))).toBe(false);
+			expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
+		}
+	});
+
+	it('a Voice OS line, an alert, or a line that asks → it plays on', async () => {
+		for (const params of [
+			{ source: 'kernel' },
+			{ source: 'alert' },
+			{ isAsking: true },
+		] satisfies PlayParams[]) {
+			const harness = await playOnScreen(params);
+			await leaveFor(harness, { kind: 'session', ref: 'store/wrk1' });
+
+			expect(harness.listSentKinds().some((kind) => kind.includes('cancel'))).toBe(false);
+			expect(harness.store.state.sessions['store/main']?.heldLine).toBeNull();
+		}
+	});
+});
+
+describe('VoiceOut reminders', () => {
+	const openQuestion = (harness: ReturnType<typeof createHarness>, id: string) =>
+		harness.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id,
+				ref: 'store/main',
+				at: 0,
+				kind: 'question',
+				input: {},
+				questions: [{ question: 'Postgres or SQLite?', multiSelect: false, options: [] }],
+			},
+		});
+
+	const remindAfterInterval = async (
+		harness: ReturnType<typeof createHarness>,
+		state = harness.store.state,
+	) => {
+		harness.tick(REMINDER_MS + 1);
+		harness.voiceOut.remind(state);
+		await flush();
+
+		for (const clip of harness.clips) {
+			harness.voiceOut.clipDone(clip.id);
+		}
+	};
+
+	const countReminders = (harness: ReturnType<typeof createHarness>) =>
+		harness.listSynthesized().filter((text) => text.includes('still needs you')).length;
+
+	it(`one ask left waiting → reminded ${MAX_REMINDERS} times, then no more`, async () => {
+		const harness = createHarness();
+		openQuestion(harness, 'q1');
+		harness.voiceOut.remind(harness.store.state);
+
+		for (let tick = 0; tick < MAX_REMINDERS + 3; tick++) {
+			await remindAfterInterval(harness);
+		}
+
+		expect(countReminders(harness)).toBe(MAX_REMINDERS);
+	});
+
+	it('a new ask → its own reminders', async () => {
+		const harness = createHarness();
+		openQuestion(harness, 'q1');
+		harness.voiceOut.remind(harness.store.state);
+
+		for (let tick = 0; tick < MAX_REMINDERS + 1; tick++) {
+			await remindAfterInterval(harness);
+		}
+
+		harness.store.dispatch({ type: 'ask_closed', askId: 'q1' });
+		openQuestion(harness, 'q2');
+		await remindAfterInterval(harness);
+
+		expect(countReminders(harness)).toBe(MAX_REMINDERS + 1);
+	});
+
+	// A line that asked with no ask behind it waits through needsUser: keyed by when it asked.
+	const waitingOnLine = (harness: ReturnType<typeof createHarness>, at: number) => {
+		const { state } = harness.store;
+		const session = state.sessions['store/main']!;
+
+		return {
+			...state,
+			sessions: {
+				...state.sessions,
+				'store/main': { ...session, needsUser: { text: 'Postgres or SQLite?', at } },
+			},
+		};
+	};
+
+	it(`a line left waiting with no ask → reminded ${MAX_REMINDERS} times; it asks again → one more`, async () => {
+		const harness = createHarness();
+		const asked = waitingOnLine(harness, 1);
+		harness.voiceOut.remind(asked);
+
+		for (let tick = 0; tick < MAX_REMINDERS + 2; tick++) {
+			await remindAfterInterval(harness, asked);
+		}
+
+		expect(countReminders(harness)).toBe(MAX_REMINDERS);
+
+		await remindAfterInterval(harness, waitingOnLine(harness, 2));
+
+		expect(countReminders(harness)).toBe(MAX_REMINDERS + 1);
+	});
+
+	it('no page open → nothing said and nothing counted; a page opens → reminded', async () => {
+		const harness = createHarness();
+		openQuestion(harness, 'q1');
+		harness.voiceOut.remind(harness.store.state);
+		harness.setHasPage(false);
+
+		for (let tick = 0; tick < MAX_REMINDERS + 2; tick++) {
+			await remindAfterInterval(harness);
+		}
+
+		expect(countReminders(harness)).toBe(0);
+
+		harness.setHasPage(true);
+
+		for (let tick = 0; tick < MAX_REMINDERS + 1; tick++) {
+			await remindAfterInterval(harness);
+		}
+
+		expect(countReminders(harness)).toBe(MAX_REMINDERS);
 	});
 });

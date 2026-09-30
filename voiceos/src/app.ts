@@ -106,6 +106,7 @@ const voiceOut = new VoiceOut({
 	synthesize: tts?.synthesize ?? null,
 	play: (tab, message) => gateway?.send(tab, message) ?? false,
 	speaker: () => speaker,
+	hasPage: () => (gateway?.countClients() ?? 0) > 0,
 });
 const narrate = createNarrator(keys.anthropic);
 

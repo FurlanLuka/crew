@@ -28,6 +28,8 @@ import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } fro
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
+import { isClarifyingQuestion } from './answer.js';
+import type { QuestionAsk } from '../shared/questions.js';
 
 // What every instruction carries to the reducer, which says the situation line when there is one.
 const INSTRUCTION_ACK = { kind: 'instruction' } as const;
@@ -1320,8 +1322,24 @@ describe('queued_message', () => {
 		return context;
 	};
 
+	const withOneQueued = (lastSpoken: string | null) => {
+		const context = withQueue(lastSpoken);
+		const state = context.tools.getState();
+		const session = state.sessions['store-front/main']!;
+		// Voice OS's own retry is not the developer's: it never makes "now" mean all of them.
+		state.sessions['store-front/main'] = {
+			...session,
+			queue: [
+				session.queue[0]!,
+				{ id: 'r1', text: 'The user allows this once: retry "x" now.', at: 3, isRetry: true },
+			],
+		};
+
+		return context;
+	};
+
 	it("the developer's last words when they wait there, else the newest; now or drop", async () => {
-		const spoken = withQueue('q1');
+		const spoken = withOneQueued('q1');
 		const newest = withQueue(null);
 
 		await executeTool('queued_message', { ref: 'store-front/main', action: 'now' }, spoken.tools);
@@ -1333,9 +1351,25 @@ describe('queued_message', () => {
 		expect(newest.actions).toEqual([{ type: 'take_back', ref: 'store-front/main', id: 'q2' }]);
 	});
 
+	it('"send both now" with two of theirs waiting, the carrier second → all of them, as one, and the count said', async () => {
+		const context = withQueue('q2');
+		const result = await executeTool(
+			'queued_message',
+			{ ref: 'store-front/main', action: 'now' },
+			context.tools,
+		);
+
+		expect(context.actions).toEqual([{ type: 'promote_all_queued', ref: 'store-front/main' }]);
+		expect(result).toMatchObject({
+			ok: true,
+			content:
+				'store-front/main stops its current work and takes all 2 queued messages now, as one',
+		});
+	});
+
 	it('last words said to another session → the newest queued; already delivered here → nothing sent now', async () => {
 		const gone = withQueue('q-gone');
-		const elsewhere = withQueue(null);
+		const elsewhere = withOneQueued(null);
 		elsewhere.tools.getState().lastSpokenSend = {
 			ref: 'checkout-api/main',
 			id: 'q1',
@@ -1354,7 +1388,7 @@ describe('queued_message', () => {
 		);
 
 		expect([...gone.actions, ...elsewhere.actions]).toEqual([
-			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q2' },
+			{ type: 'promote_queued', ref: 'store-front/main', queuedId: 'q1' },
 		]);
 	});
 
@@ -2610,6 +2644,33 @@ describe('side answers', () => {
 		expect(actions[0]).toMatchObject({ aside: true });
 	});
 
+	it('"ask it right now: …" to a working session → sent with isNow, and the result says it stops for them', async () => {
+		const { tools, actions } = running();
+		const result = await executeTool(
+			'forward',
+			{ text: 'Why is the build red?', kind: 'question' },
+			{
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: 'ask it right now, why is the build red?',
+			},
+		);
+
+		expect(actions).toEqual([
+			{
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'Why is the build red?',
+				ack: { kind: 'question' },
+				isNow: true,
+			},
+		]);
+		expect(result).toMatchObject({
+			ok: true,
+			content: 'sent to store-front/main: it stops its current work and takes these words now',
+		});
+	});
+
 	it('a question to an idle session → sent, not aside', async () => {
 		const { tools, actions } = createToolContext();
 
@@ -3523,4 +3584,255 @@ describe('open_doc', () => {
 			}),
 		).toMatchObject({ docs: ['Checkout plan', 'Retry risks'] });
 	});
+});
+
+describe('words that ask about a waiting question', () => {
+	const REF = 'store-front/main';
+	const question: PendingAsk = {
+		id: 'q9',
+		ref: REF,
+		at: 1,
+		kind: 'question',
+		input: {},
+		questions: [
+			{
+				question: 'Which database?',
+				multiSelect: false,
+				options: [{ label: 'Postgres' }, { label: 'SQLite' }],
+			},
+		],
+	};
+
+	const blockedOn = (ask: PendingAsk) => {
+		const base = createToolContext().tools.getState();
+
+		return createToolContext({
+			asks: [ask],
+			sessions: { ...base.sessions, [REF]: { ...base.sessions[REF]!, status: 'blocked' } },
+		});
+	};
+
+	const choose = async (utterance: string, text = 'SQLite') => {
+		const { tools, actions } = blockedOn(question);
+		const result = await executeTool(
+			'answer',
+			{ ref: REF, decision: 'choose', text },
+			{ ...tools, asks: [question], forwardTo: REF, utterance },
+		);
+
+		return { result, actions };
+	};
+
+	it('"what does option two do?" chosen → forwarded as a question, which withdraws it', async () => {
+		const { result, actions } = await choose('What does option two do?');
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: REF, text: 'What does option two do?', aside: true },
+		]);
+		expect(result.content).toContain('withdrawn');
+		expect(result.recordAs).toEqual({
+			name: 'forward',
+			input: { text: 'What does option two do?', kind: 'question' },
+		});
+	});
+
+	it.each([
+		['The second?', 'SQLite'],
+		['Postgres?', 'Postgres'],
+		['Option two?', 'SQLite'],
+		['SQLite.', 'SQLite'],
+	])('%p chosen → still the pick', async (utterance, text) => {
+		const { actions } = await choose(utterance, text);
+
+		expect(actions).toEqual([
+			{
+				type: 'answer_question',
+				askId: 'q9',
+				answers: { 'Which database?': text },
+				isSpoken: true,
+			},
+		]);
+	});
+
+	const labelled = (labels: string[]): QuestionAsk => ({
+		...(question as QuestionAsk),
+		questions: [
+			{
+				question: 'Which database?',
+				multiSelect: false,
+				options: labels.map((label) => ({ label })),
+			},
+		],
+	});
+
+	const isForwarded = (labels: string[], utterance: string) =>
+		isClarifyingQuestion(labelled(labels), utterance);
+
+	it.each([
+		[['Postgres (Recommended)', 'SQLite'], 'Postgres?'],
+		[['Use Postgres', 'Use SQLite'], 'Postgres?'],
+		[['Postgres', 'SQLite'], 'use Postgres?'],
+		[['Postgres', 'SQLite'], 'Postgres?"'],
+		[['Postgres', 'SQLite'], 'the second one?'],
+		[['Postgres', 'Postgres + Redis'], 'Postgres?'],
+		[['Keep it', 'Keep both'], 'Keep it?'],
+		[['Do one', 'Do both'], 'Do both?'],
+	])('labels %p, %p said → a pick, not forwarded', (labels, utterance) =>
+		expect(isForwarded(labels, utterance)).toBe(false),
+	);
+
+	it.each([
+		[['Postgres (Recommended)', 'SQLite'], 'what does option two do?'],
+		[['Postgres (Recommended)', 'SQLite'], "what's the difference between Postgres and SQLite?"],
+		[['Postgres', 'SQLite'], 'Postgres or SQLite?'],
+		[['Postgres', 'SQLite'], 'why Postgres?'],
+		[['Postgres', 'SQLite'], 'would Postgres handle the nightly import load?'],
+	])('labels %p, %p said → a question, forwarded', (labels, utterance) =>
+		expect(isForwarded(labels, utterance)).toBe(true),
+	);
+
+	it('"Postgres?" chosen with the label "Postgres (Recommended)" → the pick, the label answered', async () => {
+		const recommended = labelled(['Postgres (Recommended)', 'SQLite']);
+		const { tools, actions } = blockedOn(recommended);
+
+		await executeTool(
+			'answer',
+			{ ref: REF, decision: 'choose', text: 'Postgres (Recommended)' },
+			{ ...tools, asks: [recommended], forwardTo: REF, utterance: 'Postgres?' },
+		);
+
+		expect(actions).toEqual([
+			{
+				type: 'answer_question',
+				askId: 'q9',
+				answers: { 'Which database?': 'Postgres (Recommended)' },
+				isSpoken: true,
+			},
+		]);
+	});
+
+	it('a plan or permission asked about with choose → refused as before, nothing forwarded', async () => {
+		const plan: PendingAsk = { id: 'l9', ref: REF, at: 1, kind: 'plan', input: {}, plan: 'x' };
+		const permission: PendingAsk = {
+			id: 'p9',
+			ref: REF,
+			at: 1,
+			kind: 'permission',
+			toolName: 'Bash',
+			summary: 'run git push',
+			input: {},
+			suggestions: [],
+		};
+
+		for (const ask of [plan, permission]) {
+			const { tools, actions } = blockedOn(ask);
+			const result = await executeTool(
+				'answer',
+				{ ref: REF, decision: 'choose', text: 'x' },
+				{ ...tools, asks: [ask], forwardTo: REF, utterance: 'What does step two do?' },
+			);
+
+			expect(result.ok).toBe(false);
+			expect(actions).toEqual([]);
+		}
+	});
+
+	it('a question forwarded while a question waits → the result says it is withdrawn; a plan → asked aside', async () => {
+		const plan: PendingAsk = { id: 'l9', ref: REF, at: 1, kind: 'plan', input: {}, plan: 'x' };
+
+		const forward = async (ask: PendingAsk) => {
+			const { tools } = blockedOn(ask);
+
+			return executeTool(
+				'forward',
+				{ text: 'Why SQLite?', kind: 'question' },
+				{ ...tools, asks: [ask], forwardTo: REF, utterance: 'Why SQLite?' },
+			);
+		};
+
+		expect(await forward(question)).toMatchObject({ ok: true, note: 'question withdrawn' });
+		expect((await forward(question)).content).toContain('withdrawn');
+		expect(await forward(plan)).toMatchObject({ ok: true, note: 'aside' });
+	});
+});
+
+describe('a question rewritten into a command', () => {
+	const REF = 'store-front/main';
+	const state = createToolContext().tools.getState();
+	const prepare = (text: string, isContinuation = false) =>
+		prepareSentText({
+			state,
+			ref: REF,
+			text,
+			utterance: 'Does the router still drop the header?',
+			isOnlySend: true,
+			isContinuation,
+		});
+
+	it('the rewrite dropped the "?" → the words as said', () =>
+		expect(prepare('Check whether the router drops the header.')).toBe(
+			'Does the router still drop the header?',
+		));
+
+	it('a rewrite that still asks → kept', () =>
+		expect(prepare('Does the router drop the header?')).toBe('Does the router drop the header?'));
+
+	it('a continuation, whose text joins two utterances → untouched', () =>
+		expect(prepare('Fix the proxy. Check whether the router drops the header.', true)).toBe(
+			'Fix the proxy. Check whether the router drops the header.',
+		));
+});
+
+describe('a debug note said to a session', () => {
+	const REF = 'store-front/main';
+
+	it.each([
+		'Add a debug note: the reply was cut mid-sentence.',
+		'Okay, take a debug note that it read every option.',
+		'Can you make a debugnote about the double reply?',
+	])('%p forwarded → refused as debug_note, nothing sent', async (utterance) => {
+		const { tools, actions } = createToolContext();
+		const result = await executeTool(
+			'forward',
+			{ text: 'The reply was cut mid-sentence.' },
+			{ ...tools, forwardTo: REF, utterance },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('debug_note');
+		expect(actions).toEqual([]);
+	});
+
+	it('through answer, to a session that asked → refused the same way', async () => {
+		const base = createToolContext().tools.getState();
+		const { tools, actions } = createToolContext({
+			sessions: {
+				...base.sessions,
+				[REF]: { ...base.sessions[REF]!, needsUser: { text: 'asks: ship it?', at: 0 } },
+			},
+		});
+		const result = await executeTool(
+			'answer',
+			{ ref: REF, decision: 'yes', text: '' },
+			{ ...tools, forwardTo: REF, utterance: 'Add a debug note: it asked twice.' },
+		);
+
+		expect(result.content).toContain('debug_note');
+		expect(actions).toEqual([]);
+	});
+
+	it.each(['Can you read the debug notes?', 'What does the debug note say?'])(
+		'%p → forwarded: talk about debug notes is work for the session',
+		async (utterance) => {
+			const { tools, actions } = createToolContext();
+			const result = await executeTool(
+				'forward',
+				{ text: utterance },
+				{ ...tools, forwardTo: REF, utterance },
+			);
+
+			expect(result.ok).toBe(true);
+			expect(actions).toHaveLength(1);
+		},
+	);
 });

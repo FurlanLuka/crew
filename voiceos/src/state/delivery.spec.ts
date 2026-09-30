@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Input, PendingAsk, SessionStatus, State } from '../shared/protocol.js';
 import type { SendAck } from '../shared/ack.js';
 import type { Effect } from './reducer.js';
-import { decideDelivery } from './delivery.js';
+import { decideDelivery, type Delivery } from './delivery.js';
 import {
 	idleSession,
 	permissionAsk,
@@ -13,7 +13,7 @@ import {
 } from '../../test/support/reduce.js';
 
 describe('decideDelivery', () => {
-	it.each<[SessionStatus, 'question' | 'instruction' | undefined, string, 'send' | 'aside']>([
+	it.each<[SessionStatus, 'question' | 'instruction' | undefined, string, Delivery]>([
 		['running', 'question', 'which file did you change?', 'aside'],
 		['running', 'instruction', 'also run the linter', 'send'],
 		['running', undefined, 'which file did you change?', 'send'],
@@ -29,6 +29,25 @@ describe('decideDelivery', () => {
 		['blocked', 'instruction', 'use the new table instead', 'send'],
 		['starting', 'question', 'which file?', 'send'],
 		['stopped', 'question', 'btw which file?', 'send'],
+		['running', 'instruction', 'ask it right now: why is the build red', 'now'],
+		['running', 'question', 'ask it right now, why is the build red?', 'now'],
+		['running', 'instruction', 'tell it directly to drop the cache layer', 'now'],
+		['running', 'instruction', 'send this to it immediately: use the new table', 'now'],
+		['running', 'instruction', 'by the way, send it right now: use the new table', 'aside'],
+		['running', 'instruction', 'queue it, not right now: use the new table', 'send'],
+		['running', 'question', 'is it running right now?', 'aside'],
+		['running', 'instruction', 'fix it directly in the parser', 'send'],
+		['running', 'instruction', 'send it now', 'send'],
+		['blocked', 'question', 'ask it right now: why step 3?', 'aside'],
+		['idle', 'instruction', 'ask it right now: why is the build red', 'send'],
+		['stopped', 'instruction', 'ask it right now: why is the build red', 'send'],
+		['running', 'instruction', 'send it now: use the new table', 'now'],
+		['running', 'question', 'ask it now whether the migration ran', 'now'],
+		['running', 'instruction', 'tell them the build now passes', 'send'],
+		['running', 'instruction', 'tell it that now we use Postgres', 'send'],
+		['running', 'question', 'ask it why tests fail now', 'aside'],
+		['running', 'question', 'ask it why tests fail right now', 'aside'],
+		['running', 'instruction', 'tell it that right now the tests are red', 'send'],
 	])('%s, %s, %p → %s', (status, kind, utterance, delivery) =>
 		expect(decideDelivery({ status, kind, utterance })).toBe(delivery),
 	);
@@ -575,5 +594,152 @@ describe('promote_queued', () => {
 		expect(effects).toEqual([{ type: 'worker_start', ref: REF }]);
 		expect(unknown.state.sessions[REF]).toEqual(stopped.sessions[REF]);
 		expect(unknown.effects).toEqual([]);
+	});
+});
+
+describe('send said to go right now', () => {
+	const now: Input = {
+		type: 'send',
+		ref: REF,
+		text: 'why is the build red?',
+		ack: { kind: 'question' },
+		isNow: true,
+	};
+
+	it('while it works → the running turn is replaced, not queued behind', () => {
+		const { state, effects } = run([now], { start: runningSession() });
+
+		expect(effects).toContainEqual({ type: 'worker_interrupt', ref: REF, reason: 'follow-up' });
+		expect(state.sessions[REF]?.queue).toEqual([
+			expect.objectContaining({ text: 'why is the build red?', isFollowUp: true }),
+		]);
+		expect(state.asks).toEqual([]);
+	});
+
+	it('idle → sent at once, as any words', () => {
+		const { state, effects } = run([now], { start: idleSession() });
+
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'worker_send', ref: REF, text: 'why is the build red?' }),
+		);
+		expect(state.sessions[REF]?.queue).toEqual([]);
+	});
+
+	it('stopped → queued and the session started, as any words', () => {
+		const stopped = run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
+		const { state, effects } = run([now], { start: stopped });
+
+		expect(effects).toContainEqual({ type: 'worker_start', ref: REF });
+		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual([
+			'why is the build red?',
+		]);
+	});
+});
+
+describe('promote_all_queued', () => {
+	const send = (text: string, note?: string): Input => ({
+		type: 'send',
+		ref: REF,
+		text,
+		ack: { kind: 'instruction' },
+		isSpoken: true,
+		...(note ? { note } : {}),
+	});
+	const twoQueued = () =>
+		run([send('use proxy pair', 'note one'), send('then the tests', 'note two')], {
+			start: runningSession(),
+		}).state;
+	const promoteAll: Input = { type: 'promote_all_queued', ref: REF };
+
+	it('while it works → both, in order, cut the work as one follow-up with both notes, owed', () => {
+		const start = twoQueued();
+		const firstId = start.sessions[REF]?.queue[0]?.id;
+		const { state, effects } = run([promoteAll], { start });
+
+		expect(effects).toEqual([{ type: 'worker_interrupt', ref: REF, reason: 'follow-up' }]);
+		expect(state.sessions[REF]?.queue).toEqual([
+			{
+				id: firstId ?? '',
+				text: 'use proxy pair\n\nthen the tests',
+				at: expect.any(Number),
+				isFollowUp: true,
+				note: 'note one\n\nnote two',
+				reportOwed: true,
+			},
+		]);
+	});
+
+	it('idle with words waiting → merged at the front, in order', () => {
+		const start = idleSession();
+		const session = start.sessions[REF]!;
+		const waiting: State = {
+			...start,
+			sessions: {
+				...start.sessions,
+				[REF]: {
+					...session,
+					queue: [
+						{ id: 'q1', text: 'use proxy pair', at: 1 },
+						{ id: 'q2', text: 'then the tests', at: 2 },
+					],
+				},
+			},
+		};
+		const { state, effects } = run([promoteAll], { start: waiting });
+
+		expect(effects).toEqual([]);
+		expect(state.sessions[REF]?.queue).toEqual([
+			{ id: 'q1', text: 'use proxy pair\n\nthen the tests', at: 1 },
+		]);
+	});
+
+	it("stopped, with Voice OS's own retry between them → theirs merged first and started; the retry stays queued", () => {
+		const stopped = run([{ type: 'worker_exited', ref: REF, error: 'exit 1' }], {
+			start: twoQueued(),
+		}).state;
+		const [first, second] = stopped.sessions[REF]?.queue ?? [];
+		const retry = { id: 'r1', text: 'The user allows this once: retry "x" now.', at: 3 };
+		const withRetry: State = {
+			...stopped,
+			sessions: {
+				...stopped.sessions,
+				[REF]: {
+					...stopped.sessions[REF]!,
+					queue: [first!, { ...retry, isRetry: true }, second!],
+				},
+			},
+		};
+		const { state, effects } = run([promoteAll], { start: withRetry });
+
+		expect(effects).toEqual([{ type: 'worker_start', ref: REF }]);
+		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual([
+			'use proxy pair\n\nthen the tests',
+			retry.text,
+		]);
+	});
+
+	it('nothing of theirs waiting → nothing changes', () => {
+		const start = runningSession();
+		const { state, effects } = run([promoteAll], { start });
+
+		expect(effects).toEqual([]);
+		expect(state.sessions[REF]).toEqual(start.sessions[REF]);
+	});
+
+	it('take that back after the merge → the merged words are taken back', () => {
+		const start = twoQueued();
+		const firstId = start.sessions[REF]?.queue[0]?.id;
+
+		expect(start.lastSpokenSend?.id).toBe(start.sessions[REF]?.queue[1]?.id ?? '');
+
+		const merged = run([promoteAll], { start }).state;
+
+		expect(merged.lastSpokenSend?.id).toBe(firstId ?? '');
+
+		const { state } = run([{ type: 'take_back', ref: REF, id: merged.lastSpokenSend?.id ?? '' }], {
+			start: merged,
+		});
+
+		expect(state.sessions[REF]?.queue).toEqual([]);
 	});
 });

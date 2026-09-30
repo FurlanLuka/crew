@@ -54,6 +54,9 @@ export const prefixSessionName = (label: string, text: string): string => {
 // Hands-free keeps these as the developer's even right after Voice OS said them, and lets them cut speech.
 export const STANDALONE_WORDS = new Set(['stop', 'wait', 'cancel', 'halt', 'abort', 'no', 'yes']);
 
+// A question read aloud or typed often closes on its quote or bracket: 'asks "which one?"'.
+export const endsInQuestion = (text: string): boolean => /\?["'”’)\]]*$/.test(text.trim());
+
 export const INTERRUPT_PATTERN = /^(stop|stop it|cancel|cancel that|halt|abort|hold on|wait)$/;
 
 export const normalizeUtterance = (text: string): string =>
@@ -87,4 +90,23 @@ export const cleanSpokenText = (text: string, maxWords = 70): string => {
 		.filter((word) => word && !isFilePath(word));
 
 	return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}…` : words.join(' ');
+};
+
+const SESSION_LINE_MAX_WORDS = 200;
+// Greedy: the last sentence end in the text, so the cut keeps every whole sentence before it.
+const THROUGH_LAST_SENTENCE_PATTERN = /^.*[.!?]["')\]]*(?=\s|$)/s;
+
+export const cleanSessionLine = (text: string): string => {
+	// The session wrote its line to be heard: cut at a word cap it loses its closing question. Only
+	// a runaway is cut, and at a sentence end when there is one.
+	const cleaned = cleanSpokenText(text, Number.POSITIVE_INFINITY);
+	const words = cleaned.split(' ');
+
+	if (words.length <= SESSION_LINE_MAX_WORDS) {
+		return cleaned;
+	}
+
+	const head = words.slice(0, SESSION_LINE_MAX_WORDS).join(' ');
+
+	return THROUGH_LAST_SENTENCE_PATTERN.exec(head)?.[0] ?? `${head}…`;
 };

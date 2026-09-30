@@ -54,6 +54,8 @@ export interface QueuedMessage {
 	isSpoken?: true;
 	// An instruction: the turn that handles it must be reported aloud.
 	reportOwed?: true;
+	// Voice OS's own words (a denied call's retry), not the developer's: "send them all now" leaves it.
+	isRetry?: true;
 }
 
 export interface QuestionOption {
@@ -334,10 +336,14 @@ export type Action =
 			// rest is what to send when those already ran their course.
 			// isAside: the new part alone would be asked aside (when the first half already ran).
 			continues?: { rest: string; isAside?: boolean };
+			// Set by the kernel: the developer said to send these right now, so they replace the running turn.
+			isNow?: boolean;
 	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	// "I want it now" (or the page's button): the queued words cut the running work and go first.
 	| { type: 'promote_queued'; ref: string; queuedId: string }
+	// "Send both now": every queued message of the developer's goes now, merged into one, in order.
+	| { type: 'promote_all_queued'; ref: string }
 	// Set by the kernel: the developer takes back words not yet acted on (queued, asked aside, held).
 	| { type: 'take_back'; ref: string; id: string }
 	// Set by the kernel: the developer heard a held line another way (asked about that session by name).

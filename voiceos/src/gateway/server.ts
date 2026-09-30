@@ -32,6 +32,7 @@ export interface Gateway {
 	port: number;
 	broadcast: (message: ServerMessage) => void;
 	send: (client: string, message: ServerMessage) => boolean;
+	countClients: () => number;
 	stop: () => void;
 }
 
@@ -203,6 +204,7 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 
 			return true;
 		},
+		countClients: () => clients.size,
 		stop: () => {
 			unsubscribe();
 			server.stop(true);

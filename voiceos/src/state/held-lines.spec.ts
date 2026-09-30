@@ -16,6 +16,8 @@ import {
 
 const LONG =
 	'The notes panel is built, the reviewers signed off, and it is committed on the voice-os branch.';
+// 105 words, its question last: past the word cap narrator summaries keep.
+const LONG_ASKING_LINE = `${'The parser now handles nested quotes and escaped brackets correctly everywhere. '.repeat(9).trim()} Should I push the branch now?`;
 const tagged = (text: string, isAsking = false): Input => ({
 	type: 'assistant_text',
 	ref: REF,
@@ -77,6 +79,11 @@ describe('the words', () => {
 			'Done. Two earlier updates are on the page.',
 		);
 	});
+
+	it('a held 105-word line → replayed whole, its closing question kept', () =>
+		expect(describeHeldLine({ text: LONG_ASKING_LINE, missed: 0, isWorking: false })).toBe(
+			`${LONG_ASKING_LINE.replace(/\?$/, '')}.`,
+		));
 });
 
 describe('held while the developer looks elsewhere', () => {
@@ -352,6 +359,43 @@ describe('a question or plan the session already asked in its own line', () => {
 			expect(state.sessions[REF]?.status).toBe('blocked');
 			expect(state.spoken.at(-1)).toMatchObject({ text: ASKED, isAsking: true });
 		}
+	});
+
+	it('a long line that asked, heard just before the question opens → not asked again', () => {
+		const heardLong: Input = {
+			type: 'spoken',
+			text: LONG_ASKING_LINE,
+			source: 'narrator',
+			ref: REF,
+		};
+		const start = run([tagged(LONG_ASKING_LINE, true), heardLong], {
+			start: onScreen(runningSession()),
+		}).state;
+		const { effects } = open(question(), start);
+
+		expect(said(effects)).toEqual([]);
+	});
+
+	it('a long line that asked, streamed in chunks, then heard just before the question opens → not asked again', () => {
+		const whole = `<spoken asks>${LONG_ASKING_LINE}</spoken>\nDetails.`;
+		const chunks = whole.match(/[\s\S]{1,40}/g) ?? [];
+		const heardLong: Input = {
+			type: 'spoken',
+			text: LONG_ASKING_LINE,
+			source: 'narrator',
+			ref: REF,
+		};
+		const start = run(
+			[
+				...chunks.map((text): Input => ({ type: 'text_delta', ref: REF, text })),
+				tagged(LONG_ASKING_LINE, true),
+				heardLong,
+			],
+			{ start: onScreen(runningSession()) },
+		).state;
+		const { effects } = open(question(), start);
+
+		expect(said(effects)).toEqual([]);
 	});
 
 	it('the session did something else after its line, or the line has not played yet → asked as always', () => {

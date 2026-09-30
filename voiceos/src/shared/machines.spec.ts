@@ -170,11 +170,9 @@ describe('listWaitingRefs', () => {
 		expect(listWaitingRefs(state, 'local')).toEqual(['store/wrk1']);
 	});
 
-	it('describeMachineWaiting names them, or says nothing waits', () => {
+	it('describeMachineWaiting names them, or says the machine name alone', () => {
 		expect(describeMachineWaiting(state, 'vm1')).toBe('vm1. store/main is waiting on you.');
-		expect(describeMachineWaiting({ ...state, asks: [] }, 'vm1')).toBe(
-			'vm1. Nothing is waiting on you.',
-		);
+		expect(describeMachineWaiting({ ...state, asks: [] }, 'vm1')).toBe('vm1.');
 	});
 });
 

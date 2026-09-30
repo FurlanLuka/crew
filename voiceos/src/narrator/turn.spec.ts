@@ -8,6 +8,9 @@ import type { Narration } from './prompt.js';
 import type { TopicInput } from './topic.js';
 import { createAsideNarrator, createTurnNarrator, settleOwedReport } from './turn.js';
 
+// 105 words, its question last: past the word cap narrator summaries keep.
+const LONG_ASKING_LINE = `${'The parser now handles nested quotes and escaped brackets correctly everywhere. '.repeat(9).trim()} Should I push the branch now?`;
+
 // What the topic writer returns; by default it keeps the topic it was given.
 type TopicReply = (input: TopicInput) => string | null;
 
@@ -289,6 +292,19 @@ describe('aside narrator', () => {
 		]);
 	});
 
+	it('a long tagged answer → said whole', async () => {
+		const harness = createAsideHarness('unused');
+
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'what changed?',
+			answer: `<spoken>${LONG_ASKING_LINE}</spoken>\nDetails.`,
+		});
+
+		expect(harness.lines.map((line) => line.text)).toEqual([LONG_ASKING_LINE]);
+	});
+
 	it('says the answer to the question, named, and never as a question to the developer', async () => {
 		const harness = createAsideHarness('The retry file.');
 
@@ -438,6 +454,34 @@ describe("turn narrator and the session's own line", () => {
 		expect(harness.spoken).toEqual(['Tests pass: all 40.']);
 		expect(harness.said).toEqual([{ priority: 'high', isOwed: true }]);
 		expect(harness.store.state.sessions['checkout-api/main']?.topic).toBe('Timeouts');
+	});
+
+	it('a long tagged final message → said whole, its closing question kept', async () => {
+		const harness = createHarness({
+			speak: true,
+			needs_user: false,
+			priority: 'normal',
+			text: 'x',
+			topic: null,
+		});
+		harness.store.dispatch({
+			type: 'switch_view',
+			view: { kind: 'session', ref: 'checkout-api/main' },
+		});
+
+		await harness.handle({
+			type: 'narrate',
+			ref: 'checkout-api/main',
+			text: `<spoken>${LONG_ASKING_LINE}</spoken>`,
+			asked: 'fix the parser',
+			isOwed: true,
+			spoken: tagged(LONG_ASKING_LINE, true),
+			isSpokenAlready: false,
+			isHeld: false,
+			hasBackgroundAgents: false,
+		});
+
+		expect(harness.spoken).toEqual([LONG_ASKING_LINE]);
 	});
 
 	it('a tagged question → the session waits on the developer', async () => {

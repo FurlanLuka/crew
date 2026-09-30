@@ -15,6 +15,7 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('send'), ref: refSchema, text: z.string().min(1).max(20_000) }),
 	z.object({ type: z.literal('cancel_queued'), ref: refSchema, queuedId: z.string() }),
 	z.object({ type: z.literal('promote_queued'), ref: refSchema, queuedId: z.string() }),
+	z.object({ type: z.literal('promote_all_queued'), ref: refSchema }),
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({

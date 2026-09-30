@@ -240,6 +240,7 @@ describe('parseClientMessage', () => {
 		remove_machine: { type: 'remove_machine', id: 'vm1' },
 		cancel_queued: { type: 'cancel_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_queued: { type: 'promote_queued', ref: 'store/main', queuedId: 'q1' },
+		promote_all_queued: { type: 'promote_all_queued', ref: 'store/main' },
 		take_back: { type: 'take_back', ref: 'store/main', id: 'q1' },
 		held_line_heard: { type: 'held_line_heard', ref: 'store/main', id: 'h1' },
 		answer_permission: {

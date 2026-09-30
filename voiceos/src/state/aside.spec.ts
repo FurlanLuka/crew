@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { REF, idleSession, permissionAsk, run, runningSession } from '../../test/support/reduce.js';
-import type { State, StreamItem } from '../shared/protocol.js';
+import type { PendingAsk, State, StreamItem } from '../shared/protocol.js';
 import { QUEUED_ASIDE_LINE, SENT_ASIDE_LINE } from './aside.js';
 
 const asidesOf = (state: State): Extract<StreamItem, { kind: 'aside' }>[] =>
@@ -197,6 +197,102 @@ describe('asking aside while a plan or permission waits', () => {
 		expect(effects).toContainEqual(
 			expect.objectContaining({ type: 'resolve_ask', askId: 'plan1' }),
 		);
+	});
+});
+
+describe('asking aside while a question waits', () => {
+	const questionAsk = (answers?: Record<string, string>): PendingAsk => ({
+		id: 'q1',
+		ref: REF,
+		at: 1,
+		kind: 'question',
+		input: {},
+		questions: [
+			{ question: 'Which table?', multiSelect: false, options: [{ label: 'New' }] },
+			{ question: 'Which index?', multiSelect: false, options: [{ label: 'Partial' }] },
+		],
+		...(answers ? { answers } : {}),
+	});
+	const waitingOn = (ask: PendingAsk): State =>
+		run([{ type: 'ask_opened', ask }], { start: runningSession() }).state;
+
+	it('a question about it → denied with the words, the ask gone, its line dropped, nothing aside', () => {
+		const { state, effects } = run(
+			[{ type: 'send', ref: REF, text: 'what does new do?', aside: true, isSpoken: true }],
+			{ start: waitingOn(questionAsk()), at: 5000 },
+		);
+
+		expect(state.asks).toEqual([]);
+		expect(asidesOf(state)).toEqual([]);
+		expect(state.sessions[REF]?.status).toBe('running');
+		expect(effects).toEqual([
+			{ type: 'drop_speech', ref: REF, before: 5000 },
+			{
+				type: 'resolve_ask',
+				ref: REF,
+				askId: 'q1',
+				result: {
+					behavior: 'deny',
+					message:
+						'The developer asked instead of choosing: "what does new do?". Answer in a <spoken> tag, then ask again.',
+				},
+			},
+		]);
+	});
+
+	it('its asking line held off screen, then a question about it → the held line dropped too', () => {
+		const held = run(
+			[
+				{ type: 'line_held', ref: REF, text: 'Which table and which index?', isAsking: true },
+				{ type: 'ask_opened', ask: questionAsk() },
+			],
+			{ start: runningSession() },
+		).state;
+		const { state } = run(
+			[{ type: 'send', ref: REF, text: 'what does new do?', aside: true, isSpoken: true }],
+			{ start: held },
+		);
+
+		expect(held.sessions[REF]?.heldLine).toMatchObject({ text: 'Which table and which index?' });
+		expect(state.sessions[REF]?.heldLine).toBeNull();
+	});
+
+	it('answers already given on a multi-question ask → kept in the denial', () => {
+		const { effects } = run(
+			[{ type: 'send', ref: REF, text: 'why partial?', aside: true, isSpoken: true }],
+			{ start: waitingOn(questionAsk({ 'Which table?': 'New' })) },
+		);
+
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				type: 'resolve_ask',
+				result: {
+					behavior: 'deny',
+					message:
+						'The developer asked instead of choosing: "why partial?". Answer in a <spoken> tag, then ask again. Already answered, keep these: "Which table?": "New".',
+				},
+			}),
+		);
+	});
+
+	it('a permission still waits: the question is answered aside', () => {
+		const { state, effects } = askAside(
+			waitingOn(permissionAsk('p1')),
+			'why does it need to push?',
+		);
+
+		expect(state.asks.map((ask) => ask.id)).toEqual(['p1']);
+		expect(asidesOf(state)).toHaveLength(1);
+		expect(effects.map((effect) => effect.type)).toEqual(['side_answer']);
+	});
+
+	it('words that are not a question (no aside) → they answer the open question, as before', () => {
+		const { state, effects } = run([{ type: 'send', ref: REF, text: 'the new one' }], {
+			start: waitingOn(questionAsk()),
+		});
+
+		expect(state.asks[0]).toMatchObject({ id: 'q1', answers: { 'Which table?': 'the new one' } });
+		expect(effects.some((effect) => effect.type === 'resolve_ask')).toBe(false);
 	});
 });
 

@@ -165,6 +165,7 @@ const sendRecorded = ({
 		text: joinCutSentence({ text, input, previous: toolContext.recentUtterances?.at(-1) }),
 		utterance: toolContext.utterance,
 		isOnlySend: (toolContext.actionsInTurn ?? 1) <= 1,
+		isContinuation: input.continues === true,
 	});
 	const rest = typeof input.rest === 'string' && input.rest.trim() ? input.rest.trim() : null;
 	const result = sendText({
