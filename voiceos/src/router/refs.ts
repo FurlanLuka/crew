@@ -59,8 +59,8 @@ const buildWorktreePattern = (worktree: string): string => {
 	return `(?:w(?:o)?rk\\s*${worktreeNumber}${numberWord ? `|work\\s+${numberWord}` : ''})`;
 };
 
-const rewriteSpokenRef = (text: string, ref: string): string => {
-	const { workspace, worktree } = splitRef(ref);
+const rewriteSpokenRef = (text: string, localRef: string): string => {
+	const { workspace, worktree } = splitRef(localRef);
 
 	if (!workspace || !worktree) {
 		return text;
@@ -72,7 +72,7 @@ const rewriteSpokenRef = (text: string, ref: string): string => {
 		'gi',
 	);
 
-	return text.replace(pattern, ref);
+	return text.replace(pattern, localRef);
 };
 
 interface WriteSpokenRefsParams {
@@ -82,7 +82,11 @@ interface WriteSpokenRefsParams {
 
 export const writeSpokenRefs = ({ text, refs }: WriteSpokenRefsParams): string => {
 	// Display only: what is routed and sent keeps the words as said.
-	return refs.reduce((written, ref) => rewriteSpokenRef(written, ref), text);
+	// The words carry no machine: "speak main" is written speak/main, never another machine's
+	// "personal:speak/main" — a machine the developer names stays as the words they said.
+	const localRefs = new Set(refs.map((ref) => splitRef(ref).local));
+
+	return [...localRefs].reduce((written, localRef) => rewriteSpokenRef(written, localRef), text);
 };
 
 export const resolveRef = (state: State, phrase: string): string | null => {

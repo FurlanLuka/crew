@@ -119,6 +119,18 @@ describe('writeSpokenRefs', () => {
 		}
 	});
 
+	it('the same name on another machine → written without the machine', () => {
+		for (const machineRefs of [
+			['speak/main', 'personal:speak/main'],
+			['personal:speak/main', 'speak/main'],
+			['personal:speak/main'],
+		]) {
+			expect(writeSpokenRefs({ text: 'Can you switch to speak main?', refs: machineRefs })).toBe(
+				'Can you switch to speak/main?',
+			);
+		}
+	});
+
 	it('no refs → unchanged', () => {
 		expect(writeSpokenRefs({ text: 'signals work 1', refs: [] })).toBe('signals work 1');
 	});
