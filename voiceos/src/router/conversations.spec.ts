@@ -298,6 +298,31 @@ describe('conversations', () => {
 			]);
 		});
 
+		it('"For …?" answered "no" with more after it → the held words stay on the screen, and the rest is routed too', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'spoken',
+				text: 'checkout api, main is done: the retry backoff.',
+				source: 'narrator',
+				ref: 'checkout-api/main',
+			});
+
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+			convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+			await convo.say('No, and run the linter on the whole repo first.');
+
+			const sends = convo.inputs.flatMap((input) =>
+				input.type === 'send' ? [[input.ref, input.text]] : [],
+			);
+
+			expect(sends).toEqual([
+				['store-front/main', 'Review all of this.'],
+				['store-front/main', 'No, and run the linter on the whole repo first.'],
+			]);
+		});
+
 		it('listening: the meanwhile line waits 12 s of quiet, not 8', async () => {
 			const convo = createConversation({ refs: REFS, view: 'store-front/main', isListening: true });
 			await convo.startSessions('store-front/main', 'checkout-api/main');

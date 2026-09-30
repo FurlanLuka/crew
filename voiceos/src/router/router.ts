@@ -9,6 +9,7 @@ import type { KernelHandleParams } from './kernel.js';
 import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
 import { readTargetAnswer, settleTarget } from './target.js';
 import type { Judge } from '../judge/judge.js';
+import { isShortEnoughToAnswer } from '../tools/send.js';
 
 const log = createLogger('router');
 
@@ -105,10 +106,13 @@ export class UtteranceRouter {
 		if (store.state.targetAsk) {
 			const answer = await readTargetAnswer(this.options.judge, trimmedText);
 
-			settleTarget(store, answer === 'yes');
-			log.info('target answered', { answer });
+			// More than a short answer is new words too, whatever it answered: never swallowed.
+			const isOnlyAnswer = answer !== 'other' && isShortEnoughToAnswer(trimmedText);
 
-			if (answer !== 'other') {
+			settleTarget(store, answer === 'yes');
+			log.info('target answered', { answer, isOnlyAnswer });
+
+			if (isOnlyAnswer) {
 				return;
 			}
 		}

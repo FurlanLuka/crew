@@ -41,7 +41,7 @@ export const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	mute_only: {
-		ask: 'Is the whole of these words a request for Voice OS to be quiet (mute, stop talking), with nothing else asked?',
+		ask: 'Voice OS talks aloud. Is the whole of these words a request for Voice OS itself to be quiet (mute, stop talking, be still, hush), with nothing else asked?',
 		answers: ['yes', 'no'],
 	},
 	says_instead: {
@@ -85,7 +85,7 @@ export const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	target_answer: {
-		ask: 'Voice OS asked "Is this for <session>?". Do these words answer yes, answer no, or say something else?',
+		ask: "Voice OS asked whether the developer's last words were for another session. yes: they say it was for that session. no: they say no, or that it was for this one, here. other: they say something new instead of answering.",
 		answers: ['yes', 'no', 'other'],
 	},
 	delivery: {
@@ -109,7 +109,7 @@ export interface JudgeParams<K extends JudgeKey> {
 export type Judge = <K extends JudgeKey>(params: JudgeParams<K>) => Promise<JudgeAnswer<K>>;
 
 const JUDGE_SYSTEM =
-	'You read what a developer said to Voice OS, a voice assistant for coding sessions, in any language, and answer one question about what the words mean. Judge the meaning, not the language or wording. When the words do not clearly answer the question, answer unclear.';
+	'You read what a developer said to Voice OS, a voice assistant for coding sessions, and answer one question about what their words mean. The words may be in any language and come from speech-to-text. Judge the meaning, not the language or the wording. You are not told what came before: judge the words as a reply to what the question describes. Answer unclear only when the words really could mean either.';
 
 interface CreateJudgeParams {
 	apiKey: string | null;
@@ -140,7 +140,7 @@ export const createJudge = ({
 			const response = await anthropic.messages.create(
 				{
 					model: JUDGE_MODEL,
-					max_tokens: 30,
+					max_tokens: 100,
 					temperature: 0,
 					system: JUDGE_SYSTEM,
 					tools: [
