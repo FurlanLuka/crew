@@ -1115,6 +1115,76 @@ describe('listWaitingItems', () => {
 	});
 });
 
+describe('kernel context: Pinned', () => {
+	const now = 10_000;
+	const readMessage = (state: State) =>
+		buildKernelMessage({ state, utterance: 'pin this', memory: [], now });
+
+	it('nothing pinned → no Pinned line', () => {
+		expect(readMessage(createFixtureState({}, now))).not.toContain('Pinned sessions:');
+	});
+
+	it("pins → one line in pin order, another machine's labelled, a missing session said", () => {
+		const state: State = {
+			...createFixtureState({}, now),
+			pinned: ['checkout-api/main', 'vm1:store-front/main'],
+			machines: {
+				vm1: {
+					id: 'vm1',
+					host: 'dev@vm1',
+					name: 'Build box',
+					status: 'unreachable',
+					detail: null,
+					since: 0,
+				},
+			},
+		};
+
+		expect(readMessage(state)).toContain(
+			'Pinned sessions: checkout-api/main, vm1:store-front/main (on Build box, not listed).',
+		);
+	});
+
+	it('the Pinned view → a screen line for it', () => {
+		const state: State = { ...createFixtureState({}, now), view: { kind: 'pinned' } };
+
+		expect(readMessage(state)).toContain(
+			'Screen: looking at Pinned: the sessions the developer pinned, from every machine (Mission Control › Pinned).',
+		);
+	});
+
+	it('a session opened from Pinned → still that session, said opened from Pinned', () => {
+		const state: State = {
+			...createFixtureState({}, now),
+			pinned: ['store-front/main'],
+			view: { kind: 'session', ref: 'store-front/main', from: 'pinned' },
+		};
+
+		expect(readMessage(state)).toContain('Screen: looking at store-front/main, opened from Pinned');
+	});
+});
+
+describe('kernel context: session names', () => {
+	const now = 10_000;
+	const readMessage = (state: State) =>
+		buildKernelMessage({ state, utterance: 'go to voice os dev', memory: [], now });
+
+	it('nothing named → no Named line', () => {
+		expect(readMessage(createFixtureState({}, now))).not.toContain('Named sessions:');
+	});
+
+	it('a named session → listed as "<name> (<ref>)", on the screen line too', () => {
+		const state: State = {
+			...createFixtureState({ view: 'store-front/main' }, now),
+			names: { 'store-front/main': 'voice os dev' },
+		};
+		const message = readMessage(state);
+
+		expect(message).toContain('Named sessions: voice os dev (store-front/main).');
+		expect(message).toContain('Screen: looking at voice os dev (store-front/main) (');
+	});
+});
+
 describe('a long request forwarded beside a mute (note 83)', () => {
 	const SAID =
 		"Okay, can you can you paste this to Voi. To crew main, like the debug notes, and just the notes? Uh, and also so when I select remote, which doesn't have anything, I don't want it to connect, like, uh, I don't want it to tell me that nothing is waiting for me. Just be silent, okay? Only say things if there's actually anything to do. But yeah, ask crew main to check debug notes and notes, um, and give me a list, and I'll decide on what to do, okay?";

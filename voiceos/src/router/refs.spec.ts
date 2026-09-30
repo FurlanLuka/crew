@@ -224,3 +224,25 @@ describe('resolveRef across machines', () => {
 		expect(resolveRef(machineState({ kind: 'grid' }), 'store front main')).toBeNull();
 	});
 });
+
+describe('resolveRef by a name the developer gave', () => {
+	const named = (view: State['view']): State => {
+		const state = createState({ view });
+
+		return { ...state, names: { 'store-front/wrk1': 'voice os dev' } };
+	};
+
+	it('the name, however it is spelled or said → that session, from anywhere', () => {
+		for (const phrase of ['voice os dev', 'Voice-OS dev', 'the voice os dev session']) {
+			expect(resolveRef(named({ kind: 'grid' }), phrase)).toBe('store-front/wrk1');
+		}
+	});
+
+	it('the crew words → still that session', () => {
+		expect(resolveRef(named({ kind: 'grid' }), 'store front work one')).toBe('store-front/wrk1');
+	});
+
+	it('the name gone → no longer resolves', () => {
+		expect(resolveRef(createState({ view: { kind: 'grid' } }), 'voice os dev')).toBeNull();
+	});
+});

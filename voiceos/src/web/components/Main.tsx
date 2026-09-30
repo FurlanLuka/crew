@@ -20,6 +20,10 @@ export const Main = ({ state, dispatch }: MainProps) => {
 		return <Machines state={state} dispatch={dispatch} />;
 	}
 
+	if (state.view.kind === 'pinned') {
+		return <Grid state={state} dispatch={dispatch} isPinned />;
+	}
+
 	return (
 		<Grid
 			state={state}

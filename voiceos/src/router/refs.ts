@@ -22,9 +22,11 @@ export const normalizeName = (text: string): string => {
 		.replace(/(?<=[a-z])work(?=\d)/, 'wrk');
 };
 
-const listAliases = (session: Session, machineName: string | null): string[] => {
+// name: the developer's own for it; the crew words keep working beside it.
+const listAliases = (session: Session, machineName: string | null, name?: string): string[] => {
 	const { local, workspace, worktree } = splitRef(session.ref);
 	const names = [
+		name ?? '',
 		local,
 		session.label,
 		worktree,
@@ -97,7 +99,9 @@ export const resolveRef = (state: State, phrase: string): string | null => {
 	const matchingRefs = state.order.filter((ref) => {
 		const session = state.sessions[ref];
 
-		return session ? listAliases(session, readMachineName(state, ref)).includes(wantedName) : false;
+		return session
+			? listAliases(session, readMachineName(state, ref), state.names[ref]).includes(wantedName)
+			: false;
 	});
 
 	if (matchingRefs.length === 1) {

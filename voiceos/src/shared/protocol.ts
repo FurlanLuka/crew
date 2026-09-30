@@ -208,11 +208,13 @@ export const isRemembered = (entry: VoiceEntry, now: number): boolean =>
 export const FOLLOW_UP_MS = 60_000;
 
 // grid: every session, or one machine's (LOCAL_MACHINE for this Mac). machines: a card per machine,
-// home once another machine is added.
+// home once another machine is added. pinned: the developer's pinned sessions, across machines.
+// A session's from: opened from Pinned, so its tabs are the pins and Esc goes back there.
 export type View =
 	| { kind: 'grid'; machine?: string }
-	| { kind: 'session'; ref: string }
-	| { kind: 'machines' };
+	| { kind: 'session'; ref: string; from?: 'pinned' }
+	| { kind: 'machines' }
+	| { kind: 'pinned' };
 
 // Another machine whose sessions this Voice OS drives, as machines.json keeps it.
 export interface MachineConfig {
@@ -310,6 +312,10 @@ export interface State {
 	notes: Record<string, string[]>;
 	// Other machines, by id. Empty: Voice OS drives this Mac alone, as before machines existed.
 	machines: Record<string, Machine>;
+	// Pinned session refs, in pin order, from any machine; a pin outlives its session.
+	pinned: string[];
+	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
+	names: Record<string, string>;
 }
 
 export interface LastSpokenSend {
@@ -377,7 +383,11 @@ export type Action =
 	| { type: 'dismiss_dev_offer' }
 	| { type: 'add_machine'; host: string; name?: string }
 	| { type: 'rename_machine'; id: string; name: string }
-	| { type: 'remove_machine'; id: string };
+	| { type: 'remove_machine'; id: string }
+	| { type: 'pin_session'; ref: string }
+	| { type: 'unpin_session'; ref: string }
+	// An empty name clears it: the session shows its crew label again.
+	| { type: 'rename_session'; ref: string; name: string };
 
 export interface SavedTopic {
 	topic: string;
@@ -481,7 +491,11 @@ export type Observation =
 	| { type: 'machine_status'; id: string; status: MachineStatus; detail?: string | null }
 	// A machine came back: what its snapshot says, applied as one step without speaking, then its
 	// queues move again (remote/resync.ts plans the inputs).
-	| { type: 'machine_resynced'; id: string; inputs: Observation[] };
+	| { type: 'machine_resynced'; id: string; inputs: Observation[] }
+	// The pins saved before a restart, merged with any made since boot.
+	| { type: 'pinned_loaded'; refs: string[] }
+	// The names saved before a restart.
+	| { type: 'names_loaded'; names: Record<string, string> };
 
 export type Input = Action | Observation;
 

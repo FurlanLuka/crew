@@ -2,7 +2,7 @@
 
 import { createLogger } from '../log.js';
 import type { CrewRunOptions, CrewRunResult } from '../crew/adapter.js';
-import { describeRecap, listWaitingRefs } from '../shared/machines.js';
+import { describeRecap, listWaitingRefs, readSessionLabel } from '../shared/machines.js';
 import type { MachineConfig, Observation, State, WorktreeInfo } from '../shared/protocol.js';
 import type { HandsEffect } from './mapping.js';
 import { toMainInput } from './mapping.js';
@@ -308,7 +308,7 @@ export class RemoteLink {
 		this.options.dispatch({ type: 'machine_resynced', id: this.id, inputs: plan.inputs });
 
 		const after = this.options.getState();
-		const labelOf = (ref: string): string => after.sessions[ref]?.label ?? ref;
+		const labelOf = (ref: string): string => readSessionLabel(after, ref);
 		const finished = plan.finished.map(labelOf);
 		const waiting = listWaitingRefs(after, this.id).map(labelOf);
 

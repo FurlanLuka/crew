@@ -1,6 +1,6 @@
 // Other machines, read the same way by the server, the kernel's tools and the page.
 
-import { LOCAL_MACHINE, machineOf, readMachine } from './machine-ref.js';
+import { LOCAL_MACHINE, machineOf, readMachine, toLocalRef } from './machine-ref.js';
 import type { MachineConfig, State, View } from './protocol.js';
 
 // What ssh is given as its destination: a host alias or user@host, never something it would read as
@@ -96,14 +96,46 @@ export const currentMachine = (state: State): string | null => {
 	return view.kind === 'grid' ? (view.machine ?? null) : null;
 };
 
+// This Mac, or a machine the state knows: a pin or a name of any other machine has nowhere to show.
+export const isKnownMachineRef = (state: State, ref: string): boolean => {
+	const machine = machineOf(ref);
+
+	return machine === null || Boolean(state.machines[machine]);
+};
+
+export const isNamed = (state: State, ref: string): boolean => state.names[ref] !== undefined;
+
+// The one reading of what a session is called: the developer's own name for it, else crew's label.
+export const readSessionLabel = (state: State, ref: string): string =>
+	state.names[ref] ?? state.sessions[ref]?.label ?? toLocalRef(ref);
+
+// The machine a session is said with: only another machine's, only when the developer is not in it
+// already, and never with a name they chose (a name is chosen to stand alone).
+export const readElsewhereMachine = (state: State, ref: string): string | null => {
+	const machine = machineOf(ref);
+	const config = machine ? state.machines[machine] : undefined;
+
+	if (!machine || !config || isNamed(state, ref) || currentMachine(state) === machine) {
+		return null;
+	}
+
+	return config.name;
+};
+
 // Home is always Mission Control's cards: This Mac, each other machine, and where one is added.
 export const HOME_VIEW: View = { kind: 'machines' };
 
-// Esc, "go back": a session → its machine's grid → home.
+// Esc, "go back": a session → its machine's grid (or Pinned, when opened from there) → home.
 export const parentView = (state: State): View => {
 	const { view } = state;
 
-	return view.kind === 'session' ? { kind: 'grid', machine: readMachine(view.ref) } : HOME_VIEW;
+	if (view.kind !== 'session') {
+		return HOME_VIEW;
+	}
+
+	return view.from === 'pinned'
+		? { kind: 'pinned' }
+		: { kind: 'grid', machine: readMachine(view.ref) };
 };
 
 // Asks and a "needs you" line: what the counts, the cards, the recap and Elsewhere all mean by waiting.
@@ -139,7 +171,7 @@ const listNames = (labels: string[]): string => {
 };
 
 const readLabels = (state: State, refs: string[]): string[] =>
-	refs.map((ref) => state.sessions[ref]?.label ?? ref);
+	refs.map((ref) => readSessionLabel(state, ref));
 
 // Said when the developer switches to a machine's grid.
 export const describeMachineWaiting = (state: State, machine: string): string => {

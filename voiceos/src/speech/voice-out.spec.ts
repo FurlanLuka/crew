@@ -601,6 +601,24 @@ describe('VoiceOut', () => {
 		expect(harness.listSynthesized()).toHaveLength(1);
 	});
 
+	it('reminder of a pinned session → "Your pinned <label> still needs you."', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'pin_session', ref: 'store/main' });
+		harness.store.dispatch({
+			type: 'narration',
+			ref: 'store/main',
+			needsUser: true,
+			text: 'Push it?',
+			topic: null,
+		});
+		harness.voiceOut.remind(harness.store.state);
+		harness.tick(REMINDER_MS + 1);
+		harness.voiceOut.remind(harness.store.state);
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['Your pinned store/main still needs you.']);
+	});
+
 	it('stream → each chunk goes out as it arrives, then the end marker', async () => {
 		const harness = createHarness();
 		harness.voiceOut.say({ text: 'hello', priority: 'normal' });

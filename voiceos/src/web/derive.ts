@@ -6,18 +6,23 @@ import {
 	type PendingAsk,
 	type Session,
 	type State,
+	type View,
 } from '../shared/protocol.js';
 import { listSessionDocs, type SessionDoc } from '../shared/session-docs.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { readWorkspace } from '../shared/notes.js';
-import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, machineOf, readMachine } from '../shared/machine-ref.js';
 import {
+	currentMachine,
+	isMachineReachable,
+	isNamed,
 	listMachineRefs,
 	listWaitingRefs,
 	readMachineName,
 	readMachineTitle,
+	readSessionLabel,
 } from '../shared/machines.js';
 
 export interface Badge {
@@ -90,7 +95,8 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 	}
 };
 
-export const readLastLine = (session: Session): string => {
+// label: what the session is called on screen, for the line that says how to start it.
+export const readLastLine = (session: Session, label = session.label): string => {
 	const draft = stripStreamingTag(session.draft);
 
 	if (draft) {
@@ -120,7 +126,7 @@ export const readLastLine = (session: Session): string => {
 	}
 
 	return session.status === 'stopped'
-		? `Not started. Open it and say something, or say “start ${session.label}”.`
+		? `Not started. Open it and say something, or say “start ${label}”.`
 		: '';
 };
 
@@ -157,8 +163,13 @@ const STATUS_WORDS: Record<MachineStatus, string> = {
 	error: 'needs a fix',
 };
 
-const describeFirstWaiting = (state: State, machine: string): string | null => {
-	const ref = listWaitingRefs(state, machine)[0];
+// here: the machine the line is shown in; null where every machine's sessions sit together.
+const describeFirstWaiting = (
+	state: State,
+	waitingRefs: string[],
+	here: string | null,
+): string | null => {
+	const ref = waitingRefs[0];
 	const session = ref ? state.sessions[ref] : undefined;
 
 	if (!ref || !session) {
@@ -167,7 +178,7 @@ const describeFirstWaiting = (state: State, machine: string): string | null => {
 
 	const ask = state.asks.find((pendingAsk) => pendingAsk.ref === ref);
 
-	return `${session.label}: ${ask ? describeAsk(ask) : (session.needsUser?.text ?? 'needs you')}`;
+	return `${labelAcrossMachines(state, ref, here)}: ${ask ? describeAsk(ask) : (session.needsUser?.text ?? 'needs you')}`;
 };
 
 const machineDot = (status: MachineStatus | 'local', isWaiting: boolean): MachineCard['dot'] => {
@@ -184,7 +195,11 @@ const machineDot = (status: MachineStatus | 'local', isWaiting: boolean): Machin
 
 // This Mac first, then each machine in the order they were added.
 export const listMachineCards = (state: State): MachineCard[] => {
-	const localWaiting = describeFirstWaiting(state, LOCAL_MACHINE);
+	const localWaiting = describeFirstWaiting(
+		state,
+		listWaitingRefs(state, LOCAL_MACHINE),
+		LOCAL_MACHINE,
+	);
 	const local: MachineCard = {
 		id: LOCAL_MACHINE,
 		name: readMachineTitle(state, LOCAL_MACHINE),
@@ -196,7 +211,7 @@ export const listMachineCards = (state: State): MachineCard[] => {
 		isRemote: false,
 	};
 	const remotes = Object.values(state.machines).map((machine): MachineCard => {
-		const waiting = describeFirstWaiting(state, machine.id);
+		const waiting = describeFirstWaiting(state, listWaitingRefs(state, machine.id), machine.id);
 
 		return {
 			id: machine.id,
@@ -213,13 +228,85 @@ export const listMachineCards = (state: State): MachineCard[] => {
 	return [local, ...remotes];
 };
 
-// A ref shown beside others from several machines: another machine's carries its name.
+// Pinned, and a session opened from it: the pins stand in for a machine's sessions there.
+export const isInsidePinned = (view: View): boolean =>
+	view.kind === 'pinned' || (view.kind === 'session' && view.from === 'pinned');
+
+// A pin whose session is not here outlives it; only the pins with a session count as sessions.
+export const countPinned = (state: State): SessionCounts => {
+	const refs = state.pinned.filter((ref) => state.sessions[ref]);
+	const waiting = new Set(listWaitingRefs(state));
+
+	return {
+		total: refs.length,
+		running: refs.filter((ref) => state.sessions[ref]?.status === 'running').length,
+		waiting: refs.filter((ref) => waiting.has(ref)).length,
+	};
+};
+
+export interface PinnedCard {
+	counts: SessionCounts;
+	waiting: string | null;
+}
+
+export const describePinnedCard = (state: State): PinnedCard => ({
+	counts: countPinned(state),
+	waiting: describeFirstWaiting(
+		state,
+		listWaitingRefs(state).filter((ref) => state.pinned.includes(ref)),
+		null,
+	),
+});
+
+export type PinnedTile = { ref: string; session: Session } | { ref: string; missing: string };
+
+// A pin with no session: its machine is out of reach (it may come back), or the worktree is gone.
+export const describeMissingPin = (state: State, ref: string): string => {
+	const machine = machineOf(ref);
+	const label = readSessionLabel(state, ref);
+
+	if (machine && !isMachineReachable(state, machine)) {
+		return `${label} · ${readMachineTitle(state, machine)} out of reach`;
+	}
+
+	return machine ? `${readMachineTitle(state, machine)} · ${label} · gone` : `${label} · gone`;
+};
+
+// In pin order, a placeholder where the session is not here.
+export const listPinnedTiles = (state: State): PinnedTile[] =>
+	state.pinned.map((ref) => {
+		const session = state.sessions[ref];
+
+		return session ? { ref, session } : { ref, missing: describeMissingPin(state, ref) };
+	});
+
+// Inside Pinned the tabs are the pins; inside a machine its sessions; elsewhere every session.
+export const listTabRefs = (state: State): string[] => {
+	if (isInsidePinned(state.view)) {
+		return state.pinned.filter((ref) => state.sessions[ref]);
+	}
+
+	const machine = currentMachine(state);
+
+	return machine ? state.order.filter((ref) => readMachine(ref) === machine) : state.order;
+};
+
+// Whose sessions labels are read against: none inside Pinned, where every machine's sit together.
+export const readLabelMachine = (state: State): string | null =>
+	isInsidePinned(state.view) ? null : currentMachine(state);
+
+// A ref shown beside others from several machines: another machine's carries its name, unless the
+// developer named the session (a name is chosen to stand alone).
 export const labelAcrossMachines = (state: State, ref: string, here: string | null): string => {
-	const label = state.sessions[ref]?.label ?? ref;
+	const label = readSessionLabel(state, ref);
 	const name = readMachineName(state, ref);
 
-	return name && readMachine(ref) !== here ? `${name} · ${label}` : label;
+	return name && !isNamed(state, ref) && readMachine(ref) !== here ? `${name} · ${label}` : label;
 };
+
+// The hover on a named session's label: the crew ref it stands for.
+export const readRefTitle = (state: State, ref: string): string | undefined =>
+	isNamed(state, ref) ? ref : undefined;
 
 export const classifyDiffLine = (line: string): 'add' | 'del' | 'h' | 'ctx' => {
 	if (line.startsWith('@@')) {
@@ -245,7 +332,12 @@ export const formatDidLine = (did: string): string => {
 	const readableByName: Record<string, string> = {
 		forward: `forwarded ${tail}`,
 		send_to: `sent to ${tail}`,
-		switch_view: tail === 'mission control' ? 'went to Mission Control' : `opened ${tail}`,
+		switch_view:
+			tail === 'mission control'
+				? 'went to Mission Control'
+				: tail === 'pinned'
+					? 'went to Pinned'
+					: `opened ${tail}`,
 		start_session: `started ${tail}`,
 		stop_session: `ended ${tail}`,
 		crew_dev: `dev servers: ${tail}`,
@@ -257,6 +349,8 @@ export const formatDidLine = (did: string): string => {
 		debug_note: `noted for debugging ${tail}`,
 		note: `noted ${tail}`,
 		hands_free: `turned hands-free ${tail}`,
+		// No ref: the session that was on screen.
+		pin_session: `${rest[0] === 'unpin' ? 'unpinned' : 'pinned'} ${rest.slice(1).join(' ') || 'this session'}`,
 	};
 
 	return `${readableByName[name] ?? line}${isFailed ? ' — failed' : ''}`;

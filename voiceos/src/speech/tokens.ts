@@ -74,17 +74,26 @@ export interface BuildContextTermsParams {
 	topics: string[];
 	// The names the developer gave other machines ("build box").
 	machineNames?: string[];
+	// The names the developer gave sessions ("voice os dev"): ahead of the refs, so the cap keeps them.
+	sessionNames?: string[];
 }
 
 export const buildContextTerms = ({
 	refs,
 	topics,
 	machineNames = [],
+	sessionNames = [],
 }: BuildContextTermsParams): string[] => {
 	// Each term goes in as it is said: one spelled but never said biases toward mishearing it.
 	// "debug note" is a Voice OS tool the developer names; misheard, it reached a session as words.
 	// The developer calls the sessions "Claude"; a name outside the terms is heard as a nearby word.
-	const terms = new Set<string>(['Voice OS', 'debug note', 'Claude', ...machineNames]);
+	const terms = new Set<string>([
+		'Voice OS',
+		'debug note',
+		'Claude',
+		...machineNames,
+		...sessionNames,
+	]);
 
 	for (const ref of refs) {
 		if (isSetupRef(ref)) {

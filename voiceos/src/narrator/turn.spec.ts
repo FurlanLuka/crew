@@ -716,6 +716,22 @@ describe('a session off screen at the end of its turn', () => {
 		});
 	});
 
+	it('a pinned session\'s long report → "Your pinned checkout is done."', async () => {
+		const harness = createOffScreenHarness();
+		harness.store.dispatch({ type: 'pin_session', ref: REF_ });
+		await harness.handle(tagless);
+
+		expect(harness.lines.map((line) => line.text)).toEqual(['Your pinned checkout is done.']);
+	});
+
+	it('a named, unpinned session\'s long report → "voice os dev is done."', async () => {
+		const harness = createOffScreenHarness();
+		harness.store.dispatch({ type: 'rename_session', ref: REF_, name: 'voice os dev' });
+		await harness.handle(tagless);
+
+		expect(harness.lines.map((line) => line.text)).toEqual(['voice os dev is done.']);
+	});
+
 	it('a long question → "checkout needs you: <about>", high, the needs chime; the topic when no about', async () => {
 		const withAbout = createOffScreenHarness({
 			narration: { needs_user: true, text: ASK_, about: 'the backoff cap' },

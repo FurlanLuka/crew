@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { writeJsonAtomic } from './json-file.js';
 import type { SavedTopics, State } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
 
@@ -44,13 +44,7 @@ export const collectTopics = (state: State): SavedTopics => {
 };
 
 export const saveTopics = (file: string, topics: SavedTopics): void => {
-	mkdirSync(dirname(file), { recursive: true });
-
-	// Write-then-rename: a crash mid-write leaves the previous file intact.
-	const temporaryFile = `${file}.${process.pid}.tmp`;
-
-	writeFileSync(temporaryFile, JSON.stringify(topics, null, 2));
-	renameSync(temporaryFile, file);
+	writeJsonAtomic(file, topics);
 };
 
 interface PersistTopicsParams {

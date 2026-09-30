@@ -30,6 +30,8 @@ import { toNotesKey } from './shared/notes.js';
 import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
 import { persistTopics } from './memory/topics.js';
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
+import { persistPinned } from './memory/pinned.js';
+import { persistNames } from './memory/names.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
@@ -305,6 +307,9 @@ await machines.refreshWorktrees();
 void machines.monitorDevServers();
 
 persistTopics({ store, file: paths.topicsFile });
+// Before the view: a saved session view opened from Pinned finds its pin already there.
+persistPinned({ store, file: paths.pinnedFile });
+persistNames({ store, file: paths.namesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });
 
 const pollTimer = setInterval(async () => {

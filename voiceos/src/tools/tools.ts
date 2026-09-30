@@ -14,6 +14,8 @@ import { normalizeUtterance } from '../shared/spoken.js';
 import { describeMisroutedAnswer, isMisroutedToSetup, prepareSentText, sendText } from './send.js';
 import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
 import { answerAsk } from './answer.js';
+import { pinSession } from './pin.js';
+import { renameSession } from './rename.js';
 import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
 import type { HistoryQuery } from '../memory/journal.js';
@@ -401,6 +403,13 @@ export const executeTool = async (
 		}
 
 		case 'switch_view': {
+			// "Go to pinned": the pins are one view across machines, so a ref or machine beside it means nothing.
+			if (input.pinned === true) {
+				toolContext.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+
+				return succeed('showing Pinned');
+			}
+
 			if (input.ref === null || input.ref === undefined) {
 				if (typeof input.machine === 'string' && input.machine.trim()) {
 					const machine = findMachine(state, input.machine);
@@ -561,6 +570,22 @@ export const executeTool = async (
 
 		case 'answer':
 			return answerAsk({ state, input, toolContext });
+
+		case 'pin_session':
+			return pinSession({
+				state,
+				input,
+				toolContext,
+				scope: (ref) => scopeToMachine(state, ref, undefined, toolContext),
+			});
+
+		case 'rename_session':
+			return renameSession({
+				state,
+				input,
+				toolContext,
+				scope: (ref) => scopeToMachine(state, ref, undefined, toolContext),
+			});
 
 		case 'queued_message':
 			return handleQueuedMessage({ state, input, toolContext });

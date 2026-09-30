@@ -3,6 +3,7 @@ import type { HeldLine, Session, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
 import { capWords, readLabel, updateSession, withoutEffects } from './helpers.js';
+import { readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
 import { hasBackgroundWork } from './subagents.js';
 
 // A session the developer isn't looking at does not speak its lines: they wait until the developer
@@ -62,6 +63,19 @@ export const decideTurnLine = ({
 
 	// "Done" is said once, and only when the work is: background sub-agents still work after the turn.
 	return { kind: 'hold', announce: hasBackgroundAgents || isHeldAnnounced ? null : 'done' };
+};
+
+// A pinned session is one the developer chose to follow across machines: its announcements say so,
+// and name its machine unless they are in it.
+// label: what an unpinned session is announced as; callers name those with or without their machine.
+export const readAnnouncedLabel = (state: State, ref: string, label: string): string => {
+	if (!state.pinned.includes(ref)) {
+		return label;
+	}
+
+	const machine = readElsewhereMachine(state, ref);
+
+	return `Your pinned ${readSessionLabel(state, ref)}${machine ? ` on ${machine}` : ''}`;
 };
 
 interface DescribeAnnouncementParams {

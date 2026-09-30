@@ -29,6 +29,7 @@ import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } fro
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
 import { findSessionsNamedIn, isSessionNamed } from './session-naming.js';
 import { describeSession } from './session-view.js';
+import { carriesWords } from '../router/kernel.js';
 import { isClarifyingQuestion } from './answer.js';
 import type { QuestionAsk } from '../shared/questions.js';
 
@@ -463,6 +464,43 @@ describe('forward', () => {
 	it('offered only when routing captured a session to forward to', () => {
 		expect(listToolsFor(null).some((tool) => tool.name === 'forward')).toBe(false);
 		expect(listToolsFor('store-front/main')[0]?.name).toBe('forward');
+	});
+
+	// The order is part of what the kernel reads, and the evals passed on this one: a change here is a
+	// change to the prompt, so it is deliberate and re-run through them.
+	it('the tools in the order the kernel evals passed on, without and with other machines', () => {
+		const names = (hasMachines: boolean) =>
+			listToolsFor(null, hasMachines).map((tool): string => tool.name);
+		const base = [
+			'ignore_words',
+			'read_state',
+			'read_history',
+			'send_to',
+			'switch_view',
+			'start_session',
+			'stop_session',
+			'crew_dev',
+			'answer',
+			'interrupt',
+			'queued_message',
+			'mute',
+			'dev_offer',
+			'allow_denied',
+			'debug_note',
+			'note',
+			'read_notes',
+			'open_doc',
+			'hands_free',
+			'pin_session',
+			'rename_session',
+		];
+
+		expect(names(false)).toEqual(base);
+		expect(names(true)).toEqual([
+			...base.filter((name) => name !== 'switch_view'),
+			'switch_view',
+			'rename_machine',
+		]);
 	});
 
 	it('history is offered on Mission Control, not while a session is on screen: that session holds its own', () => {
@@ -2717,7 +2755,7 @@ describe('tools that replaced the fast path', () => {
 		expect((await executeTool('allow_denied', { ref: 'store-front/wrk1' }, tools)).ok).toBe(false);
 	});
 
-	it('every new tool changes something, is silent on success, and is remembered', () => {
+	it('every new tool changes something, is remembered, and is silent unless it has a fixed reply', () => {
 		for (const name of ['answer', 'interrupt', 'mute', 'dev_offer', 'allow_denied'] as const) {
 			expect(MUTATING_TOOLS).toContain(name);
 			expect(isSilentCall(name, {})).toBe(true);
@@ -2728,6 +2766,17 @@ describe('tools that replaced the fast path', () => {
 		).toBe('answer no x/main');
 		expect(describeToolCall({ name: 'dev_offer', input: { accept: true }, ok: true })).toBe(
 			'dev_offer accepted',
+		);
+
+		// Their fixed reply is what is said, so neither is silent; neither takes the developer's words.
+		for (const name of ['pin_session', 'rename_session'] as const) {
+			expect(MUTATING_TOOLS).toContain(name);
+			expect(isSilentCall(name, {})).toBe(false);
+			expect(carriesWords(name)).toBe(false);
+		}
+
+		expect(describeToolCall({ name: 'pin_session', input: { ref: 'x/main' }, ok: true })).toBe(
+			'pin_session pin x/main',
 		);
 	});
 });

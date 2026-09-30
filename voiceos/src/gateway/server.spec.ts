@@ -275,11 +275,19 @@ describe('parseClientMessage', () => {
 		dev_restart: { type: 'dev_restart', ref: 'store/main' },
 		fix_dev: { type: 'fix_dev', ref: 'store/main' },
 		dismiss_dev_offer: { type: 'dismiss_dev_offer' },
+		pin_session: { type: 'pin_session', ref: 'vm1:store/main' },
+		unpin_session: { type: 'unpin_session', ref: 'vm1:store/main' },
+		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
 	};
 	const messages: ClientMessage[] = [
 		...Object.values(actions).map((action): ClientMessage => ({ type: 'action', action })),
 		{ type: 'action', action: { type: 'answer_plan', askId: 'a1', isApproved: true } },
 		{ type: 'action', action: { type: 'switch_view', view: { kind: 'grid' } } },
+		{ type: 'action', action: { type: 'switch_view', view: { kind: 'pinned' } } },
+		{
+			type: 'action',
+			action: { type: 'switch_view', view: { kind: 'session', ref: 'store/main', from: 'pinned' } },
+		},
 		{ type: 'utterance', text: 'open checkout' },
 		{ type: 'ptt_start', sampleRate: 48000 },
 		{ type: 'ptt_start' },
@@ -313,6 +321,23 @@ describe('parseClientMessage', () => {
 			ok: true,
 			message: { type: 'action', action: { type: 'send', ref: 'store/main', text: 'hi' } },
 		});
+	});
+
+	it('a session view from anywhere but Pinned, a pin without a ref, a page loading pins or names, a rename without a name or past 60 characters → refused', () => {
+		const refused = [
+			{ type: 'switch_view', view: { kind: 'session', ref: 'store/main', from: 'grid' } },
+			{ type: 'pin_session' },
+			{ type: 'unpin_session', ref: '' },
+			// The saved pins come from the server's own file, never from a page.
+			{ type: 'pinned_loaded', refs: ['store/main'] },
+			{ type: 'names_loaded', names: { 'store/main': 'shop' } },
+			{ type: 'rename_session', ref: 'store/main' },
+			{ type: 'rename_session', ref: 'store/main', name: 'x'.repeat(61) },
+		];
+
+		for (const action of refused) {
+			expect(parseClientMessage(JSON.stringify({ type: 'action', action })).ok).toBe(false);
+		}
 	});
 
 	it('a client cannot write the voice log (only the router does)', () =>

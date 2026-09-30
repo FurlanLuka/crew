@@ -93,4 +93,24 @@ describe('buildContextTerms', () => {
 			'Checkout retries',
 		]);
 	});
+
+	it('session names → after the machine names, ahead of the refs they stand for', () => {
+		expect(
+			buildContextTerms({
+				refs: ['crew/main'],
+				topics: [],
+				machineNames: ['Personal'],
+				sessionNames: ['voice os dev'],
+			}),
+		).toEqual([
+			'Voice OS',
+			'debug note',
+			'Claude',
+			'Personal',
+			'voice os dev',
+			'crew main',
+			'crew',
+			'main',
+		]);
+	});
 });

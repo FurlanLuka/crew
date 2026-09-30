@@ -1,4 +1,5 @@
 import { stripStreamingTag } from '../../shared/spoken-tags.js';
+import { readSessionLabel } from '../../shared/machines.js';
 import { useEffect, useRef } from 'react';
 import type { Session, State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
@@ -52,7 +53,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 							className="btn primary"
 							onClick={() => dispatch({ type: 'start_session', ref: session.ref })}
 						>
-							Start · “start {session.label}”
+							Start · “start {readSessionLabel(state, session.ref)}”
 						</button>
 					</div>
 				)}

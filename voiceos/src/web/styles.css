@@ -272,7 +272,47 @@ textarea:focus-visible {
 	font-size: 12px;
 }
 .tile-head .ref {
+	border: 0;
+	background: none;
+	padding: 0;
 	color: var(--ink);
+	text-align: left;
+}
+.tile-head .pin,
+.tile-head .rename {
+	flex: none;
+}
+.session-rename input {
+	font: inherit;
+	background: var(--raised);
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	padding: 1px 6px;
+	width: 16ch;
+}
+.tile-open {
+	border: 0;
+	background: none;
+	padding: 0;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	text-align: left;
+}
+.tile-open > span {
+	display: block;
+}
+.tile.missing {
+	min-height: 0;
+	color: var(--muted);
+}
+.tile.missing .ref {
+	color: var(--muted);
+}
+.tile.missing .pin {
+	margin-left: auto;
 }
 .tile-head .st {
 	margin-left: auto;
