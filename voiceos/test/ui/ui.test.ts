@@ -168,7 +168,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('home → the machine cards; This Mac opens its grid: every worktree, pinned setup session first', async () => {
+	it('home → the machine cards; This Mac opens its grid: every worktree, the setup session first', async () => {
 		const { context, page } = await signIn();
 
 		// Home is the machine cards: this Mac's opens its grid.

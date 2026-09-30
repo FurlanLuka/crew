@@ -100,5 +100,27 @@ to an existing workspace later with `crew add workspace store-front checkout-api
 [Voice OS](voice-os.md), ask the setup session: "make a worktree in store front for the search
 fix".
 
+## Let Claude Code drive it
+
+Any agent with a shell can run these commands. Claude Code also gets a plugin with the full
+command reference, a `crew` agent and guided skills for setup, import, status and the proxy:
+
+```
+/plugin marketplace add FurlanLuka/crew
+/plugin install crew@crew
+```
+
+Then ask in plain words: "set up crew for store-api and store-app", "what's running?".
+[The plugin](../concepts.md#claude-code-plugin) lists what it ships.
+
+## Staying current
+
+```bash
+crew update
+```
+
+It installs the latest release of crew, and of Voice OS once you have it; a running Voice OS keeps
+the old version until `crew voice restart`. crew also mentions a newer release when one is out.
+
 More: [how crew works](../concepts.md) · [every command](../commands.md) ·
 [running crew on a remote VM](remote-vm.md)

@@ -188,7 +188,7 @@ describe('Worker', () => {
 		rmSync(mediaDir, { recursive: true, force: true });
 	});
 
-	it('the pinned setup session (its folder is home) shows no image named from it', async () => {
+	it('the setup session (its folder is home) shows no image named from it', async () => {
 		const mediaDir = mkdtempSync(join(tmpdir(), 'worker-media-'));
 		const home = mkdtempSync(join(tmpdir(), 'worker-home-'));
 		writeFileSync(

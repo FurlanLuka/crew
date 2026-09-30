@@ -50,7 +50,8 @@ for (const target of TARGETS) {
 		'--outfile',
 		join(dir, 'voiceos'),
 	]);
-	// Only the binary: the compiled executable carries its own source map.
+	// Only the binary: --sourcemap embeds the map stack traces need in the executable, and the .map
+	// files it also writes beside it stay in dist, never shipped.
 	await run(
 		[
 			'tar',

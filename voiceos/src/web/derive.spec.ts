@@ -59,7 +59,7 @@ describe('describeSessionBadge', () => {
 				[],
 			).label,
 		).toBe('asked you'));
-	it('pinned setup session idle → setup badge', () =>
+	it('setup session idle → setup badge', () =>
 		expect(
 			describeSessionBadge(createTestSession({ isPinned: true, status: 'idle' }), []).dot,
 		).toBe('setup'));

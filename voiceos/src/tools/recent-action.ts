@@ -24,6 +24,12 @@ interface LoggedEntry {
 
 const FAILED_SUFFIX = ' (failed)';
 
+// Words quoted back into a prompt line: enough to recognise them, not a whole reply read again.
+export const MAX_QUOTED_CHARS = 120;
+
+export const clipQuoted = (text: string): string =>
+	text.length > MAX_QUOTED_CHARS ? `${text.slice(0, MAX_QUOTED_CHARS)}…` : text;
+
 const readWords = (did: string): string[] => did.split(' ');
 
 const isSentTo = ({ screen, entry }: LoggedEntry, ref: string): boolean =>
@@ -34,9 +40,9 @@ const isSentTo = ({ screen, entry }: LoggedEntry, ref: string): boolean =>
 		return (name === 'forward' && screen === ref) || (name === 'send_to' && target === ref);
 	});
 
-// Only actions that carried the developer's words somewhere: a view switch or a mute left nothing
-// "this" could point at.
-const summarizeAction = (did: string, screen: string): string | undefined => {
+// Only actions that carried the developer's words somewhere, or put words in front of them: a view
+// switch or a mute left nothing "this" could point at.
+const summarizeAction = (did: string, { screen, entry }: LoggedEntry): string | undefined => {
 	const [name, first, second] = readWords(did);
 
 	switch (name) {
@@ -56,15 +62,20 @@ const summarizeAction = (did: string, screen: string): string | undefined => {
 			return `answered ${second}'s question`;
 		case 'allow_denied':
 			return `allowed a blocked action for ${first}`;
+		case 'read_notes':
+			// "Do the second one" right after the notes were read: the session never heard them.
+			return entry.reply
+				? `read the developer's notes back: "${clipQuoted(entry.reply)}"`
+				: undefined;
 		default:
 			return undefined;
 	}
 };
 
-const summarizeEntry = ({ screen, entry }: LoggedEntry): string | undefined => {
-	const actions = entry.did
+const summarizeEntry = (logged: LoggedEntry): string | undefined => {
+	const actions = logged.entry.did
 		.filter((did) => !did.endsWith(FAILED_SUFFIX))
-		.map((did) => summarizeAction(did, screen))
+		.map((did) => summarizeAction(did, logged))
 		.filter((action) => action !== undefined);
 
 	return actions.length ? actions.join(' and ') : undefined;

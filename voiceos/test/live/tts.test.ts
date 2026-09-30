@@ -6,10 +6,8 @@ import { computePcmSeconds, SonioxTts } from '../../src/speech/tts.js';
 
 configureLog({ quiet: true });
 const sonioxKey = loadKeys(resolvePaths()).soniox;
-
-if (process.env.CI && !sonioxKey) {
-	throw new Error('SONIOX_API_KEY is required in CI');
-}
+// Bills Soniox: only a run that asks for the live tests (VOICEOS_LIVE=1, bun run test:live) pays.
+const isLive = process.env.VOICEOS_LIVE === '1';
 
 const tts = sonioxKey ? new SonioxTts({ apiKey: sonioxKey }) : null;
 afterAll(() => tts?.close());
@@ -33,7 +31,7 @@ const streamSpeech = (id: string, text: string, signal = new AbortController().s
 	return { progress, done };
 };
 
-describe.skipIf(!sonioxKey)('live Soniox streaming TTS', () => {
+describe.skipIf(!isLive || !sonioxKey)('live Soniox streaming TTS', () => {
 	it('a spoken line → first audio well before the clip is done, whole clip arrives', async () => {
 		const { progress, done } = streamSpeech(
 			'live-1',

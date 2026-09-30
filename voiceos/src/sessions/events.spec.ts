@@ -262,7 +262,7 @@ describe('sub-agents', () => {
 		expect(mapMessage(taskStarted(overrides), createMapContext())).toEqual([]),
 	);
 
-	it('its tool calls → the last one becomes its step; no parent tool line, no summary kept', () => {
+	it('its tool calls → the last one becomes its step; no parent tool line, each summary kept', () => {
 		const mapContext = startedContext();
 		const observations = mapMessage(
 			{
@@ -283,8 +283,70 @@ describe('sub-agents', () => {
 		expect(observations).toEqual([
 			{ type: 'subagent_step', ref, taskId: 'task1', step: 'read src/router.ts' },
 		]);
-		expect(mapContext.toolSummaries.size).toBe(0);
+		expect([...mapContext.toolSummaries]).toEqual([
+			['a', 'search for route'],
+			['b', 'read src/router.ts'],
+		]);
 	});
+
+	it('its Bash call is denied → the denial says what it ran', () => {
+		const mapContext = startedContext();
+
+		mapMessage(
+			{
+				type: 'assistant',
+				parent_tool_use_id: 'toolu_agent',
+				message: {
+					content: [{ type: 'tool_use', id: 't7', name: 'Bash', input: { command: 'git push' } }],
+				},
+			},
+			mapContext,
+		);
+
+		expect(
+			mapMessage(
+				{
+					type: 'system',
+					subtype: 'permission_denied',
+					tool_name: 'Bash',
+					tool_use_id: 't7',
+					agent_id: 'a1',
+				} as RawMessage,
+				mapContext,
+			),
+		).toEqual([{ type: 'denied', ref, toolName: 'Bash', summary: 'run git push' }]);
+	});
+
+	it('a sub-agent with no row (its task_started skipped) → no step, but its denial still says what it ran', () => {
+		const mapContext = createMapContext();
+
+		const step = mapMessage(
+			{
+				type: 'assistant',
+				parent_tool_use_id: 'toolu_agent',
+				message: {
+					content: [{ type: 'tool_use', id: 't7', name: 'Bash', input: { command: 'git push' } }],
+				},
+			},
+			mapContext,
+		);
+
+		expect(step).toEqual([]);
+		expect(
+			mapMessage(
+				{ type: 'system', subtype: 'permission_denied', tool_name: 'Bash', tool_use_id: 't7' },
+				mapContext,
+			),
+		).toEqual([{ type: 'denied', ref, toolName: 'Bash', summary: 'run git push' }]);
+	});
+
+	it('a denial of a call never seen → a neutral "a Bash call", not "run "', () =>
+		expect(
+			mapMessage(
+				{ type: 'system', subtype: 'permission_denied', tool_name: 'Bash', tool_use_id: 'nope' },
+				createMapContext(),
+			),
+		).toEqual([{ type: 'denied', ref, toolName: 'Bash', summary: 'a Bash call' }]));
 
 	it('its text, results and stream deltas → dropped', () => {
 		const mapContext = startedContext();

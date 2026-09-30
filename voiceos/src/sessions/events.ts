@@ -57,7 +57,8 @@ export const readDenial = (message: RawMessage, toolSummaries: Map<string, strin
 
 	return {
 		toolName,
-		summary: toolSummaries.get(readString(message.tool_use_id)) ?? summarizeTool(toolName, {}),
+		// An unknown call gets a neutral phrase: `summarizeTool(name, {})` would say "run " for Bash.
+		summary: toolSummaries.get(readString(message.tool_use_id)) ?? `a ${toolName} call`,
 		// Here `message` is the rejection text, not an assistant message.
 		isTransient: TRANSIENT_DENIAL_PATTERN.test(
 			readString((message as { message?: unknown }).message),

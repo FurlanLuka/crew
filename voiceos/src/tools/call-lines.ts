@@ -1,4 +1,5 @@
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
+import { clipQuoted } from './recent-action.js';
 import { isBareAnswer } from './send.js';
 
 const SILENT_TOOLS: ToolName[] = [
@@ -16,8 +17,8 @@ const SILENT_TOOLS: ToolName[] = [
 	'open_doc',
 ];
 
-const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc'];
-const MAX_QUOTED_CHARS = 120;
+// read_notes changes nothing, but what it read out is what "the second one" points at next.
+const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc', 'read_notes'];
 
 const describeCallAction = (name: string, input: Record<string, unknown>): string => {
 	// Named either way: "unpin this" right after a pin must read as a change, not the same call again.
@@ -50,10 +51,7 @@ export const describeToolCall = ({ name, input, ok, note }: ToolCall): string | 
 		return null;
 	}
 
-	const quotedText =
-		typeof input.text === 'string'
-			? ` "${input.text.length > MAX_QUOTED_CHARS ? `${input.text.slice(0, MAX_QUOTED_CHARS)}…` : input.text}"`
-			: '';
+	const quotedText = typeof input.text === 'string' ? ` "${clipQuoted(input.text)}"` : '';
 	const target =
 		name === 'switch_view'
 			? ` ${input.pinned === true ? 'pinned' : typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`

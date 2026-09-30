@@ -11,6 +11,7 @@
 		"evals": "bun evals/run.ts",
 		"fixtures": "bun scripts/gen-audio-fixtures.ts",
 		"install-dev": "bun scripts/install-dev.ts",
+		"docs:screenshots": "bun scripts/docs-screenshots.ts",
 		"check": "biome check . && eslint .",
 		"format": "biome check --write . && eslint --fix ."
 	},

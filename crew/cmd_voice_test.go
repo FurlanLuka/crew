@@ -73,3 +73,12 @@ func TestRestartCommand_RunsDetached(t *testing.T) {
 		t.Fatal("the restart helper is not detached")
 	}
 }
+
+func TestBrowserOpener(t *testing.T) {
+	cases := map[string]string{"darwin": "open", "linux": "xdg-open"}
+	for goos, want := range cases {
+		if got := browserOpener(goos); got != want {
+			t.Errorf("browserOpener(%q) = %q, want %q", goos, got, want)
+		}
+	}
+}

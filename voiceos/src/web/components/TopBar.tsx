@@ -110,7 +110,9 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 					/>
 				</>
 			)}
-			<span>{counts.total} sessions</span>
+			<span>
+				{counts.total} {counts.total === 1 ? 'session' : 'sessions'}
+			</span>
 			{counts.running > 0 && <span className="c-amber">{counts.running} running</span>}
 			{counts.waiting > 0 && <span className="c-crit">{counts.waiting} waiting on you</span>}
 			<span className="sp">

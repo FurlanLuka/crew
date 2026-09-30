@@ -8,9 +8,7 @@
 its own Claude — and you run them all by voice: "tell checkout to run the tests", "what's waiting
 on me?", "yes, but only on staging".
 
-<!-- Demo video: three sessions, spoken commands, "checkout is done". -->
-
-![A Voice OS session that just added a search box to a store front, showing its own screenshot of the result](docs/images/voice-os/07-session-shows-screenshot.png)
+![Voice OS: a pinned session running on another machine, with its work stream, dev servers and spoken summary, and the other sessions waiting on you alongside](docs/images/voice-os/hero.png)
 
 ## Try it
 
@@ -25,18 +23,25 @@ opens in your browser: hold **Space** and talk.
 
 ### What you need
 
-- **macOS or Linux, git and tmux.** tmux is installed for you on Linux; on a Mac, `brew install tmux`.
+- **macOS or Linux, with git and tmux.** `crew doctor` says what is missing, and `crew doctor
+  --install` installs it (Homebrew or `xcode-select` on a Mac; apt-get, dnf or pacman on Linux).
+  Voice OS's Linux builds (x64 and arm64) need glibc, so Alpine and other musl systems can run
+  crew but not Voice OS.
 - **[Claude Code](https://code.claude.com/docs)**, signed in. Every session runs on your own Claude
-  Code login.
-- **An Anthropic API key**, for the router that decides where your words go and for the short spoken
-  summaries. A spoken turn costs the router about a third of a cent.
-- **A [Soniox](https://soniox.com) API key**, for speech in and out. Soniox bills by audio time.
+  Code login; `crew doctor --install` offers to install it too.
+- **An Anthropic API key**, for the router that decides where your words go and for the short
+  spoken summaries. A spoken turn costs the router about a third of a cent.
+- **A [Soniox](https://soniox.com) API key**, for speech in and out. Soniox bills by audio time
+  ([pricing](https://soniox.com/pricing)).
 
 **Where your data goes:**
-- **Your voice** goes to Soniox to become text, and spoken replies come back from it.
-- **What you say, and short excerpts of what sessions write**, go to Anthropic for routing and summaries.
+- **Your voice, and the text of spoken replies,** go to Soniox: your voice to become text, the
+  replies to become speech.
+- **What you say, and short excerpts of what sessions write**, go to Anthropic for routing and
+  summaries, on your API key.
+- **The sessions themselves** talk to Anthropic through Claude Code, as they always do.
 - **Everything else stays on your machine:** the keys (readable by you alone), your notes, and the
-  voice log. Recordings are kept only if you switch on debug audio.
+  voice log. Voice OS keeps no recordings of your voice.
 
 ## Set up by talking
 
@@ -58,10 +63,18 @@ installs a fresh copy and checks every server starts. The new worktree appears o
 - **Speak to the one on screen, or any of them by name.** "Revert that", "checkout, run the
   migrations", "open the ranking one". A small router decides where your words go — and anything
   about the work goes to the session, in your words, instead of being guessed at.
-- **Answer without switching.** Permissions, plans and questions come to you by voice: "yes",
-  "always", "the second one", "no, use a new branch".
+- **Listen the way that suits the room.** Hold Space to talk, say "Voice OS, …" when you want it,
+  or go hands-free and just talk.
+- **Answer without switching.** Permissions, plans and questions come to you by voice: "yes", "the second one",
+  "no, use a new branch".
+- **Sessions that get on with it.** They run in Claude Code's auto mode, so routine steps don't
+  wait on you. When a safety check blocks something, you hear why and can allow that one call —
+  "allow it" — and nothing more.
 - **Hear what matters, not everything.** Sessions you aren't looking at say "checkout is done" or
   "checkout needs you: the backoff cap"; the full message plays when you switch there.
+- **Pin what you're juggling, name it what you call it.** Pinned gathers the sessions you care
+  about, from every machine, in one view ("pin this", "go to pinned"). Rename a session ("call
+  this search fix") and that name shows everywhere and works by voice.
 - **Your dev servers, watched.** When one dies after a start, Voice OS tells you and offers to have
   that worktree's Claude fix it — "yes" hands it the failure with its logs.
 - **See what they make.** A screenshot or chart a session takes shows right in its page, and the
@@ -133,13 +146,13 @@ skill, a `crew` agent and guided setup:
 - [Commands](docs/commands.md) — every command and its output
 - [Running crew on a remote VM](docs/guides/remote-vm.md)
 - [Voice OS internals](voiceos/README.md) — the router, keys, development
+- [What's new in 5.0](docs/releases/v5.0.0.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
-Requires macOS or Linux, git and tmux (`crew doctor` checks, and offers to install them), and
-[Claude Code](https://code.claude.com/docs) for the sessions. `crew update` keeps crew — and Voice
-OS, once installed — current; it asks GitHub through the `gh` CLI, so it needs `gh auth login`
-once.
+`crew update` keeps crew — and Voice OS, once installed — on the latest release.
 
-**License:** [Functional Source License 1.1, MIT future](LICENSE) (FSL-1.1-MIT). Use it, change
-it, run it at work; don't sell it or offer it as a competing product or service. Each release becomes
-MIT two years after it ships. Releases made before this change stay MIT.
+**License:** [Functional Source License 1.1, MIT future](LICENSE) (FSL-1.1-MIT). You can use it,
+change it, run it at work and redistribute it for any purpose except a competing use: offering it,
+or something built from it, in a commercial product or service that competes with crew. Each
+release becomes plain MIT two years after it ships. Releases made before the license change stay
+MIT.

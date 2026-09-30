@@ -9,29 +9,34 @@ export const mapSubagentMessage = (
 	mapContext: MapContext,
 	cwd?: string,
 ): Observation[] => {
-	const taskId = mapContext.subagentTasks.get(readString(message.parent_tool_use_id));
-
-	if (message.type !== 'assistant' || !taskId) {
+	if (message.type !== 'assistant') {
 		return [];
 	}
 
-	const lastToolUse = getContentBlocks(message)
+	const steps = getContentBlocks(message)
 		.filter((block) => block.type === 'tool_use')
-		.at(-1);
+		.map((block) => {
+			const id = readString(block.id);
+			const name = readString(block.name);
+			const step = summarizeTool(name, (block.input ?? {}) as Record<string, unknown>, cwd);
 
-	if (!lastToolUse) {
+			// A sub-agent's call can be denied too, and the denial only carries its id: without
+			// the summary the blocked strip could not say what was refused. Kept even when the
+			// sub-agent has no row (its task_started was skipped).
+			mapContext.toolSummaries.set(id, step);
+
+			return step;
+		});
+	const taskId = mapContext.subagentTasks.get(readString(message.parent_tool_use_id));
+	const lastStep = steps.at(-1);
+
+	if (!taskId || !lastStep) {
 		return [];
 	}
 
 	mapContext.subagentsWithSteps.add(taskId);
 
-	const step = summarizeTool(
-		readString(lastToolUse.name),
-		(lastToolUse.input ?? {}) as Record<string, unknown>,
-		cwd,
-	);
-
-	return [{ type: 'subagent_step', ref: mapContext.ref, taskId, step }];
+	return [{ type: 'subagent_step', ref: mapContext.ref, taskId, step: lastStep }];
 };
 
 const endSubagent = (mapContext: MapContext, taskId: string): Observation[] => {

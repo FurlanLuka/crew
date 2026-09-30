@@ -2,9 +2,10 @@
 name: crew
 description: >
   Complete CLI reference for crew — projects, workspaces, worktrees, dev servers on stable
-  per-worktree ports, env bindings, launching Claude and editors, moving to another machine,
-  disk housekeeping. Use whenever the user mentions crew, a workspace, a worktree, dev
-  servers, bindings, or wants Claude or an editor opened on a checkout.
+  per-worktree ports, env bindings, launching Claude and editors, Voice OS (crew voice, its
+  keys, remote machines), moving to another machine, disk housekeeping. Use whenever the user
+  mentions crew, a workspace, a worktree, dev servers, bindings, Voice OS, or wants Claude or
+  an editor opened on a checkout.
 user-invocable: true
 ---
 
@@ -408,7 +409,7 @@ Every `crew voice` start (unless Voice OS already answers) first checks what Voi
 tmux, and Claude Code (`claude` on PATH or `VOICEOS_CLAUDE_BIN`, handed to Voice OS as found) —
 and stops with the fix for anything missing (`--json`: `{"missing":[{name, why, install}]}`,
 exit 1). The first `crew voice` downloads
-Voice OS (about 30 MB) from the release matching this crew;
+Voice OS (25–40 MB) from the release matching this crew;
 `crew update` refreshes it once it is installed (a version stamp beside the binary says which
 release it is, so a failed refresh is retried by the next update) and never restarts a running one (`crew voice
 restart` picks the new version up). A dev build of crew has no release to take it from:

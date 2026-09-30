@@ -256,6 +256,16 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
+  **Pinned and session names** are Voice OS's own preferences, with no crew command:
+  `state.pinned` (full refs in pin order, any machine; a pin outlives its session and a removed
+  machine's pins are dropped) and `state.names` (full ref → name, unique; an empty name clears),
+  persisted in `~/.crew/voiceos/pinned.json` / `names.json`, the screen in `view.json`. A pinned
+  session always opens as `{kind:'session', from:'pinned'}` (`state/pins.ts` `toShownView`), so
+  its tabs are the pins and Esc goes back to Pinned (`parentView`); `readSessionLabel`
+  (`shared/machines.ts`) is the one label rule — a name, else the crew label — and a named session
+  is never prefixed with its machine. The always-present **setup** session (`Session.isPinned`,
+  cwd home, crew setup only) is a different thing: the field keeps its name because it is on the
+  wire to remotes. Every session runs in Claude Code's `auto` permission mode.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 

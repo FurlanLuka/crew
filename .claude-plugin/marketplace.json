@@ -7,8 +7,8 @@
     {
       "name": "crew",
       "source": "./",
-      "description": "Drive crew — workspaces of git worktrees, dev servers on stable ports, env bindings between projects — from Claude Code."
+      "description": "Drive crew — workspaces of git worktrees, dev servers on stable ports, env bindings between projects, and Voice OS, the voice cockpit for their Claude Code sessions — from Claude Code."
     }
   ],
-  "description": "crew — CLI + TUI workspace manager for coding agents."
+  "description": "crew — workspaces, worktrees and dev servers for coding agents, with Voice OS to run their Claude Code sessions by voice."
 }

@@ -365,7 +365,7 @@ describe('restoreHistory: images', () => {
 		expect(files).toHaveLength(1);
 	});
 
-	it('the pinned setup session, or a session whose folders are unknown → no image', async () => {
+	it('the setup session, or a session whose folders are unknown → no image', async () => {
 		for (const isPinned of [true, null]) {
 			const { first, files } = await restoreImages(isPinned);
 
