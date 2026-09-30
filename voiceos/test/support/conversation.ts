@@ -127,7 +127,7 @@ export const createConversation = ({ refs, view }: CreateConversationParams) => 
 			dispatch: (action) => store.dispatch(action),
 			readHistory: () => [],
 			mute: () => voiceOut.mute(),
-			saveDebugNote: () => {},
+			saveDebugNote: () => undefined,
 			notes: createNullNotes(),
 		},
 	});
