@@ -1,3 +1,4 @@
+import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type { Action, Machine, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
@@ -52,6 +53,7 @@ const createContext = ({ patch = {}, screen = null, utterance }: CreateContextPa
 		asks: state.asks,
 		mute: () => {},
 		saveDebugNote: () => {},
+		judge: englishJudge,
 		notes: createNullNotes(),
 		setListenMode: () => 'changed' as const,
 		openUrl: () => true,

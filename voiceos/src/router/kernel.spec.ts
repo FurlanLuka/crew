@@ -1,3 +1,4 @@
+import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
@@ -75,6 +76,7 @@ const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 			readHistory: () => [],
 			mute: extra.mute ?? (() => {}),
 			saveDebugNote: () => {},
+			judge: englishJudge,
 			notes: createNullNotes(),
 		},
 		now: extra.now,
@@ -760,6 +762,7 @@ describe('Kernel', () => {
 					readHistory: () => [],
 					mute: () => {},
 					saveDebugNote: () => {},
+					judge: englishJudge,
 					notes: createNullNotes(),
 				},
 				now: () => 10_000,
@@ -1069,6 +1072,7 @@ describe('answers go only to what the developer could have heard', () => {
 				readHistory: () => [],
 				mute: () => {},
 				saveDebugNote: () => {},
+				judge: englishJudge,
 				notes: createNullNotes(),
 			},
 		});

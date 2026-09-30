@@ -348,7 +348,7 @@ export const formatDidLine = (did: string): string => {
 		allow_denied: `allowed ${tail} once`,
 		debug_note: `noted for debugging ${tail}`,
 		note: `noted ${tail}`,
-		hands_free: `turned hands-free ${tail}`,
+		hands_free: `listening: ${tail || 'changed'}`,
 		// No ref: the session that was on screen.
 		pin_session: `${rest[0] === 'unpin' ? 'unpinned' : 'pinned'} ${rest.slice(1).join(' ') || 'this session'}`,
 	};

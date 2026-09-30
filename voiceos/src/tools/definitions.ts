@@ -1,4 +1,5 @@
 import { ANSWER_DECISIONS } from './answer.js';
+import { DELIVER_WISHES } from '../state/delivery.js';
 
 export type ToolName =
 	| 'forward'
@@ -102,6 +103,27 @@ const PINNED_VIEW_PROPERTY = {
 		'true for Pinned, the developer\'s pinned sessions from every machine ("go to pinned", "show my pinned sessions"); ref and machine are then ignored.',
 };
 
+// Judged by the kernel in the developer's own language: no English keyword decides these.
+const MY_NOTES_PROPERTY = {
+	type: 'boolean',
+	description:
+		'Whether the developer mentions their own notes, in any language ("my notes", "meine Notizen", "moje beležke"): the session is told where they are. Not the release notes, not debug notes.',
+};
+
+const ABOUT_LAST_ACTION_PROPERTY = {
+	type: 'boolean',
+	description:
+		'true when the words point back at what Voice OS itself just did or saved, in any language ("check this debug note", "schau dir die Notiz an", "poglej ta zapisek"): the session is told what it was.',
+};
+
+// Read by the kernel in whatever language was spoken; only a busy session is affected.
+const DELIVER_PROPERTY = {
+	type: 'string',
+	enum: [...DELIVER_WISHES],
+	description:
+		'Only when the developer says how the words should reach a working session, in any language: aside — "by the way", "übrigens", a quick side question; queue — after its current work ("queue it"); now — instead of its current work ("send it now"). Leave out otherwise.',
+};
+
 // The kernel never writes what a session reads: Voice OS sends the words as heard.
 const PART_PROPERTY = {
 	type: 'string',
@@ -173,8 +195,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				text: PART_PROPERTY,
 				kind: KIND_PROPERTY,
 				continues: CONTINUES_PROPERTY,
+				my_notes: MY_NOTES_PROPERTY,
+				about_last_action: ABOUT_LAST_ACTION_PROPERTY,
+				deliver: DELIVER_PROPERTY,
 			},
-			required: ['ref', 'kind'],
+			required: ['ref', 'kind', 'my_notes'],
 			additionalProperties: false,
 		},
 	},
@@ -422,8 +447,11 @@ export const FORWARD_TOOL: ToolDefinition = {
 			text: PART_PROPERTY,
 			kind: KIND_PROPERTY,
 			continues: CONTINUES_PROPERTY,
+			my_notes: MY_NOTES_PROPERTY,
+			about_last_action: ABOUT_LAST_ACTION_PROPERTY,
+			deliver: DELIVER_PROPERTY,
 		},
-		required: ['kind'],
+		required: ['kind', 'my_notes'],
 		additionalProperties: false,
 	},
 };

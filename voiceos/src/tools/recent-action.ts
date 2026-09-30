@@ -4,12 +4,6 @@ import { GRID, type State, type VoiceEntry } from '../shared/protocol.js';
 // OS just did.
 export const RECENT_ACTION_MS = 120_000;
 
-// Word-bounded, so "edit" and "item" are not "it".
-const BACK_REFERENCE_PATTERN = /\b(?:this|that|it|the last one|the note|what (?:you|i) just)\b/i;
-
-export const hasBackReference = (utterance: string): boolean =>
-	BACK_REFERENCE_PATTERN.test(utterance);
-
 interface ReadRecentActionParams {
 	ref: string;
 	// The screen the words were said on: its voice log, and the grid's, is what the developer just saw.
@@ -110,11 +104,12 @@ export const readRecentAction = (
 };
 
 interface DescribeRecentActionParams extends ReadRecentActionParams {
-	utterance: string | undefined;
+	// The words point back at what Voice OS just did ("check this debug note"): the kernel's
+	// about_last_action, judged in the developer's own language.
+	isReferredTo: boolean;
 }
 
 export const describeRecentAction = (
 	state: State,
-	{ utterance, ...params }: DescribeRecentActionParams,
-): string | undefined =>
-	utterance && hasBackReference(utterance) ? readRecentAction(state, params) : undefined;
+	{ isReferredTo, ...params }: DescribeRecentActionParams,
+): string | undefined => (isReferredTo ? readRecentAction(state, params) : undefined);

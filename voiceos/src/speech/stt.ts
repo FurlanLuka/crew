@@ -1,4 +1,5 @@
 import { createLogger } from '../log.js';
+import { DEFAULT_LANGUAGES } from '../shared/languages.js';
 import { TranscriptAccumulator, type SonioxToken } from './tokens.js';
 
 interface SonioxResponse {
@@ -13,6 +14,8 @@ export type SttFailure = 'soniox' | 'connection';
 export interface SttSessionOptions {
 	apiKey: string;
 	terms: string[];
+	// Soniox codes of the languages the developer speaks; English when not given.
+	languages?: string[];
 	onPartial: (text: string) => void;
 	onFinal: (text: string) => void;
 	// soniox: refused (bad key or config), a retry repeats it; connection: a new stream may work.
@@ -77,7 +80,7 @@ export class SttSession {
 						sample_rate: this.sampleRate,
 						num_channels: 1,
 						// Without a hint the model spends its first words deciding the language.
-						language_hints: ['en'],
+						language_hints: options.languages?.length ? options.languages : DEFAULT_LANGUAGES,
 						enable_endpoint_detection: isSegmented,
 						...(isSegmented ? { max_endpoint_delay_ms: MAX_ENDPOINT_DELAY_MS } : {}),
 						context: { terms: options.terms },

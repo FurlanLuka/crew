@@ -6,7 +6,6 @@ import { describeRecentAction, MAX_QUOTED_CHARS, RECENT_ACTION_MS } from './rece
 const NOW = 1_000_000;
 const NOTE_SAID =
 	'Can you also add a debug note that my last question was super long and only the request was forwarded?';
-const BACK_REFERENCE = 'Can you also tell the session to check this debug note?';
 
 const entry = (patch: Partial<VoiceEntry>): VoiceEntry => ({
 	utterance: NOTE_SAID,
@@ -18,8 +17,8 @@ const entry = (patch: Partial<VoiceEntry>): VoiceEntry => ({
 
 const withLog = (voiceLog: State['voiceLog']): State => ({ ...createInitialState(), voiceLog });
 
-const describeFor = (state: State, utterance: string | undefined = BACK_REFERENCE) =>
-	describeRecentAction(state, { ref: 'crew/main', screen: 'crew/main', now: NOW, utterance });
+const describeFor = (state: State, isReferredTo = true) =>
+	describeRecentAction(state, { ref: 'crew/main', screen: 'crew/main', now: NOW, isReferredTo });
 
 describe('describeRecentAction', () => {
 	const lineFor = (utterance: string, summary: string): string =>
@@ -71,7 +70,7 @@ describe('describeRecentAction', () => {
 			reply: 'Two notes: fix the login redirect, then tidy the cart copy.',
 		});
 
-		expect(describeFor(withLog({ 'crew/main': [read] }), 'Tell it to do that.')).toBe(
+		expect(describeFor(withLog({ 'crew/main': [read] }))).toBe(
 			lineFor(
 				'What are my notes?',
 				`read the developer's notes back: "Two notes: fix the login redirect, then tidy the cart copy."`,
@@ -83,7 +82,7 @@ describe('describeRecentAction', () => {
 		const reply = `Notes: ${'fix the login redirect, '.repeat(10)}`;
 		const read = entry({ utterance: 'What are my notes?', did: ['read_notes'], reply });
 
-		expect(describeFor(withLog({ 'crew/main': [read] }), 'Tell it to do that.')).toBe(
+		expect(describeFor(withLog({ 'crew/main': [read] }))).toBe(
 			lineFor(
 				'What are my notes?',
 				`read the developer's notes back: "${reply.slice(0, MAX_QUOTED_CHARS)}…"`,
@@ -103,7 +102,7 @@ describe('describeRecentAction', () => {
 				withLog({
 					'crew/main': [entry({ utterance: 'Do the thing.', did: ['forward "Pin it."'] })],
 				}),
-				{ ref: 'admin/main', screen: 'crew/main', now: NOW, utterance: BACK_REFERENCE },
+				{ ref: 'admin/main', screen: 'crew/main', now: NOW, isReferredTo: true },
 			),
 		).toBe(lineFor('Do the thing.', 'sent it to crew/main'));
 	});
@@ -125,25 +124,8 @@ describe('describeRecentAction', () => {
 		expect(summaryOf(['debug_note "x" (failed)'])).toBeUndefined();
 	});
 
-	it('no back-reference → nothing', () => {
-		expect(describeFor(withLog({ 'crew/main': [entry({})] }), 'Run the tests.')).toBeUndefined();
-	});
-
-	it('"edit" and "item" are not "it" → nothing', () => {
-		expect(
-			describeFor(withLog({ 'crew/main': [entry({})] }), 'Edit the item list.'),
-		).toBeUndefined();
-	});
-
-	it('no words (typed or replayed) → nothing', () => {
-		expect(
-			describeRecentAction(withLog({ 'crew/main': [entry({})] }), {
-				ref: 'crew/main',
-				screen: 'crew/main',
-				now: NOW,
-				utterance: undefined,
-			}),
-		).toBeUndefined();
+	it('the words point at nothing Voice OS did (the kernel says so) → nothing', () => {
+		expect(describeFor(withLog({ 'crew/main': [entry({})] }), false)).toBeUndefined();
 	});
 
 	it('exactly 120 s old → the line; a moment older → nothing', () => {

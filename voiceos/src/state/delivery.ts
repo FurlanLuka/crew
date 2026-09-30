@@ -326,21 +326,57 @@ const isSendNow = (utterance: string): boolean => {
 	return content.length >= MIN_NOW_CONTENT_WORDS;
 };
 
+// What the judge heard them want; unclear or default is the kernel's reading of the words.
+const decideWanted = (
+	status: SessionStatus,
+	kind: DecideDeliveryParams['kind'],
+	wanted: NonNullable<DecideDeliveryParams['wanted']>,
+): Delivery => {
+	switch (wanted) {
+		case 'aside':
+			return 'aside';
+		case 'queue':
+			return 'send';
+		case 'now':
+			// A blocked session waits on the developer: their words already go at once.
+			return status === 'running' ? 'now' : 'send';
+		default:
+			return kind === 'question' ? 'aside' : 'send';
+	}
+};
+
+export const DELIVER_WISHES = ['aside', 'queue', 'now'] as const;
+export type DeliverWish = (typeof DELIVER_WISHES)[number];
+
+export const isDeliverWish = (value: unknown): value is DeliverWish =>
+	DELIVER_WISHES.includes(value as DeliverWish);
+
 export interface DecideDeliveryParams {
 	status: SessionStatus;
 	// The kernel's reading of the words; absent for typed text, which goes aside only when asked to.
 	kind?: 'question' | 'instruction' | 'redirect';
-	// What the developer actually said: the kernel drops "by the way" from what it forwards.
+	// What the developer actually said: typed words go aside on "by the way", queue on "queue it".
 	utterance: string;
+	// Spoken words, read by the kernel in their own language (its deliver argument): no keywords read.
+	wanted?: DeliverWish | 'default';
 }
 
 export type Delivery = 'send' | 'aside' | 'now';
 
-export const decideDelivery = ({ status, kind, utterance }: DecideDeliveryParams): Delivery => {
+export const decideDelivery = ({
+	status,
+	kind,
+	utterance,
+	wanted,
+}: DecideDeliveryParams): Delivery => {
 	// A working session, or one waiting on a plan or permission, answers a question aside: the work
 	// is not disturbed and the ask keeps waiting. An idle one answers the question itself, at once.
 	if (status !== 'running' && status !== 'blocked') {
 		return 'send';
+	}
+
+	if (wanted !== undefined) {
+		return decideWanted(status, kind, wanted);
 	}
 
 	if (ASIDE_PATTERN.test(utterance)) {

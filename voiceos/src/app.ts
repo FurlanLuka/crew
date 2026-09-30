@@ -1,3 +1,4 @@
+import { createJudge } from './judge/judge.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
@@ -31,6 +32,7 @@ import { persistTopics } from './memory/topics.js';
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistPinned } from './memory/pinned.js';
 import { persistNames } from './memory/names.js';
+import { persistLanguages } from './memory/languages.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
@@ -113,6 +115,8 @@ const voiceOut: VoiceOut = new VoiceOut({
 	// voiceIn is assigned below; it is only asked once speech is under way.
 	isListening: () => voiceIn.isListening(),
 });
+// One judge for the kernel's guards and the router's "For X?".
+const judge = createJudge({ apiKey: keys.anthropic });
 const narrate = createNarrator(keys.anthropic);
 
 const narrateTurn = createTurnNarrator({
@@ -174,6 +178,7 @@ const kernel = keys.anthropic
 				readHistory: (query) => readHistory(paths.journalDir, query),
 				mute: () => voiceOut.mute(),
 				notes,
+				judge,
 				saveDebugNote: ({ text, said }) => {
 					const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
 
@@ -210,6 +215,7 @@ const listenSwitchFor = createListenSwitch({
 
 const router = new UtteranceRouter({
 	store,
+	judge,
 	kernel: kernel
 		? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
 		: null,
@@ -271,6 +277,7 @@ persistTopics({ store, file: paths.topicsFile });
 // Before the view: a saved session view opened from Pinned finds its pin already there.
 persistPinned({ store, file: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
+persistLanguages({ store, file: paths.languagesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });
 
 const pollTimer = setInterval(async () => {

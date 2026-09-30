@@ -13,29 +13,41 @@ const PREVIEW_CHARS = 60;
 // explaining a mistake nobody made.
 export const TAKEN_BACK = 'The developer took back their last message: ignore it; no reply needed.';
 
-// The whole utterance, so "no, remove that, what I meant is…" is a correction, not a take-back.
-const BARE_TAKE_BACK_PATTERN =
-	/^(?:(?:oh|no|sorry|actually|okay|ok|wait|um|uh)[,.!\s]+)*(?:take (?:that|it) back|cancel that|never ?mind|scratch that|forget (?:that|it)|ignore that)(?:[,\s]+please)?[.!\s]*$/i;
+// The whole utterance only takes back their last words: "no, remove that, what I meant is…" is a
+// correction for the session, not a take-back.
+const isBareTakeBack = async (toolContext: ToolContext): Promise<boolean> => {
+	const said = toolContext.utterance?.trim();
 
-export const isBareTakeBack = (utterance: string | undefined): boolean =>
 	// Typed or replayed without words: the tool call is the only word there is.
-	!utterance?.trim() || BARE_TAKE_BACK_PATTERN.test(utterance.trim());
+	return !said || (await toolContext.judge({ key: 'take_back', utterance: said })) === 'yes';
+};
 
-// "That was for store front", "I meant this for checkout", "no, that was for here": the words went
-// to the wrong session, so the one that got them is not sent them again as a correction.
-const MISROUTE_PATTERN =
-	/\b(?:(?:that|this|it) (?:was|is) (?:meant )?for|I meant (?:that|this|it) for|(?:that|this|it) wasn'?t for|not (?:meant )?for (?:you|it|them))\b/i;
-
+// "That was for store front", "das war für checkout": the words went to the wrong session, so the
+// one that got them is not sent them again as a correction. A named other session says so in any
+// language.
 interface IsSaidToBeMisroutedParams {
 	state: State;
+	// The session that got the words.
 	ref: string;
-	utterance: string | undefined;
+	toolContext: ToolContext;
 }
 
-const isSaidToBeMisrouted = ({ state, ref, utterance }: IsSaidToBeMisroutedParams): boolean =>
-	utterance !== undefined &&
-	(MISROUTE_PATTERN.test(utterance) ||
-		findSessionsNamedIn(state, utterance).some((named) => named !== ref));
+const isSaidToBeMisrouted = async ({
+	state,
+	ref,
+	toolContext,
+}: IsSaidToBeMisroutedParams): Promise<boolean> => {
+	const said = toolContext.utterance;
+
+	if (said === undefined) {
+		return false;
+	}
+
+	return (
+		findSessionsNamedIn(state, said).some((named) => named !== ref) ||
+		(await toolContext.judge({ key: 'misrouted', utterance: said })) === 'yes'
+	);
+};
 
 export const QUEUED_ACTIONS = ['now', 'drop'] as const;
 export type QueuedAction = (typeof QUEUED_ACTIONS)[number];
@@ -118,7 +130,7 @@ interface TakeBackParams {
 	toolContext: ToolContext;
 }
 
-const sendCorrection = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
+const sendCorrection = async ({ state, ref, toolContext }: TakeBackParams): Promise<ToolResult> => {
 	if (toolContext.sentTo?.has(ref)) {
 		return succeed(
 			`not taken back: those words correct what ${ref} already has, and they went to it in this turn`,
@@ -126,7 +138,7 @@ const sendCorrection = ({ state, ref, toolContext }: TakeBackParams): ToolResult
 	}
 
 	const said = (toolContext.utterance ?? '').trim();
-	const sent = sendText({ state, ref, text: said, kind: 'instruction', toolContext });
+	const sent = await sendText({ state, ref, text: said, kind: 'instruction', toolContext });
 
 	if (!sent.ok) {
 		return sent;
@@ -142,7 +154,7 @@ const sendCorrection = ({ state, ref, toolContext }: TakeBackParams): ToolResult
 	};
 };
 
-const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
+const takeBack = async ({ state, ref, toolContext }: TakeBackParams): Promise<ToolResult> => {
 	const carrier = findCarrier({ state, ref, last: readLastSaid(state, toolContext) });
 
 	if (!carrier) {
@@ -163,9 +175,9 @@ const takeBack = ({ state, ref, toolContext }: TakeBackParams): ToolResult => {
 	// correction for the session, which undoing would lose ("remove that, I meant the TTS tags") —
 	// unless it says the words were for someone else ("that was for store front").
 	if (!('id' in carrier)) {
-		const isMisroute = isSaidToBeMisrouted({ state, ref, utterance: toolContext.utterance });
+		const isMisroute = await isSaidToBeMisrouted({ state, ref, toolContext });
 
-		if (!isBareTakeBack(toolContext.utterance) && !isMisroute) {
+		if (!isMisroute && !(await isBareTakeBack(toolContext))) {
 			return sendCorrection({ state, ref, toolContext });
 		}
 
@@ -207,11 +219,11 @@ interface HandleQueuedMessageParams {
 	toolContext: ToolContext;
 }
 
-export const handleQueuedMessage = ({
+export const handleQueuedMessage = async ({
 	state,
 	input,
 	toolContext,
-}: HandleQueuedMessageParams): ToolResult => {
+}: HandleQueuedMessageParams): Promise<ToolResult> => {
 	const checked = checkRef(state, input.ref);
 
 	if (!checked.ok) {

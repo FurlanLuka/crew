@@ -1041,6 +1041,37 @@ textarea:focus-visible {
 	line-height: 1.4;
 	color: var(--muted);
 }
+.languages-title {
+	margin-top: 6px;
+	border-top: 1px solid var(--line-soft);
+	padding-top: 10px;
+}
+.language-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 2px 10px 8px;
+}
+.language-item {
+	background: none;
+	border: 1px solid var(--line);
+	border-radius: 100px;
+	color: var(--ink-dim);
+	font: inherit;
+	font-size: 11px;
+	padding: 2px 10px;
+}
+.language-item:hover,
+.language-item:focus-visible {
+	color: var(--ink);
+	border-color: var(--muted);
+	outline: none;
+}
+.language-item[aria-checked="true"] {
+	color: var(--cyan);
+	border-color: var(--cyan-dim);
+	background: rgba(78, 201, 217, 0.08);
+}
 .mode-check {
 	color: var(--cyan);
 	font-size: 13px;

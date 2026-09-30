@@ -1,3 +1,4 @@
+import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import { createNullNotes } from '../../test/support/notes.js';
 import type Anthropic from '@anthropic-ai/sdk';
@@ -45,6 +46,7 @@ const createHarness = (
 	const docOpeners: unknown[] = [];
 	const router = new UtteranceRouter({
 		store,
+		judge: englishJudge,
 		now: () => 5000,
 		kernel: async (text, { setListenMode, openUrl, heardFrom, ...options }) => {
 			kernelCalls.push({ text, ...options });
@@ -129,6 +131,7 @@ describe('UtteranceRouter', () => {
 		const harness = createHarness();
 		const router = new UtteranceRouter({
 			store: harness.store,
+			judge: englishJudge,
 			kernel: async () => {
 				harness.view('checkout-api/main');
 
@@ -281,7 +284,7 @@ describe('UtteranceRouter', () => {
 
 	it('no kernel → says what is missing, and logs it', async () => {
 		const store = new Store();
-		const router = new UtteranceRouter({ store, kernel: null, now: () => 1 });
+		const router = new UtteranceRouter({ store, judge: englishJudge, kernel: null, now: () => 1 });
 
 		await router.handle('open checkout');
 
@@ -326,11 +329,13 @@ describe('UtteranceRouter', () => {
 				readHistory: () => [],
 				mute: () => {},
 				saveDebugNote: () => {},
+				judge: englishJudge,
 				notes: createNullNotes(),
 			},
 		});
 		const router = new UtteranceRouter({
 			store,
+			judge: englishJudge,
 			kernel: (text, options) => kernel.handle(text, options),
 		});
 

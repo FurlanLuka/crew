@@ -18,7 +18,9 @@ import {
 	sendText,
 	type SentWords,
 } from './send.js';
-import { isAboutHandsFree, readListenMode, type HandsFreeResult } from './hands-free.js';
+import { type HandsFreeResult, toListenMode } from './hands-free.js';
+import { countSpokenWords } from '../state/helpers.js';
+import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
 import { askTarget, decideNotificationReply } from './notification-reply.js';
@@ -27,6 +29,7 @@ import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
 import type { HistoryQuery } from '../memory/journal.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
+import type { Judge } from '../judge/judge.js';
 import type { NotesStore } from '../memory/notes.js';
 import { GENERAL_NOTES, nameNotes, readNoteText, readWorkspace } from '../shared/notes.js';
 import { createLogger } from '../log.js';
@@ -80,38 +83,37 @@ const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): s
 	return spoken === normalizeName(GENERAL_NOTES) ? GENERAL_NOTES : null;
 };
 
-// "…and fix the login bug", "…then run the seeds": new work named. A pause ("stop and wait",
-// "stop, let me look") or "I'll do it myself instead" names none for the session: it still stops.
-const SAYS_WHAT_INSTEAD_PATTERN =
-	/\b(?:stop|cancel|halt|drop)\b[^.?!]*\b(?:and|then)\s+(?!(?:wait|hold|pause|listen|look|think|let)\b)\w+/i;
-
-// "Start it and tell me what you did last", "start checkout, then run the tests", "Start it. What…?":
-// more than a start. "And open it" is what starting does anyway. Whether the rest is for the session
-// (not "and bring up its servers", "and store-front") is the model's call: the hint only asks.
-const START_THEN_MORE_PATTERN =
-	/\bstart\b[^.?!]*?(?:,?\s+(?:and\s+then|and|then)\s+(?:also\s+)?(?!(?:then\b|(?:open|show)\s+(?:it|them|that)\b))\w+|[.?!]\s+\S)/i;
-
-// The whole utterance is the command: "make the tests quiet" or a long request that ends "…just be
-// silent, okay?" is words for a session, and muting on it swallowed what came after.
-const MUTE_REQUEST_PATTERN =
-	/^(?:(?:hey|okay|ok) )?(?:voice ?os )?(?:(?:okay|ok) )?(?:please )?(?:mute|be quiet|quiet|shut up|stop talking|shush|hush|silence|be silent|quiet please)(?: please)?(?: voice ?os)?(?: please)?$/;
-
-export const isMuteRequest = (utterance: string | undefined): boolean =>
-	// Typed or replayed without words: the tool call is the only word there is.
-	utterance === undefined ||
-	MUTE_REQUEST_PATTERN.test(
-		normalizeUtterance(utterance)
-			.replace(/[,.!?;:]+/g, ' ')
-			.replace(/\s+/g, ' ')
-			.trim(),
-	);
-
-export const saysMoreThanStart = (utterance: string | undefined): boolean =>
-	utterance !== undefined && START_THEN_MORE_PATTERN.test(utterance.trim());
-
 const MIN_LONG_SPEECH_WORDS = 10;
-const REQUEST_OPENING_PATTERN =
-	/^(?:(?:and|so|okay|ok|um|uh)[,\s]+)*(?:can|could|would|will) you\b|^(?:(?:and|so)[,\s]+)?(?:what|which|who|where|when|why|how)\b/i;
+const MAX_MUTE_WORDS = 2;
+// "Stop listening" is two words: one is a stop and nothing else.
+const MAX_STOP_WORDS = 1;
+
+const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): ToolResult => {
+	if (mode === null) {
+		return fail(
+			'Not changed: the developer did not clearly ask for push to talk, on demand or hands-free.',
+		);
+	}
+
+	const result = toolContext.setListenMode(mode);
+
+	if (result === 'no_tab') {
+		return fail(
+			'Not changed: no browser tab to switch. Tell the developer to use the listening menu.',
+		);
+	}
+
+	// Remembered as the mode applied, which the words chose, not the one the model guessed; a mute
+	// that turned out to be about listening is remembered as the listening change it was.
+	return {
+		...succeed(
+			result === 'changed'
+				? `listening is now ${mode}; Voice OS said so`
+				: `listening was already ${mode}; Voice OS said so`,
+		),
+		recordAs: { name: 'hands_free', input: { mode } },
+	};
+};
 
 export interface HistoryEntry {
 	ts: string;
@@ -137,6 +139,8 @@ export interface ToolContext {
 	// Required so a server that forgets to wire them fails to compile, not a "Noted." that saved nothing.
 	mute: () => void;
 	saveDebugNote: (words: DebugNoteWords) => void;
+	// What the developer's words mean, in any language (judge/judge.ts says who asks).
+	judge: Judge;
 	// The developer's own notes, per workspace.
 	notes: NotesStore;
 	// Calls that change something in this turn so far, this step's included: more than one splits the words.
@@ -162,10 +166,15 @@ interface ChooseWordsForParams {
 	toolContext: ToolContext;
 }
 
-const chooseWordsFor = ({ state, input, toolContext }: ChooseWordsForParams): SentWords => {
+const chooseWordsFor = ({
+	state,
+	input,
+	toolContext,
+}: ChooseWordsForParams): Promise<SentWords> => {
 	const utterance = toolContext.utterance;
 
 	return chooseSentWords({
+		judge: toolContext.judge,
 		utterance,
 		part: typeof input.text === 'string' ? input.text : undefined,
 		earlier: toolContext.recentUtterances ?? [],
@@ -189,14 +198,14 @@ interface SendRecordedParams {
 	toolContext: ToolContext;
 }
 
-const sendRecorded = ({
+const sendRecorded = async ({
 	state,
 	ref,
 	words,
 	input,
 	name,
 	toolContext,
-}: SendRecordedParams): ToolResult => {
+}: SendRecordedParams): Promise<ToolResult> => {
 	// These words finish the sentence the previous ones began: the session gets it whole, joined as
 	// said, and the reducer replaces the first half with it.
 	const previous = toolContext.recentUtterances?.at(-1)?.trim();
@@ -206,13 +215,16 @@ const sendRecorded = ({
 
 	log.info('words chosen', { ref, source: words.source, continues: isContinuation });
 
-	const result = sendText({
+	const result = await sendText({
 		state,
 		ref,
 		text,
 		kind: input.kind,
 		...(isContinuation ? { continues: { rest: words.text } } : {}),
 		toolContext,
+		isAboutMyNotes: input.my_notes === true,
+		isAboutLastAction: input.about_last_action === true,
+		...(isDeliverWish(input.deliver) ? { deliver: input.deliver } : {}),
 	});
 
 	// The voice log records what the session got, not what the model wrote (often nothing).
@@ -295,13 +307,18 @@ export const executeTool = async (
 				return fail('no session to forward to: use send_to with a ref');
 			}
 
-			const words = chooseWordsFor({ state, input, toolContext });
+			const words = await chooseWordsFor({ state, input, toolContext });
 
 			if (!words.text) {
 				return fail('empty text');
 			}
 
-			const misroutedAnswer = describeMisroutedAnswer(state, target, words.text);
+			const misroutedAnswer = await describeMisroutedAnswer({
+				state,
+				ref: target,
+				text: words.text,
+				judge: toolContext.judge,
+			});
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
@@ -315,13 +332,15 @@ export const executeTool = async (
 			// "and can you tell me what's running." were taken for ones. Short ones stay ignorable
 			// (speech-to-text punctuates a cut-off "and can you?" too), and so does a lyric or a video.
 			const said = (toolContext.utterance ?? '').trim();
-			const isRequest =
-				(/\?$/.test(said) || REQUEST_OPENING_PATTERN.test(said)) &&
-				said.split(/\s+/).length >= MIN_REQUEST_WORDS;
+			// A sentence that ends (a question mark, a full stop) is finished, in any language.
+			// Speech-to-text closes nearly everything with a full stop, so this refuses more than it
+			// must: a refusal only costs the kernel a second look, and it can still ignore words that
+			// were not said to anyone. Swallowing a request costs the developer the request.
+			const isRequest = /[?.!]$/.test(said) && countSpokenWords(said) >= MIN_REQUEST_WORDS;
 
 			// Fragments are a few words ("and can you"); a long stretch of speech is a thought or not
 			// for anyone — the developer's own thinking aloud was ignored as "unfinished".
-			const isLong = said.split(/\s+/).length >= MIN_LONG_SPEECH_WORDS;
+			const isLong = countSpokenWords(said) >= MIN_LONG_SPEECH_WORDS;
 
 			// A thought cut off mid-word ("…the thing with the—") is a fragment however long.
 			const isCutOff = /(?:—|-|…|\.\.\.)$/.test(said);
@@ -398,24 +417,30 @@ export const executeTool = async (
 				log.info('continuation kept on the screen', { named: checked.ref, to: ref });
 			}
 
-			const words = chooseWordsFor({ state, input, toolContext });
+			const words = await chooseWordsFor({ state, input, toolContext });
 
 			if (!words.text) {
 				return fail('empty instruction');
 			}
 
-			const misroutedAnswer = describeMisroutedAnswer(state, ref, words.text);
+			const misroutedAnswer = await describeMisroutedAnswer({
+				state,
+				ref,
+				text: words.text,
+				judge: toolContext.judge,
+			});
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
 			}
 
 			if (
-				isMisroutedToSetup({
+				await isMisroutedToSetup({
 					state,
 					ref,
 					forwardTo: toolContext.forwardTo ?? null,
 					utterance: toolContext.utterance,
+					judge: toolContext.judge,
 				})
 			) {
 				return fail(
@@ -558,9 +583,14 @@ export const executeTool = async (
 				findSessionsNamedIn(state, toolContext.utterance).some((named) => named !== checked.ref);
 
 			if (
-				saysMoreThanStart(toolContext.utterance) &&
+				toolContext.utterance !== undefined &&
 				!namesAnother &&
-				!toolContext.sentTo?.has(checked.ref)
+				!toolContext.sentTo?.has(checked.ref) &&
+				(await toolContext.judge({
+					key: 'more_than_start',
+					utterance: toolContext.utterance,
+					context: `The session: ${checked.ref}`,
+				})) === 'yes'
 			) {
 				// forward reaches only the session on screen: from elsewhere it is send_to.
 				const how =
@@ -584,7 +614,7 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			const namedRefs = findNamedRefs(state, toolContext, checked.ref);
+			const namedRefs = await findNamedRefs(state, toolContext, checked.ref);
 
 			if (namedRefs.length !== 1 || namedRefs[0] !== checked.ref) {
 				return fail(
@@ -658,22 +688,30 @@ export const executeTool = async (
 				return fail(checked.error);
 			}
 
-			// "Stop listening" is about hands-free, whatever else "stop" means.
-			if (toolContext.utterance !== undefined && isAboutHandsFree(toolContext.utterance)) {
-				return fail(
-					'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
-				);
-			}
-
-			// "Stop the refactor and fix the login bug first" says what to do instead: a redirect,
-			// which Voice OS confirms before stopping anything.
+			// "Stop" alone is only a stop, in any language: the judge is asked only when there is more.
 			if (
 				toolContext.utterance !== undefined &&
-				SAYS_WHAT_INSTEAD_PATTERN.test(toolContext.utterance)
+				countSpokenWords(toolContext.utterance) > MAX_STOP_WORDS
 			) {
-				return fail(
-					'Not interrupted: they said what to do instead. Forward it with kind redirect: Voice OS asks them whether to stop the work and switch.',
-				);
+				const [aboutListening, saysInstead] = await Promise.all([
+					toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance }),
+					toolContext.judge({ key: 'says_instead', utterance: toolContext.utterance }),
+				]);
+
+				// "Stop listening" is about hands-free, whatever else "stop" means.
+				if (aboutListening === 'yes') {
+					return fail(
+						'Not interrupted: the developer spoke about hands-free listening. Use hands_free.',
+					);
+				}
+
+				// "Stop the refactor and fix the login bug first" says what to do instead: a redirect,
+				// which Voice OS confirms before stopping anything.
+				if (saysInstead === 'yes') {
+					return fail(
+						'Not interrupted: they said what to do instead. Forward it with kind redirect: Voice OS asks them whether to stop the work and switch.',
+					);
+				}
 			}
 
 			const isNamed =
@@ -699,8 +737,27 @@ export const executeTool = async (
 		}
 
 		case 'mute': {
-			if (!isMuteRequest(toolContext.utterance)) {
-				return fail('not a mute request; do nothing more');
+			// The whole utterance is the command: "make the tests quiet" or a long request that ends
+			// "…just be silent, okay?" is words for a session, and muting on it swallowed what came after.
+			// A word or two ("quiet", "tiho", "sei still") is the command itself in any language; only
+			// something longer ("make the tests quiet") asks the judge whether all of it was.
+			if (
+				toolContext.utterance !== undefined &&
+				countSpokenWords(toolContext.utterance) > MAX_MUTE_WORDS &&
+				(await toolContext.judge({ key: 'mute_only', utterance: toolContext.utterance })) !== 'yes'
+			) {
+				// "Stop listening" in another language reached for mute: it is a change of listening, made
+				// here, so the model has nothing to explain and a second call to get wrong.
+				const [aboutListening, listenMode] = await Promise.all([
+					toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance }),
+					toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
+				]);
+
+				if (aboutListening !== 'yes') {
+					return fail('not a mute request; do nothing more');
+				}
+
+				return applyListenMode(toolContext, toListenMode(listenMode));
 			}
 
 			toolContext.mute();
@@ -836,33 +893,18 @@ export const executeTool = async (
 		}
 
 		case 'hands_free': {
+			// The words decide the mode, not the kernel: "stop listening" must never turn listening on.
 			const mode =
 				toolContext.utterance === undefined
 					? // Without the developer's words (typed tests, replays) the model's choice is taken.
 						isListenMode(input.mode)
 						? input.mode
 						: null
-					: readListenMode(toolContext.utterance);
+					: toListenMode(
+							await toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
+						);
 
-			if (mode === null) {
-				return fail(
-					'Not changed: the developer did not clearly ask for push to talk, on demand or hands-free.',
-				);
-			}
-
-			const result = toolContext.setListenMode(mode);
-
-			if (result === 'no_tab') {
-				return fail(
-					'Not changed: no browser tab to switch. Tell the developer to use the listening menu.',
-				);
-			}
-
-			return succeed(
-				result === 'changed'
-					? `listening is now ${mode}; Voice OS said so`
-					: `listening was already ${mode}; Voice OS said so`,
-			);
+			return applyListenMode(toolContext, mode);
 		}
 
 		case 'dev_offer': {

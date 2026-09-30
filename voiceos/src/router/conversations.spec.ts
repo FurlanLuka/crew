@@ -4,6 +4,8 @@ import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, toolUse } from '../../test/support/conversation.js';
 import { SWITCH_OFFER_MS } from '../shared/protocol.js';
+import { englishJudge } from '../../test/support/english-judge.js';
+import type { Judge } from '../judge/judge.js';
 
 configureLog({ quiet: true });
 
@@ -294,6 +296,59 @@ describe('conversations', () => {
 			expect(sends).toEqual([
 				['store-front/main', 'Review all of this.'],
 				['store-front/main', 'Actually, run the linter on the whole repo first.'],
+			]);
+		});
+
+		it('"For …?" answered "no" with more after it → the held words stay on the screen, and the rest is routed too', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'spoken',
+				text: 'checkout api, main is done: the retry backoff.',
+				source: 'narrator',
+				ref: 'checkout-api/main',
+			});
+
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+			convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+			await convo.say('No, and run the linter on the whole repo first.');
+
+			const sends = convo.inputs.flatMap((input) =>
+				input.type === 'send' ? [[input.ref, input.text]] : [],
+			);
+
+			expect(sends).toEqual([
+				['store-front/main', 'Review all of this.'],
+				['store-front/main', 'No, and run the linter on the whole repo first.'],
+			]);
+		});
+
+		it('"For …?" answered yes with more after it → the held words go there, and the rest is routed too', async () => {
+			// A long yes in another language: the English patterns would call it something else.
+			const judge: Judge = async (params) =>
+				params.key === 'target_answer' ? ('yes' as never) : englishJudge(params);
+			const convo = createConversation({ refs: REFS, view: 'store-front/main', judge });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({
+				type: 'spoken',
+				text: 'checkout api, main is done: the retry backoff.',
+				source: 'narrator',
+				ref: 'checkout-api/main',
+			});
+
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+			convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+			await convo.say('Ja, und danach führ den Linter aus.');
+
+			const sends = convo.inputs.flatMap((input) =>
+				input.type === 'send' ? [[input.ref, input.text]] : [],
+			);
+
+			expect(sends).toEqual([
+				['checkout-api/main', 'Review all of this.'],
+				['store-front/main', 'Ja, und danach führ den Linter aus.'],
 			]);
 		});
 

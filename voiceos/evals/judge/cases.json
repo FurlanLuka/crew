@@ -1,0 +1,120 @@
+{
+	"note": "What the judge must answer for real words in four languages. Traps are the words a pattern got wrong or a careless reading would: a yes with a no in it, a take-back inside an instruction.",
+	"cases": [
+		{ "key": "approves", "utterance": "Yes, go ahead.", "expect": "yes" },
+		{ "key": "approves", "utterance": "Ja, mach das.", "expect": "yes" },
+		{ "key": "approves", "utterance": "Ja, lahko.", "expect": "yes" },
+		{ "key": "approves", "utterance": "Sí, adelante.", "expect": "yes" },
+		{ "key": "approves", "utterance": "Don't do it.", "expect": "no" },
+		{ "key": "approves", "utterance": "Nein, noch nicht.", "expect": "no" },
+		{ "key": "approves", "utterance": "Ne, počakaj.", "expect": "no" },
+		{ "key": "approves", "utterance": "Hmm, let me think.", "expect": "no" },
+		{ "key": "approves", "utterance": "Yes, but push to a new branch.", "expect": "yes" },
+		{ "key": "approves_plainly", "utterance": "Ja, aber nicht jetzt.", "expect": "no" },
+		{ "key": "approves_plainly", "utterance": "Da, izbriši.", "expect": "yes" },
+		{ "key": "approves_plainly", "utterance": "Yes, wait, no.", "expect": "no" },
+		{ "key": "bare_answer", "utterance": "Nope.", "expect": "yes" },
+		{ "key": "bare_answer", "utterance": "Ja.", "expect": "yes" },
+		{ "key": "bare_answer", "utterance": "Ja, und lass die Tests laufen.", "expect": "no" },
+		{ "key": "refuses", "utterance": "Ne.", "expect": "yes" },
+		{ "key": "refuses", "utterance": "No, gracias.", "expect": "yes" },
+		{ "key": "refuses", "utterance": "Yes.", "expect": "no" },
+		{ "key": "take_back", "utterance": "Scratch that.", "expect": "yes" },
+		{ "key": "take_back", "utterance": "Vergiss es.", "expect": "yes" },
+		{ "key": "take_back", "utterance": "Pozabi to.", "expect": "yes" },
+		{
+			"key": "take_back",
+			"utterance": "No, remove that, use the other file instead.",
+			"expect": "no"
+		},
+		{ "key": "misrouted", "utterance": "Das war für checkout gemeint.", "expect": "yes" },
+		{ "key": "misrouted", "utterance": "To je bilo za store front.", "expect": "yes" },
+		{ "key": "misrouted", "utterance": "Eso era para el otro.", "expect": "yes" },
+		{ "key": "misrouted", "utterance": "That was a good fix.", "expect": "no" },
+		{ "key": "mute_only", "utterance": "Sei still.", "expect": "yes" },
+		{ "key": "mute_only", "utterance": "Tiho, prosim.", "expect": "yes" },
+		{ "key": "mute_only", "utterance": "Make the tests quiet.", "expect": "no" },
+		{ "key": "mute_only", "utterance": "Mute that and tell it to run the linter.", "expect": "no" },
+		{
+			"key": "says_instead",
+			"utterance": "Stop the refactor and fix the login bug first.",
+			"expect": "yes"
+		},
+		{ "key": "says_instead", "utterance": "Hör auf und warte.", "expect": "no" },
+		{ "key": "says_instead", "utterance": "Ustavi in popravi prijavo.", "expect": "yes" },
+		{ "key": "about_listening", "utterance": "Hör auf zuzuhören.", "expect": "yes" },
+		{ "key": "about_listening", "utterance": "The server is listening on 3000.", "expect": "no" },
+		{ "key": "listen_mode", "utterance": "Stop listening.", "expect": "off" },
+		{ "key": "listen_mode", "utterance": "Schalte Freisprechen ein.", "expect": "hands-free" },
+		{ "key": "listen_mode", "utterance": "Preklopi na push to talk.", "expect": "push" },
+		{
+			"key": "asks_about_options",
+			"utterance": "¿Qué hace la opción dos?",
+			"context": "The options: \"postgres\", \"sqlite\"",
+			"expect": "yes"
+		},
+		{
+			"key": "asks_about_options",
+			"utterance": "Die zweite?",
+			"context": "The options: \"postgres\", \"sqlite\"",
+			"expect": "no"
+		},
+		{ "key": "target_answer", "utterance": "Ja.", "expect": "yes" },
+		{ "key": "target_answer", "utterance": "Ne, tukaj.", "expect": "no" },
+		{
+			"key": "target_answer",
+			"utterance": "Run the linter first.",
+			"expect": "other"
+		},
+		{
+			"key": "take_back_before",
+			"utterance": "Rename the file to utils, scratch that, run the linter instead.",
+			"context": "The part: \"run the linter instead.\"",
+			"expect": "yes"
+		},
+		{
+			"key": "take_back_before",
+			"utterance": "Benenne die Datei um, vergiss das, führ lieber den Linter aus.",
+			"context": "The part: \"führ lieber den Linter aus.\"",
+			"expect": "yes"
+		},
+		{
+			"key": "take_back_before",
+			"utterance": "Rename the file to utils, scratch that, run the linter instead.",
+			"context": "The part: \"Rename the file to utils\"",
+			"expect": "no"
+		},
+		{
+			"key": "take_back_before",
+			"utterance": "Poženi teste in potem popravi login.",
+			"context": "The part: \"popravi login.\"",
+			"expect": "no"
+		},
+		{ "key": "for_setup", "utterance": "Add a new worktree for checkout api.", "expect": "yes" },
+		{
+			"key": "for_setup",
+			"utterance": "Füg das Projekt signals zum Workspace hinzu.",
+			"expect": "yes"
+		},
+		{ "key": "for_setup", "utterance": "Fix the failing login test.", "expect": "no" },
+		{ "key": "this_session", "utterance": "Pin this session.", "expect": "yes" },
+		{ "key": "this_session", "utterance": "Pripni to sejo.", "expect": "yes" },
+		{ "key": "this_session", "utterance": "Pin checkout api.", "expect": "no" },
+		{
+			"key": "more_than_start",
+			"utterance": "Start checkout api and run the tests.",
+			"expect": "yes"
+		},
+		{
+			"key": "more_than_start",
+			"utterance": "Starte checkout und führ die Migration aus.",
+			"expect": "yes"
+		},
+		{
+			"key": "more_than_start",
+			"utterance": "Odpri checkout.",
+			"context": "The session: checkout-api/main",
+			"expect": "no"
+		}
+	]
+}

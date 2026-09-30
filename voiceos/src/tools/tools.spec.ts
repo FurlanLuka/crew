@@ -1,3 +1,5 @@
+import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
+import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type { NoteWords } from '../memory/notes.js';
 import { formatAge } from '../state/working.js';
@@ -21,7 +23,7 @@ import {
 	isDuplicateSend,
 	isMisroutedToSetup,
 } from './send.js';
-import { executeTool, saysMoreThanStart, type ToolContext } from './tools.js';
+import { executeTool, type ToolContext } from './tools.js';
 import { TAKEN_BACK } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
 import { TOOL_DEFINITIONS, listToolsFor, MUTATING_TOOLS } from './definitions.js';
@@ -30,51 +32,6 @@ import { describeSession } from './session-view.js';
 import { carriesWords } from '../router/kernel.js';
 import { isClarifyingQuestion } from './answer.js';
 import type { QuestionAsk } from '../shared/questions.js';
-
-// What every instruction carries to the reducer, which says the situation line when there is one.
-const INSTRUCTION_ACK = { kind: 'instruction' } as const;
-
-const createToolContext = (patch: Partial<State> = {}) => {
-	const refs = ['store-front/main', 'store-front/wrk1', 'checkout-api/main'];
-	const sessions: State['sessions'] = Object.fromEntries(
-		refs.map((ref) => [
-			ref,
-			{
-				...createSession({ ref, label: ref, branch: '', cwd: '/w', dirs: [], isPinned: false }),
-				status: 'idle' as const,
-			},
-		]),
-	);
-	sessions['checkout-api/main'] = {
-		...sessions['checkout-api/main']!,
-		status: 'stopped',
-		topic: 'Checkout retry backoff',
-	};
-	const state: State = {
-		...createInitialState(),
-		sessions,
-		order: refs,
-		focus: 'store-front/main',
-		...patch,
-	};
-	const actions: Action[] = [];
-	const tools: ToolContext = {
-		getState: () => state,
-		dispatch: (action) => actions.push(action),
-		readHistory: ({ ref, query, limit }) => [
-			{ ts: '2026-09-24', ref: ref ?? 'store-front/main', asked: query, did: `limit ${limit}` },
-		],
-		now: () => 0,
-		asks: state.asks,
-		mute: () => {},
-		saveDebugNote: () => {},
-		notes: createNullNotes(),
-		setListenMode: () => 'changed' as const,
-		openUrl: () => true,
-	};
-
-	return { tools, actions };
-};
 
 describe('tool definitions', () => {
 	it('every tool has an object schema that forbids extra keys', () => {
@@ -909,7 +866,7 @@ describe('the notes path for a session', () => {
 
 		await executeTool(
 			'send_to',
-			{ ref: 'checkout-api/main', text: 'Go through my notes and pick one.' },
+			{ my_notes: true, ref: 'checkout-api/main', text: 'Go through my notes and pick one.' },
 			{
 				...tools,
 				notes: notesIn(['checkout-api']),
@@ -929,7 +886,7 @@ describe('the notes path for a session', () => {
 
 		await executeTool(
 			'send_to',
-			{ ref: 'checkout-api/main', text: 'Go through my notes.' },
+			{ my_notes: true, ref: 'checkout-api/main', text: 'Go through my notes.' },
 			{ ...tools, notes: notesIn([]), utterance: 'checkout, go through my notes' },
 		);
 
@@ -961,7 +918,7 @@ describe('the notes path for a session', () => {
 
 		await executeTool(
 			'forward',
-			{ text: 'Which of my notes is quickest?', kind: 'question' },
+			{ my_notes: true, text: 'Which of my notes is quickest?', kind: 'question' },
 			{
 				...tools,
 				notes: notesIn([]),
@@ -981,21 +938,13 @@ describe('the notes path for a session', () => {
 		]);
 	});
 
-	it("the setup session reads the general notes; other notes are not the developer's", () => {
+	it("the setup session reads the general notes; notes the kernel does not call the developer's are not given", () => {
 		const notes = notesIn([GENERAL_NOTES]);
 
-		expect(buildNotesPathNote({ ref: 'setup', utterance: 'read my own notes', notes })).toBe(
+		expect(buildNotesPathNote({ ref: 'setup', isAsked: true, notes })).toBe(
 			"The developer's notes for general are in /n/(general).md.",
 		);
-
-		for (const utterance of [
-			'add a notes column',
-			'fix the release notes',
-			'analyze the debug notes',
-			undefined,
-		]) {
-			expect(buildNotesPathNote({ ref: 'store-front/main', utterance, notes })).toBeUndefined();
-		}
+		expect(buildNotesPathNote({ ref: 'store-front/main', isAsked: false, notes })).toBeUndefined();
 	});
 });
 
@@ -1076,17 +1025,21 @@ describe('an answer to a question asked while the developer spoke', () => {
 });
 
 describe('a start that asks for more', () => {
-	it.each([
-		["Uh, can I— can I start the session and tell me what's the last thing you've done?", true],
-		['start checkout, then run the tests', true],
-		['Start it. What did you do last?', true],
-		['start it and show me what you did last', true],
-		['start checkout and go fix the login bug', true],
-		['start the session', false],
-		['start it and open it', false],
-		['start it and then open it', false],
-		['can you start checkout?', false],
-	])('%p → %p', (utterance, expected) => expect(saysMoreThanStart(utterance)).toBe(expected));
+	it('the judge hears nothing more than a start → no hint, in any language', async () => {
+		const { tools } = createToolContext();
+		const result = await executeTool(
+			'start_session',
+			{ ref: 'checkout-api/main' },
+			{
+				...tools,
+				forwardTo: 'checkout-api/main',
+				utterance: 'Starte checkout.',
+				judge: judgeAlways('no'),
+			},
+		);
+
+		expect(String(result.content)).not.toContain('forward that part');
+	});
 
 	it('still starts, and tells the kernel to forward the rest', async () => {
 		const { tools, actions } = createToolContext();
@@ -1920,6 +1873,9 @@ describe('describeToolCall', () => {
 		expect(
 			describeToolCall({ name: 'start_session', input: { ref: 'store-front/main' }, ok: false }),
 		).toBe('start_session store-front/main (failed)');
+		expect(describeToolCall({ name: 'hands_free', input: { mode: 'push' }, ok: true })).toBe(
+			'hands_free push',
+		);
 	});
 
 	it('long text is cut and quoted', () => {
@@ -2053,6 +2009,7 @@ describe('Voice OS note through the real reducer', () => {
 			asks: [],
 			mute: () => {},
 			saveDebugNote: () => {},
+			judge: englishJudge,
 			notes: createNullNotes(),
 			setListenMode: () => 'changed' as const,
 			openUrl: () => true,
@@ -2121,7 +2078,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 
 		await executeTool(
 			'forward',
-			{ text: 'Check this debug note.' },
+			{ about_last_action: true, text: 'Check this debug note.' },
 			{ ...tools, forwardTo: 'store-front/main', screen: 'store-front/main', utterance: SAID },
 		);
 
@@ -2149,7 +2106,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 
 		await executeTool(
 			'forward',
-			{ text: 'What do you make of this debug note?', kind: 'question' },
+			{ about_last_action: true, text: 'What do you make of this debug note?', kind: 'question' },
 			{
 				...tools,
 				forwardTo: 'store-front/main',
@@ -2189,7 +2146,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 
 		await executeTool(
 			'forward',
-			{ text: 'Check this debug note.' },
+			{ about_last_action: true, text: 'Check this debug note.' },
 			{
 				...tools,
 				getState: () => store.state,
@@ -2724,6 +2681,7 @@ describe('tools that replaced the fast path', () => {
 				...tools,
 				utterance: 'Add a debug note: it dropped proxy brainstorm.',
 				saveDebugNote: (words) => notes.push(words),
+				judge: englishJudge,
 			},
 		);
 
@@ -2957,23 +2915,28 @@ describe('side answers', () => {
 		]);
 	});
 
-	it('"by the way" dropped from the forwarded text → still aside, read from what was said', async () => {
+	it('deliver aside ("by the way", read by the kernel) → an instruction still goes aside', async () => {
 		const { tools, actions } = running();
 
 		await executeTool(
 			'send_to',
-			{ ref: 'store-front/main', text: 'Run the linter too.', kind: 'instruction' },
+			{
+				ref: 'store-front/main',
+				text: 'Run the linter too.',
+				kind: 'instruction',
+				deliver: 'aside',
+			},
 			{ ...tools, utterance: 'by the way, have store front run the linter too' },
 		);
 
 		expect(actions[0]).toMatchObject({ aside: true });
 	});
 
-	it('"ask it right now: …" to a working session → sent with isNow, and the result says it stops for them', async () => {
+	it('deliver now to a working session → sent with isNow, and the result says it stops for them', async () => {
 		const { tools, actions } = running();
 		const result = await executeTool(
 			'forward',
-			{ text: 'Why is the build red?', kind: 'question' },
+			{ text: 'Why is the build red?', kind: 'question', deliver: 'now' },
 			{
 				...tools,
 				forwardTo: 'store-front/main',
@@ -3679,27 +3642,31 @@ describe('fixes from the live notes', () => {
 		['Voice OS, make a worktree in store front for the search fix.', false],
 		['Okay, setup: register the new project.', false],
 		['Can you add a worktree for the search fix?', false],
-	])("from another session's screen, %p → misrouted to setup: %p", (utterance, isMisrouted) => {
-		const base = createToolContext().tools.getState();
-		const state = {
-			...base,
-			sessions: {
-				...base.sessions,
-				'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
-			},
-		};
+	])(
+		"from another session's screen, %p → misrouted to setup: %p",
+		async (utterance, isMisrouted) => {
+			const base = createToolContext().tools.getState();
+			const state = {
+				...base,
+				sessions: {
+					...base.sessions,
+					'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
+				},
+			};
 
-		expect(
-			isMisroutedToSetup({
-				state,
-				ref: 'checkout-api/main',
-				forwardTo: 'store-front/main',
-				utterance,
-			}),
-		).toBe(isMisrouted);
-	});
+			expect(
+				await isMisroutedToSetup({
+					judge: englishJudge,
+					state,
+					ref: 'checkout-api/main',
+					forwardTo: 'store-front/main',
+					utterance,
+				}),
+			).toBe(isMisrouted);
+		},
+	);
 
-	it('the setup session on screen, or no session on screen → never refused', () => {
+	it('the setup session on screen, or no session on screen → never refused', async () => {
 		const base = createToolContext().tools.getState();
 		const state = {
 			...base,
@@ -3711,7 +3678,8 @@ describe('fixes from the live notes', () => {
 		const utterance = 'Can you reinstall Voice OS?';
 
 		expect(
-			isMisroutedToSetup({
+			await isMisroutedToSetup({
+				judge: englishJudge,
 				state,
 				ref: 'checkout-api/main',
 				forwardTo: 'checkout-api/main',
@@ -3719,7 +3687,13 @@ describe('fixes from the live notes', () => {
 			}),
 		).toBe(false);
 		expect(
-			isMisroutedToSetup({ state, ref: 'checkout-api/main', forwardTo: null, utterance }),
+			await isMisroutedToSetup({
+				judge: englishJudge,
+				state,
+				ref: 'checkout-api/main',
+				forwardTo: null,
+				utterance,
+			}),
 		).toBe(false);
 	});
 });
@@ -3957,7 +3931,7 @@ describe('words that ask about a waiting question', () => {
 	});
 
 	const isForwarded = (labels: string[], utterance: string) =>
-		isClarifyingQuestion(labelled(labels), utterance);
+		isClarifyingQuestion({ ask: labelled(labels), utterance, judge: englishJudge });
 
 	it.each([
 		[['Postgres (Recommended)', 'SQLite'], 'Postgres?'],
@@ -3968,8 +3942,8 @@ describe('words that ask about a waiting question', () => {
 		[['Postgres', 'Postgres + Redis'], 'Postgres?'],
 		[['Keep it', 'Keep both'], 'Keep it?'],
 		[['Do one', 'Do both'], 'Do both?'],
-	])('labels %p, %p said → a pick, not forwarded', (labels, utterance) =>
-		expect(isForwarded(labels, utterance)).toBe(false),
+	])('labels %p, %p said → a pick, not forwarded', async (labels, utterance) =>
+		expect(await isForwarded(labels, utterance)).toBe(false),
 	);
 
 	it.each([
@@ -3978,8 +3952,8 @@ describe('words that ask about a waiting question', () => {
 		[['Postgres', 'SQLite'], 'Postgres or SQLite?'],
 		[['Postgres', 'SQLite'], 'why Postgres?'],
 		[['Postgres', 'SQLite'], 'would Postgres handle the nightly import load?'],
-	])('labels %p, %p said → a question, forwarded', (labels, utterance) =>
-		expect(isForwarded(labels, utterance)).toBe(true),
+	])('labels %p, %p said → a question, forwarded', async (labels, utterance) =>
+		expect(await isForwarded(labels, utterance)).toBe(true),
 	);
 
 	it('"Postgres?" chosen with the label "Postgres (Recommended)" → the pick, the label answered', async () => {
@@ -4045,58 +4019,4 @@ describe('words that ask about a waiting question', () => {
 		expect((await forward(question)).content).toContain('withdrawn');
 		expect(await forward(plan)).toMatchObject({ ok: true, note: 'aside' });
 	});
-});
-
-describe('a debug note said to a session', () => {
-	const REF = 'store-front/main';
-
-	it.each([
-		'Add a debug note: the reply was cut mid-sentence.',
-		'Okay, take a debug note that it read every option.',
-		'Can you make a debugnote about the double reply?',
-	])('%p forwarded → refused as debug_note, nothing sent', async (utterance) => {
-		const { tools, actions } = createToolContext();
-		const result = await executeTool(
-			'forward',
-			{ text: 'The reply was cut mid-sentence.' },
-			{ ...tools, forwardTo: REF, utterance },
-		);
-
-		expect(result.ok).toBe(false);
-		expect(result.content).toContain('debug_note');
-		expect(actions).toEqual([]);
-	});
-
-	it('through answer, to a session that asked → refused the same way', async () => {
-		const base = createToolContext().tools.getState();
-		const { tools, actions } = createToolContext({
-			sessions: {
-				...base.sessions,
-				[REF]: { ...base.sessions[REF]!, needsUser: { text: 'asks: ship it?', at: 0 } },
-			},
-		});
-		const result = await executeTool(
-			'answer',
-			{ ref: REF, decision: 'yes', text: '' },
-			{ ...tools, forwardTo: REF, utterance: 'Add a debug note: it asked twice.' },
-		);
-
-		expect(result.content).toContain('debug_note');
-		expect(actions).toEqual([]);
-	});
-
-	it.each(['Can you read the debug notes?', 'What does the debug note say?'])(
-		'%p → forwarded: talk about debug notes is work for the session',
-		async (utterance) => {
-			const { tools, actions } = createToolContext();
-			const result = await executeTool(
-				'forward',
-				{ text: utterance },
-				{ ...tools, forwardTo: REF, utterance },
-			);
-
-			expect(result.ok).toBe(true);
-			expect(actions).toHaveLength(1);
-		},
-	);
 });

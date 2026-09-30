@@ -13,6 +13,7 @@ Claude Code login, working in crew's worktrees.
 
 ## Contents
 
+- [Languages](#languages)
 - [What you need](#what-you-need)
 - [First run](#first-run)
 - [The setup session](#the-setup-session)
@@ -33,6 +34,30 @@ Claude Code login, working in crew's worktrees.
 - [Where state lives](#where-state-lives)
 - [Troubleshooting](#troubleshooting)
 - [Privacy and cost](#privacy-and-cost)
+
+## Languages
+
+You can talk to Voice OS in any language, and mix them. Choose the ones you speak under
+**Languages you speak** in the listening menu (the round button next to the mic). Soniox is told
+to expect them; English is the default.
+
+**Works in any language:** where your words go, answers to questions and permissions ("ja",
+"ne", "sí"), approvals and refusals, taking words back ("vergiss das"), "that was for checkout",
+muting, changing how the tab listens, "For checkout?" answers, and asides versus queued work. A
+small, separate Claude Haiku check reads the words whenever Voice OS is about to act on what you
+meant (approve something, drop words, mute), and when it cannot tell, Voice OS takes the safe side:
+it does not approve and does not drop your words. It runs only on those turns, adding a few hundred
+milliseconds and a fraction of a cent there, and nothing to a plain message to a session.
+
+**English only, for now:**
+
+- **Stop words.** "Stop", "wait" and "no" cut Voice OS's speech at once in English. In another
+  language they stop it a moment later, once the kernel has heard them.
+- **"End of turn".** In another language a turn ends on the pause instead.
+- **The wake word** is "Voice OS", however you say the rest.
+- **Typed keywords** ("by the way", "queue it" at the start of typed text).
+- **Voice OS's own lines** ("Sent to checkout", "Switching to…") are spoken in English. The
+  sessions answer in whatever language you use with them.
 
 ## What you need
 
@@ -661,7 +686,8 @@ carries your token.
   straight to a session. **The narrator** (Claude Sonnet) summarizes a turn only when a session's
   final message has no spoken line of its own. Otherwise a short Haiku call updates the session's
   topic. All of them bill your Anthropic key. A spoken turn costs the kernel roughly a third of a
-  cent.
+  cent. The language check (Haiku, see [Languages](#languages)) runs only on turns where Voice OS
+  acts on what you meant, and costs a small fraction of that.
 - **Soniox** bills audio: speech-to-text for as long as the microphone streams, and text-to-speech
   for what Voice OS says ([Soniox pricing](https://soniox.com/pricing)). On demand and hands-free stream the whole time listening is on. Push to
   talk streams only while you hold the key.

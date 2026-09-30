@@ -1,3 +1,4 @@
+import { createJudge } from '../src/judge/judge.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Kernel, type KernelResult } from '../src/router/kernel.js';
@@ -9,7 +10,8 @@ import { createFixtureState, type FixtureContext } from '../test/support/state.j
 import { attempt, mapPool } from './pool.js';
 
 interface ExpectedCall {
-	name: ToolName;
+	// A tool, or tools joined by "|" when either does what the developer asked.
+	name: ToolName | `${ToolName}|${ToolName}`;
 	ref?: string | null;
 	action?: string;
 	// Arguments that must match exactly (an answer's decision, a fix offer's accept).
@@ -20,6 +22,8 @@ interface ExpectedCall {
 	not_includes?: string[];
 	// Arguments the call must not have with these values (a continuation flag on a new request).
 	not_input?: Record<string, unknown>;
+	// Whether the call went through: a guard (the judge) refusing an approval makes it fail.
+	ok?: boolean;
 }
 
 interface Case {
@@ -112,7 +116,8 @@ export const findTextProblems = (text: string, expected: ExpectedCall): TextProb
 };
 
 const matchesCall = (call: Call, expected: ExpectedCall): boolean => {
-	if (call.name !== expected.name) {
+	// "hands_free|mute": either tool gets the developer what they asked for.
+	if (!expected.name.split('|').includes(call.name)) {
 		return false;
 	}
 
@@ -121,6 +126,10 @@ const matchesCall = (call: Call, expected: ExpectedCall): boolean => {
 	}
 
 	if (expected.action && call.input.action !== expected.action) {
+		return false;
+	}
+
+	if (expected.ok !== undefined && call.ok !== expected.ok) {
 		return false;
 	}
 
@@ -292,6 +301,8 @@ export const runKernelEval = async ({
 	onlyIds = null,
 	model,
 }: RunKernelEvalParams): Promise<KernelEvalResult> => {
+	// The guards ask the real judge too: an eval measures what the developer would get.
+	const judge = createJudge({ apiKey });
 	// onlyIds: case ids to run, for iterating on a prompt without paying for the whole suite.
 	const allCases = (
 		JSON.parse(readFileSync(join(evalsDir, 'kernel', 'cases.json'), 'utf8')) as { cases: Case[] }
@@ -339,6 +350,7 @@ export const runKernelEval = async ({
 						],
 						has: () => true,
 					},
+					judge,
 					saveDebugNote: () => {
 						// Effects go nowhere in an eval.
 					},

@@ -1,26 +1,15 @@
-// The developer's answer to "For checkout?", settled in code: the held words go where they said.
-import { isPlainConsent } from '../tools/consent.js';
-import { normalizeSaid } from '../state/helpers.js';
+// The developer's answer to "For checkout?", read by the judge: the held words go where they said.
+import type { Judge } from '../judge/judge.js';
 import type { Store } from '../state/store.js';
-
-const MAX_BARE_WORDS = 4;
-const BARE_NO_PATTERN = /^(?:no|nope|nah|not that one|here|stay|keep it here)\b/i;
 
 export type TargetAnswer = 'yes' | 'no' | 'other';
 
-// "Yes", "yeah, for checkout": the notifier. "No", "here": the screen. Anything else is new words.
-export const readTargetAnswer = (utterance: string): TargetAnswer => {
-	const said = normalizeSaid(utterance).replace(/[.!?,]+/g, '');
+// "Yes", "ja", "no", "ne", "here": an answer in any language. Anything else, or a check that did not
+// come back, is new words.
+export const readTargetAnswer = async (judge: Judge, utterance: string): Promise<TargetAnswer> => {
+	const answer = await judge({ key: 'target_answer', utterance });
 
-	if (said.split(' ').length > MAX_BARE_WORDS) {
-		return 'other';
-	}
-
-	if (BARE_NO_PATTERN.test(said)) {
-		return 'no';
-	}
-
-	return isPlainConsent(said) ? 'yes' : 'other';
+	return answer === 'yes' || answer === 'no' ? answer : 'other';
 };
 
 // Sends the held words to where the answer points; a no, silence or new words keep them on the screen.

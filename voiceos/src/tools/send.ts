@@ -1,3 +1,5 @@
+import type { Judge } from '../judge/judge.js';
+import { isHeldQuestion } from '../state/held-lines.js';
 import {
 	isSdkAsk,
 	isSwitchOfferFresh,
@@ -7,15 +9,14 @@ import {
 } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
-import { isPlainConsent } from './consent.js';
-import { normalizeSaid } from '../state/helpers.js';
+import { countSpokenWords, normalizeSaid } from '../state/helpers.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import { buildSituationNote } from '../sessions/voice-context.js';
 import { type ToolResult, fail, succeed } from './results.js';
 import type { SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
 import type { NotesStore } from '../memory/notes.js';
-import { decideDelivery, joinNotes } from '../state/delivery.js';
+import { decideDelivery, type DeliverWish, joinNotes } from '../state/delivery.js';
 import { nameNotes, readWorkspace } from '../shared/notes.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { describeRecentAction } from './recent-action.js';
@@ -44,23 +45,21 @@ export const buildSessionNote = ({
 	return buildSituationNote({ servers: state.devServers[session.ref] ?? [], recent }) || undefined;
 };
 
-// "my notes", "my own notes": the developer's. "the release notes", "debug notes" are not.
-const MY_NOTES_PATTERN = /\bmy (?:own )?notes\b/i;
-
 interface BuildNotesPathNoteParams {
 	ref: string;
-	utterance: string | undefined;
+	// The developer mentioned their own notes (the kernel's my_notes): "the release notes" and
+	// "debug notes" are not theirs.
+	isAsked: boolean;
 	notes: NotesStore;
 }
 
 export const buildNotesPathNote = ({
 	ref,
-	utterance,
+	isAsked,
 	notes,
 }: BuildNotesPathNoteParams): string | undefined => {
-	// Only when the developer asked about their notes, as said (never the kernel's rewrite): a
-	// session is never handed them unasked.
-	if (!utterance || !MY_NOTES_PATTERN.test(utterance)) {
+	// Only when the developer asked about their notes: a session is never handed them unasked.
+	if (!isAsked) {
 		return undefined;
 	}
 
@@ -72,26 +71,40 @@ export const buildNotesPathNote = ({
 		: `The developer has no notes for ${nameNotes(workspace)} yet (they would be in ${path}).`;
 };
 
-const BARE_REFUSAL_PATTERN = /^(?:no|nope|nah|deny|decline|don't|do not|cancel|reject)\b/i;
 const MAX_BARE_ANSWER_WORDS = 4;
+// A yes this long after Voice OS's fix offer is still about it: the offer itself lapses sooner.
+const OFFER_ANSWER_MS = 30 * 60_000;
 
-export const isBareAnswer = (text: string): boolean => {
-	const words = normalizeSaid(text)
-		.replace(/[.!?,]+/g, '')
-		.split(' ');
+// A few words at most: anything longer is more than a yes or a no, in any language.
+export const isShortEnoughToAnswer = (text: string): boolean =>
+	countSpokenWords(text) <= MAX_BARE_ANSWER_WORDS;
 
-	return (
-		words.length <= MAX_BARE_ANSWER_WORDS &&
-		(isPlainConsent(words.join(' ')) || BARE_REFUSAL_PATTERN.test(words.join(' ')))
-	);
-};
+// Only a yes or a no, nothing more: the shape in code, the meaning from the judge.
+export const isBareAnswer = async (judge: Judge, text: string): Promise<boolean> =>
+	isShortEnoughToAnswer(text) && (await judge({ key: 'bare_answer', utterance: text })) === 'yes';
 
-export const describeMisroutedAnswer = (state: State, ref: string, text: string): string | null => {
+// A bare no: "no", "nein", "ne".
+export const isBareNo = async (judge: Judge, text: string): Promise<boolean> =>
+	isShortEnoughToAnswer(text) && (await judge({ key: 'refuses', utterance: text })) === 'yes';
+
+interface DescribeMisroutedAnswerParams {
+	state: State;
+	ref: string;
+	text: string;
+	judge: Judge;
+}
+
+export const describeMisroutedAnswer = async ({
+	state,
+	ref,
+	text,
+	judge,
+}: DescribeMisroutedAnswerParams): Promise<string | null> => {
 	// Anything else the developer says goes through, declining the permission or plan with their words:
 	// they moved on. Only a bare yes or no sent as words is a routing slip that would decide the wrong way.
 	const ask = state.asks.find((pendingAsk) => pendingAsk.ref === ref);
 
-	if (!ask || ask.kind === 'question' || !isBareAnswer(text)) {
+	if (!ask || ask.kind === 'question' || !(await isBareAnswer(judge, text))) {
 		return null;
 	}
 
@@ -140,6 +153,12 @@ interface SendTextParams {
 	toolContext: ToolContext;
 	// These words finish the developer's previous ones; rest is only the new part.
 	continues?: { rest: string };
+	// The developer mentioned their own notes (the kernel's my_notes): their path goes with the words.
+	isAboutMyNotes?: boolean;
+	// The words point back at what Voice OS just did (the kernel's about_last_action).
+	isAboutLastAction?: boolean;
+	// How the developer said the words should reach a busy session (the kernel's deliver).
+	deliver?: DeliverWish;
 }
 
 const toSaidWords = (text: string): string[] =>
@@ -166,17 +185,13 @@ export const isVerbatimSpan = (part: string, words: string): boolean => {
 	);
 };
 
-// "…scratch that, run the linter instead": what came before is taken back, not sent. A bare
-// "ignore" only as its own sentence: "ignore the flaky test" is an instruction.
-const TAKE_BACK_PATTERN =
-	/\b(?:scratch that|never ?mind|forget that|ignore that|ignore(?=\s*[.!;:—-]))\b[.,!;:—-]*/gi;
-
-const readAfterTakeBack = (said: string): string | null => {
-	const matches = [...said.matchAll(TAKE_BACK_PATTERN)];
-	const last = matches.at(-1);
-
-	return last?.index === undefined ? null : said.slice(last.index + last[0].length);
-};
+// "…scratch that, run the linter instead": what came before is taken back, not sent.
+const isAfterTakeBack = async (judge: Judge, said: string, part: string): Promise<boolean> =>
+	(await judge({
+		key: 'take_back_before',
+		utterance: said,
+		context: `The part: "${part}"`,
+	})) === 'yes';
 
 const isSameWords = (part: string, words: string): boolean =>
 	toSaidWords(part).join(' ') === toSaidWords(words).join(' ');
@@ -202,18 +217,21 @@ export interface ChooseSentWordsParams {
 	// main" resends them.
 	earlier: string[];
 	isWhole: boolean;
+	// Asked only when the part could be what follows a take-back ("…scratch that, run the linter").
+	judge: Judge;
 }
 
 export type SentWords = { text: string; source: 'said' | 'part' | 'earlier' };
 
 // The kernel chooses where words go, never what they say: a model's rewrite lost the point of long
 // thoughts. It may only copy a part out, word for word; anything else sends the words as said.
-export const chooseSentWords = ({
+export const chooseSentWords = async ({
 	utterance,
 	part,
 	earlier,
 	isWhole,
-}: ChooseSentWordsParams): SentWords => {
+	judge,
+}: ChooseSentWordsParams): Promise<SentWords> => {
 	const said = utterance?.trim() ?? '';
 	const copied = part?.trim() ?? '';
 
@@ -234,9 +252,8 @@ export const chooseSentWords = ({
 		return { text: copied, source: 'part' };
 	}
 
-	const afterTakeBack = readAfterTakeBack(said);
-
-	if (afterTakeBack !== null && isVerbatimSpan(copied, afterTakeBack)) {
+	// All of it was for this session, but the part is what came after they took the rest back.
+	if (isWhole && isVerbatimSpan(copied, said) && (await isAfterTakeBack(judge, said, copied))) {
 		return { text: copied, source: 'part' };
 	}
 
@@ -256,45 +273,30 @@ export const chooseSentWords = ({
 	return { text: said, source: 'said' };
 };
 
-// "Voice OS, make a worktree…" addresses the setup session; "reinstall Voice OS" is about the app.
-const SETUP_ADDRESS_PATTERN =
-	/^\s*(?:(?:hey|okay|ok|so)[,\s]+)?(?:voice\s*os|voiceos|setup)\b\s*[,:]/i;
-const SETUP_WORK_PATTERN =
-	/\b(?:worktrees?|workspaces?|projects?|bindings?|crew (?:fix|verify|check)|register)\b/i;
-
 export interface IsMisroutedToSetupParams {
 	state: State;
 	ref: string;
 	// The session on screen when the words were said.
 	forwardTo: string | null;
 	utterance: string | undefined;
+	judge: Judge;
 }
 
-export const isMisroutedToSetup = ({
+export const isMisroutedToSetup = async ({
 	state,
 	ref,
 	forwardTo,
 	utterance,
-}: IsMisroutedToSetupParams): boolean => {
+	judge,
+}: IsMisroutedToSetupParams): Promise<boolean> => {
 	// "can you reinstall Voice OS" was sent to setup from crew/main's screen. Setup gets words from
 	// another session's screen only when addressed or when they are crew setup.
 	if (!state.sessions[ref]?.isPinned || !forwardTo || forwardTo === ref || !utterance) {
 		return false;
 	}
 
-	return !SETUP_ADDRESS_PATTERN.test(utterance) && !SETUP_WORK_PATTERN.test(utterance);
+	return (await judge({ key: 'for_setup', utterance })) === 'no';
 };
-
-// "Add a debug note: …" is Voice OS's own tool; talk about debug notes ("read the debug notes") is
-// work for the session.
-const DEBUG_NOTE_REQUEST_PATTERN =
-	/^\s*(?:(?:okay|ok|so|hey|and|please)[,\s]+)*(?:(?:can|could|would) you\s+)?(?:add|take|make)\s+(?:a\s+|another\s+)?debug\s*notes?\b/i;
-
-export const describeDebugNoteRequest = (utterance: string | undefined): string | null =>
-	// Read off the words as said: the kernel's rewrite may have dropped the request.
-	utterance !== undefined && DEBUG_NOTE_REQUEST_PATTERN.test(utterance)
-		? 'that is debug_note: the developer asked Voice OS for a debug note, not the session. Call debug_note with their words. Nothing was sent.'
-		: null;
 
 const readKind = (kind: unknown): SendAck['kind'] =>
 	kind === 'question' || kind === 'redirect' ? kind : 'instruction';
@@ -321,29 +323,23 @@ export const recordAsSent = ({
 		: { name: 'send_to', input: { ref, text, ...extra } };
 };
 
-export const sendText = ({
+export const sendText = async ({
 	state,
 	ref,
 	text,
 	kind,
 	continues,
 	toolContext,
-}: SendTextParams): ToolResult => {
+	isAboutMyNotes = false,
+	isAboutLastAction = false,
+	deliver,
+}: SendTextParams): Promise<ToolResult> => {
 	const session = state.sessions[ref];
-	const debugNoteRequest = describeDebugNoteRequest(toolContext.utterance);
-
-	if (debugNoteRequest) {
-		log.info('debug note request not sent', { ref });
-
-		return fail(debugNoteRequest);
-	}
+	const said = toolContext.utterance ?? text;
+	const { judge } = toolContext;
 
 	// "No" to Voice OS's own "Switch to checkout?" is an answer to Voice OS, not words for checkout.
-	if (
-		isSwitchOfferFresh(state.switchOffer, toolContext.now()) &&
-		BARE_REFUSAL_PATTERN.test(normalizeSaid(toolContext.utterance ?? text)) &&
-		isBareAnswer(toolContext.utterance ?? text)
-	) {
+	if (isSwitchOfferFresh(state.switchOffer, toolContext.now()) && (await isBareNo(judge, said))) {
 		log.info('no to the switch offer: not sent', { ref });
 
 		return fail(
@@ -351,10 +347,26 @@ export const sendText = ({
 		);
 	}
 
+	// "Yes, fix it" after Voice OS offered to fix this session's servers answers Voice OS, even once
+	// the offer lapsed: the session never asked it, and dev_offer says the offer is gone.
+	if (
+		state.devOffer?.ref === ref &&
+		toolContext.now() - state.devOffer.at < OFFER_ANSWER_MS &&
+		isShortEnoughToAnswer(said) &&
+		(await judge({ key: 'approves', utterance: said })) === 'yes'
+	) {
+		log.info('yes to the fix offer: not sent', { ref });
+
+		return fail(
+			`That yes answers Voice OS's offer to fix ${ref}'s dev servers: call dev_offer, which says whether the offer still holds. Nothing was sent.`,
+		);
+	}
+
 	// A bare yes or no for a question only announced there answers nothing the developer heard.
-	const refused = isBareAnswer(toolContext.utterance ?? text)
-		? refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
-		: null;
+	const refused =
+		isHeldQuestion(session) && (await isBareAnswer(judge, said))
+			? refuseAnnouncedOnly({ state, ref, toolContext, what: 'sent' })
+			: null;
 
 	if (refused) {
 		return refused;
@@ -370,7 +382,8 @@ export const sendText = ({
 		? decideDelivery({
 				status: session.status,
 				kind: readKind(kind),
-				utterance: toolContext.utterance ?? text,
+				utterance: said,
+				wanted: deliver ?? 'default',
 			})
 		: 'send';
 	const wouldGoAside = decided === 'aside';
@@ -382,13 +395,13 @@ export const sendText = ({
 		ref,
 		screen: toolContext.screen,
 		now: toolContext.now(),
-		utterance: toolContext.utterance,
+		isReferredTo: isAboutLastAction,
 	});
 
 	if (delivery === 'aside') {
 		log.info('asked aside', { ref, chars: text.length });
 		const asideNote = joinNotes(
-			buildNotesPathNote({ ref, utterance: toolContext.utterance, notes: toolContext.notes }),
+			buildNotesPathNote({ ref, isAsked: isAboutMyNotes, notes: toolContext.notes }),
 			recentAction,
 		);
 
@@ -436,7 +449,7 @@ export const sendText = ({
 		session
 			? buildSessionNote({ session, state, recent: toolContext.recentUtterances ?? [] })
 			: undefined,
-		buildNotesPathNote({ ref, utterance: toolContext.utterance, notes: toolContext.notes }),
+		buildNotesPathNote({ ref, isAsked: isAboutMyNotes, notes: toolContext.notes }),
 		recentAction,
 	].reduce(joinNotes, undefined);
 
