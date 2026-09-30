@@ -278,11 +278,11 @@ what you meant. If the session needs more, it asks you.
 
 **A conversation with a session you are not looking at.** Say "checkout, is the build green?" and
 you stay where you are: Voice OS says "Sent to checkout", and checkout's answer plays in full, with
-its name. Follow-ups ("and the lint?") keep going to checkout until a minute after its last answer,
-or until you say something clearly about the session on screen ("Sent to crew" tells you the
-conversation ended). After a second back-and-forth, Voice OS asks once "Switch to checkout?"; yes
-switches, no or silence keeps you where you are. The bottom bar shows **Talking with checkout**
-while it lasts: click the name to switch, × to end it.
+its name, however long it takes to come. Follow-ups ("and the lint?") keep going to checkout until a
+minute after its last answer, or until you say something clearly about the session on screen ("Sent
+to crew" tells you the conversation ended). Voice OS never asks to switch in the middle of it: say
+"switch to it" when you want to. The bottom bar shows **Talking with checkout** while it lasts: click
+the name to switch, × to end it.
 
 - "Where am I?" · "Who am I talking to?" "You're on crew, talking with checkout."
 - "Switch to it." Opens the session you are talking with.
@@ -308,18 +308,23 @@ When Voice OS switches for you, it says so first: "Switching to checkout" (a cli
 you. Nothing is dropped while you talk: what was queued waits, and the answer to what you just said
 plays first. Other sessions' updates wait for a quiet moment (8 seconds with push to talk, 12 when
 listening, never more than 50 seconds) and come as one line: "Meanwhile, ranking needs you about the
-index, checkout finished the retry backoff, and two others finished." The top bar shows **N updates
+index, checkout said: all retry tests pass, and two others finished." Each session is described in
+its own words (its last line, shortened), never by an old topic. An update you already met (you
+switched there, answered it, or spoke to that session) is not said again. The top bar shows **N updates
 waiting** until then; click it, or say "What did I miss?", to hear them now. The full message of a
 session plays when you switch there. Another session's permission or question waits for the line
 playing to end, plus a breath. A session still waiting on you is mentioned again ("checkout still
 needs you") every five minutes, at most three times, while a Voice OS page is open.
 
-**Replying to a notification.** After "checkout is done: the retry backoff", "tell me about that"
-switches to checkout and plays its update; a specific question ("what did it change in the cap?")
-switches and asks it. While you are in the middle of a conversation with the session on screen,
-the reply goes to checkout without a switch. When your words could be for either ("review all of
-this"), Voice OS asks "For checkout?": yes sends them there, no or silence keeps them on the session
-on screen ("Kept on crew").
+**Replying to an update.** After "Meanwhile, checkout said: …" or "checkout needs you: …", your
+reply is for checkout. "Tell me about that" switches to checkout and plays its update; a specific
+question ("what did it change in the cap?") switches and asks it. While you are in the middle of a
+conversation with the session on screen, the reply goes to checkout without a switch, and Voice OS
+says where it went and offers the switch in one line: "Sent to checkout. Switch there?" (once per
+update; yes switches, anything else keeps you where you are). When your words could be for either
+("review all of this"), Voice OS asks "For checkout?": yes, or naming it, sends them there; no or
+silence keeps them on the session on screen ("Kept on crew"). The eight seconds for an answer start
+when you have heard the question.
 
 - "Quiet." Drops what Voice OS had queued to say and stops its routine narration. The sessions' own
   lines, questions and alerts still play.

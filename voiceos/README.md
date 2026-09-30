@@ -142,13 +142,18 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   (`state/delivery.ts`, `decideDelivery`). Asides are not saved.
 - **Held lines.** A session off screen does not speak its lines. Its update waits in `meanwhile`
   and is said with the others' in one line once it is quiet (`speech/meanwhile.ts`, `state/meanwhile.ts`),
-  and the full line plays on switch (`state/held-lines.ts`).
+  in the session's own words (`describeDoneAbout`: its last line, shortened), and the full line plays
+  on switch (`state/held-lines.ts`). An item is dropped once the developer meets that update another
+  way (`settleMeanwhile`). The line is spoken with `isUpdate` and the `refs` it named, like a "needs
+  you" announcement: `listHeardBefore` counts each as heard, so a reply to it is routed to them.
 - **The exchange** (`state/exchange.ts`) is who the developer is talking with: the session their
   spoken words went to last. Off screen it is the subject: its lines are always said, named;
   follow-ups go there (`router/exchange-lines.ts` tells the kernel); it lapses a minute after its
-  last answer heard (a timer in `speech/connect.ts`); after its second answered turn Voice OS asks
-  "Switch to X?" (`state.switchOffer`, 8 s); a reply to an update only heard (announced, or in the
-  meanwhile line) asks at once, in its ack: "Sent to X. Switch there?". Speech ranks the exchange's lines first
+  last answer heard (a timer in `speech/connect.ts`), never while its session still works on the
+  question. Voice OS offers a switch in one case only: the first reply to an update the developer heard
+  to its end (`HeldLine.updateHeardAt`, ten minutes), in its ack: "Sent to X. Switch there?"
+  (`state.switchOffer`). Its window, and "For X?"'s, count from when the question was heard (`heardAt`,
+  8 s; 30 s if it never plays). Speech ranks the exchange's lines first
   (`speech/queue.ts`) and holds everything, never drops it, while the developer talks.
 - **Words go where they were said.** Voice OS says "Sent to X" when X is not on screen, "Switching
   to X" for a switch it makes, "Back to X" for `go_back` (`state/view-history.ts`, five views with
