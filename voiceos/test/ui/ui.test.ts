@@ -1282,6 +1282,20 @@ describe('pinned', () => {
 		await context.close();
 	}, 20_000);
 
+	it('add a machine → typing the name stays in the name field', async () => {
+		goHome();
+		const { context, page } = await signIn();
+
+		await page.getByRole('button', { name: /Add machine/ }).click();
+		await page.getByLabel('SSH host').pressSequentially('vm2');
+		await page.getByLabel('name', { exact: true }).click();
+		await page.getByLabel('name', { exact: true }).pressSequentially('Lab box');
+
+		expect(await page.getByLabel('name', { exact: true }).inputValue()).toBe('Lab box');
+		expect(await page.getByLabel('SSH host').inputValue()).toBe('vm2');
+		await context.close();
+	}, 20_000);
+
 	it('pin on a machine grid tile → pinned without opening it; the Pinned card counts it', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
 		const { context, page } = await signIn();
