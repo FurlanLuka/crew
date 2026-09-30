@@ -36,7 +36,7 @@ export type UpdateOutcome = { ok: true } | { ok: false; reason: string };
 
 export type VersionPlan =
 	| { kind: 'update'; from: string }
-	| { kind: 'wait'; status: 'connecting' | 'error'; detail: string };
+	| { kind: 'wait'; status: 'error'; detail: string };
 
 interface PlanVersionFixParams {
 	main: string;
@@ -80,8 +80,8 @@ export const planVersionFix = ({
 	return outcome.ok
 		? {
 				kind: 'wait',
-				status: 'connecting',
-				detail: `${name} is updated; it switches to the new release once its sessions finish their work.`,
+				status: 'error',
+				detail: `${name} is updated but still runs its old release: run crew voice remote there.`,
 			}
 		: { kind: 'wait', status: 'error', detail: outcome.reason };
 };

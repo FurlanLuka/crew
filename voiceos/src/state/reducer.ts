@@ -1,7 +1,7 @@
 import { followExchange, pruneExchange, readSubject } from './exchange.js';
 import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
-import { addMeanwhile, playMeanwhile } from './meanwhile.js';
+import { addMeanwhile, playMeanwhile, settleMeanwhile } from './meanwhile.js';
 import { defaultLanguages, toLanguages } from '../shared/languages.js';
 import {
 	decideGoBack,
@@ -48,7 +48,14 @@ import type { SpeechPriority } from '../speech/queue.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
 import { cleanSessionLine } from '../shared/spoken.js';
-import { clearHeldLine, holdLine, isOnScreen, replayHeldLine } from './held-lines.js';
+import {
+	clearHeldLine,
+	forgetHeardUpdate,
+	holdLine,
+	isOnScreen,
+	markHeard,
+	replayHeldLine,
+} from './held-lines.js';
 import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
 import { HOME_VIEW } from '../shared/machines.js';
 import { machineOf, readMachine } from '../shared/machine-ref.js';
@@ -104,6 +111,9 @@ export type Effect =
 			isReply?: boolean;
 			ref?: string;
 			isAsking?: boolean;
+			// Other sessions' updates (see SpokenLine.isUpdate); refs: the sessions it named.
+			isUpdate?: boolean;
+			refs?: string[];
 			// Said with the session's name in front unless it is on screen.
 			isNamed?: boolean;
 			// Default: alert for alerts, normal otherwise.
@@ -170,8 +180,6 @@ export const createInitialState = (): State => ({
 
 export const createSession = (info: WorktreeInfo): Session => ({
 	...info,
-	topic: null,
-	isTopicPinned: false,
 	status: 'stopped',
 	queue: [],
 	stream: [],
@@ -282,8 +290,26 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 	const exchange = pruneExchange(state.exchange, isKept);
 	const viewHistory = pruneViewHistory(state.viewHistory, isKept);
 	const meanwhile = state.meanwhile.filter((item) => isKept(item.ref));
+	// A question about a session that is gone: its answer would go nowhere, or say a gone name.
+	const targetAsk =
+		state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)
+			? state.targetAsk
+			: null;
+	const switchOffer = state.switchOffer && isKept(state.switchOffer.ref) ? state.switchOffer : null;
 
-	return { ...state, sessions, order, view, focus, exchange, viewHistory, meanwhile, voiceLog };
+	return {
+		...state,
+		sessions,
+		order,
+		view,
+		focus,
+		exchange,
+		viewHistory,
+		meanwhile,
+		targetAsk,
+		switchOffer,
+		voiceLog,
+	};
 };
 
 // Its lines are said as they come: on screen, or the session the developer talks with elsewhere.
@@ -432,7 +458,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				view.kind !== 'session'
 					? { state: shown, effects: describeSwitch(state, view) }
 					: input.skipHeld
-						? withoutEffects(shown)
+						? withoutEffects(forgetHeardUpdate(shown, view.ref))
 						: replayHeldLine(shown, view.ref);
 
 			// Said first: whatever plays there next is heard as coming from there.
@@ -521,29 +547,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					heldLine: null,
 				})),
 			);
-
-		case 'pin_topic':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({
-					...session,
-					topic: input.topic.trim() || null,
-					isTopicPinned: Boolean(input.topic.trim()),
-				})),
-			);
-
-		case 'topics_restored': {
-			const restored = Object.entries(input.topics).reduce(
-				(next, [ref, saved]) =>
-					updateSession(next, ref, (session) =>
-						session.topic
-							? session
-							: { ...session, topic: saved.topic, isTopicPinned: saved.pinned },
-					),
-				state,
-			);
-
-			return withoutEffects(restored);
-		}
 
 		case 'session_started': {
 			if (!state.sessions[input.ref]) {
@@ -784,7 +787,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				updateSession(state, input.ref, (session) => ({
 					...session,
 					needsUser: input.needsUser ? { text: input.text, at: stamped.at } : null,
-					topic: session.isTopicPinned || !input.topic ? session.topic : input.topic,
 				})),
 			);
 
@@ -829,8 +831,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					: state,
 			);
 
-		case 'spoken_ended':
-			return withoutEffects({
+		case 'spoken_ended': {
+			const ended = {
 				...state,
 				spoken: state.spoken.map((line) =>
 					line.id === input.lineId
@@ -842,14 +844,13 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 							}
 						: line,
 				),
-			});
+			};
+			const line = state.spoken.find((spoken) => spoken.id === input.lineId);
 
-		case 'topic_written':
 			return withoutEffects(
-				updateSession(state, input.ref, (session) =>
-					session.isTopicPinned ? session : { ...session, topic: input.topic },
-				),
+				line && !input.isUnplayed ? markHeard(ended, line, stamped.at, input.isCut) : ended,
 			);
+		}
 
 		case 'spoken':
 			return withoutEffects({
@@ -864,6 +865,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 						...(input.ref ? { ref: input.ref } : {}),
 						...(input.isAsking ? { isAsking: true as const } : {}),
 						...(input.isAnswer ? { isAnswer: true as const } : {}),
+						...(input.isUpdate ? { isUpdate: true as const } : {}),
+						...(input.refs?.length ? { refs: input.refs } : {}),
 					},
 				].slice(-SPOKEN_LINES_KEPT),
 			});
@@ -949,5 +952,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 export const reduce = (state: State, stamped: Stamped): ReducerResult => {
 	const before = { ...state, seq: stamped.seq };
 
-	return followExchange(before, reduceInput(before, stamped), stamped);
+	const result = followExchange(before, reduceInput(before, stamped), stamped);
+
+	return { ...result, state: settleMeanwhile(before, result.state, stamped.input) };
 };

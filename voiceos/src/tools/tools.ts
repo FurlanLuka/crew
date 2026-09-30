@@ -14,6 +14,7 @@ import {
 	chooseSentWords,
 	describeMisroutedAnswer,
 	isMisroutedToSetup,
+	isShortEnoughToAnswer,
 	isWholeSend,
 	sendText,
 	type SentWords,
@@ -89,6 +90,8 @@ const MAX_STOP_WORDS = 1;
 // "Tiho", "sei still": short enough that only a clear no from the judge keeps it from muting.
 const MAX_MUTE_WORDS = 2;
 const WORK_UNDER_WAY = 'A coding session is at work right now.';
+const ON_SCREEN_READ_RULE =
+	'This is the session on screen. A question about its work, status or progress — "status", even said alone, "how far are you?", "what\'s going on here?" — is answered by its own Claude: forward the words with kind question, and say nothing. Answer from this only a read-back ("what did it say?"), what it waits on, its options or its dev servers.';
 
 const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): ToolResult => {
 	if (mode === null) {
@@ -130,6 +133,9 @@ export interface ToolContext {
 	utterance?: string;
 	// Oldest first: the follow-up check, and the context a newly started session is given.
 	recentUtterances?: string[];
+	// The developer's last words on this screen when Voice OS answered them only with a question of its
+	// own ("Want me to ask it?"): a plain yes now means those words, not "yes".
+	askedBack?: string;
 	// Captured at routing, so a view that changes while the model thinks cannot redirect forward.
 	forwardTo?: string | null;
 	// The session on screen when the words were said: "end this session" names it.
@@ -168,12 +174,26 @@ interface ChooseWordsForParams {
 	toolContext: ToolContext;
 }
 
-const chooseWordsFor = ({
+const chooseWordsFor = async ({
 	state,
 	input,
 	toolContext,
 }: ChooseWordsForParams): Promise<SentWords> => {
 	const utterance = toolContext.utterance;
+
+	// "Want me to ask it?" — "Yes." The model sends the yes, or its own rewording of the question (which
+	// the word-for-word rule then drops for the yes): the question as the developer said it is what
+	// they agreed to send.
+	if (
+		toolContext.askedBack &&
+		utterance &&
+		isShortEnoughToAnswer(utterance) &&
+		(await toolContext.judge({ key: 'approves', utterance })) === 'yes'
+	) {
+		log.info('yes to an offer to ask: its question sent', { chars: toolContext.askedBack.length });
+
+		return { text: toolContext.askedBack, source: 'earlier' };
+	}
 
 	return chooseSentWords({
 		judge: toolContext.judge,
@@ -380,7 +400,15 @@ export const executeTool = async (
 				toolContext.dispatch({ type: 'held_line_heard', ref: checked.ref, id: held.id });
 			}
 
-			return succeed(describeSession({ state, ref: checked.ref, isDetailed: true, now }));
+			const described = describeSession({ state, ref: checked.ref, isDetailed: true, now });
+
+			// Read with the answer in hand, "status" was answered from these lines all day instead of by the
+			// session that holds the whole conversation: the rule rides with the read.
+			return succeed(
+				checked.ref === toolContext.screen
+					? { on_screen: ON_SCREEN_READ_RULE, ...described }
+					: described,
+			);
 		}
 
 		case 'read_history': {
@@ -508,9 +536,13 @@ export const executeTool = async (
 
 			// A session whose question was only announced is opened when the developer names it, or
 			// after they said yes to "Switch to …?": never on a bare "yes" or "what's waiting?".
-			const refused = isSwitchOfferedFor(state, checked.ref, toolContext.now())
+			const refused = isSwitchOfferedFor(
+				state,
+				checked.ref,
+				toolContext.heardFrom ?? toolContext.now(),
+			)
 				? null
-				: refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'switched' });
+				: await refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'switched' });
 
 			if (refused) {
 				return refused;

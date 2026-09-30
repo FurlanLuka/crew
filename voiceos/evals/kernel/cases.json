@@ -698,7 +698,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -724,7 +725,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -757,7 +759,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -779,7 +782,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -805,7 +809,8 @@
 						"text": "checkout api, main is done: the retry backoff.",
 						"ref": "checkout-api/main",
 						"secondsAgo": 6,
-						"endedSecondsAgo": 3
+						"endedSecondsAgo": 3,
+						"update": true
 					}
 				],
 				"update": {
@@ -5104,6 +5109,224 @@
 				}
 			],
 			"forbid_calls": ["forward", "send_to", "answer"]
+		},
+		{
+			"id": "on-screen-status-0",
+			"utterance": "Status.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-1",
+			"utterance": "What's going on here?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-2",
+			"utterance": "How far are you with this?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-3",
+			"utterance": "Okay, so what is the latest state here? Do we have to re-run everything?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "on-screen-status-4",
+			"utterance": "Can you check the status?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "yes-to-ask-it-offer",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Check the logs for regressions from the last two releases.",
+						"minutesAgo": 9
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Okay. How long do you think checkout is going to take?",
+						"reply": "I don't know — checkout hasn't said how long the regression check will take. Want me to ask it?",
+						"did": []
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": ["how long"]
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "find-doc-is-session-work",
+			"utterance": "Could you find that Notion document, um, around \"Apply Lesson\" work in progress for phone. Speak?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Write up the agent architecture.",
+						"minutesAgo": 12
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "reply-after-meanwhile",
+			"utterance": "Great, push it.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Tidy the locale placeholders.",
+						"minutesAgo": 5
+					}
+				],
+				"heard": [
+					{
+						"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 4,
+						"endedSecondsAgo": 1,
+						"update": true
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to|ask_target",
+					"ref": "checkout-api/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "combined-offer-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"text": "Sent to checkout api, main. Switch there?"
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["forward", "send_to"]
+		},
+		{
+			"id": "combined-offer-no",
+			"utterance": "No.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"text": "Sent to checkout api, main. Switch there?"
+				}
+			},
+			"calls": [],
+			"forbid_mutation": true
 		}
 	]
 }

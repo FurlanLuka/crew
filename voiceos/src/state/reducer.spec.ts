@@ -437,7 +437,7 @@ describe('denials', () => {
 	it('allow it on an idle session → mode switched for one retry, retry sent', () => {
 		const denied = run(
 			[
-				{ type: 'narration', ref: 'store/main', needsUser: true, text: 'Push it?', topic: null },
+				{ type: 'narration', ref: 'store/main', needsUser: true, text: 'Push it?' },
 				{ type: 'denied', ref: 'store/main', toolName: 'Bash', summary: 'run git push' },
 			],
 			idleSession(),
@@ -919,45 +919,18 @@ describe('worktrees', () => {
 });
 
 describe('narration', () => {
-	it('needs_user → flagged with the spoken text; topic updated', () => {
+	it('needs_user → flagged with the spoken text', () => {
 		const { state } = run(
-			[
-				{
-					type: 'narration',
-					ref: 'store/main',
-					needsUser: true,
-					text: 'Push it?',
-					topic: 'Checkout retries',
-				},
-			],
+			[{ type: 'narration', ref: 'store/main', needsUser: true, text: 'Push it?' }],
 			idleSession(),
 		);
 
 		expect(state.sessions['store/main']?.needsUser?.text).toBe('Push it?');
-		expect(state.sessions['store/main']?.topic).toBe('Checkout retries');
-	});
-
-	it('pinned topic → narrator cannot overwrite it', () => {
-		const { state } = run(
-			[
-				{ type: 'pin_topic', ref: 'store/main', topic: 'Search ranking' },
-				{
-					type: 'narration',
-					ref: 'store/main',
-					needsUser: false,
-					text: '',
-					topic: 'Something else',
-				},
-			],
-			idleSession(),
-		);
-
-		expect(state.sessions['store/main']?.topic).toBe('Search ranking');
 	});
 
 	it('sending to a session clears its needs-you flag', () => {
 		const flagged = run(
-			[{ type: 'narration', ref: 'store/main', needsUser: true, text: 'Push it?', topic: null }],
+			[{ type: 'narration', ref: 'store/main', needsUser: true, text: 'Push it?' }],
 			idleSession(),
 		).state;
 		const { state } = run([{ type: 'send', ref: 'store/main', text: 'yes' }], flagged);
@@ -1998,26 +1971,6 @@ describe('notes', () => {
 
 		expect(state.notes).toEqual({ store: ['- a', '- b'], checkout: ['- x'] });
 		expect(effects).toEqual([]);
-	});
-});
-
-describe('topic_written', () => {
-	it('names the work; a pinned topic stays', () => {
-		const started = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }]).state;
-		const written = run(
-			[{ type: 'topic_written', ref: 'store/main', topic: 'Voice notes' }],
-			started,
-		);
-		const pinned = run(
-			[
-				{ type: 'pin_topic', ref: 'store/main', topic: 'Timeouts' },
-				{ type: 'topic_written', ref: 'store/main', topic: 'Voice notes' },
-			],
-			started,
-		);
-
-		expect(written.state.sessions['store/main']?.topic).toBe('Voice notes');
-		expect(pinned.state.sessions['store/main']?.topic).toBe('Timeouts');
 	});
 });
 

@@ -197,8 +197,7 @@ export class RemoteLink {
 		// A retry keeps "out of reach" and its time: the card says how long, not the last attempt.
 		const current = this.options.getState().machines[machine.id]?.status;
 
-		// A wait with its reason ("updated; switches once its sessions finish") keeps it on the card.
-		if (current !== 'unreachable' && current !== 'error' && !this.isWaitingOnVersion()) {
+		if (current !== 'unreachable' && current !== 'error') {
 			this.status('connecting');
 		}
 
@@ -320,13 +319,6 @@ export class RemoteLink {
 	}
 
 	private ready(snapshot: Snapshot): void {
-		// On the new release now: nothing is waited on any more.
-		for (const [version, outcome] of this.updates) {
-			if (outcome.ok) {
-				this.updates.delete(version);
-			}
-		}
-
 		const { machine } = this.options;
 
 		// Its refs exist on the main before anything about them is applied.
@@ -403,11 +395,6 @@ export class RemoteLink {
 		this.retryLater(failure.status, failure.detail);
 	}
 
-	// Updated this run and still refused: the daemon waits for its sessions. Cleared once it answers.
-	private isWaitingOnVersion(): boolean {
-		return [...this.updates.values()].some((outcome) => outcome.ok);
-	}
-
 	private retryLater(status: 'connecting' | 'unreachable' | 'error', detail: string): void {
 		const delay =
 			this.options.retryMs ??
@@ -419,7 +406,7 @@ export class RemoteLink {
 	}
 
 	// The two releases differ, so the remote refused. One that is behind is updated from here once; its
-	// daemon moves to the new release on the next connect, as soon as none of its sessions is working.
+	// daemon moves to the new release on the next connect, at once.
 	private async fixVersion(refusal: VersionRefusal): Promise<void> {
 		const { name, host } = this.options.machine;
 		const plan = planVersionFix({

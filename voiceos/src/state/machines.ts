@@ -43,12 +43,13 @@ export const isMachineInput = (input: Input): input is MachineInput =>
 
 export type ReduceInner = (state: State, stamped: Stamped) => ReducerResult;
 
-const say = (text: string): Effect => ({
+const say = (text: string, isAck = false): Effect => ({
 	type: 'speak',
 	text,
 	source: 'kernel',
 	isReply: true,
 	priority: 'high',
+	...(isAck ? { isAck } : {}),
 });
 
 // A removed machine's sessions leave this Voice OS; they keep running there.
@@ -88,6 +89,11 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		focus: state.focus && isKept(state.focus) ? state.focus : null,
 		exchange: pruneExchange(state.exchange, isKept),
 		meanwhile: state.meanwhile.filter((item) => isKept(item.ref)),
+		targetAsk:
+			state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)
+				? state.targetAsk
+				: null,
+		switchOffer: state.switchOffer && isKept(state.switchOffer.ref) ? state.switchOffer : null,
 		viewHistory: pruneViewHistory(
 			state.viewHistory,
 			isKept,
@@ -373,7 +379,8 @@ export const guardUnreachable = (
 	if (input.type === 'send') {
 		return {
 			state: queueUntilBack(state, input, stamped),
-			effects: [say(`${name} is out of reach. I'll send it when it's back.`)],
+			// Where the words went, said once: no "Sent to …" after it.
+			effects: [say(`${name} is out of reach. I'll send it when it's back.`, true)],
 		};
 	}
 

@@ -279,7 +279,12 @@ export const answerAsk = async ({
 		return fail(checked.error);
 	}
 
-	const refused = refuseAnnouncedOnly({ state, ref: checked.ref, toolContext, what: 'answered' });
+	const refused = await refuseAnnouncedOnly({
+		state,
+		ref: checked.ref,
+		toolContext,
+		what: 'answered',
+	});
 
 	if (refused) {
 		return refused;

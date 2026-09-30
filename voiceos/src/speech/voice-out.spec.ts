@@ -222,7 +222,6 @@ describe('VoiceOut', () => {
 			text: long,
 		});
 
-		harness.store.dispatch({ type: 'topic_written', ref: 'store/main', topic: 'Router refactor' });
 		harness.store.dispatch({
 			type: 'held_line_heard',
 			ref: 'store/main',
@@ -240,7 +239,6 @@ describe('VoiceOut', () => {
 		await flush();
 
 		expect(harness.store.state.meanwhile.map((item) => [item.ref, item.kind, item.about])).toEqual([
-			// A topic is written, but the line says what happened: never the topic.
 			[
 				'store/main',
 				'done',
@@ -487,7 +485,7 @@ describe('VoiceOut', () => {
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: long });
 	});
 
-	it('"done" says its own last line, not the request or a topic', async () => {
+	it('"done" says its own last line, not the request', async () => {
 		const harness = createHarness();
 		harness.store.dispatch({ type: 'session_started', ref: 'store/main' });
 		harness.store.dispatch({ type: 'send', ref: 'store/main', text: 'run the whole test suite' });
@@ -618,7 +616,6 @@ describe('VoiceOut', () => {
 			ref: 'store/main',
 			needsUser: true,
 			text: 'Push it?',
-			topic: null,
 		});
 		harness.voiceOut.remind(harness.store.state);
 		await flush();
@@ -644,7 +641,6 @@ describe('VoiceOut', () => {
 			ref: 'store/main',
 			needsUser: true,
 			text: 'Push it?',
-			topic: null,
 		});
 		harness.voiceOut.remind(harness.store.state);
 		harness.tick(REMINDER_MS + 1);

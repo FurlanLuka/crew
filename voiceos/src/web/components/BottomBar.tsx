@@ -7,7 +7,7 @@ import {
 	useRef,
 	useState,
 } from 'react';
-import type { ClientMessage, State } from '../../shared/protocol.js';
+import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { readSessionLabel } from '../../shared/machines.js';
 import { Mic, isMicAllowed } from '../audio.js';
@@ -305,8 +305,12 @@ export const BottomBar = ({
 		};
 	}, [handleTalkStart, handleTalkStop]);
 
+	const draftChars = draft.trim().length;
+	// Sent anyway, the gateway refused it and the words were gone: they stay in the field instead.
+	const isTooLong = draftChars > MAX_TEXT_CHARS;
+
 	const submitDraft = () => {
-		if (!draft.trim()) {
+		if (!draft.trim() || isTooLong) {
 			return;
 		}
 
@@ -469,6 +473,12 @@ export const BottomBar = ({
 								Send
 							</button>
 						</>
+					) : null}
+					{isTooLong ? (
+						<span className="too-long" role="alert">
+							Too long to send: {draftChars.toLocaleString('en')} of{' '}
+							{MAX_TEXT_CHARS.toLocaleString('en')} characters
+						</span>
 					) : null}
 					{subjectRef ? (
 						<span className="talking-with">

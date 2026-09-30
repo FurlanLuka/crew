@@ -23,7 +23,6 @@ export const createToolContext = (patch: Partial<State> = {}) => {
 	sessions['checkout-api/main'] = {
 		...sessions['checkout-api/main']!,
 		status: 'stopped',
-		topic: 'Checkout retry backoff',
 	};
 	const state: State = {
 		...createInitialState(),

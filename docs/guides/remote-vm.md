@@ -259,7 +259,7 @@ BatchMode note there. The VM's worktrees then show under its card on Mission Con
 [Other machines](voice-os.md#other-machines).
 
 **Updating.** Run `crew update` on the VM as well as on your laptop. The VM's daemon moves to the
-new release on the next connection, once none of its sessions is working.
+new release on the next connection, at once: a session at work is cut off and resumes on the new release.
 
 ---
 

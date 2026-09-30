@@ -321,7 +321,7 @@ textarea:focus-visible {
 	text-transform: uppercase;
 	color: var(--muted);
 }
-.tile .topic {
+.tile .work {
 	font-family: var(--ui);
 	font-size: 13.5px;
 	color: var(--ink);
@@ -796,6 +796,11 @@ textarea:focus-visible {
 	max-width: 260px;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+.too-long {
+	font-size: 10.5px;
+	color: var(--amber);
+	white-space: nowrap;
 }
 .talking-with {
 	display: inline-flex;

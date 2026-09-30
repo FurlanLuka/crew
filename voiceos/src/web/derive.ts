@@ -405,7 +405,7 @@ export const listOtherSessions = (
 				ref,
 				label,
 				isWaiting: false,
-				text: work.requests.at(-1) ?? session.topic ?? session.status,
+				text: work.requests.at(-1) ?? session.status,
 				age: work.for,
 			});
 		}

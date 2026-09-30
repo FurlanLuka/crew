@@ -50,7 +50,7 @@ export const transcribe = (pcm: Int16Array, apiKey: string, pace = 5): Promise<T
 	return new Promise((resolve, reject) => {
 		const session = new SttSession({
 			apiKey,
-			terms: buildContextTerms({ refs: FIXTURE_REFS, topics: [] }),
+			terms: buildContextTerms({ refs: FIXTURE_REFS }),
 			onPartial: () => {},
 			onFinal: (text) => resolve({ text, finalizeMs: Date.now() - releasedAt }),
 			onError: (message) => reject(new Error(message)),
@@ -154,7 +154,7 @@ describe.skipIf(!isLive || !sonioxKey || process.env.VOICEOS_AUDIO === '0')(
 			const errors: string[] = [];
 			const session = new SttSession({
 				apiKey: sonioxKey as string,
-				terms: buildContextTerms({ refs: FIXTURE_REFS, topics: [] }),
+				terms: buildContextTerms({ refs: FIXTURE_REFS }),
 				onPartial: () => {},
 				onFinal: () => {},
 				onError: (message) => errors.push(message),

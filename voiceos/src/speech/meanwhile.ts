@@ -49,12 +49,20 @@ interface DescribeMeanwhileParams {
 	nameOf: (ref: string) => string;
 }
 
+const orderItems = (items: MeanwhileItem[]): MeanwhileItem[] => [
+	...items.filter((item) => item.kind === 'needs'),
+	...items.filter((item) => item.kind === 'done'),
+];
+
+// The sessions the line says by name, in the order it says them: a reply can only mean one of these.
+export const listNamedRefs = (items: MeanwhileItem[]): string[] =>
+	orderItems(items)
+		.slice(0, NAMED_AT_MOST)
+		.map((item) => item.ref);
+
 // What needs the developer comes first, at most two sessions are named, the rest are counted.
 export const describeMeanwhile = ({ items, nameOf }: DescribeMeanwhileParams): string => {
-	const ordered = [
-		...items.filter((item) => item.kind === 'needs'),
-		...items.filter((item) => item.kind === 'done'),
-	];
+	const ordered = orderItems(items);
 	const named = ordered.slice(0, NAMED_AT_MOST);
 	const rest = ordered.slice(NAMED_AT_MOST);
 	const parts = [

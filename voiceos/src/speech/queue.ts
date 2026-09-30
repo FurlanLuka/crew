@@ -19,6 +19,8 @@ export interface SpeechItem {
 	// gap (never cutting an answer), but never held longer than MAX_GAP_WAIT_MS.
 	waitsForGap?: boolean;
 	isAsking?: boolean;
+	isUpdate?: boolean;
+	refs?: string[];
 	// A line the developer is waiting for (a report, the session's own line): never replaced.
 	isOwed?: boolean;
 	// Voice OS saying it passed words on: it replaces nothing still waiting to be said.
