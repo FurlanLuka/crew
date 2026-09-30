@@ -1873,6 +1873,9 @@ describe('describeToolCall', () => {
 		expect(
 			describeToolCall({ name: 'start_session', input: { ref: 'store-front/main' }, ok: false }),
 		).toBe('start_session store-front/main (failed)');
+		expect(describeToolCall({ name: 'hands_free', input: { mode: 'push' }, ok: true })).toBe(
+			'hands_free push',
+		);
 	});
 
 	it('long text is cut and quoted', () => {

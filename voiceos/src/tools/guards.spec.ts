@@ -244,8 +244,12 @@ describe('hands_free', () => {
 		return { result, modes };
 	};
 
-	it('the judge, not the model, decides the mode: "off" is push to talk', async () => {
-		expect((await setTo('off')).modes).toEqual(['push']);
+	it('the judge, not the model, decides the mode: "off" is push to talk, and is remembered so', async () => {
+		const off = await setTo('off');
+
+		expect(off.modes).toEqual(['push']);
+		// The model asked for hands-free: what is remembered is what was applied.
+		expect(off.result.recordAs).toEqual({ name: 'hands_free', input: { mode: 'push' } });
 		expect((await setTo('on-demand')).modes).toEqual(['on-demand']);
 	});
 

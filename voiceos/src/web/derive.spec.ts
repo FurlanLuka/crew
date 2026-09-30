@@ -338,6 +338,7 @@ describe('formatDidLine', () => {
 		['dev_offer accepted', 'accepted the fix offer'],
 		['dev_offer declined', 'declined the fix offer'],
 		['mute', 'went quiet'],
+		['hands_free push', 'listening: push'],
 		['debug_note "it re-asked"', 'noted for debugging "it re-asked"'],
 		['note "try a tone"', 'noted "try a tone"'],
 		['stop_session store/main (failed)', 'ended store/main — failed'],

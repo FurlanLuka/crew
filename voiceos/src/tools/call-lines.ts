@@ -43,6 +43,10 @@ const describeCallAction = (name: string, input: Record<string, unknown>): strin
 		return ` ${input.accept ? 'accepted' : 'declined'}`;
 	}
 
+	if (typeof input.mode === 'string') {
+		return ` ${input.mode}`;
+	}
+
 	if (typeof input.on === 'boolean') {
 		return ` ${input.on ? 'on' : 'off'}`;
 	}

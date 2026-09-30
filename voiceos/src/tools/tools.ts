@@ -103,11 +103,16 @@ const applyListenMode = (toolContext: ToolContext, mode: ListenMode | null): Too
 		);
 	}
 
-	return succeed(
-		result === 'changed'
-			? `listening is now ${mode}; Voice OS said so`
-			: `listening was already ${mode}; Voice OS said so`,
-	);
+	// Remembered as the mode applied, which the words chose, not the one the model guessed; a mute
+	// that turned out to be about listening is remembered as the listening change it was.
+	return {
+		...succeed(
+			result === 'changed'
+				? `listening is now ${mode}; Voice OS said so`
+				: `listening was already ${mode}; Voice OS said so`,
+		),
+		recordAs: { name: 'hands_free', input: { mode } },
+	};
 };
 
 export interface HistoryEntry {
@@ -752,13 +757,7 @@ export const executeTool = async (
 					return fail('not a mute request; do nothing more');
 				}
 
-				const mode = toListenMode(listenMode);
-				const changed = applyListenMode(toolContext, mode);
-
-				// Remembered as the listening change it was: "turn it back on" next reads that, not a mute.
-				return mode && changed.ok
-					? { ...changed, recordAs: { name: 'hands_free', input: { mode } } }
-					: changed;
+				return applyListenMode(toolContext, toListenMode(listenMode));
 			}
 
 			toolContext.mute();
