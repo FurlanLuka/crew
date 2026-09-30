@@ -72,6 +72,8 @@ export const buildNotesPathNote = ({
 };
 
 export const MAX_BARE_ANSWER_WORDS = 4;
+// A yes this long after Voice OS's fix offer is still about it: the offer itself lapses sooner.
+const OFFER_ANSWER_MS = 30 * 60_000;
 
 // A few words at most: anything longer is more than a yes or a no, in any language.
 export const isShortEnoughToAnswer = (text: string): boolean =>
@@ -338,6 +340,21 @@ export const sendText = async ({
 
 		return fail(
 			`That "no" answers Voice OS's "Switch to ${state.switchOffer.ref}?": the developer stays where they are. Nothing was sent; say nothing.`,
+		);
+	}
+
+	// "Yes, fix it" after Voice OS offered to fix this session's servers answers Voice OS, even once
+	// the offer lapsed: the session never asked it, and dev_offer says the offer is gone.
+	if (
+		state.devOffer?.ref === ref &&
+		toolContext.now() - state.devOffer.at < OFFER_ANSWER_MS &&
+		isShortEnoughToAnswer(said) &&
+		(await judge({ key: 'approves', utterance: said })) === 'yes'
+	) {
+		log.info('yes to the fix offer: not sent', { ref });
+
+		return fail(
+			`That yes answers Voice OS's offer to fix ${ref}'s dev servers: call dev_offer, which says whether the offer still holds. Nothing was sent.`,
 		);
 	}
 

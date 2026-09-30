@@ -848,6 +848,255 @@
 			"no_reply": true
 		},
 		{
+			"id": "perm-yes-de",
+			"utterance": "Ja, mach das.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					},
+					"ok": true
+				}
+			]
+		},
+		{
+			"id": "perm-yes-sl",
+			"utterance": "Ja, lahko.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					},
+					"ok": true
+				}
+			]
+		},
+		{
+			"id": "perm-yes-es",
+			"utterance": "Sí, adelante.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "yes"
+					},
+					"ok": true
+				}
+			]
+		},
+		{
+			"id": "perm-no-de",
+			"utterance": "Nein, nimm einen neuen Branch.",
+			"context": {
+				"view": "store-front/wrk1",
+				"ask": "permission"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/wrk1",
+					"input": {
+						"decision": "no"
+					}
+				}
+			],
+			"forbid_calls": []
+		},
+		{
+			"id": "confirm-clear-trap-de",
+			"utterance": "Ja, aber nicht jetzt.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "command"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "confirm-clear-dont-sl",
+			"utterance": "Ne, ne briši.",
+			"context": {
+				"view": "store-front/main",
+				"ask": "command"
+			},
+			"calls": [
+				{
+					"name": "answer",
+					"ref": "store-front/main",
+					"input": {
+						"decision": "no"
+					}
+				}
+			]
+		},
+		{
+			"id": "meant-for-another-session-de",
+			"utterance": "Äh, sorry, das war für store front main gemeint.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+						"reply": "",
+						"did": [
+							"forward \"After commit, can you just directly rebuild and restart so we can have it right away?\""
+						]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main",
+					"text_includes": ["rebuild"]
+				},
+				{
+					"name": "queued_message",
+					"input": {
+						"ref": "checkout-api/main",
+						"action": "drop"
+					}
+				}
+			]
+		},
+		{
+			"id": "meant-for-another-session-sl",
+			"utterance": "Oprosti, to je bilo za store front main.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+						"reply": "",
+						"did": [
+							"forward \"After commit, can you just directly rebuild and restart so we can have it right away?\""
+						]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "store-front/main",
+					"text_includes": ["rebuild"]
+				},
+				{
+					"name": "queued_message",
+					"input": {
+						"ref": "checkout-api/main",
+						"action": "drop"
+					}
+				}
+			]
+		},
+		{
+			"id": "quiet-de",
+			"utterance": "Sei still.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "mute",
+					"ok": true
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "quiet-sl",
+			"utterance": "Tiho.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "mute",
+					"ok": true
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "quiet-mixed-not-only",
+			"utterance": "Mute that and tell it to run the linter.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["linter"]
+				}
+			],
+			"forbid_calls": []
+		},
+		{
+			"id": "stop-listening-de",
+			"utterance": "Hör auf zuzuhören.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "hands_free"
+				}
+			],
+			"forbid_calls": ["interrupt"]
+		},
+		{
+			"id": "aside-by-the-way-de",
+			"utterance": "Übrigens, auf welchem Branch bist du?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "Branch"
+				}
+			],
+			"no_reply": true
+		},
+		{
 			"id": "relay-negation",
 			"utterance": "Tell it not to touch the migrations.",
 			"context": {

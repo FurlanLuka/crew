@@ -96,6 +96,13 @@ const toListenMode = (answer: string): ListenMode | null => {
 };
 
 const MIN_LONG_SPEECH_WORDS = 10;
+const MAX_MUTE_WORDS = 2;
+
+const countSpokenWords = (text: string): number =>
+	text
+		.replace(/[^\p{L}\p{N}\s']+/gu, ' ')
+		.split(/\s+/)
+		.filter(Boolean).length;
 
 export interface HistoryEntry {
 	ts: string;
@@ -712,11 +719,25 @@ export const executeTool = async (
 		case 'mute': {
 			// The whole utterance is the command: "make the tests quiet" or a long request that ends
 			// "…just be silent, okay?" is words for a session, and muting on it swallowed what came after.
+			// A word or two ("quiet", "tiho", "sei still") is the command itself in any language; only
+			// something longer ("make the tests quiet") asks the judge whether all of it was.
 			if (
 				toolContext.utterance !== undefined &&
+				countSpokenWords(toolContext.utterance) > MAX_MUTE_WORDS &&
 				(await toolContext.judge({ key: 'mute_only', utterance: toolContext.utterance })) !== 'yes'
 			) {
-				return fail('not a mute request; do nothing more');
+				// "Stop listening" in another language reached for mute: point it at the right tool.
+				const isAboutListening =
+					(await toolContext.judge({
+						key: 'about_listening',
+						utterance: toolContext.utterance,
+					})) === 'yes';
+
+				return fail(
+					isAboutListening
+						? 'Not muted: the developer spoke about how Voice OS listens. Call hands_free with the mode they asked for, and reply nothing: Voice OS says the change itself.'
+						: 'not a mute request; do nothing more',
+				);
 			}
 
 			toolContext.mute();

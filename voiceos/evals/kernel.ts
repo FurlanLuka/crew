@@ -21,6 +21,8 @@ interface ExpectedCall {
 	not_includes?: string[];
 	// Arguments the call must not have with these values (a continuation flag on a new request).
 	not_input?: Record<string, unknown>;
+	// Whether the call went through: a guard (the judge) refusing an approval makes it fail.
+	ok?: boolean;
 }
 
 interface Case {
@@ -122,6 +124,10 @@ const matchesCall = (call: Call, expected: ExpectedCall): boolean => {
 	}
 
 	if (expected.action && call.input.action !== expected.action) {
+		return false;
+	}
+
+	if (expected.ok !== undefined && call.ok !== expected.ok) {
 		return false;
 	}
 
