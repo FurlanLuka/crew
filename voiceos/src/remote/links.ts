@@ -8,6 +8,7 @@ import type { Effect } from '../state/reducer.js';
 import { RemoteLink, type OpenTransport } from './link.js';
 import { routeEffect, type HandsEffect } from './mapping.js';
 import { composeWorktrees } from './worktrees.js';
+import type { UpdateRemote } from './ssh.js';
 
 const log = createLogger('remote');
 
@@ -21,6 +22,7 @@ export interface MachineLinksOptions {
 	dispatch: (input: Observation) => void;
 	storeMedia: (name: string, bytes: Buffer) => boolean;
 	say: (text: string) => void;
+	updateRemote: UpdateRemote;
 	handleLocal: (effect: HandsEffect) => void | Promise<void>;
 	// A machine's link started or stopped: its dev watch follows.
 	onLinkStarted?: (link: RemoteLink) => void;
@@ -71,6 +73,7 @@ export class MachineLinks {
 				setWorktrees: (id, worktrees) => this.setRemoteWorktrees(id, worktrees),
 				storeMedia: this.options.storeMedia,
 				say: (text) => this.options.say(text),
+				updateRemote: this.options.updateRemote,
 				...(this.options.retryMs !== undefined ? { retryMs: this.options.retryMs } : {}),
 			});
 

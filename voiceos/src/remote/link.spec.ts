@@ -12,6 +12,8 @@ import { createNetwork, until } from '../../test/support/link.js';
 import { worktree } from '../../test/support/reduce.js';
 import { RemoteHost } from './host.js';
 import { MachineLinks } from './links.js';
+import type { OpenTransport } from './link.js';
+import type { UpdateRemote } from './ssh.js';
 
 configureLog({ quiet: true });
 
@@ -63,18 +65,30 @@ interface MainOptions {
 	runId?: string;
 	mainId?: string;
 	retryMs?: number;
+	version?: string;
+	updateRemote?: UpdateRemote;
 }
 
-const startMain = ({ open, runId = 'run-1', mainId = 'main-1', retryMs = 0 }: MainOptions) => {
+const startMain = ({
+	open,
+	runId = 'run-1',
+	mainId = 'main-1',
+	retryMs = 0,
+	version = 'test',
+	updateRemote = async () => {
+		throw new Error('no update expected');
+	},
+}: MainOptions) => {
 	const store = new Store();
 	const said: string[] = [];
 	// Every turn the narrator is asked to report, quietly or aloud: a double report shows here.
 	const narrated: string[] = [];
 	const links = new MachineLinks({
-		version: 'test',
+		version,
 		mainId,
 		runId,
 		open,
+		updateRemote,
 		setup: createSetupWorktree('/h'),
 		getState: () => store.state,
 		dispatch: (input) => store.dispatch(input),
@@ -225,6 +239,105 @@ describe('a remote over a link', () => {
 		expect(store.state.machines.vm1?.detail).toBe(
 			'This machine runs Voice OS older and the main test: run crew update on the older one, then crew voice remote there.',
 		);
+	});
+
+	describe('a remote on an older release', () => {
+		// The main reaches whichever host is current: an update swaps the old one for a new one.
+		const startSwappable = async (version: string) => {
+			const { host } = startHost({ version });
+
+			await host.refreshWorktrees();
+
+			let network = createNetwork(host);
+			const open: OpenTransport = (target, handlers) => network.open(target, handlers);
+
+			const swapTo = async (next: string) => {
+				const updated = startHost({ version: next }).host;
+
+				await updated.refreshWorktrees();
+				network = createNetwork(updated);
+			};
+
+			return { open, swapTo };
+		};
+
+		it('behind the main → updated there once, then connected on the new release', async () => {
+			const { open, swapTo } = await startSwappable('5.0.1');
+			const updated: string[] = [];
+			const { store } = startMain({
+				open,
+				version: '5.1.0',
+				retryMs: 60_000,
+				updateRemote: async (host) => {
+					updated.push(host);
+					await swapTo('5.1.0');
+
+					return { code: 0, output: '' };
+				},
+			});
+
+			await until(() => isConnected(store), 'connected after the update');
+
+			expect(updated).toEqual(['vm1']);
+		});
+
+		it('updated, but its sessions keep the old release running → waited for, never updated again', async () => {
+			const { open } = await startSwappable('5.0.1');
+			let updates = 0;
+			const { store } = startMain({
+				open,
+				version: '5.1.0',
+				retryMs: 60_000,
+				updateRemote: async () => {
+					updates++;
+
+					return { code: 0, output: '' };
+				},
+			});
+
+			await until(
+				() => store.state.machines.vm1?.detail?.includes('switches to 5.1.0') === true,
+				'waiting for its sessions',
+			);
+
+			expect(updates).toBe(1);
+			expect(store.state.machines.vm1?.detail).toBe(
+				'Build box is updated; it switches to 5.1.0 once its sessions finish their work.',
+			);
+		});
+
+		it("the update fails → crew's own last line on the card, and no second try", async () => {
+			const { open } = await startSwappable('5.0.1');
+			let updates = 0;
+			const { store } = startMain({
+				open,
+				version: '5.1.0',
+				retryMs: 60_000,
+				updateRemote: async () => {
+					updates++;
+
+					return { code: 1, output: 'Downloading…\nError: no release for linux/riscv64\n' };
+				},
+			});
+
+			await until(() => store.state.machines.vm1?.status === 'error', 'the failure');
+
+			expect(updates).toBe(1);
+			expect(store.state.machines.vm1?.detail).toBe(
+				'Could not update Build box: Error: no release for linux/riscv64. Run crew update there, then crew voice remote.',
+			);
+		});
+
+		it('newer than the main → nothing installed there; the card says to update this machine', async () => {
+			const { open } = await startSwappable('5.2.0');
+			const { store } = startMain({ open, version: '5.1.0', retryMs: 60_000 });
+
+			await until(() => store.state.machines.vm1?.status === 'error', 'refused');
+
+			expect(store.state.machines.vm1?.detail).toBe(
+				'Build box runs Voice OS 5.2.0, newer than this one (5.1.0): run crew update here, then crew voice restart.',
+			);
+		});
 	});
 
 	it('a restarted main → finds the open ask in the snapshot and can answer it', async () => {

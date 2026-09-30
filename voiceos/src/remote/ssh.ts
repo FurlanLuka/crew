@@ -8,9 +8,13 @@ const log = createLogger('remote');
 
 // The remote user's own shell parses this first (bash, zsh, fish alike read single quotes), then sh.
 // crew may be on the login PATH or only in ~/.local/bin, where install.sh puts it.
-export const REMOTE_COMMAND = `sh -lc 'command -v crew >/dev/null 2>&1 && exec crew voice _attach; exec "$HOME/.local/bin/crew" voice _attach'`;
+const buildRemoteCrewCommand = (args: string): string =>
+	`sh -lc 'command -v crew >/dev/null 2>&1 && exec crew ${args}; exec "$HOME/.local/bin/crew" ${args}'`;
 
-export const buildSshArgv = (host: string): string[] => [
+export const REMOTE_COMMAND = buildRemoteCrewCommand('voice _attach');
+export const REMOTE_UPDATE_COMMAND = buildRemoteCrewCommand('update');
+
+export const buildSshArgv = (host: string, command = REMOTE_COMMAND): string[] => [
 	'ssh',
 	// Never a password prompt: there is no terminal to type it in.
 	'-o',
@@ -23,7 +27,7 @@ export const buildSshArgv = (host: string): string[] => [
 	'ServerAliveCountMax=3',
 	'--',
 	host,
-	REMOTE_COMMAND,
+	command,
 ];
 
 const STDERR_KEPT = 4_000;
@@ -78,4 +82,43 @@ export const openSshTransport: OpenTransport = (host, { onData, onExit }) => {
 		},
 		close: () => child.kill(),
 	};
+};
+
+export interface RemoteUpdateResult {
+	code: number | null;
+	// What it printed, both streams, the end kept: crew's own last line says what went wrong.
+	output: string;
+}
+
+export type UpdateRemote = (host: string) => Promise<RemoteUpdateResult>;
+
+// A download and an install: minutes at worst, never forever.
+const UPDATE_TIMEOUT_MS = 5 * 60_000;
+
+// crew update on that machine, over the same SSH as the link. VOICEOS_REMOTE_UPDATE_EXEC (tests and QA)
+// runs a shell command instead of ssh.
+export const updateRemoteCrew: UpdateRemote = async (host) => {
+	const override = process.env.VOICEOS_REMOTE_UPDATE_EXEC;
+	const argv = override ? ['sh', '-c', override] : buildSshArgv(host, REMOTE_UPDATE_COMMAND);
+	const startedAt = Date.now();
+
+	log.info('update spawn', { host, command: override ? 'override' : 'ssh' });
+
+	const child = Bun.spawn(argv, {
+		stdin: 'ignore',
+		stdout: 'pipe',
+		stderr: 'pipe',
+		env: { ...process.env, REMOTE_HOST: host },
+	});
+	const timer = setTimeout(() => child.kill(), UPDATE_TIMEOUT_MS);
+	const [stdout, stderr] = await Promise.all([
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	const code = await child.exited;
+
+	clearTimeout(timer);
+	log.info('update exit', { host, code, ms: Date.now() - startedAt });
+
+	return { code, output: `${stdout}\n${stderr}`.slice(-STDERR_KEPT) };
 };

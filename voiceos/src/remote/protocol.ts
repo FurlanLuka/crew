@@ -51,7 +51,9 @@ export type MainMessage =
 
 export type RemoteMessage =
 	| { type: 'hello'; version: string; host: string; snapshot: Snapshot }
-	| { type: 'refused'; reason: 'held' | 'version'; detail: string }
+	// version: this remote's release, so a main can tell which side is behind (older remotes send only
+	// the detail).
+	| { type: 'refused'; reason: 'held' | 'version'; detail: string; version?: string }
 	| { type: 'ack'; upTo: number }
 	| { type: 'input'; input: Observation }
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
@@ -138,6 +140,7 @@ const remoteSchema = z.union([
 		type: z.literal('refused'),
 		reason: z.enum(['held', 'version']),
 		detail: z.string().max(500),
+		version: z.string().max(50).optional(),
 	}),
 	z.object({ type: z.literal('ack'), upTo: z.number().int().nonnegative() }),
 	z.object({ type: z.literal('input'), input: looseObject.extend({ type: z.string() }) }),

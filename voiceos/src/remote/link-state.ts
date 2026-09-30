@@ -39,7 +39,7 @@ export interface LinkFailure {
 	// error: something the developer must fix there; retried slowly.
 }
 
-const lastLine = (text: string): string =>
+export const lastLine = (text: string): string =>
 	text
 		.trim()
 		.split('\n')
