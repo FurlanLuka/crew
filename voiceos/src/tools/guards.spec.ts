@@ -564,8 +564,8 @@ describe('a yes to Voice OS\'s own "Want me to ask it?"', () => {
 			'Yes, and also ask it why the build is red.',
 		);
 
-		expect(unclear?.text).not.toBe(ASKED);
-		expect(long?.text).not.toBe(ASKED);
+		expect(unclear?.text).toBe('Yes.');
+		expect(long?.text).toBe('Yes, and also ask it why the build is red.');
 	});
 });
 

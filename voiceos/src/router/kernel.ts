@@ -97,13 +97,32 @@ Rules:
 
 export type Screen = string | null;
 
-// Voice OS's last turn here only asked back ("Want me to ask it?"): nothing done, a question said.
-const readAskedBack = (memory: VoiceEntry[]): { askedBack?: string } => {
-	const last = memory.at(-1);
+// A yes to "Want me to ask it?" is given in a breath; later, a yes answers whatever came since.
+export const ASKED_BACK_MS = 2 * 60_000;
 
-	return last && !last.isFailed && last.did.length === 0 && /\?\s*$/.test(last.reply)
-		? { askedBack: last.utterance }
-		: {};
+interface ReadAskedBackParams {
+	memory: VoiceEntry[];
+	spoken: SpokenLine[];
+	now: number;
+}
+
+// Voice OS's last turn here only asked back ("Want me to ask it?"): nothing done, a question said,
+// recently, and no session has spoken since (its question would be what a yes answers now).
+export const readAskedBack = ({
+	memory,
+	spoken,
+	now,
+}: ReadAskedBackParams): { askedBack?: string } => {
+	const last = memory.at(-1);
+	const isAskedBack =
+		last !== undefined &&
+		!last.isFailed &&
+		last.did.length === 0 &&
+		/\?\s*$/.test(last.reply) &&
+		now - last.at <= ASKED_BACK_MS &&
+		!spoken.some((line) => line.source !== 'kernel' && line.at > last.at);
+
+	return isAskedBack ? { askedBack: last.utterance } : {};
 };
 
 const recallVoiceEntries = (state: State, screen: Screen, now: number): VoiceEntry[] => {
@@ -449,7 +468,7 @@ export class Kernel {
 				dispatch(action.type === 'switch_view' ? { ...action, announce: true } : action),
 			utterance,
 			recentUtterances: memory.map((entry) => entry.utterance),
-			...readAskedBack(memory),
+			...readAskedBack({ memory, spoken: state.spoken, now: startedAt }),
 			forwardTo,
 			screen,
 			isSpoken,

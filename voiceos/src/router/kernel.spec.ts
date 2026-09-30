@@ -2,10 +2,17 @@ import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
-import type { Action, State, VoiceEntry } from '../shared/protocol.js';
+import type { Action, SpokenLine, State, VoiceEntry } from '../shared/protocol.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { createFixtureState, type FixtureContext } from '../../test/support/state.js';
-import { Kernel, buildKernelMessage, listWaitingItems, type KernelOptions } from './kernel.js';
+import {
+	ASKED_BACK_MS,
+	Kernel,
+	buildKernelMessage,
+	listWaitingItems,
+	readAskedBack,
+	type KernelOptions,
+} from './kernel.js';
 
 // What every instruction carries to the reducer, which says the situation line when there is one.
 const INSTRUCTION_ACK = { kind: 'instruction' } as const;
@@ -1266,5 +1273,37 @@ describe('a long request forwarded beside a mute (note 83)', () => {
 		expect(await send(REWRITE)).toEqual([
 			{ type: 'send', ref: 'store-front/main', text: said, ack: INSTRUCTION_ACK },
 		]);
+	});
+});
+
+describe('readAskedBack', () => {
+	const ASKED = 'How long do you think checkout is going to take?';
+	const entry = (patch: Partial<VoiceEntry> = {}): VoiceEntry => ({
+		utterance: ASKED,
+		did: [],
+		reply: "I don't know — want me to ask it?",
+		at: 1_000,
+		...patch,
+	});
+	const read = (memory: VoiceEntry[], now = 30_000, spoken: SpokenLine[] = []) =>
+		readAskedBack({ memory, spoken, now });
+
+	it('its last turn only asked back, a moment ago → the words it offered to ask', () => {
+		expect(read([entry()])).toEqual({ askedBack: ASKED });
+	});
+
+	it('something done, a reply that asks nothing, a failed turn → nothing', () => {
+		expect(read([entry({ did: ['send_to checkout-api/main "x"'] })])).toEqual({});
+		expect(read([entry({ reply: 'It is still running.' })])).toEqual({});
+		expect(read([entry({ isFailed: true })])).toEqual({});
+	});
+
+	it('past two minutes, or a session spoke since → nothing: a yes now answers that', () => {
+		expect(read([entry()], 1_000 + ASKED_BACK_MS + 1)).toEqual({});
+		expect(
+			read([entry()], 30_000, [
+				{ id: 'l1', text: 'Should I push?', source: 'narrator', at: 5_000, ref: 'crew/main' },
+			]),
+		).toEqual({});
 	});
 });
