@@ -3140,6 +3140,73 @@ describe('fixes from the live notes', () => {
 		expect(reason?.enum).toContain('not said to anyone');
 	});
 
+	describe('a bare yes with a lone permission and a switch offer', () => {
+		const NOW = 100_000;
+		const answerYes = { ref: 'store-front/main', decision: 'yes', text: '' };
+
+		const withOffer = (offer: { ref: string; at: number } | null, askAt = 50_000) => {
+			const { tools, actions } = createToolContext({
+				asks: [
+					{
+						id: 'p1',
+						ref: 'store-front/main',
+						at: askAt,
+						kind: 'permission',
+						toolName: 'Bash',
+						summary: 'run git push',
+						input: {},
+						suggestions: [],
+					},
+				],
+				switchOffer: offer ? { ...offer, heardAt: offer.at } : null,
+			});
+
+			return {
+				actions,
+				run: () =>
+					executeTool('answer', answerYes, {
+						...tools,
+						screen: null,
+						utterance: 'Yes.',
+						now: () => NOW,
+					}),
+			};
+		};
+
+		it('the offer for another session asked after the permission → not approved', async () => {
+			const context = withOffer({ ref: 'checkout-api/main', at: NOW - 1000 });
+
+			expect((await context.run()).ok).toBe(false);
+			expect(context.actions).toEqual([]);
+		});
+
+		it('the permission asked after the offer, the offer for the same session, or a stale offer → approved', async () => {
+			const cases = [
+				withOffer({ ref: 'checkout-api/main', at: NOW - 2000 }, NOW - 1000),
+				withOffer({ ref: 'store-front/main', at: NOW - 1000 }),
+				withOffer({ ref: 'checkout-api/main', at: NOW - 600_000 }),
+				withOffer(null),
+			];
+
+			for (const context of cases) {
+				expect((await context.run()).ok).toBe(true);
+				expect(context.actions.map((action) => action.type)).toContain('answer_permission');
+			}
+		});
+	});
+
+	it('read_state and read_history record the session as resolved, not as said', async () => {
+		const { tools } = createToolContext();
+
+		const state = await executeTool('read_state', { ref: 'checkout api main' }, tools);
+		const history = await executeTool('read_history', { ref: 'checkout api main' }, tools);
+		const unnamed = await executeTool('read_history', {}, tools);
+
+		expect(state.recordAs?.input.ref).toBe('checkout-api/main');
+		expect(history.recordAs?.input.ref).toBe('checkout-api/main');
+		expect(unnamed.recordAs?.input.ref).toBeNull();
+	});
+
 	it('answer on a session that asked at the end of its turn → the words go to it instead', async () => {
 		const base = createToolContext();
 		const session = base.tools.getState().sessions['checkout-api/main']!;

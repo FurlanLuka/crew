@@ -355,6 +355,7 @@ describe('the one switch offer', () => {
 	it("the kernel's read-back heard to its end → its news heard, with no held line needed", () => {
 		const said = runAt(
 			[
+				[10, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'retries done' }],
 				[
 					11,
 					{
@@ -378,6 +379,9 @@ describe('the one switch offer', () => {
 		);
 
 		expect(said.sessions[OTHER]?.heldLine).toBeNull();
+		expect(said.meanwhile.map((item) => item.ref)).toEqual([OTHER]);
+		// Heard from the kernel, it is not said again in the meanwhile line.
+		expect(replied.meanwhile).toEqual([]);
 		expect(replied.switchOffer?.ref).toBe(OTHER);
 		expect(replied.sessions[OTHER]?.updateHeardAt).toBeUndefined();
 	});

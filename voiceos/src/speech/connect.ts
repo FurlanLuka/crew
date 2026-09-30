@@ -211,7 +211,6 @@ export const connectSpeech = ({
 	});
 };
 
-// The kernel's own reply to the developer is said at once, as the answer to what they just said.
 const READ_TOOLS = new Set(['read_state', 'read_history']);
 
 // The sessions a reply read back: heard to its end, it is their news as surely as their announcement
@@ -232,6 +231,7 @@ export const listReadBackRefs = (calls: KernelTurn['calls'], screen: string | nu
 	),
 ];
 
+// The kernel's own reply to the developer is said at once, as the answer to what they just said.
 export const speakKernelReplies =
 	(handle: KernelHandler, voiceOut: VoiceOut): KernelHandler =>
 	async (text, options): Promise<KernelTurn> => {

@@ -512,6 +512,7 @@ describe('conversations', () => {
 			const convo = await withUpdateWaiting();
 			convo.script([toolUse('t1', 'read_state', { ref: 'checkout-api/main' })], [reply(READ_BACK)]);
 			await convo.say("Where's the status?");
+			expect(convo.store.state.meanwhile).toEqual([]);
 			await replyToCheckout(convo);
 
 			expect(convo.heard.slice(-3)).toEqual([

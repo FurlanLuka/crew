@@ -256,7 +256,7 @@ export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 
 // Its news was heard to its end: a reply to it from another screen may now offer the switch, and the
 // meanwhile line has nothing left to say about it.
-const markUpdateHeard = (state: State, ref: string, at: number): State =>
+const markNewsHeard = (state: State, ref: string, at: number): State =>
 	state.sessions[ref]
 		? updateSession(
 				{ ...state, meanwhile: state.meanwhile.filter((item) => item.ref !== ref) },
@@ -276,7 +276,7 @@ export const forgetHeardUpdate = (state: State, ref: string): State =>
 export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
 	// An update talked over was not heard to its end; a question talked over is being answered.
 	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
-	const updated = refs.reduce((next, ref) => markUpdateHeard(next, ref, at), state);
+	const updated = refs.reduce((next, ref) => markNewsHeard(next, ref, at), state);
 	const offer = updated.switchOffer;
 	const target = updated.targetAsk;
 

@@ -424,15 +424,12 @@ export const executeTool = async (
 			}
 
 			const query = typeof input.query === 'string' && input.query.trim() ? input.query : null;
+			const ref = checked?.ok ? checked.ref : null;
 
 			return {
-				...succeed(
-					toolContext.readHistory({ ref: checked?.ok ? checked.ref : null, query, limit }),
-				),
-				recordAs: {
-					name: 'read_history',
-					input: { ...input, ref: checked?.ok ? checked.ref : null },
-				},
+				...succeed(toolContext.readHistory({ ref, query, limit })),
+				// As resolved, like read_state's: the reply that reads it back is its news.
+				recordAs: { name: 'read_history', input: { ...input, ref } },
 			};
 		}
 
