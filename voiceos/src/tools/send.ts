@@ -338,13 +338,31 @@ export const sendText = async ({
 	const said = toolContext.utterance ?? text;
 	const { judge } = toolContext;
 
-	// "No" to Voice OS's own "Switch to checkout?" is an answer to Voice OS, not words for checkout.
-	if (isSwitchOfferFresh(state.switchOffer, toolContext.now()) && (await isBareNo(judge, said))) {
-		log.info('no to the switch offer: not sent', { ref });
+	// "No" or "yes" to Voice OS's own "Switch to checkout?" answers Voice OS, not words for a session.
+	// Fresh when the words were said: the kernel's own turn does not use up the developer's window.
+	const saidAt = toolContext.heardFrom ?? toolContext.now();
 
-		return fail(
-			`That "no" answers Voice OS's "Switch to ${state.switchOffer.ref}?": the developer stays where they are. Nothing was sent; say nothing.`,
-		);
+	if (isSwitchOfferFresh(state.switchOffer, saidAt)) {
+		const offered = state.switchOffer.ref;
+
+		if (await isBareNo(judge, said)) {
+			log.info('no to the switch offer: not sent', { ref });
+
+			return fail(
+				`That "no" answers Voice OS's "Switch to ${offered}?": the developer stays where they are. Nothing was sent; say nothing.`,
+			);
+		}
+
+		if (
+			isShortEnoughToAnswer(said) &&
+			(await judge({ key: 'approves', utterance: said })) === 'yes'
+		) {
+			log.info('yes to the switch offer: not sent', { ref });
+
+			return fail(
+				`That yes answers Voice OS's "Switch to ${offered}?": call switch_view ${offered}. Nothing was sent.`,
+			);
+		}
 	}
 
 	// "Yes, fix it" after Voice OS offered to fix this session's servers answers Voice OS, even once

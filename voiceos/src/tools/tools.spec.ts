@@ -1186,7 +1186,8 @@ describe('a question only announced', () => {
 
 		expect(refused.actions).toEqual([offering]);
 		expect(stale.actions).toEqual([offering]);
-		expect(elsewhere.actions).toEqual([offering]);
+		// Another switch already offered: no second question over it, the kernel says it in words.
+		expect(elsewhere.actions).toEqual([]);
 		expect(offered.actions).toEqual([switched]);
 		expect(named.actions).toEqual([switched]);
 	});

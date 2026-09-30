@@ -44,6 +44,27 @@ export const refuseAnnouncedOnly = ({
 		return null;
 	}
 
+	// When the words were said, not now: the kernel's own turn must not use up the developer's window.
+	const saidAt = toolContext.heardFrom ?? toolContext.now();
+
+	// Their yes answered Voice OS's "Switch to X?": they go there and hear the question, then answer it.
+	if (isSwitchOfferedFor(state, ref, saidAt)) {
+		toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref }, announce: true });
+
+		return {
+			ok: true,
+			content: `Switched to ${ref}: its question plays there now, and nothing was ${what}. Say nothing.`,
+			note: SWITCH_OFFERED_NOTE,
+		};
+	}
+
+	// Another switch is already offered: a second question would drop one of them unheard.
+	if (isSwitchOfferFresh(state.switchOffer, saidAt)) {
+		return fail(
+			`Nothing was ${what}: ${ref}'s question was only announced, and Voice OS is waiting on its "Switch to ${readLabel(state, state.switchOffer.ref)}?". Tell them in a few words that ${readLabel(state, ref)} asked something, and that "switch to ${readLabel(state, ref)}" plays it.`,
+		);
+	}
+
 	// Voice OS asks it in code: a yes to it is a real offer the next turn can find.
 	toolContext.dispatch({ type: 'offer_switch', ref });
 
