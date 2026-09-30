@@ -132,6 +132,8 @@ type lineMatcher struct {
 	cats         map[string]bool
 	minLevel     int
 	grep         []byte
+	// rawRejects: grep holds nothing JSON escapes, so a raw line without it cannot match.
+	rawRejects bool
 }
 
 func (f LogFilter) matcher() lineMatcher {
@@ -150,6 +152,7 @@ func (f LogFilter) matcher() lineMatcher {
 	}
 	if f.Grep != "" {
 		m.grep = bytes.ToLower([]byte(f.Grep))
+		m.rawRejects = !strings.ContainsFunc(f.Grep, func(r rune) bool { return r == '"' || r == '\\' || r < 0x20 })
 	}
 	return m
 }
@@ -165,11 +168,16 @@ func (m lineMatcher) match(raw []byte) (LogLine, bool) {
 	if !ok || !m.inTime(ts) {
 		return LogLine{}, false
 	}
-	if m.grep != nil && !bytes.Contains(bytes.ToLower(raw), m.grep) {
+	// The raw line is only a quick reject: JSON escapes " and \ there, and
+	// its keys ("level", "cat") would match every line.
+	if m.grep != nil && m.rawRejects && !bytes.Contains(bytes.ToLower(raw), m.grep) {
 		return LogLine{}, false
 	}
 	line, ok := parseLogLine(raw)
 	if !ok {
+		return LogLine{}, false
+	}
+	if m.grep != nil && !bytes.Contains(bytes.ToLower([]byte(searchText(line))), m.grep) {
 		return LogLine{}, false
 	}
 	if m.cats != nil && !m.cats[line.Cat] {
@@ -193,6 +201,21 @@ type LogLine struct {
 	Cat     string                     `json:"cat"`
 	Msg     string                     `json:"msg"`
 	Fields  map[string]json.RawMessage `json:"fields"`
+}
+
+// searchText is what --grep reads: the message and the fields' values, strings
+// as said, not as JSON spells them; never the keys.
+func searchText(l LogLine) string {
+	parts := []string{l.Msg}
+	for _, v := range l.Fields {
+		var text string
+		if json.Unmarshal(v, &text) == nil {
+			parts = append(parts, text)
+		} else {
+			parts = append(parts, string(v))
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 var tsPrefix = []byte(`{"ts":"`)
@@ -374,102 +397,4 @@ func FilterDebugNotes(notes []DebugNote, f LogFilter) []DebugNote {
 
 func inWindow(at time.Time, f LogFilter) bool {
 	return (f.Since.IsZero() || !at.Before(f.Since)) && (f.Until.IsZero() || !at.After(f.Until))
-}
-
-// GeneralNotes is the key of the notes that belong to no workspace
-// (voiceos/src/shared/notes.ts GENERAL_NOTES).
-const GeneralNotes = "(general)"
-
-// jsSpace is JavaScript's \s: Go's \s is ASCII only, and the key must match Voice OS's.
-const jsSpace = `\s\x{0B}\p{Zs}\x{FEFF}\x{2028}\x{2029}`
-
-var (
-	notesSpace  = regexp.MustCompile(`[` + jsSpace + `]+`)
-	notesUnsafe = regexp.MustCompile(`[^a-z0-9._-]+`)
-	notesTrim   = regexp.MustCompile(`^[` + jsSpace + `]+|[` + jsSpace + `]+$`)
-)
-
-// ToNotesKey is voiceos/src/shared/notes.ts toNotesKey, one spelling for a
-// workspace however it is named; the shared table notes-keys.json pins both. Pure.
-func ToNotesKey(name string) string {
-	if name == GeneralNotes {
-		return name
-	}
-	key := strings.ToLower(notesTrim.ReplaceAllString(name, ""))
-	key = notesUnsafe.ReplaceAllString(notesSpace.ReplaceAllString(key, "-"), "-")
-	if key == "" {
-		return GeneralNotes
-	}
-	return key
-}
-
-func NotesFileName(key string) string {
-	if key == GeneralNotes {
-		return "_general.md"
-	}
-	return key + ".md"
-}
-
-func notesKeyOf(fileName string) (string, bool) {
-	if !strings.HasSuffix(fileName, ".md") {
-		return "", false
-	}
-	if fileName == "_general.md" {
-		return GeneralNotes, true
-	}
-	return strings.TrimSuffix(fileName, ".md"), true
-}
-
-// NameNotes is how a key is shown: the general notes as "general". Pure.
-func NameNotes(key string) string {
-	if key == GeneralNotes {
-		return "general"
-	}
-	return key
-}
-
-// Note is one of the developer's notes. At is the local "YYYY-MM-DD HH:MM" it was said.
-type Note struct {
-	Workspace string `json:"workspace"`
-	At        string `json:"at"`
-	Text      string `json:"text"`
-}
-
-var noteStamp = regexp.MustCompile(`^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) — (.*)$`)
-
-// ParseNotes reads a notes file (voiceos/src/memory/notes.ts formatNoteLine). Pure.
-func ParseNotes(key string, data []byte) []Note {
-	notes := []Note{}
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "- ") {
-			continue
-		}
-		note := Note{Workspace: NameNotes(key), Text: strings.TrimPrefix(line, "- ")}
-		if m := noteStamp.FindStringSubmatch(line); m != nil {
-			note.At, note.Text = m[1], m[2]
-		}
-		notes = append(notes, note)
-	}
-	return notes
-}
-
-// FilterNotes keeps notes said since f.Since whose text holds grep; a note's
-// time is the local clock of the main that wrote it. An unstamped note has no
-// time and passes no --since. Pure.
-func FilterNotes(notes []Note, f LogFilter, loc *time.Location) []Note {
-	kept := []Note{}
-	grep := strings.ToLower(f.Grep)
-	for _, note := range notes {
-		if !f.Since.IsZero() {
-			at, err := time.ParseInLocation("2006-01-02 15:04", note.At, loc)
-			if err != nil || at.Before(f.Since.Truncate(time.Minute)) {
-				continue
-			}
-		}
-		if grep != "" && !strings.Contains(strings.ToLower(note.Text), grep) {
-			continue
-		}
-		kept = append(kept, note)
-	}
-	return kept
 }

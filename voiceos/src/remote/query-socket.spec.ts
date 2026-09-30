@@ -173,6 +173,65 @@ describe('a query from a remote to the main', () => {
 		expect(second).toMatchObject({ ok: true, value: { stdout: '--grep=b' } });
 	});
 
+	it('several queries at once → the main runs one at a time, and answers them all', async () => {
+		const { host, path } = startRemote();
+		let running = 0;
+		let mostAtOnce = 0;
+
+		await connectedMain(host, async (args) => {
+			running++;
+			mostAtOnce = Math.max(mostAtOnce, running);
+			await delay(10);
+			running--;
+
+			return { code: 0, stdout: args[2] ?? '', stderr: '' };
+		});
+
+		const answers = await Promise.all(
+			['--grep=a', '--grep=b', '--grep=c'].map((grep) =>
+				askArgs(path, ['voice', 'logs', grep, '--lines=80']),
+			),
+		);
+
+		expect(answers.map((answer) => (answer.ok ? answer.value.stdout : answer.error))).toEqual([
+			'--grep=a',
+			'--grep=b',
+			'--grep=c',
+		]);
+		expect(mostAtOnce).toBe(1);
+	});
+
+	it('a query queued behind one whose link dropped → both answered at once; the queued one never run', async () => {
+		const { host, path } = startRemote();
+		const held = Promise.withResolvers<CrewRunResult>();
+		const ran: string[][] = [];
+		const { links } = await connectedMain(host, (args) => {
+			ran.push(args);
+
+			return held.promise;
+		});
+
+		const first = askArgs(path, ['voice', 'logs', '--grep=a', '--lines=80']);
+
+		await until(() => ran.length === 1, 'the first query ran');
+
+		const second = askArgs(path, ['voice', 'logs', '--grep=b', '--lines=80']);
+
+		// The second reached the main and waits behind the first.
+		await delay(20);
+		links.stopAll();
+
+		expect(await Promise.all([first, second])).toEqual([
+			{ ok: false, reason: 'no-main', error: 'the main disconnected' },
+			{ ok: false, reason: 'no-main', error: 'the main disconnected' },
+		]);
+
+		held.resolve({ code: 0, stdout: '', stderr: '' });
+		await delay(20);
+
+		expect(ran.map((args) => args[2])).toEqual(['--grep=a']);
+	});
+
 	it('the main answers after the timeout → the timeout answered; the late answer dropped', async () => {
 		const { host, path } = startRemote({ queryTimeoutMs: 40 });
 		let calls = 0;

@@ -664,7 +664,7 @@ var Root = CommandInfo{
 						{Name: "--until=<when>", Description: "Up to this time, same forms; before --since is an error"},
 						{Name: "--cat=<c,…>", Description: "Only these categories, e.g. gateway, kernel, router, worker, speech, remote; an unknown one matches nothing"},
 						{Name: "--level=<level>", Description: "This level and above: warn is warn and error"},
-						{Name: "--grep=<text>", Description: "Lines holding this text, any case"},
+						{Name: "--grep=<text>", Description: "Lines whose message or a field's value holds this text, any case (never the keys)"},
 						{Name: "--lines=<n>", Description: "The newest n across every machine, printed oldest first (at most 1000)", Default: "80"},
 						{Name: "--machine=<id|name|main,…>", Description: "Only these machines; main is the main's own log — --machine=main is the fast look, no SSH"},
 						{Name: "--exclude=<id|name|main,…>", Description: "Every machine but these"},

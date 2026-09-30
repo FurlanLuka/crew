@@ -63,6 +63,27 @@ func TestClassifyRemote(t *testing.T) {
 	}
 }
 
+// What --local --json prints is what the main reads back: one line, after
+// whatever a login shell said first.
+func TestLocalDocumentReadsBackAsAnswered(t *testing.T) {
+	line, ok := parseLogLine([]byte(`{"ts":"2026-09-30T08:00:00.000Z","level":"info","cat":"a","msg":"two\nlines","ref":"store-front/main"}`))
+	if !ok {
+		t.Fatal("fixture line")
+	}
+	line.Machine = "vm1-host"
+	data, err := EncodeLogsDoc(LogsDoc{Lines: []LogLine{line}, Unreachable: []Unreachable{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := classifyRemote(0, "Last login: today\n"+string(data), "")
+	if got.kind != remoteAnswered || len(got.doc.Lines) != 1 || got.doc.Lines[0].Msg != "two\nlines" || string(got.doc.Lines[0].Fields["ref"]) != `"store-front/main"` {
+		t.Fatalf("got %+v", got)
+	}
+	if empty, _ := EncodeLogsDoc(LogsDoc{Lines: []LogLine{}, Unreachable: []Unreachable{}}); classifyRemote(0, string(empty), "").kind != remoteAnswered {
+		t.Fatal("an empty answer is still an answer")
+	}
+}
+
 // The built command goes through a real sh twice — the login shell's parse,
 // then sh -lc — into a stub crew that prints its argv, one per line.
 func TestRemoteCrewCommandQuoting(t *testing.T) {
@@ -75,22 +96,28 @@ func TestRemoteCrewCommandQuoting(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "crew"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, grep := range []string{"it's", "$HOME", "a; rm -rf ~", "two  spaces", "-x", `"quoted" \back`, "`uname`"} {
-		args := RemoteLogArgs(LogFilter{Grep: grep}, 80)
-		cmd := osexec.Command("/bin/sh", "-c", RemoteCrewCommand(args))
-		// crew is not on this PATH: the ~/.local/bin fallback runs, as on a fresh remote.
-		cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin"}
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("%q: %v\n%s", grep, err, out)
+	// sh -l reads /etc/profile (which may put a real crew on PATH), then
+	// ~/.profile: the last word on PATH is this test's, so the stub is the only
+	// crew either branch can reach.
+	branches := map[string]string{
+		"crew on the login PATH":    "PATH=\"$HOME/.local/bin:/usr/bin:/bin\"\n",
+		"the ~/.local/bin fallback": "PATH=/usr/bin:/bin\n",
+	}
+	for branch, profile := range branches {
+		if err := os.WriteFile(filepath.Join(home, ".profile"), []byte(profile), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-		// A login shell's profile may print first: the argv is the tail.
-		if len(lines) < len(args) {
-			t.Fatalf("%q: got %q", grep, out)
-		}
-		if got := lines[len(lines)-len(args):]; !reflect.DeepEqual(got, args) {
-			t.Errorf("%q: crew got %q, want %q", grep, got, args)
+		for _, grep := range []string{"it's", "$HOME", "a; rm -rf ~", "two  spaces", "-x", `"quoted" \back`, "`uname`"} {
+			args := RemoteLogArgs(LogFilter{Grep: grep}, 80)
+			cmd := osexec.Command("/bin/sh", "-c", RemoteCrewCommand(args))
+			cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin"}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("%s, %q: %v\n%s", branch, grep, err, out)
+			}
+			if got := strings.Split(strings.TrimRight(string(out), "\n"), "\n"); !reflect.DeepEqual(got, args) {
+				t.Errorf("%s, %q: crew got %q, want %q", branch, grep, got, args)
+			}
 		}
 	}
 }

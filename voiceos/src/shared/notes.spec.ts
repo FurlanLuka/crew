@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
 	GENERAL_NOTES,
 	fromNotesFileName,
@@ -29,4 +31,23 @@ describe('notes keys', () => {
 
 	it('a line read aloud loses its stamp', () =>
 		expect(readNoteText('- 2026-09-27 07:05 — try a tone')).toBe('try a tone'));
+});
+
+interface NotesKeyRow {
+	name: string;
+	key: string;
+	file: string;
+}
+
+// Shared with crew's Go side (crew voice notes), which reads the same table.
+const NOTES_KEYS = JSON.parse(
+	readFileSync(join(import.meta.dir, '../../test/fixtures/shared/notes-keys.json'), 'utf8'),
+) as NotesKeyRow[];
+
+describe('the notes keys crew shares', () => {
+	it.each(NOTES_KEYS)('$name → $key, $file, and back', ({ name, key, file }) => {
+		expect(toNotesKey(name)).toBe(key);
+		expect(toNotesFileName(key)).toBe(file);
+		expect(fromNotesFileName(file)).toBe(key);
+	});
 });

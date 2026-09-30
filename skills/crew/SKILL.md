@@ -447,7 +447,7 @@ another machine):
 - `crew voice logs` — the log from every machine at once, merged by time, newest `--lines`
   (80) printed oldest first. Filters: `--since`/`--until` (a span back `10m`/`2h`/`3d`, a clock
   time `10:02` — one still ahead means yesterday — or an ISO time; converted to UTC where you
-  typed it), `--cat=router,kernel`, `--level=warn` (and above), `--grep` (any case),
+  typed it), `--cat=router,kernel`, `--level=warn` (and above), `--grep` (the message and field values, any case),
   `--machine=`/`--exclude=` (an id, a name, or `main`). On the main it asks each remote over SSH
   in parallel (20 s each; `! asking 2 machines…` on stderr): a machine that does not answer is a
   `! vm2 (build box) unreachable: …` line on stderr and a row in `unreachable`, the others still

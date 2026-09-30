@@ -1025,7 +1025,7 @@ Output: `<ts>\t<machine>\t<level>\t<cat>\t<msg>\t<other fields as JSON>`
 - `--until=<when>` — Up to this time, same forms; before --since is an error
 - `--cat=<c,…>` — Only these categories, e.g. gateway, kernel, router, worker, speech, remote; an unknown one matches nothing
 - `--level=<level>` — This level and above: warn is warn and error
-- `--grep=<text>` — Lines holding this text, any case
+- `--grep=<text>` — Lines whose message or a field's value holds this text, any case (never the keys)
 - `--lines=<n>` — The newest n across every machine, printed oldest first (at most 1000) (default 80)
 - `--machine=<id|name|main,…>` — Only these machines; main is the main's own log — --machine=main is the fast look, no SSH
 - `--exclude=<id|name|main,…>` — Every machine but these

@@ -104,13 +104,15 @@ interface LogParams {
 
 export const log = ({ level, category, message, fields = {} }: LogParams): void => {
 	// One JSON object per line, so jq can follow one action across gateway, worker and speech. `ts`
-	// stays the first key: crew voice logs compares the line's prefix before decoding it.
+	// is always the log's own and the first key: crew voice logs compares the line's prefix before
+	// decoding it, so a field named ts must not replace it.
+	const { ts: _fieldTs, ...rest } = fields;
 	const line = JSON.stringify({
 		ts: new Date().toISOString(),
 		level,
 		cat: category,
 		msg: message,
-		...fields,
+		...rest,
 	});
 
 	if (!isQuiet) {

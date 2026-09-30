@@ -25,6 +25,7 @@ import {
 	type Snapshot,
 } from './protocol.js';
 import { PendingCalls } from './pending-calls.js';
+import { isAllowedQuery } from './query-allow.js';
 import { planResync } from './resync.js';
 import type { UpdateRemote } from './ssh.js';
 import {
@@ -45,69 +46,6 @@ const CALL_MARGIN_MS = 15_000;
 const QUERY_TIMEOUT_MS = 25_000;
 // Past this the answer is refused whole, never cut into JSON that does not parse.
 const MAX_QUERY_OUTPUT_BYTES = 2 * 1024 * 1024;
-const MAX_QUERY_LINES = 1000;
-
-const QUERY_VALUE_FLAGS = new Set([
-	'--since',
-	'--until',
-	'--cat',
-	'--level',
-	'--grep',
-	'--machine',
-	'--exclude',
-	'--around',
-]);
-const QUERY_BARE_FLAGS = new Set(['--all', '--json']);
-
-const isQueryFlag = (arg: string): boolean => {
-	const equals = arg.indexOf('=');
-
-	if (equals < 0) {
-		return QUERY_BARE_FLAGS.has(arg);
-	}
-
-	const name = arg.slice(0, equals);
-	const value = arg.slice(equals + 1);
-
-	if (name === '--lines') {
-		return /^\d{1,4}$/.test(value) && Number(value) >= 1 && Number(value) <= MAX_QUERY_LINES;
-	}
-
-	return QUERY_VALUE_FLAGS.has(name);
-};
-
-const areQueryPositionals = (command: string, positionals: string[]): boolean => {
-	switch (command) {
-		case 'logs':
-			return positionals.length === 0;
-		case 'notes':
-			return positionals.length <= 1;
-		case 'debug-notes':
-			return (
-				positionals.length === 0 ||
-				(positionals.length === 2 &&
-					positionals[0] === 'show' &&
-					/^\d+$/.test(positionals[1] ?? ''))
-			);
-		default:
-			return false;
-	}
-};
-
-// What a remote may run here: reading Voice OS's logs, notes and debug notes — never --local (the
-// main answers for every machine) and nothing that changes anything.
-export const isAllowedQuery = (args: string[]): boolean => {
-	const [voice, command, ...rest] = args;
-
-	if (voice !== 'voice' || !command) {
-		return false;
-	}
-
-	const positionals = rest.filter((arg) => !arg.startsWith('-'));
-	const flags = rest.filter((arg) => arg.startsWith('-'));
-
-	return areQueryPositionals(command, positionals) && flags.every(isQueryFlag);
-};
 
 export interface Transport {
 	write: (text: string) => void;

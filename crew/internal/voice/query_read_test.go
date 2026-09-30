@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -151,13 +150,24 @@ func TestReadLogOpensEveryFileBeforeReading(t *testing.T) {
 	}
 }
 
-func TestRotatedOutOnlyBeforeTheOldestKeptLine(t *testing.T) {
-	read := LogRead{Files: 2, KeptFrom: "2026-09-30T08:00:00.000Z"}
-	if read.RotatedOut(time.Date(2026, 9, 30, 8, 0, 0, 0, time.UTC)) != "" {
-		t.Fatal("a window starting at the oldest line is all kept")
+func TestRotatedOutOnlyWhenRotationDroppedLines(t *testing.T) {
+	early := time.Date(2026, 9, 30, 7, 59, 59, 0, time.UTC)
+	cases := []struct {
+		name  string
+		read  LogRead
+		start time.Time
+		want  string
+	}{
+		{"a log that never rotated just starts there", LogRead{Files: 1, Slots: 6, KeptFrom: "2026-09-30T08:00:00.000Z"}, early, ""},
+		{"a free slot: nothing dropped", LogRead{Files: 5, Slots: 6, KeptFrom: "2026-09-30T08:00:00.000Z"}, early, ""},
+		{"every slot full, window before the oldest line", LogRead{Files: 6, Slots: 6, KeptFrom: "2026-09-30T08:00:00.000Z"}, early, "the log before 2026-09-30T08:00:00.000Z has rotated out; showing what is kept"},
+		{"every slot full, window at the oldest line", LogRead{Files: 6, Slots: 6, KeptFrom: "2026-09-30T08:00:00.000Z"}, time.Date(2026, 9, 30, 8, 0, 0, 0, time.UTC), ""},
+		{"no log", LogRead{Slots: 6}, early, "no Voice OS log on this machine"},
 	}
-	if got := read.RotatedOut(time.Date(2026, 9, 30, 7, 59, 59, 0, time.UTC)); !strings.Contains(got, "rotated out") {
-		t.Fatalf("a window before the oldest line: %q", got)
+	for _, c := range cases {
+		if got := c.read.RotatedOut(c.start); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

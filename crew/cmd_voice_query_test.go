@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -114,5 +115,44 @@ func TestRenderDebugNote(t *testing.T) {
 		"asks:\n  store-front/main\tplan\n"
 	if got := renderDebugNote(note); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRelayOutcome(t *testing.T) {
+	ok := voice.QueryReply{OK: true, Value: &voice.QueryValue{Code: 3, Stdout: "rows\n", Stderr: "! vm2 unreachable\n"}}
+	noMain := voice.QueryReply{Reason: "no-main", Error: "the main is not connected"}
+	timeout := voice.QueryReply{Reason: "timeout", Error: "the main did not answer in 30s"}
+	refused := voice.QueryReply{Reason: "error", Error: "output over 2 MB; narrow the filters"}
+	dialErr := errors.New("dial unix query.sock: permission denied")
+	type outcome struct {
+		fallback bool
+		stderr   string
+		code     int
+	}
+	cases := []struct {
+		name  string
+		kind  queryKind
+		reply voice.QueryReply
+		err   error
+		want  outcome
+	}{
+		{"logs answered", queryLogs, ok, nil, outcome{false, "! vm2 unreachable\n", 3}},
+		{"notes answered", queryNotes, ok, nil, outcome{false, "! vm2 unreachable\n", 3}},
+		{"logs, no main", queryLogs, noMain, nil, outcome{true, "! the main is not connected; showing only this machine's logs\n", 0}},
+		{"notes, no main", queryNotes, noMain, nil, outcome{false, "Error: the main is not connected — notes and debug notes live on the main\n", 1}},
+		{"logs, timeout", queryLogs, timeout, nil, outcome{true, "! the main did not answer in 30s; showing only this machine's logs\n", 0}},
+		{"notes, timeout", queryNotes, timeout, nil, outcome{false, "Error: the main did not answer in 30s — notes and debug notes live on the main\n", 1}},
+		{"logs, the main refused", queryLogs, refused, nil, outcome{false, "Error: output over 2 MB; narrow the filters\n", 1}},
+		{"notes, the main refused", queryNotes, refused, nil, outcome{false, "Error: output over 2 MB; narrow the filters\n", 1}},
+		{"logs, no query socket", queryLogs, voice.QueryReply{}, voice.ErrNoQuerySocket, outcome{true, "! restart the remote daemon with crew voice remote\n", 0}},
+		{"notes, no query socket", queryNotes, voice.QueryReply{}, voice.ErrNoQuerySocket, outcome{false, "Error: the remote daemon cannot ask the main; restart the remote daemon with crew voice remote — notes and debug notes live on the main\n", 1}},
+		{"logs, another dial error", queryLogs, voice.QueryReply{}, dialErr, outcome{true, "! dial unix query.sock: permission denied; showing only this machine's logs\n", 0}},
+		{"notes, another dial error", queryNotes, voice.QueryReply{}, dialErr, outcome{false, "Error: dial unix query.sock: permission denied — notes and debug notes live on the main\n", 1}},
+	}
+	for _, c := range cases {
+		fallback, stderr, code := relayOutcome(c.kind, c.reply, c.err)
+		if got := (outcome{fallback, stderr, code}); got != c.want {
+			t.Errorf("%s:\n got %+v\nwant %+v", c.name, got, c.want)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import {
 	existsSync,
 	mkdtempSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -150,12 +151,35 @@ describe('log rotation', () => {
 		expect(countLines(file)).toBe(1);
 	});
 
-	it('ts is the first key of every line', () => {
+	it("a field named ts → the log's own time stays, as the first key", () => {
 		const file = newFile();
 
 		start(file, 1_000);
-		log.info('line', { ts: 'overridden', other: 1 });
+		log.info('line', { ts: 'from a field', other: 1 });
 
-		expect(read(file).startsWith('{"ts":')).toBe(true);
+		const line = read(file);
+		const parsed = JSON.parse(line) as { ts: string; other: number };
+
+		expect(line.startsWith('{"ts":')).toBe(true);
+		expect(parsed.ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+		expect(parsed.other).toBe(1);
+	});
+
+	it('another writer rotated the file behind this one → no second rotation', () => {
+		const file = newFile();
+		const bytes = lineBytes();
+
+		start(file, bytes * 2);
+		log.info('line');
+		log.info('line');
+		// A hand-run cockpit on the same file rotated it; this logger still counts two lines.
+		renameSync(file, `${file}.1`);
+		log.info('line');
+
+		expect({
+			live: countLines(file),
+			first: countLines(`${file}.1`),
+			second: existsSync(`${file}.2`),
+		}).toEqual({ live: 1, first: 2, second: false });
 	});
 });

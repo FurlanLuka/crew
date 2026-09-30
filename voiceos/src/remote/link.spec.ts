@@ -12,7 +12,7 @@ import { createNetwork, until } from '../../test/support/link.js';
 import { worktree } from '../../test/support/reduce.js';
 import { RemoteHost } from './host.js';
 import { MachineLinks } from './links.js';
-import { isAllowedQuery, type OpenTransport } from './link.js';
+import type { OpenTransport } from './link.js';
 import type { UpdateRemote } from './ssh.js';
 
 configureLog({ quiet: true });
@@ -574,49 +574,6 @@ describe('a remote over a link', () => {
 	it('cut after any frame, the host left half open → the same main takes its link back', async () => {
 		await sweep(true);
 	}, 60_000);
-});
-
-describe('isAllowedQuery', () => {
-	it.each([
-		[['voice', 'logs', '--lines=80'], true],
-		[
-			[
-				'voice',
-				'logs',
-				'--since=2026-09-30T08:02:00Z',
-				'--until=2026-09-30T09:00:00.5Z',
-				'--cat=remote,main',
-				'--level=warn',
-				"--grep=it's $x; -y",
-				'--lines=1000',
-				'--machine=vm1,main',
-				'--exclude=vm2',
-				'--json',
-			],
-			true,
-		],
-		[['voice', 'debug-notes', '--since=2026-09-30T08:02:00Z', '--grep=x', '--lines=20'], true],
-		[['voice', 'debug-notes', 'show', '3', '--around=1m30s', '--json'], true],
-		[['voice', 'notes', 'store-front', '--lines=20'], true],
-		[['voice', 'notes', '--all', '--lines=20'], true],
-		[['voice', 'notes', '--lines=20'], true],
-		[['voice', 'logs', '--lines=1001'], false],
-		[['voice', 'logs', '--lines=0'], false],
-		[['voice', 'logs', '--lines=ten'], false],
-		[['voice', 'logs', '--local', '--json'], false],
-		[['voice', 'logs', 'extra'], false],
-		[['voice', 'notes', 'store-front', 'extra'], false],
-		[['voice', 'logs', '--', '--json'], false],
-		[['voice', 'logs', '--follow'], false],
-		[['voice', 'logs', '--since', '10m'], false],
-		[['voice', 'start'], false],
-		[['voice', 'debug-notes', 'show', 'abc'], false],
-		[['voice', 'debug-notes', '3'], false],
-		[['dev', 'status', '--json'], false],
-		[['voice'], false],
-	])('%p → %p', (args, isAllowed) => {
-		expect(isAllowedQuery(args as string[])).toBe(isAllowed);
-	});
 });
 
 describe('a line from the remote that does not parse', () => {

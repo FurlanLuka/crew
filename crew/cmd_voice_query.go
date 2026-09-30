@@ -215,11 +215,7 @@ func (q logsQuery) argv(asJSON bool) []string {
 func voiceQuery(args []string) {
 	q, err := parseQueryArgs(args, time.Now())
 	if err != nil {
-		usage := queryUsage[q.kind]
-		if usage == "" {
-			usage = queryUsage[queryLogs]
-		}
-		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: %s\n", err, usage)
+		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: %s\n", err, queryUsage[q.kind])
 		os.Exit(1)
 	}
 	role := voice.CurrentRole(q.local)
@@ -241,43 +237,48 @@ func voiceQuery(args []string) {
 }
 
 // relayToMain asks the main through the daemon's link and exits with its
-// answer. It returns only when a logs query should fall back to this
-// machine's files; notes and debug notes live on the main alone.
+// answer. It returns only when a logs query falls back to this machine's
+// files; notes and debug notes live on the main alone.
 func relayToMain(q logsQuery) (fallback bool) {
 	reply, err := voice.AskMain(voice.RemoteQuerySocket(), q.argv(jsonOutput))
+	fallback, stderr, code := relayOutcome(q.kind, reply, err)
 	if err == nil && reply.OK {
 		os.Stdout.WriteString(reply.Value.Stdout)
-		os.Stderr.WriteString(reply.Value.Stderr)
-		os.Exit(reply.Value.Code)
 	}
-	reason := ""
-	switch {
-	case errors.Is(err, voice.ErrNoQuerySocket):
-		reason = restartDaemon
-	case err != nil:
-		reason = err.Error()
-	case reply.Reason == "no-main" || reply.Reason == "timeout":
-		reason = notConnected
-		if reply.Reason == "timeout" {
-			reason = reply.Error
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "Error: %s\n", reply.Error)
-		os.Exit(1)
-	}
-	if q.kind != queryLogs {
-		if reason == restartDaemon {
-			reason = "the remote daemon cannot ask the main; " + restartDaemon
-		}
-		fmt.Fprintf(os.Stderr, "Error: %s — notes and debug notes live on the main\n", reason)
-		os.Exit(1)
-	}
-	if reason == restartDaemon {
-		fmt.Fprintf(os.Stderr, "! %s\n", restartDaemon)
-	} else {
-		fmt.Fprintf(os.Stderr, "! %s; %s\n", notConnected, localOnlyWarn)
+	os.Stderr.WriteString(stderr)
+	if !fallback {
+		os.Exit(code)
 	}
 	return true
+}
+
+// relayOutcome is what a remote does with the main's answer: relay it, fall
+// back to its own logs with a warning, or fail. A refusal by the main
+// ("narrow the filters") never falls back: this machine's lines would answer
+// a different question. Pure.
+func relayOutcome(kind queryKind, reply voice.QueryReply, err error) (fallback bool, stderr string, code int) {
+	if err == nil && reply.OK {
+		return false, reply.Value.Stderr, reply.Value.Code
+	}
+	if err == nil && reply.Reason != "no-main" && reply.Reason != "timeout" {
+		return false, fmt.Sprintf("Error: %s\n", reply.Error), 1
+	}
+	reason := reply.Error
+	switch {
+	case errors.Is(err, voice.ErrNoQuerySocket):
+		reason = "the remote daemon cannot ask the main; " + restartDaemon
+		if kind == queryLogs {
+			return true, fmt.Sprintf("! %s\n", restartDaemon), 0
+		}
+	case err != nil:
+		reason = err.Error()
+	case reason == "":
+		reason = notConnected
+	}
+	if kind != queryLogs {
+		return false, fmt.Sprintf("Error: %s — notes and debug notes live on the main\n", reason), 1
+	}
+	return true, fmt.Sprintf("! %s; %s\n", reason, localOnlyWarn), 0
 }
 
 // thisMachine labels a remote's own lines when the main cannot: its short hostname.
@@ -296,7 +297,17 @@ func queryLogsHere(q logsQuery, role voice.Role) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		printLogs(voice.LogsDoc{Lines: lines, Unreachable: []voice.Unreachable{}})
+		doc := voice.LogsDoc{Lines: lines, Unreachable: []voice.Unreachable{}}
+		if q.local && jsonOutput {
+			data, err := voice.EncodeLogsDoc(doc)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			os.Stdout.Write(data)
+			return
+		}
+		printLogs(doc)
 		return
 	}
 
@@ -341,132 +352,5 @@ func printLogs(doc voice.LogsDoc) {
 	}
 	for _, line := range doc.Lines {
 		fmt.Println(voice.FormatLogRow(line))
-	}
-}
-
-func mustDebugNotes() []voice.DebugNote {
-	notes, err := voice.ReadDebugNotes()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	return notes
-}
-
-func listDebugNotes(q logsQuery) {
-	notes := voice.Newest(voice.FilterDebugNotes(mustDebugNotes(), q.filter), q.lines)
-	rows := make([]voice.DebugNoteRow, 0, len(notes))
-	for _, note := range notes {
-		rows = append(rows, note.Row())
-	}
-	if jsonOutput {
-		printJSON(map[string]any{"notes": rows})
-		return
-	}
-	for _, r := range rows {
-		fmt.Printf("%d\t%s\t%s\t%s\n", r.N, r.At, r.View, voice.OneLine(r.Text))
-	}
-}
-
-func showDebugNote(q logsQuery) {
-	note, err := voice.FindDebugNote(mustDebugNotes(), q.note)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	at, err := time.Parse(time.RFC3339Nano, note.At)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: debug note %d has no readable time (%q)\n", q.note, note.At)
-		os.Exit(1)
-	}
-	window := voice.LogFilter{Since: at.Add(-q.around), Until: at.Add(q.around)}
-	read, err := voice.ReadLog(voice.RotatedFiles(voice.LogFile()), window, 0, voice.MainMachine)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	if warning := read.RotatedOut(window.Since); warning != "" {
-		fmt.Fprintf(os.Stderr, "! %s\n", warning)
-	}
-	if jsonOutput {
-		printJSON(map[string]any{"note": note, "lines": read.Lines})
-		return
-	}
-	fmt.Print(renderDebugNote(note))
-	fmt.Printf("\nlog %s … %s:\n", voice.FormatWhen(window.Since), voice.FormatWhen(window.Until))
-	for _, line := range read.Lines {
-		fmt.Println(voice.FormatLogRow(line))
-	}
-}
-
-// renderDebugNote is show's human form: the note, then what was around it. Pure.
-func renderDebugNote(n voice.DebugNote) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "debug note %d\t%s\t%s\n", n.N, n.At, n.View)
-	fmt.Fprintf(&b, "note: %s\n", voice.OneLine(n.Text))
-	if n.Said != nil {
-		fmt.Fprintf(&b, "said: %s\n", voice.OneLine(*n.Said))
-	}
-	if len(n.HeardHere) > 0 {
-		b.WriteString("heard here:\n")
-		for _, h := range n.HeardHere {
-			fmt.Fprintf(&b, "  %s\t%q\tdid %s\treply %q\n", h.At, h.Utterance, strings.Join(h.Did, ", "), h.Reply)
-		}
-	}
-	if len(n.Sessions) > 0 {
-		b.WriteString("sessions:\n")
-		for _, s := range n.Sessions {
-			fmt.Fprintf(&b, "  %s\t%s\tqueued %d", s.Ref, s.Status, s.Queued)
-			if s.NeedsUser != nil {
-				fmt.Fprintf(&b, "\tneeds %q", *s.NeedsUser)
-			}
-			if s.LastAsked != nil {
-				fmt.Fprintf(&b, "\tlast asked %q", *s.LastAsked)
-			}
-			b.WriteString("\n")
-		}
-	}
-	if len(n.Asks) > 0 {
-		b.WriteString("asks:\n")
-		for _, a := range n.Asks {
-			fmt.Fprintf(&b, "  %s\t%s\n", a.Ref, a.Kind)
-		}
-	}
-	if len(n.Spoken) > 0 {
-		b.WriteString("spoken:\n")
-		for _, s := range n.Spoken {
-			fmt.Fprintf(&b, "  %s\t%s\t%q\n", s.At, s.Source, s.Text)
-		}
-	}
-	if n.DevOffer != nil {
-		fmt.Fprintf(&b, "dev offer: %s\n", *n.DevOffer)
-	}
-	return b.String()
-}
-
-func listNotes(q logsQuery) {
-	var keys []string
-	if !q.all {
-		keys = []string{voice.ToNotesKey(q.workspace)}
-	}
-	byKey, order, err := voice.ReadNotes(keys)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	notes := []voice.Note{}
-	for _, key := range order {
-		// --lines counts per workspace: --all is one list per workspace, as Voice OS reads them.
-		notes = append(notes, voice.Newest(voice.FilterNotes(byKey[key], q.filter, time.Local), q.lines)...)
-	}
-	if jsonOutput {
-		printJSON(map[string]any{"notes": notes})
-		return
-	}
-	if len(notes) == 0 && !q.all && q.filter.Grep == "" && q.filter.Since.IsZero() {
-		fmt.Fprintf(os.Stderr, "No notes for %s yet.\n", voice.NameNotes(keys[0]))
-	}
-	for _, n := range notes {
-		fmt.Printf("%s\t%s\t%s\n", n.Workspace, n.At, n.Text)
 	}
 }

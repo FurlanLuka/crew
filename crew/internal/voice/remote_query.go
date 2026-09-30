@@ -68,6 +68,17 @@ type Unreachable struct {
 	Reason  string `json:"reason"`
 }
 
+// EncodeLogsDoc is what --local --json prints: one line, because the main
+// reads a remote's answer off the last stdout line (a login shell may print
+// before it). Pure.
+func EncodeLogsDoc(doc LogsDoc) ([]byte, error) {
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
 // Label is how a machine is named in a warning: "vm2 (build box)", or its id alone.
 func (u Unreachable) Label() string {
 	if u.Name == "" || u.Name == u.Machine {

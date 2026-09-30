@@ -23,7 +23,8 @@ type LogRead struct {
 	// was left out by its mtime (the log reaches further back than asked) or
 	// when there is no log at all.
 	KeptFrom string
-	Files    int
+	// Files is how many of the Slots (a log and its rotations) exist.
+	Files, Slots int
 }
 
 // RotatedOut says when the log no longer reaches back to start. Pure.
@@ -31,7 +32,8 @@ func (r LogRead) RotatedOut(start time.Time) string {
 	switch {
 	case r.Files == 0:
 		return "no Voice OS log on this machine"
-	case r.KeptFrom != "" && start.UTC().Format(isoMillis) < r.KeptFrom:
+	// With a slot still free nothing was ever dropped: the log simply starts there.
+	case r.Files == r.Slots && r.KeptFrom != "" && start.UTC().Format(isoMillis) < r.KeptFrom:
 		return fmt.Sprintf("the log before %s has rotated out; showing what is kept", r.KeptFrom)
 	}
 	return ""
@@ -48,7 +50,7 @@ func ReadLog(files []string, f LogFilter, n int, machine string) (LogRead, error
 			file.Close()
 		}
 	}()
-	var read LogRead
+	read := LogRead{Slots: len(files)}
 	skippedOlder := false
 	for _, path := range files {
 		file, err := os.Open(path)
