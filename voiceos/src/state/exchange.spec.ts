@@ -255,21 +255,26 @@ describe('what goes when sessions go', () => {
 	it('a worktree removed → its conversation, update and history entry go; the others stay', () => {
 		const state = runAt(
 			[
-				[10, said(OTHER)],
 				[11, { type: 'meanwhile_added', ref: OTHER, kind: 'done', about: 'the retries' }],
 				[12, { type: 'meanwhile_added', ref: SCREEN, kind: 'done', about: 'the locale' }],
 				[13, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }],
 				[14, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
-				[15, { type: 'worker_exited', ref: OTHER, error: null }],
-				[16, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree('signals/main')] }],
+				[15, said(OTHER)],
+				[16, { type: 'worker_exited', ref: OTHER, error: null }],
 			],
 			onScreen(),
 		);
+		expect(readSubject(state, 17)).toBe(OTHER);
 
-		expect(state.exchange).toBeNull();
-		expect(state.meanwhile.map((item) => item.ref)).toEqual([SCREEN]);
+		const removed = runAt(
+			[[17, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree('signals/main')] }]],
+			state,
+		);
+
+		expect(removed.exchange).toBeNull();
+		expect(removed.meanwhile.map((item) => item.ref)).toEqual([SCREEN]);
 		expect(
-			state.viewHistory.some(({ view }) => view.kind === 'session' && view.ref === OTHER),
+			removed.viewHistory.some(({ view }) => view.kind === 'session' && view.ref === OTHER),
 		).toBe(false);
 	});
 
