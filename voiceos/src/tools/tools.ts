@@ -743,21 +743,22 @@ export const executeTool = async (
 			) {
 				// "Stop listening" in another language reached for mute: it is a change of listening, made
 				// here, so the model has nothing to explain and a second call to get wrong.
-				const isAboutListening =
-					(await toolContext.judge({
-						key: 'about_listening',
-						utterance: toolContext.utterance,
-					})) === 'yes';
+				const [aboutListening, listenMode] = await Promise.all([
+					toolContext.judge({ key: 'about_listening', utterance: toolContext.utterance }),
+					toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
+				]);
 
-				if (!isAboutListening) {
+				if (aboutListening !== 'yes') {
 					return fail('not a mute request; do nothing more');
 				}
 
-				const mode = toListenMode(
-					await toolContext.judge({ key: 'listen_mode', utterance: toolContext.utterance }),
-				);
+				const mode = toListenMode(listenMode);
+				const changed = applyListenMode(toolContext, mode);
 
-				return applyListenMode(toolContext, mode);
+				// Remembered as the listening change it was: "turn it back on" next reads that, not a mute.
+				return mode && changed.ok
+					? { ...changed, recordAs: { name: 'hands_free', input: { mode } } }
+					: changed;
 			}
 
 			toolContext.mute();

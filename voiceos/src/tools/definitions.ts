@@ -1,4 +1,5 @@
 import { ANSWER_DECISIONS } from './answer.js';
+import { DELIVER_WISHES } from '../state/delivery.js';
 
 export type ToolName =
 	| 'forward'
@@ -118,7 +119,7 @@ const ABOUT_LAST_ACTION_PROPERTY = {
 // Read by the kernel in whatever language was spoken; only a busy session is affected.
 const DELIVER_PROPERTY = {
 	type: 'string',
-	enum: ['aside', 'queue', 'now'],
+	enum: [...DELIVER_WISHES],
 	description:
 		'Only when the developer says how the words should reach a working session, in any language: aside — "by the way", "übrigens", a quick side question; queue — after its current work ("queue it"); now — instead of its current work ("send it now"). Leave out otherwise.',
 };

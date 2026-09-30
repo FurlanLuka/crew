@@ -146,7 +146,7 @@ describe('mute', () => {
 		for (const answer of ['no', 'unclear']) {
 			const { result, isMuted } = await mute(
 				said,
-				judgeWith({ mute_only: answer, about_listening: 'no' }),
+				judgeWith({ mute_only: answer, about_listening: 'no', listen_mode: 'unclear' }),
 			);
 
 			expect(isMuted).toBe(false);
@@ -161,7 +161,11 @@ describe('mute', () => {
 		);
 
 		expect(isMuted).toBe(false);
-		expect(result).toMatchObject({ ok: true, content: 'listening is now push; Voice OS said so' });
+		expect(result).toMatchObject({
+			ok: true,
+			content: 'listening is now push; Voice OS said so',
+			recordAs: { name: 'hands_free', input: { mode: 'push' } },
+		});
 	});
 
 	it('about listening, but which way unclear → nothing changed', async () => {
@@ -450,5 +454,67 @@ describe('words for setup from another screen', () => {
 		expect(await misrouted('no')).toBe(true);
 		expect(await misrouted('yes')).toBe(false);
 		expect(await misrouted('unclear')).toBe(false);
+	});
+});
+
+describe('a bare answer sent as words', () => {
+	const forward = async (utterance: string, judge: Judge, patch: Partial<State>) => {
+		const { tools, actions } = toolsFor({ judge, utterance, patch });
+		const result = await executeTool('forward', { kind: 'instruction' }, tools);
+
+		return { result, actions };
+	};
+
+	it('"Nein." right after "Switch to …?": refuses yes → an answer to Voice OS, nothing sent', async () => {
+		const offer = { switchOffer: { ref: 'checkout-api/main', at: 0 } };
+		const refused = await forward('Nein.', judgeWith({ refuses: 'yes' }), offer);
+
+		expect(refused.actions).toEqual([]);
+		expect(refused.result.ok).toBe(false);
+
+		// Unclear: the words reach the session rather than vanish.
+		for (const answer of ['no', 'unclear']) {
+			const sent = await forward('Nein.', judgeWith({ refuses: answer }), offer);
+
+			expect(sent.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Nein.' })]);
+		}
+
+		const long = await forward('Nein, schau dir lieber die Logs an.', judgeNever, offer);
+
+		expect(long.actions).toEqual([expect.objectContaining({ type: 'send' })]);
+	});
+
+	it('"Ja." forwarded while a permission waits: bare_answer yes → refused (the answer tool decides it)', async () => {
+		const waiting = { asks: [permission] };
+		const refused = await forward('Ja.', judgeWith({ bare_answer: 'yes' }), waiting);
+		const unclear = await forward('Ja.', judgeWith({ bare_answer: 'unclear' }), waiting);
+
+		expect(refused.actions).toEqual([]);
+		expect(refused.result.content).toContain('use the answer tool');
+		// The words go through and decline it with themselves: nothing is approved on a guess.
+		expect(unclear.actions).toEqual([expect.objectContaining({ type: 'send', text: 'Ja.' })]);
+	});
+});
+
+describe('which session the words name', () => {
+	it('stop with only "this one" said, this_session unclear → nothing stopped', async () => {
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ this_session: 'unclear' }),
+			utterance: 'Beende die hier.',
+		});
+		const result = await executeTool('stop_session', { ref: SCREEN }, tools);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('start with more_than_start unclear → started, no hint to forward the rest', async () => {
+		const { tools } = toolsFor({
+			judge: judgeWith({ more_than_start: 'unclear' }),
+			utterance: 'Starte checkout api, bitte schnell.',
+		});
+		const result = await executeTool('start_session', { ref: 'checkout-api/main' }, tools);
+
+		expect(result).toMatchObject({ ok: true, content: 'starting checkout-api/main' });
 	});
 });
