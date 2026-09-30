@@ -252,7 +252,12 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   machine (`vm1:store-front/main`, `shared/machine-ref.ts`), `remote/mapping.ts` routes hands
   effects and prefixes reports, and a reconnect is a snapshot the main reconciles (`remote/resync.ts`),
   never an event replay; unacked effects ride in the next hello. `~/.crew/voiceos/machines.json` is
-  the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS. Its keys
+  the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS.
+  **Conversations:** state keeps the `exchange` (the session the developer talks with; off screen,
+  the subject whose follow-ups and answers are theirs), a five-view `viewHistory` for "go back", a
+  `switchOffer`, a `targetAsk` ("For checkout?") and a `meanwhile` list of other sessions' updates
+  said together once it is quiet; `voiceos/test/support/conversation.ts` runs whole spoken
+  conversations (real store, kernel with a scripted model, router, voice) for the tests. Its keys
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
