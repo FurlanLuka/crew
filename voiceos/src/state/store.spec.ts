@@ -70,7 +70,8 @@ describe('Store', () => {
 		});
 		store.subscribe(() => {});
 
-		store.dispatch({ type: 'send', ref: 'store/main', text: 'run the tests' });
+		// Its worker_start effect is what the handler dispatches from.
+		store.dispatch({ type: 'activate', ref: 'store/main' });
 
 		expect(dispatched).toBe(true);
 		expect(readWarnings()).toEqual([]);

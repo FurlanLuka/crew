@@ -38,6 +38,8 @@ const createContext = (patch: Partial<State> = {}) => {
 		order: refs,
 		machines: { vm1: buildMachine() },
 		...patch,
+		// Every session active unless the test says which are.
+		active: patch.active ?? patch.order ?? refs,
 	};
 	const actions: Action[] = [];
 	const tools: ToolContext = {
@@ -203,28 +205,36 @@ describe('remote notes', () => {
 		]);
 	});
 
-	it('in Personal, "start the cloud session" aimed at this Mac\'s crew/main → refused, naming Personal\'s sessions', async () => {
+	it('in Personal, "activate the cloud session" → no worktree answers to it, nothing activated', async () => {
 		const { tools, actions } = personal({ kind: 'session', ref: 'personal:cutgrid/wrk1' });
 		const result = await executeTool(
-			'start_session',
-			{ ref: 'crew/main' },
-			{ ...tools, utterance: 'Can you start the cloud session?' },
+			'activate',
+			{ name: 'the cloud session' },
+			{ ...tools, utterance: 'Can you activate the cloud session?' },
 		);
 
 		expect(actions).toEqual([]);
-		expect(result.content).toContain('personal:cutgrid/wrk1, personal:sch/wrk1');
+		expect(result).toEqual({
+			ok: false,
+			content:
+				'No worktree called "the cloud session". Say so in a few words; list_sessions lists what there is.',
+		});
 	});
 
-	it("in Personal, naming the other machine's session outright → started", async () => {
+	it("in Personal, naming the other machine's session outright → activated", async () => {
 		const { tools, actions } = personal({ kind: 'session', ref: 'personal:cutgrid/wrk1' });
 
 		await executeTool(
-			'start_session',
-			{ ref: 'crew/main' },
-			{ ...tools, utterance: 'start crew main' },
+			'activate',
+			{ name: 'crew main' },
+			{
+				...tools,
+				utterance: 'start crew main',
+				getState: () => ({ ...tools.getState(), active: [] }),
+			},
 		);
 
-		expect(actions[0]).toEqual({ type: 'start_session', ref: 'crew/main' });
+		expect(actions[0]).toEqual({ type: 'activate', ref: 'crew/main', announce: true });
 	});
 });
 
@@ -299,16 +309,17 @@ describe('a session named with its machine', () => {
 		]);
 	});
 
-	it('"start crew main on my Mac" from inside Personal → started here, not refused', async () => {
+	it('"start crew main on my Mac" from inside Personal → this Mac\'s crew main activated, not refused', async () => {
 		const { tools, actions } = both();
+		const inactive = { ...tools.getState(), active: [] };
 
 		await executeTool(
-			'start_session',
-			{ ref: 'crew main' },
-			{ ...tools, utterance: 'start crew main on my Mac' },
+			'activate',
+			{ name: 'crew main' },
+			{ ...tools, getState: () => inactive, utterance: 'start crew main on my Mac' },
 		);
 
-		expect(actions[0]).toEqual({ type: 'start_session', ref: 'crew/main' });
+		expect(actions).toEqual([{ type: 'activate', ref: 'crew/main', announce: true }]);
 	});
 
 	it('"into my Mac" and "into Personal" → that machine, as "on" does', () => {
@@ -332,7 +343,7 @@ describe('what the kernel is offered', () => {
 		expect(plain.some((tool) => tool.name === 'rename_machine')).toBe(false);
 		expect(
 			Object.keys(plain.find((tool) => tool.name === 'switch_view')?.input_schema.properties ?? {}),
-		).toEqual(['ref', 'pinned', 'skip_held']);
+		).toEqual(['ref', 'active', 'skip_held']);
 	});
 
 	it('with other machines → rename_machine, and switch_view takes a machine', () => {

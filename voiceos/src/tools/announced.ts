@@ -24,7 +24,9 @@ export const isNamedIn = ({ state, ref, utterance }: NamedParams): boolean =>
 
 // A yes to Voice OS's own "Switch to X?" opens X, whatever it holds.
 export const isSwitchOfferedFor = (state: State, ref: string, now: number): boolean =>
-	isSwitchOfferFresh(state.switchOffer, now) && state.switchOffer.ref === ref;
+	isSwitchOfferFresh(state.switchOffer, now) &&
+	state.switchOffer.ref === ref &&
+	(state.switchOffer.kind ?? 'switch') === 'switch';
 
 interface RefuseAnnouncedOnlyParams {
 	state: State;

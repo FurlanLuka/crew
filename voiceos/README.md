@@ -6,9 +6,9 @@ browser, and lets you answer permissions and questions, dictate, and hear "done"
 "waiting on you", by voice or by click. crew owns its lifecycle: `crew voice`.
 
 **Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Mission
-Control, listening modes, Pinned, approvals, other machines, troubleshooting and privacy. This
-README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md) covers the
-repository-wide rules.
+Control, listening modes, active sessions, approvals, other machines, troubleshooting and
+privacy. This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)
+covers the repository-wide rules.
 
 ## Run it
 
@@ -27,7 +27,7 @@ crew voice restart
 `install-dev` compiles into `~/.crew/bin/voiceos` (or `$CREW_VOICEOS_BIN`) and removes the
 `.version` stamp, so the next `crew update` replaces it with the release.
 
-To run from source with its own state (token, sessions, pins, logs) instead of your real
+To run from source with its own state (token, sessions, active set, logs) instead of your real
 `~/.crew/voiceos`, point its config folders at a scratch directory and sign in with the token it
 writes. The crew CLI it calls still reads your real `~/.crew`, so it shows your real worktrees. Use
 a throwaway `HOME` (see [CONTRIBUTING.md](../CONTRIBUTING.md)) to isolate crew too.
@@ -102,15 +102,15 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/app.ts` | The cockpit's wiring: paths, keys, store, sessions, speech, kernel, gateway, persistence, shutdown. |
 | `src/main.ts` | One binary, two roles: no arguments is the cockpit, `remote serve` / `remote attach` a remote. |
 | `src/config.ts` | Paths under `~/.crew/voiceos/`, key lookup, the sign-in token. |
-| `src/state/reducer.ts` | The reducer and its effects. The inputs are split by concern into `asks.ts` (permissions, plans, questions, allow-once), `delivery.ts` (send, queue, aside, now), `held-lines.ts` (what a session off screen may say), `machines.ts`, `pins.ts`, `names.ts`, `commands.ts` (`/clear`, `/compact`), `redirect.ts`, `take-back.ts`, `continuation.ts`, `subagents.ts`. `store.ts` stamps and fans out. |
-| `src/shared/` | Types and pure helpers shared by server and page: `protocol.ts` (state, inputs, messages), `machine-ref.ts` (`vm1:store-front/main`), `machines.ts` (labels, `parentView`, waiting lists), `spoken.ts` / `spoken-tags.ts`, `notes.ts`, `route-chip.ts`. |
+| `src/state/reducer.ts` | The reducer and its effects. The inputs are split by concern into `asks.ts` (permissions, plans, questions, allow-once), `delivery.ts` (send, queue, aside, now), `held-lines.ts` (what a session off screen may say), `machines.ts`, `active.ts` (activate, deactivate, `active_loaded`), `names.ts`, `commands.ts` (`/clear`, `/compact`), `redirect.ts`, `take-back.ts`, `continuation.ts`, `subagents.ts`. `store.ts` stamps and fans out. |
+| `src/shared/` | Types and pure helpers shared by server and page: `protocol.ts` (state, inputs, messages), `machine-ref.ts` (`vm1:store-front/main`), `active.ts` (`isActive`, `listActiveRefs`: the one reading of the active set), `machines.ts` (labels, `parentView`, waiting lists), `spoken.ts` / `spoken-tags.ts`, `notes.ts`, `route-chip.ts`. |
 | `src/router/` | `router.ts` routes each utterance, one at a time. Typed text on a session page goes straight to that session, and everything else goes to the kernel. `kernel.ts` is the Haiku kernel and its prompt. `refs.ts` resolves spoken names to sessions. |
-| `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `pin.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
+| `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `activate.ts`, `list-sessions.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
 | `src/sessions/` | One Agent SDK session per worktree (`worker.ts`), started, resumed and stopped by `manager.ts`, with session ids kept in `registry.ts`. `events.ts` maps SDK messages to observations, `permissions.ts` bridges `canUseTool` to the page, `side-answer.ts` runs asides, `history.ts` rebuilds streams from Claude Code's transcripts at boot, `media.ts` stores images, `doc-links.ts` finds docs, `setup-session.ts` defines the setup session, and `voice-context.ts` holds the orientation every session gets. |
 | `src/judge/` | `judge.ts`: one narrow Haiku question about what the developer's words mean, in any language (`JUDGE_QUESTIONS`, a forced `verdict` tool with an enum answer). Asked only by a guard about to act; a timeout or failure is `unclear`, every guard's safe side. It logs the question key, verdict and ms, never the words. Specs use `test/support/english-judge.ts`. |
 | `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `about.ts` names what a session's question is about (Haiku). |
 | `src/speech/` | `voice-in.ts` handles push to talk and dictation (a press held open until sent), and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. |
-| `src/memory/` | Files that outlive a restart: `journal.ts`, `view.ts`, `pinned.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
+| `src/memory/` | Files that outlive a restart: `journal.ts`, `view.ts`, `active.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
 | `src/dev/` | Dev servers through crew: `servers.ts` and `watch.ts` (crash detection, the fix offer). |
 | `src/crew/adapter.ts` | Every call into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`). |
 | `src/gateway/` | HTTP and WebSocket on 127.0.0.1. `auth.ts` handles sign-in (a host-only cookie set from `~/.crew/voiceos/token`) and the exact Origin check, `validate.ts` checks inbound messages, and `/media` serves the media folder and nothing else. |
@@ -189,14 +189,26 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   kernel's replies first (`speech/queue.ts`) and holds everything, never drops it, while the
   developer talks. "Switching to X" is said for a switch Voice OS makes, "Back to X" for `go_back`
   (`state/view-history.ts`, five views).
+- **Only active sessions exist for voice.** An active session's Claude runs; an inactive one has
+  no process (`startWorker` in `state/helpers.ts` refuses it, which covers send, "now" and
+  reconnect), is left out of the kernel's turn, and says nothing: one gate in `speech/connect.ts`,
+  one in `dev/watch.ts`, the reconnect recap, and `addMeanwhile` for late worker events.
+  `shared/active.ts` is the one reading of the set (`isActive`, `listActiveRefs`); nothing reads
+  `state.active` directly. Deactivate goes through `stopWorker`, the same clean-up as removing a
+  machine. `machine_resynced` matches a remote up on every connect: active and stopped starts,
+  inactive and running stops. Words to an inactive session get "X isn't active. Activate it?"
+  (`state.switchOffer` with kind `activate`) and are delivered after a yes.
 - **The setup session** (ref `setup`) runs in the home folder with the crew CLI, for crew setup
-  only. On the wire it is `Session.isPinned`, a name that predates Pinned. It is kept because
+  only, and the main's is always active. A remote's setup is activated like any other session. On
+  the wire it is `Session.isPinned`, a name that predates the active set. It is kept because
   remotes of other versions read it, so it means "the setup session" and has nothing to do with
-  `state.pinned`.
-- **Pins and names are cockpit preferences**, not crew state, and have no CLI form. Both are keyed
-  by machine ref, dropped at load for machines the state does not know, and saved only after the
-  saved list has been merged (`memory/pinned.ts`, `memory/names.ts`). A name is unique across
-  sessions, because voice routes by it (`state/names.ts`).
+  `state.active`.
+- **The active set and names are cockpit preferences**, not crew state, and have no CLI form. Both
+  are keyed by machine ref, dropped at load for machines the state does not know, and saved only
+  after the saved list has been merged (`memory/active.ts`, `memory/names.ts`). `active.json` is
+  read first; `pinned.json` only when it does not exist (setup dropped), then written as
+  `active.json`. A corrupt `active.json` is an empty set. A name is unique across sessions,
+  because voice routes by it (`state/names.ts`).
 - **Restart keeps the screen.** `memory/view.ts` saves the view on every `switch_view` and restores
   it at boot. For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
@@ -277,7 +289,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `state.json` | Port, pid, start time and machine statuses, for crew (`VOICEOS_RECORD_STATE` only). |
 | `sessions.json` | The registry: each ref's Claude Code session id and briefing version. |
 | `view.json` | The last view the developer chose. |
-| `pinned.json` | Pinned refs, in pin order. |
+| `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |
 | `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
@@ -320,7 +332,7 @@ The kernel and narrator prompts are tested against the real models. Every eval r
 Anthropic key, so work with `--only` and run the full suite once before review:
 
 ```bash
-bun evals/run.ts kernel --only=pin-this-on-session,unpin-this   # just the cases your change touches: no scores, no baseline
+bun evals/run.ts kernel --only=start-by-topic,stop-by-topic     # just the cases your change touches: no scores, no baseline
 bun evals/run.ts all                                   # narrator (Sonnet) + kernel (Haiku); fails below floors or baseline
 bun evals/run.ts all --update-baseline                 # after an intended change, full run only
 ```

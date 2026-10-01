@@ -15,6 +15,7 @@ import {
 	withoutEffects,
 } from './helpers.js';
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
+import { isActive } from '../shared/active.js';
 import { openRedirect } from './redirect.js';
 import { clearHeldLine } from './held-lines.js';
 
@@ -275,7 +276,13 @@ const deliverWords = ({
 	}
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
-	const { effects, isOwed } = decideAck({ ref, ack, timing: isStarting ? 'starting' : 'queued' });
+	const timing: SendTiming =
+		session.status === 'stopped' && !isActive(state, ref)
+			? 'inactive'
+			: isStarting
+				? 'starting'
+				: 'queued';
+	const { effects, isOwed } = decideAck({ ref, ack, timing });
 	const queuedMessage: QueuedMessage = {
 		id: stamped.id,
 		text,

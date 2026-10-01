@@ -23,6 +23,7 @@ import type {
 } from '../shared/protocol.js';
 import type { Effect, MachineChange, ReducerResult } from './reducer.js';
 import { dispatchQueueHead, startWorker, updateSession, withoutEffects } from './helpers.js';
+import { matchMachine } from './active.js';
 
 const MACHINE_INPUTS = [
 	'machines',
@@ -68,8 +69,8 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 			removed.includes(state.view.machine));
 	const view: View = !isViewGone
 		? state.view
-		: state.view.kind === 'session' && state.view.from === 'pinned'
-			? { kind: 'pinned' }
+		: state.view.kind === 'session' && state.view.from === 'active'
+			? { kind: 'active' }
 			: HOME_VIEW;
 
 	return {
@@ -79,7 +80,7 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		devOffer: state.devOffer && isKept(state.devOffer.ref) ? state.devOffer : null,
 		sessions,
 		order: state.order.filter(isKept),
-		pinned: state.pinned.filter(isKept),
+		active: state.active.filter(isKept),
 		names: Object.fromEntries(Object.entries(state.names).filter(([ref]) => isKept(ref))),
 		asks: state.asks.filter((ask) => isKept(ask.ref)),
 		denials: state.denials.filter((denial) => isKept(denial.ref)),
@@ -206,7 +207,10 @@ const resync = ({ state, id, inputs, stamped, reduceInner }: ResyncParams): Redu
 		}
 	}
 
-	return { state: next, effects };
+	// Its active sessions run there and its inactive ones do not, whatever its snapshot said.
+	const matched = matchMachine(next, id);
+
+	return { state: matched.state, effects: [...effects, ...matched.effects] };
 };
 
 export const reduceMachine = (
@@ -316,8 +320,6 @@ export const reduceMachine = (
 const readActionRef = (state: State, input: Input): string | null => {
 	switch (input.type) {
 		case 'send':
-		case 'start_session':
-		case 'stop_session':
 		case 'interrupt':
 		case 'promote_queued':
 		case 'promote_all_queued':

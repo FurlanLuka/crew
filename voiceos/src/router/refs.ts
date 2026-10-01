@@ -2,6 +2,7 @@ import type { Session, State } from '../shared/protocol.js';
 import { NUMBER_WORDS } from '../shared/spoken.js';
 import { readMachine, splitRef } from '../shared/machine-ref.js';
 import { currentMachine, readMachineName } from '../shared/machines.js';
+import { listActiveInOrder } from '../shared/active.js';
 
 // dictated: a brain dump held open by the developer, sent word for word like typing.
 export type UtteranceSource = 'voice' | 'typed' | 'dictated';
@@ -90,24 +91,33 @@ export const writeSpokenRefs = ({ text, refs }: WriteSpokenRefsParams): string =
 	return [...localRefs].reduce((written, localRef) => rewriteSpokenRef(written, localRef), text);
 };
 
-export const resolveRef = (state: State, phrase: string): string | null => {
-	// Exact alias matches only: anything fuzzier ("the checkout work") belongs to the kernel.
-	// "the crew main session" names crew/main as much as "crew main" does.
+// Every session among refs answering to the name. Exact alias matches only: anything fuzzier ("the
+// checkout work") belongs to the kernel. "the crew main session" names crew/main as much as "crew main".
+export const findRefsByName = (state: State, phrase: string, refs: string[]): string[] => {
 	const wantedName = normalizeName(
 		phrase.replace(/^the\s+/, '').replace(/\s+(?:session|worktree|workspace)$/, ''),
 	);
 
 	if (!wantedName) {
-		return null;
+		return [];
 	}
 
-	const matchingRefs = state.order.filter((ref) => {
+	return refs.filter((ref) => {
 		const session = state.sessions[ref];
 
 		return session
 			? listAliases(session, readMachineName(state, ref), state.names[ref]).includes(wantedName)
 			: false;
 	});
+};
+
+// refs: who may answer to the name; voice reaches only the active sessions unless told otherwise.
+export const resolveRef = (
+	state: State,
+	phrase: string,
+	refs: string[] = listActiveInOrder(state),
+): string | null => {
+	const matchingRefs = findRefsByName(state, phrase, refs);
 
 	if (matchingRefs.length === 1) {
 		return matchingRefs[0] ?? null;
@@ -140,7 +150,9 @@ export const resolveRef = (state: State, phrase: string): string | null => {
 const findAddressedRef = (state: State, text: string): string | null => {
 	const namedPhrase = text.match(/^\s*([^,:]{1,60})[,:]\s*\S/)?.[1];
 
-	return namedPhrase ? resolveRef(state, namedPhrase) : null;
+	// Every session: words addressed to an inactive one are not this Claude's either; the kernel asks
+	// to activate it.
+	return namedPhrase ? resolveRef(state, namedPhrase, state.order) : null;
 };
 
 export const readActiveRef = (state: State): string | null => {

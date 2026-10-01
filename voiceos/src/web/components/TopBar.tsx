@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isActive } from '../../shared/active.js';
 import type { State } from '../../shared/protocol.js';
 import {
 	currentMachine,
@@ -8,15 +9,15 @@ import {
 	readSessionLabel,
 } from '../../shared/machines.js';
 import {
-	countPinned,
+	countActive,
 	countSessions,
 	countUpdates,
-	isInsidePinned,
+	isInsideActive,
 	readRefTitle,
 } from '../derive.js';
 import type { Dispatch } from '../types.js';
 import { RenameButton, RenameSession } from './RenameSession.js';
-import { PinButton } from './Tile.js';
+import { ActiveButton } from './Tile.js';
 
 interface TopBarProps {
 	state: State;
@@ -26,8 +27,8 @@ interface TopBarProps {
 const readUpLabel = (state: State): string => {
 	const up = parentView(state);
 
-	if (up.kind === 'pinned') {
-		return 'Pinned';
+	if (up.kind === 'active') {
+		return 'Active';
 	}
 
 	return up.kind === 'grid' && up.machine ? readMachineTitle(state, up.machine) : 'Mission Control';
@@ -36,10 +37,10 @@ const readUpLabel = (state: State): string => {
 export const TopBar = ({ state, dispatch }: TopBarProps) => {
 	const [renaming, setRenaming] = useState<string | null>(null);
 	const machine = currentMachine(state) ?? undefined;
-	const isPinnedView = isInsidePinned(state.view);
-	// Inside Pinned the counts follow the pins, as the tabs do.
-	const counts = isPinnedView ? countPinned(state) : countSessions(state, machine);
-	const updates = countUpdates(state, isPinnedView ? 'pinned' : { machine });
+	const isActiveView = isInsideActive(state.view);
+	// Inside Active the counts follow the active sessions, as the tabs do.
+	const counts = isActiveView ? countActive(state) : countSessions(state, machine);
+	const updates = countUpdates(state, isActiveView ? 'active' : { machine });
 	const viewedSession = state.view.kind === 'session' ? state.sessions[state.view.ref] : null;
 	const { sevenDay, fiveHour } = state.limits;
 	const withMachines = hasMachines(state);
@@ -64,13 +65,13 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 							Mission Control
 						</button>
 						{' › '}
-						{isPinnedView ? (
+						{isActiveView ? (
 							<button
 								type="button"
 								className="crumb"
-								onClick={() => dispatch({ type: 'switch_view', view: { kind: 'pinned' } })}
+								onClick={() => dispatch({ type: 'switch_view', view: { kind: 'active' } })}
 							>
-								Pinned
+								Active
 							</button>
 						) : (
 							machine &&
@@ -110,9 +111,9 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 			{viewedSession && (
 				<>
 					<RenameButton onClick={() => setRenaming(viewedSession.ref)} />
-					<PinButton
+					<ActiveButton
 						sessionRef={viewedSession.ref}
-						isPinned={state.pinned.includes(viewedSession.ref)}
+						isActive={isActive(state, viewedSession.ref)}
 						dispatch={dispatch}
 					/>
 				</>

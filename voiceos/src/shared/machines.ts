@@ -96,7 +96,7 @@ export const currentMachine = (state: State): string | null => {
 	return view.kind === 'grid' ? (view.machine ?? null) : null;
 };
 
-// This Mac, or a machine the state knows: a pin or a name of any other machine has nowhere to show.
+// This Mac, or a machine the state knows: an active ref or a name of any other machine has nowhere to show.
 export const isKnownMachineRef = (state: State, ref: string): boolean => {
 	const machine = machineOf(ref);
 
@@ -125,7 +125,7 @@ export const readElsewhereMachine = (state: State, ref: string): string | null =
 // Home is always Mission Control's cards: This Mac, each other machine, and where one is added.
 export const HOME_VIEW: View = { kind: 'machines' };
 
-// Esc, "go back": a session → its machine's grid (or Pinned, when opened from there) → home.
+// Esc, "go back": a session → its machine's grid (or Active, when opened from there) → home.
 export const parentView = (state: State): View => {
 	const { view } = state;
 
@@ -133,8 +133,8 @@ export const parentView = (state: State): View => {
 		return HOME_VIEW;
 	}
 
-	return view.from === 'pinned'
-		? { kind: 'pinned' }
+	return view.from === 'active'
+		? { kind: 'active' }
 		: { kind: 'grid', machine: readMachine(view.ref) };
 };
 

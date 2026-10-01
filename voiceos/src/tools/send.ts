@@ -7,6 +7,7 @@ import {
 	type QueuedMessage,
 	type Session,
 	type State,
+	type SwitchOfferKind,
 } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
@@ -335,6 +336,18 @@ export const recordAsSent = ({
 		: { name: 'send_to', input: { ref, text, ...extra } };
 };
 
+// What a yes to Voice OS's own question about a session does.
+const describeOfferAnswer = (kind: SwitchOfferKind | undefined, ref: string): string => {
+	switch (kind) {
+		case 'activate':
+			return `"Activate it?" about ${ref}: call activate with name ${ref}`;
+		case 'deactivate':
+			return `"Deactivate anyway?" about ${ref}: call deactivate ${ref}`;
+		default:
+			return `"Switch to ${ref}?": call switch_view ${ref}`;
+	}
+};
+
 export const sendText = async ({
 	state,
 	ref,
@@ -364,7 +377,7 @@ export const sendText = async ({
 			log.info('no to the switch offer: not sent', { ref });
 
 			return fail(
-				`That "no" answers Voice OS's "Switch to ${offered}?": the developer stays where they are. Nothing was sent; say nothing.`,
+				`That "no" answers Voice OS's question about ${offered}: nothing changes. Nothing was sent; say nothing.`,
 			);
 		}
 
@@ -376,7 +389,7 @@ export const sendText = async ({
 			log.info('yes to the switch offer: not sent', { ref });
 
 			return fail(
-				`That yes answers Voice OS's "Switch to ${offered}?": call switch_view ${offered}. Nothing was sent.`,
+				`That yes answers Voice OS's ${describeOfferAnswer(state.switchOffer.kind, offered)}. Nothing was sent.`,
 			);
 		}
 	}

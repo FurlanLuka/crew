@@ -9,7 +9,7 @@ You don't have to watch a terminal.
 It runs on your machine, next to crew. The sessions are ordinary Claude Code sessions on your own
 Claude Code login, working in crew's worktrees.
 
-![Voice OS: a pinned session, store-front/wrk2 on Build box, with its work stream, dev servers and spoken summary, and the other pinned sessions as tabs](../images/voice-os/hero.png)
+![Voice OS: an active session, store-front/wrk2 on Build box, with its work stream, dev servers and spoken summary, and the other active sessions as tabs](../images/voice-os/hero.png)
 
 ## Contents
 
@@ -21,7 +21,7 @@ Claude Code login, working in crew's worktrees.
 - [Mission Control](#mission-control)
 - [Listening modes](#listening-modes)
 - [Talking to sessions](#talking-to-sessions)
-- [Pinned](#pinned)
+- [Active sessions](#active-sessions)
 - [Session names](#session-names)
 - [Questions, plans and permissions](#questions-plans-and-permissions)
 - [Auto mode and approvals](#auto-mode-and-approvals)
@@ -126,8 +126,8 @@ add: [the walkthrough](#from-two-repos-to-a-working-feature) goes from there to 
 
 The **setup** session is always first on This Mac's grid. It runs in your home folder with the
 crew CLI, and it is for crew itself: adding projects, making workspaces, creating and removing
-worktrees. Dev servers and code belong to each worktree's own session. You can talk to it from
-anywhere:
+worktrees. Dev servers and code belong to each worktree's own session. It is always
+[active](#active-sessions), and you can talk to it from anywhere:
 
 - "Setup, make a worktree in store front for the search fix."
 - "Create a new worktree for the search fix."
@@ -139,7 +139,11 @@ remove. crew moves a removed checkout to its trash and empties it in the backgro
 the worktree's `crew/…` branches, so treat a removal as final.
 
 A new worktree shows up on the grid by itself within a few seconds, because Voice OS rereads
-crew's worktrees every 10 seconds.
+crew's worktrees every 10 seconds. It starts inactive: activate it to talk to it.
+
+Setup work for another machine goes to that machine's own setup session, which is activated like
+any other session. When it isn't active you hear "Build box's setup isn't active. Activate it?";
+Voice OS never hands the work to this Mac's setup instead.
 
 ## From two repos to a working feature
 
@@ -154,8 +158,9 @@ lists them from `API_URL`. Each dev command must listen on the port crew hands i
    installs a fresh copy and starts it once to prove it works.
 2. **It reports back.** You hear a short summary, and the details are on the page.
 3. **The worktree appears.** `store-front/main` shows up on This Mac's grid.
-4. **Open it and start its servers.** "Open store front main." "Start the dev servers." Both come
-   up on this worktree's own ports.
+4. **Activate it and start its servers.** "Activate store front main." "Activated
+   store-front/main. Switch there?" "Yes." "Start the dev servers." Both come up on this
+   worktree's own ports.
 5. **Build something.** "Add a search box to the store app's product page that filters the
    products by name as you type. When it works, take a screenshot of the page and show it to me."
    The session writes the code, restarts the servers through crew and checks its work.
@@ -168,7 +173,7 @@ lists them from `API_URL`. Each dev command must listen on the port crew hands i
 
 Mission Control is the home screen. It shows one card per place your sessions live:
 
-- **Pinned** comes first and gathers the sessions you pinned, from every machine.
+- **Active** comes first and gathers the sessions you activated, from every machine.
 - **This Mac** is the machine Voice OS runs on (it is called This Mac on Linux too).
 - There is a card for **each other machine** you added (see [Other machines](#other-machines)).
 - **+ Add machine** adds another machine.
@@ -176,24 +181,27 @@ Mission Control is the home screen. It shows one card per place your sessions li
 Each card shows how many sessions are there, how many are running and how many are waiting on you,
 and the first thing that is waiting ("store-front/main: approve the migration?").
 
-![Mission Control: the Pinned card, This Mac, a second machine and + Add machine](../images/voice-os/mission-control.png)
+![Mission Control: the Active card, This Mac, a second machine and + Add machine](../images/voice-os/mission-control.png)
 
 Click a card, or say its name, to open that machine's **grid**. The grid has one tile per
 worktree, with the setup session first. A tile shows the session's status, what you last asked
-it, its branch, its dev servers and its last line. Each tile has **rename** and **pin** buttons.
+it, its branch, its dev servers and its last line. Each tile has **rename** and
+**Activate**/**Deactivate** buttons, and an inactive tile is dimmed.
 
-![This Mac's grid: the setup session first, then admin/main, a session renamed checkout, signals/wrk1 waiting on you and store-front/main running, each with rename and pin](../images/voice-os/machine-grid.png)
+![This Mac's grid: the setup session first, then admin/main, a session renamed checkout, signals/wrk1 waiting on you and store-front/main running, each with rename and activate](../images/voice-os/machine-grid.png)
 
-Click a tile to open that session. Opening a session only shows it: a stopped session stays
-stopped until you send it something or ask to start it.
+Click a tile to open that session. Opening a session only shows it. An inactive session's page
+shows its history and an **Activate** button, with no input box (see
+[Active sessions](#active-sessions)).
 
-**Esc** goes up one level: from a session to its grid (or to Pinned, if you opened it from there),
+**Esc** goes up one level: from a session to its grid (or to Active, if you opened it from there),
 and from a grid to Mission Control. The **Esc →** button in the top bar does the same. The top bar
 also shows session counts and your Claude usage (weekly and 5-hour).
 
 The session page shows the conversation as it streams, a tab for each session on the same machine
-(or for each pin, inside Pinned), and side panels: status and cost, sub-agents, dev servers,
-what you said here, notes, docs, and **elsewhere** (sessions on other screens that need you).
+(or for each active session, inside Active), and side panels: status and cost, sub-agents, dev
+servers, what you said here, notes, docs, and **elsewhere** (sessions on other screens that need
+you).
 
 ![A session page: the stream, its last spoken line, dev servers and a named tab](../images/voice-os/session.png)
 
@@ -245,10 +253,10 @@ waiting on you. Once you start typing on a session page it reads **→ store-fro
 typed text goes to that session.
 
 > **Typed text on a session page goes straight to that session**, just as if you had typed it into
-> Claude Code. The kernel is skipped, so a typed "pin this" reaches Claude, not Voice OS. There are
-> two exceptions: text that starts with another session's name ("checkout, run the tests") goes
-> through the kernel, and so does anything typed while the session is waiting on your answer. Voice
-> OS commands work when spoken, or when typed on Mission Control or a grid.
+> Claude Code. The kernel is skipped, so a typed "deactivate this" reaches Claude, not Voice OS.
+> There are two exceptions: text that starts with another session's name ("checkout, run the
+> tests") goes through the kernel, and so does anything typed while the session is waiting on your
+> answer. Voice OS commands work when spoken, or when typed on Mission Control or a grid.
 
 ## Talking to sessions
 
@@ -299,11 +307,12 @@ A follow-up ("and the lint?") is no exception: name checkout again, or switch th
 
 When Voice OS switches for you, it says so first: "Switching to checkout" (a click is silent).
 
-**Starting, stopping and interrupting:**
+**Activating, deactivating and interrupting** (see [Active sessions](#active-sessions)):
 
-- "Start checkout." Starts the session and opens it.
-- "Start checkout and tell me what it did last." Starts it and sends it the rest.
-- "End the checkout session." The conversation resumes the next time the session starts.
+- "Activate checkout." · "Start checkout." "Activated checkout. Switch there?"
+- "Start checkout and tell me what it did last." Activates it and sends it the rest once it is up.
+- "Deactivate checkout." · "End the checkout session." Stops it; the conversation resumes the next
+  time it is activated.
 - "Stop." · "Wait." · "Hold on." Interrupts the session on screen while it is working. The session
   stays open.
 - "Actually, stop the refactor and fix the login bug first." Voice OS asks whether to stop the
@@ -331,23 +340,48 @@ the meanwhile line says in full ("checkout asks: Postgres or SQLite?") is answer
 - "Quiet." Drops what Voice OS had queued to say and stops its routine narration. The sessions' own
   lines, questions and alerts still play.
 
-## Pinned
+## Active sessions
 
-**Pinned** is your own view of the sessions you care about most, gathered from every machine. It
-is the first card on Mission Control.
+Only **active** sessions exist for voice. You activate the few you are working with; everything
+else stays quiet until you activate it.
 
-![Pinned: sessions from This Mac and Build box, and a pin whose machine is out of reach](../images/voice-os/pinned.png)
+- **Active:** Voice OS runs the session's Claude, and voice controls it fully: talking to it,
+  switching to it, its dev servers, its updates, its questions and permissions.
+- **Inactive:** no Claude process and no sound from it. Voice doesn't see it: it sends no updates,
+  dev alerts or reminders, and the kernel does not read it. You can still browse it on the page and
+  activate it there. Its dev servers keep running; crew owns them, and Voice OS says nothing about
+  them.
 
-- Pin or unpin a session with the **pin** button on its tile or in the session's top bar.
-- By voice: "Pin this." · "Pin checkout main." · "Unpin this." · "Unpin the setup session." Say
-  "go to pinned" or "show my pinned sessions" to open it.
-- A pinned session always opens inside Pinned. Its tabs are your pins, and Esc goes back to Pinned.
-- A pin whose machine is out of reach stays as a tile ("… · Build box out of reach") and comes
-  back when the machine does. If the worktree was removed, the tile reads "gone". Unpin it to let it
-  go.
-- Pins are kept in `~/.crew/voiceos/pinned.json` and survive restarts.
+**Active** is the first card on Mission Control: the active sessions from every machine, the setup
+session first. An active session opened from there has the other active sessions as its tabs, and
+Esc goes back to Active.
 
-"Pin the version in package.json" is about the work, so it goes to the session.
+![Active: sessions from This Mac and Build box, and one whose machine is out of reach](../images/voice-os/active.png)
+
+- **Activate** starts the session and resumes its conversation. By voice ("Activate the scheduler
+  on Build box.") you hear "Activated scheduler. Switch there?"; from the **Activate** button on a
+  tile, in the top bar or on an inactive session's page, nothing is said. If two sessions match,
+  Voice OS asks which ("Build box has scheduler work one and work two. Which?").
+- **Deactivate** stops the session and drops everything Voice OS still held for it (queued words,
+  questions, updates). Its conversation is kept for the next time. A session that is working asks
+  first: "checkout is working. Deactivate anyway?" Deactivating the session on screen keeps you on
+  it.
+- **Words to an inactive session**, whether you name it or say them on its screen, get "checkout
+  isn't active. Activate it?". A yes activates it and delivers your words once it is up. Dictation
+  and typing on an inactive page are kept the same way.
+- **Asking what there is:** "What machines do I have?" · "What's on Build box?" · "What's active?"
+  · "What's in the store front workspace?" You hear counts first ("Build box has 11 worktrees in 6
+  workspaces; none active"), and names when the list is short.
+- These are Voice OS commands even on a session's screen: they are answered, never forwarded.
+  "What's running in the tests?" is about the work, so it still goes to the session. Starting with
+  "Voice OS, …" always reaches Voice OS.
+- On a machine that is out of reach, activating adds the session to the set and you hear "Build box
+  is out of reach; it starts when it's back". Its tile stays in Active ("… · Build box out of
+  reach"); if the worktree was removed, the tile reads "gone". Deactivate it to let it go.
+- This Mac's setup session is always active and can't be deactivated.
+- The active set is kept in `~/.crew/voiceos/active.json` and survives restarts (see
+  [Running Voice OS](#running-voice-os)). The first start after the update turns your old pins
+  (`pinned.json`) into the active set.
 
 ## Session names
 
@@ -368,8 +402,8 @@ would rather say, such as "api work". Voice OS shows that name everywhere and an
 "Rename the function to parseRef" is work, so it goes to the session. "Rename store-vm to Build
 box" renames a machine (see [Other machines](#other-machines)).
 
-> Pins and names are Voice OS preferences, not crew state, so they have no `crew` command. Use the
-> page or your voice.
+> The active set and names are Voice OS preferences, not crew state, so they have no `crew`
+> command. Use the page or your voice.
 
 ## Questions, plans and permissions
 
@@ -553,6 +587,10 @@ When the link drops, the sessions there keep working. The card shows the machine
 reach** and why. What you say to it waits and is sent when it is back, and you hear one line about
 what happened meanwhile ("Build box is back: store front main finished").
 
+Each time the link connects, the machine's sessions are matched to the active set: active ones
+that are stopped start, and inactive ones still running are stopped ("Stopped 3 sessions on Build
+box that aren't active"). A deactivate you made while it was out of reach lands then.
+
 A machine is either a main or a remote, never both: `crew voice` refuses on a remote, and
 `crew voice remote` refuses on a main. **remove** on the card (or `crew voice machines rm <id>`)
 stops driving a machine. Its sessions keep running there.
@@ -580,8 +618,9 @@ machine-readable output. [Every crew command](../commands.md#crew-voice) has the
 **A restart keeps your place.** Voice OS remembers the screen you were on and returns to it. For
 another machine's session, it waits up to a minute for that machine to reconnect. Open pages
 reconnect by themselves, and the first one to reconnect hears "Voice OS restarted." Session streams
-are rebuilt from Claude Code's own transcripts. Sessions do not start again on their own: each one
-resumes its conversation the next time you send it something.
+are rebuilt from Claude Code's own transcripts. Active sessions start again and resume their
+conversations, another machine's once its link is up; nothing resumes mid-task, so they sit idle
+until you speak to them. Inactive sessions stay stopped.
 
 > A restart ends every running Claude session, even one that is in the middle of work. The same is
 > true of `crew kill`, and of `crew dev stop` without a workspace name: both stop every crew tmux
@@ -605,7 +644,7 @@ you to update this machine instead.
 | `~/.crew/voiceos/state.json` | The port and pid crew tracks, and each machine's last status. |
 | `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. |
 | `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart. |
-| `~/.crew/voiceos/pinned.json`, `names.json` | Your pins and session names. |
+| `~/.crew/voiceos/active.json`, `names.json` | Your active sessions and session names. An older `pinned.json` is read once, when `active.json` does not exist yet. |
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |

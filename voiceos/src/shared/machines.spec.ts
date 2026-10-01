@@ -169,14 +169,14 @@ describe('views', () => {
 		expect(parentView(local)).toEqual({ kind: 'grid', machine: 'local' });
 	});
 
-	it('up from a session opened from Pinned → Pinned → home', () => {
-		const fromPinned: State = {
+	it('up from a session opened from Active → Active → home', () => {
+		const fromActive: State = {
 			...state,
-			view: { kind: 'session', ref: 'vm1:store/main', from: 'pinned' },
+			view: { kind: 'session', ref: 'vm1:store/main', from: 'active' },
 		};
 
-		expect(parentView(fromPinned)).toEqual({ kind: 'pinned' });
-		expect(parentView({ ...state, view: { kind: 'pinned' } })).toEqual(HOME_VIEW);
+		expect(parentView(fromActive)).toEqual({ kind: 'active' });
+		expect(parentView({ ...state, view: { kind: 'active' } })).toEqual(HOME_VIEW);
 	});
 
 	it('currentMachine → the machine of the session or grid; none on views of all', () => {

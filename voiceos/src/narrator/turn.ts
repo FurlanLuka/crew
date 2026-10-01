@@ -15,7 +15,6 @@ import {
 	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
-	readAnnouncedLabel,
 } from '../state/held-lines.js';
 import { createLogger } from '../log.js';
 import { readSessionLabel } from '../shared/machines.js';
@@ -226,7 +225,7 @@ const speakOutcome = async ({
 
 	options.say({
 		text: describeAnnouncement({
-			label: readAnnouncedLabel(store.state, effect.ref, readSessionLabel(store.state, effect.ref)),
+			label: readSessionLabel(store.state, effect.ref),
 			kind,
 			about: aboutText,
 		}),

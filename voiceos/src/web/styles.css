@@ -265,6 +265,13 @@ textarea:focus-visible {
 	background: linear-gradient(180deg, rgba(169, 155, 232, 0.06), transparent 55%), var(--surface);
 	box-shadow: inset 2px 0 0 var(--violet);
 }
+.tile.inactive {
+	opacity: 0.5;
+}
+.tile.inactive:hover,
+.tile.inactive:focus-within {
+	opacity: 0.8;
+}
 .tile-head {
 	display: flex;
 	align-items: center;
@@ -278,7 +285,7 @@ textarea:focus-visible {
 	color: var(--ink);
 	text-align: left;
 }
-.tile-head .pin,
+.tile-head .toggle-active,
 .tile-head .rename {
 	flex: none;
 }
@@ -311,7 +318,7 @@ textarea:focus-visible {
 .tile.missing .ref {
 	color: var(--muted);
 }
-.tile.missing .pin {
+.tile.missing .toggle-active {
 	margin-left: auto;
 }
 .tile-head .st {
@@ -752,6 +759,10 @@ textarea:focus-visible {
 .composer.dictating {
 	border-color: var(--amber-dim);
 	box-shadow: 0 0 0 3px rgba(240, 160, 44, 0.07);
+}
+.composer.inactive {
+	align-items: center;
+	justify-content: space-between;
 }
 .botbar.alarm .composer {
 	border-color: rgba(224, 108, 95, 0.4);

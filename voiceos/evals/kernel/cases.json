@@ -15,12 +15,15 @@
 			"id": "start-by-topic",
 			"utterance": "Start the checkout retry one.",
 			"context": {
+				"inactive": ["checkout-api/main"],
 				"stopped": ["checkout-api/main"]
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "checkout-api/main"
+					"name": "activate",
+					"input": {
+						"name": "checkout-api/main"
+					}
 				}
 			]
 		},
@@ -62,7 +65,7 @@
 			"context": {},
 			"calls": [
 				{
-					"name": "stop_session",
+					"name": "deactivate",
 					"ref": "store-front/wrk1"
 				}
 			]
@@ -140,8 +143,10 @@
 			],
 			"allow": [
 				{
-					"name": "start_session",
-					"ref": "store-front/wrk1"
+					"name": "activate",
+					"input": {
+						"name": "store-front/wrk1"
+					}
 				}
 			]
 		},
@@ -171,8 +176,15 @@
 		{
 			"id": "relay-question",
 			"utterance": "Ask the locale session whether the German strings are done.",
-			"context": { "view": "store-front/wrk1" },
-			"calls": [{ "name": "forward", "text_includes": "german" }],
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "german"
+				}
+			],
 			"forbid_calls": ["send_to"],
 			"note": "\"The locale session\" only describes a session by its work: the words stay with the screen."
 		},
@@ -226,19 +238,23 @@
 			"id": "start-and-servers",
 			"utterance": "Start checkout and bring up its servers.",
 			"context": {
+				"inactive": ["checkout-api/main"],
 				"stopped": ["checkout-api/main"]
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "checkout-api/main"
+					"name": "activate",
+					"input": {
+						"name": "checkout-api/main"
+					}
 				},
 				{
 					"name": "crew_dev",
 					"ref": "checkout-api/main",
 					"action": "start"
 				}
-			]
+			],
+			"allow": []
 		},
 		{
 			"id": "stop-servers-only",
@@ -367,18 +383,15 @@
 			"utterance": "\"Can you start the checkout api session?\"",
 			"context": {
 				"view": "store-front/main",
+				"inactive": ["checkout-api/main"],
 				"stopped": ["checkout-api/main"]
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "checkout-api/main"
-				}
-			],
-			"allow": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main"
+					"name": "activate",
+					"input": {
+						"name": "checkout-api/main"
+					}
 				}
 			]
 		},
@@ -402,18 +415,15 @@
 			"utterance": "Start store front work one.",
 			"context": {
 				"view": "store-front/main",
+				"inactive": ["store-front/wrk1"],
 				"stopped": ["store-front/wrk1"]
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "store-front/wrk1"
-				}
-			],
-			"allow": [
-				{
-					"name": "switch_view",
-					"ref": "store-front/wrk1"
+					"name": "activate",
+					"input": {
+						"name": "store-front/wrk1"
+					}
 				}
 			]
 		},
@@ -685,7 +695,14 @@
 			},
 			"calls": [],
 			"forbid_calls": ["send_to", "switch_view"],
-			"allow": [{ "name": "forward" }, { "name": "read_state" }],
+			"allow": [
+				{
+					"name": "forward"
+				},
+				{
+					"name": "read_state"
+				}
+			],
 			"note": "Debug note 27: never routed to the session the meanwhile line named. Forwarding to the screen, or answering from the line just heard, are both fine."
 		},
 		{
@@ -706,7 +723,15 @@
 			},
 			"calls": [],
 			"forbid_calls": ["send_to", "forward"],
-			"allow": [{ "name": "switch_view", "ref": "checkout-api/main" }, { "name": "read_state" }],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				},
+				{
+					"name": "read_state"
+				}
+			],
 			"note": "\"Tell me about that\" after the meanwhile line: switch there, or tell it from what was just heard — never words sent to a session."
 		},
 		{
@@ -1023,9 +1048,10 @@
 		},
 		{
 			"id": "no-repeat-after-restart",
-			"utterance": "Okay, also start the session.",
+			"utterance": "Okay, also activate it.",
 			"context": {
 				"view": "store-front/main",
+				"inactive": ["store-front/main"],
 				"stopped": ["store-front/main"],
 				"voiceLog": [
 					{
@@ -1037,8 +1063,10 @@
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "store-front/main"
+					"name": "activate",
+					"input": {
+						"name": "store-front/main"
+					}
 				}
 			]
 		},
@@ -1144,13 +1172,16 @@
 			"id": "filler-then-start",
 			"utterance": "Hmm, let's start this.",
 			"context": {
-				"view": "setup",
-				"stopped": ["setup"]
+				"view": "store-front/wrk1",
+				"inactive": ["store-front/wrk1"],
+				"stopped": ["store-front/wrk1"]
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "setup"
+					"name": "activate",
+					"input": {
+						"name": "store-front/wrk1"
+					}
 				}
 			]
 		},
@@ -1162,7 +1193,7 @@
 			},
 			"calls": [
 				{
-					"name": "stop_session",
+					"name": "deactivate",
 					"ref": "store-front/main"
 				}
 			]
@@ -1175,13 +1206,13 @@
 					{
 						"utterance": "End the main session.",
 						"reply": "Which one — store front main or checkout api main?",
-						"did": ["stop_session store-front/main (failed)"]
+						"did": ["deactivate store-front/main (failed)"]
 					}
 				]
 			},
 			"calls": [
 				{
-					"name": "stop_session",
+					"name": "deactivate",
 					"ref": "store-front/main"
 				}
 			]
@@ -1202,7 +1233,7 @@
 			},
 			"calls": [
 				{
-					"name": "stop_session",
+					"name": "deactivate",
 					"ref": "checkout-api/main"
 				}
 			]
@@ -1333,18 +1364,15 @@
 			"id": "fp-start-named",
 			"utterance": "Start checkout API main.",
 			"context": {
+				"inactive": ["checkout-api/main"],
 				"stopped": ["checkout-api/main"]
 			},
 			"calls": [
 				{
-					"name": "start_session",
-					"ref": "checkout-api/main"
-				}
-			],
-			"allow": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main"
+					"name": "activate",
+					"input": {
+						"name": "checkout-api/main"
+					}
 				}
 			]
 		},
@@ -1356,7 +1384,7 @@
 			},
 			"calls": [
 				{
-					"name": "stop_session",
+					"name": "deactivate",
 					"ref": "checkout-api/main"
 				}
 			]
@@ -1647,12 +1675,7 @@
 				}
 			],
 			"reply_not_includes": ["should i", "do you want", "?"],
-			"allow": [
-				{
-					"name": "start_session",
-					"ref": "store-front/wrk1"
-				}
-			]
+			"allow": []
 		},
 		{
 			"id": "offer-yes",
@@ -2353,11 +2376,7 @@
 					"text_includes": ["last"]
 				}
 			],
-			"allow": [
-				{
-					"name": "start_session"
-				}
-			],
+			"allow": [],
 			"no_reply": true
 		},
 		{
@@ -2374,9 +2393,6 @@
 				}
 			],
 			"allow": [
-				{
-					"name": "start_session"
-				},
 				{
 					"name": "switch_view"
 				}
@@ -4125,10 +4141,6 @@
 			],
 			"allow": [
 				{
-					"name": "start_session",
-					"ref": "setup"
-				},
-				{
 					"name": "switch_view",
 					"ref": "setup"
 				}
@@ -4291,88 +4303,84 @@
 			"no_reply": true
 		},
 		{
-			"id": "pin-this-on-session",
-			"utterance": "Pin this.",
+			"id": "activate-this-on-inactive",
+			"utterance": "Activate this.",
 			"context": {
-				"view": "store-front/main"
+				"view": "store-front/wrk1",
+				"inactive": ["store-front/wrk1"],
+				"stopped": ["store-front/wrk1"]
 			},
 			"calls": [
 				{
-					"name": "pin_session",
-					"ref": "store-front/main",
-					"not_input": {
-						"unpin": true
+					"name": "activate",
+					"input": {
+						"name": "store-front/wrk1"
 					}
 				}
 			]
 		},
 		{
-			"id": "pin-this-on-grid-asks",
-			"utterance": "Pin this.",
+			"id": "activate-this-on-grid-asks",
+			"utterance": "Activate this.",
 			"context": {},
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true
 		},
 		{
-			"id": "unpin-this",
-			"utterance": "Unpin this.",
+			"id": "deactivate-this",
+			"utterance": "Deactivate this.",
 			"context": {
-				"view": "store-front/main",
-				"pinned": ["store-front/main", "checkout-api/main"]
+				"view": "store-front/main"
 			},
 			"calls": [
 				{
-					"name": "pin_session",
-					"ref": "store-front/main",
+					"name": "deactivate",
+					"ref": "store-front/main"
+				}
+			]
+		},
+		{
+			"id": "activate-named-from-grid",
+			"utterance": "Activate store front main.",
+			"context": {
+				"inactive": ["store-front/main"],
+				"stopped": ["store-front/main"]
+			},
+			"calls": [
+				{
+					"name": "activate",
 					"input": {
-						"unpin": true
+						"name": "store-front/main"
 					}
 				}
 			]
 		},
 		{
-			"id": "pin-named-from-grid",
-			"utterance": "Pin store front main.",
+			"id": "go-to-active",
+			"utterance": "Go to active.",
 			"context": {},
-			"calls": [
-				{
-					"name": "pin_session",
-					"ref": "store-front/main",
-					"not_input": {
-						"unpin": true
-					}
-				}
-			]
-		},
-		{
-			"id": "go-to-pinned",
-			"utterance": "Go to pinned.",
-			"context": {
-				"pinned": ["store-front/main"]
-			},
 			"calls": [
 				{
 					"name": "switch_view",
 					"input": {
-						"pinned": true
+						"active": true
 					}
 				}
 			],
 			"no_reply": true
 		},
 		{
-			"id": "show-pinned-sessions",
-			"utterance": "Show my pinned sessions.",
+			"id": "show-active-sessions",
+			"utterance": "Show my active sessions.",
 			"context": {
-				"view": "checkout-api/main",
-				"pinned": ["store-front/main", "store-front/wrk1"]
+				"view": "checkout-api/main"
 			},
 			"calls": [
 				{
 					"name": "switch_view",
 					"input": {
-						"pinned": true
+						"active": true
 					}
 				}
 			],
@@ -4388,22 +4396,8 @@
 					"ref": "setup"
 				}
 			],
-			"forbid_calls": ["pin_session"],
+			"forbid_calls": ["activate", "deactivate"],
 			"no_reply": true
-		},
-		{
-			"id": "pin-setup-session",
-			"utterance": "Pin the setup session.",
-			"context": {},
-			"calls": [
-				{
-					"name": "pin_session",
-					"ref": "setup",
-					"not_input": {
-						"unpin": true
-					}
-				}
-			]
 		},
 		{
 			"id": "pin-in-work-is-forwarded",
@@ -4417,7 +4411,7 @@
 					"text_includes": ["package.json|package", "react"]
 				}
 			],
-			"forbid_calls": ["pin_session"],
+			"forbid_calls": ["activate"],
 			"no_reply": true
 		},
 		{
@@ -5107,10 +5101,20 @@
 		{
 			"id": "mention-not-address",
 			"utterance": "Put this on top of the checkout api branch.",
-			"context": { "view": "store-front/main" },
+			"context": {
+				"view": "store-front/main"
+			},
 			"calls": [],
 			"no_reply": true,
-			"allow": [{ "name": "send_to", "ref": "checkout-api/main" }, { "name": "forward" }],
+			"allow": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main"
+				},
+				{
+					"name": "forward"
+				}
+			],
 			"note": "The name is only mentioned: forward it, or send_to — Voice OS then asks \"For checkout api?\" (send guard)."
 		},
 		{
@@ -5231,6 +5235,513 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "activate-on-machine",
+			"utterance": "Activate billing on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			]
+		},
+		{
+			"id": "activate-two-matches-asks",
+			"utterance": "Activate scheduler on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [],
+			"answer": true,
+			"reply_includes": ["work one|wrk1|1"]
+		},
+		{
+			"id": "activate-second-after-asking",
+			"utterance": "The second one.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"voiceLog": [
+					{
+						"utterance": "Activate scheduler on Personal.",
+						"reply": "Personal has scheduler work one and work two. Which?",
+						"did": ["activate scheduler (failed)"]
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:scheduler/wrk2"
+					}
+				}
+			]
+		},
+		{
+			"id": "enable-worktree-by-name",
+			"utterance": "Enable personal billing main.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			]
+		},
+		{
+			"id": "list-machines",
+			"utterance": "What machines do I have?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "list-one-machine",
+			"utterance": "What's on Personal?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions",
+					"input": {
+						"machine": "Personal"
+					}
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "list-active",
+			"utterance": "What's active?",
+			"context": {},
+			"calls": [
+				{
+					"name": "list_sessions",
+					"input": {
+						"active_only": true
+					}
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "list-workspace",
+			"utterance": "What worktrees does scheduler have?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions",
+					"input": {
+						"workspace": "scheduler"
+					}
+				}
+			],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "list-active-on-session-screen",
+			"utterance": "What's active right now?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions",
+					"input": {
+						"active_only": true
+					}
+				}
+			],
+			"forbid_calls": ["forward"],
+			"answer": true
+		},
+		{
+			"id": "activate-on-session-screen",
+			"utterance": "Activate billing on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "voice-os-prefix-on-session-screen",
+			"utterance": "Voice OS, what machines do I have?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"answer": true
+		},
+		{
+			"id": "work-running-is-forwarded",
+			"utterance": "What's running in the tests?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the checkout tests",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["list_sessions"],
+			"no_reply": true
+		},
+		{
+			"id": "activate-german",
+			"utterance": "Aktiviere billing auf Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			]
+		},
+		{
+			"id": "activate-slovenian",
+			"utterance": "Aktiviraj billing na Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			]
+		},
+		{
+			"id": "inactive-named-asks-to-activate",
+			"utterance": "Tell billing on Personal to run the migrations.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "personal:billing/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			],
+			"no_reply": true
+		},
+		{
+			"id": "setup-on-inactive-remote",
+			"utterance": "Add a worktree for billing on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "personal:setup"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"no_reply": true
+		},
+		{
+			"id": "yes-to-activate-offer",
+			"utterance": "Yes.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"switchOffer": {
+					"ref": "personal:billing/main",
+					"secondsAgo": 3,
+					"text": "Personal billing main isn't active. Activate it?",
+					"kind": "activate"
+				}
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			]
 		}
 	]
 }

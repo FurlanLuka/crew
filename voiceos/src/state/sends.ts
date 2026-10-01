@@ -1,25 +1,70 @@
 // What Voice OS says around the developer's words once they went somewhere: "Sent to X" when that is
 // not the session on screen, and "Switch there?" so they can follow. Words reach another session only
 // when the developer named it (tools/send-guard.ts): nothing here guesses where they were meant to go.
-import { isSwitchOfferFresh, type Input, type Stamped, type State } from '../shared/protocol.js';
+import {
+	isSwitchOfferFresh,
+	type Input,
+	type Stamped,
+	type State,
+	type SwitchOfferKind,
+} from '../shared/protocol.js';
+import { isSetupRef } from '../shared/machine-ref.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readScreenRef, sayAck, sayRef } from './helpers.js';
-import { isReachable } from '../shared/machines.js';
+import { isReachable, readMachineName } from '../shared/machines.js';
+
+// "Personal's setup", not "setup on Personal", even inside Personal: a bare "setup" is this Mac's.
+const sayOffered = (state: State, ref: string): string => {
+	const machine = isSetupRef(ref) ? readMachineName(state, ref) : null;
+
+	return machine ? `${machine}'s setup` : sayRef(state, ref);
+};
+
+const describeOffer = (state: State, ref: string, kind: SwitchOfferKind): string => {
+	switch (kind) {
+		case 'activate':
+			return `${sayOffered(state, ref)} isn't active. Activate it?`;
+		case 'deactivate':
+			return `${sayOffered(state, ref)} is working. Deactivate anyway?`;
+		case 'switch':
+			return `Switch to ${sayRef(state, ref)}?`;
+	}
+};
 
 // "Switch to checkout?": asked aloud once, answered with a yes or let go.
-const offerSwitch = (state: State, ref: string, at: number): ReducerResult => ({
-	state: { ...state, switchOffer: { ref, at } },
-	effects: [
-		{
-			type: 'speak',
-			text: `Switch to ${sayRef(state, ref)}?`,
-			source: 'kernel',
-			ref,
-			isAsking: true,
-			priority: 'high',
+const offerSwitch = (
+	state: State,
+	input: Extract<Input, { type: 'offer_switch' }>,
+	at: number,
+): ReducerResult => {
+	const kind = input.kind ?? 'switch';
+
+	return {
+		state: {
+			...state,
+			switchOffer: {
+				ref: input.ref,
+				at,
+				...(input.kind ? { kind: input.kind } : {}),
+				...(input.words ? { words: input.words } : {}),
+				...(input.thenSwitch ? { thenSwitch: true as const } : {}),
+			},
 		},
-	],
-});
+		effects: [
+			kind === 'switch'
+				? {
+						type: 'speak',
+						text: describeOffer(state, input.ref, kind),
+						source: 'kernel',
+						ref: input.ref,
+						isAsking: true,
+						priority: 'high',
+					}
+				: // A reply to what the developer just asked, said though the session may be inactive.
+					sayAck(describeOffer(state, input.ref, kind), { isAsking: true, ref: input.ref }),
+		],
+	};
+};
 
 interface WithSwitchAskedParams {
 	effects: Effect[];
@@ -102,11 +147,17 @@ export const followSends = (
 			return state.switchOffer ? { ...result, state: { ...state, switchOffer: null } } : result;
 
 		case 'offer_switch': {
-			if (!state.sessions[input.ref] || isSwitchOfferFresh(state.switchOffer, stamped.at)) {
+			// Activate and deactivate answer what the developer just asked: they replace an older offer.
+			const isAnswer = input.kind === 'activate' || input.kind === 'deactivate';
+
+			if (
+				!state.sessions[input.ref] ||
+				(!isAnswer && isSwitchOfferFresh(state.switchOffer, stamped.at))
+			) {
 				return result;
 			}
 
-			const offered = offerSwitch(state, input.ref, stamped.at);
+			const offered = offerSwitch(state, input, stamped.at);
 
 			return { state: offered.state, effects: [...result.effects, ...offered.effects] };
 		}

@@ -231,7 +231,7 @@ describe.skipIf(!isLive)('live session core', () => {
 			});
 			await waitForState({ store, predicate: isIdle, label: 'turn end' });
 			const firstId = loadRegistry(registryFile)[REF]?.sessionId;
-			store.dispatch({ type: 'stop_session', ref: REF });
+			store.dispatch({ type: 'deactivate', ref: REF });
 			manager.stopAll();
 
 			bootManager('default');

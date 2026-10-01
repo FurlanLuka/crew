@@ -1,4 +1,5 @@
 import type { CrewAdapter } from '../crew/adapter.js';
+import { isActive } from '../shared/active.js';
 import type { DevServer } from '../shared/protocol.js';
 import type { Effect } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
@@ -325,11 +326,20 @@ export class DevWatch {
 		});
 	}
 
+	// An inactive session's servers run on (crew owns them), and Voice OS says nothing about them.
 	private offer(ref: string, servers: string[]): void {
+		if (!isActive(this.options.store.state, ref)) {
+			return;
+		}
+
 		this.options.store.dispatch({ type: 'dev_offer', offer: { ref, servers, at: this.now() } });
 	}
 
 	private say({ ref, text, priority, isReply = false, isAsking = false }: SayParams): void {
+		if (!isActive(this.options.store.state, ref)) {
+			return;
+		}
+
 		this.options.say({ text, priority, ref, isNamed: true, isReply, isAsking });
 	}
 }

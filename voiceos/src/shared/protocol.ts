@@ -144,6 +144,7 @@ export interface Session {
 	branch: string;
 	cwd: string;
 	dirs: string[];
+	// The setup session (crew setup, cwd home): not the active set. The name is on the wire to remotes.
 	isPinned: boolean;
 	status: SessionStatus;
 	queue: QueuedMessage[];
@@ -206,13 +207,13 @@ export const isRemembered = (entry: VoiceEntry, now: number): boolean =>
 export const FOLLOW_UP_MS = 60_000;
 
 // grid: every session, or one machine's (LOCAL_MACHINE for this Mac). machines: a card per machine,
-// home once another machine is added. pinned: the developer's pinned sessions, across machines.
-// A session's from: opened from Pinned, so its tabs are the pins and Esc goes back there.
+// home once another machine is added. active: the developer's active sessions, across machines.
+// A session's from: opened from Active, so its tabs are the active sessions and Esc goes back there.
 export type View =
 	| { kind: 'grid'; machine?: string }
-	| { kind: 'session'; ref: string; from?: 'pinned' }
+	| { kind: 'session'; ref: string; from?: 'active' }
 	| { kind: 'machines' }
-	| { kind: 'pinned' };
+	| { kind: 'active' };
 
 // Another machine whose sessions this Voice OS drives, as machines.json keeps it.
 export interface MachineConfig {
@@ -293,10 +294,18 @@ export const TARGET_ASK_MS = 8_000;
 // A question still waiting to be said is given up on after this, heard or not.
 export const QUESTION_UNHEARD_MS = 30_000;
 
+// What a yes does. switch (the default): go there. activate: "<X> isn't active. Activate it?" — words
+// said to it wait in `words` and go once it is up. deactivate: "<X> is working. Deactivate anyway?".
+export type SwitchOfferKind = 'switch' | 'activate' | 'deactivate';
+
 export interface SwitchOffer {
 	ref: string;
 	at: number;
 	heardAt?: number;
+	kind?: SwitchOfferKind;
+	words?: string;
+	// An activate asked for a switch: a yes activates it and goes there.
+	thenSwitch?: true;
 }
 
 // Answered at once or not at all: a later "yes" belongs to something else.
@@ -397,8 +406,9 @@ export interface State {
 	notes: Record<string, string[]>;
 	// Other machines, by id. Empty: Voice OS drives this Mac alone, as before machines existed.
 	machines: Record<string, Machine>;
-	// Pinned session refs, in pin order, from any machine; a pin outlives its session.
-	pinned: string[];
+	// Active session refs, in the order activated, from any machine; read through shared/active.ts.
+	// An active ref outlives its session (a machine out of reach): it starts when it is back.
+	active: string[];
 	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
 	names: Record<string, string>;
 	// What speech-to-text expects the developer to speak (Soniox language hints).
@@ -475,8 +485,9 @@ export type Action =
 	// skipHeld: the switch also sends a question, so the old held update is not replayed first.
 	| { type: 'switch_view'; view: View; announce?: true; skipHeld?: true }
 	| { type: 'go_back' }
-	| { type: 'start_session'; ref: string }
-	| { type: 'stop_session'; ref: string }
+	// announce: activated by voice, so Voice OS offers the switch; a click is silent.
+	| { type: 'activate'; ref: string; announce?: true }
+	| { type: 'deactivate'; ref: string }
 	// isCorrection: the developer's words went there by mistake; Voice OS says it stopped it.
 	| { type: 'interrupt'; ref: string; isCorrection?: true }
 	| { type: 'allow_denied'; denialId: string }
@@ -489,16 +500,22 @@ export type Action =
 	| { type: 'add_machine'; host: string; name?: string }
 	| { type: 'rename_machine'; id: string; name: string }
 	| { type: 'remove_machine'; id: string }
-	| { type: 'pin_session'; ref: string }
-	| { type: 'unpin_session'; ref: string }
 	// An empty name clears it: the session shows its crew label again.
 	| { type: 'rename_session'; ref: string; name: string }
 	// The languages the developer speaks, from the listening menu (and loaded at boot).
 	| { type: 'set_languages'; languages: string[] }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
-	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced).
-	| { type: 'offer_switch'; ref: string }
+	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced), or with a kind
+	// "X isn't active. Activate it?" (words: what was said to X, sent after a yes) or "X is working.
+	// Deactivate anyway?".
+	| {
+			type: 'offer_switch';
+			ref: string;
+			kind?: SwitchOfferKind;
+			words?: string;
+			thenSwitch?: true;
+	  }
 	// Voice OS asks "For X?" and holds the words until the developer says which.
 	| { type: 'ask_which'; ref: string; screen: string; text: string }
 	// toTarget: yes, send them to X; otherwise they are kept on the screen. `at` names the ask.
@@ -510,6 +527,7 @@ export interface WorktreeInfo {
 	branch: string;
 	cwd: string;
 	dirs: string[];
+	// The setup session; see Session.isPinned.
 	isPinned: boolean;
 }
 
@@ -618,8 +636,8 @@ export type Observation =
 	// A machine came back: what its snapshot says, applied as one step without speaking, then its
 	// queues move again (remote/resync.ts plans the inputs).
 	| { type: 'machine_resynced'; id: string; inputs: Observation[] }
-	// The pins saved before a restart, merged with any made since boot.
-	| { type: 'pinned_loaded'; refs: string[] }
+	// The active set saved before a restart, merged with any activated since boot.
+	| { type: 'active_loaded'; refs: string[] }
 	// The names saved before a restart.
 	| { type: 'names_loaded'; names: Record<string, string> };
 

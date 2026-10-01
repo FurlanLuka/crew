@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import type { Input, State } from '../shared/protocol.js';
+import type { Input, State, View } from '../shared/protocol.js';
 import { run, worktree } from '../../test/support/reduce.js';
 
 const VM1 = { id: 'vm1', host: 'dev@vm1.example.com', name: 'Build box' };
 const REMOTE = 'vm1:store/main';
 
-// A main that knows vm1, connected, with one idle session there and one here.
+// A main that knows vm1, connected, with one active idle session there and one inactive here.
 const connected = (extra: Input[] = []): State =>
 	run([
 		{ type: 'machines', machines: [VM1] },
@@ -13,6 +13,7 @@ const connected = (extra: Input[] = []): State =>
 			type: 'worktrees',
 			worktrees: [worktree('store/main'), { ...worktree(REMOTE), label: 'store/main' }],
 		},
+		{ type: 'activate', ref: REMOTE },
 		{ type: 'machine_resynced', id: 'vm1', inputs: [{ type: 'session_started', ref: REMOTE }] },
 		...extra,
 	]).state;
@@ -101,16 +102,18 @@ describe('add_machine / rename_machine / remove_machine', () => {
 		]);
 	});
 
-	it('remove the machine on screen → back home, to the cards', () => {
-		const { state } = run(
-			[
-				{ type: 'switch_view', view: { kind: 'session', ref: REMOTE } },
-				{ type: 'remove_machine', id: 'vm1' },
-			],
-			{ start: connected() },
-		);
+	it('remove the machine on screen → back home, to the cards; its active session → Active', () => {
+		const removeFrom = (view: View): View =>
+			run(
+				[
+					{ type: 'switch_view', view },
+					{ type: 'remove_machine', id: 'vm1' },
+				],
+				{ start: connected() },
+			).state.view;
 
-		expect(state.view).toEqual({ kind: 'machines' });
+		expect(removeFrom({ kind: 'grid', machine: 'vm1' })).toEqual({ kind: 'machines' });
+		expect(removeFrom({ kind: 'session', ref: REMOTE })).toEqual({ kind: 'active' });
 	});
 });
 
@@ -218,7 +221,6 @@ describe('guardUnreachable', () => {
 
 		for (const input of [
 			{ type: 'interrupt', ref: REMOTE },
-			{ type: 'stop_session', ref: REMOTE },
 			{ type: 'dev_start', ref: REMOTE },
 		] satisfies Input[]) {
 			const { state, effects } = run([input], { start });
@@ -231,8 +233,15 @@ describe('guardUnreachable', () => {
 	});
 
 	it('this Mac is never guarded', () => {
+		const stopped = run(
+			[
+				{ type: 'activate', ref: 'store/main' },
+				{ type: 'worker_exited', ref: 'store/main', error: null },
+			],
+			{ start: offline() },
+		).state;
 		const { effects } = run([{ type: 'send', ref: 'store/main', text: 'hello' }], {
-			start: offline(),
+			start: stopped,
 		});
 
 		expect(effects).toEqual([{ type: 'worker_start', ref: 'store/main' }]);
@@ -282,15 +291,35 @@ describe('words waiting for a stopped session there', () => {
 			{ type: 'worktrees', worktrees: [{ ...worktree(REMOTE), label: 'store/main' }] },
 			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
 			{ type: 'machine_status', id: 'vm1', status: 'unreachable' },
+			// Activated while out of reach: added to the set, started once it is back.
+			{ type: 'activate', ref: REMOTE },
 			{ type: 'send', ref: REMOTE, text: 'run the tests' },
 		]).state;
 		const back = run([{ type: 'machine_resynced', id: 'vm1', inputs: [] }], { start: offline });
 
+		// Once: the matching-up after the drain finds it starting already.
 		expect(back.effects).toEqual([{ type: 'worker_start', ref: REMOTE }]);
 
 		const started = run([{ type: 'session_started', ref: REMOTE }], { start: back.state });
 
 		expect(started.effects).toEqual([{ type: 'worker_send', ref: REMOTE, text: 'run the tests' }]);
+	});
+
+	it('the session is not active → on reconnect it is not started; the words keep waiting', () => {
+		const offline = run([
+			{ type: 'machines', machines: [VM1] },
+			{ type: 'worktrees', worktrees: [{ ...worktree(REMOTE), label: 'store/main' }] },
+			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
+			{ type: 'machine_status', id: 'vm1', status: 'unreachable' },
+			{ type: 'send', ref: REMOTE, text: 'run the tests' },
+		]).state;
+		const back = run([{ type: 'machine_resynced', id: 'vm1', inputs: [] }], { start: offline });
+
+		expect(back.effects).toEqual([]);
+		expect(back.state.sessions[REMOTE]?.status).toBe('stopped');
+		expect(back.state.sessions[REMOTE]?.queue.map((message) => message.text)).toEqual([
+			'run the tests',
+		]);
 	});
 });
 
@@ -364,7 +393,7 @@ describe('adding or removing machines moves nobody', () => {
 
 	it('a session or a machine grid on screen → stays through a reload, a rename and another add', () => {
 		for (const view of [
-			{ kind: 'session' as const, ref: REMOTE },
+			{ kind: 'session' as const, ref: REMOTE, from: 'active' as const },
 			{ kind: 'grid' as const, machine: 'vm1' },
 		]) {
 			const { state } = run(

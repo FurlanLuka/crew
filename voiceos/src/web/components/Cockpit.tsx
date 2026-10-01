@@ -1,3 +1,5 @@
+import { isActive } from '../../shared/active.js';
+import { SETUP_REF } from '../../shared/machine-ref.js';
 import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { readSessionLabel } from '../../shared/machines.js';
 import type { Session, State } from '../../shared/protocol.js';
@@ -22,6 +24,7 @@ interface CockpitProps {
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	// The compaction bar is added at the end of the stream too: it comes into view like a line.
 	const streamRef = useStickToBottom<HTMLElement>(session.ref);
+	const isOn = isActive(state, session.ref);
 
 	return (
 		<main className="cockpit">
@@ -37,20 +40,26 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					</div>
 				)}
 				{session.compactingSince !== null && <CompactingLine since={session.compactingSince} />}
+				{/* Inactive: the bottom bar's Activate stands where the input would be. Active and stopped
+				(a crash): activating starts it again. */}
 				{session.status === 'stopped' && (
 					<div className="btns">
 						<span className="c-dim">
 							{session.error
 								? `Stopped: ${session.error}`
-								: 'Not running — your first message starts it.'}
+								: isOn
+									? 'Not running yet.'
+									: 'Not active: its history only. Voice OS runs no Claude here and says nothing about it.'}
 						</span>
-						<button
-							type="button"
-							className="btn primary"
-							onClick={() => dispatch({ type: 'start_session', ref: session.ref })}
-						>
-							Start · “start {readSessionLabel(state, session.ref)}”
-						</button>
+						{isOn && (
+							<button
+								type="button"
+								className="btn primary"
+								onClick={() => dispatch({ type: 'activate', ref: session.ref })}
+							>
+								Start · “activate {readSessionLabel(state, session.ref)}”
+							</button>
+						)}
 					</div>
 				)}
 			</section>
@@ -76,13 +85,14 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 								Stop turn · “stop”
 							</button>
 						)}
-						{session.status !== 'stopped' && (
+						{/* This Mac's setup session is always active. */}
+						{isOn && session.ref !== SETUP_REF && (
 							<button
 								type="button"
 								className="btn danger"
-								onClick={() => dispatch({ type: 'stop_session', ref: session.ref })}
+								onClick={() => dispatch({ type: 'deactivate', ref: session.ref })}
 							>
-								End session
+								Deactivate
 							</button>
 						)}
 					</div>

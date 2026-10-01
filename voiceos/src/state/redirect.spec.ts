@@ -153,7 +153,7 @@ describe('a redirect to a working session', () => {
 	it('stopped or interrupted by the developer → dropped with the work', () => {
 		for (const input of [
 			{ type: 'interrupt', ref: REF },
-			{ type: 'stop_session', ref: REF },
+			{ type: 'deactivate', ref: REF },
 		] as Input[]) {
 			const { state } = run([input], { start: held().state });
 

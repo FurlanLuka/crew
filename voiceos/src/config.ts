@@ -16,6 +16,8 @@ export interface Paths {
 	journalDir: string;
 	debugAudioDir: string;
 	viewFile: string;
+	activeFile: string;
+	// Read once, to migrate the pins into the active set.
 	pinnedFile: string;
 	namesFile: string;
 	languagesFile: string;
@@ -45,6 +47,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		journalDir: join(voiceDir, 'journal'),
 		debugAudioDir: join(voiceDir, 'debug'),
 		viewFile: join(voiceDir, 'view.json'),
+		activeFile: join(voiceDir, 'active.json'),
 		pinnedFile: join(voiceDir, 'pinned.json'),
 		namesFile: join(voiceDir, 'names.json'),
 		languagesFile: join(voiceDir, 'languages.json'),

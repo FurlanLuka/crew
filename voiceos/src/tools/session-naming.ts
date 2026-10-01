@@ -1,5 +1,6 @@
 import type { State } from '../shared/protocol.js';
 import { splitRef } from '../shared/machine-ref.js';
+import { listActiveInOrder } from '../shared/active.js';
 import { toSpokenPart, NUMBER_WORDS } from '../shared/spoken.js';
 import type { ToolContext } from './tools.js';
 
@@ -110,16 +111,21 @@ export const isRefNamedIn = (state: State, ref: string, utterance: string): bool
 	);
 };
 
-export const findSessionsNamedIn = (state: State, utterance: string): string[] => {
+// refs: who may be named; voice reaches only the active sessions unless told otherwise.
+export const findSessionsNamedIn = (
+	state: State,
+	utterance: string,
+	refs: string[] = listActiveInOrder(state),
+): string[] => {
 	const { text, words } = readNamingText(utterance);
-	const refsNamedInFull = state.order.filter((ref) => isNamedInFull(state, ref, utterance, text));
+	const refsNamedInFull = refs.filter((ref) => isNamedInFull(state, ref, utterance, text));
 
 	if (refsNamedInFull.length > 0) {
 		return refsNamedInFull;
 	}
 
-	return state.order.filter(
-		(ref) => state.sessions[ref] && isSessionNamed({ ref, text, words, order: state.order }),
+	return refs.filter(
+		(ref) => state.sessions[ref] && isSessionNamed({ ref, text, words, order: refs }),
 	);
 };
 

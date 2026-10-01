@@ -44,6 +44,8 @@ const createContext = ({ patch = {}, screen = null, utterance }: CreateContextPa
 		order: refs,
 		machines: { personal: PERSONAL },
 		...patch,
+		// Every session active unless the test says which are.
+		active: patch.active ?? refs,
 	};
 	const actions: Action[] = [];
 	const tools: ToolContext = {
@@ -210,6 +212,17 @@ describe('findSessionsNamedIn with display names', () => {
 		expect(resolveRef(state, 'voice os dev')).toBe('personal:crew/main');
 		expect(findSessionsNamedIn(state, 'go to voice os dev')).toEqual(['personal:crew/main']);
 		expect(resolveRef(state, 'crew main')).toBe('crew/main');
+	});
+
+	it("an inactive session's name → not found among the active ones; found among every session", () => {
+		const { state } = createContext({
+			patch: { names: { 'store-front/wrk1': 'voice os dev' }, active: ['crew/main'] },
+		});
+
+		expect(findSessionsNamedIn(state, 'go to voice os dev')).toEqual([]);
+		expect(findSessionsNamedIn(state, 'go to voice os dev', state.order)).toEqual([
+			'store-front/wrk1',
+		]);
 	});
 
 	it('a name only inside another word → nothing', () => {

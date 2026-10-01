@@ -142,7 +142,11 @@ describe('conversations', () => {
 			'> Go back.',
 			'checkout api, main stopped. Back to store front, main.',
 		]);
-		expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
+		expect(convo.store.state.view).toEqual({
+			kind: 'session',
+			ref: 'store-front/main',
+			from: 'active',
+		});
 	});
 
 	// Debug note 31: the switch says it, and the model's reply says it again.
@@ -1029,7 +1033,11 @@ describe('conversations', () => {
 			convo.script([toolUse('t2', 'switch_view', { ref: 'checkout-api/main' })]);
 			await convo.say('Yes.');
 
-			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
+			expect(convo.store.state.view).toEqual({
+				kind: 'session',
+				ref: 'checkout-api/main',
+				from: 'active',
+			});
 			expect(convo.heard.slice(-2)).toEqual(['> Yes.', 'Switching to checkout api, main.']);
 		});
 
@@ -1161,7 +1169,11 @@ describe('conversations', () => {
 			await convo.say('Yes.', { startedAgoMs: 3_000 });
 
 			expect(convo.kernelSaw()).toContain('switch_offer');
-			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
+			expect(convo.store.state.view).toEqual({
+				kind: 'session',
+				ref: 'checkout-api/main',
+				from: 'active',
+			});
 		});
 
 		it('a "no" begun before "Switch to …?" was asked → not its answer: the kernel reads it, the offer stays', async () => {
@@ -1188,7 +1200,11 @@ describe('conversations', () => {
 					text: 'No, run the tests here instead.',
 				}),
 			);
-			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
+			expect(convo.store.state.view).toEqual({
+				kind: 'session',
+				ref: 'store-front/main',
+				from: 'active',
+			});
 			// Answered by the kernel's turn: the router lets the offer go once it is done.
 			expect(convo.store.state.switchOffer).toBeNull();
 		});
@@ -1419,6 +1435,136 @@ describe('conversations', () => {
 				'Meanwhile, checkout api, main said: all retry tests pass. Switch there?',
 				'line at 50',
 			]);
+		});
+	});
+
+	describe('active sessions', () => {
+		const PERSONAL = { id: 'vm1', host: 'dev@personal.example.com', name: 'Personal' };
+
+		it('"activate the scheduler workspace on Personal" → "Activated … Switch there?"; yes switches there', async () => {
+			const convo = createConversation({
+				refs: [...REFS, 'vm1:scheduler/main'],
+				view: 'store-front/main',
+				machines: [PERSONAL],
+				inactive: ['vm1:scheduler/main'],
+			});
+			await convo.startSessions('store-front/main');
+
+			convo.script([toolUse('t1', 'activate', { name: 'scheduler', machine: 'Personal' })]);
+			await convo.say('Activate the scheduler workspace on Personal.');
+
+			expect(convo.store.state.active).toContain('vm1:scheduler/main');
+			expect(convo.store.state.sessions['vm1:scheduler/main']?.status).toBe('starting');
+
+			convo.script([toolUse('t2', 'switch_view', { ref: 'vm1:scheduler/main' })]);
+			await convo.say('Yes.');
+
+			expect(convo.heard).toEqual([
+				'> Activate the scheduler workspace on Personal.',
+				'Activated scheduler, main on Personal. Switch there?',
+				'> Yes.',
+				'Switching to scheduler, main on Personal.',
+			]);
+			expect(convo.store.state.view).toEqual({
+				kind: 'session',
+				ref: 'vm1:scheduler/main',
+				from: 'active',
+			});
+		});
+
+		it('words for an inactive session named in them → "… isn\'t active. Activate it?"; yes activates it and the words go once it is up', async () => {
+			const convo = createConversation({
+				refs: REFS,
+				view: 'store-front/main',
+				inactive: ['checkout-api/main'],
+			});
+			await convo.startSessions('store-front/main');
+
+			convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'question' })]);
+			await convo.say('checkout api, is the build green?');
+
+			expect(convo.heard).toEqual([
+				'> checkout api, is the build green?',
+				"checkout api, main isn't active. Activate it?",
+			]);
+			expect(convo.store.state.sessions['checkout-api/main']?.status).toBe('stopped');
+
+			convo.script([toolUse('t2', 'activate', { name: 'checkout-api/main' })]);
+			await convo.say('Yes.');
+			await convo.startSessions('checkout-api/main');
+
+			expect(convo.store.state.active).toContain('checkout-api/main');
+			expect(convo.inputs).toContainEqual(
+				expect.objectContaining({
+					type: 'send',
+					ref: 'checkout-api/main',
+					text: 'checkout api, is the build green?',
+				}),
+			);
+			expect(
+				convo.store.state.sessions['checkout-api/main']?.stream.filter(
+					(item) => item.kind === 'user',
+				),
+			).toEqual([expect.objectContaining({ text: 'checkout api, is the build green?' })]);
+		});
+
+		it('"what\'s active?" on a session\'s screen → answered by Voice OS, never forwarded to it', async () => {
+			const convo = createConversation({
+				refs: REFS,
+				view: 'store-front/main',
+				inactive: ['signals/main'],
+			});
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+
+			convo.script(
+				[toolUse('t1', 'list_sessions', { active_only: true })],
+				[reply('Store front and checkout api are active.')],
+			);
+			await convo.say("What's active?");
+
+			expect(convo.heard).toEqual(["> What's active?", 'Store front and checkout api are active.']);
+			expect(convo.inputs.filter((input) => input.type === 'send')).toEqual([]);
+		});
+
+		it('deactivated mid-turn → what it still streams and its last line are never heard', async () => {
+			const convo = createConversation({ refs: REFS, view: 'checkout-api/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'run the tests' });
+
+			convo.store.dispatch({ type: 'deactivate', ref: 'checkout-api/main' });
+			convo.store.dispatch({ type: 'text_delta', ref: 'checkout-api/main', text: 'All 214 ' });
+			convo.store.dispatch({
+				type: 'assistant_text',
+				ref: 'checkout-api/main',
+				text: 'All 214 tests pass.',
+			});
+			await convo.answer('checkout-api/main', 'All 214 tests pass.');
+			await convo.wait(60_000);
+
+			expect(convo.heard).toEqual([]);
+			expect(convo.store.state.meanwhile).toEqual([]);
+		});
+
+		it('deactivating a working session → "… is working. Deactivate anyway?"; yes deactivates it', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			convo.store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'run the tests' });
+
+			convo.script([toolUse('t1', 'deactivate', { ref: 'checkout-api/main' })]);
+			await convo.say('End the checkout api session.');
+
+			expect(convo.heard).toEqual([
+				'> End the checkout api session.',
+				'checkout api, main is working. Deactivate anyway?',
+			]);
+			expect(convo.store.state.active).toContain('checkout-api/main');
+
+			convo.script([toolUse('t2', 'deactivate', { ref: 'checkout-api/main' })]);
+			await convo.say('Yes.');
+
+			expect(convo.heard.slice(-2)).toEqual(['> Yes.', 'Deactivated checkout api, main.']);
+			expect(convo.store.state.active).not.toContain('checkout-api/main');
+			expect(convo.store.state.sessions['checkout-api/main']?.status).toBe('stopped');
 		});
 	});
 });

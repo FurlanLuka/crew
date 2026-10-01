@@ -1,7 +1,8 @@
 // What Voice OS itself says when it passes words to a session: only what the session cannot say,
 // because it has not seen them yet. The session acks and reports in its own spoken lines.
 
-export type SendTiming = 'now' | 'queued' | 'starting';
+// inactive: nothing starts it; the words wait until it is activated.
+export type SendTiming = 'now' | 'queued' | 'starting' | 'inactive';
 
 export interface SendAck {
 	kind: 'question' | 'instruction' | 'redirect';
@@ -17,5 +18,7 @@ export const composeAckText = ({ kind }: SendAck, timing: SendTiming): string | 
 			return kind === 'question' ? null : 'Okay, after its current work.';
 		case 'starting':
 			return 'Starting it up.';
+		case 'inactive':
+			return "Kept for it; it isn't active.";
 	}
 };

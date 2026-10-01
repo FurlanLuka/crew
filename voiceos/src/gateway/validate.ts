@@ -7,9 +7,9 @@ const refSchema = z.string().min(1).max(200);
 const machineIdSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
 const viewSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('grid'), machine: machineIdSchema.optional() }),
-	z.object({ kind: z.literal('session'), ref: refSchema, from: z.literal('pinned').optional() }),
+	z.object({ kind: z.literal('session'), ref: refSchema, from: z.literal('active').optional() }),
 	z.object({ kind: z.literal('machines') }),
-	z.object({ kind: z.literal('pinned') }),
+	z.object({ kind: z.literal('active') }),
 ]);
 
 const actionSchema = z.discriminatedUnion('type', [
@@ -48,8 +48,9 @@ const actionSchema = z.discriminatedUnion('type', [
 		message: z.string().max(4000).optional(),
 	}),
 	z.object({ type: z.literal('switch_view'), view: viewSchema }),
-	z.object({ type: z.literal('start_session'), ref: refSchema }),
-	z.object({ type: z.literal('stop_session'), ref: refSchema }),
+	// From the page: silent, so no announce.
+	z.object({ type: z.literal('activate'), ref: refSchema }),
+	z.object({ type: z.literal('deactivate'), ref: refSchema }),
 	z.object({ type: z.literal('interrupt'), ref: refSchema }),
 	z.object({ type: z.literal('allow_denied'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_denial'), denialId: z.string() }),
@@ -69,8 +70,6 @@ const actionSchema = z.discriminatedUnion('type', [
 		name: z.string().min(1).max(60),
 	}),
 	z.object({ type: z.literal('remove_machine'), id: machineIdSchema }),
-	z.object({ type: z.literal('pin_session'), ref: refSchema }),
-	z.object({ type: z.literal('unpin_session'), ref: refSchema }),
 	z.object({ type: z.literal('rename_session'), ref: refSchema, name: z.string().max(60) }),
 	z.object({ type: z.literal('go_back') }),
 	z.object({ type: z.literal('play_meanwhile') }),

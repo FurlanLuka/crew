@@ -38,6 +38,8 @@ const createHarness = (
 		type: 'worktrees',
 		worktrees: [createWorktree('store-front/main'), createWorktree('checkout-api/main')],
 	});
+	// Both active, as every session was before the active set; a test deactivates what it needs.
+	store.dispatch({ type: 'active_loaded', refs: ['store-front/main', 'checkout-api/main'] });
 	const heardFroms: number[] = [];
 	const kernelCalls: KernelCall[] = [];
 	const listenSwitches: ((mode: ListenMode) => string)[] = [];
@@ -188,10 +190,30 @@ describe('UtteranceRouter', () => {
 		expect(harness.store.state.voiceLog['store-front/main']).toBeUndefined();
 	});
 
+	it("typed into an inactive session's box → kept for it, Voice OS asks to activate it; nothing sent, no kernel", async () => {
+		const harness = createHarness();
+		harness.view('store-front/main');
+		harness.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
+		const before = harness.inputs.length;
+
+		await harness.router.handle('run the tests', 'typed');
+
+		expect(harness.kernelCalls).toEqual([]);
+		expect(harness.inputs.slice(before)).toEqual([
+			{ type: 'offer_switch', ref: 'store-front/main', kind: 'activate', words: 'run the tests' },
+		]);
+		expect(harness.store.state.sessions['store-front/main']?.status).toBe('stopped');
+		expect(harness.store.state.switchOffer).toMatchObject({
+			ref: 'store-front/main',
+			kind: 'activate',
+			words: 'run the tests',
+		});
+	});
+
 	it('typed "by the way" into a working session\'s box → asked aside', async () => {
 		const harness = createHarness();
 		harness.view('store-front/main');
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.store.dispatch({ type: 'session_started', ref: 'store-front/main' });
 		harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'refactor it' });
 
@@ -244,7 +266,7 @@ describe('UtteranceRouter', () => {
 			input: {},
 			suggestions: [],
 		};
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.store.dispatch({ type: 'session_started', ref: 'store-front/main' });
 		harness.store.dispatch({ type: 'ask_opened', ask });
 		harness.view('store-front/main');
@@ -320,6 +342,7 @@ describe('UtteranceRouter', () => {
 		} as unknown as Anthropic;
 		const store = new Store();
 		store.dispatch({ type: 'worktrees', worktrees: [createWorktree('store-front/main')] });
+		store.dispatch({ type: 'active_loaded', refs: ['store-front/main'] });
 		const kernel = new Kernel({
 			apiKey: 'k',
 			client,
@@ -380,6 +403,22 @@ describe('UtteranceRouter', () => {
 			});
 		});
 
+		it('an inactive session on screen → kept for it, Voice OS asks to activate it; nothing sent, never started', async () => {
+			const harness = createHarness();
+			harness.view('store-front/main');
+			harness.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
+			const before = harness.inputs.length;
+
+			const kept = await handleDictation(harness);
+
+			expect(harness.kernelCalls).toEqual([]);
+			expect(kept).toEqual([]);
+			expect(harness.inputs.slice(before)).toEqual([
+				{ type: 'offer_switch', ref: 'store-front/main', kind: 'activate', words: DUMP },
+			]);
+			expect(harness.store.state.sessions['store-front/main']?.status).toBe('stopped');
+		});
+
 		it('another session named inside the dump → still the session on screen', async () => {
 			const harness = createHarness();
 			harness.view('store-front/main');
@@ -405,7 +444,7 @@ describe('UtteranceRouter', () => {
 
 		it('the session waits on a permission → kept in the input: a dump must never answer it', async () => {
 			const harness = createHarness();
-			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			harness.store.dispatch({ type: 'session_started', ref: 'store-front/main' });
 			harness.store.dispatch({
 				type: 'ask_opened',

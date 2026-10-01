@@ -534,14 +534,19 @@ describe('which session the words name', () => {
 		expect(actions).toEqual([]);
 	});
 
-	it('start with more_than_start unclear → started, no hint to forward the rest', async () => {
-		const { tools } = toolsFor({
+	it('activate with more_than_start unclear → activated, no hint to forward the rest', async () => {
+		const { tools, actions } = toolsFor({
 			judge: judgeWith({ more_than_start: 'unclear' }),
 			utterance: 'Starte checkout api, bitte schnell.',
+			patch: { active: ['store-front/main', 'store-front/wrk1'] },
 		});
-		const result = await executeTool('start_session', { ref: 'checkout-api/main' }, tools);
+		const result = await executeTool('activate', { name: 'checkout-api/main' }, tools);
 
-		expect(result).toMatchObject({ ok: true, content: 'starting checkout-api/main' });
+		expect(result).toMatchObject({
+			ok: true,
+			content: 'activated checkout-api/main; Voice OS said so: say nothing',
+		});
+		expect(actions).toEqual([{ type: 'activate', ref: 'checkout-api/main', announce: true }]);
 	});
 });
 

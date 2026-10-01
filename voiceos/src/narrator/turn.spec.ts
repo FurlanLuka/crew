@@ -678,17 +678,17 @@ describe('a session off screen at the end of its turn', () => {
 		});
 	});
 
-	it('a pinned session\'s long report → "Your pinned checkout: …"', async () => {
+	it("an active session's long report → its plain label, as any other session's", async () => {
 		const harness = createOffScreenHarness();
-		harness.store.dispatch({ type: 'pin_session', ref: REF_ });
+		harness.store.dispatch({ type: 'activate', ref: REF_ });
 		await harness.handle(tagless);
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'Your pinned checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 		]);
 	});
 
-	it('a named, unpinned session\'s long report → "voice os dev: …"', async () => {
+	it('a named session\'s long report → "voice os dev: …"', async () => {
 		const harness = createOffScreenHarness();
 		harness.store.dispatch({ type: 'rename_session', ref: REF_, name: 'voice os dev' });
 		await harness.handle(tagless);

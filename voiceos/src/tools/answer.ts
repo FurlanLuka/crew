@@ -1,4 +1,5 @@
 import type { Judge } from '../judge/judge.js';
+import { refuseInactive } from './activate.js';
 import { createLogger } from '../log.js';
 import {
 	isSwitchOfferFresh,
@@ -291,8 +292,11 @@ export const answerAsk = async ({
 }: AnswerAskParams): Promise<ToolResult> => {
 	const checked = checkRef(state, input.ref);
 
+	// An inactive session asks nothing: words meant as its answer are kept for it.
 	if (!checked.ok) {
-		return fail(checked.error);
+		return checked.inactive
+			? refuseInactive({ ref: checked.inactive, toolContext, words: toolContext.utterance })
+			: fail(checked.error);
 	}
 
 	const refused = await refuseAnnouncedOnly({

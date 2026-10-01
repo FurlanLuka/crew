@@ -9,11 +9,11 @@ export type ToolName =
 	| 'switch_view'
 	| 'go_back'
 	| 'play_missed'
-	| 'start_session'
-	| 'stop_session'
+	| 'activate'
+	| 'deactivate'
+	| 'list_sessions'
 	| 'crew_dev'
 	| 'ignore_words'
-	| 'pin_session'
 	| 'rename_session'
 	| 'answer'
 	| 'interrupt'
@@ -32,8 +32,8 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'forward',
 	'send_to',
 	'go_back',
-	'start_session',
-	'stop_session',
+	'activate',
+	'deactivate',
 	'crew_dev',
 	'answer',
 	'interrupt',
@@ -45,7 +45,6 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'queued_message',
 	'hands_free',
 	'rename_machine',
-	'pin_session',
 	'rename_session',
 ];
 
@@ -94,11 +93,11 @@ const SKIP_HELD_PROPERTY = {
 		"true when you also send_to that session the developer's question in this turn: its old held update is not replayed first.",
 };
 
-// One property for both switch_view definitions: a machine switch must not lose "go to pinned".
-const PINNED_VIEW_PROPERTY = {
+// One property for both switch_view definitions: a machine switch must not lose "go to active".
+const ACTIVE_VIEW_PROPERTY = {
 	type: 'boolean',
 	description:
-		'true for Pinned, the developer\'s pinned sessions from every machine ("go to pinned", "show my pinned sessions"); ref and machine are then ignored.',
+		'true for Active, the developer\'s active sessions from every machine ("go to active", "show my active sessions"); ref and machine are then ignored.',
 };
 
 // Judged by the kernel in the developer's own language: no English keyword decides these.
@@ -204,12 +203,12 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'switch_view',
 		description:
-			"Show one session on screen, or every session (Mission Control) when ref is null, or the developer's pinned sessions with pinned true.",
+			"Show one session on screen, or every session (Mission Control) when ref is null, or the developer's active sessions with active true.",
 		input_schema: {
 			type: 'object',
 			properties: {
 				ref: { type: ['string', 'null'] },
-				pinned: PINNED_VIEW_PROPERTY,
+				active: ACTIVE_VIEW_PROPERTY,
 				skip_held: SKIP_HELD_PROPERTY,
 			},
 			required: ['ref'],
@@ -229,23 +228,49 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
 	},
 	{
-		name: 'start_session',
+		name: 'activate',
 		description:
-			'Start (or resume) the Claude session of an existing worktree, when the developer asks to start it and gives it nothing to do. To give a session words or work, use forward or send_to: they start it themselves. It does not create worktrees.',
+			'Activate a worktree on any machine, so Voice OS runs its Claude and voice reaches it ("activate scheduler on Personal", "start checkout", "enable crew main", "activate this"); also the yes to Voice OS\'s "…isn\'t active. Activate it?". It looks the name up across every worktree, so it works for one not in Sessions. Voice OS says "Activated X. Switch there?" itself. Not for creating worktrees.',
 		input_schema: {
 			type: 'object',
-			properties: { ref: REF_PROPERTY },
+			properties: {
+				name: {
+					type: ['string', 'null'],
+					description:
+						'The worktree as said ("scheduler work one", "crew main", "the scheduler workspace"), or null for the session on screen.',
+				},
+				machine: {
+					type: 'string',
+					description: 'The machine named with it ("on Personal"), if any.',
+				},
+			},
+			required: ['name'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'deactivate',
+		description:
+			'Deactivate a session: its Claude stops, voice no longer reaches it, and its conversation resumes when it is activated again ("deactivate this", "end session checkout", "close crew main"); also the yes to Voice OS\'s "…is working. Deactivate anyway?".',
+		input_schema: {
+			type: 'object',
+			properties: { ref: { type: ['string', 'null'] } },
 			required: ['ref'],
 			additionalProperties: false,
 		},
 	},
 	{
-		name: 'stop_session',
-		description: 'End a session’s Claude process. Its conversation resumes on the next start.',
+		name: 'list_sessions',
+		description:
+			'Read which machines and worktrees there are, all of them, active or not: machines ("what machines do I have?"), one machine\'s worktrees ("what\'s on Personal?"), one workspace\'s ("what worktrees does scheduler have?"), or the active ones ("what\'s active?"). Say what it returns in a few words.',
 		input_schema: {
 			type: 'object',
-			properties: { ref: REF_PROPERTY },
-			required: ['ref'],
+			properties: {
+				machine: { type: 'string', description: 'A machine named, if any.' },
+				workspace: { type: 'string', description: 'A workspace named, if any.' },
+				active_only: { type: 'boolean', description: 'true for "what\'s active?".' },
+			},
+			required: [],
 			additionalProperties: false,
 		},
 	},
@@ -395,20 +420,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// Listed last: placed right after ignore_words they pulled the kernel off two older cases in the
 	// evals (a lapsed fix offer, "rebuild and restart"). The order is prompt: moving it means re-running them.
 	{
-		name: 'pin_session',
-		description:
-			'Pin a session to Pinned, the developer\'s own view of chosen sessions across machines ("pin this", "pin crew main"), or take it off with unpin ("unpin this", "unpin the setup session"). ref: the session named, or null for the one on screen. Only about pinning a session: pinning something in the work ("pin the version in package.json", "pin that dependency") is for the session — forward it.',
-		input_schema: {
-			type: 'object',
-			properties: {
-				ref: { type: ['string', 'null'] },
-				unpin: { type: 'boolean' },
-			},
-			required: ['ref'],
-			additionalProperties: false,
-		},
-	},
-	{
 		name: 'rename_session',
 		description:
 			'Give a session the name the developer calls it in Voice OS ("rename this to voice os dev", "call crew main api work", "call crew main on Personal api work": that machine\'s session); an empty name clears it and the crew name comes back. ref: the session renamed, or null for the one on screen. name: the new name as said. Only the name Voice OS shows and hears: renaming something in the work ("rename the function to parseRef") is for the session — forward it; a machine ("rename vm1 to build box") is rename_machine.',
@@ -459,7 +470,7 @@ export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
 					description:
 						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
 				},
-				pinned: PINNED_VIEW_PROPERTY,
+				active: ACTIVE_VIEW_PROPERTY,
 				skip_held: SKIP_HELD_PROPERTY,
 			},
 			required: ['ref'],

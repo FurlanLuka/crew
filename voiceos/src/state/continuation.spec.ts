@@ -347,7 +347,7 @@ describe('which turn is running', () => {
 
 		for (const input of [
 			{ type: 'interrupt', ref: REF },
-			{ type: 'stop_session', ref: REF },
+			{ type: 'deactivate', ref: REF },
 			{ type: 'worker_exited', ref: REF, error: null },
 		] as Input[]) {
 			expect(sessionOf(run([input], { start: sent.state }).state)?.currentSendId).toBeNull();

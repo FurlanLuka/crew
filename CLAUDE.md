@@ -286,16 +286,30 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   **Any language:** a guard that reads what the developer means asks the judge
   (`voiceos/src/judge/`, one narrow Haiku question, `unclear` on timeout = the safe side), never an
   English regex; the speech layer (stop words, "end of turn", the wake word) stays English.
-  **Pinned and session names** are Voice OS's own preferences, with no crew command:
-  `state.pinned` (full refs in pin order, any machine; a pin outlives its session and a removed
-  machine's pins are dropped) and `state.names` (full ref → name, unique; an empty name clears),
-  persisted in `~/.crew/voiceos/pinned.json` / `names.json`, the screen in `view.json`. A pinned
-  session always opens as `{kind:'session', from:'pinned'}` (`state/pins.ts` `toShownView`), so
-  its tabs are the pins and Esc goes back to Pinned (`parentView`); `readSessionLabel`
-  (`shared/machines.ts`) is the one label rule — a name, else the crew label — and a named session
-  is never prefixed with its machine. The always-present **setup** session (`Session.isPinned`,
-  cwd home, crew setup only) is a different thing: the field keeps its name because it is on the
-  wire to remotes. Every session runs in Claude Code's `auto` permission mode.
+  **Active sessions and names** are Voice OS's own preferences, with no crew command. Only an
+  active session exists for voice: its Claude runs and it is in the kernel's turn; an inactive one
+  has no process (`startWorker`, `state/helpers.ts`, refuses an inactive ref — every implicit
+  start: send, "now", reconnect), says nothing (gates in `speech/connect.ts`, `dev/watch.ts`, the
+  reconnect recap, `addMeanwhile`) and is browsed and activated on the page. `shared/active.ts`
+  (`isActive` — true for the main's `SETUP_REF`, always active — and `listActiveRefs`, setup
+  first) is the one reading of `state.active`; nothing else reads the field. `state/active.ts` reduces
+  `activate` ("Activated X. Switch there?" by voice, silent from the page), `deactivate` (out of
+  the set first, then `stopWorker` — the machine-removal clean-up; "X is working. Deactivate
+  anyway?" first) and `active_loaded` (starts actives present and stopped); `machine_resynced`
+  (`state/machines.ts`) runs `matchMachine` on every connect: active+stopped starts,
+  inactive+running stops ("Stopped N sessions on X that aren't active"). Words to an inactive
+  session are `switchOffer` kind `activate` ("X isn't active. Activate it?"), delivered after a
+  yes; a remote's setup is activated like any other, never replaced by the main's. Kernel tools
+  `activate`, `deactivate`, `list_sessions` (counts first) are Voice OS commands even on a
+  session's screen; "Voice OS, …" always reaches the kernel. `state.names` (full ref → name,
+  unique; an empty name clears). Persisted in `~/.crew/voiceos/active.json` (`pinned.json` read
+  only when it is missing, then migrated) / `names.json`, the screen in `view.json`. An active
+  session opens as `{kind:'session', from:'active'}` (`toShownView`), so its tabs are the active
+  set and Esc goes back to Active (`parentView`); `readSessionLabel` (`shared/machines.ts`) is the
+  one label rule — a name, else the crew label — and a named session is never prefixed with its
+  machine. The always-present **setup** session flag is still `Session.isPinned` (cwd home, crew
+  setup only): the name stays because it is on the wire to remotes. Every session runs in Claude
+  Code's `auto` permission mode.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 

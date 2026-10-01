@@ -148,7 +148,7 @@ describe('aside_settled', () => {
 
 	it('failed on a session stopped meanwhile → queued without restarting it', () => {
 		const asked = askAside(runningSession()).state;
-		const stopped = run([{ type: 'stop_session', ref: REF }], { start: asked }).state;
+		const stopped = run([{ type: 'deactivate', ref: REF }], { start: asked }).state;
 		const { state, effects } = settle(stopped, 'failed');
 
 		expect(state.sessions[REF]?.status).toBe('stopped');

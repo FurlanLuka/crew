@@ -45,7 +45,7 @@ export const REF = 'store/main';
 export const idleSession = (): State =>
 	run([
 		{ type: 'worktrees', worktrees: [worktree(REF), worktree('store/wrk1')] },
-		{ type: 'start_session', ref: REF },
+		{ type: 'activate', ref: REF },
 		{ type: 'session_started', ref: REF },
 	]).state;
 

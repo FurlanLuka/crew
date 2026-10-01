@@ -10,7 +10,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { Kernel } from '../../src/router/kernel.js';
 import { UtteranceRouter } from '../../src/router/router.js';
 import { createAsideNarrator, createTurnNarrator } from '../../src/narrator/turn.js';
-import type { Input, WorktreeInfo } from '../../src/shared/protocol.js';
+import type { Input, MachineConfig, WorktreeInfo } from '../../src/shared/protocol.js';
 import { connectSpeech, speakKernelReplies } from '../../src/speech/connect.js';
 import { VoiceOut } from '../../src/speech/voice-out.js';
 import { Store } from '../../src/state/store.js';
@@ -25,7 +25,8 @@ export const reply = (text: string): Block => ({ type: 'text', text }) as unknow
 
 const worktree = (ref: string): WorktreeInfo => ({
 	ref,
-	label: ref,
+	// Another machine's worktree is labelled as crew there labels it, without the machine.
+	label: ref.slice(ref.indexOf(':') + 1),
 	branch: '',
 	cwd: `/w/${ref}`,
 	dirs: [],
@@ -46,6 +47,10 @@ interface CreateConversationParams {
 	isListening?: boolean;
 	// The English patterns unless a conversation needs the judge to hear something else.
 	judge?: Judge;
+	// Sessions that are not active; every other one is, as after a boot that loaded them.
+	inactive?: string[];
+	// Other machines, connected; their sessions are in refs with the machine's prefix ("vm1:…").
+	machines?: MachineConfig[];
 }
 
 export const createConversation = ({
@@ -53,13 +58,27 @@ export const createConversation = ({
 	view,
 	isListening = false,
 	judge = englishJudge,
+	inactive = [],
+	machines = [],
 }: CreateConversationParams) => {
 	let now = 1_000_000;
 	const clock = () => now;
 	const store = new Store(clock);
 	const inputs: Input[] = [];
 	store.subscribe((stamped) => inputs.push(stamped.input));
+
+	if (machines.length > 0) {
+		store.dispatch({ type: 'machines', machines });
+	}
+
 	store.dispatch({ type: 'worktrees', worktrees: refs.map(worktree) });
+	// Loaded as at boot: the active ones start (and wait, starting, until a test says they are up).
+	store.dispatch({ type: 'active_loaded', refs: refs.filter((ref) => !inactive.includes(ref)) });
+
+	// Each machine's link up: its active sessions start there too.
+	for (const machine of machines) {
+		store.dispatch({ type: 'machine_resynced', id: machine.id, inputs: [] });
+	}
 
 	if (view) {
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: view } });
@@ -231,7 +250,6 @@ export const createConversation = ({
 		listen,
 		startSessions: async (...started: string[]) => {
 			for (const ref of started) {
-				store.dispatch({ type: 'start_session', ref });
 				store.dispatch({ type: 'session_started', ref } as Input);
 			}
 

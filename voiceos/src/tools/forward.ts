@@ -3,6 +3,8 @@
 import { createLogger } from '../log.js';
 import type { State } from '../shared/protocol.js';
 import { isDeliverWish } from '../state/delivery.js';
+import { isActive } from '../shared/active.js';
+import { refuseInactive } from './activate.js';
 import { type ToolResult, fail } from './results.js';
 import { describeMisroutedAnswer, sendText, type SentWords } from './send.js';
 import type { ToolContext } from './tools.js';
@@ -27,6 +29,11 @@ export const sendRecorded = async ({
 	name,
 	toolContext,
 }: SendRecordedParams): Promise<ToolResult> => {
+	// An inactive session gets nothing: "Activate it?" keeps the words for it.
+	if (!isActive(state, ref)) {
+		return refuseInactive({ ref, toolContext, words: words.text });
+	}
+
 	// These words finish the sentence the previous ones began: the session gets it whole, joined as
 	// said, and the reducer replaces the first half with it.
 	const previous = toolContext.recentUtterances?.at(-1)?.trim();

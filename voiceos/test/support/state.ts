@@ -7,7 +7,7 @@ import type {
 } from '../../src/shared/protocol.js';
 import { GRID, isSdkAsk } from '../../src/shared/protocol.js';
 import { createInitialState, createSession } from '../../src/state/reducer.js';
-import { toLocalRef } from '../../src/shared/machine-ref.js';
+import { SETUP_REF, isSetupRef, toLocalRef } from '../../src/shared/machine-ref.js';
 
 export interface FixtureWork {
 	ref: string;
@@ -73,8 +73,8 @@ export interface FixtureContext {
 		// Voice OS's report of that session's update (the meanwhile line), not the session's own words.
 		update?: boolean;
 	}[];
-	// Sessions the developer pinned, in pin order.
-	pinned?: string[];
+	// Sessions that are not active; every other one is (what a fixture meant before the active set).
+	inactive?: string[];
 	// The developer's own names for sessions, by full ref.
 	names?: Record<string, string>;
 	// Another machine, connected, with sessions of its own (full refs: "personal:store-front/main").
@@ -82,7 +82,14 @@ export interface FixtureContext {
 	// Voice OS asked "Switch to <ref>?" that many seconds ago.
 	// text: what Voice OS said to offer it ("Sent to checkout. Switch there?"), else "Switch to X?".
 	// update: it was the meanwhile line about that session ("Meanwhile, … Switch there?").
-	switchOffer?: { ref: string; secondsAgo: number; text?: string; update?: boolean };
+	// kind: "…isn't active. Activate it?" or "…is working. Deactivate anyway?" instead of a switch.
+	switchOffer?: {
+		ref: string;
+		secondsAgo: number;
+		text?: string;
+		update?: boolean;
+		kind?: 'activate' | 'deactivate';
+	};
 	// Other sessions' updates waiting for the meanwhile line.
 	meanwhile?: { ref: string; kind: 'done' | 'needs'; about: string }[];
 }
@@ -225,7 +232,7 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 			branch: `crew/${ref}`,
 			cwd: `/w/${ref}`,
 			dirs: [],
-			isPinned: ref === 'setup',
+			isPinned: isSetupRef(ref),
 		}),
 		status,
 		heldLine:
@@ -396,7 +403,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 		voiceLog: voiceLog.length ? { [context.view ?? GRID]: voiceLog } : {},
 		view: context.view ? { kind: 'session', ref: context.view } : { kind: 'grid' },
 		focus: context.view ?? null,
-		...(context.pinned ? { pinned: context.pinned } : {}),
+		active: order.filter((ref) => ref !== SETUP_REF && !context.inactive?.includes(ref)),
 		...(context.names ? { names: context.names } : {}),
 		...(context.meanwhile
 			? { meanwhile: context.meanwhile.map((item) => ({ ...item, at: now - 20_000 })) }
@@ -407,6 +414,7 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 						ref: context.switchOffer.ref,
 						at: now - context.switchOffer.secondsAgo * 1000,
 						heardAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
+						...(context.switchOffer.kind ? { kind: context.switchOffer.kind } : {}),
 					},
 				}
 			: {}),

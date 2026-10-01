@@ -731,8 +731,8 @@ describe('Kernel', () => {
 			const log = { grid: [createEntry('End the checkout session.', { reply: 'Which one?' })] };
 			const { kernel, actions } = createKernel(
 				[
-					[createToolUse('t2', 'stop_session', { ref: 'checkout-api/main' })],
-					[createTextBlock('stopped')],
+					[createToolUse('t2', 'deactivate', { ref: 'checkout-api/main' })],
+					[createTextBlock('deactivated')],
 				],
 				{ log, now: () => 2000 },
 			);
@@ -740,7 +740,7 @@ describe('Kernel', () => {
 			// "the main one" alone names nothing; with the checkout mention before it on this screen it does.
 			await kernel.handle('stop the main one', { screen: null });
 
-			expect(actions).toEqual([{ type: 'stop_session', ref: 'checkout-api/main' }]);
+			expect(actions).toEqual([{ type: 'deactivate', ref: 'checkout-api/main' }]);
 		});
 
 		it('what Voice OS last asked aloud about a session still waiting is in the message, and marked in the waiting list', async () => {
@@ -951,8 +951,8 @@ describe('Kernel', () => {
 
 		it('the screen and whether it was spoken reach the tools', async () => {
 			const { kernel, actions } = createKernel([
-				[createToolUse('t1', 'stop_session', { ref: 'store-front/main' })],
-				[createTextBlock('Stopped.')],
+				[createToolUse('t1', 'deactivate', { ref: 'store-front/main' })],
+				[createTextBlock('Deactivated.')],
 				[createToolUse('t2', 'forward', { text: 'Run the tests.' })],
 			]);
 
@@ -964,7 +964,7 @@ describe('Kernel', () => {
 			});
 
 			expect(actions).toEqual([
-				{ type: 'stop_session', ref: 'store-front/main' },
+				{ type: 'deactivate', ref: 'store-front/main' },
 				{
 					type: 'send',
 					ref: 'store-front/main',
@@ -1142,6 +1142,21 @@ describe('listWaitingItems', () => {
 		]);
 	});
 
+	it('"Activate it?" and "Deactivate anyway?" wait under their own kind', () => {
+		const state = createFixtureState({}, now);
+		const offered = (kind: 'activate' | 'deactivate'): State => ({
+			...state,
+			switchOffer: { ref: 'checkout-api/main', at: now - 2000, kind },
+		});
+
+		expect(listWaitingItems(offered('activate'), now)).toEqual([
+			{ ref: 'checkout-api/main', what: 'activate_offer', at: now - 2000 },
+		]);
+		expect(listWaitingItems(offered('deactivate'), now)).toEqual([
+			{ ref: 'checkout-api/main', what: 'deactivate_offer', at: now - 2000 },
+		]);
+	});
+
 	it('a fresh fix offer waits; a lapsed one does not', () => {
 		const freshState = createFixtureState(
 			{ offer: { ref: 'store-front/main', secondsAgo: 10 } },
@@ -1159,52 +1174,85 @@ describe('listWaitingItems', () => {
 	});
 });
 
-describe('kernel context: Pinned', () => {
+describe('kernel context: Active', () => {
 	const now = 10_000;
-	const readMessage = (state: State) =>
-		buildKernelMessage({ state, utterance: 'pin this', memory: [], now });
+	const readMessage = (state: State, utterance = 'what is going on?') =>
+		buildKernelMessage({ state, utterance, memory: [], now });
+	const readSessionsLine = (message: string) =>
+		message.split('\n').find((line) => line.startsWith('Sessions: ')) ?? '';
 
-	it('nothing pinned → no Pinned line', () => {
-		expect(readMessage(createFixtureState({}, now))).not.toContain('Pinned sessions:');
+	it("only the active sessions are listed, this Mac's setup always among them", () => {
+		const state = createFixtureState({ inactive: ['store-front/wrk1', 'checkout-api/main'] }, now);
+		const sessions = JSON.parse(readSessionsLine(readMessage(state)).slice('Sessions: '.length));
+
+		expect(sessions.map((session: { ref: string }) => session.ref)).toEqual([
+			'setup',
+			'store-front/main',
+		]);
 	});
 
-	it("pins → one line in pin order, another machine's labelled, a missing session said", () => {
+	it("an inactive session named → not listed, a developer's name for it not either", () => {
 		const state: State = {
-			...createFixtureState({}, now),
-			pinned: ['checkout-api/main', 'vm1:store-front/main'],
-			machines: {
-				vm1: {
-					id: 'vm1',
-					host: 'dev@vm1',
-					name: 'Build box',
-					status: 'unreachable',
-					detail: null,
-					since: 0,
-				},
-			},
+			...createFixtureState({ inactive: ['store-front/wrk1'] }, now),
+			names: { 'store-front/wrk1': 'ranking' },
 		};
 
+		expect(readMessage(state)).not.toContain('Named sessions:');
+	});
+
+	it('the words name an inactive session → one line naming it; nothing named → no line', () => {
+		const state: State = {
+			...createFixtureState({ inactive: ['checkout-api/main'] }, now),
+			names: { 'checkout-api/main': 'retries' },
+		};
+
+		expect(readMessage(state, 'tell checkout api main to run the tests')).toContain(
+			'Not active, named in these words: retries (checkout-api/main). Not in Sessions: to act on one, call the tool you would anyway (send_to, switch_view…) and Voice OS asks to activate it; "activate it" is activate.\n',
+		);
+		expect(readMessage(state, 'run the tests')).not.toContain('Not active, named');
+		expect(
+			readMessage(createFixtureState({}, now), 'tell checkout api main to run the tests'),
+		).not.toContain('Not active, named');
+	});
+
+	it('an inactive session on screen → said not active on the Screen line', () => {
+		const state = createFixtureState(
+			{ view: 'checkout-api/main', inactive: ['checkout-api/main'] },
+			now,
+		);
+
 		expect(readMessage(state)).toContain(
-			'Pinned sessions: checkout-api/main, vm1:store-front/main (on Build box, not listed).',
+			'Screen: looking at checkout-api/main (not active: its Claude is not running and words for it are met with "Activate it?"). What the developer says is for checkout-api/main',
+		);
+		expect(readMessage(createFixtureState({ view: 'checkout-api/main' }, now))).not.toContain(
+			'(not active',
 		);
 	});
 
-	it('the Pinned view → a screen line for it', () => {
-		const state: State = { ...createFixtureState({}, now), view: { kind: 'pinned' } };
+	it("an inactive session's question → not waiting on the developer", () => {
+		const state = createFixtureState(
+			{ needs: 'checkout-api/main', inactive: ['checkout-api/main'] },
+			now,
+		);
+
+		expect(readMessage(state)).toContain('Waiting on the developer: nothing\n');
+	});
+
+	it('the Active view → a screen line for it', () => {
+		const state: State = { ...createFixtureState({}, now), view: { kind: 'active' } };
 
 		expect(readMessage(state)).toContain(
-			'Screen: looking at Pinned: the sessions the developer pinned, from every machine (Mission Control › Pinned).',
+			"Screen: looking at Active: the developer's active sessions, from every machine (Mission Control › Active).",
 		);
 	});
 
-	it('a session opened from Pinned → still that session, said opened from Pinned', () => {
+	it('a session opened from Active → still that session, said opened from Active', () => {
 		const state: State = {
 			...createFixtureState({}, now),
-			pinned: ['store-front/main'],
-			view: { kind: 'session', ref: 'store-front/main', from: 'pinned' },
+			view: { kind: 'session', ref: 'store-front/main', from: 'active' },
 		};
 
-		expect(readMessage(state)).toContain('Screen: looking at store-front/main, opened from Pinned');
+		expect(readMessage(state)).toContain('Screen: looking at store-front/main, opened from Active');
 	});
 });
 

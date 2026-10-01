@@ -31,7 +31,7 @@ const walked = (): State =>
 		[
 			[1, { type: 'worktrees', worktrees: [worktree(CREW), worktree(CHECKOUT), worktree(SPEAK)] }],
 			...[CREW, CHECKOUT, SPEAK].flatMap((ref, index): [number, Input][] => [
-				[2 + index, { type: 'start_session', ref }],
+				[2 + index, { type: 'activate', ref }],
 				[2 + index, { type: 'session_started', ref } as Input],
 			]),
 			[10, show(CREW)],
@@ -46,9 +46,10 @@ describe('go back', () => {
 		const once = runAt([[20, { type: 'go_back' }]], walked());
 		const twice = runAt([[21, { type: 'go_back' }]], once.state);
 
-		expect(once.state.view).toEqual({ kind: 'session', ref: CHECKOUT });
+		// Active sessions open inside Active, wherever they are gone back to from.
+		expect(once.state.view).toEqual({ kind: 'session', ref: CHECKOUT, from: 'active' });
 		expect(said(once.effects)).toEqual(['Back to checkout, main.']);
-		expect(twice.state.view).toEqual({ kind: 'session', ref: CREW });
+		expect(twice.state.view).toEqual({ kind: 'session', ref: CREW, from: 'active' });
 	});
 
 	it('a session that stopped since → passed over, and said', () => {
@@ -58,7 +59,7 @@ describe('go back', () => {
 		).state;
 		const back = runAt([[20, { type: 'go_back' }]], stopped);
 
-		expect(back.state.view).toEqual({ kind: 'session', ref: CREW });
+		expect(back.state.view).toEqual({ kind: 'session', ref: CREW, from: 'active' });
 		expect(said(back.effects)).toEqual(['checkout, main stopped. Back to crew, main.']);
 	});
 

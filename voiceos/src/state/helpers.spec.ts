@@ -3,7 +3,7 @@ import type { Input, State } from '../shared/protocol.js';
 import { describeMachineWaiting, readSessionLabel } from '../shared/machines.js';
 import { run, worktree } from '../../test/support/reduce.js';
 import { readLabel, truncateText } from './helpers.js';
-import { describeAnnouncement, readAnnouncedLabel } from './held-lines.js';
+import { describeAnnouncement } from './held-lines.js';
 
 describe('truncateText', () => {
 	it('short text is kept whole', () => expect(truncateText('abc', 5)).toBe('abc'));
@@ -43,15 +43,12 @@ describe('what a session is called', () => {
 		expect(readLabel(cleared.state, REMOTE)).toBe('Personal crew/main');
 	});
 
-	it('a named pinned session → "Your pinned <name>", no "on <machine>"', () => {
-		const pinned = run([{ type: 'pin_session', ref: REMOTE }], { start: named() }).state;
+	it('a named active session → announced by its name, no machine in front', () => {
+		const active = run([{ type: 'activate', ref: REMOTE }], { start: named() }).state;
 
-		expect(
-			describeAnnouncement({
-				label: readAnnouncedLabel(pinned, REMOTE, readLabel(pinned, REMOTE)),
-				kind: 'done',
-			}),
-		).toBe('Your pinned voice os dev is done.');
+		expect(describeAnnouncement({ label: readLabel(active, REMOTE), kind: 'done' })).toBe(
+			'voice os dev is done.',
+		);
 	});
 
 	it("what waits on a machine → said by the sessions' names", () => {

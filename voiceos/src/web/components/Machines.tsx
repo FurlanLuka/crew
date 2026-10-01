@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react';
+import { listActiveRefs } from '../../shared/active.js';
+import { SETUP_REF } from '../../shared/machine-ref.js';
 import type { State } from '../../shared/protocol.js';
 import { isValidHost } from '../../shared/machines.js';
-import { describePinnedCard, listMachineCards, type MachineCard } from '../derive.js';
+import { describeActiveCard, listMachineCards, type MachineCard } from '../derive.js';
 import type { Dispatch } from '../types.js';
 import { VoicePanel } from './VoicePanel.js';
 import { NotesPanel } from './NotesPanel.js';
@@ -93,17 +95,18 @@ const MachineCardView = ({ card, dispatch }: CardProps) => {
 	);
 };
 
-// Not a machine: no status, no where, nothing to rename; it gathers the pins from every machine.
-const PinnedCardView = ({ state, dispatch }: MachinesProps) => {
-	const { counts, waiting } = describePinnedCard(state);
+// Not a machine: no status, no where, nothing to rename; it gathers the active sessions from every
+// machine.
+const ActiveCardView = ({ state, dispatch }: MachinesProps) => {
+	const { counts, waiting } = describeActiveCard(state);
 
-	const open = () => dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+	const open = () => dispatch({ type: 'switch_view', view: { kind: 'active' } });
 
 	return (
-		<section className={`machine pinned ${waiting ? 'crit' : ''}`} aria-label="Pinned">
+		<section className={`machine active-card ${waiting ? 'crit' : ''}`} aria-label="Active">
 			<div className="machine-head">
 				<button type="button" className="machine-name" onClick={open}>
-					Pinned
+					Active
 				</button>
 			</div>
 			<button type="button" className="machine-body" onClick={open}>
@@ -112,7 +115,9 @@ const PinnedCardView = ({ state, dispatch }: MachinesProps) => {
 					<span className="machine-waiting">{waiting}</span>
 				) : (
 					<span className="machine-quiet">
-						{state.pinned.length === 0 ? 'Pin a session to keep it here' : 'Nothing waiting on you'}
+						{listActiveRefs(state).every((ref) => ref === SETUP_REF)
+							? 'Activate a session to talk to it by voice'
+							: 'Nothing waiting on you'}
 					</span>
 				)}
 			</button>
@@ -204,7 +209,7 @@ export const Machines = ({ state, dispatch }: MachinesProps) => {
 	return (
 		<main className="mission">
 			<div className="grid machines">
-				<PinnedCardView state={state} dispatch={dispatch} />
+				<ActiveCardView state={state} dispatch={dispatch} />
 				{listMachineCards(state).map((card) => (
 					<MachineCardView key={card.id} card={card} dispatch={dispatch} />
 				))}

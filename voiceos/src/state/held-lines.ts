@@ -65,19 +65,6 @@ export const decideTurnLine = ({
 	return { kind: 'hold', announce: hasBackgroundAgents || isHeldAnnounced ? null : 'done' };
 };
 
-// A pinned session is one the developer chose to follow across machines: its announcements say so,
-// and name its machine unless they are in it.
-// label: what an unpinned session is announced as; callers name those with or without their machine.
-export const readAnnouncedLabel = (state: State, ref: string, label: string): string => {
-	if (!state.pinned.includes(ref)) {
-		return label;
-	}
-
-	const machine = readElsewhereMachine(state, ref);
-
-	return `Your pinned ${readSessionLabel(state, ref)}${machine ? ` on ${machine}` : ''}`;
-};
-
 interface DescribeAnnouncementParams {
 	label: string;
 	kind: AnnouncementKind;

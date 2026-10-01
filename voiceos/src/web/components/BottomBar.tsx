@@ -7,6 +7,8 @@ import {
 	useRef,
 	useState,
 } from 'react';
+import { isActive } from '../../shared/active.js';
+import { readSessionLabel } from '../../shared/machines.js';
 import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { Mic, isMicAllowed } from '../audio.js';
@@ -65,6 +67,13 @@ const formatElapsed = (ms: number): string => {
 	const seconds = Math.max(0, Math.floor(ms / 1000));
 
 	return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+};
+
+// The session on screen when it is not active: nothing to type to, only to browse or activate.
+const readInactiveScreen = (state: State): string | null => {
+	const ref = state.view.kind === 'session' ? state.view.ref : null;
+
+	return ref && state.sessions[ref] && !isActive(state, ref) ? ref : null;
 };
 
 // Where a dictation goes when sent: the session on screen, unless it waits on an answer.
@@ -421,6 +430,8 @@ export const BottomBar = ({
 			? DISCORD_TITLES[discord.mode]
 			: 'Voice via Discord, but not hearing you: pick a mode to try again'
 		: '';
+	// A dictation or live words already under way keep their box: what was said is never hidden.
+	const inactiveRef = isDictating || isShowingTranscript ? null : readInactiveScreen(state);
 	const routeLabel = isDictationMode ? describeDictationTarget(state) : route.label;
 	const routeClass = isDictationMode
 		? 'dictation'
@@ -512,58 +523,73 @@ export const BottomBar = ({
 					}
 				/>
 			</div>
-			<form
-				className={`composer ${isDictating ? 'dictating' : ''} ${isShowingTranscript ? 'hearing' : ''}`}
-				onSubmit={handleSubmit}
-			>
-				<textarea
-					ref={fieldRef}
-					rows={1}
-					value={fieldValue}
-					readOnly={isDictating}
-					onChange={(event) => setDraft(event.target.value)}
-					onKeyDown={handleFieldKey}
-					placeholder={
-						discord
-							? discord.isHearing
-								? 'Voice OS hears you in Discord — or type a command'
-								: 'Not hearing you in Discord — pick a mode to try again, or type a command'
-							: describeListening({
-									mode: isListening || isDictationMode ? listenMode : 'push',
-									isAwake,
-									isDictating,
-								})
-					}
-					aria-label="Say or type a command"
-				/>
-				<div className="composer-side">
-					{isDictating ? (
-						<>
-							<span className="dictation-clock" title="Dictating for">
-								<i aria-hidden="true" />
-								{formatElapsed(elapsedMs)}
-							</span>
-							<button
-								type="button"
-								className={`pill-button ghost ${isDiscardArmed ? 'armed' : ''}`}
-								onClick={handleDiscard}
-							>
-								{isDiscardArmed ? 'Discard all?' : 'Discard'}
-							</button>
-							<button type="button" className="pill-button primary" onClick={handleTalkStop}>
-								Send
-							</button>
-						</>
-					) : null}
-					{isTooLong ? (
-						<span className="too-long" role="alert">
-							Too long to send: {draftChars.toLocaleString('en')} of{' '}
-							{MAX_TEXT_CHARS.toLocaleString('en')} characters
-						</span>
-					) : null}
-					<span className={`route ${routeClass}`}>{routeLabel}</span>
+			{inactiveRef ? (
+				<div className="composer inactive">
+					<span className="c-dim">
+						{readSessionLabel(state, inactiveRef)} isn't active: activate it to talk to it.
+					</span>
+					<button
+						type="button"
+						className="pill-button primary"
+						onClick={() => send({ type: 'action', action: { type: 'activate', ref: inactiveRef } })}
+					>
+						Activate
+					</button>
 				</div>
-			</form>
+			) : (
+				<form
+					className={`composer ${isDictating ? 'dictating' : ''} ${isShowingTranscript ? 'hearing' : ''}`}
+					onSubmit={handleSubmit}
+				>
+					<textarea
+						ref={fieldRef}
+						rows={1}
+						value={fieldValue}
+						readOnly={isDictating}
+						onChange={(event) => setDraft(event.target.value)}
+						onKeyDown={handleFieldKey}
+						placeholder={
+							discord
+								? discord.isHearing
+									? 'Voice OS hears you in Discord — or type a command'
+									: 'Not hearing you in Discord — pick a mode to try again, or type a command'
+								: describeListening({
+										mode: isListening || isDictationMode ? listenMode : 'push',
+										isAwake,
+										isDictating,
+									})
+						}
+						aria-label="Say or type a command"
+					/>
+					<div className="composer-side">
+						{isDictating ? (
+							<>
+								<span className="dictation-clock" title="Dictating for">
+									<i aria-hidden="true" />
+									{formatElapsed(elapsedMs)}
+								</span>
+								<button
+									type="button"
+									className={`pill-button ghost ${isDiscardArmed ? 'armed' : ''}`}
+									onClick={handleDiscard}
+								>
+									{isDiscardArmed ? 'Discard all?' : 'Discard'}
+								</button>
+								<button type="button" className="pill-button primary" onClick={handleTalkStop}>
+									Send
+								</button>
+							</>
+						) : null}
+						{isTooLong ? (
+							<span className="too-long" role="alert">
+								Too long to send: {draftChars.toLocaleString('en')} of{' '}
+								{MAX_TEXT_CHARS.toLocaleString('en')} characters
+							</span>
+						) : null}
+						<span className={`route ${routeClass}`}>{routeLabel}</span>
+					</div>
+				</form>
+			)}
 		</footer>
 	);
 };

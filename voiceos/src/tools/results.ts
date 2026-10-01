@@ -1,5 +1,7 @@
 import { resolveRef } from '../router/refs.js';
 import type { State } from '../shared/protocol.js';
+import { isActive, listActiveInOrder } from '../shared/active.js';
+import { SETUP_REF, isSetupRef } from '../shared/machine-ref.js';
 
 export interface ToolResult {
 	ok: boolean;
@@ -21,22 +23,48 @@ export const succeed = (content: unknown): ToolResult => ({
 
 export const fail = (content: string): ToolResult => ({ ok: false, content });
 
-export type RefCheck = { ok: true; ref: string } | { ok: false; error: string };
+// inactive: the words name a session that is not active — the caller asks to activate it
+// (tools/activate.ts refuseInactive), never acts on it.
+export type RefCheck = { ok: true; ref: string } | { ok: false; error: string; inactive?: string };
 
+const toInactive = (ref: string): RefCheck => ({
+	ok: false,
+	error: `${ref} is not active`,
+	inactive: ref,
+});
+
+// Resolved against every session first, so "setup" said on vm1 stays vm1's setup; a name an active
+// session also answers to goes to that one rather than to an inactive one here.
 export const checkRef = (state: State, value: unknown): RefCheck => {
 	if (typeof value !== 'string' || !value) {
 		return { ok: false, error: 'missing ref' };
 	}
 
-	if (state.sessions[value]) {
-		return { ok: true, ref: value };
+	// "setup" is also this Mac's setup ref: said inside another machine it is that machine's setup.
+	const exact = value === SETUP_REF ? (resolveRef(state, value, state.order) ?? value) : value;
+
+	if (state.sessions[exact]) {
+		return isActive(state, exact) ? { ok: true, ref: exact } : toInactive(exact);
 	}
 
-	const resolvedRef = resolveRef(state, value);
+	const anyRef = resolveRef(state, value, state.order);
 
-	if (resolvedRef) {
-		return { ok: true, ref: resolvedRef };
+	if (anyRef && isActive(state, anyRef)) {
+		return { ok: true, ref: anyRef };
 	}
 
-	return { ok: false, error: `no session "${value}". Sessions: ${state.order.join(', ')}` };
+	const activeRef = anyRef && isSetupRef(anyRef) ? null : resolveRef(state, value);
+
+	if (activeRef) {
+		return { ok: true, ref: activeRef };
+	}
+
+	if (anyRef) {
+		return toInactive(anyRef);
+	}
+
+	return {
+		ok: false,
+		error: `no active session "${value}". Active sessions: ${listActiveInOrder(state).join(', ')}. Another worktree is reached with activate.`,
+	};
 };

@@ -10,7 +10,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'switch_view',
 	'go_back',
 	'play_missed',
-	'start_session',
+	'activate',
 	'ignore_words',
 	'answer',
 	'interrupt',
@@ -24,12 +24,7 @@ const SILENT_TOOLS: ToolName[] = [
 // read_notes changes nothing, but what it read out is what "the second one" points at next.
 const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc', 'read_notes'];
 
-const describeCallAction = (name: string, input: Record<string, unknown>): string => {
-	// Named either way: "unpin this" right after a pin must read as a change, not the same call again.
-	if (name === 'pin_session') {
-		return input.unpin === true ? ' unpin' : ' pin';
-	}
-
+const describeCallAction = (input: Record<string, unknown>): string => {
 	if (typeof input.action === 'string') {
 		return ` ${input.action}`;
 	}
@@ -62,16 +57,17 @@ export const describeToolCall = ({ name, input, ok, note }: ToolCall): string | 
 	const quotedText = typeof input.text === 'string' ? ` "${clipQuoted(input.text)}"` : '';
 	const target =
 		name === 'switch_view'
-			? ` ${input.pinned === true ? 'pinned' : typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
+			? ` ${input.active === true ? 'active' : typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
 			: typeof input.ref === 'string'
 				? ` ${input.ref}`
 				: '';
 
+	const activated = name === 'activate' && typeof input.name === 'string' ? ` ${input.name}` : '';
 	const newName = typeof input.name === 'string' ? input.name.trim() : '';
 	// "Call it api work" right after a rename is a new name, not the same call again.
 	const renamed = name === 'rename_session' ? (newName ? ` to "${newName}"` : ' cleared') : '';
 
-	return `${name}${describeCallAction(name, input)}${target}${renamed}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
+	return `${name}${describeCallAction(input)}${target}${activated}${renamed}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
 };
 
 export const isSilentCall = (name: string, input: Record<string, unknown>): boolean => {

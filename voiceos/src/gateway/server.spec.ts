@@ -263,8 +263,8 @@ describe('parseClientMessage', () => {
 			message: 'keep the old schema',
 		},
 		switch_view: { type: 'switch_view', view: { kind: 'session', ref: 'store/main' } },
-		start_session: { type: 'start_session', ref: 'store/main' },
-		stop_session: { type: 'stop_session', ref: 'store/main' },
+		activate: { type: 'activate', ref: 'vm1:store/main' },
+		deactivate: { type: 'deactivate', ref: 'vm1:store/main' },
 		interrupt: { type: 'interrupt', ref: 'store/main' },
 		allow_denied: { type: 'allow_denied', denialId: 'd1' },
 		dismiss_denial: { type: 'dismiss_denial', denialId: 'd1' },
@@ -273,8 +273,6 @@ describe('parseClientMessage', () => {
 		dev_restart: { type: 'dev_restart', ref: 'store/main' },
 		fix_dev: { type: 'fix_dev', ref: 'store/main' },
 		dismiss_dev_offer: { type: 'dismiss_dev_offer' },
-		pin_session: { type: 'pin_session', ref: 'vm1:store/main' },
-		unpin_session: { type: 'unpin_session', ref: 'vm1:store/main' },
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
 		go_back: { type: 'go_back' },
 		play_meanwhile: { type: 'play_meanwhile' },
@@ -292,10 +290,10 @@ describe('parseClientMessage', () => {
 		...Object.values(actions).map((action): ClientMessage => ({ type: 'action', action })),
 		{ type: 'action', action: { type: 'answer_plan', askId: 'a1', isApproved: true } },
 		{ type: 'action', action: { type: 'switch_view', view: { kind: 'grid' } } },
-		{ type: 'action', action: { type: 'switch_view', view: { kind: 'pinned' } } },
+		{ type: 'action', action: { type: 'switch_view', view: { kind: 'active' } } },
 		{
 			type: 'action',
-			action: { type: 'switch_view', view: { kind: 'session', ref: 'store/main', from: 'pinned' } },
+			action: { type: 'switch_view', view: { kind: 'session', ref: 'store/main', from: 'active' } },
 		},
 		{ type: 'utterance', text: 'open checkout' },
 		{ type: 'ptt_start', sampleRate: 48000 },
@@ -345,13 +343,32 @@ describe('parseClientMessage', () => {
 		});
 	});
 
-	it('a session view from anywhere but Pinned, a pin without a ref, a page loading pins or names, a rename without a name or past 60 characters → refused', () => {
+	it('an activate from a page → never announced: a click is silent', () => {
+		const parsed = parseClientMessage(
+			JSON.stringify({
+				type: 'action',
+				action: { type: 'activate', ref: 'store/main', announce: true },
+			}),
+		);
+
+		expect(parsed).toEqual({
+			ok: true,
+			message: { type: 'action', action: { type: 'activate', ref: 'store/main' } },
+		});
+	});
+
+	it('a session view from anywhere but Active, the old pin and start actions, an activate without a ref, a page loading the active set or names, a rename without a name or past 60 characters → refused', () => {
 		const refused = [
 			{ type: 'switch_view', view: { kind: 'session', ref: 'store/main', from: 'grid' } },
-			{ type: 'pin_session' },
-			{ type: 'unpin_session', ref: '' },
-			// The saved pins come from the server's own file, never from a page.
-			{ type: 'pinned_loaded', refs: ['store/main'] },
+			{ type: 'switch_view', view: { kind: 'pinned' } },
+			{ type: 'switch_view', view: { kind: 'session', ref: 'store/main', from: 'pinned' } },
+			{ type: 'pin_session', ref: 'store/main' },
+			{ type: 'start_session', ref: 'store/main' },
+			{ type: 'stop_session', ref: 'store/main' },
+			{ type: 'activate' },
+			{ type: 'deactivate', ref: '' },
+			// The saved set comes from the server's own file, never from a page.
+			{ type: 'active_loaded', refs: ['store/main'] },
 			{ type: 'names_loaded', names: { 'store/main': 'shop' } },
 			{ type: 'rename_session', ref: 'store/main' },
 			{ type: 'rename_session', ref: 'store/main', name: 'x'.repeat(61) },

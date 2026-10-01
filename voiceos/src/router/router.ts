@@ -8,6 +8,7 @@ import {
 	type VoiceEntry,
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
+import { isActive } from '../shared/active.js';
 import { decideDelivery } from '../state/delivery.js';
 import { hasQuestionSince } from '../state/asks.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
@@ -177,14 +178,29 @@ export class UtteranceRouter {
 		const screen = readActiveRef(store.state);
 		const saidAt = this.now();
 
+		// Text typed into a session's own box is typing to that Claude, not a kernel turn.
+		const typedTarget = source === 'typed' ? resolveTypedTarget(store.state, trimmedText) : null;
+
+		// Typed or dictated to a session that is not active: kept for it, and Voice OS asks to activate it.
+		const writtenTo = typedTarget ?? (source === 'dictated' ? screen : null);
+
+		if (writtenTo && store.state.sessions[writtenTo] && !isActive(store.state, writtenTo)) {
+			log.info('words for an inactive session: asked to activate', { source, ref: writtenTo });
+			store.dispatch({
+				type: 'offer_switch',
+				ref: writtenTo,
+				kind: 'activate',
+				words: trimmedText,
+			});
+
+			return;
+		}
+
 		if (source === 'dictated') {
 			this.sendDictation(trimmedText, screen, saidAt, origin);
 
 			return;
 		}
-
-		// Text typed into a session's own box is typing to that Claude, not a kernel turn.
-		const typedTarget = source === 'typed' ? resolveTypedTarget(store.state, trimmedText) : null;
 
 		if (typedTarget) {
 			// Typing is writing to that Claude: it goes aside only when the developer says "by the way".
