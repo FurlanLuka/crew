@@ -64,8 +64,14 @@ export const readNamedInstead = (state: State, ref: string, utterance: string): 
 		return null;
 	}
 
+	// Only a name that sounds like the ref asked for: another named session mentioned beside a
+	// different target ("tell speak main…, then switch to checkout") changes nothing.
+	const asked = toPlainWords(splitRef(ref).local);
 	const named = state.order.filter(
-		(other) => other !== ref && isDisplayNameSaid(state.names[other], plain),
+		(other) =>
+			other !== ref &&
+			isDisplayNameSaid(state.names[other], plain) &&
+			toPlainWords(state.names[other] ?? '') === asked,
 	);
 
 	return named.length === 1 ? (named[0] ?? null) : null;

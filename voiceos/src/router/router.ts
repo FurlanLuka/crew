@@ -166,7 +166,12 @@ export class UtteranceRouter {
 			store.dispatch({
 				type: 'voice_logged',
 				screen: readActiveRef(store.state) ?? GRID,
-				entry: { utterance: trimmedText, did: ['switch offer declined'], reply: '', at: heardFrom },
+				entry: {
+					utterance: trimmedText,
+					did: ['switch offer declined'],
+					reply: '',
+					at: this.now(),
+				},
 			});
 
 			return;

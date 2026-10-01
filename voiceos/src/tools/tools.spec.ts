@@ -92,9 +92,19 @@ describe('executeTool', () => {
 			{ ref: 'checkout-api/main' },
 			{ ...tools, utterance: 'Switch to checkout api main.' },
 		);
+		// The named session mentioned beside another target: not what they asked to see.
+		await executeTool(
+			'switch_view',
+			{ ref: 'checkout-api/main' },
+			{
+				...tools,
+				utterance: 'Tell store front main the tests pass, then switch to checkout api main.',
+			},
+		);
 
 		expect(actions).toEqual([
 			{ type: 'switch_view', view: { kind: 'session', ref: 'store-front/wrk1' } },
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
 			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
 		]);
 	});
