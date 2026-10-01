@@ -7,7 +7,9 @@ browser, and lets you answer permissions and questions, dictate, and hear "done"
 
 **Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Mission
 Control, listening modes, active sessions, approvals, other machines, troubleshooting and
-privacy. This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)
+privacy. [Voice OS commands](../docs/guides/voice-os-commands.md) lists every kernel tool with
+things to say; a tool change updates its section (`src/tools/definitions.spec.ts` checks each has
+one). This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)
 covers the repository-wide rules.
 
 ## Run it

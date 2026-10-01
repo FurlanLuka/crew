@@ -9,6 +9,8 @@ You don't have to watch a terminal.
 It runs on your machine, next to crew. The sessions are ordinary Claude Code sessions on your own
 Claude Code login, working in crew's worktrees.
 
+Every command, with things you can say for each: [Voice OS commands](voice-os-commands.md).
+
 ![Voice OS: an active session, store-front/wrk2 on Build box, with its work stream, dev servers and spoken summary, and the other active sessions as tabs](../images/voice-os/hero.png)
 
 ## Contents
