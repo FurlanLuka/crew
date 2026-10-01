@@ -460,6 +460,9 @@ export type Action =
 			continues?: { rest: string; isAside?: boolean };
 			// Set by the kernel: the developer said to send these right now, so they replace the running turn.
 			isNow?: boolean;
+			// Set by the server with isSpoken: the screen the words were said on. The developer may click
+			// away while the kernel thinks; the words were still said to that screen.
+			saidOn?: string | null;
 	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	// "I want it now" (or the page's button): the queued words cut the running work and go first.

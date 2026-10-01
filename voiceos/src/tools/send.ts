@@ -442,7 +442,7 @@ export const sendText = async ({
 			text,
 			aside: true,
 			...(asideNote ? { note: asideNote } : {}),
-			...(toolContext.isSpoken ? { isSpoken: true } : {}),
+			...(toolContext.isSpoken ? { isSpoken: true, saidOn: toolContext.screen ?? null } : {}),
 		});
 
 		// A question about a pending question withdraws it (the reducer denies it with these words):
@@ -497,7 +497,7 @@ export const sendText = async ({
 			? { continues: { ...continues, ...(wouldGoAside ? { isAside: true } : {}) } }
 			: {}),
 		...(note ? { note } : {}),
-		...(toolContext.isSpoken ? { isSpoken: true } : {}),
+		...(toolContext.isSpoken ? { isSpoken: true, saidOn: toolContext.screen ?? null } : {}),
 		...(isNow ? { isNow: true } : {}),
 	});
 

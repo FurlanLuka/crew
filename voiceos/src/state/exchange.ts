@@ -192,6 +192,13 @@ export const followExchange = (
 				return result;
 			}
 
+			// Said to the session on screen, and the developer clicked away before the words went: they
+			// left it. No "Sent to", no conversation with it, no switch offer — its reply waits for the
+			// meanwhile line like any other session's.
+			if (input.isSpoken && input.saidOn === input.ref && readScreenRef(before) !== input.ref) {
+				return result;
+			}
+
 			const acked = [
 				...result.effects,
 				...describeSentTo({

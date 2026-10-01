@@ -38,11 +38,12 @@ const onScreen = (): State =>
 		createInitialState(),
 	);
 
-const said = (ref: string): Input => ({
+const said = (ref: string, saidOn?: string): Input => ({
 	type: 'send',
 	ref,
 	text: 'is the build green?',
 	isSpoken: true,
+	...(saidOn ? { saidOn } : {}),
 });
 
 // A line of the session's, played to its end: `spoken` then `spoken_ended`.
@@ -74,6 +75,33 @@ describe('the exchange', () => {
 		expect(state.exchange).toMatchObject({ ref: SCREEN, reason: 'screen' });
 		expect(readSubject(state, 20)).toBeNull();
 		expect(isMidExchangeWithScreen(state, 20)).toBe(true);
+	});
+
+	it('said on its screen, then clicked away before the words went → left: no subject, no ack, no offer', () => {
+		const away = runAt(
+			[[10, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }]],
+			onScreen(),
+		);
+		const before = runAt(
+			[[20, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }]],
+			away,
+		);
+		const result = reduce(before, {
+			seq: before.seq + 1,
+			at: 30,
+			id: 'i-left',
+			input: said(SCREEN, SCREEN),
+		});
+
+		expect(readSubject(result.state, 31)).toBeNull();
+		expect(result.state.switchOffer).toBeNull();
+		expect(result.effects.filter((effect) => effect.type === 'speak')).toEqual([]);
+	});
+
+	it('said on another screen and sent there → still the subject (saidOn changes only the left-behind case)', () => {
+		const state = runAt([[10, said(OTHER, SCREEN)]], onScreen());
+
+		expect(readSubject(state, 11)).toBe(OTHER);
 	});
 
 	it('typed words start nothing: only speech is a conversation', () => {

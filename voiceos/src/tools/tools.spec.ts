@@ -2209,7 +2209,7 @@ describe('spoken sends', () => {
 		await executeTool(
 			'forward',
 			{ text: 'Run the tests.' },
-			{ ...tools, forwardTo: 'store-front/main', isSpoken: true },
+			{ ...tools, screen: 'store-front/main', forwardTo: 'store-front/main', isSpoken: true },
 		);
 		await executeTool(
 			'send_to',
@@ -2224,6 +2224,7 @@ describe('spoken sends', () => {
 				text: 'Run the tests.',
 				ack: INSTRUCTION_ACK,
 				isSpoken: true,
+				saidOn: 'store-front/main',
 			},
 			{ type: 'send', ref: 'store-front/wrk1', text: 'Run the tests.', ack: INSTRUCTION_ACK },
 		]);
