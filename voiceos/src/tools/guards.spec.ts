@@ -570,12 +570,16 @@ describe('a yes to Voice OS\'s own "Want me to ask it?"', () => {
 	it('not a clear yes, or more than a few words → the words as said, never the old question', async () => {
 		const unclear = await sendYes(judgeWith({ approves: 'unclear', take_back_before: 'no' }));
 		const long = await sendYes(
-			judgeWith({ take_back_before: 'no' }),
-			'Yes, and also ask it why the build is red.',
+			judgeWith({ take_back_before: 'no', spoken_to: 'yes' }),
+			'Yes, and also ask checkout api why the build is red.',
 		);
 
-		expect(unclear?.text).toBe('Yes.');
-		expect(long?.text).toBe('Yes, and also ask it why the build is red.');
+		// A bare "yes" names no session: it goes to the screen, never to checkout.
+		expect(unclear).toMatchObject({ ref: SCREEN, text: 'Yes.' });
+		expect(long).toMatchObject({
+			ref: 'checkout-api/main',
+			text: 'Yes, and also ask checkout api why the build is red.',
+		});
 	});
 });
 
@@ -604,14 +608,21 @@ describe('a yes to Voice OS\'s "Switch to …?"', () => {
 			['forward', { kind: 'instruction' }],
 		] as const) {
 			const { tools, actions } = toolsFor({
-				judge: judgeWith({ refuses: 'no', bare_answer: 'no', take_back_before: 'no' }),
-				utterance: 'Yes, push it.',
+				judge: judgeWith({
+					refuses: 'no',
+					bare_answer: 'no',
+					take_back_before: 'no',
+					spoken_to: 'yes',
+				}),
+				utterance: 'Yes, checkout api, push it.',
 				patch: offer,
 			});
 
 			await executeTool(tool, input, { ...tools, heardFrom: 5_000 });
 
-			expect(actions).toEqual([expect.objectContaining({ type: 'send', text: 'Yes, push it.' })]);
+			expect(actions).toEqual([
+				expect.objectContaining({ type: 'send', text: 'Yes, checkout api, push it.' }),
+			]);
 		}
 	});
 

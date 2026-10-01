@@ -465,7 +465,6 @@ describe('forward', () => {
 			'send_to',
 			'switch_view',
 			'go_back',
-			'ask_target',
 			'play_missed',
 			'start_session',
 			'stop_session',
@@ -3356,19 +3355,32 @@ describe('fixes from the live notes', () => {
 			]);
 		});
 
-		it('off screen → sent to it', async () => {
-			const { tools, actions } = createToolContext();
+		it('off screen and named → sent to it; not named → to the screen, like send_to', async () => {
+			const named = createToolContext();
 			const result = await executeTool('answer', answerYes, {
-				...tools,
+				...named.tools,
 				forwardTo: 'checkout-api/main',
-				utterance: 'Yes, do that.',
+				utterance: 'Store front main, yes, do that.',
 			});
 
 			expect(result.recordAs).toEqual({
 				name: 'send_to',
-				input: { ref: 'store-front/main', text: 'Yes, do that.' },
+				input: { ref: 'store-front/main', text: 'Store front main, yes, do that.' },
 			});
-			expect(actions).toHaveLength(1);
+			expect(named.actions).toHaveLength(1);
+
+			const unnamed = createToolContext();
+			const refused = await executeTool('answer', answerYes, {
+				...unnamed.tools,
+				forwardTo: 'checkout-api/main',
+				utterance: 'Yes, do that.',
+			});
+
+			// Not named: the words go to the session on screen, never to store-front/main.
+			expect(refused.ok).toBe(true);
+			expect(
+				unnamed.actions.filter((action) => action.type === 'send').map((action) => action.ref),
+			).toEqual(['checkout-api/main']);
 		});
 
 		it('a bare "yes" while another session asks → fails naming it, nothing sent', async () => {

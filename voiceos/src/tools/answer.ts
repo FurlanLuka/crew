@@ -15,12 +15,15 @@ import {
 	isWholeSend,
 	recordAsSent,
 	sendText,
+	type SentWords,
 } from './send.js';
-import { findLastAskedAloud } from './asked-aloud.js';
+import { findLastAskedAloud, wasJustHeardAbout } from './asked-aloud.js';
 import { findSessionsNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
+import { forwardChosen } from './forward.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { endsInQuestion } from '../shared/spoken.js';
+import { guardSendTo } from './send-guard.js';
 
 const log = createLogger('tools');
 
@@ -381,6 +384,33 @@ export const answerAsk = async ({
 
 		if (misroutedAnswer) {
 			return fail(misroutedAnswer);
+		}
+
+		// A reply to the question it ended its turn on is its answer, named or not — once the developer
+		// heard that question. Otherwise words reach it only the way send_to would send them: named in
+		// them (the answer tool is no way around the send guard).
+		const heardFrom = toolContext.heardFrom ?? toolContext.now();
+		const isAskedAloud =
+			asked !== null &&
+			asked !== undefined &&
+			(findLastAskedAloud({
+				spoken: state.spoken,
+				waitingRefs: [checked.ref],
+				now: toolContext.now(),
+				heardFrom,
+			})?.ref === checked.ref ||
+				wasJustHeardAbout({ spoken: state.spoken, ref: checked.ref, heardFrom }));
+		const words: SentWords = { text: reply, source: 'said' };
+		const guarded = isAskedAloud
+			? null
+			: await guardSendTo({ state, ref: checked.ref, words, toolContext });
+
+		if (guarded === 'screen') {
+			return forwardChosen({ words, kind: 'instruction', toolContext });
+		}
+
+		if (guarded) {
+			return guarded;
 		}
 
 		// "Yes, do that" to a session that asked nothing still means something to it: the

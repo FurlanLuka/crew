@@ -9,7 +9,7 @@ import {
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
-import { hasQuestionSince } from '../state/exchange.js';
+import { hasQuestionSince } from '../state/asks.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';

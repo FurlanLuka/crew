@@ -44,7 +44,7 @@ export const findLastAskedAloud = ({
 	return others.length === 0 && only !== undefined ? { ...line, ref: only } : line;
 };
 
-// What the developer heard shortly before they spoke is what their words most likely pick up.
+// What the developer heard shortly before they spoke: what "switch to it" and "what did it say?" mean.
 export const HEARD_BEFORE_MS = 90_000;
 const HEARD_BEFORE_KEPT = 3;
 const HEARD_PREVIEW_CHARS = 140;

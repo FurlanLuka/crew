@@ -639,37 +639,6 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('talking with a session off screen → a chip names it; × ends the conversation, its name switches there', async () => {
-		const { context, page } = await signIn();
-		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
-		store.dispatch({
-			type: 'send',
-			ref: 'checkout-api/main',
-			text: 'is the build green?',
-			isSpoken: true,
-		});
-		const chip = page.getByRole('button', { name: 'Talking with checkout-api/main' });
-		await chip.waitFor();
-
-		await page.getByRole('button', { name: 'Stop talking with it' }).click();
-		await waitUntil(() => store.state.exchange === null);
-		await chip.waitFor({ state: 'detached' });
-
-		store.dispatch({
-			type: 'send',
-			ref: 'checkout-api/main',
-			text: 'and the lint?',
-			isSpoken: true,
-		});
-		await chip.click();
-		await waitUntil(
-			() => store.state.view.kind === 'session' && store.state.view.ref === 'checkout-api/main',
-		);
-		store.dispatch({ type: 'clear_exchange' });
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
-		await context.close();
-	}, 20_000);
-
 	it('a dictation with nowhere to go comes back into the input, to send from there', async () => {
 		const { context, page, client } = await openMicTab();
 		gateway.send(client, {

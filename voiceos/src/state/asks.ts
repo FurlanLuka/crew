@@ -26,7 +26,6 @@ import {
 } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import { addMeanwhile } from './meanwhile.js';
-import { readSubject } from './exchange.js';
 import {
 	clearHeldAsk,
 	clearHeldLine,
@@ -608,7 +607,6 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				};
 			}
 
-			const isSubject = readSubject(state, stamped.at) === ask.ref;
 			const held = (): State =>
 				holdLine({
 					state: next,
@@ -619,9 +617,8 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				});
 
 			// Another session's ask while the developer is on a session's screen: held there, and said
-			// with the other waiting updates once there is a breath. Talking with that session, it is
-			// part of the conversation and asked now.
-			if (isOnAnotherSession(state, ask.ref) && isSdkAsk(ask) && !isSubject) {
+			// with the other waiting updates once there is a breath.
+			if (isOnAnotherSession(state, ask.ref) && isSdkAsk(ask)) {
 				return {
 					state: addMeanwhile(
 						held(),
@@ -632,7 +629,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				};
 			}
 
-			if (!isSubject && isAnnouncedOnly(state, ask)) {
+			if (isAnnouncedOnly(state, ask)) {
 				// High, not an alert: it never cuts off the session on screen.
 				return {
 					state: held(),
@@ -718,3 +715,9 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 			});
 	}
 };
+
+// A permission, plan or question a session raised after `at`: then that, not "Switch to …?", is the
+// newest thing asked, and a bare yes or no answers it.
+export const hasQuestionSince = (state: State, at: number): boolean =>
+	state.asks.some((ask) => ask.at > at) ||
+	state.order.some((ref) => (state.sessions[ref]?.needsUser?.at ?? 0) > at);

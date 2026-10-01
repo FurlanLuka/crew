@@ -266,10 +266,14 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   relays its stdout, stderr and code verbatim; with no main, logs fall back to its own files and
   notes fail. `main` is a reserved machine id. The notes key rule (`ToNotesKey`) and the socket
   lines are pinned by `voiceos/test/fixtures/shared/`.
-  **Conversations:** state keeps the `exchange` (the session the developer talks with; off screen,
-  the subject whose follow-ups and answers are theirs), a five-view `viewHistory` for "go back", a
-  `switchOffer`, a `targetAsk` ("For checkout?") and a `meanwhile` list of other sessions' updates
-  said together once it is quiet; `voiceos/test/support/conversation.ts` runs whole spoken
+  **Conversations:** words go to the session on screen, or to a session named in them — never
+  guessed (a `send_to` whose session is not named in the words is forwarded to the screen in code,
+  and the judge's `spoken_to` tells speaking to a named one from mentioning it:
+  `tools/send-guard.ts`). State keeps a five-view `viewHistory` for "go
+  back", a `switchOffer` ("Sent to checkout. Switch there?", or the meanwhile line about one
+  session), a `targetAsk` ("For checkout?" for words that only mention it) and a `meanwhile` list of
+  other sessions' updates said together once it is quiet — how an off-screen session's long
+  answer is heard; `voiceos/test/support/conversation.ts` runs whole spoken
   conversations (real store, kernel with a scripted model, router, voice) for the tests. Its keys
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything

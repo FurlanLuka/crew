@@ -24,6 +24,10 @@ export const readLabel = (state: State, ref: string): string => {
 
 type SpeakEffect = Extract<Effect, { type: 'speak' }>;
 
+// The session on screen; null on Mission Control, Pinned or the machines.
+export const readScreenRef = (state: State): string | null =>
+	state.view.kind === 'session' ? state.view.ref : null;
+
 // Voice OS's own word on what it just did ("Sent to checkout.", "Back to crew."): the answer to the
 // developer, heard before older lines.
 export const sayAck = (text: string, extra: Partial<SpeakEffect> = {}): Effect => ({

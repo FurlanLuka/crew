@@ -24,7 +24,9 @@ import { countSpokenWords } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
-import { askTarget, decideNotificationReply } from './notification-reply.js';
+import { decideNotificationReply } from './notification-reply.js';
+import { guardSendTo } from './send-guard.js';
+import { forwardChosen, sendRecorded } from './forward.js';
 import { renameSession } from './rename.js';
 import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
@@ -215,52 +217,6 @@ const chooseWordsFor = async ({
 	});
 };
 
-interface SendRecordedParams {
-	state: State;
-	ref: string;
-	// The words chosen for this session (chooseWordsFor).
-	words: SentWords;
-	input: Record<string, unknown>;
-	name: 'forward' | 'send_to';
-	toolContext: ToolContext;
-}
-
-const sendRecorded = async ({
-	state,
-	ref,
-	words,
-	input,
-	name,
-	toolContext,
-}: SendRecordedParams): Promise<ToolResult> => {
-	// These words finish the sentence the previous ones began: the session gets it whole, joined as
-	// said, and the reducer replaces the first half with it.
-	const previous = toolContext.recentUtterances?.at(-1)?.trim();
-	const isContinuation =
-		input.continues === true && Boolean(previous) && words.source !== 'earlier';
-	const text = isContinuation ? `${previous} ${words.text}` : words.text;
-
-	log.info('words chosen', { ref, source: words.source, continues: isContinuation });
-
-	const result = await sendText({
-		state,
-		ref,
-		text,
-		kind: input.kind,
-		...(isContinuation ? { continues: { rest: words.text } } : {}),
-		toolContext,
-		isAboutMyNotes: input.my_notes === true,
-		isAboutLastAction: input.about_last_action === true,
-		...(isDeliverWish(input.deliver) ? { deliver: input.deliver } : {}),
-	});
-
-	// The voice log records what the session got, not what the model wrote (often nothing).
-	const { ref: _named, ...unaddressed } = input;
-	const recorded = name === 'forward' ? { ...unaddressed, text } : { ...input, text };
-
-	return { ...result, recordAs: { name, input: recorded } };
-};
-
 // "checkout api", never just "checkout": a word of a workspace's name is also a word of the work.
 const isWorkspaceSaidInFull = (ref: string, utterance: string): boolean => {
 	const plain = ` ${utterance
@@ -330,30 +286,13 @@ export const executeTool = async (
 
 	switch (name as ToolName) {
 		case 'forward': {
-			const target = toolContext.forwardTo;
-
-			if (!target || !state.sessions[target]) {
-				return fail('no session to forward to: use send_to with a ref');
-			}
-
 			const words = await chooseWordsFor({ state, input, toolContext });
 
 			if (!words.text) {
 				return fail('empty text');
 			}
 
-			const misroutedAnswer = await describeMisroutedAnswer({
-				state,
-				ref: target,
-				text: words.text,
-				judge: toolContext.judge,
-			});
-
-			if (misroutedAnswer) {
-				return fail(misroutedAnswer);
-			}
-
-			return sendRecorded({ state, ref: target, words, input, name: 'forward', toolContext });
+			return forwardChosen({ words, kind: input.kind, input, toolContext });
 		}
 
 		case 'ignore_words': {
@@ -467,6 +406,8 @@ export const executeTool = async (
 				return fail('empty instruction');
 			}
 
+			// A bare yes or no sent as words to a session waiting on a permission or plan answers it: the
+			// answer tool, before any question of where the words go.
 			const misroutedAnswer = await describeMisroutedAnswer({
 				state,
 				ref,
@@ -476,6 +417,18 @@ export const executeTool = async (
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
+			}
+
+			const guarded = await guardSendTo({ state, ref, words, toolContext });
+
+			if (guarded === 'screen') {
+				const { ref: _named, ...rest } = input;
+
+				return forwardChosen({ words, kind: input.kind, input: rest, toolContext });
+			}
+
+			if (guarded) {
+				return guarded;
 			}
 
 			if (
@@ -571,11 +524,6 @@ export const executeTool = async (
 			}
 
 			const reply = decideNotificationReply({ state, ref: checked.ref, toolContext });
-
-			if (reply.kind === 'refuse') {
-				return fail(reply.why);
-			}
-
 			const skipHeld = input.skip_held === true || reply.kind === 'stale_held';
 
 			toolContext.dispatch({
@@ -590,9 +538,6 @@ export const executeTool = async (
 					: `showing ${checked.ref}`,
 			);
 		}
-
-		case 'ask_target':
-			return askTarget({ state, input, toolContext });
 
 		case 'play_missed':
 			if (state.meanwhile.length === 0) {

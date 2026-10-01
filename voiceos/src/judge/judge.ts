@@ -1,6 +1,7 @@
 // One narrow question about what the developer's words mean, asked of a small model on its own: the
 // guards that stop the kernel acting on words it misread, in any language. Only a guard about to act
-// asks (an approval, a take-back, a mute, a change of listening, a stop, "For X?", a setup misroute),
+// asks (an approval, a take-back, a mute, a change of listening, a stop, words for a session not on
+// screen, "For X?", a setup misroute),
 // after the code's own language-neutral checks, so a plain forward costs nothing extra.
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../log.js';
@@ -67,6 +68,10 @@ const JUDGE_QUESTIONS = {
 	},
 	this_session: {
 		ask: 'Do these words refer to the session on screen with a word like "this" or "current" ("this session", "this one", "diese Sitzung", "ta seja"), rather than by a name?',
+		answers: ['yes', 'no'],
+	},
+	spoken_to: {
+		ask: 'Are these words spoken to the session named in the context — asking it for work or an answer, telling it something, or sending it something ("tell checkout to run the tests", "checkout, what broke?", "send this to checkout", "I meant that for checkout") — rather than only mentioning it? Its name as a branch, a place, a topic or an example inside words for someone else ("put it on top of the checkout branch", "do it like checkout does") is only a mention.',
 		answers: ['yes', 'no'],
 	},
 	more_than_start: {

@@ -406,7 +406,7 @@ describe('asks off screen', () => {
 		const empty = run([{ type: 'play_meanwhile' }], {
 			start: open(noneOpen, elsewhere).state,
 		}).effects;
-		expect(said(empty)).toEqual(['Meanwhile, store, main has a question.']);
+		expect(said(empty)).toEqual(['Meanwhile, store, main has a question. Switch there?']);
 		expect(empty[0]).not.toHaveProperty('toldAsks');
 	});
 

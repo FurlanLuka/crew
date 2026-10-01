@@ -1,5 +1,5 @@
 import { SWITCH_OFFERED_NOTE } from './announced.js';
-import { ASK_TARGET_NOTE } from './notification-reply.js';
+import { ASK_WHICH_NOTE } from './send-guard.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isShortEnoughToAnswer } from './send.js';
@@ -9,7 +9,6 @@ const SILENT_TOOLS: ToolName[] = [
 	'send_to',
 	'switch_view',
 	'go_back',
-	'ask_target',
 	'play_missed',
 	'start_session',
 	'ignore_words',
@@ -183,11 +182,11 @@ export const decideEnding = ({
 		return { kind: 'forward_utterance' };
 	}
 
-	// On a session's screen Voice OS says "Sent to X" itself (exchange.ts), and "Switch to X?" too.
+	// On a session's screen Voice OS says "Sent to X" itself (sends.ts), and "Switch to X?" too.
 	if (
 		isAnsweredByForward(turn.calls) ||
 		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
-		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE || call.note === ASK_TARGET_NOTE)
+		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE || call.note === ASK_WHICH_NOTE)
 	) {
 		return { kind: 'drop_reply' };
 	}

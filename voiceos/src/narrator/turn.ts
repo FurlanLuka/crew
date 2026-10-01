@@ -20,7 +20,6 @@ import {
 import { createLogger } from '../log.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { machineOf } from '../shared/machine-ref.js';
-import { readSubject } from '../state/exchange.js';
 
 const log = createLogger('narrator');
 
@@ -160,10 +159,8 @@ const speakOutcome = async ({
 	const text = narration.text;
 	const held = session.heldLine;
 	const isShown = isOnScreen(store.state, effect.ref);
-	const isSubject = readSubject(store.state, options.clock?.() ?? Date.now()) === effect.ref;
 	const decision = decideTurnLine({
 		isShown,
-		isSubject,
 		isShort: isShortLine(text),
 		isHeldAnnounced: held?.isAnnounced === true,
 		hasBackgroundAgents: effect.hasBackgroundAgents,
@@ -176,10 +173,10 @@ const speakOutcome = async ({
 			store.dispatch({ type: 'held_line_heard', ref: effect.ref, id: held.id });
 		}
 
-		// A subject's line is checked again as it plays: words for the screen meanwhile end the subject.
+		// A line said on screen is checked again as it plays: the developer may have left meanwhile.
 		options.say({
 			text,
-			isHoldable: isShown || isSubject,
+			isHoldable: isShown,
 			priority: effect.isOwed ? 'high' : narration.priority,
 			ref: effect.ref,
 			isNamed: true,

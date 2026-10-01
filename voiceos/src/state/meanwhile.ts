@@ -1,5 +1,11 @@
 // The waiting updates in state: the page counts them, "what did I miss?" and the quiet play them.
-import type { Input, MeanwhileItem, State, ToldAsk } from '../shared/protocol.js';
+import {
+	isSwitchOfferFresh,
+	type Input,
+	type MeanwhileItem,
+	type State,
+	type ToldAsk,
+} from '../shared/protocol.js';
 import {
 	describeMeanwhile,
 	listNamedItems,
@@ -8,7 +14,7 @@ import {
 } from '../speech/meanwhile.js';
 import { describeAskForMeanwhile } from './asks.js';
 import { readAnnouncedLabel } from './held-lines.js';
-import { sayRef, withoutEffects } from './helpers.js';
+import { readScreenRef, sayRef, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
 
 type MeanwhileAdded = Extract<Input, { type: 'meanwhile_added' }>;
@@ -90,9 +96,22 @@ const readSaidItems = (state: State, items: MeanwhileItem[]): SaidItem[] =>
 		return [{ ...item, phrase, ...(isTold ? { isTold: true as const } : {}) }];
 	});
 
-export const playMeanwhile = (state: State): ReducerResult => {
+interface IsSwitchOfferedParams {
+	state: State;
+	items: SaidItem[];
+	toldAsks: ToldAsk[];
+	at: number;
+}
+
+// One session's update, and nothing it asked in full: the line offers to go there, the way an
+// answer from that session now reaches the developer. Several sessions: which one would a yes mean?
+// A question said in full is answered where they are, and an offer still open is not asked over.
+const isSwitchOffered = ({ state, items, toldAsks, at }: IsSwitchOfferedParams): boolean =>
+	items.length === 1 && toldAsks.length === 0 && !isSwitchOfferFresh(state.switchOffer, at);
+
+export const playMeanwhile = (state: State, at: number): ReducerResult => {
 	// The session on screen says its own updates.
-	const screenRef = state.view.kind === 'session' ? state.view.ref : null;
+	const screenRef = readScreenRef(state);
 	const items = readSaidItems(
 		state,
 		state.meanwhile.filter((item) => item.ref !== screenRef),
@@ -111,19 +130,25 @@ export const playMeanwhile = (state: State): ReducerResult => {
 		item.isTold && item.askId ? [{ ref: item.ref, askId: item.askId }] : [],
 	);
 	const hasAsk = items.some((item) => item.askId !== undefined);
+	const offeredRef = isSwitchOffered({ state, items, toldAsks, at }) ? items[0]?.ref : undefined;
 
 	return {
-		state: { ...state, meanwhile: [] },
+		state: {
+			...state,
+			meanwhile: [],
+			...(offeredRef ? { switchOffer: { ref: offeredRef, at } } : {}),
+		},
 		effects: [
 			{
 				type: 'speak',
-				text,
+				text: offeredRef ? `${text} Switch there?` : text,
 				source: 'narrator',
 				priority: 'normal',
 				isOwed: true,
 				isUpdate: true,
 				refs: listNamedRefs(items),
 				...(toldAsks.length > 0 ? { toldAsks, isAsking: true } : {}),
+				...(offeredRef ? { ref: offeredRef, isAsking: true } : {}),
 				...(hasAsk ? { chime: 'needs' as const } : {}),
 			},
 		],

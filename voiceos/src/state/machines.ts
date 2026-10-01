@@ -1,4 +1,3 @@
-import { pruneExchange } from './exchange.js';
 import { pruneViewHistory } from './view-history.js';
 import { machineOf } from '../shared/machine-ref.js';
 import {
@@ -87,7 +86,6 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		devServers: Object.fromEntries(Object.entries(state.devServers).filter(([ref]) => isKept(ref))),
 		devStarting: state.devStarting.filter(isKept),
 		focus: state.focus && isKept(state.focus) ? state.focus : null,
-		exchange: pruneExchange(state.exchange, isKept),
 		meanwhile: state.meanwhile.filter((item) => isKept(item.ref)),
 		targetAsk:
 			state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)

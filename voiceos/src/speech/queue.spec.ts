@@ -76,11 +76,7 @@ describe('enqueue', () => {
 });
 
 describe('takeNextItem', () => {
-	const take = (
-		queue: ReturnType<typeof fillQueue>,
-		now: number,
-		exchangeRef: string | null = null,
-	) => takeNextItem(queue, { now, exchangeRef });
+	const take = (queue: ReturnType<typeof fillQueue>, now: number) => takeNextItem(queue, { now });
 
 	it('stale progress (>5 s) and stale completions (>2 min) are skipped', () => {
 		const queue = fillQueue(
@@ -96,34 +92,29 @@ describe('takeNextItem', () => {
 
 	it('empty → null', () => expect(take(createEmptyQueue(), 0).item).toBeNull());
 
-	it('the session the developer talks with, and the word that it got theirs, come before older lines', () => {
+	it("the word that the developer's words went somewhere comes before older lines", () => {
 		const queue = fillQueue(
 			createItem('older-high', 'high', 'signals/main', 1),
 			createItem('older-normal', 'normal', 'store/main', 2),
-			createItem('answer', 'normal', 'checkout/main', 3),
 			{ ...createItem('ack', 'normal', null, 4), isAck: true },
 		);
 		const order: string[] = [];
 		let rest = queue;
 
-		for (
-			let next = take(rest, 10, 'checkout/main');
-			next.item;
-			next = take(rest, 10, 'checkout/main')
-		) {
+		for (let next = take(rest, 10); next.item; next = take(rest, 10)) {
 			order.push(next.item.id);
 			rest = next.queue;
 		}
 
-		expect(order).toEqual(['answer', 'ack', 'older-high', 'older-normal']);
+		expect(order).toEqual(['ack', 'older-high', 'older-normal']);
 	});
 
-	it('an alert still goes first, before the exchange', () => {
+	it('an alert still goes first, before the ack', () => {
 		const queue = fillQueue(
-			createItem('answer', 'high', 'checkout/main', 1),
+			{ ...createItem('ack', 'normal', null, 1), isAck: true },
 			createItem('permission', 'alert', 'signals/main', 2),
 		);
-		expect(take(queue, 10, 'checkout/main').item?.id).toBe('permission');
+		expect(take(queue, 10).item?.id).toBe('permission');
 	});
 });
 

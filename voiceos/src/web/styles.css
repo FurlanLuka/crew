@@ -798,32 +798,6 @@ textarea:focus-visible {
 	color: var(--amber);
 	white-space: nowrap;
 }
-.talking-with {
-	display: inline-flex;
-	align-items: center;
-	border: 1px solid var(--violet);
-	border-radius: 100px;
-	color: var(--violet);
-	font-size: 10.5px;
-	white-space: nowrap;
-	overflow: hidden;
-}
-.talking-with button {
-	background: none;
-	border: 0;
-	color: inherit;
-	font: inherit;
-	padding: 3px 8px;
-}
-.talking-with-name {
-	padding-right: 4px;
-}
-.talking-with-clear {
-	border-left: 1px solid rgba(169, 155, 232, 0.35);
-}
-.talking-with button:hover {
-	background: rgba(169, 155, 232, 0.1);
-}
 .route.alarm {
 	color: var(--crit);
 	border-color: rgba(224, 108, 95, 0.4);
