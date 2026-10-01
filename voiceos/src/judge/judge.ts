@@ -78,6 +78,10 @@ const JUDGE_QUESTIONS = {
 		ask: 'The developer asked Voice OS to start (open, run, launch) a coding session. Besides starting it, do these words ask that session to do some work?',
 		answers: ['yes', 'no'],
 	},
+	session_work: {
+		ask: 'A coding session is on screen, and Voice OS can read its output. Are these words for the session itself — asking it to do work, or asking it about its work (its progress, status, code, tests, what it found) — rather than for Voice OS: telling the developer what the session said or asked ("what did it say?", "tell me what the session said"), which sessions, worktrees or machines exist, switching or opening one, listening, muting, or what Voice OS itself just did?',
+		answers: ['yes', 'no'],
+	},
 	target_answer: {
 		ask: 'Voice OS asked "For <another session>?": whether the developer\'s last words were meant for it. yes: only agrees (yes, ja, that one, or names the session asked about). no: only declines (no, nein, here, this one). other: anything that is not just a yes or a no — an instruction, a question, new words.',
 		answers: ['yes', 'no', 'other'],

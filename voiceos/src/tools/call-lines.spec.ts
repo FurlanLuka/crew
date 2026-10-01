@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { describeToolCall } from './call-lines.js';
+import { describeToolCall, isReadOnlyOfScreen } from './call-lines.js';
 
 describe('describeToolCall', () => {
 	it('read_notes → remembered as "read_notes"', () =>
@@ -20,5 +20,32 @@ describe('describeToolCall', () => {
 		expect(describeToolCall({ name: 'list_sessions', input: { machine: 'vm1' }, ok: true })).toBe(
 			'list_sessions',
 		);
+	});
+});
+
+describe('isReadOnlyOfScreen', () => {
+	const read = (ref: string | null, ok = true) => ({ name: 'read_state', input: { ref }, ok });
+
+	it.each([
+		['a read of the screen', [read('store-front/main')], 'store-front/main', true],
+		[
+			'two reads of the screen',
+			[read('store-front/main'), read('store-front/main')],
+			'store-front/main',
+			true,
+		],
+		['a read of another session', [read('checkout-api/main')], 'store-front/main', false],
+		['a read of every session', [read(null)], 'store-front/main', false],
+		['a read that failed', [read('store-front/main', false)], 'store-front/main', false],
+		[
+			'a read beside another call',
+			[read('store-front/main'), { name: 'list_sessions', input: {}, ok: true }],
+			'store-front/main',
+			false,
+		],
+		['no calls', [], 'store-front/main', false],
+		['no session screen', [read('store-front/main')], null, false],
+	] as const)('%s → %s', (_, calls, forwardTo, want) => {
+		expect(isReadOnlyOfScreen([...calls], forwardTo)).toBe(want);
 	});
 });

@@ -1,4 +1,5 @@
 import type { SpokenLine } from '../shared/protocol.js';
+import { endsInQuestion } from '../shared/spoken.js';
 
 // A line Voice OS asked aloud stays the likely target of a bare "yes" this long.
 export const ASKED_ALOUD_MS = 2 * 60_000;
@@ -42,6 +43,32 @@ export const findLastAskedAloud = ({
 	const [only, ...others] = askedRefsOf(line);
 
 	return others.length === 0 && only !== undefined ? { ...line, ref: only } : line;
+};
+
+interface FindVoiceOsQuestionParams {
+	spoken: SpokenLine[];
+	now: number;
+	heardFrom?: number;
+}
+
+// Voice OS's own question ("Did you mean the debug notes?"), when it is the last thing heard: a bare
+// "yes" then answers Voice OS, not the session on screen. Anything heard after it, a session's line
+// included, is what the words follow instead. Updates relaying sessions' asks are theirs, not this.
+export const findVoiceOsQuestion = ({
+	spoken,
+	now,
+	heardFrom = now,
+}: FindVoiceOsQuestionParams): SpokenLine | null => {
+	const last = spoken.filter((line) => line.at < heardFrom && !line.isUnplayed).at(-1);
+
+	return last &&
+		last.source === 'kernel' &&
+		!last.isUpdate &&
+		!last.toldAsks &&
+		now - last.at <= ASKED_ALOUD_MS &&
+		endsInQuestion(last.text)
+		? last
+		: null;
 };
 
 // What the developer heard shortly before they spoke: what "switch to it" and "what did it say?" mean.

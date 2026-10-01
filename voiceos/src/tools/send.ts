@@ -22,6 +22,7 @@ import { decideDelivery, type DeliverWish, joinNotes } from '../state/delivery.j
 import { GENERAL_NOTES, nameNotes, readWorkspace } from '../shared/notes.js';
 import { machineOf } from '../shared/machine-ref.js';
 import { refuseAnnouncedOnly } from './announced.js';
+import { findVoiceOsQuestion } from './asked-aloud.js';
 import { describeRecentAction } from './recent-action.js';
 
 const log = createLogger('tools');
@@ -406,6 +407,30 @@ export const sendText = async ({
 
 		return fail(
 			`That yes answers Voice OS's offer to fix ${ref}'s dev servers: call dev_offer, which says whether the offer still holds. Nothing was sent.`,
+		);
+	}
+
+	// A bare yes or no right after Voice OS asked something of its own ("Did you mean the debug notes?")
+	// answers Voice OS; the screen's session would get a stray "yes" (a session the words name is told
+	// on purpose). It comes after the offers above, which answer their own questions more precisely, and
+	// judges the words chosen to send, so an earlier question the kernel offered to pass on still goes.
+	const voiceOsQuestion = findVoiceOsQuestion({
+		spoken: state.spoken,
+		now: toolContext.now(),
+		heardFrom: saidAt,
+	});
+	const sessionAsked = session?.needsUser;
+
+	if (
+		voiceOsQuestion &&
+		ref === toolContext.forwardTo &&
+		!(sessionAsked && sessionAsked.at > voiceOsQuestion.at) &&
+		(await isBareAnswer(judge, text))
+	) {
+		log.info("a bare answer to Voice OS's own question: not sent", { ref });
+
+		return fail(
+			`"${text}" answers Voice OS's own question ("${voiceOsQuestion.text}"), not ${ref}: act on that answer yourself. Nothing was sent.`,
 		);
 	}
 

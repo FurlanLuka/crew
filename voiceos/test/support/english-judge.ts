@@ -34,6 +34,8 @@ const SETUP_ADDRESS_PATTERN =
 const SETUP_WORK_PATTERN =
 	/\b(?:worktrees?|workspaces?|projects?|bindings?|crew (?:fix|verify|check)|register)\b/i;
 const THIS_SESSION_PATTERN = /\b(?:this|the current) (?:session|one|claude)\b/i;
+const VOICE_OS_ITSELF_PATTERN =
+	/\b(?:switch|go) (?:to|back)\b|\b(?:open|activate|deactivate) (?:the )?(?:session|\S+\/\S+)\b|\b(?:machines?|worktrees?|listening|hands[\s-]?free|mute)\b|\bwhich sessions\b|\bwhat (?:did|has) (?:it|the session|you) (?:just )?(?:say|said)\b|\bwhat the session said\b|\brepeat\b/i;
 const BARE_NO_PATTERN = /^(?:no|nope|nah|not that one|here|stay|keep it here)\b/i;
 
 const bare = (text: string): string =>
@@ -157,6 +159,8 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 			return yesIf(isSpokenTo(said, context));
 		case 'more_than_start':
 			return yesIf(START_THEN_MORE_PATTERN.test(said.trim()));
+		case 'session_work':
+			return yesIf(!VOICE_OS_ITSELF_PATTERN.test(said));
 		case 'target_answer':
 			return BARE_NO_PATTERN.test(bare(said))
 				? 'no'

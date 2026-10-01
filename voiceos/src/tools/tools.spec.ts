@@ -1,6 +1,7 @@
 import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
 import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
+import type { SpokenLine } from '../shared/protocol.js';
 import type { NoteWords } from '../memory/notes.js';
 import { formatAge } from '../state/working.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
@@ -4377,5 +4378,129 @@ describe('read_state on the session on screen', () => {
 			'forward the words with kind question',
 		);
 		expect(JSON.parse(other.content).on_screen).toBeUndefined();
+	});
+});
+
+describe("a bare answer to Voice OS's own question", () => {
+	const ASKED: SpokenLine = {
+		id: 'q',
+		text: 'Did you mean the debug notes you just took?',
+		source: 'kernel',
+		at: 1_000,
+	};
+
+	const forward = async (text: string, patch: Partial<State> = {}) => {
+		const { tools, actions } = createToolContext({ spoken: [ASKED], ...patch });
+		const result = await executeTool(
+			'forward',
+			{ text },
+			{ ...tools, forwardTo: 'store-front/main', now: () => 5_000, heardFrom: 4_000 },
+		);
+
+		return { result, actions };
+	};
+
+	it('"Yes." → not forwarded: the kernel is told it answers Voice OS', async () => {
+		const { result, actions } = await forward('Yes.');
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain("answers Voice OS's own question");
+		expect(actions).toEqual([]);
+	});
+
+	it('a yes with work in it → forwarded', async () => {
+		const { result, actions } = await forward('Yes, and run the tests.');
+
+		expect(result.ok).toBe(true);
+		expect(actions).toHaveLength(1);
+	});
+
+	it('the session on screen asked since → its answer, forwarded', async () => {
+		const sessions = createToolContext().tools.getState().sessions;
+		const { result } = await forward('Yes.', {
+			sessions: {
+				...sessions,
+				'store-front/main': {
+					...sessions['store-front/main']!,
+					needsUser: { text: 'Push it?', at: 2_000 },
+				},
+			},
+		});
+
+		expect(result.ok).toBe(true);
+	});
+
+	it('the session on screen asked before Voice OS did → still refused', async () => {
+		const sessions = createToolContext().tools.getState().sessions;
+		const { result, actions } = await forward('Yes.', {
+			sessions: {
+				...sessions,
+				'store-front/main': {
+					...sessions['store-front/main']!,
+					needsUser: { text: 'Push it?', at: 500 },
+				},
+			},
+		});
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('a send_to naming no session, kept on the screen → refused the same way', async () => {
+		const { tools, actions } = createToolContext({ spoken: [ASKED] });
+		const result = await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', text: 'Yes.' },
+			{
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: 'Yes.',
+				now: () => 5_000,
+				heardFrom: 4_000,
+			},
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain("answers Voice OS's own question");
+		expect(actions).toEqual([]);
+	});
+
+	it('a fresh switch offer asked after it → "no" answers the offer, with its own instruction', async () => {
+		const { result } = await forward('No.', {
+			spoken: [
+				ASKED,
+				{ ...ASKED, id: 'offer', text: 'Sent to checkout. Switch there?', at: 3_000 },
+			],
+			switchOffer: { ref: 'checkout-api/main', at: 3_000 },
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain("answers Voice OS's question about checkout-api/main");
+	});
+
+	it('a session the words name → it gets the bare yes: told on purpose', async () => {
+		const { tools, actions } = createToolContext({ spoken: [ASKED] });
+		const result = await executeTool(
+			'send_to',
+			{ ref: 'store-front/wrk1', text: 'Yes.' },
+			{
+				...tools,
+				forwardTo: 'store-front/main',
+				utterance: 'Store front work one, yes.',
+				now: () => 5_000,
+				heardFrom: 4_000,
+			},
+		);
+
+		expect(result.ok).toBe(true);
+		expect(actions).toMatchObject([{ type: 'send', ref: 'store-front/wrk1' }]);
+	});
+
+	it('a statement of Voice OS, not a question → forwarded', async () => {
+		const { result } = await forward('Yes.', {
+			spoken: [{ ...ASKED, text: 'Debug note saved.' }],
+		});
+
+		expect(result.ok).toBe(true);
 	});
 });

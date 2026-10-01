@@ -179,6 +179,15 @@ export const isAskingBack = ({
 	);
 };
 
+// The turn only read the session on screen: whatever it said from that read was the session's work.
+export const isReadOnlyOfScreen = (
+	calls: ToolCall[],
+	forwardTo: string | null | undefined,
+): boolean =>
+	Boolean(forwardTo) &&
+	calls.length > 0 &&
+	calls.every((call) => call.ok && call.name === 'read_state' && call.input.ref === forwardTo);
+
 export type TurnEnding =
 	| { kind: 'forward_utterance' }
 	| { kind: 'drop_reply' }

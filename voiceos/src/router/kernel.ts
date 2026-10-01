@@ -14,7 +14,12 @@ import {
 import { formatAge } from '../state/working.js';
 import { createLogger } from '../log.js';
 import { executeTool, type ToolContext } from '../tools/tools.js';
-import { isSilentCall, describeToolCall, decideEnding } from '../tools/call-lines.js';
+import {
+	isSilentCall,
+	describeToolCall,
+	decideEnding,
+	isReadOnlyOfScreen,
+} from '../tools/call-lines.js';
 import {
 	listToolsFor,
 	MUTATING_TOOLS,
@@ -441,6 +446,28 @@ const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt', 'deactivate'];
 export const carriesWords = (name: string): boolean =>
 	MUTATING_TOOLS.includes(name as ToolName) && !WORDLESS_TOOLS.includes(name as ToolName);
 
+// The developer's words, as said, to the session on screen in place of the kernel's own reply.
+const forwardUtterance = async (
+	utterance: string,
+	toolContext: ToolContext,
+	calls: ToolCall[],
+): Promise<boolean> => {
+	const input = {
+		text: utterance,
+		kind: /\?\s*$/.test(utterance) ? 'question' : 'instruction',
+	};
+	const result = await executeTool('forward', input, toolContext);
+
+	calls.push({
+		name: 'forward',
+		input,
+		ok: result.ok,
+		...(result.note ? { note: result.note } : {}),
+	});
+
+	return result.ok;
+};
+
 export class Kernel {
 	private client: Anthropic;
 	private now: () => number;
@@ -641,19 +668,7 @@ export class Kernel {
 		switch (ending.kind) {
 			case 'forward_utterance': {
 				log.info('asked back on a session screen: forwarding instead', { reply });
-				const input = {
-					text: utterance,
-					kind: /\?\s*$/.test(utterance) ? 'question' : 'instruction',
-				};
-				const result = await executeTool('forward', input, toolContext);
-
-				calls.push({
-					name: 'forward',
-					input,
-					ok: result.ok,
-					...(result.note ? { note: result.note } : {}),
-				});
-				reply = result.ok ? '' : reply;
+				reply = (await forwardUtterance(utterance, toolContext, calls)) ? '' : reply;
 				break;
 			}
 			case 'drop_reply':
@@ -683,6 +698,17 @@ export class Kernel {
 			case 'keep':
 				reply = fixedReply ?? reply;
 				break;
+		}
+
+		// It only read the screen's session and answered for it: the session answers its own work.
+		if (
+			reply &&
+			fixedReply === null &&
+			isReadOnlyOfScreen(calls, forwardTo) &&
+			(await this.options.tools.judge({ key: 'session_work', utterance })) !== 'no'
+		) {
+			log.info('answered from a read of the screen session: forwarding instead');
+			reply = (await forwardUtterance(utterance, toolContext, calls)) ? '' : reply;
 		}
 
 		const did = calls.map(describeToolCall).filter((line): line is string => line !== null);

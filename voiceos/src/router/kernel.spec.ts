@@ -1,4 +1,5 @@
-import { englishJudge } from '../../test/support/english-judge.js';
+import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
+import type { Judge } from '../judge/judge.js';
 import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
@@ -62,6 +63,7 @@ type CreateKernelExtra = Pick<KernelOptions, 'now'> & {
 	// Changes the state as the reducer would, for a tool that reads what an earlier one did.
 	onDispatch?: (action: Action, state: State) => void;
 	mute?: () => void;
+	judge?: Judge;
 };
 
 const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
@@ -83,7 +85,7 @@ const createKernel = (script: Block[][], extra: CreateKernelExtra = {}) => {
 			readHistory: () => [],
 			mute: extra.mute ?? (() => {}),
 			saveDebugNote: () => {},
-			judge: englishJudge,
+			judge: extra.judge ?? englishJudge,
 			notes: createNullNotes(),
 		},
 		now: extra.now,
@@ -186,7 +188,7 @@ describe('Kernel', () => {
 
 	it('asked again with tools off → no tool choice but none', async () => {
 		const { kernel, fake } = createKernel([
-			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+			[createToolUse('t1', 'read_state', { ref: null })],
 			[],
 			[{ type: 'text', text: 'It is idle.' } as Block],
 		]);
@@ -392,6 +394,86 @@ describe('Kernel', () => {
 				ack: { kind: 'question' },
 			},
 		]);
+	});
+
+	it('answered from a read of the screen session → the words go to it instead, nothing spoken', async () => {
+		const { kernel, actions } = createKernel([
+			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+			[{ type: 'text', text: "It's still running the tests." } as Block],
+		]);
+
+		const result = await kernel.handle('Is it done?', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('');
+		expect(result.calls.map((call) => call.name)).toEqual(['read_state', 'forward']);
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: 'Is it done?', ack: { kind: 'question' } },
+		]);
+	});
+
+	it('answered from a read of the screen session, words for Voice OS itself → the reply is kept', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+				[{ type: 'text', text: 'It said the tests pass.' } as Block],
+			],
+			{ judge: judgeAlways('no') },
+		);
+
+		const result = await kernel.handle('Repeat what it said.', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('It said the tests pass.');
+		expect(actions).toEqual([]);
+	});
+
+	it('answered from a read of the screen session, the judge unsure → the words go to it: the safe side', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+				[{ type: 'text', text: "It's still running the tests." } as Block],
+			],
+			{ judge: judgeAlways('unclear') },
+		);
+
+		const result = await kernel.handle('Is it done?', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('');
+		expect(result.calls.map((call) => call.name)).toEqual(['read_state', 'forward']);
+		expect(actions).toHaveLength(1);
+	});
+
+	it('answered from a read of the screen session, but the words answer Voice OS → the reply is kept', async () => {
+		const { kernel, actions, state } = createKernel([
+			[createToolUse('t1', 'read_state', { ref: 'store-front/main' })],
+			[{ type: 'text', text: 'Yes, the notes.' } as Block],
+		]);
+		state.spoken.push({
+			id: 'asked',
+			text: 'Did you mean the debug notes?',
+			source: 'kernel',
+			at: Date.now() - 60_000,
+		});
+
+		const result = await kernel.handle('Yes.', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('Yes, the notes.');
+		expect(result.calls.at(-1)).toMatchObject({ name: 'forward', ok: false });
+		expect(actions).toEqual([]);
+	});
+
+	it('answered from a read of another session → the reply is kept, nothing asked of the judge', async () => {
+		const { kernel, actions } = createKernel(
+			[
+				[createToolUse('t1', 'read_state', { ref: 'checkout-api/main' })],
+				[{ type: 'text', text: 'Checkout is idle.' } as Block],
+			],
+			{ judge: judgeAlways('yes') },
+		);
+
+		const result = await kernel.handle('Is checkout done?', { forwardTo: 'store-front/main' });
+
+		expect(result.reply).toBe('Checkout is idle.');
+		expect(actions).toEqual([]);
 	});
 
 	it('a lapsed fix offer beside a send_to in the same response → the send_to never runs', async () => {

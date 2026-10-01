@@ -71,6 +71,8 @@ ends its turn. While the session is working:
 - Mention your own notes ("check my notes for the plan") and the session is told where they are.
 - If the words point at what Voice OS just did ("look at this debug note"), the session is told what
   that was.
+- A bare "yes" or "no" right after Voice OS asked something of its own ("Did you mean the debug
+  notes?") answers Voice OS, not the session: it is never forwarded.
 
 ### Send words to another session — `send_to`
 
@@ -93,6 +95,8 @@ are. A short answer is said at once, with the session's name; a longer one comes
   again, or switch there.
 - On Mission Control, crew setup work ("add a project", "create a worktree") goes to the setup
   session.
+- A bare "yes" or "no" right after Voice OS asked something of its own reaches a session only when
+  you name it ("checkout, yes"); unnamed, it answers Voice OS.
 
 ### Change words already queued — `queued_message`
 
@@ -242,6 +246,8 @@ asked, what waits on you, their latest lines) and answers in a sentence or two.
 
 **In practice:** this is for sessions you are not looking at. "Status" or "how far are you?" on a
 session's own screen goes to that session, because it knows its work better than any summary.
+Even when Voice OS reads that session first, the words still go to it, unless they are for Voice OS
+itself, such as "repeat what it said".
 
 ### Past turns — `read_history`
 

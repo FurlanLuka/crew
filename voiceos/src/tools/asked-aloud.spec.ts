@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import type { SpokenLine } from '../shared/protocol.js';
-import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from './asked-aloud.js';
+import {
+	ASKED_ALOUD_MS,
+	findLastAskedAloud,
+	findVoiceOsQuestion,
+	formatHeardBefore,
+	listHeardBefore,
+} from './asked-aloud.js';
 
 const line = (id: string, at: number, patch: Partial<SpokenLine> = {}): SpokenLine => ({
 	id,
@@ -102,4 +108,46 @@ describe('heard before the developer spoke', () => {
 		));
 
 	it('nothing heard → (nothing)', () => expect(formatHeardBefore([], 0)).toBe('(nothing)'));
+});
+
+describe('findVoiceOsQuestion', () => {
+	const asked = line('asked', 1000, {
+		source: 'kernel',
+		text: 'Did you mean the notes?',
+		ref: undefined,
+	});
+	const find = (spoken: SpokenLine[], now = 5000, heardFrom = 4000) =>
+		findVoiceOsQuestion({ spoken, now, heardFrom })?.id ?? null;
+
+	it('Voice OS asked last → that question', () => {
+		expect(find([line('earlier', 500), asked])).toBe('asked');
+	});
+
+	it('a session spoke after it → none: the words follow the session', () => {
+		expect(find([asked, line('session', 2000)])).toBeNull();
+	});
+
+	it('a statement of Voice OS → none', () => {
+		expect(find([{ ...asked, text: 'Debug note saved.' }])).toBeNull();
+	});
+
+	it('older than the window → none', () => {
+		expect(find([asked], 1000 + ASKED_ALOUD_MS + 1, 1000 + ASKED_ALOUD_MS)).toBeNull();
+	});
+
+	it('started after the developer began speaking → not heard, none', () => {
+		expect(find([asked], 5000, 900)).toBeNull();
+	});
+
+	it('an update relaying sessions → theirs, none', () => {
+		expect(find([{ ...asked, isUpdate: true }])).toBeNull();
+	});
+
+	it("a line relaying sessions' asks → theirs, none", () => {
+		expect(find([{ ...asked, toldAsks: [{ ref: 'store/main', askId: 'a1' }] }])).toBeNull();
+	});
+
+	it('a line nobody heard after it does not hide it', () => {
+		expect(find([asked, line('unplayed', 2000, { isUnplayed: true })])).toBe('asked');
+	});
 });
