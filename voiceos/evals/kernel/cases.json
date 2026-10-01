@@ -704,13 +704,10 @@
 					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
 				}
 			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main"
-				}
-			],
-			"forbid_calls": ["send_to", "forward"]
+			"calls": [],
+			"forbid_calls": ["send_to", "forward"],
+			"allow": [{ "name": "switch_view", "ref": "checkout-api/main" }, { "name": "read_state" }],
+			"note": "\"Tell me about that\" after the meanwhile line: switch there, or tell it from what was just heard — never words sent to a session."
 		},
 		{
 			"id": "what-did-i-miss",
