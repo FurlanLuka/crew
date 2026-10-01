@@ -513,6 +513,28 @@ export const executeTool = async (
 				return refused;
 			}
 
+			// Already on screen, so there is nothing to switch: words longer than a "go to X" were for the
+			// session. A worktree or machine mentioned in passing ("…I have to do it on my main machine",
+			// on crew main's screen) was read as a switch, and the words reached no one.
+			const said = toolContext.utterance;
+
+			if (
+				checked.ref === toolContext.forwardTo &&
+				said !== undefined &&
+				countSpokenWords(said) > GO_BACK_TO_WORDS
+			) {
+				log.info('a switch to the session on screen with more words: forwarded', {
+					ref: checked.ref,
+				});
+				const words = await chooseWordsFor({ state, input: {}, toolContext });
+
+				return forwardChosen({
+					words,
+					kind: /\?\s*$/.test(said) ? 'question' : 'instruction',
+					toolContext,
+				});
+			}
+
 			const reply = decideNotificationReply({ state, ref: checked.ref, toolContext });
 			const skipHeld = input.skip_held === true || reply.kind === 'stale_held';
 

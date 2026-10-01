@@ -1,3 +1,4 @@
+import { createToolContext } from '../../test/support/tool-context.js';
 import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
 import type { Action, Machine, State } from '../shared/protocol.js';
@@ -354,5 +355,44 @@ describe('what the kernel is offered', () => {
 			withMachines.find((tool) => tool.name === 'switch_view')?.input_schema.properties,
 		).toHaveProperty('machine');
 		expect(withMachines.filter((tool) => tool.name === 'switch_view')).toHaveLength(1);
+	});
+});
+
+describe('a switch to the session already on screen', () => {
+	const onCrewMain = (utterance: string) => {
+		const { tools, actions } = createToolContext();
+
+		return {
+			actions,
+			tools: {
+				...tools,
+				utterance,
+				forwardTo: 'store-front/main',
+				screen: 'store-front/main',
+			},
+		};
+	};
+
+	it('with a request in the words → they go to the session, nothing switched (a machine mentioned in passing)', async () => {
+		const said =
+			'Oh wait, can you give me commands to do it, because I have to do it on my main machine.';
+		const { tools, actions } = onCrewMain(said);
+
+		const result = await executeTool('switch_view', { ref: 'store-front/main' }, tools);
+
+		expect(actions).toEqual([
+			expect.objectContaining({ type: 'send', ref: 'store-front/main', text: said }),
+		]);
+		expect(result.recordAs?.name).toBe('forward');
+	});
+
+	it('a bare "go to store front main" → the switch, as before', async () => {
+		const { tools, actions } = onCrewMain('Go to store front main.');
+
+		await executeTool('switch_view', { ref: 'store-front/main' }, tools);
+
+		expect(actions).toEqual([
+			{ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } },
+		]);
 	});
 });
