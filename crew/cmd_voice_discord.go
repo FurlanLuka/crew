@@ -7,16 +7,23 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/voice"
+	"github.com/charmbracelet/x/term"
 )
 
 const discordUsage = "Usage: crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off"
 
-// discordSteps is what a first setup needs before crew can do anything.
+// discordSteps is what a first setup needs before crew can do anything; the
+// last step is how the token comes in, which depends on who is asking.
 const discordSteps = `Voice OS in Discord needs a bot of your own:
   1. A Discord server you own, with a voice channel (one named "Voice OS" is picked first).
   2. In the Discord Developer Portal (discord.com/developers/applications), create an app, open Bot, and copy its token (Reset Token).
   3. Invite the bot to your server: OAuth2 → URL Generator, scope bot, permissions View Channel, Connect, Speak.
-  4. Run crew voice discord setup and paste the token (or pipe it: pbpaste | crew voice discord setup).`
+`
+
+const (
+	discordStepPaste = "  4. Paste the bot token below."
+	discordStepRun   = "  4. Run crew voice discord setup and paste the token (or pipe it: pbpaste | crew voice discord setup)."
+)
 
 // voiceDiscord: crew voice discord setup|status|off.
 func voiceDiscord(args []string) {
@@ -67,6 +74,11 @@ func discordSetup(args []string) {
 	if saved != "" {
 		prompt = "Discord bot token (hidden as you paste; enter keeps the saved one): "
 	}
+	isTerminal := term.IsTerminal(os.Stdin.Fd())
+	// A first setup at a terminal: what to do in Discord comes before the question.
+	if saved == "" && isTerminal {
+		fmt.Fprintf(os.Stderr, "%s%s\n\n", discordSteps, discordStepPaste)
+	}
 	token, err := readSecret(prompt)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -74,7 +86,12 @@ func discordSetup(args []string) {
 	}
 	token, ok := chooseDiscordToken(token, saved)
 	if !ok {
-		fmt.Fprintln(os.Stderr, discordSteps)
+		// The steps are already on screen at a terminal; piped, they are the answer.
+		if isTerminal {
+			fmt.Fprintln(os.Stderr, "Error: no token pasted")
+		} else {
+			fmt.Fprintf(os.Stderr, "%s%s\n", discordSteps, discordStepRun)
+		}
 		os.Exit(1)
 	}
 
