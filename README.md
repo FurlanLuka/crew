@@ -142,6 +142,7 @@ skill, a `crew` agent and guided setup:
 
 - [Getting set up](docs/guides/getting-set-up.md) — a workspace, its projects, a second worktree
 - [Voice OS](docs/guides/voice-os.md) — a walkthrough from two repos to a working feature, and what you can say
+- [Voice OS commands](docs/guides/voice-os-commands.md) — every command the kernel knows, with things to say
 - [How crew works](docs/concepts.md) — projects, bindings, checks, failures, other devices, moving machines
 - [Commands](docs/commands.md) — every command and its output
 - [Running crew on a remote VM](docs/guides/remote-vm.md)

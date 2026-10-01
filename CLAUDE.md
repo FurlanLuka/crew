@@ -443,7 +443,10 @@ until the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
   generated from the same tree (`help.RenderMarkdown`; `TestCommandsDocIsCurrent` fails when it
   is stale — `UPDATE_DOCS=1 go test ./internal/help -run TestCommandsDocIsCurrent`). The guides
   (`docs/guides/`), `docs/concepts.md`, the README and the plugin files (`agents/crew.md`,
-  `skills/*/SKILL.md`) follow by hand.
+  `skills/*/SKILL.md`) follow by hand. A change to a Voice OS kernel tool
+  (`voiceos/src/tools/definitions.ts`: a new or renamed tool, new words that reach it, or what it
+  does) updates its section in `docs/guides/voice-os-commands.md` in the same change, examples
+  included; `voiceos/src/tools/definitions.spec.ts` fails when a tool has no section.
 - **Tab-separated output** for CLI list commands; `--json` everywhere via the global flag
   stripper (`extractFlag` stops at `--` so `crew run … -- child --json` keeps the child's flag).
 - **Bubbletea** for every interactive view; arrows/enter/esc; letters as accelerators.
