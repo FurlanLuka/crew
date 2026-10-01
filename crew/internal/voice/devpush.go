@@ -204,12 +204,15 @@ type MachineProgress struct {
 
 // DevPushStatus is ~/.crew/voiceos/dev-push.json on the main, written after every step.
 type DevPushStatus struct {
-	Version   string            `json:"version"`
-	Source    string            `json:"source"`
-	StartedAt time.Time         `json:"started_at"`
-	Phase     string            `json:"phase"`
-	Error     string            `json:"error,omitempty"`
-	Machines  []MachineProgress `json:"machines"`
+	Version   string    `json:"version"`
+	Source    string    `json:"source"`
+	StartedAt time.Time `json:"started_at"`
+	Phase     string    `json:"phase"`
+	// Read, never stored: its runner still runs (dev status sets it, so a remote can tell a
+	// push under way from one whose runner died).
+	Running  bool              `json:"running"`
+	Error    string            `json:"error,omitempty"`
+	Machines []MachineProgress `json:"machines"`
 }
 
 // IsFinished: done or failed, nothing more will happen. Pure.

@@ -1241,7 +1241,7 @@ crew voice dev status [--json]
 
 Output: `<version> from <source>: <phase> / <machine>\t<goos>_<goarch>\t<state>`
 
---json: {version,source,started_at,phase,error,machines:[{id,name,host,target,skipped,staged,installed,error}]}, or null before any push.
+--json: {version,source,started_at,phase,running,error,machines:[{id,name,host,target,skipped,staged,installed,error}]}, or null before any push.
 
 ```bash
 crew voice dev status

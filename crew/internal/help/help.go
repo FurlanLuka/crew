@@ -795,7 +795,7 @@ var Root = CommandInfo{
 							Description:  "The last push, read on the main (a remote asks it): its version, source, phase, and each machine — copied, restarted, skipped or failed with why.",
 							Usage:        "crew voice dev status [--json]",
 							OutputFormat: "<version> from <source>: <phase> / <machine>\\t<goos>_<goarch>\\t<state>",
-							Notes:        []string{"--json: {version,source,started_at,phase,error,machines:[{id,name,host,target,skipped,staged,installed,error}]}, or null before any push."},
+							Notes:        []string{"--json: {version,source,started_at,phase,running,error,machines:[{id,name,host,target,skipped,staged,installed,error}]}, or null before any push."},
 							Examples:     []string{"crew voice dev status", "crew voice dev status --json"},
 						},
 					},

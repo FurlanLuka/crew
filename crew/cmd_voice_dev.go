@@ -115,8 +115,14 @@ func remotePushRunning() error {
 	if err != nil || !reply.OK || reply.Value == nil || reply.Value.Code != 0 {
 		return mainRefusal("did not say whether a push runs", reply, err)
 	}
+	return pushRunningFrom(reply.Value.Stdout)
+}
+
+// pushRunningFrom reads the main's dev status --json: null is no push yet, and
+// one whose runner died is not running. Pure.
+func pushRunningFrom(stdout string) error {
 	var st *voice.DevPushStatus
-	if json.Unmarshal([]byte(reply.Value.Stdout), &st) == nil && st != nil && !st.IsFinished() {
+	if json.Unmarshal([]byte(stdout), &st) == nil && st != nil && st.Running {
 		return voice.ErrDevPushRunning
 	}
 	return nil
@@ -184,7 +190,7 @@ func voiceDevPush(dryRun bool) {
 	} else {
 		// The runner is this push's own crew for this machine: it knows _dev-push and stays put.
 		runner := filepath.Join(dir, voice.Target{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}.Dir(), "crew")
-		if err := voice.StartDevPush(version, voice.MainID, runner); err != nil {
+		if err := voice.StartDevPush(version, voice.MainID, runner, voice.MainCrewPath()); err != nil {
 			fail(err)
 		}
 	}
@@ -257,7 +263,7 @@ func voiceDevStatus() {
 		fmt.Print(voice.RenderDevPush(*st))
 		return
 	}
-	st, ok := voice.ReadDevPush()
+	st, ok := voice.ReadDevPushLive()
 	if jsonOutput {
 		if !ok {
 			printJSON(nil)
@@ -306,7 +312,7 @@ func voiceDevHandoff(args []string) {
 	// This crew took the handoff, so it knows _dev-push: it runs the push.
 	runner, err := exec.CrewBinary()
 	if err == nil {
-		err = voice.StartDevPush(h.version, h.source, runner)
+		err = voice.StartDevPush(h.version, h.source, runner, voice.MainCrewPath())
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -315,12 +321,12 @@ func voiceDevHandoff(args []string) {
 	fmt.Printf("Pushing %s from %s.\n", h.version, h.source)
 }
 
-// voiceDevRunner is the detached runner (crew voice _dev-push <version> <source>).
+// voiceDevRunner is the detached runner (crew voice _dev-push <version> <source> <main's crew path>).
 func voiceDevRunner(args []string) {
-	if len(args) != 2 {
+	if len(args) != 3 {
 		os.Exit(2)
 	}
-	if err := voice.RunDevPush(args[0], args[1]); err != nil {
+	if err := voice.RunDevPush(args[0], args[1], args[2]); err != nil {
 		os.Exit(1)
 	}
 }

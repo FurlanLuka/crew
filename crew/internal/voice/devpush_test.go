@@ -3,6 +3,8 @@ package voice
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	osexec "os/exec"
 
 	"encoding/json"
 	"errors"
@@ -234,7 +236,7 @@ func TestRunDevPushFromTheMain(t *testing.T) {
 	f := &fakePush{files: map[string][]byte{}}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID); err != nil {
+	if err := RunDevPush("dev-abc", MainID, "/usr/local/bin/crew"); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := ReadDevPush()
@@ -262,6 +264,9 @@ func TestRunDevPushFromTheMain(t *testing.T) {
 	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", "main"}) {
 		t.Errorf("install order %v", got)
 	}
+	if !strings.Contains(f.scriptOn("main", installMarker), "C='/usr/local/bin/crew'") {
+		t.Error("the main installs crew where the push found it")
+	}
 	if !strings.HasSuffix(f.scriptOn("vm1", installMarker), `"$C" voice remote`) ||
 		!strings.HasSuffix(f.scriptOn("main", installMarker), `"$C" voice _restart`) {
 		t.Error("a remote restarts its daemon, the main its cockpit")
@@ -273,7 +278,7 @@ func TestRunDevPushDamagedCopyInstallsNothing(t *testing.T) {
 	f := &fakePush{files: map[string][]byte{}, damage: "vm1"}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID); err == nil {
+	if err := RunDevPush("dev-abc", MainID, "/usr/local/bin/crew"); err == nil {
 		t.Fatal("want a failure")
 	}
 	st, _ := ReadDevPush()
@@ -288,9 +293,11 @@ func TestRunDevPushDamagedCopyInstallsNothing(t *testing.T) {
 	if got := f.installs(); len(got) != 0 {
 		t.Errorf("installed after a failed copy: %v", got)
 	}
-	// What the main had staged is removed again.
-	if f.scriptOn("main", "rm -rf \"$HOME\"/'"+StagedDir("dev-abc")+"'") == "" {
-		t.Errorf("the main's staged build was left behind: %v", f.ran)
+	// What the main had staged, and vm1's damaged copy, are removed again.
+	for _, host := range []string{"main", "vm1"} {
+		if f.scriptOn(host, "rm -rf \"$HOME\"/'"+StagedDir("dev-abc")+"'") == "" {
+			t.Errorf("%s's staged build was left behind: %v", host, f.ran)
+		}
 	}
 }
 
@@ -300,7 +307,7 @@ func TestStartDevPushRunnerThatFailsToStart(t *testing.T) {
 	t.Cleanup(func() { startRunner = saved })
 	startRunner = func(dir, command string) error { return errors.New("no server running") }
 
-	if err := StartDevPush("dev-abc", MainID, "/tmp/crew"); err == nil {
+	if err := StartDevPush("dev-abc", MainID, "/tmp/crew", "/usr/local/bin/crew"); err == nil {
 		t.Fatal("want an error")
 	}
 	if st, _ := ReadDevPush(); st.Phase != PhaseFailed || st.Error != "the runner did not start: no server running" {
@@ -315,10 +322,10 @@ func TestStartDevPushRunsTheRunnerItIsGiven(t *testing.T) {
 	var ran string
 	startRunner = func(dir, command string) error { ran = command; return nil }
 
-	if err := StartDevPush("dev-abc", "personal", "/opt/crew"); err != nil {
+	if err := StartDevPush("dev-abc", "personal", "/opt/crew", "/usr/local/bin/crew"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(ran, "'/opt/crew' voice _dev-push 'dev-abc' 'personal'") {
+	if !strings.HasSuffix(ran, "'/opt/crew' voice _dev-push 'dev-abc' 'personal' '/usr/local/bin/crew'") {
 		t.Errorf("ran %q", ran)
 	}
 }
@@ -328,7 +335,7 @@ func TestRunDevPushOneInstallFailsTheRestFinish(t *testing.T) {
 	f := &fakePush{files: map[string][]byte{}, failInstall: "vm1"}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID); err == nil {
+	if err := RunDevPush("dev-abc", MainID, "/usr/local/bin/crew"); err == nil {
 		t.Fatal("want a failure")
 	}
 	st, _ := ReadDevPush()
@@ -352,7 +359,7 @@ func TestRunDevPushOutOfReachIsSkipped(t *testing.T) {
 	f := &fakePush{files: map[string][]byte{}, down: map[string]bool{"vm1": true}}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID); err != nil {
+	if err := RunDevPush("dev-abc", MainID, "/usr/local/bin/crew"); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := ReadDevPush()
@@ -373,11 +380,14 @@ func TestRunDevPushFromARemoteFetchesItsBuildAndRestartsItLast(t *testing.T) {
 		return nil
 	}
 
-	if err := RunDevPush(version, "personal"); err != nil {
+	if err := RunDevPush(version, "personal", "/usr/local/bin/crew"); err != nil {
 		t.Fatal(err)
 	}
 	if fetched != "personal:.crew/dev-push/"+version {
 		t.Errorf("fetched %q", fetched)
+	}
+	if f.scriptOn("personal", "rm -rf \"$HOME\"/'.crew/dev-push/"+version+"'") == "" {
+		t.Errorf("the source's own build was left behind: %v", f.ran)
 	}
 	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", MainID, "personal"}) {
 		t.Errorf("install order %v", got)
@@ -394,7 +404,7 @@ func TestRunDevPushASkippedSourceIsNeverInstalledOn(t *testing.T) {
 		return nil
 	}
 
-	if err := RunDevPush(version, "personal"); err != nil {
+	if err := RunDevPush(version, "personal", "/usr/local/bin/crew"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", MainID}) {
@@ -450,5 +460,28 @@ func TestRenderDevPush(t *testing.T) {
 		"GPU\tlinux_arm64\twaiting\n"
 	if got := RenderDevPush(st); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestStartDevPushLosingTheRaceLeavesTheRunningStatus(t *testing.T) {
+	if _, err := osexec.LookPath("tmux"); err != nil {
+		t.Skip("no tmux")
+	}
+	setupPush(t, "dev-abc")
+	saved := DevPushSession
+	DevPushSession = fmt.Sprintf("crew-voice-push-test-%d", os.Getpid())
+	t.Cleanup(func() {
+		osexec.Command("tmux", "kill-session", "-t", "="+DevPushSession).Run()
+		DevPushSession = saved
+	})
+	if out, err := osexec.Command("tmux", "new-session", "-d", "-s", DevPushSession, "sleep 30").CombinedOutput(); err != nil {
+		t.Fatalf("tmux: %s", out)
+	}
+	// The first push's runner is up, but has not written its own status yet.
+	if err := StartDevPush("dev-def", MainID, "/tmp/crew", "/usr/local/bin/crew"); err != ErrDevPushRunning {
+		t.Fatalf("got %v", err)
+	}
+	if _, ok := ReadDevPush(); ok {
+		t.Error("the losing push wrote a status over the running one")
 	}
 }
