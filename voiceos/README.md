@@ -355,6 +355,16 @@ own eval over its questions in four languages (`evals/judge/cases.json`, a few c
 bun evals/judge.ts --only=approves,take_back
 ```
 
+The route suite is separate and never part of `all`: it measures only where words go on a session's
+screen (for the session, or a Voice OS command), scoring today's kernel against a narrow classifier
+on the 297 cases in `evals/route/cases.json`, plus the developer's own speech cases when
+`~/.crew/voiceos/evals/route-speech.json` exists (real work, so never in the repo). Run it only for
+that question; it prints its own cost, and has no baseline:
+
+```bash
+bun evals/run.ts route --system=both     # repo cases: kernel ~$0.85, classifier ~$0.20; with ~390 speech cases ~$2.40
+```
+
 Speech fixtures:
 
 ```bash

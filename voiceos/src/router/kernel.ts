@@ -130,7 +130,7 @@ export const readAskedBack = ({
 	return isAskedBack ? { askedBack: last.utterance } : {};
 };
 
-const recallVoiceEntries = (state: State, screen: Screen, now: number): VoiceEntry[] => {
+export const recallVoiceEntries = (state: State, screen: Screen, now: number): VoiceEntry[] => {
 	return (state.voiceLog[screen ?? GRID] ?? []).filter((entry) => isRemembered(entry, now));
 };
 

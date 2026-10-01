@@ -359,24 +359,28 @@ describe('what the kernel is offered', () => {
 });
 
 describe('a switch to the session already on screen', () => {
-	const onCrewMain = (utterance: string) => {
+	const onStoreFront = (utterance?: string) => {
 		const { tools, actions } = createToolContext();
 
 		return {
 			actions,
 			tools: {
 				...tools,
-				utterance,
+				...(utterance === undefined ? {} : { utterance }),
 				forwardTo: 'store-front/main',
 				screen: 'store-front/main',
 			},
 		};
 	};
 
+	const SWITCHED: Action[] = [
+		{ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } },
+	];
+
 	it('with a request in the words → they go to the session, nothing switched (a machine mentioned in passing)', async () => {
 		const said =
 			'Oh wait, can you give me commands to do it, because I have to do it on my main machine.';
-		const { tools, actions } = onCrewMain(said);
+		const { tools, actions } = onStoreFront(said);
 
 		const result = await executeTool('switch_view', { ref: 'store-front/main' }, tools);
 
@@ -386,13 +390,60 @@ describe('a switch to the session already on screen', () => {
 		expect(result.recordAs?.name).toBe('forward');
 	});
 
-	it('a bare "go to store front main" → the switch, as before', async () => {
-		const { tools, actions } = onCrewMain('Go to store front main.');
+	it('words ending in a question → sent as a question', async () => {
+		const said = 'Wait, which machine do I have to run those commands on, the main one?';
+		const { tools, actions } = onStoreFront(said);
 
 		await executeTool('switch_view', { ref: 'store-front/main' }, tools);
 
+		expect(actions[0]).toMatchObject({ type: 'send', ack: { kind: 'question' } });
+	});
+
+	// GO_BACK_TO_WORDS (8) is the line: up to it the words are a "go to X"; past it, a request. A
+	// polite nine-word "go to" on its own screen reaches the session — rare, and harmless there.
+	it.each([
+		['eight words → the switch', 'Take me back to store front main now.', SWITCHED],
+		[
+			'nine words → the session',
+			'Take me back to store front main right now.',
+			[expect.objectContaining({ type: 'send', ref: 'store-front/main' })] as Action[],
+		],
+	])('%s', async (_, said, want) => {
+		const { tools, actions } = onStoreFront(said);
+
+		await executeTool('switch_view', { ref: 'store-front/main' }, tools);
+
+		expect(actions).toEqual(want);
+	});
+
+	it('a bare "go to store front main" → the switch, as before', async () => {
+		const { tools, actions } = onStoreFront('Go to store front main.');
+
+		await executeTool('switch_view', { ref: 'store-front/main' }, tools);
+
+		expect(actions).toEqual(SWITCHED);
+	});
+
+	it('no words to read (a click, an eval with none) → the switch', async () => {
+		const { tools, actions } = onStoreFront();
+
+		await executeTool('switch_view', { ref: 'store-front/main' }, tools);
+
+		expect(actions).toEqual(SWITCHED);
+	});
+
+	it('a long request to switch to ANOTHER session → still the switch', async () => {
+		const { tools, actions } = onStoreFront(
+			'Okay, I think we are done here for now, can you switch me over to checkout api main please?',
+		);
+
+		await executeTool('switch_view', { ref: 'checkout-api/main' }, tools);
+
 		expect(actions).toEqual([
-			{ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } },
+			expect.objectContaining({
+				type: 'switch_view',
+				view: { kind: 'session', ref: 'checkout-api/main' },
+			}),
 		]);
 	});
 });

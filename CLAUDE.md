@@ -290,7 +290,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   conversations (real store, kernel with a scripted model, router, voice) for the tests. Its keys
   live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
   at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
-  else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked.
+  else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked —
+  the `voiceos-evals` project skill (`.claude/skills/voiceos-evals/`) has the suites, commands,
+  costs and rules; the `route` suite is classification-only and never part of `all`.
   **Any language:** a guard that reads what the developer means asks the judge
   (`voiceos/src/judge/`, one narrow Haiku question, `unclear` on timeout = the safe side), never an
   English regex; the speech layer (stop words, "end of turn", the wake word) stays English.

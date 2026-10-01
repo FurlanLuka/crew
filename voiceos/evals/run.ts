@@ -1,4 +1,4 @@
-// Prompt evals. `bun evals/run.ts [narrator|kernel|all] [--only=id,id] [--narrator-model=id] [--kernel-model=id] [--update-baseline]`.
+// Prompt evals. `bun evals/run.ts [narrator|kernel|all|route] [--only=id,id] [--system=kernel|classifier|both] [--narrator-model=id] [--kernel-model=id] [--update-baseline]`.
 // Every run bills the Anthropic key: iterate with --only (no scores, no baseline), full suite before review.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -182,6 +182,56 @@ if (suite === 'kernel' || suite === 'all') {
 	}
 
 	checkScore('kernel', kernelEval.score);
+}
+
+// The route decision on a session's screen, by today's kernel and by a narrow classifier: a measurement,
+// not a gate — it never fails the run, and its scores never reach the baseline.
+if (suite === 'route') {
+	const { costOf, emptyUsage, parseRouteSystems, runRouteEval, scoreRoute } = await import(
+		'./route.js'
+	);
+	const systems = parseRouteSystems(
+		process.argv.find((arg) => arg.startsWith('--system='))?.slice('--system='.length),
+	);
+
+	// Its cost line prices Haiku, and it has no baseline: refuse what would mislead.
+	if (kernelModel || narratorModel || process.argv.includes('--update-baseline')) {
+		throw new Error(
+			'route runs the live models and has no baseline: drop --kernel-model, --narrator-model, --update-baseline',
+		);
+	}
+
+	for (const system of systems) {
+		const usage = emptyUsage();
+		const rows = await runRouteEval({ apiKey, evalsDir, system, onlyIds, usage });
+		const score = scoreRoute(rows);
+		results[`route-${system}`] = { score, rows };
+		console.log(
+			`route ${system} usage: ${usage.calls} API calls · ${usage.input} in · ${usage.cacheRead} cache read · ${usage.cacheWrite} cache write · ${usage.output} out ≈ $${costOf(usage).toFixed(3)} (${rows.length} cases, $${(costOf(usage) / Math.max(1, rows.length)).toFixed(4)} each)`,
+		);
+		console.log(
+			`route ${system}: accuracy ${score.accuracy.toFixed(3)} (n=${score.n}) · leaked ${score.leaked} · swallowed ${score.swallowed} · unclear ${score.unclear} · ${score.medianMs} ms median, ${score.p90Ms} ms p90${score.infraErrors ? ` · ${score.infraErrors} API failures` : ''}`,
+		);
+
+		// The kernel prompt was tuned on its own cases: the speech and pairs splits are the honest ones.
+		for (const source of ['kernel', 'pairs', 'speech'] as const) {
+			const split = scoreRoute(rows.filter((row) => row.source === source));
+
+			if (split.n > 0) {
+				console.log(
+					`  ${source}: ${split.accuracy.toFixed(3)} (n=${split.n}) · leaked ${split.leaked} · swallowed ${split.swallowed} · unclear ${split.unclear}`,
+				);
+			}
+		}
+
+		for (const row of rows.filter(
+			(candidate) => candidate.decision !== null && candidate.decision !== candidate.label,
+		)) {
+			console.log(
+				`  ✗ ${row.id}: ${row.label} → ${row.decision}${row.calls.length ? ` (${row.calls.join(', ')})` : ''}`,
+			);
+		}
+	}
 }
 
 mkdirSync(join(evalsDir, 'results'), { recursive: true });

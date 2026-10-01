@@ -1,0 +1,4118 @@
+{
+	"note": "On a session's screen, are the words for that session (session) or a command for Voice OS (voiceos)? Sources here: kernel (kernel/cases.json cases with a view, labelled from their expected calls; pending asks left out), pairs (authored look-alikes, German and Slovenian). The developer's own speech cases live outside the repo (~/.crew/voiceos/evals/route-speech.json, or VOICEOS_ROUTE_SPEECH) and are added when present. bun evals/run.ts route [--system=kernel|classifier|both].",
+	"cases": [
+		{
+			"id": "k-home",
+			"utterance": "Hey voice OS, go back to all sessions.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-relay-question",
+			"utterance": "Ask the locale session whether the German strings are done.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-why-slow",
+			"utterance": "Why is this so slow?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-run-tests",
+			"utterance": "Run the tests again.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-question",
+			"utterance": "What does the retry function actually do?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-reply",
+			"utterance": "Yes, but use the table instead of the column.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-revert",
+			"utterance": "Hmm, I don't like that. Revert the last change.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-open-other",
+			"utterance": "Can we open the checkout session?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-back",
+			"utterance": "Take me back to mission control.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-start-other-quoted",
+			"utterance": "\"Can you start the checkout api session?\"",
+			"context": {
+				"view": "store-front/main",
+				"inactive": ["checkout-api/main"],
+				"stopped": ["checkout-api/main"]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-quoted-example-forwarded-whole",
+			"utterance": "Um, okay. So what happens now? For example, if I ask you to, uh, \"Can you start the checkout api session?\"",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["checkout-api/main"]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-start-other",
+			"utterance": "Start store front work one.",
+			"context": {
+				"view": "store-front/main",
+				"inactive": ["store-front/wrk1"],
+				"stopped": ["store-front/wrk1"]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-switch-topic",
+			"utterance": "Switch to the checkout retry one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-delegate-other",
+			"utterance": "Tell checkout to deploy the fix to staging.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-multi-sentence",
+			"utterance": "Okay, the retry works but it's too aggressive. Cap it at three attempts and log each one. Then run the tests again.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-setup",
+			"utterance": "Why is this so slow?",
+			"context": {
+				"view": "setup"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-dev-start",
+			"utterance": "Can you start the dev servers here?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-dev-restart",
+			"utterance": "Restart the dev servers.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-in-session-polite-switch",
+			"utterance": "Could you switch to the checkout one please?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-relay-check-logs",
+			"utterance": "Can you ask it to check the logs?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-switch-then-request",
+			"utterance": "Switch to checkout api main and tell it to run the migrations on staging.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-switch-to-it-after-heard",
+			"utterance": "Switch to it.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "Yes, all 214 tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 12,
+						"endedSecondsAgo": 9
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-go-back-previous-session",
+			"utterance": "Previous session, please.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-notif-ambiguous-asks",
+			"utterance": "Okay, can you do a deep review of all of this?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "checkout api, main is done: the retry backoff.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 6,
+						"endedSecondsAgo": 3,
+						"update": true
+					}
+				],
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-notif-general-question",
+			"utterance": "Tell me about that.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 4,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes. Switch there?"
+				},
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-what-did-i-miss",
+			"utterance": "What did I miss?",
+			"context": {
+				"view": "store-front/main",
+				"meanwhile": [
+					{
+						"ref": "checkout-api/main",
+						"kind": "done",
+						"about": "the retry backoff"
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-meant-for-another-session-de",
+			"utterance": "Äh, sorry, das war für store front main gemeint.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+						"reply": "",
+						"did": [
+							"forward \"After commit, can you just directly rebuild and restart so we can have it right away?\""
+						]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-meant-for-another-session-sl",
+			"utterance": "Oprosti, to je bilo za store front main.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+						"reply": "",
+						"did": [
+							"forward \"After commit, can you just directly rebuild and restart so we can have it right away?\""
+						]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-quiet-de",
+			"utterance": "Sei still.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-quiet-sl",
+			"utterance": "Tiho.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-quiet-mixed-not-only",
+			"utterance": "Mute that and tell it to run the linter.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-stop-listening-de",
+			"utterance": "Hör auf zuzuhören.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-aside-by-the-way-de",
+			"utterance": "Übrigens, auf welchem Branch bist du?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-relay-negation",
+			"utterance": "Tell it not to touch the migrations.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-relay-number",
+			"utterance": "Only rerun the second test.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-relay-reaction",
+			"utterance": "Ask it why the heck that's still failing.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-no-repeat-after-restart",
+			"utterance": "Okay, also start the session.",
+			"context": {
+				"view": "store-front/main",
+				"inactive": ["store-front/main"],
+				"stopped": ["store-front/main"],
+				"voiceLog": [
+					{
+						"utterance": "Restart the dev servers?",
+						"reply": "",
+						"did": ["crew_dev restart store-front/main"]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-dev-failure-to-session",
+			"utterance": "Why were they failing before? Could you check logs?",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-filler-then-start",
+			"utterance": "Hmm, let's start this.",
+			"context": {
+				"view": "store-front/wrk1",
+				"inactive": ["store-front/wrk1"],
+				"stopped": ["store-front/wrk1"]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-end-this-session",
+			"utterance": "And end this session.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-stop-named-not-this",
+			"utterance": "Stop the checkout one, not this one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-stopped-session-forward",
+			"utterance": "Can you ask it to list the files in the source folder, one line each?",
+			"context": {
+				"view": "store-front/main",
+				"stopped": ["store-front/main"]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-ask-with-question-tool",
+			"utterance": "Ask me with the question tool whether to sort them by size or by name.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-fp-show-everything",
+			"utterance": "Show me everything.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-fp-go-back",
+			"utterance": "Go back.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-fp-end-named",
+			"utterance": "End checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-turn-question-yes-screen",
+			"utterance": "Yes.",
+			"context": {
+				"view": "checkout-api/main",
+				"needs": "checkout-api/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-pr-yes-let-me-know",
+			"utterance": "Yes, please. Let me know when you're done.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"said": "Should I start reviewing both PRs now?",
+				"asked": "store front, work one asks: should I start reviewing both PRs now?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-allow-denied",
+			"utterance": "Allow it.",
+			"context": {
+				"view": "store-front/main",
+				"denied": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-stop-busy",
+			"utterance": "Stop.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-wait-busy",
+			"utterance": "Wait.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-quiet",
+			"utterance": "Quiet.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-addressed-other-screen",
+			"utterance": "Checkout, run the tests.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-voiceos-open-on-screen",
+			"utterance": "Voice OS, open checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-check-on-it",
+			"utterance": "Check on it.",
+			"context": {
+				"view": "store-front/wrk1",
+				"work": [
+					{
+						"ref": "setup",
+						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
+						"minutesAgo": 4
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "What's the setup status?",
+						"reply": "Voice OS is still setting up wrk3, four minutes in.",
+						"did": []
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-heard-stop",
+			"utterance": "Stop.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add a retry to the payment client.",
+						"minutesAgo": 1
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-heard-dictation",
+			"utterance": "Add a retry with exponential backoff to the payment client, then run the tests.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-last-thing-done-forward",
+			"utterance": "Okay, what is the last thing we've done?",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-rebuild-after-asked-once",
+			"utterance": "Okay. Okay, you re- can you, uh, rebuild and restart?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "rebuild so you can try it live?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-question-form",
+			"utterance": "Can we use proxy, um, proxy pair?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-no-use",
+			"utterance": "No, use proxy pair.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-queued-now-not-interrupt",
+			"utterance": "Why are you queuing it after the current work? I want it right now.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3,
+						"queued": ["Use proxy pair."]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-take-back-queued",
+			"utterance": "No, don't queue it. Add it to debug notes, don't put it to the session.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3,
+						"queued": ["Add this to notes too, like the debug note."]
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Add this to notes too, like the debug note?",
+						"reply": "",
+						"did": ["forward \"Add this to notes too, like the debug note.\""]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-note-addendum",
+			"utterance": "Because I was checked out on the other screen and I thought it would smartly detect it. Add this to notes too, like the debug note?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-note-addendum",
+			"utterance": "Oh, and also with a different voice for each one.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the notes feature",
+						"minutesAgo": 3
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Note: try a different tone per session.",
+						"reply": "Noted.",
+						"did": ["note \"try a different tone per session\""]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-reply-to-earlier-line-elsewhere",
+			"utterance": "Okay, but if it's doable without a schema change, what does that mean? Would the checkout keep its old tables?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "It's doable without a schema change: the checkout reads both formats for a release.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 12
+					},
+					{
+						"text": "Plan approved; building the notes now.",
+						"ref": "store-front/main",
+						"secondsAgo": 8,
+						"endedSecondsAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-unrelated-words-stay-on-screen",
+			"utterance": "Run the tests.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "It's doable without a schema change: the checkout reads both formats for a release.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 12
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-meant-for-another-session",
+			"utterance": "Um, sorry, I meant this for store front main.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "After commit, can you just directly rebuild and restart so we can have it right away?",
+						"reply": "",
+						"did": [
+							"forward \"After commit, can you just directly rebuild and restart so we can have it right away?\""
+						]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-notes-check-forwarded",
+			"utterance": "Um, can you check all the latest debug notes and figure out what's wrong?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-note-about-voice-os-is-debug",
+			"utterance": "Add a note that when the plan is added for approval, I also get double TTS.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-note-own-idea",
+			"utterance": "Note: try a different tone per session.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-note-read-back",
+			"utterance": "What are my notes?",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-note-work-from-notes",
+			"utterance": "Go through my notes and pick one to build next.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-note-that-asks-for-work",
+			"utterance": "Note that the API changed, update the client.",
+			"context": {
+				"view": "store-front/wrk1"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-note-on-session",
+			"utterance": "Debug note, it asked me to confirm three times.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"said": "Should I start reviewing both PRs now?"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-switch-back-by-task",
+			"utterance": "Can you switch back to where we're doing data analysis?",
+			"context": {
+				"view": "setup",
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Pull some of the data and run an analysis on all of it.",
+						"minutesAgo": 7
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-switch-back-by-task-idle",
+			"utterance": "Take me back to the data analysis.",
+			"context": {
+				"view": "checkout-api/main",
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Pull some of the data and run an analysis on all of it.",
+						"minutesAgo": 12,
+						"idle": true,
+						"said": "Here is the analysis: order volume is up 12% week over week, driven by the new locales."
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-reply-names-to-asked",
+			"utterance": "Um, S for B, and Mara.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"asked": "store front, work one asks: who should review the PR?",
+				"said": "The PR is ready: 14 files changed, tests pass. Who should review it?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-reply-one-name-to-asked",
+			"utterance": "Mara.",
+			"context": {
+				"view": "store-front/wrk1",
+				"needs": "store-front/wrk1",
+				"asked": "store front, work one asks: who should review the PR?",
+				"said": "The PR is ready: 14 files changed, tests pass. Who should review it?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-remember-what-next",
+			"utterance": "Okay, great. Do you remember what we said we'll do next here?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-check-transcripts-report",
+			"utterance": "So can you maybe check the transcripts for the chat and let me know?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-brainstorm-skill-kept",
+			"utterance": "Okay, um, could we brainstorm a bit? Maybe let's use proxy brainstorm.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-where-is-code",
+			"utterance": "Um, where is the other code at? Which branch?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-question-not-answer-to-asked",
+			"utterance": "Okay, so if we push, it won't expose the API keys?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "squash the history before pushing?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-what-did-it-say",
+			"utterance": "Okay, so can you tell me what the session said?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Why is the checkout test flaky?",
+						"minutesAgo": 2,
+						"idle": true,
+						"said": "The checkout test is flaky because two tests share one cart fixture, and the second one changes it while the first is still reading. I gave each test its own fixture and ran the suite 20 times, all green. I'd also drop the retry wrapper we added last week: it only hid this. The fix is on the branch, not pushed."
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-tell-me-more-about-x",
+			"utterance": "Tell me more about the retry wrapper.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Why is the checkout test flaky?",
+						"minutesAgo": 2,
+						"idle": true,
+						"said": "The checkout test is flaky because two tests share one cart fixture, and the second one changes it while the first is still reading. I gave each test its own fixture and ran the suite 20 times, all green. I'd also drop the retry wrapper we added last week: it only hid this. The fix is on the branch, not pushed."
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-aside-question",
+			"utterance": "Which file did you change for the router?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-aside-instruction",
+			"utterance": "Also run the linter.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-aside-by-the-way",
+			"utterance": "By the way, which branch are you on?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-aside-check-is-work",
+			"utterance": "Can you check whether the tests pass?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-aside-correction-is-work",
+			"utterance": "Shouldn't that use the v2 API instead?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-hands-free-off",
+			"utterance": "Turn off hands-free.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-stop-listening-busy",
+			"utterance": "Stop listening.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-slash-clear",
+			"utterance": "Slash clear.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-asked-long-answer",
+			"utterance": "I think the spoken confirmation should s—should be—so whenever we're doing, like, a call that's not, um, like, that won't be responded to right away. So basically, every time we do in-session calls, uh, we should probably do some sort of confirmation.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "store front, main asks: should the confirmation play every time, or only when the answer won't come back quickly?",
+				"said": "Should a spoken confirmation play every time, or only when the answer won't come back quickly?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-asked-redirect",
+			"utterance": "Okay, let's get back to the session. I think there's a bug when you ask me a question and I'm redirecting.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "store front, main asks: should the confirmation play every time, or only when the answer won't come back quickly?",
+				"said": "Should a spoken confirmation play every time, or only when the answer won't come back quickly?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-temp-subagent-is-session-work",
+			"utterance": "Can you create a temporary sub-agent to test?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-close-agent-is-session-work",
+			"utterance": "Okay. Can you, um, close the agent?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-to-analysis",
+			"utterance": "Okay, actually, let's redirect the session to something else. Um, can you analyze the debug notes from the past, like, 15 minutes in the last session of what went wrong and figure out what we can do to make this experience a bit better?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-thinking-aloud-reaches-session",
+			"utterance": "Okay, so maybe we don't always need, like, I'll get back to you, but just say okay, or just something like that.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Let's brainstorm the spoken confirmation: when I ask the session to do something, say something like okay, I'm working on it.",
+						"reply": "",
+						"did": [
+							"forward \"Let's brainstorm the spoken confirmation when you pass work to a session.\""
+						]
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-thinking-aloud-no-context",
+			"utterance": "Okay, so maybe we don't always need, like, I'll get back to you, but just say okay, or just something like that.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-pronoun-kept",
+			"utterance": "And also, like, um, while doing that, also check the actual session transcripts so you see how much you messed up.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-fix-everything-not-plan",
+			"utterance": "Okay, can you just fix everything and make sure to create evals for that so things like that don't happen anymore, please?",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "asks: plan the fixes together with the lapsed-offer regression?",
+				"said": "What would help most: guard the silent cases in code, tighten the setup rule, and keep the subject in spoken choices. Want me to plan those together with the lapsed-offer fix?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-voiceos-named-is-session-work",
+			"utterance": "Voice OS shouldn't always say it'll get back to you, it should just say okay.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-offer-yes-on-screen",
+			"utterance": "Yes, fix it.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 20
+				},
+				"alert": {
+					"text": "store front, main's api server died. Want Claude to fix it?",
+					"secondsAgo": 15,
+					"ref": "store-front/main"
+				},
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-offer-no-on-screen",
+			"utterance": "No.",
+			"context": {
+				"dev": "store-front/main",
+				"offer": {
+					"ref": "store-front/main",
+					"secondsAgo": 20
+				},
+				"alert": {
+					"text": "store front, main's api server died. Want Claude to fix it?",
+					"secondsAgo": 15,
+					"ref": "store-front/main"
+				},
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-reinstall-voiceos-is-session-work",
+			"utterance": "Can you reinstall Voice OS and restart it?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-rebuild-voiceos-and-crew-is-session-work",
+			"utterance": "Uh, actually, could you maybe rebuild the Voice OS? I mean, and also crew?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-setup-addressed-from-session",
+			"utterance": "Setup, make a worktree in store front for the search fix.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-continues-cut-request",
+			"utterance": "the checkout worker from this morning.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Check the logs for the timeout errors in",
+						"reply": "",
+						"did": ["forward \"Check the logs for the timeout errors in\""],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-continues-cut-aside",
+			"utterance": "slow on the checkout worker?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "By the way, why are the retries so",
+						"reply": "",
+						"did": ["forward \"Why are the retries so\" (aside)"],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-continues-not-new-question",
+			"utterance": "What's the branch name?",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Run the tests.",
+						"reply": "",
+						"did": ["forward \"Run the tests.\""],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-continues-not-added-task",
+			"utterance": "Also run the linter.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Run the tests.",
+						"reply": "",
+						"did": ["forward \"Run the tests.\""],
+						"minutesAgo": 0.05
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-stop-and-switch",
+			"utterance": "Actually, stop the refactor and fix the login bug first.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-instead",
+			"utterance": "Don't do the migration, do the seed script instead.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the migration on staging.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-not-added-task",
+			"utterance": "Also run the linter when you're done.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-redirect-not-question",
+			"utterance": "Which file are you changing?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-ping-it-forwards",
+			"utterance": "Can you ping it directly and ask how far it is?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback",
+						"minutesAgo": 6
+					}
+				],
+				"update": {
+					"ref": "store-front/main",
+					"text": "The fallback chain is in; now updating the German strings."
+				}
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-switch-back-named",
+			"utterance": "Switch back to store front main.",
+			"context": {
+				"view": "checkout-api/main",
+				"voiceLog": [
+					{
+						"utterance": "Open checkout api main.",
+						"reply": "",
+						"did": ["switch_view checkout-api/main"]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-on-screen-beats-heard",
+			"utterance": "Can checkout make a summary of what it found?",
+			"context": {
+				"view": "checkout-api/main",
+				"heard": [
+					{
+						"text": "Store front main finished the migration and found two slow queries.",
+						"ref": "store-front/main",
+						"secondsAgo": 6
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-guide-stop-servers-on-screen",
+			"utterance": "Stop the servers.",
+			"context": {
+				"view": "store-front/main",
+				"dev": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-guide-take-that-back",
+			"utterance": "Take that back.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router",
+						"minutesAgo": 2,
+						"queued": ["Also rename the helpers."]
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Also rename the helpers.",
+						"reply": "",
+						"did": ["forward \"Also rename the helpers.\""]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-open-the-doc",
+			"utterance": "Open the doc.",
+			"context": {
+				"view": "store-front/main",
+				"docs": [
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/risks-1",
+						"title": "Retry risks"
+					},
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/plan-2",
+						"title": "Checkout plan"
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-open-doc-by-title",
+			"utterance": "Can you open the risks doc?",
+			"context": {
+				"view": "store-front/main",
+				"docs": [
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/risks-1",
+						"title": "Retry risks"
+					},
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/plan-2",
+						"title": "Checkout plan"
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-change-doc-is-session-work",
+			"utterance": "Add a section on the rollout risks to the doc.",
+			"context": {
+				"view": "store-front/main",
+				"docs": [
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/risks-1",
+						"title": "Retry risks"
+					},
+					{
+						"ref": "store-front/main",
+						"url": "https://claude.ai/code/artifact/plan-2",
+						"title": "Checkout plan"
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-reply-to-on-screen-newest-line",
+			"utterance": "Oh, I don't have access to the old one anymore, unfortunately.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "The competitor research is wrapped up, covered in the earlier answer above.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 75,
+						"endedSecondsAgo": 70
+					},
+					{
+						"text": "Good, no rewrite needed. It's a two-step change in the account settings: remove the old email from the old account, then add it to the new one.",
+						"ref": "store-front/main",
+						"secondsAgo": 14,
+						"endedSecondsAgo": 6
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-bare-name-switches",
+			"utterance": "To checkout api.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-take-back-before-note",
+			"utterance": "Switch to—uh, can you add the debug— ah, forget it. Ignore. Can you add to debug notes that I asked you to switch to checkout, and you sent it a message instead?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-take-back-word-inside-instruction",
+			"utterance": "Tell it to ignore the flaky checkout test for now.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-why-auto-off-no-guess",
+			"utterance": "Why is auto mode off?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-why-auto-off-after-denial",
+			"utterance": "Why do you keep asking me? Aren't you using auto mode?",
+			"context": {
+				"view": "store-front/main",
+				"denied": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-produce-context-forwards",
+			"utterance": "Can you now give me the context so I can copy it over?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Push the search branch and open a draft PR.",
+						"minutesAgo": 3,
+						"idle": true,
+						"said": "The search branch is pushed and the draft PR is open."
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-listen-mode-on-demand",
+			"utterance": "Switch to on demand mode.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-on-demand-in-work-is-not-a-mode",
+			"utterance": "Make the workers scale on demand instead of keeping ten running.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-activate-this-on-inactive",
+			"utterance": "Activate this.",
+			"context": {
+				"view": "store-front/wrk1",
+				"inactive": ["store-front/wrk1"],
+				"stopped": ["store-front/wrk1"]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-deactivate-this",
+			"utterance": "Deactivate this.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-show-active-sessions",
+			"utterance": "Show my active sessions.",
+			"context": {
+				"view": "checkout-api/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-pin-in-work-is-forwarded",
+			"utterance": "Pin the version of react in package.json so it stops drifting.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-rename-this",
+			"utterance": "Rename this to voice os dev.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-clear-the-name",
+			"utterance": "Clear the name.",
+			"context": {
+				"view": "store-front/main",
+				"names": {
+					"store-front/main": "voice os dev"
+				}
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-rename-in-code-is-forwarded",
+			"utterance": "Rename the function to parseRef.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-deliver-now-de",
+			"utterance": "Schick ihm das sofort: nimm die neue Tabelle.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Refactor the router into smaller modules.",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-my-notes-de",
+			"utterance": "Schau in meine Notizen und mach das Nächste davon.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-release-notes-not-my-notes",
+			"utterance": "Update the release notes for the retry fix.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-check-this-debug-note-sl",
+			"utterance": "Poglej si ta debug zapisek in ga popravi.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-run-tests-not-last-action",
+			"utterance": "Run the tests.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-my-notes",
+			"utterance": "Check my notes and do the next one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-check-this-debug-note",
+			"utterance": "Check this debug note and fix it.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that it sent it to the wrong session.",
+						"reply": "Debug note saved.",
+						"did": ["debug_note \"it sent it to the wrong session\""]
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-go-into-after-heard",
+			"utterance": "Wait, can you go into checkout?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "Yes, the new ranking wins on 7 of 10 queries.",
+						"ref": "store-front/wrk1",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 15
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-go-into-session-after-heard",
+			"utterance": "Can you go into checkout session?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "Yes, the new ranking wins on 7 of 10 queries.",
+						"ref": "store-front/wrk1",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 15
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-stop-question-form",
+			"utterance": "Okay. Can you stop?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the whole test suite.",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-go-into-other-machine-after-heard",
+			"utterance": "Wait, can you go into signals?",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/wrk1"]
+				},
+				"heard": [
+					{
+						"text": "Signals project or store front project?",
+						"ref": "store-front/wrk1",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 15
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-go-into-remote-0",
+			"utterance": "Can you go into signals?",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-go-into-remote-3",
+			"utterance": "Also, checkout signals—",
+			"context": {
+				"view": "store-front/wrk1",
+				"machine": {
+					"id": "remote-mac",
+					"name": "Remote Mac",
+					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+				},
+				"work": [
+					{
+						"ref": "store-front/wrk1",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-on-screen-status-0",
+			"utterance": "Status.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-on-screen-status-3",
+			"utterance": "Okay, so what is the latest state here? Do we have to re-run everything?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the ranking eval on all 67 sessions.",
+						"minutesAgo": 6
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-yes-to-ask-it-offer",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Check the logs for regressions from the last two releases.",
+						"minutesAgo": 9
+					}
+				],
+				"voiceLog": [
+					{
+						"utterance": "Okay. How long do you think checkout is going to take?",
+						"reply": "I don't know — checkout hasn't said how long the regression check will take. Want me to ask it?",
+						"did": []
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-find-doc-is-session-work",
+			"utterance": "Could you find that Notion document, um, around \"Apply Lesson\" work in progress for phone. Speak?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Write up the agent architecture.",
+						"minutesAgo": 12
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-reply-after-meanwhile",
+			"utterance": "Great, push it.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Tidy the locale placeholders.",
+						"minutesAgo": 5
+					}
+				],
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 4,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes. Switch there?"
+				}
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-meanwhile-offer-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes. Switch there?"
+				}
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-modes-branch-after-go-back",
+			"utterance": "Make sure you will do this on top of the modes branch.",
+			"context": {
+				"view": "store-front/main",
+				"names": {
+					"store-front/main": "Shop Main"
+				},
+				"voiceLog": [
+					{
+						"utterance": "Go back.",
+						"reply": "",
+						"did": ["go_back"],
+						"minutesAgo": 0
+					}
+				],
+				"heard": [
+					{
+						"text": "The checkout redirect now keeps the cart, and the tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 40,
+						"endedSecondsAgo": 35
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-branches-named-same",
+			"utterance": "Can you make sure that all the branches will be named the same?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "I pushed the retry work to a new branch, retries-v2.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 30,
+						"endedSecondsAgo": 25
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-another-debug-note",
+			"utterance": "There's another debug note. Can you also please fix that?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "Fixed the debug note about the double chime; the tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 30,
+						"endedSecondsAgo": 25
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-debug-reply-mentions-other",
+			"utterance": "Yes, name them the same as in checkout api.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "Should I name the new branches the way checkout api does?"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-combined-offer-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"text": "Sent to checkout api, main. Switch there?"
+				}
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-check-latest-debug-note-then-fix",
+			"utterance": "Check latest debug note, then fix the issue.",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Add a debug note that when a note was just added and I say send this note to the crew session, it should send the note.",
+						"reply": "Debug note saved.",
+						"did": [
+							"debug_note \"when a note was just added and I say send this note to the crew session, it should send the note\""
+						]
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-send-this-note-to-session",
+			"utterance": "Can you send this note to checkout?",
+			"context": {
+				"view": "store-front/main",
+				"voiceLog": [
+					{
+						"utterance": "Note: retry the payment webhook with backoff.",
+						"reply": "Noted.",
+						"did": ["note \"retry the payment webhook with backoff\""]
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-show-kernel-prompt-forwards",
+			"utterance": "By the way, can you show me the kernel prompt?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-list-active-on-session-screen",
+			"utterance": "What's active right now?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-activate-on-session-screen",
+			"utterance": "Activate billing on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback",
+						"minutesAgo": 3
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-voice-os-prefix-on-session-screen",
+			"utterance": "Voice OS, what machines do I have?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-running-is-forwarded",
+			"utterance": "What's running in the tests?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the checkout tests",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-enable-on-session",
+			"utterance": "Enable scheduler work two on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-turn-on-on-session",
+			"utterance": "Turn on the billing session on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-start-worktree-on-session",
+			"utterance": "Start the billing worktree on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-voice-os-enable",
+			"utterance": "Voice OS, enable billing on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-deactivate-working",
+			"utterance": "Deactivate this.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-close-this-session",
+			"utterance": "Close this session.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-list-running",
+			"utterance": "Which sessions are running right now?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-list-machines",
+			"utterance": "What machines are connected?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-list-on-machine",
+			"utterance": "List the worktrees on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-what-on-machine",
+			"utterance": "What do I have on Personal?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-count-workspace",
+			"utterance": "How many worktrees does scheduler have?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-voice-os-list",
+			"utterance": "Voice OS, list my machines.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-german-active",
+			"utterance": "Was ist gerade aktiv?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-slovenian-active",
+			"utterance": "Kaj je trenutno aktivno?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-leak-german-deactivate",
+			"utterance": "Deaktiviere diese Sitzung.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-activate-feature-flag",
+			"utterance": "Activate the feature flag for the new checkout.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-enable-caching-scheduler",
+			"utterance": "Enable caching on the scheduler service.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-deactivate-billing-endpoint",
+			"utterance": "Deactivate the old billing endpoint.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-list-files",
+			"utterance": "List the files in this folder.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-which-tests-running",
+			"utterance": "Which tests are running?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-close-the-modal",
+			"utterance": "Close the modal when the user clicks outside it.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-turn-on-dark-mode",
+			"utterance": "Turn on dark mode in the settings page.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "k-work-start-the-migration",
+			"utterance": "Start the migration now.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"label": "session",
+			"source": "kernel"
+		},
+		{
+			"id": "p-activate-billing-on-personal",
+			"utterance": "Activate billing on Personal.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-activate-the-feature-flag-for-the-new-ch",
+			"utterance": "Activate the feature flag for the new checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-enable-scheduler-work-one",
+			"utterance": "Enable scheduler work one.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-enable-caching-on-the-product-listing-en",
+			"utterance": "Enable caching on the product listing endpoint.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-turn-on-the-billing-session",
+			"utterance": "Turn on the billing session.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-turn-on-dark-mode-in-the-settings-page",
+			"utterance": "Turn on dark mode in the settings page.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-start-checkout-api",
+			"utterance": "Start checkout api.",
+			"context": {
+				"view": "store-front/main",
+				"inactive": ["checkout-api/main"],
+				"stopped": ["checkout-api/main"]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-start-the-migration-now",
+			"utterance": "Start the migration now.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-start-the-dev-servers",
+			"utterance": "Start the dev servers.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-start-writing-the-tests-for-the-cart",
+			"utterance": "Start writing the tests for the cart.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-deactivate-the-old-billing-endpoint",
+			"utterance": "Deactivate the old billing endpoint.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-end-this-session",
+			"utterance": "End this session.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-end-the-sentence-with-a-period-in-that-e",
+			"utterance": "End the sentence with a period in that error message.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-close-this-session",
+			"utterance": "Close this session.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-close-the-modal-when-the-user-clicks-out",
+			"utterance": "Close the modal when the user clicks outside it.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-stop-session-checkout-api",
+			"utterance": "Stop session checkout api.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-stop-the-retry-loop-after-three-attempts",
+			"utterance": "Stop the retry loop after three attempts.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-s-on-personal",
+			"utterance": "What's on Personal?",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-s-in-the-personal-config-file",
+			"utterance": "What's in the personal config file?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-machines-do-i-have",
+			"utterance": "What machines do I have?",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-machines-does-the-load-test-run-on",
+			"utterance": "What machines does the load test run on?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-s-active",
+			"utterance": "What's active?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-s-active-in-the-feature-flags-right",
+			"utterance": "What's active in the feature flags right now?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-list-the-worktrees-on-personal",
+			"utterance": "List the worktrees on Personal.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-list-the-files-you-changed",
+			"utterance": "List the files you changed.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-how-many-worktrees-does-scheduler-have",
+			"utterance": "How many worktrees does scheduler have?",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-how-many-tests-does-the-cart-module-have",
+			"utterance": "How many tests does the cart module have?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-which-sessions-are-running",
+			"utterance": "Which sessions are running?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-which-tests-are-running",
+			"utterance": "Which tests are running?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-switch-to-checkout-api",
+			"utterance": "Switch to checkout api.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-switch-to-the-new-payment-provider-in-th",
+			"utterance": "Switch to the new payment provider in the checkout flow.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-go-to-checkout-api-main",
+			"utterance": "Go to checkout api main.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-go-to-the-checkout-page-and-check-the-bu",
+			"utterance": "Go to the checkout page and check the button styles.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-open-signals",
+			"utterance": "Open signals.",
+			"context": {
+				"view": "store-front/main",
+				"extraRefs": ["signals/main"]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-open-a-pr-for-this",
+			"utterance": "Open a PR for this.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-go-back-to-the-previous-approach-the-new",
+			"utterance": "Go back to the previous approach, the new one is slower.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-show-me-personal",
+			"utterance": "Show me Personal.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-show-me-the-diff",
+			"utterance": "Show me the diff.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-take-me-to-the-build-box",
+			"utterance": "Take me to the build box.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "vm1",
+					"name": "Build box",
+					"refs": ["vm1:store-front/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-take-the-build-box-config-and-copy-it-in",
+			"utterance": "Take the build box config and copy it into staging.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-i-have-to-do-this-on-my-main-machine-can",
+			"utterance": "I have to do this on my main machine, can you give me the commands?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-switch-to-crew-main",
+			"utterance": "Switch to crew main.",
+			"context": {
+				"view": "store-front/main",
+				"extraRefs": ["crew/main"]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-tell-checkout-api-to-run-the-migrations",
+			"utterance": "Tell checkout api to run the migrations.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-tell-me-what-the-migrations-do",
+			"utterance": "Tell me what the migrations do.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-send-this-to-signals-too",
+			"utterance": "Send this to signals too.",
+			"context": {
+				"view": "store-front/main",
+				"extraRefs": ["signals/main"]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-send-the-signup-event-to-the-analytics-q",
+			"utterance": "Send the signup event to the analytics queue.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-mute",
+			"utterance": "Mute.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-mute-the-console-warnings-in-the-test-ou",
+			"utterance": "Mute the console warnings in the test output.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-stop-talking",
+			"utterance": "Stop talking.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-stop-logging-the-request-bodies",
+			"utterance": "Stop logging the request bodies.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-hands-free-on",
+			"utterance": "Hands-free on.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-add-hands-free-checkout-as-an-option-for",
+			"utterance": "Add hands-free checkout as an option for returning users.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-rename-this-to-cart-work",
+			"utterance": "Rename this to cart work.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-rename-the-cart-component-to-cartsummary",
+			"utterance": "Rename the cart component to CartSummary.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-save-a-debug-note-the-switch-offer-came-",
+			"utterance": "Save a debug note: the switch offer came twice.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-add-a-note-to-the-readme-about-the-env-v",
+			"utterance": "Add a note to the README about the env vars.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-take-a-note-try-the-tone-per-session-ide",
+			"utterance": "Take a note: try the tone per session idea.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-take-note-of-the-failing-tests-and-fix-t",
+			"utterance": "Take note of the failing tests and fix them one by one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-did-i-miss",
+			"utterance": "What did I miss?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-did-i-miss-in-the-pr-review-comment",
+			"utterance": "What did I miss in the PR review comments?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-restart-the-worker-after-the-config-chan",
+			"utterance": "Restart the worker after the config changes.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-bring-up-the-servers",
+			"utterance": "Bring up the servers.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-bring-up-the-error-rate-in-the-dashboard",
+			"utterance": "Bring up the error rate in the dashboard query.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-voice-os-what-s-active",
+			"utterance": "Voice OS, what's active?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-voice-os-integration-add-a-section-about",
+			"utterance": "Voice OS integration — add a section about it to the docs.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-yes-2",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"said": "Should I push this to staging?",
+				"asked": "store front, main asks: should I push this to staging?"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-no",
+			"utterance": "No.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-no-use-the-other-table",
+			"utterance": "No, use the other table.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"said": "Should I add a new table for events?",
+				"asked": "store front, main asks: should I add a new table?"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-yes-activate-it",
+			"utterance": "Yes, activate it.",
+			"context": {
+				"view": "store-front/main",
+				"inactive": ["checkout-api/main"],
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"kind": "activate"
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-yes-go-ahead-and-push-it",
+			"utterance": "Yes, go ahead and push it.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"said": "Want me to push?",
+				"asked": "store front, main asks: push?"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-stop",
+			"utterance": "Stop.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the full test suite",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-stop-using-mocks-in-the-payment-tests",
+			"utterance": "Stop using mocks in the payment tests.",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Run the full test suite",
+						"minutesAgo": 2
+					}
+				]
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-is-checkout-done",
+			"utterance": "Is checkout done?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Add retry backoff",
+						"minutesAgo": 5
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-is-the-checkout-flow-done-on-your-side",
+			"utterance": "Is the checkout flow done on your side?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-s-checkout-api-doing",
+			"utterance": "What's checkout api doing?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "checkout-api/main",
+						"request": "Add retry backoff",
+						"minutesAgo": 5
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-what-s-the-checkout-api-doing-on-a-timeo",
+			"utterance": "What's the checkout api doing on a timeout?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-aktiviere-billing-auf-personal",
+			"utterance": "Aktiviere billing auf Personal.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-aktiviere-das-feature-flag-f-r-den-neuen",
+			"utterance": "Aktiviere das Feature-Flag für den neuen Checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-deaktiviere-diese-sitzung",
+			"utterance": "Deaktiviere diese Sitzung.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-deaktiviere-den-alten-billing-endpunkt",
+			"utterance": "Deaktiviere den alten Billing-Endpunkt.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-was-ist-gerade-aktiv",
+			"utterance": "Was ist gerade aktiv?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-was-ist-in-der-konfigurationsdatei-aktiv",
+			"utterance": "Was ist in der Konfigurationsdatei aktiv?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-wechsle-zu-checkout-api",
+			"utterance": "Wechsle zu checkout api.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-wechsle-im-checkout-auf-den-neuen-zahlun",
+			"utterance": "Wechsle im Checkout auf den neuen Zahlungsanbieter.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-zeig-mir-die-maschinen",
+			"utterance": "Zeig mir die Maschinen.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-zeig-mir-den-diff",
+			"utterance": "Zeig mir den Diff.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-starte-die-dev-server-neu",
+			"utterance": "Starte die Dev-Server neu.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-starte-den-worker-nach-der-konfiguration",
+			"utterance": "Starte den Worker nach der Konfigurationsänderung neu.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-schreib-die-tests-f-r-den-warenkorb",
+			"utterance": "Schreib die Tests für den Warenkorb.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-aktiviraj-billing-na-personal",
+			"utterance": "Aktiviraj billing na Personal.",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-aktiviraj-zastavico-za-nov-checkout",
+			"utterance": "Aktiviraj zastavico za nov checkout.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-deaktiviraj-to-sejo",
+			"utterance": "Deaktiviraj to sejo.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-deaktiviraj-stari-endpoint-za-billing",
+			"utterance": "Deaktiviraj stari endpoint za billing.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-kaj-je-trenutno-aktivno",
+			"utterance": "Kaj je trenutno aktivno?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-kaj-je-aktivno-v-konfiguraciji",
+			"utterance": "Kaj je aktivno v konfiguraciji?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-preklopi-na-checkout-api",
+			"utterance": "Preklopi na checkout api.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-preklopi-checkout-na-novega-ponudnika-pl",
+			"utterance": "Preklopi checkout na novega ponudnika plačil.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-katere-ma-ine-imam",
+			"utterance": "Katere mašine imam?",
+			"context": {
+				"view": "store-front/main",
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": ["personal:scheduler/wrk1", "personal:billing/main"]
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-na-katerih-ma-inah-te-e-load-test",
+			"utterance": "Na katerih mašinah teče load test?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-ponovno-za-eni-dev-stre-nike",
+			"utterance": "Ponovno zaženi dev strežnike.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-napi-i-teste-za-ko-arico",
+			"utterance": "Napiši teste za košarico.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		}
+	]
+}

@@ -72,7 +72,11 @@ export interface FixtureContext {
 		cut?: boolean;
 		// Voice OS's report of that session's update (the meanwhile line), not the session's own words.
 		update?: boolean;
+		// Said by Voice OS itself (its reply, its own question), not by a session.
+		byVoiceOs?: boolean;
 	}[];
+	// More sessions on this Mac than the four generic ones (a real-speech case names its own).
+	extraRefs?: string[];
 	// Sessions that are not active; every other one is (what a fixture meant before the active set).
 	inactive?: string[];
 	// The developer's own names for sessions, by full ref.
@@ -298,7 +302,11 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 export const createFixtureState = (context: FixtureContext = {}, now = Date.now()): State => {
 	// Crew's generic example worktrees, all idle, plus whatever the context sets up.
 	const asks = listPendingAsks(context, now - 30_000);
-	const order = [...FIXTURE_REFS, ...(context.machine?.refs ?? [])];
+	const order = [
+		...FIXTURE_REFS,
+		...(context.extraRefs ?? []).filter((ref) => !FIXTURE_REFS.includes(ref)),
+		...(context.machine?.refs ?? []),
+	];
 	const sessions = Object.fromEntries(
 		order.map((ref) => {
 			const session = createFixtureSession({ ref, context, asks, now });
@@ -351,9 +359,11 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 			...(context.heard ?? []).map((heard, index) => ({
 				id: `heard-${index}`,
 				text: heard.text,
-				source: 'narrator' as const,
+				source: heard.byVoiceOs ? ('kernel' as const) : ('narrator' as const),
 				at: now - heard.secondsAgo * 1000,
 				ref: heard.ref,
+				// Live, Voice OS marks its own offers and asks as asking; a fixture line says so by ending in "?".
+				...(heard.byVoiceOs && /\?\s*$/.test(heard.text) ? { isAsking: true as const } : {}),
 				...(heard.endedSecondsAgo === undefined
 					? {}
 					: { endedAt: now - heard.endedSecondsAgo * 1000 }),

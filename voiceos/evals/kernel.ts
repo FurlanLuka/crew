@@ -1,9 +1,11 @@
-import { createJudge } from '../src/judge/judge.js';
+import type Anthropic from '@anthropic-ai/sdk';
+import { createJudge, type Judge } from '../src/judge/judge.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Kernel, type KernelResult } from '../src/router/kernel.js';
 import { readScreenRef } from '../src/state/helpers.js';
 import { createNullNotes } from '../test/support/notes.js';
+import type { State } from '../src/shared/protocol.js';
 import { reduce } from '../src/state/reducer.js';
 import { MUTATING_TOOLS, type ToolName } from '../src/tools/definitions.js';
 import { createFixtureState, type FixtureContext } from '../test/support/state.js';
@@ -287,6 +289,106 @@ interface KernelEvalResult {
 	score: Record<string, number>;
 }
 
+interface CreateEvalKernelParams {
+	apiKey: string;
+	// One client for every call of a run, so its usage can be counted.
+	client?: Anthropic;
+	model?: string;
+	judge: Judge;
+	getState: () => State;
+	dispatch: (input: Parameters<typeof reduce>[1]['input']) => void;
+}
+
+// The kernel as it runs live, its effects going nowhere: shared by the kernel and route suites.
+const createEvalKernel = ({
+	apiKey,
+	client,
+	model,
+	judge,
+	getState,
+	dispatch,
+}: CreateEvalKernelParams): Kernel =>
+	new Kernel({
+		apiKey,
+		...(client ? { client } : {}),
+		...(model ? { model } : {}),
+		tools: {
+			getState,
+			dispatch,
+			mute: () => {
+				// Effects go nowhere in an eval.
+			},
+			// Two notes on file: "go through my notes" means something only when there are some.
+			notes: {
+				...createNullNotes(),
+				read: () => [
+					'- 2026-09-27 07:05 — try a tone per session',
+					'- 2026-09-27 07:09 — cache the worktree list',
+				],
+				has: () => true,
+			},
+			judge,
+			saveDebugNote: () => {
+				// Effects go nowhere in an eval.
+			},
+			readHistory: ({ ref }) => [
+				{
+					ts: '2026-09-24T16:02:00Z',
+					ref: ref ?? 'checkout-api/main',
+					asked: 'add retry backoff',
+					did: 'Added exponential backoff to webhook retries; tests pass.',
+				},
+			],
+		},
+	});
+
+interface RunEvalTurnParams {
+	apiKey: string;
+	client?: Anthropic;
+	model?: string;
+	judge: Judge;
+	context: FixtureContext;
+	utterance: string;
+}
+
+// One kernel turn on a fixture, as the developer's words would get it live on that screen: shared by
+// the kernel and route suites.
+export const runEvalTurn = ({
+	apiKey,
+	client,
+	model,
+	judge,
+	context,
+	utterance,
+}: RunEvalTurnParams): Promise<KernelResult> => {
+	// Actions change the state as they would live (an answered ask closes); effects go nowhere.
+	let state = createFixtureState(context);
+	const screen = readScreenRef(state);
+	const kernel = createEvalKernel({
+		apiKey,
+		...(client ? { client } : {}),
+		...(model ? { model } : {}),
+		judge,
+		getState: () => state,
+		dispatch: (input) => {
+			state = reduce(state, {
+				seq: state.seq + 1,
+				at: Date.now(),
+				id: `e${state.seq + 1}`,
+				input,
+			}).state;
+		},
+	});
+
+	return kernel.handle(utterance, {
+		forwardTo: screen,
+		screen,
+		isSpoken: true,
+		setListenMode: () => 'changed',
+		openUrl: () => true,
+	});
+};
+
 interface RunKernelEvalParams {
 	apiKey: string;
 	evalsDir: string;
@@ -319,58 +421,13 @@ export const runKernelEval = async ({
 		const runs: KernelRun[] = [];
 
 		for (let i = 0; i < countRuns(testCase); i++) {
-			// Actions change the state as they would live (an answered ask closes); effects go nowhere.
-			let state = createFixtureState(testCase.context);
-			const screen = readScreenRef(state);
-
-			const dispatch = (input: Parameters<typeof reduce>[1]['input']) => {
-				state = reduce(state, {
-					seq: state.seq + 1,
-					at: Date.now(),
-					id: `e${state.seq + 1}`,
-					input,
-				}).state;
-			};
-
-			const kernel = new Kernel({
-				apiKey,
-				...(model ? { model } : {}),
-				tools: {
-					getState: () => state,
-					dispatch,
-					mute: () => {
-						// Effects go nowhere in an eval.
-					},
-					// Two notes on file: "go through my notes" means something only when there are some.
-					notes: {
-						...createNullNotes(),
-						read: () => [
-							'- 2026-09-27 07:05 — try a tone per session',
-							'- 2026-09-27 07:09 — cache the worktree list',
-						],
-						has: () => true,
-					},
-					judge,
-					saveDebugNote: () => {
-						// Effects go nowhere in an eval.
-					},
-					readHistory: ({ ref }) => [
-						{
-							ts: '2026-09-24T16:02:00Z',
-							ref: ref ?? 'checkout-api/main',
-							asked: 'add retry backoff',
-							did: 'Added exponential backoff to webhook retries; tests pass.',
-						},
-					],
-				},
-			});
 			const result = await attempt(() =>
-				kernel.handle(testCase.utterance, {
-					forwardTo: screen,
-					screen,
-					isSpoken: true,
-					setListenMode: () => 'changed',
-					openUrl: () => true,
+				runEvalTurn({
+					apiKey,
+					model,
+					judge,
+					context: testCase.context,
+					utterance: testCase.utterance,
 				}),
 			);
 
