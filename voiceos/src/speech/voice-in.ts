@@ -30,7 +30,7 @@ export type VoiceInputOptions = ListenerOptions & {
 	onTalkEnd?: () => void;
 	// VOICEOS_DEBUG_AUDIO=1: each utterance is saved here as a WAV, to replay a bad transcript.
 	debugAudioDir?: string | null;
-	// A press whose release never arrives (a key-up lost on blur) is dropped after this.
+	// A press whose release never arrives (a key-up lost on blur) is ended after this, its words kept.
 	maxPressMs?: number;
 	// A dictation is sent after this, never dropped.
 	maxDictationMs?: number;
@@ -40,6 +40,8 @@ export type VoiceInputOptions = ListenerOptions & {
 	// On demand: a call opened or closed, and speech left alone, for the tab to show.
 	onListenState?: (client: string, isAwake: boolean) => void;
 	onHeardIgnored?: (client: string) => void;
+	// A press that never got its release: its words go back to the tab's input, never to a session.
+	onKept?: (text: string, client: string, reason: string) => void;
 };
 
 type Outcome = { state: 'streaming' } | { state: 'settled'; text: string | null };
@@ -57,6 +59,8 @@ interface Utterance {
 	isDictation: boolean;
 	// Released (or ended for it): its stream is finalizing, and ending it again would do nothing good.
 	isReleased: boolean;
+	// Why its words are kept for the input instead of routed; null for a press that was released.
+	keptReason: string | null;
 }
 
 type Pending =
@@ -65,8 +69,8 @@ type Pending =
 
 const log = createLogger('voice-in');
 
-// A held button: long enough for a long thought said in one go; past it the words are sent.
-const MAX_PRESS_MS = 5 * 60_000;
+// A held button: long enough for a long thought said in one go; past it the press is taken as stuck.
+export const MAX_PRESS_MS = 2 * 60_000;
 
 // A brain dump runs long; Soniox takes 300 minutes a stream, so this cap is about a forgotten mic.
 const MAX_DICTATION_MS = 30 * 60_000;
@@ -131,7 +135,7 @@ export class VoiceInput {
 
 		if (abandoned) {
 			this.livePresses.delete(client);
-			this.letGo(abandoned, 'a new press');
+			this.endStuck(abandoned, 'a new press began');
 		}
 
 		const startedAt = this.now();
@@ -167,15 +171,7 @@ export class VoiceInput {
 					return;
 				}
 
-				// Ended as if released: a long press is long speech (debug note 30 lost a minute of it), and
-				// a press that was only forgotten heard nothing, so nothing is routed.
-				log.warn(
-					utterance.isDictation ? 'dictation reached its cap: sent' : 'press reached its cap: sent',
-					{
-						client,
-					},
-				);
-				this.finish(utterance);
+				this.endStuck(utterance, 'the press reached its limit');
 			},
 			isDictation
 				? (this.options.maxDictationMs ?? MAX_DICTATION_MS)
@@ -191,6 +187,7 @@ export class VoiceInput {
 			startedAt,
 			isDictation,
 			isReleased: false,
+			keptReason: null,
 		};
 		this.livePresses.set(client, utterance);
 		this.queue(client, { kind: 'press', utterance });
@@ -370,6 +367,23 @@ export class VoiceInput {
 		void utterance.stream.end();
 	}
 
+	// A press whose release never came (its cap, or a new press from the same tab): a dictation is
+	// sent as it always is. A plain press was not let go, so what it heard is not taken as a turn —
+	// it may be a minute of the room — but neither is it lost (debug note 30): its words go to the
+	// input, to send from there.
+	private endStuck(utterance: Utterance, why: string): void {
+		if (utterance.isDictation) {
+			log.warn('dictation ended without a release: sent', { client: utterance.client, why });
+			this.finish(utterance);
+
+			return;
+		}
+
+		log.warn('press ended without a release: kept', { client: utterance.client, why });
+		utterance.keptReason = why;
+		this.finish(utterance);
+	}
+
 	// A press cut short by something else: a dictation's words are sent, a plain press is dropped.
 	private letGo(utterance: Utterance, why: string): void {
 		if (utterance.isDictation) {
@@ -428,7 +442,9 @@ export class VoiceInput {
 			queue.shift();
 
 			// null: nothing to route (silence, an error, a cancelled stream).
-			if (text) {
+			if (text && head.kind === 'press' && head.utterance.keptReason) {
+				this.keep(text, client, head.utterance.keptReason);
+			} else if (text) {
 				this.options.onUtterance(
 					text,
 					client,
@@ -441,6 +457,16 @@ export class VoiceInput {
 		if (queue.length === 0) {
 			this.pendingByClient.delete(client);
 		}
+	}
+
+	private keep(text: string, client: string, reason: string): void {
+		log.info('press kept in the input', { client, reason, chars: text.length });
+		this.options.onKept?.(text, client, reason);
+		this.options.store.dispatch({
+			type: 'spoken',
+			text: 'Not sent — what you said is in the text box.',
+			source: 'alert',
+		});
 	}
 
 	private saveRecording(utterance: Utterance, text: string): void {

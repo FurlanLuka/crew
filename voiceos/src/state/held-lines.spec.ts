@@ -890,18 +890,62 @@ describe('what a "done" names', () => {
 			'Tests pass. The branch is pushed.',
 			'Tests pass. The branch is pushed',
 		],
-
+		[
+			'a version that ends a word is not a sentence end',
+			'Bumped to v5.7.0. Tests pass.',
+			'Bumped to v5.7.0. Tests pass',
+		],
+		[
+			'a file name → unchanged',
+			'Fixed voice-out.ts and added a test.',
+			'Fixed voice-out.ts and added a test',
+		],
+		['a decimal → unchanged', 'Coverage is 92.5 percent now.', 'Coverage is 92.5 percent now'],
+		[
+			'"e.g." does not end the sentence',
+			'Pick a short name, e.g. store front or checkout api, for the worktree you are about to make. Then run setup.',
+			'Pick a short name, e.g. store front or checkout api, for the worktree you are about to make',
+		],
+		[
+			'a version in the first sentence, a second one over the limit → only the first',
+			'Released v5.7.0 to npm. The changelog lists the import wizard, the base table, the check card fixes and the proxy page.',
+			'Released v5.7.0 to npm',
+		],
+		[
+			'a seventeen-word first sentence → kept whole',
+			'Tagged and released v5.7.0 with the new import wizard, the base table and the check card fixes.',
+			'Tagged and released v5.7.0 with the new import wizard, the base table and the check card fixes',
+		],
+		[
+			'a version and a decimal in one sentence → unchanged',
+			'The suite now runs in 2.5 seconds, down from nine.',
+			'The suite now runs in 2.5 seconds, down from nine',
+		],
+		[
+			'a first sentence of fifteen to twenty-eight words, then a short one → only the first',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today. Done.',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today',
+		],
 		['voice tags dropped', '[relieved] Tests pass now.', 'Tests pass now'],
 		['one word → nothing', 'Done.', null],
 		['nothing at all', null, null],
 	])('%s', (_, said, expected) => expect(describeDoneAbout(said)).toBe(expected));
 
-	it('one very long sentence → cut at twenty-eight words, with "…"', () => {
-		const about = describeDoneAbout(
-			`Rewrote ${'the parser and the lexer and '.repeat(8)}everything.`,
-		);
+	it('a first sentence of exactly twenty-eight words → kept whole, no "…"', () =>
+		expect(
+			describeDoneAbout(
+				'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28.',
+			),
+		).toBe(
+			'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28',
+		));
 
-		expect(about?.endsWith('…')).toBe(true);
-		expect(about?.split(/\s+/)).toHaveLength(28);
-	});
+	it('a first sentence of twenty-nine words → its first twenty-eight, with "…"', () =>
+		expect(
+			describeDoneAbout(
+				'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28 w29. Then more.',
+			),
+		).toBe(
+			'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28…',
+		));
 });

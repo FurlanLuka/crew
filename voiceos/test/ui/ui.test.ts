@@ -381,6 +381,34 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('a held press ends when the window loses focus, when the page is hidden, and on a Space key-up in the text box', async () => {
+		const { context, page, client } = await openMicTab();
+		await page.keyboard.down('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+		await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 1);
+		await page.keyboard.up('Space');
+
+		await page.keyboard.down('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 2);
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+			Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+		});
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 2);
+		await page.keyboard.up('Space');
+
+		// Focus moved into the input mid-press: its key-up still ends the press.
+		await page.keyboard.down('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 3);
+		await page.locator('textarea').focus();
+		await page.keyboard.up('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 3);
+		expect(listFromClient(client, 'ptt_start')).toHaveLength(3);
+		await context.close();
+	}, 20_000);
+
 	it('hands-free chosen → echo-cancelled mic, listen_start at the device rate with the mode, audio with no key held; Space starts no press; push to talk → listen_stop', async () => {
 		const { context, page, client } = await openMicTab();
 		await chooseMode(page, 'Hands-free');

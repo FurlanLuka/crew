@@ -118,7 +118,7 @@ const FALSE_SENTENCE_END_PATTERN =
 	/^["'“‘([]*(?:e\.g|i\.e|vs|mr|mrs|ms|dr|approx|v\d+(?:\.\d+)*|\d{1,2})\.$/i;
 const MORE_ON_SCREEN = 'More on screen.';
 
-const isSentenceEnd = (word: string): boolean =>
+export const isSentenceEnd = (word: string): boolean =>
 	SENTENCE_END_PATTERN.test(word) && !FALSE_SENTENCE_END_PATTERN.test(word);
 
 export const cutAtSentence = (words: string[], cap: number): string => {

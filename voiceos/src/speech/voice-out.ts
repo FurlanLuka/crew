@@ -7,7 +7,12 @@ import {
 	type State,
 	type ToldAsk,
 } from '../shared/protocol.js';
-import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
+import {
+	normalizeUtterance,
+	prefixSessionName,
+	stripSessionName,
+	stripTags,
+} from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import {
@@ -106,7 +111,6 @@ const SAID_PREVIEW_CHARS = 80;
 
 const log = createLogger('voice-out');
 
-const REPEATED_LINE_MS = 5_000;
 export const REMINDER_MS = 5 * 60_000;
 // Per ask: a question left overnight is not repeated every five minutes until morning.
 export const MAX_REMINDERS = 3;
@@ -122,7 +126,6 @@ export class VoiceOut {
 	private isTalking = false;
 	private playing: Playing | null = null;
 	private lastSpokenAbout = new Map<string, number>();
-	private lastKernelLine: { text: string; at: number } | null = null;
 	// Reminders said, by what waits (the ask, or the line that asked): a new question starts over.
 	private remindersSaid = new Map<string, number>();
 	private spokenRecords: SpokenRecord[] = [];
@@ -194,21 +197,12 @@ export class VoiceOut {
 		}
 
 		// Voice OS's own word said twice in a breath ("Switching to crew." from the switch and again as the
-		// kernel's reply — debug note 31): the second is dropped.
-		const now = this.now();
-
-		if (
-			source === 'kernel' &&
-			this.lastKernelLine?.text === text.trim() &&
-			now - this.lastKernelLine.at < REPEATED_LINE_MS
-		) {
+		// kernel's reply — debug note 31): the second is dropped while the first is still to be heard.
+		// Once that one has played, or was cut, the same words are a new line ("Sent to checkout." twice).
+		if (source === 'kernel' && this.isKernelLineAhead(text)) {
 			log.info('repeated line dropped', { text });
 
 			return;
-		}
-
-		if (source === 'kernel') {
-			this.lastKernelLine = { text: text.trim(), at: now };
 		}
 
 		clipCounter += 1;
@@ -257,6 +251,13 @@ export class VoiceOut {
 		}
 
 		void this.pump();
+	}
+
+	private isKernelLineAhead(text: string): boolean {
+		const said = normalizeUtterance(text);
+		const ahead = this.playing ? [this.playing.item, ...this.queue.items] : this.queue.items;
+
+		return ahead.some((item) => item.source === 'kernel' && normalizeUtterance(item.text) === said);
 	}
 
 	dropQueuedAbout(ref: string, before: number): void {

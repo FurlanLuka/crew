@@ -235,6 +235,8 @@ const voiceIn: VoiceInput = new VoiceInput({
 	onListenOff: (client, reason) => void gateway?.send(client, { type: 'listen_off', reason }),
 	onListenState: (client, isAwake) => void gateway?.send(client, { type: 'listen_state', isAwake }),
 	onHeardIgnored: (client) => void gateway?.send(client, { type: 'heard_ignored' }),
+	onKept: (text, client, reason) =>
+		void gateway?.send(client, { type: 'dictation_kept', text, reason }),
 	listSpokenLines: () => voiceOut.listRecentSpeech(),
 	debugAudioDir: process.env.VOICEOS_DEBUG_AUDIO === '1' ? paths.debugAudioDir : null,
 });

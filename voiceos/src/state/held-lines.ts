@@ -1,4 +1,4 @@
-import { cleanSessionLine, cleanSpokenText, stripTags } from '../shared/spoken.js';
+import { cleanSessionLine, cleanSpokenText, isSentenceEnd, stripTags } from '../shared/spoken.js';
 import type { HeldLine, Session, SpokenLine, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
@@ -115,22 +115,40 @@ const MIN_SAID_WORDS = 2;
 // the cap is kept whole up to a longer one; only past that is it cut.
 const countWords = (text: string): number => text.split(/\s+/).filter(Boolean).length;
 
+// Split on words, not on every period: "v5.7.0", "e.g.", "92.5" and "voice-out.ts" end no sentence,
+// and joining the words back changes no text.
+const splitSentences = (words: string[]): string[][] => {
+	const sentences: string[][] = [];
+	let current: string[] = [];
+
+	for (const word of words) {
+		current.push(word);
+
+		if (isSentenceEnd(word)) {
+			sentences.push(current);
+			current = [];
+		}
+	}
+
+	return current.length > 0 ? [...sentences, current] : sentences;
+};
+
 const keepSentences = (line: string): string => {
-	const sentences = line.match(/[^.!?]+[.!?]*/g) ?? [line];
-	let kept = '';
+	const words = line.split(/\s+/).filter(Boolean);
+	let kept: string[] = [];
 
-	for (const sentence of sentences) {
-		const next = `${kept} ${sentence.trim()}`.trim();
-		const limit = kept ? DONE_ABOUT_WORDS : DONE_ABOUT_SENTENCE_WORDS;
+	for (const sentence of splitSentences(words)) {
+		const next = [...kept, ...sentence];
+		const limit = kept.length > 0 ? DONE_ABOUT_WORDS : DONE_ABOUT_SENTENCE_WORDS;
 
-		if (countWords(next) > limit) {
+		if (next.length > limit) {
 			break;
 		}
 
 		kept = next;
 	}
 
-	return kept || capWords(line, DONE_ABOUT_SENTENCE_WORDS);
+	return kept.length > 0 ? kept.join(' ') : capWords(line, DONE_ABOUT_SENTENCE_WORDS);
 };
 
 export const describeDoneAbout = (said: string | null): string | null => {

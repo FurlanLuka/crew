@@ -145,6 +145,36 @@ describe('conversations', () => {
 		expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
 	});
 
+	// Debug note 31: the switch says it, and the model's reply says it again.
+	it('a switch the model also says in its reply → "Switching to …" heard once', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		// A switch is silent: the model's text beside it is the reply, with no second call.
+		convo.script([
+			toolUse('t1', 'switch_view', { ref: 'checkout-api/main' }),
+			reply('Switching to checkout api, main.'),
+		]);
+		await convo.say('Switch to checkout api.');
+		await convo.wait(2_000);
+
+		expect(convo.heard).toEqual(['> Switch to checkout api.', 'Switching to checkout api, main.']);
+	});
+
+	it('two quick sends to the same session → each "Sent to …" heard', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+		await convo.say('Checkout api, run the tests.');
+		convo.script([toolUse('t2', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+		await convo.say('Checkout api, and the linter.');
+
+		expect(
+			convo.heard.filter((line) => line.startsWith('Sent to checkout api, main')),
+		).toHaveLength(2);
+	});
+
 	it('words that name another session without speaking to it → "For …?"; no keeps them on the screen', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');
