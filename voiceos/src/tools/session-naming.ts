@@ -42,7 +42,7 @@ export const isSessionNamed = ({ ref, text, words, order }: IsSessionNamedParams
 };
 
 // Words only, each side padded: "voice os dev" is said in "go to voice-os dev.", never inside "devops".
-const toPlainWords = (text: string): string =>
+export const toPlainWords = (text: string): string =>
 	` ${text
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, ' ')

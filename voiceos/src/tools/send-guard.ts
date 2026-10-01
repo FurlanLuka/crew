@@ -9,18 +9,12 @@ import type { State } from '../shared/protocol.js';
 import { findMachineSaid } from './machines.js';
 import { type ToolResult, fail, succeed } from './results.js';
 import type { SentWords } from './send.js';
-import { isRefNamedIn } from './session-naming.js';
+import { isRefNamedIn, toPlainWords } from './session-naming.js';
 import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
 
 export const ASK_WHICH_NOTE = 'asked which session';
-
-const toPlainWords = (text: string): string =>
-	` ${text
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, ' ')
-		.trim()} `;
 
 // "on vm1", "on my Mac", or a machine's name or id said beside the session ("vm1 checkout").
 const readMachineSaid = (state: State, utterance: string): string | null => {
@@ -35,13 +29,12 @@ const readMachineSaid = (state: State, utterance: string): string | null => {
 	);
 };
 
-// Its name, its workspace or the developer's own name for it said — and, when a machine is said too,
-// that machine is its. Two sessions sharing a workspace are both named by it: the judge and the kernel
-// already chose one, and a name said is never the screen's.
-const isNamed = (state: State, ref: string, utterance: string): boolean => {
+// A machine said that is not the session's: the words name another session, or the machine's name is
+// an ordinary word ("restart the dev server" beside a remote called dev). Neither is the screen's.
+const isOnOtherMachineSaid = (state: State, ref: string, utterance: string): boolean => {
 	const machine = readMachineSaid(state, utterance);
 
-	return isRefNamedIn(state, ref, utterance) && (machine === null || readMachine(ref) === machine);
+	return machine !== null && readMachine(ref) !== machine;
 };
 
 interface GuardSendToParams {
@@ -82,7 +75,10 @@ export const guardSendTo = async ({
 
 	const label = readSessionLabel(state, ref);
 
-	if (!isNamed(state, ref, utterance)) {
+	// Its name, its workspace or the developer's own name for it said. Two sessions sharing a workspace
+	// are both named by it: the judge and the kernel already chose one, and a name said is never the
+	// screen's.
+	if (!isRefNamedIn(state, ref, utterance)) {
 		// "I meant that for the other one": the screen already got those words; sending them there again
 		// would only repeat them.
 		if (words.source === 'earlier') {
@@ -96,6 +92,14 @@ export const guardSendTo = async ({
 		log.info('not named: words kept on the screen', { ref, screen });
 
 		return 'screen';
+	}
+
+	if (isOnOtherMachineSaid(state, ref, utterance)) {
+		log.info('named, but another machine said: asked which', { ref });
+
+		return fail(
+			`Not sent: ${label} is named, but another machine is said beside it. Ask them in a few words which session they mean; nothing was sent.`,
+		);
 	}
 
 	// "I meant that for checkout", "send that to checkout too": earlier words pointed at a named session.

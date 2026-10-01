@@ -108,14 +108,28 @@ describe('which session the words name', () => {
 		}
 	});
 
-	it('"vm1 checkout, run the tests" → vm1\'s is named; this Mac\'s is not, so the screen gets them', async () => {
+	it('"vm1 checkout, run the tests" → vm1\'s is sent; this Mac\'s is asked about, never the screen', async () => {
 		const patch = { ...withSessions('vm1:checkout-api/main'), machines: VM1 };
 		const utterance = 'vm1 checkout, run the tests.';
 		const remote = await sendTo({ ref: 'vm1:checkout-api/main', utterance, patch });
 		const local = await sendTo({ ref: CHECKOUT, utterance, patch, judge: judgeNever });
 
 		expect(sentRefs(remote.actions)).toEqual(['vm1:checkout-api/main']);
-		expect(sentRefs(local.actions)).toEqual([SCREEN]);
+		expect(local.result.ok).toBe(false);
+		expect(local.result.content).toContain('which session');
+		expect(sentRefs(local.actions)).toEqual([]);
+	});
+
+	// A remote called "dev": "restart the dev server" says its name as an ordinary word.
+	it('a machine name said as an ordinary word → never the screen: asked which session', async () => {
+		const patch = { machines: { dev: { ...VM1.vm1, id: 'dev', name: 'dev' } } };
+		const { result, actions } = await sendTo({
+			utterance: 'Checkout api, restart the dev server.',
+			patch,
+		});
+
+		expect(sentRefs(actions)).toEqual([]);
+		expect(result.content).toContain('which session');
 	});
 
 	it('two names in one sentence, one a display name → the other is still named', async () => {
