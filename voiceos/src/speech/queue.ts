@@ -19,6 +19,10 @@ export interface SpeechItem {
 	// gap (never cutting an answer), but never held longer than MAX_GAP_WAIT_MS.
 	waitsForGap?: boolean;
 	isAsking?: boolean;
+	// The ask it says, and which of its questions: dropped, or cut while playing, once that question
+	// is answered or the ask closes.
+	askId?: string;
+	askQuestion?: number;
 	isUpdate?: boolean;
 	refs?: string[];
 	toldAsks?: ToldAsk[];
@@ -138,6 +142,21 @@ export const dropQueued = (queue: SpeechQueue, { ref, before }: DropQueuedParams
 	...queue,
 	// Owed ones too: the developer moved on before hearing them.
 	items: queue.items.filter((queued) => queued.ref !== ref || queued.at >= before),
+});
+
+// Each open ask by id, with the index of the question it asks now (null: not a question).
+export type OpenAsks = ReadonlyMap<string, number | null>;
+
+// The one rule for a line about an ask: it has nothing left to ask once its ask closed, or once the
+// question it reads was answered (a click on the page, a remote's terminal).
+export const isClosedAskLine = (item: SpeechItem, openAsks: OpenAsks): boolean =>
+	item.askId !== undefined &&
+	(!openAsks.has(item.askId) ||
+		(item.askQuestion !== undefined && openAsks.get(item.askId) !== item.askQuestion));
+
+export const dropClosedAsks = (queue: SpeechQueue, openAsks: OpenAsks): SpeechQueue => ({
+	...queue,
+	items: queue.items.filter((queued) => !isClosedAskLine(queued, openAsks)),
 });
 
 export const setMuted = (queue: SpeechQueue, isMuted: boolean): SpeechQueue => ({

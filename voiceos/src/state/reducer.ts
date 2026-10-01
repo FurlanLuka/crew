@@ -105,6 +105,9 @@ export type Effect =
 			isReply?: boolean;
 			ref?: string;
 			isAsking?: boolean;
+			// The ask the line says, and which of its questions: the line stops once that is answered.
+			askId?: string;
+			askQuestion?: number;
 			// Other sessions' updates (see SpokenLine.isUpdate); refs: the sessions it named.
 			isUpdate?: boolean;
 			refs?: string[];

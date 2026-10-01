@@ -1309,3 +1309,134 @@ describe('VoiceOut, voice tags', () => {
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: PLAIN });
 	});
 });
+
+describe('a line that says an ask', () => {
+	const openAsk = (harness: ReturnType<typeof createHarness>, id: string) =>
+		harness.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id,
+				ref: 'store/main',
+				at: 0,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push',
+				input: { command: 'git push' },
+				suggestions: [],
+			},
+		});
+	const sayAsk = (harness: ReturnType<typeof createHarness>, askId: string, text: string) =>
+		harness.voiceOut.say({
+			text,
+			priority: 'high',
+			source: 'alert',
+			ref: 'store/main',
+			isAsking: true,
+			askId,
+		});
+
+	it('answered on the page while it plays → cut at once, and the next line plays', async () => {
+		const harness = createHarness();
+		openAsk(harness, 'a1');
+		sayAsk(harness, 'a1', 'store/main asks: push it? Answer it, or say "options".');
+		harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+		await flush();
+		harness.streamChunk();
+		const askClip = harness.getLastClip().id;
+
+		harness.store.dispatch({ type: 'ask_closed', askId: 'a1' });
+		await flush();
+
+		expect(harness.listSentKinds()).toContain(`tab-a:cancel:${askClip}`);
+		expect(harness.listSynthesized()).toEqual([
+			'store/main asks: push it? Answer it, or say "options".',
+			'Tests pass.',
+		]);
+	});
+
+	it('answered before its turn to play → never said', async () => {
+		const harness = createHarness();
+		openAsk(harness, 'a1');
+		harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+		sayAsk(harness, 'a1', 'store/main asks: push it?');
+		await flush();
+
+		harness.store.dispatch({ type: 'ask_closed', askId: 'a1' });
+		await flush();
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['Tests pass.']);
+	});
+
+	it('one of its two questions answered on the page → the line reading it is cut', async () => {
+		const harness = createHarness();
+		harness.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'q1',
+				ref: 'store/main',
+				at: 0,
+				kind: 'question',
+				input: {},
+				questions: [
+					{ question: 'Which table?', multiSelect: false, options: [] },
+					{ question: 'Which index?', multiSelect: false, options: [] },
+				],
+			},
+		});
+		harness.voiceOut.say({
+			text: 'store/main asks 2 questions. First: Which table?',
+			priority: 'high',
+			source: 'alert',
+			ref: 'store/main',
+			isAsking: true,
+			askId: 'q1',
+			askQuestion: 0,
+		});
+		await flush();
+		harness.streamChunk();
+		const firstClip = harness.getLastClip().id;
+
+		harness.store.dispatch({
+			type: 'answer_question',
+			askId: 'q1',
+			answers: { 'Which table?': 'orders' },
+		});
+		await flush();
+
+		expect(harness.store.state.asks).toHaveLength(1);
+		expect(harness.listSentKinds()).toContain(`tab-a:cancel:${firstClip}`);
+	});
+
+	it('its reminder queued behind a line, the ask answered on the page → the reminder is never said', async () => {
+		const harness = createHarness();
+		openAsk(harness, 'a1');
+		harness.voiceOut.remind(harness.store.state);
+		harness.tick(REMINDER_MS + 1);
+		harness.voiceOut.say({ text: 'Tests pass.', priority: 'high' });
+		await flush();
+
+		harness.voiceOut.remind(harness.store.state);
+		harness.store.dispatch({ type: 'ask_closed', askId: 'a1' });
+		await flush();
+		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['Tests pass.']);
+	});
+
+	it('another ask closing → the line for the one still open plays on', async () => {
+		const harness = createHarness();
+		openAsk(harness, 'a1');
+		openAsk(harness, 'a2');
+		sayAsk(harness, 'a1', 'store/main asks: push it?');
+		await flush();
+		harness.streamChunk();
+
+		harness.store.dispatch({ type: 'ask_closed', askId: 'a2' });
+		await flush();
+
+		expect(harness.listSentKinds().some((kind) => kind.includes(':cancel:'))).toBe(false);
+	});
+});

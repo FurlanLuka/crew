@@ -205,6 +205,8 @@ export const connectSpeech = ({
 					waitsForGap: effect.waitsForGap,
 					ref: effect.ref ?? null,
 					isAsking: effect.isAsking,
+					askId: effect.askId,
+					askQuestion: effect.askQuestion,
 					isUpdate: effect.isUpdate,
 					refs: effect.refs,
 					toldAsks: effect.toldAsks,

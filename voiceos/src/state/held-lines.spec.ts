@@ -266,6 +266,7 @@ describe('asks off screen', () => {
 				priority: 'high',
 				chime: 'needs',
 				waitsForGap: true,
+				askId: 'q1',
 			},
 		]);
 		expect(heldOf(state)).toMatchObject({ kind: 'ask', askId: 'q1' });
@@ -415,6 +416,20 @@ describe('asks off screen', () => {
 
 		expect(heldOf(tell('a1', held))).toBeNull();
 		expect(heldOf(tell('older', held))).toMatchObject({ kind: 'ask', askId: 'a1' });
+	});
+
+	it('replayed on the switch → said with its ask, so answering it on the page stops the line', () => {
+		const held = open(longQuestion('Notes location')).state;
+		const { effects } = run([{ type: 'switch_view', view: { kind: 'session', ref: REF } }], {
+			start: held,
+		});
+
+		expect(effects[0]).toMatchObject({
+			type: 'speak',
+			isAsking: true,
+			askId: 'q1',
+			askQuestion: 0,
+		});
 	});
 
 	it('answered or closed before the switch → nothing replays', () => {

@@ -262,6 +262,13 @@ export const findLineThatAsked = ({ state, ask, now }: FindLineThatAskedParams):
 	return heard?.id ?? null;
 };
 
+// What a line saying this ask is about: answered on the page while it plays, the line stops.
+export const toAskLine = (ask: PendingAsk): { askId: string; askQuestion?: number } => {
+	const index = ask.kind === 'question' ? findOpenQuestion(ask)?.index : undefined;
+
+	return { askId: ask.id, ...(index === undefined ? {} : { askQuestion: index }) };
+};
+
 const describeQuestionAloud = (ask: QuestionAsk, label: string): string => {
 	const open = findOpenQuestion(ask);
 
@@ -510,6 +517,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 								source: 'alert',
 								ref: ask.ref,
 								isAsking: true,
+								...toAskLine(answered),
 							},
 						],
 					}
@@ -646,6 +654,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 							priority: 'high',
 							chime: 'needs',
 							waitsForGap: true,
+							askId: ask.id,
 						},
 						...released.effects,
 					],
@@ -670,6 +679,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						source: 'alert',
 						ref: ask.ref,
 						isAsking: true,
+						...toAskLine(ask),
 						// The session on screen interrupts; another one waits for a breath after the line.
 						...(isOnScreen(state, ask.ref) ? {} : { priority: 'high' as const, waitsForGap: true }),
 					},

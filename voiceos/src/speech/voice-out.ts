@@ -29,6 +29,9 @@ import {
 	createEmptyQueue,
 	GAP_BEFORE_ASK_MS,
 	MAX_GAP_WAIT_MS,
+	dropClosedAsks,
+	isClosedAskLine,
+	type OpenAsks,
 	dropQueued,
 	enqueue,
 	setMuted,
@@ -40,6 +43,16 @@ import {
 } from './queue.js';
 import { computePcmSeconds, type Synthesize } from './tts.js';
 import { decideMeanwhile } from './meanwhile.js';
+import { toAskLine } from '../state/asks.js';
+
+const readOpenAsks = (state: State): OpenAsks =>
+	new Map(
+		state.asks.map((ask) => {
+			const { askId, askQuestion } = toAskLine(ask);
+
+			return [askId, askQuestion ?? null];
+		}),
+	);
 
 const readWaitingKey = (items: MeanwhileItem[]): string =>
 	items.map((item) => `${item.ref}@${item.at}:${item.askId ?? ''}`).join('|');
@@ -53,6 +66,8 @@ interface SayParams {
 	isReply?: boolean;
 	isAnswer?: boolean;
 	isAsking?: boolean;
+	askId?: string;
+	askQuestion?: number;
 	isUpdate?: boolean;
 	refs?: string[];
 	toldAsks?: ToldAsk[];
@@ -150,6 +165,10 @@ export class VoiceOut {
 				queueMicrotask(() => this.viewChanged());
 			}
 
+			if (this.saysClosedAsk(state)) {
+				queueMicrotask(() => this.asksClosed());
+			}
+
 			// An update arrives from its own input or with an ask; a newer one replaces a session's older one
 			// in place, so the list is compared item by item. Played at once, from inside this dispatch the
 			// page would get the play before the update it plays, see a gap, reconnect and cut the line.
@@ -174,6 +193,8 @@ export class VoiceOut {
 		isReply = false,
 		isAnswer = false,
 		isAsking = false,
+		askId,
+		askQuestion,
 		isUpdate = false,
 		refs,
 		toldAsks,
@@ -215,6 +236,8 @@ export class VoiceOut {
 			isNamed,
 			isReply,
 			isAsking,
+			...(askId ? { askId } : {}),
+			...(askQuestion === undefined ? {} : { askQuestion }),
 			...(isAnswer ? { isAnswer } : {}),
 			...(isUpdate ? { isUpdate } : {}),
 			...(refs?.length ? { refs } : {}),
@@ -348,6 +371,8 @@ export class VoiceOut {
 				priority: 'high',
 				ref,
 				isAsking: !isHeldQuestion(state.sessions[ref]),
+				// About an ask: answered meanwhile, the reminder is not said.
+				...(state.asks.some((ask) => ask.id === waitKey) ? { askId: waitKey } : {}),
 			});
 		}
 
@@ -363,6 +388,25 @@ export class VoiceOut {
 			if (!waitKeys.has(waitKey)) {
 				this.remindersSaid.delete(waitKey);
 			}
+		}
+	}
+
+	private saysClosedAsk(state: State): boolean {
+		const openAsks = readOpenAsks(state);
+		const lines = [...(this.playing ? [this.playing.item] : []), ...this.queue.items];
+
+		return lines.some((item) => isClosedAskLine(item, openAsks));
+	}
+
+	private asksClosed(): void {
+		// Answered while it was being said (a click on the page): the rest of the line asks nothing.
+		const openAsks = readOpenAsks(this.options.store.state);
+		this.queue = dropClosedAsks(this.queue, openAsks);
+		const playing = this.playing;
+
+		if (playing && isClosedAskLine(playing.item, openAsks)) {
+			log.info('line cut: its ask closed', { id: playing.item.id, ref: playing.item.ref });
+			this.finish(playing.id, { isCut: true });
 		}
 	}
 

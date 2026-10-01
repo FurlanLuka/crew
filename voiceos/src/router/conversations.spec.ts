@@ -48,6 +48,33 @@ const createHeldJudge = (key: string) => {
 };
 
 describe('conversations', () => {
+	it('the screen session asks; answered on the page before its line is heard → the line is never heard', async () => {
+		const ask = (id: string): PendingAsk => ({
+			id,
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'permission',
+			toolName: 'Bash',
+			summary: 'run git push',
+			input: { command: 'git push' },
+			suggestions: [],
+		});
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main');
+
+		convo.store.dispatch({ type: 'ask_opened', ask: ask('p1') });
+		await convo.listen();
+		expect(convo.heard).toEqual([expect.stringContaining('git push')]);
+		const heardOpen = convo.heard.length;
+
+		convo.store.dispatch({ type: 'answer_permission', askId: 'p1', decision: 'allow' });
+		convo.store.dispatch({ type: 'ask_opened', ask: ask('p2') });
+		convo.store.dispatch({ type: 'ask_closed', askId: 'p2' });
+		await convo.listen();
+
+		expect(convo.heard.slice(heardOpen).filter((line) => line.includes('git push'))).toEqual([]);
+	});
+
 	it('a question to a session named and spoken to → sent there, the switch offered; its short answer is heard with its name', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

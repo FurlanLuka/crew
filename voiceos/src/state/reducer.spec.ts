@@ -1684,6 +1684,9 @@ describe('questions are spoken without their options', () => {
 				source: 'alert',
 				ref: 'store/main',
 				isAsking: true,
+				// The line stops once its question is answered (a click on the page, say).
+				askId: 'q1',
+				askQuestion: 0,
 				// Mission Control: not the session on screen, so it waits for a breath after any line.
 				priority: 'high',
 				waitsForGap: true,
@@ -1716,6 +1719,8 @@ describe('questions are spoken without their options', () => {
 				source: 'alert',
 				ref: 'store/main',
 				isAsking: true,
+				askId: 'q1',
+				askQuestion: 1,
 			},
 		]);
 		expect(first.state.asks[0]).toMatchObject({ answers: { 'Which table?': 'the first one' } });

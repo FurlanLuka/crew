@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
 	createEmptyQueue,
+	dropClosedAsks,
+	isClosedAskLine,
 	dropQueued,
 	enqueue,
 	shouldChime,
@@ -164,5 +166,42 @@ describe('an announcement and the line it stands for', () => {
 		});
 
 		expect(replay.queue.items.map((item) => item.id)).toEqual(['replay']);
+	});
+});
+
+describe('isClosedAskLine', () => {
+	const open = new Map<string, number | null>([
+		['permission', null],
+		['question', 1],
+	]);
+	const line = (patch: Partial<SpeechItem>): SpeechItem => ({
+		...createItem('l', 'high'),
+		...patch,
+	});
+
+	it.each([
+		['no ask', {}, false],
+		['an open ask', { askId: 'permission' }, false],
+		['a closed ask', { askId: 'gone' }, true],
+		['the question it reads is the one open', { askId: 'question', askQuestion: 1 }, false],
+		['the question it reads was answered', { askId: 'question', askQuestion: 0 }, true],
+		['the ask without a question named, still open', { askId: 'question' }, false],
+	] as const)('%s → closed: %p', (_, patch, want) => {
+		expect(isClosedAskLine(line(patch), open)).toBe(want);
+	});
+});
+
+describe('dropClosedAsks', () => {
+	it('drops the lines whose ask closed; lines for an open ask, or for none, stay', () => {
+		const queue = fillQueue(
+			{ ...createItem('plain', 'normal'), at: 1 },
+			{ ...createItem('open', 'normal'), askId: 'a1', at: 2 },
+			{ ...createItem('closed', 'normal'), askId: 'a2', at: 3 },
+		);
+
+		expect(dropClosedAsks(queue, new Map([['a1', null]])).items.map((item) => item.id)).toEqual([
+			'plain',
+			'open',
+		]);
 	});
 });

@@ -1,7 +1,7 @@
 import { cleanSessionLine, cleanSpokenText, isSentenceEnd, stripTags } from '../shared/spoken.js';
 import type { HeldLine, Session, SpokenLine, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { describeAskAloud } from './asks.js';
+import { describeAskAloud, toAskLine } from './asks.js';
 import { capWords, readLabel, updateSession, withoutEffects } from './helpers.js';
 import { hasBackgroundWork } from './subagents.js';
 
@@ -274,6 +274,7 @@ export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 		// The answer to the developer's own switch: no chime before it.
 		isReply: true,
 		...(ask || (held.kind === 'line' && held.isAsking) ? { isAsking: true } : {}),
+		...(ask ? toAskLine(ask) : {}),
 	};
 
 	return { state: cleared, effects: [effect] };
