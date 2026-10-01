@@ -72,9 +72,10 @@ describe('buildWorkerEnv', () => {
 describe('Worker', () => {
 	const createWorker = (
 		messages: unknown[],
-		extra: { mediaDir?: string; isPinned?: boolean } = {},
+		extra: { mediaDir?: string; isPinned?: boolean; env?: Record<string, string> } = {},
 	) => {
 		const prompts: string[] = [];
+		const queryOptions: { env?: Record<string, string | undefined> }[] = [];
 		const sessionIds: string[] = [];
 		const observations: Observation[] = [];
 		const finished = Promise.withResolvers<void>();
@@ -86,7 +87,7 @@ describe('Worker', () => {
 			...extra,
 			orientation: '',
 			resumeId: null,
-			env: {},
+			env: extra.env ?? {},
 			permissions: new PermissionBridge(
 				() => undefined,
 				() => undefined,
@@ -101,7 +102,12 @@ describe('Worker', () => {
 			onSessionId: (sessionId) => sessionIds.push(sessionId),
 			onResumeFailed: () => undefined,
 			briefing: { pending: true, onBriefed: () => undefined },
-			runQuery: ((call: { prompt: AsyncIterable<{ message: { content: string } }> }) => {
+			runQuery: ((call: {
+				prompt: AsyncIterable<{ message: { content: string } }>;
+				options: { env?: Record<string, string | undefined> };
+			}) => {
+				queryOptions.push(call.options);
+
 				void (async () => {
 					for await (const message of call.prompt) {
 						prompts.push(message.message.content);
@@ -116,8 +122,25 @@ describe('Worker', () => {
 			}) as never,
 		});
 
-		return { worker, prompts, sessionIds, observations, finished: finished.promise };
+		return {
+			worker,
+			prompts,
+			sessionIds,
+			observations,
+			queryOptions,
+			finished: finished.promise,
+		};
 	};
+
+	// The env is what strips the API key (billing) and turns on the Artifact tools: it must reach the SDK.
+	it('the session runs with exactly the env it was given', () => {
+		const env = { CREW_REF: 'store/main', CLAUDE_CODE_ARTIFACT: '1', HOME: '/Users/me' };
+		const { worker, queryOptions } = createWorker([], { env });
+
+		worker.start();
+
+		expect(queryOptions.map((options) => options.env)).toEqual([env]);
+	});
 
 	it('a /clear goes to the CLI as typed: no note, no briefing, and the briefing waits for the next message', async () => {
 		const { worker, prompts } = createWorker([]);
