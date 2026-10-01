@@ -1212,7 +1212,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a turn that needs you → a slim strip, the stream stays on screen', async () => {
+	it('a turn that needs you → no strip of its own: the question is in the stream, the top bar counts it once', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({
@@ -1221,12 +1221,10 @@ describe('voice os ui', () => {
 			needsUser: true,
 			text: 'store front asks: push it?',
 		});
-		const strip = page.locator('section[aria-label="needs you"]');
-		await strip.waitFor({ timeout: 5000 });
+		await page.getByText('1 waiting on you').waitFor({ timeout: 5000 });
+		expect(await page.locator('section[aria-label="needs you"]').count()).toBe(0);
 		expect(await page.locator('.stream').isVisible()).toBe(true);
-		expect(((await strip.boundingBox())?.height ?? 999) < 80).toBe(true);
-		await strip.getByRole('button', { name: 'Dismiss' }).click();
-		await waitUntil(() => store.state.sessions['store-front/main']?.needsUser === null);
+		store.dispatch({ type: 'dismiss_needs_user', ref: 'store-front/main' });
 		await context.close();
 	}, 20_000);
 

@@ -14,7 +14,7 @@ const JUDGE_TIMEOUT_MS = 3_000;
 // Each question with the answers it allows; 'unclear' is always allowed and always the safe side.
 const JUDGE_QUESTIONS = {
 	approves: {
-		ask: 'Do these words say yes to what was asked (yes, go ahead, allow it)? A yes with a condition or more words after it is still a yes.',
+		ask: 'Do these words say yes to what was asked (yes, go ahead, allow it)? A yes with a condition or more words after it is still a yes, and so is asking for it to be approved or allowed ("can you approve?", "approve it", "kannst du es genehmigen?").',
 		answers: ['yes', 'no'],
 	},
 	approves_plainly: {

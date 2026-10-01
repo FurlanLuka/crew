@@ -20,7 +20,9 @@ import {
 	type SentWords,
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
-import { countSpokenWords } from '../state/helpers.js';
+import { countSpokenWords, readLabel } from '../state/helpers.js';
+import { readSubject } from '../state/exchange.js';
+import { readLastHeardAbout } from './asked-aloud.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
@@ -314,6 +316,48 @@ const refuseOtherMachine = ({
 	);
 };
 
+interface DescribeUnnamedElsewhereParams {
+	state: State;
+	ref: string;
+	input: Record<string, unknown>;
+	toolContext: ToolContext;
+}
+
+// Words for another session that never name it, said after the session on screen last spoke: they
+// pick up the screen, not an older line from elsewhere (debug notes 18, 21: "make sure all branches are
+// named the same" went to the session heard a minute earlier).
+const describeUnnamedElsewhere = ({
+	state,
+	ref,
+	input,
+	toolContext,
+}: DescribeUnnamedElsewhereParams): string | null => {
+	const screen = toolContext.forwardTo;
+	const heardFrom = toolContext.heardFrom ?? toolContext.now();
+	const utterance = toolContext.utterance ?? '';
+
+	if (
+		!screen ||
+		!state.sessions[screen] ||
+		screen === ref ||
+		input.by_work === true ||
+		state.sessions[ref]?.isPinned ||
+		readSubject(state, heardFrom) === ref ||
+		findSessionsNamedIn(state, utterance).includes(ref)
+	) {
+		return null;
+	}
+
+	const screenAt = readLastHeardAbout({ spoken: state.spoken, ref: screen, heardFrom });
+	const targetAt = readLastHeardAbout({ spoken: state.spoken, ref, heardFrom });
+
+	if (screenAt === null || (targetAt !== null && targetAt > screenAt)) {
+		return null;
+	}
+
+	return `Not sent: ${readLabel(state, ref)} was not named, and ${readLabel(state, screen)} on screen spoke after it. Words not clearly for ${ref} are for the screen: forward them. If they named ${ref} by its work, call send_to again with by_work true.`;
+};
+
 export const executeTool = async (
 	name: string,
 	input: Record<string, unknown>,
@@ -469,6 +513,14 @@ export const executeTool = async (
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
+			}
+
+			const unnamed = describeUnnamedElsewhere({ state, ref, input, toolContext });
+
+			if (unnamed) {
+				log.info('unnamed session kept off', { ref, screen: toolContext.forwardTo });
+
+				return fail(unnamed);
 			}
 
 			if (

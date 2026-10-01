@@ -902,6 +902,64 @@ describe('conversations', () => {
 		expect(convo.heard.at(-1)).toBe('Meanwhile, checkout api, main wants to run git push.');
 	});
 
+	// Debug notes 18, 21, 24: words said on a screen went to a session heard from earlier, never named.
+	describe('words for a session never named', () => {
+		const heardBoth = async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			await hearUpdate(convo);
+			await convo.answer('store-front/main', 'The branch is pushed and the tests pass.');
+			await convo.wait(1_000);
+
+			return convo;
+		};
+
+		const sends = (convo: ReturnType<typeof createConversation>) =>
+			convo.inputs.flatMap((input) => (input.type === 'send' ? [[input.ref, input.text]] : []));
+
+		it('the screen spoke after it → refused; the kernel forwards them to the screen', async () => {
+			const convo = await heardBoth();
+			convo.script(
+				[
+					toolUse('t1', 'send_to', {
+						ref: 'checkout-api/main',
+						kind: 'instruction',
+						my_notes: false,
+					}),
+				],
+				[toolUse('t2', 'forward', { kind: 'instruction' })],
+			);
+			await convo.say('Make sure all the branches are named the same.');
+
+			expect(sends(convo)).toEqual([
+				['store-front/main', 'Make sure all the branches are named the same.'],
+			]);
+		});
+
+		it('named, or named by its work → sent there', async () => {
+			const convo = await heardBoth();
+			convo.script([
+				toolUse('t1', 'send_to', {
+					ref: 'checkout-api/main',
+					kind: 'instruction',
+					my_notes: false,
+				}),
+			]);
+			await convo.say('Checkout api, make sure the branches are named the same.');
+			convo.script([
+				toolUse('t2', 'send_to', {
+					ref: 'checkout-api/main',
+					kind: 'instruction',
+					my_notes: false,
+					by_work: true,
+				}),
+			]);
+			await convo.say('Tell the retry one to rebase too.');
+
+			expect(sends(convo).map(([ref]) => ref)).toEqual(['checkout-api/main', 'checkout-api/main']);
+		});
+	});
+
 	describe('timing', () => {
 		// Checkout's update heard in the meanwhile line, then a reply to it: "Sent to …. Switch there?".
 		// beforeReply: what happens after the update is heard, before the reply that makes the offer.
