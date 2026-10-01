@@ -20,7 +20,6 @@ import {
 	readAnnouncedLabel,
 } from '../state/held-lines.js';
 import type { Store } from '../state/store.js';
-import { readSubject } from '../state/exchange.js';
 import { isRecent, type SpokenRecord } from './echo.js';
 import {
 	createEmptyQueue,
@@ -431,7 +430,6 @@ export class VoiceOut {
 		const session = store.state.sessions[item.ref];
 		const decision = decideTurnLine({
 			isShown: false,
-			isSubject: readSubject(store.state, this.now()) === item.ref,
 			isShort: isShortLine(item.text),
 			isHeldAnnounced: session?.heldLine?.isAnnounced === true,
 			hasBackgroundAgents: session ? hasBackgroundWork(session) : false,
@@ -533,10 +531,7 @@ export class VoiceOut {
 			return;
 		}
 
-		const { item, queue } = takeNextItem(this.queue, {
-			now: this.now(),
-			exchangeRef: this.options.store.state.exchange?.ref ?? null,
-		});
+		const { item, queue } = takeNextItem(this.queue, { now: this.now() });
 		this.queue = queue;
 
 		if (!item) {

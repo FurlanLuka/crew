@@ -1,6 +1,5 @@
 import {
 	COMMAND_TTL_MS,
-	EXCHANGE_IDLE_MS,
 	QUESTION_UNHEARD_MS,
 	SWITCH_OFFER_MS,
 	TARGET_ASK_MS,
@@ -13,23 +12,11 @@ import type { VoiceOut } from './voice-out.js';
 import { createLogger } from '../log.js';
 import type { Input, State } from '../shared/protocol.js';
 
-const log = createLogger('exchange');
+const log = createLogger('conversation');
 
-// Each change to who the developer talks with, with the input that made it: how often a guess was
-// wrong is read from these and the debug notes.
+// The questions Voice OS asks about where words go and the updates it says, with the input that
+// made them: how often one was wrong is read from these and the debug notes.
 const logConversation = (before: State, after: State, input: Input): void => {
-	if (
-		before.exchange?.ref !== after.exchange?.ref ||
-		before.exchange?.reason !== after.exchange?.reason
-	) {
-		log.info('exchange', {
-			from: before.exchange?.ref ?? null,
-			to: after.exchange?.ref ?? null,
-			reason: after.exchange?.reason ?? null,
-			input: input.type,
-		});
-	}
-
 	if (after.switchOffer && after.switchOffer !== before.switchOffer) {
 		log.info('switch offered', { ref: after.switchOffer.ref });
 	}
@@ -91,8 +78,6 @@ export const connectSpeech = ({
 		previous = state;
 	});
 
-	// A conversation lapses a minute after its last send or answer heard: each one re-arms the timer,
-	// and a stale timer finds a newer lastAt and changes nothing.
 	// A question that played in no tab was never asked: it lets go at once rather than holding the
 	// developer's next yes or no, or their held words, for half a minute.
 	store.subscribe((stamped, state) => {
@@ -146,11 +131,10 @@ export const connectSpeech = ({
 		setTimer(() => whenQuiet(run, waited + QUIET_RECHECK_MS), QUIET_RECHECK_MS);
 	};
 
-	let armedAt: number | null = null;
 	let offeredAt: string | null = null;
 	let targetAskedAt: string | null = null;
 	store.subscribe((_stamped, state) => {
-		const { exchange, switchOffer, targetAsk } = state;
+		const { switchOffer, targetAsk } = state;
 
 		// "For checkout?" unanswered: silence keeps the words on the screen. The wait starts once the
 		// question was heard (or is given up on if it never plays).
@@ -169,12 +153,6 @@ export const connectSpeech = ({
 					}),
 				targetAsk.heardAt === undefined ? QUESTION_UNHEARD_MS : TARGET_ASK_MS,
 			);
-		}
-
-		if (exchange && exchange.lastAt !== armedAt) {
-			armedAt = exchange.lastAt;
-			const { ref, lastAt } = exchange;
-			setTimer(() => store.dispatch({ type: 'exchange_expired', ref, lastAt }), EXCHANGE_IDLE_MS);
 		}
 
 		// "Switch to checkout?" is answered at once or let go, counted from when it was heard.

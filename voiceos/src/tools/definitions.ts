@@ -8,7 +8,6 @@ export type ToolName =
 	| 'send_to'
 	| 'switch_view'
 	| 'go_back'
-	| 'ask_target'
 	| 'play_missed'
 	| 'start_session'
 	| 'stop_session'
@@ -33,7 +32,6 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'forward',
 	'send_to',
 	'go_back',
-	'ask_target',
 	'start_session',
 	'stop_session',
 	'crew_dev',
@@ -187,7 +185,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'send_to',
 		description:
-			'Send the developer’s words to a session’s Claude, as they said them. Only when the developer clearly asked for work or an answer there. A stopped session starts by itself.',
+			'Send the developer’s words to a session’s Claude, as they said them. Only when the developer clearly asked for work or an answer there — on a session’s screen, only a session they named in these words; anything else is for the screen (forward). A stopped session starts by itself.',
 		input_schema: {
 			type: 'object',
 			properties: {
@@ -223,17 +221,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		description:
 			'"Go back", "back", "previous session": return to the view the developer was on before this one; said again, it walks further back. Voice OS says where they landed. Not for "home" or Mission Control: that is switch_view with null.',
 		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
-	},
-	{
-		name: 'ask_target',
-		description:
-			'"For <session>?": only right after that session\'s notification ("… is done", "… needs you" under "Heard just before"), when the developer\'s words could be a reply to it or for the session on screen and you cannot tell which. Voice OS asks and sends the words where they answer; say nothing. Never for words that name a session or clearly continue the work on screen.',
-		input_schema: {
-			type: 'object',
-			properties: { ref: REF_PROPERTY },
-			required: ['ref'],
-			additionalProperties: false,
-		},
 	},
 	{
 		name: 'play_missed',

@@ -276,13 +276,12 @@ describe('parseClientMessage', () => {
 		pin_session: { type: 'pin_session', ref: 'vm1:store/main' },
 		unpin_session: { type: 'unpin_session', ref: 'vm1:store/main' },
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
-		clear_exchange: { type: 'clear_exchange' },
 		go_back: { type: 'go_back' },
 		play_meanwhile: { type: 'play_meanwhile' },
 		set_languages: { type: 'set_languages', languages: ['en', 'sl'] },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
-		ask_target: {
-			type: 'ask_target',
+		ask_which: {
+			type: 'ask_which',
 			ref: 'store/main',
 			screen: 'store/wrk1',
 			text: 'review this',

@@ -40,8 +40,6 @@ interface DecideTurnLineParams {
 	needsUser: boolean;
 	// The developer looks at another session, not Mission Control.
 	isOnAnotherSession: boolean;
-	// The developer is talking with this session without switching to it: its answers are theirs.
-	isSubject?: boolean;
 }
 
 export const decideTurnLine = ({
@@ -51,12 +49,11 @@ export const decideTurnLine = ({
 	hasBackgroundAgents,
 	needsUser,
 	isOnAnotherSession,
-	isSubject = false,
 }: DecideTurnLineParams): TurnLineDecision => {
 	// A question, however short, is not asked over another session: like its asks, it waits there.
 	const isQuestionElsewhere = needsUser && isOnAnotherSession;
 
-	if (isShown || isSubject || (isShort && !isHeldAnnounced && !isQuestionElsewhere)) {
+	if (isShown || (isShort && !isHeldAnnounced && !isQuestionElsewhere)) {
 		return { kind: 'say' };
 	}
 
@@ -254,22 +251,11 @@ export const replayHeldLine = (state: State, ref: string): ReducerResult => {
 	return { state: cleared, effects: [effect] };
 };
 
-// Its news was heard to its end: a reply to it from another screen may now offer the switch, and the
-// meanwhile line has nothing left to say about it.
-const markNewsHeard = (state: State, ref: string, at: number): State =>
-	state.sessions[ref]
-		? updateSession(
-				{ ...state, meanwhile: state.meanwhile.filter((item) => item.ref !== ref) },
-				ref,
-				(session) => ({ ...session, updateHeardAt: at }),
-			)
+// Its news was heard to its end: the meanwhile line has nothing left to say about it.
+const markNewsHeard = (state: State, ref: string): State =>
+	state.meanwhile.some((item) => item.ref === ref)
+		? { ...state, meanwhile: state.meanwhile.filter((item) => item.ref !== ref) }
 		: state;
-
-// Replied to, or opened: the news has been answered, and offers no switch again.
-export const forgetHeardUpdate = (state: State, ref: string): State =>
-	state.sessions[ref]?.updateHeardAt === undefined
-		? state
-		: updateSession(state, ref, ({ updateHeardAt: _heard, ...session }) => session);
 
 // An ask the meanwhile line said in full is no longer only announced: a reply answers it. Only while
 // it is still the ask the session holds; a newer one from it was not what the line said.
@@ -285,10 +271,7 @@ const hearToldAsks = (state: State, line: SpokenLine): State =>
 export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
 	// An update talked over was not heard to its end; a question talked over is being answered.
 	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
-	const updated = refs.reduce(
-		(next, ref) => markNewsHeard(next, ref, at),
-		hearToldAsks(state, line),
-	);
+	const updated = refs.reduce((next, ref) => markNewsHeard(next, ref), hearToldAsks(state, line));
 	const offer = updated.switchOffer;
 	const target = updated.targetAsk;
 

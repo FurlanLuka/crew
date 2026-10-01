@@ -145,30 +145,38 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   in the session's own words (`describeDoneAbout`: its last line, shortened), and the full line plays
   on switch (`state/held-lines.ts`). An item is dropped once the developer meets that update another
   way (`settleMeanwhile`). The line is spoken with `isUpdate` and the `refs` it named, like a "needs
-  you" announcement: `listHeardBefore` counts each as heard, so a reply to it is routed to them.
-  Another session's question, plan or permission, on a session's screen, joins it too (`ask_opened`,
-  `askId` on the item) unless the developer is talking with that session: needs-you first, after a
+  you" announcement: `listHeardBefore` shows it to the kernel as heard, for "switch to it" and
+  read-backs, never as where the next words go. A line about one session that told no ask in full
+  ends "Switch there?" and opens `state.switchOffer` for it (`playMeanwhile`), unless an offer is
+  still open; one naming several asks nothing. Another session's question, plan or permission, on a
+  session's screen, joins it too (`ask_opened`, `askId` on the item): needs-you first, after a
   3 s breath (`MEANWHILE_ASK_QUIET_MS`), with the needs chime, in words read from the live ask when
   the line plays (`describeAskForMeanwhile`) — one answered meanwhile is left out. A permission or a
   short question is said in full (`toldAsks` on the line): heard, even cut short, it is answered like
   any question asked aloud; a line asking for two sessions answers neither on a bare yes. A plan or a
   long question is only its gist: a bare yes to it asks "Switch to X?" (it may only acknowledge),
   while "switch to it" right after it switches at once (`refuseAnnouncedOnly`).
-- **The exchange** (`state/exchange.ts`) is who the developer is talking with: the session their
-  spoken words went to last. Off screen it is the subject: its lines are always said, named;
-  follow-ups go there (`router/exchange-lines.ts` tells the kernel); it lapses a minute after its
-  last answer heard (a timer in `speech/connect.ts`), never while its session still works on the
-  question. Voice OS offers a switch in one case only: the first reply to news of X the developer heard
-  to its end — its announcement, the meanwhile line, or the kernel reading X back (`read_state` /
-  `read_history`, `listReadBackRefs`) — within ten minutes (`Session.updateHeardAt`), in its ack:
-  "Sent to X. Switch there?" (`state.switchOffer`). Only X's own open question holds it back; a bare
-  yes after it never approves another session's permission (`isClearlyAnswerFor`). Its window, and "For X?"'s, count from when the question was heard (`heardAt`,
-  8 s; 30 s if it never plays). Speech ranks the exchange's lines first
-  (`speech/queue.ts`) and holds everything, never drops it, while the developer talks.
-- **Words go where they were said.** Voice OS says "Sent to X" when X is not on screen, "Switching
-  to X" for a switch it makes, "Back to X" for `go_back` (`state/view-history.ts`, five views with
-  their exchanges). "For X?" (`state/target-ask.ts`, settled by `router/target.ts`) holds words that
-  could be a reply to X's notification until the developer says which.
+- **Words go to the screen, or to a session named in them.** Nothing guesses that words were "really"
+  for another session. `send_to` X from a session's screen goes through only when X is named in the
+  developer's words, checked in code (`findSessionsNamedIn`, `isOwnNameSaid`), and the judge's
+  `spoken_to` says they speak to X rather than mention it (`tools/send-guard.ts`); unnamed, the
+  kernel is told to forward them. Named but only mentioned, Voice OS asks "For X?" (`ask_which`,
+  `state/target-ask.ts`, settled by `router/target.ts`) and holds the words: yes sends them there,
+  anything else keeps them on the screen. The exceptions are code paths, not guesses: the setup
+  session (`isMisroutedToSetup`), a yes to "Want me to ask it?" (`askedBack`), earlier words pointed
+  at a named session ("I meant that for X"), the `answer` tool, and Mission Control, where the kernel
+  asks which session itself. A session's lines off screen are never said in full: they come back
+  through the meanwhile line.
+- **"Sent to X. Switch there?"** (`state/sends.ts`, `followSends`): spoken words that went to a
+  session not on screen say so and offer the switch in the same line (`state.switchOffer`), unless
+  X is out of reach, X has its own open question, or an offer is still open; typed words get "Sent to
+  X" alone. Words said on a screen the developer clicked away from say nothing (`saidOn`). A bare
+  yes after the offer never approves another session's permission (`isClearlyAnswerFor`); a bare no
+  closes it in the router, without the kernel. Its window, and "For X?"'s, count from when the
+  question was heard (`heardAt`, 8 s; 30 s if it never plays). Speech ranks Voice OS's acks and the
+  kernel's replies first (`speech/queue.ts`) and holds everything, never drops it, while the
+  developer talks. "Switching to X" is said for a switch Voice OS makes, "Back to X" for `go_back`
+  (`state/view-history.ts`, five views).
 - **The setup session** (ref `setup`) runs in the home folder with the crew CLI, for crew setup
   only. On the wire it is `Session.isPinned`, a name that predates Pinned. It is kept because
   remotes of other versions read it, so it means "the setup session" and has nothing to do with
@@ -182,7 +190,8 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
 - **No English patterns over what the developer means.** A guard that reads the developer's words
-  (consent, take-back, misroute, mute, listening, a stop, "For X?") asks the judge, after
+  (consent, take-back, misroute, mute, listening, a stop, words for a session not on screen, "For
+  X?") asks the judge, after
   language-neutral fast paths in code: word counts, a closing `?`, verbatim spans, session names,
   option labels. What the kernel already reads while routing is a tool argument instead, at no extra
   call: `deliver`, `my_notes` (required, so it is always decided), `about_last_action`. The speech layer (`speech/turns.ts` stop words and "end of turn", `wake.ts`, filler)

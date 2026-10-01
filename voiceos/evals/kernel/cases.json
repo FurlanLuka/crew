@@ -558,73 +558,37 @@
 			]
 		},
 		{
-			"id": "subject-unclear-follow-up",
-			"utterance": "And the lint?",
-			"context": {
-				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "checkout-api/main",
-					"asked": "is the build green?",
-					"answered": "Yes, all 214 tests pass.",
-					"secondsAgo": 10
-				}
-			},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "checkout-api/main",
-					"text_includes": ["lint"]
-				}
-			]
-		},
-		{
-			"id": "subject-screen-work",
-			"utterance": "Okay, run the tests here.",
-			"context": {
-				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "checkout-api/main",
-					"asked": "is the build green?",
-					"answered": "Yes, all 214 tests pass.",
-					"secondsAgo": 10
-				}
-			},
-			"calls": [
-				{
-					"name": "forward",
-					"text_includes": ["test"]
-				}
-			],
-			"forbid_calls": ["send_to"]
-		},
-		{
-			"id": "subject-where-am-i",
+			"id": "where-am-i-after-heard",
 			"utterance": "Where am I?",
 			"context": {
 				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "checkout-api/main",
-					"asked": "is the build green?",
-					"answered": "Yes, all 214 tests pass.",
-					"secondsAgo": 10
-				}
+				"heard": [
+					{
+						"text": "Yes, all 214 tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 12,
+						"endedSecondsAgo": 9
+					}
+				]
 			},
 			"calls": [],
 			"answer": true,
 			"forbid_mutation": true,
-			"reply_includes": ["store", "checkout"]
+			"reply_includes": ["store"]
 		},
 		{
-			"id": "subject-switch-to-it",
+			"id": "switch-to-it-after-heard",
 			"utterance": "Switch to it.",
 			"context": {
 				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "checkout-api/main",
-					"asked": "is the build green?",
-					"answered": "Yes, all 214 tests pass.",
-					"secondsAgo": 10
-				}
+				"heard": [
+					{
+						"text": "Yes, all 214 tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 12,
+						"endedSecondsAgo": 9
+					}
+				]
 			},
 			"calls": [
 				{
@@ -645,67 +609,6 @@
 				}
 			],
 			"forbid_calls": ["switch_view"]
-		},
-		{
-			"id": "notif-general-question",
-			"utterance": "Tell me about that.",
-			"context": {
-				"view": "store-front/main",
-				"heard": [
-					{
-						"text": "checkout api, main is done: the retry backoff.",
-						"ref": "checkout-api/main",
-						"secondsAgo": 6,
-						"endedSecondsAgo": 3,
-						"update": true
-					}
-				],
-				"update": {
-					"ref": "checkout-api/main",
-					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
-				}
-			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main"
-				}
-			],
-			"forbid_calls": ["send_to", "forward"]
-		},
-		{
-			"id": "notif-specific-question",
-			"utterance": "What did it change in the backoff cap?",
-			"context": {
-				"view": "store-front/main",
-				"heard": [
-					{
-						"text": "checkout api, main is done: the retry backoff.",
-						"ref": "checkout-api/main",
-						"secondsAgo": 6,
-						"endedSecondsAgo": 3,
-						"update": true
-					}
-				],
-				"update": {
-					"ref": "checkout-api/main",
-					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
-				}
-			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main",
-					"input": {
-						"skip_held": true
-					}
-				},
-				{
-					"name": "send_to",
-					"ref": "checkout-api/main",
-					"text_includes": ["cap"]
-				}
-			]
 		},
 		{
 			"id": "notif-thanks",
@@ -751,11 +654,11 @@
 			},
 			"calls": [
 				{
-					"name": "ask_target",
-					"ref": "checkout-api/main"
+					"name": "forward"
 				}
 			],
-			"forbid_calls": ["switch_view", "send_to"]
+			"forbid_calls": ["switch_view", "send_to"],
+			"no_reply": true
 		},
 		{
 			"id": "notif-question-on-its-subject",
@@ -775,62 +678,22 @@
 						"ref": "store-front/main",
 						"secondsAgo": 50,
 						"endedSecondsAgo": 40
-					},
-					{
-						"text": "Meanwhile, checkout api, main said: Sonnet 5 would roughly double the kernel's cost: about two dollars sixty a day on Haiku becomes five thirty.",
-						"ref": "checkout-api/main",
-						"secondsAgo": 13,
-						"endedSecondsAgo": 6,
-						"update": true
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "send_to|ask_target",
-					"ref": "checkout-api/main"
-				}
-			],
-			"allow": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main"
-				}
-			],
-			"forbid_calls": ["forward"]
-		},
-		{
-			"id": "notif-mid-exchange-no-switch",
-			"utterance": "What did it change in the backoff cap?",
-			"context": {
-				"view": "store-front/main",
-				"heard": [
-					{
-						"text": "checkout api, main is done: the retry backoff.",
-						"ref": "checkout-api/main",
-						"secondsAgo": 6,
-						"endedSecondsAgo": 3,
-						"update": true
 					}
 				],
-				"update": {
+				"switchOffer": {
 					"ref": "checkout-api/main",
-					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
-				},
-				"talkingWith": {
-					"ref": "store-front/main",
-					"asked": "clean up the locale placeholders",
-					"answered": "Done, twelve placeholders removed.",
-					"secondsAgo": 20
+					"secondsAgo": 6,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: Sonnet 5 would roughly double the kernel's cost: about two dollars sixty a day on Haiku becomes five thirty. Switch there?"
 				}
 			},
 			"calls": [
 				{
-					"name": "send_to",
-					"ref": "checkout-api/main",
-					"text_includes": ["cap"]
+					"name": "forward",
+					"text_includes": ["price"]
 				}
-			]
+			],
+			"forbid_calls": ["send_to", "switch_view"]
 		},
 		{
 			"id": "what-did-i-miss",
@@ -2405,11 +2268,11 @@
 			},
 			"calls": [
 				{
-					"name": "send_to",
-					"ref": "checkout-api/main"
+					"name": "forward"
 				}
 			],
-			"no_reply": true
+			"no_reply": true,
+			"forbid_calls": ["switch_view"]
 		},
 		{
 			"id": "unrelated-words-stay-on-screen",
@@ -4787,16 +4650,18 @@
 			"no_reply": true
 		},
 		{
-			"id": "go-into-while-talking",
+			"id": "go-into-after-heard",
 			"utterance": "Wait, can you go into checkout?",
 			"context": {
 				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "store-front/wrk1",
-					"asked": "is the ranking measured yet?",
-					"answered": "Yes, the new ranking wins on 7 of 10 queries.",
-					"secondsAgo": 15
-				}
+				"heard": [
+					{
+						"text": "Yes, the new ranking wins on 7 of 10 queries.",
+						"ref": "store-front/wrk1",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 15
+					}
+				]
 			},
 			"calls": [
 				{
@@ -4807,16 +4672,18 @@
 			"forbid_calls": ["send_to", "forward"]
 		},
 		{
-			"id": "go-into-session-while-talking",
+			"id": "go-into-session-after-heard",
 			"utterance": "Can you go into checkout session?",
 			"context": {
 				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "store-front/wrk1",
-					"asked": "is the ranking measured yet?",
-					"answered": "Yes, the new ranking wins on 7 of 10 queries.",
-					"secondsAgo": 15
-				}
+				"heard": [
+					{
+						"text": "Yes, the new ranking wins on 7 of 10 queries.",
+						"ref": "store-front/wrk1",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 15
+					}
+				]
 			},
 			"calls": [
 				{
@@ -4908,21 +4775,23 @@
 			"forbid_calls": ["answer", "forward", "send_to"]
 		},
 		{
-			"id": "go-into-other-machine-while-talking",
+			"id": "go-into-other-machine-after-heard",
 			"utterance": "Wait, can you go into signals?",
 			"context": {
 				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "store-front/wrk1",
-					"asked": "which project should this go in?",
-					"answered": "Signals project or store front project?",
-					"secondsAgo": 20
-				},
 				"machine": {
 					"id": "remote-mac",
 					"name": "Remote Mac",
 					"refs": ["remote-mac:signals/main", "remote-mac:signals/wrk1"]
-				}
+				},
+				"heard": [
+					{
+						"text": "Signals project or store front project?",
+						"ref": "store-front/wrk1",
+						"secondsAgo": 20,
+						"endedSecondsAgo": 15
+					}
+				]
 			},
 			"calls": [
 				{
@@ -5089,29 +4958,152 @@
 						"minutesAgo": 5
 					}
 				],
-				"heard": [
-					{
-						"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes.",
-						"ref": "checkout-api/main",
-						"secondsAgo": 4,
-						"endedSecondsAgo": 1,
-						"update": true
-					}
-				]
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 4,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes. Switch there?"
+				}
 			},
 			"calls": [
 				{
-					"name": "send_to|ask_target",
-					"ref": "checkout-api/main"
+					"name": "forward",
+					"text_includes": ["push"]
 				}
 			],
-			"allow": [
+			"forbid_calls": ["send_to"]
+		},
+		{
+			"id": "meanwhile-offer-yes",
+			"utterance": "Yes.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 3,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes. Switch there?"
+				}
+			},
+			"calls": [
 				{
 					"name": "switch_view",
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["forward"]
+			"forbid_calls": ["forward", "send_to"]
+		},
+		{
+			"id": "debug-modes-branch-after-go-back",
+			"utterance": "Make sure you will do this on top of the modes branch.",
+			"context": {
+				"view": "store-front/main",
+				"names": {
+					"store-front/main": "Shop Main"
+				},
+				"voiceLog": [
+					{
+						"utterance": "Go back.",
+						"reply": "",
+						"did": ["go_back"],
+						"minutesAgo": 0
+					}
+				],
+				"heard": [
+					{
+						"text": "The checkout redirect now keeps the cart, and the tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 40,
+						"endedSecondsAgo": 35
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["modes"]
+				}
+			],
+			"forbid_calls": ["send_to"],
+			"no_reply": true
+		},
+		{
+			"id": "debug-branches-named-same",
+			"utterance": "Can you make sure that all the branches will be named the same?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "I pushed the retry work to a new branch, retries-v2.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 30,
+						"endedSecondsAgo": 25
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["branch"]
+				}
+			],
+			"forbid_calls": ["send_to"],
+			"no_reply": true
+		},
+		{
+			"id": "debug-another-debug-note",
+			"utterance": "There's another debug note. Can you also please fix that?",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "Fixed the debug note about the double chime; the tests pass.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 30,
+						"endedSecondsAgo": 25
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["debug note"]
+				}
+			],
+			"forbid_calls": ["send_to"],
+			"no_reply": true
+		},
+		{
+			"id": "debug-reply-mentions-other",
+			"utterance": "Yes, name them the same as in checkout api.",
+			"context": {
+				"view": "store-front/main",
+				"needs": "store-front/main",
+				"asked": "Should I name the new branches the way checkout api does?"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["name"]
+				}
+			],
+			"forbid_calls": ["send_to"],
+			"no_reply": true
+		},
+		{
+			"id": "mention-not-address",
+			"utterance": "Put this on top of the checkout api branch.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": ["checkout"]
+				}
+			],
+			"forbid_calls": ["send_to"],
+			"no_reply": true
 		},
 		{
 			"id": "combined-offer-yes",

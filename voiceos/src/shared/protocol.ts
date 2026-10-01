@@ -170,10 +170,6 @@ export interface Session {
 	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
 	withdrawnAsides: string[];
 	heldLine: HeldLine | null;
-	// When the developer heard news of it to its end (an announcement, the meanwhile line, or the kernel
-	// reading it back), until they reply: the first reply from another screen offers the switch. Kept
-	// on the session, not the held line: asking about it by name clears that line before the answer.
-	updateHeardAt?: number;
 	// When its context compaction began; null when none runs. The SDK reports no progress.
 	compactingSince: number | null;
 	// When its latest spoken line came, if nothing but a question or plan has come since: such a line
@@ -249,29 +245,8 @@ export interface Limits {
 	resetsAt: number | null;
 }
 
-// Why the developer's words went where they did, logged with every change.
-export type ExchangeReason = 'screen' | 'named' | 'follow_up';
-
-export interface Exchange {
-	ref: string;
-	startedAt: number;
-	// The last send or answer heard: it lapses EXCHANGE_IDLE_MS after this.
-	lastAt: number;
-	// Turns of that session whose answer the developer heard: the switch offer waits for two.
-	answeredTurns: number;
-	// The turn (its request's time) whose answer was last counted.
-	countedTurnAt: number | null;
-	hasOfferedSwitch: boolean;
-	reason: ExchangeReason;
-}
-
-export const EXCHANGE_IDLE_MS = 60_000;
-// The longest a conversation waits on its session's work before it lapses anyway.
-export const EXCHANGE_WORK_MS = 10 * 60_000;
-
 export interface ViewHistoryEntry {
 	view: View;
-	exchange: Exchange | null;
 	// Its session was running when the developer left it: stopped since, "go back" passes it over.
 	wasLive?: true;
 }
@@ -356,7 +331,7 @@ export interface SpokenLine {
 	// No tab played it: nobody heard it.
 	isUnplayed?: true;
 	// Voice OS telling the developer about other sessions' updates ("checkout needs you: …", the
-	// meanwhile line): a reply to it is for them. refs: every session the meanwhile line named.
+	// meanwhile line). refs: every session the meanwhile line named.
 	isUpdate?: true;
 	refs?: string[];
 	toldAsks?: ToldAsk[];
@@ -395,8 +370,6 @@ export interface State {
 	order: string[];
 	view: View;
 	focus: string | null;
-	// Who the developer is talking with: on screen, or a session they spoke to without switching.
-	exchange: Exchange | null;
 	asks: PendingAsk[];
 	denials: Denial[];
 	transcript: Transcript | null;
@@ -408,10 +381,10 @@ export interface State {
 	devOffer: DevOffer | null;
 	// "Switch to checkout?", asked aloud by Voice OS: a yes switches, anything else lets it go.
 	switchOffer: SwitchOffer | null;
-	// Where the developer has been, newest first, with who they talked with there: "go back".
+	// Where the developer has been, newest first: "go back".
 	viewHistory: ViewHistoryEntry[];
-	// "For checkout?": words that were either a reply to checkout's notification or for the screen,
-	// held until the developer says which.
+	// "For checkout?": words that named checkout without clearly speaking to it, held until the
+	// developer says whether they were for it or for the screen.
 	targetAsk: TargetAsk | null;
 	// Other sessions' "is done" / "needs you", waiting for a quiet moment to be said as one line.
 	meanwhile: MeanwhileItem[];
@@ -509,14 +482,12 @@ export type Action =
 	| { type: 'rename_session'; ref: string; name: string }
 	// The languages the developer speaks, from the listening menu (and loaded at boot).
 	| { type: 'set_languages'; languages: string[] }
-	// The page's × on "Talking with checkout": follow-ups go to the screen again.
-	| { type: 'clear_exchange' }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
 	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced).
 	| { type: 'offer_switch'; ref: string }
 	// Voice OS asks "For X?" and holds the words until the developer says which.
-	| { type: 'ask_target'; ref: string; screen: string; text: string }
+	| { type: 'ask_which'; ref: string; screen: string; text: string }
 	// toTarget: yes, send them to X; otherwise they are kept on the screen. `at` names the ask.
 	| { type: 'settle_target'; at: number; toTarget: boolean };
 
@@ -537,7 +508,6 @@ export type Observation =
 	// What a session is working on, named after a turn it spoke for itself.
 	// A spoken line stopped playing: what the developer heard of it, for the kernel.
 	| { type: 'spoken_ended'; lineId: string; isCut: boolean; isUnplayed?: true }
-	| { type: 'exchange_expired'; ref: string; lastAt: number }
 	| {
 			type: 'meanwhile_added';
 			ref: string;

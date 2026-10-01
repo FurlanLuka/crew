@@ -1,34 +1,29 @@
-// Where the developer has been: "go back" walks it, skipping what is gone, and brings back the
-// conversation they had there while it is still live.
+// Where the developer has been: "go back" walks it, skipping what is gone.
 import {
 	VIEW_HISTORY_KEPT,
-	type Exchange,
 	type State,
 	type View,
 	type ViewHistoryEntry,
 } from '../shared/protocol.js';
-import { isExchangeLive, pruneExchange } from './exchange.js';
 import type { Effect } from './reducer.js';
 import { sayAck, sayRef } from './helpers.js';
 
 export const isSameView = (first: View, second: View): boolean =>
 	JSON.stringify(first) === JSON.stringify(second);
 
-// Sessions (and machines) that are gone leave the history, and take their conversations with them.
+// Sessions (and machines) that are gone leave the history.
 export const pruneViewHistory = (
 	entries: ViewHistoryEntry[],
 	isKept: (ref: string) => boolean,
 	isMachineKept: (machine: string) => boolean = () => true,
 ): ViewHistoryEntry[] =>
-	entries
-		.filter(({ view }) =>
-			view.kind === 'session'
-				? isKept(view.ref)
-				: view.kind !== 'grid' || !view.machine || isMachineKept(view.machine),
-		)
-		.map((entry) => ({ ...entry, exchange: pruneExchange(entry.exchange, isKept) }));
+	entries.filter(({ view }) =>
+		view.kind === 'session'
+			? isKept(view.ref)
+			: view.kind !== 'grid' || !view.machine || isMachineKept(view.machine),
+	);
 
-// The view being left, with its conversation, goes on top; the same view twice in a row is one.
+// The view being left goes on top; the same view twice in a row is one.
 export const pushViewHistory = (state: State, next: View): ViewHistoryEntry[] => {
 	if (isSameView(state.view, next)) {
 		return state.viewHistory;
@@ -37,7 +32,6 @@ export const pushViewHistory = (state: State, next: View): ViewHistoryEntry[] =>
 	const left = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 	const entry: ViewHistoryEntry = {
 		view: state.view,
-		exchange: state.exchange,
 		...(left && left.status !== 'stopped' ? { wasLive: true as const } : {}),
 	};
 
@@ -64,19 +58,13 @@ export type GoBackDecision =
 	| {
 			kind: 'back';
 			view: View;
-			exchange: Exchange | null;
 			skipped: string[];
 			rest: ViewHistoryEntry[];
 	  }
 	| { kind: 'empty'; skipped: string[] };
 
-interface DecideGoBackParams {
-	state: State;
-	now: number;
-}
-
 // A session that stopped or was removed is passed over and named, so the developer knows why.
-export const decideGoBack = ({ state, now }: DecideGoBackParams): GoBackDecision => {
+export const decideGoBack = (state: State): GoBackDecision => {
 	const skipped: string[] = [];
 
 	for (const [index, entry] of state.viewHistory.entries()) {
@@ -93,7 +81,6 @@ export const decideGoBack = ({ state, now }: DecideGoBackParams): GoBackDecision
 		return {
 			kind: 'back',
 			view,
-			exchange: isExchangeLive(entry.exchange, now) ? entry.exchange : null,
 			skipped,
 			rest: state.viewHistory.slice(index + 1),
 		};

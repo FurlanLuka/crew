@@ -1,6 +1,6 @@
 import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
-import { SWITCH_OFFER_MS, type Action, type State } from '../shared/protocol.js';
+import type { Action, State } from '../shared/protocol.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { createFixtureState } from '../../test/support/state.js';
 import { executeTool, type ToolContext } from './tools.js';
@@ -46,45 +46,9 @@ const notified = (extra: Parameters<typeof createFixtureState>[0] = {}) =>
 		NOW,
 	);
 
-describe('replies to a notification', () => {
-	it('mid-conversation with the screen → no switch: sent to the notifier instead', async () => {
-		const state = notified({
-			talkingWith: { ref: SCREEN, asked: 'x', answered: 'y', secondsAgo: 10 },
-		});
-		const { tools, actions } = createContext(state, 'What changed in the cap?');
-		const result = await executeTool('switch_view', { ref: NOTIFIER }, tools);
-
-		expect(result.ok).toBe(false);
-		expect(String(result.content)).toContain(`send_to ${NOTIFIER}`);
-		expect(actions).toEqual([]);
-	});
-
-	it('mid-conversation, a plan heard only as its gist → "switch to it" switches: it is answered only once heard', async () => {
-		const state = notified({
-			talkingWith: { ref: SCREEN, asked: 'x', answered: 'y', secondsAgo: 10 },
-		});
-		const session = state.sessions[NOTIFIER];
-
-		if (session) {
-			state.sessions[NOTIFIER] = {
-				...session,
-				status: 'blocked',
-				heldLine: {
-					id: 'h1',
-					at: NOW - 6000,
-					missed: 0,
-					isAnnounced: true,
-					kind: 'ask',
-					askId: 'pl1',
-				},
-			};
-		}
-
-		state.asks = [
-			{ id: 'pl1', ref: NOTIFIER, at: NOW - 6000, kind: 'plan', input: {}, plan: '# Retries' },
-		];
-
-		const { tools, actions } = createContext(state, 'Switch to it.');
+describe('a switch right after a notification', () => {
+	it('"switch to it" → switched, its held update plays there', async () => {
+		const { tools, actions } = createContext(notified(), 'Switch to it.');
 		const result = await executeTool('switch_view', { ref: NOTIFIER }, tools);
 
 		expect(result.ok).toBe(true);
@@ -109,76 +73,5 @@ describe('replies to a notification', () => {
 			{ type: 'switch_view', view: { kind: 'session', ref: NOTIFIER }, skipHeld: true },
 		]);
 		expect(String(result.content)).toContain('send_to it');
-	});
-
-	it('"For …?" only right after that session spoke; otherwise refused', async () => {
-		const heard = createContext(notified(), 'review all of this');
-		const quiet = createContext(createFixtureState({ view: SCREEN }, NOW), 'review all of this');
-
-		const asked = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
-		const refused = await executeTool('ask_target', { ref: NOTIFIER }, quiet.tools);
-
-		expect(asked).toMatchObject({ ok: true, note: 'asked which session' });
-		expect(heard.actions).toEqual([
-			{ type: 'ask_target', ref: NOTIFIER, screen: SCREEN, text: 'review all of this' },
-		]);
-		expect(refused.ok).toBe(false);
-		expect(quiet.actions).toEqual([]);
-	});
-
-	it('"Switch to it?" just asked about that session → "For …?" refused: the words answer the offer', async () => {
-		const state = {
-			...notified(),
-			switchOffer: { ref: NOTIFIER, at: NOW - 2_000, heardAt: NOW - 1_000 },
-		};
-		const heard = createContext(state, 'No.');
-		const result = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
-
-		expect(result.ok).toBe(false);
-		expect(heard.actions).toEqual([]);
-	});
-
-	it('"Switch to …?" about another session, or long since heard → "For …?" asked as usual', async () => {
-		const offers = [
-			{ ref: SCREEN, at: NOW - 2_000, heardAt: NOW - 1_000 },
-			{ ref: NOTIFIER, at: NOW - SWITCH_OFFER_MS - 2_000, heardAt: NOW - SWITCH_OFFER_MS - 1 },
-		];
-
-		for (const switchOffer of offers) {
-			const heard = createContext({ ...notified(), switchOffer }, 'review all of this');
-			const result = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
-
-			expect(result).toMatchObject({ ok: true, note: 'asked which session' });
-		}
-	});
-
-	it('words begun before "Switch to it?" was asked → not its answer: "For …?" asked as usual', async () => {
-		const state = {
-			...notified(),
-			switchOffer: { ref: NOTIFIER, at: NOW - 2_000, heardAt: NOW - 1_000 },
-		};
-		const heard = createContext(state, 'review all of this');
-		const result = await executeTool(
-			'ask_target',
-			{ ref: NOTIFIER },
-			{ ...heard.tools, heardFrom: NOW - 3_000 },
-		);
-
-		expect(result).toMatchObject({ ok: true, note: 'asked which session' });
-		expect(heard.actions).toEqual([
-			{ type: 'ask_target', ref: NOTIFIER, screen: SCREEN, text: 'review all of this' },
-		]);
-	});
-
-	it('the words already sent this turn → "For …?" refused: they cannot also be held', async () => {
-		const heard = createContext(notified(), 'review all of this');
-		const result = await executeTool(
-			'ask_target',
-			{ ref: NOTIFIER },
-			{ ...heard.tools, sentTo: new Set([SCREEN]) },
-		);
-
-		expect(result.ok).toBe(false);
-		expect(heard.actions).toEqual([]);
 	});
 });

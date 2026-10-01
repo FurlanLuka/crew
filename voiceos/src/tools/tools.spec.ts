@@ -465,7 +465,6 @@ describe('forward', () => {
 			'send_to',
 			'switch_view',
 			'go_back',
-			'ask_target',
 			'play_missed',
 			'start_session',
 			'stop_session',

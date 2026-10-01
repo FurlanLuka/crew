@@ -88,23 +88,6 @@ describe('go back', () => {
 		expect(said(back.effects)).toEqual(['Nothing to go back to.']);
 	});
 
-	it('the conversation they had there comes back while it is live, not after it lapsed', () => {
-		const talking = runAt(
-			[
-				[20, show(CREW)],
-				[21, { type: 'send', ref: CHECKOUT, text: 'is the build green?', isSpoken: true }],
-				[22, show(SPEAK)],
-			],
-			walked(),
-		).state;
-		const soon = runAt([[30, { type: 'go_back' }]], talking).state;
-		const late = runAt([[21 + 60_000, { type: 'go_back' }]], talking).state;
-
-		expect(soon.view).toEqual({ kind: 'session', ref: CREW });
-		expect(soon.exchange?.ref).toBe(CHECKOUT);
-		expect(late.exchange).toBeNull();
-	});
-
 	it('a switch the developer asked for by voice is said first; a click is not', () => {
 		const voiced = runAt([[20, { ...show(CREW), announce: true }]], walked());
 		const clicked = runAt([[20, show(CREW)]], walked());

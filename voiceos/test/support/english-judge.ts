@@ -71,6 +71,34 @@ const readListenMode = (said: string): JudgeAnswer<'listen_mode'> => {
 
 const yesIf = (isYes: boolean): 'yes' | 'no' => (isYes ? 'yes' : 'no');
 
+// The words of the session's label a developer says for it: "checkout" for checkout-api/main. "main"
+// names nothing: every workspace has one.
+const readNameWords = (context = ''): string[] =>
+	context
+		.replace(/^The session:\s*/, '')
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter((word) => word.length >= 4 && word !== 'main');
+
+// Addressed ("checkout, run the tests"), told or asked ("tell checkout to…"), sent something ("send
+// this to checkout", "I meant that for checkout"): anything else only mentions it.
+const isSpokenTo = (said: string, context?: string): boolean => {
+	const names = readNameWords(context).join('|');
+
+	if (!names) {
+		return false;
+	}
+
+	const name = `(?:the\\s+)?(?:[\\w-]+\\s+)?(?:${names})\\b`;
+
+	return [
+		`^(?:(?:hey|okay|ok|so)[,\\s]+)?${name}(?:[\\s/-]+\\w+){0,2}\\s*[,:]`,
+		`\\b(?:tell|ask|have|get|let)\\s+${name}`,
+		`\\b(?:send|pass|forward)\\s+(?:this|that|it|these|them)\\b.*\\bto\\s+${name}`,
+		`\\bmeant\\s+(?:this|that|it)\\s+for\\s+${name}`,
+	].some((pattern) => new RegExp(pattern, 'i').test(said.trim()));
+};
+
 // Where the part named in the context starts: a take-back only counts before it.
 const findPart = (said: string, context = ''): number => {
 	const part = /"(.*)"$/.exec(context)?.[1] ?? '';
@@ -125,6 +153,8 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 			return yesIf(SETUP_ADDRESS_PATTERN.test(said) || SETUP_WORK_PATTERN.test(said));
 		case 'this_session':
 			return yesIf(THIS_SESSION_PATTERN.test(said));
+		case 'spoken_to':
+			return yesIf(isSpokenTo(said, context));
 		case 'more_than_start':
 			return yesIf(START_THEN_MORE_PATTERN.test(said.trim()));
 		case 'target_answer':

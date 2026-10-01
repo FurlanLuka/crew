@@ -79,12 +79,10 @@ export interface FixtureContext {
 	names?: Record<string, string>;
 	// Another machine, connected, with sessions of its own (full refs: "personal:store-front/main").
 	machine?: { id: string; name: string; refs: string[] };
-	// The developer is talking with this session without switching to it: what they asked (its work
-	// request), and what it answered, heard that many seconds ago.
-	talkingWith?: { ref: string; asked: string; answered: string; secondsAgo: number };
 	// Voice OS asked "Switch to <ref>?" that many seconds ago.
 	// text: what Voice OS said to offer it ("Sent to checkout. Switch there?"), else "Switch to X?".
-	switchOffer?: { ref: string; secondsAgo: number; text?: string };
+	// update: it was the meanwhile line about that session ("Meanwhile, … Switch there?").
+	switchOffer?: { ref: string; secondsAgo: number; text?: string; update?: boolean };
 	// Other sessions' updates waiting for the meanwhile line.
 	meanwhile?: { ref: string; kind: 'done' | 'needs'; about: string }[];
 }
@@ -266,16 +264,9 @@ const createFixtureSession = ({ ref, context, asks, now }: CreateFixtureSessionP
 			: null,
 		requests: work
 			? [{ text: work.request, at: now - work.minutesAgo * 60_000 }]
-			: context.talkingWith?.ref === ref
-				? [
-						{
-							text: context.talkingWith.asked,
-							at: now - (context.talkingWith.secondsAgo + 20) * 1000,
-						},
-					]
-				: FIXTURE_REQUESTS[ref]
-					? [{ text: FIXTURE_REQUESTS[ref], at: now - 30 * 60_000 }]
-					: [],
+			: FIXTURE_REQUESTS[ref]
+				? [{ text: FIXTURE_REQUESTS[ref], at: now - 30 * 60_000 }]
+				: [],
 		stream: [
 			...(said ? [{ id: 'said', at: now - 1000, kind: 'text' as const, text: said }] : []),
 			// Docs this session made, oldest first (the newest is what "open the doc" opens).
@@ -379,24 +370,14 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 						{
 							id: 'offer',
 							text: context.switchOffer.text ?? `Switch to ${context.switchOffer.ref}?`,
-							source: 'kernel' as const,
+							source: context.switchOffer.update ? ('narrator' as const) : ('kernel' as const),
 							at: now - context.switchOffer.secondsAgo * 1000,
 							endedAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
 							ref: context.switchOffer.ref,
 							isAsking: true as const,
-						},
-					]
-				: []),
-			...(context.talkingWith
-				? [
-						{
-							id: 'answered',
-							text: context.talkingWith.answered,
-							source: 'narrator' as const,
-							at: now - context.talkingWith.secondsAgo * 1000,
-							endedAt: now - context.talkingWith.secondsAgo * 1000 + 3000,
-							ref: context.talkingWith.ref,
-							isAnswer: true as const,
+							...(context.switchOffer.update
+								? { isUpdate: true as const, refs: [context.switchOffer.ref] }
+								: {}),
 						},
 					]
 				: []),
@@ -426,19 +407,6 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 						ref: context.switchOffer.ref,
 						at: now - context.switchOffer.secondsAgo * 1000,
 						heardAt: now - context.switchOffer.secondsAgo * 1000 + 1500,
-					},
-				}
-			: {}),
-		...(context.talkingWith
-			? {
-					exchange: {
-						ref: context.talkingWith.ref,
-						startedAt: now - (context.talkingWith.secondsAgo + 20) * 1000,
-						lastAt: now - context.talkingWith.secondsAgo * 1000,
-						answeredTurns: 1,
-						countedTurnAt: null,
-						hasOfferedSwitch: false,
-						reason: 'named' as const,
 					},
 				}
 			: {}),

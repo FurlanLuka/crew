@@ -43,7 +43,8 @@ to expect them; English is the default.
 
 **Works in any language:** where your words go, answers to questions and permissions ("ja",
 "ne", "sí"), approvals and refusals, taking words back ("vergiss das"), "that was for checkout",
-muting, changing how the tab listens, "For checkout?" answers, and asides versus queued work. A
+muting, changing how the tab listens, whether words that name a session are spoken to it, "For
+checkout?" answers, and asides versus queued work. A
 small, separate Claude Haiku check reads the words whenever Voice OS is about to act on what you
 meant (approve something, drop words, mute), and when it cannot tell, Voice OS takes the safe side:
 it does not approve and does not drop your words. It runs only on those turns, adding a few hundred
@@ -276,16 +277,19 @@ what you meant. If the session needs more, it asks you.
 - "What did the session say?" Voice OS reads the session's last reply back, including any choice it
   left you.
 
-**A conversation with a session you are not looking at.** Say "checkout, is the build green?" and
-you stay where you are: Voice OS says "Sent to checkout", and checkout's answer plays in full, with
-its name, however long it takes to come. Follow-ups ("and the lint?") keep going to checkout until a
-minute after its last answer, or until you say something clearly about the session on screen ("Sent
-to crew" tells you the conversation ended). Voice OS never asks to switch in the middle of it: say
-"switch to it" when you want to. The bottom bar shows **Talking with checkout** while it lasts: click
-the name to switch, × to end it.
+**Words go to the session on screen, or to one you name.** Say "checkout, is the build green?" and
+you stay where you are: the words go to checkout, and Voice OS says so and offers to follow them in
+one line: "Sent to checkout. Switch there?" (yes switches; anything else keeps you where you are).
+Checkout's answer comes back in the meanwhile line, like any other session's update. A session is
+named by its name ("checkout", "store front work one") or the name you gave it, not by its work.
+Words that only mention one ("put it on top of the checkout branch") get "For checkout?": yes sends
+them there; no, or silence, keeps them on the session on screen ("Kept on crew"). The eight seconds
+for an answer start when you have heard the question. Anything that names no session is for the
+session on screen, whatever you heard last: Voice OS never guesses that words were meant elsewhere.
+A follow-up ("and the lint?") is no exception: name checkout again, or switch there.
 
-- "Where am I?" · "Who am I talking to?" "You're on crew, talking with checkout."
-- "Switch to it." Opens the session you are talking with.
+- "Where am I?" · "Who am I talking to?" "You're on crew."
+- "Switch to it." Right after a session's line, opens that session.
 - "Go back." Returns to the session you were on before, saying "Back to crew"; say it again to go
   further back. A session that stopped is passed over ("checkout stopped. Back to crew."). "Go back
   to checkout" goes to checkout, wherever you came from. "Home" still means Mission Control.
@@ -316,15 +320,12 @@ session plays when you switch there. Another session's permission or question wa
 playing to end, plus a breath. A session still waiting on you is mentioned again ("checkout still
 needs you") every five minutes, at most three times, while a Voice OS page is open.
 
-**Replying to an update.** After "Meanwhile, checkout said: …" or "checkout needs you: …", your
-reply is for checkout. "Tell me about that" switches to checkout and plays its update; a specific
-question ("what did it change in the cap?") switches and asks it. While you are in the middle of a
-conversation with the session on screen, the reply goes to checkout without a switch, and Voice OS
-says where it went and offers the switch in one line: "Sent to checkout. Switch there?" (once per
-update; yes switches, anything else keeps you where you are). When your words could be for either
-("review all of this"), Voice OS asks "For checkout?": yes, or naming it, sends them there; no or
-silence keeps them on the session on screen ("Kept on crew"). The eight seconds for an answer start
-when you have heard the question.
+**Replying to an update.** When the meanwhile line is about one session, it ends with "Switch
+there?": yes switches there and plays its update; a no closes the question, and anything else
+keeps you where you are. When it names several sessions it asks nothing: say which one ("switch to
+checkout"). Words after an update still go to the session on screen unless you name the other
+session ("checkout, push it"); "switch to it" right after an update opens that session. A question
+the meanwhile line says in full ("checkout asks: Postgres or SQLite?") is answered where you are.
 
 - "Quiet." Drops what Voice OS had queued to say and stops its routine narration. The sessions' own
   lines, questions and alerts still play.

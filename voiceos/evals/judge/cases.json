@@ -153,6 +153,66 @@
 			"utterance": "The checkout one.",
 			"context": "The session asked about: checkout api, main",
 			"expect": "yes"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Tell checkout to run the tests.",
+			"context": "The session: checkout-api/main",
+			"expect": "yes"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Checkout api, was ist da kaputt?",
+			"context": "The session: checkout-api/main",
+			"expect": "yes"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Pošlji to checkoutu.",
+			"context": "The session: checkout-api/main",
+			"expect": "yes"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Sorry, I meant that for checkout.",
+			"context": "The session: checkout-api/main",
+			"expect": "yes"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Shop Main, rebase on the modes branch.",
+			"context": "The session: Shop Main",
+			"expect": "yes"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Put it on top of the checkout branch.",
+			"context": "The session: checkout-api/main",
+			"expect": "no"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Do it the way checkout api does it.",
+			"context": "The session: checkout-api/main",
+			"expect": "no"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Mach das genauso wie in checkout.",
+			"context": "The session: checkout-api/main",
+			"expect": "no"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Make sure you will do this on top of the modes branch.",
+			"context": "The session: store-front/modes",
+			"expect": "no"
+		},
+		{
+			"key": "spoken_to",
+			"utterance": "Yes, name them the same as in Shop Main.",
+			"context": "The session: Shop Main",
+			"expect": "no"
 		}
 	]
 }

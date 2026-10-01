@@ -24,7 +24,8 @@ import { countSpokenWords } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
-import { askTarget, decideNotificationReply } from './notification-reply.js';
+import { decideNotificationReply } from './notification-reply.js';
+import { guardSendTo } from './send-guard.js';
 import { renameSession } from './rename.js';
 import { handleQueuedMessage } from './queued.js';
 import { findDocToOpen, type OpenUrl } from './docs.js';
@@ -467,6 +468,12 @@ export const executeTool = async (
 				return fail('empty instruction');
 			}
 
+			const guarded = await guardSendTo({ state, ref, words, toolContext });
+
+			if (guarded) {
+				return guarded;
+			}
+
 			const misroutedAnswer = await describeMisroutedAnswer({
 				state,
 				ref,
@@ -571,11 +578,6 @@ export const executeTool = async (
 			}
 
 			const reply = decideNotificationReply({ state, ref: checked.ref, toolContext });
-
-			if (reply.kind === 'refuse') {
-				return fail(reply.why);
-			}
-
 			const skipHeld = input.skip_held === true || reply.kind === 'stale_held';
 
 			toolContext.dispatch({
@@ -590,9 +592,6 @@ export const executeTool = async (
 					: `showing ${checked.ref}`,
 			);
 		}
-
-		case 'ask_target':
-			return askTarget({ state, input, toolContext });
 
 		case 'play_missed':
 			if (state.meanwhile.length === 0) {

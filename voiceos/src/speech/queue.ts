@@ -94,28 +94,22 @@ export const enqueue = (queue: SpeechQueue, item: SpeechItem): Enqueued => {
 
 interface TakeNextItemParams {
 	now: number;
-	// The session the developer is talking with: its lines, and Voice OS's word that they went there,
-	// come before older lines from anyone else — never before an alert.
-	exchangeRef: string | null;
 }
 
-const isExchangeLine = (item: SpeechItem, exchangeRef: string | null): boolean =>
-	Boolean(item.isAck) ||
-	(item.source === 'kernel' && Boolean(item.isReply)) ||
-	(exchangeRef !== null && item.ref === exchangeRef);
+// Voice OS's word on what it did with the developer's words, and the kernel's answer to them, come
+// before older lines from anyone else — never before an alert.
+const isReplyLine = (item: SpeechItem): boolean =>
+	Boolean(item.isAck) || (item.source === 'kernel' && Boolean(item.isReply));
 
-const rankFor = (item: SpeechItem, exchangeRef: string | null): number => {
+const rankFor = (item: SpeechItem): number => {
 	if (item.priority === 'alert') {
 		return 0;
 	}
 
-	return isExchangeLine(item, exchangeRef) ? 1 : 1 + PRIORITY_RANK[item.priority];
+	return isReplyLine(item) ? 1 : 1 + PRIORITY_RANK[item.priority];
 };
 
-export const takeNextItem = (
-	queue: SpeechQueue,
-	{ now, exchangeRef }: TakeNextItemParams,
-): TakenItem => {
+export const takeNextItem = (queue: SpeechQueue, { now }: TakeNextItemParams): TakenItem => {
 	const fresh = queue.items.filter((queued) => {
 		if (queued.priority === 'low') {
 			return now - queued.at <= LOW_TTL_MS;
@@ -128,8 +122,7 @@ export const takeNextItem = (
 		return true;
 	});
 	const ordered = [...fresh].sort(
-		(first, second) =>
-			rankFor(first, exchangeRef) - rankFor(second, exchangeRef) || first.at - second.at,
+		(first, second) => rankFor(first) - rankFor(second) || first.at - second.at,
 	);
 	const [item = null] = ordered;
 
