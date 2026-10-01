@@ -758,6 +758,48 @@
 			"forbid_calls": ["switch_view", "send_to"]
 		},
 		{
+			"id": "notif-question-on-its-subject",
+			"utterance": "Okay, what's the current price?",
+			"context": {
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Build the worker side of the admin form.",
+						"minutesAgo": 20
+					}
+				],
+				"heard": [
+					{
+						"text": "Worker side is done: all unit tests pass, lint and type checks clean.",
+						"ref": "store-front/main",
+						"secondsAgo": 50,
+						"endedSecondsAgo": 40
+					},
+					{
+						"text": "Meanwhile, checkout api, main said: Sonnet 5 would roughly double the kernel's cost: about two dollars sixty a day on Haiku becomes five thirty.",
+						"ref": "checkout-api/main",
+						"secondsAgo": 13,
+						"endedSecondsAgo": 6,
+						"update": true
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "send_to|ask_target",
+					"ref": "checkout-api/main"
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
 			"id": "notif-mid-exchange-no-switch",
 			"utterance": "What did it change in the backoff cap?",
 			"context": {
