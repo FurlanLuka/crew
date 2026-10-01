@@ -634,48 +634,6 @@
 			]
 		},
 		{
-			"id": "switch-offer-yes",
-			"utterance": "Yes.",
-			"context": {
-				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "checkout-api/main",
-					"asked": "is the build green?",
-					"answered": "Yes, all 214 tests pass.",
-					"secondsAgo": 10
-				},
-				"switchOffer": {
-					"ref": "checkout-api/main",
-					"secondsAgo": 2
-				}
-			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "checkout-api/main"
-				}
-			]
-		},
-		{
-			"id": "switch-offer-no",
-			"utterance": "No.",
-			"context": {
-				"view": "store-front/main",
-				"talkingWith": {
-					"ref": "checkout-api/main",
-					"asked": "is the build green?",
-					"answered": "Yes, all 214 tests pass.",
-					"secondsAgo": 10
-				},
-				"switchOffer": {
-					"ref": "checkout-api/main",
-					"secondsAgo": 2
-				}
-			},
-			"calls": [],
-			"forbid_mutation": true
-		},
-		{
 			"id": "go-back-previous-session",
 			"utterance": "Previous session, please.",
 			"context": {
@@ -1249,15 +1207,6 @@
 			"silent": true
 		},
 		{
-			"id": "silent-hey-session",
-			"utterance": "Hey.",
-			"context": {
-				"view": "store-front/main"
-			},
-			"calls": [],
-			"silent": true
-		},
-		{
 			"id": "silent-hey-grid",
 			"utterance": "Hey.",
 			"context": {},
@@ -1348,15 +1297,6 @@
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true
-		},
-		{
-			"id": "silent-okay-thanks-session",
-			"utterance": "Okay, thanks.",
-			"context": {
-				"view": "store-front/main"
-			},
-			"calls": [],
-			"silent": true
 		},
 		{
 			"id": "options-after-narration-grid",
@@ -3308,23 +3248,6 @@
 			]
 		},
 		{
-			"id": "confirm-clear-dont",
-			"utterance": "Don't do it.",
-			"context": {
-				"view": "store-front/main",
-				"ask": "command"
-			},
-			"calls": [
-				{
-					"name": "answer",
-					"ref": "store-front/main",
-					"input": {
-						"decision": "no"
-					}
-				}
-			]
-		},
-		{
 			"id": "asked-long-answer",
 			"utterance": "I think the spoken confirmation should s—should be—so whenever we're doing, like, a call that's not, um, like, that won't be responded to right away. So basically, every time we do in-session calls, uh, we should probably do some sort of confirmation.",
 			"context": {
@@ -3451,15 +3374,6 @@
 				}
 			],
 			"no_reply": true
-		},
-		{
-			"id": "background-recipe",
-			"utterance": "I'm going to be making one of my favorite recipes first. You're going to add in about that much ketchup. You don't have to be precise. And then you're going to add in water.",
-			"context": {
-				"view": "store-front/main"
-			},
-			"calls": [],
-			"silent": true
 		},
 		{
 			"id": "background-lyrics",
@@ -5003,58 +4917,6 @@
 			"forbid_calls": ["forward", "send_to", "answer"]
 		},
 		{
-			"id": "go-into-remote-1",
-			"utterance": "Wait, can you go into signals?",
-			"context": {
-				"view": "store-front/wrk1",
-				"machine": {
-					"id": "remote-mac",
-					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
-				},
-				"work": [
-					{
-						"ref": "store-front/wrk1",
-						"request": "Run the ranking eval on all 67 sessions.",
-						"minutesAgo": 4
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "remote-mac:signals/main"
-				}
-			],
-			"forbid_calls": ["forward", "send_to", "answer"]
-		},
-		{
-			"id": "go-into-remote-2",
-			"utterance": "Can you checkout signals?",
-			"context": {
-				"view": "store-front/wrk1",
-				"machine": {
-					"id": "remote-mac",
-					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
-				},
-				"work": [
-					{
-						"ref": "store-front/wrk1",
-						"request": "Run the ranking eval on all 67 sessions.",
-						"minutesAgo": 4
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "remote-mac:signals/main"
-				}
-			],
-			"forbid_calls": ["forward", "send_to", "answer"]
-		},
-		{
 			"id": "go-into-remote-3",
 			"utterance": "Also, checkout signals—",
 			"context": {
@@ -5085,32 +4947,6 @@
 			]
 		},
 		{
-			"id": "go-into-remote-4",
-			"utterance": "Could you go into signals main?",
-			"context": {
-				"view": "store-front/wrk1",
-				"machine": {
-					"id": "remote-mac",
-					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
-				},
-				"work": [
-					{
-						"ref": "store-front/wrk1",
-						"request": "Run the ranking eval on all 67 sessions.",
-						"minutesAgo": 4
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "remote-mac:signals/main"
-				}
-			],
-			"forbid_calls": ["forward", "send_to", "answer"]
-		},
-		{
 			"id": "on-screen-status-0",
 			"utterance": "Status.",
 			"context": {
@@ -5131,68 +4967,8 @@
 			"no_reply": true
 		},
 		{
-			"id": "on-screen-status-1",
-			"utterance": "What's going on here?",
-			"context": {
-				"view": "store-front/main",
-				"work": [
-					{
-						"ref": "store-front/main",
-						"request": "Run the ranking eval on all 67 sessions.",
-						"minutesAgo": 6
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "forward"
-				}
-			],
-			"no_reply": true
-		},
-		{
-			"id": "on-screen-status-2",
-			"utterance": "How far are you with this?",
-			"context": {
-				"view": "store-front/main",
-				"work": [
-					{
-						"ref": "store-front/main",
-						"request": "Run the ranking eval on all 67 sessions.",
-						"minutesAgo": 6
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "forward"
-				}
-			],
-			"no_reply": true
-		},
-		{
 			"id": "on-screen-status-3",
 			"utterance": "Okay, so what is the latest state here? Do we have to re-run everything?",
-			"context": {
-				"view": "store-front/main",
-				"work": [
-					{
-						"ref": "store-front/main",
-						"request": "Run the ranking eval on all 67 sessions.",
-						"minutesAgo": 6
-					}
-				]
-			},
-			"calls": [
-				{
-					"name": "forward"
-				}
-			],
-			"no_reply": true
-		},
-		{
-			"id": "on-screen-status-4",
-			"utterance": "Can you check the status?",
 			"context": {
 				"view": "store-front/main",
 				"work": [
