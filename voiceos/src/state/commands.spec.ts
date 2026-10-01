@@ -74,7 +74,9 @@ describe('held commands', () => {
 	});
 
 	it('approved on a stopped session → it starts and gets it, without "after its current work"', () => {
-		const stopped = run([{ type: 'stop_session', ref: REF }], { start: idleSession() }).state;
+		const stopped = run([{ type: 'worker_exited', ref: REF, error: null }], {
+			start: idleSession(),
+		}).state;
 		const held = run([{ type: 'send', ref: REF, text: '/clear' }], { start: stopped }).state;
 		const askId = commandAskOf(held)?.id ?? '';
 		const { state, effects } = run([{ type: 'answer_command', askId, isApproved: true }], {
@@ -206,11 +208,14 @@ describe('held commands', () => {
 		expect(effects).toEqual([{ type: 'worker_send', ref: REF, text: 'run the tests first' }]);
 	});
 
-	it('stopping the session → the confirm closes without resolving anything with the SDK', () => {
+	it('deactivating the session → the confirm closes without resolving anything with the SDK', () => {
 		const held = run([{ type: 'send', ref: REF, text: '/clear' }], { start: idleSession() }).state;
-		const { state, effects } = run([{ type: 'stop_session', ref: REF }], { start: held });
+		const { state, effects } = run([{ type: 'deactivate', ref: REF }], { start: held });
 
 		expect(state.asks).toEqual([]);
-		expect(effects).toEqual([{ type: 'worker_stop', ref: REF }]);
+		expect(effects).toEqual([
+			{ type: 'drop_speech', ref: REF, before: Number.MAX_SAFE_INTEGER },
+			{ type: 'worker_stop', ref: REF },
+		]);
 	});
 });

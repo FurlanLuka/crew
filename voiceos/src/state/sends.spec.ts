@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { SWITCH_OFFER_MS, type Input, type State } from '../shared/protocol.js';
 import { createInitialState, reduce, type ReducerResult } from './reducer.js';
 import { worktree } from '../../test/support/reduce.js';
+import { createFixtureState } from '../../test/support/state.js';
 
 const SCREEN = 'store/main';
 const OTHER = 'checkout/main';
@@ -34,7 +35,9 @@ const onScreen = (): State =>
 				},
 			],
 			[2, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
-			[3, { type: 'start_session', ref: OTHER }],
+			[2.5, { type: 'activate', ref: SCREEN }],
+			[2.6, { type: 'session_started', ref: SCREEN }],
+			[3, { type: 'activate', ref: OTHER }],
 			[4, { type: 'session_started', ref: OTHER } as Input],
 		],
 		createInitialState(),
@@ -133,7 +136,8 @@ describe('words sent to a session not on screen', () => {
 			[
 				[1, { type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] }],
 				[2, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree(REMOTE)] }],
-				[3, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				[3, { type: 'activate', ref: REMOTE }],
+				[4, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
 			],
 			createInitialState(),
 		);
@@ -205,6 +209,98 @@ describe('the switch offer', () => {
 	});
 });
 
+describe('the activate and deactivate offers', () => {
+	const PERSONAL_SETUP = 'personal:setup';
+	const withPersonal = (view?: string): State =>
+		createFixtureState({
+			machine: { id: 'personal', name: 'Personal', refs: [PERSONAL_SETUP, 'personal:crew/main'] },
+			inactive: ['store-front/wrk1', PERSONAL_SETUP],
+			...(view ? { view } : {}),
+		});
+
+	it('a plain "Switch to X?" for an inactive session → never offered', () => {
+		const result = reduceAt(withPersonal(), 10, { type: 'offer_switch', ref: 'store-front/wrk1' });
+
+		expect(result.state.switchOffer).toBeNull();
+		expect(result.effects).toEqual([]);
+	});
+
+	it('activate → "<X> isn\'t active. Activate it?", an ack', () => {
+		const result = reduceAt(withPersonal(), 10, {
+			type: 'offer_switch',
+			ref: 'store-front/wrk1',
+			kind: 'activate',
+		});
+
+		expect(result.state.switchOffer).toEqual({ ref: 'store-front/wrk1', at: 10, kind: 'activate' });
+		expect(result.effects).toEqual([
+			expect.objectContaining({
+				type: 'speak',
+				text: "store front, work 1 isn't active. Activate it?",
+				isAck: true,
+				isAsking: true,
+				ref: 'store-front/wrk1',
+			}),
+		]);
+	});
+
+	it('activate asked for a switch → thenSwitch kept for the yes', () => {
+		const result = reduceAt(withPersonal(), 10, {
+			type: 'offer_switch',
+			ref: 'store-front/wrk1',
+			kind: 'activate',
+			thenSwitch: true,
+		});
+
+		expect(result.state.switchOffer).toEqual({
+			ref: 'store-front/wrk1',
+			at: 10,
+			kind: 'activate',
+			thenSwitch: true,
+		});
+	});
+
+	it("a remote's setup → \"Personal's setup isn't active. Activate it?\", even inside Personal", () => {
+		for (const view of [undefined, 'personal:crew/main']) {
+			const result = reduceAt(withPersonal(view), 10, {
+				type: 'offer_switch',
+				ref: PERSONAL_SETUP,
+				kind: 'activate',
+			});
+
+			expect(spokenTexts(result)).toEqual(["Personal's setup isn't active. Activate it?"]);
+		}
+	});
+
+	it('deactivate → "<X> is working. Deactivate anyway?"', () => {
+		const result = reduceAt(withPersonal(), 10, {
+			type: 'offer_switch',
+			ref: 'store-front/main',
+			kind: 'deactivate',
+		});
+
+		expect(result.state.switchOffer).toEqual({
+			ref: 'store-front/main',
+			at: 10,
+			kind: 'deactivate',
+		});
+		expect(spokenTexts(result)).toEqual(['store front, main is working. Deactivate anyway?']);
+	});
+
+	it('a fresh switch offer open → replaced: it answers what was just asked', () => {
+		const open: State = { ...withPersonal(), switchOffer: { ref: 'checkout-api/main', at: 9 } };
+		const result = reduceAt(open, 10, {
+			type: 'offer_switch',
+			ref: 'store-front/wrk1',
+			kind: 'activate',
+		});
+		const plain = reduceAt(open, 10, { type: 'offer_switch', ref: 'store-front/wrk1' });
+
+		expect(result.state.switchOffer).toMatchObject({ ref: 'store-front/wrk1', kind: 'activate' });
+		expect(plain.state.switchOffer?.ref).toBe('checkout-api/main');
+	});
+});
+
 describe('the meanwhile line', () => {
 	const waitingFor = (...refs: string[]): State =>
 		runAt(
@@ -226,6 +322,8 @@ describe('the meanwhile line', () => {
 							],
 						},
 					],
+					[0.6, { type: 'activate', ref: 'signals/main' }],
+					[0.7, { type: 'activate', ref: 'admin/main' }],
 				],
 				onScreen(),
 			),

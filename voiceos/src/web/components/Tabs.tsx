@@ -28,7 +28,7 @@ export const Tabs = ({ state, dispatch }: TabsProps) => {
 
 				const badge = describeSessionBadge(session, state.asks);
 
-				// A pinned target opens inside Pinned: the reducer adds from, whichever tab is clicked.
+				// An active target opens inside Active: the reducer adds from, whichever tab is clicked.
 				return (
 					<button
 						type="button"

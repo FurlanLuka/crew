@@ -1,4 +1,4 @@
-// A tool context over a small state (two idle store-front sessions and a stopped checkout), for the
+// A tool context over a small state (two idle store-front sessions and a stopped checkout, all active), for the
 // tools' specs: every call the tools make is recorded, nothing reaches a server.
 import { createInitialState, createSession } from '../../src/state/reducer.js';
 import type { Action, State } from '../../src/shared/protocol.js';
@@ -30,6 +30,8 @@ export const createToolContext = (patch: Partial<State> = {}) => {
 		order: refs,
 		focus: 'store-front/main',
 		...patch,
+		// Every session is active unless the test says which are: what the tools meant before the set.
+		active: patch.active ?? (patch.order ?? refs).filter((ref) => ref !== 'setup'),
 	};
 	const actions: Action[] = [];
 	const tools: ToolContext = {

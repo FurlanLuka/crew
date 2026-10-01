@@ -80,7 +80,8 @@ describe('what Voice OS says when it passes words on', () => {
 	const acks = (effects: Effect[]) =>
 		effects.filter((effect) => effect.type === 'speak').map((effect) => effect.text);
 	const isOwed = (state: State) => state.sessions[REF]?.reportOwed;
-	const stoppedSession = () => run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
+	const stoppedSession = () =>
+		run([{ type: 'worker_exited', ref: REF, error: null }], { start: idleSession() }).state;
 
 	it('idle → nothing said, the session acks itself; the turn owes a report', () => {
 		const { state, effects } = run([send(INSTRUCTION)], { start: idleSession() });
@@ -109,7 +110,7 @@ describe('what Voice OS says when it passes words on', () => {
 	it('stopped or still starting → "Starting it up."', () => {
 		const starting = run([
 			{ type: 'worktrees', worktrees: [worktree(REF)] },
-			{ type: 'start_session', ref: REF },
+			{ type: 'activate', ref: REF },
 		]).state;
 
 		expect(acks(run([send(INSTRUCTION)], { start: stoppedSession() }).effects)).toEqual([
@@ -528,7 +529,7 @@ describe('the owed report', () => {
 			run([{ type: 'interrupt', ref: REF }], { start: acked() }).state.sessions[REF]?.reportOwed,
 		).toBe(false);
 		expect(
-			run([{ type: 'stop_session', ref: REF }], { start: acked() }).state.sessions[REF]?.reportOwed,
+			run([{ type: 'deactivate', ref: REF }], { start: acked() }).state.sessions[REF]?.reportOwed,
 		).toBe(false);
 	});
 
@@ -695,7 +696,9 @@ describe('send said to go right now', () => {
 	});
 
 	it('stopped → queued and the session started, as any words', () => {
-		const stopped = run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
+		const stopped = run([{ type: 'worker_exited', ref: REF, error: null }], {
+			start: idleSession(),
+		}).state;
 		const { state, effects } = run([now], { start: stopped });
 
 		expect(effects).toContainEqual({ type: 'worker_start', ref: REF });
@@ -810,5 +813,62 @@ describe('promote_all_queued', () => {
 		});
 
 		expect(state.sessions[REF]?.queue).toEqual([]);
+	});
+});
+
+describe('words for a session that is not active', () => {
+	// Known to crew, never activated: Voice OS runs no Claude for it.
+	const inactive = (): State => run([{ type: 'worktrees', worktrees: [worktree(REF)] }]).state;
+
+	it('sent → they wait in its queue; it is not started', () => {
+		const { state, effects } = run([{ type: 'send', ref: REF, text: 'run the tests' }], {
+			start: inactive(),
+		});
+
+		expect(effects).not.toContainEqual({ type: 'worker_start', ref: REF });
+		expect(state.sessions[REF]?.status).toBe('stopped');
+		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual(['run the tests']);
+	});
+
+	it('sent to go right now → waiting too, not started', () => {
+		const { state, effects } = run(
+			[{ type: 'send', ref: REF, text: 'why is the build red?', isNow: true }],
+			{ start: inactive() },
+		);
+
+		expect(effects).not.toContainEqual({ type: 'worker_start', ref: REF });
+		expect(state.sessions[REF]?.status).toBe('stopped');
+	});
+
+	it('one promoted to go now → moved to the front, not started', () => {
+		const queued = run(
+			[
+				{ type: 'send', ref: REF, text: 'first' },
+				{ type: 'send', ref: REF, text: 'second' },
+			],
+			{ start: inactive() },
+		).state;
+		const last = queued.sessions[REF]?.queue.at(-1);
+		const { state, effects } = run(
+			[{ type: 'promote_queued', ref: REF, queuedId: last?.id ?? '' }],
+			{ start: queued },
+		);
+
+		expect(effects).toEqual([]);
+		expect(state.sessions[REF]?.status).toBe('stopped');
+		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual(['second', 'first']);
+	});
+
+	it('activated → started, and its start sends what waited', () => {
+		const queued = run([{ type: 'send', ref: REF, text: 'run the tests' }], {
+			start: inactive(),
+		}).state;
+		const activated = run([{ type: 'activate', ref: REF }], { start: queued });
+		const { effects } = run([{ type: 'session_started', ref: REF }], { start: activated.state });
+
+		expect(activated.effects).toContainEqual({ type: 'worker_start', ref: REF });
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'worker_send', ref: REF, text: 'run the tests' }),
+		);
 	});
 });

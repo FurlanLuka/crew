@@ -1,7 +1,7 @@
 import { LOCAL_MACHINE, readMachine } from '../../shared/machine-ref.js';
 import type { State } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
-import { listPinnedTiles } from '../derive.js';
+import { listActiveTiles } from '../derive.js';
 import { MissingTile, Tile } from './Tile.js';
 import { NotesPanel } from './NotesPanel.js';
 import { VoicePanel } from './VoicePanel.js';
@@ -12,8 +12,8 @@ interface GridProps {
 	dispatch: Dispatch;
 	// One machine's sessions (LOCAL_MACHINE for this Mac); absent for every session.
 	machine?: string;
-	// The pins, from every machine, in pin order; machine is ignored.
-	isPinned?: boolean;
+	// The active sessions, from every machine, setup first; machine is ignored.
+	isActiveView?: boolean;
 }
 
 const EmptyGrid = ({ state, machine }: { state: State; machine?: string }) => {
@@ -38,11 +38,15 @@ const EmptyGrid = ({ state, machine }: { state: State; machine?: string }) => {
 	);
 };
 
-const PinnedTiles = ({ state, dispatch }: { state: State; dispatch: Dispatch }) => {
-	const tiles = listPinnedTiles(state);
+const ActiveTiles = ({ state, dispatch }: { state: State; dispatch: Dispatch }) => {
+	const tiles = listActiveTiles(state);
 
 	if (tiles.length === 0) {
-		return <div className="empty">Nothing pinned. Pin a tile, or say “pin this” on a session.</div>;
+		return (
+			<div className="empty">
+				Nothing active. Activate a tile, or say “activate” and the session's name.
+			</div>
+		);
 	}
 
 	return (
@@ -84,10 +88,10 @@ const MachineTiles = ({ state, dispatch, machine }: GridProps) => {
 	);
 };
 
-export const Grid = ({ state, dispatch, machine, isPinned = false }: GridProps) => (
+export const Grid = ({ state, dispatch, machine, isActiveView = false }: GridProps) => (
 	<main className="mission">
-		{isPinned ? (
-			<PinnedTiles state={state} dispatch={dispatch} />
+		{isActiveView ? (
+			<ActiveTiles state={state} dispatch={dispatch} />
 		) : (
 			<MachineTiles state={state} dispatch={dispatch} machine={machine} />
 		)}

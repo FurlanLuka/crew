@@ -21,6 +21,7 @@ const createHarness = ({ delivered = true, tab = 'tab-a' }: CreateHarnessParams 
 			{ ref: 'store/wrk1', label: 'store/wrk1', branch: '', cwd: '/w1', dirs: [], isPinned: false },
 		],
 	});
+	store.dispatch({ type: 'active_loaded', refs: ['store/main', 'store/wrk1'] });
 	let hasPage = true;
 	const sent: { tab: string; message: SpeechMessage }[] = [];
 	const clips: PendingClip[] = [];
@@ -366,6 +367,7 @@ describe('VoiceOut', () => {
 
 	it('its session stopped before it played → neither held nor announced', async () => {
 		const harness = createHarness();
+		harness.store.dispatch({ type: 'deactivate', ref: 'store/main' });
 		const long =
 			'The router refactor is done, the tests pass, and the branch is pushed for review now.';
 		harness.voiceOut.say({ text: 'playing now', priority: 'normal' });
@@ -728,9 +730,8 @@ describe('VoiceOut', () => {
 		expect(harness.listSynthesized()).toHaveLength(1);
 	});
 
-	it('reminder of a pinned session → "Your pinned <label> still needs you."', async () => {
+	it('reminder of a session deactivated while it waited → never said', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'pin_session', ref: 'store/main' });
 		harness.store.dispatch({
 			type: 'narration',
 			ref: 'store/main',
@@ -738,11 +739,12 @@ describe('VoiceOut', () => {
 			text: 'Push it?',
 		});
 		harness.voiceOut.remind(harness.store.state);
+		harness.store.dispatch({ type: 'deactivate', ref: 'store/main' });
 		harness.tick(REMINDER_MS + 1);
 		harness.voiceOut.remind(harness.store.state);
 		await flush();
 
-		expect(harness.listSynthesized()).toEqual(['Your pinned store/main still needs you.']);
+		expect(harness.listSynthesized()).toEqual([]);
 	});
 
 	it('stream → each chunk goes out as it arrives, then the end marker', async () => {
@@ -1089,7 +1091,7 @@ describe('VoiceOut, a click away from the session whose line plays', () => {
 
 	it('to another session, its own session stopped meanwhile → the line is cut and not held', async () => {
 		const harness = await playOnScreen();
-		harness.store.dispatch({ type: 'stop_session', ref: 'store/main' });
+		harness.store.dispatch({ type: 'deactivate', ref: 'store/main' });
 		await leaveFor(harness, { kind: 'session', ref: 'store/wrk1' });
 
 		expect(harness.listSentKinds().at(-1)).toBe(`tab-a:cancel:${harness.clips[0]?.id}`);

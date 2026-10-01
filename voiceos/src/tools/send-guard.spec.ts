@@ -199,6 +199,27 @@ describe('send_to a session not on screen', () => {
 		expect(actions).toEqual([{ type: 'ask_which', ref: CHECKOUT, screen: SCREEN, text: said }]);
 	});
 
+	it('an inactive session only mentioned → the words stay on the screen, no "For …?"', async () => {
+		const said = 'Put it on top of the checkout api branch.';
+		const { actions } = await sendTo({ utterance: said, patch: { active: [SCREEN] } });
+
+		expect(actions).toEqual([expect.objectContaining({ type: 'send', ref: SCREEN })]);
+	});
+
+	it('an inactive session spoken to → its words queued for it, "Activate it?"', async () => {
+		const said = 'Checkout api, run the tests.';
+		const { actions } = await sendTo({
+			utterance: said,
+			judge: judgeWith({ spoken_to: 'yes' }),
+			patch: { active: [SCREEN] },
+		});
+
+		expect(actions).toEqual([
+			{ type: 'send', ref: CHECKOUT, text: said, isSpoken: true },
+			{ type: 'offer_switch', ref: CHECKOUT, kind: 'activate' },
+		]);
+	});
+
 	it('named, and the judge cannot tell → asked, never sent on a guess', async () => {
 		const { actions } = await sendTo({
 			utterance: 'Checkout api steht im Weg.',

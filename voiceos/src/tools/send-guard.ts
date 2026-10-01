@@ -3,6 +3,8 @@
 // replies to the wrong Claude: the name is checked in code, and whether the words speak to it, not
 // only mention it, is asked of the judge.
 import { createLogger } from '../log.js';
+import { isActive } from '../shared/active.js';
+import { SAID_TO_VOICE_OS, isAddressedToVoiceOs } from './said-to-voice-os.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { readMachine } from '../shared/machine-ref.js';
 import type { State } from '../shared/protocol.js';
@@ -115,6 +117,21 @@ export const guardSendTo = async ({
 
 	if (spokenTo === 'yes') {
 		return null;
+	}
+
+	// "Voice OS, …" never waits on "For X?": a no would hand those words to the screen's session.
+	if (isAddressedToVoiceOs(utterance)) {
+		log.info('said to Voice OS: not held for "For X?"', { ref });
+
+		return fail(SAID_TO_VOICE_OS);
+	}
+
+	// Words only mentioning an inactive session stay on the screen: "For X?" would hand them to a
+	// session that cannot take them, past its "Activate it?".
+	if (!isActive(state, ref)) {
+		log.info('inactive, only mentioned: words kept on the screen', { ref, spokenTo });
+
+		return 'screen';
 	}
 
 	log.info('named, not spoken to: asked which session', { ref, spokenTo });

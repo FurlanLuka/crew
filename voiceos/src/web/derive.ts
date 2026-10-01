@@ -13,6 +13,7 @@ import { hasBackgroundWork } from '../state/subagents.js';
 import { describeWork } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { readWorkspace } from '../shared/notes.js';
+import { isActive, listActiveMissing, listActiveRefs } from '../shared/active.js';
 import { LOCAL_MACHINE, machineOf, readMachine } from '../shared/machine-ref.js';
 import {
 	currentMachine,
@@ -95,8 +96,9 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 	}
 };
 
-// label: what the session is called on screen, for the line that says how to start it.
-export const readLastLine = (session: Session, label = session.label): string => {
+// label: what the session is called on screen, for the line that says how to activate it.
+// isSessionActive: an active one stopped (a crash, its machine away) needs no "activate".
+export const readLastLine = (session: Session, label: string, isSessionActive: boolean): string => {
 	const draft = stripStreamingTag(session.draft);
 
 	if (draft) {
@@ -125,9 +127,11 @@ export const readLastLine = (session: Session, label = session.label): string =>
 		}
 	}
 
-	return session.status === 'stopped'
-		? `Not started. Open it and say something, or say “start ${label}”.`
-		: '';
+	if (session.status !== 'stopped') {
+		return '';
+	}
+
+	return isSessionActive ? 'Not running.' : `Not running. Activate it, or say “activate ${label}”.`;
 };
 
 // machine: one machine's (LOCAL_MACHINE for this Mac); absent for every machine.
@@ -228,13 +232,13 @@ export const listMachineCards = (state: State): MachineCard[] => {
 	return [local, ...remotes];
 };
 
-// Pinned, and a session opened from it: the pins stand in for a machine's sessions there.
-export const isInsidePinned = (view: View): boolean =>
-	view.kind === 'pinned' || (view.kind === 'session' && view.from === 'pinned');
+// Active, and a session opened from it: the active sessions stand in for a machine's sessions there.
+export const isInsideActive = (view: View): boolean =>
+	view.kind === 'active' || (view.kind === 'session' && view.from === 'active');
 
-// A pin whose session is not here outlives it; only the pins with a session count as sessions.
-export const countPinned = (state: State): SessionCounts => {
-	const refs = state.pinned.filter((ref) => state.sessions[ref]);
+// Only the active sessions that are here count; one out of reach is a placeholder, not a session.
+export const countActive = (state: State): SessionCounts => {
+	const refs = listActiveRefs(state);
 	const waiting = new Set(listWaitingRefs(state));
 
 	return {
@@ -244,39 +248,39 @@ export const countPinned = (state: State): SessionCounts => {
 	};
 };
 
-// What the top bar counts over: the pins inside Pinned, else one machine's sessions (none: all).
-export type CountScope = 'pinned' | { machine?: string };
+// What the top bar counts over: the active sessions inside Active, else one machine's (none: all).
+export type CountScope = 'active' | { machine?: string };
 
 // The waiting updates in scope; a session already counted as waiting on you is not an update as well.
 export const countUpdates = (state: State, scope: CountScope): number => {
-	const machine = scope === 'pinned' ? undefined : scope.machine;
+	const machine = scope === 'active' ? undefined : scope.machine;
 	const waiting = new Set(listWaitingRefs(state, machine));
 	const isInScope = (ref: string): boolean =>
-		scope === 'pinned'
-			? state.pinned.includes(ref)
+		scope === 'active'
+			? isActive(state, ref)
 			: machine === undefined || readMachine(ref) === machine;
 
 	return state.meanwhile.filter((item) => isInScope(item.ref) && !waiting.has(item.ref)).length;
 };
 
-export interface PinnedCard {
+export interface ActiveCard {
 	counts: SessionCounts;
 	waiting: string | null;
 }
 
-export const describePinnedCard = (state: State): PinnedCard => ({
-	counts: countPinned(state),
+export const describeActiveCard = (state: State): ActiveCard => ({
+	counts: countActive(state),
 	waiting: describeFirstWaiting(
 		state,
-		listWaitingRefs(state).filter((ref) => state.pinned.includes(ref)),
+		listWaitingRefs(state).filter((ref) => isActive(state, ref)),
 		null,
 	),
 });
 
-export type PinnedTile = { ref: string; session: Session } | { ref: string; missing: string };
+export type ActiveTile = { ref: string; session: Session } | { ref: string; missing: string };
 
-// A pin with no session: its machine is out of reach (it may come back), or the worktree is gone.
-export const describeMissingPin = (state: State, ref: string): string => {
+// An active ref with no session: its machine is out of reach (it may come back), or the worktree is gone.
+export const describeMissingActive = (state: State, ref: string): string => {
 	const machine = machineOf(ref);
 	const label = readSessionLabel(state, ref);
 
@@ -287,18 +291,21 @@ export const describeMissingPin = (state: State, ref: string): string => {
 	return machine ? `${readMachineTitle(state, machine)} · ${label} · gone` : `${label} · gone`;
 };
 
-// In pin order, a placeholder where the session is not here.
-export const listPinnedTiles = (state: State): PinnedTile[] =>
-	state.pinned.map((ref) => {
+// The active sessions from every machine, setup first, then a placeholder for each active ref whose
+// session is not here.
+export const listActiveTiles = (state: State): ActiveTile[] => [
+	...listActiveRefs(state).flatMap((ref) => {
 		const session = state.sessions[ref];
 
-		return session ? { ref, session } : { ref, missing: describeMissingPin(state, ref) };
-	});
+		return session ? [{ ref, session }] : [];
+	}),
+	...listActiveMissing(state).map((ref) => ({ ref, missing: describeMissingActive(state, ref) })),
+];
 
-// Inside Pinned the tabs are the pins; inside a machine its sessions; elsewhere every session.
+// Inside Active the tabs are the active sessions; inside a machine its sessions; elsewhere every session.
 export const listTabRefs = (state: State): string[] => {
-	if (isInsidePinned(state.view)) {
-		return state.pinned.filter((ref) => state.sessions[ref]);
+	if (isInsideActive(state.view)) {
+		return listActiveRefs(state);
 	}
 
 	const machine = currentMachine(state);
@@ -306,9 +313,9 @@ export const listTabRefs = (state: State): string[] => {
 	return machine ? state.order.filter((ref) => readMachine(ref) === machine) : state.order;
 };
 
-// Whose sessions labels are read against: none inside Pinned, where every machine's sit together.
+// Whose sessions labels are read against: none inside Active, where every machine's sit together.
 export const readLabelMachine = (state: State): string | null =>
-	isInsidePinned(state.view) ? null : currentMachine(state);
+	isInsideActive(state.view) ? null : currentMachine(state);
 
 // A ref shown beside others from several machines: another machine's carries its name, unless the
 // developer named the session (a name is chosen to stand alone).
@@ -350,11 +357,12 @@ export const formatDidLine = (did: string): string => {
 		switch_view:
 			tail === 'mission control'
 				? 'went to Mission Control'
-				: tail === 'pinned'
-					? 'went to Pinned'
+				: tail === 'active'
+					? 'went to Active'
 					: `opened ${tail}`,
-		start_session: `started ${tail}`,
-		stop_session: `ended ${tail}`,
+		activate: `activated ${tail}`,
+		// No ref: the session that was on screen.
+		deactivate: `deactivated ${tail || 'this session'}`,
 		crew_dev: `dev servers: ${tail}`,
 		answer: `answered ${tail}`,
 		interrupt: `stopped ${tail}'s turn`,
@@ -364,8 +372,6 @@ export const formatDidLine = (did: string): string => {
 		debug_note: `noted for debugging ${tail}`,
 		note: `noted ${tail}`,
 		hands_free: `listening: ${tail || 'changed'}`,
-		// No ref: the session that was on screen.
-		pin_session: `${rest[0] === 'unpin' ? 'unpinned' : 'pinned'} ${rest.slice(1).join(' ') || 'this session'}`,
 	};
 
 	return `${readableByName[name] ?? line}${isFailed ? ' — failed' : ''}`;

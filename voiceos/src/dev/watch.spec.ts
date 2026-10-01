@@ -34,6 +34,7 @@ const createHarness = ({
 		type: 'worktrees',
 		worktrees: [{ ref: REF, label: REF, branch: 'main', cwd: '/w', dirs: [], isPinned: false }],
 	});
+	store.dispatch({ type: 'active_loaded', refs: [REF] });
 	store.dispatch({ type: 'session_started', ref: REF });
 
 	const calls: string[] = [];
@@ -229,6 +230,17 @@ describe('DevWatch monitor', () => {
 		expect(harness.said).toEqual([]);
 	});
 
+	it('a server of an inactive session dies → never said, no offer: crew owns its servers', async () => {
+		const harness = createHarness();
+		await harness.watch.monitor();
+		harness.store.dispatch({ type: 'deactivate', ref: REF });
+		harness.crew.rows = [createRow('api', { alive: false }), createRow('web')];
+		await harness.watch.monitor();
+		await harness.watch.monitor();
+		expect(harness.said).toEqual([]);
+		expect(harness.store.state.devOffer).toBeNull();
+	});
+
 	it('a start still being watched is left alone by the monitor', async () => {
 		const harness = createHarness();
 		harness.store.dispatch({ type: 'dev_start', ref: REF });
@@ -262,7 +274,7 @@ describe('DevWatch fix', () => {
 
 	it('a stopped session → said that its Claude is being started', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'stop_session', ref: REF });
+		harness.store.dispatch({ type: 'worker_exited', ref: REF, error: null });
 		await harness.watch.handle({ type: 'fix_dev', ref: REF, servers: ['api'] });
 		expect(harness.said.at(-1)?.text).toBe('fixing api: starting its Claude to fix it.');
 	});

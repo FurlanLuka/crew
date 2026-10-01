@@ -22,7 +22,6 @@ import {
 	isOnAnotherSession,
 	isOnScreen,
 	isShortLine,
-	readAnnouncedLabel,
 } from '../state/held-lines.js';
 import type { Store } from '../state/store.js';
 import { isRecent, type SpokenRecord } from './echo.js';
@@ -345,7 +344,7 @@ export class VoiceOut {
 			// One phrase for "waits on you". Only a question already heard makes it something a bare
 			// "yes" answers; one only announced has not been heard.
 			this.say({
-				text: `${readAnnouncedLabel(state, ref, readLabel(state, ref))} still needs you.`,
+				text: `${readLabel(state, ref)} still needs you.`,
 				priority: 'high',
 				ref,
 				isAsking: !isHeldQuestion(state.sessions[ref]),

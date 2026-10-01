@@ -29,7 +29,7 @@ import { createNotesStore, type NotesStore } from './memory/notes.js';
 import { toNotesKey } from './shared/notes.js';
 import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator/turn.js';
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
-import { persistPinned } from './memory/pinned.js';
+import { persistActive } from './memory/active.js';
 import { persistNames } from './memory/names.js';
 import { persistLanguages } from './memory/languages.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
@@ -310,8 +310,9 @@ function recordState(): void {
 await machines.refreshWorktrees();
 void machines.monitorDevServers();
 
-// Before the view: a saved session view opened from Pinned finds its pin already there.
-persistPinned({ store, file: paths.pinnedFile });
+// Before the view: a saved session view opened from Active finds its session already active. Starts
+// the active sessions of this Mac; a remote's start when its link is up.
+persistActive({ store, file: paths.activeFile, legacyFile: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
 persistLanguages({ store, file: paths.languagesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });

@@ -1,4 +1,6 @@
 import type { Judge } from '../judge/judge.js';
+import { refuseInactive } from './activate.js';
+import { SAID_TO_VOICE_OS, isSaidToVoiceOs } from './said-to-voice-os.js';
 import { createLogger } from '../log.js';
 import {
 	isSwitchOfferFresh,
@@ -291,8 +293,22 @@ export const answerAsk = async ({
 }: AnswerAskParams): Promise<ToolResult> => {
 	const checked = checkRef(state, input.ref);
 
+	// An inactive session asks nothing: the words meant as its answer, chosen as for any send, are
+	// kept for it.
 	if (!checked.ok) {
-		return fail(checked.error);
+		if (!checked.inactive) {
+			return fail(checked.error);
+		}
+
+		const { text } = await chooseSentWords({
+			judge: toolContext.judge,
+			utterance: toolContext.utterance,
+			part: typeof input.text === 'string' ? input.text : undefined,
+			earlier: toolContext.recentUtterances ?? [],
+			isWhole: false,
+		});
+
+		return refuseInactive({ ref: checked.inactive, toolContext, ...(text ? { words: text } : {}) });
 	}
 
 	const refused = await refuseAnnouncedOnly({
@@ -413,6 +429,10 @@ export const answerAsk = async ({
 			return guarded;
 		}
 
+		if (isSaidToVoiceOs({ state, ref: checked.ref, toolContext })) {
+			return fail(SAID_TO_VOICE_OS);
+		}
+
 		// "Yes, do that" to a session that asked nothing still means something to it: the
 		// words go there instead of failing into "nothing is waiting".
 		return {
@@ -472,6 +492,10 @@ export const answerAsk = async ({
 	// A question about the options is not a pick: it goes to the session, which withdraws its
 	// question, answers, and asks again.
 	if (optionReply === 'question' && toolContext.utterance !== undefined) {
+		if (isSaidToVoiceOs({ state, ref: checked.ref, toolContext })) {
+			return fail(SAID_TO_VOICE_OS);
+		}
+
 		const said = toolContext.utterance.trim();
 
 		return {

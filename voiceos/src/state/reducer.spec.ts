@@ -51,7 +51,7 @@ const permissionAsk = (id: string, ref = 'store/main'): PendingAsk => ({
 const idleSession = (): State =>
 	run([
 		{ type: 'worktrees', worktrees: [worktree('store/main'), worktree('store/wrk1')] },
-		{ type: 'start_session', ref: 'store/main' },
+		{ type: 'activate', ref: 'store/main' },
 		{ type: 'session_started', ref: 'store/main' },
 	]).state;
 
@@ -133,7 +133,11 @@ describe('send', () => {
 	});
 
 	it('stopped session → worker started, message waits for session_started', () => {
-		const base = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }]).state;
+		const base = run([
+			{ type: 'worktrees', worktrees: [worktree('store/main')] },
+			{ type: 'activate', ref: 'store/main' },
+			{ type: 'worker_exited', ref: 'store/main', error: null },
+		]).state;
 		const queued = run([{ type: 'send', ref: 'store/main', text: 'hello' }], base);
 
 		expect(queued.effects).toEqual([{ type: 'worker_start', ref: 'store/main' }]);
@@ -265,8 +269,8 @@ describe('asks', () => {
 		expect(late.effects).toEqual([]);
 	});
 
-	it('stop while blocked → pending ask denied, worker stopped, queue cleared', () => {
-		const { state, effects } = run([{ type: 'stop_session', ref: 'store/main' }], blocked().state);
+	it('deactivated while blocked → pending ask denied, worker stopped, queue cleared', () => {
+		const { state, effects } = run([{ type: 'deactivate', ref: 'store/main' }], blocked().state);
 
 		expect(effects).toEqual([
 			{
@@ -275,6 +279,7 @@ describe('asks', () => {
 				askId: 'a1',
 				result: { behavior: 'deny', message: 'The session was stopped.' },
 			},
+			{ type: 'drop_speech', ref: 'store/main', before: Number.MAX_SAFE_INTEGER },
 			{ type: 'worker_stop', ref: 'store/main' },
 		]);
 		expect(state.asks).toEqual([]);
@@ -399,7 +404,7 @@ describe('asks', () => {
 			[{ type: 'send', ref: 'store/wrk1', text: 'run the tests' }],
 			run(
 				[
-					{ type: 'start_session', ref: 'store/wrk1' },
+					{ type: 'activate', ref: 'store/wrk1' },
 					{ type: 'session_started', ref: 'store/wrk1' },
 				],
 				blocked().state,
@@ -516,7 +521,10 @@ describe('denials', () => {
 	});
 
 	it('allow it on a stopped session → queued for its start', () => {
-		const stopped = run([{ type: 'stop_session', ref: 'store/main' }], deny(idleSession())).state;
+		const stopped = run(
+			[{ type: 'worker_exited', ref: 'store/main', error: null }],
+			deny(idleSession()),
+		).state;
 		const { state } = allow(stopped);
 
 		expect(state.sessions['store/main']?.queue.map((message) => message.text)).toEqual([
@@ -564,7 +572,7 @@ describe('denials', () => {
 	it('the same call from another session is still asked', () => {
 		const withWrk1 = run(
 			[
-				{ type: 'start_session', ref: 'store/wrk1' },
+				{ type: 'activate', ref: 'store/wrk1' },
 				{ type: 'session_started', ref: 'store/wrk1' },
 			],
 			allow(deny(running())).state,
@@ -592,7 +600,7 @@ describe('denials', () => {
 		const pushed = allow(deny(blocked));
 		const startingState = run([
 			{ type: 'worktrees', worktrees: [worktree('store/main')] },
-			{ type: 'start_session', ref: 'store/main' },
+			{ type: 'activate', ref: 'store/main' },
 		]).state;
 		const starting = allow(deny(startingState));
 
@@ -633,7 +641,7 @@ describe('denials', () => {
 	it('allow it on a starting session → queued; once drained it shows as the approval', () => {
 		const startingState = run([
 			{ type: 'worktrees', worktrees: [worktree('store/main')] },
-			{ type: 'start_session', ref: 'store/main' },
+			{ type: 'activate', ref: 'store/main' },
 		]).state;
 		const queued = allow(deny(startingState)).state;
 		const { state, effects } = run([{ type: 'session_started', ref: 'store/main' }], queued);
@@ -691,7 +699,7 @@ describe('denials', () => {
 		const allowed = allow(deny(running())).state;
 		const interrupted = run([{ type: 'interrupt', ref: 'store/main' }], allowed);
 		const exited = run([{ type: 'worker_exited', ref: 'store/main', error: null }], allowed);
-		const stopped = run([{ type: 'stop_session', ref: 'store/main' }], allowed);
+		const stopped = run([{ type: 'deactivate', ref: 'store/main' }], allowed);
 
 		expect(interrupted.effects).toContainEqual({
 			type: 'worker_set_mode',
@@ -777,7 +785,7 @@ describe('a turn the session starts by itself (a background agent reported back)
 			stopped,
 		).state;
 		const blocked = run([{ type: 'ask_opened', ask: permissionAsk('b1') }], idleSession()).state;
-		const starting = run([{ type: 'start_session', ref: 'store/main' }], withSession).state;
+		const starting = run([{ type: 'activate', ref: 'store/main' }], withSession).state;
 
 		expect(run([activity[2] as Input], withSession).state.sessions['store/main']?.status).toBe(
 			'stopped',
@@ -902,7 +910,7 @@ describe('worktrees', () => {
 			idleSession(),
 		);
 
-		expect(state.view).toEqual({ kind: 'session', ref: 'store/main' });
+		expect(state.view).toEqual({ kind: 'session', ref: 'store/main', from: 'active' });
 		expect(state.focus).toBe('store/main');
 		expect(effects).toEqual([]);
 	});
@@ -1009,7 +1017,7 @@ describe('compaction', () => {
 		for (const input of [
 			{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: '' },
 			{ type: 'interrupt', ref: 'store/main' },
-			{ type: 'stop_session', ref: 'store/main' },
+			{ type: 'deactivate', ref: 'store/main' },
 			{ type: 'worker_exited', ref: 'store/main', error: null },
 			{ type: 'session_started', ref: 'store/main' },
 			{ type: 'conversation_reset', ref: 'store/main' },
@@ -1400,7 +1408,7 @@ describe('spoken follow-ups', () => {
 	it('no voice turn is recorded as running once it is stopped, interrupted or the worker exits', () => {
 		for (const end of [
 			{ type: 'interrupt', ref: 'store/main' },
-			{ type: 'stop_session', ref: 'store/main' },
+			{ type: 'deactivate', ref: 'store/main' },
 			{ type: 'worker_exited', ref: 'store/main', error: null },
 		] as Input[]) {
 			expect(
@@ -1874,7 +1882,7 @@ describe("a session's first message since it started", () => {
 	it('start marks it fresh; the first message sent clears that', () => {
 		const started = run([
 			{ type: 'worktrees', worktrees: [worktree('store/main')] },
-			{ type: 'start_session', ref: 'store/main' },
+			{ type: 'activate', ref: 'store/main' },
 			{ type: 'session_started', ref: 'store/main' },
 		]).state;
 		expect(started.sessions['store/main']?.isFresh).toBe(true);
@@ -1887,6 +1895,7 @@ describe("a session's first message since it started", () => {
 	it('a message queued while starting clears it when it goes out', () => {
 		const queued = run([
 			{ type: 'worktrees', worktrees: [worktree('store/main')] },
+			{ type: 'activate', ref: 'store/main' },
 			{ type: 'send', ref: 'store/main', text: 'hi' },
 		]).state;
 		expect(queued.sessions['store/main']?.isFresh).toBe(true);

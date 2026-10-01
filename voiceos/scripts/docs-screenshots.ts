@@ -90,7 +90,8 @@ const logVoice = (
 	secondsAgo,
 });
 
-const worktree = (ref: string, label = ref, isPinned = false) => {
+// isPinned is the setup flag on the wire; the name predates the active set.
+const worktree = (ref: string, label = ref, isSetup = false) => {
 	const isRemote = ref.includes(':');
 	const local = isRemote ? (ref.split(':')[1] ?? ref) : ref;
 	const home = isRemote ? REMOTE_HOME : LOCAL_HOME;
@@ -98,10 +99,10 @@ const worktree = (ref: string, label = ref, isPinned = false) => {
 	return {
 		ref,
 		label,
-		branch: isPinned ? '' : `crew/${local}`,
-		cwd: isPinned ? home : `${home}/${local}`,
+		branch: isSetup ? '' : `crew/${local}`,
+		cwd: isSetup ? home : `${home}/${local}`,
 		dirs: [],
-		isPinned,
+		isPinned: isSetup,
 	};
 };
 
@@ -160,8 +161,15 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 		{ type: 'machine_resynced', id: REMOTE, inputs: [] },
 		{ type: 'limits', limits: { sevenDay: 34, fiveHour: 12, resetsAt: null } },
 		{
-			type: 'pinned_loaded',
-			refs: ['checkout-api/main', 'signals/wrk1', `${REMOTE}:store-front/wrk2`],
+			type: 'active_loaded',
+			// Every session that runs below; admin/main stays inactive, so its tile is dimmed.
+			refs: [
+				'store-front/main',
+				'checkout-api/main',
+				'signals/wrk1',
+				`${REMOTE}:setup`,
+				`${REMOTE}:store-front/wrk2`,
+			],
 		},
 		{ type: 'names_loaded', names: { 'checkout-api/main': 'checkout' } },
 	);
@@ -526,8 +534,8 @@ const blockCheckout = (world: State): State => {
 	);
 };
 
-// The Pinned view with a pin whose machine is out of reach.
-const pinOffline = (world: State): State =>
+// The Active view with an active session whose machine is out of reach.
+const activeOffline = (world: State): State =>
 	play(
 		[
 			{
@@ -551,10 +559,12 @@ const pinOffline = (world: State): State =>
 			},
 			{
 				input: {
-					type: 'pinned_loaded',
+					type: 'active_loaded',
 					refs: [
+						'store-front/main',
 						'checkout-api/main',
 						'signals/wrk1',
+						`${REMOTE}:setup`,
 						`${REMOTE}:store-front/wrk2`,
 						`${OFFLINE}:admin/wrk3`,
 					],
@@ -575,7 +585,7 @@ const SHOTS: Shot[] = [
 		view: { kind: 'session', ref: 'store-front/main' },
 		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
 	},
-	{ name: 'pinned', view: { kind: 'pinned' }, stage: pinOffline, height: OVERVIEW_HEIGHT },
+	{ name: 'active', view: { kind: 'active' }, stage: activeOffline, height: OVERVIEW_HEIGHT },
 	{
 		name: 'question',
 		view: { kind: 'session', ref: 'signals/wrk1' },

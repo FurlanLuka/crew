@@ -145,24 +145,22 @@ describe('executeTool', () => {
 		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'machines' } }]);
 	});
 
-	it('start_session on a running session → no dispatch, says so', async () => {
+	it('activate on an active session → no dispatch, says so', async () => {
 		const { tools, actions } = createToolContext();
 
-		expect((await executeTool('start_session', { ref: 'store-front/main' }, tools)).content).toBe(
-			'store-front/main is already idle',
-		);
+		expect(await executeTool('activate', { name: 'store-front/main' }, tools)).toMatchObject({
+			ok: true,
+			content: 'store-front/main is already active',
+		});
 		expect(actions).toEqual([]);
 	});
 
-	it('start_session on a stopped one → started and shown', async () => {
-		const { tools, actions } = createToolContext();
+	it('activate on an inactive one → activated, Voice OS offers the switch', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
 
-		await executeTool('start_session', { ref: 'checkout-api/main' }, tools);
+		await executeTool('activate', { name: 'checkout-api/main' }, tools);
 
-		expect(actions).toEqual([
-			{ type: 'start_session', ref: 'checkout-api/main' },
-			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
-		]);
+		expect(actions).toEqual([{ type: 'activate', ref: 'checkout-api/main', announce: true }]);
 	});
 
 	it('crew_dev start/stop/restart → the same action a panel button dispatches; anything else refused', async () => {
@@ -201,6 +199,39 @@ describe('executeTool', () => {
 			servers: [{ name: 'web', state: 'died' }],
 			starting: false,
 		});
+		expect(actions).toEqual([]);
+	});
+
+	it('read_state for all → only the active sessions', async () => {
+		const { tools } = createToolContext({ active: ['store-front/main'] });
+		const all = JSON.parse((await executeTool('read_state', { ref: null }, tools)).content);
+
+		expect(all.map((row: { ref: string }) => row.ref)).toEqual(['store-front/main']);
+	});
+
+	it('read_state of an inactive session → read from what Voice OS keeps, nothing offered', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
+		const result = await executeTool('read_state', { ref: 'checkout-api/main' }, tools);
+
+		expect(JSON.parse(result.content)).toMatchObject({ ref: 'checkout-api/main' });
+		expect(actions).toEqual([]);
+	});
+
+	it('read_history of an inactive session → read, nothing offered', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
+		const result = await executeTool('read_history', { ref: 'checkout-api/main' }, tools);
+
+		expect(JSON.parse(result.content)).toEqual([
+			{ ts: '2026-09-24', ref: 'checkout-api/main', asked: null, did: 'limit 5' },
+		]);
+		expect(actions).toEqual([]);
+	});
+
+	it('interrupt of an inactive session → "isn\'t running", never an offer to start it', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
+		const result = await executeTool('interrupt', { ref: 'checkout-api/main' }, tools);
+
+		expect(result.reply).toBe("checkout api, main isn't running.");
 		expect(actions).toEqual([]);
 	});
 
@@ -288,12 +319,12 @@ describe('isSessionNamed', () => {
 	});
 });
 
-describe('stop_session guard', () => {
+describe('deactivate guard', () => {
 	it('ambiguous utterance → refused, nothing dispatched', async () => {
 		const { tools, actions } = createToolContext();
 
 		const result = await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/main' },
 			{ ...tools, utterance: 'End the main session.' },
 		);
@@ -303,40 +334,40 @@ describe('stop_session guard', () => {
 		expect(actions).toEqual([]);
 	});
 
-	it('named session → stopped', async () => {
+	it('named session → deactivated', async () => {
 		const { tools, actions } = createToolContext();
 
 		await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/wrk1' },
 			{ ...tools, utterance: 'stop work one' },
 		);
 
-		expect(actions).toEqual([{ type: 'stop_session', ref: 'store-front/wrk1' }]);
+		expect(actions).toEqual([{ type: 'deactivate', ref: 'store-front/wrk1' }]);
 	});
 
-	it('follow-up answer naming the session → stopped', async () => {
+	it('follow-up answer naming the session → deactivated', async () => {
 		const { tools, actions } = createToolContext();
 
 		await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'checkout-api/main' },
 			{ ...tools, recentUtterances: ['End the main session.'], utterance: 'the checkout one' },
 		);
 
-		expect(actions).toEqual([{ type: 'stop_session', ref: 'checkout-api/main' }]);
+		expect(actions).toEqual([{ type: 'deactivate', ref: 'checkout-api/main' }]);
 	});
 
-	it('clear command after one about another session → stopped, the earlier one ignored', async () => {
+	it('clear command after one about another session → deactivated, the earlier one ignored', async () => {
 		const { tools, actions } = createToolContext();
 
 		await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/wrk1' },
 			{ ...tools, recentUtterances: ['stop the checkout session'], utterance: 'stop work one' },
 		);
 
-		expect(actions).toEqual([{ type: 'stop_session', ref: 'store-front/wrk1' }]);
+		expect(actions).toEqual([{ type: 'deactivate', ref: 'store-front/wrk1' }]);
 	});
 });
 
@@ -466,8 +497,9 @@ describe('forward', () => {
 			'switch_view',
 			'go_back',
 			'play_missed',
-			'start_session',
-			'stop_session',
+			'activate',
+			'deactivate',
+			'list_sessions',
 			'crew_dev',
 			'answer',
 			'interrupt',
@@ -480,7 +512,6 @@ describe('forward', () => {
 			'read_notes',
 			'open_doc',
 			'hands_free',
-			'pin_session',
 			'rename_session',
 		];
 
@@ -1097,12 +1128,16 @@ describe('an answer to a question asked while the developer spoke', () => {
 	});
 });
 
-describe('a start that asks for more', () => {
+describe('an activate that asks for more', () => {
+	// checkout-api/main is the one not active: "start checkout" activates it.
+	const createInactiveCheckout = () =>
+		createToolContext({ active: ['store-front/main', 'store-front/wrk1'] });
+
 	it('the judge hears nothing more than a start → no hint, in any language', async () => {
-		const { tools } = createToolContext();
+		const { tools } = createInactiveCheckout();
 		const result = await executeTool(
-			'start_session',
-			{ ref: 'checkout-api/main' },
+			'activate',
+			{ name: 'checkout-api/main' },
 			{
 				...tools,
 				forwardTo: 'checkout-api/main',
@@ -1111,14 +1146,14 @@ describe('a start that asks for more', () => {
 			},
 		);
 
-		expect(String(result.content)).not.toContain('forward that part');
+		expect(result.content).toBe('activated checkout-api/main; Voice OS said so: say nothing');
 	});
 
-	it('still starts, and tells the kernel to forward the rest', async () => {
-		const { tools, actions } = createToolContext();
+	it('still activates, and tells the kernel to forward the rest', async () => {
+		const { tools, actions } = createInactiveCheckout();
 		const result = await executeTool(
-			'start_session',
-			{ ref: 'checkout-api/main' },
+			'activate',
+			{ name: 'checkout-api/main' },
 			{
 				...tools,
 				forwardTo: 'checkout-api/main',
@@ -1126,47 +1161,50 @@ describe('a start that asks for more', () => {
 			},
 		);
 
-		expect(actions).toEqual([
-			{ type: 'start_session', ref: 'checkout-api/main' },
-			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
-		]);
-		expect(String(result.content)).toContain('forward that part');
+		expect(actions).toEqual([{ type: 'activate', ref: 'checkout-api/main', announce: true }]);
+		expect(result.content).toBe(
+			'activated checkout-api/main. The developer also asked it something: forward that part (text copied word for word) now — it waits until the session is up.',
+		);
 	});
 
-	it('already running → nothing started, and the rest is still asked for', async () => {
+	it('already active → nothing activated, and the rest is still asked for', async () => {
 		const { tools, actions } = createToolContext();
 		const result = await executeTool(
-			'start_session',
-			{ ref: 'store-front/main' },
+			'activate',
+			{ name: 'store-front/main' },
 			{ ...tools, utterance: 'start store front and tell me what you did last' },
 		);
 
 		expect(actions).toEqual([]);
-		expect(String(result.content)).toContain('already idle. If the developer also asked');
+		expect(result).toEqual({
+			ok: true,
+			content:
+				'store-front/main is already active. The developer also asked it something: send_to store-front/main that part (text copied word for word) now.',
+			isOpen: true,
+			recordAs: { name: 'activate', input: { name: 'store-front/main' } },
+		});
 	});
 
 	it('from another screen it is send_to; two sessions named, or the words already sent → no hint', async () => {
 		const start = async (patch: Partial<ToolContext>) => {
-			const { tools } = createToolContext();
+			const { tools } = createInactiveCheckout();
 
-			return String(
-				(await executeTool('start_session', { ref: 'checkout-api/main' }, { ...tools, ...patch }))
-					.content,
-			);
+			return (await executeTool('activate', { name: 'checkout-api/main' }, { ...tools, ...patch }))
+				.content;
 		};
+
+		const plain = 'activated checkout-api/main; Voice OS said so: say nothing';
 
 		expect(
 			await start({ forwardTo: null, utterance: 'start checkout and tell me what you did last' }),
 		).toContain('send_to checkout-api/main that part');
-		expect(await start({ utterance: 'start checkout and store front main' })).toBe(
-			'starting checkout-api/main',
-		);
+		expect(await start({ utterance: 'start checkout and store front main' })).toBe(plain);
 		expect(
 			await start({
 				utterance: 'start checkout and tell me what you did last',
 				sentTo: new Set(['checkout-api/main']),
 			}),
-		).toBe('starting checkout-api/main');
+		).toBe(plain);
 	});
 });
 
@@ -1948,8 +1986,8 @@ describe('describeToolCall', () => {
 			'switch_view mission control',
 		);
 		expect(
-			describeToolCall({ name: 'start_session', input: { ref: 'store-front/main' }, ok: false }),
-		).toBe('start_session store-front/main (failed)');
+			describeToolCall({ name: 'deactivate', input: { ref: 'store-front/main' }, ok: false }),
+		).toBe('deactivate store-front/main (failed)');
 		expect(describeToolCall({ name: 'hands_free', input: { mode: 'push' }, ok: true })).toBe(
 			'hands_free push',
 		);
@@ -2098,6 +2136,7 @@ describe('Voice OS note through the real reducer', () => {
 				isPinned: false,
 			})),
 		});
+		store.dispatch({ type: 'active_loaded', refs: ['store-front/main', 'checkout-api/main'] });
 		const sent: Action[] = [];
 		const tools: ToolContext = {
 			getState: () => store.state,
@@ -2146,7 +2185,7 @@ describe('Voice OS note through the real reducer', () => {
 	it('started and already idle → its first message carries the note; the next does not', async () => {
 		const { tools, sent } = createStoppedStore();
 
-		tools.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		tools.dispatch({ type: 'activate', ref: 'store-front/main' });
 		// An observation from the worker, not an action: the same store takes it.
 		tools.dispatch({ type: 'session_started', ref: 'store-front/main' } as unknown as Action);
 		sent.length = 0;
@@ -2239,7 +2278,7 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 				},
 			],
 		});
-		store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		store.dispatch({ type: 'session_started', ref: 'store-front/main' } as unknown as Action);
 		store.dispatch({ type: 'voice_logged', screen: 'store-front/main', entry: noteSaved });
 		const sent: Action[] = [];
@@ -2270,24 +2309,24 @@ describe('what Voice OS just did goes with "check this debug note" (note 84)', (
 	});
 });
 
-describe('stop guard: "this session"', () => {
+describe('deactivate guard: "this session"', () => {
 	it('names the session on screen', async () => {
 		const { tools, actions } = createToolContext();
 
 		await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/main' },
 			{ ...tools, utterance: 'And end this session.', screen: 'store-front/main' },
 		);
 
-		expect(actions).toEqual([{ type: 'stop_session', ref: 'store-front/main' }]);
+		expect(actions).toEqual([{ type: 'deactivate', ref: 'store-front/main' }]);
 	});
 
 	it('is not another session', async () => {
 		const { tools, actions } = createToolContext();
 
 		const result = await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/wrk1' },
 			{ ...tools, utterance: 'end this session', screen: 'store-front/main' },
 		);
@@ -2300,7 +2339,7 @@ describe('stop guard: "this session"', () => {
 		const { tools, actions } = createToolContext();
 
 		const wrongResult = await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/main' },
 			{ ...tools, utterance: 'Stop the checkout one, not this one.', screen: 'store-front/main' },
 		);
@@ -2308,19 +2347,19 @@ describe('stop guard: "this session"', () => {
 		expect(wrongResult.ok).toBe(false);
 
 		await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'checkout-api/main' },
 			{ ...tools, utterance: 'Stop the checkout one, not this one.', screen: 'store-front/main' },
 		);
 
-		expect(actions).toEqual([{ type: 'stop_session', ref: 'checkout-api/main' }]);
+		expect(actions).toEqual([{ type: 'deactivate', ref: 'checkout-api/main' }]);
 	});
 
 	it('on Mission Control there is no "this session"', async () => {
 		const { tools, actions } = createToolContext();
 
 		const result = await executeTool(
-			'stop_session',
+			'deactivate',
 			{ ref: 'store-front/main' },
 			{ ...tools, utterance: 'end this session', screen: null },
 		);
@@ -2497,6 +2536,7 @@ describe('tools that replaced the fast path', () => {
 				},
 			],
 		});
+		store.dispatch({ type: 'active_loaded', refs: ['store-front/main'] });
 		store.dispatch({ type: 'ask_opened', ask: two });
 		const { tools } = createToolContext();
 		const context = {
@@ -2912,15 +2952,28 @@ describe('tools that replaced the fast path', () => {
 			'dev_offer accepted',
 		);
 
-		// Their fixed reply is what is said, so neither is silent; neither takes the developer's words.
-		for (const name of ['pin_session', 'rename_session'] as const) {
+		// Their fixed reply is what is said, so neither is silent. A rename splits the words ("call this
+		// api work and run the tests"): a send beside it carries only its part.
+		for (const name of ['deactivate', 'rename_session'] as const) {
 			expect(MUTATING_TOOLS).toContain(name);
 			expect(isSilentCall(name, {})).toBe(false);
-			expect(carriesWords(name)).toBe(false);
 		}
 
-		expect(describeToolCall({ name: 'pin_session', input: { ref: 'x/main' }, ok: true })).toBe(
-			'pin_session pin x/main',
+		expect(carriesWords('deactivate')).toBe(false);
+		expect(carriesWords('rename_session')).toBe(true);
+
+		// Voice OS says "Activated X. Switch there?" itself; the words beside it are not its.
+		expect(MUTATING_TOOLS).toContain('activate');
+		expect(isSilentCall('activate', {})).toBe(true);
+		// It splits the words: beside it, a send carries only its part.
+		expect(carriesWords('activate')).toBe(true);
+
+		// Read-only: the kernel says what it found.
+		expect(MUTATING_TOOLS).not.toContain('list_sessions');
+		expect(isSilentCall('list_sessions', {})).toBe(false);
+
+		expect(describeToolCall({ name: 'activate', input: { name: 'x/main' }, ok: true })).toBe(
+			'activate x/main',
 		);
 	});
 });
@@ -3675,6 +3728,60 @@ describe('fixes from the live notes', () => {
 				'only send_to on Mission Control → the reply stays: nothing else says where the words went',
 				{ reply: 'Sent to checkout.', calls: [call('send_to')], forwardTo: null },
 				{ kind: 'keep' },
+			],
+			[
+				'activate and the rest sent on Mission Control → dropped: "Activated X" was said in code',
+				{
+					reply: "Now I'll send the question to the session:",
+					calls: [call('activate'), call('send_to')],
+					forwardTo: null,
+				},
+				{ kind: 'drop_reply' },
+			],
+			[
+				'on a session screen, a failed activate asking which → asked, never forwarded to the session',
+				{
+					reply: 'I need to clarify which session you want to activate. Work one or work two?',
+					utterance: 'Activate scheduler on Personal, the one with the retries.',
+					calls: [call('activate', false)],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'on a session screen, a listening change it could not tell → asked, never forwarded',
+				{
+					reply: 'Do you mean hands-free or push to talk?',
+					utterance: 'Can you switch the listening thing over to the other mode please?',
+					calls: [call('hands_free', false)],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'on a session screen, a list asking which workspace → asked, never forwarded',
+				{
+					reply: 'Personal has 11 worktrees in 6 workspaces. Do you mean the scheduler ones?',
+					utterance: 'What worktrees do I have on the Personal machine right now?',
+					calls: [call('list_sessions')],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'an activate that failed ("Which?") beside a send → the model\'s question kept',
+				{
+					reply: 'Personal has scheduler work one and work two. Which?',
+					calls: [call('activate', false), call('send_to')],
+					forwardTo: null,
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'an activate offer asked in code → the model\'s own "Activate it?" dropped',
+				{
+					reply: "Checkout isn't active. Activate it?",
+					calls: [{ ...call('send_to', false), note: 'activate offered' }],
+					forwardTo: null,
+				},
+				{ kind: 'drop_reply' },
 			],
 		])('%s', (_, patch, ending) =>
 			expect(decideEnding({ ...base, ...patch })).toEqual(ending as never),

@@ -29,9 +29,11 @@ const resolveRenameTarget = (
 	scope: (ref: string) => string,
 ): RefCheck => {
 	const checked = checkRef(state, value);
+	// Naming is the developer's own and needs no running Claude: an inactive session is renamed too.
+	const found = checked.ok ? checked.ref : checked.inactive;
 
-	if (checked.ok) {
-		return { ok: true, ref: scope(checked.ref) };
+	if (found) {
+		return { ok: true, ref: scope(found) };
 	}
 
 	const named = findNamedRef(state, value);

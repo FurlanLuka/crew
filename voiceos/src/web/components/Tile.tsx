@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { isActive } from '../../shared/active.js';
+import { SETUP_REF } from '../../shared/machine-ref.js';
 import type { Session, State } from '../../shared/protocol.js';
 import { readSessionLabel } from '../../shared/machines.js';
 import { readWorkLabel } from '../../shared/work-label.js';
@@ -19,25 +21,28 @@ interface TileProps {
 	dispatch: Dispatch;
 }
 
-interface PinButtonProps {
+interface ActiveButtonProps {
 	sessionRef: string;
-	isPinned: boolean;
+	isActive: boolean;
 	dispatch: Dispatch;
 }
 
-export const PinButton = ({ sessionRef, isPinned, dispatch }: PinButtonProps) => (
-	<button
-		type="button"
-		className="btn small pin"
-		onClick={() => dispatch({ type: isPinned ? 'unpin_session' : 'pin_session', ref: sessionRef })}
-	>
-		{isPinned ? 'unpin' : 'pin'}
-	</button>
-);
+// This Mac's setup session is always active: nothing to toggle, so no button.
+export const ActiveButton = ({ sessionRef, isActive: isOn, dispatch }: ActiveButtonProps) =>
+	sessionRef === SETUP_REF ? null : (
+		<button
+			type="button"
+			className="btn small toggle-active"
+			onClick={() => dispatch({ type: isOn ? 'deactivate' : 'activate', ref: sessionRef })}
+		>
+			{isOn ? 'deactivate' : 'activate'}
+		</button>
+	);
 
 export const Tile = ({ session, state, dispatch }: TileProps) => {
 	const [isRenaming, setIsRenaming] = useState(false);
 	const badge = describeSessionBadge(session, state.asks);
+	const isOn = isActive(state, session.ref);
 	const tileKind = badge.isAlarm
 		? 'alarm'
 		: session.isPinned
@@ -47,14 +52,15 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 				: '';
 
 	const handleOpen = () => {
-		// Opening only looks: browsing must never spin up a Claude in a real worktree. A pinned
-		// session opens inside Pinned wherever it is clicked: the reducer decides that.
+		// Opening only looks: browsing must never spin up a Claude in a real worktree. An active
+		// session opens inside Active wherever it is clicked: the reducer decides that.
 		dispatch({ type: 'switch_view', view: { kind: 'session', ref: session.ref } });
 	};
 
-	// Two buttons side by side, never one inside the other: the pin must not also open the session.
+	// Two buttons side by side, never one inside the other: activating must not also open the session.
+	// An inactive tile is dimmed: browsable, but voice neither sees nor drives it.
 	return (
-		<div className={`tile ${tileKind}`} data-ref={session.ref}>
+		<div className={`tile ${tileKind} ${isOn ? '' : 'inactive'}`} data-ref={session.ref}>
 			<div className="tile-head">
 				<i className={`dot ${badge.dot}`} />
 				{isRenaming ? (
@@ -76,11 +82,7 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 				)}
 				<span className={`st ${badge.isAlarm ? 'c-crit' : ''}`}>{badge.label}</span>
 				<RenameButton onClick={() => setIsRenaming(true)} />
-				<PinButton
-					sessionRef={session.ref}
-					isPinned={state.pinned.includes(session.ref)}
-					dispatch={dispatch}
-				/>
+				<ActiveButton sessionRef={session.ref} isActive={isOn} dispatch={dispatch} />
 			</div>
 			<button type="button" className="tile-open" onClick={handleOpen}>
 				<span className="work">
@@ -95,7 +97,12 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 					/>
 				</span>
 				<span className={`body ${badge.isAlarm ? 'c-crit' : ''}`}>
-					{session.needsUser?.text ?? readLastLine(session, readSessionLabel(state, session.ref))}
+					{session.needsUser?.text ??
+						readLastLine(
+							session,
+							readSessionLabel(state, session.ref),
+							isActive(state, session.ref),
+						)}
 				</span>
 			</button>
 		</div>
@@ -105,13 +112,13 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 interface MissingTileProps {
 	sessionRef: string;
 	text: string;
-	// The developer's name for it, if any: the one thing besides the pin that can still be changed.
+	// The developer's name for it, if any: the one thing besides the active set that can still change.
 	name: string | undefined;
 	dispatch: Dispatch;
 }
 
-// A pin whose session is not here: nothing to open, only a way to let it go or clear its name, which
-// would otherwise keep that name from any other session.
+// An active ref whose session is not here: nothing to open, only a way to deactivate it or clear its
+// name, which would otherwise keep that name from any other session.
 export const MissingTile = ({ sessionRef, text, name, dispatch }: MissingTileProps) => {
 	const [isRenaming, setIsRenaming] = useState(false);
 
@@ -132,7 +139,7 @@ export const MissingTile = ({ sessionRef, text, name, dispatch }: MissingTilePro
 					</span>
 				)}
 				{name !== undefined && <RenameButton onClick={() => setIsRenaming(true)} />}
-				<PinButton sessionRef={sessionRef} isPinned dispatch={dispatch} />
+				<ActiveButton sessionRef={sessionRef} isActive dispatch={dispatch} />
 			</div>
 		</div>
 	);

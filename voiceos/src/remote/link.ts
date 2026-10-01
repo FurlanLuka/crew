@@ -1,6 +1,7 @@
 // The main's end of one machine's link: SSH to it, keep it up, and carry effects out and reports in.
 
 import { createLogger } from '../log.js';
+import { isActive } from '../shared/active.js';
 import type { CrewRunOptions, CrewRunResult, CrewRunner } from '../crew/adapter.js';
 import {
 	describeRecap,
@@ -340,8 +341,10 @@ export class RemoteLink {
 
 		const after = this.options.getState();
 		const labelOf = (ref: string): string => readSessionLabel(after, ref);
-		const finished = plan.finished.map(labelOf);
-		const waiting = listWaitingRefs(after, this.id).map(labelOf);
+		// The recap tells only what voice drives: an inactive session's news is not said.
+		const isHeard = (ref: string): boolean => isActive(after, ref);
+		const finished = plan.finished.filter(isHeard).map(labelOf);
+		const waiting = listWaitingRefs(after, this.id).filter(isHeard).map(labelOf);
 
 		log.info('connected', {
 			machine: this.id,

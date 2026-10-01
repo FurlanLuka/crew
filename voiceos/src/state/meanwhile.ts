@@ -13,15 +13,16 @@ import {
 	type SaidItem,
 } from '../speech/meanwhile.js';
 import { describeAskForMeanwhile } from './asks.js';
-import { readAnnouncedLabel } from './held-lines.js';
 import { readScreenRef, sayRef, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
+import { isActive } from '../shared/active.js';
 
 type MeanwhileAdded = Extract<Input, { type: 'meanwhile_added' }>;
 
 // A session's newer update replaces its older one: the line says where each session is now.
+// An inactive session waits for nothing: a late event from one just deactivated adds no update.
 export const addMeanwhile = (state: State, input: MeanwhileAdded, at: number): State => {
-	if (!state.sessions[input.ref]) {
+	if (!state.sessions[input.ref] || !isActive(state, input.ref)) {
 		return state;
 	}
 
@@ -123,7 +124,7 @@ export const playMeanwhile = (state: State, at: number): ReducerResult => {
 
 	const text = describeMeanwhile({
 		items,
-		nameOf: (ref) => readAnnouncedLabel(state, ref, sayRef(state, ref)),
+		nameOf: (ref) => sayRef(state, ref),
 	});
 	// Only what the line says by name is told: an ask it only counts was not heard.
 	const toldAsks: ToldAsk[] = listNamedItems(items).flatMap((item) =>

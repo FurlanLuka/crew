@@ -87,7 +87,7 @@ describe('persistNames', () => {
 		expect(loadNames(file)).toEqual({});
 
 		writeFileSync(file, '{"sentinel": "x"}');
-		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({ type: 'rename_session', ref: 'crew/main', name: '' });
 		expect(loadNames(file)).toEqual({ sentinel: 'x' });
 	});

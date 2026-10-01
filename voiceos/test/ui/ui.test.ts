@@ -6,6 +6,7 @@ import { listAllowedOrigins } from '../../src/gateway/auth.js';
 import { startGateway, type Gateway } from '../../src/gateway/server.js';
 import { configureLog } from '../../src/log.js';
 import type { Action, ClientMessage, WorktreeInfo } from '../../src/shared/protocol.js';
+import { isActive } from '../../src/shared/active.js';
 import { Store } from '../../src/state/store.js';
 
 const TOKEN = 'b'.repeat(64);
@@ -62,7 +63,7 @@ const ensureIdle = async (ref: string): Promise<void> => {
 	const status = store.state.sessions[ref]?.status;
 
 	if (status === 'stopped') {
-		store.dispatch({ type: 'start_session', ref });
+		store.dispatch({ type: 'activate', ref });
 	} else if (status === 'running' || status === 'blocked') {
 		store.dispatch({ type: 'interrupt', ref });
 		store.dispatch({ type: 'turn_ended', ref, costUsd: 0, text: '' });
@@ -130,7 +131,7 @@ beforeAll(async () => {
 	store.onEffect((effect) => {
 		effects.push(effect.type);
 
-		// Stand in for a worker so start_session reaches idle.
+		// Stand in for a worker so an activated session reaches idle.
 		if (effect.type === 'worker_start') {
 			queueMicrotask(() => store.dispatch({ type: 'session_started', ref: effect.ref }));
 		}
@@ -143,6 +144,9 @@ beforeAll(async () => {
 			createWorktree('checkout-api/main'),
 		],
 	});
+	// Most tests talk to these two; an inactive session has no input box (the 'active' block).
+	store.dispatch({ type: 'activate', ref: 'store-front/main' });
+	store.dispatch({ type: 'activate', ref: 'checkout-api/main' });
 	gateway = startServer();
 	browser = await chromium.launch({
 		args: [
@@ -198,7 +202,8 @@ describe('voice os ui', () => {
 
 		await secondTab.page.getByRole('navigation').waitFor({ timeout: 5000 });
 		expect(await secondTab.page.locator('.tab.on').innerText()).toContain('store-front/main');
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
+		// Active, so it opens inside Active.
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'active' });
 		await firstTab.context.close();
 		await secondTab.context.close();
 	}, 20_000);
@@ -1185,7 +1190,7 @@ describe('voice os ui', () => {
 	it('queued message → its x cancels exactly that one; the spoken line shows what Voice OS last said', async () => {
 		const { context, page } = await signIn();
 		// Whatever state earlier tests left checkout in, a message sent behind a turn waits in its queue.
-		store.dispatch({ type: 'start_session', ref: 'checkout-api/main' });
+		store.dispatch({ type: 'activate', ref: 'checkout-api/main' });
 		await waitUntil(
 			() =>
 				!['stopped', 'starting'].includes(
@@ -1526,7 +1531,7 @@ describe('voice os ui', () => {
 		await page.context().close();
 	}, 20_000);
 
-	it('opening a stopped session only shows it; the first message is what starts it', async () => {
+	it('opening an inactive session only shows it: no input box, and its Activate is what starts it', async () => {
 		store.dispatch({
 			type: 'worktrees',
 			worktrees: [
@@ -1540,20 +1545,17 @@ describe('voice os ui', () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
 		const before = effects.length;
 		await page.locator('.tile[data-ref="admin/main"]').click();
-		await page.getByText('Not running — your first message starts it.').waitFor({ timeout: 5000 });
+		await page.getByText(/^Not active: its history only/).waitFor({ timeout: 5000 });
 		expect(store.state.view).toEqual({ kind: 'session', ref: 'admin/main' });
 		expect(store.state.sessions['admin/main']?.status).toBe('stopped');
 		expect(effects.slice(before)).not.toContain('worker_start');
+		expect(await page.getByLabel('Say or type a command').count()).toBe(0);
 
-		const input = page.getByLabel('Say or type a command');
-		await input.fill('run the tests');
-		await input.press('Enter');
-		// The server routes it as a send, which starts a stopped session (reducer spec).
-		await waitUntil(() =>
-			received.some(
-				(entry) => entry.message.type === 'utterance' && entry.message.text === 'run the tests',
-			),
-		);
+		await page.locator('.botbar').getByRole('button', { name: 'Activate' }).click();
+		await waitUntil(() => store.state.sessions['admin/main']?.status === 'idle');
+		expect(effects.slice(before)).toContain('worker_start');
+		await page.getByLabel('Say or type a command').waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'deactivate', ref: 'admin/main' });
 		await context.close();
 	}, 20_000);
 
@@ -1587,7 +1589,7 @@ describe('voice os ui', () => {
 	}, 40_000);
 });
 
-describe('pinned', () => {
+describe('active', () => {
 	const REMOTE = 'vm1:api/main';
 
 	const readTileRefs = (page: Page): Promise<(string | null)[]> =>
@@ -1604,8 +1606,8 @@ describe('pinned', () => {
 	};
 
 	beforeAll(() => {
-		for (const ref of [...store.state.pinned]) {
-			store.dispatch({ type: 'unpin_session', ref });
+		for (const ref of [...store.state.active]) {
+			store.dispatch({ type: 'deactivate', ref });
 		}
 
 		store.dispatch({ type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] });
@@ -1622,14 +1624,14 @@ describe('pinned', () => {
 		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
 	});
 
-	it('nothing pinned → the Pinned card first on Mission Control, with no status dot', async () => {
+	it('nothing activated → the Active card first on Mission Control, the setup session alone, no status dot', async () => {
 		goHome();
 		const { context, page } = await signIn();
 		const first = page.locator('section.machine').first();
 
-		expect(await first.getAttribute('aria-label')).toBe('Pinned');
-		expect(await first.innerText()).toContain('0 sessions');
-		expect(await first.innerText()).toContain('Pin a session to keep it here');
+		expect(await first.getAttribute('aria-label')).toBe('Active');
+		expect(await first.innerText()).toContain('1 session');
+		expect(await first.innerText()).toContain('Activate a session to talk to it by voice');
 		expect(await first.locator('.dot').count()).toBe(0);
 		expect(await first.getByRole('button', { name: 'rename' }).count()).toBe(0);
 		await context.close();
@@ -1649,62 +1651,76 @@ describe('pinned', () => {
 		await context.close();
 	}, 20_000);
 
-	it('pin on a machine grid tile → pinned without opening it; the Pinned card counts it', async () => {
+	it('a dimmed tile, activated on the grid → active without opening it, no longer dimmed; setup has no toggle; the Active card counts it', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
 		const { context, page } = await signIn();
 		const tile = page.locator('.tile[data-ref="store-front/main"]');
 
-		await tile.getByRole('button', { name: 'pin', exact: true }).click();
-		await waitUntil(() => store.state.pinned.includes('store-front/main'));
-		await tile.getByRole('button', { name: 'unpin' }).waitFor({ timeout: 5000 });
+		await tile.waitFor({ timeout: 5000 });
+		expect(await tile.getAttribute('class')).toContain('inactive');
+		expect(await page.locator('.tile[data-ref="setup"]').getAttribute('class')).not.toContain(
+			'inactive',
+		);
+		expect(
+			await page
+				.locator('.tile[data-ref="setup"]')
+				.getByRole('button', { name: /activate/ })
+				.count(),
+		).toBe(0);
+
+		await tile.getByRole('button', { name: 'activate', exact: true }).click();
+		await waitUntil(() => isActive(store.state, 'store-front/main'));
+		await tile.getByRole('button', { name: 'deactivate' }).waitFor({ timeout: 5000 });
+		expect(await tile.getAttribute('class')).not.toContain('inactive');
 		expect(store.state.view).toEqual({ kind: 'grid', machine: 'local' });
 
 		await page.locator('.topbar .crumb', { hasText: 'Mission Control' }).click();
-		const card = page.locator('section.machine[aria-label="Pinned"]');
-		await card.getByText('1 session').waitFor({ timeout: 5000 });
+		const card = page.locator('section.machine[aria-label="Active"]');
+		await card.getByText('2 sessions').waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
-	it('Pinned → the pinned sessions from every machine, in pin order, another machine named', async () => {
-		store.dispatch({ type: 'pin_session', ref: REMOTE });
+	it('Active → setup first, then the active sessions from every machine in the order activated, another machine named', async () => {
+		store.dispatch({ type: 'activate', ref: REMOTE });
 		goHome();
 		const { context, page } = await signIn();
-		await page.locator('section.machine[aria-label="Pinned"] .machine-name').click();
-		await waitUntil(() => store.state.view.kind === 'pinned');
+		await page.locator('section.machine[aria-label="Active"] .machine-name').click();
+		await waitUntil(() => store.state.view.kind === 'active');
 		await page.locator(`.tile[data-ref="${REMOTE}"]`).waitFor({ timeout: 5000 });
 
-		expect(await readTileRefs(page)).toEqual(['store-front/main', REMOTE]);
+		expect(await readTileRefs(page)).toEqual(['setup', 'store-front/main', REMOTE]);
 		expect(await page.locator(`.tile[data-ref="${REMOTE}"] .ref`).innerText()).toBe(
 			'Build box · api/main',
 		);
-		expect(await readCrumbs(page)).toBe('Mission Control › Pinned');
-		expect(await page.locator('.topbar').innerText()).toContain('2 sessions');
+		expect(await readCrumbs(page)).toBe('Mission Control › Active');
+		expect(await page.locator('.topbar').innerText()).toContain('3 sessions');
 		await context.close();
 	}, 20_000);
 
-	it('a tile on Pinned → the session inside Pinned: Pinned crumbs, the pins as tabs, a tab click stays there', async () => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+	it('a tile on Active → the session inside Active: Active crumbs, the active sessions as tabs, a tab click stays there', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
 		await page.locator('.tile[data-ref="store-front/main"] .tile-open').click();
 		await waitUntil(
-			() => store.state.view.kind === 'session' && store.state.view.from === 'pinned',
+			() => store.state.view.kind === 'session' && store.state.view.from === 'active',
 		);
 		await page.getByRole('navigation').waitFor({ timeout: 5000 });
 
-		expect(await readCrumbs(page)).toBe('Mission Control › Pinned › store-front/main');
+		expect(await readCrumbs(page)).toBe('Mission Control › Active › store-front/main');
 		expect(await readTabs(page)).toEqual([
+			expect.stringContaining('setup'),
 			expect.stringContaining('store-front/main'),
 			expect.stringContaining('Build box · api/main'),
 		]);
-		expect(await page.locator('.topbar .home').innerText()).toBe('Esc → Pinned');
+		expect(await page.locator('.topbar .home').innerText()).toBe('Esc → Active');
 
 		await page.locator('.tabs .tab', { hasText: 'api/main' }).click();
 		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === REMOTE);
-		expect(store.state.view).toEqual({ kind: 'session', ref: REMOTE, from: 'pinned' });
+		expect(store.state.view).toEqual({ kind: 'session', ref: REMOTE, from: 'active' });
 		await context.close();
 	}, 20_000);
 
-	it("a pinned session opened from its machine's grid → inside Pinned all the same", async () => {
+	it("an active session opened from its machine's grid → inside Active all the same", async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
 		const { context, page } = await signIn();
 		await page.locator('.tile[data-ref="store-front/main"] .ref').click();
@@ -1712,14 +1728,13 @@ describe('pinned', () => {
 			() => store.state.view.kind === 'session' && store.state.view.ref === 'store-front/main',
 		);
 
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'pinned' });
-		await page.getByText('Mission Control › Pinned › store-front/main').waitFor({ timeout: 5000 });
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'active' });
+		await page.getByText('Mission Control › Active › store-front/main').waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
-	it('a pinned session opened from Elsewhere → inside Pinned', async () => {
+	it('the setup session opened from Elsewhere → inside Active, with no Deactivate', async () => {
 		await ensureIdle('setup');
-		store.dispatch({ type: 'pin_session', ref: 'setup' });
 		store.dispatch({ type: 'send', ref: 'setup', text: 'Tidy the old worktrees.' });
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		const { context, page } = await signIn();
@@ -1728,41 +1743,57 @@ describe('pinned', () => {
 			.click({ timeout: 5000 });
 		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === 'setup');
 
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'setup', from: 'pinned' });
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'setup', from: 'active' });
+		await page.getByText('Mission Control › Active › setup').waitFor({ timeout: 5000 });
+		expect(await page.getByRole('button', { name: /deactivate/i }).count()).toBe(0);
 		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: 'Done.' });
-		store.dispatch({ type: 'unpin_session', ref: 'setup' });
 		await context.close();
 	}, 20_000);
 
-	it("the TopBar's pin on an unpinned session → pinned; unpin → gone from the pins", async () => {
+	it('an inactive session → its history, no input box; the TopBar activates it; Deactivate in the cockpit takes it back', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		const { context, page } = await signIn();
+		const input = page.getByLabel('Say or type a command');
 		await page
 			.getByText('Mission Control › This Mac › checkout-api/main')
 			.waitFor({ timeout: 5000 });
 
-		await page.locator('.topbar').getByRole('button', { name: 'pin', exact: true }).click();
-		await waitUntil(() => store.state.pinned.includes('checkout-api/main'));
-		await page.locator('.topbar').getByRole('button', { name: 'unpin' }).click();
-		await waitUntil(() => !store.state.pinned.includes('checkout-api/main'));
+		// The earlier tests' lines stay readable: inactive is browsable, only not driven.
+		expect(await page.locator('.stream .line').count()).toBeGreaterThan(0);
+		expect(await input.count()).toBe(0);
+		await page
+			.locator('.botbar')
+			.getByText("checkout-api/main isn't active")
+			.waitFor({ timeout: 5000 });
+
+		await page.locator('.topbar').getByRole('button', { name: 'activate', exact: true }).click();
+		await waitUntil(() => isActive(store.state, 'checkout-api/main'));
+		await input.waitFor({ timeout: 5000 });
+		await page.getByText('Mission Control › Active › checkout-api/main').waitFor({ timeout: 5000 });
+
+		await page.locator('.cockpit').getByRole('button', { name: 'Deactivate' }).click();
+		await waitUntil(() => !isActive(store.state, 'checkout-api/main'));
+		await input.waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.sessions['checkout-api/main']?.status).toBe('stopped');
+		expect(store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
 		await page
 			.locator('.topbar')
-			.getByRole('button', { name: 'pin', exact: true })
+			.getByRole('button', { name: 'activate', exact: true })
 			.waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
-	it('a pin whose machine is out of reach → a placeholder tile; its unpin lets it go', async () => {
+	it('an active session whose machine is out of reach → a placeholder tile; its deactivate lets it go', async () => {
 		store.dispatch({ type: 'machine_status', id: 'vm1', status: 'unreachable' });
-		store.dispatch({ type: 'pinned_loaded', refs: ['vm1:api/wrk2'] });
-		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+		store.dispatch({ type: 'active_loaded', refs: ['vm1:api/wrk2'] });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
 		const placeholder = page.locator('.tile.missing[data-ref="vm1:api/wrk2"]');
 
 		await placeholder.waitFor({ timeout: 5000 });
 		expect(await placeholder.locator('.ref').innerText()).toBe('api/wrk2 · Build box out of reach');
-		await placeholder.getByRole('button', { name: 'unpin' }).click();
-		await waitUntil(() => !store.state.pinned.includes('vm1:api/wrk2'));
+		await placeholder.getByRole('button', { name: 'deactivate' }).click();
+		await waitUntil(() => !store.state.active.includes('vm1:api/wrk2'));
 		await placeholder.waitFor({ state: 'detached', timeout: 5000 });
 		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
 		await context.close();
@@ -1781,7 +1812,7 @@ describe('named sessions', () => {
 	};
 
 	it("rename on another machine's tile → the name alone on the tile, the tab and the crumbs; the ref on hover", async () => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
 		const tile = page.locator(`.tile[data-ref="${REMOTE}"]`);
 
@@ -1793,10 +1824,10 @@ describe('named sessions', () => {
 		await tile.locator('.ref', { hasText: 'voice os dev' }).waitFor({ timeout: 5000 });
 		expect(await tile.locator('.ref').innerText()).toBe('voice os dev');
 		expect(await tile.locator('.ref').getAttribute('title')).toBe(REMOTE);
-		expect(store.state.view).toEqual({ kind: 'pinned' });
+		expect(store.state.view).toEqual({ kind: 'active' });
 
 		await tile.locator('.tile-open').click();
-		await page.getByText('Mission Control › Pinned › voice os dev').waitFor({ timeout: 5000 });
+		await page.getByText('Mission Control › Active › voice os dev').waitFor({ timeout: 5000 });
 		expect(await page.locator('.tabs .tab.on').innerText()).toStartWith('voice os dev');
 		await context.close();
 	}, 20_000);
@@ -1807,7 +1838,7 @@ describe('named sessions', () => {
 
 		await renameInTopBar(page, 'shop');
 		await waitUntil(() => store.state.names['store-front/main'] === 'shop');
-		await page.getByText('Mission Control › Pinned › shop').waitFor({ timeout: 5000 });
+		await page.getByText('Mission Control › Active › shop').waitFor({ timeout: 5000 });
 		expect(await page.locator('.tabs .tab.on').innerText()).toStartWith('shop');
 
 		const before = received.length;
@@ -1821,11 +1852,11 @@ describe('named sessions', () => {
 				),
 		);
 		expect(store.state.names['store-front/main']).toBe('shop');
-		expect(await readCrumbs(page)).toBe('Mission Control › Pinned › shop');
+		expect(await readCrumbs(page)).toBe('Mission Control › Active › shop');
 
 		await renameInTopBar(page, '');
 		await waitUntil(() => store.state.names['store-front/main'] === undefined);
-		await page.getByText('Mission Control › Pinned › store-front/main').waitFor({ timeout: 5000 });
+		await page.getByText('Mission Control › Active › store-front/main').waitFor({ timeout: 5000 });
 		expect(await page.locator('.topbar .ws span[title]').count()).toBe(0);
 
 		store.dispatch({ type: 'rename_session', ref: REMOTE, name: '' });

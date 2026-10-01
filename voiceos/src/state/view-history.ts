@@ -45,8 +45,8 @@ const sayView = (state: State, view: View): string => {
 	switch (view.kind) {
 		case 'session':
 			return sayRef(state, view.ref);
-		case 'pinned':
-			return 'Pinned';
+		case 'active':
+			return 'Active';
 		case 'machines':
 			return 'your machines';
 		case 'grid':

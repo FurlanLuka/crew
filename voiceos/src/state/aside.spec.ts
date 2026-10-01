@@ -148,7 +148,8 @@ describe('aside_settled', () => {
 
 	it('failed on a session stopped meanwhile → queued without restarting it', () => {
 		const asked = askAside(runningSession()).state;
-		const stopped = run([{ type: 'stop_session', ref: REF }], { start: asked }).state;
+		// Exited, not deactivated: it stays active, so only the aside's own rule keeps it from starting.
+		const stopped = run([{ type: 'worker_exited', ref: REF, error: null }], { start: asked }).state;
 		const { state, effects } = settle(stopped, 'failed');
 
 		expect(state.sessions[REF]?.status).toBe('stopped');

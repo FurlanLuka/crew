@@ -23,22 +23,39 @@ const isView = (value: unknown): value is View => {
 
 	switch (view.kind) {
 		case 'machines':
-		case 'pinned':
+		case 'active':
 			return true;
 		case 'grid':
 			return view.machine === undefined || typeof view.machine === 'string';
 		case 'session':
-			return typeof view.ref === 'string' && (view.from === undefined || view.from === 'pinned');
+			return typeof view.ref === 'string' && (view.from === undefined || view.from === 'active');
 		default:
 			return false;
 	}
+};
+
+// A view saved before the active set: Pinned is Active now.
+const fromPinned = (value: unknown): unknown => {
+	if (!value || typeof value !== 'object') {
+		return value;
+	}
+
+	const view = value as Record<string, unknown>;
+
+	if (view.kind === 'pinned') {
+		return { kind: 'active' };
+	}
+
+	return view.kind === 'session' && view.from === 'pinned' ? { ...view, from: 'active' } : view;
 };
 
 export const loadView = (file: string): View | null => {
 	try {
 		const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown;
 
-		return isView(parsed) ? parsed : null;
+		const view = fromPinned(parsed);
+
+		return isView(view) ? view : null;
 	} catch {
 		// A missing or corrupt file opens on the home view, as a first start does.
 		return null;
@@ -50,8 +67,8 @@ export const saveView = (file: string, view: View): void => {
 };
 
 export const restoredView = (saved: View, state: State, waitedMs = 0): ViewRestore => {
-	// Neither waits on a machine: Pinned shows an out-of-reach pin as its own tile.
-	if (saved.kind === 'machines' || saved.kind === 'pinned') {
+	// Neither waits on a machine: Active shows an out-of-reach session as its own tile.
+	if (saved.kind === 'machines' || saved.kind === 'active') {
 		return { kind: 'apply', view: saved };
 	}
 

@@ -10,6 +10,7 @@ import type { Store } from '../state/store.js';
 import type { KernelHandler, KernelTurn } from '../router/router.js';
 import type { VoiceOut } from './voice-out.js';
 import { createLogger } from '../log.js';
+import { isActive } from '../shared/active.js';
 import type { Input, State } from '../shared/protocol.js';
 
 const log = createLogger('conversation');
@@ -41,6 +42,24 @@ const logConversation = (before: State, after: State, input: Input): void => {
 			// Entries passed over (stopped since, or gone) beside the one returned to.
 			skipped: Math.max(0, before.viewHistory.length - after.viewHistory.length - 1),
 		});
+	}
+};
+
+// An inactive session says nothing: a late event from one just deactivated is dropped here. Voice OS's
+// own reply about it ("…isn't active. Activate it?") is the developer's answer, and is said.
+export const isSilenced = (state: State, effect: Effect): boolean => {
+	switch (effect.type) {
+		case 'speak':
+			return (
+				effect.ref !== undefined &&
+				!(effect.source === 'kernel' && effect.isReply === true) &&
+				!isActive(state, effect.ref)
+			);
+		case 'narrate':
+		case 'narrate_aside':
+			return !isActive(state, effect.ref);
+		default:
+			return false;
 	}
 };
 
@@ -169,6 +188,12 @@ export const connectSpeech = ({
 	});
 
 	store.onEffect((effect) => {
+		if (isSilenced(store.state, effect)) {
+			log.info('inactive session: not said', { ref: 'ref' in effect ? effect.ref : null });
+
+			return;
+		}
+
 		switch (effect.type) {
 			case 'speak':
 				voiceOut.say({

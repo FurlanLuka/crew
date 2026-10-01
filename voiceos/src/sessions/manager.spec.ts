@@ -48,7 +48,7 @@ const waitTick = () => new Promise((resolve) => setTimeout(resolve, 5));
 describe('SessionManager', () => {
 	it("every session is told it is driven by Voice OS, after crew's orientation", async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.orientation.resolve('## crew\nuse crew dev start');
 		await waitTick();
 		const prompt = harness.prompts[0] ?? '';
@@ -82,7 +82,7 @@ describe('SessionManager', () => {
 			runQuery: fake.runQuery,
 		});
 		store.onEffect(manager.handle);
-		store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		await waitTick();
 		expect(fake.prompts[0]?.startsWith('## Voice OS')).toBe(true);
 		manager.stopAll();
@@ -90,7 +90,7 @@ describe('SessionManager', () => {
 
 	it('start → one worker once the orientation arrives; session goes idle', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.orientation.resolve('orientation');
 		await waitTick();
 
@@ -102,8 +102,8 @@ describe('SessionManager', () => {
 
 	it('stop while the orientation loads → no worker spawns, session stays stopped', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
-		harness.store.dispatch({ type: 'stop_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
 		harness.orientation.resolve('orientation');
 		await waitTick();
 
@@ -114,22 +114,22 @@ describe('SessionManager', () => {
 
 	it('start, stop, start quickly → exactly one worker, none orphaned', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
-		harness.store.dispatch({ type: 'stop_session', ref: 'store-front/main' });
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.orientation.resolve('orientation');
 		await waitTick();
 
 		expect(harness.started).toHaveLength(1);
 		expect(harness.manager.listRunning()).toEqual(['store-front/main']);
-		harness.store.dispatch({ type: 'stop_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
 		await waitTick();
 		expect(harness.manager.listRunning()).toEqual([]);
 	});
 
 	it('a second start while one is preparing → ignored', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.manager.handle({ type: 'worker_start', ref: 'store-front/main' });
 		harness.orientation.resolve('orientation');
 		await waitTick();
@@ -140,7 +140,7 @@ describe('SessionManager', () => {
 
 	it('stop → the pending permission ask is denied through the reducer, not left hanging', async () => {
 		const harness = createHarness();
-		harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		harness.orientation.resolve('orientation');
 		await waitTick();
 		const answer = harness.manager.permissions.canUseTool('store-front/main')(
@@ -148,7 +148,7 @@ describe('SessionManager', () => {
 			{ command: 'ls' },
 			{},
 		);
-		harness.store.dispatch({ type: 'stop_session', ref: 'store-front/main' });
+		harness.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
 
 		expect(await answer).toEqual({ behavior: 'deny', message: 'The session was stopped.' });
 	});
@@ -187,7 +187,7 @@ describe('SessionManager', () => {
 
 		it('created before the current context → the context goes in front of the next message, once; then recorded', async () => {
 			const harness = createResumedHarness('older');
-			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'run the tests' });
 			await waitTick();
@@ -204,7 +204,7 @@ describe('SessionManager', () => {
 
 		it('already has the current context → messages go as said', async () => {
 			const harness = createResumedHarness(BRIEFING_VERSION);
-			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'run the tests' });
 			await waitTick();
@@ -214,7 +214,7 @@ describe('SessionManager', () => {
 
 		it('the stream shows what the developer said, not the briefing', async () => {
 			const harness = createResumedHarness('older');
-			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'run the tests' });
 			await waitTick();
@@ -227,7 +227,7 @@ describe('SessionManager', () => {
 
 		it('started but nothing sent yet → not recorded as briefed', async () => {
 			const harness = createResumedHarness('older');
-			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			expect(loadRegistry(harness.registryFile)['store-front/main']?.briefing).toBe('older');
 			harness.manager.stopAll();
@@ -235,6 +235,8 @@ describe('SessionManager', () => {
 
 		it('a Voice OS note → Claude reads briefing, then the note, then the words; the stream shows only the words', async () => {
 			const harness = createResumedHarness('older');
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+			await waitTick();
 			harness.store.dispatch({
 				type: 'send',
 				ref: 'store-front/main',
@@ -255,7 +257,7 @@ describe('SessionManager', () => {
 
 		it('resume fails → the fresh session has the context in its prompt, so its first message goes as said', async () => {
 			const harness = createResumedHarness('older', { failResume: true });
-			harness.store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'run the tests' });
 			await waitTick();
@@ -289,7 +291,7 @@ describe('SessionManager', () => {
 			runQuery: fake.runQuery,
 		});
 		store.onEffect(manager.handle);
-		store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+		store.dispatch({ type: 'activate', ref: 'store-front/main' });
 		await waitTick();
 		store.dispatch({
 			type: 'send',
@@ -355,7 +357,7 @@ describe('SessionManager', () => {
 			store.state.sessions['store-front/main']?.stream.find((item) => item.kind === 'aside');
 
 		const askWhileWorking = async ({ store }: { store: Store }) => {
-			store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			store.dispatch({ type: 'send', ref: 'store-front/main', text: 'refactor the router' });
 			await waitTick();
@@ -395,7 +397,7 @@ describe('SessionManager', () => {
 			const harness = createAsideHarness(new Error('resume refused'));
 			const { store } = harness;
 
-			store.dispatch({ type: 'start_session', ref: 'store-front/main' });
+			store.dispatch({ type: 'activate', ref: 'store-front/main' });
 			await waitTick();
 			store.dispatch({ type: 'send', ref: 'store-front/main', text: 'refactor the router' });
 			await waitTick();

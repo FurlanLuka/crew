@@ -9,7 +9,7 @@ import {
 	type ListenMode,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
-import { normalizeUtterance } from '../shared/spoken.js';
+import { normalizeUtterance, toSpokenName } from '../shared/spoken.js';
 import {
 	chooseSentWords,
 	describeMisroutedAnswer,
@@ -20,10 +20,12 @@ import {
 	type SentWords,
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
-import { countSpokenWords } from '../state/helpers.js';
+import { countSpokenWords, readLabel } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
-import { pinSession } from './pin.js';
+import { activateSession, deactivateSession, refuseInactive } from './activate.js';
+import { listSessions } from './list-sessions.js';
+import { isActive, listActiveInOrder } from '../shared/active.js';
 import { decideNotificationReply } from './notification-reply.js';
 import { guardSendTo } from './send-guard.js';
 import { forwardChosen, sendRecorded } from './forward.js';
@@ -39,12 +41,7 @@ import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
 import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
-import {
-	findNamedRefs,
-	findSessionsNamedIn,
-	isOwnNameSaid,
-	readNamedInstead,
-} from './session-naming.js';
+import { findSessionsNamedIn, isOwnNameSaid, readNamedInstead } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import {
 	describeMachineSwitch,
@@ -53,12 +50,23 @@ import {
 	listMachineNames,
 	onMachine,
 } from './machines.js';
-import { HOME_VIEW, currentMachine, readMachineTitle } from '../shared/machines.js';
-import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
-import { type ToolResult, fail, succeed, checkRef } from './results.js';
+import { HOME_VIEW } from '../shared/machines.js';
+import { LOCAL_MACHINE, splitRef } from '../shared/machine-ref.js';
+import { type RefCheck, type ToolResult, fail, succeed, checkRef } from './results.js';
 
 const MIN_REQUEST_WORDS = 4;
 const log = createLogger('tools');
+
+// A ref that did not check out: an inactive session is asked about ("Activate it?"), anything else
+// fails with the reason.
+const refuseRef = (
+	checked: Extract<RefCheck, { ok: false }>,
+	toolContext: ToolContext,
+): ToolResult =>
+	checked.inactive ? refuseInactive({ ref: checked.inactive, toolContext }) : fail(checked.error);
+
+const readableRef = (checked: RefCheck): RefCheck =>
+	!checked.ok && checked.inactive ? { ok: true, ref: checked.inactive } : checked;
 
 const NOTES_READ_BACK = 10;
 const DEBUG_NOTE_SAVED = 'Debug note saved.';
@@ -242,39 +250,6 @@ const scopeToMachine = (
 	return (wanted && onMachine(state, ref, wanted)) || ref;
 };
 
-interface RefuseOtherMachineParams {
-	state: State;
-	ref: string;
-	toolContext: ToolContext;
-}
-
-// A session on another machine than the one the developer is in is acted on only when they named
-// it: a bare "start the cutgrid session" means this machine's, never a same-looking one elsewhere.
-const refuseOtherMachine = ({
-	state,
-	ref,
-	toolContext,
-}: RefuseOtherMachineParams): ToolResult | null => {
-	const here = currentMachine(state);
-
-	if (!here || readMachine(ref) === here || toolContext.utterance === undefined) {
-		return null;
-	}
-
-	if (
-		findSessionsNamedIn(state, toolContext.utterance).includes(ref) ||
-		findMachineSaid(state, toolContext.utterance) === readMachine(ref)
-	) {
-		return null;
-	}
-
-	const onThisMachine = state.order.filter((candidate) => readMachine(candidate) === here);
-
-	return fail(
-		`${ref} is on ${readMachineTitle(state, readMachine(ref))}, and the developer is in ${readMachineTitle(state, here)}. Its sessions: ${onThisMachine.join(', ')}. Pick from those, or ask which one.`,
-	);
-};
-
 const GO_BACK_TO_WORDS = 8;
 
 export const executeTool = async (
@@ -327,11 +302,14 @@ export const executeTool = async (
 
 			if (input.ref === null || input.ref === undefined) {
 				return succeed(
-					state.order.map((ref) => describeSession({ state, ref, isDetailed: false, now })),
+					listActiveInOrder(state).map((ref) =>
+						describeSession({ state, ref, isDetailed: false, now }),
+					),
 				);
 			}
 
-			const checked = checkRef(state, input.ref);
+			// Reading needs no running Claude: an inactive session is read from what Voice OS keeps.
+			const checked = readableRef(checkRef(state, input.ref));
 
 			if (!checked.ok) {
 				return fail(checked.error);
@@ -363,7 +341,8 @@ export const executeTool = async (
 
 		case 'read_history': {
 			const limit = Math.min(20, Math.max(1, Number(input.limit) || 5));
-			const checked = typeof input.ref === 'string' ? checkRef(state, input.ref) : null;
+			const checked =
+				typeof input.ref === 'string' ? readableRef(checkRef(state, input.ref)) : null;
 
 			if (checked && !checked.ok) {
 				return fail(checked.error);
@@ -380,7 +359,11 @@ export const executeTool = async (
 		}
 
 		case 'send_to': {
-			const checked = checkRef(state, input.ref);
+			const found = checkRef(state, input.ref);
+
+			// Words for an inactive session are kept for it: sendRecorded asks to activate it.
+			const checked: RefCheck =
+				!found.ok && found.inactive ? { ok: true, ref: found.inactive } : found;
 
 			if (!checked.ok) {
 				return fail(checked.error);
@@ -456,11 +439,11 @@ export const executeTool = async (
 		}
 
 		case 'switch_view': {
-			// "Go to pinned": the pins are one view across machines, so a ref or machine beside it means nothing.
-			if (input.pinned === true) {
-				toolContext.dispatch({ type: 'switch_view', view: { kind: 'pinned' } });
+			// "Go to active": one view across machines, so a ref or machine beside it means nothing.
+			if (input.active === true) {
+				toolContext.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 
-				return succeed('showing Pinned');
+				return succeed('showing Active');
 			}
 
 			if (input.ref === null || input.ref === undefined) {
@@ -506,7 +489,14 @@ export const executeTool = async (
 					return succeed(describeMachineSwitch(state, machine));
 				}
 
-				return fail(checked.error);
+				return checked.inactive
+					? refuseInactive({ ref: checked.inactive, toolContext, isSwitch: true })
+					: fail(checked.error);
+			}
+
+			// Scoped to a machine the developer named, the session there may be one not active.
+			if (!isActive(state, checked.ref)) {
+				return refuseInactive({ ref: checked.ref, toolContext, isSwitch: true });
 			}
 
 			// A session whose question was only announced is opened when the developer asks for it: named,
@@ -550,89 +540,11 @@ export const executeTool = async (
 				`Voice OS says the ${state.meanwhile.length} waiting updates now: say nothing`,
 			);
 
-		case 'start_session': {
-			const found = checkRef(state, input.ref);
-
-			if (!found.ok) {
-				return fail(found.error);
-			}
-
-			const checked = { ...found, ref: scopeToMachine(state, found.ref, undefined, toolContext) };
-
-			const elsewhere = refuseOtherMachine({ state, ref: checked.ref, toolContext });
-
-			if (elsewhere) {
-				return elsewhere;
-			}
-
-			const isStopped = state.sessions[checked.ref]?.status === 'stopped';
-
-			if (isStopped) {
-				toolContext.dispatch({ type: 'start_session', ref: checked.ref });
-				// "Start X" also shows it, as it always has.
-				toolContext.dispatch({ type: 'switch_view', view: { kind: 'session', ref: checked.ref } });
-			}
-
-			const started = isStopped
-				? `starting ${checked.ref}`
-				: `${checked.ref} is already ${state.sessions[checked.ref]?.status}`;
-
-			// "Start it and tell me what you did last": the start alone never gives the session the rest —
-			// unless the words already went, or name another session ("start checkout and store-front").
-			const namesAnother =
-				toolContext.utterance !== undefined &&
-				findSessionsNamedIn(state, toolContext.utterance).some((named) => named !== checked.ref);
-
-			if (
-				toolContext.utterance !== undefined &&
-				!namesAnother &&
-				!toolContext.sentTo?.has(checked.ref) &&
-				(await toolContext.judge({
-					key: 'more_than_start',
-					utterance: toolContext.utterance,
-					context: `The session: ${checked.ref}`,
-				})) === 'yes'
-			) {
-				// forward reaches only the session on screen: from elsewhere it is send_to.
-				const how =
-					toolContext.forwardTo === checked.ref
-						? 'forward that part'
-						: `send_to ${checked.ref} that part`;
-				log.info('start with more', { ref: checked.ref });
-
-				return succeed(
-					`${started}. If the developer also asked ${checked.ref} something (not a command for Voice OS, like its dev servers), ${how} now — it waits until the session is up.`,
-				);
-			}
-
-			return succeed(started);
-		}
-
-		case 'stop_session': {
-			const checked = checkRef(state, input.ref);
-
-			if (!checked.ok) {
-				return fail(checked.error);
-			}
-
-			const namedRefs = await findNamedRefs(state, toolContext, checked.ref);
-
-			if (namedRefs.length !== 1 || namedRefs[0] !== checked.ref) {
-				return fail(
-					`Not stopped: the developer did not name exactly one session (${namedRefs.length ? namedRefs.join(', ') : 'none'} fit). Ask which one.`,
-				);
-			}
-
-			toolContext.dispatch({ type: 'stop_session', ref: checked.ref });
-
-			return succeed(`stopped ${checked.ref}`);
-		}
-
 		case 'crew_dev': {
 			const checked = checkRef(state, input.ref);
 
 			if (!checked.ok) {
-				return fail(checked.error);
+				return refuseRef(checked, toolContext);
 			}
 
 			const action = input.action;
@@ -682,13 +594,14 @@ export const executeTool = async (
 			return succeed('went back: Voice OS says where to');
 		}
 
-		case 'pin_session':
-			return pinSession({
-				state,
-				input,
-				toolContext,
-				scope: (ref) => scopeToMachine(state, ref, undefined, toolContext),
-			});
+		case 'activate':
+			return activateSession({ state, input, toolContext });
+
+		case 'deactivate':
+			return deactivateSession({ state, input, toolContext });
+
+		case 'list_sessions':
+			return listSessions(state, input);
 
 		case 'rename_session':
 			return renameSession({
@@ -704,8 +617,14 @@ export const executeTool = async (
 		case 'interrupt': {
 			const checked = checkRef(state, input.ref);
 
+			// Nothing runs there: a stop never turns into an offer to start it.
 			if (!checked.ok) {
-				return fail(checked.error);
+				return checked.inactive
+					? {
+							...succeed(`${checked.inactive} is not active: nothing runs there`),
+							reply: `${toSpokenName(readLabel(state, checked.inactive))} isn't running.`,
+						}
+					: fail(checked.error);
 			}
 
 			// "Stop" alone is only a stop, in any language: the judge is asked only when there is more.
@@ -984,7 +903,7 @@ export const executeTool = async (
 			const checked = checkRef(state, input.ref);
 
 			if (!checked.ok) {
-				return fail(checked.error);
+				return refuseRef(checked, toolContext);
 			}
 
 			const denial = findLatestDenial(state, checked.ref);

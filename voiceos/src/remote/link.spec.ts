@@ -80,6 +80,8 @@ interface MainOptions {
 	retryMs?: number;
 	version?: string;
 	updateRemote?: UpdateRemote;
+	// The active set saved by an earlier run, loaded at boot as app.ts does.
+	active?: string[];
 }
 
 const startMain = ({
@@ -91,6 +93,7 @@ const startMain = ({
 	updateRemote = async () => {
 		throw new Error('no update expected');
 	},
+	active = [],
 }: MainOptions) => {
 	const store = new Store();
 	const said: string[] = [];
@@ -124,6 +127,7 @@ const startMain = ({
 	});
 	store.subscribe(() => queueMicrotask(() => links.sync()));
 	store.dispatch({ type: 'machines', machines: [VM1] });
+	store.dispatch({ type: 'active_loaded', refs: active });
 	links.setLocalWorktrees([]);
 	stops.push(() => links.stopAll());
 
@@ -141,7 +145,7 @@ const actWhenConnected = async (store: Store, act: () => void, label: string): P
 
 // Start, send A (it asks permission mid-turn) and B behind it, allow, both turns end.
 const runScenario = async (store: Store): Promise<void> => {
-	await actWhenConnected(store, () => store.dispatch({ type: 'start_session', ref: REF }), 'start');
+	await actWhenConnected(store, () => store.dispatch({ type: 'activate', ref: REF }), 'start');
 	await until(() => store.state.sessions[REF]?.status === 'idle', 'idle');
 	// B queues behind A while A runs (words sent once A waits on its ask would answer the ask).
 	store.dispatch({ type: 'send', ref: REF, text: '[ask] do A' });
@@ -434,13 +438,14 @@ describe('a remote over a link', () => {
 		const first = startMain({ open: network.open });
 
 		await until(() => isConnected(first.store), 'connected');
-		first.store.dispatch({ type: 'start_session', ref: REF });
+		first.store.dispatch({ type: 'activate', ref: REF });
 		await until(() => first.store.state.sessions[REF]?.status === 'idle', 'idle');
 		first.store.dispatch({ type: 'send', ref: REF, text: '[ask] do A' });
 		await until(() => first.store.state.asks.length === 1, 'the ask');
 		first.links.stopAll();
 
-		const second = startMain({ open: network.open, runId: 'run-2' });
+		// The active set outlives the restart: the session asking there is still active.
+		const second = startMain({ open: network.open, runId: 'run-2', active: [REF] });
 
 		await until(() => second.store.state.asks.length === 1, 'the ask again');
 		expect(second.store.state.sessions[REF]?.status).toBe('blocked');
@@ -610,7 +615,7 @@ describe('the recap when a machine comes back', () => {
 		const main = startMain({ open });
 
 		await until(() => isConnected(main.store), 'connected');
-		main.store.dispatch({ type: 'start_session', ref: REF });
+		main.store.dispatch({ type: 'activate', ref: REF });
 		await until(() => main.store.state.sessions[REF]?.status === 'idle', 'idle');
 
 		// Cuts the link; what `whileDown` does happens before the link can come back.
@@ -654,6 +659,19 @@ describe('the recap when a machine comes back', () => {
 		await cut();
 
 		expect(recaps()).toEqual([WAITING]);
+	});
+
+	it('an ask open, the session deactivated while cut → its wait not recapped; it is stopped', async () => {
+		const { cut, recaps, ask, store } = await startConnected();
+
+		await ask();
+		await cut(async () => {
+			store.dispatch({ type: 'deactivate', ref: REF });
+		});
+
+		expect(recaps()).toEqual([]);
+		expect(store.state.asks).toEqual([]);
+		expect(store.state.sessions[REF]?.status).toBe('stopped');
 	});
 
 	it('cut again with the same ask still open → not said again', async () => {

@@ -1,5 +1,5 @@
 import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
-import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, SETUP_REF, joinRef } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,
@@ -26,6 +26,9 @@ import { describeSession } from '../tools/session-view.js';
 import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from '../tools/asked-aloud.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { findSessionsNamedIn } from '../tools/session-naming.js';
+import { findMachineSaid } from '../tools/machines.js';
+import { isAddressedToVoiceOs } from '../tools/said-to-voice-os.js';
+import { isActive, listActiveInOrder } from '../shared/active.js';
 
 const log = createLogger('kernel');
 export const KERNEL_MODEL = 'claude-haiku-4-5';
@@ -44,7 +47,7 @@ On a session's screen your first step always calls a tool. ignore_words only for
 Forwarding:
 - You choose where the words go and their kind; Voice OS sends them to that Claude exactly as heard. Leave text out when everything they said is for that one session: every sentence, detail and reaction reaches it as said, relay words ("can you ask it to") included — that Claude reads them fine.
 - Give text in exactly these cases, copied word for word from what the developer said — never reworded, shortened or cleaned up (anything else is sent as said):
-  - The same words also did something else — a switch, a restart, a note, a debug note, words for another session: text is only the part for this session. "restart the dev servers and have it check the logs" is crew_dev restart and forward with text "check the logs"; "switch to checkout api main and tell it to run the migrations" is switch_view and send_to checkout-api/main with text "run the migrations".
+  - The same words also did something else — a switch, an activate or start, a restart, a note, a debug note, words for another session: text is only the part for this session. "restart the dev servers and have it check the logs" is crew_dev restart and forward with text "check the logs"; "switch to checkout api main and tell it to run the migrations" is switch_view and send_to checkout-api/main with text "run the migrations".
   - The words point at earlier words instead of saying them — "I meant this for store front main", "send that to checkout too", "the store front one" answering your "which one?" about "have main run the tests" (send_to store-front/main with text "have main run the tests"): text is those earlier words, copied from "Earlier on this screen". Left out, the session gets only "I meant this for…".
 - Words quoted inside a question ("what happens if I ask you to 'start crew research'?") are an example, not a command: forward the whole question, never the quote alone, and do not carry it out.
 - When the developer's words finish a sentence their previous words on this screen began, cut off by a pause ("rename the payment helper so it matches" then "the naming in the refund module"), forward it — to the session on screen, whatever the sentence mentions ("profile the slow queries in" then "the admin reports page" is forward to the screen, not send_to admin) — with continues true and no text: Voice OS joins the two halves and replaces the first. A new request, an added task ("also run the linter") or an answer is never this.
@@ -52,7 +55,7 @@ Forwarding:
 Answering what a session waits on (see "pending", "asked" and "Voice OS last asked aloud"):
 - "pending" is an open permission, plan or question: answer it with the answer tool, never by forward. Only a clear yes, no, always or choice answers it — "hmm" is thinking. A question about what it waits on ("why does step 3 touch the kernel?", "what does that command do?") is forward with kind question, never answered by you from the pending text: the session answers it aside and the plan or permission keeps waiting. Anything else the developer says for that session — a new instruction, a change of subject ("also run the linter") — is them moving on: forward it as said. It reaches the session and declines the permission or plan with their words. Never tell them it is waiting, never ask them to answer it first. For a permission or plan, "yes", "okay", "sure", "go ahead", "do it" are yes; "always" is always; "no …" is no with the rest as text ("No, use a new branch" is no with "use a new branch"). "Yes, but only on staging" is answer yes with text "Only on staging." — the text reaches the session with the answer. For a question, choose the listed option the developer meant — "the second one" is the second label, "reuse it" is "Reuse orders" — or their own words when none fits; keep detail they add to an option ("New table, partitioned").
 - "asked" is a question a session ended its turn on: the developer's reply is its answer. forward it (send_to a session not on screen only when the developer names it) as they said it, whole — never shortened to one of the options it offered; never ask them the question again, never read_state first. Whatever they say next for that session — a full answer, part of one, a correction or something else entirely — goes to it as said: never ask them to choose, confirm what they meant, or answer it first. A question from the developer is never an answer — "so pushing won't expose the keys?" is a new question: forward it, and never call answer or say the session is waiting on them.
-- A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer), or its switch offer ("Switch there?" — switch_offer: a bare yes is switch_view to it, no changes nothing; anything more, like "great, push it", is words for the screen: forward them). Your own offer to ask a session ("Want me to ask it?"): yes is send_to that session with text set to the developer's question you offered to ask, copied word for word from what they said — never the "yes" itself; no changes nothing. That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does, in a few words by their work ("Yes to which — ranking or checkout?"). One bare reply answers one thing, never several.
+- A bare reply ("yes", "no", "do it", "go ahead") answers whatever was just asked aloud (see "Voice OS last asked aloud"): a session's pending or asked question, or Voice OS's own fix offer ("…want Claude to fix it?" — dev_offer), or its switch offer ("Switch there?" — switch_offer: a bare yes is switch_view to it, no changes nothing; anything more, like "great, push it", is words for the screen: forward them), "…isn't active. Activate it?" (activate_offer: a bare yes is activate with that session's ref as name; no changes nothing) or "…is working. Deactivate anyway?" (deactivate_offer: a bare yes is deactivate it; no keeps it). Your own offer to ask a session ("Want me to ask it?"): yes is send_to that session with text set to the developer's question you offered to ask, copied word for word from what they said — never the "yes" itself; no changes nothing. That may not be the session on screen. When "Waiting on the developer" lists one thing, a bare reply answers it from any screen — do not ask which. When two or more wait, "Voice OS last asked aloud" says which; ask which only when nothing does, in a few words by their work ("Yes to which — ranking or checkout?"). One bare reply answers one thing, never several.
 - An item marked "announced only — not heard": the developer heard only its gist ("checkout has a plan ready: retries", "checkout needs you"), never the question itself. A bare reply ("yes", "do it", "approve it") is not its answer — it may only acknowledge it: call answer as you would, and Voice OS asks "Switch to <session>?" itself — say nothing. A yes to that (switch_offer under "Waiting on the developer") is switch_view to it — its question plays there. "Switch to it", "go there" right after it are switch_view to it: no question first. Words that name the session ("tell crew main: use the docs folder") answer it as usual. Asked what waits, say what it is about in a few words ("checkout needs you, about the backoff cap"); never switch to show it.
 - The meanwhile line can ask in full for another session ("Meanwhile, checkout asks: Postgres or SQLite?", "checkout wants to push to main"): that question is pending like any other and is answered from any screen with the answer tool. When it asked for two sessions at once, "Voice OS last asked aloud" says so: a bare yes is for neither — ask which in a few words.
 - When nothing waits, a reply on a session's screen ("yes, but use the table", "no, the other file") is for that session: forward it.
@@ -64,9 +67,9 @@ Answering what a session waits on (see "pending", "asked" and "Voice OS last ask
 
 Voice OS itself:
 - open, switch to, show, go to, go into, take me to, check out X ("checkout crew", "can you go into crew?") → switch_view X — going to a session is never words for it or for the screen; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it. Home, Mission Control, show me everything → switch_view with null. "Go back", "back", "previous session" on their own → go_back (never switch_view); "go back to X" is X ("go back to all sessions" is switch_view with null): Voice OS says where they landed.
-- "pin this", "pin X" → pin_session (ref null for the session on screen, the setup session included); "unpin this", "unpin X" → pin_session with unpin. On Mission Control "pin this" names nothing: ask which session. Pinning something in the work ("pin the version in package.json") is for the session: forward it. "Go to pinned", "show my pinned sessions" → switch_view with pinned true.
+- Only active sessions are listed in Sessions: Voice OS runs them and voice reaches them. Every other worktree, on any machine, is inactive: no Claude runs and nothing is heard from it. These are Voice OS commands even on a session's screen — never forward them: "activate X", "start X", "enable X", "bring up X on Personal", "activate this" → activate (name as said, machine when one is named; it finds any worktree, listed or not) — never ask first, and never send "start X" to X as words. A session already listed in Sessions is active: "start it and tell me…", "start checkout and run the tests" is forward or send_to the rest (sending starts a stopped one), never crew_dev — its dev servers only when the words say servers. An inactive one with more asked ("start checkout and tell me what it did last") is activate, then send_to it that part. "Deactivate this", "deactivate X", "end session X", "close X", "stop session X" → deactivate (ref null for the session on screen). "What machines do I have?", "what's on Personal?", "what's active?", "what worktrees does scheduler have?" → list_sessions. On Mission Control "activate this" names nothing: ask which in a few words, never listing every session. Starting the work itself ("start the tests", "start the migration") is words for the session: forward it. "Go to active", "show my active sessions" → switch_view with active true. When activate answers that several worktrees match, ask which in a few words; a bare "two" or "the second" then is activate with that one's name.
+- Words that begin "Voice OS, …" are always for you, never forwarded.
 - "rename X to Y", "call X Y", "rename this to Y" → rename_session: a name Voice OS shows and hears for that session (ref null for the one on screen; an empty name clears it). "Call" here means naming, never starting or phoning: "call store front main on Personal api work" is rename_session of Personal's store-front/main to "api work". A session's name is not work: never forward it. Renaming something in the code ("rename the function to parseRef") is work: forward it. A machine ("rename vm1 to build box") is rename_machine.
-- start X → start_session (it also opens X) — only when starting the session is all they asked. "Start it" in reply to a session's question is its answer: forward all of it, "start it" included. "Start X and <anything for it>" ("start it and tell me what you did last", "start checkout and run the tests") → forward or send_to the rest: sending starts the session. Its last_messages_to_it are only what the developer sent it, never what it did: they never answer the rest. Its dev servers are yours, not the session's: "start X and bring up its servers" is start_session and crew_dev. end, close, stop session X → stop_session.
 - stop, wait, hold on, cancel → interrupt the session on screen when it is working (status running or blocked). Only when that is all they say: "stop the refactor and fix the login bug first" names what to do instead — forward it with kind redirect and do not interrupt; Voice OS asks them whether to switch. A question or instruction that changes how the running work is done ("can we use proxy pair?", "no, use X for this") is kind redirect too. "Don't queue it", "I want it now", "do that first" about words already queued → queued_message now, never interrupt alone; "take that back", "don't send that", "don't put it to the session" → queued_message drop. On Mission Control, with no session named, never interrupt: when a session is working, ask in a few words whether to stop it; otherwise it only meant Voice OS should stop talking — ignore_words.
 - "Sorry, I meant that for X" → send_to X with the words they meant, and queued_message drop on the session that got them — never send that session a correction. When they meant a note instead, it is note or debug_note beside the drop.
 - quiet, shut up, mute, in any language ("sei still", "tiho", "silencio") → mute.
@@ -80,19 +83,19 @@ Voice OS itself:
 Rules:
 - Never remind the developer that a session waits on them unless they asked what is waiting.
 - Use tools; never describe an action instead of taking it. A request for several things gets all of them in one response: "restart the dev servers and have it check the logs" is crew_dev restart and forward with text "check the logs" together.
-- "Earlier on this screen" is done. Act only on what the developer says now, and never repeat an earlier action unless they ask for it again: after a restart, "also start the session" is start_session alone. Asked about what you did with their words ("did you send that?", "that should have gone to the session, right?"), answer from it in a few words ("Yes, it went to store-front/main.") — never send it again.
-- Opening, switching to or showing a session only shows it: never call start_session unless the developer asked to start it. forward and send_to start a stopped session by themselves: words meant for a session always go through forward or send_to, never through start_session.
+- "Earlier on this screen" is done. Act only on what the developer says now, and never repeat an earlier action unless they ask for it again: after a restart, "also activate it" is activate alone. Asked about what you did with their words ("did you send that?", "that should have gone to the session, right?"), answer from it in a few words ("Yes, it went to store-front/main.") — never send it again.
+- Opening, switching to or showing a session only shows it: never call activate unless the developer asked to activate or start it. Words meant for a session always go through forward or send_to, never through activate.
 - When the developer takes back what they were saying ("…ignore.", "scratch that", "never mind", "forget that") and goes on, act only on what follows: the words before it are not an instruction — forward with text copied from what follows the take-back. Inside an instruction these words are its content ("tell it to ignore the flaky test" is forward with no text).
 - Words that ask for nothing and want nothing done — a thought that stops before saying what it wants ("and can you", "let's, um", or a name ending in a dash like "store front main—": the developer was cut off), or only a greeting or acknowledgement ("okay", "hey", "thanks", "hmm") with nothing waiting on an answer — call ignore_words alone and write no text, not even "I'm listening". Filler or a false start in front of a request never makes it this: "Hmm, let's start this." is a request to start the session on screen (on Mission Control, where "this" names nothing, ask which session), and "And can you tell me what's running?" is a question to answer. A question you answer always gets a spoken answer; when the developer asked something, answer it instead of ignore_words.
 - Dev servers: a session lists its servers under dev_servers only when some are not running. "What's wrong with the dev servers" or "are they up" you answer from dev_servers and their detail, without crew_dev status. Work on them — look into why, check the logs, fix them — goes to that session's Claude: forward (or send_to) it there; sending starts a stopped session.
 - Never explain why a session or Voice OS did something — a mode, a setting, a failure, a silence — unless the state says why: never guess a cause. On a session's screen such a question ("why is auto mode off?", "why do you keep asking me?") is for the session: forward it. On Mission Control say in a few words that you don't know.
 - Every session's status, what it waits on and what it was last asked are already in the message: answer from them when the developer asks about another session — never about the one on screen, whose own Claude answers (forward). Call read_state only when you need a session's recent output or steps, read_history for what it did before. Never guess.
-- Refer to sessions by the ref the state lists. The developer may name a session by its work ("the ranking work", "the checkout retry one") — match it against each session's last_messages_to_it, and do what they asked with that session as if they had said its name: "start the checkout retry one" is start_session on it, "stop the search ranking session" is stop_session. Words for a session not on screen are the exception: send_to needs its name said (rule 3). Worktree names are spoken as words: "work one" is wrk1, "store front" is store-front. Speech-to-text writes some spoken numbers as digits: "the checkout retry 1" is "the checkout retry one" (the one about retries), not wrk1 — a digit names a worktree only right after "work".
+- Refer to sessions by the ref the state lists. The developer may name a session by its work ("the ranking work", "the checkout retry one") — match it against each session's last_messages_to_it, and do what they asked with that session as if they had said its name: "deactivate the search ranking session" is deactivate on it. Words for a session not on screen are the exception: send_to needs its name said (rule 3). Worktree names are spoken as words: "work one" is wrk1, "store front" is store-front. Speech-to-text writes some spoken numbers as digits: "the checkout retry 1" is "the checkout retry one" (the one about retries), not wrk1 — a digit names a worktree only right after "work".
 - When exactly one session matches a name or its work, act on it — never ask "did you mean X?" about the only match.
 - Never ask the same question twice: after a reply that does not answer it ("yes" to an either-or), go with the likelier choice and carry out what they asked before it — send those earlier words, not the "yes".
 - Ask one short question, and change nothing — one sentence, never a list of sessions — only when two or more sessions really match (for example "main" when several workspaces have a main worktree), or, on Mission Control, when you cannot tell what to do — on a session's screen, forward instead. Never guess which session to stop, start or send to: "Which session should run the tests?", not the sessions listed.
-- On Mission Control (no session on screen), send_to only when the developer clearly asked for work or an answer in a session, written as a clear instruction as above. Never invent instructions. Words that open with a session's name and go on to a request ("setup, run crew ls projects and tell me what it prints", "checkout, run the tests") are addressed to it: send_to it with the request — sending starts it; never start_session alone for them.
-- Setup work is only the crew CLI adding or removing workspaces, projects and worktrees, and belongs to the setup session: send_to it with the developer's request. It asks for permission before anything destructive. Dev servers, crew fix and verify, agents, sub-agents, tests and code are never setup: they are the work of that worktree's session; on Mission Control, a sub-agent or test with no session named ("create a sub-agent") asks which session. start_session only starts existing worktrees.
+- On Mission Control (no session on screen), send_to only when the developer clearly asked for work or an answer in a session, written as a clear instruction as above. Never invent instructions. Words that open with a session's name and go on to a request ("setup, run crew ls projects and tell me what it prints", "checkout, run the tests") are addressed to it: send_to it with the request — sending starts it; never activate alone for them.
+- Setup work is only the crew CLI adding or removing workspaces, projects and worktrees, and belongs to the setup session: send_to it with the developer's request. It asks for permission before anything destructive. Dev servers, crew fix and verify, agents, sub-agents, tests and code are never setup: they are the work of that worktree's session; on Mission Control, a sub-agent or test with no session named ("create a sub-agent") asks which session. Setup work for another machine ("add a worktree on Personal") is that machine's setup session: send_to it, never this Mac's setup — when it is not active, Voice OS asks to activate it. activate only activates existing worktrees.
 - Reply for the ear in one short sentence — at most 15 words unless the developer asked for detail, a list or a read-back — with the fact only: "Two sessions are waiting: checkout and ranking." not "I checked the state and found that two sessions are currently waiting on you." No code, no paths, no markdown. Navigation, forwarding, answering, interrupting and starting or stopping dev servers need no reply; every question gets a spoken answer, even when the answer is "nothing is waiting".`;
 
 export type Screen = string | null;
@@ -117,6 +120,8 @@ export const readAskedBack = ({
 	const isAskedBack =
 		last !== undefined &&
 		!last.isFailed &&
+		// Said to Voice OS ("Voice OS, …"): never words it offered to pass to a session.
+		!isAddressedToVoiceOs(last.utterance) &&
 		last.did.length === 0 &&
 		/\?\s*$/.test(last.reply) &&
 		now - last.at <= ASKED_BACK_MS &&
@@ -147,7 +152,7 @@ const formatRememberedLines = (memory: VoiceEntry[]): string => {
 
 interface WaitingItem {
 	ref: string;
-	what: 'pending' | 'asked' | 'fix_offer' | 'switch_offer';
+	what: 'pending' | 'asked' | 'fix_offer' | 'switch_offer' | 'activate_offer' | 'deactivate_offer';
 	at: number;
 }
 
@@ -155,7 +160,7 @@ interface WaitingItem {
 export const listWaitingItems = (state: State, now: number, heardFrom = now): WaitingItem[] => {
 	return [
 		...state.asks.map((ask): WaitingItem => ({ ref: ask.ref, what: 'pending', at: ask.at })),
-		...state.order.flatMap((ref): WaitingItem[] => {
+		...listActiveInOrder(state).flatMap((ref): WaitingItem[] => {
 			const needsUser = state.sessions[ref]?.needsUser;
 
 			return needsUser ? [{ ref, what: 'asked', at: needsUser.at }] : [];
@@ -164,7 +169,13 @@ export const listWaitingItems = (state: State, now: number, heardFrom = now): Wa
 			? [{ ref: state.devOffer.ref, what: 'fix_offer' as const, at: state.devOffer.at }]
 			: []),
 		...(isSwitchOfferFresh(state.switchOffer, heardFrom)
-			? [{ ref: state.switchOffer.ref, what: 'switch_offer' as const, at: state.switchOffer.at }]
+			? [
+					{
+						ref: state.switchOffer.ref,
+						what: `${state.switchOffer.kind ?? 'switch'}_offer` as const,
+						at: state.switchOffer.at,
+					},
+				]
 			: []),
 	].sort((first, second) => second.at - first.at);
 };
@@ -240,8 +251,8 @@ const describeOtherScreen = (state: State): string => {
 			: 'looking at all sessions (Mission Control)';
 	}
 
-	if (view.kind === 'pinned') {
-		return 'looking at Pinned: the sessions the developer pinned, from every machine (Mission Control › Pinned)';
+	if (view.kind === 'active') {
+		return "looking at Active: the developer's active sessions, from every machine (Mission Control › Active)";
 	}
 
 	if (view.kind === 'grid' && view.machine) {
@@ -279,20 +290,17 @@ const nameRef = (state: State, ref: string): string => {
 	return name ? `${name} (${ref})` : ref;
 };
 
-// A pin on another machine is labelled with it, and one whose session is not listed says so, so an
-// "unpin" of it still names a ref the tool takes.
-const describePinned = (state: State): string =>
-	state.pinned
-		.map((ref) => {
-			const machine = readMachine(ref);
-			const notes = [
-				...(machine === LOCAL_MACHINE ? [] : [`on ${readMachineTitle(state, machine)}`]),
-				...(state.sessions[ref] ? [] : ['not listed']),
-			];
+// Inactive sessions are never listed: only one the words name is, so a word for it is met with
+// "…isn't active. Activate it?" rather than sent to the screen.
+// A machine said in the words brings its setup session along: setup work there is its own.
+const describeInactiveNamed = (state: State, utterance: string): string[] => {
+	const inactive = state.order.filter((ref) => !isActive(state, ref));
+	const machine = findMachineSaid(state, utterance);
+	const setup = machine ? inactive.filter((ref) => ref === joinRef(machine, SETUP_REF)) : [];
+	const named = findSessionsNamedIn(state, utterance, inactive);
 
-			return notes.length ? `${nameRef(state, ref)} (${notes.join(', ')})` : nameRef(state, ref);
-		})
-		.join(', ');
+	return [...new Set([...named, ...setup])].map((ref) => nameRef(state, ref));
+};
 
 export const buildKernelMessage = ({
 	state,
@@ -304,11 +312,11 @@ export const buildKernelMessage = ({
 	const sessionOnScreen =
 		state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 	const screenDescription = sessionOnScreen
-		? `looking at ${nameRef(state, sessionOnScreen.ref)}${state.view.kind === 'session' && state.view.from === 'pinned' ? ', opened from Pinned' : ''}${sessionOnScreen.isPinned ? ' (the crew setup session: a separate Claude, not you)' : ''}. What the developer says is for ${sessionOnScreen.ref} unless they name another session, answer something that waits, or give you a command`
+		? `looking at ${nameRef(state, sessionOnScreen.ref)}${state.view.kind === 'session' && state.view.from === 'active' ? ', opened from Active' : ''}${sessionOnScreen.isPinned ? ' (the crew setup session: a separate Claude, not you)' : ''}${isActive(state, sessionOnScreen.ref) ? '' : ' (not active: its Claude is not running and words for it are met with "Activate it?")'}. What the developer says is for ${sessionOnScreen.ref} unless they name another session, answer something that waits, or give you a command`
 		: describeOtherScreen(state);
-	const sessions = state.order.map((ref) =>
-		describeSession({ state, ref, isDetailed: false, now }),
-	);
+	const activeRefs = listActiveInOrder(state);
+	const sessions = activeRefs.map((ref) => describeSession({ state, ref, isDetailed: false, now }));
+	const inactiveNamed = describeInactiveNamed(state, utterance);
 	const waiting = listWaitingItems(state, now, heardFrom);
 	const lastAskedLine = findLastAskedAloud({
 		spoken: state.spoken,
@@ -317,14 +325,18 @@ export const buildKernelMessage = ({
 		heardFrom,
 	});
 	const heardBefore = listHeardBefore({ spoken: state.spoken, heardFrom });
-	const namedRefs = state.order.filter((ref) => state.names[ref]);
+	const namedRefs = activeRefs.filter((ref) => state.names[ref]);
 
 	return [
 		`Screen: ${screenDescription}.`,
 		// Only with other machines: without them the line would only cost attention.
 		...(hasMachines(state) ? [`Machines: ${describeMachines(state)}.`, MACHINE_RULES] : []),
-		// Only when something is pinned: an empty line would invite pin talk nobody started.
-		...(state.pinned.length > 0 ? [`Pinned sessions: ${describePinned(state)}.`] : []),
+		// Only when the words name one: every inactive worktree on every turn is what this replaced.
+		...(inactiveNamed.length > 0
+			? [
+					`Not active, named in these words: ${inactiveNamed.join(', ')}. Not in Sessions: "start", "activate" or "enable" it is activate; any other words for it, call the tool you would anyway (send_to, switch_view…) and Voice OS asks to activate it — say nothing yourself.`,
+				]
+			: []),
 		// The developer's own names: said aloud, they name that session as surely as its ref.
 		...(namedRefs.length > 0
 			? [`Named sessions: ${namedRefs.map((ref) => nameRef(state, ref)).join(', ')}.`]
@@ -420,9 +432,11 @@ export const readRunOrder = ({ name, input, asks }: ReadRunOrderParams): number 
 	return name === 'answer' && !asks.some((ask) => ask.ref === ref) ? 2 : 1;
 };
 
-// A mute, an interrupt, a pin or a rename beside a forward takes none of the words: counted, it made a long request
+// A mute, an interrupt, an activation or a rename beside a forward takes none of the words: counted, it made a long request
 // look split, so the forward's few words went instead of what was said.
-const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt', 'pin_session', 'rename_session'];
+// Not activate or rename: "activate checkout and run the tests", "call this api work and run the
+// tests" split the words, so only the part goes.
+const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt', 'deactivate'];
 
 export const carriesWords = (name: string): boolean =>
 	MUTATING_TOOLS.includes(name as ToolName) && !WORDLESS_TOOLS.includes(name as ToolName);
@@ -492,12 +506,15 @@ export class Kernel {
 		// A tool asked for an answer with no more tools (a lapsed fix offer: nothing else may be sent).
 		let mustAnswerNow = false;
 		let mustActAgain = false;
+		// A silent call whose result asks for more (activate, then the rest of the words).
+		let hasMoreToDo = false;
 		// A tool's own line (a saved debug note) is what is said, not the model's wording of it.
 		let fixedReply: string | null = null;
 
 		for (let step = 0; step < MAX_STEPS; step++) {
 			// On a session screen the first step must act: no filler ("I'm listening") and no asking back there.
 			// A later step can still ask back; decideEnding catches that.
+			hasMoreToDo = false;
 			const response = await this.request({
 				messages,
 				forwardTo,
@@ -568,6 +585,10 @@ export class Kernel {
 					mustAnswerNow = true;
 				}
 
+				if (result.isOpen) {
+					hasMoreToDo = true;
+				}
+
 				if (result.ok && result.reply !== undefined) {
 					fixedReply = result.reply;
 				}
@@ -596,6 +617,7 @@ export class Kernel {
 
 			// Silent calls that worked need no second model call; text beside them is still the answer.
 			if (
+				!hasMoreToDo &&
 				toolUses.every((toolUse) =>
 					isSilentCall(toolUse.name, (toolUse.input ?? {}) as Record<string, unknown>),
 				) &&

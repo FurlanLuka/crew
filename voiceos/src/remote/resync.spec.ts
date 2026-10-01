@@ -157,12 +157,12 @@ describe('planResync', () => {
 	});
 });
 
-describe('pins across a resync', () => {
-	it('vm1 back, its snapshot without one pinned ref → every pin kept, in order', () => {
+describe('the active set across a resync', () => {
+	it('vm1 back, its snapshot without one active ref → every one kept, in order', () => {
 		const main = mainWith([
-			{ type: 'pin_session', ref: REMOTE },
-			// Pinned in an earlier run; the snapshot never had it.
-			{ type: 'pinned_loaded', refs: [REMOTE, 'vm1:store/wrk9'] },
+			{ type: 'activate', ref: REMOTE },
+			// Activated in an earlier run; the snapshot never had it.
+			{ type: 'active_loaded', refs: [REMOTE, 'vm1:store/wrk9'] },
 		]);
 		const { inputs } = planResync(
 			main,
@@ -171,7 +171,28 @@ describe('pins across a resync', () => {
 		);
 		const { state } = run([{ type: 'machine_resynced', id: 'vm1', inputs }], { start: main });
 
-		expect(state.pinned).toEqual([REMOTE, 'vm1:store/wrk9']);
+		expect(state.active).toEqual([REMOTE, 'vm1:store/wrk9']);
+	});
+
+	it('vm1 back running a session that is not active → stopped there, and said', () => {
+		const main = mainWith();
+		const { inputs } = planResync(
+			main,
+			'vm1',
+			snapshot({ sessions: [{ ref: 'store/main', status: 'running', lastTurn: null }] }),
+		);
+		const { state, effects } = run([{ type: 'machine_resynced', id: 'vm1', inputs }], {
+			start: main,
+		});
+
+		expect(state.sessions[REMOTE]?.status).toBe('stopped');
+		expect(effects).toContainEqual({ type: 'worker_stop', ref: REMOTE });
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				type: 'speak',
+				text: "Stopped one session on Build box that isn't active.",
+			}),
+		);
 	});
 });
 
@@ -186,7 +207,7 @@ describe('planResync keeps to its machine', () => {
 			},
 			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
 			{ type: 'machine_resynced', id: 'vm2', inputs: [] },
-			{ type: 'start_session', ref: 'store/main' },
+			{ type: 'activate', ref: 'store/main' },
 			{ type: 'session_started', ref: 'store/main' },
 			{ type: 'session_started', ref: REMOTE2 },
 			{

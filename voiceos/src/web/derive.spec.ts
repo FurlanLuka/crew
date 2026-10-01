@@ -13,15 +13,15 @@ import { findCurrentAsk, describeRouteChip } from '../shared/route-chip.js';
 import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 
 import {
-	countPinned,
+	countActive,
 	countSessions,
 	countUpdates,
-	describePinnedCard,
+	describeActiveCard,
 	labelAcrossMachines,
 	readRefTitle,
-	describeMissingPin,
+	describeMissingActive,
 	formatDidLine,
-	listPinnedTiles,
+	listActiveTiles,
 	listTabRefs,
 	readNotesFor,
 	listOtherSessions,
@@ -117,10 +117,13 @@ describe('describeSessionBadge', () => {
 		).toBe(false));
 });
 
+// Inactive, and labelled by crew: what a tile shows when nothing else decides it.
+const lastLineOf = (session: Session): string => readLastLine(session, session.label, false);
+
 describe('readLastLine', () => {
 	it('an approval last → what was allowed, not "you:"', () =>
 		expect(
-			readLastLine(
+			lastLineOf(
 				createTestSession({
 					stream: [
 						{
@@ -136,14 +139,14 @@ describe('readLastLine', () => {
 		).toBe('allowed once: run git push'));
 
 	it('streaming draft wins', () =>
-		expect(readLastLine(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
+		expect(lastLineOf(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
 
 	it('a draft shows without its spoken line, closed or still streaming', () => {
-		expect(readLastLine(createTestSession({ draft: '<spoken>Tests pass.</spoken>\nAll 40' }))).toBe(
+		expect(lastLineOf(createTestSession({ draft: '<spoken>Tests pass.</spoken>\nAll 40' }))).toBe(
 			'All 40',
 		);
 		expect(
-			readLastLine(
+			lastLineOf(
 				createTestSession({
 					draft: '<spoken>Tests pa',
 					stream: [{ id: 't', at: 1, kind: 'text', text: 'Earlier reply.' }],
@@ -153,14 +156,14 @@ describe('readLastLine', () => {
 	});
 	it('a Markdown reply → its words, without the signs', () =>
 		expect(
-			readLastLine(
+			lastLineOf(
 				createTestSession({
 					stream: [{ id: 't', at: 1, kind: 'text', text: '## Done\n**Tests pass.**' }],
 				}),
 			),
 		).toBe('Done\nTests pass.'));
-	it('never started → start hint names the session', () =>
-		expect(readLastLine(createTestSession())).toContain('start store/main'));
+	it('never started → activate hint names the session', () =>
+		expect(lastLineOf(createTestSession())).toContain('activate store/main'));
 });
 
 describe('findCurrentAsk', () => {
@@ -213,7 +216,7 @@ const createTestMachine = (status: MachineStatus): Machine => ({
 	since: 1,
 });
 
-const createPinnedState = (patch: Partial<State> = {}): State => ({
+const createActiveState = (patch: Partial<State> = {}): State => ({
 	...createInitialState(),
 	machines: { vm1: createTestMachine('connected') },
 	sessions: {
@@ -222,19 +225,19 @@ const createPinnedState = (patch: Partial<State> = {}): State => ({
 		'vm1:api/main': createTestSession({ ref: 'vm1:api/main', label: 'api/main' }),
 	},
 	order: ['store/main', 'store/wrk1', 'vm1:api/main'],
-	pinned: ['vm1:api/main', 'store/main'],
+	active: ['vm1:api/main', 'store/main'],
 	...patch,
 });
 
-describe('countPinned', () => {
-	it('a remote pin and a local one, one waiting → both counted, only the pins', () =>
-		expect(countPinned(createPinnedState({ asks: [createTestAsk('1', 'vm1:api/main')] }))).toEqual({
+describe('countActive', () => {
+	it('a remote active session and a local one, one waiting → both counted, only the active ones', () =>
+		expect(countActive(createActiveState({ asks: [createTestAsk('1', 'vm1:api/main')] }))).toEqual({
 			total: 2,
 			running: 1,
 			waiting: 1,
 		}));
-	it('a pin with no session → not counted', () =>
-		expect(countPinned(createPinnedState({ pinned: ['store/main', 'gone/main'] }))).toEqual({
+	it('an active ref with no session → not counted', () =>
+		expect(countActive(createActiveState({ active: ['store/main', 'gone/main'] }))).toEqual({
 			total: 1,
 			running: 1,
 			waiting: 0,
@@ -243,9 +246,9 @@ describe('countPinned', () => {
 
 describe('countUpdates', () => {
 	const update = (ref: string): MeanwhileItem => ({ ref, kind: 'done', about: null, at: 1 });
-	// Every session has an update; the pins are vm1:api/main and store/main.
+	// Every session has an update; the active ones are vm1:api/main and store/main.
 	const createUpdatesState = (patch: Partial<State> = {}): State =>
-		createPinnedState({
+		createActiveState({
 			meanwhile: [update('store/main'), update('store/wrk1'), update('vm1:api/main')],
 			...patch,
 		});
@@ -260,93 +263,120 @@ describe('countUpdates', () => {
 		['this Mac only', 2, waitingOn('vm1:api/main'), { machine: 'local' }],
 		['a remote machine, its update waiting', 0, waitingOn('vm1:api/main'), { machine: 'vm1' }],
 		['a remote machine, waiting elsewhere', 1, waitingOn('store/main'), { machine: 'vm1' }],
-		['the pins', 2, {}, 'pinned'],
-		['the pins, one waiting', 1, waitingOn('vm1:api/main'), 'pinned'],
-		['the pins, waiting off the pins', 2, waitingOn('store/wrk1'), 'pinned'],
+		['the active set', 2, {}, 'active'],
+		['the active set, one waiting', 1, waitingOn('vm1:api/main'), 'active'],
+		['the active set, waiting off it', 2, waitingOn('store/wrk1'), 'active'],
 	] as const)('%s → %d', (_name, expected, patch, scope) =>
 		expect(countUpdates(createUpdatesState(patch), scope)).toBe(expected),
 	);
 });
 
-describe('describeMissingPin', () => {
+describe('describeMissingActive', () => {
 	it('its machine out of reach → "<label> · <machine> out of reach"', () =>
 		expect(
-			describeMissingPin(
-				createPinnedState({ machines: { vm1: createTestMachine('unreachable') } }),
+			describeMissingActive(
+				createActiveState({ machines: { vm1: createTestMachine('unreachable') } }),
 				'vm1:api/wrk2',
 			),
 		).toBe('api/wrk2 · Build box out of reach'));
 	it('its machine connected, the session gone → "· gone" with the machine', () =>
-		expect(describeMissingPin(createPinnedState(), 'vm1:api/wrk2')).toBe(
+		expect(describeMissingActive(createActiveState(), 'vm1:api/wrk2')).toBe(
 			'Build box · api/wrk2 · gone',
 		));
-	it('a local pin gone → "<label> · gone"', () =>
-		expect(describeMissingPin(createPinnedState(), 'store/wrk9')).toBe('store/wrk9 · gone'));
-	it('a named pin gone → its name, not the crew ref', () =>
+	it('a local active ref gone → "<label> · gone"', () =>
+		expect(describeMissingActive(createActiveState(), 'store/wrk9')).toBe('store/wrk9 · gone'));
+	it('a named active ref gone → its name, not the crew ref', () =>
 		expect(
-			describeMissingPin(createPinnedState({ names: { 'store/wrk9': 'ghost' } }), 'store/wrk9'),
+			describeMissingActive(createActiveState({ names: { 'store/wrk9': 'ghost' } }), 'store/wrk9'),
 		).toBe('ghost · gone'));
 });
 
-describe('listPinnedTiles', () => {
-	it('pins in pin order → a session each, a placeholder where none is here', () =>
-		expect(
-			listPinnedTiles(createPinnedState({ pinned: ['vm1:api/main', 'store/gone'] })).map((tile) =>
-				'session' in tile ? tile.session.ref : tile.missing,
-			),
-		).toEqual(['vm1:api/main', 'store/gone · gone']));
+describe('listActiveTiles', () => {
+	const readTiles = (state: State): string[] =>
+		listActiveTiles(state).map((tile) => ('session' in tile ? tile.session.ref : tile.missing));
+
+	const withSetup = (patch: Partial<State>): State => {
+		const state = createActiveState(patch);
+
+		return {
+			...state,
+			sessions: {
+				...state.sessions,
+				setup: createTestSession({ ref: 'setup', label: 'setup', isPinned: true }),
+			},
+			order: ['setup', ...state.order],
+		};
+	};
+
+	it('active refs in the order activated → a session each, the gone ones as placeholders after', () =>
+		expect(readTiles(createActiveState({ active: ['store/gone', 'vm1:api/main'] }))).toEqual([
+			'vm1:api/main',
+			'store/gone · gone',
+		]));
+	it("this Mac's setup → first, though it is never in the set", () =>
+		expect(readTiles(withSetup({ active: ['vm1:api/main', 'store/main'] }))).toEqual([
+			'setup',
+			'vm1:api/main',
+			'store/main',
+		]));
+	it('nothing activated → the setup session alone', () =>
+		expect(readTiles(withSetup({ active: [] }))).toEqual(['setup']));
 });
 
 describe('listTabRefs', () => {
-	it('on Pinned → the pins that have a session, in pin order', () =>
+	it('on Active → the active sessions that are here, in the order activated', () =>
 		expect(
 			listTabRefs(
-				createPinnedState({
-					view: { kind: 'pinned' },
-					pinned: ['vm1:api/main', 'x/gone', 'store/main'],
+				createActiveState({
+					view: { kind: 'active' },
+					active: ['vm1:api/main', 'x/gone', 'store/main'],
 				}),
 			),
 		).toEqual(['vm1:api/main', 'store/main']));
-	it('on a session opened from Pinned → the pins', () =>
+	it('on a session opened from Active → the active sessions', () =>
 		expect(
 			listTabRefs(
-				createPinnedState({ view: { kind: 'session', ref: 'store/main', from: 'pinned' } }),
+				createActiveState({ view: { kind: 'session', ref: 'store/main', from: 'active' } }),
 			),
 		).toEqual(['vm1:api/main', 'store/main']));
 	it("on a session without from → its machine's sessions", () =>
 		expect(
-			listTabRefs(createPinnedState({ view: { kind: 'session', ref: 'store/main' } })),
+			listTabRefs(createActiveState({ view: { kind: 'session', ref: 'store/main' } })),
 		).toEqual(['store/main', 'store/wrk1']));
 	it("on a machine's grid → that machine's sessions", () =>
-		expect(listTabRefs(createPinnedState({ view: { kind: 'grid', machine: 'vm1' } }))).toEqual([
+		expect(listTabRefs(createActiveState({ view: { kind: 'grid', machine: 'vm1' } }))).toEqual([
 			'vm1:api/main',
 		]));
 });
 
 describe('named sessions', () => {
-	const named = createPinnedState({ names: { 'vm1:api/main': 'voice os dev' } });
+	const named = createActiveState({ names: { 'vm1:api/main': 'voice os dev' } });
 
 	it("another machine's session, named → the name alone, no machine prefix", () =>
 		expect(labelAcrossMachines(named, 'vm1:api/main', null)).toBe('voice os dev'));
 	it("another machine's session, unnamed → its machine's name before crew's label", () =>
-		expect(labelAcrossMachines(createPinnedState(), 'vm1:api/main', null)).toBe(
+		expect(labelAcrossMachines(createActiveState(), 'vm1:api/main', null)).toBe(
 			'Build box · api/main',
 		));
 	it('a named session → the crew ref on hover; an unnamed one → none', () => {
 		expect(readRefTitle(named, 'vm1:api/main')).toBe('vm1:api/main');
 		expect(readRefTitle(named, 'store/main')).toBeUndefined();
 	});
-	it('a named pin waiting → the Pinned card says it by its name', () =>
+	it('a named active session waiting → the Active card says it by its name', () =>
 		expect(
-			describePinnedCard({ ...named, asks: [createTestAsk('1', 'vm1:api/main')] }).waiting,
+			describeActiveCard({ ...named, asks: [createTestAsk('1', 'vm1:api/main')] }).waiting,
 		).toBe('voice os dev: wants to run x'));
-	it('an unnamed remote pin waiting → the Pinned card names its machine', () =>
+	it('an unnamed remote active session waiting → the Active card names its machine', () =>
 		expect(
-			describePinnedCard(createPinnedState({ asks: [createTestAsk('1', 'vm1:api/main')] })).waiting,
+			describeActiveCard(createActiveState({ asks: [createTestAsk('1', 'vm1:api/main')] })).waiting,
 		).toBe('Build box · api/main: wants to run x'));
-	it('a stopped named session → its last line says to start it by its name', () =>
-		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev')).toBe(
-			'Not started. Open it and say something, or say “start voice os dev”.',
+	it('an active session stopped (a crash, its machine away) → only "Not running."', () =>
+		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev', true)).toBe(
+			'Not running.',
+		));
+	it('a stopped named session → its last line says to activate it by its name', () =>
+		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev', false)).toBe(
+			'Not running. Activate it, or say “activate voice os dev”.',
 		));
 });
 
@@ -365,10 +395,10 @@ describe('formatDidLine', () => {
 		['forward store/main: run the tests', 'forwarded store/main: run the tests'],
 		['switch_view mission control', 'went to Mission Control'],
 		['switch_view store/wrk1', 'opened store/wrk1'],
-		['switch_view pinned', 'went to Pinned'],
-		['pin_session pin vm1:store/main', 'pinned vm1:store/main'],
-		['pin_session pin', 'pinned this session'],
-		['pin_session unpin store/main', 'unpinned store/main'],
+		['switch_view active', 'went to Active'],
+		['activate vm1:store/main', 'activated vm1:store/main'],
+		['deactivate store/main', 'deactivated store/main'],
+		['deactivate', 'deactivated this session'],
 		['answer yes store/main', 'answered yes store/main'],
 		['dev_offer accepted', 'accepted the fix offer'],
 		['dev_offer declined', 'declined the fix offer'],
@@ -376,7 +406,7 @@ describe('formatDidLine', () => {
 		['hands_free push', 'listening: push'],
 		['debug_note "it re-asked"', 'noted for debugging "it re-asked"'],
 		['note "try a tone"', 'noted "try a tone"'],
-		['stop_session store/main (failed)', 'ended store/main — failed'],
+		['deactivate store/main (failed)', 'deactivated store/main — failed'],
 		['something_new x', 'something_new x'],
 	])('%p → %p', (did, text) => expect(formatDidLine(did)).toBe(text));
 });
@@ -441,6 +471,7 @@ describe('describeRouteChip', () => {
 			'store/wrk1': createTestSession({ ref: 'store/wrk1', label: 'store/wrk1' }),
 		},
 		order: ['store/main', 'store/wrk1'],
+		active: ['store/main', 'store/wrk1'],
 	});
 
 	it('nothing pending → Voice OS decides, spoken or typed on the grid', () => {
@@ -498,6 +529,7 @@ describe("routeChip: typing beats another session's ask", () => {
 			'store/wrk1': createTestSession({ ref: 'store/wrk1', label: 'store/wrk1' }),
 		},
 		order: ['store/main', 'store/wrk1'],
+		active: ['store/main', 'store/wrk1'],
 		view: { kind: 'session', ref: 'store/main' },
 	});
 
@@ -546,8 +578,8 @@ describe('formatDidLine reads what describeToolCall writes', () => {
 			'noted for debugging "it re-asked"',
 		],
 		[
-			{ name: 'stop_session', input: { ref: 'store/main' }, ok: false },
-			'ended store/main — failed',
+			{ name: 'deactivate', input: { ref: 'store/main' }, ok: false },
+			'deactivated store/main — failed',
 		],
 	])('%j → %p', (call, text) => expect(formatDidLine(describeToolCall(call) ?? '')).toBe(text));
 });

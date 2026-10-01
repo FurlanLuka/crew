@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { PendingAsk, State, WorktreeInfo } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
-import { resolveRef, resolveTypedTarget, writeSpokenRefs } from './refs.js';
+import { findRefsByName, resolveRef, resolveTypedTarget, writeSpokenRefs } from './refs.js';
 
 const createWorktreeInfo = (ref: string, isPinned = false): WorktreeInfo => ({
 	ref,
@@ -21,7 +21,14 @@ const createState = (patch: Partial<State> = {}): State => {
 		]),
 	);
 
-	return { ...createInitialState(), sessions, order: refs, ...patch };
+	// Every session active unless the test says otherwise: this Mac's setup always is.
+	return {
+		...createInitialState(),
+		sessions,
+		order: refs,
+		active: refs.filter((ref) => ref !== 'setup'),
+		...patch,
+	};
 };
 
 const createViewingState = (ref: string, patch: Partial<State> = {}) =>
@@ -72,6 +79,36 @@ describe('resolveRef', () => {
 
 	it('unknown name → null (left to the kernel)', () => {
 		expect(resolveRef(createState(), 'the ranking work')).toBeNull();
+	});
+
+	it('an inactive session → not reached by default; reached when every session is a candidate', () => {
+		const state = createState({ active: ['store-front/main'] });
+
+		expect(resolveRef(state, 'work one')).toBeNull();
+		expect(resolveRef(state, 'work one', state.order)).toBe('store-front/wrk1');
+	});
+
+	it('"main" with only one main active → that one, no focus needed', () => {
+		expect(resolveRef(createState({ active: ['checkout-api/main'] }), 'main')).toBe(
+			'checkout-api/main',
+		);
+	});
+
+	it('the setup session → always reached, active set or not', () => {
+		expect(resolveRef(createState({ active: [] }), 'setup')).toBe('setup');
+	});
+});
+
+describe('findRefsByName', () => {
+	it('every candidate answering to the name, none outside the candidates', () => {
+		const state = createState();
+
+		expect(findRefsByName(state, 'main', state.order)).toEqual([
+			'store-front/main',
+			'checkout-api/main',
+		]);
+		expect(findRefsByName(state, 'the store front main session', ['store-front/wrk1'])).toEqual([]);
+		expect(findRefsByName(state, '', state.order)).toEqual([]);
 	});
 });
 
@@ -143,6 +180,12 @@ describe('resolveTypedTarget', () => {
 		);
 	});
 
+	it('"Voice OS, …" typed into a session\'s box → the kernel, never that session', () => {
+		expect(
+			resolveTypedTarget(createViewingState('store-front/main'), 'Voice OS, activate billing.'),
+		).toBeNull();
+	});
+
 	it('on Mission Control → nothing (the kernel decides)', () => {
 		expect(resolveTypedTarget(createState(), 'run the tests')).toBeNull();
 	});
@@ -159,6 +202,12 @@ describe('resolveTypedTarget', () => {
 		const state = createViewingState('store-front/main', { asks: [permission] });
 
 		expect(resolveTypedTarget(state, 'run the tests')).toBe('store-front/main');
+	});
+
+	it('addressed to an inactive session by name → the kernel, which asks to activate it', () => {
+		const state = createViewingState('store-front/main', { active: ['store-front/main'] });
+
+		expect(resolveTypedTarget(state, 'wrk1: run the tests')).toBeNull();
 	});
 
 	it('addressed to another session by name, with a comma or a colon → the kernel', () => {
@@ -202,6 +251,7 @@ describe('resolveRef across machines', () => {
 			...createInitialState(),
 			sessions,
 			order: refs,
+			active: refs,
 			view,
 			machines: {
 				vm1: {

@@ -3,6 +3,7 @@ import type { Effect, ReducerResult } from './reducer.js';
 import { readShownText } from '../shared/spoken-tags.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { isReachable, readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
+import { isActive } from '../shared/active.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -24,7 +25,7 @@ export const readLabel = (state: State, ref: string): string => {
 
 type SpeakEffect = Extract<Effect, { type: 'speak' }>;
 
-// The session on screen; null on Mission Control, Pinned or the machines.
+// The session on screen; null on Mission Control, Active or the machines.
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
 
@@ -46,6 +47,27 @@ export const sayRef = (state: State, ref: string): string => {
 	const name = toSpokenName(readSessionLabel(state, ref));
 
 	return machine ? `${name} on ${machine}` : name;
+};
+
+// What Voice OS holds for sessions that are gone — stopped by a deactivate, or their machine removed:
+// offers, the update waiting for the meanwhile line, denials, the last words to continue. Nothing of
+// theirs is said, asked or sent later.
+export const releaseRefs = (state: State, isGone: (ref: string) => boolean): State => {
+	const isKept = (ref: string): boolean => !isGone(ref);
+
+	return {
+		...state,
+		lastSpokenSend:
+			state.lastSpokenSend && isKept(state.lastSpokenSend.ref) ? state.lastSpokenSend : null,
+		devOffer: state.devOffer && isKept(state.devOffer.ref) ? state.devOffer : null,
+		switchOffer: state.switchOffer && isKept(state.switchOffer.ref) ? state.switchOffer : null,
+		targetAsk:
+			state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)
+				? state.targetAsk
+				: null,
+		denials: state.denials.filter((denial) => isKept(denial.ref)),
+		meanwhile: state.meanwhile.filter((item) => isKept(item.ref)),
+	};
 };
 
 export const updateSession = (
@@ -166,7 +188,12 @@ export const sendNow = ({
 	return { state: next, effects: [{ type: 'worker_send', ref, text, ...(note ? { note } : {}) }] };
 };
 
+// Only an active session runs: words sent to an inactive one wait in its queue until it is activated.
 export const startWorker = (state: State, ref: string): ReducerResult => {
+	if (!isActive(state, ref)) {
+		return withoutEffects(state);
+	}
+
 	const effects: Effect[] = [{ type: 'worker_start', ref }];
 
 	return {

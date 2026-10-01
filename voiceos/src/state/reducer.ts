@@ -36,7 +36,6 @@ import {
 	markSelfStarted,
 	pushStreamItem,
 	readLabel,
-	startWorker,
 	STREAM_ITEMS_KEPT,
 	truncateText,
 	updateSession,
@@ -54,7 +53,7 @@ import { clearHeldLine, holdLine, isOnScreen, markHeard, replayHeldLine } from '
 import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
 import { HOME_VIEW } from '../shared/machines.js';
 import { machineOf, readMachine } from '../shared/machine-ref.js';
-import { isPinInput, reducePin, toShownView } from './pins.js';
+import { isActiveInput, reduceActive, startAppeared, toShownView } from './active.js';
 import { isNameInput, reduceName } from './names.js';
 
 export const SPOKEN_LINES_KEPT = 20;
@@ -168,7 +167,7 @@ export const createInitialState = (): State => ({
 	lastSpokenSend: null,
 	notes: {},
 	machines: {},
-	pinned: [],
+	active: [],
 	names: {},
 	languages: defaultLanguages(),
 	discord: null,
@@ -282,11 +281,11 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		)
 		.map((session) => session.ref);
 	const gone = state.view.kind === 'session' && !sessions[state.view.ref] ? state.view : null;
-	// A session opened from Pinned falls back to Pinned, where its pin stays as a "gone" tile.
+	// A session opened from Active falls back to Active, where it stays as a "gone" tile.
 	const view: View = !gone
 		? state.view
-		: gone.from === 'pinned'
-			? { kind: 'pinned' }
+		: gone.from === 'active'
+			? { kind: 'active' }
 			: { kind: 'grid', machine: readMachine(gone.ref) };
 	const focus = state.focus && sessions[state.focus] ? state.focus : null;
 	const voiceLog = Object.fromEntries(
@@ -380,9 +379,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		return reduceMachine(state, input, stamped, reduceInput);
 	}
 
-	// Pins are this Voice OS's own: they never reach a machine, reachable or not.
-	if (isPinInput(input)) {
-		return reducePin(state, input);
+	// The active set is this Voice OS's own: changing it is never refused for a machine out of reach.
+	if (isActiveInput(input)) {
+		return reduceActive(state, input, stamped.at);
 	}
 
 	// Names are this Voice OS's own too: a session out of reach is renamed like any other.
@@ -430,7 +429,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 	switch (input.type) {
 		case 'worktrees':
-			return withoutEffects(reconcileWorktrees(state, input.worktrees));
+			return startAppeared(state, reconcileWorktrees(state, input.worktrees));
 
 		case 'send':
 			return reduceSend(state, input, stamped);
@@ -477,39 +476,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'restore_view':
 			return withoutEffects(showView(state, input.view, { isRemembered: false }) ?? state);
-
-		case 'start_session':
-			return state.sessions[input.ref]?.status === 'stopped'
-				? startWorker(state, input.ref)
-				: withoutEffects(state);
-
-		case 'stop_session': {
-			const session = state.sessions[input.ref];
-
-			if (!session || session.status === 'stopped') {
-				return withoutEffects(state);
-			}
-
-			const settled = settleAsksForSession(state, input.ref, 'The session was stopped.');
-
-			return {
-				state: updateSession(settled.state, input.ref, (current) => ({
-					...current,
-					status: 'stopped',
-					queue: [],
-					draft: '',
-					voiceTurnAt: null,
-					compactingSince: null,
-					allowOnce: null,
-					reportOwed: false,
-					currentSendId: null,
-					heldLine: null,
-					lineBeforeAsk: null,
-					askedByLine: null,
-				})),
-				effects: [...settled.effects, { type: 'worker_stop', ref: input.ref }],
-			};
-		}
 
 		case 'interrupt': {
 			const session = state.sessions[input.ref];

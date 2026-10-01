@@ -1,5 +1,6 @@
 import { SWITCH_OFFERED_NOTE } from './announced.js';
 import { ASK_WHICH_NOTE } from './send-guard.js';
+import { ACTIVATE_OFFERED_NOTE } from './activate.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isShortEnoughToAnswer } from './send.js';
@@ -10,7 +11,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'switch_view',
 	'go_back',
 	'play_missed',
-	'start_session',
+	'activate',
 	'ignore_words',
 	'answer',
 	'interrupt',
@@ -22,14 +23,17 @@ const SILENT_TOOLS: ToolName[] = [
 ];
 
 // read_notes changes nothing, but what it read out is what "the second one" points at next.
-const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc', 'read_notes'];
+// list_sessions too: a question after it ("…Activate one?") is Voice OS's own, and a yes to it must
+// never resend the developer's words to a session as if Voice OS had offered to ask it.
+const REMEMBERED_TOOLS: ToolName[] = [
+	...MUTATING_TOOLS,
+	'switch_view',
+	'open_doc',
+	'read_notes',
+	'list_sessions',
+];
 
-const describeCallAction = (name: string, input: Record<string, unknown>): string => {
-	// Named either way: "unpin this" right after a pin must read as a change, not the same call again.
-	if (name === 'pin_session') {
-		return input.unpin === true ? ' unpin' : ' pin';
-	}
-
+const describeCallAction = (input: Record<string, unknown>): string => {
 	if (typeof input.action === 'string') {
 		return ` ${input.action}`;
 	}
@@ -62,16 +66,17 @@ export const describeToolCall = ({ name, input, ok, note }: ToolCall): string | 
 	const quotedText = typeof input.text === 'string' ? ` "${clipQuoted(input.text)}"` : '';
 	const target =
 		name === 'switch_view'
-			? ` ${input.pinned === true ? 'pinned' : typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
+			? ` ${input.active === true ? 'active' : typeof input.ref === 'string' ? input.ref : typeof input.machine === 'string' ? input.machine : 'mission control'}`
 			: typeof input.ref === 'string'
 				? ` ${input.ref}`
 				: '';
 
+	const activated = name === 'activate' && typeof input.name === 'string' ? ` ${input.name}` : '';
 	const newName = typeof input.name === 'string' ? input.name.trim() : '';
 	// "Call it api work" right after a rename is a new name, not the same call again.
 	const renamed = name === 'rename_session' ? (newName ? ` to "${newName}"` : ' cleared') : '';
 
-	return `${name}${describeCallAction(name, input)}${target}${renamed}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
+	return `${name}${describeCallAction(input)}${target}${activated}${renamed}${quotedText}${note ? ` (${note})` : ''}${ok ? '' : ' (failed)'}`;
 };
 
 export const isSilentCall = (name: string, input: Record<string, unknown>): boolean => {
@@ -136,6 +141,15 @@ export interface IsAskingBackParams {
 	namedRefs: string[];
 }
 
+// The tools a turn may have used and still ask back about the session's work.
+const ASK_BACK_TOOLS: ToolName[] = [
+	'read_state',
+	'read_history',
+	'ignore_words',
+	'send_to',
+	'answer',
+];
+
 export const isAskingBack = ({
 	reply,
 	calls,
@@ -157,6 +171,10 @@ export const isAskingBack = ({
 		!RELAYED_QUESTION_PATTERN.test(reply) &&
 		// A forward that failed ("already sent") explains itself: never send the raw words again.
 		!calls.some((call) => call.name === 'forward') &&
+		// Only after reading or trying to reach a session: any other tool, failed or not ("activate
+		// scheduler" → "Which one?", a listening change it could not tell), was a command for Voice
+		// OS, and its asking back is about that command.
+		calls.every((call) => ASK_BACK_TOOLS.includes(call.name as ToolName)) &&
 		!calls.some((call) => call.ok && MUTATING_TOOLS.includes(call.name as ToolName))
 	);
 };
@@ -173,6 +191,12 @@ export interface DecideEndingParams extends IsAskingBackParams {
 	mustAnswerNow: boolean;
 }
 
+// "Start checkout and tell me what it did last": the activation is said in code ("Activated X. Switch
+// there?") and the rest went to it; the model's narration of either would only repeat it.
+const isActivatedWithWords = (calls: ToolCall[]): boolean =>
+	calls.some((call) => call.ok && call.name === 'activate') &&
+	calls.some((call) => call.ok && (call.name === 'send_to' || call.name === 'forward'));
+
 export const decideEnding = ({
 	isSilent,
 	mustAnswerNow,
@@ -186,7 +210,13 @@ export const decideEnding = ({
 	if (
 		isAnsweredByForward(turn.calls) ||
 		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
-		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE || call.note === ASK_WHICH_NOTE)
+		turn.calls.some(
+			(call) =>
+				call.note === SWITCH_OFFERED_NOTE ||
+				call.note === ASK_WHICH_NOTE ||
+				call.note === ACTIVATE_OFFERED_NOTE,
+		) ||
+		isActivatedWithWords(turn.calls)
 	) {
 		return { kind: 'drop_reply' };
 	}

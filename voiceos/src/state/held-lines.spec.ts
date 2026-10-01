@@ -11,7 +11,6 @@ import {
 	holdLine,
 	isOnAnotherSession,
 	isShortLine,
-	readAnnouncedLabel,
 	type TurnLineDecision,
 } from './held-lines.js';
 
@@ -154,7 +153,7 @@ describe('held while the developer looks elsewhere', () => {
 		for (const input of [
 			{ type: 'send', ref: REF, text: 'also run the linter' },
 			{ type: 'interrupt', ref: REF },
-			{ type: 'stop_session', ref: REF },
+			{ type: 'deactivate', ref: REF },
 			{ type: 'worker_exited', ref: REF, error: null },
 			{ type: 'worker_exited', ref: REF, error: 'exit 1' },
 		] as Input[]) {
@@ -206,10 +205,10 @@ describe('held while the developer looks elsewhere', () => {
 	});
 });
 
-describe('a pinned session announced', () => {
+describe('an active session announced', () => {
 	const VM1 = { id: 'vm1', host: 'vm1', name: 'Personal' };
 	const REMOTE = 'vm1:crew/main';
-	const pinnedState = (extra: Input[] = []): State =>
+	const activeState = (extra: Input[] = []): State =>
 		run([
 			{ type: 'machines', machines: [VM1] },
 			{
@@ -220,49 +219,29 @@ describe('a pinned session announced', () => {
 				],
 			},
 			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
-			{ type: 'pin_session', ref: REF },
-			{ type: 'pin_session', ref: REMOTE },
+			{ type: 'activate', ref: REF },
+			{ type: 'activate', ref: REMOTE },
+			{ type: 'session_started', ref: REF },
+			{ type: 'session_started', ref: REMOTE },
 			...extra,
 		]).state;
 
-	it('pinned here → "Your pinned <label>"; on another machine → "… on <machine>"', () => {
-		const state = pinnedState();
-
-		expect(readAnnouncedLabel(state, REF, 'store main')).toBe('Your pinned store main');
-		expect(readAnnouncedLabel(state, REMOTE, 'Personal crew main')).toBe(
-			'Your pinned crew main on Personal',
-		);
-		expect(
-			describeAnnouncement({
-				label: readAnnouncedLabel(state, REMOTE, 'crew main'),
-				kind: 'needs',
-				about: 'the backoff cap',
-			}),
-		).toBe('Your pinned crew main on Personal needs you: the backoff cap.');
-		expect(
-			describeAnnouncement({ label: readAnnouncedLabel(state, REF, 'store main'), kind: 'done' }),
-		).toBe('Your pinned store main is done.');
-	});
-
-	it('the developer in its machine → no "on <machine>"', () => {
-		const state = pinnedState([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }]);
-
-		expect(readAnnouncedLabel(state, REMOTE, 'crew main')).toBe('Your pinned crew main');
-	});
-
-	it('not pinned → the label the caller gave, as before', () => {
-		const state = pinnedState([{ type: 'unpin_session', ref: REMOTE }]);
-
-		expect(readAnnouncedLabel(state, REMOTE, 'Personal crew main')).toBe('Personal crew main');
-	});
-
-	it('a long question off screen → "Your pinned … needs you: <header>.", held as before', () => {
+	it('a long question off screen → "<label> needs you: <header>.", no "Your pinned", held', () => {
 		const { state, effects } = run([{ type: 'ask_opened', ask: longQuestion('Notes location') }], {
-			start: pinnedState(),
+			start: activeState(),
 		});
 
-		expect(said(effects)).toEqual(['Your pinned store main needs you: Notes location.']);
+		expect(said(effects)).toEqual(['store main needs you: Notes location.']);
 		expect(heldOf(state)).toMatchObject({ kind: 'ask', askId: 'q1' });
+	});
+
+	it('on another machine → named with its machine, as any session there', () => {
+		const { effects } = run(
+			[{ type: 'ask_opened', ask: { ...longQuestion('Notes location'), ref: REMOTE } }],
+			{ start: activeState() },
+		);
+
+		expect(said(effects)).toEqual(['Personal crew main needs you: Notes location.']);
 	});
 });
 

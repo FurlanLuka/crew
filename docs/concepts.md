@@ -166,10 +166,11 @@ puts them in one page you can talk to. [The guide](guides/voice-os.md) is how to
 the model underneath.
 
 - **Sessions.** A worktree's session runs in that worktree, opened with the same orientation
-  prompt `crew claude` gets, and resumes where it left off after a restart. Besides the
-  worktrees there is always a **setup** session: it runs in your home directory with the crew
-  CLI and is for crew itself — projects, workspaces, worktrees ("setup, make a worktree in
-  store-front for the search fix"). Dev servers and code belong to each worktree's own session.
+  prompt `crew claude` gets, and an active one resumes where it left off after a restart.
+  Besides the worktrees there is always a **setup** session: it runs in your home directory
+  with the crew CLI and is for crew itself — projects, workspaces, worktrees ("setup, make a
+  worktree in store-front for the search fix"). Dev servers and code belong to each worktree's
+  own session.
 - **Kernel and narrator.** Every spoken sentence goes to the **kernel** (a small, fast model
   with tools), which decides what it is: words for a session, an answer to what a session is
   waiting on, a switch of view, a note. Anything about the work is forwarded in your words,
@@ -180,10 +181,14 @@ the model underneath.
   and Claude Code's own safety check blocks what looks risky. A blocked action is shown and
   said with its reason; "allow it" approves exactly that one retried call and then auto mode
   is back. Plans (`ExitPlanMode`) and questions (`AskUserQuestion`) always wait for you.
-- **Pins and names.** Pinned is a view of the sessions you pinned, from any machine, in pin
-  order; a pinned session opens inside it, with the other pins as its tabs. A name you give a
-  session replaces its crew ref everywhere on the page and in what you can say. Both are
-  Voice OS preferences, not crew state: they have no crew command, and crew never sees them.
+- **Active sessions and names.** Only **active** sessions exist for voice: Voice OS runs their
+  Claude, starts them again after a restart (a remote's when its link is up) and hears from
+  them. An inactive session has no process and says nothing; you browse it on the page and
+  activate it there or by voice ("activate checkout"). Deactivating stops it and keeps its
+  conversation for next time; the main's setup session is always active. The **Active** view
+  gathers them from every machine. A name you give a session replaces its crew ref everywhere
+  on the page and in what you can say. Both are Voice OS preferences, not crew state: they have
+  no crew command, and crew never sees them.
 - **Other machines.** Voice OS can drive the sessions of another machine's worktrees — a VM,
   a second computer. That machine is a **remote**: `crew voice remote` there starts a daemon
   that runs only the sessions (no voice, no kernel) and outlives any connection. Your Mac is
@@ -196,7 +201,7 @@ the model underneath.
   guide](guides/voice-os.md#other-machines) has the steps.
 
 **Where its state lives.** `~/.crew/voiceos/`: `token` (the page's sign-in, owner-only),
-`sessions.json` (which Claude session each worktree resumes), `pinned.json`, `names.json`,
+`sessions.json` (which Claude session each worktree resumes), `active.json`, `names.json`,
 `view.json` (the screen a restart comes back to), `machines.json` (written by
 `crew voice machines`), `notes/<workspace>.md`, `journal/` (every turn, for "what did checkout
 do yesterday"), `media/` (images sessions showed, swept after 30 days) and `logs/` (the log and
