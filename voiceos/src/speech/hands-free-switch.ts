@@ -13,6 +13,10 @@ export interface ListenSwitchOptions {
 }
 
 // Never says "Voice OS": heard back through the open mic, it would call a turn.
+// The listen_off a voice switch to push to talk sends; a voice channel, which has no push to talk,
+// turns it down (discord/bridge.ts).
+export const TURNED_OFF_BY_VOICE = 'turned off by voice';
+
 const MODE_LINES: Record<ListenMode, string> = {
 	push: 'Push to talk.',
 	'on-demand': 'On demand. Say my name first.',
@@ -43,7 +47,7 @@ export const createListenSwitch =
 		const isSent = send(
 			client,
 			mode === 'push'
-				? { type: 'listen_off', reason: 'turned off by voice' }
+				? { type: 'listen_off', reason: TURNED_OFF_BY_VOICE }
 				: { type: 'listen_on', mode },
 		);
 

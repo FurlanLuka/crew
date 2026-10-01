@@ -171,6 +171,7 @@ export const createInitialState = (): State => ({
 	pinned: [],
 	names: {},
 	languages: defaultLanguages(),
+	discord: null,
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -209,6 +210,17 @@ const describeUnfinished = (ref: string): Effect => ({
 	isNamed: true,
 	priority: 'high',
 	isOwed: true,
+});
+
+// A crash with the developer's words still waiting (most often at start: no claude, no login) is said:
+// on the page it shows, but in a voice channel nothing else would tell them.
+const describeCrashWithWords = (ref: string): Effect => ({
+	type: 'speak',
+	text: "Couldn't run; your words are kept for the next start.",
+	source: 'kernel',
+	ref,
+	isNamed: true,
+	priority: 'high',
 });
 
 const findAskKind = (state: State, askId: string): PendingAsk['kind'] | null =>
@@ -751,9 +763,16 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				? queueHeldRedirect({ state: stopped, ask: heldRedirect, at: stamped.at, isFirst: false })
 				: stopped;
 
+			// Read after the held switch is queued: its words wait for the next start too.
+			const hasWaitingWords = (kept.sessions[input.ref]?.queue.length ?? 0) > 0;
+
 			// A report was owed: a crash before it is the report.
-			return input.error && owed
-				? { state: kept, effects: [describeUnfinished(input.ref)] }
+			if (input.error && owed) {
+				return { state: kept, effects: [describeUnfinished(input.ref)] };
+			}
+
+			return input.error && hasWaitingWords
+				? { state: kept, effects: [describeCrashWithWords(input.ref)] }
 				: withoutEffects(kept);
 		}
 
@@ -933,6 +952,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'play_meanwhile':
 			return playMeanwhile(state, stamped.at);
+
+		case 'discord_presence':
+			return withoutEffects({ ...state, discord: input.presence });
 
 		case 'set_languages':
 			return withoutEffects({ ...state, languages: toLanguages(input.languages) });

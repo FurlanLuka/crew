@@ -141,6 +141,15 @@ describe('a redirect to a working session', () => {
 		}
 	});
 
+	it('a crash with only the held switch waiting → one line says its words are kept', () => {
+		const { state, effects } = run([{ type: 'worker_exited', ref: REF, error: 'exit 1' }], {
+			start: held().state,
+		});
+
+		expect(said(effects)).toEqual(["Couldn't run; your words are kept for the next start."]);
+		expect(queueOf(state)).toContain(REDIRECT);
+	});
+
 	it('stopped or interrupted by the developer → dropped with the work', () => {
 		for (const input of [
 			{ type: 'interrupt', ref: REF },

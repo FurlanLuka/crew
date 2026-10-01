@@ -33,9 +33,11 @@ jobs:
         working-directory: crew
         run: go test ./...
 
+      # Every platform's native packages (Discord's E2EE library ships one per platform): one runner
+      # compiles all four binaries.
       - name: Install Voice OS dependencies
         working-directory: voiceos
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --os='*' --cpu='*'
 
       # The unit and offline eval suites only; the paid evals and live audio tests never run in CI.
       - name: Test Voice OS

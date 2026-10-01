@@ -1138,6 +1138,70 @@ crew voice machines rename vm1 GPU box
 crew voice machines rm vm1
 ```
 
+### `crew voice discord`
+
+Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Optional — the first crew voice never asks for it.
+
+```
+crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off
+```
+
+#### `crew voice discord setup`
+
+Checks the bot token with Discord (rejected → nothing saved), saves it to ~/.config/crew-voiceos/discord.key (owner-only), then decides the server (the only one the bot is in, else --guild), whose voice it takes (the server owner, else --user), and the channel (one named Voice OS, else the only voice channel, else --channel by name or id), checks the bot may View Channel, Connect and Speak there, and writes ~/.crew/voiceos/discord.json, which a running Voice OS watches. Each decision prints as one line; a choice it cannot make lists the options (<id>\t<name>) and exits 1. With no token and nothing saved it prints the four setup steps and exits 1.
+
+```
+crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
+```
+
+Output: `server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs`
+
+- `--guild=<id>` — The server, when the bot is in several
+- `--channel=<name|id>` — The voice channel, when there are several and none is named Voice OS
+- `--user=<id>` — Whose voice Voice OS takes (default the server owner)
+
+The token is read from stdin (hidden at a terminal), never from an argument; it is never printed or logged. A rerun with nothing pasted reuses the saved token, so --guild or --channel after an error needs no paste.
+
+Only the one user's voice is heard: Voice OS ignores everyone else in the channel.
+
+--json: the discord.json object {guild,channel,channel_name,guild_name,owner}; the lines go to stderr.
+
+```bash
+pbpaste | crew voice discord setup
+crew voice discord setup --guild=155 --channel="Voice OS"
+```
+
+#### `crew voice discord status`
+
+The setup (server, channel, owner, whether the token is saved) and what Voice OS last reported from ~/.crew/voiceos/discord-status.json: connected, whether the owner is in the channel, its error.
+
+```
+crew voice discord status [--json]
+```
+
+Output: `<field>\t<value>`
+
+--json: {"set_up":bool,"token":bool,"config":{guild,channel,channel_name,guild_name,owner}|null,"live":{connected,owner_in_channel,error,at}|null}. live null: Voice OS has not reported.
+
+```bash
+crew voice discord status
+crew voice discord status --json
+```
+
+#### `crew voice discord off`
+
+Voice OS leaves Discord: removes discord.json and the saved token.
+
+```
+crew voice discord off
+```
+
+Output: `removed\t<path>`
+
+```bash
+crew voice discord off
+```
+
 ## `crew update`
 
 Update crew to the latest version

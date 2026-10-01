@@ -12,7 +12,7 @@ import { hasOpenQuestionMoved } from '../shared/questions.js';
 import { createLogger } from '../log.js';
 import { countSpokenWords, normalizeSaid } from '../state/helpers.js';
 import { findSessionsNamedIn } from './session-naming.js';
-import { buildSituationNote } from '../sessions/voice-context.js';
+import { buildDiscordNote, buildSituationNote } from '../sessions/voice-context.js';
 import { type ToolResult, fail, succeed } from './results.js';
 import type { SendAck } from '../shared/ack.js';
 import type { ToolContext } from './tools.js';
@@ -434,10 +434,11 @@ export const sendText = async ({
 
 	if (delivery === 'aside') {
 		log.info('asked aside', { ref, chars: text.length });
-		const asideNote = joinNotes(
+		const asideNote = [
 			buildNotesPathNote({ ref, isAsked: isAboutMyNotes, notes: toolContext.notes }),
 			recentAction,
-		);
+			buildDiscordNote(state),
+		].reduce(joinNotes, undefined);
 
 		toolContext.sentTo?.add(ref);
 		toolContext.dispatch({
@@ -485,6 +486,7 @@ export const sendText = async ({
 			: undefined,
 		buildNotesPathNote({ ref, isAsked: isAboutMyNotes, notes: toolContext.notes }),
 		recentAction,
+		buildDiscordNote(state),
 	].reduce(joinNotes, undefined);
 
 	if (continues) {

@@ -18,7 +18,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines].
+// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord].
 // Bare `crew voice` starts it when needed and always reprints the sign-in
 // link, so a lost cookie is one command away.
 func cmdVoice() {
@@ -61,8 +61,10 @@ func cmdVoice() {
 		voiceAttach()
 	case "machines":
 		voiceMachines(args)
+	case "discord":
+		voiceDiscord(args)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines] [--no-open]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord] [--no-open]\n")
 		os.Exit(1)
 	}
 }

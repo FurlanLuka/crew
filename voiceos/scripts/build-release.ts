@@ -2,6 +2,7 @@
 // voiceos_<version>_<goos>_<goarch>.tar.gz in dist/. `crew voice` downloads the one matching
 // its own version, so crew and Voice OS always come from the same tag.
 import { mkdirSync, rmSync } from 'node:fs';
+import { COMPILE_FLAGS } from './compile-flags.js';
 import { join } from 'node:path';
 
 const version = (process.argv[2] ?? '').replace(/^v/, '');
@@ -43,6 +44,7 @@ for (const target of TARGETS) {
 		'--compile',
 		'--minify',
 		'--sourcemap',
+		...COMPILE_FLAGS,
 		`--target=${target.bun}`,
 		// A main and a remote talk only when both run the same release (remote/protocol.ts).
 		`--define=VOICEOS_VERSION=${JSON.stringify(version)}`,

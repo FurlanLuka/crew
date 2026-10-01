@@ -73,6 +73,11 @@ crew voice debug-notes show <n> [--around=30s] [--json]   debug note <n>\t<at>\t
 crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]   <workspace>\t<date time>\t<text>
 crew voice remote [status|stop]                            <up|down>\t<version>\t<busy|idle>\t<socket>
 crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>   <id>\t<name>\t<host>\t<status>
+crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off
+crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
+                                                         server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs
+crew voice discord status [--json]                         <field>\t<value>
+crew voice discord off                                     removed\t<path>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -439,6 +444,25 @@ named aloud with the machine's name), its dev servers are its own crew's, and a 
 never stops them: the main reconnects, catches up from a snapshot and says one recap line.
 `crew voice machines` lists `<id>\t<name>\t<host>\t<status>` (status as the running Voice OS
 last saw it, `stopped` when it is not running). A machine is a main or a remote, never both.
+
+**Discord.** Optional: while Voice OS runs, a bot of the user's own joins one voice channel of
+their Discord server and takes only one person's voice there (the server owner, or `--user`).
+The user makes the bot (Discord Developer Portal → app → Bot → copy the token) and invites it
+with View Channel, Connect and Speak; then `crew voice discord setup` reads the token from stdin
+(hidden at a terminal — hand the user `pbpaste | crew voice discord setup`, never put the token
+in a command line or your reply). A rejected token is not saved; an accepted one goes to
+`~/.config/crew-voiceos/discord.key` (owner-only). It then decides the server (the only one the
+bot is in, else `--guild=<id>`), the voice (the server owner, else `--user=<id>`) and the channel
+(one named `Voice OS`, else the only voice channel, else `--channel=<name|id>`), checks the bot's
+View Channel, Connect and Speak, and writes `~/.crew/voiceos/discord.json`
+(`{guild,channel,channel_name,guild_name,owner}`), which a running Voice OS watches. Each
+decision is one line (`server: Private (155…)`, `you: the server owner (226…)`, `channel:
+General (155…)`, `ready: …`); a choice it cannot make lists `<id>\t<name>` and exits 1, and a
+rerun with nothing pasted reuses the saved token. With no token at all it prints the four setup
+steps. `crew voice discord status` prints `<field>\t<value>` rows — setup, token, server,
+channel, owner, then what Voice OS last reported (connected, owner_in_channel, error, at) or
+`live\tVoice OS has not reported`; `--json`: `{set_up, token, config|null, live|null}`. `crew
+voice discord off` removes discord.json and the token (`removed\t<path>` per file).
 
 **Debugging Voice OS: logs, debug notes, notes.** Read these through crew, never by grepping
 the files (the log rotates at 20 MB into `voiceos.log.1` … `.5`, and a remote's log is on

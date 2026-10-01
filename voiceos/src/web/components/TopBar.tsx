@@ -132,6 +132,19 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 					{updates} {updates === 1 ? 'update' : 'updates'} waiting
 				</button>
 			)}
+			{state.discord?.isOwnerIn && (
+				<span
+					className="discord-on"
+					title={
+						state.discord.isHearing
+							? 'You are in the Discord voice channel: Voice OS hears and speaks there; this page shows and types.'
+							: 'You are in the Discord voice channel, but Voice OS is not hearing you: pick a mode to try again.'
+					}
+				>
+					Voice via Discord · {state.discord.channelName}
+					{state.discord.isHearing ? '' : ' · not hearing'}
+				</span>
+			)}
 			<span className="sp">
 				{sevenDay !== null && `${limitsOwner}weekly ${sevenDay}%`}
 				{fiveHour !== null && ` · 5h ${fiveHour}%`}

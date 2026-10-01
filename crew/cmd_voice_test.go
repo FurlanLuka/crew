@@ -82,3 +82,35 @@ func TestBrowserOpener(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDiscordSetupArgs(t *testing.T) {
+	opts, err := parseDiscordSetupArgs([]string{"--guild=155", "--channel=Voice OS", "--user=226"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Guild != "155" || opts.Channel != "Voice OS" || opts.User != "226" {
+		t.Errorf("opts %+v", opts)
+	}
+	if _, err := parseDiscordSetupArgs([]string{"--token=x"}); err == nil {
+		t.Error("an unknown flag was accepted")
+	}
+}
+
+func TestChooseDiscordToken(t *testing.T) {
+	cases := []struct {
+		name, entered, saved, want string
+		ok                         bool
+	}{
+		{"entered wins", "  new-token\n", "old-token", "new-token", true},
+		{"entered with nothing saved", "new-token", "", "new-token", true},
+		{"blank keeps saved", " \n", "old-token", "old-token", true},
+		{"empty keeps saved", "", "old-token", "old-token", true},
+		{"both blank", " \n", "", "", false},
+	}
+	for _, c := range cases {
+		got, ok := chooseDiscordToken(c.entered, c.saved)
+		if got != c.want || ok != c.ok {
+			t.Errorf("%s: chooseDiscordToken(%q, %q) = %q, %v; want %q, %v", c.name, c.entered, c.saved, got, ok, c.want, c.ok)
+		}
+	}
+}

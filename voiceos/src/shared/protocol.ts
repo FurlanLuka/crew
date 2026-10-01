@@ -403,6 +403,19 @@ export interface State {
 	names: Record<string, string>;
 	// What speech-to-text expects the developer to speak (Soniox language hints).
 	languages: string[];
+	// The Discord voice channel (crew voice discord setup), when set up; null otherwise.
+	discord: DiscordPresence | null;
+}
+
+export interface DiscordPresence {
+	// The bot is in the channel.
+	isConnected: boolean;
+	// The owner is in it too: Voice OS listens and speaks there, not in a tab.
+	isOwnerIn: boolean;
+	// False when speech-to-text gave up (the stream kept dropping, no Soniox key): in the channel but unheard.
+	isHearing: boolean;
+	channelName: string;
+	mode: ListeningMode;
 }
 
 export interface LastSpokenSend {
@@ -557,6 +570,8 @@ export type Observation =
 			refs?: string[];
 			toldAsks?: ToldAsk[];
 	  }
+	// The Discord bridge's own state (connected, owner in the channel); null when not set up.
+	| { type: 'discord_presence'; presence: DiscordPresence | null }
 	// Written by the router after it handled an utterance; never from a client.
 	| { type: 'voice_logged'; screen: string; entry: VoiceEntry }
 	| { type: 'transcript'; transcript: Transcript | null }
@@ -679,4 +694,6 @@ export type ClientMessage =
 	// No mode: a tab from before the modes, which only knew hands-free.
 	| { type: 'listen_start'; sampleRate: number; mode?: ListeningMode }
 	| { type: 'listen_stop' }
-	| { type: 'audio_done'; id: string };
+	| { type: 'audio_done'; id: string }
+	// The listening menu while the owner is on Discord: how the Discord channel listens.
+	| { type: 'discord_listen'; mode: ListeningMode };
