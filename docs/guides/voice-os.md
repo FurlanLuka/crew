@@ -287,8 +287,8 @@ the name to switch, × to end it.
 - "Where am I?" · "Who am I talking to?" "You're on crew, talking with checkout."
 - "Switch to it." Opens the session you are talking with.
 - "Go back." Returns to the session you were on before, saying "Back to crew"; say it again to go
-  further back. A session that stopped is passed over ("checkout stopped. Back to crew."). "Home"
-  still means Mission Control.
+  further back. A session that stopped is passed over ("checkout stopped. Back to crew."). "Go back
+  to checkout" goes to checkout, wherever you came from. "Home" still means Mission Control.
 - "No, that was for store front." Resends your words there. If the session that got them is still
   working on them, it is stopped: "Stopped checkout."
 

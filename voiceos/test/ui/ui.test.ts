@@ -1212,21 +1212,45 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a turn that needs you → a slim strip, the stream stays on screen', async () => {
+	it('a turn that needs you → no strip of its own: the question is in the stream, the top bar counts it once', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		store.dispatch({ type: 'assistant_text', ref: 'store-front/main', text: 'Ready: push it?' });
 		store.dispatch({
 			type: 'narration',
 			ref: 'store-front/main',
 			needsUser: true,
 			text: 'store front asks: push it?',
 		});
-		const strip = page.locator('section[aria-label="needs you"]');
-		await strip.waitFor({ timeout: 5000 });
-		expect(await page.locator('.stream').isVisible()).toBe(true);
-		expect(((await strip.boundingBox())?.height ?? 999) < 80).toBe(true);
-		await strip.getByRole('button', { name: 'Dismiss' }).click();
-		await waitUntil(() => store.state.sessions['store-front/main']?.needsUser === null);
+		await page.locator('.stream', { hasText: 'push it?' }).waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'narration', ref: 'store-front/main', needsUser: false, text: '' });
+
+		// One session waiting on you and another's plain update: each counted once, the waiting one not
+		// also as an update.
+		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		store.dispatch({
+			type: 'narration',
+			ref: 'checkout-api/main',
+			needsUser: true,
+			text: 'checkout api asks: merge it?',
+		});
+		store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'checkout-api/main',
+			kind: 'needs',
+			about: 'merge it?',
+		});
+		store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'store-front/main',
+			kind: 'done',
+			about: 'the tests pass',
+		});
+		await page.getByText('1 waiting on you').waitFor({ timeout: 5000 });
+		await page.getByText('1 update waiting').waitFor({ timeout: 5000 });
+
+		store.dispatch({ type: 'narration', ref: 'checkout-api/main', needsUser: false, text: '' });
+		store.dispatch({ type: 'play_meanwhile' });
 		await context.close();
 	}, 20_000);
 

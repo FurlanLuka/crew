@@ -129,7 +129,7 @@ const narrateTurn = createTurnNarrator({
 
 const narrateAside = createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) });
 
-connectSpeech({ store, voiceOut, narrateTurn, narrateAside });
+connectSpeech({ store, voiceOut, narrateTurn, narrateAside, isRouting: () => router.isRouting });
 
 const reminderTimer = setInterval(() => voiceOut.remind(store.state), REMINDER_INTERVAL_MS);
 

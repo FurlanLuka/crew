@@ -532,10 +532,6 @@ textarea:focus-visible {
 	font-size: 12px;
 	min-width: 0;
 }
-.strip.amber {
-	box-shadow: inset 3px 0 0 var(--amber);
-	background: rgba(240, 160, 44, 0.05);
-}
 .strip.crit {
 	box-shadow: inset 3px 0 0 var(--crit);
 	background: rgba(224, 108, 95, 0.06);

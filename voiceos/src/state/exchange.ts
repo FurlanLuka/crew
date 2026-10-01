@@ -15,6 +15,12 @@ import { sayAck, sayRef } from './helpers.js';
 import { forgetHeardUpdate } from './held-lines.js';
 import { isReachable } from '../shared/machines.js';
 
+// A permission, plan or question a session raised after `at`: then that, not "Switch to …?", is the
+// newest thing asked, and a bare yes or no answers it.
+export const hasQuestionSince = (state: State, at: number): boolean =>
+	state.asks.some((ask) => ask.at > at) ||
+	state.order.some((ref) => (state.sessions[ref]?.needsUser?.at ?? 0) > at);
+
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
 
@@ -189,6 +195,13 @@ export const followExchange = (
 	switch (input.type) {
 		case 'send': {
 			if (!state.sessions[input.ref]) {
+				return result;
+			}
+
+			// Said to the session on screen, and the developer clicked away before the words went: they
+			// left it. No "Sent to", no conversation with it, no switch offer — its reply waits for the
+			// meanwhile line like any other session's.
+			if (input.isSpoken && input.saidOn === input.ref && readScreenRef(before) !== input.ref) {
 				return result;
 			}
 

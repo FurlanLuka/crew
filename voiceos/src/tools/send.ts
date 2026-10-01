@@ -1,5 +1,6 @@
 import type { Judge } from '../judge/judge.js';
 import { isHeldQuestion } from '../state/held-lines.js';
+import { hasQuestionSince } from '../state/exchange.js';
 import {
 	isSdkAsk,
 	isSwitchOfferFresh,
@@ -353,7 +354,10 @@ export const sendText = async ({
 	// Fresh when the words were said: the kernel's own turn does not use up the developer's window.
 	const saidAt = toolContext.heardFrom ?? toolContext.now();
 
-	if (isSwitchOfferFresh(state.switchOffer, saidAt)) {
+	if (
+		isSwitchOfferFresh(state.switchOffer, saidAt) &&
+		!hasQuestionSince(state, state.switchOffer.at)
+	) {
 		const offered = state.switchOffer.ref;
 
 		if (await isBareNo(judge, said)) {
@@ -442,7 +446,7 @@ export const sendText = async ({
 			text,
 			aside: true,
 			...(asideNote ? { note: asideNote } : {}),
-			...(toolContext.isSpoken ? { isSpoken: true } : {}),
+			...(toolContext.isSpoken ? { isSpoken: true, saidOn: toolContext.screen ?? null } : {}),
 		});
 
 		// A question about a pending question withdraws it (the reducer denies it with these words):
@@ -497,7 +501,7 @@ export const sendText = async ({
 			? { continues: { ...continues, ...(wouldGoAside ? { isAside: true } : {}) } }
 			: {}),
 		...(note ? { note } : {}),
-		...(toolContext.isSpoken ? { isSpoken: true } : {}),
+		...(toolContext.isSpoken ? { isSpoken: true, saidOn: toolContext.screen ?? null } : {}),
 		...(isNow ? { isNow: true } : {}),
 	});
 

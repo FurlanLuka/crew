@@ -60,6 +60,9 @@ const logConversation = (before: State, after: State, input: Input): void => {
 type NarrateEffect = Extract<Effect, { type: 'narrate' }>;
 type NarrateAsideEffect = Extract<Effect, { type: 'narrate_aside' }>;
 
+const QUIET_RECHECK_MS = 500;
+const QUIET_WAIT_MAX_MS = 30_000;
+
 export interface ConnectSpeechParams {
 	store: Store;
 	voiceOut: VoiceOut;
@@ -67,6 +70,8 @@ export interface ConnectSpeechParams {
 	narrateAside: (effect: NarrateAsideEffect) => Promise<void> | void;
 	// Tests run the clock themselves.
 	setTimer?: (run: () => void, ms: number) => unknown;
+	// The router is still reading words the developer said: they may answer a question about to lapse.
+	isRouting?: () => boolean;
 }
 
 // What the store asks to be said, dropped or narrated reaches the voice here: the app and the
@@ -77,6 +82,7 @@ export const connectSpeech = ({
 	narrateTurn,
 	narrateAside,
 	setTimer = setTimeout,
+	isRouting = () => false,
 }: ConnectSpeechParams): void => {
 	// The reducer runs in the page too, so it cannot log: what the conversation did is logged here.
 	let previous = store.state;
@@ -127,6 +133,19 @@ export const connectSpeech = ({
 		});
 	});
 
+	// A question's wait ends in silence: while the developer is still speaking, or the router still
+	// reads what they said, the words may be its answer, so it waits for them. Bounded, in case a press
+	// never ends.
+	const whenQuiet = (run: () => void, waited = 0): void => {
+		if ((store.state.transcript === null && !isRouting()) || waited >= QUIET_WAIT_MAX_MS) {
+			run();
+
+			return;
+		}
+
+		setTimer(() => whenQuiet(run, waited + QUIET_RECHECK_MS), QUIET_RECHECK_MS);
+	};
+
 	let armedAt: number | null = null;
 	let offeredAt: string | null = null;
 	let targetAskedAt: string | null = null;
@@ -141,12 +160,13 @@ export const connectSpeech = ({
 			targetAskedAt = targetKey;
 			const { at, heardAt } = targetAsk;
 			setTimer(
-				() => {
-					// A timer armed before the question was heard gives way to the one armed after.
-					if (store.state.targetAsk?.at === at && store.state.targetAsk.heardAt === heardAt) {
-						settleTarget(store, false);
-					}
-				},
+				() =>
+					whenQuiet(() => {
+						// A timer armed before the question was heard gives way to the one armed after.
+						if (store.state.targetAsk?.at === at && store.state.targetAsk.heardAt === heardAt) {
+							settleTarget(store, false);
+						}
+					}),
 				targetAsk.heardAt === undefined ? QUESTION_UNHEARD_MS : TARGET_ASK_MS,
 			);
 		}
@@ -164,7 +184,7 @@ export const connectSpeech = ({
 			offeredAt = offerKey;
 			const { at } = switchOffer;
 			setTimer(
-				() => store.dispatch({ type: 'switch_offer_closed', at, isLapse: true }),
+				() => whenQuiet(() => store.dispatch({ type: 'switch_offer_closed', at, isLapse: true })),
 				switchOffer.heardAt === undefined ? QUESTION_UNHEARD_MS : SWITCH_OFFER_MS,
 			);
 		}

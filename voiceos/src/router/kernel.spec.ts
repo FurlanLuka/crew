@@ -961,6 +961,7 @@ describe('Kernel', () => {
 					text: 'Run the tests.',
 					ack: INSTRUCTION_ACK,
 					isSpoken: true,
+					saidOn: 'store-front/main',
 				},
 			]);
 		});

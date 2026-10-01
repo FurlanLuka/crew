@@ -69,11 +69,22 @@ export const createConversation = ({
 	const script: Block[][] = [];
 	// What the model was sent on each call: routing is its decision, so a test asserts what it was told.
 	const requests: { messages: { role: string; content: unknown }[] }[] = [];
+	// Set by holdModel: the next model call waits on it, as a slow model does.
+	let held: { reached: () => void; gate: Promise<void> } | null = null;
 	const client = {
 		messages: {
 			create: async (params: { messages: { role: string; content: unknown }[] }) => {
 				// A copy: the kernel keeps pushing to the same array as the turn goes on.
 				requests.push({ messages: [...params.messages] });
+
+				if (held) {
+					const { reached, gate } = held;
+
+					held = null;
+					reached();
+					await gate;
+				}
+
 				const content = script.shift() ?? [reply('')];
 				const hasToolUse = content.some((block) => block.type === 'tool_use');
 
@@ -133,6 +144,7 @@ export const createConversation = ({
 		}),
 		narrateAside: createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) }),
 		setTimer,
+		isRouting: () => router.isRouting,
 	});
 	const kernel = new Kernel({
 		apiKey: 'k',
@@ -235,6 +247,15 @@ export const createConversation = ({
 		// The kernel's model calls for the next utterance, in order.
 		script: (...calls: Block[][]) => {
 			script.push(...calls);
+		},
+		// Holds the next model call: `reached` settles once it is waiting, `release` lets it answer.
+		holdModel: () => {
+			const reached = Promise.withResolvers<void>();
+			const gate = Promise.withResolvers<void>();
+
+			held = { reached: reached.resolve, gate: gate.promise };
+
+			return { reached: reached.promise, release: gate.resolve };
 		},
 		// The developer speaks (push to talk): what plays is cut, and nothing plays until they finish.
 		// startedAgoMs: the developer began speaking that long before these words reach the router.

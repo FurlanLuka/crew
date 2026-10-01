@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import type { Machine, MachineStatus, PendingAsk, Session, State } from '../shared/protocol.js';
+import type {
+	Machine,
+	MachineStatus,
+	MeanwhileItem,
+	PendingAsk,
+	Session,
+	State,
+} from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { findCurrentAsk, describeRouteChip } from '../shared/route-chip.js';
@@ -8,6 +15,7 @@ import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 import {
 	countPinned,
 	countSessions,
+	countUpdates,
 	describePinnedCard,
 	labelAcrossMachines,
 	readRefTitle,
@@ -231,6 +239,33 @@ describe('countPinned', () => {
 			running: 1,
 			waiting: 0,
 		}));
+});
+
+describe('countUpdates', () => {
+	const update = (ref: string): MeanwhileItem => ({ ref, kind: 'done', about: null, at: 1 });
+	// Every session has an update; the pins are vm1:api/main and store/main.
+	const createUpdatesState = (patch: Partial<State> = {}): State =>
+		createPinnedState({
+			meanwhile: [update('store/main'), update('store/wrk1'), update('vm1:api/main')],
+			...patch,
+		});
+	const waitingOn = (...refs: string[]): Partial<State> => ({
+		asks: refs.map((ref, index) => createTestAsk(String(index), ref)),
+	});
+
+	it.each([
+		['no overlap: none waiting on you', 3, {}, {}],
+		['every update also waiting', 0, waitingOn('store/main', 'store/wrk1', 'vm1:api/main'), {}],
+		['partial overlap', 2, waitingOn('vm1:api/main'), {}],
+		['this Mac only', 2, waitingOn('vm1:api/main'), { machine: 'local' }],
+		['a remote machine, its update waiting', 0, waitingOn('vm1:api/main'), { machine: 'vm1' }],
+		['a remote machine, waiting elsewhere', 1, waitingOn('store/main'), { machine: 'vm1' }],
+		['the pins', 2, {}, 'pinned'],
+		['the pins, one waiting', 1, waitingOn('vm1:api/main'), 'pinned'],
+		['the pins, waiting off the pins', 2, waitingOn('store/wrk1'), 'pinned'],
+	] as const)('%s → %d', (_name, expected, patch, scope) =>
+		expect(countUpdates(createUpdatesState(patch), scope)).toBe(expected),
+	);
 });
 
 describe('describeMissingPin', () => {

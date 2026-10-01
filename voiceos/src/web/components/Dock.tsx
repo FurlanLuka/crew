@@ -4,7 +4,6 @@ import { readLabel } from '../../state/helpers.js';
 import type { Dispatch } from '../types.js';
 import { AskDock } from './AskDock.js';
 import { DenialStrip } from './DenialStrip.js';
-import { NeedsYouStrip } from './NeedsYouStrip.js';
 
 interface DockProps {
 	state: State;
@@ -25,10 +24,6 @@ export const Dock = ({ state, dispatch }: DockProps) => {
 
 	if (denial) {
 		return <DenialStrip denial={denial} label={readLabel(state, denial.ref)} dispatch={dispatch} />;
-	}
-
-	if (viewedSession?.needsUser) {
-		return <NeedsYouStrip session={viewedSession} dispatch={dispatch} />;
 	}
 
 	return <div />;

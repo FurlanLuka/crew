@@ -7,7 +7,13 @@ import {
 	readMachineTitle,
 	readSessionLabel,
 } from '../../shared/machines.js';
-import { countPinned, countSessions, isInsidePinned, readRefTitle } from '../derive.js';
+import {
+	countPinned,
+	countSessions,
+	countUpdates,
+	isInsidePinned,
+	readRefTitle,
+} from '../derive.js';
 import type { Dispatch } from '../types.js';
 import { RenameButton, RenameSession } from './RenameSession.js';
 import { PinButton } from './Tile.js';
@@ -33,6 +39,7 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 	const isPinnedView = isInsidePinned(state.view);
 	// Inside Pinned the counts follow the pins, as the tabs do.
 	const counts = isPinnedView ? countPinned(state) : countSessions(state, machine);
+	const updates = countUpdates(state, isPinnedView ? 'pinned' : { machine });
 	const viewedSession = state.view.kind === 'session' ? state.sessions[state.view.ref] : null;
 	const { sevenDay, fiveHour } = state.limits;
 	const withMachines = hasMachines(state);
@@ -115,14 +122,14 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 			</span>
 			{counts.running > 0 && <span className="c-amber">{counts.running} running</span>}
 			{counts.waiting > 0 && <span className="c-crit">{counts.waiting} waiting on you</span>}
-			{state.meanwhile.length > 0 && (
+			{updates > 0 && (
 				<button
 					type="button"
 					className="updates-waiting"
 					title="Other sessions' updates, said together at the next quiet moment. Click to hear them now."
 					onClick={() => dispatch({ type: 'play_meanwhile' })}
 				>
-					{state.meanwhile.length} {state.meanwhile.length === 1 ? 'update' : 'updates'} waiting
+					{updates} {updates === 1 ? 'update' : 'updates'} waiting
 				</button>
 			)}
 			<span className="sp">

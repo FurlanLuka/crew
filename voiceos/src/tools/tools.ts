@@ -37,7 +37,12 @@ import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
 import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
-import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
+import {
+	findNamedRefs,
+	findSessionsNamedIn,
+	isOwnNameSaid,
+	readNamedInstead,
+} from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import {
 	describeMachineSwitch,
@@ -314,6 +319,8 @@ const refuseOtherMachine = ({
 	);
 };
 
+const GO_BACK_TO_WORDS = 8;
+
 export const executeTool = async (
 	name: string,
 	input: Record<string, unknown>,
@@ -524,9 +531,17 @@ export const executeTool = async (
 			}
 
 			const found = checkRef(state, input.ref);
-			const checked = found.ok
+			const scoped = found.ok
 				? { ...found, ref: scopeToMachine(state, found.ref, input.machine, toolContext) }
 				: found;
+			const namedInstead = scoped.ok
+				? readNamedInstead(state, scoped.ref, toolContext.utterance ?? '')
+				: null;
+			const checked = scoped.ok && namedInstead ? { ...scoped, ref: namedInstead } : scoped;
+
+			if (namedInstead) {
+				log.info('switch to the named session', { asked: String(input.ref), ref: namedInstead });
+			}
 
 			if (!checked.ok) {
 				// "Switch to personal server": a machine named where a session was expected is that machine.
@@ -698,10 +713,29 @@ export const executeTool = async (
 		case 'answer':
 			return answerAsk({ state, input, toolContext });
 
-		case 'go_back':
+		case 'go_back': {
+			// "Go back to speak main" names where to (debug note 25): the session named, not the screen
+			// before this one. The developer's own name wins when a ref sounds the same.
+			const screen = state.view.kind === 'session' ? state.view.ref : null;
+			const utterance = toolContext.utterance ?? '';
+			// Only a short "go back to X": longer words may name a session for something else.
+			const named =
+				countSpokenWords(utterance) <= GO_BACK_TO_WORDS
+					? findSessionsNamedIn(state, utterance).filter((ref) => ref !== screen)
+					: [];
+			const target =
+				named.length === 1 ? named[0] : named.find((ref) => isOwnNameSaid(state, ref, utterance));
+
+			if (target) {
+				log.info('go back to the session named', { ref: target });
+
+				return executeTool('switch_view', { ref: target }, toolContext);
+			}
+
 			toolContext.dispatch({ type: 'go_back' });
 
 			return succeed('went back: Voice OS says where to');
+		}
 
 		case 'pin_session':
 			return pinSession({

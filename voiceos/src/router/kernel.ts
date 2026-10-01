@@ -152,7 +152,8 @@ interface WaitingItem {
 	at: number;
 }
 
-export const listWaitingItems = (state: State, now: number): WaitingItem[] => {
+// heardFrom: when the developer began the words; "Switch to …?" is still waiting if it was then.
+export const listWaitingItems = (state: State, now: number, heardFrom = now): WaitingItem[] => {
 	return [
 		...state.asks.map((ask): WaitingItem => ({ ref: ask.ref, what: 'pending', at: ask.at })),
 		...state.order.flatMap((ref): WaitingItem[] => {
@@ -163,7 +164,7 @@ export const listWaitingItems = (state: State, now: number): WaitingItem[] => {
 		...(isOfferFresh(state.devOffer, now)
 			? [{ ref: state.devOffer.ref, what: 'fix_offer' as const, at: state.devOffer.at }]
 			: []),
-		...(isSwitchOfferFresh(state.switchOffer, now)
+		...(isSwitchOfferFresh(state.switchOffer, heardFrom)
 			? [{ ref: state.switchOffer.ref, what: 'switch_offer' as const, at: state.switchOffer.at }]
 			: []),
 	].sort((first, second) => second.at - first.at);
@@ -309,7 +310,7 @@ export const buildKernelMessage = ({
 	const sessions = state.order.map((ref) =>
 		describeSession({ state, ref, isDetailed: false, now }),
 	);
-	const waiting = listWaitingItems(state, now);
+	const waiting = listWaitingItems(state, now, heardFrom);
 	const lastAskedLine = findLastAskedAloud({
 		spoken: state.spoken,
 		waitingRefs: waiting.map((item) => item.ref),

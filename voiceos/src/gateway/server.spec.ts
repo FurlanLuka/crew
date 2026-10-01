@@ -268,7 +268,6 @@ describe('parseClientMessage', () => {
 		interrupt: { type: 'interrupt', ref: 'store/main' },
 		allow_denied: { type: 'allow_denied', denialId: 'd1' },
 		dismiss_denial: { type: 'dismiss_denial', denialId: 'd1' },
-		dismiss_needs_user: { type: 'dismiss_needs_user', ref: 'store/main' },
 		dev_start: { type: 'dev_start', ref: 'store/main' },
 		dev_stop: { type: 'dev_stop', ref: 'store/main' },
 		dev_restart: { type: 'dev_restart', ref: 'store/main' },

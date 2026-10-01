@@ -2,7 +2,12 @@
 
 import { createLogger } from '../log.js';
 import type { CrewRunOptions, CrewRunResult, CrewRunner } from '../crew/adapter.js';
-import { describeRecap, listWaitingRefs, readSessionLabel } from '../shared/machines.js';
+import {
+	describeRecap,
+	isRecapNews,
+	listWaitingRefs,
+	readSessionLabel,
+} from '../shared/machines.js';
 import type { MachineConfig, Observation, State, WorktreeInfo } from '../shared/protocol.js';
 import type { HandsEffect } from './mapping.js';
 import { toMainInput } from './mapping.js';
@@ -89,7 +94,8 @@ export class RemoteLink {
 	private outbox: Outbox = createOutbox();
 	private isReady = false;
 	private isStopped = false;
-	private hasConnected = false;
+	// The waiting sessions as of its last connect: the same ones again are no news.
+	private waitingSaid: string[] = [];
 	private attempt = 0;
 	private lastHeard = 0;
 	private refusedDetail: string | null = null;
@@ -345,12 +351,11 @@ export class RemoteLink {
 			pending: this.outbox.unacked.length,
 		});
 
-		// The first connect after starting says nothing unless something waits.
-		if (this.hasConnected || finished.length > 0 || waiting.length > 0) {
+		if (isRecapNews({ finished, waiting, waitingSaid: this.waitingSaid })) {
 			this.options.say(describeRecap({ name: machine.name, finished, waiting }));
 		}
 
-		this.hasConnected = true;
+		this.waitingSaid = waiting;
 	}
 
 	private disconnected(): void {

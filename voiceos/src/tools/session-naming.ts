@@ -55,6 +55,32 @@ const isDisplayNameSaid = (name: string | undefined, plain: string): boolean => 
 	return words.trim() !== '' && plain.includes(words);
 };
 
+// "Speak main" said where the developer named a session "Speak Main": their own name wins over a
+// worktree whose ref only sounds the same (speak/main), wherever either runs. null: keep `ref`.
+export const readNamedInstead = (state: State, ref: string, utterance: string): string | null => {
+	const plain = toPlainWords(utterance);
+
+	if (isDisplayNameSaid(state.names[ref], plain)) {
+		return null;
+	}
+
+	// Only a name that sounds like the ref asked for: another named session mentioned beside a
+	// different target ("tell speak main…, then switch to checkout") changes nothing.
+	const asked = toPlainWords(splitRef(ref).local);
+	const named = state.order.filter(
+		(other) =>
+			other !== ref &&
+			isDisplayNameSaid(state.names[other], plain) &&
+			toPlainWords(state.names[other] ?? '') === asked,
+	);
+
+	return named.length === 1 ? (named[0] ?? null) : null;
+};
+
+// The developer's own name for the session was said.
+export const isOwnNameSaid = (state: State, ref: string, utterance: string): boolean =>
+	isDisplayNameSaid(state.names[ref], toPlainWords(utterance));
+
 export const findSessionsNamedIn = (state: State, utterance: string): string[] => {
 	const text = ` ${utterance
 		.toLowerCase()

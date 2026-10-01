@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
-import { SWITCH_OFFER_MS, type PendingAsk } from '../shared/protocol.js';
+import { SWITCH_OFFER_MS, TARGET_ASK_MS, type PendingAsk } from '../shared/protocol.js';
 import { englishJudge } from '../../test/support/english-judge.js';
 import type { Judge } from '../judge/judge.js';
 
@@ -20,6 +20,31 @@ const MEANWHILE_LINE =
 const hearUpdate = async (convo: ReturnType<typeof createConversation>): Promise<void> => {
 	await convo.answer('checkout-api/main', UPDATE);
 	await convo.wait(9_000);
+};
+
+// The English judge, held on one question once armed: the words are still being read when the
+// question's wait runs out.
+const createHeldJudge = (key: string) => {
+	let gate: Promise<void> | null = null;
+	let release = (): void => undefined;
+
+	const judge: Judge = async (params) => {
+		if (gate && params.key === key) {
+			await gate;
+		}
+
+		return englishJudge(params);
+	};
+
+	return {
+		judge,
+		arm: () => {
+			gate = new Promise((resolve) => {
+				release = resolve;
+			});
+		},
+		release: () => release(),
+	};
 };
 
 describe('conversations', () => {
@@ -66,6 +91,45 @@ describe('conversations', () => {
 			'Sent to store front, main.',
 		]);
 		expect(convo.store.state.exchange?.ref).toBe('store-front/main');
+	});
+
+	it('words said on a session\'s screen, then clicked away while they are read → no "Sent to", no offer; its reply comes in the meanwhile line', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		const model = convo.holdModel();
+
+		convo.script([toolUse('t1', 'forward', { kind: 'instruction' })]);
+		const saying = convo.say('Run the tests.');
+		await model.reached;
+		await convo.show('checkout-api/main');
+		model.release();
+		await saying;
+
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({
+				type: 'send',
+				ref: 'store-front/main',
+				text: 'Run the tests.',
+				saidOn: 'store-front/main',
+			}),
+		);
+		expect(convo.heard).toEqual(['> Run the tests.']);
+		expect(convo.store.state.switchOffer).toBeNull();
+
+		expect(convo.store.state.exchange).toBeNull();
+
+		// Long enough that a subject's answer would be said at once, in full.
+		await convo.answer(
+			'store-front/main',
+			'The whole suite ran in four minutes, all 214 tests pass, and the flaky cart test is gone.',
+		);
+		expect(convo.heard).toEqual(['> Run the tests.']);
+		await convo.wait(9_000);
+
+		expect(convo.heard).toEqual([
+			'> Run the tests.',
+			'Meanwhile, store front, main said: The whole suite ran in four minutes, all 214 tests pass, and the flaky…',
+		]);
 	});
 
 	it('a minute after its last answer heard, the subject lapses', async () => {
@@ -838,10 +902,42 @@ describe('conversations', () => {
 		expect(convo.heard.at(-1)).toBe('Meanwhile, checkout api, main wants to run git push.');
 	});
 
+	// "Can you approve?" is a yes to the plan on screen, not a question about it.
+	it('the screen\'s plan waits, "Okay, can you approve?" → the plan is approved', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main');
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'pl1',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'plan',
+				input: {},
+				plan: '# Cart totals in cents\n\n1. Store prices as integers.',
+			},
+		});
+
+		convo.script([toolUse('t1', 'answer', { ref: 'store-front/main', decision: 'yes', text: '' })]);
+		await convo.say('Okay, can you approve?');
+
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'answer_plan', askId: 'pl1', isApproved: true }),
+		);
+		expect(convo.store.state.asks).toEqual([]);
+	});
+
 	describe('timing', () => {
 		// Checkout's update heard in the meanwhile line, then a reply to it: "Sent to …. Switch there?".
-		const offerAfterHeardUpdate = async () => {
-			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		// beforeReply: what happens after the update is heard, before the reply that makes the offer.
+		const offerAfterHeardUpdate = async ({
+			beforeReply,
+			judge,
+		}: {
+			beforeReply?: (convo: ReturnType<typeof createConversation>) => Promise<void>;
+			judge?: Judge;
+		} = {}) => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main', judge });
 			await convo.startSessions('store-front/main', 'checkout-api/main');
 			convo.store.dispatch({
 				type: 'send',
@@ -853,6 +949,7 @@ describe('conversations', () => {
 				'The retry backoff now doubles from one second up to thirty, and every retry test passes again.',
 			);
 			await convo.wait(9_000);
+			await beforeReply?.(convo);
 			convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
 			await convo.say('Great, push it.');
 
@@ -876,6 +973,283 @@ describe('conversations', () => {
 
 			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
 			expect(convo.heard.slice(-2)).toEqual(['> Yes.', 'Switching to checkout api, main.']);
+		});
+
+		// Debug note 13: a "no" to the offer reached the kernel, which asked "For …?" about it.
+		it('"Switch to …?" answered no → let go then and there: the kernel never reads it, nothing is sent', async () => {
+			const convo = await offerAfterHeardUpdate();
+			const sendsBefore = convo.inputs.filter((input) => input.type === 'send').length;
+			const kernelBefore = convo.kernelSaw();
+
+			await convo.say('No.');
+
+			expect(convo.kernelSaw()).toBe(kernelBefore);
+
+			expect(convo.store.state.switchOffer).toBeNull();
+			expect(convo.store.state.targetAsk).toBeNull();
+			expect(convo.inputs.filter((input) => input.type === 'send')).toHaveLength(sendsBefore);
+			expect(convo.inputs.some((input) => input.type === 'ask_target')).toBe(false);
+			expect(convo.heard.at(-1)).toBe('> No.');
+			expect(convo.store.state.voiceLog['store-front/main']?.at(-1)).toMatchObject({
+				utterance: 'No.',
+				did: ['switch offer declined'],
+			});
+		});
+
+		const permissionFrom = (ref: string, at: number): PendingAsk => ({
+			id: 'p1',
+			ref,
+			at,
+			kind: 'permission',
+			toolName: 'Bash',
+			summary: 'run git push',
+			input: {},
+			suggestions: [],
+		});
+
+		it('"Switch to …?", then the screen\'s session asks a permission → a bare no answers the permission, through the kernel; the offer is let go', async () => {
+			const convo = await offerAfterHeardUpdate();
+			const offerAt = convo.store.state.switchOffer?.at ?? 0;
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: permissionFrom('store-front/main', offerAt + 1),
+			});
+			await convo.listen();
+			const kernelBefore = convo.kernelSaw();
+
+			convo.script([
+				toolUse('t2', 'answer', { ref: 'store-front/main', decision: 'no', text: '' }),
+			]);
+			await convo.say('No.');
+
+			expect(convo.kernelSaw()).not.toBe(kernelBefore);
+			expect(convo.store.state.asks).toEqual([]);
+			expect(convo.inputs).toContainEqual(
+				expect.objectContaining({ type: 'answer_permission', askId: 'p1', decision: 'deny' }),
+			);
+			expect(convo.store.state.switchOffer).toBeNull();
+		});
+
+		it('"Switch to …?", then the screen\'s session ends its turn on a question → a bare no is its answer: the kernel reads it', async () => {
+			const convo = await offerAfterHeardUpdate();
+			await convo.wait(1_000);
+			convo.store.dispatch({
+				type: 'narration',
+				ref: 'store-front/main',
+				needsUser: true,
+				text: 'Should I push it to main?',
+			});
+			await convo.listen();
+			const kernelBefore = convo.kernelSaw();
+
+			convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+			await convo.say('No.');
+
+			expect(convo.kernelSaw()).not.toBe(kernelBefore);
+			expect(convo.store.state.voiceLog['store-front/main']?.at(-1)?.utterance).toBe('No.');
+			expect(convo.store.state.voiceLog['store-front/main']?.at(-1)?.did).not.toContain(
+				'switch offer declined',
+			);
+			expect(convo.inputs).toContainEqual(
+				expect.objectContaining({ type: 'send', ref: 'store-front/main', text: 'No.' }),
+			);
+		});
+
+		it('"Switch to …?", then "No." typed into the screen\'s box → typed to that session; the offer is not declined by it', async () => {
+			const convo = await offerAfterHeardUpdate();
+			const kernelBefore = convo.kernelSaw();
+
+			await convo.type('No.');
+
+			expect(convo.kernelSaw()).toBe(kernelBefore);
+			expect(convo.inputs).toContainEqual(
+				expect.objectContaining({ type: 'send', ref: 'store-front/main', text: 'No.' }),
+			);
+			expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+			expect(
+				(convo.store.state.voiceLog['store-front/main'] ?? []).flatMap((entry) => entry.did),
+			).not.toContain('switch offer declined');
+		});
+
+		it('another session\'s permission open before "Switch to …?" → a bare no answers the offer alone: closed, the permission untouched, no kernel', async () => {
+			const convo = await offerAfterHeardUpdate({
+				beforeReply: async (opened) => {
+					await opened.startSessions('signals/main');
+					opened.store.dispatch({ type: 'ask_opened', ask: permissionFrom('signals/main', 0) });
+					await opened.listen();
+				},
+			});
+			expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+			const kernelBefore = convo.kernelSaw();
+
+			await convo.say('No.');
+
+			expect(convo.kernelSaw()).toBe(kernelBefore);
+			expect(convo.store.state.switchOffer).toBeNull();
+			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['p1']);
+		});
+
+		it('"Switch to …?" kept past its 8 s while the developer speaks → a yes begun in time still reaches the kernel as the offer\'s answer', async () => {
+			const convo = await offerAfterHeardUpdate();
+			convo.store.dispatch({
+				type: 'transcript',
+				transcript: { text: 'Yes', isFinal: false, target: 'store-front/main' },
+			});
+			await convo.wait(SWITCH_OFFER_MS + 1_000);
+			expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+
+			convo.store.dispatch({ type: 'transcript', transcript: null });
+			convo.script([toolUse('t2', 'switch_view', { ref: 'checkout-api/main' })]);
+			await convo.say('Yes.', { startedAgoMs: 3_000 });
+
+			expect(convo.kernelSaw()).toContain('switch_offer');
+			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
+		});
+
+		it('a "no" begun before "Switch to …?" was asked → not its answer: the kernel reads it, the offer stays', async () => {
+			const convo = await offerAfterHeardUpdate();
+			const kernelBefore = convo.kernelSaw();
+
+			convo.script([toolUse('t2', 'ignore_words', {})]);
+			await convo.say('No.', { startedAgoMs: 5_000 });
+
+			expect(convo.kernelSaw()).not.toBe(kernelBefore);
+			expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+		});
+
+		it('"Switch to …?" answered with a no and more → new words: the kernel routes them, here they go to the screen', async () => {
+			const convo = await offerAfterHeardUpdate();
+
+			convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+			await convo.say('No, run the tests here instead.');
+
+			expect(convo.inputs).toContainEqual(
+				expect.objectContaining({
+					type: 'send',
+					ref: 'store-front/main',
+					text: 'No, run the tests here instead.',
+				}),
+			);
+			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
+			// Answered by the kernel's turn: the router lets the offer go once it is done.
+			expect(convo.store.state.switchOffer).toBeNull();
+		});
+
+		// Debug note 13: "For …?" lapsed while the developer was still saying "no", so the held words
+		// went to the screen and the "no" itself reached the kernel, which asked again.
+		it('"For …?" still being answered when its 8 s run out → waits for the words; the no keeps them on the screen, once', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			await hearUpdate(convo);
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+
+			// They start speaking before the wait ends; the words are routed after it.
+			convo.store.dispatch({
+				type: 'transcript',
+				transcript: { text: 'No', isFinal: false, target: 'store-front/main' },
+			});
+			await convo.wait(TARGET_ASK_MS + 1_000);
+			expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+
+			convo.store.dispatch({ type: 'transcript', transcript: null });
+			const kernelBefore = convo.kernelSaw();
+			await convo.say('No.', { startedAgoMs: 3_000 });
+			expect(convo.kernelSaw()).toBe(kernelBefore);
+			await convo.wait(TARGET_ASK_MS + 1_000);
+
+			const sends = convo.inputs.flatMap((input) =>
+				input.type === 'send' ? [[input.ref, input.text]] : [],
+			);
+
+			expect(sends).toEqual([['store-front/main', 'Review all of this.']]);
+			expect(convo.store.state.targetAsk).toBeNull();
+			expect(convo.inputs.filter((input) => input.type === 'ask_target')).toHaveLength(1);
+		});
+
+		const askedForCheckout = async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			await hearUpdate(convo);
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+			expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+			convo.store.dispatch({
+				type: 'transcript',
+				transcript: { text: 'Um', isFinal: false, target: 'store-front/main' },
+			});
+
+			return convo;
+		};
+
+		const sendsOf = (convo: ReturnType<typeof createConversation>) =>
+			convo.inputs.flatMap((input) => (input.type === 'send' ? [[input.ref, input.text]] : []));
+
+		it('"For …?" with a press that never ends → let go 30 s after its 8 s; the words stay on the screen', async () => {
+			const convo = await askedForCheckout();
+
+			await convo.wait(TARGET_ASK_MS + 29_000);
+			expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+
+			await convo.wait(1_500);
+
+			expect(convo.store.state.targetAsk).toBeNull();
+			expect(sendsOf(convo)).toEqual([['store-front/main', 'Review all of this.']]);
+		});
+
+		it('"For …?" waiting on words that end with nothing routed → let go within half a second of the quiet', async () => {
+			const convo = await askedForCheckout();
+			await convo.wait(TARGET_ASK_MS + 2_000);
+			expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+
+			convo.store.dispatch({ type: 'transcript', transcript: null });
+			await convo.wait(500);
+
+			expect(convo.store.state.targetAsk).toBeNull();
+			expect(sendsOf(convo)).toEqual([['store-front/main', 'Review all of this.']]);
+		});
+
+		it('"For …?" answered yes, the words still being read when its 8 s run out → it waits for them; the yes sends the held words there', async () => {
+			const held = createHeldJudge('target_answer');
+			const convo = createConversation({ refs: REFS, view: 'store-front/main', judge: held.judge });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			await hearUpdate(convo);
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+
+			held.arm();
+			const said = convo.say('Yes.');
+			await convo.wait(TARGET_ASK_MS + 1_000);
+
+			expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+			expect(sendsOf(convo)).toEqual([]);
+
+			held.release();
+			await said;
+
+			expect(sendsOf(convo)).toEqual([['checkout-api/main', 'Review all of this.']]);
+			expect(convo.store.state.targetAsk).toBeNull();
+		});
+
+		it('"Switch to …?" answered no, the words still being read when its 8 s run out → it waits for them; the no closes it', async () => {
+			const held = createHeldJudge('refuses');
+			const convo = await offerAfterHeardUpdate({ judge: held.judge });
+			const offer = convo.store.state.switchOffer;
+			expect(offer?.ref).toBe('checkout-api/main');
+
+			held.arm();
+			const said = convo.say('No.');
+			await convo.wait(SWITCH_OFFER_MS + 1_000);
+
+			expect(convo.store.state.switchOffer).toEqual(offer);
+
+			held.release();
+			await said;
+
+			expect(convo.store.state.switchOffer).toBeNull();
+			expect(convo.store.state.voiceLog['store-front/main']?.at(-1)).toMatchObject({
+				did: ['switch offer declined'],
+			});
 		});
 
 		it('"For …?" answered with new words → the held ones stay on the screen, the new ones are routed', async () => {

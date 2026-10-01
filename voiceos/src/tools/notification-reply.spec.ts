@@ -1,6 +1,6 @@
 import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
-import type { Action, State } from '../shared/protocol.js';
+import { SWITCH_OFFER_MS, type Action, type State } from '../shared/protocol.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { createFixtureState } from '../../test/support/state.js';
 import { executeTool, type ToolContext } from './tools.js';
@@ -124,6 +124,50 @@ describe('replies to a notification', () => {
 		]);
 		expect(refused.ok).toBe(false);
 		expect(quiet.actions).toEqual([]);
+	});
+
+	it('"Switch to it?" just asked about that session → "For …?" refused: the words answer the offer', async () => {
+		const state = {
+			...notified(),
+			switchOffer: { ref: NOTIFIER, at: NOW - 2_000, heardAt: NOW - 1_000 },
+		};
+		const heard = createContext(state, 'No.');
+		const result = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
+
+		expect(result.ok).toBe(false);
+		expect(heard.actions).toEqual([]);
+	});
+
+	it('"Switch to …?" about another session, or long since heard → "For …?" asked as usual', async () => {
+		const offers = [
+			{ ref: SCREEN, at: NOW - 2_000, heardAt: NOW - 1_000 },
+			{ ref: NOTIFIER, at: NOW - SWITCH_OFFER_MS - 2_000, heardAt: NOW - SWITCH_OFFER_MS - 1 },
+		];
+
+		for (const switchOffer of offers) {
+			const heard = createContext({ ...notified(), switchOffer }, 'review all of this');
+			const result = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
+
+			expect(result).toMatchObject({ ok: true, note: 'asked which session' });
+		}
+	});
+
+	it('words begun before "Switch to it?" was asked → not its answer: "For …?" asked as usual', async () => {
+		const state = {
+			...notified(),
+			switchOffer: { ref: NOTIFIER, at: NOW - 2_000, heardAt: NOW - 1_000 },
+		};
+		const heard = createContext(state, 'review all of this');
+		const result = await executeTool(
+			'ask_target',
+			{ ref: NOTIFIER },
+			{ ...heard.tools, heardFrom: NOW - 3_000 },
+		);
+
+		expect(result).toMatchObject({ ok: true, note: 'asked which session' });
+		expect(heard.actions).toEqual([
+			{ type: 'ask_target', ref: NOTIFIER, screen: SCREEN, text: 'review all of this' },
+		]);
 	});
 
 	it('the words already sent this turn → "For …?" refused: they cannot also be held', async () => {
