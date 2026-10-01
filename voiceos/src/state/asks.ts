@@ -715,3 +715,9 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 			});
 	}
 };
+
+// A permission, plan or question a session raised after `at`: then that, not "Switch to …?", is the
+// newest thing asked, and a bare yes or no answers it.
+export const hasQuestionSince = (state: State, at: number): boolean =>
+	state.asks.some((ask) => ask.at > at) ||
+	state.order.some((ref) => (state.sessions[ref]?.needsUser?.at ?? 0) > at);

@@ -14,7 +14,7 @@ import {
 } from '../speech/meanwhile.js';
 import { describeAskForMeanwhile } from './asks.js';
 import { readAnnouncedLabel } from './held-lines.js';
-import { sayRef, withoutEffects } from './helpers.js';
+import { readScreenRef, sayRef, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
 
 type MeanwhileAdded = Extract<Input, { type: 'meanwhile_added' }>;
@@ -111,7 +111,7 @@ const isSwitchOffered = ({ state, items, toldAsks, at }: IsSwitchOfferedParams):
 
 export const playMeanwhile = (state: State, at: number): ReducerResult => {
 	// The session on screen says its own updates.
-	const screenRef = state.view.kind === 'session' ? state.view.ref : null;
+	const screenRef = readScreenRef(state);
 	const items = readSaidItems(
 		state,
 		state.meanwhile.filter((item) => item.ref !== screenRef),

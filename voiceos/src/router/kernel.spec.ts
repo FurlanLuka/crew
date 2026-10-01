@@ -235,7 +235,7 @@ describe('Kernel', () => {
 		]);
 	});
 
-	it('the answer fallback to another session still sends there, beside a forward to the screen', async () => {
+	it('the answer fallback to another session whose question was heard still sends there, beside a forward to the screen', async () => {
 		const { kernel, actions } = createKernel(
 			[
 				[
@@ -244,7 +244,17 @@ describe('Kernel', () => {
 				],
 				[{ type: 'text', text: '' } as Block],
 			],
-			{ context: { view: 'store-front/main', needs: 'checkout-api/main' } },
+			{
+				context: {
+					view: 'store-front/main',
+					needs: 'checkout-api/main',
+					alert: {
+						text: 'checkout api, main asks: deploy the fix to staging?',
+						secondsAgo: 5,
+						ref: 'checkout-api/main',
+					},
+				},
+			},
 		);
 
 		await kernel.handle('yes, and run the tests', { forwardTo: 'store-front/main' });

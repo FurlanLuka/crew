@@ -280,8 +280,9 @@ what you meant. If the session needs more, it asks you.
 **Words go to the session on screen, or to one you name.** Say "checkout, is the build green?" and
 you stay where you are: the words go to checkout, and Voice OS says so and offers to follow them in
 one line: "Sent to checkout. Switch there?" (yes switches; anything else keeps you where you are).
-Checkout's answer comes back in the meanwhile line, like any other session's update. A session is
-named by its name ("checkout", "store front work one") or the name you gave it, not by its work.
+A short answer from checkout is said at once, with its name; a longer one comes back in the
+meanwhile line, like any other session's update. A session is named by its name ("checkout",
+"store front work one") or the name you gave it, not by its work.
 Words that only mention one ("put it on top of the checkout branch") get "For checkout?": yes sends
 them there; no, or silence, keeps them on the session on screen ("Kept on crew"). The eight seconds
 for an answer start when you have heard the question. Anything that names no session is for the

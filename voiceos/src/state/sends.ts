@@ -3,17 +3,8 @@
 // when the developer named it (tools/send-guard.ts): nothing here guesses where they were meant to go.
 import { isSwitchOfferFresh, type Input, type Stamped, type State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { sayAck, sayRef } from './helpers.js';
+import { readScreenRef, sayAck, sayRef } from './helpers.js';
 import { isReachable } from '../shared/machines.js';
-
-// A permission, plan or question a session raised after `at`: then that, not "Switch to …?", is the
-// newest thing asked, and a bare yes or no answers it.
-export const hasQuestionSince = (state: State, at: number): boolean =>
-	state.asks.some((ask) => ask.at > at) ||
-	state.order.some((ref) => (state.sessions[ref]?.needsUser?.at ?? 0) > at);
-
-const readScreenRef = (state: State): string | null =>
-	state.view.kind === 'session' ? state.view.ref : null;
 
 // "Switch to checkout?": asked aloud once, answered with a yes or let go.
 const offerSwitch = (state: State, ref: string, at: number): ReducerResult => ({

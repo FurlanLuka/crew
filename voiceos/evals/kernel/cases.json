@@ -657,7 +657,7 @@
 			"no_reply": true
 		},
 		{
-			"id": "notif-question-on-its-subject",
+			"id": "question-after-meanwhile",
 			"utterance": "Okay, what's the current price?",
 			"context": {
 				"view": "store-front/main",
@@ -687,6 +687,30 @@
 			"forbid_calls": ["send_to", "switch_view"],
 			"allow": [{ "name": "forward" }, { "name": "read_state" }],
 			"note": "Debug note 27: never routed to the session the meanwhile line named. Forwarding to the screen, or answering from the line just heard, are both fine."
+		},
+		{
+			"id": "notif-general-question",
+			"utterance": "Tell me about that.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 4,
+					"update": true,
+					"text": "Meanwhile, checkout api, main said: The retry backoff is in, and every retry test passes. Switch there?"
+				},
+				"update": {
+					"ref": "checkout-api/main",
+					"text": "Backoff now doubles from one second, capped at thirty, and the retry tests pass."
+				}
+			},
+			"calls": [
+				{
+					"name": "switch_view",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["send_to", "forward"]
 		},
 		{
 			"id": "what-did-i-miss",

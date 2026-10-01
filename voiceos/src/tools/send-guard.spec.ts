@@ -10,8 +10,10 @@ const SCREEN = 'store-front/main';
 const CHECKOUT = 'checkout-api/main';
 
 interface SendToParams {
-	utterance: string;
+	utterance: string | undefined;
 	ref?: string;
+	// The part the kernel gave, when it gave one.
+	text?: string;
 	judge?: Judge;
 	patch?: Partial<State>;
 	context?: Partial<ToolContext>;
@@ -21,6 +23,7 @@ interface SendToParams {
 const sendTo = async ({
 	utterance,
 	ref = CHECKOUT,
+	text,
 	judge,
 	patch = {},
 	context = {},
@@ -28,11 +31,11 @@ const sendTo = async ({
 	const { tools, actions } = createToolContext(patch);
 	const result = await executeTool(
 		'send_to',
-		{ ref, kind: 'instruction' },
+		{ ref, kind: 'instruction', ...(text ? { text } : {}) },
 		{
 			...tools,
 			...(judge ? { judge } : {}),
-			utterance,
+			...(utterance === undefined ? {} : { utterance }),
 			forwardTo: SCREEN,
 			screen: SCREEN,
 			...context,
@@ -41,6 +44,89 @@ const sendTo = async ({
 
 	return { result, actions };
 };
+
+// The tool context's sessions, plus these, each idle.
+const withSessions = (...refs: string[]): Partial<State> => {
+	const { tools } = createToolContext();
+	const state = tools.getState();
+
+	return {
+		sessions: {
+			...state.sessions,
+			...Object.fromEntries(
+				refs.map((ref) => [
+					ref,
+					{
+						...createSession({ ref, label: ref, branch: '', cwd: '/w', dirs: [], isPinned: false }),
+						status: 'idle' as const,
+					},
+				]),
+			),
+		},
+		order: [...state.order, ...refs],
+	};
+};
+
+const VM1 = {
+	vm1: {
+		id: 'vm1',
+		host: 'dev@vm1',
+		name: 'Build box',
+		status: 'connected' as const,
+		detail: null,
+		since: 0,
+	},
+};
+
+const sentRefs = (actions: { type: string; ref?: string }[]): (string | undefined)[] =>
+	actions.filter((action) => action.type === 'send').map((action) => action.ref);
+
+describe('which session the words name', () => {
+	it('a workspace with two worktrees: "checkout" names each of them; the screen gets nothing', async () => {
+		for (const ref of [CHECKOUT, 'checkout-api/wrk1']) {
+			const { actions } = await sendTo({
+				ref,
+				utterance: 'Tell checkout to run the tests.',
+				patch: withSessions('checkout-api/wrk1'),
+			});
+
+			expect(sentRefs(actions)).toEqual([ref]);
+		}
+	});
+
+	it('the same workspace on two machines, no machine said → either is named', async () => {
+		const patch = { ...withSessions('vm1:checkout-api/main'), machines: VM1 };
+
+		for (const ref of [CHECKOUT, 'vm1:checkout-api/main']) {
+			const { actions } = await sendTo({
+				ref,
+				utterance: 'Tell checkout to run the tests.',
+				patch,
+			});
+
+			expect(sentRefs(actions)).toEqual([ref]);
+		}
+	});
+
+	it('"vm1 checkout, run the tests" → vm1\'s is named; this Mac\'s is not, so the screen gets them', async () => {
+		const patch = { ...withSessions('vm1:checkout-api/main'), machines: VM1 };
+		const utterance = 'vm1 checkout, run the tests.';
+		const remote = await sendTo({ ref: 'vm1:checkout-api/main', utterance, patch });
+		const local = await sendTo({ ref: CHECKOUT, utterance, patch, judge: judgeNever });
+
+		expect(sentRefs(remote.actions)).toEqual(['vm1:checkout-api/main']);
+		expect(sentRefs(local.actions)).toEqual([SCREEN]);
+	});
+
+	it('two names in one sentence, one a display name → the other is still named', async () => {
+		const { actions } = await sendTo({
+			utterance: 'Tell checkout what Shop Main found.',
+			patch: { names: { 'store-front/wrk1': 'Shop Main' } },
+		});
+
+		expect(sentRefs(actions)).toEqual([CHECKOUT]);
+	});
+});
 
 describe('send_to a session not on screen', () => {
 	it('not named → the words go to the session on screen instead, nothing to the one named by the model', async () => {
@@ -55,10 +141,21 @@ describe('send_to a session not on screen', () => {
 		]);
 	});
 
-	it('named by its work only ("the checkout retry one") → the screen, like any unnamed send', async () => {
+	it('described only by its work ("the retry one", which it was asked for) → the screen, like any unnamed send', async () => {
+		const { tools } = createToolContext();
+		const sessions = tools.getState().sessions;
 		const { actions } = await sendTo({
 			utterance: 'The retry one, run the tests again.',
 			judge: judgeNever,
+			patch: {
+				sessions: {
+					...sessions,
+					[CHECKOUT]: {
+						...sessions[CHECKOUT]!,
+						requests: [{ text: 'Add retry backoff to checkout.', at: 0 }],
+					},
+				},
+			},
 		});
 
 		expect(actions.filter((action) => action.type === 'send').map((action) => action.ref)).toEqual([
@@ -154,6 +251,53 @@ describe('send_to a session not on screen', () => {
 		expect(actions).toEqual([expect.objectContaining({ type: 'send', ref: 'setup' })]);
 	});
 
+	it('a bare "yes" to a session waiting on a permission, unnamed → the answer tool is named, nothing sent', async () => {
+		const { result, actions } = await sendTo({
+			utterance: 'Yes.',
+			patch: {
+				asks: [
+					{
+						id: 'p1',
+						ref: CHECKOUT,
+						at: 0,
+						kind: 'permission',
+						toolName: 'Bash',
+						summary: 'run git push',
+						input: {},
+						suggestions: [],
+					},
+				],
+			},
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('use the answer tool');
+		expect(actions).toEqual([]);
+	});
+
+	it('earlier words pointed at a session not named ("I meant that for the other one") → ask which, nothing sent again', async () => {
+		const { result, actions } = await sendTo({
+			utterance: 'Sorry, I meant that for the other one.',
+			judge: judgeWith({ take_back_before: 'no' }),
+			context: { recentUtterances: ['Run the release checklist.'] },
+			text: 'Run the release checklist.',
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('say which session');
+		expect(actions).toEqual([]);
+	});
+
+	it('no words to check (an internal call) → sent as chosen', async () => {
+		const { actions } = await sendTo({
+			utterance: undefined,
+			judge: judgeNever,
+			text: 'Run the tests.',
+		});
+
+		expect(sentRefs(actions)).toEqual([CHECKOUT]);
+	});
+
 	it('on Mission Control → no screen to keep the words: sent as the kernel chose', async () => {
 		const { actions } = await sendTo({
 			utterance: 'Run the tests.',
@@ -162,5 +306,68 @@ describe('send_to a session not on screen', () => {
 		});
 
 		expect(actions).toEqual([expect.objectContaining({ type: 'send', ref: CHECKOUT })]);
+	});
+});
+
+describe('the answer fallback: words for a session that asked nothing pending', () => {
+	// checkout ended its turn on a question; heard: it was said aloud before the developer spoke.
+	const asking = (isHeard: boolean): Partial<State> => {
+		const { tools } = createToolContext();
+		const sessions = tools.getState().sessions;
+
+		return {
+			sessions: {
+				...sessions,
+				[CHECKOUT]: {
+					...sessions[CHECKOUT]!,
+					status: 'idle',
+					needsUser: { text: 'Deploy the fix to staging?', at: -10_000 },
+				},
+			},
+			spoken: isHeard
+				? [
+						{
+							id: 'asked',
+							text: 'checkout api, main asks: deploy the fix to staging?',
+							source: 'narrator',
+							at: -9_000,
+							endedAt: -6_000,
+							ref: CHECKOUT,
+							isAsking: true,
+						},
+					]
+				: [],
+		};
+	};
+
+	const answer = async (utterance: string, patch: Partial<State>) => {
+		const { tools, actions } = createToolContext(patch);
+		const result = await executeTool(
+			'answer',
+			{ ref: CHECKOUT, decision: 'yes', text: '' },
+			{ ...tools, utterance, forwardTo: SCREEN, screen: SCREEN, heardFrom: 0 },
+		);
+
+		return { result, actions };
+	};
+
+	it('its question heard → an unnamed "Yes." is its answer: sent there', async () => {
+		const { actions } = await answer('Yes.', asking(true));
+
+		expect(sentRefs(actions)).toEqual([CHECKOUT]);
+	});
+
+	it('its question never heard → an unnamed "Yes." is for the screen', async () => {
+		const { actions } = await answer('Yes.', asking(false));
+
+		expect(actions).toEqual([expect.objectContaining({ type: 'send', ref: SCREEN, text: 'Yes.' })]);
+	});
+
+	it('named but only mentioned → "For …?", the words held', async () => {
+		const said = 'Put it on top of the checkout api branch.';
+		const { result, actions } = await answer(said, asking(false));
+
+		expect(result).toMatchObject({ ok: true, note: 'asked which session' });
+		expect(actions).toEqual([{ type: 'ask_which', ref: CHECKOUT, screen: SCREEN, text: said }]);
 	});
 });

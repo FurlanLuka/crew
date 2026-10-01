@@ -81,18 +81,38 @@ export const readNamedInstead = (state: State, ref: string, utterance: string): 
 export const isOwnNameSaid = (state: State, ref: string, utterance: string): boolean =>
 	isDisplayNameSaid(state.names[ref], toPlainWords(utterance));
 
-export const findSessionsNamedIn = (state: State, utterance: string): string[] => {
+interface NamingText {
+	// Slashes and dashes kept: "checkout-api/main" is said in full.
+	text: string;
+	words: Set<string>;
+}
+
+const readNamingText = (utterance: string): NamingText => {
 	const text = ` ${utterance
 		.toLowerCase()
 		.replace(/[^a-z0-9/\s-]/g, ' ')
 		.replace(/\s+/g, ' ')} `;
-	const words = new Set(text.split(/[\s/-]+/).filter(Boolean));
-	const plain = toPlainWords(utterance);
-	const refsNamedInFull = state.order.filter(
-		(ref) =>
-			text.includes(splitRef(ref).local.toLowerCase()) ||
-			isDisplayNameSaid(state.names[ref], plain),
+
+	return { text, words: new Set(text.split(/[\s/-]+/).filter(Boolean)) };
+};
+
+const isNamedInFull = (state: State, ref: string, utterance: string, text: string): boolean =>
+	text.includes(splitRef(ref).local.toLowerCase()) ||
+	isDisplayNameSaid(state.names[ref], toPlainWords(utterance));
+
+// This one session named in the words, however many share its workspace: "checkout" names
+// checkout-api/main and checkout-api/wrk1 alike. Which of them the words are for is not decided here.
+export const isRefNamedIn = (state: State, ref: string, utterance: string): boolean => {
+	const { text, words } = readNamingText(utterance);
+
+	return (
+		isNamedInFull(state, ref, utterance, text) || isSessionNamed({ ref, text, words, order: [ref] })
 	);
+};
+
+export const findSessionsNamedIn = (state: State, utterance: string): string[] => {
+	const { text, words } = readNamingText(utterance);
+	const refsNamedInFull = state.order.filter((ref) => isNamedInFull(state, ref, utterance, text));
 
 	if (refsNamedInFull.length > 0) {
 		return refsNamedInFull;

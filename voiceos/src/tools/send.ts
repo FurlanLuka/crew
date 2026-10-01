@@ -1,6 +1,6 @@
 import type { Judge } from '../judge/judge.js';
 import { isHeldQuestion } from '../state/held-lines.js';
-import { hasQuestionSince } from '../state/sends.js';
+import { hasQuestionSince } from '../state/asks.js';
 import {
 	isSdkAsk,
 	isSwitchOfferFresh,

@@ -575,8 +575,11 @@ describe('a yes to Voice OS\'s own "Want me to ask it?"', () => {
 		);
 
 		// A bare "yes" names no session: it goes to the screen, never to checkout.
-		expect(unclear?.ref).not.toBe('checkout-api/main');
-		expect(long?.text).toBe('Yes, and also ask checkout api why the build is red.');
+		expect(unclear).toMatchObject({ ref: SCREEN, text: 'Yes.' });
+		expect(long).toMatchObject({
+			ref: 'checkout-api/main',
+			text: 'Yes, and also ask checkout api why the build is red.',
+		});
 	});
 });
 

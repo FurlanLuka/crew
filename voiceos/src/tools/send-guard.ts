@@ -4,15 +4,45 @@
 // only mention it, is asked of the judge.
 import { createLogger } from '../log.js';
 import { readSessionLabel } from '../shared/machines.js';
+import { readMachine } from '../shared/machine-ref.js';
 import type { State } from '../shared/protocol.js';
-import { type ToolResult, succeed } from './results.js';
+import { findMachineSaid } from './machines.js';
+import { type ToolResult, fail, succeed } from './results.js';
 import type { SentWords } from './send.js';
-import { findSessionsNamedIn, isOwnNameSaid } from './session-naming.js';
+import { isRefNamedIn } from './session-naming.js';
 import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
 
 export const ASK_WHICH_NOTE = 'asked which session';
+
+const toPlainWords = (text: string): string =>
+	` ${text
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim()} `;
+
+// "on vm1", "on my Mac", or a machine's name or id said beside the session ("vm1 checkout").
+const readMachineSaid = (state: State, utterance: string): string | null => {
+	const plain = toPlainWords(utterance);
+
+	return (
+		findMachineSaid(state, utterance) ??
+		Object.values(state.machines).find((machine) =>
+			[machine.id, machine.name].some((name) => plain.includes(toPlainWords(name))),
+		)?.id ??
+		null
+	);
+};
+
+// Its name, its workspace or the developer's own name for it said — and, when a machine is said too,
+// that machine is its. Two sessions sharing a workspace are both named by it: the judge and the kernel
+// already chose one, and a name said is never the screen's.
+const isNamed = (state: State, ref: string, utterance: string): boolean => {
+	const machine = readMachineSaid(state, utterance);
+
+	return isRefNamedIn(state, ref, utterance) && (machine === null || readMachine(ref) === machine);
+};
 
 interface GuardSendToParams {
 	state: State;
@@ -51,10 +81,18 @@ export const guardSendTo = async ({
 	}
 
 	const label = readSessionLabel(state, ref);
-	const isNamed =
-		findSessionsNamedIn(state, utterance).includes(ref) || isOwnNameSaid(state, ref, utterance);
 
-	if (!isNamed) {
+	if (!isNamed(state, ref, utterance)) {
+		// "I meant that for the other one": the screen already got those words; sending them there again
+		// would only repeat them.
+		if (words.source === 'earlier') {
+			log.info('earlier words, no session named: asked which', { ref });
+
+			return fail(
+				'Not sent: the developer pointed earlier words at another session without naming it. Ask them in a few words to say which session; nothing was sent.',
+			);
+		}
+
 		log.info('not named: words kept on the screen', { ref, screen });
 
 		return 'screen';

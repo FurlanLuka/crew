@@ -158,15 +158,21 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   while "switch to it" right after it switches at once (`refuseAnnouncedOnly`).
 - **Words go to the screen, or to a session named in them.** Nothing guesses that words were "really"
   for another session. `send_to` X from a session's screen goes through only when X is named in the
-  developer's words, checked in code (`findSessionsNamedIn`, `isOwnNameSaid`), and the judge's
-  `spoken_to` says they speak to X rather than mention it (`tools/send-guard.ts`); unnamed, the
-  kernel is told to forward them. Named but only mentioned, Voice OS asks "For X?" (`ask_which`,
-  `state/target-ask.ts`, settled by `router/target.ts`) and holds the words: yes sends them there,
-  anything else keeps them on the screen. The exceptions are code paths, not guesses: the setup
-  session (`isMisroutedToSetup`), a yes to "Want me to ask it?" (`askedBack`), earlier words pointed
-  at a named session ("I meant that for X"), the `answer` tool, and Mission Control, where the kernel
-  asks which session itself. A session's lines off screen are never said in full: they come back
-  through the meanwhile line.
+  developer's words, checked in code (`isRefNamedIn`: its ref, its workspace — shared by siblings, so
+  ambiguous still counts as named — or the developer's own name for it, on the machine said if one
+  is), and the judge's `spoken_to` says they speak to X rather than mention it
+  (`tools/send-guard.ts`). Unnamed, the code forwards them to the screen itself (`forwardChosen`,
+  `tools/forward.ts`); earlier words pointed at an unnamed session ("I meant that for the other one")
+  are refused instead, since the screen already got them. Named but only mentioned, Voice OS asks
+  "For X?" (`ask_which`, `state/target-ask.ts`, settled by `router/target.ts`) and holds the words:
+  yes sends them there, anything else keeps them on the screen. A bare yes or no to a session's
+  permission or plan is sent to the answer tool first (`describeMisroutedAnswer`). The exceptions
+  are code paths, not guesses: the setup session (`isMisroutedToSetup`), a yes to "Want me to ask
+  it?" (`askedBack`), earlier words pointed at a named session ("I meant that for X"), the `answer`
+  tool's reply to a question the session ended its turn on — only once that question was heard
+  (`findLastAskedAloud`, `wasJustHeardAbout`) — and Mission Control, where the kernel asks which
+  session itself. A session's long lines off screen come back through the meanwhile line; a short
+  one (`isShortLine`) is still said at once, named.
 - **"Sent to X. Switch there?"** (`state/sends.ts`, `followSends`): spoken words that went to a
   session not on screen say so and offer the switch in the same line (`state.switchOffer`), unless
   X is out of reach, X has its own open question, or an offer is still open; typed words get "Sent to
