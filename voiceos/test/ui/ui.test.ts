@@ -381,6 +381,34 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('a held press ends when the window loses focus, when the page is hidden, and on a Space key-up in the text box', async () => {
+		const { context, page, client } = await openMicTab();
+		await page.keyboard.down('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+		await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 1);
+		await page.keyboard.up('Space');
+
+		await page.keyboard.down('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 2);
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+			Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+		});
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 2);
+		await page.keyboard.up('Space');
+
+		// Focus moved into the input mid-press: its key-up still ends the press.
+		await page.keyboard.down('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 3);
+		await page.locator('textarea').focus();
+		await page.keyboard.up('Space');
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 3);
+		expect(listFromClient(client, 'ptt_start')).toHaveLength(3);
+		await context.close();
+	}, 20_000);
+
 	it('hands-free chosen → echo-cancelled mic, listen_start at the device rate with the mode, audio with no key held; Space starts no press; push to talk → listen_stop', async () => {
 		const { context, page, client } = await openMicTab();
 		await chooseMode(page, 'Hands-free');
@@ -651,6 +679,44 @@ describe('voice os ui', () => {
 				document.querySelector<HTMLTextAreaElement>('footer textarea')?.value ===
 				'the whole brain dump',
 		);
+		await context.close();
+	}, 20_000);
+
+	it('words kept while something is typed → appended after it, the typed words first', async () => {
+		const { context, page, client } = await openMicTab();
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		await field.fill('check the retries');
+		gateway.send(client, {
+			type: 'dictation_kept',
+			text: 'and the backoff test',
+			reason: 'the press reached its limit',
+		});
+		await page.waitForFunction(
+			() =>
+				document.querySelector<HTMLTextAreaElement>('footer textarea')?.value ===
+				'check the retries and the backoff test',
+		);
+		await context.close();
+	}, 20_000);
+
+	it('a dictation survives leaving the page: blur and a hidden page send no ptt_stop', async () => {
+		const { context, page, client } = await openMicTab();
+		await chooseMode(page, 'Dictation');
+		await page.getByRole('button', { name: 'Start dictating' }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+
+		await page.evaluate(() => {
+			window.dispatchEvent(new Event('blur'));
+			Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+			Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+		});
+		await Bun.sleep(500);
+		expect(listFromClient(client, 'ptt_stop')).toHaveLength(0);
+		expect(await page.locator('.dictation-clock').isVisible()).toBe(true);
+
+		await page.getByRole('button', { name: 'Send', exact: true }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 1);
 		await context.close();
 	}, 20_000);
 

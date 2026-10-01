@@ -659,8 +659,8 @@ export type ServerMessage =
 	| { type: 'listen_state'; isAwake: boolean }
 	// On demand: speech without "Voice OS" was heard and left alone.
 	| { type: 'heard_ignored' }
-	// A dictation that had nowhere to go (no session on screen, or it waits on an answer): its words
-	// come back into this tab's input, to send from there.
+	// A dictation that had nowhere to go (no session on screen, or it waits on an answer), or a press
+	// whose release never came: its words come back into this tab's input, to send from there.
 	| { type: 'dictation_kept'; text: string; reason: string }
 	// "Open the doc": opened in this tab's browser, since the developer may be anywhere.
 	| { type: 'open_url'; url: string; title: string }

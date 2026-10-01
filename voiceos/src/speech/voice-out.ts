@@ -7,7 +7,12 @@ import {
 	type State,
 	type ToldAsk,
 } from '../shared/protocol.js';
-import { prefixSessionName, stripSessionName, stripTags } from '../shared/spoken.js';
+import {
+	normalizeUtterance,
+	prefixSessionName,
+	stripSessionName,
+	stripTags,
+} from '../shared/spoken.js';
 import { readLabel } from '../state/helpers.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import {
@@ -105,6 +110,7 @@ interface Playing {
 const SAID_PREVIEW_CHARS = 80;
 
 const log = createLogger('voice-out');
+
 export const REMINDER_MS = 5 * 60_000;
 // Per ask: a question left overnight is not repeated every five minutes until morning.
 export const MAX_REMINDERS = 3;
@@ -190,6 +196,15 @@ export class VoiceOut {
 			return;
 		}
 
+		// Voice OS's own word said twice in a breath ("Switching to crew." from the switch and again as the
+		// kernel's reply — debug note 31): the second is dropped while the first is still to be heard.
+		// Once that one has played, or was cut, the same words are a new line ("Sent to checkout." twice).
+		if (source === 'kernel' && this.isKernelLineAhead(text)) {
+			log.info('repeated line dropped', { text });
+
+			return;
+		}
+
 		clipCounter += 1;
 		const id = `s${clipCounter}`;
 		const result = enqueue(this.queue, {
@@ -236,6 +251,13 @@ export class VoiceOut {
 		}
 
 		void this.pump();
+	}
+
+	private isKernelLineAhead(text: string): boolean {
+		const said = normalizeUtterance(text);
+		const ahead = this.playing ? [this.playing.item, ...this.queue.items] : this.queue.items;
+
+		return ahead.some((item) => item.source === 'kernel' && normalizeUtterance(item.text) === said);
 	}
 
 	dropQueuedAbout(ref: string, before: number): void {

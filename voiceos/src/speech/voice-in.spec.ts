@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { decodeWav } from './wav.js';
 import { Store } from '../state/store.js';
 import type { SttSessionOptions } from './stt.js';
-import { VoiceInput, type VoiceInputOptions } from './voice-in.js';
+import { MAX_PRESS_MS, VoiceInput, type VoiceInputOptions } from './voice-in.js';
 import { computeReconnectDelay } from './listener.js';
 import { configureLog } from '../log.js';
 
@@ -65,8 +65,9 @@ const createHarness = ({
 	let session: SttSessionOptions | null = null;
 	const sessions: SttSessionOptions[] = [];
 	const sent: number[] = [];
-	let ended = false;
+	let ends = 0;
 	const cancelled: number[] = [];
+	const kept: { text: string; client: string }[] = [];
 	const listenOffs: { client: string; reason: string }[] = [];
 	const listenStates: boolean[] = [];
 	let ignored = 0;
@@ -85,6 +86,7 @@ const createHarness = ({
 			dictated.push(isDictated);
 			startedAts.push(startedAt);
 		},
+		onKept: (text, client) => kept.push({ text, client }),
 		onTalkStart: () => talkStarts.push(1),
 		onTalkEnd: () => talkEnds.push(1),
 		debugAudioDir,
@@ -97,7 +99,7 @@ const createHarness = ({
 			return {
 				send: (chunk) => sent.push(chunk.byteLength),
 				end: async () => {
-					ended = true;
+					ends += 1;
 				},
 				cancel: () => {
 					cancelled.push(index);
@@ -117,6 +119,7 @@ const createHarness = ({
 		sent,
 		sessions,
 		cancelled,
+		kept,
 		listenOffs,
 		listenStates,
 		get ignored() {
@@ -126,7 +129,10 @@ const createHarness = ({
 			return session;
 		},
 		get ended() {
-			return ended;
+			return ends > 0;
+		},
+		get ends() {
+			return ends;
 		},
 	};
 };
@@ -344,16 +350,71 @@ describe('VoiceInput', () => {
 		expect(harness.utterances).toEqual(['go home']);
 	});
 
-	it("a press never released → dropped after the cap, and the tab's next press is routed", async () => {
+	it('the press cap is two minutes', () => expect(MAX_PRESS_MS).toBe(2 * 60_000));
+
+	// Debug note 30: a long press lost everything said in it. A press never released is not a turn,
+	// but what it heard is kept for the developer to send.
+	it("a press held past the cap → its stream ended, its words kept as a draft, nothing routed; the tab's next press is routed", async () => {
 		const harness = createHarness({ maxPressMs: 20 });
 		harness.input.start('c1');
+		expect(harness.ended).toBe(false);
 		await Bun.sleep(40);
-		expect(harness.cancelled).toEqual([0]);
+		expect(harness.ended).toBe(true);
+		expect(harness.cancelled).toEqual([]);
+		harness.sessions[0]?.onFinal('a long thought said in one go');
+		expect(harness.kept).toEqual([{ text: 'a long thought said in one go', client: 'c1' }]);
+		expect(harness.utterances).toEqual([]);
+		expect(harness.store.state.spoken.at(-1)?.text).toBe(
+			'Not sent — what you said is in the text box.',
+		);
 
 		harness.input.start('c1');
 		harness.input.stop('c1');
 		harness.sessions[1]?.onFinal('go home');
 		expect(harness.utterances).toEqual(['go home']);
+		expect(harness.kept).toHaveLength(1);
+	});
+
+	it("a capped press that heard nothing → nothing kept, nothing routed; the tab's next press is routed", async () => {
+		const harness = createHarness({ maxPressMs: 20 });
+		harness.input.start('c1');
+		await Bun.sleep(40);
+		harness.sessions[0]?.onFinal('   ');
+		expect(harness.kept).toEqual([]);
+		expect(harness.utterances).toEqual([]);
+
+		harness.input.start('c1');
+		harness.input.stop('c1');
+		harness.sessions[1]?.onFinal('go home');
+		expect(harness.utterances).toEqual(['go home']);
+	});
+
+	it('released after the cap → handled once: no second end, the words kept once', async () => {
+		const harness = createHarness({ maxPressMs: 20 });
+		harness.input.start('c1');
+		await Bun.sleep(40);
+		harness.input.stop('c1');
+		harness.sessions[0]?.onFinal('x');
+		expect(harness.ends).toBe(1);
+		expect(harness.kept).toEqual([{ text: 'x', client: 'c1' }]);
+		expect(harness.utterances).toEqual([]);
+	});
+
+	it("a new press while one is stuck → the stuck one's words kept as a draft, the new one routed", () => {
+		const harness = createHarness();
+		harness.input.start('c1');
+		const [stuck] = harness.sessions;
+		harness.input.start('c1');
+		const fresh = harness.sessions[1];
+		expect(harness.ended).toBe(true);
+		expect(harness.cancelled).toEqual([]);
+
+		harness.input.stop('c1');
+		fresh?.onFinal('run the tests');
+		expect(harness.utterances).toEqual([]);
+		stuck?.onFinal('the room talking for a minute');
+		expect(harness.kept).toEqual([{ text: 'the room talking for a minute', client: 'c1' }]);
+		expect(harness.utterances).toEqual(['run the tests']);
 	});
 
 	it('a released press is not dropped by the cap', async () => {
@@ -1303,7 +1364,7 @@ describe('VoiceInput on demand', () => {
 			expect(harness.dictated).toEqual([false]);
 		});
 
-		it('reaches its cap → ended and sent, never dropped; a plain press past the press cap still drops', async () => {
+		it('reaches its cap → ended and sent, never dropped or kept', async () => {
 			const harness = createHarness({ maxPressMs: 10, maxDictationMs: 20 });
 			dictate(harness);
 			await Bun.sleep(40);

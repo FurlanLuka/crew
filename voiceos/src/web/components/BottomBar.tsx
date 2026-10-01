@@ -25,7 +25,7 @@ interface BottomBarProps {
 	// On demand: "Voice OS" was heard; ignoredAt: when speech without it was last left alone.
 	isAwake: boolean;
 	ignoredAt: number;
-	// A dictation the server could not send: it comes back into the input.
+	// A dictation the server could not send, or a press that never got its release: back into the input.
 	keptDictation: KeptDictation | null;
 	send: (message: ClientMessage) => void;
 	sendBinary: (chunk: ArrayBuffer) => void;
@@ -240,7 +240,10 @@ export const BottomBar = ({
 
 	useEffect(() => {
 		if (keptDictation) {
-			setDraft(keptDictation.text);
+			// After anything already typed: a stuck press can end while the developer types.
+			setDraft((typed) =>
+				typed.trim() ? `${typed.trimEnd()} ${keptDictation.text}` : keptDictation.text,
+			);
 			fieldRef.current?.focus();
 		}
 	}, [keptDictation]);
@@ -283,7 +286,14 @@ export const BottomBar = ({
 		};
 
 		const handleKeyUp = (event: KeyboardEvent) => {
-			if (event.code !== 'Space' || isTypingInField(event) || isOnOwnControl(event)) {
+			// A live press always takes its release, wherever focus moved meanwhile: a swallowed key-up
+			// left the mic open for minutes (debug note 30).
+			const isLivePress = isPressedRef.current && listenModeRef.current !== 'dictation';
+
+			if (
+				event.code !== 'Space' ||
+				(!isLivePress && (isTypingInField(event) || isOnOwnControl(event)))
+			) {
 				return;
 			}
 
@@ -295,12 +305,30 @@ export const BottomBar = ({
 			}
 		};
 
+		// A page that loses focus or is hidden never sees the key-up: the press ends here instead.
+		// A dictation is ended only by Send, so it carries on.
+		const endPressOnLeave = () => {
+			if (listenModeRef.current !== 'dictation') {
+				handleTalkStop();
+			}
+		};
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'hidden') {
+				endPressOnLeave();
+			}
+		};
+
 		window.addEventListener('keydown', handleKeyDown);
 		window.addEventListener('keyup', handleKeyUp);
+		window.addEventListener('blur', endPressOnLeave);
+		document.addEventListener('visibilitychange', handleVisibilityChange);
 
 		return () => {
 			window.removeEventListener('keydown', handleKeyDown);
 			window.removeEventListener('keyup', handleKeyUp);
+			window.removeEventListener('blur', endPressOnLeave);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
 		};
 	}, [handleTalkStart, handleTalkStop]);
 

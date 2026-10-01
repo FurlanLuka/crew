@@ -15,7 +15,7 @@ const REFS = ['store-front/main', 'checkout-api/main', 'signals/main'];
 const UPDATE =
 	'The retry backoff now doubles from one second up to thirty, and every retry test passes again.';
 const MEANWHILE_LINE =
-	'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry…';
+	'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry test passes again.';
 
 const hearUpdate = async (convo: ReturnType<typeof createConversation>): Promise<void> => {
 	await convo.answer('checkout-api/main', UPDATE);
@@ -118,7 +118,7 @@ describe('conversations', () => {
 
 		expect(convo.heard).toEqual([
 			'> Run the tests.',
-			'Meanwhile, store front, main said: The whole suite ran in four minutes, all 214 tests pass, and the flaky… Switch there?',
+			'Meanwhile, store front, main said: The whole suite ran in four minutes, all 214 tests pass, and the flaky cart test is gone. Switch there?',
 		]);
 	});
 
@@ -143,6 +143,36 @@ describe('conversations', () => {
 			'checkout api, main stopped. Back to store front, main.',
 		]);
 		expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'store-front/main' });
+	});
+
+	// Debug note 31: the switch says it, and the model's reply says it again.
+	it('a switch the model also says in its reply → "Switching to …" heard once', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		// A switch is silent: the model's text beside it is the reply, with no second call.
+		convo.script([
+			toolUse('t1', 'switch_view', { ref: 'checkout-api/main' }),
+			reply('Switching to checkout api, main.'),
+		]);
+		await convo.say('Switch to checkout api.');
+		await convo.wait(2_000);
+
+		expect(convo.heard).toEqual(['> Switch to checkout api.', 'Switching to checkout api, main.']);
+	});
+
+	it('two quick sends to the same session → each "Sent to …" heard', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+		await convo.say('Checkout api, run the tests.');
+		convo.script([toolUse('t2', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+		await convo.say('Checkout api, and the linter.');
+
+		expect(
+			convo.heard.filter((line) => line.startsWith('Sent to checkout api, main')),
+		).toHaveLength(2);
 	});
 
 	it('words that name another session without speaking to it → "For …?"; no keeps them on the screen', async () => {
@@ -269,7 +299,7 @@ describe('conversations', () => {
 		await convo.wait(6_000);
 
 		expect(convo.heard.at(-1)).toBe(
-			'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry… Switch there?',
+			'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry test passes again. Switch there?',
 		);
 		expect(convo.store.state.meanwhile).toEqual([]);
 	});

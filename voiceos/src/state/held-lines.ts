@@ -1,4 +1,4 @@
-import { cleanSessionLine, cleanSpokenText, stripTags } from '../shared/spoken.js';
+import { cleanSessionLine, cleanSpokenText, isSentenceEnd, stripTags } from '../shared/spoken.js';
 import type { HeldLine, Session, SpokenLine, Stamped, State } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
@@ -104,16 +104,58 @@ export const describeAnnouncement = ({
 };
 
 const DONE_ABOUT_WORDS = 14;
+const DONE_ABOUT_SENTENCE_WORDS = 28;
 const MIN_SAID_WORDS = 2;
 
 // What a finished turn is announced with: the session's own last line, shortened. A summary of the
 // session's long-running work goes stale ("finished the architecture docs" for a turn that
 // ended "checking whether the eval runs finished"), and a turn ending is not the work finishing.
+// Whole sentences, as many as fit: a line cut mid-sentence ("CI is running now, and once it
+// passes…") says less than its first sentence alone (debug note 29). A first sentence longer than
+// the cap is kept whole up to a longer one; only past that is it cut.
+const countWords = (text: string): number => text.split(/\s+/).filter(Boolean).length;
+
+// Split on words, not on every period: "v5.7.0", "e.g.", "92.5" and "voice-out.ts" end no sentence,
+// and joining the words back changes no text.
+const splitSentences = (words: string[]): string[][] => {
+	const sentences: string[][] = [];
+	let current: string[] = [];
+
+	for (const word of words) {
+		current.push(word);
+
+		if (isSentenceEnd(word)) {
+			sentences.push(current);
+			current = [];
+		}
+	}
+
+	return current.length > 0 ? [...sentences, current] : sentences;
+};
+
+const keepSentences = (line: string): string => {
+	const words = line.split(/\s+/).filter(Boolean);
+	let kept: string[] = [];
+
+	for (const sentence of splitSentences(words)) {
+		const next = [...kept, ...sentence];
+		const limit = kept.length > 0 ? DONE_ABOUT_WORDS : DONE_ABOUT_SENTENCE_WORDS;
+
+		if (next.length > limit) {
+			break;
+		}
+
+		kept = next;
+	}
+
+	return kept.length > 0 ? kept.join(' ') : capWords(line, DONE_ABOUT_SENTENCE_WORDS);
+};
+
 export const describeDoneAbout = (said: string | null): string | null => {
 	const line = stripTags(cleanSpokenText(said ?? ''));
 
-	return line.split(/\s+/).filter(Boolean).length >= MIN_SAID_WORDS
-		? capWords(line, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
+	return countWords(line) >= MIN_SAID_WORDS
+		? keepSentences(line).replace(/[.!?,;:]+(…?)$/, '$1')
 		: null;
 };
 

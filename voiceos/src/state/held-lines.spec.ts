@@ -876,12 +876,76 @@ describe('what a "done" names', () => {
 			'Checking whether the detached eval runs finished before deciding',
 		],
 		[
-			'a long line → its first fourteen words',
+			'a first sentence longer than fourteen words → kept whole',
 			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today.',
-			'Pushed the telephony branches, opened the pull request, and asked for a review from…',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today',
+		],
+		[
+			'several sentences → the whole ones that fit, never one cut in half (note 29)',
+			'PR 41 is merged into main. CI is running now, and once it passes I will tag and release v5.7.0 for you.',
+			'PR 41 is merged into main',
+		],
+		[
+			'two short sentences → both',
+			'Tests pass. The branch is pushed.',
+			'Tests pass. The branch is pushed',
+		],
+		[
+			'a version never ends a sentence: "v5.7.0." joins the next one (accepted)',
+			'Bumped to v5.7.0. Tests pass.',
+			'Bumped to v5.7.0. Tests pass',
+		],
+		[
+			'a file name → unchanged',
+			'Fixed voice-out.ts and added a test.',
+			'Fixed voice-out.ts and added a test',
+		],
+		['a decimal → unchanged', 'Coverage is 92.5 percent now.', 'Coverage is 92.5 percent now'],
+		[
+			'"e.g." does not end the sentence',
+			'Pick a short name, e.g. store front or checkout api, for the worktree you are about to make. Then run setup.',
+			'Pick a short name, e.g. store front or checkout api, for the worktree you are about to make',
+		],
+		[
+			'a version in the first sentence, a second one over the limit → only the first',
+			'Released v5.7.0 to npm. The changelog lists the import wizard, the base table, the check card fixes and the proxy page.',
+			'Released v5.7.0 to npm',
+		],
+		[
+			'a seventeen-word first sentence → kept whole',
+			'Tagged and released v5.7.0 with the new import wizard, the base table and the check card fixes.',
+			'Tagged and released v5.7.0 with the new import wizard, the base table and the check card fixes',
+		],
+		[
+			'a version and a decimal in one sentence → unchanged',
+			'The suite now runs in 2.5 seconds, down from nine.',
+			'The suite now runs in 2.5 seconds, down from nine',
+		],
+		[
+			'a first sentence of fifteen to twenty-eight words, then a short one → only the first',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today. Done.',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today',
 		],
 		['voice tags dropped', '[relieved] Tests pass now.', 'Tests pass now'],
 		['one word → nothing', 'Done.', null],
 		['nothing at all', null, null],
 	])('%s', (_, said, expected) => expect(describeDoneAbout(said)).toBe(expected));
+
+	it('a first sentence of exactly twenty-eight words → kept whole, no "…"', () =>
+		expect(
+			describeDoneAbout(
+				'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28.',
+			),
+		).toBe(
+			'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28',
+		));
+
+	it('a first sentence of twenty-nine words → its first twenty-eight, with "…"', () =>
+		expect(
+			describeDoneAbout(
+				'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28 w29. Then more.',
+			),
+		).toBe(
+			'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28…',
+		));
 });
