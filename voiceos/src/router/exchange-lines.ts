@@ -76,7 +76,9 @@ export const describeNotificationLines = ({
 		.flatMap(readLineRefs)
 		.findLast((other) => other !== ref);
 
+	// Its words, not only whose it was: "what's the current price?" after a line about pricing picks it
+	// up without naming the session.
 	return [
-		`Replying to ${nameRef(ref)}'s notification (the newest one heard): "okay", "got it", "thanks" → ignore_words. "Switch to it" → switch_view ${ref}. A general question about it ("tell me about that", "what happened?") → switch_view ${ref} alone: its update plays there, nothing is sent. A specific question ("what did it change in the redirect?") → switch_view ${ref} with skip_held true and send_to ${ref} with the words. An instruction that follows from its update ("great, push it", "then open a PR") → send_to ${ref} with the words. Words that could be that reply or for the work on screen ("review all of this") → ask_target ${ref}, and nothing else. Words clearly about the work on screen stay there.${older ? ` "No, the other one" → the same for ${older}.` : ''}`,
+		`Replying to ${nameRef(ref)}'s notification (the newest one heard, ${quote(newest?.text ?? '')}): a question about what it said — its subject, figures or names — is a reply to it even without naming ${nameRef(ref)}, and is never for the session on screen unless that session's own work is about the same thing. "okay", "got it", "thanks" → ignore_words. "Switch to it" → switch_view ${ref}. A general question about it ("tell me about that", "what happened?") → switch_view ${ref} alone: its update plays there, nothing is sent. A specific question ("what did it change in the redirect?") → switch_view ${ref} with skip_held true and send_to ${ref} with the words. An instruction that follows from its update ("great, push it", "then open a PR") → send_to ${ref} with the words. Words that could be that reply or for the work on screen ("review all of this") → ask_target ${ref}, and nothing else. Words clearly about the work on screen stay there.${older ? ` "No, the other one" → the same for ${older}.` : ''}`,
 	];
 };
