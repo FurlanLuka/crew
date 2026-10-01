@@ -495,7 +495,6 @@ export type Action =
 	| { type: 'interrupt'; ref: string; isCorrection?: true }
 	| { type: 'allow_denied'; denialId: string }
 	| { type: 'dismiss_denial'; denialId: string }
-	| { type: 'dismiss_needs_user'; ref: string }
 	| { type: 'dev_start'; ref: string }
 	| { type: 'dev_stop'; ref: string }
 	| { type: 'dev_restart'; ref: string }

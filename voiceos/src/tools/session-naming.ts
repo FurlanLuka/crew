@@ -77,6 +77,10 @@ export const readNamedInstead = (state: State, ref: string, utterance: string): 
 	return named.length === 1 ? (named[0] ?? null) : null;
 };
 
+// The developer's own name for the session was said.
+export const isOwnNameSaid = (state: State, ref: string, utterance: string): boolean =>
+	isDisplayNameSaid(state.names[ref], toPlainWords(utterance));
+
 export const findSessionsNamedIn = (state: State, utterance: string): string[] => {
 	const text = ` ${utterance
 		.toLowerCase()

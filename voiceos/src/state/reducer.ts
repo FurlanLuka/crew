@@ -547,15 +547,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			};
 		}
 
-		case 'dismiss_needs_user':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({
-					...session,
-					needsUser: null,
-					heldLine: null,
-				})),
-			);
-
 		case 'session_started': {
 			if (!state.sessions[input.ref]) {
 				return withoutEffects(state);

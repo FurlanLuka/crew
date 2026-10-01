@@ -20,9 +20,7 @@ import {
 	type SentWords,
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
-import { countSpokenWords, readLabel } from '../state/helpers.js';
-import { readSubject } from '../state/exchange.js';
-import { readLastHeardAbout } from './asked-aloud.js';
+import { countSpokenWords } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { pinSession } from './pin.js';
@@ -39,7 +37,12 @@ import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
 import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
-import { findNamedRefs, findSessionsNamedIn, readNamedInstead } from './session-naming.js';
+import {
+	findNamedRefs,
+	findSessionsNamedIn,
+	isOwnNameSaid,
+	readNamedInstead,
+} from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import {
 	describeMachineSwitch,
@@ -316,47 +319,7 @@ const refuseOtherMachine = ({
 	);
 };
 
-interface DescribeUnnamedElsewhereParams {
-	state: State;
-	ref: string;
-	input: Record<string, unknown>;
-	toolContext: ToolContext;
-}
-
-// Words for another session that never name it, said after the session on screen last spoke: they
-// pick up the screen, not an older line from elsewhere (debug notes 18, 21: "make sure all branches are
-// named the same" went to the session heard a minute earlier).
-const describeUnnamedElsewhere = ({
-	state,
-	ref,
-	input,
-	toolContext,
-}: DescribeUnnamedElsewhereParams): string | null => {
-	const screen = toolContext.forwardTo;
-	const heardFrom = toolContext.heardFrom ?? toolContext.now();
-	const utterance = toolContext.utterance ?? '';
-
-	if (
-		!screen ||
-		!state.sessions[screen] ||
-		screen === ref ||
-		input.by_work === true ||
-		state.sessions[ref]?.isPinned ||
-		readSubject(state, heardFrom) === ref ||
-		findSessionsNamedIn(state, utterance).includes(ref)
-	) {
-		return null;
-	}
-
-	const screenAt = readLastHeardAbout({ spoken: state.spoken, ref: screen, heardFrom });
-	const targetAt = readLastHeardAbout({ spoken: state.spoken, ref, heardFrom });
-
-	if (screenAt === null || (targetAt !== null && targetAt > screenAt)) {
-		return null;
-	}
-
-	return `Not sent: ${readLabel(state, ref)} was not named, and ${readLabel(state, screen)} on screen spoke after it. Words not clearly for ${ref} are for the screen: forward them. If they named ${ref} by its work, call send_to again with by_work true.`;
-};
+const GO_BACK_TO_WORDS = 8;
 
 export const executeTool = async (
 	name: string,
@@ -513,14 +476,6 @@ export const executeTool = async (
 
 			if (misroutedAnswer) {
 				return fail(misroutedAnswer);
-			}
-
-			const unnamed = describeUnnamedElsewhere({ state, ref, input, toolContext });
-
-			if (unnamed) {
-				log.info('unnamed session kept off', { ref, screen: toolContext.forwardTo });
-
-				return fail(unnamed);
 			}
 
 			if (
@@ -758,10 +713,29 @@ export const executeTool = async (
 		case 'answer':
 			return answerAsk({ state, input, toolContext });
 
-		case 'go_back':
+		case 'go_back': {
+			// "Go back to speak main" names where to (debug note 25): the session named, not the screen
+			// before this one. The developer's own name wins when a ref sounds the same.
+			const screen = state.view.kind === 'session' ? state.view.ref : null;
+			const utterance = toolContext.utterance ?? '';
+			// Only a short "go back to X": longer words may name a session for something else.
+			const named =
+				countSpokenWords(utterance) <= GO_BACK_TO_WORDS
+					? findSessionsNamedIn(state, utterance).filter((ref) => ref !== screen)
+					: [];
+			const target =
+				named.length === 1 ? named[0] : named.find((ref) => isOwnNameSaid(state, ref, utterance));
+
+			if (target) {
+				log.info('go back to the session named', { ref: target });
+
+				return executeTool('switch_view', { ref: target }, toolContext);
+			}
+
 			toolContext.dispatch({ type: 'go_back' });
 
 			return succeed('went back: Voice OS says where to');
+		}
 
 		case 'pin_session':
 			return pinSession({

@@ -244,6 +244,21 @@ export const countPinned = (state: State): SessionCounts => {
 	};
 };
 
+// What the top bar counts over: the pins inside Pinned, else one machine's sessions (none: all).
+export type CountScope = 'pinned' | { machine?: string };
+
+// The waiting updates in scope; a session already counted as waiting on you is not an update as well.
+export const countUpdates = (state: State, scope: CountScope): number => {
+	const machine = scope === 'pinned' ? undefined : scope.machine;
+	const waiting = new Set(listWaitingRefs(state, machine));
+	const isInScope = (ref: string): boolean =>
+		scope === 'pinned'
+			? state.pinned.includes(ref)
+			: machine === undefined || readMachine(ref) === machine;
+
+	return state.meanwhile.filter((item) => isInScope(item.ref) && !waiting.has(item.ref)).length;
+};
+
 export interface PinnedCard {
 	counts: SessionCounts;
 	waiting: string | null;

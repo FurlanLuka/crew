@@ -107,24 +107,3 @@ interface WasJustHeardAboutParams {
 // "switch to it", "what did it change?" mean that session.
 export const wasJustHeardAbout = ({ spoken, ref, heardFrom }: WasJustHeardAboutParams): boolean =>
 	listHeardBefore({ spoken, heardFrom }).some((line) => readLineRefs(line).includes(ref));
-
-interface ReadLastHeardAboutParams {
-	spoken: SpokenLine[];
-	ref: string;
-	heardFrom: number;
-}
-
-// When a session last spoke to the developer (its own line, or a meanwhile line naming it) before
-// they began these words; null: not heard from at all.
-export const readLastHeardAbout = ({
-	spoken,
-	ref,
-	heardFrom,
-}: ReadLastHeardAboutParams): number | null =>
-	spoken.findLast(
-		(line) =>
-			line.source !== 'kernel' &&
-			!line.isUnplayed &&
-			line.at < heardFrom &&
-			readLineRefs(line).includes(ref),
-	)?.at ?? null;

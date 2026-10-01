@@ -109,6 +109,34 @@ describe('executeTool', () => {
 		]);
 	});
 
+	// Debug note 25: "go back to speak main" went to the screen before, not Speak Main.
+	it('"go back to X" → X; a bare "go back", or X named among other words → back', async () => {
+		const { tools, actions } = createToolContext({
+			names: { 'store-front/wrk1': 'Store Front Main' },
+		});
+
+		await executeTool(
+			'go_back',
+			{},
+			{ ...tools, utterance: 'Can you go back to store front main?' },
+		);
+		await executeTool('go_back', {}, { ...tools, utterance: 'Go back.' });
+		await executeTool(
+			'go_back',
+			{},
+			{
+				...tools,
+				utterance: 'Go back, and later ask checkout api main how the retry work is going.',
+			},
+		);
+
+		expect(actions).toEqual([
+			{ type: 'switch_view', view: { kind: 'session', ref: 'store-front/wrk1' } },
+			{ type: 'go_back' },
+			{ type: 'go_back' },
+		]);
+	});
+
 	it('switch_view null → Mission Control', async () => {
 		const { tools, actions } = createToolContext();
 

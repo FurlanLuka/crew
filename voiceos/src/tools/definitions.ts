@@ -198,11 +198,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				my_notes: MY_NOTES_PROPERTY,
 				about_last_action: ABOUT_LAST_ACTION_PROPERTY,
 				deliver: DELIVER_PROPERTY,
-				by_work: {
-					type: 'boolean',
-					description:
-						'true when the developer named the session by its work ("tell the ranking one…"), not by its name or ref.',
-				},
 			},
 			required: ['ref', 'kind', 'my_notes'],
 			additionalProperties: false,

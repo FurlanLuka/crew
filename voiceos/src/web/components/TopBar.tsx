@@ -7,9 +7,14 @@ import {
 	readMachineTitle,
 	readSessionLabel,
 } from '../../shared/machines.js';
-import { countPinned, countSessions, isInsidePinned, readRefTitle } from '../derive.js';
+import {
+	countPinned,
+	countSessions,
+	countUpdates,
+	isInsidePinned,
+	readRefTitle,
+} from '../derive.js';
 import type { Dispatch } from '../types.js';
-import { listWaitingRefs } from '../../shared/machines.js';
 import { RenameButton, RenameSession } from './RenameSession.js';
 import { PinButton } from './Tile.js';
 
@@ -34,9 +39,7 @@ export const TopBar = ({ state, dispatch }: TopBarProps) => {
 	const isPinnedView = isInsidePinned(state.view);
 	// Inside Pinned the counts follow the pins, as the tabs do.
 	const counts = isPinnedView ? countPinned(state) : countSessions(state, machine);
-	// A session already counted as waiting on you is not an update as well: one badge each.
-	const waitingRefs = new Set(listWaitingRefs(state));
-	const updates = state.meanwhile.filter((item) => !waitingRefs.has(item.ref)).length;
+	const updates = countUpdates(state, isPinnedView ? 'pinned' : { machine });
 	const viewedSession = state.view.kind === 'session' ? state.sessions[state.view.ref] : null;
 	const { sevenDay, fiveHour } = state.limits;
 	const withMachines = hasMachines(state);

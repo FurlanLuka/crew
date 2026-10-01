@@ -902,62 +902,29 @@ describe('conversations', () => {
 		expect(convo.heard.at(-1)).toBe('Meanwhile, checkout api, main wants to run git push.');
 	});
 
-	// Debug notes 18, 21, 24: words said on a screen went to a session heard from earlier, never named.
-	describe('words for a session never named', () => {
-		const heardBoth = async () => {
-			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
-			await convo.startSessions('store-front/main', 'checkout-api/main');
-			await hearUpdate(convo);
-			await convo.answer('store-front/main', 'The branch is pushed and the tests pass.');
-			await convo.wait(1_000);
-
-			return convo;
-		};
-
-		const sends = (convo: ReturnType<typeof createConversation>) =>
-			convo.inputs.flatMap((input) => (input.type === 'send' ? [[input.ref, input.text]] : []));
-
-		it('the screen spoke after it → refused; the kernel forwards them to the screen', async () => {
-			const convo = await heardBoth();
-			convo.script(
-				[
-					toolUse('t1', 'send_to', {
-						ref: 'checkout-api/main',
-						kind: 'instruction',
-						my_notes: false,
-					}),
-				],
-				[toolUse('t2', 'forward', { kind: 'instruction' })],
-			);
-			await convo.say('Make sure all the branches are named the same.');
-
-			expect(sends(convo)).toEqual([
-				['store-front/main', 'Make sure all the branches are named the same.'],
-			]);
+	// "Can you approve?" is a yes to the plan on screen, not a question about it.
+	it('the screen\'s plan waits, "Okay, can you approve?" → the plan is approved', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main');
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'pl1',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'plan',
+				input: {},
+				plan: '# Cart totals in cents\n\n1. Store prices as integers.',
+			},
 		});
 
-		it('named, or named by its work → sent there', async () => {
-			const convo = await heardBoth();
-			convo.script([
-				toolUse('t1', 'send_to', {
-					ref: 'checkout-api/main',
-					kind: 'instruction',
-					my_notes: false,
-				}),
-			]);
-			await convo.say('Checkout api, make sure the branches are named the same.');
-			convo.script([
-				toolUse('t2', 'send_to', {
-					ref: 'checkout-api/main',
-					kind: 'instruction',
-					my_notes: false,
-					by_work: true,
-				}),
-			]);
-			await convo.say('Tell the retry one to rebase too.');
+		convo.script([toolUse('t1', 'answer', { ref: 'store-front/main', decision: 'yes', text: '' })]);
+		await convo.say('Okay, can you approve?');
 
-			expect(sends(convo).map(([ref]) => ref)).toEqual(['checkout-api/main', 'checkout-api/main']);
-		});
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'answer_plan', askId: 'pl1', isApproved: true }),
+		);
+		expect(convo.store.state.asks).toEqual([]);
 	});
 
 	describe('timing', () => {
