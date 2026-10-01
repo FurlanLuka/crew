@@ -646,6 +646,29 @@ describe('mapMessage: what a session shows', () => {
 		});
 	});
 
+	it("Claude Code's Artifact tool → its link is a doc; a comment thread's link is not", () => {
+		const { context } = createShowing();
+		toolCall(context, 't7', 'Artifact');
+		toolCall(context, 't8', 'ArtifactComments');
+
+		const made = mapMessage(
+			toolResult('t7', 'Created https://claude.ai/code/artifact/a3'),
+			context,
+		);
+		const thread = mapMessage(
+			toolResult('t8', 'Replied on https://claude.ai/code/artifact/a3'),
+			context,
+		);
+
+		expect(made).toContainEqual({
+			type: 'doc',
+			ref: 'store/main',
+			url: 'https://claude.ai/code/artifact/a3',
+			title: 'Claude artifact',
+		});
+		expect(typesOf(thread)).not.toContain('doc');
+	});
+
 	it("a doc link inside a file read or a command output is not the session's doc", () => {
 		const { context } = createShowing();
 		toolCall(context, 't5', 'Read');

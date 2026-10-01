@@ -364,10 +364,10 @@ export const mapMessage = (
 					observations.push(...findToolImages(block.content, mapContext));
 				}
 
-				// Docs come back from the connectors that make them (Claude Docs, Drive, Notion — all
-				// MCP tools); a link a grep, a README or a web page happens to contain is not the
-				// session's doc.
-				if (isOk && toolName.startsWith('mcp__')) {
+				// Docs come back from the tools that make them: the connectors (Claude Docs, Drive, Notion —
+				// MCP tools) and Claude Code's own Artifact tool (not ArtifactComments: a comment thread is
+				// no doc). A link a grep, a README or a web page happens to contain is not the session's doc.
+				if (isOk && (toolName.startsWith('mcp__') || toolName === 'Artifact')) {
 					observations.push(...toDocObservations(text, ref));
 				}
 			}
