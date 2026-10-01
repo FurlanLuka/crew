@@ -3735,6 +3735,24 @@ describe('fixes from the live notes', () => {
 				{ kind: 'drop_reply' },
 			],
 			[
+				'on a session screen, a failed activate asking which → asked, never forwarded to the session',
+				{
+					reply: 'I need to clarify which session you want to activate. Work one or work two?',
+					utterance: 'Activate scheduler on Personal, the one with the retries.',
+					calls: [call('activate', false)],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'on a session screen, a list asking which workspace → asked, never forwarded',
+				{
+					reply: 'Personal has 11 worktrees in 6 workspaces. Do you mean the scheduler ones?',
+					utterance: 'What worktrees do I have on the Personal machine right now?',
+					calls: [call('list_sessions')],
+				},
+				{ kind: 'keep' },
+			],
+			[
 				'an activate that failed ("Which?") beside a send → the model\'s question kept',
 				{
 					reply: 'Personal has scheduler work one and work two. Which?',

@@ -316,6 +316,7 @@ export const deactivateSession = async ({
 
 		return {
 			note: ACTIVATE_OFFERED_NOTE,
+			recordAs: { name: 'deactivate', input: { ...input, ref } },
 			...fail(
 				`Not deactivated yet: ${ref} is working, and Voice OS asked "${label} is working. Deactivate anyway?" itself: say nothing.`,
 			),

@@ -360,6 +360,8 @@ describe('deactivate', () => {
 				'Not deactivated yet: crew/main is working, and Voice OS asked "crew, main is working. Deactivate anyway?" itself: say nothing.',
 			isFinal: true,
 			note: 'activate offered',
+			// The session meant, as resolved: "deactivate this" is logged with its ref.
+			recordAs: { name: 'deactivate', input: { ref: 'crew/main' } },
 		});
 	});
 
@@ -558,6 +560,41 @@ describe('words, a switch or a command for an inactive session', () => {
 			{ type: 'offer_switch', ref: 'checkout-api/main', kind: 'activate' },
 		]);
 		expect(result).toMatchObject({ ok: false, isFinal: true });
+	});
+});
+
+describe('words said to Voice OS by name', () => {
+	it.each([
+		'Voice OS, activate scheduler.',
+		'Hey Voice OS, what is active?',
+		'voice o s deactivate this',
+	])('"%s" on a session screen → never forwarded to it', async (utterance) => {
+		const { tools, actions } = createToolContext();
+
+		const result = await executeTool(
+			'forward',
+			{ text: utterance, kind: 'instruction' },
+			{ ...tools, utterance, forwardTo: 'store-front/main', screen: 'store-front/main' },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toStartWith('Not forwarded: the developer said "Voice OS, …"');
+		expect(actions).toEqual([]);
+	});
+
+	it('"Voice OS" later in the words → forwarded as usual', async () => {
+		const utterance = 'Add a Voice OS section to the README.';
+		const { tools, actions } = createToolContext();
+
+		await executeTool(
+			'forward',
+			{ text: utterance, kind: 'instruction' },
+			{ ...tools, utterance, forwardTo: 'store-front/main', screen: 'store-front/main' },
+		);
+
+		expect(actions).toContainEqual(
+			expect.objectContaining({ type: 'send', ref: 'store-front/main' }),
+		);
 	});
 });
 

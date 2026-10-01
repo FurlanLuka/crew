@@ -133,6 +133,17 @@ export interface IsAskingBackParams {
 	namedRefs: string[];
 }
 
+// Voice OS's own commands about sessions and machines: their words are never the session's.
+const VOICE_OS_COMMANDS: ToolName[] = [
+	'activate',
+	'deactivate',
+	'list_sessions',
+	'switch_view',
+	'go_back',
+	'rename_session',
+	'rename_machine',
+];
+
 export const isAskingBack = ({
 	reply,
 	calls,
@@ -154,6 +165,9 @@ export const isAskingBack = ({
 		!RELAYED_QUESTION_PATTERN.test(reply) &&
 		// A forward that failed ("already sent") explains itself: never send the raw words again.
 		!calls.some((call) => call.name === 'forward') &&
+		// Words the kernel took as a command for Voice OS ("activate scheduler" → "Which one?") are never
+		// handed to the session, failed or not: its asking back is about that command.
+		!calls.some((call) => VOICE_OS_COMMANDS.includes(call.name as ToolName)) &&
 		!calls.some((call) => call.ok && MUTATING_TOOLS.includes(call.name as ToolName))
 	);
 };

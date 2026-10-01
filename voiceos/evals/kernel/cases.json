@@ -5774,6 +5774,869 @@
 				}
 			],
 			"no_reply": true
+		},
+		{
+			"id": "leak-enable-on-session",
+			"utterance": "Enable scheduler work two on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:scheduler/wrk2"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "leak-turn-on-on-session",
+			"utterance": "Turn on the billing session on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "leak-start-worktree-on-session",
+			"utterance": "Start the billing worktree on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "leak-voice-os-enable",
+			"utterance": "Voice OS, enable billing on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "personal:billing/main"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "leak-deactivate-working",
+			"utterance": "Deactivate this.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "deactivate",
+					"ref": "store-front/main"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "leak-close-this-session",
+			"utterance": "Close this session.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "deactivate",
+					"ref": "store-front/main"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "leak-list-running",
+			"utterance": "Which sessions are running right now?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-list-machines",
+			"utterance": "What machines are connected?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-list-on-machine",
+			"utterance": "List the worktrees on Personal.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-what-on-machine",
+			"utterance": "What do I have on Personal?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-count-workspace",
+			"utterance": "How many worktrees does scheduler have?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-voice-os-list",
+			"utterance": "Voice OS, list my machines.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-german-active",
+			"utterance": "Was ist gerade aktiv?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-slovenian-active",
+			"utterance": "Kaj je trenutno aktivno?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "list_sessions"
+				}
+			],
+			"forbid_calls": ["forward"],
+			"forbid_mutation": true,
+			"answer": true
+		},
+		{
+			"id": "leak-german-deactivate",
+			"utterance": "Deaktiviere diese Sitzung.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "deactivate",
+					"ref": "store-front/main"
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "work-activate-feature-flag",
+			"utterance": "Activate the feature flag for the new checkout.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "flag"
+				}
+			],
+			"forbid_calls": ["activate"],
+			"no_reply": true
+		},
+		{
+			"id": "work-enable-caching-scheduler",
+			"utterance": "Enable caching on the scheduler service.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "cach"
+				}
+			],
+			"forbid_calls": ["activate"],
+			"no_reply": true
+		},
+		{
+			"id": "work-deactivate-billing-endpoint",
+			"utterance": "Deactivate the old billing endpoint.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "endpoint"
+				}
+			],
+			"forbid_calls": ["deactivate"],
+			"no_reply": true
+		},
+		{
+			"id": "work-list-files",
+			"utterance": "List the files in this folder.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "files"
+				}
+			],
+			"forbid_calls": ["list_sessions"],
+			"no_reply": true
+		},
+		{
+			"id": "work-which-tests-running",
+			"utterance": "Which tests are running?",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "test"
+				}
+			],
+			"forbid_calls": ["list_sessions"],
+			"no_reply": true
+		},
+		{
+			"id": "work-close-the-modal",
+			"utterance": "Close the modal when the user clicks outside it.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "modal"
+				}
+			],
+			"forbid_calls": ["deactivate"],
+			"no_reply": true
+		},
+		{
+			"id": "work-turn-on-dark-mode",
+			"utterance": "Turn on dark mode in the settings page.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "dark"
+				}
+			],
+			"forbid_calls": ["activate"],
+			"no_reply": true
+		},
+		{
+			"id": "work-start-the-migration",
+			"utterance": "Start the migration now.",
+			"context": {
+				"machine": {
+					"id": "personal",
+					"name": "Personal",
+					"refs": [
+						"personal:scheduler/wrk1",
+						"personal:scheduler/wrk2",
+						"personal:billing/main",
+						"personal:setup"
+					]
+				},
+				"inactive": [
+					"personal:scheduler/wrk1",
+					"personal:scheduler/wrk2",
+					"personal:billing/main",
+					"personal:setup"
+				],
+				"view": "store-front/main",
+				"work": [
+					{
+						"ref": "store-front/main",
+						"request": "Add the locale fallback chain",
+						"minutesAgo": 4
+					}
+				]
+			},
+			"calls": [
+				{
+					"name": "forward",
+					"text_includes": "migration"
+				}
+			],
+			"forbid_calls": ["activate", "deactivate"],
+			"no_reply": true
 		}
 	]
 }
