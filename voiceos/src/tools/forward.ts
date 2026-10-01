@@ -4,7 +4,7 @@ import { createLogger } from '../log.js';
 import type { State } from '../shared/protocol.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { isActive } from '../shared/active.js';
-import { stripLeadingWakePhrase } from '../speech/wake.js';
+import { SAID_TO_VOICE_OS, isSaidToVoiceOs } from './said-to-voice-os.js';
 import { refuseInactive } from './activate.js';
 import { type ToolResult, fail } from './results.js';
 import { describeMisroutedAnswer, sendText, type SentWords } from './send.js';
@@ -30,6 +30,12 @@ export const sendRecorded = async ({
 	name,
 	toolContext,
 }: SendRecordedParams): Promise<ToolResult> => {
+	if (isSaidToVoiceOs({ state, ref, toolContext })) {
+		log.info('said to Voice OS: not sent', { ref, name });
+
+		return fail(SAID_TO_VOICE_OS);
+	}
+
 	// An inactive session gets nothing: "Activate it?" keeps the words for it.
 	if (!isActive(state, ref)) {
 		return refuseInactive({ ref, toolContext, words: words.text });
@@ -85,18 +91,6 @@ export const forwardChosen = async ({
 
 	if (!target || !state.sessions[target]) {
 		return fail('no session to forward to: use send_to with a ref');
-	}
-
-	// "Voice OS, …" is said to Voice OS: the session on screen never gets it by default. Words for that
-	// session are still reached by naming it (send_to).
-	const said = toolContext.utterance ?? '';
-
-	if (stripLeadingWakePhrase(said) !== said) {
-		log.info('said to Voice OS: not forwarded', { ref: target });
-
-		return fail(
-			'Not forwarded: the developer said "Voice OS, …", so these words are for you. Act on them yourself (activate, deactivate, list_sessions, read_state…), or send_to the session only if they named it.',
-		);
 	}
 
 	const misroutedAnswer = await describeMisroutedAnswer({

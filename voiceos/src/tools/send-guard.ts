@@ -4,6 +4,7 @@
 // only mention it, is asked of the judge.
 import { createLogger } from '../log.js';
 import { isActive } from '../shared/active.js';
+import { SAID_TO_VOICE_OS, isAddressedToVoiceOs } from './said-to-voice-os.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { readMachine } from '../shared/machine-ref.js';
 import type { State } from '../shared/protocol.js';
@@ -116,6 +117,13 @@ export const guardSendTo = async ({
 
 	if (spokenTo === 'yes') {
 		return null;
+	}
+
+	// "Voice OS, …" never waits on "For X?": a no would hand those words to the screen's session.
+	if (isAddressedToVoiceOs(utterance)) {
+		log.info('said to Voice OS: not held for "For X?"', { ref });
+
+		return fail(SAID_TO_VOICE_OS);
 	}
 
 	// Words only mentioning an inactive session stay on the screen: "For X?" would hand them to a

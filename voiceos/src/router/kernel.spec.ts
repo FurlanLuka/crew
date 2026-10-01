@@ -1387,6 +1387,11 @@ describe('readAskedBack', () => {
 		expect(read([entry()])).toEqual({ askedBack: ASKED });
 	});
 
+	it('words said to Voice OS, or a list read back → never words it offered to pass on', () => {
+		expect(read([entry({ utterance: "Voice OS, what's on Personal?" })])).toEqual({});
+		expect(read([entry({ did: ['list_sessions'] })])).toEqual({});
+	});
+
 	it('something done, a reply that asks nothing, a failed turn → nothing', () => {
 		expect(read([entry({ did: ['send_to checkout-api/main "x"'] })])).toEqual({});
 		expect(read([entry({ reply: 'It is still running.' })])).toEqual({});

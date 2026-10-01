@@ -180,6 +180,12 @@ describe('resolveTypedTarget', () => {
 		);
 	});
 
+	it('"Voice OS, …" typed into a session\'s box → the kernel, never that session', () => {
+		expect(
+			resolveTypedTarget(createViewingState('store-front/main'), 'Voice OS, activate billing.'),
+		).toBeNull();
+	});
+
 	it('on Mission Control → nothing (the kernel decides)', () => {
 		expect(resolveTypedTarget(createState(), 'run the tests')).toBeNull();
 	});

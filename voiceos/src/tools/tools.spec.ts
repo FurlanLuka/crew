@@ -1163,7 +1163,7 @@ describe('an activate that asks for more', () => {
 
 		expect(actions).toEqual([{ type: 'activate', ref: 'checkout-api/main', announce: true }]);
 		expect(result.content).toBe(
-			'activated checkout-api/main. The developer also asked it something: forward that part now — it waits until the session is up.',
+			'activated checkout-api/main. The developer also asked it something: forward that part (text copied word for word) now — it waits until the session is up.',
 		);
 	});
 
@@ -1179,7 +1179,7 @@ describe('an activate that asks for more', () => {
 		expect(result).toEqual({
 			ok: true,
 			content:
-				'store-front/main is already active. The developer also asked it something: send_to store-front/main that part now.',
+				'store-front/main is already active. The developer also asked it something: send_to store-front/main that part (text copied word for word) now.',
 			isOpen: true,
 			recordAs: { name: 'activate', input: { name: 'store-front/main' } },
 		});
@@ -2962,7 +2962,8 @@ describe('tools that replaced the fast path', () => {
 		// Voice OS says "Activated X. Switch there?" itself; the words beside it are not its.
 		expect(MUTATING_TOOLS).toContain('activate');
 		expect(isSilentCall('activate', {})).toBe(true);
-		expect(carriesWords('activate')).toBe(false);
+		// It splits the words: beside it, a send carries only its part.
+		expect(carriesWords('activate')).toBe(true);
 
 		// Read-only: the kernel says what it found.
 		expect(MUTATING_TOOLS).not.toContain('list_sessions');
@@ -3740,6 +3741,15 @@ describe('fixes from the live notes', () => {
 					reply: 'I need to clarify which session you want to activate. Work one or work two?',
 					utterance: 'Activate scheduler on Personal, the one with the retries.',
 					calls: [call('activate', false)],
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'on a session screen, a listening change it could not tell → asked, never forwarded',
+				{
+					reply: 'Do you mean hands-free or push to talk?',
+					utterance: 'Can you switch the listening thing over to the other mode please?',
+					calls: [call('hands_free', false)],
 				},
 				{ kind: 'keep' },
 			],

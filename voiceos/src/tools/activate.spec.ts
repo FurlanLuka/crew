@@ -1,4 +1,4 @@
-import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
+import { englishJudge, judgeAlways, judgeWith } from '../../test/support/english-judge.js';
 import { createToolContext } from '../../test/support/tool-context.js';
 import { describe, expect, it } from 'bun:test';
 import type { Action, Machine, PendingAsk, State } from '../shared/protocol.js';
@@ -293,7 +293,7 @@ describe('activate', () => {
 
 		expect(actions).toEqual([{ type: 'activate', ref: 'crew/main', announce: true }]);
 		expect(result.content).toBe(
-			'activated crew/main. The developer also asked it something: send_to crew/main that part now — it waits until the session is up.',
+			'activated crew/main. The developer also asked it something: send_to crew/main that part (text copied word for word) now — it waits until the session is up.',
 		);
 	});
 
@@ -533,6 +533,25 @@ describe('words, a switch or a command for an inactive session', () => {
 		expect(result).toMatchObject({ ok: false, isFinal: true });
 	});
 
+	it('answer with a part → only that part queued, never the command said beside it', async () => {
+		const { tools, actions } = createToolContext({
+			active: ['store-front/main', 'store-front/wrk1'],
+		});
+
+		await executeTool(
+			'answer',
+			{ ref: 'checkout-api/main', decision: 'yes', text: 'yes go ahead' },
+			{ ...tools, utterance: 'activate checkout, and yes go ahead' },
+		);
+
+		expect(actions[0]).toEqual({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'yes go ahead',
+			isSpoken: true,
+		});
+	});
+
 	it('answer → the words said queued for it, "Activate it?"; nothing answered', async () => {
 		const ask: PendingAsk = {
 			id: 'p1',
@@ -564,6 +583,69 @@ describe('words, a switch or a command for an inactive session', () => {
 });
 
 describe('words said to Voice OS by name', () => {
+	it('send_to the session on screen, not named → not sent', async () => {
+		const utterance = 'Voice OS, deactivate this.';
+		const { tools, actions } = createToolContext();
+
+		const result = await executeTool(
+			'send_to',
+			{ ref: 'store-front/main', kind: 'instruction' },
+			{ ...tools, utterance, forwardTo: 'store-front/main', screen: 'store-front/main' },
+		);
+
+		expect(result.content).toStartWith('Not sent: the developer said "Voice OS, …"');
+		expect(actions).toEqual([]);
+	});
+
+	it('the session on screen named in them → sent to it', async () => {
+		const utterance = 'Voice OS, tell store front main to run the tests.';
+		const { tools, actions } = createToolContext();
+
+		await executeTool(
+			'send_to',
+			{ ref: 'store-front/main', kind: 'instruction', text: 'run the tests' },
+			{ ...tools, utterance, forwardTo: 'store-front/main', screen: 'store-front/main' },
+		);
+
+		expect(actions).toContainEqual(
+			expect.objectContaining({ type: 'send', ref: 'store-front/main' }),
+		);
+	});
+
+	it('another session only mentioned → never held for "For X?", where a no would hand them to the screen', async () => {
+		const utterance = 'Voice OS, put it on top of the checkout api branch.';
+		const { tools, actions } = createToolContext();
+
+		const result = await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', kind: 'instruction' },
+			{
+				...tools,
+				utterance,
+				judge: judgeWith({ spoken_to: 'no' }),
+				forwardTo: 'store-front/main',
+				screen: 'store-front/main',
+			},
+		);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
+	it('the answer fallback to the session on screen → not sent', async () => {
+		const utterance = 'Voice OS, yes do that.';
+		const { tools, actions } = createToolContext();
+
+		const result = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'yes' },
+			{ ...tools, utterance, forwardTo: 'store-front/main', screen: 'store-front/main' },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+
 	it.each([
 		'Voice OS, activate scheduler.',
 		'Hey Voice OS, what is active?',
@@ -578,7 +660,7 @@ describe('words said to Voice OS by name', () => {
 		);
 
 		expect(result.ok).toBe(false);
-		expect(result.content).toStartWith('Not forwarded: the developer said "Voice OS, …"');
+		expect(result.content).toStartWith('Not sent: the developer said "Voice OS, …"');
 		expect(actions).toEqual([]);
 	});
 

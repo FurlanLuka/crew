@@ -23,7 +23,15 @@ const SILENT_TOOLS: ToolName[] = [
 ];
 
 // read_notes changes nothing, but what it read out is what "the second one" points at next.
-const REMEMBERED_TOOLS: ToolName[] = [...MUTATING_TOOLS, 'switch_view', 'open_doc', 'read_notes'];
+// list_sessions too: a question after it ("…Activate one?") is Voice OS's own, and a yes to it must
+// never resend the developer's words to a session as if Voice OS had offered to ask it.
+const REMEMBERED_TOOLS: ToolName[] = [
+	...MUTATING_TOOLS,
+	'switch_view',
+	'open_doc',
+	'read_notes',
+	'list_sessions',
+];
 
 const describeCallAction = (input: Record<string, unknown>): string => {
 	if (typeof input.action === 'string') {
@@ -133,15 +141,13 @@ export interface IsAskingBackParams {
 	namedRefs: string[];
 }
 
-// Voice OS's own commands about sessions and machines: their words are never the session's.
-const VOICE_OS_COMMANDS: ToolName[] = [
-	'activate',
-	'deactivate',
-	'list_sessions',
-	'switch_view',
-	'go_back',
-	'rename_session',
-	'rename_machine',
+// The tools a turn may have used and still ask back about the session's work.
+const ASK_BACK_TOOLS: ToolName[] = [
+	'read_state',
+	'read_history',
+	'ignore_words',
+	'send_to',
+	'answer',
 ];
 
 export const isAskingBack = ({
@@ -165,9 +171,10 @@ export const isAskingBack = ({
 		!RELAYED_QUESTION_PATTERN.test(reply) &&
 		// A forward that failed ("already sent") explains itself: never send the raw words again.
 		!calls.some((call) => call.name === 'forward') &&
-		// Words the kernel took as a command for Voice OS ("activate scheduler" → "Which one?") are never
-		// handed to the session, failed or not: its asking back is about that command.
-		!calls.some((call) => VOICE_OS_COMMANDS.includes(call.name as ToolName)) &&
+		// Only after reading or trying to reach a session: any other tool, failed or not ("activate
+		// scheduler" → "Which one?", a listening change it could not tell), was a command for Voice
+		// OS, and its asking back is about that command.
+		calls.every((call) => ASK_BACK_TOOLS.includes(call.name as ToolName)) &&
 		!calls.some((call) => call.ok && MUTATING_TOOLS.includes(call.name as ToolName))
 	);
 };

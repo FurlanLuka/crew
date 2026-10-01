@@ -1,5 +1,6 @@
 import type { Judge } from '../judge/judge.js';
 import { refuseInactive } from './activate.js';
+import { SAID_TO_VOICE_OS, isSaidToVoiceOs } from './said-to-voice-os.js';
 import { createLogger } from '../log.js';
 import {
 	isSwitchOfferFresh,
@@ -292,11 +293,22 @@ export const answerAsk = async ({
 }: AnswerAskParams): Promise<ToolResult> => {
 	const checked = checkRef(state, input.ref);
 
-	// An inactive session asks nothing: words meant as its answer are kept for it.
+	// An inactive session asks nothing: the words meant as its answer, chosen as for any send, are
+	// kept for it.
 	if (!checked.ok) {
-		return checked.inactive
-			? refuseInactive({ ref: checked.inactive, toolContext, words: toolContext.utterance })
-			: fail(checked.error);
+		if (!checked.inactive) {
+			return fail(checked.error);
+		}
+
+		const { text } = await chooseSentWords({
+			judge: toolContext.judge,
+			utterance: toolContext.utterance,
+			part: typeof input.text === 'string' ? input.text : undefined,
+			earlier: toolContext.recentUtterances ?? [],
+			isWhole: false,
+		});
+
+		return refuseInactive({ ref: checked.inactive, toolContext, ...(text ? { words: text } : {}) });
 	}
 
 	const refused = await refuseAnnouncedOnly({
@@ -415,6 +427,10 @@ export const answerAsk = async ({
 
 		if (guarded) {
 			return guarded;
+		}
+
+		if (isSaidToVoiceOs({ state, ref: checked.ref, toolContext })) {
+			return fail(SAID_TO_VOICE_OS);
 		}
 
 		// "Yes, do that" to a session that asked nothing still means something to it: the

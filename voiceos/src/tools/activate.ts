@@ -155,7 +155,9 @@ const isMoreThanStart = async ({
 
 // forward reaches only the session on screen: from elsewhere it is send_to.
 const describeHowToSend = (ref: string, toolContext: ToolContext): string =>
-	toolContext.forwardTo === ref ? 'forward that part' : `send_to ${ref} that part`;
+	toolContext.forwardTo === ref
+		? 'forward that part (text copied word for word)'
+		: `send_to ${ref} that part (text copied word for word)`;
 
 export const activateSession = async ({
 	state,

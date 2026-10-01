@@ -27,6 +27,7 @@ import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from '../tools
 import { isHeldQuestion } from '../state/held-lines.js';
 import { findSessionsNamedIn } from '../tools/session-naming.js';
 import { findMachineSaid } from '../tools/machines.js';
+import { isAddressedToVoiceOs } from '../tools/said-to-voice-os.js';
 import { isActive, listActiveInOrder } from '../shared/active.js';
 
 const log = createLogger('kernel');
@@ -46,7 +47,7 @@ On a session's screen your first step always calls a tool. ignore_words only for
 Forwarding:
 - You choose where the words go and their kind; Voice OS sends them to that Claude exactly as heard. Leave text out when everything they said is for that one session: every sentence, detail and reaction reaches it as said, relay words ("can you ask it to") included — that Claude reads them fine.
 - Give text in exactly these cases, copied word for word from what the developer said — never reworded, shortened or cleaned up (anything else is sent as said):
-  - The same words also did something else — a switch, a restart, a note, a debug note, words for another session: text is only the part for this session. "restart the dev servers and have it check the logs" is crew_dev restart and forward with text "check the logs"; "switch to checkout api main and tell it to run the migrations" is switch_view and send_to checkout-api/main with text "run the migrations".
+  - The same words also did something else — a switch, an activate or start, a restart, a note, a debug note, words for another session: text is only the part for this session. "restart the dev servers and have it check the logs" is crew_dev restart and forward with text "check the logs"; "switch to checkout api main and tell it to run the migrations" is switch_view and send_to checkout-api/main with text "run the migrations".
   - The words point at earlier words instead of saying them — "I meant this for store front main", "send that to checkout too", "the store front one" answering your "which one?" about "have main run the tests" (send_to store-front/main with text "have main run the tests"): text is those earlier words, copied from "Earlier on this screen". Left out, the session gets only "I meant this for…".
 - Words quoted inside a question ("what happens if I ask you to 'start crew research'?") are an example, not a command: forward the whole question, never the quote alone, and do not carry it out.
 - When the developer's words finish a sentence their previous words on this screen began, cut off by a pause ("rename the payment helper so it matches" then "the naming in the refund module"), forward it — to the session on screen, whatever the sentence mentions ("profile the slow queries in" then "the admin reports page" is forward to the screen, not send_to admin) — with continues true and no text: Voice OS joins the two halves and replaces the first. A new request, an added task ("also run the linter") or an answer is never this.
@@ -119,6 +120,8 @@ export const readAskedBack = ({
 	const isAskedBack =
 		last !== undefined &&
 		!last.isFailed &&
+		// Said to Voice OS ("Voice OS, …"): never words it offered to pass to a session.
+		!isAddressedToVoiceOs(last.utterance) &&
 		last.did.length === 0 &&
 		/\?\s*$/.test(last.reply) &&
 		now - last.at <= ASKED_BACK_MS &&
@@ -431,13 +434,8 @@ export const readRunOrder = ({ name, input, asks }: ReadRunOrderParams): number 
 
 // A mute, an interrupt, an activation or a rename beside a forward takes none of the words: counted, it made a long request
 // look split, so the forward's few words went instead of what was said.
-const WORDLESS_TOOLS: ToolName[] = [
-	'mute',
-	'interrupt',
-	'activate',
-	'deactivate',
-	'rename_session',
-];
+// Not activate: "activate checkout and run the tests" splits the words, so only the part goes.
+const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt', 'deactivate', 'rename_session'];
 
 export const carriesWords = (name: string): boolean =>
 	MUTATING_TOOLS.includes(name as ToolName) && !WORDLESS_TOOLS.includes(name as ToolName);

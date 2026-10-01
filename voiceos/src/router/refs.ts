@@ -4,6 +4,7 @@ import { readMachine, splitRef } from '../shared/machine-ref.js';
 import { currentMachine, readMachineName } from '../shared/machines.js';
 import { listActiveInOrder } from '../shared/active.js';
 import { readScreenRef } from '../state/helpers.js';
+import { stripLeadingWakePhrase } from '../speech/wake.js';
 
 // dictated: a brain dump held open by the developer, sent word for word like typing.
 export type UtteranceSource = 'voice' | 'typed' | 'dictated';
@@ -158,6 +159,11 @@ const findAddressedRef = (state: State, text: string): string | null => {
 
 export const resolveTypedTarget = (state: State, text: string): string | null => {
 	const screenRef = readScreenRef(state);
+
+	// "Voice OS, …" typed into a session's box is said to Voice OS: the kernel reads it.
+	if (stripLeadingWakePhrase(text) !== text) {
+		return null;
+	}
 
 	// A waiting session is answered by the kernel: a typed "yes" must not deny a permission.
 	if (!screenRef || !state.sessions[screenRef] || state.asks.some((ask) => ask.ref === screenRef)) {

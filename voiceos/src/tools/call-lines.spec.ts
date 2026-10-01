@@ -10,15 +10,15 @@ describe('describeToolCall', () => {
 	it('a call that only reads (read_state) → not remembered', () =>
 		expect(describeToolCall({ name: 'read_state', input: {}, ok: true })).toBeNull());
 
-	it('activate and deactivate → remembered with their session; list_sessions only reads', () => {
+	it('activate and deactivate → remembered with their session; list_sessions remembered too, so a question after it is never taken as an offer to pass words on', () => {
 		expect(
 			describeToolCall({ name: 'activate', input: { name: 'vm1:signals/wrk1' }, ok: true }),
 		).toBe('activate vm1:signals/wrk1');
 		expect(describeToolCall({ name: 'deactivate', input: { ref: 'crew/main' }, ok: true })).toBe(
 			'deactivate crew/main',
 		);
-		expect(
-			describeToolCall({ name: 'list_sessions', input: { machine: 'vm1' }, ok: true }),
-		).toBeNull();
+		expect(describeToolCall({ name: 'list_sessions', input: { machine: 'vm1' }, ok: true })).toBe(
+			'list_sessions',
+		);
 	});
 });
