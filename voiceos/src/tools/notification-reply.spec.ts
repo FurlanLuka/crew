@@ -152,6 +152,24 @@ describe('replies to a notification', () => {
 		}
 	});
 
+	it('words begun before "Switch to it?" was asked → not its answer: "For …?" asked as usual', async () => {
+		const state = {
+			...notified(),
+			switchOffer: { ref: NOTIFIER, at: NOW - 2_000, heardAt: NOW - 1_000 },
+		};
+		const heard = createContext(state, 'review all of this');
+		const result = await executeTool(
+			'ask_target',
+			{ ref: NOTIFIER },
+			{ ...heard.tools, heardFrom: NOW - 3_000 },
+		);
+
+		expect(result).toMatchObject({ ok: true, note: 'asked which session' });
+		expect(heard.actions).toEqual([
+			{ type: 'ask_target', ref: NOTIFIER, screen: SCREEN, text: 'review all of this' },
+		]);
+	});
+
 	it('the words already sent this turn → "For …?" refused: they cannot also be held', async () => {
 		const heard = createContext(notified(), 'review all of this');
 		const result = await executeTool(

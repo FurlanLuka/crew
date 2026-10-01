@@ -1,6 +1,6 @@
 // An in-memory SSH link between a main's RemoteLink and a RemoteHost: frames arrive a tick later, in
 // order, re-cut into chunks of seeded random size (a line split anywhere, several lines in one read),
-// and the link can be cut after any frame — cleanly, or leaving the host's end half open.
+// and the link can be cut after any frame or on demand — cleanly, or leaving the host's end half open.
 
 import type { OpenTransport } from '../../src/remote/link.js';
 import type { RemoteHost } from '../../src/remote/host.js';
@@ -52,6 +52,8 @@ export const createNetwork = (
 	let cuts = 0;
 	const frames: string[] = [];
 	const random = createRandom(seed);
+	// The links up now, each with the way to cut it.
+	const live = new Set<() => void>();
 
 	const open: OpenTransport = (_host, handlers) => {
 		let isAlive = true;
@@ -69,8 +71,23 @@ export const createNetwork = (
 			}
 
 			isAlive = false;
+			live.delete(cutNow);
 			setTimeout(() => handlers.onExit(255, ''), 0);
 		};
+
+		const cutNow = (): void => {
+			cuts++;
+			onCut?.();
+
+			if (!isHalfOpen) {
+				setTimeout(() => hostEnd.closed(), 0);
+			}
+
+			isLost = true;
+			end();
+		};
+
+		live.add(cutNow);
 
 		// A frame counts when sent; the one at the cut is lost with the link.
 		const carry = (direction: string, text: string, deliver: (piece: string) => void): void => {
@@ -82,15 +99,7 @@ export const createNetwork = (
 
 			if (!hasCut && frames.length >= cutAfter) {
 				hasCut = true;
-				cuts++;
-				onCut?.();
-
-				if (!isHalfOpen) {
-					setTimeout(() => hostEnd.closed(), 0);
-				}
-
-				isLost = true;
-				end();
+				cutNow();
 
 				return;
 			}
@@ -122,6 +131,12 @@ export const createNetwork = (
 		// Each frame's direction and type, for a failure message.
 		log: () => frames,
 		cuts: () => cuts,
+		// Cuts the links up now, losing what is in flight; any number of times.
+		cut: () => {
+			for (const cutNow of [...live]) {
+				cutNow();
+			}
+		},
 	};
 };
 

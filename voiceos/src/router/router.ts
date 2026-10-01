@@ -9,6 +9,7 @@ import {
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { decideDelivery } from '../state/delivery.js';
+import { hasQuestionSince } from '../state/exchange.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
@@ -79,11 +80,6 @@ const NO_TAB_TO_OPEN: OpenUrl = () => false;
 
 const NO_KERNEL_MESSAGE =
 	'Voice needs the Anthropic key — see the banner. Typing into a session still works.';
-
-// A permission, plan or question a session raised after `at`: the newest thing asked.
-const hasQuestionSince = (state: State, at: number): boolean =>
-	state.asks.some((ask) => ask.at > at) ||
-	state.order.some((ref) => (state.sessions[ref]?.needsUser?.at ?? 0) > at);
 
 export class UtteranceRouter {
 	private chain: Promise<void> = Promise.resolve();

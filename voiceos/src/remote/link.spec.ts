@@ -36,28 +36,41 @@ interface HostOptions {
 const startHost = ({ version = 'test', runCrew }: HostOptions = {}) => {
 	const fake = createFakeQuery({ askOn: '[ask]' });
 	const registryFile = join(mkdtempSync(join(tmpdir(), 'voiceos-remote-')), 'sessions.json');
+	let manager: SessionManager | null = null;
+	let isBusyThere = false;
 	const host = new RemoteHost({
 		version,
 		host: 'vm1',
-		createManager: ({ readSession, emit }) =>
-			new SessionManager({
+		createManager: ({ readSession, emit }) => {
+			manager = new SessionManager({
 				readSession,
 				emit,
 				registryFile,
 				home: '/h',
 				fetchOrientation: async () => '',
 				runQuery: fake.runQuery,
-			}),
+			});
+
+			return manager;
+		},
 		listWorktrees: async () => [worktree('store/main')],
 		runCrew: runCrew ?? (async () => ({ code: 0, stdout: '', stderr: '' })),
 		readGitHead: async () => 'abc123',
 		readMedia: () => null,
 		restoreHistory: async () => undefined,
+		onBusyChanged: (isBusy) => {
+			isBusyThere = isBusy;
+		},
 	});
 
 	stops.push(() => host.stopAll());
 
-	return { host, fake };
+	// Answers an ask there, as if the developer were at that machine.
+	const answerThere = (askId: string): void => {
+		manager?.permissions.answer(askId, { behavior: 'allow', updatedInput: {} });
+	};
+
+	return { host, fake, answerThere, isBusyThere: () => isBusyThere };
 };
 
 interface MainOptions {
@@ -550,12 +563,8 @@ describe('a remote over a link', () => {
 			expect({ cutAfter, decisions: fake.decisions }).toEqual({ cutAfter, decisions: ['allow'] });
 			expect({ cutAfter, shown: readShown(store) }).toEqual({ cutAfter, shown: baseline });
 			expect({ cutAfter, narrated }).toEqual({ cutAfter, narrated: [REF, REF] });
-			// A reconnect is said only with news (a turn finished, or something new waits): at most once
-			// per cut, never twice.
-			expect({ cutAfter, recaps: Math.min(recaps, 2) }).toEqual({
-				cutAfter,
-				recaps: Math.min(recaps, 1),
-			});
+			// A reconnect is said only with news (a turn finished, or something new waits): at most once.
+			expect(recaps <= 1, `cut after frame ${cutAfter}: ${recaps} recaps`).toBe(true);
 
 			for (const stop of stops.splice(0)) {
 				stop();
@@ -570,6 +579,131 @@ describe('a remote over a link', () => {
 	it('cut after any frame, the host left half open → the same main takes its link back', async () => {
 		await sweep(true);
 	}, 60_000);
+});
+
+describe('the recap when a machine comes back', () => {
+	const WAITING = 'Build box is back: store/main is waiting on you.';
+
+	// A connected main with the session idle there, and a cut that can hold the link down while
+	// something happens on the far side.
+	const startConnected = async () => {
+		const there = startHost();
+
+		await there.host.refreshWorktrees();
+
+		const network = createNetwork(there.host);
+		let opens = 0;
+		let isDown = false;
+
+		const open: OpenTransport = (target, handlers) => {
+			opens++;
+
+			if (isDown) {
+				setTimeout(() => handlers.onExit(255, ''), 0);
+
+				return { write: () => undefined, close: () => undefined };
+			}
+
+			return network.open(target, handlers);
+		};
+
+		const main = startMain({ open });
+
+		await until(() => isConnected(main.store), 'connected');
+		main.store.dispatch({ type: 'start_session', ref: REF });
+		await until(() => main.store.state.sessions[REF]?.status === 'idle', 'idle');
+
+		// Cuts the link; what `whileDown` does happens before the link can come back.
+		const cut = async (whileDown?: () => Promise<void>): Promise<void> => {
+			const before = opens;
+
+			isDown = whileDown !== undefined;
+			network.cut();
+			await until(() => opens > before, 'a reconnect attempt');
+
+			if (whileDown) {
+				await whileDown();
+				isDown = false;
+			}
+
+			await until(() => isConnected(main.store), 'back');
+		};
+
+		const recaps = (): string[] => main.said.filter((line) => line.includes('is back'));
+
+		const ask = async (): Promise<void> => {
+			main.store.dispatch({ type: 'send', ref: REF, text: '[ask] do A' });
+			await until(() => main.store.state.asks.length === 1, 'the ask');
+		};
+
+		return { ...there, ...main, network, cut, recaps, ask };
+	};
+
+	it('idle there, cut and back → nothing said', async () => {
+		const { cut, recaps } = await startConnected();
+
+		await cut();
+
+		expect(recaps()).toEqual([]);
+	});
+
+	it('an ask open, cut and back → said once that it waits', async () => {
+		const { cut, recaps, ask } = await startConnected();
+
+		await ask();
+		await cut();
+
+		expect(recaps()).toEqual([WAITING]);
+	});
+
+	it('cut again with the same ask still open → not said again', async () => {
+		const { cut, recaps, ask, network } = await startConnected();
+
+		await ask();
+		await cut();
+		await cut();
+
+		expect(network.cuts()).toBe(2);
+		expect(recaps()).toEqual([WAITING]);
+	});
+
+	it('a turn finishing while cut → said once that it finished', async () => {
+		const { cut, recaps, ask, store, answerThere, isBusyThere } = await startConnected();
+
+		await ask();
+
+		const askId = store.state.asks[0]?.id.replace(/^vm1:/, '') ?? '';
+
+		await cut(async () => {
+			answerThere(askId);
+			await until(() => !isBusyThere(), 'the turn ended there');
+		});
+
+		expect(recaps()).toEqual(['Build box is back: store/main finished.']);
+		expect(store.state.asks).toEqual([]);
+	});
+
+	it('the wait cleared, then the same session waits again after a later cut → said again', async () => {
+		const { cut, recaps, ask, store, fake } = await startConnected();
+
+		await ask();
+		await cut();
+		store.dispatch({
+			type: 'answer_permission',
+			askId: store.state.asks[0]?.id ?? '',
+			decision: 'allow',
+		});
+		await until(
+			() => store.state.asks.length === 0 && store.state.sessions[REF]?.status === 'idle',
+			'answered',
+		);
+		await cut();
+		await ask();
+		await cut();
+
+		expect(fake.decisions).toEqual(['allow']);
+		expect(recaps()).toEqual([WAITING, WAITING]);
+	});
 });
 
 describe('a line from the remote that does not parse', () => {

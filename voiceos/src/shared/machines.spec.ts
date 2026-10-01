@@ -257,4 +257,12 @@ describe('isRecapNews', () => {
 			isRecapNews({ finished: [], waiting: ['checkout', 'signals'], waitingSaid: ['checkout'] }),
 		).toBe(true);
 	});
+
+	it('fewer sessions waiting than last time → no news', () => {
+		expect(isRecapNews({ finished: [], waiting: ['a'], waitingSaid: ['a', 'b'] })).toBe(false);
+	});
+
+	it('nothing waiting any more → no news', () => {
+		expect(isRecapNews({ finished: [], waiting: [], waitingSaid: ['a'] })).toBe(false);
+	});
 });
