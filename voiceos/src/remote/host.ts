@@ -34,6 +34,12 @@ const log = createLogger('remote');
 // Inside the main's own 25 s for running crew, and inside crew's 35 s for reading query.sock.
 const QUERY_TIMEOUT_MS = 30_000;
 
+// A build from source has no release to update to: the way back to one version is a dev push.
+export const describeVersionRefusal = (here: string, main: string): string =>
+	here.startsWith('dev') || main.startsWith('dev')
+		? `This machine runs Voice OS ${here} and the main ${main}: run crew voice dev push from the checkout you want on every machine, or crew update on each to go back to the release.`
+		: `This machine runs Voice OS ${here} and the main ${main}: run crew update on the older one, then crew voice remote there.`;
+
 const DEV_ACTIONS = new Set(['status', 'check', 'start', 'stop', 'restart']);
 const DEV_FLAGS = new Set(['--json', '--wait']);
 
@@ -284,7 +290,7 @@ export class RemoteHost {
 				type: 'refused',
 				reason: 'version',
 				version: this.options.version,
-				detail: `This machine runs Voice OS ${this.options.version} and the main ${message.version}: run crew update on the older one, then crew voice remote there.`,
+				detail: describeVersionRefusal(this.options.version, message.version),
 			});
 			attachment.connection.close();
 

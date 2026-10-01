@@ -31,7 +31,7 @@ import {
 	type Snapshot,
 } from './protocol.js';
 import { PendingCalls } from './pending-calls.js';
-import { isAllowedQuery } from './query-allow.js';
+import { isAllowedQuery, withSource } from './query-allow.js';
 import { planResync } from './resync.js';
 import type { UpdateRemote } from './ssh.js';
 import {
@@ -408,7 +408,7 @@ export class RemoteLink {
 
 		try {
 			const value = await Promise.race([
-				this.options.runLocalCrew(call.args, { timeoutMs: QUERY_TIMEOUT_MS }),
+				this.options.runLocalCrew(withSource(call.args, this.id), { timeoutMs: QUERY_TIMEOUT_MS }),
 				timedOut,
 			]);
 			const bytes = Buffer.byteLength(value.stdout) + Buffer.byteLength(value.stderr);

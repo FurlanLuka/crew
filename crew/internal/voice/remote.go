@@ -98,8 +98,9 @@ func normalizeVersion(v string) string { return strings.TrimPrefix(strings.TrimS
 
 // DecideDaemon picks the action: a daemon of another release than the one
 // installed restarts at once — its sessions resume on the new release, and a
-// main of the new release cannot attach to the old one. A dev build or a
-// missing stamp is unknown and never forces one. Pure.
+// main of the new release cannot attach to the old one. A plain dev build or a
+// missing stamp is unknown and never forces one; a pushed "dev-<sha>" build is
+// exact, so it replaces a daemon of any other version. Pure.
 func DecideDaemon(running bool, runningVersion, installed string) DaemonAction {
 	if !running {
 		return DaemonStart

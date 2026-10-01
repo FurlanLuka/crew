@@ -595,6 +595,17 @@ A machine is either a main or a remote, never both: `crew voice` refuses on a re
 `crew voice remote` refuses on a main. **remove** on the card (or `crew voice machines rm <id>`)
 stops driving a machine. Its sessions keep running there.
 
+
+### Trying a branch on every machine
+
+A remote only talks to a main on the same version, so a build from source can't meet your remotes
+until it's released. `crew voice dev push`, run in a crew checkout on any machine — the main or a
+remote — builds that checkout's crew and Voice OS for each kind of machine you have, then puts the
+same build everywhere and restarts every machine, the one you pushed from last. It runs on its own,
+so it keeps going while Voice OS and your Claude session restart; `crew voice dev status` shows each
+machine's progress. If any copy fails, nothing is installed. `crew update` on a machine takes it back
+to the release.
+
 ## Running Voice OS
 
 | Command | What it does |

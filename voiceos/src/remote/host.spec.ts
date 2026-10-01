@@ -2,7 +2,12 @@ import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import type { Observation } from '../shared/protocol.js';
 import { worktree } from '../../test/support/reduce.js';
-import { RemoteHost, isAllowedCrewCall, type HandsManager } from './host.js';
+import {
+	RemoteHost,
+	describeVersionRefusal,
+	isAllowedCrewCall,
+	type HandsManager,
+} from './host.js';
 import type { HandsEffect } from './mapping.js';
 import { encodeLine, parseRemoteLine, SILENCE_LIMIT_MS, type RemoteMessage } from './protocol.js';
 
@@ -257,5 +262,19 @@ describe('what a remote sends', () => {
 		expect(main.received.filter((message) => message.type === 'input')).toEqual([
 			{ type: 'input', input: { type: 'turn_started', ref: 'store/main' } },
 		]);
+	});
+});
+
+describe('describeVersionRefusal', () => {
+	it('two releases → crew update on the older one', () => {
+		expect(describeVersionRefusal('5.7.1', '5.8.0')).toBe(
+			'This machine runs Voice OS 5.7.1 and the main 5.8.0: run crew update on the older one, then crew voice remote there.',
+		);
+	});
+
+	it('a dev build on either side → a dev push, or crew update back to the release', () => {
+		expect(describeVersionRefusal('5.7.1', 'dev-abc1234')).toBe(
+			'This machine runs Voice OS 5.7.1 and the main dev-abc1234: run crew voice dev push from the checkout you want on every machine, or crew update on each to go back to the release.',
+		);
 	});
 });

@@ -63,8 +63,13 @@ func cmdVoice() {
 		voiceMachines(args)
 	case "discord":
 		voiceDiscord(args)
+	case "dev":
+		voiceDev(args)
+	case "_dev-push":
+		// The detached dev push runner (voice.StartDevPush): nothing waits on its output.
+		voiceDevRunner(args)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord] [--no-open]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]\n")
 		os.Exit(1)
 	}
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { isAllowedQuery } from './query-allow.js';
+import { isAllowedQuery, withSource } from './query-allow.js';
 
 describe('isAllowedQuery', () => {
 	it.each([
@@ -58,5 +58,46 @@ describe('isAllowedQuery', () => {
 		[['voice'], false],
 	])('%p → %p', (args, isAllowed) => {
 		expect(isAllowedQuery(args as string[])).toBe(isAllowed);
+	});
+});
+
+describe('a dev push from a remote', () => {
+	it.each([
+		[['voice', 'dev', 'targets', '--json']],
+		[['voice', 'dev', 'status', '--json']],
+		[['voice', 'dev', 'status']],
+		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/.crew/dev-push/dev-abc1234']],
+		[
+			[
+				'voice',
+				'dev',
+				'_handoff',
+				'dev-abc1234-dirty',
+				'/home/dev/.crew/dev-push/dev-abc1234-dirty',
+			],
+		],
+	])('%j → allowed', (args) => expect(isAllowedQuery(args)).toBe(true));
+
+	it.each([
+		[['voice', 'dev', 'push']],
+		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/x', '--source=vm1']],
+		[['voice', 'dev', '_handoff', '5.8.0', '/home/dev/x']],
+		[['voice', 'dev', '_handoff', 'dev-abc1234', 'relative/dir']],
+		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/../../etc']],
+		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/x; rm -rf ~']],
+		[['voice', 'dev', 'targets', '--local']],
+	])('%j → refused', (args) => expect(isAllowedQuery(args)).toBe(false));
+
+	it('the main names the asking remote as the source itself; other queries pass as they came', () => {
+		expect(withSource(['voice', 'dev', '_handoff', 'dev-abc', '/x'], 'vm1')).toEqual([
+			'voice',
+			'dev',
+			'_handoff',
+			'dev-abc',
+			'/x',
+			'--source=vm1',
+		]);
+		expect(withSource(['voice', 'dev', 'status'], 'vm1')).toEqual(['voice', 'dev', 'status']);
+		expect(withSource(['voice', 'logs'], 'vm1')).toEqual(['voice', 'logs']);
 	});
 });
