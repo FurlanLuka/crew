@@ -3900,6 +3900,21 @@ describe('open_doc', () => {
 		expect(opened).toEqual([]);
 	});
 
+	// Debug note 26: "show me the kernel prompt" called open_doc, then asked for a doc name.
+	it('no such doc on the session on screen → the words are for that session: forward them', async () => {
+		const { context, opened } = withDocs();
+
+		const result = await executeTool(
+			'open_doc',
+			{ ref: null, title: 'kernel prompt' },
+			{ ...context, forwardTo: context.screen },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('Forward their words to it');
+		expect(opened).toEqual([]);
+	});
+
 	it('no tab took it → says to click the card', async () => {
 		const { context } = withDocs();
 
