@@ -104,16 +104,40 @@ export const describeAnnouncement = ({
 };
 
 const DONE_ABOUT_WORDS = 14;
+const DONE_ABOUT_SENTENCE_WORDS = 28;
 const MIN_SAID_WORDS = 2;
 
 // What a finished turn is announced with: the session's own last line, shortened. A summary of the
 // session's long-running work goes stale ("finished the architecture docs" for a turn that
 // ended "checking whether the eval runs finished"), and a turn ending is not the work finishing.
+// Whole sentences, as many as fit: a line cut mid-sentence ("CI is running now, and once it
+// passes…") says less than its first sentence alone (debug note 29). A first sentence longer than
+// the cap is kept whole up to a longer one; only past that is it cut.
+const countWords = (text: string): number => text.split(/\s+/).filter(Boolean).length;
+
+const keepSentences = (line: string): string => {
+	const sentences = line.match(/[^.!?]+[.!?]*/g) ?? [line];
+	let kept = '';
+
+	for (const sentence of sentences) {
+		const next = `${kept} ${sentence.trim()}`.trim();
+		const limit = kept ? DONE_ABOUT_WORDS : DONE_ABOUT_SENTENCE_WORDS;
+
+		if (countWords(next) > limit) {
+			break;
+		}
+
+		kept = next;
+	}
+
+	return kept || capWords(line, DONE_ABOUT_SENTENCE_WORDS);
+};
+
 export const describeDoneAbout = (said: string | null): string | null => {
 	const line = stripTags(cleanSpokenText(said ?? ''));
 
-	return line.split(/\s+/).filter(Boolean).length >= MIN_SAID_WORDS
-		? capWords(line, DONE_ABOUT_WORDS).replace(/[.!?,;:]+(…?)$/, '$1')
+	return countWords(line) >= MIN_SAID_WORDS
+		? keepSentences(line).replace(/[.!?,;:]+(…?)$/, '$1')
 		: null;
 };
 

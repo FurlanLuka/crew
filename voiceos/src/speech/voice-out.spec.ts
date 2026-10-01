@@ -93,6 +93,24 @@ describe('VoiceOut', () => {
 		expect(harness.listSynthesized()).toEqual(['first', 'second']);
 	});
 
+	// Debug note 31: "Switching to Crew." from the switch, then again as the kernel's reply.
+	it("Voice OS's own line said twice in a breath → once; a narrator's line is never dropped this way", async () => {
+		const harness = createHarness();
+		harness.voiceOut.say({ text: 'Switching to Crew.', priority: 'high', source: 'kernel' });
+		harness.voiceOut.say({ text: 'Switching to Crew.', priority: 'high', source: 'kernel' });
+		harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal', source: 'narrator' });
+		harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal', source: 'narrator' });
+
+		for (let played = 0; played < 4; played++) {
+			await flush();
+			harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
+		}
+
+		await flush();
+
+		expect(harness.listSynthesized()).toEqual(['Switching to Crew.', 'Tests pass.', 'Tests pass.']);
+	});
+
 	it('every spoken line is recorded in state for all tabs', async () => {
 		const harness = createHarness();
 		harness.voiceOut.say({
@@ -237,7 +255,7 @@ describe('VoiceOut', () => {
 			[
 				'store/main',
 				'done',
-				'The router refactor is done, the tests pass, and the branch is pushed for…',
+				'The router refactor is done, the tests pass, and the branch is pushed for review now',
 			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
@@ -265,7 +283,7 @@ describe('VoiceOut', () => {
 			[
 				'store/main',
 				'done',
-				'The router refactor is done, the tests pass, and the branch is pushed for…',
+				'The router refactor is done, the tests pass, and the branch is pushed for review now',
 			],
 		]);
 	});
@@ -393,7 +411,7 @@ describe('VoiceOut', () => {
 			[
 				'store/main',
 				'done',
-				'The router refactor is done, the tests pass, and the branch is pushed for…',
+				'The router refactor is done, the tests pass, and the branch is pushed for review now',
 			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({
@@ -434,7 +452,7 @@ describe('VoiceOut', () => {
 			[
 				'store/main',
 				'done',
-				'The router refactor is done, the tests pass, and the branch is pushed for…',
+				'The router refactor is done, the tests pass, and the branch is pushed for review now',
 			],
 		]);
 		expect(harness.store.state.sessions['store/main']?.heldLine).toMatchObject({ text: report });
@@ -538,7 +556,7 @@ describe('VoiceOut', () => {
 			[
 				'store/main',
 				'done',
-				'The router refactor is done, the tests pass, and the branch is pushed for…',
+				'The router refactor is done, the tests pass, and the branch is pushed for review now',
 			],
 		]);
 	});

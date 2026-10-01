@@ -65,7 +65,8 @@ type Pending =
 
 const log = createLogger('voice-in');
 
-const MAX_PRESS_MS = 60_000;
+// A held button: long enough for a long thought said in one go; past it the words are sent.
+const MAX_PRESS_MS = 5 * 60_000;
 
 // A brain dump runs long; Soniox takes 300 minutes a stream, so this cap is about a forgotten mic.
 const MAX_DICTATION_MS = 30 * 60_000;
@@ -166,15 +167,15 @@ export class VoiceInput {
 					return;
 				}
 
-				if (utterance.isDictation) {
-					log.warn('dictation reached its cap: sent', { client });
-					this.finish(utterance);
-
-					return;
-				}
-
-				log.warn('press never released, dropping it', { client });
-				this.drop(utterance);
+				// Ended as if released: a long press is long speech (debug note 30 lost a minute of it), and
+				// a press that was only forgotten heard nothing, so nothing is routed.
+				log.warn(
+					utterance.isDictation ? 'dictation reached its cap: sent' : 'press reached its cap: sent',
+					{
+						client,
+					},
+				);
+				this.finish(utterance);
 			},
 			isDictation
 				? (this.options.maxDictationMs ?? MAX_DICTATION_MS)

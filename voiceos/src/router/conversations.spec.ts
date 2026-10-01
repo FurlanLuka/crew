@@ -15,7 +15,7 @@ const REFS = ['store-front/main', 'checkout-api/main', 'signals/main'];
 const UPDATE =
 	'The retry backoff now doubles from one second up to thirty, and every retry test passes again.';
 const MEANWHILE_LINE =
-	'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry…';
+	'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry test passes again.';
 
 const hearUpdate = async (convo: ReturnType<typeof createConversation>): Promise<void> => {
 	await convo.answer('checkout-api/main', UPDATE);
@@ -118,7 +118,7 @@ describe('conversations', () => {
 
 		expect(convo.heard).toEqual([
 			'> Run the tests.',
-			'Meanwhile, store front, main said: The whole suite ran in four minutes, all 214 tests pass, and the flaky… Switch there?',
+			'Meanwhile, store front, main said: The whole suite ran in four minutes, all 214 tests pass, and the flaky cart test is gone. Switch there?',
 		]);
 	});
 
@@ -269,7 +269,7 @@ describe('conversations', () => {
 		await convo.wait(6_000);
 
 		expect(convo.heard.at(-1)).toBe(
-			'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry… Switch there?',
+			'Meanwhile, checkout api, main said: The retry backoff now doubles from one second up to thirty, and every retry test passes again. Switch there?',
 		);
 		expect(convo.store.state.meanwhile).toEqual([]);
 	});

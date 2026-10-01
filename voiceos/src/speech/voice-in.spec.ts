@@ -344,16 +344,19 @@ describe('VoiceInput', () => {
 		expect(harness.utterances).toEqual(['go home']);
 	});
 
-	it("a press never released → dropped after the cap, and the tab's next press is routed", async () => {
+	// Debug note 30: a long press lost everything said in it.
+	it("a press held past the cap → ended as if released: its words are routed, and the tab's next press too", async () => {
 		const harness = createHarness({ maxPressMs: 20 });
 		harness.input.start('c1');
 		await Bun.sleep(40);
-		expect(harness.cancelled).toEqual([0]);
+		expect(harness.cancelled).toEqual([]);
+		harness.sessions[0]?.onFinal('a long thought said in one go');
+		expect(harness.utterances).toEqual(['a long thought said in one go']);
 
 		harness.input.start('c1');
 		harness.input.stop('c1');
 		harness.sessions[1]?.onFinal('go home');
-		expect(harness.utterances).toEqual(['go home']);
+		expect(harness.utterances).toEqual(['a long thought said in one go', 'go home']);
 	});
 
 	it('a released press is not dropped by the cap', async () => {

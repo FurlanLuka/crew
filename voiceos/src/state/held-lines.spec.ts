@@ -876,12 +876,32 @@ describe('what a "done" names', () => {
 			'Checking whether the detached eval runs finished before deciding',
 		],
 		[
-			'a long line → its first fourteen words',
+			'a first sentence longer than fourteen words → kept whole',
 			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today.',
-			'Pushed the telephony branches, opened the pull request, and asked for a review from…',
+			'Pushed the telephony branches, opened the pull request, and asked for a review from the team today',
 		],
+		[
+			'several sentences → the whole ones that fit, never one cut in half (note 29)',
+			'PR 41 is merged into main. CI is running now, and once it passes I will tag and release v5.7.0 for you.',
+			'PR 41 is merged into main',
+		],
+		[
+			'two short sentences → both',
+			'Tests pass. The branch is pushed.',
+			'Tests pass. The branch is pushed',
+		],
+
 		['voice tags dropped', '[relieved] Tests pass now.', 'Tests pass now'],
 		['one word → nothing', 'Done.', null],
 		['nothing at all', null, null],
 	])('%s', (_, said, expected) => expect(describeDoneAbout(said)).toBe(expected));
+
+	it('one very long sentence → cut at twenty-eight words, with "…"', () => {
+		const about = describeDoneAbout(
+			`Rewrote ${'the parser and the lexer and '.repeat(8)}everything.`,
+		);
+
+		expect(about?.endsWith('…')).toBe(true);
+		expect(about?.split(/\s+/)).toHaveLength(28);
+	});
 });

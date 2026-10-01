@@ -657,7 +657,7 @@ describe('a session off screen at the end of its turn', () => {
 
 		expect(harness.lines).toEqual([
 			{
-				text: 'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+				text: 'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 				priority: 'normal',
 				ref: REF_,
 				isNamed: false,
@@ -665,7 +665,8 @@ describe('a session off screen at the end of its turn', () => {
 				// The voice holds it for the meanwhile line.
 				announcement: {
 					kind: 'done',
-					about: 'The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+					about:
+						'The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review',
 				},
 			},
 		]);
@@ -683,7 +684,7 @@ describe('a session off screen at the end of its turn', () => {
 		await harness.handle(tagless);
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'Your pinned checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+			'Your pinned checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 		]);
 	});
 
@@ -693,7 +694,7 @@ describe('a session off screen at the end of its turn', () => {
 		await harness.handle(tagless);
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'voice os dev: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+			'voice os dev: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 		]);
 	});
 
@@ -744,7 +745,7 @@ describe('a session off screen at the end of its turn', () => {
 		});
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 		]);
 		expect(calls).toBe(0);
 	});
@@ -784,7 +785,7 @@ describe('a session off screen at the end of its turn', () => {
 		await harness.handle(tagless);
 
 		expect(harness.lines.map((line) => line.text)).toEqual([
-			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 		]);
 	});
 
@@ -925,7 +926,7 @@ describe('off screen, from the stream to what is said', () => {
 		});
 
 		expect(said).toEqual([
-			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch…',
+			'checkout: The retry backoff is in with jitter, all 96 tests pass, and the branch is pushed for review.',
 		]);
 		expect(held).toMatchObject({ kind: 'line', text: LONG_, missed: 1 });
 	});
@@ -1066,7 +1067,7 @@ describe('background sub-agents and follow-up turns off screen (research that ou
 
 		// Its own report names it, not the request.
 		expect(said).toEqual([
-			'checkout: Found four close competitors; none runs one agent per worktree with its own ports…',
+			'checkout: Found four close competitors; none runs one agent per worktree with its own ports, and none is voice-first.',
 		]);
 		expect(store.state.sessions[REF_]?.heldLine).toMatchObject({
 			text: REPORT,
@@ -1090,7 +1091,7 @@ describe('background sub-agents and follow-up turns off screen (research that ou
 		await endTurn(`${REPORT} Also checked two paid tools; same result there.`);
 
 		expect(said).toEqual([
-			'checkout: Found four close competitors; none runs one agent per worktree with its own ports…',
+			'checkout: Found four close competitors; none runs one agent per worktree with its own ports, and none is voice-first.',
 		]);
 
 		await endTurn('Should I write the comparison into a doc for the README?', true);
