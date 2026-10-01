@@ -1180,6 +1180,8 @@ describe('an activate that asks for more', () => {
 			ok: true,
 			content:
 				'store-front/main is already active. The developer also asked it something: send_to store-front/main that part now.',
+			isOpen: true,
+			recordAs: { name: 'activate', input: { name: 'store-front/main' } },
 		});
 	});
 
@@ -3722,6 +3724,24 @@ describe('fixes from the live notes', () => {
 				'only send_to on Mission Control → the reply stays: nothing else says where the words went',
 				{ reply: 'Sent to checkout.', calls: [call('send_to')], forwardTo: null },
 				{ kind: 'keep' },
+			],
+			[
+				'activate and the rest sent on Mission Control → dropped: "Activated X" was said in code',
+				{
+					reply: "Now I'll send the question to the session:",
+					calls: [call('activate'), call('send_to')],
+					forwardTo: null,
+				},
+				{ kind: 'drop_reply' },
+			],
+			[
+				'an activate offer asked in code → the model\'s own "Activate it?" dropped',
+				{
+					reply: "Checkout isn't active. Activate it?",
+					calls: [{ ...call('send_to', false), note: 'activate offered' }],
+					forwardTo: null,
+				},
+				{ kind: 'drop_reply' },
 			],
 		])('%s', (_, patch, ending) =>
 			expect(decideEnding({ ...base, ...patch })).toEqual(ending as never),

@@ -1,5 +1,6 @@
 import { SWITCH_OFFERED_NOTE } from './announced.js';
 import { ASK_WHICH_NOTE } from './send-guard.js';
+import { ACTIVATE_OFFERED_NOTE } from './activate.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isShortEnoughToAnswer } from './send.js';
@@ -169,6 +170,12 @@ export interface DecideEndingParams extends IsAskingBackParams {
 	mustAnswerNow: boolean;
 }
 
+// "Start checkout and tell me what it did last": the activation is said in code ("Activated X. Switch
+// there?") and the rest went to it; the model's narration of either would only repeat it.
+const isActivatedWithWords = (calls: ToolCall[]): boolean =>
+	calls.some((call) => call.ok && call.name === 'activate') &&
+	calls.some((call) => call.ok && (call.name === 'send_to' || call.name === 'forward'));
+
 export const decideEnding = ({
 	isSilent,
 	mustAnswerNow,
@@ -182,7 +189,13 @@ export const decideEnding = ({
 	if (
 		isAnsweredByForward(turn.calls) ||
 		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
-		turn.calls.some((call) => call.note === SWITCH_OFFERED_NOTE || call.note === ASK_WHICH_NOTE)
+		turn.calls.some(
+			(call) =>
+				call.note === SWITCH_OFFERED_NOTE ||
+				call.note === ASK_WHICH_NOTE ||
+				call.note === ACTIVATE_OFFERED_NOTE,
+		) ||
+		isActivatedWithWords(turn.calls)
 	) {
 		return { kind: 'drop_reply' };
 	}

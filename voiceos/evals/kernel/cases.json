@@ -5390,13 +5390,10 @@
 					"personal:setup"
 				]
 			},
-			"calls": [
-				{
-					"name": "list_sessions"
-				}
-			],
+			"calls": [],
 			"forbid_mutation": true,
-			"answer": true
+			"answer": true,
+			"reply_includes": ["Personal"]
 		},
 		{
 			"id": "list-one-machine",

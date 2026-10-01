@@ -10,6 +10,9 @@ export interface ToolResult {
 	note?: string;
 	// The kernel answers now, with no more tools: nothing else may happen after this result.
 	isFinal?: true;
+	// The kernel has more to do (a silent call that found the rest of the words): it reads this result
+	// before the turn ends.
+	isOpen?: true;
 	// The call that actually happened, when a tool carried out another's job (answer → send_to).
 	recordAs?: { name: string; input: Record<string, unknown> };
 	// What Voice OS says for it, whatever the model wrote: a fixed line the developer listens for.

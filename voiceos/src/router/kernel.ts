@@ -1,5 +1,5 @@
 import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
-import { LOCAL_MACHINE } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, SETUP_REF, joinRef } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,
@@ -26,6 +26,7 @@ import { describeSession } from '../tools/session-view.js';
 import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from '../tools/asked-aloud.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { findSessionsNamedIn } from '../tools/session-naming.js';
+import { findMachineSaid } from '../tools/machines.js';
 import { isActive, listActiveInOrder } from '../shared/active.js';
 
 const log = createLogger('kernel');
@@ -65,7 +66,7 @@ Answering what a session waits on (see "pending", "asked" and "Voice OS last ask
 
 Voice OS itself:
 - open, switch to, show, go to, go into, take me to, check out X ("checkout crew", "can you go into crew?") → switch_view X — going to a session is never words for it or for the screen; a session's name alone, or with only "to" ("to checkout.", "checkout main"), is a cut-off "switch to X": switch_view X, never send it as a message; "switch back to X" is X, not the session on screen. X may be what a session works on ("back to where we're doing the data analysis"): match it against each session's last_messages_to_it. Home, Mission Control, show me everything → switch_view with null. "Go back", "back", "previous session" on their own → go_back (never switch_view); "go back to X" is X ("go back to all sessions" is switch_view with null): Voice OS says where they landed.
-- Only active sessions are listed in Sessions: Voice OS runs them and voice reaches them. Every other worktree, on any machine, is inactive: no Claude runs and nothing is heard from it. These are Voice OS commands even on a session's screen — never forward them: "activate X", "start X", "enable X", "bring up X on Personal", "activate this" → activate (name as said, machine when one is named; it finds any worktree, listed or not). "Deactivate this", "deactivate X", "end session X", "close X", "stop session X" → deactivate (ref null for the session on screen). "What machines do I have?", "what's on Personal?", "what's active?", "what worktrees does scheduler have?" → list_sessions. Starting the work itself ("start the tests", "start the migration") is words for the session: forward it. "Go to active", "show my active sessions" → switch_view with active true. When activate answers that several worktrees match, ask which in a few words; a bare "two" or "the second" then is activate with that one's name.
+- Only active sessions are listed in Sessions: Voice OS runs them and voice reaches them. Every other worktree, on any machine, is inactive: no Claude runs and nothing is heard from it. These are Voice OS commands even on a session's screen — never forward them: "activate X", "start X", "enable X", "bring up X on Personal", "activate this" → activate (name as said, machine when one is named; it finds any worktree, listed or not) — never ask first, and never send "start X" to X as words. A session already listed in Sessions is active: "start it and tell me…", "start checkout and run the tests" is forward or send_to the rest (sending starts a stopped one), never crew_dev — its dev servers only when the words say servers. An inactive one with more asked ("start checkout and tell me what it did last") is activate, then send_to it that part. "Deactivate this", "deactivate X", "end session X", "close X", "stop session X" → deactivate (ref null for the session on screen). "What machines do I have?", "what's on Personal?", "what's active?", "what worktrees does scheduler have?" → list_sessions. On Mission Control "activate this" names nothing: ask which in a few words, never listing every session. Starting the work itself ("start the tests", "start the migration") is words for the session: forward it. "Go to active", "show my active sessions" → switch_view with active true. When activate answers that several worktrees match, ask which in a few words; a bare "two" or "the second" then is activate with that one's name.
 - Words that begin "Voice OS, …" are always for you, never forwarded.
 - "rename X to Y", "call X Y", "rename this to Y" → rename_session: a name Voice OS shows and hears for that session (ref null for the one on screen; an empty name clears it). "Call" here means naming, never starting or phoning: "call store front main on Personal api work" is rename_session of Personal's store-front/main to "api work". A session's name is not work: never forward it. Renaming something in the code ("rename the function to parseRef") is work: forward it. A machine ("rename vm1 to build box") is rename_machine.
 - stop, wait, hold on, cancel → interrupt the session on screen when it is working (status running or blocked). Only when that is all they say: "stop the refactor and fix the login bug first" names what to do instead — forward it with kind redirect and do not interrupt; Voice OS asks them whether to switch. A question or instruction that changes how the running work is done ("can we use proxy pair?", "no, use X for this") is kind redirect too. "Don't queue it", "I want it now", "do that first" about words already queued → queued_message now, never interrupt alone; "take that back", "don't send that", "don't put it to the session" → queued_message drop. On Mission Control, with no session named, never interrupt: when a session is working, ask in a few words whether to stop it; otherwise it only meant Voice OS should stop talking — ignore_words.
@@ -288,12 +289,15 @@ const nameRef = (state: State, ref: string): string => {
 
 // Inactive sessions are never listed: only one the words name is, so a word for it is met with
 // "…isn't active. Activate it?" rather than sent to the screen.
-const describeInactiveNamed = (state: State, utterance: string): string[] =>
-	findSessionsNamedIn(
-		state,
-		utterance,
-		state.order.filter((ref) => !isActive(state, ref)),
-	).map((ref) => nameRef(state, ref));
+// A machine said in the words brings its setup session along: setup work there is its own.
+const describeInactiveNamed = (state: State, utterance: string): string[] => {
+	const inactive = state.order.filter((ref) => !isActive(state, ref));
+	const machine = findMachineSaid(state, utterance);
+	const setup = machine ? inactive.filter((ref) => ref === joinRef(machine, SETUP_REF)) : [];
+	const named = findSessionsNamedIn(state, utterance, inactive);
+
+	return [...new Set([...named, ...setup])].map((ref) => nameRef(state, ref));
+};
 
 export const buildKernelMessage = ({
 	state,
@@ -327,7 +331,7 @@ export const buildKernelMessage = ({
 		// Only when the words name one: every inactive worktree on every turn is what this replaced.
 		...(inactiveNamed.length > 0
 			? [
-					`Not active, named in these words: ${inactiveNamed.join(', ')}. Not in Sessions: to act on one, call the tool you would anyway (send_to, switch_view…) and Voice OS asks to activate it; "activate it" is activate.`,
+					`Not active, named in these words: ${inactiveNamed.join(', ')}. Not in Sessions: "start", "activate" or "enable" it is activate; any other words for it, call the tool you would anyway (send_to, switch_view…) and Voice OS asks to activate it — say nothing yourself.`,
 				]
 			: []),
 		// The developer's own names: said aloud, they name that session as surely as its ref.
@@ -503,12 +507,15 @@ export class Kernel {
 		// A tool asked for an answer with no more tools (a lapsed fix offer: nothing else may be sent).
 		let mustAnswerNow = false;
 		let mustActAgain = false;
+		// A silent call whose result asks for more (activate, then the rest of the words).
+		let hasMoreToDo = false;
 		// A tool's own line (a saved debug note) is what is said, not the model's wording of it.
 		let fixedReply: string | null = null;
 
 		for (let step = 0; step < MAX_STEPS; step++) {
 			// On a session screen the first step must act: no filler ("I'm listening") and no asking back there.
 			// A later step can still ask back; decideEnding catches that.
+			hasMoreToDo = false;
 			const response = await this.request({
 				messages,
 				forwardTo,
@@ -579,6 +586,10 @@ export class Kernel {
 					mustAnswerNow = true;
 				}
 
+				if (result.isOpen) {
+					hasMoreToDo = true;
+				}
+
 				if (result.ok && result.reply !== undefined) {
 					fixedReply = result.reply;
 				}
@@ -607,6 +618,7 @@ export class Kernel {
 
 			// Silent calls that worked need no second model call; text beside them is still the answer.
 			if (
+				!hasMoreToDo &&
 				toolUses.every((toolUse) =>
 					isSilentCall(toolUse.name, (toolUse.input ?? {}) as Record<string, unknown>),
 				) &&

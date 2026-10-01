@@ -245,6 +245,7 @@ describe('activate', () => {
 		expect(await executeTool('activate', { name: 'crew main' }, tools)).toEqual({
 			ok: true,
 			content: 'crew/main is already active',
+			recordAs: { name: 'activate', input: { name: 'crew/main' } },
 			reply: 'crew, main is already active.',
 		});
 		expect(actions).toEqual([]);
@@ -358,6 +359,7 @@ describe('deactivate', () => {
 			content:
 				'Not deactivated yet: crew/main is working, and Voice OS asked "crew, main is working. Deactivate anyway?" itself: say nothing.',
 			isFinal: true,
+			note: 'activate offered',
 		});
 	});
 
@@ -444,6 +446,7 @@ describe('refuseInactive', () => {
 			content:
 				'Nothing was done: crew/main is not active. Voice OS asked "… isn\'t active. Activate it?" itself; the words wait for it: say nothing.',
 			isFinal: true,
+			note: 'activate offered',
 		});
 	});
 

@@ -15,6 +15,10 @@ import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
 
+// Voice OS asked "…isn't active. Activate it?" or "…Deactivate anyway?" itself: the kernel's own words
+// would say it twice.
+export const ACTIVATE_OFFERED_NOTE = 'activate offered';
+
 export type ActivateDecision =
 	| { kind: 'one'; ref: string }
 	| { kind: 'already'; ref: string }
@@ -197,14 +201,19 @@ export const activateSession = async ({
 
 			// "Start checkout and run the tests" with checkout already up: the rest still goes to it.
 			if (await isMoreThanStart({ ref: decision.ref, toolContext, state })) {
-				return succeed(
-					`${decision.ref} is already active. The developer also asked it something: ${describeHowToSend(decision.ref, toolContext)} now.`,
-				);
+				return {
+					...succeed(
+						`${decision.ref} is already active. The developer also asked it something: ${describeHowToSend(decision.ref, toolContext)} now.`,
+					),
+					isOpen: true,
+					recordAs: { name: 'activate', input: { ...input, name: decision.ref } },
+				};
 			}
 
 			return {
 				...succeed(`${decision.ref} is already active`),
 				reply: `${label} is already active.`,
+				recordAs: { name: 'activate', input: { ...input, name: decision.ref } },
 			};
 		}
 
@@ -233,6 +242,7 @@ export const activateSession = async ({
 			...succeed(
 				`activated ${ref}. The developer also asked it something: ${describeHowToSend(ref, toolContext)} now — it waits until the session is up.`,
 			),
+			isOpen: true,
 			recordAs,
 		};
 	}
@@ -305,6 +315,7 @@ export const deactivateSession = async ({
 		toolContext.dispatch({ type: 'offer_switch', ref, kind: 'deactivate' });
 
 		return {
+			note: ACTIVATE_OFFERED_NOTE,
 			...fail(
 				`Not deactivated yet: ${ref} is working, and Voice OS asked "${label} is working. Deactivate anyway?" itself: say nothing.`,
 			),
@@ -351,6 +362,7 @@ export const refuseInactive = ({
 	log.info('not active: asked to activate', { ref, hasWords: Boolean(words) });
 
 	return {
+		note: ACTIVATE_OFFERED_NOTE,
 		...fail(
 			`Nothing was done: ${ref} is not active. Voice OS asked "… isn't active. Activate it?" itself${words ? '; the words wait for it' : ''}: say nothing.`,
 		),

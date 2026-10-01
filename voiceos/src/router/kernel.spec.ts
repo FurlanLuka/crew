@@ -624,6 +624,17 @@ describe('Kernel', () => {
 		expect(fake.calls()).toBe(1);
 	});
 
+	it('an activate that found more in the words → the model is asked again for the rest', async () => {
+		const { kernel, fake } = createKernel([
+			[createToolUse('t1', 'activate', { name: 'checkout api main' })],
+			[createToolUse('t2', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })],
+		]);
+
+		await kernel.handle('Start checkout api main and run the tests.');
+
+		expect(fake.calls()).toBe(2);
+	});
+
 	it('navigation that fails → the model gets the error and speaks', async () => {
 		const { kernel, fake } = createKernel([
 			[createToolUse('t1', 'switch_view', { ref: 'nowhere/main' })],
@@ -1207,7 +1218,7 @@ describe('kernel context: Active', () => {
 		};
 
 		expect(readMessage(state, 'tell checkout api main to run the tests')).toContain(
-			'Not active, named in these words: retries (checkout-api/main). Not in Sessions: to act on one, call the tool you would anyway (send_to, switch_view…) and Voice OS asks to activate it; "activate it" is activate.\n',
+			'Not active, named in these words: retries (checkout-api/main). Not in Sessions: "start", "activate" or "enable" it is activate; any other words for it, call the tool you would anyway (send_to, switch_view…) and Voice OS asks to activate it — say nothing yourself.\n',
 		);
 		expect(readMessage(state, 'run the tests')).not.toContain('Not active, named');
 		expect(
