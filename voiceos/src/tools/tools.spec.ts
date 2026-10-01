@@ -3735,6 +3735,15 @@ describe('fixes from the live notes', () => {
 				{ kind: 'drop_reply' },
 			],
 			[
+				'an activate that failed ("Which?") beside a send → the model\'s question kept',
+				{
+					reply: 'Personal has scheduler work one and work two. Which?',
+					calls: [call('activate', false), call('send_to')],
+					forwardTo: null,
+				},
+				{ kind: 'keep' },
+			],
+			[
 				'an activate offer asked in code → the model\'s own "Activate it?" dropped',
 				{
 					reply: "Checkout isn't active. Activate it?",

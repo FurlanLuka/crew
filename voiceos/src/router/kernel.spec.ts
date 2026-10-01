@@ -1211,6 +1211,31 @@ describe('kernel context: Active', () => {
 		expect(readMessage(state)).not.toContain('Named sessions:');
 	});
 
+	it('a machine said in the words → its inactive setup on the line; active, or no machine said → not', () => {
+		const machine = {
+			id: 'personal',
+			name: 'Personal',
+			refs: ['personal:setup', 'personal:billing/main'],
+		};
+		const inactive = createFixtureState(
+			{ machine, inactive: ['personal:setup', 'personal:billing/main'] },
+			now,
+		);
+		const active = createFixtureState({ machine, inactive: ['personal:billing/main'] }, now);
+		const lineOf = (message: string) =>
+			message.split('\n').find((line) => line.startsWith('Not active, named')) ?? '';
+
+		expect(lineOf(readMessage(inactive, 'Add a worktree for billing on Personal.'))).toContain(
+			'personal:setup',
+		);
+		expect(lineOf(readMessage(active, 'Add a worktree for billing on Personal.'))).not.toContain(
+			'personal:setup',
+		);
+		expect(lineOf(readMessage(inactive, 'Add a worktree for billing.'))).not.toContain(
+			'personal:setup',
+		);
+	});
+
 	it('the words name an inactive session → one line naming it; nothing named → no line', () => {
 		const state: State = {
 			...createFixtureState({ inactive: ['checkout-api/main'] }, now),
