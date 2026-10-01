@@ -30,7 +30,15 @@ export const buildWorkerEnv = ({
 	shouldKeepApiKey,
 }: BuildWorkerEnvParams): Record<string, string | undefined> => {
 	// Workers bill the Claude subscription; an API key in env would switch to per-token billing.
-	const env: Record<string, string | undefined> = { ...base, HOME: home, CREW_REF: ref };
+	// The SDK offers its Artifact tools to a non-interactive session only with CLAUDE_CODE_ARTIFACT
+	// set (the enableArtifact setting alone does not): sessions make docs the developer opens by
+	// voice. A developer's own value, 0 included, stands.
+	const env: Record<string, string | undefined> = {
+		CLAUDE_CODE_ARTIFACT: '1',
+		...base,
+		HOME: home,
+		CREW_REF: ref,
+	};
 
 	for (const key of STRIPPED_ENV) {
 		// Only tests opt back in to the API key.

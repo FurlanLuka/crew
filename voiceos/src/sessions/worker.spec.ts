@@ -16,6 +16,16 @@ const base = {
 };
 
 describe('buildWorkerEnv', () => {
+	it("turns on the SDK's Artifact tools; a developer's own setting, 0 included, stands", () => {
+		const params = { ref: 'store/main', home: '/Users/me', shouldKeepApiKey: false };
+
+		expect(buildWorkerEnv({ base, ...params }).CLAUDE_CODE_ARTIFACT).toBe('1');
+		expect(
+			buildWorkerEnv({ base: { ...base, CLAUDE_CODE_ARTIFACT: '0' }, ...params })
+				.CLAUDE_CODE_ARTIFACT,
+		).toBe('0');
+	});
+
 	it('strips every key that would change billing or leak speech credentials', () => {
 		const env = buildWorkerEnv({
 			base,

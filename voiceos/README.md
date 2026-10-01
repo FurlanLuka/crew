@@ -130,6 +130,8 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   any SSML is removed before speech, because Soniox would read it aloud. Stored, shown and matched
   text goes through `stripTags`. The same list is given to sessions in their orientation, so
   changing it changes the prompt.
+- **Artifacts.** Workers get the SDK's Artifact tools (`CLAUDE_CODE_ARTIFACT=1` in `buildWorkerEnv`; a
+  developer's own value stands): docs they make show as cards opened by voice.
 - **Auto mode.** Workers run in the SDK's `auto` permission mode. A `permission_denied` becomes a
   denial on the page. "Allow it" switches that worker to `default` mode for one retried call, which
   Voice OS approves without asking, and then back to `auto` (`state/asks.ts`, `allowDenied`,
