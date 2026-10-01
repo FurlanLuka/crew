@@ -27,6 +27,12 @@ crew voice restart
 `install-dev` compiles into `~/.crew/bin/voiceos` (or `$CREW_VOICEOS_BIN`) and removes the
 `.version` stamp, so the next `crew update` replaces it with the release.
 
+With remotes, a build from source alone can't connect: a remote refuses a main on another version.
+`crew voice dev push`, from a crew checkout on any machine (the main or a remote), builds that
+checkout's crew and Voice OS for every machine's OS and CPU (`scripts/build-dev.ts`), stamps them
+`dev-<commit>`, and the main puts them everywhere and restarts every machine, the one you pushed from
+last — detached, so it survives the restart. `crew voice dev status` follows it.
+
 To run from source with its own state (token, sessions, active set, logs) instead of your real
 `~/.crew/voiceos`, point its config folders at a scratch directory and sign in with the token it
 writes. The crew CLI it calls still reads your real `~/.crew`, so it shows your real worktrees. Use

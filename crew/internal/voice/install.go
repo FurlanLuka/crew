@@ -53,7 +53,7 @@ func EnsureInstalled(version string, announce func()) (downloaded bool, err erro
 	if IsInstalled() {
 		return false, nil
 	}
-	if version == "dev" {
+	if release.IsDevBuild(version) {
 		return false, ErrDevBuild
 	}
 	announce()

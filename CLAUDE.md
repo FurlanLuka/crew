@@ -243,7 +243,15 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   it; `crew update` refreshes it when the stamp differs and never restarts it.
   `voiceos/scripts/build-release.ts` builds the per-platform archives GoReleaser attaches
   (`release.extra_files`); `bun run install-dev` builds from source into the same path and drops
-  the stamp. `crew voice` checks tmux and `claude` first (`UnmetRequirements`) and hands the
+  the stamp. **Dev push** (`cmd_voice_dev.go`, `internal/voice/devpush*.go`): `crew voice dev push`
+  from a checkout on any machine builds crew + Voice OS per target (`DevPushTargets`: the main plus
+  `ssh uname -sm` per remote; a remote asks the main through its query socket, `voice dev targets`)
+  as `dev-<sha>[-dirty]`, then hands off to the main (`voice dev _handoff`; the main's link appends
+  `--source=<id>`, never the remote) where `RunDevPush` runs detached in tmux `crew-dev-push`: gather a
+  remote source's build over scp → stage + sha256 on every machine (a failure installs nothing) →
+  `InstallScript` + restart in `RestartOrder` (other remotes, the main, the source last). Status in
+  `~/.crew/voiceos/dev-push.json`. `release.IsDevBuild` (`dev`, `dev-*`) is the one dev rule; a
+  `dev-<sha>` stamp is exact in `DecideDaemon`. `crew voice` checks tmux and `claude` first (`UnmetRequirements`) and hands the
   `claude` it found to Voice OS (`VOICEOS_CLAUDE_BIN`): the tmux server's PATH is not the
   caller's. **Remote machines:** the same binary is a remote with `voiceos remote serve` (a
   daemon in tmux `crew-dev-os-remote`, its own `~/.crew/voiceos/remote/`, a 0600 unix socket) that

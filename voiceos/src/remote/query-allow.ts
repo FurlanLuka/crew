@@ -57,8 +57,41 @@ const arePositionalsAllowed = (kind: QueryKind, positionals: string[]): boolean 
 	}
 };
 
+// A dev push from a remote (crew voice dev push there): it reads the machines, hands its build to the
+// main, and follows the push. The one request here that changes anything: the main then runs the push,
+// and names the remote as its source itself (withSource) — a remote never says who it is.
+const DEV_VERSION = /^dev-[0-9a-f]{4,40}(?:-dirty)?$/;
+const BUILD_DIR = /^\/[\w./-]{1,400}$/;
+
+const isAllowedDevQuery = (rest: string[]): boolean => {
+	const [sub, ...args] = rest;
+
+	switch (sub) {
+		case 'targets':
+		case 'status':
+			return args.every((arg) => arg === '--json');
+		case '_handoff':
+			return (
+				args.length === 2 &&
+				DEV_VERSION.test(args[0] ?? '') &&
+				BUILD_DIR.test(args[1] ?? '') &&
+				!(args[1] ?? '').includes('..')
+			);
+		default:
+			return false;
+	}
+};
+
+// What the main runs for a remote's query: a handoff gets the asking machine as its source.
+export const withSource = (args: string[], machine: string): string[] =>
+	args[1] === 'dev' && args[2] === '_handoff' ? [...args, `--source=${machine}`] : args;
+
 export const isAllowedQuery = (args: string[]): boolean => {
 	const [voice, command, ...afterCommand] = args;
+
+	if (voice === 'voice' && command === 'dev') {
+		return isAllowedDevQuery(afterCommand);
+	}
 
 	if (voice !== 'voice' || !command || !COMMANDS.has(command)) {
 		return false;

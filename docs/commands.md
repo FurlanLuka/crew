@@ -1202,6 +1202,52 @@ Output: `removed\t<path>`
 crew voice discord off
 ```
 
+### `crew voice dev`
+
+One dev build of crew and Voice OS on every machine, to try a branch with your remotes before it is released. Any machine — the main or a remote — pushes its own checkout.
+
+```
+crew voice dev push [--dry-run] | status
+```
+
+#### `crew voice dev push`
+
+Builds crew and Voice OS from the crew checkout you are in, once per OS and CPU your machines run, stamped dev-<commit> (-dirty with uncommitted changes), and hands the push to the main, where it runs detached (tmux crew-dev-push) so restarting Voice OS or the Claude session that asked never ends it. It copies both binaries to every machine and checks them, installing nothing if any copy fails; then installs and restarts each machine: the other remotes, then the main, the machine you pushed from last. A machine out of reach is skipped and named.
+
+```
+crew voice dev push [--dry-run]
+```
+
+Output: `<machine>\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …`
+
+- `--dry-run` — List the machines and their targets; build and push nothing
+
+Needs go and bun on the machine you push from. Returns once the push starts; crew voice dev status follows it.
+
+crew update on a machine goes back to the latest release.
+
+```bash
+crew voice dev push --dry-run
+crew voice dev push
+```
+
+#### `crew voice dev status`
+
+The last push, read on the main (a remote asks it): its version, source, phase, and each machine — copied, restarted, skipped or failed with why.
+
+```
+crew voice dev status [--json]
+```
+
+Output: `<version> from <source>: <phase> / <machine>\t<goos>_<goarch>\t<state>`
+
+--json: {version,source,started_at,phase,error,machines:[{id,name,host,target,skipped,staged,installed,error}]}, or null before any push.
+
+```bash
+crew voice dev status
+crew voice dev status --json
+```
+
 ## `crew update`
 
 Update crew to the latest version

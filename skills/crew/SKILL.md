@@ -78,6 +78,9 @@ crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
                                                          server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs
 crew voice discord status [--json]                         <field>\t<value>
 crew voice discord off                                     removed\t<path>
+crew voice dev push [--dry-run] | status
+crew voice dev push [--dry-run]                            <machine>\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …
+crew voice dev status [--json]                             <version> from <source>: <phase> / <machine>\t<goos>_<goarch>\t<state>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -463,6 +466,18 @@ steps. `crew voice discord status` prints `<field>\t<value>` rows — setup, tok
 channel, owner, then what Voice OS last reported (connected, owner_in_channel, error, at) or
 `live\tVoice OS has not reported`; `--json`: `{set_up, token, config|null, live|null}`. `crew
 voice discord off` removes discord.json and the token (`removed\t<path>` per file).
+
+**Trying a branch on every machine: `crew voice dev push`.** A remote refuses a main on another
+version, so a branch built from source can't meet your remotes until it is released. `crew voice dev
+push`, run in a crew checkout on any machine — the main or a remote — builds that checkout's crew
+and Voice OS for each OS and CPU your machines run (go and bun needed there), stamps them
+`dev-<commit>` (`-dirty` with uncommitted changes), and hands the push to the main, where it runs
+detached in tmux `crew-dev-push`: restarting Voice OS, or the Claude session that asked, never ends
+it. It copies both binaries everywhere and checks them (any failed copy → nothing installed), then
+installs and restarts each machine — the other remotes, the main, the machine you pushed from last.
+A machine out of reach is skipped and named. It returns at once; `crew voice dev status` (from any
+machine) follows it: `<version> from <source>: <phase>`, then `<machine>\t<goos>_<goarch>\t<state>`.
+`--dry-run` lists the machines and targets only. `crew update` on a machine goes back to the release.
 
 **Debugging Voice OS: logs, debug notes, notes.** Read these through crew, never by grepping
 the files (the log rotates at 20 MB into `voiceos.log.1` … `.5`, and a remote's log is on

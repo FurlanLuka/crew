@@ -13,6 +13,7 @@ import (
 	osexec "os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
@@ -116,4 +117,10 @@ func signAdHoc(path string) error {
 		return fmt.Errorf("signing %s: %v", filepath.Base(path), err)
 	}
 	return nil
+}
+
+// IsDevBuild: a build from source — plain "dev", or "dev-<sha>" from crew voice
+// dev push. There is no release to update to or from. Pure.
+func IsDevBuild(version string) bool {
+	return version == "dev" || strings.HasPrefix(version, "dev-")
 }

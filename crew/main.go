@@ -119,7 +119,7 @@ func main() {
 
 	// Check for updates in background (skip for dev builds and update command)
 	var updateCh chan string
-	if Version != "dev" && cmd != "update" {
+	if !release.IsDevBuild(Version) && cmd != "update" {
 		updateCh = make(chan string, 1)
 		// Only a newer release is news: a cache from before the last update must not offer a downgrade.
 		newer := func(latest string) string {

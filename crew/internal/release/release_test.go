@@ -157,3 +157,11 @@ func TestInstallBinary_FailuresLeaveTheTargetAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestIsDevBuild(t *testing.T) {
+	for v, want := range map[string]bool{"dev": true, "dev-abc1234": true, "dev-abc-dirty": true, "5.8.0": false, "": false, "devops": false} {
+		if got := IsDevBuild(v); got != want {
+			t.Errorf("%q: got %v", v, got)
+		}
+	}
+}
