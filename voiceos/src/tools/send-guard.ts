@@ -16,7 +16,7 @@ const log = createLogger('tools');
 
 export const ASK_WHICH_NOTE = 'asked which session';
 
-// "on vm1", "on my Mac", or a machine's name or id said beside the session ("vm1 checkout").
+// "on vm1", "on my Mac", or a machine's name or id said anywhere in the words ("vm1 checkout").
 const readMachineSaid = (state: State, utterance: string): string | null => {
 	const plain = toPlainWords(utterance);
 
