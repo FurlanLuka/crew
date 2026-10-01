@@ -523,15 +523,11 @@ describe('a remote over a link', () => {
 
 			await host.refreshWorktrees();
 
-			let wasConnected = false;
 			let main: ReturnType<typeof startMain> | null = null;
 			const network = createNetwork(host, {
 				cutAfter,
 				isHalfOpen,
 				seed: cutAfter,
-				onCut: () => {
-					wasConnected = main ? isConnected(main.store) : false;
-				},
 			});
 
 			main = startMain({ open: network.open });
@@ -554,11 +550,11 @@ describe('a remote over a link', () => {
 			expect({ cutAfter, decisions: fake.decisions }).toEqual({ cutAfter, decisions: ['allow'] });
 			expect({ cutAfter, shown: readShown(store) }).toEqual({ cutAfter, shown: baseline });
 			expect({ cutAfter, narrated }).toEqual({ cutAfter, narrated: [REF, REF] });
-			// Back after being connected → one recap; a cut before the first hello may or may not
-			// have something to tell.
-			expect({ cutAfter, recaps: wasConnected ? recaps : Math.min(recaps, 1) }).toEqual({
+			// A reconnect is said only with news (a turn finished, or something new waits): at most once
+			// per cut, never twice.
+			expect({ cutAfter, recaps: Math.min(recaps, 2) }).toEqual({
 				cutAfter,
-				recaps: wasConnected ? 1 : recaps,
+				recaps: Math.min(recaps, 1),
 			});
 
 			for (const stop of stops.splice(0)) {

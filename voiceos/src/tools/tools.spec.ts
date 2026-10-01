@@ -76,6 +76,29 @@ describe('executeTool', () => {
 		]);
 	});
 
+	// Debug note 14: "go back to speak main" went to speak/main, not the session named Speak Main.
+	it("the developer's own name said → that session, not a worktree whose ref sounds the same", async () => {
+		const { tools, actions } = createToolContext({
+			names: { 'store-front/wrk1': 'Store Front Main' },
+		});
+
+		await executeTool(
+			'switch_view',
+			{ ref: 'store-front/main' },
+			{ ...tools, utterance: 'Can you go back to store front main?' },
+		);
+		await executeTool(
+			'switch_view',
+			{ ref: 'checkout-api/main' },
+			{ ...tools, utterance: 'Switch to checkout api main.' },
+		);
+
+		expect(actions).toEqual([
+			{ type: 'switch_view', view: { kind: 'session', ref: 'store-front/wrk1' } },
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
+		]);
+	});
+
 	it('switch_view null → Mission Control', async () => {
 		const { tools, actions } = createToolContext();
 
@@ -2228,6 +2251,35 @@ describe('spoken sends', () => {
 			},
 			{ type: 'send', ref: 'store-front/wrk1', text: 'Run the tests.', ack: INSTRUCTION_ACK },
 		]);
+	});
+
+	it('a spoken question aside to a working session → marked with the screen it was said on', async () => {
+		const { tools, actions } = createToolContext();
+		const state = tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+		};
+
+		await executeTool(
+			'forward',
+			{ kind: 'question' },
+			{
+				...tools,
+				screen: 'store-front/main',
+				forwardTo: 'store-front/main',
+				isSpoken: true,
+				utterance: 'Which file?',
+			},
+		);
+
+		expect(actions[0]).toMatchObject({
+			type: 'send',
+			ref: 'store-front/main',
+			aside: true,
+			isSpoken: true,
+			saidOn: 'store-front/main',
+		});
 	});
 });
 

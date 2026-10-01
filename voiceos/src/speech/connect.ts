@@ -70,6 +70,8 @@ export interface ConnectSpeechParams {
 	narrateAside: (effect: NarrateAsideEffect) => Promise<void> | void;
 	// Tests run the clock themselves.
 	setTimer?: (run: () => void, ms: number) => unknown;
+	// The router is still reading words the developer said: they may answer a question about to lapse.
+	isRouting?: () => boolean;
 }
 
 // What the store asks to be said, dropped or narrated reaches the voice here: the app and the
@@ -80,6 +82,7 @@ export const connectSpeech = ({
 	narrateTurn,
 	narrateAside,
 	setTimer = setTimeout,
+	isRouting = () => false,
 }: ConnectSpeechParams): void => {
 	// The reducer runs in the page too, so it cannot log: what the conversation did is logged here.
 	let previous = store.state;
@@ -130,10 +133,11 @@ export const connectSpeech = ({
 		});
 	});
 
-	// A question's wait ends in silence: while the developer is still speaking (their words not yet
-	// routed), the words may be its answer, so it waits for them. Bounded, in case a press never ends.
+	// A question's wait ends in silence: while the developer is still speaking, or the router still
+	// reads what they said, the words may be its answer, so it waits for them. Bounded, in case a press
+	// never ends.
 	const whenQuiet = (run: () => void, waited = 0): void => {
-		if (store.state.transcript === null || waited >= QUIET_WAIT_MAX_MS) {
+		if ((store.state.transcript === null && !isRouting()) || waited >= QUIET_WAIT_MAX_MS) {
 			run();
 
 			return;

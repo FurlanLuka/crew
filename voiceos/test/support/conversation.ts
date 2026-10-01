@@ -133,6 +133,7 @@ export const createConversation = ({
 		}),
 		narrateAside: createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) }),
 		setTimer,
+		isRouting: () => router.isRouting,
 	});
 	const kernel = new Kernel({
 		apiKey: 'k',

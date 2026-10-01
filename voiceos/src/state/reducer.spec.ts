@@ -1000,6 +1000,31 @@ describe('compaction', () => {
 		expect(since(started.state)).toBe(1000);
 	});
 
+	it('off screen, the session talked with → said with its name; started again after it ended → said again', () => {
+		const talking = run(
+			[
+				{ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } },
+				{ type: 'send', ref: 'store/main', text: 'is the build green?', isSpoken: true },
+			],
+			idleSession(),
+		).state;
+		const spoken = (result: ReducerResult) =>
+			result.effects.filter((effect) => effect.type === 'speak');
+		const line = {
+			type: 'speak',
+			text: 'store/main is compacting its context; this takes a minute.',
+			source: 'alert',
+			ref: 'store/main',
+		} as const;
+		const started = run([compacting(true)], talking);
+
+		expect(spoken(started)).toEqual([line]);
+
+		const ended = run([compacting(false)], started.state);
+
+		expect(spoken(run([compacting(true)], ended.state))).toEqual([line]);
+	});
+
 	it('the turn ending, an interrupt, a stop, the worker exiting, a new process or a /clear clear it', () => {
 		const running = run(
 			[{ type: 'send', ref: 'store/main', text: 'compact' }, compacting(true)],

@@ -192,6 +192,19 @@ export interface DescribeRecapParams {
 	waiting: string[];
 }
 
+export interface IsRecapNewsParams {
+	finished: string[];
+	waiting: string[];
+	// The waiting sessions said last time this machine came back.
+	waitingSaid: string[];
+}
+
+// Only news is said: a machine back with nothing finished and nothing new waiting is already shown on
+// the page. A laptop asleep reconnects every few minutes all night, and each "is back" would wait in
+// the queue for the morning.
+export const isRecapNews = ({ finished, waiting, waitingSaid }: IsRecapNewsParams): boolean =>
+	finished.length > 0 || waiting.some((name) => !waitingSaid.includes(name));
+
 // Said once when a machine comes back: what happened there while it was out of reach.
 export const describeRecap = ({ name, finished, waiting }: DescribeRecapParams): string => {
 	const parts = [

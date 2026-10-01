@@ -37,7 +37,7 @@ import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
 import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
-import { findNamedRefs, findSessionsNamedIn } from './session-naming.js';
+import { findNamedRefs, findSessionsNamedIn, readNamedInstead } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import {
 	describeMachineSwitch,
@@ -524,9 +524,17 @@ export const executeTool = async (
 			}
 
 			const found = checkRef(state, input.ref);
-			const checked = found.ok
+			const scoped = found.ok
 				? { ...found, ref: scopeToMachine(state, found.ref, input.machine, toolContext) }
 				: found;
+			const namedInstead = scoped.ok
+				? readNamedInstead(state, scoped.ref, toolContext.utterance ?? '')
+				: null;
+			const checked = scoped.ok && namedInstead ? { ...scoped, ref: namedInstead } : scoped;
+
+			if (namedInstead) {
+				log.info('switch to the named session', { asked: String(input.ref), ref: namedInstead });
+			}
 
 			if (!checked.ok) {
 				// "Switch to personal server": a machine named where a session was expected is that machine.

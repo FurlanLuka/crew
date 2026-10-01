@@ -7,6 +7,7 @@ import {
 	currentMachine,
 	describeMachineWaiting,
 	describeRecap,
+	isRecapNews,
 	diffMachines,
 	HOME_VIEW,
 	isKnownMachineRef,
@@ -236,5 +237,24 @@ describe('describeRecap', () => {
 		expect(describeRecap({ name: 'Build box', finished: [], waiting: [] })).toBe(
 			'Build box is back.',
 		);
+	});
+});
+
+describe('isRecapNews', () => {
+	it('nothing finished, nothing waiting → no news (the page shows it is back)', () => {
+		expect(isRecapNews({ finished: [], waiting: [], waitingSaid: [] })).toBe(false);
+	});
+
+	it('the same sessions still waiting as at the last connect → no news', () => {
+		expect(isRecapNews({ finished: [], waiting: ['checkout'], waitingSaid: ['checkout'] })).toBe(
+			false,
+		);
+	});
+
+	it('a turn finished, or a session newly waiting → news', () => {
+		expect(isRecapNews({ finished: ['store'], waiting: [], waitingSaid: [] })).toBe(true);
+		expect(
+			isRecapNews({ finished: [], waiting: ['checkout', 'signals'], waitingSaid: ['checkout'] }),
+		).toBe(true);
 	});
 });

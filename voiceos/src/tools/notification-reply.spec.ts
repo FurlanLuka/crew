@@ -1,6 +1,6 @@
 import { englishJudge } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
-import type { Action, State } from '../shared/protocol.js';
+import { SWITCH_OFFER_MS, type Action, type State } from '../shared/protocol.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import { createFixtureState } from '../../test/support/state.js';
 import { executeTool, type ToolContext } from './tools.js';
@@ -136,6 +136,20 @@ describe('replies to a notification', () => {
 
 		expect(result.ok).toBe(false);
 		expect(heard.actions).toEqual([]);
+	});
+
+	it('"Switch to …?" about another session, or long since heard → "For …?" asked as usual', async () => {
+		const offers = [
+			{ ref: SCREEN, at: NOW - 2_000, heardAt: NOW - 1_000 },
+			{ ref: NOTIFIER, at: NOW - SWITCH_OFFER_MS - 2_000, heardAt: NOW - SWITCH_OFFER_MS - 1 },
+		];
+
+		for (const switchOffer of offers) {
+			const heard = createContext({ ...notified(), switchOffer }, 'review all of this');
+			const result = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
+
+			expect(result).toMatchObject({ ok: true, note: 'asked which session' });
+		}
 	});
 
 	it('the words already sent this turn → "For …?" refused: they cannot also be held', async () => {

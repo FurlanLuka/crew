@@ -2,6 +2,7 @@
 // switches there, unless the developer is mid-conversation with the screen; "For checkout?" when the
 // words could be either.
 import { createLogger } from '../log.js';
+import { readLabel } from '../state/helpers.js';
 import { isMidExchangeWithScreen } from '../state/exchange.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { endsInQuestion } from '../shared/spoken.js';
@@ -90,7 +91,7 @@ export const askTarget = ({ state, input, toolContext }: AskTargetParams): ToolR
 		state.switchOffer.ref === checked.ref
 	) {
 		return fail(
-			`Not asked: Voice OS just asked "Switch to ${checked.ref}?", and these words answer it (switch_offer under "Waiting on the developer"). A no changes nothing: say nothing.`,
+			`Not asked: Voice OS just asked "Switch to ${readLabel(state, checked.ref)}?", and these words answer it (switch_offer under "Waiting on the developer"). A no changes nothing: say nothing.`,
 		);
 	}
 

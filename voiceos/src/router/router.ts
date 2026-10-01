@@ -16,7 +16,7 @@ import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.
 import { readTargetAnswer, settleTarget } from './target.js';
 import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
-import { isShortEnoughToAnswer } from '../tools/send.js';
+import { isBareNo, isShortEnoughToAnswer } from '../tools/send.js';
 
 const log = createLogger('router');
 
@@ -80,8 +80,19 @@ const NO_TAB_TO_OPEN: OpenUrl = () => false;
 const NO_KERNEL_MESSAGE =
 	'Voice needs the Anthropic key — see the banner. Typing into a session still works.';
 
+// A permission, plan or question a session raised after `at`: the newest thing asked.
+const hasQuestionSince = (state: State, at: number): boolean =>
+	state.asks.some((ask) => ask.at > at) ||
+	state.order.some((ref) => (state.sessions[ref]?.needsUser?.at ?? 0) > at);
+
 export class UtteranceRouter {
 	private chain: Promise<void> = Promise.resolve();
+	// Utterances handed in and not yet done: a question about to lapse waits for them.
+	private routing = 0;
+
+	get isRouting(): boolean {
+		return this.routing > 0;
+	}
 	private now: () => number;
 
 	constructor(private options: RouterOptions) {
@@ -94,9 +105,13 @@ export class UtteranceRouter {
 		origin: UtteranceOrigin = {},
 	): Promise<void> {
 		// One utterance at a time, so two can never interleave their effects.
+		this.routing += 1;
 		this.chain = this.chain
 			.then(() => this.run(text, source, origin))
-			.catch((error: unknown) => log.error('utterance failed', { error: String(error) }));
+			.catch((error: unknown) => log.error('utterance failed', { error: String(error) }))
+			.finally(() => {
+				this.routing -= 1;
+			});
 
 		return this.chain;
 	}
@@ -134,22 +149,25 @@ export class UtteranceRouter {
 		}
 
 		// "Switch to checkout?" answered with a bare no: the offer closes and nothing else happens. Never
-		// the kernel's to read, where a "no" can look like a reply to that session's update.
+		// the kernel's to read, where a "no" can look like a reply to that session's update. A question
+		// asked after the offer is what a bare no answers: then the kernel reads it.
 		const offer = store.state.switchOffer;
 
 		if (
 			offer &&
 			source === 'voice' &&
 			isSwitchOfferFresh(offer, heardFrom) &&
-			isShortEnoughToAnswer(trimmedText) &&
-			(await readTargetAnswer(
-				this.options.judge,
-				trimmedText,
-				readSessionLabel(store.state, offer.ref),
-			)) === 'no'
+			!hasQuestionSince(store.state, offer.at) &&
+			(await isBareNo(this.options.judge, trimmedText))
 		) {
 			log.info('switch offer declined', { ref: offer.ref });
 			store.dispatch({ type: 'switch_offer_closed', at: offer.at });
+			// In the screen's voice log like any turn: debug notes read what was said there.
+			store.dispatch({
+				type: 'voice_logged',
+				screen: readActiveRef(store.state) ?? GRID,
+				entry: { utterance: trimmedText, did: ['switch offer declined'], reply: '', at: heardFrom },
+			});
 
 			return;
 		}
@@ -186,7 +204,7 @@ export class UtteranceRouter {
 		log.info('route', { source, to: 'kernel', screen, text: trimmedText });
 		// "Switch to checkout?" is answered by these words or let go: a yes switches in this turn. Words
 		// said before it was asked leave it to its own lapse.
-		const offerAt = isSwitchOfferFresh(store.state.switchOffer, origin.heardFrom ?? this.now())
+		const offerAt = isSwitchOfferFresh(store.state.switchOffer, heardFrom)
 			? store.state.switchOffer.at
 			: null;
 

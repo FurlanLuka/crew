@@ -77,14 +77,17 @@ describe('the exchange', () => {
 		expect(isMidExchangeWithScreen(state, 20)).toBe(true);
 	});
 
-	it('said on its screen, then clicked away before the words went → left: no subject, no ack, no offer', () => {
-		const away = runAt(
-			[[10, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }]],
-			onScreen(),
-		);
+	it('said on its screen and still there → mid-exchange with it, as without saidOn', () => {
+		const state = runAt([[10, said(SCREEN, SCREEN)]], onScreen());
+
+		expect(state.exchange?.reason).toBe('screen');
+		expect(isMidExchangeWithScreen(state, 20)).toBe(true);
+	});
+
+	it('said on its screen, then clicked away before the words went → left: no subject, no ack', () => {
 		const before = runAt(
 			[[20, { type: 'switch_view', view: { kind: 'session', ref: OTHER } }]],
-			away,
+			onScreen(),
 		);
 		const result = reduce(before, {
 			seq: before.seq + 1,
