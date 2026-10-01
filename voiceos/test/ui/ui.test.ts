@@ -682,6 +682,44 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('words kept while something is typed → appended after it, the typed words first', async () => {
+		const { context, page, client } = await openMicTab();
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		await field.fill('check the retries');
+		gateway.send(client, {
+			type: 'dictation_kept',
+			text: 'and the backoff test',
+			reason: 'the press reached its limit',
+		});
+		await page.waitForFunction(
+			() =>
+				document.querySelector<HTMLTextAreaElement>('footer textarea')?.value ===
+				'check the retries and the backoff test',
+		);
+		await context.close();
+	}, 20_000);
+
+	it('a dictation survives leaving the page: blur and a hidden page send no ptt_stop', async () => {
+		const { context, page, client } = await openMicTab();
+		await chooseMode(page, 'Dictation');
+		await page.getByRole('button', { name: 'Start dictating' }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+
+		await page.evaluate(() => {
+			window.dispatchEvent(new Event('blur'));
+			Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+			Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+		});
+		await Bun.sleep(500);
+		expect(listFromClient(client, 'ptt_stop')).toHaveLength(0);
+		expect(await page.locator('.dictation-clock').isVisible()).toBe(true);
+
+		await page.getByRole('button', { name: 'Send', exact: true }).click();
+		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 1);
+		await context.close();
+	}, 20_000);
+
 	it('on demand turned on by voice (listen_on) → the menu shows it and the mic streams in that mode; a call shows "listening to you"', async () => {
 		const { context, page, client } = await openMicTab();
 		const before = listFromClient(client, 'listen_start').length;

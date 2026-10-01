@@ -891,7 +891,7 @@ describe('what a "done" names', () => {
 			'Tests pass. The branch is pushed',
 		],
 		[
-			'a version that ends a word is not a sentence end',
+			'a version never ends a sentence: "v5.7.0." joins the next one (accepted)',
 			'Bumped to v5.7.0. Tests pass.',
 			'Bumped to v5.7.0. Tests pass',
 		],
