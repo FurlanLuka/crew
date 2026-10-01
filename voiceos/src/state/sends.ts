@@ -9,6 +9,7 @@ import {
 	type SwitchOfferKind,
 } from '../shared/protocol.js';
 import { isSetupRef } from '../shared/machine-ref.js';
+import { isActive } from '../shared/active.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readScreenRef, sayAck, sayRef } from './helpers.js';
 import { isReachable, readMachineName } from '../shared/machines.js';
@@ -46,7 +47,6 @@ const offerSwitch = (
 				ref: input.ref,
 				at,
 				...(input.kind ? { kind: input.kind } : {}),
-				...(input.words ? { words: input.words } : {}),
 				...(input.thenSwitch ? { thenSwitch: true as const } : {}),
 			},
 		},
@@ -117,7 +117,13 @@ export const followSends = (
 
 			// The session on screen answers for itself; on Mission Control the kernel's own reply says
 			// where the words went.
-			if (!state.sessions[input.ref] || screenRef === null || input.ref === screenRef) {
+			// An inactive session only keeps the words: "…isn't active. Activate it?" says so.
+			if (
+				!state.sessions[input.ref] ||
+				screenRef === null ||
+				input.ref === screenRef ||
+				!isActive(state, input.ref)
+			) {
 				return result;
 			}
 
@@ -150,9 +156,11 @@ export const followSends = (
 			// Activate and deactivate answer what the developer just asked: they replace an older offer.
 			const isAnswer = input.kind === 'activate' || input.kind === 'deactivate';
 
+			// "Switch to X?" is about a session voice reaches; an inactive one is only ever offered activation.
 			if (
 				!state.sessions[input.ref] ||
-				(!isAnswer && isSwitchOfferFresh(state.switchOffer, stamped.at))
+				(!isAnswer && isSwitchOfferFresh(state.switchOffer, stamped.at)) ||
+				(!isAnswer && !isActive(state, input.ref))
 			) {
 				return result;
 			}

@@ -9,6 +9,7 @@ import {
 	readScreenRef,
 	sayAck,
 	sayRef,
+	releaseRefs,
 	startWorker,
 	updateSession,
 	withoutEffects,
@@ -43,8 +44,13 @@ const startIfStopped = (state: State, ref: string): ReducerResult =>
 	isActive(state, ref) && isStartable(state, ref) ? startWorker(state, ref) : withoutEffects(state);
 
 // Stops a session and lets go of everything Voice OS still holds for it: nothing it had waiting is
-// said, asked or sent later. Its conversation stays in sessions.json for its next start.
-export const stopWorker = (state: State, ref: string): ReducerResult => {
+// said, asked or sent later. Its conversation stays in sessions.json for its next start. keepQueue:
+// words waiting for it stay for its next start (a stop it did not ask for, on reconnect).
+export const stopWorker = (
+	state: State,
+	ref: string,
+	{ keepQueue = false } = {},
+): ReducerResult => {
 	const session = state.sessions[ref];
 
 	if (!session) {
@@ -52,24 +58,15 @@ export const stopWorker = (state: State, ref: string): ReducerResult => {
 	}
 
 	const settled = settleAsksForSession(state, ref, 'The session was stopped.');
-	const isOther = (other: string): boolean => other !== ref;
+	const released = releaseRefs(settled.state, (other) => other === ref);
 	const cleared: State = {
-		...settled.state,
-		meanwhile: settled.state.meanwhile.filter((item) => isOther(item.ref)),
-		denials: settled.state.denials.filter((denial) => isOther(denial.ref)),
-		devOffer: settled.state.devOffer?.ref === ref ? null : settled.state.devOffer,
-		switchOffer: settled.state.switchOffer?.ref === ref ? null : settled.state.switchOffer,
-		targetAsk:
-			settled.state.targetAsk?.ref === ref || settled.state.targetAsk?.screen === ref
-				? null
-				: settled.state.targetAsk,
-		lastSpokenSend: settled.state.lastSpokenSend?.ref === ref ? null : settled.state.lastSpokenSend,
-		focus: settled.state.focus === ref && readScreenRef(state) !== ref ? null : settled.state.focus,
+		...released,
+		focus: released.focus === ref && readScreenRef(state) !== ref ? null : released.focus,
 	};
 	const stopped = updateSession(cleared, ref, (current) => ({
 		...current,
 		status: 'stopped',
-		queue: [],
+		queue: keepQueue ? current.queue : [],
 		draft: '',
 		needsUser: null,
 		voiceTurnAt: null,
@@ -141,7 +138,12 @@ const activate = (
 		state: { ...started.state, switchOffer: { ref, at } },
 		effects: [
 			...started.effects,
-			sayAck(`Activated ${sayRef(state, ref)}. Switch there?`, { isAsking: true, ref }),
+			sayAck(
+				(state.sessions[ref]?.queue.length ?? 0) > 0
+					? `Activated ${sayRef(state, ref)}; your words go once it's up. Switch there?`
+					: `Activated ${sayRef(state, ref)}. Switch there?`,
+				{ isAsking: true, ref },
+			),
 		],
 	};
 };
@@ -166,7 +168,7 @@ const deactivate = (state: State, ref: string): ReducerResult => {
 };
 
 // Every active session that is present, stopped and reachable is started, once.
-export const startActive = (state: State, refs: string[]): ReducerResult =>
+const startActive = (state: State, refs: string[]): ReducerResult =>
 	refs.reduce<ReducerResult>((result, ref) => {
 		const next = startIfStopped(result.state, ref);
 
@@ -188,7 +190,7 @@ export const matchMachine = (state: State, machine: string): ReducerResult => {
 			continue;
 		}
 
-		const next = stopWorker(result.state, ref);
+		const next = stopWorker(result.state, ref, { keepQueue: true });
 
 		stopped.push(ref);
 		result = { state: next.state, effects: [...result.effects, ...next.effects] };

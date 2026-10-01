@@ -292,14 +292,14 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   start: send, "now", reconnect), says nothing (gates in `speech/connect.ts`, `dev/watch.ts`, the
   reconnect recap, `addMeanwhile`) and is browsed and activated on the page. `shared/active.ts`
   (`isActive` — true for the main's `SETUP_REF`, always active — and `listActiveRefs`, setup
-  first) is the one reading of `state.active`; nothing else reads the field. `state/active.ts` reduces
+  first) is the one reading of `state.active` outside the reducer and its persistence. `state/active.ts` reduces
   `activate` ("Activated X. Switch there?" by voice, silent from the page), `deactivate` (out of
   the set first, then `stopWorker` — the machine-removal clean-up; "X is working. Deactivate
   anyway?" first) and `active_loaded` (starts actives present and stopped); `machine_resynced`
   (`state/machines.ts`) runs `matchMachine` on every connect: active+stopped starts,
   inactive+running stops ("Stopped N sessions on X that aren't active"). Words to an inactive
-  session are `switchOffer` kind `activate` ("X isn't active. Activate it?"), delivered after a
-  yes; a remote's setup is activated like any other, never replaced by the main's. Kernel tools
+  session wait in its queue (nothing starts it) behind `switchOffer` kind `activate` ("X isn't
+  active. Activate it?"); activating starts it and its start sends them; a remote's setup is activated like any other, never replaced by the main's. Kernel tools
   `activate`, `deactivate`, `list_sessions` (counts first) are Voice OS commands even on a
   session's screen; "Voice OS, …" always reaches the kernel. `state.names` (full ref → name,
   unique; an empty name clears). Persisted in `~/.crew/voiceos/active.json` (`pinned.json` read

@@ -295,7 +295,7 @@ export const TARGET_ASK_MS = 8_000;
 export const QUESTION_UNHEARD_MS = 30_000;
 
 // What a yes does. switch (the default): go there. activate: "<X> isn't active. Activate it?" — words
-// said to it wait in `words` and go once it is up. deactivate: "<X> is working. Deactivate anyway?".
+// said to it wait in its queue and go once it is up. deactivate: "<X> is working. Deactivate anyway?".
 export type SwitchOfferKind = 'switch' | 'activate' | 'deactivate';
 
 export interface SwitchOffer {
@@ -303,7 +303,6 @@ export interface SwitchOffer {
 	at: number;
 	heardAt?: number;
 	kind?: SwitchOfferKind;
-	words?: string;
 	// An activate asked for a switch: a yes activates it and goes there.
 	thenSwitch?: true;
 }
@@ -507,13 +506,11 @@ export type Action =
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
 	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced), or with a kind
-	// "X isn't active. Activate it?" (words: what was said to X, sent after a yes) or "X is working.
-	// Deactivate anyway?".
+	// "X isn't active. Activate it?" or "X is working. Deactivate anyway?".
 	| {
 			type: 'offer_switch';
 			ref: string;
 			kind?: SwitchOfferKind;
-			words?: string;
 			thenSwitch?: true;
 	  }
 	// Voice OS asks "For X?" and holds the words until the developer says which.

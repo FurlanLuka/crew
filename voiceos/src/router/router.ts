@@ -14,7 +14,8 @@ import { hasQuestionSince } from '../state/asks.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { OpenUrl } from '../tools/docs.js';
 import type { KernelHandleParams } from './kernel.js';
-import { readActiveRef, resolveTypedTarget, type UtteranceSource } from './refs.js';
+import { resolveTypedTarget, type UtteranceSource } from './refs.js';
+import { readScreenRef } from '../state/helpers.js';
 import { readTargetAnswer, settleTarget } from './target.js';
 import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
@@ -162,7 +163,7 @@ export class UtteranceRouter {
 			// In the screen's voice log like any turn: debug notes read what was said there.
 			store.dispatch({
 				type: 'voice_logged',
-				screen: readActiveRef(store.state) ?? GRID,
+				screen: readScreenRef(store.state) ?? GRID,
 				entry: {
 					utterance: trimmedText,
 					did: ['switch offer declined'],
@@ -175,7 +176,7 @@ export class UtteranceRouter {
 		}
 
 		// Captured before anything runs: a switch_view during the turn does not move it.
-		const screen = readActiveRef(store.state);
+		const screen = readScreenRef(store.state);
 		const saidAt = this.now();
 
 		// Text typed into a session's own box is typing to that Claude, not a kernel turn.
@@ -186,12 +187,14 @@ export class UtteranceRouter {
 
 		if (writtenTo && store.state.sessions[writtenTo] && !isActive(store.state, writtenTo)) {
 			log.info('words for an inactive session: asked to activate', { source, ref: writtenTo });
+			// Its queue keeps them (nothing starts it); a yes activates it and its start sends them.
 			store.dispatch({
-				type: 'offer_switch',
+				type: 'send',
 				ref: writtenTo,
-				kind: 'activate',
-				words: trimmedText,
+				text: trimmedText,
+				...(source === 'dictated' ? { note: DICTATION_NOTE } : {}),
 			});
+			store.dispatch({ type: 'offer_switch', ref: writtenTo, kind: 'activate' });
 
 			return;
 		}

@@ -193,11 +193,11 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   no process (`startWorker` in `state/helpers.ts` refuses it, which covers send, "now" and
   reconnect), is left out of the kernel's turn, and says nothing: one gate in `speech/connect.ts`,
   one in `dev/watch.ts`, the reconnect recap, and `addMeanwhile` for late worker events.
-  `shared/active.ts` is the one reading of the set (`isActive`, `listActiveRefs`); nothing reads
-  `state.active` directly. Deactivate goes through `stopWorker`, the same clean-up as removing a
-  machine. `machine_resynced` matches a remote up on every connect: active and stopped starts,
-  inactive and running stops. Words to an inactive session get "X isn't active. Activate it?"
-  (`state.switchOffer` with kind `activate`) and are delivered after a yes.
+  `shared/active.ts` is the one reading of the set (`isActive`, `listActiveRefs`) outside the
+  reducer and its persistence. Deactivate goes through `stopWorker`, which shares `releaseRefs` with
+  removing a machine. `machine_resynced` matches a remote up on every connect: active and stopped starts,
+  inactive and running stops. Words to an inactive session wait in its queue behind "X isn't active. Activate
+  it?" (`state.switchOffer` with kind `activate`); a yes activates it and its start sends them.
 - **The setup session** (ref `setup`) runs in the home folder with the crew CLI, for crew setup
   only, and the main's is always active. A remote's setup is activated like any other session. On
   the wire it is `Session.isPinned`, a name that predates the active set. It is kept because

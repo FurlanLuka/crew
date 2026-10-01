@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import type { Input, State } from '../shared/protocol.js';
 import { describeMachineWaiting, readSessionLabel } from '../shared/machines.js';
 import { run, worktree } from '../../test/support/reduce.js';
-import { readLabel, truncateText } from './helpers.js';
+import { readLabel, releaseRefs, truncateText } from './helpers.js';
+import { createInitialState } from './reducer.js';
 import { describeAnnouncement } from './held-lines.js';
 
 describe('truncateText', () => {
@@ -59,5 +60,41 @@ describe('what a session is called', () => {
 		expect(describeMachineWaiting(waiting, 'vm1')).toBe(
 			'Personal. voice os dev is waiting on you.',
 		);
+	});
+});
+
+describe('releaseRefs', () => {
+	const base = (): State => ({
+		...createInitialState(),
+		switchOffer: { ref: 'a', at: 1 },
+		devOffer: { ref: 'b', servers: ['api'], at: 1 },
+		targetAsk: { ref: 'b', screen: 'a', text: 'hi', at: 1 },
+		lastSpokenSend: { ref: 'a', id: 'x', text: 'hi', at: 1 },
+		meanwhile: [
+			{ ref: 'a', kind: 'done', about: null, at: 1 },
+			{ ref: 'b', kind: 'done', about: null, at: 1 },
+		],
+		denials: [{ id: 'd', ref: 'a', toolName: 'Bash', summary: 'rm', at: 1 }],
+	});
+
+	it("a gone ref's offers, updates and denials go; the others' stay", () => {
+		const released = releaseRefs(base(), (ref) => ref === 'a');
+
+		expect(released.switchOffer).toBeNull();
+		expect(released.lastSpokenSend).toBeNull();
+		expect(released.denials).toEqual([]);
+		expect(released.devOffer).toEqual({ ref: 'b', servers: ['api'], at: 1 });
+		expect(released.meanwhile.map((item) => item.ref)).toEqual(['b']);
+	});
+
+	it('a "For X?" whose screen is gone → gone too', () => {
+		expect(releaseRefs(base(), (ref) => ref === 'a').targetAsk).toBeNull();
+	});
+
+	it('nothing gone → everything kept', () => {
+		const state = base();
+		const released = releaseRefs(state, () => false);
+
+		expect(released).toEqual(state);
 	});
 });

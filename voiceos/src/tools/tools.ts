@@ -9,7 +9,7 @@ import {
 	type ListenMode,
 } from '../shared/protocol.js';
 import { formatAge } from '../state/working.js';
-import { normalizeUtterance } from '../shared/spoken.js';
+import { normalizeUtterance, toSpokenName } from '../shared/spoken.js';
 import {
 	chooseSentWords,
 	describeMisroutedAnswer,
@@ -20,7 +20,7 @@ import {
 	type SentWords,
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
-import { countSpokenWords } from '../state/helpers.js';
+import { countSpokenWords, readLabel } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { activateSession, deactivateSession, refuseInactive } from './activate.js';
@@ -41,12 +41,7 @@ import { createLogger } from '../log.js';
 import { normalizeName } from '../router/refs.js';
 import { isNamedIn, isSwitchOfferedFor, refuseAnnouncedOnly } from './announced.js';
 import type { ToolName } from './definitions.js';
-import {
-	findNamedRefs,
-	findSessionsNamedIn,
-	isOwnNameSaid,
-	readNamedInstead,
-} from './session-naming.js';
+import { findSessionsNamedIn, isOwnNameSaid, readNamedInstead } from './session-naming.js';
 import { describeSession, findLatestDenial } from './session-view.js';
 import {
 	describeMachineSwitch,
@@ -55,8 +50,8 @@ import {
 	listMachineNames,
 	onMachine,
 } from './machines.js';
-import { HOME_VIEW, currentMachine, readMachineTitle } from '../shared/machines.js';
-import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
+import { HOME_VIEW } from '../shared/machines.js';
+import { LOCAL_MACHINE, splitRef } from '../shared/machine-ref.js';
 import { type RefCheck, type ToolResult, fail, succeed, checkRef } from './results.js';
 
 const MIN_REQUEST_WORDS = 4;
@@ -69,6 +64,9 @@ const refuseRef = (
 	toolContext: ToolContext,
 ): ToolResult =>
 	checked.inactive ? refuseInactive({ ref: checked.inactive, toolContext }) : fail(checked.error);
+
+const readableRef = (checked: RefCheck): RefCheck =>
+	!checked.ok && checked.inactive ? { ok: true, ref: checked.inactive } : checked;
 
 const NOTES_READ_BACK = 10;
 const DEBUG_NOTE_SAVED = 'Debug note saved.';
@@ -310,10 +308,11 @@ export const executeTool = async (
 				);
 			}
 
-			const checked = checkRef(state, input.ref);
+			// Reading needs no running Claude: an inactive session is read from what Voice OS keeps.
+			const checked = readableRef(checkRef(state, input.ref));
 
 			if (!checked.ok) {
-				return refuseRef(checked, toolContext);
+				return fail(checked.error);
 			}
 
 			const held = state.sessions[checked.ref]?.heldLine;
@@ -342,10 +341,11 @@ export const executeTool = async (
 
 		case 'read_history': {
 			const limit = Math.min(20, Math.max(1, Number(input.limit) || 5));
-			const checked = typeof input.ref === 'string' ? checkRef(state, input.ref) : null;
+			const checked =
+				typeof input.ref === 'string' ? readableRef(checkRef(state, input.ref)) : null;
 
 			if (checked && !checked.ok) {
-				return refuseRef(checked, toolContext);
+				return fail(checked.error);
 			}
 
 			const query = typeof input.query === 'string' && input.query.trim() ? input.query : null;
@@ -617,8 +617,14 @@ export const executeTool = async (
 		case 'interrupt': {
 			const checked = checkRef(state, input.ref);
 
+			// Nothing runs there: a stop never turns into an offer to start it.
 			if (!checked.ok) {
-				return refuseRef(checked, toolContext);
+				return checked.inactive
+					? {
+							...succeed(`${checked.inactive} is not active: nothing runs there`),
+							reply: `${toSpokenName(readLabel(state, checked.inactive))} isn't running.`,
+						}
+					: fail(checked.error);
 			}
 
 			// "Stop" alone is only a stop, in any language: the judge is asked only when there is more.

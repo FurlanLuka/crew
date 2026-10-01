@@ -2,7 +2,7 @@ import { createJudge } from '../src/judge/judge.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Kernel, type KernelResult } from '../src/router/kernel.js';
-import { readActiveRef } from '../src/router/refs.js';
+import { readScreenRef } from '../src/state/helpers.js';
 import { createNullNotes } from '../test/support/notes.js';
 import { reduce } from '../src/state/reducer.js';
 import { MUTATING_TOOLS, type ToolName } from '../src/tools/definitions.js';
@@ -321,7 +321,7 @@ export const runKernelEval = async ({
 		for (let i = 0; i < countRuns(testCase); i++) {
 			// Actions change the state as they would live (an answered ask closes); effects go nowhere.
 			let state = createFixtureState(testCase.context);
-			const screen = readActiveRef(state);
+			const screen = readScreenRef(state);
 
 			const dispatch = (input: Parameters<typeof reduce>[1]['input']) => {
 				state = reduce(state, {

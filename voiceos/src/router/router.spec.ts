@@ -200,13 +200,16 @@ describe('UtteranceRouter', () => {
 
 		expect(harness.kernelCalls).toEqual([]);
 		expect(harness.inputs.slice(before)).toEqual([
-			{ type: 'offer_switch', ref: 'store-front/main', kind: 'activate', words: 'run the tests' },
+			{ type: 'send', ref: 'store-front/main', text: 'run the tests' },
+			{ type: 'offer_switch', ref: 'store-front/main', kind: 'activate' },
 		]);
 		expect(harness.store.state.sessions['store-front/main']?.status).toBe('stopped');
+		expect(harness.store.state.sessions['store-front/main']?.queue.map((m) => m.text)).toEqual([
+			'run the tests',
+		]);
 		expect(harness.store.state.switchOffer).toMatchObject({
 			ref: 'store-front/main',
 			kind: 'activate',
-			words: 'run the tests',
 		});
 	});
 
@@ -414,7 +417,13 @@ describe('UtteranceRouter', () => {
 			expect(harness.kernelCalls).toEqual([]);
 			expect(kept).toEqual([]);
 			expect(harness.inputs.slice(before)).toEqual([
-				{ type: 'offer_switch', ref: 'store-front/main', kind: 'activate', words: DUMP },
+				{
+					type: 'send',
+					ref: 'store-front/main',
+					text: DUMP,
+					note: expect.stringContaining('dictated'),
+				},
+				{ type: 'offer_switch', ref: 'store-front/main', kind: 'activate' },
 			]);
 			expect(harness.store.state.sessions['store-front/main']?.status).toBe('stopped');
 		});

@@ -97,7 +97,12 @@ export const Tile = ({ session, state, dispatch }: TileProps) => {
 					/>
 				</span>
 				<span className={`body ${badge.isAlarm ? 'c-crit' : ''}`}>
-					{session.needsUser?.text ?? readLastLine(session, readSessionLabel(state, session.ref))}
+					{session.needsUser?.text ??
+						readLastLine(
+							session,
+							readSessionLabel(state, session.ref),
+							isActive(state, session.ref),
+						)}
 				</span>
 			</button>
 		</div>

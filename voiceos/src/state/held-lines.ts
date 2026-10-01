@@ -3,7 +3,6 @@ import type { HeldLine, Session, SpokenLine, Stamped, State } from '../shared/pr
 import type { Effect, ReducerResult } from './reducer.js';
 import { describeAskAloud } from './asks.js';
 import { capWords, readLabel, updateSession, withoutEffects } from './helpers.js';
-import { readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
 import { hasBackgroundWork } from './subagents.js';
 
 // A session the developer isn't looking at does not speak its lines: they wait until the developer

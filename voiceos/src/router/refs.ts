@@ -3,6 +3,7 @@ import { NUMBER_WORDS } from '../shared/spoken.js';
 import { readMachine, splitRef } from '../shared/machine-ref.js';
 import { currentMachine, readMachineName } from '../shared/machines.js';
 import { listActiveInOrder } from '../shared/active.js';
+import { readScreenRef } from '../state/helpers.js';
 
 // dictated: a brain dump held open by the developer, sent word for word like typing.
 export type UtteranceSource = 'voice' | 'typed' | 'dictated';
@@ -155,20 +156,16 @@ const findAddressedRef = (state: State, text: string): string | null => {
 	return namedPhrase ? resolveRef(state, namedPhrase, state.order) : null;
 };
 
-export const readActiveRef = (state: State): string | null => {
-	return state.view.kind === 'session' ? state.view.ref : null;
-};
-
 export const resolveTypedTarget = (state: State, text: string): string | null => {
-	const activeRef = readActiveRef(state);
+	const screenRef = readScreenRef(state);
 
 	// A waiting session is answered by the kernel: a typed "yes" must not deny a permission.
-	if (!activeRef || !state.sessions[activeRef] || state.asks.some((ask) => ask.ref === activeRef)) {
+	if (!screenRef || !state.sessions[screenRef] || state.asks.some((ask) => ask.ref === screenRef)) {
 		return null;
 	}
 
 	// Text addressed to another session by name is not this Claude's input.
 	const addressedRef = findAddressedRef(state, text);
 
-	return addressedRef && addressedRef !== activeRef ? null : activeRef;
+	return addressedRef && addressedRef !== screenRef ? null : screenRef;
 };

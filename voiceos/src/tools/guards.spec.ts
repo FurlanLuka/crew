@@ -523,12 +523,14 @@ describe('a bare answer sent as words', () => {
 });
 
 describe('which session the words name', () => {
-	it('stop with only "this one" said, this_session unclear → nothing stopped', async () => {
+	it('deactivate with only "this one" said, this_session unclear → nothing deactivated', async () => {
 		const { tools, actions } = toolsFor({
 			judge: judgeWith({ this_session: 'unclear' }),
 			utterance: 'Beende die hier.',
 		});
-		const result = await executeTool('stop_session', { ref: SCREEN }, tools);
+		const result = await executeTool('deactivate', { ref: SCREEN }, tools);
+
+		expect(result.content).toContain('did not name exactly one session');
 
 		expect(result.ok).toBe(false);
 		expect(actions).toEqual([]);

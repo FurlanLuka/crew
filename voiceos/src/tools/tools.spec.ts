@@ -202,6 +202,29 @@ describe('executeTool', () => {
 		expect(actions).toEqual([]);
 	});
 
+	it('read_state for all → only the active sessions', async () => {
+		const { tools } = createToolContext({ active: ['store-front/main'] });
+		const all = JSON.parse((await executeTool('read_state', { ref: null }, tools)).content);
+
+		expect(all.map((row: { ref: string }) => row.ref)).toEqual(['store-front/main']);
+	});
+
+	it('read_state of an inactive session → read from what Voice OS keeps, nothing offered', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
+		const result = await executeTool('read_state', { ref: 'checkout-api/main' }, tools);
+
+		expect(JSON.parse(result.content)).toMatchObject({ ref: 'checkout-api/main' });
+		expect(actions).toEqual([]);
+	});
+
+	it('interrupt of an inactive session → "isn\'t running", never an offer to start it', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
+		const result = await executeTool('interrupt', { ref: 'checkout-api/main' }, tools);
+
+		expect(result.reply).toBe("checkout api, main isn't running.");
+		expect(actions).toEqual([]);
+	});
+
 	it('read_state for all → compact rows; for one → with recent turns', async () => {
 		const { tools } = createToolContext();
 		const all = JSON.parse((await executeTool('read_state', { ref: null }, tools)).content);

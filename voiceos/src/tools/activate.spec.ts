@@ -202,58 +202,23 @@ describe('activate', () => {
 		expect(actions).toEqual([{ type: 'activate', ref: 'vm1:store-front/main', announce: true }]);
 	});
 
-	it('a yes to "Activate it?" with words kept for it → activated, then the words sent', async () => {
+	it('a yes to "Activate it?" → activated and announced; words kept in its queue go on its start', async () => {
 		const { tools, actions } = createContext({
 			screen: 'crew/main',
 			patch: {
 				active: ['crew/main'],
-				switchOffer: { ref: 'store-front/wrk1', at: 900, kind: 'activate', words: 'run the tests' },
+				switchOffer: { ref: 'store-front/wrk1', at: 900, kind: 'activate' },
 			},
 		});
 
 		const result = await executeTool('activate', { name: 'store-front/wrk1' }, tools);
 
-		expect(actions).toEqual([
-			{ type: 'activate', ref: 'store-front/wrk1' },
-			{ type: 'send', ref: 'store-front/wrk1', text: 'run the tests', isSpoken: true },
-		]);
+		expect(actions).toEqual([{ type: 'activate', ref: 'store-front/wrk1', announce: true }]);
 		expect(result).toEqual({
 			ok: true,
-			content:
-				'activated store-front/wrk1 and sent the words kept for it; Voice OS says so: say nothing',
+			content: 'activated store-front/wrk1; Voice OS said so: say nothing',
 			recordAs: { name: 'activate', input: { name: 'store-front/wrk1' } },
 		});
-	});
-
-	it('the words kept for the session on screen → activated and sent, with a fixed reply', async () => {
-		const { tools } = createContext({
-			screen: 'store-front/wrk1',
-			patch: {
-				switchOffer: { ref: 'store-front/wrk1', at: 900, kind: 'activate', words: 'run the tests' },
-			},
-		});
-
-		expect((await executeTool('activate', { name: null }, tools)).reply).toBe(
-			'Activated store front, work 1; sent.',
-		);
-	});
-
-	it('an offer gone stale → its words are not sent', async () => {
-		const { tools, actions } = createContext({
-			patch: {
-				switchOffer: {
-					ref: 'store-front/wrk1',
-					at: 0,
-					heardAt: -60_000,
-					kind: 'activate',
-					words: 'run the tests',
-				},
-			},
-		});
-
-		await executeTool('activate', { name: 'store-front/wrk1' }, tools);
-
-		expect(actions).toEqual([{ type: 'activate', ref: 'store-front/wrk1', announce: true }]);
 	});
 
 	it('a yes to "Activate it?" asked for a switch → activated and shown', async () => {
@@ -446,19 +411,36 @@ describe('deactivate', () => {
 	});
 });
 
+describe('activate on an unknown machine', () => {
+	it('a machine named that is not known → said so, nothing activated, never every machine searched', async () => {
+		const { tools, actions } = createContext();
+
+		const result = await executeTool(
+			'activate',
+			{ name: 'store front main', machine: 'Nowhere' },
+			tools,
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toStartWith('No machine called Nowhere.');
+		expect(actions).toEqual([]);
+	});
+});
+
 describe('refuseInactive', () => {
-	it('words for it → kept in the offer; nothing done, the turn ends', () => {
+	it('words for it → queued for it (its queue keeps them), then "Activate it?"; the turn ends', () => {
 		const { tools, actions } = createContext();
 
 		const result = refuseInactive({ ref: 'crew/main', toolContext: tools, words: 'run the tests' });
 
 		expect(actions).toEqual([
-			{ type: 'offer_switch', ref: 'crew/main', kind: 'activate', words: 'run the tests' },
+			{ type: 'send', ref: 'crew/main', text: 'run the tests', isSpoken: true },
+			{ type: 'offer_switch', ref: 'crew/main', kind: 'activate' },
 		]);
 		expect(result).toEqual({
 			ok: false,
 			content:
-				'Nothing was done: crew/main is not active. Voice OS asked "… isn\'t active. Activate it?" itself, and keeps the words for it: say nothing.',
+				'Nothing was done: crew/main is not active. Voice OS asked "… isn\'t active. Activate it?" itself; the words wait for it: say nothing.',
 			isFinal: true,
 		});
 	});
@@ -482,7 +464,7 @@ describe('words, a switch or a command for an inactive session', () => {
 	const inactiveCheckout = () =>
 		createToolContext({ active: ['store-front/main', 'store-front/wrk1'] });
 
-	it('send_to → "Activate it?" with the words kept, nothing sent', async () => {
+	it('send_to → the words queued for it, "Activate it?"; nothing reaches it', async () => {
 		const { tools, actions } = inactiveCheckout();
 
 		const result = await executeTool(
@@ -494,16 +476,17 @@ describe('words, a switch or a command for an inactive session', () => {
 		// The words as said, as send_to sends them to an active session.
 		expect(actions).toEqual([
 			{
-				type: 'offer_switch',
+				type: 'send',
 				ref: 'checkout-api/main',
-				kind: 'activate',
-				words: 'checkout api main, run the tests',
+				text: 'checkout api main, run the tests',
+				isSpoken: true,
 			},
+			{ type: 'offer_switch', ref: 'checkout-api/main', kind: 'activate' },
 		]);
 		expect(result).toMatchObject({ ok: false, isFinal: true });
 	});
 
-	it('forward on its screen → "Activate it?" with the words kept, nothing sent', async () => {
+	it('forward on its screen → the words queued for it, "Activate it?"', async () => {
 		const { tools, actions } = inactiveCheckout();
 
 		const result = await executeTool(
@@ -513,7 +496,8 @@ describe('words, a switch or a command for an inactive session', () => {
 		);
 
 		expect(actions).toEqual([
-			{ type: 'offer_switch', ref: 'checkout-api/main', kind: 'activate', words: 'Run the tests.' },
+			{ type: 'send', ref: 'checkout-api/main', text: 'Run the tests.', isSpoken: true },
+			{ type: 'offer_switch', ref: 'checkout-api/main', kind: 'activate' },
 		]);
 		expect(result).toMatchObject({ ok: false, isFinal: true });
 	});
@@ -542,7 +526,7 @@ describe('words, a switch or a command for an inactive session', () => {
 		expect(result).toMatchObject({ ok: false, isFinal: true });
 	});
 
-	it('answer → "Activate it?" with the words said kept, nothing answered', async () => {
+	it('answer → the words said queued for it, "Activate it?"; nothing answered', async () => {
 		const ask: PendingAsk = {
 			id: 'p1',
 			ref: 'checkout-api/main',
@@ -565,7 +549,8 @@ describe('words, a switch or a command for an inactive session', () => {
 		);
 
 		expect(actions).toEqual([
-			{ type: 'offer_switch', ref: 'checkout-api/main', kind: 'activate', words: 'yes, push it' },
+			{ type: 'send', ref: 'checkout-api/main', text: 'yes, push it', isSpoken: true },
+			{ type: 'offer_switch', ref: 'checkout-api/main', kind: 'activate' },
 		]);
 		expect(result).toMatchObject({ ok: false, isFinal: true });
 	});

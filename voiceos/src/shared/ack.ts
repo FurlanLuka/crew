@@ -18,7 +18,8 @@ export const composeAckText = ({ kind }: SendAck, timing: SendTiming): string | 
 			return kind === 'question' ? null : 'Okay, after its current work.';
 		case 'starting':
 			return 'Starting it up.';
+		// "…isn't active. Activate it?" says it.
 		case 'inactive':
-			return "Kept for it; it isn't active.";
+			return null;
 	}
 };

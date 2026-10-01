@@ -49,6 +49,27 @@ export const sayRef = (state: State, ref: string): string => {
 	return machine ? `${name} on ${machine}` : name;
 };
 
+// What Voice OS holds for sessions that are gone — stopped by a deactivate, or their machine removed:
+// offers, the update waiting for the meanwhile line, denials, the last words to continue. Nothing of
+// theirs is said, asked or sent later.
+export const releaseRefs = (state: State, isGone: (ref: string) => boolean): State => {
+	const isKept = (ref: string): boolean => !isGone(ref);
+
+	return {
+		...state,
+		lastSpokenSend:
+			state.lastSpokenSend && isKept(state.lastSpokenSend.ref) ? state.lastSpokenSend : null,
+		devOffer: state.devOffer && isKept(state.devOffer.ref) ? state.devOffer : null,
+		switchOffer: state.switchOffer && isKept(state.switchOffer.ref) ? state.switchOffer : null,
+		targetAsk:
+			state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)
+				? state.targetAsk
+				: null,
+		denials: state.denials.filter((denial) => isKept(denial.ref)),
+		meanwhile: state.meanwhile.filter((item) => isKept(item.ref)),
+	};
+};
+
 export const updateSession = (
 	state: State,
 	ref: string,

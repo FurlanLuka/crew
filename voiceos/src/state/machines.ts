@@ -22,8 +22,15 @@ import type {
 	View,
 } from '../shared/protocol.js';
 import type { Effect, MachineChange, ReducerResult } from './reducer.js';
-import { dispatchQueueHead, startWorker, updateSession, withoutEffects } from './helpers.js';
+import {
+	dispatchQueueHead,
+	releaseRefs,
+	startWorker,
+	updateSession,
+	withoutEffects,
+} from './helpers.js';
 import { matchMachine } from './active.js';
+import { isActive } from '../shared/active.js';
 
 const MACHINE_INPUTS = [
 	'machines',
@@ -74,25 +81,15 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 			: HOME_VIEW;
 
 	return {
-		...state,
-		lastSpokenSend:
-			state.lastSpokenSend && isKept(state.lastSpokenSend.ref) ? state.lastSpokenSend : null,
-		devOffer: state.devOffer && isKept(state.devOffer.ref) ? state.devOffer : null,
+		...releaseRefs(state, (ref) => !isKept(ref)),
 		sessions,
 		order: state.order.filter(isKept),
 		active: state.active.filter(isKept),
 		names: Object.fromEntries(Object.entries(state.names).filter(([ref]) => isKept(ref))),
 		asks: state.asks.filter((ask) => isKept(ask.ref)),
-		denials: state.denials.filter((denial) => isKept(denial.ref)),
 		devServers: Object.fromEntries(Object.entries(state.devServers).filter(([ref]) => isKept(ref))),
 		devStarting: state.devStarting.filter(isKept),
 		focus: state.focus && isKept(state.focus) ? state.focus : null,
-		meanwhile: state.meanwhile.filter((item) => isKept(item.ref)),
-		targetAsk:
-			state.targetAsk && isKept(state.targetAsk.ref) && isKept(state.targetAsk.screen)
-				? state.targetAsk
-				: null,
-		switchOffer: state.switchOffer && isKept(state.switchOffer.ref) ? state.switchOffer : null,
 		viewHistory: pruneViewHistory(
 			state.viewHistory,
 			isKept,
@@ -190,7 +187,8 @@ const resync = ({ state, id, inputs, stamped, reduceInner }: ResyncParams): Redu
 	for (const ref of next.order) {
 		const session = next.sessions[ref];
 
-		if (machineOf(ref) !== id || !session) {
+		// An inactive session's words wait for it to be activated: matchMachine stops it below.
+		if (machineOf(ref) !== id || !session || !isActive(next, ref)) {
 			continue;
 		}
 

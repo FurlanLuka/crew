@@ -1,5 +1,5 @@
 import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
-import { LOCAL_MACHINE, readMachine } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
 	GRID,

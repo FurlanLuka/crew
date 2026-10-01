@@ -217,20 +217,14 @@ describe('the activate and deactivate offers', () => {
 			...(view ? { view } : {}),
 		});
 
-	it('activate → "<X> isn\'t active. Activate it?", an ack, its words kept in the offer', () => {
+	it('activate → "<X> isn\'t active. Activate it?", an ack', () => {
 		const result = reduceAt(withPersonal(), 10, {
 			type: 'offer_switch',
 			ref: 'store-front/wrk1',
 			kind: 'activate',
-			words: 'run the tests',
 		});
 
-		expect(result.state.switchOffer).toEqual({
-			ref: 'store-front/wrk1',
-			at: 10,
-			kind: 'activate',
-			words: 'run the tests',
-		});
+		expect(result.state.switchOffer).toEqual({ ref: 'store-front/wrk1', at: 10, kind: 'activate' });
 		expect(result.effects).toEqual([
 			expect.objectContaining({
 				type: 'speak',

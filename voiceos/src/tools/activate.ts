@@ -2,7 +2,7 @@
 // session that is not active. Activating looks at every worktree on every machine; nothing else does.
 import { isActive } from '../shared/active.js';
 import { isSwitchOfferFresh, type State, type SwitchOffer } from '../shared/protocol.js';
-import { SETUP_REF, readMachine, splitRef } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, SETUP_REF, readMachine, splitRef } from '../shared/machine-ref.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import { findRefsByName, normalizeName } from '../router/refs.js';
@@ -89,9 +89,14 @@ interface ReadMachineParams {
 	toolContext: ToolContext;
 }
 
-const readMachineAsked = ({ state, input, toolContext }: ReadMachineParams): string | null => {
+// undefined: a machine was named that is not known — the search does not widen to every machine.
+const readMachineAsked = ({
+	state,
+	input,
+	toolContext,
+}: ReadMachineParams): string | null | undefined => {
 	if (typeof input.machine === 'string' && input.machine.trim()) {
-		return findMachine(state, input.machine);
+		return findMachine(state, input.machine) ?? undefined;
 	}
 
 	return toolContext.utterance === undefined ? null : findMachineSaid(state, toolContext.utterance);
@@ -103,7 +108,7 @@ interface ActivateParams {
 	toolContext: ToolContext;
 }
 
-// What "Activate it?" was asked for: words said to it go once it is up, a switch goes there.
+// What "Activate it?" was asked for: a switch goes there (words said to it wait in its queue).
 const readActivateOffer = (state: State, ref: string, now: number): SwitchOffer | null => {
 	const offer = state.switchOffer;
 
@@ -161,6 +166,13 @@ export const activateSession = async ({
 	}
 
 	const machine = readMachineAsked({ state, input, toolContext });
+
+	if (machine === undefined) {
+		return fail(
+			`No machine called ${String(input.machine)}. Machines: ${[LOCAL_MACHINE, ...Object.keys(state.machines)].map((id) => readMachineTitle(state, id)).join(', ')}.`,
+		);
+	}
+
 	const decision: ActivateDecision = name
 		? decideActivate({ state, name, machine })
 		: isActive(state, screen ?? '')
@@ -202,7 +214,6 @@ export const activateSession = async ({
 
 	const { ref } = decision;
 	const offer = readActivateOffer(state, ref, toolContext.heardFrom ?? toolContext.now());
-	const words = offer?.words ?? null;
 	const recordAs = { name: 'activate', input: { ...input, name: ref } };
 
 	if (offer?.thenSwitch) {
@@ -211,25 +222,6 @@ export const activateSession = async ({
 
 		return {
 			...succeed(`activated ${ref} and switched there; Voice OS said so: say nothing`),
-			recordAs,
-		};
-	}
-
-	if (words) {
-		// Started first, so the words queue for its start and go once it is up.
-		toolContext.dispatch({ type: 'activate', ref });
-		toolContext.dispatch({ type: 'send', ref, text: words, isSpoken: true });
-		log.info('activated with words kept for it', { ref });
-
-		const isAcked = screen !== null && screen !== ref;
-
-		return {
-			...succeed(
-				isAcked
-					? `activated ${ref} and sent the words kept for it; Voice OS says so: say nothing`
-					: `activated ${ref} and sent the words kept for it`,
-			),
-			...(isAcked ? {} : { reply: `Activated ${toSpokenName(readLabel(state, ref))}; sent.` }),
 			recordAs,
 		};
 	}
@@ -246,7 +238,16 @@ export const activateSession = async ({
 	}
 
 	// Voice OS says "Activated X. Switch there?" itself (or that its machine is out of reach).
-	return { ...succeed(`activated ${ref}; Voice OS said so: say nothing`), recordAs };
+	// Voice OS says "Activated X. Switch there?" itself, or that its machine is out of reach; on its
+	// own screen nothing needs saying.
+	return {
+		...succeed(
+			screen === ref
+				? `activated ${ref}: say nothing`
+				: `activated ${ref}; Voice OS said so: say nothing`,
+		),
+		recordAs,
+	};
 };
 
 export const deactivateSession = async ({
@@ -324,32 +325,35 @@ export const deactivateSession = async ({
 interface RefuseInactiveParams {
 	ref: string;
 	toolContext: ToolContext;
-	// What was said to it: sent once it is activated.
+	// What was said to it: kept in its queue, sent once it is activated.
 	words?: string;
 	// Asked for by a switch: a yes activates it and goes there.
 	isSwitch?: boolean;
 }
 
-// Words, a switch or a command for a session that is not active: Voice OS asks to activate it,
-// keeping the words, and nothing is done to it.
+// Words, a switch or a command for a session that is not active: Voice OS asks to activate it, and
+// nothing reaches it until then. Its queue keeps the words — a "no" or a lapse never loses them.
 export const refuseInactive = ({
 	ref,
 	toolContext,
 	words,
 	isSwitch = false,
 }: RefuseInactiveParams): ToolResult => {
+	if (words) {
+		toolContext.dispatch({ type: 'send', ref, text: words, isSpoken: true });
+	}
+
 	toolContext.dispatch({
 		type: 'offer_switch',
 		ref,
 		kind: 'activate',
-		...(words ? { words } : {}),
 		...(isSwitch ? { thenSwitch: true as const } : {}),
 	});
 	log.info('not active: asked to activate', { ref, hasWords: Boolean(words) });
 
 	return {
 		...fail(
-			`Nothing was done: ${ref} is not active. Voice OS asked "… isn't active. Activate it?" itself${words ? ', and keeps the words for it' : ''}: say nothing.`,
+			`Nothing was done: ${ref} is not active. Voice OS asked "… isn't active. Activate it?" itself${words ? '; the words wait for it' : ''}: say nothing.`,
 		),
 		isFinal: true,
 	};

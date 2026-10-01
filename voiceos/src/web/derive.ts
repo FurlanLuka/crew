@@ -97,7 +97,12 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 };
 
 // label: what the session is called on screen, for the line that says how to activate it.
-export const readLastLine = (session: Session, label = session.label): string => {
+// isSessionActive: an active one stopped (a crash, its machine away) needs no "activate".
+export const readLastLine = (
+	session: Session,
+	label = session.label,
+	isSessionActive = false,
+): string => {
 	const draft = stripStreamingTag(session.draft);
 
 	if (draft) {
@@ -126,9 +131,11 @@ export const readLastLine = (session: Session, label = session.label): string =>
 		}
 	}
 
-	return session.status === 'stopped'
-		? `Not running. Activate it, or say “activate ${label}”.`
-		: '';
+	if (session.status !== 'stopped') {
+		return '';
+	}
+
+	return isSessionActive ? 'Not running.' : `Not running. Activate it, or say “activate ${label}”.`;
 };
 
 // machine: one machine's (LOCAL_MACHINE for this Mac); absent for every machine.

@@ -562,3 +562,37 @@ describe("a machine's sessions matched up when its link connects", () => {
 		expect(starts(again.effects)).toEqual([]);
 	});
 });
+
+describe('words kept for an inactive session', () => {
+	it('running there with words queued while out of reach → never sent; stopped, the words kept', () => {
+		const queued = known([{ type: 'send', ref: REMOTE, text: 'run the tests' }]);
+		const { state, effects } = run(
+			[
+				{
+					type: 'machine_resynced',
+					id: 'vm1',
+					inputs: [{ type: 'session_started', ref: REMOTE }],
+				},
+			],
+			{ start: queued },
+		);
+
+		expect(effects.filter((effect) => effect.type === 'worker_send')).toEqual([]);
+		expect(stops(effects)).toEqual([REMOTE]);
+		expect(state.sessions[REMOTE]?.queue.map((message) => message.text)).toEqual(['run the tests']);
+	});
+
+	it('activated by voice → said that its words go once it is up, and they go on its start', () => {
+		const queued = known([{ type: 'send', ref: LOCAL, text: 'run the tests' }]);
+		const activated = run([{ type: 'activate', ref: LOCAL, announce: true }], { start: queued });
+
+		expect(starts(activated.effects)).toEqual([LOCAL]);
+		expect(said(activated.effects)).toEqual([
+			"Activated store, main; your words go once it's up. Switch there?",
+		]);
+
+		const up = run([{ type: 'session_started', ref: LOCAL }], { start: activated.state });
+
+		expect(up.effects).toContainEqual({ type: 'worker_send', ref: LOCAL, text: 'run the tests' });
+	});
+});

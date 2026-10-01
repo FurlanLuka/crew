@@ -15,8 +15,12 @@
 			"id": "start-by-topic",
 			"utterance": "Start the checkout retry one.",
 			"context": {
-				"inactive": ["checkout-api/main"],
-				"stopped": ["checkout-api/main"]
+				"inactive": [
+					"checkout-api/main"
+				],
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
@@ -167,7 +171,9 @@
 			"id": "is-running",
 			"utterance": "Is checkout running?",
 			"context": {
-				"stopped": ["checkout-api/main"]
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [],
 			"forbid_mutation": true,
@@ -185,7 +191,9 @@
 					"text_includes": "german"
 				}
 			],
-			"forbid_calls": ["send_to"],
+			"forbid_calls": [
+				"send_to"
+			],
 			"note": "\"The locale session\" only describes a session by its work: the words stay with the screen."
 		},
 		{
@@ -238,8 +246,12 @@
 			"id": "start-and-servers",
 			"utterance": "Start checkout and bring up its servers.",
 			"context": {
-				"inactive": ["checkout-api/main"],
-				"stopped": ["checkout-api/main"]
+				"inactive": [
+					"checkout-api/main"
+				],
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
@@ -285,7 +297,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["slow"]
+					"text_includes": [
+						"slow"
+					]
 				}
 			]
 		},
@@ -298,7 +312,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["test", "again|rerun|re-run"]
+					"text_includes": [
+						"test",
+						"again|rerun|re-run"
+					]
 				}
 			]
 		},
@@ -311,7 +328,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["retry"]
+					"text_includes": [
+						"retry"
+					]
 				}
 			]
 		},
@@ -324,7 +343,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["table", "column"]
+					"text_includes": [
+						"table",
+						"column"
+					]
 				}
 			]
 		},
@@ -337,7 +359,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["revert", "like"]
+					"text_includes": [
+						"revert",
+						"like"
+					]
 				}
 			]
 		},
@@ -383,8 +408,12 @@
 			"utterance": "\"Can you start the checkout api session?\"",
 			"context": {
 				"view": "store-front/main",
-				"inactive": ["checkout-api/main"],
-				"stopped": ["checkout-api/main"]
+				"inactive": [
+					"checkout-api/main"
+				],
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
@@ -400,12 +429,17 @@
 			"utterance": "Um, okay. So what happens now? For example, if I ask you to, uh, \"Can you start the checkout api session?\"",
 			"context": {
 				"view": "store-front/main",
-				"stopped": ["checkout-api/main"]
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["what happens|happen", "start"]
+					"text_includes": [
+						"what happens|happen",
+						"start"
+					]
 				}
 			],
 			"no_reply": true
@@ -415,8 +449,12 @@
 			"utterance": "Start store front work one.",
 			"context": {
 				"view": "store-front/main",
-				"inactive": ["store-front/wrk1"],
-				"stopped": ["store-front/wrk1"]
+				"inactive": [
+					"store-front/wrk1"
+				],
+				"stopped": [
+					"store-front/wrk1"
+				]
 			},
 			"calls": [
 				{
@@ -473,7 +511,12 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["three|3", "log", "test", "aggressive"]
+					"text_includes": [
+						"three|3",
+						"log",
+						"test",
+						"aggressive"
+					]
 				}
 			]
 		},
@@ -486,7 +529,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["slow"]
+					"text_includes": [
+						"slow"
+					]
 				}
 			]
 		},
@@ -540,7 +585,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["log"]
+					"text_includes": [
+						"log"
+					]
 				}
 			]
 		},
@@ -558,8 +605,12 @@
 				{
 					"name": "send_to",
 					"ref": "checkout-api/main",
-					"text_includes": ["migrations"],
-					"not_includes": ["switch to"]
+					"text_includes": [
+						"migrations"
+					],
+					"not_includes": [
+						"switch to"
+					]
 				}
 			]
 		},
@@ -580,7 +631,9 @@
 			"calls": [],
 			"answer": true,
 			"forbid_mutation": true,
-			"reply_includes": ["store"]
+			"reply_includes": [
+				"store"
+			]
 		},
 		{
 			"id": "switch-to-it-after-heard",
@@ -614,7 +667,9 @@
 					"name": "go_back"
 				}
 			],
-			"forbid_calls": ["switch_view"]
+			"forbid_calls": [
+				"switch_view"
+			]
 		},
 		{
 			"id": "notif-thanks",
@@ -663,7 +718,10 @@
 					"name": "forward"
 				}
 			],
-			"forbid_calls": ["switch_view", "send_to"],
+			"forbid_calls": [
+				"switch_view",
+				"send_to"
+			],
 			"no_reply": true
 		},
 		{
@@ -694,7 +752,10 @@
 				}
 			},
 			"calls": [],
-			"forbid_calls": ["send_to", "switch_view"],
+			"forbid_calls": [
+				"send_to",
+				"switch_view"
+			],
 			"allow": [
 				{
 					"name": "forward"
@@ -722,7 +783,10 @@
 				}
 			},
 			"calls": [],
-			"forbid_calls": ["send_to", "forward"],
+			"forbid_calls": [
+				"send_to",
+				"forward"
+			],
 			"allow": [
 				{
 					"name": "switch_view",
@@ -879,7 +943,9 @@
 				{
 					"name": "send_to",
 					"ref": "store-front/main",
-					"text_includes": ["rebuild"]
+					"text_includes": [
+						"rebuild"
+					]
 				},
 				{
 					"name": "queued_message",
@@ -909,7 +975,9 @@
 				{
 					"name": "send_to",
 					"ref": "store-front/main",
-					"text_includes": ["rebuild"]
+					"text_includes": [
+						"rebuild"
+					]
 				},
 				{
 					"name": "queued_message",
@@ -957,7 +1025,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["linter"]
+					"text_includes": [
+						"linter"
+					]
 				}
 			],
 			"forbid_calls": []
@@ -981,7 +1051,9 @@
 					"ok": true
 				}
 			],
-			"forbid_calls": ["interrupt"]
+			"forbid_calls": [
+				"interrupt"
+			]
 		},
 		{
 			"id": "aside-by-the-way-de",
@@ -1016,7 +1088,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["not|don", "migration"]
+					"text_includes": [
+						"not|don",
+						"migration"
+					]
 				}
 			]
 		},
@@ -1029,7 +1104,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["second|2nd", "only"]
+					"text_includes": [
+						"second|2nd",
+						"only"
+					]
 				}
 			]
 		},
@@ -1042,22 +1120,31 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["still", "fail"]
+					"text_includes": [
+						"still",
+						"fail"
+					]
 				}
 			]
 		},
 		{
 			"id": "no-repeat-after-restart",
-			"utterance": "Okay, also activate it.",
+			"utterance": "Okay, also start the session.",
 			"context": {
 				"view": "store-front/main",
-				"inactive": ["store-front/main"],
-				"stopped": ["store-front/main"],
+				"inactive": [
+					"store-front/main"
+				],
+				"stopped": [
+					"store-front/main"
+				],
 				"voiceLog": [
 					{
 						"utterance": "Restart the dev servers?",
 						"reply": "",
-						"did": ["crew_dev restart store-front/main"]
+						"did": [
+							"crew_dev restart store-front/main"
+						]
 					}
 				]
 			},
@@ -1074,7 +1161,9 @@
 			"id": "switch-does-not-start",
 			"utterance": "Okay, so can you switch to checkout api main?",
 			"context": {
-				"stopped": ["checkout-api/main"]
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
@@ -1094,7 +1183,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["log"]
+					"text_includes": [
+						"log"
+					]
 				}
 			]
 		},
@@ -1124,7 +1215,9 @@
 				},
 				{
 					"name": "forward",
-					"text_includes": ["log"]
+					"text_includes": [
+						"log"
+					]
 				}
 			]
 		},
@@ -1173,8 +1266,12 @@
 			"utterance": "Hmm, let's start this.",
 			"context": {
 				"view": "store-front/wrk1",
-				"inactive": ["store-front/wrk1"],
-				"stopped": ["store-front/wrk1"]
+				"inactive": [
+					"store-front/wrk1"
+				],
+				"stopped": [
+					"store-front/wrk1"
+				]
 			},
 			"calls": [
 				{
@@ -1206,7 +1303,9 @@
 					{
 						"utterance": "End the main session.",
 						"reply": "Which one — store front main or checkout api main?",
-						"did": ["deactivate store-front/main (failed)"]
+						"did": [
+							"deactivate store-front/main (failed)"
+						]
 					}
 				]
 			},
@@ -1242,7 +1341,9 @@
 			"id": "hmm-start-on-grid",
 			"utterance": "Hmm, let's start this.",
 			"context": {
-				"stopped": ["store-front/main"]
+				"stopped": [
+					"store-front/main"
+				]
 			},
 			"calls": [],
 			"forbid_mutation": true,
@@ -1259,7 +1360,11 @@
 			"forbid_mutation": true,
 			"answer": true,
 			"long_reply": true,
-			"reply_includes": ["redis", "nightly", "lru|in-process"]
+			"reply_includes": [
+				"redis",
+				"nightly",
+				"lru|in-process"
+			]
 		},
 		{
 			"id": "options-after-narration-session",
@@ -1273,19 +1378,27 @@
 			"forbid_mutation": true,
 			"answer": true,
 			"long_reply": true,
-			"reply_includes": ["redis", "nightly", "lru|in-process"]
+			"reply_includes": [
+				"redis",
+				"nightly",
+				"lru|in-process"
+			]
 		},
 		{
 			"id": "stopped-session-forward",
 			"utterance": "Can you ask it to list the files in the source folder, one line each?",
 			"context": {
 				"view": "store-front/main",
-				"stopped": ["store-front/main"]
+				"stopped": [
+					"store-front/main"
+				]
 			},
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["file"]
+					"text_includes": [
+						"file"
+					]
 				}
 			]
 		},
@@ -1298,7 +1411,11 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["size", "name", "question tool|askuserquestion"]
+					"text_includes": [
+						"size",
+						"name",
+						"question tool|askuserquestion"
+					]
 				}
 			]
 		},
@@ -1320,8 +1437,12 @@
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true,
-			"reply_not_includes": ["size"],
-			"reply_includes": ["nothing|no options|not waiting|no question|hasn't"]
+			"reply_not_includes": [
+				"size"
+			],
+			"reply_includes": [
+				"nothing|no options|not waiting|no question|hasn't"
+			]
 		},
 		{
 			"id": "fp-open-named",
@@ -1358,14 +1479,20 @@
 					"name": "go_back"
 				}
 			],
-			"forbid_calls": ["switch_view"]
+			"forbid_calls": [
+				"switch_view"
+			]
 		},
 		{
 			"id": "fp-start-named",
 			"utterance": "Start checkout API main.",
 			"context": {
-				"inactive": ["checkout-api/main"],
-				"stopped": ["checkout-api/main"]
+				"inactive": [
+					"checkout-api/main"
+				],
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
@@ -1612,7 +1739,11 @@
 			"forbid_mutation": true,
 			"answer": true,
 			"long_reply": true,
-			"reply_includes": ["new table", "reuse orders", "defer"]
+			"reply_includes": [
+				"new table",
+				"reuse orders",
+				"defer"
+			]
 		},
 		{
 			"id": "turn-question-yes-screen",
@@ -1654,10 +1785,17 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["yes|go|start|review", "let me know|tell me|when|report"]
+					"text_includes": [
+						"yes|go|start|review",
+						"let me know|tell me|when|report"
+					]
 				}
 			],
-			"reply_not_includes": ["should i", "do you want", "?"]
+			"reply_not_includes": [
+				"should i",
+				"do you want",
+				"?"
+			]
 		},
 		{
 			"id": "pr-start-tell-me",
@@ -1674,8 +1812,16 @@
 					"text_includes": "start|review|go"
 				}
 			],
-			"reply_not_includes": ["should i", "do you want", "?"],
-			"allow": []
+			"reply_not_includes": [
+				"should i",
+				"do you want",
+				"?"
+			],
+			"allow": [
+				{
+					"name": "activate"
+				}
+			]
 		},
 		{
 			"id": "offer-yes",
@@ -1762,7 +1908,9 @@
 			},
 			"calls": [],
 			"answer": true,
-			"reply_includes": ["lapsed|expired|too old|no longer"],
+			"reply_includes": [
+				"lapsed|expired|too old|no longer"
+			],
 			"allow": [
 				{
 					"name": "dev_offer",
@@ -1930,7 +2078,9 @@
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true,
-			"reply_includes": ["wrk3|work three|worktree|setting up|still"]
+			"reply_includes": [
+				"wrk3|work three|worktree|setting up|still"
+			]
 		},
 		{
 			"id": "setup-status-idle",
@@ -1950,7 +2100,9 @@
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true,
-			"reply_includes": ["ready|done|finished|passed"]
+			"reply_includes": [
+				"ready|done|finished|passed"
+			]
 		},
 		{
 			"id": "check-on-it",
@@ -2000,7 +2152,10 @@
 				{
 					"name": "send_to",
 					"ref": "store-front/main",
-					"text_includes": ["checkout", "test"]
+					"text_includes": [
+						"checkout",
+						"test"
+					]
 				}
 			]
 		},
@@ -2067,7 +2222,11 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["backoff", "payment", "test"]
+					"text_includes": [
+						"backoff",
+						"payment",
+						"test"
+					]
 				}
 			]
 		},
@@ -2089,10 +2248,15 @@
 			"calls": [
 				{
 					"name": "debug_note",
-					"text_includes": ["option", "question"]
+					"text_includes": [
+						"option",
+						"question"
+					]
 				}
 			],
-			"reply_includes": ["debug note saved"]
+			"reply_includes": [
+				"debug note saved"
+			]
 		},
 		{
 			"id": "last-thing-done-forward",
@@ -2103,7 +2267,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["last"]
+					"text_includes": [
+						"last"
+					]
 				}
 			],
 			"no_reply": true
@@ -2119,7 +2285,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["rebuild"]
+					"text_includes": [
+						"rebuild"
+					]
 				}
 			],
 			"no_reply": true
@@ -2180,7 +2348,9 @@
 						"ref": "store-front/main",
 						"request": "Build the notes feature",
 						"minutesAgo": 3,
-						"queued": ["Use proxy pair."]
+						"queued": [
+							"Use proxy pair."
+						]
 					}
 				]
 			},
@@ -2204,14 +2374,18 @@
 						"ref": "store-front/main",
 						"request": "Build the notes feature",
 						"minutesAgo": 3,
-						"queued": ["Add this to notes too, like the debug note."]
+						"queued": [
+							"Add this to notes too, like the debug note."
+						]
 					}
 				],
 				"voiceLog": [
 					{
 						"utterance": "Add this to notes too, like the debug note?",
 						"reply": "",
-						"did": ["forward \"Add this to notes too, like the debug note.\""]
+						"did": [
+							"forward \"Add this to notes too, like the debug note.\""
+						]
 					}
 				]
 			},
@@ -2244,17 +2418,23 @@
 					{
 						"utterance": "Add a debug note that it sent it to the wrong session.",
 						"reply": "Debug note saved.",
-						"did": ["debug_note \"it sent it to the wrong session\""]
+						"did": [
+							"debug_note \"it sent it to the wrong session\""
+						]
 					}
 				]
 			},
 			"calls": [
 				{
 					"name": "debug_note",
-					"text_includes": ["detect"]
+					"text_includes": [
+						"detect"
+					]
 				}
 			],
-			"reply_includes": ["debug note saved"]
+			"reply_includes": [
+				"debug note saved"
+			]
 		},
 		{
 			"id": "note-addendum",
@@ -2272,14 +2452,18 @@
 					{
 						"utterance": "Note: try a different tone per session.",
 						"reply": "Noted.",
-						"did": ["note \"try a different tone per session\""]
+						"did": [
+							"note \"try a different tone per session\""
+						]
 					}
 				]
 			},
 			"calls": [
 				{
 					"name": "note",
-					"text_includes": ["voice"]
+					"text_includes": [
+						"voice"
+					]
 				}
 			]
 		},
@@ -2309,7 +2493,9 @@
 				}
 			],
 			"no_reply": true,
-			"forbid_calls": ["switch_view"]
+			"forbid_calls": [
+				"switch_view"
+			]
 		},
 		{
 			"id": "unrelated-words-stay-on-screen",
@@ -2328,7 +2514,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["test"]
+					"text_includes": [
+						"test"
+					]
 				}
 			],
 			"no_reply": true
@@ -2352,7 +2540,9 @@
 				{
 					"name": "send_to",
 					"ref": "store-front/main",
-					"text_includes": ["rebuild"]
+					"text_includes": [
+						"rebuild"
+					]
 				},
 				{
 					"name": "queued_message",
@@ -2368,33 +2558,48 @@
 			"utterance": "Uh, can I— can I start the session and tell me what's the last thing you've done?",
 			"context": {
 				"view": "store-front/main",
-				"stopped": ["store-front/main"]
+				"stopped": [
+					"store-front/main"
+				]
 			},
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["last"]
+					"text_includes": [
+						"last"
+					]
 				}
 			],
-			"allow": [],
+			"allow": [
+				{
+					"name": "activate"
+				}
+			],
 			"no_reply": true
 		},
 		{
 			"id": "start-and-ask-from-grid",
 			"utterance": "Start checkout and tell me what's the last thing it did.",
 			"context": {
-				"stopped": ["checkout-api/main"]
+				"stopped": [
+					"checkout-api/main"
+				]
 			},
 			"calls": [
 				{
 					"name": "send_to",
 					"ref": "checkout-api/main",
-					"text_includes": ["last"]
+					"text_includes": [
+						"last"
+					]
 				}
 			],
 			"allow": [
 				{
 					"name": "switch_view"
+				},
+				{
+					"name": "activate"
 				}
 			],
 			"no_reply": true
@@ -2462,7 +2667,9 @@
 				{
 					"name": "send_to",
 					"ref": "checkout-api/main",
-					"text_includes": ["thirty|30"]
+					"text_includes": [
+						"thirty|30"
+					]
 				}
 			],
 			"allow": [
@@ -2484,7 +2691,10 @@
 			},
 			"calls": [],
 			"answer": true,
-			"reply_includes": ["checkout", "backoff"]
+			"reply_includes": [
+				"checkout",
+				"backoff"
+			]
 		},
 		{
 			"id": "status-from-elsewhere",
@@ -2510,7 +2720,9 @@
 				}
 			],
 			"answer": true,
-			"reply_includes": ["jitter|flaky|payment"]
+			"reply_includes": [
+				"jitter|flaky|payment"
+			]
 		},
 		{
 			"id": "debug-notes-check-forwarded",
@@ -2521,7 +2733,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["debug notes"]
+					"text_includes": [
+						"debug notes"
+					]
 				}
 			],
 			"allow": [
@@ -2529,7 +2743,10 @@
 					"name": "read_state"
 				}
 			],
-			"reply_not_includes": ["access", "should i"]
+			"reply_not_includes": [
+				"access",
+				"should i"
+			]
 		},
 		{
 			"id": "note-about-voice-os-is-debug",
@@ -2540,10 +2757,15 @@
 			"calls": [
 				{
 					"name": "debug_note",
-					"text_includes": ["plan", "double|twice"]
+					"text_includes": [
+						"plan",
+						"double|twice"
+					]
 				}
 			],
-			"reply_includes": ["debug note saved"]
+			"reply_includes": [
+				"debug note saved"
+			]
 		},
 		{
 			"id": "read-back-keeps-choice",
@@ -2568,7 +2790,9 @@
 			],
 			"answer": true,
 			"long_reply": true,
-			"reply_includes": ["asked whether|asks whether|or should|stay|just needs you|keep it"]
+			"reply_includes": [
+				"asked whether|asks whether|or should|stay|just needs you|keep it"
+			]
 		},
 		{
 			"id": "note-own-idea",
@@ -2579,10 +2803,14 @@
 			"calls": [
 				{
 					"name": "note",
-					"text_includes": ["tone"]
+					"text_includes": [
+						"tone"
+					]
 				}
 			],
-			"reply_includes": ["noted|got it|saved"]
+			"reply_includes": [
+				"noted|got it|saved"
+			]
 		},
 		{
 			"id": "note-read-back",
@@ -2605,7 +2833,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["notes"]
+					"text_includes": [
+						"notes"
+					]
 				}
 			],
 			"no_reply": true
@@ -2619,7 +2849,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["client"]
+					"text_includes": [
+						"client"
+					]
 				}
 			],
 			"no_reply": true
@@ -2635,7 +2867,10 @@
 			"calls": [
 				{
 					"name": "debug_note",
-					"text_includes": ["three|3", "confirm"]
+					"text_includes": [
+						"three|3",
+						"confirm"
+					]
 				}
 			]
 		},
@@ -2697,7 +2932,9 @@
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true,
-			"reply_includes": ["wrk1|work one|work 1|still|running|working"]
+			"reply_includes": [
+				"wrk1|work one|work 1|still|running|working"
+			]
 		},
 		{
 			"id": "words-to-session-with-permission",
@@ -2786,7 +3023,11 @@
 					"text_includes": "mara"
 				}
 			],
-			"reply_not_includes": ["not sure", "say that again", "what you mean"]
+			"reply_not_includes": [
+				"not sure",
+				"say that again",
+				"what you mean"
+			]
 		},
 		{
 			"id": "reply-one-name-to-asked",
@@ -2803,7 +3044,11 @@
 					"text_includes": "mara"
 				}
 			],
-			"reply_not_includes": ["not sure", "say that again", "what you mean"]
+			"reply_not_includes": [
+				"not sure",
+				"say that again",
+				"what you mean"
+			]
 		},
 		{
 			"id": "reply-name-to-asked-grid",
@@ -2830,7 +3075,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["next"]
+					"text_includes": [
+						"next"
+					]
 				}
 			]
 		},
@@ -2843,7 +3090,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["transcript"]
+					"text_includes": [
+						"transcript"
+					]
 				}
 			]
 		},
@@ -2856,7 +3105,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["brainstorm", "proxy"]
+					"text_includes": [
+						"brainstorm",
+						"proxy"
+					]
 				}
 			]
 		},
@@ -2869,7 +3121,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["branch"]
+					"text_includes": [
+						"branch"
+					]
 				}
 			]
 		},
@@ -2884,7 +3138,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["key"]
+					"text_includes": [
+						"key"
+					]
 				}
 			]
 		},
@@ -2912,7 +3168,10 @@
 			"answer": true,
 			"long_reply": true,
 			"max_words": 80,
-			"reply_includes": ["fixture", "20|twenty"]
+			"reply_includes": [
+				"fixture",
+				"20|twenty"
+			]
 		},
 		{
 			"id": "tell-me-more-about-x",
@@ -2932,7 +3191,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["retry"]
+					"text_includes": [
+						"retry"
+					]
 				}
 			]
 		},
@@ -2955,7 +3216,10 @@
 					"input": {
 						"kind": "question"
 					},
-					"text_includes": ["file", "router"]
+					"text_includes": [
+						"file",
+						"router"
+					]
 				}
 			],
 			"no_reply": true
@@ -3240,7 +3504,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["agent", "test"]
+					"text_includes": [
+						"agent",
+						"test"
+					]
 				}
 			],
 			"no_reply": true
@@ -3268,7 +3535,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["debug notes", "15|fifteen"]
+					"text_includes": [
+						"debug notes",
+						"15|fifteen"
+					]
 				}
 			],
 			"no_reply": true
@@ -3291,7 +3561,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["get back to you", "okay"]
+					"text_includes": [
+						"get back to you",
+						"okay"
+					]
 				}
 			],
 			"no_reply": true
@@ -3305,7 +3578,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["get back to you", "okay"]
+					"text_includes": [
+						"get back to you",
+						"okay"
+					]
 				}
 			],
 			"no_reply": true
@@ -3328,8 +3604,15 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["you messed|you've messed|you made", "transcript"],
-					"not_includes": ["I messed", "I've messed", "I made"]
+					"text_includes": [
+						"you messed|you've messed|you made",
+						"transcript"
+					],
+					"not_includes": [
+						"I messed",
+						"I've messed",
+						"I made"
+					]
 				}
 			],
 			"no_reply": true
@@ -3346,8 +3629,13 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["fix", "eval"],
-					"not_includes": ["plan"]
+					"text_includes": [
+						"fix",
+						"eval"
+					],
+					"not_includes": [
+						"plan"
+					]
 				}
 			],
 			"no_reply": true
@@ -3375,15 +3663,25 @@
 					{
 						"utterance": "Run the linter too.",
 						"reply": "",
-						"did": ["forward \"Run the linter too.\""]
+						"did": [
+							"forward \"Run the linter too.\""
+						]
 					}
 				]
 			},
 			"calls": [],
 			"answer": true,
 			"forbid_mutation": true,
-			"reply_includes": ["yes|went to|sent"],
-			"reply_not_includes": ["didn't", "did not", "haven't", "wasn't", "nothing"]
+			"reply_includes": [
+				"yes|went to|sent"
+			],
+			"reply_not_includes": [
+				"didn't",
+				"did not",
+				"haven't",
+				"wasn't",
+				"nothing"
+			]
 		},
 		{
 			"id": "offer-yes-on-screen",
@@ -3448,7 +3746,9 @@
 			},
 			"calls": [],
 			"answer": true,
-			"reply_includes": ["lapsed|expired|too old|no longer"],
+			"reply_includes": [
+				"lapsed|expired|too old|no longer"
+			],
 			"allow": [
 				{
 					"name": "dev_offer",
@@ -3465,7 +3765,9 @@
 			"calls": [],
 			"forbid_mutation": true,
 			"answer": true,
-			"reply_includes": ["which"]
+			"reply_includes": [
+				"which"
+			]
 		},
 		{
 			"id": "either-or-answered-grid",
@@ -3574,7 +3876,9 @@
 					{
 						"utterance": "Check the logs for the timeout errors in",
 						"reply": "",
-						"did": ["forward \"Check the logs for the timeout errors in\""],
+						"did": [
+							"forward \"Check the logs for the timeout errors in\""
+						],
 						"minutesAgo": 0.05
 					}
 				]
@@ -3585,7 +3889,10 @@
 					"input": {
 						"continues": true
 					},
-					"text_includes": ["timeout", "checkout"]
+					"text_includes": [
+						"timeout",
+						"checkout"
+					]
 				}
 			]
 		},
@@ -3605,7 +3912,9 @@
 					{
 						"utterance": "By the way, why are the retries so",
 						"reply": "",
-						"did": ["forward \"Why are the retries so\" (aside)"],
+						"did": [
+							"forward \"Why are the retries so\" (aside)"
+						],
 						"minutesAgo": 0.05
 					}
 				]
@@ -3616,7 +3925,10 @@
 					"input": {
 						"continues": true
 					},
-					"text_includes": ["retr", "slow"]
+					"text_includes": [
+						"retr",
+						"slow"
+					]
 				}
 			]
 		},
@@ -3629,7 +3941,9 @@
 					{
 						"utterance": "Run the tests.",
 						"reply": "",
-						"did": ["forward \"Run the tests.\""],
+						"did": [
+							"forward \"Run the tests.\""
+						],
 						"minutesAgo": 0.05
 					}
 				]
@@ -3640,7 +3954,9 @@
 					"not_input": {
 						"continues": true
 					},
-					"text_includes": ["branch"]
+					"text_includes": [
+						"branch"
+					]
 				}
 			]
 		},
@@ -3653,7 +3969,9 @@
 					{
 						"utterance": "Run the tests.",
 						"reply": "",
-						"did": ["forward \"Run the tests.\""],
+						"did": [
+							"forward \"Run the tests.\""
+						],
 						"minutesAgo": 0.05
 					}
 				]
@@ -3664,7 +3982,9 @@
 					"not_input": {
 						"continues": true
 					},
-					"text_includes": ["lint"]
+					"text_includes": [
+						"lint"
+					]
 				}
 			]
 		},
@@ -3687,7 +4007,9 @@
 					"input": {
 						"kind": "redirect"
 					},
-					"text_includes": ["login"]
+					"text_includes": [
+						"login"
+					]
 				}
 			]
 		},
@@ -3710,7 +4032,9 @@
 					"input": {
 						"kind": "redirect"
 					},
-					"text_includes": ["seed"]
+					"text_includes": [
+						"seed"
+					]
 				}
 			]
 		},
@@ -3733,7 +4057,9 @@
 					"input": {
 						"kind": "instruction"
 					},
-					"text_includes": ["lint"]
+					"text_includes": [
+						"lint"
+					]
 				}
 			]
 		},
@@ -3756,7 +4082,9 @@
 					"input": {
 						"kind": "question"
 					},
-					"text_includes": ["file"]
+					"text_includes": [
+						"file"
+					]
 				}
 			]
 		},
@@ -3881,7 +4209,9 @@
 					{
 						"utterance": "Open checkout api main.",
 						"reply": "",
-						"did": ["switch_view checkout-api/main"]
+						"did": [
+							"switch_view checkout-api/main"
+						]
 					}
 				]
 			},
@@ -3955,14 +4285,18 @@
 						"ref": "store-front/main",
 						"request": "Refactor the router",
 						"minutesAgo": 2,
-						"queued": ["Also rename the helpers."]
+						"queued": [
+							"Also rename the helpers."
+						]
 					}
 				],
 				"voiceLog": [
 					{
 						"utterance": "Also rename the helpers.",
 						"reply": "",
-						"did": ["forward \"Also rename the helpers.\""]
+						"did": [
+							"forward \"Also rename the helpers.\""
+						]
 					}
 				]
 			},
@@ -4053,7 +4387,9 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["risk"]
+					"text_includes": [
+						"risk"
+					]
 				}
 			],
 			"no_reply": true
@@ -4106,7 +4442,9 @@
 			"context": {
 				"view": "store-front/main"
 			},
-			"forbid_calls": ["switch_view"],
+			"forbid_calls": [
+				"switch_view"
+			],
 			"calls": [
 				{
 					"name": "debug_note",
@@ -4123,7 +4461,10 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["ignore", "flaky"]
+					"text_includes": [
+						"ignore",
+						"flaky"
+					]
 				}
 			],
 			"no_reply": true
@@ -4191,7 +4532,11 @@
 					"name": "forward"
 				}
 			],
-			"forbid_calls": ["allow_denied", "send_to", "interrupt"],
+			"forbid_calls": [
+				"allow_denied",
+				"send_to",
+				"interrupt"
+			],
 			"no_reply": true
 		},
 		{
@@ -4213,7 +4558,11 @@
 					"name": "forward"
 				}
 			],
-			"forbid_calls": ["allow_denied", "send_to", "interrupt"],
+			"forbid_calls": [
+				"allow_denied",
+				"send_to",
+				"interrupt"
+			],
 			"no_reply": true
 		},
 		{
@@ -4229,9 +4578,19 @@
 				]
 			},
 			"calls": [],
-			"forbid_calls": ["forward", "send_to", "allow_denied", "interrupt"],
+			"forbid_calls": [
+				"forward",
+				"send_to",
+				"allow_denied",
+				"interrupt"
+			],
 			"answer": true,
-			"reply_not_includes": ["because", "classifier", "you said", "you turned"]
+			"reply_not_includes": [
+				"because",
+				"classifier",
+				"you said",
+				"you turned"
+			]
 		},
 		{
 			"id": "produce-context-forwards",
@@ -4254,7 +4613,9 @@
 					"text_includes": "context"
 				}
 			],
-			"forbid_calls": ["send_to"],
+			"forbid_calls": [
+				"send_to"
+			],
 			"no_reply": true
 		},
 		{
@@ -4299,7 +4660,9 @@
 					"text_includes": "on demand"
 				}
 			],
-			"forbid_calls": ["hands_free"],
+			"forbid_calls": [
+				"hands_free"
+			],
 			"no_reply": true
 		},
 		{
@@ -4307,8 +4670,12 @@
 			"utterance": "Activate this.",
 			"context": {
 				"view": "store-front/wrk1",
-				"inactive": ["store-front/wrk1"],
-				"stopped": ["store-front/wrk1"]
+				"inactive": [
+					"store-front/wrk1"
+				],
+				"stopped": [
+					"store-front/wrk1"
+				]
 			},
 			"calls": [
 				{
@@ -4344,8 +4711,12 @@
 			"id": "activate-named-from-grid",
 			"utterance": "Activate store front main.",
 			"context": {
-				"inactive": ["store-front/main"],
-				"stopped": ["store-front/main"]
+				"inactive": [
+					"store-front/main"
+				],
+				"stopped": [
+					"store-front/main"
+				]
 			},
 			"calls": [
 				{
@@ -4396,7 +4767,10 @@
 					"ref": "setup"
 				}
 			],
-			"forbid_calls": ["activate", "deactivate"],
+			"forbid_calls": [
+				"activate",
+				"deactivate"
+			],
 			"no_reply": true
 		},
 		{
@@ -4408,10 +4782,15 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["package.json|package", "react"]
+					"text_includes": [
+						"package.json|package",
+						"react"
+					]
 				}
 			],
-			"forbid_calls": ["activate"],
+			"forbid_calls": [
+				"activate"
+			],
 			"no_reply": true
 		},
 		{
@@ -4427,7 +4806,9 @@
 					"text_includes": "voice os dev|voiceos dev|voice-os dev"
 				}
 			],
-			"forbid_calls": ["forward"]
+			"forbid_calls": [
+				"forward"
+			]
 		},
 		{
 			"id": "rename-on-other-machine",
@@ -4436,7 +4817,9 @@
 				"machine": {
 					"id": "personal",
 					"name": "Personal",
-					"refs": ["personal:store-front/main"]
+					"refs": [
+						"personal:store-front/main"
+					]
 				}
 			},
 			"calls": [
@@ -4461,7 +4844,9 @@
 					"ref": "store-front/wrk1"
 				}
 			],
-			"forbid_calls": ["rename_session"],
+			"forbid_calls": [
+				"rename_session"
+			],
 			"no_reply": true
 		},
 		{
@@ -4482,7 +4867,9 @@
 					}
 				}
 			],
-			"forbid_calls": ["forward"]
+			"forbid_calls": [
+				"forward"
+			]
 		},
 		{
 			"id": "rename-in-code-is-forwarded",
@@ -4496,7 +4883,9 @@
 					"text_includes": "parseRef"
 				}
 			],
-			"forbid_calls": ["rename_session"],
+			"forbid_calls": [
+				"rename_session"
+			],
 			"no_reply": true
 		},
 		{
@@ -4506,7 +4895,9 @@
 				"machine": {
 					"id": "personal",
 					"name": "Personal",
-					"refs": ["personal:store-front/main"]
+					"refs": [
+						"personal:store-front/main"
+					]
 				}
 			},
 			"calls": [
@@ -4515,7 +4906,9 @@
 					"text_includes": "build box"
 				}
 			],
-			"forbid_calls": ["rename_session"]
+			"forbid_calls": [
+				"rename_session"
+			]
 		},
 		{
 			"id": "deliver-now-de",
@@ -4581,7 +4974,9 @@
 					{
 						"utterance": "Add a debug note that it sent it to the wrong session.",
 						"reply": "Debug note saved.",
-						"did": ["debug_note \"it sent it to the wrong session\""]
+						"did": [
+							"debug_note \"it sent it to the wrong session\""
+						]
 					}
 				]
 			},
@@ -4604,7 +4999,9 @@
 					{
 						"utterance": "Add a debug note that it sent it to the wrong session.",
 						"reply": "Debug note saved.",
-						"did": ["debug_note \"it sent it to the wrong session\""]
+						"did": [
+							"debug_note \"it sent it to the wrong session\""
+						]
 					}
 				]
 			},
@@ -4643,7 +5040,9 @@
 					{
 						"utterance": "Add a debug note that it sent it to the wrong session.",
 						"reply": "Debug note saved.",
-						"did": ["debug_note \"it sent it to the wrong session\""]
+						"did": [
+							"debug_note \"it sent it to the wrong session\""
+						]
 					}
 				]
 			},
@@ -4677,7 +5076,10 @@
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["send_to", "forward"]
+			"forbid_calls": [
+				"send_to",
+				"forward"
+			]
 		},
 		{
 			"id": "go-into-session-after-heard",
@@ -4699,7 +5101,10 @@
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["send_to", "forward"]
+			"forbid_calls": [
+				"send_to",
+				"forward"
+			]
 		},
 		{
 			"id": "go-into-with-question-open",
@@ -4714,7 +5119,10 @@
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["answer", "forward"]
+			"forbid_calls": [
+				"answer",
+				"forward"
+			]
 		},
 		{
 			"id": "stop-question-form",
@@ -4744,7 +5152,10 @@
 				"view": "store-front/wrk1",
 				"ask": "question",
 				"askOn": "store-front/wrk1",
-				"options": ["Checkout project", "Store front project"]
+				"options": [
+					"Checkout project",
+					"Store front project"
+				]
 			},
 			"calls": [
 				{
@@ -4752,7 +5163,10 @@
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["answer", "forward"]
+			"forbid_calls": [
+				"answer",
+				"forward"
+			]
 		},
 		{
 			"id": "go-into-other-machine-with-question",
@@ -4761,11 +5175,17 @@
 				"view": "store-front/wrk1",
 				"ask": "question",
 				"askOn": "store-front/wrk1",
-				"options": ["Signals project", "Store front project"],
+				"options": [
+					"Signals project",
+					"Store front project"
+				],
 				"machine": {
 					"id": "remote-mac",
 					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/wrk1"]
+					"refs": [
+						"remote-mac:signals/main",
+						"remote-mac:signals/wrk1"
+					]
 				}
 			},
 			"calls": [
@@ -4780,7 +5200,11 @@
 					"ref": "remote-mac:signals/wrk1"
 				}
 			],
-			"forbid_calls": ["answer", "forward", "send_to"]
+			"forbid_calls": [
+				"answer",
+				"forward",
+				"send_to"
+			]
 		},
 		{
 			"id": "go-into-other-machine-after-heard",
@@ -4790,7 +5214,10 @@
 				"machine": {
 					"id": "remote-mac",
 					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/wrk1"]
+					"refs": [
+						"remote-mac:signals/main",
+						"remote-mac:signals/wrk1"
+					]
 				},
 				"heard": [
 					{
@@ -4807,7 +5234,10 @@
 					"ref": "remote-mac:signals/main"
 				}
 			],
-			"forbid_calls": ["forward", "send_to"]
+			"forbid_calls": [
+				"forward",
+				"send_to"
+			]
 		},
 		{
 			"id": "go-into-remote-0",
@@ -4817,7 +5247,10 @@
 				"machine": {
 					"id": "remote-mac",
 					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+					"refs": [
+						"remote-mac:signals/main",
+						"remote-mac:signals/research"
+					]
 				},
 				"work": [
 					{
@@ -4833,7 +5266,11 @@
 					"ref": "remote-mac:signals/main"
 				}
 			],
-			"forbid_calls": ["forward", "send_to", "answer"]
+			"forbid_calls": [
+				"forward",
+				"send_to",
+				"answer"
+			]
 		},
 		{
 			"id": "go-into-remote-3",
@@ -4843,7 +5280,10 @@
 				"machine": {
 					"id": "remote-mac",
 					"name": "Remote Mac",
-					"refs": ["remote-mac:signals/main", "remote-mac:signals/research"]
+					"refs": [
+						"remote-mac:signals/main",
+						"remote-mac:signals/research"
+					]
 				},
 				"work": [
 					{
@@ -4854,7 +5294,11 @@
 				]
 			},
 			"calls": [],
-			"forbid_calls": ["forward", "send_to", "answer"],
+			"forbid_calls": [
+				"forward",
+				"send_to",
+				"answer"
+			],
 			"allow": [
 				{
 					"name": "switch_view",
@@ -4929,10 +5373,14 @@
 				{
 					"name": "send_to",
 					"ref": "checkout-api/main",
-					"text_includes": ["how long"]
+					"text_includes": [
+						"how long"
+					]
 				}
 			],
-			"forbid_calls": ["forward"]
+			"forbid_calls": [
+				"forward"
+			]
 		},
 		{
 			"id": "find-doc-is-session-work",
@@ -4976,10 +5424,14 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["push"]
+					"text_includes": [
+						"push"
+					]
 				}
 			],
-			"forbid_calls": ["send_to"]
+			"forbid_calls": [
+				"send_to"
+			]
 		},
 		{
 			"id": "meanwhile-offer-yes",
@@ -4999,7 +5451,10 @@
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["forward", "send_to"]
+			"forbid_calls": [
+				"forward",
+				"send_to"
+			]
 		},
 		{
 			"id": "debug-modes-branch-after-go-back",
@@ -5013,7 +5468,9 @@
 					{
 						"utterance": "Go back.",
 						"reply": "",
-						"did": ["go_back"],
+						"did": [
+							"go_back"
+						],
 						"minutesAgo": 0
 					}
 				],
@@ -5029,10 +5486,14 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["modes"]
+					"text_includes": [
+						"modes"
+					]
 				}
 			],
-			"forbid_calls": ["send_to"],
+			"forbid_calls": [
+				"send_to"
+			],
 			"no_reply": true
 		},
 		{
@@ -5052,10 +5513,14 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["branch"]
+					"text_includes": [
+						"branch"
+					]
 				}
 			],
-			"forbid_calls": ["send_to"],
+			"forbid_calls": [
+				"send_to"
+			],
 			"no_reply": true
 		},
 		{
@@ -5075,10 +5540,14 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["debug note"]
+					"text_includes": [
+						"debug note"
+					]
 				}
 			],
-			"forbid_calls": ["send_to"],
+			"forbid_calls": [
+				"send_to"
+			],
 			"no_reply": true
 		},
 		{
@@ -5092,10 +5561,14 @@
 			"calls": [
 				{
 					"name": "forward",
-					"text_includes": ["name"]
+					"text_includes": [
+						"name"
+					]
 				}
 			],
-			"forbid_calls": ["send_to"],
+			"forbid_calls": [
+				"send_to"
+			],
 			"no_reply": true
 		},
 		{
@@ -5134,7 +5607,10 @@
 					"ref": "checkout-api/main"
 				}
 			],
-			"forbid_calls": ["forward", "send_to"]
+			"forbid_calls": [
+				"forward",
+				"send_to"
+			]
 		},
 		{
 			"id": "combined-offer-no",
@@ -5184,7 +5660,9 @@
 					{
 						"utterance": "Note: retry the payment webhook with backoff.",
 						"reply": "Noted.",
-						"did": ["note \"retry the payment webhook with backoff\""]
+						"did": [
+							"note \"retry the payment webhook with backoff\""
+						]
 					}
 				]
 			},
@@ -5289,7 +5767,9 @@
 			},
 			"calls": [],
 			"answer": true,
-			"reply_includes": ["work one|wrk1|1"]
+			"reply_includes": [
+				"work one|wrk1|1"
+			]
 		},
 		{
 			"id": "activate-second-after-asking",
@@ -5315,7 +5795,9 @@
 					{
 						"utterance": "Activate scheduler on Personal.",
 						"reply": "Personal has scheduler work one and work two. Which?",
-						"did": ["activate scheduler (failed)"]
+						"did": [
+							"activate scheduler (failed)"
+						]
 					}
 				]
 			},
@@ -5410,10 +5892,7 @@
 			},
 			"calls": [
 				{
-					"name": "list_sessions",
-					"input": {
-						"machine": "Personal"
-					}
+					"name": "list_sessions"
 				}
 			],
 			"forbid_mutation": true,
@@ -5487,7 +5966,9 @@
 					}
 				}
 			],
-			"forbid_calls": ["forward"],
+			"forbid_calls": [
+				"forward"
+			],
 			"answer": true
 		},
 		{
@@ -5527,7 +6008,9 @@
 					}
 				}
 			],
-			"forbid_calls": ["forward"]
+			"forbid_calls": [
+				"forward"
+			]
 		},
 		{
 			"id": "voice-os-prefix-on-session-screen",
@@ -5556,7 +6039,9 @@
 					"name": "list_sessions"
 				}
 			],
-			"forbid_calls": ["forward"],
+			"forbid_calls": [
+				"forward"
+			],
 			"answer": true
 		},
 		{
@@ -5577,7 +6062,9 @@
 					"name": "forward"
 				}
 			],
-			"forbid_calls": ["list_sessions"],
+			"forbid_calls": [
+				"list_sessions"
+			],
 			"no_reply": true
 		},
 		{
@@ -5704,7 +6191,9 @@
 					"ref": "personal:setup"
 				}
 			],
-			"forbid_calls": ["forward"],
+			"forbid_calls": [
+				"forward"
+			],
 			"no_reply": true
 		},
 		{
@@ -5742,6 +6231,39 @@
 					}
 				}
 			]
+		},
+		{
+			"id": "start-inactive-and-ask-from-grid",
+			"utterance": "Start checkout and tell me what's the last thing it did.",
+			"context": {
+				"inactive": [
+					"checkout-api/main"
+				],
+				"stopped": [
+					"checkout-api/main"
+				]
+			},
+			"calls": [
+				{
+					"name": "activate",
+					"input": {
+						"name": "checkout-api/main"
+					}
+				},
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main",
+					"text_includes": [
+						"last"
+					]
+				}
+			],
+			"allow": [
+				{
+					"name": "switch_view"
+				}
+			],
+			"no_reply": true
 		}
 	]
 }
