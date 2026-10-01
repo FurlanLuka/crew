@@ -240,7 +240,10 @@ export const BottomBar = ({
 
 	useEffect(() => {
 		if (keptDictation) {
-			setDraft(keptDictation.text);
+			// After anything already typed: a stuck press can end while the developer types.
+			setDraft((typed) =>
+				typed.trim() ? `${typed.trimEnd()} ${keptDictation.text}` : keptDictation.text,
+			);
 			fieldRef.current?.focus();
 		}
 	}, [keptDictation]);
