@@ -1212,7 +1212,7 @@ crew voice dev push [--dry-run] | status
 
 #### `crew voice dev push`
 
-Builds crew and Voice OS from the crew checkout you are in, once per OS and CPU your machines run, stamped dev-<commit> (-dirty with uncommitted changes), and hands the push to the main, where it runs detached (tmux crew-dev-push) so restarting Voice OS or the Claude session that asked never ends it. It copies both binaries to every machine and checks them, installing nothing if any copy fails; then installs and restarts each machine: the other remotes, then the main, the machine you pushed from last. A machine out of reach is skipped and named.
+Builds crew and Voice OS from the crew checkout you are in, once per OS and CPU your machines run, stamped dev-<commit> (-dirty-<hash of the changes> with uncommitted ones), and hands the push to the main, where it runs detached (tmux crew-voice-push) so restarting Voice OS or the Claude session that asked never ends it. It copies both binaries to every machine and checks them, installing nothing if any copy fails; then installs and restarts each machine: the other remotes, then the main, the machine you pushed from last. A machine out of reach is skipped and named.
 
 ```
 crew voice dev push [--dry-run]

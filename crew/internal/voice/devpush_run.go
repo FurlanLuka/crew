@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
@@ -46,11 +47,17 @@ var (
 		out, err := osexec.Command("scp", args...).CombinedOutput()
 		return describeRunError(out, err)
 	}
-	// runLocal runs a shell script on this machine.
-	runLocal = func(script string) (string, error) {
-		debug.Log("voice", "dev push: local install")
+	// runLocal runs a shell script on this machine; label is what the debug log names it.
+	runLocal = func(label, script string) (string, error) {
+		debug.Log("voice", "dev push: %s (here)", label)
 		out, err := osexec.Command("sh", "-c", script).CombinedOutput()
 		return string(out), describeRunError(out, err)
+	}
+	// startRunner opens the runner's tmux session; one already there means a push runs.
+	startRunner = func(dir, command string) error {
+		debug.Log("voice", "dev push start → %s", command)
+		out, err := osexec.Command("tmux", "new-session", "-d", "-s", DevPushSession, "-c", dir, command).CombinedOutput()
+		return describeRunError(out, err)
 	}
 )
 
@@ -134,30 +141,50 @@ func BuildDevPush(root, version string, targets []Target, log io.Writer) (string
 	return dir, nil
 }
 
-// StartDevPush starts the runner on the main, detached in its own tmux session
-// so restarting Voice OS or any Claude session never ends it.
-func StartDevPush(version, source, buildDir string) error {
+// CheckDevPush refuses while a push's runner still runs: asked before a build,
+// so a second push never rebuilds what the first is copying.
+func CheckDevPush() error {
 	st, ok := ReadDevPush()
-	if err := devPushRefusal(st, ok, crewExec.TmuxSessionExists(DevPushSession)); err != nil {
-		return err
-	}
-	bin, err := crewExec.CrewBinary()
-	if err != nil {
+	return devPushRefusal(st, ok, crewExec.TmuxSessionExists(DevPushSession))
+}
+
+// StartDevPush starts the runner on the main, detached in its own tmux session
+// so restarting Voice OS or any Claude session never ends it. runner: a crew
+// that knows _dev-push and stays put while it runs (the push's own build when
+// the main is the source; the installed crew that took a remote's handoff).
+func StartDevPush(version, source, runner string) error {
+	if err := CheckDevPush(); err != nil {
 		return err
 	}
 	home, _ := os.UserHomeDir()
-	if err := writeDevPush(DevPushStatus{Version: version, Source: source, StartedAt: time.Now(), Phase: PhaseGather}); err != nil {
+	st := DevPushStatus{Version: version, Source: source, StartedAt: time.Now(), Phase: PhaseGather}
+	if err := writeDevPush(st); err != nil {
 		return err
 	}
 	q := crewExec.ShellQuote
-	cmd := strings.Join([]string{"HOME=" + q(home), q(bin), "voice", "_dev-push", q(version), q(source), q(buildDir)}, " ")
-	debug.Log("voice", "dev push start → %s", cmd)
-	return crewExec.TmuxRunInSession(DevPushSession, "push", home, cmd)
+	cmd := strings.Join([]string{"HOME=" + q(home), "CREW_CONFIG_DIR=" + q(config.ConfigDir), q(runner), "voice", "_dev-push", q(version), q(source)}, " ")
+	if err := startRunner(home, cmd); err != nil {
+		st.Phase, st.Error = PhaseFailed, "the runner did not start: "+err.Error()
+		writeDevPush(st)
+		return fmt.Errorf("the push did not start: %w", err)
+	}
+	return nil
+}
+
+// mainInstallPaths: where crew and Voice OS live on this main — crew as PATH
+// finds it (else ~/.local/bin/crew, as crew update), Voice OS where crew voice runs it.
+func mainInstallPaths() (crewPath, voicePath string) {
+	crewPath, err := osexec.LookPath("crew")
+	if err != nil {
+		home, _ := os.UserHomeDir()
+		crewPath = filepath.Join(home, ".local", "bin", "crew")
+	}
+	return crewPath, Binary()
 }
 
 // RunDevPush is the runner: gather the source's builds here, stage them on
 // every machine, then swap and restart each, the source last.
-func RunDevPush(version, source, buildDir string) error {
+func RunDevPush(version, source string) error {
 	st := DevPushStatus{Version: version, Source: source, StartedAt: time.Now(), Phase: PhaseGather}
 	save := func() {
 		if err := writeDevPush(st); err != nil {
@@ -181,10 +208,12 @@ func RunDevPush(version, source, buildDir string) error {
 	}
 	save()
 
-	local, err := gatherBuilds(machines, version, source, buildDir)
+	local, err := gatherBuilds(machines, version, source)
 	if err != nil {
 		return fail(err)
 	}
+	// The builds are only needed until every machine has its copy.
+	defer os.RemoveAll(local)
 
 	// Phase 1: everything staged and checked before anything running changes.
 	st.Phase = PhaseCopy
@@ -196,6 +225,7 @@ func RunDevPush(version, source, buildDir string) error {
 		}
 		if err := stageOn(m.PushMachine, version, filepath.Join(local, m.Target.Dir())); err != nil {
 			m.Error = err.Error()
+			cleanStaged(st.Machines, version)
 			save()
 			return fail(fmt.Errorf("%s: %w — nothing was installed", m.Name, err))
 		}
@@ -215,10 +245,10 @@ func RunDevPush(version, source, buildDir string) error {
 		}
 		var out string
 		if id == MainID {
-			bin, _ := crewExec.CrewBinary()
-			out, err = runLocal(InstallScript(version, true, bin))
+			crewPath, voicePath := mainInstallPaths()
+			out, err = runLocal("install and restart", InstallScript(version, true, crewPath, voicePath))
 		} else {
-			out, err = runRemote(m.Host, InstallScript(version, false, ""))
+			out, err = runRemote(m.Host, InstallScript(version, false, "", ""))
 		}
 		debug.Log("voice", "dev push: %s installed (%d bytes of output)", m.Name, len(out))
 		if err != nil {
@@ -246,11 +276,13 @@ func findProgress(list []MachineProgress, id string) *MachineProgress {
 	return nil
 }
 
-// gatherBuilds puts the source's build dir on this main: a remote source's is
-// fetched over SSH (the main reaches every remote; a remote may not reach the others).
-func gatherBuilds(machines []PushMachine, version, source, buildDir string) (string, error) {
+// gatherBuilds puts the source's builds on this main: a remote source's are
+// fetched over SSH from where every push builds (the main reaches every remote;
+// a remote may not reach the others, and never names the dir itself).
+func gatherBuilds(machines []PushMachine, version, source string) (string, error) {
+	local := DevPushBuildDir(version)
 	if source == MainID {
-		return buildDir, nil
+		return local, nil
 	}
 	var host string
 	for _, m := range machines {
@@ -261,15 +293,28 @@ func gatherBuilds(machines []PushMachine, version, source, buildDir string) (str
 	if host == "" {
 		return "", fmt.Errorf("no machine %q to take the build from", source)
 	}
-	local := DevPushBuildDir(version)
 	if err := os.MkdirAll(filepath.Dir(local), 0o755); err != nil {
 		return "", err
 	}
 	os.RemoveAll(local)
-	if err := copyFrom(host, buildDir, filepath.Dir(local)); err != nil {
+	if err := copyFrom(host, remoteBuildDir(version), filepath.Dir(local)); err != nil {
 		return "", fmt.Errorf("fetching the build from %s: %w", source, err)
 	}
 	return local, nil
+}
+
+// cleanStaged removes what a stopped push staged, wherever it got to.
+func cleanStaged(machines []MachineProgress, version string) {
+	for _, m := range machines {
+		if !m.Staged {
+			continue
+		}
+		if m.ID == MainID {
+			runLocal("clean staged", CleanStagedScript(version))
+		} else {
+			runRemote(m.Host, CleanStagedScript(version))
+		}
+	}
 }
 
 // stageOn copies a target's two files to the machine's staged dir and checks
@@ -291,9 +336,9 @@ func stageOn(m PushMachine, version, from string) error {
 		home, _ := os.UserHomeDir()
 		dir := filepath.Join(home, staged)
 		q := crewExec.ShellQuote
-		_, err = runLocal("mkdir -p " + q(dir) + " && cp " + q(files[0]) + " " + q(files[1]) + " " + q(dir) + "/")
+		_, err = runLocal("stage", "mkdir -p "+q(dir)+" && cp "+q(files[0])+" "+q(files[1])+" "+q(dir)+"/")
 		if err == nil {
-			out, err = runLocal(RemoteChecksumScript(version))
+			out, err = runLocal("checksum", RemoteChecksumScript(version))
 		}
 	} else {
 		if _, err = runRemote(m.Host, "mkdir -p \"$HOME\"/"+crewExec.ShellQuote(staged)); err == nil {

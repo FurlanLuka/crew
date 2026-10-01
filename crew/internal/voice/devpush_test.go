@@ -16,10 +16,11 @@ import (
 )
 
 func TestDevVersion(t *testing.T) {
-	if got := DevVersion("abc1234\n", false); got != "dev-abc1234" {
+	if got := DevVersion("abc1234\n", ""); got != "dev-abc1234" {
 		t.Errorf("clean: got %q", got)
 	}
-	if got := DevVersion("abc1234", true); got != "dev-abc1234-dirty" {
+	// Two different dirty trees are two versions: a second push still restarts every daemon.
+	if got := DevVersion("abc1234", "0a1b2c3d"); got != "dev-abc1234-dirty-0a1b2c3d" {
 		t.Errorf("dirty: got %q", got)
 	}
 }
@@ -27,9 +28,10 @@ func TestDevVersion(t *testing.T) {
 func TestTargetFromUname(t *testing.T) {
 	cases := map[string]Target{
 		"Linux x86_64\n": {GOOS: "linux", GOARCH: "amd64"},
-		"Linux aarch64":  {GOOS: "linux", GOARCH: "arm64"},
-		"Darwin arm64":   {GOOS: "darwin", GOARCH: "arm64"},
-		"Darwin x86_64":  {GOOS: "darwin", GOARCH: "amd64"},
+		"Welcome to the build box!\nLinux x86_64\n": {GOOS: "linux", GOARCH: "amd64"},
+		"Linux aarch64": {GOOS: "linux", GOARCH: "arm64"},
+		"Darwin arm64":  {GOOS: "darwin", GOARCH: "arm64"},
+		"Darwin x86_64": {GOOS: "darwin", GOARCH: "amd64"},
 	}
 	for in, want := range cases {
 		got, err := TargetFromUname(in)
@@ -71,23 +73,29 @@ func TestRestartOrder(t *testing.T) {
 }
 
 func TestInstallScript(t *testing.T) {
-	remote := InstallScript("dev-abc", false, "")
-	main := InstallScript("dev-abc", true, "/Users/dev/.local/bin/crew")
-	for _, want := range []string{
-		`C=$(command -v crew 2>/dev/null || echo "$HOME/.local/bin/crew")`,
-		`rm -f "$C" && mv "$D/crew" "$C"`,
-		`printf '%s\n' 'dev-abc' > "$HOME/.crew/bin/voiceos.version"`,
-		"codesign --sign -",
-	} {
-		if !strings.Contains(remote, want) {
-			t.Errorf("remote script lacks %q", want)
+	want := `set -e
+D="$HOME"/'.crew/dev-push-staged/dev-abc'
+C=$(command -v crew 2>/dev/null || echo "$HOME/.local/bin/crew")
+V="$HOME/.crew/bin/voiceos"
+[ -f "$D/crew" ] && [ -f "$D/voiceos" ] || { echo "nothing staged in $D"; exit 1; }
+mkdir -p "$(dirname "$C")" "$(dirname "$V")"
+cp "$D/crew" "$C.new" && cp "$D/voiceos" "$V.new"
+if [ "$(uname)" = Darwin ]; then codesign --sign - -f "$C.new" "$V.new" >/dev/null 2>&1 || { rm -f "$C.new" "$V.new"; echo "codesign failed"; exit 1; }; fi
+mv -f "$C.new" "$C" && mv -f "$V.new" "$V"
+printf '%s\n' 'dev-abc' > "$V.version"
+rm -rf "$D"
+"$C" voice remote`
+	if got := InstallScript("dev-abc", false, "", ""); got != want {
+		t.Errorf("remote script:\n%s\nwant:\n%s", got, want)
+	}
+	main := InstallScript("dev-abc", true, "/Users/dev/.local/bin/crew", "/Users/dev/.crew/bin/voiceos")
+	for _, line := range []string{"C='/Users/dev/.local/bin/crew'", "V='/Users/dev/.crew/bin/voiceos'"} {
+		if !strings.Contains(main, line) {
+			t.Errorf("the main installs where it runs them: no %s", line)
 		}
 	}
-	if !strings.HasSuffix(remote, `"$C" voice remote`) || !strings.HasSuffix(main, `"$C" voice _restart`) {
-		t.Error("a remote restarts its daemon, the main its cockpit, last")
-	}
-	if !strings.Contains(main, "C='/Users/dev/.local/bin/crew'") {
-		t.Error("the main replaces the crew it runs")
+	if !strings.HasSuffix(main, `"$C" voice _restart`) {
+		t.Error("the main restarts its cockpit last")
 	}
 }
 
@@ -108,7 +116,7 @@ type fakePush struct {
 	failInstall string            // a host whose install fails
 }
 
-const installMarker = `mv "$D/crew"`
+const installMarker = `mv -f "$C.new" "$C"`
 
 // installs is the hosts an install script ran on, in order.
 func (f *fakePush) installs() []string {
@@ -178,7 +186,7 @@ func installFakePush(t *testing.T, f *fakePush) {
 	copyFrom = func(host, dir, parent string) error {
 		return errors.New("not used here")
 	}
-	runLocal = func(script string) (string, error) {
+	runLocal = func(_, script string) (string, error) {
 		if strings.HasPrefix(script, "mkdir -p") {
 			for _, field := range strings.Fields(script) {
 				path := strings.Trim(field, "'")
@@ -222,11 +230,11 @@ func writeBuilds(dir string) string {
 var vm1AndPersonal = []Machine{{ID: "vm1", Host: "vm1", Name: "Build box"}, {ID: "personal", Host: "personal", Name: "Personal"}}
 
 func TestRunDevPushFromTheMain(t *testing.T) {
-	dir := setupPush(t, "dev-abc")
+	setupPush(t, "dev-abc")
 	f := &fakePush{files: map[string][]byte{}}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID, dir); err != nil {
+	if err := RunDevPush("dev-abc", MainID); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := ReadDevPush()
@@ -261,11 +269,11 @@ func TestRunDevPushFromTheMain(t *testing.T) {
 }
 
 func TestRunDevPushDamagedCopyInstallsNothing(t *testing.T) {
-	dir := setupPush(t, "dev-abc")
+	setupPush(t, "dev-abc")
 	f := &fakePush{files: map[string][]byte{}, damage: "vm1"}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID, dir); err == nil {
+	if err := RunDevPush("dev-abc", MainID); err == nil {
 		t.Fatal("want a failure")
 	}
 	st, _ := ReadDevPush()
@@ -280,14 +288,47 @@ func TestRunDevPushDamagedCopyInstallsNothing(t *testing.T) {
 	if got := f.installs(); len(got) != 0 {
 		t.Errorf("installed after a failed copy: %v", got)
 	}
+	// What the main had staged is removed again.
+	if f.scriptOn("main", "rm -rf \"$HOME\"/'"+StagedDir("dev-abc")+"'") == "" {
+		t.Errorf("the main's staged build was left behind: %v", f.ran)
+	}
+}
+
+func TestStartDevPushRunnerThatFailsToStart(t *testing.T) {
+	setupPush(t, "dev-abc")
+	saved := startRunner
+	t.Cleanup(func() { startRunner = saved })
+	startRunner = func(dir, command string) error { return errors.New("no server running") }
+
+	if err := StartDevPush("dev-abc", MainID, "/tmp/crew"); err == nil {
+		t.Fatal("want an error")
+	}
+	if st, _ := ReadDevPush(); st.Phase != PhaseFailed || st.Error != "the runner did not start: no server running" {
+		t.Errorf("status %+v", st)
+	}
+}
+
+func TestStartDevPushRunsTheRunnerItIsGiven(t *testing.T) {
+	setupPush(t, "dev-abc")
+	saved := startRunner
+	t.Cleanup(func() { startRunner = saved })
+	var ran string
+	startRunner = func(dir, command string) error { ran = command; return nil }
+
+	if err := StartDevPush("dev-abc", "personal", "/opt/crew"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(ran, "'/opt/crew' voice _dev-push 'dev-abc' 'personal'") {
+		t.Errorf("ran %q", ran)
+	}
 }
 
 func TestRunDevPushOneInstallFailsTheRestFinish(t *testing.T) {
-	dir := setupPush(t, "dev-abc", vm1AndPersonal...)
+	setupPush(t, "dev-abc", vm1AndPersonal...)
 	f := &fakePush{files: map[string][]byte{}, failInstall: "vm1"}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID, dir); err == nil {
+	if err := RunDevPush("dev-abc", MainID); err == nil {
 		t.Fatal("want a failure")
 	}
 	st, _ := ReadDevPush()
@@ -307,11 +348,11 @@ func TestRunDevPushOneInstallFailsTheRestFinish(t *testing.T) {
 }
 
 func TestRunDevPushOutOfReachIsSkipped(t *testing.T) {
-	dir := setupPush(t, "dev-abc")
+	setupPush(t, "dev-abc")
 	f := &fakePush{files: map[string][]byte{}, down: map[string]bool{"vm1": true}}
 	installFakePush(t, f)
 
-	if err := RunDevPush("dev-abc", MainID, dir); err != nil {
+	if err := RunDevPush("dev-abc", MainID); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := ReadDevPush()
@@ -332,10 +373,10 @@ func TestRunDevPushFromARemoteFetchesItsBuildAndRestartsItLast(t *testing.T) {
 		return nil
 	}
 
-	if err := RunDevPush(version, "personal", "/home/dev/.crew/dev-push/"+version); err != nil {
+	if err := RunDevPush(version, "personal"); err != nil {
 		t.Fatal(err)
 	}
-	if fetched != "personal:/home/dev/.crew/dev-push/"+version {
+	if fetched != "personal:.crew/dev-push/"+version {
 		t.Errorf("fetched %q", fetched)
 	}
 	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", MainID, "personal"}) {
@@ -353,7 +394,7 @@ func TestRunDevPushASkippedSourceIsNeverInstalledOn(t *testing.T) {
 		return nil
 	}
 
-	if err := RunDevPush(version, "personal", "/home/dev/.crew/dev-push/"+version); err != nil {
+	if err := RunDevPush(version, "personal"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", MainID}) {
@@ -366,14 +407,6 @@ func TestRestartOrderSkippedSource(t *testing.T) {
 	machines[2].Skipped = "unreachable"
 	if got := RestartOrder(machines, "personal"); !reflect.DeepEqual(got, []string{"vm1", MainID}) {
 		t.Errorf("got %v", got)
-	}
-}
-
-func TestInstallScriptNeedsTheStagedBuild(t *testing.T) {
-	script := InstallScript("dev-abc", false, "")
-	guard := strings.Index(script, `[ -f "$D/crew" ] && [ -f "$D/voiceos" ]`)
-	if guard < 0 || guard > strings.Index(script, `rm -f "$C"`) {
-		t.Error("the staged files are checked before the live crew is removed")
 	}
 }
 

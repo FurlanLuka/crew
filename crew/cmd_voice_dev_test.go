@@ -17,7 +17,7 @@ func TestParseHandoffArgsSharedFixture(t *testing.T) {
 	}
 	for _, args := range fixture.Allowed {
 		h, err := parseHandoffArgs(append(args, "--source=vm1"))
-		if err != nil || h.version != args[0] || h.dir != args[1] || h.source != "vm1" {
+		if err != nil || h.version != args[0] || h.source != "vm1" {
 			t.Errorf("%v: got %+v, %v", args, h, err)
 		}
 	}

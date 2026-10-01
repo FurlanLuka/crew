@@ -65,38 +65,24 @@ describe('isAllowedQuery', () => {
 
 describe('a dev push from a remote', () => {
 	it.each([
-		[['voice', 'dev', 'targets', '--json']],
+		[['voice', 'dev', '_targets', '--json']],
 		[['voice', 'dev', 'status', '--json']],
 		[['voice', 'dev', 'status']],
-		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/.crew/dev-push/dev-abc1234']],
-		[
-			[
-				'voice',
-				'dev',
-				'_handoff',
-				'dev-abc1234-dirty',
-				'/home/dev/.crew/dev-push/dev-abc1234-dirty',
-			],
-		],
 	])('%j → allowed', (args) => expect(isAllowedQuery(args)).toBe(true));
 
 	it.each([
 		[['voice', 'dev', 'push']],
-		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/x', '--source=vm1']],
-		[['voice', 'dev', '_handoff', '5.8.0', '/home/dev/x']],
-		[['voice', 'dev', '_handoff', 'dev-abc1234', 'relative/dir']],
-		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/../../etc']],
-		[['voice', 'dev', '_handoff', 'dev-abc1234', '/home/dev/x; rm -rf ~']],
-		[['voice', 'dev', 'targets', '--local']],
+		[['voice', 'dev', 'targets', '--json']],
+		[['voice', 'dev', '_handoff', 'dev-abc1234', '--source=vm1']],
+		[['voice', 'dev', '_targets', '--local']],
 	])('%j → refused', (args) => expect(isAllowedQuery(args)).toBe(false));
 
 	it('the main names the asking remote as the source itself; other queries pass as they came', () => {
-		expect(withSource(['voice', 'dev', '_handoff', 'dev-abc', '/x'], 'vm1')).toEqual([
+		expect(withSource(['voice', 'dev', '_handoff', 'dev-abc'], 'vm1')).toEqual([
 			'voice',
 			'dev',
 			'_handoff',
 			'dev-abc',
-			'/x',
 			'--source=vm1',
 		]);
 		expect(withSource(['voice', 'dev', 'status'], 'vm1')).toEqual(['voice', 'dev', 'status']);
@@ -109,11 +95,11 @@ describe('the dev handoff, as crew checks it too', () => {
 		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/dev-handoff.json'), 'utf8'),
 	) as { allowed: string[][]; refused: string[][] };
 
-	it.each(fixture.allowed)('%s %s → allowed', (version, dir) =>
-		expect(isAllowedQuery(['voice', 'dev', '_handoff', version ?? '', dir ?? ''])).toBe(true),
+	it.each(fixture.allowed)('%j → allowed', (...args) =>
+		expect(isAllowedQuery(['voice', 'dev', '_handoff', ...args])).toBe(true),
 	);
 
-	it.each(fixture.refused)('%s %s → refused', (version, dir) =>
-		expect(isAllowedQuery(['voice', 'dev', '_handoff', version ?? '', dir ?? ''])).toBe(false),
+	it.each(fixture.refused)('%j → refused', (...args) =>
+		expect(isAllowedQuery(['voice', 'dev', '_handoff', ...args])).toBe(false),
 	);
 });

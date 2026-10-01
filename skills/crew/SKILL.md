@@ -471,13 +471,14 @@ voice discord off` removes discord.json and the token (`removed\t<path>` per fil
 version, so a branch built from source can't meet your remotes until it is released. `crew voice dev
 push`, run in a crew checkout on any machine — the main or a remote — builds that checkout's crew
 and Voice OS for each OS and CPU your machines run (go and bun needed there), stamps them
-`dev-<commit>` (`-dirty` with uncommitted changes), and hands the push to the main, where it runs
-detached in tmux `crew-dev-push`: restarting Voice OS, or the Claude session that asked, never ends
+`dev-<commit>` (`-dirty-<hash>` with uncommitted ones, so each new change is a new version), and hands the push to the main, where it runs
+detached in tmux `crew-voice-push`: restarting Voice OS, or the Claude session that asked, never ends
 it. It copies both binaries everywhere and checks them (any failed copy → nothing installed), then
 installs and restarts each machine — the other remotes, the main, the machine you pushed from last.
 A machine out of reach is skipped and named. It returns at once; `crew voice dev status` (from any
 machine) follows it: `<version> from <source>: <phase>`, then `<machine>\t<goos>_<goarch>\t<state>`.
 `--dry-run` lists the machines and targets only. `crew update` on a machine goes back to the release.
+The first push must start from the main: a remote's push needs a main that already runs dev push.
 
 **Debugging Voice OS: logs, debug notes, notes.** Read these through crew, never by grepping
 the files (the log rotates at 20 MB into `voiceos.log.1` … `.5`, and a remote's log is on

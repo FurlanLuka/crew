@@ -1,16 +1,13 @@
 {
-	"note": "What a remote may hand the main for a dev push: crew voice dev _handoff <version> <build dir>. Both sides check it: voiceos/src/remote/query-allow.ts before the main runs crew, crew/cmd_voice_dev.go parseHandoffArgs when it does (with the --source the main's link added).",
-	"allowed": [
-		["dev-abc1234", "/home/dev/.crew/dev-push/dev-abc1234"],
-		["dev-abc1234-dirty", "/Users/dev/.crew/dev-push/dev-abc1234-dirty"]
-	],
+	"note": "What a remote may hand the main for a dev push: crew voice dev _handoff <version>. Both sides check it: voiceos/src/remote/query-allow.ts before the main runs crew, crew/cmd_voice_dev.go parseHandoffArgs when it does (with the --source the main's link added). A remote never names a path: the main fetches its build from that remote's own push dir.",
+	"allowed": [["dev-abc1234"], ["dev-abc1234-dirty-0a1b2c3d"]],
 	"refused": [
-		["5.8.0", "/home/dev/x"],
-		["dev-ABC", "/home/dev/x"],
-		["dev-abc1234", "relative/dir"],
-		["dev-abc1234", "/home/dev/../../etc"],
-		["dev-abc1234", "/home/dev/x; rm -rf ~"],
-		["dev-abc1234", "/home/dev/$(id)"],
-		["dev-abc1234", "/home/dev/x y"]
+		["5.8.0"],
+		["dev-ABC"],
+		["dev-abc1234-dirty"],
+		["dev-abc1234-dirty-xyz"],
+		["dev-abc1234", "/home/dev/.crew/dev-push/dev-abc1234"],
+		["dev-abc1234; rm -rf ~"],
+		[]
 	]
 }

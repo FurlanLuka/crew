@@ -778,7 +778,7 @@ var Root = CommandInfo{
 					Subcommands: []CommandInfo{
 						{
 							Name:         "push",
-							Description:  "Builds crew and Voice OS from the crew checkout you are in, once per OS and CPU your machines run, stamped dev-<commit> (-dirty with uncommitted changes), and hands the push to the main, where it runs detached (tmux crew-dev-push) so restarting Voice OS or the Claude session that asked never ends it. It copies both binaries to every machine and checks them, installing nothing if any copy fails; then installs and restarts each machine: the other remotes, then the main, the machine you pushed from last. A machine out of reach is skipped and named.",
+							Description:  "Builds crew and Voice OS from the crew checkout you are in, once per OS and CPU your machines run, stamped dev-<commit> (-dirty-<hash of the changes> with uncommitted ones), and hands the push to the main, where it runs detached (tmux crew-voice-push) so restarting Voice OS or the Claude session that asked never ends it. It copies both binaries to every machine and checks them, installing nothing if any copy fails; then installs and restarts each machine: the other remotes, then the main, the machine you pushed from last. A machine out of reach is skipped and named.",
 							Usage:        "crew voice dev push [--dry-run]",
 							OutputFormat: "<machine>\\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …",
 							Flags: []FlagInfo{

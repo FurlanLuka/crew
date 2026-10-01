@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -15,12 +16,12 @@ import (
 // machine and restarted together. Any machine can be the source; the runner
 // always runs on the main, detached, so a restart cannot end it.
 
-// MainID names the main in a push's machine list ("main" is reserved as a
-// machine id, so no remote can take it).
-const MainID = "main"
+// MainID names the main in a push's machine list: the reserved MainMachine id.
+const MainID = MainMachine
 
-// DevPushSession is the runner's tmux session on the main (a var: tests use their own).
-var DevPushSession = "crew-dev-push"
+// DevPushSession is the runner's tmux session on the main — outside crew-dev-*, which a bare
+// crew dev stop or crew kill ends wholesale (a var: tests use their own).
+var DevPushSession = "crew-voice-push"
 
 // Target is an OS and CPU a build is made for.
 type Target struct {
@@ -55,19 +56,22 @@ type PushMachine struct {
 	Skipped string `json:"skipped,omitempty"`
 }
 
-// DevVersion is what every machine of a push reports: the commit, marked when
-// the tree had changes not committed. Pure.
-func DevVersion(sha string, dirty bool) string {
+// DevVersion is what every machine of a push reports: the commit, and for a
+// tree with changes not committed a hash of those changes — two different dirty
+// trees are two versions, so a second push still restarts every daemon. Pure.
+func DevVersion(sha, dirtyHash string) string {
 	v := "dev-" + strings.TrimSpace(sha)
-	if dirty {
-		v += "-dirty"
+	if dirtyHash != "" {
+		v += "-dirty-" + dirtyHash
 	}
 	return v
 }
 
-// TargetFromUname reads `uname -sm` ("Linux x86_64", "Darwin arm64"). Pure.
+// TargetFromUname reads `uname -sm` ("Linux x86_64", "Darwin arm64") from the
+// last line: a login shell may print a banner first. Pure.
 func TargetFromUname(out string) (Target, error) {
-	fields := strings.Fields(out)
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	fields := strings.Fields(lines[len(lines)-1])
 	if len(fields) != 2 {
 		return Target{}, fmt.Errorf("unexpected uname output %q", strings.TrimSpace(out))
 	}
@@ -118,36 +122,48 @@ func RestartOrder(machines []PushMachine, source string) []string {
 // version — under $HOME, the same on every machine.
 func StagedDir(version string) string { return ".crew/dev-push-staged/" + version }
 
-// InstallScript moves the staged build into place and restarts Voice OS on it:
-// crew where `command -v crew` finds it (else ~/.local/bin/crew), Voice OS at
-// ~/.crew/bin/voiceos with its version stamp; then the main restarts its
-// cockpit, a remote its daemon. rm before mv: replacing a signed binary in place
-// gets it killed on macOS. Pure.
-// crewPath: where crew lives, when the caller knows (the main's own binary).
-func InstallScript(version string, isMain bool, crewPath string) string {
+// InstallScript puts the staged build in place and restarts Voice OS on it:
+// each binary is copied beside its live one, signed on macOS, then renamed
+// over it — never a moment with no crew, never a half-copied one across
+// filesystems. crew where `command -v crew` finds it (else ~/.local/bin/crew),
+// Voice OS at ~/.crew/bin/voiceos with its version stamp, unless the caller
+// knows the paths (the main's own). Then the main restarts its cockpit, a
+// remote its daemon. Pure.
+func InstallScript(version string, isMain bool, crewPath, voicePath string) string {
+	q := crewExec.ShellQuote
 	restart := `"$C" voice remote`
 	if isMain {
 		restart = `"$C" voice _restart`
 	}
 	findCrew := `C=$(command -v crew 2>/dev/null || echo "$HOME/.local/bin/crew")`
 	if crewPath != "" {
-		findCrew = "C=" + crewExec.ShellQuote(crewPath)
+		findCrew = "C=" + q(crewPath)
 	}
-	q := crewExec.ShellQuote
+	findVoice := `V="$HOME/.crew/bin/voiceos"`
+	if voicePath != "" {
+		findVoice = "V=" + q(voicePath)
+	}
 	return strings.Join([]string{
 		"set -e",
 		"D=\"$HOME\"/" + q(StagedDir(version)),
 		findCrew,
-		// Nothing staged here means nothing to install: the live crew is never removed for it.
+		findVoice,
+		// Nothing staged here means nothing to install: the live crew is never touched for it.
 		`[ -f "$D/crew" ] && [ -f "$D/voiceos" ] || { echo "nothing staged in $D"; exit 1; }`,
-		`mkdir -p "$(dirname "$C")" "$HOME/.crew/bin"`,
-		`rm -f "$C" && mv "$D/crew" "$C"`,
-		`rm -f "$HOME/.crew/bin/voiceos" && mv "$D/voiceos" "$HOME/.crew/bin/voiceos"`,
-		"printf '%s\\n' " + q(version) + ` > "$HOME/.crew/bin/voiceos.version"`,
-		`if [ "$(uname)" = Darwin ]; then codesign --sign - -f "$C" "$HOME/.crew/bin/voiceos" >/dev/null 2>&1 || true; fi`,
-		`rmdir "$D" 2>/dev/null || true`,
+		`mkdir -p "$(dirname "$C")" "$(dirname "$V")"`,
+		`cp "$D/crew" "$C.new" && cp "$D/voiceos" "$V.new"`,
+		`if [ "$(uname)" = Darwin ]; then codesign --sign - -f "$C.new" "$V.new" >/dev/null 2>&1 || { rm -f "$C.new" "$V.new"; echo "codesign failed"; exit 1; }; fi`,
+		`mv -f "$C.new" "$C" && mv -f "$V.new" "$V"`,
+		"printf '%s\\n' " + q(version) + ` > "$V.version"`,
+		`rm -rf "$D"`,
 		restart,
 	}, "\n")
+}
+
+// CleanStagedScript removes a push's staged files on a machine (a push that
+// stopped before installing). Pure.
+func CleanStagedScript(version string) string {
+	return `rm -rf "$HOME"/` + crewExec.ShellQuote(StagedDir(version))
 }
 
 // RemoteChecksumScript prints each staged file's sha256 ("<sum>  <file>"),
@@ -203,9 +219,12 @@ func devPushStatusFile() string { return filepath.Join(Dir(), "dev-push.json") }
 
 // DevPushBuildDir is where a push's builds are kept on a machine, by version.
 func DevPushBuildDir(version string) string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".crew", "dev-push", version)
+	return filepath.Join(config.ConfigDir, "dev-push", version)
 }
+
+// remoteBuildDir is the same dir on a remote, from its home: a remote keeps
+// crew's default config dir.
+func remoteBuildDir(version string) string { return ".crew/dev-push/" + version }
 
 // ReadDevPush is the last push's status; ok false when there was none.
 func ReadDevPush() (DevPushStatus, bool) {

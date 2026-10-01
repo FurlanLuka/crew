@@ -182,11 +182,9 @@ describe('a query from a remote to the main', () => {
 
 			return { code: 0, stdout: '', stderr: '' };
 		});
-		await askArgs(path, ['voice', 'dev', '_handoff', 'dev-abc1234', '/h/x']);
+		await askArgs(path, ['voice', 'dev', '_handoff', 'dev-abc1234']);
 
-		expect(ran).toEqual([
-			['voice', 'dev', '_handoff', 'dev-abc1234', '/h/x', `--source=${VM1.id}`],
-		]);
+		expect(ran).toEqual([['voice', 'dev', '_handoff', 'dev-abc1234', `--source=${VM1.id}`]]);
 	});
 
 	it('a remote naming the source itself → refused, nothing run', async () => {
@@ -203,7 +201,6 @@ describe('a query from a remote to the main', () => {
 			'dev',
 			'_handoff',
 			'dev-abc1234',
-			'/h/x',
 			'--source=other',
 		]);
 

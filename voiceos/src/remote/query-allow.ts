@@ -57,26 +57,21 @@ const arePositionalsAllowed = (kind: QueryKind, positionals: string[]): boolean 
 	}
 };
 
-// A dev push from a remote (crew voice dev push there): it reads the machines, hands its build to the
-// main, and follows the push. The one request here that changes anything: the main then runs the push,
-// and names the remote as its source itself (withSource) — a remote never says who it is.
-const DEV_VERSION = /^dev-[0-9a-f]{4,40}(?:-dirty)?$/;
-const BUILD_DIR = /^\/[\w./-]{1,400}$/;
+// A dev push from a remote (crew voice dev push there): it reads the machines, hands its version to
+// the main, and follows the push. The one request here that changes anything — the main then fetches
+// that remote's build from its own push dir and runs the push. A remote names neither a path nor
+// itself: the main adds --source (withSource).
+const DEV_VERSION = /^dev-[0-9a-f]{4,40}(?:-dirty-[0-9a-f]{8})?$/;
 
 const isAllowedDevQuery = (rest: string[]): boolean => {
 	const [sub, ...args] = rest;
 
 	switch (sub) {
-		case 'targets':
+		case '_targets':
 		case 'status':
 			return args.every((arg) => arg === '--json');
 		case '_handoff':
-			return (
-				args.length === 2 &&
-				DEV_VERSION.test(args[0] ?? '') &&
-				BUILD_DIR.test(args[1] ?? '') &&
-				!(args[1] ?? '').includes('..')
-			);
+			return args.length === 1 && DEV_VERSION.test(args[0] ?? '');
 		default:
 			return false;
 	}
