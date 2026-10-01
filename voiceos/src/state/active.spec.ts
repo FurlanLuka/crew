@@ -596,3 +596,29 @@ describe('words kept for an inactive session', () => {
 		expect(up.effects).toContainEqual({ type: 'worker_send', ref: LOCAL, text: 'run the tests' });
 	});
 });
+
+describe('words for an inactive session on a machine out of reach', () => {
+	it('queued for its activation, with no promise to send them when the machine is back', () => {
+		const offline = known([
+			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
+			{ type: 'machine_status', id: 'vm1', status: 'unreachable', detail: 'timeout' },
+		]);
+		const { state, effects } = run([{ type: 'send', ref: REMOTE, text: 'run the tests' }], {
+			start: offline,
+		});
+
+		expect(said(effects)).toEqual([]);
+		expect(state.sessions[REMOTE]?.queue.map((message) => message.text)).toEqual(['run the tests']);
+	});
+
+	it('an active one → still told it goes when the machine is back', () => {
+		const offline = known([
+			{ type: 'activate', ref: REMOTE },
+			{ type: 'machine_status', id: 'vm1', status: 'unreachable', detail: 'timeout' },
+		]);
+
+		expect(
+			said(run([{ type: 'send', ref: REMOTE, text: 'hi' }], { start: offline }).effects),
+		).toEqual(["Build box is out of reach. I'll send it when it's back."]);
+	});
+});

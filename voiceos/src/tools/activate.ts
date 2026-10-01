@@ -237,7 +237,6 @@ export const activateSession = async ({
 		};
 	}
 
-	// Voice OS says "Activated X. Switch there?" itself (or that its machine is out of reach).
 	// Voice OS says "Activated X. Switch there?" itself, or that its machine is out of reach; on its
 	// own screen nothing needs saying.
 	return {

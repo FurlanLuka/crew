@@ -177,9 +177,11 @@ describe('activate', () => {
 	it('"activate this" on a session → the one on screen', async () => {
 		const { tools, actions } = createContext({ screen: 'store-front/wrk1' });
 
-		await executeTool('activate', { name: null }, tools);
+		const result = await executeTool('activate', { name: null }, tools);
 
 		expect(actions).toEqual([{ type: 'activate', ref: 'store-front/wrk1', announce: true }]);
+		// On its own screen Voice OS says nothing, and the result does not claim it did.
+		expect(result.content).toBe('activated store-front/wrk1: say nothing');
 	});
 
 	it('"activate this" on Mission Control → fails, nothing dispatched', async () => {

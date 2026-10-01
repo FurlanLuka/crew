@@ -377,8 +377,11 @@ export const guardUnreachable = (
 	if (input.type === 'send') {
 		return {
 			state: queueUntilBack(state, input, stamped),
-			// Where the words went, said once: no "Sent to …" after it.
-			effects: [say(`${name} is out of reach. I'll send it when it's back.`, true)],
+			// Where the words went, said once: no "Sent to …" after it. An inactive session's words wait
+			// for its activation, not its machine: "…isn't active. Activate it?" says that.
+			effects: isActive(state, ref)
+				? [say(`${name} is out of reach. I'll send it when it's back.`, true)]
+				: [],
 		};
 	}
 

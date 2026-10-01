@@ -217,6 +217,16 @@ describe('executeTool', () => {
 		expect(actions).toEqual([]);
 	});
 
+	it('read_history of an inactive session → read, nothing offered', async () => {
+		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
+		const result = await executeTool('read_history', { ref: 'checkout-api/main' }, tools);
+
+		expect(JSON.parse(result.content)).toEqual([
+			{ ts: '2026-09-24', ref: 'checkout-api/main', asked: null, did: 'limit 5' },
+		]);
+		expect(actions).toEqual([]);
+	});
+
 	it('interrupt of an inactive session → "isn\'t running", never an offer to start it', async () => {
 		const { tools, actions } = createToolContext({ active: ['store-front/main'] });
 		const result = await executeTool('interrupt', { ref: 'checkout-api/main' }, tools);

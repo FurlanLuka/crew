@@ -117,10 +117,13 @@ describe('describeSessionBadge', () => {
 		).toBe(false));
 });
 
+// Inactive, and labelled by crew: what a tile shows when nothing else decides it.
+const lastLineOf = (session: Session): string => readLastLine(session, session.label, false);
+
 describe('readLastLine', () => {
 	it('an approval last → what was allowed, not "you:"', () =>
 		expect(
-			readLastLine(
+			lastLineOf(
 				createTestSession({
 					stream: [
 						{
@@ -136,14 +139,14 @@ describe('readLastLine', () => {
 		).toBe('allowed once: run git push'));
 
 	it('streaming draft wins', () =>
-		expect(readLastLine(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
+		expect(lastLineOf(createTestSession({ draft: 'Typing…' }))).toBe('Typing…'));
 
 	it('a draft shows without its spoken line, closed or still streaming', () => {
-		expect(readLastLine(createTestSession({ draft: '<spoken>Tests pass.</spoken>\nAll 40' }))).toBe(
+		expect(lastLineOf(createTestSession({ draft: '<spoken>Tests pass.</spoken>\nAll 40' }))).toBe(
 			'All 40',
 		);
 		expect(
-			readLastLine(
+			lastLineOf(
 				createTestSession({
 					draft: '<spoken>Tests pa',
 					stream: [{ id: 't', at: 1, kind: 'text', text: 'Earlier reply.' }],
@@ -153,14 +156,14 @@ describe('readLastLine', () => {
 	});
 	it('a Markdown reply → its words, without the signs', () =>
 		expect(
-			readLastLine(
+			lastLineOf(
 				createTestSession({
 					stream: [{ id: 't', at: 1, kind: 'text', text: '## Done\n**Tests pass.**' }],
 				}),
 			),
 		).toBe('Done\nTests pass.'));
 	it('never started → activate hint names the session', () =>
-		expect(readLastLine(createTestSession())).toContain('activate store/main'));
+		expect(lastLineOf(createTestSession())).toContain('activate store/main'));
 });
 
 describe('findCurrentAsk', () => {
@@ -367,8 +370,12 @@ describe('named sessions', () => {
 		expect(
 			describeActiveCard(createActiveState({ asks: [createTestAsk('1', 'vm1:api/main')] })).waiting,
 		).toBe('Build box · api/main: wants to run x'));
+	it('an active session stopped (a crash, its machine away) → only "Not running."', () =>
+		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev', true)).toBe(
+			'Not running.',
+		));
 	it('a stopped named session → its last line says to activate it by its name', () =>
-		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev')).toBe(
+		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev', false)).toBe(
 			'Not running. Activate it, or say “activate voice os dev”.',
 		));
 });

@@ -98,11 +98,7 @@ export const describeSessionBadge = (session: Session, asks: PendingAsk[]): Badg
 
 // label: what the session is called on screen, for the line that says how to activate it.
 // isSessionActive: an active one stopped (a crash, its machine away) needs no "activate".
-export const readLastLine = (
-	session: Session,
-	label = session.label,
-	isSessionActive = false,
-): string => {
+export const readLastLine = (session: Session, label: string, isSessionActive: boolean): string => {
 	const draft = stripStreamingTag(session.draft);
 
 	if (draft) {

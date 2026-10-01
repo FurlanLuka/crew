@@ -136,7 +136,8 @@ describe('words sent to a session not on screen', () => {
 			[
 				[1, { type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] }],
 				[2, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree(REMOTE)] }],
-				[3, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				[3, { type: 'activate', ref: REMOTE }],
+				[4, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
 			],
 			createInitialState(),
 		);
@@ -216,6 +217,13 @@ describe('the activate and deactivate offers', () => {
 			inactive: ['store-front/wrk1', PERSONAL_SETUP],
 			...(view ? { view } : {}),
 		});
+
+	it('a plain "Switch to X?" for an inactive session → never offered', () => {
+		const result = reduceAt(withPersonal(), 10, { type: 'offer_switch', ref: 'store-front/wrk1' });
+
+		expect(result.state.switchOffer).toBeNull();
+		expect(result.effects).toEqual([]);
+	});
 
 	it('activate → "<X> isn\'t active. Activate it?", an ack', () => {
 		const result = reduceAt(withPersonal(), 10, {
