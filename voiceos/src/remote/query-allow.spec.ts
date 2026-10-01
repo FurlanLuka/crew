@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isAllowedQuery, withSource } from './query-allow.js';
 
 describe('isAllowedQuery', () => {
@@ -100,4 +102,18 @@ describe('a dev push from a remote', () => {
 		expect(withSource(['voice', 'dev', 'status'], 'vm1')).toEqual(['voice', 'dev', 'status']);
 		expect(withSource(['voice', 'logs'], 'vm1')).toEqual(['voice', 'logs']);
 	});
+});
+
+describe('the dev handoff, as crew checks it too', () => {
+	const fixture = JSON.parse(
+		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/dev-handoff.json'), 'utf8'),
+	) as { allowed: string[][]; refused: string[][] };
+
+	it.each(fixture.allowed)('%s %s → allowed', (version, dir) =>
+		expect(isAllowedQuery(['voice', 'dev', '_handoff', version ?? '', dir ?? ''])).toBe(true),
+	);
+
+	it.each(fixture.refused)('%s %s → refused', (version, dir) =>
+		expect(isAllowedQuery(['voice', 'dev', '_handoff', version ?? '', dir ?? ''])).toBe(false),
+	);
 });

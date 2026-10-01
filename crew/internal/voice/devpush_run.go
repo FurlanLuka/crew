@@ -137,8 +137,9 @@ func BuildDevPush(root, version string, targets []Target, log io.Writer) (string
 // StartDevPush starts the runner on the main, detached in its own tmux session
 // so restarting Voice OS or any Claude session never ends it.
 func StartDevPush(version, source, buildDir string) error {
-	if st, ok := ReadDevPush(); ok && !st.IsFinished() && crewExec.TmuxSessionExists(DevPushSession) {
-		return ErrDevPushRunning
+	st, ok := ReadDevPush()
+	if err := devPushRefusal(st, ok, crewExec.TmuxSessionExists(DevPushSession)); err != nil {
+		return err
 	}
 	bin, err := crewExec.CrewBinary()
 	if err != nil {
@@ -208,7 +209,8 @@ func RunDevPush(version, source, buildDir string) error {
 	failed := 0
 	for _, id := range RestartOrder(machines, source) {
 		m := findProgress(st.Machines, id)
-		if m == nil {
+		// Only where phase 1 staged the build: anywhere else the install has nothing to put in place.
+		if m == nil || !m.Staged {
 			continue
 		}
 		var out string
@@ -304,8 +306,8 @@ func stageOn(m PushMachine, version, from string) error {
 		return err
 	}
 	got := ParseChecksums(out)
-	for name, sum := range want {
-		if got[name] != sum {
+	for _, name := range []string{"crew", "voiceos"} {
+		if got[name] != want[name] {
 			return fmt.Errorf("%s arrived damaged", name)
 		}
 	}

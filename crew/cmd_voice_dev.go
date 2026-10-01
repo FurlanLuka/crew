@@ -190,28 +190,43 @@ func voiceDevStatus() {
 	fmt.Print(voice.RenderDevPush(st))
 }
 
+// Mirrors query-allow.ts (DEV_VERSION, BUILD_DIR); voiceos/test/fixtures/shared/dev-handoff.json pins both.
 var (
 	devVersionPattern = regexp.MustCompile(`^dev-[0-9a-f]{4,40}(-dirty)?$`)
+	buildDirPattern   = regexp.MustCompile(`^/[\w./-]{1,400}$`)
 	sourcePattern     = regexp.MustCompile(`^--source=([a-z0-9-]{1,64})$`)
 )
 
-// voiceDevHandoff runs on the main for a remote's push: <version> <dir on the remote> --source=<id>.
-func voiceDevHandoff(args []string) {
-	if len(args) != 3 || !devVersionPattern.MatchString(args[0]) || !filepath.IsAbs(args[1]) {
-		fmt.Fprintln(os.Stderr, "Usage: crew voice dev _handoff <dev version> <build dir> --source=<machine>")
-		os.Exit(1)
+type handoff struct{ version, dir, source string }
+
+// parseHandoffArgs checks what a remote handed over: <version> <dir on the
+// remote> and the --source the main's link added. The dir reaches scp on the
+// remote's side, so it is held to plain path characters. Pure.
+func parseHandoffArgs(args []string) (handoff, error) {
+	if len(args) != 3 || !devVersionPattern.MatchString(args[0]) ||
+		!buildDirPattern.MatchString(args[1]) || strings.Contains(args[1], "..") {
+		return handoff{}, fmt.Errorf("usage: crew voice dev _handoff <dev version> <build dir> --source=<machine>")
 	}
 	match := sourcePattern.FindStringSubmatch(args[2])
 	if match == nil || match[1] == voice.MainID {
-		fmt.Fprintln(os.Stderr, "Error: --source names the remote the build is on")
-		os.Exit(1)
+		return handoff{}, fmt.Errorf("--source names the remote the build is on")
 	}
-	debug.Log("voice", "dev push handed over: %s from %s", args[0], match[1])
-	if err := voice.StartDevPush(args[0], match[1], args[1]); err != nil {
+	return handoff{version: args[0], dir: args[1], source: match[1]}, nil
+}
+
+// voiceDevHandoff runs on the main for a remote's push.
+func voiceDevHandoff(args []string) {
+	h, err := parseHandoffArgs(args)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Pushing %s from %s.\n", args[0], match[1])
+	debug.Log("voice", "dev push handed over: %s from %s", h.version, h.source)
+	if err := voice.StartDevPush(h.version, h.source, h.dir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Pushing %s from %s.\n", h.version, h.source)
 }
 
 // voiceDevRunner is the detached runner (crew voice _dev-push <version> <source> <build dir>).

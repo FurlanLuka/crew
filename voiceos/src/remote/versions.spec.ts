@@ -34,6 +34,8 @@ describe('decideVersionFix', () => {
 		['5.1.0', '5.1.0', 'none'],
 		['dev', '5.0.1', 'none'],
 		['5.1.0', 'dev', 'none'],
+		['dev-abc1234', '5.0.1', 'none'],
+		['5.0.1', 'dev-abc1234', 'none'],
 		['5.1.0', null, 'none'],
 	] as const)('main %s, remote %p → %s', (main, remote, fix) =>
 		expect(decideVersionFix(main, remote)).toBe(fix),

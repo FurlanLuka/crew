@@ -173,6 +173,44 @@ describe('a query from a remote to the main', () => {
 		expect(ran).toEqual([FIXTURE.request.args]);
 	});
 
+	it('a dev push handed over → the main runs it with the asking remote as its source', async () => {
+		const { host, path } = startRemote();
+		const ran: string[][] = [];
+
+		await connectedMain(host, async (args) => {
+			ran.push(args);
+
+			return { code: 0, stdout: '', stderr: '' };
+		});
+		await askArgs(path, ['voice', 'dev', '_handoff', 'dev-abc1234', '/h/x']);
+
+		expect(ran).toEqual([
+			['voice', 'dev', '_handoff', 'dev-abc1234', '/h/x', `--source=${VM1.id}`],
+		]);
+	});
+
+	it('a remote naming the source itself → refused, nothing run', async () => {
+		const { host, path } = startRemote();
+		const ran: string[][] = [];
+
+		await connectedMain(host, async (args) => {
+			ran.push(args);
+
+			return { code: 0, stdout: '', stderr: '' };
+		});
+		const answer = await askArgs(path, [
+			'voice',
+			'dev',
+			'_handoff',
+			'dev-abc1234',
+			'/h/x',
+			'--source=other',
+		]);
+
+		expect(answer).toMatchObject({ ok: false });
+		expect(ran).toEqual([]);
+	});
+
 	it('the socket is 0600', () => {
 		const { path } = startRemote();
 

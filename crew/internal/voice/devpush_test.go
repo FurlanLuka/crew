@@ -1,8 +1,12 @@
 package voice
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+
 	"encoding/json"
 	"errors"
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -94,50 +98,74 @@ func TestParseChecksums(t *testing.T) {
 	}
 }
 
-// fakePush swaps the push's I/O for an in-memory one: each host's files and
-// the scripts run on it.
+// fakePush swaps the push's I/O for an in-memory one: each host's files, and
+// every script and copy run, in order.
 type fakePush struct {
-	files   map[string][]byte // host:path → content
-	scripts []string          // "host: first line of what ran"
-	down    map[string]bool
-	damage  string // a host whose copy arrives damaged
+	files       map[string][]byte // host:name → content
+	ran         []string          // "host: <whole script>" or "host: copy → <dir>"
+	down        map[string]bool   // out of reach from the start
+	damage      string            // a host whose copy arrives damaged
+	failInstall string            // a host whose install fails
+}
+
+const installMarker = `mv "$D/crew"`
+
+// installs is the hosts an install script ran on, in order.
+func (f *fakePush) installs() []string {
+	var hosts []string
+	for _, r := range f.ran {
+		if strings.Contains(r, installMarker) {
+			hosts = append(hosts, strings.SplitN(r, ":", 2)[0])
+		}
+	}
+	return hosts
+}
+
+func (f *fakePush) scriptOn(host, contains string) string {
+	for _, r := range f.ran {
+		if strings.HasPrefix(r, host+": ") && strings.Contains(r, contains) {
+			return r
+		}
+	}
+	return ""
 }
 
 func installFakePush(t *testing.T, f *fakePush) {
 	t.Helper()
-	saved := []any{runRemote, copyTo, copyFrom, runLocal}
-	t.Cleanup(func() {
-		runRemote = saved[0].(func(string, string) (string, error))
-		copyTo = saved[1].(func(string, string, ...string) error)
-		copyFrom = saved[2].(func(string, string, string) error)
-		runLocal = saved[3].(func(string) (string, error))
-	})
-	sum := func(host string) string {
+	savedRemote, savedTo, savedFrom, savedLocal := runRemote, copyTo, copyFrom, runLocal
+	t.Cleanup(func() { runRemote, copyTo, copyFrom, runLocal = savedRemote, savedTo, savedFrom, savedLocal })
+	sums := func(host string) string {
 		var out strings.Builder
 		for _, name := range []string{"crew", "voiceos"} {
 			data := f.files[host+":"+name]
 			if host == f.damage {
-				data = append(data, 'x')
+				data = append(append([]byte{}, data...), 'x')
 			}
-			s, _ := sha256Of(data)
-			out.WriteString(s + "  " + name + "\n")
+			sum := sha256.Sum256(data)
+			out.WriteString(hex.EncodeToString(sum[:]) + "  " + name + "\n")
 		}
 		return out.String()
+	}
+	run := func(host, script string) (string, error) {
+		f.ran = append(f.ran, host+": "+script)
+		switch {
+		case strings.Contains(script, installMarker) && host == f.failInstall:
+			return "", errors.New("mv: permission denied")
+		case script == "uname -sm":
+			return "Linux x86_64", nil
+		case strings.Contains(script, "sha256sum"):
+			return sums(host), nil
+		}
+		return "", nil
 	}
 	runRemote = func(host, script string) (string, error) {
 		if f.down[host] {
 			return "", errors.New("ssh: connect to host " + host + ": Connection refused")
 		}
-		f.scripts = append(f.scripts, host+": "+strings.SplitN(script, "\n", 2)[0])
-		switch {
-		case script == "uname -sm":
-			return "Linux x86_64", nil
-		case strings.Contains(script, "sha256sum"):
-			return sum(host), nil
-		}
-		return "", nil
+		return run(host, script)
 	}
 	copyTo = func(host, dir string, files ...string) error {
+		f.ran = append(f.ran, host+": copy → "+dir)
 		for _, file := range files {
 			data, err := os.ReadFile(file)
 			if err != nil {
@@ -151,44 +179,33 @@ func installFakePush(t *testing.T, f *fakePush) {
 		return errors.New("not used here")
 	}
 	runLocal = func(script string) (string, error) {
-		f.scripts = append(f.scripts, "main: "+strings.SplitN(script, "\n", 2)[0])
-		if strings.Contains(script, "sha256sum") {
-			return sum("main"), nil
-		}
 		if strings.HasPrefix(script, "mkdir -p") {
-			for _, name := range []string{"crew", "voiceos"} {
-				for _, field := range strings.Fields(script) {
-					if strings.HasSuffix(strings.Trim(field, "'"), "/"+name) {
-						data, _ := os.ReadFile(strings.Trim(field, "'"))
-						f.files["main:"+name] = data
-					}
+			for _, field := range strings.Fields(script) {
+				path := strings.Trim(field, "'")
+				if name := filepath.Base(path); name == "crew" || name == "voiceos" {
+					data, _ := os.ReadFile(path)
+					f.files["main:"+name] = data
 				}
 			}
 		}
-		return "", nil
+		return run("main", script)
 	}
 }
 
-func sha256Of(data []byte) (string, error) {
-	tmp, err := os.CreateTemp("", "sum-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(tmp.Name())
-	tmp.Write(data)
-	tmp.Close()
-	return fileSHA256(tmp.Name())
-}
-
-func setupPush(t *testing.T, version string) string {
+func setupPush(t *testing.T, version string, remotes ...Machine) string {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	machines, _ := json.Marshal([]Machine{{ID: "vm1", Host: "vm1", Name: "Build box"}})
+	savedDir := config.ConfigDir
+	config.ConfigDir = t.TempDir()
+	t.Cleanup(func() { config.ConfigDir = savedDir })
+	if len(remotes) == 0 {
+		remotes = []Machine{{ID: "vm1", Host: "vm1", Name: "Build box"}}
+	}
+	machines, _ := json.Marshal(remotes)
 	os.MkdirAll(filepath.Dir(MachinesFile()), 0o700)
 	if err := os.WriteFile(MachinesFile(), machines, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Remove(MachinesFile()); os.Remove(devPushStatusFile()) })
 	return writeBuilds(DevPushBuildDir(version))
 }
 
@@ -201,6 +218,8 @@ func writeBuilds(dir string) string {
 	}
 	return dir
 }
+
+var vm1AndPersonal = []Machine{{ID: "vm1", Host: "vm1", Name: "Build box"}, {ID: "personal", Host: "personal", Name: "Personal"}}
 
 func TestRunDevPushFromTheMain(t *testing.T) {
 	dir := setupPush(t, "dev-abc")
@@ -219,23 +238,25 @@ func TestRunDevPushFromTheMain(t *testing.T) {
 			t.Errorf("%s: staged %v installed %v", m.Name, m.Staged, m.Installed)
 		}
 	}
-	if string(f.files["vm1:crew"]) != "crew linux_amd64" {
-		t.Errorf("vm1 got %q, want its own target's build", f.files["vm1:crew"])
+	if string(f.files["vm1:crew"]) != "crew linux_amd64" || f.scriptOn("vm1", "copy → "+StagedDir("dev-abc")) == "" {
+		t.Errorf("vm1 got %q, want its own target's build in %s", f.files["vm1:crew"], StagedDir("dev-abc"))
 	}
-	// Both staged before either installs, and the main last.
-	installs := []string{}
-	for i, s := range f.scripts {
-		if strings.HasSuffix(s, ": set -e") {
-			installs = append(installs, strings.SplitN(s, ":", 2)[0])
-			for _, later := range f.scripts[i:] {
-				if strings.Contains(later, "sha256sum") {
-					t.Errorf("a copy after an install began: %v", f.scripts)
-				}
-			}
+	// Every copy and check before the first install; the main last.
+	first := -1
+	for i, r := range f.ran {
+		if strings.Contains(r, installMarker) && first < 0 {
+			first = i
+		}
+		if first >= 0 && (strings.Contains(r, "sha256sum") || strings.Contains(r, "copy →")) {
+			t.Errorf("a copy after an install began: %v", f.ran[i])
 		}
 	}
-	if !reflect.DeepEqual(installs, []string{"vm1", "main"}) {
-		t.Errorf("install order %v", installs)
+	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", "main"}) {
+		t.Errorf("install order %v", got)
+	}
+	if !strings.HasSuffix(f.scriptOn("vm1", installMarker), `"$C" voice remote`) ||
+		!strings.HasSuffix(f.scriptOn("main", installMarker), `"$C" voice _restart`) {
+		t.Error("a remote restarts its daemon, the main its cockpit")
 	}
 }
 
@@ -248,13 +269,40 @@ func TestRunDevPushDamagedCopyInstallsNothing(t *testing.T) {
 		t.Fatal("want a failure")
 	}
 	st, _ := ReadDevPush()
-	if st.Phase != PhaseFailed || !strings.Contains(st.Error, "nothing was installed") {
+	if st.Phase != PhaseFailed || !strings.HasPrefix(st.Error, "Build box: crew arrived damaged") ||
+		!strings.HasSuffix(st.Error, "nothing was installed") {
 		t.Errorf("status %+v", st)
 	}
-	for _, s := range f.scripts {
-		if strings.HasSuffix(s, ": set -e") {
-			t.Errorf("installed after a failed copy: %v", f.scripts)
-		}
+	main, vm1 := st.Machines[0], st.Machines[1]
+	if !main.Staged || main.Installed || vm1.Staged || vm1.Error != "crew arrived damaged" {
+		t.Errorf("main %+v, vm1 %+v", main, vm1)
+	}
+	if got := f.installs(); len(got) != 0 {
+		t.Errorf("installed after a failed copy: %v", got)
+	}
+}
+
+func TestRunDevPushOneInstallFailsTheRestFinish(t *testing.T) {
+	dir := setupPush(t, "dev-abc", vm1AndPersonal...)
+	f := &fakePush{files: map[string][]byte{}, failInstall: "vm1"}
+	installFakePush(t, f)
+
+	if err := RunDevPush("dev-abc", MainID, dir); err == nil {
+		t.Fatal("want a failure")
+	}
+	st, _ := ReadDevPush()
+	if st.Phase != PhaseFailed || st.Error != "1 machine(s) did not take dev-abc" {
+		t.Errorf("status %+v", st)
+	}
+	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", "personal", "main"}) {
+		t.Errorf("install order %v", got)
+	}
+	byID := map[string]MachineProgress{}
+	for _, m := range st.Machines {
+		byID[m.ID] = m
+	}
+	if byID["vm1"].Error != "mv: permission denied" || !byID["personal"].Installed || !byID[MainID].Installed {
+		t.Errorf("machines %+v", st.Machines)
 	}
 }
 
@@ -267,19 +315,14 @@ func TestRunDevPushOutOfReachIsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, _ := ReadDevPush()
-	if st.Machines[1].Skipped == "" || !st.Machines[0].Installed {
-		t.Errorf("status %+v", st.Machines)
-	}
-	if !strings.Contains(RenderDevPush(st), "Build box\t\tskipped: ssh: connect to host vm1: Connection refused") {
-		t.Errorf("render:\n%s", RenderDevPush(st))
+	if st.Machines[1].Skipped == "" || !st.Machines[0].Installed || f.scriptOn("vm1", installMarker) != "" {
+		t.Errorf("status %+v, ran %v", st.Machines, f.ran)
 	}
 }
 
 func TestRunDevPushFromARemoteFetchesItsBuildAndRestartsItLast(t *testing.T) {
 	version := "dev-abc"
-	setupPush(t, version)
-	machines, _ := json.Marshal([]Machine{{ID: "vm1", Host: "vm1", Name: "Build box"}, {ID: "personal", Host: "personal", Name: "Personal"}})
-	os.WriteFile(MachinesFile(), machines, 0o600)
+	setupPush(t, version, vm1AndPersonal...)
 	f := &fakePush{files: map[string][]byte{}}
 	installFakePush(t, f)
 	var fetched string
@@ -295,13 +338,84 @@ func TestRunDevPushFromARemoteFetchesItsBuildAndRestartsItLast(t *testing.T) {
 	if fetched != "personal:/home/dev/.crew/dev-push/"+version {
 		t.Errorf("fetched %q", fetched)
 	}
-	var installs []string
-	for _, s := range f.scripts {
-		if strings.HasSuffix(s, ": set -e") {
-			installs = append(installs, strings.SplitN(s, ":", 2)[0])
+	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", MainID, "personal"}) {
+		t.Errorf("install order %v", got)
+	}
+}
+
+func TestRunDevPushASkippedSourceIsNeverInstalledOn(t *testing.T) {
+	version := "dev-abc"
+	setupPush(t, version, vm1AndPersonal...)
+	f := &fakePush{files: map[string][]byte{}, down: map[string]bool{"personal": true}}
+	installFakePush(t, f)
+	copyFrom = func(host, dir, parent string) error {
+		writeBuilds(filepath.Join(parent, filepath.Base(dir)))
+		return nil
+	}
+
+	if err := RunDevPush(version, "personal", "/home/dev/.crew/dev-push/"+version); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.installs(); !reflect.DeepEqual(got, []string{"vm1", MainID}) {
+		t.Errorf("install order %v", got)
+	}
+}
+
+func TestRestartOrderSkippedSource(t *testing.T) {
+	machines := append([]PushMachine{}, pushMachines...)
+	machines[2].Skipped = "unreachable"
+	if got := RestartOrder(machines, "personal"); !reflect.DeepEqual(got, []string{"vm1", MainID}) {
+		t.Errorf("got %v", got)
+	}
+}
+
+func TestInstallScriptNeedsTheStagedBuild(t *testing.T) {
+	script := InstallScript("dev-abc", false, "")
+	guard := strings.Index(script, `[ -f "$D/crew" ] && [ -f "$D/voiceos" ]`)
+	if guard < 0 || guard > strings.Index(script, `rm -f "$C"`) {
+		t.Error("the staged files are checked before the live crew is removed")
+	}
+}
+
+func TestDevPushRefusal(t *testing.T) {
+	running := DevPushStatus{Phase: PhaseCopy}
+	cases := []struct {
+		name  string
+		st    DevPushStatus
+		ok    bool
+		alive bool
+		want  error
+	}{
+		{"no push yet → allowed", DevPushStatus{}, false, false, nil},
+		{"running, its runner alive → refused", running, true, true, ErrDevPushRunning},
+		{"running, its runner gone (crashed) → allowed", running, true, false, nil},
+		{"finished, a session still there → allowed", DevPushStatus{Phase: PhaseDone}, true, true, nil},
+	}
+	for _, c := range cases {
+		if got := devPushRefusal(c.st, c.ok, c.alive); got != c.want {
+			t.Errorf("%s: got %v", c.name, got)
 		}
 	}
-	if !reflect.DeepEqual(installs, []string{"vm1", "main", "personal"}) {
-		t.Errorf("install order %v", installs)
+}
+
+func TestRenderDevPush(t *testing.T) {
+	st := DevPushStatus{
+		Version: "dev-abc", Source: "personal", Phase: PhaseFailed, Error: "1 machine(s) did not take dev-abc",
+		Machines: []MachineProgress{
+			{PushMachine: PushMachine{ID: MainID, Name: "main", Target: Target{"darwin", "arm64"}}, Staged: true, Installed: true},
+			{PushMachine: PushMachine{ID: "vm1", Name: "Build box", Target: Target{"linux", "amd64"}}, Staged: true, Error: "mv: permission denied"},
+			{PushMachine: PushMachine{ID: "personal", Name: "Personal", Target: Target{"linux", "amd64"}}, Staged: true},
+			{PushMachine: PushMachine{ID: "lab", Name: "Lab", Skipped: "unreachable"}},
+			{PushMachine: PushMachine{ID: "gpu", Name: "GPU", Target: Target{"linux", "arm64"}}},
+		},
+	}
+	want := "dev-abc from personal: failed — 1 machine(s) did not take dev-abc\n" +
+		"main\tdarwin_arm64\trestarted on dev-abc\n" +
+		"Build box\tlinux_amd64\tfailed: mv: permission denied\n" +
+		"Personal\tlinux_amd64\tcopied\n" +
+		"Lab\t\tskipped: unreachable\n" +
+		"GPU\tlinux_arm64\twaiting\n"
+	if got := RenderDevPush(st); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }

@@ -272,6 +272,10 @@ describe('describeVersionRefusal', () => {
 		);
 	});
 
+	it('a dev build on this machine → the same hint', () => {
+		expect(describeVersionRefusal('dev-abc1234', '5.8.0')).toContain('run crew voice dev push');
+	});
+
 	it('a dev build on either side → a dev push, or crew update back to the release', () => {
 		expect(describeVersionRefusal('5.7.1', 'dev-abc1234')).toBe(
 			'This machine runs Voice OS 5.7.1 and the main dev-abc1234: run crew voice dev push from the checkout you want on every machine, or crew update on each to go back to the release.',

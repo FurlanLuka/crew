@@ -19,8 +19,8 @@ import (
 // machine id, so no remote can take it).
 const MainID = "main"
 
-// DevPushSession is the runner's tmux session on the main.
-const DevPushSession = "crew-dev-push"
+// DevPushSession is the runner's tmux session on the main (a var: tests use their own).
+var DevPushSession = "crew-dev-push"
 
 // Target is an OS and CPU a build is made for.
 type Target struct {
@@ -106,7 +106,12 @@ func RestartOrder(machines []PushMachine, source string) []string {
 	if source != MainID {
 		order = append(order, MainID)
 	}
-	return append(order, source)
+	for _, m := range machines {
+		if m.ID == source && m.Skipped == "" {
+			return append(order, source)
+		}
+	}
+	return order
 }
 
 // StagedDir is where a push's files wait on a machine before they go live, by
@@ -133,6 +138,8 @@ func InstallScript(version string, isMain bool, crewPath string) string {
 		"set -e",
 		"D=\"$HOME\"/" + q(StagedDir(version)),
 		findCrew,
+		// Nothing staged here means nothing to install: the live crew is never removed for it.
+		`[ -f "$D/crew" ] && [ -f "$D/voiceos" ] || { echo "nothing staged in $D"; exit 1; }`,
 		`mkdir -p "$(dirname "$C")" "$HOME/.crew/bin"`,
 		`rm -f "$C" && mv "$D/crew" "$C"`,
 		`rm -f "$HOME/.crew/bin/voiceos" && mv "$D/voiceos" "$HOME/.crew/bin/voiceos"`,
@@ -251,4 +258,13 @@ func RenderDevPush(st DevPushStatus) string {
 		fmt.Fprintf(&b, "%s\t%s\t%s\n", m.Name, m.Target.Dir(), state)
 	}
 	return b.String()
+}
+
+// devPushRefusal: a push whose runner still runs refuses a second; a finished
+// one, or one whose runner died, does not. Pure.
+func devPushRefusal(st DevPushStatus, ok, sessionAlive bool) error {
+	if ok && !st.IsFinished() && sessionAlive {
+		return ErrDevPushRunning
+	}
+	return nil
 }

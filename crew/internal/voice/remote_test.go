@@ -17,6 +17,8 @@ func TestDecideDaemon(t *testing.T) {
 		{"a pushed dev build over a release → restart", true, "1.4.0", "dev-abc123", DaemonRestart},
 		{"one pushed dev build over another → restart", true, "dev-abc123", "dev-def456", DaemonRestart},
 		{"the same pushed dev build → keep", true, "dev-abc123", "dev-abc123", DaemonKeep},
+		{"a pushed dev build over a plain dev one → restart", true, "dev", "dev-abc123", DaemonRestart},
+		{"a plain dev build installed → never forced", true, "dev-abc123", "dev", DaemonKeep},
 		{"no stamp → never forced", true, "1.3.0", "", DaemonKeep},
 	}
 	for _, c := range cases {

@@ -106,6 +106,10 @@ func DecideDaemon(running bool, runningVersion, installed string) DaemonAction {
 		return DaemonStart
 	}
 	have, want := normalizeVersion(runningVersion), normalizeVersion(installed)
+	// A pushed dev-<sha> build is exact: it replaces any other running build, a plain dev one included.
+	if strings.HasPrefix(want, "dev-") && have != "" && have != want {
+		return DaemonRestart
+	}
 	if have == "" || want == "" || have == "dev" || want == "dev" || have == want {
 		return DaemonKeep
 	}
