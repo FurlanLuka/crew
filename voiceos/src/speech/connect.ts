@@ -60,6 +60,9 @@ const logConversation = (before: State, after: State, input: Input): void => {
 type NarrateEffect = Extract<Effect, { type: 'narrate' }>;
 type NarrateAsideEffect = Extract<Effect, { type: 'narrate_aside' }>;
 
+const QUIET_RECHECK_MS = 500;
+const QUIET_WAIT_MAX_MS = 30_000;
+
 export interface ConnectSpeechParams {
 	store: Store;
 	voiceOut: VoiceOut;
@@ -127,6 +130,18 @@ export const connectSpeech = ({
 		});
 	});
 
+	// A question's wait ends in silence: while the developer is still speaking (their words not yet
+	// routed), the words may be its answer, so it waits for them. Bounded, in case a press never ends.
+	const whenQuiet = (run: () => void, waited = 0): void => {
+		if (store.state.transcript === null || waited >= QUIET_WAIT_MAX_MS) {
+			run();
+
+			return;
+		}
+
+		setTimer(() => whenQuiet(run, waited + QUIET_RECHECK_MS), QUIET_RECHECK_MS);
+	};
+
 	let armedAt: number | null = null;
 	let offeredAt: string | null = null;
 	let targetAskedAt: string | null = null;
@@ -141,12 +156,13 @@ export const connectSpeech = ({
 			targetAskedAt = targetKey;
 			const { at, heardAt } = targetAsk;
 			setTimer(
-				() => {
-					// A timer armed before the question was heard gives way to the one armed after.
-					if (store.state.targetAsk?.at === at && store.state.targetAsk.heardAt === heardAt) {
-						settleTarget(store, false);
-					}
-				},
+				() =>
+					whenQuiet(() => {
+						// A timer armed before the question was heard gives way to the one armed after.
+						if (store.state.targetAsk?.at === at && store.state.targetAsk.heardAt === heardAt) {
+							settleTarget(store, false);
+						}
+					}),
 				targetAsk.heardAt === undefined ? QUESTION_UNHEARD_MS : TARGET_ASK_MS,
 			);
 		}
@@ -164,7 +180,7 @@ export const connectSpeech = ({
 			offeredAt = offerKey;
 			const { at } = switchOffer;
 			setTimer(
-				() => store.dispatch({ type: 'switch_offer_closed', at, isLapse: true }),
+				() => whenQuiet(() => store.dispatch({ type: 'switch_offer_closed', at, isLapse: true })),
 				switchOffer.heardAt === undefined ? QUESTION_UNHEARD_MS : SWITCH_OFFER_MS,
 			);
 		}

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
-import { SWITCH_OFFER_MS, type PendingAsk } from '../shared/protocol.js';
+import { SWITCH_OFFER_MS, TARGET_ASK_MS, type PendingAsk } from '../shared/protocol.js';
 import { englishJudge } from '../../test/support/english-judge.js';
 import type { Judge } from '../judge/judge.js';
 
@@ -876,6 +876,53 @@ describe('conversations', () => {
 
 			expect(convo.store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
 			expect(convo.heard.slice(-2)).toEqual(['> Yes.', 'Switching to checkout api, main.']);
+		});
+
+		// Debug note 13: a "no" to the offer reached the kernel, which asked "For …?" about it.
+		it('"Switch to …?" answered no → let go then and there: the kernel never reads it, nothing is sent', async () => {
+			const convo = await offerAfterHeardUpdate();
+			const sendsBefore = convo.inputs.filter((input) => input.type === 'send').length;
+			const kernelBefore = convo.kernelSaw();
+
+			await convo.say('No.');
+
+			expect(convo.kernelSaw()).toBe(kernelBefore);
+
+			expect(convo.store.state.switchOffer).toBeNull();
+			expect(convo.store.state.targetAsk).toBeNull();
+			expect(convo.inputs.filter((input) => input.type === 'send')).toHaveLength(sendsBefore);
+			expect(convo.inputs.some((input) => input.type === 'ask_target')).toBe(false);
+			expect(convo.heard.at(-1)).toBe('> No.');
+		});
+
+		// Debug note 13: "For …?" lapsed while the developer was still saying "no", so the held words
+		// went to the screen and the "no" itself reached the kernel, which asked again.
+		it('"For …?" still being answered when its 8 s run out → waits for the words; the no keeps them on the screen, once', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+			await hearUpdate(convo);
+			convo.script([toolUse('t1', 'ask_target', { ref: 'checkout-api/main' })]);
+			await convo.say('Review all of this.');
+
+			// They start speaking before the wait ends; the words are routed after it.
+			convo.store.dispatch({
+				type: 'transcript',
+				transcript: { text: 'No', isFinal: false, target: 'store-front/main' },
+			});
+			await convo.wait(TARGET_ASK_MS + 1_000);
+			expect(convo.store.state.targetAsk?.ref).toBe('checkout-api/main');
+
+			convo.store.dispatch({ type: 'transcript', transcript: null });
+			await convo.say('No.', { startedAgoMs: 3_000 });
+			await convo.wait(TARGET_ASK_MS + 1_000);
+
+			const sends = convo.inputs.flatMap((input) =>
+				input.type === 'send' ? [[input.ref, input.text]] : [],
+			);
+
+			expect(sends).toEqual([['store-front/main', 'Review all of this.']]);
+			expect(convo.store.state.targetAsk).toBeNull();
+			expect(convo.inputs.filter((input) => input.type === 'ask_target')).toHaveLength(1);
 		});
 
 		it('"For …?" answered with new words → the held ones stay on the screen, the new ones are routed', async () => {

@@ -9,7 +9,7 @@ import { isNamedIn } from './announced.js';
 import { wasJustHeardAbout } from './asked-aloud.js';
 import { type ToolResult, checkRef, fail, succeed } from './results.js';
 import type { ToolContext } from './tools.js';
-import type { State } from '../shared/protocol.js';
+import { isSwitchOfferFresh, type State } from '../shared/protocol.js';
 
 const log = createLogger('tools');
 
@@ -82,6 +82,16 @@ export const askTarget = ({ state, input, toolContext }: AskTargetParams): ToolR
 	// Words already sent this turn cannot also be held for the question.
 	if ((toolContext.sentTo?.size ?? 0) > 0) {
 		return fail('Not asked: the words were already sent this turn. Say nothing more.');
+	}
+
+	// "Switch to it?" is what was just asked about that session: these words answer it, not the update.
+	if (
+		isSwitchOfferFresh(state.switchOffer, toolContext.heardFrom ?? toolContext.now()) &&
+		state.switchOffer.ref === checked.ref
+	) {
+		return fail(
+			`Not asked: Voice OS just asked "Switch to ${checked.ref}?", and these words answer it (switch_offer under "Waiting on the developer"). A no changes nothing: say nothing.`,
+		);
 	}
 
 	// Only right after that session's notification, and only on a session's screen: anywhere else it

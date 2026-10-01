@@ -133,6 +133,27 @@ export class UtteranceRouter {
 			}
 		}
 
+		// "Switch to checkout?" answered with a bare no: the offer closes and nothing else happens. Never
+		// the kernel's to read, where a "no" can look like a reply to that session's update.
+		const offer = store.state.switchOffer;
+
+		if (
+			offer &&
+			source === 'voice' &&
+			isSwitchOfferFresh(offer, heardFrom) &&
+			isShortEnoughToAnswer(trimmedText) &&
+			(await readTargetAnswer(
+				this.options.judge,
+				trimmedText,
+				readSessionLabel(store.state, offer.ref),
+			)) === 'no'
+		) {
+			log.info('switch offer declined', { ref: offer.ref });
+			store.dispatch({ type: 'switch_offer_closed', at: offer.at });
+
+			return;
+		}
+
 		// Captured before anything runs: a switch_view during the turn does not move it.
 		const screen = readActiveRef(store.state);
 		const saidAt = this.now();

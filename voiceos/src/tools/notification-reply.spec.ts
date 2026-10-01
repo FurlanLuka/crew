@@ -126,6 +126,18 @@ describe('replies to a notification', () => {
 		expect(quiet.actions).toEqual([]);
 	});
 
+	it('"Switch to it?" just asked about that session → "For …?" refused: the words answer the offer', async () => {
+		const state = {
+			...notified(),
+			switchOffer: { ref: NOTIFIER, at: NOW - 2_000, heardAt: NOW - 1_000 },
+		};
+		const heard = createContext(state, 'No.');
+		const result = await executeTool('ask_target', { ref: NOTIFIER }, heard.tools);
+
+		expect(result.ok).toBe(false);
+		expect(heard.actions).toEqual([]);
+	});
+
 	it('the words already sent this turn → "For …?" refused: they cannot also be held', async () => {
 		const heard = createContext(notified(), 'review all of this');
 		const result = await executeTool(
