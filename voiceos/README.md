@@ -136,7 +136,9 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   `restoreAutoEffects`).
 - **Asides.** While a session works, a question to it is answered aside (`sessions/side-answer.ts`):
   a throwaway fork of its conversation, one turn, every tool denied, like Claude Code's `/btw`.
-  "By the way" forces an aside, "queue it" forces the queue, "send it now" replaces the work (the
+  "By the way" forces an aside, "queue it" forces the queue, "send it now" replaces the work — unless
+  agents it started still run: an interrupt would stop them, so the words (a promoted queued message
+  or a spoken follow-up too) are folded into the running turn, read between tool rounds (the
   kernel's `deliver` argument for spoken words, in any language; typed text keeps the English
   keywords), and a question that needs tools or changes the work is queued after all
   (`state/delivery.ts`, `decideDelivery`). Asides are not saved.

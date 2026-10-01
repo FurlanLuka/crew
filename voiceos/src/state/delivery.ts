@@ -90,6 +90,39 @@ interface QueueFollowUpParams {
 	isOwed: boolean;
 }
 
+// Interrupting a turn stops every agent it started, so words for a session whose agents still run
+// are folded into its turn instead: Claude Code reads them between tool rounds and the agents finish.
+const hasRunningAgents = (session: Session | undefined): boolean =>
+	(session?.subagents.length ?? 0) > 0;
+
+interface FoldIntoTurnParams {
+	state: State;
+	ref: string;
+	text: string;
+	note: string | undefined;
+	stamped: Stamped;
+	isOwed: boolean;
+}
+
+const foldIntoTurn = ({
+	state,
+	ref,
+	text,
+	note,
+	stamped,
+	isOwed,
+}: FoldIntoTurnParams): ReducerResult =>
+	sendNow({
+		state,
+		ref,
+		text,
+		note,
+		isSpoken: true,
+		itemId: stamped.id,
+		at: stamped.at,
+		reportOwed: Boolean(state.sessions[ref]?.reportOwed) || isOwed,
+	});
+
 const queueFollowUp = ({
 	state,
 	ref,
@@ -100,6 +133,11 @@ const queueFollowUp = ({
 }: QueueFollowUpParams): ReducerResult => {
 	// Only the first of a burst interrupts; later words join it, so Claude reads the request once.
 	const session = state.sessions[ref];
+
+	if (hasRunningAgents(session)) {
+		return foldIntoTurn({ state, ref, text, note, stamped, isOwed });
+	}
+
 	const head = session?.queue[0];
 
 	if (session && head && hasFollowUpWaiting(session)) {
@@ -281,6 +319,10 @@ export const replaceRunning = ({
 
 	if (!session) {
 		return withoutEffects(state);
+	}
+
+	if (hasRunningAgents(session)) {
+		return foldIntoTurn({ state, ref, text, note, stamped, isOwed });
 	}
 
 	const message: QueuedMessage = {

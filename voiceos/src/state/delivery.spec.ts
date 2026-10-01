@@ -155,6 +155,31 @@ describe('what Voice OS says when it passes words on', () => {
 		);
 	});
 
+	it('a spoken follow-up while its agents run → folded into the turn: no interrupt, the agents keep running', () => {
+		const { state, effects } = run(
+			[
+				send(INSTRUCTION, { isSpoken: true }),
+				{
+					type: 'subagent_started',
+					ref: REF,
+					taskId: 't1',
+					agentType: 'reviewer',
+					description: 'review the diff',
+					isBackground: true,
+				},
+				send(INSTRUCTION, { text: 'and run the tests', isSpoken: true }),
+			],
+			{ start: idleSession() },
+		);
+
+		expect(effects.some((effect) => effect.type === 'worker_interrupt')).toBe(false);
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'worker_send', ref: REF, text: 'and run the tests' }),
+		);
+		expect(state.sessions[REF]?.subagents.map((agent) => agent.taskId)).toEqual(['t1']);
+		expect(state.sessions[REF]?.queue).toEqual([]);
+	});
+
 	it('words said while it started, then a follow-up → one request that owes the report', () => {
 		const started = run(
 			[
@@ -587,6 +612,35 @@ describe('promote_queued', () => {
 			}),
 			expect.objectContaining({ text: 'then the tests' }),
 		]);
+	});
+
+	it('while its agents run → nothing is interrupted: the words go into the turn, the agents keep running', () => {
+		const start = run(
+			[
+				{
+					type: 'subagent_started',
+					ref: REF,
+					taskId: 't1',
+					agentType: 'reviewer',
+					description: 'review the diff',
+					isBackground: false,
+				},
+			],
+			{ start: queuedBehind() },
+		).state;
+		const target = start.sessions[REF]?.queue[0];
+		const { state, effects } = run(
+			[{ type: 'promote_queued', ref: REF, queuedId: target?.id ?? '' }],
+			{ start },
+		);
+
+		expect(effects.some((effect) => effect.type === 'worker_interrupt')).toBe(false);
+		expect(effects).toContainEqual(
+			expect.objectContaining({ type: 'worker_send', ref: REF, text: 'use proxy pair' }),
+		);
+		expect(state.sessions[REF]?.subagents.map((agent) => agent.taskId)).toEqual(['t1']);
+		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual(['then the tests']);
+		expect(state.sessions[REF]?.status).toBe('running');
 	});
 
 	it('stopped → moved to the front and the session started; an unknown id changes nothing', () => {
