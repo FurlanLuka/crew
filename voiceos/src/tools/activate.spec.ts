@@ -632,6 +632,35 @@ describe('words said to Voice OS by name', () => {
 		expect(actions).toEqual([]);
 	});
 
+	it('a question about its options, said to Voice OS → not sent to the session asking', async () => {
+		const ask: PendingAsk = {
+			id: 'q1',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [{ question: 'Which table?', multiSelect: false, options: [{ label: 'New' }] }],
+		};
+		const utterance = "Voice OS, what's active?";
+		const { tools, actions } = createToolContext({ asks: [ask] });
+
+		const result = await executeTool(
+			'answer',
+			{ ref: 'store-front/main', decision: 'choose', answers: {} },
+			{
+				...tools,
+				asks: [ask],
+				utterance,
+				judge: judgeWith({ option_reply: 'question' }),
+				forwardTo: 'store-front/main',
+				screen: 'store-front/main',
+			},
+		);
+
+		expect(result.content).toStartWith('Not sent: the developer said "Voice OS, …"');
+		expect(actions).toEqual([]);
+	});
+
 	it('the answer fallback to the session on screen → not sent', async () => {
 		const utterance = 'Voice OS, yes do that.';
 		const { tools, actions } = createToolContext();

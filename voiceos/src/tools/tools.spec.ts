@@ -2952,12 +2952,15 @@ describe('tools that replaced the fast path', () => {
 			'dev_offer accepted',
 		);
 
-		// Their fixed reply is what is said, so neither is silent; neither takes the developer's words.
+		// Their fixed reply is what is said, so neither is silent. A rename splits the words ("call this
+		// api work and run the tests"): a send beside it carries only its part.
 		for (const name of ['deactivate', 'rename_session'] as const) {
 			expect(MUTATING_TOOLS).toContain(name);
 			expect(isSilentCall(name, {})).toBe(false);
-			expect(carriesWords(name)).toBe(false);
 		}
+
+		expect(carriesWords('deactivate')).toBe(false);
+		expect(carriesWords('rename_session')).toBe(true);
 
 		// Voice OS says "Activated X. Switch there?" itself; the words beside it are not its.
 		expect(MUTATING_TOOLS).toContain('activate');

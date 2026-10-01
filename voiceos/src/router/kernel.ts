@@ -434,8 +434,9 @@ export const readRunOrder = ({ name, input, asks }: ReadRunOrderParams): number 
 
 // A mute, an interrupt, an activation or a rename beside a forward takes none of the words: counted, it made a long request
 // look split, so the forward's few words went instead of what was said.
-// Not activate: "activate checkout and run the tests" splits the words, so only the part goes.
-const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt', 'deactivate', 'rename_session'];
+// Not activate or rename: "activate checkout and run the tests", "call this api work and run the
+// tests" split the words, so only the part goes.
+const WORDLESS_TOOLS: ToolName[] = ['mute', 'interrupt', 'deactivate'];
 
 export const carriesWords = (name: string): boolean =>
 	MUTATING_TOOLS.includes(name as ToolName) && !WORDLESS_TOOLS.includes(name as ToolName);

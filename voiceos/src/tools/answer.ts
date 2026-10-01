@@ -492,6 +492,10 @@ export const answerAsk = async ({
 	// A question about the options is not a pick: it goes to the session, which withdraws its
 	// question, answers, and asks again.
 	if (optionReply === 'question' && toolContext.utterance !== undefined) {
+		if (isSaidToVoiceOs({ state, ref: checked.ref, toolContext })) {
+			return fail(SAID_TO_VOICE_OS);
+		}
+
 		const said = toolContext.utterance.trim();
 
 		return {
