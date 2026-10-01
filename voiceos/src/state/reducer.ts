@@ -35,6 +35,7 @@ import {
 	pushNotice,
 	markSelfStarted,
 	pushStreamItem,
+	readLabel,
 	startWorker,
 	STREAM_ITEMS_KEPT,
 	truncateText,
@@ -313,6 +314,11 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		voiceLog,
 	};
 };
+
+const describeCompactingAloud = (state: State, ref: string): string =>
+	isOnScreen(state, ref)
+		? 'Compacting the context; this takes a minute.'
+		: `${readLabel(state, ref)} is compacting its context; this takes a minute.`;
 
 // Its lines are said as they come: on screen, or the session the developer talks with elsewhere.
 const isHeardNow = (state: State, ref: string, at: number): boolean =>
@@ -910,14 +916,30 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			);
 		}
 
-		case 'compacting':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({
-					...session,
-					// A second "compacting" keeps the time it began.
-					compactingSince: input.isCompacting ? (session.compactingSince ?? stamped.at) : null,
-				})),
-			);
+		case 'compacting': {
+			const isStarting = input.isCompacting && state.sessions[input.ref]?.compactingSince === null;
+			const next = updateSession(state, input.ref, (session) => ({
+				...session,
+				// A second "compacting" keeps the time it began.
+				compactingSince: input.isCompacting ? (session.compactingSince ?? stamped.at) : null,
+			}));
+
+			// Compaction leaves a session silent for a minute or more: said once when it starts, where its
+			// lines would be heard; elsewhere the tile shows it.
+			return isStarting && isHeardNow(state, input.ref, stamped.at)
+				? {
+						state: next,
+						effects: [
+							{
+								type: 'speak',
+								text: describeCompactingAloud(state, input.ref),
+								source: 'alert',
+								ref: input.ref,
+							},
+						],
+					}
+				: withoutEffects(next);
+		}
 
 		case 'session_notice':
 			return withoutEffects(
