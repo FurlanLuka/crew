@@ -470,6 +470,12 @@ export const executeTool = async (
 
 			const guarded = await guardSendTo({ state, ref, words, toolContext });
 
+			if (guarded === 'screen') {
+				const { ref: _named, ...rest } = input;
+
+				return executeTool('forward', { ...rest, text: words.text }, toolContext);
+			}
+
 			if (guarded) {
 				return guarded;
 			}

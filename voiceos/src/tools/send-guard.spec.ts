@@ -43,26 +43,27 @@ const sendTo = async ({
 };
 
 describe('send_to a session not on screen', () => {
-	it('not named → refused, nothing sent: the words are for the screen', async () => {
+	it('not named → the words go to the session on screen instead, nothing to the one named by the model', async () => {
 		const { result, actions } = await sendTo({
 			utterance: 'Can you make sure that all the branches will be named the same?',
 			judge: judgeNever,
 		});
 
-		expect(result.ok).toBe(false);
-		expect(result.content).toContain('was not named');
-		expect(result.content).toContain('forward them');
-		expect(actions).toEqual([]);
+		expect(result.ok).toBe(true);
+		expect(actions.filter((action) => action.type === 'send').map((action) => action.ref)).toEqual([
+			SCREEN,
+		]);
 	});
 
-	it('named by its work only ("the checkout retry one") → refused like any unnamed send', async () => {
-		const { result, actions } = await sendTo({
+	it('named by its work only ("the checkout retry one") → the screen, like any unnamed send', async () => {
+		const { actions } = await sendTo({
 			utterance: 'The retry one, run the tests again.',
 			judge: judgeNever,
 		});
 
-		expect(result.ok).toBe(false);
-		expect(actions).toEqual([]);
+		expect(actions.filter((action) => action.type === 'send').map((action) => action.ref)).toEqual([
+			SCREEN,
+		]);
 	});
 
 	it('named and spoken to → sent', async () => {

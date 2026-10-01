@@ -574,8 +574,8 @@ describe('a yes to Voice OS\'s own "Want me to ask it?"', () => {
 			'Yes, and also ask checkout api why the build is red.',
 		);
 
-		// A bare "yes" names no session: refused there, it is for the screen.
-		expect(unclear).toBeUndefined();
+		// A bare "yes" names no session: it goes to the screen, never to checkout.
+		expect(unclear?.ref).not.toBe('checkout-api/main');
 		expect(long?.text).toBe('Yes, and also ask checkout api why the build is red.');
 	});
 });

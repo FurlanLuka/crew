@@ -171,14 +171,10 @@
 		{
 			"id": "relay-question",
 			"utterance": "Ask the locale session whether the German strings are done.",
-			"context": {},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "store-front/main",
-					"text_includes": "german"
-				}
-			]
+			"context": { "view": "store-front/wrk1" },
+			"calls": [{ "name": "forward", "text_includes": "german" }],
+			"forbid_calls": ["send_to"],
+			"note": "\"The locale session\" only describes a session by its work: the words stay with the screen."
 		},
 		{
 			"id": "ambiguous-main",
@@ -687,13 +683,10 @@
 					"text": "Meanwhile, checkout api, main said: Sonnet 5 would roughly double the kernel's cost: about two dollars sixty a day on Haiku becomes five thirty. Switch there?"
 				}
 			},
-			"calls": [
-				{
-					"name": "forward",
-					"text_includes": ["price"]
-				}
-			],
-			"forbid_calls": ["send_to", "switch_view"]
+			"calls": [],
+			"forbid_calls": ["send_to", "switch_view"],
+			"allow": [{ "name": "forward" }, { "name": "read_state" }],
+			"note": "Debug note 27: never routed to the session the meanwhile line named. Forwarding to the screen, or answering from the line just heard, are both fine."
 		},
 		{
 			"id": "what-did-i-miss",
@@ -5093,17 +5086,11 @@
 		{
 			"id": "mention-not-address",
 			"utterance": "Put this on top of the checkout api branch.",
-			"context": {
-				"view": "store-front/main"
-			},
-			"calls": [
-				{
-					"name": "forward",
-					"text_includes": ["checkout"]
-				}
-			],
-			"forbid_calls": ["send_to"],
-			"no_reply": true
+			"context": { "view": "store-front/main" },
+			"calls": [],
+			"no_reply": true,
+			"allow": [{ "name": "send_to", "ref": "checkout-api/main" }, { "name": "forward" }],
+			"note": "The name is only mentioned: forward it, or send_to — Voice OS then asks \"For checkout api?\" (send guard)."
 		},
 		{
 			"id": "combined-offer-yes",

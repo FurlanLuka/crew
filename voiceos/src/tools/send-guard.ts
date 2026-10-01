@@ -5,7 +5,7 @@
 import { createLogger } from '../log.js';
 import { readSessionLabel } from '../shared/machines.js';
 import type { State } from '../shared/protocol.js';
-import { type ToolResult, fail, succeed } from './results.js';
+import { type ToolResult, succeed } from './results.js';
 import type { SentWords } from './send.js';
 import { findSessionsNamedIn, isOwnNameSaid } from './session-naming.js';
 import type { ToolContext } from './tools.js';
@@ -21,14 +21,15 @@ interface GuardSendToParams {
 	toolContext: ToolContext;
 }
 
-// null: send. Otherwise what the kernel is told instead — refused, or "For X?" asked with the words
+// null: send. 'screen': not named, so the words go to the session on screen (the caller forwards
+// them; a kernel told to forward them talked instead). Otherwise "For X?" was asked, with the words
 // held until the developer says which.
 export const guardSendTo = async ({
 	state,
 	ref,
 	words,
 	toolContext,
-}: GuardSendToParams): Promise<ToolResult | null> => {
+}: GuardSendToParams): Promise<ToolResult | 'screen' | null> => {
 	const screen = toolContext.forwardTo;
 	const utterance = toolContext.utterance;
 
@@ -54,11 +55,9 @@ export const guardSendTo = async ({
 		findSessionsNamedIn(state, utterance).includes(ref) || isOwnNameSaid(state, ref, utterance);
 
 	if (!isNamed) {
-		log.info('send_to refused: not named', { ref });
+		log.info('not named: words kept on the screen', { ref, screen });
 
-		return fail(
-			`Not sent: ${label} (${ref}) was not named; words go to the session on screen — forward them.`,
-		);
+		return 'screen';
 	}
 
 	// "I meant that for checkout", "send that to checkout too": earlier words pointed at a named session.

@@ -18,9 +18,10 @@ import {
 } from './send.js';
 import { findLastAskedAloud } from './asked-aloud.js';
 import { findSessionsNamedIn } from './session-naming.js';
-import type { ToolContext } from './tools.js';
+import { executeTool, type ToolContext } from './tools.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { endsInQuestion } from '../shared/spoken.js';
+import { guardSendTo } from './send-guard.js';
 
 const log = createLogger('tools');
 
@@ -381,6 +382,26 @@ export const answerAsk = async ({
 
 		if (misroutedAnswer) {
 			return fail(misroutedAnswer);
+		}
+
+		// A reply to the question it ended its turn on is its answer, named or not. A session that asked
+		// nothing gets words only the way send_to would send them: named in them (the answer tool is no
+		// way around the send guard).
+		const guarded = asked
+			? null
+			: await guardSendTo({
+					state,
+					ref: checked.ref,
+					words: { text: reply, source: 'said' },
+					toolContext,
+				});
+
+		if (guarded === 'screen') {
+			return executeTool('forward', { text: reply, kind: 'instruction' }, toolContext);
+		}
+
+		if (guarded) {
+			return guarded;
 		}
 
 		// "Yes, do that" to a session that asked nothing still means something to it: the
