@@ -5176,6 +5176,19 @@
 					}
 				}
 			]
+		},
+		{
+			"id": "show-kernel-prompt-forwards",
+			"utterance": "By the way, can you show me the kernel prompt?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"no_reply": true
 		}
 	]
 }

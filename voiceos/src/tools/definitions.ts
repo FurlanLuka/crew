@@ -386,7 +386,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'open_doc',
 		description:
-			'Open a doc or artifact a session made in the developer\'s browser ("open the doc", "show me the artifact", "open the risks doc"). ref: the session, null for the one on screen. title: words from the doc\'s title when they named one, else null for its newest doc. Changing a doc ("add a section on risks to the doc") is work for the session: forward it.',
+			'Open a doc or artifact a session made in the developer\'s browser ("open the doc", "show me the artifact", "open the risks doc"), only one listed in that session\'s docs. Asking to see something else ("show me the kernel prompt", "show me the diff") is work for the session: forward it. ref: the session, null for the one on screen. title: words from the doc\'s title when they named one, else null for its newest doc. Changing a doc ("add a section on risks to the doc") is work for the session: forward it.',
 		input_schema: {
 			type: 'object',
 			properties: { ref: { type: ['string', 'null'] }, title: { type: ['string', 'null'] } },

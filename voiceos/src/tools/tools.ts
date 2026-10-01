@@ -944,6 +944,14 @@ export const executeTool = async (
 			const title = typeof input.title === 'string' && input.title.trim() ? input.title : null;
 			const doc = findDocToOpen({ state, ref, title });
 
+			// "Show me the kernel prompt" is no doc of the session's: it is something to show, which is
+			// work for the session on screen (debug note 26). Asking the developer for a doc name helps nobody.
+			if (!doc && ref === toolContext.forwardTo) {
+				return fail(
+					`${ref} has no doc ${title ? `titled like "${title}"` : 'yet'}: the developer asked the session on screen to show them something. Forward their words to it, as said; never ask what the doc is called.`,
+				);
+			}
+
 			if (!doc) {
 				return fail(
 					title
