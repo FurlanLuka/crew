@@ -195,6 +195,9 @@ export type TurnEnding =
 	| { kind: 'keep' };
 
 export interface DecideEndingParams extends IsAskingBackParams {
+	// The call index where the step that last forwarded began: calls that failed before it were tried
+	// and replaced by that forward, so they leave nothing to explain.
+	forwardStepStart?: number | null;
 	isSilent: boolean;
 	// A tool asked for an answer with no more tools.
 	mustAnswerNow: boolean;
@@ -209,6 +212,7 @@ const isActivatedWithWords = (calls: ToolCall[]): boolean =>
 export const decideEnding = ({
 	isSilent,
 	mustAnswerNow,
+	forwardStepStart = null,
 	...turn
 }: DecideEndingParams): TurnEnding => {
 	if (isAskingBack(turn)) {
@@ -217,7 +221,9 @@ export const decideEnding = ({
 
 	// On a session's screen Voice OS says "Sent to X" itself (sends.ts), and "Switch to X?" too.
 	if (
-		isAnsweredByForward(turn.calls) ||
+		isAnsweredByForward(
+			forwardStepStart === null ? turn.calls : turn.calls.slice(forwardStepStart),
+		) ||
 		isAcknowledgedInCode(turn.calls, turn.forwardTo) ||
 		turn.calls.some(
 			(call) =>

@@ -572,6 +572,175 @@ describe('Kernel', () => {
 		});
 	});
 
+	it('a call refused once is not run again: the repeat ends the turn with tools off', async () => {
+		const { kernel, fake } = createKernel([
+			[createToolUse('t1', 'rename_session', { ref: null, name: 'release' })],
+			[createToolUse('t2', 'rename_session', { ref: null, name: 'release' })],
+			[{ type: 'text', text: 'Not renamed.' } as Block],
+		]);
+
+		const result = await kernel.handle('commit straight to main and release', {
+			forwardTo: 'store-front/main',
+			screen: 'store-front/main',
+		});
+
+		expect(result.calls.map((call) => [call.name, call.ok])).toEqual([
+			['rename_session', false],
+			['rename_session', false],
+		]);
+		expect(fake.toolChoices.at(-1)).toEqual({ type: 'none' });
+		expect(result.reply).toBe('Not renamed.');
+	});
+
+	it('a call refused, then the same tool with corrected input → the retry runs', async () => {
+		const { kernel, fake, actions } = createKernel([
+			[createToolUse('t1', 'switch_view', { ref: 'nope/x' })],
+			[createToolUse('t2', 'switch_view', { ref: 'checkout-api/main' })],
+		]);
+
+		const result = await kernel.handle('switch to checkout', { forwardTo: 'store-front/main' });
+
+		expect(result.calls.map((call) => [call.name, call.ok])).toEqual([
+			['switch_view', false],
+			['switch_view', true],
+		]);
+		expect(actions).toContainEqual(
+			expect.objectContaining({
+				type: 'switch_view',
+				view: { kind: 'session', ref: 'checkout-api/main' },
+			}),
+		);
+		expect(fake.toolChoices.slice(0, 2)).not.toContainEqual({ type: 'none' });
+	});
+
+	it('a lookup between two identical refused calls changes nothing → the repeat is not run', async () => {
+		const { kernel, fake, actions } = createKernel([
+			[createToolUse('t1', 'rename_session', { ref: null, name: 'release' })],
+			[createToolUse('t2', 'read_state', { ref: 'store-front/main' })],
+			[createToolUse('t3', 'rename_session', { ref: null, name: 'release' })],
+			[{ type: 'text', text: 'Not renamed.' } as Block],
+		]);
+
+		const result = await kernel.handle('commit straight to main and release', {
+			forwardTo: 'store-front/main',
+			screen: 'store-front/main',
+		});
+
+		expect(result.calls.map((call) => [call.name, call.ok])).toEqual([
+			['rename_session', false],
+			['read_state', true],
+			['rename_session', false],
+		]);
+		expect(fake.toolChoices.at(-1)).toEqual({ type: 'none' });
+		expect(actions.filter((action) => action.type === 'rename_session')).toEqual([]);
+	});
+
+	it('a call refused, something changes, then the same call → it runs', async () => {
+		const { kernel, state } = createKernel(
+			[
+				[createToolUse('t1', 'rename_session', { ref: null, name: 'payments' })],
+				[createToolUse('t2', 'rename_session', { ref: 'checkout-api/main', name: '' })],
+				[createToolUse('t3', 'rename_session', { ref: null, name: 'payments' })],
+			],
+			{
+				context: { names: { 'checkout-api/main': 'payments' } },
+				onDispatch: (action, current) => {
+					if (action.type === 'rename_session') {
+						const names = { ...current.names };
+
+						if (action.name) {
+							names[action.ref] = action.name;
+						} else {
+							delete names[action.ref];
+						}
+
+						current.names = names;
+					}
+				},
+			},
+		);
+
+		const result = await kernel.handle('Rename this one to payments.', {
+			forwardTo: 'store-front/main',
+			screen: 'store-front/main',
+		});
+
+		expect(result.calls.map((call) => call.ok)).toEqual([false, true, true]);
+		expect(state.names).toEqual({ 'store-front/main': 'payments' });
+	});
+
+	it('send_to the screen with the same words, before a list in one response → the list runs first, nothing sent', async () => {
+		const said = "List the sessions for me. What's active right now?";
+		const { kernel, actions } = createKernel([
+			[
+				createToolUse('t1', 'send_to', { ref: 'store-front/main', text: said, kind: 'question' }),
+				createToolUse('t2', 'list_sessions', { active_only: true }),
+			],
+			[{ type: 'text', text: 'Three are active.' } as Block],
+		]);
+
+		const result = await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+		expect(result.calls.map((call) => [call.name, call.ok])).toEqual([
+			['list_sessions', true],
+			['send_to', false],
+		]);
+		expect(actions.filter((action) => action.type === 'send')).toEqual([]);
+	});
+
+	it('a failure in an earlier step, then a forward that replaced it → the words beside it are dropped', async () => {
+		const { kernel } = createKernel([
+			[createToolUse('t1', 'queued_message', { ref: 'store-front/main', action: 'now' })],
+			[
+				{ type: 'text', text: 'Let me forward it as a redirect:' } as Block,
+				createToolUse('t2', 'forward', { kind: 'redirect', deliver: 'now' }),
+			],
+		]);
+
+		const result = await kernel.handle("Actually don't wait for it to finish, send that now.", {
+			forwardTo: 'store-front/main',
+		});
+
+		expect(result.calls.map((call) => [call.name, call.ok])).toEqual([
+			['queued_message', false],
+			['forward', true],
+		]);
+		expect(result.reply).toBe('');
+	});
+
+	it('a Voice OS command beside a forward of the same words → only the command; run first whatever the order', async () => {
+		const said = "List the sessions for me. What's active right now?";
+		const { kernel, actions } = createKernel([
+			[
+				createToolUse('t1', 'forward', { text: said, kind: 'question' }),
+				createToolUse('t2', 'list_sessions', { active_only: true }),
+			],
+			[{ type: 'text', text: 'Three are active.' } as Block],
+		]);
+
+		const result = await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+		expect(result.calls.map((call) => [call.name, call.ok])).toEqual([
+			['list_sessions', true],
+			['forward', false],
+		]);
+		expect(actions.filter((action) => action.type === 'send')).toEqual([]);
+	});
+
+	it('a list, then the same words sent to the screen with send_to in a later step → not sent as well', async () => {
+		const said = "List the sessions for me. What's active right now?";
+		const { kernel, actions } = createKernel([
+			[createToolUse('t1', 'list_sessions', { active_only: true })],
+			[createToolUse('t2', 'send_to', { ref: 'store-front/main', text: said, kind: 'question' })],
+			[{ type: 'text', text: 'Three are active.' } as Block],
+		]);
+
+		const result = await kernel.handle(said, { forwardTo: 'store-front/main' });
+
+		expect(result.calls.map((call) => call.ok)).toEqual([true, false]);
+		expect(actions.filter((action) => action.type === 'send')).toEqual([]);
+	});
+
 	it('a lapsed fix offer → answered with tools off, nothing else sent', async () => {
 		const { kernel, fake, actions } = createKernel(
 			[
@@ -907,6 +1076,53 @@ describe('Kernel', () => {
 
 			expect(message).toContain('checkout-api/main (asked, 5s ago, announced only — not heard)');
 			expect(message).toContain('Voice OS last asked aloud: (nothing)');
+		});
+
+		it("the screen session's line is given whole; another session's is a preview", () => {
+			const long =
+				'The retry tests fail because the clock is frozen in the fixture, and The retry tests fail because the clock is frozen in the fixture, and The retry tests fail because the clock is frozen in the fixture, and The retry tests fail because the clock is frozen in the fixture, and The retry tests fail because the clock is frozen in the fixture, and The retry tests fail because the clock is frozen in the fixture, and';
+			const state = createFixtureState(
+				{
+					view: 'store-front/main',
+					heard: [
+						{ text: long, ref: 'checkout-api/main', secondsAgo: 20, endedSecondsAgo: 8 },
+						{ text: long, ref: 'store-front/main', secondsAgo: 5, endedSecondsAgo: 2 },
+					],
+				},
+				10_000,
+			);
+			const message = buildKernelMessage({
+				state,
+				utterance: 'what did it say about the clock?',
+				memory: [],
+				now: 10_000,
+				heardFrom: 9_000,
+			});
+
+			expect(message).toContain(`checkout-api/main: "${long.slice(0, 140)}…"`);
+			expect(message).toContain(`store-front/main: "${long}"`);
+		});
+
+		it("Voice OS's own question just before is in the message; a statement of its own is not", () => {
+			const said = (text: string) =>
+				buildKernelMessage({
+					state: createFixtureState(
+						{
+							view: 'store-front/main',
+							heard: [{ text, ref: 'store-front/main', secondsAgo: 5, byVoiceOs: true }],
+						},
+						10_000,
+					),
+					utterance: 'Sí.',
+					memory: [],
+					now: 10_000,
+					heardFrom: 9_000,
+				});
+
+			expect(said('Sent to checkout. Switch there?')).toContain(
+				'Voice OS itself asked just before (its own question, not a session\'s): "Sent to checkout. Switch there?"',
+			);
+			expect(said('Sent to checkout.')).not.toContain('Voice OS itself asked');
 		});
 
 		it('what the developer heard before speaking: lines from other sessions, not ones started after', () => {

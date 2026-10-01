@@ -151,3 +151,17 @@ describe('findVoiceOsQuestion', () => {
 		expect(find([asked, line('unplayed', 2000, { isUnplayed: true })])).toBe('asked');
 	});
 });
+
+describe('formatHeardBefore and the screen session', () => {
+	it("the screen session's line is cut at 600 characters, another's at 140", () => {
+		const long = 'x'.repeat(700);
+		const heard = [
+			line('screen', 1000, { text: long, ref: 'store/main', endedAt: 2000 }),
+			line('other', 1000, { text: long, ref: 'other/main', endedAt: 2000 }),
+		];
+
+		expect(formatHeardBefore(heard, 3000, 'store/main')).toBe(
+			`store/main: "${'x'.repeat(600)}…" (ended 1s before they spoke); other/main: "${'x'.repeat(140)}…" (ended 1s before they spoke)`,
+		);
+	});
+});

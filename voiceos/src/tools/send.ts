@@ -338,7 +338,7 @@ export const recordAsSent = ({
 };
 
 // What a yes to Voice OS's own question about a session does.
-const describeOfferAnswer = (kind: SwitchOfferKind | undefined, ref: string): string => {
+export const describeOfferAnswer = (kind: SwitchOfferKind | undefined, ref: string): string => {
 	switch (kind) {
 		case 'activate':
 			return `"Activate it?" about ${ref}: call activate with name ${ref}`;

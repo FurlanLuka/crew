@@ -1,5 +1,6 @@
 import {
 	isOfferFresh,
+	isSwitchOfferFresh,
 	OFFER_TTL_MS,
 	type Action,
 	type LastSpokenSend,
@@ -13,6 +14,8 @@ import { normalizeUtterance, toSpokenName } from '../shared/spoken.js';
 import {
 	chooseSentWords,
 	describeMisroutedAnswer,
+	describeOfferAnswer,
+	isBareAnswer,
 	isMisroutedToSetup,
 	isShortEnoughToAnswer,
 	isWholeSend,
@@ -21,6 +24,7 @@ import {
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
 import { countSpokenWords, readLabel } from '../state/helpers.js';
+import { hasQuestionSince } from '../state/asks.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import { activateSession, deactivateSession, refuseInactive } from './activate.js';
@@ -28,6 +32,7 @@ import { listSessions } from './list-sessions.js';
 import { isActive, listActiveInOrder } from '../shared/active.js';
 import { decideNotificationReply } from './notification-reply.js';
 import { guardSendTo } from './send-guard.js';
+import { findVoiceOsQuestion } from './asked-aloud.js';
 import { forwardChosen, sendRecorded } from './forward.js';
 import { renameSession } from './rename.js';
 import { handleQueuedMessage } from './queued.js';
@@ -168,6 +173,8 @@ export interface ToolContext {
 	notes: NotesStore;
 	// Calls that change something in this turn so far, this step's included: more than one splits the words.
 	actionsInTurn?: number;
+	// The tools that already ran ok this turn: words a Voice OS command took are not forwarded too.
+	doneInTurn?: string[];
 	// Sessions this turn already sent words to: an answer that would send them again does not.
 	sentTo?: Set<string>;
 	// The developer's last words to a session as they stood when these were said.
@@ -252,6 +259,17 @@ const scopeToMachine = (
 
 const GO_BACK_TO_WORDS = 8;
 
+// Voice OS asking "what should I call it?" makes a bare name the answer: the judge is told so.
+const describeAskedName = (state: State, toolContext: ToolContext): { context?: string } => {
+	const asked = findVoiceOsQuestion({
+		spoken: state.spoken,
+		now: toolContext.now(),
+		...(toolContext.heardFrom === undefined ? {} : { heardFrom: toolContext.heardFrom }),
+	});
+
+	return asked ? { context: `Voice OS just asked: "${asked.text}"` } : {};
+};
+
 export const executeTool = async (
 	name: string,
 	input: Record<string, unknown>,
@@ -271,6 +289,25 @@ export const executeTool = async (
 		}
 
 		case 'ignore_words': {
+			// "Sí." right after "Switch there?" was ignored as an acknowledgement: a bare yes to Voice OS's
+			// own offer is never noise, in any language.
+			const offer = state.switchOffer;
+			const saidAt = toolContext.heardFrom ?? toolContext.now();
+
+			// Only a yes: a bare no changes nothing, and ignoring it is how it stays silent.
+			if (
+				offer &&
+				isSwitchOfferFresh(offer, saidAt) &&
+				!hasQuestionSince(state, offer.at) &&
+				toolContext.utterance !== undefined &&
+				(await isBareAnswer(toolContext.judge, toolContext.utterance)) &&
+				(await toolContext.judge({ key: 'approves', utterance: toolContext.utterance })) === 'yes'
+			) {
+				return fail(
+					`Not ignored: "${toolContext.utterance}" says yes to Voice OS's ${describeOfferAnswer(offer.kind, offer.ref)}.`,
+				);
+			}
+
 			// A finished request is never an unfinished thought: "can you, um, close the agent?" and
 			// "and can you tell me what's running." were taken for ones. Short ones stay ignorable
 			// (speech-to-text punctuates a cut-off "and can you?" too), and so does a lyric or a video.
@@ -518,13 +555,20 @@ export const executeTool = async (
 			// on crew main's screen) was read as a switch, and the words reached no one.
 			const said = toolContext.utterance;
 
+			// Longer words that ask for work mentioning a place ("go to the research folder and check what's
+			// in there") were read as a switch too: the judge tells them from a switch, and they go to the
+			// session on screen instead.
+			const isOnScreen = checked.ref === toolContext.forwardTo;
+
 			if (
-				checked.ref === toolContext.forwardTo &&
+				toolContext.forwardTo &&
 				said !== undefined &&
-				countSpokenWords(said) > GO_BACK_TO_WORDS
+				countSpokenWords(said) > GO_BACK_TO_WORDS &&
+				(isOnScreen || (await toolContext.judge({ key: 'asks_switch', utterance: said })) === 'no')
 			) {
-				log.info('a switch to the session on screen with more words: forwarded', {
+				log.info('words longer than a switch: forwarded', {
 					ref: checked.ref,
+					onScreen: isOnScreen,
 				});
 				const words = await chooseWordsFor({ state, input: {}, toolContext });
 
@@ -626,6 +670,21 @@ export const executeTool = async (
 			return listSessions(state, input);
 
 		case 'rename_session':
+			// A misheard "commit directly to main" came back as a rename to "directly to main": only words
+			// that ask to name a session rename one; anything unsure leaves the name alone.
+			if (
+				toolContext.utterance !== undefined &&
+				(await toolContext.judge({
+					key: 'asks_rename',
+					utterance: toolContext.utterance,
+					...describeAskedName(state, toolContext),
+				})) !== 'yes'
+			) {
+				return fail(
+					'not a rename: the words do not ask to name a session; nothing renamed. Words for the session on screen: forward them.',
+				);
+			}
+
 			return renameSession({
 				state,
 				input,

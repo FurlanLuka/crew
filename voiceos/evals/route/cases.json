@@ -4113,6 +4113,62 @@
 			},
 			"label": "session",
 			"source": "pairs"
+		},
+		{
+			"id": "p-go-to-the-research-folder-and-check",
+			"utterance": "Can you go to the research folder and check what's in there?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-commit-directly-to-main-and-release",
+			"utterance": "Okay. Just commit directly to main and release, create a new release with the fix please.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "session",
+			"source": "pairs"
+		},
+		{
+			"id": "p-list-the-sessions-whats-active",
+			"utterance": "But also, list the sessions for me. What's active right now?",
+			"context": {
+				"view": "store-front/main"
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-si-to-switch-there",
+			"utterance": "Sí.",
+			"context": {
+				"view": "store-front/main",
+				"switchOffer": {
+					"ref": "checkout-api/main",
+					"secondsAgo": 8
+				}
+			},
+			"label": "voiceos",
+			"source": "pairs"
+		},
+		{
+			"id": "p-quiet-dont-need-all-that",
+			"utterance": "No, quiet, I don't need to hear all of that.",
+			"context": {
+				"view": "store-front/main",
+				"heard": [
+					{
+						"text": "On it. Generating the key, registering it, then restarting and running the checks.",
+						"ref": "store-front/main",
+						"secondsAgo": 3
+					}
+				]
+			},
+			"label": "voiceos",
+			"source": "pairs"
 		}
 	]
 }

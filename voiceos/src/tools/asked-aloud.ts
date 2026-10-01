@@ -75,6 +75,8 @@ export const findVoiceOsQuestion = ({
 export const HEARD_BEFORE_MS = 90_000;
 const HEARD_BEFORE_KEPT = 3;
 const HEARD_PREVIEW_CHARS = 140;
+// The screen's own session is what "what did it say about…" asks about: its line is given whole, to this.
+const SCREEN_LINE_CHARS = 600;
 
 interface ListHeardBeforeParams {
 	spoken: SpokenLine[];
@@ -110,15 +112,18 @@ const describeEnding = (line: SpokenLine, heardFrom: number): string => {
 		: `ended ${seconds}s before they spoke`;
 };
 
-export const formatHeardBefore = (lines: SpokenLine[], heardFrom: number): string =>
+export const formatHeardBefore = (
+	lines: SpokenLine[],
+	heardFrom: number,
+	screen: string | null = null,
+): string =>
 	lines.length === 0
 		? '(nothing)'
 		: lines
 				.map((line) => {
-					const text =
-						line.text.length > HEARD_PREVIEW_CHARS
-							? `${line.text.slice(0, HEARD_PREVIEW_CHARS)}…`
-							: line.text;
+					const limit =
+						screen !== null && line.ref === screen ? SCREEN_LINE_CHARS : HEARD_PREVIEW_CHARS;
+					const text = line.text.length > limit ? `${line.text.slice(0, limit)}…` : line.text;
 
 					return `${readLineRefs(line).join(' and ')}: "${text}" (${describeEnding(line, heardFrom)})`;
 				})

@@ -34,6 +34,13 @@ const SETUP_ADDRESS_PATTERN =
 const SETUP_WORK_PATTERN =
 	/\b(?:worktrees?|workspaces?|projects?|bindings?|crew (?:fix|verify|check)|register)\b/i;
 const THIS_SESSION_PATTERN = /\b(?:this|the current) (?:session|one|claude)\b/i;
+const QUIET_WITH_COMPLAINT_PATTERN =
+	/^(?:no[,\s]+)?(?:quiet|hush|be quiet|stop talking)\b[^?]*\b(?:don'?t need|too (?:long|much)|enough)\b[^?]*$/i;
+const MORE_THAN_COMMAND_PATTERN =
+	/\b(?:and|then)\s+(?:after that\s+)?(?:have it|tell it|ask it|run|fix|check)\b/i;
+const RENAME_PATTERN =
+	/^\s*(?:call|name)\b|\b(?:rename|call (?:this|it|that)|name (?:this|it|that)|clear (?:its|the) name)\b/i;
+const WORK_PLACE_PATTERN = /\b(?:folder|file|directory|branch|and (?:check|look|see|run|fix))\b/i;
 const VOICE_OS_ITSELF_PATTERN =
 	/\b(?:switch|go) (?:to|back)\b|\b(?:open|activate|deactivate) (?:the )?(?:session|\S+\/\S+)\b|\b(?:machines?|worktrees?|listening|hands[\s-]?free|mute)\b|\bwhich sessions\b|\bwhat (?:did|has) (?:it|the session|you) (?:just )?(?:say|said)\b|\bwhat the session said\b|\brepeat\b/i;
 const BARE_NO_PATTERN = /^(?:no|nope|nah|not that one|here|stay|keep it here)\b/i;
@@ -129,13 +136,14 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 			return /^(?:stop|wait|halt|hold on)[.!]?$/i.test(said.trim())
 				? 'stop'
 				: yesIf(
-						MUTE_REQUEST_PATTERN.test(
-							said
-								.toLowerCase()
-								.replace(/[,.!?;:]+/g, ' ')
-								.replace(/\s+/g, ' ')
-								.trim(),
-						),
+						QUIET_WITH_COMPLAINT_PATTERN.test(said.trim()) ||
+							MUTE_REQUEST_PATTERN.test(
+								said
+									.toLowerCase()
+									.replace(/[,.!?;:]+/g, ' ')
+									.replace(/\s+/g, ' ')
+									.trim(),
+							),
 					);
 		case 'says_instead':
 			return yesIf(SAYS_WHAT_INSTEAD_PATTERN.test(said));
@@ -159,6 +167,15 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 			return yesIf(isSpokenTo(said, context));
 		case 'more_than_start':
 			return yesIf(START_THEN_MORE_PATTERN.test(said.trim()));
+		case 'asks_rename':
+			return yesIf(
+				RENAME_PATTERN.test(said) ||
+					/what (?:should|do) (?:I|you want to) call/i.test(context ?? ''),
+			);
+		case 'asks_switch':
+			return yesIf(!WORK_PLACE_PATTERN.test(said));
+		case 'more_than_command':
+			return yesIf(MORE_THAN_COMMAND_PATTERN.test(said));
 		case 'session_work':
 			return yesIf(!VOICE_OS_ITSELF_PATTERN.test(said));
 		case 'target_answer':

@@ -1,7 +1,7 @@
 import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
 import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
-import type { SpokenLine } from '../shared/protocol.js';
+import { QUESTION_UNHEARD_MS, type SpokenLine } from '../shared/protocol.js';
 import type { NoteWords } from '../memory/notes.js';
 import { formatAge } from '../state/working.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
@@ -3576,6 +3576,24 @@ describe('fixes from the live notes', () => {
 
 		it.each([
 			[
+				'a failure in the same step as the forward → its explanation is kept',
+				{
+					reply: 'Could not send it now.',
+					calls: [call('queued_message', false), call('forward')],
+					forwardStepStart: 0,
+				},
+				{ kind: 'keep' },
+			],
+			[
+				'a failure in a step before the forward → the forward replaced it, the words are dropped',
+				{
+					reply: 'Let me forward it instead:',
+					calls: [call('queued_message', false), call('forward')],
+					forwardStepStart: 1,
+				},
+				{ kind: 'drop_reply' },
+			],
+			[
 				'asked what they meant on a session screen → the words go to the session',
 				{ reply: 'Is this for crew/main or Voice OS setup?' },
 				{ kind: 'forward_utterance' },
@@ -4502,5 +4520,166 @@ describe("a bare answer to Voice OS's own question", () => {
 		});
 
 		expect(result.ok).toBe(true);
+	});
+});
+
+describe('guards from the stress test', () => {
+	const on = (utterance: string, patch: Parameters<typeof createToolContext>[0] = {}) => {
+		const { tools, actions } = createToolContext(patch);
+
+		return {
+			actions,
+			tools: { ...tools, utterance, forwardTo: 'store-front/main', screen: 'store-front/main' },
+		};
+	};
+
+	it('a rename the words never asked for → refused, nothing renamed', async () => {
+		const { tools, actions } = on(
+			'Just commit directly to main and release, create a new release.',
+		);
+		const result = await executeTool(
+			'rename_session',
+			{ ref: null, name: 'directly to main and release' },
+			{ ...tools, judge: judgeAlways('unclear') },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('not a rename');
+		expect(actions).toEqual([]);
+	});
+
+	it('a bare name right after Voice OS asked what to call it → renamed', async () => {
+		const { tools, actions } = on('Checkout two.', {
+			spoken: [
+				{ id: 'q', text: 'checkout is taken. What should I call it?', source: 'kernel', at: 1_000 },
+			],
+		});
+		const result = await executeTool(
+			'rename_session',
+			{ ref: null, name: 'checkout two' },
+			{ ...tools, now: () => 5_000, heardFrom: 4_000 },
+		);
+
+		expect(result.ok).toBe(true);
+		expect(actions).toEqual([
+			{ type: 'rename_session', ref: 'store-front/main', name: 'checkout two' },
+		]);
+	});
+
+	it('a bare no right after "Switch there?" → ignored, silent as before', async () => {
+		const { tools } = on('No.', { switchOffer: { ref: 'checkout-api/main', at: 0 } });
+		const result = await executeTool(
+			'ignore_words',
+			{ reason: 'greeting or acknowledgement' },
+			tools,
+		);
+
+		expect(result.ok).toBe(true);
+	});
+
+	it('words that ask to name it → renamed', async () => {
+		const { tools, actions } = on('Call this one api work.');
+		const result = await executeTool('rename_session', { ref: null, name: 'api work' }, tools);
+
+		expect(result.ok).toBe(true);
+		expect(actions).toEqual([
+			{ type: 'rename_session', ref: 'store-front/main', name: 'api work' },
+		]);
+	});
+
+	it('work that mentions a place, read as a switch → the words go to the session on screen', async () => {
+		const said = 'Can you go to the research folder and check what is in there?';
+		const { tools, actions } = on(said);
+		const result = await executeTool('switch_view', { ref: 'store-front/wrk1' }, tools);
+
+		expect(result.ok).toBe(true);
+		expect(actions).toEqual([
+			{ type: 'send', ref: 'store-front/main', text: said, ack: { kind: 'question' } },
+		]);
+	});
+
+	it('a long switch the judge reads as a switch → switched', async () => {
+		const { tools, actions } = on('Okay can you please switch over to store front work one now');
+		await executeTool(
+			'switch_view',
+			{ ref: 'store-front/wrk1' },
+			{ ...tools, judge: judgeAlways('yes') },
+		);
+
+		expect(actions).toContainEqual(
+			expect.objectContaining({
+				type: 'switch_view',
+				view: { kind: 'session', ref: 'store-front/wrk1' },
+			}),
+		);
+	});
+
+	it('a bare yes right after "Switch there?" is never ignored', async () => {
+		const { tools } = on('Sí.', { switchOffer: { ref: 'checkout-api/main', at: 0 } });
+		const result = await executeTool(
+			'ignore_words',
+			{ reason: 'greeting or acknowledgement' },
+			{ ...tools, judge: judgeAlways('yes') },
+		);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain(
+			'"Switch to checkout-api/main?": call switch_view checkout-api/main',
+		);
+	});
+
+	it('an offer long past → the same words are ignored as before', async () => {
+		const { tools } = on('Sí.', { switchOffer: { ref: 'checkout-api/main', at: 0 } });
+		const later = QUESTION_UNHEARD_MS + 1;
+		const result = await executeTool(
+			'ignore_words',
+			{ reason: 'greeting or acknowledgement' },
+			{ ...tools, judge: judgeAlways('yes'), now: () => later, heardFrom: later },
+		);
+
+		expect(result.ok).toBe(true);
+	});
+
+	it('the same words with no offer open → ignored as before', async () => {
+		const { tools } = on('Sí.');
+		const result = await executeTool(
+			'ignore_words',
+			{ reason: 'greeting or acknowledgement' },
+			{ ...tools, judge: judgeAlways('yes') },
+		);
+
+		expect(result.ok).toBe(true);
+	});
+
+	it('words a Voice OS command already took → not forwarded too; a slice of them still goes', async () => {
+		const said = "List the sessions for me. What's active right now?";
+		const { tools, actions } = on(said);
+		const done = { ...tools, doneInTurn: ['list_sessions'] };
+
+		expect((await executeTool('forward', { text: said }, done)).ok).toBe(false);
+		expect(actions).toEqual([]);
+		// A slice stays a slice only beside another action that carries words; alone, the words are
+		// sent whole and the judge decides (the test below).
+		expect(
+			(
+				await executeTool(
+					'forward',
+					{ text: "What's active right now?" },
+					{ ...done, actionsInTurn: 2 },
+				)
+			).ok,
+		).toBe(true);
+		expect(actions).toHaveLength(1);
+	});
+
+	it('words a Voice OS command took that also ask the session for work → sent', async () => {
+		const said = 'List the sessions and then tell it to run the tests.';
+		const { tools, actions } = on(said);
+
+		expect(
+			(await executeTool('forward', { text: said }, { ...tools, doneInTurn: ['list_sessions'] }))
+				.ok,
+		).toBe(true);
+		expect(actions).toHaveLength(1);
 	});
 });

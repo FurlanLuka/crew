@@ -28,7 +28,12 @@ import {
 } from '../tools/definitions.js';
 import { fail } from '../tools/results.js';
 import { describeSession } from '../tools/session-view.js';
-import { findLastAskedAloud, formatHeardBefore, listHeardBefore } from '../tools/asked-aloud.js';
+import {
+	findLastAskedAloud,
+	findVoiceOsQuestion,
+	formatHeardBefore,
+	listHeardBefore,
+} from '../tools/asked-aloud.js';
 import { isHeldQuestion } from '../state/held-lines.js';
 import { findSessionsNamedIn } from '../tools/session-naming.js';
 import { findMachineSaid } from '../tools/machines.js';
@@ -330,6 +335,7 @@ export const buildKernelMessage = ({
 		heardFrom,
 	});
 	const heardBefore = listHeardBefore({ spoken: state.spoken, heardFrom });
+	const voiceOsQuestion = findVoiceOsQuestion({ spoken: state.spoken, now, heardFrom });
 	const namedRefs = activeRefs.filter((ref) => state.names[ref]);
 
 	return [
@@ -352,7 +358,13 @@ export const buildKernelMessage = ({
 		// Only when there is something: an empty line of it made the model reach for more tools.
 		...(heardBefore.length > 0
 			? [
-					`Heard just before the developer spoke (oldest first): ${formatHeardBefore(heardBefore, heardFrom)}`,
+					`Heard just before the developer spoke (oldest first): ${formatHeardBefore(heardBefore, heardFrom, sessionOnScreen?.ref ?? null)}`,
+				]
+			: []),
+		// Its own lines are left out above: a bare "yes", "sí" or "ja" right after this answers Voice OS.
+		...(voiceOsQuestion
+			? [
+					`Voice OS itself asked just before (its own question, not a session's): "${voiceOsQuestion.text}"`,
 				]
 			: []),
 		`Earlier on this screen (already done — act only on what the developer says now):\n${formatRememberedLines(memory)}`,
@@ -434,7 +446,12 @@ export const readRunOrder = ({ name, input, asks }: ReadRunOrderParams): number 
 
 	const ref = (input as { ref?: unknown } | null)?.ref;
 
-	return name === 'answer' && !asks.some((ask) => ask.ref === ref) ? 2 : 1;
+	if (name === 'answer' && !asks.some((ask) => ask.ref === ref)) {
+		return 3;
+	}
+
+	// After the commands beside it, so words one of them already took are not sent too.
+	return name === 'forward' || name === 'send_to' ? 2 : 1;
 };
 
 // A mute, an interrupt, an activation or a rename beside a forward takes none of the words: counted, it made a long request
@@ -456,6 +473,8 @@ const forwardUtterance = async (
 		text: utterance,
 		kind: /\?\s*$/.test(utterance) ? 'question' : 'instruction',
 	};
+	// Seen by the forward: words a Voice OS command already took this turn are not sent as well.
+	toolContext.doneInTurn = calls.filter((call) => call.ok).map((call) => call.name);
 	const result = await executeTool('forward', input, toolContext);
 
 	calls.push({
@@ -538,7 +557,13 @@ export class Kernel {
 		// A tool's own line (a saved debug note) is what is said, not the model's wording of it.
 		let fixedReply: string | null = null;
 
+		// Calls refused this turn, by name and input, with why: never run twice.
+		const refusals = new Map<string, string>();
+		// Where the step that last forwarded began: failures before it were recovered by that forward.
+		let forwardStepStart: number | null = null;
+
 		for (let step = 0; step < MAX_STEPS; step++) {
+			const stepStart = calls.length;
 			// On a session screen the first step must act: no filler ("I'm listening") and no asking back there.
 			// A later step can still ask back; decideEnding catches that.
 			hasMoreToDo = false;
@@ -591,9 +616,34 @@ export class Kernel {
 			for (const toolUse of ordered) {
 				const input = (toolUse.input ?? {}) as Record<string, unknown>;
 				const isBlocked = mustAnswerNow && MUTATING_TOOLS.includes(toolUse.name as ToolName);
+				const refusalKey = `${toolUse.name} ${JSON.stringify(input)}`;
+				const refusedBefore = refusals.get(refusalKey);
+				toolContext.doneInTurn = calls.filter((call) => call.ok).map((call) => call.name);
+				// A mute refused four times in a row, then the model's reasoning said aloud: a call refused
+				// once is not run again, and the turn ends with tools off.
 				const result = isBlocked
 					? fail('not run: an earlier result in this turn ended it')
-					: await executeTool(toolUse.name, input, toolContext);
+					: refusedBefore !== undefined
+						? {
+								...fail(
+									`already refused: ${toolUse.name} (${refusedBefore}). Don't call it again; answer in one short line or stop.`,
+								),
+								isFinal: true as const,
+							}
+						: await executeTool(toolUse.name, input, toolContext);
+
+				if (!result.ok && refusedBefore === undefined) {
+					refusals.set(refusalKey, result.content);
+				}
+
+				// Something changed (the clashing name cleared, say): a refused call may now go through.
+				if (result.ok && MUTATING_TOOLS.includes(toolUse.name as ToolName)) {
+					refusals.clear();
+				}
+
+				if (result.ok && (result.recordAs?.name ?? toolUse.name) === 'forward') {
+					forwardStepStart = stepStart;
+				}
 
 				calls.push({
 					...(result.recordAs ?? { name: toolUse.name, input }),
@@ -658,6 +708,7 @@ export class Kernel {
 		const ending = decideEnding({
 			reply,
 			calls,
+			forwardStepStart,
 			forwardTo,
 			utterance,
 			namedRefs: findSessionsNamedIn(state, utterance),

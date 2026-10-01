@@ -89,6 +89,83 @@
 			"context": "The options: \"postgres\", \"sqlite\"",
 			"expect": "pick"
 		},
+		{ "key": "asks_rename", "utterance": "Call this one api work.", "expect": "yes" },
+		{ "key": "asks_rename", "utterance": "Benenne die Sitzung in Checkout um.", "expect": "yes" },
+		{ "key": "asks_rename", "utterance": "Preimenuj to sejo v signals.", "expect": "yes" },
+		{
+			"key": "asks_rename",
+			"utterance": "Just commit directly to main and release.",
+			"expect": "no"
+		},
+		{ "key": "asks_rename", "utterance": "Rename the function to computeBackoff.", "expect": "no" },
+		{ "key": "asks_rename", "utterance": "Llama a la API de pagos otra vez.", "expect": "no" },
+		{
+			"key": "asks_rename",
+			"utterance": "Checkout two.",
+			"context": "Voice OS just asked: \"checkout is taken. What should I call it?\"",
+			"expect": "yes"
+		},
+		{
+			"key": "asks_rename",
+			"utterance": "Zahlungen.",
+			"context": "Voice OS just asked: \"What should I call it?\"",
+			"expect": "yes"
+		},
+		{ "key": "asks_switch", "utterance": "Go to checkout.", "expect": "yes" },
+		{
+			"key": "asks_switch",
+			"utterance": "Okay, can you open the research one for me now?",
+			"expect": "yes"
+		},
+		{ "key": "asks_switch", "utterance": "Geh zu checkout, bitte.", "expect": "yes" },
+		{
+			"key": "asks_switch",
+			"utterance": "Go to the research folder and check what is in there.",
+			"expect": "no"
+		},
+		{
+			"key": "asks_switch",
+			"utterance": "Pojdi v mapo scripts in poglej, kaj je notri.",
+			"expect": "no"
+		},
+		{ "key": "asks_switch", "utterance": "Ve a la rama main y haz un rebase.", "expect": "no" },
+		{
+			"key": "mute_only",
+			"utterance": "No, quiet, I don't need to hear all of that.",
+			"expect": "yes"
+		},
+		{ "key": "mute_only", "utterance": "Sei still, das ist mir zu lang.", "expect": "yes" },
+		{ "key": "mute_only", "utterance": "Be quiet and run the tests.", "expect": "no" },
+		{
+			"key": "more_than_command",
+			"utterance": "List the sessions for me. What's active right now?",
+			"context": "Voice OS already did: list_sessions",
+			"expect": "no"
+		},
+		{
+			"key": "more_than_command",
+			"utterance": "Restart the dev servers and then have it check the logs.",
+			"context": "Voice OS already did: crew_dev",
+			"expect": "yes"
+		},
+		{
+			"key": "more_than_command",
+			"utterance": "Zeig mir die aktiven Sitzungen.",
+			"context": "Voice OS already did: list_sessions",
+			"expect": "no"
+		},
+		{
+			"key": "more_than_command",
+			"utterance": "Utišaj se in popravi teste.",
+			"context": "Voice OS already did: mute",
+			"expect": "yes"
+		},
+		{
+			"key": "more_than_command",
+			"utterance": "Cambia a checkout.",
+			"context": "Voice OS already did: switch_view",
+			"expect": "no"
+		},
 		{ "key": "session_work", "utterance": "What's the status?", "expect": "yes" },
 		{ "key": "session_work", "utterance": "Is it done?", "expect": "yes" },
 		{ "key": "session_work", "utterance": "Okay, what's going on?", "expect": "yes" },

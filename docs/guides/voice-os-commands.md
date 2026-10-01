@@ -135,7 +135,9 @@ OS asks which one.
 - "Switch to it." Right after a session's line, opens that session.
 
 **What happens:** Voice OS says "Switching to checkout" first (a click is silent), and that
-session's update, if it had one waiting, plays when you get there.
+session's update, if it had one waiting, plays when you get there. A longer sentence that asks for
+work in a place ("go to the research folder and check what's in there") goes to the session on
+screen instead.
 
 ### Go back — `go_back`
 
@@ -326,7 +328,8 @@ doc" is work for the session.
 - "Clear the name." An empty name brings back crew's label.
 
 **What happens:** the name shows everywhere and Voice OS answers to it. "Rename the function to
-parseRef" is work, so it goes to the session. See [Session names](voice-os.md#session-names).
+parseRef" is work, so it goes to the session, and a name-like phrase heard inside other words
+("commit directly to main and release") renames nothing. See [Session names](voice-os.md#session-names).
 
 ### Name a machine — `rename_machine`
 
@@ -348,6 +351,7 @@ this: those interrupt. See [Listening modes](voice-os.md#listening-modes).
 ### Quiet — `mute`
 
 - "Quiet." · "Shut up." · "Mute."
+- "No, quiet, I don't need to hear all of that." A reason or a complaint beside it still mutes.
 
 **What happens:** what Voice OS had queued to say is dropped, and its routine narration stops.
 Sessions' own lines, questions and alerts still play.
@@ -358,7 +362,8 @@ Sessions' own lines, questions and alerts still play.
 - "And can you…" A thought cut off before it said what it wants.
 - Speech that wasn't meant for Voice OS: a video, a song, someone else in the room.
 
-**What happens:** nothing, and nothing is said.
+**What happens:** nothing, and nothing is said. A bare "yes" or "sí" right after Voice OS's own
+"Switch there?" is never ignored: it answers the offer.
 
 **In practice:** filler in front of a request doesn't count ("hmm, let's start this" is a request),
 and a question is never ignored. Thinking out loud about the work goes to the session.

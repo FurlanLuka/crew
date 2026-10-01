@@ -43,7 +43,7 @@ const JUDGE_QUESTIONS = {
 		answers: ['yes', 'no'],
 	},
 	mute_only: {
-		ask: 'Voice OS talks aloud and was asked to go quiet. What do these words ask for? yes: all of it is for Voice OS itself to be quiet (mute, be quiet, stop talking, be still, hush), nothing else. stop: only a bare "stop", "wait" or "halt" (or a translation), which is about the work, not the voice. no: something else, or quiet plus more.',
+		ask: 'Voice OS talks aloud and was asked to go quiet. What do these words ask for? yes: all they ask for is Voice OS itself to be quiet (mute, be quiet, stop talking, be still, hush), even with a reason or a complaint about what it is saying ("no, quiet, I don\'t need to hear all that"). stop: only a bare "stop", "wait" or "halt" (or a translation), which is about the work, not the voice. no: something else, or quiet plus more.',
 		answers: ['yes', 'stop', 'no'],
 	},
 	says_instead: {
@@ -76,6 +76,18 @@ const JUDGE_QUESTIONS = {
 	},
 	more_than_start: {
 		ask: 'The developer asked Voice OS to start (open, run, launch) a coding session. Besides starting it, do these words ask that session to do some work?',
+		answers: ['yes', 'no'],
+	},
+	asks_rename: {
+		ask: 'Do these words ask Voice OS to name, rename or clear the name of a session ("call this one api work", "rename it to checkout")? Words that only contain a name-like phrase, or ask for other work, are no — except a name given in answer to Voice OS asking what to call a session (see the context): that is yes.',
+		answers: ['yes', 'no'],
+	},
+	asks_switch: {
+		ask: 'Do these words ask Voice OS to go to, open or show a session, machine or view ("go to checkout", "open the research one") — rather than ask for work that only mentions a place (a folder, a file, a branch: "go to the research folder and check what is in there")?',
+		answers: ['yes', 'no'],
+	},
+	more_than_command: {
+		ask: 'Voice OS already did the command named in the context for these words (listed sessions, switched, muted, restarted servers…). Besides that command, do the words also ask the coding session for some work ("restart the servers and have it check the logs")?',
 		answers: ['yes', 'no'],
 	},
 	session_work: {

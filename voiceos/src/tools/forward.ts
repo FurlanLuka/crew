@@ -7,6 +7,8 @@ import { isActive } from '../shared/active.js';
 import { SAID_TO_VOICE_OS, isSaidToVoiceOs } from './said-to-voice-os.js';
 import { refuseInactive } from './activate.js';
 import { type ToolResult, fail } from './results.js';
+import type { ToolName } from './definitions.js';
+import { normalizeSaid } from '../state/helpers.js';
 import { describeMisroutedAnswer, sendText, type SentWords } from './send.js';
 import type { ToolContext } from './tools.js';
 
@@ -30,6 +32,28 @@ export const sendRecorded = async ({
 	name,
 	toolContext,
 }: SendRecordedParams): Promise<ToolResult> => {
+	// "List the remotes and sessions, what's active?" listed, and was then sent whole as well: the same
+	// words did two things. Sent whole after a Voice OS command, they go only when they also ask the
+	// session for work ("restart the servers and have it check the logs").
+	const tookWords = toolContext.doneInTurn?.find((done) =>
+		TOOLS_THAT_TAKE_WORDS.includes(done as ToolName),
+	);
+
+	if (
+		tookWords &&
+		toolContext.utterance !== undefined &&
+		normalizeSaid(words.text) === normalizeSaid(toolContext.utterance) &&
+		(await toolContext.judge({
+			key: 'more_than_command',
+			utterance: toolContext.utterance,
+			context: `Voice OS already did: ${tookWords}`,
+		})) !== 'yes'
+	) {
+		log.info('words a Voice OS command took: not sent too', { tool: tookWords });
+
+		return fail(`not sent: ${tookWords} already did what these words asked; do nothing more`);
+	}
+
 	if (isSaidToVoiceOs({ state, ref, toolContext })) {
 		log.info('said to Voice OS: not sent', { ref, name });
 
@@ -68,6 +92,24 @@ export const sendRecorded = async ({
 
 	return { ...result, recordAs: { name, input: recorded } };
 };
+
+// Voice OS commands that answer or act on the words themselves: once one ran, the whole words are done.
+// Not the lookups (read_state, read_notes, read_history): reading first and then sending is one request.
+const TOOLS_THAT_TAKE_WORDS: ToolName[] = [
+	'list_sessions',
+	'switch_view',
+	'go_back',
+	'play_missed',
+	'deactivate',
+	'mute',
+	'hands_free',
+	'crew_dev',
+	'rename_session',
+	'rename_machine',
+	'open_doc',
+	'debug_note',
+	'note',
+];
 
 interface ForwardChosenParams {
 	words: SentWords;
