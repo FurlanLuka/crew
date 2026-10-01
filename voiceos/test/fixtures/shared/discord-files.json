@@ -1,0 +1,15 @@
+{
+	"config": {
+		"guild": "1001",
+		"channel": "2002",
+		"channel_name": "Voice OS",
+		"guild_name": "Home",
+		"owner": "3003"
+	},
+	"status": {
+		"connected": true,
+		"owner_in_channel": true,
+		"error": "",
+		"at": "2026-10-01T10:00:00.000Z"
+	}
+}

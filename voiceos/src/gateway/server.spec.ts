@@ -308,6 +308,7 @@ describe('parseClientMessage', () => {
 		{ type: 'listen_start', sampleRate: 48000 },
 		{ type: 'listen_stop' },
 		{ type: 'audio_done', id: 's1' },
+		{ type: 'discord_listen', mode: 'on-demand' },
 	];
 
 	it.each(messages.map((message) => [JSON.stringify(message), message] as const))(
@@ -315,6 +316,11 @@ describe('parseClientMessage', () => {
 		(_, message) =>
 			expect(parseClientMessage(JSON.stringify(message))).toEqual({ ok: true, message }),
 	);
+
+	it('push to talk for Discord → refused: a voice channel has no button', () =>
+		expect(parseClientMessage(JSON.stringify({ type: 'discord_listen', mode: 'push' })).ok).toBe(
+			false,
+		));
 
 	it('a dictation flag other than true → refused', () =>
 		expect(parseClientMessage(JSON.stringify({ type: 'ptt_start', dictation: false })).ok).toBe(

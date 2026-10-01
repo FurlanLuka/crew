@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { DevServer } from '../shared/protocol.js';
+import type { DevServer, State } from '../shared/protocol.js';
 import { ALLOWED_TAGS } from '../shared/spoken.js';
 
 export const VOICE_OS_CONTEXT = `## Voice OS
@@ -66,3 +66,9 @@ export const buildSituationNote = ({ servers, recent }: BuildSituationNoteParams
 
 	return `(Voice OS, not the developer — context for the message below: ${facts.join('. ')}.)`;
 };
+
+// On every message while it holds: the developer can leave the voice channel between two of them.
+export const buildDiscordNote = (state: State): string | undefined =>
+	state.discord?.isOwnerIn
+		? '(Voice OS, not the developer: they are in a Discord voice channel, away from the page — they hear your spoken tags but see nothing on the page, so images and doc cards wait until they are back, and anything they need goes in the tag. Questions still work: they answer by voice.)'
+		: undefined;

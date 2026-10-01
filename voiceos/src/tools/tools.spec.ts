@@ -554,6 +554,34 @@ describe('forward', () => {
 		expect(result.ok).toBe(isAllowed);
 	});
 
+	it('asked aside while the developer is in the Discord voice channel → the note says so', async () => {
+		const { tools, actions } = createToolContext({
+			discord: {
+				isConnected: true,
+				isHearing: true,
+				isOwnerIn: true,
+				channelName: 'Voice OS',
+				mode: 'hands-free',
+			},
+		});
+		const state = tools.getState();
+		state.sessions['store-front/main'] = {
+			...state.sessions['store-front/main']!,
+			status: 'running',
+		};
+
+		await executeTool(
+			'forward',
+			{ kind: 'question' },
+			{ ...tools, forwardTo: 'store-front/main', utterance: 'Which file?' },
+		);
+
+		expect(actions[0]).toMatchObject({ type: 'send', aside: true });
+		expect((actions[0] as Extract<Action, { type: 'send' }>).note).toContain(
+			'Discord voice channel',
+		);
+	});
+
 	it('to a working session: a spoken question aside is marked spoken; a continuation is never aside', async () => {
 		const { tools, actions } = createToolContext();
 		const state = tools.getState();
@@ -1719,6 +1747,22 @@ describe('describeSession', () => {
 		detail: string | null = null,
 	) => ({ name, port: 3000, url: null, state, detail });
 
+	it('stopped by a crash → why, first line only; a clean stop → nothing', () => {
+		const { tools } = createToolContext();
+		const state = tools.getState();
+		state.sessions['checkout-api/main'] = {
+			...state.sessions['checkout-api/main']!,
+			error: 'Claude Code native binary not found at claude\n  at spawn (worker.js:1)',
+		};
+
+		expect(
+			describeSession({ state, ref: 'checkout-api/main', isDetailed: false, now: 0 }).crashed,
+		).toBe('Claude Code native binary not found at claude');
+		expect(
+			describeSession({ state, ref: 'store-front/main', isDetailed: false, now: 0 }).crashed,
+		).toBeUndefined();
+	});
+
 	it('in detail, the last reply in full: "what did it say" reads it back, not a clipped line', () => {
 		const { tools } = createToolContext();
 		const state = tools.getState();
@@ -1971,6 +2015,30 @@ describe('Voice OS note on a first message', () => {
 		expect((context.actions[0] as Extract<Action, { type: 'send' }>).note).toContain(
 			'restart the servers',
 		);
+	});
+
+	it('the developer in the Discord voice channel → every send says they cannot see the page', async () => {
+		const context = createToolContext({
+			discord: {
+				isConnected: true,
+				isHearing: true,
+				isOwnerIn: true,
+				channelName: 'Voice OS',
+				mode: 'hands-free',
+			},
+		});
+
+		await executeTool('send_to', { ref: 'store-front/wrk1', text: 'run the tests' }, context.tools);
+		await executeTool(
+			'send_to',
+			{ ref: 'store-front/wrk1', text: 'and the linter' },
+			context.tools,
+		);
+
+		expect(context.actions.map((action) => (action.type === 'send' ? action.note : null))).toEqual([
+			expect.stringContaining('Discord voice channel'),
+			expect.stringContaining('Discord voice channel'),
+		]);
 	});
 
 	it('a session that has had its first message, or has one queued → no note', async () => {

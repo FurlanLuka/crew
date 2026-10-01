@@ -77,6 +77,10 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   key in a command line, a file or your reply, and never echo one back; if the user pastes one
   to you, don't repeat it — give them the line instead. A rejected key is not saved; `crew
   voice restart` picks a new one up.
+- Voice OS in Discord: the user makes and invites the bot (`crew voice discord setup` with
+  nothing piped prints the steps). The token goes in on stdin only — hand them `pbpaste | crew
+  voice discord setup`; when it lists servers or channels, rerun with `--guild=`/`--channel=`
+  (the saved token is reused, no paste). `crew voice discord status` / `off`.
 - Voice OS misbehaving: read it through crew, not the files — `crew voice debug-notes`, then
   `crew voice debug-notes show <n>` (the note and the log around it), then `crew voice logs
   --since=… --until=… [--level=warn] [--cat=…] [--grep=…]` (every machine at once;

@@ -52,6 +52,7 @@ it (and the other keys) removed from their environment (`sessions/worker.ts`, `b
 | --- | --- |
 | `~/.config/crew-voiceos/soniox.key` | speech in and out (Soniox) |
 | `~/.config/crew-voiceos/anthropic.key` | the kernel, the judge and the question writer (Haiku) and the narrator (Sonnet) |
+| `~/.config/crew-voiceos/discord.key` | optional: the Discord bot (`crew voice discord setup`) |
 
 `crew voice` asks for missing keys at a terminal and checks each with its service
 (`crew/internal/voice/keys.go`). `crew voice keys` lists them, and `crew voice keys set
@@ -114,6 +115,7 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/crew/adapter.ts` | Every call into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`). |
 | `src/gateway/` | HTTP and WebSocket on 127.0.0.1. `auth.ts` handles sign-in (a host-only cookie set from `~/.crew/voiceos/token`) and the exact Origin check, `validate.ts` checks inbound messages, and `/media` serves the media folder and nothing else. |
 | `src/remote/` | Other machines (see below). |
+| `src/discord/` | The Discord voice channel (see below). |
 | `src/web/` | The React page, bundled by Bun: `App.tsx`, `components/`, `derive.ts` (pure view logic), `use-connection.ts`, the mic (`audio.ts`, `ptt.ts`, `listen-mode.ts`) and the player (`use-speech-player.ts`, `pcm.ts`). The design mockups are in `design/mockups.html`. |
 
 ### Behaviours worth knowing before you change them
@@ -239,6 +241,32 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
 The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew voice machines`
 (the page and voice go through it) and watched while running (`cockpit-machines.ts`).
 
+### Discord voice channel
+
+`src/discord/`: a bot sits in one voice channel of the developer's own server; joining it from a
+phone is like opening the page and talking. `crew voice discord setup` takes only the bot token and
+works out the server (the only one the bot is in), the owner (the server's owner) and the channel
+("Voice OS", else the only voice one), writing `discord.json` and `discord.key`. Voice OS watches
+`discord.json`, so setup and `off` apply without a restart.
+
+- **One more client, `discord`.** `app.ts` `sendToClient` sends its messages to the bridge, the
+  others to the gateway. While the owner is in the channel, Discord is the speaker and the one
+  listener (`voiceIn.listen('discord', 48000, mode)`); a page's mic is refused and its audio stops,
+  and the page shows "Voice via Discord", a badge for the mic and the live words in the composer.
+  On leaving, the speaker goes back to the page used before (`seat.ts`). If speech-to-text gives up,
+  the page says "not hearing" until a mode is picked again.
+- **Only the owner is heard.** `link.ts` subscribes to the owner's stream alone; nobody else's audio
+  is received or decoded. Discord sends nothing while they are quiet, so `bridge.ts` feeds silence
+  frames: speech-to-text needs them to end a turn.
+- **Speech out.** Each clip is cut into 20 ms frames (`audio.ts`: 24 kHz mono → 48 kHz stereo),
+  encoded with opusscript (`codec.ts`, its wasm embedded by a `bun patch` in `patches/`) and streamed
+  to one audio player; the player going idle after the last chunk is the clip's `audio_done`.
+  `discord.ts` follows the setup; `link.ts` reconnects with backoff (a refused token is not retried), writes `discord-status.json` for
+  `crew voice discord status` and keeps the mode (on demand or hands-free) in `discord-mode.json`.
+- **Sessions know.** While the developer is in the channel, every send carries a note
+  (`voice-context.ts` `buildDiscordNote`): they hear spoken tags but see nothing on the page.
+- DAVE end-to-end encryption is on (`@snazzah/davey`, a native package per platform).
+
 ### State on disk
 
 Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
@@ -256,6 +284,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew voice notes`). |
 | `media/` | Images by content hash, swept after 30 days. |
 | `machines.json` | Other machines (crew writes it). |
+| `discord.json`, `discord-status.json`, `discord-mode.json` | The Discord voice channel: its setup (crew writes it), whether Voice OS is in it, and the listening mode there. |
 | `logs/voiceos.log` | The log (`crew voice logs`). It contains what the developer said. Rotated at 20 MB into `voiceos.log.1` … `.5`, newest first (`log.ts`); `ts` stays the first key of each line, since crew compares it before decoding. |
 | `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`, `crew voice debug-notes`). Never rotated. |
 | `debug/` | WAVs, only with `VOICEOS_DEBUG_AUDIO=1`. |
@@ -320,4 +349,6 @@ infra-ops) and are patterned on real sessions, never copied from them.
 `scripts/build-release.ts <version>` builds `voiceos_<version>_<os>_<arch>.tar.gz` for
 darwin and linux, arm64 and amd64. GoReleaser attaches the archives to the crew release
 (`release.extra_files`), and crew downloads the one that matches its own version. The Linux builds
-target glibc.
+target glibc. All four are built on one runner, so dependencies are installed for every platform
+(`bun install --os='*' --cpu='*'`: the Discord E2EE library is native), and `scripts/compile-flags.ts`
+embeds opusscript's wasm and leaves out the optional codecs the Discord libraries fall back from.

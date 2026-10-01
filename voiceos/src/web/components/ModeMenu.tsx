@@ -65,6 +65,8 @@ export const MODE_COPY: Record<InputMode, ModeCopy> = {
 
 interface ModeMenuProps {
 	mode: InputMode;
+	// The modes offered; in a Discord voice channel only the listening ones mean anything.
+	modes?: InputMode[];
 	onChoose: (mode: InputMode) => void;
 	// A listening mode's stream is live.
 	isOn: boolean;
@@ -81,6 +83,7 @@ interface ModeMenuProps {
 
 export const ModeMenu = ({
 	mode,
+	modes = INPUT_MODES,
 	onChoose,
 	isOn,
 	isAwake,
@@ -101,7 +104,7 @@ export const ModeMenu = ({
 		}
 
 		// Opens on the chosen mode, so Enter keeps it and arrows move from it.
-		itemRefs.current[INPUT_MODES.indexOf(mode)]?.focus();
+		itemRefs.current[modes.indexOf(mode)]?.focus();
 
 		const closeOutside = (event: PointerEvent) => {
 			if (event.target instanceof Node && !wrapRef.current?.contains(event.target)) {
@@ -112,7 +115,7 @@ export const ModeMenu = ({
 		document.addEventListener('pointerdown', closeOutside);
 
 		return () => document.removeEventListener('pointerdown', closeOutside);
-	}, [isOpen, mode]);
+	}, [isOpen, mode, modes]);
 
 	const close = () => {
 		setIsOpen(false);
@@ -183,7 +186,7 @@ export const ModeMenu = ({
 					<div className="mode-menu-title" aria-hidden="true">
 						How Voice OS listens
 					</div>
-					{INPUT_MODES.map((option, index) => {
+					{modes.map((option, index) => {
 						const copy = MODE_COPY[option];
 						const isChosen = option === mode;
 

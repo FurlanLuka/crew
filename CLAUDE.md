@@ -254,6 +254,11 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   never an event replay; unacked effects ride in the next hello. A remote behind the main's release is
   updated by the main (`crew update` over SSH, once per version; never a downgrade). `~/.crew/voiceos/machines.json` is
   the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS.
+  **Discord** (optional): `crew voice discord setup` (`cmd_voice_discord.go`,
+  `internal/voice/discord.go`) takes only the bot token (stdin), checks it against Discord REST
+  v10, saves it as `discord.key` beside the other keys (not in `KeyNames`, so the first `crew
+  voice` never asks) and writes `~/.crew/voiceos/discord.json` (guild, channel, owner) atomically,
+  which the running Voice OS watches; Voice OS reports back in `discord-status.json`.
   **Queries** (`cmd_voice_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew voice
   logs|debug-notes [show <n>]|notes` are read-only, `parseQueryArgs` pure (unknown flags fail,
   times made absolute UTC where typed, `--lines` 1–1000), the path by `DecideRole` (`--local` →

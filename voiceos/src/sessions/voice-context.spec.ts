@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { DevServer } from '../shared/protocol.js';
-import { buildSituationNote, VOICE_OS_CONTEXT } from './voice-context.js';
+import { createInitialState } from '../state/reducer.js';
+import { buildDiscordNote, buildSituationNote, VOICE_OS_CONTEXT } from './voice-context.js';
 
 const createServer = (
 	name: string,
@@ -83,5 +84,26 @@ describe('VOICE_OS_CONTEXT', () => {
 		);
 		expect(VOICE_OS_CONTEXT).toContain('[laughs], [chuckles], [sighs], [pause], [warm]');
 		expect(VOICE_OS_CONTEXT).toContain('never SSML or other markup, which is read aloud');
+	});
+});
+
+describe('buildDiscordNote', () => {
+	const presence = {
+		isConnected: true,
+		isHearing: true,
+		channelName: 'Voice OS',
+		mode: 'hands-free',
+	} as const;
+
+	it('the developer in the voice channel → told they hear but cannot see the page', () =>
+		expect(
+			buildDiscordNote({ ...createInitialState(), discord: { ...presence, isOwnerIn: true } }),
+		).toContain('Discord voice channel, away from the page'));
+
+	it('not in it → no note', () => {
+		expect(
+			buildDiscordNote({ ...createInitialState(), discord: { ...presence, isOwnerIn: false } }),
+		).toBeUndefined();
+		expect(buildDiscordNote(createInitialState())).toBeUndefined();
 	});
 });

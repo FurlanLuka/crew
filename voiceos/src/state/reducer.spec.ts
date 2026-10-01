@@ -2062,3 +2062,104 @@ describe('what a session shows: the same picture in a later turn', () => {
 		).toHaveLength(2);
 	});
 });
+
+describe('discord_presence', () => {
+	it('kept as told, and cleared when Discord is off', () => {
+		const presence = {
+			isConnected: true,
+			isHearing: true,
+			isOwnerIn: true,
+			channelName: 'Voice OS',
+			mode: 'on-demand',
+		} as const;
+		const on = reduce(createInitialState(), {
+			seq: 1,
+			at: 0,
+			id: 'i1',
+			input: { type: 'discord_presence', presence },
+		}).state;
+
+		expect(on.discord).toEqual(presence);
+		expect(
+			reduce(on, { seq: 2, at: 0, id: 'i2', input: { type: 'discord_presence', presence: null } })
+				.state.discord,
+		).toBeNull();
+	});
+});
+
+describe('a crash with words waiting', () => {
+	const REF_A = 'store-front/main';
+	const sent = (): State =>
+		reduce(
+			reduce(createInitialState(), {
+				seq: 1,
+				at: 0,
+				id: 'i1',
+				input: {
+					type: 'worktrees',
+					worktrees: [
+						{ ref: REF_A, label: REF_A, branch: 'main', cwd: '/w', dirs: [], isPinned: false },
+					],
+				},
+			}).state,
+			{
+				seq: 2,
+				at: 1,
+				id: 'i2',
+				input: { type: 'send', ref: REF_A, text: 'list the workspaces', isSpoken: true },
+			},
+		).state;
+
+	it('the session could not start → said, named, and the words kept', () => {
+		const crashed = reduce(sent(), {
+			seq: 3,
+			at: 2,
+			id: 'i3',
+			input: { type: 'worker_exited', ref: REF_A, error: 'Claude Code native binary not found' },
+		});
+
+		expect(crashed.effects).toEqual([
+			expect.objectContaining({
+				type: 'speak',
+				text: "Couldn't run; your words are kept for the next start.",
+				ref: REF_A,
+				isNamed: true,
+			}),
+		]);
+		expect(crashed.state.sessions[REF_A]?.queue).toHaveLength(1);
+	});
+
+	it('a clean exit with words waiting → nothing said', () =>
+		expect(
+			reduce(sent(), {
+				seq: 3,
+				at: 2,
+				id: 'i3',
+				input: { type: 'worker_exited', ref: REF_A, error: null },
+			}).effects,
+		).toEqual([]));
+
+	it('a report owed as well → only the unfinished line, never both', () => {
+		const start = sent();
+		const owing: State = {
+			...start,
+			sessions: { ...start.sessions, [REF_A]: { ...start.sessions[REF_A]!, reportOwed: true } },
+		};
+		const crashed = reduce(owing, {
+			seq: 3,
+			at: 2,
+			id: 'i3',
+			input: { type: 'worker_exited', ref: REF_A, error: 'exit 1' },
+		});
+
+		expect(crashed.effects).toEqual([
+			expect.objectContaining({
+				type: 'speak',
+				text: 'Stopped before it finished.',
+				isOwed: true,
+				ref: REF_A,
+			}),
+		]);
+		expect(crashed.state.sessions[REF_A]?.queue).toHaveLength(1);
+	});
+});

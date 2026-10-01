@@ -1,0 +1,15 @@
+diff --git a/index.js b/index.js
+index f7b11acc07ffbc31acee973eaddfdd10fb48d949..1fb90ed8a41ec46bb6a73d0123cbaba2000eac1c 100644
+--- a/index.js
++++ b/index.js
+@@ -37,7 +37,9 @@ function OpusScript(samplingRate, channels, application, options) {
+     let opusscript_native = null;
+     if(this.options.wasm) {
+         if(!opusscript_native_wasm) {
+-            opusscript_native_wasm = require("./build/opusscript_native_wasm.js")();
++            // Read through a require so a compiled binary embeds the file (--loader .wasm:file); emscripten
++            // would otherwise read it from the path it was built at.
++            opusscript_native_wasm = require("./build/opusscript_native_wasm.js")({ wasmBinary: require("fs").readFileSync(require("./build/opusscript_native_wasm.wasm")) });
+         }
+         opusscript_native = opusscript_native_wasm;
+     } else {

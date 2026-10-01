@@ -8,6 +8,7 @@ import { findOpenQuestion } from '../shared/questions.js';
 const RECENT_TOOL_STEPS = 3;
 const LAST_REPLY_CHARS = 2000;
 const QUEUED_PREVIEW_CHARS = 80;
+const CRASH_PREVIEW_CHARS = 160;
 
 const findLastReply = (state: State, ref: string): string | null => {
 	// Read back in full on "what did it say": the recent lines clip every message to a line.
@@ -129,6 +130,10 @@ export const describeSession = ({
 				}
 			: {}),
 		status: session.status,
+		// Why it stopped, when it crashed: "stopped" alone reads as waiting to be started.
+		...(session.status === 'stopped' && session.error
+			? { crashed: session.error.split('\n')[0]?.slice(0, CRASH_PREVIEW_CHARS) }
+			: {}),
 		...(work.requests.length > 0 ? { last_messages_to_it: work.requests } : {}),
 		...(docTitles.length > 0 ? { docs: docTitles } : {}),
 		// What it said while the developer looked elsewhere, not yet heard: only read in detail.

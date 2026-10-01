@@ -130,12 +130,7 @@ func updateMachines(change func([]Machine) ([]Machine, error)) error {
 	if err != nil {
 		return err
 	}
-	partial := fmt.Sprintf("%s.%d.tmp", MachinesFile(), os.Getpid())
-	if err := os.WriteFile(partial, append(data, '\n'), 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(partial, MachinesFile()); err != nil {
-		os.Remove(partial)
+	if err := writeFileAtomic(MachinesFile(), append(data, '\n')); err != nil {
 		return err
 	}
 	debug.Log("voice", "machines.json: %d machines", len(next))
@@ -292,4 +287,18 @@ func SelectMachines(machines []Machine, include, exclude []string) (withMain boo
 		}
 	}
 	return chosen[-1], picked, nil
+}
+
+// writeFileAtomic writes beside and renames in (0600): a watching Voice OS never
+// reads half a file.
+func writeFileAtomic(path string, data []byte) error {
+	partial := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
+	if err := os.WriteFile(partial, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(partial, path); err != nil {
+		os.Remove(partial)
+		return err
+	}
+	return nil
 }

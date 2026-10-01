@@ -28,4 +28,46 @@ describe('TopBar', () => {
 
 	it('no sessions → "0 sessions"', () =>
 		expect(render(withSessions([]))).toContain('<span>0 sessions</span>'));
+
+	it('the owner in the voice channel → "Voice via Discord" with its name', () =>
+		expect(
+			render({
+				...withSessions([]),
+				discord: {
+					isConnected: true,
+					isHearing: true,
+					isOwnerIn: true,
+					channelName: 'Voice OS',
+					mode: 'hands-free',
+				},
+			}),
+		).toContain('Voice via Discord · Voice OS'));
+
+	it('the bot connected, the owner elsewhere → no banner', () =>
+		expect(
+			render({
+				...withSessions([]),
+				discord: {
+					isConnected: true,
+					isHearing: true,
+					isOwnerIn: false,
+					channelName: 'Voice OS',
+					mode: 'hands-free',
+				},
+			}),
+		).not.toContain('Voice via Discord'));
+
+	it('in the channel but not hearing → the banner says so', () =>
+		expect(
+			render({
+				...withSessions([]),
+				discord: {
+					isConnected: true,
+					isHearing: false,
+					isOwnerIn: true,
+					channelName: 'Voice OS',
+					mode: 'hands-free',
+				},
+			}),
+		).toContain('Voice via Discord · Voice OS · not hearing'));
 });

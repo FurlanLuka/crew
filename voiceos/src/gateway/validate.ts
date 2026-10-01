@@ -110,6 +110,7 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 	}),
 	z.object({ type: z.literal('listen_stop') }),
 	z.object({ type: z.literal('audio_done'), id: z.string() }),
+	z.object({ type: z.literal('discord_listen'), mode: z.enum(['on-demand', 'hands-free']) }),
 ]) satisfies z.ZodType<ClientMessage>;
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };

@@ -696,6 +696,13 @@ textarea:focus-visible {
 	font-size: 10.5px;
 	padding: 1px 9px;
 }
+.discord-on {
+	color: var(--cyan);
+	border: 1px solid var(--cyan-dim);
+	border-radius: 100px;
+	font-size: 10.5px;
+	padding: 1px 9px;
+}
 .updates-waiting:hover {
 	background: rgba(78, 201, 217, 0.08);
 }
@@ -892,6 +899,12 @@ textarea:focus-visible {
 }
 .mic.off {
 	opacity: 0.5;
+}
+/* A badge, not a button: in the voice channel Discord is the mic. */
+.mic.discord {
+	color: var(--cyan);
+	border-color: var(--cyan-dim);
+	cursor: default;
 }
 
 /* The listening mode: a round button, its menu opening above it. */

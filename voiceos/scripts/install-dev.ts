@@ -1,6 +1,7 @@
 // Compiles Voice OS from source into the executable `crew voice` runs, replacing a downloaded release
 // build (and replaced by the next `crew update`).
 import { mkdirSync, rmSync } from 'node:fs';
+import { COMPILE_FLAGS } from './compile-flags.js';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -16,6 +17,7 @@ const build = Bun.spawn(
 		'--compile',
 		'--minify',
 		'--sourcemap',
+		...COMPILE_FLAGS,
 		join(import.meta.dir, '..', 'src', 'main.ts'),
 		'--outfile',
 		targetPath,

@@ -46,6 +46,11 @@ import { SonioxTts } from './speech/tts.js';
 import { createNarrator } from './narrator/narrator.js';
 import { createAboutWriter } from './narrator/about.js';
 import { connectMachines, readMachineStatuses } from './remote/cockpit-machines.js';
+import { DISCORD_CLIENT } from './discord/bridge.js';
+import { DISCORD_SAMPLE_RATE } from './discord/audio.js';
+import { startDiscordVoice } from './discord/discord.js';
+import { SpeakerSeat, decidePageMic } from './discord/seat.js';
+import type { ServerMessage } from './shared/protocol.js';
 
 const WORKTREE_POLL_MS = 10_000;
 const REMINDER_INTERVAL_MS = 30_000;
@@ -99,18 +104,23 @@ const manager = new SessionManager({
 		ref === SETUP_REF ? Promise.resolve(SETUP_ORIENTATION) : crew.fetchOrientation(ref),
 });
 
-// Audio plays in the tab the developer used last; the others show the line.
-let speaker: string | null = null;
+// Audio plays in the tab the developer used last, or in the voice channel; the others show the line.
+const seat = new SpeakerSeat();
 // Assigned once the gateway starts below; speech reaches the tabs through it.
 let gateway: ReturnType<typeof startGateway> | null = null;
+
+// The voice channel is one more client: what is sent to it goes to Discord, everything else to a page.
+// discord is assigned below, before anything is said or heard.
+const sendToClient = (client: string, message: ServerMessage): boolean =>
+	client === DISCORD_CLIENT ? discord.send(message) : (gateway?.send(client, message) ?? false);
 
 const tts = keys.soniox ? new SonioxTts({ apiKey: keys.soniox }) : null;
 const voiceOut: VoiceOut = new VoiceOut({
 	store,
 	synthesize: tts?.synthesize ?? null,
-	play: (tab, message) => gateway?.send(tab, message) ?? false,
-	speaker: () => speaker,
-	hasPage: () => (gateway?.countClients() ?? 0) > 0,
+	play: sendToClient,
+	speaker: () => seat.current,
+	hasPage: () => (gateway?.countClients() ?? 0) > 0 || discord.isOwnerIn(),
 	// voiceIn is assigned below; it is only asked once speech is under way.
 	isListening: () => voiceIn.isListening(),
 });
@@ -197,7 +207,7 @@ const kernel = keys.anthropic
 const openUrlFor =
 	(client: string): OpenUrl =>
 	(url, title) => {
-		const isSent = gateway?.send(client, { type: 'open_url', url, title }) ?? false;
+		const isSent = sendToClient(client, { type: 'open_url', url, title });
 
 		log.info(isSent ? 'doc sent to open' : 'doc not opened: tab gone', { client, title });
 
@@ -208,7 +218,7 @@ const listenSwitchFor = createListenSwitch({
 	// voiceIn is assigned below; a switch only runs once an utterance arrived through it.
 	modeOf: (client) => voiceIn.listenModeOf(client),
 	unlisten: (client) => voiceIn.unlisten(client),
-	send: (client, message) => gateway?.send(client, message) ?? false,
+	send: sendToClient,
 	say: (text) => voiceOut.say({ text, priority: 'high', source: 'kernel', isReply: true }),
 });
 
@@ -228,17 +238,43 @@ const voiceIn: VoiceInput = new VoiceInput({
 			openUrl: openUrlFor(client),
 			heardFrom: startedAt,
 			keepDictation: (kept, reason) =>
-				void gateway?.send(client, { type: 'dictation_kept', text: kept, reason }),
+				void sendToClient(client, { type: 'dictation_kept', text: kept, reason }),
 		}),
 	onTalkStart: () => voiceOut.talkStarted(),
 	onTalkEnd: () => voiceOut.talkEnded(),
-	onListenOff: (client, reason) => void gateway?.send(client, { type: 'listen_off', reason }),
-	onListenState: (client, isAwake) => void gateway?.send(client, { type: 'listen_state', isAwake }),
-	onHeardIgnored: (client) => void gateway?.send(client, { type: 'heard_ignored' }),
+	onListenOff: (client, reason) => void sendToClient(client, { type: 'listen_off', reason }),
+	onListenState: (client, isAwake) => void sendToClient(client, { type: 'listen_state', isAwake }),
+	onHeardIgnored: (client) => void sendToClient(client, { type: 'heard_ignored' }),
 	onKept: (text, client, reason) =>
-		void gateway?.send(client, { type: 'dictation_kept', text, reason }),
+		void sendToClient(client, { type: 'dictation_kept', text, reason }),
 	listSpokenLines: () => voiceOut.listRecentSpeech(),
 	debugAudioDir: process.env.VOICEOS_DEBUG_AUDIO === '1' ? paths.debugAudioDir : null,
+});
+
+const discord = startDiscordVoice({
+	store,
+	voiceDir: paths.voiceDir,
+	keysDir: paths.keysDir,
+	onOwnerIn: (mode) => {
+		voiceIn.listen(DISCORD_CLIENT, DISCORD_SAMPLE_RATE, mode);
+
+		// Called again on a mode change: the channel already has the seat, nothing to announce.
+		if (!seat.discordJoined()) {
+			return;
+		}
+
+		voiceOut.say({
+			text: "You're on Discord now: Voice OS listens here.",
+			priority: 'high',
+			source: 'kernel',
+		});
+	},
+	onOwnerOut: () => {
+		voiceIn.disconnect(DISCORD_CLIENT);
+		seat.discordLeft();
+	},
+	onAudio: (mono) => voiceIn.pushAudio(DISCORD_CLIENT, mono),
+	onClipDone: (id) => voiceOut.clipDone(id),
 });
 
 const bootAt = Date.now();
@@ -303,7 +339,7 @@ gateway = startGateway({
 			proxyHttpsPort,
 		}),
 	onMessage: (message, client) => {
-		speaker = client;
+		seat.pageUsed(client);
 
 		switch (message.type) {
 			case 'action':
@@ -323,6 +359,12 @@ gateway = startGateway({
 
 				return;
 			case 'ptt_start':
+				if (decidePageMic('ptt_start', seat.isOnDiscord) !== 'allow') {
+					log.info('page mic ignored: voice is on Discord', { client });
+
+					return;
+				}
+
 				voiceIn.start(client, message.sampleRate, { isDictation: message.dictation === true });
 
 				return;
@@ -346,6 +388,13 @@ gateway = startGateway({
 				return;
 			// The listening tab also plays speech, so its echo canceller knows what to remove.
 			case 'listen_start':
+				if (decidePageMic('listen_start', seat.isOnDiscord) === 'refuse') {
+					log.info('page mic refused: voice is on Discord', { client });
+					sendToClient(client, { type: 'listen_off', reason: 'voice is on Discord' });
+
+					return;
+				}
+
 				voiceIn.listen(client, message.sampleRate, message.mode ?? 'hands-free');
 
 				return;
@@ -357,14 +406,15 @@ gateway = startGateway({
 				voiceOut.clipDone(message.id);
 
 				return;
+			case 'discord_listen':
+				discord.setMode(message.mode);
+
+				return;
 		}
 	},
 	onAudio: (chunk, client) => voiceIn.pushAudio(client, chunk),
 	onConnect: (client) => {
-		// A second tab opening must not take the audio from the one in use; only an empty seat is taken.
-		if (speaker === null) {
-			speaker = client;
-		}
+		seat.pageOpened(client);
 
 		if (!shouldAnnounceRestart({ bootAt, now: Date.now(), isSaid: isRestartSaid, hadSavedView })) {
 			return;
@@ -375,10 +425,7 @@ gateway = startGateway({
 	},
 	onDisconnect: (client) => {
 		voiceIn.disconnect(client);
-
-		if (speaker === client) {
-			speaker = null;
-		}
+		seat.pageClosed(client);
 	},
 	readHealth: () => ({
 		pid: process.pid,
@@ -414,6 +461,7 @@ const shutdown = (signal: string): void => {
 	clearInterval(reminderTimer);
 	manager.stopAll();
 	machines.stop();
+	discord.stop();
 	tts?.close();
 	gateway?.stop();
 	process.exit(0);

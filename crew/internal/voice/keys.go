@@ -106,9 +106,10 @@ func MissingKeys() []string {
 }
 
 // SaveKey writes the key readable by its owner only; the directory likewise.
+// The optional Discord token goes through it too, without being one of KeyNames.
 func SaveKey(name, value string) error {
 	value = strings.TrimSpace(value)
-	if !IsKeyName(name) {
+	if !IsKeyName(name) && name != DiscordKey {
 		return fmt.Errorf("unknown key %q (want %s)", name, strings.Join(KeyNames, " or "))
 	}
 	if value == "" {

@@ -12,6 +12,7 @@ import { describeRouteChip } from '../../shared/route-chip.js';
 import { Mic, isMicAllowed } from '../audio.js';
 import { PRE_ROLL_MS } from '../ptt.js';
 import { describeListening, type InputMode, isListeningMode } from '../listen-mode.js';
+import type { ListeningMode } from '../../shared/protocol.js';
 import type { ListenCommand, MicStatus } from '../types.js';
 import { useListenMode } from '../use-listen-mode.js';
 import type { KeptDictation } from '../use-connection.js';
@@ -44,6 +45,13 @@ const MIC_TITLES: Record<InputMode, string> = {
 		'On demand: always listening, but only what follows “Voice OS” is taken; say “end of turn” to send at once',
 	'hands-free': 'Hands-free: always listening, speak over Voice OS to interrupt it',
 	dictation: 'Dictation: click to start, click again or Send when done',
+};
+
+const DISCORD_MODES: InputMode[] = ['on-demand', 'hands-free'];
+
+const DISCORD_TITLES: Record<ListeningMode, string> = {
+	'on-demand': 'Voice via Discord, on demand: only what follows “Voice OS” is taken',
+	'hands-free': 'Voice via Discord, hands-free: every turn is acted on',
 };
 
 const isTypingInField = (event: KeyboardEvent) =>
@@ -111,6 +119,10 @@ export const BottomBar = ({
 	const elapsedMs = useElapsed(dictationStartedAt);
 	const route = describeRouteChip(state, { draft });
 	const isAlarm = route.isAnswering && !isDictating;
+	// In the Discord voice channel, Discord is the mic: this page shows what is heard and takes typing.
+	const discord = state.discord?.isOwnerIn ? state.discord : null;
+	const isOnDiscordRef = useRef(false);
+	isOnDiscordRef.current = discord !== null;
 
 	useEffect(() => {
 		player.setNotify((id) => send({ type: 'audio_done', id }));
@@ -154,8 +166,12 @@ export const BottomBar = ({
 
 	const handleTalkStart = useCallback(
 		async ({ isDictation = false }: { isDictation?: boolean } = {}) => {
-			// The mic already streams in the listening modes.
-			if (isPressedRef.current || isListeningMode(listenModeRef.current)) {
+			// The mic already streams in the listening modes, or Discord has it.
+			if (
+				isPressedRef.current ||
+				isListeningMode(listenModeRef.current) ||
+				isOnDiscordRef.current
+			) {
 				return;
 			}
 
@@ -361,7 +377,7 @@ export const BottomBar = ({
 	const transcript = state.transcript;
 	const isListening = isListeningMode(listenMode) && micStatus === 'live';
 	const [isIgnoredShown, setIsIgnoredShown] = useState(false);
-	const isShowingTranscript = micStatus === 'live' && Boolean(transcript);
+	const isShowingTranscript = (micStatus === 'live' || discord !== null) && Boolean(transcript);
 	const fieldValue = isShowingTranscript && transcript ? transcript.text : draft;
 
 	// Grows with the words up to its CSS max height, then scrolls; live words keep their end in view.
@@ -400,6 +416,11 @@ export const BottomBar = ({
 	}, [ignoredAt]);
 
 	const isDictationMode = listenMode === 'dictation';
+	const discordTitle = discord
+		? discord.isHearing
+			? DISCORD_TITLES[discord.mode]
+			: 'Voice via Discord, but not hearing you: pick a mode to try again'
+		: '';
 	const routeLabel = isDictationMode ? describeDictationTarget(state) : route.label;
 	const routeClass = isDictationMode
 		? 'dictation'
@@ -412,46 +433,79 @@ export const BottomBar = ({
 	return (
 		<footer className={`botbar ${isAlarm ? 'alarm' : ''}`}>
 			<div className="voice-controls">
-				<button
-					type="button"
-					className={`mic ${micStatus === 'live' ? 'live' : ''} ${micStatus === 'denied' ? 'off' : ''} ${
-						isDictating ? 'dictating' : ''
-					}`}
-					aria-label={
-						isDictationMode
-							? isDictating
-								? 'Send the dictation'
-								: 'Start dictating'
-							: listenMode === 'push'
-								? 'Hold to talk'
-								: isAwake
-									? 'Listening to you'
-									: 'Listening'
-					}
-					title={MIC_TITLES[listenMode]}
-					onClick={
-						isDictationMode
-							? () => (isDictating ? handleTalkStop() : void handleTalkStart({ isDictation: true }))
-							: undefined
-					}
-					onPointerDown={isDictationMode ? undefined : () => void handleTalkStart()}
-					onPointerUp={isDictationMode ? undefined : handleTalkStop}
-					onPointerLeave={isDictationMode ? undefined : handleTalkStop}
-				>
-					<span className={`wave ${micStatus === 'live' ? 'live' : ''}`} aria-hidden="true">
-						<i style={{ animationDelay: '0s' }} />
-						<i style={{ animationDelay: '.1s' }} />
-						<i style={{ animationDelay: '.2s' }} />
+				{discord ? (
+					<span
+						className={`mic discord ${discord.isHearing ? '' : 'off'}`}
+						role="img"
+						aria-label={discord.isHearing ? 'Voice via Discord' : 'Voice via Discord, not hearing'}
+						title={discordTitle}
+					>
+						<svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+							<path
+								d="M3 9.5V8a5 5 0 0 1 10 0v1.5M3 9.5h1.5v3H3.5a.5.5 0 0 1-.5-.5Zm10 0h-1.5v3h1a.5.5 0 0 0 .5-.5Z"
+								stroke="currentColor"
+								strokeWidth="1.5"
+								strokeLinejoin="round"
+							/>
+						</svg>
 					</span>
-				</button>
+				) : (
+					<button
+						type="button"
+						className={`mic ${micStatus === 'live' ? 'live' : ''} ${micStatus === 'denied' ? 'off' : ''} ${
+							isDictating ? 'dictating' : ''
+						}`}
+						aria-label={
+							isDictationMode
+								? isDictating
+									? 'Send the dictation'
+									: 'Start dictating'
+								: listenMode === 'push'
+									? 'Hold to talk'
+									: isAwake
+										? 'Listening to you'
+										: 'Listening'
+						}
+						title={MIC_TITLES[listenMode]}
+						onClick={
+							isDictationMode
+								? () =>
+										isDictating ? handleTalkStop() : void handleTalkStart({ isDictation: true })
+								: undefined
+						}
+						onPointerDown={isDictationMode ? undefined : () => void handleTalkStart()}
+						onPointerUp={isDictationMode ? undefined : handleTalkStop}
+						onPointerLeave={isDictationMode ? undefined : handleTalkStop}
+					>
+						<span className={`wave ${micStatus === 'live' ? 'live' : ''}`} aria-hidden="true">
+							<i style={{ animationDelay: '0s' }} />
+							<i style={{ animationDelay: '.1s' }} />
+							<i style={{ animationDelay: '.2s' }} />
+						</span>
+					</button>
+				)}
 				<ModeMenu
-					mode={listenMode}
-					onChoose={chooseMode}
-					isOn={isListening}
-					isAwake={isAwake}
-					isIgnored={isIgnoredShown}
-					isDenied={micStatus === 'denied'}
-					title={MIC_TITLES[listenMode]}
+					{...(discord
+						? {
+								mode: discord.mode,
+								modes: DISCORD_MODES,
+								onChoose: (mode: InputMode) =>
+									isListeningMode(mode) && send({ type: 'discord_listen', mode }),
+								isOn: discord.isHearing,
+								isAwake: false,
+								isIgnored: false,
+								isDenied: !discord.isHearing,
+								title: discordTitle,
+							}
+						: {
+								mode: listenMode,
+								onChoose: chooseMode,
+								isOn: isListening,
+								isAwake,
+								isIgnored: isIgnoredShown,
+								isDenied: micStatus === 'denied',
+								title: MIC_TITLES[listenMode],
+							})}
 					languages={state.languages}
 					onLanguages={(languages) =>
 						send({ type: 'action', action: { type: 'set_languages', languages } })
@@ -469,11 +523,17 @@ export const BottomBar = ({
 					readOnly={isDictating}
 					onChange={(event) => setDraft(event.target.value)}
 					onKeyDown={handleFieldKey}
-					placeholder={describeListening({
-						mode: isListening || isDictationMode ? listenMode : 'push',
-						isAwake,
-						isDictating,
-					})}
+					placeholder={
+						discord
+							? discord.isHearing
+								? 'Voice OS hears you in Discord — or type a command'
+								: 'Not hearing you in Discord — pick a mode to try again, or type a command'
+							: describeListening({
+									mode: isListening || isDictationMode ? listenMode : 'push',
+									isAwake,
+									isDictating,
+								})
+					}
 					aria-label="Say or type a command"
 				/>
 				<div className="composer-side">
