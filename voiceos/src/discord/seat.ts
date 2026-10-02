@@ -60,8 +60,16 @@ export class SpeakerSeat {
 export type PageMicVerdict = 'allow' | 'ignore' | 'refuse';
 
 // While in the voice channel Discord is the mic: a press is dropped, a page asking to listen is told
-// no (listen_off), so it shows its mic off rather than live and unheard.
+// no (listen_off), so it shows its mic off rather than live and unheard. With voice off both are
+// dropped: a listen_off would turn the tab to push and lose the mode it comes back to.
 export const decidePageMic = (
 	type: 'ptt_start' | 'listen_start',
 	isOnDiscord: boolean,
-): PageMicVerdict => (!isOnDiscord ? 'allow' : type === 'listen_start' ? 'refuse' : 'ignore');
+	isVoiceOff: boolean,
+): PageMicVerdict => {
+	if (isVoiceOff) {
+		return 'ignore';
+	}
+
+	return !isOnDiscord ? 'allow' : type === 'listen_start' ? 'refuse' : 'ignore';
+};

@@ -446,6 +446,9 @@ export interface State {
 	names: Record<string, string>;
 	// What speech-to-text expects the developer to speak (Soniox language hints).
 	languages: string[];
+	// Voice off (the top bar's "voice"): nothing listens or speaks, Discord's bot leaves its channel;
+	// typing and the page go on. Kept across restarts.
+	voiceOff: boolean;
 	// The Discord voice channel (crew server discord setup), when set up; null otherwise.
 	discord: DiscordPresence | null;
 	// Activations of worktrees crew has made but Voice OS has not listed yet (Set up's "Open Voice
@@ -550,6 +553,8 @@ export type Action =
 	| { type: 'rename_session'; ref: string; name: string }
 	// The languages the developer speaks, from the listening menu (and loaded at boot).
 	| { type: 'set_languages'; languages: string[] }
+	// The top bar's "voice" (and loaded at boot).
+	| { type: 'set_voice_off'; voiceOff: boolean }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
 	// A status update said aloud covered these sessions: their waiting updates are heard.

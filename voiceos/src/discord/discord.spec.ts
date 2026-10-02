@@ -32,7 +32,7 @@ afterEach(() => {
 	voices = [];
 });
 
-const start = ({ isSetUp = true, hasToken = true, savedMode = '' } = {}) => {
+const start = ({ isSetUp = true, hasToken = true, savedMode = '', startPaused = false } = {}) => {
 	const voiceDir = mkdtempSync(join(tmpdir(), 'voiceos-discord-'));
 	const keysDir = mkdtempSync(join(tmpdir(), 'voiceos-keys-'));
 	dirs.push(voiceDir, keysDir);
@@ -78,6 +78,7 @@ const start = ({ isSetUp = true, hasToken = true, savedMode = '' } = {}) => {
 		},
 		createCodec: () => ({ encode: (frame) => frame, decode: (packet) => packet }),
 		now: () => Date.parse('2026-10-01T10:00:00Z'),
+		startPaused,
 	});
 	voices.push(voice);
 
@@ -251,6 +252,42 @@ describe('startDiscordVoice', () => {
 		expect(t.store.state.discord?.isConnected).toBe(true);
 		expect(t.status().error).toBe('');
 		expect(t.ownerIn).toEqual([]);
+	});
+
+	it('voice off → the bot leaves the channel, the owner out, crew told why; back on → joins again', () => {
+		const t = start();
+
+		t.events().onConnected(true);
+		t.events().onOwner(true);
+		t.voice.pause();
+
+		expect(t.closed()).toBe(1);
+		expect(t.ownerOut()).toBe(1);
+		expect(t.voice.isOwnerIn()).toBe(false);
+		expect(t.store.state.discord).toMatchObject({ isConnected: false, isOwnerIn: false });
+		expect(t.status()).toMatchObject({ connected: false, error: 'voice off' });
+
+		t.voice.resume();
+
+		expect(t.targets).toHaveLength(2);
+		expect(t.status()).toMatchObject({ error: '' });
+	});
+
+	it('voice off at boot → never joins; a setup changed meanwhile → recorded, joined once back on', () => {
+		const t = start({ startPaused: true });
+
+		expect(t.targets).toEqual([]);
+		expect(t.store.state.discord).toMatchObject({ isConnected: false, channelName: 'Voice OS' });
+
+		writeFileSync(
+			join(t.voiceDir, 'discord.json'),
+			JSON.stringify({ ...SETUP, channel: 'c2', channel_name: 'Standup' }),
+		);
+		t.voice.reload();
+		expect(t.targets).toEqual([]);
+
+		t.voice.resume();
+		expect(t.targets).toEqual([expect.objectContaining({ channel: 'c2' })]);
 	});
 
 	it('stopped → the status file no longer says connected', () => {

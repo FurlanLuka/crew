@@ -53,6 +53,23 @@ describe('BottomBar', () => {
 		expect(html).toContain('aria-label="Listening mode"');
 	});
 
+	it('voice off → "voice" struck where the mic was, the way back on; no mode menu; typing says so', () => {
+		const html = render({ ...createInitialState(), voiceOff: true });
+
+		expect(html).toContain('aria-label="Turn voice on"');
+		expect(html).toContain('vo-voice off');
+		expect(html).not.toContain('aria-label="Hold to talk"');
+		expect(html).not.toContain('aria-label="Listening mode"');
+		expect(html).toContain('placeholder="Voice is off · type a command"');
+	});
+
+	it('voice off in the Discord voice channel → still the way back on, no Discord badge', () => {
+		const html = render({ ...onDiscord, voiceOff: true });
+
+		expect(html).toContain('aria-label="Turn voice on"');
+		expect(html).not.toContain('aria-label="Voice via Discord"');
+	});
+
 	it('in the voice channel → a Discord badge, not a mic to press; what is heard in the box', () => {
 		const html = render(onDiscord);
 

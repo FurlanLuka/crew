@@ -66,14 +66,20 @@ describe('SpeakerSeat', () => {
 });
 
 describe('decidePageMic', () => {
+	it('voice off → a press and a listen both dropped, never refused (the tab keeps its mode)', () => {
+		expect(decidePageMic('ptt_start', false, true)).toBe('ignore');
+		expect(decidePageMic('listen_start', false, true)).toBe('ignore');
+		expect(decidePageMic('listen_start', true, true)).toBe('ignore');
+	});
+
 	it('not in the channel → the page mic works', () => {
-		expect(decidePageMic('ptt_start', false)).toBe('allow');
-		expect(decidePageMic('listen_start', false)).toBe('allow');
+		expect(decidePageMic('ptt_start', false, false)).toBe('allow');
+		expect(decidePageMic('listen_start', false, false)).toBe('allow');
 	});
 
 	// The refusal is a listen_off, so the page drops to push to talk and stays there after leaving.
 	it('in the channel → a press ignored, listening refused', () => {
-		expect(decidePageMic('ptt_start', true)).toBe('ignore');
-		expect(decidePageMic('listen_start', true)).toBe('refuse');
+		expect(decidePageMic('ptt_start', true, false)).toBe('ignore');
+		expect(decidePageMic('listen_start', true, false)).toBe('refuse');
 	});
 });

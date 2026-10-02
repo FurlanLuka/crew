@@ -193,6 +193,7 @@ export const createInitialState = (): State => ({
 	active: [],
 	names: {},
 	languages: defaultLanguages(),
+	voiceOff: false,
 	discord: null,
 	pendingActivations: [],
 });
@@ -1006,6 +1007,18 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'set_languages':
 			return withoutEffects({ ...state, languages: toLanguages(input.languages) });
+
+		case 'set_voice_off':
+			if (input.voiceOff === state.voiceOff) {
+				return withoutEffects(state);
+			}
+
+			// Back on, the updates that waited are not read out: the page showed them while it was off.
+			return withoutEffects({
+				...state,
+				voiceOff: input.voiceOff,
+				...(input.voiceOff ? {} : { meanwhile: [] }),
+			});
 
 		// followSends (sends.ts) owns these.
 		case 'offer_switch':

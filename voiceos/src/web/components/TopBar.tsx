@@ -1,11 +1,12 @@
 // Voice OS's top bar, docked: the crew mark (Home), Active, one tab per active session, "+" to
-// activate another; on the right Discord, Claude usage and the settings gear.
+// activate another; on the right Discord, Claude usage, "voice" (off and on) and the settings gear.
 import { listActiveRefs } from '../../shared/active.js';
 import { machineOf } from '../../shared/machine-ref.js';
 import { hasMachines, isNamed, readMachineName, readSessionLabel } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
 import { describeSessionBadge, readRefTitle } from '../derive.js';
 import type { Dispatch } from '../types.js';
+import { VoiceToggle } from './VoiceToggle.js';
 
 interface TopBarProps {
 	state: State;
@@ -110,6 +111,7 @@ export const TopBar = ({ state, dispatch, onHome }: TopBarProps) => {
 						{usage.join(' · ')}
 					</span>
 				)}
+				<VoiceToggle isOff={state.voiceOff} dispatch={dispatch} />
 				<button
 					type="button"
 					className="vo-gear"

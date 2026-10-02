@@ -173,6 +173,11 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+	// A test that failed with voice off must not fail every mic test after it.
+	if (store.state.voiceOff) {
+		store.dispatch({ type: 'set_voice_off', voiceOff: false });
+	}
+
 	const errors = pageErrors.splice(0);
 	expect(errors).toEqual([]);
 });
@@ -217,6 +222,19 @@ describe('voice os ui', () => {
 			.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-ref')));
 		expect(refs).toEqual(['store-front/main', 'checkout-api/main']);
 		expect(await page.locator('.vo-tab[data-ref]').count()).toBe(2);
+		await context.close();
+	}, 20_000);
+
+	it('Home → Voice OS while voice is off → its moment with "Voice" struck through', async () => {
+		store.dispatch({ type: 'set_voice_off', voiceOff: true });
+		const context = await browser.newContext({ permissions: ['microphone'] });
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+		await page.getByRole('main', { name: 'Home' }).waitFor({ timeout: 10_000 });
+
+		await page.locator('.launch-choice', { hasText: 'Voice OS' }).click();
+		await page.locator('.vo-moment .struck', { hasText: 'Voice' }).waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
@@ -342,9 +360,14 @@ describe('voice os ui', () => {
 	const openMicTab = async (): Promise<MicTab> => {
 		const context = await browser.newContext({ permissions: ['microphone'] });
 		await context.addInitScript(() => {
-			const probe = window as unknown as { __gum: number; __echo: unknown[] };
+			const probe = window as unknown as {
+				__gum: number;
+				__echo: unknown[];
+				__streams: MediaStream[];
+			};
 			probe.__gum = 0;
 			probe.__echo = [];
+			probe.__streams = [];
 			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 
 			navigator.mediaDevices.getUserMedia = (constraints) => {
@@ -353,7 +376,11 @@ describe('voice os ui', () => {
 					typeof constraints?.audio === 'object' ? constraints.audio.echoCancellation : null,
 				);
 
-				return getUserMedia(constraints);
+				return getUserMedia(constraints).then((stream) => {
+					probe.__streams.push(stream);
+
+					return stream;
+				});
 			};
 		});
 		const page = await context.newPage();
@@ -441,6 +468,89 @@ describe('voice os ui', () => {
 		await page.keyboard.up('Space');
 		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 3);
 		expect(listFromClient(client, 'ptt_start')).toHaveLength(3);
+		await context.close();
+	}, 20_000);
+
+	it('voice off from the top bar → listening stops, "Voice" struck in the moment, no press, typing still sends; back on → listening again, the moment whole', async () => {
+		const { context, page, client } = await openMicTab();
+		const other = await signIn();
+		await chooseMode(page, 'Hands-free');
+		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
+
+		await page.locator('.vo-top').getByRole('button', { name: 'Mute voice' }).click();
+		await waitUntil(() => store.state.voiceOff);
+		await waitUntil(() => listFromClient(client, 'listen_stop').length === 1);
+		await page.locator('.vo-moment .struck').waitFor({ timeout: 5000 });
+		// Every tab showing Voice OS plays it; one loaded while voice is off does not.
+		await other.page.locator('.vo-moment .struck').waitFor({ timeout: 5000 });
+		await other.page.reload();
+		await other.page.waitForSelector('.vo-top');
+		await Bun.sleep(800);
+		expect(await other.page.locator('.vo-moment').count()).toBe(0);
+		expect(
+			await other.page.locator('.vo-top').getByRole('button', { name: 'Turn voice on' }).count(),
+		).toBe(1);
+		await other.context.close();
+		await page.locator('.vo-bar').getByRole('button', { name: 'Turn voice on' }).waitFor();
+		expect(await page.getByRole('button', { name: 'Listening mode' }).count()).toBe(0);
+
+		await page.locator('body').click();
+		await page.keyboard.down('Space');
+		await Bun.sleep(200);
+		await page.keyboard.up('Space');
+		await Bun.sleep(300);
+		expect(listFromClient(client, 'ptt_start')).toHaveLength(0);
+		expect(listFromClient(client, 'listen_start')).toHaveLength(1);
+
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		await field.fill('what is running');
+		await field.press('Enter');
+		await waitUntil(() =>
+			received.some(
+				(entry) => entry.message.type === 'utterance' && entry.message.text === 'what is running',
+			),
+		);
+
+		await page.locator('.vo-top').getByRole('button', { name: 'Turn voice on' }).click();
+		await waitUntil(() => !store.state.voiceOff);
+		// The tab comes back in the mode it had.
+		await waitUntil(() => listFromClient(client, 'listen_start').length === 2);
+		expect(await readMode(page)).toBe('hands-free');
+		await page.locator('.vo-moment').waitFor({ timeout: 5000 });
+		expect(await page.locator('.vo-moment .struck').count()).toBe(0);
+		await context.close();
+	}, 20_000);
+
+	it('push to talk, voice off → the device let go (the recording light out), Space starts nothing; back on → Space talks again', async () => {
+		const { context, page, client } = await openMicTab();
+
+		const hold = async () => {
+			await page.locator('body').click();
+			await page.keyboard.down('Space');
+			await Bun.sleep(200);
+			await page.keyboard.up('Space');
+		};
+
+		await hold();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 1);
+
+		await page.locator('.vo-top').getByRole('button', { name: 'Mute voice' }).click();
+		await page.waitForFunction(
+			() =>
+				(window as unknown as { __streams: MediaStream[] }).__streams.every((stream) =>
+					stream.getTracks().every((track) => track.readyState === 'ended'),
+				),
+			null,
+			{ timeout: 5000 },
+		);
+		await hold();
+		await Bun.sleep(300);
+		expect(listFromClient(client, 'ptt_start')).toHaveLength(1);
+
+		await page.locator('.vo-top').getByRole('button', { name: 'Turn voice on' }).click();
+		await waitUntil(() => !store.state.voiceOff);
+		await hold();
+		await waitUntil(() => listFromClient(client, 'ptt_start').length === 2);
 		await context.close();
 	}, 20_000);
 

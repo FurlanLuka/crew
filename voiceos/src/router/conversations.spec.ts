@@ -2060,3 +2060,68 @@ describe('conversations', () => {
 		});
 	});
 });
+
+describe('voice off', () => {
+	it('typed words still reach the session; its answer is on the page unplayed, never heard — not even once voice is back on', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+
+		await convo.type('run the tests');
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'send', ref: 'store-front/main', text: 'run the tests' }),
+		);
+
+		await convo.answer('store-front/main', 'All 214 tests pass.');
+		// Another session's news would wait for the meanwhile line.
+		convo.store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'add backoff' });
+		await convo.answer('checkout-api/main', 'Backoff added.');
+		await convo.wait(60_000);
+
+		expect(convo.heard).toEqual([]);
+		expect(
+			convo.store.state.spoken
+				.filter((line) => line.text.includes('214 tests'))
+				.map((line) => line.isUnplayed),
+		).toEqual([true]);
+
+		convo.store.dispatch({ type: 'set_voice_off', voiceOff: false });
+		await convo.wait(60_000);
+
+		expect(convo.heard).toEqual([]);
+	});
+
+	it('the session on screen asks → shown unplayed, never heard; a typed answer lands on it', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main');
+		convo.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'q1',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'question',
+				input: {},
+				questions: [{ question: 'Postgres or SQLite?', multiSelect: false, options: [] }],
+			},
+		});
+		await convo.wait(10_000);
+
+		expect(convo.heard).toEqual([]);
+		expect(
+			convo.store.state.spoken
+				.filter((line) => line.text.includes('Postgres or SQLite?'))
+				.map((line) => line.isUnplayed),
+		).toEqual([true]);
+
+		convo.script([
+			toolUse('t1', 'answer', { ref: 'store-front/main', decision: 'choose', text: 'Postgres' }),
+		]);
+		await convo.type('Postgres.');
+
+		expect(convo.store.state.asks).toEqual([]);
+		expect(convo.heard).toEqual([]);
+	});
+});

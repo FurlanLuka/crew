@@ -2220,3 +2220,23 @@ describe('a crash with words waiting', () => {
 		expect(crashed.state.sessions[REF_A]?.queue).toHaveLength(1);
 	});
 });
+
+describe('set_voice_off', () => {
+	it('off → only the flag; back on → the updates that waited are dropped, the page showed them', () => {
+		const waiting = run([
+			{ type: 'worktrees', worktrees: [worktree('store-front/main')] },
+			{ type: 'active_loaded', refs: ['store-front/main'] },
+			{ type: 'meanwhile_added', ref: 'store-front/main', kind: 'done', about: 'tests pass' },
+		]).state;
+		expect(waiting.meanwhile).toHaveLength(1);
+
+		const off = run([{ type: 'set_voice_off', voiceOff: true }], waiting);
+		expect(off.state.voiceOff).toBe(true);
+		expect(off.state.meanwhile).toHaveLength(1);
+		expect(off.effects).toEqual([]);
+
+		const on = run([{ type: 'set_voice_off', voiceOff: false }], off.state);
+		expect(on.state.voiceOff).toBe(false);
+		expect(on.state.meanwhile).toEqual([]);
+	});
+});

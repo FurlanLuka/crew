@@ -14,6 +14,7 @@ import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
 import { MomentsRow } from './MomentsRow.js';
 import { QueueList } from './QueueList.js';
+import { VoiceToggle } from './VoiceToggle.js';
 
 interface BottomBarProps {
 	state: State;
@@ -66,6 +67,8 @@ export const BottomBar = ({
 	const { listenMode, micStatus, isDictating } = voice;
 	// In the Discord voice channel, Discord is the mic: this page shows what is heard and takes typing.
 	const discord = state.discord?.isOwnerIn ? state.discord : null;
+	// Voice off: no mic and no mode, only the way back on; typing goes on.
+	const isVoiceOff = state.voiceOff;
 	const isDictationMode = listenMode === 'dictation';
 	const isListening = isListeningMode(listenMode) && micStatus === 'live';
 	const discordTitle = discord
@@ -84,7 +87,9 @@ export const BottomBar = ({
 			{viewed && <QueueList session={viewed} dispatch={dispatch} />}
 			<LastSpokenLine state={state} />
 			<div className="vo-composer">
-				{discord ? (
+				{isVoiceOff ? (
+					<VoiceToggle isOff dispatch={dispatch} className="vo-mic" />
+				) : discord ? (
 					<span
 						className={`vo-mic discord ${discord.isHearing ? '' : 'off'}`}
 						role="img"
@@ -142,7 +147,7 @@ export const BottomBar = ({
 					keptDictation={keptDictation}
 					send={send}
 				/>
-				{!discord && (
+				{!discord && !isVoiceOff && (
 					<ModeMenu
 						mode={listenMode}
 						onChoose={voice.chooseMode}
@@ -155,7 +160,7 @@ export const BottomBar = ({
 						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
 					/>
 				)}
-				{discord && (
+				{discord && !isVoiceOff && (
 					<ModeMenu
 						mode={discord.mode}
 						modes={DISCORD_MODES}
