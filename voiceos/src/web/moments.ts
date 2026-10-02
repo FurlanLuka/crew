@@ -6,6 +6,8 @@ import { isReachable, readMachineTitle, readSessionLabel } from '../shared/machi
 import { machineOf } from '../shared/machine-ref.js';
 import type { Action, Denial, PendingAsk, SpokenLine, State } from '../shared/protocol.js';
 import { countOf } from './count.js';
+import { readScreenRef } from '../state/helpers.js';
+import { readSendNowAction } from '../state/delivery.js';
 
 // One answer button: the action it dispatches, or none for "not now" (the row is set aside here).
 export interface MomentAnswer {
@@ -45,6 +47,24 @@ const describeSwitchOffer = (state: State): Moment | null => {
 				answers: [
 					{ label: 'Activate', action: { type: 'activate', ref: offer.ref }, isPrimary: true },
 					{ label: 'Not now', action: null },
+				],
+			};
+		case 'send_now':
+			return {
+				key,
+				text: `Queued for after ${label}'s current work. Send it now?`,
+				say: 'say yes, or keep talking',
+				answers: [
+					...(offer.queuedId
+						? [
+								{
+									label: 'Send now',
+									action: readSendNowAction(state, offer.ref, offer.queuedId),
+									isPrimary: true as const,
+								},
+							]
+						: []),
+					{ label: 'Keep it queued', action: null },
 				],
 			};
 		case 'deactivate':
@@ -106,6 +126,12 @@ const findMeanwhileLine = (state: State, now: number): SpokenLine | null => {
 
 const describeMeanwhile = (state: State, now: number): Moment | null => {
 	const line = findMeanwhileLine(state, now);
+	const screen = readScreenRef(state);
+
+	// On the session it was about, its own stream says the same: the card would say it twice.
+	if (line && (line.refs ?? []).every((ref) => ref === screen)) {
+		return null;
+	}
 
 	if (line) {
 		return {

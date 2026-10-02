@@ -620,3 +620,136 @@ describe("Set up's chat sending to a machine's setup session", () => {
 		expect(result.state.switchOffer).toBeNull();
 	});
 });
+
+describe('"Send it now?" — spoken words the session on screen queued', () => {
+	// The session on screen, working on something it was given before (not a follow-up of it).
+	const busy = (): State =>
+		runAt([[10, { type: 'send', ref: SCREEN, text: 'refactor the router' }]], onScreen());
+	const instruct = (extra: Partial<Extract<Input, { type: 'send' }>> = {}): Input => ({
+		type: 'send',
+		ref: SCREEN,
+		text: 'also run the linter',
+		ack: { kind: 'instruction' },
+		isSpoken: true,
+		...extra,
+	});
+
+	it('queued behind its work → the line asks, and the offer holds the queued words', () => {
+		const result = reduceAt(busy(), 60_000, instruct());
+		const queued = result.state.sessions[SCREEN]?.queue.at(-1);
+
+		expect(spokenTexts(result)).toEqual(['Okay, after its current work. Send it now?']);
+		expect(queued?.text).toBe('also run the linter');
+		expect(result.state.switchOffer).toEqual({
+			ref: SCREEN,
+			at: 60_000,
+			kind: 'send_now',
+			queuedId: queued?.id,
+		});
+		// The fixed line: never handed to the voice-line wording, which may only ask to switch.
+		expect(
+			result.effects.some((effect) => effect.type === 'speak' && effect.facts !== undefined),
+		).toBe(false);
+	});
+
+	it('a question (asked aside), typed words, or words to an idle session → nothing asked', () => {
+		expect(
+			reduceAt(busy(), 60_000, instruct({ ack: { kind: 'question' } })).state.switchOffer,
+		).toBeNull();
+		expect(reduceAt(busy(), 60_000, instruct({ isSpoken: false })).state.switchOffer).toBeNull();
+		expect(reduceAt(onScreen(), 60_000, instruct()).state.switchOffer).toBeNull();
+	});
+
+	it('another offer still open → not asked over it', () => {
+		const offered = runAt([[59_000, { type: 'offer_switch', ref: OTHER }]], busy());
+		const result = reduceAt(offered, 60_000, instruct());
+
+		expect(spokenTexts(result)).toEqual(['Okay, after its current work.']);
+		expect(result.state.switchOffer?.ref).toBe(OTHER);
+	});
+
+	it('answered (a yes, the card) → closed, "Sending it now.", and the words go first', () => {
+		const asked = reduceAt(busy(), 60_000, instruct()).state;
+		const queuedId = asked.switchOffer?.queuedId ?? '';
+		const sent = reduceAt(asked, 61_000, {
+			type: 'promote_queued',
+			ref: SCREEN,
+			queuedId,
+			answersOffer: true,
+		});
+
+		expect(sent.state.switchOffer).toBeNull();
+		expect(spokenTexts(sent)).toEqual(['Sending it now.']);
+		// First in line, and the current work is cut so it goes now.
+		expect(sent.state.sessions[SCREEN]?.queue[0]?.text).toBe('also run the linter');
+		expect(sent.effects.some((effect) => effect.type === 'worker_interrupt')).toBe(true);
+	});
+
+	it('sent now another way (the kernel\'s "send it now", the queue\'s ▲) → closed quietly', () => {
+		const asked = reduceAt(busy(), 60_000, instruct()).state;
+		const sent = reduceAt(asked, 61_000, {
+			type: 'promote_queued',
+			ref: SCREEN,
+			queuedId: asked.switchOffer?.queuedId ?? '',
+		});
+
+		expect(sent.state.switchOffer).toBeNull();
+		expect(spokenTexts(sent)).toEqual([]);
+	});
+
+	it('taken back → closed too; sending all with nothing left waiting → "It already went."', () => {
+		const asked = reduceAt(busy(), 60_000, instruct()).state;
+		const queuedId = asked.switchOffer?.queuedId ?? '';
+
+		expect(
+			reduceAt(asked, 61_000, { type: 'take_back', ref: SCREEN, id: queuedId }).state.switchOffer,
+		).toBeNull();
+
+		const emptied = {
+			...asked,
+			sessions: {
+				...asked.sessions,
+				[SCREEN]: { ...asked.sessions[SCREEN]!, queue: [] },
+			},
+		};
+		const all = reduceAt(emptied, 61_000, {
+			type: 'promote_all_queued',
+			ref: SCREEN,
+			answersOffer: true,
+		});
+
+		expect(spokenTexts(all)).toEqual(['It already went.']);
+		expect(all.state.switchOffer).toBeNull();
+	});
+
+	it("▲ on another queued message → not this question's answer: still open", () => {
+		const asked = reduceAt(busy(), 60_000, instruct()).state;
+		const other = reduceAt(asked, 61_000, {
+			type: 'promote_queued',
+			ref: SCREEN,
+			queuedId: 'older',
+		});
+
+		expect(other.state.switchOffer?.kind).toBe('send_now');
+	});
+
+	it('its words cancelled → the question is moot, closed', () => {
+		const asked = reduceAt(busy(), 60_000, instruct()).state;
+		const cancelled = reduceAt(asked, 61_000, {
+			type: 'cancel_queued',
+			ref: SCREEN,
+			queuedId: asked.switchOffer?.queuedId ?? '',
+		});
+
+		expect(cancelled.state.switchOffer).toBeNull();
+	});
+
+	it('more words while it is asked → asked again, for the newer words', () => {
+		const asked = reduceAt(busy(), 60_000, instruct()).state;
+		const again = reduceAt(asked, 62_000, instruct({ text: 'and the types' }));
+
+		expect(spokenTexts(again)).toEqual(['Okay, after its current work. Send it now?']);
+		expect(again.state.switchOffer?.queuedId).toBe(again.state.sessions[SCREEN]?.queue.at(-1)?.id);
+		expect(again.state.switchOffer?.at).toBe(62_000);
+	});
+});

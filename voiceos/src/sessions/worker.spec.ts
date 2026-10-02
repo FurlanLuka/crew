@@ -16,6 +16,13 @@ const base = {
 };
 
 describe('buildWorkerEnv', () => {
+	it('a worktree gets CREW_REF; a plain session gets none, so crew never thinks it is in a worktree', () => {
+		const params = { home: '/Users/me', shouldKeepApiKey: false };
+
+		expect(buildWorkerEnv({ base, ref: 'store/main', ...params }).CREW_REF).toBe('store/main');
+		expect('CREW_REF' in buildWorkerEnv({ base, ref: 'chat/3fa9c1', ...params })).toBe(false);
+	});
+
 	it("turns on the SDK's Artifact tools; a developer's own setting, 0 included, stands", () => {
 		const params = { ref: 'store/main', home: '/Users/me', shouldKeepApiKey: false };
 

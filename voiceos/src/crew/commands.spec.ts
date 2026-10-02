@@ -154,12 +154,16 @@ const SAMPLES: { [T in SetupCommandType]: Extract<SetupCommand, { type: T }> } =
 	machines_rename: { type: 'machines_rename', id: 'vm1', name: 'Build box' },
 	keys_set: { type: 'keys_set', name: 'soniox', value: 'sk-test' },
 	discord_off: { type: 'discord_off' },
+	ls_chats: { type: 'ls_chats' },
+	chat_add: { type: 'chat_add', dir: '~/notes', name: 'Weekly notes' },
+	chat_rm: { type: 'chat_rm', id: 'chat/3fa9c1' },
 	discord_channels: { type: 'discord_channels' },
 	discord_text_channel: { type: 'discord_text_channel', channel: '1001' },
 };
 
 // The other shape of a variant whose flags are optional: crew's help tree must know it too.
 const SECOND_SAMPLES: SetupCommand[] = [
+	{ type: 'chat_add' },
 	{ type: 'uninstall', mode: 'keep', confirm: true },
 	{ type: 'dev_add', project: 'store-api', name: 'worker' },
 	{ type: 'add_worktree', ref: 'store-front/wrk2' },

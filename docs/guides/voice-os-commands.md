@@ -14,7 +14,7 @@ commands to learn. Any language you speak works the same way (see
 - [How your words are routed](#how-your-words-are-routed)
 - [Talking to sessions](#talking-to-sessions): `forward`, `send_to`, `queued_message`, `interrupt`
 - [Moving around](#moving-around): `switch_view`, `go_back`, `play_missed`
-- [Active sessions](#active-sessions): `activate`, `deactivate`, `list_sessions`
+- [Active sessions](#active-sessions): `activate`, `deactivate`, `list_sessions`, `new_session`, `remove_session`
 - [Answering what waits on you](#answering-what-waits-on-you): `answer`, `allow_denied`, `dev_offer`
 - [Asking how things are](#asking-how-things-are): `read_state`, `status_update`, `read_history`
 - [Dev servers](#dev-servers): `crew_dev`
@@ -61,7 +61,8 @@ reworded. A session that isn't running starts by itself.
 **What happens:** the words appear in the session's stream, and Voice OS reads its reply when it
 ends its turn. While the session is working:
 
-- an **instruction** waits in its queue;
+- an **instruction** waits in its queue. Said to the session on screen, Voice OS asks "Send it
+  now?": yes sends it at once;
 - a **question** is answered on the side, without stopping the work;
 - a **redirect** ("actually, stop the refactor and fix the login bug first") asks whether to switch
   now or do it after.
@@ -203,6 +204,29 @@ asked first: "checkout is working. Deactivate anyway?"
 **What happens:** counts first ("Build box has 11 worktrees in 6 workspaces; none active"), then
 names when the list is short. These are answered even on a session's screen. "What's running in the
 tests?" is about the work, so it still goes to the session.
+
+### Start a plain Claude session — `new_session`
+
+- "Start a new session called research."
+- "Open a plain Claude session in my notes folder."
+- "New session on Build box, call it scratch."
+
+**What happens:** "Started research." A plain session is a Claude conversation of its own, not a
+worktree: it runs in the folder you name on that machine (your home folder when you name none), with
+no crew instructions and no dev servers. It is active at once and starts a few seconds later; talk
+to it by its name like any session. A folder that does not exist there is refused, never created.
+
+**In practice:** the same as **New session** on the Activate page. Renaming works like any session's
+("call research the reading list").
+
+### Remove a plain session — `remove_session`
+
+- "Remove research."
+- "Delete the scratch session."
+
+**What happens:** "Removed research. Its folder stays." Its Claude stops and it leaves your lists;
+the folder and its files are never touched. One that is working is asked about first. Worktrees are
+never removed by voice: deactivate stops one, and Set up removes it.
 
 ## Answering what waits on you
 
@@ -408,5 +432,7 @@ Some words are settled before the kernel sees them:
 - **"For checkout?"** A spoken yes or no settles it directly. Anything longer is routed as usual.
 - **"Switch there?"** A bare no closes the offer and nothing else happens. A yes goes to the
   kernel, which switches (`switch_view`).
+- **"Send it now?"** Answered without the kernel: a bare yes sends the queued words now (as
+  `queued_message` "now" does), a bare no keeps them queued.
 - **"Voice OS"** at the start wakes it in on-demand mode, and **"end of turn"** sends what you said
   at once. These are part of [listening](voice-os.md#listening-modes), not commands.

@@ -1466,6 +1466,15 @@ describe('listWaitingItems', () => {
 		]);
 	});
 
+	it('"Send it now?" is answered in code: never in the kernel\'s list', () => {
+		const state: State = {
+			...createFixtureState({}, now),
+			switchOffer: { ref: 'checkout-api/main', at: now - 2000, kind: 'send_now', queuedId: 'q1' },
+		};
+
+		expect(listWaitingItems(state, now)).toEqual([]);
+	});
+
 	it('a fresh fix offer waits; a lapsed one does not', () => {
 		const freshState = createFixtureState(
 			{ offer: { ref: 'store-front/main', secondsAgo: 10 } },
@@ -1604,6 +1613,25 @@ describe('kernel context: session names', () => {
 
 		expect(message).toContain('Named sessions: voice os dev (store-front/main).');
 		expect(message).toContain('Screen: looking at voice os dev (store-front/main). ');
+	});
+
+	it('a plain session made with a name → listed by that name too', () => {
+		const fixture = createFixtureState({ view: 'store-front/main' }, now);
+		const chat = {
+			...fixture.sessions['store-front/main']!,
+			ref: 'chat/3fa9c1',
+			label: 'research',
+			isChat: true as const,
+			chatName: 'research',
+		};
+		const state: State = {
+			...fixture,
+			sessions: { ...fixture.sessions, 'chat/3fa9c1': chat },
+			order: [...fixture.order, 'chat/3fa9c1'],
+			active: [...fixture.active, 'chat/3fa9c1'],
+		};
+
+		expect(readMessage(state)).toContain('research (chat/3fa9c1)');
 	});
 });
 

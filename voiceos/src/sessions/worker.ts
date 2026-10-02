@@ -1,3 +1,4 @@
+import { isChatRef } from '../shared/machine-ref.js';
 import { query as sdkQuery, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Observation } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
@@ -36,7 +37,8 @@ export const buildWorkerEnv = ({
 		CLAUDE_CODE_ARTIFACT: '1',
 		...base,
 		HOME: home,
-		CREW_REF: ref,
+		// A plain session is not a worktree: crew commands there must not think they are in one.
+		...(isChatRef(ref) ? {} : { CREW_REF: ref }),
 	};
 
 	// Workers bill the Claude subscription; an API key in env would switch to per-token billing.

@@ -1,8 +1,15 @@
-// "+": every worktree on every machine, grouped by machine then workspace. Activating starts its
-// Claude: it gets a tab and a row in Active, with no page change. Worktrees are made in Set up.
-import { useState } from 'react';
+// "+": every worktree on every machine, grouped by machine then workspace, and the plain sessions
+// beside them. Activating starts its Claude: it gets a tab and a row in Active, with no page change.
+// Worktrees are made in Set up; a plain session is made here (crew chat add on that machine).
+import { type FormEvent, useState } from 'react';
 import { isActive, listVoiceRefsOn } from '../../shared/active.js';
-import { LOCAL_MACHINE, splitRef } from '../../shared/machine-ref.js';
+import {
+	CHAT_WORKSPACE,
+	isChatRef,
+	LOCAL_MACHINE,
+	refOn,
+	splitRef,
+} from '../../shared/machine-ref.js';
 import {
 	isMachineReachable,
 	isNamed,
@@ -12,7 +19,105 @@ import {
 import type { State } from '../../shared/protocol.js';
 import { readWorkLabel } from '../../shared/work-label.js';
 import { describeSessionBadge } from '../derive.js';
+import { isOk, readCrewLine, runCrew } from '../setup/api.js';
+import { findNamedRef, MAX_NAME_LENGTH } from '../../state/names.js';
 import type { Dispatch } from '../types.js';
+
+// A row's title: a session's name, a plain session's label (it has no worktree), else the worktree.
+const readRowTitle = (state: State, ref: string): string =>
+	isNamed(state, ref) || isChatRef(ref)
+		? readSessionLabel(state, ref)
+		: splitRef(ref).worktree || ref;
+
+// The heading a workspace group shows: plain sessions are not a workspace called chat.
+export const describeGroup = (workspace: string): string =>
+	workspace === CHAT_WORKSPACE ? 'Plain sessions' : workspace;
+
+interface NewSessionProps {
+	state: State;
+	machine: string;
+	title: string;
+	dispatch: Dispatch;
+	onDone: (line: string) => void;
+}
+
+// A plain Claude session on this machine: a folder there (home when empty) and a name. Made with crew
+// on that machine, then activated: it starts as soon as it is listed.
+const NewSession = ({ state, machine, title, dispatch, onDone }: NewSessionProps) => {
+	const [dir, setDir] = useState('');
+	const [name, setName] = useState('');
+	const [line, setLine] = useState<string | null>(null);
+	const [isBusy, setIsBusy] = useState(false);
+
+	const start = async (event: FormEvent) => {
+		event.preventDefault();
+
+		// Two sessions under one name would leave "ask research" guessing.
+		if (name.trim() && findNamedRef(state, name.trim())) {
+			setLine(`A session is already called ${name.trim()}.`);
+
+			return;
+		}
+
+		setIsBusy(true);
+		const reply = await runCrew(machine, {
+			type: 'chat_add',
+			...(dir.trim() ? { dir: dir.trim() } : {}),
+			...(name.trim() ? { name: name.trim() } : {}),
+		});
+		setIsBusy(false);
+		const added =
+			isOk(reply) && 'json' in reply ? (reply.json as { id?: string } | undefined) : undefined;
+
+		if (!added?.id) {
+			setLine(readCrewLine(reply) || 'Not started.');
+
+			return;
+		}
+
+		dispatch({ type: 'activate', ref: refOn(machine, `${CHAT_WORKSPACE}/${added.id}`) });
+		onDone(`Started ${name.trim() || 'a plain session'} on ${title}.`);
+	};
+
+	return (
+		<form
+			className="vb-new"
+			aria-label={`New session on ${title}`}
+			onSubmit={(event) => void start(event)}
+		>
+			<label className="field">
+				<span>Folder</span>
+				<input
+					type="text"
+					autoComplete="off"
+					placeholder="home folder"
+					value={dir}
+					onChange={(event) => setDir(event.target.value)}
+				/>
+			</label>
+			<label className="field">
+				<span>Name</span>
+				<input
+					type="text"
+					autoComplete="off"
+					placeholder="what you call it aloud"
+					maxLength={MAX_NAME_LENGTH}
+					value={name}
+					onChange={(event) => setName(event.target.value)}
+				/>
+			</label>
+			<div className="row-actions">
+				<button type="submit" className="btn sm primary" disabled={isBusy}>
+					Start
+				</button>
+				<button type="button" className="btn sm ghost" onClick={() => onDone('')}>
+					Cancel
+				</button>
+			</div>
+			{line && <p className="vs-note">{line}</p>}
+		</form>
+	);
+};
 
 interface ActivateProps {
 	state: State;
@@ -87,6 +192,9 @@ export const listActivateSections = (
 
 export const Activate = ({ state, dispatch, machine }: ActivateProps) => {
 	const [query, setQuery] = useState('');
+	// The machine whose New session form is open, and the line the last one left.
+	const [newOn, setNewOn] = useState<string | null>(null);
+	const [newLine, setNewLine] = useState<string | null>(null);
 	const [filter, setFilter] = useState(machine ?? 'all');
 	const sections = listActivateSections(state, filter, query.trim());
 	const machineIds = listMachineIds(state);
@@ -143,19 +251,42 @@ export const Activate = ({ state, dispatch, machine }: ActivateProps) => {
 							<span className={`dot ${section.isOffline ? 'ask' : 'ok'}`} />
 							<b>{section.title}</b>
 							<span className="m">{section.status}</span>
+							<button
+								type="button"
+								className="btn sm ghost"
+								disabled={section.isOffline}
+								onClick={() => {
+									setNewLine(null);
+									setNewOn(section.id);
+								}}
+							>
+								New session
+							</button>
 						</div>
+						{newOn === section.id && (
+							<NewSession
+								state={state}
+								machine={section.id}
+								title={section.title}
+								dispatch={dispatch}
+								onDone={(line) => {
+									setNewOn(null);
+									setNewLine(line || null);
+								}}
+							/>
+						)}
+						{newLine && newOn === null && <p className="vs-note">{newLine}</p>}
 						{section.groups.length === 0 && (
 							<p className="vb-empty">No worktrees here yet. Worktrees are made in Set up.</p>
 						)}
 						{section.groups.map((group) => (
 							<div key={group.workspace} className="ws">
 								<div className="ws-h-row">
-									<b>{group.workspace}</b>
+									<b>{describeGroup(group.workspace)}</b>
 								</div>
 								<div className="box">
 									{group.refs.map((ref) => {
 										const session = state.sessions[ref];
-										const { worktree } = splitRef(ref);
 										const topic = session ? (readWorkLabel(session) ?? 'not started') : '';
 
 										if (session && isActive(state, ref)) {
@@ -173,7 +304,7 @@ export const Activate = ({ state, dispatch, machine }: ActivateProps) => {
 												>
 													<span className={`dot ${badge.dot}`} />
 													<span className="sub">
-														<b>{isNamed(state, ref) ? readSessionLabel(state, ref) : worktree}</b>
+														<b>{readRowTitle(state, ref)}</b>
 														<span className="m">{topic}</span>
 													</span>
 													<span className="chip ok">active</span>
@@ -187,7 +318,7 @@ export const Activate = ({ state, dispatch, machine }: ActivateProps) => {
 											<div key={ref} className="box-row" data-ref={ref}>
 												<span className="dot" />
 												<span className="sub">
-													<b>{worktree || ref}</b>
+													<b>{readRowTitle(state, ref)}</b>
 													<span className="m">
 														{waiting
 															? `${session?.queue.length ?? 1} waiting: “${waiting.text}”`

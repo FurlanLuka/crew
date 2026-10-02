@@ -1,4 +1,9 @@
-import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
+import {
+	currentMachine,
+	hasMachines,
+	readGivenName,
+	readMachineTitle,
+} from '../shared/machines.js';
 import { LOCAL_MACHINE, isSetupRef } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
@@ -179,7 +184,8 @@ export const listWaitingItems = (state: State, now: number, heardFrom = now): Wa
 		...(isOfferFresh(state.devOffer, now)
 			? [{ ref: state.devOffer.ref, what: 'fix_offer' as const, at: state.devOffer.at }]
 			: []),
-		...(isSwitchOfferFresh(state.switchOffer, heardFrom)
+		// "Send it now?" is answered in code before the kernel (router.ts): never the kernel's to read.
+		...(isSwitchOfferFresh(state.switchOffer, heardFrom) && state.switchOffer.kind !== 'send_now'
 			? [
 					{
 						ref: state.switchOffer.ref,
@@ -293,7 +299,7 @@ const describeMachines = (state: State): string => {
 
 // A named session is said by its name with its ref beside it, so the model can call it either.
 const nameRef = (state: State, ref: string): string => {
-	const name = state.names[ref];
+	const name = readGivenName(state, ref);
 
 	return name ? `${name} (${ref})` : ref;
 };
@@ -331,7 +337,7 @@ export const buildKernelMessage = ({
 	});
 	const heardBefore = listHeardBefore({ spoken: state.spoken, heardFrom });
 	const voiceOsQuestion = findVoiceOsQuestion({ spoken: state.spoken, now, heardFrom });
-	const namedRefs = activeRefs.filter((ref) => state.names[ref]);
+	const namedRefs = activeRefs.filter((ref) => readGivenName(state, ref));
 
 	return [
 		`Screen: ${screenDescription}.`,

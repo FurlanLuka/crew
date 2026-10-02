@@ -1,5 +1,6 @@
 import type { State } from '../shared/protocol.js';
-import { splitRef } from '../shared/machine-ref.js';
+import { CHAT_WORKSPACE, splitRef } from '../shared/machine-ref.js';
+import { readGivenName } from '../shared/machines.js';
 import { listActiveInOrder } from '../shared/active.js';
 import { toSpokenPart, NUMBER_WORDS } from '../shared/spoken.js';
 import type { ToolContext } from './tools.js';
@@ -29,6 +30,11 @@ interface IsSessionNamedParams {
 
 export const isSessionNamed = ({ ref, text, words, order }: IsSessionNamedParams): boolean => {
 	const { workspace, worktree } = splitRef(ref);
+
+	// A plain session is named by its name alone: "let's chat about it" names none, nor does its id.
+	if (workspace === CHAT_WORKSPACE) {
+		return false;
+	}
 
 	if (workspace.split('-').some((part) => part.length >= 4 && words.has(part))) {
 		const siblingRefs = order.filter((other) => splitRef(other).workspace === workspace);
@@ -61,7 +67,7 @@ const isDisplayNameSaid = (name: string | undefined, plain: string): boolean => 
 export const readNamedInstead = (state: State, ref: string, utterance: string): string | null => {
 	const plain = toPlainWords(utterance);
 
-	if (isDisplayNameSaid(state.names[ref], plain)) {
+	if (isDisplayNameSaid(readGivenName(state, ref), plain)) {
 		return null;
 	}
 
@@ -71,8 +77,8 @@ export const readNamedInstead = (state: State, ref: string, utterance: string): 
 	const named = state.order.filter(
 		(other) =>
 			other !== ref &&
-			isDisplayNameSaid(state.names[other], plain) &&
-			toPlainWords(state.names[other] ?? '') === asked,
+			isDisplayNameSaid(readGivenName(state, other), plain) &&
+			toPlainWords(readGivenName(state, other) ?? '') === asked,
 	);
 
 	return named.length === 1 ? (named[0] ?? null) : null;
@@ -80,7 +86,7 @@ export const readNamedInstead = (state: State, ref: string, utterance: string): 
 
 // The developer's own name for the session was said.
 export const isOwnNameSaid = (state: State, ref: string, utterance: string): boolean =>
-	isDisplayNameSaid(state.names[ref], toPlainWords(utterance));
+	isDisplayNameSaid(readGivenName(state, ref), toPlainWords(utterance));
 
 interface NamingText {
 	// Slashes and dashes kept: "checkout-api/main" is said in full.
@@ -99,7 +105,7 @@ const readNamingText = (utterance: string): NamingText => {
 
 const isNamedInFull = (state: State, ref: string, utterance: string, text: string): boolean =>
 	text.includes(splitRef(ref).local.toLowerCase()) ||
-	isDisplayNameSaid(state.names[ref], toPlainWords(utterance));
+	isDisplayNameSaid(readGivenName(state, ref), toPlainWords(utterance));
 
 // This one session named in the words, however many share its workspace: "checkout" names
 // checkout-api/main and checkout-api/wrk1 alike. Which of them the words are for is not decided here.
@@ -133,8 +139,8 @@ const toWordList = (text: string): string[] => toPlainWords(text).trim().split('
 
 // The words that named a session in full: the developer's name for it when said, else its ref.
 const readNamedWords = (state: State, ref: string, plain: string): string[] =>
-	isDisplayNameSaid(state.names[ref], plain)
-		? toWordList(state.names[ref] ?? '')
+	isDisplayNameSaid(readGivenName(state, ref), plain)
+		? toWordList(readGivenName(state, ref) ?? '')
 		: toWordList(splitRef(ref).local);
 
 // "crew research": the workspace and the worktree said together, as one phrase.

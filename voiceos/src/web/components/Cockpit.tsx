@@ -13,7 +13,7 @@ import {
 	readRefTitle,
 	readWorkingOn,
 } from '../derive.js';
-import { useCrew } from '../setup/api.js';
+import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
 import { hasDevServers } from '../setup/derive.js';
 import type { CrewMember, CrewProject } from '../setup/types.js';
 import type { Dispatch } from '../types.js';
@@ -35,17 +35,87 @@ interface CockpitProps {
 	dispatch: Dispatch;
 }
 
-// Whether any of the worktree's projects has a dev server recorded, from crew.
+// Whether any of the worktree's projects has a dev server recorded, from crew. A plain session has no
+// worktree to ask about.
 const useHasDevServers = (session: Session): boolean => {
 	const machine = readMachine(session.ref);
-	const members = useCrew<CrewMember[]>(machine, { type: 'show', ref: toLocalRef(session.ref) });
-	const projects = useCrew<CrewProject[]>(machine, { type: 'ls_projects' });
+	const members = useCrew<CrewMember[]>(
+		machine,
+		session.isChat ? null : { type: 'show', ref: toLocalRef(session.ref) },
+	);
+	const projects = useCrew<CrewProject[]>(machine, session.isChat ? null : { type: 'ls_projects' });
 
 	return hasDevServers(members.data ?? [], projects.data ?? []);
 };
 
+// Where a Remove stands: the confirm shown, crew running, or crew's reason it was not removed.
+export type Removal =
+	| { kind: 'asking' }
+	| { kind: 'removing' }
+	| { kind: 'failed'; line: string }
+	| null;
+
+interface RemoveChatProps {
+	session: Session;
+	dispatch: Dispatch;
+	state: Removal;
+	onState: (state: Removal) => void;
+}
+
+// A plain session goes: its Claude stops, crew drops its record; the folder and the conversation's
+// files stay where they are.
+const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
+	const remove = async () => {
+		onState({ kind: 'removing' });
+		dispatch({ type: 'deactivate', ref: session.ref });
+		const reply = await runCrew(readMachine(session.ref), {
+			type: 'chat_rm',
+			id: toLocalRef(session.ref),
+		});
+
+		if (!isOk(reply)) {
+			onState({ kind: 'failed', line: readCrewLine(reply) || 'Not removed.' });
+
+			return;
+		}
+
+		// Its name goes with it, and so does the page: back to Active, before the next listing drops it.
+		dispatch({ type: 'rename_session', ref: session.ref, name: '' });
+		dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		onState(null);
+	};
+
+	if (state?.kind === 'asking') {
+		return (
+			<>
+				<button type="button" className="btn sm danger" onClick={() => void remove()}>
+					Remove: its folder stays
+				</button>
+				<button type="button" className="btn sm ghost" onClick={() => onState(null)}>
+					Keep it
+				</button>
+			</>
+		);
+	}
+
+	return (
+		<>
+			<button
+				type="button"
+				className="btn sm ghost danger"
+				disabled={state?.kind === 'removing'}
+				onClick={() => onState({ kind: 'asking' })}
+			>
+				Remove
+			</button>
+			{state?.kind === 'failed' && <span className="m">{state.line}</span>}
+		</>
+	);
+};
+
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	const [isRenaming, setIsRenaming] = useState(false);
+	const [removal, setRemoval] = useState<Removal>(null);
 	const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 	const openRun = session.subagentRuns.find((run) => run.taskId === openTaskId) ?? null;
 	const now = useNow();
@@ -92,6 +162,14 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					>
 						{isOn ? 'Deactivate' : 'Activate'}
 					</button>
+					{session.isChat && (
+						<RemoveChat
+							session={session}
+							dispatch={dispatch}
+							state={removal}
+							onState={setRemoval}
+						/>
+					)}
 				</div>
 			</div>
 			<SessionStateRow state={state} sessionRef={session.ref} dispatch={dispatch} />
