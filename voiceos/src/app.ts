@@ -36,6 +36,7 @@ import { Store } from './state/store.js';
 import { createListenSwitch } from './speech/hands-free-switch.js';
 import { VoiceInput } from './speech/voice-in.js';
 import { VoiceOut } from './speech/voice-out.js';
+import { applyPageAction } from './router/page-actions.js';
 import { connectSpeech, speakKernelReplies } from './speech/connect.js';
 import { DevWatch } from './dev/watch.js';
 import { connectMachines, readMachineStatuses } from './remote/cockpit-machines.js';
@@ -374,7 +375,7 @@ gateway = startGateway({
 					log.info('view switched', { client, view: message.action.view });
 				}
 
-				store.dispatch(message.action);
+				applyPageAction(store, message.action);
 
 				return;
 			case 'utterance':

@@ -5,6 +5,7 @@ import { createSession } from '../state/reducer.js';
 import type { Judge } from '../judge/judge.js';
 import type { State } from '../shared/protocol.js';
 import { executeTool, type ToolContext } from './tools.js';
+import { KERNEL_ASKS_WHICH_NOTE } from './send-guard.js';
 
 const SCREEN = 'store-front/main';
 const CHECKOUT = 'checkout-api/main';
@@ -117,6 +118,7 @@ describe('which session the words name', () => {
 		expect(sentRefs(remote.actions)).toEqual(['vm1:checkout-api/main']);
 		expect(local.result.ok).toBe(false);
 		expect(local.result.content).toContain('which session');
+		expect(local.result.note).toBe(KERNEL_ASKS_WHICH_NOTE);
 		expect(sentRefs(local.actions)).toEqual([]);
 	});
 
@@ -319,6 +321,7 @@ describe('send_to a session not on screen', () => {
 
 		expect(result.ok).toBe(false);
 		expect(result.content).toContain('say which session');
+		expect(result.note).toBe(KERNEL_ASKS_WHICH_NOTE);
 		expect(actions).toEqual([]);
 	});
 

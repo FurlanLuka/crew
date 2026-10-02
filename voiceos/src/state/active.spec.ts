@@ -70,7 +70,7 @@ describe('activate', () => {
 		expect(state.switchOffer).toEqual({ ref: OTHER, at: 50 });
 	});
 
-	it('by voice, already on screen → started, nothing said, opened from Active now', () => {
+	it('by voice, already on screen → started, "Activated X." with no switch offered, opened from Active now (debug note 32)', () => {
 		const { state, effects } = run(
 			[
 				{ type: 'switch_view', view: { kind: 'session', ref: OTHER } },
@@ -79,7 +79,8 @@ describe('activate', () => {
 			{ start: connected() },
 		);
 
-		expect(effects).toEqual([{ type: 'worker_start', ref: OTHER }]);
+		expect(starts(effects)).toEqual([OTHER]);
+		expect(said(effects)).toEqual(['Activated store, work 1.']);
 		expect(state.switchOffer).toBeNull();
 		expect(state.view).toEqual({ kind: 'session', ref: OTHER, from: 'active' });
 		expect(parentView(state)).toEqual({ kind: 'active' });

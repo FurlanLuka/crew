@@ -16,7 +16,7 @@ import {
 } from './instant-ack.js';
 
 describe('the instant ack pool', () => {
-	it('six neutral lines, none of them a wake word, a stop word, or a question', () => {
+	it('seven neutral lines, none of them a wake word, a stop word, or a question', () => {
 		expect(INSTANT_ACK_POOL.map((line) => stripTags(line.text))).toEqual([
 			'Mm-hm.',
 			'Okay.',
@@ -24,6 +24,7 @@ describe('the instant ack pool', () => {
 			'One sec.',
 			'Sure.',
 			'On it.',
+			'Let me check.',
 		]);
 
 		for (const line of INSTANT_ACK_POOL) {
@@ -49,7 +50,7 @@ describe('pickInstantAck', () => {
 		let history: string[] = [];
 
 		for (let round = 0; round < 200; round++) {
-			const line = pickInstantAck(history);
+			const line = pickInstantAck({ history, isQuestion: false });
 
 			expect(history).not.toContain(line.text);
 			history = rememberInstantAck(history, line.text);
@@ -59,8 +60,25 @@ describe('pickInstantAck', () => {
 	it('random over the rest: the lowest and highest draw land on the first and last left', () => {
 		const history = ['[warm] Mm-hm.', '[warm] Okay.'];
 
-		expect(pickInstantAck(history, () => 0).text).toBe('[warm] Got it.');
-		expect(pickInstantAck(history, () => 0.999).text).toBe('[warm] On it.');
+		expect(pickInstantAck({ history, isQuestion: false, random: () => 0 }).text).toBe(
+			'[warm] Got it.',
+		);
+		expect(pickInstantAck({ history, isQuestion: false, random: () => 0.999 }).text).toBe(
+			'[warm] Let me check.',
+		);
+	});
+
+	it('after a question, only a line that cannot be heard as the answer', () => {
+		const picked = new Set<string>();
+		let history: string[] = [];
+
+		for (let round = 0; round < 50; round++) {
+			const line = pickInstantAck({ history, isQuestion: true });
+			picked.add(stripTags(line.text));
+			history = rememberInstantAck(history, line.text);
+		}
+
+		expect([...picked].sort()).toEqual(['Let me check.', 'One sec.']);
 	});
 
 	it('remembers the last two only', () =>

@@ -25,6 +25,8 @@ export type StreamItem = { id: string; at: number } & (
 			status: AsideStatus;
 			// Voice OS context that came with the question: the fork reads it, and so does the turn it may become.
 			note?: string;
+			// Asked while its session was on screen: an answer the developer has left by then is held.
+			askedOnScreen?: true;
 	  }
 );
 

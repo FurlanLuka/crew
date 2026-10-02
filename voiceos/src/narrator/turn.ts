@@ -96,7 +96,7 @@ export type AsideNarratorOptions = Pick<TurnNarratorOptions, 'store' | 'narrate'
 
 export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOptions) => {
 	// Said like any answer to a direct question, but it is no turn: no needs-you, no journal.
-	return async ({ ref, question, answer }: NarrateAsideEffect): Promise<void> => {
+	return async ({ ref, question, answer, askedOnScreen }: NarrateAsideEffect): Promise<void> => {
 		const session = store.state.sessions[ref];
 
 		if (!session) {
@@ -118,6 +118,8 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 					})
 				).text.trim() || cleanSpokenText(body, ASIDE_FALLBACK_WORDS);
 
+		// Asked on its screen, then left (debug note 42): held when it plays elsewhere, like a turn's line.
+		// Asked from elsewhere on purpose, the answer is what they wait for: said wherever they are.
 		say({
 			text,
 			priority: 'high',
@@ -125,6 +127,7 @@ export const createAsideNarrator = ({ store, narrate, say }: AsideNarratorOption
 			isNamed: true,
 			isAsking: false,
 			isAnswer: true,
+			...(askedOnScreen ? { isHoldable: true } : {}),
 		});
 	};
 };

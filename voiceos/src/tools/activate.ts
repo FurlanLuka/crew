@@ -120,18 +120,24 @@ const readActivateOffer = (state: State, ref: string, now: number): SwitchOffer 
 		: null;
 };
 
-interface MoreThanStartParams {
+interface MoreThanCommandParams {
 	ref: string;
 	toolContext: ToolContext;
 	state: State;
+	// more_than_start for an activate, more_than_command for a switch or a go back.
+	key: 'more_than_start' | 'more_than_command';
+	context: string;
 }
 
-// "Activate checkout and run the tests": activating alone never gives the session the rest.
-const isMoreThanStart = async ({
+// "Activate checkout and run the tests", "switch to checkout and ask it to run the tests": the command
+// alone never gives the session the rest.
+export const isMoreThanCommand = async ({
 	ref,
 	toolContext,
 	state,
-}: MoreThanStartParams): Promise<boolean> => {
+	key,
+	context,
+}: MoreThanCommandParams): Promise<boolean> => {
 	const { utterance } = toolContext;
 
 	if (utterance === undefined || toolContext.sentTo?.has(ref)) {
@@ -142,15 +148,17 @@ const isMoreThanStart = async ({
 		(named) => named !== ref,
 	);
 
-	return (
-		!namesAnother &&
-		(await toolContext.judge({
-			key: 'more_than_start',
-			utterance,
-			context: `The session: ${ref}`,
-		})) === 'yes'
-	);
+	return !namesAnother && (await toolContext.judge({ key, utterance, context })) === 'yes';
 };
+
+const isMoreThanStart = (
+	params: Omit<MoreThanCommandParams, 'key' | 'context'>,
+): Promise<boolean> =>
+	isMoreThanCommand({
+		...params,
+		key: 'more_than_start',
+		context: `The session: ${params.ref}`,
+	});
 
 // forward reaches only the session on screen: from elsewhere it is send_to.
 const describeHowToSend = (ref: string, toolContext: ToolContext): string =>
@@ -248,16 +256,9 @@ export const activateSession = async ({
 		};
 	}
 
-	// Voice OS says "Activated X. Switch there?" itself, or that its machine is out of reach; on its
-	// own screen nothing needs saying.
-	return {
-		...succeed(
-			screen === ref
-				? `activated ${ref}: say nothing`
-				: `activated ${ref}; Voice OS said so: say nothing`,
-		),
-		recordAs,
-	};
+	// Voice OS says "Activated X." (with "Switch there?" when it is not on screen) itself, or that its
+	// machine is out of reach.
+	return { ...succeed(`activated ${ref}; Voice OS said so: say nothing`), recordAs };
 };
 
 export const deactivateSession = async ({

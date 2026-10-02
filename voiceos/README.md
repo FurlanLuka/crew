@@ -211,7 +211,8 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 - **Responsive, not talkative.** Two things fill the silences, and each errs toward saying nothing.
   - *Instant acknowledgement* (`speech/instant-ack.ts`): when the router hands a spoken turn to the
     kernel (`RouterOptions.onKernelTurn`, wired in `app.ts`, off in the conversation tests), a
-    neutral pool line ("Mm-hm.", "Got it.", never one of the last two) plays 600 ms after the router
+    neutral pool line ("Mm-hm.", "Got it.", never one of the last two; after words ending in a question
+    mark only "One sec." or "Let me check.", which cannot be heard as a yes) plays 600 ms after the router
     took the words, unless the words are under four (`MIN_REQUEST_WORDS`), Voice OS is muted, spoke
     in the last 6 s, already queued its answer, has something playing or queued, or the developer is
     talking (`decideInstantAck`). An ack not yet heard is withdrawn when the answer arrives or the

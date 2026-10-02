@@ -17,6 +17,7 @@ import type { KernelHandleParams } from './kernel.js';
 import { resolveTypedTarget, type UtteranceSource } from './refs.js';
 import { readScreenRef } from '../state/helpers.js';
 import { readTargetAnswer, settleTarget } from './target.js';
+import { readStatusOffer } from './status-offer.js';
 import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
 import { isBareNo, isShortEnoughToAnswer } from '../tools/send.js';
@@ -333,6 +334,15 @@ export class UtteranceRouter {
 				!turn.reply &&
 				turn.calls.every((call) => call.name === 'ignore_words') &&
 				turn.calls.length > 0;
+			// Queued after the answer, which the kernel's reply already put in line.
+			const offered = isSpoken
+				? readStatusOffer({ state: store.state, calls: turn.calls, reply: turn.reply })
+				: null;
+
+			if (offered) {
+				log.info('status of another session: switch offered', { ref: offered });
+				store.dispatch({ type: 'offer_switch', ref: offered });
+			}
 
 			return {
 				utterance: text,

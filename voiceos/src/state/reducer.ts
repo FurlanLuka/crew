@@ -102,7 +102,13 @@ export type Effect =
 	  }
 	// A side question to run in a fork of the session, and its answer to say.
 	| { type: 'side_answer'; ref: string; itemId: string; question: string; note?: string }
-	| { type: 'narrate_aside'; ref: string; question: string; answer: string }
+	| {
+			type: 'narrate_aside';
+			ref: string;
+			question: string;
+			answer: string;
+			askedOnScreen?: true;
+	  }
 	// Lets a held command lapse: command_expired comes back after COMMAND_TTL_MS.
 	| { type: 'expire_command'; askId: string }
 	// reply: the answer to what the developer just said (no chime before it).
