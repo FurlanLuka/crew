@@ -299,7 +299,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   when one was picked (`--text-channel`, kept across reruns), else the voice channel's own chat
   (`MessagesChannel`); every limit is checked before anything goes. A remote has no token: it stages
   the message under `~/.crew/discord-out/<id>/` and asks the main (`voice discord _send <id>`, the
-  link adds `--source`), which fetches it over scp and posts (`discord_relay.go`). Sessions learn of
+  link adds `--source`), which fetches it over scp and posts (`discord_relay.go`; plain files only, the
+  remote removes its own stage; the relay waits 150/160/170 s on main, daemon and remote crew, where a
+  read waits 25/30/35 s — `discord-send.json` pins the argv on both sides). Sessions learn of
   it from the crew section only when `DiscordSendReady` (here, or the main asked with a 3 s deadline):
   `workspace.PromptExtras`, set by `main`.
   **Queries** (`cmd_server_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew server

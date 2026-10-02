@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/voice"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -202,7 +203,9 @@ func discordSend(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, discordUsage)
 		os.Exit(1)
 	}
-	if !hasText && !term.IsTerminal(os.Stdin.Fd()) {
+	// Stdin is the text only when nothing else was given: an agent's open, never-closed stdin must not
+	// hang a send of files.
+	if !hasText && len(msg.Files) == 0 && !term.IsTerminal(os.Stdin.Fd()) {
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<20))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: reading stdin: %v\n", err)
@@ -226,11 +229,7 @@ func relayDiscordSend(msg voice.DiscordMessage) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	argv := []string{"voice", "discord", "_send", id}
-	if jsonOutput {
-		argv = append(argv, "--json")
-	}
-	reply, err := voice.AskMain(voice.RemoteQuerySocket(), argv)
+	reply, err := voice.AskMainWithin(voice.RemoteQuerySocket(), voice.DiscordSendQuery(id, jsonOutput), voice.DiscordSendWait)
 	// The main removed its copy and ours over SSH when it fetched it; this covers a main never reached.
 	os.RemoveAll(voice.DiscordStageDir(id))
 	switch {
@@ -255,19 +254,31 @@ func firstNonEmpty(values ...string) string {
 	return "no answer"
 }
 
+// parseDiscordSendStagedArgs checks what the main runs for a stage: <stage id>, and the --source the
+// main's link added for a remote's (none for the main's own). Mirrors query-allow.ts; the shared
+// fixture discord-send.json pins both. Pure.
+func parseDiscordSendStagedArgs(args []string) (id, source string, err error) {
+	usage := errors.New("usage: crew server discord _send <stage id> [--source=<machine>]")
+	if len(args) == 0 || len(args) > 2 || !voice.IsDiscordStageID(args[0]) {
+		return "", "", usage
+	}
+	if len(args) == 2 {
+		match := sourcePattern.FindStringSubmatch(args[1])
+		if match == nil || match[1] == voice.MainID {
+			return "", "", usage
+		}
+		source = match[1]
+	}
+	return args[0], source, nil
+}
+
 // discordSendStaged is the main posting a stage: its own, or a remote's (--source names it; the
 // main's link adds it, never the remote).
 func discordSendStaged(args []string) {
-	var id, source string
-	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "--source="); ok {
-			source = v
-		} else if id == "" && !strings.HasPrefix(a, "-") {
-			id = a
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: unknown argument %q\n", a)
-			os.Exit(1)
-		}
+	id, source, err := parseDiscordSendStagedArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 	sent, err := voice.SendStagedDiscord(id, source)
 	sayDiscordSent(sent, err)
@@ -312,4 +323,12 @@ func discordChannels() {
 		}
 		fmt.Printf("%s\t%s\t%s\n", row.ID, row.Name, strings.Join(marks, ", "))
 	}
+}
+
+// discordPromptExtras: a session learns of crew server discord send only where it would post.
+func discordPromptExtras() []string {
+	if voice.DiscordSendReady() {
+		return []string{workspace.DiscordSendLine}
+	}
+	return nil
 }

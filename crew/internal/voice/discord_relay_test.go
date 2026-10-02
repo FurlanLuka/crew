@@ -8,22 +8,17 @@ import (
 	"testing"
 )
 
-// fakeRemote stands in for SSH to a remote whose home is a temp dir: scp copies out of it, and the
-// clean-up script runs as rm there.
+// fakeRemote stands in for scp from a remote whose home is a temp dir.
 func fakeRemote(t *testing.T) (home string, ran *[]string) {
 	t.Helper()
 	home = t.TempDir()
 	ran = &[]string{}
-	savedFrom, savedRun := copyFrom, runRemote
-	copyFrom = func(host, dir, parent string) error {
+	saved := fetchDiscordStage
+	fetchDiscordStage = func(host, dir, parent string) error {
 		*ran = append(*ran, host+": scp "+dir)
 		return copyTree(filepath.Join(home, dir), filepath.Join(parent, filepath.Base(dir)))
 	}
-	runRemote = func(host, script string) (string, error) {
-		*ran = append(*ran, host+": "+script)
-		return "", nil
-	}
-	t.Cleanup(func() { copyFrom, runRemote = savedFrom, savedRun })
+	t.Cleanup(func() { fetchDiscordStage = saved })
 	return home, ran
 }
 
@@ -73,7 +68,8 @@ func TestStageThenSend_ARemotesMessageReachesDiscordWhole(t *testing.T) {
 	if got.payload["content"] != "Here it is." || got.files["files[0]=shot.png"] != "xxx" || got.files["files[1]=shot.png"] != "xxxx" {
 		t.Errorf("posted %+v %v", got.payload, got.files)
 	}
-	if len(*ran) != 2 || !strings.Contains((*ran)[1], "rm -rf") || !strings.Contains((*ran)[1], id) {
+	// One scp, nothing else over SSH: the remote removes its own stage once the main answers.
+	if len(*ran) != 1 || !strings.Contains((*ran)[0], id) {
 		t.Errorf("ssh %v", *ran)
 	}
 }
@@ -183,5 +179,40 @@ func TestDiscordSendReady_OnARemoteTheMainSays(t *testing.T) {
 		if ready {
 			t.Errorf("%s: ready", name)
 		}
+	}
+}
+
+func TestSendStagedDiscord_ARefusedSendStillRemovesItsStage(t *testing.T) {
+	setUpDiscord(t, homeServer)
+	fakePost(t, http.StatusForbidden)
+	id, err := StageDiscordMessage(DiscordMessage{Text: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := SendStagedDiscord(id, ""); err == nil {
+		t.Fatal("sent")
+	}
+	if _, err := os.Stat(DiscordStageDir(id)); !os.IsNotExist(err) {
+		t.Errorf("the stage is still there: %v", err)
+	}
+}
+
+func TestReadStagedMessage_ALinkOutOfTheStageIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	secret := writeTemp(t, "discord.key", 5)
+	if err := os.MkdirAll(filepath.Join(dir, "0"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(dir, "0", "x.png")); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"text":"x","files":["0/x.png"]}`
+	if err := os.WriteFile(filepath.Join(dir, stageManifest), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := readStagedMessage(dir); err == nil || !strings.Contains(err.Error(), "not a plain file") {
+		t.Errorf("err = %v", err)
 	}
 }

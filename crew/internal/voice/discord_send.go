@@ -60,39 +60,52 @@ type attachment struct {
 	data []byte
 }
 
-// planDiscordMessage checks every limit before anything is sent: a message is posted whole or not at
-// all. Text past Discord's limit goes as message.md beside the files.
-func planDiscordMessage(msg DiscordMessage) (content string, files []attachment, err error) {
+// CheckDiscordLimits checks every limit from the files' sizes alone, before anything is read or sent:
+// a message is posted whole or not at all.
+func CheckDiscordLimits(msg DiscordMessage) error {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" && len(msg.Files) == 0 {
-		return "", nil, errors.New("nothing to send: give --text, --file, or text on stdin")
+		return errors.New("nothing to send: give --text, --file, or text on stdin")
 	}
-	isLong := len([]rune(text)) > MaxDiscordText
 	count := len(msg.Files)
-	if isLong {
+	if isLongText(text) {
 		count++
 	}
 	if count > MaxDiscordFiles {
-		return "", nil, fmt.Errorf("%d files: Discord takes at most %d in one message", count, MaxDiscordFiles)
+		return fmt.Errorf("%d files: Discord takes at most %d in one message", count, MaxDiscordFiles)
 	}
 	for _, path := range msg.Files {
 		info, err := os.Stat(path)
 		if err != nil {
-			return "", nil, fmt.Errorf("cannot read %s: %w", path, err)
+			return fmt.Errorf("cannot read %s: %w", path, err)
 		}
 		if info.IsDir() {
-			return "", nil, fmt.Errorf("%s is a folder: send the files in it", path)
+			return fmt.Errorf("%s is a folder: send the files in it", path)
 		}
 		if info.Size() > MaxDiscordFile {
-			return "", nil, fmt.Errorf("%s is %s: Discord takes at most %s per file", path, formatBytes(info.Size()), formatBytes(MaxDiscordFile))
+			return fmt.Errorf("%s is %s: Discord takes at most %s per file", path, formatBytes(info.Size()), formatBytes(MaxDiscordFile))
 		}
+	}
+	return nil
+}
+
+func isLongText(text string) bool { return len([]rune(text)) > MaxDiscordText }
+
+// planDiscordMessage reads a message that passed its limits. Text past Discord's limit goes as
+// message.md beside the files.
+func planDiscordMessage(msg DiscordMessage) (content string, files []attachment, err error) {
+	if err := CheckDiscordLimits(msg); err != nil {
+		return "", nil, err
+	}
+	text := strings.TrimSpace(msg.Text)
+	for _, path := range msg.Files {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return "", nil, fmt.Errorf("cannot read %s: %w", path, err)
 		}
 		files = append(files, attachment{name: filepath.Base(path), data: data})
 	}
-	if isLong {
+	if isLongText(text) {
 		files = append(files, attachment{name: longTextFile, data: []byte(text + "\n")})
 		return "", files, nil
 	}

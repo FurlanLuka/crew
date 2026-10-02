@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
-	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
 // A remote has no Discord token: it stages its message, the main fetches the stage over scp (the
@@ -33,6 +33,14 @@ func remoteDiscordStageDir(id string) string { return ".crew/discord-out/" + id 
 
 const stageManifest = "message.json"
 
+// fetchDiscordStage copies a remote's stage into a local parent directory; a var so tests fake scp.
+var fetchDiscordStage = func(host, dir, parent string) error {
+	args := append(scpOptions(), "-r", host+":"+dir, parent+"/")
+	debug.Log("voice", "discord send: scp ← %s:%s", host, dir)
+	out, err := osexec.Command("scp", args...).CombinedOutput()
+	return describeRunError(out, err)
+}
+
 // The manifest keeps the text and each file's own name: files sit in numbered folders, so two named
 // alike never collide and each keeps its name in Discord.
 type stagedMessage struct {
@@ -42,16 +50,22 @@ type stagedMessage struct {
 
 // StageDiscordMessage copies a message into a new stage and returns its id. The limits are checked
 // first, so a message the main would refuse never travels.
-func StageDiscordMessage(msg DiscordMessage) (string, error) {
-	if _, _, err := planDiscordMessage(msg); err != nil {
+func StageDiscordMessage(msg DiscordMessage) (id string, err error) {
+	if err := CheckDiscordLimits(msg); err != nil {
 		return "", err
 	}
 	raw := make([]byte, 8)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
-	id := hex.EncodeToString(raw)
+	id = hex.EncodeToString(raw)
 	dir := DiscordStageDir(id)
+	// A stage that failed halfway is never left behind.
+	defer func() {
+		if err != nil {
+			os.RemoveAll(dir)
+		}
+	}()
 	manifest := stagedMessage{Text: msg.Text, Files: []string{}}
 	for i, path := range msg.Files {
 		name := filepath.Base(path)
@@ -60,7 +74,6 @@ func StageDiscordMessage(msg DiscordMessage) (string, error) {
 			return "", err
 		}
 		if err := copyFile(path, filepath.Join(into, name)); err != nil {
-			os.RemoveAll(dir)
 			return "", err
 		}
 		manifest.Files = append(manifest.Files, filepath.Join(fmt.Sprint(i), name))
@@ -73,7 +86,6 @@ func StageDiscordMessage(msg DiscordMessage) (string, error) {
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(dir, stageManifest), data, 0o600); err != nil {
-		os.RemoveAll(dir)
 		return "", err
 	}
 	debug.Log("voice", "discord send: staged %s (%d files)", id, len(manifest.Files))
@@ -114,7 +126,12 @@ func readStagedMessage(dir string) (DiscordMessage, error) {
 		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 			return DiscordMessage{}, fmt.Errorf("the staged message names a file outside it: %s", rel)
 		}
-		msg.Files = append(msg.Files, filepath.Join(dir, clean))
+		path := filepath.Join(dir, clean)
+		// Only files the stage holds itself: a link out of it could name the main's own token.
+		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+			return DiscordMessage{}, fmt.Errorf("the staged message's %s is not a plain file", rel)
+		}
+		msg.Files = append(msg.Files, path)
 	}
 	return msg, nil
 }
@@ -136,10 +153,10 @@ func SendStagedDiscord(id, source string) (DiscordSent, error) {
 			return DiscordSent{}, err
 		}
 		defer os.RemoveAll(parent)
-		if err := copyFrom(host, remoteDiscordStageDir(id), parent); err != nil {
+		// The remote removes its own stage once the main answers.
+		if err := fetchDiscordStage(host, remoteDiscordStageDir(id), parent); err != nil {
 			return DiscordSent{}, fmt.Errorf("fetching the message from %s: %w", source, err)
 		}
-		runRemote(host, "rm -rf \"$HOME\"/"+crewExec.ShellQuote(remoteDiscordStageDir(id)))
 		dir = filepath.Join(parent, id)
 	} else {
 		defer os.RemoveAll(dir)
@@ -164,15 +181,32 @@ func machineHost(id string) (string, error) {
 	return "", errors.New("no machine " + id + " in machines.json")
 }
 
-// discordReadyWait bounds the remote's question at a session's start: no answer, no Discord line.
+// discordReadyWait bounds the remote's question at a session's start (with the 2 s dial, about 5 s at
+// worst): no answer, no Discord line.
 var discordReadyWait = 3 * time.Second
+
+// DiscordSendWait is how long a remote waits for the main to fetch and post its message: past the
+// main's own 150 s for running crew and its daemon's 160 s (query-allow.ts).
+const DiscordSendWait = 170 * time.Second
 
 // discordRole is this machine's role; a var so tests never ask a real main through a real daemon.
 var discordRole = func() Role { return CurrentRole(false) }
 
+// DiscordSendQuery and DiscordStatusQuery are what a remote asks the main;
+// voiceos/test/fixtures/shared/discord-send.json pins them with the main's allowlist (query-allow.ts).
+func DiscordSendQuery(id string, json bool) []string {
+	argv := []string{"voice", "discord", "_send", id}
+	if json {
+		argv = append(argv, "--json")
+	}
+	return argv
+}
+
+func DiscordStatusQuery() []string { return []string{"voice", "discord", "status", "--json"} }
+
 // askMainForDiscord is the remote's question to the main; a var for the same reason.
 var askMainForDiscord = func() (QueryReply, error) {
-	return AskMainWithin(RemoteQuerySocket(), []string{"voice", "discord", "status", "--json"}, discordReadyWait)
+	return AskMainWithin(RemoteQuerySocket(), DiscordStatusQuery(), discordReadyWait)
 }
 
 // DiscordSendReady says whether crew server discord send would post: set up here, or — on a remote,

@@ -122,6 +122,25 @@ describe('a Discord message from a remote', () => {
 		]));
 });
 
+describe('a Discord message from a remote, as crew sends and checks it too', () => {
+	const fixture = JSON.parse(
+		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/discord-send.json'), 'utf8'),
+	) as { send: string[]; status: string[]; allowed: string[][]; refused: string[][] };
+
+	it("crew's own send and status queries → allowed", () => {
+		expect(isAllowedQuery(fixture.send)).toBe(true);
+		expect(isAllowedQuery(fixture.status)).toBe(true);
+	});
+
+	it.each(fixture.allowed)('%j → allowed', (...args) =>
+		expect(isAllowedQuery(['voice', 'discord', '_send', ...args])).toBe(true),
+	);
+
+	it.each(fixture.refused)('%j → refused', (...args) =>
+		expect(isAllowedQuery(['voice', 'discord', '_send', ...args])).toBe(false),
+	);
+});
+
 describe('the dev handoff, as crew checks it too', () => {
 	const fixture = JSON.parse(
 		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/dev-handoff.json'), 'utf8'),

@@ -97,6 +97,15 @@ const isAllowedDiscordQuery = (rest: string[]): boolean => {
 	}
 };
 
+// A staged Discord message is fetched over scp and posted (up to 10 files of 10 MB): it gets minutes
+// where a read gets seconds. The main runs crew for this long; the remote's daemon waits a little
+// longer, and crew there longer still (voice.discordSendWait).
+export const DISCORD_SEND_QUERY_MS = 150_000;
+export const DISCORD_SEND_WAIT_MS = 160_000;
+
+export const isDiscordSendQuery = (args: string[]): boolean =>
+	args[0] === 'voice' && args[1] === 'discord' && args[2] === '_send';
+
 const isSourcedQuery = (args: string[]): boolean =>
 	(args[1] === 'dev' && args[2] === '_handoff') || (args[1] === 'discord' && args[2] === '_send');
 

@@ -256,3 +256,90 @@ func TestMessageChannels_TextAnnouncementAndVoiceByName(t *testing.T) {
 		t.Errorf("channels %v", ids)
 	}
 }
+
+func TestFindMessageChannel_IDThenExactThenTextBeforeVoice(t *testing.T) {
+	postable := MessageChannels([]discordChannel{
+		{ID: "1", Name: "general", Type: discordTextChannel},
+		{ID: "2", Name: "General", Type: discordVoiceChannel},
+		{ID: "5", Name: "news", Type: discordAnnouncementChannel},
+	})
+	for want, id := range map[string]string{
+		"GENERAL": "1", // any case: the text channel before the voice one
+		"General": "2", // as written: the voice channel
+		"2":       "2",
+		"news":    "5",
+	} {
+		if c, ok := findMessageChannel(postable, want); !ok || c.ID != id {
+			t.Errorf("%q → %+v %v, want %s", want, c, ok, id)
+		}
+	}
+	if _, ok := findMessageChannel(postable, "random"); ok {
+		t.Error("an unknown name found a channel")
+	}
+}
+
+func TestCheckDiscordLimits_Boundaries(t *testing.T) {
+	small := writeTemp(t, "a.txt", 1)
+	ten := make([]string, MaxDiscordFiles)
+	for i := range ten {
+		ten[i] = small
+	}
+	for name, msg := range map[string]DiscordMessage{
+		"exactly the text limit":       {Text: strings.Repeat("a", MaxDiscordText)},
+		"the limit in multibyte runes": {Text: strings.Repeat("é", MaxDiscordText)},
+		"exactly ten files":            {Files: ten},
+		"a file of exactly 10 MB":      {Files: []string{writeTemp(t, "max.bin", MaxDiscordFile)}},
+	} {
+		if err := CheckDiscordLimits(msg); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, files, _ := planDiscordMessage(DiscordMessage{Text: strings.Repeat("é", MaxDiscordText)}); len(files) != 0 {
+		t.Error("2000 multibyte runes went as a file")
+	}
+}
+
+func TestReadRetryAfter(t *testing.T) {
+	saved := discordRetryWait
+	discordRetryWait = 10 * time.Second
+	t.Cleanup(func() { discordRetryWait = saved })
+
+	for raw, want := range map[string]time.Duration{
+		`{"retry_after": 1.5}`: 1500 * time.Millisecond,
+		`{"retry_after": 0}`:   10 * time.Second,
+		`{"retry_after": -2}`:  10 * time.Second,
+		`{"retry_after": 99}`:  10 * time.Second,
+		`not json`:             10 * time.Second,
+	} {
+		if got := readRetryAfter([]byte(raw)); got != want {
+			t.Errorf("%s → %v, want %v", raw, got, want)
+		}
+	}
+}
+
+func TestSendDiscord_ARejectedTokenSaysSo(t *testing.T) {
+	setUpDiscord(t, homeServer)
+	fakePost(t, http.StatusUnauthorized)
+
+	if _, err := SendDiscord(DiscordMessage{Text: "hi"}); err != ErrDiscordRejected {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestSetupDiscord_AnotherServerDropsTheKeptTextChannel(t *testing.T) {
+	isolateKeys(t)
+	cfg := homeServer
+	cfg.Guild, cfg.TextChannel, cfg.TextChannelName = "999", "1", "general"
+	if err := writeDiscordConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	f := oneGuild()
+	f.guilds[0].Permissions = postPerms
+	f.serve(t)
+
+	res, err := SetupDiscord(goodToken, DiscordOptions{})
+
+	if err != nil || res.Config.TextChannel != "" {
+		t.Errorf("kept %+v (%v)", res.Config, err)
+	}
+}

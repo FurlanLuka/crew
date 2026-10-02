@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -85,11 +86,11 @@ func TestBrowserOpener(t *testing.T) {
 }
 
 func TestParseDiscordSetupArgs(t *testing.T) {
-	opts, err := parseDiscordSetupArgs([]string{"--guild=155", "--channel=Voice OS", "--user=226"})
+	opts, err := parseDiscordSetupArgs([]string{"--guild=155", "--channel=Voice OS", "--user=226", "--text-channel= #general "})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.Guild != "155" || opts.Channel != "Voice OS" || opts.User != "226" {
+	if opts.Guild != "155" || opts.Channel != "Voice OS" || opts.User != "226" || opts.TextChannel != "#general" {
 		t.Errorf("opts %+v", opts)
 	}
 	if _, err := parseDiscordSetupArgs([]string{"--token=x"}); err == nil {
@@ -212,5 +213,79 @@ func TestServerSub(t *testing.T) {
 		if sub != tt.want || len(rest) != tt.rest {
 			t.Errorf("serverSub(%v, %s) = %s %v", tt.args, tt.bare, sub, rest)
 		}
+	}
+}
+
+func TestParseDiscordSendArgs(t *testing.T) {
+	msg, hasText, err := parseDiscordSendArgs([]string{"--file=a.png", "--text=hi", "--file= b.txt "})
+	if err != nil || !hasText || msg.Text != "hi" || strings.Join(msg.Files, ",") != "a.png,b.txt" {
+		t.Errorf("got %+v %v %v", msg, hasText, err)
+	}
+	// --text= with nothing after it is still given: stdin is not read for it.
+	if _, hasText, err := parseDiscordSendArgs([]string{"--text="}); err != nil || !hasText {
+		t.Errorf("an empty --text: %v %v", hasText, err)
+	}
+	if _, hasText, _ := parseDiscordSendArgs([]string{"--file=a.png"}); hasText {
+		t.Error("no --text read as given")
+	}
+	for _, bad := range [][]string{{"--file="}, {"--to=general"}, {"hello"}} {
+		if _, _, err := parseDiscordSendArgs(bad); err == nil {
+			t.Errorf("%v accepted", bad)
+		}
+	}
+}
+
+// The relay's argv and stage ids, as Voice OS's allowlist checks them: one shared fixture.
+func TestDiscordSendSharedFixture(t *testing.T) {
+	data, err := os.ReadFile("../voiceos/test/fixtures/shared/discord-send.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Send, Status     []string
+		Allowed, Refused [][]string
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if got := voice.DiscordSendQuery("0123456789abcdef", true); !reflect.DeepEqual(got, fixture.Send) {
+		t.Errorf("send query %v, fixture %v", got, fixture.Send)
+	}
+	if got := voice.DiscordStatusQuery(); !reflect.DeepEqual(got, fixture.Status) {
+		t.Errorf("status query %v, fixture %v", got, fixture.Status)
+	}
+	// --json is stripped before crew parses; the main's link adds --source.
+	withoutJSON := func(args []string) []string {
+		kept := []string{}
+		for _, a := range args {
+			if a != "--json" {
+				kept = append(kept, a)
+			}
+		}
+		return kept
+	}
+	for _, args := range fixture.Allowed {
+		for _, sourced := range [][]string{withoutJSON(args), append(withoutJSON(args), "--source=vm1")} {
+			if id, _, err := parseDiscordSendStagedArgs(sourced); err != nil || id != args[0] {
+				t.Errorf("%v: %q %v", sourced, id, err)
+			}
+		}
+	}
+	for _, args := range fixture.Refused {
+		// A --source the remote wrote is the allowlist's to refuse; crew takes the one the link adds.
+		if len(args) == 2 && strings.HasPrefix(args[1], "--source=") {
+			continue
+		}
+		if _, _, err := parseDiscordSendStagedArgs(withoutJSON(args)); err == nil {
+			t.Errorf("%v: want refused", args)
+		}
+	}
+	for _, source := range []string{"--source=main", "--source=", "--source=VM 1", "vm1"} {
+		if _, _, err := parseDiscordSendStagedArgs([]string{"0123456789abcdef", source}); err == nil {
+			t.Errorf("%q: want refused", source)
+		}
+	}
+	if _, source, err := parseDiscordSendStagedArgs([]string{"0123456789abcdef", "--source=vm1"}); err != nil || source != "vm1" {
+		t.Errorf("source %q %v", source, err)
 	}
 }
