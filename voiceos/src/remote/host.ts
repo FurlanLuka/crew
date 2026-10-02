@@ -1,6 +1,7 @@
 // A remote machine's side: its sessions run here, one main at a time drives them over a link.
 // The sessions outlive any link; what happened while no main listened is in the next snapshot.
 
+import { DISCORD_SEND_WAIT_MS, isDiscordSendQuery } from './query-allow.js';
 import { createLogger } from '../log.js';
 import type { Observation, SessionStatus, WorktreeInfo } from '../shared/protocol.js';
 import type { CrewRunner } from '../crew/adapter.js';
@@ -260,7 +261,9 @@ export class RemoteHost {
 			});
 		}
 
-		const timeoutMs = this.options.queryTimeoutMs ?? QUERY_TIMEOUT_MS;
+		const timeoutMs =
+			this.options.queryTimeoutMs ??
+			(isDiscordSendQuery(args) ? DISCORD_SEND_WAIT_MS : QUERY_TIMEOUT_MS);
 		const { id, promise } = this.queries.open({
 			timeoutMs,
 			onTimeout: () =>

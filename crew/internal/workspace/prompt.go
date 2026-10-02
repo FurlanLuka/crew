@@ -91,7 +91,7 @@ func RenderPrompt(res *Resolved, branches map[string]string) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(renderCrewSection(res.Ref))
+	b.WriteString(renderCrewSection(res.Ref, PromptExtras()))
 
 	b.WriteString("cd into the relevant project's directory before running commands or editing files there.\n")
 	b.WriteString("Wait for my instructions on what to build.\n")
@@ -102,7 +102,15 @@ func RenderPrompt(res *Resolved, branches map[string]string) string {
 // renderCrewSection tells Claude it is inside a crew worktree and that the
 // servers, their env and their logs are crew's to drive — the session was
 // opened by crew, so the CLI is there and `CREW_REF` names the worktree.
-func renderCrewSection(ref Ref) string {
+// PromptExtras are lines the crew section adds for what this machine can do beyond a worktree's own
+// commands: main sets it (workspace cannot import voice), so Discord is named only when it is set up.
+var PromptExtras = func() []string { return nil }
+
+// DiscordSendLine is the crew section's line when Discord is set up: sessions post there only when the
+// developer asks.
+const DiscordSendLine = "- `crew server discord send --text=\"…\" [--file=<path>]` — posts to the developer's Discord (a screenshot, a summary, a file). Only when they ask you to send something there; never on your own\n"
+
+func renderCrewSection(ref Ref, extras []string) string {
 	var b strings.Builder
 	b.WriteString("## crew\n\n")
 	fmt.Fprintf(&b, "This worktree is managed by crew (`crew` on PATH; ref `%s`, also in `$CREW_REF`). Drive the dev servers and their env through it — never start a server by hand:\n\n", ref)
@@ -111,6 +119,9 @@ func renderCrewSection(ref Ref) string {
 	fmt.Fprintf(&b, "- `crew dev logs %s <server> --lines=50` — a server's output (never `-f`, it follows forever)\n", ref)
 	fmt.Fprintf(&b, "- `crew env %s <project>` · `crew run %s <project> -- <cmd>` — the resolved env; run tests, scripts and evals through `crew run` so they see the same URLs the servers got\n", ref, ref)
 	fmt.Fprintf(&b, "- `crew fix %s --print` — when something is recorded as failed: every issue with its evidence\n", ref)
+	for _, line := range extras {
+		b.WriteString(line)
+	}
 	b.WriteString("- `crew help <command>` for the rest; the `crew` skill if your agent has it (`/crew:crew` in Claude Code)\n\n")
 	return b.String()
 }

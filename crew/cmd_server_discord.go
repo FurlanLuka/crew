@@ -3,14 +3,16 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/voice"
+	"github.com/FurlanLuka/crew/crew/internal/workspace"
 	"github.com/charmbracelet/x/term"
 )
 
-const discordUsage = "Usage: crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off"
+const discordUsage = "Usage: crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>] | status | channels | send [--text=<message>] [--file=<path>]… | off"
 
 // discordSteps is what a first setup needs before crew can do anything; the
 // last step is how the token comes in, which depends on who is asking.
@@ -36,6 +38,12 @@ func voiceDiscord(args []string) {
 		discordSetup(args[1:])
 	case "status":
 		discordStatus()
+	case "channels":
+		discordChannels()
+	case "send":
+		discordSend(args[1:])
+	case "_send":
+		discordSendStaged(args[1:])
 	case "off":
 		discordOff()
 	default:
@@ -53,6 +61,8 @@ func parseDiscordSetupArgs(args []string) (voice.DiscordOptions, error) {
 			opts.Channel = strings.TrimSpace(v)
 		} else if v, ok := strings.CutPrefix(a, "--user="); ok {
 			opts.User = strings.TrimSpace(v)
+		} else if v, ok := strings.CutPrefix(a, "--text-channel="); ok {
+			opts.TextChannel = strings.TrimSpace(v)
 		} else {
 			return voice.DiscordOptions{}, fmt.Errorf("unknown argument %q", a)
 		}
@@ -111,6 +121,11 @@ func discordSetup(args []string) {
 		fmt.Fprintf(human, "you: the server owner (%s)\n", cfg.Owner)
 	}
 	fmt.Fprintf(human, "channel: %s (%s)\n", cfg.ChannelName, cfg.Channel)
+	if cfg.TextChannel == "" {
+		fmt.Fprintln(human, "messages: the voice channel's chat")
+	} else {
+		fmt.Fprintf(human, "messages: #%s (%s)\n", cfg.TextChannelName, cfg.TextChannel)
+	}
 	fmt.Fprintln(human, "ready: Voice OS joins it while it runs")
 	if jsonOutput {
 		printJSON(cfg)
@@ -162,4 +177,162 @@ func discordOff() {
 		fmt.Printf("removed\t%s\n", path)
 	}
 	fmt.Fprintln(human, "Voice OS leaves Discord; crew server discord setup brings it back.")
+}
+
+// parseDiscordSendArgs: --text and any number of --file. Pure.
+func parseDiscordSendArgs(args []string) (voice.DiscordMessage, bool, error) {
+	var msg voice.DiscordMessage
+	hasText := false
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(a, "--text="); ok {
+			msg.Text, hasText = v, true
+		} else if v, ok := strings.CutPrefix(a, "--file="); ok && strings.TrimSpace(v) != "" {
+			msg.Files = append(msg.Files, strings.TrimSpace(v))
+		} else {
+			return voice.DiscordMessage{}, false, fmt.Errorf("unknown argument %q", a)
+		}
+	}
+	return msg, hasText, nil
+}
+
+// readsStdin: stdin is the text only when nothing else was given and it is piped — an agent's open,
+// never-closed stdin must not hang a send of files. Pure.
+func readsStdin(hasText bool, files int, isTerminal bool) bool {
+	return !hasText && files == 0 && !isTerminal
+}
+
+// discordSend posts to the developer's Discord: from the main with its token, from a remote through
+// the main (the message is staged here and fetched). Text with no --text comes from stdin when piped.
+func discordSend(args []string) {
+	msg, hasText, err := parseDiscordSendArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, discordUsage)
+		os.Exit(1)
+	}
+	if readsStdin(hasText, len(msg.Files), term.IsTerminal(os.Stdin.Fd())) {
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<20))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+		msg.Text = string(data)
+	}
+	if voice.CurrentRole(false) == voice.RoleRemote {
+		relayDiscordSend(msg)
+		return
+	}
+	sent, err := voice.SendDiscord(msg)
+	sayDiscordSent(sent, err)
+}
+
+// relayDiscordSend stages the message here and asks the main to post it; the main's answer is
+// relayed as it came, and the stage is gone either way.
+func relayDiscordSend(msg voice.DiscordMessage) {
+	id, err := voice.StageDiscordMessage(msg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	reply, err := voice.AskMainWithin(voice.RemoteQuerySocket(), voice.DiscordSendQuery(id, jsonOutput), voice.DiscordSendWait)
+	// The main removed its copy and ours over SSH when it fetched it; this covers a main never reached.
+	os.RemoveAll(voice.DiscordStageDir(id))
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "Error: cannot reach the main to post it: %v\n", err)
+		os.Exit(1)
+	case !reply.OK:
+		fmt.Fprintf(os.Stderr, "Error: the main did not post it: %s\n", firstNonEmpty(reply.Error, reply.Reason))
+		os.Exit(1)
+	}
+	os.Stdout.WriteString(reply.Value.Stdout)
+	os.Stderr.WriteString(reply.Value.Stderr)
+	os.Exit(reply.Value.Code)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return "no answer"
+}
+
+// parseDiscordSendStagedArgs checks what the main runs for a stage: <stage id>, and the --source the
+// main's link added for a remote's (none for the main's own). Mirrors query-allow.ts; the shared
+// fixture discord-send.json pins both. Pure.
+func parseDiscordSendStagedArgs(args []string) (id, source string, err error) {
+	usage := errors.New("usage: crew server discord _send <stage id> [--source=<machine>]")
+	if len(args) == 0 || len(args) > 2 || !voice.IsDiscordStageID(args[0]) {
+		return "", "", usage
+	}
+	if len(args) == 2 {
+		match := sourcePattern.FindStringSubmatch(args[1])
+		if match == nil || match[1] == voice.MainID {
+			return "", "", usage
+		}
+		source = match[1]
+	}
+	return args[0], source, nil
+}
+
+// discordSendStaged is the main posting a stage: its own, or a remote's (--source names it; the
+// main's link adds it, never the remote).
+func discordSendStaged(args []string) {
+	id, source, err := parseDiscordSendStagedArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	sent, err := voice.SendStagedDiscord(id, source)
+	sayDiscordSent(sent, err)
+}
+
+func sayDiscordSent(sent voice.DiscordSent, err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	where := "#" + sent.ChannelName
+	if sent.IsVoiceChat {
+		where = "the voice channel's chat"
+	}
+	note := ""
+	if sent.TextAttached {
+		note = " (the text as message.md: longer than one message)"
+	}
+	fmt.Fprintf(human, "sent to %s%s: %s\n", where, note, sent.Link)
+	if jsonOutput {
+		printJSON(sent)
+	}
+}
+
+func discordChannels() {
+	rows, err := voice.DiscordChannels()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if jsonOutput {
+		printJSON(rows)
+		return
+	}
+	for _, row := range rows {
+		marks := []string{row.Kind}
+		if row.IsVoice {
+			marks = append(marks, "voice channel")
+		}
+		if row.IsCurrent {
+			marks = append(marks, "messages go here")
+		}
+		fmt.Printf("%s\t%s\t%s\n", row.ID, row.Name, strings.Join(marks, ", "))
+	}
+}
+
+// discordPromptExtras: a session learns of crew server discord send only where it would post.
+func discordPromptExtras() []string {
+	if voice.DiscordSendReady() {
+		return []string{workspace.DiscordSendLine}
+	}
+	return nil
 }

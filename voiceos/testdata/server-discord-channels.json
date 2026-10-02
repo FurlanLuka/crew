@@ -1,0 +1,16 @@
+[
+  {
+    "id": "226",
+    "name": "Voice OS",
+    "kind": "voice",
+    "is_voice": true,
+    "is_current": false
+  },
+  {
+    "id": "1001",
+    "name": "general",
+    "kind": "text",
+    "is_voice": false,
+    "is_current": true
+  }
+]

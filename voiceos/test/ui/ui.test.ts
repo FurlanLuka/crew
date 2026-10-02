@@ -2166,6 +2166,38 @@ describe('active', () => {
 		await context.close();
 	}, 20_000);
 
+	it("settings → Discord: the messages channel is picked from the server's channels and saved through crew", async () => {
+		store.dispatch({
+			type: 'discord_presence',
+			presence: {
+				isConnected: true,
+				isOwnerIn: true,
+				isHearing: true,
+				channelName: 'Voice OS',
+				mode: 'hands-free',
+			},
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'settings' } });
+		const { context, page } = await signIn();
+		const picker = page.getByRole('combobox', { name: 'Messages channel' });
+		await picker.waitFor({ timeout: 5000 });
+		await picker
+			.locator('option', { hasText: '#general' })
+			.waitFor({ state: 'attached', timeout: 5000 });
+
+		expect(await picker.locator('option').allInnerTexts()).toEqual(["Voice OS's chat", '#general']);
+		expect(await picker.inputValue()).toBe('1001');
+		await picker.selectOption('voice');
+		await waitUntil(() =>
+			crew.calls.some(
+				(call) => call.command.type === 'discord_text_channel' && call.command.channel === 'voice',
+			),
+		);
+
+		store.dispatch({ type: 'discord_presence', presence: null });
+		await context.close();
+	}, 20_000);
+
 	it('"Not now" → the sheet closes and Voice OS stays, its keys notice kept; the server dropping stacks its banner with it, never over it', async () => {
 		store.dispatch({ type: 'setup', missing: ['/k/anthropic.key', '/k/soniox.key'] });
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });

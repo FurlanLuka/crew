@@ -85,10 +85,12 @@ crew server notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json
 crew server remote [status|stop]                            <up|down>\t<version>\t<busy|idle>\t<socket>
 crew server machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>   <id>\t<name>\t<host>\t<status>
 crew server machines ls      crew server machines add <ssh host> [--name=<name>]      crew server machines rm <id>      crew server machines rename <id> <name>
-crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off
-crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
-                                                         server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs
+crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>] | status | channels | send [--text=<message>] [--file=<path>]… | off
+crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>]
+                                                         server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / messages: the voice channel's chat | #<name> (<id>) / ready: Voice OS joins it while it runs
 crew server discord status [--json]                         <field>\t<value>
+crew server discord channels [--json]                       <id>\t<name>\t<text|voice>[, voice channel][, messages go here]
+crew server discord send [--text=<message>] [--file=<path>]…   sent to <#channel | the voice channel's chat>: <link>
 crew server discord off                                     removed\t<path>
 crew server dev push [--dry-run] | status
 crew server dev push [--dry-run]                            <machine>\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …
@@ -539,6 +541,20 @@ steps. `crew server discord status` prints `<field>\t<value>` rows — setup, to
 channel, owner, then what Voice OS last reported (connected, owner_in_channel, error, at) or
 `live\tVoice OS has not reported`; `--json`: `{set_up, token, config|null, live|null}`. `crew
 server discord off` removes discord.json and the token (`removed\t<path>` per file).
+
+**Posting to the user's Discord: `crew server discord send`.** Only when the user asks you to send
+something there ("send that screenshot to Discord") — never on your own. `--text=<message>` (or text
+piped on stdin) and any number of `--file=<path>` (at most 10, each at most 10 MB; text over 2000
+characters goes as `message.md`); every limit is checked first, so it posts whole or not at all,
+and mentions never ping. It prints `sent to <where>: <link>`; `--json`: `{channel, channel_name,
+message, link, files, text_attached, is_voice_chat}`. It works the same on the main and on a remote:
+a remote stages the message under `~/.crew/discord-out/<id>/` and the main fetches it over scp and
+posts it with its token (the token never leaves the main). Messages go to the voice channel's own
+chat unless a text channel was picked: `crew server discord setup --text-channel=<name|id>` (the bot
+needs View Channel, Send Messages and Attach Files; `voice` goes back to the voice chat; a rerun
+without the flag keeps it). `crew server discord channels` lists where a message can go
+(`<id>\t<name>\t<text|voice>`, marking the voice channel and the current one). A session is told
+about `send` in its orientation only when Discord is set up (on a remote, when the main says so).
 
 **Trying a branch on every machine: `crew server dev push`.** A remote refuses a main on another
 version, so a branch built from source can't meet your remotes until it is released. `crew server dev

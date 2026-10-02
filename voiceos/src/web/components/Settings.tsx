@@ -6,7 +6,7 @@ import { SPOKEN_LANGUAGES } from '../../shared/languages.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
-import { isOk, readCrewLine, runCrew } from '../setup/api.js';
+import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
 import { CommandLine } from '../setup/CommandLine.js';
 import type { Dispatch } from '../types.js';
 import { isKeyMissing, type KeyName } from './BeforeYouTalk.js';
@@ -105,6 +105,77 @@ const KeyRow = ({
 	);
 };
 
+// crew server discord channels --json: where a message can go.
+interface DiscordChannelRow {
+	id: string;
+	name: string;
+	kind: 'text' | 'voice';
+	is_voice: boolean;
+	is_current: boolean;
+}
+
+// The voice channel itself is chosen as "voice": its chat stays where messages go if it is renamed.
+const VOICE_CHAT = 'voice';
+
+// Where a session posts when the developer asks it to send something to Discord: the voice channel's
+// own chat, or a text channel picked here (crew server discord setup --text-channel).
+const MessagesChannel = () => {
+	const channels = useCrew<DiscordChannelRow[]>(LOCAL_MACHINE, { type: 'discord_channels' });
+	const [line, setLine] = useState<string | null>(null);
+	const [isSaving, setIsSaving] = useState(false);
+	const rows = channels.data ?? [];
+	const voice = rows.find((row) => row.is_voice);
+	const current = rows.find((row) => row.is_current);
+	const chosen = !current || current.is_voice ? VOICE_CHAT : current.id;
+
+	const choose = async (channel: string) => {
+		setIsSaving(true);
+		const reply = await runCrew(LOCAL_MACHINE, { type: 'discord_text_channel', channel });
+		setIsSaving(false);
+		setLine(readCrewLine(reply) || (isOk(reply) ? 'Saved.' : 'Not saved.'));
+		channels.refresh();
+	};
+
+	return (
+		<>
+			<div className="box-row">
+				<span className="sub">
+					<b>Messages</b>
+					<span className="m">
+						where a session posts when you ask it to send something to Discord
+					</span>
+				</span>
+				<span className="row-actions">
+					<select
+						className="sel"
+						aria-label="Messages channel"
+						value={chosen}
+						disabled={rows.length === 0 || isSaving}
+						onChange={(event) => void choose(event.target.value)}
+					>
+						<option value={VOICE_CHAT}>
+							{voice ? `${voice.name}'s chat` : "the voice channel's chat"}
+						</option>
+						{rows
+							.filter((row) => row.kind === 'text')
+							.map((row) => (
+								<option key={row.id} value={row.id}>
+									#{row.name}
+								</option>
+							))}
+					</select>
+				</span>
+			</div>
+			{line ? (
+				<p className="vs-note">{line}</p>
+			) : (
+				channels.reply &&
+				!isOk(channels.reply) && <p className="vs-note">{readCrewLine(channels.reply)}</p>
+			)}
+		</>
+	);
+};
+
 const DiscordSection = ({ state }: { state: State }) => {
 	const [line, setLine] = useState<string | null>(null);
 	const [isConfirming, setIsConfirming] = useState(false);
@@ -178,6 +249,7 @@ const DiscordSection = ({ state }: { state: State }) => {
 						)}
 					</span>
 				</div>
+				<MessagesChannel />
 			</div>
 			{line && <p className="vs-note">{line}</p>}
 		</div>

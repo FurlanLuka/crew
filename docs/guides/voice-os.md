@@ -203,6 +203,13 @@ a row in Active, and the page stays where it is. Worktrees are made in Set up, n
 **Settings** has the listening mode and languages, the two keys (checked before saving), Discord,
 session names, and your machines with their crew version.
 
+**Sending things to Discord.** With Discord set up, ask a session to send something there ("send
+that screenshot to Discord", "post the summary in Discord") and it runs `crew server discord send`,
+from this machine or any remote: the main posts it with the bot. Messages go to the voice channel's
+own chat, or to a text channel you pick under **Settings → Discord → Messages** (or `crew server
+discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
+they post only when you ask.
+
 ![Voice OS settings: listening mode, languages, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's

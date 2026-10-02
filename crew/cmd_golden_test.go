@@ -349,9 +349,14 @@ func TestGoldenServer(t *testing.T) {
 		{Name: "soniox", Set: false, Path: "/Users/dev/.config/crew-voiceos/soniox.key", Use: "speech in and out"},
 	})
 	checkGolden(t, "server-discord-status.json", voice.DiscordReport{SetUp: true, Token: true,
-		Config: &voice.DiscordConfig{Guild: "155", Channel: "226", ChannelName: "Voice OS", GuildName: "Example", Owner: "99"},
+		Config: &voice.DiscordConfig{Guild: "155", Channel: "226", ChannelName: "Voice OS", GuildName: "Example", Owner: "99", TextChannel: "1001", TextChannelName: "general"},
 		Live:   &voice.DiscordLive{Connected: true, OwnerInChannel: false, At: "2026-10-02T09:30:00Z"}})
 	checkGolden(t, "server-discord-off.json", voice.DiscordReport{})
+	checkGolden(t, "server-discord-setup.json", voice.DiscordConfig{Guild: "155", Channel: "226", ChannelName: "Voice OS", GuildName: "Example", Owner: "99", TextChannel: "1001", TextChannelName: "general"})
+	checkGolden(t, "server-discord-channels.json", []voice.DiscordChannelRow{
+		{ID: "226", Name: "Voice OS", Kind: "voice", IsVoice: true},
+		{ID: "1001", Name: "general", Kind: "text", IsCurrent: true},
+	})
 	checkGolden(t, "server-keys-set.json", keySavedDoc("soniox", "/Users/dev/.config/crew-voiceos/soniox.key"))
 }
 
