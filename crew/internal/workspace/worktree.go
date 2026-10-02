@@ -239,28 +239,11 @@ func jobsFor(names []string, opts CheckoutOptions) []ProjectJob {
 // on every directory made belongs to a worktree the list knows, and a
 // runner's smoke already sees the overrides. Returns the members to run.
 func addWorktreeRecord(wsName, name string, overrides map[string]string) (Ref, []string, error) {
-	if err := ValidateName("worktree", name); err != nil {
-		return Ref{}, nil, err
-	}
 	ref := Ref{Workspace: wsName, Worktree: name}
 	var members []string
 	err := Update(wsName, func(ws *Workspace) error {
-		if len(ws.Worktrees) == 0 {
-			return fmt.Errorf("workspace '%s' predates worktrees — run `crew migrate` first", wsName)
-		}
-		for _, wt := range ws.Worktrees {
-			if wt.Name == name {
-				return fmt.Errorf("workspace '%s' already has a worktree '%s'", wsName, name)
-			}
-		}
-		// A direct-mode project points at the one canonical checkout, so a
-		// second worktree would have both sharing it — the same clobbering
-		// that assertNoOtherDirect prevents between workspaces.
-		for _, wp := range ws.Projects {
-			if IsDirect(wp) {
-				return fmt.Errorf("workspace '%s' holds '%s' in direct mode, so it can only have one worktree — remove it or re-add it as a worktree project first",
-					wsName, wp.Name)
-			}
+		if err := WorktreeAddRefusal(*ws, name); err != nil {
+			return err
 		}
 		if err := os.MkdirAll(WorktreeDir(ref), 0o755); err != nil {
 			return err
@@ -270,6 +253,33 @@ func addWorktreeRecord(wsName, name string, overrides map[string]string) (Ref, [
 		return nil
 	})
 	return ref, members, err
+}
+
+// WorktreeAddRefusal is why name cannot be a new worktree of ws, nil when
+// it can. Pure — the CLI asks it before printing anything, and the record
+// asks it again under the workspace's lock.
+func WorktreeAddRefusal(ws Workspace, name string) error {
+	if err := ValidateName("worktree", name); err != nil {
+		return err
+	}
+	if len(ws.Worktrees) == 0 {
+		return fmt.Errorf("workspace '%s' predates worktrees — run `crew migrate` first", ws.Name)
+	}
+	for _, wt := range ws.Worktrees {
+		if wt.Name == name {
+			return fmt.Errorf("workspace '%s' already has a worktree '%s'", ws.Name, name)
+		}
+	}
+	// A direct-mode project points at the one canonical checkout, so a
+	// second worktree would have both sharing it — the same clobbering
+	// that assertNoOtherDirect prevents between workspaces.
+	for _, wp := range ws.Projects {
+		if IsDirect(wp) {
+			return fmt.Errorf("workspace '%s' holds '%s' in direct mode, so it can only have one worktree — remove it or re-add it as a worktree project first",
+				ws.Name, wp.Name)
+		}
+	}
+	return nil
 }
 
 // TrashNotice is the one line to show wherever disk is about to be used:
@@ -358,7 +368,7 @@ func DuplicateWorktree(ref Ref, newName string, opts CheckoutOptions) error {
 		return err
 	}
 	if SetupRunning(Ref{Workspace: ref.Workspace, Worktree: src.Name}) {
-		return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, ref, ref)
+		return SetupRunningError(ref)
 	}
 	dst, members, err := addWorktreeRecord(ref.Workspace, newName, src.Overrides)
 	if err != nil {

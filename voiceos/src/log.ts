@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type LogFields = Record<string, unknown>;
 
-// crew voice logs reads `<file>`, `<file>.1` … `<file>.5`, newest first: keep the two in step.
+// crew server logs reads `<file>`, `<file>.1` … `<file>.5`, newest first: keep the two in step.
 const DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
 const DEFAULT_KEEP = 5;
 
@@ -104,7 +104,7 @@ interface LogParams {
 
 export const log = ({ level, category, message, fields = {} }: LogParams): void => {
 	// One JSON object per line, so jq can follow one action across gateway, worker and speech. `ts`
-	// is always the log's own and the first key: crew voice logs compares the line's prefix before
+	// is always the log's own and the first key: crew server logs compares the line's prefix before
 	// decoding it, so a field named ts must not replace it.
 	const { ts: _fieldTs, ...rest } = fields;
 	const line = JSON.stringify({

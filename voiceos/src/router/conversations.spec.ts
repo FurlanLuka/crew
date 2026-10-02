@@ -335,6 +335,50 @@ describe('conversations', () => {
 			'Kept on store front, main.',
 		]);
 	});
+	it("Set up's chat working the setup session meanwhile → nothing of it heard, never in meanwhile, never a switch target", async () => {
+		const convo = createConversation({ refs: ['setup', ...REFS], view: 'store-front/main' });
+		await convo.startSessions('setup', 'store-front/main', 'checkout-api/main');
+
+		// Typed in Set up's chat: the page's own send, with no ack and no spoken words.
+		convo.store.dispatch({ type: 'send', ref: 'setup', text: 'add store-api as a project' });
+		convo.store.dispatch({ type: 'turn_started', ref: 'setup' });
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ask-setup-1',
+				ref: 'setup',
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run crew add project store-api',
+				input: { command: 'crew add project store-api' },
+				suggestions: [],
+			},
+		});
+		convo.script([toolUse('t1', 'forward', { kind: 'instruction' })]);
+		await convo.say('Run the tests here.');
+		await convo.answer('setup', 'Added store-api; its check passed.');
+		await convo.answer('store-front/main', 'All 40 tests pass.');
+		await convo.wait(30_000);
+
+		expect(convo.heard).toEqual(['> Run the tests here.', 'All 40 tests pass.']);
+		expect(convo.store.state.meanwhile).toEqual([]);
+		expect(convo.store.state.switchOffer).toBeNull();
+		// Its ask waits in Set up's chat, where it is answered; voice neither says nor counts it.
+		expect(convo.store.state.asks.map((ask) => ask.ref)).toEqual(['setup']);
+
+		convo.script([toolUse('t2', 'ignore_words', {})]);
+		await convo.say('Yes.');
+
+		expect(convo.kernelSaw()).not.toContain('setup');
+		expect(convo.store.state.asks.map((ask) => ask.ref)).toEqual(['setup']);
+		expect(convo.store.state.view).toEqual({
+			kind: 'session',
+			ref: 'store-front/main',
+			from: 'active',
+		});
+	});
+
 	it('another session finishes mid-conversation → it waits for the quiet, then comes as one "meanwhile" line', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

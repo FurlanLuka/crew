@@ -1,0 +1,16 @@
+[
+  {
+    "name": "anthropic",
+    "set": true,
+    "source": "file",
+    "path": "/Users/dev/.config/crew-voiceos/anthropic.key",
+    "use": "the kernel and the narrator"
+  },
+  {
+    "name": "soniox",
+    "set": false,
+    "source": "",
+    "path": "/Users/dev/.config/crew-voiceos/soniox.key",
+    "use": "speech in and out"
+  }
+]

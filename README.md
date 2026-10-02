@@ -8,18 +8,20 @@
 its own Claude — and you run them all by voice: "tell checkout to run the tests", "what's waiting
 on me?", "yes, but only on staging".
 
-![Voice OS: a pinned session running on another machine, with its work stream, dev servers and spoken summary, and the other sessions waiting on you alongside](docs/images/voice-os/hero.png)
+![Voice OS: an active session, store-front/wrk2 on another machine, with its work stream, dev servers, spoken summary and the sessions elsewhere that need you; the other active sessions are tabs along the top](docs/images/voice-os/hero.png)
 
 ## Try it
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh
-crew voice
+crew
 ```
 
-The first `crew voice` checks you have tmux and Claude Code, downloads Voice OS, and asks for an
-Anthropic key and a Soniox key — checked before they're saved, stored only on this machine. Then it
-opens in your browser: hold **Space** and talk.
+`crew` starts crew's server and opens it in your browser. **Set up** takes you from the repos on
+your machine to a workspace with its servers running — forms for everything, and a Claude to ask.
+**Voice OS** is where you talk: it asks for an Anthropic key and a Soniox key the first time —
+checked before they're saved, stored only on this machine — then hold **Space** and talk. Over
+SSH, or without a browser, `crew` prints the link instead.
 
 ### What you need
 
@@ -45,16 +47,20 @@ opens in your browser: hold **Space** and talk.
 
 ## Set up by talking
 
-Voice OS has a **setup** session that runs crew for you. Point it at your repos — folders you
-already have, or git URLs — and say what you want:
+Set up has a Claude of its own on every machine: **Setup with Claude**. Point it at your repos —
+folders you already have, or git URLs — and say what you want:
 
 > "Add the store api and store app repos from ~/code to crew with their dev servers, wire the
 > store app's API URL to the store API, and make a store front workspace with both."
 
 It registers each project, finds how its dev server runs, points the services at each other,
-installs a fresh copy and checks every server starts. The new worktree appears on its own; then
-"open store front main", "start the dev servers", and ask for whatever you're building.
-[The walkthrough](docs/guides/voice-os.md#from-two-repos-to-a-working-feature) shows every step.
+installs a fresh copy and checks every server starts, with a line for each crew command it
+recorded. The new worktree appears in Voice OS's Activate list; activate it, "start the dev
+servers", and ask for whatever you're building. [The Set up guide](docs/guides/setup.md) walks
+every page, and [the walkthrough](docs/guides/voice-os.md#from-two-repos-to-a-working-feature)
+goes on to a working feature.
+
+![Setup with Claude adding a repo: each crew command it ran, with a green "recorded" line under it](docs/images/setup/chat.png)
 
 ## What it does
 
@@ -72,9 +78,10 @@ installs a fresh copy and checks every server starts. The new worktree appears o
   "allow it" — and nothing more.
 - **Hear what matters, not everything.** Sessions you aren't looking at say "checkout is done" or
   "checkout needs you: the backoff cap"; the full message plays when you switch there.
-- **Pin what you're juggling, name it what you call it.** Pinned gathers the sessions you care
-  about, from every machine, in one view ("pin this", "go to pinned"). Rename a session ("call
-  this search fix") and that name shows everywhere and works by voice.
+- **Activate what you're juggling, name it what you call it.** Active gathers the sessions you
+  work with, from every machine, as tabs and one view ("activate store front main", "go to
+  active"); the rest run nothing until you activate them. Rename a session ("call this search
+  fix") and that name shows everywhere and works by voice.
 - **Your dev servers, watched.** When one dies after a start, Voice OS tells you and offers to have
   that worktree's Claude fix it — "yes" hands it the failure with its logs.
 - **See what they make.** A screenshot or chart a session takes shows right in its page, and the
@@ -82,8 +89,12 @@ installs a fresh copy and checks every server starts. The new worktree appears o
   opens one in the browser you're using, phone included.
 - **Notes as you think.** "Note: try a tone per session" — kept per workspace.
 - **Sessions on other machines too.** A VM or a second computer runs its own worktrees and
-  sessions; your Mac drives them over SSH with the same voice and page — a card per machine on
-  Mission Control, alerts from all of them, and a dropped link that never stops the work there.
+  sessions; your Mac drives them over SSH with the same voice and page — each machine's worktrees
+  under its name, alerts from all of them, and a dropped link that never stops the work there.
+- **Set up without a terminal.** crew's page starts from the repos already on your machine and
+  walks you to a running workspace: forms that show the command they run, each binding's value
+  previewed in every worktree, the cost of a removal before it happens, and a Claude per machine
+  to ask.
   [Other machines](docs/guides/voice-os.md#other-machines) has the three steps.
 
 [The Voice OS guide](docs/guides/voice-os.md) has what you can say, from real use.
@@ -114,7 +125,7 @@ reach everything: `crew dev logs` for any server's output, `crew dev check` for 
 run` to run tests or scripts with the same URLs the servers got, and `crew fix` to pick up a
 recorded failure with all its evidence. No hunting for which terminal ran what.
 
-Prefer typing? The setup session runs these same commands, and you can too:
+Prefer typing? Set up and its Claude run these same commands, and you can too:
 
 ```bash
 crew add project store-api git@github.com:example/store-api.git
@@ -130,8 +141,9 @@ crew dev start store-front/wrk1                       # its servers, on its own 
 ## Without voice
 
 Everything is a plain command that prints rows or `--json`, so any agent with a shell can drive
-crew; `crew workspace` and `crew project` open a TUI. Claude Code gets a plugin with the reference
-skill, a `crew` agent and guided setup:
+crew — every form on the Set up page shows the command it runs. In the terminal, `crew launch`
+picks a worktree and opens Claude or your editor on it. Claude Code gets a plugin with the
+reference skill, a `crew` agent and guided setup:
 
 ```
 /plugin marketplace add FurlanLuka/crew
@@ -140,7 +152,8 @@ skill, a `crew` agent and guided setup:
 
 ## Learn more
 
-- [Getting set up](docs/guides/getting-set-up.md) — a workspace, its projects, a second worktree
+- [Set up](docs/guides/setup.md) — crew's page for projects, workspaces, worktrees and machines, with a Claude to ask
+- [Getting set up](docs/guides/getting-set-up.md) — a workspace, its projects, a second worktree, as commands
 - [Voice OS](docs/guides/voice-os.md) — a walkthrough from two repos to a working feature, and what you can say
 - [Voice OS commands](docs/guides/voice-os-commands.md) — every command the kernel knows, with things to say
 - [How crew works](docs/concepts.md) — projects, bindings, checks, failures, other devices, moving machines
@@ -150,7 +163,8 @@ skill, a `crew` agent and guided setup:
 - [What's new in 5.0](docs/releases/v5.0.0.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
-`crew update` keeps crew — and Voice OS, once installed — on the latest release.
+`crew update` keeps crew — and Voice OS, once installed — on the latest release (`crew update
+--check` only asks); a running server keeps its version until `crew server restart`.
 
 **License:** [Functional Source License 1.1, MIT future](LICENSE) (FSL-1.1-MIT). You can use it,
 change it, run it at work and redistribute it for any purpose except a competing use: offering it,

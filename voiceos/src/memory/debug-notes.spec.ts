@@ -67,10 +67,10 @@ describe('createDebugNote', () => {
 		);
 	});
 
-	it("on Mission Control → the grid's log", () =>
+	it('off a session → the home log', () =>
 		expect(
 			createDebugNote({ state: createFixtureState({}, now), text: 'x', said: null, now }).view,
-		).toBe('grid'));
+		).toBe('home'));
 
 	it('saved one JSON line per note', () => {
 		const file = join(mkdtempSync(join(tmpdir(), 'notes-')), 'logs', 'debug-notes.jsonl');

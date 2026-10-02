@@ -13,7 +13,7 @@ import (
 )
 
 // Machine is another machine a main's Voice OS drives over SSH. machines.json
-// is the one list: the page, voice and `crew voice machines` all write it, and
+// is the one list: the page, voice and `crew server machines` all write it, and
 // a running Voice OS reads it again when it changes.
 type Machine struct {
 	ID   string `json:"id"`
@@ -170,7 +170,7 @@ func RemoveMachine(id string) error {
 			}
 		}
 		if len(kept) == len(machines) {
-			return nil, fmt.Errorf("no machine %q (crew voice machines ls)", id)
+			return nil, fmt.Errorf("no machine %q (crew server machines ls)", id)
 		}
 		return kept, nil
 	})
@@ -188,7 +188,7 @@ func RenameMachine(id, name string) error {
 				return machines, nil
 			}
 		}
-		return nil, fmt.Errorf("no machine %q (crew voice machines ls)", id)
+		return nil, fmt.Errorf("no machine %q (crew server machines ls)", id)
 	})
 }
 

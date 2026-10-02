@@ -310,7 +310,7 @@ describe('VoiceOut', () => {
 			isOwed: true,
 			isHoldable: true,
 		});
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
@@ -388,7 +388,7 @@ describe('VoiceOut', () => {
 			isOwed: true,
 			isHoldable: true,
 		});
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
@@ -430,7 +430,7 @@ describe('VoiceOut', () => {
 				],
 			},
 		});
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
@@ -465,7 +465,7 @@ describe('VoiceOut', () => {
 			});
 		}
 
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
@@ -506,7 +506,7 @@ describe('VoiceOut', () => {
 			isOwed: true,
 			isHoldable: true,
 		});
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 		harness.voiceOut.clipDone(harness.clips.at(-1)?.id ?? '');
@@ -583,7 +583,7 @@ describe('VoiceOut', () => {
 			isOwed: true,
 			isHoldable: true,
 		});
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
@@ -613,7 +613,7 @@ describe('VoiceOut', () => {
 			isOwed: true,
 			isHoldable: true,
 		});
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.clipDone(harness.clips[0]?.id ?? '');
 		await flush();
 
@@ -692,6 +692,45 @@ describe('VoiceOut', () => {
 
 		expect(reminder?.text).toBe('store/main still needs you.');
 		expect(reminder?.isAsking).toBeUndefined();
+	});
+
+	it("a setup session's ask → never reminded: it waits in Set up's chat", async () => {
+		const harness = createHarness();
+		harness.store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				{
+					ref: 'store/main',
+					label: 'store/main',
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				},
+				{ ref: 'setup', label: 'setup', branch: '', cwd: '/h', dirs: [], isPinned: true },
+			],
+		});
+		harness.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'p1',
+				ref: 'setup',
+				at: 0,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run crew rm worktree store/wrk1',
+				input: {},
+				suggestions: [],
+			},
+		});
+		harness.voiceOut.remind(harness.store.state);
+		harness.tick(REMINDER_MS + 1);
+		harness.voiceOut.remind(harness.store.state);
+		await flush();
+
+		expect(harness.store.state.spoken.some((line) => line.text.includes('still needs you'))).toBe(
+			false,
+		);
 	});
 
 	it('no speaker tab → line still shown, nothing synthesized, queue keeps moving', async () => {
@@ -942,7 +981,7 @@ describe('VoiceOut', () => {
 		await flush();
 		harness.voiceOut.clipDone(harness.getLastClip().id);
 
-		harness.store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		harness.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		harness.voiceOut.say({
 			text: 'tests pass.',
 			priority: 'normal',
@@ -1119,7 +1158,7 @@ describe('VoiceOut, a click away from the session whose line plays', () => {
 	});
 
 	it('to Mission Control → it plays on: lines are said there', async () => {
-		for (const view of [{ kind: 'grid' }, { kind: 'machines' }] satisfies View[]) {
+		for (const view of [{ kind: 'active' }, { kind: 'active' }] satisfies View[]) {
 			const harness = await playOnScreen();
 			await leaveFor(harness, view);
 

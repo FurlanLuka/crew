@@ -15,7 +15,7 @@ type Requirement struct {
 	Install string `json:"install"`
 }
 
-// UnmetRequirements is checked on every crew voice start, before anything is
+// UnmetRequirements is checked on every crew server start, before anything is
 // downloaded or asked: a missing piece is named with its fix up front instead
 // of surfacing later as a page that cannot start a session.
 func UnmetRequirements() []Requirement {

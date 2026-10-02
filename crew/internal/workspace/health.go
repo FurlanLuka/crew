@@ -297,14 +297,10 @@ func FixAnomalies(res *Resolved) string {
 	return strings.TrimSpace(dev.FormatAnomalies(dev.ResolveBindings(res.ResolveParams(ports))))
 }
 
-// FixCommand is ClaudeCommand with the fix prompt, always passed: the
-// orientation prompt's project-count gate does not apply to a failure.
-func FixCommand(res *Resolved, anomalies string) (*osexec.Cmd, error) {
-	return FixCommandFor(res, res.Health, anomalies)
-}
-
-// FixCommandFor is FixCommand over any health — the recorded one, or what
-// a check of the running servers just found.
+// FixCommandFor is ClaudeCommand with the fix prompt, always passed (the
+// orientation prompt's project-count gate does not apply to a failure),
+// over any health — the recorded one, or what a check of the running
+// servers just found.
 func FixCommandFor(res *Resolved, h *Health, anomalies string) (*osexec.Cmd, error) {
 	if h == nil {
 		return nil, fmt.Errorf("nothing recorded on %s — crew verify %s first", res.Ref, res.Ref)

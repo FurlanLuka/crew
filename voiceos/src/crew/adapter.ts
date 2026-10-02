@@ -6,13 +6,17 @@ const log = createLogger('crew');
 
 export interface CrewRunOptions {
 	cwd?: string;
+	// Past it crew is killed and the result says timedOut.
 	timeoutMs?: number;
+	// A bundle to import or a key to save: never in argv, where a process list would show it.
+	stdin?: string;
 }
 
 export interface CrewRunResult {
 	code: number;
 	stdout: string;
 	stderr: string;
+	timedOut?: true;
 }
 
 export type CrewRunner = (args: string[], options?: CrewRunOptions) => Promise<CrewRunResult>;
@@ -85,15 +89,39 @@ export const toWorktreeInfo = ({ row, projects, branch }: ToWorktreeInfoParams):
 	};
 };
 
+export const crewBinary = (): string => process.env.CREW_BIN || 'crew';
+
+// Past this after the group's SIGTERM, whatever is left gets SIGKILL.
+const KILL_GRACE_MS = 2_000;
+
+// Signals crew and everything it started: a child that outlives crew (a package manager, a server
+// it waits on) holds stdout open, and the read would wait on it long past the timeout.
+const killGroup = (pid: number, signal: NodeJS.Signals): void => {
+	try {
+		process.kill(-pid, signal);
+	} catch {
+		// Already gone.
+	}
+};
+
 export const spawnRunner: CrewRunner = async (args, options) => {
-	const binary = process.env.CREW_BIN || 'crew';
-	const crewProcess = Bun.spawn([binary, ...args], {
+	const stdin = options?.stdin;
+	const crewProcess = Bun.spawn([crewBinary(), ...args], {
 		cwd: options?.cwd,
+		stdin: stdin === undefined ? 'ignore' : new Blob([stdin]),
 		stdout: 'pipe',
 		stderr: 'pipe',
+		// Its own process group, so a timeout reaches the children too.
+		detached: true,
 	});
+	let timedOut = false;
+	let graceTimer: ReturnType<typeof setTimeout> | null = null;
 	const killTimer = options?.timeoutMs
-		? setTimeout(() => crewProcess.kill(), options.timeoutMs)
+		? setTimeout(() => {
+				timedOut = true;
+				killGroup(crewProcess.pid, 'SIGTERM');
+				graceTimer = setTimeout(() => killGroup(crewProcess.pid, 'SIGKILL'), KILL_GRACE_MS);
+			}, options.timeoutMs)
 		: null;
 	const [stdout, stderr, code] = await Promise.all([
 		new Response(crewProcess.stdout).text(),
@@ -105,7 +133,26 @@ export const spawnRunner: CrewRunner = async (args, options) => {
 		clearTimeout(killTimer);
 	}
 
-	return { code, stdout, stderr };
+	if (graceTimer) {
+		clearTimeout(graceTimer);
+	}
+
+	return { code, stdout, stderr, ...(timedOut ? { timedOut: true as const } : {}) };
+};
+
+// Started and let go: crew replaces (or removes) the process answering, so nothing waits on it. Its
+// own process group, so stopping this server does not take it down halfway.
+export type CrewStarter = (args: string[]) => void;
+
+export const startDetached: CrewStarter = (args) => {
+	const crewProcess = Bun.spawn([crewBinary(), ...args], {
+		stdin: 'ignore',
+		stdout: 'ignore',
+		stderr: 'ignore',
+		detached: true,
+	});
+
+	crewProcess.unref();
 };
 
 export type GitBranch = (path: string) => Promise<string>;
@@ -152,7 +199,7 @@ export class CrewAdapter {
 
 					return toWorktreeInfo({ row, projects, branch });
 				} catch (error) {
-					// A single broken checkout is left out so it never freezes the grid.
+					// A single broken checkout is left out so it never freezes the list.
 					log.warn('worktree skipped', { ref: row.ref, error: String(error) });
 
 					return null;

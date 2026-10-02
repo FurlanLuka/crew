@@ -68,11 +68,17 @@ describe('loadActive', () => {
 		expect(readFile(files.file)).toEqual(['vm1:store/main', 'store/wrk1', 'store/main']);
 	});
 
-	it("a pinned setup → dropped: this Mac's setup is always active and never stored", () => {
+	it('a pinned setup, here or remote → dropped: setup sessions run for Set up, never active', () => {
 		const files = createFiles({ pinned: '["setup", "store/main", "vm1:setup"]' });
 
-		expect(loadActive(files)).toEqual(['store/main', 'vm1:setup']);
-		expect(readFile(files.file)).toEqual(['store/main', 'vm1:setup']);
+		expect(loadActive(files)).toEqual(['store/main']);
+		expect(readFile(files.file)).toEqual(['store/main']);
+	});
+
+	it('active.json from the release that activated a remote setup → that ref dropped', () => {
+		expect(loadActive(createFiles({ active: '["vm1:setup", "vm1:store/main", "setup"]' }))).toEqual(
+			['vm1:store/main'],
+		);
 	});
 
 	it('active.json emptied, pinned.json still there → stays empty, the pins not read again', () => {

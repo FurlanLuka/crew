@@ -17,7 +17,7 @@ import {
 	withoutEffects,
 } from './helpers.js';
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
-import { isActive } from '../shared/active.js';
+import { canRun } from '../shared/active.js';
 import { openRedirect } from './redirect.js';
 import { clearHeldLine } from './held-lines.js';
 
@@ -285,7 +285,7 @@ const deliverWords = ({
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
 	const timing: SendTiming =
-		session.status === 'stopped' && !isActive(state, ref)
+		session.status === 'stopped' && !canRun(state, ref)
 			? 'inactive'
 			: isStarting
 				? 'starting'

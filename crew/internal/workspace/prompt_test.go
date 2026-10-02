@@ -3,6 +3,8 @@ package workspace
 import (
 	"strings"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
 func mixedResolved() *Resolved {
@@ -125,5 +127,20 @@ func TestRenderPrompt_Check(t *testing.T) {
 	}
 	if strings.Contains(got, "workspace.") {
 		t.Error("a check is not called a workspace")
+	}
+}
+
+// A project without dev servers is a whole project (a library, infra): the prompt never calls it
+// unfinished, with servers or without.
+func TestRenderPrompt_NoDevServersIsNotUnfinished(t *testing.T) {
+	res := mixedResolved()
+	for _, servers := range [][]project.DevServer{nil, {{Name: "api", Port: 3000, Command: "make dev"}}} {
+		res.Projects[0].DevServers = servers
+		got := RenderPrompt(res, nil)
+		for _, word := range []string{"set up yet", "None of these projects has a dev server"} {
+			if strings.Contains(got, word) {
+				t.Errorf("servers %v: the prompt says %q:\n%s", servers, word, got)
+			}
+		}
 	}
 }

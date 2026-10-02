@@ -50,7 +50,7 @@ describe('classifyExit', () => {
 			'sh: 1: exec: /home/dev/.local/bin/crew: not found',
 			127,
 			'error',
-			'crew is not installed there: install it, then run crew voice remote.',
+			'crew is not installed there: install it, then run crew server remote.',
 		],
 		[
 			'ssh: Could not resolve hostname vm1: nodename nor servname provided',
@@ -69,7 +69,7 @@ describe('classifyExit', () => {
 			'crew-remote-error: daemon-not-listening: the remote daemon exited during start',
 			5,
 			'error',
-			'Its Voice OS did not start: run crew voice remote there.',
+			'Its Voice OS did not start: run crew server remote there.',
 		],
 		[
 			'crew-remote-error: install: no release for linux/riscv64',

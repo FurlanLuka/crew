@@ -1,0 +1,24 @@
+[
+  {
+    "project": "store-front",
+    "base": "main",
+    "current": "feature/cart",
+    "behind": 3,
+    "ahead": 0
+  },
+  {
+    "project": "store-api",
+    "base": "main",
+    "current": "main",
+    "behind": 0,
+    "ahead": 0
+  },
+  {
+    "project": "signals",
+    "base": "develop",
+    "current": "develop",
+    "behind": -1,
+    "ahead": 0,
+    "error": "fetch failed: could not read from remote"
+  }
+]

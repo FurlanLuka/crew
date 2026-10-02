@@ -8,6 +8,20 @@ const DOT_BY_SERVER_STATE: Record<DevServer['state'], string> = {
 	'not listening': 'needs',
 };
 
+// A server's link as an icon at the row's end: the URL is its tooltip and its name, never row text.
+const OpenLink = ({ name, url }: { name: string; url: string }) => {
+	const label = `Open ${name} (${url.replace(/^https?:\/\//, '')})`;
+
+	return (
+		<a href={url} target="_blank" rel="noreferrer" className="open-link" title={label}>
+			<svg viewBox="0 0 16 16" role="img" aria-label={label}>
+				<title>{label}</title>
+				<path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5" />
+			</svg>
+		</a>
+	);
+};
+
 interface DevPanelProps {
 	worktree: string;
 	servers: DevServer[];
@@ -20,7 +34,7 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 	const isOfferShown = isOfferFresh(offer, Date.now()) && offer?.ref === worktree;
 
 	return (
-		<section className="panel" aria-label="dev servers">
+		<section className="vo-panel panel" aria-label="dev servers">
 			<span className="lbl">dev servers</span>
 			{isStarting && <div className="row c-amber">starting…</div>}
 			{!isStarting && servers.length === 0 && <div className="row c-dim">not running</div>}
@@ -33,21 +47,15 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 				>
 					<i className={`dot ${DOT_BY_SERVER_STATE[server.state]}`} />
 					<span className="c-ink">{server.name}</span>
-					{server.url ? (
-						<a href={server.url} target="_blank" rel="noreferrer" className="el">
-							:{server.port}
-						</a>
-					) : (
-						<span className="el">{server.port > 0 ? `:${server.port}` : ''}</span>
-					)}
 					{server.state !== 'running' && <span className="c-crit">{server.state}</span>}
+					{server.url && <OpenLink name={server.name} url={server.url} />}
 				</div>
 			))}
 			<div className="btns">
 				{servers.length === 0 && !isStarting && (
 					<button
 						type="button"
-						className="btn primary"
+						className="btn sm"
 						onClick={() => dispatch({ type: 'dev_start', ref: worktree })}
 					>
 						Start · “start dev servers”
@@ -57,14 +65,14 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 					<>
 						<button
 							type="button"
-							className="btn"
+							className="btn sm ghost"
 							onClick={() => dispatch({ type: 'dev_restart', ref: worktree })}
 						>
 							Restart
 						</button>
 						<button
 							type="button"
-							className="btn"
+							className="btn sm ghost"
 							onClick={() => dispatch({ type: 'dev_stop', ref: worktree })}
 						>
 							Stop
@@ -74,7 +82,7 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 				{isOfferShown && (
 					<button
 						type="button"
-						className="btn danger"
+						className="btn sm danger"
 						onClick={() => dispatch({ type: 'fix_dev', ref: worktree })}
 					>
 						Fix {offer.servers.join(', ')} · “yes”

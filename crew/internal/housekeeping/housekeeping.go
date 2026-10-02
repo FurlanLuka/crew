@@ -21,6 +21,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -213,8 +214,11 @@ func collect(prune bool) State {
 				continue
 			}
 			asked[slug] = true
-			if exec.TmuxSessionExists(dev.SessionName(slug)) || exec.TmuxSessionExists(dev.SetupSessionName(slug)) {
-				s.LiveSlugs[slug] = true
+			for _, session := range liveSessions(slug) {
+				if exec.TmuxSessionExists(session) {
+					s.LiveSlugs[slug] = true
+					break
+				}
 			}
 		}
 	}
@@ -230,6 +234,17 @@ func collect(prune bool) State {
 		}
 	}
 	return s
+}
+
+// liveSessions is every tmux session whose life keeps slug's files: its dev
+// and setup sessions, and for crew's server — whose route is the voice slug's
+// but whose session is outside crew-dev-* — the server's under either name.
+func liveSessions(slug dev.Slug) []string {
+	out := []string{dev.SessionName(slug), dev.SetupSessionName(slug)}
+	if slug == dev.Slug(workspace.VoiceSlug) {
+		out = append(out, voice.SessionName, voice.LegacySessionName)
+	}
+	return out
 }
 
 // locks is every <name>.json.lock in dir with whether <name>.json is there.
@@ -325,10 +340,10 @@ func apply(a *Action, dryRun bool) {
 // SweepOnStart is what every crew invocation runs first: the full sweep at
 // most once an hour, otherwise just the trash — a rm an earlier run
 // started may not have finished. Neither for the commands that must not
-// (a runner starting, the proxy, clean itself, update), and uninstall
-// gets nothing at all: its purge takes ~/.crew whole.
+// (a runner starting, the proxy, clean itself, update), and the commands in
+// leavesConfigAlone get nothing at all.
 func SweepOnStart(args []string) {
-	if len(args) > 0 && args[0] == "uninstall" {
+	if leavesConfigAlone(args) {
 		return
 	}
 	stamp := filepath.Join(config.ConfigDir, "housekeeping.json")
@@ -341,6 +356,12 @@ func SweepOnStart(args []string) {
 	actions := Sweep(Options{})
 	data, _ := json.Marshal(map[string]any{"at": time.Now(), "actions": len(actions)})
 	os.WriteFile(stamp, data, 0o644)
+}
+
+// leavesConfigAlone: uninstall's purge takes ~/.crew whole, and --version
+// changes nothing — a dev push runs it to vet a binary it may then refuse. Pure.
+func leavesConfigAlone(args []string) bool {
+	return len(args) > 0 && (args[0] == "uninstall" || args[0] == "--version" || args[0] == "-v")
 }
 
 // shouldSweepOnStart decides from the command line (args after the

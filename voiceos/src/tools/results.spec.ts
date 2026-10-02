@@ -58,29 +58,22 @@ describe('checkRef', () => {
 		expect(checkRef(createState(), 'work one')).toEqual(inactive);
 	});
 
-	it('"setup" said in vm1 → vm1\'s setup, inactive there; never this Mac\'s', () => {
-		const state = createState({ view: { kind: 'grid', machine: 'vm1' } });
+	it('"setup", by name or by ref, here or on vm1 → never reached: setup lives in Set up', () => {
+		const views = [{ kind: 'activate', machine: 'vm1' }, { kind: 'activate' }, { kind: 'active' }];
 
-		expect(checkRef(state, 'setup')).toEqual({
-			ok: false,
-			error: 'vm1:setup is not active',
-			inactive: 'vm1:setup',
-		});
-	});
+		for (const view of views) {
+			const state = createState({ view: view as State['view'], active: ['vm1:setup', 'setup'] });
 
-	it('"setup" said on this Mac, or on Mission Control with both setups active → this Mac\'s', () => {
-		expect(checkRef(createState({ view: { kind: 'grid', machine: 'local' } }), 'setup')).toEqual({
-			ok: true,
-			ref: 'setup',
-		});
-		expect(
-			checkRef(createState({ view: { kind: 'machines' }, active: ['vm1:setup'] }), 'setup'),
-		).toEqual({ ok: true, ref: 'setup' });
+			for (const said of ['setup', 'vm1:setup', 'setup session']) {
+				expect(checkRef(state, said)).toMatchObject({ ok: false });
+				expect(checkRef(state, said)).not.toHaveProperty('inactive');
+			}
+		}
 	});
 
 	it('a name active on another machine and inactive here → the active one', () => {
 		const state = createState({
-			view: { kind: 'grid', machine: 'local' },
+			view: { kind: 'activate', machine: 'local' },
 			active: ['vm1:store-front/main'],
 		});
 
@@ -94,7 +87,15 @@ describe('checkRef', () => {
 		expect(checkRef(createState(), 'billing main')).toEqual({
 			ok: false,
 			error:
-				'no active session "billing main". Active sessions: setup, store-front/main. Another worktree is reached with activate.',
+				'no active session "billing main". Active sessions: store-front/main. Another worktree is reached with activate.',
+		});
+	});
+
+	it('nothing answers and nothing is active → says none is, never an empty list', () => {
+		expect(checkRef(createState({ active: [] }), 'billing main')).toEqual({
+			ok: false,
+			error:
+				'no active session "billing main". No sessions are active. Another worktree is reached with activate.',
 		});
 	});
 

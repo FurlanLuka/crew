@@ -137,7 +137,7 @@ describe('held while the developer looks elsewhere', () => {
 		const held = run([tagged(LONG)], { start: runningSession() }).state;
 
 		for (const view of [
-			{ kind: 'grid' as const },
+			{ kind: 'active' as const },
 			{ kind: 'session' as const, ref: 'store/wrk1' },
 		]) {
 			const { state, effects } = run([{ type: 'switch_view', view }], { start: held });
@@ -193,7 +193,7 @@ describe('held while the developer looks elsewhere', () => {
 		}).state;
 		const { effects } = run(
 			[
-				{ type: 'switch_view', view: { kind: 'grid' } },
+				{ type: 'switch_view', view: { kind: 'active' } },
 				{ type: 'turn_ended', ref: REF, costUsd: 0, text: `<spoken>${LONG}</spoken>` },
 			],
 			{ start: heard },
@@ -572,7 +572,7 @@ describe('a question or plan the session already asked in its own line', () => {
 		const asked = open(question(), saidAndHeard()).state;
 		const left = run(
 			[
-				{ type: 'switch_view', view: { kind: 'grid' } },
+				{ type: 'switch_view', view: { kind: 'active' } },
 				{ type: 'line_held', ref: REF, text: ASKED, isAsking: true },
 			],
 			{ start: asked },
@@ -830,7 +830,7 @@ describe('a held line replayed while background sub-agents work', () => {
 
 describe('isOnAnotherSession', () => {
 	it.each([
-		['Mission Control', { kind: 'grid' as const }, false],
+		['Mission Control', { kind: 'active' as const }, false],
 		['the session itself', { kind: 'session' as const, ref: REF }, false],
 		['another session', { kind: 'session' as const, ref: 'store/wrk1' }, true],
 	])('%s → %p', (_, view, expected) =>
@@ -942,4 +942,44 @@ describe('what a "done" names', () => {
 		).toBe(
 			'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28…',
 		));
+});
+
+describe('an answer settles the waiting update of its session', () => {
+	const elsewhere = (): State => ({
+		...idleSession(),
+		view: { kind: 'session', ref: 'store/wrk1' },
+	});
+	const asked = (): State =>
+		run(
+			[
+				{
+					type: 'ask_opened',
+					ask: {
+						id: 'q1',
+						ref: REF,
+						at: 1,
+						kind: 'question',
+						input: {},
+						questions: [
+							{ question: 'Which one?', header: 'Pick', multiSelect: false, options: [] },
+						],
+					},
+				},
+				{ type: 'meanwhile_added', ref: REF, kind: 'done', about: 'tests pass' },
+			],
+			{ start: elsewhere() },
+		).state;
+	const answers: Input[] = [
+		{ type: 'decline_question', askId: 'q1' },
+		{ type: 'answer_question', askId: 'q1', answers: { 'Which one?': 'A' } },
+	];
+
+	for (const answer of answers) {
+		it(`${answer.type} → nothing waits for it`, () => {
+			const start = asked();
+
+			expect(start.meanwhile.map((item) => item.ref)).toEqual([REF]);
+			expect(run([answer], { start }).state.meanwhile).toEqual([]);
+		});
+	}
 });

@@ -1,0 +1,18 @@
+{
+  "project": "store-api",
+  "state": "failed",
+  "verdict": "failed",
+  "at": "2026-10-02T09:30:00Z",
+  "smoked": false,
+  "health": {
+    "at": "2026-10-02T09:30:00Z",
+    "issues": [
+      {
+        "stage": "install",
+        "project": "store-api",
+        "detail": "pnpm install:\nERR_PNPM_NO_MATCHING_VERSION"
+      }
+    ]
+  },
+  "projects": []
+}

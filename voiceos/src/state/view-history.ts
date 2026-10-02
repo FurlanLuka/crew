@@ -20,7 +20,7 @@ export const pruneViewHistory = (
 	entries.filter(({ view }) =>
 		view.kind === 'session'
 			? isKept(view.ref)
-			: view.kind !== 'grid' || !view.machine || isMachineKept(view.machine),
+			: view.kind !== 'activate' || !view.machine || isMachineKept(view.machine),
 	);
 
 // The view being left goes on top; the same view twice in a row is one.
@@ -47,10 +47,10 @@ const sayView = (state: State, view: View): string => {
 			return sayRef(state, view.ref);
 		case 'active':
 			return 'Active';
-		case 'machines':
-			return 'your machines';
-		case 'grid':
-			return 'Mission Control';
+		case 'activate':
+			return 'Activate';
+		case 'settings':
+			return 'Settings';
 	}
 };
 

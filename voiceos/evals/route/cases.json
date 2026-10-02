@@ -142,15 +142,6 @@
 			"source": "kernel"
 		},
 		{
-			"id": "k-in-session-setup",
-			"utterance": "Why is this so slow?",
-			"context": {
-				"view": "setup"
-			},
-			"label": "session",
-			"source": "kernel"
-		},
-		{
 			"id": "k-in-session-dev-start",
 			"utterance": "Can you start the dev servers here?",
 			"context": {
@@ -601,15 +592,15 @@
 				"view": "store-front/wrk1",
 				"work": [
 					{
-						"ref": "setup",
-						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
+						"ref": "checkout-api/main",
+						"request": "Add retry backoff to checkout and run the retry tests.",
 						"minutesAgo": 4
 					}
 				],
 				"voiceLog": [
 					{
-						"utterance": "What's the setup status?",
-						"reply": "Voice OS is still setting up wrk3, four minutes in.",
+						"utterance": "What's checkout doing?",
+						"reply": "Checkout api main is still adding the retry backoff, four minutes in.",
 						"did": []
 					}
 				]
@@ -1329,7 +1320,7 @@
 			"context": {
 				"view": "checkout-api/main"
 			},
-			"label": "voiceos",
+			"label": "session",
 			"source": "kernel"
 		},
 		{

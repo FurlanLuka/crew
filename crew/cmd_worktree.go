@@ -14,6 +14,8 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/dirsize"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
+	"github.com/FurlanLuka/crew/crew/internal/words"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -44,6 +46,12 @@ func cmdAddWorktree() {
 	ws, err := workspace.Load(ref.Workspace)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", ref.Workspace)
+		os.Exit(1)
+	}
+	// Refused before the base table: nothing is fetched or said for a
+	// worktree that will not be made.
+	if err := workspace.WorktreeAddRefusal(*ws, ref.Worktree); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -156,18 +164,44 @@ func printBases(ws *workspace.Workspace, pull bool, pullHint string) {
 	}
 }
 
-// landOn is where creation ends. The runners are going; in a terminal the
-// worktree page shows them (esc leaves them running). Without one, the
-// status line and the way to watch — or, with --wait, the runners watched
-// to the end, the summary, and exit 1 while anything is recorded so a
-// script can tell.
-func landOn(ref workspace.Ref, created string, wait bool) {
-	if isTerminal() && !jsonOutput && !wait {
-		page := workspace.NewWorktreeView(ref)
-		page.SetStatus(created + " — installing")
-		runTUI(page)
+// cmdLsBases is the base table a new worktree branches from, on its own:
+// each project's base, how far behind origin it is (fetched now), and the
+// branch the canonical checkout is on. crew add worktree --pull pulls.
+func cmdLsBases() {
+	if len(os.Args) != 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew ls bases <workspace>\n")
+		os.Exit(1)
+	}
+	ws, err := workspace.Load(os.Args[3])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: workspace '%s' not found\n", os.Args[3])
+		os.Exit(1)
+	}
+	statuses := baseRows(workspace.BaseStatuses(ws))
+	if jsonOutput {
+		printJSON(statuses)
 		return
 	}
+	fmt.Print(workspace.FormatBaseStatuses(statuses))
+	if warn := workspace.StaleWarning(statuses); warn != "" {
+		fmt.Fprintf(human, "\n  %s\n  crew add worktree %s/<name> --pull fast-forwards the local bases first.\n", warn, ws.Name)
+	}
+}
+
+// baseRows is the table as a list, never null. Pure.
+func baseRows(statuses []workspace.BaseStatus) []workspace.BaseStatus {
+	if statuses == nil {
+		return []workspace.BaseStatus{}
+	}
+	return statuses
+}
+
+// landOn is where creation ends. The runners are going: the status line,
+// their table as it stands, the way to watch and crew's page — or, with
+// --wait, the runners watched to the end, the summary, and exit 1 while
+// anything is recorded so a script can tell. It never opens a TUI: the
+// browser is where a worktree is followed.
+func landOn(ref workspace.Ref, created string, wait bool) {
 	res, err := workspace.Resolve(ref)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -179,7 +213,11 @@ func landOn(ref workspace.Ref, created string, wait bool) {
 			printJSON(startedDoc(ref, projects))
 			return
 		}
-		fmt.Print(renderStarted(ref, created, len(res.Projects)))
+		table := ""
+		if st, err := workspace.SetupStatus(ref); err == nil && len(st.Projects) > 0 {
+			table = workspace.RenderSetupTable(st, "▸", time.Now())
+		}
+		fmt.Print(renderStarted(ref, created, len(res.Projects), table, voice.PageURL()))
 		return
 	}
 	reportVerdict(ref, func(st workspace.Status, h *workspace.Health) (map[string]any, string) {
@@ -235,10 +273,18 @@ func reportVerdict(ref workspace.Ref, render func(workspace.Status, *workspace.H
 	}
 }
 
-// renderStarted is the no-terminal, no-wait ending: the runners are going,
-// here is how to watch them. Pure.
-func renderStarted(ref workspace.Ref, created string, projects int) string {
-	return fmt.Sprintf("%s — %d projects installing in the background.\n  crew setup status %s [--wait]   what each runner has done; --wait stays until every one is done\n  crew setup logs %s <project>    what an install is printing\n", created, projects, ref, ref)
+// renderStarted is the no-wait ending: the runners are going, their table
+// as it stands (when there is one yet), how to watch them, and crew's page
+// when it runs. Pure.
+func renderStarted(ref workspace.Ref, created string, projects int, table, pageURL string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s — %s installing in the background.\n", created, words.Count(projects, "project"))
+	b.WriteString(table)
+	fmt.Fprintf(&b, "  crew setup status %s [--wait]   what each runner has done; --wait stays until every one is done\n  crew setup logs %s <project>    what an install is printing\n", ref, ref)
+	if pageURL != "" {
+		fmt.Fprintf(&b, "  %s   follow it in crew\n", pageURL)
+	}
+	return b.String()
 }
 
 // renderCreationSummary is the waited-for ending: what was made, every
@@ -366,6 +412,12 @@ func recordedHealth(ref workspace.Ref) *workspace.Health {
 // jsonStatus is the runners' status as data, every list a list — a reader
 // should never branch on null.
 func jsonStatus(st workspace.Status, h *workspace.Health) map[string]any {
+	return map[string]any{"ref": st.Ref.String(), "running": st.Running(), "failed": st.Failed(), "projects": statusProjects(st), "health": h}
+}
+
+// statusProjects is the runner rows with every list a list, [] when there
+// are none. Pure.
+func statusProjects(st workspace.Status) []workspace.ProjectStatus {
 	projects := make([]workspace.ProjectStatus, 0, len(st.Projects))
 	for _, p := range st.Projects {
 		if p.Steps == nil {
@@ -376,7 +428,7 @@ func jsonStatus(st workspace.Status, h *workspace.Health) map[string]any {
 		}
 		projects = append(projects, p)
 	}
-	return map[string]any{"ref": st.Ref.String(), "running": st.Running(), "failed": st.Failed(), "projects": projects, "health": h}
+	return projects
 }
 
 // mustSetupRef is mustResolve for the two commands that read result files:
@@ -456,25 +508,28 @@ func cmdSetupLogs() {
 			os.Exit(1)
 		}
 	}
-	text, err := workspace.SetupLogs(ref, proj, lines)
+	// --json cleans the whole log before it counts: a progress bar's
+	// redraws are one line once cleaned, many before.
+	n := lines
+	if jsonOutput {
+		n = 0
+	}
+	text, err := workspace.SetupLogs(ref, proj, n)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: no runner log for %s on %s — crew setup status %s\n", proj, ref, ref)
 		os.Exit(1)
 	}
 	if jsonOutput {
-		printJSON(logsDoc(ref, proj, text))
+		printJSON(logsDoc(ref, proj, text, lines))
 		return
 	}
 	fmt.Println(text)
 }
 
-// logsDoc is `setup logs --json`: the lines as a list, never null. Pure.
-func logsDoc(ref workspace.Ref, proj, text string) map[string]any {
-	lines := []string{}
-	if text != "" {
-		lines = strings.Split(text, "\n")
-	}
-	return map[string]any{"ref": ref.String(), "project": proj, "lines": lines}
+// logsDoc is `setup logs --json`: the last n lines as a list, cleaned the
+// way `dev logs --json` cleans them, never null. Pure.
+func logsDoc(ref workspace.Ref, proj, text string, n int) map[string]any {
+	return map[string]any{"ref": ref.String(), "project": proj, "lines": cleanTail(text, n)}
 }
 
 // printSmokeTails shows the last log lines of each server that died, and
@@ -665,12 +720,17 @@ func hasServers(res *workspace.Resolved) bool {
 }
 
 func cmdRmWorktree() {
-	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew rm worktree <workspace>/<name>\n")
+	args, dryRun := extractFlag(os.Args, "--dry-run")
+	if len(args) != 4 {
+		fmt.Fprintf(os.Stderr, "Usage: crew rm worktree <workspace>/<name> [--dry-run]\n")
 		os.Exit(1)
 	}
 
-	ref := mustParseWorktreeRef(os.Args[3], "rm")
+	ref := mustParseWorktreeRef(args[3], "rm")
+	if dryRun {
+		printRemovalCost(workspace.WorktreeRemovalCost(ref))
+		return
+	}
 	if err := workspace.RemoveWorktree(ref.Workspace, ref.Worktree); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -701,10 +761,7 @@ func cmdLsWorktrees() {
 		for _, ref := range workspace.Refs(ws) {
 			row := worktreeJSONRow(ref, dev.Running(ref.Slug()), workspace.SetupRunning(ref))
 			if wt, err := workspace.WorktreeOf(ws, ref); err == nil {
-				row.Health = wt.Health.Summary()
-				if wt.Health != nil {
-					row.Issues = wt.Health.Issues
-				}
+				row = withHealth(row, wt.Health)
 			}
 			// A walk; a worktree with a full build inside takes a while.
 			if withSize {
@@ -721,10 +778,7 @@ func cmdLsWorktrees() {
 		checks, _ := workspace.ListChecks()
 		for _, c := range checks {
 			sm := workspace.CheckSummary(c)
-			row := worktreeOut{Ref: sm.Name, Path: sm.Path, DevRunning: sm.DevRunning, Installing: sm.Installing, Health: sm.Health}
-			if c.Worktree.Health != nil {
-				row.Issues = c.Worktree.Health.Issues
-			}
+			row := withHealth(worktreeOut{Ref: sm.Name, Path: sm.Path, DevRunning: sm.DevRunning, Installing: sm.Installing}, c.Worktree.Health)
 			if withSize {
 				row.SizeBytes = dirsize.Of(row.Path)
 			}
@@ -746,10 +800,27 @@ func cmdLsWorktrees() {
 // runner, as the target check/<name>. Ends the way add worktree does.
 func cmdCheck() {
 	if len(os.Args) < 4 || os.Args[2] != "project" {
-		fmt.Fprintf(os.Stderr, "Usage: crew check project <name> [--pull] [--no-smoke] [--wait]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew check project <name> [--pull] [--no-smoke] [--wait] | crew check project <name> --status\n")
 		os.Exit(1)
 	}
 	name := os.Args[3]
+	if rest, status := extractFlag(os.Args[4:], "--status"); status {
+		if len(rest) > 0 {
+			fmt.Fprintf(os.Stderr, "Error: --status takes nothing else, got '%s'\n", rest[0])
+			os.Exit(1)
+		}
+		if project.Get(name) == nil {
+			fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", name)
+			os.Exit(1)
+		}
+		doc := checkStatusDoc(name, workspace.InspectCheck(name))
+		if jsonOutput {
+			printJSON(doc)
+			return
+		}
+		fmt.Println(checkStatusLine(doc, time.Now()))
+		return
+	}
 	f := parseSetupFlags(os.Args[4:], false)
 	p := project.Get(name)
 	if p == nil {
@@ -758,7 +829,7 @@ func cmdCheck() {
 	}
 	// StartCheck refuses this too; asking first spares the base fetch.
 	if ref := workspace.CheckRef(name); workspace.SetupRunning(ref) {
-		fmt.Fprintf(os.Stderr, "Error: %v on %s — crew setup status %s\n", workspace.ErrSetupRunning, ref, ref)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", workspace.SetupRunningError(ref))
 		os.Exit(1)
 	}
 	printBases(&workspace.Workspace{Name: workspace.CheckWorkspace, Projects: []workspace.WorkspaceProject{{Name: name}}}, f.pull,
@@ -769,6 +840,56 @@ func cmdCheck() {
 		os.Exit(1)
 	}
 	landOn(workspace.CheckRef(name), fmt.Sprintf("Checking %s", name), f.wait)
+}
+
+// checkStatus is crew check project <name> --status: a project's check at
+// rest — none, running, passed (and whether it smoked), or failed with its
+// record — read the one safe way (InspectCheck).
+type checkStatus struct {
+	Project  string                    `json:"project"`
+	State    string                    `json:"state"`
+	Verdict  workspace.Verdict         `json:"verdict,omitempty"`
+	At       *time.Time                `json:"at,omitempty"`
+	Smoked   bool                      `json:"smoked"`
+	Health   *workspace.Health         `json:"health"`
+	Projects []workspace.ProjectStatus `json:"projects"`
+}
+
+// checkStatusDoc shapes InspectCheck's reading. Pure.
+func checkStatusDoc(name string, info workspace.CheckInfo) checkStatus {
+	doc := checkStatus{Project: name, State: info.State.String(), Smoked: info.Smoked, Health: info.Health, Projects: []workspace.ProjectStatus{}}
+	if !info.At.IsZero() {
+		at := info.At
+		doc.At = &at
+	}
+	if info.Status != nil {
+		doc.Projects = statusProjects(*info.Status)
+	}
+	switch info.State {
+	case workspace.CheckPassed:
+		doc.Verdict = workspace.VerdictPassed
+		if info.Status != nil {
+			doc.Verdict = workspace.VerdictFor(*info.Status, info.Smoked)
+		}
+	case workspace.CheckFailed:
+		doc.Verdict = workspace.VerdictFailed
+	}
+	return doc
+}
+
+// checkStatusLine is the text form: project, state, verdict, when. Pure.
+func checkStatusLine(d checkStatus, now time.Time) string {
+	cols := []string{d.Project, d.State}
+	if d.Verdict != workspace.VerdictNone && string(d.Verdict) != d.State {
+		cols = append(cols, string(d.Verdict))
+	}
+	if d.At != nil {
+		cols = append(cols, workspace.AgoAt(*d.At, now))
+	}
+	if d.Health != nil {
+		cols = append(cols, d.Health.Summary())
+	}
+	return strings.Join(cols, "\t")
 }
 
 // worktreeRow is one line of crew ls worktrees: the size column only when
@@ -814,6 +935,10 @@ func cmdAddBinding() {
 	}
 
 	value, err := bindingValue(a.url, a.host, a.port, a.value)
+	if a.dryRun {
+		runBindingDryRun(owner, project.Binding{Var: a.varName, Value: value, Server: owner.Target.Server}, err)
+		return
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -833,7 +958,7 @@ func cmdAddBinding() {
 // bindingArgs is what the flags of `crew add binding` say.
 type bindingArgs struct {
 	varName, value, url, host, port string
-	scan, apply                     bool
+	scan, apply, dryRun             bool
 }
 
 func parseBindingArgs(args []string) (bindingArgs, error) {
@@ -844,6 +969,8 @@ func parseBindingArgs(args []string) (bindingArgs, error) {
 			a.scan = true
 		case arg == "--apply":
 			a.apply = true
+		case arg == "--dry-run":
+			a.dryRun = true
 		case strings.HasPrefix(arg, "--var="):
 			a.varName = strings.TrimPrefix(arg, "--var=")
 		case strings.HasPrefix(arg, "--value="):
@@ -969,16 +1096,18 @@ func stillBoundNote(bindings []project.Binding, varName, removedServer string) s
 
 func cmdLsBindings() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls bindings <project> [--check=<workspace>/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls bindings <project> [--check=<workspace>/<worktree>] [--preview]\n")
 		os.Exit(1)
 	}
 
 	projName := os.Args[3]
-	checkRef := ""
+	checkRef, preview := "", false
 	for _, arg := range os.Args[4:] {
 		switch {
 		case strings.HasPrefix(arg, "--check="):
 			checkRef = strings.TrimPrefix(arg, "--check=")
+		case arg == "--preview":
+			preview = true
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
 			os.Exit(1)
@@ -1003,6 +1132,10 @@ func cmdLsBindings() {
 	}
 
 	rows := bindingRows(p.Bindings, resolved)
+	if preview {
+		printPreviewRows(previewRows(rows, workspace.PreviewBindings(projName, p.Bindings)))
+		return
+	}
 	if jsonOutput {
 		printJSON(rows)
 		return
@@ -1075,34 +1208,18 @@ func runBindingScan(owner bindingOwner, apply bool) {
 
 	// One row per proposal, decided before anything prints, so the JSON and
 	// text forms cannot drift.
-	type scanRow struct {
-		Var      string `json:"var"`
-		Value    string `json:"value"`
-		Port     int    `json:"port,omitempty"`
-		Template string `json:"template,omitempty"`
-		Status   string `json:"status"` // already bound | ambiguous | proposed | added | failed
-		Detail   string `json:"detail,omitempty"`
-	}
-	rows := make([]scanRow, 0, len(proposals))
-	applied := 0
-	for _, prop := range proposals {
-		row := scanRow{Var: prop.Var, Value: prop.Value, Port: prop.Port, Template: prop.Template}
-		switch {
-		case declared[prop.Var]:
-			row.Status = "already bound"
-		case prop.Ambiguous:
-			row.Status, row.Detail = "ambiguous", fmt.Sprintf("two projects configured on :%d — pick one by hand", prop.Port)
-		case apply:
-			if err := project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template, Server: owner.Target.Server}); err != nil {
-				row.Status, row.Detail = "failed", err.Error()
-			} else {
-				row.Status = "added"
-				applied++
-			}
-		default:
-			row.Status = "proposed"
+	var add func(dev.Proposal) error
+	if apply {
+		add = func(prop dev.Proposal) error {
+			return project.AddBinding(projName, project.Binding{Var: prop.Var, Value: prop.Template, Server: owner.Target.Server})
 		}
-		rows = append(rows, row)
+	}
+	rows := scanRows(proposals, declared, add)
+	applied := 0
+	for _, r := range rows {
+		if r.Status == "added" {
+			applied++
+		}
 	}
 
 	if jsonOutput {
@@ -1114,10 +1231,10 @@ func runBindingScan(owner bindingOwner, apply bool) {
 		where = owner.Target.String() + " (" + subdir + ")"
 	}
 	if len(rows) == 0 {
-		fmt.Printf("Scanned %d checkouts of %s — nothing in their env files points at a port crew allocates.\n", len(dirs), where)
+		fmt.Printf("Scanned %s of %s — nothing in their env files points at a port crew allocates.\n", words.Count(len(dirs), "checkout"), where)
 		return
 	}
-	fmt.Printf("Scanned %d checkouts of %s\n\n", len(dirs), where)
+	fmt.Printf("Scanned %s of %s\n\n", words.Count(len(dirs), "checkout"), where)
 	for _, r := range rows {
 		switch r.Status {
 		case "already bound":
@@ -1132,10 +1249,45 @@ func runBindingScan(owner bindingOwner, apply bool) {
 	}
 
 	if apply {
-		fmt.Printf("\nAdded %d bindings to %s.\n", applied, owner.Target)
+		fmt.Printf("\nAdded %s to %s.\n", words.Count(applied, "binding"), owner.Target)
 		return
 	}
-	fmt.Printf("\nRe-run with --apply to add these, or use the TUI to pick individually.\n")
+	fmt.Printf("\nRe-run with --apply to add these, or pick them one by one on crew's page (run crew).\n")
+}
+
+// scanRow is one crew add binding --scan row.
+type scanRow struct {
+	Var      string `json:"var"`
+	Value    string `json:"value"`
+	Port     int    `json:"port,omitempty"`
+	Template string `json:"template,omitempty"`
+	Status   string `json:"status"` // already bound | ambiguous | proposed | added | failed
+	Detail   string `json:"detail,omitempty"`
+}
+
+// scanRows decides each proposal: bound already, ambiguous, or proposed —
+// or, with add (--apply), added or failed. Pure given add.
+func scanRows(proposals []dev.Proposal, declared map[string]bool, add func(dev.Proposal) error) []scanRow {
+	rows := make([]scanRow, 0, len(proposals))
+	for _, prop := range proposals {
+		row := scanRow{Var: prop.Var, Value: prop.Value, Port: prop.Port, Template: prop.Template}
+		switch {
+		case declared[prop.Var]:
+			row.Status = "already bound"
+		case prop.Ambiguous:
+			row.Status, row.Detail = "ambiguous", fmt.Sprintf("two projects configured on :%d — pick one by hand", prop.Port)
+		case add != nil:
+			if err := add(prop); err != nil {
+				row.Status, row.Detail = "failed", err.Error()
+			} else {
+				row.Status = "added"
+			}
+		default:
+			row.Status = "proposed"
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // Overrides are the top precedence rung; a worktree pins a variable and the
@@ -1284,6 +1436,15 @@ type worktreeOut struct {
 	SizeBytes  int64             `json:"size_bytes,omitempty"`
 	Health     string            `json:"health,omitempty"`
 	Issues     []workspace.Issue `json:"issues,omitempty"`
+}
+
+// withHealth adds what is recorded: the summary and every issue. Pure.
+func withHealth(row worktreeOut, h *workspace.Health) worktreeOut {
+	row.Health = h.Summary()
+	if h != nil {
+		row.Issues = h.Issues
+	}
+	return row
 }
 
 // worktreeJSONRow is the identity part of a crew ls worktrees --json row;

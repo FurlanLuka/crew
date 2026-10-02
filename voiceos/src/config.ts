@@ -95,6 +95,22 @@ export const findMissingKeys = (keys: Keys, paths: Paths): string[] => {
 	return missing;
 };
 
+export const CLAUDE_MISSING = 'claude on PATH (install Claude Code, or set VOICEOS_CLAUDE_BIN)';
+
+// What the page's "before you talk" sheet lists: the keys not set, and claude when it was not found
+// (null; undefined is the SDK's own claude, run from source). Read again whenever a key changes;
+// claude is only looked for at start, so its entry stays.
+export interface MissingForParams {
+	keys: Keys;
+	paths: Paths;
+	claudeBin: string | null | undefined;
+}
+
+export const missingFor = ({ keys, paths, claudeBin }: MissingForParams): string[] => [
+	...findMissingKeys(keys, paths),
+	...(claudeBin === null ? [CLAUDE_MISSING] : []),
+];
+
 export const ensureToken = (paths: Paths): string => {
 	mkdirSync(paths.voiceDir, { recursive: true, mode: 0o700 });
 

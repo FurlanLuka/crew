@@ -7,7 +7,7 @@ import { formatAge } from '../state/working.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import {
-	GRID,
+	HOME_SCREEN,
 	type Action,
 	type ListenMode,
 	type PendingAsk,
@@ -18,12 +18,7 @@ import {
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
-import {
-	buildNotesPathNote,
-	buildSessionNote,
-	isDuplicateSend,
-	isMisroutedToSetup,
-} from './send.js';
+import { buildNotesPathNote, buildSessionNote, isDuplicateSend } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
 import { TAKEN_BACK } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
@@ -138,12 +133,12 @@ describe('executeTool', () => {
 		]);
 	});
 
-	it('switch_view null → Mission Control', async () => {
+	it('switch_view null → Active', async () => {
 		const { tools, actions } = createToolContext();
 
 		await executeTool('switch_view', { ref: null }, tools);
 
-		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'machines' } }]);
+		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'active' } }]);
 	});
 
 	it('activate on an active session → no dispatch, says so', async () => {
@@ -1042,10 +1037,10 @@ describe('the notes path for a session', () => {
 		const notes = notesIn([]);
 
 		expect(buildNotesPathNote({ ref: 'vm1:store-front/main', isAsked: true, notes })).toBe(
-			"The developer's notes for store-front are on the main machine: run `crew voice notes store-front` to read them.",
+			"The developer's notes for store-front are on the main machine: run `crew server notes store-front` to read them.",
 		);
 		expect(buildNotesPathNote({ ref: 'vm1:setup', isAsked: true, notes })).toBe(
-			"The developer's notes for general are on the main machine: run `crew voice notes` to read them.",
+			"The developer's notes for general are on the main machine: run `crew server notes` to read them.",
 		);
 		expect(
 			buildNotesPathNote({ ref: 'vm1:store-front/main', isAsked: false, notes }),
@@ -3971,67 +3966,6 @@ describe('fixes from the live notes', () => {
 		expect(actions).toEqual([
 			{ type: 'send', ref: 'store-front/main', text: 'What does that command do?', aside: true },
 		]);
-	});
-
-	it.each([
-		['Can you reinstall Voice OS and restart it?', true],
-		['Rebuild Voice OS and crew, please.', true],
-		['Voice OS, make a worktree in store front for the search fix.', false],
-		['Okay, setup: register the new project.', false],
-		['Can you add a worktree for the search fix?', false],
-	])(
-		"from another session's screen, %p → misrouted to setup: %p",
-		async (utterance, isMisrouted) => {
-			const base = createToolContext().tools.getState();
-			const state = {
-				...base,
-				sessions: {
-					...base.sessions,
-					'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
-				},
-			};
-
-			expect(
-				await isMisroutedToSetup({
-					judge: englishJudge,
-					state,
-					ref: 'checkout-api/main',
-					forwardTo: 'store-front/main',
-					utterance,
-				}),
-			).toBe(isMisrouted);
-		},
-	);
-
-	it('the setup session on screen, or no session on screen → never refused', async () => {
-		const base = createToolContext().tools.getState();
-		const state = {
-			...base,
-			sessions: {
-				...base.sessions,
-				'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
-			},
-		};
-		const utterance = 'Can you reinstall Voice OS?';
-
-		expect(
-			await isMisroutedToSetup({
-				judge: englishJudge,
-				state,
-				ref: 'checkout-api/main',
-				forwardTo: 'checkout-api/main',
-				utterance,
-			}),
-		).toBe(false);
-		expect(
-			await isMisroutedToSetup({
-				judge: englishJudge,
-				state,
-				ref: 'checkout-api/main',
-				forwardTo: null,
-				utterance,
-			}),
-		).toBe(false);
 	});
 });
 

@@ -65,7 +65,7 @@ const createHarness = (
 	const view = (ref: string | null) =>
 		store.dispatch({
 			type: 'switch_view',
-			view: ref ? { kind: 'session', ref } : { kind: 'grid' },
+			view: ref ? { kind: 'session', ref } : { kind: 'active' },
 		});
 
 	return { store, router, kernelCalls, listenSwitches, docOpeners, heardFroms, inputs, view };
@@ -102,13 +102,13 @@ describe('UtteranceRouter', () => {
 		).toEqual(['Okay.', "What's waiting on me?"]);
 	});
 
-	it('on Mission Control → no screen, logged under the grid', async () => {
+	it('off a session → no screen, logged under home', async () => {
 		const harness = createHarness();
 
 		await harness.router.handle('restart the dev servers');
 
 		expect(harness.kernelCalls[0]).toMatchObject({ forwardTo: null, screen: null });
-		expect(harness.store.state.voiceLog.grid).toHaveLength(1);
+		expect(harness.store.state.voiceLog.home).toHaveLength(1);
 	});
 
 	it('what the kernel did and said is logged; a turn that only ignored the words is marked so', async () => {
@@ -121,7 +121,7 @@ describe('UtteranceRouter', () => {
 		await harness.router.handle('restart the servers');
 		await harness.router.handle('hmm');
 
-		expect(harness.store.state.voiceLog.grid).toEqual([
+		expect(harness.store.state.voiceLog.home).toEqual([
 			{
 				utterance: 'restart the servers',
 				did: ['crew_dev restart store-front/main'],
@@ -170,7 +170,7 @@ describe('UtteranceRouter', () => {
 		await harness.router.handle('next');
 
 		expect(
-			harness.store.state.voiceLog.grid?.map((entry) => [entry.utterance, entry.isFailed ?? false]),
+			harness.store.state.voiceLog.home?.map((entry) => [entry.utterance, entry.isFailed ?? false]),
 		).toEqual([
 			['boom', true],
 			['next', false],
@@ -317,7 +317,7 @@ describe('UtteranceRouter', () => {
 		await router.handle('open checkout');
 
 		expect(store.state.spoken.at(-1)?.text).toContain('Anthropic key');
-		expect(store.state.voiceLog.grid?.[0]?.reply).toContain('Anthropic key');
+		expect(store.state.voiceLog.home?.[0]?.reply).toContain('Anthropic key');
 	});
 
 	it('blank words → nothing at all', async () => {

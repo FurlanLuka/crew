@@ -165,7 +165,7 @@ func StartCheck(projName string, opts CheckoutOptions) error {
 	}
 	ref := CheckRef(projName)
 	if SetupRunning(ref) {
-		return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, ref, ref)
+		return SetupRunningError(ref)
 	}
 	removeSetupArtifacts(ref)
 	trashCheckTarget(ref)
@@ -340,4 +340,42 @@ func CheckSummary(c Check) Summary {
 		Installing:   SetupRunning(ref),
 		Health:       c.Worktree.Health.Summary(),
 	}
+}
+
+// Verdict is what a check's runner table says once read: nothing yet
+// (alive), passed, passed without the smoke, or failed.
+type Verdict string
+
+const (
+	VerdictNone        Verdict = ""
+	VerdictPassed      Verdict = "passed"
+	VerdictInstallOnly Verdict = "install only"
+	VerdictFailed      Verdict = "failed"
+)
+
+// VerdictFor reads a runner's table: alive, passed (which check it was
+// decides the wording), or failed. Pure.
+func VerdictFor(st Status, smoke bool) Verdict {
+	switch {
+	case st.Running():
+		return VerdictNone
+	case st.Passed() && smoke:
+		return VerdictPassed
+	case st.Passed():
+		return VerdictInstallOnly
+	}
+	return VerdictFailed
+}
+
+// String is the state as `crew check project --status` words it.
+func (s CheckInfoState) String() string {
+	switch s {
+	case CheckRunning:
+		return "running"
+	case CheckPassed:
+		return "passed"
+	case CheckFailed:
+		return "failed"
+	}
+	return "none"
 }

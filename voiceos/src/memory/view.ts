@@ -22,10 +22,10 @@ const isView = (value: unknown): value is View => {
 	const view = value as Record<string, unknown>;
 
 	switch (view.kind) {
-		case 'machines':
 		case 'active':
+		case 'settings':
 			return true;
-		case 'grid':
+		case 'activate':
 			return view.machine === undefined || typeof view.machine === 'string';
 		case 'session':
 			return typeof view.ref === 'string' && (view.from === undefined || view.from === 'active');
@@ -34,26 +34,36 @@ const isView = (value: unknown): value is View => {
 	}
 };
 
-// A view saved before the active set: Pinned is Active now.
-const fromPinned = (value: unknown): unknown => {
+// A view saved by an earlier release, in today's kinds. Pinned became Active; Mission Control's
+// machine cards went with the restyle (home is Active), and a machine's grid is its Activate list.
+// Pure.
+export const migrateSavedView = (value: unknown): unknown => {
 	if (!value || typeof value !== 'object') {
 		return value;
 	}
 
 	const view = value as Record<string, unknown>;
 
-	if (view.kind === 'pinned') {
-		return { kind: 'active' };
+	switch (view.kind) {
+		case 'pinned':
+		case 'machines':
+			return { kind: 'active' };
+		case 'grid':
+			return typeof view.machine === 'string'
+				? { kind: 'activate', machine: view.machine }
+				: { kind: 'activate' };
+		case 'session':
+			return view.from === 'pinned' ? { ...view, from: 'active' } : view;
+		default:
+			return view;
 	}
-
-	return view.kind === 'session' && view.from === 'pinned' ? { ...view, from: 'active' } : view;
 };
 
 export const loadView = (file: string): View | null => {
 	try {
 		const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown;
 
-		const view = fromPinned(parsed);
+		const view = migrateSavedView(parsed);
 
 		return isView(view) ? view : null;
 	} catch {
@@ -67,8 +77,8 @@ export const saveView = (file: string, view: View): void => {
 };
 
 export const restoredView = (saved: View, state: State, waitedMs = 0): ViewRestore => {
-	// Neither waits on a machine: Active shows an out-of-reach session as its own tile.
-	if (saved.kind === 'machines' || saved.kind === 'active') {
+	// None waits on a machine: Active shows an out-of-reach session as its own tile.
+	if (saved.kind === 'active' || saved.kind === 'settings') {
 		return { kind: 'apply', view: saved };
 	}
 
@@ -78,9 +88,9 @@ export const restoredView = (saved: View, state: State, waitedMs = 0): ViewResto
 		return { kind: 'drop' };
 	}
 
-	const machine = saved.kind === 'grid' ? saved.machine : machineOf(saved.ref);
+	const machine = saved.kind === 'activate' ? saved.machine : machineOf(saved.ref);
 	const isKnown =
-		saved.kind === 'grid'
+		saved.kind === 'activate'
 			? !machine || machine === LOCAL_MACHINE || Boolean(state.machines[machine])
 			: Boolean(state.sessions[saved.ref]);
 
@@ -144,10 +154,21 @@ export const persistView = ({ store, file, now = Date.now }: PersistViewParams):
 		}
 	};
 
+	let lastView = JSON.stringify(store.state.view);
+
+	// Saved on any input that moved the view, not only switch_view: an activation opened on the
+	// spot, or one held until crew listed its worktree, switches inside its own input.
 	store.subscribe((stamped, state) => {
-		if (stamped.input.type === 'switch_view') {
+		const view = JSON.stringify(state.view);
+		const hasMoved = view !== lastView;
+
+		lastView = view;
+
+		if (hasMoved || stamped.input.type === 'switch_view') {
 			// The developer chose where to look: a restore still waiting must not move them.
-			isPending = false;
+			if (stamped.input.type !== 'restore_view') {
+				isPending = false;
+			}
 
 			try {
 				saveView(file, state.view);

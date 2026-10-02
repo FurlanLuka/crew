@@ -46,13 +46,3 @@ export const RenameSession = ({ sessionRef, current, dispatch, onDone }: RenameS
 		</form>
 	);
 };
-
-interface RenameButtonProps {
-	onClick: () => void;
-}
-
-export const RenameButton = ({ onClick }: RenameButtonProps) => (
-	<button type="button" className="btn small rename" onClick={onClick}>
-		rename
-	</button>
-);

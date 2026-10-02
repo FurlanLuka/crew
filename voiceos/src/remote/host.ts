@@ -4,6 +4,7 @@
 import { createLogger } from '../log.js';
 import type { Observation, SessionStatus, WorktreeInfo } from '../shared/protocol.js';
 import type { CrewRunner } from '../crew/adapter.js';
+import { parseSetupCommand, toCrewArgv, toCrewStdin, traitsOf } from '../crew/commands.js';
 import type { HandsEffect } from './mapping.js';
 import {
 	acceptEffects,
@@ -24,6 +25,7 @@ import {
 	REMOTE_OBSERVATIONS,
 	SILENCE_LIMIT_MS,
 	type MainMessage,
+	type CrewCall,
 	type CrewCallResult,
 	type RemoteMessage,
 	type SequencedEffect,
@@ -37,8 +39,8 @@ const QUERY_TIMEOUT_MS = 30_000;
 // A build from source has no release to update to: the way back to one version is a dev push.
 export const describeVersionRefusal = (here: string, main: string): string =>
 	here.startsWith('dev') || main.startsWith('dev')
-		? `This machine runs Voice OS ${here} and the main ${main}: run crew voice dev push from the checkout you want on every machine, or crew update on each to go back to the release.`
-		: `This machine runs Voice OS ${here} and the main ${main}: run crew update on the older one, then crew voice remote there.`;
+		? `This machine runs Voice OS ${here} and the main ${main}: run crew server dev push from the checkout you want on every machine, or crew update on each to go back to the release.`
+		: `This machine runs Voice OS ${here} and the main ${main}: run crew update on the older one, then crew server remote there.`;
 
 const DEV_ACTIONS = new Set(['status', 'check', 'start', 'stop', 'restart']);
 const DEV_FLAGS = new Set(['--json', '--wait']);
@@ -61,6 +63,55 @@ export const isAllowedCrewCall = (args: string[]): boolean => {
 	const refs = rest.filter((arg) => !arg.startsWith('-'));
 
 	return refs.length <= 1 && rest.every((arg) => !arg.startsWith('-') || DEV_FLAGS.has(arg));
+};
+
+type PlannedCall =
+	| { ok: true; args: string[]; stdin?: string; label: string; timeoutMs?: number }
+	| { ok: false; reason: string; error: string };
+
+// What a main's call runs here. A typed Set up command runs whatever crew/commands.ts allows, built
+// into argv here — a deliberate widening from the dev-watch allow-list: the main already reaches this
+// machine over SSH as the developer, so Set up asking crew for a worktree here grants nothing new.
+// Only what would stop, replace or re-key this machine's own server stays the main's own (local-only).
+// A call without a command (the dev watch) is judged by isAllowedCrewCall as before. Pure.
+export const planCrewCall = (
+	message: Pick<CrewCall, 'args' | 'command' | 'timeoutMs'>,
+): PlannedCall => {
+	if (message.command === undefined) {
+		return isAllowedCrewCall(message.args)
+			? {
+					ok: true,
+					args: message.args,
+					label: message.args.slice(0, 2).join(' '),
+					...(message.timeoutMs ? { timeoutMs: message.timeoutMs } : {}),
+				}
+			: { ok: false, reason: 'args', error: 'not allowed' };
+	}
+
+	const parsed = parseSetupCommand(message.command);
+
+	if (!parsed.ok) {
+		return { ok: false, reason: 'invalid command', error: parsed.error };
+	}
+
+	if (traitsOf(parsed.command).localOnly) {
+		return {
+			ok: false,
+			reason: 'local only',
+			error: `${parsed.command.type} runs only on the main`,
+		};
+	}
+
+	const stdin = toCrewStdin(parsed.command);
+
+	// The variant's own timeout, not the wire's: the wire stays inside what older remotes accept.
+	return {
+		ok: true,
+		args: toCrewArgv(parsed.command),
+		label: parsed.command.type,
+		timeoutMs: traitsOf(parsed.command).timeoutMs,
+		...(stdin === undefined ? {} : { stdin }),
+	};
 };
 
 export interface Connection {
@@ -393,22 +444,24 @@ export class RemoteHost {
 		message: Extract<MainMessage, { type: 'call' }>,
 	): Promise<void> {
 		const startedAt = this.now();
+		const planned = planCrewCall(message);
 
-		if (!isAllowedCrewCall(message.args)) {
-			log.warn('crew call refused', { args: message.args[0] });
-			this.send(attachment, { type: 'result', id: message.id, ok: false, error: 'not allowed' });
+		if (!planned.ok) {
+			log.warn('crew call refused', { reason: planned.reason });
+			this.send(attachment, { type: 'result', id: message.id, ok: false, error: planned.error });
 
 			return;
 		}
 
 		try {
-			const value = await this.options.runCrew(
-				message.args,
-				message.timeoutMs ? { timeoutMs: message.timeoutMs } : undefined,
-			);
+			const value = await this.options.runCrew(planned.args, {
+				...(planned.timeoutMs ? { timeoutMs: planned.timeoutMs } : {}),
+				...(planned.stdin === undefined ? {} : { stdin: planned.stdin }),
+			});
 
+			// The command's type and the exit code only: arguments can carry binding values.
 			log.info('crew call', {
-				command: message.args.slice(0, 2).join(' '),
+				command: planned.label,
 				code: value.code,
 				ms: this.now() - startedAt,
 			});

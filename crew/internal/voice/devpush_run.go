@@ -19,7 +19,7 @@ import (
 )
 
 // ErrDevPushRunning: a push is under way; a second one would race it.
-var ErrDevPushRunning = errors.New("a dev push is running — crew voice dev status follows it")
+var ErrDevPushRunning = errors.New("a dev push is running — crew server dev status follows it")
 
 // The I/O a push does on other machines. Vars, so tests run a whole push
 // against fakes.
@@ -61,7 +61,8 @@ var (
 )
 
 func scpOptions() []string {
-	return []string{"-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"}
+	// -p keeps the files' modes: scp over SFTP drops a binary's execute bit without it.
+	return []string{"-q", "-p", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"}
 }
 
 // The last line a command printed says what went wrong.

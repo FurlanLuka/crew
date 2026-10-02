@@ -146,10 +146,25 @@ func ProxyServesTLS(domain string, port int) bool {
 }
 
 // ProxyTLSWarning is ProxyWarning for the HTTPS side: empty when HTTPS is off
-// or answers with crew's certificate.
-func ProxyTLSWarning(domain string, httpsPort int) string {
-	// A proxy launched a moment ago needs a few seconds to issue its certificate and bind.
-	if httpsPort <= 0 || tlsAnswers(httpsPort, domain, 5*time.Second) {
+// or answers with crew's certificate. launched is EnsureProxy's word that the
+// proxy started just now — only then is it given tlsStartWait to come up; a
+// proxy that was kept running is looked at once.
+func ProxyTLSWarning(domain string, httpsPort int, launched bool) string {
+	wait := time.Duration(0)
+	if launched {
+		wait = tlsStartWait
+	}
+	return tlsWarning(httpsPort, func() bool { return tlsAnswersOnce(httpsPort, domain) }, wait)
+}
+
+// tlsStartWait is how long a start gives a proxy launched a moment ago to
+// write its CA, issue its certificate and bind before it warns.
+var tlsStartWait = 8 * time.Second
+
+// tlsWarning is the decision: no warning once probe answers within wait, the
+// proxy's recorded reason or the port's likely holder otherwise.
+func tlsWarning(httpsPort int, probe func() bool, wait time.Duration) string {
+	if httpsPort <= 0 || answersWithin(probe, wait) {
 		return ""
 	}
 	if st, ok := loadProxyState(); ok && st.TLSError != "" {
@@ -166,16 +181,7 @@ func proxyAnswers(port int, wait time.Duration) bool {
 	// No keep-alive: a probe must not hold a connection open to the proxy,
 	// and a kept one would keep answering after the listener is gone.
 	client := &http.Client{Timeout: 500 * time.Millisecond, Transport: &http.Transport{DisableKeepAlives: true}}
-	deadline := time.Now().Add(wait)
-	for {
-		if isProxyStatusPage(client, port) {
-			return true
-		}
-		if time.Now().After(deadline) {
-			return false
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	return answersWithin(func() bool { return isProxyStatusPage(client, port) }, wait)
 }
 
 func isProxyStatusPage(client *http.Client, port int) bool {
@@ -226,8 +232,9 @@ func paneError(pane string) string {
 
 // EnsureProxy starts the shared reverse proxy on domain:port — plus HTTPS on
 // the configured TLS port — relaunching a running one that was started with
-// different settings.
-func EnsureProxy(domain string, port int) error {
+// different settings. launched is whether it (re)started the proxy, so a
+// caller knows to give it a moment to bind.
+func EnsureProxy(domain string, port int) (launched bool, err error) {
 	httpsPort := config.LoadSettings().GetProxyHTTPSPort()
 	want := proxyState{Domain: domain, Port: port, HTTPSPort: &httpsPort}
 	if crewExec.TmuxSessionExists(ProxySessionName) {
@@ -239,7 +246,7 @@ func EnsureProxy(domain string, port int) error {
 			debug.Log("dev", "proxy exited (%s) — relaunching", have.Error)
 		case ok && sameLaunch(have, want):
 			debug.Log("dev", "proxy already running in %s", ProxySessionName)
-			return nil
+			return false, nil
 		case ok:
 			debug.Log("dev", "proxy running with other settings (%s:%d), want %s:%d https %d — relaunching", have.Domain, have.Port, domain, port, httpsPort)
 		default:
@@ -250,7 +257,7 @@ func EnsureProxy(domain string, port int) error {
 
 	debug.Log("dev", "starting shared proxy on %s:%d", domain, port)
 	if err := crewExec.CreateTmuxSession(ProxySessionName, ""); err != nil {
-		return fmt.Errorf("failed to create proxy session: %w", err)
+		return false, fmt.Errorf("failed to create proxy session: %w", err)
 	}
 
 	crewBin, err := crewExec.CrewBinary()
@@ -267,7 +274,10 @@ func EnsureProxy(domain string, port int) error {
 	}
 	cmd := fmt.Sprintf("%s dev _proxy --domain=%s --port=%d --https-port=%d", crewBin, domain, port, httpsPort)
 	debug.Log("dev", "proxy cmd: %s", cmd)
-	return crewExec.TmuxSendKeys(ProxySessionName, cmd)
+	if err := crewExec.TmuxSendKeys(ProxySessionName, cmd); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // sameLaunch is whether a running proxy already serves what want asks for. A

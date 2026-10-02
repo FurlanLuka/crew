@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// The pure half of crew voice logs|debug-notes|notes: times, filters and the
+// The pure half of crew server logs|debug-notes|notes: times, filters and the
 // parsers of what Voice OS writes. Reading files is query_read.go.
 
 var agoPattern = regexp.MustCompile(`^(?:(\d+)d)?(.*)$`)
@@ -283,7 +283,7 @@ func Newest[T any](items []T, n int) []T {
 	return items
 }
 
-// FormatLogRow is the tab row crew voice logs prints. Pure.
+// FormatLogRow is the tab row crew server logs prints. Pure.
 func FormatLogRow(l LogLine) string {
 	fields := "{}"
 	if len(l.Fields) > 0 {
@@ -372,14 +372,14 @@ func ParseDebugNotes(data []byte) []DebugNote {
 	return notes
 }
 
-// FindDebugNote is note n as crew voice debug-notes numbered it. Pure.
+// FindDebugNote is note n as crew server debug-notes numbered it. Pure.
 func FindDebugNote(notes []DebugNote, n int) (DebugNote, error) {
 	for _, note := range notes {
 		if note.N == n {
 			return note, nil
 		}
 	}
-	return DebugNote{}, fmt.Errorf("no debug note %d (crew voice debug-notes lists them)", n)
+	return DebugNote{}, fmt.Errorf("no debug note %d (crew server debug-notes lists them)", n)
 }
 
 // FilterDebugNotes keeps the notes in the window whose words hold grep. Pure.

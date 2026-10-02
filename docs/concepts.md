@@ -3,7 +3,7 @@
 The model behind every command: what a project, a workspace and a worktree are, how services
 find each other, how crew proves a copy works, and what happens when it doesn't. For the
 commands themselves see [commands.md](commands.md); to get going see
-[Getting set up](guides/getting-set-up.md).
+[Getting set up](guides/getting-set-up.md), or [Set up](guides/setup.md) for the same in the browser.
 
 ## Projects, workspaces, worktrees
 
@@ -30,7 +30,7 @@ crew stays out of your code. Two things:
    bindings fill.
 
 Optional: `--setup="make sync"` when the lockfile alone does not install the checkout (mise,
-then `uv sync` / `pnpm install` / `npm ci` / `yarn` are detected on their own), and
+then `uv sync` / `pnpm install` / `yarn` / `bun install` / `npm ci` are detected on their own), and
 `--env-cmd="make get-env"` when the checkout's env files come from sops or a vault — it runs
 in the checkout after the install, over the `.env*` and `.local*.env` files crew copied in. It must write files, not print values: its output is logged with the
 install's.
@@ -79,8 +79,8 @@ var bound for one server only is named there and shown by `<project>/<server>`);
 each server until it listens on its port, dies, or a minute passes, and says what became of
 it: `running` (with how long it took), `died` (last log lines attached), or `not listening`.
 Not listening is a failure when some binding points at that server (crew handed out a dead
-URL) and only a note when nothing does (a queue worker registered with a port). The worktree
-page does the same after a start — rows read `starting…` until each has its verdict.
+URL) and only a note when nothing does (a queue worker registered with a port). crew's page
+does the same after a start — rows read `starting…` until each has its verdict.
 
 ## Proving a project
 
@@ -90,7 +90,8 @@ before the project joins any workspace. A pass removes the checkout and leaves t
 under `crew setup status check/<name>`. A failure keeps it as `check/<name>`: `crew ls
 worktrees` lists it, `crew fix check/<name> --print` has the evidence, `crew verify
 check/<name>` re-runs it in place, `crew check project <name>` again replaces it from
-nothing, `crew rm worktree check/<name>` removes it.
+nothing, `crew rm worktree check/<name>` removes it. `crew check project <name> --status` is
+where a check stands without starting one.
 
 ## Making a worktree
 
@@ -110,8 +111,8 @@ $ crew setup status store-front/wrk2
 Every runner writes its verdict the moment it has one, so `store-app`'s failure is on the
 worktree — and in `crew fix --print` — while `checkout-api` still installs. `crew setup
 status` exits 2 while anything runs, 1 once stopped with a failure, 0 otherwise; `--wait`
-stays to the end. `crew setup logs <ref> <project>` is what an install is printing. In a
-terminal, creation lands on the worktree page, which shows the same table live. A runner that
+stays to the end. `crew setup logs <ref> <project>` is what an install is printing. Creation
+prints the table as it stands and returns; crew's page (bare `crew`) follows it live. A runner that
 vanishes (a killed window, a reboot) is recorded as interrupted, never as verified.
 
 Each server is smoked on its own: siblings' URLs resolve (ports were reserved first) but
@@ -122,8 +123,8 @@ with the connection error in its evidence.
 
 Creation never stops halfway: each failure is recorded on the worktree with its stage and
 evidence (an install's last thirty lines, a dead server's log tail, `not listening` on a
-port). `crew ls worktrees` shows it; the worktree page stays locked to `f fix with Claude`
-and `v verify` while anything is recorded or still installing.
+port). `crew ls worktrees` shows it, and so does the worktree on crew's page, with fix and
+verify next to it.
 
 - `crew fix <ref>` opens Claude in the worktree with every issue, its evidence and the env
   anomalies in the prompt. `--print` (or no terminal) writes that prompt to stdout instead —
@@ -149,28 +150,45 @@ is actually answering. Tailscale users: `crew config set server_ip $(tailscale i
 A project is its git remote; the path is where crew keeps the clone. `crew export --all`
 writes the projects by remote (with servers, bindings, setup, env command — no paths) and
 the workspace memberships to one file — never worktrees, ports or overrides. `crew import
-<file>` on the other side clones every project it does not have into `~/.crew/projects`:
-a wizard (`y` clone, `p` adopt a checkout you already have, `r` replace), or `--plan` then
-`project <name> [--path | --replace]` and `workspace <name> [--pull] [--wait]` for an
-agent, or `--all`. A repo you already have on disk gets a second clone unless you point
+<file>` on the other side shows the plan — what is here, what would be cloned into
+`~/.crew/projects`, what needs a path — and `project <name> [--path | --replace | --name]`
+and `workspace <name> [--pull] [--wait]` apply it one item at a time, or `--all` at once;
+crew's page walks the same plan with you (`export -` and `import -` are the bundle on
+stdout and stdin, which is how the page moves it). A repo you already have on disk gets a second clone unless you point
 at it; a checkout with no remote exports as config only. A workspace import makes its `main`
 worktree exactly the way `crew add worktree` does — base table, `--pull`, one runner per
 project, failures recorded — so what you get on the second machine is as current and as
 checked as on the first.
 
+## crew's server
+
+Bare `crew` starts crew's **server** — one process in tmux session `crew-server`, on a
+remembered port — and opens its page: **Home**, then **Set up** or **Voice OS**. `crew server`
+is its status, `crew server start|stop|restart` its lifecycle (`crew voice …`, the old name,
+works for good). It is not a dev session: `crew dev stop` and `crew kill` leave it alone.
+Without a terminal, over SSH or with `--no-open`, `crew` prints the link instead of opening
+it; on a remote machine it says the main is where to open crew.
+
+**Set up** is every configuration form, one machine at a time: projects (from the checkouts
+already on the machine), their install and env commands, servers, Environment (bindings) with
+each value previewed in every worktree, workspaces, worktrees with their runners and pinned
+values (overrides), machines, settings, import and export. Every form shows the crew command
+it runs and runs exactly that, so the CLI and the page can never disagree; nothing is removed
+without showing what it costs first. Each machine has a **Setup with Claude** chat — a Claude
+session in your home directory with the crew CLI — for "make a worktree in store front for the
+search fix". The terminal keeps one interactive view, for launching: `crew launch`.
+
 ## Voice OS
 
-Voice OS (`crew voice`) is a voice and web cockpit on top of crew. It holds one Claude Code
+Voice OS is the voice and web cockpit half of crew's page. It holds one Claude Code
 session per worktree, runs them through the Claude Agent SDK on your own Claude Code login, and
 puts them in one page you can talk to. [The guide](guides/voice-os.md) is how to use it; this is
 the model underneath.
 
 - **Sessions.** A worktree's session runs in that worktree, opened with the same orientation
-  prompt `crew claude` gets, and an active one resumes where it left off after a restart.
-  Besides the worktrees there is always a **setup** session: it runs in your home directory
-  with the crew CLI and is for crew itself — projects, workspaces, worktrees ("setup, make a
-  worktree in store-front for the search fix"). Dev servers and code belong to each worktree's
-  own session.
+  prompt `crew claude` gets, and an active one resumes where it left off after a restart. The
+  setup session (Set up's chat) is not one of them: it never speaks and is never routed to by
+  voice. Dev servers and code belong to each worktree's own session.
 - **Kernel and narrator.** Every spoken sentence goes to the **kernel** (a small, fast model
   with tools), which decides what it is: words for a session, an answer to what a session is
   waiting on, a switch of view, a note. Anything about the work is forwarded in your words,
@@ -185,14 +203,14 @@ the model underneath.
   Claude, starts them again after a restart (a remote's when its link is up) and hears from
   them. An inactive session has no process and says nothing; you browse it on the page and
   activate it there or by voice ("activate checkout"). Deactivating stops it and keeps its
-  conversation for next time; the main's setup session is always active. The **Active** view
+  conversation for next time. The **Active** view
   gathers them from every machine. A name you give a session replaces its crew ref everywhere
   on the page and in what you can say. Both are Voice OS preferences, not crew state: they have
   no crew command, and crew never sees them.
 - **Other machines.** Voice OS can drive the sessions of another machine's worktrees — a VM,
-  a second computer. That machine is a **remote**: `crew voice remote` there starts a daemon
+  a second computer. That machine is a **remote**: `crew server remote` there starts a daemon
   that runs only the sessions (no voice, no kernel) and outlives any connection. Your Mac is
-  the **main**: `crew voice machines add <ssh host>` (or **+ Add machine** on the page), and it
+  the **main**: `crew server machines add <ssh host>` (or **Add machine** on the page), and it
   connects with `ssh <host> … crew voice _attach`, so the host only needs to be reachable with
   your keys — LAN, VPN or an SSH alias, its choice. Its sessions show under the machine
   (`store-vm:store-front/main`), its dev servers are its own crew's, and a dropped link stops
@@ -203,7 +221,7 @@ the model underneath.
 **Where its state lives.** `~/.crew/voiceos/`: `token` (the page's sign-in, owner-only),
 `sessions.json` (which Claude session each worktree resumes), `active.json`, `names.json`,
 `view.json` (the screen a restart comes back to), `machines.json` (written by
-`crew voice machines`), `notes/<workspace>.md`, `journal/` (every turn, for "what did checkout
+`crew server machines`), `notes/<workspace>.md`, `journal/` (every turn, for "what did checkout
 do yesterday"), `media/` (images sessions showed, swept after 30 days) and `logs/` (the log and
 your debug notes). A remote keeps its own under `~/.crew/voiceos/remote/`. The binary is
 `~/.crew/bin/voiceos`, and the API keys are in `~/.config/crew-voiceos/` (owner-only, never in
@@ -228,9 +246,9 @@ trash. `crew clean [--dry-run]` runs it now and adds `git worktree prune` on eve
 
 Any agent with a shell can drive crew. [`skills/crew/SKILL.md`](../skills/crew/SKILL.md) is the
 reference written for one — every command, its output columns, the flows — and `crew help
-<command>` is authoritative. Nothing needs a terminal except the TUIs and two commands that
-replace the process (`crew claude`, `crew open`); those print the data alternative when asked
-without one.
+<command>` is authoritative. Nothing needs a terminal except the launch view (`crew launch`)
+and two commands that replace the process (`crew claude`, `crew open`); those print the data
+alternative when asked without one.
 
 **Inside a worktree.** Every launch (`crew claude`, `crew edit`, the page) opens Claude with an
 orientation prompt: the projects and their paths, worktree/direct framing, and a `## crew` section —
@@ -268,5 +286,5 @@ last background check for a newer release (at most once a day; `crew update` alw
 fresh).
 
 Voice OS has no settings of its own in `crew config`: its state is in `~/.crew/voiceos/` and
-its API keys in `~/.config/crew-voiceos/` (see [Voice OS](#voice-os)); `crew voice keys` shows
-which keys are set, and `crew voice logs` tails its log.
+its API keys in `~/.config/crew-voiceos/` (see [Voice OS](#voice-os)); `crew server keys` shows
+which keys are set, and `crew server logs` reads its log.

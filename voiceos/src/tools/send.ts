@@ -73,7 +73,7 @@ export const buildNotesPathNote = ({
 	// the main over its link.
 	if (machineOf(ref) !== null) {
 		const command =
-			workspace === GENERAL_NOTES ? 'crew voice notes' : `crew voice notes ${workspace}`;
+			workspace === GENERAL_NOTES ? 'crew server notes' : `crew server notes ${workspace}`;
 
 		return `The developer's notes for ${nameNotes(workspace)} are on the main machine: run \`${command}\` to read them.`;
 	}
@@ -285,31 +285,6 @@ export const chooseSentWords = async ({
 	});
 
 	return { text: said, source: 'said' };
-};
-
-export interface IsMisroutedToSetupParams {
-	state: State;
-	ref: string;
-	// The session on screen when the words were said.
-	forwardTo: string | null;
-	utterance: string | undefined;
-	judge: Judge;
-}
-
-export const isMisroutedToSetup = async ({
-	state,
-	ref,
-	forwardTo,
-	utterance,
-	judge,
-}: IsMisroutedToSetupParams): Promise<boolean> => {
-	// "can you reinstall Voice OS" was sent to setup from crew/main's screen. Setup gets words from
-	// another session's screen only when addressed or when they are crew setup.
-	if (!state.sessions[ref]?.isPinned || !forwardTo || forwardTo === ref || !utterance) {
-		return false;
-	}
-
-	return (await judge({ key: 'for_setup', utterance })) === 'no';
 };
 
 const readKind = (kind: unknown): SendAck['kind'] =>

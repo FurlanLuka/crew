@@ -5,13 +5,37 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/words"
 )
 
-// The wizard decides one card at a time with a person watching. An agent
-// needs the same decisions as commands: see the plan, then apply one item
-// with the choice spelled out as flags. Everything here composes the same
-// primitives the wizard uses — Inspect, decide, applyDecision,
-// ImportWorkspace — so the two never disagree.
+// An import is decided one item at a time: see the plan, then apply one item
+// with the choice spelled out as flags — what an agent runs, and what the
+// web's import page sends. Everything here composes the same primitives —
+// Inspect, decide, applyDecision, ImportWorkspace — so the two never
+// disagree.
+
+// DefaultExportFile is where crew export writes when not told otherwise.
+const DefaultExportFile = "crew-export.json"
+
+// CountPhrase is "N projects, M workspaces", pluralised — the one way an
+// export says what it carried.
+func CountPhrase(projects, workspaces int) string {
+	return fmt.Sprintf("%s, %s", words.Count(projects, "project"), words.Count(workspaces, "workspace"))
+}
+
+// RenameWarning is what an import under another name leaves dangling: the
+// bundle's bindings that point at the original name. "" when nothing does,
+// or when the name is unchanged. Pure.
+func RenameWarning(b Bundle, original, name string) string {
+	if name == "" || name == original {
+		return ""
+	}
+	refs := ReferencedBy(b, original)
+	if len(refs) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s point at %s — left alone until re-bound", strings.Join(refs, ", "), original)
+}
 
 // PlanRow is one line of `crew import --plan`: what the bundle holds and what
 // would happen here.

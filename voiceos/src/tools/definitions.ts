@@ -203,7 +203,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'switch_view',
 		description:
-			"Show one session on screen, or every session (Mission Control) when ref is null, or the developer's active sessions with active true.",
+			"Show one session on screen, or Active (the developer's active sessions, home) when ref is null or active is true.",
 		input_schema: {
 			type: 'object',
 			properties: {
@@ -218,7 +218,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'go_back',
 		description:
-			'"Go back", "back", "previous session": return to the view the developer was on before this one; said again, it walks further back. Voice OS says where they landed. Not for "home" or Mission Control: that is switch_view with null.',
+			'"Go back", "back", "previous session": return to the view the developer was on before this one; said again, it walks further back. Voice OS says where they landed. Not for "home", Active or Mission Control: that is switch_view with null.',
 		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
 	},
 	{
@@ -460,7 +460,7 @@ export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
 	{
 		name: 'switch_view',
 		description:
-			'Show one session on screen; or, with ref null, one machine\'s sessions when machine names one, else Mission Control. A session with its machine named ("crew main on my Mac") → that ref and that machine.',
+			'Show one session on screen; or, with ref null, one machine\'s worktrees to activate (Activate) when machine names one, else Active (home). A session with its machine named ("crew main on my Mac") → that ref and that machine.',
 		input_schema: {
 			type: 'object',
 			properties: {
@@ -468,7 +468,7 @@ export const MACHINE_TOOL_DEFINITIONS: ToolDefinition[] = [
 				machine: {
 					type: 'string',
 					description:
-						'A machine\'s name or id, or "this Mac": its sessions (ref null), or the session named on it.',
+						'A machine\'s name or id, or "this Mac": its worktrees to activate (ref null), or the session named on it.',
 				},
 				active: ACTIVE_VIEW_PROPERTY,
 				skip_held: SKIP_HELD_PROPERTY,

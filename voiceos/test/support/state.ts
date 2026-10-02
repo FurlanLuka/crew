@@ -5,9 +5,9 @@ import type {
 	State,
 	VoiceEntry,
 } from '../../src/shared/protocol.js';
-import { GRID, isSdkAsk } from '../../src/shared/protocol.js';
+import { HOME_SCREEN, isSdkAsk } from '../../src/shared/protocol.js';
 import { createInitialState, createSession } from '../../src/state/reducer.js';
-import { SETUP_REF, isSetupRef, toLocalRef } from '../../src/shared/machine-ref.js';
+import { isSetupRef, toLocalRef } from '../../src/shared/machine-ref.js';
 
 export interface FixtureWork {
 	ref: string;
@@ -410,10 +410,10 @@ export const createFixtureState = (context: FixtureContext = {}, now = Date.now(
 					]
 				: []),
 		],
-		voiceLog: voiceLog.length ? { [context.view ?? GRID]: voiceLog } : {},
-		view: context.view ? { kind: 'session', ref: context.view } : { kind: 'grid' },
+		voiceLog: voiceLog.length ? { [context.view ?? HOME_SCREEN]: voiceLog } : {},
+		view: context.view ? { kind: 'session', ref: context.view } : { kind: 'active' },
 		focus: context.view ?? null,
-		active: order.filter((ref) => ref !== SETUP_REF && !context.inactive?.includes(ref)),
+		active: order.filter((ref) => !isSetupRef(ref) && !context.inactive?.includes(ref)),
 		...(context.names ? { names: context.names } : {}),
 		...(context.meanwhile
 			? { meanwhile: context.meanwhile.map((item) => ({ ...item, at: now - 20_000 })) }

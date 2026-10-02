@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/FurlanLuka/crew/crew/internal/words"
 )
 
 // GroupResolutions buckets resolutions by project, preserving their order.
@@ -95,7 +97,7 @@ func FormatResolutions(resolutions []Resolution) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Resolved env  %s across %s\n",
-		plural(resolved, "var", "vars"), plural(countProjects(resolutions), "project", "projects"))
+		words.Count(resolved, "var"), words.Count(countProjects(resolutions), "project"))
 
 	for _, projName := range order {
 		fmt.Fprintf(&b, "\n  %s\n", projName)
@@ -221,16 +223,12 @@ func countProjects(resolutions []Resolution) int {
 	return len(seen)
 }
 
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
-}
-
 // StatusRow is one running dev server as `crew dev status` reports it.
 type StatusRow struct {
-	Worktree     string `json:"worktree"`
+	Worktree string `json:"worktree"`
+	// Project tells apart two members that both have a server of one name;
+	// empty for a route file written before routes carried it.
+	Project      string `json:"project,omitempty"`
 	ServerName   string `json:"server_name"`
 	ExternalPort int    `json:"external_port"`
 	URL          string `json:"url"`
@@ -243,6 +241,7 @@ func StatusRows(all []WsRoutes, domain string, proxyPort int) []StatusRow {
 		for _, r := range wr.Routes {
 			rows = append(rows, StatusRow{
 				Worktree:     DisplayRef(wr.Slug),
+				Project:      r.Project,
 				ServerName:   r.ServerName,
 				ExternalPort: r.ExternalPort,
 				URL:          RouteURL(r, wr.Slug, domain, proxyPort),

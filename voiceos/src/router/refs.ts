@@ -1,6 +1,6 @@
 import type { Session, State } from '../shared/protocol.js';
 import { NUMBER_WORDS } from '../shared/spoken.js';
-import { readMachine, splitRef } from '../shared/machine-ref.js';
+import { isSetupRef, readMachine, splitRef } from '../shared/machine-ref.js';
 import { currentMachine, readMachineName } from '../shared/machines.js';
 import { listActiveInOrder } from '../shared/active.js';
 import { readScreenRef } from '../state/helpers.js';
@@ -36,7 +36,6 @@ const listAliases = (session: Session, machineName: string | null, name?: string
 		worktree,
 		`${workspace} ${worktree}`,
 		`${worktree} in ${workspace}`,
-		...(session.isPinned ? ['setup session', 'setup'] : []),
 	].filter(Boolean);
 	// Another machine's session also answers to its name in front: "build box store-front wrk1".
 	const aliases = new Set(
@@ -95,6 +94,7 @@ export const writeSpokenRefs = ({ text, refs }: WriteSpokenRefsParams): string =
 
 // Every session among refs answering to the name. Exact alias matches only: anything fuzzier ("the
 // checkout work") belongs to the kernel. "the crew main session" names crew/main as much as "crew main".
+// A setup session never answers: it lives in Set up's chat, out of voice's reach.
 export const findRefsByName = (state: State, phrase: string, refs: string[]): string[] => {
 	const wantedName = normalizeName(
 		phrase.replace(/^the\s+/, '').replace(/\s+(?:session|worktree|workspace)$/, ''),
@@ -107,7 +107,7 @@ export const findRefsByName = (state: State, phrase: string, refs: string[]): st
 	return refs.filter((ref) => {
 		const session = state.sessions[ref];
 
-		return session
+		return session && !isSetupRef(ref)
 			? listAliases(session, readMachineName(state, ref), state.names[ref]).includes(wantedName)
 			: false;
 	});

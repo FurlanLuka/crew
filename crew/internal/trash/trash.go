@@ -86,7 +86,7 @@ func spawnRemove(path string) {
 		debug.Log("trash", "rm -rf %s → error: %v", path, err)
 		return
 	}
-	// Reap it: a TUI session can outlive many of these.
+	// Reap it: a long-running crew process (the launch TUI) can outlive many of these.
 	go cmd.Wait()
 }
 

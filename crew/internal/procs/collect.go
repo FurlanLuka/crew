@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
+	"github.com/FurlanLuka/crew/crew/internal/dev"
 	crewExec "github.com/FurlanLuka/crew/crew/internal/exec"
 )
 
@@ -53,7 +54,7 @@ func collectSessions(rows []crewExec.ProcRow) []Session {
 	sessions := make([]Session, 0, len(byName))
 	for name, procs := range byName {
 		sortProcs(procs)
-		sessions = append(sessions, Session{Name: name, Procs: procs})
+		sessions = append(sessions, Session{Name: name, Procs: procs, Kept: dev.IsServerSession(name)})
 	}
 	sort.Slice(sessions, func(i, j int) bool { return sessions[i].Name < sessions[j].Name })
 	return sessions

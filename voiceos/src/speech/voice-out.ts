@@ -1,4 +1,6 @@
 import { createLogger } from '../log.js';
+import { listHeardAsks } from '../shared/active.js';
+import { isSetupRef } from '../shared/machine-ref.js';
 import {
 	isSdkAsk,
 	type MeanwhileItem,
@@ -550,15 +552,16 @@ export class VoiceOut {
 		const now = this.now();
 		const waiting = new Map<string, string>();
 
-		// A held /clear is not nagged about: it lapses on its own.
-		for (const ask of state.asks.filter(isSdkAsk)) {
+		// A held /clear is not nagged about: it lapses on its own. A setup session's asks wait in Set up's
+		// chat, never spoken.
+		for (const ask of listHeardAsks(state).filter(isSdkAsk)) {
 			if (!waiting.has(ask.ref)) {
 				waiting.set(ask.ref, ask.id);
 			}
 		}
 
 		for (const session of Object.values(state.sessions)) {
-			if (session.needsUser && !waiting.has(session.ref)) {
+			if (session.needsUser && !isSetupRef(session.ref) && !waiting.has(session.ref)) {
 				waiting.set(session.ref, `${session.ref}@${session.needsUser.at}`);
 			}
 		}
@@ -629,7 +632,7 @@ export class VoiceOut {
 
 	private viewChanged(): void {
 		// The developer clicked away from the session whose line plays: it stops, and waits there to
-		// be heard on return. Mission Control hears every session, and a question still waits on them.
+		// be heard on return. Off a session every session is heard, and a question still waits on them.
 		const playing = this.playing;
 		const item = playing?.item;
 		const { store } = this.options;

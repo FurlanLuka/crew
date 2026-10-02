@@ -1,17 +1,13 @@
-import { createJudge } from './judge/judge.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
 import type { OpenUrl } from './tools/docs.js';
 import index from './web/index.html';
-import {
-	ensureToken,
-	loadKeys,
-	findMissingKeys,
-	resolvePaths,
-	shouldRecordState,
-} from './config.js';
-import { CrewAdapter, spawnRunner } from './crew/adapter.js';
+import { ensureToken, missingFor, resolvePaths, shouldRecordState, type Keys } from './config.js';
+import { type KeyedServices, buildKeyedServices, holdKeyedServices } from './keyed-services.js';
+import type { Judge } from './judge/judge.js';
+import { CrewAdapter, spawnRunner, startDetached } from './crew/adapter.js';
+import { createSetupRunner } from './crew/api.js';
 import { listAllowedOrigins } from './gateway/auth.js';
 import { startGateway } from './gateway/server.js';
 import { configureLog, createLogger } from './log.js';
@@ -42,10 +38,6 @@ import { VoiceInput } from './speech/voice-in.js';
 import { VoiceOut } from './speech/voice-out.js';
 import { connectSpeech, speakKernelReplies } from './speech/connect.js';
 import { DevWatch } from './dev/watch.js';
-import { SonioxTts } from './speech/tts.js';
-import { createNarrator } from './narrator/narrator.js';
-import { createAboutWriter } from './narrator/about.js';
-import { createVoiceLineWriter } from './voice-lines/writer.js';
 import { connectMachines, readMachineStatuses } from './remote/cockpit-machines.js';
 import { DISCORD_CLIENT } from './discord/bridge.js';
 import { DISCORD_SAMPLE_RATE } from './discord/audio.js';
@@ -63,7 +55,6 @@ configureLog({ file: paths.logFile });
 const log = createLogger('main');
 
 const token = ensureToken(paths);
-const keys = loadKeys(paths);
 // Lets a page inject heard words (window.voiceos.say) — demos and screenshots, never by default.
 const isSpeechSimulated = process.env.VOICEOS_DEBUG_SPEECH === '1';
 const store = new Store();
@@ -73,13 +64,12 @@ const claudeBin = resolveClaudeBin({
 	compiled: isCompiled(),
 	which: (command) => Bun.which(command),
 });
-const missing = findMissingKeys(keys, paths);
 
-if (claudeBin === null) {
-	missing.push('claude on PATH (install Claude Code, or set VOICEOS_CLAUDE_BIN)');
-}
+// What the page's "before you talk" sheet lists: the keys, again whenever they change, and claude.
+const reportMissing = (keys: Keys): void => {
+	store.dispatch({ type: 'setup', missing: missingFor({ keys, paths, claudeBin }) });
+};
 
-store.dispatch({ type: 'setup', missing });
 log.info('claude executable', { bin: claudeBin ?? 'sdk-bundled' });
 
 renameSession({ file: paths.sessionsFile, from: LEGACY_SETUP_REF, to: SETUP_REF });
@@ -105,61 +95,6 @@ const manager = new SessionManager({
 		ref === SETUP_REF ? Promise.resolve(SETUP_ORIENTATION) : crew.fetchOrientation(ref),
 });
 
-// Audio plays in the tab the developer used last, or in the voice channel; the others show the line.
-const seat = new SpeakerSeat();
-// Assigned once the gateway starts below; speech reaches the tabs through it.
-let gateway: ReturnType<typeof startGateway> | null = null;
-
-// The voice channel is one more client: what is sent to it goes to Discord, everything else to a page.
-// discord is assigned below, before anything is said or heard.
-const sendToClient = (client: string, message: ServerMessage): boolean =>
-	client === DISCORD_CLIENT ? discord.send(message) : (gateway?.send(client, message) ?? false);
-
-const tts = keys.soniox ? new SonioxTts({ apiKey: keys.soniox }) : null;
-// Words Voice OS's follow-ups; without the Anthropic key, the fixed lines.
-const voiceLines = createVoiceLineWriter({ apiKey: keys.anthropic });
-const voiceOut: VoiceOut = new VoiceOut({
-	store,
-	synthesize: tts?.synthesize ?? null,
-	play: sendToClient,
-	speaker: () => seat.current,
-	hasPage: () => (gateway?.countClients() ?? 0) > 0 || discord.isOwnerIn(),
-	// voiceIn is assigned below; it is only asked once speech is under way.
-	isListening: () => voiceIn.isListening(),
-	writeFollowUp: (input) => voiceLines.followUp(input),
-});
-// One judge for the kernel's guards and the router's "For X?".
-const judge = createJudge({ apiKey: keys.anthropic });
-const narrate = createNarrator(keys.anthropic);
-
-const narrateTurn = createTurnNarrator({
-	store,
-	narrate,
-	writeAbout: createAboutWriter(keys.anthropic),
-	say: (line) => voiceOut.say(line),
-	journalDir: paths.journalDir,
-	readGitHead,
-});
-
-const narrateAside = createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) });
-
-connectSpeech({ store, voiceOut, narrateTurn, narrateAside, isRouting: () => router.isRouting });
-
-const reminderTimer = setInterval(() => voiceOut.remind(store.state), REMINDER_INTERVAL_MS);
-
-const machines = connectMachines({
-	store,
-	voiceDir: paths.voiceDir,
-	home: paths.home,
-	mediaDir,
-	crew,
-	runCrew: spawnRunner,
-	manager,
-	say: (text) => voiceOut.say({ text, priority: 'high', source: 'kernel' }),
-	sayLine: (line) => voiceOut.say(line),
-	onStatusesChanged: () => recordState(),
-});
-
 const NOTES_ON_PAGE = 50;
 const notesFiles = createNotesStore(paths.notesDir);
 
@@ -182,30 +117,104 @@ for (const [workspace, lines] of loadedNotes) {
 
 log.info('notes loaded', { workspaces: loadedNotes.length });
 
-const kernel = keys.anthropic
-	? new Kernel({
-			apiKey: keys.anthropic,
-			tools: {
-				getState: () => store.state,
-				dispatch: (action) => store.dispatch(action),
-				readHistory: (query) => readHistory(paths.journalDir, query),
-				mute: () => voiceOut.mute(),
-				notes,
-				judge,
-				saveDebugNote: ({ text, said }) => {
-					const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
+const createKernel = (apiKey: string, keyedJudge: Judge): Kernel =>
+	new Kernel({
+		apiKey,
+		tools: {
+			getState: () => store.state,
+			dispatch: (action) => store.dispatch(action),
+			readHistory: (query) => readHistory(paths.journalDir, query),
+			mute: () => voiceOut.mute(),
+			notes,
+			judge: keyedJudge,
+			saveDebugNote: ({ text, said }) => {
+				const note = createDebugNote({ state: store.state, text, said, now: Date.now() });
 
-					log.warn('debug note', { text, said, view: note.view });
+				log.warn('debug note', { text, said, view: note.view });
 
-					try {
-						saveDebugNote(paths.debugNotesFile, note);
-					} catch (error) {
-						log.error('debug note not saved', { error: String(error) });
-					}
-				},
+				try {
+					saveDebugNote(paths.debugNotesFile, note);
+				} catch (error) {
+					log.error('debug note not saved', { error: String(error) });
+				}
 			},
-		})
-	: null;
+		},
+	});
+
+// A key saved while Voice OS runs (the page's keys sheet, crew server keys set) is used from the next
+// utterance on: the services are rebuilt and the page's missing list follows.
+const services = holdKeyedServices<KeyedServices<Kernel>>({
+	paths,
+	build: (keys, previous) => buildKeyedServices({ keys, createKernel, previous }),
+	onChange: (next, previous) => {
+		// Only a replaced voice is closed: one whose key did not change is still the one speaking.
+		if (previous.tts !== next.tts) {
+			previous.tts?.close();
+		}
+
+		reportMissing(next.keys);
+	},
+});
+
+reportMissing(services.current.keys);
+
+// Audio plays in the tab the developer used last, or in the voice channel; the others show the line.
+const seat = new SpeakerSeat();
+// Assigned once the gateway starts below; speech reaches the tabs through it.
+let gateway: ReturnType<typeof startGateway> | null = null;
+
+// The voice channel is one more client: what is sent to it goes to Discord, everything else to a page.
+// discord is assigned below, before anything is said or heard.
+const sendToClient = (client: string, message: ServerMessage): boolean =>
+	client === DISCORD_CLIENT ? discord.send(message) : (gateway?.send(client, message) ?? false);
+
+const voiceOut: VoiceOut = new VoiceOut({
+	store,
+	get synthesize() {
+		return services.current.tts?.synthesize ?? null;
+	},
+	play: sendToClient,
+	speaker: () => seat.current,
+	hasPage: () => (gateway?.countClients() ?? 0) > 0 || discord.isOwnerIn(),
+	// voiceIn is assigned below; it is only asked once speech is under way.
+	isListening: () => voiceIn.isListening(),
+	// Words Voice OS's follow-ups; without the Anthropic key, the fixed lines.
+	writeFollowUp: (input) => services.current.voiceLines.followUp(input),
+});
+// One judge for the kernel's guards and the router's "For X?", whichever key is current.
+const judge: Judge = (params) => services.current.judge(params);
+
+const narrateTurn = createTurnNarrator({
+	store,
+	narrate: (input) => services.current.narrate(input),
+	writeAbout: (input) => services.current.writeAbout(input),
+	say: (line) => voiceOut.say(line),
+	journalDir: paths.journalDir,
+	readGitHead,
+});
+
+const narrateAside = createAsideNarrator({
+	store,
+	narrate: (input) => services.current.narrate(input),
+	say: (line) => voiceOut.say(line),
+});
+
+connectSpeech({ store, voiceOut, narrateTurn, narrateAside, isRouting: () => router.isRouting });
+
+const reminderTimer = setInterval(() => voiceOut.remind(store.state), REMINDER_INTERVAL_MS);
+
+const machines = connectMachines({
+	store,
+	voiceDir: paths.voiceDir,
+	home: paths.home,
+	mediaDir,
+	crew,
+	runCrew: spawnRunner,
+	manager,
+	say: (text) => voiceOut.say({ text, priority: 'high', source: 'kernel' }),
+	sayLine: (line) => voiceOut.say(line),
+	onStatusesChanged: () => recordState(),
+});
 
 // "Open the doc" opens in the tab that asked: the developer may be on a phone, far from this Mac.
 const openUrlFor =
@@ -229,14 +238,20 @@ const listenSwitchFor = createListenSwitch({
 const router = new UtteranceRouter({
 	store,
 	judge,
-	kernel: kernel
-		? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
-		: null,
+	get kernel() {
+		const { kernel } = services.current;
+
+		return kernel
+			? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
+			: null;
+	},
 	onKernelTurn: (turn) => voiceOut.kernelTurnStarted(turn),
 });
 const voiceIn: VoiceInput = new VoiceInput({
 	store,
-	apiKey: keys.soniox,
+	get apiKey() {
+		return services.current.keys.soniox;
+	},
 	onUtterance: (text, client, startedAt, { isDictated }) =>
 		void router.handle(text, isDictated ? 'dictated' : 'voice', {
 			setListenMode: listenSwitchFor(client),
@@ -287,7 +302,7 @@ const startedAt = new Date(bootAt).toISOString();
 // Pages reconnect by themselves after a restart: the first one hears why the page blinked.
 let isRestartSaid = false;
 
-// crew reads the port and pid from here, and `crew voice machines ls` each machine's status.
+// crew reads the port and pid from here, and `crew server machines ls` each machine's status.
 function recordState(): void {
 	if (!shouldRecordState(process.env) || !gateway) {
 		return;
@@ -337,6 +352,11 @@ gateway = startGateway({
 	port: Number(process.env.PORT) || 0,
 	index,
 	readMedia: (name) => readMediaFile({ name, dir: mediaDir }),
+	runCrew: createSetupRunner({
+		runLocal: spawnRunner,
+		startLocal: startDetached,
+		getLink: machines.getLink,
+	}),
 	listAllowedOrigins: (port) =>
 		listAllowedOrigins({
 			port,
@@ -468,12 +488,13 @@ const shutdown = (signal: string): void => {
 	manager.stopAll();
 	machines.stop();
 	discord.stop();
-	tts?.close();
+	services.stop();
+	services.current.tts?.close();
 	gateway?.stop();
 	process.exit(0);
 };
 
-// crew voice stop kills the tmux session, which delivers SIGHUP.
+// crew server stop kills the tmux session, which delivers SIGHUP.
 process.on('SIGHUP', () => shutdown('SIGHUP'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));

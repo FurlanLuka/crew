@@ -1,9 +1,9 @@
 # Getting set up: a workspace, its projects, a worktree
 
 This takes you from an empty crew to two copies of your stack running side by side, typed out as
-commands. The quickest way is to say it instead: Voice OS's setup session runs these same steps for
-you — see [the walkthrough](voice-os.md#from-two-repos-to-a-working-feature). The example is a store
-with an API and a web app; use your own repos.
+commands. The quickest way is the browser instead: `crew` opens crew's page, where [Set up](setup.md)
+has a form for each step and a Claude that runs them for you. The example is a store with an API
+and a web app; use your own repos.
 
 ## 1. Install
 
@@ -93,12 +93,15 @@ crew dev start store-front/wrk1             # different ports; nothing collides
 Now two features can move at once, each with its own branches, servers and agent. Add a project
 to an existing workspace later with `crew add workspace store-front checkout-api`.
 
-## Or do it all in a TUI
+## Or do it all in the browser
 
-`crew project` → `a` walks a new project through the same steps, one card at a time.
-`crew workspace` → `n` makes a workspace and lands on its worktree page. Or, in
-[Voice OS](voice-os.md), ask the setup session: "make a worktree in store front for the search
-fix".
+`crew` opens crew's page; **Set up** is every step above as a form — it starts from the repos
+already on your machine (`crew add project --scan` is the same list), shows the command each
+form runs, previews a binding's value in every worktree before you save it, and says what a
+removal would cost before it removes anything. Each machine has a **Setup with Claude** chat
+there too: "make a worktree in store front for the search fix". [The Set up guide](setup.md)
+walks every page. In the terminal, `crew launch` picks a worktree and opens Claude or your editor
+on it.
 
 ## Let Claude Code drive it
 
@@ -119,8 +122,9 @@ Then ask in plain words: "set up crew for store-api and store-app", "what's runn
 crew update
 ```
 
-It installs the latest release of crew, and of Voice OS once you have it; a running Voice OS keeps
-the old version until `crew voice restart`. crew also mentions a newer release when one is out.
+It installs the latest release of crew, and of Voice OS once you have it; a running server keeps
+the old version until `crew server restart`. `crew update --check` only asks; crew also mentions a
+newer release when one is out.
 
-More: [how crew works](../concepts.md) · [every command](../commands.md) ·
+More: [Set up in the browser](setup.md) · [how crew works](../concepts.md) · [every command](../commands.md) ·
 [running crew on a remote VM](remote-vm.md)

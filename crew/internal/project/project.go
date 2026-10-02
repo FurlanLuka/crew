@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -147,6 +150,22 @@ func NewTarget(name, path string) (target string, clone bool, err error) {
 // read when asked and never stored, so it cannot drift from the clone.
 // "" for a repo without one — such a project cannot be cloned elsewhere.
 func RemoteOf(p Project) string { return exec.OriginURL(p.Path) }
+
+// NameFromURL is the project name a URL suggests: the last segment of the
+// repo it names, with .git and a trailing slash already folded by RepoKey —
+// one URL grammar, not a second one. crew add project <url> and the web's
+// add form both name a clone this way. Pure; "" for "".
+func NameFromURL(url string) string {
+	key := exec.RepoKey(url)
+	if key == "" {
+		return ""
+	}
+	base := path.Base(key)
+	if base == "/" || base == "." {
+		return ""
+	}
+	return base
+}
 
 func poolFile() string {
 	return filepath.Join(config.ConfigDir, "projects.json")
@@ -321,36 +340,97 @@ func RemoveDevServer(projName, serverName string) (dropped []Binding, err error)
 	return nil, fmt.Errorf("project '%s' not found", projName)
 }
 
-// RenameDevServer is the editor's rename: the server under its new name,
-// and the bindings scoped to it re-scoped in the same write, so a rename
-// never turns them into "no dev server" rows.
-func RenameDevServer(projName, oldName string, ds DevServer) error {
-	if err := validateServerName(ds.Name); err != nil {
-		return err
-	}
+// RenameDevServer is the editor's rename: the server under its new name in
+// its old place, the bindings scoped to it re-scoped, and every binding in
+// the pool whose value names it ({{proj/old}}, .host, .port, the pre-2.1
+// spelling) rewritten to the new name — all in the same write, so a rename
+// never turns them into "no dev server" rows. The rewritten ones come back,
+// named, never with their values.
+func RenameDevServer(projName, oldName string, ds DevServer) ([]RetargetedBinding, error) {
 	projects, err := List()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for i, p := range projects {
-		if p.Name != projName {
+	renamed, rewritten, err := renameServerIn(projects, projName, oldName, ds)
+	if err != nil {
+		return nil, err
+	}
+	return rewritten, save(renamed)
+}
+
+// renameServerIn is the rename over the pool: it refuses an unknown old name
+// and a new name another server of the project already has, so a rename
+// never drops a server nor turns into an add. The input is left untouched.
+// Pure.
+func renameServerIn(projects []Project, projName, oldName string, ds DevServer) ([]Project, []RetargetedBinding, error) {
+	if err := validateServerName(ds.Name); err != nil {
+		return nil, nil, err
+	}
+	i := slices.IndexFunc(projects, func(p Project) bool { return p.Name == projName })
+	if i < 0 {
+		return nil, nil, fmt.Errorf("project '%s' not found", projName)
+	}
+	servers := slices.Clone(projects[i].DevServers)
+	at := slices.IndexFunc(servers, func(s DevServer) bool { return s.Name == oldName })
+	if at < 0 {
+		return nil, nil, fmt.Errorf("project '%s' has no dev server '%s' (has: %s)", projName, oldName, serverNames(servers))
+	}
+	if ds.Name != oldName && slices.ContainsFunc(servers, func(s DevServer) bool { return s.Name == ds.Name }) {
+		return nil, nil, fmt.Errorf("%s already has a server '%s' — crew dev rm %s %s first, or pick another name", projName, ds.Name, projName, ds.Name)
+	}
+	servers[at] = ds
+
+	out := slices.Clone(projects)
+	out[i].DevServers = servers
+	var rewritten []RetargetedBinding
+	for pi := range out {
+		bindings := slices.Clone(out[pi].Bindings)
+		for j, b := range bindings {
+			if pi == i && b.Server == oldName {
+				bindings[j].Server = ds.Name
+			}
+			if value, ok := retarget(b.Value, projName, oldName, ds.Name); ok {
+				bindings[j].Value = value
+				rewritten = append(rewritten, RetargetedBinding{Project: out[pi].Name, Var: b.Var, Server: bindings[j].Server})
+			}
+		}
+		out[pi].Bindings = bindings
+	}
+	return out, rewritten, nil
+}
+
+// RetargetedBinding names a binding a server rename rewrote.
+type RetargetedBinding struct {
+	Project, Var, Server string
+}
+
+// Label is "<project> <VAR>", with " (<server>)" for a scoped one.
+func (r RetargetedBinding) Label() string {
+	if r.Server == "" {
+		return r.Project + " " + r.Var
+	}
+	return r.Project + " " + r.Var + " (" + r.Server + ")"
+}
+
+// retarget rewrites every token in value that names proj/old to proj/new,
+// in the spelling TokenFor writes. ok is false when none did — and for a
+// value that does not parse, which is left for the validator to name.
+// Pure.
+func retarget(value, proj, old, renamed string) (string, bool) {
+	tokens, err := dev.ParseTokens(value)
+	if err != nil {
+		return value, false
+	}
+	out, changed := value, false
+	for _, tok := range tokens {
+		t := tok.Target
+		if tok.Kind != dev.TokenTarget || t.Project != proj || !t.HasServer || t.Server != old {
 			continue
 		}
-		var servers []DevServer
-		for _, s := range p.DevServers {
-			if s.Name != oldName && s.Name != ds.Name {
-				servers = append(servers, s)
-			}
-		}
-		projects[i].DevServers = append(servers, ds)
-		for j, b := range p.Bindings {
-			if b.Server == oldName {
-				projects[i].Bindings[j].Server = ds.Name
-			}
-		}
-		return save(projects)
+		out = strings.ReplaceAll(out, tok.Raw, dev.TokenFor(dev.TargetRef{Project: proj, Server: renamed, HasServer: true}, tok.Accessor))
+		changed = true
 	}
-	return fmt.Errorf("project '%s' not found", projName)
+	return out, changed
 }
 
 // SetPath moves a project's canonical checkout. Worktrees already made from

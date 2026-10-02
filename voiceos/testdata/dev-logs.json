@@ -1,0 +1,8 @@
+{
+  "lines": [
+    "PORT=3000 pnpm dev",
+    "ready on http://localhost:3000"
+  ],
+  "ref": "store-front/main",
+  "server": "web"
+}

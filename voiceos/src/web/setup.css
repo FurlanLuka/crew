@@ -1,0 +1,1300 @@
+/* Set up: true black lit far back, content on grouped surfaces, a floating toolbar in the material.
+   Every page is as wide as the toolbar: one column edge everywhere. */
+.setup {
+	min-height: 100%;
+	background: var(--ground);
+	background-attachment: fixed;
+	padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+}
+body:has(.setup) {
+	background: var(--base);
+}
+
+/* The toolbar: the crew mark, the machine picker, the breadcrumbs. */
+.top {
+	position: sticky;
+	top: calc(10px + env(safe-area-inset-top, 0px));
+	z-index: 20;
+	width: min(860px, calc(100% - 32px));
+	margin: 10px auto 0;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 7px 8px 7px 14px;
+	border-radius: 16px;
+	background: var(--material);
+	-webkit-backdrop-filter: blur(24px) saturate(1.4);
+	backdrop-filter: blur(24px) saturate(1.4);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+		0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: none;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #fff;
+	font: 600 14px var(--sys);
+}
+.brand::after {
+	content: "";
+	width: 1px;
+	height: 16px;
+	background: rgba(255, 255, 255, 0.14);
+}
+.machine-pick {
+	position: relative;
+	flex: none;
+}
+.machine-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 30px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 9px;
+	background: var(--fill);
+	color: #fff;
+	font: 600 13px var(--sys);
+}
+.machine-btn:hover {
+	background: var(--fill-hover);
+}
+.machine-btn .chev {
+	margin-top: -4px;
+	color: var(--label-3);
+	font-size: 12px;
+}
+.machine-menu {
+	top: calc(100% + 8px);
+	left: 0;
+}
+.crumbs {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	overflow: hidden;
+	font-size: 13px;
+	white-space: nowrap;
+}
+.crumbs .crumb {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+/* A long trail shrinks each crumb to an ellipsis rather than letting them run into each other. */
+.crumbs button {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	padding: 4px 6px;
+	border: 0;
+	border-radius: 7px;
+	background: none;
+	color: var(--label-3);
+}
+.crumbs button:hover {
+	background: var(--fill);
+	color: #fff;
+}
+.crumbs .sep {
+	flex: none;
+	color: var(--label-4);
+	padding: 0 2px;
+}
+.crumbs .here {
+	padding: 4px 6px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: #fff;
+	font-weight: 600;
+}
+
+.stage {
+	display: grid;
+	justify-items: center;
+	padding: 26px 16px 0;
+}
+.page {
+	width: min(860px, 100%);
+	display: grid;
+	gap: 18px;
+	align-content: start;
+}
+@media (prefers-reduced-motion: no-preference) {
+	.page {
+		animation: page-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+	}
+	@keyframes page-in {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+			filter: blur(6px);
+		}
+	}
+}
+.head-row {
+	display: flex;
+	align-items: end;
+	justify-content: space-between;
+	gap: 14px;
+	flex-wrap: wrap;
+}
+.head-text {
+	display: grid;
+	gap: 6px;
+}
+.title-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+.title-row h1 {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	margin-right: 6px;
+}
+.icon-btn {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	background: none;
+	color: var(--label-3);
+	cursor: pointer;
+}
+.icon-btn svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linejoin: round;
+}
+.icon-btn:hover,
+.icon-btn:focus-visible {
+	background: var(--fill);
+	color: #fff;
+}
+/* A page section whose label row carries its actions on the right; they wrap below on a phone. */
+.section {
+	display: grid;
+	gap: 10px;
+}
+.section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.label-note {
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+/* The board: one toolbar row, the Claude card, the problems, the table. */
+.srv {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 5px;
+}
+.srv button,
+.srv i {
+	padding: 1px 8px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 11px var(--mono);
+	font-style: normal;
+}
+.srv .up {
+	background: var(--good-fill);
+	color: var(--good);
+}
+.srv .wait {
+	background: rgba(240, 160, 44, 0.14);
+	color: var(--amber);
+}
+.srv .down {
+	background: rgba(224, 108, 95, 0.16);
+	color: var(--crit-text);
+}
+.toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.toolbar .status {
+	margin-left: auto;
+}
+.toolbar .seg {
+	height: 32px;
+	padding: 3px;
+}
+.toolbar .seg button {
+	padding: 0 12px;
+}
+.board-add {
+	height: 32px;
+	border-radius: 10px;
+}
+.matrix-wrap {
+	overflow-x: auto;
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+/* Every Set up table keeps a row on one line: fixed columns, a long cell ends in an ellipsis and its
+   title holds the whole value. */
+.matrix {
+	width: 100%;
+	min-width: 560px;
+	table-layout: fixed;
+	border-collapse: collapse;
+	font-size: 13.5px;
+}
+.matrix th,
+.matrix td {
+	padding: 11px 16px;
+	border-bottom: 1px solid var(--sep);
+	text-align: left;
+	vertical-align: middle;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.matrix thead th {
+	color: var(--label-2);
+	font: 600 12px var(--sys);
+}
+.matrix thead th.mh,
+.matrix td.cell {
+	text-align: center;
+}
+.matrix tbody tr:last-child > * {
+	border-bottom: 0;
+}
+/* One height for every row, whether its state is a chip or a button. */
+.matrix tbody tr {
+	height: 52px;
+	transition: background 0.15s;
+}
+.matrix tbody tr:hover {
+	background: rgba(255, 255, 255, 0.025);
+}
+.rowname {
+	padding: 0;
+	border: 0;
+	background: none;
+	text-align: left;
+}
+.rowname b {
+	font-weight: 600;
+}
+/* :where keeps it as light as .rowname b, so the later "<box> b" rules stay in ascending order. */
+.rowname:where(:hover) b {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.matrix .c-name {
+	width: 21%;
+}
+.matrix .c-install {
+	width: 22%;
+}
+.matrix .c-servers {
+	width: 22%;
+}
+.matrix .c-workspaces {
+	width: 17%;
+}
+.matrix .c-state {
+	width: 136px;
+}
+.matrix .c-members {
+	width: 34%;
+}
+.matrix .c-label {
+	width: 136px;
+}
+/* A row that opens a page from anywhere on it: a table row through followRow; a box row through its
+   name's button, stretched over the row. Its other controls sit above and keep their own job. */
+.row-link {
+	cursor: pointer;
+}
+.box-row.row-link {
+	position: relative;
+}
+.box-row.row-link .rowname::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+.box-row.row-link :is(button, a):not(.rowname) {
+	position: relative;
+	z-index: 1;
+}
+.box-row.row-link:hover {
+	background: rgba(255, 255, 255, 0.03);
+}
+.matrix .rowname {
+	display: block;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.matrix .srv {
+	display: flex;
+	flex-wrap: nowrap;
+	overflow: hidden;
+}
+/* The pills give way before "+ new" does: it is always whole, at the end. */
+.matrix .srv button {
+	flex: 0 1 auto;
+	min-width: 5em;
+	max-width: 12em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.matrix .srv button:last-child {
+	flex: none;
+	min-width: auto;
+}
+.facts-table tbody th {
+	color: var(--label-3);
+	font: 400 13px var(--sys);
+}
+.facts-table code {
+	font-size: 12px;
+}
+.cellcode {
+	font-size: 12px;
+	color: var(--label-2);
+}
+.cell-fail {
+	display: inline-flex;
+	padding: 0;
+	border: 0;
+	background: none;
+}
+.cell-fail:hover .chip {
+	text-decoration: underline;
+}
+
+.claude-card {
+	display: grid;
+	gap: 10px;
+	padding: 14px 16px;
+	border-radius: 16px;
+	background: var(--elev-1);
+}
+.cc-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.cc-head b {
+	font: 600 15px var(--sys);
+	color: #fff;
+}
+.cc-head .btn {
+	margin-left: auto;
+}
+.cc-input {
+	display: flex;
+	gap: 8px;
+}
+.cc-input input,
+.reply input,
+.ov-add input,
+.ov-add select,
+.sel,
+.inline-form input,
+.import-choice input {
+	min-width: 0;
+	padding: 8px 12px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: #fff;
+	font: 14px var(--sys);
+}
+.cc-input input {
+	flex: 1;
+}
+.cc-input input:focus,
+.reply input:focus,
+.field input:focus,
+.field select:focus,
+.srv-row input:focus {
+	outline: none;
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+		0 0 0 3px rgba(255, 255, 255, 0.09);
+}
+
+.problems {
+	display: grid;
+	gap: 6px;
+}
+.problem {
+	display: grid;
+	grid-template-columns: 10px auto minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: center;
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: var(--crit-fill);
+	color: #d8dee9;
+}
+.problem.quiet {
+	background: var(--elev-1);
+}
+.problem b {
+	font-weight: 600;
+	color: #fff;
+}
+.problem > span:nth-child(3) {
+	color: #c3ccd6;
+}
+.problem-actions {
+	display: flex;
+	gap: 6px;
+}
+
+/* Facts, failures, forms. */
+.facts {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	gap: 10px 22px;
+	margin: 0;
+	padding: 16px 18px;
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+.facts dt {
+	color: var(--label-3);
+	font-size: 13px;
+}
+.facts dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+.envlist {
+	display: grid;
+	gap: 4px;
+}
+.fail {
+	display: grid;
+	gap: 10px;
+	padding: 14px 16px;
+	border-radius: 14px;
+	background: var(--crit-fill);
+}
+.fail-h {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.fail-h b {
+	font: 600 16px var(--sys);
+	color: #fff;
+}
+.fail-steps {
+	display: flex;
+	gap: 6px;
+	font: 11.5px var(--mono);
+}
+.fail-steps span {
+	padding: 1px 9px;
+	border-radius: 10px;
+	background: var(--fill);
+	color: var(--label-3);
+}
+.fail-steps .ok {
+	background: var(--good-fill);
+	color: var(--good);
+}
+.fail-steps .bad {
+	background: rgba(224, 108, 95, 0.16);
+	color: var(--crit-text);
+}
+.fail-why {
+	margin: 0;
+	color: #c3ccd6;
+	font-size: 14px;
+}
+.log.big {
+	min-height: 280px;
+	max-height: 50vh;
+	overflow: auto;
+}
+.result-line {
+	margin: 0;
+	font-size: 13.5px;
+}
+.result-line.ok {
+	color: var(--good);
+}
+.result-line.bad {
+	color: var(--crit-text);
+}
+.confirm {
+	display: grid;
+	gap: 12px;
+	padding: 16px;
+	border-radius: 16px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px rgba(224, 108, 95, 0.3);
+}
+.confirm-title {
+	font: 600 17px var(--sys);
+	color: #fff;
+}
+.cost {
+	display: grid;
+	gap: 4px;
+	margin: 0;
+	padding-left: 18px;
+	font-size: 13.5px;
+}
+
+form {
+	display: grid;
+	gap: 16px;
+}
+.field {
+	display: grid;
+	gap: 6px;
+}
+.field > span {
+	font: 600 11px var(--mono);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.field input[type="text"],
+.field input[type="password"],
+.field input:not([type]),
+.field select {
+	width: 100%;
+	padding: 12px 14px;
+	border: 0;
+	border-radius: 12px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: #fff;
+	font: 14px var(--mono);
+}
+.field input[type="file"] {
+	color: var(--label-2);
+}
+.field small {
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+/* :where for the same reason as .rowname's: as light as the "<box> b" rules after it. */
+.field :where(small) b {
+	color: var(--label-2);
+	font-weight: 500;
+}
+.picks {
+	overflow: hidden;
+	border-radius: 12px;
+	background: var(--elev-1);
+}
+.pick {
+	display: grid;
+	grid-template-columns: 18px minmax(0, 1fr) auto auto;
+	gap: 12px;
+	align-items: center;
+	padding: 10px 14px;
+	cursor: pointer;
+}
+.pick.static {
+	cursor: default;
+}
+.pick + .pick {
+	box-shadow: inset 0 1px 0 var(--sep);
+}
+.pick input {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	accent-color: #fff;
+}
+.pick select {
+	padding: 3px 6px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: var(--label-2);
+	font: 11.5px var(--mono);
+}
+.pick .sub {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 10px;
+	align-items: baseline;
+	min-width: 0;
+}
+.runs {
+	display: grid;
+	gap: 4px;
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: var(--elev-1);
+}
+.runs pre {
+	margin: 0;
+	color: var(--label-2);
+	font: 12px / 1.6 var(--mono);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.form-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+}
+.cfg {
+	gap: 22px;
+}
+.cfg-sec {
+	display: grid;
+	gap: 12px;
+	padding: 16px;
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+.cfg-h {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 12px;
+}
+.cfg-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 12px;
+}
+.srv-table {
+	display: grid;
+	gap: 6px;
+	overflow-x: auto;
+}
+.srv-row {
+	display: grid;
+	grid-template-columns: 120px minmax(220px, 1fr) 150px 80px 24px;
+	gap: 8px;
+	align-items: center;
+	min-width: 620px;
+}
+.srv-row.head span {
+	font: 600 10.5px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.srv-row input {
+	width: 100%;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: #fff;
+	font: 13px var(--mono);
+}
+.add-server {
+	justify-self: start;
+}
+.bind-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr 0.8fr;
+	gap: 10px;
+}
+.preview {
+	display: grid;
+	gap: 2px;
+	padding: 4px 0 4px 12px;
+	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.2);
+	color: var(--label-2);
+	font: 12.5px var(--mono);
+}
+.preview b {
+	color: var(--good);
+	font-weight: 500;
+}
+.wires {
+	font-size: 13.5px;
+}
+.update-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 16px;
+	border-radius: 14px;
+	background: rgba(95, 191, 127, 0.07);
+}
+.update-row .sub {
+	display: grid;
+	gap: 2px;
+	flex: 1 1 280px;
+}
+.danger-zone {
+	background: rgba(224, 108, 95, 0.05);
+}
+.srv-full {
+	grid-template-columns: 10px minmax(0, 1fr) auto auto;
+}
+.links {
+	display: grid;
+	justify-items: end;
+	gap: 1px;
+}
+.links a {
+	color: #fff;
+	font: 13px var(--mono);
+	text-decoration: none;
+}
+.links a:hover {
+	text-decoration: underline;
+}
+.ov-say {
+	margin: 0 0 -10px;
+}
+.ov-add,
+.inline-form {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 170px auto;
+	gap: 8px;
+}
+.inline-form {
+	grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.env-all {
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+.env-all summary {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	padding: 12px 16px;
+	color: var(--label);
+	font-size: 14px;
+	cursor: pointer;
+	list-style: none;
+}
+.env-all summary::-webkit-details-marker {
+	display: none;
+}
+.env-all summary::before {
+	content: "▸";
+	color: var(--label-3);
+}
+.env-all[open] summary::before {
+	content: "▾";
+}
+.env-all > .seg,
+.env-all > .log {
+	margin: 0 16px 10px 34px;
+}
+.env-rows {
+	display: grid;
+	gap: 6px;
+	padding: 0 16px 10px 34px;
+}
+.env-rows div {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	min-width: 0;
+	font-size: 13px;
+	white-space: nowrap;
+}
+.env-rows code,
+.env-rows .src {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.env-rows code {
+	flex: 0 1 auto;
+}
+.env-rows .src {
+	flex: 0 1 auto;
+	min-width: 6em;
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.env-rows .src.here {
+	color: #fff;
+}
+.env-all > small {
+	display: block;
+	padding: 0 16px 12px 34px;
+}
+.imp {
+	grid-template-columns: 10px minmax(0, 1fr) auto;
+}
+.import-choice {
+	display: grid;
+	justify-items: end;
+	gap: 6px;
+}
+.import-extras {
+	display: grid;
+	gap: 6px;
+}
+.check-done {
+	display: grid;
+	gap: 12px;
+}
+.export-picks .pick {
+	grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+/* Progress: one box, a one-line row per runner step from crew's own records, then what failed and
+   the command the page follows, flush in the same box. */
+.progress-box {
+	display: grid;
+	overflow: hidden;
+}
+.progress-box .took {
+	font: 12px var(--mono);
+	white-space: nowrap;
+}
+.progress-box > .fail,
+.progress-box > .runs {
+	border-radius: 0;
+	box-shadow: inset 0 1px 0 var(--sep);
+}
+.progress-box > .runs {
+	padding: 10px 16px;
+	background: none;
+}
+
+/* First run: the steps on one page; only the current one is open. */
+.fr-steps {
+	display: grid;
+	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.fr-step {
+	display: grid;
+	gap: 14px;
+	padding: 14px 18px;
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+.fr-step.later {
+	opacity: 0.45;
+}
+.fr-h {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+}
+.fr-h b {
+	font: 600 15px var(--sys);
+	color: #fff;
+}
+.fr-n {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 600 12px var(--sys);
+}
+.fr-step.now .fr-n {
+	background: #fff;
+	color: #000;
+}
+.fr-step.done .fr-n {
+	background: rgba(95, 191, 127, 0.18);
+	color: var(--good);
+}
+.fr-body {
+	display: grid;
+	gap: 14px;
+	padding-left: 34px;
+}
+.fr-body > p,
+.fr-next p {
+	margin: 0;
+	max-width: 66ch;
+	color: var(--label-2);
+	font-size: 14px;
+	line-height: 1.5;
+}
+.fr-body .pick {
+	grid-template-columns: 18px minmax(0, 1fr);
+}
+.fr-next {
+	display: grid;
+	gap: 12px;
+}
+
+/* The setup chat fills the window: the page never scrolls, the stream does. */
+.setup.on-chat {
+	height: 100%;
+	min-height: 0;
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr);
+	overflow: hidden;
+	padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.setup.on-chat .stage {
+	min-height: 0;
+	align-content: stretch;
+}
+.chatpage {
+	height: 100%;
+	min-height: 0;
+	grid-template-rows: auto minmax(0, 1fr);
+}
+.chatpage h1 {
+	font-size: 24px;
+}
+.ss-main {
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) auto;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 18px;
+	min-height: 0;
+	padding: 20px 20px 12px;
+	border-radius: 20px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.chat {
+	display: grid;
+	align-content: start;
+	gap: 9px;
+	min-height: 0;
+	overflow-y: auto;
+	padding-right: 6px;
+	overscroll-behavior: contain;
+	font: 14.5px / 1.5 var(--sys);
+	color: #e3e9ee;
+}
+.chat .msg {
+	margin: 0;
+}
+.stream-item {
+	display: grid;
+	gap: 2px;
+}
+.rec-line {
+	padding-left: 16px;
+	color: var(--good);
+	font: 12px / 1.5 var(--mono);
+}
+.reply {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0 -8px;
+	padding: 8px;
+	border-radius: 14px;
+	background: rgba(27, 30, 35, 0.92);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+		0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.reply input {
+	flex: 1;
+	background: transparent;
+	box-shadow: none;
+}
+/* The card's foot: Voice OS's session pieces (sub-agents, the ask, the queue) in Set up's own cards,
+   stacked above the composer as Voice OS stacks them above the voice bar. */
+.ss-foot {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+.ss-foot .dock {
+	max-height: 40vh;
+	padding: 14px 16px;
+	border-radius: 14px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.125);
+}
+.ss-foot .dock.crit {
+	background: var(--crit-fill);
+	box-shadow: inset 0 0 0 1px rgba(224, 108, 95, 0.3);
+}
+.ss-foot .dock.amber {
+	background: var(--amber-fill);
+	box-shadow: inset 0 0 0 1px rgba(240, 160, 44, 0.28);
+}
+.ss-foot .opt {
+	background: var(--elev-3);
+}
+.ss-foot .opt:hover {
+	background: #2e333a;
+}
+.ss-foot .reason input {
+	background: var(--elev-3);
+}
+.ss-foot .queue,
+.ss-foot .panel {
+	display: grid;
+	gap: 4px;
+	padding: 8px 4px;
+	border-radius: 12px;
+	box-shadow: inset 0 0 0 1px var(--sep);
+}
+.ss-foot .qitem {
+	flex-wrap: wrap;
+	padding: 4px 12px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.ss-foot .panel {
+	padding: 10px 14px;
+	font-size: 13px;
+}
+.ss-foot .subagent .row {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+}
+.ss-foot .subagent .row:first-child {
+	color: var(--label-2);
+}
+.ss-foot .subagent .el {
+	margin-left: auto;
+	color: var(--label-3);
+	font: 12px var(--mono);
+}
+
+/* Setup is busy: a request waits or opens the chat, never interrupts it. */
+.busy {
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+	display: grid;
+	place-items: center;
+	padding: 16px;
+	background: rgba(0, 0, 0, 0.55);
+}
+.busy-card {
+	width: min(440px, 100%);
+	display: grid;
+	gap: 10px;
+	padding: 18px;
+	border-radius: 18px;
+	background: var(--menu);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+		0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.busy-card b {
+	font: 600 17px var(--sys);
+	color: #fff;
+}
+.busy-card p {
+	margin: 0;
+	color: var(--label-2);
+	font-size: 14px;
+}
+.busy-prompt {
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: var(--elev-2);
+	color: #fff;
+	font-size: 14px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+	.top {
+		background: #16191e;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+}
+@media (hover: none) {
+	.matrix tbody tr:hover {
+		background: transparent;
+	}
+}
+@media (pointer: coarse) {
+	.toolbar .seg,
+	.board-add {
+		height: 40px;
+	}
+	.icon-btn {
+		width: 40px;
+		height: 40px;
+	}
+	.crumbs button,
+	.crumbs .here {
+		padding: 8px 6px;
+	}
+	.pick {
+		min-height: 48px;
+	}
+}
+@media (max-width: 700px) {
+	.bind-row {
+		grid-template-columns: 1fr;
+	}
+}
+@media (max-width: 600px) {
+	/* On a phone the stream keeps most of the card: the ask scrolls within its own share. */
+	.ss-foot .dock {
+		max-height: 34vh;
+	}
+	.ss-foot .opts {
+		display: grid;
+	}
+	.top {
+		width: calc(100% - 20px);
+	}
+	.crumbs .mid {
+		display: none;
+	}
+	.crumbs .crumb:has(.mid) {
+		display: none;
+	}
+	.machine-btn span:nth-child(2) {
+		max-width: 90px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	h1 {
+		font-size: 25px;
+	}
+	.stage {
+		padding-inline: 12px;
+	}
+	.facts {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+	.facts dd {
+		margin-bottom: 8px;
+	}
+	.problem {
+		grid-template-columns: 10px minmax(0, 1fr);
+		row-gap: 2px;
+	}
+	.problem b,
+	.problem > span:nth-child(3),
+	.problem-actions {
+		grid-column: 2;
+	}
+	.toolbar .status {
+		width: 100%;
+		margin-left: 0;
+	}
+	.pick {
+		grid-template-columns: 18px minmax(0, 1fr) auto;
+	}
+	.pick > .m {
+		display: none;
+	}
+	.srv-full {
+		grid-template-columns: 10px minmax(0, 1fr);
+	}
+	.srv-full .links,
+	.srv-full .row-actions,
+	.srv-full .chip {
+		grid-column: 2;
+		justify-items: start;
+	}
+	.ov-add {
+		grid-template-columns: 1fr;
+	}
+	.fr-body {
+		padding-left: 0;
+	}
+	.imp {
+		grid-template-columns: 10px minmax(0, 1fr);
+	}
+	.imp .import-choice,
+	.imp > .btn,
+	.imp > .chip {
+		grid-column: 2;
+		justify-items: start;
+	}
+}
+
+/* Every select on crew's page, one style: no native arrow, one chevron 12px in from the right edge,
+   and the text kept clear of it. The same selectors as the rules above, so it wins by order. */
+.field select,
+.pick select,
+.ov-add select,
+select.sel {
+	appearance: none;
+	-webkit-appearance: none;
+	padding-right: 32px;
+	background-color: var(--elev-2);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='rgba(235,240,245,0.66)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 12px center;
+	background-size: 10px 6px;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+:is(.field, .pick, .ov-add) select:disabled,
+select.sel:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* A box row kept to one line: its name and its note side by side, each cut with an ellipsis; the
+   row's title holds the whole text. */
+.box-row.one-line .sub {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+}
+.box-row.one-line .sub > * {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.box-row.one-line .sub > :first-child {
+	flex: none;
+	max-width: 60%;
+}
+.box-row.one-line .sub .m {
+	overflow-wrap: normal;
+}

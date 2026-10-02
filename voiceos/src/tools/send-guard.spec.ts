@@ -262,7 +262,7 @@ describe('send_to a session not on screen', () => {
 		]);
 	});
 
-	it('crew setup from another screen → the setup session, by its own guard', async () => {
+	it('crew setup work named for the setup session → never sent there: it lives in Set up', async () => {
 		const { tools } = createToolContext();
 		const setup = {
 			...createSession({
@@ -279,11 +279,10 @@ describe('send_to a session not on screen', () => {
 		const { actions } = await sendTo({
 			ref: 'setup',
 			utterance: 'Add a worktree for the checkout api.',
-			judge: judgeWith({ for_setup: 'yes' }),
 			patch: { sessions: { ...state.sessions, setup }, order: [...state.order, 'setup'] },
 		});
 
-		expect(actions).toEqual([expect.objectContaining({ type: 'send', ref: 'setup' })]);
+		expect(actions).not.toContainEqual(expect.objectContaining({ type: 'send', ref: 'setup' }));
 	});
 
 	it('a bare "yes" to a session waiting on a permission, unnamed → the answer tool is named, nothing sent', async () => {

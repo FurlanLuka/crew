@@ -1,7 +1,15 @@
 // Other machines, read the same way by the server, the kernel's tools and the page.
 
-import { LOCAL_MACHINE, MAIN_MACHINE, machineOf, readMachine, toLocalRef } from './machine-ref.js';
+import {
+	LOCAL_MACHINE,
+	MAIN_MACHINE,
+	isSetupRef,
+	machineOf,
+	readMachine,
+	toLocalRef,
+} from './machine-ref.js';
 import type { MachineConfig, State, View } from './protocol.js';
+import { listHeardAsks } from './active.js';
 
 // What ssh is given as its destination: a host alias or user@host, never something it would read as
 // an option.
@@ -10,7 +18,7 @@ export const isValidHost = (host: string): boolean =>
 
 const MAX_ID_BASE = 56;
 
-// crew's Go side (crew voice machines) derives ids the same way: keep the two in step.
+// crew's Go side (crew server machines) derives ids the same way: keep the two in step.
 export const machineIdFor = (host: string, taken: string[]): string => {
 	const address = host.replace(/^[^@]*@/, '');
 	// An IP address is kept whole ("10-0-0-5"): its first part alone would be a bare number, which
@@ -93,7 +101,7 @@ export const currentMachine = (state: State): string | null => {
 		return readMachine(view.ref);
 	}
 
-	return view.kind === 'grid' ? (view.machine ?? null) : null;
+	return view.kind === 'activate' ? (view.machine ?? null) : null;
 };
 
 // This Mac, or a machine the state knows: an active ref or a name of any other machine has nowhere to show.
@@ -122,29 +130,27 @@ export const readElsewhereMachine = (state: State, ref: string): string | null =
 	return config.name;
 };
 
-// Home is always Mission Control's cards: This Mac, each other machine, and where one is added.
-export const HOME_VIEW: View = { kind: 'machines' };
+// Home is Active: the developer's active sessions, from every machine.
+export const HOME_VIEW: View = { kind: 'active' };
 
-// Esc, "go back": a session → its machine's grid (or Active, when opened from there) → home.
+// Esc: a session opened from Activate goes back there (its machine's), anything else to home.
 export const parentView = (state: State): View => {
 	const { view } = state;
 
-	if (view.kind !== 'session') {
-		return HOME_VIEW;
+	if (view.kind === 'session' && view.from !== 'active') {
+		return { kind: 'activate', machine: readMachine(view.ref) };
 	}
 
-	return view.from === 'active'
-		? { kind: 'active' }
-		: { kind: 'grid', machine: readMachine(view.ref) };
+	return HOME_VIEW;
 };
 
 // Asks and a "needs you" line: what the counts, the cards, the recap and Elsewhere all mean by waiting.
 // machine: undefined for every machine, LOCAL_MACHINE or an id for one.
 export const listWaitingRefs = (state: State, machine?: string): string[] => {
 	const waiting = new Set([
-		...state.asks.map((ask) => ask.ref),
+		...listHeardAsks(state).map((ask) => ask.ref),
 		...Object.values(state.sessions)
-			.filter((session) => session.needsUser)
+			.filter((session) => session.needsUser && !isSetupRef(session.ref))
 			.map((session) => session.ref),
 	]);
 
@@ -159,9 +165,6 @@ export const listWaitingRefs = (state: State, machine?: string): string[] => {
 		.sort((left, right) => place(left) - place(right));
 };
 
-export const listMachineRefs = (state: State, machine: string): string[] =>
-	Object.keys(state.sessions).filter((ref) => readMachine(ref) === machine);
-
 const listNames = (labels: string[]): string => {
 	if (labels.length <= 1) {
 		return labels.join('');
@@ -173,7 +176,7 @@ const listNames = (labels: string[]): string => {
 const readLabels = (state: State, refs: string[]): string[] =>
 	refs.map((ref) => readSessionLabel(state, ref));
 
-// Said when the developer switches to a machine's grid.
+// Said when the developer switches to a machine's Activate list.
 export const describeMachineWaiting = (state: State, machine: string): string => {
 	const name = readMachineTitle(state, machine);
 	const waiting = readLabels(state, listWaitingRefs(state, machine));

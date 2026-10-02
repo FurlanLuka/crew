@@ -11,15 +11,19 @@ import (
 
 var validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// ValidVarName: the name is one an environment variable can have.
-func ValidVarName(name string) bool { return validVarName.MatchString(name) }
-
 // ValidateBinding checks a binding against the project pool before it is saved.
 //
 // Every check here is one that would otherwise surface as a variable silently
 // left alone at dev-server start, which is far away from the edit that caused
 // it. Failing the edit is the cheap place to be wrong.
 func ValidateBinding(projName string, b Binding) error {
+	// The template's own shape first: a malformed token is what the draft
+	// gets wrong whatever the var is, and the editor shows it while the var
+	// is still being typed.
+	tokens, err := dev.ParseTokens(b.Value)
+	if err != nil {
+		return err
+	}
 	if !validVarName.MatchString(b.Var) {
 		return fmt.Errorf("'%s' is not a valid environment variable name", b.Var)
 	}
@@ -36,10 +40,6 @@ func ValidateBinding(projName string, b Binding) error {
 		}
 	}
 
-	tokens, err := dev.ParseTokens(b.Value)
-	if err != nil {
-		return err
-	}
 	for _, tok := range tokens {
 		if tok.Kind == dev.TokenTarget {
 			if err := validateTarget(tok.Target); err != nil {
@@ -211,29 +211,6 @@ func BoundFor(bindings []Binding, server string) map[string]bool {
 		}
 	}
 	return declared
-}
-
-// DeclaredVars is every var with a binding, whatever its scope — what a
-// var field's completion skips. Pure.
-func DeclaredVars(bindings []Binding) map[string]bool {
-	declared := make(map[string]bool, len(bindings))
-	for _, b := range bindings {
-		declared[b.Var] = true
-	}
-	return declared
-}
-
-// WithDevServers is the pool narrowed to what a {{project}} token can
-// point at: a project with a server that has a port — a worker is not a
-// target. Pure.
-func WithDevServers(pool []Project) []Project {
-	var out []Project
-	for _, p := range pool {
-		if len(ListeningServers(p.DevServers)) > 0 {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 // ListeningServers is the servers a token can name: the ones with a port.

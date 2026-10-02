@@ -12,7 +12,7 @@ import {
 	pushViewHistory,
 } from './view-history.js';
 import {
-	GRID,
+	HOME_SCREEN,
 	VOICE_LOG_ENTRIES_KEPT,
 	type PendingAsk,
 	type Session,
@@ -53,9 +53,16 @@ import { cleanSessionLine } from '../shared/spoken.js';
 import { clearHeldLine, holdLine, isOnScreen, markHeard, replayHeldLine } from './held-lines.js';
 import { describeSwitch, guardUnreachable, isMachineInput, reduceMachine } from './machines.js';
 import { HOME_VIEW } from '../shared/machines.js';
-import { machineOf, readMachine } from '../shared/machine-ref.js';
-import { isActiveInput, reduceActive, startAppeared, toShownView } from './active.js';
+import { isSetupRef, machineOf } from '../shared/machine-ref.js';
+import {
+	PENDING_ACTIVATION_MS,
+	isActiveInput,
+	reduceActive,
+	startAppeared,
+	toShownView,
+} from './active.js';
 import { isNameInput, reduceName } from './names.js';
+import { isActive } from '../shared/active.js';
 
 export const SPOKEN_LINES_KEPT = 20;
 
@@ -139,8 +146,10 @@ export type Effect =
 	| { type: 'drop_speech'; ref: string; before: number }
 	| { type: 'dev'; ref: string; action: 'start' | 'stop' | 'restart' }
 	| { type: 'fix_dev'; ref: string; servers: string[] }
-	// crew voice machines writes it to machines.json (crew is the one writer, under its lock).
-	| { type: 'machines_changed'; change: MachineChange };
+	// crew server machines writes it to machines.json (crew is the one writer, under its lock).
+	| { type: 'machines_changed'; change: MachineChange }
+	// Read crew's worktrees now rather than at the next poll: an activation waits for one.
+	| { type: 'refresh_worktrees' };
 
 export type MachineChange =
 	| { kind: 'add'; host: string; name: string }
@@ -179,6 +188,7 @@ export const createInitialState = (): State => ({
 	names: {},
 	languages: defaultLanguages(),
 	discord: null,
+	pendingActivations: [],
 });
 
 export const createSession = (info: WorktreeInfo): Session => ({
@@ -289,15 +299,11 @@ const reconcileWorktrees = (state: State, worktrees: WorktreeInfo[]): State => {
 		)
 		.map((session) => session.ref);
 	const gone = state.view.kind === 'session' && !sessions[state.view.ref] ? state.view : null;
-	// A session opened from Active falls back to Active, where it stays as a "gone" tile.
-	const view: View = !gone
-		? state.view
-		: gone.from === 'active'
-			? { kind: 'active' }
-			: { kind: 'grid', machine: readMachine(gone.ref) };
+	// A session that is gone falls back to Active, where an active one stays as a "gone" tile.
+	const view: View = gone ? { kind: 'active' } : state.view;
 	const focus = state.focus && sessions[state.focus] ? state.focus : null;
 	const voiceLog = Object.fromEntries(
-		Object.entries(state.voiceLog).filter(([screen]) => screen === GRID || sessions[screen]),
+		Object.entries(state.voiceLog).filter(([screen]) => screen === HOME_SCREEN || sessions[screen]),
 	);
 
 	const isKept = (ref: string) => Boolean(sessions[ref]);
@@ -329,10 +335,11 @@ const describeCompactingAloud = (state: State, ref: string): string =>
 		? 'Compacting the context; this takes a minute.'
 		: `${readLabel(state, ref)} is compacting its context; this takes a minute.`;
 
-// A session that is gone cannot be shown: null leaves the screen where it is. The view left goes
-// on the history, for "go back", unless this is a restore or a step back itself.
+// A session that is gone cannot be shown, nor a setup session (it lives in Set up's chat): null
+// leaves the screen where it is. The view left goes on the history, for "go back", unless this is a
+// restore or a step back itself.
 const showView = (state: State, view: View, { isRemembered = true } = {}): State | null => {
-	if (view.kind === 'session' && !state.sessions[view.ref]) {
+	if (view.kind === 'session' && (!state.sessions[view.ref] || isSetupRef(view.ref))) {
 		return null;
 	}
 
@@ -376,6 +383,58 @@ const goBack = (state: State): ReducerResult => {
 	return { state: replayed.state, effects: [said, ...replayed.effects] };
 };
 
+const chain = (first: ReducerResult, next: (state: State) => ReducerResult): ReducerResult => {
+	const second = next(first.state);
+
+	return { state: second.state, effects: [...first.effects, ...second.effects] };
+};
+
+// "Open Voice OS": once the session is active, it is also shown.
+const openActivated = (
+	result: ReducerResult,
+	input: Parameters<typeof reduceActive>[1],
+	stamped: Stamped,
+): ReducerResult =>
+	input.type === 'activate' && input.open && isActive(result.state, input.ref)
+		? chain(result, (state) =>
+				reduceInput(state, {
+					...stamped,
+					input: { type: 'switch_view', view: { kind: 'session', ref: input.ref } },
+				}),
+			)
+		: result;
+
+// A worktrees list arrived: each held activation whose session it has is applied now (and shown,
+// when it was opened); one older than PENDING_ACTIVATION_MS is let go.
+const applyPendingActivations = (result: ReducerResult, stamped: Stamped): ReducerResult => {
+	const { pendingActivations } = result.state;
+
+	if (pendingActivations.length === 0) {
+		return result;
+	}
+
+	const due = pendingActivations.filter((pending) => result.state.sessions[pending.ref]);
+	const kept = pendingActivations.filter(
+		(pending) =>
+			!result.state.sessions[pending.ref] && stamped.at - pending.at < PENDING_ACTIVATION_MS,
+	);
+
+	return due.reduce<ReducerResult>(
+		(sum, pending) =>
+			chain(sum, (state) =>
+				reduceInput(state, {
+					...stamped,
+					input: {
+						type: 'activate',
+						ref: pending.ref,
+						...(pending.isOpening ? { open: true } : {}),
+					},
+				}),
+			),
+		{ state: { ...result.state, pendingActivations: kept }, effects: result.effects },
+	);
+};
+
 const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	const { input } = stamped;
 
@@ -389,7 +448,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 	// The active set is this Voice OS's own: changing it is never refused for a machine out of reach.
 	if (isActiveInput(input)) {
-		return reduceActive(state, input, stamped.at);
+		return openActivated(reduceActive(state, input, stamped.at), input, stamped);
 	}
 
 	// Names are this Voice OS's own too: a session out of reach is renamed like any other.
@@ -437,7 +496,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 	switch (input.type) {
 		case 'worktrees':
-			return startAppeared(state, reconcileWorktrees(state, input.worktrees));
+			return applyPendingActivations(
+				startAppeared(state, reconcileWorktrees(state, input.worktrees)),
+				stamped,
+			);
 
 		case 'send':
 			return reduceSend(state, input, stamped);
@@ -851,7 +913,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			});
 
 		case 'voice_logged': {
-			if (input.screen !== GRID && !state.sessions[input.screen]) {
+			if (input.screen !== HOME_SCREEN && !state.sessions[input.screen]) {
 				return withoutEffects(state);
 			}
 

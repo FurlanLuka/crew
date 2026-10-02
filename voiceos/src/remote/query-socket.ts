@@ -1,4 +1,4 @@
-// `query.sock` on a remote: crew voice logs (debug-notes, notes) run here asks the main through this
+// `query.sock` on a remote: crew server logs (debug-notes, notes) run here asks the main through this
 // daemon's link. One line `{"args":[…]}` in, one answer line out, then the connection ends. crew's
 // client (crew/internal/voice/remote_query.go) reads the same shapes: both sides test against
 // test/fixtures/shared/query-socket.json.

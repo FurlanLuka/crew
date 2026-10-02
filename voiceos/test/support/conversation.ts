@@ -41,7 +41,7 @@ const flush = async (): Promise<void> => {
 
 interface CreateConversationParams {
 	refs: string[];
-	// The session on screen; null is Mission Control.
+	// The session on screen; null is Active (no session).
 	view: string | null;
 	// A tab listens all the time (on demand, hands-free).
 	isListening?: boolean;
@@ -266,7 +266,7 @@ export const createConversation = ({
 		show: async (ref: string | null) => {
 			store.dispatch({
 				type: 'switch_view',
-				view: ref ? { kind: 'session', ref } : { kind: 'grid' },
+				view: ref ? { kind: 'session', ref } : { kind: 'active' },
 			});
 			await listen();
 		},

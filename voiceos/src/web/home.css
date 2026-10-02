@@ -1,0 +1,194 @@
+/* crew's own moments: the opening, Home and the Voice OS moment. System type, a soft fade, frosted
+   cards; restraint over spectacle. The only glass on content is Home's two cards. */
+.intro,
+.launcher {
+	background:
+		radial-gradient(900px 520px at 50% 115%, rgba(255, 255, 255, 0.06), transparent 65%),
+		radial-gradient(700px 420px at 50% -20%, rgba(255, 255, 255, 0.05), transparent 60%), #000;
+}
+.intro {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	display: grid;
+	place-items: center;
+	pointer-events: none;
+}
+.intro-mark {
+	display: grid;
+	justify-items: center;
+	gap: 14px;
+}
+.wordmark {
+	font: 600 56px / 1 var(--sys);
+	letter-spacing: -0.035em;
+	color: #f5f7fa;
+}
+.wordmark.lm {
+	font-size: 40px;
+}
+.tagline {
+	font: 400 17px var(--sys);
+	letter-spacing: -0.01em;
+	color: var(--label-2);
+}
+
+.launcher {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	padding: 24px 16px;
+	overflow-y: auto;
+}
+.launch-inner {
+	display: grid;
+	justify-items: center;
+	gap: 36px;
+	width: min(680px, 100%);
+}
+.home-title {
+	display: grid;
+	justify-items: center;
+	gap: 10px;
+	text-align: center;
+}
+.home-title p {
+	margin: 0;
+	font: 400 19px var(--sys);
+	letter-spacing: -0.01em;
+	color: var(--label-2);
+}
+.launch-choices {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 14px;
+	width: 100%;
+}
+.launch-choice {
+	display: grid;
+	align-content: start;
+	gap: 8px;
+	padding: 24px;
+	border: 0;
+	border-radius: 22px;
+	background: rgba(40, 44, 52, 0.45);
+	-webkit-backdrop-filter: blur(30px) saturate(1.5);
+	backdrop-filter: blur(30px) saturate(1.5);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+		0 20px 50px rgba(0, 0, 0, 0.45);
+	color: #d8dee9;
+	text-align: left;
+	transition:
+		transform 0.2s,
+		box-shadow 0.2s;
+}
+.launch-choice svg {
+	width: 30px;
+	height: 30px;
+	margin-bottom: 8px;
+	color: #f5f7fa;
+}
+.launch-choice b {
+	font: 600 21px var(--sys);
+	letter-spacing: -0.015em;
+	color: #fff;
+}
+.launch-choice span {
+	font: 15px / 1.45 var(--sys);
+	color: var(--label-2);
+}
+.launch-choice small {
+	min-height: 1.4em;
+	margin-top: 4px;
+	font: 13px var(--sys);
+	color: var(--label-3);
+}
+.launch-choice:hover {
+	transform: translateY(-2px);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+		0 20px 50px rgba(0, 0, 0, 0.45);
+}
+.launch-choice.last {
+	box-shadow:
+		inset 0 0 0 1.5px rgba(255, 255, 255, 0.35),
+		0 20px 50px rgba(0, 0, 0, 0.45);
+}
+.launch-choice:disabled {
+	opacity: 0.4;
+	transform: none;
+}
+.launch-skip {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font: 13px var(--sys);
+	color: var(--label-3);
+	cursor: pointer;
+}
+.launch-skip input {
+	accent-color: #fff;
+}
+.launch-say {
+	font-size: 12px;
+	color: var(--label-3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.intro .wordmark {
+		opacity: 0;
+		animation: soft-in 1s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+	}
+	.intro .tagline {
+		opacity: 0;
+		animation: soft-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.75s forwards;
+	}
+	.vo-moment .wordmark {
+		animation-delay: 0.05s;
+	}
+	.intro.out {
+		animation: fade-away 0.6s ease forwards;
+	}
+	.launcher .home-title {
+		animation: soft-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	.launcher .launch-choice {
+		animation: soft-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
+	}
+	.launcher .launch-choice + .launch-choice {
+		animation-delay: 0.14s;
+	}
+}
+@keyframes soft-in {
+	from {
+		opacity: 0;
+		transform: translateY(10px) scale(0.985);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+@keyframes fade-away {
+	to {
+		opacity: 0;
+		visibility: hidden;
+	}
+}
+@media (prefers-reduced-transparency: reduce) {
+	.launch-choice {
+		background: #1d2026;
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
+}
+@media (max-width: 860px) {
+	.launch-choices {
+		grid-template-columns: 1fr;
+	}
+	.wordmark {
+		font-size: 44px;
+	}
+}

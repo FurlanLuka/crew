@@ -179,11 +179,11 @@ describe('Kernel', () => {
 
 		expect(onScreen.fake.toolChoices).toEqual([{ type: 'any' }, null]);
 
-		const grid = createKernel([[{ type: 'text', text: 'Nothing is waiting.' } as Block]]);
+		const offSession = createKernel([[{ type: 'text', text: 'Nothing is waiting.' } as Block]]);
 
-		await grid.kernel.handle("what's waiting on me?");
+		await offSession.kernel.handle("what's waiting on me?");
 
-		expect(grid.fake.toolChoices).toEqual([null]);
+		expect(offSession.fake.toolChoices).toEqual([null]);
 	});
 
 	it('asked again with tools off → no tool choice but none', async () => {
@@ -938,11 +938,11 @@ describe('Kernel', () => {
 			expect(shown).not.toContain('you: ');
 		});
 
-		it('each screen reads only its own entries; Mission Control reads the grid entries', async () => {
+		it('each screen reads only its own entries; Mission Control reads the home entries', async () => {
 			const log = {
 				'store-front/main': [createEntry('On store front.')],
 				'checkout-api/main': [createEntry('On checkout.')],
-				grid: [createEntry('On the grid.')],
+				home: [createEntry('On Active.')],
 			};
 			const { kernel, fake } = createKernel([[createTextBlock('a')], [createTextBlock('b')]], {
 				log,
@@ -954,14 +954,14 @@ describe('Kernel', () => {
 
 			expect(readEarlierSection(fake.prompts[0])).toContain('On store front.');
 			expect(readEarlierSection(fake.prompts[0])).not.toContain('On checkout.');
-			expect(readEarlierSection(fake.prompts[1])).toContain('On the grid.');
+			expect(readEarlierSection(fake.prompts[1])).toContain('On Active.');
 			expect(readEarlierSection(fake.prompts[1])).not.toContain('On store front.');
 		});
 
 		it('entries up to 30 minutes old are read, older ones and ignored ones are not', async () => {
 			const now = 1000 + 30 * 60_000;
 			const log = {
-				grid: [
+				home: [
 					createEntry('just in time', { at: 1000 }),
 					createEntry('too old', { at: 999 }),
 					createEntry('okay', { at: 1000, isIgnored: true }),
@@ -990,7 +990,7 @@ describe('Kernel', () => {
 		});
 
 		it('the stop guard reads what was said before on this screen', async () => {
-			const log = { grid: [createEntry('End the checkout session.', { reply: 'Which one?' })] };
+			const log = { home: [createEntry('End the checkout session.', { reply: 'Which one?' })] };
 			const { kernel, actions } = createKernel(
 				[
 					[createToolUse('t2', 'deactivate', { ref: 'checkout-api/main' })],
@@ -1490,14 +1490,19 @@ describe('kernel context: Active', () => {
 	const readSessionsLine = (message: string) =>
 		message.split('\n').find((line) => line.startsWith('Sessions: ')) ?? '';
 
-	it("only the active sessions are listed, this Mac's setup always among them", () => {
+	it('only the active sessions are listed, never a setup session', () => {
 		const state = createFixtureState({ inactive: ['store-front/wrk1', 'checkout-api/main'] }, now);
 		const sessions = JSON.parse(readSessionsLine(readMessage(state)).slice('Sessions: '.length));
 
-		expect(sessions.map((session: { ref: string }) => session.ref)).toEqual([
-			'setup',
-			'store-front/main',
-		]);
+		expect(sessions.map((session: { ref: string }) => session.ref)).toEqual(['store-front/main']);
+	});
+
+	it("a setup session's pending ask → not waiting on the developer, never in the message", () => {
+		const state = createFixtureState({ ask: 'permission', askOn: 'setup' }, now);
+		const message = readMessage(state, 'yes');
+
+		expect(listWaitingItems(state, now)).toEqual([]);
+		expect(message).not.toContain('setup');
 	});
 
 	it("an inactive session named → not listed, a developer's name for it not either", () => {
@@ -1509,29 +1514,20 @@ describe('kernel context: Active', () => {
 		expect(readMessage(state)).not.toContain('Named sessions:');
 	});
 
-	it('a machine said in the words → its inactive setup on the line; active, or no machine said → not', () => {
+	it('a machine said in the words → never its setup session: setup lives in Set up', () => {
 		const machine = {
 			id: 'personal',
 			name: 'Personal',
 			refs: ['personal:setup', 'personal:billing/main'],
 		};
-		const inactive = createFixtureState(
-			{ machine, inactive: ['personal:setup', 'personal:billing/main'] },
-			now,
-		);
-		const active = createFixtureState({ machine, inactive: ['personal:billing/main'] }, now);
-		const lineOf = (message: string) =>
-			message.split('\n').find((line) => line.startsWith('Not active, named')) ?? '';
+		const state = createFixtureState({ machine, inactive: ['personal:billing/main'] }, now);
 
-		expect(lineOf(readMessage(inactive, 'Add a worktree for billing on Personal.'))).toContain(
-			'personal:setup',
-		);
-		expect(lineOf(readMessage(active, 'Add a worktree for billing on Personal.'))).not.toContain(
-			'personal:setup',
-		);
-		expect(lineOf(readMessage(inactive, 'Add a worktree for billing.'))).not.toContain(
-			'personal:setup',
-		);
+		for (const said of [
+			'Add a worktree for billing on Personal.',
+			'Personal setup, add a worktree.',
+		]) {
+			expect(readMessage(state, said)).not.toContain('personal:setup');
+		}
 	});
 
 	it('the words name an inactive session → one line naming it; nothing named → no line', () => {

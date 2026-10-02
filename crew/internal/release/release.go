@@ -119,7 +119,7 @@ func signAdHoc(path string) error {
 	return nil
 }
 
-// IsDevBuild: a build from source — plain "dev", or "dev-<sha>" from crew voice
+// IsDevBuild: a build from source — plain "dev", or "dev-<sha>" from crew server
 // dev push. There is no release to update to or from. Pure.
 func IsDevBuild(version string) bool {
 	return version == "dev" || strings.HasPrefix(version, "dev-")

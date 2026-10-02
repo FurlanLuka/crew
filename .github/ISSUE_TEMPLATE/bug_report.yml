@@ -20,7 +20,7 @@ body:
       label: Logs
       description: |
         For crew: the output of `crew debug --tail=50`.
-        For Voice OS: `crew voice status` and `crew voice logs --lines=100`.
+        For Voice OS: `crew server status` and `crew server logs --lines=100`.
         Check that nothing private is in them before pasting.
       render: text
   - type: input

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 )
@@ -19,12 +18,12 @@ import (
 // that local base is behind, and what the canonical checkout is actually
 // sitting on (it is often a feature branch, not the base).
 type BaseStatus struct {
-	Project string
-	Base    string // branch the worktree will branch from
-	Current string // branch the canonical checkout is on right now
-	Behind  int    // commits behind origin/<base>; -1 when unknown
-	Ahead   int
-	Err     string // fetch or lookup failure, when it happened
+	Project string `json:"project"`
+	Base    string `json:"base"`    // branch the worktree will branch from
+	Current string `json:"current"` // branch the canonical checkout is on right now
+	Behind  int    `json:"behind"`  // commits behind origin/<base>; -1 when unknown
+	Ahead   int    `json:"ahead"`
+	Err     string `json:"error,omitempty"` // fetch or lookup failure, when it happened
 }
 
 const fetchTimeout = 8 * time.Second
@@ -125,54 +124,6 @@ func FormatBaseStatuses(statuses []BaseStatus) string {
 		b.WriteString("\n")
 	}
 	return b.String()
-}
-
-// BasePhase is where a base table stands: still fetching, pulling, or
-// there to read.
-type BasePhase int
-
-const (
-	BaseLoading BasePhase = iota
-	BasePulling
-	BaseReady
-)
-
-// RenderBaseTable is the "Branching from" block every creation shows —
-// the spinner while the fetch or pull runs, else the table with its
-// behind lines highlighted, the stale warning and the ctrl+p hint. One
-// renderer for the new-worktree form, the workspace wizard and the import
-// card, so they cannot drift. Pure given the spinner frame.
-func RenderBaseTable(statuses []BaseStatus, phase BasePhase, spinner string) string {
-	var b strings.Builder
-	b.WriteString("  " + app.Subtle.Render("Branching from") + "\n")
-	switch phase {
-	case BaseLoading:
-		b.WriteString("  " + spinner + " checking base branches against origin…\n")
-		return b.String()
-	case BasePulling:
-		b.WriteString("  " + spinner + " pulling the latest into the local bases…\n")
-		return b.String()
-	}
-	for _, line := range strings.Split(strings.TrimRight(FormatBaseStatuses(statuses), "\n"), "\n") {
-		b.WriteString(styleBaseLine(line) + "\n")
-	}
-	if warn := StaleWarning(statuses); warn != "" {
-		b.WriteString("\n  " + app.Highlight.Render(warn) + "\n")
-		b.WriteString("  " + app.Subtle.Render("ctrl+p pulls the latest into the local bases (fast-forward only)") + "\n")
-	}
-	return b.String()
-}
-
-// styleBaseLine colours a base-status line by what it says.
-func styleBaseLine(line string) string {
-	switch {
-	case strings.Contains(line, "behind"):
-		return app.Highlight.Render(line)
-	case strings.Contains(line, "failed") || strings.Contains(line, "no origin") || strings.Contains(line, "not in"):
-		return app.Error.Render(line)
-	default:
-		return line
-	}
 }
 
 // StaleWarning is the line printed under the table when a base is behind.

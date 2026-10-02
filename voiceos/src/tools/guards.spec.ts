@@ -13,7 +13,6 @@ import {
 	type State,
 } from '../shared/protocol.js';
 import { TAKEN_BACK } from './queued.js';
-import { isMisroutedToSetup } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
 
 const SCREEN = 'store-front/main';
@@ -448,34 +447,6 @@ describe('sends', () => {
 
 		expect(aside.actions).toEqual([expect.objectContaining({ type: 'send', aside: true })]);
 		expect(queued.actions).toEqual([expect.not.objectContaining({ aside: true })]);
-	});
-});
-
-describe('words for setup from another screen', () => {
-	const misrouted = (answer: string) => {
-		const base = createToolContext().tools.getState();
-		const state: State = {
-			...base,
-			sessions: {
-				...base.sessions,
-				'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
-			},
-		};
-
-		return isMisroutedToSetup({
-			judge: judgeWith({ for_setup: answer }),
-			state,
-			ref: 'checkout-api/main',
-			forwardTo: SCREEN,
-			utterance: 'Installier Voice OS neu.',
-		});
-	};
-
-	it('refused only when the judge says they are not for setup; unclear lets them through', async () => {
-		// Setup would say it cannot help; words lost on a guess cannot be got back.
-		expect(await misrouted('no')).toBe(true);
-		expect(await misrouted('yes')).toBe(false);
-		expect(await misrouted('unclear')).toBe(false);
 	});
 });
 

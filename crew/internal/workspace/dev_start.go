@@ -13,8 +13,8 @@ import (
 // is torn down first; the proxy is left running, since Start would only bring
 // it straight back.
 //
-// The single place the checks, settings lookup and dev.Start call live — the
-// CLI's start and restart paths and the TUI's two were four copies of it.
+// The single place the checks, settings lookup and dev.Start call live, for
+// the CLI's start and restart paths alike.
 func StartDev(res *Resolved, noProxy, restart bool) (dev.StartResult, error) {
 	if !exec.HasTmux() {
 		return dev.StartResult{}, fmt.Errorf("tmux not found — install with: brew install tmux")
@@ -25,7 +25,7 @@ func StartDev(res *Resolved, noProxy, restart bool) (dev.StartResult, error) {
 	// A server on top of an install still writing the same checkout is
 	// corruption, not a warning — the refusal crew owns.
 	if SetupRunning(res.Ref) {
-		return dev.StartResult{}, fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, res.Ref, res.Ref)
+		return dev.StartResult{}, SetupRunningError(res.Ref)
 	}
 
 	projects := res.DevProjects()

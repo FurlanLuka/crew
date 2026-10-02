@@ -14,9 +14,13 @@ import (
 
 // RemoteSessionName is the tmux session a remote machine's Voice OS daemon
 // runs in: the sessions it drives live as long as it does, whatever happens
-// to the SSH link a main reaches it through. Under crew's dev prefix, so
-// uninstall stops it with the rest. A var so tests use their own.
-var RemoteSessionName = SessionName + "-remote"
+// to the SSH link a main reaches it through. Outside crew-dev-*, so crew dev
+// stop leaves it alone; uninstall stops it by name. A var so tests use
+// their own.
+var RemoteSessionName = "crew-server-remote"
+
+// LegacyRemoteSessionName is the daemon's session before the rename.
+var LegacyRemoteSessionName = LegacySessionName + "-remote"
 
 // socketWait is how long _attach waits for a daemon it just started to listen.
 var socketWait = 5 * time.Second
@@ -69,7 +73,7 @@ func readDaemon() Daemon {
 func InspectRemote() RemoteStatus {
 	d := readDaemon()
 	st := RemoteStatus{
-		Running:   crewExec.TmuxSessionExists(RemoteSessionName),
+		Running:   RemoteRunning(),
 		Installed: installedVersion(),
 		Socket:    RemoteSocket(),
 	}
@@ -81,9 +85,16 @@ func InspectRemote() RemoteStatus {
 
 // CockpitRunning: this machine runs Voice OS as a main. A machine is a main or
 // a remote, never both — two drivers on one worktree's Claude would fight.
-func CockpitRunning() bool { return crewExec.TmuxSessionExists(SessionName) }
+// Either name counts: a server started before the rename runs under the
+// legacy one.
+func CockpitRunning() bool {
+	return crewExec.TmuxSessionExists(SessionName) || crewExec.TmuxSessionExists(LegacySessionName)
+}
 
-func RemoteRunning() bool { return crewExec.TmuxSessionExists(RemoteSessionName) }
+// RemoteRunning: this machine runs the remote daemon, under either name.
+func RemoteRunning() bool {
+	return crewExec.TmuxSessionExists(RemoteSessionName) || crewExec.TmuxSessionExists(LegacyRemoteSessionName)
+}
 
 // DaemonAction is what ensuring the daemon does. Pure.
 type DaemonAction string
@@ -100,14 +111,15 @@ func normalizeVersion(v string) string { return strings.TrimPrefix(strings.TrimS
 // installed restarts at once — its sessions resume on the new release, and a
 // main of the new release cannot attach to the old one. A plain dev build or a
 // missing stamp is unknown and never forces one; a pushed "dev-<sha>" build is
-// exact, so it replaces a daemon of any other version. Pure.
+// exact, so it replaces a daemon of any other or unknown version. Pure.
 func DecideDaemon(running bool, runningVersion, installed string) DaemonAction {
 	if !running {
 		return DaemonStart
 	}
 	have, want := normalizeVersion(runningVersion), normalizeVersion(installed)
-	// A pushed dev-<sha> build is exact: it replaces any other running build, a plain dev one included.
-	if strings.HasPrefix(want, "dev-") && have != "" && have != want {
+	// A pushed dev-<sha> build is exact: it replaces any other running build, a plain dev one and
+	// an unknown one included — kept, a push would report a restart the new binary never had.
+	if strings.HasPrefix(want, "dev-") && have != want {
 		return DaemonRestart
 	}
 	if have == "" || want == "" || have == "dev" || want == "dev" || have == want {
@@ -182,5 +194,5 @@ func EnsureRemote() (DaemonAction, error) {
 // StopRemote ends the daemon and every Claude session it runs.
 func StopRemote() {
 	debug.Log("voice", "remote stop")
-	crewExec.KillTmuxSession(RemoteSessionName)
+	killSessions(RemoteSessionName, LegacyRemoteSessionName)
 }

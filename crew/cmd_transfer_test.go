@@ -16,8 +16,9 @@ func TestParseExportArgs(t *testing.T) {
 		want    exportArgs
 		wantErr string
 	}{
-		{name: "none → picker, default file", args: nil, want: exportArgs{file: "crew-export.json"}},
-		{name: "file only", args: []string{"x.json"}, want: exportArgs{file: "x.json"}},
+		{name: "none → everything, default file", args: nil, want: exportArgs{file: "crew-export.json", all: true}},
+		{name: "file only → everything", args: []string{"x.json"}, want: exportArgs{file: "x.json", all: true}},
+		{name: "stdout", args: []string{"--projects=a", "-"}, want: exportArgs{file: "-", projects: []string{"a"}}},
 		{name: "all", args: []string{"--all", "out.json"}, want: exportArgs{file: "out.json", all: true}},
 		{name: "projects and workspaces", args: []string{"--projects=a, b", "--workspaces=ws"},
 			want: exportArgs{file: "crew-export.json", projects: []string{"a", "b"}, workspaces: []string{"ws"}}},
@@ -43,9 +44,6 @@ func TestParseExportArgs(t *testing.T) {
 				strings.Join(got.workspaces, ",") != strings.Join(tt.want.workspaces, ",") {
 				t.Errorf("got %+v, want %+v", got, tt.want)
 			}
-			if got.interactive() != (tt.want.all == false && len(tt.want.projects) == 0) {
-				t.Errorf("interactive = %v", got.interactive())
-			}
 		})
 	}
 }
@@ -58,7 +56,9 @@ func TestParseImportArgs(t *testing.T) {
 		want    importArgs
 		wantErr string
 	}{
-		{name: "file only → wizard", args: []string{"b.json"}, want: importArgs{file: "b.json"}},
+		{name: "file only → the plan", args: []string{"b.json"}, want: importArgs{file: "b.json"}},
+		{name: "stdin", args: []string{"-", "project", "api", "--name=api2"}, want: importArgs{file: "-", item: "project", name: "api", project: transfer.ProjectOptions{Name: "api2"}}},
+		{name: "stdin plan", args: []string{"-", "--plan"}, want: importArgs{file: "-", plan: true}},
 		{name: "plan", args: []string{"b.json", "--plan"}, want: importArgs{file: "b.json", plan: true}},
 		{name: "all with replace", args: []string{"--all", "b.json", "--replace"},
 			want: importArgs{file: "b.json", all: true, project: transfer.ProjectOptions{Replace: true}}},

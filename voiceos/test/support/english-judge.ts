@@ -29,10 +29,6 @@ const ON_PATTERN = /\b(?:on|start|enable|resume)\b/i;
 const OFF_PATTERN = /\b(?:off|stop|disable|pause)\b/i;
 const QUESTION_LEAD_PATTERN =
 	/^(?:what|what's|whats|why|how|which|who|when|where|does|do|is|are|can|could|should|would|will)\b/;
-const SETUP_ADDRESS_PATTERN =
-	/^\s*(?:(?:hey|okay|ok|so)[,\s]+)?(?:voice\s*os|voiceos|setup)\b\s*[,:]/i;
-const SETUP_WORK_PATTERN =
-	/\b(?:worktrees?|workspaces?|projects?|bindings?|crew (?:fix|verify|check)|register)\b/i;
 const THIS_SESSION_PATTERN = /\b(?:this|the current) (?:session|one|claude)\b/i;
 const QUIET_WITH_COMPLAINT_PATTERN =
 	/^(?:no[,\s]+)?(?:quiet|hush|be quiet|stop talking)\b[^?]*\b(?:don'?t need|too (?:long|much)|enough)\b[^?]*$/i;
@@ -159,8 +155,6 @@ const readEnglish = (key: JudgeKey, said: string, context?: string): string => {
 					? 'other'
 					: 'question'
 				: 'pick';
-		case 'for_setup':
-			return yesIf(SETUP_ADDRESS_PATTERN.test(said) || SETUP_WORK_PATTERN.test(said));
 		case 'this_session':
 			return yesIf(THIS_SESSION_PATTERN.test(said));
 		case 'spoken_to':

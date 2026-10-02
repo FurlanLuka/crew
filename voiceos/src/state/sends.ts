@@ -12,22 +12,15 @@ import { isSetupRef } from '../shared/machine-ref.js';
 import { isActive } from '../shared/active.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readScreenRef, sayAck, sayRef } from './helpers.js';
-import { isReachable, readMachineName } from '../shared/machines.js';
+import { isReachable } from '../shared/machines.js';
 import { withSwitchOffered } from '../shared/follow-up.js';
-
-// "Personal's setup", not "setup on Personal", even inside Personal: a bare "setup" is this Mac's.
-const sayOffered = (state: State, ref: string): string => {
-	const machine = isSetupRef(ref) ? readMachineName(state, ref) : null;
-
-	return machine ? `${machine}'s setup` : sayRef(state, ref);
-};
 
 const describeOffer = (state: State, ref: string, kind: SwitchOfferKind): string => {
 	switch (kind) {
 		case 'activate':
-			return `${sayOffered(state, ref)} isn't active. Activate it?`;
+			return `${sayRef(state, ref)} isn't active. Activate it?`;
 		case 'deactivate':
-			return `${sayOffered(state, ref)} is working. Deactivate anyway?`;
+			return `${sayRef(state, ref)} is working. Deactivate anyway?`;
 		case 'switch':
 			return `Switch to ${sayRef(state, ref)}?`;
 	}
@@ -131,7 +124,7 @@ export const followSends = (
 		case 'send': {
 			const screenRef = readScreenRef(before);
 
-			// The session on screen answers for itself; on Mission Control the kernel's own reply says
+			// The session on screen answers for itself; off a session the kernel's own reply says
 			// where the words went.
 			// An inactive session only keeps the words: "…isn't active. Activate it?" says so.
 			if (
@@ -180,8 +173,10 @@ export const followSends = (
 			const isAnswer = input.kind === 'activate' || input.kind === 'deactivate';
 
 			// "Switch to X?" is about a session voice reaches; an inactive one is only ever offered activation.
+			// A setup session is Set up's: voice never offers it.
 			if (
 				!state.sessions[input.ref] ||
+				isSetupRef(input.ref) ||
 				(!isAnswer && isSwitchOfferFresh(state.switchOffer, stamped.at)) ||
 				(!isAnswer && !isActive(state, input.ref))
 			) {
