@@ -47,7 +47,7 @@ const readFlag = (args: string[], name: string): string | null => {
 const positional = (args: string[]): string[] => args.filter((arg) => !arg.startsWith('-'));
 
 // What a successful crew command recorded, in Set up's words; null for a read. Never a value:
-// bindings and pinned values can carry credentials, so only their names are said.
+// bindings and worktree values can carry credentials, so only their names are said.
 export const describeRecorded = (command: string): string | null => {
 	const words = splitCommandLine(command.replace(/^run\s+/, '').trim());
 	const start = words.indexOf('crew');
@@ -90,7 +90,7 @@ export const describeRecorded = (command: string): string | null => {
 	if (verb === 'add' && noun === 'override') {
 		const name = args[1]?.split('=')[0];
 
-		return name ? `Pinned value: ${name.replace(/^[^.]*\./, '')} in ${args[0]}` : null;
+		return name ? `Set for ${args[0]}: ${name.replace(/^[^.]*\./, '')}` : null;
 	}
 
 	if (verb === 'dev' && noun === 'add') {

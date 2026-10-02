@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describeBindingSource, readPreview, readProposals } from './environment.js';
+import { describeBindingSource, readPreview } from './environment.js';
 
 const golden = (name: string): unknown =>
 	JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'testdata', name), 'utf8'));
@@ -17,22 +17,6 @@ describe('describeBindingSource', () => {
 		['development', 'development, fixed'],
 		['ws://{{signals.host}}/rtc', `signals's host, inside "ws://{{signals.host}}/rtc"`],
 	])('%s → %s', (value, words) => expect(describeBindingSource(value)).toBe(words));
-});
-
-describe('the .env proposals crew makes', () => {
-	it('proposed rows carry their template; ambiguous ones need a pick; bound ones are left out', () =>
-		expect(readProposals(golden('add-binding-scan.json'))).toEqual([
-			{
-				var: 'SIGNALS_URL',
-				value: '{{signals}}',
-				note: "=http://localhost:5000 · looks like signals's URL",
-			},
-			{
-				var: 'ADMIN_URL',
-				value: null,
-				note: '=http://localhost:3000 · two projects configured on :3000 — pick one by hand',
-			},
-		]));
 });
 
 describe('the Environment preview (a dry run)', () => {

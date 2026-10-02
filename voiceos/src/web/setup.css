@@ -90,7 +90,11 @@ body:has(.setup) {
 	gap: 2px;
 	min-width: 0;
 }
+/* A long trail shrinks each crumb to an ellipsis rather than letting them run into each other. */
 .crumbs button {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	padding: 4px 6px;
 	border: 0;
 	border-radius: 7px;
@@ -102,6 +106,7 @@ body:has(.setup) {
 	color: #fff;
 }
 .crumbs .sep {
+	flex: none;
 	color: var(--label-4);
 	padding: 0 2px;
 }
@@ -147,8 +152,54 @@ body:has(.setup) {
 	display: grid;
 	gap: 6px;
 }
-.quiet-actions {
-	margin-top: -8px;
+.title-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+.title-row h1 {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	margin-right: 6px;
+}
+.icon-btn {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	background: none;
+	color: var(--label-3);
+	cursor: pointer;
+}
+.icon-btn svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linejoin: round;
+}
+.icon-btn:hover,
+.icon-btn:focus-visible {
+	background: var(--fill);
+	color: #fff;
+}
+/* A page section whose label row carries its actions on the right; they wrap below on a phone. */
+.section {
+	display: grid;
+	gap: 10px;
+}
+.section-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	flex-wrap: wrap;
 }
 .label-note {
 	text-transform: none;
@@ -208,9 +259,12 @@ body:has(.setup) {
 	border-radius: 14px;
 	background: var(--elev-1);
 }
+/* Every Set up table keeps a row on one line: fixed columns, a long cell ends in an ellipsis and its
+   title holds the whole value. */
 .matrix {
 	width: 100%;
 	min-width: 560px;
+	table-layout: fixed;
 	border-collapse: collapse;
 	font-size: 13.5px;
 }
@@ -220,6 +274,9 @@ body:has(.setup) {
 	border-bottom: 1px solid var(--sep);
 	text-align: left;
 	vertical-align: middle;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 .matrix thead th {
 	color: var(--label-2);
@@ -229,10 +286,12 @@ body:has(.setup) {
 .matrix td.cell {
 	text-align: center;
 }
-.matrix tbody tr:last-child td {
+.matrix tbody tr:last-child > * {
 	border-bottom: 0;
 }
+/* One height for every row, whether its state is a chip or a button. */
 .matrix tbody tr {
+	height: 52px;
 	transition: background 0.15s;
 }
 .matrix tbody tr:hover {
@@ -252,22 +311,91 @@ body:has(.setup) {
 	text-decoration: underline;
 	text-underline-offset: 3px;
 }
+.matrix .c-name {
+	width: 21%;
+}
+.matrix .c-install {
+	width: 22%;
+}
+.matrix .c-servers {
+	width: 22%;
+}
+.matrix .c-workspaces {
+	width: 17%;
+}
+.matrix .c-state {
+	width: 136px;
+}
+.matrix .c-members {
+	width: 34%;
+}
+.matrix .c-label {
+	width: 136px;
+}
+/* A row that opens a page from anywhere on it: a table row through followRow; a box row through its
+   name's button, stretched over the row. Its other controls sit above and keep their own job. */
+.row-link {
+	cursor: pointer;
+}
+.box-row.row-link {
+	position: relative;
+}
+.box-row.row-link .rowname::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+.box-row.row-link :is(button, a):not(.rowname) {
+	position: relative;
+	z-index: 1;
+}
+.box-row.row-link:hover {
+	background: rgba(255, 255, 255, 0.03);
+}
+.matrix .rowname {
+	display: block;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.matrix .srv {
+	display: flex;
+	flex-wrap: nowrap;
+	overflow: hidden;
+}
+/* The pills give way before "+ new" does: it is always whole, at the end. */
+.matrix .srv button {
+	flex: 0 1 auto;
+	min-width: 5em;
+	max-width: 12em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.matrix .srv button:last-child {
+	flex: none;
+	min-width: auto;
+}
+.facts-table tbody th {
+	color: var(--label-3);
+	font: 400 13px var(--sys);
+}
+.facts-table code {
+	font-size: 12px;
+}
 .cellcode {
 	font-size: 12px;
 	color: var(--label-2);
 }
 .cell-fail {
-	display: inline-grid;
-	justify-items: center;
+	display: inline-flex;
 	padding: 0;
 	border: 0;
 	background: none;
 }
 .cell-fail:hover .chip {
 	text-decoration: underline;
-}
-.row-actions.center {
-	justify-content: center;
 }
 
 .claude-card {
@@ -620,17 +748,6 @@ form {
 	color: var(--good);
 	font-weight: 500;
 }
-.proposals {
-	display: grid;
-	gap: 6px;
-}
-.proposal {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 10px;
-	font-size: 13px;
-}
 .wires {
 	font-size: 13.5px;
 }
@@ -666,6 +783,9 @@ form {
 }
 .links a:hover {
 	text-decoration: underline;
+}
+.ov-say {
+	margin: 0 0 -10px;
 }
 .ov-add,
 .inline-form {
@@ -711,16 +831,27 @@ form {
 }
 .env-rows div {
 	display: flex;
-	flex-wrap: wrap;
 	justify-content: space-between;
 	gap: 12px;
+	min-width: 0;
 	font-size: 13px;
+	white-space: nowrap;
+}
+.env-rows code,
+.env-rows .src {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.env-rows code {
+	flex: 0 1 auto;
 }
 .env-rows .src {
+	flex: 0 1 auto;
+	min-width: 6em;
 	color: var(--label-3);
 	font-size: 12.5px;
 }
-.env-rows .src.pin {
+.env-rows .src.here {
 	color: #fff;
 }
 .env-all > small {
@@ -1024,6 +1155,10 @@ form {
 	.board-add {
 		height: 40px;
 	}
+	.icon-btn {
+		width: 40px;
+		height: 40px;
+	}
 	.crumbs button,
 	.crumbs .here {
 		padding: 8px 6px;
@@ -1109,4 +1244,48 @@ form {
 		grid-column: 2;
 		justify-items: start;
 	}
+}
+
+/* Every select on crew's page, one style: no native arrow, one chevron 12px in from the right edge,
+   and the text kept clear of it. The same selectors as the rules above, so it wins by order. */
+.field select,
+.pick select,
+.ov-add select,
+select.sel {
+	appearance: none;
+	-webkit-appearance: none;
+	padding-right: 32px;
+	background-color: var(--elev-2);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='rgba(235,240,245,0.66)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 12px center;
+	background-size: 10px 6px;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+:is(.field, .pick, .ov-add) select:disabled,
+select.sel:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* A box row kept to one line: its name and its note side by side, each cut with an ellipsis; the
+   row's title holds the whole text. */
+.box-row.one-line .sub {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+}
+.box-row.one-line .sub > * {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.box-row.one-line .sub > :first-child {
+	flex: none;
+	max-width: 60%;
+}
+.box-row.one-line .sub .m {
+	overflow-wrap: normal;
 }

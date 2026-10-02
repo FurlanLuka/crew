@@ -64,7 +64,7 @@ const MachineItem = ({ state, id, isCurrent, onPick }: MachineItemProps) => {
 	const isReachable = id === LOCAL_MACHINE || isMachineReachable(state, id);
 	const projects = useCrew<CrewProject[]>(id, isReachable ? { type: 'ls_projects' } : null);
 	const worktrees = useCrew<CrewWorktree[]>(id, isReachable ? { type: 'ls_worktrees' } : null);
-	const needs = projects.data && worktrees.data ? countNeedsYou(projects.data, worktrees.data) : 0;
+	const needs = worktrees.data ? countNeedsYou(worktrees.data) : 0;
 	const machine = state.machines[id];
 	const sub = !isReachable
 		? (machine?.detail ?? 'not reachable')

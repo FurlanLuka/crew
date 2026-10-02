@@ -29,7 +29,7 @@ describe('"✓ recorded" lines', () => {
 		['run crew add workspace payments payments', 'Workspace: payments (payments)'],
 		[
 			'run crew add override store-front/main store-front.STRIPE_KEY=sk_test',
-			'Pinned value: STRIPE_KEY in store-front/main',
+			'Set for store-front/main: STRIPE_KEY',
 		],
 		['run crew server machines add dev@gpu-box --name=gpu', 'Machine: gpu (dev@gpu-box)'],
 		['run crew ls projects --json', null],

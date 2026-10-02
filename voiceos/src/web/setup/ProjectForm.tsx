@@ -6,7 +6,7 @@ import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { PageHead, ResultLine, type SetupContext } from './common.js';
-import { describeBindingSource, readPreview, readProposals } from './environment.js';
+import { describeBindingSource, readPreview } from './environment.js';
 import { type ServerRow, listSources, planProjectSave, toRow } from './project-form.js';
 import type { CrewProject } from './types.js';
 
@@ -80,8 +80,6 @@ const ProjectFormLoaded = ({ ctx, project, projects, onSaved }: LoadedProps) => 
 	const [fixed, setFixed] = useState('');
 	const [scope, setScope] = useState('');
 	const action = useCrewAction(ctx.machine);
-	const scan = useCrew<unknown>(ctx.machine, { type: 'add_binding_scan', project: project.name });
-	const proposals = readProposals(scan.data);
 	const value = source === 'fixed' ? fixed : source;
 	const binding = variable.trim() && value ? { var: variable.trim(), value, server: scope } : null;
 	const settled = useDebounced(binding, PREVIEW_DEBOUNCE_MS);
@@ -359,33 +357,6 @@ const ProjectFormLoaded = ({ ctx, project, projects, onSaved }: LoadedProps) => 
 									</div>
 								))
 							)}
-						</div>
-					)}
-					{proposals.length > 0 && (
-						<div className="proposals">
-							<span className="label">Found in .env</span>
-							{proposals.map((proposal) => (
-								<div key={proposal.var} className="proposal">
-									<code>{proposal.var}</code> <span className="m">{proposal.note}</span>
-									{proposal.value && (
-										<button
-											type="button"
-											className="btn sm"
-											onClick={() => {
-												setVariable(proposal.var);
-												setSource(
-													sources.some((option) => option.value === proposal.value)
-														? (proposal.value ?? 'fixed')
-														: 'fixed',
-												);
-												setFixed(proposal.value ?? '');
-											}}
-										>
-											Use
-										</button>
-									)}
-								</div>
-							))}
 						</div>
 					)}
 				</div>

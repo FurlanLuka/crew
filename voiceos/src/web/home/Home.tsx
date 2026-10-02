@@ -6,10 +6,9 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { listWaitingRefs } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
 import { useCrew } from '../setup/api.js';
-import { type FirstRunStage, countNeedsYou, deriveFirstRun, isNotSetUp } from '../setup/derive.js';
+import { type FirstRunStage, describeSetupMeta, deriveFirstRun } from '../setup/derive.js';
 import type { CrewProject, CrewWorktree } from '../setup/types.js';
 import { type Half, readAlwaysVoice, readLastHalf, writeAlwaysVoice } from './prefs.js';
-import { countOf } from '../count.js';
 
 interface HomeProps {
 	state: State;
@@ -21,7 +20,7 @@ interface HomeProps {
 const VOICE_COPY: Record<FirstRunStage, { sub: string; meta: string }> = {
 	empty: {
 		sub: 'Add a project first: your sessions live here once you have one.',
-		meta: 'nothing set up yet',
+		meta: 'no projects yet',
 	},
 	'has-projects': {
 		sub: 'Make a workspace first: a session works in one of its worktrees.',
@@ -40,20 +39,6 @@ const describeVoiceMeta = (state: State): string => {
 	return [`${active.length} active`, waiting > 0 ? `${waiting} waiting on you` : '']
 		.filter(Boolean)
 		.join(' · ');
-};
-
-const describeSetupMeta = (projects: CrewProject[], worktrees: CrewWorktree[]): string => {
-	const needs = countNeedsYou(projects, worktrees);
-
-	if (needs > 0) {
-		return `${countOf(needs, 'thing needs', 'things need')} you`;
-	}
-
-	const notSetUp = projects.filter(isNotSetUp).length;
-
-	return notSetUp > 0
-		? `${countOf(notSetUp, 'project')} not set up`
-		: `${countOf(projects.length, 'project')} on This Mac`;
 };
 
 export const Home = ({ state, onPick, onStage }: HomeProps) => {

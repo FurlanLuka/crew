@@ -50,8 +50,8 @@ describe('the one plural rule', () => {
 	it.each([
 		['`${leftCount} things crew can clear`', true],
 		['`${trash.data.entries} removed checkouts · ${size}`', true],
-		['`${notSetUp.length} projects not set up`', true],
-		["`${countOf(n, 'project')} not set up`", false],
+		['`${failed.length} projects failed`', true],
+		["`${countOf(n, 'project')} failed`", false],
 		['`${ms} ms`', false],
 		['`${label} is working`', false],
 		['`${count} is ready`', false],

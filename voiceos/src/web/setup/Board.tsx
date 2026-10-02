@@ -4,16 +4,16 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { BoardTab } from '../router.js';
 import { describeRefusal, useCrew } from './api.js';
-import type { SetupContext } from './common.js';
+import { type SetupContext, followRow } from './common.js';
 import {
 	type Problem,
 	deriveFirstRun,
-	deriveProjectState,
 	describeIssue,
+	describeServer,
 	listProblems,
 	listWorkspacesOf,
 	readCheck,
-	readCheckFailure,
+	summarizeList,
 } from './derive.js';
 import { isSetupBusy, setupRefFor } from './SetupShell.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
@@ -92,22 +92,16 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 	return (
 		<div className="problems">
 			{problems.map((problem) => (
-				<div key={problem.key} className={`problem ${problem.isQuiet ? 'quiet' : ''}`}>
-					<span className={`dot ${problem.isQuiet ? 'ring' : 'ask'}`} />
+				<div key={problem.key} className="problem">
+					<span className="dot ask" />
 					<b>{problem.name}</b>
 					<span>{problem.what}</span>
 					<span className="problem-actions">
-						{problem.fix && (
-							<button
-								type="button"
-								className="btn sm"
-								onClick={() => problem.fix && ctx.go(problem.fix)}
-							>
-								{problem.isQuiet ? 'Set up' : 'Fix'}
-							</button>
-						)}
+						<button type="button" className="btn sm" onClick={() => ctx.go(problem.fix)}>
+							Fix
+						</button>
 						<button type="button" className="btn sm" onClick={() => ctx.askClaude(problem.ask)}>
-							{problem.isQuiet ? 'Set up with Claude' : 'Fix with Claude'}
+							Fix with Claude
 						</button>
 					</span>
 				</div>
@@ -116,19 +110,18 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 	);
 };
 
-const describeServers = (project: CrewProject): string =>
-	project.dev_servers?.length
-		? project.dev_servers
-				.map((server) => `${server.name}${server.port ? ` :${server.port}` : ''}`)
-				.join(' · ')
-		: '—';
+// Shown before "+N" in a cell: what fits one line beside the other columns.
+const SERVERS_SHOWN = 2;
+const WORKSPACES_SHOWN = 1;
+const MEMBERS_SHOWN = 3;
+const WORKTREES_SHOWN = 3;
 
 const describeLead = (
 	projects: CrewProject[],
 	workspaces: CrewWorkspace[],
 	problems: Problem[],
 ): string => {
-	const needs = problems.filter((problem) => !problem.isQuiet).length;
+	const needs = problems.length;
 	const counts = `${countOf(projects.length, 'project')} in ${countOf(workspaces.length, 'workspace')}.`;
 
 	return needs === 0
@@ -136,10 +129,20 @@ const describeLead = (
 		: `${counts} ${needs === 1 ? 'One thing needs' : `${needs} things need`} you.`;
 };
 
-// A set-up project is ready once crew's check passed; until then it offers the check.
-const CheckCell = ({ ctx, project }: { ctx: SetupContext; project: string }) => {
-	const check = useCrew<CrewCheckStatus>(ctx.machine, { type: 'check_status', project });
-	const { state, failure } = readCheck(check.data, project, []);
+interface CheckCellProps {
+	ctx: SetupContext;
+	project: string;
+	worktrees: CrewWorktree[];
+}
+
+// One element, so the row stays one line: ready, checking, a failed check (its stage in the
+// title), or the button that runs the first check.
+const CheckCell = ({ ctx, project, worktrees }: CheckCellProps) => {
+	const check = useCrew<CrewCheckStatus>(ctx.machine, {
+		type: 'check_status',
+		project,
+	});
+	const { state, failure } = readCheck(check.data, project, worktrees);
 
 	if (state === 'passed') {
 		return <span className="chip ok">ready</span>;
@@ -154,28 +157,24 @@ const CheckCell = ({ ctx, project }: { ctx: SetupContext; project: string }) => 
 			<button
 				type="button"
 				className="cell-fail"
+				title={failure ? `failed at ${failure.stage}` : undefined}
 				onClick={() => ctx.go({ page: 'project', name: project })}
 			>
 				<span className="chip ask">check failed</span>
-				<span className="m">{failure?.stage}</span>
 			</button>
 		);
 	}
 
-	return (
-		<span className="row-actions center">
-			<span className="chip">{check.data ? 'not checked' : ''}</span>
-			{check.data && (
-				<button
-					type="button"
-					className="btn sm ghost"
-					onClick={() => ctx.go({ page: 'check', name: project })}
-				>
-					Check
-				</button>
-			)}
-		</span>
-	);
+	return check.data ? (
+		<button
+			type="button"
+			className="btn sm ghost"
+			title="Not checked yet: prove it reproduces from nothing"
+			onClick={() => ctx.go({ page: 'check', name: project })}
+		>
+			Check
+		</button>
+	) : null;
 };
 
 export const Board = ({ ctx, tab }: BoardProps) => {
@@ -212,7 +211,7 @@ export const Board = ({ ctx, tab }: BoardProps) => {
 	const projectRows = projects.data ?? [];
 	const worktreeRows = worktrees.data ?? [];
 	const workspaceRows = workspaces.data ?? [];
-	const problems = listProblems(projectRows, worktreeRows);
+	const problems = listProblems(worktreeRows);
 	const isProjects = tab === 'projects';
 	const failure = projects.reply && projects.reply.code !== 0 ? projects.reply : null;
 
@@ -267,7 +266,14 @@ export const Board = ({ ctx, tab }: BoardProps) => {
 			<ProblemsStrip ctx={ctx} problems={problems} />
 			{isProjects ? (
 				<div className="matrix-wrap">
-					<table className="matrix">
+					<table className="matrix projects">
+						<colgroup>
+							<col className="c-name" />
+							<col className="c-install" />
+							<col className="c-servers" />
+							<col className="c-workspaces" />
+							<col className="c-state" />
+						</colgroup>
 						<thead>
 							<tr>
 								<th>Project</th>
@@ -279,58 +285,39 @@ export const Board = ({ ctx, tab }: BoardProps) => {
 						</thead>
 						<tbody>
 							{projectRows.map((project) => {
-								const state = deriveProjectState(project, worktreeRows);
-								const check = readCheckFailure(project.name, worktreeRows);
+								const servers = (project.dev_servers ?? []).map(describeServer);
 								const memberOf = listWorkspacesOf(workspaceRows, project.name).map(
 									(workspace) => workspace.name,
 								);
 
 								return (
-									<tr key={project.name} data-project={project.name}>
+									<tr
+										key={project.name}
+										className="row-link"
+										data-project={project.name}
+										onClick={followRow(() => ctx.go({ page: 'project', name: project.name }))}
+									>
 										<td>
 											<button
 												type="button"
 												className="rowname"
+												title={project.name}
 												onClick={() => ctx.go({ page: 'project', name: project.name })}
 											>
 												<b>{project.name}</b>
 											</button>
 										</td>
-										<td>
+										<td title={project.setup || undefined}>
 											<code className="cellcode">{project.setup || '—'}</code>
 										</td>
-										<td className="m">{describeServers(project)}</td>
-										<td className="m">{memberOf.length ? memberOf.join(', ') : '—'}</td>
+										<td className="m" title={servers.join(' · ') || undefined}>
+											{servers.length ? summarizeList(servers, SERVERS_SHOWN) : '—'}
+										</td>
+										<td className="m" title={memberOf.join(', ') || undefined}>
+											{memberOf.length ? summarizeList(memberOf, WORKSPACES_SHOWN) : '—'}
+										</td>
 										<td className="cell">
-											{state === 'ready' ? (
-												<CheckCell ctx={ctx} project={project.name} />
-											) : state === 'failed' ? (
-												<button
-													type="button"
-													className="cell-fail"
-													onClick={() => ctx.go({ page: 'project', name: project.name })}
-												>
-													<span className="chip ask">check failed</span>
-													<span className="m">{check?.stage}</span>
-												</button>
-											) : (
-												<span className="row-actions center">
-													<button
-														type="button"
-														className="btn sm"
-														onClick={() => ctx.go({ page: 'project-edit', name: project.name })}
-													>
-														Set up
-													</button>
-													<button
-														type="button"
-														className="btn sm ghost"
-														onClick={() => ctx.askClaude(`Set up ${project.name}.`)}
-													>
-														Ask Claude
-													</button>
-												</span>
-											)}
+											<CheckCell ctx={ctx} project={project.name} worktrees={worktreeRows} />
 										</td>
 									</tr>
 								);
@@ -340,7 +327,12 @@ export const Board = ({ ctx, tab }: BoardProps) => {
 				</div>
 			) : (
 				<div className="matrix-wrap">
-					<table className="matrix">
+					<table className="matrix workspaces">
+						<colgroup>
+							<col className="c-name" />
+							<col className="c-members" />
+							<col className="c-worktrees" />
+						</colgroup>
 						<thead>
 							<tr>
 								<th>Workspace</th>
@@ -349,63 +341,93 @@ export const Board = ({ ctx, tab }: BoardProps) => {
 							</tr>
 						</thead>
 						<tbody>
-							{workspaceRows.map((workspace) => (
-								<tr key={workspace.name} data-workspace={workspace.name}>
-									<td>
-										<button
-											type="button"
-											className="rowname"
-											onClick={() => ctx.go({ page: 'workspace', name: workspace.name })}
-										>
-											<b>{workspace.name}</b>
-										</button>
-									</td>
-									<td className="m">
-										{workspace.projects?.length
-											? workspace.projects.map((member) => member.name).join(' · ')
-											: countOf(workspace.project_count, 'project')}
-									</td>
-									<td>
-										<span className="srv">
-											{workspace.worktrees.map((name) => {
-												const ref = `${workspace.name}/${name}`;
-												const row = worktreeRows.find((worktree) => worktree.ref === ref);
-												const issue = row?.issues?.[0];
-												const cls = issue
-													? 'down'
-													: row?.installing
-														? 'wait'
-														: row?.dev_running
-															? 'up'
-															: '';
+							{workspaceRows.map((workspace) => {
+								const members = (workspace.projects ?? []).map((member) => member.name);
+								const hidden = workspace.worktrees.length - WORKTREES_SHOWN;
 
-												return (
-													<button
-														key={name}
-														type="button"
-														className={cls}
-														title={issue ? describeIssue(issue) : undefined}
-														onClick={() => ctx.go({ page: 'worktree', ref })}
-													>
-														{name}
-														{issue
-															? ` · ${issue.server ?? issue.project} ${issue.stage === 'smoke' ? 'died' : 'failed'}`
-															: row?.installing
-																? ' · installing'
-																: ''}
-													</button>
-												);
-											})}
+								return (
+									<tr
+										key={workspace.name}
+										className="row-link"
+										data-workspace={workspace.name}
+										onClick={followRow(() => ctx.go({ page: 'workspace', name: workspace.name }))}
+									>
+										<td>
 											<button
 												type="button"
-												onClick={() => ctx.go({ page: 'worktree-new', workspace: workspace.name })}
+												className="rowname"
+												title={workspace.name}
+												onClick={() => ctx.go({ page: 'workspace', name: workspace.name })}
 											>
-												+ new
+												<b>{workspace.name}</b>
 											</button>
-										</span>
-									</td>
-								</tr>
-							))}
+										</td>
+										<td className="m" title={members.join(' · ') || undefined}>
+											{members.length
+												? summarizeList(members, MEMBERS_SHOWN)
+												: countOf(workspace.project_count, 'project')}
+										</td>
+										<td>
+											<span className="srv">
+												{workspace.worktrees.slice(0, WORKTREES_SHOWN).map((name) => {
+													const ref = `${workspace.name}/${name}`;
+													const row = worktreeRows.find((worktree) => worktree.ref === ref);
+													const issue = row?.issues?.[0];
+													const cls = issue
+														? 'down'
+														: row?.installing
+															? 'wait'
+															: row?.dev_running
+																? 'up'
+																: '';
+
+													return (
+														<button
+															key={name}
+															type="button"
+															className={cls}
+															title={issue ? describeIssue(issue) : undefined}
+															onClick={() => ctx.go({ page: 'worktree', ref })}
+														>
+															{name}
+															{issue
+																? ` · ${issue.server ?? issue.project} ${issue.stage === 'smoke' ? 'died' : 'failed'}`
+																: row?.installing
+																	? ' · installing'
+																	: ''}
+														</button>
+													);
+												})}
+												{hidden > 0 && (
+													<button
+														type="button"
+														title={workspace.worktrees.slice(WORKTREES_SHOWN).join(', ')}
+														onClick={() =>
+															ctx.go({
+																page: 'workspace',
+																name: workspace.name,
+															})
+														}
+													>
+														+{hidden}
+													</button>
+												)}
+												<button
+													type="button"
+													onClick={() =>
+														ctx.go({
+															page: 'worktree-new',
+															workspace: workspace.name,
+														})
+													}
+												>
+													+ new
+												</button>
+											</span>
+										</td>
+									</tr>
+								);
+							})}
 						</tbody>
 					</table>
 				</div>

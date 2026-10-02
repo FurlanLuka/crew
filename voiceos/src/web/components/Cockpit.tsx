@@ -9,6 +9,7 @@ import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { describeWork } from '../../state/working.js';
 import { describeSessionBadge, readRefTitle, readWorkingOn } from '../derive.js';
 import { useCrew } from '../setup/api.js';
+import { hasDevServers } from '../setup/derive.js';
 import type { CrewMember, CrewProject } from '../setup/types.js';
 import type { Dispatch } from '../types.js';
 import { useNow } from '../use-now.js';
@@ -29,23 +30,18 @@ interface CockpitProps {
 	session: Session;
 	state: State;
 	dispatch: Dispatch;
-	// "Dev servers: not set up yet · Set up": that project's page in Set up, on its machine.
-	onSetUp: (machine: string, project: string) => void;
 }
 
-// The worktree's projects with no dev servers recorded: their sessions work on the code meanwhile.
-const useProjectsNotSetUp = (session: Session): string[] => {
+// Whether any of the worktree's projects has a dev server recorded, from crew.
+const useHasDevServers = (session: Session): boolean => {
 	const machine = readMachine(session.ref);
 	const members = useCrew<CrewMember[]>(machine, { type: 'show', ref: toLocalRef(session.ref) });
 	const projects = useCrew<CrewProject[]>(machine, { type: 'ls_projects' });
-	const names = new Set((members.data ?? []).map((member) => member.name));
 
-	return (projects.data ?? [])
-		.filter((project) => names.has(project.name) && !project.dev_servers?.length)
-		.map((project) => project.name);
+	return hasDevServers(members.data ?? [], projects.data ?? []);
 };
 
-export const Cockpit = ({ session, state, dispatch, onSetUp }: CockpitProps) => {
+export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	// The compaction bar is added at the end of the stream too: it comes into view like a line.
 	const streamRef = useStickToBottom<HTMLElement>(session.ref);
 	const [isRenaming, setIsRenaming] = useState(false);
@@ -55,7 +51,10 @@ export const Cockpit = ({ session, state, dispatch, onSetUp }: CockpitProps) => 
 	const badge = describeSessionBadge(session, state.asks);
 	const work = describeWork(session, now);
 	const machine = readMachine(session.ref);
-	const notSetUp = useProjectsNotSetUp(session);
+	const servers = state.devServers[session.ref] ?? [];
+	const isDevStarting = state.devStarting.includes(session.ref);
+	// Running servers show even before crew's reads answer.
+	const isDevShown = useHasDevServers(session) || servers.length > 0 || isDevStarting;
 	const meta = [
 		readMachineTitle(state, machine),
 		session.label !== readSessionLabel(state, session.ref) ? session.label : '',
@@ -138,15 +137,15 @@ export const Cockpit = ({ session, state, dispatch, onSetUp }: CockpitProps) => 
 						)}
 					</div>
 					<SubagentsPanel subagents={session.subagents} />
-					<DevPanel
-						worktree={session.ref}
-						servers={state.devServers[session.ref] ?? []}
-						isStarting={state.devStarting.includes(session.ref)}
-						offer={state.devOffer}
-						notSetUp={notSetUp}
-						onSetUp={(project) => onSetUp(machine, project)}
-						dispatch={dispatch}
-					/>
+					{isDevShown && (
+						<DevPanel
+							worktree={session.ref}
+							servers={servers}
+							isStarting={isDevStarting}
+							offer={state.devOffer}
+							dispatch={dispatch}
+						/>
+					)}
 					<VoicePanel state={state} screen={session.ref} />
 					<NotesPanel state={state} screen={session.ref} />
 					<DocsPanel session={session} />

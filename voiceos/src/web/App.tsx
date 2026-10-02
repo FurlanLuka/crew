@@ -152,12 +152,7 @@ const App = () => {
 	);
 
 	const openSetup = useCallback(
-		(machine: string, project?: string) =>
-			navigate({
-				half: 'setup',
-				machine,
-				page: project ? { page: 'project', name: project } : { page: 'machine' },
-			}),
+		(machine: string) => navigate({ half: 'setup', machine, page: { page: 'machine' } }),
 		[navigate],
 	);
 

@@ -1,6 +1,6 @@
 // What every Set up page shares: the context it runs in, crew's answer after an action, the confirm
 // every removal goes through (with what it costs), and the failure block.
-import { type ReactNode, useState } from 'react';
+import { type MouseEvent, type ReactNode, useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
 import type { SetupPage } from '../router.js';
@@ -187,18 +187,37 @@ export const FailBlock = ({ title, when, steps, log, why, children }: FailBlockP
 interface PageHeadProps {
 	title: string;
 	lead?: ReactNode;
+	// Small icon buttons beside the title (rename, duplicate): about the thing itself.
+	titleActions?: ReactNode;
 	children?: ReactNode;
 }
 
-export const PageHead = ({ title, lead, children }: PageHeadProps) => (
+export const PageHead = ({ title, lead, titleActions, children }: PageHeadProps) => (
 	<div className="head-row">
 		<div className="head-text">
-			<h1>{title}</h1>
+			{titleActions ? (
+				<div className="title-row">
+					<h1>{title}</h1>
+					{titleActions}
+				</div>
+			) : (
+				<h1>{title}</h1>
+			)}
 			{lead && <p className="lead">{lead}</p>}
 		</div>
 		{children && <div className="row-actions">{children}</div>}
 	</div>
 );
+
+// A row whose whole area opens a page: a click anywhere but on one of its own controls follows it.
+// The row's name stays a real button, so the keyboard reaches the same page.
+export const followRow =
+	(open: () => void) =>
+	(event: MouseEvent): void => {
+		if (!(event.target as Element).closest('button, a, input, select, label, summary')) {
+			open();
+		}
+	};
 
 export const formatAgo = (iso: string | undefined, now = Date.now()): string => {
 	if (!iso) {

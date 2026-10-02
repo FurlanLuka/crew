@@ -1,9 +1,7 @@
-// A project on this machine: what crew recorded (install, dev servers, environment), its check, the
-// .env values crew could fill in, and its removal. AddProject.tsx is the form that records a new one.
-import { useState } from 'react';
-import type { SetupCommand } from '../../crew/commands.js';
-import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
+// A project on this machine: what crew recorded (install, dev servers, environment), one line per
+// fact, its check, and its removal. AddProject.tsx is the form that records a new one.
+import { type ReactNode, useState } from 'react';
+import { useCrew, useCrewAction } from './api.js';
 import {
 	Confirm,
 	FailBlock,
@@ -12,7 +10,7 @@ import {
 	type SetupContext,
 	formatAgo,
 } from './common.js';
-import { describeBindingSource, readProposals } from './environment.js';
+import { describeBindingSource } from './environment.js';
 import { describeCheckAction, describeStages, listWorkspacesOf, readCheck } from './derive.js';
 import { readLogText } from './readers.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
@@ -26,7 +24,6 @@ export const ProjectPage = ({ ctx, name }: ProjectPageProps) => {
 	const projects = useCrew<CrewProject[]>(ctx.machine, { type: 'ls_projects' });
 	const worktrees = useCrew<CrewWorktree[]>(ctx.machine, { type: 'ls_worktrees' });
 	const workspaces = useCrew<CrewWorkspace[]>(ctx.machine, { type: 'ls_workspaces' });
-	const scan = useCrew<unknown>(ctx.machine, { type: 'add_binding_scan', project: name });
 	const action = useCrewAction(ctx.machine);
 	const [isRemoving, setIsRemoving] = useState(false);
 	const [keepClone, setKeepClone] = useState(false);
@@ -39,7 +36,6 @@ export const ProjectPage = ({ ctx, name }: ProjectPageProps) => {
 	const project = projects.data?.find((candidate) => candidate.name === name);
 	const checked = readCheck(check.data, name, worktrees.data ?? []);
 	const { failure } = checked;
-	const proposals = readProposals(scan.data);
 	const memberOf = listWorkspacesOf(workspaces.data ?? [], name);
 	const checkAction = describeCheckAction(checked.state);
 
@@ -60,17 +56,6 @@ export const ProjectPage = ({ ctx, name }: ProjectPageProps) => {
 		);
 	}
 
-	const add = async (command: SetupCommand) => {
-		const reply = await action.run(command);
-
-		if (isOk(reply)) {
-			scan.refresh();
-			projects.refresh();
-		}
-	};
-
-	const isSetUp = Boolean(project?.dev_servers?.length);
-
 	return (
 		<section className="page" aria-label={`Project ${name}`}>
 			<PageHead
@@ -80,19 +65,15 @@ export const ProjectPage = ({ ctx, name }: ProjectPageProps) => {
 						<>
 							<span className="c-crit">Check failed</span> at {failure.stage}.
 						</>
-					) : isSetUp && checked.state === 'passed' ? (
+					) : checked.state === 'passed' ? (
 						<>
 							<span className="c-good">Ready.</span> Its check passed{' '}
-							{formatAgo(checked.at ?? undefined)}.{' '}
-							{project?.path ? `In ${project.path} on ${ctx.machineTitle}.` : ''}
-						</>
-					) : isSetUp ? (
-						<>
-							Set up, not checked yet: <b>{checkAction}</b> proves it reproduces from nothing.{' '}
-							{project?.path ? `In ${project.path}.` : ''}
+							{formatAgo(checked.at ?? undefined)}.
 						</>
 					) : (
-						<>Not set up yet: no dev servers recorded. Its sessions work on the code meanwhile.</>
+						<>
+							Not checked yet: <b>{checkAction}</b> proves it reproduces from nothing.
+						</>
 					)
 				}
 			>
@@ -148,116 +129,7 @@ export const ProjectPage = ({ ctx, name }: ProjectPageProps) => {
 				<pre className="log big">{readLogText(checkLog.data) || checkLog.reply.stderr}</pre>
 			)}
 			{project && (
-				<dl className="facts">
-					<dt>Install</dt>
-					<dd>
-						{project.setup ? (
-							<code>{project.setup}</code>
-						) : (
-							<span className="c-dim">detected from the lockfile</span>
-						)}
-					</dd>
-					{project.env_cmd && (
-						<>
-							<dt>Env command</dt>
-							<dd>
-								<code>{project.env_cmd}</code>
-							</dd>
-						</>
-					)}
-					<dt>Dev servers</dt>
-					<dd>
-						{project.dev_servers?.length ? (
-							<span className="envlist">
-								{project.dev_servers.map((server) => (
-									<span key={server.name}>
-										{server.name} <code>{server.command}</code>
-										{server.port ? ` :${server.port}` : ' · no port'}
-										{server.dir ? <span className="m"> in {server.dir}</span> : null}
-									</span>
-								))}
-							</span>
-						) : (
-							<span className="c-dim">none yet</span>
-						)}
-					</dd>
-					<dt>Environment</dt>
-					<dd className="envlist">
-						{project.bindings?.length ? (
-							project.bindings.map((binding) => (
-								<span key={`${binding.var} ${binding.server ?? ''}`}>
-									<code>{binding.var}</code> ← {describeBindingSource(binding.value)}
-									{binding.server ? <span className="m"> · {binding.server} only</span> : null}
-								</span>
-							))
-						) : (
-							<span className="c-dim">nothing set by crew</span>
-						)}
-					</dd>
-					<dt>Workspaces</dt>
-					<dd>
-						{memberOf.length ? (
-							memberOf.map((workspace) => workspace.name).join(', ')
-						) : (
-							<span className="c-dim">none</span>
-						)}
-					</dd>
-					<dt>Source</dt>
-					<dd>{project.remote || <span className="c-dim">no git remote</span>}</dd>
-				</dl>
-			)}
-			{proposals.length > 0 && (
-				<>
-					<div className="label">Found in .env: localhost addresses crew can fill in</div>
-					<div className="box">
-						{proposals.map((proposal) => (
-							<div key={proposal.var} className="box-row">
-								<span className="dot ring" />
-								<span className="sub">
-									<b>
-										<code>{proposal.var}</code>
-									</b>
-									<span className="m">{proposal.note}</span>
-								</span>
-								{proposal.value ? (
-									<button
-										type="button"
-										className="btn sm"
-										onClick={() =>
-											void add({
-												type: 'add_binding',
-												project: name,
-												var: proposal.var,
-												value: proposal.value ?? '',
-											})
-										}
-									>
-										Add
-									</button>
-								) : (
-									<button
-										type="button"
-										className="btn sm"
-										onClick={() => ctx.go({ page: 'project-edit', name })}
-									>
-										Choose…
-									</button>
-								)}
-							</div>
-						))}
-					</div>
-					<div className="row-actions">
-						<button
-							type="button"
-							className="btn sm"
-							disabled={action.isBusy}
-							onClick={() => void add({ type: 'add_binding_scan_apply', project: name })}
-						>
-							Add all
-						</button>
-						<CommandLine commands={[{ type: 'add_binding_scan_apply', project: name }]} />
-					</div>
-				</>
+				<ProjectFacts project={project} workspaces={memberOf.map((workspace) => workspace.name)} />
 			)}
 			<ResultLine reply={action.last} />
 			{isRemoving ? (
@@ -304,3 +176,125 @@ export const ProjectPage = ({ ctx, name }: ProjectPageProps) => {
 		</section>
 	);
 };
+
+interface Fact {
+	key: string;
+	label: string;
+	value: ReactNode;
+	// The whole value, for the tooltip of a line cut short.
+	title: string;
+	isDim?: boolean;
+}
+
+const listFacts = (project: CrewProject, workspaces: string[]): Fact[] => {
+	const servers = project.dev_servers ?? [];
+	const bindings = project.bindings ?? [];
+
+	return [
+		{
+			key: 'install',
+			label: 'Install',
+			value: project.setup ? <code>{project.setup}</code> : 'detected from the lockfile',
+			title: project.setup ?? 'detected from the lockfile',
+			isDim: !project.setup,
+		},
+		...(project.env_cmd
+			? [
+					{
+						key: 'env-cmd',
+						label: 'Env command',
+						value: <code>{project.env_cmd}</code>,
+						title: project.env_cmd,
+					},
+				]
+			: []),
+		...(servers.length
+			? servers.map((server) => {
+					const where = [
+						server.port ? `:${server.port}` : 'no port',
+						server.dir ? `in ${server.dir}` : '',
+					]
+						.filter(Boolean)
+						.join(' · ');
+
+					return {
+						key: `server ${server.name}`,
+						label: 'Dev server',
+						value: (
+							<>
+								<b>{server.name}</b> <code>{server.command}</code>{' '}
+								<span className="m">{where}</span>
+							</>
+						),
+						title: `${server.name} · ${server.command} · ${where}`,
+					};
+				})
+			: [{ key: 'servers', label: 'Dev servers', value: 'none', title: 'none', isDim: true }]),
+		...(bindings.length
+			? bindings.map((binding) => {
+					const source = describeBindingSource(binding.value);
+					const scope = binding.server ? ` · ${binding.server} only` : '';
+
+					return {
+						key: `binding ${binding.var} ${binding.server ?? ''}`,
+						label: 'Environment',
+						value: (
+							<>
+								<code>{binding.var}</code> ← {source}
+								{scope && <span className="m">{scope}</span>}
+							</>
+						),
+						title: `${binding.var} ← ${source}${scope}`,
+					};
+				})
+			: [
+					{
+						key: 'environment',
+						label: 'Environment',
+						value: 'nothing set by crew',
+						title: 'nothing set by crew',
+						isDim: true,
+					},
+				]),
+		{
+			key: 'workspaces',
+			label: 'Workspaces',
+			value: workspaces.length ? workspaces.join(', ') : 'none',
+			title: workspaces.join(', ') || 'none',
+			isDim: !workspaces.length,
+		},
+		{
+			key: 'source',
+			label: 'Source',
+			value: project.remote || 'no git remote',
+			title: project.remote || 'no git remote',
+			isDim: !project.remote,
+		},
+		...(project.path
+			? [{ key: 'path', label: 'Path', value: project.path, title: project.path }]
+			: []),
+	];
+};
+
+// What crew recorded, one line per fact (one per dev server, one per binding): long values end in
+// an ellipsis, the whole value in the tooltip.
+const ProjectFacts = ({ project, workspaces }: { project: CrewProject; workspaces: string[] }) => (
+	<div className="matrix-wrap">
+		<table className="matrix facts-table" aria-label="What crew recorded">
+			<colgroup>
+				<col className="c-label" />
+				<col />
+			</colgroup>
+			<tbody>
+				{listFacts(project, workspaces).map((fact) => (
+					<tr key={fact.key} data-fact={fact.key}>
+						<th scope="row">{fact.label}</th>
+						<td title={fact.title} className={fact.isDim ? 'c-dim' : undefined}>
+							{fact.value}
+						</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	</div>
+);

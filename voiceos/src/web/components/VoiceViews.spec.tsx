@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { Activate, listActivateSections } from './Activate.js';
+import { Cockpit } from './Cockpit.js';
+import { DevPanel } from './DevPanel.js';
 import { MomentsRow } from './MomentsRow.js';
 import { SessionStateRow } from './SessionStateRow.js';
 import { Settings } from './Settings.js';
@@ -269,4 +271,71 @@ describe('SessionStateRow', () => {
 				/>,
 			),
 		).toContain('Build box dropped'));
+});
+
+describe("the session's Dev servers panel", () => {
+	const renderCockpit = (state: State) =>
+		renderToStaticMarkup(
+			<Cockpit
+				session={state.sessions['store-front/main'] as NonNullable<State['sessions'][string]>}
+				state={state}
+				dispatch={noop}
+			/>,
+		);
+
+	it('nothing to start (crew lists no dev server for the worktree) → no panel at all', () => {
+		const html = renderCockpit(createState());
+
+		expect(html).not.toContain('aria-label="dev servers"');
+		expect(html).not.toContain('start dev servers');
+		expect(html.toLowerCase()).not.toContain('not set up');
+	});
+
+	it('running servers → the panel, each server one row, nothing about projects without servers', () => {
+		const html = renderCockpit(
+			createState({
+				devServers: {
+					'store-front/main': [
+						{
+							name: 'web',
+							port: 3000,
+							url: 'http://localhost:3000',
+							state: 'running',
+							detail: null,
+						},
+					],
+				},
+			}),
+		);
+
+		expect(html).toContain('aria-label="dev servers"');
+		expect(html).toContain('data-server="web"');
+		// The link is an icon with the URL in its label, never the URL as text.
+		expect(html).toContain('aria-label="Open web (localhost:3000)"');
+		expect(html).not.toContain('>localhost:3000');
+		expect(html.toLowerCase()).not.toContain('not set up');
+	});
+
+	it('starting, before crew answers or anything runs → the panel, saying so', () => {
+		const html = renderCockpit(createState({ devStarting: ['store-front/main'] }));
+
+		expect(html).toContain('aria-label="dev servers"');
+		expect(html).toContain('starting…');
+	});
+
+	it('a panel with nothing running offers Start, and never a Set up link', () => {
+		const html = renderToStaticMarkup(
+			<DevPanel
+				worktree="store-front/main"
+				servers={[]}
+				isStarting={false}
+				offer={null}
+				dispatch={noop}
+			/>,
+		);
+
+		expect(html).toContain('not running');
+		expect(html).toContain('Start · “start dev servers”');
+		expect(html).not.toContain('Set up');
+	});
 });

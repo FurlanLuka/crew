@@ -152,6 +152,13 @@ beforeAll(async () => {
 			createWorktree('checkout-api/main'),
 		],
 	});
+	// crew knows checkout-api/main too, with a project that has dev servers: its Dev servers panel
+	// shows whether or not they run.
+	crew.machines.local?.workspaces.push({
+		name: 'checkout-api',
+		projects: [{ name: 'store-api', mode: 'worktree' }],
+		worktrees: ['main'],
+	});
 	// Most tests talk to these two; an inactive session has no input box (the 'active' block).
 	store.dispatch({ type: 'activate', ref: 'store-front/main' });
 	store.dispatch({ type: 'activate', ref: 'checkout-api/main' });
@@ -1484,11 +1491,114 @@ describe('voice os ui', () => {
 		const panel = page.locator('[aria-label="dev servers"]');
 		await panel.waitFor({ timeout: 5000 });
 		expect(await panel.locator('[data-server="worker"]').getAttribute('data-state')).toBe('died');
-		expect(await panel.locator('[data-server="api"] a').getAttribute('href')).toBe(
-			'http://localhost:51049',
-		);
+		const link = panel.getByRole('link', { name: 'Open api (localhost:51049)' });
+		expect(await link.getAttribute('href')).toBe('http://localhost:51049');
+		expect(await link.getAttribute('target')).toBe('_blank');
+		// The URL is the link's tooltip, never text in the row.
+		expect(await panel.locator('[data-server="api"]').innerText()).not.toContain('localhost');
 		await context.close();
 	}, 20_000);
+
+	it('the side panels never scroll sideways: long paths, URLs, voice lines and agent names wrap', async () => {
+		const ref = 'store-front/overflow';
+		const long = (stem: string) => `${stem}${'x'.repeat(160)}`;
+		const listed = store.state.order.flatMap((listedRef) => {
+			const session = store.state.sessions[listedRef];
+
+			return session
+				? [
+						{
+							ref: listedRef,
+							label: session.label,
+							branch: session.branch,
+							cwd: session.cwd,
+							dirs: session.dirs,
+							isPinned: session.isPinned,
+						},
+					]
+				: [];
+		});
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				...listed,
+				{
+					ref,
+					label: ref,
+					branch: `crew/${ref}`,
+					cwd: long('/w/store-front/overflow/'),
+					dirs: [long('/w/store-front/overflow/store-api/')],
+					isPinned: false,
+				},
+			],
+		});
+		store.dispatch({ type: 'activate', ref });
+		await waitUntil(() => store.state.sessions[ref]?.status === 'idle');
+		store.dispatch({
+			type: 'dev_servers',
+			ref,
+			servers: [
+				{
+					name: long('web-'),
+					port: 51050,
+					url: `http://${long('store-front-overflow-')}.localhost:51050`,
+					state: 'running',
+					detail: null,
+				},
+			],
+			isSettled: true,
+		});
+		store.dispatch({
+			type: 'voice_logged',
+			screen: ref,
+			entry: {
+				utterance: long('say-'),
+				did: [long('did-')],
+				reply: long('reply-'),
+				at: Date.now(),
+			},
+		});
+		store.dispatch({ type: 'send', ref, text: 'go' });
+		store.dispatch({
+			type: 'subagent_started',
+			ref,
+			taskId: 'ui-wide',
+			agentType: long('Explore-'),
+			description: long('describe-'),
+			isBackground: false,
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref } });
+
+		for (const viewport of [
+			{ width: 1440, height: 900 },
+			{ width: 1024, height: 768 },
+		]) {
+			const context = await browser.newContext({ permissions: ['microphone'], viewport });
+			const page = await context.newPage();
+			watchErrors(page);
+			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.locator('[aria-label="sub-agents"]').waitFor({ timeout: 5000 });
+			await page.locator('[aria-label="dev servers"] [data-server]').waitFor({ timeout: 5000 });
+			await page.locator('[aria-label="voice log"] .said').waitFor({ timeout: 5000 });
+			const panels = await page.locator('.vo-panels').evaluate((element) => ({
+				scroll: element.scrollWidth,
+				client: element.clientWidth,
+				width: element.getBoundingClientRect().width,
+			}));
+			const split = await page.locator('.vo-split').evaluate((element) => element.clientWidth);
+
+			expect(panels.scroll).toBeLessThanOrEqual(panels.client);
+			// The panels keep their column: the stream is not squeezed by them.
+			expect(panels.width).toBeLessThan(split / 2);
+			await context.close();
+		}
+
+		store.dispatch({ type: 'subagent_ended', ref, taskId: 'ui-wide' });
+		store.dispatch({ type: 'interrupt', ref });
+		store.dispatch({ type: 'deactivate', ref });
+		store.dispatch({ type: 'worktrees', worktrees: listed });
+	}, 30_000);
 
 	it('panel buttons dispatch the same dev actions as voice; Fix shows only with an offer', async () => {
 		const { context, page } = await signIn();

@@ -41,34 +41,31 @@ const withSetup = (patch: Partial<State> = {}): State => ({
 const PROJECT: CrewProject = { name: 'store-front', path: '/code/store-front', remote: '' };
 
 describe('ProblemsStrip', () => {
-	it('a failure has Fix and Fix with Claude; not set up has Set up and Set up with Claude', () => {
-		const problems = listProblems(
-			[PROJECT],
-			[
-				{
-					ref: 'admin/main',
-					path: '/w',
-					dev_running: false,
-					installing: false,
-					issues: [
-						{
-							stage: 'smoke',
-							project: 'admin',
-							server: 'web',
-							reason: 'died',
-							detail: "Cannot find module 'next'",
-						},
-					],
-				},
-			],
-		);
+	it('a failure has Fix and Fix with Claude; nothing else is a problem', () => {
+		const problems = listProblems([
+			{
+				ref: 'admin/main',
+				path: '/w',
+				dev_running: false,
+				installing: false,
+				issues: [
+					{
+						stage: 'smoke',
+						project: 'admin',
+						server: 'web',
+						reason: 'died',
+						detail: "Cannot find module 'next'",
+					},
+				],
+			},
+		]);
 		const html = renderToStaticMarkup(<ProblemsStrip ctx={createCtx()} problems={problems} />);
 
 		expect(html).toContain('web died · Cannot find module &#x27;next&#x27;');
 		expect(html).toContain('>Fix</button>');
 		expect(html).toContain('>Fix with Claude</button>');
-		expect(html).toContain('problem quiet');
-		expect(html).toContain('>Set up with Claude</button>');
+		expect(html).not.toContain('quiet');
+		expect(html).not.toContain('Set up');
 	});
 });
 

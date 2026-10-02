@@ -87,21 +87,15 @@ export const MachinePage = ({ ctx }: { ctx: SetupContext }) => {
 						<button
 							type="button"
 							key={project.name}
-							className="box-row as-link"
+							className="box-row as-link one-line"
+							title={project.name}
 							onClick={() => ctx.go({ page: 'project', name: project.name })}
 						>
-							<span
-								className={`dot ${state === 'failed' ? 'ask' : state === 'ready' ? 'ok' : 'ring'}`}
-							/>
+							<span className={`dot ${state === 'failed' ? 'ask' : ''}`} />
 							<span className="sub">
 								<b>{project.name}</b>
 								<span className="m">
-									project ·{' '}
-									{state === 'failed'
-										? 'check failed'
-										: state === 'ready'
-											? 'set up'
-											: 'not set up'}
+									{state === 'failed' ? 'project · check failed' : 'project'}
 								</span>
 							</span>
 							<span className="m">

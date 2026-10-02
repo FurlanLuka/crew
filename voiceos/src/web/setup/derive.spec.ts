@@ -2,7 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+	countNeedsYou,
 	describeCheckAction,
+	describeServer,
+	describeSetupMeta,
+	hasDevServers,
 	listWorkspacesOf,
 	deriveFirstRun,
 	deriveProjectState,
@@ -10,6 +14,7 @@ import {
 	describeStages,
 	listProblems,
 	readCheck,
+	summarizeList,
 } from './derive.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 
@@ -35,27 +40,25 @@ describe('deriveFirstRun', () => {
 });
 
 describe('the board from crew goldens', () => {
-	it('a failed check, a broken worktree, then one quiet row for what is not set up', () => {
-		const problems = listProblems(PROJECTS, WORKTREES);
+	it('a broken worktree and a failed check, nothing else (signals has no dev servers: no row)', () => {
+		const problems = listProblems(WORKTREES);
 
-		expect(problems.map((problem) => [problem.name, problem.isQuiet, problem.fix])).toEqual([
-			['store-front/wrk1', false, { page: 'worktree', ref: 'store-front/wrk1' }],
-			['store-api', false, { page: 'project', name: 'store-api' }],
-			['signals', true, { page: 'project-edit', name: 'signals' }],
+		expect(problems.map((problem) => [problem.name, problem.fix])).toEqual([
+			['store-front/wrk1', { page: 'worktree', ref: 'store-front/wrk1' }],
+			['store-api', { page: 'project', name: 'store-api' }],
 		]);
 		expect(problems[0]?.what).toBe('store-api install failed · ERR_PNPM_NO_MATCHING_VERSION');
 	});
 
-	it('several not set up → one row with Set up with Claude for all of them', () => {
-		const bare = PROJECTS.map((project) => ({ ...project, dev_servers: [] }));
-		const quiet = listProblems(bare, []).at(-1);
+	it('no failures → no problems and nothing needs you, whatever the projects have', () => {
+		const healthy = WORKTREES.filter((row) => !row.issues?.length);
 
-		expect(quiet?.name).toBe('3 projects not set up');
-		expect(quiet?.fix).toBeNull();
-		expect(quiet?.ask).toContain('store-front, store-api, signals');
+		expect(listProblems(healthy)).toEqual([]);
+		expect(countNeedsYou(healthy)).toBe(0);
+		expect(countNeedsYou(WORKTREES)).toBe(2);
 	});
 
-	it('a project is failed by its kept check, set up by its servers', () => {
+	it('a project is failed by its kept check, ready otherwise: no dev servers is ready', () => {
 		const state = (name: string) =>
 			deriveProjectState(
 				PROJECTS.find((project) => project.name === name) as CrewProject,
@@ -65,7 +68,7 @@ describe('the board from crew goldens', () => {
 		expect([state('store-front'), state('store-api'), state('signals')]).toEqual([
 			'ready',
 			'failed',
-			'setup',
+			'ready',
 		]);
 	});
 
@@ -85,6 +88,16 @@ describe('the board from crew goldens', () => {
 
 		expect(describeIssue(issue)).toBe('checkout-api install failed · ERR_PNPM');
 		expect(describeIssue(issue, { isNamed: false })).toBe('install failed · ERR_PNPM');
+	});
+});
+
+describe('hasDevServers', () => {
+	const member = (name: string) => ({ name, path: `/w/${name}`, mode: 'worktree' });
+
+	it('a member with a dev server → true; only server-less members (signals) → false', () => {
+		expect(hasDevServers([member('signals'), member('store-front')], PROJECTS)).toBe(true);
+		expect(hasDevServers([member('signals')], PROJECTS)).toBe(false);
+		expect(hasDevServers([], PROJECTS)).toBe(false);
 	});
 });
 
@@ -151,5 +164,48 @@ describe('listWorkspacesOf', () => {
 			'store-front',
 		]);
 		expect(listWorkspacesOf(workspaces, 'signals')).toEqual([]);
+	});
+});
+
+describe('summarizeList', () => {
+	it.each([
+		[[], 2, ''],
+		[['web'], 2, 'web'],
+		[['web', 'api'], 2, 'web · api'],
+		[['web', 'api', 'worker'], 2, 'web · api +1'],
+		[['web', 'api', 'worker', 'cron'], 2, 'web · api +2'],
+	])('%j, %i shown → %p', (items, shown, text) => {
+		expect(summarizeList(items, shown)).toBe(text);
+		expect(summarizeList(items, shown)).not.toContain('+0');
+	});
+});
+
+describe('describeServer', () => {
+	it.each([
+		[{ name: 'web', port: 3000 }, 'web :3000'],
+		[{ name: 'web', port: 0 }, 'web'],
+		[{ name: 'web' }, 'web'],
+	])('%j → %p', (server, text) => expect(describeServer(server)).toBe(text));
+});
+
+describe("Home's Set up meta", () => {
+	it('projects without dev servers are just projects; only failures need you', () => {
+		const bare: CrewProject[] = [
+			{ name: 'store-front', path: '/code/store-front', remote: '' },
+			{ name: 'infra-ops', path: '/code/infra-ops', remote: '' },
+		];
+
+		expect(describeSetupMeta(bare, [])).toBe('2 projects on This Mac');
+		expect(
+			describeSetupMeta(bare, [
+				{
+					ref: 'admin/main',
+					path: '/w',
+					dev_running: false,
+					installing: false,
+					issues: [{ stage: 'install', project: 'admin', detail: 'ERR' }],
+				},
+			]),
+		).toBe('1 thing needs you');
 	});
 });

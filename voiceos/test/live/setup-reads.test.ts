@@ -12,7 +12,7 @@ import { type SetupCommand, type SetupCommandType, traitsOf } from '../../src/cr
 import { configureLog } from '../../src/log.js';
 import { LOCAL_MACHINE } from '../../src/shared/machine-ref.js';
 import { deriveFirstRun, deriveProjectState, listProblems } from '../../src/web/setup/derive.js';
-import { readPreview, readProposals } from '../../src/web/setup/environment.js';
+import { readPreview } from '../../src/web/setup/environment.js';
 import { describeCost, readBases, readLogText, readPlan } from '../../src/web/setup/readers.js';
 import { isRunning, listProgressLines } from '../../src/web/setup/progress.js';
 import type {
@@ -347,13 +347,13 @@ describe.skipIf(!isLive)('every Set up read against a real crew', () => {
 			'ready',
 			'ready',
 		]);
-		expect(listProblems(projects, worktrees)).toEqual([]);
+		expect(listProblems(worktrees)).toEqual([]);
 
 		const members = jsonOf(await read({ type: 'show', ref: REF })) as CrewMember[];
 		expectArrayOf(members, { name: 'string', path: 'string', mode: 'string' });
 	}, 60_000);
 
-	it('a project: bindings, their preview, the .env proposals and a dry-run binding', async () => {
+	it('a project: bindings, their preview, the --scan rows and a dry-run binding', async () => {
 		expectArrayOf(jsonOf(await read({ type: 'ls_bindings', project: 'store-front' })), {
 			var: 'string',
 		});
@@ -361,10 +361,11 @@ describe.skipIf(!isLive)('every Set up read against a real crew', () => {
 			Array.isArray(jsonOf(await read({ type: 'ls_bindings_preview', project: 'store-front' }))),
 		).toBe(true);
 
-		const proposals = readProposals(
-			jsonOf(await read({ type: 'add_binding_scan', project: 'store-front' })),
-		);
-		expect(proposals.map((proposal) => proposal.var)).not.toContain('STORE_API_URL');
+		// crew add binding --scan stays a CLI read (the page no longer offers its proposals).
+		expectArrayOf(jsonOf(await read({ type: 'add_binding_scan', project: 'store-front' })), {
+			var: 'string',
+			status: 'string',
+		});
 
 		const preview = readPreview(
 			jsonOf(

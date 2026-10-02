@@ -1,5 +1,6 @@
-// A worktree: its servers (start, stop, restart, links, logs), a recorded failure with its ways out,
-// its pinned values, the environment each server gets, and its removal. Rename and duplicate are
+// A worktree: its name with rename and duplicate beside it, Open in Voice OS, a recorded failure with
+// its ways out, its servers with their actions (start, stop, restart, verify, logs), its Environment
+// (values set for this worktree, what each server gets), and its removal. Rename and duplicate are
 // their own small forms (WorktreeForms.tsx); what it reads is derived in worktree.ts.
 import { useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
@@ -23,7 +24,7 @@ import type {
 	CrewWorktree,
 } from './types.js';
 import { type ServerLine, describeIssueWhy, listServerLines } from './worktree.js';
-import { PinnedValues, WorktreeEnvironment } from './WorktreeValues.js';
+import { WorktreeEnvironment, WorktreeOverrides } from './WorktreeValues.js';
 
 interface WorktreePageProps {
 	ctx: SetupContext;
@@ -67,7 +68,7 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 	);
 	const isLast = removal.data?.last === true;
 	const memberRows = members.data ?? [];
-	// Bumped when a pinned value changes: the environment each server gets follows.
+	// Bumped when a value set for this worktree changes: what each server gets follows.
 	const [valuesChanged, setValuesChanged] = useState(0);
 	const servers = listServerLines({
 		members: memberRows,
@@ -110,79 +111,38 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 				]
 					.filter(Boolean)
 					.join(' · ')}
+				titleActions={
+					<>
+						<button
+							type="button"
+							className="icon-btn"
+							title="Rename"
+							aria-label="Rename"
+							onClick={() => ctx.go({ page: 'rename', ref: worktreeRef })}
+						>
+							<svg viewBox="0 0 16 16" aria-hidden="true">
+								<path d="M11.5 2.5l2 2L6 12H4v-2z" />
+							</svg>
+						</button>
+						<button
+							type="button"
+							className="icon-btn"
+							title="Duplicate"
+							aria-label="Duplicate"
+							onClick={() => ctx.go({ page: 'duplicate', ref: worktreeRef })}
+						>
+							<svg viewBox="0 0 16 16" aria-hidden="true">
+								<rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+								<path d="M10.5 3.5v-1h-8v8h1" />
+							</svg>
+						</button>
+					</>
+				}
 			>
-				<button
-					type="button"
-					className="btn"
-					disabled={action.isBusy || row?.installing}
-					onClick={() =>
-						void run(
-							isRunning
-								? { type: 'dev_stop', ref: worktreeRef }
-								: { type: 'dev_start', ref: worktreeRef },
-						)
-					}
-				>
-					{isRunning ? 'Stop servers' : 'Start servers'}
-				</button>
-				{isRunning && (
-					<button
-						type="button"
-						className="btn"
-						disabled={action.isBusy}
-						onClick={() => void run({ type: 'dev_restart', ref: worktreeRef })}
-					>
-						Restart
-					</button>
-				)}
-				<button
-					type="button"
-					className="btn"
-					disabled={action.isBusy || row?.installing}
-					onClick={async () => {
-						if (isOk(await run({ type: 'verify', ref: worktreeRef }))) {
-							ctx.go({ page: 'progress', ref: worktreeRef });
-						}
-					}}
-				>
-					Verify
-				</button>
 				<button type="button" className="btn" onClick={() => ctx.openVoice(sessionRef)}>
 					Open in Voice OS
 				</button>
 			</PageHead>
-			<div className="row-actions quiet-actions">
-				<button
-					type="button"
-					className="btn sm ghost"
-					onClick={() => ctx.go({ page: 'rename', ref: worktreeRef })}
-				>
-					Rename
-				</button>
-				<button
-					type="button"
-					className="btn sm ghost"
-					onClick={() => ctx.go({ page: 'duplicate', ref: worktreeRef })}
-				>
-					Duplicate
-				</button>
-				<button
-					type="button"
-					className="btn sm ghost"
-					onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
-				>
-					Logs
-				</button>
-				{row?.installing && (
-					<button
-						type="button"
-						className="btn sm"
-						onClick={() => ctx.go({ page: 'progress', ref: worktreeRef })}
-					>
-						Installing… follow it
-					</button>
-				)}
-			</div>
 			{issue && (
 				<FailBlock
 					title={describeIssue(issue).split(' · ')[0] ?? 'Something failed'}
@@ -225,67 +185,124 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 					</button>
 				</FailBlock>
 			)}
-			<div className="label">Dev servers</div>
-			<div className="box">
-				{servers.length === 0 && (
-					<div className="box-row">
-						<span className="dot ring" />
-						<span className="sub">
-							<b>Not set up yet</b>
-							<span className="m">
-								No project here has dev servers recorded. Set one up from its project page.
-							</span>
-						</span>
-					</div>
-				)}
-				{servers.map((server) => (
-					<div
-						key={`${server.project} ${server.name}`}
-						className="box-row srv-full"
-						data-server={server.name}
-						data-state={server.state}
-					>
-						<span className={`dot ${SERVER_DOT[server.state]}`} />
-						<span className="sub">
-							<b>{server.name}</b>
-							<span className="m">
-								{server.project} · {server.command}
-							</span>
-						</span>
-						{server.state === 'died' ? (
-							<span className="chip ask">died{server.port ? ` · :${server.port}` : ''}</span>
-						) : server.url ? (
-							<span className="links">
-								<a href={server.url} target="_blank" rel="noopener noreferrer">
-									{server.url.replace(/^https?:\/\//, '')} ↗
-								</a>
-							</span>
-						) : (
-							<span className="chip">
-								{server.state === 'quiet'
-									? 'not listening yet'
-									: server.state === 'stopped'
-										? 'stopped'
-										: 'running, no port'}
-							</span>
-						)}
-						<span className="row-actions">
+			<section className="section" aria-label="Dev servers">
+				<div className="section-head">
+					<div className="label">Dev servers</div>
+					<div className="row-actions">
+						{row?.installing && (
 							<button
 								type="button"
-								className="btn sm ghost"
-								onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
+								className="btn sm"
+								onClick={() => ctx.go({ page: 'progress', ref: worktreeRef })}
 							>
-								Logs
+								Installing… follow it
 							</button>
-						</span>
+						)}
+						<button
+							type="button"
+							className="btn sm"
+							disabled={action.isBusy || row?.installing}
+							onClick={() =>
+								void run(
+									isRunning
+										? { type: 'dev_stop', ref: worktreeRef }
+										: { type: 'dev_start', ref: worktreeRef },
+								)
+							}
+						>
+							{isRunning ? 'Stop servers' : 'Start servers'}
+						</button>
+						{isRunning && (
+							<button
+								type="button"
+								className="btn sm"
+								disabled={action.isBusy}
+								onClick={() => void run({ type: 'dev_restart', ref: worktreeRef })}
+							>
+								Restart
+							</button>
+						)}
+						<button
+							type="button"
+							className="btn sm"
+							disabled={action.isBusy || row?.installing}
+							onClick={async () => {
+								if (isOk(await run({ type: 'verify', ref: worktreeRef }))) {
+									ctx.go({ page: 'progress', ref: worktreeRef });
+								}
+							}}
+						>
+							Verify
+						</button>
+						<button
+							type="button"
+							className="btn sm ghost"
+							onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
+						>
+							Logs
+						</button>
 					</div>
-				))}
-			</div>
+				</div>
+				<div className="box">
+					{servers.length === 0 && (
+						<div className="box-row">
+							<span className="dot idle" />
+							<span className="sub">
+								<span className="m">No dev servers</span>
+							</span>
+						</div>
+					)}
+					{servers.map((server) => (
+						<div
+							key={`${server.project} ${server.name}`}
+							className="box-row srv-full one-line"
+							data-server={server.name}
+							data-state={server.state}
+							title={`${server.name} · ${server.project} · ${server.command}`}
+						>
+							<span className={`dot ${SERVER_DOT[server.state]}`} />
+							<span className="sub">
+								<b>{server.name}</b>
+								<span className="m">
+									{server.project} · {server.command}
+								</span>
+							</span>
+							{server.state === 'died' ? (
+								<span className="chip ask">died{server.port ? ` · :${server.port}` : ''}</span>
+							) : server.url ? (
+								<span className="links">
+									<a href={server.url} target="_blank" rel="noopener noreferrer">
+										{server.url.replace(/^https?:\/\//, '')} ↗
+									</a>
+								</span>
+							) : (
+								<span className="chip">
+									{server.state === 'quiet'
+										? 'not listening yet'
+										: server.state === 'stopped'
+											? 'stopped'
+											: 'running, no port'}
+								</span>
+							)}
+							<span className="row-actions">
+								<button
+									type="button"
+									className="btn sm ghost"
+									onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
+								>
+									Logs
+								</button>
+							</span>
+						</div>
+					))}
+				</div>
+			</section>
 			<ResultLine reply={action.last} />
-			<PinnedValues
+			<WorktreeOverrides
 				ctx={ctx}
 				worktreeRef={worktreeRef}
 				members={memberRows}
+				projects={projects.data ?? []}
 				onChanged={() => setValuesChanged((count) => count + 1)}
 			/>
 			<WorktreeEnvironment

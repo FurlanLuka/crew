@@ -5,7 +5,6 @@ import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { Confirm, PageHead, ResultLine, type SetupContext } from './common.js';
-import { isNotSetUp } from './derive.js';
 import type { CrewProject, CrewWorkspace } from './types.js';
 import { type Mode, listWires, planWorkspace } from './workspace.js';
 
@@ -114,9 +113,6 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 										onChange={(event) => toggle(project.name, event.target.checked)}
 									/>
 									<b>{project.name}</b>
-									<span className={`chip ${isNotSetUp(project) ? '' : 'ok'}`}>
-										{isNotSetUp(project) ? 'not set up' : 'set up'}
-									</span>
 									<select
 										aria-label={`${project.name} mode`}
 										value={current[project.name] ?? 'worktree'}

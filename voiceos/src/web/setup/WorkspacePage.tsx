@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { isOk, useCrew, useCrewAction } from './api.js';
 import { Confirm, PageHead, ResultLine, type SetupContext, describeSize } from './common.js';
-import { describeIssue, isNotSetUp } from './derive.js';
+import { describeIssue } from './derive.js';
 import type { CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 import { countOf } from '../count.js';
 
@@ -63,24 +63,30 @@ export const WorkspacePage = ({ ctx, name }: WorkspacePageProps) => {
 			<div className="box">
 				{(workspace?.projects ?? []).map((member) => {
 					const project = projects.data?.find((row) => row.name === member.name);
-					const isReady = project && !isNotSetUp(project);
+					const said = [
+						`${member.mode} mode`,
+						...(project?.dev_servers ?? []).map((server) => server.name),
+					].join(' · ');
 
 					return (
-						<div key={member.name} className="box-row" data-project={member.name}>
-							<span className={`dot ${isReady ? 'ok' : 'ring'}`} />
+						<div
+							key={member.name}
+							className="box-row one-line row-link"
+							data-project={member.name}
+							title={`${member.name} · ${said}`}
+						>
+							<span className="dot idle" />
 							<span className="sub">
-								<b>{member.name}</b>
-								<span className="m">
-									{member.mode} mode
-									{project?.dev_servers?.length
-										? ` · ${project.dev_servers.map((server) => server.name).join(', ')}`
-										: ''}
-								</span>
+								<button
+									type="button"
+									className="rowname"
+									onClick={() => ctx.go({ page: 'project', name: member.name })}
+								>
+									<b>{member.name}</b>
+								</button>
+								<span className="m">{said}</span>
 							</span>
 							<span className="row-actions">
-								<span className={`chip ${isReady ? 'ok' : ''}`}>
-									{isReady ? 'set up' : 'not set up'}
-								</span>
 								<button
 									type="button"
 									className="x"

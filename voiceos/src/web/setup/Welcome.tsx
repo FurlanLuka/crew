@@ -317,7 +317,7 @@ export const WelcomeSteps = ({
 					<h1>Set up {ctx.machineTitle}</h1>
 					<p className="lead">
 						Pick your projects, group the ones that run together into a workspace, and talk to it in
-						Voice OS. Dev servers come later, project by project, in Set up.
+						Voice OS.
 					</p>
 				</div>
 			</div>

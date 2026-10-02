@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { readGolden } from '../../../test/support/fake-crew.js';
 import type { CrewMember, CrewProject, CrewRoute, CrewSmoke } from './types.js';
-import { describeIssueWhy, listServerLines, readOverrides, toPinCommand } from './worktree.js';
+import {
+	describeIssueWhy,
+	describeOverride,
+	listServerLines,
+	readOverrides,
+	toOverrideCommand,
+} from './worktree.js';
 
 const PROJECTS = readGolden<CrewProject[]>('ls-projects.json');
 const CHECKS = readGolden<CrewSmoke[]>('dev-check.json');
@@ -102,25 +108,25 @@ describe('listServerLines (crew goldens)', () => {
 });
 
 describe('readOverrides', () => {
-	it('crew ls overrides --json → one row per pin, project ones keep their prefix', () => {
+	it('crew ls overrides --json → one row per value, project ones keep their prefix', () => {
 		expect(readOverrides(readGolden('ls-overrides.json'))).toEqual([
 			{ key: 'STORE_API_URL', value: 'https://dev-api.example.com' },
 			{ key: 'store-api.LOG_LEVEL', value: 'debug' },
 		]);
 	});
 
-	it.each([[null], [[]], ['text']])('%j → no pins', (json) => {
+	it.each([[null], [[]], ['text']])('%j → no values', (json) => {
 		expect(readOverrides(json)).toEqual([]);
 	});
 });
 
-describe('toPinCommand', () => {
+describe('toOverrideCommand', () => {
 	it.each([
 		['STRIPE_KEY=sk_test_1', '', { var: 'STRIPE_KEY', value: 'sk_test_1' }],
 		['URL=a=b', 'store-api', { var: 'store-api.URL', value: 'a=b' }],
 		[' FLAG ', '', { var: 'FLAG', value: '' }],
-	])('%p for %p → add_override', (pin, project, expected) => {
-		expect(toPinCommand({ ref: 'store-front/main', pin, project })).toEqual({
+	])('%p for %p → add_override', (text, project, expected) => {
+		expect(toOverrideCommand({ ref: 'store-front/main', text, project })).toEqual({
 			type: 'add_override',
 			ref: 'store-front/main',
 			...expected,
@@ -128,7 +134,81 @@ describe('toPinCommand', () => {
 	});
 
 	it('no variable yet → nothing to run', () => {
-		expect(toPinCommand({ ref: 'a/b', pin: '=x', project: '' })).toBeNull();
+		expect(toOverrideCommand({ ref: 'a/b', text: '=x', project: '' })).toBeNull();
+	});
+});
+
+describe('describeOverride', () => {
+	const members = [
+		{ name: 'store-front', path: '/w/store-front', mode: 'worktree' },
+		{ name: 'store-api', path: '/w/store-api', mode: 'worktree' },
+	];
+	const projects = PROJECTS;
+
+	it("every project, one of them binds it → what it replaces, by that project's name", () => {
+		expect(describeOverride('STORE_API_URL', members, projects)).toEqual({
+			key: 'STORE_API_URL',
+			name: 'STORE_API_URL',
+			scope: 'every project',
+			instead: "instead of store-front's value: store-api api's URL",
+		});
+	});
+
+	it("one project's value → the project's own binding, or nothing it replaces", () => {
+		expect(describeOverride('store-front.STORE_API_URL', members, projects).instead).toBe(
+			"instead of the project's value: store-api api's URL",
+		);
+		expect(describeOverride('store-api.LOG_LEVEL', members, projects)).toEqual({
+			key: 'store-api.LOG_LEVEL',
+			name: 'LOG_LEVEL',
+			scope: 'store-api only',
+			instead: null,
+		});
+	});
+
+	it('only a server-scoped binding → it still replaces it, and names the server', () => {
+		const scoped = projects.map((project) =>
+			project.name === 'store-api'
+				? { ...project, bindings: [{ var: 'LOG_LEVEL', value: 'debug', server: 'api' }] }
+				: project,
+		);
+
+		expect(describeOverride('store-api.LOG_LEVEL', members, scoped).instead).toBe(
+			"instead of the project's value: debug, fixed (api)",
+		);
+		expect(describeOverride('LOG_LEVEL', members, scoped).instead).toBe(
+			"instead of store-api's value: debug, fixed (api)",
+		);
+	});
+
+	it('scoped and project-wide in one project → that project once', () => {
+		const both = projects.map((project) =>
+			project.name === 'store-front'
+				? {
+						...project,
+						bindings: [
+							...(project.bindings ?? []),
+							{ var: 'STORE_API_URL', value: 'http://x', server: 'web' },
+						],
+					}
+				: project,
+		);
+
+		expect(describeOverride('STORE_API_URL', members, both).instead).toBe(
+			"instead of store-front's 2 values",
+		);
+	});
+
+	it('several projects bind it → how many, not one of them', () => {
+		const both = projects.map((project) =>
+			project.name === 'store-api'
+				? { ...project, bindings: [{ var: 'STORE_API_URL', value: 'http://x' }] }
+				: project,
+		);
+
+		expect(describeOverride('STORE_API_URL', members, both).instead).toBe(
+			'instead of the values of 2 projects',
+		);
 	});
 });
 

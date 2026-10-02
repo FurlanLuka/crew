@@ -1,7 +1,17 @@
-// What the worktree page reads, derived: its servers' lines, its pinned values, the pin a form makes
-// and why a recorded failure matters. Pure, beside its spec.
+// What the worktree page reads, derived: its servers' lines, the values set for this worktree (crew's
+// overrides) and what each replaces, the command the form makes, and why a recorded failure
+// matters. Pure, beside its spec.
 import type { SetupCommand } from '../../crew/commands.js';
-import type { CrewIssue, CrewMember, CrewProject, CrewRoute, CrewSmoke } from './types.js';
+import { countOf } from '../count.js';
+import { describeBindingSource } from './environment.js';
+import type {
+	CrewBinding,
+	CrewIssue,
+	CrewMember,
+	CrewProject,
+	CrewRoute,
+	CrewSmoke,
+} from './types.js';
 
 export interface ServerLine {
 	project: string;
@@ -66,17 +76,81 @@ export const readOverrides = (json: unknown): { key: string; value: string }[] =
 			}))
 		: [];
 
-export interface ToPinCommandParams {
+export interface OverrideLine {
+	key: string;
+	// The variable, without its project prefix.
+	name: string;
+	// "every project" or "store-api only".
+	scope: string;
+	// What it wins over: "instead of store-front's value: store-api api's URL", when a project binds the same var.
+	instead: string | null;
+}
+
+// One project's bindings of a var: "value: <the project page's words>" for one ("value: store-api
+// api's URL", a scoped one naming its server as the CLI labels it, "(web)"), "N values" for more.
+// The owner comes first so two possessives never sit side by side.
+const describeReplaced = (bindings: CrewBinding[]): string => {
+	const [binding] = bindings;
+
+	if (bindings.length > 1 || !binding) {
+		return countOf(bindings.length, 'value');
+	}
+
+	const source = describeBindingSource(binding.value);
+
+	return `value: ${binding.server ? `${source} (${binding.server})` : source}`;
+};
+
+// One value set for this worktree, in the project page's words: the variable, which projects get it,
+// and the project's own value it replaces.
+export const describeOverride = (
+	key: string,
+	members: CrewMember[],
+	projects: CrewProject[],
+): OverrideLine => {
+	const dot = key.indexOf('.');
+	const project = dot > 0 ? key.slice(0, dot) : '';
+	const name = dot > 0 ? key.slice(dot + 1) : key;
+	const names = project ? [project] : members.map((member) => member.name);
+	// A worktree value beats the project's scoped bindings as well as its project-wide one, so each
+	// project counts once whichever of them it has.
+	const replaced = projects.flatMap((candidate) => {
+		const bindings = names.includes(candidate.name)
+			? (candidate.bindings ?? []).filter((row) => row.var === name)
+			: [];
+
+		return bindings.length ? [{ project: candidate.name, bindings }] : [];
+	});
+	const [only] = replaced;
+
+	return {
+		key,
+		name,
+		scope: project ? `${project} only` : 'every project',
+		instead:
+			replaced.length > 1
+				? `instead of the values of ${countOf(replaced.length, 'project')}`
+				: only
+					? `instead of ${project ? 'the project' : only.project}'s ${describeReplaced(only.bindings)}`
+					: null,
+	};
+};
+
+export interface ToOverrideCommandParams {
 	ref: string;
 	// What the field holds: VAR=value (the value may hold '=' itself).
-	pin: string;
+	text: string;
 	// '' for every project.
 	project: string;
 }
 
-// The pin form's command, or null while it names no variable.
-export const toPinCommand = ({ ref, pin, project }: ToPinCommandParams): SetupCommand | null => {
-	const [variable = '', ...rest] = pin.split('=');
+// The form's crew add override, or null while it names no variable.
+export const toOverrideCommand = ({
+	ref,
+	text,
+	project,
+}: ToOverrideCommandParams): SetupCommand | null => {
+	const [variable = '', ...rest] = text.split('=');
 	const name = variable.trim();
 
 	return name

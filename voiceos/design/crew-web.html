@@ -210,7 +210,6 @@ form { display: grid; gap: 16px; }
 .problem:hover { border-color: #5a3430; }
 .problem b { font-weight: 600; color: #fff; }
 .problem > span:nth-child(3) { color: #c3ccd6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.problem.quiet { background: var(--panel); border-color: var(--line); }
 .cell-fail { background: none; border: 0; padding: 0; display: inline-grid; gap: 0; justify-items: center; }
 .cell-fail:hover .chip { text-decoration: underline; }
 .fail { border: 1px solid #4a2a27; border-radius: 14px; background: rgba(224, 108, 95, 0.05); padding: 14px 16px; display: grid; gap: 10px; }
@@ -276,7 +275,7 @@ h1 { font-weight: 650; letter-spacing: -0.02em; }
 .brand small { color: var(--label-3); }
 
 /* Content layer: inset grouped surfaces, separated by fill and inset separators. */
-.matrix-wrap, .box, .picks, .runs, .problem.quiet, .facts { background: var(--elev-1); border: 0; border-radius: 14px; }
+.matrix-wrap, .box, .picks, .runs, .facts { background: var(--elev-1); border: 0; border-radius: 14px; }
 .facts { padding: 16px 18px; }
 .cfg-sec { background: var(--elev-1); border: 0; }
 .matrix thead th { background: transparent; border-bottom: 1px solid var(--sep); color: var(--label-2); font-family: var(--sys); font-weight: 600; }
@@ -556,7 +555,12 @@ body.on-chat .chatpage { height: 100%; min-height: 0; grid-template-rows: auto m
 .brief p, .brief ul, .brief ol, .brief dd { max-width: 74ch; }
 
 /* Worktree page and friends */
-.quiet-actions { margin-top: -8px; }
+.title-row { display: flex; align-items: center; gap: 2px; }
+.title-row h1 { margin-right: 6px; overflow-wrap: anywhere; }
+.icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--label-3); cursor: pointer; }
+.icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.icon-btn:hover, .icon-btn:focus-visible { background: var(--fill); color: #fff; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .warn { background: rgba(240, 160, 44, 0.08); border-radius: 14px; padding: 14px 16px; display: grid; gap: 10px; }
 .srv-full { grid-template-columns: 10px minmax(0, 1fr) auto auto; }
 .links { display: grid; justify-items: end; gap: 1px; }
@@ -1226,7 +1230,7 @@ body.in-vo { background: #0b0d10; }
 				<dt>Worktree</dt><dd>One working copy of a workspace: a git worktree of every project, on its own branch (<code>crew/&lt;workspace&gt;/&lt;worktree&gt;/&lt;project&gt;</code>), with its own reserved ports. Named <code>store-front/main</code>, <code>store-front/search-filters</code>. This is what a Claude session works in, and what Voice OS shows as a session.</dd>
 				<dt>Dev server</dt><dd>A process a project runs during development (web on :3000). crew gives each worktree its own ports, so two worktrees of the same workspace run side by side.</dd>
 				<dt>Environment</dt><dd>The variables crew sets for a project in every worktree (called <i>bindings</i> in the CLI today). Each value comes from somewhere: another project's URL or port in the same worktree (<code>CHECKOUT_URL</code> → checkout-api's URL, which is how a worktree's projects find each other and not another worktree's), the worktree's name, or a fixed value. It can apply to every server of the project or just one.</dd>
-				<dt>Pinned value</dt><dd>A variable fixed for one worktree only (an <i>override</i> in the CLI). It wins over the project's environment: a test key in one worktree, debug logging in another.</dd>
+				<dt>Worktree value</dt><dd>A variable set for one worktree only (an <i>override</i> in the CLI), shown in the worktree's Environment as "set for this worktree", with what it replaces ("instead of the project's {{store-api}}"). It wins over the project's environment: a test key in one worktree, debug logging in another.</dd>
 				<dt>Machine</dt><dd>Where projects live. <i>This Mac</i> runs crew and the web server; other machines (a VM, a build box) are reached over SSH, each with its own crew and its own projects.</dd>
 				<dt>Check</dt><dd><code>crew check project</code>: crew rebuilds a project from nothing (clean checkout, install, start its servers, see they answer). A project is <b>ready</b> when its check passed. This is the proof of "set up", not anyone's say-so.</dd>
 				<dt>Setup session</dt><dd>One persistent Claude Code session per machine, always on. It lives only in Setup: Voice OS does not show it or talk to it. Setting up a project, fixing a worktree or adding a machine are new topics in its one conversation, so it remembers what it did; Its job is crew itself: it reads a repo, works out its install and dev servers, asks the developer only what it can't know (a <code>REDIS_URL</code>), records it with crew commands, and runs the check until it passes.</dd>
@@ -1263,19 +1267,19 @@ body.in-vo { background: #0b0d10; }
 			<ol class="flow">
 				<li><b>Pick your projects.</b> Git checkouts found in the usual code folders, ticked, each with its path and remote; crew records where they are and changes nothing. Or add by URL or path, or import from another machine.</li>
 				<li><b>Make a workspace.</b> A name (the first project's by default) and which of the added projects run together (the first one ticked). Create runs the add-worktree pipeline in place: per project, checkout on its crew branch, <code>.env</code> copied, install from the lockfile; then "servers: none yet". The others wait on the board.</li>
-				<li><b>Then Voice OS.</b> "Open Voice OS" (or "Go to the board"). The first time: allow the mic, paste the Soniox and Anthropic keys (they stay on this Mac; Setup never asks for them). Start plays the Voice OS moment and lands on the workspace's <code>main</code> session, the only tab. Claude says it can read, change and test the code now, and that running the app needs dev servers ("say set up the dev servers"). The side panel says "Dev servers: not set up yet · Set up".</li>
+				<li><b>Then Voice OS.</b> "Open Voice OS" (or "Go to the board"). The first time: allow the mic, paste the Soniox and Anthropic keys (they stay on this Mac; Setup never asks for them). Start plays the Voice OS moment and lands on the workspace's <code>main</code> session, the only tab. Claude says it can read, change and test the code now. A worktree whose projects have dev servers gets a Dev servers panel; one without has none.</li>
 			</ol>
-			<p><b>Not finished is state, not a prompt.</b> Setup never nags or blocks: the board shows one quiet strip row ("3 projects not set up · no install or dev servers yet") with Set up with Claude, and each project row says Set up in its State column. Voice OS raises it only when it matters: asked to run or try something with no servers recorded, the session says so and offers to work them out.</p>
-			<p>Taught later, each when first needed: remotes, the proxy, Discord, names and pinned values. Finding projects is a bounded scan of the usual folders (~/code, ~/projects, ~/dev, ~/src, ~/Developer…), two or three levels deep, never ~/Documents, Desktop or Downloads (macOS would show a permission prompt); it lists checkouts and never analyzes them. Worktrees, not direct mode, even here: the session never edits the folder you have open.</p>
+			<p><b>A project without dev servers is normal.</b> A library or infra repo has nothing to run, and nothing flags it: no strip row, no "set up" chip, no nag. A project's state is facts only (its check passed, failed, or never ran). Setup never nags or blocks; asked to run something with no servers recorded, the session says so and offers to work them out.</p>
+			<p>Taught later, each when first needed: remotes, the proxy, Discord, names and worktree values. Finding projects is a bounded scan of the usual folders (~/code, ~/projects, ~/dev, ~/src, ~/Developer…), two or three levels deep, never ~/Documents, Desktop or Downloads (macOS would show a permission prompt); it lists checkouts and never analyzes them. Worktrees, not direct mode, even here: the session never edits the folder you have open.</p>
 
 			<h2 id="b-setup">Setup, the part to design</h2>
 			<p><b>Job:</b> get projects, workspaces and machines into a state where every worktree's servers run, and keep them there. The developer should see the state of everything on one screen, and do common things in one click.</p>
 			<ul>
 				<li><b>One machine at a time.</b> Each machine has its own projects, workspaces and setup session, so Setup shows one machine, picked from a menu right after the crew mark in the toolbar (with Machine settings and Add a machine in the same menu). Everything added goes to that machine; the breadcrumb trail starts with its name.</li>
-				<li><b>The board is a table.</b> Projects: a row each with install, dev servers, workspaces and state (<i>ready</i>, <i>check failed</i>, or <i>Set up</i> / <i>Ask Claude</i>). Workspaces: a row each with its projects and its worktrees as pills coloured by their servers, plus <i>+ new</i>.</li>
+				<li><b>The board is a table.</b> Projects: a row each with install, dev servers, workspaces and state (<i>ready</i>, <i>checking</i>, <i>check failed</i>, or <i>Check</i>), every row one line (long cells end in "…", lists say "+N"), the whole row a link to its page. Workspaces: a row each with its projects and its worktrees as pills coloured by their servers, plus <i>+ new</i>.</li>
 				<li><b>Projects | Workspaces</b> switch the table; the add button follows (Add project / New workspace).</li>
-				<li><b>"Environment" and "pinned values", not "bindings" and "overrides".</b> Both set environment variables; the UI says where each value comes from ("checkout-api's URL", "the worktree's name", "fixed") and what a worktree actually gets, instead of naming the mechanism. "Connections" was considered and dropped: not every variable connects to something.</li>
-				<li><b>Setting a project up is yours or Claude’s.</b> A form holds every part (install, env command, dev servers, environment), prefilled with what crew detects in the repo, and shows the commands it will run; Save and check runs crew’s check. Or hand it to the setup session, which fills the same things in and asks you only what it can’t work out. Either way the check decides "ready". Its sessions can already work on the code before setup finishes; only dev servers wait. So "needs setup" is a quiet state, not an error.</li>
+				<li><b>"Environment" and "set for this worktree", not "bindings" and "overrides".</b> Both set environment variables; the UI says where each value comes from ("checkout-api's URL", "the worktree's name", "fixed") and what a worktree actually gets, instead of naming the mechanism. "Connections" was considered and dropped: not every variable connects to something.</li>
+				<li><b>Setting a project up is yours or Claude’s.</b> A form holds every part (install, env command, dev servers, environment), prefilled with what crew detects in the repo, and shows the commands it will run; Save and check runs crew’s check. Or hand it to the setup session, which fills the same things in and asks you only what it can’t work out. Either way the check decides "ready". Its sessions can already work on the code before setup finishes. A project with no dev servers is complete as it is.</li>
 				<li><b>A worktree is created when its servers answer.</b> New worktree checks out, installs and starts every server, showing each come up. If one fails, the setup session takes over in place with the log ("checkout-api needs STRIPE_KEY: copy it from main and restart?").</li>
 				<li><b>One Claude chat per machine, on its board.</b> A "Setup with Claude" card sits at the top of each machine’s board. When Claude is working or waiting on you, it says so with Open; when it is free, it has a field to ask anything. Every "Fix with Claude" or "Ask Claude" button in Setup sends its request there: if Claude is free you land in the chat with the request filled in, ready to send or edit; if it is busy, you can queue the request or open the chat, never interrupt it. There are no per-project or per-worktree Claude sessions. Problems carry two buttons: <i>Fix</i> (the page with the fix) and <i>Fix with Claude</i>.</li>
 				<li><b>The setup session is parsed, not just printed.</b> Claude’s output is drawn the way Voice OS draws a session stream: your words in white semibold after ›, what Claude says as plain text, each step as an amber ▸ line, every crew command followed by a green "✓ recorded" line saying what it recorded, and its questions as answer cards (options with a line each, plus "Something else…"). The chat is a general Claude session, so it has no side panel about one project: crew’s own state (recorded config, check results, dev servers) lives on the board and the project, workspace and worktree pages.</li>
@@ -1285,7 +1289,7 @@ body.in-vo { background: #0b0d10; }
 
 			<h2 id="b-failures">When something fails</h2>
 			<ul>
-				<li><b>One strip of problems above the board</b>, for the machine on screen (the machine menu says when another one needs you): a failed check, a dead dev server, a project not set up yet (quieter). Each opens the page that has its fix.</li>
+				<li><b>One strip of problems above the board</b>, for the machine on screen (the machine menu says when another one needs you): a failed check or a dead dev server, nothing else. Each opens the page that has its fix.</li>
 				<li><b>The table says what failed</b> ("check failed · install"), the worktree pill says which server died. Red is only for things that need the developer.</li>
 				<li><b>Every failure page has the same block:</b> what failed and when, the step it stopped at, the last lines of the log, one sentence on why, then the ways out: fix with setup (Claude), edit setup by hand, check again, full log.</li>
 				<li><b>A failure never breaks what works:</b> the project stays as it was set up, worktrees keep their code, and the other machine stays ready.</li>
@@ -1351,10 +1355,10 @@ body.in-vo { background: #0b0d10; }
 				<li><button class="linkish" data-go="session">Setup session</button> steps, Claude's question, reply</li>
 				<li><button class="linkish" data-go="workspace" data-arg="store-front">Workspace</button> projects, worktrees with servers</li>
 				<li><button class="linkish" data-go="workspace-add">New workspace</button> projects with modes</li>
-				<li><button class="linkish" data-go="worktree" data-arg="store-front/main">Worktree</button> servers, pinned values</li>
+				<li><button class="linkish" data-go="worktree" data-arg="store-front/main">Worktree</button> servers, its Environment</li>
 				<li><button class="linkish" data-go="worktree-add">New worktree</button> then servers coming up, and a failure handed to setup</li>
 				<li><button class="linkish" data-go="machine" data-arg="Build box">Machine connection</button> address, version, what's on it</li>
-				<li><button class="linkish" data-go="worktree" data-arg="store-front/main">Worktree, in full</button> start/stop/restart, links, verify, a .env value crew replaces, pinned values, the environment each server gets, size</li>
+				<li><button class="linkish" data-go="worktree" data-arg="store-front/main">Worktree, in full</button> start/stop/restart, links, verify, a .env value crew replaces, values set for this worktree, the environment each server gets, size</li>
 				<li><button class="linkish" data-go="logs" data-arg="web">Logs</button> each server, and the setup runner</li>
 				<li><button class="linkish" data-go="wt-rename">Rename</button> and <button class="linkish" data-go="wt-dup">duplicate</button> a worktree</li>
 				<li><button class="linkish" data-go="ws-remove-project" data-arg="checkout-api">Take a project out of a workspace</button> with what it costs</li>
@@ -1420,12 +1424,6 @@ error: The Python request from `.python-version` resolved to
 				<dt>Environment</dt><dd class="envlist"><span><code>VITE_API_URL</code> ← store-front api's URL</span><span><code>CHECKOUT_URL</code> ← checkout-api's URL</span><span><code>APP_NAME</code> ← the worktree's name</span><span><code>NODE_ENV</code> ← <i>development</i>, fixed</span></dd>
 				<dt>Source</dt><dd>github.com/acme/store-front</dd>
 			</dl>
-			<div class="label">Found in .env: localhost addresses crew can fill in</div>
-			<div class="box" id="pr-proposed">
-				<div class="box-row"><span class="dot ring"></span><span class="sub"><b><code>VITE_CHECKOUT_URL</code></b><span class="m">=http://localhost:8080 · looks like checkout-api's URL</span></span><button class="btn sm" data-toast="crew add binding store-front VITE_CHECKOUT_URL '{{checkout-api}}'">Add</button></div>
-				<div class="box-row"><span class="dot ring"></span><span class="sub"><b><code>ADMIN_URL</code></b><span class="m">=http://localhost:3000 · both store-front web and admin are on :3000, so pick which one</span></span><button class="btn sm" data-toast="Pick admin or store-front/web, then crew add binding store-front ADMIN_URL '{{admin}}'">Choose…</button></div>
-			</div>
-			<div class="row-actions"><button class="btn sm" data-toast="Added VITE_CHECKOUT_URL to store-front's environment. ADMIN_URL still needs a pick.">Add all</button></div>
 			<div class="row-actions"><button class="btn danger" data-toast="crew rm project store-front: refused while it's in 2 workspaces">Remove project</button></div>
 		</section>
 
@@ -1573,15 +1571,14 @@ error: The Python request from `.python-version` resolved to
 		<!-- WORKTREE -->
 		<section class="page" id="p-worktree">
 			<div class="head-row">
-				<div style="display:grid;gap:6px"><h1 id="wt-name">store-front/main</h1><p class="lead" id="wt-lead">This Mac · branch crew/store-front/main/* · 1.8 GB on disk</p></div>
-				<div class="row-actions"><button class="btn" id="wt-startstop" data-toast="Stopping web, api and checkout">Stop servers</button><button class="btn" data-toast="Restarting web, api and checkout">Restart</button><button class="btn" data-toast="crew verify store-front/main: one runner per project; watch it here">Verify</button><button class="btn" data-toast="Voice OS opens this worktree's session">Open in Voice OS</button></div>
+				<div style="display:grid;gap:6px"><div class="title-row"><h1 id="wt-name">store-front/main</h1><button class="icon-btn" title="Rename" aria-label="Rename" data-go="wt-rename"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.5 2.5l2 2L6 12H4v-2z"/></svg></button><button class="icon-btn" title="Duplicate" aria-label="Duplicate" data-go="wt-dup"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-1h-8v8h1"/></svg></button></div><p class="lead" id="wt-lead">This Mac · branch crew/store-front/main/* · 1.8 GB on disk</p></div>
+				<div class="row-actions"><button class="btn" data-toast="Voice OS opens this worktree's session">Open in Voice OS</button></div>
 			</div>
-			<div class="row-actions quiet-actions"><button class="btn sm ghost" data-go="wt-rename">Rename</button><button class="btn sm ghost" data-go="wt-dup">Duplicate</button><button class="btn sm ghost" data-go="logs" data-arg="setup">Setup log</button></div>
 
 			<div class="warn" id="wt-warn">
 				<div class="fail-h"><span class="dot run"></span><b>crew replaces a .env value here</b></div>
 				<p class="fail-why"><code>VITE_API_URL</code> in store-front's <code>.env</code> is <code>http://localhost:3001</code>, but crew sets it to this worktree's api, <code>http://localhost:4101</code>. The <code>.env</code> value is ignored here.</p>
-				<div class="row-actions"><button class="btn sm" data-toast="crew add override store-front/main VITE_API_URL=http://localhost:3001">Pin the .env value here</button><button class="btn sm ghost" data-toast="Noted: crew stops warning about this">That's right</button></div>
+				<div class="row-actions"><button class="btn sm" data-toast="crew add override store-front/main VITE_API_URL=http://localhost:3001">Keep the .env value here</button><button class="btn sm ghost" data-toast="Noted: crew stops warning about this">That's right</button></div>
 			</div>
 
 			<div class="fail" id="wt-fail" hidden>
@@ -1595,7 +1592,10 @@ Require stack: /Users/dev/.crew/workspaces/admin/main/admin/…</pre>
 				<div class="row-actions"><button class="btn primary" data-toast="crew setup admin/main admin: installing, then restarting web">Install and restart</button><button class="btn" data-ask="web died in admin/main: Cannot find module 'next'. Fix it.">Fix with Claude</button><button class="btn ghost" data-go="logs" data-arg="web">Full log</button></div>
 			</div>
 
-			<div class="label">Dev servers</div>
+			<div class="section-head">
+				<div class="label">Dev servers</div>
+				<div class="row-actions"><button class="btn sm" id="wt-startstop" data-toast="Stopping web, api and checkout">Stop servers</button><button class="btn sm" data-toast="Restarting web, api and checkout">Restart</button><button class="btn sm" data-toast="crew verify store-front/main: one runner per project; watch it here">Verify</button><button class="btn sm ghost" data-go="logs" data-arg="setup">Logs</button></div>
+			</div>
 			<div class="box" id="wt-servers">
 				<div class="box-row srv-full"><span class="dot ok"></span><span class="sub"><b>web</b><span class="m">store-front · bun run dev</span></span><span class="links"><a href="#" onclick="return false">localhost:4100 ↗</a><span class="m">store-front-main.192.168.1.20.nip.io</span></span><span class="row-actions"><button class="btn sm ghost" data-go="logs" data-arg="web">Logs</button><button class="btn sm ghost" data-toast="Restarting web">Restart</button></span></div>
 				<div class="box-row srv-full"><span class="dot ok"></span><span class="sub"><b>api</b><span class="m">store-front · bun run api</span></span><span class="links"><a href="#" onclick="return false">localhost:4101 ↗</a></span><span class="row-actions"><button class="btn sm ghost" data-go="logs" data-arg="api">Logs</button><button class="btn sm ghost" data-toast="Restarting api">Restart</button></span></div>
@@ -1606,26 +1606,26 @@ Require stack: /Users/dev/.crew/workspaces/admin/main/admin/…</pre>
 				<div class="box-row srv-full"><span class="dot ok"></span><span class="sub"><b>api</b><span class="m">store-front · bun run api</span></span><span class="links"><a href="#" onclick="return false">localhost:4141 ↗</a></span><span class="row-actions"><button class="btn sm ghost" data-go="logs" data-arg="api">Logs</button><button class="btn sm ghost" data-toast="Restarting api">Restart</button></span></div>
 			</div>
 
-			<div class="label">Pinned values <span class="m" style="text-transform:none;letter-spacing:0">fixed for this worktree only; they win over the project's environment</span></div>
+			<div class="label">Environment <span class="m" style="text-transform:none;letter-spacing:0">a value set for this worktree wins over the project's environment</span></div>
 			<div class="box" id="wt-overrides">
-				<div class="box-row"><span class="dot ring"></span><span class="sub"><b><code>FEATURE_SEARCH=1</code></b><span class="m">store-front only · new here</span></span><button class="x" data-toast="crew rm override store-front/main store-front.FEATURE_SEARCH" aria-label="Remove override">×</button></div>
-				<div class="box-row"><span class="dot ring"></span><span class="sub"><b><code>LOG_LEVEL=debug</code></b><span class="m">every project · replaces info</span></span><button class="x" data-toast="crew rm override store-front/main LOG_LEVEL" aria-label="Remove override">×</button></div>
+				<div class="box-row"><span class="dot ring"></span><span class="sub"><b><code>FEATURE_SEARCH=1</code></b><span class="m">set for this worktree · store-front only</span></span><button class="x" data-toast="crew rm override store-front/main store-front.FEATURE_SEARCH" aria-label="Remove override">×</button></div>
+				<div class="box-row"><span class="dot ring"></span><span class="sub"><b><code>LOG_LEVEL=debug</code></b><span class="m">set for this worktree · every project · instead of the project's info</span></span><button class="x" data-toast="crew rm override store-front/main LOG_LEVEL" aria-label="Remove override">×</button></div>
 			</div>
 			<div class="ov-add">
 				<input type="text" id="ov-kv" value="STRIPE_KEY=sk_test_…" aria-label="Variable and value" autocomplete="off">
 				<select id="ov-proj" aria-label="Which project"><option value="">every project</option><option value="store-front">store-front</option><option value="checkout-api">checkout-api</option></select>
-				<button class="btn" data-toast="Pinned; servers that read it restart">Pin value</button>
+				<button class="btn" data-toast="Set for this worktree; servers that read it restart">Set value</button>
 			</div>
 			<div class="runs"><span class="label">Runs</span><pre id="ov-cmd"></pre></div>
 
 			<details class="env-all">
-				<summary>Environment each server gets <span class="m">12 variables</span></summary>
+				<summary>What each server gets <span class="m">12 variables</span></summary>
 				<div class="env-rows">
 					<div><code>VITE_API_URL=http://localhost:4101</code><span class="src">from store-front's environment</span></div>
 					<div><code>CHECKOUT_URL=http://localhost:4102</code><span class="src">from store-front's environment</span></div>
 					<div><code>APP_NAME=main</code><span class="src">the worktree's name</span></div>
-					<div><code>FEATURE_SEARCH=1</code><span class="src pin">pinned here</span></div>
-					<div><code>LOG_LEVEL=debug</code><span class="src pin">pinned here</span></div>
+					<div><code>FEATURE_SEARCH=1</code><span class="src pin">set for this worktree</span></div>
+					<div><code>LOG_LEVEL=debug</code><span class="src pin">set for this worktree</span></div>
 					<div><code>STRIPE_KEY=sk_test_…</code><span class="src">from checkout-api's .env</span></div>
 					<div><code>PORT=4100 · 4101 · 4102</code><span class="src">set by crew per server</span></div>
 				</div>
@@ -1662,7 +1662,7 @@ Require stack: /Users/dev/.crew/workspaces/admin/main/admin/…</pre>
 		</section>
 		<section class="page" id="p-wt-dup">
 			<h1>Duplicate store-front/main</h1>
-			<p class="lead">Fresh checkouts of the same projects, on new ports, with this worktree's pinned values copied across.</p>
+			<p class="lead">Fresh checkouts of the same projects, on new ports, with the values set for this worktree copied across.</p>
 			<form onsubmit="return false">
 				<label class="field"><span>Name</span><input type="text" id="dp-name" value="main-2" autocomplete="off"></label>
 				<div class="field"><span>After checkout</span>
@@ -1702,7 +1702,7 @@ Require stack: /Users/dev/.crew/workspaces/admin/main/admin/…</pre>
 
 			<div class="cfg-sec">
 				<div class="cfg-h"><span class="label">Move to another machine</span></div>
-				<p class="fail-why" style="color:var(--label-2)">An export holds projects (by their git remote) and which workspaces they're in. Worktrees, ports and pinned values stay here.</p>
+				<p class="fail-why" style="color:var(--label-2)">An export holds projects (by their git remote) and which workspaces they're in. Worktrees, ports and worktree values stay here.</p>
 				<div class="row-actions"><button class="btn" data-toast="Saved crew-export.json: 5 projects, 3 workspaces">Export…</button><button class="btn" data-go="import">Import…</button></div>
 			</div>
 
@@ -2495,15 +2495,14 @@ document.getElementById('copy-brief').addEventListener('click', async () => {
 // One machine at a time: each machine has its own projects, workspaces and setup session.
 const MACHINES = {
 	'This Mac': {
-		lead: '5 projects in 3 workspaces. Two things need you.',
+		lead: '5 projects in 3 workspaces. One thing needs you.',
 		problems: [
 			['ask', 'admin/main', "web died · Cannot find module 'next'", '12m ago', 'worktree', 'admin/main', '', "web died in admin/main: Cannot find module 'next'. Fix it."],
-			['ring', 'signals', 'not set up yet · its sessions work on the code meanwhile', '', 'project-config', 'signals', 'quiet', 'Set up signals.'],
 		],
 		projects: [
 			['store-front', 'bun install', 'web :3000 · api :3001', 'store-front, admin', 'ready'],
 			['checkout-api', 'go mod download', 'api :8080', 'store-front', 'ready'],
-			['signals', '—', '—', 'signals', 'setup'],
+			['signals', '—', '—', 'signals', 'none'],
 			['admin', 'pnpm install', 'web :3000', 'admin', 'ready'],
 			['infra-ops', 'uv sync', 'none', '—', 'ready'],
 		],
@@ -2537,7 +2536,7 @@ const stateCell = (proj, state) => {
 		return `<button class="cell-fail" data-go="project" data-arg="${proj}"><span class="chip ask">check failed</span><span class="m">install</span></button>`;
 	}
 
-	return `<span class="row-actions" style="justify-content:center"><button class="btn sm" data-go="project-config" data-arg="${proj}">Set up</button><button class="btn sm ghost" data-ask="Set up ${proj}.">Ask Claude</button></span>`;
+	return `<button class="btn sm ghost" data-go="check" data-arg="${proj}" title="Not checked yet">Check</button>`;
 };
 
 const renderBoard = () => {
@@ -2551,7 +2550,7 @@ const renderBoard = () => {
 		: `<div class="cc-head"><span class="dot ok"></span><b>Setup with Claude</b><button class="btn sm ghost" data-go="session">Open</button></div>
 		<div class="cc-input"><input type="text" id="cc-text" placeholder="Ask setup anything: add a project, fix a server, check this machine…" aria-label="Ask setup" autocomplete="off"><button class="btn sm primary" id="cc-send">Ask</button></div>`;
 	document.getElementById('b-problems').innerHTML = m.problems
-		.map(([dot, name, what, when, go, arg, quiet, ask]) => `<div class="problem ${quiet ?? ''}"><span class="dot ${dot}"></span><b>${name}</b><span>${what}${when ? ` <span class="m">· ${when}</span>` : ''}</span><span class="problem-actions">${go ? `<button class="btn sm" data-go="${go}" data-arg="${arg}">${quiet ? 'Set up' : 'Fix'}</button>` : ''}<button class="btn sm" data-ask="${ask.replace(/"/g, '&quot;')}">${quiet ? 'Set up with Claude' : 'Fix with Claude'}</button></span></div>`)
+		.map(([dot, name, what, when, go, arg, , ask]) => `<div class="problem"><span class="dot ${dot}"></span><b>${name}</b><span>${what}${when ? ` <span class="m">· ${when}</span>` : ''}</span><span class="problem-actions">${go ? `<button class="btn sm" data-go="${go}" data-arg="${arg}">Fix</button>` : ''}<button class="btn sm" data-ask="${ask.replace(/"/g, '&quot;')}">Fix with Claude</button></span></div>`)
 		.join('');
 	document.getElementById('b-projects').innerHTML = m.projects
 		.map(([name, install, servers, ws, state]) => `<tr><td><button class="rowname" data-go="project" data-arg="${name}"><b>${name}</b></button></td><td><code class="cellcode">${install}</code></td><td class="m">${servers}</td><td class="m">${ws}</td><td class="cell">${stateCell(name, state)}</td></tr>`)
@@ -2865,15 +2864,15 @@ const runFirstWorktree = () => {
 	}, 250 + i * 380));
 };
 
-// After first run the board is what was just made: every project not set up yet, nothing failing.
+// After first run the board is what was just made: its projects, never checked, nothing failing.
 const finishFirstRun = () => {
 	FR.done = true;
 	FR.state = 'done';
 	const n = FR.added.length;
 	MACHINES['This Mac'] = {
-		lead: `${n} project${n === 1 ? '' : 's'} in 1 workspace, none set up yet. Sessions work on the code meanwhile.`,
-		problems: [['ring', `${n} project${n === 1 ? '' : 's'} not set up`, 'no dev servers yet · set each up below, or let Claude work them out', '', '', '', 'quiet', `Set up ${FR.added.join(', ')}: work out each one's dev servers, record them, and run the check.`]],
-		projects: FR.added.map((name) => [name, FR_INSTALL[name].split(' (')[0], '—', FR.members.includes(name) ? FR.ws : '—', 'setup']),
+		lead: `${n} project${n === 1 ? '' : 's'} in 1 workspace. Nothing needs you.`,
+		problems: [],
+		projects: FR.added.map((name) => [name, FR_INSTALL[name].split(' (')[0], '—', FR.members.includes(name) ? FR.ws : '—', 'none']),
 		workspaces: [[FR.ws, FR.members.join(' · '), [['main', '']]]],
 	};
 	SETUP_STATE['This Mac'] = { busy: false };
@@ -2977,25 +2976,24 @@ const startFirstVoice = () => {
 	}
 };
 
-// Only what first run made: the workspace's main worktree, checked out, no servers yet.
+// Only what first run made: the workspace's main worktree, checked out and installed.
 const prepareFirstVoice = () => {
 	for (const el of document.querySelectorAll('.vo-tab[data-ref], #vo-active .vo-row')) {
 		el.remove();
 	}
 
 	const ref = `${FR.ws}/main`;
-	VO_SESSIONS[ref] = ['', 'This Mac · ready · no dev servers yet'];
+	VO_SESSIONS[ref] = ['', 'This Mac · ready'];
 	document.querySelector('.vo-add').insertAdjacentHTML('beforebegin', `<button class="vo-tab" data-vo="session" data-ref="${ref}"><span class="dot"></span>${ref}</button>`);
 	document.querySelector('#vo-active .vo-list').insertAdjacentHTML('beforeend', `<button class="box-row as-link vo-row" data-vo="session" data-ref="${ref}"><span class="dot"></span><span class="sub"><b>${ref}</b><span class="m">This Mac</span></span><span class="sub"><b class="topic">Ready</b><span class="m">${FR.members.join(', ')} checked out and installed; no dev servers yet</span></span><span class="chip">idle</span></button>`);
 	document.getElementById('vo-active-count').textContent = '1 session on This Mac';
 	const projects = FR.members.map((name) => `<b>${name}</b>`).join(' and ');
 	document.querySelector('#vo-session .vo-stream').innerHTML = `
 		<div class="step-line">crew made ${ref}: ${FR.members.join(', ')} checked out and installed</div>
-		<div class="msg md"><p>Hi. I'm Claude, working in <b>${ref}</b>, with ${projects}. Tell me what to build or fix, by voice or by typing.</p><p>I can read, change and test the code now. To run the app, its dev servers need setting up first: say "set up the dev servers" and I'll work them out with you, or do it in Setup.</p><p>While I work, Voice OS reads my updates out loud, so you can look away.</p></div>`;
+		<div class="msg md"><p>Hi. I'm Claude, working in <b>${ref}</b>, with ${projects}. Tell me what to build or fix, by voice or by typing.</p><p>I can read, change and test the code now.</p><p>While I work, Voice OS reads my updates out loud, so you can look away.</p></div>`;
 	document.querySelector('#vo-session .vo-panels').innerHTML = `
 		<div class="vo-panel"><div class="label">Session</div><div class="kv">status <b>ready</b></div><div class="kv">cost <b>$0.00</b></div></div>
-		<div class="vo-panel"><div class="label">Dev servers</div><div class="kv">not set up yet <span class="lnk" data-pick="setup">Set up ↗</span></div></div>
-		<div class="vo-panel"><div class="label">Try saying</div><div class="vo-try"><span>What does this project do?</span><span>Set up the dev servers</span><span>Run the tests</span></div></div>`;
+		<div class="vo-panel"><div class="label">Try saying</div><div class="vo-try"><span>What does this project do?</span><span>What changed recently?</span><span>Run the tests</span></div></div>`;
 	const spokenName = ref.replace('/', ', ').replace(/-/g, ' ');
 	document.querySelector('.vo-spoken p').textContent = `${spokenName[0].toUpperCase()}${spokenName.slice(1)} is ready. What should we work on?`;
 	voGo('session', ref);
@@ -3005,8 +3003,8 @@ const showHome = (isFirstRun = FR.active && !FR.done) => {
 	const voice = document.getElementById('pick-voice');
 	voice.disabled = isFirstRun;
 	document.getElementById('pick-voice-sub').textContent = isFirstRun ? 'Add a project first: your sessions live here once you have one.' : 'Talk to your sessions on every machine: answer, follow along, switch.';
-	document.getElementById('pick-voice-meta').textContent = isFirstRun ? 'nothing set up yet' : FR.done ? '1 active' : '4 active · 1 waiting on you';
-	document.getElementById('pick-setup-meta').textContent = isFirstRun ? 'start here' : FR.done ? `${FR.added.length} projects not set up` : '3 things need you';
+	document.getElementById('pick-voice-meta').textContent = isFirstRun ? 'no projects yet' : FR.done ? '1 active' : '4 active · 1 waiting on you';
+	document.getElementById('pick-setup-meta').textContent = isFirstRun ? 'start here' : FR.done ? `${FR.added.length} projects on This Mac` : '3 things need you';
 	document.getElementById('always-wrap').hidden = isFirstRun;
 	const last = isFirstRun ? 'setup' : (pref('crew-last') ?? 'voice');
 	voice.classList.toggle('last', last === 'voice');

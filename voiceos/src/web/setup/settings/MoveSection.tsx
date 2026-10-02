@@ -60,7 +60,7 @@ export const MoveSection = ({ ctx }: { ctx: SetupContext }) => {
 			</div>
 			<p className="fail-why">
 				An export holds projects (by their git remote) and which workspaces they're in. Worktrees,
-				ports and pinned values stay here.
+				ports and worktree values stay here.
 			</p>
 			{isPicking && (
 				<div className="picks export-picks">

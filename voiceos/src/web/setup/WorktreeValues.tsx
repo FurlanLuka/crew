@@ -1,33 +1,42 @@
-// A worktree's values: the pinned ones (crew's overrides, fixed for this worktree only) and the
-// environment each server gets, as crew env reads it.
+// A worktree's Environment, in the project page's words: the values set for this worktree (crew's
+// overrides, which win over the project's own), the form that sets one, and what each server gets,
+// as crew env reads it.
 import { type FormEvent, useEffect, useState } from 'react';
 import { isOk, useCrew, useCrewAction } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { ResultLine, type SetupContext } from './common.js';
-import type { CrewEnvRow, CrewMember } from './types.js';
-import { readOverrides, toPinCommand } from './worktree.js';
+import type { CrewEnvRow, CrewMember, CrewProject } from './types.js';
+import { describeOverride, readOverrides, toOverrideCommand } from './worktree.js';
 import { countOf } from '../count.js';
 
-interface PinnedValuesProps {
+interface WorktreeOverridesProps {
 	ctx: SetupContext;
 	worktreeRef: string;
 	members: CrewMember[];
+	projects: CrewProject[];
 	onChanged: () => void;
 }
 
-export const PinnedValues = ({ ctx, worktreeRef, members, onChanged }: PinnedValuesProps) => {
+export const WorktreeOverrides = ({
+	ctx,
+	worktreeRef,
+	members,
+	projects,
+	onChanged,
+}: WorktreeOverridesProps) => {
 	const overrides = useCrew<unknown>(ctx.machine, { type: 'ls_overrides', ref: worktreeRef });
 	const action = useCrewAction(ctx.machine);
-	const [pin, setPin] = useState('');
-	const [pinProject, setPinProject] = useState('');
-	const pins = readOverrides(overrides.data);
-	const pinCommand = toPinCommand({ ref: worktreeRef, pin, project: pinProject });
+	const [text, setText] = useState('');
+	const [project, setProject] = useState('');
+	const lines = readOverrides(overrides.data).map((entry) =>
+		describeOverride(entry.key, members, projects),
+	);
+	const command = toOverrideCommand({ ref: worktreeRef, text, project });
 	// Every form shows its command: before anything is typed, its shape.
-	const shownPin =
-		pinCommand ?? toPinCommand({ ref: worktreeRef, pin: 'VAR=value', project: pinProject });
+	const shown = command ?? toOverrideCommand({ ref: worktreeRef, text: 'VAR=value', project });
 
-	const run = async (command: Parameters<typeof action.run>[0]) => {
-		const reply = await action.run(command);
+	const run = async (next: Parameters<typeof action.run>[0]) => {
+		const reply = await action.run(next);
 
 		overrides.refresh();
 		onChanged();
@@ -35,60 +44,72 @@ export const PinnedValues = ({ ctx, worktreeRef, members, onChanged }: PinnedVal
 		return reply;
 	};
 
-	const submitPin = async (event: FormEvent) => {
+	const submit = async (event: FormEvent) => {
 		event.preventDefault();
 
-		if (pinCommand && isOk(await run(pinCommand))) {
-			setPin('');
+		if (command && isOk(await run(command))) {
+			setText('');
 		}
 	};
 
 	return (
 		<>
 			<div className="label">
-				Pinned values{' '}
+				Environment{' '}
 				<span className="m label-note">
-					fixed for this worktree only; they win over the project's environment
+					a value set for this worktree wins over the project's environment
 				</span>
 			</div>
-			{pins.length > 0 && (
+			{lines.length > 0 && (
 				<div className="box">
-					{pins.map((entry) => (
-						<div key={entry.key} className="box-row">
-							<span className="dot ring" />
-							<span className="sub">
-								<b>
-									<code>{entry.key.replace(/^[^.]*\./, '')}</code>
-								</b>
-								<span className="m">
-									{entry.key.includes('.') ? `${entry.key.split('.')[0]} only` : 'every project'}
-								</span>
-							</span>
-							<button
-								type="button"
-								className="x"
-								aria-label={`Remove ${entry.key}`}
-								onClick={() => void run({ type: 'rm_override', ref: worktreeRef, var: entry.key })}
+					{lines.map((line) => {
+						const said = ['set for this worktree', line.scope, line.instead]
+							.filter(Boolean)
+							.join(' · ');
+
+						return (
+							<div
+								key={line.key}
+								className="box-row one-line"
+								data-override={line.key}
+								title={`${line.name} · ${said}`}
 							>
-								×
-							</button>
-						</div>
-					))}
+								<span className="dot ring" />
+								<span className="sub">
+									<code>{line.name}</code>
+									<span className="m">{said}</span>
+								</span>
+								<button
+									type="button"
+									className="x"
+									aria-label={`Remove ${line.key}`}
+									onClick={() => void run({ type: 'rm_override', ref: worktreeRef, var: line.key })}
+								>
+									×
+								</button>
+							</div>
+						);
+					})}
 				</div>
 			)}
-			<form className="ov-add" onSubmit={(event) => void submitPin(event)}>
+			<p className="m ov-say">Set a value for this worktree</p>
+			<form
+				className="ov-add"
+				aria-label="Set a value for this worktree"
+				onSubmit={(event) => void submit(event)}
+			>
 				<input
 					type="text"
 					aria-label="Variable and value"
 					placeholder="STRIPE_KEY=sk_test_…"
 					autoComplete="off"
-					value={pin}
-					onChange={(event) => setPin(event.target.value)}
+					value={text}
+					onChange={(event) => setText(event.target.value)}
 				/>
 				<select
 					aria-label="Which project"
-					value={pinProject}
-					onChange={(event) => setPinProject(event.target.value)}
+					value={project}
+					onChange={(event) => setProject(event.target.value)}
 				>
 					<option value="">every project</option>
 					{members.map((member) => (
@@ -97,11 +118,11 @@ export const PinnedValues = ({ ctx, worktreeRef, members, onChanged }: PinnedVal
 						</option>
 					))}
 				</select>
-				<button type="submit" className="btn" disabled={!pinCommand || action.isBusy}>
-					Pin value
+				<button type="submit" className="btn" disabled={!command || action.isBusy}>
+					Set value
 				</button>
 			</form>
-			<CommandLine commands={[shownPin]} machineTitle={ctx.machineTitle} />
+			<CommandLine commands={[shown]} machineTitle={ctx.machineTitle} />
 			<ResultLine reply={action.last} />
 		</>
 	);
@@ -111,7 +132,7 @@ interface WorktreeEnvironmentProps {
 	ctx: SetupContext;
 	worktreeRef: string;
 	members: CrewMember[];
-	// Changes when a pinned value did: read again.
+	// Changes when a value set for this worktree did: read again.
 	refreshKey: number;
 }
 
@@ -138,7 +159,7 @@ export const WorktreeEnvironment = ({
 	return (
 		<details className="env-all">
 			<summary>
-				Environment each server gets{' '}
+				What each server gets{' '}
 				<span className="m">{env.data ? countOf(env.data.length, 'variable') : ''}</span>
 			</summary>
 			{members.length > 1 && (
@@ -163,8 +184,8 @@ export const WorktreeEnvironment = ({
 							{entry.var}
 							{entry.server ? ` (${entry.server})` : ''}
 						</code>
-						<span className={`src ${entry.source === 'override' ? 'pin' : ''}`}>
-							{entry.source === 'override' ? 'pinned here' : entry.detail || entry.source}
+						<span className={`src ${entry.source === 'override' ? 'here' : ''}`}>
+							{entry.source === 'override' ? 'set for this worktree' : entry.detail || entry.source}
 						</span>
 					</div>
 				))}

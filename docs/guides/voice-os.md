@@ -522,7 +522,9 @@ Instructions always queue, unless you say they go now ("tell it right now to sto
 ## Dev servers
 
 Voice OS starts, stops and watches each worktree's dev servers through crew, on that worktree's own
-ports. The session page's **dev servers** panel shows each server with its link and state.
+ports. The session page's **dev servers** panel shows each server with its state and a small
+open icon at the row's end (its URL is the icon's tooltip). A worktree whose projects have no dev
+servers has no panel: a project without servers (a library, infra) is a whole project.
 
 - "Start the dev servers." · "Restart them." · "Stop the servers."
 - "What's wrong with the dev servers here?" Answered from what crew sees: which one died, and which

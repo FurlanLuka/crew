@@ -173,7 +173,7 @@ const said = (line: string): SetupReply => ({
 });
 
 // crew export's file (transfer.Bundle, version 2): projects by their remote, path left behind, and
-// workspace membership. Never worktrees, ports or pinned values.
+// workspace membership. Never worktrees, ports or worktree values.
 interface FakeBundle {
 	version: number;
 	projects: (Omit<CrewProject, 'path' | 'remote'> & { remote?: string })[];

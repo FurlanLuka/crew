@@ -1,11 +1,12 @@
-// Set up's view logic, pure: the board's rows and problems, what "not set up" means, the first-run
-// stage and a failure's stages. The breadcrumbs are in crumbs.ts, the chat's "✓ recorded" lines in
+// Set up's view logic, pure: the board's rows and problems, the first-run stage and a failure's
+// stages. The breadcrumbs are in crumbs.ts, the chat's "✓ recorded" lines in
 // recorded.ts.
 import { countOf } from '../count.js';
 import type { SetupPage } from '../router.js';
 import type {
 	CrewCheckStatus,
 	CrewIssue,
+	CrewMember,
 	CrewProject,
 	CrewWorkspace,
 	CrewWorktree,
@@ -36,10 +37,9 @@ export const deriveFirstRun = (
 	return worktrees.some((worktree) => !isCheckRef(worktree.ref)) ? 'ready' : 'has-projects';
 };
 
-// "Not set up" is a project with no dev servers: its sessions work on the code meanwhile.
-export const isNotSetUp = (project: CrewProject): boolean => !project.dev_servers?.length;
-
-export type ProjectState = 'ready' | 'failed' | 'setup';
+// A project's state is facts only: its kept check failed, or not. A project with no dev servers (a
+// library, infra) is a whole project, never "unfinished".
+export type ProjectState = 'ready' | 'failed';
 
 export const readCheckFailure = (project: string, worktrees: CrewWorktree[]): CrewIssue | null =>
 	worktrees.find((worktree) => worktree.ref === `${CHECK_PREFIX}${project}`)?.issues?.[0] ?? null;
@@ -74,6 +74,27 @@ export const readCheck = (
 export const describeCheckAction = (state: CheckView['state']): string =>
 	state === 'none' ? 'Check' : 'Check again';
 
+// Whether a worktree has anything to start: a project with no dev servers (a library, infra) has
+// nothing to say in the session's Dev servers panel.
+export const hasDevServers = (members: CrewMember[], projects: CrewProject[]): boolean => {
+	const names = new Set(members.map((member) => member.name));
+
+	return projects.some(
+		(project) => names.has(project.name) && Boolean(project.dev_servers?.length),
+	);
+};
+
+// A list in one table cell: the first few, then "+N" for the rest ("web :3000 · api :4000 +2"). The
+// cell's title carries the whole list.
+export const summarizeList = (items: string[], shown: number): string =>
+	items.length > shown
+		? `${items.slice(0, shown).join(' · ')} +${items.length - shown}`
+		: items.join(' · ');
+
+// One dev server as the board says it: "web :3000", or just its name when it has no port.
+export const describeServer = (server: { name: string; port?: number }): string =>
+	server.port ? `${server.name} :${server.port}` : server.name;
+
 // The workspaces a project is a member of.
 export const listWorkspacesOf = (workspaces: CrewWorkspace[], project: string): CrewWorkspace[] =>
 	workspaces.filter((workspace) => workspace.projects?.some((member) => member.name === project));
@@ -81,13 +102,7 @@ export const listWorkspacesOf = (workspaces: CrewWorkspace[], project: string): 
 export const deriveProjectState = (
 	project: CrewProject,
 	worktrees: CrewWorktree[],
-): ProjectState => {
-	if (readCheckFailure(project.name, worktrees)) {
-		return 'failed';
-	}
-
-	return isNotSetUp(project) ? 'setup' : 'ready';
-};
+): ProjectState => (readCheckFailure(project.name, worktrees) ? 'failed' : 'ready');
 
 // The last line of what crew kept: the error, where the first is often the command that printed it.
 const readLastLine = (detail: string): string =>
@@ -113,20 +128,17 @@ export const describeIssue = (issue: CrewIssue, { isNamed = true } = {}): string
 
 export interface Problem {
 	key: string;
-	// Red needs you; a ring is "not finished", quieter.
-	isQuiet: boolean;
 	name: string;
 	what: string;
-	// The page that has its fix; null when the fix is Claude's alone.
-	fix: SetupPage | null;
-	// What "Fix with Claude" / "Set up with Claude" sends to the machine's setup chat.
+	// The page that has its fix.
+	fix: SetupPage;
+	// What "Fix with Claude" sends to the machine's setup chat.
 	ask: string;
 }
 
-// The strip above the board: failed checks and broken worktrees first, then one quiet row for
-// the projects not set up yet.
-export const listProblems = (projects: CrewProject[], worktrees: CrewWorktree[]): Problem[] => {
-	const failing = worktrees.flatMap((worktree): Problem[] => {
+// The strip above the board: failed checks and broken worktrees, nothing else.
+export const listProblems = (worktrees: CrewWorktree[]): Problem[] =>
+	worktrees.flatMap((worktree): Problem[] => {
 		const issue = worktree.issues?.[0];
 
 		if (!issue) {
@@ -139,7 +151,6 @@ export const listProblems = (projects: CrewProject[], worktrees: CrewWorktree[])
 			return [
 				{
 					key: worktree.ref,
-					isQuiet: false,
 					name: project,
 					what: `check failed at ${issue.stage} · ${readLastLine(issue.detail)}`,
 					fix: { page: 'project', name: project },
@@ -151,7 +162,6 @@ export const listProblems = (projects: CrewProject[], worktrees: CrewWorktree[])
 		return [
 			{
 				key: worktree.ref,
-				isQuiet: false,
 				name: worktree.ref,
 				what: describeIssue(issue),
 				fix: { page: 'worktree', ref: worktree.ref },
@@ -159,37 +169,18 @@ export const listProblems = (projects: CrewProject[], worktrees: CrewWorktree[])
 			},
 		];
 	});
-	const notSetUp = projects.filter(isNotSetUp).map((project) => project.name);
-
-	if (notSetUp.length === 0) {
-		return failing;
-	}
-
-	const quiet: Problem =
-		notSetUp.length === 1
-			? {
-					key: 'not-set-up',
-					isQuiet: true,
-					name: notSetUp[0] ?? '',
-					what: 'not set up yet · its sessions work on the code meanwhile',
-					fix: { page: 'project-edit', name: notSetUp[0] ?? '' },
-					ask: `Set up ${notSetUp[0]}: work out its dev servers, record them, and run the check.`,
-				}
-			: {
-					key: 'not-set-up',
-					isQuiet: true,
-					name: `${countOf(notSetUp.length, 'project')} not set up`,
-					what: 'no dev servers yet · set each up below, or let Claude work them out',
-					fix: null,
-					ask: `Set up ${notSetUp.join(', ')}: work out each one's dev servers, record them, and run the check.`,
-				};
-
-	return [...failing, quiet];
-};
 
 // How many things need the developer on a machine (the machine menu and Home say this).
-export const countNeedsYou = (projects: CrewProject[], worktrees: CrewWorktree[]): number =>
-	listProblems(projects, worktrees).filter((problem) => !problem.isQuiet).length;
+export const countNeedsYou = (worktrees: CrewWorktree[]): number => listProblems(worktrees).length;
+
+// Home's Set up card: what needs the developer, else how many projects this machine has.
+export const describeSetupMeta = (projects: CrewProject[], worktrees: CrewWorktree[]): string => {
+	const needs = countNeedsYou(worktrees);
+
+	return needs > 0
+		? `${countOf(needs, 'thing needs', 'things need')} you`
+		: `${countOf(projects.length, 'project')} on This Mac`;
+};
 
 // A recorded failure's place in a worktree's making: the stages before it passed, the rest never ran.
 const STAGES = ['checkout', 'install', 'smoke'];

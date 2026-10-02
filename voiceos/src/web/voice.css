@@ -546,15 +546,20 @@
 	}
 }
 
-/* The side panels: flush, split by hairlines; quiet mono for what is data. */
+/* The side panels: flush, split by hairlines; quiet mono for what is data. One column that never
+   grows past the panel: an unbroken path, URL or voice line wraps instead of scrolling sideways. */
 .vo-panels {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
 	min-width: 0;
 }
 .vo-panel,
 .vo-panels .panel {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
+	overflow-wrap: anywhere;
 	gap: 8px;
 	padding: 16px 20px;
 	border-bottom: 1px solid var(--hair);
@@ -564,6 +569,7 @@
 	display: flex;
 	justify-content: space-between;
 	gap: 10px;
+	min-width: 0;
 	color: var(--label-2);
 }
 .vo-panel .kv b {
@@ -577,15 +583,51 @@
 	display: flex;
 	align-items: center;
 	gap: 9px;
+	min-width: 0;
 	color: var(--label-2);
 	font-size: 12.5px;
 }
+.vo-panels .row > * {
+	min-width: 0;
+}
+.vo-panels .devrow .c-ink {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
 .vo-panels .row .el {
+	flex: none;
+	white-space: nowrap;
 	margin-left: auto;
 	color: var(--label-3);
 	font: 11.5px var(--mono);
 }
 .vo-panels .row a.el {
+	color: #fff;
+}
+/* A dev server's link: an icon at the row's end, the URL in its tooltip. */
+.vo-panels .row .open-link {
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	margin-left: auto;
+	border-radius: 6px;
+	color: var(--label-2);
+}
+.vo-panels .row .open-link svg {
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.vo-panels .row .open-link:hover,
+.vo-panels .row .open-link:focus-visible {
+	background: rgba(255, 255, 255, 0.08);
 	color: #fff;
 }
 .lnk {
@@ -1221,6 +1263,7 @@
 	}
 	.vo-session .vo-panels {
 		min-height: 0;
+		overflow-x: hidden;
 		overflow-y: auto;
 		scrollbar-width: none;
 	}

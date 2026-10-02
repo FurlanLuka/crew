@@ -28,7 +28,7 @@ const COPY: Record<NameFormKind, NameFormCopy> = {
 	},
 	duplicate: {
 		verb: 'Duplicate',
-		lead: "Fresh checkouts of the same projects, on new ports, with this worktree's pinned values copied across.",
+		lead: 'Fresh checkouts of the same projects, on new ports, with the values set for this worktree copied across.',
 		field: 'Name',
 		after: 'each project is checked out, installed and its servers tried',
 		command: (ref, name) => ({ type: 'duplicate_worktree', ref, name }),

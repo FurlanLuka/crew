@@ -83,20 +83,30 @@ describe('the board', () => {
 		await table.locator('tr[data-project="store-api"]').waitFor({ timeout: 5000 });
 
 		expect(await page.locator('h1').innerText()).toBe('This Mac');
+		// Failures only: signals has no dev servers, and that is a whole project, not a problem.
 		expect(await page.locator('.problem').allInnerTexts()).toEqual([
 			expect.stringContaining('store-front/wrk1'),
 			expect.stringContaining('store-api'),
-			expect.stringContaining('signals'),
 		]);
-		expect(await page.locator('.problem.quiet').innerText()).toContain('Set up with Claude');
 		expect(
 			(await table.locator('tr[data-project="store-api"]').innerText()).toLowerCase(),
 		).toContain('check failed');
-		expect(await table.locator('tr[data-project="signals"]').innerText()).toContain('Set up');
-		// The member column: every workspace the project is in, by name.
-		expect(await table.locator('tr[data-project="store-front"] td.m').nth(1).innerText()).toBe(
-			'store-front, admin',
+		const signals = table.locator('tr[data-project="signals"]');
+		await signals.getByRole('button', { name: 'Check', exact: true }).waitFor({ timeout: 5000 });
+		const board = (await page.locator('section[aria-label="Board"]').innerText()).toLowerCase();
+
+		for (const words of ['not set up', 'set up yet', 'dev servers yet', 'no dev servers']) {
+			expect(board).not.toContain(words);
+		}
+
+		expect(await page.locator('.lead').innerText()).toBe(
+			'3 projects in 2 workspaces. 2 things need you.',
 		);
+		expect(await signals.getByRole('button', { name: /Set up/ }).count()).toBe(0);
+		// The member column: the first workspace, "+N" for the rest, every one in the title.
+		const members = table.locator('tr[data-project="store-front"] td.m').nth(1);
+		expect(await members.innerText()).toBe('store-front +1');
+		expect(await members.getAttribute('title')).toBe('store-front, admin');
 
 		await page.getByRole('tab', { name: 'Workspaces' }).click();
 		await page.waitForURL('**/setup/workspaces');
@@ -105,6 +115,135 @@ describe('the board', () => {
 		expect(await row.locator('.srv button.down').innerText()).toContain('wrk1');
 		expect(await page.getByRole('button', { name: 'New workspace' }).count()).toBe(1);
 		await context.close();
+	}, 20_000);
+
+	it('every row is one line, at 1440 and 1024: a long install, four servers, three workspaces', async () => {
+		const local = server.crew.machines.local;
+
+		if (!local) {
+			throw new Error('no local machine in the fake crew');
+		}
+
+		local.projects.push({
+			name: 'checkout-api-with-a-rather-long-name',
+			path: '/Users/dev/code/checkout-api',
+			setup:
+				'pnpm install --frozen-lockfile && pnpm --filter @store/checkout-api run codegen && pnpm build:deps',
+			dev_servers: [
+				{ name: 'api', port: 4100, command: 'pnpm dev' },
+				{ name: 'worker', port: 4101, command: 'pnpm worker' },
+				{ name: 'webhooks', port: 4102, command: 'pnpm webhooks' },
+				{ name: 'scheduler', port: 4103, command: 'pnpm scheduler' },
+			],
+			remote: 'git@github.com:example/checkout-api.git',
+		});
+		local.workspaces.push({ name: 'payments', projects: [], worktrees: ['main'] });
+
+		for (const workspace of local.workspaces) {
+			workspace.projects.push({ name: 'checkout-api-with-a-rather-long-name', mode: 'worktree' });
+		}
+
+		for (const viewport of [
+			{ width: 1440, height: 900 },
+			{ width: 1024, height: 768 },
+		]) {
+			const { context, page } = await open('/setup', viewport);
+			const table = page.locator('.matrix');
+			const long = table.locator('tr[data-project="checkout-api-with-a-rather-long-name"]');
+			await long.getByRole('button', { name: 'Check', exact: true }).waitFor({ timeout: 5000 });
+			await table.locator('tr[data-project="store-api"] .chip.ask').waitFor({ timeout: 5000 });
+
+			expect(await long.locator('td').nth(2).innerText()).toBe('api :4100 · worker :4101 +2');
+			expect(await long.locator('td').nth(3).innerText()).toBe('store-front +2');
+			const heights = await table
+				.locator('tbody tr')
+				.evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+			// A one-line row: what the plainest project (signals) takes.
+			const oneLine = await table
+				.locator('tr[data-project="signals"]')
+				.evaluate((row) => row.getBoundingClientRect().height);
+
+			expect(heights.map((height) => Math.round(height))).toEqual(
+				heights.map(() => Math.round(oneLine)),
+			);
+			expect(oneLine).toBeLessThan(56);
+
+			await page.getByRole('tab', { name: 'Workspaces' }).click();
+			await page.locator('tr[data-workspace="payments"]').waitFor({ timeout: 5000 });
+			const workspaceHeights = await table
+				.locator('tbody tr')
+				.evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().height)));
+
+			expect(new Set(workspaceHeights).size).toBe(1);
+			await context.close();
+		}
+	}, 30_000);
+
+	it('a whole row opens its page; a control inside it does only its own thing', async () => {
+		const { context, page } = await open('/setup');
+		const row = page.locator('tr[data-project="store-front"]');
+		await row.waitFor({ timeout: 5000 });
+
+		await row.locator('td').nth(1).click();
+		await page.waitForURL('**/setup/project/store-front');
+		await page.goBack();
+		await page
+			.locator('tr[data-project="signals"]')
+			.getByRole('button', { name: 'Check', exact: true })
+			.click();
+		await page.waitForURL('**/setup/project/signals/check');
+
+		await page.goto(server.url('/setup/workspaces'));
+		const pill = page.locator('tr[data-workspace="admin"] .srv button', { hasText: 'main' });
+		await pill.click();
+		await page.waitForURL('**/setup/worktree/admin/main');
+		await page.goBack();
+		await page.locator('tr[data-workspace="admin"] td').nth(1).click();
+		await page.waitForURL('**/setup/workspace/admin');
+
+		const member = page.locator('[data-project="store-front"].row-link');
+		await member.getByRole('button', { name: /Take store-front out/ }).click();
+		await page
+			.getByRole('dialog', { name: 'Take store-front out of admin?' })
+			.waitFor({ timeout: 5000 });
+		expect(page.url()).toContain('/setup/workspace/admin');
+		// Anywhere else on the row: its name's button covers it.
+		const note = await member.locator('.m').boundingBox();
+		await page.mouse.click((note?.x ?? 0) + 4, (note?.y ?? 0) + 4);
+		await page.waitForURL('**/setup/project/store-front');
+		await context.close();
+	}, 20_000);
+
+	it('every select: no native arrow, a chevron 12px in from the right, the text clear of it', async () => {
+		const styleOf = (page: Page) =>
+			page.locator('select').evaluateAll((selects) =>
+				selects.map((select) => {
+					const style = getComputedStyle(select);
+
+					return {
+						appearance: style.appearance,
+						paddingRight: style.paddingRight,
+						position: style.backgroundPosition,
+						hasChevron: style.backgroundImage.startsWith('url('),
+					};
+				}),
+			);
+		const want = {
+			appearance: 'none',
+			paddingRight: '32px',
+			position: 'calc(100% - 12px) 50%',
+			hasChevron: true,
+		};
+
+		for (const path of ['/setup/project/store-front/edit', '/setup/worktree/store-front/main']) {
+			const { context, page } = await open(path);
+			await page.locator('select').first().waitFor({ timeout: 5000 });
+			const styles = await styleOf(page);
+
+			expect(styles.length).toBeGreaterThan(0);
+			expect(styles).toEqual(styles.map(() => want));
+			await context.close();
+		}
 	}, 20_000);
 
 	it("the machine picker: every machine, another one's problems said in the menu", async () => {
@@ -199,12 +338,72 @@ describe('a project', () => {
 
 	it('never checked → "Check", not "Check again"', async () => {
 		const { context, page } = await open('/setup/project/store-front');
-		await page.getByText('Set up, not checked yet').waitFor({ timeout: 5000 });
+		await page.getByText('Not checked yet').waitFor({ timeout: 5000 });
 
 		expect(await page.getByRole('button', { name: 'Check', exact: true }).count()).toBe(1);
 		expect(await page.getByRole('button', { name: 'Check again' }).count()).toBe(0);
 		await context.close();
 	}, 20_000);
+
+	it('what crew recorded, one line per fact, long values cut with the whole in the title; no .env suggestions', async () => {
+		const project = server.crew.machines.local?.projects.find((row) => row.name === 'store-front');
+
+		if (!project) {
+			throw new Error('no store-front in the fake crew');
+		}
+
+		project.setup = `pnpm install --frozen-lockfile && ${'pnpm run codegen && '.repeat(6)}pnpm build`;
+		project.env_cmd = `op inject -i .env.template -o .env --account ${'x'.repeat(80)}`;
+		project.dev_servers = [
+			...(project.dev_servers ?? []),
+			{ name: 'storybook', port: 6006, command: `pnpm storybook --ci ${'--flag '.repeat(30)}` },
+		];
+		project.bindings = [
+			...(project.bindings ?? []),
+			{ var: 'PUBLIC_ASSETS_URL', value: `https://cdn.example.com/${'assets/'.repeat(30)}` },
+		];
+
+		for (const viewport of [
+			{ width: 1440, height: 900 },
+			{ width: 1024, height: 768 },
+		]) {
+			const { context, page } = await open('/setup/project/store-front', viewport);
+			const facts = page.locator('table[aria-label="What crew recorded"]');
+			await facts.locator('tr[data-fact="install"]').waitFor({ timeout: 5000 });
+
+			expect(await facts.locator('th').allInnerTexts()).toEqual([
+				'Install',
+				'Env command',
+				'Dev server',
+				'Dev server',
+				'Environment',
+				'Environment',
+				'Environment',
+				'Workspaces',
+				'Source',
+				'Path',
+			]);
+			expect(await facts.locator('tr[data-fact="install"] td').getAttribute('title')).toBe(
+				project.setup,
+			);
+			const heights = await facts
+				.locator('tr')
+				.evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().height)));
+
+			expect(new Set(heights).size).toBe(1);
+			expect(heights[0]).toBeLessThan(56);
+			expect(await page.getByText('Found in .env').count()).toBe(0);
+			expect(await page.getByRole('button', { name: 'Add all' }).count()).toBe(0);
+			await context.close();
+		}
+
+		const { context, page } = await open('/setup/project/store-front/edit');
+		await page.getByPlaceholder('API_URL').waitFor({ timeout: 5000 });
+		expect(await page.getByText('Found in .env').count()).toBe(0);
+		expect(await page.getByRole('button', { name: 'Use' }).count()).toBe(0);
+		expect(commandsOf('add_binding_scan')).toEqual([]);
+		await context.close();
+	}, 30_000);
 
 	it("the Environment editor: a live preview of what each worktree gets, and crew's own error for a bad template", async () => {
 		const { context, page } = await open('/setup/project/store-front/edit');
@@ -288,11 +487,20 @@ describe('worktrees', () => {
 		await context.close();
 	}, 20_000);
 
-	it('pinned values: the form shows its command before anything is typed, then the one it runs', async () => {
+	it('Environment: values set for this worktree say what they replace; the form shows its command, then the one it runs', async () => {
 		const { context, page } = await open('/setup/worktree/store-front/main');
-		const form = page.locator('form.ov-add');
+		const form = page.getByRole('form', { name: 'Set a value for this worktree' });
 		await form.waitFor({ timeout: 5000 });
 		const runs = page.locator('form.ov-add + .runs pre');
+		const override = page.locator('[data-override="STORE_API_URL"]');
+		await override.waitFor({ timeout: 5000 });
+
+		expect(await override.innerText()).toContain('set for this worktree');
+		expect(await override.innerText()).toContain(
+			"instead of store-front's value: store-api api's URL",
+		);
+		expect(await page.locator('.label', { hasText: 'Environment' }).count()).toBe(1);
+		expect((await page.locator('section.page').innerText()).toLowerCase()).not.toContain('pinned');
 
 		expect(await runs.innerText()).toBe('crew add override store-front/main VAR=value');
 		await form.getByLabel('Variable and value').fill('STRIPE_KEY=sk_test_1');
@@ -301,6 +509,32 @@ describe('worktrees', () => {
 			'crew add override store-front/main store-api.STRIPE_KEY=sk_test_1',
 		);
 		expect(await page.locator('form.ov-add + .runs .label').innerText()).toMatch(/This Mac/i);
+		await context.close();
+	}, 20_000);
+
+	it('the header: rename and duplicate beside the name, Open in Voice OS alone on the right; server actions in Dev servers', async () => {
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const title = page.locator('.title-row');
+		await title.getByRole('button', { name: 'Rename' }).waitFor({ timeout: 5000 });
+
+		expect(await title.locator('h1').innerText()).toBe('store-front/main');
+		expect(await title.getByRole('button', { name: 'Duplicate' }).getAttribute('title')).toBe(
+			'Duplicate',
+		);
+		expect(await page.locator('.head-row > .row-actions button').allInnerTexts()).toEqual([
+			'Open in Voice OS',
+		]);
+		const servers = page.getByRole('region', { name: 'Dev servers' });
+		const actions = servers.locator('.section-head button');
+		await servers.getByRole('button', { name: 'Verify' }).waitFor({ timeout: 5000 });
+
+		expect(await actions.allInnerTexts()).toEqual(['Stop servers', 'Restart', 'Verify', 'Logs']);
+
+		await title.getByRole('button', { name: 'Rename' }).click();
+		await page.waitForURL('**/setup/worktree/store-front/main/rename');
+		await page.goBack();
+		await page.locator('.title-row').getByRole('button', { name: 'Duplicate' }).click();
+		await page.waitForURL('**/setup/worktree/store-front/main/duplicate');
 		await context.close();
 	}, 20_000);
 
@@ -549,6 +783,7 @@ describe('first run', () => {
 		await voice.getByText('Add a project first').waitFor({ timeout: 5000 });
 
 		expect(await voice.isDisabled()).toBe(true);
+		expect(await voice.innerText()).toContain('no projects yet');
 		expect(await page.locator('.launch-choice.last').innerText()).toContain('start here');
 		expect(await page.getByText('Always open Voice OS').count()).toBe(0);
 		await context.close();

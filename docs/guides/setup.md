@@ -48,56 +48,54 @@ you open the menu) and the breadcrumbs of where you are. **Esc** goes up one bre
 
 The board is the machine's front page: what it has, and what needs you.
 
-![The board on This Mac: Setup with Claude, the problems strip (a failed install in store-front/wrk1, a failed check of store-api, signals not set up yet), and the projects table](../images/setup/board.png)
+![The board on This Mac: Setup with Claude, the problems strip (a failed install in store-front/wrk1, a failed check of store-api), and the projects table, one line per project](../images/setup/board.png)
 
 From the top:
 
 - **Setup with Claude** — a box to ask the machine's Claude anything about setting it up. **Open**
   goes to the [whole conversation](#setup-with-claude).
 - **The problems strip** — one row per thing that needs you: a worktree whose install or servers
-  failed, a project whose check failed, projects that are not set up yet. Each row has **Fix**
+  failed, or a project whose check failed. Each row has **Fix**
   (the page where the failure is shown, with its evidence) and **Fix with Claude** (the same
   failure handed to Setup with Claude). Nothing broken, no strip.
 - **Projects** and **Workspaces** — two tabs over one table.
 
-**Projects** lists every project on the machine: its install, its dev servers with their ports,
-the workspaces it is in, and its state — not checked, check failed (and at which step), or ready.
-**Add project** takes a git URL (crew clones it) or a folder you already have (crew records where
-it is and changes nothing in it); the form shows `crew add project …` as you type.
+**Projects** lists every project on the machine, one line each: its install, its dev servers with
+their ports, the workspaces it is in, and its state — **Check** (never checked), check failed, or
+ready. A long cell ends in "…" and shows the whole of it on hover; a list says its first entries and
+how many more ("web :3000 · api :4000 +2", "store-front +1"). A click anywhere on a row opens the
+project; its own buttons do only their own thing. **Add project** takes a git URL (crew clones it)
+or a folder you already have (crew records where it is and changes nothing in it); the form shows
+`crew add project …` as you type.
 
-A project with **no dev servers is not set up**. That is fine to start with: its sessions can read
-and change its code meanwhile, and the strip keeps one quiet row for them with **Set up** and **Set
-up with Claude**.
+A project with no dev servers (a library, infra) is a whole project: nothing flags it, and its
+sessions read, change and test its code like any other.
 
 ![The Workspaces tab: store-front with three projects and two worktrees, wrk1 marked failed; admin with its main worktree](../images/setup/workspaces.png)
 
 **Workspaces** lists each workspace with its projects and its worktrees as chips: green when
-ready, red with what failed, and **+ new** to make another. **New workspace** opens the form.
+ready, red with what failed, "+N" for the rest, and **+ new** to make another. **New workspace**
+opens the form.
 
 ## A project
 
-Click a project for its page: how it is installed, its dev servers, its environment, the
-workspaces it is in and where its code comes from.
+Click a project for its page: what crew recorded, one line per fact — its install and env
+command, each dev server, each Environment variable, the workspaces it is in, where its code comes
+from and where it is. A long value ends in "…" with the whole of it on hover.
 
-![store-api's page: a failed check at install with the pnpm error, Fix with Claude, Edit setup and Check again; its setup below; and two .env lines crew can fill in](../images/setup/project.png)
+![store-api's page: a failed check at install with the pnpm error, Fix with Claude, Edit setup and Check again; under it what crew recorded, one line per fact](../images/setup/project.png)
 
 When its last check failed, the page opens on that: the step it stopped at (checkout, install or
 servers), the end of the log, and what it means ("its worktrees keep their code, and the project
 stays as it was set up"). **Fix with Claude**, **Edit setup**, **Check again** and **Full log**
 sit under it.
 
-**Found in .env** lists the lines of the project's `.env` files that point at `localhost` — the
-addresses crew can fill in for each worktree. "looks like signals's URL" means one project
-matches; **Add** records it. "two projects configured on :3000 — pick one by hand" means crew will
-not guess, and **Choose…** asks you. **Add all** takes every clear one
-(`crew add binding store-api --scan --apply`).
-
 **Remove project** at the bottom takes it out of crew. It asks first, and says what goes with it:
 a clone crew made goes to crew's trash, a folder you added is never touched.
 
 ### Edit setup
 
-**Edit setup** (or **Set up** on a project that has none) opens the project's form:
+**Edit setup** opens the project's form:
 
 ![The form for store-front: install command, env command, one dev server "web" on port 3000, and the Environment with two variables](../images/setup/project-form.png)
 
@@ -112,7 +110,8 @@ a clone crew made goes to crew's trash, a folder you added is never touched.
   projects of the same worktree. Pick the variable, where its value comes from (`store-api's URL`,
   its host, its port, or your own text with those inside it, like `ws://{{signals.host}}/rtc`) and
   which server gets it. Before you save, each line shows the value it would get in every worktree;
-  one that can't resolve says why. The .env lines crew found are under it, ready to add.
+  one that can't resolve says why. In the terminal, `crew add binding <project> --scan` proposes
+  the `localhost` lines of the project's `.env` files.
 
 Save records it; the command line under the form is what runs. Stuck? **Ask Claude** sends the
 form's project to Setup with Claude, which picks up from there. In the terminal, the Environment
@@ -146,22 +145,26 @@ the space on disk — before anything is removed.
 
 A worktree's page is one working copy of the workspace:
 
-![store-front/wrk1: store-api's install failed with its error and Install again, the three dev servers stopped, the Pinned values form, and what is on disk](../images/setup/worktree.png)
+![store-front/wrk1: rename and duplicate beside its name, Open in Voice OS; store-api's install failed with its error and Install again; the Dev servers with Start servers, Verify and Logs; its Environment with a value set for this worktree](../images/setup/worktree.png)
 
-- **Start servers**, **Verify** (check that each server comes up again) and **Open in Voice OS**
-  at the top; **Rename**, **Duplicate** and **Logs** under the name.
+- Its name, with **Rename** and **Duplicate** as small icons beside it, and **Open in Voice OS** on
+  the right.
 - A failure is shown first, the same way as on a project: the step, the end of the log, what it
   means ("its session can read and change the code but not run it"), **Install again**, **Fix
   with Claude**, **Full log**.
-- **Dev servers** — each with its state and, while it runs, its URL. **Logs** shows its output.
-- **Pinned values** — a value fixed for this worktree only, for every project or one of them
-  (`STRIPE_KEY=sk_test_…`). It wins over the project's Environment. **Environment each server
-  gets** opens to show the final set, server by server. Terminal: `crew add override`.
+- **Dev servers** — each with its state and, while it runs, its URL. The section's own row has
+  **Start servers** (or **Stop servers** and **Restart**), **Verify** (check that each server comes
+  up again) and **Logs** (the servers' and the runners' output).
+- **Environment** — the values set for this worktree only, for every project or one of them
+  (`STRIPE_KEY=sk_test_…`). Each says **set for this worktree** and what it replaces ("instead of
+  store-front's value: store-api api's URL"): it wins over the project's Environment, scoped values
+  included. **Set a value for this worktree** adds one. **What each server gets** opens to show the
+  final set, server by server. Terminal: `crew add override`.
 - **On disk** — its size and folder, and how each project is in it.
 
 **Rename** moves its checkouts and renames crew's branches; it is refused while its servers run or
 setup is busy with it. **Duplicate** makes fresh checkouts of the same projects on new ports, with
-this worktree's pinned values copied across. **Remove worktree** shows what would go first, like
+the values set for this worktree copied across. **Remove worktree** shows what would go first, like
 a workspace; removing a workspace's last worktree removes the workspace too.
 
 ## A new worktree
@@ -238,8 +241,8 @@ updates it from here.
 ## Moving to another machine
 
 **Export…** picks the projects and workspaces to take (or everything) and saves one file. It holds
-projects by their git remote and which workspaces they are in; worktrees, ports and pinned values
-stay here. Terminal: `crew export --all`.
+projects by their git remote and which workspaces they are in; worktrees, ports and worktree
+values stay here. Terminal: `crew export --all`.
 
 **Import…** on the other machine reads that file and shows one row per item:
 
@@ -271,9 +274,10 @@ On a fresh crew, Home greys Voice OS out and Set up opens on **Set up This Mac**
    `.env` copied and each project installed, with the progress shown as it goes; an install that
    fails says so with **Fix with Claude**.
 
-Then **Open Voice OS** opens that worktree's session. Dev servers come later, project by project,
-from the board's "not set up" row. Nothing about these steps is stored: crew's own state says
-which one you are on, so a terminal `crew add project` moves the page along too.
+Then **Open Voice OS** opens that worktree's session. A project's dev servers, when it has any,
+go on its **Edit setup** form, or Setup with Claude works them out. Nothing about these steps is
+stored: crew's own state says which one you are on, so a terminal `crew add project` moves the page
+along too.
 
 ## On a phone
 

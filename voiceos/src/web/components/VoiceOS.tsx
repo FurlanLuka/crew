@@ -31,7 +31,7 @@ interface VoiceOSProps {
 	blockedOpen: OpenRequest | null;
 	player: PcmPlayer;
 	onHome: () => void;
-	onSetUp: (machine: string, project?: string) => void;
+	onSetUp: (machine: string) => void;
 }
 
 // "Before you talk": "Not now" holds for the tab, through a reconnect and the reload a server
@@ -160,13 +160,7 @@ export const VoiceOS = ({
 					)}
 				</div>
 				{session ? (
-					<Cockpit
-						key={session.ref}
-						session={session}
-						state={state}
-						dispatch={dispatch}
-						onSetUp={onSetUp}
-					/>
+					<Cockpit key={session.ref} session={session} state={state} dispatch={dispatch} />
 				) : view.kind === 'activate' ? (
 					<Activate
 						state={state}
