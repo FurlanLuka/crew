@@ -234,8 +234,7 @@ if (suite === 'route') {
 	}
 }
 
-// Haiku's worded follow-ups and progress lines: a measurement like route, never in `all`, never a
-// gate.
+// Haiku's worded follow-ups: a measurement like route, never in `all`, never a gate.
 if (suite === 'voice-lines') {
 	const { costOf, emptyUsage } = await import('./route.js');
 	const { runVoiceLinesEval, scoreVoiceLines } = await import('./voice-lines.js');

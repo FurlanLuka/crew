@@ -59,7 +59,7 @@ export const findVoiceOsQuestion = ({
 	now,
 	heardFrom = now,
 }: FindVoiceOsQuestionParams): SpokenLine | null => {
-	// Filler ("Okay.", a progress line) asks nothing and hides nothing: the question before it stands.
+	// Filler ("Okay.") asks nothing and hides nothing: the question before it stands.
 	const last = spoken
 		.filter((line) => line.at < heardFrom && !line.isUnplayed && !line.isFiller)
 		.at(-1);

@@ -34,7 +34,7 @@ export interface SpeechItem {
 	// elsewhere by the time it plays.
 	isHoldable?: boolean;
 	chime?: 'needs';
-	// Voice OS's own filler (an instant "Okay.", a progress line): no chime, never held, never a
+	// Voice OS's own filler (an instant "Okay."): no chime, never held, never a
 	// question.
 	isFiller?: boolean;
 	// Voiced with its tags even when short (see instant-ack.ts).

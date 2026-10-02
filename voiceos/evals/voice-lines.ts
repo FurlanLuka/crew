@@ -1,5 +1,5 @@
-// The voice-lines eval: does Haiku word Voice OS's follow-ups and progress lines the way the app needs
-// them — the label kept, the switch asked exactly when offered, short, and nothing invented? A
+// The voice-lines eval: does Haiku word Voice OS's follow-ups the way the app needs them
+// — the label kept, the switch asked exactly when offered, short, and nothing invented? A
 // measurement, never a gate. Every run bills the Anthropic key (a few cents: Haiku, ~20 cases).
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'node:fs';
@@ -7,12 +7,8 @@ import { join } from 'node:path';
 import type { FollowUpFacts } from '../src/shared/follow-up.js';
 import { stripTags } from '../src/shared/spoken.js';
 import { INSTANT_ACK_POOL } from '../src/speech/instant-ack.js';
-import {
-	findFollowUpProblem,
-	type FollowUpInput,
-	type ProgressInput,
-} from '../src/voice-lines/prompt.js';
-import { wordFollowUp, wordProgress } from '../src/voice-lines/writer.js';
+import { findFollowUpProblem, type FollowUpInput } from '../src/voice-lines/prompt.js';
+import { wordFollowUp } from '../src/voice-lines/writer.js';
 import { attempt, mapPool } from './pool.js';
 import { countUsage, type RouteUsage } from './route.js';
 
@@ -26,9 +22,7 @@ interface CaseChecks {
 	not_starts?: string[];
 }
 
-export type VoiceLineCase =
-	| (CaseChecks & { kind: 'follow_up' } & FollowUpInput)
-	| (CaseChecks & { kind: 'progress' } & ProgressInput);
+export type VoiceLineCase = CaseChecks & { kind: 'follow_up' } & FollowUpInput;
 
 export interface VoiceLineRow {
 	id: string;
@@ -75,16 +69,14 @@ export const checkCaseLine = (testCase: VoiceLineCase, line: string): string | n
 
 	const invented = [
 		...(testCase.not_includes ?? []),
-		...(testCase.kind === 'follow_up'
-			? INVENTED_WORDS.filter((word) => !hasWords(testCase.fixedText, word))
-			: []),
+		...INVENTED_WORDS.filter((word) => !hasWords(testCase.fixedText, word)),
 	].find((words) => hasWords(line, words));
 
 	if (invented) {
 		return `invented "${invented}"`;
 	}
 
-	if (testCase.kind === 'follow_up' && /\d/.test(line) && !/\d/.test(testCase.fixedText)) {
+	if (/\d/.test(line) && !/\d/.test(testCase.fixedText)) {
 		return 'invented a number';
 	}
 
@@ -110,32 +102,19 @@ export const findVoiceLineCaseProblems = (cases: VoiceLineCase[]): string[] => {
 
 		seen.add(testCase.id);
 
-		if (testCase.kind === 'follow_up') {
-			if (!KINDS.includes(testCase.facts.kind)) {
-				problems.push(`${testCase.id}: facts kind ${testCase.facts.kind} is not one the app sends`);
-			}
+		if (!KINDS.includes(testCase.facts.kind)) {
+			problems.push(`${testCase.id}: facts kind ${testCase.facts.kind} is not one the app sends`);
+		}
 
-			// The fixed line is the fallback: it keeps the rules the worded one is held to.
-			const fixedProblem = findFollowUpProblem(testCase.fixedText, testCase.facts);
+		// The fixed line is the fallback: it keeps the rules the worded one is held to.
+		const fixedProblem = findFollowUpProblem(testCase.fixedText, testCase.facts);
 
-			if (fixedProblem) {
-				problems.push(`${testCase.id}: its fixed line breaks a rule (${fixedProblem})`);
-			}
+		if (fixedProblem) {
+			problems.push(`${testCase.id}: its fixed line breaks a rule (${fixedProblem})`);
+		}
 
-			if (testCase.lastAck !== null && !pool.includes(testCase.lastAck)) {
-				problems.push(`${testCase.id}: lastAck "${testCase.lastAck}" is not a pool line`);
-			}
-		} else if (testCase.kind === 'progress') {
-			if (testCase.step === null && testCase.agents.length === 0) {
-				problems.push(`${testCase.id}: no step and no agents — the app says nothing then`);
-			}
-
-			// The app only ever passes the spoken form: never a path.
-			if (testCase.step?.includes('/')) {
-				problems.push(`${testCase.id}: step "${testCase.step}" is a raw path`);
-			}
-		} else {
-			problems.push(`${(testCase as { id: string }).id}: kind is not follow_up or progress`);
+		if (testCase.lastAck !== null && !pool.includes(testCase.lastAck)) {
+			problems.push(`${testCase.id}: lastAck "${testCase.lastAck}" is not a pool line`);
 		}
 
 		return problems;
@@ -194,11 +173,7 @@ export const runVoiceLinesEval = async ({
 	const jobs = cases.flatMap((testCase) => Array.from({ length: RUNS }, () => testCase));
 	const runs = await mapPool(jobs, CONCURRENCY, async (testCase) => {
 		const startedAt = Date.now();
-		const result = await attempt(() =>
-			testCase.kind === 'follow_up'
-				? wordFollowUp(testCase, { client, timeoutMs: TIMEOUT_MS })
-				: wordProgress(testCase, { client, timeoutMs: TIMEOUT_MS }),
-		);
+		const result = await attempt(() => wordFollowUp(testCase, { client, timeoutMs: TIMEOUT_MS }));
 		const ms = Date.now() - startedAt;
 
 		return result.ok

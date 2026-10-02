@@ -129,7 +129,7 @@ export type Effect =
 			isAnswer?: boolean;
 			// Another session's permission or question: it waits for a short gap, never cutting in.
 			waitsForGap?: boolean;
-			// Voice OS's own filler (an instant "Okay.", a progress line): never a question, never held.
+			// Voice OS's own filler (an instant "Okay."): never a question, never held.
 			isFiller?: boolean;
 			// What the line says Voice OS did, so it can be worded instead of said as fixed text.
 			facts?: FollowUpFacts;

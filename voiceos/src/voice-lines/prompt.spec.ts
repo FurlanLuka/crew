@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { FollowUpFacts } from '../shared/follow-up.js';
-import {
-	buildFollowUpMessage,
-	buildProgressMessage,
-	cleanWordedLine,
-	composeProgressFallback,
-	findFollowUpProblem,
-	findProgressProblem,
-} from './prompt.js';
+import { buildFollowUpMessage, cleanWordedLine, findFollowUpProblem } from './prompt.js';
 
 const SENT: FollowUpFacts = { kind: 'sent', label: 'checkout, main', offersSwitch: false };
 const OFFERED: FollowUpFacts = { ...SENT, offersSwitch: true };
@@ -67,15 +60,6 @@ describe('findFollowUpProblem', () => {
 		).toBe('question missing'));
 });
 
-describe('findProgressProblem', () => {
-	it.each<[string, string | null]>([
-		['Still on it, editing the router now.', null],
-		['Still going. Want an update?', 'question'],
-		['[sighs] Still going.', 'tags'],
-		['', 'empty'],
-	])('%p → %p', (line, problem) => expect(findProgressProblem(line)).toBe(problem));
-});
-
 describe('the messages', () => {
 	it('a follow-up: the facts, whether a switch is offered, the plain line, and the ack just said', () =>
 		expect(
@@ -92,29 +76,6 @@ describe('the messages', () => {
 				'just said: Okay.',
 			].join('\n'),
 		));
-
-	it('progress: the step and the sub-agents, nothing else', () =>
-		expect(
-			buildProgressMessage({
-				step: 'edit router.ts',
-				agents: ['Find the retry callers'],
-				lastProgress: null,
-			}),
-		).toBe(
-			[
-				'latest step: edit router.ts',
-				'sub-agents: "Find the retry callers"',
-				'said last: (nothing)',
-			].join('\n'),
-		));
-});
-
-describe('composeProgressFallback', () => {
-	it('plain, and never a guess', () => {
-		expect(composeProgressFallback({ agents: [] })).toBe('Still working on it.');
-		expect(composeProgressFallback({ agents: ['a'] })).toBe('Still working on it.');
-		expect(composeProgressFallback({ agents: ['a', 'b'] })).toBe('Two agents still working.');
-	});
 });
 
 describe('cleanWordedLine', () => {

@@ -28,7 +28,7 @@ All from `voiceos/`, `export PATH=$HOME/.bun/bin:$PATH` first.
 | narrator | Does the narrator say the right line? (Sonnet) | `bun evals/run.ts narrator [--only=…]` | ~$1 |
 | all | kernel + narrator, the pre-review run | `bun evals/run.ts all [--update-baseline]` | ~$2–3 |
 | judge | Do the judge's narrow questions read words right, in four languages? | `bun evals/judge.ts [--only=key,key]` | a few cents |
-| voice-lines | Does Haiku word Voice OS's follow-ups ("Sent to X. Switch there?") and progress lines within the app's rules (label kept, question only when offered, ≤ 25 words) without inventing facts? ~20 cases × 2 runs, never in `all`, never a gate | `bun evals/run.ts voice-lines [--only=…]` | a few cents |
+| voice-lines | Does Haiku word Voice OS's follow-ups ("Sent to X. Switch there?") within the app's rules (label kept, question only when offered, ≤ 25 words) without inventing facts? ~17 cases × 2 runs, never in `all`, never a gate | `bun evals/run.ts voice-lines [--only=…]` | a few cents |
 | route | **Classification only.** On a session's screen, is a line for that session or a Voice OS command — today's kernel vs a narrow classifier | `bun evals/run.ts route [--system=kernel\|classifier\|both] [--only=…]` | 297 repo cases: kernel ~$0.85, classifier ~$0.20; with the ~390 local speech cases ~$2 + ~$0.45 |
 
 - `--update-baseline` only after an intended change, only on a full `all` run.
@@ -70,10 +70,9 @@ forward-vs-command, or a classifier idea.
 
 A measurement like route: not part of `all`, no baseline, `--update-baseline` and the model flags are
 refused. Cases in `evals/voice-lines/cases.json`: `kind: follow_up` (`facts` as the reducer sends
-them, the `fixedText` it would say, the `lastAck` said before it) or `kind: progress` (`step` in its
-spoken form, `agents`, `lastProgress`), with optional `includes` (stems, `a|b`), `not_includes`
+them, the `fixedText` it would say, the `lastAck` said before it), with optional `includes` (stems, `a|b`), `not_includes`
 (whole words that would be invented) and `not_starts`. A run fails a line on the app's own rejection
-rules (`findFollowUpProblem` / `findProgressProblem` in `src/voice-lines/prompt.ts`) or the case's
+rules (`findFollowUpProblem` in `src/voice-lines/prompt.ts`) or the case's
 checks; it prints the pass rate, median latency and a usage line with the real cost. `bun test evals`
 (free) checks every case is one the app could send — the fixed line itself keeps the rules.
 

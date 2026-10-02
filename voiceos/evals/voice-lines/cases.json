@@ -1,5 +1,5 @@
 {
-	"note": "Haiku's worded follow-ups and progress lines (src/voice-lines/). A follow-up passes when it keeps every rule the app checks (label word for word, the switch question exactly when offered, no wake word, at most 25 words) and invents nothing (not_includes, and no word from the eval's invented list that the plain line lacks). A progress line passes the app's rules and says its step (includes). bun evals/run.ts voice-lines [--only=…].",
+	"note": "Haiku's worded follow-ups (src/voice-lines/). A follow-up passes when it keeps every rule the app checks (label word for word, the switch question exactly when offered, no wake word, at most 25 words) and invents nothing (not_includes, and no word from the eval's invented list that the plain line lacks). bun evals/run.ts voice-lines [--only=…].",
 	"cases": [
 		{
 			"id": "sent-plain",
@@ -125,39 +125,6 @@
 			"facts": { "kind": "activated", "label": "checkout api, work 1", "hasWaitingWords": true },
 			"fixedText": "Activated checkout api, work 1; your words go once it's up. Switch there?",
 			"lastAck": "Got it."
-		},
-		{
-			"id": "progress-edit",
-			"kind": "progress",
-			"step": "edit router.ts",
-			"agents": [],
-			"lastProgress": null,
-			"includes": ["router"]
-		},
-		{
-			"id": "progress-tests",
-			"kind": "progress",
-			"step": "run bun test",
-			"agents": [],
-			"lastProgress": "Still on it, editing the router now.",
-			"includes": ["test"],
-			"not_includes": ["pass", "fail"]
-		},
-		{
-			"id": "progress-agents",
-			"kind": "progress",
-			"step": null,
-			"agents": ["Find the retry callers", "Read the checkout flow"],
-			"lastProgress": null,
-			"not_includes": ["found"]
-		},
-		{
-			"id": "progress-search",
-			"kind": "progress",
-			"step": "search the code",
-			"agents": ["Map the payment webhooks"],
-			"lastProgress": "Still working on it.",
-			"includes": ["search|look"]
 		}
 	]
 }

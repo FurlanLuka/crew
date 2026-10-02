@@ -10,26 +10,15 @@ import {
 const cases = loadVoiceLineCases(import.meta.dir);
 
 describe('the voice-lines cases', () => {
-	it('about twenty, every one a line the app could ask for', () => {
-		expect(cases.length).toBeGreaterThanOrEqual(18);
+	it('every one a line the app could ask for', () => {
+		expect(cases.length).toBeGreaterThanOrEqual(15);
 		expect(findVoiceLineCaseProblems(cases)).toEqual([]);
 	});
 
-	it('every follow-up kind, with and without the switch offered, and progress', () => {
-		const kinds = new Set(
-			cases.map((testCase) =>
-				testCase.kind === 'follow_up' ? testCase.facts.kind : testCase.kind,
-			),
-		);
+	it('every follow-up kind, with and without the switch offered', () => {
+		const kinds = new Set(cases.map((testCase) => testCase.facts.kind));
 
-		expect([...kinds].sort()).toEqual([
-			'activated',
-			'back',
-			'progress',
-			'queued',
-			'sent',
-			'switching',
-		]);
+		expect([...kinds].sort()).toEqual(['activated', 'back', 'queued', 'sent', 'switching']);
 	});
 
 	it('a broken case is caught before any paid call', () => {
@@ -42,8 +31,13 @@ describe('the voice-lines cases', () => {
 				fixedText: 'Sent to checkout api, main.',
 				lastAck: 'Hello.',
 			},
-			{ id: 'dup', kind: 'progress', step: 'edit src/router.ts', agents: [], lastProgress: null },
-			{ id: 'quiet', kind: 'progress', step: null, agents: [], lastProgress: null },
+			{
+				id: 'dup',
+				kind: 'follow_up',
+				facts: { kind: 'sent', label: 'signals, main', offersSwitch: false },
+				fixedText: 'Sent to signals, main.',
+				lastAck: null,
+			},
 		];
 
 		expect(first).toBeDefined();
@@ -51,8 +45,6 @@ describe('the voice-lines cases', () => {
 			'dup: its fixed line breaks a rule (question missing)',
 			'dup: lastAck "Hello." is not a pool line',
 			'dup: id used twice',
-			'dup: step "edit src/router.ts" is a raw path',
-			'quiet: no step and no agents — the app says nothing then',
 		]);
 	});
 });
@@ -75,19 +67,12 @@ describe('checkCaseLine', () => {
 		['Sent to signals, main in 2 seconds.', 'invented "seconds"'],
 	])('%p → %p', (line, problem) => expect(checkCaseLine(sent, line)).toBe(problem));
 
-	it('progress must say its step, either way it is put', () => {
-		const progress: VoiceLineCase = {
-			id: 'p',
-			kind: 'progress',
-			step: 'search the code',
-			agents: [],
-			lastProgress: null,
-			includes: ['search|look'],
-		};
+	it('includes: a stem, either way it is put', () => {
+		const including: VoiceLineCase = { ...sent, includes: ['pass|sent'] };
 
-		expect(checkCaseLine(progress, 'Still looking through the code.')).toBeNull();
-		expect(checkCaseLine(progress, 'Still searching the code.')).toBeNull();
-		expect(checkCaseLine(progress, 'Still on it.')).toBe('missing "search|look"');
+		expect(checkCaseLine(including, 'Passed that to signals, main.')).toBeNull();
+		expect(checkCaseLine(including, 'Sent to signals, main.')).toBeNull();
+		expect(checkCaseLine(including, 'Signals, main has it.')).toBe('missing "pass|sent"');
 	});
 });
 

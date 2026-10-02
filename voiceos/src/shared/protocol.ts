@@ -343,7 +343,7 @@ export interface SpokenLine {
 	isUpdate?: true;
 	refs?: string[];
 	toldAsks?: ToldAsk[];
-	// Voice OS's own filler (an instant "Okay.", a progress line): never its question, never what the
+	// Voice OS's own filler (an instant "Okay."): never its question, never what the
 	// developer heard before, never a session's line.
 	isFiller?: true;
 }

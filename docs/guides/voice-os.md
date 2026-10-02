@@ -334,11 +334,6 @@ one of these stays quiet when in doubt:
   always name the session as you know it and ask "switch?" only when the switch is really offered;
   when the wording is late or breaks a rule, you hear the plain line instead. Without the Anthropic
   key you always hear the plain lines.
-- **Progress while it works.** When the session in front of you works for a while, you hear a short
-  line about what it is doing now ("Still on it, editing the router now."): the first after half a
-  minute, then further apart (30 seconds, a minute, then every two minutes), and only when its step
-  or its sub-agents changed. Never over you or another line, never while a question is open, never
-  right after the session spoke for itself, and never for a session you are not looking at.
 
 **What you hear from sessions you are not looking at.** Sessions on other screens don't talk over
 you. Nothing is dropped while you talk: what was queued waits, and the answer to what you just said
@@ -769,8 +764,7 @@ five older files (`voiceos.log.1` … `.5`); `crew voice logs` reads them all.
   a summary of the sessions (their status, what you asked them, what is waiting, their recent lines). After a
   turn, the session's final message goes to the narrator when it has no spoken line. To word its own
   short lines, Voice OS sends Haiku only what the line says (a session's name, whether a switch is
-  offered) or, for a progress line, the session's current step in short form ("edit router.ts") and
-  its sub-agents' task descriptions, never a command or a path.
+  offered), never a command or a path.
 - **Your Claude Code sessions** talk to Anthropic as Claude Code always does, on your login.
 
 **What stays on your machine:** everything under `~/.crew/voiceos/` (see
@@ -793,8 +787,8 @@ carries your token.
   final message has no spoken line of its own. When a session asks you something, a short Haiku call names what
   the question is about. All of them bill your Anthropic key. A spoken turn costs the kernel roughly a third of a
   cent. The language check (Haiku, see [Languages](#languages)) runs only on turns where Voice OS
-  acts on what you meant, and costs a small fraction of that. Wording Voice OS's own short lines and
-  progress lines (Haiku) costs a small fraction of a cent each.
+  acts on what you meant, and costs a small fraction of that. Wording Voice OS's own short lines
+  (Haiku) costs a small fraction of a cent each.
 - **Soniox** bills audio: speech-to-text for as long as the microphone streams, and text-to-speech
   for what Voice OS says ([Soniox pricing](https://soniox.com/pricing)). On demand and hands-free stream the whole time listening is on. Push to
   talk streams only while you hold the key.

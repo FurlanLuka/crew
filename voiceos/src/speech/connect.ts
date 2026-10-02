@@ -12,7 +12,6 @@ import type { VoiceOut } from './voice-out.js';
 import { createLogger } from '../log.js';
 import { isActive } from '../shared/active.js';
 import type { Input, State } from '../shared/protocol.js';
-import { startProgress, type WriteProgress } from './progress.js';
 
 const log = createLogger('conversation');
 
@@ -79,9 +78,6 @@ export interface ConnectSpeechParams {
 	setTimer?: (run: () => void, ms: number) => unknown;
 	// The router is still reading words the developer said: they may answer a question about to lapse.
 	isRouting?: () => boolean;
-	// Words a progress line for the session on screen; absent, it says none.
-	writeProgress?: WriteProgress;
-	now?: () => number;
 }
 
 // What the store asks to be said, dropped or narrated reaches the voice here: the app and the
@@ -93,13 +89,7 @@ export const connectSpeech = ({
 	narrateAside,
 	setTimer = setTimeout,
 	isRouting = () => false,
-	writeProgress,
-	now = Date.now,
 }: ConnectSpeechParams): void => {
-	if (writeProgress) {
-		startProgress({ store, voiceOut, writeProgress, setTimer, isRouting, now });
-	}
-
 	// The reducer runs in the page too, so it cannot log: what the conversation did is logged here.
 	let previous = store.state;
 	store.subscribe((stamped, state) => {

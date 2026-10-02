@@ -128,7 +128,7 @@ export interface VoiceOutOptions {
 	writeFollowUp?: (input: FollowUpInput) => Promise<string | null>;
 }
 
-// What is said or heard right now, for whoever decides to speak up on its own (progress.ts).
+// What is said or heard right now, for whoever decides to speak up on its own.
 export interface SpeechMoment {
 	isTalking: boolean;
 	isMuted: boolean;
@@ -514,7 +514,7 @@ export class VoiceOut {
 
 	talkStarted(): void {
 		// Nothing queued is dropped: it waits for the developer to finish, behind what answers them.
-		// Filler is the exception: an "Okay." or a progress line after they spoke again is stale.
+		// Filler is the exception: an "Okay." after they spoke again is stale.
 		this.isTalking = true;
 		this.quietSince = this.now();
 		this.queue = { ...this.queue, items: this.queue.items.filter((item) => !item.isFiller) };

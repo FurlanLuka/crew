@@ -211,20 +211,20 @@ describe('dropClosedAsks', () => {
 
 describe('instant acks', () => {
 	const ack = { ...createItem('ack', 'high'), source: 'kernel' as const, isFiller: true };
-	const progress = { ...createItem('progress', 'low', 'store/main'), isFiller: true };
+	const aboutSession = { ...createItem('about', 'low', 'store/main'), isFiller: true };
 
-	it('filler about no session is an ack; a progress line or any other line is not', () => {
+	it('filler about no session is an ack; filler about a session or any other line is not', () => {
 		expect(isInstantAck(ack)).toBe(true);
-		expect(isInstantAck(progress)).toBe(false);
+		expect(isInstantAck(aboutSession)).toBe(false);
 		expect(isInstantAck(createItem('line', 'high'))).toBe(false);
 	});
 
 	it('withoutInstantAcks drops the acks alone', () =>
 		expect(
-			withoutInstantAcks(fillQueue(ack, progress, createItem('line', 'normal'))).items.map(
+			withoutInstantAcks(fillQueue(ack, aboutSession, createItem('line', 'normal'))).items.map(
 				(item) => item.id,
 			),
-		).toEqual(['line', 'progress']));
+		).toEqual(['line', 'about']));
 });
 
 describe('settleWording', () => {

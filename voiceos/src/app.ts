@@ -116,7 +116,7 @@ const sendToClient = (client: string, message: ServerMessage): boolean =>
 	client === DISCORD_CLIENT ? discord.send(message) : (gateway?.send(client, message) ?? false);
 
 const tts = keys.soniox ? new SonioxTts({ apiKey: keys.soniox }) : null;
-// Words Voice OS's follow-ups and progress lines; without the Anthropic key, the fixed lines.
+// Words Voice OS's follow-ups; without the Anthropic key, the fixed lines.
 const voiceLines = createVoiceLineWriter({ apiKey: keys.anthropic });
 const voiceOut: VoiceOut = new VoiceOut({
 	store,
@@ -143,14 +143,7 @@ const narrateTurn = createTurnNarrator({
 
 const narrateAside = createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) });
 
-connectSpeech({
-	store,
-	voiceOut,
-	narrateTurn,
-	narrateAside,
-	isRouting: () => router.isRouting,
-	writeProgress: (input) => voiceLines.progress(input),
-});
+connectSpeech({ store, voiceOut, narrateTurn, narrateAside, isRouting: () => router.isRouting });
 
 const reminderTimer = setInterval(() => voiceOut.remind(store.state), REMINDER_INTERVAL_MS);
 

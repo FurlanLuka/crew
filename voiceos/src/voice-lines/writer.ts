@@ -1,18 +1,13 @@
-// Words Voice OS's follow-up and progress lines with Haiku, on its own small call. Never in the way:
-// one try, a short timeout, and on any failure the fixed line (a follow-up) or a plain one (progress).
+// Words Voice OS's follow-up lines with Haiku, on its own small call. Never in the way: one try, a
+// short timeout, and on any failure the fixed line.
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../log.js';
 import {
 	buildFollowUpMessage,
-	buildProgressMessage,
 	cleanWordedLine,
-	composeProgressFallback,
 	findFollowUpProblem,
-	findProgressProblem,
 	FOLLOW_UP_SYSTEM,
 	type FollowUpInput,
-	PROGRESS_SYSTEM,
-	type ProgressInput,
 	VOICE_LINES_MODEL,
 } from './prompt.js';
 
@@ -20,14 +15,11 @@ const log = createLogger('voice-lines');
 
 // voice-out holds the line's place for at most a second: a later answer is thrown away anyway.
 const FOLLOW_UP_TIMEOUT_MS = 1_500;
-// Nobody waits on a progress line, but one about a step long gone says nothing.
-const PROGRESS_TIMEOUT_MS = 5_000;
 const MAX_TOKENS = 80;
 
 export interface VoiceLineWriter {
 	// The worded line, or null to say the fixed one.
 	followUp: (input: FollowUpInput) => Promise<string | null>;
-	progress: (input: ProgressInput) => Promise<string>;
 }
 
 export interface Worded {
@@ -94,32 +86,15 @@ export const wordFollowUp = async (
 	return { text, problem: findFollowUpProblem(text, input.facts) };
 };
 
-export const wordProgress = async (
-	input: ProgressInput,
-	{ client, timeoutMs = PROGRESS_TIMEOUT_MS, model }: WordParams,
-): Promise<Worded> => {
-	const text = await ask({
-		client,
-		system: PROGRESS_SYSTEM,
-		message: buildProgressMessage(input),
-		timeoutMs,
-		...(model ? { model } : {}),
-	});
-
-	return { text, problem: findProgressProblem(text) };
-};
-
-// No key: every line is the fixed or plain one, at once.
+// No key: every line is the fixed one, at once.
 export const createFallbackWriter = (): VoiceLineWriter => ({
 	followUp: () => Promise.resolve(null),
-	progress: (input) => Promise.resolve(composeProgressFallback(input)),
 });
 
 interface CreateVoiceLineWriterParams {
 	apiKey: string | null;
 	client?: Anthropic;
 	followUpTimeoutMs?: number;
-	progressTimeoutMs?: number;
 	now?: () => number;
 }
 
@@ -127,7 +102,6 @@ export const createVoiceLineWriter = ({
 	apiKey,
 	client,
 	followUpTimeoutMs = FOLLOW_UP_TIMEOUT_MS,
-	progressTimeoutMs = PROGRESS_TIMEOUT_MS,
 	now = Date.now,
 }: CreateVoiceLineWriterParams): VoiceLineWriter => {
 	const anthropic = client ?? (apiKey ? new Anthropic({ apiKey, maxRetries: 0 }) : null);
@@ -135,8 +109,6 @@ export const createVoiceLineWriter = ({
 	if (!anthropic) {
 		return createFallbackWriter();
 	}
-
-	const fallback = createFallbackWriter();
 
 	return {
 		followUp: async (input) => {
@@ -170,30 +142,6 @@ export const createVoiceLineWriter = ({
 				});
 
 				return null;
-			}
-		},
-		progress: async (input) => {
-			const startedAt = now();
-
-			try {
-				const worded = await wordProgress(input, {
-					client: anthropic,
-					timeoutMs: progressTimeoutMs,
-				});
-
-				if (worded.problem) {
-					log.info('progress fallback', { reason: worded.problem, ms: now() - startedAt });
-
-					return fallback.progress(input);
-				}
-
-				log.info('progress worded', { ms: now() - startedAt });
-
-				return worded.text;
-			} catch (error) {
-				log.warn('progress fallback', { reason: String(error), ms: now() - startedAt });
-
-				return fallback.progress(input);
 			}
 		},
 	};

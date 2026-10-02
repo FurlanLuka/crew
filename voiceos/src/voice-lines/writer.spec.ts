@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type Anthropic from '@anthropic-ai/sdk';
 import { configureLog } from '../log.js';
-import type { FollowUpInput, ProgressInput } from './prompt.js';
+import type { FollowUpInput } from './prompt.js';
 import { createFallbackWriter, createVoiceLineWriter } from './writer.js';
 
 configureLog({ quiet: true });
@@ -29,8 +29,6 @@ const FOLLOW_UP: FollowUpInput = {
 	fixedText: 'Sent to checkout, main. Switch there?',
 	lastAck: 'Okay.',
 };
-
-const PROGRESS: ProgressInput = { step: 'edit router.ts', agents: ['a', 'b'], lastProgress: null };
 
 describe('the follow-up writer', () => {
 	it('a line that keeps every rule → said', async () => {
@@ -83,40 +81,11 @@ describe('the follow-up writer', () => {
 	});
 });
 
-describe('the progress writer', () => {
-	it('a plain statement → said', async () => {
-		const writer = createVoiceLineWriter({
-			apiKey: 'k',
-			client: clientWith(answering('Still on it, editing the router.')),
-		});
-
-		expect(await writer.progress(PROGRESS)).toBe('Still on it, editing the router.');
-	});
-
-	it('a question, a failure or a timeout → the plain fallback', async () => {
-		const asking = createVoiceLineWriter({
-			apiKey: 'k',
-			client: clientWith(answering('Still going, want details?')),
-		});
-		const broken = createVoiceLineWriter({ apiKey: 'k', client: clientWith(failing) });
-		const slow = createVoiceLineWriter({
-			apiKey: 'k',
-			client: clientWith(hanging),
-			progressTimeoutMs: 20,
-		});
-
-		expect(await asking.progress(PROGRESS)).toBe('Two agents still working.');
-		expect(await broken.progress(PROGRESS)).toBe('Two agents still working.');
-		expect(await slow.progress(PROGRESS)).toBe('Two agents still working.');
-	});
-});
-
 describe('no Anthropic key', () => {
-	it('the fallback writer: fixed follow-ups, plain progress', async () => {
+	it('the fallback writer: fixed follow-ups', async () => {
 		const writer = createVoiceLineWriter({ apiKey: null });
 
 		expect(await writer.followUp(FOLLOW_UP)).toBeNull();
-		expect(await writer.progress({ ...PROGRESS, agents: [] })).toBe('Still working on it.');
 		expect(await createFallbackWriter().followUp(FOLLOW_UP)).toBeNull();
 	});
 });

@@ -1,15 +1,15 @@
 // The small lines Voice OS words with Haiku: its follow-up on what it just did ("Sent to checkout.
-// Switch there?") and a progress line for the session on screen. Pure: the prompts, the messages, and
-// the rules a worded line must keep — one that breaks a rule is never said; the fixed line is.
+// Switch there?"). Pure: the prompt, the message, and the rules a worded line must keep — one that
+// breaks a rule is never said; the fixed line is.
 import { type FollowUpFacts, listFollowUpLabels, offersSwitch } from '../shared/follow-up.js';
-import { endsInQuestion, NUMBER_WORDS } from '../shared/spoken.js';
+import { endsInQuestion } from '../shared/spoken.js';
 import { countSpokenWords } from '../state/helpers.js';
 import { findWakePhrase } from '../speech/wake.js';
 
 // A few words, fast: Haiku. Its latency is what the developer waits through.
 export const VOICE_LINES_MODEL = 'claude-haiku-4-5';
 
-// Past this a line stops being a quick word; the prompts aim well under it.
+// Past this a line stops being a quick word; the prompt aims well under it.
 export const MAX_LINE_WORDS = 25;
 
 export interface FollowUpInput {
@@ -18,15 +18,6 @@ export interface FollowUpInput {
 	fixedText: string;
 	// The instant acknowledgement said in this turn ("Okay."), so the line does not open with it again.
 	lastAck: string | null;
-}
-
-export interface ProgressInput {
-	// The session's latest step, already said the short way (describeToolAloud): never a raw command.
-	step: string | null;
-	// Its sub-agents' own descriptions of their tasks.
-	agents: string[];
-	// The progress line said last in this turn, so the next one says something new.
-	lastProgress: string | null;
 }
 
 export const FOLLOW_UP_SYSTEM = `You word one short line that Voice OS, a voice assistant for coding sessions, says aloud about something it just did for a developer. The developer talks to it while coding and hears the line, so it should sound like a person answering, not a status message. You get the facts and the plain line Voice OS would say otherwise. Say the same thing once, in your own words.
@@ -38,16 +29,6 @@ Rules:
 - When the facts say not to name the session, name none.
 - Do not open with the words Voice OS just said ("just said"), and do not repeat them.
 - At most 15 words. Plain words only: no tags, no brackets, no quotes, no emoji, never the words "Voice OS".
-
-Reply with the line alone.`;
-
-export const PROGRESS_SYSTEM = `You word one short progress line that Voice OS, a voice assistant for coding sessions, says aloud while the coding session on screen keeps working. The developer is waiting and wants to hear it is still going and roughly what it is on. You get its latest step and what its sub-agents work on, in plain words.
-
-Rules:
-- Say only what is given. Never claim a result, a finding, or how long it will take.
-- At most 12 words, present tense, a plain statement ("Still on it, editing the router now."). No question.
-- Do not repeat the line said last ("said last"): say what changed.
-- Plain words only: no tags, no brackets, no quotes, no file paths, never the words "Voice OS".
 
 Reply with the line alone.`;
 
@@ -84,13 +65,6 @@ export const buildFollowUpMessage = ({ facts, fixedText, lastAck }: FollowUpInpu
 		`just said: ${lastAck ?? '(nothing)'}`,
 	].join('\n');
 
-export const buildProgressMessage = ({ step, agents, lastProgress }: ProgressInput): string =>
-	[
-		`latest step: ${step ?? '(none)'}`,
-		`sub-agents: ${agents.length > 0 ? agents.map((agent) => `"${agent}"`).join(', ') : '(none)'}`,
-		`said last: ${lastProgress ?? '(nothing)'}`,
-	].join('\n');
-
 // Words alone, lower case: "Store front, main" and "store front main" name the same session.
 const toWords = (text: string): string =>
 	` ${text
@@ -98,7 +72,7 @@ const toWords = (text: string): string =>
 		.replace(/[^\p{L}\p{N}']+/gu, ' ')
 		.trim()} `;
 
-// The rules every worded line keeps, whichever kind.
+// The rules every worded line keeps, whatever it says.
 const findLineProblem = (line: string): string | null => {
 	if (!line) {
 		return 'empty';
@@ -141,20 +115,6 @@ export const findFollowUpProblem = (line: string, facts: FollowUpFacts): string 
 	}
 
 	return line.includes('?') ? 'question not offered' : null;
-};
-
-export const findProgressProblem = (line: string): string | null =>
-	findLineProblem(line) ?? (line.includes('?') ? 'question' : null);
-
-// What the developer hears when no worded progress line is ready: plain, and never a guess.
-export const composeProgressFallback = ({ agents }: Pick<ProgressInput, 'agents'>): string => {
-	if (agents.length < 2) {
-		return 'Still working on it.';
-	}
-
-	const count = NUMBER_WORDS[agents.length] ?? String(agents.length);
-
-	return `${count.charAt(0).toUpperCase()}${count.slice(1)} agents still working.`;
 };
 
 // A model's reply as a line: its own quotes and surrounding space come off.
