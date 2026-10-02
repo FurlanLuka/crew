@@ -137,19 +137,24 @@ Voice OS asks which one.
   home view.
 - "Show me Build box." Opens Activate on that machine's worktrees (with other machines only).
 - "Switch to it." Right after a session's line, opens that session.
+- "Switch to checkout and ask it to run the release checklist." Switches, then sends the rest.
 
 **What happens:** Voice OS says "Switching to checkout" first (a click is silent), and that
-session's update, if it had one waiting, plays when you get there. A longer sentence that asks for
-work in a place ("go to the research folder and check what's in there") goes to the session on
-screen instead.
+session's update, if it had one waiting, plays when you get there. When the sentence also asks the
+session for work, that part goes to it once you are there, and you hear "Sent to checkout". A longer
+sentence that asks for work in a place ("go to the research folder and check what's in there") goes
+to the session on screen instead.
 
 ### Go back — `go_back`
 
 - "Go back." · "Back." · "Previous session."
+- "Let's go back to what we have to do on the lesson types — what's next?" Goes back, then sends
+  the rest to the session it went back to.
 
 **What happens:** "Back to crew." Say it again to go further back. Sessions that stopped are passed
-over ("checkout stopped. Back to crew."). "Go back to checkout" switches to checkout; "home" means
-Active.
+over ("checkout stopped. Back to crew."). "Go back to checkout" switches to checkout, and "go back
+to crew research" finds crew research even when crew main is named "Crew"; "home" means Active.
+Words that also ask the session for work reach the session you land on.
 
 ### Hear what you missed — `play_missed`
 
@@ -157,7 +162,8 @@ Active.
 
 **What happens:** the other sessions' updates that were waiting for a quiet moment play now, as one
 line ("Meanwhile, ranking needs you about the index, and checkout said: all retry tests pass"), or
-you hear that nothing is new. Clicking **N updates waiting** in the top bar does the same.
+you hear that nothing is new. Clicking **N updates waiting** in the top bar does the same. A plain
+"yes" right after "Switch there?" answers that question, so it switches instead of replaying.
 
 ## Active sessions
 
@@ -171,7 +177,8 @@ Only active sessions exist for voice (see [Active sessions](voice-os.md#active-s
 - "Yes." After Voice OS asked "checkout isn't active. Activate it?"
 
 **What happens:** "Activated checkout. Switch there?" Its Claude starts and resumes its
-conversation. If two worktrees match, Voice OS asks which one.
+conversation. On its own screen you hear just "Activated checkout." (no screen to watch over
+Discord). If two worktrees match, Voice OS asks which one.
 
 **In practice:** "Start checkout and tell me what it did last" activates it, then sends it the rest
 once it is up. Activating never creates a worktree: make one in Set up. A setup session is never
@@ -249,7 +256,8 @@ When a dev server dies, Voice OS asks whether Claude should fix it.
 - "Options." Reads out again the choices of what waits on you.
 
 **What happens:** a short spoken answer. Voice OS looks at the sessions (status, what each was last
-asked, what waits on you, their latest lines) and answers in a sentence or two.
+asked, what waits on you, their latest lines) and answers in a sentence or two. An answer about one
+other active session ends with "Switch to checkout?", so a "yes" takes you there.
 
 **In practice:** this is for sessions you are not looking at. "Status" or "how far are you?" on a
 session's own screen goes to that session, because it knows its work better than any summary.

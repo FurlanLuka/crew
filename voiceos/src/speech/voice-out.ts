@@ -10,6 +10,7 @@ import {
 	type ToldAsk,
 } from '../shared/protocol.js';
 import {
+	endsInQuestion,
 	normalizeUtterance,
 	prefixSessionName,
 	stripSessionName,
@@ -446,7 +447,7 @@ export class VoiceOut {
 			return;
 		}
 
-		const line = pickInstantAck(this.ackHistory);
+		const line = pickInstantAck({ history: this.ackHistory, isQuestion: endsInQuestion(text) });
 		this.ackHistory = rememberInstantAck(this.ackHistory, line.text);
 		// The writer reads what was heard, not how it was voiced.
 		turn.ack = stripTags(line.text);

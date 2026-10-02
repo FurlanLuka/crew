@@ -7,17 +7,21 @@
 export interface InstantAckLine {
 	text: string;
 	keepsTags?: boolean;
+	// Said after a question too: it cannot be heard as the answer (debug note 43, "Mm-hm." heard as yes).
+	fitsQuestion?: true;
 }
 
-// Neutral on purpose: nothing that promises an answer, so it fits a question and an instruction alike.
+// Neutral on purpose: nothing that promises an answer. After a question only the lines that say
+// "wait" fit: "Mm-hm.", "Okay.", "Sure." or "On it." are heard as a yes, or as already done.
 // Never the wake word or a stop word, which the open mic could hear back as the developer's.
 export const INSTANT_ACK_POOL: readonly InstantAckLine[] = [
 	{ text: '[warm] Mm-hm.', keepsTags: true },
 	{ text: '[warm] Okay.', keepsTags: true },
 	{ text: '[warm] Got it.', keepsTags: true },
-	{ text: '[warm] One sec.', keepsTags: true },
+	{ text: '[warm] One sec.', keepsTags: true, fitsQuestion: true },
 	{ text: '[warm] Sure.', keepsTags: true },
 	{ text: '[warm] On it.', keepsTags: true },
+	{ text: '[warm] Let me check.', keepsTags: true, fitsQuestion: true },
 ];
 
 // A voice turn the router handed to the kernel: its words, and when the router took them.
@@ -39,16 +43,28 @@ export const SPOKE_RECENTLY_MS = 6_000;
 // The last lines used: neither is said next.
 const HISTORY_KEPT = 2;
 
-// Never one of the last two said; the pick among the rest is random so it does not sound scripted.
-export const pickInstantAck = (
-	history: readonly string[],
-	random: () => number = Math.random,
-): InstantAckLine => {
-	const recent = history.slice(-HISTORY_KEPT);
-	const fresh = INSTANT_ACK_POOL.filter((line) => !recent.includes(line.text));
-	const pool = fresh.length > 0 ? fresh : INSTANT_ACK_POOL;
+interface PickInstantAckParams {
+	history: readonly string[];
+	// The words asked something: only a line that fits a question.
+	isQuestion: boolean;
+	random?: () => number;
+}
 
-	return pool[Math.floor(random() * pool.length)] ?? (INSTANT_ACK_POOL[0] as InstantAckLine);
+// Never one of the last two said when another fits; the pick among the rest is random so it does not
+// sound scripted.
+export const pickInstantAck = ({
+	history,
+	isQuestion,
+	random = Math.random,
+}: PickInstantAckParams): InstantAckLine => {
+	const fitting = isQuestion
+		? INSTANT_ACK_POOL.filter((line) => line.fitsQuestion)
+		: INSTANT_ACK_POOL;
+	const recent = history.slice(-HISTORY_KEPT);
+	const fresh = fitting.filter((line) => !recent.includes(line.text));
+	const pool = fresh.length > 0 ? fresh : fitting;
+
+	return pool[Math.floor(random() * pool.length)] ?? (fitting[0] as InstantAckLine);
 };
 
 export const rememberInstantAck = (history: readonly string[], text: string): string[] =>

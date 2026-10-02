@@ -339,8 +339,9 @@ one of these stays quiet when in doubt:
 - **A quick acknowledgement.** When what you said goes to Voice OS to decide, and nothing answers
   within about a second, you hear a short "Mm-hm.", "Got it." or "One sec." so you know you were
   heard. It is skipped for a few words ("yes", a name), while you are talking, when Voice OS spoke a
-  moment ago, when it is muted, and whenever the answer is already on its way. It never asks or
-  promises anything, and it is the same with push to talk, hands-free and Discord.
+  moment ago, when it is muted, and whenever the answer is already on its way. After a question it
+  is only "One sec." or "Let me check.", so it never sounds like a yes or like done. It never asks
+  or promises anything, and it is the same with push to talk, hands-free and Discord.
 - **Its own lines in its own words.** "Sent to checkout. Switch there?", "Switching to checkout",
   "Back to crew", "Activated checkout…" and "Okay, after its current work." are worded fresh each
   time ("Passed that to checkout. Want to go there?"), by a small model, in under a second. They

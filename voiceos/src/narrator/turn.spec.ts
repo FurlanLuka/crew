@@ -249,6 +249,7 @@ describe('aside narrator', () => {
 			isAsking: boolean;
 			priority: string;
 			isAnswer?: boolean;
+			isHoldable?: boolean;
 		}[] = [];
 		const handle = createAsideNarrator({
 			store,
@@ -277,6 +278,27 @@ describe('aside narrator', () => {
 		expect(harness.lines).toEqual([
 			expect.objectContaining({ text: 'The retry file, .', priority: 'high' }),
 		]);
+	});
+
+	it('asked on its screen → holdable, so a developer who left hears it held; asked from elsewhere → said wherever they are', async () => {
+		const harness = createAsideHarness('unused');
+		const answer = '<spoken>The retry file.</spoken>';
+
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'which file?',
+			answer,
+			askedOnScreen: true,
+		});
+		await harness.handle({
+			type: 'narrate_aside',
+			ref: 'checkout-api/main',
+			question: 'which file?',
+			answer,
+		});
+
+		expect(harness.lines.map((line) => line.isHoldable)).toEqual([true, undefined]);
 	});
 
 	it('a long tagged answer → said whole', async () => {

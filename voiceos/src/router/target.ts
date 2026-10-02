@@ -22,10 +22,11 @@ export const readTargetAnswer = async (
 };
 
 // Sends the held words to where the answer points; a no, silence or new words keep them on the screen.
-export const settleTarget = (store: Store, toTarget: boolean): void => {
+// at: the ask a page click answered; a second click, or another page's, finds it settled.
+export const settleTarget = (store: Store, toTarget: boolean, at?: number): void => {
 	const ask = store.state.targetAsk;
 
-	if (!ask) {
+	if (!ask || (at !== undefined && ask.at !== at)) {
 		return;
 	}
 

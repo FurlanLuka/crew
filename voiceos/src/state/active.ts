@@ -157,12 +157,17 @@ const activate = (
 		return { state: started.state, effects: [...started.effects, outOfReach] };
 	}
 
-	// On screen already: the developer sees it start, and a question would ask nothing.
+	const label = sayRef(state, ref);
+
+	// On screen already: no switch to offer, but it is said all the same — over Discord there is no
+	// screen to see it start (debug note 32).
 	if (readScreenRef(state) === ref) {
-		return started;
+		return {
+			state: started.state,
+			effects: [...started.effects, sayAck(`Activated ${label}.`, { ref })],
+		};
 	}
 
-	const label = sayRef(state, ref);
 	const hasWaitingWords = (state.sessions[ref]?.queue.length ?? 0) > 0;
 
 	return {

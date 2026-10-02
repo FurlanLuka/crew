@@ -1,5 +1,5 @@
 import { SWITCH_OFFERED_NOTE } from './announced.js';
-import { ASK_WHICH_NOTE } from './send-guard.js';
+import { ASK_WHICH_NOTE, KERNEL_ASKS_WHICH_NOTE } from './send-guard.js';
 import { ACTIVATE_OFFERED_NOTE } from './activate.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
@@ -171,6 +171,8 @@ export const isAskingBack = ({
 		!RELAYED_QUESTION_PATTERN.test(reply) &&
 		// A forward that failed ("already sent") explains itself: never send the raw words again.
 		!calls.some((call) => call.name === 'forward') &&
+		// The guard itself said to ask which session.
+		!calls.some((call) => call.note === KERNEL_ASKS_WHICH_NOTE) &&
 		// Only after reading or trying to reach a session: any other tool, failed or not ("activate
 		// scheduler" → "Which one?", a listening change it could not tell), was a command for Voice
 		// OS, and its asking back is about that command.

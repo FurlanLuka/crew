@@ -111,6 +111,19 @@ describe('aside_settled', () => {
 		]);
 	});
 
+	it('asked with its session on screen → the answer says so, so voice-out can hold it once they leave (debug note 42)', () => {
+		const onScreen = run([{ type: 'switch_view', view: { kind: 'session', ref: REF } }], {
+			start: runningSession(),
+		}).state;
+		const asked = askAside(onScreen).state;
+
+		expect(asidesOf(asked)[0]?.askedOnScreen).toBe(true);
+		expect(settle(asked, 'answered', 'The router.').effects).toEqual([
+			expect.objectContaining({ type: 'narrate_aside', askedOnScreen: true }),
+		]);
+		expect(asidesOf(askAside(runningSession()).state)[0]?.askedOnScreen).toBeUndefined();
+	});
+
 	it('queued → it waits behind the work, and Voice OS says so', () => {
 		const { state, effects } = settle(askAside(runningSession()).state, 'queued');
 

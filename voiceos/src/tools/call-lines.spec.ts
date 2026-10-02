@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { describeToolCall, isReadOnlyOfScreen } from './call-lines.js';
+import { describeToolCall, isAskingBack, isReadOnlyOfScreen } from './call-lines.js';
+import { KERNEL_ASKS_WHICH_NOTE } from './send-guard.js';
 
 describe('describeToolCall', () => {
 	it('read_notes → remembered as "read_notes"', () =>
@@ -48,4 +49,22 @@ describe('isReadOnlyOfScreen', () => {
 	] as const)('%s → %s', (_, calls, forwardTo, want) => {
 		expect(isReadOnlyOfScreen([...calls], forwardTo)).toBe(want);
 	});
+});
+
+describe('isAskingBack', () => {
+	const asking = {
+		reply: 'Which session should I ask?',
+		forwardTo: 'phone-speak/wrk2',
+		utterance: 'Can you ask the session directly what is left to do?',
+		namedRefs: [],
+	};
+	const refusedSend = { name: 'send_to', input: { ref: 'crew/main' }, ok: false };
+
+	it('a clarifying question after a failed send → asking back: the words go to the screen', () =>
+		expect(isAskingBack({ ...asking, calls: [refusedSend] })).toBe(true));
+
+	it('the guard itself said to ask which session → that question stands (debug note 37)', () =>
+		expect(
+			isAskingBack({ ...asking, calls: [{ ...refusedSend, note: KERNEL_ASKS_WHICH_NOTE }] }),
+		).toBe(false));
 });

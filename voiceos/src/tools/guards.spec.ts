@@ -580,6 +580,52 @@ describe('a yes to Voice OS\'s "Switch to …?"', () => {
 		expect(result.content).toContain('call switch_view checkout-api/main');
 	});
 
+	it('read as "what did I miss?" again → not played: the yes is the offer\'s (debug note 38)', async () => {
+		const missed = {
+			...offer,
+			meanwhile: [{ ref: 'checkout-api/main', kind: 'done' as const, at: 0, about: null }],
+		};
+		const { tools, actions } = toolsFor({
+			judge: judgeWith({ bare_answer: 'yes', approves: 'yes' }),
+			utterance: 'Yes.',
+			patch: missed,
+		});
+		const result = await executeTool('play_missed', {}, { ...tools, heardFrom: 5_000 });
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('call switch_view checkout-api/main');
+		expect(actions).toEqual([]);
+	});
+
+	it('play_missed with no open offer, a late yes, or more than a yes → plays', async () => {
+		const missed = [{ ref: 'checkout-api/main', kind: 'done' as const, at: 0, about: null }];
+		const cases = [
+			{ patch: { meanwhile: missed }, utterance: 'Yes.', heardFrom: 5_000 },
+			{
+				patch: { ...offer, meanwhile: missed },
+				utterance: 'Yes.',
+				heardFrom: 1_000 + SWITCH_OFFER_MS,
+			},
+			{
+				patch: { ...offer, meanwhile: missed },
+				utterance: 'Yes, what did I miss?',
+				heardFrom: 5_000,
+			},
+		];
+
+		for (const { patch, utterance, heardFrom } of cases) {
+			const { tools, actions } = toolsFor({
+				judge: judgeWith({ bare_answer: 'no', approves: 'yes' }),
+				utterance,
+				patch,
+			});
+
+			await executeTool('play_missed', {}, { ...tools, heardFrom });
+
+			expect(actions).toEqual([{ type: 'play_meanwhile' }]);
+		}
+	});
+
 	it('"yes, push it" while the offer is open → words for the session, sent (to the offered one or the screen)', async () => {
 		for (const [tool, input] of [
 			['send_to', { ref: 'checkout-api/main', kind: 'instruction' }],

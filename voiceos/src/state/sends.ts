@@ -109,7 +109,8 @@ interface IsSwitchWorthAskingParams {
 const isSwitchWorthAsking = ({ state, ref, at }: IsSwitchWorthAskingParams): boolean =>
 	isReachable(state, ref) &&
 	!state.asks.some((ask) => ask.ref === ref) &&
-	!isSwitchOfferFresh(state.switchOffer, at);
+	// An open offer of the same session is asked again: words sent there are the newer reason to go.
+	(!isSwitchOfferFresh(state.switchOffer, at) || state.switchOffer.ref === ref);
 
 // Runs after the input's own reducer: `before` is the state it started from.
 export const followSends = (

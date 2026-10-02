@@ -5,7 +5,7 @@ import type { SynthesizeParams } from './tts.js';
 import type { Effect } from '../state/reducer.js';
 import { MAX_REMINDERS, REMINDER_MS, VoiceOut } from './voice-out.js';
 import type { FollowUpInput } from '../voice-lines/prompt.js';
-import { INSTANT_ACK_POOL } from './instant-ack.js';
+import { INSTANT_ACK_POOL, SPOKE_RECENTLY_MS } from './instant-ack.js';
 import { prefixSessionName, stripTags } from '../shared/spoken.js';
 
 type PendingClip = SynthesizeParams & { finish: () => void; fail: (error: Error) => void };
@@ -1525,6 +1525,31 @@ describe('filler and worded lines', () => {
 			expect(lastSpoken(harness)).toEqual(expect.objectContaining({ isFiller: true }));
 			harness.streamChunk();
 			expect(harness.sent.at(-1)?.message).not.toHaveProperty('hasChime');
+		});
+
+		it('questions → only lines that cannot be heard as the answer, three in a row (debug note 43)', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+
+			// Three turns: from the whole pool the third could be neither of the first two lines, so a
+			// pick that ignored the question would show here every time.
+			for (let turn = 0; turn < 3; turn++) {
+				harness.voiceOut.kernelTurnStarted({
+					text: 'Okay, so anything else that is still left to merge?',
+					startedAt: turn * (600 + SPOKE_RECENTLY_MS + 1_000),
+				});
+				await advance(harness, 600);
+				await playOut(harness);
+				await advance(harness, SPOKE_RECENTLY_MS + 1_000);
+			}
+
+			const acks = harness.listSynthesized();
+
+			expect(acks).toHaveLength(3);
+
+			for (const ack of acks) {
+				expect(['[warm] One sec.', '[warm] Let me check.']).toContain(ack);
+			}
 		});
 
 		it('the clock runs from when the router took the words', async () => {
