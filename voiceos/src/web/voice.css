@@ -1196,8 +1196,11 @@
 	place-items: center;
 	padding: 16px;
 }
-/* A card over Voice OS: Before you talk, a sub-agent's transcript. */
+/* A card over Voice OS, on a dimmed page: Before you talk, a sub-agent's transcript. */
 .vo-first,
+.sd::backdrop {
+	background: rgba(0, 0, 0, 0.72);
+}
 .vf-card,
 .sd {
 	border-radius: 18px;
@@ -1455,9 +1458,6 @@ button.line.opens:hover .opens-hint {
 .sd[open] {
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr) auto;
-}
-.sd::backdrop {
-	background: rgba(0, 0, 0, 0.72);
 }
 .sd-head {
 	display: grid;
