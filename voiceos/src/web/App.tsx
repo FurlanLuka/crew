@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { isInDialog } from './in-dialog.js';
 import { BottomBar } from './components/BottomBar.js';
 import { Card } from './components/Card.js';
 import { Dock } from './components/Dock.js';
@@ -71,7 +72,12 @@ const App = () => {
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape' && !(event.target instanceof HTMLInputElement)) {
+			// A dialog's own Esc closes the dialog only.
+			if (
+				event.key === 'Escape' &&
+				!(event.target instanceof HTMLInputElement) &&
+				!isInDialog(event)
+			) {
 				// Up one level: a session → its machine → Mission Control.
 				if (stateRef.current) {
 					dispatch({ type: 'switch_view', view: parentView(stateRef.current) });

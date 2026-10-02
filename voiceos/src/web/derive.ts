@@ -7,10 +7,12 @@ import {
 	type Session,
 	type State,
 	type View,
+	type SubagentItem,
+	type SubagentRun,
 } from '../shared/protocol.js';
 import { listSessionDocs, type SessionDoc } from '../shared/session-docs.js';
 import { hasBackgroundWork } from '../state/subagents.js';
-import { describeWork } from '../state/working.js';
+import { describeWork, formatAge } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { readWorkspace } from '../shared/notes.js';
 import { isActive, listActiveMissing, listActiveRefs } from '../shared/active.js';
@@ -438,3 +440,31 @@ export const listOtherSessions = (
 // The session's docs, newest first, each once.
 export const listDocs = (session: Pick<Session, 'stream'>): SessionDoc[] =>
 	listSessionDocs(session.stream);
+
+// A sub-agent's transcript, by the Agent call that started it: its row in the history opens it.
+export const findRunFor = (
+	session: Pick<Session, 'subagentRuns'>,
+	toolUseId: string | undefined,
+): SubagentRun | null =>
+	toolUseId === undefined
+		? null
+		: (session.subagentRuns.find((run) => run.toolUseId === toolUseId) ?? null);
+
+export const isRunRunning = (session: Pick<Session, 'subagents'>, run: SubagentRun): boolean =>
+	session.subagents.some((subagent) => subagent.taskId === run.taskId);
+
+export const describeRunStatus = (run: SubagentRun, isRunning: boolean, now: number): string =>
+	isRunning ? `running · ${formatAge(now - run.startedAt)}` : 'done';
+
+// Its last words are what it hands back: once it has ended on text, that text is its report and is
+// not shown again among its lines. One that ended on a call or a result (killed, failed) has none.
+export const splitRunReport = (
+	run: SubagentRun,
+	isRunning: boolean,
+): { lines: SubagentItem[]; report: string | null } => {
+	const last = run.items.at(-1);
+
+	return !isRunning && last?.kind === 'text'
+		? { lines: run.items.slice(0, -1), report: last.text }
+		: { lines: run.items, report: null };
+};

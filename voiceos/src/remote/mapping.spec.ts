@@ -83,6 +83,12 @@ describe('toMainInput', () => {
 		{ type: 'subagent_backgrounded', ref: 'store/main', taskId: 't' },
 		{ type: 'subagent_ended', ref: 'store/main', taskId: 't' },
 		{
+			type: 'subagent_item',
+			ref: 'store/main',
+			taskId: 't',
+			item: { kind: 'text', text: 'Found it.' },
+		},
+		{
 			type: 'aside_settled',
 			ref: 'store/main',
 			itemId: 'i',

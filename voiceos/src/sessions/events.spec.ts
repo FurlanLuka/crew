@@ -68,7 +68,7 @@ describe('mapMessage', () => {
 
 		expect(observations).toEqual([
 			{ type: 'assistant_text', ref: 'store/main', text: 'Running tests.' },
-			{ type: 'tool', ref: 'store/main', name: 'Bash', summary: 'run npm test' },
+			{ type: 'tool', ref: 'store/main', name: 'Bash', summary: 'run npm test', toolUseId: 't1' },
 		]);
 		expect(mapContext.toolSummaries.get('t1')).toBe('run npm test');
 	});
@@ -250,6 +250,7 @@ describe('sub-agents', () => {
 				agentType: 'Explore',
 				description: 'Find the router',
 				isBackground: true,
+				toolUseId: 'toolu_agent',
 			},
 		]);
 	});
@@ -262,7 +263,7 @@ describe('sub-agents', () => {
 		expect(mapMessage(taskStarted(overrides), createMapContext())).toEqual([]),
 	);
 
-	it('its tool calls → the last one becomes its step; no parent tool line, each summary kept', () => {
+	it('its text and calls → its transcript, the last call its step; no parent tool line, each summary kept', () => {
 		const mapContext = startedContext();
 		const observations = mapMessage(
 			{
@@ -281,6 +282,19 @@ describe('sub-agents', () => {
 		);
 
 		expect(observations).toEqual([
+			{ type: 'subagent_item', ref, taskId: 'task1', item: { kind: 'text', text: 'Looking.' } },
+			{
+				type: 'subagent_item',
+				ref,
+				taskId: 'task1',
+				item: { kind: 'tool', name: 'Grep', summary: 'search for route' },
+			},
+			{
+				type: 'subagent_item',
+				ref,
+				taskId: 'task1',
+				item: { kind: 'tool', name: 'Read', summary: 'read src/router.ts' },
+			},
 			{ type: 'subagent_step', ref, taskId: 'task1', step: 'read src/router.ts' },
 		]);
 		expect([...mapContext.toolSummaries]).toEqual([
@@ -348,29 +362,62 @@ describe('sub-agents', () => {
 			),
 		).toEqual([{ type: 'denied', ref, toolName: 'Bash', summary: 'a Bash call' }]));
 
-	it('its text, results and stream deltas → dropped', () => {
+	it("its results → transcript lines like the main stream's; its thinking and stream deltas → nothing", () => {
 		const mapContext = startedContext();
+		const said = (message: RawMessage) => mapMessage(message, mapContext);
 
-		for (const message of [
-			{
-				type: 'assistant',
-				parent_tool_use_id: 'toolu_agent',
-				message: { content: [{ type: 'text', text: 'inner' }] },
-			},
-			{
+		expect(
+			said({
 				type: 'user',
 				parent_tool_use_id: 'toolu_agent',
-				message: { content: [{ type: 'tool_result', content: 'x' }] },
+				message: {
+					content: [
+						{ type: 'tool_result', content: `${'x'.repeat(200)}\nmore` },
+						{ type: 'tool_result', content: '', is_error: true },
+					],
+				},
+			}),
+		).toEqual([
+			{
+				type: 'subagent_item',
+				ref,
+				taskId: 'task1',
+				item: { kind: 'tool_result', ok: true, summary: `${'x'.repeat(159)}…` },
 			},
 			{
+				type: 'subagent_item',
+				ref,
+				taskId: 'task1',
+				item: { kind: 'tool_result', ok: false, summary: 'failed' },
+			},
+		]);
+		expect(
+			said({
+				type: 'assistant',
+				parent_tool_use_id: 'toolu_agent',
+				message: { content: [{ type: 'thinking', thinking: 'hmm' }] },
+			}),
+		).toEqual([]);
+		expect(
+			said({
 				type: 'stream_event',
 				parent_tool_use_id: 'toolu_agent',
 				event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } },
-			},
-		]) {
-			expect(mapMessage(message, mapContext)).toEqual([]);
-		}
+			}),
+		).toEqual([]);
 	});
+
+	it('the traffic of a sub-agent with no row → no transcript', () =>
+		expect(
+			mapMessage(
+				{
+					type: 'assistant',
+					parent_tool_use_id: 'toolu_agent',
+					message: { content: [{ type: 'text', text: 'inner' }] },
+				},
+				createMapContext(),
+			),
+		).toEqual([]));
 
 	it('progress → its last tool as the step, only until a real step arrived', () => {
 		const mapContext = startedContext();
@@ -381,6 +428,23 @@ describe('sub-agents', () => {
 			last_tool_name: 'Bash',
 		};
 
+		expect(mapMessage(progress, mapContext)).toEqual([
+			{ type: 'subagent_step', ref, taskId: 'task1', step: 'use Bash' },
+		]);
+
+		// Its text alone is a transcript line, not a step: progress still names its tool.
+		expect(
+			mapMessage(
+				{
+					type: 'assistant',
+					parent_tool_use_id: 'toolu_agent',
+					message: { content: [{ type: 'text', text: 'Looking.' }] },
+				},
+				mapContext,
+			),
+		).toEqual([
+			{ type: 'subagent_item', ref, taskId: 'task1', item: { kind: 'text', text: 'Looking.' } },
+		]);
 		expect(mapMessage(progress, mapContext)).toEqual([
 			{ type: 'subagent_step', ref, taskId: 'task1', step: 'use Bash' },
 		]);
@@ -466,7 +530,16 @@ describe('sub-agents', () => {
 				},
 				createMapContext(),
 			),
-		).toEqual([{ type: 'tool', ref, name: 'Agent', summary: 'start a subagent: Find the router' }]);
+		).toEqual([
+			{
+				type: 'tool',
+				ref,
+				name: 'Agent',
+				summary: 'start a subagent: Find the router',
+				// The row that opens its transcript on the page.
+				toolUseId: 'toolu_agent',
+			},
+		]);
 	});
 });
 

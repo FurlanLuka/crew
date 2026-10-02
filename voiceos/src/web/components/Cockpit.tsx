@@ -13,7 +13,10 @@ import { SubagentsPanel } from './SubagentsPanel.js';
 import { NotesPanel } from './NotesPanel.js';
 import { DocsPanel } from './DocsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
+import { useState } from 'react';
 import { useStickToBottom } from '../use-stick-to-bottom.js';
+import { findRunFor, isRunRunning } from '../derive.js';
+import { SubagentDialog } from './SubagentDialog.js';
 
 interface CockpitProps {
 	session: Session;
@@ -25,14 +28,24 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	// The compaction bar is added at the end of the stream too: it comes into view like a line.
 	const streamRef = useStickToBottom<HTMLElement>(session.ref);
 	const isOn = isActive(state, session.ref);
+	const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+	const openRun = session.subagentRuns.find((run) => run.taskId === openTaskId) ?? null;
 
 	return (
 		<main className="cockpit">
 			<section className="stream" aria-label="stream" ref={streamRef}>
 				<span className="lbl">stream</span>
-				{session.stream.map((item) => (
-					<StreamLine key={item.id} item={item} />
-				))}
+				{session.stream.map((item) => {
+					const run = item.kind === 'tool' ? findRunFor(session, item.toolUseId) : null;
+
+					return (
+						<StreamLine
+							key={item.id}
+							item={item}
+							{...(run ? { onOpen: () => setOpenTaskId(run.taskId) } : {})}
+						/>
+					);
+				})}
 				{stripStreamingTag(session.draft) && (
 					<div className="line text">
 						<Markdown text={stripStreamingTag(session.draft)} />
@@ -97,7 +110,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 						)}
 					</div>
 				</div>
-				<SubagentsPanel subagents={session.subagents} />
+				<SubagentsPanel subagents={session.subagents} onOpen={setOpenTaskId} />
 				{/* The setup session has no worktree, so no dev servers to start. */}
 				{!session.isPinned && (
 					<DevPanel
@@ -122,6 +135,13 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					))}
 				</div>
 			</aside>
+			{openRun && (
+				<SubagentDialog
+					run={openRun}
+					isRunning={isRunRunning(session, openRun)}
+					onClose={() => setOpenTaskId(null)}
+				/>
+			)}
 		</main>
 	);
 };

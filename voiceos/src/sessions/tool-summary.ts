@@ -67,3 +67,29 @@ export const getContentBlocks = (message: {
 
 	return Array.isArray(content) ? (content as Record<string, unknown>[]) : [];
 };
+
+// A tool result's text, whether the SDK gave a string or text blocks.
+export const extractResultText = (content: unknown): string => {
+	if (typeof content === 'string') {
+		return content;
+	}
+
+	if (!Array.isArray(content)) {
+		return '';
+	}
+
+	return content.map((part) => readString((part as Record<string, unknown>).text)).join(' ');
+};
+
+// A result line as the stream keeps it, the session's and a sub-agent's alike: its first line, short.
+const RESULT_SUMMARY_CHARS = 160;
+
+export const summarizeResult = (block: {
+	is_error?: unknown;
+	content?: unknown;
+}): { ok: boolean; summary: string } => {
+	const ok = block.is_error !== true;
+	const firstLine = extractResultText(block.content).split('\n')[0] ?? '';
+
+	return { ok, summary: clipText(firstLine, RESULT_SUMMARY_CHARS) || (ok ? 'done' : 'failed') };
+};

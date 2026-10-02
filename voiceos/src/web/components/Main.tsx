@@ -13,7 +13,15 @@ export const Main = ({ state, dispatch }: MainProps) => {
 	const viewedSession = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 
 	if (viewedSession) {
-		return <Cockpit session={viewedSession} state={state} dispatch={dispatch} />;
+		return (
+			<Cockpit
+				// One per session: what was open on one (a sub-agent's transcript) stays with it.
+				key={viewedSession.ref}
+				session={viewedSession}
+				state={state}
+				dispatch={dispatch}
+			/>
+		);
 	}
 
 	if (state.view.kind === 'machines') {

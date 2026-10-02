@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import type { Observation } from '../shared/protocol.js';
 import { createLineDecoder, encodeLine, parseMainLine, parseRemoteLine } from './protocol.js';
 
 const decodeAll = (chunks: (string | Uint8Array)[]): string[] => {
@@ -50,6 +51,30 @@ describe('parseRemoteLine', () => {
 			ok: true,
 			message: { type: 'input', input: { type: 'turn_started', ref: 'store/main' } },
 		});
+	});
+
+	it("a sub-agent's transcript line, and a start from an older remote without its call's id → accepted", () => {
+		for (const input of [
+			{
+				type: 'subagent_item',
+				ref: 'store/main',
+				taskId: 't1',
+				item: { kind: 'text', text: 'Found it.' },
+			},
+			{
+				type: 'subagent_started',
+				ref: 'store/main',
+				taskId: 't1',
+				agentType: null,
+				description: 'd',
+				isBackground: false,
+			},
+		] satisfies Observation[]) {
+			expect(parseRemoteLine(encodeLine({ type: 'input', input }).trim())).toEqual({
+				ok: true,
+				message: { type: 'input', input },
+			});
+		}
 	});
 
 	it('a report only the main makes (limits, narration, its own actions) → refused', () => {

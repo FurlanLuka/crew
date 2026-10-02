@@ -72,11 +72,25 @@ describe('convertHistoryToStream', () => {
 			}),
 		).toEqual([
 			{ id: 'h:u1', at, kind: 'user', text: 'run the checkout tests' },
-			{ id: 'h:a2:0', at, kind: 'tool', name: 'Bash', summary: 'run bun test checkout' },
+			{
+				id: 'h:a2:0',
+				at,
+				kind: 'tool',
+				name: 'Bash',
+				summary: 'run bun test checkout',
+				toolUseId: 't1',
+			},
 			{ id: 'h:r1:0', at, kind: 'tool_result', ok: true, summary: '96 pass' },
 			{ id: 'h:a3:0', at, kind: 'text', text: 'All 96 checkout tests pass.' },
 			{ id: 'h:u2', at, kind: 'user', text: 'now push it' },
-			{ id: 'h:a4:0', at, kind: 'tool', name: 'Edit', summary: 'edit src/cart.ts' },
+			{
+				id: 'h:a4:0',
+				at,
+				kind: 'tool',
+				name: 'Edit',
+				summary: 'edit src/cart.ts',
+				toolUseId: 't2',
+			},
 			{ id: 'h:r2:0', at, kind: 'tool_result', ok: false, summary: 'File has no changes' },
 		]);
 	});

@@ -1352,6 +1352,47 @@ textarea:focus-visible {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+/* A sub-agent's card and its Agent call's row open its transcript: buttons that read as lines. */
+button.subagent,
+button.line.opens {
+	display: block;
+	width: 100%;
+	text-align: left;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	padding: 0;
+	cursor: pointer;
+}
+button.line.opens {
+	font-size: 12.5px;
+	color: var(--muted);
+}
+button.subagent:hover,
+button.line.opens:hover {
+	color: var(--ink);
+}
+button.subagent:focus-visible,
+button.line.opens:focus-visible {
+	outline: 1px solid var(--cyan);
+	outline-offset: 2px;
+}
+.subagent-dialog {
+	width: min(760px, calc(100vw - 32px));
+}
+.subagent-lines {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-height: min(60vh, 640px);
+	overflow-y: auto;
+}
+.subagent-report {
+	border-top: 1px solid var(--line);
+	padding-top: 8px;
+	margin-top: 4px;
+}
 
 /* What a session shows: an image it named or a tool made, and the docs it linked. */
 .line.shown-image {

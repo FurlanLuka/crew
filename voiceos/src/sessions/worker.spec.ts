@@ -142,6 +142,19 @@ describe('Worker', () => {
 		expect(queryOptions.map((options) => options.env)).toEqual([env]);
 	});
 
+	// Without it the SDK forwards only a sub-agent's calls: its transcript on the page would be empty.
+	it("the session asks for its sub-agents' own text", () => {
+		const { worker, queryOptions } = createWorker([]);
+
+		worker.start();
+
+		expect(
+			queryOptions.map(
+				(options) => (options as { forwardSubagentText?: boolean }).forwardSubagentText,
+			),
+		).toEqual([true]);
+	});
+
 	it('a /clear goes to the CLI as typed: no note, no briefing, and the briefing waits for the next message', async () => {
 		const { worker, prompts } = createWorker([]);
 

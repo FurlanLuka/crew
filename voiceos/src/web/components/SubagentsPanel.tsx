@@ -6,9 +6,11 @@ const ELAPSED_TICK_MS = 1000;
 
 interface SubagentsPanelProps {
 	subagents: Subagent[];
+	// Opens its transcript.
+	onOpen: (taskId: string) => void;
 }
 
-export const SubagentsPanel = ({ subagents }: SubagentsPanelProps) => {
+export const SubagentsPanel = ({ subagents, onOpen }: SubagentsPanelProps) => {
 	const now = useNow(ELAPSED_TICK_MS);
 
 	if (subagents.length === 0) {
@@ -19,7 +21,13 @@ export const SubagentsPanel = ({ subagents }: SubagentsPanelProps) => {
 		<section className="panel" aria-label="sub-agents">
 			<span className="lbl">sub-agents · {subagents.length}</span>
 			{subagents.map((subagent) => (
-				<div key={subagent.taskId} className="subagent" data-task={subagent.taskId}>
+				<button
+					type="button"
+					key={subagent.taskId}
+					className="subagent"
+					data-task={subagent.taskId}
+					onClick={() => onOpen(subagent.taskId)}
+				>
 					<div className="row">
 						<i className="dot running" />
 						<span className="c-ink">{subagent.agentType ?? 'agent'}</span>
@@ -30,7 +38,7 @@ export const SubagentsPanel = ({ subagents }: SubagentsPanelProps) => {
 						{subagent.isBackground ? ' · background' : ''}
 					</div>
 					{subagent.step && <div className="row c-dim step">▸ {subagent.step}</div>}
-				</div>
+				</button>
 			))}
 		</section>
 	);

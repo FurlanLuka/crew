@@ -109,7 +109,14 @@ export const createStreamItem = ({
 			// The page shows the message without its spoken line (restored history included).
 			return { id, at, kind: 'text', text: readShownText(observation.text) };
 		case 'tool':
-			return { id, at, kind: 'tool', name: observation.name, summary: observation.summary };
+			return {
+				id,
+				at,
+				kind: 'tool',
+				name: observation.name,
+				summary: observation.summary,
+				...(observation.toolUseId ? { toolUseId: observation.toolUseId } : {}),
+			};
 		case 'tool_result':
 			return { id, at, kind: 'tool_result', ok: observation.ok, summary: observation.summary };
 		case 'diff':

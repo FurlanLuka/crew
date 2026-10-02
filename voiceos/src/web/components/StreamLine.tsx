@@ -15,9 +15,11 @@ const ASIDE_STATUS_TEXT = {
 
 interface StreamLineProps {
 	item: StreamItem;
+	// Given for an Agent call whose sub-agent's transcript is kept: the row opens it.
+	onOpen?: () => void;
 }
 
-export const StreamLine = ({ item }: StreamLineProps) => {
+export const StreamLine = ({ item, onOpen }: StreamLineProps) => {
 	switch (item.kind) {
 		case 'user':
 			return item.isApproval ? (
@@ -32,7 +34,11 @@ export const StreamLine = ({ item }: StreamLineProps) => {
 				</div>
 			);
 		case 'tool':
-			return (
+			return onOpen ? (
+				<button type="button" className="line tool opens" onClick={onOpen}>
+					<span className="c-amber">▸</span> {item.summary} <span className="c-cyan">· open</span>
+				</button>
+			) : (
 				<div className="line tool">
 					<span className="c-amber">▸</span> {item.summary}
 				</div>

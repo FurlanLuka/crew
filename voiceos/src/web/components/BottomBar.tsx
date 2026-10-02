@@ -7,6 +7,7 @@ import {
 	useRef,
 	useState,
 } from 'react';
+import { isInDialog } from '../in-dialog.js';
 import { isActive } from '../../shared/active.js';
 import { readSessionLabel } from '../../shared/machines.js';
 import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/protocol.js';
@@ -291,7 +292,8 @@ export const BottomBar = ({
 				event.code !== 'Space' ||
 				event.repeat ||
 				isTypingInField(event) ||
-				isOnOwnControl(event)
+				isOnOwnControl(event) ||
+				isInDialog(event)
 			) {
 				return;
 			}

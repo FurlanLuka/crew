@@ -9,7 +9,8 @@ export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'block
 export type StreamItem = { id: string; at: number } & (
 	| { kind: 'user'; text: string; isApproval?: true }
 	| { kind: 'text'; text: string }
-	| { kind: 'tool'; name: string; summary: string }
+	// toolUseId: the call's own id, so the row of an Agent call can open its sub-agent's transcript.
+	| { kind: 'tool'; name: string; summary: string; toolUseId?: string }
 	| { kind: 'tool_result'; ok: boolean; summary: string }
 	| { kind: 'diff'; filePath: string; lines: string[] }
 	| { kind: 'notice'; text: string }
@@ -27,6 +28,25 @@ export type StreamItem = { id: string; at: number } & (
 			note?: string;
 	  }
 );
+
+// What a sub-agent said or did, as the session's own stream lines are kept.
+export type SubagentItem = Extract<StreamItem, { kind: 'text' | 'tool' | 'tool_result' }>;
+export type SubagentItemContent = SubagentItem extends infer Item
+	? Item extends unknown
+		? Omit<Item, 'id' | 'at'>
+		: never
+	: never;
+
+// A sub-agent's transcript, kept after it ends. It runs while its taskId is in Session.subagents.
+export interface SubagentRun {
+	taskId: string;
+	// The Agent call that started it: its row in the session's history opens this transcript.
+	toolUseId: string | null;
+	agentType: string | null;
+	description: string;
+	startedAt: number;
+	items: SubagentItem[];
+}
 
 // withdrawn: replaced by a continuation of the developer's words; it is never said or queued.
 export type AsideStatus = 'asking' | 'answered' | 'queued' | 'failed' | 'withdrawn';
@@ -162,6 +182,8 @@ export interface Session {
 	// Its last few messages, oldest first, so "what's it doing?" can be answered from elsewhere.
 	requests: { text: string; at: number }[];
 	subagents: Subagent[];
+	// The last few sub-agents' transcripts, newest last: running ones and ended ones.
+	subagentRuns: SubagentRun[];
 	// The running turn handles an instruction: its end is reported aloud.
 	reportOwed: boolean;
 	// The session's own spoken lines already said this turn, so none is said twice.
@@ -553,7 +575,7 @@ export type Observation =
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }
 	| { type: 'assistant_text'; ref: string; text: string }
-	| { type: 'tool'; ref: string; name: string; summary: string }
+	| { type: 'tool'; ref: string; name: string; summary: string; toolUseId?: string }
 	| { type: 'tool_result'; ref: string; ok: boolean; summary: string }
 	| { type: 'diff'; ref: string; filePath: string; lines: string[] }
 	| { type: 'image'; ref: string; name: string; alt: string }
@@ -604,8 +626,12 @@ export type Observation =
 			agentType: string | null;
 			description: string;
 			isBackground: boolean;
+			// The Agent call that started it (absent from an older remote).
+			toolUseId?: string;
 	  }
 	| { type: 'subagent_step'; ref: string; taskId: string; step: string }
+	// One line of a sub-agent's own conversation: what its transcript on the page shows.
+	| { type: 'subagent_item'; ref: string; taskId: string; item: SubagentItemContent }
 	| { type: 'subagent_backgrounded'; ref: string; taskId: string }
 	| { type: 'subagent_ended'; ref: string; taskId: string }
 	// A side question settled: answered, or handed back to the session's queue.

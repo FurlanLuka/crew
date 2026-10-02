@@ -304,6 +304,8 @@ export class Worker {
 					permissionMode: this.options.permissionMode ?? 'auto',
 					canUseTool: permissions.canUseTool(ref, cwd) as never,
 					includePartialMessages: true,
+					// A sub-agent's own text and results: its transcript on the page.
+					forwardSubagentText: true,
 					...(resumeId ? { resume: resumeId } : {}),
 					...(this.options.maxBudgetUsd ? { maxBudgetUsd: this.options.maxBudgetUsd } : {}),
 				},

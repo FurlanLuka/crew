@@ -6,6 +6,7 @@ import type {
 	PendingAsk,
 	Session,
 	State,
+	SubagentRun,
 } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
@@ -15,6 +16,10 @@ import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 import {
 	countActive,
 	countSessions,
+	describeRunStatus,
+	findRunFor,
+	isRunRunning,
+	splitRunReport,
 	countUpdates,
 	describeActiveCard,
 	labelAcrossMachines,
@@ -628,5 +633,68 @@ describe('listDocs', () => {
 			{ url: 'https://claude.ai/a', title: 'A' },
 			{ url: 'https://claude.ai/b', title: 'B' },
 		]);
+	});
+});
+
+describe('sub-agent transcripts', () => {
+	const run = {
+		taskId: 't1',
+		toolUseId: 'toolu_1',
+		agentType: null,
+		description: 'd',
+		startedAt: 0,
+		items: [
+			{ id: 'a', at: 1, kind: 'text', text: 'Looking.' },
+			{ id: 'b', at: 2, kind: 'tool', name: 'Read', summary: 'read a.ts' },
+			{ id: 'c', at: 3, kind: 'text', text: 'Found it.' },
+		],
+	} as const satisfies SubagentRun;
+	const session = { subagentRuns: [run], subagents: [] };
+
+	it("a row finds its sub-agent's transcript by its call; no id, or one no longer kept → none", () => {
+		expect(findRunFor(session, 'toolu_1')).toBe(run);
+		expect(findRunFor(session, undefined)).toBeNull();
+		expect(findRunFor(session, 'toolu_gone')).toBeNull();
+	});
+
+	it('running → how long; ended → done, and its last words are its report', () => {
+		expect(describeRunStatus(run, true, 80_000)).toBe('running · 1m');
+		expect(describeRunStatus(run, false, 80_000)).toBe('done');
+		expect(splitRunReport(run, true)).toEqual({ lines: run.items, report: null });
+		expect(splitRunReport(run, false)).toEqual({
+			lines: run.items.slice(0, 2),
+			report: 'Found it.',
+		});
+		expect(isRunRunning(session, run)).toBe(false);
+		expect(
+			isRunRunning(
+				{
+					subagents: [
+						{
+							taskId: 't1',
+							agentType: null,
+							description: 'd',
+							startedAt: 0,
+							step: null,
+							isBackground: false,
+						},
+					],
+				},
+				run,
+			),
+		).toBe(true);
+	});
+
+	it('ended on a call or a result (killed, failed) → no report, every line shown', () => {
+		const cut = {
+			...run,
+			items: [
+				{ id: 'a', at: 1, kind: 'text', text: 'Looking.' },
+				{ id: 'b', at: 2, kind: 'tool', name: 'Read', summary: 'read a.ts' },
+				{ id: 'c', at: 3, kind: 'tool_result', ok: false, summary: 'no match' },
+			],
+		} as const satisfies SubagentRun;
+
+		expect(splitRunReport(cut, false)).toEqual({ lines: cut.items, report: null });
 	});
 });
