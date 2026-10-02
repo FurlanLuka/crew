@@ -45,6 +45,7 @@ import { DevWatch } from './dev/watch.js';
 import { SonioxTts } from './speech/tts.js';
 import { createNarrator } from './narrator/narrator.js';
 import { createAboutWriter } from './narrator/about.js';
+import { createVoiceLineWriter } from './voice-lines/writer.js';
 import { connectMachines, readMachineStatuses } from './remote/cockpit-machines.js';
 import { DISCORD_CLIENT } from './discord/bridge.js';
 import { DISCORD_SAMPLE_RATE } from './discord/audio.js';
@@ -115,6 +116,8 @@ const sendToClient = (client: string, message: ServerMessage): boolean =>
 	client === DISCORD_CLIENT ? discord.send(message) : (gateway?.send(client, message) ?? false);
 
 const tts = keys.soniox ? new SonioxTts({ apiKey: keys.soniox }) : null;
+// Words Voice OS's follow-ups and progress lines; without the Anthropic key, the fixed lines.
+const voiceLines = createVoiceLineWriter({ apiKey: keys.anthropic });
 const voiceOut: VoiceOut = new VoiceOut({
 	store,
 	synthesize: tts?.synthesize ?? null,
@@ -123,6 +126,7 @@ const voiceOut: VoiceOut = new VoiceOut({
 	hasPage: () => (gateway?.countClients() ?? 0) > 0 || discord.isOwnerIn(),
 	// voiceIn is assigned below; it is only asked once speech is under way.
 	isListening: () => voiceIn.isListening(),
+	writeFollowUp: (input) => voiceLines.followUp(input),
 });
 // One judge for the kernel's guards and the router's "For X?".
 const judge = createJudge({ apiKey: keys.anthropic });
@@ -139,7 +143,14 @@ const narrateTurn = createTurnNarrator({
 
 const narrateAside = createAsideNarrator({ store, narrate, say: (line) => voiceOut.say(line) });
 
-connectSpeech({ store, voiceOut, narrateTurn, narrateAside, isRouting: () => router.isRouting });
+connectSpeech({
+	store,
+	voiceOut,
+	narrateTurn,
+	narrateAside,
+	isRouting: () => router.isRouting,
+	writeProgress: (input) => voiceLines.progress(input),
+});
 
 const reminderTimer = setInterval(() => voiceOut.remind(store.state), REMINDER_INTERVAL_MS);
 
@@ -228,6 +239,7 @@ const router = new UtteranceRouter({
 	kernel: kernel
 		? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
 		: null,
+	onKernelTurn: (turn) => voiceOut.kernelTurnStarted(turn),
 });
 const voiceIn: VoiceInput = new VoiceInput({
 	store,

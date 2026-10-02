@@ -59,7 +59,10 @@ export const findVoiceOsQuestion = ({
 	now,
 	heardFrom = now,
 }: FindVoiceOsQuestionParams): SpokenLine | null => {
-	const last = spoken.filter((line) => line.at < heardFrom && !line.isUnplayed).at(-1);
+	// Filler ("Okay.", a progress line) asks nothing and hides nothing: the question before it stands.
+	const last = spoken
+		.filter((line) => line.at < heardFrom && !line.isUnplayed && !line.isFiller)
+		.at(-1);
 
 	return last &&
 		last.source === 'kernel' &&
@@ -95,6 +98,7 @@ export const listHeardBefore = ({ spoken, heardFrom }: ListHeardBeforeParams): S
 			(line) =>
 				(line.ref !== undefined || line.refs !== undefined) &&
 				line.source !== 'kernel' &&
+				!line.isFiller &&
 				line.at < heardFrom &&
 				heardFrom - line.at <= HEARD_BEFORE_MS,
 		)

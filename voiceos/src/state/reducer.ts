@@ -46,6 +46,7 @@ import { hasFollowUpWaiting, promoteAllQueued, promoteQueued } from './delivery.
 import { reduceTakeBack } from './take-back.js';
 import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
+import type { FollowUpFacts } from '../shared/follow-up.js';
 import { readSpokenTag, type SpokenTag } from '../shared/spoken-tags.js';
 import { speakNewTag } from './spoken-lines.js';
 import { cleanSessionLine } from '../shared/spoken.js';
@@ -128,6 +129,10 @@ export type Effect =
 			isAnswer?: boolean;
 			// Another session's permission or question: it waits for a short gap, never cutting in.
 			waitsForGap?: boolean;
+			// Voice OS's own filler (an instant "Okay.", a progress line): never a question, never held.
+			isFiller?: boolean;
+			// What the line says Voice OS did, so it can be worded instead of said as fixed text.
+			facts?: FollowUpFacts;
 	  }
 	// The developer spoke to this session again: its lines still waiting to be said (older than
 	// before) are out of date. They stay on the page.
@@ -840,6 +845,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 						...(input.isUpdate ? { isUpdate: true as const } : {}),
 						...(input.refs?.length ? { refs: input.refs } : {}),
 						...(input.toldAsks?.length ? { toldAsks: input.toldAsks } : {}),
+						...(input.isFiller ? { isFiller: true as const } : {}),
 					},
 				].slice(-SPOKEN_LINES_KEPT),
 			});

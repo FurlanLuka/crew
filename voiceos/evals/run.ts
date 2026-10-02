@@ -1,4 +1,4 @@
-// Prompt evals. `bun evals/run.ts [narrator|kernel|all|route] [--only=id,id] [--system=kernel|classifier|both] [--narrator-model=id] [--kernel-model=id] [--update-baseline]`.
+// Prompt evals. `bun evals/run.ts [narrator|kernel|all|route|voice-lines] [--only=id,id] [--system=kernel|classifier|both] [--narrator-model=id] [--kernel-model=id] [--update-baseline]`.
 // Every run bills the Anthropic key: iterate with --only (no scores, no baseline), full suite before review.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -230,6 +230,37 @@ if (suite === 'route') {
 			console.log(
 				`  ✗ ${row.id}: ${row.label} → ${row.decision}${row.calls.length ? ` (${row.calls.join(', ')})` : ''}`,
 			);
+		}
+	}
+}
+
+// Haiku's worded follow-ups and progress lines: a measurement like route, never in `all`, never a
+// gate.
+if (suite === 'voice-lines') {
+	const { costOf, emptyUsage } = await import('./route.js');
+	const { runVoiceLinesEval, scoreVoiceLines } = await import('./voice-lines.js');
+
+	// Its cost line prices Haiku, and it has no baseline: refuse what would mislead.
+	if (kernelModel || narratorModel || process.argv.includes('--update-baseline')) {
+		throw new Error(
+			'voice-lines runs Haiku and has no baseline: drop --kernel-model, --narrator-model, --update-baseline',
+		);
+	}
+
+	const usage = emptyUsage();
+	const rows = await runVoiceLinesEval({ apiKey, evalsDir, usage, onlyIds });
+	const score = scoreVoiceLines(rows);
+	results['voice-lines'] = { score, rows };
+	console.log(
+		`voice-lines usage: ${usage.calls} API calls · ${usage.input} in · ${usage.output} out ≈ $${costOf(usage).toFixed(3)}`,
+	);
+	console.log(
+		`voice-lines: pass ${score.passRate.toFixed(3)} (n=${score.n}) · ${score.medianMs} ms median${score.infraErrors ? ` · ${score.infraErrors} API failures` : ''}`,
+	);
+
+	for (const row of rows) {
+		for (const run of row.runs.filter((candidate) => candidate.problem !== null)) {
+			console.log(`  ✗ ${row.id}: ${run.problem} — "${run.line ?? ''}"`);
 		}
 	}
 }

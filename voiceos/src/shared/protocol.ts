@@ -343,6 +343,9 @@ export interface SpokenLine {
 	isUpdate?: true;
 	refs?: string[];
 	toldAsks?: ToldAsk[];
+	// Voice OS's own filler (an instant "Okay.", a progress line): never its question, never what the
+	// developer heard before, never a session's line.
+	isFiller?: true;
 }
 
 export interface Setup {
@@ -584,6 +587,7 @@ export type Observation =
 			isUpdate?: true;
 			refs?: string[];
 			toldAsks?: ToldAsk[];
+			isFiller?: true;
 	  }
 	// The Discord bridge's own state (connected, owner in the channel); null when not set up.
 	| { type: 'discord_presence'; presence: DiscordPresence | null }

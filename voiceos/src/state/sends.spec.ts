@@ -155,6 +155,42 @@ describe('words sent to a session not on screen', () => {
 	});
 });
 
+describe('the facts a worded follow-up is made from', () => {
+	const factsOf = (result: ReducerResult) =>
+		result.effects.flatMap((effect) =>
+			effect.type === 'speak' && effect.facts ? [effect.facts] : [],
+		);
+
+	it('"Sent to …" → the label as said, and the switch offered only when it is asked', () => {
+		expect(factsOf(reduceAt(onScreen(), 10, said(OTHER)))).toEqual([
+			{ kind: 'sent', label: 'checkout, main', offersSwitch: true },
+		]);
+		expect(factsOf(reduceAt(onScreen(), 10, { type: 'send', ref: OTHER, text: 'hi' }))).toEqual([
+			{ kind: 'sent', label: 'checkout, main', offersSwitch: false },
+		]);
+	});
+
+	it('"Switch there?" appended to "Okay, after its current work." → offered in the same step', () => {
+		const busy = runAt(
+			[[10, { type: 'send', ref: OTHER, text: 'refactor the router' }]],
+			onScreen(),
+		);
+		const result = reduceAt(busy, 20, {
+			type: 'send',
+			ref: OTHER,
+			text: 'also run the linter',
+			ack: { kind: 'instruction' },
+			isSpoken: true,
+		});
+
+		expect(spokenTexts(result)).toEqual(['Okay, after its current work. Switch there?']);
+		expect(factsOf(result)).toEqual([
+			{ kind: 'queued', label: 'checkout, main', offersSwitch: true },
+		]);
+		expect(result.state.switchOffer?.ref).toBe(OTHER);
+	});
+});
+
 describe('the switch offer', () => {
 	const offered = (): State => runAt([[40, { type: 'offer_switch', ref: OTHER }]], onScreen());
 

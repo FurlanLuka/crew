@@ -34,6 +34,15 @@ export interface SpeechItem {
 	// elsewhere by the time it plays.
 	isHoldable?: boolean;
 	chime?: 'needs';
+	// Voice OS's own filler (an instant "Okay.", a progress line): no chime, never held, never a
+	// question.
+	isFiller?: boolean;
+	// Voiced with its tags even when short (see instant-ack.ts).
+	keepsTags?: boolean;
+	// Being worded by voice-lines/: the line keeps its place and waits for the wording until then (an
+	// epoch ms), and plays the fixed text after. fixedText is what it says unworded.
+	wordingUntil?: number;
+	fixedText?: string;
 }
 
 export interface SpeechQueue {
@@ -60,8 +69,9 @@ export const NORMAL_TTL_MS = 120_000;
 export const REPLY_FRESH_MS = 3_000;
 
 export const shouldChime = (item: SpeechItem, now: number): boolean => {
-	// Only a fresh reply lands as the answer; anything else would come out of nowhere.
-	return !(item.isReply && now - item.at <= REPLY_FRESH_MS);
+	// Filler is a murmur, not news. Only a fresh reply lands as the answer; anything else would come
+	// out of nowhere.
+	return !item.isFiller && !(item.isReply && now - item.at <= REPLY_FRESH_MS);
 };
 
 export const createEmptyQueue = (): SpeechQueue => ({ items: [], isMuted: false });
@@ -102,7 +112,7 @@ interface TakeNextItemParams {
 
 // Voice OS's word on what it did with the developer's words, and the kernel's answer to them, come
 // before older lines from anyone else — never before an alert.
-const isReplyLine = (item: SpeechItem): boolean =>
+export const isReplyLine = (item: SpeechItem): boolean =>
 	Boolean(item.isAck) || (item.source === 'kernel' && Boolean(item.isReply));
 
 const rankFor = (item: SpeechItem): number => {
@@ -165,3 +175,49 @@ export const setMuted = (queue: SpeechQueue, isMuted: boolean): SpeechQueue => (
 		? queue.items.filter((queued) => PRIORITY_RANK[queued.priority] <= PRIORITY_RANK.high)
 		: queue.items,
 });
+
+// Voice OS's "Mm-hm." while the kernel decides: filler about no session.
+export const isInstantAck = (item: SpeechItem): boolean => Boolean(item.isFiller) && !item.ref;
+
+export const withoutInstantAcks = (queue: SpeechQueue): SpeechQueue => ({
+	...queue,
+	items: queue.items.filter((queued) => !isInstantAck(queued)),
+});
+
+interface SettleWordingParams {
+	id: string;
+	// null: keep the fixed text.
+	worded: string | null;
+}
+
+interface SettledWording {
+	queue: SpeechQueue;
+	// Still waiting to be said: false once it played or went, when the wording is too late.
+	isQueued: boolean;
+}
+
+// A follow-up's wording arrived: it replaces the text, and the line stops waiting for it.
+export const settleWording = (
+	queue: SpeechQueue,
+	{ id, worded }: SettleWordingParams,
+): SettledWording => {
+	if (!queue.items.some((queued) => queued.id === id)) {
+		return { queue, isQueued: false };
+	}
+
+	return {
+		isQueued: true,
+		queue: {
+			...queue,
+			items: queue.items.map((queued) => {
+				if (queued.id !== id) {
+					return queued;
+				}
+
+				const { wordingUntil: _settled, ...rest } = queued;
+
+				return worded ? { ...rest, text: worded } : rest;
+			}),
+		},
+	};
+};

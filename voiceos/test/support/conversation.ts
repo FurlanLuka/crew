@@ -12,7 +12,7 @@ import { UtteranceRouter } from '../../src/router/router.js';
 import { createAsideNarrator, createTurnNarrator } from '../../src/narrator/turn.js';
 import type { Input, MachineConfig, WorktreeInfo } from '../../src/shared/protocol.js';
 import { connectSpeech, speakKernelReplies } from '../../src/speech/connect.js';
-import { VoiceOut } from '../../src/speech/voice-out.js';
+import { VoiceOut, type VoiceOutOptions } from '../../src/speech/voice-out.js';
 import { Store } from '../../src/state/store.js';
 import { createNullNotes } from './notes.js';
 
@@ -51,6 +51,10 @@ interface CreateConversationParams {
 	inactive?: string[];
 	// Other machines, connected; their sessions are in refs with the machine's prefix ("vm1:…").
 	machines?: MachineConfig[];
+	// "Mm-hm." while the kernel decides. Off by default, so every other conversation hears what it did.
+	hasInstantAck?: boolean;
+	// Words Voice OS's follow-ups as the app's Haiku writer would; absent, the fixed lines.
+	writeFollowUp?: VoiceOutOptions['writeFollowUp'];
 }
 
 export const createConversation = ({
@@ -60,6 +64,8 @@ export const createConversation = ({
 	judge = englishJudge,
 	inactive = [],
 	machines = [],
+	hasInstantAck = false,
+	writeFollowUp,
 }: CreateConversationParams) => {
 	let now = 1_000_000;
 	const clock = () => now;
@@ -142,6 +148,7 @@ export const createConversation = ({
 		now: clock,
 		setTimer,
 		isListening: () => isListening,
+		...(writeFollowUp ? { writeFollowUp } : {}),
 	});
 	const narrate = async () => ({
 		speak: false,
@@ -184,6 +191,7 @@ export const createConversation = ({
 		judge,
 		kernel: speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut),
 		now: clock,
+		...(hasInstantAck ? { onKernelTurn: voiceOut.kernelTurnStarted.bind(voiceOut) } : {}),
 	});
 
 	// Plays what is queued, clip by clip, to the end: the developer listens without interrupting.

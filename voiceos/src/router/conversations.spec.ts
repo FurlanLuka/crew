@@ -89,6 +89,34 @@ describe('conversations', () => {
 			'checkout api, main: Yes, all 214 tests pass.',
 		]);
 	});
+	it('with the instant ack on: "Mm-hm." while the kernel decides, the worded "Sent to …", then the answer', async () => {
+		const convo = createConversation({
+			refs: REFS,
+			view: 'store-front/main',
+			hasInstantAck: true,
+			writeFollowUp: async ({ facts }) =>
+				facts.kind === 'sent' ? `Passed that to ${facts.label}. Want to go there?` : null,
+		});
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		const model = convo.holdModel();
+
+		convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'question' })]);
+		const saying = convo.say('checkout api, is the build green?');
+		await model.reached;
+		await convo.wait(600);
+		model.release();
+		await saying;
+		await convo.answer('checkout-api/main', 'Yes, all 214 tests pass.');
+
+		expect(convo.heard).toEqual([
+			'> checkout api, is the build green?',
+			expect.stringMatching(/^\[warm\] (Mm-hm|Okay|Got it|One sec|Sure|On it)\.$/),
+			'Passed that to checkout api, main. Want to go there?',
+			'checkout api, main: Yes, all 214 tests pass.',
+		]);
+		expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
+	});
+
 	it('a follow-up that names no session → for the screen: a send_to elsewhere is refused and the kernel forwards it', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

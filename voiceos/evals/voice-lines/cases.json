@@ -1,0 +1,163 @@
+{
+	"note": "Haiku's worded follow-ups and progress lines (src/voice-lines/). A follow-up passes when it keeps every rule the app checks (label word for word, the switch question exactly when offered, no wake word, at most 25 words) and invents nothing (not_includes, and no word from the eval's invented list that the plain line lacks). A progress line passes the app's rules and says its step (includes). bun evals/run.ts voice-lines [--only=…].",
+	"cases": [
+		{
+			"id": "sent-plain",
+			"kind": "follow_up",
+			"facts": { "kind": "sent", "label": "checkout api, main", "offersSwitch": false },
+			"fixedText": "Sent to checkout api, main.",
+			"lastAck": null
+		},
+		{
+			"id": "sent-offer",
+			"kind": "follow_up",
+			"facts": { "kind": "sent", "label": "checkout api, main", "offersSwitch": true },
+			"fixedText": "Sent to checkout api, main. Switch there?",
+			"lastAck": null
+		},
+		{
+			"id": "sent-offer-after-ack",
+			"kind": "follow_up",
+			"facts": { "kind": "sent", "label": "signals, main", "offersSwitch": true },
+			"fixedText": "Sent to signals, main. Switch there?",
+			"lastAck": "Okay.",
+			"not_starts": ["okay"]
+		},
+		{
+			"id": "sent-after-ack-got-it",
+			"kind": "follow_up",
+			"facts": { "kind": "sent", "label": "admin, work 2", "offersSwitch": false },
+			"fixedText": "Sent to admin, work 2.",
+			"lastAck": "Got it.",
+			"not_starts": ["got it"]
+		},
+		{
+			"id": "sent-remote",
+			"kind": "follow_up",
+			"facts": { "kind": "sent", "label": "infra ops on Build box", "offersSwitch": true },
+			"fixedText": "Sent to infra ops on Build box. Switch there?",
+			"lastAck": "Mm-hm."
+		},
+		{
+			"id": "sent-question-not-answered",
+			"kind": "follow_up",
+			"facts": { "kind": "sent", "label": "store front, main", "offersSwitch": false },
+			"fixedText": "Sent to store front, main.",
+			"lastAck": "One sec.",
+			"not_includes": ["yes", "green", "pass"]
+		},
+		{
+			"id": "queued",
+			"kind": "follow_up",
+			"facts": { "kind": "queued", "label": "store front, main", "offersSwitch": false },
+			"fixedText": "Okay, after its current work.",
+			"lastAck": null,
+			"not_includes": ["now", "right away", "immediately"]
+		},
+		{
+			"id": "queued-offer",
+			"kind": "follow_up",
+			"facts": { "kind": "queued", "label": "signals, main", "offersSwitch": true },
+			"fixedText": "Okay, after its current work. Switch there?",
+			"lastAck": "Sure."
+		},
+		{
+			"id": "queued-after-okay",
+			"kind": "follow_up",
+			"facts": { "kind": "queued", "label": "admin, work 2", "offersSwitch": false },
+			"fixedText": "Okay, after its current work.",
+			"lastAck": "Okay.",
+			"not_starts": ["okay"]
+		},
+		{
+			"id": "switching",
+			"kind": "follow_up",
+			"facts": { "kind": "switching", "label": "checkout api, main" },
+			"fixedText": "Switching to checkout api, main.",
+			"lastAck": null
+		},
+		{
+			"id": "switching-mission-control",
+			"kind": "follow_up",
+			"facts": { "kind": "switching", "label": "Mission Control" },
+			"fixedText": "Switching to Mission Control.",
+			"lastAck": "On it."
+		},
+		{
+			"id": "switching-machines",
+			"kind": "follow_up",
+			"facts": { "kind": "switching", "label": "your machines" },
+			"fixedText": "Switching to your machines.",
+			"lastAck": null
+		},
+		{
+			"id": "back",
+			"kind": "follow_up",
+			"facts": { "kind": "back", "label": "store front, main", "skipped": [] },
+			"fixedText": "Back to store front, main.",
+			"lastAck": null
+		},
+		{
+			"id": "back-skipped",
+			"kind": "follow_up",
+			"facts": { "kind": "back", "label": "store front, main", "skipped": ["signals, main"] },
+			"fixedText": "signals, main stopped. Back to store front, main.",
+			"lastAck": null
+		},
+		{
+			"id": "back-active",
+			"kind": "follow_up",
+			"facts": { "kind": "back", "label": "Active", "skipped": [] },
+			"fixedText": "Back to Active.",
+			"lastAck": "Okay."
+		},
+		{
+			"id": "activated",
+			"kind": "follow_up",
+			"facts": { "kind": "activated", "label": "admin, main", "hasWaitingWords": false },
+			"fixedText": "Activated admin, main. Switch there?",
+			"lastAck": null,
+			"not_includes": ["ready", "running"]
+		},
+		{
+			"id": "activated-words-waiting",
+			"kind": "follow_up",
+			"facts": { "kind": "activated", "label": "checkout api, work 1", "hasWaitingWords": true },
+			"fixedText": "Activated checkout api, work 1; your words go once it's up. Switch there?",
+			"lastAck": "Got it."
+		},
+		{
+			"id": "progress-edit",
+			"kind": "progress",
+			"step": "edit router.ts",
+			"agents": [],
+			"lastProgress": null,
+			"includes": ["router"]
+		},
+		{
+			"id": "progress-tests",
+			"kind": "progress",
+			"step": "run bun test",
+			"agents": [],
+			"lastProgress": "Still on it, editing the router now.",
+			"includes": ["test"],
+			"not_includes": ["pass", "fail"]
+		},
+		{
+			"id": "progress-agents",
+			"kind": "progress",
+			"step": null,
+			"agents": ["Find the retry callers", "Read the checkout flow"],
+			"lastProgress": null,
+			"not_includes": ["found"]
+		},
+		{
+			"id": "progress-search",
+			"kind": "progress",
+			"step": "search the code",
+			"agents": ["Map the payment webhooks"],
+			"lastProgress": "Still working on it.",
+			"includes": ["search|look"]
+		}
+	]
+}
