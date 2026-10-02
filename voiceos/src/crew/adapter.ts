@@ -1,3 +1,4 @@
+import { CHAT_WORKSPACE, isChatRef } from '../shared/machine-ref.js';
 import type { WorktreeInfo } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { parseCheckRows, parseRouteRows, type CheckRow, type RouteRow } from '../dev/servers.js';
@@ -68,6 +69,32 @@ export const parseWorktrees = (json: string): WorktreeRow[] => {
 export const parseProjects = (json: string): ProjectRow[] => {
 	return parseArray(json, isProjectRow);
 };
+
+export interface ChatRow {
+	id: string;
+	dir: string;
+	name: string;
+}
+
+const isChatRow = (value: unknown): value is ChatRow =>
+	typeof value === 'object' &&
+	value !== null &&
+	typeof (value as ChatRow).id === 'string' &&
+	typeof (value as ChatRow).dir === 'string';
+
+export const parseChats = (json: string): ChatRow[] => parseArray(json, isChatRow);
+
+// A plain session joins the list like a worktree: it is named by the developer's name for it, else
+// "chat"; it runs in its folder with nothing of crew's.
+export const toChatInfo = (row: ChatRow): WorktreeInfo => ({
+	ref: `${CHAT_WORKSPACE}/${row.id}`,
+	label: row.name?.trim() || CHAT_WORKSPACE,
+	branch: '',
+	cwd: row.dir,
+	dirs: [],
+	isPinned: false,
+	isChat: true,
+});
 
 export interface ToWorktreeInfoParams {
 	row: WorktreeRow;
@@ -207,10 +234,29 @@ export class CrewAdapter {
 			}),
 		);
 
-		return infos.filter((info): info is WorktreeInfo => info !== null);
+		return [
+			...infos.filter((info): info is WorktreeInfo => info !== null),
+			...(await this.listChats()),
+		];
+	}
+
+	// An older crew has no chats: none, never a broken list.
+	private async listChats(): Promise<WorktreeInfo[]> {
+		try {
+			return parseChats(await this.runJson(['ls', 'chats'])).map(toChatInfo);
+		} catch (error) {
+			log.warn('chats not listed', { error: String(error) });
+
+			return [];
+		}
 	}
 
 	async fetchOrientation(ref: string): Promise<string> {
+		// A plain session gets no crew orientation; Voice OS's own context is added to every session.
+		if (isChatRef(ref)) {
+			return '';
+		}
+
 		const result = await this.run(['start', ref]);
 
 		if (result.code !== 0) {

@@ -214,3 +214,13 @@ func TestServerSub(t *testing.T) {
 		}
 	}
 }
+
+func TestParseChatAddArgs(t *testing.T) {
+	dir, name, err := parseChatAddArgs([]string{"--dir=~/notes", "--name=Weekly notes"})
+	if err != nil || dir != "~/notes" || name != "Weekly notes" {
+		t.Errorf("%q %q %v", dir, name, err)
+	}
+	if _, _, err := parseChatAddArgs([]string{"notes"}); err == nil {
+		t.Error("a bare argument accepted")
+	}
+}

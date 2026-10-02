@@ -192,7 +192,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "ls",
-			Description: "List workspaces, worktrees, projects, bindings, overrides or a workspace's base branches (tab-separated output for scripting; --json for data)",
+			Description: "List workspaces, worktrees, projects, bindings, overrides, a workspace's base branches or the plain Voice OS sessions (tab-separated output for scripting; --json for data)",
 			Subcommands: []CommandInfo{
 				{
 					Name:         "workspaces",
@@ -241,6 +241,41 @@ var Root = CommandInfo{
 					OutputFormat: "<project>  <base>  <n behind origin/<base>|up to date>[   (checkout is on <branch>)]",
 					Notes:        []string{"--json: [{project, base, current, behind, ahead, error?}]"},
 					Examples:     []string{"crew ls bases store-front", "crew ls bases store-front --json"},
+				},
+				{
+					Name:         "chats",
+					Description:  "The plain Claude sessions Voice OS runs on this machine beside the worktrees (crew chat add): each one's ref, name and folder.",
+					Usage:        "crew ls chats [--json]",
+					OutputFormat: "chat/<id>\\t<name>\\t<folder>",
+					Notes:        []string{"--json: [{\"id\",\"dir\",\"name\",\"created\"}]"},
+					Examples:     []string{"crew ls chats"},
+				},
+			},
+		},
+		{
+			Name:        "chat",
+			Description: "Plain Claude sessions for Voice OS: a conversation in a folder of your choosing, with no workspace, worktree or crew orientation. Voice OS lists each as chat/<id> beside the worktrees, on whichever machine keeps it (~/.crew/chats.json).",
+			Usage:       "crew chat add [--dir=<path>] [--name=<name>] | rm <id>",
+			Subcommands: []CommandInfo{
+				{
+					Name:         "add",
+					Description:  "Records a plain session in a folder that already exists (home when none is given; ~ is home) and prints its ref. Voice OS lists it within seconds; activate it there to start its Claude.",
+					Usage:        "crew chat add [--dir=<path>] [--name=<name>]",
+					OutputFormat: "added\\tchat/<id>\\t<folder>",
+					Flags: []FlagInfo{
+						{Name: "--dir=<path>", Description: "The folder it runs in; must exist", Default: "home"},
+						{Name: "--name=<name>", Description: "What it is called aloud and on the page (at most 60 characters)"},
+					},
+					Notes:    []string{"--json: {\"id\",\"dir\",\"name\",\"created\"}; the line goes to stderr. A folder is never created."},
+					Examples: []string{"crew chat add --name=research", "crew chat add --dir=~/notes --name=\"Weekly notes\""},
+				},
+				{
+					Name:         "rm",
+					Description:  "Drops a plain session's record (chat/<id> or <id>). Its folder is never touched; Voice OS stops listing it.",
+					Usage:        "crew chat rm <id>",
+					OutputFormat: "removed\\tchat/<id>\\t(the folder <folder> is untouched)",
+					Notes:        []string{"--json: the removed {\"id\",\"dir\",\"name\",\"created\"}."},
+					Examples:     []string{"crew chat rm chat/3fa9c1"},
 				},
 			},
 		},

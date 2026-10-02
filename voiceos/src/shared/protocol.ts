@@ -168,6 +168,8 @@ export interface Session {
 	dirs: string[];
 	// The setup session (crew setup, cwd home): not the active set. The name is on the wire to remotes.
 	isPinned: boolean;
+	// A plain Claude session (crew chat): no worktree, no crew orientation, no dev servers.
+	isChat?: true;
 	status: SessionStatus;
 	queue: QueuedMessage[];
 	stream: StreamItem[];
@@ -565,6 +567,8 @@ export interface WorktreeInfo {
 	dirs: string[];
 	// The setup session; see Session.isPinned.
 	isPinned: boolean;
+	// A plain Claude session (crew chat): no worktree, no crew orientation, no dev servers.
+	isChat?: true;
 }
 
 export type Observation =

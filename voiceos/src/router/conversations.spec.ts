@@ -1,5 +1,7 @@
 // The design's conversations, heard end to end: the real store, kernel, router, narrator and voice,
 // with only the model scripted. Each list is what the developer hears, their own words as "> …".
+import type { SetupCommand } from '../crew/commands.js';
+import { findSessionsNamedIn } from '../tools/session-naming.js';
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
@@ -1067,6 +1069,68 @@ describe('conversations', () => {
 			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['p1']);
 			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'checkout-api/main' });
 		});
+	});
+
+	it('"start a new session called research in my notes" → made by crew, started once it is listed, and it answers to its name', async () => {
+		const added: SetupCommand[] = [];
+		const convo = createConversation({
+			refs: REFS,
+			view: 'store-front/main',
+			runCrewOn: async (_machine, command) => {
+				added.push(command);
+
+				return {
+					kind: 'ran',
+					result: {
+						code: 0,
+						stdout: '{"id":"3fa9c1","dir":"/Users/dev/notes","name":"research"}',
+						stderr: '',
+					},
+				};
+			},
+		});
+		await convo.startSessions('store-front/main');
+
+		convo.script([
+			toolUse('t1', 'new_session', { machine: null, folder: '~/notes', name: 'research' }),
+		]);
+		await convo.say('Start a new session called research in my notes folder.');
+
+		expect(added).toEqual([{ type: 'chat_add', dir: '~/notes', name: 'research' }]);
+		expect(convo.heard.at(-1)).toBe('Started research.');
+
+		// crew lists it on the next poll: the held activation starts it.
+		convo.store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				...REFS.map((ref) => ({
+					ref,
+					label: ref,
+					branch: '',
+					cwd: `/w/${ref}`,
+					dirs: [],
+					isPinned: false,
+				})),
+				{
+					ref: 'chat/3fa9c1',
+					label: 'research',
+					branch: '',
+					cwd: '/Users/dev/notes',
+					dirs: [],
+					isPinned: false,
+					isChat: true as const,
+				},
+			],
+		});
+		await convo.listen();
+
+		expect(convo.store.state.active).toContain('chat/3fa9c1');
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'activate', ref: 'chat/3fa9c1' }),
+		);
+		expect(findSessionsNamedIn(convo.store.state, 'ask research what it found')).toEqual([
+			'chat/3fa9c1',
+		]);
 	});
 
 	it('"what did I miss?" → the waiting updates now, without waiting for the quiet', async () => {

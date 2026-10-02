@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { PendingAsk, State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
-import { Activate, listActivateSections } from './Activate.js';
+import { Activate, describeGroup, listActivateSections } from './Activate.js';
 import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
 import { DevPanel } from './DevPanel.js';
@@ -68,6 +68,36 @@ describe('Activate', () => {
 			['This Mac', '1 of 3 active', ['store-front', 'checkout-api']],
 			['Build box', '0 of 1 active', ['api']],
 		]);
+	});
+
+	it('a plain session sits under "Plain sessions" by its name, and every machine offers a New session', () => {
+		const state = createState();
+		const chat = createSession({
+			ref: 'chat/3fa9c1',
+			label: 'research',
+			branch: '',
+			cwd: '/Users/dev',
+			dirs: [],
+			isPinned: false,
+			isChat: true,
+		});
+		const withChat = {
+			...state,
+			sessions: { ...state.sessions, 'chat/3fa9c1': chat },
+			order: [...state.order, 'chat/3fa9c1'],
+		};
+
+		expect(listActivateSections(withChat, 'all', 'research')[0]?.groups).toEqual([
+			{ workspace: 'chat', refs: ['chat/3fa9c1'] },
+		]);
+		expect(describeGroup('chat')).toBe('Plain sessions');
+		expect(describeGroup('store-front')).toBe('store-front');
+
+		const html = renderToStaticMarkup(<Activate state={withChat} dispatch={noop} />);
+
+		expect(html).toContain('<b>Plain sessions</b>');
+		expect(html).toContain('<b>research</b>');
+		expect(html.split('>New session<').length - 1).toBe(2);
 	});
 
 	it('the search narrows to matching worktrees; a machine with none drops out', () =>
@@ -359,5 +389,30 @@ describe("the session's Dev servers panel", () => {
 		expect(html).toContain('not running');
 		expect(html).toContain('Start · “start dev servers”');
 		expect(html).not.toContain('Set up');
+	});
+});
+
+describe('a plain session page', () => {
+	it('a Remove button, no Dev servers panel; a worktree page has no Remove', () => {
+		const state = createState();
+		const chat = createSession({
+			ref: 'chat/3fa9c1',
+			label: 'research',
+			branch: '',
+			cwd: '/Users/dev',
+			dirs: [],
+			isPinned: false,
+			isChat: true,
+		});
+		const render = (session: NonNullable<State['sessions'][string]>) =>
+			renderToStaticMarkup(<Cockpit session={session} state={state} dispatch={noop} />);
+
+		const html = render(chat);
+
+		expect(html).toContain('>Remove<');
+		expect(html).not.toContain('aria-label="dev servers"');
+		expect(
+			render(state.sessions['store-front/main'] as NonNullable<State['sessions'][string]>),
+		).not.toContain('>Remove<');
 	});
 });

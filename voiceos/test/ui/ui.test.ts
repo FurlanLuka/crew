@@ -1906,6 +1906,39 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('Activate → New session: crew makes it on that machine with its folder and name, and its activation waits for it', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
+		const { context, page } = await signIn();
+		const view = page.locator('section[aria-label="Activate"]');
+		await view.getByRole('button', { name: 'New session' }).first().click();
+		const form = page.getByRole('form', { name: /New session on/ });
+		await form.getByPlaceholder('home folder').fill('~/notes');
+		await form.getByPlaceholder('what you call it aloud').fill('research');
+		await form.getByRole('button', { name: 'Start' }).click();
+
+		await page.getByText(/^Started research on /).waitFor({ timeout: 5000 });
+		const made = crew.calls.filter((call) => call.command.type === 'chat_add').at(-1);
+		expect(made?.command).toEqual({ type: 'chat_add', dir: '~/notes', name: 'research' });
+		await waitUntil(() =>
+			store.state.pendingActivations.some((pending) => pending.ref.startsWith('chat/')),
+		);
+		await context.close();
+	}, 20_000);
+
+	it("Activate → New session in a folder that is not there: crew's reason, nothing activated", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
+		const { context, page } = await signIn();
+		const before = store.state.pendingActivations.length;
+		await page.getByRole('button', { name: 'New session' }).first().click();
+		const form = page.getByRole('form', { name: /New session on/ });
+		await form.getByPlaceholder('home folder').fill('/missing/place');
+		await form.getByRole('button', { name: 'Start' }).click();
+
+		await form.getByText(/no folder \/missing\/place/).waitFor({ timeout: 5000 });
+		expect(store.state.pendingActivations.length).toBe(before);
+		await context.close();
+	}, 20_000);
+
 	it("crew's server stops under an open page → the banner says how to start it; it reconnects, gets a fresh snapshot, clicks reach the new server", async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();

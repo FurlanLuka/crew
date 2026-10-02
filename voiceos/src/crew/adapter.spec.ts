@@ -81,25 +81,83 @@ describe('CrewAdapter', () => {
 	it('asks crew for --json and resolves each worktree with its branch', async () => {
 		const { crew, calls } = createAdapter((args) => ({
 			code: 0,
-			stdout: args[0] === 'ls' ? readGolden('ls-worktrees.json') : show,
+			stdout:
+				args[1] === 'worktrees'
+					? readGolden('ls-worktrees.json')
+					: args[1] === 'chats'
+						? readGolden('ls-chats.json')
+						: show,
 			stderr: '',
 		}));
 		const infos = await crew.listWorktrees();
 
 		expect(calls[0]).toEqual(['ls', 'worktrees', '--json']);
-		expect(calls.slice(1).every((call) => call[0] === 'show' && call.at(-1) === '--json')).toBe(
+		expect(calls.at(-1)).toEqual(['ls', 'chats', '--json']);
+		expect(calls.slice(1, -1).every((call) => call[0] === 'show' && call.at(-1) === '--json')).toBe(
 			true,
 		);
 		expect(infos.map((info) => [info.ref, info.branch])).toEqual([
 			['store-front/main', 'branch-of:/w/store-front/main/store-api'],
 			['store-front/wrk1', 'branch-of:/w/store-front/main/store-api'],
+			['chat/3fa9c1', ''],
+			['chat/a0b1c2', ''],
 		]);
+	});
+
+	it('plain sessions (crew ls chats) → listed after the worktrees, named, in their folder, marked', async () => {
+		const { crew } = createAdapter((args) => ({
+			code: 0,
+			stdout: args[1] === 'chats' ? readGolden('ls-chats.json') : '[]',
+			stderr: '',
+		}));
+
+		expect(await crew.listWorktrees()).toEqual([
+			{
+				ref: 'chat/3fa9c1',
+				label: 'research',
+				branch: '',
+				cwd: '/Users/dev',
+				dirs: [],
+				isPinned: false,
+				isChat: true,
+			},
+			{
+				ref: 'chat/a0b1c2',
+				label: 'chat',
+				branch: '',
+				cwd: '/Users/dev/notes',
+				dirs: [],
+				isPinned: false,
+				isChat: true,
+			},
+		]);
+	});
+
+	it('a crew with no chats command → the worktrees alone, never a broken list', async () => {
+		const { crew } = createAdapter((args) =>
+			args[1] === 'chats'
+				? { code: 1, stdout: '', stderr: "Unknown ls target 'chats'." }
+				: { code: 0, stdout: '[]', stderr: '' },
+		);
+
+		expect(await crew.listWorktrees()).toEqual([]);
+	});
+
+	it('a plain session gets no crew orientation: crew start is never asked', async () => {
+		const { crew, calls } = createAdapter(() => ({ code: 0, stdout: 'orientation', stderr: '' }));
+
+		expect(await crew.fetchOrientation('chat/3fa9c1')).toBe('');
+		expect(calls).toEqual([]);
 	});
 
 	it('one worktree failing → left out, the others still list', async () => {
 		const { crew } = createAdapter((args) => {
 			if (args[0] === 'ls') {
-				return { code: 0, stdout: readGolden('ls-worktrees.json'), stderr: '' };
+				return {
+					code: 0,
+					stdout: args[1] === 'worktrees' ? readGolden('ls-worktrees.json') : '[]',
+					stderr: '',
+				};
 			}
 
 			if (args[1] === 'store-front/wrk1') {

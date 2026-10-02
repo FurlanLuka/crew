@@ -169,6 +169,10 @@ func main() {
 		cmdLs()
 		return
 
+	case "chat":
+		cmdChat()
+		return
+
 	case "ps":
 		cmdPs()
 		return
@@ -361,7 +365,7 @@ func mustResolve(arg string) *workspace.Resolved {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings|overrides|bases]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings|overrides|bases|chats]\n")
 		os.Exit(1)
 	}
 
@@ -378,8 +382,10 @@ func cmdLs() {
 		cmdLsOverrides()
 	case "bases":
 		cmdLsBases()
+	case "chats":
+		cmdLsChats()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings|overrides|bases]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings|overrides|bases|chats]\n", os.Args[2])
 		os.Exit(1)
 	}
 }

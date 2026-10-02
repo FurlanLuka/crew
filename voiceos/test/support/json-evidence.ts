@@ -85,6 +85,9 @@ export const JSON_EVIDENCE: Record<SetupCommandType, JsonEvidence> = {
 	// Checks the key with its provider: never run live.
 	keys_set: { golden: 'server-keys-set.json' },
 	discord_off: 'live',
+	ls_chats: { golden: 'ls-chats.json' },
+	chat_add: { golden: 'chat-add.json' },
+	chat_rm: { golden: 'chat-add.json' },
 };
 
 export const LIVE_JSON_TYPES = (Object.keys(JSON_EVIDENCE) as SetupCommandType[]).filter(

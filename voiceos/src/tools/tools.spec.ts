@@ -552,6 +552,8 @@ describe('forward', () => {
 			'activate',
 			'deactivate',
 			'list_sessions',
+			'new_session',
+			'remove_session',
 			'crew_dev',
 			'answer',
 			'interrupt',

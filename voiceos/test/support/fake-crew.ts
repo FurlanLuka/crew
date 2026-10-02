@@ -56,6 +56,13 @@ interface FakeVoiceMachine {
 	detail?: string;
 }
 
+export interface FakeChat {
+	id: string;
+	dir: string;
+	name: string;
+	created: string;
+}
+
 export interface FakeMachine {
 	projects: CrewProject[];
 	workspaces: FakeWorkspace[];
@@ -68,6 +75,8 @@ export interface FakeMachine {
 	// crew server machines: the other machines this one's Voice OS drives.
 	voiceMachines: FakeVoiceMachine[];
 	isDiscordSetUp: boolean;
+	// crew chat: the plain sessions this machine keeps.
+	chats: FakeChat[];
 	// Workspaces from before crew 2.0, which crew migrate moves.
 	flatWorkspaces: string[];
 }
@@ -116,6 +125,7 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 			cleanDryRun: readGolden<unknown[]>('clean-dry-run.json'),
 			voiceMachines: readGolden<FakeVoiceMachine[]>('server-machines-empty.json'),
 			isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-off.json').set_up,
+			chats: [],
 			flatWorkspaces: [],
 		};
 	}
@@ -153,6 +163,7 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 		cleanDryRun: readGolden<unknown[]>('clean-dry-run.json'),
 		voiceMachines: readGolden<FakeVoiceMachine[]>('server-machines.json'),
 		isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-status.json').set_up,
+		chats: readGolden<FakeChat[]>('ls-chats.json'),
 		flatWorkspaces: [],
 	};
 };
@@ -1228,6 +1239,36 @@ export const createFakeCrew = ({
 				machine.voiceMachines.push(added);
 
 				return json(added, 0, `Added ${added.name} (${added.host}).\n`);
+			}
+			case 'ls_chats':
+				return json(machine.chats);
+			case 'chat_add': {
+				// The folder must exist there: a path naming /missing is refused, as crew does.
+				if (command.dir?.includes('missing')) {
+					return refuse(`Error: no folder ${command.dir} on this machine`);
+				}
+
+				const added: FakeChat = {
+					id: (0x100000 + machine.chats.length).toString(16).slice(-6),
+					dir: command.dir ?? '/Users/dev',
+					name: command.name ?? '',
+					created: '2026-10-02T15:00:00Z',
+				};
+				machine.chats.push(added);
+
+				return json(added, 0, `added\tchat/${added.id}\t${added.dir}\n`);
+			}
+			case 'chat_rm': {
+				const id = command.id.replace(/^chat\//, '');
+				const removed = machine.chats.find((chat) => chat.id === id);
+
+				if (!removed) {
+					return refuse(`Error: no chat ${id} (crew ls chats)`);
+				}
+
+				machine.chats = machine.chats.filter((chat) => chat !== removed);
+
+				return json(removed, 0, `removed\tchat/${id}\t(the folder ${removed.dir} is untouched)\n`);
 			}
 			case 'discord_off':
 				machine.isDiscordSetUp = false;

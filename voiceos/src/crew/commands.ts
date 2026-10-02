@@ -74,6 +74,7 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('machines_ls', {}),
 	variant('keys_status', {}),
 	variant('discord_status', {}),
+	variant('ls_chats', {}),
 	variant('debug_tail', { lines: lines.optional() }),
 	variant('doctor', {}),
 	variant('migrate_dry_run', {}),
@@ -186,6 +187,12 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('machines_rename', { id: word, name: word }),
 	variant('keys_set', { name: z.enum(['anthropic', 'soniox']), value: stdinText }),
 	variant('discord_off', {}),
+	// A plain Claude session (crew chat): a folder on that machine, a name.
+	variant('chat_add', {
+		dir: flagValue.pipe(z.string().trim().min(1)).optional(),
+		name: flagValue.pipe(z.string().trim().min(1).max(60)).optional(),
+	}),
+	variant('chat_rm', { id: z.string().regex(/^(?:chat\/)?[0-9a-f]{6}$/) }),
 ]);
 
 export type SetupCommand = z.infer<typeof SetupCommandSchema>;
@@ -277,6 +284,7 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	machines_ls: { ...read, localOnly: true },
 	keys_status: { ...read, localOnly: true },
 	discord_status: { ...read, localOnly: true },
+	ls_chats: read,
 	debug_tail: text,
 	doctor: read,
 	migrate_dry_run: write,
@@ -325,6 +333,8 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	machines_rename: local,
 	keys_set: local,
 	discord_off: local,
+	chat_add: write,
+	chat_rm: write,
 };
 
 export const traitsOf = (command: SetupCommand): CommandTraits => COMMAND_TRAITS[command.type];
@@ -418,6 +428,8 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['voice', 'keys', 'status'];
 		case 'discord_status':
 			return ['voice', 'discord', 'status'];
+		case 'ls_chats':
+			return ['ls', 'chats'];
 		case 'debug_tail':
 			return ['debug', ...flag('tail', command.lines ?? 100)];
 		case 'doctor':
@@ -583,6 +595,10 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['voice', 'keys', 'set', command.name];
 		case 'discord_off':
 			return ['voice', 'discord', 'off'];
+		case 'chat_add':
+			return ['chat', 'add', ...flag('dir', command.dir), ...flag('name', command.name)];
+		case 'chat_rm':
+			return ['chat', 'rm', command.id];
 
 		default: {
 			const unreachable: never = command;
