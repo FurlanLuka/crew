@@ -179,7 +179,8 @@ export const listWaitingItems = (state: State, now: number, heardFrom = now): Wa
 		...(isOfferFresh(state.devOffer, now)
 			? [{ ref: state.devOffer.ref, what: 'fix_offer' as const, at: state.devOffer.at }]
 			: []),
-		...(isSwitchOfferFresh(state.switchOffer, heardFrom)
+		// "Send it now?" is answered in code before the kernel (router.ts): never the kernel's to read.
+		...(isSwitchOfferFresh(state.switchOffer, heardFrom) && state.switchOffer.kind !== 'send_now'
 			? [
 					{
 						ref: state.switchOffer.ref,

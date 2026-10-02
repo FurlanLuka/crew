@@ -97,6 +97,96 @@ describe('describeMoment', () => {
 		]);
 	});
 
+	it('the meanwhile line about the session now on screen → no card: its stream says it (debug note 50)', () =>
+		expect(
+			describeMoment(
+				createState({
+					view: { kind: 'session', ref: 'checkout-api/main' },
+					spoken: [
+						{
+							id: 'l1',
+							text: 'Meanwhile, checkout finished. Switch there?',
+							source: 'narrator',
+							at: NOW - 5000,
+							isUpdate: true,
+							refs: ['checkout-api/main'],
+						},
+					],
+				}),
+				NOW,
+			),
+		).toBeNull());
+
+	it('the meanwhile line about the screen and another session → still shown: the other one is news', () =>
+		expect(
+			describeMoment(
+				createState({
+					view: { kind: 'session', ref: 'checkout-api/main' },
+					spoken: [
+						{
+							id: 'l1',
+							text: 'Meanwhile: checkout finished; vm1 api asks.',
+							source: 'narrator',
+							at: NOW - 5000,
+							isUpdate: true,
+							refs: ['checkout-api/main', 'vm1:api/main'],
+						},
+					],
+				}),
+				NOW,
+			)?.answers.map((answer) => answer.label),
+		).toEqual(['Go to checkout-api/main', 'Go to vm1:api/main']));
+
+	it('"Send it now?" → Send now promotes the queued words; Keep it queued sets it aside', () => {
+		const moment = describeMoment(
+			createState({
+				switchOffer: { ref: 'store-front/main', at: 1, kind: 'send_now', queuedId: 'q1' },
+			}),
+			NOW,
+		);
+
+		expect(moment?.text).toBe("Queued for after store-front/main's current work. Send it now?");
+		expect(moment?.answers).toEqual([
+			{
+				label: 'Send now',
+				action: {
+					type: 'promote_queued',
+					ref: 'store-front/main',
+					queuedId: 'q1',
+					answersOffer: true,
+				},
+				isPrimary: true,
+			},
+			{ label: 'Keep it queued', action: null },
+		]);
+	});
+
+	it('"Send it now?" with two of theirs queued → Send now sends both, as a spoken yes does', () => {
+		const base = createState({
+			switchOffer: { ref: 'store-front/main', at: 1, kind: 'send_now', queuedId: 'q2' },
+		});
+		const session = base.sessions['store-front/main']!;
+		const state = {
+			...base,
+			sessions: {
+				...base.sessions,
+				'store-front/main': {
+					...session,
+					queue: [
+						{ id: 'q1', text: 'run the linter', at: 1 },
+						{ id: 'q2', text: 'and the types', at: 2 },
+					],
+				},
+			},
+		};
+
+		expect(describeMoment(state, NOW)?.answers[0]?.action).toEqual({
+			type: 'promote_all_queued',
+			ref: 'store-front/main',
+			answersOffer: true,
+		});
+	});
+
 	it('updates waiting for the quiet → "Hear them now" plays them', () =>
 		expect(
 			describeMoment(

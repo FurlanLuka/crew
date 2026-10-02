@@ -3,7 +3,12 @@
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
-import { SWITCH_OFFER_MS, TARGET_ASK_MS, type PendingAsk } from '../shared/protocol.js';
+import {
+	FOLLOW_UP_MS,
+	SWITCH_OFFER_MS,
+	TARGET_ASK_MS,
+	type PendingAsk,
+} from '../shared/protocol.js';
 import { englishJudge } from '../../test/support/english-judge.js';
 import type { Judge } from '../judge/judge.js';
 import { applyPageAction } from './page-actions.js';
@@ -645,6 +650,121 @@ describe('conversations', () => {
 
 		expect(convo.heard).not.toContain('Nothing new.');
 		expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'checkout-api/main' });
+	});
+
+	// The session on screen, working on words it was given more than a follow-up ago.
+	const busyOnScreen = async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.script([toolUse('t1', 'forward', { kind: 'instruction' })]);
+		await convo.say('Refactor the router.');
+		await convo.wait(FOLLOW_UP_MS + 1_000);
+		convo.script([toolUse('t2', 'forward', { kind: 'instruction' })]);
+		await convo.say('Also run the linter.');
+
+		return convo;
+	};
+
+	it('words queued behind the screen session\'s work → "Send it now?"; yes sends them now, without the kernel', async () => {
+		const convo = await busyOnScreen();
+
+		expect(convo.heard.at(-1)).toBe('Okay, after its current work. Send it now?');
+		expect(convo.store.state.switchOffer).toMatchObject({
+			ref: 'store-front/main',
+			kind: 'send_now',
+		});
+		const sends = convo.inputs.filter((input) => input.type === 'send').length;
+
+		await convo.say('Yes.');
+
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'promote_queued', ref: 'store-front/main' }),
+		);
+		expect(convo.inputs.filter((input) => input.type === 'send')).toHaveLength(sends);
+		expect(convo.heard.at(-1)).toBe('Sending it now.');
+		expect(convo.store.state.switchOffer).toBeNull();
+		expect(convo.store.state.sessions['store-front/main']?.queue[0]?.text).toBe(
+			'Also run the linter.',
+		);
+	});
+
+	it('"Send it now?" answered no → still queued, the offer closed', async () => {
+		const convo = await busyOnScreen();
+
+		await convo.say('No.');
+
+		expect(convo.store.state.switchOffer).toBeNull();
+		expect(convo.inputs.some((input) => input.type === 'promote_queued')).toBe(false);
+		expect(convo.store.state.sessions['store-front/main']?.queue.at(-1)?.text).toBe(
+			'Also run the linter.',
+		);
+	});
+
+	it('"Send it now?" and the turn ends before the yes → "It already went."', async () => {
+		const convo = await busyOnScreen();
+
+		await convo.answer('store-front/main', 'The router is refactored.');
+		const sends = convo.inputs.filter((input) => input.type === 'send').length;
+		const turn = convo.store.state.sessions['store-front/main']?.status;
+		await convo.say('Yes.');
+
+		expect(convo.heard.at(-1)).toBe('It already went.');
+		expect(convo.inputs.filter((input) => input.type === 'send')).toHaveLength(sends);
+		expect(convo.store.state.sessions['store-front/main']?.status).toBe(turn);
+		expect(convo.store.state.switchOffer).toBeNull();
+		// Its words are the turn running now: nothing is cut, nothing sent again.
+		expect(convo.store.state.sessions['store-front/main']?.queue).toEqual([]);
+	});
+
+	it('a yes that is not the answer → the words stay queued: said after it lapsed, typed, or after a question since', async () => {
+		const promoted = (convo: Awaited<ReturnType<typeof busyOnScreen>>) =>
+			convo.inputs.some((input) => input.type === 'promote_queued');
+
+		const late = await busyOnScreen();
+		await late.wait(SWITCH_OFFER_MS + 1_000);
+		late.script([reply('Okay.')]);
+		await late.say('Yes.');
+		expect(promoted(late)).toBe(false);
+
+		const typed = await busyOnScreen();
+		typed.script([reply('Okay.')]);
+		await typed.type('yes');
+		expect(promoted(typed)).toBe(false);
+
+		const asked = await busyOnScreen();
+		asked.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'p1',
+				ref: 'checkout-api/main',
+				at: Date.now(),
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push',
+				input: { command: 'git push' },
+				suggestions: [],
+			},
+		});
+		asked.script([reply('Okay.')]);
+		await asked.say('Yes.');
+		expect(promoted(asked)).toBe(false);
+	});
+
+	it('two queued while it is asked, then yes → both go now, as one', async () => {
+		const convo = await busyOnScreen();
+		convo.script([toolUse('t3', 'forward', { kind: 'instruction' })]);
+		await convo.say('And the types.');
+
+		await convo.say('Yes.');
+
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'promote_all_queued', ref: 'store-front/main' }),
+		);
+		expect(convo.heard.at(-1)).toBe('Sending it now.');
+		const [merged, ...rest] = convo.store.state.sessions['store-front/main']?.queue ?? [];
+		expect(merged?.text).toContain('Also run the linter.');
+		expect(merged?.text).toContain('And the types.');
+		expect(rest).toEqual([]);
 	});
 
 	it('"Switch there?" answered no → closed without the kernel, nothing sent', async () => {

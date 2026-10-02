@@ -61,7 +61,8 @@ reworded. A session that isn't running starts by itself.
 **What happens:** the words appear in the session's stream, and Voice OS reads its reply when it
 ends its turn. While the session is working:
 
-- an **instruction** waits in its queue;
+- an **instruction** waits in its queue. Said to the session on screen, Voice OS asks "Send it
+  now?": yes sends it at once;
 - a **question** is answered on the side, without stopping the work;
 - a **redirect** ("actually, stop the refactor and fix the login bug first") asks whether to switch
   now or do it after.
@@ -408,5 +409,7 @@ Some words are settled before the kernel sees them:
 - **"For checkout?"** A spoken yes or no settles it directly. Anything longer is routed as usual.
 - **"Switch there?"** A bare no closes the offer and nothing else happens. A yes goes to the
   kernel, which switches (`switch_view`).
+- **"Send it now?"** Answered without the kernel: a bare yes sends the queued words now (as
+  `queued_message` "now" does), a bare no keeps them queued.
 - **"Voice OS"** at the start wakes it in on-demand mode, and **"end of turn"** sends what you said
   at once. These are part of [listening](voice-os.md#listening-modes), not commands.
