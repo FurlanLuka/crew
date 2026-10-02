@@ -11,6 +11,7 @@ import { CheckPage } from './CheckPage.js';
 import type { SetupContext } from './common.js';
 import { crumbsFor, pageAbove } from './crumbs.js';
 import { countNeedsYou } from './derive.js';
+import { ExportPage } from './ExportPage.js';
 import { ImportPage } from './ImportPage.js';
 import { LogsPage } from './LogsPage.js';
 import { AddMachine, MachinePage } from './MachinePage.js';
@@ -432,5 +433,7 @@ const SetupPageView = ({
 			return <SettingsPage ctx={ctx} />;
 		case 'import':
 			return <ImportPage ctx={ctx} />;
+		case 'export':
+			return <ExportPage ctx={ctx} />;
 	}
 };

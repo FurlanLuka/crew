@@ -14,6 +14,12 @@ import type { Effect, ReducerResult } from './reducer.js';
 import { readScreenRef, sayAck, sayRef } from './helpers.js';
 import { isReachable } from '../shared/machines.js';
 import { withSwitchOffered } from '../shared/follow-up.js';
+import { isDevelopersMessage } from './delivery.js';
+
+export const SEND_NOW_QUESTION = 'Send it now?';
+// After a yes: the session answers the words itself once it has them.
+export const SENT_NOW_LINE = 'Sending it now.';
+const ALREADY_SENT_LINE = 'It already went.';
 
 const describeOffer = (state: State, ref: string, kind: SwitchOfferKind): string => {
 	switch (kind) {
@@ -23,6 +29,9 @@ const describeOffer = (state: State, ref: string, kind: SwitchOfferKind): string
 			return `${sayRef(state, ref)} is working. Deactivate anyway?`;
 		case 'switch':
 			return `Switch to ${sayRef(state, ref)}?`;
+		// Asked on the ack line itself (withSendNowAsked), never on its own.
+		case 'send_now':
+			return SEND_NOW_QUESTION;
 	}
 };
 
@@ -97,6 +106,52 @@ const withSwitchAsked = ({ effects, ref, sentTo }: WithSwitchAskedParams): Effec
 	);
 };
 
+interface SendNowParams {
+	state: State;
+	result: ReducerResult;
+	ref: string;
+	stamped: Stamped;
+}
+
+// Spoken words the session on screen queued behind its current work: the line that says so asks
+// whether they should go now instead ("Okay, after its current work. Send it now?"). Only when they
+// really wait there, and never over another open question of Voice OS's own; a yes sends everything
+// of theirs that waits (router.ts).
+const offerSendNow = ({ state, result, ref, stamped }: SendNowParams): ReducerResult | null => {
+	const session = state.sessions[ref];
+	const ackAt = result.effects.findIndex(
+		(effect) => effect.type === 'speak' && effect.isAck === true && effect.facts?.kind === 'queued',
+	);
+
+	if (
+		ackAt < 0 ||
+		session?.status !== 'running' ||
+		!session.queue.some((message) => message.id === stamped.id) ||
+		// Its own question is asked again for the newer words (speaking let the old one go anyway).
+		(isSwitchOfferFresh(state.switchOffer, stamped.at) &&
+			!(state.switchOffer.kind === 'send_now' && state.switchOffer.ref === ref))
+	) {
+		return null;
+	}
+
+	return {
+		state: {
+			...state,
+			switchOffer: { ref, at: stamped.at, kind: 'send_now', queuedId: stamped.id },
+		},
+		// The fixed line: a worded one may only ask to switch (voice-lines), so this one is said as it is.
+		effects: result.effects.map((effect, index) => {
+			if (index !== ackAt || effect.type !== 'speak') {
+				return effect;
+			}
+
+			const { facts: _facts, ...line } = effect;
+
+			return { ...line, text: `${effect.text.trim()} ${SEND_NOW_QUESTION}`, isAsking: true };
+		}),
+	};
+};
+
 interface IsSwitchWorthAskingParams {
 	state: State;
 	ref: string;
@@ -124,6 +179,10 @@ export const followSends = (
 	switch (input.type) {
 		case 'send': {
 			const screenRef = readScreenRef(before);
+
+			if (input.isSpoken && input.ref === screenRef) {
+				return offerSendNow({ state, result, ref: input.ref, stamped }) ?? result;
+			}
 
 			// The session on screen answers for itself; off a session the kernel's own reply says
 			// where the words went.
@@ -168,6 +227,56 @@ export const followSends = (
 
 		case 'switch_view':
 			return state.switchOffer ? { ...result, state: { ...state, switchOffer: null } } : result;
+
+		// "Send it now?" answered: by its yes or the card (answersOffer: said what happened, as only
+		// Voice OS knows), or by the kernel's own "send it now" or the queue's ▲ (closed quietly: the
+		// kernel says its own reply). Its turn may have ended while the question was out: then the
+		// words already went.
+		case 'promote_queued':
+		case 'promote_all_queued': {
+			const offer = state.switchOffer;
+
+			// ▲ on an older message is not this question's answer; sending all of them is.
+			if (
+				offer?.kind !== 'send_now' ||
+				offer.ref !== input.ref ||
+				(input.type === 'promote_queued' && input.queuedId !== offer.queuedId)
+			) {
+				return result;
+			}
+
+			const closed = { ...state, switchOffer: null };
+
+			if (!input.answersOffer) {
+				return { state: closed, effects: result.effects };
+			}
+
+			const waiting = before.sessions[input.ref]?.queue.filter(isDevelopersMessage) ?? [];
+			const wasWaiting =
+				input.type === 'promote_all_queued'
+					? waiting.length > 0
+					: waiting.some((message) => message.id === input.queuedId);
+
+			return {
+				state: closed,
+				effects: [
+					...result.effects,
+					sayAck(wasWaiting ? SENT_NOW_LINE : ALREADY_SENT_LINE, { ref: input.ref }),
+				],
+			};
+		}
+
+		// Its words left the queue another way (cancelled, taken back): the question is moot.
+		case 'cancel_queued':
+		case 'take_back': {
+			const offer = state.switchOffer;
+			const isGone =
+				offer?.kind === 'send_now' &&
+				offer.ref === input.ref &&
+				!state.sessions[input.ref]?.queue.some((message) => message.id === offer.queuedId);
+
+			return isGone ? { ...result, state: { ...state, switchOffer: null } } : result;
+		}
 
 		case 'offer_switch': {
 			// Activate and deactivate answer what the developer just asked: they replace an older offer.

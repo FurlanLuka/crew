@@ -20,6 +20,7 @@ import {
 	createSetupWorktree,
 } from './sessions/setup-session.js';
 import { readHistory } from './memory/journal.js';
+import { createRecapWriter } from './recap/writer.js';
 import { createDebugNote, saveDebugNote } from './memory/debug-notes.js';
 import { createNotesStore, type NotesStore } from './memory/notes.js';
 import { toNotesKey } from './shared/notes.js';
@@ -127,6 +128,8 @@ const createKernel = (apiKey: string, keyedJudge: Judge): Kernel =>
 			readHistory: (query) => readHistory(paths.journalDir, query),
 			// Defined below, with the machines' links; a turn only runs once they exist.
 			runCrewOn: (machine, command) => runSetupCommand(machine, command),
+			// Built with the kernel, so a new Anthropic key reaches it too.
+			writeRecap: createRecapWriter({ apiKey }),
 			mute: () => voiceOut.mute(),
 			notes,
 			judge: keyedJudge,

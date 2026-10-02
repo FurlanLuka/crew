@@ -360,6 +360,14 @@
 		"argv": ["chat", "rm", "chat/3fa9c1", "--json"]
 	},
 	{
+		"type": "discord_channels",
+		"argv": ["voice", "discord", "channels", "--json"]
+	},
+	{
+		"type": "discord_text_channel",
+		"argv": ["voice", "discord", "setup", "--text-channel=1001", "--json"]
+	},
+	{
 		"type": "chat_add",
 		"argv": ["chat", "add", "--json"]
 	},

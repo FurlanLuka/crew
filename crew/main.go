@@ -111,6 +111,7 @@ func main() {
 	}
 
 	housekeeping.SweepOnStart(os.Args[1:])
+	workspace.PromptExtras = discordPromptExtras
 	checkRequirementsOnStart(os.Args[1:])
 
 	// Check for updates in background (skip for dev builds and update command)

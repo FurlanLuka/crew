@@ -51,6 +51,7 @@ const (
 	StatusExists      = "exists"       // here, same remote (or nothing to compare); Detail is the local path
 	StatusOtherRemote = "other remote" // here, but the local checkout points elsewhere; Detail names it
 	StatusClone       = "clone"        // not here; Detail is where the clone lands
+	StatusFound       = "found"        // not here, but a checkout on this machine has its remote: Detail is its path (--path uses it; a bare import still clones)
 	StatusBlocked     = "blocked"      // not here and the clone dir is taken; --path adopts it, or delete it
 	StatusMissing     = "missing"      // not here and no remote to clone: --path is the only way
 	StatusReady       = "ready"        // workspace: every member present
@@ -73,6 +74,8 @@ func PlanRows(b Bundle, plan Plan) []PlanRow {
 			row.Status, row.Detail = StatusMissing, missingDetail(e)
 		case sitBlocked:
 			row.Status, row.Detail = StatusBlocked, blockedDetail(project.ClonePath(e.Name))
+		case sitFound:
+			row.Status, row.Detail = StatusFound, st.Found
 		default:
 			row.Status, row.Detail = StatusClone, project.ClonePath(e.Name)
 		}

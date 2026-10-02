@@ -71,6 +71,8 @@ export const crumbsFor = (page: SetupPage): Crumb[] => {
 			return [{ label: 'Settings' }];
 		case 'import':
 			return [{ label: 'Settings', page: { page: 'settings' } }, { label: 'Import' }];
+		case 'export':
+			return [{ label: 'Settings', page: { page: 'settings' } }, { label: 'Export' }];
 	}
 };
 

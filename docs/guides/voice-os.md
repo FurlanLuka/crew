@@ -210,6 +210,13 @@ keeps them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
 **Settings** has the listening mode and languages, the two keys (checked before saving), Discord,
 session names, and your machines with their crew version.
 
+**Sending things to Discord.** With Discord set up, ask a session to send something there ("send
+that screenshot to Discord", "post the summary in Discord") and it runs `crew server discord send`,
+from this machine or any remote: the main posts it with the bot. Messages go to the voice channel's
+own chat, or to a text channel you pick under **Settings → Discord → Messages** (or `crew server
+discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
+they post only when you ask.
+
 ![Voice OS settings: listening mode, languages, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's
@@ -350,7 +357,8 @@ one of these stays quiet when in doubt:
   is only "One sec." or "Let me check.", so it never sounds like a yes or like done. It never asks
   or promises anything, and it is the same with push to talk, hands-free and Discord.
 - **Its own lines in its own words.** "Sent to checkout. Switch there?", "Switching to checkout",
-  "Back to crew", "Activated checkout…" and "Okay, after its current work." are worded fresh each
+  "Back to crew", "Activated checkout…" and "Okay, after its current work." (when it asks no "Send
+  it now?") are worded fresh each
   time ("Passed that to checkout. Want to go there?"), by a small model, in under a second. They
   always name the session as you know it and ask "switch?" only when the switch is really offered;
   when the wording is late or breaks a rule, you hear the plain line instead. Without the Anthropic
@@ -513,6 +521,11 @@ A session works on one thing at a time. What you send while it is busy waits in 
 under the stream as **queued 1**, **queued 2**, and so on. Each message goes in order when the
 current work ends.
 
+- **Said aloud to the session on screen,** Voice OS asks: "Okay, after its current work. Send it
+  now?" A yes (or **Send now** on the card) sends it at once, as **▲ now** does; a no, or carrying
+  on, keeps it queued. If the session finished first, you hear "It already went." Not asked for
+  questions (they go on the side), for words to another session (that line asks "Switch there?"),
+  or while another question of Voice OS's is open.
 - **▲ now** sends that message at once. It interrupts the current work and goes first.
 - **✕ cancel** removes it from the queue.
 - By voice: "Why are you queuing it? I want it now." · "Do that first." With more than one of your

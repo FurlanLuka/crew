@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "projects": [
+    {
+      "name": "store-front",
+      "setup": "pnpm install",
+      "remote": "git@github.com:example/store-front.git"
+    },
+    {
+      "name": "store-api",
+      "remote": "git@github.com:example/store-api.git"
+    },
+    {
+      "name": "signals"
+    }
+  ],
+  "workspaces": [
+    {
+      "name": "store-front",
+      "projects": [
+        {
+          "name": "store-front"
+        },
+        {
+          "name": "store-api"
+        }
+      ]
+    },
+    {
+      "name": "signals",
+      "projects": [
+        {
+          "name": "signals",
+          "mode": "direct"
+        }
+      ]
+    }
+  ]
+}

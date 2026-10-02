@@ -76,6 +76,7 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('keys_status', {}),
 	variant('discord_status', {}),
 	variant('ls_chats', {}),
+	variant('discord_channels', {}),
 	variant('debug_tail', { lines: lines.optional() }),
 	variant('doctor', {}),
 	variant('migrate_dry_run', {}),
@@ -194,6 +195,8 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 		name: flagValue.pipe(z.string().trim().min(1).max(MAX_NAME_LENGTH)).optional(),
 	}),
 	variant('chat_rm', { id: z.string().regex(/^(?:chat\/)?[0-9a-f]{6}$/) }),
+	// A channel's id, or voice: back to the voice channel's own chat.
+	variant('discord_text_channel', { channel: word }),
 ]);
 
 export type SetupCommand = z.infer<typeof SetupCommandSchema>;
@@ -286,6 +289,7 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	keys_status: { ...read, localOnly: true },
 	discord_status: { ...read, localOnly: true },
 	ls_chats: read,
+	discord_channels: { ...read, localOnly: true },
 	debug_tail: text,
 	doctor: read,
 	migrate_dry_run: write,
@@ -336,6 +340,7 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	discord_off: local,
 	chat_add: write,
 	chat_rm: write,
+	discord_text_channel: local,
 };
 
 export const traitsOf = (command: SetupCommand): CommandTraits => COMMAND_TRAITS[command.type];
@@ -431,6 +436,8 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['voice', 'discord', 'status'];
 		case 'ls_chats':
 			return ['ls', 'chats'];
+		case 'discord_channels':
+			return ['voice', 'discord', 'channels'];
 		case 'debug_tail':
 			return ['debug', ...flag('tail', command.lines ?? 100)];
 		case 'doctor':
@@ -600,6 +607,8 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['chat', 'add', ...flag('dir', command.dir), ...flag('name', command.name)];
 		case 'chat_rm':
 			return ['chat', 'rm', command.id];
+		case 'discord_text_channel':
+			return ['voice', 'discord', 'setup', `--text-channel=${command.channel}`];
 
 		default: {
 			const unreachable: never = command;

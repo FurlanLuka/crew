@@ -157,6 +157,8 @@ const SAMPLES: { [T in SetupCommandType]: Extract<SetupCommand, { type: T }> } =
 	ls_chats: { type: 'ls_chats' },
 	chat_add: { type: 'chat_add', dir: '~/notes', name: 'Weekly notes' },
 	chat_rm: { type: 'chat_rm', id: 'chat/3fa9c1' },
+	discord_channels: { type: 'discord_channels' },
+	discord_text_channel: { type: 'discord_text_channel', channel: '1001' },
 };
 
 // The other shape of a variant whose flags are optional: crew's help tree must know it too.
@@ -295,8 +297,10 @@ describe('parseSetupCommand', () => {
 
 		expect(localOnly).toEqual(
 			[
+				'discord_channels',
 				'discord_off',
 				'discord_status',
+				'discord_text_channel',
 				'keys_set',
 				'keys_status',
 				'machines_add',

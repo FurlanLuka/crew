@@ -841,61 +841,168 @@ describe('Setup with Claude', () => {
 });
 
 describe('moving to another machine', () => {
-	it("Export… saves crew's bundle as a file; Import reads it back as plan rows and clones a project", async () => {
-		const { context, page } = await open('/setup/settings');
-		await page.getByRole('button', { name: 'Export…' }).click();
-		await page.locator('.export-picks').waitFor({ timeout: 5000 });
+	const writeBundle = (bundle: unknown): string => {
+		const file = join(mkdtempSync(join(tmpdir(), 'crew-import-')), 'crew-export.json');
+		writeFileSync(file, JSON.stringify(bundle));
+
+		return file;
+	};
+
+	// This machine's export, kept past its browser context (a download goes with the context).
+	const exportEverything = async (): Promise<string> => {
+		const { context, page } = await open('/setup/export');
+		await page.locator('[data-row="admin"]').waitFor({ timeout: 5000 });
 		const [download] = await Promise.all([
 			page.waitForEvent('download'),
-			page.getByRole('button', { name: 'Export everything' }).click(),
+			page.getByRole('button', { name: 'Save crew-export.json' }).click(),
 		]);
+		const text = await Bun.file(await download.path()).text();
+		await context.close();
 
+		return writeBundle(JSON.parse(text));
+	};
+
+	it('Export: workspaces bring their projects; the command follows the picks; the file is saved', async () => {
+		const { context, page } = await open('/setup/settings');
+		await page.getByRole('button', { name: 'Export…' }).click();
+		await page.waitForURL('**/setup/export');
+		const exportPage = page.locator('section[aria-label="Export"]');
+		await exportPage.locator('[data-row="admin"]').waitFor({ timeout: 5000 });
+		expect(await exportPage.locator('[data-member="signals"]').innerText()).toContain('setup only');
+		expect(await exportPage.locator('.runs pre').innerText()).toContain('crew export --all');
+
+		await exportPage.locator('[data-row="admin"]').click();
+		expect(await exportPage.locator('.runs pre').innerText()).toMatch(
+			/^crew export .*--projects=store-front,store-api,signals --workspaces=store-front/,
+		);
+		await exportPage.locator('[data-row="store-front"]').click();
+		expect(
+			await exportPage.getByRole('button', { name: 'Save crew-export.json' }).isDisabled(),
+		).toBe(true);
+		await exportPage.locator('[data-row="store-front"]').click();
+		await exportPage.locator('[data-row="admin"]').click();
+
+		const [download] = await Promise.all([
+			page.waitForEvent('download'),
+			exportPage.getByRole('button', { name: 'Save crew-export.json' }).click(),
+		]);
 		expect(download.suggestedFilename()).toBe('crew-export.json');
 		expect(commandsOf('export')).toEqual([{ type: 'export', all: true }]);
-		const file = await download.path();
-		const bundle = JSON.parse(await Bun.file(file).text()) as {
+		const bundle = JSON.parse(await Bun.file(await download.path()).text()) as {
 			version: number;
-			projects: { name: string; path?: string; remote?: string }[];
-			workspaces: { name: string }[];
+			projects: { name: string; path?: string }[];
 		};
 		expect(bundle.version).toBe(2);
-		expect(bundle.projects.map((project) => project.name)).toEqual([
-			'store-front',
-			'store-api',
-			'signals',
-		]);
 		expect(bundle.projects.every((project) => project.path === undefined)).toBe(true);
-		await page.getByText('Wrote the bundle to stdout — 3 projects, 2 workspaces').waitFor({
-			timeout: 5000,
-		});
+		await exportPage.getByText(/Saved crew-export.json/).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
 
-		// The other machine: nothing there yet.
+	it('Import: every choice first, one Import, progress, then Voice OS on the new session', async () => {
+		const file = await exportEverything();
+
+		// The other machine: nothing recorded, but store-front is already checked out there.
 		server.crew.reset('empty');
-		await page.getByRole('button', { name: 'Import…' }).click();
-		await page.waitForURL('**/setup/import');
-		await page.getByLabel('Export file').setInputFiles(file);
-
-		const storeApi = page.locator('[data-project="store-api"]');
-		await storeApi.getByText('clone into /Users/dev/.crew/projects/store-api').waitFor({
+		const { context, page } = await open('/setup/import');
+		const importPage = page.locator('section[aria-label="Import"]');
+		await importPage.getByLabel('Export file').setInputFiles(file);
+		const storeFront = importPage.locator('[data-project="store-front"]');
+		await storeFront.getByText('already checked out at /Users/dev/code/store-front').waitFor({
 			timeout: 5000,
 		});
-		expect(await page.locator('[data-project="signals"]').innerText()).toContain(
-			'no remote in the export',
-		);
-		expect(await page.locator('.box-row', { hasText: 'admin' }).innerText()).toContain(
-			'needs store-front first',
-		);
-		const [plan] = commandsOf('import_plan');
-		expect(plan && 'bundle' in plan && JSON.parse(plan.bundle).version).toBe(2);
-
-		await storeApi.getByRole('button', { name: 'Clone' }).click();
-		await storeApi.getByText('already here').waitFor({ timeout: 5000 });
 		expect(
-			commandsOf('import_project').map((command) => 'name' in command && command.name),
-		).toEqual(['store-api']);
-		expect(server.crew.machines.local?.projects.map((project) => project.name)).toEqual([
-			'store-api',
+			await storeFront.getByRole('button', { name: 'Use mine' }).getAttribute('aria-pressed'),
+		).toBe('true');
+		expect(await importPage.locator('[aria-current="step"]').innerText()).toBe('Choose');
+		const go = importPage.getByRole('button', { name: /choice left|Import \d/ });
+		expect(await go.innerText()).toBe('1 choice left');
+		expect(await go.isDisabled()).toBe(true);
+		expect(await importPage.locator('[data-row="store-front"]').innerText()).toContain(
+			'waits on signals',
+		);
+
+		const signals = importPage.locator('[data-project="signals"]');
+		await signals.getByRole('button', { name: 'Skip' }).click();
+		expect(await importPage.locator('[data-row="store-front"]').isDisabled()).toBe(true);
+		expect(await importPage.locator('[data-row="store-front"]').innerText()).toContain(
+			'needs signals',
+		);
+
+		await signals.getByRole('button', { name: 'Point at a folder' }).click();
+		await signals.getByLabel('Folder for signals').fill('/Users/dev/code/signals');
+		expect(await importPage.locator('.runs pre').innerText()).toContain(
+			'crew import - project store-front --path=/Users/dev/code/store-front',
+		);
+		await importPage.getByRole('button', { name: 'Import 5 items' }).click();
+
+		await importPage.getByRole('heading', { name: 'Imported' }).waitFor({ timeout: 15_000 });
+		expect(await importPage.getByText('3 projects and 2 workspaces came in.').count()).toBe(1);
+		expect(
+			commandsOf('import_project').map((command) => ('path' in command ? command.path : 'clone')),
+		).toEqual(['/Users/dev/code/store-front', 'clone', '/Users/dev/code/signals']);
+		expect(
+			commandsOf('import_workspace').map((command) => 'name' in command && command.name),
+		).toEqual(['store-front', 'admin']);
+
+		await importPage.getByRole('button', { name: /Open Voice OS/ }).click();
+		await page.waitForURL('**/voice/session/store-front/main');
+		await waitUntil(() => server.store.state.active.includes('store-front/main'));
+		server.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
+		server.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		await context.close();
+	}, 40_000);
+
+	it('a different repo here under that name: Replace mine is refused while a workspace uses it; Import as -2 works', async () => {
+		const file = writeBundle({
+			version: 2,
+			projects: [{ name: 'store-api', remote: 'git@github.com:other/store-api.git' }],
+			workspaces: [],
+		});
+		const { context, page } = await open('/setup/import');
+		const importPage = page.locator('section[aria-label="Import"]');
+		await importPage.getByLabel('Export file').setInputFiles(file);
+		const row = importPage.locator('[data-project="store-api"]');
+		await row.getByText(/a different repo here has that name/).waitFor({ timeout: 5000 });
+		await row.locator('button[disabled]', { hasText: 'Replace mine' }).waitFor({ timeout: 5000 });
+		expect(await row.getByRole('button', { name: 'Replace mine' }).getAttribute('title')).toContain(
+			'store-api is in store-front here',
+		);
+
+		await row.getByRole('button', { name: 'Import as store-api-2' }).click();
+		await importPage.getByRole('button', { name: 'Import 1 item' }).click();
+		await importPage.getByRole('heading', { name: 'Imported' }).waitFor({ timeout: 10_000 });
+		expect(commandsOf('import_project')).toEqual([
+			{
+				type: 'import_project',
+				bundle: expect.any(String),
+				name: 'store-api',
+				rename: 'store-api-2',
+			},
 		]);
+		await importPage.getByRole('button', { name: /Go to the board/ }).waitFor();
+		expect(await importPage.getByRole('button', { name: /Open Voice OS/ }).isDisabled()).toBe(true);
+		await context.close();
+	}, 30_000);
+
+	it("a file that isn't an export → crew's refusal, still on the file step", async () => {
+		const file = writeBundle({ hello: 'world' });
+		const { context, page } = await open('/setup/import');
+		const importPage = page.locator('section[aria-label="Import"]');
+		await importPage.getByLabel('Export file').setInputFiles(file);
+		await importPage.locator('.result-line.bad').waitFor({ timeout: 5000 });
+		expect(await importPage.locator('.result-line.bad').innerText()).toContain('not a crew export');
+		expect(await importPage.locator('[aria-current="step"]').innerText()).toBe('File');
+		await context.close();
+	}, 20_000);
+
+	it('at phone width the choices fit: nothing scrolls sideways', async () => {
+		const file = await exportEverything();
+		server.crew.reset('empty');
+
+		const { context, page } = await open('/setup/import', { width: 390, height: 844 });
+		await page.getByLabel('Export file').setInputFiles(file);
+		await page.locator('[data-project="signals"]').waitFor({ timeout: 5000 });
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 		await context.close();
 	}, 20_000);
 });
@@ -915,7 +1022,7 @@ describe('first run', () => {
 
 	// Past the projects step with every found checkout added, the workspace named.
 	const makeWorkspace = async (flow: Locator, name?: string) => {
-		await flow.locator('[data-checkout="checkout-api"]').waitFor({ timeout: 5000 });
+		await flow.locator('[data-row="checkout-api"]').waitFor({ timeout: 5000 });
 		await flow.getByRole('button', { name: 'Add 3 projects' }).click();
 		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
 
@@ -1075,12 +1182,12 @@ describe('first run', () => {
 			'crew add project payments https://github.com/acme/payments.git',
 		);
 		await flow.getByRole('button', { name: 'Add payments' }).click();
-		await flow.locator('[data-checkout="payments"]').waitFor({ timeout: 5000 });
+		await flow.locator('[data-row="payments"]').waitFor({ timeout: 5000 });
 
 		expect(commandsOf('add_project')).toEqual([
 			{ type: 'add_project', name: 'payments', url: 'https://github.com/acme/payments.git' },
 		]);
-		expect(await flow.locator('[data-checkout="payments"]').innerText()).toContain('added');
+		expect(await flow.locator('[data-row="payments"]').innerText()).toContain('added');
 		await context.close();
 	}, 20_000);
 
@@ -1093,7 +1200,7 @@ describe('first run', () => {
 		const { context, flow } = await startFirstRun();
 		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
 		await flow.getByRole('button', { name: 'Back' }).click();
-		await flow.locator('[data-checkout="infra-ops"]').waitFor({ timeout: 5000 });
+		await flow.locator('[data-row="infra-ops"]').waitFor({ timeout: 5000 });
 		await flow.getByRole('button', { name: 'Continue' }).click();
 		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
 		expect(commandsOf('add_project')).toHaveLength(3);
@@ -1192,7 +1299,7 @@ describe('first run', () => {
 		server.crew.reset('empty');
 		const { context, page, flow } = await startFirstRun('/', { width: 390, height: 844 });
 		const width = () => page.evaluate(() => document.querySelector('.first-run')?.scrollWidth ?? 0);
-		await flow.locator('[data-checkout="checkout-api"]').waitFor({ timeout: 5000 });
+		await flow.locator('[data-row="checkout-api"]').waitFor({ timeout: 5000 });
 		expect(await width()).toBe(390);
 
 		await makeWorkspace(flow);
@@ -1316,13 +1423,15 @@ const REMOVALS: RemovalCase[] = [
 		path: '/setup/import',
 		open: async (page) => {
 			await page.getByLabel('Export file').setInputFiles(writeBundle());
+			await page.getByText(/^Already here · /).click();
 			await page
 				.locator('[data-project="store-front"]')
-				.getByRole('button', { name: 'Replace config' })
+				.getByRole('button', { name: 'Replace mine' })
 				.click();
+			await page.getByRole('button', { name: 'Import 1 item' }).click();
 		},
-		dialog: "Replace this project's config with the export's?",
-		cost: 'Its checkout and worktrees stay',
+		dialog: 'Replace store-front?',
+		cost: 'its checkout and worktrees stay',
 		type: 'import_project',
 		command: {
 			type: 'import_project',
@@ -1331,13 +1440,8 @@ const REMOVALS: RemovalCase[] = [
 			replace: true,
 			confirm: true,
 		},
-		action: 'Replace',
-		after: (page) =>
-			page
-				.getByRole('dialog', { name: "Replace this project's config with the export's?" })
-				.waitFor({
-					state: 'detached',
-				}),
+		action: 'Replace and import',
+		after: (page) => page.getByRole('heading', { name: 'Imported' }).waitFor(),
 	},
 	{
 		name: 'uninstall (keep)',

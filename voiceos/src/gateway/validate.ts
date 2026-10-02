@@ -19,8 +19,17 @@ const actionSchema = z.discriminatedUnion('type', [
 		text: z.string().min(1).max(MAX_TEXT_CHARS),
 	}),
 	z.object({ type: z.literal('cancel_queued'), ref: refSchema, queuedId: z.string() }),
-	z.object({ type: z.literal('promote_queued'), ref: refSchema, queuedId: z.string() }),
-	z.object({ type: z.literal('promote_all_queued'), ref: refSchema }),
+	z.object({
+		type: z.literal('promote_queued'),
+		ref: refSchema,
+		queuedId: z.string(),
+		answersOffer: z.literal(true).optional(),
+	}),
+	z.object({
+		type: z.literal('promote_all_queued'),
+		ref: refSchema,
+		answersOffer: z.literal(true).optional(),
+	}),
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({
@@ -74,6 +83,7 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('rename_session'), ref: refSchema, name: z.string().max(60) }),
 	z.object({ type: z.literal('go_back') }),
 	z.object({ type: z.literal('play_meanwhile') }),
+	z.object({ type: z.literal('recap_heard'), refs: z.array(refSchema).max(200) }),
 	z.object({
 		type: z.literal('set_languages'),
 		languages: z.array(z.string().max(8)).max(20),

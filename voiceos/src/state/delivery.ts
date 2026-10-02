@@ -1,4 +1,5 @@
 import {
+	type Action,
 	FOLLOW_UP_MS,
 	type QueuedMessage,
 	type Session,
@@ -522,6 +523,17 @@ export const promoteQueued = ({
 };
 
 export const isDevelopersMessage = (message: QueuedMessage): boolean => !message.isRetry;
+
+// The yes to "Send it now?", spoken or clicked: with more than one of theirs waiting they all go now,
+// as one (as "send it now" by voice does), else the words it was asked about.
+export const readSendNowAction = (
+	state: State,
+	ref: string,
+	queuedId: string,
+): Extract<Action, { type: 'promote_queued' | 'promote_all_queued' }> =>
+	(state.sessions[ref]?.queue.filter(isDevelopersMessage).length ?? 0) > 1
+		? { type: 'promote_all_queued', ref, answersOffer: true }
+		: { type: 'promote_queued', ref, queuedId, answersOffer: true };
 
 interface PromoteAllQueuedParams {
 	state: State;

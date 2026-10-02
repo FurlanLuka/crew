@@ -324,7 +324,8 @@ export const QUESTION_UNHEARD_MS = 30_000;
 
 // What a yes does. switch (the default): go there. activate: "<X> isn't active. Activate it?" — words
 // said to it wait in its queue and go once it is up. deactivate: "<X> is working. Deactivate anyway?".
-export type SwitchOfferKind = 'switch' | 'activate' | 'deactivate';
+// send_now: "Okay, after its current work. Send it now?" — the words just queued go now instead.
+export type SwitchOfferKind = 'switch' | 'activate' | 'deactivate' | 'send_now';
 
 export interface SwitchOffer {
 	ref: string;
@@ -333,6 +334,8 @@ export interface SwitchOffer {
 	kind?: SwitchOfferKind;
 	// An activate asked for a switch: a yes activates it and goes there.
 	thenSwitch?: true;
+	// send_now: the queued message a yes sends now.
+	queuedId?: string;
 }
 
 // Answered at once or not at all: a later "yes" belongs to something else.
@@ -501,9 +504,10 @@ export type Action =
 	  }
 	| { type: 'cancel_queued'; ref: string; queuedId: string }
 	// "I want it now" (or the page's button): the queued words cut the running work and go first.
-	| { type: 'promote_queued'; ref: string; queuedId: string }
+	// answersOffer: the yes (or the card's Send now) to "Send it now?" — Voice OS says what happened.
+	| { type: 'promote_queued'; ref: string; queuedId: string; answersOffer?: true }
 	// "Send both now": every queued message of the developer's goes now, merged into one, in order.
-	| { type: 'promote_all_queued'; ref: string }
+	| { type: 'promote_all_queued'; ref: string; answersOffer?: true }
 	// Set by the kernel: the developer takes back words not yet acted on (queued, asked aside, held).
 	| { type: 'take_back'; ref: string; id: string }
 	// Set by the kernel: the developer heard a held line another way (asked about that session by name).
@@ -548,6 +552,8 @@ export type Action =
 	| { type: 'set_languages'; languages: string[] }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
+	// A status update said aloud covered these sessions: their waiting updates are heard.
+	| { type: 'recap_heard'; refs: string[] }
 	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced), or with a kind
 	// "X isn't active. Activate it?" or "X is working. Deactivate anyway?".
 	| {

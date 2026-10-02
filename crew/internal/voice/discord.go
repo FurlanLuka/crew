@@ -31,14 +31,18 @@ var ErrDiscordRejected = errors.New("Discord rejected that token — copy it aga
 const (
 	permAdministrator = 1 << 3
 	permViewChannel   = 1 << 10
+	permSendMessages  = 1 << 11
+	permAttachFiles   = 1 << 15
 	permConnect       = 1 << 20
 	permSpeak         = 1 << 21
 )
 
-var neededPerms = []struct {
+type discordPerm struct {
 	bit  uint64
 	name string
-}{
+}
+
+var neededPerms = []discordPerm{
 	{permViewChannel, "View Channel"},
 	{permConnect, "Connect"},
 	{permSpeak, "Speak"},
@@ -47,7 +51,21 @@ var neededPerms = []struct {
 // preferredChannel is the voice channel picked over any other when it exists.
 const preferredChannel = "Voice OS"
 
-const discordVoiceChannel = 2
+const (
+	discordTextChannel         = 0
+	discordVoiceChannel        = 2
+	discordAnnouncementChannel = 5
+)
+
+// TextChannelVoice is --text-channel's word for "back to the voice channel's own chat".
+const TextChannelVoice = "voice"
+
+// What crew server discord send needs on the channel it posts to.
+var sendPerms = []discordPerm{
+	{permViewChannel, "View Channel"},
+	{permSendMessages, "Send Messages"},
+	{permAttachFiles, "Attach Files"},
+}
 
 // DiscordConfig is discord.json: where Voice OS joins and whose voice it takes.
 // A running Voice OS watches the file.
@@ -57,6 +75,18 @@ type DiscordConfig struct {
 	ChannelName string `json:"channel_name"`
 	GuildName   string `json:"guild_name"`
 	Owner       string `json:"owner"`
+	// Where crew server discord send posts; empty is the voice channel's own chat.
+	TextChannel     string `json:"text_channel,omitempty"`
+	TextChannelName string `json:"text_channel_name,omitempty"`
+}
+
+// MessagesChannel is where a sent message goes: the text channel picked, else the voice channel's
+// own chat (every voice channel has one). Pure.
+func MessagesChannel(cfg DiscordConfig) (id, name string) {
+	if cfg.TextChannel != "" {
+		return cfg.TextChannel, cfg.TextChannelName
+	}
+	return cfg.Channel, cfg.ChannelName
 }
 
 // DiscordLive is discord-status.json, written by Voice OS.
@@ -71,6 +101,8 @@ type DiscordOptions struct {
 	Guild   string
 	Channel string
 	User    string
+	// Empty keeps the text channel already picked; TextChannelVoice goes back to the voice chat.
+	TextChannel string
 }
 
 // DiscordSetup is what setup decided, for the caller to say.
@@ -157,7 +189,7 @@ func SetupDiscord(token string, opts DiscordOptions) (DiscordSetup, error) {
 	if err != nil {
 		return DiscordSetup{}, err
 	}
-	if missing := missingPerms(guild.Permissions); len(missing) > 0 {
+	if missing := missingPerms(guild.Permissions, neededPerms); len(missing) > 0 {
 		return DiscordSetup{}, fmt.Errorf("the bot lacks %s on %s — give its role %s, or invite it again with View Channel, Connect and Speak",
 			strings.Join(missing, ", "), guild.Name, strings.Join(missing, ", "))
 	}
@@ -181,8 +213,12 @@ func SetupDiscord(token string, opts DiscordOptions) (DiscordSetup, error) {
 	if err != nil {
 		return DiscordSetup{}, err
 	}
+	text, err := decideTextChannel(channels, guild, opts.TextChannel)
+	if err != nil {
+		return DiscordSetup{}, err
+	}
 
-	cfg := DiscordConfig{Guild: guild.ID, GuildName: guild.Name, Channel: channel.ID, ChannelName: channel.Name, Owner: owner}
+	cfg := DiscordConfig{Guild: guild.ID, GuildName: guild.Name, Channel: channel.ID, ChannelName: channel.Name, Owner: owner, TextChannel: text.ID, TextChannelName: text.Name}
 	if err := writeDiscordConfig(cfg); err != nil {
 		return DiscordSetup{}, err
 	}
@@ -259,18 +295,81 @@ func channelList(channels []discordChannel) string {
 	return strings.Join(lines, "\n")
 }
 
+// decideTextChannel: --text-channel by name or id among the channels a message can go to; "voice"
+// clears it; nothing given keeps the one an earlier setup picked (a rerun for another reason never
+// moves where messages go). The bot must be able to post there.
+func decideTextChannel(all []discordChannel, guild discordGuild, want string) (discordChannel, error) {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		kept, err := readJSONFile[DiscordConfig](DiscordFile())
+		if err != nil || kept == nil || kept.Guild != guild.ID {
+			return discordChannel{}, err
+		}
+		return discordChannel{ID: kept.TextChannel, Name: kept.TextChannelName}, nil
+	}
+	if missing := missingPerms(guild.Permissions, sendPerms); len(missing) > 0 {
+		return discordChannel{}, fmt.Errorf("the bot lacks %s on %s — give its role %s so crew server discord send can post",
+			strings.Join(missing, ", "), guild.Name, strings.Join(missing, ", "))
+	}
+	if strings.EqualFold(want, TextChannelVoice) {
+		return discordChannel{}, nil
+	}
+	postable := MessageChannels(all)
+	if c, ok := findMessageChannel(postable, strings.TrimPrefix(want, "#")); ok {
+		return c, nil
+	}
+	return discordChannel{}, fmt.Errorf("no channel %q on %s to post in; its channels:\n%s", want, guild.Name, channelList(postable))
+}
+
+// findMessageChannel: by id, then the name as written, then the name in any case — a text channel
+// before a voice channel of the same name ("general" the text channel over "General" the voice one).
+func findMessageChannel(postable []discordChannel, want string) (discordChannel, bool) {
+	matches := []func(discordChannel) bool{
+		func(c discordChannel) bool { return c.ID == want },
+		func(c discordChannel) bool { return c.Name == want },
+		func(c discordChannel) bool { return c.Type != discordVoiceChannel && strings.EqualFold(c.Name, want) },
+		func(c discordChannel) bool { return strings.EqualFold(c.Name, want) },
+	}
+	for _, match := range matches {
+		for _, c := range postable {
+			if match(c) {
+				return c, true
+			}
+		}
+	}
+	return discordChannel{}, false
+}
+
+// MessageChannels are the channels a message can go to: text and announcement channels, and the voice
+// channels' own chats. Sorted by name. Pure.
+func MessageChannels(all []discordChannel) []discordChannel {
+	var out []discordChannel
+	for _, c := range all {
+		switch c.Type {
+		case discordTextChannel, discordAnnouncementChannel, discordVoiceChannel:
+			out = append(out, c)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // missingPerms reads the bot's server-wide permissions; channel overwrites are
 // left to Voice OS, which says so when it cannot join.
-func missingPerms(raw string) []string {
+func missingPerms(raw string, needed []discordPerm) []string {
 	bits, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
-		return []string{"View Channel", "Connect", "Speak"}
+		names := make([]string, 0, len(needed))
+		for _, p := range needed {
+			names = append(names, p.name)
+		}
+		return names
 	}
 	if bits&permAdministrator != 0 {
 		return nil
 	}
 	var missing []string
-	for _, p := range neededPerms {
+	for _, p := range needed {
 		if bits&p.bit == 0 {
 			missing = append(missing, p.name)
 		}
@@ -341,6 +440,7 @@ func DiscordStatusRows(r DiscordReport) [][2]string {
 		rows = append(rows,
 			[2]string{"server", r.Config.GuildName + " (" + r.Config.Guild + ")"},
 			[2]string{"channel", r.Config.ChannelName + " (" + r.Config.Channel + ")"},
+			[2]string{"messages", describeMessagesChannel(*r.Config)},
 			[2]string{"owner", r.Config.Owner},
 		)
 	}
@@ -355,6 +455,13 @@ func DiscordStatusRows(r DiscordReport) [][2]string {
 		rows = append(rows, [2]string{"error", r.Live.Error})
 	}
 	return append(rows, [2]string{"at", r.Live.At})
+}
+
+func describeMessagesChannel(cfg DiscordConfig) string {
+	if cfg.TextChannel == "" {
+		return "the voice channel's chat (" + cfg.Channel + ")"
+	}
+	return "#" + cfg.TextChannelName + " (" + cfg.TextChannel + ")"
 }
 
 func yesNo(b bool) string {

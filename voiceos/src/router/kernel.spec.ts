@@ -1466,6 +1466,15 @@ describe('listWaitingItems', () => {
 		]);
 	});
 
+	it('"Send it now?" is answered in code: never in the kernel\'s list', () => {
+		const state: State = {
+			...createFixtureState({}, now),
+			switchOffer: { ref: 'checkout-api/main', at: now - 2000, kind: 'send_now', queuedId: 'q1' },
+		};
+
+		expect(listWaitingItems(state, now)).toEqual([]);
+	});
+
 	it('a fresh fix offer waits; a lapsed one does not', () => {
 		const freshState = createFixtureState(
 			{ offer: { ref: 'store-front/main', secondsAgo: 10 } },

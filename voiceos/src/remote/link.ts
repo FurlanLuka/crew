@@ -33,7 +33,12 @@ import {
 	type Snapshot,
 } from './protocol.js';
 import { PendingCalls } from './pending-calls.js';
-import { isAllowedQuery, withSource } from './query-allow.js';
+import {
+	DISCORD_SEND_QUERY_MS,
+	isAllowedQuery,
+	isDiscordSendQuery,
+	withSource,
+} from './query-allow.js';
 import { planResync } from './resync.js';
 import type { UpdateRemote } from './ssh.js';
 import {
@@ -466,17 +471,18 @@ export class RemoteLink {
 		}
 
 		const startedAt = this.now();
+		const timeoutMs = isDiscordSendQuery(call.args) ? DISCORD_SEND_QUERY_MS : QUERY_TIMEOUT_MS;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const timedOut = new Promise<never>((_resolve, reject) => {
 			timer = setTimeout(
-				() => reject(new Error(`crew did not answer in ${QUERY_TIMEOUT_MS / 1000}s`)),
-				QUERY_TIMEOUT_MS,
+				() => reject(new Error(`crew did not answer in ${timeoutMs / 1000}s`)),
+				timeoutMs,
 			);
 		});
 
 		try {
 			const value = await Promise.race([
-				this.options.runLocalCrew(withSource(call.args, this.id), { timeoutMs: QUERY_TIMEOUT_MS }),
+				this.options.runLocalCrew(withSource(call.args, this.id), { timeoutMs }),
 				timedOut,
 			]);
 			const bytes = Buffer.byteLength(value.stdout) + Buffer.byteLength(value.stderr);

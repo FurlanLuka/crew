@@ -9,7 +9,7 @@ import {
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { isActive } from '../shared/active.js';
-import { decideDelivery } from '../state/delivery.js';
+import { decideDelivery, readSendNowAction } from '../state/delivery.js';
 import { hasQuestionSince } from '../state/asks.js';
 import type { HandsFreeResult } from '../tools/hands-free.js';
 import type { OpenUrl } from '../tools/docs.js';
@@ -20,10 +20,16 @@ import { readTargetAnswer, settleTarget } from './target.js';
 import { readStatusOffer } from './status-offer.js';
 import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
-import { isBareNo, isShortEnoughToAnswer } from '../tools/send.js';
+import { isBareNo, isBareYes, isShortEnoughToAnswer } from '../tools/send.js';
 import type { KernelTurnHandle, KernelTurnStart } from '../speech/instant-ack.js';
 
 const log = createLogger('router');
+
+interface SendQueuedNowParams {
+	ref: string;
+	queuedId: string;
+	utterance: string;
+}
 
 export interface KernelTurn {
 	reply: string;
@@ -181,6 +187,22 @@ export class UtteranceRouter {
 			return;
 		}
 
+		// "Okay, after its current work. Send it now?" answered with a bare yes: the queued words go now
+		// (they cut the current work, as "send it now" does). Code's to answer, like the no above: the
+		// kernel never sees this offer.
+		if (
+			offer?.kind === 'send_now' &&
+			offer.queuedId &&
+			source === 'voice' &&
+			isSwitchOfferFresh(offer, heardFrom) &&
+			!hasQuestionSince(store.state, offer.at) &&
+			(await isBareYes(this.options.judge, trimmedText))
+		) {
+			this.sendQueuedNow({ ref: offer.ref, queuedId: offer.queuedId, utterance: trimmedText });
+
+			return;
+		}
+
 		// Captured before anything runs: a switch_view during the turn does not move it.
 		const screen = readScreenRef(store.state);
 		const saidAt = this.now();
@@ -261,6 +283,20 @@ export class UtteranceRouter {
 		if (offerAt !== null) {
 			store.dispatch({ type: 'switch_offer_closed', at: offerAt });
 		}
+	}
+
+	private sendQueuedNow({ ref, queuedId, utterance }: SendQueuedNowParams): void {
+		const { store } = this.options;
+		const action = readSendNowAction(store.state, ref, queuedId);
+
+		log.info('send now accepted', { ref, all: action.type === 'promote_all_queued' });
+		// The reducer answers the offer and says what happened ("Sending it now." / "It already went.").
+		store.dispatch(action);
+		store.dispatch({
+			type: 'voice_logged',
+			screen: readScreenRef(store.state) ?? HOME_SCREEN,
+			entry: { utterance, did: ['send it now: yes'], reply: '', at: this.now() },
+		});
 	}
 
 	private sendDictation(

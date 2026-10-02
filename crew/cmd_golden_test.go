@@ -246,6 +246,20 @@ func TestGoldenEnv(t *testing.T) {
 	}))
 }
 
+// What crew export writes, as the import page reads it: workspaces by their members' names.
+func TestGoldenExportBundle(t *testing.T) {
+	checkGolden(t, "export-bundle.json", transfer.Bundle{Version: transfer.Version,
+		Projects: []transfer.Exported{
+			{Project: project.Project{Name: "store-front", Setup: "pnpm install"}, Remote: "git@github.com:example/store-front.git"},
+			{Project: project.Project{Name: "store-api"}, Remote: "git@github.com:example/store-api.git"},
+			{Project: project.Project{Name: "signals"}},
+		},
+		Workspaces: []transfer.Membership{
+			{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-front"}, {Name: "store-api"}}},
+			{Name: "signals", Projects: []workspace.WorkspaceProject{{Name: "signals", Mode: workspace.ModeDirect}}},
+		}})
+}
+
 func TestGoldenImportPlan(t *testing.T) {
 	b := transfer.Bundle{Version: transfer.Version,
 		Projects: []transfer.Exported{
@@ -263,7 +277,7 @@ func TestGoldenImportPlan(t *testing.T) {
 		Projects: []transfer.ProjectStatus{
 			{Exists: true, Local: &local, LocalRemote: "git@github.com:example/store-front.git"},
 			{},
-			{},
+			{Found: "/Users/dev/code/checkout-api"},
 			{},
 		},
 		Workspaces: []transfer.WorkspaceStatus{{}, {}},
@@ -341,9 +355,14 @@ func TestGoldenServer(t *testing.T) {
 		{Name: "soniox", Set: false, Path: "/Users/dev/.config/crew-voiceos/soniox.key", Use: "speech in and out"},
 	})
 	checkGolden(t, "server-discord-status.json", voice.DiscordReport{SetUp: true, Token: true,
-		Config: &voice.DiscordConfig{Guild: "155", Channel: "226", ChannelName: "Voice OS", GuildName: "Example", Owner: "99"},
+		Config: &voice.DiscordConfig{Guild: "155", Channel: "226", ChannelName: "Voice OS", GuildName: "Example", Owner: "99", TextChannel: "1001", TextChannelName: "general"},
 		Live:   &voice.DiscordLive{Connected: true, OwnerInChannel: false, At: "2026-10-02T09:30:00Z"}})
 	checkGolden(t, "server-discord-off.json", voice.DiscordReport{})
+	checkGolden(t, "server-discord-setup.json", voice.DiscordConfig{Guild: "155", Channel: "226", ChannelName: "Voice OS", GuildName: "Example", Owner: "99", TextChannel: "1001", TextChannelName: "general"})
+	checkGolden(t, "server-discord-channels.json", []voice.DiscordChannelRow{
+		{ID: "226", Name: "Voice OS", Kind: "voice", IsVoice: true},
+		{ID: "1001", Name: "general", Kind: "text", IsCurrent: true},
+	})
 	checkGolden(t, "server-keys-set.json", keySavedDoc("soniox", "/Users/dev/.config/crew-voiceos/soniox.key"))
 }
 

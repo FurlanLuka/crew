@@ -903,7 +903,7 @@ crew export - > crew.json
 
 ## `crew import`
 
-Bring a crew export into this machine. A project is its git remote: one already here under the same remote is left alone (r replaces its config), one not here is cloned into ~/.crew/projects/<name>. Bare (or --plan), every item's status; project <name> imports one with the choice as flags (--path adopts a checkout you already have, --replace swaps one already here, --name renames — the bindings it leaves pointing at the old name are named); workspace <name> creates one; --all takes everything at once. crew's page walks the same plan item by item. - as the file reads the bundle from stdin. A repo you already have on disk is cloned a second time unless you --path it.
+Bring a crew export into this machine. A project is its git remote: one already here under the same remote is left alone (r replaces its config), one not here is cloned into ~/.crew/projects/<name>. Bare (or --plan), every item's status; project <name> imports one with the choice as flags (--path adopts a checkout you already have, --replace swaps one already here, --name renames — the bindings it leaves pointing at the old name are named); workspace <name> creates one; --all takes everything at once. crew's page walks the same plan item by item. - as the file reads the bundle from stdin. A repo you already have checked out under your code folders shows as found, with its path: --path it, or it is cloned a second time.
 
 ```
 crew import <file>|- [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
@@ -912,7 +912,7 @@ crew import <file>|- [--plan | --all [--replace] [--pull] [--no-install] [--no-s
 Output: `<project|workspace>\t<name>\t<status|outcome>\t<detail>`
 
 - `<file>|-` — The bundle; - reads it from stdin
-- `--plan` — The default — inspect only: one row per item with what would happen here — exists, other remote, clone (and where), blocked (the clone dir is taken), missing (no remote); needs (a workspace's absent members)
+- `--plan` — The default — inspect only: one row per item with what would happen here — exists, other remote, clone (and where), found (a checkout of that remote already on this machine — --path=<it> uses it; a bare import and --all still clone), blocked (the clone dir is taken), missing (no remote); needs (a workspace's absent members)
 - `--all` — Clone every project not here, keep the ones that are (--replace swaps them); refuses up front — before a single clone — on any blocked or missing row, and under --replace on another remote for a project whose worktrees hang off the local checkout. A project that fails on the way is its row and exit 1. Workspaces are made the way crew add worktree makes one
 - `--pull` — workspace: fast-forward the local base branches from origin before checking out (the base table is printed either way)
 - `--no-install` — workspace: skip the installs
@@ -1384,10 +1384,10 @@ crew server machines rename <id> <name>
 
 ### `crew server discord`
 
-Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Optional — crew server start never asks for it.
+Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Sessions on any machine can post there with send. Optional — crew server start never asks for it.
 
 ```
-crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off
+crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>] | status | channels | send [--text=<message>] [--file=<path>]… | off
 ```
 
 #### `crew server discord setup`
@@ -1395,20 +1395,21 @@ crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | s
 Checks the bot token with Discord (rejected → nothing saved), saves it to ~/.config/crew-voiceos/discord.key (owner-only), then decides the server (the only one the bot is in, else --guild), whose voice it takes (the server owner, else --user), and the channel (one named Voice OS, else the only voice channel, else --channel by name or id), checks the bot may View Channel, Connect and Speak there, and writes ~/.crew/voiceos/discord.json, which a running Voice OS watches. Each decision prints as one line; a choice it cannot make lists the options (<id>\t<name>) and exits 1. With no token and nothing saved it prints the four setup steps and exits 1.
 
 ```
-crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
+crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>]
 ```
 
-Output: `server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs`
+Output: `server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / messages: the voice channel's chat | #<name> (<id>) / ready: Voice OS joins it while it runs`
 
 - `--guild=<id>` — The server, when the bot is in several
 - `--channel=<name|id>` — The voice channel, when there are several and none is named Voice OS
 - `--user=<id>` — Whose voice Voice OS takes (default the server owner)
+- `--text-channel=<name|id|voice>` — Where crew server discord send posts: a text channel (checks the bot may View Channel, Send Messages and Attach Files); voice goes back to the voice channel's own chat (default kept from the last setup; at first the voice channel's chat)
 
 The token is read from stdin (hidden at a terminal), never from an argument; it is never printed or logged. A rerun with nothing pasted reuses the saved token, so --guild or --channel after an error needs no paste.
 
 Only the one user's voice is heard: Voice OS ignores everyone else in the channel.
 
---json: the discord.json object {guild,channel,channel_name,guild_name,owner}; the lines go to stderr.
+--json: the discord.json object {guild,channel,channel_name,guild_name,owner,text_channel?,text_channel_name?}; the lines go to stderr.
 
 ```bash
 pbpaste | crew server discord setup
@@ -1430,6 +1431,44 @@ Output: `<field>\t<value>`
 ```bash
 crew server discord status
 crew server discord status --json
+```
+
+#### `crew server discord channels`
+
+The channels of the server a message can go to — text and announcement channels, and the voice channels' own chats — for picking --text-channel.
+
+```
+crew server discord channels [--json]
+```
+
+Output: `<id>\t<name>\t<text|voice>[, voice channel][, messages go here]`
+
+--json: [{"id","name","kind":"text"|"voice","is_voice":bool,"is_current":bool}].
+
+```bash
+crew server discord channels
+```
+
+#### `crew server discord send`
+
+Posts a message to the developer's Discord: where messages go (the voice channel's chat, or the text channel picked with --text-channel), with the bot token. Works from the main and from any remote: a remote stages it and the main fetches and posts it. For a session to use when the developer asks it to send something there.
+
+```
+crew server discord send [--text=<message>] [--file=<path>]…
+```
+
+Output: `sent to <#channel | the voice channel's chat>: <link>`
+
+- `--text=<message>` — The message; without it, text piped on stdin
+- `--file=<path>` — A file to attach (repeat for more): at most 10, each at most 10 MB
+
+Text over 2000 characters goes as message.md. Every limit is checked before anything is sent: a message posts whole or not at all, and mentions in it never ping anyone.
+
+--json: {"channel","channel_name","message","link","files":n,"text_attached":bool,"is_voice_chat":bool}; the line goes to stderr.
+
+```bash
+crew server discord send --text="The retry fix is in" --file=screenshot.png
+git log -5 --oneline | crew server discord send
 ```
 
 #### `crew server discord off`

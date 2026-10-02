@@ -13,6 +13,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'play_missed',
 	'new_session',
 	'remove_session',
+	'status_update',
 	'activate',
 	'ignore_words',
 	'answer',

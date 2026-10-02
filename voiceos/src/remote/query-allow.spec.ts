@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAllowedQuery, withSource } from './query-allow.js';
+import {
+	DISCORD_SEND_QUERY_MS,
+	DISCORD_SEND_WAIT_MS,
+	isAllowedQuery,
+	isDiscordSendQuery,
+	withSource,
+} from './query-allow.js';
 
 describe('isAllowedQuery', () => {
 	it.each([
@@ -88,6 +94,70 @@ describe('a dev push from a remote', () => {
 		expect(withSource(['voice', 'dev', 'status'], 'vm1')).toEqual(['voice', 'dev', 'status']);
 		expect(withSource(['voice', 'logs'], 'vm1')).toEqual(['voice', 'logs']);
 	});
+});
+
+describe('a Discord message from a remote', () => {
+	const STAGE = '0123456789abcdef';
+
+	it.each([
+		[['voice', 'discord', '_send', STAGE]],
+		[['voice', 'discord', '_send', STAGE, '--json']],
+		[['voice', 'discord', 'status', '--json']],
+		[['voice', 'discord', 'status']],
+	])('%j → allowed', (args) => expect(isAllowedQuery(args)).toBe(true));
+
+	it.each([
+		[['voice', 'discord', '_send', STAGE, '--source=vm1']],
+		[['voice', 'discord', '_send', '../../etc/passwd']],
+		[['voice', 'discord', '_send', 'ABCDEF0123456789']],
+		[['voice', 'discord', '_send']],
+		[['voice', 'discord', 'send', '--text=hi']],
+		[['voice', 'discord', 'setup', '--text-channel=1']],
+		[['voice', 'discord', 'off']],
+		[['voice', 'discord', 'channels', '--json']],
+	])('%j → refused', (args) => expect(isAllowedQuery(args)).toBe(false));
+
+	it("the main names the asking remote as the stage's source itself", () =>
+		expect(withSource(['voice', 'discord', '_send', STAGE, '--json'], 'vm1')).toEqual([
+			'voice',
+			'discord',
+			'_send',
+			STAGE,
+			'--json',
+			'--source=vm1',
+		]));
+});
+
+describe('a Discord message from a remote, as crew sends and checks it too', () => {
+	const fixture = JSON.parse(
+		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/discord-send.json'), 'utf8'),
+	) as {
+		send: string[];
+		status: string[];
+		send_wait_ms: number;
+		allowed: string[][];
+		refused: string[][];
+	};
+
+	it('a send gets the long wait, a status read does not; the main gives up before the daemon does', () => {
+		expect(isDiscordSendQuery(fixture.send)).toBe(true);
+		expect(isDiscordSendQuery(fixture.status)).toBe(false);
+		expect(DISCORD_SEND_WAIT_MS).toBe(fixture.send_wait_ms);
+		expect(DISCORD_SEND_QUERY_MS).toBeLessThan(DISCORD_SEND_WAIT_MS);
+	});
+
+	it("crew's own send and status queries → allowed", () => {
+		expect(isAllowedQuery(fixture.send)).toBe(true);
+		expect(isAllowedQuery(fixture.status)).toBe(true);
+	});
+
+	it.each(fixture.allowed)('%j → allowed', (...args) =>
+		expect(isAllowedQuery(['voice', 'discord', '_send', ...args])).toBe(true),
+	);
+
+	it.each(fixture.refused)('%j → refused', (...args) =>
+		expect(isAllowedQuery(['voice', 'discord', '_send', ...args])).toBe(false),
+	);
 });
 
 describe('the dev handoff, as crew checks it too', () => {
