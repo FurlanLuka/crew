@@ -303,6 +303,12 @@ type QueryValue struct {
 // AskMain asks the main to run `crew <args>` through the remote daemon's link:
 // one line out, one line back.
 func AskMain(socket string, args []string) (QueryReply, error) {
+	return AskMainWithin(socket, args, queryWait)
+}
+
+// AskMainWithin is AskMain with its own deadline: for a question asked on the way to something else,
+// where a slow main must not hold it up.
+func AskMainWithin(socket string, args []string, wait time.Duration) (QueryReply, error) {
 	debug.Log("voice", "query.sock ← %s", strings.Join(args, " "))
 	conn, err := net.DialTimeout("unix", socket, 2*time.Second)
 	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
@@ -312,7 +318,7 @@ func AskMain(socket string, args []string) (QueryReply, error) {
 		return QueryReply{}, err
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(queryWait))
+	conn.SetDeadline(time.Now().Add(wait))
 
 	var request bytes.Buffer
 	enc := json.NewEncoder(&request)
@@ -326,7 +332,7 @@ func AskMain(socket string, args []string) (QueryReply, error) {
 	line, err := bufio.NewReader(conn).ReadBytes('\n')
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return QueryReply{Reason: "timeout", Error: fmt.Sprintf("the main did not answer in %s", queryWait)}, nil
+		return QueryReply{Reason: "timeout", Error: fmt.Sprintf("the main did not answer in %s", wait)}, nil
 	}
 	if err != nil {
 		return QueryReply{}, fmt.Errorf("the remote daemon closed the query: %w", err)

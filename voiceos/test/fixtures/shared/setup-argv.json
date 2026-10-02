@@ -348,6 +348,14 @@
 		"argv": ["voice", "discord", "off", "--json"]
 	},
 	{
+		"type": "discord_channels",
+		"argv": ["voice", "discord", "channels", "--json"]
+	},
+	{
+		"type": "discord_text_channel",
+		"argv": ["voice", "discord", "setup", "--text-channel=1001", "--json"]
+	},
+	{
 		"type": "uninstall",
 		"argv": ["uninstall", "--yes"]
 	},

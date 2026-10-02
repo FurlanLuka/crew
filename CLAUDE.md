@@ -295,6 +295,13 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   v10, saves it as `discord.key` beside the other keys (not in `KeyNames`, so the first `crew
   server start` never asks) and writes `~/.crew/voiceos/discord.json` (guild, channel, owner) atomically,
   which the running Voice OS watches; Voice OS reports back in `discord-status.json`.
+  `crew server discord send` (`discord_send.go`) posts with that token by REST — to `text_channel`
+  when one was picked (`--text-channel`, kept across reruns), else the voice channel's own chat
+  (`MessagesChannel`); every limit is checked before anything goes. A remote has no token: it stages
+  the message under `~/.crew/discord-out/<id>/` and asks the main (`voice discord _send <id>`, the
+  link adds `--source`), which fetches it over scp and posts (`discord_relay.go`). Sessions learn of
+  it from the crew section only when `DiscordSendReady` (here, or the main asked with a 3 s deadline):
+  `workspace.PromptExtras`, set by `main`.
   **Queries** (`cmd_server_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew server
   logs|debug-notes [show <n>]|notes` are read-only, `parseQueryArgs` pure (unknown flags fail,
   times made absolute UTC where typed, `--lines` 1–1000), the path by `DecideRole` (`--local` →

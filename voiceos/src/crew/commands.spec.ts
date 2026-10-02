@@ -154,6 +154,8 @@ const SAMPLES: { [T in SetupCommandType]: Extract<SetupCommand, { type: T }> } =
 	machines_rename: { type: 'machines_rename', id: 'vm1', name: 'Build box' },
 	keys_set: { type: 'keys_set', name: 'soniox', value: 'sk-test' },
 	discord_off: { type: 'discord_off' },
+	discord_channels: { type: 'discord_channels' },
+	discord_text_channel: { type: 'discord_text_channel', channel: '1001' },
 };
 
 // The other shape of a variant whose flags are optional: crew's help tree must know it too.
@@ -291,8 +293,10 @@ describe('parseSetupCommand', () => {
 
 		expect(localOnly).toEqual(
 			[
+				'discord_channels',
 				'discord_off',
 				'discord_status',
+				'discord_text_channel',
 				'keys_set',
 				'keys_status',
 				'machines_add',

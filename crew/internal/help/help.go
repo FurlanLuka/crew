@@ -829,23 +829,24 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "discord",
-					Description: "Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Optional — crew server start never asks for it.",
-					Usage:       "crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off",
+					Description: "Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Sessions on any machine can post there with send. Optional — crew server start never asks for it.",
+					Usage:       "crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>] | status | channels | send [--text=<message>] [--file=<path>]… | off",
 					Subcommands: []CommandInfo{
 						{
 							Name:         "setup",
 							Description:  "Checks the bot token with Discord (rejected → nothing saved), saves it to ~/.config/crew-voiceos/discord.key (owner-only), then decides the server (the only one the bot is in, else --guild), whose voice it takes (the server owner, else --user), and the channel (one named Voice OS, else the only voice channel, else --channel by name or id), checks the bot may View Channel, Connect and Speak there, and writes ~/.crew/voiceos/discord.json, which a running Voice OS watches. Each decision prints as one line; a choice it cannot make lists the options (<id>\\t<name>) and exits 1. With no token and nothing saved it prints the four setup steps and exits 1.",
-							Usage:        "crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]",
-							OutputFormat: "server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs",
+							Usage:        "crew server discord setup [--guild=<id>] [--channel=<name|id>] [--text-channel=<name|id|voice>] [--user=<id>]",
+							OutputFormat: "server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / messages: the voice channel's chat | #<name> (<id>) / ready: Voice OS joins it while it runs",
 							Flags: []FlagInfo{
 								{Name: "--guild=<id>", Description: "The server, when the bot is in several"},
 								{Name: "--channel=<name|id>", Description: "The voice channel, when there are several and none is named Voice OS"},
 								{Name: "--user=<id>", Description: "Whose voice Voice OS takes", Default: "the server owner"},
+								{Name: "--text-channel=<name|id|voice>", Description: "Where crew server discord send posts: a text channel (checks the bot may View Channel, Send Messages and Attach Files); voice goes back to the voice channel's own chat", Default: "kept from the last setup; at first the voice channel's chat"},
 							},
 							Notes: []string{
 								"The token is read from stdin (hidden at a terminal), never from an argument; it is never printed or logged. A rerun with nothing pasted reuses the saved token, so --guild or --channel after an error needs no paste.",
 								"Only the one user's voice is heard: Voice OS ignores everyone else in the channel.",
-								"--json: the discord.json object {guild,channel,channel_name,guild_name,owner}; the lines go to stderr.",
+								"--json: the discord.json object {guild,channel,channel_name,guild_name,owner,text_channel?,text_channel_name?}; the lines go to stderr.",
 							},
 							Examples: []string{"pbpaste | crew server discord setup", "crew server discord setup --guild=155 --channel=\"Voice OS\""},
 						},
@@ -856,6 +857,29 @@ var Root = CommandInfo{
 							OutputFormat: "<field>\\t<value>",
 							Notes:        []string{"--json: {\"set_up\":bool,\"token\":bool,\"config\":{guild,channel,channel_name,guild_name,owner}|null,\"live\":{connected,owner_in_channel,error,at}|null}. live null: Voice OS has not reported."},
 							Examples:     []string{"crew server discord status", "crew server discord status --json"},
+						},
+						{
+							Name:         "channels",
+							Description:  "The channels of the server a message can go to — text and announcement channels, and the voice channels' own chats — for picking --text-channel.",
+							Usage:        "crew server discord channels [--json]",
+							OutputFormat: "<id>\\t<name>\\t<text|voice>[, voice channel][, messages go here]",
+							Notes:        []string{"--json: [{\"id\",\"name\",\"kind\":\"text\"|\"voice\",\"is_voice\":bool,\"is_current\":bool}]."},
+							Examples:     []string{"crew server discord channels"},
+						},
+						{
+							Name:         "send",
+							Description:  "Posts a message to the developer's Discord: where messages go (the voice channel's chat, or the text channel picked with --text-channel), with the bot token. Works from the main and from any remote: a remote stages it and the main fetches and posts it. For a session to use when the developer asks it to send something there.",
+							Usage:        "crew server discord send [--text=<message>] [--file=<path>]…",
+							OutputFormat: "sent to <#channel | the voice channel's chat>: <link>",
+							Flags: []FlagInfo{
+								{Name: "--text=<message>", Description: "The message; without it, text piped on stdin"},
+								{Name: "--file=<path>", Description: "A file to attach (repeat for more): at most 10, each at most 10 MB"},
+							},
+							Notes: []string{
+								"Text over 2000 characters goes as message.md. Every limit is checked before anything is sent: a message posts whole or not at all, and mentions in it never ping anyone.",
+								"--json: {\"channel\",\"channel_name\",\"message\",\"link\",\"files\":n,\"text_attached\":bool,\"is_voice_chat\":bool}; the line goes to stderr.",
+							},
+							Examples: []string{"crew server discord send --text=\"The retry fix is in\" --file=screenshot.png", "git log -5 --oneline | crew server discord send"},
 						},
 						{
 							Name:         "off",

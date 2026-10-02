@@ -761,6 +761,10 @@ export const createFakeCrew = ({
 						machine.isDiscordSetUp ? 'server-discord-status.json' : 'server-discord-off.json',
 					),
 				);
+			case 'discord_channels':
+				return machine.isDiscordSetUp
+					? json(readGolden('server-discord-channels.json'))
+					: refuse('Error: Discord is not set up here — crew server discord setup');
 			case 'migrate_dry_run':
 				// Under --json the moves are the document; the plan text is crew's narration.
 				return json(
@@ -1233,6 +1237,14 @@ export const createFakeCrew = ({
 				machine.isDiscordSetUp = false;
 
 				return json({ removed: ['discord.json', 'discord.key'] });
+			case 'discord_text_channel':
+				return json(
+					readGolden('server-discord-setup.json'),
+					0,
+					command.channel === 'voice'
+						? "messages: the voice channel's chat\n"
+						: `messages: #${command.channel}\n`,
+				);
 			case 'export': {
 				const projects = command.all
 					? machine.projects

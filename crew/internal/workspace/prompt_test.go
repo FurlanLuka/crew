@@ -115,6 +115,25 @@ func TestRenderPrompt_CrewSection(t *testing.T) {
 	}
 }
 
+// Discord is named only where crew server discord send would post: main decides, the section only
+// prints what it is given.
+func TestRenderPrompt_DiscordOnlyWhenSetUp(t *testing.T) {
+	if strings.Contains(RenderPrompt(mixedResolved(), nil), "discord") {
+		t.Error("Discord named with nothing set up")
+	}
+
+	saved := PromptExtras
+	PromptExtras = func() []string { return []string{DiscordSendLine} }
+	t.Cleanup(func() { PromptExtras = saved })
+	got := RenderPrompt(mixedResolved(), nil)
+
+	fix := strings.Index(got, "`crew fix store-front/wrk2 --print`")
+	send := strings.Index(got, "`crew server discord send")
+	if send < 0 || send < fix || !strings.Contains(got, "Only when they ask you to send something there; never on your own") {
+		t.Errorf("prompt:\n%s", got)
+	}
+}
+
 // crew fix check/<name> --print hands this to an agent: a check is a scratch
 // checkout, and the fix belongs in the project's config.
 func TestRenderPrompt_Check(t *testing.T) {

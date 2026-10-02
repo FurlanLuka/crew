@@ -54,6 +54,7 @@ const BUILT: [string, SetupCommand, number?][] = [
 	['rm-worktree-dry-run-last.json', { type: 'rm_worktree_dry_run', ref: 'admin/main' }],
 	['server-machines.json', { type: 'machines_ls' }],
 	['server-discord-status.json', { type: 'discord_status' }],
+	['server-discord-channels.json', { type: 'discord_channels' }],
 	['migrate.json', { type: 'migrate', confirm: true }],
 ];
 

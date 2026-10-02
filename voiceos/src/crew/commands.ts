@@ -74,6 +74,7 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('machines_ls', {}),
 	variant('keys_status', {}),
 	variant('discord_status', {}),
+	variant('discord_channels', {}),
 	variant('debug_tail', { lines: lines.optional() }),
 	variant('doctor', {}),
 	variant('migrate_dry_run', {}),
@@ -186,6 +187,8 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('machines_rename', { id: word, name: word }),
 	variant('keys_set', { name: z.enum(['anthropic', 'soniox']), value: stdinText }),
 	variant('discord_off', {}),
+	// A channel's id, or voice: back to the voice channel's own chat.
+	variant('discord_text_channel', { channel: word }),
 ]);
 
 export type SetupCommand = z.infer<typeof SetupCommandSchema>;
@@ -277,6 +280,7 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	machines_ls: { ...read, localOnly: true },
 	keys_status: { ...read, localOnly: true },
 	discord_status: { ...read, localOnly: true },
+	discord_channels: { ...read, localOnly: true },
 	debug_tail: text,
 	doctor: read,
 	migrate_dry_run: write,
@@ -325,6 +329,7 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	machines_rename: local,
 	keys_set: local,
 	discord_off: local,
+	discord_text_channel: local,
 };
 
 export const traitsOf = (command: SetupCommand): CommandTraits => COMMAND_TRAITS[command.type];
@@ -418,6 +423,8 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['voice', 'keys', 'status'];
 		case 'discord_status':
 			return ['voice', 'discord', 'status'];
+		case 'discord_channels':
+			return ['voice', 'discord', 'channels'];
 		case 'debug_tail':
 			return ['debug', ...flag('tail', command.lines ?? 100)];
 		case 'doctor':
@@ -583,6 +590,8 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['voice', 'keys', 'set', command.name];
 		case 'discord_off':
 			return ['voice', 'discord', 'off'];
+		case 'discord_text_channel':
+			return ['voice', 'discord', 'setup', `--text-channel=${command.channel}`];
 
 		default: {
 			const unreachable: never = command;

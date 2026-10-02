@@ -23,6 +23,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/housekeeping"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/release"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/words"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
@@ -111,6 +112,13 @@ func main() {
 	}
 
 	housekeeping.SweepOnStart(os.Args[1:])
+	// A session learns of crew server discord send only where it would post.
+	workspace.PromptExtras = func() []string {
+		if voice.DiscordSendReady() {
+			return []string{workspace.DiscordSendLine}
+		}
+		return nil
+	}
 	checkRequirementsOnStart(os.Args[1:])
 
 	// Check for updates in background (skip for dev builds and update command)

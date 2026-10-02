@@ -77,15 +77,42 @@ const isAllowedDevQuery = (rest: string[]): boolean => {
 	}
 };
 
-// What the main runs for a remote's query: a handoff gets the asking machine as its source.
+// A message a session on a remote posts to Discord (crew server discord send there): the remote has
+// no token, so it stages the message and the main fetches the stage over scp and posts it. The remote
+// names only the stage's id; the main adds --source. Whether Discord is set up is read too, so a
+// remote session is told of send only when it would post.
+const DISCORD_STAGE = /^[0-9a-f]{16}$/;
+
+const isAllowedDiscordQuery = (rest: string[]): boolean => {
+	const [sub, ...args] = rest;
+	const flags = args.filter((arg) => arg !== '--json');
+
+	switch (sub) {
+		case 'status':
+			return flags.length === 0;
+		case '_send':
+			return flags.length === 1 && DISCORD_STAGE.test(flags[0] ?? '');
+		default:
+			return false;
+	}
+};
+
+const isSourcedQuery = (args: string[]): boolean =>
+	(args[1] === 'dev' && args[2] === '_handoff') || (args[1] === 'discord' && args[2] === '_send');
+
+// What the main runs for a remote's query: a handoff or a staged message gets the asking machine.
 export const withSource = (args: string[], machine: string): string[] =>
-	args[1] === 'dev' && args[2] === '_handoff' ? [...args, `--source=${machine}`] : args;
+	isSourcedQuery(args) ? [...args, `--source=${machine}`] : args;
 
 export const isAllowedQuery = (args: string[]): boolean => {
 	const [voice, command, ...afterCommand] = args;
 
 	if (voice === 'voice' && command === 'dev') {
 		return isAllowedDevQuery(afterCommand);
+	}
+
+	if (voice === 'voice' && command === 'discord') {
+		return isAllowedDiscordQuery(afterCommand);
 	}
 
 	if (voice !== 'voice' || !command || !COMMANDS.has(command)) {

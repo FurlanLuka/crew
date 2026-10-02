@@ -90,6 +90,38 @@ describe('a dev push from a remote', () => {
 	});
 });
 
+describe('a Discord message from a remote', () => {
+	const STAGE = '0123456789abcdef';
+
+	it.each([
+		[['voice', 'discord', '_send', STAGE]],
+		[['voice', 'discord', '_send', STAGE, '--json']],
+		[['voice', 'discord', 'status', '--json']],
+		[['voice', 'discord', 'status']],
+	])('%j → allowed', (args) => expect(isAllowedQuery(args)).toBe(true));
+
+	it.each([
+		[['voice', 'discord', '_send', STAGE, '--source=vm1']],
+		[['voice', 'discord', '_send', '../../etc/passwd']],
+		[['voice', 'discord', '_send', 'ABCDEF0123456789']],
+		[['voice', 'discord', '_send']],
+		[['voice', 'discord', 'send', '--text=hi']],
+		[['voice', 'discord', 'setup', '--text-channel=1']],
+		[['voice', 'discord', 'off']],
+		[['voice', 'discord', 'channels', '--json']],
+	])('%j → refused', (args) => expect(isAllowedQuery(args)).toBe(false));
+
+	it("the main names the asking remote as the stage's source itself", () =>
+		expect(withSource(['voice', 'discord', '_send', STAGE, '--json'], 'vm1')).toEqual([
+			'voice',
+			'discord',
+			'_send',
+			STAGE,
+			'--json',
+			'--source=vm1',
+		]));
+});
+
 describe('the dev handoff, as crew checks it too', () => {
 	const fixture = JSON.parse(
 		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/dev-handoff.json'), 'utf8'),

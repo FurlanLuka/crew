@@ -6,7 +6,9 @@
     "channel": "226",
     "channel_name": "Voice OS",
     "guild_name": "Example",
-    "owner": "99"
+    "owner": "99",
+    "text_channel": "1001",
+    "text_channel_name": "general"
   },
   "live": {
     "connected": true,

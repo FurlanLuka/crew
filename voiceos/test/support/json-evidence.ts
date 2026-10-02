@@ -35,6 +35,7 @@ export const JSON_EVIDENCE: Record<SetupCommandType, JsonEvidence> = {
 	machines_ls: { golden: 'server-machines.json' },
 	keys_status: { golden: 'server-keys.json' },
 	discord_status: { golden: 'server-discord-status.json' },
+	discord_channels: { golden: 'server-discord-channels.json' },
 	debug_tail: null,
 	doctor: 'live',
 	migrate_dry_run: { golden: 'migrate-dry-run.json' },
@@ -85,6 +86,7 @@ export const JSON_EVIDENCE: Record<SetupCommandType, JsonEvidence> = {
 	// Checks the key with its provider: never run live.
 	keys_set: { golden: 'server-keys-set.json' },
 	discord_off: 'live',
+	discord_text_channel: { golden: 'server-discord-setup.json' },
 };
 
 export const LIVE_JSON_TYPES = (Object.keys(JSON_EVIDENCE) as SetupCommandType[]).filter(
