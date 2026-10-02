@@ -601,7 +601,53 @@ describe('worktrees', () => {
 });
 
 describe('Setup with Claude', () => {
-	it('the stream as Voice OS draws it, a "✓ recorded" line under each crew command that recorded, questions as answer cards', async () => {
+	const REDIS = 'How should the worker reach Redis?';
+
+	const openQuestion = (id: string): void => {
+		server.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id,
+				ref: 'setup',
+				at: 1,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question: REDIS,
+						header: 'Environment',
+						multiSelect: false,
+						options: [
+							{ label: 'I have Redis on :6379', description: 'Record REDIS_URL' },
+							{ label: 'Skip the worker' },
+						],
+					},
+				],
+			},
+		});
+	};
+
+	const answerOf = (askId: string) =>
+		server.received.find(
+			(entry) =>
+				entry.message.type === 'action' &&
+				(entry.message.action.type === 'answer_question' ||
+					entry.message.action.type === 'decline_question') &&
+				entry.message.action.askId === askId,
+		)?.message;
+
+	// Back to idle with nothing queued, for the next test.
+	const settle = async (): Promise<void> => {
+		for (let turn = 0; turn < 5 && server.store.state.sessions.setup?.status !== 'idle'; turn++) {
+			server.store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: '' });
+		}
+
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+	};
+
+	afterEach(settle);
+
+	it('the stream as Voice OS draws it, a "✓ recorded" line under each crew command that recorded, its question docked above the composer', async () => {
 		server.store.dispatch({
 			type: 'tool',
 			ref: 'setup',
@@ -619,49 +665,179 @@ describe('Setup with Claude', () => {
 			ref: 'setup',
 			text: 'The worker needs **REDIS_URL**.',
 		});
-		server.store.dispatch({
-			type: 'ask_opened',
-			ask: {
-				id: 'setup-q1',
-				ref: 'setup',
-				at: 1,
-				kind: 'question',
-				input: {},
-				questions: [
-					{
-						question: 'How should the worker reach Redis?',
-						header: 'Environment',
-						multiSelect: false,
-						options: [
-							{ label: 'I have Redis on :6379', description: 'Record REDIS_URL' },
-							{ label: 'Skip the worker' },
-						],
-					},
-				],
-			},
-		});
+		openQuestion('setup-q1');
 		const { context, page } = await open('/setup/chat');
 		await page
 			.locator('.rec-line', { hasText: '✓ recorded · Dev server: web :3000' })
 			.waitFor({ timeout: 5000 });
 		expect(await page.locator('.chat strong', { hasText: 'REDIS_URL' }).count()).toBe(1);
-		const card = page.locator('.ask-card');
-		expect(await card.getByRole('button', { name: /Something else…/ }).count()).toBe(1);
+		// Docked at the card's foot, right above the composer; nothing to say aloud.
+		const dock = page.locator('.ss-foot > section.dock.question');
+		await dock.waitFor({ timeout: 5000 });
+		expect(
+			await page
+				.locator('.ss-foot > *')
+				.evaluateAll((nodes) => nodes.map((node) => node.className)),
+		).toEqual(['dock question', 'reply']);
+		expect(await dock.innerText()).not.toContain('Say');
 
-		await card.getByRole('button', { name: /Something else…/ }).click();
-		await page.getByLabel('Reply to setup').fill('use the one in docker compose');
-		await page.getByRole('button', { name: 'Answer', exact: true }).click();
+		await dock.getByRole('button', { name: /Skip the worker/ }).click();
 		await waitUntil(() => server.store.state.asks.every((ask) => ask.id !== 'setup-q1'));
-		const answer = server.received.find(
-			(entry) => entry.message.type === 'action' && entry.message.action.type === 'answer_question',
-		);
-		expect(answer?.message).toMatchObject({
-			action: {
-				answers: { 'How should the worker reach Redis?': 'use the one in docker compose' },
-			},
+		expect(answerOf('setup-q1')).toMatchObject({
+			action: { type: 'answer_question', answers: { [REDIS]: 'Skip the worker' } },
+		});
+		await dock.waitFor({ state: 'detached', timeout: 5000 });
+
+		// Your own words, from the dock's own field.
+		openQuestion('setup-q2');
+		await dock.getByLabel('Your own answer…').fill('use the one in docker compose');
+		await dock.getByRole('button', { name: 'Send' }).click();
+		await waitUntil(() => server.store.state.asks.every((ask) => ask.id !== 'setup-q2'));
+		expect(answerOf('setup-q2')).toMatchObject({
+			action: { answers: { [REDIS]: 'use the one in docker compose' } },
 		});
 		await context.close();
 	}, 20_000);
+
+	it('✕ declines the question', async () => {
+		openQuestion('setup-q3');
+		const { context, page } = await open('/setup/chat');
+		await page.getByRole('button', { name: 'Decline the question' }).click();
+		await waitUntil(() => server.store.state.asks.every((ask) => ask.id !== 'setup-q3'));
+		expect(answerOf('setup-q3')).toMatchObject({ action: { type: 'decline_question' } });
+		await page.locator('.ss-foot .dock').waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('busy: the reply arriving with its caret, your words queued below it, sent when the turn ends', async () => {
+		server.store.dispatch({ type: 'send', ref: 'setup', text: 'check this machine' });
+		server.store.dispatch({ type: 'text_delta', ref: 'setup', text: 'Reading the compose file' });
+		const { context, page } = await open('/setup/chat');
+		await page
+			.locator('.chat .line.text', { hasText: 'Reading the compose file' })
+			.locator('.caret')
+			.waitFor({ timeout: 5000 });
+
+		await page.getByLabel('Reply to setup').fill('then add signals');
+		await page.getByRole('button', { name: 'Queue', exact: true }).click();
+		const queued = page.locator('.ss-foot .queue .qitem', { hasText: 'then add signals' });
+		await queued.waitFor({ timeout: 5000 });
+		expect(await queued.locator('.qtag').textContent()).toBe('queued 1');
+		expect(server.store.state.sessions.setup?.queue.map((item) => item.text)).toEqual([
+			'then add signals',
+		]);
+
+		server.store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: '' });
+		await queued.waitFor({ state: 'detached', timeout: 5000 });
+		await page
+			.locator('.chat .line.user', { hasText: 'then add signals' })
+			.waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('"Fix with Claude" while setup is idle → the chat, the prompt in its composer and focused, once', async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page } = await open('/setup');
+		await page
+			.locator('.problem', { hasText: 'store-front/wrk1' })
+			.getByRole('button', { name: 'Fix with Claude' })
+			.click();
+		await page.waitForURL('**/setup/chat');
+		const composer = page.getByLabel('Reply to setup');
+		expect(await composer.inputValue()).toContain('store-front/wrk1');
+		expect(await composer.evaluate((node) => node === document.activeElement)).toBe(true);
+
+		// Handed over once: away and back, the composer is empty.
+		await page.goBack();
+		await page.waitForURL(/\/setup$/);
+		await page.locator('.claude-card').getByRole('button', { name: 'Open' }).click();
+		await page.waitForURL('**/setup/chat');
+		expect(await page.getByLabel('Reply to setup').inputValue()).toBe('');
+		await context.close();
+	}, 20_000);
+
+	describe("a remote machine's chat", () => {
+		const VM1 = { id: 'vm1', host: 'dev@vm1', name: 'Build box' };
+		const LOCAL_WORKTREES = [createWorktree('setup', true), createWorktree('store-front/main')];
+
+		beforeEach(() => {
+			server.store.dispatch({ type: 'machines', machines: [VM1] });
+			server.store.dispatch({
+				type: 'worktrees',
+				worktrees: [...LOCAL_WORKTREES, { ...createWorktree('vm1:setup', true), label: 'setup' }],
+			});
+			server.store.dispatch({
+				type: 'machine_resynced',
+				id: 'vm1',
+				inputs: [{ type: 'session_started', ref: 'vm1:setup' }],
+			});
+		});
+
+		afterEach(() => {
+			for (const ask of server.store.state.asks) {
+				server.store.dispatch({ type: 'decline_question', askId: ask.id });
+			}
+
+			server.store.dispatch({ type: 'machines', machines: [] });
+			server.store.dispatch({ type: 'worktrees', worktrees: LOCAL_WORKTREES });
+		});
+
+		it("Send from the idle composer goes to that machine's setup session", async () => {
+			await waitUntil(() => server.store.state.sessions['vm1:setup']?.status === 'idle');
+			const { context, page } = await open('/setup/chat?on=vm1');
+			await page.getByLabel('Reply to setup').fill('check this machine');
+			await page.getByRole('button', { name: 'Send', exact: true }).click();
+			const findSent = () =>
+				server.received.find(
+					(entry) =>
+						entry.message.type === 'action' &&
+						entry.message.action.type === 'send' &&
+						entry.message.action.text === 'check this machine',
+				);
+			await waitUntil(() => findSent() !== undefined);
+			expect(findSent()?.message).toMatchObject({ action: { type: 'send', ref: 'vm1:setup' } });
+			await context.close();
+		}, 20_000);
+
+		it("its own question docked, never this Mac's; answering it leaves this Mac's open", async () => {
+			openQuestion('setup-local');
+			server.store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'setup-vm1',
+					ref: 'vm1:setup',
+					at: 2,
+					kind: 'question',
+					input: {},
+					questions: [
+						{
+							question: 'Which Postgres on the build box?',
+							header: 'Database',
+							multiSelect: false,
+							options: [{ label: 'The local one' }, { label: 'Skip it' }],
+						},
+					],
+				},
+			});
+			const { context, page } = await open('/setup/chat?on=vm1');
+			const dock = page.locator('.ss-foot > section.dock.question');
+			await dock.waitFor({ timeout: 5000 });
+			expect(await page.locator('.ss-foot section.dock').count()).toBe(1);
+			expect(await dock.innerText()).toContain('Which Postgres on the build box?');
+			expect(await dock.innerText()).not.toContain(REDIS);
+
+			await dock.getByRole('button', { name: /The local one/ }).click();
+			await waitUntil(() => server.store.state.asks.every((ask) => ask.id !== 'setup-vm1'));
+			expect(answerOf('setup-vm1')).toMatchObject({
+				action: {
+					type: 'answer_question',
+					answers: { 'Which Postgres on the build box?': 'The local one' },
+				},
+			});
+			expect(server.store.state.asks.map((ask) => ask.id)).toEqual(['setup-local']);
+			await context.close();
+		}, 20_000);
+	});
 });
 
 describe('moving to another machine', () => {

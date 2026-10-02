@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import type { State } from '../shared/protocol.js';
-import { createInitialState, createSession } from '../state/reducer.js';
-import { describeMoment, describeSessionState, readScreenAsk } from './moments.js';
+import { run, worktree } from '../../test/support/reduce.js';
+import { listHeardAsks } from '../shared/active.js';
+import { isSilenced } from '../speech/connect.js';
+import type { PendingAsk, State } from '../shared/protocol.js';
+import { createInitialState, createSession, type Effect } from '../state/reducer.js';
+import { describeMoment, describeSessionState, readScreenAsk, readSessionAsk } from './moments.js';
 
 const NOW = 1_000_000;
 
@@ -126,6 +129,98 @@ describe('readScreenAsk', () => {
 		).toBeNull();
 		expect(readScreenAsk(createState({ view: { kind: 'active' }, asks }))).toBeNull();
 	});
+});
+
+describe("a setup session's ask: Set up's to answer, never Voice OS's", () => {
+	const VM1 = { id: 'vm1', host: 'dev@vm1.example.com', name: 'Build box' };
+	const SETUP_REFS = ['setup', 'vm1:setup'];
+
+	const question = (ref: string): PendingAsk => ({
+		id: `q-${ref}`,
+		ref,
+		at: 1,
+		kind: 'question',
+		input: {},
+		questions: [
+			{
+				question: 'How should the worker reach Redis?',
+				multiSelect: false,
+				options: [{ label: 'I have Redis on :6379' }, { label: 'Skip the worker' }],
+			},
+		],
+	});
+
+	// This Mac's setup and vm1's, both running, each asking; a worktree session on screen.
+	const opened = () =>
+		run([
+			{ type: 'machines', machines: [VM1] },
+			{
+				type: 'worktrees',
+				worktrees: [
+					{ ...worktree('setup'), isPinned: true },
+					worktree('store-front/main'),
+					{ ...worktree('vm1:setup'), label: 'setup', isPinned: true },
+				],
+			},
+			{ type: 'session_started', ref: 'setup' },
+			{
+				type: 'machine_resynced',
+				id: 'vm1',
+				inputs: [{ type: 'session_started', ref: 'vm1:setup' }],
+			},
+			{ type: 'ask_opened', ask: question('setup') },
+			{ type: 'ask_opened', ask: question('vm1:setup') },
+		]);
+
+	// What reaches the voice: the speech layer silences every line about a session voice does not hear.
+	const spoken = (state: State, effects: Effect[]) =>
+		effects.filter((effect) => effect.type === 'speak' && !isSilenced(state, effect));
+
+	const resolved = (effects: Effect[]) =>
+		effects.flatMap((effect) =>
+			effect.type === 'resolve_ask' ? [{ ref: effect.ref, behavior: effect.result.behavior }] : [],
+		);
+
+	it('readable for Set up on each machine, never heard, never docked in Voice OS', () => {
+		const { state, effects } = opened();
+
+		expect(spoken(state, effects)).toEqual([]);
+		expect(listHeardAsks(state)).toEqual([]);
+
+		for (const ref of SETUP_REFS) {
+			expect(readSessionAsk(state, ref)?.id).toBe(`q-${ref}`);
+			expect(readScreenAsk({ ...state, view: { kind: 'session', ref } })).toBeNull();
+		}
+
+		expect(
+			readScreenAsk({ ...state, view: { kind: 'session', ref: 'store-front/main' } }),
+		).toBeNull();
+	});
+
+	for (const ref of SETUP_REFS) {
+		it(`${ref}: an option clicked → resolved there, nothing said; ✕ → declined`, () => {
+			const start = opened().state;
+			const answered = run(
+				[
+					{
+						type: 'answer_question',
+						askId: `q-${ref}`,
+						answers: { 'How should the worker reach Redis?': 'Skip the worker' },
+					},
+				],
+				{ start },
+			);
+
+			expect(resolved(answered.effects)).toEqual([{ ref, behavior: 'allow' }]);
+			expect(spoken(answered.state, answered.effects)).toEqual([]);
+			expect(readSessionAsk(answered.state, ref)).toBeNull();
+
+			const declined = run([{ type: 'decline_question', askId: `q-${ref}` }], { start });
+
+			expect(resolved(declined.effects)).toEqual([{ ref, behavior: 'deny' }]);
+			expect(readSessionAsk(declined.state, ref)).toBeNull();
+		});
+	}
 });
 
 describe('describeSessionState', () => {

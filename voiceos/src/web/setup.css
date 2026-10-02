@@ -972,6 +972,7 @@ form {
 	min-height: 0;
 	display: grid;
 	grid-template-rows: auto minmax(0, 1fr);
+	grid-template-columns: minmax(0, 1fr);
 	overflow: hidden;
 	padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
@@ -990,6 +991,7 @@ form {
 .ss-main {
 	display: grid;
 	grid-template-rows: minmax(0, 1fr) auto;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 18px;
 	min-height: 0;
 	padding: 20px 20px 12px;
@@ -1011,7 +1013,7 @@ form {
 .chat .msg {
 	margin: 0;
 }
-.chat-item {
+.stream-item {
 	display: grid;
 	gap: 2px;
 }
@@ -1019,49 +1021,6 @@ form {
 	padding-left: 16px;
 	color: var(--good);
 	font: 12px / 1.5 var(--mono);
-}
-.ask-card {
-	display: grid;
-	gap: 10px;
-	padding: 14px 16px;
-	border-radius: 14px;
-	background: var(--elev-2);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.125);
-}
-.ask-card p {
-	margin: 0;
-	color: #fff;
-	font-size: 15px;
-	line-height: 1.55;
-}
-.ask-opts {
-	display: grid;
-	gap: 6px;
-}
-.ask-opt {
-	display: grid;
-	gap: 1px;
-	padding: 10px 12px;
-	border: 0;
-	border-radius: 10px;
-	background: var(--elev-3);
-	color: #fff;
-	text-align: left;
-}
-.ask-opt:hover {
-	background: #2e333a;
-}
-.ask-opt b {
-	font-size: 14px;
-	font-weight: 600;
-}
-.ask-opt small {
-	color: var(--label-2);
-	font-size: 12.5px;
-}
-.ask-opt.other {
-	background: transparent;
-	box-shadow: inset 0 0 0 1px var(--sep);
 }
 .reply {
 	display: flex;
@@ -1079,6 +1038,68 @@ form {
 	flex: 1;
 	background: transparent;
 	box-shadow: none;
+}
+/* The card's foot: Voice OS's session pieces (sub-agents, the ask, the queue) in Set up's own cards,
+   stacked above the composer as Voice OS stacks them above the voice bar. */
+.ss-foot {
+	display: grid;
+	gap: 10px;
+	min-width: 0;
+}
+.ss-foot .dock {
+	max-height: 40vh;
+	padding: 14px 16px;
+	border-radius: 14px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.125);
+}
+.ss-foot .dock.crit {
+	background: var(--crit-fill);
+	box-shadow: inset 0 0 0 1px rgba(224, 108, 95, 0.3);
+}
+.ss-foot .dock.amber {
+	background: var(--amber-fill);
+	box-shadow: inset 0 0 0 1px rgba(240, 160, 44, 0.28);
+}
+.ss-foot .opt {
+	background: var(--elev-3);
+}
+.ss-foot .opt:hover {
+	background: #2e333a;
+}
+.ss-foot .reason input {
+	background: var(--elev-3);
+}
+.ss-foot .queue,
+.ss-foot .panel {
+	display: grid;
+	gap: 4px;
+	padding: 8px 4px;
+	border-radius: 12px;
+	box-shadow: inset 0 0 0 1px var(--sep);
+}
+.ss-foot .qitem {
+	flex-wrap: wrap;
+	padding: 4px 12px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.ss-foot .panel {
+	padding: 10px 14px;
+	font-size: 13px;
+}
+.ss-foot .subagent .row {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+}
+.ss-foot .subagent .row:first-child {
+	color: var(--label-2);
+}
+.ss-foot .subagent .el {
+	margin-left: auto;
+	color: var(--label-3);
+	font: 12px var(--mono);
 }
 
 /* Setup is busy: a request waits or opens the chat, never interrupts it. */
@@ -1154,6 +1175,13 @@ form {
 	}
 }
 @media (max-width: 600px) {
+	/* On a phone the stream keeps most of the card: the ask scrolls within its own share. */
+	.ss-foot .dock {
+		max-height: 34vh;
+	}
+	.ss-foot .opts {
+		display: grid;
+	}
 	.top {
 		width: calc(100% - 20px);
 	}

@@ -1,3 +1,4 @@
+import { isSetupRef } from '../../shared/machine-ref.js';
 import type { Dispatch } from '../types.js';
 import { findOpenQuestion, type QuestionAsk } from '../../shared/questions.js';
 import { Reason } from './Reason.js';
@@ -54,10 +55,13 @@ export const QuestionDock = ({ ask, label, dispatch }: QuestionDockProps) => {
 					</button>
 				))}
 			</div>
-			<div className="hint">
-				Say <b>“{question.options.length > 1 ? 'two' : 'one'}”</b>, an option's name, or click.
-				Anything else is sent as your own answer.
-			</div>
+			{/* A setup session's question is answered in Set up's chat, never by voice. */}
+			{!isSetupRef(ask.ref) && (
+				<div className="hint">
+					Say <b>“{question.options.length > 1 ? 'two' : 'one'}”</b>, an option's name, or click.
+					Anything else is sent as your own answer.
+				</div>
+			)}
 			<Reason label="Your own answer…" onSubmit={handleChoose} />
 		</section>
 	);

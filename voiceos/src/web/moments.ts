@@ -1,6 +1,7 @@
 // What Voice OS asks or tells right now, as the page shows it: the moments row above the spoken line,
 // the ask docked above the voice bar and the state row under a session's header. Pure: the components
 // only draw what these return.
+import { listHeardAsks } from '../shared/active.js';
 import { isReachable, readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import { machineOf } from '../shared/machine-ref.js';
 import type { Action, Denial, PendingAsk, SpokenLine, State } from '../shared/protocol.js';
@@ -139,10 +140,19 @@ const describeMeanwhile = (state: State, now: number): Moment | null => {
 export const describeMoment = (state: State, now: number): Moment | null =>
 	describeTargetAsk(state) ?? describeSwitchOffer(state) ?? describeMeanwhile(state, now);
 
-// What the session on screen waits on, docked above the voice bar where the answer is given. Only
-// that session's: another session's ask waits on its own screen.
-export const readScreenAsk = ({ view, asks }: State): PendingAsk | null =>
-	view.kind === 'session' ? (asks.find((ask) => ask.ref === view.ref) ?? null) : null;
+// What one session waits on, whoever draws it: Set up's chat reads its setup session's ask here.
+export const readSessionAsk = (state: State, ref: string): PendingAsk | null =>
+	state.asks.find((ask) => ask.ref === ref) ?? null;
+
+// Docked above the voice bar: only the screen's session's ask (another session's waits on its own
+// screen), and only one voice hears, so a setup session's ask never shows in Voice OS.
+export const readScreenAsk = (state: State): PendingAsk | null => {
+	const { view } = state;
+
+	return view.kind === 'session'
+		? (listHeardAsks(state).find((ask) => ask.ref === view.ref) ?? null)
+		: null;
+};
 
 export type SessionState =
 	| { kind: 'denial'; denial: Denial }

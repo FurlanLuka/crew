@@ -5,7 +5,6 @@ import { isActive } from '../../shared/active.js';
 import { readMachine, toLocalRef } from '../../shared/machine-ref.js';
 import { readMachineTitle, readSessionLabel } from '../../shared/machines.js';
 import type { Session, State } from '../../shared/protocol.js';
-import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { describeWork } from '../../state/working.js';
 import { describeSessionBadge, readRefTitle, readWorkingOn } from '../derive.js';
 import { useCrew } from '../setup/api.js';
@@ -13,16 +12,13 @@ import { hasDevServers } from '../setup/derive.js';
 import type { CrewMember, CrewProject } from '../setup/types.js';
 import type { Dispatch } from '../types.js';
 import { useNow } from '../use-now.js';
-import { useStickToBottom } from '../use-stick-to-bottom.js';
-import { CompactingLine } from './CompactingLine.js';
 import { DevPanel } from './DevPanel.js';
 import { DocsPanel } from './DocsPanel.js';
 import { ElsewherePanel } from './ElsewherePanel.js';
-import { Markdown } from './Markdown.js';
 import { NotesPanel } from './NotesPanel.js';
 import { RenameSession } from './RenameSession.js';
 import { SessionStateRow } from './SessionStateRow.js';
-import { StreamLine } from './StreamLine.js';
+import { SessionStream } from './SessionStream.js';
 import { SubagentsPanel } from './SubagentsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
 
@@ -42,8 +38,6 @@ const useHasDevServers = (session: Session): boolean => {
 };
 
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
-	// The compaction bar is added at the end of the stream too: it comes into view like a line.
-	const streamRef = useStickToBottom<HTMLElement>(session.ref);
 	const [isRenaming, setIsRenaming] = useState(false);
 	const now = useNow();
 	const isOn = isActive(state, session.ref);
@@ -93,17 +87,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 			</div>
 			<SessionStateRow state={state} sessionRef={session.ref} dispatch={dispatch} />
 			<div className="vo-split">
-				<section className="vo-stream stream" aria-label="stream" ref={streamRef}>
-					{session.stream.map((item) => (
-						<StreamLine key={item.id} item={item} />
-					))}
-					{stripStreamingTag(session.draft) && (
-						<div className="line text">
-							<Markdown text={stripStreamingTag(session.draft)} />
-							<span className="caret" />
-						</div>
-					)}
-					{session.compactingSince !== null && <CompactingLine since={session.compactingSince} />}
+				<SessionStream sessionRef={session.ref} session={session} className="vo-stream stream">
 					{session.status === 'stopped' && !session.error && (
 						<div className="line notice c-dim">
 							{isOn
@@ -111,7 +95,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 								: 'Not active: its history only. Voice OS runs no Claude here and says nothing about it.'}
 						</div>
 					)}
-				</section>
+				</SessionStream>
 				<aside className="vo-panels side">
 					<div className="vo-panel panel">
 						<span className="label">Session</span>

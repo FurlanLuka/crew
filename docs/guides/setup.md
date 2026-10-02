@@ -195,12 +195,20 @@ reads the repo, works out the install and the dev servers, asks only what it can
 records it with crew commands. Each crew command that recorded something gets a **✓ recorded**
 line, taken from the command it ran — not from what Claude says about it.
 
-Its questions come as cards with the options and **Something else…** for your own words, and its
-permission asks as Allow / Always / Deny. Words you send while it works are queued; **Stop** stops
-the turn. **Fix with Claude** and **Ask Claude** anywhere in Set up start here, with the failure or
-the form already said.
+It is drawn with the same pieces as a session in Voice OS: its steps, the reply as it arrives (with
+a caret), a bar while it compacts its context, and the sub-agents it has running. What it waits on
+is docked at the foot of the card, right above where you type, as Voice OS docks it above the voice
+bar: a question with its options as buttons, a field for your own answer and **✕** to decline it; a
+plan to approve or change; a permission as Yes / Always for this / No (or no, with a reason); a
+`/clear` or `/compact` to confirm. Words you send while it works wait in the queue under the ask —
+**▲ now** sends one at once, **✕ cancel** drops it — and go in order when the turn ends; **Stop**
+stops the turn. **Fix with Claude** and **Ask Claude** anywhere in Set up start here, with the
+failure or the form already said.
 
-It is not part of voice: Voice OS never routes your words to it or speaks for it.
+It is not part of voice: what you type goes straight to the setup session, never through Voice OS's
+kernel; Voice OS never routes your words to it, speaks for it or shows its questions, and no button
+here has a word to say. On another machine, its chat is that machine's setup session, and its
+questions are answered the same way.
 
 ## Machines
 
