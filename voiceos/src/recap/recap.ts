@@ -133,6 +133,7 @@ You get each session: its name, its status, what it waits on the developer for, 
 
 Rules:
 - First anything a session waits on the developer for, then what got done, then what is still running. Leave out sessions with nothing to say.
+- A wait is the session asking the developer: say it as its question or request ("checkout asks whether to push the fix"), never as if the developer has to do the work.
 - Name each session the way it is given, word for word.
 - Say only what is given: never invent results, numbers, file names or what comes next.
 - Plain spoken sentences: no lists, no markdown, no file paths, no code, no quotes, no tags.
@@ -144,7 +145,7 @@ Reply with the update alone.`;
 const describeSession = (session: RecapSession): string =>
 	[
 		`session "${session.label}" (${session.status})`,
-		...session.waits.map((wait) => `  waits on the developer: ${wait}`),
+		...session.waits.map((wait) => `  waits on the developer, it ${wait}`),
 		...(session.unheard ? [`  said, not heard yet: ${session.unheard}`] : []),
 		...session.turns.map(
 			(turn) =>

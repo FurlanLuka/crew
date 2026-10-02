@@ -147,7 +147,7 @@ describe('buildRecapMessage', () => {
 				'time asked about: the last hour',
 				'about every active session',
 				'session "checkout api" (idle)',
-				'  waits on the developer: asks: push to main?',
+				'  waits on the developer, it asks: push to main?',
 				'  5m ago — asked: run the retry tests — did: All retry tests pass.',
 				'session "store front" (running)',
 				'  said, not heard yet: The cart page renders again.',
