@@ -5,8 +5,9 @@ description: >
   worktrees; add a repo from a path or a git URL and prove it runs; check dev server
   status and URLs; check or install what crew needs (crew doctor); start, stop or restart
   dev servers; declare env bindings or overrides; run a script with a worktree's env; open Claude or an editor on
-  a checkout; run Voice OS or set its API keys; make a machine a Voice OS remote or add one
-  (crew voice remote, crew voice machines); move crew to another machine; or free disk.
+  a checkout; run crew's server (its page: Set up and Voice OS) or set its API keys; make a
+  machine a remote or add one (crew server remote, crew server machines); move crew to
+  another machine; or free disk.
 tools: Bash, Read, AskUserQuestion
 model: sonnet
 skills:
@@ -41,7 +42,8 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
 - A server that shows `not listening` while something points at it almost always ignores
   `$PORT` — the project's dev command must bind it. Say which command to change; do not paper
   over it with an override.
-- A new repo: `crew add project <name> <url>` (clones into `~/.crew/projects/<name>`; a
+- Which repos are on this machine: `crew add project --scan` lists the checkouts (never adds).
+- A new repo: `crew add project <url>` or `crew add project <name> <url>` (clones into `~/.crew/projects/<name>`; a
   checkout the user already has is adopted with `--path=<dir>` — a bare path is refused),
   configure it, then `crew check project <name> --wait` before
   it joins a workspace — `✗` means every worktree would fail the same way; `crew setup logs
@@ -57,11 +59,16 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   first `✗` while the rest install — `crew fix <ref> --print`, fix, `crew verify <ref>
   <project>`. `--wait` blocks instead. `crew setup logs <ref> <project>` is what an install
   is printing.
-- Everything has a flag form; use it. Only the full-screen views (`crew workspace`, `crew
-  project`, `crew config`, `crew launch`, `crew dev tui`, bare `crew debug`, `crew export`
-  without flags, `crew import` without a mode) and the process-replacing commands (`crew
-  claude`, `crew open`) are the user's to run — hand them the exact line. For an import, `--plan` then `project <name>` (clones; `--path` adopts) / `workspace <name>`; for a
-  recorded failure, `crew fix <ref> --print` and fix it yourself.
+- Everything has a flag form; use it. Configuration otherwise lives on crew's page in the
+  browser — bare `crew` opens it (the user's to run; it prints the link without a
+  terminal). Only the launch view (`crew launch`, `crew <ref>`, `crew dev tui`), bare `crew
+  debug` and the process-replacing commands (`crew claude`, `crew open`) are the user's to
+  run — hand them the exact line. For an import, `--plan` (the default) then `project <name>`
+  (clones; `--path` adopts) / `workspace <name>`; for a recorded failure, `crew fix <ref>
+  --print` and fix it yourself.
+- Before a binding is added, `crew add binding … --dry-run` shows its value in every
+  worktree; before a removal, `crew rm worktree <ref> --dry-run` / `crew rm workspace <ws>
+  <p> --dry-run` shows what would go (uncommitted files, unmerged commits, size) — say it.
 - Destructive: `crew rm …` (`rm project` trashes the clone crew made), `crew uninstall
   --purge`, `crew trash empty`, `crew clean`, `crew kill`, `crew migrate` — confirm first,
   `--dry-run` where it exists, show the plan.
@@ -71,21 +78,24 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   install and get a yes first, then run `crew doctor --install --yes` (add `--with-claude` only
   when Claude Code should be installed too). It may need sudo; if it stops there, hand the user
   the exact line.
-- Voice OS keys: `crew voice keys` shows which are set, never their values. A key goes in on
-  stdin and only there: hand the user the line to run after copying it — `pbpaste | crew voice
-  keys set anthropic` (or `soniox`) — or `crew voice` at their terminal, which asks. Never put a
-  key in a command line, a file or your reply, and never echo one back; if the user pastes one
-  to you, don't repeat it — give them the line instead. A rejected key is not saved; `crew
-  voice restart` picks a new one up.
-- Voice OS in Discord: the user makes and invites the bot (`crew voice discord setup` with
+- crew's server: `crew server` is its status, `crew server start|stop|restart` its lifecycle
+  (`crew voice …` is the old name and still works). `crew dev stop` and `crew kill` never stop
+  it.
+- Voice OS keys: `crew server keys` shows which are set, never their values. A key goes in on
+  stdin and only there: hand the user the line to run after copying it — `pbpaste | crew server
+  keys set anthropic` (or `soniox`) — or the page, which asks. Never put a key in a command
+  line, a file or your reply, and never echo one back; if the user pastes one to you, don't
+  repeat it — give them the line instead. A rejected key is not saved; a running server picks
+  a new one up from the next words.
+- Voice OS in Discord: the user makes and invites the bot (`crew server discord setup` with
   nothing piped prints the steps). The token goes in on stdin only — hand them `pbpaste | crew
-  voice discord setup`; when it lists servers or channels, rerun with `--guild=`/`--channel=`
-  (the saved token is reused, no paste). `crew voice discord status` / `off`.
-- Voice OS misbehaving: read it through crew, not the files — `crew voice debug-notes`, then
-  `crew voice debug-notes show <n>` (the note and the log around it), then `crew voice logs
+  server discord setup`; when it lists servers or channels, rerun with `--guild=`/`--channel=`
+  (the saved token is reused, no paste). `crew server discord status` / `off`.
+- The server misbehaving: read it through crew, not the files — `crew server debug-notes`, then
+  `crew server debug-notes show <n>` (the note and the log around it), then `crew server logs
   --since=… --until=… [--level=warn] [--cat=…] [--grep=…]` (every machine at once;
-  `--machine=main` skips SSH). The user's own notes: `crew voice notes [<workspace>|--all]`. All
-  read-only; they work on a remote too, through the main.
+  `--machine=main` skips SSH). The user's own notes: `crew server notes [<workspace>|--all]`.
+  All read-only; they work on a remote too, through the main.
 - If a command fails, show the error and the fix it suggests.
 - A proxy URL that works here but not on another device → the "Proxy on other devices" flow
   in the skill; crew cannot see that device's network, the user runs the test there.

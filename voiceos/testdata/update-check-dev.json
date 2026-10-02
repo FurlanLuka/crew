@@ -1,0 +1,7 @@
+{
+  "current": "dev-abc123",
+  "latest": "4.2.0",
+  "available": false,
+  "dev": true,
+  "line": "crew (dev build abc123) — crew update installs the latest release (v4.2.0)"
+}

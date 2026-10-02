@@ -283,3 +283,17 @@ func TestPartition_CycleInParentGraphTerminates(t *testing.T) {
 		t.Fatal("partition did not terminate on a cyclic parent graph")
 	}
 }
+
+// crew's server is listed but never stopped, so nothing restores it either.
+func TestRestoreCommands_SkipsTheServer(t *testing.T) {
+	inv := Inventory{Sessions: []Session{
+		{Name: "crew-dev-store-front--main"},
+		{Name: "crew-server", Kept: true},
+		{Name: "crew-dev-os", Kept: true},
+		{Name: "crew-dev-proxy"},
+	}}
+	got := restoreCommands(inv)
+	if len(got) != 1 || got[0] != "crew dev start store-front--main" {
+		t.Errorf("restore = %v", got)
+	}
+}

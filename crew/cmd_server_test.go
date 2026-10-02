@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -111,6 +112,105 @@ func TestChooseDiscordToken(t *testing.T) {
 		got, ok := chooseDiscordToken(c.entered, c.saved)
 		if got != c.want || ok != c.ok {
 			t.Errorf("%s: chooseDiscordToken(%q, %q) = %q, %v; want %q, %v", c.name, c.entered, c.saved, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// A browser opens only for a person at this machine's screen.
+func TestShouldOpenBrowser(t *testing.T) {
+	mac := openEnv{Requested: true, StdoutTTY: true, GOOS: "darwin"}
+	cases := []struct {
+		name string
+		env  func(openEnv) openEnv
+		want bool
+	}{
+		{"a terminal on a Mac", func(e openEnv) openEnv { return e }, true},
+		{"no terminal", func(e openEnv) openEnv { e.StdoutTTY = false; return e }, false},
+		{"--json", func(e openEnv) openEnv { e.JSON = true; return e }, false},
+		{"--no-open", func(e openEnv) openEnv { e.Requested = false; return e }, false},
+		{"over SSH", func(e openEnv) openEnv { e.SSH = true; return e }, false},
+		{"linux, no display", func(e openEnv) openEnv { e.GOOS = "linux"; return e }, false},
+		{"linux with X11 or Wayland", func(e openEnv) openEnv { e.GOOS = "linux"; e.Display = true; return e }, true},
+		{"linux display over SSH", func(e openEnv) openEnv { e.GOOS = "linux"; e.Display = true; e.SSH = true; return e }, false},
+	}
+	for _, c := range cases {
+		if got := shouldOpenBrowser(c.env(mac)); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// Bare crew needs tmux and nothing else: a missing claude is the page's to
+// say, when a session cannot start.
+func TestBareRequirements(t *testing.T) {
+	both := []voice.Requirement{{Name: "tmux"}, {Name: "claude"}}
+	if got := bareRequirements(both); len(got) != 1 || got[0].Name != "tmux" {
+		t.Errorf("bare = %+v", got)
+	}
+	if got := bareRequirements([]voice.Requirement{{Name: "claude"}}); len(got) != 0 {
+		t.Errorf("claude alone must not stop bare crew: %+v", got)
+	}
+}
+
+// Over SSH the localhost link is the wrong machine's: the proxy link whenever
+// the proxy reaches the server (a domain set or the automatic nip.io one),
+// the tunnel otherwise.
+func TestServerLinkLines(t *testing.T) {
+	st := voice.Status{Port: 7300, LocalhostURL: "http://localhost:7300/login?token=T", URL: "https://voice--os.dev.example.com/login?token=T"}
+	if got := strings.Join(serverLinkLines(st, false, true, "box"), "\n"); got != "crew is running: http://localhost:7300/login?token=T" {
+		t.Errorf("local: %q", got)
+	}
+	if got := strings.Join(serverLinkLines(st, true, true, "box"), "\n"); got != "crew is running: https://voice--os.dev.example.com/login?token=T" {
+		t.Errorf("ssh, the proxy reaches it: %q", got)
+	}
+	want := "crew is running on this machine, port 7300. From your computer:\n  ssh -L 7300:localhost:7300 box\nthen open http://localhost:7300/login?token=T"
+	if got := strings.Join(serverLinkLines(st, true, false, "box"), "\n"); got != want {
+		t.Errorf("ssh, the proxy does not reach it:\n%s\nwant\n%s", got, want)
+	}
+	if got := serverLinkLines(st, true, false, ""); !strings.Contains(got[1], "ssh -L 7300:localhost:7300 <this machine>") {
+		t.Errorf("no ssh_host: %q", got[1])
+	}
+}
+
+// The alias note is for a person: never on a pipe, never for the hidden
+// forms another process runs (voice _attach's stdout is the link alone).
+func TestShowAliasNote(t *testing.T) {
+	for _, tt := range []struct {
+		tty  bool
+		args []string
+		want bool
+	}{
+		{true, nil, true},
+		{true, []string{"status"}, true},
+		{false, []string{"status"}, false},
+		{true, []string{"_attach"}, false},
+		{true, []string{"_restart"}, false},
+		{false, []string{"machines", "ls"}, false},
+	} {
+		if got := showAliasNote(tt.tty, tt.args); got != tt.want {
+			t.Errorf("showAliasNote(%v, %v) = %v", tt.tty, tt.args, got)
+		}
+	}
+}
+
+// Bare crew server is its status; bare crew voice still starts it, as it
+// always did; flags alone keep the bare meaning.
+func TestServerSub(t *testing.T) {
+	for _, tt := range []struct {
+		args       []string
+		bare, want string
+		rest       int
+	}{
+		{nil, "status", "status", 0},
+		{nil, "start", "start", 0},
+		{[]string{"--no-open"}, "start", "start", 1},
+		{[]string{"stop"}, "start", "stop", 0},
+		{[]string{"keys", "set", "soniox"}, "status", "keys", 2},
+		{[]string{"_attach"}, "start", "_attach", 0},
+	} {
+		sub, rest := serverSub(tt.args, tt.bare)
+		if sub != tt.want || len(rest) != tt.rest {
+			t.Errorf("serverSub(%v, %s) = %s %v", tt.args, tt.bare, sub, rest)
 		}
 	}
 }

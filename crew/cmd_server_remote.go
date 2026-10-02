@@ -10,7 +10,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-// Exit codes of crew voice _attach, read by the main that ran it over SSH
+// Exit codes of crew server _attach, read by the main that ran it over SSH
 // (voiceos/src/remote/link-state.ts classifyExit reads the stderr line).
 const (
 	attachRequirements = 3
@@ -22,12 +22,12 @@ const (
 // A machine is a main or a remote: two drivers on one worktree's Claude would fight.
 func refuseIfRemote() {
 	if voice.RemoteRunning() {
-		fmt.Fprintln(os.Stderr, "Error: this machine runs Voice OS as a remote (another machine drives it) — crew voice remote stop first")
+		fmt.Fprintln(os.Stderr, "Error: this machine runs Voice OS as a remote (another machine drives it) — crew server remote stop first")
 		os.Exit(1)
 	}
 }
 
-// voiceRemote: crew voice remote [status|stop]. Bare, it checks this machine
+// voiceRemote: crew server remote [status|stop]. Bare, it checks this machine
 // can be a remote, installs Voice OS if needed, starts the daemon and says so.
 func voiceRemote(args []string) {
 	sub := ""
@@ -38,7 +38,7 @@ func voiceRemote(args []string) {
 	case "":
 		requireVoiceDeps()
 		if voice.CockpitRunning() {
-			fmt.Fprintln(os.Stderr, "Error: Voice OS runs here as the main — a machine is either a main or a remote (crew voice stop first)")
+			fmt.Fprintln(os.Stderr, "Error: Voice OS runs here as the main — a machine is either a main or a remote (crew server stop first)")
 			os.Exit(1)
 		}
 		installVoiceIfMissing()
@@ -51,7 +51,7 @@ func voiceRemote(args []string) {
 			fmt.Fprintln(human, "Restarted the daemon on the installed Voice OS; its sessions resume on the next message.")
 		}
 		printRemote(voice.InspectRemote())
-		fmt.Fprintf(human, "Ready: add this machine on the main (crew voice machines add <ssh host>, or + Add machine on the page).\n")
+		fmt.Fprintf(human, "Ready: add this machine on the main (crew server machines add <ssh host>, or + Add machine on the page).\n")
 	case "status":
 		printRemote(voice.InspectRemote())
 	case "stop":
@@ -62,7 +62,7 @@ func voiceRemote(args []string) {
 		}
 		fmt.Println("Stopped the remote daemon and the Claude sessions it was running.")
 	default:
-		fmt.Fprintln(os.Stderr, "Usage: crew voice remote [status|stop]")
+		fmt.Fprintln(os.Stderr, "Usage: crew server remote [status|stop]")
 		os.Exit(1)
 	}
 }
@@ -135,7 +135,15 @@ func attachRefusal(unmet []voice.Requirement, isCockpit bool) (string, int) {
 	return "", 0
 }
 
-// voiceMachines: crew voice machines [ls] | add <host> [--name=<name>] | rm <id> | rename <id> <name>.
+// machineRows is the list as a list, never null. Pure.
+func machineRows(rows []voice.MachineRow) []voice.MachineRow {
+	if rows == nil {
+		return []voice.MachineRow{}
+	}
+	return rows
+}
+
+// voiceMachines: crew server machines [ls] | add <host> [--name=<name>] | rm <id> | rename <id> <name>.
 func voiceMachines(args []string) {
 	sub := "ls"
 	if len(args) > 0 {
@@ -149,14 +157,14 @@ func voiceMachines(args []string) {
 			os.Exit(1)
 		}
 		if jsonOutput {
-			printJSON(rows)
+			printJSON(machineRows(rows))
 			return
 		}
 		for _, row := range rows {
 			fmt.Println(formatMachineRow(row))
 		}
 		if len(rows) == 0 {
-			fmt.Fprintln(human, "No other machines yet: crew voice machines add <ssh host>.")
+			fmt.Fprintln(human, "No other machines yet: crew server machines add <ssh host>.")
 		}
 	case "add":
 		host, name := "", ""
@@ -168,7 +176,7 @@ func voiceMachines(args []string) {
 			}
 		}
 		if host == "" {
-			fmt.Fprintln(os.Stderr, "Usage: crew voice machines add <ssh host> [--name=<name>]")
+			fmt.Fprintln(os.Stderr, "Usage: crew server machines add <ssh host> [--name=<name>]")
 			os.Exit(1)
 		}
 		m, err := voice.AddMachine(host, name)
@@ -181,10 +189,10 @@ func voiceMachines(args []string) {
 			return
 		}
 		fmt.Println(m.ID)
-		fmt.Fprintf(human, "Added %s (%s). It needs crew there: run crew voice remote on it once.\n", m.Name, m.Host)
+		fmt.Fprintf(human, "Added %s (%s). It needs crew there: run crew server remote on it once.\n", m.Name, m.Host)
 	case "rm":
 		if len(args) != 1 {
-			fmt.Fprintln(os.Stderr, "Usage: crew voice machines rm <id>")
+			fmt.Fprintln(os.Stderr, "Usage: crew server machines rm <id>")
 			os.Exit(1)
 		}
 		if err := voice.RemoveMachine(args[0]); err != nil {
@@ -198,7 +206,7 @@ func voiceMachines(args []string) {
 		fmt.Printf("Removed %s. Its sessions keep running there; this Voice OS no longer drives them.\n", args[0])
 	case "rename":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: crew voice machines rename <id> <name>")
+			fmt.Fprintln(os.Stderr, "Usage: crew server machines rename <id> <name>")
 			os.Exit(1)
 		}
 		name := strings.Join(args[1:], " ")
@@ -212,7 +220,7 @@ func voiceMachines(args []string) {
 		}
 		fmt.Printf("Renamed %s to %s.\n", args[0], name)
 	default:
-		fmt.Fprintln(os.Stderr, "Usage: crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>")
+		fmt.Fprintln(os.Stderr, "Usage: crew server machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>")
 		os.Exit(1)
 	}
 }

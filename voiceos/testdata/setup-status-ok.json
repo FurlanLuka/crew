@@ -1,0 +1,35 @@
+{
+  "failed": false,
+  "health": null,
+  "projects": [
+    {
+      "project": "store-front",
+      "state": "ok",
+      "steps": [
+        {
+          "name": "checkout",
+          "status": "ok",
+          "started_at": "0001-01-01T00:00:00Z",
+          "took_ms": 1200
+        },
+        {
+          "name": "pnpm install",
+          "status": "ok",
+          "started_at": "0001-01-01T00:00:00Z",
+          "took_ms": 38000
+        },
+        {
+          "name": "smoke web",
+          "status": "ok",
+          "started_at": "0001-01-01T00:00:00Z",
+          "took_ms": 2800
+        }
+      ],
+      "issues": [],
+      "took_ms": 42000,
+      "at": "2026-10-02T09:30:00Z"
+    }
+  ],
+  "ref": "",
+  "running": false
+}

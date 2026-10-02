@@ -13,8 +13,8 @@ import (
 
 // The import of one project is one reading of its situation here, one
 // decision made before anything touches disk, and one shell that carries
-// it out. The plan rows, the wizard's cards and the CLI's flags all go
-// through these, so none of them can disagree about a bundle entry.
+// it out. The plan rows and the CLI's flags (Set up's import page passes
+// them) all go through these, so none of them can disagree about a bundle entry.
 
 // situation is what a bundle project is to this machine.
 type situation int

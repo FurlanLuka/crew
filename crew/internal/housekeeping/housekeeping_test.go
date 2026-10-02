@@ -14,6 +14,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -463,5 +464,48 @@ func TestSweep_KeepsAPassedCheckTable(t *testing.T) {
 	}
 	if !strings.Contains(RenderReport(rep, false), workspace.SetupDir("check--old")) {
 		t.Errorf("report:\n%s", RenderReport(rep, false))
+	}
+}
+
+// crew's server runs outside crew-dev-*, so its route — the voice slug's —
+// is kept by the server's own session, new name or legacy.
+func TestLiveSessions(t *testing.T) {
+	server := dev.Slug(workspace.VoiceSlug)
+	for _, tt := range []struct {
+		slug dev.Slug
+		want []string
+	}{
+		{"shop--main", []string{dev.SessionName("shop--main"), dev.SetupSessionName("shop--main")}},
+		{server, []string{dev.SessionName(server), dev.SetupSessionName(server), voice.SessionName, voice.LegacySessionName}},
+	} {
+		if got := liveSessions(tt.slug); strings.Join(got, ",") != strings.Join(tt.want, ",") {
+			t.Errorf("liveSessions(%s) = %v, want %v", tt.slug, got, tt.want)
+		}
+	}
+}
+
+func TestCollect_ServerSessionKeepsItsRoute(t *testing.T) {
+	if !exec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	setupTestConfig(t)
+	prev := voice.SessionName
+	voice.SessionName = fmt.Sprintf("crew-server-hk%d", os.Getpid())
+	t.Cleanup(func() { voice.SessionName = prev })
+	slug := dev.Slug(workspace.VoiceSlug)
+	if exec.TmuxSessionExists(dev.SessionName(slug)) {
+		t.Skip("a legacy server session is live on this tmux server")
+	}
+	os.WriteFile(dev.RoutesFilePath(slug), []byte("[]"), 0o644)
+	if err := exec.CreateTmuxSession(voice.SessionName, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { exec.KillTmuxSession(voice.SessionName) })
+	if got := Sweep(Options{DryRun: true}); len(paths(got, KindRoutes)) != 0 {
+		t.Errorf("server alive: its route must stay: %+v", got)
+	}
+	exec.KillTmuxSession(voice.SessionName)
+	if got := Sweep(Options{DryRun: true}); len(paths(got, KindRoutes)) != 1 {
+		t.Errorf("server gone: its route is a leftover: %+v", got)
 	}
 }

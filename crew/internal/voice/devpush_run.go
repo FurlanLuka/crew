@@ -19,7 +19,7 @@ import (
 )
 
 // ErrDevPushRunning: a push is under way; a second one would race it.
-var ErrDevPushRunning = errors.New("a dev push is running — crew voice dev status follows it")
+var ErrDevPushRunning = errors.New("a dev push is running — crew server dev status follows it")
 
 // The I/O a push does on other machines. Vars, so tests run a whole push
 // against fakes.

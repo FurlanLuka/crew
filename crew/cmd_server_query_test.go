@@ -144,8 +144,8 @@ func TestRelayOutcome(t *testing.T) {
 		{"notes, timeout", queryNotes, timeout, nil, outcome{false, "Error: the main did not answer in 30s — notes and debug notes live on the main\n", 1}},
 		{"logs, the main refused", queryLogs, refused, nil, outcome{false, "Error: output over 2 MB; narrow the filters\n", 1}},
 		{"notes, the main refused", queryNotes, refused, nil, outcome{false, "Error: output over 2 MB; narrow the filters\n", 1}},
-		{"logs, no query socket", queryLogs, voice.QueryReply{}, voice.ErrNoQuerySocket, outcome{true, "! restart the remote daemon with crew voice remote\n", 0}},
-		{"notes, no query socket", queryNotes, voice.QueryReply{}, voice.ErrNoQuerySocket, outcome{false, "Error: the remote daemon cannot ask the main; restart the remote daemon with crew voice remote — notes and debug notes live on the main\n", 1}},
+		{"logs, no query socket", queryLogs, voice.QueryReply{}, voice.ErrNoQuerySocket, outcome{true, "! restart the remote daemon with crew server remote\n", 0}},
+		{"notes, no query socket", queryNotes, voice.QueryReply{}, voice.ErrNoQuerySocket, outcome{false, "Error: the remote daemon cannot ask the main; restart the remote daemon with crew server remote — notes and debug notes live on the main\n", 1}},
 		{"logs, another dial error", queryLogs, voice.QueryReply{}, dialErr, outcome{true, "! dial unix query.sock: permission denied; showing only this machine's logs\n", 0}},
 		{"notes, another dial error", queryNotes, voice.QueryReply{}, dialErr, outcome{false, "Error: dial unix query.sock: permission denied — notes and debug notes live on the main\n", 1}},
 	}

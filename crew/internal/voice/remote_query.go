@@ -56,7 +56,7 @@ func CurrentRole(local bool) Role {
 	return DecideRole(false, CockpitRunning(), RemoteRunning(), err == nil)
 }
 
-// LogsDoc is crew voice logs --json, and what a remote's --local answers with.
+// LogsDoc is crew server logs --json, and what a remote's --local answers with.
 type LogsDoc struct {
 	Lines       []LogLine     `json:"lines"`
 	Unreachable []Unreachable `json:"unreachable"`

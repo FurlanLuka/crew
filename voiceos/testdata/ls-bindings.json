@@ -1,0 +1,14 @@
+[
+  {
+    "var": "STORE_API_URL",
+    "server": "",
+    "value": "{{store-api/api}}",
+    "result": "http://localhost:54012"
+  },
+  {
+    "var": "SIGNALS_URL",
+    "server": "web",
+    "value": "ws://{{signals.host}}/rtc",
+    "result": "left alone — signals is not in this workspace"
+  }
+]

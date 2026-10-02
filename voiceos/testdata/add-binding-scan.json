@@ -1,0 +1,23 @@
+[
+  {
+    "var": "STORE_API_URL",
+    "value": "http://localhost:4000",
+    "port": 4000,
+    "template": "{{store-api/api}}",
+    "status": "already bound"
+  },
+  {
+    "var": "SIGNALS_URL",
+    "value": "http://localhost:5000",
+    "port": 5000,
+    "template": "{{signals}}",
+    "status": "proposed"
+  },
+  {
+    "var": "ADMIN_URL",
+    "value": "http://localhost:3000",
+    "port": 3000,
+    "status": "ambiguous",
+    "detail": "two projects configured on :3000 — pick one by hand"
+  }
+]

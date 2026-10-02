@@ -1,0 +1,26 @@
+{
+  "var": "API_URL",
+  "server": "web",
+  "value": "{{store-api/api}}",
+  "previews": [
+    {
+      "ref": "store-front/main",
+      "value": "http://localhost:54012",
+      "resolved": true,
+      "running": true
+    },
+    {
+      "ref": "store-front/wrk1",
+      "value": "http://localhost:54031",
+      "resolved": true,
+      "running": false
+    },
+    {
+      "ref": "admin/main",
+      "value": "",
+      "resolved": false,
+      "running": false,
+      "detail": "store-api is not in this workspace"
+    }
+  ]
+}

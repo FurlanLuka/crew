@@ -78,6 +78,24 @@ func scopedHint(t resolvedTarget) string {
 	return fmt.Sprintf("  some vars are bound per server (%s) — %s\n", strings.Join(servers, ", "), strings.Join(forms, " · "))
 }
 
+// envOut is one crew env --json row.
+type envOut struct {
+	Var    string `json:"var"`
+	Server string `json:"server"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
+	Detail string `json:"detail"`
+}
+
+// envRows is the effective env as rows, never null. Pure.
+func envRows(resolutions []dev.Resolution) []envOut {
+	out := []envOut{}
+	for _, r := range resolutions {
+		out = append(out, envOut{Var: r.Var, Server: r.Server, Value: r.Value, Source: string(r.Source), Detail: r.Detail})
+	}
+	return out
+}
+
 func cmdEnv() {
 	if len(os.Args) < 4 {
 		fmt.Fprintf(os.Stderr, "Usage: crew env <workspace>[/<worktree>] <project>[/<server>]\n")
@@ -88,18 +106,7 @@ func cmdEnv() {
 	resolutions := t.Env()
 
 	if jsonOutput {
-		type envOut struct {
-			Var    string `json:"var"`
-			Server string `json:"server"`
-			Value  string `json:"value"`
-			Source string `json:"source"`
-			Detail string `json:"detail"`
-		}
-		out := []envOut{}
-		for _, r := range resolutions {
-			out = append(out, envOut{Var: r.Var, Server: r.Server, Value: r.Value, Source: string(r.Source), Detail: r.Detail})
-		}
-		printJSON(out)
+		printJSON(envRows(resolutions))
 		return
 	}
 

@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-const discordUsage = "Usage: crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off"
+const discordUsage = "Usage: crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off"
 
 // discordSteps is what a first setup needs before crew can do anything; the
 // last step is how the token comes in, which depends on who is asking.
@@ -22,10 +22,10 @@ const discordSteps = `Voice OS in Discord needs a bot of your own:
 
 const (
 	discordStepPaste = "  4. Paste the bot token below."
-	discordStepRun   = "  4. Run crew voice discord setup and paste the token (or pipe it: pbpaste | crew voice discord setup)."
+	discordStepRun   = "  4. Run crew server discord setup and paste the token (or pipe it: pbpaste | crew server discord setup)."
 )
 
-// voiceDiscord: crew voice discord setup|status|off.
+// voiceDiscord: crew server discord setup|status|off.
 func voiceDiscord(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, discordUsage)
@@ -161,5 +161,5 @@ func discordOff() {
 	for _, path := range removed {
 		fmt.Printf("removed\t%s\n", path)
 	}
-	fmt.Fprintln(human, "Voice OS leaves Discord; crew voice discord setup brings it back.")
+	fmt.Fprintln(human, "Voice OS leaves Discord; crew server discord setup brings it back.")
 }

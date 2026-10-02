@@ -1,0 +1,67 @@
+[
+  {
+    "name": "store-front",
+    "project_count": 3,
+    "projects": [
+      {
+        "name": "store-front",
+        "mode": "worktree"
+      },
+      {
+        "name": "store-api",
+        "mode": "worktree"
+      },
+      {
+        "name": "signals",
+        "mode": "direct"
+      }
+    ],
+    "worktrees": [
+      "main",
+      "wrk1"
+    ],
+    "dev_running": true,
+    "wires": [
+      {
+        "var": "STORE_API_URL",
+        "from": "store-front",
+        "to": "store-api",
+        "ok": true
+      },
+      {
+        "var": "SIGNALS_URL",
+        "from": "store-front",
+        "to": "signals",
+        "ok": true
+      }
+    ]
+  },
+  {
+    "name": "admin",
+    "project_count": 1,
+    "projects": [
+      {
+        "name": "store-front",
+        "mode": "worktree"
+      }
+    ],
+    "worktrees": [
+      "main"
+    ],
+    "dev_running": false,
+    "wires": [
+      {
+        "var": "STORE_API_URL",
+        "from": "store-front",
+        "to": "store-api",
+        "ok": false
+      },
+      {
+        "var": "SIGNALS_URL",
+        "from": "store-front",
+        "to": "signals",
+        "ok": false
+      }
+    ]
+  }
+]

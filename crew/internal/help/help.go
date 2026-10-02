@@ -32,26 +32,25 @@ type FlagInfo struct {
 
 var Root = CommandInfo{
 	Name:        "crew",
-	Description: "Workspaces of git worktrees for coding agents: dev servers on stable ports, env bindings between projects, Claude Code and editors launched in place. Every command prints rows or --json.",
+	Description: "Workspaces of git worktrees for coding agents: dev servers on stable ports, env bindings between projects, Claude Code and editors launched in place. Every command prints rows or --json. Bare crew starts crew's server when needed and opens its page — Set up (projects, workspaces, worktrees, machines, settings) and Voice OS — in the browser; with no terminal, over SSH or with --no-open it prints the link.",
+	Usage:       "crew [--no-open]",
 	Subcommands: []CommandInfo{
 		{
-			Name:        "workspace",
-			Description: "Interactive workspace manager — enter opens the workspace page: its projects and its worktrees on one screen, one cursor (enter on a project opens the project page, on a worktree its page; a adds projects; + new worktree with the base table); n is a three-card wizard that makes a workspace with its projects and lands on the worktree page while the runners install",
-			TUI:         true,
+			Name:         "workspace",
+			Description:  "The workspaces table (what crew ls workspaces prints) and a pointer to where they are configured now: crew's page in the browser (run crew). The terminal UI that lived here is gone.",
+			Usage:        "crew workspace",
+			OutputFormat: "<name>\\t<n> projects\\t<worktree>,<worktree>",
 			Notes: []string{
-				"Same actions without the TUI: crew add workspace <ws> <p>… (the wizard), crew rm workspace <ws> <p>, crew add worktree, crew rename worktree, crew duplicate, crew rm worktree, crew rm <ws>, crew launch / claude / edit / open.",
-				"The wizard's project card ticks pool projects (space), switches a row to direct (m — refused with the reason when it cannot), pushes the add-project wizard (a — the new project comes back ticked) and shows which bindings between the ticked projects resolve; the create card shows the base branches (ctrl+p pulls) and y creates the way crew add worktree does.",
-				"On the page: d removes after asking (a project from every worktree, a worktree, or the last worktree = the workspace); r renames a worktree, u duplicates one; an open form takes every key but esc.",
+				"Everything the page does is a command: crew add workspace <ws> <p>…, crew rm workspace <ws> <p>, crew add worktree, crew rename worktree, crew duplicate, crew rm worktree, crew rm <ws>; crew launch opens Claude or an editor on a worktree.",
 			},
 		},
 		{
-			Name:        "project",
-			Description: "Interactive project manager — enter opens the project page: install commands, servers, bindings (with what the env files propose) and the check, all on one screen, each row edited in place; a is a wizard that walks a new project through every concept and proves it with a check; s / b / t / e open the page on that section",
-			TUI:         true,
+			Name:         "project",
+			Description:  "The projects table (what crew ls projects prints) and a pointer to where they are configured now: crew's page in the browser (run crew). The terminal UI that lived here is gone.",
+			Usage:        "crew project",
+			OutputFormat: "<name>\\t<path>\\t<remote|->",
 			Notes: []string{
-				"Same actions without the TUI: crew add project <name> <url> | --path (--setup, --env-cmd), crew dev setup / add / rm, crew add binding (--scan --apply), crew check project, crew fix check/<name>, crew rm project.",
-				"On the page: enter edits the row under the cursor, a adds in its section, A adds every binding the env files propose, d removes after asking, c runs the check in place (f fix, l logs, c again on a failure); an open form takes every key but esc.",
-				"The wizard applies each step when its key is pressed — nothing is staged; esc keeps what was recorded and names where the page picks the rest up.",
+				"Everything the page does is a command: crew add project <url> | <name> --path (--setup, --env-cmd), crew add project --scan, crew dev setup / add (--rename) / rm, crew add binding (--scan --apply, --dry-run), crew check project (--status), crew fix check/<name>, crew rm project.",
 			},
 		},
 		{
@@ -59,16 +58,21 @@ var Root = CommandInfo{
 			Description: "Add a project, workspace, worktree, or binding (CLI)",
 			Subcommands: []CommandInfo{
 				{
-					Name:        "project",
-					Description: "Register a project in the global pool by its git URL (git@…, https://…, ssh://…, file://… — a full URL, not owner/repo): the repo is cloned into ~/.crew/projects/<name>, and its remote is what names the project from then on — in ls projects, in an export, on another machine. --path=<dir> instead adopts a checkout you already have (the repo's own origin is its identity; without one it cannot be exported for cloning). A bare path is refused. Refuses a URL when the name is taken or that directory exists. Projects can be added to multiple workspaces. crew check project <name> then proves the config reproduces from nothing.",
-					Usage:       "crew add project <name> <url> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]",
+					Name:         "project",
+					Description:  "Register a project in the global pool by its git URL (git@…, https://…, ssh://…, file://… — a full URL, not owner/repo): the repo is cloned into ~/.crew/projects/<name>, and its remote is what names the project from then on — in ls projects, in an export, on another machine. --path=<dir> instead adopts a checkout you already have (the repo's own origin is its identity; without one it cannot be exported for cloning). A bare path is refused. Refuses a URL when the name is taken or that directory exists. Projects can be added to multiple workspaces. crew check project <name> then proves the config reproduces from nothing.",
+					Usage:        "crew add project <name> <url> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <url> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>] | crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>] | crew add project --scan",
+					OutputFormat: "--scan: <name>\\t<path>\\t<remote|->\\t<known|new>",
 					Flags: []FlagInfo{
+						{Name: "<url>", Description: "Alone, the URL names the project: the last segment of the repo (git@github.com:example/store-api.git → store-api)"},
+						{Name: "--scan", Description: "List the checkouts this machine already has — ~/code, ~/projects, ~/dev, ~/src, ~/Developer, ~/work, ~/repos, three levels deep, never Documents, Desktop or Downloads; hidden folders, node_modules and git worktrees skipped — each with its remote and whether the pool knows it (by path or by the same repo). Lists only; adding is crew add project <name> --path=<dir>"},
 						{Name: "--setup=<cmd>", Description: "Command that installs a fresh checkout, replacing lockfile detection (mise still runs first). On an existing project, updates it; empty clears it."},
 						{Name: "--env-cmd=<cmd>", Description: "Command that writes a fresh checkout's env files (make get-env — sops, a vault); runs after the install, over the .env crew copied in. Must write files, not print values — its output is logged. On an existing project, updates it; empty clears it."},
 						{Name: "--path=<dir>", Description: "A checkout you already have, adopted as the canonical instead of a clone; on an existing project, where its canonical checkout now lives (the repo moved)"},
 					},
 					Examples: []string{
 						"crew add project my-api git@github.com:example/my-api.git",
+						"crew add project git@github.com:example/store-api.git",
+						"crew add project --scan --json",
 						"crew add project signals git@github.com:example/signals.git --env-cmd=\"make get-env\"",
 						"crew add project checkout-api --path=~/repos/checkout-api --setup=\"make sync\"",
 						"crew add project checkout-api --path=~/code/checkout-api",
@@ -106,7 +110,7 @@ var Root = CommandInfo{
 				{
 					Name:        "binding",
 					Description: "Declare an env variable a project needs, and how crew computes it at dev-server start. Value is a template: {{proj}} is http://localhost:<port> of that project's dev server, {{proj.host}} is localhost:<port> (for ws://, https://, or a path), {{proj.port}} the number; write {{proj/server}} when the project has more than one. {{worktree}} and {{workspace}} are the names. Resolved values are injected into the process env — env files are never rewritten. Name the owner as <project> for every dev server of the project, or <project>/<server> for that server alone — a monorepo's web app and its worker want different siblings; a scoped binding wins over the project-wide one for its server. With --scan, propose bindings from the project's own .env — under the server's dir when an owner server is named.",
-					Usage:       "crew add binding <project>[/<server>] --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) | --scan [--apply]",
+					Usage:       "crew add binding <project>[/<server>] --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) [--dry-run] | --scan [--apply]",
 					Flags: []FlagInfo{
 						{Name: "--var=<VAR>", Description: "Environment variable to set"},
 						{Name: "--url=<p[/s]>", Description: "Shorthand for --value='{{p/s}}' — http://localhost:<port> of that dev server"},
@@ -115,6 +119,7 @@ var Root = CommandInfo{
 						{Name: "--value=<t>", Description: "Full template, for composition (e.g. ws://{{signals.host}}/rtc)"},
 						{Name: "--scan", Description: "Read the project's .env (the server's dir, for <project>/<server>) and propose bindings for values pointing at ports crew allocates"},
 						{Name: "--apply", Description: "With --scan, add every unambiguous proposal"},
+						{Name: "--dry-run", Description: "Save nothing: check the binding the way the add would and print its value in every worktree of the project (ref, value or why it is left alone, running or stopped); exit 1 with the reason when it would be refused. --json: {var, server, value, error?, previews: [{ref, value, resolved, running, detail}]}"},
 					},
 					Examples: []string{
 						"crew add binding checkout-api --var=STORE_API_URL --url=store-api",
@@ -123,6 +128,7 @@ var Root = CommandInfo{
 						"crew add binding checkout-api --var=SIGNALS_AGENT_NAME --value='{{worktree}}'",
 						"crew add binding checkout-api --scan",
 						"crew add binding checkout-api --scan --apply",
+						"crew add binding checkout-api --var=STORE_API_URL --url=store-api --dry-run --json",
 					},
 				},
 				{
@@ -138,9 +144,8 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "config",
-			Description: "View and edit crew settings (server IP, SSH host, proxy port, domain)",
-			TUI:         true,
-			Notes:       []string{"Same actions without the TUI: crew config show / set / refresh, crew trash empty, crew uninstall."},
+			Description: "View and edit crew settings (server IP, SSH host, proxy port, domain). Bare, it is config show; the page's Settings edits the same keys.",
+			Usage:       "crew config [show|set|refresh]",
 			Subcommands: []CommandInfo{
 				{
 					Name:         "show",
@@ -181,17 +186,17 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "kill",
-			Description: "Stop every crew session and reclaim the processes that leaked out of them, without rebooting. Prints the commands to restore what it stopped. Processes with a live parent are never killed.",
+			Description: "Stop every crew session and reclaim the processes that leaked out of them, without rebooting. Prints the commands to restore what it stopped. Processes with a live parent are never killed, and crew's server (tmux crew-server) is listed as kept, never stopped — crew server stop is its stop.",
 			Usage:       "crew kill [--dry-run]",
 			Examples:    []string{"crew kill", "crew kill --dry-run"},
 		},
 		{
 			Name:        "ls",
-			Description: "List workspaces or projects (tab-separated output for scripting)",
+			Description: "List workspaces, worktrees, projects, bindings, overrides or a workspace's base branches (tab-separated output for scripting; --json for data)",
 			Subcommands: []CommandInfo{
 				{
 					Name:         "workspaces",
-					Description:  "List all workspaces with project counts and worktree names",
+					Description:  "List all workspaces with project counts and worktree names. --json adds each member with its mode and the binding wires between the members (ok: the target is in the workspace too).",
 					Usage:        "crew ls workspaces",
 					OutputFormat: "<name>\\t<n> projects\\t<worktree>,<worktree>",
 				},
@@ -214,9 +219,13 @@ var Root = CommandInfo{
 				{
 					Name:         "bindings",
 					Description:  "List a project's bindings as declared: the var, the server it is scoped to (- when it applies to every server), the template. With --check, resolve each against a real worktree and show the value it would get there, or why it would be left alone.",
-					Usage:        "crew ls bindings <project> [--check=<workspace>[/<worktree>]]",
-					OutputFormat: "<var>\\t<server|->\\t<template>[\\t<resolved value>]",
-					Examples:     []string{"crew ls bindings checkout-api", "crew ls bindings checkout-api --check=store-front/wrk1"},
+					Usage:        "crew ls bindings <project> [--check=<workspace>[/<worktree>]] [--preview]",
+					OutputFormat: "<var>\\t<server|->\\t<template>[\\t<resolved value>][\\t→ <preview>]",
+					Flags: []FlagInfo{
+						{Name: "--check=<ref>", Description: "Resolve against this worktree"},
+						{Name: "--preview", Description: "Every binding's value in every worktree of the project — running, or what the stopped ones get back on their next start; the cell is the first resolved value, else why it is left alone. --json: rows with previews: [{ref, value, resolved, running, detail}]"},
+					},
+					Examples: []string{"crew ls bindings checkout-api", "crew ls bindings checkout-api --check=store-front/wrk1", "crew ls bindings checkout-api --preview --json"},
 				},
 				{
 					Name:         "overrides",
@@ -224,6 +233,14 @@ var Root = CommandInfo{
 					Usage:        "crew ls overrides <workspace>/<worktree>",
 					OutputFormat: "<key>\\t<value>",
 					Examples:     []string{"crew ls overrides store-front/wrk2"},
+				},
+				{
+					Name:         "bases",
+					Description:  "The base branches a new worktree of the workspace branches from — the table crew add worktree opens with: each project's base, how many commits it is behind origin (fetched now; -1 when unknown), and the branch the canonical checkout is on. crew add worktree <ws>/<name> --pull fast-forwards them first.",
+					Usage:        "crew ls bases <workspace>",
+					OutputFormat: "<project>  <base>  <n behind origin/<base>|up to date>[   (checkout is on <branch>)]",
+					Notes:        []string{"--json: [{project, base, current, behind, ahead, error?}]"},
+					Examples:     []string{"crew ls bases store-front", "crew ls bases store-front --json"},
 				},
 			},
 		},
@@ -236,7 +253,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "verify",
-			Description: "Check a worktree the way creating it does, one runner per project in the background: a project with no checkout is checked out and installed, one whose last install failed is installed again, and every project's servers are smoked — started, watched until each listens, dies, or a minute passes, stopped. Each runner writes or clears its own project's verdict; the worktree page stays locked until every record is cleared. Name projects to verify only those — the one you just fixed — while the rest keep their record. Returns at once with crew setup status <ref> as the way to watch; --wait stays to the end and exits 1 if anything is recorded. Refuses while the worktree's servers are running (it would restart them) or while a setup is already running on it.",
+			Description: "Check a worktree the way creating it does, one runner per project in the background: a project with no checkout is checked out and installed, one whose last install failed is installed again, and every project's servers are smoked — started, watched until each listens, dies, or a minute passes, stopped. Each runner writes or clears its own project's verdict. Name projects to verify only those — the one you just fixed — while the rest keep their record. Returns at once with crew setup status <ref> as the way to watch; --wait stays to the end and exits 1 if anything is recorded. Refuses while the worktree's servers are running (it would restart them) or while a setup is already running on it.",
 			Usage:       "crew verify <workspace>[/<worktree>] [<project>...] [--wait]",
 			Flags: []FlagInfo{
 				{Name: "<project>...", Description: "Only these projects; the others keep whatever is recorded"},
@@ -288,10 +305,14 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "launch",
-			Description: "Open the interactive launch view — choose Editor + Claude or Claude (both skip permissions), start dev servers, and begin working",
+			Description: "The terminal's one interactive view: pick a worktree (bare), then launch on it — Editor + Claude or Claude in this terminal (both skip permissions), remote editor, shell. Its servers show read-only, with l for their logs; starting, stopping, verifying and fixing are crew's page (run crew) or the commands. crew <ref> opens the same page.",
 			Usage:       "crew launch [<workspace>[/<worktree>]]",
 			TUI:         true,
-			Examples:    []string{"crew launch", "crew launch feature-auth", "crew launch store-front/wrk2"},
+			Notes: []string{
+				"Without a terminal: crew claude <ref> and crew edit <ref> are the launch rows as commands; crew ls worktrees lists what there is to pick.",
+				"The page's last line names where to manage the worktree: crew's page (its link without the sign-in token) and crew dev start <ref>.",
+			},
+			Examples: []string{"crew launch", "crew launch feature-auth", "crew launch store-front/wrk2"},
 		},
 		{
 			Name:        "dev",
@@ -311,12 +332,13 @@ var Root = CommandInfo{
 				{
 					Name:        "add",
 					Description: "Add a dev server to a project. The --port is for reference only — at runtime, crew assigns a random free port via the PORT env var. Without --port the process does not listen (a worker, a queue consumer): crew runs it with no PORT, hands out no URL, and a smoke only checks it stays alive.",
-					Usage:       "crew dev add <project> --name=<name> [--port=<port>] --cmd=<command> [--dir=<subdir>]",
+					Usage:       "crew dev add <project> --name=<name> [--port=<port>] --cmd=<command> [--dir=<subdir>] | crew dev add <project> --name=<new> --rename=<old> [--port=<port>] [--cmd=<command>] [--dir=<subdir>]",
 					Flags: []FlagInfo{
 						{Name: "--name=<n>", Description: "Server name (used as subdomain)", Required: true},
-						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT. Leave it out for a process that does not listen"},
+						{Name: "--port=<p>", Description: "The port the server conventionally uses — reference only. Crew always allocates a free port and passes it as $PORT. Leave it out (or --port=0, which with --rename clears the old port) for a process that does not listen"},
 						{Name: "--cmd=<c>", Description: "Start command (use $PORT for the dynamic port)", Required: true},
 						{Name: "--dir=<d>", Description: "Subdirectory relative to project root (for monorepos)"},
+						{Name: "--rename=<old>", Description: "Rename that server to --name in place: the bindings scoped to it follow it (an rm and an add would drop them), and every binding in the pool whose value names it ({{<project>/<old>}}, .host, .port) is rewritten to the new name and listed; the old server's port, command and dir stand unless given"},
 					},
 					Notes: []string{
 						"The command runs with PORT=<allocated> in its environment; it must bind that port (next dev -p $PORT, --port $PORT, process.env.PORT). --port is the reference for .env scans and conflict checks, not what runs.",
@@ -326,6 +348,7 @@ var Root = CommandInfo{
 						"crew dev add my-api --name=api --port=3000 --cmd=\"npm run dev\"",
 						"crew dev add my-app --name=web --port=5173 --cmd=\"npm run dev\" --dir=packages/web",
 						"crew dev add my-api --name=worker --cmd=\"npm run worker\"",
+						"crew dev add my-api --name=api --rename=server",
 					},
 				},
 				{
@@ -359,7 +382,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "stop",
-					Description: "Stop dev servers. Without an argument, stops every running dev server. A bare workspace name stops all of its worktrees.",
+					Description: "Stop dev servers. Without an argument, stops every running dev server (crew's server is not one — crew server stop). A bare workspace name stops all of its worktrees.",
 					Usage:       "crew dev stop [<workspace>[/<worktree>]]",
 					Examples:    []string{"crew dev stop", "crew dev stop feature-auth"},
 				},
@@ -401,7 +424,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "logs",
-					Description: "Print the log for a dev server. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output, --lines for just the end.",
+					Description: "Print the log for a dev server. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output, --lines for just the end. --json: {ref, server, lines: []} — the lines as clean text (terminal escape sequences, carriage-return redraws and pure-control lines removed); not with -f.",
 					Usage:       "crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]",
 					Flags: []FlagInfo{
 						{Name: "-f, --follow", Description: "Stream new output as it arrives (tail -f)"},
@@ -411,9 +434,10 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "tui",
-					Description: "Open the interactive dev server view for a worktree — start, stop, restart, and tail logs",
+					Description: "The launch page for a worktree — the same as crew launch <ref>: launch rows, its servers read-only, l for their logs",
 					Usage:       "crew dev tui <workspace>[/<worktree>]",
 					TUI:         true,
+					Notes:       []string{"Starting and stopping are crew dev start / stop / restart, or crew's page (run crew)."},
 					Examples:    []string{"crew dev tui store-front/wrk1"},
 				},
 			},
@@ -433,16 +457,23 @@ var Root = CommandInfo{
 					Examples: []string{"crew rm project my-api", "crew rm project signals --keep-clone"},
 				},
 				{
-					Name:        "workspace",
-					Description: "Remove a project from a workspace (removes its checkout from every worktree)",
-					Usage:       "crew rm workspace <workspace> <project>",
-					Examples:    []string{"crew rm workspace feature-auth my-api"},
+					Name:         "workspace",
+					Description:  "Remove a project from a workspace (removes its checkout from every worktree). --dry-run removes nothing and lists each checkout it would take with what is in it: uncommitted files, commits not on the base, size.",
+					Usage:        "crew rm workspace <workspace> <project> [--dry-run]",
+					OutputFormat: "--dry-run: <ref>\\t<project>\\t<path>\\t<n> uncommitted\\t<n> commits not on the base\\t<size>",
+					Flags: []FlagInfo{
+						{Name: "--dry-run", Description: "Remove nothing; print the cost. --json: {checkouts: [{ref, project, path, direct, missing, uncommitted, commits, size_bytes}], last}"},
+					},
+					Examples: []string{"crew rm workspace feature-auth my-api", "crew rm workspace feature-auth my-api --dry-run --json"},
 				},
 				{
 					Name:        "worktree",
 					Description: "Remove one worktree — its checkouts (to the trash), their crew/<ws>/<wt>/<project> branches, dev session, logs and prompt. Commits not on the base stay in the repo's reflog. Refuses to remove the last worktree; remove the workspace instead. check/<project> removes a kept check.",
-					Usage:       "crew rm worktree <workspace>/<name>",
-					Examples:    []string{"crew rm worktree store-front/wrk3", "crew rm worktree check/signals"},
+					Usage:       "crew rm worktree <workspace>/<name> [--dry-run]",
+					Flags: []FlagInfo{
+						{Name: "--dry-run", Description: "Remove nothing; list every checkout it would take with its uncommitted files, commits not on the base and size; last says it is the workspace's last worktree (which goes only with crew rm <workspace>). --json as rm workspace --dry-run"},
+					},
+					Examples: []string{"crew rm worktree store-front/wrk3", "crew rm worktree check/signals", "crew rm worktree store-front/wrk3 --dry-run"},
 				},
 				{
 					Name:        "binding",
@@ -501,29 +532,31 @@ var Root = CommandInfo{
 			Description: "Move pre-worktree workspaces to the nested layout. <name>-wrkN becomes workspace <name>, worktree wrkN; anything else becomes <name>/main. Prints the full plan, backs up workspace and route files, asks, then moves checkouts with git worktree move and renames branches. Old paths are printed afterwards so anything holding them can be updated.",
 			Usage:       "crew migrate [--dry-run] [--yes]",
 			Flags: []FlagInfo{
-				{Name: "--dry-run", Description: "Print the plan and stop"},
-				{Name: "--yes", Description: "Apply without the confirmation prompt"},
+				{Name: "--dry-run", Description: "Print the plan and stop; with --json the moves as [{workspace, ref}] on stdout and the plan on stderr"},
+				{Name: "--yes", Description: "Apply without the confirmation prompt; with --json {migrated: <n>} on stdout and the plan and narration on stderr"},
 			},
 			Examples: []string{"crew migrate --dry-run", "crew migrate"},
 		},
 		{
 			Name:        "export",
-			Description: "Write projects and workspace membership to a file for another machine. Without flags, a picker: tick projects, then the workspaces those projects fully cover. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects, in which mode. Worktrees, ports and overrides stay local. A project is written by its git remote — no path — so the other machine clones it; one whose checkout has no remote still exports (config only) and is named as such.",
-			Usage:       "crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]",
+			Description: "Write projects and workspace membership to a file for another machine — everything unless --projects narrows it; - as the file writes the bundle to stdout (narration to stderr), which is how crew's page downloads it. Projects carry their dev servers, bindings, setup and env commands and origin remote; workspaces carry which projects, in which mode. Worktrees, ports and overrides stay local. A project is written by its git remote — no path — so the other machine clones it; one whose checkout has no remote still exports (config only) and is named as such.",
+			Usage:       "crew export [<file>|-] [--all | --projects=<a,b> [--workspaces=<x,y>]]",
 			Flags: []FlagInfo{
-				{Name: "--all", Description: "Every project and workspace, no picker"},
+				{Name: "<file>|-", Description: "Where the bundle goes (default crew-export.json); - is stdout"},
+				{Name: "--all", Description: "Every project and workspace (the default when nothing is named)"},
 				{Name: "--projects=<a,b>", Description: "Only these projects"},
 				{Name: "--workspaces=<x,y>", Description: "Only these workspaces; every project they use must be in --projects"},
 			},
-			Examples: []string{"crew export", "crew export ~/Desktop/crew.json --all", "crew export --projects=store-api,checkout-api --workspaces=store-front"},
+			Examples: []string{"crew export", "crew export ~/Desktop/crew.json --all", "crew export --projects=store-api,checkout-api --workspaces=store-front", "crew export - > crew.json"},
 		},
 		{
 			Name:         "import",
-			Description:  "Bring a crew export into this machine. A project is its git remote: one already here under the same remote is left alone (r replaces its config), one not here is cloned into ~/.crew/projects/<name>. Bare, a wizard walks one card per item: y clones, p adopts a checkout you already have, e edits name/setup/env cmd, n skips, r replaces one already here; then each workspace. The same decisions as commands: --plan shows every item's status, project <name> imports one with the choice as flags, workspace <name> creates one, --all takes everything at once. A repo you already have on disk is cloned a second time unless you p/--path it.",
-			Usage:        "crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
+			Description:  "Bring a crew export into this machine. A project is its git remote: one already here under the same remote is left alone (r replaces its config), one not here is cloned into ~/.crew/projects/<name>. Bare (or --plan), every item's status; project <name> imports one with the choice as flags (--path adopts a checkout you already have, --replace swaps one already here, --name renames — the bindings it leaves pointing at the old name are named); workspace <name> creates one; --all takes everything at once. crew's page walks the same plan item by item. - as the file reads the bundle from stdin. A repo you already have on disk is cloned a second time unless you --path it.",
+			Usage:        "crew import <file>|- [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]",
 			OutputFormat: "<project|workspace>\\t<name>\\t<status|outcome>\\t<detail>",
 			Flags: []FlagInfo{
-				{Name: "--plan", Description: "Inspect only: one row per item with what would happen here — exists, other remote, clone (and where), blocked (the clone dir is taken), missing (no remote); needs (a workspace's absent members)"},
+				{Name: "<file>|-", Description: "The bundle; - reads it from stdin"},
+				{Name: "--plan", Description: "The default — inspect only: one row per item with what would happen here — exists, other remote, clone (and where), blocked (the clone dir is taken), missing (no remote); needs (a workspace's absent members)"},
 				{Name: "--all", Description: "Clone every project not here, keep the ones that are (--replace swaps them); refuses up front — before a single clone — on any blocked or missing row, and under --replace on another remote for a project whose worktrees hang off the local checkout. A project that fails on the way is its row and exit 1. Workspaces are made the way crew add worktree makes one"},
 				{Name: "--pull", Description: "workspace: fast-forward the local base branches from origin before checking out (the base table is printed either way)"},
 				{Name: "--no-install", Description: "workspace: skip the installs"},
@@ -542,29 +575,32 @@ var Root = CommandInfo{
 				"crew import crew.json project store-api --path=~/code/store-api --replace",
 				"crew import crew.json workspace store-front",
 				"crew import crew.json --all --pull",
+				"crew import - --plan --json < crew.json",
 			},
 		},
 		{
 			Name:        "check",
 			Description: "Prove a project reproduces from nothing, before it joins a workspace.",
-			Usage:       "crew check project <name>",
+			Usage:       "crew check project <name> [--status]",
 			Subcommands: []CommandInfo{
 				{
-					Name:        "project",
-					Description: "A fresh checkout of the project's canonical repo run through the setup runner — mise, install, env command, a smoke of its own servers — as the target check/<project>: one runner in the background, crew setup status check/<project> to watch. A pass removes the checkout, its branch and the record, and keeps the result files so that status still shows the ✓ table. A failure keeps the target: crew ls worktrees lists check/<project> with what failed, crew fix check/<project> --print carries the evidence and the checkout, crew verify check/<project> re-runs it in place (a pass removes it), crew check project <name> again replaces it from nothing, crew rm worktree check/<project> removes it. Refuses while a check of the project is running. In a terminal it lands on the page; --wait stays until the verdict, exit 1 on a failure. What crew dev check does for running servers, this does for a project's config.",
-					Usage:       "crew check project <name> [--pull] [--no-smoke] [--wait]",
+					Name:         "project",
+					Description:  "A fresh checkout of the project's canonical repo run through the setup runner — mise, install, env command, a smoke of its own servers — as the target check/<project>: one runner in the background, crew setup status check/<project> to watch. A pass removes the checkout, its branch and the record, and keeps the result files so that status still shows the ✓ table. A failure keeps the target: crew ls worktrees lists check/<project> with what failed, crew fix check/<project> --print carries the evidence and the checkout, crew verify check/<project> re-runs it in place (a pass removes it), crew check project <name> again replaces it from nothing, crew rm worktree check/<project> removes it. Refuses while a check of the project is running. Returns once the runner starts, printing its table and the way to watch; --wait stays until the verdict, exit 1 on a failure. --status is the check at rest: none, running, passed (and whether it smoked) or failed with its record. What crew dev check does for running servers, this does for a project's config.",
+					Usage:        "crew check project <name> [--pull] [--no-smoke] [--wait] | crew check project <name> --status",
+					OutputFormat: "--status: <project>\\t<none|running|passed|failed>[\\t<verdict>][\\t<when>][\\t<recorded failure>]",
 					Flags: []FlagInfo{
+						{Name: "--status", Description: "Start nothing; where the project's check stands. --json: {project, state, verdict, at, smoked, health, projects: [runner rows]}"},
 						{Name: "--pull", Description: "Fast-forward the canonical repo's base branch first, as crew add worktree --pull does"},
 						{Name: "--no-smoke", Description: "Skip the smoke start"},
 						{Name: "--wait", Description: "Stay until the runner is done; then the issues, exit 1 on any"},
 					},
-					Examples: []string{"crew check project signals --wait", "crew check project signals --no-smoke", "crew setup status check/signals"},
+					Examples: []string{"crew check project signals --wait", "crew check project signals --no-smoke", "crew check project signals --status --json", "crew setup status check/signals"},
 				},
 			},
 		},
 		{
 			Name:         "clean",
-			Description:  "Clear what crew leaves behind and nobody comes back for — the sweep every crew command runs at most once an hour, now, plus a git worktree prune on every pool repo: failed checks older than seven days; runner files, dev logs and route files of worktrees and checks that no longer exist (a slug whose dev or setup session is still alive is left alone); lock files with no record behind them, older than an hour; the trash. Every path is under ~/.crew or it is refused. --dry-run lists without removing.",
+			Description:  "Clear what crew leaves behind and nobody comes back for — the sweep every crew command runs at most once an hour, now, plus a git worktree prune on every pool repo: failed checks older than seven days; runner files, dev logs and route files of worktrees and checks that no longer exist (a slug whose dev or setup session is still alive is left alone, and so is the route of crew's running server); lock files with no record behind them, older than an hour; the trash. Every path is under ~/.crew or it is refused. --dry-run lists without removing.",
 			Usage:        "crew clean [--dry-run]",
 			OutputFormat: "<kind>\\t<path>\\t<removed|would remove|pruned|would prune|failed: <reason>>  |  nothing to clean",
 			Flags: []FlagInfo{
@@ -596,7 +632,6 @@ var Root = CommandInfo{
 			Description:  "Follow the debug log (~/.crew/debug.log): every tmux, git, editor, package-manager, mise and trash command crew ran, with errors. Binding values are never logged. --tail prints the last lines and returns; --json parses them.",
 			Usage:        "crew debug [--tail=<n>]",
 			OutputFormat: "<date> <time> [<category>] <message>",
-			TUI:          true,
 			Flags: []FlagInfo{
 				{Name: "--tail=<n>", Description: "Print the last n lines instead of following (--json alone implies 200)"},
 			},
@@ -604,7 +639,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "setup",
-			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the lockfile's package manager (uv sync, pnpm install, npm ci, yarn) or the project's explicit setup command, then the project's env command when it has one, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
+			Description: "Re-run every project's install steps in a worktree (or the named projects'), one runner per project in the background: mise install, then the lockfile's package manager (uv sync, pnpm install, yarn, bun install, npm ci) or the project's explicit setup command, then the project's env command when it has one, then a smoke of that project's servers. Idempotent — the fix for an install that failed when the worktree was created. Returns at once; crew setup status <ref> is how to watch, --wait stays to the end. Refuses while the worktree's servers are running (the smoke would restart them; --no-smoke) or while a setup is already running on it.",
 			Usage:       "crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]",
 			Flags: []FlagInfo{
 				{Name: "<project>...", Description: "Only these projects"},
@@ -625,7 +660,7 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "logs",
-					Description: "The last lines of one project's runner log: its steps as they finished and everything its install printed — live while it runs, kept afterwards. What to read when a step is taking long.",
+					Description: "The last lines of one project's runner log: its steps as they finished and everything its install printed — live while it runs, kept afterwards. What to read when a step is taking long. --json: {ref, project, lines: []}, cleaned as dev logs --json cleans them.",
 					Usage:       "crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]",
 					Flags: []FlagInfo{
 						{Name: "--lines=<n>", Description: "How many lines from the end (default 50)"},
@@ -636,7 +671,7 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "uninstall",
-			Description: "Stop every dev server and remove the crew binary. ~/.crew — workspace config and every worktree checkout — is kept unless --purge is given, which removes the checkouts through git and deletes the directory.",
+			Description: "Stop every dev server and crew's server, and remove the crew binary. ~/.crew — workspace config and every worktree checkout — is kept unless --purge is given, which removes the checkouts through git and deletes the directory.",
 			Usage:       "crew uninstall [--purge] [--yes]",
 			Flags: []FlagInfo{
 				{Name: "--purge", Description: "Also remove every workspace's checkouts and ~/.crew. Uncommitted work in checkouts is lost."},
@@ -645,19 +680,73 @@ var Root = CommandInfo{
 			Examples: []string{"crew uninstall", "crew uninstall --purge"},
 		},
 		{
-			Name:         "voice",
-			Description:  "Voice OS: a voice and web cockpit for the Claude Code sessions of every worktree. Bare crew voice starts it when needed (one tmux session, a remembered port, a route on the dev proxy) and prints the sign-in links — the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). stop also ends the Claude sessions it runs; they resume on the next start. crew kill and crew dev stop stop it too. Every start first checks what Voice OS needs (tmux, and Claude Code on PATH) and names what is missing with its fix. The first run downloads Voice OS from the release matching this crew (crew update refreshes it once installed, never restarting a running one). It needs an Anthropic key (kernel and narrator) and a Soniox key (speech): the first start at a terminal asks for any that is missing and checks it with the service; keys lists them (never their values) and keys set reads one from stdin — a rejected key is not saved. They live in ~/.config/crew-voiceos, readable by you alone, never in the shell environment.",
-			Usage:        "crew voice [start|stop|restart|status|keys [set <anthropic|soniox>]] [--no-open]",
+			Name:         "server",
+			Description:  "crew's server: one process serving crew's page — Home, Set up (every project, workspace, worktree, machine and setting, with a Setup with Claude chat per machine) and Voice OS, the voice and web cockpit for the Claude Code sessions of every worktree. Bare crew starts it and opens the page; bare crew server is its status. It runs in tmux session crew-server on a remembered port with a route on the dev proxy; crew dev stop and crew kill leave it alone, and a server started before the rename (crew-dev-os) is still recognised and stopped. The first start downloads Voice OS from the release matching this crew (crew update refreshes it once installed, never restarting a running one). Voice needs an Anthropic key (kernel and narrator) and a Soniox key (speech): the page asks for them, crew server keys set takes one on stdin, and crew server start at a terminal asks for any that is missing; a running server picks a new key up from your next words. Keys live in ~/.config/crew-voiceos, readable by you alone, never in the shell environment.",
+			Usage:        "crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]",
 			OutputFormat: "<up|up (not answering)|down>\\t<port>\\t<localhost url>\\t<proxy url>",
-			Flags: []FlagInfo{
-				{Name: "--no-open", Description: "Do not open the browser (start and restart open it when run in a terminal)"},
+			Notes: []string{
+				"crew voice … is the same command under its old name, kept for good (Voice OS and older machines call it); bare crew voice still starts the server. At a terminal it notes the new name on stderr.",
+				"Every start first checks what it needs — tmux, and for crew server start Claude Code on PATH too — and names what is missing with its fix. Bare crew needs tmux only and never asks for keys.",
 			},
-			Examples: []string{"crew voice", "crew voice status --json", "crew voice keys", "pbpaste | crew voice keys set anthropic", "crew voice stop"},
+			Examples: []string{"crew", "crew server", "crew server status --json", "crew server keys", "pbpaste | crew server keys set anthropic", "crew server stop"},
 			Subcommands: []CommandInfo{
+				{
+					Name:         "start",
+					Description:  "Start the server when it is not answering — checking tmux and Claude Code first, downloading Voice OS on the first run, asking at a terminal for a missing key — and print its sign-in links: the localhost one has microphone access, and so does the HTTPS proxy one on any device that trusts crew's CA (crew dev proxy trust). Opens the localhost link in the browser at a terminal on this machine's screen.",
+					Usage:        "crew server start [--no-open]",
+					OutputFormat: "<up|up (not answering)|down>\\t<port>\\t<localhost url>\\t<proxy url>",
+					Flags: []FlagInfo{
+						{Name: "--no-open", Description: "Print the links only (never opened under --json, without a terminal, over SSH, or on Linux with no display)"},
+					},
+					Examples: []string{"crew server start", "crew server start --no-open --json"},
+				},
+				{
+					Name:        "stop",
+					Description: "Stop the server and every Claude session it runs; their conversations resume on the next start.",
+					Usage:       "crew server stop",
+					Examples:    []string{"crew server stop"},
+				},
+				{
+					Name:        "restart",
+					Description: "Stop and start the server in a helper of its own (detached), so a restart asked from a Claude session the server runs still finishes; then the links, as start prints them.",
+					Usage:       "crew server restart [--no-open]",
+					Flags: []FlagInfo{
+						{Name: "--no-open", Description: "Print the links only"},
+					},
+					Examples: []string{"crew server restart"},
+				},
+				{
+					Name:         "status",
+					Description:  "Whether the server runs and answers, its port and its sign-in links. What bare crew server prints.",
+					Usage:        "crew server status",
+					OutputFormat: "<up|up (not answering)|down>\\t<port>\\t<localhost url>\\t<proxy url>",
+					Notes:        []string{"--json: {running, healthy, port, pid, localhost_url, url, secure, binary, warning?}"},
+					Examples:     []string{"crew server status", "crew server status --json"},
+				},
+				{
+					Name:         "keys",
+					Description:  "Voice OS's API keys: bare (or status) lists each with whether it is set and where — never its value; set reads one from stdin (hidden at a terminal), checks it with the service, and saves it owner-only — a rejected key is not saved. A running server picks it up from your next words.",
+					Usage:        "crew server keys [status] | crew server keys set <anthropic|soniox>",
+					OutputFormat: "<name>\\t<missing|set (<file|env>)>\\t<path>",
+					Subcommands: []CommandInfo{
+						{
+							Name:        "status",
+							Description: "Each key: set or missing, and its file.",
+							Usage:       "crew server keys status",
+						},
+						{
+							Name:        "set",
+							Description: "Read a key from stdin, check it, save it. --json: {saved, path}.",
+							Usage:       "crew server keys set <anthropic|soniox>",
+							Examples:    []string{"pbpaste | crew server keys set anthropic"},
+						},
+					},
+					Examples: []string{"crew server keys", "crew server keys --json", "pbpaste | crew server keys set soniox"},
+				},
 				{
 					Name:         "logs",
 					Description:  "Voice OS's log, filtered, from every machine at once. On the main (Voice OS runs here, or machines.json lists machines) it reads the main's own log and asks every remote over SSH in parallel (BatchMode, 20 s each), merging the lines by time; a machine that does not answer is named on stderr and in unreachable, and the rest still print (exit 1 only when no machine answered). On a remote it asks the main through the remote daemon's link and prints what the main would; when the main is not connected it shows this machine's own log with a warning. Reads the rotated files too (voiceos.log, .1 … .5) and never the debug notes beside them. Unknown flags are an error.",
-					Usage:        "crew voice logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]",
+					Usage:        "crew server logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]",
 					OutputFormat: "<ts>\\t<machine>\\t<level>\\t<cat>\\t<msg>\\t<other fields as JSON>",
 					Flags: []FlagInfo{
 						{Name: "--since=<when>", Description: "From this time: a span back (10m, 2h, 3d), a clock time today (10:02; one still ahead is yesterday's) or an ISO time (local without a zone). Converted to UTC where you typed it, so every machine reads the same moment"},
@@ -672,12 +761,12 @@ var Root = CommandInfo{
 					Notes: []string{
 						"--json: {\"lines\":[{ts,machine,level,cat,msg,fields}],\"unreachable\":[{machine,name,reason}]}. Warnings go to stderr (\"! asking 2 machines…\", \"! vm2 (build box) unreachable: …\", \"! vm1 runs an older crew; run crew update there\").",
 					},
-					Examples: []string{"crew voice logs --since=10m --level=warn", "crew voice logs --since=10:02 --until=10:05 --cat=router,kernel", "crew voice logs --machine=main --grep=signals --lines=200", "crew voice logs --machine=vm1 --json"},
+					Examples: []string{"crew server logs --since=10m --level=warn", "crew server logs --since=10:02 --until=10:05 --cat=router,kernel", "crew server logs --machine=main --grep=signals --lines=200", "crew server logs --machine=vm1 --json"},
 				},
 				{
 					Name:         "debug-notes",
 					Description:  "The debug notes said to Voice OS (\"debug note: …\"), newest last. n is the note's position in debug-notes.jsonl, so a filtered list keeps the numbers show takes. They live on the main; a remote asks the main through its link and fails with the reason when the main is not connected.",
-					Usage:        "crew voice debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]",
+					Usage:        "crew server debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]",
 					OutputFormat: "<n>\\t<at>\\t<view>\\t<text>",
 					Flags: []FlagInfo{
 						{Name: "--since=<when>", Description: "As on logs"},
@@ -686,25 +775,25 @@ var Root = CommandInfo{
 						{Name: "--lines=<n>", Description: "The newest n (at most 1000)", Default: "20"},
 					},
 					Notes:    []string{"--json: {\"notes\":[{n,at,view,text}]}."},
-					Examples: []string{"crew voice debug-notes", "crew voice debug-notes --since=2h --grep=speech"},
+					Examples: []string{"crew server debug-notes", "crew server debug-notes --since=2h --grep=speech"},
 					Subcommands: []CommandInfo{
 						{
 							Name:         "show",
 							Description:  "One debug note whole — what was said, the kernel's words, what was heard on that screen, the sessions, what was waiting, what was said last — then the main's log lines within its time ± --around. Says so when that stretch of the log has rotated out.",
-							Usage:        "crew voice debug-notes show <n> [--around=30s] [--json]",
+							Usage:        "crew server debug-notes show <n> [--around=30s] [--json]",
 							OutputFormat: "debug note <n>\\t<at>\\t<view>, the note's parts, then log <from> … <to>: and the log rows",
 							Flags: []FlagInfo{
 								{Name: "--around=<span>", Description: "How much log on each side of the note", Default: "30s"},
 							},
 							Notes:    []string{"--json: {\"note\":{n,at,text,said,view,heardHere,sessions,asks,spoken,devOffer},\"lines\":[…as logs]}."},
-							Examples: []string{"crew voice debug-notes show 3", "crew voice debug-notes show 3 --around=2m --json"},
+							Examples: []string{"crew server debug-notes show 3", "crew server debug-notes show 3 --around=2m --json"},
 						},
 					},
 				},
 				{
 					Name:         "notes",
 					Description:  "Your own notes said to Voice OS (\"note for store front: …\"), one list per workspace. Bare, the general notes; a workspace is named as Voice OS names it (any case, spaces become dashes); --all lists every workspace's. They live on the main; a remote asks the main through its link and fails with the reason when the main is not connected.",
-					Usage:        "crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]",
+					Usage:        "crew server notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]",
 					OutputFormat: "<workspace>\\t<date time>\\t<text>",
 					Flags: []FlagInfo{
 						{Name: "--all", Description: "Every workspace with notes, one after another"},
@@ -713,34 +802,40 @@ var Root = CommandInfo{
 						{Name: "--lines=<n>", Description: "The newest n, per workspace with --all (at most 1000)", Default: "20"},
 					},
 					Notes:    []string{"--json: {\"notes\":[{workspace,at,text}]}. A note's time is the main's local clock."},
-					Examples: []string{"crew voice notes store-front", "crew voice notes", "crew voice notes --all --since=3d"},
+					Examples: []string{"crew server notes store-front", "crew server notes", "crew server notes --all --since=3d"},
 				},
 				{
 					Name:         "remote",
-					Description:  "Make this machine a remote: another machine's Voice OS (the main) drives the Claude sessions of its worktrees over SSH, and it runs no voice or kernel of its own. Bare, it checks tmux and Claude Code, installs Voice OS if needed, and starts the daemon (a tmux session that outlives any SSH link, listening on a socket only you can open); status reports it, stop ends it and every session it runs. A machine is a main or a remote, never both: each refuses while the other runs. After crew update the daemon moves to the new release on the next connect, at once (sessions at work are cut off and resume on the new release); a main on a newer release runs crew update here itself when this machine is behind. The main reaches it with ssh <host> … crew voice _attach — a hidden command that prints nothing on stdout but the link.",
-					Usage:        "crew voice remote [status|stop]",
+					Description:  "Make this machine a remote: another machine's Voice OS (the main) drives the Claude sessions of its worktrees over SSH, and it runs no voice or kernel of its own. Bare, it checks tmux and Claude Code, installs Voice OS if needed, and starts the daemon (a tmux session that outlives any SSH link, listening on a socket only you can open); status reports it, stop ends it and every session it runs. A machine is a main or a remote, never both: each refuses while the other runs. After crew update the daemon moves to the new release on the next connect, at once (sessions at work are cut off and resume on the new release); a main on a newer release runs crew update here itself when this machine is behind. The main reaches it with ssh <host> … crew voice _attach (the alias, which every remote knows) — a hidden command that prints nothing on stdout but the link.",
+					Usage:        "crew server remote [status|stop]",
 					OutputFormat: "<up|down>\\t<version>\\t<busy|idle>\\t<socket>",
-					Examples:     []string{"crew voice remote", "crew voice remote status --json", "crew voice remote stop"},
+					Examples:     []string{"crew server remote", "crew server remote status --json", "crew server remote stop"},
 				},
 				{
 					Name:         "machines",
-					Description:  "The other machines this Voice OS drives (~/.crew/voiceos/machines.json; the page's + Add machine and \"rename vm1 to build box\" write the same list). add takes an SSH host — an alias from ~/.ssh/config or user@host, reached with your keys and never a password prompt — and prints the machine's id (from the host); --name is what you call it aloud. A running Voice OS picks a change up within a second. ls shows each machine's status as the running Voice OS last saw it (connecting, syncing, connected, unreachable, error), or stopped when Voice OS is not running. rm stops driving that machine; its sessions keep running there.",
-					Usage:        "crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>",
+					Description:  "The other machines this Voice OS drives (~/.crew/voiceos/machines.json; Set up's Add machine and \"rename vm1 to build box\" write the same list). add takes an SSH host — an alias from ~/.ssh/config or user@host, reached with your keys and never a password prompt — and prints the machine's id (from the host); --name is what you call it aloud. A running Voice OS picks a change up within a second. ls shows each machine's status as the running Voice OS last saw it (connecting, syncing, connected, unreachable, error), or stopped when Voice OS is not running. rm stops driving that machine; its sessions keep running there.",
+					Usage:        "crew server machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>",
 					OutputFormat: "<id>\\t<name>\\t<host>\\t<status>",
 					Flags: []FlagInfo{
 						{Name: "--name=<name>", Description: "add only: what the machine is called (default: its id)"},
 					},
-					Examples: []string{"crew voice machines add dev@vm1.example.com --name=\"Build box\"", "crew voice machines", "crew voice machines rename vm1 GPU box", "crew voice machines rm vm1"},
+					Examples: []string{"crew server machines add dev@vm1.example.com --name=\"Build box\"", "crew server machines", "crew server machines rename vm1 GPU box", "crew server machines rm vm1"},
+					Subcommands: []CommandInfo{
+						{Name: "ls", Description: "Each machine with what the running server last saw of it. --json: [{id, host, name, status, detail?}].", Usage: "crew server machines ls"},
+						{Name: "add", Description: "Add a machine by SSH host; prints its id.", Usage: "crew server machines add <ssh host> [--name=<name>]", Flags: []FlagInfo{{Name: "--name=<name>", Description: "What the machine is called (default: its id)"}}},
+						{Name: "rm", Description: "Stop driving a machine; its sessions keep running there.", Usage: "crew server machines rm <id>"},
+						{Name: "rename", Description: "Call a machine something else.", Usage: "crew server machines rename <id> <name>"},
+					},
 				},
 				{
 					Name:        "discord",
-					Description: "Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Optional — the first crew voice never asks for it.",
-					Usage:       "crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off",
+					Description: "Voice OS in a Discord voice channel: while Voice OS runs, a bot of your own joins one channel of one server and takes only your voice there (the server owner's, or --user's). Optional — crew server start never asks for it.",
+					Usage:       "crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off",
 					Subcommands: []CommandInfo{
 						{
 							Name:         "setup",
 							Description:  "Checks the bot token with Discord (rejected → nothing saved), saves it to ~/.config/crew-voiceos/discord.key (owner-only), then decides the server (the only one the bot is in, else --guild), whose voice it takes (the server owner, else --user), and the channel (one named Voice OS, else the only voice channel, else --channel by name or id), checks the bot may View Channel, Connect and Speak there, and writes ~/.crew/voiceos/discord.json, which a running Voice OS watches. Each decision prints as one line; a choice it cannot make lists the options (<id>\\t<name>) and exits 1. With no token and nothing saved it prints the four setup steps and exits 1.",
-							Usage:        "crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]",
+							Usage:        "crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]",
 							OutputFormat: "server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs",
 							Flags: []FlagInfo{
 								{Name: "--guild=<id>", Description: "The server, when the bot is in several"},
@@ -752,60 +847,65 @@ var Root = CommandInfo{
 								"Only the one user's voice is heard: Voice OS ignores everyone else in the channel.",
 								"--json: the discord.json object {guild,channel,channel_name,guild_name,owner}; the lines go to stderr.",
 							},
-							Examples: []string{"pbpaste | crew voice discord setup", "crew voice discord setup --guild=155 --channel=\"Voice OS\""},
+							Examples: []string{"pbpaste | crew server discord setup", "crew server discord setup --guild=155 --channel=\"Voice OS\""},
 						},
 						{
 							Name:         "status",
 							Description:  "The setup (server, channel, owner, whether the token is saved) and what Voice OS last reported from ~/.crew/voiceos/discord-status.json: connected, whether the owner is in the channel, its error.",
-							Usage:        "crew voice discord status [--json]",
+							Usage:        "crew server discord status [--json]",
 							OutputFormat: "<field>\\t<value>",
 							Notes:        []string{"--json: {\"set_up\":bool,\"token\":bool,\"config\":{guild,channel,channel_name,guild_name,owner}|null,\"live\":{connected,owner_in_channel,error,at}|null}. live null: Voice OS has not reported."},
-							Examples:     []string{"crew voice discord status", "crew voice discord status --json"},
+							Examples:     []string{"crew server discord status", "crew server discord status --json"},
 						},
 						{
 							Name:         "off",
 							Description:  "Voice OS leaves Discord: removes discord.json and the saved token.",
-							Usage:        "crew voice discord off",
+							Usage:        "crew server discord off",
 							OutputFormat: "removed\\t<path>",
-							Examples:     []string{"crew voice discord off"},
+							Examples:     []string{"crew server discord off"},
 						},
 					},
 				},
 				{
 					Name:        "dev",
 					Description: "One dev build of crew and Voice OS on every machine, to try a branch with your remotes before it is released. Any machine — the main or a remote — pushes its own checkout.",
-					Usage:       "crew voice dev push [--dry-run] | status",
+					Usage:       "crew server dev push [--dry-run] | status",
 					Subcommands: []CommandInfo{
 						{
 							Name:         "push",
 							Description:  "Builds crew and Voice OS from the crew checkout you are in, once per OS and CPU your machines run, stamped dev-<commit> (-dirty-<hash of the changes> with uncommitted ones), and hands the push to the main, where it runs detached (tmux crew-voice-push) so restarting Voice OS or the Claude session that asked never ends it. It copies both binaries to every machine and checks them, installing nothing if any copy fails; then installs and restarts each machine: the other remotes, then the main, the machine you pushed from last. A machine out of reach is skipped and named.",
-							Usage:        "crew voice dev push [--dry-run]",
+							Usage:        "crew server dev push [--dry-run]",
 							OutputFormat: "<machine>\\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …",
 							Flags: []FlagInfo{
 								{Name: "--dry-run", Description: "List the machines and their targets; build and push nothing"},
 							},
 							Notes: []string{
-								"Needs go and bun on the machine you push from. Returns once the push starts; crew voice dev status follows it.",
+								"Needs go and bun on the machine you push from. Returns once the push starts; crew server dev status follows it.",
 								"crew update on a machine goes back to the latest release.",
 							},
-							Examples: []string{"crew voice dev push --dry-run", "crew voice dev push"},
+							Examples: []string{"crew server dev push --dry-run", "crew server dev push"},
 						},
 						{
 							Name:         "status",
 							Description:  "The last push, read on the main (a remote asks it): its version, source, phase, and each machine — copied, restarted, skipped or failed with why.",
-							Usage:        "crew voice dev status [--json]",
+							Usage:        "crew server dev status [--json]",
 							OutputFormat: "<version> from <source>: <phase> / <machine>\\t<goos>_<goarch>\\t<state>",
 							Notes:        []string{"--json: {version,source,started_at,phase,running,error,machines:[{id,name,host,target,skipped,staged,installed,error}]}, or null before any push."},
-							Examples:     []string{"crew voice dev status", "crew voice dev status --json"},
+							Examples:     []string{"crew server dev status", "crew server dev status --json"},
 						},
 					},
 				},
 			},
 		},
 		{
-			Name:        "update",
-			Description: "Update crew to the latest version",
-			Usage:       "crew update",
+			Name:         "update",
+			Description:  "Update crew to the latest release (and an installed Voice OS with it, never restarting a running server — crew server restart does that). --check only asks whether there is one.",
+			Usage:        "crew update [--check]",
+			OutputFormat: "--check: crew v<current> — v<latest> is available (crew update) | up to date (latest v<latest>) | crew (dev build[ <sha>]) — crew update installs the latest release (v<latest>)",
+			Flags: []FlagInfo{
+				{Name: "--check", Description: "Install nothing; --json: {current, latest, available, dev, error?, line} (line: the text form) — offline is available false with the error, not a failure; a dev build is never available and says dev true (crew update replaces it with the latest release), one ahead of the latest is up to date (crew update never downgrades). Bare crew update --json: {from, to, updated}, narration on stderr"},
+			},
+			Examples: []string{"crew update", "crew update --check --json"},
 		},
 		{
 			Name:        "help",

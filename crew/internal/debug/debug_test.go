@@ -85,51 +85,47 @@ func TestLog_SilentOnInvalidPath(t *testing.T) {
 	Log("test", "should not crash")
 }
 
-func TestReadTail_EmptyFile(t *testing.T) {
+func TestTailLines_EmptyFile(t *testing.T) {
 	setupTempLog(t)
 
-	result := ReadTail(10)
-	if result != "" {
-		t.Errorf("ReadTail on missing file = %q, want empty", result)
+	if lines := TailLines(10); len(lines) != 0 {
+		t.Errorf("TailLines on missing file = %q, want none", lines)
 	}
 }
 
-func TestReadTail_FewerLinesThanN(t *testing.T) {
+func TestTailLines_FewerLinesThanN(t *testing.T) {
 	setupTempLog(t)
 
 	Log("a", "line one")
 	Log("b", "line two")
 
-	result := ReadTail(10)
-	lines := strings.Split(result, "\n")
+	lines := TailLines(10)
 	if len(lines) != 2 {
 		t.Fatalf("got %d lines, want 2", len(lines))
 	}
 }
 
-func TestReadTail_ExactlyN(t *testing.T) {
+func TestTailLines_ExactlyN(t *testing.T) {
 	setupTempLog(t)
 
 	Log("a", "one")
 	Log("b", "two")
 	Log("c", "three")
 
-	result := ReadTail(3)
-	lines := strings.Split(result, "\n")
+	lines := TailLines(3)
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines, want 3", len(lines))
 	}
 }
 
-func TestReadTail_TruncatesOldLines(t *testing.T) {
+func TestTailLines_TruncatesOldLines(t *testing.T) {
 	setupTempLog(t)
 
 	for i := 0; i < 10; i++ {
 		Log("test", "line %d", i)
 	}
 
-	result := ReadTail(3)
-	lines := strings.Split(result, "\n")
+	lines := TailLines(3)
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines, want 3", len(lines))
 	}
@@ -142,12 +138,11 @@ func TestReadTail_TruncatesOldLines(t *testing.T) {
 	}
 }
 
-func TestReadTail_MissingFile(t *testing.T) {
+func TestTailLines_MissingFile(t *testing.T) {
 	config.ConfigDir = t.TempDir()
 
-	result := ReadTail(100)
-	if result != "" {
-		t.Errorf("ReadTail on missing file = %q, want empty", result)
+	if lines := TailLines(100); len(lines) != 0 {
+		t.Errorf("TailLines on missing file = %q, want none", lines)
 	}
 }
 

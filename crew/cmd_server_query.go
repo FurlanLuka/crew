@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/voice"
+	"github.com/FurlanLuka/crew/crew/internal/words"
 )
 
-// crew voice logs | debug-notes [show <n>] | notes: read-only queries over
+// crew server logs | debug-notes [show <n>] | notes: read-only queries over
 // what Voice OS writes. Logs are on every machine, notes and debug notes on
 // the main; a remote asks the main through its daemon's link.
 
@@ -34,17 +35,17 @@ var queryFlags = map[queryKind][]string{
 }
 
 var queryUsage = map[queryKind]string{
-	queryLogs:       "crew voice logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]",
-	queryDebugNotes: "crew voice debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]",
-	queryShowNote:   "crew voice debug-notes show <n> [--around=30s] [--json]",
-	queryNotes:      "crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]",
+	queryLogs:       "crew server logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]",
+	queryDebugNotes: "crew server debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]",
+	queryShowNote:   "crew server debug-notes show <n> [--around=30s] [--json]",
+	queryNotes:      "crew server notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]",
 }
 
 const (
 	maxQueryLines = 1000
 	defaultAround = 30 * time.Second
 	notConnected  = "the main is not connected"
-	restartDaemon = "restart the remote daemon with crew voice remote"
+	restartDaemon = "restart the remote daemon with crew server remote"
 	localOnlyWarn = "showing only this machine's logs"
 )
 
@@ -61,7 +62,7 @@ type logsQuery struct {
 	local             bool
 }
 
-// parseQueryArgs reads the args after `crew voice` (the global --json already
+// parseQueryArgs reads the args after `crew server` (the global --json already
 // stripped). Relative times become absolute here, where they were typed. Pure.
 func parseQueryArgs(args []string, now time.Time) (logsQuery, error) {
 	q := logsQuery{kind: queryKind(args[0]), around: defaultAround}
@@ -157,7 +158,7 @@ func (q *logsQuery) setPositionals(positionals []string) error {
 		}
 		n, err := strconv.Atoi(positionals[0])
 		if err != nil || n <= 0 {
-			return fmt.Errorf("a note is its number from crew voice debug-notes, got '%s'", positionals[0])
+			return fmt.Errorf("a note is its number from crew server debug-notes, got '%s'", positionals[0])
 		}
 		q.note = n
 		return nil
@@ -211,7 +212,7 @@ func (q logsQuery) argv(asJSON bool) []string {
 	return args
 }
 
-// voiceQuery runs crew voice logs|debug-notes|notes.
+// voiceQuery runs crew server logs|debug-notes|notes.
 func voiceQuery(args []string) {
 	q, err := parseQueryArgs(args, time.Now())
 	if err != nil {
@@ -326,7 +327,7 @@ func queryLogsHere(q logsQuery, role voice.Role) {
 		os.Exit(1)
 	}
 	if len(remotes) > 0 {
-		fmt.Fprintf(os.Stderr, "! asking %d %s…\n", len(remotes), plural(len(remotes), "machine"))
+		fmt.Fprintf(os.Stderr, "! asking %s…\n", words.Count(len(remotes), "machine"))
 	}
 	doc, answered := voice.GatherLogs(q.filter, q.lines, withMain, remotes)
 	for _, u := range doc.Unreachable {
@@ -336,13 +337,6 @@ func queryLogsHere(q logsQuery, role voice.Role) {
 	if !answered {
 		os.Exit(1)
 	}
-}
-
-func plural(n int, word string) string {
-	if n == 1 {
-		return word
-	}
-	return word + "s"
 }
 
 func printLogs(doc voice.LogsDoc) {

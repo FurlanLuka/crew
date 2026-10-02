@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	osexec "os/exec"
 	"runtime"
@@ -13,21 +11,58 @@ import (
 
 	"github.com/charmbracelet/x/term"
 
+	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-// cmdVoice runs Voice OS: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord].
-// Bare `crew voice` starts it when needed and always reprints the sign-in
-// link, so a lost cookie is one command away.
-func cmdVoice() {
-	sub := "start"
-	args := os.Args[2:]
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		sub = args[0]
-		args = args[1:]
+// cmdServer is crew's server — Voice OS and the Set up page in one process:
+// crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev].
+// Bare `crew server` is its status; bare `crew` is the start with the
+// browser (cmdBare).
+func cmdServer() { serverDispatch(os.Args[2:], "status") }
+
+// cmdVoiceAlias keeps `crew voice …` working forever: Voice OS itself calls
+// crew back that way (voice machines, voice _attach, voice logs --local …)
+// and an older main drives a newer remote with it. Bare `crew voice` still
+// starts it, as it always did. The note is for a person only — a machine
+// caller reads stderr too.
+func cmdVoiceAlias() {
+	if showAliasNote(term.IsTerminal(os.Stderr.Fd()), os.Args[2:]) {
+		fmt.Fprintln(os.Stderr, aliasNote)
 	}
+	serverDispatch(os.Args[2:], "start")
+}
+
+// showAliasNote: a person at a terminal hears about the new name once per
+// command; a program (no tty, or a hidden form another process runs) never
+// does. Pure.
+func showAliasNote(stderrTTY bool, args []string) bool {
+	return stderrTTY && !strings.HasPrefix(firstArg(args), "_")
+}
+
+const aliasNote = "note: crew voice is crew server now (crew voice keeps working); bare crew starts it and opens the page"
+
+func firstArg(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+// serverSub splits the words after crew server (or crew voice): the
+// subcommand, else the bare default when only flags (or nothing) follow.
+// Pure.
+func serverSub(args []string, bare string) (string, []string) {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		return args[0], args[1:]
+	}
+	return bare, args
+}
+
+func serverDispatch(args []string, bare string) {
+	sub, args := serverSub(args, bare)
 
 	switch sub {
 	case "start":
@@ -47,7 +82,7 @@ func cmdVoice() {
 			printJSON(map[string]bool{"stopped": true})
 			return
 		}
-		fmt.Println("Stopped Voice OS and the Claude sessions it was running. Their conversations resume on the next start.")
+		fmt.Println("Stopped crew's server and the Claude sessions it was running. Their conversations resume on the next start.")
 	case "status":
 		voicePrint(voice.Inspect())
 	case "logs", "debug-notes", "notes":
@@ -69,8 +104,94 @@ func cmdVoice() {
 		// The detached dev push runner (voice.StartDevPush): nothing waits on its output.
 		voiceDevRunner(args)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew voice [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]\n")
 		os.Exit(1)
+	}
+}
+
+// cmdBare is crew with no command: its server started when needed and the
+// page opened — Set up and Voice OS both live there. It never blocks: no
+// key prompt (keys are set on the page), and claude is not required here
+// (the page says when a session cannot start without it). Only tmux is.
+func cmdBare(args []string) {
+	for _, a := range args {
+		if a != "--no-open" {
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\nUsage: crew [--no-open]\n", a)
+			os.Exit(1)
+		}
+	}
+	if voice.RemoteRunning() {
+		fmt.Println(remoteMachineLine)
+		return
+	}
+	if !voice.Inspect().Healthy {
+		requireBareDeps()
+		installVoiceOr(cliFallbackLine)
+	}
+	st, err := voice.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, cliFallbackLine)
+		os.Exit(1)
+	}
+	if jsonOutput {
+		printJSON(st)
+		return
+	}
+	if st.Warning != "" {
+		fmt.Fprintf(os.Stderr, "! %s\n", st.Warning)
+	}
+	ssh := underSSH()
+	for _, line := range serverLinkLines(st, ssh, ssh && voice.ProxyRouteAnswers(), config.LoadSettings().SSHHost) {
+		fmt.Println(line)
+	}
+	openVoiceLink(st, !hasFlag(args, "--no-open"))
+}
+
+// remoteMachineLine: a remote runs no page of its own; the main's crew is
+// where this machine is set up.
+const remoteMachineLine = "This machine is a remote — another machine's crew drives it (crew server remote status). Open crew there."
+
+// cliFallbackLine: the page is one way in; every action on it is a command.
+const cliFallbackLine = "Everything the page does is a command too: crew add project, crew ls projects|workspaces|worktrees, crew help."
+
+// requireBareDeps is requireVoiceDeps for bare crew: tmux alone stops it.
+func requireBareDeps() {
+	failUnmet("crew's server needs:", bareRequirements(voice.UnmetRequirements()), cliFallbackLine)
+}
+
+// bareRequirements keeps what bare crew cannot start without. A missing
+// claude only stops a session, and the page names it there. Pure.
+func bareRequirements(unmet []voice.Requirement) []voice.Requirement {
+	var out []voice.Requirement
+	for _, r := range unmet {
+		if r.Name == "tmux" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func underSSH() bool { return os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != "" }
+
+// serverLinkLines is where bare crew says to open the page. Over SSH the
+// localhost link is the remote's own localhost: the proxy's link whenever
+// the proxy reaches the server under a name other devices resolve (a domain
+// set, or the automatic server_ip nip.io one), else the tunnel that makes
+// localhost reach it. Pure.
+func serverLinkLines(st voice.Status, ssh, proxyReaches bool, sshHost string) []string {
+	if !ssh {
+		return []string{"crew is running: " + st.LocalhostURL}
+	}
+	if proxyReaches && st.URL != "" {
+		return []string{"crew is running: " + st.URL}
+	}
+	if sshHost == "" {
+		sshHost = "<this machine>"
+	}
+	return []string{
+		fmt.Sprintf("crew is running on this machine, port %d. From your computer:", st.Port),
+		fmt.Sprintf("  ssh -L %d:localhost:%d %s", st.Port, st.Port, sshHost),
+		"then open " + st.LocalhostURL,
 	}
 }
 
@@ -134,16 +255,44 @@ func restartCommand(bin string) *osexec.Cmd {
 }
 
 func openVoiceLink(st voice.Status, open bool) {
-	if !open || jsonOutput || !term.IsTerminal(os.Stdout.Fd()) || st.LocalhostURL == "" {
+	env := openEnv{
+		Requested: open,
+		JSON:      jsonOutput,
+		StdoutTTY: term.IsTerminal(os.Stdout.Fd()),
+		GOOS:      runtime.GOOS,
+		SSH:       underSSH(),
+		Display:   os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "",
+	}
+	if !shouldOpenBrowser(env) || st.LocalhostURL == "" {
 		return
 	}
 	opener := browserOpener(runtime.GOOS)
 	debug.Log("voice", "%s %s", opener, st.LocalhostURL)
-	// The link is already printed; a machine without an opener (a headless
-	// Linux box) loses nothing but the convenience.
+	// The link is already printed; a machine without an opener loses nothing
+	// but the convenience.
 	if err := osexec.Command(opener, st.LocalhostURL).Start(); err != nil {
 		debug.Log("voice", "%s failed: %v", opener, err)
 	}
+}
+
+// openEnv is what decides whether a browser opens.
+type openEnv struct {
+	Requested bool // no --no-open
+	JSON      bool
+	StdoutTTY bool
+	GOOS      string
+	SSH       bool // a browser here is on the wrong machine
+	Display   bool // X11 or Wayland: Linux has somewhere to open it
+}
+
+// shouldOpenBrowser: only for a person at this machine's screen — never for
+// a script, a --json reader, an SSH login, or a Linux box with no display.
+// Pure.
+func shouldOpenBrowser(e openEnv) bool {
+	if !e.Requested || e.JSON || !e.StdoutTTY || e.SSH {
+		return false
+	}
+	return e.GOOS == "darwin" || e.Display
 }
 
 func browserOpener(goos string) string {
@@ -177,146 +326,33 @@ func voicePrint(st voice.Status) {
 	}
 }
 
-// maxKeyTries: a rejected key is asked again, a few times, then left to crew voice keys set.
-const maxKeyTries = 3
-
-// askMissingKeys is the first run: at a terminal, each missing key is asked
-// for and checked before Voice OS starts. Anywhere else it only says what is
-// missing — nothing needs a tty.
-func askMissingKeys() {
-	missing := voice.MissingKeys()
-	if len(missing) == 0 {
-		return
-	}
-	if jsonOutput || !term.IsTerminal(os.Stdin.Fd()) {
-		fmt.Fprintf(os.Stderr, "! Voice OS has no %s key yet: voice stays off until one is set (crew voice keys set <%s>)\n",
-			strings.Join(missing, " or "), strings.Join(voice.KeyNames, "|"))
-		return
-	}
-	fmt.Println("Voice OS needs two API keys to hear and speak. They are stored on this machine only, readable by you alone.")
-	for _, name := range missing {
-		for try := 1; try <= maxKeyTries; try++ {
-			fmt.Printf("%s key (%s, hidden as you paste): ", keyLabel(name), keyUseOf(name))
-			raw, err := term.ReadPassword(os.Stdin.Fd())
-			fmt.Println()
-			if err != nil || strings.TrimSpace(string(raw)) == "" {
-				fmt.Printf("Skipped: set it later with crew voice keys set %s\n", name)
-				break
-			}
-			if saveCheckedKey(name, string(raw)) {
-				break
-			}
-			if try == maxKeyTries {
-				fmt.Printf("Not saved: set it later with crew voice keys set %s\n", name)
-			}
-		}
-	}
-}
-
-// saveCheckedKey keeps a key the service accepts, or one it could not be asked
-// about (offline); a rejected one is not written.
-func saveCheckedKey(name, value string) bool {
-	verified, err := voice.SaveChecked(name, value)
-	switch {
-	case errors.Is(err, voice.ErrKeyRejected):
-		fmt.Fprintf(os.Stderr, "%s rejected that key — check it and try again.\n", keyLabel(name))
-		return false
-	case err != nil:
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return false
-	case !verified:
-		fmt.Fprintf(human, "Saved the %s key, but it could not be checked (offline?) — Voice OS tells you if it is refused.\n", name)
-		return true
-	}
-	fmt.Fprintf(human, "Saved the %s key (%s).\n", name, voice.KeyPath(name))
-	return true
-}
-
-func keyLabel(name string) string {
-	if name == "anthropic" {
-		return "Anthropic"
-	}
-	return "Soniox"
-}
-
-func keyUseOf(name string) string {
-	for _, st := range voice.InspectKeys() {
-		if st.Name == name {
-			return st.Use
-		}
-	}
-	return ""
-}
-
-// voiceKeys: crew voice keys [status] | crew voice keys set <anthropic|soniox>.
-// set reads the key from stdin (hidden at a terminal), so it never lands in
-// shell history or a process list.
-func voiceKeys(args []string) {
-	if len(args) == 0 || args[0] == "status" {
-		statuses := voice.InspectKeys()
-		if jsonOutput {
-			printJSON(statuses)
-			return
-		}
-		for _, st := range statuses {
-			state := "missing"
-			if st.Set {
-				state = "set (" + st.Source + ")"
-			}
-			fmt.Printf("%s\t%s\t%s\n", st.Name, state, st.Path)
-		}
-		return
-	}
-	if args[0] != "set" || len(args) < 2 || !voice.IsKeyName(args[1]) {
-		fmt.Fprintf(os.Stderr, "Usage: crew voice keys [status] | crew voice keys set <%s>\n", strings.Join(voice.KeyNames, "|"))
-		os.Exit(1)
-	}
-	name := args[1]
-	value, err := readSecret(fmt.Sprintf("%s key (hidden as you paste): ", keyLabel(name)))
-	if err != nil || strings.TrimSpace(value) == "" {
-		fmt.Fprintln(os.Stderr, "Error: no key given (paste it, or pipe it on stdin)")
-		os.Exit(1)
-	}
-	if !saveCheckedKey(name, value) {
-		os.Exit(1)
-	}
-	if jsonOutput {
-		printJSON(map[string]string{"saved": name, "path": voice.KeyPath(name)})
-	}
-	if voice.Inspect().Running {
-		fmt.Fprintln(human, "Voice OS is running: crew voice restart picks the key up.")
-	}
-}
-
-func readSecret(prompt string) (string, error) {
-	if term.IsTerminal(os.Stdin.Fd()) {
-		fmt.Fprint(os.Stderr, prompt)
-		raw, err := term.ReadPassword(os.Stdin.Fd())
-		fmt.Fprintln(os.Stderr)
-		return string(raw), err
-	}
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if errors.Is(err, io.EOF) {
-		err = nil
-	}
-	return line, err
-}
-
 // installVoiceIfMissing is the first run: the Voice OS of this crew's own
 // release, so the two always match. A dev crew has no release to take it from.
-func installVoiceIfMissing() {
+func installVoiceIfMissing() { installVoiceOr("") }
+
+// installVoiceOr is installVoiceIfMissing with a last line for a failure —
+// bare crew names the commands that work without the page.
+func installVoiceOr(hint string) {
 	downloaded, err := voice.EnsureInstalled(Version, func() {
 		fmt.Fprintf(human, "Downloading Voice OS v%s for %s/%s (25–40 MB)…\n", Version, runtime.GOOS, runtime.GOARCH)
 	})
 	switch {
 	case errors.Is(err, voice.ErrDevBuild):
 		fmt.Fprintf(os.Stderr, "Error: Voice OS is not installed at %s, and %v — build it with: cd voiceos && bun run install-dev\n", voice.Binary(), err)
+		printHint(hint)
 		os.Exit(1)
 	case err != nil:
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		printHint(hint)
 		os.Exit(1)
 	case downloaded:
 		fmt.Fprintf(human, "Installed Voice OS at %s.\n", voice.Binary())
+	}
+}
+
+func printHint(hint string) {
+	if hint != "" {
+		fmt.Fprintln(os.Stderr, hint)
 	}
 }
 
@@ -333,16 +369,22 @@ func refreshVoice(version string) {
 		return
 	}
 	if voice.Inspect().Running {
-		fmt.Printf("Voice OS updated to v%s — crew voice restart to use it.\n", version)
+		fmt.Fprintf(human, "Voice OS updated to v%s — crew server restart to use it.\n", version)
 		return
 	}
-	fmt.Printf("Voice OS updated to v%s.\n", version)
+	fmt.Fprintf(human, "Voice OS updated to v%s.\n", version)
 }
 
 // requireVoiceDeps stops before any download or key prompt when Voice OS could
 // not run anyway, naming each missing piece with its fix.
 func requireVoiceDeps() {
-	unmet := voice.UnmetRequirements()
+	failUnmet("Voice OS needs a few things first:", voice.UnmetRequirements(), "")
+}
+
+// failUnmet exits naming each missing requirement with its fix — {missing}
+// under --json — and returns when nothing is missing. hint, when set, is the
+// last line.
+func failUnmet(header string, unmet []voice.Requirement, hint string) {
 	if len(unmet) == 0 {
 		return
 	}
@@ -350,9 +392,10 @@ func requireVoiceDeps() {
 		printJSON(map[string]any{"missing": unmet})
 		os.Exit(1)
 	}
-	fmt.Fprintln(os.Stderr, "Voice OS needs a few things first:")
+	fmt.Fprintln(os.Stderr, header)
 	for _, req := range unmet {
 		fmt.Fprintf(os.Stderr, "  %s — %s. Install: %s\n", req.Name, req.Why, req.Install)
 	}
+	printHint(hint)
 	os.Exit(1)
 }

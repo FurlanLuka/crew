@@ -21,6 +21,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -213,8 +214,11 @@ func collect(prune bool) State {
 				continue
 			}
 			asked[slug] = true
-			if exec.TmuxSessionExists(dev.SessionName(slug)) || exec.TmuxSessionExists(dev.SetupSessionName(slug)) {
-				s.LiveSlugs[slug] = true
+			for _, session := range liveSessions(slug) {
+				if exec.TmuxSessionExists(session) {
+					s.LiveSlugs[slug] = true
+					break
+				}
 			}
 		}
 	}
@@ -230,6 +234,17 @@ func collect(prune bool) State {
 		}
 	}
 	return s
+}
+
+// liveSessions is every tmux session whose life keeps slug's files: its dev
+// and setup sessions, and for crew's server — whose route is the voice slug's
+// but whose session is outside crew-dev-* — the server's under either name.
+func liveSessions(slug dev.Slug) []string {
+	out := []string{dev.SessionName(slug), dev.SetupSessionName(slug)}
+	if slug == dev.Slug(workspace.VoiceSlug) {
+		out = append(out, voice.SessionName, voice.LegacySessionName)
+	}
+	return out
 }
 
 // locks is every <name>.json.lock in dir with whether <name>.json is there.

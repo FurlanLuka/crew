@@ -10,8 +10,8 @@ import (
 
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
-	"github.com/FurlanLuka/crew/crew/internal/workspaceui"
 )
 
 // requireTerminal: claude and open hand the terminal to another program.
@@ -36,13 +36,29 @@ func terminalCheck(tty bool, what, alt string) (string, bool) {
 	return fmt.Sprintf("Error: crew %s needs a terminal — hand the user this line; %s", what, alt), false
 }
 
+// cmdLaunch is the terminal's one TUI: a worktree picked (bare) or named,
+// then Claude or an editor launched on it. Configuring is the browser's.
 func cmdLaunch() {
+	requireLaunchTerminal()
 	if len(os.Args) < 3 {
-		runTUI(workspaceui.NewView())
+		runTUI(workspace.NewLaunchPicker(voice.PageURL()))
 		return
 	}
+	openWorktreePage(mustResolve(os.Args[2]).Ref)
+}
 
-	runTUI(workspace.NewWorktreeView(mustResolve(os.Args[2]).Ref))
+// requireLaunchTerminal is crew launch's terminal check, which every way
+// into the launch page shares — crew <ref> with no tty says the same, never
+// Bubbletea's raw "could not open a new TTY".
+func requireLaunchTerminal() {
+	requireTerminal("launch", "crew claude <ref> / crew edit <ref> once the user picks; crew ls worktrees lists them")
+}
+
+// openWorktreePage is the launch page on one worktree — crew launch <ref>,
+// crew dev tui <ref> and the crew <ref> shortcut.
+func openWorktreePage(ref workspace.Ref) {
+	requireLaunchTerminal()
+	runTUI(workspace.NewWorktreeView(ref, voice.PageURL()))
 }
 
 // cmdClaude is the worktree page's "Claude in terminal" as a command: the

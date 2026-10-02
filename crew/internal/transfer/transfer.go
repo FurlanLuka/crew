@@ -81,18 +81,6 @@ func WithoutRemote(b Bundle) []string {
 	return out
 }
 
-// Covered is every workspace whose projects are all chosen — the rule that
-// decides what the export picker offers. Pure.
-func Covered(all []*workspace.Workspace, chosen map[string]bool) []Membership {
-	var out []Membership
-	for _, ws := range all {
-		if len(Uncovered(ws, chosen)) == 0 {
-			out = append(out, Membership{Name: ws.Name, Projects: ws.Projects})
-		}
-	}
-	return out
-}
-
 // Uncovered names the workspace's projects that are not chosen. Pure.
 func Uncovered(ws *workspace.Workspace, chosen map[string]bool) []string {
 	return unmet(ws.Projects, chosen)
@@ -111,11 +99,21 @@ func unmet(members []workspace.WorkspaceProject, ok map[string]bool) []string {
 }
 
 func Write(path string, b Bundle) error {
-	data, err := json.MarshalIndent(b, "", "  ")
+	data, err := Encode(b)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	return os.WriteFile(path, data, 0o644)
+}
+
+// Encode is the bundle as written: indented, one trailing newline — the
+// file and `crew export -` on stdout are the same bytes.
+func Encode(b Bundle) ([]byte, error) {
+	data, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
 }
 
 func Read(path string) (Bundle, error) {
@@ -123,15 +121,21 @@ func Read(path string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, err
 	}
+	return Decode(path, data)
+}
+
+// Decode checks a bundle's bytes; name is what an error calls it (a file,
+// or stdin for `crew import -`).
+func Decode(name string, data []byte) (Bundle, error) {
 	var b Bundle
 	if err := json.Unmarshal(data, &b); err != nil {
-		return Bundle{}, fmt.Errorf("%s is not a crew export: %w", path, err)
+		return Bundle{}, fmt.Errorf("%s is not a crew export: %w", name, err)
 	}
 	if b.Version == 0 {
-		return Bundle{}, fmt.Errorf("%s is not a crew export (no version)", path)
+		return Bundle{}, fmt.Errorf("%s is not a crew export (no version)", name)
 	}
 	if b.Version > Version {
-		return Bundle{}, fmt.Errorf("%s is version %d; this crew reads up to %d — run crew update", path, b.Version, Version)
+		return Bundle{}, fmt.Errorf("%s is version %d; this crew reads up to %d — run crew update", name, b.Version, Version)
 	}
 	return b, nil
 }
@@ -169,14 +173,14 @@ type Plan struct {
 	Projects   []ProjectStatus
 	Workspaces []WorkspaceStatus
 	// Known is the pool as it was when the bundle was inspected — one
-	// read, then the wizard reasons over the snapshot.
+	// read, then the plan reasons over the snapshot.
 	Known map[string]bool // project names in the pool
 }
 
 // Inspect checks a bundle against this machine: the pool, read once, each
 // local entry's remote read off its checkout, and the clone dir. Per-card
-// state that depends on earlier decisions (MissingMembers) is asked for as
-// the wizard reaches each card.
+// state that depends on earlier decisions (MissingMembers) is asked for
+// per workspace row.
 func Inspect(b Bundle) Plan {
 	pool, _ := project.List()
 	plan := Plan{Known: make(map[string]bool, len(pool))}
@@ -354,11 +358,6 @@ func WorkspaceRow(name string, started bool, h *workspace.Health, waited bool, e
 }
 
 // ── helpers ──
-
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
 
 func toSet(names []string) map[string]bool {
 	set := make(map[string]bool, len(names))

@@ -228,20 +228,6 @@ func TestHasVerdict(t *testing.T) {
 	}
 }
 
-func TestWithoutStarting(t *testing.T) {
-	ok := SmokeResult{Alive: true, Listening: true}
-	starting := SmokeResult{Alive: true, Referenced: true}
-	if got := withoutStarting([]SmokeResult{ok, starting}); len(got) != 1 || got[0] != ok {
-		t.Errorf("one starting → %+v", got)
-	}
-	if got := withoutStarting([]SmokeResult{ok}); len(got) != 1 {
-		t.Errorf("all decided → %+v", got)
-	}
-	if got := withoutStarting(nil); got != nil {
-		t.Errorf("empty → %+v", got)
-	}
-}
-
 // A zero ceiling is one look and no sleep — what CheckServers and every
 // page refresh rely on.
 func TestWaitForServers_ZeroCeilingIsOneLook(t *testing.T) {
@@ -343,9 +329,40 @@ func TestStripANSI(t *testing.T) {
 		"\x1bksh\x1b\\boom":                 "boom",
 		"\x1b]0;title\x07plain":             "plain",
 		"no escapes":                        "no escapes",
+		"\x1b[?2004hready\x1b[?2004l":       "ready",
+		"\x1b[200~pasted\x1b[201~":          "pasted",
+		"\x1b(Bplain\x1b=":                  "plain",
 	} {
 		if got := stripANSI(in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCleanLogLines(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"empty", "", []string{}},
+		{"plain lines keep blanks", "a\n\nb\n", []string{"a", "", "b"}},
+		{"colours", "\x1b[32mready\x1b[0m on 3000\n", []string{"ready on 3000"}},
+		{
+			"zsh's prompt and its redraw of the typed command",
+			"export API_URL='x'; PORT=1 bun run dev\r\n\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m        \r \r\x1b[0m\x1b[27m\x1b[24m\x1b[Jdev@mac store-api % \x1b[K\x1b[?2004he\bexport API_URL='x'; PORT=1 p \r\x1b[Kr\rrun dev\x1b[?2004l\r\r\n\x1b[32mready\x1b[0m\r\n",
+			[]string{"export API_URL='x'; PORT=1 bun run dev", "ready"},
+		},
+		{"a progress bar's redraws keep its last", "\x1b[2K\r[==  ] 50%\r[====] 100%\n", []string{"[====] 100%"}},
+		{"pure control line dropped", "\x1b[?2004l\r\nfront up\n", []string{"front up"}},
+		{"crlf", "one\r\ntwo\r\n", []string{"one", "two"}},
+		{"progress redraw keeps the last", "10%\r50%\r100%\n", []string{"100%"}},
+		{"bell and backspace", "a\x07b\x08c\n", []string{"abc"}},
+		{"tab kept", "\tindented\n", []string{"\tindented"}},
+	} {
+		got := CleanLogLines(tt.in)
+		if strings.Join(got, "|") != strings.Join(tt.want, "|") || len(got) != len(tt.want) {
+			t.Errorf("%s: %q → %q, want %q", tt.name, tt.in, got, tt.want)
 		}
 	}
 }

@@ -14,7 +14,8 @@ time. A project is its git remote: the default is a clone into `~/.crew/projects
 never adopt a path without asking.
 
 1. No file given: ask where it is (`~/Desktop/crew.json`? a path they pasted?). Confirm it
-   reads: `crew import <file> --plan --json`.
+   reads: `crew import <file> --plan --json` (bare `crew import <file>` is the plan too; `-`
+   reads the bundle from stdin).
 2. Show the plan as a short table: project / status / detail. Explain the statuses in one
    line each: `exists` (here under the same remote — nothing to do), `other remote` (the
    name is here but points at another repo), `clone` (not here; would clone into the dir
@@ -27,7 +28,9 @@ never adopt a path without asking.
    `--replace` with the bundle's servers and bindings (checkout kept); for `other remote`
    — which repo is right (`--replace` clones the bundle's; refused while a workspace still
    has the project). Run `crew import <file> project <name> [--path=…] [--replace]` per
-   answer and show the row it prints.
+   answer and show the row it prints. To import under another name, `--name=<new>` — a
+   name already in the pool is refused before anything is cloned, and the `!` line names
+   the bundle's bindings left pointing at the old name; relay it.
 4. Workspaces: for each `ready` one, `crew import <file> workspace <name> --pull` — this
    makes the `main` worktree the way `crew add worktree` does: fetches and fast-forwards
    the local bases, then one runner per project in the background (checkout, install,

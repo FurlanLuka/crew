@@ -257,7 +257,7 @@ func writeDevPush(st DevPushStatus) error {
 	return os.Rename(tmp, devPushStatusFile())
 }
 
-// RenderDevPush is crew voice dev status for a human. Pure.
+// RenderDevPush is crew server dev status for a human. Pure.
 func RenderDevPush(st DevPushStatus) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s from %s: %s", st.Version, st.Source, st.Phase)

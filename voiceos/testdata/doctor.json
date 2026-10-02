@@ -1,0 +1,16 @@
+[
+  {
+    "name": "tmux",
+    "ok": true,
+    "required": true,
+    "why": "dev servers, setup runners and checks run in tmux",
+    "install": "brew install tmux"
+  },
+  {
+    "name": "claude",
+    "ok": false,
+    "required": false,
+    "why": "crew claude, crew edit and crew fix open Claude Code",
+    "install": "npm install -g @anthropic-ai/claude-code"
+  }
+]

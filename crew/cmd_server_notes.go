@@ -9,7 +9,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-// crew voice debug-notes [show <n>] and crew voice notes: what the developer
+// crew server debug-notes [show <n>] and crew server notes: what the developer
 // said to Voice OS, read on the main (a remote reaches them through relayToMain).
 
 func mustDebugNotes() []voice.DebugNote {

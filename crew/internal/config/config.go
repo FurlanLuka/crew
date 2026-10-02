@@ -49,7 +49,7 @@ func WorkspaceFile(name string) string {
 
 // ExpandHome turns a leading ~/ into the home directory — what a shell
 // would have done, for a path that reached crew without one (an agent, a
-// TUI field).
+// form field).
 func ExpandHome(path string) string {
 	if strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {

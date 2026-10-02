@@ -17,9 +17,9 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/voice"
 )
 
-const voiceDevUsage = "Usage: crew voice dev push [--dry-run] | crew voice dev status"
+const voiceDevUsage = "Usage: crew server dev push [--dry-run] | crew server dev status"
 
-// crew voice dev …: one build of crew and Voice OS from a checkout, on every
+// crew server dev …: one build of crew and Voice OS from a checkout, on every
 // machine. Any machine — the main or a remote — can push its own checkout.
 func voiceDev(args []string) {
 	sub := ""
@@ -49,7 +49,7 @@ func checkoutRoot() (string, error) {
 	debug.Log("git", "git rev-parse --show-toplevel")
 	out, err := osexec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
-		return "", fmt.Errorf("not in a git checkout — run crew voice dev push from a crew checkout")
+		return "", fmt.Errorf("not in a git checkout — run crew server dev push from a crew checkout")
 	}
 	root := strings.TrimSpace(string(out))
 	for _, need := range []string{"crew/go.mod", "voiceos/package.json"} {
@@ -103,7 +103,7 @@ func pushRole() (isRemote bool, err error) {
 		return false, nil
 	}
 	if _, err := os.Stat(voice.RemoteDir()); err == nil {
-		return false, fmt.Errorf("this machine is a remote with its daemon down — start it first: crew voice remote")
+		return false, fmt.Errorf("this machine is a remote with its daemon down — start it first: crew server remote")
 	}
 	return false, nil
 }
@@ -133,7 +133,7 @@ func pushRunningFrom(stdout string) error {
 func mainRefusal(what string, reply voice.QueryReply, err error) error {
 	why := describeReply(reply, err)
 	if why == "not allowed" {
-		return fmt.Errorf("the main %s: it runs a Voice OS without dev push — push once from the main first (crew voice dev push there), then from anywhere", what)
+		return fmt.Errorf("the main %s: it runs a Voice OS without dev push — push once from the main first (crew server dev push there), then from anywhere", what)
 	}
 	return fmt.Errorf("the main %s: %s", what, why)
 }
@@ -194,7 +194,7 @@ func voiceDevPush(dryRun bool) {
 			fail(err)
 		}
 	}
-	fmt.Fprintf(human, "Pushing %s to every machine; nothing to wait for here. crew voice dev status follows it.\n", version)
+	fmt.Fprintf(human, "Pushing %s to every machine; nothing to wait for here. crew server dev status follows it.\n", version)
 }
 
 // pushTargets: the main reads its machines itself; a remote asks the main.
@@ -292,7 +292,7 @@ type handoff struct{ version, source string }
 // remote's own push dir; a remote never names a path. Pure.
 func parseHandoffArgs(args []string) (handoff, error) {
 	if len(args) != 2 || !devVersionPattern.MatchString(args[0]) {
-		return handoff{}, fmt.Errorf("usage: crew voice dev _handoff <dev version> --source=<machine>")
+		return handoff{}, fmt.Errorf("usage: crew server dev _handoff <dev version> --source=<machine>")
 	}
 	match := sourcePattern.FindStringSubmatch(args[1])
 	if match == nil || match[1] == voice.MainID {
@@ -321,7 +321,7 @@ func voiceDevHandoff(args []string) {
 	fmt.Printf("Pushing %s from %s.\n", h.version, h.source)
 }
 
-// voiceDevRunner is the detached runner (crew voice _dev-push <version> <source> <main's crew path>).
+// voiceDevRunner is the detached runner (crew server _dev-push <version> <source> <main's crew path>).
 func voiceDevRunner(args []string) {
 	if len(args) != 3 {
 		os.Exit(2)

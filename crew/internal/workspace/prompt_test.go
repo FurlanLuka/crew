@@ -3,6 +3,8 @@ package workspace
 import (
 	"strings"
 	"testing"
+
+	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
 func mixedResolved() *Resolved {
@@ -45,6 +47,8 @@ func TestRenderPrompt_Golden(t *testing.T) {
 		"- `crew env store-front/wrk2 <project>` · `crew run store-front/wrk2 <project> -- <cmd>` — the resolved env; run tests, scripts and evals through `crew run` so they see the same URLs the servers got",
 		"- `crew fix store-front/wrk2 --print` — when something is recorded as failed: every issue with its evidence",
 		"- `crew help <command>` for the rest; the `crew` skill if your agent has it (`/crew:crew` in Claude Code)",
+		"",
+		"None of these projects has a dev server set up yet — set them up on crew's page (run `crew`) or with `crew dev add <project> --name=<server> --port=<port> --cmd=<command>`, then `crew dev start store-front/wrk2`.",
 		"",
 		"cd into the relevant project's directory before running commands or editing files there.",
 		"Wait for my instructions on what to build.",
@@ -125,5 +129,18 @@ func TestRenderPrompt_Check(t *testing.T) {
 	}
 	if strings.Contains(got, "workspace.") {
 		t.Error("a check is not called a workspace")
+	}
+}
+
+// The not-set-up sentence appears only while no project has a server.
+func TestRenderPrompt_NoDevServers(t *testing.T) {
+	const line = "None of these projects has a dev server set up yet"
+	res := mixedResolved()
+	if got := RenderPrompt(res, nil); !strings.Contains(got, line) {
+		t.Errorf("no servers, no sentence:\n%s", got)
+	}
+	res.Projects[0].DevServers = []project.DevServer{{Name: "api", Port: 3000, Command: "make dev"}}
+	if got := RenderPrompt(res, nil); strings.Contains(got, line) {
+		t.Errorf("a project with a server still gets the sentence:\n%s", got)
 	}
 }

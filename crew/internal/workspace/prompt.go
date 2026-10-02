@@ -92,6 +92,10 @@ func RenderPrompt(res *Resolved, branches map[string]string) string {
 	}
 
 	b.WriteString(renderCrewSection(res.Ref))
+	if !anyDevServers(res) {
+		// The dev lines above would only fail; say what comes first.
+		fmt.Fprintf(&b, "None of these projects has a dev server set up yet — set them up on crew's page (run `crew`) or with `crew dev add <project> --name=<server> --port=<port> --cmd=<command>`, then `crew dev start %s`.\n\n", res.Ref)
+	}
 
 	b.WriteString("cd into the relevant project's directory before running commands or editing files there.\n")
 	b.WriteString("Wait for my instructions on what to build.\n")
@@ -113,6 +117,15 @@ func renderCrewSection(ref Ref) string {
 	fmt.Fprintf(&b, "- `crew fix %s --print` — when something is recorded as failed: every issue with its evidence\n", ref)
 	b.WriteString("- `crew help <command>` for the rest; the `crew` skill if your agent has it (`/crew:crew` in Claude Code)\n\n")
 	return b.String()
+}
+
+func anyDevServers(res *Resolved) bool {
+	for _, p := range res.Projects {
+		if len(p.DevServers) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // GeneratePrompt renders the orientation prompt and writes it to disk.
