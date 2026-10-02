@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
 import type { SetupCommand } from '../../src/crew/commands.js';
 import { configureLog } from '../../src/log.js';
 import { createWorktree, type PageServer, startPageServer } from './page-server.js';
@@ -901,40 +901,79 @@ describe('moving to another machine', () => {
 });
 
 describe('first run', () => {
-	it('pick checkouts → a workspace → an install fails → Retry → Open Voice OS on its session', async () => {
+	// The first run is Home on a Mac with no worktree yet: the opening, then its steps under the
+	// wordmark.
+	const startFirstRun = async (path = '/', viewport?: { width: number; height: number }) => {
+		const opened = await open(path, viewport);
+		const flow = opened.page.locator('main[aria-label="First run"]');
+		await flow.getByRole('button', { name: 'Get started' }).click({ timeout: 5000 });
+
+		return { ...opened, flow };
+	};
+
+	const currentStep = (flow: Locator) => flow.locator('.fr-progress [aria-current="step"]');
+
+	// Past the projects step with every found checkout added, the workspace named.
+	const makeWorkspace = async (flow: Locator, name?: string) => {
+		await flow.locator('[data-checkout="checkout-api"]').waitFor({ timeout: 5000 });
+		await flow.getByRole('button', { name: 'Add 3 projects' }).click();
+		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
+
+		if (name) {
+			await flow.getByRole('textbox', { name: 'Name' }).fill(name);
+		}
+	};
+
+	const leaveSession = (ref: string) => {
+		server.latency.worktreesMs = 0;
+		server.store.dispatch({ type: 'deactivate', ref });
+		server.store.dispatch({
+			type: 'worktrees',
+			worktrees: [createWorktree('setup', true), createWorktree('store-front/main')],
+		});
+		server.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+	};
+
+	it('opening → pick checkouts → a workspace → an install fails → Retry → ready → Open Voice OS on its session', async () => {
 		server.crew.reset('empty');
 		server.crew.failInstall('infra-ops');
-		const { context, page } = await open('/setup');
-		const welcome = page.locator('section[aria-label="Set up This Mac"]');
-		await welcome.getByText('Pick your projects', { exact: true }).waitFor({ timeout: 5000 });
-		await welcome.locator('[data-checkout="checkout-api"]').waitFor({ timeout: 5000 });
+		const { context, page, flow } = await startFirstRun();
+		expect(await currentStep(flow).innerText()).toBe('Projects');
+		expect(await flow.getByText('Import from another machine').count()).toBe(0);
 
-		await welcome.getByRole('button', { name: 'Add 3 projects' }).click();
-		await welcome
-			.getByText('3 added: store-front, checkout-api, infra-ops')
-			.waitFor({ timeout: 5000 });
+		await makeWorkspace(flow);
 		expect(commandsOf('add_project').map((command) => 'name' in command && command.name)).toEqual([
 			'store-front',
 			'checkout-api',
 			'infra-ops',
 		]);
-
-		await welcome.getByRole('checkbox', { name: /infra-ops/ }).check();
-		expect(await welcome.locator('.runs pre').innerText()).toContain(
-			'crew add workspace store-front store-front infra-ops',
+		expect(await currentStep(flow).innerText()).toBe('Workspace');
+		expect(await flow.getByText('your session: store-front/main').count()).toBe(1);
+		expect(await flow.locator('.runs pre').innerText()).toContain(
+			'crew add workspace store-front store-front checkout-api infra-ops',
 		);
-		await welcome.getByRole('button', { name: 'Create workspace' }).click();
 
-		const fail = welcome.locator('.fail');
+		await flow.getByRole('button', { name: 'Create store-front' }).click();
+		await flow
+			.getByRole('heading', { name: 'Getting store-front/main ready' })
+			.waitFor({ timeout: 5000 });
+		expect(await currentStep(flow).innerText()).toBe('Getting it ready');
+		const fail = flow.locator('.fail');
 		await fail.getByText(/infra-ops: install failed/).waitFor({ timeout: 10_000 });
 		await fail.getByRole('button', { name: 'Retry' }).click();
 		await fail.waitFor({ state: 'detached', timeout: 10_000 });
-		await welcome.getByText('store-front/main is ready.').waitFor({ timeout: 10_000 });
+
+		await flow
+			.getByRole('heading', { name: 'store-front/main is ready' })
+			.waitFor({ timeout: 10_000 });
+		expect(await flow.getByText('3 projects checked out and installed.').count()).toBe(1);
 		expect(commandsOf('setup_rerun')).toEqual([
 			{ type: 'setup_rerun', ref: 'store-front/main', projects: ['infra-ops'] },
 		]);
+		const voice = flow.getByRole('button', { name: /Open Voice OS/ });
+		expect(await voice.evaluate((node) => node === document.activeElement)).toBe(true);
 
-		await welcome.getByRole('button', { name: 'Open Voice OS' }).click();
+		await page.keyboard.press('Enter');
 		await page.waitForURL('**/voice/session/store-front/main');
 		await waitUntil(() => server.store.state.active.includes('store-front/main'));
 		server.store.dispatch({ type: 'deactivate', ref: 'store-front/main' });
@@ -943,20 +982,18 @@ describe('first run', () => {
 
 	it('Open Voice OS on a worktree Voice OS has not listed yet → it is read at once, activated and shown', async () => {
 		server.crew.reset('empty');
-		const { context, page } = await open('/setup');
-		const welcome = page.locator('section[aria-label="Set up This Mac"]');
-		await welcome.locator('[data-checkout="checkout-api"]').waitFor({ timeout: 5000 });
-		await welcome.getByRole('button', { name: 'Add 3 projects' }).click();
-		await welcome.getByRole('textbox', { name: 'Workspace name' }).waitFor({ timeout: 5000 });
-		await welcome.getByRole('textbox', { name: 'Workspace name' }).fill('checkout-api');
-		await welcome.getByRole('button', { name: 'Create workspace' }).click();
-		await welcome.getByText('checkout-api/main is ready.').waitFor({ timeout: 10_000 });
+		const { context, page, flow } = await startFirstRun();
+		await makeWorkspace(flow, 'checkout-api');
+		await flow.getByRole('button', { name: 'Create checkout-api' }).click();
+		await flow
+			.getByRole('heading', { name: 'checkout-api/main is ready' })
+			.waitFor({ timeout: 10_000 });
 		expect(server.store.state.sessions['checkout-api/main']).toBeUndefined();
 		// As live: the page's switch to the session lands before crew's list has it, so only the
 		// held activation's open can show it.
 		server.latency.worktreesMs = 400;
 
-		await welcome.getByRole('button', { name: 'Open Voice OS' }).click();
+		await flow.getByRole('button', { name: /Open Voice OS/ }).click();
 		await page.waitForURL('**/voice/session/checkout-api/main');
 		await waitUntil(
 			() =>
@@ -968,28 +1005,206 @@ describe('first run', () => {
 			.locator('.vo-tab[data-ref="checkout-api/main"][aria-current="true"]')
 			.waitFor({ timeout: 5000 });
 
-		server.latency.worktreesMs = 0;
-		server.store.dispatch({ type: 'deactivate', ref: 'checkout-api/main' });
-		server.store.dispatch({
-			type: 'worktrees',
-			worktrees: [createWorktree('setup', true), createWorktree('store-front/main')],
-		});
-		server.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		leaveSession('checkout-api/main');
 		await context.close();
 	}, 40_000);
 
-	it('Home on a first run: Voice OS greyed with why, Set up marked "start here"', async () => {
+	it('a failure carried on → the last step says what failed; Fix with Claude → the chat with the prompt', async () => {
 		server.crew.reset('empty');
-		const { context, page } = await open('/');
-		const voice = page.locator('.launch-choice', { hasText: 'Voice OS' });
-		await voice.getByText('Add a project first').waitFor({ timeout: 5000 });
+		server.crew.failInstall('infra-ops');
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page, flow } = await startFirstRun();
+		await makeWorkspace(flow);
+		await flow.getByRole('button', { name: 'Create store-front' }).click();
+		await flow
+			.locator('.fail')
+			.getByText(/infra-ops: install failed/)
+			.waitFor({ timeout: 10_000 });
 
-		expect(await voice.isDisabled()).toBe(true);
-		expect(await voice.innerText()).toContain('no projects yet');
-		expect(await page.locator('.launch-choice.last').innerText()).toContain('start here');
-		expect(await page.getByText('Always open Voice OS').count()).toBe(0);
+		await flow.getByRole('button', { name: 'Continue' }).click();
+		await flow
+			.getByText('2 of 3 projects installed; infra-ops failed: Set up shows it.')
+			.waitFor({ timeout: 5000 });
+		await flow.getByRole('button', { name: /Go to Set up/ }).click();
+		await page.waitForURL((url) => url.pathname === '/setup');
+		// The worktree exists now: the board stays, it never sends the developer back.
+		await page.locator('.matrix').waitFor({ timeout: 5000 });
+		await Bun.sleep(300);
+		expect(new URL(page.url()).pathname).toBe('/setup');
+		await context.close();
+
+		// Reopened while it is still failed: the launcher, no first run.
+		const again = await open('/');
+		await again.page.locator('main[aria-label="Home"] .launch-choices').waitFor({ timeout: 5000 });
+		expect(await again.page.locator('main[aria-label="First run"]').count()).toBe(0);
+		await again.context.close();
+	}, 40_000);
+
+	it('Fix with Claude from the first run → Set up with Claude, the prompt in its composer', async () => {
+		server.crew.reset('empty');
+		server.crew.failInstall('infra-ops');
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page, flow } = await startFirstRun();
+		await makeWorkspace(flow);
+		await flow.getByRole('button', { name: 'Create store-front' }).click();
+		const fail = flow.locator('.fail');
+		await fail.getByText(/infra-ops: install failed/).waitFor({ timeout: 10_000 });
+
+		await fail.getByRole('button', { name: 'Fix with Claude' }).click();
+		await page.waitForURL('**/setup/chat');
+		// Set up asks it once it is up, through its own busy check: the composer fills a beat later.
+		await page.waitForFunction(
+			() =>
+				(
+					document.querySelector('[aria-label="Reply to setup"]') as HTMLInputElement | null
+				)?.value.startsWith('Fix infra-ops in store-front/main: '),
+			undefined,
+			{ timeout: 5000 },
+		);
+		await context.close();
+	}, 40_000);
+
+	it('Add by URL → crew add project with the URL, the project added in place', async () => {
+		server.crew.reset('empty');
+		const { context, flow } = await startFirstRun();
+		await flow.getByRole('button', { name: 'Add by URL' }).click();
+		await flow
+			.getByRole('textbox', { name: 'Git URL' })
+			.fill('https://github.com/acme/payments.git');
+		expect(await flow.locator('.fr-adder .runs pre').innerText()).toContain(
+			'crew add project payments https://github.com/acme/payments.git',
+		);
+		await flow.getByRole('button', { name: 'Add payments' }).click();
+		await flow.locator('[data-checkout="payments"]').waitFor({ timeout: 5000 });
+
+		expect(commandsOf('add_project')).toEqual([
+			{ type: 'add_project', name: 'payments', url: 'https://github.com/acme/payments.git' },
+		]);
+		expect(await flow.locator('[data-checkout="payments"]').innerText()).toContain('added');
 		await context.close();
 	}, 20_000);
+
+	it('projects already added → the opening goes to the workspace; Back, nothing new ticked → Continue', async () => {
+		server.crew.reset('empty');
+		const first = await startFirstRun();
+		await makeWorkspace(first.flow);
+		await first.context.close();
+
+		const { context, flow } = await startFirstRun();
+		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
+		await flow.getByRole('button', { name: 'Back' }).click();
+		await flow.locator('[data-checkout="infra-ops"]').waitFor({ timeout: 5000 });
+		await flow.getByRole('button', { name: 'Continue' }).click();
+		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
+		expect(commandsOf('add_project')).toHaveLength(3);
+		await context.close();
+	}, 30_000);
+
+	it('a workspace made earlier with no worktree → Create joins it and makes its main', async () => {
+		server.crew.reset('empty');
+		const { context, flow } = await startFirstRun();
+		await makeWorkspace(flow);
+		// As `crew add workspace store-front` from a terminal with no members would leave it.
+		server.crew.machines.local?.workspaces.push({
+			name: 'store-front',
+			projects: [{ name: 'store-front', mode: 'worktree' }],
+			worktrees: [],
+		});
+		// The step reads crew's workspaces as it opens: back and forward again reads them.
+		await flow.getByRole('button', { name: 'Back' }).click();
+		await flow.getByRole('button', { name: 'Continue' }).click();
+		await flow
+			.locator('.runs pre', { hasText: 'crew add worktree store-front/main' })
+			.waitFor({ timeout: 5000 });
+		expect(await flow.locator('.runs pre').innerText()).toContain(
+			'crew add workspace store-front checkout-api infra-ops',
+		);
+
+		await flow.getByRole('button', { name: 'Create store-front' }).click();
+		await flow
+			.getByRole('heading', { name: 'Getting store-front/main ready' })
+			.waitFor({ timeout: 5000 });
+		expect(commandsOf('add_workspace')).toEqual([
+			{ type: 'add_workspace', name: 'store-front', projects: ['checkout-api', 'infra-ops'] },
+		]);
+		expect(commandsOf('add_worktree')).toEqual([{ type: 'add_worktree', ref: 'store-front/main' }]);
+		await context.close();
+	}, 30_000);
+
+	it('reopened while its worktree installs → straight back to its progress, then ready', async () => {
+		server.crew.reset('empty');
+		const first = await startFirstRun();
+		await makeWorkspace(first.flow);
+		await first.flow.getByRole('button', { name: 'Create store-front' }).click();
+		await first.flow
+			.getByRole('heading', { name: 'Getting store-front/main ready' })
+			.waitFor({ timeout: 5000 });
+		await first.context.close();
+		// Held mid-install: its runners started in the future never finish until let go.
+		const run = server.crew.machines.local?.worktrees.find(
+			(worktree) => worktree.ref === 'store-front/main',
+		)?.run;
+		expect(run).toBeTruthy();
+
+		if (run) {
+			run.startedAt = Date.now() + 60_000;
+		}
+
+		const { context, page } = await open('/');
+		const flow = page.locator('main[aria-label="First run"]');
+		await flow
+			.getByRole('heading', { name: 'Getting store-front/main ready' })
+			.waitFor({ timeout: 5000 });
+		expect(await flow.getByRole('button', { name: 'Get started' }).count()).toBe(0);
+
+		if (run) {
+			run.startedAt = 0;
+		}
+
+		await flow
+			.getByRole('heading', { name: 'store-front/main is ready' })
+			.waitFor({ timeout: 10_000 });
+		await context.close();
+	}, 40_000);
+
+	it("Set up's board on a first run → the first run, at /", async () => {
+		server.crew.reset('empty');
+		const { context, page } = await open('/setup');
+		await page.waitForURL((url) => url.pathname === '/', { timeout: 5000 });
+		await page.getByRole('button', { name: 'Get started' }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('with motion: the opening dissolves onto the first run, Get started takes it on', async () => {
+		server.crew.reset('empty');
+		const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+		const page = await context.newPage();
+		page.on('pageerror', (error) => pageErrors.push(error.message));
+		await page.goto(server.loginUrl());
+		await page.goto(server.url('/'));
+		await page.locator('.intro').waitFor({ state: 'detached', timeout: 6000 });
+		await page.getByRole('button', { name: 'Get started' }).click();
+		await page.getByRole('heading', { name: 'Pick your projects' }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('at phone width every step fits: nothing scrolls sideways', async () => {
+		server.crew.reset('empty');
+		const { context, page, flow } = await startFirstRun('/', { width: 390, height: 844 });
+		const width = () => page.evaluate(() => document.querySelector('.first-run')?.scrollWidth ?? 0);
+		await flow.locator('[data-checkout="checkout-api"]').waitFor({ timeout: 5000 });
+		expect(await width()).toBe(390);
+
+		await makeWorkspace(flow);
+		expect(await width()).toBe(390);
+		await flow.getByRole('button', { name: 'Create store-front' }).click();
+		await flow
+			.getByRole('heading', { name: 'store-front/main is ready' })
+			.waitFor({ timeout: 10_000 });
+		expect(await width()).toBe(390);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+		await context.close();
+	}, 40_000);
 });
 
 interface RemovalCase {
@@ -1407,10 +1622,10 @@ describe('"Always open Voice OS"', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a first run → Home stays: Voice OS is greyed until there is a worktree', async () => {
+	it('a first run → Home stays, and Home is the first run', async () => {
 		server.crew.reset('empty');
 		const { context, page } = await open('/', undefined, ALWAYS);
-		await page.getByText('Add a project first').waitFor({ timeout: 5000 });
+		await page.getByRole('button', { name: 'Get started' }).waitFor({ timeout: 5000 });
 		await Bun.sleep(300);
 		expect(new URL(page.url()).pathname).toBe('/');
 		await context.close();

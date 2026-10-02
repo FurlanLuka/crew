@@ -1,4 +1,4 @@
-// Set up's view logic, pure: the board's rows and problems, the first-run stage and a failure's
+// Set up's view logic, pure: the board's rows and problems, whether this is a first run and a failure's
 // stages. The breadcrumbs are in crumbs.ts, the chat's "✓ recorded" lines in
 // recorded.ts.
 import { countOf } from '../count.js';
@@ -19,22 +19,30 @@ export const isCheckRef = (ref: string): boolean => ref.startsWith(CHECK_PREFIX)
 
 export const checkProjectOf = (ref: string): string => ref.slice(CHECK_PREFIX.length);
 
-export type FirstRunStage = 'empty' | 'has-projects' | 'ready';
+export type FirstRunDecision =
+	| { isFirstRun: false }
+	| { isFirstRun: true; installing: string | null };
 
-// Nothing persisted: the stage is what crew has. Voice OS needs a worktree to talk to.
-export const deriveFirstRun = (
+// Nothing persisted: a first run is a Mac with no worktree yet (a kept check is not one), or with
+// its one worktree still being made — a reload while it installs comes back to its progress. null
+// while crew's reads are on their way.
+export const decideFirstRun = (
 	projects: CrewProject[] | null,
 	worktrees: CrewWorktree[] | null,
-): FirstRunStage => {
+): FirstRunDecision | null => {
 	if (projects === null || worktrees === null) {
-		return 'ready';
+		return null;
 	}
 
-	if (projects.length === 0) {
-		return 'empty';
+	const own = worktrees.filter((worktree) => !isCheckRef(worktree.ref));
+
+	if (own.length === 0) {
+		return { isFirstRun: true, installing: null };
 	}
 
-	return worktrees.some((worktree) => !isCheckRef(worktree.ref)) ? 'ready' : 'has-projects';
+	return own.length === 1 && own[0]?.installing
+		? { isFirstRun: true, installing: own[0].ref }
+		: { isFirstRun: false };
 };
 
 // A project's state is facts only: its kept check failed, or not. A project with no dev servers (a

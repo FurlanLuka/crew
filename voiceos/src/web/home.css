@@ -1,7 +1,8 @@
 /* crew's own moments: the opening, Home and the Voice OS moment. System type, a soft fade, frosted
    cards; restraint over spectacle. The only glass on content is Home's two cards. */
 .intro,
-.launcher {
+.launcher,
+.first-run {
 	background:
 		radial-gradient(900px 520px at 50% 115%, rgba(255, 255, 255, 0.06), transparent 65%),
 		radial-gradient(700px 420px at 50% -20%, rgba(255, 255, 255, 0.05), transparent 60%), #000;
@@ -190,5 +191,300 @@
 	}
 	.wordmark {
 		font-size: 44px;
+	}
+}
+
+/* The first run: one full-screen moment. The wordmark opens it centred, then rises to the top and
+   stays there as the steps come and go under it. */
+.first-run {
+	position: fixed;
+	inset: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	--fr-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fr-mark {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	z-index: 1;
+	display: grid;
+	justify-items: center;
+	gap: 14px;
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+	transition:
+		top 0.9s var(--fr-ease),
+		transform 0.9s var(--fr-ease),
+		gap 0.9s var(--fr-ease);
+}
+.fr-mark .wordmark {
+	transition: font-size 0.9s var(--fr-ease);
+}
+.fr-mark .tagline {
+	max-height: 30px;
+	white-space: nowrap;
+	transition:
+		opacity 0.4s ease,
+		max-height 0.6s var(--fr-ease);
+}
+.first-run:not([data-stage="intro"]) .fr-mark {
+	top: 40px;
+	gap: 0;
+	transform: translate(-50%, 0);
+}
+.first-run:not([data-stage="intro"]) .fr-mark .wordmark {
+	font-size: 30px;
+	letter-spacing: -0.02em;
+}
+.first-run:not([data-stage="intro"]) .fr-mark .tagline {
+	max-height: 0;
+	opacity: 0;
+}
+/* Centred by its own row, not a transform: the entrance animation owns transform. */
+.fr-go {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(50% + 86px);
+	display: flex;
+	justify-content: center;
+}
+.fr-go .btn {
+	min-height: 36px;
+	padding: 6px 20px;
+}
+
+/* The three steps, in order: the current one bright, the done ones dimmer. */
+.fr-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 86px;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	padding: 0 16px;
+	list-style: none;
+	font: 12px var(--sys);
+	color: var(--label-3);
+	white-space: nowrap;
+}
+.fr-progress li {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.fr-progress li + li::before {
+	content: "";
+	width: 18px;
+	height: 1px;
+	background: var(--sep);
+}
+.fr-progress [data-state="now"] {
+	color: var(--label);
+}
+.fr-progress [data-state="done"] {
+	color: var(--label-2);
+}
+
+.fr-stage {
+	display: flex;
+	justify-content: center;
+	padding: 140px 16px 48px;
+}
+.fr-col {
+	display: grid;
+	gap: 18px;
+	width: 100%;
+	max-width: 560px;
+	min-width: 0;
+}
+.fr-col h1 {
+	margin: 0;
+	font: 650 26px / 1.15 var(--sys);
+	letter-spacing: -0.02em;
+	text-wrap: balance;
+}
+.fr-lead {
+	margin: -8px 0 0;
+	color: var(--label-2);
+	font-size: 15px;
+	line-height: 1.45;
+}
+.fr-lead b {
+	color: var(--label);
+	font-weight: 600;
+}
+.fr-group {
+	display: grid;
+	overflow: hidden;
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+.fr-pad {
+	padding: 14px 16px;
+}
+.fr-row {
+	display: grid;
+	grid-template-columns: 22px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 11px 16px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+}
+.fr-row + .fr-row {
+	box-shadow:
+		inset 50px 1px 0 var(--elev-1),
+		inset 0 1px 0 var(--sep);
+}
+button.fr-row {
+	cursor: pointer;
+	transition: background 0.15s;
+}
+button.fr-row:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.025);
+}
+button.fr-row:disabled {
+	cursor: default;
+}
+.fr-row .dot {
+	justify-self: center;
+}
+.fr-row-text {
+	display: grid;
+	min-width: 0;
+}
+.fr-row-text b {
+	font-weight: 550;
+	color: var(--label);
+}
+.fr-row-text .m {
+	overflow: hidden;
+	font: 12px var(--mono);
+	color: var(--label-3);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.fr-row-text [data-step="ok"] {
+	color: var(--label);
+}
+.fr-row-text [data-step="wait"] {
+	color: var(--amber);
+}
+.fr-row-text [data-step="ask"] {
+	color: var(--crit);
+}
+.fr-side {
+	font: 12px var(--mono);
+	color: var(--label-3);
+	white-space: nowrap;
+}
+.fr-check {
+	display: grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	border-radius: 6px;
+	background: var(--elev-3);
+	color: #000;
+	transition: background 0.15s;
+}
+.fr-check svg {
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.fr-row[aria-pressed="true"] .fr-check {
+	background: #fff;
+}
+.fr-row[aria-pressed="true"] .fr-check svg {
+	opacity: 1;
+}
+.fr-row[aria-pressed="true"]:disabled .fr-check {
+	background: var(--label-3);
+}
+.fr-adder {
+	display: grid;
+	gap: 12px;
+	padding: 14px 16px;
+	border-radius: 14px;
+	background: var(--elev-1);
+}
+.fr-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+.fr-actions .m {
+	font: 12px var(--sys);
+	color: var(--label-3);
+}
+.fr-bar {
+	height: 2px;
+	overflow: hidden;
+	border-radius: 2px;
+	background: var(--sep);
+}
+.fr-bar div {
+	height: 100%;
+	background: rgba(255, 255, 255, 0.7);
+	transition: width 0.5s var(--fr-ease);
+}
+.fr-ready {
+	max-width: 680px;
+	justify-items: center;
+	text-align: center;
+}
+.fr-ready h1 {
+	font-size: 30px;
+}
+.fr-ready .launch-choices {
+	margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.first-run[data-stage="intro"] .fr-mark .wordmark {
+		animation: soft-in 1s var(--fr-ease) 0.2s both;
+	}
+	.first-run[data-stage="intro"] .fr-mark .tagline {
+		animation: soft-in 0.9s var(--fr-ease) 0.75s both;
+	}
+	.fr-go {
+		animation: soft-in 0.9s var(--fr-ease) 1.4s both;
+	}
+	/* Each step arrives once the wordmark has moved out of its way. */
+	.fr-stage {
+		animation: soft-in 0.8s var(--fr-ease) 0.35s both;
+	}
+	.fr-progress {
+		animation: soft-in 0.6s var(--fr-ease) 0.3s both;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.fr-mark,
+	.fr-mark .wordmark,
+	.fr-mark .tagline,
+	.fr-bar div {
+		transition: none;
+	}
+}
+@media (max-width: 560px) {
+	.fr-row .fr-side {
+		display: none;
+	}
+	.fr-stage {
+		padding-top: 128px;
+	}
+	.fr-ready .launch-choices {
+		grid-template-columns: 1fr;
 	}
 }

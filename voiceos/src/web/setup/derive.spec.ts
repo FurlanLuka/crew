@@ -8,7 +8,7 @@ import {
 	describeSetupMeta,
 	hasDevServers,
 	listWorkspacesOf,
-	deriveFirstRun,
+	decideFirstRun,
 	deriveProjectState,
 	describeIssue,
 	describeStages,
@@ -25,18 +25,34 @@ const golden = <T>(name: string): T =>
 const PROJECTS = golden<CrewProject[]>('ls-projects.json');
 const WORKTREES = golden<CrewWorktree[]>('ls-worktrees-setup.json');
 
-describe('deriveFirstRun', () => {
-	it('no projects → empty', () => expect(deriveFirstRun([], [])).toBe('empty'));
-	it('projects, no worktree (a kept check is not one) → has-projects', () =>
+describe('decideFirstRun', () => {
+	const ONLY_CHECKS = WORKTREES.filter((row) => row.ref.startsWith('check/'));
+	const ONE = WORKTREES.filter((row) => !row.ref.startsWith('check/')).slice(0, 1);
+
+	it('no projects → a first run from the start', () =>
+		expect(decideFirstRun([], [])).toEqual({ isFirstRun: true, installing: null }));
+	it('projects, no worktree (a kept check is not one) → a first run', () =>
+		expect(decideFirstRun(PROJECTS, ONLY_CHECKS)).toEqual({ isFirstRun: true, installing: null }));
+	it('its one worktree still installing → a first run, back on that progress', () => {
+		const installing = ONE.map((row) => ({ ...row, installing: true }));
+
+		expect(decideFirstRun(PROJECTS, [...installing, ...ONLY_CHECKS])).toEqual({
+			isFirstRun: true,
+			installing: installing[0]?.ref ?? '',
+		});
+	});
+	it('its one worktree made → not a first run', () =>
 		expect(
-			deriveFirstRun(
+			decideFirstRun(
 				PROJECTS,
-				WORKTREES.filter((row) => row.ref.startsWith('check/')),
+				ONE.map((row) => ({ ...row, installing: false })),
 			),
-		).toBe('has-projects'));
-	it('a worktree → ready', () => expect(deriveFirstRun(PROJECTS, WORKTREES)).toBe('ready'));
-	it('not read yet → ready (nothing greyed while crew answers)', () =>
-		expect(deriveFirstRun(null, null)).toBe('ready'));
+		).toEqual({
+			isFirstRun: false,
+		}));
+	it('worktrees → not a first run', () =>
+		expect(decideFirstRun(PROJECTS, WORKTREES)).toEqual({ isFirstRun: false }));
+	it('not read yet → undecided', () => expect(decideFirstRun(null, null)).toBeNull());
 });
 
 describe('the board from crew goldens', () => {

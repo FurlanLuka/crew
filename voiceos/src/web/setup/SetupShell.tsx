@@ -25,7 +25,6 @@ import { WorkspaceForm } from './WorkspaceForm.js';
 import { WorkspacePage } from './WorkspacePage.js';
 import { WorktreeNameForm } from './WorktreeForms.js';
 import { WorktreePage } from './WorktreePage.js';
-import { Welcome } from './Welcome.js';
 import { countOf } from '../count.js';
 
 interface SetupShellProps {
@@ -34,6 +33,9 @@ interface SetupShellProps {
 	navigate: Navigate;
 	send: (message: ClientMessage) => void;
 	openVoice: (sessionRef: string) => void;
+	// A "Fix with Claude" from outside Set up (the first run): asked here once, then let go.
+	pendingAsk: string | null;
+	onAskTaken: () => void;
 }
 
 // The machine's one setup session: "setup" here, "<id>:setup" on another machine.
@@ -100,7 +102,15 @@ interface BusyAsk {
 	prompt: string;
 }
 
-export const SetupShell = ({ state, route, navigate, send, openVoice }: SetupShellProps) => {
+export const SetupShell = ({
+	state,
+	route,
+	navigate,
+	send,
+	openVoice,
+	pendingAsk,
+	onAskTaken,
+}: SetupShellProps) => {
 	const { machine, page } = route;
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [busyAsk, setBusyAsk] = useState<BusyAsk | null>(null);
@@ -130,6 +140,15 @@ export const SetupShell = ({ state, route, navigate, send, openVoice }: SetupShe
 	);
 
 	const ctx: SetupContext = { state, machine, machineTitle, go, askClaude, send, openVoice };
+
+	useEffect(() => {
+		if (pendingAsk) {
+			askClaude(pendingAsk);
+			onAskTaken();
+		}
+	}, [pendingAsk]);
+
+	const goFirstRun = useCallback(() => navigate({ half: 'home' }, { replace: true }), [navigate]);
 
 	useEffect(() => {
 		const handleKey = (event: KeyboardEvent) => {
@@ -311,6 +330,7 @@ export const SetupShell = ({ state, route, navigate, send, openVoice }: SetupShe
 					page={page}
 					chatDraft={chatDraft}
 					onChatDraftUsed={() => setChatDraft('')}
+					onFirstRun={goFirstRun}
 				/>
 			</main>
 			{busyAsk && (
@@ -363,14 +383,19 @@ interface SetupPageViewProps {
 	page: SetupPage;
 	chatDraft: string;
 	onChatDraftUsed: () => void;
+	onFirstRun: () => void;
 }
 
-const SetupPageView = ({ ctx, page, chatDraft, onChatDraftUsed }: SetupPageViewProps) => {
+const SetupPageView = ({
+	ctx,
+	page,
+	chatDraft,
+	onChatDraftUsed,
+	onFirstRun,
+}: SetupPageViewProps) => {
 	switch (page.page) {
 		case 'board':
-			return <Board ctx={ctx} tab={page.tab} />;
-		case 'welcome':
-			return <Welcome ctx={ctx} />;
+			return <Board ctx={ctx} tab={page.tab} onFirstRun={onFirstRun} />;
 		case 'chat':
 			return <SetupChat ctx={ctx} draft={chatDraft} onDraftUsed={onChatDraftUsed} />;
 		case 'project':

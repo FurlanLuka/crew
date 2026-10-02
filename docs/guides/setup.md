@@ -37,7 +37,7 @@ terminal, over SSH or with `--no-open`, it prints the link instead. The page ope
 
 Pick **Set up**. Each card says what is waiting there ("2 things need you" is the board's problems
 strip). Enter opens the highlighted one. Ticking **Always open Voice OS** skips Home when you open
-the page fresh, once there is a worktree to talk to (on a first run Home stays, pointing at Set up);
+the page fresh, once there is a worktree to talk to (on a first run Home is the [first run](#first-run));
 the crew mark at the top left always brings you back to it, and Voice OS's settings turn it off.
 
 Set up shows one machine at a time. The bar along the top has the crew mark, the **machine
@@ -270,22 +270,28 @@ shows the same plan.
 
 ## First run
 
-On a fresh crew, Home greys Voice OS out and Set up opens on **Set up This Mac**:
+On a fresh crew, Home is the first run: the crew wordmark, **Get started**, then three steps
+under it, each on its own screen.
 
-![Set up This Mac: step 1, the git checkouts crew found in the code folders, each ticked, with the three crew add project commands it runs](../images/setup/first-run.png)
+![The first run's projects step: the git checkouts crew found in the code folders, each ticked, with the three crew add project commands it runs](../images/setup/first-run.png)
 
 1. **Pick your projects.** crew lists the git checkouts in your usual code folders (`~/code`,
    `~/projects`, `~/dev`, `~/src`, `~/Developer`, `~/work`, `~/repos`). Tick the ones you work on:
-   crew records where they are and changes nothing in them. **Add by URL or path** for anything
-   else, **Import from another machine** for an export.
-2. **Make a workspace.** Name it and tick its projects. Its `main` worktree is checked out, its
-   `.env` copied and each project installed, with the progress shown as it goes; an install that
-   fails says so with **Fix with Claude**.
+   crew records where they are and changes nothing in them. **Add by URL** or **Add a folder** for
+   anything else.
+2. **Make a workspace.** Name it and tick its projects; the page shows the session it makes
+   (`<name>/main`).
+3. **Getting it ready.** Its `main` worktree is checked out, its `.env` copied and each project
+   installed, one row per project. It moves on by itself; an install that fails stays on screen
+   with its last lines, **Fix with Claude**, **Retry** and **Continue**.
 
-Then **Open Voice OS** opens that worktree's session. A project's dev servers, when it has any,
-go on its **Edit setup** form, or Setup with Claude works them out. Nothing about these steps is
-stored: crew's own state says which one you are on, so a terminal `crew add project` moves the page
-along too.
+![The first run's last screen: store-front/main is ready, with Open Voice OS and Go to Set up](../images/setup/first-run-ready.png)
+
+Then **Open Voice OS** opens that worktree's session, or **Go to Set up** opens the board; from then
+on Home is the launcher. A project's dev servers, when it has any, go on its **Edit setup** form,
+or Setup with Claude works them out. Nothing about these steps is stored: crew's own state says
+where the first run starts, so projects added with a terminal `crew add project` are already
+there, and reopening the page while the worktree installs comes back to its progress.
 
 ## On a phone
 

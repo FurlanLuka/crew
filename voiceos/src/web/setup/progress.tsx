@@ -15,7 +15,7 @@ export interface ProgressLine {
 	took: string;
 }
 
-const readStepState = (step: CrewStep): LineState => {
+export const readStepState = (step: CrewStep): LineState => {
 	switch (step.status) {
 		case 'ok':
 		case 'passed':

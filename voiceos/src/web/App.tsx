@@ -55,6 +55,8 @@ const App = () => {
 		keptDictation,
 	} = useConnection((message) => player.receive(message));
 	const [isMoment, setIsMoment] = useState(false);
+	// "Fix with Claude" from the first run: Set up's chat takes it, through its own busy check.
+	const [pendingAsk, setPendingAsk] = useState<string | null>(null);
 	const blockedOpen = useOpenRequest(openRequest);
 	const viewNow = state ? viewKey(state.view) : null;
 	const lastPushed = useRef<string | null>(null);
@@ -164,6 +166,27 @@ const App = () => {
 		navigate({ half: 'voice', view: { kind: 'session', ref } });
 	};
 
+	// From the first run, which is Home: the same as choosing a half on the launcher.
+	const openVoiceFromHome = (ref: string) => {
+		writeLastHalf('voice');
+
+		if (!isReducedMotion()) {
+			setIsMoment(true);
+		}
+
+		openVoice(ref);
+	};
+
+	const goSetup = () => {
+		writeLastHalf('setup');
+		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: BOARD });
+	};
+
+	const askSetupClaude = (prompt: string) => {
+		setPendingAsk(prompt);
+		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'chat' } });
+	};
+
 	if (status === 'unauthorized') {
 		return (
 			<Card title="Open crew from a terminal">
@@ -185,7 +208,16 @@ const App = () => {
 
 	return (
 		<>
-			{route.half === 'home' && <Home state={state} onPick={pick} onStage={openVoiceIfAlways} />}
+			{route.half === 'home' && (
+				<Home
+					state={state}
+					onPick={pick}
+					onStage={openVoiceIfAlways}
+					openVoice={openVoiceFromHome}
+					askClaude={askSetupClaude}
+					goSetup={goSetup}
+				/>
+			)}
 			{route.half === 'voice' && (
 				<VoiceOS
 					state={state}
@@ -210,6 +242,8 @@ const App = () => {
 					navigate={navigate}
 					send={send}
 					openVoice={openVoice}
+					pendingAsk={pendingAsk}
+					onAskTaken={() => setPendingAsk(null)}
 				/>
 			)}
 			{route.half !== 'voice' && <ConnectionBanner status={status} />}

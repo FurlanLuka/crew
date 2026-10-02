@@ -4,7 +4,7 @@ import { shouldOpenVoice } from './prefs.js';
 describe('shouldOpenVoice', () => {
 	it.each([
 		[true, true, false, true],
-		// A first run: Voice OS is greyed, Home stays.
+		// A first run: Home stays, and Home is the first run.
 		[true, true, true, false],
 		// crew's reads not back yet: nothing decided.
 		[true, true, null, false],

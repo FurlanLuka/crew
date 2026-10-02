@@ -1,5 +1,6 @@
 // What the Set up pages read out of crew's --json, pure: the import plan, the bases a new worktree
-// branches from, and what a removal costs. Pinned against crew's goldens in readers.spec.ts.
+// branches from, what a removal costs, and the checkouts a first run can pick from. Pinned against
+// crew's goldens in readers.spec.ts.
 import type { CrewDryRun } from './types.js';
 import { countOf } from '../count.js';
 
@@ -120,3 +121,31 @@ export const describeCost = (json: unknown): CostRow[] => {
 						.join(' · '),
 	}));
 };
+
+export interface FoundCheckout {
+	name: string;
+	path: string;
+	remote: string;
+	known: boolean;
+}
+
+// crew add project --scan --json.
+export const readCheckouts = (json: unknown): FoundCheckout[] =>
+	(Array.isArray(json) ? json : []).flatMap((raw): FoundCheckout[] => {
+		if (!raw || typeof raw !== 'object') {
+			return [];
+		}
+
+		const row = raw as Record<string, unknown>;
+
+		return typeof row.name === 'string' && typeof row.path === 'string'
+			? [
+					{
+						name: row.name,
+						path: row.path,
+						remote: String(row.remote ?? ''),
+						known: row.known === true,
+					},
+				]
+			: [];
+	});

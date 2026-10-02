@@ -11,9 +11,15 @@ import type { CrewRunner } from '../../src/crew/adapter.js';
 import { type SetupCommand, type SetupCommandType, traitsOf } from '../../src/crew/commands.js';
 import { configureLog } from '../../src/log.js';
 import { LOCAL_MACHINE } from '../../src/shared/machine-ref.js';
-import { deriveFirstRun, deriveProjectState, listProblems } from '../../src/web/setup/derive.js';
+import { decideFirstRun, deriveProjectState, listProblems } from '../../src/web/setup/derive.js';
 import { readPreview } from '../../src/web/setup/environment.js';
-import { describeCost, readBases, readLogText, readPlan } from '../../src/web/setup/readers.js';
+import {
+	describeCost,
+	readBases,
+	readCheckouts,
+	readLogText,
+	readPlan,
+} from '../../src/web/setup/readers.js';
 import { isRunning, listProgressLines } from '../../src/web/setup/progress.js';
 import type {
 	CrewCheckStatus,
@@ -26,7 +32,6 @@ import type {
 	CrewWorkspace,
 	CrewWorktree,
 } from '../../src/web/setup/types.js';
-import { readCheckouts } from '../../src/web/setup/Welcome.js';
 import { listServerLines } from '../../src/web/setup/worktree.js';
 import { LIVE_JSON_TYPES } from '../support/json-evidence.js';
 
@@ -342,7 +347,7 @@ describe.skipIf(!isLive)('every Set up read against a real crew', () => {
 			size_bytes: 'number',
 		});
 		expect(worktrees.map((worktree) => worktree.ref)).toContain(REF);
-		expect(deriveFirstRun(projects, worktrees)).toBe('ready');
+		expect(decideFirstRun(projects, worktrees)).toEqual({ isFirstRun: false });
 		expect(projects.map((project) => deriveProjectState(project, worktrees))).toEqual([
 			'ready',
 			'ready',

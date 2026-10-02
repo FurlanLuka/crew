@@ -37,8 +37,8 @@ export interface ShouldOpenVoiceParams {
 	isFirstRun: boolean | null;
 }
 
-// "Always open Voice OS" applies to a fresh load of / only, and never on a first run: Voice OS is
-// greyed there (no worktree yet), so Home stays, pointing at Set up.
+// "Always open Voice OS" applies to a fresh load of / only, and never on a first run: there is no
+// session to open yet, so Home stays, and Home is the first run.
 export const shouldOpenVoice = ({
 	isFreshHome,
 	isAlwaysVoice,

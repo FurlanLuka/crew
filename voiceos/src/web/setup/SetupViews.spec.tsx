@@ -1,15 +1,14 @@
 // Set up's pieces, drawn from crew's answers: the problems strip, the Setup with Claude card, and
-// the first run at each stage.
+// the first run where it starts.
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
+import { FirstRun } from '../home/FirstRun.js';
 import { ClaudeCard, ProblemsStrip } from './Board.js';
 import type { SetupContext } from './common.js';
 import { listProblems } from './derive.js';
-import type { CrewProject } from './types.js';
-import { WelcomeSteps } from './Welcome.js';
 
 const noop = () => undefined;
 
@@ -37,8 +36,6 @@ const withSetup = (patch: Partial<State> = {}): State => ({
 	},
 	...patch,
 });
-
-const PROJECT: CrewProject = { name: 'store-front', path: '/code/store-front', remote: '' };
 
 describe('ProblemsStrip', () => {
 	it('a failure has Fix and Fix with Claude; nothing else is a problem', () => {
@@ -87,36 +84,26 @@ describe('ClaudeCard', () => {
 	});
 });
 
-describe('Welcome', () => {
-	const render = (pool: CrewProject[], created: string | null = null) =>
+describe('FirstRun', () => {
+	const render = (resume: string | null) =>
 		renderToStaticMarkup(
-			<WelcomeSteps
-				ctx={createCtx()}
-				pool={pool}
-				created={created}
-				onAdded={noop}
-				onCreated={noop}
-				onBoard={noop}
-			/>,
+			<FirstRun resume={resume} openVoice={noop} askClaude={noop} goSetup={noop} />,
 		);
 
-	it('nothing yet → step 1, pick projects, is open; step 2 waits', () => {
-		const html = render([]);
+	it('a fresh first run → the opening: the wordmark and Get started, no steps yet', () => {
+		const html = render(null);
 
-		expect(html).toMatch(/fr-step now"[^>]*>[\s\S]*?Pick your projects/);
-		expect(html).toContain('fr-step later');
-		expect(html).toContain('Add by URL or path');
+		expect(html).toContain('data-stage="intro"');
+		expect(html).toContain('your sessions, every machine');
+		expect(html).toContain('Get started');
+		expect(html).not.toContain('fr-progress');
 	});
 
-	it('projects added → step 1 done with what was added; make a workspace, the first project picked', () => {
-		const html = render([PROJECT, { ...PROJECT, name: 'checkout-api' }]);
+	it('opened while its worktree installs → straight to its progress, the third step current', () => {
+		const html = render('store-front/main');
 
-		expect(html).toContain('2 added: store-front, checkout-api');
-		expect(html).toContain('Workspace name');
-		expect(html).toContain('value="store-front"');
-		expect(html).toContain('crew add workspace store-front store-front');
+		expect(html).toContain('Getting store-front/main ready');
+		expect(html).toMatch(/<li[^>]*aria-current="step"[^>]*>\s*Getting it ready</);
+		expect(html).not.toContain('Get started');
 	});
-
-	it('a workspace made → its progress, read from crew', () =>
-		expect(render([PROJECT], 'store-front')).toContain('Waiting for crew&#x27;s runners…'));
 });
