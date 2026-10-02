@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { Input, State } from '../shared/protocol.js';
 import { run, worktree } from '../../test/support/reduce.js';
-import { MAX_NAME_LENGTH, toSessionName } from './names.js';
+import { findNamedRef, isNameTaken, MAX_NAME_LENGTH, toSessionName } from './names.js';
 
 const VM1 = { id: 'vm1', host: 'dev@vm1.example.com', name: 'Personal' };
 const REMOTE = 'vm1:crew/main';
@@ -178,5 +178,28 @@ describe('names of a machine that goes away', () => {
 		]);
 
 		expect(state.names).toEqual({});
+	});
+});
+
+describe("a plain session's name counts as taken", () => {
+	it('made as research → research is taken for any other session, not for itself', () => {
+		const base = connected();
+		const state: State = {
+			...base,
+			sessions: {
+				...base.sessions,
+				'chat/3fa9c1': {
+					...base.sessions[LOCAL]!,
+					ref: 'chat/3fa9c1',
+					label: 'research',
+					isChat: true,
+					chatName: 'research',
+				},
+			},
+		};
+
+		expect(findNamedRef(state, 'Research')).toBe('chat/3fa9c1');
+		expect(isNameTaken(state, LOCAL, 'research')).toBe(true);
+		expect(isNameTaken(state, 'chat/3fa9c1', 'research')).toBe(false);
 	});
 });

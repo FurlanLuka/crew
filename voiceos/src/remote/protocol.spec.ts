@@ -95,6 +95,26 @@ describe('parseRemoteLine', () => {
 
 		expect(parseRemoteLine(encodeLine(hello).trim())).toEqual({ ok: true, message: hello });
 	});
+
+	it("a remote's plain session keeps isChat through the snapshot: without it the main would treat it as a worktree", () => {
+		const chat = {
+			ref: 'chat/3fa9c1',
+			label: 'research',
+			branch: '',
+			cwd: '/home/dev',
+			dirs: [],
+			isPinned: false,
+			isChat: true as const,
+		};
+		const hello = {
+			type: 'hello' as const,
+			version: '1.0.0',
+			host: 'vm1',
+			snapshot: { worktrees: [chat], sessions: [], asks: [], asides: [] },
+		};
+
+		expect(parseRemoteLine(encodeLine(hello).trim())).toEqual({ ok: true, message: hello });
+	});
 });
 
 describe('parseMainLine', () => {

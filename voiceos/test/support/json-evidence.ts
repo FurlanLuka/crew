@@ -86,6 +86,9 @@ export const JSON_EVIDENCE: Record<SetupCommandType, JsonEvidence> = {
 	// Checks the key with its provider: never run live.
 	keys_set: { golden: 'server-keys-set.json' },
 	discord_off: 'live',
+	ls_chats: { golden: 'ls-chats.json' },
+	chat_add: { golden: 'chat-add.json' },
+	chat_rm: { golden: 'chat-add.json' },
 	discord_text_channel: { golden: 'server-discord-setup.json' },
 };
 

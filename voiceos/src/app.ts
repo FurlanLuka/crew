@@ -126,6 +126,8 @@ const createKernel = (apiKey: string, keyedJudge: Judge): Kernel =>
 			getState: () => store.state,
 			dispatch: (action) => store.dispatch(action),
 			readHistory: (query) => readHistory(paths.journalDir, query),
+			// Defined below, with the machines' links; a turn only runs once they exist.
+			runCrewOn: (machine, command) => runSetupCommand(machine, command),
 			// Built with the kernel, so a new Anthropic key reaches it too.
 			writeRecap: createRecapWriter({ apiKey }),
 			mute: () => voiceOut.mute(),
@@ -350,17 +352,20 @@ const pollTimer = setInterval(async () => {
 const proxyPort = Number(process.env.VOICEOS_PROXY_PORT) || null;
 const proxyHttpsPort = Number(process.env.VOICEOS_PROXY_HTTPS_PORT) || null;
 
+// Set up's door to crew on any machine; plain sessions are made and removed through it by voice too.
+const runSetupCommand = createSetupRunner({
+	runLocal: spawnRunner,
+	startLocal: startDetached,
+	getLink: machines.getLink,
+});
+
 gateway = startGateway({
 	store,
 	token,
 	port: Number(process.env.PORT) || 0,
 	index,
 	readMedia: (name) => readMediaFile({ name, dir: mediaDir }),
-	runCrew: createSetupRunner({
-		runLocal: spawnRunner,
-		startLocal: startDetached,
-		getLink: machines.getLink,
-	}),
+	runCrew: runSetupCommand,
 	listAllowedOrigins: (port) =>
 		listAllowedOrigins({
 			port,

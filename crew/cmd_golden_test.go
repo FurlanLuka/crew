@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FurlanLuka/crew/crew/internal/chat"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/housekeeping"
@@ -52,6 +53,11 @@ func goldenHealth() *workspace.Health {
 func TestGoldenLsProjects(t *testing.T) {
 	remotes := map[string]string{"store-front": "git@github.com:example/store-front.git", "store-api": "git@github.com:example/store-api.git"}
 	checkGolden(t, "ls-projects.json", projectRows(goldenPool(), func(p project.Project) string { return remotes[p.Name] }))
+	checkGolden(t, "ls-chats.json", []chat.Chat{
+		{ID: "3fa9c1", Dir: "/Users/dev", Name: "research", Created: "2026-10-02T15:00:00Z"},
+		{ID: "a0b1c2", Dir: "/Users/dev/notes", Name: "", Created: "2026-10-02T15:05:00Z"},
+	})
+	checkGolden(t, "chat-add.json", chat.Chat{ID: "3fa9c1", Dir: "/Users/dev", Name: "research", Created: "2026-10-02T15:00:00Z"})
 }
 
 func TestGoldenLsWorkspaces(t *testing.T) {

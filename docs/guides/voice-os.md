@@ -200,6 +200,13 @@ a row in Active, and the page stays where it is. Worktrees are made in Set up, n
 
 ![Activate: every worktree on This Mac and Build box, grouped by workspace, with Activate on admin/main and the active ones marked](../images/voice-os/activate.png)
 
+**Plain sessions.** Not everything is a worktree. **New session** on Activate (one per machine) or
+"start a new session called research in my notes folder" makes a plain Claude conversation: it runs
+in the folder you name on that machine (home when you name none), with no crew instructions and no
+dev servers, and it is active at once. Talk to it by its name like any session; **Remove** on its
+page, or "remove research", stops it and drops it from the list, leaving the folder alone. crew
+keeps them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
+
 **Settings** has the listening mode and languages, the two keys (checked before saving), Discord,
 session names, and your machines with their crew version.
 

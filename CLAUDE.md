@@ -364,6 +364,13 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   machine. The always-present **setup** session flag is still `Session.isPinned` (cwd home, crew
   setup only): the name stays because it is on the wire to remotes. Every session runs in Claude
   Code's `auto` permission mode.
+  **Plain sessions** (`internal/chat`, `cmd_chat.go`): `crew chat add [--dir] [--name]` / `chat rm` /
+  `ls chats` keep `~/.crew/chats.json` per machine (the folder must exist; `chat` is a reserved
+  workspace name). Voice OS lists each as `chat/<id>` beside the worktrees (`CrewAdapter.listWorktrees`
+  appends them, so remotes report theirs), `isChat` on the session: no crew orientation, no
+  `CREW_REF`, no dev-server reads; the crew name is its given name (`readGivenName`). Made and removed
+  through Set up's door (`chat_add`/`chat_rm`, the kernel's `new_session`/`remove_session` via
+  `runCrewOn`); a new ref's activation is held until it is listed.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 
@@ -484,7 +491,7 @@ the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
   elsewhere, is a conflict.
 - **Debug logging** — every external command (tmux, git, editor, package managers, mise)
   goes through `debug.Log(category, …)`: `"tmux"`, `"git"`, `"editor"`, `"dev"`, `"setup"`,
-  `"procs"`, `"trash"`, `"uninstall"`, `"voice"`, `"release"`, `"requirements"`. Log the command before running it; log errors inline.
+  `"procs"`, `"trash"`, `"uninstall"`, `"voice"`, `"release"`, `"requirements"`, `"chat"`. Log the command before running it; log errors inline.
 - **Never log binding values** — names, sources and targets only. Values carry URLs and can
   carry credentials.
 - **Comments say why, not what.** A comment earns its place with a constraint, a product

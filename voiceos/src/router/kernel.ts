@@ -1,4 +1,9 @@
-import { currentMachine, hasMachines, readMachineTitle } from '../shared/machines.js';
+import {
+	currentMachine,
+	hasMachines,
+	readGivenName,
+	readMachineTitle,
+} from '../shared/machines.js';
 import { LOCAL_MACHINE, isSetupRef } from '../shared/machine-ref.js';
 import Anthropic from '@anthropic-ai/sdk';
 import {
@@ -294,7 +299,7 @@ const describeMachines = (state: State): string => {
 
 // A named session is said by its name with its ref beside it, so the model can call it either.
 const nameRef = (state: State, ref: string): string => {
-	const name = state.names[ref];
+	const name = readGivenName(state, ref);
 
 	return name ? `${name} (${ref})` : ref;
 };
@@ -332,7 +337,7 @@ export const buildKernelMessage = ({
 	});
 	const heardBefore = listHeardBefore({ spoken: state.spoken, heardFrom });
 	const voiceOsQuestion = findVoiceOsQuestion({ spoken: state.spoken, now, heardFrom });
-	const namedRefs = activeRefs.filter((ref) => state.names[ref]);
+	const namedRefs = activeRefs.filter((ref) => readGivenName(state, ref));
 
 	return [
 		`Screen: ${screenDescription}.`,

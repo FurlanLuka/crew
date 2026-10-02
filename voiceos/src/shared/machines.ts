@@ -111,7 +111,13 @@ export const isKnownMachineRef = (state: State, ref: string): boolean => {
 	return machine === null || Boolean(state.machines[machine]);
 };
 
-export const isNamed = (state: State, ref: string): boolean => state.names[ref] !== undefined;
+// The name the developer gave a session: Voice OS's own, else the one a plain session was made with —
+// said and matched like a name either way.
+export const readGivenName = (state: State, ref: string): string | undefined =>
+	state.names[ref] ?? state.sessions[ref]?.chatName;
+
+export const isNamed = (state: State, ref: string): boolean =>
+	readGivenName(state, ref) !== undefined;
 
 // The one reading of what a session is called: the developer's own name for it, else crew's label.
 export const readSessionLabel = (state: State, ref: string): string =>

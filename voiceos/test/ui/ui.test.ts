@@ -1906,6 +1906,81 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('Activate → New session: crew makes it on that machine with its folder and name, and its activation waits for it', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
+		const { context, page } = await signIn();
+		const view = page.locator('section[aria-label="Activate"]');
+		await view.getByRole('button', { name: 'New session' }).first().click();
+		const form = page.getByRole('form', { name: /New session on/ });
+		await form.getByPlaceholder('home folder').fill('~/notes');
+		await form.getByPlaceholder('what you call it aloud').fill('research');
+		await form.getByRole('button', { name: 'Start' }).click();
+
+		await page.getByText(/^Started research on /).waitFor({ timeout: 5000 });
+		const made = crew.calls.filter((call) => call.command.type === 'chat_add').at(-1);
+		expect(made?.command).toEqual({ type: 'chat_add', dir: '~/notes', name: 'research' });
+		await waitUntil(() =>
+			store.state.pendingActivations.some((pending) => pending.ref.startsWith('chat/')),
+		);
+		await context.close();
+	}, 20_000);
+
+	it("a plain session's page → Remove asks first; Keep it runs nothing; Remove stops it, crew drops it, its name goes, back to Active", async () => {
+		const chat: WorktreeInfo = {
+			...createWorktree('chat/3fa9c1'),
+			label: 'research',
+			branch: '',
+			isChat: true,
+			chatName: 'research',
+		};
+		const others = Object.values(store.state.sessions)
+			.filter((session) => !session.ref.startsWith('chat/'))
+			.map((session) => ({
+				ref: session.ref,
+				label: session.label,
+				branch: session.branch,
+				cwd: session.cwd,
+				dirs: session.dirs,
+				isPinned: session.isPinned,
+			}));
+		store.dispatch({ type: 'worktrees', worktrees: [...others, chat] });
+		store.dispatch({ type: 'activate', ref: 'chat/3fa9c1' });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'chat/3fa9c1' } });
+		const { context, page } = await signIn();
+		const head = page.locator('.vo-head');
+		const removes = () => crew.calls.filter((call) => call.command.type === 'chat_rm').length;
+		const before = removes();
+
+		await head.getByRole('button', { name: 'Remove', exact: true }).click();
+		await head.getByRole('button', { name: 'Keep it' }).click();
+		expect(removes()).toBe(before);
+
+		await head.getByRole('button', { name: 'Remove', exact: true }).click();
+		await head.getByRole('button', { name: 'Remove: its folder stays' }).click();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(crew.calls.filter((call) => call.command.type === 'chat_rm').at(-1)?.command).toEqual({
+			type: 'chat_rm',
+			id: 'chat/3fa9c1',
+		});
+		expect(store.state.active).not.toContain('chat/3fa9c1');
+		expect(store.state.names['chat/3fa9c1']).toBeUndefined();
+		await context.close();
+	}, 20_000);
+
+	it("Activate → New session in a folder that is not there: crew's reason, nothing activated", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
+		const { context, page } = await signIn();
+		const before = store.state.pendingActivations.length;
+		await page.getByRole('button', { name: 'New session' }).first().click();
+		const form = page.getByRole('form', { name: /New session on/ });
+		await form.getByPlaceholder('home folder').fill('/missing/place');
+		await form.getByRole('button', { name: 'Start' }).click();
+
+		await form.getByText(/no folder \/missing\/place/).waitFor({ timeout: 5000 });
+		expect(store.state.pendingActivations.length).toBe(before);
+		await context.close();
+	}, 20_000);
+
 	it("crew's server stops under an open page → the banner says how to start it; it reconnects, gets a fresh snapshot, clicks reach the new server", async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();

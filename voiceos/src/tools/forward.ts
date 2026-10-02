@@ -105,6 +105,8 @@ const TOOLS_THAT_TAKE_WORDS: ToolName[] = [
 	'play_missed',
 	'status_update',
 	'deactivate',
+	'new_session',
+	'remove_session',
 	'mute',
 	'hands_free',
 	'crew_dev',
