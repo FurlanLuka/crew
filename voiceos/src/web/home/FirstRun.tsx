@@ -433,7 +433,7 @@ const PrepareStep = ({ worktreeRef: ref, onAskClaude, onReady }: PrepareStepProp
 						key={project.project}
 						title={`${project.project}: ${what}`}
 						log={issue?.detail}
-						why={`${ref} is ready, except ${project.project}: its install failed, so its session can read and change the code but not run it. Fix it now, or carry on and fix it from Set up.`}
+						why={`Its install failed, so ${ref}'s session can read and change ${project.project}'s code but not run it. Fix it now, or carry on and fix it from Set up.`}
 					>
 						<button
 							type="button"

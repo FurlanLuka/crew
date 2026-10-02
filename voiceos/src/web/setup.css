@@ -510,15 +510,24 @@ body:has(.setup) {
 	border-radius: 14px;
 	background: var(--crit-fill);
 }
+/* The dot stays beside the title's first line however long the title wraps (crew's error text can
+   be a whole URL). */
 .fail-h {
-	display: flex;
-	align-items: baseline;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: start;
 	gap: 10px;
-	flex-wrap: wrap;
+}
+.fail-h .dot {
+	margin-top: 7px;
 }
 .fail-h b {
-	font: 600 16px var(--sys);
+	font: 600 16px / 1.35 var(--sys);
 	color: #fff;
+	overflow-wrap: anywhere;
+}
+.fail-h .m {
+	padding-top: 3px;
 }
 .fail-steps {
 	display: flex;
