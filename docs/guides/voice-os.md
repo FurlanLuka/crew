@@ -537,6 +537,10 @@ Instructions always queue, unless you say they go now ("tell it right now to sto
 - "Add a section on the rollout risks to the doc" is work, so it goes to the session, which edits
   the doc itself.
 - While a session runs sub-agents, the **sub-agents** panel lists each one with its current step.
+- Click a sub-agent's card, or the "start a subagent" line in the session's stream, to open its
+  transcript: its calls, results and text as they happen, and its last words as its report once it
+  ends. The last ten sub-agents of each session are kept until Voice OS restarts or the conversation
+  is cleared.
 
 ## Dev servers
 

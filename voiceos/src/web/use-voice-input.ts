@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, State } from '../shared/protocol.js';
 import { Mic, isMicAllowed } from './audio.js';
+import { isInDialog } from './in-dialog.js';
 import { type InputMode, isListeningMode } from './listen-mode.js';
 import { PRE_ROLL_MS } from './ptt.js';
 import type { ListenCommand, MicStatus } from './types.js';
@@ -203,7 +204,8 @@ export const useVoiceInput = ({
 				event.code !== 'Space' ||
 				event.repeat ||
 				isTypingInField(event) ||
-				isOnOwnControl(event)
+				isOnOwnControl(event) ||
+				isInDialog(event)
 			) {
 				return;
 			}
@@ -229,7 +231,7 @@ export const useVoiceInput = ({
 
 			if (
 				event.code !== 'Space' ||
-				(!isLivePress && (isTypingInField(event) || isOnOwnControl(event)))
+				(!isLivePress && (isTypingInField(event) || isOnOwnControl(event) || isInDialog(event)))
 			) {
 				return;
 			}

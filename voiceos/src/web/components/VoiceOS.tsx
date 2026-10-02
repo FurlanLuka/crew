@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { parentView } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
+import { isInDialog } from '../in-dialog.js';
 import type { Dispatch, ListenCommand, MicStatus } from '../types.js';
 import type { ConnectionStatus, KeptDictation, OpenRequest } from '../use-connection.js';
 import type { PcmPlayer } from '../use-speech-player.js';
@@ -113,7 +114,8 @@ export const VoiceOS = ({
 			const isInField =
 				event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 
-			if (event.key === 'Escape' && !isInField) {
+			// A dialog's own Esc closes the dialog only.
+			if (event.key === 'Escape' && !isInField && !isInDialog(event)) {
 				// Up one level: a session → Active (or the machine's Activate it came from).
 				send({
 					type: 'action',

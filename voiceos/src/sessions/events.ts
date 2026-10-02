@@ -2,7 +2,14 @@ import { findDocLinks } from './doc-links.js';
 import { findShownImages } from './media.js';
 import type { Limits, Observation } from '../shared/protocol.js';
 import { mapSubagentMessage, mapTaskMessage } from './subagent-events.js';
-import { clipText, getContentBlocks, readString, summarizeTool } from './tool-summary.js';
+import {
+	clipText,
+	extractResultText,
+	getContentBlocks,
+	readString,
+	summarizeResult,
+	summarizeTool,
+} from './tool-summary.js';
 
 export interface RawMessage {
 	// Only the fields read here are typed, so a CLI update that adds fields never breaks the mapping.
@@ -145,18 +152,6 @@ interface ToolResultWithPatch {
 	structuredPatch?: unknown;
 }
 
-const extractResultText = (content: unknown): string => {
-	if (typeof content === 'string') {
-		return content;
-	}
-
-	if (!Array.isArray(content)) {
-		return '';
-	}
-
-	return content.map((part) => readString((part as Record<string, unknown>).text)).join(' ');
-};
-
 const buildDiffObservation = (ref: string, toolResult: unknown): Observation | null => {
 	if (!toolResult || typeof toolResult !== 'object') {
 		return null;
@@ -293,7 +288,7 @@ export const mapMessage = (
 ): Observation[] => {
 	const { ref } = mapContext;
 
-	// A sub-agent's own traffic only feeds its row in the sub-agents panel.
+	// A sub-agent's own traffic feeds its row in the sub-agents panel and its transcript, never the stream.
 	if (message.parent_tool_use_id) {
 		return mapSubagentMessage(message, mapContext, cwd);
 	}
@@ -332,7 +327,7 @@ export const mapMessage = (
 
 					mapContext.toolSummaries.set(readString(block.id), summary);
 					mapContext.toolNames.set(readString(block.id), name);
-					observations.push({ type: 'tool', ref, name, summary });
+					observations.push({ type: 'tool', ref, name, summary, toolUseId: readString(block.id) });
 				}
 			}
 
@@ -347,15 +342,9 @@ export const mapMessage = (
 					continue;
 				}
 
-				const isOk = block.is_error !== true;
-				const text = extractResultText(block.content);
+				const { ok: isOk, summary } = summarizeResult(block);
 
-				observations.push({
-					type: 'tool_result',
-					ref,
-					ok: isOk,
-					summary: clipText(text.split('\n')[0] ?? '', 160) || (isOk ? 'done' : 'failed'),
-				});
+				observations.push({ type: 'tool_result', ref, ok: isOk, summary });
 
 				const toolName = mapContext.toolNames.get(readString(block.tool_use_id)) ?? '';
 
@@ -368,7 +357,7 @@ export const mapMessage = (
 				// MCP tools) and Claude Code's own Artifact tool (not ArtifactComments: a comment thread is
 				// no doc). A link a grep, a README or a web page happens to contain is not the session's doc.
 				if (isOk && (toolName.startsWith('mcp__') || toolName === 'Artifact')) {
-					observations.push(...toDocObservations(text, ref));
+					observations.push(...toDocObservations(extractResultText(block.content), ref));
 				}
 			}
 

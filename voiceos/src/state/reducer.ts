@@ -211,6 +211,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	isFresh: false,
 	requests: [],
 	subagents: [],
+	subagentRuns: [],
 	compactingSince: null,
 	reportOwed: false,
 	spokenInTurn: [],
@@ -497,7 +498,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	}
 
 	if (isSubagentInput(input)) {
-		return reduceSubagent(state, input, stamped.at);
+		return reduceSubagent(state, input, stamped);
 	}
 
 	switch (input.type) {
@@ -940,6 +941,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...session,
 				isFresh: true,
 				subagents: [],
+				subagentRuns: [],
 				compactingSince: null,
 			}));
 

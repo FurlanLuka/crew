@@ -17,6 +17,8 @@ interface SessionStreamProps {
 	className: string;
 	// Drawn right under an item: Set up's "✓ recorded" line.
 	renderAfter?: (item: StreamItem) => ReactNode;
+	// What clicking an item opens, if anything: an Agent call's row opens its sub-agent's transcript.
+	openFor?: (item: StreamItem) => (() => void) | null;
 	// Drawn after the stream: a note about the session's state.
 	children?: ReactNode;
 }
@@ -26,6 +28,7 @@ export const SessionStream = ({
 	session,
 	className,
 	renderAfter,
+	openFor,
 	children,
 }: SessionStreamProps) => {
 	// The compaction bar is added at the end of the stream too: it comes into view like a line.
@@ -36,14 +39,16 @@ export const SessionStream = ({
 		<section className={className} aria-label="stream" ref={streamRef}>
 			{session?.stream.map((item) => {
 				const after = renderAfter?.(item);
+				const onOpen = openFor?.(item);
+				const opens = onOpen ? { onOpen } : {};
 
 				return after ? (
 					<div key={item.id} className="stream-item">
-						<StreamLine item={item} />
+						<StreamLine item={item} {...opens} />
 						{after}
 					</div>
 				) : (
-					<StreamLine key={item.id} item={item} />
+					<StreamLine key={item.id} item={item} {...opens} />
 				);
 			})}
 			{draft && (

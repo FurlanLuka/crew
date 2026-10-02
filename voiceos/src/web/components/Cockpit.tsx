@@ -6,7 +6,13 @@ import { readMachine, toLocalRef } from '../../shared/machine-ref.js';
 import { readMachineTitle, readSessionLabel } from '../../shared/machines.js';
 import type { Session, State } from '../../shared/protocol.js';
 import { describeWork } from '../../state/working.js';
-import { describeSessionBadge, readRefTitle, readWorkingOn } from '../derive.js';
+import {
+	describeSessionBadge,
+	findRunFor,
+	isRunRunning,
+	readRefTitle,
+	readWorkingOn,
+} from '../derive.js';
 import { useCrew } from '../setup/api.js';
 import { hasDevServers } from '../setup/derive.js';
 import type { CrewMember, CrewProject } from '../setup/types.js';
@@ -19,6 +25,7 @@ import { NotesPanel } from './NotesPanel.js';
 import { RenameSession } from './RenameSession.js';
 import { SessionStateRow } from './SessionStateRow.js';
 import { SessionStream } from './SessionStream.js';
+import { SubagentDialog } from './SubagentDialog.js';
 import { SubagentsPanel } from './SubagentsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
 
@@ -39,6 +46,8 @@ const useHasDevServers = (session: Session): boolean => {
 
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	const [isRenaming, setIsRenaming] = useState(false);
+	const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+	const openRun = session.subagentRuns.find((run) => run.taskId === openTaskId) ?? null;
 	const now = useNow();
 	const isOn = isActive(state, session.ref);
 	const workingOn = readWorkingOn(session);
@@ -87,7 +96,16 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 			</div>
 			<SessionStateRow state={state} sessionRef={session.ref} dispatch={dispatch} />
 			<div className="vo-split">
-				<SessionStream sessionRef={session.ref} session={session} className="vo-stream stream">
+				<SessionStream
+					sessionRef={session.ref}
+					session={session}
+					className="vo-stream stream"
+					openFor={(item) => {
+						const run = item.kind === 'tool' ? findRunFor(session, item.toolUseId) : null;
+
+						return run ? () => setOpenTaskId(run.taskId) : null;
+					}}
+				>
 					{session.status === 'stopped' && !session.error && (
 						<div className="line notice c-dim">
 							{isOn
@@ -120,7 +138,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 							</div>
 						)}
 					</div>
-					<SubagentsPanel subagents={session.subagents} />
+					<SubagentsPanel subagents={session.subagents} onOpen={setOpenTaskId} />
 					{isDevShown && (
 						<DevPanel
 							worktree={session.ref}
@@ -145,6 +163,13 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					</div>
 				</aside>
 			</div>
+			{openRun && (
+				<SubagentDialog
+					run={openRun}
+					isRunning={isRunRunning(session, openRun)}
+					onClose={() => setOpenTaskId(null)}
+				/>
+			)}
 		</section>
 	);
 };

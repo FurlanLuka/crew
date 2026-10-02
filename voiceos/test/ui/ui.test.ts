@@ -889,6 +889,97 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it("a sub-agent → its Agent row and its card open its transcript, live; Esc closes only it; Space there doesn't talk", async () => {
+		const { context, page } = await signIn();
+		const ref = 'checkout-api/main';
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref } });
+		await ensureIdle(ref);
+		store.dispatch({ type: 'send', ref, text: 'find the retry code' });
+		store.dispatch({
+			type: 'tool',
+			ref,
+			name: 'Agent',
+			summary: 'start a subagent: Find the retry code',
+			toolUseId: 'ui-toolu',
+		});
+		store.dispatch({
+			type: 'subagent_started',
+			ref,
+			taskId: 'ui-t2',
+			agentType: 'Explore',
+			description: 'Find the retry code',
+			isBackground: false,
+			toolUseId: 'ui-toolu',
+		});
+		store.dispatch({
+			type: 'subagent_item',
+			ref,
+			taskId: 'ui-t2',
+			item: { kind: 'tool', name: 'Read', summary: 'read src/retry.ts' },
+		});
+
+		await page.getByRole('button', { name: /start a subagent: Find the retry code/ }).click();
+		const dialog = page.getByRole('dialog', { name: 'sub-agent transcript' });
+		await dialog.getByText('read src/retry.ts').waitFor({ timeout: 5000 });
+		expect(await dialog.getByText(/running/).isVisible()).toBe(true);
+
+		// Live: a line said while it is open appears there.
+		store.dispatch({
+			type: 'subagent_item',
+			ref,
+			taskId: 'ui-t2',
+			item: { kind: 'text', text: 'The backoff lives in src/retry.ts.' },
+		});
+		await dialog.getByText('The backoff lives in src/retry.ts.').waitFor({ timeout: 5000 });
+
+		// Space on the focused Close is the dialog's: it closes it, and never talks.
+		const talksBefore = received.filter((entry) => entry.message.type === 'ptt_start').length;
+		expect(
+			await dialog
+				.getByRole('button', { name: 'Close' })
+				.evaluate((el) => el === document.activeElement),
+		).toBe(true);
+		await page.keyboard.down('Space');
+		await Bun.sleep(300);
+		await page.keyboard.up('Space');
+		await dialog.waitFor({ state: 'detached', timeout: 5000 });
+		expect(received.filter((entry) => entry.message.type === 'ptt_start')).toHaveLength(
+			talksBefore,
+		);
+
+		await page.getByRole('button', { name: /start a subagent: Find the retry code/ }).click();
+		await dialog.waitFor({ timeout: 5000 });
+		await page.keyboard.press('Escape');
+		await dialog.waitFor({ state: 'detached', timeout: 5000 });
+		// The page's own Esc would go up a level: given time to arrive, the screen stays.
+		await Bun.sleep(300);
+		expect(store.state.view).toMatchObject({ kind: 'session', ref });
+
+		// Open, then away to another session and back: it does not open again by itself.
+		await page.getByRole('button', { name: /start a subagent: Find the retry code/ }).click();
+		await dialog.waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		await dialog.waitFor({ state: 'detached', timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref } });
+		await page
+			.getByRole('button', { name: /start a subagent: Find the retry code/ })
+			.waitFor({ timeout: 5000 });
+		expect(await dialog.count()).toBe(0);
+
+		// Ended: the card is gone, the row still opens it, now with its report.
+		await page.locator('section[aria-label="sub-agents"]').getByRole('button').click();
+		await dialog.waitFor({ timeout: 5000 });
+		await page.keyboard.press('Escape');
+		store.dispatch({ type: 'subagent_ended', ref, taskId: 'ui-t2' });
+		await page.getByRole('button', { name: /start a subagent: Find the retry code/ }).click();
+		await dialog.getByRole('region', { name: 'report' }).waitFor({ timeout: 5000 });
+		expect(await dialog.getByText('done').isVisible()).toBe(true);
+		await page.keyboard.press('Escape');
+
+		store.dispatch({ type: 'turn_ended', ref, costUsd: 0, text: '' });
+		await context.close();
+	}, 20_000);
+
 	it('long streams → each session opens at its end, stays there as lines arrive, and not once scrolled up', async () => {
 		const { context, page } = await signIn();
 
