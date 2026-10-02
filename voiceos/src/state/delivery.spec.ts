@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+
+const INSTRUCTION_ACK = { kind: 'instruction' } as const;
+import { createFixtureState } from '../../test/support/state.js';
 import type { Input, PendingAsk, SessionStatus, State } from '../shared/protocol.js';
 import type { SendAck } from '../shared/ack.js';
 import type { Effect } from './reducer.js';
@@ -90,7 +93,7 @@ describe('what Voice OS says when it passes words on', () => {
 		expect(isOwed(state)).toBe(true);
 	});
 
-	it('busy → "after its current work", named and high; the queued message carries the promise', () => {
+	it('busy → "after its current work", named and high, worded from its facts; the queued message carries the promise', () => {
 		const { state, effects } = run([send(INSTRUCTION)], { start: runningSession() });
 
 		expect(effects).toContainEqual({
@@ -102,9 +105,28 @@ describe('what Voice OS says when it passes words on', () => {
 			isNamed: true,
 			priority: 'high',
 			isAck: true,
+			facts: { kind: 'queued', label: 'store, main', offersSwitch: false },
 		});
 		expect(state.sessions[REF]?.queue[0]?.reportOwed).toBe(true);
 		expect(isOwed(state)).toBe(false);
+	});
+
+	it('busy on another machine → its facts name it bare, not "on Personal": a worded line saying the name alone is caught', () => {
+		const ref = 'personal:crew/main';
+		const start = createFixtureState({
+			view: 'store-front/main',
+			machine: { id: 'personal', name: 'Personal', refs: [ref] },
+			work: [{ ref, request: 'Run the checks.', minutesAgo: 2 }],
+		});
+		const { effects } = run([{ type: 'send', ref, text: 'and lint too', ack: INSTRUCTION_ACK }], {
+			start,
+		});
+
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				facts: { kind: 'queued', label: 'crew, main', offersSwitch: false },
+			}),
+		);
 	});
 
 	it('stopped or still starting → "Starting it up."', () => {

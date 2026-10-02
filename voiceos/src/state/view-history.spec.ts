@@ -96,6 +96,27 @@ describe('go back', () => {
 		expect(said(voiced.effects)[0]).toBe('Switching to crew, main.');
 		expect(said(clicked.effects)).not.toContain('Switching to crew, main.');
 	});
+
+	it('what a worded line keeps: the place, and every session passed over; nothing to go back to → fixed', () => {
+		const factsOf = (effects: Effect[]) =>
+			effects.flatMap((effect) => (effect.type === 'speak' && effect.facts ? [effect.facts] : []));
+		const stopped = runAt(
+			[[15, { type: 'worker_exited', ref: CHECKOUT, error: null }]],
+			walked(),
+		).state;
+		const empty = runAt(
+			[[1, { type: 'worktrees', worktrees: [worktree(CREW)] }]],
+			createInitialState(),
+		).state;
+
+		expect(factsOf(runAt([[20, { ...show(CREW), announce: true }]], walked()).effects)).toEqual([
+			{ kind: 'switching', label: 'crew, main' },
+		]);
+		expect(factsOf(runAt([[20, { type: 'go_back' }]], stopped).effects)).toEqual([
+			{ kind: 'back', label: 'crew, main', skipped: ['checkout, main'] },
+		]);
+		expect(factsOf(runAt([[20, { type: 'go_back' }]], empty).effects)).toEqual([]);
+	});
 });
 
 describe('a correction', () => {

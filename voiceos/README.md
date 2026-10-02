@@ -125,7 +125,8 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/sessions/` | One Agent SDK session per worktree (`worker.ts`), started, resumed and stopped by `manager.ts`, with session ids kept in `registry.ts`. `events.ts` maps SDK messages to observations, `permissions.ts` bridges `canUseTool` to the page, `side-answer.ts` runs asides, `history.ts` rebuilds streams from Claude Code's transcripts at boot, `media.ts` stores images, `doc-links.ts` finds docs, `setup-session.ts` defines the setup session, and `voice-context.ts` holds the orientation every session gets. |
 | `src/judge/` | `judge.ts`: one narrow Haiku question about what the developer's words mean, in any language (`JUDGE_QUESTIONS`, a forced `verdict` tool with an enum answer). Asked only by a guard about to act; a timeout or failure is `unclear`, every guard's safe side. It logs the question key, verdict and ms, never the words. Specs use `test/support/english-judge.ts`. |
 | `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `about.ts` names what a session's question is about (Haiku). |
-| `src/speech/` | `voice-in.ts` handles push to talk and dictation (a press held open until sent), and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. |
+| `src/speech/` | `voice-in.ts` handles push to talk and dictation (a press held open until sent), and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. `instant-ack.ts` is Voice OS's own filler (see below). |
+| `src/voice-lines/` | Haiku words Voice OS's follow-up lines ("Sent to X. Switch there?"): `prompt.ts` (pure: the prompt, the message, the rules a worded line must keep) and `writer.ts` (one try, short timeout, `createFallbackWriter` without a key). |
 | `src/memory/` | Files that outlive a restart: `journal.ts`, `view.ts`, `active.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
 | `src/dev/` | Dev servers through crew: `servers.ts` and `watch.ts` (crash detection, the fix offer). |
 | `src/crew/` | `adapter.ts`: Voice OS's own calls into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`) and `spawnRunner` (stdin, a timeout that kills). `commands.ts`: Set up's `SetupCommand` union (zod, browser-safe), the pure `toCrewArgv`, per-variant traits (timeout, local-only, detached, json); `test/fixtures/shared/setup-argv.json` is one sample per variant, walked through crew's help tree by a Go test. `api.ts`: `POST /api/crew` (`checkRequest`, validation, status codes) and `createSetupRunner` (here, detached, or over a machine's link). |
@@ -207,6 +208,25 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   kernel's replies first (`speech/queue.ts`) and holds everything, never drops it, while the
   developer talks. "Switching to X" is said for a switch Voice OS makes, "Back to X" for `go_back`
   (`state/view-history.ts`, five views).
+- **Responsive, not talkative.** Two things fill the silences, and each errs toward saying nothing.
+  - *Instant acknowledgement* (`speech/instant-ack.ts`): when the router hands a spoken turn to the
+    kernel (`RouterOptions.onKernelTurn`, wired in `app.ts`, off in the conversation tests), a
+    neutral pool line ("Mm-hm.", "Got it.", never one of the last two) plays 600 ms after the router
+    took the words, unless the words are under four (`MIN_REQUEST_WORDS`), Voice OS is muted, spoke
+    in the last 6 s, already queued its answer, has something playing or queued, or the developer is
+    talking (`decideInstantAck`). An ack not yet heard is withdrawn when the answer arrives or the
+    developer speaks. Pool lines carry no voice tags; `keepsTags` on a pool line voices one anyway.
+  - *Worded follow-ups* (`voice-lines/`): "Sent to X", "…Switch there?", "Switching to X", "Back to
+    X", "Activated X…" and "Okay, after its current work." carry `facts` (`shared/follow-up.ts`) on
+    their speak effect; the reducer still decides whether they are said and which offer is open
+    (`withSwitchAsked` sets `offersSwitch` in the step that appends the question). `voice-out` queues
+    the fixed text at once and holds its place while Haiku words it — 1 s after an ack, 0.6 s
+    otherwise — then plays whichever is ready. A worded line that drops a label, asks a question
+    nobody offered (or drops the offered one), says the wake word or runs past 25 words is not used.
+    The duplicate drop (debug note 31) compares the fixed text.
+  - Both are *filler* (`isFiller` on the line): no chime, a filler line about a session off screen
+    is dropped rather than held, and it is never Voice OS's question, never heard before, never the
+    session's own line, and never resets the quiet the meanwhile line waits for.
 - **Only active sessions exist for voice.** An active session's Claude runs; an inactive one has
   no process (`startWorker` in `state/helpers.ts` refuses it, which covers send, "now" and
   reconnect), is left out of the kernel's turn, and says nothing: one gate in `speech/connect.ts`,
@@ -391,6 +411,14 @@ that question; it prints its own cost, and has no baseline:
 
 ```bash
 bun evals/run.ts route --system=both     # repo cases: kernel ~$0.85, classifier ~$0.20; with ~390 speech cases ~$2.40
+```
+
+The voice-lines suite, also outside `all` and never a gate, checks Haiku's worded follow-ups
+against the app's own rules and for invented facts (`evals/voice-lines/cases.json`,
+about 17 cases, two runs each, a few cents):
+
+```bash
+bun evals/run.ts voice-lines --only=sent-offer,queued
 ```
 
 Speech fixtures:

@@ -139,6 +139,26 @@ describe('findVoiceOsQuestion', () => {
 		expect(find([asked], 5000, 900)).toBeNull();
 	});
 
+	it('filler after it ("Okay.") → still that question; filler alone asks nothing', () => {
+		const ack = line('ack', 2000, {
+			source: 'kernel',
+			text: 'Okay?',
+			ref: undefined,
+			isFiller: true,
+		});
+
+		expect(find([asked, ack])).toBe('asked');
+		expect(find([ack])).toBeNull();
+	});
+
+	it('filler is never what the developer heard before they spoke', () => {
+		const ack = line('ack', 3000, { source: 'kernel', text: 'Got it.', isFiller: true });
+
+		expect(listHeardBefore({ spoken: [line('session', 2000), ack], heardFrom: 4000 })).toEqual([
+			line('session', 2000),
+		]);
+	});
+
 	it('an update relaying sessions → theirs, none', () => {
 		expect(find([{ ...asked, isUpdate: true }])).toBeNull();
 	});

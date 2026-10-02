@@ -13,6 +13,7 @@ import { isActive } from '../shared/active.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readScreenRef, sayAck, sayRef } from './helpers.js';
 import { isReachable } from '../shared/machines.js';
+import { withSwitchOffered } from '../shared/follow-up.js';
 
 const describeOffer = (state: State, ref: string, kind: SwitchOfferKind): string => {
 	switch (kind) {
@@ -67,16 +68,31 @@ interface WithSwitchAskedParams {
 
 // The line that says where the words went asks the switch too ("Sent to crew. Switch there?",
 // "Okay, after its current work. Switch there?"): one line, whichever ack it is.
+// The facts say the switch is offered in the same step that appends the question, so a worded line
+// never drops it or asks one that is not open.
 const withSwitchAsked = ({ effects, ref, sentTo }: WithSwitchAskedParams): Effect[] => {
 	const ackAt = effects.findLastIndex((effect) => effect.type === 'speak' && effect.isAck === true);
 
 	if (ackAt < 0) {
-		return [...effects, sayAck(`Sent to ${sentTo}. Switch there?`, { isAsking: true, ref })];
+		return [
+			...effects,
+			sayAck(`Sent to ${sentTo}. Switch there?`, {
+				isAsking: true,
+				ref,
+				facts: { kind: 'sent', label: sentTo, offersSwitch: true },
+			}),
+		];
 	}
 
 	return effects.map((effect, index) =>
 		index === ackAt && effect.type === 'speak'
-			? { ...effect, text: `${effect.text.trim()} Switch there?`, isAsking: true, ref }
+			? {
+					...effect,
+					text: `${effect.text.trim()} Switch there?`,
+					isAsking: true,
+					ref,
+					...(effect.facts ? { facts: withSwitchOffered(effect.facts) } : {}),
+				}
 			: effect,
 	);
 };
@@ -129,7 +145,14 @@ export const followSends = (
 
 			const isAcked = result.effects.some((effect) => effect.type === 'speak' && effect.isAck);
 			const sentTo = sayRef(state, input.ref);
-			const acked = isAcked ? result.effects : [...result.effects, sayAck(`Sent to ${sentTo}.`)];
+			const acked = isAcked
+				? result.effects
+				: [
+						...result.effects,
+						sayAck(`Sent to ${sentTo}.`, {
+							facts: { kind: 'sent', label: sentTo, offersSwitch: false },
+						}),
+					];
 
 			// Spoken words that went elsewhere: the developer may want to follow them there.
 			if (!input.isSpoken || !isSwitchWorthAsking({ state, ref: input.ref, at: stamped.at })) {

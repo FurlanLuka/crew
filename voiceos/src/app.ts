@@ -178,6 +178,8 @@ const voiceOut: VoiceOut = new VoiceOut({
 	hasPage: () => (gateway?.countClients() ?? 0) > 0 || discord.isOwnerIn(),
 	// voiceIn is assigned below; it is only asked once speech is under way.
 	isListening: () => voiceIn.isListening(),
+	// Words Voice OS's follow-ups; without the Anthropic key, the fixed lines.
+	writeFollowUp: (input) => services.current.voiceLines.followUp(input),
 });
 // One judge for the kernel's guards and the router's "For X?", whichever key is current.
 const judge: Judge = (params) => services.current.judge(params);
@@ -243,6 +245,7 @@ const router = new UtteranceRouter({
 			? speakKernelReplies((text, options) => kernel.handle(text, options), voiceOut)
 			: null;
 	},
+	onKernelTurn: (turn) => voiceOut.kernelTurnStarted(turn),
 });
 const voiceIn: VoiceInput = new VoiceInput({
 	store,

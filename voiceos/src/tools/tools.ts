@@ -58,7 +58,9 @@ import { HOME_VIEW } from '../shared/machines.js';
 import { LOCAL_MACHINE, splitRef } from '../shared/machine-ref.js';
 import { type RefCheck, type ToolResult, fail, succeed, checkRef } from './results.js';
 
-const MIN_REQUEST_WORDS = 4;
+// A request is at least this many words; fewer is a yes, a name or a fragment. Also the instant
+// ack's floor (speech/instant-ack.ts).
+export const MIN_REQUEST_WORDS = 4;
 const log = createLogger('tools');
 
 // A ref that did not check out: an inactive session is asked about ("Activate it?"), anything else

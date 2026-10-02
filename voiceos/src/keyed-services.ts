@@ -8,6 +8,7 @@ import { createLogger } from './log.js';
 import { createAboutWriter, type WriteAbout } from './narrator/about.js';
 import { createNarrator, type NarrateFunction } from './narrator/narrator.js';
 import { SonioxTts } from './speech/tts.js';
+import { createVoiceLineWriter, type VoiceLineWriter } from './voice-lines/writer.js';
 
 const log = createLogger('keys');
 
@@ -20,6 +21,7 @@ export interface KeyedServices<K> {
 	judge: Judge;
 	narrate: NarrateFunction;
 	writeAbout: WriteAbout;
+	voiceLines: VoiceLineWriter;
 	kernel: K | null;
 }
 
@@ -32,7 +34,10 @@ export interface BuildKeyedServicesParams<K> {
 	previous?: KeyedServices<K> | null;
 }
 
-type AnthropicServices<K> = Pick<KeyedServices<K>, 'judge' | 'narrate' | 'writeAbout' | 'kernel'>;
+type AnthropicServices<K> = Pick<
+	KeyedServices<K>,
+	'judge' | 'narrate' | 'writeAbout' | 'voiceLines' | 'kernel'
+>;
 
 const buildAnthropicServices = <K>(
 	apiKey: string | null,
@@ -44,6 +49,7 @@ const buildAnthropicServices = <K>(
 		judge,
 		narrate: createNarrator(apiKey),
 		writeAbout: createAboutWriter(apiKey),
+		voiceLines: createVoiceLineWriter({ apiKey }),
 		kernel: apiKey ? createKernel(apiKey, judge) : null,
 	};
 };
@@ -60,6 +66,7 @@ export const buildKeyedServices = <K>({
 				judge: previous.judge,
 				narrate: previous.narrate,
 				writeAbout: previous.writeAbout,
+				voiceLines: previous.voiceLines,
 				kernel: previous.kernel,
 			}
 		: buildAnthropicServices(keys.anthropic, createKernel);

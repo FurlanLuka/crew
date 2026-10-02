@@ -333,6 +333,21 @@ When Voice OS switches for you, it says so first: "Switching to checkout" (a cli
 - "Actually, stop the refactor and fix the login bug first." Voice OS asks whether to stop the
   current work and switch (**Switch** / **After**).
 
+**How Voice OS keeps the conversation going.** It aims to be responsive, not talkative, and every
+one of these stays quiet when in doubt:
+
+- **A quick acknowledgement.** When what you said goes to Voice OS to decide, and nothing answers
+  within about a second, you hear a short "Mm-hm.", "Got it." or "One sec." so you know you were
+  heard. It is skipped for a few words ("yes", a name), while you are talking, when Voice OS spoke a
+  moment ago, when it is muted, and whenever the answer is already on its way. It never asks or
+  promises anything, and it is the same with push to talk, hands-free and Discord.
+- **Its own lines in its own words.** "Sent to checkout. Switch there?", "Switching to checkout",
+  "Back to crew", "Activated checkout…" and "Okay, after its current work." are worded fresh each
+  time ("Passed that to checkout. Want to go there?"), by a small model, in under a second. They
+  always name the session as you know it and ask "switch?" only when the switch is really offered;
+  when the wording is late or breaks a rule, you hear the plain line instead. Without the Anthropic
+  key you always hear the plain lines.
+
 **What you hear from sessions you are not looking at.** Sessions on other screens don't talk over
 you. Nothing is dropped while you talk: what was queued waits, and the answer to what you just said
 plays first. Other sessions' updates wait for a quiet moment (8 seconds with push to talk, 12 when
@@ -770,7 +785,9 @@ five older files (`voiceos.log.1` … `.5`); `crew server logs` reads them all.
   always-listening modes), and Voice OS's spoken lines go to Soniox to be turned into speech.
 - **Text** goes to the Anthropic API, using your key. The kernel gets what you said, together with
   a summary of the sessions (their status, what you asked them, what is waiting, their recent lines). After a
-  turn, the session's final message goes to the narrator when it has no spoken line.
+  turn, the session's final message goes to the narrator when it has no spoken line. To word its own
+  short lines, Voice OS sends Haiku only what the line says (a session's name, whether a switch is
+  offered), never a command or a path.
 - **Your Claude Code sessions** talk to Anthropic as Claude Code always does, on your login.
 
 **What stays on your machine:** everything under `~/.crew/voiceos/` (see
@@ -793,7 +810,8 @@ carries your token.
   final message has no spoken line of its own. When a session asks you something, a short Haiku call names what
   the question is about. All of them bill your Anthropic key. A spoken turn costs the kernel roughly a third of a
   cent. The language check (Haiku, see [Languages](#languages)) runs only on turns where Voice OS
-  acts on what you meant, and costs a small fraction of that.
+  acts on what you meant, and costs a small fraction of that. Wording Voice OS's own short lines
+  (Haiku) costs a small fraction of a cent each.
 - **Soniox** bills audio: speech-to-text for as long as the microphone streams, and text-to-speech
   for what Voice OS says ([Soniox pricing](https://soniox.com/pricing)). On demand and hands-free stream the whole time listening is on. Push to
   talk streams only while you hold the key.

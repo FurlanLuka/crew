@@ -4,15 +4,23 @@ import { Store } from '../state/store.js';
 import type { SynthesizeParams } from './tts.js';
 import type { Effect } from '../state/reducer.js';
 import { MAX_REMINDERS, REMINDER_MS, VoiceOut } from './voice-out.js';
+import type { FollowUpInput } from '../voice-lines/prompt.js';
+import { INSTANT_ACK_POOL } from './instant-ack.js';
+import { prefixSessionName, stripTags } from '../shared/spoken.js';
 
 type PendingClip = SynthesizeParams & { finish: () => void; fail: (error: Error) => void };
 
 interface CreateHarnessParams {
 	delivered?: boolean;
 	tab?: string | null;
+	writeFollowUp?: (input: FollowUpInput) => Promise<string | null>;
 }
 
-const createHarness = ({ delivered = true, tab = 'tab-a' }: CreateHarnessParams = {}) => {
+const createHarness = ({
+	delivered = true,
+	tab = 'tab-a',
+	writeFollowUp,
+}: CreateHarnessParams = {}) => {
 	const store = new Store();
 	store.dispatch({
 		type: 'worktrees',
@@ -42,6 +50,7 @@ const createHarness = ({ delivered = true, tab = 'tab-a' }: CreateHarnessParams 
 		speaker: () => speaker,
 		hasPage: () => hasPage,
 		now: () => now,
+		...(writeFollowUp ? { writeFollowUp } : {}),
 	});
 	const listSynthesized = () => clips.map((clip) => clip.text);
 	const getLastClip = () => clips.at(-1) as PendingClip;
@@ -1477,5 +1486,443 @@ describe('a line that says an ask', () => {
 		await flush();
 
 		expect(harness.listSentKinds().some((kind) => kind.includes(':cancel:'))).toBe(false);
+	});
+});
+
+describe('filler and worded lines', () => {
+	type Harness = ReturnType<typeof createHarness>;
+
+	// The harness's clock and the fake timers move together.
+	const advance = async (harness: Harness, ms: number) => {
+		harness.tick(ms);
+		jest.advanceTimersByTime(ms);
+		await flush();
+	};
+
+	const POOL = INSTANT_ACK_POOL.map((line) => line.text);
+	const REQUEST = 'run the tests in the api please';
+	const lastSpoken = (harness: Harness) => harness.store.state.spoken.at(-1);
+
+	const playOut = async (harness: Harness) => {
+		harness.streamChunk();
+		harness.getLastClip().finish();
+		await flush();
+		harness.voiceOut.clipDone(harness.getLastClip().id);
+		await flush();
+	};
+
+	describe('the instant ack', () => {
+		it('nothing said 600 ms into the turn → one pool line, a filler with no chime', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await advance(harness, 599);
+			expect(harness.listSynthesized()).toEqual([]);
+
+			await advance(harness, 1);
+			expect(harness.listSynthesized()).toHaveLength(1);
+			expect(POOL).toContain(harness.listSynthesized()[0] as string);
+			expect(lastSpoken(harness)).toEqual(expect.objectContaining({ isFiller: true }));
+			harness.streamChunk();
+			expect(harness.sent.at(-1)?.message).not.toHaveProperty('hasChime');
+		});
+
+		it('the clock runs from when the router took the words', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.tick(500);
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await advance(harness, 100);
+			expect(harness.listSynthesized()).toHaveLength(1);
+		});
+
+		it.each<[string, (harness: Harness) => Promise<void>]>([
+			['muted', async (harness) => harness.voiceOut.mute()],
+			[
+				'the answer came first',
+				async (harness) =>
+					harness.voiceOut.say({
+						text: 'Three sessions.',
+						priority: 'high',
+						source: 'kernel',
+						isReply: true,
+					}),
+			],
+			[
+				'another line still plays',
+				async (harness) => harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' }),
+			],
+			['the developer talks again', async (harness) => harness.voiceOut.talkStarted()],
+		])('%s → no ack', async (_, setup) => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await setup(harness);
+			await flush();
+			const before = harness.listSynthesized();
+			await advance(harness, 600);
+			expect(harness.listSynthesized()).toEqual(before);
+			expect(harness.listSynthesized().some((text) => POOL.includes(text))).toBe(false);
+		});
+
+		it('three words, or Voice OS spoke in the last 6 s → no ack', async () => {
+			jest.useFakeTimers();
+			const short = createHarness();
+			short.voiceOut.kernelTurnStarted({ text: 'yes do it', startedAt: 0 });
+			await advance(short, 600);
+			expect(short.listSynthesized()).toEqual([]);
+
+			const recent = createHarness();
+			recent.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+			await flush();
+			await playOut(recent);
+			await advance(recent, 5_000);
+			recent.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 5_000 });
+			await advance(recent, 600);
+			expect(recent.listSynthesized()).toEqual(['Tests pass.']);
+		});
+
+		it('the turn over before 600 ms → no ack', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 }).cancel();
+			await advance(harness, 600);
+			expect(harness.listSynthesized()).toEqual([]);
+		});
+
+		it('a reply arrives before any of the ack was heard → withdrawn, the reply plays', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await advance(harness, 600);
+			const ack = harness.getLastClip();
+			harness.voiceOut.say({
+				text: 'Sent to crew.',
+				priority: 'high',
+				source: 'kernel',
+				isReply: true,
+				isAck: true,
+			});
+			await flush();
+			expect(harness.listSentKinds()).toContain(`tab-a:cancel:${ack.id}`);
+			expect(harness.listSynthesized().at(-1)).toBe('Sent to crew.');
+		});
+
+		it('a reply arrives once the ack is heard → the ack plays out, the reply after it', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await advance(harness, 600);
+			harness.streamChunk();
+			harness.voiceOut.say({
+				text: 'Three sessions.',
+				priority: 'high',
+				source: 'kernel',
+				isReply: true,
+			});
+			await flush();
+			expect(harness.listSynthesized()).toHaveLength(1);
+			expect(harness.listSentKinds().some((kind) => kind.includes('cancel'))).toBe(false);
+
+			await playOut(harness);
+			expect(harness.listSynthesized().at(-1)).toBe('Three sessions.');
+		});
+
+		it('an ack withdrawn before any of it was heard → the follow-up waits 600 ms and is told of no ack', async () => {
+			jest.useFakeTimers();
+			const inputs: FollowUpInput[] = [];
+			const harness = createHarness({
+				writeFollowUp: (input) => {
+					inputs.push(input);
+
+					return new Promise(() => undefined);
+				},
+			});
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await advance(harness, 600);
+			const ack = harness.listSynthesized()[0] as string;
+			harness.voiceOut.say({
+				text: 'Sent to crew.',
+				priority: 'high',
+				source: 'kernel',
+				isReply: true,
+				isAck: true,
+				facts: { kind: 'sent', label: 'crew', offersSwitch: false },
+			});
+			await flush();
+			expect(inputs[0]?.lastAck).toBeNull();
+
+			await advance(harness, 599);
+			expect(harness.listSynthesized()).toEqual([ack]);
+			await advance(harness, 1);
+			expect(harness.listSynthesized()).toEqual([ack, 'Sent to crew.']);
+		});
+
+		it('a kernel reply "Okay." while the ack "Okay." waits → said, and the ack withdrawn', async () => {
+			const harness = createHarness();
+			harness.voiceOut.say({
+				text: 'Okay.',
+				priority: 'high',
+				source: 'kernel',
+				isReply: true,
+				isFiller: true,
+			});
+			await flush();
+			const ack = harness.getLastClip();
+			harness.voiceOut.say({ text: 'Okay.', priority: 'high', source: 'kernel', isReply: true });
+			await flush();
+			expect(harness.listSentKinds()).toContain(`tab-a:cancel:${ack.id}`);
+			expect(harness.listSynthesized()).toEqual(['Okay.', 'Okay.']);
+		});
+
+		it('a line cut before any of it was heard → not "spoke recently": the next turn gets its ack', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+			await flush();
+			harness.voiceOut.talkStarted();
+			harness.voiceOut.talkEnded();
+			await advance(harness, 1_000);
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 1_000 });
+			await advance(harness, 600);
+			expect(harness.listSynthesized()).toHaveLength(2);
+			expect(POOL).toContain(harness.listSynthesized()[1] as string);
+		});
+
+		it('Voice OS spoke 7 s before the turn → the ack is said', async () => {
+			jest.useFakeTimers();
+			const harness = createHarness();
+			harness.voiceOut.say({
+				text: 'Three sessions.',
+				priority: 'high',
+				source: 'kernel',
+				isReply: true,
+			});
+			await flush();
+			await playOut(harness);
+			await advance(harness, 7_000);
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 7_000 });
+			await advance(harness, 600);
+			expect(harness.listSynthesized()).toHaveLength(2);
+		});
+	});
+
+	describe('filler lines', () => {
+		it('queued filler is dropped when the developer talks again', async () => {
+			const harness = createHarness();
+			harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/main' } });
+			harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+			harness.voiceOut.say({
+				text: 'Still editing the router.',
+				priority: 'low',
+				source: 'kernel',
+				ref: 'store/main',
+				isFiller: true,
+			});
+			await flush();
+			harness.voiceOut.talkStarted();
+			harness.voiceOut.talkEnded();
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Tests pass.']);
+		});
+
+		it('about a session off screen when it plays → dropped, never held', async () => {
+			const harness = createHarness();
+			harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store/main' } });
+			const progress = (ref: string) =>
+				harness.voiceOut.say({
+					text: 'Still editing the router.',
+					priority: 'low',
+					source: 'kernel',
+					ref,
+					isFiller: true,
+				});
+			progress('store/wrk1');
+			await flush();
+			expect(harness.listSynthesized()).toEqual([]);
+			expect(harness.store.state.sessions['store/wrk1']?.heldLine ?? null).toBeNull();
+
+			progress('store/main');
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Still editing the router.']);
+		});
+
+		it('the quiet before the meanwhile line goes on through filler', async () => {
+			const harness = createHarness();
+			harness.tick(1_000);
+			harness.voiceOut.say({ text: 'Okay.', priority: 'high', source: 'kernel', isFiller: true });
+			await flush();
+			await playOut(harness);
+			expect(harness.voiceOut.readSpeech().quietSince).toBe(0);
+
+			harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+			await flush();
+			await playOut(harness);
+			expect(harness.voiceOut.readSpeech().quietSince).toBe(1_000);
+		});
+
+		it('short lines lose their tags, unless the line keeps them', async () => {
+			const harness = createHarness();
+			harness.voiceOut.say({ text: '[warm] Okay.', priority: 'high', isFiller: true });
+			await flush();
+			await playOut(harness);
+			harness.voiceOut.say({
+				text: '[warm] Sure.',
+				priority: 'high',
+				isFiller: true,
+				keepsTags: true,
+			});
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Okay.', '[warm] Sure.']);
+		});
+	});
+
+	describe('a worded follow-up', () => {
+		const SENT = { kind: 'sent', label: 'crew', offersSwitch: false } as const;
+		const sayFollowUp = (
+			harness: Harness,
+			text = 'Sent to crew.',
+			facts: FollowUpInput['facts'] = SENT,
+		) =>
+			harness.voiceOut.say({
+				text,
+				priority: 'high',
+				source: 'kernel',
+				isReply: true,
+				isAck: true,
+				facts,
+			});
+
+		const heldWriter = () => {
+			const inputs: FollowUpInput[] = [];
+			const answer = Promise.withResolvers<string | null>();
+
+			return {
+				inputs,
+				answer,
+				writeFollowUp: (input: FollowUpInput) => {
+					inputs.push(input);
+
+					return answer.promise;
+				},
+			};
+		};
+
+		it('keeps its place while worded, then plays the worded line', async () => {
+			jest.useFakeTimers();
+			const writer = heldWriter();
+			const harness = createHarness({ writeFollowUp: writer.writeFollowUp });
+			sayFollowUp(harness);
+			harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+			await flush();
+			expect(harness.listSynthesized()).toEqual([]);
+			expect(writer.inputs).toEqual([{ facts: SENT, fixedText: 'Sent to crew.', lastAck: null }]);
+
+			writer.answer.resolve('Passed that to crew.');
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Passed that to crew.']);
+			await playOut(harness);
+			expect(harness.listSynthesized()).toEqual(['Passed that to crew.', 'Tests pass.']);
+		});
+
+		it('no wording within 600 ms → the fixed line; a late one is thrown away', async () => {
+			jest.useFakeTimers();
+			const writer = heldWriter();
+			const harness = createHarness({ writeFollowUp: writer.writeFollowUp });
+			sayFollowUp(harness);
+			await advance(harness, 599);
+			expect(harness.listSynthesized()).toEqual([]);
+
+			await advance(harness, 1);
+			expect(harness.listSynthesized()).toEqual(['Sent to crew.']);
+			writer.answer.resolve('Passed that to crew.');
+			await flush();
+			await playOut(harness);
+			expect(harness.listSynthesized()).toEqual(['Sent to crew.']);
+		});
+
+		it('the writer keeps the fixed line → it plays at once', async () => {
+			const harness = createHarness({ writeFollowUp: async () => null });
+			sayFollowUp(harness);
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Sent to crew.']);
+		});
+
+		it('an ack said in the turn → told to the writer, and the place is kept a full second', async () => {
+			jest.useFakeTimers();
+			const writer = heldWriter();
+			const harness = createHarness({ writeFollowUp: writer.writeFollowUp });
+			harness.voiceOut.kernelTurnStarted({ text: REQUEST, startedAt: 0 });
+			await advance(harness, 600);
+			const ack = harness.listSynthesized()[0] as string;
+			harness.streamChunk();
+			sayFollowUp(harness);
+			await playOut(harness);
+			expect(writer.inputs[0]?.lastAck).toBe(stripTags(ack));
+
+			await advance(harness, 999);
+			expect(harness.listSynthesized()).toEqual([ack]);
+			await advance(harness, 1);
+			expect(harness.listSynthesized()).toEqual([ack, 'Sent to crew.']);
+		});
+
+		it('worded after its wait, while it still waits behind a line → the worded line plays', async () => {
+			jest.useFakeTimers();
+			const writer = heldWriter();
+			const harness = createHarness({ writeFollowUp: writer.writeFollowUp });
+			harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' });
+			await flush();
+			harness.streamChunk();
+			sayFollowUp(harness);
+			await advance(harness, 700);
+			writer.answer.resolve('Passed that to crew.');
+			await flush();
+			await playOut(harness);
+			expect(harness.listSynthesized()).toEqual(['Tests pass.', 'Passed that to crew.']);
+		});
+
+		it('the writer fails → the fixed line at once', async () => {
+			const harness = createHarness({
+				writeFollowUp: () => Promise.reject(new Error('overloaded')),
+			});
+			sayFollowUp(harness);
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Sent to crew.']);
+		});
+
+		it('"after its current work", worded, is named in code: off screen with its name, on screen bare', async () => {
+			const queued = async (view: string) => {
+				const harness = createHarness({ writeFollowUp: async () => 'Queued for after this.' });
+				harness.store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: view } });
+				harness.voiceOut.say({
+					text: 'Okay, after its current work.',
+					priority: 'high',
+					source: 'kernel',
+					isReply: true,
+					isAck: true,
+					isNamed: true,
+					ref: 'store/wrk1',
+					facts: { kind: 'queued', label: 'store, work 1', offersSwitch: false },
+				});
+				await flush();
+
+				return harness.listSynthesized();
+			};
+
+			expect(await queued('store/main')).toEqual([
+				prefixSessionName('store/wrk1', 'Queued for after this.'),
+			]);
+			expect(await queued('store/wrk1')).toEqual(['Queued for after this.']);
+		});
+
+		it('worded, it is still its fixed line: the same words from the kernel are not said twice', async () => {
+			const harness = createHarness({ writeFollowUp: async () => 'Over to crew now.' });
+			sayFollowUp(harness, 'Switching to crew.', { kind: 'switching', label: 'crew' });
+			await flush();
+			harness.voiceOut.say({ text: 'Switching to crew.', priority: 'high', source: 'kernel' });
+			await playOut(harness);
+			await flush();
+			expect(harness.listSynthesized()).toEqual(['Over to crew now.']);
+		});
 	});
 });

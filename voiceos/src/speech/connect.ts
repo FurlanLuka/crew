@@ -215,6 +215,8 @@ export const connectSpeech = ({
 					isAck: effect.isAck,
 					isHoldable: effect.isHoldable,
 					chime: effect.chime,
+					isFiller: effect.isFiller,
+					facts: effect.facts,
 				});
 
 				return;

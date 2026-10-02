@@ -20,6 +20,7 @@ import { readTargetAnswer, settleTarget } from './target.js';
 import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
 import { isBareNo, isShortEnoughToAnswer } from '../tools/send.js';
+import type { KernelTurnHandle, KernelTurnStart } from '../speech/instant-ack.js';
 
 const log = createLogger('router');
 
@@ -40,6 +41,8 @@ export interface RouterOptions {
 	// Reads the answer to "For checkout?" in any language.
 	judge: Judge;
 	now?: () => number;
+	// A spoken turn goes to the kernel: the instant ack starts its clock (voice-out decides the rest).
+	onKernelTurn?: (turn: KernelTurnStart) => KernelTurnHandle;
 }
 
 export interface UtteranceOrigin {
@@ -117,6 +120,8 @@ export class UtteranceRouter {
 	private async run(text: string, source: UtteranceSource, origin: UtteranceOrigin): Promise<void> {
 		const { store, kernel } = this.options;
 		const trimmedText = text.trim();
+		// The silence the developer hears starts here, not after the checks below.
+		const startedAt = this.now();
 
 		if (!trimmedText) {
 			return;
@@ -228,16 +233,28 @@ export class UtteranceRouter {
 			? store.state.switchOffer.at
 			: null;
 
-		const entry = await this.askKernel({
-			kernel,
-			text: trimmedText,
-			screen,
-			isSpoken: source === 'voice',
-			saidAt,
-			heardFrom: origin.heardFrom ?? saidAt,
-			setListenMode: origin.setListenMode ?? NO_TAB,
-			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
-		});
+		// Spoken words only: typed ones are read, and nobody waits in silence for them.
+		const kernelTurn =
+			source === 'voice' && kernel
+				? this.options.onKernelTurn?.({ text: trimmedText, startedAt })
+				: undefined;
+		let entry: VoiceEntry;
+
+		try {
+			entry = await this.askKernel({
+				kernel,
+				text: trimmedText,
+				screen,
+				isSpoken: source === 'voice',
+				saidAt,
+				heardFrom: origin.heardFrom ?? saidAt,
+				setListenMode: origin.setListenMode ?? NO_TAB,
+				openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
+			});
+		} finally {
+			kernelTurn?.cancel();
+		}
+
 		store.dispatch({ type: 'voice_logged', screen: screen ?? HOME_SCREEN, entry });
 
 		if (offerAt !== null) {

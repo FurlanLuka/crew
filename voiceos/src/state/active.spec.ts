@@ -60,7 +60,13 @@ describe('activate', () => {
 
 		expect(starts(effects)).toEqual([OTHER]);
 		expect(said(effects)).toEqual(['Activated store, work 1. Switch there?']);
-		expect(effects).toContainEqual(expect.objectContaining({ isAsking: true, ref: OTHER }));
+		expect(effects).toContainEqual(
+			expect.objectContaining({
+				isAsking: true,
+				ref: OTHER,
+				facts: { kind: 'activated', label: 'store, work 1', hasWaitingWords: false },
+			}),
+		);
 		expect(state.switchOffer).toEqual({ ref: OTHER, at: 50 });
 	});
 

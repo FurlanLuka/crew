@@ -162,15 +162,18 @@ const activate = (
 		return started;
 	}
 
+	const label = sayRef(state, ref);
+	const hasWaitingWords = (state.sessions[ref]?.queue.length ?? 0) > 0;
+
 	return {
 		state: { ...started.state, switchOffer: { ref, at } },
 		effects: [
 			...started.effects,
 			sayAck(
-				(state.sessions[ref]?.queue.length ?? 0) > 0
-					? `Activated ${sayRef(state, ref)}; your words go once it's up. Switch there?`
-					: `Activated ${sayRef(state, ref)}. Switch there?`,
-				{ isAsking: true, ref },
+				hasWaitingWords
+					? `Activated ${label}; your words go once it's up. Switch there?`
+					: `Activated ${label}. Switch there?`,
+				{ isAsking: true, ref, facts: { kind: 'activated', label, hasWaitingWords } },
 			),
 		],
 	};
