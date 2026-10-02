@@ -1,9 +1,11 @@
-// Voice OS's views, drawn from a state: Activate, Settings, the moments row and the state row.
+// Voice OS's views, drawn from a state: Activate, Settings, the moments row, the ask dock and the
+// state row.
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { State } from '../../shared/protocol.js';
+import type { PendingAsk, State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { Activate, listActivateSections } from './Activate.js';
+import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
 import { DevPanel } from './DevPanel.js';
 import { MomentsRow } from './MomentsRow.js';
@@ -199,37 +201,57 @@ describe('MomentsRow', () => {
 		expect(renderToStaticMarkup(<MomentsRow state={createState()} dispatch={noop} />)).toBe(''));
 });
 
-describe('SessionStateRow', () => {
-	it('a question → its options as buttons and how to say one', () => {
+const QUESTION: PendingAsk = {
+	id: 'q1',
+	ref: 'store-front/main',
+	at: 1,
+	kind: 'question',
+	input: {},
+	questions: [
+		{
+			question: 'A new events table, or a column on orders?',
+			multiSelect: false,
+			options: [{ label: 'A new events table' }, { label: 'A column on orders' }],
+		},
+	],
+};
+
+describe('AskDock', () => {
+	it('a question → its options as buttons, how to say one, and an X to decline it', () => {
 		const html = renderToStaticMarkup(
-			<SessionStateRow
-				state={createState({
-					asks: [
-						{
-							id: 'q1',
-							ref: 'store-front/main',
-							at: 1,
-							kind: 'question',
-							input: {},
-							questions: [
-								{
-									question: 'A new events table, or a column on orders?',
-									multiSelect: false,
-									options: [{ label: 'A new events table' }, { label: 'A column on orders' }],
-								},
-							],
-						},
-					],
-				})}
-				sessionRef="store-front/main"
-				dispatch={noop}
-			/>,
+			<AskDock ask={QUESTION} label="store-front/main" dispatch={noop} />,
 		);
 
 		expect(html).toContain('A new events table, or a column on orders?');
 		expect(html).toContain('A column on orders');
 		expect(html).toContain('Your own answer…');
+		expect(html).toContain('aria-label="Decline the question"');
+		expect(html).toContain('title="Decline the question"');
 	});
+
+	it('a plan keeps its own way to say no: no X', () =>
+		expect(
+			renderToStaticMarkup(
+				<AskDock
+					ask={{ id: 'p1', ref: 'store-front/main', at: 1, kind: 'plan', input: {}, plan: 'p' }}
+					label="store-front/main"
+					dispatch={noop}
+				/>,
+			),
+		).not.toContain('Decline the question'));
+});
+
+describe('SessionStateRow', () => {
+	it('an open ask → no row: it is docked above the voice bar', () =>
+		expect(
+			renderToStaticMarkup(
+				<SessionStateRow
+					state={createState({ asks: [QUESTION] })}
+					sessionRef="store-front/main"
+					dispatch={noop}
+				/>,
+			),
+		).toBe(''));
 
 	it('a crash → "Claude stopped unexpectedly" with Restart, its only control', () => {
 		const state = createState();

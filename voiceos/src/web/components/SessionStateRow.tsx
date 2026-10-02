@@ -1,10 +1,9 @@
-// One row under a session's header: what it waits on (its open question, plan or permission), a
-// call auto mode blocked, a machine that dropped, or a crash — each with its way out.
+// One row under a session's header: a call auto mode blocked, a machine that dropped, or a crash —
+// each with its way out. What the session waits on is docked above the voice bar (BottomBar).
 import type { State } from '../../shared/protocol.js';
 import { readLabel } from '../../state/helpers.js';
 import { describeSessionState } from '../moments.js';
 import type { Dispatch } from '../types.js';
-import { AskDock } from './AskDock.js';
 import { DenialStrip } from './DenialStrip.js';
 
 interface SessionStateRowProps {
@@ -17,8 +16,6 @@ export const SessionStateRow = ({ state, sessionRef, dispatch }: SessionStateRow
 	const row = describeSessionState(state, sessionRef);
 
 	switch (row.kind) {
-		case 'ask':
-			return <AskDock ask={row.ask} label={readLabel(state, row.ask.ref)} dispatch={dispatch} />;
 		case 'denial':
 			return (
 				<DenialStrip

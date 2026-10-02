@@ -878,43 +878,24 @@ form {
 	grid-template-columns: 18px minmax(0, 1fr) auto;
 }
 
-/* Progress: one line per runner step, from crew's own records. */
-.progress {
+/* Progress: one box, a one-line row per runner step from crew's own records, then what failed and
+   the command the page follows, flush in the same box. */
+.progress-box {
 	display: grid;
-	gap: 7px;
-	font: 13px var(--mono);
-}
-.pg {
-	display: grid;
-	grid-template-columns: 18px 140px minmax(0, 1fr);
-	gap: 8px;
-	color: var(--label-2);
-}
-.pg::before {
-	content: "✓";
-	color: var(--good);
-}
-.pg.ask::before {
-	content: "!";
-	color: var(--crit-text);
-	font-weight: 600;
-}
-.pg.wait::before {
-	content: "…";
-	color: var(--amber);
-}
-.pg.skip::before {
-	content: "–";
-	color: var(--label-3);
-}
-.pg b {
-	color: var(--label);
-	font-weight: 500;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
-.pg.ask span {
-	color: var(--crit-text);
+.progress-box .took {
+	font: 12px var(--mono);
+	white-space: nowrap;
+}
+.progress-box > .fail,
+.progress-box > .runs {
+	border-radius: 0;
+	box-shadow: inset 0 1px 0 var(--sep);
+}
+.progress-box > .runs {
+	padding: 10px 16px;
+	background: none;
 }
 
 /* First run: the steps on one page; only the current one is open. */

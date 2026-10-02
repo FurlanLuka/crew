@@ -324,6 +324,7 @@ const readActionRef = (state: State, input: Input): string | null => {
 			return input.ref;
 		case 'answer_permission':
 		case 'answer_question':
+		case 'decline_question':
 		case 'answer_plan':
 		case 'answer_command':
 		case 'answer_redirect':

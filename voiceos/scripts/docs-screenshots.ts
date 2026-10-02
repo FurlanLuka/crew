@@ -747,7 +747,22 @@ const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<vo
 	}
 };
 
+// Names given (`bun run docs:screenshots question approval`): only those shots are retaken. A
+// misspelt name would otherwise take nothing and still exit clean.
+const readOnlyShots = (): string[] => {
+	const only = process.argv.slice(2);
+	const known = SHOTS.map(({ name }) => name);
+	const unknown = only.filter((name) => !known.includes(name));
+
+	if (unknown.length > 0) {
+		throw new Error(`unknown shot ${unknown.join(', ')}; shots are: ${known.join(', ')}`);
+	}
+
+	return only;
+};
+
 const main = async (): Promise<void> => {
+	const only = readOnlyShots();
 	configureLog({ quiet: true });
 	const store = new SnapshotStore();
 	// One fake crew per shot, so a first run starts from nothing.
@@ -772,7 +787,7 @@ const main = async (): Promise<void> => {
 			args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
 		});
 
-		for (const shot of SHOTS) {
+		for (const shot of SHOTS.filter(({ name }) => only.length === 0 || only.includes(name))) {
 			const world = buildWorld(shot.world);
 			const staged = shot.stage ? shot.stage(world) : world;
 

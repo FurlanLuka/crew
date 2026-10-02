@@ -212,8 +212,9 @@ page shows its history and an **Activate** button, with no input box (see
 **Esc** goes up one level: from a session to Active (or to Activate, for one you opened from
 there), and from Activate or Settings to Active.
 
-The session page shows the conversation as it streams, the session's state under its header (a
-question with its options, a remote that dropped, a crash with Restart), and side panels: status
+The session page shows the conversation as it streams, what the session waits on (a question with
+its options, a plan, a permission) docked right above the voice bar, what went wrong under its
+header (a blocked call, a remote that dropped, a crash with Restart), and side panels: status
 and cost, sub-agents, dev servers, what you said here, notes, docs, and **elsewhere** (sessions on
 other screens that need you). Only the stream scrolls.
 
@@ -439,7 +440,9 @@ shows it in the dock at the bottom. Answer it the way you would answer a person,
   answers on the side and the plan keeps waiting.
 
 A plan has **Approve**, and **Change the plan…** to send it back with your notes. A permission
-has **Yes**, **Always for this** (when offered), **No**, and **No, and tell it why…**.
+has **Yes**, **Always for this** (when offered), **No**, and **No, and tell it why…**. A question
+has an **✕** to decline it without answering: the session is told you declined, and carries on
+without your answer.
 
 If you say something unrelated ("actually, let's look at the router first"), you are moving on:
 your words go to the session, and they decline what it was waiting on.

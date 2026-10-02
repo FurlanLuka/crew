@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import type { Input, State, View } from '../shared/protocol.js';
+import type { Input, PendingAsk, State, View } from '../shared/protocol.js';
 import { run, worktree } from '../../test/support/reduce.js';
 
 const VM1 = { id: 'vm1', host: 'dev@vm1.example.com', name: 'Build box' };
 const REMOTE = 'vm1:store/main';
+const QUESTION = { question: 'Which one?', header: 'Pick', multiSelect: false, options: [] };
 
 // A main that knows vm1, connected, with one active idle session there and one inactive here.
 const connected = (extra: Input[] = []): State =>
@@ -351,6 +352,58 @@ describe('answers to what Voice OS holds, for a machine out of reach', () => {
 			expect.objectContaining({ text: 'Build box is out of reach right now.' }),
 		]);
 	});
+
+	const cases: [string, PendingAsk, Input][] = [
+		[
+			'a permission',
+			{
+				id: 'a1',
+				ref: REMOTE,
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push',
+				input: { command: 'git push' },
+				suggestions: [],
+			},
+			{ type: 'answer_permission', askId: 'a1', decision: 'allow' },
+		],
+		[
+			'a question answered',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'question', input: {}, questions: [QUESTION] },
+			{ type: 'answer_question', askId: 'a1', answers: { 'Which one?': 'A' } },
+		],
+		[
+			'a question declined',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'question', input: {}, questions: [QUESTION] },
+			{ type: 'decline_question', askId: 'a1' },
+		],
+		[
+			'a plan',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'plan', input: {}, plan: 'Do it.' },
+			{ type: 'answer_plan', askId: 'a1', isApproved: true },
+		],
+		[
+			'a held /clear',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'command', command: 'clear', text: '/clear' },
+			{ type: 'answer_command', askId: 'a1', isApproved: true },
+		],
+	];
+
+	for (const [what, ask, answer] of cases) {
+		it(`${what} there, answered (${answer.type}) → refused aloud, the ask kept, nothing resolved`, () => {
+			const held = connected([
+				{ type: 'ask_opened', ask },
+				{ type: 'machine_status', id: 'vm1', status: 'unreachable' },
+			]);
+			const { state, effects } = run([answer], { start: held });
+
+			expect(state.asks.map((open) => open.id)).toEqual(['a1']);
+			expect(effects).toEqual([
+				expect.objectContaining({ type: 'speak', text: 'Build box is out of reach right now.' }),
+			]);
+		});
+	}
 });
 
 describe('removing the machine on screen, others left', () => {

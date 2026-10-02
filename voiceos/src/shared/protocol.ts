@@ -485,6 +485,8 @@ export type Action =
 			answers: Record<string, string>;
 			isSpoken?: boolean;
 	  }
+	// The page's X on a question: Claude's AskUserQuestion is denied, saying the developer declined.
+	| { type: 'decline_question'; askId: string }
 	| { type: 'answer_plan'; askId: string; isApproved: boolean; message?: string }
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").

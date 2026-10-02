@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { State } from '../../shared/protocol.js';
+import type { PendingAsk, State } from '../../shared/protocol.js';
 import { createInitialState } from '../../state/reducer.js';
 import type { VoiceInput } from '../use-voice-input.js';
 import { BottomBar } from './BottomBar.js';
@@ -88,5 +88,44 @@ describe('BottomBar', () => {
 
 		expect(html).toContain('Spoken');
 		expect(html).toContain('Store front is ready.');
+	});
+
+	describe('the ask of the session on screen', () => {
+		const question: PendingAsk = {
+			id: 'q1',
+			ref: 'store-front/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [
+				{
+					question: 'A new events table, or a column on orders?',
+					multiSelect: false,
+					options: [{ label: 'A new events table' }, { label: 'A column on orders' }],
+				},
+			],
+		};
+
+		it('docked first in the bar, above the spoken line and the mic, with an X to decline it', () => {
+			const html = render({
+				...createInitialState(),
+				view: { kind: 'session', ref: 'store-front/main' },
+				asks: [question],
+			});
+
+			expect(html.indexOf('aria-label="question"')).toBeGreaterThan(-1);
+			expect(html.indexOf('aria-label="question"')).toBeLessThan(html.indexOf('vo-composer'));
+			expect(html).toContain('A column on orders');
+			expect(html).toContain('aria-label="Decline the question"');
+		});
+
+		it("another session's ask stays on its own screen", () =>
+			expect(
+				render({
+					...createInitialState(),
+					view: { kind: 'session', ref: 'checkout-api/main' },
+					asks: [question],
+				}),
+			).not.toContain('aria-label="question"'));
 	});
 });

@@ -24,10 +24,21 @@ export const QuestionDock = ({ ask, label, dispatch }: QuestionDockProps) => {
 
 	return (
 		<section className="dock question" aria-label="question">
-			<span className="lbl">
-				question · {label}
-				{ask.questions.length > 1 && ` · ${index + 1} of ${ask.questions.length}`}
-			</span>
+			<div className="dock-head">
+				<span className="lbl">
+					question · {label}
+					{ask.questions.length > 1 && ` · ${index + 1} of ${ask.questions.length}`}
+				</span>
+				<button
+					type="button"
+					className="btn sm ghost decline"
+					aria-label="Decline the question"
+					title="Decline the question"
+					onClick={() => dispatch({ type: 'decline_question', askId: ask.id })}
+				>
+					✕
+				</button>
+			</div>
 			<div className="ask">{question.question}</div>
 			<div className="opts">
 				{question.options.map((option, optionIndex) => (

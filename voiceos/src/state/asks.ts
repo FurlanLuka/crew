@@ -39,6 +39,7 @@ import {
 const ASK_INPUTS = [
 	'answer_permission',
 	'answer_question',
+	'decline_question',
 	'answer_plan',
 	'ask_opened',
 	'ask_closed',
@@ -54,6 +55,7 @@ const ASK_INPUT_SET = new Set<string>(ASK_INPUTS);
 const MAX_SUMMARY_WORDS = 15;
 const MAX_QUESTION_WORDS = 25;
 const DENIALS_KEPT = 20;
+const QUESTION_DECLINED = 'The developer declined to answer this question.';
 
 export const completesAsk = (ask: PendingAsk): boolean =>
 	// Words for an ask reach the session only once they settle it: one open question or none left.
@@ -522,6 +524,14 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 						],
 					}
 				: withoutEffects(next);
+		}
+
+		case 'decline_question': {
+			const ask = findAsk(state, input.askId, 'question');
+
+			return ask
+				? resolveAsk(state, ask, { behavior: 'deny', message: QUESTION_DECLINED })
+				: withoutEffects(state);
 		}
 
 		case 'answer_plan': {

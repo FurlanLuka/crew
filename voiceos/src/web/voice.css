@@ -403,7 +403,6 @@
 	gap: 4px;
 	min-width: 0;
 	padding: 18px 24px;
-	border-right: 1px solid var(--hair);
 	font: 14.5px / 1.5 var(--sys);
 	color: #d8dee9;
 }
@@ -548,11 +547,14 @@
 
 /* The side panels: flush, split by hairlines; quiet mono for what is data. One column that never
    grows past the panel: an unbroken path, URL or voice line wraps instead of scrolling sideways. */
+/* The divider is the panels' own edge: they stretch to the history's height, so it runs to the bottom
+   however little they hold. */
 .vo-panels {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
 	min-width: 0;
+	border-left: 1px solid var(--hair);
 }
 .vo-panel,
 .vo-panels .panel {
@@ -641,20 +643,26 @@
 	text-underline-offset: 3px;
 	text-decoration-color: rgba(255, 255, 255, 0.3);
 }
+/* Each entry is plain rows like the other panels': no class here may share a name with Set up's
+   (its .reply is the chat's floating composer). */
 .voice-log .entry {
 	display: grid;
 	gap: 2px;
-	font-size: 12.5px;
 }
 .voice-log .entry.old {
 	opacity: 0.5;
 }
+.voice-log .row {
+	align-items: baseline;
+}
 .voice-log .said {
 	color: #fff;
 }
-.voice-log .did,
-.voice-log .reply {
-	color: var(--label-2);
+.voice-log .row.c-dim {
+	color: var(--label-3);
+}
+.voice-log .row.c-crit {
+	color: var(--crit-text);
 }
 .elsewhere-row {
 	display: grid;
@@ -685,7 +693,7 @@
 	font-size: 12.5px;
 }
 
-/* The state row: what the session waits on, or what went wrong, with the way out. */
+/* The state row (what went wrong, with the way out) and the ask dock (what the session waits on). */
 .vs-state,
 .dock,
 .strip {
@@ -721,6 +729,21 @@
 }
 .dock.amber {
 	background: rgba(240, 160, 44, 0.06);
+}
+/* Docked above the voice bar, flush like the moments row: a hairline on top and below. */
+.vo-bar > .dock {
+	box-shadow:
+		inset 0 1px 0 var(--hair),
+		inset 0 -1px 0 var(--hair);
+}
+.dock-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.dock-head .decline {
+	margin-left: auto;
+	padding-inline: 8px;
 }
 .dock .lbl {
 	color: var(--label-3);
@@ -1252,7 +1275,10 @@
 		grid-template-rows: auto auto minmax(0, 1fr);
 		grid-row: -2;
 	}
+	/* The last row by line, not by count: with no state row the split would take its auto row and
+	   end where its taller column does. */
 	.vo-session .vo-split {
+		grid-row: -2;
 		min-height: 0;
 		height: 100%;
 	}
@@ -1294,8 +1320,10 @@
 	}
 	.vo-stream {
 		padding: 16px;
-		border-right: 0;
 		border-bottom: 1px solid var(--hair);
+	}
+	.vo-panels {
+		border-left: 0;
 	}
 	.vo-head {
 		padding: 14px 16px;

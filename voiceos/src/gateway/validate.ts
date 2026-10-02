@@ -34,6 +34,7 @@ const actionSchema = z.discriminatedUnion('type', [
 		askId: z.string(),
 		answers: z.record(z.string(), z.string().max(2000)),
 	}),
+	z.object({ type: z.literal('decline_question'), askId: z.string() }),
 	z.object({
 		type: z.literal('answer_plan'),
 		askId: z.string(),

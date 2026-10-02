@@ -7,7 +7,7 @@ import { isOk, useCrew, useCrewAction } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { FailBlock, PageHead, ResultLine, type SetupContext } from './common.js';
 import { describeIssue } from './derive.js';
-import { ProgressLines, isRunning, listFailedProjects, listProgressLines } from './progress.js';
+import { ProgressBox, isRunning, listFailedProjects, listProgressLines } from './progress.js';
 import { readBases } from './readers.js';
 import type { CrewSetupStatus } from './types.js';
 
@@ -144,58 +144,62 @@ export const Progress = ({ ctx, worktreeRef }: ProgressProps) => {
 				title={isDone ? worktreeRef : `Creating ${worktreeRef}`}
 				lead={`On ${ctx.machineTitle}. You can leave this page; it carries on.`}
 			/>
-			<ProgressLines lines={lines} />
-			{!data && <p className="m">Waiting for crew's runners…</p>}
-			{failed.map((project) => {
-				const issue = project.issues[0];
+			<ProgressBox lines={lines} empty="Waiting for crew's runners…">
+				{failed.map((project) => {
+					const issue = project.issues[0];
 
-				return (
-					<FailBlock
-						key={project.project}
-						title={`${project.project}: ${issue ? describeIssue(issue, { isNamed: false }) : project.state}`}
-						log={issue?.detail}
-						why={
-							issue?.stage === 'install'
-								? `Its install failed, so ${project.project}'s session can read and change the code but not run it. Fix it now, or carry on and fix it from the board.`
-								: 'The other projects keep what they have; this one stopped here.'
-						}
-					>
-						<button
-							type="button"
-							className="btn primary"
-							onClick={() =>
-								ctx.askClaude(
-									`In ${worktreeRef}: ${issue ? describeIssue(issue) : `${project.project} failed`}. Fix it.`,
-								)
+					return (
+						<FailBlock
+							key={project.project}
+							title={`${project.project}: ${issue ? describeIssue(issue, { isNamed: false }) : project.state}`}
+							log={issue?.detail}
+							why={
+								issue?.stage === 'install'
+									? `Its install failed, so ${project.project}'s session can read and change the code but not run it. Fix it now, or carry on and fix it from the board.`
+									: 'The other projects keep what they have; this one stopped here.'
 							}
 						>
-							Fix with Claude
-						</button>
-						<button
-							type="button"
-							className="btn"
-							disabled={action.isBusy}
-							onClick={async () => {
-								await action.run({
-									type: 'setup_rerun',
-									ref: worktreeRef,
-									projects: [project.project],
-								});
-								status.refresh();
-							}}
-						>
-							Retry
-						</button>
-						<button
-							type="button"
-							className="btn ghost"
-							onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
-						>
-							Show the log
-						</button>
-					</FailBlock>
-				);
-			})}
+							<button
+								type="button"
+								className="btn primary"
+								onClick={() =>
+									ctx.askClaude(
+										`In ${worktreeRef}: ${issue ? describeIssue(issue) : `${project.project} failed`}. Fix it.`,
+									)
+								}
+							>
+								Fix with Claude
+							</button>
+							<button
+								type="button"
+								className="btn"
+								disabled={action.isBusy}
+								onClick={async () => {
+									await action.run({
+										type: 'setup_rerun',
+										ref: worktreeRef,
+										projects: [project.project],
+									});
+									status.refresh();
+								}}
+							>
+								Retry
+							</button>
+							<button
+								type="button"
+								className="btn ghost"
+								onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
+							>
+								Show the log
+							</button>
+						</FailBlock>
+					);
+				})}
+				<CommandLine
+					commands={[{ type: 'setup_status', ref: worktreeRef }]}
+					machineTitle={ctx.machineTitle}
+				/>
+			</ProgressBox>
 			<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 			{isDone && (
 				<div className="form-actions">
@@ -218,10 +222,6 @@ export const Progress = ({ ctx, worktreeRef }: ProgressProps) => {
 					</button>
 				</div>
 			)}
-			<CommandLine
-				commands={[{ type: 'setup_status', ref: worktreeRef }]}
-				machineTitle={ctx.machineTitle}
-			/>
 		</section>
 	);
 };

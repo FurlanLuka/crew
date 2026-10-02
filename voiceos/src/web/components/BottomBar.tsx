@@ -1,10 +1,14 @@
-// The voice bar, docked across the bottom: a moment Voice OS asks, the last spoken line, then the
-// mic, where your words go and the listening mode. The mic's logic is use-voice-input.ts.
-import type { ClientMessage, State } from '../../shared/protocol.js';
+// The voice bar, docked across the bottom: what the session on screen waits on (its question, plan,
+// permission or confirm), a moment Voice OS asks, the last spoken line, then the mic, where your words
+// go and the listening mode. The mic's logic is use-voice-input.ts.
+import type { Action, ClientMessage, State } from '../../shared/protocol.js';
+import { readLabel } from '../../state/helpers.js';
 import { isListeningMode, type InputMode } from '../listen-mode.js';
+import { readScreenAsk } from '../moments.js';
 import type { ListeningMode } from '../../shared/protocol.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
+import { AskDock } from './AskDock.js';
 import { Composer } from './Composer.js';
 import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
@@ -70,13 +74,14 @@ export const BottomBar = ({
 			: 'Voice via Discord, but not hearing you: pick a mode to try again'
 		: '';
 	const viewed = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
+	const ask = readScreenAsk(state);
+	const dispatch = (action: Action) => send({ type: 'action', action });
 
 	return (
 		<footer className="vo-bar">
-			<MomentsRow state={state} dispatch={(action) => send({ type: 'action', action })} />
-			{viewed && (
-				<QueueList session={viewed} dispatch={(action) => send({ type: 'action', action })} />
-			)}
+			{ask && <AskDock ask={ask} label={readLabel(state, ask.ref)} dispatch={dispatch} />}
+			<MomentsRow state={state} dispatch={dispatch} />
+			{viewed && <QueueList session={viewed} dispatch={dispatch} />}
 			<LastSpokenLine state={state} />
 			<div className="vo-composer">
 				{discord ? (
@@ -147,9 +152,7 @@ export const BottomBar = ({
 						isDenied={micStatus === 'denied'}
 						title={MIC_TITLES[listenMode]}
 						languages={state.languages}
-						onLanguages={(languages) =>
-							send({ type: 'action', action: { type: 'set_languages', languages } })
-						}
+						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
 					/>
 				)}
 				{discord && (
@@ -165,9 +168,7 @@ export const BottomBar = ({
 						isDenied={!discord.isHearing}
 						title={discordTitle}
 						languages={state.languages}
-						onLanguages={(languages) =>
-							send({ type: 'action', action: { type: 'set_languages', languages } })
-						}
+						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
 					/>
 				)}
 			</div>

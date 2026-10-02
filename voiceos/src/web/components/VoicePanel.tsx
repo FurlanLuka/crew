@@ -21,17 +21,30 @@ export const VoicePanel = ({ state, screen }: VoicePanelProps) => {
 					key={`${entry.at}-${index}`}
 					className={`entry ${isRemembered(entry, now) ? '' : 'old'}`}
 				>
-					<div className="said">
-						you: {entry.utterance} <span className="el">{formatAge(now - entry.at)} ago</span>
+					<div className="row said">
+						<span>you: {entry.utterance}</span>
+						<span className="el">{formatAge(now - entry.at)} ago</span>
 					</div>
 					{entry.did.map((did, didIndex) => (
-						<div key={didIndex} className="did">
-							→ {formatDidLine(did)}
+						<div key={didIndex} className="row">
+							<span>→ {formatDidLine(did)}</span>
 						</div>
 					))}
-					{entry.reply && <div className="reply">◂ “{entry.reply}”</div>}
-					{entry.isIgnored && <div className="did c-dim">· no reply needed</div>}
-					{entry.isFailed && <div className="did c-crit">· Voice OS could not handle this</div>}
+					{entry.reply && (
+						<div className="row">
+							<span>◂ “{entry.reply}”</span>
+						</div>
+					)}
+					{entry.isIgnored && (
+						<div className="row c-dim">
+							<span>· no reply needed</span>
+						</div>
+					)}
+					{entry.isFailed && (
+						<div className="row c-crit">
+							<span>· Voice OS could not handle this</span>
+						</div>
+					)}
 				</div>
 			))}
 		</section>

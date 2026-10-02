@@ -1056,7 +1056,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it("an open permission is the state row under the session's header: the stream stays on screen below it", async () => {
+	it('an open permission docks above the voice bar, below the stream that stays on screen', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({ type: 'assistant_text', ref: 'store-front/main', text: 'push the fix next' });
@@ -1073,16 +1073,110 @@ describe('voice os ui', () => {
 				suggestions: [],
 			},
 		});
-		const dock = page.locator('section[aria-label="permission"]');
+		const dock = page.locator('.vo-bar > section[aria-label="permission"]');
 		await dock.waitFor({ timeout: 5000 });
 		const stream = page.locator('.stream');
-		expect(await stream.isVisible()).toBe(true);
 		expect(await stream.getByText('push the fix next').isVisible()).toBe(true);
 		const [streamBox, dockBox] = [await stream.boundingBox(), await dock.boundingBox()];
-		expect((dockBox?.y ?? 0) + (dockBox?.height ?? 0)).toBeLessThanOrEqual((streamBox?.y ?? 0) + 1);
+		expect(dockBox?.y ?? 0).toBeGreaterThanOrEqual(
+			(streamBox?.y ?? 0) + (streamBox?.height ?? 0) - 1,
+		);
+		expect(await page.locator('.vs-state').count()).toBe(0);
 
 		await page.getByRole('button', { name: /Yes/ }).click();
 		await waitUntil(() => store.state.asks.every((ask) => ask.id !== 'ui-dock'));
+		await context.close();
+	}, 20_000);
+
+	it("a question docks below the stream, right above the voice bar's mic row; its X declines it", async () => {
+		const { context, page } = await signIn();
+		await page.setViewportSize({ width: 1440, height: 900 });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ui-decline',
+				ref: 'store-front/main',
+				at: 4,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question: 'Keep the old checkout flow behind a flag?',
+						multiSelect: false,
+						options: [{ label: 'Yes, behind a flag' }, { label: 'No, replace it' }],
+					},
+				],
+			},
+		});
+		const card = page.locator('section[aria-label="question"]');
+		await card.waitFor({ timeout: 5000 });
+
+		const layout = await page.evaluate(() => {
+			const dock = document.querySelector('section[aria-label="question"]') as HTMLElement;
+			const bar = document.querySelector('.vo-bar') as HTMLElement;
+			const stream = document.querySelector('.vo-stream') as HTMLElement;
+			const below = dock.nextElementSibling as HTMLElement;
+
+			return {
+				isFirstInBar: bar.firstElementChild === dock,
+				belowStream: dock.getBoundingClientRect().top >= stream.getBoundingClientRect().bottom - 1,
+				flushOnNext: Math.round(
+					below.getBoundingClientRect().top - dock.getBoundingClientRect().bottom,
+				),
+				barBottom: Math.round(bar.getBoundingClientRect().bottom),
+				pageScrolls: document.scrollingElement
+					? document.scrollingElement.scrollHeight > window.innerHeight
+					: false,
+			};
+		});
+		expect(layout).toEqual({
+			isFirstInBar: true,
+			belowStream: true,
+			flushOnNext: 0,
+			barBottom: 900,
+			pageScrolls: false,
+		});
+
+		await page.getByRole('button', { name: 'Decline the question' }).click();
+		await waitUntil(() => listSentActions('decline_question').length > 0);
+		expect(listSentActions('decline_question').at(-1)).toEqual({
+			type: 'decline_question',
+			askId: 'ui-decline',
+		});
+		await card.waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.asks.some((ask) => ask.id === 'ui-decline')).toBe(false);
+		await context.close();
+	}, 20_000);
+
+	it('few panels at 1440×900 → the panels and their divider run down to the bottom of the history', async () => {
+		const { context, page } = await signIn();
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await ensureIdle('store-front/main');
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		await page.locator('.vo-panels').waitFor({ timeout: 5000 });
+
+		const layout = await page.evaluate(() => {
+			const aside = document.querySelector('.vo-panels') as HTMLElement;
+			const stream = document.querySelector('.vo-stream') as HTMLElement;
+			const panels = [...aside.children].at(-1) as HTMLElement;
+			const style = getComputedStyle(aside);
+
+			return {
+				isFewPanels: panels.getBoundingClientRect().bottom < aside.getBoundingClientRect().bottom,
+				asideTop: Math.round(aside.getBoundingClientRect().top),
+				streamTop: Math.round(stream.getBoundingClientRect().top),
+				asideBottom: Math.round(aside.getBoundingClientRect().bottom),
+				streamBottom: Math.round(stream.getBoundingClientRect().bottom),
+				border: `${style.borderLeftWidth} ${style.borderLeftStyle}`,
+			};
+		});
+
+		expect(layout.isFewPanels).toBe(true);
+		expect(layout.asideTop).toBe(layout.streamTop);
+		// The border is the aside's own, so it spans the aside's height, which is the stream's.
+		expect(layout.asideBottom).toBe(layout.streamBottom);
+		expect(layout.border).toBe('1px solid');
 		await context.close();
 	}, 20_000);
 
@@ -1438,6 +1532,30 @@ describe('voice os ui', () => {
 		// Newest first.
 		expect(text.indexOf('Hmm.')).toBeLessThan(text.indexOf('Run the tests.'));
 		expect(await page.getByText('you asked', { exact: true }).count()).toBe(0);
+		// Plain rows like the other panels': no entry line is a card of its own.
+		const lines = await log.locator('.entry > *').evaluateAll((elements) =>
+			elements.map((element) => {
+				const style = getComputedStyle(element);
+
+				return {
+					isRow: element.classList.contains('row'),
+					background: style.backgroundColor,
+					shadow: style.boxShadow,
+					radius: style.borderRadius,
+				};
+			}),
+		);
+		expect(lines.length).toBeGreaterThan(0);
+		expect(new Set(lines.map((line) => JSON.stringify(line)))).toEqual(
+			new Set([
+				JSON.stringify({
+					isRow: true,
+					background: 'rgba(0, 0, 0, 0)',
+					shadow: 'none',
+					radius: '0px',
+				}),
+			]),
+		);
 		await context.close();
 	}, 20_000);
 

@@ -1,5 +1,6 @@
-// What Voice OS asks or tells right now, as the page shows it: the moments row above the spoken line
-// and the state row under a session's header. Pure: the components only draw what these return.
+// What Voice OS asks or tells right now, as the page shows it: the moments row above the spoken line,
+// the ask docked above the voice bar and the state row under a session's header. Pure: the components
+// only draw what these return.
 import { isReachable, readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import { machineOf } from '../shared/machine-ref.js';
 import type { Action, Denial, PendingAsk, SpokenLine, State } from '../shared/protocol.js';
@@ -138,21 +139,20 @@ const describeMeanwhile = (state: State, now: number): Moment | null => {
 export const describeMoment = (state: State, now: number): Moment | null =>
 	describeTargetAsk(state) ?? describeSwitchOffer(state) ?? describeMeanwhile(state, now);
 
+// What the session on screen waits on, docked above the voice bar where the answer is given. Only
+// that session's: another session's ask waits on its own screen.
+export const readScreenAsk = ({ view, asks }: State): PendingAsk | null =>
+	view.kind === 'session' ? (asks.find((ask) => ask.ref === view.ref) ?? null) : null;
+
 export type SessionState =
-	| { kind: 'ask'; ask: PendingAsk }
 	| { kind: 'denial'; denial: Denial }
 	| { kind: 'dropped'; machine: string; detail: string | null }
 	| { kind: 'crashed'; error: string }
 	| { kind: 'none' };
 
-// The row under a session's header: what's wrong, or what it waits on, with the way out.
+// The row under a session's header: what's wrong, with the way out. What it waits on is docked
+// above the voice bar instead (readScreenAsk).
 export const describeSessionState = (state: State, ref: string): SessionState => {
-	const ask = state.asks.find((candidate) => candidate.ref === ref);
-
-	if (ask) {
-		return { kind: 'ask', ask };
-	}
-
 	const denial = state.denials.find((candidate) => candidate.ref === ref);
 
 	if (denial) {

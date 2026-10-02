@@ -943,3 +943,43 @@ describe('what a "done" names', () => {
 			'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19 w20 w21 w22 w23 w24 w25 w26 w27 w28…',
 		));
 });
+
+describe('an answer settles the waiting update of its session', () => {
+	const elsewhere = (): State => ({
+		...idleSession(),
+		view: { kind: 'session', ref: 'store/wrk1' },
+	});
+	const asked = (): State =>
+		run(
+			[
+				{
+					type: 'ask_opened',
+					ask: {
+						id: 'q1',
+						ref: REF,
+						at: 1,
+						kind: 'question',
+						input: {},
+						questions: [
+							{ question: 'Which one?', header: 'Pick', multiSelect: false, options: [] },
+						],
+					},
+				},
+				{ type: 'meanwhile_added', ref: REF, kind: 'done', about: 'tests pass' },
+			],
+			{ start: elsewhere() },
+		).state;
+	const answers: Input[] = [
+		{ type: 'decline_question', askId: 'q1' },
+		{ type: 'answer_question', askId: 'q1', answers: { 'Which one?': 'A' } },
+	];
+
+	for (const answer of answers) {
+		it(`${answer.type} → nothing waits for it`, () => {
+			const start = asked();
+
+			expect(start.meanwhile.map((item) => item.ref)).toEqual([REF]);
+			expect(run([answer], { start }).state.meanwhile).toEqual([]);
+		});
+	}
+});

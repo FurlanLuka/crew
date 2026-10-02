@@ -7,7 +7,7 @@ import { isOk, useCrew, useCrewAction } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { FailBlock, ResultLine, type SetupContext } from './common.js';
 import { describeIssue } from './derive.js';
-import { ProgressLines, isRunning, listFailedProjects, listProgressLines } from './progress.js';
+import { ProgressBox, isRunning, listFailedProjects, listProgressLines } from './progress.js';
 import type { CrewProject, CrewSetupStatus } from './types.js';
 import { countOf } from '../count.js';
 
@@ -226,8 +226,7 @@ const CreatingStep = ({ ctx, workspace, onBoard }: CreatingStepProps) => {
 
 	return (
 		<div className="fr-body">
-			<ProgressLines lines={listProgressLines(data)} />
-			{!data && <p className="m">Waiting for crew's runners…</p>}
+			<ProgressBox lines={listProgressLines(data)} empty="Waiting for crew's runners…" />
 			{isDone && (
 				<div className="fr-next">
 					{failed.map((project) => {

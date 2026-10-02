@@ -336,6 +336,31 @@ describe('a project', () => {
 		await context.close();
 	}, 30_000);
 
+	it('the check page: title and lead outside, the steps and the command in one box', async () => {
+		const { context, page } = await open('/setup/project/store-front/check');
+		const box = page.locator('.progress-box');
+		await box.locator('.pg[data-state="wait"]').first().waitFor({ timeout: 5000 });
+
+		const layout = await page.evaluate(() => {
+			const section = document.querySelector('section[aria-label="Checking store-front"]');
+
+			return {
+				outside: [...(section?.children ?? [])].map((child) => child.className),
+				lastInBox: document.querySelector('.progress-box')?.lastElementChild?.className,
+				rowCells: document.querySelector('.progress-box .pg')?.children.length,
+			};
+		});
+		expect(layout).toEqual({
+			outside: ['head-row', 'box progress-box'],
+			lastInBox: 'runs',
+			rowCells: 3,
+		});
+		expect(await box.locator('.runs pre').innerText()).toBe('crew check project store-front');
+		await page.getByText('store-front is ready.').waitFor({ timeout: 10_000 });
+		expect(await box.locator('.pg[data-state="ok"]').count()).toBeGreaterThan(1);
+		await context.close();
+	}, 20_000);
+
 	it('never checked → "Check", not "Check again"', async () => {
 		const { context, page } = await open('/setup/project/store-front');
 		await page.getByText('Not checked yet').waitFor({ timeout: 5000 });
@@ -456,7 +481,8 @@ describe('worktrees', () => {
 		await page.waitForURL('**/setup/worktree/store-front/search/progress');
 		await page.locator('.pg[data-state="wait"]').first().waitFor({ timeout: 5000 });
 		await page.getByRole('button', { name: 'Open in Voice OS' }).waitFor({ timeout: 10_000 });
-		expect(await page.locator('.pg[data-state="ok"]').count()).toBeGreaterThan(2);
+		expect(await page.locator('.progress-box .pg[data-state="ok"]').count()).toBeGreaterThan(2);
+		expect(await page.locator('.progress-box > .runs').count()).toBe(1);
 		expect(
 			server.crew.calls.filter((call) => call.command.type === 'setup_status').length,
 		).toBeGreaterThan(1);

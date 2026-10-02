@@ -6,7 +6,10 @@ import type { CrewSetupStatus } from './types.js';
 const status = (name: string): CrewSetupStatus => readGolden<CrewSetupStatus>(`${name}.json`);
 
 const lineText = (doc: CrewSetupStatus): string[] =>
-	listProgressLines(doc).map((line) => `${line.state} ${line.what} · ${line.detail}`);
+	listProgressLines(doc).map(
+		(line) =>
+			`${line.state} ${line.what} · ${[line.detail, line.took].filter(Boolean).join(' · ')}`,
+	);
 
 describe('a setup runner as Set up draws it (crew setup status goldens)', () => {
 	it('ok → every step done with its time; not running, nothing failed', () => {

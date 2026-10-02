@@ -309,6 +309,7 @@ describe('parseClientMessage', () => {
 			askId: 'a1',
 			answers: { 'Which table?': 'New table' },
 		},
+		decline_question: { type: 'decline_question', askId: 'a1' },
 		answer_command: { type: 'answer_command', askId: 'a1', isApproved: true },
 		answer_redirect: { type: 'answer_redirect', askId: 'a1', isApproved: false, message: 'do X' },
 		answer_plan: {

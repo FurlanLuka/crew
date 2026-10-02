@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
-import { describeMoment, describeSessionState } from './moments.js';
+import { describeMoment, describeSessionState, readScreenAsk } from './moments.js';
 
 const NOW = 1_000_000;
 
@@ -105,8 +105,31 @@ describe('describeMoment', () => {
 		).toEqual({ type: 'play_meanwhile' }));
 });
 
+describe('readScreenAsk', () => {
+	const plan = (ref: string) =>
+		({ id: `a-${ref}`, ref, at: 1, kind: 'plan', input: {}, plan: 'p' }) as const;
+
+	it("the session on screen's open ask, never another session's", () => {
+		const state = createState({
+			view: { kind: 'session', ref: 'store-front/main' },
+			asks: [plan('checkout-api/main'), plan('store-front/main')],
+		});
+
+		expect(readScreenAsk(state)?.id).toBe('a-store-front/main');
+	});
+
+	it('another session asking, or no session on screen → nothing docked', () => {
+		const asks = [plan('checkout-api/main')];
+
+		expect(
+			readScreenAsk(createState({ view: { kind: 'session', ref: 'store-front/main' }, asks })),
+		).toBeNull();
+		expect(readScreenAsk(createState({ view: { kind: 'active' }, asks }))).toBeNull();
+	});
+});
+
 describe('describeSessionState', () => {
-	it('its own open ask comes first', () =>
+	it('an open ask is not the state row: it is docked above the voice bar', () =>
 		expect(
 			describeSessionState(
 				createState({
@@ -114,7 +137,7 @@ describe('describeSessionState', () => {
 				}),
 				'store-front/main',
 			).kind,
-		).toBe('ask'));
+		).toBe('none'));
 
 	it("a remote machine that dropped → 'dropped' with its name", () =>
 		expect(

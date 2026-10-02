@@ -5,7 +5,7 @@ import { isOk, readCrewLine, runCrew, useCrew } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { FailBlock, PageHead, type SetupContext } from './common.js';
 import { describeIssue, listWorkspacesOf } from './derive.js';
-import { ProgressLines, isRunning, listFailedProjects, listProgressLines } from './progress.js';
+import { ProgressBox, isRunning, listFailedProjects, listProgressLines } from './progress.js';
 import type { CrewSetupStatus, CrewWorkspace } from './types.js';
 
 const POLL_MS = 2000;
@@ -82,55 +82,59 @@ export const CheckPage = ({ ctx, name }: CheckPageProps) => {
 				title={`Checking ${name}`}
 				lead="A clean checkout, the install, then every dev server has to answer."
 			/>
-			<ProgressLines lines={lines} />
-			{phase === 'starting' && <p className="m">Starting the check…</p>}
-			{phase === 'refused' && (
-				<FailBlock title="crew did not start the check" why={refusal || 'crew refused.'}>
-					<button
-						type="button"
-						className="btn"
-						onClick={() => ctx.go({ page: 'project-edit', name })}
+			<ProgressBox lines={lines} empty={phase === 'refused' ? null : 'Starting the check…'}>
+				{phase === 'refused' && (
+					<FailBlock title="crew did not start the check" why={refusal || 'crew refused.'}>
+						<button
+							type="button"
+							className="btn"
+							onClick={() => ctx.go({ page: 'project-edit', name })}
+						>
+							Edit setup
+						</button>
+					</FailBlock>
+				)}
+				{isDone && failed.length > 0 && (
+					<FailBlock
+						title={`${name} is not ready on ${ctx.machineTitle}`}
+						log={issue?.detail}
+						why={`${issue ? `${describeIssue(issue)}. ` : ''}Nothing else changed: its worktrees keep their code, and the project stays as it was set up.`}
 					>
-						Edit setup
-					</button>
-				</FailBlock>
-			)}
-			{isDone && failed.length > 0 && (
-				<FailBlock
-					title={`${name} is not ready on ${ctx.machineTitle}`}
-					log={issue?.detail}
-					why={`${issue ? `${describeIssue(issue)}. ` : ''}Nothing else changed: its worktrees keep their code, and the project stays as it was set up.`}
-				>
-					<button
-						type="button"
-						className="btn primary"
-						onClick={() =>
-							ctx.askClaude(
-								`Fix ${name}: its check failed${issue ? ` at ${issue.stage}: ${describeIssue(issue)}` : ''}.`,
-							)
-						}
-					>
-						Fix with Claude
-					</button>
-					<button
-						type="button"
-						className="btn"
-						onClick={() => ctx.go({ page: 'project-edit', name })}
-					>
-						Edit setup
-					</button>
-					<button
-						type="button"
-						className="btn"
-						onClick={() => {
-							setPhase('starting');
-							setRunId(runId + 1);
-						}}
-					>
-						Check again
-					</button>
-				</FailBlock>
-			)}
+						<button
+							type="button"
+							className="btn primary"
+							onClick={() =>
+								ctx.askClaude(
+									`Fix ${name}: its check failed${issue ? ` at ${issue.stage}: ${describeIssue(issue)}` : ''}.`,
+								)
+							}
+						>
+							Fix with Claude
+						</button>
+						<button
+							type="button"
+							className="btn"
+							onClick={() => ctx.go({ page: 'project-edit', name })}
+						>
+							Edit setup
+						</button>
+						<button
+							type="button"
+							className="btn"
+							onClick={() => {
+								setPhase('starting');
+								setRunId(runId + 1);
+							}}
+						>
+							Check again
+						</button>
+					</FailBlock>
+				)}
+				<CommandLine
+					commands={[{ type: 'check_project', project: name }]}
+					machineTitle={ctx.machineTitle}
+				/>
+			</ProgressBox>
 			{isDone && failed.length === 0 && (
 				<div className="check-done">
 					<p className="lead">
@@ -157,10 +161,6 @@ export const CheckPage = ({ ctx, name }: CheckPageProps) => {
 					</div>
 				</div>
 			)}
-			<CommandLine
-				commands={[{ type: 'check_project', project: name }]}
-				machineTitle={ctx.machineTitle}
-			/>
 		</section>
 	);
 };

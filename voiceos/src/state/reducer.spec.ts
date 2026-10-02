@@ -314,6 +314,49 @@ describe('asks', () => {
 		});
 	});
 
+	it('question declined (the X) → the ask closes, Claude is denied with why, nothing said', () => {
+		const ask: PendingAsk = {
+			id: 'q1',
+			ref: 'store/main',
+			at: 1,
+			kind: 'question',
+			input: {},
+			questions: [{ question: 'Which table?', options: [{ label: 'New' }], multiSelect: false }],
+		};
+		const opened = run([{ type: 'ask_opened', ask }], idleSession()).state;
+		const { state, effects } = run([{ type: 'decline_question', askId: 'q1' }], opened);
+
+		expect(effects).toEqual([
+			{
+				type: 'resolve_ask',
+				ref: 'store/main',
+				askId: 'q1',
+				result: { behavior: 'deny', message: 'The developer declined to answer this question.' },
+			},
+		]);
+		expect(state.asks).toEqual([]);
+		expect(state.sessions['store/main']?.status).not.toBe('blocked');
+	});
+
+	it('decline of an ask that is gone, or is not a question → nothing happens', () => {
+		const plan: PendingAsk = {
+			id: 'p1',
+			ref: 'store/main',
+			at: 1,
+			kind: 'plan',
+			input: { plan: 'x' },
+			plan: 'x',
+		};
+		const opened = run([{ type: 'ask_opened', ask: plan }], idleSession()).state;
+
+		for (const askId of ['nope', 'p1']) {
+			const { state, effects } = run([{ type: 'decline_question', askId }], opened);
+
+			expect(effects).toEqual([]);
+			expect(state.asks).toEqual(opened.asks);
+		}
+	});
+
 	it('plan rejected → deny carries the requested change', () => {
 		const ask: PendingAsk = {
 			id: 'p1',
