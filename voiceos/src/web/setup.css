@@ -427,8 +427,7 @@ body:has(.setup) {
 .ov-add input,
 .ov-add select,
 .sel,
-.inline-form input,
-.import-choice input {
+.inline-form input {
 	min-width: 0;
 	padding: 8px 12px;
 	border: 0;
@@ -867,24 +866,9 @@ form {
 	display: block;
 	padding: 0 16px 12px 34px;
 }
-.imp {
-	grid-template-columns: 10px minmax(0, 1fr) auto;
-}
-.import-choice {
-	display: grid;
-	justify-items: end;
-	gap: 6px;
-}
-.import-extras {
-	display: grid;
-	gap: 6px;
-}
 .check-done {
 	display: grid;
 	gap: 12px;
-}
-.export-picks .pick {
-	grid-template-columns: 18px minmax(0, 1fr) auto;
 }
 
 /* Progress: one box, a one-line row per runner step from crew's own records, then what failed and
@@ -1182,15 +1166,6 @@ form {
 	.ov-add {
 		grid-template-columns: 1fr;
 	}
-	.imp {
-		grid-template-columns: 10px minmax(0, 1fr);
-	}
-	.imp .import-choice,
-	.imp > .btn,
-	.imp > .chip {
-		grid-column: 2;
-		justify-items: start;
-	}
 }
 
 /* Every select on crew's page, one style: no native arrow, one chevron 12px in from the right edge,
@@ -1235,4 +1210,163 @@ select.sel:disabled {
 }
 .box-row.one-line .sub .m {
 	overflow-wrap: normal;
+}
+
+/* Export and import: the first run's rows (.fr-, home.css) inside Set up's page. */
+.move .fr-progress.inline {
+	position: static;
+	justify-content: flex-start;
+	padding: 0;
+	animation: none;
+}
+.fr-group-h {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 12px;
+	padding: 12px 16px 4px;
+	font-size: 12px;
+	color: var(--label-3);
+}
+.fr-row.nested {
+	padding-left: 50px;
+}
+.fr-row.nested + .fr-row.nested {
+	box-shadow:
+		inset 84px 1px 0 var(--elev-1),
+		inset 0 1px 0 var(--sep);
+}
+.fr-facts {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.fr-facts > div {
+	display: grid;
+	gap: 4px;
+	padding: 14px 16px;
+	font-size: 13px;
+}
+.fr-facts > div + div {
+	box-shadow: inset 1px 0 0 var(--sep);
+}
+.fr-facts b {
+	font-weight: 600;
+}
+.fr-fact-note {
+	color: var(--label-2);
+}
+.fr-drop {
+	display: grid;
+	justify-items: center;
+	gap: 8px;
+	padding: 34px 16px;
+	border: 1.5px dashed rgba(255, 255, 255, 0.16);
+	border-radius: 14px;
+	background: rgba(255, 255, 255, 0.015);
+	text-align: center;
+	cursor: pointer;
+}
+.fr-drop.over {
+	border-color: rgba(255, 255, 255, 0.45);
+	background: rgba(255, 255, 255, 0.04);
+}
+.fr-drop b {
+	font-size: 15px;
+}
+.fr-drop-note {
+	font-size: 13px;
+	color: var(--label-2);
+}
+.fr-drop .btn {
+	margin-top: 6px;
+}
+.fr-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.fr-pill {
+	padding: 4px 10px;
+	border-radius: 999px;
+	background: var(--fill);
+	color: var(--label-2);
+	font-size: 12.5px;
+}
+.fr-pill.ask {
+	background: rgba(224, 108, 95, 0.14);
+	color: #ff9b90;
+}
+.fr-pill.ok {
+	background: rgba(95, 191, 127, 0.14);
+	color: #8fdcaa;
+}
+.fr-choice-row {
+	row-gap: 8px;
+}
+.fr-choice {
+	grid-column: 2 / -1;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.fr-choice .seg {
+	flex-wrap: wrap;
+}
+.fr-choice input[type="text"] {
+	flex: 1 1 180px;
+	min-width: 0;
+	padding: 6px 10px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: var(--label);
+	font: 12.5px var(--mono);
+}
+.fr-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 3px;
+}
+/* Project names, as crew spells them. */
+.fr-chip {
+	padding: 1px 7px;
+	border-radius: 6px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 11px var(--mono);
+}
+.fr-chip.warn {
+	background: rgba(240, 160, 44, 0.14);
+	color: var(--amber);
+}
+.fr-fold > summary {
+	padding-bottom: 12px;
+	list-style: none;
+	cursor: pointer;
+}
+.fr-fold > summary::-webkit-details-marker {
+	display: none;
+}
+.fr-fold[open] > summary {
+	padding-bottom: 4px;
+}
+.move .launch-choices {
+	margin-top: 4px;
+}
+@media (max-width: 560px) {
+	.fr-facts {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.fr-facts > div + div {
+		box-shadow: inset 0 1px 0 var(--sep);
+	}
+	.move .launch-choices {
+		grid-template-columns: 1fr;
+	}
+}
+.c-warn {
+	color: var(--amber);
 }

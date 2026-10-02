@@ -11,12 +11,12 @@ import { CommandLine } from '../setup/CommandLine.js';
 import { FailBlock, ResultLine } from '../setup/common.js';
 import { describeIssue } from '../setup/derive.js';
 import { isRunning, listFailedProjects } from '../setup/progress.js';
+import { RunnerLine, StepLine, TickRow, toggle } from '../setup/flow.js';
 import { readCheckouts } from '../setup/readers.js';
 import type { CrewProject, CrewSetupStatus, CrewWorkspace } from '../setup/types.js';
 import {
 	type FirstRunStep,
 	PROGRESS_STEPS,
-	type RunnerRow,
 	describeReady,
 	firstStepFor,
 	isCleanFinish,
@@ -28,48 +28,6 @@ const POLL_MS = 2000;
 // A clean finish stays on screen long enough to be seen before the last step.
 const READY_PAUSE_MS = 900;
 const SEARCHED = '~/code, ~/projects, ~/dev, ~/src, ~/Developer, ~/work or ~/repos';
-
-const TICK = (
-	<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-		<path
-			d="M2.5 6.2 5 8.6l4.5-5"
-			stroke="currentColor"
-			strokeWidth="1.8"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-		/>
-	</svg>
-);
-
-interface TickRowProps {
-	name: string;
-	sub: string;
-	side: string;
-	isOn: boolean;
-	// Absent: a row that is already decided (a project crew has), shown ticked.
-	onToggle?: () => void;
-}
-
-const TickRow = ({ name, sub, side, isOn, onToggle }: TickRowProps) => (
-	<button
-		type="button"
-		className="fr-row"
-		aria-pressed={isOn}
-		disabled={!onToggle}
-		onClick={onToggle}
-		data-checkout={name}
-	>
-		<span className="fr-check">{TICK}</span>
-		<span className="fr-row-text">
-			<b>{name}</b>
-			<span className="m">{sub}</span>
-		</span>
-		<span className="m fr-side">{side}</span>
-	</button>
-);
-
-const toggle = (list: string[], item: string): string[] =>
-	list.includes(item) ? list.filter((other) => other !== item) : [...list, item];
 
 type AdderKind = 'url' | 'path';
 
@@ -343,28 +301,6 @@ const WorkspaceStep = ({ pool, onBack, onCreated }: WorkspaceStepProps) => {
 	);
 };
 
-const RunnerLine = ({ row }: { row: RunnerRow }) => (
-	<div className="fr-row" data-runner={row.project} data-state={row.state}>
-		<span
-			className={`dot ${row.state === 'ok' ? 'ok' : row.state === 'failed' ? 'ask' : row.state === 'running' ? 'run' : 'ring'}`}
-		/>
-		<span className="fr-row-text">
-			<b>{row.project}</b>
-			<span className="m">
-				{row.steps.length === 0
-					? 'starting'
-					: row.steps.map((step, index) => (
-							<span key={`${step.name} ${index}`} data-step={step.state}>
-								{index > 0 && ' · '}
-								{step.name}
-							</span>
-						))}
-			</span>
-		</span>
-		<span className="m fr-side">{row.side}</span>
-	</div>
-);
-
 interface PrepareStepProps {
 	worktreeRef: string;
 	onAskClaude: (prompt: string) => void;
@@ -516,24 +452,6 @@ const ReadyStep = ({ worktreeRef: ref, status, onOpenVoice, onSetUp }: ReadyStep
 	);
 };
 
-const StepLine = ({ step }: { step: FirstRunStep }) => {
-	const at = PROGRESS_STEPS.findIndex((each) => each.step === step);
-
-	return (
-		<ol className="fr-progress" aria-label="First run">
-			{PROGRESS_STEPS.map((each, index) => (
-				<li
-					key={each.step}
-					aria-current={index === at ? 'step' : undefined}
-					data-state={index < at ? 'done' : index === at ? 'now' : 'later'}
-				>
-					{each.title}
-				</li>
-			))}
-		</ol>
-	);
-};
-
 export interface FirstRunProps {
 	// The one worktree still being made when the page was opened: its progress, no opening.
 	resume: string | null;
@@ -577,7 +495,13 @@ export const FirstRun = ({ resume, openVoice, askClaude, goSetup }: FirstRunProp
 					</button>
 				</div>
 			)}
-			{PROGRESS_STEPS.some((each) => each.step === step) && <StepLine step={step} />}
+			{PROGRESS_STEPS.some((each) => each.step === step) && (
+				<StepLine
+					titles={PROGRESS_STEPS.map((each) => each.title)}
+					at={PROGRESS_STEPS.findIndex((each) => each.step === step)}
+					label="First run"
+				/>
+			)}
 			{step !== 'intro' && (
 				<section className="fr-stage" key={step}>
 					{step === 'projects' && (

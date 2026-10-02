@@ -600,9 +600,11 @@ crew import <file>|- [--plan | --all [--replace] [--pull] [--no-install] [--no-s
   the page downloads it; `crew import -` reads one from stdin.
 - Bare `import` is the plan (`--plan`); crew's page walks the same plan item by item.
 - **You drive it with modes.** `--plan` first: one row per item —
-  `project\t<name>\texists|other remote|clone|blocked|missing\t<detail>` (`exists` = here
+  `project\t<name>\texists|other remote|clone|found|blocked|missing\t<detail>` (`exists` = here
   under the same remote, nothing to do; `other remote` = the name is here but its checkout
   points elsewhere, detail names it; `clone` = not here, detail is where the clone lands;
+  `found` = not here, but a checkout of that remote is already in your code folders, detail is
+  its path — `--path=<detail>` uses it, a bare `project <name>` or `--all` still clones;
   `blocked` = that dir is already taken — `--path` adopts it, or delete it; `missing` = no
   remote in the bundle — `--path=<dir>` is the only way, an old bundle's path is shown as
   the hint) and `workspace\t<name>\texists|ready|needs\t<members>`. Then per item:

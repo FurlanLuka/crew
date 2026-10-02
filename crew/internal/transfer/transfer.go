@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -156,6 +157,9 @@ type ProjectStatus struct {
 	Workspaces []string
 	// Local is the pool entry; set exactly when Exists.
 	Local *project.Project
+	// Found: a checkout already on this machine with the bundle's remote, which --path can use
+	// instead of a second clone. Only the plan looks (MarkFound): an import never scans.
+	Found string
 }
 
 // SameRemote: the local checkout is this repo, by key. Two empties are not
@@ -201,6 +205,46 @@ func Inspect(b Bundle) Plan {
 	}
 	for _, m := range b.Workspaces {
 		plan.Workspaces = append(plan.Workspaces, WorkspaceStatus{Exists: workspace.Exists(m.Name)})
+	}
+	return plan
+}
+
+// wouldClone: the plan clones this bundle project unless something on this machine stands in.
+func wouldClone(st ProjectStatus, e Exported) bool {
+	return !st.Exists && !st.CloneDirTaken && e.Remote != ""
+}
+
+// NeedsScan: some bundle project would be cloned here, so a checkout already on this machine
+// could stand in for it. Pure.
+func NeedsScan(b Bundle, plan Plan) bool {
+	for i, e := range b.Projects {
+		if wouldClone(plan.Projects[i], e) {
+			return true
+		}
+	}
+	return false
+}
+
+// MarkFound returns the plan with Found set on each bundle project that would be cloned and
+// whose remote is a checkout crew found on this machine (crew add project --scan's rows). A
+// checkout the pool already has is not offered, the first matching checkout wins, and one
+// checkout stands in for one project. Pure: the plan passed in is left as it was.
+func MarkFound(plan Plan, b Bundle, checkouts []project.Checkout) Plan {
+	plan.Projects = slices.Clone(plan.Projects)
+	used := map[string]bool{}
+	for i, e := range b.Projects {
+		if !wouldClone(plan.Projects[i], e) {
+			continue
+		}
+		key := crewexec.RepoKey(e.Remote)
+		for _, c := range checkouts {
+			if c.Known || used[c.Path] || c.Remote == "" || crewexec.RepoKey(c.Remote) != key {
+				continue
+			}
+			used[c.Path] = true
+			plan.Projects[i].Found = c.Path
+			break
+		}
 	}
 	return plan
 }

@@ -248,25 +248,33 @@ updates it from here.
 
 ## Moving to another machine
 
-**Export…** picks the projects and workspaces to take (or everything) and saves one file. It holds
-projects by their git remote and which workspaces they are in; worktrees, ports and worktree
-values stay here. Terminal: `crew export --all`.
+**Export…** (Settings) is its own page: tick workspaces and the projects in them come along;
+projects in no workspace are ticked on their own. A project with no git remote goes as setup only,
+and the other machine points it at a folder. The page says what goes with the file (projects by
+remote, their install and env commands, dev servers, bindings, workspace membership) and what
+stays (worktrees, ports, worktree values, .env files), shows the `crew export` it runs, and
+**Save crew-export.json** downloads it.
 
-**Import…** on the other machine reads that file and shows one row per item:
+![Export: the store-front workspace ticked with its three projects under it, signals marked setup only, admin unticked, and the crew export command](../images/setup/export.png)
 
-- a project that is already here (same remote) is **kept**; **Replace config** records the
-  export's install, dev servers and environment over it (it asks first, and its checkout and
-  worktrees stay).
-- a project that isn't is **cloned** under crew's projects folder; **Use my folder** points at a
-  checkout you already have instead. **Install…** changes its install or env command on the way
-  in.
-- a project whose name is taken by another repo, or whose folder is taken, can come in under
-  another name (**Import as store-api-2**).
-- a project the export has no remote for needs **Point at a folder**.
-- a workspace whose projects are all here can be **Created**, with its first worktree.
+**Import…** on the other machine takes the file (drop it, or choose it) and shows crew's plan with
+every choice up front:
 
-**Import everything ready** does every row that needs no choice. Terminal: `crew import <file>`
-shows the same plan.
+- **Needs a choice** — a project with no remote: **Point at a folder** or **Skip**. A name taken by
+  a different repo here: **Import as store-api-2**, **Replace mine** (offered only when no
+  workspace here uses yours) or **Skip**. A clone folder already taken: point at a folder, import
+  under another name, or skip.
+- **Will be done** — the clones, and any repo you already have checked out in your code folders:
+  **Use mine** (the default) records that checkout instead of cloning it again.
+- **Workspaces** — each is made with its main worktree. One whose project is skipped or renamed
+  can't be made (crew makes a workspace from its members' exported names) and says so.
+- **Already here** — folded; kept as they are, or **Replace mine** with the export's setup.
+
+**Import** stays off until every choice is made (Skip counts), then runs everything at once: the
+projects, then each workspace, with its install shown the way the first run shows it. A replace
+asks first. It ends on **Open Voice OS** (the first workspace's session) or **Go to the board**.
+Terminal: `crew import <file>` prints the same plan (`found` is a checkout you already have), and
+`crew import <file> project <name> --path=<dir>` uses it.
 
 ## First run
 

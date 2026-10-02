@@ -129,6 +129,51 @@ func TestPlanRows(t *testing.T) {
 	}
 }
 
+// A checkout already on this machine stands in for a clone, and only for projects crew would
+// clone; the pool's own checkouts are never offered, and one checkout serves one row. A taken
+// clone dir stays blocked: cloning instead would be refused.
+func TestMarkFound(t *testing.T) {
+	b := Bundle{Projects: []Exported{
+		{Project: project.Project{Name: "api"}, Remote: "https://github.com/acme/api.git"},
+		{Project: project.Project{Name: "api-copy"}, Remote: "git@github.com:acme/api"},
+		{Project: project.Project{Name: "web"}, Remote: "git@github.com:acme/web.git"},
+		{Project: project.Project{Name: "here"}, Remote: "git@github.com:acme/here.git"},
+		{Project: project.Project{Name: "notes"}},
+		{Project: project.Project{Name: "taken"}, Remote: "git@github.com:acme/taken.git"},
+	}}
+	plan := Plan{Projects: []ProjectStatus{{}, {}, {}, {Exists: true}, {}, {CloneDirTaken: true}}}
+	checkouts := []project.Checkout{
+		{Name: "api", Path: "/home/code/api", Remote: "git@github.com:acme/api.git"},
+		{Name: "api-2", Path: "/home/code/api-2", Remote: "https://github.com/acme/api"},
+		{Name: "web", Path: "/home/code/web", Remote: "git@github.com:acme/web.git", Known: true},
+		{Name: "here", Path: "/home/code/here", Remote: "git@github.com:acme/here.git"},
+		{Name: "taken", Path: "/home/work/taken", Remote: "https://github.com/acme/taken"},
+	}
+
+	if !NeedsScan(b, plan) {
+		t.Fatal("NeedsScan = false with projects to clone")
+	}
+	got := MarkFound(plan, b, checkouts)
+	var found []string
+	for _, st := range got.Projects {
+		found = append(found, st.Found)
+	}
+	want := []string{"/home/code/api", "/home/code/api-2", "", "", "", ""}
+	if !reflect.DeepEqual(found, want) {
+		t.Errorf("found = %q, want %q", found, want)
+	}
+	if plan.Projects[0].Found != "" {
+		t.Error("MarkFound changed the plan it was given")
+	}
+	rows := PlanRows(b, got)
+	if rows[0].Status != StatusFound || rows[0].Detail != "/home/code/api" || rows[5].Status != StatusBlocked {
+		t.Errorf("rows: %+v / %+v", rows[0], rows[5])
+	}
+	if NeedsScan(Bundle{Projects: b.Projects[3:5]}, Plan{Projects: plan.Projects[3:5]}) {
+		t.Error("NeedsScan = true with nothing to clone")
+	}
+}
+
 // The default is a clone into crew's own dir, under the imported name,
 // with the bundle's config and the overrides given.
 func TestApplyProject_Clone(t *testing.T) {
