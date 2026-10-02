@@ -72,6 +72,44 @@ describe('gatherRecap', () => {
 		).toEqual([]);
 	});
 
+	it('a held line is what it said unheard; a waiting ask is not (its wait says it); at most 4 turns, each clipped', () => {
+		const held = {
+			id: 'h1',
+			at: NOW,
+			missed: 0,
+			isAnnounced: false,
+			kind: 'line' as const,
+			text: '[warm] The cart works again.',
+			isAsking: false,
+		};
+		const state = stateWith({
+			meanwhile: [
+				{ ref: 'store-front/wrk1', kind: 'needs', about: 'pushing', at: NOW, askId: 'q1' },
+			],
+		});
+		const withHeld = {
+			...state,
+			sessions: {
+				...state.sessions,
+				'store-front/main': { ...state.sessions['store-front/main']!, heldLine: held },
+			},
+		};
+		const long = 'x'.repeat(400);
+		const recap = gatherRecap({
+			state: withHeld,
+			history: [1, 2, 3, 4, 5].map((minutes) => turn('store-front/main', minutes, long)),
+			ref: null,
+			minutes: 60,
+			now: NOW,
+		});
+
+		expect(recap.sessions.map((session) => [session.ref, session.unheard])).toEqual([
+			['store-front/main', 'The cart works again.'],
+		]);
+		expect(recap.sessions[0]?.turns).toHaveLength(4);
+		expect(recap.sessions[0]?.turns[0]?.did).toHaveLength(300);
+	});
+
 	it('the time asked about, said the way it was asked', () => {
 		expect(describeWindow(30)).toBe('the last 30 minutes');
 		expect(describeWindow(60)).toBe('the last hour');
@@ -118,10 +156,24 @@ describe('buildRecapMessage', () => {
 });
 
 describe('composeRecapFallback', () => {
-	it("what waits first, then each session's latest, the unheard over the last turn", () =>
-		expect(composeRecapFallback(RECAP)).toBe(
-			'checkout api asks: push to main. checkout api: All retry tests pass. store front: The cart page renders again.',
-		));
+	it("every wait first, then each session's latest, the unheard over its last turn", () => {
+		const [checkout, store] = RECAP.sessions;
+		const both: RecapInput = {
+			...RECAP,
+			sessions: [
+				checkout!,
+				{
+					...store!,
+					waits: ['wants to run git push'],
+					turns: [{ asked: null, did: 'Older turn.', ago: '40m' }],
+				},
+			],
+		};
+
+		expect(composeRecapFallback(both)).toBe(
+			'checkout api asks: push to main. store front wants to run git push. checkout api: All retry tests pass. store front: The cart page renders again.',
+		);
+	});
 
 	it('nothing moved → said so for the time asked about', () =>
 		expect(composeRecapFallback({ ...RECAP, window: 'the last 30 minutes', sessions: [] })).toBe(

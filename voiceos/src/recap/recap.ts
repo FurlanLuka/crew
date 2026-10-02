@@ -12,7 +12,7 @@ import { formatAge } from '../state/working.js';
 // A few sentences, fast: Haiku. Its latency is what the developer waits through.
 export const RECAP_MODEL = 'claude-haiku-4-5';
 // The turns read per session: older ones in the window add length, not news.
-const MAX_TURNS_PER_SESSION = 4;
+export const MAX_TURNS_PER_SESSION = 4;
 const MAX_DID_CHARS = 300;
 
 export interface RecapTurn {
@@ -74,6 +74,10 @@ interface GatherRecapParams {
 	now: number;
 }
 
+// The sessions a recap covers: the one named, or every active one.
+export const listRecapRefs = (state: State, ref: string | null): string[] =>
+	ref ? [ref] : listActiveInOrder(state);
+
 // Sessions with nothing to say in the window are left out: a recap names what moved.
 export const gatherRecap = ({
 	state,
@@ -83,7 +87,7 @@ export const gatherRecap = ({
 	now,
 }: GatherRecapParams): RecapInput => {
 	const since = now - minutes * 60_000;
-	const refs = ref ? [ref] : listActiveInOrder(state);
+	const refs = listRecapRefs(state, ref);
 	const sessions = refs.flatMap((sessionRef): RecapSession[] => {
 		const session = state.sessions[sessionRef];
 

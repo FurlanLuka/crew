@@ -1223,6 +1223,7 @@ describe('status_update', () => {
 	it('the worded recap is the reply; the sessions it covered are heard', async () => {
 		const { tools, actions } = recapTools();
 		const seen: unknown[] = [];
+		let isHeardFirst = false;
 		const result = await executeTool(
 			'status_update',
 			{ ref: null, minutes: null },
@@ -1230,13 +1231,17 @@ describe('status_update', () => {
 				...tools,
 				writeRecap: async (input) => {
 					seen.push(input);
+					isHeardFirst = actions.some((action) => action.type === 'recap_heard');
 
 					return 'Checkout passed its tests; store front fixed the cart.';
 				},
 			},
 		);
 
+		expect(result.ok).toBe(true);
 		expect(result.reply).toBe('Checkout passed its tests; store front fixed the cart.');
+		// Heard before the wording began: an update arriving meanwhile is newer, and still said later.
+		expect(isHeardFirst).toBe(true);
 		expect(seen).toEqual([expect.objectContaining({ window: 'the last hour' })]);
 		expect(actions).toEqual([
 			{ type: 'recap_heard', refs: ['store-front/main', 'checkout-api/main'] },
@@ -1257,7 +1262,7 @@ describe('status_update', () => {
 		}
 	});
 
-	it('one session named → only its history read; minutes kept within 5 minutes and a day', async () => {
+	it("each session's history read on its own: a busy one never crowds out another; minutes kept within 5 minutes and a day", async () => {
 		const { tools, asked } = recapTools();
 		const windows: string[] = [];
 
@@ -1274,8 +1279,33 @@ describe('status_update', () => {
 		);
 		await executeTool('status_update', { ref: null, minutes: 100_000 }, { ...tools, writeRecap });
 
-		expect(asked[0]).toEqual({ ref: 'checkout-api/main', limit: 40 });
+		expect(asked).toEqual([
+			{ ref: 'checkout-api/main', limit: 4 },
+			{ ref: 'store-front/main', limit: 4 },
+			{ ref: 'store-front/wrk1', limit: 4 },
+			{ ref: 'checkout-api/main', limit: 4 },
+		]);
 		expect(windows).toEqual(['the last 5 minutes', 'the last 24 hours']);
+	});
+
+	it("one session named → only it is heard; another session's waiting update stays", async () => {
+		const { tools, actions } = recapTools();
+
+		await executeTool('status_update', { ref: 'checkout-api/main', minutes: null }, tools);
+
+		expect(actions).toEqual([{ type: 'recap_heard', refs: ['checkout-api/main'] }]);
+	});
+
+	it('a session not active is still recapped from its history', async () => {
+		const { tools } = recapTools({ active: ['store-front/main'] });
+		const result = await executeTool(
+			'status_update',
+			{ ref: 'checkout-api/main', minutes: null },
+			tools,
+		);
+
+		expect(result.ok).toBe(true);
+		expect(result.reply).toBe('checkout api, main: All tests pass.');
 	});
 
 	it('a session that does not exist → refused, nothing heard', async () => {

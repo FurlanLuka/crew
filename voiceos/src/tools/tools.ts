@@ -24,7 +24,12 @@ import { type HandsFreeResult, toListenMode } from './hands-free.js';
 import { countSpokenWords, readLabel, readScreenRef } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
-import { composeRecapFallback, gatherRecap } from '../recap/recap.js';
+import {
+	composeRecapFallback,
+	gatherRecap,
+	listRecapRefs,
+	MAX_TURNS_PER_SESSION,
+} from '../recap/recap.js';
 import type { WriteRecap } from '../recap/writer.js';
 import {
 	activateSession,
@@ -285,8 +290,6 @@ const describeAskedName = (state: State, toolContext: ToolContext): { context?: 
 const RECAP_MINUTES = 60;
 const MAX_RECAP_MINUTES = 24 * 60;
 const MIN_RECAP_MINUTES = 5;
-// Turns read from the journal: enough for every session's few latest in a busy hour.
-const RECAP_HISTORY_LIMIT = 40;
 
 interface SayStatusUpdateParams {
 	state: State;
@@ -313,13 +316,16 @@ const sayStatusUpdate = async ({
 		typeof input.minutes === 'number' && Number.isFinite(input.minutes)
 			? Math.min(MAX_RECAP_MINUTES, Math.max(MIN_RECAP_MINUTES, Math.round(input.minutes)))
 			: RECAP_MINUTES;
-	const recap = gatherRecap({
-		state,
-		history: toolContext.readHistory({ ref, query: null, limit: RECAP_HISTORY_LIMIT }),
-		ref,
-		minutes,
-		now: toolContext.now(),
-	});
+	// Each session's own latest turns: one busy session (or one out of scope) never crowds out another.
+	const history = listRecapRefs(state, ref).flatMap((sessionRef) =>
+		toolContext.readHistory({ ref: sessionRef, query: null, limit: MAX_TURNS_PER_SESSION }),
+	);
+	const recap = gatherRecap({ state, history, ref, minutes, now: toolContext.now() });
+
+	// Heard now, before the wording: an update that arrives while Haiku writes is newer than the recap,
+	// and is still said by the meanwhile line. Something is always said (the plain recap at worst).
+	toolContext.dispatch({ type: 'recap_heard', refs: recap.sessions.map((session) => session.ref) });
+
 	const worded = (await toolContext.writeRecap?.(recap)) ?? null;
 
 	log.info('status update', {
@@ -328,7 +334,6 @@ const sayStatusUpdate = async ({
 		sessions: recap.sessions.length,
 		isWorded: worded !== null,
 	});
-	toolContext.dispatch({ type: 'recap_heard', refs: recap.sessions.map((session) => session.ref) });
 
 	return {
 		...succeed('Voice OS says the status update: say nothing'),
