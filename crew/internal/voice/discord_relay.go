@@ -120,6 +120,10 @@ func readStagedMessage(dir string) (DiscordMessage, error) {
 	if err := json.Unmarshal(data, &staged); err != nil {
 		return DiscordMessage{}, fmt.Errorf("the staged message is unreadable: %w", err)
 	}
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return DiscordMessage{}, err
+	}
 	msg := DiscordMessage{Text: staged.Text}
 	for _, rel := range staged.Files {
 		clean := filepath.Clean(rel)
@@ -127,9 +131,10 @@ func readStagedMessage(dir string) (DiscordMessage, error) {
 			return DiscordMessage{}, fmt.Errorf("the staged message names a file outside it: %s", rel)
 		}
 		path := filepath.Join(dir, clean)
-		// Only files the stage holds itself: a link out of it could name the main's own token.
-		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
-			return DiscordMessage{}, fmt.Errorf("the staged message's %s is not a plain file", rel)
+		// Only files the stage holds itself: a link out of it — the file or a folder on its way — could
+		// name the main's own token.
+		if !isPlainFileInside(root, path) {
+			return DiscordMessage{}, fmt.Errorf("the staged message's %s is not a plain file in it", rel)
 		}
 		msg.Files = append(msg.Files, path)
 	}
@@ -222,4 +227,18 @@ func DiscordSendReady() bool {
 	}
 	var report DiscordReport
 	return json.Unmarshal([]byte(reply.Value.Stdout), &report) == nil && report.SetUp
+}
+
+// isPlainFileInside: the path is a regular file, and with every link resolved it is still under root.
+func isPlainFileInside(root, path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	inside, err := filepath.Rel(root, resolved)
+	return err == nil && inside != ".." && !strings.HasPrefix(inside, ".."+string(filepath.Separator))
 }

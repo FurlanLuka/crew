@@ -195,6 +195,12 @@ func parseDiscordSendArgs(args []string) (voice.DiscordMessage, bool, error) {
 	return msg, hasText, nil
 }
 
+// readsStdin: stdin is the text only when nothing else was given and it is piped — an agent's open,
+// never-closed stdin must not hang a send of files. Pure.
+func readsStdin(hasText bool, files int, isTerminal bool) bool {
+	return !hasText && files == 0 && !isTerminal
+}
+
 // discordSend posts to the developer's Discord: from the main with its token, from a remote through
 // the main (the message is staged here and fetched). Text with no --text comes from stdin when piped.
 func discordSend(args []string) {
@@ -203,9 +209,7 @@ func discordSend(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, discordUsage)
 		os.Exit(1)
 	}
-	// Stdin is the text only when nothing else was given: an agent's open, never-closed stdin must not
-	// hang a send of files.
-	if !hasText && len(msg.Files) == 0 && !term.IsTerminal(os.Stdin.Fd()) {
+	if readsStdin(hasText, len(msg.Files), term.IsTerminal(os.Stdin.Fd())) {
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<20))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: reading stdin: %v\n", err)

@@ -216,3 +216,41 @@ func TestReadStagedMessage_ALinkOutOfTheStageIsRefused(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestReadStagedMessage_AFolderLinkedOutOfTheStageIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	keys := t.TempDir()
+	if err := os.WriteFile(filepath.Join(keys, "discord.key"), []byte("token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(keys, filepath.Join(dir, "0")); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"text":"x","files":["0/discord.key"]}`
+	if err := os.WriteFile(filepath.Join(dir, stageManifest), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := readStagedMessage(dir); err == nil || !strings.Contains(err.Error(), "not a plain file") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestStageDiscordMessage_ACopyThatFailsLeavesNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every file")
+	}
+	isolateKeys(t)
+	unreadable := writeTemp(t, "locked.png", 3)
+	if err := os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := StageDiscordMessage(DiscordMessage{Files: []string{writeTemp(t, "a.png", 1), unreadable}}); err == nil {
+		t.Fatal("an unreadable file was staged")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(DiscordStageDir("x")))
+	if len(entries) != 0 {
+		t.Errorf("left %d stages", len(entries))
+	}
+}

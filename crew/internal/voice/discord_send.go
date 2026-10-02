@@ -27,8 +27,9 @@ const (
 // longTextFile is what text over MaxDiscordText is sent as: one attachment, never a run of messages.
 const longTextFile = "message.md"
 
-// discordSendClient waits longer than the reads: ten files of 10 MB go up in one request.
-var discordSendClient = &http.Client{Timeout: 2 * time.Minute}
+// discordSendClient waits longer than the reads: ten files of 10 MB go up in one request. With one
+// 429 wait and the scp before it, a relayed send stays inside the main's 150 s for running crew.
+var discordSendClient = &http.Client{Timeout: 90 * time.Second}
 
 // discordRetryWait caps how long a 429 is waited out; a var so tests do not wait.
 var discordRetryWait = 10 * time.Second

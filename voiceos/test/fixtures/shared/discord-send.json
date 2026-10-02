@@ -2,6 +2,7 @@
 	"note": "What a remote may ask the main for crew server discord send: crew voice discord _send <stage id> (the main's link adds --source) and crew voice discord status. Both sides check it: voiceos/src/remote/query-allow.ts before the main runs crew, crew/cmd_server_discord.go parseDiscordSendStagedArgs when it does; crew builds the argv with voice.DiscordSendQuery and voice.DiscordStatusQuery. A remote names only a stage id, never a path.",
 	"send": ["voice", "discord", "_send", "0123456789abcdef", "--json"],
 	"status": ["voice", "discord", "status", "--json"],
+	"send_wait_ms": 160000,
 	"allowed": [["0123456789abcdef"], ["0123456789abcdef", "--json"]],
 	"refused": [
 		["0123456789ABCDEF"],

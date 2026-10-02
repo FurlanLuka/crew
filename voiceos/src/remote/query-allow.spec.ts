@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isAllowedQuery, withSource } from './query-allow.js';
+import {
+	DISCORD_SEND_QUERY_MS,
+	DISCORD_SEND_WAIT_MS,
+	isAllowedQuery,
+	isDiscordSendQuery,
+	withSource,
+} from './query-allow.js';
 
 describe('isAllowedQuery', () => {
 	it.each([
@@ -125,7 +131,20 @@ describe('a Discord message from a remote', () => {
 describe('a Discord message from a remote, as crew sends and checks it too', () => {
 	const fixture = JSON.parse(
 		readFileSync(join(import.meta.dir, '../../test/fixtures/shared/discord-send.json'), 'utf8'),
-	) as { send: string[]; status: string[]; allowed: string[][]; refused: string[][] };
+	) as {
+		send: string[];
+		status: string[];
+		send_wait_ms: number;
+		allowed: string[][];
+		refused: string[][];
+	};
+
+	it('a send gets the long wait, a status read does not; the main gives up before the daemon does', () => {
+		expect(isDiscordSendQuery(fixture.send)).toBe(true);
+		expect(isDiscordSendQuery(fixture.status)).toBe(false);
+		expect(DISCORD_SEND_WAIT_MS).toBe(fixture.send_wait_ms);
+		expect(DISCORD_SEND_QUERY_MS).toBeLessThan(DISCORD_SEND_WAIT_MS);
+	});
 
 	it("crew's own send and status queries → allowed", () => {
 		expect(isAllowedQuery(fixture.send)).toBe(true);

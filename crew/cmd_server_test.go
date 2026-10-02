@@ -244,12 +244,17 @@ func TestDiscordSendSharedFixture(t *testing.T) {
 	var fixture struct {
 		Send, Status     []string
 		Allowed, Refused [][]string
+		SendWaitMs       int64 `json:"send_wait_ms"`
 	}
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
 	}
 	if got := voice.DiscordSendQuery("0123456789abcdef", true); !reflect.DeepEqual(got, fixture.Send) {
 		t.Errorf("send query %v, fixture %v", got, fixture.Send)
+	}
+	// The remote's crew outwaits its daemon, which outwaits the main running crew.
+	if voice.DiscordSendWait.Milliseconds() <= fixture.SendWaitMs {
+		t.Errorf("DiscordSendWait %v is not past the daemon's %d ms", voice.DiscordSendWait, fixture.SendWaitMs)
 	}
 	if got := voice.DiscordStatusQuery(); !reflect.DeepEqual(got, fixture.Status) {
 		t.Errorf("status query %v, fixture %v", got, fixture.Status)
@@ -287,5 +292,23 @@ func TestDiscordSendSharedFixture(t *testing.T) {
 	}
 	if _, source, err := parseDiscordSendStagedArgs([]string{"0123456789abcdef", "--source=vm1"}); err != nil || source != "vm1" {
 		t.Errorf("source %q %v", source, err)
+	}
+}
+
+func TestReadsStdin(t *testing.T) {
+	for _, c := range []struct {
+		hasText    bool
+		files      int
+		isTerminal bool
+		want       bool
+	}{
+		{false, 0, false, true},
+		{false, 1, false, false},
+		{true, 0, false, false},
+		{false, 0, true, false},
+	} {
+		if got := readsStdin(c.hasText, c.files, c.isTerminal); got != c.want {
+			t.Errorf("%+v → %v", c, got)
+		}
 	}
 }
