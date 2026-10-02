@@ -898,74 +898,6 @@ form {
 	background: none;
 }
 
-/* First run: the steps on one page; only the current one is open. */
-.fr-steps {
-	display: grid;
-	gap: 10px;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-.fr-step {
-	display: grid;
-	gap: 14px;
-	padding: 14px 18px;
-	border-radius: 14px;
-	background: var(--elev-1);
-}
-.fr-step.later {
-	opacity: 0.45;
-}
-.fr-h {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 12px;
-}
-.fr-h b {
-	font: 600 15px var(--sys);
-	color: #fff;
-}
-.fr-n {
-	display: grid;
-	place-items: center;
-	flex: none;
-	width: 22px;
-	height: 22px;
-	border-radius: 50%;
-	background: var(--fill);
-	color: var(--label-2);
-	font: 600 12px var(--sys);
-}
-.fr-step.now .fr-n {
-	background: #fff;
-	color: #000;
-}
-.fr-step.done .fr-n {
-	background: rgba(95, 191, 127, 0.18);
-	color: var(--good);
-}
-.fr-body {
-	display: grid;
-	gap: 14px;
-	padding-left: 34px;
-}
-.fr-body > p,
-.fr-next p {
-	margin: 0;
-	max-width: 66ch;
-	color: var(--label-2);
-	font-size: 14px;
-	line-height: 1.5;
-}
-.fr-body .pick {
-	grid-template-columns: 18px minmax(0, 1fr);
-}
-.fr-next {
-	display: grid;
-	gap: 12px;
-}
-
 /* The setup chat fills the window: the page never scrolls, the stream does. */
 .setup.on-chat {
 	height: 100%;
@@ -1240,9 +1172,6 @@ form {
 	}
 	.ov-add {
 		grid-template-columns: 1fr;
-	}
-	.fr-body {
-		padding-left: 0;
 	}
 	.imp {
 		grid-template-columns: 10px minmax(0, 1fr);

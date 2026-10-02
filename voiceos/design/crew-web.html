@@ -1241,7 +1241,7 @@ body.in-vo { background: #0b0d10; }
 				<li><b>crew is the product.</b> Running crew starts a local web server (and replaces the terminal UI). Its web UI has two halves: <b>Voice OS</b>, for working, and <b>Set up</b>, for configuring. Both are served by the same server; remote machines are reached through it over SSH.</li>
 				<li><b>Opening.</b> On black with a faint glow from below, the <b>crew</b> wordmark (system type, tight tracking) fades up, then one line under it ("your sessions, every machine"), and it dissolves into Home. About 2.5 s, once per load, skipped with reduced motion. No rings, no coloured bars: restraint over spectacle.</li>
 				<li><b>Launcher (Home).</b> The crew wordmark and "What would you like to do?", then two frosted cards: <b>Voice OS</b> ("Talk to your sessions on every machine", with "4 active · 1 waiting on you") and <b>Set up</b> ("Projects, workspaces and machines", with "2 projects need setup"). The last choice is outlined and focused, so Enter goes straight in; "Always open Voice OS" skips it next time. Home in either half brings the launcher back. There is no separate home page.</li>
-				<li><b>First run.</b> With nothing set up, the Voice OS card is greyed out and unclickable ("Set up a project first: your sessions live here once you have one"), and Set up is outlined with "start here".</li>
+				<li><b>First run.</b> With no worktree yet, Home is the first run instead of the launcher: the opening's wordmark with <b>Get started</b>, then the wordmark rises to the top and stays while three steps come and go under it (Projects, Workspace, Getting it ready), ending on the launcher's two cards: Open Voice OS on the new session, or Go to Set up. Sketch: claude.ai/artifact/SbPiqsR7PfkkahipYGkBPP.</li>
 				<li><b>Choosing Voice OS</b> plays a short moment (about 1.5 s): "Voice OS" fades up as a wordmark, set like crew's own (no icon), then it dissolves into Voice OS. Choosing Set up opens Setup directly.</li>
 			</ol>
 
@@ -1263,7 +1263,7 @@ body.in-vo { background: #0b0d10; }
 			</ul>
 
 			<h2 id="b-onboarding">First-time onboarding</h2>
-			<p>As small as it can be: pick projects, then talk. <code>crew</code> starts its server and opens the browser; after the opening, the first-run Home has Voice OS greyed ("Add a project first") and Set up marked "start here".</p>
+			<p>As small as it can be: pick projects, then talk. <code>crew</code> starts its server and opens the browser; the opening becomes the first run itself (Get started → pick projects → make a workspace → its main worktree made in place → Open Voice OS or Go to Set up), full screen on the opening's backdrop, never inside Set up's layout.</p>
 			<ol class="flow">
 				<li><b>Pick your projects.</b> Git checkouts found in the usual code folders, ticked, each with its path and remote; crew records where they are and changes nothing. Or add by URL or path, or import from another machine.</li>
 				<li><b>Make a workspace.</b> A name (the first project's by default) and which of the added projects run together (the first one ticked). Create runs the add-worktree pipeline in place: per project, checkout on its crew branch, <code>.env</code> copied, install from the lockfile; then "servers: none yet". The others wait on the board.</li>

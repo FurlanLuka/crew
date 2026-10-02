@@ -1,36 +1,26 @@
 // Home: the crew wordmark and two frosted cards, Voice OS and Set up. The last choice is outlined
-// and focused, so Enter goes straight in. On a first run Voice OS is greyed: it needs a worktree.
+// and focused, so Enter goes straight in. On a first run Home is the first run instead.
 import { useEffect, useRef, useState } from 'react';
 import { listActiveRefs } from '../../shared/active.js';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { listWaitingRefs } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
 import { useCrew } from '../setup/api.js';
-import { type FirstRunStage, describeSetupMeta, deriveFirstRun } from '../setup/derive.js';
+import { type FirstRunDecision, decideFirstRun, describeSetupMeta } from '../setup/derive.js';
 import type { CrewProject, CrewWorktree } from '../setup/types.js';
+import { FirstRun } from './FirstRun.js';
 import { type Half, readAlwaysVoice, readLastHalf, writeAlwaysVoice } from './prefs.js';
 
 interface HomeProps {
 	state: State;
 	onPick: (half: Half) => void;
-	// Once per visit, when crew's reads arrive: whether this is a first run (no worktree yet).
+	// Once per visit, when crew's reads arrive: whether this is a first run (no worktree yet, or its
+	// one worktree still installing).
 	onStage?: (isFirstRun: boolean) => void;
+	openVoice: (ref: string) => void;
+	askClaude: (prompt: string) => void;
+	goSetup: () => void;
 }
-
-const VOICE_COPY: Record<FirstRunStage, { sub: string; meta: string }> = {
-	empty: {
-		sub: 'Add a project first: your sessions live here once you have one.',
-		meta: 'no projects yet',
-	},
-	'has-projects': {
-		sub: 'Make a workspace first: a session works in one of its worktrees.',
-		meta: 'no worktree yet',
-	},
-	ready: {
-		sub: 'Talk to your sessions on every machine: answer, follow along, switch.',
-		meta: '',
-	},
-};
 
 const describeVoiceMeta = (state: State): string => {
 	const active = listActiveRefs(state);
@@ -41,31 +31,64 @@ const describeVoiceMeta = (state: State): string => {
 		.join(' · ');
 };
 
-export const Home = ({ state, onPick, onStage }: HomeProps) => {
+export const Home = ({ state, onPick, onStage, openVoice, askClaude, goSetup }: HomeProps) => {
 	const projects = useCrew<CrewProject[]>(LOCAL_MACHINE, { type: 'ls_projects' });
 	const worktrees = useCrew<CrewWorktree[]>(LOCAL_MACHINE, { type: 'ls_worktrees' });
-	const stage = deriveFirstRun(projects.data, worktrees.data);
-	const isFirstRun = stage !== 'ready';
-	const last: Half = isFirstRun ? 'setup' : readLastHalf();
+	// Decided once per visit: the first run makes a worktree, and must not be swapped for the
+	// launcher under the developer while it does.
+	const [decision, setDecision] = useState<FirstRunDecision | null>(null);
+	const read = decideFirstRun(projects.data, worktrees.data);
+
+	useEffect(() => {
+		if (decision || !read) {
+			return;
+		}
+
+		setDecision(read);
+		onStage?.(read.isFirstRun);
+	}, [decision, read]);
+
+	if (!decision) {
+		return <main className="launcher" aria-label="Home" aria-busy="true" />;
+	}
+
+	if (decision.isFirstRun) {
+		return (
+			<FirstRun
+				resume={decision.installing}
+				openVoice={openVoice}
+				askClaude={askClaude}
+				goSetup={goSetup}
+			/>
+		);
+	}
+
+	return (
+		<Launcher
+			state={state}
+			onPick={onPick}
+			setupMeta={
+				projects.data && worktrees.data ? describeSetupMeta(projects.data, worktrees.data) : ' '
+			}
+		/>
+	);
+};
+
+interface LauncherProps {
+	state: State;
+	onPick: (half: Half) => void;
+	setupMeta: string;
+}
+
+const Launcher = ({ state, onPick, setupMeta }: LauncherProps) => {
+	const last = readLastHalf();
 	const voiceRef = useRef<HTMLButtonElement | null>(null);
 	const setupRef = useRef<HTMLButtonElement | null>(null);
 	const [isAlwaysVoice, setIsAlwaysVoice] = useState(readAlwaysVoice);
 
-	const isLoaded = projects.data !== null && worktrees.data !== null;
-	const hasDecided = useRef(false);
-
 	useEffect(() => {
 		(last === 'setup' ? setupRef : voiceRef).current?.focus({ preventScroll: true });
 	}, [last]);
-
-	useEffect(() => {
-		if (!isLoaded || hasDecided.current) {
-			return;
-		}
-
-		hasDecided.current = true;
-		onStage?.(isFirstRun);
-	}, [isLoaded]);
 
 	return (
 		<main className="launcher" aria-label="Home">
@@ -79,7 +102,6 @@ export const Home = ({ state, onPick, onStage }: HomeProps) => {
 						ref={voiceRef}
 						type="button"
 						className={`launch-choice ${last === 'voice' ? 'last' : ''}`}
-						disabled={isFirstRun}
 						onClick={() => onPick('voice')}
 					>
 						<svg
@@ -92,8 +114,8 @@ export const Home = ({ state, onPick, onStage }: HomeProps) => {
 							<path d="M3 12h3.5l2-6 3.5 12 2-6H21" />
 						</svg>
 						<b>Voice OS</b>
-						<span>{VOICE_COPY[stage].sub}</span>
-						<small>{isFirstRun ? VOICE_COPY[stage].meta : describeVoiceMeta(state)}</small>
+						<span>Talk to your sessions on every machine: answer, follow along, switch.</span>
+						<small>{describeVoiceMeta(state)}</small>
 					</button>
 					<button
 						ref={setupRef}
@@ -113,28 +135,20 @@ export const Home = ({ state, onPick, onStage }: HomeProps) => {
 						</svg>
 						<b>Set up</b>
 						<span>Projects, workspaces and machines, with Claude to help.</span>
-						<small>
-							{isFirstRun
-								? 'start here'
-								: projects.data && worktrees.data
-									? describeSetupMeta(projects.data, worktrees.data)
-									: ' '}
-						</small>
+						<small>{setupMeta}</small>
 					</button>
 				</div>
-				{!isFirstRun && (
-					<label className="launch-skip">
-						<input
-							type="checkbox"
-							checked={isAlwaysVoice}
-							onChange={(event) => {
-								writeAlwaysVoice(event.target.checked);
-								setIsAlwaysVoice(event.target.checked);
-							}}
-						/>{' '}
-						Always open Voice OS
-					</label>
-				)}
+				<label className="launch-skip">
+					<input
+						type="checkbox"
+						checked={isAlwaysVoice}
+						onChange={(event) => {
+							writeAlwaysVoice(event.target.checked);
+							setIsAlwaysVoice(event.target.checked);
+						}}
+					/>{' '}
+					Always open Voice OS
+				</label>
 				<div className="launch-say">Enter opens the highlighted one</div>
 			</div>
 		</main>

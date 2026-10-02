@@ -35,7 +35,6 @@ const worktreeCrumbs = (ref: string, here?: string): Crumb[] => {
 export const crumbsFor = (page: SetupPage): Crumb[] => {
 	switch (page.page) {
 		case 'board':
-		case 'welcome':
 			return [];
 		case 'chat':
 			return [{ label: 'Setup with Claude' }];

@@ -34,6 +34,9 @@ interface FakeRun {
 	projects: string[];
 	// Projects whose install fails in this run.
 	failing: string[];
+	// The other projects' last results: a re-run of some projects leaves crew's result files for the
+	// rest where they are.
+	kept: CrewProjectStatus[];
 }
 
 interface FakeWorktree {
@@ -142,7 +145,9 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 				run: null,
 			})),
 		// The goldens keep a failed check of store-api (check/store-api): its install failed.
-		checks: { 'store-api': { startedAt: 0, projects: ['store-api'], failing: ['store-api'] } },
+		checks: {
+			'store-api': { startedAt: 0, projects: ['store-api'], failing: ['store-api'], kept: [] },
+		},
 		scan,
 		trashBytes: readGolden<{ bytes: number }>('trash.json').bytes,
 		cleanDryRun: readGolden<unknown[]>('clean-dry-run.json'),
@@ -324,8 +329,14 @@ export const createFakeCrew = ({
 			failNext.delete(project);
 		}
 
-		return { startedAt: clock(), projects, failing };
+		return { startedAt: clock(), projects, failing, kept: [] };
 	};
+
+	// Every project's last result on a worktree: the kept ones, then this run's.
+	const readWorktreeRun = (run: FakeRun, projects: CrewProject[], now: number) => [
+		...run.kept,
+		...readRun(run, projects, runMs, now),
+	];
 
 	// A runner's verdict lands on the worktree, as crew records health.
 	const settle = (machine: FakeMachine, worktree: FakeWorktree, now: number) => {
@@ -333,7 +344,7 @@ export const createFakeCrew = ({
 			return;
 		}
 
-		const statuses = readRun(worktree.run, machine.projects, runMs, now);
+		const statuses = readWorktreeRun(worktree.run, machine.projects, now);
 		worktree.issues = statuses.flatMap((status) => status.issues);
 	};
 
@@ -638,7 +649,7 @@ export const createFakeCrew = ({
 				const worktree = findWorktree(command.ref);
 				const { doc, code } = toStatus(
 					command.ref,
-					worktree?.run ? readRun(worktree.run, machine.projects, runMs, now) : [],
+					worktree?.run ? readWorktreeRun(worktree.run, machine.projects, now) : [],
 					now,
 				);
 
@@ -957,6 +968,14 @@ export const createFakeCrew = ({
 				const mode = command.direct ? 'direct' : 'worktree';
 
 				if (existing) {
+					const member = command.projects.find((name) =>
+						existing.projects.some((project) => project.name === name),
+					);
+
+					if (member) {
+						return refuse(`project '${member}' already in workspace`);
+					}
+
 					existing.projects.push(...command.projects.map((name) => ({ name, mode })));
 
 					return said(`Added ${command.projects.join(', ')} to ${command.name}`);
@@ -1085,8 +1104,13 @@ export const createFakeCrew = ({
 
 				const [workspaceName = ''] = command.ref.split('/');
 				const members = findWorkspace(workspaceName)?.projects.map((project) => project.name) ?? [];
-				worktree.run = startRun(command.projects?.length ? command.projects : members);
-				worktree.issues = [];
+				const projects = command.projects?.length ? command.projects : members;
+				const before = worktree.run ? readWorktreeRun(worktree.run, machine.projects, clock()) : [];
+				worktree.run = {
+					...startRun(projects),
+					kept: before.filter((status) => !projects.includes(status.project)),
+				};
+				worktree.issues = worktree.run.kept.flatMap((status) => status.issues);
 
 				return said(`${command.type === 'verify' ? 'Verifying' : 'Setting up'} ${command.ref}`);
 			}

@@ -33,12 +33,15 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 	const isWorking = session?.status === 'running' || session?.status === 'blocked';
 	const dispatch = (action: Action) => ctx.send({ type: 'action', action });
 
+	// Taken whenever it arrives: a "Fix with Claude" from outside Set up lands while the chat is
+	// already open.
 	useEffect(() => {
 		if (draft) {
+			setText(draft);
 			onDraftUsed();
 			fieldRef.current?.focus();
 		}
-	}, []);
+	}, [draft]);
 
 	const submit = (event: FormEvent) => {
 		event.preventDefault();

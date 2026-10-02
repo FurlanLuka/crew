@@ -1,13 +1,13 @@
 // A machine's board: the Setup with Claude card, the problems strip, then one table — every project
 // (install, dev servers, workspaces, state) or every workspace (projects, worktrees as pills).
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { BoardTab } from '../router.js';
 import { describeRefusal, useCrew } from './api.js';
 import { type SetupContext, followRow } from './common.js';
 import {
 	type Problem,
-	deriveFirstRun,
+	decideFirstRun,
 	describeIssue,
 	describeServer,
 	listProblems,
@@ -17,12 +17,13 @@ import {
 } from './derive.js';
 import { isSetupBusy, setupRefFor } from './SetupShell.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
-import { Welcome } from './Welcome.js';
 import { countOf } from '../count.js';
 
 interface BoardProps {
 	ctx: SetupContext;
 	tab: BoardTab;
+	// This Mac has no worktree yet: the first run, on Home, takes over.
+	onFirstRun: () => void;
 }
 
 const BOARD_POLL_MS = 5000;
@@ -177,7 +178,7 @@ const CheckCell = ({ ctx, project, worktrees }: CheckCellProps) => {
 	) : null;
 };
 
-export const Board = ({ ctx, tab }: BoardProps) => {
+export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 	const projects = useCrew<CrewProject[]>(
 		ctx.machine,
 		{ type: 'ls_projects' },
@@ -193,20 +194,22 @@ export const Board = ({ ctx, tab }: BoardProps) => {
 		{ type: 'ls_workspaces' },
 		{ pollMs: BOARD_POLL_MS },
 	);
-	const stage = deriveFirstRun(projects.data, worktrees.data);
-	// The empty board is the onboarding, on this Mac. Decided once per visit: the onboarding makes a
-	// worktree, and must not be swapped for the board under the developer while it does.
-	const [isWelcome, setIsWelcome] = useState<boolean | null>(null);
+	// This Mac's board on a first run: the first run is Home. Decided once per visit, so a board
+	// opened after the first run made its worktree stays.
+	const hasDecided = useRef(false);
+	const firstRun = decideFirstRun(projects.data, worktrees.data);
 
 	useEffect(() => {
-		if (isWelcome === null && projects.data && worktrees.data) {
-			setIsWelcome(ctx.machine === LOCAL_MACHINE && stage !== 'ready');
+		if (hasDecided.current || !firstRun) {
+			return;
 		}
-	}, [isWelcome, projects.data, worktrees.data, ctx.machine, stage]);
 
-	if (isWelcome) {
-		return <Welcome ctx={ctx} onDone={() => setIsWelcome(false)} />;
-	}
+		hasDecided.current = true;
+
+		if (ctx.machine === LOCAL_MACHINE && firstRun.isFirstRun) {
+			onFirstRun();
+		}
+	}, [firstRun, ctx.machine]);
 
 	const projectRows = projects.data ?? [];
 	const worktreeRows = worktrees.data ?? [];

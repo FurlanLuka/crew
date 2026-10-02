@@ -8,7 +8,6 @@ export type BoardTab = 'projects' | 'workspaces';
 
 export type SetupPage =
 	| { page: 'board'; tab: BoardTab }
-	| { page: 'welcome' }
 	| { page: 'chat' }
 	| { page: 'project'; name: string }
 	| { page: 'project-new' }
@@ -80,11 +79,13 @@ const matchSetup = (parts: string[]): SetupPage => {
 
 	switch (first) {
 		case undefined:
+		// The first run moved to Home; an old link to it lands on the board, which sends a first run
+		// there.
+		case 'welcome':
 		case 'projects':
 			return second === 'new' ? { page: 'project-new' } : BOARD;
 		case 'workspaces':
 			return second === 'new' ? { page: 'workspace-new' } : { page: 'board', tab: 'workspaces' };
-		case 'welcome':
 		case 'chat':
 		case 'machine':
 		case 'settings':
@@ -157,7 +158,6 @@ const setupPath = (page: SetupPage): string => {
 	switch (page.page) {
 		case 'board':
 			return page.tab === 'workspaces' ? '/setup/workspaces' : '/setup';
-		case 'welcome':
 		case 'chat':
 		case 'machine':
 		case 'settings':
