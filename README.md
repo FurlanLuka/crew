@@ -1,12 +1,12 @@
-# crew
+![Crew | Voice OS: talk to your coding agents](docs/images/banner.png)
 
 [![Test](https://github.com/FurlanLuka/crew/actions/workflows/test.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/test.yml)
 [![Voice OS](https://github.com/FurlanLuka/crew/actions/workflows/voiceos.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/voiceos.yml)
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE)
 
-**Talk to your coding agents.** Every feature you're working on gets its own copy of your stack and
-its own Claude — and you run them all by voice: "tell checkout to run the tests", "what's waiting
-on me?", "yes, but only on staging".
+**Talk to your coding agents.** Running a few Claudes at once is great until you become the
+bottleneck, clicking through terminals to see who's stuck. crew turns that into a conversation:
+"tell checkout to run the tests", "what's waiting on me?", "yes, but only on staging".
 
 ![Voice OS: an active session, store-front/wrk2 on another machine, with its work stream, dev servers, spoken summary and the sessions elsewhere that need you; the other active sessions are tabs along the top](docs/images/voice-os/hero.png)
 
@@ -17,97 +17,79 @@ curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | s
 crew
 ```
 
-`crew` starts crew's server and opens it in your browser. **Set up** takes you from the repos on
-your machine to a workspace with its servers running — forms for everything, and a Claude to ask.
-**Voice OS** is where you talk: it asks for an Anthropic key and a Soniox key the first time —
-checked before they're saved, stored only on this machine — then hold **Space** and talk. Over
-SSH, or without a browser, `crew` prints the link instead.
+That's it. `crew` starts its server and opens a page in your browser (over SSH it prints the link
+instead). The first time, it walks you through the only setup it really needs: it finds the git
+repos you already have on your machine, you tick the ones you work on, you group them into a
+workspace, and it makes the first working copy of all of them while you watch. Then you pick
+Voice OS, give it two API keys, hold **Space** and talk.
 
-### What you need
+![The first run: crew lists the git checkouts it found in your code folders, each ticked, with the commands it will run](docs/images/setup/first-run.png)
 
-- **macOS or Linux, with git and tmux.** `crew doctor` says what is missing, and `crew doctor
-  --install` installs it (Homebrew or `xcode-select` on a Mac; apt-get, dnf or pacman on Linux).
-  Voice OS's Linux builds (x64 and arm64) need glibc, so Alpine and other musl systems can run
-  crew but not Voice OS.
-- **[Claude Code](https://code.claude.com/docs)**, signed in. Every session runs on your own Claude
-  Code login; `crew doctor --install` offers to install it too.
-- **An Anthropic API key**, for the router that decides where your words go and for the short
-  spoken summaries. A spoken turn costs the router about a third of a cent.
-- **A [Soniox](https://soniox.com) API key**, for speech in and out. Soniox bills by audio time
-  ([pricing](https://soniox.com/pricing)).
+## What it's like to use
 
-**Where your data goes:**
-- **Your voice, and the text of spoken replies,** go to Soniox: your voice to become text, the
-  replies to become speech.
-- **What you say, and short excerpts of what sessions write**, go to Anthropic for routing and
-  summaries, on your API key.
-- **The sessions themselves** talk to Anthropic through Claude Code, as they always do.
-- **Everything else stays on your machine:** the keys (readable by you alone), your notes, and the
-  voice log. Voice OS keeps no recordings of your voice.
+Every piece of work gets its own copy of your stack and its own Claude Code session. The one on
+your screen is the one you're talking to, so "revert that" or "run the migrations" just goes there.
+Name another one and your words go to it instead ("checkout, add a retry"), and Voice OS offers to
+take you there. There's a small router in the middle deciding where your words go, and it's strict
+about one thing: anything about the actual work goes to the session in your words. It never
+answers for the session or guesses what you meant.
 
-## Set up by talking
+The sessions mostly get on with it. They run in Claude Code's auto mode, so routine steps don't
+wait on you. When one does need you (a permission, a plan to approve, a question with options) you
+hear it and answer out loud, "yes" or "the second one" or "no, use a new branch", without switching
+to it. Sessions you aren't looking at don't read you their whole essay. You hear "checkout is done"
+or "checkout needs you" once it's quiet, and the full message waits until you go there. If you lose
+track, "status update" gets you a short spoken recap of where everything is.
 
-Set up has a Claude of its own on every machine: **Setup with Claude**. Point it at your repos —
-folders you already have, or git URLs — and say what you want:
+It tries to keep out of your way while you talk. If a session is busy and you give it another
+instruction, the words wait behind what it's doing and Voice OS asks whether to send them right
+now instead. If one of your dev servers dies, it tells you and offers to hand the failure, with its
+logs, to that worktree's Claude. Screenshots and charts a session makes show up right in its page,
+and the docs it writes (Claude Docs, Google Docs, Notion) turn into cards you can open by saying
+"open the doc", on your phone too.
 
-> "Add the store api and store app repos from ~/code to crew with their dev servers, wire the
-> store app's API URL to the store API, and make a store front workspace with both."
+You can listen the way that fits where you are: hold Space to talk, say "Voice OS, …" when you
+want it, or go fully hands-free. If you're away from the desk, Voice OS can join a Discord voice
+channel and you talk to it from your phone. Sessions can also post things to Discord when you ask
+("send that screenshot to Discord").
 
-It registers each project, finds how its dev server runs, points the services at each other,
-installs a fresh copy and checks every server starts, with a line for each crew command it
-recorded. The new worktree appears in Voice OS's Activate list; activate it, "start the dev
-servers", and ask for whatever you're building. [The Set up guide](docs/guides/setup.md) walks
-every page, and [the walkthrough](docs/guides/voice-os.md#from-two-repos-to-a-working-feature)
-goes on to a working feature.
+The [Voice OS guide](docs/guides/voice-os.md) has a full walkthrough, and the
+[commands page](docs/guides/voice-os-commands.md) lists everything you can say, with examples from
+real use.
+
+## More than one machine
+
+My laptop isn't where everything runs. A VM or a second computer can run its own worktrees and
+sessions, and the Mac in front of you drives them over SSH with the same page and the same voice.
+Each machine's sessions show up under its name, alerts come in from all of them, and if the link
+drops the work on the other side keeps going. [Other machines](docs/guides/voice-os.md#other-machines)
+covers the three steps to add one, and when you want to move your whole setup somewhere new,
+**Export** saves it to a file and **Import** on the other machine walks you through bringing it in.
+It even notices when you already have a repo checked out there, so it doesn't clone it twice.
+
+## Setting things up
+
+All the configuration lives on crew's page under **Set up**: projects, their dev servers, how they
+point at each other, workspaces, worktrees and machines. Every form shows you the exact command it
+will run, which I find more useful than any explanation. And there's a Claude on every machine you
+can just ask instead:
+
+> "Add the store api and store app repos from ~/code with their dev servers, wire the store app's
+> API URL to the store API, and make a store front workspace with both."
+
+It does the whole thing, checks every server actually starts, and shows a line for each command it
+recorded. [The Set up guide](docs/guides/setup.md) goes through every page.
 
 ![Setup with Claude adding a repo: each crew command it ran, with a green "recorded" line under it](docs/images/setup/chat.png)
 
-## What it does
+## How it works underneath
 
-- **One session per piece of work.** Each worktree has its own Claude Code session; Voice OS keeps
-  them running and shows them side by side.
-- **Speak to the one on screen, or any of them by name.** "Revert that", "checkout, run the
-  migrations", "open the ranking one". A small router decides where your words go — and anything
-  about the work goes to the session, in your words, instead of being guessed at.
-- **Listen the way that suits the room.** Hold Space to talk, say "Voice OS, …" when you want it,
-  or go hands-free and just talk.
-- **Answer without switching.** Permissions, plans and questions come to you by voice: "yes", "the second one",
-  "no, use a new branch".
-- **Sessions that get on with it.** They run in Claude Code's auto mode, so routine steps don't
-  wait on you. When a safety check blocks something, you hear why and can allow that one call —
-  "allow it" — and nothing more.
-- **Hear what matters, not everything.** Sessions you aren't looking at say "checkout is done" or
-  "checkout needs you: the backoff cap"; the full message plays when you switch there.
-- **Activate what you're juggling, name it what you call it.** Active gathers the sessions you
-  work with, from every machine, as tabs and one view ("activate store front main", "go to
-  active"); the rest run nothing until you activate them. Rename a session ("call this search
-  fix") and that name shows everywhere and works by voice.
-- **Your dev servers, watched.** When one dies after a start, Voice OS tells you and offers to have
-  that worktree's Claude fix it — "yes" hands it the failure with its logs.
-- **See what they make.** A screenshot or chart a session takes shows right in its page, and the
-  docs and artifacts it writes (Claude Docs, Google Docs, Notion) become cards — "open the doc"
-  opens one in the browser you're using, phone included.
-- **Notes as you think.** "Note: try a tone per session" — kept per workspace.
-- **Sessions on other machines too.** A VM or a second computer runs its own worktrees and
-  sessions; your Mac drives them over SSH with the same voice and page — each machine's worktrees
-  under its name, alerts from all of them, and a dropped link that never stops the work there.
-- **Set up without a terminal.** crew's page starts from the repos already on your machine and
-  walks you to a running workspace: forms that show the command they run, each binding's value
-  previewed in every worktree, the cost of a removal before it happens, and a Claude per machine
-  to ask.
-  [Other machines](docs/guides/voice-os.md#other-machines) has the three steps.
+Voice OS is the part you talk to. crew is the boring, reliable part under it. It gives every piece of work a real, isolated copy of your stack, with its dev
+servers running and the agent inside knowing how to reach them.
 
-[The Voice OS guide](docs/guides/voice-os.md) has what you can say, from real use.
-
-## How it works: crew
-
-Voice OS is the part you talk to; crew is the bones underneath. It gives every piece of work a
-real, isolated copy of your stack — with its dev servers running and the agent inside knowing how to
-reach them.
-
-A **workspace** groups the repos a feature touches. A **worktree** is one working copy of all of
-them: a git worktree per repo, dev servers on stable ports, and env vars that point the services at
-*each other* instead of at whatever happens to run on `:3000`.
+A **workspace** is the set of repos a feature touches. A **worktree** is one working copy of all of
+them: a git worktree per repo, dev servers on ports that stay the same for that copy, and env vars
+that point the services at each other instead of at whatever happens to be running on `:3000`.
 
 ```
 ~/.crew/workspaces/store-front/
@@ -115,17 +97,13 @@ them: a git worktree per repo, dev servers on stable ports, and env vars that po
   wrk1/  store-api  store-app  checkout-api   ← ports 54494…, its own branches
 ```
 
-**Dev servers that stay honest.** crew starts every server of a worktree on ports it keeps for that
-copy, then checks them: which one died, which runs but never listens, with the last lines of its
-log. A new worktree is proven the same way before you touch it — checkout, install, servers up —
-and a failure is recorded with its evidence instead of scrolling past.
+When crew makes a worktree it proves it works before you touch it: checkout, install, servers up.
+When something breaks, the failure is recorded with its evidence (which server died, which one runs
+but never listens, the last lines of its log) instead of scrolling past in a terminal you closed.
+The Claude in each worktree is told where it is and how to look around, so it uses `crew dev logs`,
+`crew dev check`, `crew run` and `crew fix` to debug things itself.
 
-**Agents that debug on their own.** The Claude in a worktree is told where it stands and how to
-reach everything: `crew dev logs` for any server's output, `crew dev check` for what's up, `crew
-run` to run tests or scripts with the same URLs the servers got, and `crew fix` to pick up a
-recorded failure with all its evidence. No hunting for which terminal ran what.
-
-Prefer typing? Set up and its Claude run these same commands, and you can too:
+If you'd rather type, everything the page and the Claudes do is a plain command:
 
 ```bash
 crew add project store-api git@github.com:example/store-api.git
@@ -138,33 +116,48 @@ crew add worktree store-front/wrk1                    # a second copy of everyth
 crew dev start store-front/wrk1                       # its servers, on its own ports
 ```
 
-## Without voice
-
-Everything is a plain command that prints rows or `--json`, so any agent with a shell can drive
-crew — every form on the Set up page shows the command it runs. In the terminal, `crew launch`
-picks a worktree and opens Claude or your editor on it. Claude Code gets a plugin with the
-reference skill, a `crew` agent and guided setup:
+Every command prints plain rows or `--json`, so any agent with a shell can drive crew too. In the
+terminal, `crew launch` picks a worktree and opens Claude or your editor on it, and Claude Code has
+a plugin with a reference skill, a `crew` agent and guided setup:
 
 ```
 /plugin marketplace add FurlanLuka/crew
 /plugin install crew@crew
 ```
 
+## What you need, and where your data goes
+
+crew runs on macOS and Linux and needs git and tmux. If you're missing something, `crew doctor`
+tells you and `crew doctor --install` installs it for you (Homebrew or `xcode-select` on a Mac,
+apt-get, dnf or pacman on Linux). Voice OS's Linux builds need glibc, so on Alpine and other musl
+systems crew works but Voice OS doesn't. Every session runs on your own
+[Claude Code](https://code.claude.com/docs) login, and `crew doctor --install` can set that up too.
+
+For voice you need two API keys. The Anthropic one pays for the router and the short spoken
+summaries; a spoken turn costs the router about a third of a cent. The [Soniox](https://soniox.com)
+one is for speech in and out, billed by audio time ([pricing](https://soniox.com/pricing)). Both
+are checked before they're saved and kept on your machine, readable only by you.
+
+Your voice and the text of spoken replies go to Soniox, to become text and speech. What you say and
+short excerpts of what sessions write go to Anthropic on your key, for routing and summaries. The
+sessions themselves talk to Anthropic through Claude Code like they always do. Everything else stays
+on your machine: the keys, your notes and the voice log. Voice OS never keeps recordings of your
+voice.
+
 ## Learn more
 
-- [Set up](docs/guides/setup.md) — crew's page for projects, workspaces, worktrees and machines, with a Claude to ask
-- [Getting set up](docs/guides/getting-set-up.md) — a workspace, its projects, a second worktree, as commands
-- [Voice OS](docs/guides/voice-os.md) — a walkthrough from two repos to a working feature, and what you can say
-- [Voice OS commands](docs/guides/voice-os-commands.md) — every command the kernel knows, with things to say
-- [How crew works](docs/concepts.md) — projects, bindings, checks, failures, other devices, moving machines
-- [Commands](docs/commands.md) — every command and its output
+- [Set up](docs/guides/setup.md): the page for projects, workspaces, worktrees and machines
+- [Voice OS](docs/guides/voice-os.md): from two repos to a working feature, and what you can say
+- [Voice OS commands](docs/guides/voice-os-commands.md): everything the router knows, with things to say
+- [Getting set up](docs/guides/getting-set-up.md): the same setup as commands
+- [How crew works](docs/concepts.md): projects, bindings, checks, failures, other devices, moving machines
+- [Commands](docs/commands.md): every command and its output
 - [Running crew on a remote VM](docs/guides/remote-vm.md)
-- [Voice OS internals](voiceos/README.md) — the router, keys, development
-- [What's new in 5.0](docs/releases/v5.0.0.md)
+- [Voice OS internals](voiceos/README.md): the router, keys, development
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
-`crew update` keeps crew — and Voice OS, once installed — on the latest release (`crew update
---check` only asks); a running server keeps its version until `crew server restart`.
+`crew update` keeps crew and Voice OS on the latest release (`crew update --check` only asks). A
+running server keeps its version until `crew server restart`.
 
 **License:** [Functional Source License 1.1, MIT future](LICENSE) (FSL-1.1-MIT). You can use it,
 change it, run it at work and redistribute it for any purpose except a competing use: offering it,
