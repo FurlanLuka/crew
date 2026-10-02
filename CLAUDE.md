@@ -277,7 +277,7 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   as `dev-<sha>[-dirty-<hash>]`, then hands off to the main (`voice dev _handoff <version>` — no path; the main's link appends
   `--source=<id>`, never the remote; the main fetches `.crew/dev-push/<version>` from it) where `RunDevPush` runs detached in tmux `crew-voice-push`: gather a
   remote source's build over scp → stage + sha256 on every machine (a failure installs nothing) →
-  `InstallScript` + restart in `RestartOrder` (other remotes, the main, the source last). Status in
+  `InstallScript` (chmod 755, codesign on macOS, and the new crew's `--version` must be this push's before the rename, else nothing is replaced; scp runs with `-p`) + restart in `RestartOrder` (other remotes, the main, the source last). Status in
   `~/.crew/voiceos/dev-push.json`. `release.IsDevBuild` (`dev`, `dev-*`) is the one dev rule; a
   `dev-<sha>` stamp is exact in `DecideDaemon`. `crew server start` checks tmux and `claude` first (`UnmetRequirements`) and hands the
   `claude` it found to Voice OS (`VOICEOS_CLAUDE_BIN`): the tmux server's PATH is not the

@@ -111,14 +111,15 @@ func normalizeVersion(v string) string { return strings.TrimPrefix(strings.TrimS
 // installed restarts at once — its sessions resume on the new release, and a
 // main of the new release cannot attach to the old one. A plain dev build or a
 // missing stamp is unknown and never forces one; a pushed "dev-<sha>" build is
-// exact, so it replaces a daemon of any other version. Pure.
+// exact, so it replaces a daemon of any other or unknown version. Pure.
 func DecideDaemon(running bool, runningVersion, installed string) DaemonAction {
 	if !running {
 		return DaemonStart
 	}
 	have, want := normalizeVersion(runningVersion), normalizeVersion(installed)
-	// A pushed dev-<sha> build is exact: it replaces any other running build, a plain dev one included.
-	if strings.HasPrefix(want, "dev-") && have != "" && have != want {
+	// A pushed dev-<sha> build is exact: it replaces any other running build, a plain dev one and
+	// an unknown one included — kept, a push would report a restart the new binary never had.
+	if strings.HasPrefix(want, "dev-") && have != want {
 		return DaemonRestart
 	}
 	if have == "" || want == "" || have == "dev" || want == "dev" || have == want {

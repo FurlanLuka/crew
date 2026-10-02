@@ -297,6 +297,26 @@ func TestShouldSweepOnStart(t *testing.T) {
 	}
 }
 
+// Neither the sweep nor the trash: uninstall purges ~/.crew, and --version
+// is how a dev push vets a binary before it trusts it.
+func TestLeavesConfigAlone(t *testing.T) {
+	for _, tt := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"uninstall", "--yes"}, true},
+		{[]string{"--version"}, true},
+		{[]string{"-v"}, true},
+		{[]string{"ls", "--version"}, false},
+		{[]string{"update"}, false},
+	} {
+		if got := leavesConfigAlone(tt.args); got != tt.want {
+			t.Errorf("%v → %v", tt.args, got)
+		}
+	}
+}
+
 func TestRenderReport_Outcomes(t *testing.T) {
 	actions := []Action{
 		{Kind: KindPrune, Path: "/r"},

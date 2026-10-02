@@ -340,10 +340,10 @@ func apply(a *Action, dryRun bool) {
 // SweepOnStart is what every crew invocation runs first: the full sweep at
 // most once an hour, otherwise just the trash — a rm an earlier run
 // started may not have finished. Neither for the commands that must not
-// (a runner starting, the proxy, clean itself, update), and uninstall
-// gets nothing at all: its purge takes ~/.crew whole.
+// (a runner starting, the proxy, clean itself, update), and the commands in
+// leavesConfigAlone get nothing at all.
 func SweepOnStart(args []string) {
-	if len(args) > 0 && args[0] == "uninstall" {
+	if leavesConfigAlone(args) {
 		return
 	}
 	stamp := filepath.Join(config.ConfigDir, "housekeeping.json")
@@ -356,6 +356,12 @@ func SweepOnStart(args []string) {
 	actions := Sweep(Options{})
 	data, _ := json.Marshal(map[string]any{"at": time.Now(), "actions": len(actions)})
 	os.WriteFile(stamp, data, 0o644)
+}
+
+// leavesConfigAlone: uninstall's purge takes ~/.crew whole, and --version
+// changes nothing — a dev push runs it to vet a binary it may then refuse. Pure.
+func leavesConfigAlone(args []string) bool {
+	return len(args) > 0 && (args[0] == "uninstall" || args[0] == "--version" || args[0] == "-v")
 }
 
 // shouldSweepOnStart decides from the command line (args after the
