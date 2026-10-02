@@ -4,10 +4,9 @@
 [![Voice OS](https://github.com/FurlanLuka/crew/actions/workflows/voiceos.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/voiceos.yml)
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE)
 
-**Talk to your coding agents.** I usually have four or five things going at once, each with its
-own Claude working on it, and I got tired of tabbing between terminals to find out which one was
-stuck on a question. So now I just talk to them. "Tell checkout to run the tests." "What's waiting
-on me?" "Yes, but only on staging." crew is the thing that makes that work.
+**Talk to your coding agents.** Running a few Claudes at once is great until you become the
+bottleneck, clicking through terminals to see who's stuck. crew turns that into a conversation:
+"tell checkout to run the tests", "what's waiting on me?", "yes, but only on staging".
 
 ![Voice OS: an active session, store-front/wrk2 on another machine, with its work stream, dev servers, spoken summary and the sessions elsewhere that need you; the other active sessions are tabs along the top](docs/images/voice-os/hero.png)
 
