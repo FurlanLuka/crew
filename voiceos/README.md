@@ -1,12 +1,17 @@
 # Voice OS
 
-A voice and web cockpit for crew. It runs one Claude Code session per worktree through the
-[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk), streams their output to the
-browser, and lets you answer permissions and questions, dictate, and hear "done" and
-"waiting on you", by voice or by click. crew owns its lifecycle: `crew voice`.
+crew's server and its web page. The page has two halves behind one Home: **Voice OS**, a voice and
+web cockpit that runs one Claude Code session per worktree through the
+[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk), streams their output to the browser,
+and lets you answer permissions and questions, dictate, and hear "done" and "waiting on you", by
+voice or by click; and **Set up**, which configures crew through its CLI (`POST /api/crew`). crew
+owns its lifecycle: bare `crew` starts it and opens the page, `crew server …` manages it. `crew voice …`
+is the same command, forever. What one machine runs on another (`crew voice _attach`, `voice logs
+--local`, `voice machines`, `voice _restart`, the dev-push handoff) keeps the `voice` spelling on
+purpose: an older crew on the other end knows only that one.
 
-**Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Mission
-Control, listening modes, active sessions, approvals, other machines, troubleshooting and
+**Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Set up,
+Active and Activate, listening modes, active sessions, approvals, other machines, troubleshooting and
 privacy. [Voice OS commands](../docs/guides/voice-os-commands.md) lists every kernel tool with
 things to say; a tool change updates its section (`src/tools/definitions.spec.ts` checks each has
 one). This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)
@@ -15,7 +20,7 @@ covers the repository-wide rules.
 ## Run it
 
 ```bash
-crew voice    # downloads Voice OS on first run, asks for its keys, starts it, opens the sign-in link
+crew          # downloads the server on first run, starts it, opens the page (keys are asked there)
 ```
 
 The download matches your crew version and `crew update` keeps it current. To run your own
@@ -23,17 +28,17 @@ build instead:
 
 ```bash
 cd voiceos && bun install && bun run install-dev
-crew voice restart
+crew server restart
 ```
 
 `install-dev` compiles into `~/.crew/bin/voiceos` (or `$CREW_VOICEOS_BIN`) and removes the
 `.version` stamp, so the next `crew update` replaces it with the release.
 
 With remotes, a build from source alone can't connect: a remote refuses a main on another version.
-`crew voice dev push`, from a crew checkout on any machine (the main or a remote), builds that
+`crew server dev push`, from a crew checkout on any machine (the main or a remote), builds that
 checkout's crew and Voice OS for every machine's OS and CPU (`scripts/build-dev.ts`), stamps them
 `dev-<commit>`, and the main puts them everywhere and restarts every machine, the one you pushed from
-last — detached, so it survives the restart. `crew voice dev status` follows it.
+last — detached, so it survives the restart. `crew server dev status` follows it.
 
 To run from source with its own state (token, sessions, active set, logs) instead of your real
 `~/.crew/voiceos`, point its config folders at a scratch directory and sign in with the token it
@@ -60,11 +65,14 @@ it (and the other keys) removed from their environment (`sessions/worker.ts`, `b
 | --- | --- |
 | `~/.config/crew-voiceos/soniox.key` | speech in and out (Soniox) |
 | `~/.config/crew-voiceos/anthropic.key` | the kernel, the judge and the question writer (Haiku) and the narrator (Sonnet) |
-| `~/.config/crew-voiceos/discord.key` | optional: the Discord bot (`crew voice discord setup`) |
+| `~/.config/crew-voiceos/discord.key` | optional: the Discord bot (`crew server discord setup`) |
 
-`crew voice` asks for missing keys at a terminal and checks each with its service
-(`crew/internal/voice/keys.go`). `crew voice keys` lists them, and `crew voice keys set
-<anthropic|soniox>` reads one from stdin. Voice OS's own lookup (`src/config.ts`, `loadKeys`), in
+The page asks for missing keys (Set up's `keys_set` command, the value on stdin, this Mac only);
+`crew server start` asks at a terminal. Both check each with its service
+(`crew/internal/voice/keys.go`). `crew server keys` lists them, and `crew server keys set
+<anthropic|soniox>` reads one from stdin. A running server watches the keys folder and rebuilds
+everything keyed (`src/keyed-services.ts`: TTS, STT, kernel, judge, narrator, question writer) when
+a key file changes, so a new key needs no restart. Voice OS's own lookup (`src/config.ts`, `loadKeys`), in
 order:
 
 - **anthropic:** `VOICEOS_ANTHROPIC_API_KEY`, then `anthropic.key`, then `ANTHROPIC_API_KEY` in
@@ -82,7 +90,7 @@ With a key missing, Voice OS still starts: the page shows a banner, and text and
 | `PORT` | The gateway's port (crew passes the remembered one; `0` picks one). |
 | `VOICEOS_PROXY_HOST`, `VOICEOS_PROXY_PORT`, `VOICEOS_PROXY_HTTPS_PORT` | The dev proxy's address, for the allowed WebSocket origins. |
 | `VOICEOS_RECORD_STATE=1` | Set by crew only: this instance writes `state.json`. |
-| `VOICEOS_DEBUG_AUDIO=1` | Saves every push-to-talk press as a WAV (with what was heard) under `~/.crew/voiceos/debug/`. Contributor switch for speech bugs. `crew voice` never sets it, so run from source to use it. |
+| `VOICEOS_DEBUG_AUDIO=1` | Saves every push-to-talk press as a WAV (with what was heard) under `~/.crew/voiceos/debug/`. Contributor switch for speech bugs. `crew server` never sets it, so run from source to use it. |
 | `VOICEOS_DEBUG_SPEECH=1` | Lets a page inject heard words with `window.voiceos.say("…")`, for demos and screenshots. Refused otherwise. |
 | `VOICEOS_REMOTE_EXEC` | Tests and QA: a shell command run instead of `ssh` for a machine link. |
 | `VOICEOS_REMOTE_UPDATE_EXEC` | Tests and QA: a shell command run instead of `ssh … crew update` when a remote is behind. |
@@ -120,11 +128,12 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/speech/` | `voice-in.ts` handles push to talk and dictation (a press held open until sent), and `listener.ts` the always-listening modes, with `wake.ts` (on demand), `turns.ts` (when a turn ends, "end of turn"), `echo.ts` (its own voice heard back) and `stt.ts` (Soniox STT). `voice-out.ts` and `queue.ts` handle what is said and when (alerts first, never over your voice, reminders, mute), and `tts.ts` streams Soniox TTS over one kept-open WebSocket. |
 | `src/memory/` | Files that outlive a restart: `journal.ts`, `view.ts`, `active.ts`, `names.ts`, `notes.ts`, `debug-notes.ts`. Writes go through `json-file.ts` (atomic). |
 | `src/dev/` | Dev servers through crew: `servers.ts` and `watch.ts` (crash detection, the fix offer). |
-| `src/crew/adapter.ts` | Every call into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`). |
-| `src/gateway/` | HTTP and WebSocket on 127.0.0.1. `auth.ts` handles sign-in (a host-only cookie set from `~/.crew/voiceos/token`) and the exact Origin check, `validate.ts` checks inbound messages, and `/media` serves the media folder and nothing else. |
+| `src/crew/` | `adapter.ts`: Voice OS's own calls into the crew CLI (`ls worktrees`, `show`, `dev …`, `fix --print`) and `spawnRunner` (stdin, a timeout that kills). `commands.ts`: Set up's `SetupCommand` union (zod, browser-safe), the pure `toCrewArgv`, per-variant traits (timeout, local-only, detached, json); `test/fixtures/shared/setup-argv.json` is one sample per variant, walked through crew's help tree by a Go test. `api.ts`: `POST /api/crew` (`checkRequest`, validation, status codes) and `createSetupRunner` (here, detached, or over a machine's link). |
+| `src/keyed-services.ts` | Everything built from the Anthropic and Soniox keys, held behind getters and rebuilt when a key file changes. |
+| `src/gateway/` | HTTP and WebSocket on 127.0.0.1. `/`, `/voice…` and `/setup…` all serve the one page (its router picks the half). `auth.ts` handles sign-in (a host-only cookie set from `~/.crew/voiceos/token`) and the exact Origin check; `checkRequest` (`crew/api.ts`) is shared by `/ws` and `/api/crew`, which also wants `Content-Type: application/json` and never echoes a body. `validate.ts` checks inbound messages, and `/media` serves the media folder and nothing else. |
 | `src/remote/` | Other machines (see below). |
 | `src/discord/` | The Discord voice channel (see below). |
-| `src/web/` | The React page, bundled by Bun: `App.tsx`, `components/`, `derive.ts` (pure view logic), `use-connection.ts`, the mic (`audio.ts`, `ptt.ts`, `listen-mode.ts`) and the player (`use-speech-player.ts`, `pcm.ts`). The design mockups are in `design/mockups.html`. |
+| `src/web/` | The React page, bundled by Bun: `App.tsx`, `components/`, `derive.ts` (pure view logic), `use-connection.ts`, the mic (`audio.ts`, `ptt.ts`, `listen-mode.ts`) and the player (`use-speech-player.ts`, `pcm.ts`). The design reference is `design/crew-web.html`: the prototype of every screen, with its design brief. |
 
 ### Behaviours worth knowing before you change them
 
@@ -181,10 +190,11 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   "For X?" (`ask_which`, `state/target-ask.ts`, settled by `router/target.ts`) and holds the words:
   yes sends them there, anything else keeps them on the screen. A bare yes or no to a session's
   permission or plan is sent to the answer tool first (`describeMisroutedAnswer`). The exceptions
-  are code paths, not guesses: the setup session (`isMisroutedToSetup`), a yes to "Want me to ask
+  are code paths, not guesses: a yes to "Want me to ask
   it?" (`askedBack`), earlier words pointed at a named session ("I meant that for X"), the `answer`
   tool's reply to a question the session ended its turn on — only once that question was heard
-  (`findLastAskedAloud`, `wasJustHeardAbout`) — and Mission Control, where the kernel asks which
+  (`findLastAskedAloud`, `wasJustHeardAbout`) — and off a session's screen (the kernel's "Mission
+  Control": Active, Activate, Settings), where the kernel asks which
   session itself. A session's long lines off screen come back through the meanwhile line; a short
   one (`isShortLine`) is still said at once, named.
 - **"Sent to X. Switch there?"** (`state/sends.ts`, `followSends`): spoken words that went to a
@@ -206,19 +216,33 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   removing a machine. `machine_resynced` matches a remote up on every connect: active and stopped starts,
   inactive and running stops. Words to an inactive session wait in its queue behind "X isn't active. Activate
   it?" (`state.switchOffer` with kind `activate`); a yes activates it and its start sends them.
-- **The setup session** (ref `setup`) runs in the home folder with the crew CLI, for crew setup
-  only, and the main's is always active. A remote's setup is activated like any other session. On
-  the wire it is `Session.isPinned`, a name that predates the active set. It is kept because
-  remotes of other versions read it, so it means "the setup session" and has nothing to do with
-  `state.active`.
+  An `activate` for a worktree Voice OS has not listed yet (Set up's "Open Voice OS" moments after
+  crew made it; `open: true` also shows it) is held in `state.pendingActivations` and answered with
+  a `refresh_worktrees` effect (crew's `ls worktrees` read at once); the next list that has it
+  applies it, and one older than `PENDING_ACTIVATION_MS` is let go.
+- **The setup session is out of voice.** One per machine (ref `setup`, `vm1:setup`), in the home
+  folder with the crew CLI: Set up's "Setup with Claude" chat, which sends with the ordinary
+  `send` and answers its asks with the `answer_*` inputs. `isActive` is false for every setup ref
+  (`isSetupRef`), so it is never in the kernel's turn, never narrated, never in the meanwhile line,
+  never a switch offer or "Sent to" (`state/sends.ts`), never reminded, and its asks are not voice's
+  (`listHeardAsks`). It still runs: `canRun` (active, or a setup ref) is asked only at the lifecycle
+  sites — `startWorker`, `matchMachine`, the resync drain and delivery — so a send to a stopped
+  setup starts it and words queue while it works. Names never resolve to it (`findRefsByName`),
+  `activate` refuses it, `showView` never opens it, and `active_loaded` drops a stored one. On the
+  wire it is still `Session.isPinned` (older remotes read it); `SETUP_ORIENTATION` tells it it is
+  Set up's chat.
 - **The active set and names are cockpit preferences**, not crew state, and have no CLI form. Both
   are keyed by machine ref, dropped at load for machines the state does not know, and saved only
   after the saved list has been merged (`memory/active.ts`, `memory/names.ts`). `active.json` is
   read first; `pinned.json` only when it does not exist (setup dropped), then written as
   `active.json`. A corrupt `active.json` is an empty set. A name is unique across sessions,
   because voice routes by it (`state/names.ts`).
+- **Views** are `active` (home) | `session` | `activate {machine?}` | `settings`; the voice log of
+  every non-session screen is keyed `HOME_SCREEN`. A machine removed, or a session gone, falls back
+  to Active.
 - **Restart keeps the screen.** `memory/view.ts` saves the view on every `switch_view` and restores
-  it at boot. For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
+  it at boot; `migrateSavedView` reads an earlier release's (`machines` → Active, `grid{machine}` →
+  Activate). For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
 - **No English patterns over what the developer means.** A guard that reads the developer's words
@@ -233,7 +257,7 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 ### Remote machines
 
 `src/remote/`: a remote runs the same binary as `voiceos remote serve`, a daemon that crew keeps in
-tmux (`crew voice remote`). It runs only the session manager (`host.ts`), behind a 0600 unix
+tmux (`crew server remote`). It runs only the session manager (`host.ts`), behind a 0600 unix
 socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _attach` execs it
 (`ssh.ts` builds the SSH command, with `BatchMode=yes`). The main keeps the one reducer:
 
@@ -249,8 +273,12 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
 - Either side may run the other's crew with a `call` / `result` pair (`protocol.ts`). Calls are
   never effects: not queued in the outbox, not replayed after a reconnect. `pending-calls.ts` keeps
   the ids and timers on both ends, and rejects what is in flight when the link goes.
-  - Main → remote: `dev …` and `fix --print` for the dev watch (`host.ts` `isAllowedCrewCall`).
-  - Remote → main: `crew voice logs|debug-notes|notes` run on a remote asks the daemon's second
+  - Main → remote: `dev …` and `fix --print` for the dev watch (`host.ts` `isAllowedCrewCall`),
+    and Set up's typed commands: the call carries `command` (and the variant's timeout), the remote
+    validates it with the same schema and builds the argv itself (`planCrewCall`; local-only
+    variants refused). A remote too old to know `command` strips it and refuses the args with `not
+    allowed`, which the main turns into `remote_outdated` with that remote's version.
+  - Remote → main: `crew server logs|debug-notes|notes` run on a remote asks the daemon's second
     0600 socket, `query.sock` (`query-socket.ts`: one `{"args":[…]}` line in, one answer line out,
     shapes in `test/fixtures/shared/query-socket.json`, shared with crew's Go client). The host
     forwards it to the attached main, answering `no-main` at once when none is attached or the link
@@ -258,13 +286,13 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
     `isAllowedQuery`, never `--local`), runs its own crew one query at a time with a 25 s deadline,
     and relays `{code, stdout, stderr}` as they are; output over 2 MB comes back as an error.
 
-The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew voice machines`
+The machine list is `~/.crew/voiceos/machines.json`. It is written only by `crew server machines`
 (the page and voice go through it) and watched while running (`cockpit-machines.ts`).
 
 ### Discord voice channel
 
 `src/discord/`: a bot sits in one voice channel of the developer's own server; joining it from a
-phone is like opening the page and talking. `crew voice discord setup` takes only the bot token and
+phone is like opening the page and talking. `crew server discord setup` takes only the bot token and
 works out the server (the only one the bot is in), the owner (the server's owner) and the channel
 ("Voice OS", else the only voice one), writing `discord.json` and `discord.key`. Voice OS watches
 `discord.json`, so setup and `off` apply without a restart.
@@ -282,7 +310,7 @@ works out the server (the only one the bot is in), the owner (the server's owner
   encoded with opusscript (`codec.ts`, its wasm embedded by a `bun patch` in `patches/`) and streamed
   to one audio player; the player going idle after the last chunk is the clip's `audio_done`.
   `discord.ts` follows the setup; `link.ts` reconnects with backoff (a refused token is not retried), writes `discord-status.json` for
-  `crew voice discord status` and keeps the mode (on demand or hands-free) in `discord-mode.json`.
+  `crew server discord status` and keeps the mode (on demand or hands-free) in `discord-mode.json`.
 - **Sessions know.** While the developer is in the channel, every send carries a note
   (`voice-context.ts` `buildDiscordNote`): they hear spoken tags but see nothing on the page.
 - DAVE end-to-end encryption is on (`@snazzah/davey`, a native package per platform).
@@ -296,17 +324,17 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `token` | The sign-in token (0600, tightened if looser). |
 | `state.json` | Port, pid, start time and machine statuses, for crew (`VOICEOS_RECORD_STATE` only). |
 | `sessions.json` | The registry: each ref's Claude Code session id and briefing version. |
-| `view.json` | The last view the developer chose. |
+| `view.json` | The last view shown — saved whenever the view moves (a switch, or an activation that opens its session). |
 | `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |
 | `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
-| `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew voice notes`). |
+| `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew server notes`). |
 | `media/` | Images by content hash, swept after 30 days. |
 | `machines.json` | Other machines (crew writes it). |
 | `discord.json`, `discord-status.json`, `discord-mode.json` | The Discord voice channel: its setup (crew writes it), whether Voice OS is in it, and the listening mode there. |
-| `logs/voiceos.log` | The log (`crew voice logs`). It contains what the developer said. Rotated at 20 MB into `voiceos.log.1` … `.5`, newest first (`log.ts`); `ts` stays the first key of each line, since crew compares it before decoding. |
-| `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`, `crew voice debug-notes`). Never rotated. |
+| `logs/voiceos.log` | The log (`crew server logs`). It contains what the developer said. Rotated at 20 MB into `voiceos.log.1` … `.5`, newest first (`log.ts`); `ts` stays the first key of each line, since crew compares it before decoding. |
+| `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`, `crew server debug-notes`). Never rotated. |
 | `debug/` | WAVs, only with `VOICEOS_DEBUG_AUDIO=1`. |
 | `remote/` | A remote daemon's own registry, media, sockets (`remote.sock` for the link, `query.sock` for crew's queries), `daemon.json` and log (rotated the same way). |
 

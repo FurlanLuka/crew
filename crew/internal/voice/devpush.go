@@ -151,8 +151,12 @@ func InstallScript(version string, isMain bool, crewPath, voicePath string) stri
 		// Nothing staged here means nothing to install: the live crew is never touched for it.
 		`[ -f "$D/crew" ] && [ -f "$D/voiceos" ] || { echo "nothing staged in $D"; exit 1; }`,
 		`mkdir -p "$(dirname "$C")" "$(dirname "$V")"`,
-		`cp "$D/crew" "$C.new" && cp "$D/voiceos" "$V.new"`,
+		// The execute bit is set here, never trusted from the copy: a push once left the pushing
+		// machine with binaries it could not run while it still reported them restarted.
+		`cp "$D/crew" "$C.new" && cp "$D/voiceos" "$V.new" && chmod 755 "$C.new" "$V.new"`,
 		`if [ "$(uname)" = Darwin ]; then codesign --sign - -f "$C.new" "$V.new" >/dev/null 2>&1 || { rm -f "$C.new" "$V.new"; echo "codesign failed"; exit 1; }; fi`,
+		// The new crew must run and be this push's before it replaces the one that works.
+		`[ "$("$C.new" --version 2>/dev/null)" = "crew "` + q(version) + ` ] || { rm -f "$C.new" "$V.new"; echo "the new crew does not run here"; exit 1; }`,
 		`mv -f "$C.new" "$C" && mv -f "$V.new" "$V"`,
 		"printf '%s\\n' " + q(version) + ` > "$V.version"`,
 		`rm -rf "$D"`,
@@ -257,7 +261,7 @@ func writeDevPush(st DevPushStatus) error {
 	return os.Rename(tmp, devPushStatusFile())
 }
 
-// RenderDevPush is crew voice dev status for a human. Pure.
+// RenderDevPush is crew server dev status for a human. Pure.
 func RenderDevPush(st DevPushStatus) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s from %s: %s", st.Version, st.Source, st.Phase)

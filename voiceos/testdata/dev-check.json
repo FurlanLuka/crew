@@ -1,0 +1,30 @@
+[
+  {
+    "project": "store-front",
+    "server": "web",
+    "port": 54010,
+    "alive": true,
+    "listening": true,
+    "referenced": true,
+    "took_ms": 2100
+  },
+  {
+    "project": "store-api",
+    "server": "api",
+    "port": 54012,
+    "alive": false,
+    "listening": false,
+    "referenced": true,
+    "tail": "Error: Cannot find module 'express'",
+    "took_ms": 4000
+  },
+  {
+    "project": "store-api",
+    "server": "worker",
+    "port": 0,
+    "alive": true,
+    "listening": false,
+    "referenced": false,
+    "took_ms": 4000
+  }
+]

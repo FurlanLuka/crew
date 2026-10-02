@@ -48,7 +48,7 @@ const withSessions = (refs: string[], patch: Partial<State> = {}): State => ({
 	...patch,
 });
 
-// One table for both sides: crew's Go (crew voice machines) reads it too.
+// One table for both sides: crew's Go (crew server machines) reads it too.
 const MACHINE_IDS: { host: string; taken: string[]; id: string }[] = JSON.parse(
 	readFileSync(
 		join(import.meta.dir, '../../../crew/internal/voice/testdata/machine-ids.json'),
@@ -106,7 +106,7 @@ describe('readElsewhereMachine', () => {
 	it('a local session → null', () => expect(readElsewhereMachine(base, 'crew/main')).toBeNull());
 	it('a remote session, the developer inside that machine → null', () =>
 		expect(
-			readElsewhereMachine({ ...base, view: { kind: 'grid', machine: 'vm1' } }, remote),
+			readElsewhereMachine({ ...base, view: { kind: 'activate', machine: 'vm1' } }, remote),
 		).toBeNull());
 	it('a remote session the developer named → null', () =>
 		expect(
@@ -149,24 +149,23 @@ describe('views', () => {
 		machines: { vm1: machine('vm1') },
 	});
 
-	it('home → always the machine cards, where a machine is added', () => {
-		expect(HOME_VIEW).toEqual({ kind: 'machines' });
-		expect(parentView({ ...withSessions([]), view: { kind: 'grid', machine: 'local' } })).toEqual(
-			HOME_VIEW,
-		);
+	it('home → Active; up from Activate or Settings → home', () => {
+		expect(HOME_VIEW).toEqual({ kind: 'active' });
+		expect(
+			parentView({ ...withSessions([]), view: { kind: 'activate', machine: 'local' } }),
+		).toEqual(HOME_VIEW);
+		expect(parentView({ ...withSessions([]), view: { kind: 'settings' } })).toEqual(HOME_VIEW);
 	});
 
-	it('up from a session → its machine grid → home, this Mac included', () => {
+	it('up from a session not opened from Active → its machine on Activate, this Mac included', () => {
 		const inSession: State = { ...state, view: { kind: 'session', ref: 'vm1:store/main' } };
-		const inGrid: State = { ...state, view: { kind: 'grid', machine: 'vm1' } };
 		const local: State = {
 			...withSessions(['store/main']),
 			view: { kind: 'session', ref: 'store/main' },
 		};
 
-		expect(parentView(inSession)).toEqual({ kind: 'grid', machine: 'vm1' });
-		expect(parentView(inGrid)).toEqual({ kind: 'machines' });
-		expect(parentView(local)).toEqual({ kind: 'grid', machine: 'local' });
+		expect(parentView(inSession)).toEqual({ kind: 'activate', machine: 'vm1' });
+		expect(parentView(local)).toEqual({ kind: 'activate', machine: 'local' });
 	});
 
 	it('up from a session opened from Active → Active → home', () => {
@@ -179,13 +178,14 @@ describe('views', () => {
 		expect(parentView({ ...state, view: { kind: 'active' } })).toEqual(HOME_VIEW);
 	});
 
-	it('currentMachine → the machine of the session or grid; none on views of all', () => {
+	it("currentMachine → the session's machine, or Activate's filter; none on views of all", () => {
 		expect(currentMachine({ ...state, view: { kind: 'session', ref: 'store/main' } })).toBe(
 			'local',
 		);
-		expect(currentMachine({ ...state, view: { kind: 'grid', machine: 'vm1' } })).toBe('vm1');
-		expect(currentMachine({ ...state, view: { kind: 'machines' } })).toBeNull();
-		expect(currentMachine({ ...state, view: { kind: 'grid' } })).toBeNull();
+		expect(currentMachine({ ...state, view: { kind: 'activate', machine: 'vm1' } })).toBe('vm1');
+		expect(currentMachine({ ...state, view: { kind: 'active' } })).toBeNull();
+		expect(currentMachine({ ...state, view: { kind: 'activate' } })).toBeNull();
+		expect(currentMachine({ ...state, view: { kind: 'settings' } })).toBeNull();
 	});
 });
 
@@ -205,8 +205,24 @@ describe('listWaitingRefs', () => {
 		},
 	};
 
-	it('asks and a "needs you" line, each session once, in grid order', () => {
+	it('asks and a "needs you" line, each session once, in session order', () => {
 		expect(listWaitingRefs(state)).toEqual(['store/wrk1', 'vm1:store/main']);
+	});
+
+	it("a setup session's ask or question → not waiting on voice: Set up's chat shows it", () => {
+		const withSetup = withSessions(['setup', 'store/main', 'vm1:setup'], {
+			machines: { vm1: machine('vm1') },
+		});
+		const asking: State = {
+			...withSetup,
+			asks: [{ id: 's', ref: 'setup', at: 1, kind: 'plan', input: {}, plan: 'p' }],
+			sessions: {
+				...withSetup.sessions,
+				'vm1:setup': { ...withSetup.sessions['vm1:setup']!, needsUser: { text: 'which?', at: 1 } },
+			},
+		};
+
+		expect(listWaitingRefs(asking)).toEqual([]);
 	});
 
 	it('one machine → only its sessions', () => {

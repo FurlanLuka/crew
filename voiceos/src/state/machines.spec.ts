@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import type { Input, State, View } from '../shared/protocol.js';
+import type { Input, PendingAsk, State, View } from '../shared/protocol.js';
 import { run, worktree } from '../../test/support/reduce.js';
 
 const VM1 = { id: 'vm1', host: 'dev@vm1.example.com', name: 'Build box' };
 const REMOTE = 'vm1:store/main';
+const QUESTION = { question: 'Which one?', header: 'Pick', multiSelect: false, options: [] };
 
 // A main that knows vm1, connected, with one active idle session there and one inactive here.
 const connected = (extra: Input[] = []): State =>
@@ -102,7 +103,7 @@ describe('add_machine / rename_machine / remove_machine', () => {
 		]);
 	});
 
-	it('remove the machine on screen → back home, to the cards; its active session → Active', () => {
+	it('remove the machine on screen → back home to Active, from Activate or a session', () => {
 		const removeFrom = (view: View): View =>
 			run(
 				[
@@ -112,7 +113,7 @@ describe('add_machine / rename_machine / remove_machine', () => {
 				{ start: connected() },
 			).state.view;
 
-		expect(removeFrom({ kind: 'grid', machine: 'vm1' })).toEqual({ kind: 'machines' });
+		expect(removeFrom({ kind: 'activate', machine: 'vm1' })).toEqual({ kind: 'active' });
 		expect(removeFrom({ kind: 'session', ref: REMOTE })).toEqual({ kind: 'active' });
 	});
 });
@@ -250,7 +251,7 @@ describe('guardUnreachable', () => {
 
 describe('switch_view to a machine', () => {
 	it('from elsewhere, nothing waiting → nothing said', () => {
-		const { effects } = run([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }], {
+		const { effects } = run([{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } }], {
 			start: connected(),
 		});
 
@@ -262,7 +263,7 @@ describe('switch_view to a machine', () => {
 			...connected(),
 			asks: [{ id: 'a', ref: REMOTE, at: 1, kind: 'plan', input: {}, plan: 'p' }],
 		};
-		const { effects } = run([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }], {
+		const { effects } = run([{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } }], {
 			start,
 		});
 
@@ -275,7 +276,7 @@ describe('switch_view to a machine', () => {
 		const { effects } = run(
 			[
 				{ type: 'switch_view', view: { kind: 'session', ref: REMOTE } },
-				{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } },
+				{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } },
 			],
 			{ start: connected() },
 		);
@@ -351,26 +352,78 @@ describe('answers to what Voice OS holds, for a machine out of reach', () => {
 			expect.objectContaining({ text: 'Build box is out of reach right now.' }),
 		]);
 	});
+
+	const cases: [string, PendingAsk, Input][] = [
+		[
+			'a permission',
+			{
+				id: 'a1',
+				ref: REMOTE,
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run git push',
+				input: { command: 'git push' },
+				suggestions: [],
+			},
+			{ type: 'answer_permission', askId: 'a1', decision: 'allow' },
+		],
+		[
+			'a question answered',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'question', input: {}, questions: [QUESTION] },
+			{ type: 'answer_question', askId: 'a1', answers: { 'Which one?': 'A' } },
+		],
+		[
+			'a question declined',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'question', input: {}, questions: [QUESTION] },
+			{ type: 'decline_question', askId: 'a1' },
+		],
+		[
+			'a plan',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'plan', input: {}, plan: 'Do it.' },
+			{ type: 'answer_plan', askId: 'a1', isApproved: true },
+		],
+		[
+			'a held /clear',
+			{ id: 'a1', ref: REMOTE, at: 1, kind: 'command', command: 'clear', text: '/clear' },
+			{ type: 'answer_command', askId: 'a1', isApproved: true },
+		],
+	];
+
+	for (const [what, ask, answer] of cases) {
+		it(`${what} there, answered (${answer.type}) → refused aloud, the ask kept, nothing resolved`, () => {
+			const held = connected([
+				{ type: 'ask_opened', ask },
+				{ type: 'machine_status', id: 'vm1', status: 'unreachable' },
+			]);
+			const { state, effects } = run([answer], { start: held });
+
+			expect(state.asks.map((open) => open.id)).toEqual(['a1']);
+			expect(effects).toEqual([
+				expect.objectContaining({ type: 'speak', text: 'Build box is out of reach right now.' }),
+			]);
+		});
+	}
 });
 
 describe('removing the machine on screen, others left', () => {
-	it('→ Mission Control, not the grid of every session', () => {
+	it('→ Active, not Activate for every machine', () => {
 		const { state } = run([
 			{ type: 'machines', machines: [VM1, { id: 'vm2', host: 'vm2', name: 'GPU box' }] },
-			{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } },
+			{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } },
 			{ type: 'remove_machine', id: 'vm1' },
 		]);
 
-		expect(state.view).toEqual({ kind: 'machines' });
+		expect(state.view).toEqual({ kind: 'active' });
 	});
 });
 
 describe('home', () => {
-	it('a start → home is the cards, even with no other machine', () => {
-		expect(run([]).state.view).toEqual({ kind: 'machines' });
+	it('a start → home is Active', () => {
+		expect(run([]).state.view).toEqual({ kind: 'active' });
 	});
 
-	it('this Mac first in the grid, then each machine; the setup session leads within one', () => {
+	it('this Mac first, then each machine; the setup session leads within one', () => {
 		const { state } = run([
 			{ type: 'machines', machines: [VM1] },
 			{
@@ -391,10 +444,10 @@ describe('home', () => {
 describe('adding or removing machines moves nobody', () => {
 	const GPU = { id: 'gpu', host: 'gpu', name: 'GPU box' };
 
-	it('a session or a machine grid on screen → stays through a reload, a rename and another add', () => {
+	it('a session or a machine on Activate on screen → stays through a reload, a rename and another add', () => {
 		for (const view of [
 			{ kind: 'session' as const, ref: REMOTE, from: 'active' as const },
-			{ kind: 'grid' as const, machine: 'vm1' },
+			{ kind: 'activate' as const, machine: 'vm1' },
 		]) {
 			const { state } = run(
 				[
@@ -410,9 +463,9 @@ describe('adding or removing machines moves nobody', () => {
 		}
 	});
 
-	it('the last machine removed while on the cards → still the cards', () => {
+	it('the last machine removed while on Active → still Active', () => {
 		const { state } = run([{ type: 'machines', machines: [] }], { start: connected() });
 
-		expect(state.view).toEqual({ kind: 'machines' });
+		expect(state.view).toEqual({ kind: 'active' });
 	});
 });

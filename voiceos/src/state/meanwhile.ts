@@ -50,6 +50,7 @@ export const dropMeanwhileFor = (state: State, ref: string): State =>
 const ANSWERS = new Set<Input['type']>([
 	'answer_permission',
 	'answer_question',
+	'decline_question',
 	'answer_plan',
 	'answer_command',
 ]);

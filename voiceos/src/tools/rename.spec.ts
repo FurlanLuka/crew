@@ -205,7 +205,7 @@ describe('findSessionsNamedIn with display names', () => {
 		const { state } = createContext({
 			patch: {
 				names: { 'personal:crew/main': 'voice os dev' },
-				view: { kind: 'grid', machine: LOCAL_MACHINE },
+				view: { kind: 'activate', machine: LOCAL_MACHINE },
 			},
 		});
 

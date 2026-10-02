@@ -39,9 +39,11 @@ const bootGateway = (
 	store = new Store(),
 	onMessage = (_: unknown) => {},
 	readMedia?: GatewayOptions['readMedia'],
+	runCrew?: GatewayOptions['runCrew'],
 ) => {
 	gateway = startGateway({
 		...(readMedia ? { readMedia } : {}),
+		...(runCrew ? { runCrew } : {}),
 		store,
 		token: TOKEN,
 		port: 0,
@@ -148,6 +150,59 @@ describe('gateway', () => {
 		expect(response.headers.get('set-cookie')).toBeNull();
 	});
 
+	it('/, /voice…, /setup… → the one page: its router picks the half, so a refresh lands in place', async () => {
+		const { port } = bootGateway();
+
+		for (const path of [
+			'/',
+			'/voice',
+			'/voice/session/store-front%2Fmain',
+			'/setup',
+			'/setup/project/store-api',
+		]) {
+			const response = await fetch(`http://localhost:${port}${path}`);
+
+			expect(response.status).toBe(200);
+			expect(await response.text()).toBe('<html></html>');
+		}
+
+		expect((await fetch(`http://localhost:${port}/voiceover`)).status).toBe(404);
+	});
+
+	it('POST /api/crew → the injected runner answers; refused without the cookie, 503 without a runner', async () => {
+		const commands: unknown[] = [];
+		const { port } = bootGateway(new Store(), undefined, undefined, async (machine, command) => {
+			commands.push([machine, command]);
+
+			return { kind: 'ran', result: { code: 0, stdout: '[]', stderr: '' } };
+		});
+		const send = (headers: Record<string, string>) =>
+			fetch(`http://localhost:${port}/api/crew`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', ...headers },
+				body: JSON.stringify({ machine: 'local', command: { type: 'ls_workspaces' } }),
+			});
+
+		const answered = await send({ origin: createOrigin(port), cookie });
+
+		expect(answered.status).toBe(200);
+		expect(await answered.json()).toEqual({ code: 0, stdout: '[]', stderr: '', json: [] });
+		expect(commands).toEqual([['local', { type: 'ls_workspaces' }]]);
+		expect((await send({ origin: createOrigin(port) })).status).toBe(401);
+		expect((await send({ origin: 'http://evil.example', cookie })).status).toBe(403);
+	});
+
+	it('POST /api/crew with no runner given → 503', async () => {
+		const { port } = bootGateway();
+		const response = await fetch(`http://localhost:${port}/api/crew`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', origin: createOrigin(port), cookie },
+			body: JSON.stringify({ machine: 'local', command: { type: 'ls_workspaces' } }),
+		});
+
+		expect(response.status).toBe(503);
+	});
+
 	it('ws without a cookie → 401', async () => {
 		const { port } = bootGateway();
 		const response = await fetch(`http://localhost:${port}/ws`, {
@@ -218,14 +273,14 @@ describe('gateway', () => {
 			JSON.stringify({ type: 'action', action: { type: 'send', ref: 'store/main' } }),
 		);
 		client.socket.send(
-			JSON.stringify({ type: 'action', action: { type: 'switch_view', view: { kind: 'grid' } } }),
+			JSON.stringify({ type: 'action', action: { type: 'switch_view', view: { kind: 'active' } } }),
 		);
 		await waitUntil(
 			() => received.length === 1 && client.messages.some((message) => message.type === 'error'),
 		);
 
 		expect(received).toEqual([
-			{ type: 'action', action: { type: 'switch_view', view: { kind: 'grid' } } },
+			{ type: 'action', action: { type: 'switch_view', view: { kind: 'active' } } },
 		]);
 		client.socket.close();
 	});
@@ -254,6 +309,7 @@ describe('parseClientMessage', () => {
 			askId: 'a1',
 			answers: { 'Which table?': 'New table' },
 		},
+		decline_question: { type: 'decline_question', askId: 'a1' },
 		answer_command: { type: 'answer_command', askId: 'a1', isApproved: true },
 		answer_redirect: { type: 'answer_redirect', askId: 'a1', isApproved: false, message: 'do X' },
 		answer_plan: {
@@ -289,7 +345,9 @@ describe('parseClientMessage', () => {
 	const messages: ClientMessage[] = [
 		...Object.values(actions).map((action): ClientMessage => ({ type: 'action', action })),
 		{ type: 'action', action: { type: 'answer_plan', askId: 'a1', isApproved: true } },
-		{ type: 'action', action: { type: 'switch_view', view: { kind: 'grid' } } },
+		// Set up's "Open Voice OS": without open the held activation never shows the session.
+		{ type: 'action', action: { type: 'activate', ref: 'checkout-api/main', open: true } },
+		{ type: 'action', action: { type: 'switch_view', view: { kind: 'active' } } },
 		{ type: 'action', action: { type: 'switch_view', view: { kind: 'active' } } },
 		{
 			type: 'action',
@@ -343,17 +401,17 @@ describe('parseClientMessage', () => {
 		});
 	});
 
-	it('an activate from a page → never announced: a click is silent', () => {
+	it('an activate from a page → never announced (a click is silent), its open kept', () => {
 		const parsed = parseClientMessage(
 			JSON.stringify({
 				type: 'action',
-				action: { type: 'activate', ref: 'store/main', announce: true },
+				action: { type: 'activate', ref: 'store/main', announce: true, open: true },
 			}),
 		);
 
 		expect(parsed).toEqual({
 			ok: true,
-			message: { type: 'action', action: { type: 'activate', ref: 'store/main' } },
+			message: { type: 'action', action: { type: 'activate', ref: 'store/main', open: true } },
 		});
 	});
 
@@ -386,7 +444,7 @@ describe('parseClientMessage', () => {
 					type: 'action',
 					action: {
 						type: 'voice_logged',
-						screen: 'grid',
+						screen: 'home',
 						entry: { utterance: 'x', did: [], reply: '', at: 1 },
 					},
 				}),
@@ -455,7 +513,7 @@ describe('offline outbox', () => {
 		expect(
 			shouldKeepWhileOffline({
 				type: 'action',
-				action: { type: 'switch_view', view: { kind: 'grid' } },
+				action: { type: 'switch_view', view: { kind: 'active' } },
 			}),
 		).toBe(true);
 		expect(shouldKeepWhileOffline({ type: 'utterance', text: 'yes' })).toBe(true);

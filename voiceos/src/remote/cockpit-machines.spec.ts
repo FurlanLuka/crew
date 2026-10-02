@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { CrewAdapter } from '../crew/adapter.js';
 import { configureLog } from '../log.js';
 import type { SessionManager } from '../sessions/manager.js';
+import type { WorktreeInfo } from '../shared/protocol.js';
 import { Store } from '../state/store.js';
 import { until } from '../../test/support/link.js';
 import { connectMachines, toMachinesArgs } from './cockpit-machines.js';
@@ -58,6 +59,47 @@ describe('connectMachines', () => {
 				'That change to your machines was not saved: vm1 already connects to vm1.',
 			]);
 			expect(store.state.machines).toEqual({});
+		} finally {
+			machines.stop();
+		}
+	});
+
+	it('Set up\'s "Open Voice OS" on a worktree not listed yet → the real refresh lists it, then it is activated and shown', async () => {
+		const store = new Store();
+		const worktree = (ref: string, isPinned = false): WorktreeInfo => ({
+			ref,
+			label: ref,
+			branch: isPinned ? '' : `crew/${ref}`,
+			cwd: isPinned ? '/h' : `/w/${ref}`,
+			dirs: [],
+			isPinned,
+		});
+		const machines = connectMachines({
+			store,
+			voiceDir: mkdtempSync(join(tmpdir(), 'voiceos-cockpit-')),
+			home: '/h',
+			mediaDir: '/h/media',
+			crew: {
+				listWorktrees: async () => [worktree('setup', true), worktree('checkout-api/main')],
+			} as unknown as CrewAdapter,
+			runCrew: async () => ({ code: 0, stdout: '', stderr: '' }),
+			manager: { handle: () => undefined, listRunning: () => [] } as unknown as SessionManager,
+			say: () => undefined,
+			sayLine: () => undefined,
+			onStatusesChanged: () => undefined,
+			open: () => ({ write: () => undefined, close: () => undefined }),
+		});
+
+		try {
+			expect(store.state.sessions['checkout-api/main']).toBeUndefined();
+			store.dispatch({ type: 'activate', ref: 'checkout-api/main', open: true });
+			await until(() => store.state.active.includes('checkout-api/main'), 'activated');
+
+			expect(store.state.view).toEqual({
+				kind: 'session',
+				ref: 'checkout-api/main',
+				from: 'active',
+			});
 		} finally {
 			machines.stop();
 		}

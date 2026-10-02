@@ -59,7 +59,7 @@ forward-vs-command, or a classifier idea.
   call (a spoken reply, words ignored) counts as voiceos — Voice OS kept the words.
 - No baseline and no gate: `--update-baseline`, `--kernel-model` and `--narrator-model` are refused
   (its cost line prices Haiku). An unknown `--only` id is refused before any call.
-- To add speech cases: pull `crew voice logs --cat=router,kernel,voice-out,conversation --machine=main`
+- To add speech cases: pull `crew server logs --cat=router,kernel,voice-out,conversation --machine=main`
   in windows (`--since/--until`, `--lines` caps at 1000), build each line's context, label with
   several agents in parallel, read every line — never keyword rules — and skip what can't be told. New
   speech cases go in the local file, never `cases.json`; look-alikes written by hand go in `cases.json`

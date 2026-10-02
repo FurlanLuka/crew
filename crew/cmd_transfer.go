@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -12,7 +13,8 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
-// exportArgs is what crew export was told. No flags means the picker.
+// exportArgs is what crew export was told. No selection means everything;
+// file "-" is stdout.
 type exportArgs struct {
 	file       string
 	all        bool
@@ -30,7 +32,7 @@ func parseExportArgs(args []string) (exportArgs, error) {
 			a.projects = splitList(strings.TrimPrefix(arg, "--projects="))
 		case strings.HasPrefix(arg, "--workspaces="):
 			a.workspaces = splitList(strings.TrimPrefix(arg, "--workspaces="))
-		case strings.HasPrefix(arg, "-"):
+		case strings.HasPrefix(arg, "-") && arg != stdioName:
 			return a, fmt.Errorf("unknown flag '%s'", arg)
 		case a.file != "":
 			return a, fmt.Errorf("one file at most, got '%s' and '%s'", a.file, arg)
@@ -47,6 +49,10 @@ func parseExportArgs(args []string) (exportArgs, error) {
 	if len(a.workspaces) > 0 && len(a.projects) == 0 {
 		return a, errors.New("--workspaces needs --projects naming every project they use")
 	}
+	// The picker is gone; nothing chosen is everything.
+	if len(a.projects) == 0 {
+		a.all = true
+	}
 	return a, nil
 }
 
@@ -60,7 +66,10 @@ func splitList(s string) []string {
 	return out
 }
 
-func (a exportArgs) interactive() bool { return !a.all && len(a.projects) == 0 }
+// stdioName as the file is the standard stream: export writes the bundle
+// to stdout (the web's export saves it as a file in the browser), import
+// reads it from stdin (the web's import hands the uploaded file over).
+const stdioName = "-"
 
 func cmdExport() {
 	a, err := parseExportArgs(os.Args[2:])
@@ -68,9 +77,9 @@ func cmdExport() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if a.interactive() {
-		runTUI(transfer.NewExportView(a.file))
-		return
+	if a.file == stdioName && human == io.Writer(os.Stdout) {
+		// stdout is the bundle and nothing else.
+		human = os.Stderr
 	}
 
 	projNames, wsNames := a.projects, a.workspaces
@@ -101,7 +110,7 @@ func cmdExport() {
 
 	b, err := transfer.Collect(projNames, wsNames)
 	if err == nil {
-		err = transfer.Write(a.file, b)
+		err = writeBundle(a.file, b)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -112,6 +121,10 @@ func cmdExport() {
 	noRemote := transfer.WithoutRemote(b)
 	for _, name := range noRemote {
 		fmt.Fprintf(human, "%s has no git remote — it cannot be cloned on another machine\n", name)
+	}
+	if a.file == stdioName {
+		fmt.Fprintf(human, "Wrote the bundle to stdout — %s\n", transfer.CountPhrase(len(b.Projects), len(b.Workspaces)))
+		return
 	}
 	if jsonOutput {
 		if projNames == nil {
@@ -129,6 +142,30 @@ func cmdExport() {
 	fmt.Printf("Wrote %s — %s\n", a.file, transfer.CountPhrase(len(b.Projects), len(b.Workspaces)))
 }
 
+func writeBundle(file string, b transfer.Bundle) error {
+	if file != stdioName {
+		return transfer.Write(file, b)
+	}
+	data, err := transfer.Encode(b)
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(data)
+	return err
+}
+
+// readBundle is the bundle from a file, or from stdin for "-".
+func readBundle(file string) (transfer.Bundle, error) {
+	if file != stdioName {
+		return transfer.Read(file)
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return transfer.Bundle{}, err
+	}
+	return transfer.Decode("stdin", data)
+}
+
 func everything() (projNames, wsNames []string, err error) {
 	pool, err := project.List()
 	if err != nil {
@@ -141,7 +178,7 @@ func everything() (projNames, wsNames []string, err error) {
 	return projNames, wsNames, err
 }
 
-// importArgs is what crew import was told. No mode means the wizard.
+// importArgs is what crew import was told. No mode means the plan.
 type importArgs struct {
 	file    string
 	plan    bool
@@ -184,6 +221,8 @@ func parseImportArgs(args []string) (importArgs, error) {
 			a.project.Setup = strings.TrimPrefix(arg, "--setup=")
 		case strings.HasPrefix(arg, "--env-cmd="):
 			a.project.EnvCmd = strings.TrimPrefix(arg, "--env-cmd=")
+		case arg == stdioName && a.file == "":
+			a.file = arg
 		case strings.HasPrefix(arg, "-"):
 			return a, fmt.Errorf("unknown flag '%s'", arg)
 		case a.file == "":
@@ -232,19 +271,20 @@ func cmdImport() {
 		fmt.Fprintf(os.Stderr, "Error: %v\nUsage: crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]\n", err)
 		os.Exit(1)
 	}
-	b, err := transfer.Read(a.file)
+	b, err := readBundle(a.file)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 	switch {
-	case a.plan:
-		printImportRows(transfer.PlanRows(b, transfer.Inspect(b)))
 	case a.item == "project":
 		res, err := transfer.ApplyProject(b, transfer.Inspect(b), a.name, a.project)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
+		}
+		if warn := transfer.RenameWarning(b, a.name, res.Name); warn != "" {
+			fmt.Fprintf(human, "! %s\n", warn)
 		}
 		printImportRows([]transfer.PlanRow{{Kind: "project", Name: res.Name, Status: outcomeWord(res), Detail: res.Path}})
 	case a.item == "workspace":
@@ -261,7 +301,8 @@ func cmdImport() {
 	case a.all:
 		importAll(a.file, b, a)
 	default:
-		runTUI(transfer.NewImportView(a.file, b))
+		// --plan, or nothing: the wizard is gone, the plan is what it showed.
+		printImportRows(transfer.PlanRows(b, transfer.Inspect(b)))
 	}
 }
 

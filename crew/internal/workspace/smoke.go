@@ -65,18 +65,6 @@ func (r SmokeResult) Failed() bool {
 // Took is how long the verdict took.
 func (r SmokeResult) Took() time.Duration { return time.Duration(r.TookMs) * time.Millisecond }
 
-// withoutStarting drops the servers still coming up — for a page that
-// must not hand Claude a verdict it does not have yet. Pure.
-func withoutStarting(results []SmokeResult) []SmokeResult {
-	var decided []SmokeResult
-	for _, r := range results {
-		if r.State() != SmokeUnreached {
-			decided = append(decided, r)
-		}
-	}
-	return decided
-}
-
 // SmokeCeiling is how long a referenced server gets to start listening.
 // A variable so tests can shorten it; there is no per-server knob — one
 // ceiling, and a server that listens sooner passes sooner.
@@ -281,8 +269,8 @@ func tailLog(path string, n int) string {
 		return ""
 	}
 	var lines []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(stripANSI(line))
+	for _, line := range CleanLogLines(string(data)) {
+		line = strings.TrimSpace(line)
 		if line == "" || isPromptNoise(line) {
 			continue
 		}
@@ -303,10 +291,11 @@ func isPromptNoise(line string) bool {
 		strings.HasPrefix(line, "%")
 }
 
-// stripANSI removes CSI sequences (ESC [ … letter), OSC sequences (ESC ]
-// … BEL or ESC \) and screen's title sequence (ESC k … ESC \, which tmux
-// panes emit before a command's own output — "shboom" is what a died
-// server's tail read as otherwise). What a captured pane is full of.
+// stripANSI removes CSI sequences (ESC [ … final byte, bracketed paste's
+// ESC [ ? 2004 h included), OSC sequences (ESC ] … BEL or ESC \), screen's
+// title sequence (ESC k … ESC \, which tmux panes emit before a command's
+// own output — "shboom" is what a died server's tail read as otherwise) and
+// the two-byte escapes (ESC ( B, ESC =). What a captured pane is full of.
 func stripANSI(s string) string {
 	var out strings.Builder
 	rs := []rune(s)
@@ -321,7 +310,7 @@ func stripANSI(s string) string {
 		switch rs[i+1] {
 		case '[':
 			i += 2
-			for i < len(rs) && !((rs[i] >= 'A' && rs[i] <= 'Z') || (rs[i] >= 'a' && rs[i] <= 'z')) {
+			for i < len(rs) && (rs[i] < 0x40 || rs[i] > 0x7e) {
 				i++
 			}
 		case ']', 'k':
@@ -333,10 +322,63 @@ func stripANSI(s string) string {
 				i++
 			}
 		default:
+			// ESC, any intermediate bytes (ESC ( B selects a charset), then
+			// the final byte.
 			i++
+			for i < len(rs) && rs[i] >= 0x20 && rs[i] <= 0x2f {
+				i++
+			}
 		}
 	}
 	return out.String()
+}
+
+// CleanLogLines is a dev or runner log as text a page can show: escape
+// sequences gone, a carriage return read the way a terminal does (what
+// follows the last one overwrote the line — progress redraws), other control
+// characters dropped, and a line that held nothing but control dropped with
+// it. A line the shell's line editor drew (it turns bracketed paste on as it
+// draws the prompt) is the prompt and its redraws, not the server's output:
+// dropped too — the command crew typed is the pane's first line. Pure.
+func CleanLogLines(text string) []string {
+	lines := []string{}
+	if text == "" {
+		return lines
+	}
+	for _, raw := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		if strings.Contains(raw, bracketedPasteOn) {
+			continue
+		}
+		line := lastPrinted(stripANSI(raw))
+		if line == "" && strings.TrimSpace(raw) != "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// bracketedPasteOn is what an interactive shell's line editor sends as it
+// draws a prompt.
+const bracketedPasteOn = "\x1b[?2004h"
+
+// lastPrinted keeps what a terminal ends up showing of one line: the last
+// carriage-return segment with anything on it, control characters (tab
+// aside) removed, trailing spaces trimmed.
+func lastPrinted(line string) string {
+	segments := strings.Split(line, "\r")
+	for i := len(segments) - 1; i >= 0; i-- {
+		var b strings.Builder
+		for _, r := range segments[i] {
+			if r == '\t' || (r >= 0x20 && r != 0x7f) {
+				b.WriteRune(r)
+			}
+		}
+		if text := strings.TrimRight(b.String(), " \t"); strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 // SmokeFailures is the subset that failed (see SmokeResult.Failed).

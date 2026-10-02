@@ -20,13 +20,13 @@ export const LastSpokenLine = ({ state }: LastSpokenLineProps) => {
 	const lastSpoken = state.spoken.findLast((line) => isShownOn(line, state.view));
 
 	if (!lastSpoken || Date.now() - lastSpoken.at > SPOKEN_LINE_SHOWN_MS) {
-		return <div />;
+		return null;
 	}
 
 	return (
-		<div className="speech">
-			<span className="who">spoken</span>
-			<span className="said">{lastSpoken.text}</span>
+		<div className="vo-spoken speech">
+			<span className="label">Spoken</span>
+			<p className="said">{lastSpoken.text}</p>
 		</div>
 	);
 };

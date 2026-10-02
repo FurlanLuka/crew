@@ -16,7 +16,6 @@ import {
 	describeMisroutedAnswer,
 	describeOfferAnswer,
 	isBareAnswer,
-	isMisroutedToSetup,
 	isShortEnoughToAnswer,
 	isWholeSend,
 	sendText,
@@ -84,7 +83,7 @@ interface ReadNoteWorkspaceParams {
 
 const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): string | null => {
 	// A workspace the developer named — matched the way session names are ("storefront" is
-	// store-front) — else the one on screen; on Mission Control, the general notes. null: the name
+	// store-front) — else the one on screen; off a session, the general notes. null: the name
 	// matched none.
 	if (typeof named !== 'string' || !named.trim()) {
 		return readWorkspace(screen);
@@ -451,20 +450,6 @@ export const executeTool = async (
 				return guarded;
 			}
 
-			if (
-				await isMisroutedToSetup({
-					state,
-					ref,
-					forwardTo: toolContext.forwardTo ?? null,
-					utterance: toolContext.utterance,
-					judge: toolContext.judge,
-				})
-			) {
-				return fail(
-					`Not sent: ${ref} only does crew setup (workspaces, projects, worktrees). Forward it to the session on screen.`,
-				);
-			}
-
 			return sendRecorded({
 				state,
 				ref,
@@ -493,14 +478,14 @@ export const executeTool = async (
 						);
 					}
 
-					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
+					toolContext.dispatch({ type: 'switch_view', view: { kind: 'activate', machine } });
 
 					return succeed(describeMachineSwitch(state, machine));
 				}
 
 				toolContext.dispatch({ type: 'switch_view', view: HOME_VIEW });
 
-				return succeed('showing Mission Control');
+				return succeed('showing Active');
 			}
 
 			const found = checkRef(state, input.ref);
@@ -521,7 +506,7 @@ export const executeTool = async (
 				const machine = findMachine(state, String(input.ref));
 
 				if (machine) {
-					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
+					toolContext.dispatch({ type: 'switch_view', view: { kind: 'activate', machine } });
 
 					return succeed(describeMachineSwitch(state, machine));
 				}

@@ -448,3 +448,83 @@ func TestApplyProject_EnvCmdOverride(t *testing.T) {
 		t.Errorf("overridden = %q", got)
 	}
 }
+
+func TestCountPhrase(t *testing.T) {
+	for _, tt := range []struct {
+		p, w int
+		want string
+	}{
+		{1, 1, "1 project, 1 workspace"},
+		{0, 2, "0 projects, 2 workspaces"},
+		{3, 0, "3 projects, 0 workspaces"},
+	} {
+		if got := CountPhrase(tt.p, tt.w); got != tt.want {
+			t.Errorf("CountPhrase(%d, %d) = %q, want %q", tt.p, tt.w, got, tt.want)
+		}
+	}
+}
+
+// An import under a name already in the pool is a collision: refused
+// before anything is cloned.
+func TestApplyProject_RenameCollisionClonesNothing(t *testing.T) {
+	tmp := setupTestConfig(t)
+	_, here := repoWithOrigin(t, tmp, "store-api")
+	project.Add(project.Project{Name: "store-api", Path: here})
+	remote, _ := repoWithOrigin(t, tmp, "infra-ops")
+	b := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "infra-ops"}, Remote: remote}}}
+
+	_, err := ApplyProject(b, Inspect(b), "infra-ops", ProjectOptions{Name: "store-api"})
+	if err == nil || !strings.Contains(err.Error(), "'store-api' is already in the pool — choose another name") {
+		t.Fatalf("collision: %v", err)
+	}
+	if _, err := os.Stat(project.ClonePath("store-api")); err == nil {
+		t.Error("a collision must not have cloned")
+	}
+	if project.Get("infra-ops") != nil {
+		t.Error("nothing recorded")
+	}
+}
+
+// A rename names the bundle's bindings it leaves pointing at the old name.
+func TestRenameWarning(t *testing.T) {
+	b := Bundle{Version: 2, Projects: []Exported{
+		{Project: project.Project{Name: "store-api", Bindings: []project.Binding{
+			{Var: "CHECKOUT_API_URL", Value: "{{checkout-api}}", Server: "store-api"},
+			{Var: "CHECKOUT_API_ASR_URL", Value: "{{checkout-api}}"},
+		}}},
+		{Project: project.Project{Name: "checkout-api"}},
+	}}
+	want := "store-api's CHECKOUT_API_ASR_URL, store-api's CHECKOUT_API_URL point at checkout-api — left alone until re-bound"
+	if got := RenameWarning(b, "checkout-api", "tutor"); got != want {
+		t.Errorf("RenameWarning = %q, want %q", got, want)
+	}
+	if got := RenameWarning(b, "checkout-api", "checkout-api"); got != "" {
+		t.Errorf("same name warns: %q", got)
+	}
+	if got := RenameWarning(b, "checkout-api", ""); got != "" {
+		t.Errorf("no rename warns: %q", got)
+	}
+	if got := RenameWarning(b, "store-api", "shop-api"); got != "" {
+		t.Errorf("nothing points at store-api: %q", got)
+	}
+}
+
+// Renamed and replaced: the record the bundle named goes, the new one
+// takes the local checkout (same remote — nothing cloned).
+func TestApplyProject_ReplaceAfterRename(t *testing.T) {
+	tmp := setupTestConfig(t)
+	remote, here := repoWithOrigin(t, tmp, "store-api")
+	project.Add(project.Project{Name: "store-api", Path: here})
+	b := Bundle{Version: 2, Projects: []Exported{{Project: project.Project{Name: "store-api", Setup: "npm ci"}, Remote: remote}}}
+
+	res, err := ApplyProject(b, Inspect(b), "store-api", ProjectOptions{Name: "store-api2", Replace: true})
+	if err != nil || !res.Replaced || res.Cloned || res.Name != "store-api2" {
+		t.Fatalf("replace after rename: %+v, %v", res, err)
+	}
+	if project.Get("store-api") != nil || project.Get("store-api2") == nil {
+		t.Fatal("replace should swap the original record for the renamed one")
+	}
+	if p := project.Get("store-api2"); p.Path != here || p.Setup != "npm ci" {
+		t.Errorf("a same-remote replace keeps the local path: %+v", p)
+	}
+}

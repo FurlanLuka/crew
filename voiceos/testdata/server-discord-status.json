@@ -1,0 +1,17 @@
+{
+  "set_up": true,
+  "token": true,
+  "config": {
+    "guild": "155",
+    "channel": "226",
+    "channel_name": "Voice OS",
+    "guild_name": "Example",
+    "owner": "99"
+  },
+  "live": {
+    "connected": true,
+    "owner_in_channel": false,
+    "error": "",
+    "at": "2026-10-02T09:30:00Z"
+  }
+}

@@ -25,6 +25,6 @@ describe('isShownOn', () => {
 	it("this session's own line, Voice OS's words, and any line off a session screen → shown", () => {
 		expect(isShownOn(line({ ref: 'store-front/main' }), onScreen)).toBe(true);
 		expect(isShownOn(line({ ref: 'checkout-api/main', source: 'kernel' }), onScreen)).toBe(true);
-		expect(isShownOn(line({ ref: 'checkout-api/main' }), { kind: 'machines' })).toBe(true);
+		expect(isShownOn(line({ ref: 'checkout-api/main' }), { kind: 'active' })).toBe(true);
 	});
 });

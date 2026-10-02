@@ -1,18 +1,20 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeJsonAtomic } from './json-file.js';
 import { createLogger } from '../log.js';
-import { SETUP_REF } from '../shared/machine-ref.js';
+import { isSetupRef } from '../shared/machine-ref.js';
 import type { Store } from '../state/store.js';
 
 const log = createLogger('active');
 
+// A setup session stored by an earlier release (a remote's was activated like a session) is dropped:
+// setup sessions run for Set up and are never active.
 const readRefs = (file: string): string[] => {
 	try {
 		const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown;
 
 		return Array.isArray(parsed)
 			? parsed.filter(
-					(ref): ref is string => typeof ref === 'string' && ref.length > 0 && ref !== SETUP_REF,
+					(ref): ref is string => typeof ref === 'string' && ref.length > 0 && !isSetupRef(ref),
 				)
 			: [];
 	} catch {

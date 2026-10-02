@@ -348,8 +348,8 @@ func TestSetPath_Absolute(t *testing.T) {
 	}
 }
 
-// NewTarget is the decision crew add project and the wizard share: the
-// refusals come before any clone would land.
+// NewTarget is the decision crew add project makes: the refusals come
+// before any clone would land.
 func TestNewTarget(t *testing.T) {
 	setupTestConfig(t)
 	have := t.TempDir()
@@ -398,5 +398,23 @@ func TestDevServer_PortLabel(t *testing.T) {
 	// The port key is left out of the file when there is none.
 	if data, _ := json.Marshal(worker); string(data) != `{"name":"worker","command":""}` {
 		t.Errorf("marshal = %s", data)
+	}
+}
+
+// One URL grammar: the name is the last segment of what RepoKey folds.
+func TestNameFromURL(t *testing.T) {
+	for url, want := range map[string]string{
+		"https://github.com/example/store-api.git": "store-api",
+		"git@github.com:example/store-api.git":     "store-api",
+		"ssh://git@github.com/example/signals":     "signals",
+		"ssh://git@host:2222/example/admin.git":    "admin",
+		"file:///tmp/remotes/checkout-api.git":     "checkout-api",
+		"https://github.com/example/infra-ops/":    "infra-ops",
+		"/tmp/code/store-front":                    "store-front",
+		"":                                         "",
+	} {
+		if got := NameFromURL(url); got != want {
+			t.Errorf("NameFromURL(%q) = %q, want %q", url, got, want)
+		}
 	}
 }

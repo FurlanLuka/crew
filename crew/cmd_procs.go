@@ -86,6 +86,10 @@ func cmdKill() {
 	}
 
 	for _, s := range inv.Sessions {
+		if s.Kept {
+			fmt.Printf("kept     %s (%d processes) — crew's server; crew server stop stops it\n", s.Name, len(s.Procs))
+			continue
+		}
 		fmt.Printf("session  %s (%d processes)\n", s.Name, len(s.Procs))
 	}
 	for _, o := range inv.Orphans {

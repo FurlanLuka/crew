@@ -4,6 +4,7 @@ import {
 	joinRef,
 	machineOf,
 	readMachine,
+	refOn,
 	splitRef,
 	toLocalRef,
 } from './machine-ref.js';
@@ -45,6 +46,17 @@ describe('machineOf / toLocalRef', () => {
 
 	it('a local ask id → no machine', () => {
 		expect(machineOf('ask-store-front/wrk1-3-99')).toBeNull();
+	});
+});
+
+describe('refOn', () => {
+	it.each([
+		['local', 'store/main', 'store/main'],
+		['local', 'setup', 'setup'],
+		['vm1', 'store/main', 'vm1:store/main'],
+		['vm1', 'setup', 'vm1:setup'],
+	])('%s, %s → %s', (machine, local, ref) => {
+		expect(refOn(machine, local)).toBe(ref);
 	});
 });
 

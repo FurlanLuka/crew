@@ -154,16 +154,9 @@ func TestWrite_Golden(t *testing.T) {
 	}
 }
 
-func TestCovered(t *testing.T) {
-	all := []*workspace.Workspace{
-		{Name: "both", Projects: []workspace.WorkspaceProject{{Name: "a"}, {Name: "b", Mode: workspace.ModeDirect}}},
-		{Name: "only-a", Projects: []workspace.WorkspaceProject{{Name: "a"}}},
-	}
-	got := Covered(all, map[string]bool{"a": true})
-	if len(got) != 1 || got[0].Name != "only-a" {
-		t.Errorf("Covered = %+v, want only-a", got)
-	}
-	if missing := Uncovered(all[0], map[string]bool{"a": true}); len(missing) != 1 || missing[0] != "b" {
+func TestUncovered(t *testing.T) {
+	ws := &workspace.Workspace{Name: "both", Projects: []workspace.WorkspaceProject{{Name: "a"}, {Name: "b", Mode: workspace.ModeDirect}}}
+	if missing := Uncovered(ws, map[string]bool{"a": true}); len(missing) != 1 || missing[0] != "b" {
 		t.Errorf("Uncovered = %v", missing)
 	}
 }

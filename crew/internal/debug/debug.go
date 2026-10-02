@@ -58,11 +58,6 @@ func truncateIfNeeded(path string) {
 // DefaultTail is how much of the log a reader gets when they did not say.
 const DefaultTail = 200
 
-// ReadTail returns the last n lines from the debug log file.
-func ReadTail(n int) string {
-	return strings.Join(TailLines(n), "\n")
-}
-
 // TailLines is the last n lines of the log, oldest first.
 func TailLines(n int) []string {
 	f, err := os.Open(logPath())

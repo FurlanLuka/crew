@@ -1,19 +1,26 @@
+// A session, full width: its header, the state row, then the stream and the side panels. On a
+// desktop only the stream scrolls; the header, the panels and the voice bar stay put.
+import { useState } from 'react';
 import { isActive } from '../../shared/active.js';
-import { SETUP_REF } from '../../shared/machine-ref.js';
-import { stripStreamingTag } from '../../shared/spoken-tags.js';
-import { readSessionLabel } from '../../shared/machines.js';
+import { readMachine, toLocalRef } from '../../shared/machine-ref.js';
+import { readMachineTitle, readSessionLabel } from '../../shared/machines.js';
 import type { Session, State } from '../../shared/protocol.js';
+import { describeWork } from '../../state/working.js';
+import { describeSessionBadge, readRefTitle, readWorkingOn } from '../derive.js';
+import { useCrew } from '../setup/api.js';
+import { hasDevServers } from '../setup/derive.js';
+import type { CrewMember, CrewProject } from '../setup/types.js';
 import type { Dispatch } from '../types.js';
-import { CompactingLine } from './CompactingLine.js';
+import { useNow } from '../use-now.js';
 import { DevPanel } from './DevPanel.js';
-import { ElsewherePanel } from './ElsewherePanel.js';
-import { Markdown } from './Markdown.js';
-import { StreamLine } from './StreamLine.js';
-import { SubagentsPanel } from './SubagentsPanel.js';
-import { NotesPanel } from './NotesPanel.js';
 import { DocsPanel } from './DocsPanel.js';
+import { ElsewherePanel } from './ElsewherePanel.js';
+import { NotesPanel } from './NotesPanel.js';
+import { RenameSession } from './RenameSession.js';
+import { SessionStateRow } from './SessionStateRow.js';
+import { SessionStream } from './SessionStream.js';
+import { SubagentsPanel } from './SubagentsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
-import { useStickToBottom } from '../use-stick-to-bottom.js';
 
 interface CockpitProps {
 	session: Session;
@@ -21,107 +28,123 @@ interface CockpitProps {
 	dispatch: Dispatch;
 }
 
+// Whether any of the worktree's projects has a dev server recorded, from crew.
+const useHasDevServers = (session: Session): boolean => {
+	const machine = readMachine(session.ref);
+	const members = useCrew<CrewMember[]>(machine, { type: 'show', ref: toLocalRef(session.ref) });
+	const projects = useCrew<CrewProject[]>(machine, { type: 'ls_projects' });
+
+	return hasDevServers(members.data ?? [], projects.data ?? []);
+};
+
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
-	// The compaction bar is added at the end of the stream too: it comes into view like a line.
-	const streamRef = useStickToBottom<HTMLElement>(session.ref);
+	const [isRenaming, setIsRenaming] = useState(false);
+	const now = useNow();
 	const isOn = isActive(state, session.ref);
+	const workingOn = readWorkingOn(session);
+	const badge = describeSessionBadge(session, state.asks);
+	const work = describeWork(session, now);
+	const machine = readMachine(session.ref);
+	const servers = state.devServers[session.ref] ?? [];
+	const isDevStarting = state.devStarting.includes(session.ref);
+	// Running servers show even before crew's reads answer.
+	const isDevShown = useHasDevServers(session) || servers.length > 0 || isDevStarting;
+	const meta = [
+		readMachineTitle(state, machine),
+		session.label !== readSessionLabel(state, session.ref) ? session.label : '',
+		`${badge.label}${work.for ? ` ${work.for}` : ''}`,
+	]
+		.filter(Boolean)
+		.join(' · ');
 
 	return (
-		<main className="cockpit">
-			<section className="stream" aria-label="stream" ref={streamRef}>
-				<span className="lbl">stream</span>
-				{session.stream.map((item) => (
-					<StreamLine key={item.id} item={item} />
-				))}
-				{stripStreamingTag(session.draft) && (
-					<div className="line text">
-						<Markdown text={stripStreamingTag(session.draft)} />
-						<span className="caret" />
-					</div>
-				)}
-				{session.compactingSince !== null && <CompactingLine since={session.compactingSince} />}
-				{/* Inactive: the bottom bar's Activate stands where the input would be. Active and stopped
-				(a crash): activating starts it again. */}
-				{session.status === 'stopped' && (
-					<div className="btns">
-						<span className="c-dim">
-							{session.error
-								? `Stopped: ${session.error}`
-								: isOn
-									? 'Not running yet.'
-									: 'Not active: its history only. Voice OS runs no Claude here and says nothing about it.'}
-						</span>
-						{isOn && (
-							<button
-								type="button"
-								className="btn primary"
-								onClick={() => dispatch({ type: 'activate', ref: session.ref })}
-							>
-								Start · “activate {readSessionLabel(state, session.ref)}”
-							</button>
-						)}
-					</div>
-				)}
-			</section>
-			<aside className="side">
-				<div className="panel">
-					<span className="lbl">session</span>
-					<div className="row">
-						status <span className="el">{session.status}</span>
-					</div>
-					<div className="row">
-						cost <span className="el">${session.costUsd.toFixed(2)}</span>
-					</div>
-					{session.requests.length > 0 && (
-						<div className="row c-dim">working on: {session.requests.at(-1)?.text}</div>
-					)}
-					<div className="btns">
-						{(session.status === 'running' || session.status === 'blocked') && (
-							<button
-								type="button"
-								className="btn"
-								onClick={() => dispatch({ type: 'interrupt', ref: session.ref })}
-							>
-								Stop turn · “stop”
-							</button>
-						)}
-						{/* This Mac's setup session is always active. */}
-						{isOn && session.ref !== SETUP_REF && (
-							<button
-								type="button"
-								className="btn danger"
-								onClick={() => dispatch({ type: 'deactivate', ref: session.ref })}
-							>
-								Deactivate
-							</button>
-						)}
-					</div>
-				</div>
-				<SubagentsPanel subagents={session.subagents} />
-				{/* The setup session has no worktree, so no dev servers to start. */}
-				{!session.isPinned && (
-					<DevPanel
-						worktree={session.ref}
-						servers={state.devServers[session.ref] ?? []}
-						isStarting={state.devStarting.includes(session.ref)}
-						offer={state.devOffer}
+		<section className="vo-view vo-session" aria-label="session">
+			<div className="vo-head">
+				<span className={`dot ${badge.dot}`} />
+				{isRenaming ? (
+					<RenameSession
+						sessionRef={session.ref}
+						current={readSessionLabel(state, session.ref)}
 						dispatch={dispatch}
+						onDone={() => setIsRenaming(false)}
 					/>
+				) : (
+					<h1 title={readRefTitle(state, session.ref)}>{readSessionLabel(state, session.ref)}</h1>
 				)}
-				<VoicePanel state={state} screen={session.ref} />
-				<NotesPanel state={state} screen={session.ref} />
-				<DocsPanel session={session} />
-				<ElsewherePanel state={state} screen={session.ref} dispatch={dispatch} />
-				<div className="panel">
-					<span className="lbl">where</span>
-					<div className="row">{session.cwd}</div>
-					{session.dirs.map((dir) => (
-						<div key={dir} className="row c-dim">
-							{dir}
-						</div>
-					))}
+				<span className="m">{meta}</span>
+				<div className="row-actions">
+					<button type="button" className="btn sm ghost rename" onClick={() => setIsRenaming(true)}>
+						Rename
+					</button>
+					<button
+						type="button"
+						className="btn sm ghost toggle-active"
+						onClick={() => dispatch({ type: isOn ? 'deactivate' : 'activate', ref: session.ref })}
+					>
+						{isOn ? 'Deactivate' : 'Activate'}
+					</button>
 				</div>
-			</aside>
-		</main>
+			</div>
+			<SessionStateRow state={state} sessionRef={session.ref} dispatch={dispatch} />
+			<div className="vo-split">
+				<SessionStream sessionRef={session.ref} session={session} className="vo-stream stream">
+					{session.status === 'stopped' && !session.error && (
+						<div className="line notice c-dim">
+							{isOn
+								? 'Not running yet.'
+								: 'Not active: its history only. Voice OS runs no Claude here and says nothing about it.'}
+						</div>
+					)}
+				</SessionStream>
+				<aside className="vo-panels side">
+					<div className="vo-panel panel">
+						<span className="label">Session</span>
+						<div className="kv">
+							<span>status</span>
+							<b>{session.status}</b>
+						</div>
+						<div className="kv">
+							<span>cost</span>
+							<b>${session.costUsd.toFixed(2)}</b>
+						</div>
+						{workingOn && <p className="m">working on: {workingOn}</p>}
+						{(session.status === 'running' || session.status === 'blocked') && (
+							<div className="row-actions">
+								<button
+									type="button"
+									className="btn sm"
+									onClick={() => dispatch({ type: 'interrupt', ref: session.ref })}
+								>
+									Stop turn · “stop”
+								</button>
+							</div>
+						)}
+					</div>
+					<SubagentsPanel subagents={session.subagents} />
+					{isDevShown && (
+						<DevPanel
+							worktree={session.ref}
+							servers={servers}
+							isStarting={isDevStarting}
+							offer={state.devOffer}
+							dispatch={dispatch}
+						/>
+					)}
+					<VoicePanel state={state} screen={session.ref} />
+					<NotesPanel state={state} screen={session.ref} />
+					<DocsPanel session={session} />
+					<ElsewherePanel state={state} screen={session.ref} dispatch={dispatch} />
+					<div className="vo-panel panel">
+						<span className="label">Where</span>
+						<p className="m">{session.cwd}</p>
+						{session.dirs.map((dir) => (
+							<p key={dir} className="m">
+								{dir}
+							</p>
+						))}
+					</div>
+				</aside>
+			</div>
+		</section>
 	);
 };

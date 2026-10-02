@@ -8,14 +8,14 @@ interface QueueListProps {
 
 export const QueueList = ({ session, dispatch }: QueueListProps) => {
 	if (session.queue.length === 0) {
-		return <div />;
+		return null;
 	}
 
 	return (
 		<section className="queue" aria-label="queued">
 			{session.queue.map((item, index) => (
 				<div key={item.id} className="qitem">
-					<span className="c-cyan">queued {index + 1}</span> {item.text}
+					<span className="qtag">queued {index + 1}</span> {item.text}
 					<button
 						type="button"
 						className="btn small"

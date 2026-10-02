@@ -7,6 +7,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/trash"
+	"github.com/FurlanLuka/crew/crew/internal/words"
 )
 
 // cmdTrash: removed checkouts are cleared in the background; this is where
@@ -15,17 +16,17 @@ func cmdTrash() {
 	if len(os.Args) > 2 && os.Args[2] == "empty" {
 		bytes, entries := trash.Size()
 		if entries > 0 {
-			fmt.Fprintf(human, "Emptying %s — %s in %d entries, this can take a while…\n", config.TrashDir, app.FormatBytes(bytes), entries)
+			fmt.Fprintf(human, "Emptying %s — %s in %s, this can take a while…\n", config.TrashDir, app.FormatBytes(bytes), words.CountOf(entries, "entry", "entries"))
 		}
 		if err := trash.Empty(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		if jsonOutput {
-			printJSON(map[string]any{"freed_bytes": bytes, "entries": entries})
+			printJSON(emptiedDoc{FreedBytes: bytes, Entries: entries})
 			return
 		}
-		fmt.Printf("Emptied %s — %s in %d entries\n", config.TrashDir, app.FormatBytes(bytes), entries)
+		fmt.Printf("Emptied %s — %s in %s\n", config.TrashDir, app.FormatBytes(bytes), words.CountOf(entries, "entry", "entries"))
 		return
 	}
 	if len(os.Args) > 2 {
@@ -33,14 +34,32 @@ func cmdTrash() {
 		os.Exit(1)
 	}
 
-	bytes, entries := trash.Size()
+	doc := trashDoc{Path: config.TrashDir}
+	doc.Bytes, doc.Entries = trash.Size()
 	if jsonOutput {
-		printJSON(map[string]any{"path": config.TrashDir, "bytes": bytes, "entries": entries})
+		printJSON(doc)
 		return
 	}
-	if entries == 0 {
-		fmt.Printf("%s\tempty\n", config.TrashDir)
-		return
+	fmt.Println(trashLine(doc))
+}
+
+// trashDoc is crew trash --json: what is still clearing.
+type trashDoc struct {
+	Path    string `json:"path"`
+	Bytes   int64  `json:"bytes"`
+	Entries int    `json:"entries"`
+}
+
+// trashLine is the text form. Pure.
+func trashLine(d trashDoc) string {
+	if d.Entries == 0 {
+		return d.Path + "\tempty"
 	}
-	fmt.Printf("%s\t%s\t%d entries\tclearing in background — crew trash empty deletes now\n", config.TrashDir, app.FormatBytes(bytes), entries)
+	return fmt.Sprintf("%s\t%s\t%s\tclearing in background — crew trash empty deletes now", d.Path, app.FormatBytes(d.Bytes), words.CountOf(d.Entries, "entry", "entries"))
+}
+
+// emptiedDoc is crew trash empty --json: what the delete freed.
+type emptiedDoc struct {
+	FreedBytes int64 `json:"freed_bytes"`
+	Entries    int   `json:"entries"`
 }

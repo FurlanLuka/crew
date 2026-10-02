@@ -57,7 +57,7 @@ const arePositionalsAllowed = (kind: QueryKind, positionals: string[]): boolean 
 	}
 };
 
-// A dev push from a remote (crew voice dev push there): it reads the machines, hands its version to
+// A dev push from a remote (crew server dev push there): it reads the machines, hands its version to
 // the main, and follows the push. The one request here that changes anything — the main then fetches
 // that remote's build from its own push dir and runs the push. A remote names neither a path nor
 // itself: the main adds --source (withSource).

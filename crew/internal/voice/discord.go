@@ -16,7 +16,7 @@ import (
 )
 
 // DiscordKey is the bot token's key file. It is not in KeyNames: Discord is
-// optional, so the first `crew voice` must never ask for it.
+// optional, so the first `crew server` must never ask for it.
 const DiscordKey = "discord"
 
 // discordAPI is a var so tests point it at a local server.
@@ -25,7 +25,7 @@ var discordAPI = "https://discord.com/api/v10"
 var discordClient = &http.Client{Timeout: 10 * time.Second}
 
 // ErrDiscordRejected is Discord saying no to the token itself.
-var ErrDiscordRejected = errors.New("Discord rejected that token — copy it again from your app's Bot tab (Reset Token) and rerun crew voice discord setup")
+var ErrDiscordRejected = errors.New("Discord rejected that token — copy it again from your app's Bot tab (Reset Token) and rerun crew server discord setup")
 
 // The bits Voice OS needs to join and speak; Administrator grants all of them.
 const (
@@ -80,7 +80,7 @@ type DiscordSetup struct {
 	OwnerGiven bool
 }
 
-// DiscordReport is `crew voice discord status`: nil parts are absent.
+// DiscordReport is `crew server discord status`: nil parts are absent.
 type DiscordReport struct {
 	SetUp  bool           `json:"set_up"`
 	Token  bool           `json:"token"`
@@ -325,12 +325,12 @@ func InspectDiscord() (DiscordReport, error) {
 
 // DiscordStatusRows is the status table, <field>\t<value> per row. Pure.
 func DiscordStatusRows(r DiscordReport) [][2]string {
-	setup := "not set up (crew voice discord setup)"
+	setup := "not set up (crew server discord setup)"
 	switch {
 	case r.SetUp:
 		setup = "ready"
 	case r.Config != nil:
-		setup = "no token (crew voice discord setup)"
+		setup = "no token (crew server discord setup)"
 	}
 	token := "missing"
 	if r.Token {

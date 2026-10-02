@@ -1,0 +1,7 @@
+{
+  "var": "API_URL",
+  "server": "",
+  "value": "{{store-api.foo}}",
+  "error": "{{store-api.foo}}: a server is written {{project/server}}, and .host / .port go after it",
+  "previews": []
+}

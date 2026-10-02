@@ -63,9 +63,12 @@ func EnvWithoutTMUX() []string {
 	return env
 }
 
-// TmuxSendKeys sends keys to a tmux session.
+// TmuxSendKeys sends keys to a tmux session. The logged line carries the
+// variable names of any exports, never their values: a dev server's command
+// exports its resolved bindings, and those carry URLs and can carry
+// credentials.
 func TmuxSendKeys(session, keys string) error {
-	debug.Log("tmux", "send-keys -t %s %s", session, keys)
+	debug.Log("tmux", "send-keys -t %s %s", session, RedactExports(keys))
 	cmd := exec.Command("tmux", "send-keys", "-t", session, keys, "Enter")
 	if err := cmd.Run(); err != nil {
 		debug.Log("tmux", "send-keys -t %s → error: %v", session, err)
@@ -107,16 +110,6 @@ func EnsureTmuxConfig() {
 	if strings.HasPrefix(firstLine, "# crew") {
 		os.WriteFile(cfgFile, []byte(defaultTmuxConfig), 0o644)
 	}
-}
-
-// SourceTmuxConfig loads crew's tmux config into a session.
-func SourceTmuxConfig(session string) {
-	cfgFile := TmuxConfigPath()
-	if _, err := os.Stat(cfgFile); err != nil {
-		return
-	}
-	debug.Log("tmux", "source-file %s", cfgFile)
-	exec.Command("tmux", "source-file", cfgFile).Run()
 }
 
 // ListTmuxSessions returns the names of all active tmux sessions.
@@ -229,42 +222,6 @@ func parsePaneRefs(out string) []paneRef {
 	return panes
 }
 
-// AttachTmuxSessionRaw attaches to a tmux session.
-// Windows stay inside the terminal; switch with ctrl-b n/p.
-func AttachTmuxSessionRaw(session string) error {
-	debug.Log("tmux", "attach -t %s", session)
-	tmuxPath, err := exec.LookPath("tmux")
-	if err != nil {
-		return err
-	}
-
-	args := []string{"tmux", "attach", "-t", session}
-	return syscall.Exec(tmuxPath, args, EnvWithoutTMUX())
-}
-
-// SetTmuxOption sets a tmux session option.
-func SetTmuxOption(session, option, value string) {
-	debug.Log("tmux", "set-option -t %s %s %s", session, option, value)
-	exec.Command("tmux", "set-option", "-t", session, option, value).Run()
-}
-
-// RenameTmuxWindow renames the current window in a tmux session.
-func RenameTmuxWindow(session, name string) {
-	debug.Log("tmux", "rename-window -t %s %s", session, name)
-	cmd := exec.Command("tmux", "rename-window", "-t", session, name)
-	cmd.Run()
-}
-
-// CreateTmuxWindow creates a named window in a tmux session and sends a command.
-func CreateTmuxWindow(session, name, dir, command string) {
-	debug.Log("tmux", "new-window -t %s -n %s -c %s → %s", session, name, dir, command)
-	cmd := exec.Command("tmux", "new-window", "-t", session, "-n", name, "-c", dir)
-	cmd.Env = EnvWithoutTMUX()
-	cmd.Run()
-	sendCmd := exec.Command("tmux", "send-keys", "-t", session+":"+name, command, "Enter")
-	sendCmd.Run()
-}
-
 // TmuxRunInSession runs command as its own window of session, creating the
 // session around it when there is none — no shell underneath, so the window
 // closes when the command exits and the session goes with its last window.
@@ -363,4 +320,83 @@ func TmuxPaneBusy(session, window string) bool {
 		return false
 	}
 	return !isShell(strings.TrimSpace(string(out)))
+}
+
+// RedactExports replaces the value of every `export NAME=<word>` in a
+// shell line with "…", keeping the name. The word is read the way the shell
+// reads it — quoted runs ('…', "…" with \-escapes) and bare characters up to
+// whitespace or a ; & | — so ShellQuote's '\” joins stay inside it. Pure.
+func RedactExports(line string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(line) {
+		j := strings.Index(line[i:], "export ")
+		if j < 0 || (i+j > 0 && !isShellBoundary(line[i+j-1])) {
+			if j < 0 {
+				out.WriteString(line[i:])
+				break
+			}
+			out.WriteString(line[i : i+j+len("export ")])
+			i += j + len("export ")
+			continue
+		}
+		start := i + j + len("export ")
+		out.WriteString(line[i:start])
+		name := start
+		for name < len(line) && isNameByte(line[name], name == start) {
+			name++
+		}
+		if name == start || name >= len(line) || line[name] != '=' {
+			i = start
+			continue
+		}
+		out.WriteString(line[start : name+1])
+		end := skipShellWord(line, name+1)
+		if end > name+1 {
+			out.WriteString("…")
+		}
+		i = end
+	}
+	return out.String()
+}
+
+func isShellBoundary(c byte) bool {
+	return c == ' ' || c == '\t' || c == ';' || c == '&' || c == '|' || c == '(' || c == '\n'
+}
+
+func isNameByte(c byte, first bool) bool {
+	return c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (!first && c >= '0' && c <= '9')
+}
+
+// skipShellWord returns where the shell word starting at i ends.
+func skipShellWord(s string, i int) int {
+	for i < len(s) {
+		switch c := s[i]; {
+		case c == '\'':
+			if k := strings.IndexByte(s[i+1:], '\''); k >= 0 {
+				i += k + 2
+			} else {
+				return len(s)
+			}
+		case c == '"':
+			i++
+			for i < len(s) && s[i] != '"' {
+				if s[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++
+		case c == '\\':
+			i += 2
+		case isShellBoundary(c) || c == '\r':
+			return i
+		default:
+			i++
+		}
+	}
+	if i > len(s) {
+		return len(s)
+	}
+	return i
 }

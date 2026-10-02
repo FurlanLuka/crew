@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { GRID, type State } from '../shared/protocol.js';
+import { HOME_SCREEN, type State } from '../shared/protocol.js';
 
 interface HeardLine {
 	utterance: string;
@@ -58,7 +58,7 @@ interface CreateDebugNoteParams extends DebugNoteWords {
 
 export const createDebugNote = ({ state, text, said, now }: CreateDebugNoteParams): DebugNote => {
 	// The log around `at` tells what happened; the note says what the developer thought was wrong.
-	const view = state.view.kind === 'session' ? state.view.ref : GRID;
+	const view = state.view.kind === 'session' ? state.view.ref : HOME_SCREEN;
 
 	return {
 		at: toIsoString(now),

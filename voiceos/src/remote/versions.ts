@@ -63,7 +63,7 @@ export const planVersionFix = ({
 		return {
 			kind: 'wait',
 			status: 'error',
-			detail: `${name} runs Voice OS ${remote}, newer than this one (${main}): run crew update here, then crew voice restart.`,
+			detail: `${name} runs Voice OS ${remote}, newer than this one (${main}): run crew update here, then crew server restart.`,
 		};
 	}
 
@@ -81,7 +81,7 @@ export const planVersionFix = ({
 		? {
 				kind: 'wait',
 				status: 'error',
-				detail: `${name} is updated but still runs its old release: run crew voice remote there.`,
+				detail: `${name} is updated but still runs its old release: run crew server remote there.`,
 			}
 		: { kind: 'wait', status: 'error', detail: outcome.reason };
 };
@@ -118,6 +118,6 @@ export const readUpdateOutcome = ({
 
 	return {
 		ok: false,
-		reason: `Could not update ${name}: ${why.replace(/^!\s*/, '').replace(/\.$/, '')}. Run crew update there, then crew voice remote.`,
+		reason: `Could not update ${name}: ${why.replace(/^!\s*/, '').replace(/\.$/, '')}. Run crew update there, then crew server remote.`,
 	};
 };

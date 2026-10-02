@@ -1,4 +1,4 @@
-// Compiles Voice OS from source into the executable `crew voice` runs, replacing a downloaded release
+// Compiles Voice OS from source into the executable `crew server` runs, replacing a downloaded release
 // build (and replaced by the next `crew update`).
 import { mkdirSync, rmSync } from 'node:fs';
 import { COMPILE_FLAGS } from './compile-flags.js';
@@ -37,4 +37,4 @@ if (exitCode !== 0) {
 // update brings the release back.
 rmSync(`${targetPath}.version`, { force: true });
 
-console.log(`Installed Voice OS at ${targetPath}. Start it with: crew voice`);
+console.log(`Installed Voice OS at ${targetPath}. Start it with: crew server start`);

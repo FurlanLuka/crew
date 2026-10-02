@@ -23,7 +23,7 @@ func HasGit() bool {
 }
 
 // TmuxInstallHint, GitInstallHint and ClaudeInstallHint are the one wording of
-// how to get each tool, said by crew doctor and by crew voice alike.
+// how to get each tool, said by crew doctor and by crew server alike.
 func TmuxInstallHint() string {
 	if runtime.GOOS == "darwin" {
 		return "brew install tmux"

@@ -1,0 +1,15 @@
+[
+  {
+    "id": "vm1",
+    "host": "dev@vm1.example.com",
+    "name": "Build box",
+    "status": "connected"
+  },
+  {
+    "id": "gpu",
+    "host": "gpu",
+    "name": "gpu",
+    "status": "unreachable",
+    "detail": "ssh: connect to host gpu port 22: Operation timed out"
+  }
+]

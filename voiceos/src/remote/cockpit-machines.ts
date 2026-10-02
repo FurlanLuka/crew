@@ -34,14 +34,14 @@ export interface CockpitMachinesOptions {
 	manager: SessionManager;
 	say: (text: string) => void;
 	sayLine: DevSay;
-	// A machine's status changed: crew voice machines ls reads it from the recorded state.
+	// A machine's status changed: crew server machines ls reads it from the recorded state.
 	onStatusesChanged: () => void;
 	// How a machine is reached, and updated; SSH unless a test says otherwise.
 	open?: OpenTransport;
 	updateRemote?: UpdateRemote;
 }
 
-// Each machine's status as recorded for crew voice machines ls.
+// Each machine's status as recorded for crew server machines ls.
 export const readMachineStatuses = (
 	state: State,
 ): Record<string, { status: string; detail: string | null }> =>
@@ -52,7 +52,7 @@ export const readMachineStatuses = (
 		]),
 	);
 
-// crew voice machines is the one writer of machines.json, under its lock. Pure.
+// crew server machines is the one writer of machines.json, under its lock. Pure.
 export const toMachinesArgs = (change: MachineChange): string[] => {
 	switch (change.kind) {
 		case 'add':
@@ -129,10 +129,24 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		loadMachines();
 	};
 
+	const refreshWorktrees = async (): Promise<void> => {
+		try {
+			links.setLocalWorktrees(await options.crew.listWorktrees());
+		} catch (error) {
+			log.warn('worktree refresh failed', { error: String(error) });
+			// The last list stands (the setup session alone before any list came).
+			links.setLocalWorktrees(null);
+		}
+	};
+
 	store.onEffect(links.route);
 	store.onEffect((effect) => {
 		if (effect.type === 'machines_changed') {
 			return saveChange(effect.change);
+		}
+
+		if (effect.type === 'refresh_worktrees') {
+			return refreshWorktrees();
 		}
 
 		for (const devWatch of devWatches.values()) {
@@ -168,18 +182,12 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 
 	return {
 		loadMachines,
-		refreshWorktrees: async (): Promise<void> => {
-			try {
-				links.setLocalWorktrees(await options.crew.listWorktrees());
-			} catch (error) {
-				log.warn('worktree refresh failed', { error: String(error) });
-				// The last list stands (the setup session alone before any list came).
-				links.setLocalWorktrees(null);
-			}
-		},
+		refreshWorktrees,
 		monitorDevServers: async (): Promise<void> => {
 			await Promise.all([...devWatches.values()].map((devWatch) => devWatch.monitor()));
 		},
+		// Set up runs its commands on another machine through that machine's link.
+		getLink: (id: string) => links.get(id),
 		stop: () => links.stopAll(),
 	};
 };

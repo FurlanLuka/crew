@@ -22,7 +22,7 @@ describe('what a session is called', () => {
 				worktrees: [worktree('crew/main'), { ...worktree(REMOTE), label: 'crew/main' }],
 			},
 			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
-			{ type: 'switch_view', view: { kind: 'grid', machine: 'local' } },
+			{ type: 'switch_view', view: { kind: 'activate', machine: 'local' } },
 			...extra,
 		]).state;
 	const named = (): State => state([{ type: 'rename_session', ref: REMOTE, name: 'voice os dev' }]);

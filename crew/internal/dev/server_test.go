@@ -231,8 +231,8 @@ func TestEnsureProxy_RelaunchesWhenSettingsChange(t *testing.T) {
 	stubProxyBinary(t)
 	t.Cleanup(func() { crewExec.KillTmuxSession(ProxySessionName) })
 
-	if err := EnsureProxy("10.0.0.1.nip.io", 18080); err != nil {
-		t.Fatalf("first EnsureProxy: %v", err)
+	if launched, err := EnsureProxy("10.0.0.1.nip.io", 18080); err != nil || !launched {
+		t.Fatalf("first EnsureProxy: launched %v, %v", launched, err)
 	}
 	if st, ok := loadProxyState(); !ok || st.Domain != "10.0.0.1.nip.io" || st.Port != 18080 || st.HTTPSPort == nil || *st.HTTPSPort != 443 {
 		t.Fatalf("state after first start = %+v, %v", st, ok)
@@ -245,8 +245,8 @@ func TestEnsureProxy_RelaunchesWhenSettingsChange(t *testing.T) {
 	// drop every other worktree's proxied connections. The pane's shell PID
 	// is what a relaunch changes.
 	before := proxyPanePID(t)
-	if err := EnsureProxy("10.0.0.1.nip.io", 18080); err != nil {
-		t.Fatalf("second EnsureProxy: %v", err)
+	if launched, err := EnsureProxy("10.0.0.1.nip.io", 18080); err != nil || launched {
+		t.Fatalf("second EnsureProxy: launched %v, %v — a kept proxy is not a launch", launched, err)
 	}
 	if after := proxyPanePID(t); after != before {
 		t.Fatalf("same settings relaunched the proxy: pane pid %s → %s", before, after)
@@ -254,8 +254,8 @@ func TestEnsureProxy_RelaunchesWhenSettingsChange(t *testing.T) {
 
 	// A changed server_ip (domain) after the proxy is up must relaunch it,
 	// or the printed URLs would never match what the proxy answers.
-	if err := EnsureProxy("100.64.0.9.nip.io", 18080); err != nil {
-		t.Fatalf("relaunch: %v", err)
+	if launched, err := EnsureProxy("100.64.0.9.nip.io", 18080); err != nil || !launched {
+		t.Fatalf("relaunch: launched %v, %v", launched, err)
 	}
 	if after := proxyPanePID(t); after == before {
 		t.Error("changed settings should relaunch the proxy")
@@ -274,7 +274,7 @@ func TestEnsureProxy_RelaunchesWhenSettingsChange(t *testing.T) {
 	if err := config.SaveSettings(s); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnsureProxy("100.64.0.9.nip.io", 18080); err != nil {
+	if _, err := EnsureProxy("100.64.0.9.nip.io", 18080); err != nil {
 		t.Fatalf("https relaunch: %v", err)
 	}
 	if after := proxyPanePID(t); after == before {
@@ -301,7 +301,7 @@ func TestEnsureProxy_RelaunchesUnrecordedProxy(t *testing.T) {
 	if err := crewExec.CreateTmuxSession(ProxySessionName, ""); err != nil {
 		t.Fatalf("CreateTmuxSession: %v", err)
 	}
-	if err := EnsureProxy("10.0.0.1.nip.io", 80); err != nil {
+	if _, err := EnsureProxy("10.0.0.1.nip.io", 80); err != nil {
 		t.Fatalf("EnsureProxy: %v", err)
 	}
 	if st, ok := loadProxyState(); !ok || st.Domain != "10.0.0.1.nip.io" {
@@ -351,7 +351,7 @@ func TestInspectProxy(t *testing.T) {
 
 	// Crew's own status page on a free port stands in for the proxy binding.
 	l, port := serveOnFreePort(t, proxyPageMarker)
-	if err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
+	if _, err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
 		t.Fatal(err)
 	}
 	st := InspectProxy()
@@ -383,7 +383,7 @@ func TestInspectProxy_ForeignServerIsNotListening(t *testing.T) {
 	stubProxyBinary(t)
 	l, port := serveOnFreePort(t, "<h1>some other app</h1>")
 	defer l.Close()
-	if err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
+	if _, err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
 		t.Fatal(err)
 	}
 	if st := InspectProxy(); !st.Running || st.Listening {
@@ -428,7 +428,7 @@ func TestProxyWarning_CarriesPaneError(t *testing.T) {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
-	if err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
+	if _, err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
 		t.Fatal(err)
 	}
 	crewExec.TmuxSendKeys(ProxySessionName, "echo 'Error: listen tcp: bind: permission denied'")
@@ -482,7 +482,7 @@ func TestProxyWarning_UsesRecordedError(t *testing.T) {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
-	if err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
+	if _, err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
 		t.Fatal(err)
 	}
 	before := proxyPanePID(t)
@@ -495,7 +495,7 @@ func TestProxyWarning_UsesRecordedError(t *testing.T) {
 	}
 	// Same settings, but the proxy died: that is a relaunch, not "already
 	// running", and it starts clean.
-	if err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
+	if _, err := EnsureProxy("10.0.0.5.nip.io", port); err != nil {
 		t.Fatal(err)
 	}
 	if after := proxyPanePID(t); after == before {
@@ -506,10 +506,11 @@ func TestProxyWarning_UsesRecordedError(t *testing.T) {
 	}
 }
 
-// A stop-all takes every dev and setup session; the proxy has its own stop
-// and anything not crew's is left alone.
+// A stop-all takes every dev and setup session; the proxy and the server
+// (under its old name too) have their own stop, and anything not crew's is
+// left alone.
 func TestSessionsToStop(t *testing.T) {
-	all := []string{"crew-dev-ws--main", "crew-setup-ws--wrk2", "crew-dev-proxy", "crew-test-proxy-1", "main", "crew-devel"}
+	all := []string{"crew-dev-ws--main", "crew-setup-ws--wrk2", "crew-dev-proxy", "crew-test-proxy-1", "main", "crew-devel", "crew-server", "crew-server-remote", "crew-dev-os", "crew-dev-os-remote", "crew-voice-push"}
 	got := sessionsToStop(all, "crew-dev-proxy")
 	if strings.Join(got, ",") != "crew-dev-ws--main,crew-setup-ws--wrk2" {
 		t.Errorf("sessions = %v", got)

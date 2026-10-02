@@ -68,7 +68,7 @@ func TestLsSubcommands(t *testing.T) {
 		t.Fatal("ls command not found")
 	}
 
-	expected := []string{"workspaces", "worktrees", "projects", "bindings", "overrides"}
+	expected := []string{"workspaces", "worktrees", "projects", "bindings", "overrides", "bases"}
 	for _, name := range expected {
 		if findSubcommand(ls, name) == nil {
 			t.Errorf("ls subcommand %q not found", name)
@@ -207,7 +207,7 @@ func TestRmSubcommands(t *testing.T) {
 // Every top-level command main dispatches must be documented, or `crew help`
 // lies about what exists.
 func TestTopLevelCommandsDocumented(t *testing.T) {
-	for _, name := range []string{"env", "run", "migrate", "uninstall", "setup", "duplicate", "add", "rm", "ls", "dev", "export", "import", "claude", "edit", "open", "trash", "debug", "verify", "fix", "config", "code", "start", "launch", "show", "ps", "kill", "update", "check", "clean"} {
+	for _, name := range []string{"env", "run", "migrate", "uninstall", "setup", "duplicate", "add", "rm", "ls", "dev", "export", "import", "claude", "edit", "open", "trash", "debug", "verify", "fix", "config", "code", "start", "launch", "show", "ps", "kill", "update", "check", "clean", "server", "workspace", "project"} {
 		if findSubcommand(&Root, name) == nil {
 			t.Errorf("top-level command %q not documented", name)
 		}
@@ -341,4 +341,35 @@ func TestNoRolesOrPurgeOnRmProject(t *testing.T) {
 	if rm := findSubcommand(findSubcommand(&Root, "rm"), "project"); rm.Usage != "crew rm project <name> [--keep-clone]" {
 		t.Errorf("rm project usage = %q", rm.Usage)
 	}
+}
+
+// crew voice is an alias main dispatches, never a documented command of its
+// own: one entry, crew server, with the alias in its notes.
+func TestServerReplacesVoice(t *testing.T) {
+	if findSubcommand(&Root, "voice") != nil {
+		t.Error("voice is an alias now; crew server is the entry")
+	}
+	server := findSubcommand(&Root, "server")
+	for _, name := range []string{"start", "stop", "restart", "status", "keys", "logs", "debug-notes", "notes", "remote", "machines", "discord", "dev"} {
+		if findSubcommand(server, name) == nil {
+			t.Errorf("server %s not documented", name)
+		}
+	}
+	if !strings.Contains(strings.Join(server.Notes, " "), "crew voice") {
+		t.Error("the alias belongs in the server notes")
+	}
+}
+
+// The terminal keeps one interactive view: launching.
+func TestOnlyLaunchIsATUI(t *testing.T) {
+	var walk func(c *CommandInfo, path string)
+	walk = func(c *CommandInfo, path string) {
+		if c.TUI && path != "launch" && path != "dev tui" {
+			t.Errorf("%s still claims a TUI", path)
+		}
+		for i := range c.Subcommands {
+			walk(&c.Subcommands[i], strings.TrimSpace(path+" "+c.Subcommands[i].Name))
+		}
+	}
+	walk(&Root, "")
 }

@@ -9,7 +9,7 @@ import {
 
 // Word for word what every released remote says when it refuses a main of another version.
 const RELEASED_REFUSAL =
-	'This machine runs Voice OS 5.0.1 and the main 5.1.0: run crew update on the older one, then crew voice remote there.';
+	'This machine runs Voice OS 5.0.1 and the main 5.1.0: run crew update on the older one, then crew server remote there.';
 
 describe('readRemoteVersion', () => {
 	it("a released remote's refusal wording → its version", () => {
@@ -60,7 +60,7 @@ describe('planVersionFix', () => {
 		expect(plan('5.1.0', '5.0.1', { ok: true })).toEqual({
 			kind: 'wait',
 			status: 'error',
-			detail: 'Build box is updated but still runs its old release: run crew voice remote there.',
+			detail: 'Build box is updated but still runs its old release: run crew server remote there.',
 		});
 	});
 
@@ -79,7 +79,7 @@ describe('planVersionFix', () => {
 			kind: 'wait',
 			status: 'error',
 			detail:
-				'Build box runs Voice OS 5.2.0, newer than this one (5.1.0): run crew update here, then crew voice restart.',
+				'Build box runs Voice OS 5.2.0, newer than this one (5.1.0): run crew update here, then crew server restart.',
 		});
 	});
 
@@ -113,22 +113,22 @@ describe('readUpdateOutcome', () => {
 		).toEqual({
 			ok: false,
 			reason:
-				'Could not update Build box: Voice OS was not updated: download failed: 404. Run crew update there, then crew voice remote.',
+				'Could not update Build box: Voice OS was not updated: download failed: 404. Run crew update there, then crew server remote.',
 		});
 	});
 
 	it('a failure → its last line; nothing printed → the exit code; too slow → said so', () => {
 		expect(read(1, 'Downloading…\nError: disk full\n')).toMatchObject({
 			reason:
-				'Could not update Build box: Error: disk full. Run crew update there, then crew voice remote.',
+				'Could not update Build box: Error: disk full. Run crew update there, then crew server remote.',
 		});
 		expect(read(255, '')).toMatchObject({
 			reason:
-				'Could not update Build box: crew update exited 255. Run crew update there, then crew voice remote.',
+				'Could not update Build box: crew update exited 255. Run crew update there, then crew server remote.',
 		});
 		expect(read(null, 'Downloading…', true)).toMatchObject({
 			reason:
-				'Could not update Build box: crew update did not finish in time. Run crew update there, then crew voice remote.',
+				'Could not update Build box: crew update did not finish in time. Run crew update there, then crew server remote.',
 		});
 	});
 });

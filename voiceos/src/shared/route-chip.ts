@@ -1,4 +1,5 @@
 import type { PendingAsk, State } from './protocol.js';
+import { listHeardAsks } from './active.js';
 import { readLabel } from '../state/helpers.js';
 import { resolveTypedTarget } from '../router/refs.js';
 
@@ -10,14 +11,14 @@ export interface RouteChip {
 
 export const findCurrentAsk = (state: State): PendingAsk | null => {
 	// On a session, only its own ask: another session's is announced and waits for the developer to
-	// switch there. Mission Control is the overview, so the oldest anywhere preempts it, like speech.
+	// switch there. Off a session is the overview, so the oldest anywhere preempts it, like speech.
 	if (state.view.kind === 'session') {
 		const viewedRef = state.view.ref;
 
 		return state.asks.find((ask) => ask.ref === viewedRef) ?? null;
 	}
 
-	return state.asks[0] ?? null;
+	return listHeardAsks(state)[0] ?? null;
 };
 
 interface DescribeRouteChipParams {

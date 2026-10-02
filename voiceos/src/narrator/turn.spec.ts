@@ -882,7 +882,7 @@ describe('off screen, from the stream to what is said', () => {
 			store.dispatch({ type: 'assistant_text', ref: REF_, text: `<spoken>${text}</spoken>` });
 		}
 
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({ type: 'turn_ended', ref: REF_, costUsd: 0, text: finalText });
 
 		const said: string[] = [];

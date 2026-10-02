@@ -1,0 +1,49 @@
+[
+  {
+    "name": "store-front",
+    "path": "/Users/dev/code/store-front",
+    "dev_servers": [
+      {
+        "name": "web",
+        "port": 3000,
+        "command": "pnpm dev"
+      }
+    ],
+    "bindings": [
+      {
+        "var": "STORE_API_URL",
+        "value": "{{store-api/api}}"
+      },
+      {
+        "var": "SIGNALS_URL",
+        "value": "ws://{{signals.host}}/rtc",
+        "server": "web"
+      }
+    ],
+    "setup": "pnpm install",
+    "remote": "git@github.com:example/store-front.git"
+  },
+  {
+    "name": "store-api",
+    "path": "/Users/dev/.crew/projects/store-api",
+    "dev_servers": [
+      {
+        "name": "api",
+        "port": 4000,
+        "command": "make dev"
+      },
+      {
+        "name": "worker",
+        "command": "make worker",
+        "dir": "worker"
+      }
+    ],
+    "env_cmd": "make env",
+    "remote": "git@github.com:example/store-api.git"
+  },
+  {
+    "name": "signals",
+    "path": "/Users/dev/code/signals",
+    "remote": ""
+  }
+]

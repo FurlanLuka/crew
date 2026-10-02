@@ -1,0 +1,31 @@
+{
+  "project": "store-api",
+  "state": "passed",
+  "verdict": "passed",
+  "at": "2026-10-02T09:30:00Z",
+  "smoked": true,
+  "health": null,
+  "projects": [
+    {
+      "project": "store-api",
+      "state": "ok",
+      "steps": [
+        {
+          "name": "checkout",
+          "status": "ok",
+          "started_at": "0001-01-01T00:00:00Z",
+          "took_ms": 900
+        },
+        {
+          "name": "smoke api",
+          "status": "ok",
+          "started_at": "0001-01-01T00:00:00Z",
+          "took_ms": 2100
+        }
+      ],
+      "issues": [],
+      "took_ms": 3000,
+      "at": "2026-10-02T09:30:00Z"
+    }
+  ]
+}

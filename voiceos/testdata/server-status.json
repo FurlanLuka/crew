@@ -1,0 +1,10 @@
+{
+  "running": true,
+  "healthy": true,
+  "port": 7300,
+  "pid": 4242,
+  "localhost_url": "http://localhost:7300/login?token=TOKEN",
+  "url": "https://voice--os.192.168.1.20.nip.io/login?token=TOKEN",
+  "secure": true,
+  "binary": "/Users/dev/.crew/bin/voiceos"
+}

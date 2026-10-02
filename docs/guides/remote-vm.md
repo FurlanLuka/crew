@@ -111,7 +111,10 @@ package manager or the project's setup command), so there is no `npm install` he
 
 ## 4. Set up crew
 
-Everything is a command; `crew project` and `crew workspace` are the same things as TUIs.
+Everything is a command. `crew` on the VM starts crew's server and prints its link (over SSH it
+prints the proxy link whenever crew's proxy reaches the server — a `domain` you set, or the
+automatic `<server_ip>.nip.io` — else the `ssh -L` tunnel line to run on your laptop) — its Set
+up page is the same steps as forms.
 
 ### Register projects and their dev servers
 
@@ -123,8 +126,9 @@ crew dev add store-app --name=store-app --port=3001 --cmd="npm run dev"
 crew check project store-api --wait                               # proves a fresh checkout installs and runs
 ```
 
-A project is its git remote; a bare path is refused. In the TUI, `crew project` → `a` walks the
-same steps one card at a time and explains each.
+A project is its git remote; a bare path is refused. `crew add project --scan` lists the
+checkouts already on the VM; on crew's page, Set up starts from that list and walks the same
+steps one form at a time.
 
 The `--port` is a reference: crew allocates a real port per worktree and runs the command with
 `PORT=<n>` set, so the dev command must bind `$PORT`.
@@ -204,7 +208,7 @@ caught there, before it fails at runtime.
 ```bash
 crew claude store-front/main     # Claude Code in this terminal, in the worktree
 crew edit store-front/main       # your editor with the prompt and Claude wired
-crew launch store-front/main     # the worktree page (TUI): status, launch, logs
+crew launch store-front/main     # the launch page (TUI): launch rows, servers read-only, logs
 ```
 
 Claude opens with the orientation prompt: the projects, their paths, and a `## crew` section that
@@ -240,22 +244,23 @@ Talk to the VM's sessions from the Voice OS on your laptop instead of SSH-ing in
 make it a remote:
 
 ```bash
-crew voice remote          # checks tmux and Claude Code, installs Voice OS, starts the daemon
-crew voice remote status   # up, its version, busy or idle, its socket
+crew server remote          # checks tmux and Claude Code, installs Voice OS, starts the daemon
+crew server remote status   # up, its version, busy or idle, its socket
 ```
 
 The daemon runs in tmux and keeps the sessions going whether or not a laptop is connected. It
 runs no voice and needs no API keys: speech and routing happen on your laptop.
 
-On your **laptop**, add the machine (or use **+ Add machine** on Mission Control):
+On your **laptop**, add the machine (or use **Add machine** in Set up):
 
 ```bash
-crew voice machines add store-vm --name="Build box"
-crew voice machines        # its status as the running Voice OS sees it
+crew server machines add store-vm --name="Build box"
+crew server machines        # its status as the running server sees it
 ```
 
 Voice OS connects with the same SSH alias as section 1, never with a password prompt — see the
-BatchMode note there. The VM's worktrees then show under its card on Mission Control; see
+BatchMode note there. The VM's worktrees then show under its name in Voice OS's Activate page,
+and Set up's machine picker sets the VM up from your laptop; see
 [Other machines](voice-os.md#other-machines).
 
 **Updating.** Run `crew update` on the VM as well as on your laptop. The VM's daemon moves to the

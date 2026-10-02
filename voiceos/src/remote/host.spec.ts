@@ -6,6 +6,7 @@ import {
 	RemoteHost,
 	describeVersionRefusal,
 	isAllowedCrewCall,
+	planCrewCall,
 	type HandsManager,
 } from './host.js';
 import type { HandsEffect } from './mapping.js';
@@ -36,7 +37,12 @@ const createHost = () => {
 			return manager;
 		},
 		listWorktrees: async () => [worktree('store/main')],
-		runCrew: async (args) => ({ code: 0, stdout: args.join(' '), stderr: '' }),
+		// Echoes what it was asked: the argv, and what came on stdin after a '<'.
+		runCrew: async (args, options) => ({
+			code: 0,
+			stdout: [args.join(' '), ...(options?.stdin ? [`< ${options.stdin}`] : [])].join(' '),
+			stderr: '',
+		}),
 		readGitHead: async () => 'abc123',
 		readMedia: (name) => (name === 'shot.png' ? PNG : null),
 		restoreHistory: async () => undefined,
@@ -210,6 +216,103 @@ describe('RemoteHost', () => {
 	});
 });
 
+describe("Set up's typed commands from the main", () => {
+	const answerTo = async (call: Record<string, unknown>) => {
+		const { host } = createHost();
+		const main = connect(host);
+
+		main.say(hello());
+		main.say({ type: 'call', id: 1, method: 'crew', args: [], ...call } as never);
+		await tick();
+
+		return main.received.find((message) => message.type === 'result');
+	};
+
+	it('→ built into argv here and run, whatever args say: the command is the truth', async () => {
+		expect(
+			await answerTo({
+				args: ['dev', 'status', '--json'],
+				command: { type: 'rm_worktree', ref: 'store/wrk1', confirm: true },
+			}),
+		).toEqual({
+			type: 'result',
+			id: 1,
+			ok: true,
+			value: { code: 0, stdout: 'rm worktree store/wrk1', stderr: '' },
+		});
+	});
+
+	it('a bundle → on stdin, not in argv', async () => {
+		expect(
+			await answerTo({ command: { type: 'import_plan', bundle: '{"version":2}' } }),
+		).toMatchObject({ ok: true, value: { stdout: 'import - --plan --json < {"version":2}' } });
+	});
+
+	it('not a command crew/commands.ts knows → refused with the fields that failed', async () => {
+		expect(await answerTo({ command: { type: 'rm_worktree', ref: 'store/wrk1' } })).toEqual({
+			type: 'result',
+			id: 1,
+			ok: false,
+			error: 'invalid command: confirm',
+		});
+	});
+
+	it("local-only (it would stop, replace or re-key this machine's server) → refused", async () => {
+		for (const command of [
+			{ type: 'server_restart' },
+			{ type: 'uninstall', mode: 'purge', confirm: true },
+			{ type: 'keys_set', name: 'soniox', value: 'sk' },
+		]) {
+			expect(await answerTo({ command })).toMatchObject({ ok: false });
+		}
+	});
+});
+
+describe('planCrewCall', () => {
+	it('no command → the dev-watch allow-list as before', () => {
+		expect(planCrewCall({ args: ['dev', 'status', '--json'] })).toEqual({
+			ok: true,
+			args: ['dev', 'status', '--json'],
+			label: 'dev status',
+		});
+		expect(planCrewCall({ args: ['rm', 'workspace', 'store'] })).toEqual({
+			ok: false,
+			reason: 'args',
+			error: 'not allowed',
+		});
+	});
+
+	it('a command → its argv and stdin, labelled by its type alone (never a value)', () => {
+		expect(
+			planCrewCall({
+				args: [],
+				command: { type: 'add_override', ref: 'a/b', var: 'TOKEN', value: 'secret' },
+			}),
+		).toEqual({
+			ok: true,
+			args: ['add', 'override', 'a/b', 'TOKEN=secret'],
+			label: 'add_override',
+			timeoutMs: 120_000,
+		});
+	});
+
+	it("a command's timeout is its variant's, not the wire's capped one", () => {
+		expect(
+			planCrewCall({
+				args: [],
+				timeoutMs: 300_000,
+				command: { type: 'add_worktree', ref: 'store/wrk2' },
+			}),
+		).toMatchObject({ ok: true, timeoutMs: 600_000 });
+		expect(planCrewCall({ args: ['dev', 'check', 'a/b', '--json'], timeoutMs: 75_000 })).toEqual({
+			ok: true,
+			args: ['dev', 'check', 'a/b', '--json'],
+			label: 'dev check',
+			timeoutMs: 75_000,
+		});
+	});
+});
+
 describe('a line from the main that does not parse', () => {
 	it('→ dropped; the main stays attached and its next call is answered', async () => {
 		const { host } = createHost();
@@ -268,17 +371,17 @@ describe('what a remote sends', () => {
 describe('describeVersionRefusal', () => {
 	it('two releases → crew update on the older one', () => {
 		expect(describeVersionRefusal('5.7.1', '5.8.0')).toBe(
-			'This machine runs Voice OS 5.7.1 and the main 5.8.0: run crew update on the older one, then crew voice remote there.',
+			'This machine runs Voice OS 5.7.1 and the main 5.8.0: run crew update on the older one, then crew server remote there.',
 		);
 	});
 
 	it('a dev build on this machine → the same hint', () => {
-		expect(describeVersionRefusal('dev-abc1234', '5.8.0')).toContain('run crew voice dev push');
+		expect(describeVersionRefusal('dev-abc1234', '5.8.0')).toContain('run crew server dev push');
 	});
 
 	it('a dev build on either side → a dev push, or crew update back to the release', () => {
 		expect(describeVersionRefusal('5.7.1', 'dev-abc1234')).toBe(
-			'This machine runs Voice OS 5.7.1 and the main dev-abc1234: run crew voice dev push from the checkout you want on every machine, or crew update on each to go back to the release.',
+			'This machine runs Voice OS 5.7.1 and the main dev-abc1234: run crew server dev push from the checkout you want on every machine, or crew update on each to go back to the release.',
 		);
 	});
 });

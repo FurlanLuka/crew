@@ -1,8 +1,8 @@
 // Activate and deactivate by voice, and the question every other tool asks when words reach a
 // session that is not active. Activating looks at every worktree on every machine; nothing else does.
-import { isActive } from '../shared/active.js';
+import { isActive, listVoiceRefsOn } from '../shared/active.js';
 import { isSwitchOfferFresh, type State, type SwitchOffer } from '../shared/protocol.js';
-import { LOCAL_MACHINE, SETUP_REF, readMachine, splitRef } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import { findRefsByName, normalizeName } from '../router/refs.js';
@@ -39,9 +39,8 @@ export const decideActivate = ({
 	name,
 	machine,
 }: DecideActivateParams): ActivateDecision => {
-	const candidates = machine
-		? state.order.filter((ref) => readMachine(ref) === machine)
-		: state.order;
+	// A setup session is Set up's: never activated.
+	const candidates = listVoiceRefsOn(state, machine);
 	const wanted = normalizeName(
 		name.replace(/^the\s+/i, '').replace(/\s+(?:workspace|worktree|session)$/i, ''),
 	);
@@ -288,10 +287,6 @@ export const deactivateSession = async ({
 
 	const { ref } = checked;
 	const label = toSpokenName(readLabel(state, ref));
-
-	if (ref === SETUP_REF) {
-		return { ...fail('the setup session is always active'), reply: 'Setup is always active.' };
-	}
 
 	if (!isActive(state, ref)) {
 		return { ...succeed(`${ref} is not active`), reply: `${label} isn't active.` };

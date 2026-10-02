@@ -4,7 +4,7 @@ import { parentView } from '../shared/machines.js';
 import type { Effect } from './reducer.js';
 import { createFixtureState } from '../../test/support/state.js';
 import { run, worktree } from '../../test/support/reduce.js';
-import { stopWorker } from './active.js';
+import { PENDING_ACTIVATION_MS, stopWorker } from './active.js';
 
 const VM1 = { id: 'vm1', host: 'dev@vm1.example.com', name: 'Build box' };
 const REMOTE = 'vm1:store/main';
@@ -123,27 +123,49 @@ describe('activate', () => {
 		expect(effects).toEqual([]);
 	});
 
-	it('a ref crew does not have, or of a machine the state does not know → nothing', () => {
-		const start = connected();
+	it('a ref of a machine the state does not know → nothing', () => {
+		const { state, effects } = run([{ type: 'activate', ref: 'gpu:store/main' }], {
+			start: connected(),
+		});
 
-		for (const ref of ['store/wrk9', 'gpu:store/main']) {
-			const { state, effects } = run([{ type: 'activate', ref }], { start });
+		expect(state.active).toEqual([]);
+		expect(state.pendingActivations).toEqual([]);
+		expect(effects).toEqual([]);
+	});
+
+	it('a worktree Voice OS has not listed yet → held, and crew read again now', () => {
+		const { state, effects } = run([{ type: 'activate', ref: 'store/wrk9', open: true }], {
+			start: connected(),
+			at: 50,
+		});
+
+		expect(state.active).toEqual([]);
+		expect(state.pendingActivations).toEqual([{ ref: 'store/wrk9', at: 50, isOpening: true }]);
+		expect(effects).toEqual([{ type: 'refresh_worktrees' }]);
+	});
+
+	it('a setup session, here or remote → refused: it belongs to Set up, never to voice', () => {
+		const start = run(
+			[
+				{
+					type: 'worktrees',
+					worktrees: [
+						worktree(LOCAL),
+						{ ...worktree('setup'), isPinned: true },
+						{ ...remoteWorktree('vm1:setup'), isPinned: true },
+					],
+				},
+				{ type: 'worker_exited', ref: 'setup', error: null },
+			],
+			{ start: connected() },
+		).state;
+
+		for (const ref of ['setup', 'vm1:setup']) {
+			const { state, effects } = run([{ type: 'activate', ref, announce: true }], { start });
 
 			expect(state.active).toEqual([]);
 			expect(effects).toEqual([]);
 		}
-	});
-
-	it("this Mac's setup → started if it is stopped, never put in the set", () => {
-		const start = run(
-			[{ type: 'worktrees', worktrees: [{ ...worktree('setup'), isPinned: true }] }],
-			{ start: connected() },
-		).state;
-		const stopped = run([{ type: 'worker_exited', ref: 'setup', error: null }], { start }).state;
-		const { state, effects } = run([{ type: 'activate', ref: 'setup' }], { start: stopped });
-
-		expect(state.active).toEqual([]);
-		expect(effects).toEqual([{ type: 'worker_start', ref: 'setup' }]);
 	});
 });
 
@@ -205,7 +227,7 @@ describe('deactivate', () => {
 
 		expect(state.view).toEqual({ kind: 'session', ref: OTHER });
 		expect(state.focus).toBe(OTHER);
-		expect(parentView(state)).toEqual({ kind: 'grid', machine: 'local' });
+		expect(parentView(state)).toEqual({ kind: 'activate', machine: 'local' });
 	});
 
 	it("an inactive session, or this Mac's setup → nothing", () => {
@@ -339,9 +361,13 @@ describe('active_loaded', () => {
 		expect(state.active).toEqual([REMOTE, LOCAL, OTHER]);
 	});
 
-	it('a machine the state does not know → dropped; a gone local session → kept; setup → dropped', () => {
+	it('a machine the state does not know → dropped; a gone local session → kept; a setup → dropped', () => {
+		// active.json written by a release where a remote's setup was activated like a session.
 		const state = connected([
-			{ type: 'active_loaded', refs: ['gpu:store/main', REMOTE, 'store/wrk9', 'setup'] },
+			{
+				type: 'active_loaded',
+				refs: ['gpu:store/main', REMOTE, 'store/wrk9', 'setup', 'vm1:setup'],
+			},
 		]);
 
 		expect(state.active).toEqual([REMOTE, 'store/wrk9']);
@@ -399,11 +425,11 @@ describe('a switch to an active session', () => {
 	const active = (extra: Input[] = []): State =>
 		connected([{ type: 'activate', ref: REMOTE }, { type: 'activate', ref: LOCAL }, ...extra]);
 
-	it('from Active, a machine grid, Mission Control or another session → opened from Active', () => {
+	it('from Active, Activate, Settings or another session → opened from Active', () => {
 		const starts: Input[] = [
 			{ type: 'switch_view', view: { kind: 'active' } },
-			{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } },
-			{ type: 'switch_view', view: { kind: 'machines' } },
+			{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } },
+			{ type: 'switch_view', view: { kind: 'settings' } },
 			{ type: 'switch_view', view: { kind: 'session', ref: OTHER } },
 		];
 
@@ -424,7 +450,7 @@ describe('a switch to an active session', () => {
 		]);
 
 		expect(state.view).toEqual({ kind: 'session', ref: OTHER });
-		expect(parentView(state)).toEqual({ kind: 'grid', machine: 'local' });
+		expect(parentView(state)).toEqual({ kind: 'activate', machine: 'local' });
 	});
 
 	it('switch to Active → nothing said', () => {
@@ -502,6 +528,35 @@ describe("a machine's sessions matched up when its link connects", () => {
 
 	it('inactive and stopped → nothing', () => {
 		expect(resynced(known(), []).effects).toEqual([]);
+	});
+
+	// The setup session runs for Set up's chat on its machine: never active, never stopped for it.
+	const withSetup = (): State =>
+		known([
+			{
+				type: 'worktrees',
+				worktrees: [
+					worktree(LOCAL),
+					worktree(OTHER),
+					remoteWorktree(REMOTE),
+					{ ...remoteWorktree('vm1:setup'), isPinned: true },
+				],
+			},
+		]);
+
+	it('its setup session running there → left running, nothing said, never in the set', () => {
+		const { state, effects } = resynced(withSetup(), ['vm1:setup']);
+
+		expect(state.sessions['vm1:setup']?.status).toBe('idle');
+		expect(state.active).toEqual([]);
+		expect(effects).toEqual([]);
+	});
+
+	it('its setup session stopped there → started', () => {
+		const { effects } = resynced(withSetup(), []);
+
+		expect(starts(effects)).toEqual(['vm1:setup']);
+		expect(said(effects)).toEqual([]);
 	});
 
 	it('inactive and running there → stopped, and said: "Stopped one session on X that isn\'t active."', () => {
@@ -620,5 +675,55 @@ describe('words for an inactive session on a machine out of reach', () => {
 		expect(
 			said(run([{ type: 'send', ref: REMOTE, text: 'hi' }], { start: offline }).effects),
 		).toEqual(["Build box is out of reach. I'll send it when it's back."]);
+	});
+});
+
+describe('"Open Voice OS" on a worktree crew made moments ago', () => {
+	const NEW = 'store/wrk9';
+	const listed = [worktree(LOCAL), worktree(OTHER), worktree(NEW)];
+
+	it('before Voice OS knows it → held; the next list has it → activated, started and shown from Active', () => {
+		const held = run([{ type: 'activate', ref: NEW, open: true }], { start: connected(), at: 100 });
+		const { state, effects } = run([{ type: 'worktrees', worktrees: listed }], {
+			start: held.state,
+			at: 200,
+		});
+
+		expect(state.active).toEqual([NEW]);
+		expect(state.view).toEqual({ kind: 'session', ref: NEW, from: 'active' });
+		expect(state.pendingActivations).toEqual([]);
+		expect(starts(effects)).toEqual([NEW]);
+	});
+
+	it('a list without it → still held; past PENDING_ACTIVATION_MS → let go', () => {
+		const held = run([{ type: 'activate', ref: NEW, open: true }], { start: connected(), at: 100 });
+		const without = { type: 'worktrees' as const, worktrees: [worktree(LOCAL), worktree(OTHER)] };
+		const soon = run([without], { start: held.state, at: 100 + PENDING_ACTIVATION_MS - 1 });
+		const late = run([without], { start: soon.state, at: 100 + PENDING_ACTIVATION_MS });
+
+		expect(soon.state.pendingActivations.map((pending) => pending.ref)).toEqual([NEW]);
+		expect(late.state.pendingActivations).toEqual([]);
+		expect(late.state.active).toEqual([]);
+	});
+
+	it('activated without open → active, the screen stays where it was', () => {
+		const held = run([{ type: 'activate', ref: NEW }], { start: connected(), at: 100 });
+		const { state } = run([{ type: 'worktrees', worktrees: listed }], {
+			start: held.state,
+			at: 200,
+		});
+
+		expect(state.active).toEqual([NEW]);
+		expect(state.view.kind).toBe('active');
+	});
+
+	it('a worktree already known, opened → activated and shown in one input', () => {
+		const { state, effects } = run([{ type: 'activate', ref: OTHER, open: true }], {
+			start: connected(),
+		});
+
+		expect(state.active).toEqual([OTHER]);
+		expect(state.view).toEqual({ kind: 'session', ref: OTHER, from: 'active' });
+		expect(starts(effects)).toEqual([OTHER]);
 	});
 });

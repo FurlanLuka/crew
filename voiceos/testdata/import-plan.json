@@ -1,0 +1,38 @@
+[
+  {
+    "kind": "project",
+    "name": "store-front",
+    "status": "exists",
+    "detail": "/Users/dev/code/store-front"
+  },
+  {
+    "kind": "project",
+    "name": "store-api",
+    "status": "clone",
+    "detail": "/Users/dev/.crew/projects/store-api"
+  },
+  {
+    "kind": "project",
+    "name": "checkout-api",
+    "status": "clone",
+    "detail": "/Users/dev/.crew/projects/checkout-api"
+  },
+  {
+    "kind": "project",
+    "name": "infra-ops",
+    "status": "missing",
+    "detail": "no git remote — --path=\u003cdir\u003e"
+  },
+  {
+    "kind": "workspace",
+    "name": "store-front",
+    "status": "needs",
+    "detail": "store-api"
+  },
+  {
+    "kind": "workspace",
+    "name": "admin",
+    "status": "needs",
+    "detail": "checkout-api, infra-ops"
+  }
+]

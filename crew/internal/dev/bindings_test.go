@@ -499,7 +499,7 @@ func TestTokenFor_RoundTrips(t *testing.T) {
 	for _, target := range targets {
 		for _, accessor := range []string{"", AccessorURL, AccessorHost, AccessorPort} {
 			spelled := TokenFor(target, accessor)
-			if IsLegacyToken(spelled) || strings.Contains(spelled, ".url") {
+			if strings.Contains(spelled, ":") || strings.Contains(spelled, ".url") {
 				t.Errorf("TokenFor(%+v, %q) = %q", target, accessor, spelled)
 			}
 			tokens, err := ParseTokens(spelled)
@@ -513,22 +513,6 @@ func TestTokenFor_RoundTrips(t *testing.T) {
 			if tokens[0].Target != target || tokens[0].Accessor != wantAccessor {
 				t.Errorf("ParseTokens(%q) = %+v", spelled, tokens[0])
 			}
-		}
-	}
-}
-
-func TestIsLegacyToken(t *testing.T) {
-	tests := map[string]bool{
-		"{{url:store-api}}":         true,
-		"ws://localhost:{{port:x}}": true,
-		"{{store-api}}":             false,
-		"ws://{{store-api.host}}":   false,
-		"{{worktree}}":              false,
-		"literal":                   false,
-	}
-	for in, want := range tests {
-		if got := IsLegacyToken(in); got != want {
-			t.Errorf("IsLegacyToken(%q) = %v, want %v", in, got, want)
 		}
 	}
 }

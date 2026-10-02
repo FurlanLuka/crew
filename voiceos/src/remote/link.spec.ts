@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CrewRunResult } from '../crew/adapter.js';
+import type { CrewRunOptions, CrewRunResult } from '../crew/adapter.js';
+import { createSetupRunner } from '../crew/api.js';
 import { configureLog } from '../log.js';
 import { SessionManager } from '../sessions/manager.js';
 import { createSetupWorktree } from '../sessions/setup-session.js';
@@ -10,9 +11,11 @@ import { Store } from '../state/store.js';
 import { createFakeQuery } from '../../test/support/fake-query.js';
 import { createNetwork, until } from '../../test/support/link.js';
 import { worktree } from '../../test/support/reduce.js';
+import { isActive } from '../shared/active.js';
+import type { WorktreeInfo } from '../shared/protocol.js';
 import { RemoteHost } from './host.js';
 import { MachineLinks } from './links.js';
-import type { OpenTransport } from './link.js';
+import { CallFailure, type OpenTransport } from './link.js';
 import type { UpdateRemote } from './ssh.js';
 
 configureLog({ quiet: true });
@@ -30,10 +33,11 @@ afterEach(() => {
 
 interface HostOptions {
 	version?: string;
-	runCrew?: (args: string[]) => Promise<CrewRunResult>;
+	worktrees?: WorktreeInfo[];
+	runCrew?: (args: string[], options?: CrewRunOptions) => Promise<CrewRunResult>;
 }
 
-const startHost = ({ version = 'test', runCrew }: HostOptions = {}) => {
+const startHost = ({ version = 'test', runCrew, worktrees }: HostOptions = {}) => {
 	const fake = createFakeQuery({ askOn: '[ask]' });
 	const registryFile = join(mkdtempSync(join(tmpdir(), 'voiceos-remote-')), 'sessions.json');
 	let manager: SessionManager | null = null;
@@ -53,7 +57,7 @@ const startHost = ({ version = 'test', runCrew }: HostOptions = {}) => {
 
 			return manager;
 		},
-		listWorktrees: async () => [worktree('store/main')],
+		listWorktrees: async () => worktrees ?? [worktree('store/main')],
 		runCrew: runCrew ?? (async () => ({ code: 0, stdout: '', stderr: '' })),
 		readGitHead: async () => 'abc123',
 		readMedia: () => null,
@@ -255,7 +259,7 @@ describe('a remote over a link', () => {
 		await until(() => store.state.machines.vm1?.status === 'error', 'refused');
 
 		expect(store.state.machines.vm1?.detail).toBe(
-			'This machine runs Voice OS older and the main test: run crew update on the older one, then crew voice remote there.',
+			'This machine runs Voice OS older and the main test: run crew update on the older one, then crew server remote there.',
 		);
 	});
 
@@ -342,7 +346,7 @@ describe('a remote over a link', () => {
 
 			expect(updates).toBe(1);
 			expect(store.state.machines.vm1?.detail).toBe(
-				'Build box is updated but still runs its old release: run crew voice remote there.',
+				'Build box is updated but still runs its old release: run crew server remote there.',
 			);
 		});
 
@@ -368,7 +372,7 @@ describe('a remote over a link', () => {
 
 			expect(updates).toBe(1);
 			expect(store.state.machines.vm1?.detail).toBe(
-				'Could not update Build box: Error: no release for linux/riscv64. Run crew update there, then crew voice remote.',
+				'Could not update Build box: Error: no release for linux/riscv64. Run crew update there, then crew server remote.',
 			);
 		});
 
@@ -413,7 +417,7 @@ describe('a remote over a link', () => {
 			await until(() => store.state.machines.vm1?.status === 'error', 'the failure');
 
 			expect(store.state.machines.vm1?.detail).toBe(
-				'Could not update Build box: Error: spawn ssh ENOENT. Run crew update there, then crew voice remote.',
+				'Could not update Build box: Error: spawn ssh ENOENT. Run crew update there, then crew server remote.',
 			);
 		});
 
@@ -424,7 +428,7 @@ describe('a remote over a link', () => {
 			await until(() => store.state.machines.vm1?.status === 'error', 'refused');
 
 			expect(store.state.machines.vm1?.detail).toBe(
-				'Build box runs Voice OS 5.2.0, newer than this one (5.1.0): run crew update here, then crew voice restart.',
+				'Build box runs Voice OS 5.2.0, newer than this one (5.1.0): run crew update here, then crew server restart.',
 			);
 		});
 	});
@@ -491,6 +495,144 @@ describe('a remote over a link', () => {
 		link?.stop();
 
 		await expect(inFlight).rejects.toThrow('went out of reach');
+	});
+
+	it("Set up's command over the link → run there from the typed command, its answer here", async () => {
+		const calls: { args: string[]; stdin?: string; timeoutMs?: number }[] = [];
+		const { host } = startHost({
+			runCrew: async (args, options) => {
+				calls.push({
+					args,
+					...(options?.stdin ? { stdin: options.stdin } : {}),
+					...(options?.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+				});
+
+				return { code: 0, stdout: '[]', stderr: '' };
+			},
+		});
+
+		await host.refreshWorktrees();
+
+		const { store, links } = startMain({ open: createNetwork(host).open });
+
+		await until(() => isConnected(store), 'connected');
+
+		expect(
+			await links.get('vm1')?.runCommand({ type: 'import_plan', bundle: '{"version":2}' }),
+		).toEqual({ code: 0, stdout: '[]', stderr: '' });
+		// A ten-minute clone keeps its ten minutes there, past what the wire carries for old remotes.
+		await links.get('vm1')?.runCommand({ type: 'add_worktree', ref: 'store/wrk2' });
+		expect(calls).toEqual([
+			{ args: ['import', '-', '--plan', '--json'], stdin: '{"version":2}', timeoutMs: 120_000 },
+			{ args: ['add', 'worktree', 'store/wrk2', '--json'], timeoutMs: 600_000 },
+		]);
+	});
+
+	it("crew killed for its timeout there → the page's 'timeout', never an answer", async () => {
+		const { host } = startHost({
+			runCrew: async () => ({ code: 143, stdout: '', stderr: '', timedOut: true }),
+		});
+
+		await host.refreshWorktrees();
+
+		const { store, links } = startMain({ open: createNetwork(host).open });
+
+		await until(() => isConnected(store), 'connected');
+
+		const run = createSetupRunner({
+			runLocal: async () => {
+				throw new Error('must run there');
+			},
+			startLocal: () => undefined,
+			getLink: (machine) => links.get(machine),
+		});
+
+		expect(await run('vm1', { type: 'add_worktree', ref: 'store/wrk2' })).toEqual({
+			kind: 'failed',
+			reason: 'timeout',
+			error: 'crew did not finish in 600 s',
+		});
+	});
+
+	it('a remote too old for typed commands → "remote_outdated" with its version, for the page', async () => {
+		const { host } = startHost({ version: 'test' });
+
+		await host.refreshWorktrees();
+
+		// An older release's call schema strips the field it does not know, then judges args alone;
+		// a timeout past its 5-minute cap fails that schema, and it drops the whole line.
+		const older = {
+			connect: (connection: Parameters<RemoteHost['connect']>[0]) => {
+				const end = host.connect(connection);
+
+				return {
+					...end,
+					receive: (line: string) => {
+						const message = JSON.parse(line) as Record<string, unknown>;
+
+						if (message.type === 'call') {
+							delete message.command;
+
+							if (Number(message.timeoutMs) > 300_000) {
+								return;
+							}
+						}
+
+						end.receive(JSON.stringify(message));
+					},
+				};
+			},
+		} as unknown as RemoteHost;
+		const { store, links } = startMain({ open: createNetwork(older).open });
+
+		await until(() => isConnected(store), 'connected');
+
+		const failure = await links
+			.get('vm1')
+			?.runCommand({ type: 'rm_worktree', ref: 'store/wrk1', confirm: true })
+			.catch((error: unknown) => error);
+
+		expect(failure).toBeInstanceOf(CallFailure);
+		expect(failure).toMatchObject({ reason: 'remote_outdated', version: 'test' });
+		expect((failure as Error).message).toContain('it updates from this Mac');
+
+		// A ten-minute command is refused as fast: the wire timeout stays inside the old schema.
+		const startedAt = Date.now();
+
+		await expect(
+			links.get('vm1')?.runCommand({ type: 'add_worktree', ref: 'store/wrk2' }),
+		).rejects.toMatchObject({ reason: 'remote_outdated' });
+		expect(Date.now() - startedAt).toBeLessThan(2_000);
+	});
+
+	it('its setup session (isPinned on the wire, as every release sends it) → runs there for Set up, never active', async () => {
+		const { host } = startHost({
+			worktrees: [{ ...worktree('setup'), isPinned: true }, worktree('store/main')],
+		});
+
+		await host.refreshWorktrees();
+
+		const { store } = startMain({ open: createNetwork(host).open, active: [REF, 'vm1:setup'] });
+
+		await until(() => isConnected(store), 'connected');
+		await until(() => store.state.sessions['vm1:setup']?.status === 'idle', 'setup started there');
+
+		expect(store.state.sessions['vm1:setup']?.isPinned).toBe(true);
+		expect(store.state.active).toEqual([REF]);
+		expect(isActive(store.state, 'vm1:setup')).toBe(false);
+	});
+
+	it('not connected → "offline" at once, nothing written', async () => {
+		const { host } = startHost();
+		const { links } = startMain({
+			open: createNetwork(host, { cutAfter: 0 }).open,
+			retryMs: 60_000,
+		});
+
+		await until(() => links.get('vm1') !== undefined, 'link started');
+		await expect(links.get('vm1')?.runCommand({ type: 'ls_projects' })).rejects.toMatchObject({
+			reason: 'offline',
+		});
 	});
 
 	it('a login banner run into the hello → the hello is still read', async () => {

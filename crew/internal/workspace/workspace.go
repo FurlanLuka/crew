@@ -115,8 +115,8 @@ func WorktreeNames(ws *Workspace) []string {
 const DefaultWorktree = "main"
 
 // NameAvailable is every reason a workspace cannot be made under name:
-// the shape, the reserved check name, one that exists. The wizard asks
-// before its first card is left; Create asks again.
+// the shape, the reserved check name, one that exists. Create asks it
+// first.
 func NameAvailable(name string) error {
 	if err := ValidateName("workspace", name); err != nil {
 		return err
@@ -177,7 +177,7 @@ type ProjectSpec struct {
 }
 
 // CreateWith is a workspace made with its members in one go — what crew
-// add workspace <ws> <p>…, the TUI wizard and an import all do: Create,
+// add workspace <ws> <p>… and an import do: Create,
 // then AddProjects. A pre-flight failure (a bad spec, nothing recorded)
 // takes the empty workspace back so the name is free to try again; a
 // failure after the members are recorded keeps the workspace and returns
@@ -350,7 +350,7 @@ func RemoveProject(wsName, projName string) error {
 				// A runner still installing it would record on a member
 				// that is gone.
 				if ref.Worktree != "" && SetupRunning(ref) {
-					return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, ref, ref)
+					return SetupRunningError(ref)
 				}
 			}
 			for _, ref := range Refs(ws) {
@@ -442,7 +442,7 @@ func cleanupWorktree(ref Ref, wp WorkspaceProject) {
 	if p != nil {
 		exec.PruneWorktrees(p.Path)
 		branch := BranchName(ref, wp.Name)
-		if n := exec.CommitsAhead(p.Path, DefaultBranch(p.Path), branch); n > 0 {
+		if n := commitsNotOnBase(p.Path, ref, wp.Name); n > 0 {
 			debug.Log("git", "%s: %d commits not on the base go with the branch — git reflog in %s has them", branch, n, p.Path)
 		}
 		exec.DeleteBranch(p.Path, branch)

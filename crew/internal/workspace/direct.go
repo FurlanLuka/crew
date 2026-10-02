@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/FurlanLuka/crew/crew/internal/exec"
-	"github.com/FurlanLuka/crew/crew/internal/project"
 )
 
 // directOwners maps each project some workspace holds in direct mode to
@@ -44,23 +43,10 @@ func directRefusalOwner(projName, excludeWs string, owners map[string]string) er
 	return nil
 }
 
-// DirectRefusals is why each pool project could not join ws in direct
-// mode — "" when it can: one reading of the three rules (another
-// workspace holds it directly, ws has more than one worktree, the path is
-// not a git repo with commits), read once per project for a picker to
-// show before a mode is chosen, and by validateSpecs when one is. ws may
-// be a workspace that does not exist yet — the wizard's, with its name and
-// no worktrees.
-func DirectRefusals(ws *Workspace, pool []project.Project) map[string]string {
-	owners := directOwners()
-	out := make(map[string]string, len(pool))
-	for _, p := range pool {
-		out[p.Name] = directRefusal(p.Name, ws.Name, owners, len(ws.Worktrees), assertGitRepo(p.Path))
-	}
-	return out
-}
-
-// directRefusal is the decision behind DirectRefusals. Pure.
+// directRefusal is why a project could not join wsName in direct mode —
+// "" when it can: one reading of the three rules (another workspace holds
+// it directly, the workspace has more than one worktree, the path is not a
+// git repo with commits), read by validateSpecs. Pure.
 func directRefusal(projName, wsName string, owners map[string]string, worktrees int, repoErr error) string {
 	if err := directRefusalOwner(projName, wsName, owners); err != nil {
 		return err.Error()

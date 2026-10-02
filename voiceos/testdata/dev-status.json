@@ -1,0 +1,23 @@
+[
+  {
+    "worktree": "store-front/main",
+    "project": "store-front",
+    "server_name": "web",
+    "external_port": 3000,
+    "url": "http://localhost:54010"
+  },
+  {
+    "worktree": "store-front/main",
+    "project": "store-api",
+    "server_name": "api",
+    "external_port": 4000,
+    "url": "http://localhost:54012"
+  },
+  {
+    "worktree": "store-front/main",
+    "project": "store-api",
+    "server_name": "worker",
+    "external_port": 0,
+    "url": ""
+  }
+]

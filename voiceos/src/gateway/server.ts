@@ -2,7 +2,8 @@ import type { Server, ServerWebSocket } from 'bun';
 import type { ClientMessage, ServerMessage } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
 import { createLogger } from '../log.js';
-import { isAuthorized, isOriginAllowed, createSessionCookie, areTokensEqual } from './auth.js';
+import { isAuthorized, createSessionCookie, areTokensEqual, checkRequest } from './auth.js';
+import { handleCrewRequest, type RunSetupCommand } from '../crew/api.js';
 import { parseClientMessage } from './validate.js';
 import type { MediaFile } from '../sessions/media.js';
 
@@ -27,6 +28,8 @@ export interface GatewayOptions {
 	readHealth: () => Record<string, unknown>;
 	// A stored image by its name in Voice OS's media folder — nothing else on disk is ever served.
 	readMedia?: (name: string) => MediaFile;
+	// Set up's commands (POST /api/crew); tests pass a fake. Without it the route answers 503.
+	runCrew?: RunSetupCommand;
 	development?: boolean;
 }
 
@@ -64,7 +67,27 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 		port: options.port,
 		development: options.development ?? false,
 		routes: {
+			// One page, three halves: the browser's router picks Home, Voice OS or Set up from the path,
+			// so a deep link or a refresh lands where it was.
 			'/': options.index,
+			'/voice': options.index,
+			'/voice/*': options.index,
+			'/setup': options.index,
+			'/setup/*': options.index,
+			'/api/crew': (request: Request) => {
+				const { runCrew } = options;
+
+				if (!runCrew) {
+					return createTextResponse(503, 'crew is not available here');
+				}
+
+				return handleCrewRequest({
+					request,
+					origins,
+					isAuthorized: isAuthorized(request, token),
+					runCrew,
+				});
+			},
 			'/healthz': () => Response.json({ ok: true, ...options.readHealth() }),
 			'/whoami': (request: Request) =>
 				isAuthorized(request, token)
@@ -105,7 +128,7 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 
 					return createTextResponse(
 						401,
-						'This link is not valid. Run `crew voice` to print a fresh one.',
+						'This link is not valid. Run `crew` to print a fresh one.',
 					);
 				}
 
@@ -117,17 +140,16 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 			},
 			'/ws': (request: Request, bunServer: Server<ClientData>) => {
 				const origin = request.headers.get('origin');
+				const refusal = checkRequest({
+					origin,
+					origins,
+					isAuthorized: isAuthorized(request, token),
+				});
 
-				if (!isOriginAllowed(origin, origins)) {
-					log.warn('ws origin refused', { origin });
+				if (refusal) {
+					log.warn('ws refused', { status: refusal.status, origin });
 
-					return createTextResponse(403, 'origin not allowed');
-				}
-
-				if (!isAuthorized(request, token)) {
-					log.warn('ws unauthorized');
-
-					return createTextResponse(401, 'unauthorized');
+					return createTextResponse(refusal.status, refusal.text);
 				}
 
 				const id = `c${++clientCounter}`;

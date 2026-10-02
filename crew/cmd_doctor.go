@@ -374,10 +374,14 @@ func needsTools(args []string) bool {
 		return true
 	}
 	switch args[0] {
-	case "add", "rm", "setup", "verify", "check", "fix", "claude", "edit", "launch", "workspace", "project", "migrate":
+	case "add", "rm", "setup", "verify", "check", "fix", "claude", "edit", "launch", "migrate", "--no-open":
 		return true
 	case "dev":
 		return len(args) < 2 || args[1] != "_proxy"
+	case "server", "voice":
+		// The hidden forms are other processes' plumbing (a detached
+		// restart, an SSH attach): nobody there to offer an install to.
+		return len(args) < 2 || !strings.HasPrefix(args[1], "_")
 	}
 	return !strings.HasPrefix(args[0], "-") && strings.Contains(args[0], "/")
 }

@@ -3,6 +3,7 @@
 import { createLogger } from '../log.js';
 import { isActive } from '../shared/active.js';
 import type { CrewRunOptions, CrewRunResult, CrewRunner } from '../crew/adapter.js';
+import { toCrewArgv, traitsOf, type SetupCommand } from '../crew/commands.js';
 import {
 	describeRecap,
 	isRecapNews,
@@ -21,6 +22,7 @@ import {
 	type Outbox,
 } from './link-state.js';
 import {
+	OLD_CALL_TIMEOUT_MAX_MS,
 	PING_MS,
 	SILENCE_LIMIT_MS,
 	createLineDecoder,
@@ -42,6 +44,21 @@ import {
 } from './versions.js';
 
 const log = createLogger('remote');
+
+export type CallFailureReason = 'offline' | 'remote_outdated' | 'timeout';
+
+// Why Set up's command did not run there, for the page to say: out of reach, a remote whose release
+// predates typed commands (with its version: "Build box runs crew X — it updates from this Mac"), or
+// no answer in time.
+export class CallFailure extends Error {
+	constructor(
+		readonly reason: CallFailureReason,
+		message: string,
+		readonly version: string | null = null,
+	) {
+		super(message);
+	}
+}
 
 const ERROR_RETRY_MS = 60_000;
 const CALL_TIMEOUT_MS = 90_000;
@@ -78,7 +95,7 @@ export interface RemoteLinkOptions {
 	say: (text: string) => void;
 	// crew update on that machine, when it runs an older release than this one.
 	updateRemote: UpdateRemote;
-	// This machine's own crew, for what a remote asks the main (crew voice logs there).
+	// This machine's own crew, for what a remote asks the main (crew server logs there).
 	runLocalCrew: CrewRunner;
 	now?: () => number;
 	// Tests reconnect at once.
@@ -107,6 +124,8 @@ export class RemoteLink {
 	private retryTimer: ReturnType<typeof setTimeout> | null = null;
 	private pingTimer: ReturnType<typeof setInterval> | null = null;
 	private calls = new PendingCalls<CrewRunResult>();
+	// Its release, from its last hello.
+	private remoteVersion: string | null = null;
 	// A remote's queries run one at a time: each spawns crew and its SSH fan-out.
 	private queries: Promise<void> = Promise.resolve();
 
@@ -179,6 +198,52 @@ export class RemoteLink {
 		});
 
 		return promise;
+	};
+
+	// Set up's command run on that machine: the typed command goes, and the remote builds its argv.
+	// args ride along for a remote too old to read command, which judges them by its allow-list.
+	runCommand = async (command: SetupCommand): Promise<CrewRunResult> => {
+		const { name } = this.options.machine;
+
+		if (!this.isReady) {
+			throw new CallFailure('offline', `${name} is out of reach`);
+		}
+
+		const { timeoutMs } = traitsOf(command);
+		const { id, promise } = this.calls.open({
+			timeoutMs: timeoutMs + CALL_MARGIN_MS,
+			onTimeout: () => new CallFailure('timeout', `${name} did not answer in time`),
+		});
+
+		// A remote that reads command takes the variant's own timeout from it; the wire value stays
+		// inside what an older remote accepts, or it drops the line whole and never says not allowed.
+		this.write({
+			type: 'call',
+			id,
+			method: 'crew',
+			args: toCrewArgv(command),
+			timeoutMs: Math.min(timeoutMs, OLD_CALL_TIMEOUT_MAX_MS),
+			command,
+		});
+
+		try {
+			return await promise;
+		} catch (error) {
+			if (error instanceof CallFailure) {
+				throw error;
+			}
+
+			// Only a release before typed commands refuses one this way.
+			if (error instanceof Error && error.message === 'not allowed') {
+				throw new CallFailure(
+					'remote_outdated',
+					`${name} runs an older crew that cannot do this yet — it updates from this Mac`,
+					this.remoteVersion,
+				);
+			}
+
+			throw error;
+		}
 	};
 
 	private write(message: Parameters<typeof encodeLine>[0]): void {
@@ -265,6 +330,7 @@ export class RemoteLink {
 	private receive(message: RemoteMessage): void {
 		switch (message.type) {
 			case 'hello':
+				this.remoteVersion = message.version;
 				this.ready(message.snapshot);
 
 				return;
@@ -370,7 +436,9 @@ export class RemoteLink {
 			this.pingTimer = null;
 		}
 
-		this.calls.rejectAll(new Error(`${this.options.machine.name} went out of reach`));
+		this.calls.rejectAll(
+			new CallFailure('offline', `${this.options.machine.name} went out of reach`),
+		);
 	}
 
 	// Runs a remote's query with this machine's crew and relays its output as it is: the remote's crew

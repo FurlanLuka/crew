@@ -81,8 +81,9 @@ C=$(command -v crew 2>/dev/null || echo "$HOME/.local/bin/crew")
 V="$HOME/.crew/bin/voiceos"
 [ -f "$D/crew" ] && [ -f "$D/voiceos" ] || { echo "nothing staged in $D"; exit 1; }
 mkdir -p "$(dirname "$C")" "$(dirname "$V")"
-cp "$D/crew" "$C.new" && cp "$D/voiceos" "$V.new"
+cp "$D/crew" "$C.new" && cp "$D/voiceos" "$V.new" && chmod 755 "$C.new" "$V.new"
 if [ "$(uname)" = Darwin ]; then codesign --sign - -f "$C.new" "$V.new" >/dev/null 2>&1 || { rm -f "$C.new" "$V.new"; echo "codesign failed"; exit 1; }; fi
+[ "$("$C.new" --version 2>/dev/null)" = "crew "'dev-abc' ] || { rm -f "$C.new" "$V.new"; echo "the new crew does not run here"; exit 1; }
 mv -f "$C.new" "$C" && mv -f "$V.new" "$V"
 printf '%s\n' 'dev-abc' > "$V.version"
 rm -rf "$D"
@@ -484,4 +485,80 @@ func TestStartDevPushLosingTheRaceLeavesTheRunningStatus(t *testing.T) {
 	if _, ok := ReadDevPush(); ok {
 		t.Error("the losing push wrote a status over the running one")
 	}
+}
+
+// The install script run for real: staged files that lost their execute bit
+// still install runnable, and a crew that is not this push's never replaces
+// the one that works.
+func TestInstallScript_Runs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh")
+	}
+	setup := func(t *testing.T, stagedVersion string) (home, crewPath, voicePath string) {
+		home = t.TempDir()
+		staged := filepath.Join(home, StagedDir("dev-abc"))
+		if err := os.MkdirAll(staged, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// A crew that says its version and accepts the restart; mode 0644, as a bad copy leaves it.
+		fake := "#!/bin/sh\n[ \"$1\" = --version ] && { echo 'crew " + stagedVersion + "'; exit 0; }\nexit 0\n"
+		crewPath = filepath.Join(home, "bin", "crew")
+		voicePath = filepath.Join(home, "bin", "voiceos")
+		for _, err := range []error{
+			os.WriteFile(filepath.Join(staged, "crew"), []byte(fake), 0o644),
+			os.WriteFile(filepath.Join(staged, "voiceos"), []byte("#!/bin/sh\n"), 0o644),
+			os.MkdirAll(filepath.Dir(crewPath), 0o755),
+			os.WriteFile(crewPath, []byte("#!/bin/sh\necho old\n"), 0o755),
+		} {
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		return home, crewPath, voicePath
+	}
+	run := func(home, crewPath, voicePath string) (string, error) {
+		cmd := osexec.Command("sh", "-c", InstallScript("dev-abc", true, crewPath, voicePath))
+		cmd.Env = append(os.Environ(), "HOME="+home)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	t.Run("staged without the execute bit → installed runnable", func(t *testing.T) {
+		home, crewPath, voicePath := setup(t, "dev-abc")
+		if out, err := run(home, crewPath, voicePath); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		if got, _ := os.ReadFile(crewPath); !strings.Contains(string(got), "crew dev-abc") {
+			t.Errorf("the staged crew was not installed: %q", got)
+		}
+		if got, _ := os.ReadFile(voicePath + ".version"); string(got) != "dev-abc\n" {
+			t.Errorf("version stamp = %q", got)
+		}
+		for _, path := range []string{crewPath, voicePath} {
+			info, err := os.Stat(path)
+			if err != nil || info.Mode().Perm()&0o111 == 0 {
+				t.Errorf("%s not executable: %v %v", path, info, err)
+			}
+		}
+	})
+
+	t.Run("a crew that is not this push's → refused, the working one kept", func(t *testing.T) {
+		home, crewPath, voicePath := setup(t, "dev-other")
+		out, err := run(home, crewPath, voicePath)
+		if err == nil {
+			t.Fatal("installed a crew that is not this push's")
+		}
+		if !strings.Contains(out, "the new crew does not run here") {
+			t.Errorf("refused for another reason:\n%s", out)
+		}
+		for _, leftover := range []string{crewPath + ".new", voicePath + ".new"} {
+			if _, err := os.Stat(leftover); err == nil {
+				t.Errorf("%s left behind", leftover)
+			}
+		}
+		got, _ := os.ReadFile(crewPath)
+		if string(got) != "#!/bin/sh\necho old\n" {
+			t.Errorf("the working crew was replaced: %q", got)
+		}
+	})
 }

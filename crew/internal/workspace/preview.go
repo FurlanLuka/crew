@@ -7,13 +7,13 @@ import (
 
 // BindingPreview is one binding resolved against one real worktree.
 type BindingPreview struct {
-	Ref      string
-	Value    string
-	Resolved bool
+	Ref      string `json:"ref"`
+	Value    string `json:"value"`
+	Resolved bool   `json:"resolved"`
 	// Running is false when the value came from the worktree's reserved
 	// ports rather than live servers — right, but not yet true.
-	Running bool
-	Detail  string
+	Running bool   `json:"running"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // PreviewBinding resolves one binding against every worktree the project is in.

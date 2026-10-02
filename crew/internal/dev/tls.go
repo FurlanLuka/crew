@@ -320,6 +320,13 @@ func TLSConfig(domain string, now func() time.Time) *tls.Config {
 // tlsAnswers is proxyAnswers over TLS: crew's status page, served with a
 // certificate crew's CA signed for domain. Anything else on the port fails.
 func tlsAnswers(port int, domain string, wait time.Duration) bool {
+	return answersWithin(func() bool { return tlsAnswersOnce(port, domain) }, wait)
+}
+
+// tlsAnswersOnce is one look. The CA is read on every look: a proxy launched
+// a moment ago may not have written it yet, and a first start must wait for
+// it rather than give up at once.
+func tlsAnswersOnce(port int, domain string) bool {
 	caPEM, err := os.ReadFile(TLSFilesFor(domain).CA)
 	if err != nil {
 		return false
@@ -335,14 +342,21 @@ func tlsAnswers(port int, domain string, wait time.Duration) bool {
 			TLSClientConfig:   &tls.Config{RootCAs: pool, ServerName: domain},
 		},
 	}
+	resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/", port))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	return strings.Contains(string(body), proxyPageMarker)
+}
+
+// answersWithin looks until probe answers or wait runs out — at least once.
+func answersWithin(probe func() bool, wait time.Duration) bool {
 	deadline := time.Now().Add(wait)
 	for {
-		if resp, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/", port)); err == nil {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
-			if strings.Contains(string(body), proxyPageMarker) {
-				return true
-			}
+		if probe() {
+			return true
 		}
 		if time.Now().After(deadline) {
 			return false

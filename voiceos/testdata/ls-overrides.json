@@ -1,0 +1,4 @@
+{
+  "STORE_API_URL": "https://dev-api.example.com",
+  "store-api.LOG_LEVEL": "debug"
+}

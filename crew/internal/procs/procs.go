@@ -27,6 +27,8 @@ import (
 type Session struct {
 	Name  string `json:"name"`
 	Procs []Proc `json:"procs"`
+	// Kept: crew's server — listed, never stopped by a reclaim.
+	Kept bool `json:"kept,omitempty"`
 }
 
 // Proc is one process found holding a working directory inside the workspace

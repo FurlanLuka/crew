@@ -1,4 +1,4 @@
-// machines.json: the one list of other machines. crew (`crew voice machines`) is its only writer,
+// machines.json: the one list of other machines. crew (`crew server machines`) is its only writer,
 // for the page and voice too; a running Voice OS reads it again when it changes.
 
 import { randomUUID } from 'node:crypto';

@@ -1,0 +1,51 @@
+[
+  {
+    "ref": "store-front/main",
+    "path": "/w/store-front/main",
+    "dev_running": true,
+    "installing": false,
+    "size_bytes": 1288490188
+  },
+  {
+    "ref": "store-front/wrk1",
+    "path": "/w/store-front/wrk1",
+    "dev_running": false,
+    "installing": false,
+    "size_bytes": 734003200,
+    "health": "2 issues",
+    "issues": [
+      {
+        "stage": "install",
+        "project": "store-api",
+        "detail": "pnpm install:\nERR_PNPM_NO_MATCHING_VERSION"
+      },
+      {
+        "stage": "smoke",
+        "project": "store-front",
+        "server": "web",
+        "reason": "not listening",
+        "detail": "ready on :3000"
+      }
+    ]
+  },
+  {
+    "ref": "admin/main",
+    "path": "/w/admin/main",
+    "dev_running": false,
+    "installing": true
+  },
+  {
+    "ref": "check/store-api",
+    "path": "/w/check/store-api",
+    "dev_running": false,
+    "installing": false,
+    "health": "install failed: store-api",
+    "issues": [
+      {
+        "stage": "install",
+        "project": "store-api",
+        "detail": "pnpm install:\nERR_PNPM_NO_MATCHING_VERSION"
+      }
+    ]
+  }
+]

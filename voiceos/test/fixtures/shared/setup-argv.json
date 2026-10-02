@@ -1,0 +1,370 @@
+[
+	{
+		"type": "ls_projects",
+		"argv": ["ls", "projects", "--json"]
+	},
+	{
+		"type": "ls_workspaces",
+		"argv": ["ls", "workspaces", "--json"]
+	},
+	{
+		"type": "ls_worktrees",
+		"argv": ["ls", "worktrees", "store-front", "--size", "--json"]
+	},
+	{
+		"type": "ls_bindings",
+		"argv": ["ls", "bindings", "store-front", "--check=store-front/main", "--json"]
+	},
+	{
+		"type": "ls_bindings_preview",
+		"argv": ["ls", "bindings", "store-front", "--preview", "--json"]
+	},
+	{
+		"type": "ls_overrides",
+		"argv": ["ls", "overrides", "store-front/main", "--json"]
+	},
+	{
+		"type": "ls_bases",
+		"argv": ["ls", "bases", "store-front", "--json"]
+	},
+	{
+		"type": "show",
+		"argv": ["show", "store-front/main", "--json"]
+	},
+	{
+		"type": "scan_checkouts",
+		"argv": ["add", "project", "--scan", "--json"]
+	},
+	{
+		"type": "setup_status",
+		"argv": ["setup", "status", "store-front/wrk1", "--json"]
+	},
+	{
+		"type": "setup_logs",
+		"argv": ["setup", "logs", "store-front/wrk1", "store-api", "--lines=200", "--json"]
+	},
+	{
+		"type": "check_status",
+		"argv": ["check", "project", "store-api", "--status", "--json"]
+	},
+	{
+		"type": "dev_status",
+		"argv": ["dev", "status", "store-front/main", "--json"]
+	},
+	{
+		"type": "dev_check",
+		"argv": ["dev", "check", "store-front/main", "--json"]
+	},
+	{
+		"type": "dev_logs",
+		"argv": ["dev", "logs", "store-front/main", "web", "--lines=100", "--json"]
+	},
+	{
+		"type": "env",
+		"argv": ["env", "store-front/main", "store-front/web", "--json"]
+	},
+	{
+		"type": "fix",
+		"argv": ["fix", "store-front/main", "--print"]
+	},
+	{
+		"type": "import_plan",
+		"argv": ["import", "-", "--plan", "--json"]
+	},
+	{
+		"type": "export",
+		"argv": ["export", "--projects=store-front,store-api", "--workspaces=store-front", "-"]
+	},
+	{
+		"type": "clean_dry_run",
+		"argv": ["clean", "--dry-run", "--json"]
+	},
+	{
+		"type": "trash",
+		"argv": ["trash", "--json"]
+	},
+	{
+		"type": "config_show",
+		"argv": ["config", "show", "--json"]
+	},
+	{
+		"type": "proxy_status",
+		"argv": ["dev", "proxy", "status", "--json"]
+	},
+	{
+		"type": "update_check",
+		"argv": ["update", "--check", "--json"]
+	},
+	{
+		"type": "server_status",
+		"argv": ["voice", "status", "--json"]
+	},
+	{
+		"type": "machines_ls",
+		"argv": ["voice", "machines", "ls", "--json"]
+	},
+	{
+		"type": "keys_status",
+		"argv": ["voice", "keys", "status", "--json"]
+	},
+	{
+		"type": "discord_status",
+		"argv": ["voice", "discord", "status", "--json"]
+	},
+	{
+		"type": "debug_tail",
+		"argv": ["debug", "--tail=50"]
+	},
+	{
+		"type": "doctor",
+		"argv": ["doctor", "--json"]
+	},
+	{
+		"type": "migrate_dry_run",
+		"argv": ["migrate", "--dry-run", "--json"]
+	},
+	{
+		"type": "rm_workspace_project_dry_run",
+		"argv": ["rm", "workspace", "store-front", "signals", "--dry-run", "--json"]
+	},
+	{
+		"type": "rm_worktree_dry_run",
+		"argv": ["rm", "worktree", "store-front/wrk1", "--dry-run", "--json"]
+	},
+	{
+		"type": "add_binding_dry_run",
+		"argv": [
+			"add",
+			"binding",
+			"store-front/web",
+			"--var=API_URL",
+			"--value={{store-api}}",
+			"--dry-run",
+			"--json"
+		]
+	},
+	{
+		"type": "add_binding_scan",
+		"argv": ["add", "binding", "store-front", "--scan", "--json"]
+	},
+	{
+		"type": "add_project",
+		"argv": [
+			"add",
+			"project",
+			"store-api",
+			"git@github.com:acme/store-api.git",
+			"--setup=pnpm install",
+			"--env-cmd=make env"
+		]
+	},
+	{
+		"type": "update_project",
+		"argv": ["add", "project", "store-api", "--setup=", "--env-cmd=make env"]
+	},
+	{
+		"type": "rm_project",
+		"argv": ["rm", "project", "signals", "--keep-clone"]
+	},
+	{
+		"type": "dev_add",
+		"argv": [
+			"dev",
+			"add",
+			"store-api",
+			"--name=api",
+			"--rename=server",
+			"--port=4000",
+			"--cmd=pnpm dev",
+			"--dir=apps/api"
+		]
+	},
+	{
+		"type": "dev_rm",
+		"argv": ["dev", "rm", "store-api", "worker"]
+	},
+	{
+		"type": "add_binding",
+		"argv": ["add", "binding", "store-front", "--var=API_URL", "--value={{store-api/api}}"]
+	},
+	{
+		"type": "add_binding_scan_apply",
+		"argv": ["add", "binding", "store-front", "--scan", "--apply", "--json"]
+	},
+	{
+		"type": "rm_binding",
+		"argv": ["rm", "binding", "store-front/web", "API_URL"]
+	},
+	{
+		"type": "check_project",
+		"argv": ["check", "project", "store-api", "--pull", "--no-smoke", "--json"]
+	},
+	{
+		"type": "add_workspace",
+		"argv": ["add", "workspace", "store-front", "store-front", "store-api", "--json"]
+	},
+	{
+		"type": "rm_workspace_project",
+		"argv": ["rm", "workspace", "store-front", "signals"]
+	},
+	{
+		"type": "rm_workspace",
+		"argv": ["rm", "admin"]
+	},
+	{
+		"type": "add_worktree",
+		"argv": ["add", "worktree", "store-front/wrk2", "--pull", "--json"]
+	},
+	{
+		"type": "rm_worktree",
+		"argv": ["rm", "worktree", "store-front/wrk1"]
+	},
+	{
+		"type": "rename_worktree",
+		"argv": ["rename", "worktree", "store-front/wrk1", "checkout", "--json"]
+	},
+	{
+		"type": "duplicate_worktree",
+		"argv": ["duplicate", "store-front/main", "wrk3", "--json"]
+	},
+	{
+		"type": "add_override",
+		"argv": ["add", "override", "store-front/main", "API_URL=x"]
+	},
+	{
+		"type": "rm_override",
+		"argv": ["rm", "override", "store-front/main", "API_URL"]
+	},
+	{
+		"type": "setup_rerun",
+		"argv": ["setup", "store-front/wrk1", "store-api", "--no-smoke", "--json"]
+	},
+	{
+		"type": "verify",
+		"argv": ["verify", "store-front/main", "store-front", "--json"]
+	},
+	{
+		"type": "dev_start",
+		"argv": ["dev", "start", "store-front/main", "--proxy", "--json"]
+	},
+	{
+		"type": "dev_stop",
+		"argv": ["dev", "stop", "store-front/main"]
+	},
+	{
+		"type": "dev_restart",
+		"argv": ["dev", "restart", "store-front/main", "--json"]
+	},
+	{
+		"type": "import_project",
+		"argv": [
+			"import",
+			"-",
+			"project",
+			"store-api",
+			"--path=/Users/dev/code/store-api",
+			"--replace",
+			"--name=store-api-2",
+			"--setup=pnpm install",
+			"--env-cmd=make env",
+			"--json"
+		]
+	},
+	{
+		"type": "import_workspace",
+		"argv": [
+			"import",
+			"-",
+			"workspace",
+			"store-front",
+			"--pull",
+			"--no-install",
+			"--no-smoke",
+			"--json"
+		]
+	},
+	{
+		"type": "import_all",
+		"argv": ["import", "-", "--all", "--replace", "--json"]
+	},
+	{
+		"type": "clean",
+		"argv": ["clean", "--json"]
+	},
+	{
+		"type": "trash_empty",
+		"argv": ["trash", "empty", "--json"]
+	},
+	{
+		"type": "config_set",
+		"argv": ["config", "set", "server_ip", "192.168.1.20"]
+	},
+	{
+		"type": "config_refresh",
+		"argv": ["config", "refresh"]
+	},
+	{
+		"type": "proxy_trust",
+		"argv": ["dev", "proxy", "trust", "--json"]
+	},
+	{
+		"type": "migrate",
+		"argv": ["migrate", "--yes", "--json"]
+	},
+	{
+		"type": "update",
+		"argv": ["update", "--json"]
+	},
+	{
+		"type": "server_restart",
+		"argv": ["voice", "restart", "--no-open"]
+	},
+	{
+		"type": "server_stop",
+		"argv": ["voice", "stop"]
+	},
+	{
+		"type": "uninstall",
+		"argv": ["uninstall", "--purge", "--yes"]
+	},
+	{
+		"type": "machines_add",
+		"argv": ["voice", "machines", "add", "build-box", "--name=Build box", "--json"]
+	},
+	{
+		"type": "machines_rm",
+		"argv": ["voice", "machines", "rm", "vm1", "--json"]
+	},
+	{
+		"type": "machines_rename",
+		"argv": ["voice", "machines", "rename", "vm1", "Build box", "--json"]
+	},
+	{
+		"type": "keys_set",
+		"argv": ["voice", "keys", "set", "soniox", "--json"]
+	},
+	{
+		"type": "discord_off",
+		"argv": ["voice", "discord", "off", "--json"]
+	},
+	{
+		"type": "uninstall",
+		"argv": ["uninstall", "--yes"]
+	},
+	{
+		"type": "dev_add",
+		"argv": ["dev", "add", "store-api", "--name=worker"]
+	},
+	{
+		"type": "add_worktree",
+		"argv": ["add", "worktree", "store-front/wrk2", "--json"]
+	},
+	{
+		"type": "env",
+		"argv": ["env", "store-front/main", "store-front", "--json"]
+	},
+	{
+		"type": "dev_add",
+		"argv": ["dev", "add", "store-api", "--name=http", "--rename=api", "--port=0"]
+	}
+]

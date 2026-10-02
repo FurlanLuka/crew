@@ -77,6 +77,8 @@ func DetectSetup(dir string) []SetupStep {
 		steps = append(steps, SetupStep{Name: "pnpm install", Command: "pnpm install --silent"})
 	case has("yarn.lock"):
 		steps = append(steps, SetupStep{Name: "yarn install", Command: "yarn install --silent"})
+	case has("bun.lock"), has("bun.lockb"):
+		steps = append(steps, SetupStep{Name: "bun install", Command: "bun install --silent"})
 	case has("package-lock.json"):
 		steps = append(steps, SetupStep{Name: "npm ci", Command: "npm ci --silent"})
 	case has("package.json"):

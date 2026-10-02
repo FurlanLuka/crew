@@ -238,3 +238,79 @@ func freePort(t *testing.T) int {
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
 }
+
+// A first start: the proxy writes its CA a moment after the probe begins.
+// The probe waits for it rather than giving up on the missing file.
+func TestTLSAnswers_CAWrittenAfterTheFirstLook(t *testing.T) {
+	setupTestConfig(t)
+	srv := httptest.NewUnstartedServer(&proxyHandler{domain: testDomain, port: 80, httpsPort: 443})
+	srv.TLS = TLSConfig(testDomain, time.Now)
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	if _, err := os.Stat(TLSFilesFor(testDomain).CA); err == nil {
+		t.Fatal("the CA exists before the proxy wrote it")
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		EnsureTLS(testDomain, time.Now())
+	}()
+
+	if !tlsAnswers(portOf(t, srv), testDomain, 3*time.Second) {
+		t.Error("a CA written after the first look was never read")
+	}
+}
+
+// A start warns only once the wait is over: a proxy that answers on a later
+// look is up, one that never does is named with the port's likely holder.
+func TestTLSWarning(t *testing.T) {
+	setupTestConfig(t)
+	looks := 0
+	if got := tlsWarning(8443, func() bool { looks++; return looks == 3 }, 2*time.Second); got != "" {
+		t.Errorf("answered on the third look, warned anyway: %q", got)
+	}
+
+	looks = 0
+	got := tlsWarning(8443, func() bool { looks++; return false }, 0)
+	if !strings.Contains(got, "proxy HTTPS is not answering on :8443 — another server holds the port?") {
+		t.Errorf("never answered: %q", got)
+	}
+	if looks != 1 {
+		t.Errorf("no wait: %d looks, want 1", looks)
+	}
+
+	if got := tlsWarning(0, func() bool { t.Error("HTTPS off was probed"); return false }, time.Second); got != "" {
+		t.Errorf("HTTPS off: %q", got)
+	}
+}
+
+// A proxy launched just now writes its CA and binds a moment after the start
+// looks: the start waits for it. One kept running is looked at once — a wait
+// there would only delay a warning that is already true.
+func TestProxyTLSWarning_WaitsOnlyForALaunchedProxy(t *testing.T) {
+	setupTestConfig(t)
+	prev := tlsStartWait
+	tlsStartWait = 3 * time.Second
+	t.Cleanup(func() { tlsStartWait = prev })
+
+	srv := httptest.NewUnstartedServer(&proxyHandler{domain: testDomain, port: 80, httpsPort: 443})
+	srv.TLS = TLSConfig(testDomain, time.Now)
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		EnsureTLS(testDomain, time.Now())
+	}()
+
+	if got := ProxyTLSWarning(testDomain, portOf(t, srv), true); got != "" {
+		t.Errorf("a launched proxy that answered within the wait was warned about: %q", got)
+	}
+
+	began := time.Now()
+	got := ProxyTLSWarning(testDomain, freePort(t), false)
+	if !strings.Contains(got, "proxy HTTPS is not answering") {
+		t.Errorf("a kept proxy that never answers: %q", got)
+	}
+	if took := time.Since(began); took >= time.Second {
+		t.Errorf("a kept proxy was waited on for %s", took)
+	}
+}

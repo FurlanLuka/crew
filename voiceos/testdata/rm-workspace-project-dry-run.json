@@ -1,0 +1,25 @@
+{
+  "checkouts": [
+    {
+      "ref": "store-front/main",
+      "project": "store-api",
+      "path": "/w/store-front/main/store-api",
+      "direct": false,
+      "missing": false,
+      "uncommitted": 1,
+      "commits": 0,
+      "size_bytes": 104857600
+    },
+    {
+      "ref": "store-front/wrk1",
+      "project": "store-api",
+      "path": "/w/store-front/wrk1/store-api",
+      "direct": false,
+      "missing": true,
+      "uncommitted": 0,
+      "commits": 0,
+      "size_bytes": 0
+    }
+  ],
+  "last": false
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "var": "STORE_API_URL",
+    "server": "",
+    "value": "{{store-api/api}}",
+    "previews": [
+      {
+        "ref": "store-front/main",
+        "value": "http://localhost:54012",
+        "resolved": true,
+        "running": true
+      },
+      {
+        "ref": "store-front/wrk1",
+        "value": "http://localhost:54031",
+        "resolved": true,
+        "running": false
+      }
+    ]
+  },
+  {
+    "var": "SIGNALS_URL",
+    "server": "web",
+    "value": "ws://{{signals.host}}/rtc",
+    "previews": [
+      {
+        "ref": "store-front/main",
+        "value": "",
+        "resolved": false,
+        "running": false,
+        "detail": "signals has no dev server"
+      }
+    ]
+  }
+]

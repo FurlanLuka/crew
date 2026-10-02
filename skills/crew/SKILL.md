@@ -2,10 +2,10 @@
 name: crew
 description: >
   Complete CLI reference for crew — projects, workspaces, worktrees, dev servers on stable
-  per-worktree ports, env bindings, launching Claude and editors, Voice OS (crew voice, its
-  keys, remote machines), moving to another machine, disk housekeeping. Use whenever the user
-  mentions crew, a workspace, a worktree, dev servers, bindings, Voice OS, or wants Claude or
-  an editor opened on a checkout.
+  per-worktree ports, env bindings, launching Claude and editors, crew's server (the web
+  page: Set up and Voice OS, its keys, remote machines), moving to another machine, disk
+  housekeeping. Use whenever the user mentions crew, a workspace, a worktree, dev servers,
+  bindings, Voice OS, crew's page, or wants Claude or an editor opened on a checkout.
 user-invocable: true
 ---
 
@@ -16,16 +16,18 @@ command. List commands print tab-separated rows; `--json` works on
 any command, in any position. `crew help <cmd> [<sub>]` is authoritative; `crew help --json`
 dumps the whole tree. Never guess state — run the command.
 
-Every action has a non-interactive form; nothing needs the TUI. The full-screen views are
-the **user's to run**, not yours — `crew workspace` (enter opens a workspace page with its
-projects and worktrees; `n` is a wizard: name → projects → create, landing on the worktree
-page), `crew project` (enter opens a project
-page with install, servers, bindings and the check edited in place; `a` is a wizard: source →
-install → servers → bindings → check — every row and step is a command below), `crew config` (bare),
-`crew launch`, `crew dev tui`, `crew debug` (bare), `crew export` without flags, `crew import`
-without a mode — and so are the commands that replace the process (`crew claude`, `crew open`;
-bare `crew fix` prints when there is no terminal). Everything below is scriptable, and
-`--json` works everywhere; under `--json` progress goes to stderr and stdout is the document.
+Every action has a non-interactive form. **Configuration lives on crew's page in the
+browser**: bare `crew` starts crew's server when needed and opens it — Home, then **Set up**
+(projects, workspaces, worktrees, machines, settings, import, a Setup with Claude chat per
+machine) or **Voice OS**. Every form on that page runs one of the commands below and shows
+it, so anything the user did there you can do here. The terminal keeps one interactive view,
+for launching: `crew launch` / `crew <ref>` / `crew dev tui` (pick a worktree, then Claude or
+an editor on it) — the **user's to run**, not yours, like the commands that replace the
+process (`crew claude`, `crew open`; bare `crew fix` prints when there is no terminal) and
+bare `crew debug` (follows the log). `crew workspace` and `crew project` print the tables
+and point at the page; bare `crew config` is `config show`. Everything below is scriptable,
+and `--json` works everywhere; under `--json` progress goes to stderr and stdout is the
+document.
 
 **If you are inside a crew worktree** (`$CREW_REF` is set, or the session opened with a
 "## crew" section in its first message): that ref is yours. Servers, env, logs and checks go
@@ -51,10 +53,15 @@ through crew — never start a server by hand, never `-f`.
 ## 2. Read state
 
 ```
-crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>
+crew                                                       start crew's server if needed, open its page (the user's)
+crew [--no-open]                                           prints the link instead: crew is running: <url>
+crew workspace                                             the workspaces table + "configure in the browser: run crew"
+crew project                                               the projects table + the same line
+crew ls workspaces                                         <name>\t<n> projects\t<worktree>,<worktree>   --json adds projects[{name, mode}], wires[{var, from, to, ok}]
 crew ls worktrees [<workspace>] [--size]                   <workspace>/<worktree>\t<path>\t[<size>\t][dev|installing][\t<recorded failure>]   --json adds issues[], installing
 crew ls projects                                           <name>\t<path>\t<remote|->
-crew ls bindings <project> [--check=<workspace>[/<worktree>]]   <var>\t<server|->\t<template>[\t<resolved value>]
+crew ls bindings <project> [--check=<workspace>[/<worktree>]] [--preview]   <var>\t<server|->\t<template>[\t<resolved value>][\t→ <preview>]
+crew ls bases <workspace>                                  <project>  <base>  <n behind origin/<base>|up to date>[   (checkout is on <branch>)]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
 crew show <workspace>[/<worktree>]                         <name>\t<path>\t<worktree|direct>
 crew dev status [<workspace>[/<worktree>]]                 <workspace>/<worktree>\t<server>\t<port>\t<url>
@@ -62,25 +69,30 @@ crew dev show <project>                                    <server-name>\t<port>
 crew env <workspace>[/<worktree>] <project>[/<server>]     <VAR>=<value>
 crew ps [--json]                                           <kind>\t<pid>\t<session|cwd>\t<command>
 crew trash [empty]                                         <path>\t<size>\t<n> entries\t<note>  |  <path>\tempty
+crew config [show|set|refresh]                             bare: show
 crew config show                                           <key>\t<value>
 crew dev proxy [status|trust [--install]|stop]            <up|up (not listening)|down>\t<domain>\t<port>\t<status url>\thttps <up|not listening|off>\t<https port>
 crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
-crew voice [start|stop|restart|status|keys [set <anthropic|soniox>]] [--no-open]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
-crew voice logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]
+crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
+crew server start [--no-open]      crew server stop      crew server restart [--no-open]      crew server status
+crew server keys [status] | crew server keys set <anthropic|soniox>   <name>\t<missing|set (<file|env>)>\t<path>
+crew server keys status
+crew server logs [--since=] [--until=] [--cat=<c,…>] [--level=<debug|info|warn|error>] [--grep=] [--lines=<n>] [--machine=<id|name|main,…>] [--exclude=<…>] [--json]
                                                          <ts>\t<machine>\t<level>\t<cat>\t<msg>\t<other fields as JSON>
-crew voice debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]   <n>\t<at>\t<view>\t<text>
-crew voice debug-notes show <n> [--around=30s] [--json]   debug note <n>\t<at>\t<view>, the note's parts, then log <from> … <to>: and the log rows
-crew voice notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]   <workspace>\t<date time>\t<text>
-crew voice remote [status|stop]                            <up|down>\t<version>\t<busy|idle>\t<socket>
-crew voice machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>   <id>\t<name>\t<host>\t<status>
-crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off
-crew voice discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
+crew server debug-notes [--since=] [--until=] [--grep=] [--lines=<n>] [--json]   <n>\t<at>\t<view>\t<text>
+crew server debug-notes show <n> [--around=30s] [--json]   debug note <n>\t<at>\t<view>, the note's parts, then log <from> … <to>: and the log rows
+crew server notes [<workspace>|--all] [--since=] [--grep=] [--lines=<n>] [--json]   <workspace>\t<date time>\t<text>
+crew server remote [status|stop]                            <up|down>\t<version>\t<busy|idle>\t<socket>
+crew server machines [ls] | add <ssh host> [--name=<name>] | rm <id> | rename <id> <name>   <id>\t<name>\t<host>\t<status>
+crew server machines ls      crew server machines add <ssh host> [--name=<name>]      crew server machines rm <id>      crew server machines rename <id> <name>
+crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>] | status | off
+crew server discord setup [--guild=<id>] [--channel=<name|id>] [--user=<id>]
                                                          server: <name> (<id>) / you: <who> (<id>) / channel: <name> (<id>) / ready: Voice OS joins it while it runs
-crew voice discord status [--json]                         <field>\t<value>
-crew voice discord off                                     removed\t<path>
-crew voice dev push [--dry-run] | status
-crew voice dev push [--dry-run]                            <machine>\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …
-crew voice dev status [--json]                             <version> from <source>: <phase> / <machine>\t<goos>_<goarch>\t<state>
+crew server discord status [--json]                         <field>\t<value>
+crew server discord off                                     removed\t<path>
+crew server dev push [--dry-run] | status
+crew server dev push [--dry-run]                            <machine>\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …
+crew server dev status [--json]                             <version> from <source>: <phase> / <machine>\t<goos>_<goarch>\t<state>
 ```
 
 - `ls worktrees` is "what do I have checked out". `--size` walks every file — slow on a
@@ -91,7 +103,8 @@ crew voice dev status [--json]                             <version> from <sourc
 - `dev status` with no ref covers every worktree; a bare workspace means all its worktrees. A
   `!` line on stderr means a proxied worktree's proxy is down.
 - Logs print and return: `dev logs <ref> <server> [--lines=N]`, `debug --tail=N`. Never `-f`
-  or bare `debug` — they follow forever and you would hang.
+  or bare `debug` — they follow forever and you would hang. `dev logs` and `setup logs` take
+  `--json`: `{ref, server|project, lines: []}`, the lines clean of terminal escape sequences.
 - `debug --tail=N` is the last N lines of crew's own log (every git/tmux/install command it
   ran, with errors); `--json` parses them into `{at, category, message}`. Bare `debug` follows.
 
@@ -99,11 +112,16 @@ crew voice dev status [--json]                             <version> from <sourc
 
 ```
 crew add project <name> <url> [--setup=<cmd>] [--env-cmd=<cmd>]                  clones into ~/.crew/projects/<name>
+crew add project <url> [--setup=<cmd>] [--env-cmd=<cmd>]                         the same, named by the repo (…/store-api.git → store-api)
+crew add project --scan                                                          --scan: <name>\t<path>\t<remote|->\t<known|new>
 crew add project <name> --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]           adopts a checkout you already have
 crew add project <name> [--setup=<cmd>] [--env-cmd=<cmd>] [--path=<dir>]         re-run on an existing project updates it
 crew rm project <name> [--keep-clone]                          the clone crew made goes to the trash; an adopted path is left alone
 crew check project <name> [--pull] [--no-smoke] [--wait]        one runner; crew setup status check/<name> watches it
+crew check project <name> [--status]
+crew check project <name> --status                               --status: <project>\t<none|running|passed|failed>[\t<verdict>][\t<when>][\t<recorded failure>]
 crew dev add <project> --name=<name> [--port=<port>] --cmd=<command> [--dir=<subdir>]     no --port: a process that does not listen — no $PORT, no URL, smoke = stays alive
+crew dev add <project> --name=<new> --rename=<old> [--port=<port>] [--cmd=<command>] [--dir=<subdir>]   rename in place; scoped bindings follow; --port=0 clears the port (does not listen)
 crew dev rm <project> <server-name>
 crew dev setup <project> [--apply --port=<port>]               <detected|added>\t<name>\t<command>
 ```
@@ -133,7 +151,7 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
   failure every worktree would hit.
 - `--setup` is the install command for a fresh checkout when the lockfile alone is not the
   answer (`make sync` for a repo that also pulls model weights). Without it crew detects
-  `uv sync`, `pnpm install`, `npm ci` or `yarn` from the lockfile; `mise install` runs first
+  `uv sync`, `pnpm install`, `yarn`, `bun install` (`bun.lock`/`bun.lockb`) or `npm ci` from the lockfile; `mise install` runs first
   either way.
 - `--env-cmd` is the command that **writes** a fresh checkout's env files — `make get-env`,
   `npm run get-env`, whatever pulls from sops or a vault. Runs in the checkout after the
@@ -147,12 +165,28 @@ crew dev setup <project> [--apply --port=<port>]               <detected|added>\
   (it re-installs only what failed); `crew setup <ref> <project>` is the refresh. Not run
   on a direct-mode member or with `--no-install`.
 - `--path` on an existing project: the repo moved. Worktrees already made keep working.
+- **`add project --scan`** lists the checkouts already on this machine — under `~/code`,
+  `~/projects`, `~/dev`, `~/src`, `~/Developer`, `~/work`, `~/repos`, three levels deep;
+  never `Documents`, `Desktop` or `Downloads` (macOS would ask the user), hidden folders,
+  `node_modules` or git worktrees — with each one's remote and `known` when the pool has it
+  (same path, or the same repo by another URL). It lists, it never adds: pick with the user,
+  then `crew add project <name> --path=<dir>`. `--json`: `[{name, path, remote, known}]`.
+- `crew check project <name> --status` is the check at rest without starting one: `none`,
+  `running`, `passed` (verdict `passed`, or `install only` when it ran `--no-smoke`) or
+  `failed` with its record. `--json`: `{project, state, verdict, at, smoked, health,
+  projects}`. `crew setup status check/<name>` still shows a passed check's ✓ table too.
 - `dev setup` detects one server from `package.json` (`dev`, else `start`) and prints it;
   `--apply --port=<p>` records it. It cannot know the port; nothing detected is an error
   naming the `dev add` line to run instead. `dev add` is the full form.
 - A server without `--port` is a process that does not listen (a worker, a queue consumer):
   crew runs it in its window with no `PORT`, hands out no URL, and a smoke only checks it
   stays alive; a binding aimed at it is unresolved (`has no port`).
+- `dev add --name=<new> --rename=<old>` renames a server in place — the bindings scoped to
+  it follow (an `rm` + `add` would drop them), and every binding in the pool whose value
+  names it (`{{<project>/<old>}}`, `.host`, `.port`, the old `{{url:…}}` spelling) is
+  rewritten to the new name, named on a second line (`Rewrote … in: <project> <VAR>[
+  (<server>)], …`); the old port, command and dir stand unless given. A taken new name is
+  refused.
 - `dev add` on an existing server name replaces it. The port is **reference only**: crew
   allocates a free port per worktree and passes it as `$PORT`; the configured one is what
   `.env` files and bindings are matched against.
@@ -182,9 +216,9 @@ in a binding: bindings are exported. `{{url:x}}` / `{{port:x}}` is the pre-2.1 s
 still valid, never written by crew.
 
 ```
-crew add binding <project>[/<server>] --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) | --scan [--apply]
+crew add binding <project>[/<server>] --var=<VAR> (--url=<proj[/server]> | --host=<proj[/server]> | --port=<proj[/server]> | --value=<template>) [--dry-run] | --scan [--apply]
 crew rm binding <project>[/<server>] <var>
-crew ls bindings <project> [--check=<workspace>[/<worktree>]]
+crew ls bindings <project> [--check=<workspace>[/<worktree>]] [--preview]
 crew add override <workspace>/<worktree> <VAR>=<value>
 crew rm override <workspace>/<worktree> <VAR>
 crew ls overrides <workspace>/<worktree>
@@ -197,6 +231,13 @@ crew run <workspace>[/<worktree>] <project>[/<server>] -- <command...>
   checkout and proposes bindings for values pointing at ports crew allocates; `--apply` adds
   the unambiguous ones. `--scan --json` is one row per proposal with a `status` of `proposed`,
   `already bound`, `ambiguous`, `added` or `failed`.
+- **`--dry-run` saves nothing**: the binding is checked the way the add would check it and
+  previewed in every worktree of the project — `<ref>\t<value | left alone — why>\t<running|stopped>`
+  (a stopped worktree resolves against the ports it gets back on its next start); a refused
+  draft exits 1 with the reason. `--json`: `{var, server, value, error?, previews: [{ref, value,
+  resolved, running, detail}]}`. `ls bindings <p> --preview` is the same for every binding the
+  project has, a `→` cell per row (`--json`: rows with `previews`). Use them before an add the
+  user has to trust.
 - **Scope.** The owner is `<project>` — every dev server of the project gets the var — or
   `<project>/<server>` — that server alone. A monorepo registered as one project with a
   `web` and a `worker` server binds `mono/web --var=STORE_API_URL --url=store-api` and
@@ -223,7 +264,8 @@ crew run <workspace>[/<worktree>] <project>[/<server>] -- <command...>
 
 ```
 crew add workspace <name> [<project> ...] [--direct] [--wait]     <project>\t<added|failed>\t<worktree|direct>\t<detail>
-crew rm workspace <workspace> <project>                            remove a project from a workspace
+crew rm workspace <workspace> <project> [--dry-run]                remove a project from a workspace
+                                                                   --dry-run: <ref>\t<project>\t<path>\t<n> uncommitted\t<n> commits not on the base\t<size>
 crew rm <workspace>                                                the whole workspace, every worktree
 crew add worktree <workspace>/<name> [--pull] [--no-install] [--no-smoke] [--wait]
 crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smoke] [--wait]
@@ -233,7 +275,8 @@ crew setup status <workspace>[/<worktree>] [--wait]               ✓|✗|▸ <p
 crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]
 crew verify <workspace>[/<worktree>] [<project>...] [--wait]
 crew fix <workspace>[/<worktree>] [--print]
-crew rm worktree <workspace>/<name>
+crew rm worktree <workspace>/<name> [--dry-run]
+crew ls bases <workspace>
 crew migrate [--dry-run] [--yes]
 ```
 
@@ -295,10 +338,9 @@ crew migrate [--dry-run] [--yes]
   issue **recorded on the worktree** (`checkout failed: x`, `install failed: x`, `server died:
   x/y`, or `N issues` in `crew ls worktrees`, `installing` in the dev column while runners
   are alive). A runner that vanished without a verdict (a killed window, a reboot) is
-  recorded as `interrupted` by whoever looks next — never a clean row. In a terminal,
-  creation lands on the worktree page, which shows the runners' table live and stays
-  **locked** to `f fix with Claude` / `v verify` (plus logs and a shell) while anything is
-  recorded or still installing; esc leaves the runners going.
+  recorded as `interrupted` by whoever looks next — never a clean row. Creation never opens
+  a TUI: it prints the runners' table as it stands, the `crew setup status` line, and crew's
+  page when the server runs — the page follows the runners live.
 - **Verify** finishes what is missing — checks out and installs a project that has no
   checkout, re-installs one whose install failed — and smokes every project, one runner per
   project; each clears or rewrites its own project's record. **Name the project you fixed**
@@ -321,6 +363,15 @@ crew migrate [--dry-run] [--yes]
   is fine — it is one more runner. `crew rm worktree` and `crew kill` stop the runners.
 - `duplicate` is a new worktree of the same projects with the source's overrides copied
   before its runners start; ports are never copied.
+- **Removals have a dry run.** `crew rm worktree <ref> --dry-run` and `crew rm workspace <ws>
+  <p> --dry-run` remove nothing and list each checkout the removal would take with what is in
+  it — uncommitted files, commits not on the base (the reflog keeps those, nothing else
+  does), size; a direct member is the canonical checkout and is kept. `--json`: `{checkouts:
+  [{ref, project, path, direct, missing, uncommitted, commits, size_bytes}], last}` — `last`
+  means it is the workspace's last worktree, which goes only with `crew rm <ws>`. Show the
+  user the cost before any removal.
+- `crew ls bases <ws>` is the base table on its own (fetched now; `--json`: `[{project, base,
+  current, behind, ahead, error?}]`, behind `-1` when unknown); `add worktree --pull` pulls.
 - `rm worktree` returns at once: the checkout is renamed into `~/.crew/trash` and deleted in
   the background (a full Xcode build can be 100+ GB), and its `crew/<ws>/<wt>/<project>`
   branch is deleted from the repo (commits not on the base stay in the reflog). Disk comes
@@ -328,7 +379,9 @@ crew migrate [--dry-run] [--yes]
   check/<project>` removes a kept check.
 - `migrate` moves pre-2.0 flat workspaces to the nested layout: backs up, prints the plan,
   moves checkouts with `git worktree move`. Always `--dry-run` first and show the user the
-  plan; `--yes` applies without the prompt.
+  plan; `--yes` applies without the prompt. `--dry-run --json` is the moves as
+  `[{workspace, ref}]` (`[]` when there is nothing to migrate), the plan text on stderr;
+  `--yes --json` is `{migrated: <n>}`, everything else on stderr.
 
 ## 6. Dev servers
 
@@ -339,7 +392,7 @@ crew dev restart <workspace>[/<worktree>] [--proxy]
 crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]
 crew dev check <workspace>[/<worktree>] [--wait]                  <project>/<server>\t<running|died|not listening>\t<port>\t<took>\t<detail>
 crew dev proxy [status|trust [--install]|stop]
-crew dev tui <workspace>[/<worktree>]                              the worktree page (TUI)
+crew dev tui <workspace>[/<worktree>]                              the launch page (TUI), as crew launch <ref>
 ```
 
 - Every server runs in a tmux window of session `crew-dev-<ws>--<wt>` with `PORT` set and
@@ -359,7 +412,8 @@ crew dev tui <workspace>[/<worktree>]                              the worktree 
   session that came up with nothing listening. Servers still start (warn, never block); the
   block is the one place a wrong URL is visible before it fails at runtime. `--json` gives
   the same as `{ref, urls, resolutions, conflicts, warnings, health}`.
-- `stop` and `status` with a bare workspace mean all its worktrees.
+- `stop` and `status` with a bare workspace mean all its worktrees. `crew dev stop` (and
+  `crew kill`) never stop crew's server — it is not a dev session.
 
 **Proxy on other devices.** `--proxy` runs one reverse proxy on `<server_ip>:<proxy_port>`
 (`crew config show`; default the Wi-Fi IP and 80, domain `<server_ip>.nip.io`). Its own page
@@ -396,7 +450,7 @@ crew edit <workspace>[/<worktree>] [--editor=cursor|code]   local editor on the 
 crew open <workspace>[/<worktree>]                       a shell in the worktree directory
 crew code <workspace>[/<worktree>]                       remote-SSH URL for Cursor/VS Code (needs ssh_host)
 crew start <workspace>[/<worktree>]                      print the orientation prompt
-crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the worktree page; bare, the workspace list
+crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the launch page; bare, a worktree picker
 ```
 
 - `claude` and `open` replace the crew process and refuse without a terminal — the user runs
@@ -406,53 +460,72 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the wo
   servers through crew.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
   say which they are in `crew help`.
+- The launch page (`crew launch <ref>`, `crew <ref>`) launches only: Editor + Claude, Claude
+  in terminal, the remote editor, a shell; its servers show read-only with `l` for logs, and
+  its last line names where to manage the worktree — crew's page (its link without the
+  sign-in token) and `crew dev start <ref>`.
 
-### Voice OS
+### crew's server: Set up and Voice OS
 
-`crew voice` runs Voice OS — a web and voice cockpit that holds one Claude Code session per
-worktree, streams their output, and takes permission answers, questions and dictation by
-voice or click. It runs in tmux session `crew-dev-os` on a remembered port and registers the
-proxy route `voice--os.<domain>`. Browsers only grant the microphone on localhost or HTTPS:
-the localhost link works on this Mac, and the proxy link is HTTPS whenever the proxy serves it,
-so it works on any device that trusts crew's CA (`crew dev proxy trust`). `crew voice` again
-reprints the link (sign-in is a cookie); `crew voice stop`
-ends it and its sessions, which resume on the next start. `os` is a reserved workspace name.
+`crew` (bare) starts crew's server when it is not running and opens its page in the browser
+— Home, then **Set up** or **Voice OS**; with no terminal, over SSH or with `--no-open` it
+prints the link (over SSH: the proxy's link whenever crew's proxy reaches the server — a
+`domain` set or the automatic `<server_ip>.nip.io` — else the
+`ssh -L <port>:localhost:<port> <host>` line to run on the user's computer). It needs tmux
+alone and never asks for keys (the page does). On a machine running `crew server remote` it
+says so and exits 0 — the main's page is where that machine is set up. `crew server`
+(bare: `status`) is the lifecycle: `start` (checks tmux and Claude Code, downloads Voice OS on
+the first run, asks at a terminal for a missing key), `stop`, `restart`, `status`, `keys`.
+`crew voice …` is the same command under its old name and works for good (bare `crew voice`
+still starts it); at a terminal it notes the new name. **Set up** is every configuration
+form — each runs a crew command from this reference and shows it — plus a per-machine
+**Setup with Claude** chat; **Voice OS** is the voice and web cockpit that holds one Claude
+Code session per worktree, streams their output, and takes permission answers, questions
+and dictation by voice or click.
 
-Every `crew voice` start (unless Voice OS already answers) first checks what Voice OS needs —
-tmux, and Claude Code (`claude` on PATH or `VOICEOS_CLAUDE_BIN`, handed to Voice OS as found) —
-and stops with the fix for anything missing (`--json`: `{"missing":[{name, why, install}]}`,
-exit 1). The first `crew voice` downloads
-Voice OS (25–40 MB) from the release matching this crew;
-`crew update` refreshes it once it is installed (a version stamp beside the binary says which
-release it is, so a failed refresh is retried by the next update) and never restarts a running one (`crew voice
-restart` picks the new version up). A dev build of crew has no release to take it from:
-`cd voiceos && bun run install-dev`. It needs two API keys, stored in `~/.config/crew-voiceos` (owner-only, never exported to a
-shell — an exported `ANTHROPIC_API_KEY` would bill every Claude Code session per token):
-Anthropic for the kernel and narrator, Soniox for speech. The first `crew voice` at a terminal
-asks for any missing one and checks it with the service. Without a tty, `crew voice keys` lists
-them (`<name>\t<set (file|env)|missing>\t<path>`, never a value) and `crew voice keys set
-<anthropic|soniox>` reads one from stdin — a rejected key is not saved, one that could not be
-checked (offline) is. `crew voice restart` picks a new key up.
+It runs in tmux session `crew-server` (outside `crew-dev-*`, so `crew dev stop` and `crew
+kill` never stop it; one started before the rename, `crew-dev-os`, is still recognised and
+stopped) on a remembered port, and registers the proxy route `voice--os.<domain>`. Browsers
+only grant the microphone on localhost or HTTPS: the localhost link works on this Mac, and the
+proxy link is HTTPS whenever the proxy serves it, so it works on any device that trusts
+crew's CA (`crew dev proxy trust`). `crew server start` again reprints the link (sign-in is a
+cookie); `crew server stop` ends it and its sessions, which resume on the next start. `os` is
+a reserved workspace name.
+
+`crew server start` (unless it already answers) first checks what Voice OS needs — tmux, and
+Claude Code (`claude` on PATH or `VOICEOS_CLAUDE_BIN`, handed to Voice OS as found) — and stops
+with the fix for anything missing (`--json`: `{"missing":[{name, why, install}]}`, exit 1).
+The first start downloads Voice OS (25–40 MB) from the release matching this crew; `crew
+update` refreshes it once it is installed (a version stamp beside the binary says which
+release it is) and never restarts a running one (`crew server restart` picks the new version
+up). A dev build of crew has no release to take it from: `cd voiceos && bun run install-dev`.
+Voice needs two API keys, stored in `~/.config/crew-voiceos` (owner-only, never exported to
+a shell — an exported `ANTHROPIC_API_KEY` would bill every Claude Code session per token):
+Anthropic for the kernel and narrator, Soniox for speech. The page asks for them; `crew
+server keys` lists them (`<name>\t<set (file|env)|missing>\t<path>`, never a value) and `crew
+server keys set <anthropic|soniox>` reads one from stdin — a rejected key is not saved
+(`Anthropic rejected that key — check it and try again.`), one that could not be checked
+(offline) is. A running server picks a new key up from the next words.
 
 **Other machines.** One Voice OS (the main) can drive the sessions of another machine's
 worktrees — a VM, a second computer — over SSH. On that machine (the remote), install crew and
-run `crew voice remote` once: it checks tmux and Claude Code, installs Voice OS and starts a
-daemon in tmux that outlives any SSH link (`crew voice remote status|stop`). On the main,
-`crew voice machines add <ssh host> [--name=<name>]` (or + Add machine on the page) records it
+run `crew server remote` once: it checks tmux and Claude Code, installs Voice OS and starts a
+daemon in tmux that outlives any SSH link (`crew server remote status|stop`). On the main,
+`crew server machines add <ssh host> [--name=<name>]` (or + Add machine on the page) records it
 in `~/.crew/voiceos/machines.json`, and a running Voice OS connects within a second with
-`ssh <host> … crew voice _attach` — BatchMode, so the host must be reachable with your keys and
+`ssh <host> … crew voice _attach` (the alias — an older remote knows only that name) — BatchMode, so the host must be reachable with your keys and
 its host key trusted (run `ssh <host>` once). How the machine is reachable is its own business:
 LAN, a VPN, an SSH config alias. Its sessions show under their machine (`vm1:store-front/main`,
 named aloud with the machine's name), its dev servers are its own crew's, and a dropped link
 never stops them: the main reconnects, catches up from a snapshot and says one recap line.
-`crew voice machines` lists `<id>\t<name>\t<host>\t<status>` (status as the running Voice OS
+`crew server machines` lists `<id>\t<name>\t<host>\t<status>` (status as the running Voice OS
 last saw it, `stopped` when it is not running). A machine is a main or a remote, never both.
 
 **Discord.** Optional: while Voice OS runs, a bot of the user's own joins one voice channel of
 their Discord server and takes only one person's voice there (the server owner, or `--user`).
 The user makes the bot (Discord Developer Portal → app → Bot → copy the token) and invites it
-with View Channel, Connect and Speak; then `crew voice discord setup` reads the token from stdin
-(hidden at a terminal — hand the user `pbpaste | crew voice discord setup`, never put the token
+with View Channel, Connect and Speak; then `crew server discord setup` reads the token from stdin
+(hidden at a terminal — hand the user `pbpaste | crew server discord setup`, never put the token
 in a command line or your reply). A rejected token is not saved; an accepted one goes to
 `~/.config/crew-voiceos/discord.key` (owner-only). It then decides the server (the only one the
 bot is in, else `--guild=<id>`), the voice (the server owner, else `--user=<id>`) and the channel
@@ -462,29 +535,29 @@ View Channel, Connect and Speak, and writes `~/.crew/voiceos/discord.json`
 decision is one line (`server: Private (155…)`, `you: the server owner (226…)`, `channel:
 General (155…)`, `ready: …`); a choice it cannot make lists `<id>\t<name>` and exits 1, and a
 rerun with nothing pasted reuses the saved token. With no token at all it prints the four setup
-steps. `crew voice discord status` prints `<field>\t<value>` rows — setup, token, server,
+steps. `crew server discord status` prints `<field>\t<value>` rows — setup, token, server,
 channel, owner, then what Voice OS last reported (connected, owner_in_channel, error, at) or
 `live\tVoice OS has not reported`; `--json`: `{set_up, token, config|null, live|null}`. `crew
-voice discord off` removes discord.json and the token (`removed\t<path>` per file).
+server discord off` removes discord.json and the token (`removed\t<path>` per file).
 
-**Trying a branch on every machine: `crew voice dev push`.** A remote refuses a main on another
-version, so a branch built from source can't meet your remotes until it is released. `crew voice dev
+**Trying a branch on every machine: `crew server dev push`.** A remote refuses a main on another
+version, so a branch built from source can't meet your remotes until it is released. `crew server dev
 push`, run in a crew checkout on any machine — the main or a remote — builds that checkout's crew
 and Voice OS for each OS and CPU your machines run (go and bun needed there), stamps them
 `dev-<commit>` (`-dirty-<hash>` with uncommitted ones, so each new change is a new version), and hands the push to the main, where it runs
 detached in tmux `crew-voice-push`: restarting Voice OS, or the Claude session that asked, never ends
 it. It copies both binaries everywhere and checks them (any failed copy → nothing installed), then
 installs and restarts each machine — the other remotes, the main, the machine you pushed from last.
-A machine out of reach is skipped and named. It returns at once; `crew voice dev status` (from any
+A machine out of reach is skipped and named. It returns at once; `crew server dev status` (from any
 machine) follows it: `<version> from <source>: <phase>`, then `<machine>\t<goos>_<goarch>\t<state>`.
 `--dry-run` lists the machines and targets only. `crew update` on a machine goes back to the release.
 The first push must start from the main: a remote's push needs a main that already runs dev push.
 
-**Debugging Voice OS: logs, debug notes, notes.** Read these through crew, never by grepping
+**Debugging the server and Voice OS: logs, debug notes, notes.** Read these through crew, never by grepping
 the files (the log rotates at 20 MB into `voiceos.log.1` … `.5`, and a remote's log is on
 another machine):
 
-- `crew voice logs` — the log from every machine at once, merged by time, newest `--lines`
+- `crew server logs` — the log from every machine at once, merged by time, newest `--lines`
   (80) printed oldest first. Filters: `--since`/`--until` (a span back `10m`/`2h`/`3d`, a clock
   time `10:02` — one still ahead means yesterday — or an ISO time; converted to UTC where you
   typed it), `--cat=router,kernel`, `--level=warn` (and above), `--grep` (the message and field values, any case),
@@ -495,25 +568,25 @@ another machine):
   only when no machine answered. `--machine=main` is the fast look, no SSH. On a remote it asks
   the main through the daemon's link and prints what the main would; with the main not connected
   it prints its own log after `! the main is not connected; showing only this machine's logs`
-  (`! restart the remote daemon with crew voice remote` for a daemon from before this).
+  (`! restart the remote daemon with crew server remote` for a daemon from before this).
   `--json`: `{"lines":[{ts,machine,level,cat,msg,fields}],"unreachable":[{machine,name,reason}]}`.
-- `crew voice debug-notes` — what the developer flagged (`n` is the note's line in
+- `crew server debug-notes` — what the developer flagged (`n` is the note's line in
   `debug-notes.jsonl` and survives filters); `debug-notes show <n>` prints the whole note (said,
   the kernel's words, heard here, sessions, asks, spoken) and then the main's log within
   `at ± --around` (30s), saying so when that stretch has rotated out. `--json`:
   `{"notes":[{n,at,view,text}]}` / `{"note":{…},"lines":[…]}`.
-- `crew voice notes [<workspace>|--all]` — the developer's own notes (bare: the general ones; a
+- `crew server notes [<workspace>|--all]` — the developer's own notes (bare: the general ones; a
   workspace any way Voice OS names it). `--json`: `{"notes":[{workspace,at,text}]}`.
 
 Notes and debug notes live on the main; on a remote they come through the link and fail with the
 reason (exit 1) when the main is not connected. Unknown flags are an error. Start from a debug
-note: `crew voice debug-notes`, then `show <n>`, then widen with `crew voice logs --since=… --until=…`.
+note: `crew server debug-notes`, then `show <n>`, then widen with `crew server logs --since=… --until=…`.
 
 ## 8. Moving to another machine
 
 ```
-crew export [<file>] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json
-crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
+crew export [<file>|-] [--all | --projects=<a,b> [--workspaces=<x,y>]]     default file ./crew-export.json; - is stdout
+crew import <file>|- [--plan | --all [--replace] [--pull] [--no-install] [--no-smoke] [--wait] | project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>] | workspace <name> [--pull] [--no-install] [--no-smoke] [--wait]]
                                                          <project|workspace>\t<name>\t<status|outcome>\t<detail>
 ```
 
@@ -522,13 +595,10 @@ crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smo
   overrides. A project whose checkout has no remote still exports, as config only: `export`
   says so (`<name> has no git remote — it cannot be cloned on another machine`; `--json`
   lists them under `no_remote`).
-- Without flags `export` is a picker: tick projects, then the workspaces those ticks fully
-  cover. With `--projects`, every workspace named must be covered by them.
-- Bare, `import` is a wizard the user drives: `y` clone into `~/.crew/projects/<name>`, `p`
-  adopt a checkout already on this machine (one field, the path), `e` edit name/setup/env,
-  `n` skip, `r` replace one already here; then `y` creates each workspace the way `crew add
-  worktree` does — the card shows the runners' table until they are done. Every `y` is
-  applied at once; `esc` keeps what was done.
+- Without `--projects`, `export` takes everything; with it, every workspace named must be
+  covered by them. `-` as the file writes the bundle to stdout (narration on stderr) — how
+  the page downloads it; `crew import -` reads one from stdin.
+- Bare `import` is the plan (`--plan`); crew's page walks the same plan item by item.
 - **You drive it with modes.** `--plan` first: one row per item —
   `project\t<name>\texists|other remote|clone|blocked|missing\t<detail>` (`exists` = here
   under the same remote, nothing to do; `other remote` = the name is here but its checkout
@@ -538,7 +608,9 @@ crew import <file> [--plan | --all [--replace] [--pull] [--no-install] [--no-smo
   the hint) and `workspace\t<name>\texists|ready|needs\t<members>`. Then per item:
   `crew import <file> project <name> [--path=<dir>] [--replace] [--name=<new>] [--setup=<cmd>] [--env-cmd=<cmd>]`
   prints the same row with the outcome — `imported`, `imported (cloned)`, `replaced`,
-  `replaced (cloned)` — and the path; a name already in the pool needs `--replace`: same
+  `replaced (cloned)` — and the path; `--name=<new>` onto a name already in the pool is
+  refused before any clone, and a rename prints `! <who>'s <VAR> point at <old> — left alone
+  until re-bound` for the bundle's bindings it leaves behind; a name already in the pool needs `--replace`: same
   remote swaps the config and keeps the checkout, another remote clones fresh (refused
   while a workspace still has the project — its worktrees hang off the old checkout). A
   repo you already have on disk is cloned a second time unless you `--path` it — that is
@@ -567,7 +639,7 @@ crew ps [--json]
 crew kill [--dry-run]
 crew config show | crew config set <key> <value> | crew config refresh
 crew debug [--tail=<n>]                                  bare: follow the log; --tail prints and returns
-crew update
+crew update [--check]                                   --check: crew v<current> — v<latest> is available (crew update) | up to date (latest v<latest>) | crew (dev build[ <sha>]) — crew update installs the latest release (v<latest>)
 crew uninstall [--purge] [--yes]
 crew help [<command>] [<subcommand>] [--json]
 ```
@@ -584,7 +656,12 @@ crew help [<command>] [<subcommand>] [--json]
   `--dry-run` first when the user asks what it would do.
 - `ps` lists crew's tmux sessions and processes that leaked out of them; `kill` stops every
   session and reclaims the leaks (never anything with a live parent) and prints how to
-  restore. `--dry-run` first.
+  restore — crew's server is listed as `kept` and never stopped. `--dry-run` first.
+- `update --check` installs nothing: `--json` `{current, latest, available, dev, error?, line}` (`line` is the text form);
+  offline is `available: false` with the error, not a failure. A dev build is never
+  `available` and says `dev: true` — `crew update` replaces it with the latest release; a crew ahead of the
+  latest is up to date (`update` never downgrades). `update --json` is `{from, to,
+  updated}`. `update` never restarts crew's server.
 - `config set` keys: `server_ip`, `ssh_host`, `proxy_port`, `proxy_https_port`, `domain`. A
   changed `server_ip`, `domain`, `proxy_port` or `proxy_https_port` takes effect on the next `dev start|restart --proxy`. `refresh`
   rewrites the managed tmux config.
@@ -601,7 +678,8 @@ crew help [<command>] [<subcommand>] [--json]
 3. `crew setup status store-front/wrk3` every ten seconds or so (or `--wait` once). A `✗`
    row while others still run: act on it now — `crew fix store-front/wrk3 --print`, fix,
    `crew verify store-front/wrk3 <project>`. Relay the final table.
-4. Tell them: `crew launch store-front/wrk3`, or `crew claude store-front/wrk3`.
+4. Tell them: `crew launch store-front/wrk3`, or `crew claude store-front/wrk3` — or to
+   follow it on crew's page (`crew`).
 
 **"Why is service X talking to the wrong thing?"**
 1. `crew env <ws>/<wt> <project>` — what resolved, what was left alone.
@@ -638,7 +716,7 @@ crew help [<command>] [<subcommand>] [--json]
    <ws>/<wt> --print` for all of it at once; fix, `crew dev restart`, check again.
 
 **"Set crew up on my other machine"**
-1. Here: `crew export ~/Desktop/crew.json --all` (or the picker, user-run).
+1. Here: `crew export ~/Desktop/crew.json --all` (or Export on crew's page).
 2. There: `crew import ~/Desktop/crew.json --plan` — read every row. Then per project:
    `clone` → `crew import … project <name>` (it clones into `~/.crew/projects/<name>`; if
    the user already has that repo checked out, `--path=<dir>` adopts it instead);
@@ -658,8 +736,14 @@ crew help [<command>] [<subcommand>] [--json]
 3. `crew ls worktrees --size` — which worktree; build output inside a checkout is what grows.
 4. `crew rm worktree <ws>/<wt>` for one that is done — returns at once, clears in background.
 
+**"Which of my repos are in crew?"** — `crew add project --scan`; each `new` row is one
+`crew add project <name> --path=<dir>` away — ask before adding.
+
+**"Remove that worktree"** — `crew rm worktree <ws>/<wt> --dry-run`, tell the user what is
+uncommitted or unmerged, then (confirmed) `crew rm worktree <ws>/<wt>`.
+
 **"Add this repo and make sure it runs"** (a URL, or a pick from `gh repo list`)
-1. `crew add project <name> <url> [--setup=…] [--env-cmd=…]` — clones to `~/.crew/projects/<name>`
+1. `crew add project <url> [--setup=…] [--env-cmd=…]` (or `<name> <url>`) — clones to `~/.crew/projects/<name>`
    (a checkout the user already has: `--path=<dir>` instead).
 2. Read the clone's README / Makefile / package.json / pyproject / mise.toml; `crew dev add
    <name> --name=… --port=… --cmd=…` per server, `--setup` / `--env-cmd` when the lockfile
@@ -677,5 +761,7 @@ crew help [<command>] [<subcommand>] [--json]
 - Destructive, confirm first: `rm <ws>`, `rm worktree`, `rm project` (crew's clone goes too),
   `uninstall --purge`, `trash empty`, `clean` (dry-run first), `migrate` (dry-run and show
   the plan), `kill`.
-- TUI commands and process-replacing ones (`claude`, `open`, bare `fix`) are for the user to
-  run; give them the exact line. Everything they do has a flag form above — use that.
+- Bare `crew`, the launch TUI and process-replacing commands (`claude`, `open`, bare `fix`)
+  are for the user to run; give them the exact line. Everything the page and the TUI do has
+  a flag form above — use that.
+- Before a removal, its `--dry-run`: say what would go.
