@@ -103,6 +103,7 @@ const TOOLS_THAT_TAKE_WORDS: ToolName[] = [
 	'switch_view',
 	'go_back',
 	'play_missed',
+	'status_update',
 	'deactivate',
 	'mute',
 	'hands_free',

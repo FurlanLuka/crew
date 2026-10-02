@@ -544,6 +544,8 @@ export type Action =
 	| { type: 'set_languages'; languages: string[] }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
+	// A status update said aloud covered these sessions: their waiting updates are heard.
+	| { type: 'recap_heard'; refs: string[] }
 	// Voice OS asks "Switch to X?" aloud (a kernel tool found X only announced), or with a kind
 	// "X isn't active. Activate it?" or "X is working. Deactivate anyway?".
 	| {

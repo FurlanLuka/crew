@@ -1,7 +1,7 @@
 import { followSends } from './sends.js';
 import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
-import { addMeanwhile, playMeanwhile, settleMeanwhile } from './meanwhile.js';
+import { addMeanwhile, dropMeanwhileFor, playMeanwhile, settleMeanwhile } from './meanwhile.js';
 import { defaultLanguages, toLanguages } from '../shared/languages.js';
 import {
 	decideGoBack,
@@ -997,6 +997,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'play_meanwhile':
 			return playMeanwhile(state, stamped.at);
+
+		case 'recap_heard':
+			return withoutEffects(input.refs.reduce((heard, ref) => dropMeanwhileFor(heard, ref), state));
 
 		case 'discord_presence':
 			return withoutEffects({ ...state, discord: input.presence });

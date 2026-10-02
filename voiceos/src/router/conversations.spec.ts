@@ -1069,6 +1069,50 @@ describe('conversations', () => {
 		});
 	});
 
+	it('"status update" → a recap of what waits, said now; the meanwhile line never repeats it', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'checkout-api/main',
+			kind: 'done',
+			about: 'all retry tests pass',
+		});
+
+		convo.script([toolUse('t1', 'status_update', { ref: null, minutes: null })]);
+		await convo.say('Give me a status update.');
+
+		expect(convo.heard).toEqual([
+			'> Give me a status update.',
+			'checkout api, main: all retry tests pass.',
+		]);
+		expect(convo.store.state.meanwhile).toEqual([]);
+
+		await convo.wait(60_000);
+		expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
+	});
+
+	it('"status update on checkout" → only checkout is heard; store front\'s update still comes in the meanwhile line', async () => {
+		const convo = createConversation({ refs: REFS, view: 'signals/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main', 'signals/main');
+
+		for (const [ref, about] of [
+			['checkout-api/main', 'all retry tests pass'],
+			['store-front/main', 'the cart works'],
+		] as const) {
+			convo.store.dispatch({ type: 'meanwhile_added', ref, kind: 'done', about });
+		}
+
+		convo.script([toolUse('t1', 'status_update', { ref: 'checkout-api/main', minutes: null })]);
+		await convo.say('Status update on checkout.');
+
+		expect(convo.heard.at(-1)).toBe('checkout api, main: all retry tests pass.');
+		expect(convo.store.state.meanwhile.map((item) => item.ref)).toEqual(['store-front/main']);
+
+		await convo.wait(60_000);
+		expect(convo.heard.at(-1)).toStartWith('Meanwhile, store front, main');
+	});
+
 	it('"what did I miss?" → the waiting updates now, without waiting for the quiet', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');
