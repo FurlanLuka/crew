@@ -24,6 +24,8 @@ import { type HandsFreeResult, toListenMode } from './hands-free.js';
 import { countSpokenWords, readLabel, readScreenRef } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
+import { composeRecapFallback, gatherRecap } from '../recap/recap.js';
+import type { WriteRecap } from '../recap/writer.js';
 import {
 	activateSession,
 	deactivateSession,
@@ -195,6 +197,8 @@ export interface ToolContext {
 	dispatch: (action: Action) => void;
 	now: () => number;
 	readHistory: (query: HistoryQuery) => HistoryEntry[];
+	// Words the status update; absent or failed, the plain recap is said.
+	writeRecap?: WriteRecap;
 }
 
 interface ChooseWordsForParams {
@@ -275,6 +279,61 @@ const describeAskedName = (state: State, toolContext: ToolContext): { context?: 
 	});
 
 	return asked ? { context: `Voice OS just asked: "${asked.text}"` } : {};
+};
+
+// How far back "what happened?" looks by default, and the most it reads.
+const RECAP_MINUTES = 60;
+const MAX_RECAP_MINUTES = 24 * 60;
+const MIN_RECAP_MINUTES = 5;
+// Turns read from the journal: enough for every session's few latest in a busy hour.
+const RECAP_HISTORY_LIMIT = 40;
+
+interface SayStatusUpdateParams {
+	state: State;
+	input: Record<string, unknown>;
+	toolContext: ToolContext;
+}
+
+// "Status update": a recap of what the sessions did lately, written now (recap/), said as Voice OS's
+// own line. Their waiting updates are heard with it, so the meanwhile line does not say them again.
+const sayStatusUpdate = async ({
+	state,
+	input,
+	toolContext,
+}: SayStatusUpdateParams): Promise<ToolResult> => {
+	// A session not active still has its history to recap.
+	const checked = input.ref == null ? null : readableRef(checkRef(state, input.ref));
+
+	if (checked && !checked.ok) {
+		return fail(checked.error);
+	}
+
+	const ref = checked?.ref ?? null;
+	const minutes =
+		typeof input.minutes === 'number' && Number.isFinite(input.minutes)
+			? Math.min(MAX_RECAP_MINUTES, Math.max(MIN_RECAP_MINUTES, Math.round(input.minutes)))
+			: RECAP_MINUTES;
+	const recap = gatherRecap({
+		state,
+		history: toolContext.readHistory({ ref, query: null, limit: RECAP_HISTORY_LIMIT }),
+		ref,
+		minutes,
+		now: toolContext.now(),
+	});
+	const worded = (await toolContext.writeRecap?.(recap)) ?? null;
+
+	log.info('status update', {
+		ref,
+		minutes,
+		sessions: recap.sessions.length,
+		isWorded: worded !== null,
+	});
+	toolContext.dispatch({ type: 'recap_heard', refs: recap.sessions.map((session) => session.ref) });
+
+	return {
+		...succeed('Voice OS says the status update: say nothing'),
+		reply: worded ?? composeRecapFallback(recap),
+	};
 };
 
 interface OpenForTheRestParams {
@@ -635,6 +694,9 @@ export const executeTool = async (
 					: `showing ${checked.ref}`,
 			);
 		}
+
+		case 'status_update':
+			return sayStatusUpdate({ state, input, toolContext });
 
 		case 'play_missed': {
 			// "Yes." to the meanwhile line's "Switch there?" was read as "what did I miss?" again, and the

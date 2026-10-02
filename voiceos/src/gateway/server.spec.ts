@@ -332,6 +332,7 @@ describe('parseClientMessage', () => {
 		rename_session: { type: 'rename_session', ref: 'vm1:store/main', name: 'voice os dev' },
 		go_back: { type: 'go_back' },
 		play_meanwhile: { type: 'play_meanwhile' },
+		recap_heard: { type: 'recap_heard', refs: ['store/main'] },
 		set_languages: { type: 'set_languages', languages: ['en', 'sl'] },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
 		ask_which: {

@@ -20,6 +20,7 @@ import {
 	createSetupWorktree,
 } from './sessions/setup-session.js';
 import { readHistory } from './memory/journal.js';
+import { createRecapWriter } from './recap/writer.js';
 import { createDebugNote, saveDebugNote } from './memory/debug-notes.js';
 import { createNotesStore, type NotesStore } from './memory/notes.js';
 import { toNotesKey } from './shared/notes.js';
@@ -125,6 +126,8 @@ const createKernel = (apiKey: string, keyedJudge: Judge): Kernel =>
 			getState: () => store.state,
 			dispatch: (action) => store.dispatch(action),
 			readHistory: (query) => readHistory(paths.journalDir, query),
+			// Built with the kernel, so a new Anthropic key reaches it too.
+			writeRecap: createRecapWriter({ apiKey }),
 			mute: () => voiceOut.mute(),
 			notes,
 			judge: keyedJudge,

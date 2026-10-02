@@ -16,7 +16,7 @@ commands to learn. Any language you speak works the same way (see
 - [Moving around](#moving-around): `switch_view`, `go_back`, `play_missed`
 - [Active sessions](#active-sessions): `activate`, `deactivate`, `list_sessions`
 - [Answering what waits on you](#answering-what-waits-on-you): `answer`, `allow_denied`, `dev_offer`
-- [Asking how things are](#asking-how-things-are): `read_state`, `read_history`
+- [Asking how things are](#asking-how-things-are): `read_state`, `status_update`, `read_history`
 - [Dev servers](#dev-servers): `crew_dev`
 - [Notes and debug notes](#notes-and-debug-notes): `note`, `read_notes`, `debug_note`
 - [Docs](#docs): `open_doc`
@@ -263,6 +263,22 @@ other active session ends with "Switch to checkout?", so a "yes" takes you there
 session's own screen goes to that session, because it knows its work better than any summary.
 Even when Voice OS reads that session first, the words still go to it, unless they are for Voice OS
 itself, such as "repeat what it said".
+
+### A recap of what happened — `status_update`
+
+- "Status update." · "Give me a recap." · "What's been happening?"
+- "What happened in the last half hour?" · "Status update on checkout."
+
+**What happens:** a short spoken recap of the last hour (or the time you name): first what waits on
+you ("checkout asks: push to main?"), then what each session got done, then what is still running,
+each session by name. It is written when you ask, from the turns Voice OS recorded and the updates
+you have not heard, so nothing runs in the background. The updates it covers are heard: the
+meanwhile line does not say them again.
+
+**In practice:** made for when you are away from the screen, over Discord or a closed page. A bare
+"status" or "how far are you?" on a session's own screen still goes to that session, which knows its
+work best. Without an Anthropic key, or if the recap is slow, you hear a plain version: what waits
+on you, then each session's latest line.
 
 ### Past turns — `read_history`
 

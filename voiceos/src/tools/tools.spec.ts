@@ -549,6 +549,7 @@ describe('forward', () => {
 			'switch_view',
 			'go_back',
 			'play_missed',
+			'status_update',
 			'activate',
 			'deactivate',
 			'list_sessions',
@@ -1177,6 +1178,116 @@ describe('an answer to a question asked while the developer spoke', () => {
 		expect(heard.actions).toEqual([
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		]);
+	});
+});
+
+describe('status_update', () => {
+	const NOW = Date.parse('2026-10-02T15:00:00Z');
+	const HISTORY = [
+		{
+			ts: new Date(NOW - 5 * 60_000).toISOString(),
+			ref: 'checkout-api/main',
+			asked: 'run the tests',
+			did: 'All tests pass.',
+		},
+		{
+			ts: new Date(NOW - 50 * 60_000).toISOString(),
+			ref: 'store-front/main',
+			asked: null,
+			did: 'Fixed the cart.',
+		},
+	];
+
+	const recapTools = (patch = {}) => {
+		const { tools, actions } = createToolContext({
+			meanwhile: [{ ref: 'store-front/main', kind: 'done', about: 'the cart works', at: 0 }],
+			...patch,
+		});
+		const asked: { ref: string | null; limit: number }[] = [];
+
+		return {
+			actions,
+			asked,
+			tools: {
+				...tools,
+				now: () => NOW,
+				readHistory: ({ ref, limit }: { ref: string | null; limit: number }) => {
+					asked.push({ ref, limit });
+
+					return HISTORY.filter((entry) => !ref || entry.ref === ref);
+				},
+			},
+		};
+	};
+
+	it('the worded recap is the reply; the sessions it covered are heard', async () => {
+		const { tools, actions } = recapTools();
+		const seen: unknown[] = [];
+		const result = await executeTool(
+			'status_update',
+			{ ref: null, minutes: null },
+			{
+				...tools,
+				writeRecap: async (input) => {
+					seen.push(input);
+
+					return 'Checkout passed its tests; store front fixed the cart.';
+				},
+			},
+		);
+
+		expect(result.reply).toBe('Checkout passed its tests; store front fixed the cart.');
+		expect(seen).toEqual([expect.objectContaining({ window: 'the last hour' })]);
+		expect(actions).toEqual([
+			{ type: 'recap_heard', refs: ['store-front/main', 'checkout-api/main'] },
+		]);
+	});
+
+	it('no writer, or it failed → the plain recap', async () => {
+		const { tools } = recapTools();
+
+		for (const writeRecap of [undefined, async () => null]) {
+			const result = await executeTool(
+				'status_update',
+				{ ref: 'checkout-api/main', minutes: 30 },
+				{ ...tools, ...(writeRecap ? { writeRecap } : {}) },
+			);
+
+			expect(result.reply).toBe('checkout api, main: All tests pass.');
+		}
+	});
+
+	it('one session named → only its history read; minutes kept within 5 minutes and a day', async () => {
+		const { tools, asked } = recapTools();
+		const windows: string[] = [];
+
+		const writeRecap = async (input: { window: string }) => {
+			windows.push(input.window);
+
+			return 'ok';
+		};
+
+		await executeTool(
+			'status_update',
+			{ ref: 'checkout-api/main', minutes: 1 },
+			{ ...tools, writeRecap },
+		);
+		await executeTool('status_update', { ref: null, minutes: 100_000 }, { ...tools, writeRecap });
+
+		expect(asked[0]).toEqual({ ref: 'checkout-api/main', limit: 40 });
+		expect(windows).toEqual(['the last 5 minutes', 'the last 24 hours']);
+	});
+
+	it('a session that does not exist → refused, nothing heard', async () => {
+		const { tools, actions } = recapTools();
+		const result = await executeTool(
+			'status_update',
+			{ ref: 'nowhere/main', minutes: null },
+			tools,
+		);
+
+		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
 	});
 });
 

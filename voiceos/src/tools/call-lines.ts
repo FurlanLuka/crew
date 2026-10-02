@@ -11,6 +11,7 @@ const SILENT_TOOLS: ToolName[] = [
 	'switch_view',
 	'go_back',
 	'play_missed',
+	'status_update',
 	'activate',
 	'ignore_words',
 	'answer',

@@ -1069,6 +1069,29 @@ describe('conversations', () => {
 		});
 	});
 
+	it('"status update" → a recap of what waits, said now; the meanwhile line never repeats it', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'meanwhile_added',
+			ref: 'checkout-api/main',
+			kind: 'done',
+			about: 'all retry tests pass',
+		});
+
+		convo.script([toolUse('t1', 'status_update', { ref: null, minutes: null })]);
+		await convo.say('Give me a status update.');
+
+		expect(convo.heard).toEqual([
+			'> Give me a status update.',
+			'checkout api, main: all retry tests pass.',
+		]);
+		expect(convo.store.state.meanwhile).toEqual([]);
+
+		await convo.wait(60_000);
+		expect(convo.heard.some((line) => line.startsWith('Meanwhile'))).toBe(false);
+	});
+
 	it('"what did I miss?" → the waiting updates now, without waiting for the quiet', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');

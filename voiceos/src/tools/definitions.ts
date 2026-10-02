@@ -9,6 +9,7 @@ export type ToolName =
 	| 'switch_view'
 	| 'go_back'
 	| 'play_missed'
+	| 'status_update'
 	| 'activate'
 	| 'deactivate'
 	| 'list_sessions'
@@ -226,6 +227,27 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		description:
 			'"What did I miss?", "any updates?": Voice OS says the other sessions\' updates that wait for a quiet moment (the meanwhile line) now, or that nothing is new. Say nothing yourself.',
 		input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+	},
+	{
+		name: 'status_update',
+		description:
+			'"Status update", "give me a recap", "what\'s been happening?", "what happened in the last half hour?", "status update on checkout": Voice OS says a short recap of what the sessions did, what waits on the developer first. Not a bare "status" or "how far are you?" about the session on screen: that is its own (forward). Say nothing yourself.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: {
+					type: ['string', 'null'],
+					description: 'One session named in the words, or null for every active session.',
+				},
+				minutes: {
+					type: ['integer', 'null'],
+					description:
+						'How far back the developer asked about ("the last half hour" → 30), or null for the last hour.',
+				},
+			},
+			required: ['ref', 'minutes'],
+			additionalProperties: false,
+		},
 	},
 	{
 		name: 'activate',
