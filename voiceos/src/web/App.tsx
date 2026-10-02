@@ -39,6 +39,28 @@ const useOpenRequest = (request: OpenRequest | null): OpenRequest | null => {
 const FIRST_ROUTE = matchRoute(location.pathname, location.search);
 const isFreshHome = FIRST_ROUTE.half === 'home';
 
+// How long a page waits for crew's server before it says so.
+const SLOW_CONNECT_MS = 1_000;
+
+// True once `isWaiting` has held for `ms`: a short wait shows nothing at all.
+const useIsLate = (isWaiting: boolean, ms: number): boolean => {
+	const [isLate, setIsLate] = useState(false);
+
+	useEffect(() => {
+		if (!isWaiting) {
+			setIsLate(false);
+
+			return;
+		}
+
+		const timer = setTimeout(() => setIsLate(true), ms);
+
+		return () => clearTimeout(timer);
+	}, [isWaiting, ms]);
+
+	return isLate;
+};
+
 const App = () => {
 	const { route, navigate } = useRoute();
 	const player = useSpeechPlayer();
@@ -115,6 +137,9 @@ const App = () => {
 	}, [viewNow]);
 
 	const goHome = useCallback(() => navigate({ half: 'home' }), [navigate]);
+
+	const isOpening = route.half === 'home' && isFreshHome;
+	const isSlowToConnect = useIsLate(state === null, SLOW_CONNECT_MS);
 
 	// Only the first Home of a fresh load of / may be replaced: the crew mark always shows Home.
 	const isFreshLoad = useRef(isFreshHome);
@@ -198,57 +223,63 @@ const App = () => {
 		);
 	}
 
-	if (!state) {
-		return (
-			<Card title="Connecting…">
-				<p>Waiting for crew's server.</p>
-			</Card>
-		);
-	}
-
+	// One tree whatever the connection: the title stays mounted from the first frame to its fade, so
+	// a fresh load of / waits under it instead of flashing "Connecting…" first. Anywhere else the page
+	// stays black, and says it is waiting only once the wait is long enough to notice.
 	return (
 		<>
-			{route.half === 'home' && (
-				<Home
-					state={state}
-					onPick={pick}
-					onStage={openVoiceIfAlways}
-					openVoice={openVoiceFromHome}
-					askClaude={askSetupClaude}
-					goSetup={goSetup}
-				/>
+			{state ? (
+				<>
+					{route.half === 'home' && (
+						<Home
+							state={state}
+							onPick={pick}
+							onStage={openVoiceIfAlways}
+							openVoice={openVoiceFromHome}
+							askClaude={askSetupClaude}
+							goSetup={goSetup}
+						/>
+					)}
+					{route.half === 'voice' && (
+						<VoiceOS
+							state={state}
+							isConnected={status === 'open'}
+							connectionStatus={status}
+							send={send}
+							sendBinary={sendBinary}
+							listenCommand={listenCommand}
+							isAwake={isAwake}
+							ignoredAt={ignoredAt}
+							keptDictation={keptDictation}
+							blockedOpen={blockedOpen}
+							player={player}
+							onHome={goHome}
+							onSetUp={openSetup}
+						/>
+					)}
+					{route.half === 'setup' && (
+						<SetupShell
+							state={state}
+							route={route}
+							navigate={navigate}
+							send={send}
+							openVoice={openVoice}
+							pendingAsk={pendingAsk}
+							onAskTaken={() => setPendingAsk(null)}
+						/>
+					)}
+					{route.half !== 'voice' && <ConnectionBanner status={status} />}
+					{isMoment && <VoiceMoment onDone={() => setIsMoment(false)} />}
+				</>
+			) : (
+				!isOpening &&
+				isSlowToConnect && (
+					<Card title="Connecting…">
+						<p>Waiting for crew's server.</p>
+					</Card>
+				)
 			)}
-			{route.half === 'voice' && (
-				<VoiceOS
-					state={state}
-					isConnected={status === 'open'}
-					connectionStatus={status}
-					send={send}
-					sendBinary={sendBinary}
-					listenCommand={listenCommand}
-					isAwake={isAwake}
-					ignoredAt={ignoredAt}
-					keptDictation={keptDictation}
-					blockedOpen={blockedOpen}
-					player={player}
-					onHome={goHome}
-					onSetUp={openSetup}
-				/>
-			)}
-			{route.half === 'setup' && (
-				<SetupShell
-					state={state}
-					route={route}
-					navigate={navigate}
-					send={send}
-					openVoice={openVoice}
-					pendingAsk={pendingAsk}
-					onAskTaken={() => setPendingAsk(null)}
-				/>
-			)}
-			{route.half !== 'voice' && <ConnectionBanner status={status} />}
-			{route.half === 'home' && isFreshHome && <Opening />}
-			{isMoment && <VoiceMoment onDone={() => setIsMoment(false)} />}
+			{isOpening && <Opening isHeld={state === null} />}
 		</>
 	);
 };

@@ -1282,6 +1282,34 @@ describe('first run', () => {
 		await context.close();
 	}, 20_000);
 
+	it('a reload of / → the title from the first frame, never a "Connecting…" card before it', async () => {
+		const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+		// Watches every frame of the page for the card, from before the app's first render.
+		await context.addInitScript(() => {
+			const seen = { connecting: false };
+			Object.assign(window, { seen });
+			new MutationObserver(() => {
+				if (document.body?.innerText.includes('Connecting')) {
+					seen.connecting = true;
+				}
+			}).observe(document, { childList: true, subtree: true, characterData: true });
+		});
+		const page = await context.newPage();
+		page.on('pageerror', (error) => pageErrors.push(error.message));
+		await page.goto(server.loginUrl());
+		await page.goto(server.url('/'));
+		await page.locator('.intro').waitFor({ timeout: 5000 });
+		await page.locator('.intro').waitFor({ state: 'detached', timeout: 8000 });
+		await page.locator('main[aria-label="Home"]').waitFor({ timeout: 5000 });
+
+		expect(
+			await page.evaluate(
+				() => (window as unknown as { seen: { connecting: boolean } }).seen.connecting,
+			),
+		).toBe(false);
+		await context.close();
+	}, 20_000);
+
 	it('with motion: the opening dissolves onto the first run, Get started takes it on', async () => {
 		server.crew.reset('empty');
 		const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
