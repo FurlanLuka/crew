@@ -1,0 +1,272 @@
+// Voice OS's views, drawn from a state: Activate, Settings, the moments row and the state row.
+import { describe, expect, it } from 'bun:test';
+import { renderToStaticMarkup } from 'react-dom/server';
+import type { State } from '../../shared/protocol.js';
+import { createInitialState, createSession } from '../../state/reducer.js';
+import { Activate, listActivateSections } from './Activate.js';
+import { MomentsRow } from './MomentsRow.js';
+import { SessionStateRow } from './SessionStateRow.js';
+import { Settings } from './Settings.js';
+
+const noop = () => undefined;
+
+const createState = (patch: Partial<State> = {}): State => {
+	const refs = [
+		'setup',
+		'store-front/main',
+		'store-front/wrk1',
+		'checkout-api/main',
+		'vm1:api/main',
+	];
+
+	return {
+		...createInitialState(),
+		sessions: Object.fromEntries(
+			refs.map((ref) => [
+				ref,
+				createSession({
+					ref,
+					label: ref,
+					branch: 'b',
+					cwd: '/w',
+					dirs: [],
+					isPinned: ref === 'setup',
+				}),
+			]),
+		),
+		order: refs,
+		active: ['store-front/main'],
+		machines: {
+			vm1: {
+				id: 'vm1',
+				host: 'dev@vm1',
+				name: 'Build box',
+				status: 'connected',
+				detail: null,
+				since: 1,
+			},
+		},
+		...patch,
+	};
+};
+
+describe('Activate', () => {
+	it('every worktree by machine then workspace, never the setup session', () => {
+		const sections = listActivateSections(createState(), 'all', '');
+
+		expect(
+			sections.map((section) => [
+				section.title,
+				section.status,
+				section.groups.map((group) => group.workspace),
+			]),
+		).toEqual([
+			['This Mac', '1 of 3 active', ['store-front', 'checkout-api']],
+			['Build box', '0 of 1 active', ['api']],
+		]);
+	});
+
+	it('the search narrows to matching worktrees; a machine with none drops out', () =>
+		expect(
+			listActivateSections(createState(), 'all', 'checkout').map((section) => section.title),
+		).toEqual(['This Mac']));
+
+	it('an active worktree links to its session; an inactive one has Activate', () => {
+		const html = renderToStaticMarkup(<Activate state={createState()} dispatch={noop} />);
+
+		expect(html).toContain('<span class="chip ok">active</span>');
+		expect(html).toMatch(/data-ref="store-front\/wrk1"[\s\S]*?Activate<\/button>/);
+		expect(html).toContain('All machines');
+	});
+
+	it('a machine out of reach: its rows dimmed and Activate disabled', () => {
+		const html = renderToStaticMarkup(
+			<Activate
+				state={createState({
+					machines: {
+						vm1: {
+							id: 'vm1',
+							host: 'vm1',
+							name: 'Build box',
+							status: 'unreachable',
+							detail: 'not reachable · last seen 2h ago',
+							since: 1,
+						},
+					},
+				})}
+				dispatch={noop}
+			/>,
+		);
+
+		expect(html).toContain('vb-sec off');
+		expect(html).toContain('not reachable · last seen 2h ago');
+		expect(html).toContain('disabled=""');
+	});
+
+	it('words waiting for an inactive worktree are shown on its row', () => {
+		const state = createState();
+		const wrk1 = state.sessions['store-front/wrk1'];
+
+		if (wrk1) {
+			state.sessions['store-front/wrk1'] = {
+				...wrk1,
+				queue: [{ id: 'q1', text: 'paginate the orders', at: 1 }],
+			};
+		}
+
+		expect(renderToStaticMarkup(<Activate state={state} dispatch={noop} />)).toContain(
+			'1 waiting: “paginate the orders”',
+		);
+	});
+});
+
+describe('Settings', () => {
+	const render = (state: State) =>
+		renderToStaticMarkup(
+			<Settings
+				state={state}
+				dispatch={noop}
+				listenMode="hands-free"
+				onListenMode={noop}
+				onSetUpMachine={noop}
+			/>,
+		);
+
+	it('the four listening modes, the chosen one pressed, and the languages', () => {
+		const html = render(createState());
+
+		for (const name of ['Push to talk', 'On demand', 'Hands-free', 'Dictation']) {
+			expect(html).toContain(name);
+		}
+
+		expect(html).toContain('aria-pressed="true">Hands-free');
+		expect(html).toContain('Languages you speak');
+	});
+
+	it('a missing key → red with Add; a set one → Replace', () => {
+		const html = render(
+			createState({ setup: { missing: ['/home/dev/.config/crew-voiceos/anthropic.key'] } }),
+		);
+
+		expect(html).toMatch(/data-key="anthropic"[\s\S]*?dot ask[\s\S]*?Add<\/button>/);
+		expect(html).toMatch(/data-key="soniox"[\s\S]*?dot ok[\s\S]*?Replace<\/button>/);
+	});
+
+	it('Discord not set up → the four steps; set up → connected with Turn off', () => {
+		expect(render(createState())).toContain('crew server discord setup');
+		expect(
+			render(
+				createState({
+					discord: {
+						isConnected: true,
+						isOwnerIn: false,
+						isHearing: true,
+						channelName: 'Voice OS',
+						mode: 'hands-free',
+					},
+				}),
+			),
+		).toContain('Turn off');
+	});
+
+	it('names, and the machines with how they are reached', () => {
+		const html = render(createState({ names: { 'checkout-api/main': 'checkout' } }));
+
+		expect(html).toContain('<b>checkout</b>');
+		expect(html).toContain('ssh dev@vm1 · connected');
+		expect(html).toContain('Always open Voice OS');
+	});
+});
+
+describe('MomentsRow', () => {
+	it('a switch offer → its words, what to say, and the answers as buttons', () => {
+		const html = renderToStaticMarkup(
+			<MomentsRow
+				state={createState({ switchOffer: { ref: 'checkout-api/main', at: 1 } })}
+				dispatch={noop}
+			/>,
+		);
+
+		expect(html).toContain('Sent to checkout-api/main. Switch there?');
+		expect(html).toContain('say yes, or keep talking');
+		expect(html).toContain('>Switch</button>');
+		expect(html).toContain('>Stay here</button>');
+	});
+
+	it('nothing asked → nothing drawn', () =>
+		expect(renderToStaticMarkup(<MomentsRow state={createState()} dispatch={noop} />)).toBe(''));
+});
+
+describe('SessionStateRow', () => {
+	it('a question → its options as buttons and how to say one', () => {
+		const html = renderToStaticMarkup(
+			<SessionStateRow
+				state={createState({
+					asks: [
+						{
+							id: 'q1',
+							ref: 'store-front/main',
+							at: 1,
+							kind: 'question',
+							input: {},
+							questions: [
+								{
+									question: 'A new events table, or a column on orders?',
+									multiSelect: false,
+									options: [{ label: 'A new events table' }, { label: 'A column on orders' }],
+								},
+							],
+						},
+					],
+				})}
+				sessionRef="store-front/main"
+				dispatch={noop}
+			/>,
+		);
+
+		expect(html).toContain('A new events table, or a column on orders?');
+		expect(html).toContain('A column on orders');
+		expect(html).toContain('Your own answer…');
+	});
+
+	it('a crash → "Claude stopped unexpectedly" with Restart, its only control', () => {
+		const state = createState();
+		const session = state.sessions['store-front/main'];
+
+		if (session) {
+			state.sessions['store-front/main'] = { ...session, status: 'stopped', error: 'exit 1' };
+		}
+
+		const html = renderToStaticMarkup(
+			<SessionStateRow state={state} sessionRef="store-front/main" dispatch={noop} />,
+		);
+
+		expect(html).toContain('Claude stopped unexpectedly');
+		expect(html).toContain('nothing you said was lost');
+		expect(html).toContain('>Restart</button>');
+		// No log button: Voice OS has no per-session log to show, and a dead control is worse than none.
+		expect(html.match(/<button/g)).toHaveLength(1);
+	});
+
+	it('a remote that dropped → reconnecting, your words wait', () =>
+		expect(
+			renderToStaticMarkup(
+				<SessionStateRow
+					state={createState({
+						machines: {
+							vm1: {
+								id: 'vm1',
+								host: 'vm1',
+								name: 'Build box',
+								status: 'unreachable',
+								detail: null,
+								since: 1,
+							},
+						},
+					})}
+					sessionRef="vm1:api/main"
+					dispatch={noop}
+				/>,
+			),
+		).toContain('Build box dropped'));
+});

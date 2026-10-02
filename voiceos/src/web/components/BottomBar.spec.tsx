@@ -2,23 +2,30 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState } from '../../state/reducer.js';
-import { PcmPlayer } from '../use-speech-player.js';
+import type { VoiceInput } from '../use-voice-input.js';
 import { BottomBar } from './BottomBar.js';
 
-const render = (state: State): string =>
+const voice: VoiceInput = {
+	listenMode: 'push',
+	chooseMode: () => undefined,
+	micStatus: 'idle',
+	isDictating: false,
+	dictationStartedAt: null,
+	isDiscardArmed: false,
+	handleTalkStart: async () => undefined,
+	handleTalkStop: () => undefined,
+	handleDiscard: () => undefined,
+};
+
+const render = (state: State, input: VoiceInput = voice): string =>
 	renderToStaticMarkup(
 		<BottomBar
 			state={state}
-			isConnected
-			listenCommand={null}
+			voice={input}
 			isAwake={false}
-			ignoredAt={0}
+			isIgnored={false}
 			keptDictation={null}
-			send={() => {}}
-			sendBinary={() => {}}
-			player={new PcmPlayer()}
-			micStatus="idle"
-			onMicStatusChange={() => {}}
+			send={() => undefined}
 		/>,
 	);
 
@@ -37,6 +44,15 @@ const onDiscord: State = {
 };
 
 describe('BottomBar', () => {
+	it('docked: the mic, the field with where the words go, and the listening mode by name', () => {
+		const html = render(createInitialState());
+
+		expect(html).toContain('aria-label="Hold to talk"');
+		expect(html).toContain('→ Voice OS');
+		expect(html).toContain('Push to talk');
+		expect(html).toContain('aria-label="Listening mode"');
+	});
+
 	it('in the voice channel → a Discord badge, not a mic to press; what is heard in the box', () => {
 		const html = render(onDiscord);
 
@@ -62,5 +78,15 @@ describe('BottomBar', () => {
 
 		expect(html).toContain('aria-label="Voice via Discord, not hearing"');
 		expect(html).toContain('pick a mode to try again');
+	});
+
+	it('the last spoken line sits above the composer', () => {
+		const html = render({
+			...createInitialState(),
+			spoken: [{ id: 's1', text: 'Store front is ready.', source: 'kernel', at: Date.now() }],
+		});
+
+		expect(html).toContain('Spoken');
+		expect(html).toContain('Store front is ready.');
 	});
 });

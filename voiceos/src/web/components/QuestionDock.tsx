@@ -23,8 +23,8 @@ export const QuestionDock = ({ ask, label, dispatch }: QuestionDockProps) => {
 	};
 
 	return (
-		<section className="dock cyan" aria-label="question">
-			<span className="lbl c-cyan">
+		<section className="dock question" aria-label="question">
+			<span className="lbl">
 				question · {label}
 				{ask.questions.length > 1 && ` · ${index + 1} of ${ask.questions.length}`}
 			</span>

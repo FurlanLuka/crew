@@ -1,4 +1,4 @@
-import { GRID, isRemembered, type State, type VoiceEntry } from '../../shared/protocol.js';
+import { HOME_SCREEN, isRemembered, type State, type VoiceEntry } from '../../shared/protocol.js';
 import { formatAge } from '../../state/working.js';
 import { formatDidLine } from '../derive.js';
 import { useNow } from '../use-now.js';
@@ -9,7 +9,7 @@ interface VoicePanelProps {
 }
 
 export const VoicePanel = ({ state, screen }: VoicePanelProps) => {
-	const entries: VoiceEntry[] = state.voiceLog[screen ?? GRID] ?? [];
+	const entries: VoiceEntry[] = state.voiceLog[screen ?? HOME_SCREEN] ?? [];
 	const now = useNow();
 
 	return (

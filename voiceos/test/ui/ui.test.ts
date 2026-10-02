@@ -1,4 +1,5 @@
-// The real UI bundle and gateway, with a store the test drives instead of Claude workers.
+// The real UI bundle and gateway, with a store the test drives instead of Claude workers and the
+// fake crew behind /api/crew. Voice OS's half; Set up's is setup.test.ts.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import index from '../../src/web/index.html';
@@ -8,6 +9,7 @@ import { configureLog } from '../../src/log.js';
 import type { Action, ClientMessage, WorktreeInfo } from '../../src/shared/protocol.js';
 import { isActive } from '../../src/shared/active.js';
 import { Store } from '../../src/state/store.js';
+import { createFakeCrew } from '../support/fake-crew.js';
 
 const TOKEN = 'b'.repeat(64);
 const createWorktree = (ref: string, isPinned = false): WorktreeInfo => ({
@@ -72,8 +74,11 @@ const ensureIdle = async (ref: string): Promise<void> => {
 	await waitUntil(() => store.state.sessions[ref]?.status === 'idle');
 };
 
+const crew = createFakeCrew();
+
 const startServer = (port = 0): Gateway => {
 	return startGateway({
+		runCrew: crew.runCrew,
 		store,
 		token: TOKEN,
 		port,
@@ -89,7 +94,8 @@ const startServer = (port = 0): Gateway => {
 		},
 		onAudio: (chunk) => audioChunks.push(chunk.byteLength),
 		readHealth: () => ({}),
-		development: true,
+		// No hot reload: its socket would push every file another process saves into pages the test already closed.
+		development: false,
 	});
 };
 
@@ -119,8 +125,10 @@ const signIn = async (beforeLoad?: () => void): Promise<SignedInTab> => {
 
 	const page = await context.newPage();
 	watchErrors(page);
+	// The login lands on Home; Voice OS is /voice, on whatever screen every tab is showing.
 	await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
-	await page.waitForSelector('.topbar');
+	await page.goto(`http://localhost:${gateway.port}/voice`);
+	await page.waitForSelector('.vo-top');
 
 	return { context, page };
 };
@@ -168,48 +176,62 @@ afterAll(async () => {
 });
 
 describe('voice os ui', () => {
-	it('without signing in → the "open it from crew" card, no state', async () => {
+	it('without signing in → the "open crew from a terminal" card, no state', async () => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
 		watchErrors(page);
 		await page.goto(`http://localhost:${gateway.port}/`);
 
 		await expect(
-			page.getByText('Open Voice OS from crew').waitFor({ timeout: 10_000 }),
+			page.getByText('Open crew from a terminal').waitFor({ timeout: 10_000 }),
 		).resolves.toBeUndefined();
 		await context.close();
 	}, 20_000);
 
-	it('home → the machine cards; This Mac opens its grid: every worktree, the setup session first', async () => {
-		const { context, page } = await signIn();
+	it('Home → Voice OS plays its moment, then Active: one row per active session, never the setup session', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const context = await browser.newContext({ permissions: ['microphone'] });
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+		await page.getByRole('main', { name: 'Home' }).waitFor({ timeout: 10_000 });
+		expect(await page.locator('.launch-choice').allInnerTexts()).toEqual([
+			expect.stringContaining('Voice OS'),
+			expect.stringContaining('Set up'),
+		]);
 
-		// Home is the machine cards: this Mac's opens its grid.
-		await page.locator('section.machine[aria-label="This Mac"] .machine-name').click();
-		await page.locator('.tile').first().waitFor({ timeout: 5000 });
+		await page.locator('.launch-choice', { hasText: 'Voice OS' }).click();
+		await page.locator('.vo-moment .wordmark', { hasText: 'Voice OS' }).waitFor({ timeout: 5000 });
+		await page.locator('section[aria-label="Active"]').waitFor({ timeout: 5000 });
+		expect(new URL(page.url()).pathname).toBe('/voice');
 
 		const refs = await page
-			.locator('.tile')
-			.evaluateAll((tiles) => tiles.map((tile) => tile.getAttribute('data-ref')));
-
-		expect(refs).toEqual(['setup', 'checkout-api/main', 'store-front/main']);
+			.locator('.vo-row')
+			.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-ref')));
+		expect(refs).toEqual(['store-front/main', 'checkout-api/main']);
+		expect(await page.locator('.vo-tab[data-ref]').count()).toBe(2);
 		await context.close();
 	}, 20_000);
 
-	it('click a tile in one tab → both tabs open that session (server-driven view)', async () => {
+	it('click a row in one tab → both tabs open that session (server-driven view), and the address follows', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const firstTab = await signIn();
 		const secondTab = await signIn();
-		await firstTab.page.locator('.tile[data-ref="store-front/main"]').click();
+		await firstTab.page.locator('.vo-row[data-ref="store-front/main"]').click();
 
-		await secondTab.page.getByRole('navigation').waitFor({ timeout: 5000 });
-		expect(await secondTab.page.locator('.tab.on').innerText()).toContain('store-front/main');
+		await secondTab.page
+			.locator('.vo-tab[aria-current="true"]', { hasText: 'store-front/main' })
+			.waitFor({ timeout: 5000 });
 		// Active, so it opens inside Active.
 		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'active' });
+		await secondTab.page.waitForURL('**/voice/session/store-front/main');
 		await firstTab.context.close();
 		await secondTab.context.close();
 	}, 20_000);
 
 	it('permission → clicking Yes resolves the ask with allow', async () => {
 		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({
 			type: 'ask_opened',
 			ask: {
@@ -330,7 +352,8 @@ describe('voice os ui', () => {
 		const page = await context.newPage();
 		watchErrors(page);
 		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
-		await page.waitForSelector('.topbar');
+		await page.goto(`http://localhost:${gateway.port}/voice`);
+		await page.waitForSelector('.vo-top');
 		const before = received.length;
 		await page.locator('body').click();
 		await page.keyboard.press('Escape');
@@ -477,7 +500,7 @@ describe('voice os ui', () => {
 			received.filter((entry) => entry.message.type === 'listen_start');
 		const before = listListenStarts().length;
 		await page.reload();
-		await page.waitForSelector('.topbar');
+		await page.waitForSelector('.vo-top');
 		await waitUntil(() => listListenStarts().length > before);
 		const reloadedClient = listListenStarts().at(-1)?.client ?? '';
 		expect(reloadedClient).not.toBe(client);
@@ -516,7 +539,7 @@ describe('voice os ui', () => {
 		expect(await page.evaluate(() => document.activeElement?.className)).toContain('mode-button');
 
 		await button.click();
-		await page.locator('.topbar').click();
+		await page.locator('.vo-top').click();
 		await menu.waitFor({ state: 'detached' });
 		expect(await readMode(page)).toBe('dictation');
 		await context.close();
@@ -634,7 +657,7 @@ describe('voice os ui', () => {
 		await waitUntil(() => listFromClient(client, 'ptt_stop').length === 2);
 
 		await page.reload();
-		await page.waitForSelector('.topbar');
+		await page.waitForSelector('.vo-top');
 		expect(await readMode(page)).toBe('dictation');
 		await context.close();
 	}, 20_000);
@@ -783,11 +806,12 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('the setup session → no dev servers panel; a worktree session has one', async () => {
+	it('the setup session never shows in Voice OS: no tab, no row, no screen; a worktree session has its dev servers', async () => {
 		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });
-		await page.locator('.cockpit').waitFor({ timeout: 5000 });
-		expect(await page.locator('section[aria-label="dev servers"]').count()).toBe(0);
+		await page.locator('section[aria-label="Active"]').waitFor({ timeout: 5000 });
+		expect(await page.locator('[data-ref="setup"]').count()).toBe(0);
 
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		await page.locator('section[aria-label="dev servers"]').waitFor({ timeout: 5000 });
@@ -919,10 +943,10 @@ describe('voice os ui', () => {
 
 	it("Claude's Markdown renders; the developer's own words stay literal; an aside shows its answer", async () => {
 		const { context, page } = await signIn();
-		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		store.dispatch({
 			type: 'assistant_text',
-			ref: 'setup',
+			ref: 'checkout-api/main',
 			text: '## Report\n\n| file | lines |\n| --- | --- |\n| retry.ts | 42 |\n\nSee [docs](https://example.com).',
 		});
 		const stream = page.locator('.stream');
@@ -930,24 +954,25 @@ describe('voice os ui', () => {
 		expect(await stream.locator('h2', { hasText: 'Report' }).isVisible()).toBe(true);
 		expect(await stream.getByRole('link', { name: 'docs' }).getAttribute('target')).toBe('_blank');
 
-		await ensureIdle('setup');
-		store.dispatch({ type: 'send', ref: 'setup', text: 'make it **bold**' });
+		await ensureIdle('checkout-api/main');
+		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'make it **bold**' });
 		await stream.getByText('› make it **bold**').waitFor({ timeout: 5000 });
 
-		store.dispatch({ type: 'send', ref: 'setup', text: 'which file?', aside: true });
+		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'which file?', aside: true });
 		await stream.getByText('asking aside…').waitFor({ timeout: 5000 });
 		const itemId =
-			store.state.sessions.setup?.stream.find((item) => item.kind === 'aside')?.id ?? '';
+			store.state.sessions['checkout-api/main']?.stream.find((item) => item.kind === 'aside')?.id ??
+			'';
 		store.dispatch({
 			type: 'aside_settled',
-			ref: 'setup',
+			ref: 'checkout-api/main',
 			itemId,
 			question: 'which file?',
 			status: 'answered',
 			answer: 'The **retry** file.',
 		});
 		await stream.locator('.aside strong', { hasText: 'retry' }).waitFor({ timeout: 5000 });
-		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: '' });
+		store.dispatch({ type: 'turn_ended', ref: 'checkout-api/main', costUsd: 0, text: '' });
 		await context.close();
 	}, 20_000);
 
@@ -986,7 +1011,7 @@ describe('voice os ui', () => {
 			title: 'Retry plan',
 		});
 
-		const banner = page.locator('.banner a', { hasText: 'Open Retry plan' });
+		const banner = page.locator('.vo-notice a', { hasText: 'Open Retry plan' });
 		await banner.waitFor({ timeout: 5000 });
 		expect(await banner.getAttribute('href')).toBe('https://claude.ai/code/artifact/ui-doc');
 		await context.close();
@@ -1020,11 +1045,11 @@ describe('voice os ui', () => {
 		expect(await page.evaluate(() => (window as unknown as { opened: unknown[] }).opened)).toEqual([
 			{ url: 'https://claude.ai/code/artifact/ui-doc', target: '_blank', opener: null },
 		]);
-		expect(await page.locator('.banner', { hasText: 'Open Retry plan' }).count()).toBe(0);
+		expect(await page.locator('.vo-notice', { hasText: 'Open Retry plan' }).count()).toBe(0);
 		await context.close();
 	}, 20_000);
 
-	it('an open permission docks under the stream: the stream stays on screen', async () => {
+	it("an open permission is the state row under the session's header: the stream stays on screen below it", async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({ type: 'assistant_text', ref: 'store-front/main', text: 'push the fix next' });
@@ -1047,7 +1072,7 @@ describe('voice os ui', () => {
 		expect(await stream.isVisible()).toBe(true);
 		expect(await stream.getByText('push the fix next').isVisible()).toBe(true);
 		const [streamBox, dockBox] = [await stream.boundingBox(), await dock.boundingBox()];
-		expect((dockBox?.y ?? 0) >= (streamBox?.y ?? 0) + 40).toBe(true);
+		expect((dockBox?.y ?? 0) + (dockBox?.height ?? 0)).toBeLessThanOrEqual((streamBox?.y ?? 0) + 1);
 
 		await page.getByRole('button', { name: /Yes/ }).click();
 		await waitUntil(() => store.state.asks.every((ask) => ask.id !== 'ui-dock'));
@@ -1226,7 +1251,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it("the spoken line on a session's screen → another session's narration hidden; Voice OS and alerts shown; Mission Control shows all", async () => {
+	it("the spoken line on a session's screen → another session's narration hidden; Voice OS and alerts shown; Active shows all", async () => {
 		const { context, page } = await signIn();
 		const said = page.locator('.speech .said');
 		const speak = (text: string, source: 'narrator' | 'kernel' | 'alert', ref?: string) =>
@@ -1247,12 +1272,12 @@ describe('voice os ui', () => {
 		await Bun.sleep(200);
 		expect(await said.innerText()).toBe('Checkout wants to push. Allow?');
 
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		await said.getByText('Checkout: pushed.').waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
-	it('a turn that needs you → no strip of its own: the question is in the stream, the top bar counts it once', async () => {
+	it('a turn that needs you → no strip of its own: the question is in the stream, its Active row says so', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({ type: 'assistant_text', ref: 'store-front/main', text: 'Ready: push it?' });
@@ -1267,7 +1292,7 @@ describe('voice os ui', () => {
 
 		// One session waiting on you and another's plain update: each counted once, the waiting one not
 		// also as an update.
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({
 			type: 'narration',
 			ref: 'checkout-api/main',
@@ -1286,8 +1311,11 @@ describe('voice os ui', () => {
 			kind: 'done',
 			about: 'the tests pass',
 		});
-		await page.getByText('1 waiting on you').waitFor({ timeout: 5000 });
-		await page.getByText('1 update waiting').waitFor({ timeout: 5000 });
+		// The waiting one says so in its own row; the updates wait for the quiet, in the moments row.
+		await page
+			.locator('.vo-row[data-ref="checkout-api/main"] .chip', { hasText: 'asked you' })
+			.waitFor({ timeout: 5000 });
+		await page.getByText('2 updates from other sessions').waitFor({ timeout: 5000 });
 
 		store.dispatch({ type: 'narration', ref: 'checkout-api/main', needsUser: false, text: '' });
 		store.dispatch({ type: 'play_meanwhile' });
@@ -1363,12 +1391,12 @@ describe('voice os ui', () => {
 		expect(done()).not.toContain('clip-long');
 	});
 
-	it("the side panel is this screen's voice log: what was said, what Voice OS did and said; Mission Control has its own", async () => {
+	it("the side panel is this screen's voice log: what was said, what Voice OS did and said; another screen's stays there", async () => {
 		const { context, page } = await signIn();
 		const loggedAt = Date.now();
 		store.dispatch({
 			type: 'voice_logged',
-			screen: 'grid',
+			screen: 'home',
 			entry: {
 				utterance: 'Open checkout.',
 				did: ['switch_view checkout-api/main'],
@@ -1392,11 +1420,6 @@ describe('voice os ui', () => {
 			entry: { utterance: 'Hmm.', did: [], reply: '', at: loggedAt, isIgnored: true },
 		});
 
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
-		const home = page.locator('[aria-label="voice log"]');
-		await home.getByText('you: Open checkout.').waitFor({ timeout: 5000 });
-		expect(await home.innerText()).toContain('→ opened checkout-api/main');
-
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		const log = page.locator('[aria-label="voice log"]');
 		await log.getByText('you: Run the tests.').waitFor({ timeout: 5000 });
@@ -1411,9 +1434,14 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('elsewhere lists another session at work; clicking it opens that session', async () => {
+	it('elsewhere lists another session at work, never the setup session; clicking it opens that session', async () => {
 		const { context, page } = await signIn();
-		await ensureIdle('setup');
+		await ensureIdle('checkout-api/main');
+		store.dispatch({
+			type: 'send',
+			ref: 'checkout-api/main',
+			text: 'Make the retries back off instead of hammering the provider.',
+		});
 		store.dispatch({
 			type: 'send',
 			ref: 'setup',
@@ -1421,22 +1449,28 @@ describe('voice os ui', () => {
 		});
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 
-		const row = page.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'setup' });
+		const row = page.locator('[aria-label="elsewhere"] .elsewhere-row', {
+			hasText: 'checkout-api/main',
+		});
 		await row.waitFor({ timeout: 5000 });
-		expect(await row.innerText()).toContain('Set up a new worktree wrk3');
+		expect(await row.innerText()).toContain('Make the retries back off');
+		expect(await page.locator('[aria-label="elsewhere"]').innerText()).not.toContain('wrk3');
 		await row.click();
-		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === 'setup');
+		await waitUntil(
+			() => store.state.view.kind === 'session' && store.state.view.ref === 'checkout-api/main',
+		);
 		// On its own screen it is not "elsewhere".
 		await page
-			.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'setup' })
+			.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'checkout-api/main' })
 			.waitFor({ state: 'detached', timeout: 5000 });
+		store.dispatch({ type: 'turn_ended', ref: 'checkout-api/main', costUsd: 0, text: 'Done.' });
 		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: 'Done.' });
 		await context.close();
 	}, 20_000);
 
-	it('dev servers → a panel in the cockpit and a badge on the tile; a died server shows red', async () => {
+	it('dev servers → a panel beside the stream; a died server shows red', async () => {
 		const { context, page } = await signIn();
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({
 			type: 'dev_servers',
 			ref: 'checkout-api/main',
@@ -1446,11 +1480,6 @@ describe('voice os ui', () => {
 			],
 			isSettled: true,
 		});
-		const badge = page.locator('.tile[data-ref="checkout-api/main"] .devbadge');
-		await badge.waitFor({ timeout: 5000 });
-		expect(await badge.innerText()).toMatch(/dev 1\/2/i);
-		expect(await badge.getAttribute('class')).toContain('c-crit');
-
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		const panel = page.locator('[aria-label="dev servers"]');
 		await panel.waitFor({ timeout: 5000 });
@@ -1541,17 +1570,16 @@ describe('voice os ui', () => {
 				createWorktree('admin/main'),
 			],
 		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
 		const { context, page } = await signIn();
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
 		const before = effects.length;
-		await page.locator('.tile[data-ref="admin/main"]').click();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'admin/main' } });
 		await page.getByText(/^Not active: its history only/).waitFor({ timeout: 5000 });
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'admin/main' });
 		expect(store.state.sessions['admin/main']?.status).toBe('stopped');
 		expect(effects.slice(before)).not.toContain('worker_start');
 		expect(await page.getByLabel('Say or type a command').count()).toBe(0);
 
-		await page.locator('.botbar').getByRole('button', { name: 'Activate' }).click();
+		await page.locator('.vo-bar').getByRole('button', { name: 'Activate' }).click();
 		await waitUntil(() => store.state.sessions['admin/main']?.status === 'idle');
 		expect(effects.slice(before)).toContain('worker_start');
 		await page.getByLabel('Say or type a command').waitFor({ timeout: 5000 });
@@ -1559,12 +1587,14 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('server restarts under an open page → it reconnects, gets a fresh snapshot, clicks reach the new server', async () => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid' } });
+	it("crew's server stops under an open page → the banner says how to start it; it reconnects, gets a fresh snapshot, clicks reach the new server", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
 		const previousPort = gateway.port;
 		gateway.stop();
-		await page.getByText('Reconnecting to the Voice OS server').waitFor({ timeout: 5000 });
+		const banner = page.locator('.conn', { hasText: "crew's server stopped" });
+		await banner.waitFor({ timeout: 5000 });
+		expect(await banner.innerText()).toContain('run crew in a terminal');
 
 		store.dispatch({
 			type: 'rename_session',
@@ -1572,10 +1602,11 @@ describe('voice os ui', () => {
 			name: 'retry backoff after restart',
 		});
 		gateway = startServer(previousPort);
-		await page.getByText('retry backoff after restart').waitFor({ timeout: 15_000 });
+		await page.getByText('retry backoff after restart').first().waitFor({ timeout: 15_000 });
+		await banner.waitFor({ state: 'detached', timeout: 5000 });
 
 		const before = received.length;
-		await page.locator('.tile[data-ref="checkout-api/main"]').click();
+		await page.locator('.vo-row[data-ref="checkout-api/main"]').click();
 		await waitUntil(() =>
 			received
 				.slice(before)
@@ -1587,23 +1618,44 @@ describe('voice os ui', () => {
 		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: '' });
 		await context.close();
 	}, 40_000);
+
+	it('a deep link reloads onto its screen: /voice/settings and /voice/session/<ref> switch the view', async () => {
+		const { context, page } = await signIn();
+		await page.goto(`http://localhost:${gateway.port}/voice/settings`);
+		await waitUntil(() => store.state.view.kind === 'settings');
+		await page.locator('section[aria-label="Voice OS settings"]').waitFor({ timeout: 5000 });
+
+		await page.goto(`http://localhost:${gateway.port}/voice/session/checkout-api/main`);
+		await waitUntil(
+			() => store.state.view.kind === 'session' && store.state.view.ref === 'checkout-api/main',
+		);
+		await page.locator('.vo-head h1', { hasText: 'checkout-api/main' }).waitFor({ timeout: 5000 });
+		await page.reload();
+		await page.locator('.vo-head h1', { hasText: 'checkout-api/main' }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('leaving Voice OS stops listening: the crew mark goes Home and the stream is closed', async () => {
+		const { context, page, client } = await openMicTab();
+		await chooseMode(page, 'Hands-free');
+		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
+
+		await page.locator('.vo-brand').click();
+		await page.getByRole('main', { name: 'Home' }).waitFor({ timeout: 5000 });
+		await waitUntil(() => listFromClient(client, 'listen_stop').length >= 1);
+		expect(new URL(page.url()).pathname).toBe('/');
+		await context.close();
+	}, 20_000);
 });
 
 describe('active', () => {
 	const REMOTE = 'vm1:api/main';
 
-	const readTileRefs = (page: Page): Promise<(string | null)[]> =>
-		page
-			.locator('.tile')
-			.evaluateAll((tiles) => tiles.map((tile) => tile.getAttribute('data-ref')));
+	const readRowRefs = (page: Page): Promise<(string | null)[]> =>
+		page.locator('.vo-row').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-ref')));
 
-	const readCrumbs = (page: Page): Promise<string> => page.locator('.topbar .ws').innerText();
-
-	const readTabs = (page: Page): Promise<string[]> => page.locator('.tabs .tab').allInnerTexts();
-
-	const goHome = (): void => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'machines' } });
-	};
+	const readTabs = (page: Page): Promise<string[]> =>
+		page.locator('.vo-tab[data-ref]').allInnerTexts();
 
 	beforeAll(() => {
 		for (const ref of [...store.state.active]) {
@@ -1624,178 +1676,243 @@ describe('active', () => {
 		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
 	});
 
-	it('nothing activated → the Active card first on Mission Control, the setup session alone, no status dot', async () => {
-		goHome();
-		const { context, page } = await signIn();
-		const first = page.locator('section.machine').first();
-
-		expect(await first.getAttribute('aria-label')).toBe('Active');
-		expect(await first.innerText()).toContain('1 session');
-		expect(await first.innerText()).toContain('Activate a session to talk to it by voice');
-		expect(await first.locator('.dot').count()).toBe(0);
-		expect(await first.getByRole('button', { name: 'rename' }).count()).toBe(0);
-		await context.close();
-	}, 20_000);
-
-	it('add a machine → typing the name stays in the name field', async () => {
-		goHome();
-		const { context, page } = await signIn();
-
-		await page.getByRole('button', { name: /Add machine/ }).click();
-		await page.getByLabel('SSH host').pressSequentially('vm2');
-		await page.getByLabel('name', { exact: true }).click();
-		await page.getByLabel('name', { exact: true }).pressSequentially('Lab box');
-
-		expect(await page.getByLabel('name', { exact: true }).inputValue()).toBe('Lab box');
-		expect(await page.getByLabel('SSH host').inputValue()).toBe('vm2');
-		await context.close();
-	}, 20_000);
-
-	it('a dimmed tile, activated on the grid → active without opening it, no longer dimmed; setup has no toggle; the Active card counts it', async () => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
-		const { context, page } = await signIn();
-		const tile = page.locator('.tile[data-ref="store-front/main"]');
-
-		await tile.waitFor({ timeout: 5000 });
-		expect(await tile.getAttribute('class')).toContain('inactive');
-		expect(await page.locator('.tile[data-ref="setup"]').getAttribute('class')).not.toContain(
-			'inactive',
-		);
-		expect(
-			await page
-				.locator('.tile[data-ref="setup"]')
-				.getByRole('button', { name: /activate/ })
-				.count(),
-		).toBe(0);
-
-		await tile.getByRole('button', { name: 'activate', exact: true }).click();
-		await waitUntil(() => isActive(store.state, 'store-front/main'));
-		await tile.getByRole('button', { name: 'deactivate' }).waitFor({ timeout: 5000 });
-		expect(await tile.getAttribute('class')).not.toContain('inactive');
-		expect(store.state.view).toEqual({ kind: 'grid', machine: 'local' });
-
-		await page.locator('.topbar .crumb', { hasText: 'Mission Control' }).click();
-		const card = page.locator('section.machine[aria-label="Active"]');
-		await card.getByText('2 sessions').waitFor({ timeout: 5000 });
-		await context.close();
-	}, 20_000);
-
-	it('Active → setup first, then the active sessions from every machine in the order activated, another machine named', async () => {
-		store.dispatch({ type: 'activate', ref: REMOTE });
-		goHome();
-		const { context, page } = await signIn();
-		await page.locator('section.machine[aria-label="Active"] .machine-name').click();
-		await waitUntil(() => store.state.view.kind === 'active');
-		await page.locator(`.tile[data-ref="${REMOTE}"]`).waitFor({ timeout: 5000 });
-
-		expect(await readTileRefs(page)).toEqual(['setup', 'store-front/main', REMOTE]);
-		expect(await page.locator(`.tile[data-ref="${REMOTE}"] .ref`).innerText()).toBe(
-			'Build box · api/main',
-		);
-		expect(await readCrumbs(page)).toBe('Mission Control › Active');
-		expect(await page.locator('.topbar').innerText()).toContain('3 sessions');
-		await context.close();
-	}, 20_000);
-
-	it('a tile on Active → the session inside Active: Active crumbs, the active sessions as tabs, a tab click stays there', async () => {
+	it('nothing activated → Active is empty and offers "Activate a worktree"', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
-		await page.locator('.tile[data-ref="store-front/main"] .tile-open').click();
-		await waitUntil(
-			() => store.state.view.kind === 'session' && store.state.view.from === 'active',
-		);
-		await page.getByRole('navigation').waitFor({ timeout: 5000 });
+		const empty = page.locator('.vo-empty');
 
-		expect(await readCrumbs(page)).toBe('Mission Control › Active › store-front/main');
+		await empty.getByText('Nothing active').waitFor({ timeout: 5000 });
+		await empty.getByRole('button', { name: 'Activate a worktree' }).click();
+		await waitUntil(() => store.state.view.kind === 'activate');
+		await context.close();
+	}, 20_000);
+
+	it('"+" → Activate: every worktree by machine; Activate gives it a tab and a row without leaving the page', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		await page.getByRole('button', { name: 'Activate a worktree' }).first().click();
+		await page.locator('section[aria-label="Activate"]').waitFor({ timeout: 5000 });
+
+		expect(await page.locator('.vb-machine b').allInnerTexts()).toEqual(['This Mac', 'Build box']);
+		expect(await page.locator('.vb-lib [data-ref="setup"]').count()).toBe(0);
+		const row = page.locator('.vb-lib .box-row[data-ref="store-front/main"]');
+		await row.getByRole('button', { name: 'Activate' }).click();
+		await waitUntil(() => isActive(store.state, 'store-front/main'));
+		await page.locator('.vo-tab[data-ref="store-front/main"]').waitFor({ timeout: 5000 });
+		await row.locator('.chip', { hasText: 'active' }).waitFor({ timeout: 5000 });
+		expect(store.state.view).toEqual({ kind: 'activate' });
+
+		await page.getByPlaceholder('Find a worktree or topic').fill('api');
+		expect(await page.locator('.vb-machine b').allInnerTexts()).toEqual(['This Mac', 'Build box']);
+		await page.getByPlaceholder('Find a worktree or topic').fill('store');
+		expect(await page.locator('.vb-machine b').allInnerTexts()).toEqual(['This Mac']);
+		await context.close();
+	}, 20_000);
+
+	it('Active → the active sessions from every machine in the order activated, another machine named', async () => {
+		store.dispatch({ type: 'activate', ref: REMOTE });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		await page.locator(`.vo-row[data-ref="${REMOTE}"]`).waitFor({ timeout: 5000 });
+
+		expect(await readRowRefs(page)).toEqual(['store-front/main', REMOTE]);
+		expect(await page.locator(`.vo-row[data-ref="${REMOTE}"]`).innerText()).toContain('Build box');
+		expect(await page.locator('.vo-head .m').innerText()).toBe('2 sessions on 2 machines');
 		expect(await readTabs(page)).toEqual([
-			expect.stringContaining('setup'),
 			expect.stringContaining('store-front/main'),
-			expect.stringContaining('Build box · api/main'),
+			expect.stringMatching(/api\/main\s*Build box/),
 		]);
-		expect(await page.locator('.topbar .home').innerText()).toBe('Esc → Active');
+		await context.close();
+	}, 20_000);
 
-		await page.locator('.tabs .tab', { hasText: 'api/main' }).click();
+	it('a tab opens its session inside Active; Esc goes back to Active', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		await page.locator(`.vo-tab[data-ref="${REMOTE}"]`).click();
 		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === REMOTE);
 		expect(store.state.view).toEqual({ kind: 'session', ref: REMOTE, from: 'active' });
+		await page.locator('.vo-head h1', { hasText: 'api/main' }).waitFor({ timeout: 5000 });
+
+		await page.locator('body').click();
+		await page.keyboard.press('Escape');
+		await waitUntil(() => store.state.view.kind === 'active');
 		await context.close();
 	}, 20_000);
 
-	it("an active session opened from its machine's grid → inside Active all the same", async () => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'grid', machine: 'local' } });
-		const { context, page } = await signIn();
-		await page.locator('.tile[data-ref="store-front/main"] .ref').click();
-		await waitUntil(
-			() => store.state.view.kind === 'session' && store.state.view.ref === 'store-front/main',
-		);
-
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'active' });
-		await page.getByText('Mission Control › Active › store-front/main').waitFor({ timeout: 5000 });
-		await context.close();
-	}, 20_000);
-
-	it('the setup session opened from Elsewhere → inside Active, with no Deactivate', async () => {
-		await ensureIdle('setup');
-		store.dispatch({ type: 'send', ref: 'setup', text: 'Tidy the old worktrees.' });
-		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
-		const { context, page } = await signIn();
-		await page
-			.locator('[aria-label="elsewhere"] .elsewhere-row', { hasText: 'setup' })
-			.click({ timeout: 5000 });
-		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === 'setup');
-
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'setup', from: 'active' });
-		await page.getByText('Mission Control › Active › setup').waitFor({ timeout: 5000 });
-		expect(await page.getByRole('button', { name: /deactivate/i }).count()).toBe(0);
-		store.dispatch({ type: 'turn_ended', ref: 'setup', costUsd: 0, text: 'Done.' });
-		await context.close();
-	}, 20_000);
-
-	it('an inactive session → its history, no input box; the TopBar activates it; Deactivate in the cockpit takes it back', async () => {
+	it('an inactive session → its history, no input box; Activate in its header starts it; Deactivate takes it back', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
 		const { context, page } = await signIn();
 		const input = page.getByLabel('Say or type a command');
-		await page
-			.getByText('Mission Control › This Mac › checkout-api/main')
-			.waitFor({ timeout: 5000 });
+		await page.locator('.vo-head h1', { hasText: 'checkout-api/main' }).waitFor({ timeout: 5000 });
 
 		// The earlier tests' lines stay readable: inactive is browsable, only not driven.
-		expect(await page.locator('.stream .line').count()).toBeGreaterThan(0);
+		expect(await page.locator('.vo-stream .line').count()).toBeGreaterThan(0);
 		expect(await input.count()).toBe(0);
 		await page
-			.locator('.botbar')
+			.locator('.vo-bar')
 			.getByText("checkout-api/main isn't active")
 			.waitFor({ timeout: 5000 });
 
-		await page.locator('.topbar').getByRole('button', { name: 'activate', exact: true }).click();
+		await page.locator('.vo-head').getByRole('button', { name: 'Activate', exact: true }).click();
 		await waitUntil(() => isActive(store.state, 'checkout-api/main'));
 		await input.waitFor({ timeout: 5000 });
-		await page.getByText('Mission Control › Active › checkout-api/main').waitFor({ timeout: 5000 });
 
-		await page.locator('.cockpit').getByRole('button', { name: 'Deactivate' }).click();
+		await page.locator('.vo-head').getByRole('button', { name: 'Deactivate' }).click();
 		await waitUntil(() => !isActive(store.state, 'checkout-api/main'));
 		await input.waitFor({ state: 'detached', timeout: 5000 });
 		expect(store.state.sessions['checkout-api/main']?.status).toBe('stopped');
-		expect(store.state.view).toEqual({ kind: 'session', ref: 'checkout-api/main' });
-		await page
-			.locator('.topbar')
-			.getByRole('button', { name: 'activate', exact: true })
-			.waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
-	it('an active session whose machine is out of reach → a placeholder tile; its deactivate lets it go', async () => {
+	it('an active session whose machine is out of reach → a placeholder row; its Deactivate lets it go', async () => {
 		store.dispatch({ type: 'machine_status', id: 'vm1', status: 'unreachable' });
 		store.dispatch({ type: 'active_loaded', refs: ['vm1:api/wrk2'] });
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
-		const placeholder = page.locator('.tile.missing[data-ref="vm1:api/wrk2"]');
+		const placeholder = page.locator('.vo-row.missing[data-ref="vm1:api/wrk2"]');
 
 		await placeholder.waitFor({ timeout: 5000 });
-		expect(await placeholder.locator('.ref').innerText()).toBe('api/wrk2 · Build box out of reach');
-		await placeholder.getByRole('button', { name: 'deactivate' }).click();
+		expect(await placeholder.innerText()).toContain('api/wrk2 · Build box out of reach');
+		await placeholder.getByRole('button', { name: 'Deactivate' }).click();
 		await waitUntil(() => !store.state.active.includes('vm1:api/wrk2'));
 		await placeholder.waitFor({ state: 'detached', timeout: 5000 });
 		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
+		await context.close();
+	}, 20_000);
+
+	it('a remote that dropped → the state row says so; a crash → "Claude stopped unexpectedly" and Restart starts it', async () => {
+		store.dispatch({ type: 'machine_status', id: 'vm1', status: 'unreachable' });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REMOTE } });
+		const { context, page } = await signIn();
+		await page.locator('.vs-state', { hasText: 'Build box dropped' }).waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'machine_resynced', id: 'vm1', inputs: [] });
+
+		await ensureIdle('store-front/main');
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		store.dispatch({ type: 'worker_exited', ref: 'store-front/main', error: 'exit 1' });
+		const crash = page.locator('.vs-state.crit');
+		await crash.getByText('Claude stopped unexpectedly').waitFor({ timeout: 5000 });
+		await crash.getByRole('button', { name: 'Restart' }).click();
+		await waitUntil(() => store.state.sessions['store-front/main']?.status === 'idle');
+		await crash.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a moment above the spoken line: "Sent to X. Switch there?" → Switch goes there; "For X?" → settle_target', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'offer_switch', ref: 'store-front/main' });
+		const offer = page.locator('.vo-offer');
+		await offer.getByText('Sent to store-front/main. Switch there?').waitFor({ timeout: 5000 });
+		await offer.getByRole('button', { name: 'Switch' }).click();
+		await waitUntil(
+			() => store.state.view.kind === 'session' && store.state.view.ref === 'store-front/main',
+		);
+
+		store.dispatch({
+			type: 'ask_which',
+			ref: REMOTE,
+			screen: 'store-front/main',
+			text: 'run the tests',
+		});
+		await offer.getByText('For api/main?').waitFor({ timeout: 5000 });
+		const before = received.length;
+		await offer.getByRole('button', { name: 'No, here' }).click();
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some(
+					(entry) =>
+						entry.message.type === 'action' &&
+						entry.message.action.type === 'settle_target' &&
+						!entry.message.action.toTarget,
+				),
+		);
+		await context.close();
+	}, 20_000);
+
+	it("settings: the gear opens them; a listening mode chosen there is the voice bar's too", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		await page.getByRole('button', { name: 'Voice OS settings' }).click();
+		await waitUntil(() => store.state.view.kind === 'settings');
+		const settings = page.locator('section[aria-label="Voice OS settings"]');
+		await settings.waitFor({ timeout: 5000 });
+		expect(await settings.innerText()).toContain('Build box');
+
+		await settings.getByRole('button', { name: 'Dictation', exact: true }).click();
+		expect(await readMode(page)).toBe('dictation');
+		await settings.getByRole('button', { name: 'Push to talk', exact: true }).click();
+		expect(await readMode(page)).toBe('push');
+		await context.close();
+	}, 20_000);
+
+	it('"Not now" → the sheet closes and Voice OS stays, its keys notice kept; the server dropping stacks its banner with it, never over it', async () => {
+		store.dispatch({ type: 'setup', missing: ['/k/anthropic.key', '/k/soniox.key'] });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+
+		for (const viewport of [
+			{ width: 1280, height: 800 },
+			{ width: 390, height: 844 },
+		]) {
+			const context = await browser.newContext({ permissions: ['microphone'], viewport });
+			const page = await context.newPage();
+			watchErrors(page);
+			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+			await page.goto(`http://localhost:${gateway.port}/voice`);
+			const sheet = page.getByRole('dialog', { name: 'Before you talk' });
+			await sheet.waitFor({ timeout: 5000 });
+			await sheet.getByRole('button', { name: 'Not now' }).click();
+			await sheet.waitFor({ state: 'detached', timeout: 5000 });
+
+			expect(new URL(page.url()).pathname).toBe('/voice');
+			const notice = page.locator('.vo-notice', { hasText: 'Voice is off until its keys are set' });
+			await notice.getByRole('button', { name: 'Add them' }).waitFor({ timeout: 5000 });
+
+			const previousPort = gateway.port;
+			gateway.stop();
+			const banner = page.locator('.conn', { hasText: "crew's server stopped" });
+			await banner.waitFor({ timeout: 5000 });
+			const [bannerBox, noticeBox] = await Promise.all([
+				banner.boundingBox(),
+				notice.boundingBox(),
+			]);
+			expect(bannerBox && noticeBox && bannerBox.y + bannerBox.height <= noticeBox.y + 0.5).toBe(
+				true,
+			);
+			expect(bannerBox && bannerBox.x >= 0 && bannerBox.x + bannerBox.width <= viewport.width).toBe(
+				true,
+			);
+
+			gateway = startServer(previousPort);
+			await banner.waitFor({ state: 'detached', timeout: 15_000 });
+
+			// The reload a server restart brings: "Not now" still holds for this tab — the notice,
+			// shown only while the sheet is closed, is what the page opens on.
+			await page.reload();
+			await notice.getByRole('button', { name: 'Add them' }).waitFor({ timeout: 5000 });
+			expect(await sheet.count()).toBe(0);
+			await context.close();
+		}
+
+		store.dispatch({ type: 'setup', missing: [] });
+	}, 60_000);
+
+	it('a key Voice OS lacks → "Before you talk"; a rejected key says crew\'s own words and saves nothing', async () => {
+		store.dispatch({ type: 'setup', missing: ['/k/anthropic.key'] });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		const sheet = page.getByRole('dialog', { name: 'Before you talk' });
+		await sheet.waitFor({ timeout: 5000 });
+		await sheet.getByPlaceholder('sk-ant-…').fill('sess-not-an-api-key');
+		await sheet.getByRole('button', { name: 'Start Voice OS' }).click();
+		await sheet.getByText('rejected that key').waitFor({ timeout: 5000 });
+
+		await sheet.getByPlaceholder('sk-ant-…').fill('sk-ant-api03-good');
+		await sheet.getByRole('button', { name: 'Start Voice OS' }).click();
+		await sheet.waitFor({ state: 'detached', timeout: 5000 });
+		expect(crew.calls.filter((call) => call.command.type === 'keys_set')).toHaveLength(2);
+		store.dispatch({ type: 'setup', missing: [] });
 		await context.close();
 	}, 20_000);
 });
@@ -1803,63 +1920,149 @@ describe('active', () => {
 describe('named sessions', () => {
 	const REMOTE = 'vm1:api/main';
 
-	const readCrumbs = (page: Page): Promise<string> => page.locator('.topbar .ws').innerText();
-
-	const renameInTopBar = async (page: Page, name: string): Promise<void> => {
-		await page.locator('.topbar').getByRole('button', { name: 'rename' }).click();
-		await page.getByLabel('session name').fill(name);
-		await page.getByLabel('session name').press('Enter');
-	};
-
-	it("rename on another machine's tile → the name alone on the tile, the tab and the crumbs; the ref on hover", async () => {
-		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+	it("rename in a session's header → the name on its tab, its row and its header; the ref on hover; empty clears it", async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REMOTE } });
 		const { context, page } = await signIn();
-		const tile = page.locator(`.tile[data-ref="${REMOTE}"]`);
 
-		await tile.getByRole('button', { name: 'rename' }).click();
+		await page.locator('.vo-head').getByRole('button', { name: 'Rename' }).click();
 		await page.getByLabel('session name').fill('voice os dev');
 		await page.getByLabel('session name').press('Enter');
 		await waitUntil(() => store.state.names[REMOTE] === 'voice os dev');
 
-		await tile.locator('.ref', { hasText: 'voice os dev' }).waitFor({ timeout: 5000 });
-		expect(await tile.locator('.ref').innerText()).toBe('voice os dev');
-		expect(await tile.locator('.ref').getAttribute('title')).toBe(REMOTE);
-		expect(store.state.view).toEqual({ kind: 'active' });
+		await page.locator('.vo-head h1', { hasText: 'voice os dev' }).waitFor({ timeout: 5000 });
+		expect(await page.locator('.vo-head h1').getAttribute('title')).toBe(REMOTE);
+		// A name stands alone: no machine beside it.
+		expect(await page.locator(`.vo-tab[data-ref="${REMOTE}"]`).innerText()).toBe('voice os dev');
 
-		await tile.locator('.tile-open').click();
-		await page.getByText('Mission Control › Active › voice os dev').waitFor({ timeout: 5000 });
-		expect(await page.locator('.tabs .tab.on').innerText()).toStartWith('voice os dev');
+		await page.locator('.vo-head').getByRole('button', { name: 'Rename' }).click();
+		await page.getByLabel('session name').fill('');
+		await page.getByLabel('session name').press('Enter');
+		await waitUntil(() => store.state.names[REMOTE] === undefined);
+		await context.close();
+	}, 20_000);
+});
+
+describe('layout', () => {
+	it('a session at 1440×900: only the history scrolls; header, panels and the voice bar stay put', async () => {
+		store.dispatch({ type: 'activate', ref: 'store-front/main' });
+		await ensureIdle('store-front/main');
+
+		for (let index = 0; index < 120; index++) {
+			store.dispatch({
+				type: 'assistant_text',
+				ref: 'store-front/main',
+				text: `layout line ${index}`,
+			});
+		}
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const { context, page } = await signIn();
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.getByText('layout line 119').waitFor({ timeout: 5000 });
+
+		const sizes = await page.evaluate(() => {
+			const stream = document.querySelector('.vo-stream') as HTMLElement;
+			const bar = document.querySelector('.vo-bar') as HTMLElement;
+
+			return {
+				pageScrolls: document.scrollingElement
+					? document.scrollingElement.scrollHeight > window.innerHeight
+					: false,
+				streamScrolls: stream.scrollHeight > stream.clientHeight,
+				barBottom: Math.round(bar.getBoundingClientRect().bottom),
+				headTop: Math.round(
+					(document.querySelector('.vo-head') as HTMLElement).getBoundingClientRect().top,
+				),
+			};
+		});
+
+		expect(sizes).toMatchObject({ pageScrolls: false, streamScrolls: true, barBottom: 900 });
+		await page.locator('.vo-stream').hover();
+		await page.mouse.wheel(0, -2000);
+		await Bun.sleep(200);
+		expect(
+			await page.evaluate(() =>
+				Math.round((document.querySelector('.vo-head') as HTMLElement).getBoundingClientRect().top),
+			),
+		).toBe(sizes.headTop);
 		await context.close();
 	}, 20_000);
 
-	it('rename in the TopBar → shown in the crumbs and the tab; a name already taken is refused; empty clears it', async () => {
+	it('a phone (390 wide): one column, nothing wider than the screen, the voice bar docked, the mode menu stepped aside', async () => {
+		// Enough active tabs to overflow 390px whatever earlier tests left active; taken back after.
+		const listed = store.state.order.flatMap((ref) => {
+			const session = store.state.sessions[ref];
+
+			return session && !ref.includes(':')
+				? [
+						{
+							ref,
+							label: session.label,
+							branch: session.branch,
+							cwd: session.cwd,
+							dirs: session.dirs,
+							isPinned: session.isPinned,
+						},
+					]
+				: [];
+		});
+		const extra = [1, 2, 3, 4].map((n) => `store-front/a-long-feature-branch-${n}`);
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [...listed, ...extra.map((ref) => createWorktree(ref))],
+		});
+
+		for (const ref of extra) {
+			store.dispatch({ type: 'activate', ref });
+		}
+
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
-		const { context, page } = await signIn();
+		const context = await browser.newContext({
+			permissions: ['microphone'],
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+		await page.goto(`http://localhost:${gateway.port}/voice`);
+		await page.locator('.vo-head h1').waitFor({ timeout: 5000 });
 
-		await renameInTopBar(page, 'shop');
-		await waitUntil(() => store.state.names['store-front/main'] === 'shop');
-		await page.getByText('Mission Control › Active › shop').waitFor({ timeout: 5000 });
-		expect(await page.locator('.tabs .tab.on').innerText()).toStartWith('shop');
+		const layout = await page.evaluate(() => ({
+			width: document.documentElement.scrollWidth,
+			split: getComputedStyle(
+				document.querySelector('.vo-split') as HTMLElement,
+			).gridTemplateColumns.split(' ').length,
+			barBottom: Math.round(
+				(document.querySelector('.vo-bar') as HTMLElement).getBoundingClientRect().bottom,
+			),
+			mode: getComputedStyle(document.querySelector('.mode-wrap') as HTMLElement).display,
+		}));
 
-		const before = received.length;
-		await renameInTopBar(page, 'Voice OS dev');
-		await waitUntil(() =>
-			received
-				.slice(before)
-				.some(
-					(entry) =>
-						entry.message.type === 'action' && entry.message.action.type === 'rename_session',
-				),
-		);
-		expect(store.state.names['store-front/main']).toBe('shop');
-		expect(await readCrumbs(page)).toBe('Mission Control › Active › shop');
+		expect(layout).toEqual({ width: 390, split: 1, barBottom: 844, mode: 'none' });
 
-		await renameInTopBar(page, '');
-		await waitUntil(() => store.state.names['store-front/main'] === undefined);
-		await page.getByText('Mission Control › Active › store-front/main').waitFor({ timeout: 5000 });
-		expect(await page.locator('.topbar .ws span[title]').count()).toBe(0);
+		// The active tabs scroll; "+" stays in the bar, on top, whatever they add up to.
+		const add = await page.evaluate(() => {
+			const button = document.querySelector('.vo-add') as HTMLElement;
+			const rect = button.getBoundingClientRect();
+			const tabs = document.querySelector('.vo-tabs') as HTMLElement;
 
-		store.dispatch({ type: 'rename_session', ref: REMOTE, name: '' });
+			return {
+				isOverflowing: tabs.scrollWidth > tabs.clientWidth,
+				isInside: rect.left >= 0 && rect.right <= window.innerWidth,
+				isOnTop:
+					document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) ===
+					button,
+			};
+		});
+		expect(add).toEqual({ isOverflowing: true, isInside: true, isOnTop: true });
 		await context.close();
+
+		for (const ref of extra) {
+			store.dispatch({ type: 'deactivate', ref });
+		}
+
+		store.dispatch({ type: 'worktrees', worktrees: listed });
 	}, 20_000);
 });

@@ -1,19 +1,22 @@
-// The Voice OS screenshots in docs/images/voice-os/, rendered from the real page and a made-up state.
+// The screenshots in docs/images/voice-os/ and docs/images/setup/, rendered from the real page and a
+// made-up state.
 //
-// Rerun after a UI change that the docs show (the page's layout, a panel, the ask dock, the bottom
-// bar): `bun run docs:screenshots` from voiceos/. The state goes through the real reducer, the page is
-// the real bundle behind the real gateway on a random localhost port, and Chromium is Playwright's.
-// Nothing reads or writes ~/.crew and no session, key or API is involved; the one request that leaves
-// the machine is the page's own Google Fonts stylesheet, so the shots show the real type.
+// Rerun after a UI change that the docs show (Home, a Voice OS view, a Set up page): `bun run
+// docs:screenshots` from voiceos/. The state goes through the real reducer, the page is the real
+// bundle behind the real gateway on a random localhost port, crew is the fake the UI tests use
+// (crew's own JSON shapes, from voiceos/testdata/), and Chromium is Playwright's. Nothing reads or
+// writes ~/.crew, no session, key or API is involved, and nothing leaves the machine: the page uses
+// the system font.
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
+import type { RunSetupCommand } from '../src/crew/api.js';
 import index from '../src/web/index.html';
 import { listAllowedOrigins } from '../src/gateway/auth.js';
 import { startGateway, type Gateway } from '../src/gateway/server.js';
 import { configureLog } from '../src/log.js';
 import {
-	GRID,
+	HOME_SCREEN,
 	type Input,
 	type PendingAsk,
 	type State,
@@ -21,8 +24,9 @@ import {
 } from '../src/shared/protocol.js';
 import { createInitialState, reduce } from '../src/state/reducer.js';
 import { Store } from '../src/state/store.js';
+import { createFakeCrew, type FakeCrew } from '../test/support/fake-crew.js';
 
-const OUT_DIR = join(import.meta.dir, '..', '..', 'docs', 'images', 'voice-os');
+const IMAGES_DIR = join(import.meta.dir, '..', '..', 'docs', 'images');
 const TOKEN = 'd'.repeat(64);
 const VIEWPORT = { width: 1440, height: 900 };
 // This Mac's checkouts, and the build box's: a tile shows its machine's own kind of path.
@@ -199,8 +203,24 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 		3000,
 		{ type: 'send', ref: 'setup', text: 'Add the signals repo to crew and give it a worktree' },
 		{ type: 'turn_started', ref: 'setup' },
-		{ type: 'tool', ref: 'setup', name: 'Bash', summary: 'run crew add project signals' },
+		{
+			type: 'tool',
+			ref: 'setup',
+			name: 'Bash',
+			summary: 'run crew add project signals ~/code/signals',
+		},
+		{ type: 'tool_result', ref: 'setup', ok: true, summary: 'Added project signals' },
+		{ type: 'tool', ref: 'setup', name: 'Read', summary: 'read package.json' },
+		{
+			type: 'tool',
+			ref: 'setup',
+			name: 'Bash',
+			summary:
+				'run crew dev add signals --name=dashboard --cmd="pnpm --filter dashboard dev" --port=5173',
+		},
+		{ type: 'tool_result', ref: 'setup', ok: true, summary: "Added dev server 'dashboard'" },
 		{ type: 'tool', ref: 'setup', name: 'Bash', summary: 'run crew add workspace signals signals' },
+		{ type: 'tool_result', ref: 'setup', ok: true, summary: 'Created workspace signals' },
 		{
 			type: 'assistant_text',
 			ref: 'setup',
@@ -429,7 +449,7 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 	// What was said to Voice OS, per screen.
 	steps.push(
 		logVoice(
-			GRID,
+			HOME_SCREEN,
 			'what is everyone doing',
 			[],
 			180,
@@ -453,11 +473,18 @@ const buildWorld = ({ isSignalsAsking = false }: WorldOptions = {}): State => {
 };
 
 interface Shot {
+	// Where it is written under docs/images: voice-os/<name>.png unless set.
 	name: string;
+	dir?: 'voice-os' | 'setup' | 'home';
+	// The page's address; /voice when not set (the view comes from the state).
+	path?: string;
+	// What crew answers: its goldens (default), or nothing yet (a first run).
+	crew?: 'golden' | 'empty';
+	viewport?: { width: number; height: number };
 	world?: WorldOptions;
 	// What happens after the shared world, before the shot.
 	stage?: (world: State) => State;
-	view: View;
+	view?: View;
 	// Before the page loads: the listening mode this tab kept.
 	listenMode?: 'on-demand' | 'hands-free';
 	// Runs in the page before the screenshot.
@@ -578,8 +605,9 @@ const activeOffline = (world: State): State =>
 const OVERVIEW_HEIGHT = 420;
 
 const SHOTS: Shot[] = [
-	{ name: 'mission-control', view: { kind: 'machines' }, height: OVERVIEW_HEIGHT },
-	{ name: 'machine-grid', view: { kind: 'grid', machine: 'local' }, height: OVERVIEW_HEIGHT },
+	{ name: 'crew-home', dir: 'home', path: '/' },
+	{ name: 'activate', view: { kind: 'activate' } },
+	{ name: 'settings', view: { kind: 'settings' } },
 	{
 		name: 'session',
 		view: { kind: 'session', ref: 'store-front/main' },
@@ -618,8 +646,24 @@ const SHOTS: Shot[] = [
 			await page.getByRole('button', { name: 'Listening mode' }).click();
 			await page.getByRole('menu', { name: 'Listening mode' }).waitFor();
 		},
-		around: ['.mode-menu', '.speech', '.botbar'],
+		around: ['.mode-menu', '.vo-spoken', '.vo-bar'],
 	},
+	{
+		name: 'phone',
+		view: { kind: 'session', ref: 'store-front/main' },
+		viewport: { width: 390, height: 844 },
+		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+	},
+	{ name: 'board', dir: 'setup', path: '/setup' },
+	{ name: 'workspaces', dir: 'setup', path: '/setup/workspaces' },
+	{ name: 'project', dir: 'setup', path: '/setup/project/store-api' },
+	{ name: 'project-form', dir: 'setup', path: '/setup/project/store-front/edit' },
+	{ name: 'worktree', dir: 'setup', path: '/setup/worktree/store-front/wrk1' },
+	{ name: 'new-worktree', dir: 'setup', path: '/setup/workspace/store-front/new-worktree' },
+	{ name: 'settings', dir: 'setup', path: '/setup/settings' },
+	{ name: 'chat', dir: 'setup', path: '/setup/chat' },
+	{ name: 'first-run', dir: 'setup', path: '/setup', crew: 'empty' },
+	{ name: 'board-phone', dir: 'setup', path: '/setup', viewport: { width: 390, height: 844 } },
 	{
 		name: 'hero',
 		view: { kind: 'session', ref: `${REMOTE}:store-front/wrk2` },
@@ -640,7 +684,7 @@ type Clip = { x: number; y: number; width: number; height: number };
 
 const findClip = async (page: Page, shot: Shot): Promise<Clip | null> => {
 	if (shot.height) {
-		return { x: 0, y: 0, width: VIEWPORT.width, height: shot.height };
+		return { x: 0, y: 0, width: (shot.viewport ?? VIEWPORT).width, height: shot.height };
 	}
 
 	if (!shot.around) {
@@ -657,15 +701,17 @@ const findClip = async (page: Page, shot: Shot): Promise<Clip | null> => {
 };
 
 const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<void> => {
-	const context = await browser.newContext({ viewport: VIEWPORT, permissions: ['microphone'] });
-
-	// Localhost and the page's fonts only: nothing else leaves the machine.
-	await context.route('**/*', (route) => {
-		const { hostname } = new URL(route.request().url());
-		const isAllowed = ['localhost', 'fonts.googleapis.com', 'fonts.gstatic.com'].includes(hostname);
-
-		return isAllowed ? route.continue() : route.abort();
+	const context = await browser.newContext({
+		viewport: shot.viewport ?? VIEWPORT,
+		permissions: ['microphone'],
+		// The page at rest: no opening, no moment, no page rise.
+		reducedMotion: 'reduce',
 	});
+
+	// Localhost only: nothing leaves the machine.
+	await context.route('**/*', (route) =>
+		new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort(),
+	);
 
 	if (shot.listenMode) {
 		await context.addInitScript((mode) => {
@@ -679,17 +725,19 @@ const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<vo
 
 		page.on('pageerror', (error) => errors.push(error.message));
 		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
-		await page.waitForSelector('.topbar');
-		await page.evaluate(() => document.fonts.ready.then(() => undefined));
+		await page.goto(`http://localhost:${gateway.port}${shot.path ?? '/voice'}`);
+		await page.waitForSelector('.vo-top, .top, .launcher');
 		await shot.prepare?.(page);
-		// The stream scrolls to its end and the mic settles.
-		await page.waitForTimeout(400);
+		// The stream scrolls to its end, crew's reads land and the mic settles.
+		await page.waitForTimeout(1200);
 
 		if (errors.length > 0) {
 			throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
 		}
 
-		const path = join(OUT_DIR, `${shot.name}.png`);
+		const dir = join(IMAGES_DIR, shot.dir ?? 'voice-os');
+		mkdirSync(dir, { recursive: true });
+		const path = join(dir, `${shot.name}.png`);
 		const clip = await findClip(page, shot);
 
 		await page.screenshot({ path, ...(clip ? { clip } : {}) });
@@ -701,9 +749,10 @@ const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<vo
 
 const main = async (): Promise<void> => {
 	configureLog({ quiet: true });
-	mkdirSync(OUT_DIR, { recursive: true });
-
 	const store = new SnapshotStore();
+	// One fake crew per shot, so a first run starts from nothing.
+	let crew: FakeCrew = createFakeCrew();
+	const runCrew: RunSetupCommand = (machine, command) => crew.runCrew(machine, command);
 	const gateway = startGateway({
 		store,
 		token: TOKEN,
@@ -714,7 +763,7 @@ const main = async (): Promise<void> => {
 		onMessage: () => undefined,
 		onAudio: () => undefined,
 		readHealth: () => ({}),
-		development: true,
+		runCrew,
 	});
 	let browser: Browser | null = null;
 
@@ -727,10 +776,10 @@ const main = async (): Promise<void> => {
 			const world = buildWorld(shot.world);
 			const staged = shot.stage ? shot.stage(world) : world;
 
-			store.snapshot = play(
-				[{ input: { type: 'switch_view', view: shot.view }, secondsAgo: 1 }],
-				staged,
-			);
+			crew = createFakeCrew({ seed: shot.crew ?? 'golden', remotes: [REMOTE] });
+			store.snapshot = shot.view
+				? play([{ input: { type: 'switch_view', view: shot.view }, secondsAgo: 1 }], staged)
+				: staged;
 			await shoot(browser, gateway, shot);
 		}
 	} finally {

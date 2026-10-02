@@ -1,5 +1,5 @@
 // Builds the Voice OS archives a crew release carries, one per platform crew ships:
-// voiceos_<version>_<goos>_<goarch>.tar.gz in dist/. `crew voice` downloads the one matching
+// voiceos_<version>_<goos>_<goarch>.tar.gz in dist/. `crew server start` downloads the one matching
 // its own version, so crew and Voice OS always come from the same tag.
 import { mkdirSync, rmSync } from 'node:fs';
 import { COMPILE_FLAGS } from './compile-flags.js';

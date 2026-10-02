@@ -66,7 +66,7 @@ export const StreamLine = ({ item }: StreamLineProps) => {
 			return (
 				<div className="aside" data-status={item.status}>
 					<div className="line user">
-						› {item.question} <span className="c-cyan">· {ASIDE_STATUS_TEXT[item.status]}</span>
+						› {item.question} <span className="c-dim">· {ASIDE_STATUS_TEXT[item.status]}</span>
 					</div>
 					{item.answer && (
 						<div className="line text">

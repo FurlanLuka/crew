@@ -10,6 +10,9 @@ const PIN_SLACK_PX = 48;
 export const useStickToBottom = <T extends HTMLElement>(key: string) => {
 	const ref = useRef<T>(null);
 	const isPinned = useRef(true);
+	// The height it had when last followed: a scroll away whose event has not landed yet (a busy
+	// page) still shows as distance from that end.
+	const lastHeight = useRef(0);
 
 	useLayoutEffect(() => {
 		const element = ref.current;
@@ -20,6 +23,7 @@ export const useStickToBottom = <T extends HTMLElement>(key: string) => {
 
 		isPinned.current = true;
 		element.scrollTop = element.scrollHeight;
+		lastHeight.current = element.scrollHeight;
 	}, [key]);
 
 	useEffect(() => {
@@ -33,6 +37,16 @@ export const useStickToBottom = <T extends HTMLElement>(key: string) => {
 			if (isPinned.current) {
 				element.scrollTop = element.scrollHeight;
 			}
+
+			lastHeight.current = element.scrollHeight;
+		};
+
+		const followGrowth = (): void => {
+			if (lastHeight.current - element.scrollTop - element.clientHeight > PIN_SLACK_PX) {
+				isPinned.current = false;
+			}
+
+			follow();
 		};
 
 		const onScroll = (): void => {
@@ -40,7 +54,7 @@ export const useStickToBottom = <T extends HTMLElement>(key: string) => {
 				element.scrollHeight - element.scrollTop - element.clientHeight <= PIN_SLACK_PX;
 		};
 
-		const mutations = new MutationObserver(follow);
+		const mutations = new MutationObserver(followGrowth);
 		const resizes = new ResizeObserver(follow);
 
 		mutations.observe(element, { childList: true, subtree: true, characterData: true });
