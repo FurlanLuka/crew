@@ -79,6 +79,7 @@ const actionSchema = z.discriminatedUnion('type', [
 		type: z.literal('set_languages'),
 		languages: z.array(z.string().max(8)).max(20),
 	}),
+	z.object({ type: z.literal('set_voice_off'), voiceOff: z.boolean() }),
 	z.object({ type: z.literal('offer_switch'), ref: refSchema }),
 	z.object({
 		type: z.literal('ask_which'),

@@ -29,6 +29,8 @@ const writeListenMode = (mode: InputMode): void => {
 export interface UseListenModeParams {
 	isConnected: boolean;
 	listenCommand: ListenCommand | null;
+	// Voice off: nothing listens; the mode is kept for when it is back on.
+	isVoiceOff: boolean;
 	getMic: () => Mic;
 	send: (message: ClientMessage) => void;
 	onMicStatusChange: (mic: MicStatus) => void;
@@ -37,6 +39,7 @@ export interface UseListenModeParams {
 export const useListenMode = ({
 	isConnected,
 	listenCommand,
+	isVoiceOff,
 	getMic,
 	send,
 	onMicStatusChange,
@@ -56,7 +59,7 @@ export const useListenMode = ({
 
 	// Announced on every (re)connect: a new socket, or a restarted server, knows nothing of it.
 	useEffect(() => {
-		if (!isListeningMode(listenMode) || !isConnected) {
+		if (!isListeningMode(listenMode) || !isConnected || isVoiceOff) {
 			return;
 		}
 
@@ -87,7 +90,7 @@ export const useListenMode = ({
 			send({ type: 'listen_stop' });
 			onMicStatusChange('idle');
 		};
-	}, [listenMode, isConnected, getMic, send, onMicStatusChange]);
+	}, [listenMode, isConnected, isVoiceOff, getMic, send, onMicStatusChange]);
 
 	const chooseListenMode = useCallback(
 		(mode: InputMode) => {

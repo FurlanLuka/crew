@@ -285,15 +285,29 @@ export class VoiceInput {
 		}, holdMs);
 	}
 
-	disconnect(client: string): void {
+	disconnect(client: string, why = 'the tab went away'): void {
 		this.listener.unlisten(client);
 
 		// A copy: settling an utterance shifts the queue this walks.
 		// Only presses stream; a listened turn is queued already settled.
 		for (const pending of [...(this.pendingByClient.get(client) ?? [])]) {
 			if (pending.kind === 'press' && pending.utterance.outcome.state === 'streaming') {
-				this.letGo(pending.utterance, 'the tab went away');
+				this.letGo(pending.utterance, why);
 			}
+		}
+	}
+
+	// Voice off: every tab and Discord stops being heard, so no Soniox stream stays open. A dictation
+	// under way is sent, as when its tab goes.
+	disconnectAll(why: string): void {
+		const clients = new Set([
+			...this.listener.listClients(),
+			...this.livePresses.keys(),
+			...this.pendingByClient.keys(),
+		]);
+
+		for (const client of clients) {
+			this.disconnect(client, why);
 		}
 	}
 

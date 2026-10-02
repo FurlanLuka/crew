@@ -363,7 +363,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   one label rule — a name, else the crew label — and a named session is never prefixed with its
   machine. The always-present **setup** session flag is still `Session.isPinned` (cwd home, crew
   setup only): the name stays because it is on the wire to remotes. Every session runs in Claude
-  Code's `auto` permission mode.
+  Code's `auto` permission mode. **Voice off** (`State.voiceOff`, `set_voice_off`, the top bar's
+  struck "voice", `voice-off.json`) is server-wide: no listener or TTS socket, Discord's bot out of
+  its channel (`pause`/`resume`), lines to the page unplayed; distinct from the kernel's `mute`
+  (less chatter).
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 

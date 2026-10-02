@@ -432,7 +432,7 @@ export class VoiceOut {
 		const now = this.now();
 		const elapsedMs = now - turn.startedAt;
 		const decision = decideInstantAck({
-			isMuted: this.queue.isMuted,
+			isMuted: this.queue.isMuted || this.options.store.state.voiceOff,
 			words: countSpokenWords(text),
 			minWords: MIN_REQUEST_WORDS,
 			msSinceSpoke: this.lastSpokeAt === null ? null : now - this.lastSpokeAt,
@@ -544,12 +544,24 @@ export class VoiceOut {
 		return this.spokenRecords.filter((line) => isRecent(line, now)).map((line) => ({ ...line }));
 	}
 
+	// Voice off: the clip playing is cut; what is queued drains to the page, unplayed (pump).
+	voiceTurnedOff(): void {
+		if (this.playing) {
+			this.finish(this.playing.id, { isCut: true });
+		}
+	}
+
 	mute(isMuted = true): void {
 		this.queue = setMuted(this.queue, isMuted);
 		log.info(isMuted ? 'muted' : 'unmuted');
 	}
 
 	remind(state: State): void {
+		// The page shows what waits; with voice off a reminder would only be a line nobody hears.
+		if (state.voiceOff) {
+			return;
+		}
+
 		const now = this.now();
 		const waiting = new Map<string, string>();
 
@@ -850,20 +862,32 @@ export class VoiceOut {
 			return;
 		}
 
+		// Voice off: a line goes straight to the page, unplayed, without the waits that pace a voice;
+		// filler is not worth a line there.
+		const isVoiceOff = this.options.store.state.voiceOff;
+
+		if (isVoiceOff && item.isFiller) {
+			log.info('filler dropped: voice off', { id: item.id });
+			void this.pump();
+
+			return;
+		}
+
 		// Keeps its place while it is worded, a moment at most; then it plays as it is.
-		if (item.wordingUntil !== undefined && item.wordingUntil > this.now()) {
+		if (!isVoiceOff && item.wordingUntil !== undefined && item.wordingUntil > this.now()) {
 			this.holdHead(item, item.wordingUntil - this.now());
 
 			return;
 		}
 
 		// Another session's ask waits for a breath after the last line, not the whole quiet.
-		const gapLeft = item.waitsForGap
-			? Math.min(
-					GAP_BEFORE_ASK_MS - (this.now() - this.quietSince),
-					MAX_GAP_WAIT_MS - (this.now() - item.at),
-				)
-			: 0;
+		const gapLeft =
+			item.waitsForGap && !isVoiceOff
+				? Math.min(
+						GAP_BEFORE_ASK_MS - (this.now() - this.quietSince),
+						MAX_GAP_WAIT_MS - (this.now() - item.at),
+					)
+				: 0;
 
 		if (gapLeft > 0) {
 			this.holdHead(item, gapLeft);
@@ -871,7 +895,7 @@ export class VoiceOut {
 			return;
 		}
 
-		if (this.holdIfOffScreen(item)) {
+		if (!isVoiceOff && this.holdIfOffScreen(item)) {
 			void this.pump();
 
 			return;
@@ -916,7 +940,7 @@ export class VoiceOut {
 
 		const synthesize = this.options.synthesize;
 
-		if (!synthesize || !tab) {
+		if (!synthesize || !tab || isVoiceOff) {
 			this.finish(item.id, { isUnplayed: true });
 
 			return;

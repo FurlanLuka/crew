@@ -29,6 +29,8 @@ import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistActive } from './memory/active.js';
 import { persistNames } from './memory/names.js';
 import { persistLanguages } from './memory/languages.js';
+import { persistVoiceOff } from './memory/voice-off.js';
+import { followVoiceOff } from './speech/voice-off.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
@@ -275,11 +277,19 @@ const voiceIn: VoiceInput = new VoiceInput({
 	debugAudioDir: process.env.VOICEOS_DEBUG_AUDIO === '1' ? paths.debugAudioDir : null,
 });
 
+// Before Discord starts: with voice off its bot never joins the channel only to leave it.
+persistVoiceOff({ store, file: paths.voiceOffFile });
+
 const discord = startDiscordVoice({
 	store,
 	voiceDir: paths.voiceDir,
 	keysDir: paths.keysDir,
+	startPaused: store.state.voiceOff,
 	onOwnerIn: (mode) => {
+		if (store.state.voiceOff) {
+			return;
+		}
+
 		voiceIn.listen(DISCORD_CLIENT, DISCORD_SAMPLE_RATE, mode);
 
 		// Called again on a mode change: the channel already has the seat, nothing to announce.
@@ -299,6 +309,19 @@ const discord = startDiscordVoice({
 	},
 	onAudio: (mono) => voiceIn.pushAudio(DISCORD_CLIENT, mono),
 	onClipDone: (id) => voiceOut.clipDone(id),
+});
+
+// Voice off lets go of everything that talks to Soniox or Discord's voice; the page lets go of its mic.
+followVoiceOff({
+	store,
+	onOff: () => {
+		voiceIn.disconnectAll('voice off');
+		voiceOut.voiceTurnedOff();
+		services.current.tts?.close();
+		discord.pause();
+	},
+	// Each page announces its own listening again; Discord's owner is heard once the bot is back.
+	onOn: () => discord.resume(),
 });
 
 const bootAt = Date.now();
@@ -389,8 +412,11 @@ gateway = startGateway({
 
 				return;
 			case 'ptt_start':
-				if (decidePageMic('ptt_start', seat.isOnDiscord) !== 'allow') {
-					log.info('page mic ignored: voice is on Discord', { client });
+				if (decidePageMic('ptt_start', seat.isOnDiscord, store.state.voiceOff) !== 'allow') {
+					log.info('page mic ignored', {
+						client,
+						why: store.state.voiceOff ? 'voice off' : 'voice is on Discord',
+					});
 
 					return;
 				}
@@ -417,10 +443,18 @@ gateway = startGateway({
 
 				return;
 			// The listening tab also plays speech, so its echo canceller knows what to remove.
-			case 'listen_start':
-				if (decidePageMic('listen_start', seat.isOnDiscord) === 'refuse') {
+			case 'listen_start': {
+				const listenVerdict = decidePageMic('listen_start', seat.isOnDiscord, store.state.voiceOff);
+
+				if (listenVerdict === 'refuse') {
 					log.info('page mic refused: voice is on Discord', { client });
 					sendToClient(client, { type: 'listen_off', reason: 'voice is on Discord' });
+
+					return;
+				}
+
+				if (listenVerdict === 'ignore') {
+					log.info('page listening ignored: voice off', { client });
 
 					return;
 				}
@@ -428,6 +462,7 @@ gateway = startGateway({
 				voiceIn.listen(client, message.sampleRate, message.mode ?? 'hands-free');
 
 				return;
+			}
 			case 'listen_stop':
 				voiceIn.unlisten(client);
 

@@ -107,6 +107,10 @@ export class Listener {
 		this.now = options.now ?? Date.now;
 	}
 
+	listClients(): string[] {
+		return [...this.listening.keys()];
+	}
+
 	hasClient(client: string): boolean {
 		return this.listening.has(client);
 	}

@@ -1506,3 +1506,43 @@ button.line.opens:hover .opens-hint {
 	padding: 12px 24px 18px;
 	border-top: 1px solid var(--sep);
 }
+
+/* Voice off and on: the word "voice", struck through while it is off. */
+.vo-voice {
+	position: relative;
+	padding: 5px 9px;
+	border: 0;
+	border-radius: 9px;
+	background: none;
+	color: var(--label-2);
+	font: 600 12px var(--sys);
+	letter-spacing: 0.02em;
+}
+.vo-voice:hover {
+	background: var(--fill);
+	color: #fff;
+}
+.vo-voice-word {
+	position: relative;
+}
+.vo-voice.off .vo-voice-word::after {
+	content: "";
+	position: absolute;
+	left: -2px;
+	right: -2px;
+	top: 52%;
+	height: 1.5px;
+	border-radius: 1px;
+	background: currentColor;
+}
+.vo-voice.off {
+	color: var(--label-3);
+}
+/* Where the mic sits while voice is off. */
+.vo-voice.vo-mic {
+	width: auto;
+	padding: 0 12px;
+	border-radius: 10px;
+	box-shadow: none;
+	color: var(--label-2);
+}

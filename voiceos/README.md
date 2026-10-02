@@ -11,7 +11,7 @@ is the same command, forever. What one machine runs on another (`crew voice _att
 purpose: an older crew on the other end knows only that one.
 
 **Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Set up,
-Active and Activate, listening modes, active sessions, approvals, other machines, troubleshooting and
+Active and Activate, listening modes, voice off, active sessions, approvals, other machines, troubleshooting and
 privacy. [Voice OS commands](../docs/guides/voice-os-commands.md) lists every kernel tool with
 things to say; a tool change updates its section (`src/tools/definitions.spec.ts` checks each has
 one). This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)
@@ -350,6 +350,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |
 | `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
+| `voice-off.json` | Voice off (the top bar's "voice"): read before Discord starts, so the bot never joins only to leave. `speech/voice-off.ts` lets go of every listener, the playing clip, the TTS socket and the Discord channel; `VoiceOut` drains lines to the page unplayed. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew server notes`). |
 | `media/` | Images by content hash, swept after 30 days. |

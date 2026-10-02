@@ -52,6 +52,9 @@ export const useVoiceInput = ({
 	const isDictating = dictationStartedAt !== null;
 	const isOnDiscordRef = useRef(false);
 	isOnDiscordRef.current = Boolean(state.discord?.isOwnerIn);
+	const isVoiceOff = state.voiceOff;
+	const isVoiceOffRef = useRef(isVoiceOff);
+	isVoiceOffRef.current = isVoiceOff;
 
 	useEffect(() => {
 		player.setNotify((id) => send({ type: 'audio_done', id }));
@@ -78,15 +81,33 @@ export const useVoiceInput = ({
 	const { listenMode, listenModeRef, chooseListenMode } = useListenMode({
 		isConnected,
 		listenCommand,
+		isVoiceOff,
 		getMic,
 		send,
 		onMicStatusChange,
 	});
 
+	// Voice off: what plays stops and the device is let go, so the browser's recording light goes out.
+	useEffect(() => {
+		if (!isVoiceOff) {
+			return;
+		}
+
+		isPressedRef.current = false;
+		setDictationStartedAt(null);
+		player.stop();
+		micRef.current?.close();
+		onMicStatusChange('idle');
+	}, [isVoiceOff, player, onMicStatusChange]);
+
 	useEffect(() => {
 		// Already allowed: open now so the first press has its pre-roll; a listening mode opens its own.
+		if (isVoiceOff) {
+			return;
+		}
+
 		void isMicAllowed().then((isAllowed) =>
-			isAllowed && !isListeningMode(listenModeRef.current)
+			isAllowed && !isListeningMode(listenModeRef.current) && !isVoiceOffRef.current
 				? getMic()
 						.ensure()
 						.catch(() => {
@@ -94,7 +115,7 @@ export const useVoiceInput = ({
 						})
 				: undefined,
 		);
-	}, [getMic]);
+	}, [getMic, isVoiceOff]);
 
 	const handleTalkStart = useCallback(
 		async ({ isDictation = false }: { isDictation?: boolean } = {}) => {
@@ -102,7 +123,8 @@ export const useVoiceInput = ({
 			if (
 				isPressedRef.current ||
 				isListeningMode(listenModeRef.current) ||
-				isOnDiscordRef.current
+				isOnDiscordRef.current ||
+				isVoiceOffRef.current
 			) {
 				return;
 			}
