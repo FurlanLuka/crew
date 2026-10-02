@@ -30,7 +30,7 @@ import {
 	withoutEffects,
 } from './helpers.js';
 import { matchMachine } from './active.js';
-import { isActive } from '../shared/active.js';
+import { canRun, isActive } from '../shared/active.js';
 
 const MACHINE_INPUTS = [
 	'machines',
@@ -71,14 +71,10 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 	);
 	const isViewGone =
 		(state.view.kind === 'session' && !isKept(state.view.ref)) ||
-		(state.view.kind === 'grid' &&
+		(state.view.kind === 'activate' &&
 			state.view.machine !== undefined &&
 			removed.includes(state.view.machine));
-	const view: View = !isViewGone
-		? state.view
-		: state.view.kind === 'session' && state.view.from === 'active'
-			? { kind: 'active' }
-			: HOME_VIEW;
+	const view: View = isViewGone ? HOME_VIEW : state.view;
 
 	return {
 		...releaseRefs(state, (ref) => !isKept(ref)),
@@ -188,7 +184,7 @@ const resync = ({ state, id, inputs, stamped, reduceInner }: ResyncParams): Redu
 		const session = next.sessions[ref];
 
 		// An inactive session's words wait for it to be activated: matchMachine stops it below.
-		if (machineOf(ref) !== id || !session || !isActive(next, ref)) {
+		if (machineOf(ref) !== id || !session || !canRun(next, ref)) {
 			continue;
 		}
 
@@ -391,7 +387,7 @@ export const guardUnreachable = (
 // Switching to a machine says what waits there, and nothing when nothing does; moving within that
 // machine says nothing new.
 export const describeSwitch = (state: State, next: View): Effect[] => {
-	if (next.kind !== 'grid' || !next.machine || !hasMachines(state)) {
+	if (next.kind !== 'activate' || !next.machine || !hasMachines(state)) {
 		return [];
 	}
 

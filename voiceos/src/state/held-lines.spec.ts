@@ -137,7 +137,7 @@ describe('held while the developer looks elsewhere', () => {
 		const held = run([tagged(LONG)], { start: runningSession() }).state;
 
 		for (const view of [
-			{ kind: 'grid' as const },
+			{ kind: 'active' as const },
 			{ kind: 'session' as const, ref: 'store/wrk1' },
 		]) {
 			const { state, effects } = run([{ type: 'switch_view', view }], { start: held });
@@ -193,7 +193,7 @@ describe('held while the developer looks elsewhere', () => {
 		}).state;
 		const { effects } = run(
 			[
-				{ type: 'switch_view', view: { kind: 'grid' } },
+				{ type: 'switch_view', view: { kind: 'active' } },
 				{ type: 'turn_ended', ref: REF, costUsd: 0, text: `<spoken>${LONG}</spoken>` },
 			],
 			{ start: heard },
@@ -572,7 +572,7 @@ describe('a question or plan the session already asked in its own line', () => {
 		const asked = open(question(), saidAndHeard()).state;
 		const left = run(
 			[
-				{ type: 'switch_view', view: { kind: 'grid' } },
+				{ type: 'switch_view', view: { kind: 'active' } },
 				{ type: 'line_held', ref: REF, text: ASKED, isAsking: true },
 			],
 			{ start: asked },
@@ -830,7 +830,7 @@ describe('a held line replayed while background sub-agents work', () => {
 
 describe('isOnAnotherSession', () => {
 	it.each([
-		['Mission Control', { kind: 'grid' as const }, false],
+		['Mission Control', { kind: 'active' as const }, false],
 		['the session itself', { kind: 'session' as const, ref: REF }, false],
 		['another session', { kind: 'session' as const, ref: 'store/wrk1' }, true],
 	])('%s → %p', (_, view, expected) =>

@@ -102,7 +102,7 @@ describe('add_machine / rename_machine / remove_machine', () => {
 		]);
 	});
 
-	it('remove the machine on screen → back home, to the cards; its active session → Active', () => {
+	it('remove the machine on screen → back home to Active, from Activate or a session', () => {
 		const removeFrom = (view: View): View =>
 			run(
 				[
@@ -112,7 +112,7 @@ describe('add_machine / rename_machine / remove_machine', () => {
 				{ start: connected() },
 			).state.view;
 
-		expect(removeFrom({ kind: 'grid', machine: 'vm1' })).toEqual({ kind: 'machines' });
+		expect(removeFrom({ kind: 'activate', machine: 'vm1' })).toEqual({ kind: 'active' });
 		expect(removeFrom({ kind: 'session', ref: REMOTE })).toEqual({ kind: 'active' });
 	});
 });
@@ -250,7 +250,7 @@ describe('guardUnreachable', () => {
 
 describe('switch_view to a machine', () => {
 	it('from elsewhere, nothing waiting → nothing said', () => {
-		const { effects } = run([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }], {
+		const { effects } = run([{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } }], {
 			start: connected(),
 		});
 
@@ -262,7 +262,7 @@ describe('switch_view to a machine', () => {
 			...connected(),
 			asks: [{ id: 'a', ref: REMOTE, at: 1, kind: 'plan', input: {}, plan: 'p' }],
 		};
-		const { effects } = run([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }], {
+		const { effects } = run([{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } }], {
 			start,
 		});
 
@@ -275,7 +275,7 @@ describe('switch_view to a machine', () => {
 		const { effects } = run(
 			[
 				{ type: 'switch_view', view: { kind: 'session', ref: REMOTE } },
-				{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } },
+				{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } },
 			],
 			{ start: connected() },
 		);
@@ -354,23 +354,23 @@ describe('answers to what Voice OS holds, for a machine out of reach', () => {
 });
 
 describe('removing the machine on screen, others left', () => {
-	it('→ Mission Control, not the grid of every session', () => {
+	it('→ Active, not Activate for every machine', () => {
 		const { state } = run([
 			{ type: 'machines', machines: [VM1, { id: 'vm2', host: 'vm2', name: 'GPU box' }] },
-			{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } },
+			{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } },
 			{ type: 'remove_machine', id: 'vm1' },
 		]);
 
-		expect(state.view).toEqual({ kind: 'machines' });
+		expect(state.view).toEqual({ kind: 'active' });
 	});
 });
 
 describe('home', () => {
-	it('a start → home is the cards, even with no other machine', () => {
-		expect(run([]).state.view).toEqual({ kind: 'machines' });
+	it('a start → home is Active', () => {
+		expect(run([]).state.view).toEqual({ kind: 'active' });
 	});
 
-	it('this Mac first in the grid, then each machine; the setup session leads within one', () => {
+	it('this Mac first, then each machine; the setup session leads within one', () => {
 		const { state } = run([
 			{ type: 'machines', machines: [VM1] },
 			{
@@ -391,10 +391,10 @@ describe('home', () => {
 describe('adding or removing machines moves nobody', () => {
 	const GPU = { id: 'gpu', host: 'gpu', name: 'GPU box' };
 
-	it('a session or a machine grid on screen → stays through a reload, a rename and another add', () => {
+	it('a session or a machine on Activate on screen → stays through a reload, a rename and another add', () => {
 		for (const view of [
 			{ kind: 'session' as const, ref: REMOTE, from: 'active' as const },
-			{ kind: 'grid' as const, machine: 'vm1' },
+			{ kind: 'activate' as const, machine: 'vm1' },
 		]) {
 			const { state } = run(
 				[
@@ -410,9 +410,9 @@ describe('adding or removing machines moves nobody', () => {
 		}
 	});
 
-	it('the last machine removed while on the cards → still the cards', () => {
+	it('the last machine removed while on Active → still Active', () => {
 		const { state } = run([{ type: 'machines', machines: [] }], { start: connected() });
 
-		expect(state.view).toEqual({ kind: 'machines' });
+		expect(state.view).toEqual({ kind: 'active' });
 	});
 });

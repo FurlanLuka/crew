@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { GRID, type State, type VoiceEntry } from '../shared/protocol.js';
+import { HOME_SCREEN, type State, type VoiceEntry } from '../shared/protocol.js';
 import { createInitialState } from '../state/reducer.js';
 import { describeRecentAction, MAX_QUOTED_CHARS, RECENT_ACTION_MS } from './recent-action.js';
 
@@ -32,8 +32,8 @@ describe('describeRecentAction', () => {
 		);
 	});
 
-	it('a note saved on the grid → the grid counts too', () => {
-		expect(summaryOf(['note "use the staging db"'], GRID)).toBe(
+	it('a note saved off a session → home counts too', () => {
+		expect(summaryOf(['note "use the staging db"'], HOME_SCREEN)).toBe(
 			lineFor('Do the thing.', 'saved it as a note'),
 		);
 	});
@@ -140,14 +140,16 @@ describe('describeRecentAction', () => {
 		const sentTo = entry({ did: ['send_to crew/main "Check the notes."'] });
 
 		expect(describeFor(withLog({ 'crew/main': [forwarded] }))).toBeUndefined();
-		expect(describeFor(withLog({ [GRID]: [sentTo] }))).toBeUndefined();
+		expect(describeFor(withLog({ [HOME_SCREEN]: [sentTo] }))).toBeUndefined();
 	});
 
 	it('the newest entry decides: a forward here after the note → nothing', () => {
 		const forwarded = entry({ did: ['forward "Check the notes."'], at: NOW - 5_000 });
 
 		expect(
-			describeFor(withLog({ 'crew/main': [forwarded], [GRID]: [entry({ at: NOW - 8_000 })] })),
+			describeFor(
+				withLog({ 'crew/main': [forwarded], [HOME_SCREEN]: [entry({ at: NOW - 8_000 })] }),
+			),
 		).toBeUndefined();
 	});
 

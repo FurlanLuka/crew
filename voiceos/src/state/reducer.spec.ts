@@ -869,7 +869,7 @@ describe('stream', () => {
 });
 
 describe('worktrees', () => {
-	it('pinned sessions sort first, then by ref', () => {
+	it('the setup session sorts first, then by ref', () => {
 		const { state } = run([
 			{
 				type: 'worktrees',
@@ -894,14 +894,14 @@ describe('worktrees', () => {
 		expect(state.order).toContain('store/main');
 	});
 
-	it("viewing a worktree that disappears → back to its machine's grid", () => {
+	it('viewing a worktree that disappears → back to Active', () => {
 		const viewing = run(
 			[{ type: 'switch_view', view: { kind: 'session', ref: 'store/wrk1' } }],
 			idleSession(),
 		).state;
 		const { state } = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }], viewing);
 
-		expect(state.view).toEqual({ kind: 'grid', machine: 'local' });
+		expect(state.view).toEqual({ kind: 'active' });
 	});
 
 	it('restore_view of a known session → shown and focused, nothing said', () => {
@@ -1914,14 +1914,14 @@ describe("a session's first message since it started", () => {
 describe('voice log', () => {
 	const entry = (utterance: string) => ({ utterance, did: [], reply: '', at: 1 });
 
-	it('kept per screen, the newest eight; the grid has its own', () => {
+	it('kept per screen, the newest eight; the screens that are not a session share one', () => {
 		const inputs: Input[] = Array.from({ length: 10 }, (_, i) => ({
 			type: 'voice_logged',
 			screen: 'store/main',
 			entry: entry(`u${i}`),
 		}));
 		const { state } = run(
-			[...inputs, { type: 'voice_logged', screen: 'grid', entry: entry('home') }],
+			[...inputs, { type: 'voice_logged', screen: 'home', entry: entry('home') }],
 			idleSession(),
 		);
 		expect(state.voiceLog['store/main']?.map((entry) => entry.utterance)).toEqual([
@@ -1934,33 +1934,33 @@ describe('voice log', () => {
 			'u8',
 			'u9',
 		]);
-		expect(state.voiceLog.grid?.map((entry) => entry.utterance)).toEqual(['home']);
+		expect(state.voiceLog.home?.map((entry) => entry.utterance)).toEqual(['home']);
 	});
 
 	it('long words and replies are clipped', () => {
 		const { state } = run([
 			{
 				type: 'voice_logged',
-				screen: 'grid',
+				screen: 'home',
 				entry: { ...entry('x'.repeat(2000)), reply: 'y'.repeat(2000) },
 			},
 		]);
-		expect(state.voiceLog.grid?.[0]?.utterance.length).toBeLessThanOrEqual(501);
-		expect(state.voiceLog.grid?.[0]?.reply.length).toBeLessThanOrEqual(501);
+		expect(state.voiceLog.home?.[0]?.utterance.length).toBeLessThanOrEqual(501);
+		expect(state.voiceLog.home?.[0]?.reply.length).toBeLessThanOrEqual(501);
 	});
 
-	it('a screen that is not a session is dropped; a worktree that goes takes its log with it, the grid stays', () => {
+	it('a screen that is not a session is dropped; a worktree that goes takes its log with it, the shared one stays', () => {
 		const logged = run(
 			[
 				{ type: 'voice_logged', screen: 'nowhere/main', entry: entry('lost') },
 				{ type: 'voice_logged', screen: 'store/wrk1', entry: entry('w') },
-				{ type: 'voice_logged', screen: 'grid', entry: entry('g') },
+				{ type: 'voice_logged', screen: 'home', entry: entry('g') },
 			],
 			idleSession(),
 		).state;
-		expect(Object.keys(logged.voiceLog).sort()).toEqual(['grid', 'store/wrk1']);
+		expect(Object.keys(logged.voiceLog).sort()).toEqual(['home', 'store/wrk1']);
 		const { state } = run([{ type: 'worktrees', worktrees: [worktree('store/main')] }], logged);
-		expect(Object.keys(state.voiceLog)).toEqual(['grid']);
+		expect(Object.keys(state.voiceLog)).toEqual(['home']);
 	});
 });
 

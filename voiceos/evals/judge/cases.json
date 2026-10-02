@@ -207,13 +207,6 @@
 			"context": "The part: \"popravi login.\"",
 			"expect": "no"
 		},
-		{ "key": "for_setup", "utterance": "Add a new worktree for checkout api.", "expect": "yes" },
-		{
-			"key": "for_setup",
-			"utterance": "Füg das Projekt signals zum Workspace hinzu.",
-			"expect": "yes"
-		},
-		{ "key": "for_setup", "utterance": "Fix the failing login test.", "expect": "no" },
 		{ "key": "this_session", "utterance": "Pin this session.", "expect": "yes" },
 		{ "key": "this_session", "utterance": "Pripni to sejo.", "expect": "yes" },
 		{ "key": "this_session", "utterance": "Pin checkout api.", "expect": "no" },

@@ -1,7 +1,7 @@
 import { resolveRef } from '../router/refs.js';
 import type { State } from '../shared/protocol.js';
 import { isActive, listActiveInOrder } from '../shared/active.js';
-import { SETUP_REF, isSetupRef } from '../shared/machine-ref.js';
+import { isSetupRef } from '../shared/machine-ref.js';
 
 export interface ToolResult {
 	ok: boolean;
@@ -36,18 +36,15 @@ const toInactive = (ref: string): RefCheck => ({
 	inactive: ref,
 });
 
-// Resolved against every session first, so "setup" said on vm1 stays vm1's setup; a name an active
-// session also answers to goes to that one rather than to an inactive one here.
+// Resolved against every session first; a name an active session also answers to goes to that one
+// rather than to an inactive one here. A setup session is never reached: it lives in Set up.
 export const checkRef = (state: State, value: unknown): RefCheck => {
 	if (typeof value !== 'string' || !value) {
 		return { ok: false, error: 'missing ref' };
 	}
 
-	// "setup" is also this Mac's setup ref: said inside another machine it is that machine's setup.
-	const exact = value === SETUP_REF ? (resolveRef(state, value, state.order) ?? value) : value;
-
-	if (state.sessions[exact]) {
-		return isActive(state, exact) ? { ok: true, ref: exact } : toInactive(exact);
+	if (state.sessions[value] && !isSetupRef(value)) {
+		return isActive(state, value) ? { ok: true, ref: value } : toInactive(value);
 	}
 
 	const anyRef = resolveRef(state, value, state.order);
@@ -56,7 +53,7 @@ export const checkRef = (state: State, value: unknown): RefCheck => {
 		return { ok: true, ref: anyRef };
 	}
 
-	const activeRef = anyRef && isSetupRef(anyRef) ? null : resolveRef(state, value);
+	const activeRef = resolveRef(state, value);
 
 	if (activeRef) {
 		return { ok: true, ref: activeRef };
@@ -66,8 +63,10 @@ export const checkRef = (state: State, value: unknown): RefCheck => {
 		return toInactive(anyRef);
 	}
 
+	const active = listActiveInOrder(state);
+
 	return {
 		ok: false,
-		error: `no active session "${value}". Active sessions: ${listActiveInOrder(state).join(', ')}. Another worktree is reached with activate.`,
+		error: `no active session "${value}". ${active.length ? `Active sessions: ${active.join(', ')}.` : 'No sessions are active.'} Another worktree is reached with activate.`,
 	};
 };

@@ -214,7 +214,7 @@ const isAnnouncedOnly = (state: State, ask: PendingAsk): boolean => {
 		return false;
 	}
 
-	// Mission Control is the overview: only a plan, and a question too long to take in there, wait.
+	// Off a session is the overview: only a plan, and a question too long to take in there, wait.
 	if (ask.kind === 'plan') {
 		return true;
 	}
@@ -661,7 +661,7 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				};
 			}
 
-			// On Mission Control, a short question said in full now: the session's held line would only
+			// Off a session, a short question said in full now: the session's held line would only
 			// repeat it.
 			const said =
 				ask.kind === 'question' &&

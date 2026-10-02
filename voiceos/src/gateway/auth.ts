@@ -49,6 +49,31 @@ export const isOriginAllowed = (origin: string | null, allowed: string[]): boole
 	return Boolean(origin) && allowed.includes(origin as string);
 };
 
+export interface CheckRequestParams {
+	origin: string | null;
+	origins: string[];
+	isAuthorized: boolean;
+}
+
+export interface Refusal {
+	status: number;
+	text: string;
+}
+
+// Shared by /ws and /api/crew: the page's own origin, then its cookie. A cross-site page cannot
+// read the answer, but a POST it makes would still run: the exact Origin match is what stops it.
+export const checkRequest = ({
+	origin,
+	origins,
+	isAuthorized,
+}: CheckRequestParams): Refusal | null => {
+	if (!isOriginAllowed(origin, origins)) {
+		return { status: 403, text: 'origin not allowed' };
+	}
+
+	return isAuthorized ? null : { status: 401, text: 'unauthorized' };
+};
+
 export interface ListAllowedOriginsParams {
 	port: number;
 	proxyHost: string | null;

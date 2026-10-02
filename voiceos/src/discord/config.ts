@@ -1,5 +1,5 @@
-// What `crew voice discord setup` leaves behind (discord.json and the bot token), the listening mode the
-// developer chose for Discord, and the status file `crew voice discord status` reads.
+// What `crew server discord setup` leaves behind (discord.json and the bot token), the listening mode the
+// developer chose for Discord, and the status file `crew server discord status` reads.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';

@@ -1,5 +1,5 @@
 // Discord wired into Voice OS: follows the setup crew writes, keeps one bridge connected, and tells the
-// state (and `crew voice discord status`) where it stands.
+// state (and `crew server discord status`) where it stands.
 import { watch } from 'node:fs';
 import { createLogger } from '../log.js';
 import type { DiscordPresence, ListeningMode, ServerMessage } from '../shared/protocol.js';

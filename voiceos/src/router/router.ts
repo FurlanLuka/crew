@@ -1,7 +1,7 @@
 import type { Store } from '../state/store.js';
 import type { ToolCall } from '../tools/definitions.js';
 import {
-	GRID,
+	HOME_SCREEN,
 	isSwitchOfferFresh,
 	type ListenMode,
 	type State,
@@ -163,7 +163,7 @@ export class UtteranceRouter {
 			// In the screen's voice log like any turn: debug notes read what was said there.
 			store.dispatch({
 				type: 'voice_logged',
-				screen: readScreenRef(store.state) ?? GRID,
+				screen: readScreenRef(store.state) ?? HOME_SCREEN,
 				entry: {
 					utterance: trimmedText,
 					did: ['switch offer declined'],
@@ -238,7 +238,7 @@ export class UtteranceRouter {
 			setListenMode: origin.setListenMode ?? NO_TAB,
 			openUrl: origin.openUrl ?? NO_TAB_TO_OPEN,
 		});
-		store.dispatch({ type: 'voice_logged', screen: screen ?? GRID, entry });
+		store.dispatch({ type: 'voice_logged', screen: screen ?? HOME_SCREEN, entry });
 
 		if (offerAt !== null) {
 			store.dispatch({ type: 'switch_offer_closed', at: offerAt });

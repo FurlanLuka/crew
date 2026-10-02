@@ -39,11 +39,18 @@ describe('isSilenced', () => {
 		expect(isSilenced(state, aside(INACTIVE))).toBe(true);
 	});
 
-	it("the same of an active session, or of this Mac's setup → said", () => {
+	it('the same of an active session → said', () => {
 		expect(isSilenced(state, speak({ ref: ACTIVE }))).toBe(false);
 		expect(isSilenced(state, narrate(ACTIVE))).toBe(false);
 		expect(isSilenced(state, aside(ACTIVE))).toBe(false);
-		expect(isSilenced(state, narrate(SETUP_REF))).toBe(false);
+	});
+
+	it("a setup session's turn, aside or line, here or remote → silenced: Set up's chat shows it", () => {
+		for (const ref of [SETUP_REF, 'vm1:setup']) {
+			expect(isSilenced(state, narrate(ref))).toBe(true);
+			expect(isSilenced(state, aside(ref))).toBe(true);
+			expect(isSilenced(state, speak({ ref }))).toBe(true);
+		}
 	});
 
 	it('Voice OS\'s reply about an inactive session ("… isn\'t active. Activate it?") → said', () => {

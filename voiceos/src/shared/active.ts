@@ -1,19 +1,30 @@
 // Which sessions exist for voice. Active: Voice OS runs its Claude and voice drives it fully.
 // Inactive: no process, nothing said, invisible to the kernel — browsable on the page, where it can
 // be activated. The one reading of the set: nothing else reads state.active.
-import { SETUP_REF } from './machine-ref.js';
-import type { State } from './protocol.js';
+import { isSetupRef, readMachine } from './machine-ref.js';
+import type { PendingAsk, State } from './protocol.js';
 
-// This Mac's setup session is always active: crew setup must answer from anywhere. A remote's setup
-// session ("vm1:setup") is a session like any other.
+// A setup session (this Mac's "setup", a remote's "vm1:setup") is never active: it lives in Set up,
+// where the developer types to it, and voice neither hears it nor talks to it.
 export const isActive = (state: State, ref: string): boolean =>
-	ref === SETUP_REF || state.active.includes(ref);
+	!isSetupRef(ref) && state.active.includes(ref);
 
-// The active sessions crew has, in the developer's order with this Mac's setup first.
-export const listActiveRefs = (state: State): string[] => [
-	...(state.sessions[SETUP_REF] ? [SETUP_REF] : []),
-	...state.active.filter((ref) => ref !== SETUP_REF && state.sessions[ref]),
-];
+// Whether Voice OS keeps a session's Claude running: an active one, or a machine's setup session,
+// which runs for Set up's chat. Only the lifecycle sites (start, stop, resync, delivery) ask this;
+// everything voice says or hears asks isActive.
+export const canRun = (state: State, ref: string): boolean =>
+	isSetupRef(ref) || isActive(state, ref);
+
+// The active sessions crew has, in the developer's order.
+export const listActiveRefs = (state: State): string[] =>
+	state.active.filter((ref) => !isSetupRef(ref) && state.sessions[ref]);
+
+// The worktrees voice can name or activate, in the page's order: every session but the setup
+// sessions, on one machine (LOCAL_MACHINE for this Mac) or, with null, on every machine.
+export const listVoiceRefsOn = (state: State, machine: string | null): string[] =>
+	state.order.filter(
+		(ref) => !isSetupRef(ref) && (machine === null || readMachine(ref) === machine),
+	);
 
 // The active sessions in the page's order (state.order): what the kernel's turn lists.
 export const listActiveInOrder = (state: State): string[] =>
@@ -22,4 +33,8 @@ export const listActiveInOrder = (state: State): string[] =>
 // Active refs whose session is not here (its machine out of reach, its worktree gone): the page shows
 // them as their own tiles, and they start once they are back.
 export const listActiveMissing = (state: State): string[] =>
-	state.active.filter((ref) => !state.sessions[ref]);
+	state.active.filter((ref) => !isSetupRef(ref) && !state.sessions[ref]);
+
+// The asks voice hears and answers: a setup session's are answered in Set up's chat, never spoken.
+export const listHeardAsks = (state: State): PendingAsk[] =>
+	state.asks.filter((ask) => !isSetupRef(ask.ref));

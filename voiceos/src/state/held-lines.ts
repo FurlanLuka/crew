@@ -16,7 +16,7 @@ export const isShortLine = (text: string): boolean =>
 export const isOnScreen = (state: State, ref: string): boolean =>
 	state.view.kind === 'session' && state.view.ref === ref;
 
-// Looking at a different session, not Mission Control: a question from elsewhere waits there.
+// Looking at a different session, not off one: a question from elsewhere waits there.
 export const isOnAnotherSession = (state: State, ref: string): boolean =>
 	state.view.kind === 'session' && state.view.ref !== ref;
 
@@ -37,7 +37,7 @@ interface DecideTurnLineParams {
 	isHeldAnnounced: boolean;
 	hasBackgroundAgents: boolean;
 	needsUser: boolean;
-	// The developer looks at another session, not Mission Control.
+	// The developer looks at another session, not off one.
 	isOnAnotherSession: boolean;
 }
 

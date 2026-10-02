@@ -58,15 +58,8 @@ export const guardSendTo = async ({
 	const screen = toolContext.forwardTo;
 	const utterance = toolContext.utterance;
 
-	// On Mission Control nothing is on screen to keep the words: the kernel asks which session itself.
-	// The setup session has its own guard (isMisroutedToSetup): crew setup goes there from any screen.
-	if (
-		!screen ||
-		!state.sessions[screen] ||
-		ref === screen ||
-		utterance === undefined ||
-		state.sessions[ref]?.isPinned
-	) {
+	// Off a session's screen nothing is there to keep the words: the kernel asks which session itself.
+	if (!screen || !state.sessions[screen] || ref === screen || utterance === undefined) {
 		return null;
 	}
 

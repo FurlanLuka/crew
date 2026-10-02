@@ -1,4 +1,4 @@
-import { GRID, type State, type VoiceEntry } from '../shared/protocol.js';
+import { HOME_SCREEN, type State, type VoiceEntry } from '../shared/protocol.js';
 
 // Older than this, "this" in the developer's words is about the session's own work, not what Voice
 // OS just did.
@@ -6,7 +6,7 @@ export const RECENT_ACTION_MS = 120_000;
 
 interface ReadRecentActionParams {
 	ref: string;
-	// The screen the words were said on: its voice log, and the grid's, is what the developer just saw.
+	// The screen the words were said on: its voice log, and home's, is what the developer just saw.
 	screen: string | null | undefined;
 	now: number;
 }
@@ -45,7 +45,7 @@ const summarizeAction = (did: string, { screen, entry }: LoggedEntry): string | 
 		case 'note':
 			return 'saved it as a note';
 		case 'forward':
-			return screen === GRID ? undefined : `sent it to ${screen}`;
+			return screen === HOME_SCREEN ? undefined : `sent it to ${screen}`;
 		case 'send_to':
 			return `sent it to ${first}`;
 		case 'queued_message':
@@ -81,7 +81,7 @@ export const readRecentAction = (
 ): string | undefined => {
 	// "Tell it to check this debug note" right after one was saved: the session never saw the note, so
 	// the bare words point at nothing. What the developer just did with Voice OS goes along.
-	const screens = [...new Set([screen ?? GRID, GRID])];
+	const screens = [...new Set([screen ?? HOME_SCREEN, HOME_SCREEN])];
 	const newest = screens
 		.flatMap((key) => (state.voiceLog[key] ?? []).map((entry) => ({ screen: key, entry })))
 		.filter(({ entry }) => !entry.isIgnored)

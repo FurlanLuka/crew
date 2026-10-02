@@ -62,10 +62,6 @@ const JUDGE_QUESTIONS = {
 		ask: 'A session asked the developer to choose one of the options named below. pick: these words choose one (by name, place or meaning, even with a questioning voice: "the second?", "Postgres?"). question: they ask something about the options (what one does, how they differ). other: they ask to go to, open or switch to a session named in the context, or for other work. Going somewhere is never a pick, even when the place shares a word with an option.',
 		answers: ['pick', 'question', 'other'],
 	},
-	for_setup: {
-		ask: "Are these words addressed to Voice OS's setup, or about crew workspaces, projects, worktrees or bindings?",
-		answers: ['yes', 'no'],
-	},
 	this_session: {
 		ask: 'Do these words refer to the session on screen with a word like "this" or "current" ("this session", "this one", "diese Sitzung", "ta seja"), rather than by a name?',
 		answers: ['yes', 'no'],

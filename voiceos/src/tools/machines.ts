@@ -78,5 +78,5 @@ export const listMachineNames = (state: State): string =>
 // waiting" read as a problem).
 export const describeMachineSwitch = (state: State, machine: string): string =>
 	describeMachineWaiting(state, machine)
-		? 'switched to that machine; Voice OS says what waits there — say nothing'
-		: 'switched to that machine; nothing waits there — say nothing';
+		? "showing that machine's worktrees; Voice OS says what waits there — say nothing"
+		: "showing that machine's worktrees; nothing waits there — say nothing";

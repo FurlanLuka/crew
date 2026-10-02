@@ -75,12 +75,12 @@ describe('findMachine', () => {
 });
 
 describe('switch_view with a machine', () => {
-	it("go to build box → that machine's grid", async () => {
+	it('go to build box → that machine on Activate', async () => {
 		const { tools, actions } = createContext();
 
 		await executeTool('switch_view', { ref: null, machine: 'build box' }, tools);
 
-		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }]);
+		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } }]);
 	});
 
 	it('a machine with nothing waiting, by machine or named as the ref → the kernel says nothing', async () => {
@@ -88,7 +88,7 @@ describe('switch_view with a machine', () => {
 
 		for (const input of [{ ref: null, machine: 'build box' }, { ref: 'Build box' }]) {
 			expect((await executeTool('switch_view', input, tools)).content).toBe(
-				'switched to that machine; nothing waits there — say nothing',
+				"showing that machine's worktrees; nothing waits there — say nothing",
 			);
 		}
 	});
@@ -100,7 +100,7 @@ describe('switch_view with a machine', () => {
 		const result = await executeTool('switch_view', { ref: null, machine: 'build box' }, tools);
 
 		expect(result.content).toBe(
-			'switched to that machine; Voice OS says what waits there — say nothing',
+			"showing that machine's worktrees; Voice OS says what waits there — say nothing",
 		);
 	});
 
@@ -112,12 +112,12 @@ describe('switch_view with a machine', () => {
 		expect(result.content).toContain('Machines: this Mac, Build box');
 	});
 
-	it('home with machines → the machines view', async () => {
+	it('home with machines → Active', async () => {
 		const { tools, actions } = createContext();
 
 		await executeTool('switch_view', { ref: null }, tools);
 
-		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'machines' } }]);
+		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'active' } }]);
 	});
 });
 
@@ -195,14 +195,14 @@ describe('remote notes', () => {
 	};
 
 	it('"switch to personal server" → that machine, however the name was put', async () => {
-		const { tools, actions } = personal({ kind: 'machines' });
+		const { tools, actions } = personal({ kind: 'active' });
 
 		await executeTool('switch_view', { ref: null, machine: 'personal server' }, tools);
 		await executeTool('switch_view', { ref: 'Personal' }, tools);
 
 		expect(actions).toEqual([
-			{ type: 'switch_view', view: { kind: 'grid', machine: 'personal' } },
-			{ type: 'switch_view', view: { kind: 'grid', machine: 'personal' } },
+			{ type: 'switch_view', view: { kind: 'activate', machine: 'personal' } },
+			{ type: 'switch_view', view: { kind: 'activate', machine: 'personal' } },
 		]);
 	});
 
