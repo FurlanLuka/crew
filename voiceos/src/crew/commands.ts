@@ -3,6 +3,7 @@
 // argv with toCrewArgv, so nothing the browser types reaches crew as a flag or a second command.
 // Browser-safe on purpose (zod only): the page imports it for the CommandLine shown on every form.
 
+import { MAX_NAME_LENGTH } from '../state/names.js';
 import { z } from 'zod';
 
 const MINUTE = 60_000;
@@ -190,7 +191,7 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	// A plain Claude session (crew chat): a folder on that machine, a name.
 	variant('chat_add', {
 		dir: flagValue.pipe(z.string().trim().min(1)).optional(),
-		name: flagValue.pipe(z.string().trim().min(1).max(60)).optional(),
+		name: flagValue.pipe(z.string().trim().min(1).max(MAX_NAME_LENGTH)).optional(),
 	}),
 	variant('chat_rm', { id: z.string().regex(/^(?:chat\/)?[0-9a-f]{6}$/) }),
 ]);

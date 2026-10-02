@@ -1,5 +1,5 @@
 import type { State } from '../shared/protocol.js';
-import { splitRef } from '../shared/machine-ref.js';
+import { CHAT_WORKSPACE, splitRef } from '../shared/machine-ref.js';
 import { readGivenName } from '../shared/machines.js';
 import { listActiveInOrder } from '../shared/active.js';
 import { toSpokenPart, NUMBER_WORDS } from '../shared/spoken.js';
@@ -30,6 +30,11 @@ interface IsSessionNamedParams {
 
 export const isSessionNamed = ({ ref, text, words, order }: IsSessionNamedParams): boolean => {
 	const { workspace, worktree } = splitRef(ref);
+
+	// A plain session is named by its name alone: "let's chat about it" names none, nor does its id.
+	if (workspace === CHAT_WORKSPACE) {
+		return false;
+	}
 
 	if (workspace.split('-').some((part) => part.length >= 4 && words.has(part))) {
 		const siblingRefs = order.filter((other) => splitRef(other).workspace === workspace);

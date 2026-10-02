@@ -1925,6 +1925,48 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it("a plain session's page → Remove asks first; Keep it runs nothing; Remove stops it, crew drops it, its name goes, back to Active", async () => {
+		const chat: WorktreeInfo = {
+			...createWorktree('chat/3fa9c1'),
+			label: 'research',
+			branch: '',
+			isChat: true,
+			chatName: 'research',
+		};
+		const others = Object.values(store.state.sessions)
+			.filter((session) => !session.ref.startsWith('chat/'))
+			.map((session) => ({
+				ref: session.ref,
+				label: session.label,
+				branch: session.branch,
+				cwd: session.cwd,
+				dirs: session.dirs,
+				isPinned: session.isPinned,
+			}));
+		store.dispatch({ type: 'worktrees', worktrees: [...others, chat] });
+		store.dispatch({ type: 'activate', ref: 'chat/3fa9c1' });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'chat/3fa9c1' } });
+		const { context, page } = await signIn();
+		const head = page.locator('.vo-head');
+		const removes = () => crew.calls.filter((call) => call.command.type === 'chat_rm').length;
+		const before = removes();
+
+		await head.getByRole('button', { name: 'Remove', exact: true }).click();
+		await head.getByRole('button', { name: 'Keep it' }).click();
+		expect(removes()).toBe(before);
+
+		await head.getByRole('button', { name: 'Remove', exact: true }).click();
+		await head.getByRole('button', { name: 'Remove: its folder stays' }).click();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(crew.calls.filter((call) => call.command.type === 'chat_rm').at(-1)?.command).toEqual({
+			type: 'chat_rm',
+			id: 'chat/3fa9c1',
+		});
+		expect(store.state.active).not.toContain('chat/3fa9c1');
+		expect(store.state.names['chat/3fa9c1']).toBeUndefined();
+		await context.close();
+	}, 20_000);
+
 	it("Activate → New session in a folder that is not there: crew's reason, nothing activated", async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
 		const { context, page } = await signIn();

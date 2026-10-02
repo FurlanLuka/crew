@@ -287,7 +287,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 			properties: {
 				machine: {
 					type: ['string', 'null'],
-					description: 'A machine named, or null for this one.',
+					description: 'A machine named, or null: then the one said in the words, else this one.',
 				},
 				folder: {
 					type: ['string', 'null'],

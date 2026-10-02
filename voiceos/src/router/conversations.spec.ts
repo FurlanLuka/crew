@@ -1119,6 +1119,7 @@ describe('conversations', () => {
 					dirs: [],
 					isPinned: false,
 					isChat: true as const,
+					chatName: 'research',
 				},
 			],
 		});

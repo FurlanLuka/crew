@@ -91,3 +91,37 @@ func TestList_NoFileIsNoChats(t *testing.T) {
 		t.Errorf("%v %v", chats, err)
 	}
 }
+
+func TestAdd_ConcurrentAddsAllKept(t *testing.T) {
+	isolate(t)
+	const n = 8
+	done := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			_, err := Add("", "")
+			done <- err
+		}()
+	}
+	for i := 0; i < n; i++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if chats, err := List(); err != nil || len(chats) != n {
+		t.Errorf("kept %d of %d (%v)", len(chats), n, err)
+	}
+}
+
+func TestAdd_ACorruptListIsLeftAlone(t *testing.T) {
+	isolate(t)
+	if err := os.WriteFile(File(), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Add("", "x"); err == nil {
+		t.Fatal("added over a corrupt list")
+	}
+	if data, _ := os.ReadFile(File()); string(data) != "not json" {
+		t.Errorf("the list was rewritten: %q", data)
+	}
+}

@@ -1,3 +1,4 @@
+import { isChatRef } from '../shared/machine-ref.js';
 import { removeChat, startChat } from './chats.js';
 import type { RunSetupCommand } from '../crew/api.js';
 import {
@@ -669,6 +670,12 @@ export const executeTool = async (
 
 			if (!checked.ok) {
 				return refuseRef(checked, toolContext);
+			}
+
+			if (isChatRef(checked.ref)) {
+				return fail(
+					`${checked.ref} is a plain session: it has no dev servers. Say so in a few words.`,
+				);
 			}
 
 			const action = input.action;

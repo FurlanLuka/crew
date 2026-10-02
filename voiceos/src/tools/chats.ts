@@ -18,6 +18,7 @@ import { readLabel } from '../state/helpers.js';
 import { findMachine, findMachineSaid } from './machines.js';
 import { checkRef, fail, succeed, type ToolResult } from './results.js';
 import { findNamedRefs } from './session-naming.js';
+import { findNamedRef, MAX_NAME_LENGTH } from '../state/names.js';
 import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
@@ -81,11 +82,17 @@ export const startChat = async ({
 	}
 
 	const dir = readText(input.folder);
-	const name = readText(input.name);
+	const name = readText(input.name)?.slice(0, MAX_NAME_LENGTH);
+
+	// Two sessions under one name would leave "ask research" guessing.
+	if (name && findNamedRef(state, name)) {
+		return fail(`Not started: a session is already called ${name}. Ask for another name.`);
+	}
+
 	const reply = await toolContext.runCrewOn(machine, {
 		type: 'chat_add',
 		...(dir ? { dir } : {}),
-		...(name ? { name: name.slice(0, 60) } : {}),
+		...(name ? { name } : {}),
 	});
 	const id = readAddedId(reply);
 
@@ -160,6 +167,8 @@ export const removeChat = async ({
 	}
 
 	log.info('plain session removed', { ref });
+	// Its name goes with it: names.json keeps nothing for a session that is gone.
+	toolContext.dispatch({ type: 'rename_session', ref, name: '' });
 
 	return {
 		...succeed(`removed ${ref}; Voice OS said so: say nothing`),

@@ -120,10 +120,12 @@ describe('CrewAdapter', () => {
 				dirs: [],
 				isPinned: false,
 				isChat: true,
+				chatName: 'research',
 			},
+			// Unnamed: labelled by its folder, so two unnamed ones still read apart; no given name.
 			{
 				ref: 'chat/a0b1c2',
-				label: 'chat',
+				label: 'notes',
 				branch: '',
 				cwd: '/Users/dev/notes',
 				dirs: [],
@@ -134,13 +136,22 @@ describe('CrewAdapter', () => {
 	});
 
 	it('a crew with no chats command → the worktrees alone, never a broken list', async () => {
-		const { crew } = createAdapter((args) =>
-			args[1] === 'chats'
-				? { code: 1, stdout: '', stderr: "Unknown ls target 'chats'." }
-				: { code: 0, stdout: '[]', stderr: '' },
-		);
+		const { crew } = createAdapter((args) => {
+			if (args[1] === 'chats') {
+				return { code: 1, stdout: '', stderr: "Unknown ls target 'chats'." };
+			}
 
-		expect(await crew.listWorktrees()).toEqual([]);
+			return {
+				code: 0,
+				stdout: args[1] === 'worktrees' ? readGolden('ls-worktrees.json') : show,
+				stderr: '',
+			};
+		});
+
+		expect((await crew.listWorktrees()).map((info) => info.ref)).toEqual([
+			'store-front/main',
+			'store-front/wrk1',
+		]);
 	});
 
 	it('a plain session gets no crew orientation: crew start is never asked', async () => {

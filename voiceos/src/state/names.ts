@@ -1,4 +1,4 @@
-import { isKnownMachineRef } from '../shared/machines.js';
+import { isKnownMachineRef, readGivenName } from '../shared/machines.js';
 import type { Input, State } from '../shared/protocol.js';
 import { normalizeName } from '../router/refs.js';
 import type { ReducerResult } from './reducer.js';
@@ -12,13 +12,13 @@ const NAME_INPUT_SET = new Set<string>(NAME_INPUTS);
 
 export const isNameInput = (input: Input): input is NameInput => NAME_INPUT_SET.has(input.type);
 
-// The ref already called this, as voice would hear it; null when none is.
+// The ref already called this, as voice would hear it — by Voice OS's name or the one a plain session
+// was made with; null when none is.
 export const findNamedRef = (state: State, name: string): string | null => {
 	const wanted = normalizeName(name);
+	const refs = new Set([...Object.keys(state.names), ...Object.keys(state.sessions)]);
 
-	return (
-		Object.keys(state.names).find((ref) => normalizeName(state.names[ref] ?? '') === wanted) ?? null
-	);
+	return [...refs].find((ref) => normalizeName(readGivenName(state, ref) ?? '') === wanted) ?? null;
 };
 
 // A name is what voice routes by: two sessions under one name would leave "go to X" guessing.

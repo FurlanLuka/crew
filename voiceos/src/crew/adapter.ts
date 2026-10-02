@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { CHAT_WORKSPACE, isChatRef } from '../shared/machine-ref.js';
 import type { WorktreeInfo } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
@@ -84,17 +85,22 @@ const isChatRow = (value: unknown): value is ChatRow =>
 
 export const parseChats = (json: string): ChatRow[] => parseArray(json, isChatRow);
 
-// A plain session joins the list like a worktree: it is named by the developer's name for it, else
-// "chat"; it runs in its folder with nothing of crew's.
-export const toChatInfo = (row: ChatRow): WorktreeInfo => ({
-	ref: `${CHAT_WORKSPACE}/${row.id}`,
-	label: row.name?.trim() || CHAT_WORKSPACE,
-	branch: '',
-	cwd: row.dir,
-	dirs: [],
-	isPinned: false,
-	isChat: true,
-});
+// A plain session joins the list like a worktree, in its folder with nothing of crew's. Its label is
+// its name, else its folder's: two unnamed ones in different folders still read apart.
+export const toChatInfo = (row: ChatRow): WorktreeInfo => {
+	const name = row.name?.trim();
+
+	return {
+		ref: `${CHAT_WORKSPACE}/${row.id}`,
+		label: name || basename(row.dir) || CHAT_WORKSPACE,
+		branch: '',
+		cwd: row.dir,
+		dirs: [],
+		isPinned: false,
+		isChat: true,
+		...(name ? { chatName: name } : {}),
+	};
+};
 
 export interface ToWorktreeInfoParams {
 	row: WorktreeRow;

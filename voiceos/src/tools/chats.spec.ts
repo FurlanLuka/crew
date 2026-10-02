@@ -14,7 +14,11 @@ const ran = (code: number, stdout = '', stderr = ''): SetupReply => ({
 	result: { code, stdout, stderr },
 });
 
-const chatSession = (ref: string, label: string, status: 'idle' | 'running' = 'idle') => ({
+const chatSession = (
+	ref: string,
+	label: string,
+	status: 'idle' | 'running' | 'blocked' = 'idle',
+) => ({
 	...createSession({
 		ref,
 		label,
@@ -23,6 +27,7 @@ const chatSession = (ref: string, label: string, status: 'idle' | 'running' = 'i
 		dirs: [],
 		isPinned: false,
 		isChat: true,
+		chatName: label,
 	}),
 	status,
 });
@@ -110,7 +115,10 @@ describe('new_session', () => {
 });
 
 describe('remove_session', () => {
-	const withChat = (status: 'idle' | 'running' = 'idle', reply = ran(0, '{"id":"3fa9c1"}')) => {
+	const withChat = (
+		status: 'idle' | 'running' | 'blocked' = 'idle',
+		reply = ran(0, '{"id":"3fa9c1"}'),
+	) => {
 		const base = createToolContext().tools.getState();
 
 		return withCrew(reply, {
@@ -129,7 +137,11 @@ describe('remove_session', () => {
 			{ ...context, utterance: 'remove research', judge: judgeNever },
 		);
 
-		expect(actions).toEqual([{ type: 'deactivate', ref: CHAT }]);
+		// Stopped first, removed, then its name dropped with it.
+		expect(actions).toEqual([
+			{ type: 'deactivate', ref: CHAT },
+			{ type: 'rename_session', ref: CHAT, name: '' },
+		]);
 		expect(calls).toEqual([{ machine: 'local', command: { type: 'chat_rm', id: CHAT } }]);
 		expect(result.reply).toBe('Removed research. Its folder stays.');
 	});
@@ -153,7 +165,43 @@ describe('remove_session', () => {
 			{ ...forced.context, utterance: 'yes remove research', judge: judgeNever },
 		);
 
+		expect(forced.actions).toEqual([
+			{ type: 'deactivate', ref: CHAT },
+			{ type: 'rename_session', ref: CHAT, name: '' },
+		]);
 		expect(forced.calls).toHaveLength(1);
+	});
+
+	it('blocked on a question counts as working: asked first', async () => {
+		const { context, calls } = withChat('blocked');
+		const result = await executeTool(
+			'remove_session',
+			{ ref: CHAT },
+			{ ...context, utterance: 'remove research', judge: judgeNever },
+		);
+
+		expect(result.content).toContain('is working');
+		expect(calls).toEqual([]);
+	});
+
+	it("another machine's → removed there, by its own id", async () => {
+		const base = createToolContext().tools.getState();
+		const { context, calls } = withCrew(ran(0, '{"id":"3fa9c1"}'), {
+			sessions: { ...base.sessions, [`vm1:${CHAT}`]: chatSession(`vm1:${CHAT}`, 'research') },
+			order: [...base.order, `vm1:${CHAT}`],
+			active: [...base.active, `vm1:${CHAT}`],
+			machines: {
+				vm1: { id: 'vm1', host: 'dev@vm1', name: 'Build box', status: 'connected', detail: null },
+			} as unknown as State['machines'],
+		});
+
+		await executeTool(
+			'remove_session',
+			{ ref: `vm1:${CHAT}` },
+			{ ...context, utterance: 'remove research', judge: judgeNever },
+		);
+
+		expect(calls).toEqual([{ machine: 'vm1', command: { type: 'chat_rm', id: CHAT } }]);
 	});
 
 	it('a worktree → never removed by voice', async () => {
@@ -181,6 +229,40 @@ describe('remove_session', () => {
 		);
 
 		expect(result.ok).toBe(false);
+		expect(actions).toEqual([]);
+	});
+});
+
+describe('names stay unique, and plain sessions keep off dev servers', () => {
+	it('new_session with a name another session has → refused before crew runs', async () => {
+		const base = createToolContext().tools.getState();
+		const { context, calls } = withCrew(ran(0, '{"id":"a0b1c2"}'), {
+			sessions: { ...base.sessions, [CHAT]: chatSession(CHAT, 'research') },
+			order: [...base.order, CHAT],
+		});
+
+		const result = await executeTool(
+			'new_session',
+			{ machine: null, folder: null, name: 'Research' },
+			context,
+		);
+
+		expect(result.content).toContain('already called Research');
+		expect(calls).toEqual([]);
+	});
+
+	it('crew_dev on a plain session → refused, nothing dispatched', async () => {
+		const base = createToolContext().tools.getState();
+		const { context, actions } = withCrew(ran(0), {
+			sessions: { ...base.sessions, [CHAT]: chatSession(CHAT, 'research') },
+			order: [...base.order, CHAT],
+			active: [...base.active, CHAT],
+		});
+
+		const result = await executeTool('crew_dev', { ref: CHAT, action: 'start' }, context);
+
+		expect(result.ok).toBe(false);
+		expect(result.content).toContain('no dev servers');
 		expect(actions).toEqual([]);
 	});
 });

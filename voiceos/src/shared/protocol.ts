@@ -170,6 +170,8 @@ export interface Session {
 	isPinned: boolean;
 	// A plain Claude session (crew chat): no worktree, no crew orientation, no dev servers.
 	isChat?: true;
+	// The name it was given when made (crew chat add --name).
+	chatName?: string;
 	status: SessionStatus;
 	queue: QueuedMessage[];
 	stream: StreamItem[];
@@ -569,6 +571,8 @@ export interface WorktreeInfo {
 	isPinned: boolean;
 	// A plain Claude session (crew chat): no worktree, no crew orientation, no dev servers.
 	isChat?: true;
+	// The name it was given when made (crew chat add --name): its given name unless Voice OS has one.
+	chatName?: string;
 }
 
 export type Observation =

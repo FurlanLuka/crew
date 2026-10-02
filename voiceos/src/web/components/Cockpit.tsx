@@ -48,28 +48,44 @@ const useHasDevServers = (session: Session): boolean => {
 	return hasDevServers(members.data ?? [], projects.data ?? []);
 };
 
+// Where a Remove stands: the confirm shown, crew running, or crew's reason it was not removed.
+export type Removal =
+	| { kind: 'asking' }
+	| { kind: 'removing' }
+	| { kind: 'failed'; line: string }
+	| null;
+
 interface RemoveChatProps {
 	session: Session;
 	dispatch: Dispatch;
-	// asking: the confirm shows; removing: crew runs; any other text: why it was not removed.
-	state: string | null;
-	onState: (state: string | null) => void;
+	state: Removal;
+	onState: (state: Removal) => void;
 }
 
 // A plain session goes: its Claude stops, crew drops its record; the folder and the conversation's
 // files stay where they are.
 const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
 	const remove = async () => {
-		onState('removing');
+		onState({ kind: 'removing' });
 		dispatch({ type: 'deactivate', ref: session.ref });
 		const reply = await runCrew(readMachine(session.ref), {
 			type: 'chat_rm',
 			id: toLocalRef(session.ref),
 		});
-		onState(isOk(reply) ? null : readCrewLine(reply) || 'Not removed.');
+
+		if (!isOk(reply)) {
+			onState({ kind: 'failed', line: readCrewLine(reply) || 'Not removed.' });
+
+			return;
+		}
+
+		// Its name goes with it, and so does the page: back to Active, before the next listing drops it.
+		dispatch({ type: 'rename_session', ref: session.ref, name: '' });
+		dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		onState(null);
 	};
 
-	if (state === 'asking') {
+	if (state?.kind === 'asking') {
 		return (
 			<>
 				<button type="button" className="btn sm danger" onClick={() => void remove()}>
@@ -87,19 +103,19 @@ const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
 			<button
 				type="button"
 				className="btn sm ghost danger"
-				disabled={state === 'removing'}
-				onClick={() => onState('asking')}
+				disabled={state?.kind === 'removing'}
+				onClick={() => onState({ kind: 'asking' })}
 			>
 				Remove
 			</button>
-			{state && state !== 'removing' && <span className="m">{state}</span>}
+			{state?.kind === 'failed' && <span className="m">{state.line}</span>}
 		</>
 	);
 };
 
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	const [isRenaming, setIsRenaming] = useState(false);
-	const [removal, setRemoval] = useState<'asking' | 'removing' | string | null>(null);
+	const [removal, setRemoval] = useState<Removal>(null);
 	const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 	const openRun = session.subagentRuns.find((run) => run.taskId === openTaskId) ?? null;
 	const now = useNow();

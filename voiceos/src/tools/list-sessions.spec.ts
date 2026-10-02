@@ -47,6 +47,19 @@ const listRemoteWorktrees = (count: number): string[] =>
 	);
 
 describe('describeSessionList', () => {
+	it('plain sessions among many → said as "plain sessions", never a workspace called chat', () => {
+		const refs = [...listRemoteWorktrees(MAX_NAMES_SAID), 'vm1:chat/3fa9c1'];
+
+		expect(
+			describeSessionList({
+				state: createState(refs),
+				machine: 'vm1',
+				workspace: null,
+				isActiveOnly: false,
+			}),
+		).toContain('Workspaces: signals, admin, plain sessions.');
+	});
+
 	it('machines → each with its worktrees and how many are active; one out of reach said so', () => {
 		const state = createState(['store-front/main', 'store-front/wrk1', 'vm1:signals/wrk1'], {
 			active: ['store-front/main'],

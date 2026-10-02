@@ -1,7 +1,6 @@
 // Other machines, read the same way by the server, the kernel's tools and the page.
 
 import {
-	CHAT_WORKSPACE,
 	LOCAL_MACHINE,
 	MAIN_MACHINE,
 	isSetupRef,
@@ -112,16 +111,10 @@ export const isKnownMachineRef = (state: State, ref: string): boolean => {
 	return machine === null || Boolean(state.machines[machine]);
 };
 
-// The name the developer gave a session: Voice OS's own, else a plain session's from crew chat (its
-// label, when one was given) — said and matched like a name either way.
-export const readGivenName = (state: State, ref: string): string | undefined => {
-	const session = state.sessions[ref];
-
-	return (
-		state.names[ref] ??
-		(session?.isChat && session.label !== CHAT_WORKSPACE ? session.label : undefined)
-	);
-};
+// The name the developer gave a session: Voice OS's own, else the one a plain session was made with —
+// said and matched like a name either way.
+export const readGivenName = (state: State, ref: string): string | undefined =>
+	state.names[ref] ?? state.sessions[ref]?.chatName;
 
 export const isNamed = (state: State, ref: string): boolean =>
 	readGivenName(state, ref) !== undefined;
