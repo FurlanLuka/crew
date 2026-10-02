@@ -40,6 +40,12 @@ type ProjectJob struct {
 // under running servers.
 var ErrSetupRunning = errors.New("setup is running")
 
+// SetupRunningError is the refusal every command gives while runners are
+// alive on ref, with the way to watch them.
+func SetupRunningError(ref Ref) error {
+	return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, ref, ref)
+}
+
 // errFlatRef: a pre-2.0 workspace has no worktree record to reserve ports
 // or record health on; it keeps the synchronous path.
 var errFlatRef = errors.New("workspace predates worktrees — run `crew migrate` first")

@@ -59,8 +59,8 @@ func Killable(inv Inventory) ([]int, error) {
 }
 
 // Reclaim tears down crew's tracked sessions and kills the loose processes in
-// inv. Both the TUI and the CLI route through it, so neither can drift into its
-// own idea of what is safe to kill.
+// inv. Every caller routes through it, so none can drift into its own idea of
+// what is safe to kill.
 //
 // Teardown is delegated to the packages that own each kind of session: they
 // also clear routes files, which killing the tmux session directly would
@@ -99,7 +99,7 @@ func stopSessions(inv Inventory) []string {
 	}
 	var stopped []string
 	for _, s := range inv.Sessions {
-		if !remaining[s.Name] {
+		if !s.Kept && !remaining[s.Name] {
 			stopped = append(stopped, s.Name)
 		}
 	}
@@ -207,7 +207,7 @@ func restoreCommands(inv Inventory) []string {
 	var cmds []string
 	for _, s := range inv.Sessions {
 		ws := strings.TrimPrefix(s.Name, "crew-dev-")
-		if ws == s.Name || ws == "proxy" || seen[ws] {
+		if s.Kept || ws == s.Name || ws == "proxy" || seen[ws] {
 			continue
 		}
 		seen[ws] = true

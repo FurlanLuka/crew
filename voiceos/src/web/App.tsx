@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { isInDialog } from './in-dialog.js';
-import { BottomBar } from './components/BottomBar.js';
+import { LOCAL_MACHINE } from '../shared/machine-ref.js';
 import { Card } from './components/Card.js';
-import { Dock } from './components/Dock.js';
-import { Main } from './components/Main.js';
-import { QueueList } from './components/QueueList.js';
-import { LastSpokenLine } from './components/LastSpokenLine.js';
-import { Tabs } from './components/Tabs.js';
-import { TopBar } from './components/TopBar.js';
-import type { MicStatus } from './types.js';
+import { ConnectionBanner } from './components/ConnectionBanner.js';
+import { VoiceOS } from './components/VoiceOS.js';
+import { Home } from './home/Home.js';
+import { Opening, isReducedMotion } from './home/Opening.js';
+import { type Half, readAlwaysVoice, shouldOpenVoice, writeLastHalf } from './home/prefs.js';
+import { VoiceMoment } from './home/VoiceMoment.js';
+import { BOARD, matchRoute, toView, toVoiceRoute, useRoute, viewKey } from './router.js';
+import { SetupShell } from './setup/SetupShell.js';
 import { useConnection, type OpenRequest } from './use-connection.js';
 import { useSpeechPlayer } from './use-speech-player.js';
-import { parentView } from '../shared/machines.js';
 
 // "Open the doc" by voice: a new tab when the browser allows it; a phone, or any browser that
 // wants a tap first, gets a banner to tap instead.
@@ -36,7 +35,12 @@ const useOpenRequest = (request: OpenRequest | null): OpenRequest | null => {
 	return blocked;
 };
 
+// Read once: a fresh load of / is the only place the opening plays and "Always open Voice OS" applies.
+const FIRST_ROUTE = matchRoute(location.pathname, location.search);
+const isFreshHome = FIRST_ROUTE.half === 'home';
+
 const App = () => {
+	const { route, navigate } = useRoute();
 	const player = useSpeechPlayer();
 	const {
 		state,
@@ -50,11 +54,10 @@ const App = () => {
 		openRequest,
 		keptDictation,
 	} = useConnection((message) => player.receive(message));
-	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
-	const stateRef = useRef(state);
-
-	stateRef.current = state;
+	const [isMoment, setIsMoment] = useState(false);
 	const blockedOpen = useOpenRequest(openRequest);
+	const viewNow = state ? viewKey(state.view) : null;
+	const lastPushed = useRef<string | null>(null);
 
 	// Demos and screenshots: window.voiceos.say("…") is heard like speech. The server ignores it
 	// unless it runs with VOICEOS_DEBUG_SPEECH=1.
@@ -70,32 +73,103 @@ const App = () => {
 		};
 	}, [send]);
 
+	// A Voice OS address the developer opened (a link, a reload, back): the server's view follows it.
+	// Bare /voice names no screen: it shows whatever every tab is showing.
+	const routeViewKey = route.half === 'voice' ? viewKey(route.view) : null;
+
 	useEffect(() => {
-		const handleKeyDown = (event: KeyboardEvent) => {
-			// A dialog's own Esc closes the dialog only.
+		if (route.half !== 'voice' || !state || routeViewKey === null) {
+			return;
+		}
+
+		if (routeViewKey === viewKey(state.view)) {
+			return;
+		}
+
+		if (route.view.kind === 'active') {
+			navigate({ half: 'voice', view: toVoiceRoute(state.view) }, { replace: true });
+
+			return;
+		}
+
+		if (lastPushed.current !== routeViewKey) {
+			lastPushed.current = routeViewKey;
+			dispatch({ type: 'switch_view', view: toView(route.view) });
+		}
+		// Only when the address changes, or the first state arrives.
+	}, [routeViewKey, state === null]);
+
+	// The server's view moved (a click, a voice command, another tab): the address follows it.
+	useEffect(() => {
+		if (route.half !== 'voice' || !state || viewNow === null) {
+			return;
+		}
+
+		lastPushed.current = null;
+
+		if (viewNow !== routeViewKey) {
+			navigate({ half: 'voice', view: toVoiceRoute(state.view) }, { replace: true });
+		}
+	}, [viewNow]);
+
+	const goHome = useCallback(() => navigate({ half: 'home' }), [navigate]);
+
+	// Only the first Home of a fresh load of / may be replaced: the crew mark always shows Home.
+	const isFreshLoad = useRef(isFreshHome);
+	const openVoiceIfAlways = useCallback(
+		(isFirstRun: boolean) => {
+			const isFresh = isFreshLoad.current;
+
+			isFreshLoad.current = false;
+
 			if (
-				event.key === 'Escape' &&
-				!(event.target instanceof HTMLInputElement) &&
-				!isInDialog(event)
+				state &&
+				shouldOpenVoice({ isFreshHome: isFresh, isAlwaysVoice: readAlwaysVoice(), isFirstRun })
 			) {
-				// Up one level: a session → its machine → Mission Control.
-				if (stateRef.current) {
-					dispatch({ type: 'switch_view', view: parentView(stateRef.current) });
-				}
+				navigate({ half: 'voice', view: toVoiceRoute(state.view) }, { replace: true });
 			}
-		};
+		},
+		[navigate, state],
+	);
 
-		window.addEventListener('keydown', handleKeyDown);
+	const pick = useCallback(
+		(half: Half) => {
+			writeLastHalf(half);
 
-		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [dispatch]);
+			if (half === 'setup') {
+				navigate({ half: 'setup', machine: LOCAL_MACHINE, page: BOARD });
+
+				return;
+			}
+
+			if (!isReducedMotion()) {
+				setIsMoment(true);
+			}
+
+			navigate({ half: 'voice', view: state ? toVoiceRoute(state.view) : { kind: 'active' } });
+		},
+		[navigate, state],
+	);
+
+	const openSetup = useCallback(
+		(machine: string) => navigate({ half: 'setup', machine, page: { page: 'machine' } }),
+		[navigate],
+	);
+
+	// Activated and shown in one input (no switch offer from a click): a worktree crew made moments
+	// ago that Voice OS has not listed yet is held until it has, then opened. The address follows
+	// the view.
+	const openVoice = (ref: string) => {
+		dispatch({ type: 'activate', ref, open: true });
+		navigate({ half: 'voice', view: { kind: 'session', ref } });
+	};
 
 	if (status === 'unauthorized') {
 		return (
-			<Card title="Open Voice OS from crew">
+			<Card title="Open crew from a terminal">
 				<p>
-					This browser has no Voice OS session. Run <code>crew voice</code> in a terminal and open
-					the link it prints.
+					This browser has no crew session. Run <code>crew</code> in a terminal and open the link it
+					prints.
 				</p>
 			</Card>
 		);
@@ -104,58 +178,44 @@ const App = () => {
 	if (!state) {
 		return (
 			<Card title="Connecting…">
-				<p>Waiting for the Voice OS server.</p>
+				<p>Waiting for crew's server.</p>
 			</Card>
 		);
 	}
 
-	const viewedSession = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
-
 	return (
-		<div className="app">
-			<div>
-				{status !== 'open' && <div className="banner">Reconnecting to the Voice OS server…</div>}
-				{state.setup.missing.length > 0 && (
-					<div className="banner">
-						Voice is off until these are set: {state.setup.missing.join(', ')}. Run crew voice keys
-						set anthropic (or soniox) in a terminal, then crew voice restart. Text and clicks still
-						work.
-					</div>
-				)}
-				{blockedOpen && (
-					<div className="banner">
-						<a href={blockedOpen.url} target="_blank" rel="noopener noreferrer">
-							Open {blockedOpen.title} ↗
-						</a>{' '}
-						— the browser held back opening it for you.
-					</div>
-				)}
-				{micStatus === 'denied' && (
-					<div className="banner">
-						Microphone blocked. Allow it in the browser's site settings, or type below.
-					</div>
-				)}
-				<TopBar state={state} dispatch={dispatch} />
-			</div>
-			{viewedSession ? <Tabs state={state} dispatch={dispatch} /> : <div />}
-			<Main state={state} dispatch={dispatch} />
-			<Dock state={state} dispatch={dispatch} />
-			{viewedSession ? <QueueList session={viewedSession} dispatch={dispatch} /> : <div />}
-			<LastSpokenLine state={state} />
-			<BottomBar
-				state={state}
-				isConnected={status === 'open'}
-				listenCommand={listenCommand}
-				isAwake={isAwake && status === 'open'}
-				ignoredAt={ignoredAt}
-				keptDictation={keptDictation}
-				send={send}
-				sendBinary={sendBinary}
-				player={player}
-				micStatus={micStatus}
-				onMicStatusChange={setMicStatus}
-			/>
-		</div>
+		<>
+			{route.half === 'home' && <Home state={state} onPick={pick} onStage={openVoiceIfAlways} />}
+			{route.half === 'voice' && (
+				<VoiceOS
+					state={state}
+					isConnected={status === 'open'}
+					connectionStatus={status}
+					send={send}
+					sendBinary={sendBinary}
+					listenCommand={listenCommand}
+					isAwake={isAwake}
+					ignoredAt={ignoredAt}
+					keptDictation={keptDictation}
+					blockedOpen={blockedOpen}
+					player={player}
+					onHome={goHome}
+					onSetUp={openSetup}
+				/>
+			)}
+			{route.half === 'setup' && (
+				<SetupShell
+					state={state}
+					route={route}
+					navigate={navigate}
+					send={send}
+					openVoice={openVoice}
+				/>
+			)}
+			{route.half !== 'voice' && <ConnectionBanner status={status} />}
+			{route.half === 'home' && isFreshHome && <Opening />}
+			{isMoment && <VoiceMoment onDone={() => setIsMoment(false)} />}
+		</>
 	);
 };
 

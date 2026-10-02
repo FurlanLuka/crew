@@ -166,7 +166,7 @@ export const ModeMenu = ({
 			<button
 				ref={buttonRef}
 				type="button"
-				className={`mode-button ${stateClass}`}
+				className={`vo-mode mode-button ${stateClass}`}
 				data-mode={mode}
 				aria-label="Listening mode"
 				aria-haspopup="menu"
@@ -174,7 +174,8 @@ export const ModeMenu = ({
 				title={`${MODE_COPY[mode].name}: ${title}`}
 				onClick={() => setIsOpen((wasOpen) => !wasOpen)}
 			>
-				{MODE_COPY[mode].icon}
+				<span className="mode-dot" aria-hidden="true" />
+				{MODE_COPY[mode].name} <span aria-hidden="true">⌄</span>
 			</button>
 			{isOpen ? (
 				<div

@@ -1,7 +1,7 @@
 // "What machines do I have?", "what's on Personal?", "what's active?", "what worktrees does scheduler
 // have?": read-only, across every worktree. Heard, not read: counts first, names only when few.
-import { isActive, listActiveRefs } from '../shared/active.js';
-import { LOCAL_MACHINE, isSetupRef, readMachine, splitRef } from '../shared/machine-ref.js';
+import { isActive, listActiveRefs, listVoiceRefsOn } from '../shared/active.js';
+import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
 import { isMachineReachable, readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import type { State } from '../shared/protocol.js';
 import { toSpokenName } from '../shared/spoken.js';
@@ -26,12 +26,13 @@ const sayName = (state: State, ref: string, isMachineSaid: boolean): string => {
 	return isActive(state, ref) ? `${label} (active)` : label;
 };
 
-const listWorktrees = (state: State, machine: string): string[] =>
-	state.order.filter((ref) => readMachine(ref) === machine && !isSetupRef(ref));
-
 const describeActive = (state: State): string => {
 	const refs = listActiveRefs(state);
 	const names = refs.map((ref) => toSpokenName(readLabel(state, ref)));
+
+	if (refs.length === 0) {
+		return 'No sessions are active. A worktree is reached once it is activated.';
+	}
 
 	if (refs.length <= MAX_NAMES_SAID) {
 		return `Active: ${names.join(', ')}.`;
@@ -45,7 +46,7 @@ const describeMachines = (state: State): string => {
 
 	return `${machines
 		.map((machine) => {
-			const worktrees = listWorktrees(state, machine);
+			const worktrees = listVoiceRefsOn(state, machine);
 			const active = worktrees.filter((ref) => isActive(state, ref)).length;
 			const reach = isReachableMachine(state, machine) ? '' : ', out of reach';
 
@@ -92,11 +93,8 @@ export const describeSessionList = ({
 
 	if (workspace) {
 		const wanted = normalizeName(workspace);
-		const refs = state.order.filter(
-			(ref) =>
-				!isSetupRef(ref) &&
-				normalizeName(splitRef(ref).workspace) === wanted &&
-				(machine === null || readMachine(ref) === machine),
+		const refs = listVoiceRefsOn(state, machine).filter(
+			(ref) => normalizeName(splitRef(ref).workspace) === wanted,
 		);
 		const machines = [...new Set(refs.map(readMachine))];
 		const place =
@@ -109,7 +107,7 @@ export const describeSessionList = ({
 
 	if (machine) {
 		const title = readMachineTitle(state, machine);
-		const listed = describeWorktrees(state, listWorktrees(state, machine), title, true);
+		const listed = describeWorktrees(state, listVoiceRefsOn(state, machine), title, true);
 
 		return isReachableMachine(state, machine)
 			? listed

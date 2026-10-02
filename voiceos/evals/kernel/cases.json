@@ -90,28 +90,24 @@
 			"answer": true
 		},
 		{
-			"id": "delete-via-setup",
+			"id": "setup-work-on-active-points-to-set-up",
 			"utterance": "Delete the checkout worktree.",
 			"context": {},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "setup",
-					"text_includes": "worktree"
-				}
-			]
+			"calls": [],
+			"forbid_calls": ["send_to", "forward", "activate"],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["set up|setup"]
 		},
 		{
-			"id": "create-via-setup",
+			"id": "create-worktree-on-active-points-to-set-up",
 			"utterance": "Create a new worktree for the search fix.",
 			"context": {},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "setup",
-					"text_includes": "worktree"
-				}
-			]
+			"calls": [],
+			"forbid_calls": ["send_to", "forward", "activate"],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["set up|setup"]
 		},
 		{
 			"id": "history",
@@ -474,19 +470,6 @@
 				{
 					"name": "forward",
 					"text_includes": ["three|3", "log", "test", "aggressive"]
-				}
-			]
-		},
-		{
-			"id": "in-session-setup",
-			"utterance": "Why is this so slow?",
-			"context": {
-				"view": "setup"
-			},
-			"calls": [
-				{
-					"name": "forward",
-					"text_includes": ["slow"]
 				}
 			]
 		},
@@ -1919,59 +1902,21 @@
 			]
 		},
 		{
-			"id": "setup-status-running",
-			"utterance": "What's the setup status?",
-			"context": {
-				"view": "store-front/wrk1",
-				"work": [
-					{
-						"ref": "setup",
-						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
-						"minutesAgo": 4
-					}
-				]
-			},
-			"calls": [],
-			"forbid_mutation": true,
-			"answer": true,
-			"reply_includes": ["wrk3|work three|worktree|setting up|still"]
-		},
-		{
-			"id": "setup-status-idle",
-			"utterance": "What's the setup status?",
-			"context": {
-				"view": "store-front/wrk1",
-				"work": [
-					{
-						"ref": "setup",
-						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
-						"minutesAgo": 6,
-						"idle": true,
-						"said": "wrk3 is ready: checkout done, install passed, both dev servers came up."
-					}
-				]
-			},
-			"calls": [],
-			"forbid_mutation": true,
-			"answer": true,
-			"reply_includes": ["ready|done|finished|passed"]
-		},
-		{
 			"id": "check-on-it",
 			"utterance": "Check on it.",
 			"context": {
 				"view": "store-front/wrk1",
 				"work": [
 					{
-						"ref": "setup",
-						"request": "Set up a new worktree wrk3 for the store front and run its setup.",
+						"ref": "checkout-api/main",
+						"request": "Add retry backoff to checkout and run the retry tests.",
 						"minutesAgo": 4
 					}
 				],
 				"voiceLog": [
 					{
-						"utterance": "What's the setup status?",
-						"reply": "Voice OS is still setting up wrk3, four minutes in.",
+						"utterance": "What's checkout doing?",
+						"reply": "Checkout api main is still adding the retry backoff, four minutes in.",
 						"did": []
 					}
 				]
@@ -1979,7 +1924,7 @@
 			"calls": [
 				{
 					"name": "read_state",
-					"ref": "setup"
+					"ref": "checkout-api/main"
 				}
 			],
 			"forbid_mutation": true,
@@ -3570,11 +3515,10 @@
 			},
 			"calls": [
 				{
-					"name": "send_to",
-					"ref": "setup",
-					"text_includes": "worktree"
+					"name": "forward"
 				}
-			]
+			],
+			"forbid_calls": ["send_to", "activate"]
 		},
 		{
 			"id": "continues-cut-request",
@@ -4140,22 +4084,14 @@
 			"no_reply": true
 		},
 		{
-			"id": "grid-named-setup-request",
+			"id": "active-named-setup-request",
 			"utterance": "Setup, before anything else run crew ls projects and tell me exactly what it prints.",
 			"context": {},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "setup",
-					"text_includes": "crew ls projects"
-				}
-			],
-			"allow": [
-				{
-					"name": "switch_view",
-					"ref": "setup"
-				}
-			]
+			"calls": [],
+			"forbid_calls": ["send_to", "switch_view", "activate"],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["set up|setup"]
 		},
 		{
 			"id": "announced-permission-yes-other-screen",
@@ -4401,14 +4337,11 @@
 			"id": "open-setup-session",
 			"utterance": "Open the setup session.",
 			"context": {},
-			"calls": [
-				{
-					"name": "switch_view",
-					"ref": "setup"
-				}
-			],
-			"forbid_calls": ["activate", "deactivate"],
-			"no_reply": true
+			"calls": [],
+			"forbid_calls": ["switch_view", "activate", "deactivate"],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["set up|setup"]
 		},
 		{
 			"id": "pin-in-work-is-forwarded",
@@ -5683,7 +5616,7 @@
 			"no_reply": true
 		},
 		{
-			"id": "setup-on-inactive-remote",
+			"id": "setup-on-remote-points-to-set-up",
 			"utterance": "Add a worktree for billing on Personal.",
 			"context": {
 				"machine": {
@@ -5696,21 +5629,13 @@
 						"personal:setup"
 					]
 				},
-				"inactive": [
-					"personal:scheduler/wrk1",
-					"personal:scheduler/wrk2",
-					"personal:billing/main",
-					"personal:setup"
-				]
+				"inactive": ["personal:scheduler/wrk1", "personal:scheduler/wrk2", "personal:billing/main"]
 			},
-			"calls": [
-				{
-					"name": "send_to",
-					"ref": "personal:setup"
-				}
-			],
-			"forbid_calls": ["forward"],
-			"no_reply": true
+			"calls": [],
+			"forbid_calls": ["send_to", "forward", "activate"],
+			"forbid_mutation": true,
+			"answer": true,
+			"reply_includes": ["set up|setup"]
 		},
 		{
 			"id": "yes-to-activate-offer",

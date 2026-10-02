@@ -130,7 +130,7 @@ func TestSetupDiscord_RejectedSavesNothing(t *testing.T) {
 func TestSetupDiscord_KeyNotAskedOnFirstStart(t *testing.T) {
 	isolateKeys(t)
 	if IsKeyName(DiscordKey) {
-		t.Error("discord is one of KeyNames: the first crew voice would ask for it")
+		t.Error("discord is one of KeyNames: the first crew server would ask for it")
 	}
 }
 
@@ -293,7 +293,7 @@ func TestDiscordStatusRows_NotSetUp(t *testing.T) {
 
 	got := DiscordStatusRows(report)
 	want := [][2]string{
-		{"setup", "not set up (crew voice discord setup)"},
+		{"setup", "not set up (crew server discord setup)"},
 		{"token", "missing"},
 		{"live", "Voice OS has not reported"},
 	}

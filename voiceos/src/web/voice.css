@@ -1,0 +1,1513 @@
+/* Voice OS: open all day, dense on purpose. Flush panes split by hairlines; both bars docked. On a
+   desktop only a session's history scrolls; at phone width it is one column and the page scrolls. */
+.vo {
+	position: fixed;
+	inset: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	background: #0b0d10;
+	font-family: var(--sys);
+}
+
+/* The top bar: brand, Active, the active sessions' tabs, "+"; Discord, usage and the gear. */
+.vo-top {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px 24px;
+	background: #0f1215;
+	box-shadow: inset 0 -1px 0 var(--hair);
+	position: relative;
+	z-index: 5;
+}
+.vo-brand {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex: none;
+	padding: 4px 0;
+	background: none;
+	border: 0;
+	color: #fff;
+	font: 600 14px var(--sys);
+}
+.vo-brand span {
+	font: 500 10.5px var(--mono);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--label-2);
+}
+.vo-brand::after {
+	content: "";
+	width: 1px;
+	height: 16px;
+	margin-left: 4px;
+	align-self: center;
+	background: rgba(255, 255, 255, 0.14);
+}
+.vo-tabs {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.vo-tabs::-webkit-scrollbar {
+	display: none;
+}
+.vo-tab {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	height: 32px;
+	padding: 0 11px;
+	border: 0;
+	border-radius: 10px;
+	background: none;
+	color: var(--label-2);
+	font: 13px var(--sys);
+	white-space: nowrap;
+}
+.vo-tab b {
+	font-weight: 600;
+	color: inherit;
+}
+.vo-tab small {
+	color: var(--label-3);
+	font-size: 11px;
+}
+.vo-tab:hover {
+	background: var(--fill);
+	color: #fff;
+}
+.vo-tab[aria-current="true"] {
+	background: var(--elev-3);
+	color: #fff;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.vo-add {
+	width: 32px;
+	padding: 0;
+	justify-content: center;
+	font: 300 20px / 1 var(--sys);
+	/* The tabs scroll under it; "+" itself never leaves the bar, however many there are. */
+	flex: none;
+	position: sticky;
+	right: 0;
+	background: #0f1215;
+	box-shadow: -8px 0 8px #0f1215;
+}
+.vo-add:hover {
+	background: #1b1f24;
+}
+.vo-sep {
+	width: 1px;
+	height: 18px;
+	margin: 0 4px;
+	flex: none;
+	background: rgba(255, 255, 255, 0.12);
+}
+.vo-right {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: none;
+}
+.vo-usage {
+	font: 11.5px var(--mono);
+	color: var(--label-3);
+}
+.vo-discord {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	padding: 5px 10px;
+	border-radius: 9px;
+	background: rgba(95, 191, 127, 0.12);
+	color: #fff;
+	font-size: 12.5px;
+}
+.vo-gear {
+	width: 30px;
+	height: 30px;
+	display: grid;
+	place-items: center;
+	border: 0;
+	border-radius: 9px;
+	background: none;
+	color: var(--label-2);
+}
+.vo-gear:hover,
+.vo-gear[aria-current="true"] {
+	background: var(--fill);
+	color: #fff;
+}
+
+.vo-main {
+	min-height: 0;
+	overflow-y: auto;
+}
+.vo-notice {
+	padding: 9px 24px;
+	background: rgba(240, 160, 44, 0.08);
+	box-shadow: inset 0 -1px 0 var(--hair);
+	font-size: 13px;
+	color: var(--label-2);
+}
+.vo-notice a {
+	color: #fff;
+}
+/* Every notice under the top bar, the connection one included, one under the other. */
+.vo-notices:empty {
+	display: none;
+}
+.conn.inline {
+	position: static;
+	transform: none;
+	max-width: none;
+	border-radius: 0;
+	padding: 9px 24px;
+	background: rgba(240, 160, 44, 0.14);
+	box-shadow: inset 0 -1px 0 var(--hair);
+}
+.vo-view {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-content: start;
+}
+.vo-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	padding: 16px 24px;
+	border-bottom: 1px solid var(--hair);
+}
+.vo-head h1 {
+	font: 650 24px / 1.2 var(--sys);
+	letter-spacing: -0.015em;
+}
+.vo-head .row-actions {
+	margin-left: auto;
+}
+/* :where keeps it as light as the "<form> input" rules after it. */
+.vo-head :where(.session-rename) input {
+	background: var(--elev-2);
+	border: 0;
+	box-shadow: inset 0 0 0 1px var(--sep);
+	border-radius: 8px;
+	padding: 4px 10px;
+	color: #fff;
+	font: 600 18px var(--sys);
+}
+
+/* Active: one full-width row per session, every row with its own status. */
+.vo-view > .box,
+.vo-list {
+	margin: 16px 24px;
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+.vo-row {
+	grid-template-columns: 10px 240px minmax(0, 1fr) 150px;
+	gap: 14px;
+}
+.vo-row .topic {
+	font: 600 14px var(--sys);
+}
+.vo-row .sub .m {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.vo-row > .sub + .sub .m {
+	font: 13px var(--sys);
+	color: var(--label-2);
+}
+.vo-row > .chip,
+.vo-row > .btn {
+	justify-self: end;
+}
+.vo-empty {
+	margin: 24px;
+	padding: 28px;
+	display: grid;
+	gap: 10px;
+	justify-items: start;
+	border-radius: 4px;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+.vo-empty b {
+	font: 600 17px var(--sys);
+	color: #fff;
+}
+.vo-empty p {
+	margin: 0;
+	color: var(--label-2);
+}
+
+/* Activate and settings: a library on the flush ground. */
+.vo-lib {
+	display: grid;
+	gap: 26px;
+	padding: 16px 24px 24px;
+}
+.vo-lib .box {
+	border-radius: 4px;
+	background: transparent;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+.vb-filter {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	padding: 16px 24px 0;
+}
+.vb-filter input {
+	flex: 1 1 220px;
+	max-width: 360px;
+	height: 32px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: 9px;
+	background: var(--fill);
+	color: #fff;
+	font: 13px var(--sys);
+}
+.vb-filter .seg button {
+	height: 28px;
+	padding: 0 12px;
+}
+.vb-sec {
+	display: grid;
+	gap: 14px;
+}
+.vb-sec.off .box-row {
+	opacity: 0.5;
+}
+/* Active's and Activate's lists: a hairline between rows. */
+.vo-view > .box .box-row + .box-row,
+.vo-lib .box .box-row + .box-row {
+	box-shadow: inset 0 1px 0 var(--sep);
+}
+.vb-machine {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.vb-machine b {
+	font: 600 17px var(--sys);
+	color: #fff;
+}
+.vb-empty {
+	margin: 0;
+	color: var(--label-3);
+}
+.ws-h-row {
+	display: flex;
+	gap: 10px;
+	align-items: baseline;
+	margin-bottom: 8px;
+}
+.ws-h-row b {
+	font: 600 15px var(--sys);
+	color: #fff;
+}
+
+.vs-set {
+	gap: 26px;
+	max-width: 860px;
+}
+.vs-sec {
+	display: grid;
+	gap: 10px;
+}
+.vs-h {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 10px;
+}
+.vs-h b {
+	font: 600 15px var(--sys);
+	color: #fff;
+}
+.vs-note {
+	margin: 0;
+	max-width: 70ch;
+	font-size: 13px;
+	color: var(--label-3);
+}
+.vs-sec .seg {
+	justify-self: start;
+	flex-wrap: wrap;
+}
+.key-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+.check-line {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 14px;
+	color: var(--label);
+}
+.check-line input {
+	accent-color: #fff;
+}
+.language-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.language-item {
+	padding: 3px 11px;
+	border: 0;
+	border-radius: 100px;
+	background: var(--fill);
+	color: var(--label-2);
+	font-size: 12px;
+}
+.language-item:hover {
+	background: var(--fill-hover);
+	color: #fff;
+}
+.language-item[aria-checked="true"],
+.language-item[aria-pressed="true"] {
+	background: var(--elev-3);
+	color: #fff;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* A session: the header, its state row, then the stream beside the panels. */
+.vo-split {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 360px;
+	align-items: stretch;
+	min-height: 100%;
+}
+.vo-stream {
+	display: grid;
+	align-content: start;
+	gap: 4px;
+	min-width: 0;
+	padding: 18px 24px;
+	font: 14.5px / 1.5 var(--sys);
+	color: #d8dee9;
+}
+.line {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.line.user {
+	margin-top: 8px;
+	color: #fff;
+	font-weight: 600;
+}
+.line.text {
+	margin-top: 4px;
+}
+.line.tool {
+	color: var(--label-3);
+	font: 12.5px / 1.5 var(--mono);
+}
+.line.tool .c-amber {
+	color: var(--amber);
+}
+.line.result {
+	color: var(--crit-text);
+	font: 12.5px / 1.5 var(--mono);
+}
+.line.notice {
+	color: var(--amber);
+	font-size: 13px;
+}
+.line.approval {
+	color: var(--good);
+	font: 12.5px / 1.5 var(--mono);
+}
+.aside {
+	margin: 4px 0 4px 2px;
+	padding-left: 14px;
+	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.175);
+}
+.aside .line.user {
+	font-weight: 500;
+}
+.diff {
+	margin: 4px 0;
+	border-radius: 4px;
+	background: #07090b;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+	overflow-x: auto;
+	font: 12.5px / 1.5 var(--mono);
+}
+.diff div {
+	padding: 0 12px;
+	white-space: pre;
+}
+.diff .h {
+	padding: 6px 12px;
+	color: var(--label-3);
+	box-shadow: inset 0 -1px 0 var(--sep);
+}
+.diff .add {
+	background: rgba(95, 191, 127, 0.1);
+	color: #b6e3c4;
+}
+.diff .del {
+	background: rgba(224, 108, 95, 0.12);
+	color: #f0b3ab;
+}
+.caret {
+	display: inline-block;
+	width: 8px;
+	height: 15px;
+	margin-left: 2px;
+	vertical-align: -2px;
+	background: var(--amber);
+	animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink {
+	50% {
+		opacity: 0;
+	}
+}
+.line.shown-image {
+	display: block;
+	margin: 6px 0;
+}
+.line.shown-image img {
+	display: block;
+	max-width: 100%;
+	max-height: 420px;
+	border-radius: 4px;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.line.doc-card {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	width: min(420px, 100%);
+	margin: 4px 0;
+	padding: 10px 12px;
+	border-radius: 6px;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+	color: inherit;
+	text-decoration: none;
+	white-space: normal;
+}
+.line.doc-card:hover {
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.doc-title {
+	font-weight: 600;
+	color: #fff;
+}
+.line.compacting {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 10px;
+}
+.bar {
+	flex-basis: 100%;
+	height: 3px;
+	overflow: hidden;
+	border-radius: 3px;
+	background: var(--fill);
+}
+/* :where keeps the bar as light as the voice bar's .wave i and .dictation-clock i. */
+.bar:where(.indeterminate) i {
+	display: block;
+	width: 35%;
+	height: 100%;
+	background: var(--amber);
+	animation: sweep 1.4s ease-in-out infinite;
+}
+@keyframes sweep {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(300%);
+	}
+}
+
+/* The side panels: flush, split by hairlines; quiet mono for what is data. One column that never
+   grows past the panel: an unbroken path, URL or voice line wraps instead of scrolling sideways. */
+/* The divider is the panels' own edge: they stretch to the history's height, so it runs to the bottom
+   however little they hold. */
+.vo-panels {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-content: start;
+	min-width: 0;
+	border-left: 1px solid var(--hair);
+}
+.vo-panel,
+.vo-panels .panel {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
+	overflow-wrap: anywhere;
+	gap: 8px;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--hair);
+	font-size: 13px;
+}
+.vo-panel .kv {
+	display: flex;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+	color: var(--label-2);
+}
+.vo-panel .kv b {
+	color: #fff;
+	font-weight: 500;
+}
+.vo-panel p {
+	margin: 0;
+}
+.vo-panels .row {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	min-width: 0;
+	color: var(--label-2);
+	font-size: 12.5px;
+}
+.vo-panels .row > * {
+	min-width: 0;
+}
+.vo-panels .devrow .c-ink {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.vo-panels .row .el {
+	flex: none;
+	white-space: nowrap;
+	margin-left: auto;
+	color: var(--label-3);
+	font: 11.5px var(--mono);
+}
+.vo-panels .row a.el {
+	color: #fff;
+}
+/* A dev server's link: an icon at the row's end, the URL in its tooltip. */
+.vo-panels .row .open-link {
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	margin-left: auto;
+	border-radius: 6px;
+	color: var(--label-2);
+}
+.vo-panels .row .open-link svg {
+	width: 14px;
+	height: 14px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.vo-panels .row .open-link:hover,
+.vo-panels .row .open-link:focus-visible {
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
+}
+.lnk {
+	margin-left: auto;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #fff;
+	font: 12.5px var(--mono);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+/* Each entry is plain rows like the other panels': no class here may share a name with Set up's
+   (its .reply is the chat's floating composer). */
+.voice-log .entry {
+	display: grid;
+	gap: 2px;
+}
+.voice-log .entry.old {
+	opacity: 0.5;
+}
+.voice-log .row {
+	align-items: baseline;
+}
+.voice-log .said {
+	color: #fff;
+}
+.voice-log .row.c-dim {
+	color: var(--label-3);
+}
+.voice-log .row.c-crit {
+	color: var(--crit-text);
+}
+.elsewhere-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 2px 8px;
+	padding: 4px 0;
+	border: 0;
+	background: none;
+	text-align: left;
+	font-size: 12.5px;
+}
+.elsewhere-row .c-dim {
+	grid-column: 1 / -1;
+}
+.notes-toggle {
+	padding: 0;
+	border: 0;
+	background: none;
+	text-align: left;
+}
+.note,
+.subagent .row {
+	font-size: 12.5px;
+}
+.doc-row {
+	color: #fff;
+	text-decoration: none;
+	font-size: 12.5px;
+}
+
+/* The state row (what went wrong, with the way out) and the ask dock (what the session waits on). */
+.vs-state,
+.dock,
+.strip {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	margin: 0;
+	padding: 12px 24px;
+	box-shadow: inset 0 -1px 0 var(--hair);
+	font-size: 14px;
+}
+.vs-state .row-actions,
+.strip .btn:first-of-type {
+	margin-left: auto;
+}
+.vs-state.crit,
+.dock.crit,
+.strip.crit {
+	background: rgba(224, 108, 95, 0.07);
+}
+.vs-state.wait {
+	background: rgba(240, 160, 44, 0.06);
+}
+.dock {
+	display: grid;
+	gap: 10px;
+	max-height: 46vh;
+	overflow-y: auto;
+}
+.dock.question {
+	background: rgba(255, 255, 255, 0.04);
+}
+.dock.amber {
+	background: rgba(240, 160, 44, 0.06);
+}
+/* Docked above the voice bar, flush like the moments row: a hairline on top and below. */
+.vo-bar > .dock {
+	box-shadow:
+		inset 0 1px 0 var(--hair),
+		inset 0 -1px 0 var(--hair);
+}
+.dock-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.dock-head .decline {
+	margin-left: auto;
+	padding-inline: 8px;
+}
+.dock .lbl {
+	color: var(--label-3);
+}
+.dock.crit .lbl {
+	color: var(--crit-text);
+}
+.dock .ask {
+	font: 15px / 1.45 var(--sys);
+	color: #fff;
+}
+.dock .quote {
+	max-height: 24vh;
+	overflow-y: auto;
+	padding-left: 12px;
+	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.175);
+	color: var(--label-2);
+	font-size: 13.5px;
+}
+.dock .cmd {
+	padding: 8px 12px;
+	border-radius: 8px;
+	background: rgba(0, 0, 0, 0.55);
+	color: #f0b3ab;
+	font: 12.5px var(--mono);
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+.opts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.opt {
+	display: grid;
+	gap: 2px;
+	text-align: left;
+	padding: 9px 12px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--elev-2);
+	color: #fff;
+	font: 13.5px var(--sys);
+}
+.opt:hover {
+	background: var(--elev-3);
+}
+.opt .k {
+	color: var(--label-3);
+	font: 11px var(--mono);
+}
+.opt .l {
+	font-weight: 600;
+}
+.opt .d {
+	color: var(--label-3);
+	font-size: 12px;
+}
+.dock .hint {
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.dock .hint b {
+	color: #fff;
+	font-weight: 500;
+}
+.reason {
+	display: flex;
+	gap: 8px;
+}
+.reason input {
+	flex: 1;
+	min-width: 0;
+	padding: 6px 12px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: #fff;
+	font: 13px var(--sys);
+}
+.strip .say {
+	flex: 1;
+	min-width: 0;
+	color: var(--label-2);
+}
+
+/* The voice bar: a moment, the queue, the spoken line, then the composer. */
+.vo-bar {
+	display: grid;
+	padding: 0 0 env(safe-area-inset-bottom, 0px);
+	background: #0f1215;
+	box-shadow: inset 0 1px 0 var(--hair);
+	min-width: 0;
+}
+.vo-offer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 24px;
+	background: rgba(255, 255, 255, 0.04);
+	box-shadow: inset 0 -1px 0 var(--hair);
+}
+.vo-offer p {
+	margin: 0;
+	font-size: 14px;
+	color: #fff;
+}
+.vo-offer .say {
+	font: 12px var(--mono);
+	color: var(--label-3);
+}
+.vo-offer .row-actions {
+	margin-left: auto;
+}
+.queue {
+	display: grid;
+	box-shadow: inset 0 -1px 0 var(--hair);
+}
+.qitem {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 24px;
+	font-size: 13px;
+	color: var(--label-2);
+}
+.qitem .qtag {
+	font: 11px var(--mono);
+	color: var(--label-3);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+.qitem .btn:first-of-type {
+	margin-left: auto;
+}
+.vo-spoken {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	padding: 10px 24px;
+	box-shadow: inset 0 -1px 0 var(--hair);
+}
+.vo-spoken .label {
+	flex: none;
+	color: var(--label-2);
+}
+.vo-spoken p {
+	margin: 0;
+	font-size: 14px;
+	color: #fff;
+}
+.vo-composer {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 24px;
+}
+.vo-mic {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 40px;
+	height: 40px;
+	border: 0;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
+	box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
+	transition:
+		box-shadow 0.15s ease,
+		background 0.15s ease;
+}
+.vo-mic:hover {
+	background: rgba(255, 255, 255, 0.13);
+}
+.vo-mic.live {
+	background: rgba(95, 191, 127, 0.18);
+	box-shadow: 0 0 0 4px rgba(95, 191, 127, 0.18);
+}
+.vo-mic.dictating {
+	background: rgba(240, 160, 44, 0.18);
+	box-shadow: 0 0 0 4px rgba(240, 160, 44, 0.18);
+}
+.vo-mic.off {
+	opacity: 0.5;
+}
+.vo-mic.discord {
+	width: auto;
+	padding: 0 10px;
+	border-radius: 10px;
+	background: var(--good-fill);
+	color: var(--good);
+	box-shadow: none;
+	font: 600 12px var(--sys);
+	cursor: default;
+}
+.vo-mic.discord.off {
+	background: rgba(224, 108, 95, 0.14);
+	color: var(--crit-text);
+}
+.wave {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	height: 20px;
+}
+.wave i {
+	display: block;
+	width: 3px;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--good);
+	animation: pulse 1.05s ease-in-out infinite;
+}
+/* :where keeps it as light as .dictation-clock i after it. */
+:where(.vo-mic.dictating) .wave i {
+	background: var(--amber);
+}
+@keyframes pulse {
+	50% {
+		height: 18px;
+	}
+}
+.vo-field {
+	flex: 1;
+	min-width: 0;
+	min-height: 40px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 4px 6px 4px 14px;
+	border-radius: 12px;
+	background: var(--elev-2);
+}
+.vo-field:focus-within {
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+		0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+.vo-field.alarm {
+	box-shadow: inset 0 0 0 1px rgba(224, 108, 95, 0.45);
+}
+.vo-field.dictating {
+	box-shadow: inset 0 0 0 1px rgba(240, 160, 44, 0.45);
+}
+.vo-field.inactive {
+	justify-content: space-between;
+	font-size: 13px;
+}
+.vo-field textarea {
+	flex: 1;
+	min-width: 0;
+	max-height: calc(6 * 1.5em + 10px);
+	padding: 6px 0;
+	border: 0;
+	background: transparent;
+	color: #fff;
+	font: 14px / 1.5 var(--sys);
+	resize: none;
+	overflow-y: auto;
+	scrollbar-width: thin;
+}
+.vo-field textarea:focus-visible {
+	outline: none;
+}
+.vo-field textarea::placeholder {
+	color: var(--label-3);
+}
+.vo-field.discord textarea::placeholder {
+	color: var(--label-2);
+}
+.composer-side {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+}
+.vo-route {
+	max-width: 260px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	padding: 3px 10px;
+	border-radius: 9px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 12px var(--mono);
+	white-space: nowrap;
+}
+.vo-route.kernel {
+	color: var(--amber);
+	background: var(--amber-fill);
+}
+.vo-route.alarm {
+	color: var(--crit-text);
+	background: rgba(224, 108, 95, 0.14);
+}
+.too-long {
+	color: var(--amber);
+	font-size: 12px;
+	white-space: nowrap;
+}
+.btn.armed {
+	color: var(--crit-text);
+	background: rgba(224, 108, 95, 0.14);
+}
+.dictation-clock {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--amber);
+	font: 12px var(--mono);
+	font-variant-numeric: tabular-nums;
+}
+.dictation-clock i {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--amber);
+	animation: recording 1.4s ease-in-out infinite;
+}
+@keyframes recording {
+	50% {
+		opacity: 0.3;
+	}
+}
+
+/* The listening mode: a menu at the right of the voice bar, opening upwards. */
+.mode-wrap {
+	position: relative;
+	flex: none;
+}
+.vo-mode {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	padding: 6px 4px;
+	border: 0;
+	background: none;
+	color: var(--label-2);
+	font: 12.5px var(--sys);
+	white-space: nowrap;
+}
+.vo-mode:hover,
+.vo-mode[aria-expanded="true"] {
+	color: #fff;
+}
+.mode-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--label-3);
+}
+.vo-mode.on .mode-dot {
+	background: var(--good);
+}
+.vo-mode.awake .mode-dot {
+	background: var(--amber);
+}
+.vo-mode.ignored .mode-dot {
+	box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+.vo-mode.off .mode-dot {
+	background: var(--crit);
+}
+.mode-menu {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 10px);
+	z-index: 40;
+	width: 330px;
+	padding: 6px;
+	border-radius: 14px;
+	background: var(--menu);
+	-webkit-backdrop-filter: blur(24px) saturate(1.4);
+	backdrop-filter: blur(24px) saturate(1.4);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+		0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.mode-menu-title {
+	padding: 6px 10px;
+	color: var(--label-3);
+	font: 600 10.5px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+.mode-item {
+	display: grid;
+	grid-template-columns: 28px minmax(0, 1fr) 14px;
+	gap: 10px;
+	align-items: center;
+	width: 100%;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: 9px;
+	background: none;
+	text-align: left;
+}
+.mode-item:hover,
+.mode-item:focus-visible {
+	background: var(--fill-hover);
+	outline: none;
+}
+.mode-tile {
+	display: grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 8px;
+	background: var(--fill);
+	color: var(--label-2);
+}
+.mode-item[aria-checked="true"] .mode-tile {
+	background: #fff;
+	color: #000;
+}
+.mode-text {
+	display: grid;
+	gap: 1px;
+}
+.mode-name {
+	font-size: 13.5px;
+	color: #fff;
+}
+.mode-desc {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--label-3);
+}
+.mode-check {
+	color: #fff;
+}
+.languages-title {
+	margin-top: 6px;
+	padding-top: 10px;
+	border-top: 1px solid var(--sep);
+}
+.mode-menu .language-grid {
+	padding: 2px 10px 8px;
+}
+
+/* Before you talk: the mic and the keys, over Voice OS. */
+.vo-first {
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+	display: grid;
+	place-items: center;
+	padding: 16px;
+	background: rgba(0, 0, 0, 0.72);
+}
+.vf-card {
+	width: min(480px, 100%);
+	display: grid;
+	gap: 16px;
+	padding: 24px;
+	border-radius: 18px;
+	background: #15181c;
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+		0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.vf-card h1 {
+	font-size: 22px;
+}
+.vf-rows {
+	display: grid;
+	gap: 14px;
+}
+.vf-mic {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+.vf-mic .sub {
+	display: grid;
+	gap: 2px;
+}
+.vo-first .field {
+	display: grid;
+	gap: 6px;
+}
+.vo-first .field > span {
+	font: 600 11px var(--mono);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.vo-first .field small {
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.vo-first .field small.bad {
+	color: var(--crit-text);
+}
+/* A key field, in Settings and here: one look. */
+.key-form input,
+.vo-first .field input {
+	flex: 1 1 220px;
+	min-width: 0;
+	padding: 8px 12px;
+	border: 0;
+	border-radius: 10px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--sep);
+	color: #fff;
+	font: 13px var(--mono);
+}
+.vo-first .field input.bad {
+	box-shadow: inset 0 0 0 1px rgba(224, 108, 95, 0.6);
+}
+
+@media (min-width: 861px) {
+	/* In a session only the history scrolls; the header, the panels and the voice bar stay put. */
+	.vo-main.in-session {
+		overflow: hidden;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	.vo-main.in-session > .vo-notices {
+		grid-row: 1;
+	}
+	.vo-main.in-session > .vo-session {
+		height: 100%;
+		min-height: 0;
+		grid-template-rows: auto auto minmax(0, 1fr);
+		grid-row: -2;
+	}
+	/* The last row by line, not by count: with no state row the split would take its auto row and
+	   end where its taller column does. */
+	.vo-session .vo-split {
+		grid-row: -2;
+		min-height: 0;
+		height: 100%;
+	}
+	.vo-session .vo-stream {
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+	.vo-session .vo-panels {
+		min-height: 0;
+		overflow-x: hidden;
+		overflow-y: auto;
+		scrollbar-width: none;
+	}
+	.vo-session .vo-panels::-webkit-scrollbar {
+		display: none;
+	}
+	.vo-session .vo-panel,
+	.vo-session .vo-panels .panel {
+		padding-block: 12px;
+		gap: 6px;
+	}
+}
+
+/* Phone: one column, the page scrolls, every bar stays inside the screen. */
+@media (max-width: 860px) {
+	.vo-top {
+		padding-left: 14px;
+		padding-right: 8px;
+	}
+	.vo-usage,
+	.vo-discord,
+	.vo-route,
+	.mode-wrap {
+		display: none;
+	}
+	.vo-split {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.vo-stream {
+		padding: 16px;
+		border-bottom: 1px solid var(--hair);
+	}
+	.vo-panels {
+		border-left: 0;
+	}
+	.vo-head {
+		padding: 14px 16px;
+	}
+	.vo-head .row-actions {
+		margin-left: 0;
+		width: 100%;
+	}
+	.vs-state,
+	.dock,
+	.strip,
+	.vo-offer,
+	.vo-spoken,
+	.vo-composer,
+	.qitem,
+	.conn.inline,
+	.vo-notice {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+	.vo-offer .row-actions,
+	.vs-state .row-actions {
+		margin-left: 0;
+	}
+	.vo-lib,
+	.vb-filter {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+	.vo-view > .box,
+	.vo-list,
+	.vo-empty {
+		margin-inline: 16px;
+	}
+	.vo-row {
+		grid-template-columns: 10px minmax(0, 1fr) auto;
+		row-gap: 6px;
+	}
+	.vo-row > .dot,
+	.vo-row > .chip {
+		grid-row: 1;
+	}
+	.vo-row > .chip {
+		grid-column: 3;
+	}
+	.vo-row > .dot + .sub {
+		grid-row: 1;
+		grid-column: 2;
+	}
+	.vo-row > .sub + .sub {
+		grid-column: 2 / 4;
+		grid-row: 2;
+	}
+	.vo-row .sub .m {
+		white-space: normal;
+	}
+	.vs-h {
+		display: grid;
+		gap: 2px;
+	}
+	.box-row .row-actions {
+		flex-wrap: wrap;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.caret,
+	.wave i,
+	.dictation-clock i,
+	.bar:where(.indeterminate) i {
+		animation: none;
+	}
+	.wave i {
+		height: 11px;
+	}
+	.bar:where(.indeterminate) i {
+		width: 100%;
+		opacity: 0.6;
+	}
+}
+
+/* A sub-agent's transcript: its card in the panel and its Agent call's row open it, as a card over
+   Voice OS like Before you talk. It fills in while the sub-agent runs; once it ends on text, that text
+   is its report. */
+button.subagent,
+button.line.opens {
+	display: block;
+	width: 100%;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+button.line.opens {
+	color: var(--label-3);
+	font: 12.5px / 1.5 var(--mono);
+}
+button.subagent {
+	padding: 4px 6px;
+	margin: 0 -6px;
+	border-radius: 8px;
+}
+button.subagent:hover,
+button.line.opens:hover {
+	background: var(--fill);
+	color: var(--label);
+}
+button.subagent:focus-visible,
+button.line.opens:focus-visible {
+	outline: 1px solid var(--focus);
+	outline-offset: 2px;
+}
+.opens-hint {
+	color: var(--label-4);
+}
+button.line.opens:hover .opens-hint {
+	color: var(--label-2);
+}
+.sd {
+	width: min(760px, calc(100vw - 32px));
+	max-height: calc(100vh - 64px);
+	padding: 0;
+	border: 0;
+	border-radius: 18px;
+	background: #15181c;
+	color: var(--label);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+		0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.sd[open] {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.sd::backdrop {
+	background: rgba(0, 0, 0, 0.72);
+}
+.sd-head {
+	display: grid;
+	gap: 4px;
+	padding: 20px 24px 14px;
+	border-bottom: 1px solid var(--sep);
+}
+.sd-kicker {
+	color: var(--label-3);
+	font: 600 10.5px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+.sd-head h2 {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+}
+.sd-status {
+	color: var(--label-3);
+	font-weight: 400;
+}
+.sd-task {
+	margin: 0;
+	color: var(--label-2);
+	font-size: 13px;
+}
+.sd-lines {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 120px;
+	padding: 14px 24px;
+	overflow-y: auto;
+}
+.sd-report {
+	display: grid;
+	gap: 6px;
+	margin-top: 6px;
+	padding-top: 12px;
+	border-top: 1px solid var(--sep);
+}
+.sd-actions {
+	display: flex;
+	justify-content: flex-end;
+	padding: 12px 24px 18px;
+	border-top: 1px solid var(--sep);
+}

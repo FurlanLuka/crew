@@ -7,6 +7,7 @@ import {
 	type QueuedMessage,
 	type Session,
 	type State,
+	type SwitchOffer,
 	type SwitchOfferKind,
 } from '../shared/protocol.js';
 import { hasOpenQuestionMoved } from '../shared/questions.js';
@@ -73,7 +74,7 @@ export const buildNotesPathNote = ({
 	// the main over its link.
 	if (machineOf(ref) !== null) {
 		const command =
-			workspace === GENERAL_NOTES ? 'crew voice notes' : `crew voice notes ${workspace}`;
+			workspace === GENERAL_NOTES ? 'crew server notes' : `crew server notes ${workspace}`;
 
 		return `The developer's notes for ${nameNotes(workspace)} are on the main machine: run \`${command}\` to read them.`;
 	}
@@ -100,6 +101,33 @@ export const isBareAnswer = async (judge: Judge, text: string): Promise<boolean>
 // A bare no: "no", "nein", "ne".
 export const isBareNo = async (judge: Judge, text: string): Promise<boolean> =>
 	isShortEnoughToAnswer(text) && (await judge({ key: 'refuses', utterance: text })) === 'yes';
+
+// A bare yes: "yes, push it" is more than a yes.
+export const isBareYes = async (judge: Judge, text: string): Promise<boolean> =>
+	(await isBareAnswer(judge, text)) &&
+	(await judge({ key: 'approves', utterance: text })) === 'yes';
+
+// The developer's words are a bare yes to Voice OS's own open "Switch to X?" (or activate, deactivate):
+// that yes is the offer's, whichever tool the kernel reached for. The offer as answered, or null.
+export const readYesToOffer = async (
+	state: State,
+	toolContext: ToolContext,
+): Promise<SwitchOffer | null> => {
+	const offer = state.switchOffer;
+	const said = toolContext.utterance;
+
+	// The cheap checks first: most turns have no open offer, and those cost no judge call.
+	if (
+		!offer ||
+		said === undefined ||
+		!isSwitchOfferFresh(offer, toolContext.heardFrom ?? toolContext.now()) ||
+		hasQuestionSince(state, offer.at)
+	) {
+		return null;
+	}
+
+	return (await isBareYes(toolContext.judge, said)) ? offer : null;
+};
 
 interface DescribeMisroutedAnswerParams {
 	state: State;
@@ -287,31 +315,6 @@ export const chooseSentWords = async ({
 	return { text: said, source: 'said' };
 };
 
-export interface IsMisroutedToSetupParams {
-	state: State;
-	ref: string;
-	// The session on screen when the words were said.
-	forwardTo: string | null;
-	utterance: string | undefined;
-	judge: Judge;
-}
-
-export const isMisroutedToSetup = async ({
-	state,
-	ref,
-	forwardTo,
-	utterance,
-	judge,
-}: IsMisroutedToSetupParams): Promise<boolean> => {
-	// "can you reinstall Voice OS" was sent to setup from crew/main's screen. Setup gets words from
-	// another session's screen only when addressed or when they are crew setup.
-	if (!state.sessions[ref]?.isPinned || !forwardTo || forwardTo === ref || !utterance) {
-		return false;
-	}
-
-	return (await judge({ key: 'for_setup', utterance })) === 'no';
-};
-
 const readKind = (kind: unknown): SendAck['kind'] =>
 	kind === 'question' || kind === 'redirect' ? kind : 'instruction';
 
@@ -383,10 +386,7 @@ export const sendText = async ({
 		}
 
 		// Only a bare yes: "yes, push it" is words for a session, even while the offer is open.
-		if (
-			(await isBareAnswer(judge, said)) &&
-			(await judge({ key: 'approves', utterance: said })) === 'yes'
-		) {
+		if (await isBareYes(judge, said)) {
 			log.info('yes to the switch offer: not sent', { ref });
 
 			return fail(

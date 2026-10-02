@@ -1,4 +1,6 @@
 import { createLogger } from '../log.js';
+import { listHeardAsks } from '../shared/active.js';
+import { isSetupRef } from '../shared/machine-ref.js';
 import {
 	isSdkAsk,
 	type MeanwhileItem,
@@ -8,12 +10,13 @@ import {
 	type ToldAsk,
 } from '../shared/protocol.js';
 import {
+	endsInQuestion,
 	normalizeUtterance,
 	prefixSessionName,
 	stripSessionName,
 	stripTags,
 } from '../shared/spoken.js';
-import { readLabel } from '../state/helpers.js';
+import { countSpokenWords, readLabel } from '../state/helpers.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import {
 	decideTurnLine,
@@ -34,9 +37,13 @@ import {
 	type OpenAsks,
 	dropQueued,
 	enqueue,
+	isInstantAck,
+	isReplyLine,
 	setMuted,
+	settleWording,
 	shouldChime,
 	takeNextItem,
+	withoutInstantAcks,
 	type SpeechItem,
 	type SpeechPriority,
 	type SpeechQueue,
@@ -44,6 +51,17 @@ import {
 import { computePcmSeconds, type Synthesize } from './tts.js';
 import { decideMeanwhile } from './meanwhile.js';
 import { toAskLine } from '../state/asks.js';
+import type { FollowUpFacts } from '../shared/follow-up.js';
+import type { FollowUpInput } from '../voice-lines/prompt.js';
+import { MIN_REQUEST_WORDS } from '../tools/tools.js';
+import {
+	decideInstantAck,
+	INSTANT_ACK_DELAY_MS,
+	type KernelTurnHandle,
+	type KernelTurnStart,
+	pickInstantAck,
+	rememberInstantAck,
+} from './instant-ack.js';
 
 const readOpenAsks = (state: State): OpenAsks =>
 	new Map(
@@ -78,6 +96,10 @@ interface SayParams {
 	chime?: 'needs';
 	// "checkout is done: …": another session's update, said later in the meanwhile line instead.
 	announcement?: { kind: MeanwhileItem['kind']; about: string | null };
+	isFiller?: boolean;
+	keepsTags?: boolean;
+	// What Voice OS did, for the writer: the line is worded when one is set up.
+	facts?: FollowUpFacts;
 }
 
 interface FinishParams {
@@ -105,6 +127,25 @@ export interface VoiceOutOptions {
 	clearTimer?: (timer: unknown) => void;
 	// A tab listens all the time (on demand, hands-free): the quiet before "meanwhile" is longer.
 	isListening?: () => boolean;
+	// Words a follow-up line ("Sent to checkout.") with a small model; null keeps the fixed text.
+	writeFollowUp?: (input: FollowUpInput) => Promise<string | null>;
+}
+
+// What is said or heard right now, for whoever decides to speak up on its own.
+export interface SpeechMoment {
+	isTalking: boolean;
+	isMuted: boolean;
+	isBusy: boolean;
+	quietSince: number;
+	hasPage: boolean;
+	isListening: boolean;
+}
+
+// The kernel turn under way: the instant ack it got, if any.
+interface AckTurn {
+	startedAt: number;
+	ack: string | null;
+	isOver: boolean;
 }
 
 interface Playing {
@@ -119,6 +160,8 @@ interface Playing {
 	lineId: string | null;
 	// A line the developer waits for plays out: an alert waits behind it instead of cutting it off.
 	isOwed: boolean;
+	// Some of it reached the tab: before that, a withdrawn ack was never heard.
+	hasAudio: boolean;
 }
 
 const SAID_PREVIEW_CHARS = 80;
@@ -130,6 +173,9 @@ export const REMINDER_MS = 5 * 60_000;
 export const MAX_REMINDERS = 3;
 const CHUNK_GAP_MS = 10_000;
 const PLAYBACK_MARGIN_SECONDS = 3;
+// How long a follow-up keeps its place for its wording: longer when an ack already broke the silence.
+export const WORDING_WAIT_MS = 600;
+export const WORDING_WAIT_AFTER_ACK_MS = 1_000;
 
 // Counts across every VoiceOut, so clip ids never repeat.
 let clipCounter = 0;
@@ -149,7 +195,14 @@ export class VoiceOut {
 	// Since nothing was said either way: the meanwhile line waits for enough of it.
 	private quietSince: number;
 	private meanwhileTimer: unknown = undefined;
-	private gapTimer: unknown = undefined;
+	// One line held at the head of the queue (a gap before an ask, a wording on its way) wakes it.
+	private headTimer: unknown = undefined;
+	// The instant acks said last: the next is a different one.
+	private ackHistory: string[] = [];
+	// When Voice OS last finished a line the developer heard; null before the first.
+	private lastSpokeAt: number | null = null;
+	private lastReplyQueuedAt = Number.NEGATIVE_INFINITY;
+	private turn: AckTurn | null = null;
 
 	constructor(private options: VoiceOutOptions) {
 		this.now = options.now ?? Date.now;
@@ -204,6 +257,9 @@ export class VoiceOut {
 		isHoldable = false,
 		chime,
 		announcement,
+		isFiller = false,
+		keepsTags = false,
+		facts,
 	}: SayParams): void {
 		if (!text.trim()) {
 			return;
@@ -227,7 +283,8 @@ export class VoiceOut {
 
 		clipCounter += 1;
 		const id = `s${clipCounter}`;
-		const result = enqueue(this.queue, {
+		const writeFollowUp = facts ? this.options.writeFollowUp : undefined;
+		const line: SpeechItem = {
 			id,
 			text,
 			priority,
@@ -247,8 +304,23 @@ export class VoiceOut {
 			...(isAck ? { isAck } : {}),
 			...(isHoldable ? { isHoldable } : {}),
 			...(chime ? { chime } : {}),
+			...(isFiller ? { isFiller } : {}),
+			...(keepsTags ? { keepsTags } : {}),
 			at: this.now(),
-		});
+		};
+		const isAnswering = !isFiller && isReplyLine(line);
+
+		// First: a withdrawn ack was never heard, so neither the wording nor its wait counts on it.
+		if (isAnswering) {
+			this.withdrawAck();
+		}
+
+		const lastAck = this.turn?.ack ?? null;
+		const wordingWait = lastAck ? WORDING_WAIT_AFTER_ACK_MS : WORDING_WAIT_MS;
+		const item: SpeechItem = writeFollowUp
+			? { ...line, fixedText: text, wordingUntil: this.now() + wordingWait }
+			: line;
+		const result = enqueue(this.queue, item);
 		this.queue = result.queue;
 		// Which line each clip is, and whether it plays: "why did I hear that twice" is answered here.
 		log.info('queued line', {
@@ -264,8 +336,17 @@ export class VoiceOut {
 			return;
 		}
 
-		if (ref) {
+		// Filler about a session is not news about it: its reminder clock is left alone.
+		if (ref && !isFiller) {
 			this.lastSpokenAbout.set(ref, this.now());
+		}
+
+		if (isAnswering) {
+			this.lastReplyQueuedAt = this.now();
+		}
+
+		if (writeFollowUp && facts) {
+			void this.word(id, writeFollowUp, { facts, fixedText: text, lastAck });
 		}
 
 		if (result.shouldInterrupt && this.playing && !this.playing.isOwed && !this.isTalking) {
@@ -275,11 +356,148 @@ export class VoiceOut {
 		void this.pump();
 	}
 
+	// A worded line counts as its fixed text: the same words said again are still the same line. An
+	// ack's "Okay." is filler, never the line a kernel reply "Okay." repeats.
 	private isKernelLineAhead(text: string): boolean {
 		const said = normalizeUtterance(text);
 		const ahead = this.playing ? [this.playing.item, ...this.queue.items] : this.queue.items;
 
-		return ahead.some((item) => item.source === 'kernel' && normalizeUtterance(item.text) === said);
+		return ahead.some(
+			(item) =>
+				item.source === 'kernel' &&
+				!item.isFiller &&
+				normalizeUtterance(item.fixedText ?? item.text) === said,
+		);
+	}
+
+	// The wording replaces the text only while the line still waits; once it played, or went, it is too
+	// late, and the developer heard the fixed text.
+	private async word(
+		id: string,
+		writeFollowUp: (input: FollowUpInput) => Promise<string | null>,
+		input: FollowUpInput,
+	): Promise<void> {
+		let worded: string | null = null;
+
+		try {
+			worded = await writeFollowUp(input);
+		} catch (error) {
+			log.warn('follow-up not worded', { id, error: String(error) });
+		}
+
+		const settled = settleWording(this.queue, { id, worded });
+
+		if (!settled.isQueued) {
+			if (worded) {
+				log.info('worded line discarded: too late', { id, kind: input.facts.kind });
+			}
+
+			return;
+		}
+
+		// Beside "queued line": which words the developer is about to hear in place of the fixed ones.
+		if (worded) {
+			log.info('worded line', { id, text: worded });
+		}
+
+		this.queue = settled.queue;
+		void this.pump();
+	}
+
+	// The router hands a voice turn to the kernel: unless something answers first, a short "Mm-hm."
+	// fills the wait. cancel() once the turn is over: an ack not yet said is not said.
+	kernelTurnStarted({ text, startedAt }: KernelTurnStart): KernelTurnHandle {
+		const turn: AckTurn = { startedAt, ack: null, isOver: false };
+		this.turn = turn;
+		const delay = Math.max(0, INSTANT_ACK_DELAY_MS - (this.now() - startedAt));
+		const timer = this.setTimer(() => this.sayInstantAck(turn, text), delay);
+
+		return {
+			cancel: () => {
+				turn.isOver = true;
+				this.clearTimer(timer);
+
+				if (this.turn === turn) {
+					this.turn = null;
+				}
+			},
+		};
+	}
+
+	private sayInstantAck(turn: AckTurn, text: string): void {
+		if (turn.isOver) {
+			return;
+		}
+
+		const now = this.now();
+		const elapsedMs = now - turn.startedAt;
+		const decision = decideInstantAck({
+			isMuted: this.queue.isMuted,
+			words: countSpokenWords(text),
+			minWords: MIN_REQUEST_WORDS,
+			msSinceSpoke: this.lastSpokeAt === null ? null : now - this.lastSpokeAt,
+			hasReplySinceTurn: this.lastReplyQueuedAt >= turn.startedAt,
+			isPlayingOrQueued: this.isBusy(),
+			isTalking: this.isTalking,
+		});
+
+		if (decision.kind === 'skip') {
+			log.info('instant ack skipped', { reason: decision.reason, elapsedMs });
+
+			return;
+		}
+
+		const line = pickInstantAck({ history: this.ackHistory, isQuestion: endsInQuestion(text) });
+		this.ackHistory = rememberInstantAck(this.ackHistory, line.text);
+		// The writer reads what was heard, not how it was voiced.
+		turn.ack = stripTags(line.text);
+		log.info('instant ack said', { text: line.text, elapsedMs });
+		this.say({
+			text: line.text,
+			priority: 'high',
+			source: 'kernel',
+			isReply: true,
+			isFiller: true,
+			...(line.keepsTags ? { keepsTags: true } : {}),
+		});
+	}
+
+	// The answer is here: an ack the developer has not heard yet would only stand in front of it. Once
+	// withdrawn it was never said, for the wording and its wait as much as for the developer.
+	private withdrawAck(): void {
+		const count = this.queue.items.length;
+		this.queue = withoutInstantAcks(this.queue);
+		const playing = this.playing;
+		const isCut = playing !== null && isInstantAck(playing.item) && !playing.hasAudio;
+
+		if (!isCut && this.queue.items.length === count) {
+			return;
+		}
+
+		log.info('instant ack withdrawn', { reason: 'reply' });
+
+		if (this.turn) {
+			this.turn.ack = null;
+		}
+
+		if (isCut && playing) {
+			this.finish(playing.id, { isCut: true, shouldPlayNext: false });
+		}
+	}
+
+	private isBusy(): boolean {
+		return this.playing !== null || this.queue.items.length > 0;
+	}
+
+	readSpeech(): SpeechMoment {
+		return {
+			isTalking: this.isTalking,
+			isMuted: this.queue.isMuted,
+			isBusy: this.isBusy(),
+			quietSince: this.quietSince,
+			hasPage: this.options.hasPage?.() ?? true,
+			isListening: this.options.isListening?.() ?? false,
+		};
 	}
 
 	dropQueuedAbout(ref: string, before: number): void {
@@ -299,8 +517,10 @@ export class VoiceOut {
 
 	talkStarted(): void {
 		// Nothing queued is dropped: it waits for the developer to finish, behind what answers them.
+		// Filler is the exception: an "Okay." after they spoke again is stale.
 		this.isTalking = true;
 		this.quietSince = this.now();
+		this.queue = { ...this.queue, items: this.queue.items.filter((item) => !item.isFiller) };
 
 		if (this.playing) {
 			this.finish(this.playing.id, { isCut: true, shouldPlayNext: false });
@@ -333,15 +553,16 @@ export class VoiceOut {
 		const now = this.now();
 		const waiting = new Map<string, string>();
 
-		// A held /clear is not nagged about: it lapses on its own.
-		for (const ask of state.asks.filter(isSdkAsk)) {
+		// A held /clear is not nagged about: it lapses on its own. A setup session's asks wait in Set up's
+		// chat, never spoken.
+		for (const ask of listHeardAsks(state).filter(isSdkAsk)) {
 			if (!waiting.has(ask.ref)) {
 				waiting.set(ask.ref, ask.id);
 			}
 		}
 
 		for (const session of Object.values(state.sessions)) {
-			if (session.needsUser && !waiting.has(session.ref)) {
+			if (session.needsUser && !isSetupRef(session.ref) && !waiting.has(session.ref)) {
 				waiting.set(session.ref, `${session.ref}@${session.needsUser.at}`);
 			}
 		}
@@ -412,7 +633,7 @@ export class VoiceOut {
 
 	private viewChanged(): void {
 		// The developer clicked away from the session whose line plays: it stops, and waits there to
-		// be heard on return. Mission Control hears every session, and a question still waits on them.
+		// be heard on return. Off a session every session is heard, and a question still waits on them.
 		const playing = this.playing;
 		const item = playing?.item;
 		const { store } = this.options;
@@ -457,7 +678,16 @@ export class VoiceOut {
 		this.clearTimer(playing.timer);
 		this.playing = null;
 		playing.record.endedAt = this.now();
-		this.quietSince = this.now();
+
+		// Filler is not news: the quiet the meanwhile line waits for goes on through it.
+		if (!playing.item.isFiller) {
+			this.quietSince = this.now();
+		}
+
+		// Only a line the developer heard some of makes the next ack filler on filler.
+		if (playing.hasAudio) {
+			this.lastSpokeAt = this.now();
+		}
 
 		if (playing.lineId) {
 			this.options.store.dispatch({
@@ -591,6 +821,13 @@ export class VoiceOut {
 		playing.timer = this.setTimer(() => this.finish(playing.id, { isCut: !playing.hasEnded }), ms);
 	}
 
+	// Puts the line back at the head of the queue and looks again once its wait is over.
+	private holdHead(item: SpeechItem, ms: number): void {
+		this.queue = { ...this.queue, items: [item, ...this.queue.items] };
+		this.clearTimer(this.headTimer);
+		this.headTimer = this.setTimer(() => void this.pump(), ms);
+	}
+
 	private async pump(): Promise<void> {
 		if (this.playing || this.isTalking) {
 			return;
@@ -605,6 +842,21 @@ export class VoiceOut {
 			return;
 		}
 
+		// Filler about a session is only worth hearing on its screen: never held for later.
+		if (item.isFiller && item.ref && !isOnScreen(this.options.store.state, item.ref)) {
+			log.info('filler dropped: off screen', { id: item.id, ref: item.ref });
+			void this.pump();
+
+			return;
+		}
+
+		// Keeps its place while it is worded, a moment at most; then it plays as it is.
+		if (item.wordingUntil !== undefined && item.wordingUntil > this.now()) {
+			this.holdHead(item, item.wordingUntil - this.now());
+
+			return;
+		}
+
 		// Another session's ask waits for a breath after the last line, not the whole quiet.
 		const gapLeft = item.waitsForGap
 			? Math.min(
@@ -614,9 +866,7 @@ export class VoiceOut {
 			: 0;
 
 		if (gapLeft > 0) {
-			this.queue = { ...this.queue, items: [item, ...this.queue.items] };
-			this.clearTimer(this.gapTimer);
-			this.gapTimer = this.setTimer(() => void this.pump(), gapLeft);
+			this.holdHead(item, gapLeft);
 
 			return;
 		}
@@ -632,7 +882,7 @@ export class VoiceOut {
 		const voiced = this.resolveSpokenText(item);
 		// Tags reach the voice only; in a short line one can swallow the words after it.
 		const text = stripTags(voiced);
-		const synthesized = isShortLine(voiced) ? text : voiced;
+		const synthesized = isShortLine(voiced) && !item.keepsTags ? text : voiced;
 		const record: SpokenRecord = { text, endedAt: null };
 		const now = this.now();
 		this.spokenRecords = [...this.spokenRecords.filter((line) => isRecent(line, now)), record];
@@ -645,6 +895,7 @@ export class VoiceOut {
 			record,
 			lineId: null,
 			isOwed: Boolean(item.isOwed),
+			hasAudio: false,
 		};
 		this.playing = playing;
 		// Silence from Soniox this long mid-clip means the clip is stuck.
@@ -659,6 +910,7 @@ export class VoiceOut {
 			...(item.isUpdate ? { isUpdate: true as const } : {}),
 			...(item.refs?.length ? { refs: item.refs } : {}),
 			...(item.toldAsks?.length ? { toldAsks: item.toldAsks } : {}),
+			...(item.isFiller ? { isFiller: true as const } : {}),
 		});
 		playing.lineId = spokenState.spoken.at(-1)?.id ?? null;
 
@@ -696,6 +948,7 @@ export class VoiceOut {
 					}
 
 					bytes += pcm.byteLength;
+					playing.hasAudio = true;
 					this.armTimer(playing, CHUNK_GAP_MS);
 					sendToTab({
 						type: 'audio',

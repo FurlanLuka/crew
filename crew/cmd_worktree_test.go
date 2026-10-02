@@ -136,13 +136,31 @@ func TestCreationDocs(t *testing.T) {
 	if string(finished) != `{"health":null,"projects":[{"name":"api","path":"/p/api"}],"ref":"ws/wt"}` {
 		t.Errorf("finished = %s", finished)
 	}
-	logs, _ := json.Marshal(logsDoc(ref, "api", ""))
+	logs, _ := json.Marshal(logsDoc(ref, "api", "", 50))
 	if string(logs) != `{"lines":[],"project":"api","ref":"ws/wt"}` {
 		t.Errorf("empty logs = %s", logs)
 	}
-	logs, _ = json.Marshal(logsDoc(ref, "api", "a\nb"))
+	logs, _ = json.Marshal(logsDoc(ref, "api", "a\nb", 50))
 	if !strings.Contains(string(logs), `"lines":["a","b"]`) {
 		t.Errorf("logs = %s", logs)
+	}
+	logs, _ = json.Marshal(logsDoc(ref, "api", "\x1b[31merr\x1b[0m\n", 50))
+	if !strings.Contains(string(logs), `"lines":["err"]`) {
+		t.Errorf("setup logs must be cleaned like dev logs: %s", logs)
+	}
+	// Cleaned, then counted: the prompt lines the cleaning drops never take
+	// one of the n places.
+	logs, _ = json.Marshal(logsDoc(ref, "api", "a\nb\nc\n\x1b[?2004h% \n\x1b[?2004h% \n", 2))
+	if !strings.Contains(string(logs), `"lines":["b","c"]`) {
+		t.Errorf("setup logs must clean before taking n: %s", logs)
+	}
+	devLogs, _ := json.Marshal(devLogsDoc("ws/wt", "web", "a\nb\nc\n", 2))
+	if string(devLogs) != `{"lines":["b","c"],"ref":"ws/wt","server":"web"}` {
+		t.Errorf("dev logs = %s", devLogs)
+	}
+	devLogs, _ = json.Marshal(devLogsDoc("ws/wt", "web", "", 0))
+	if string(devLogs) != `{"lines":[],"ref":"ws/wt","server":"web"}` {
+		t.Errorf("empty dev logs = %s", devLogs)
 	}
 	h := &workspace.Health{Issues: []workspace.Issue{{Stage: workspace.StageInstall, Project: "api", Detail: "x"}}}
 	if got := renderVerdict(ref, h, "checks out"); !strings.Contains(got, "! install   api") || !strings.Contains(got, "crew fix ws/wt") {
@@ -161,8 +179,16 @@ func TestCreationDocs(t *testing.T) {
 }
 
 func TestRenderStarted(t *testing.T) {
-	got := renderStarted(workspace.Ref{Workspace: "ws", Worktree: "wt"}, "Created ws/wt", 3)
+	ref := workspace.Ref{Workspace: "ws", Worktree: "wt"}
+	got := renderStarted(ref, "Created ws/wt", 3, "", "")
 	want := "Created ws/wt — 3 projects installing in the background.\n  crew setup status ws/wt [--wait]   what each runner has done; --wait stays until every one is done\n  crew setup logs ws/wt <project>    what an install is printing\n"
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	// The table as it stands and the page, when the server runs; the page
+	// link never carries the sign-in token.
+	got = renderStarted(ref, "Created ws/wt", 1, "  ▸ api  ▸ checkout\n", "http://localhost:7300/")
+	want = "Created ws/wt — 1 project installing in the background.\n  ▸ api  ▸ checkout\n  crew setup status ws/wt [--wait]   what each runner has done; --wait stays until every one is done\n  crew setup logs ws/wt <project>    what an install is printing\n  http://localhost:7300/   follow it in crew\n"
 	if got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}

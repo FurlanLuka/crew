@@ -1,8 +1,8 @@
 // Activate and deactivate by voice, and the question every other tool asks when words reach a
 // session that is not active. Activating looks at every worktree on every machine; nothing else does.
-import { isActive } from '../shared/active.js';
+import { isActive, listVoiceRefsOn } from '../shared/active.js';
 import { isSwitchOfferFresh, type State, type SwitchOffer } from '../shared/protocol.js';
-import { LOCAL_MACHINE, SETUP_REF, readMachine, splitRef } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import { findRefsByName, normalizeName } from '../router/refs.js';
@@ -39,9 +39,8 @@ export const decideActivate = ({
 	name,
 	machine,
 }: DecideActivateParams): ActivateDecision => {
-	const candidates = machine
-		? state.order.filter((ref) => readMachine(ref) === machine)
-		: state.order;
+	// A setup session is Set up's: never activated.
+	const candidates = listVoiceRefsOn(state, machine);
 	const wanted = normalizeName(
 		name.replace(/^the\s+/i, '').replace(/\s+(?:workspace|worktree|session)$/i, ''),
 	);
@@ -121,18 +120,24 @@ const readActivateOffer = (state: State, ref: string, now: number): SwitchOffer 
 		: null;
 };
 
-interface MoreThanStartParams {
+interface MoreThanCommandParams {
 	ref: string;
 	toolContext: ToolContext;
 	state: State;
+	// more_than_start for an activate, more_than_command for a switch or a go back.
+	key: 'more_than_start' | 'more_than_command';
+	context: string;
 }
 
-// "Activate checkout and run the tests": activating alone never gives the session the rest.
-const isMoreThanStart = async ({
+// "Activate checkout and run the tests", "switch to checkout and ask it to run the tests": the command
+// alone never gives the session the rest.
+export const isMoreThanCommand = async ({
 	ref,
 	toolContext,
 	state,
-}: MoreThanStartParams): Promise<boolean> => {
+	key,
+	context,
+}: MoreThanCommandParams): Promise<boolean> => {
 	const { utterance } = toolContext;
 
 	if (utterance === undefined || toolContext.sentTo?.has(ref)) {
@@ -143,15 +148,17 @@ const isMoreThanStart = async ({
 		(named) => named !== ref,
 	);
 
-	return (
-		!namesAnother &&
-		(await toolContext.judge({
-			key: 'more_than_start',
-			utterance,
-			context: `The session: ${ref}`,
-		})) === 'yes'
-	);
+	return !namesAnother && (await toolContext.judge({ key, utterance, context })) === 'yes';
 };
+
+const isMoreThanStart = (
+	params: Omit<MoreThanCommandParams, 'key' | 'context'>,
+): Promise<boolean> =>
+	isMoreThanCommand({
+		...params,
+		key: 'more_than_start',
+		context: `The session: ${params.ref}`,
+	});
 
 // forward reaches only the session on screen: from elsewhere it is send_to.
 const describeHowToSend = (ref: string, toolContext: ToolContext): string =>
@@ -249,16 +256,9 @@ export const activateSession = async ({
 		};
 	}
 
-	// Voice OS says "Activated X. Switch there?" itself, or that its machine is out of reach; on its
-	// own screen nothing needs saying.
-	return {
-		...succeed(
-			screen === ref
-				? `activated ${ref}: say nothing`
-				: `activated ${ref}; Voice OS said so: say nothing`,
-		),
-		recordAs,
-	};
+	// Voice OS says "Activated X." (with "Switch there?" when it is not on screen) itself, or that its
+	// machine is out of reach.
+	return { ...succeed(`activated ${ref}; Voice OS said so: say nothing`), recordAs };
 };
 
 export const deactivateSession = async ({
@@ -288,10 +288,6 @@ export const deactivateSession = async ({
 
 	const { ref } = checked;
 	const label = toSpokenName(readLabel(state, ref));
-
-	if (ref === SETUP_REF) {
-		return { ...fail('the setup session is always active'), reply: 'Setup is always active.' };
-	}
 
 	if (!isActive(state, ref)) {
 		return { ...succeed(`${ref} is not active`), reply: `${label} isn't active.` };

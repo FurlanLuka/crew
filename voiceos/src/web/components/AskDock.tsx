@@ -1,3 +1,4 @@
+import { isSetupRef } from '../../shared/machine-ref.js';
 import type { PendingAsk } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 import { Markdown } from './Markdown.js';
@@ -9,6 +10,11 @@ interface AskDockProps {
 	label: string;
 	dispatch: Dispatch;
 }
+
+// The word that answers by voice, beside its button. A setup session's asks are answered in Set up's
+// chat and never heard, so they show no words to say.
+export const describeSaid = (ask: PendingAsk, word: string): string =>
+	isSetupRef(ask.ref) ? '' : ` · “${word}”`;
 
 export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 	if (ask.kind === 'permission') {
@@ -31,7 +37,7 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 							dispatch({ type: 'answer_permission', askId: ask.id, decision: 'allow' })
 						}
 					>
-						Yes · “yes”
+						Yes{describeSaid(ask, 'yes')}
 					</button>
 					{ask.suggestions.length > 0 && (
 						<button
@@ -41,7 +47,7 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 								dispatch({ type: 'answer_permission', askId: ask.id, decision: 'always' })
 							}
 						>
-							Always for this · “always”
+							Always for this{describeSaid(ask, 'always')}
 						</button>
 					)}
 					<button
@@ -49,7 +55,7 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 						className="btn danger"
 						onClick={() => dispatch({ type: 'answer_permission', askId: ask.id, decision: 'deny' })}
 					>
-						No · “no”
+						No{describeSaid(ask, 'no')}
 					</button>
 				</div>
 				<Reason
@@ -75,7 +81,7 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 						className="btn primary"
 						onClick={() => dispatch({ type: 'answer_plan', askId: ask.id, isApproved: true })}
 					>
-						Approve · “approve”
+						Approve{describeSaid(ask, 'approve')}
 					</button>
 				</div>
 				<Reason
@@ -104,14 +110,14 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 						className="btn primary"
 						onClick={() => dispatch({ type: 'answer_command', askId: ask.id, isApproved: true })}
 					>
-						Yes · “yes”
+						Yes{describeSaid(ask, 'yes')}
 					</button>
 					<button
 						type="button"
 						className="btn danger"
 						onClick={() => dispatch({ type: 'answer_command', askId: ask.id, isApproved: false })}
 					>
-						No · “no”
+						No{describeSaid(ask, 'no')}
 					</button>
 				</div>
 			</section>
@@ -130,14 +136,14 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 						className="btn primary"
 						onClick={() => dispatch({ type: 'answer_redirect', askId: ask.id, isApproved: true })}
 					>
-						Switch · “yes”
+						Switch{describeSaid(ask, 'yes')}
 					</button>
 					<button
 						type="button"
 						className="btn"
 						onClick={() => dispatch({ type: 'answer_redirect', askId: ask.id, isApproved: false })}
 					>
-						After · “no”
+						After{describeSaid(ask, 'no')}
 					</button>
 				</div>
 			</section>

@@ -67,7 +67,7 @@ export const classifyExit = (host: string, code: number | null, stderr: string):
 	}
 
 	if (stderr.includes('crew-remote-error: daemon-not-listening')) {
-		return { status: 'error', detail: 'Its Voice OS did not start: run crew voice remote there.' };
+		return { status: 'error', detail: 'Its Voice OS did not start: run crew server remote there.' };
 	}
 
 	if (stderr.includes('Host key verification failed')) {
@@ -84,7 +84,7 @@ export const classifyExit = (host: string, code: number | null, stderr: string):
 	if (code === 127 || /crew: (?:command )?not found|No such file or directory/.test(stderr)) {
 		return {
 			status: 'error',
-			detail: 'crew is not installed there: install it, then run crew voice remote.',
+			detail: 'crew is not installed there: install it, then run crew server remote.',
 		};
 	}
 

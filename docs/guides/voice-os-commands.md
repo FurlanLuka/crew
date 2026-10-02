@@ -30,16 +30,20 @@ commands to learn. Any language you speak works the same way (see
   the code, reactions and half-thoughts go to it word for word (`forward`). The kernel acts itself
   only on the commands below (switching, answering, notes, and so on), and when you name another
   session.
-- **On Mission Control** there is no session in front of you, so words reach a session only when you
-  name it ("checkout, run the tests").
+- **Off a session's screen** (Active, Activate, Settings — the kernel calls these Mission Control)
+  there is no session in front of you, so words reach a session only when you name it ("checkout,
+  run the tests").
+- **Setting crew up is not voice's job.** Projects, workspaces, worktrees and machines are made in
+  **Set up**, crew's other page, where each machine's setup session is a chat you type to. Voice OS
+  never routes words to a setup session, never says what it does and never counts its questions.
 - **The kernel never answers questions about your work.** "Why is this slow?" or "what did we do
   last?" goes to the session, which holds the whole conversation. The kernel answers only about
   Voice OS itself: what is waiting, where you are, which sessions there are.
 - **It never guesses where words go.** Words that name no session go to the one on screen. Words
   that only mention another session get "For checkout?" first.
 - **Some tools only exist in some places.** `forward` exists only while a session is on screen.
-  `read_history` exists only on Mission Control, because a session remembers its own past.
-  `rename_machine`, and switching to a machine's sessions, appear once you have
+  `read_history` exists only off a session's screen, because a session remembers its own past.
+  `rename_machine`, and showing one machine's worktrees on Activate, appear once you have
   [other machines](voice-os.md#other-machines).
 
 ## Talking to sessions
@@ -80,7 +84,6 @@ The same as `forward`, for a session you name, without leaving the one you are o
 
 - "Checkout, run the tests."
 - "Tell checkout to add backoff to the webhook retries."
-- "Setup, add the payments repo as a project."
 - "Sorry, I meant that for store front main." Resends your last words there.
 
 **What happens:** "Sent to checkout. Switch there?" Yes switches; anything else keeps you where you
@@ -93,8 +96,9 @@ are. A short answer is said at once, with the session's name; a longer one comes
   work.
 - A follow-up like "and the lint?" names no session, so it goes to the one on screen. Name checkout
   again, or switch there.
-- On Mission Control, crew setup work ("add a project", "create a worktree") goes to the setup
-  session.
+- Crew setup work ("add a project", "create a worktree") is never sent to a setup session: on a
+  session's screen it goes to that session like any other work; on Active, Voice OS says it is done
+  in Set up.
 - A bare "yes" or "no" right after Voice OS asked something of its own reaches a session only when
   you name it ("checkout, yes"); unnamed, it answers Voice OS.
 
@@ -121,31 +125,36 @@ session stays active, and you can carry on with it.
 
 **In practice:** a bare "stop" interrupts the session on screen, never one you are not looking at.
 "Stop the refactor and fix the login bug first" names what to do instead, so it is a redirect sent
-with `forward`, not an interrupt. On Mission Control, with a session working and none named, Voice
-OS asks which one.
+with `forward`, not an interrupt. Off a session's screen, with a session working and none named,
+Voice OS asks which one.
 
 ## Moving around
 
-### Show a session, Mission Control or Active — `switch_view`
+### Show a session, Active or Activate — `switch_view`
 
 - "Switch to checkout." · "Go to store front work one." · "Open crew main on Build box."
-- "Home." · "Mission Control."
-- "Go to active." · "Show my active sessions."
-- "Show me Build box." Shows that machine's sessions.
+- "Home." · "Mission Control." · "Go to active." · "Show my active sessions." All open Active, the
+  home view.
+- "Show me Build box." Opens Activate on that machine's worktrees (with other machines only).
 - "Switch to it." Right after a session's line, opens that session.
+- "Switch to checkout and ask it to run the release checklist." Switches, then sends the rest.
 
 **What happens:** Voice OS says "Switching to checkout" first (a click is silent), and that
-session's update, if it had one waiting, plays when you get there. A longer sentence that asks for
-work in a place ("go to the research folder and check what's in there") goes to the session on
-screen instead.
+session's update, if it had one waiting, plays when you get there. When the sentence also asks the
+session for work, that part goes to it once you are there, and you hear "Sent to checkout". A longer
+sentence that asks for work in a place ("go to the research folder and check what's in there") goes
+to the session on screen instead.
 
 ### Go back — `go_back`
 
 - "Go back." · "Back." · "Previous session."
+- "Let's go back to what we have to do on the lesson types — what's next?" Goes back, then sends
+  the rest to the session it went back to.
 
 **What happens:** "Back to crew." Say it again to go further back. Sessions that stopped are passed
-over ("checkout stopped. Back to crew."). "Go back to checkout" switches to checkout; "home" means
-Mission Control.
+over ("checkout stopped. Back to crew."). "Go back to checkout" switches to checkout, and "go back
+to crew research" finds crew research even when crew main is named "Crew"; "home" means Active.
+Words that also ask the session for work reach the session you land on.
 
 ### Hear what you missed — `play_missed`
 
@@ -153,7 +162,8 @@ Mission Control.
 
 **What happens:** the other sessions' updates that were waiting for a quiet moment play now, as one
 line ("Meanwhile, ranking needs you about the index, and checkout said: all retry tests pass"), or
-you hear that nothing is new. Clicking **N updates waiting** in the top bar does the same.
+you hear that nothing is new. Clicking **N updates waiting** in the top bar does the same. A plain
+"yes" right after "Switch there?" answers that question, so it switches instead of replaying.
 
 ## Active sessions
 
@@ -167,10 +177,12 @@ Only active sessions exist for voice (see [Active sessions](voice-os.md#active-s
 - "Yes." After Voice OS asked "checkout isn't active. Activate it?"
 
 **What happens:** "Activated checkout. Switch there?" Its Claude starts and resumes its
-conversation. If two worktrees match, Voice OS asks which one.
+conversation. On its own screen you hear just "Activated checkout." (no screen to watch over
+Discord). If two worktrees match, Voice OS asks which one.
 
 **In practice:** "Start checkout and tell me what it did last" activates it, then sends it the rest
-once it is up. Activating never creates a worktree; ask the setup session for that.
+once it is up. Activating never creates a worktree: make one in Set up. A setup session is never
+activated; it runs by itself for Set up's chat.
 
 ### Deactivate a session — `deactivate`
 
@@ -179,7 +191,7 @@ once it is up. Activating never creates a worktree; ask the setup session for th
 
 **What happens:** its Claude stops, and Voice OS drops what it held for it (queued words, questions,
 updates). The conversation is kept for the next activation. If the session is working, you are
-asked first: "checkout is working. Deactivate anyway?" The setup session can't be deactivated.
+asked first: "checkout is working. Deactivate anyway?"
 
 ### Ask what there is — `list_sessions`
 
@@ -244,7 +256,8 @@ When a dev server dies, Voice OS asks whether Claude should fix it.
 - "Options." Reads out again the choices of what waits on you.
 
 **What happens:** a short spoken answer. Voice OS looks at the sessions (status, what each was last
-asked, what waits on you, their latest lines) and answers in a sentence or two.
+asked, what waits on you, their latest lines) and answers in a sentence or two. An answer about one
+other active session ends with "Switch to checkout?", so a "yes" takes you there.
 
 **In practice:** this is for sessions you are not looking at. "Status" or "how far are you?" on a
 session's own screen goes to that session, because it knows its work better than any summary.
@@ -257,7 +270,7 @@ itself, such as "repeat what it said".
 - "Which session was working on the retry logic?"
 
 **What happens:** Voice OS searches the turns it recorded, across restarts, and answers briefly.
-Only on Mission Control: on a session's screen, the session remembers its own past.
+Only off a session's screen: on one, the session remembers its own past.
 
 ## Dev servers
 
@@ -284,7 +297,7 @@ with `crew dev logs`. See [Dev servers](voice-os.md#dev-servers).
 - "Add this too: …" Right after a note, adds to it.
 
 **What happens:** "Noted." The note goes to the workspace on screen, the one you name, or your
-general notes on Mission Control.
+general notes off a session's screen.
 
 ### Read notes back — `read_notes`
 
@@ -301,7 +314,7 @@ is work, so the session reads the file itself.
 - "Add this to it too: …" Right after a debug note, adds to it.
 
 **What happens:** "Debug note saved." Your words are saved with a snapshot of this moment, next to
-Voice OS's log. Read them with `crew voice debug-notes`. See
+Voice OS's log. Read them with `crew server debug-notes`. See
 [Notes and debug notes](voice-os.md#notes-and-debug-notes).
 
 ## Docs

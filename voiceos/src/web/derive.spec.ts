@@ -14,20 +14,15 @@ import { findCurrentAsk, describeRouteChip } from '../shared/route-chip.js';
 import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 
 import {
-	countActive,
-	countSessions,
 	describeRunStatus,
 	findRunFor,
 	isRunRunning,
 	splitRunReport,
-	countUpdates,
-	describeActiveCard,
+	readWorkingOn,
 	labelAcrossMachines,
 	readRefTitle,
 	describeMissingActive,
 	formatDidLine,
-	listActiveTiles,
-	listTabRefs,
 	readNotesFor,
 	listOtherSessions,
 	readLastLine,
@@ -188,27 +183,13 @@ describe('findCurrentAsk', () => {
 		};
 		expect(findCurrentAsk(state)).toBeNull();
 	});
-	it('grid → oldest ask anywhere', () => {
+	it('no session on screen → oldest ask anywhere', () => {
 		expect(
 			findCurrentAsk({
 				...createInitialState(),
 				asks: [createTestAsk('1', 'a/x'), createTestAsk('2', 'b/x')],
 			})?.id,
 		).toBe('1');
-	});
-});
-
-describe('countSessions', () => {
-	it('waiting counts sessions, not asks', () => {
-		const state: State = {
-			...createInitialState(),
-			sessions: {
-				'store/main': createTestSession({ status: 'blocked' }),
-				'store/wrk1': { ...createTestSession({ ref: 'store/wrk1', status: 'running' }) },
-			},
-			asks: [createTestAsk('1', 'store/main'), createTestAsk('2', 'store/main', 'question')],
-		};
-		expect(countSessions(state)).toEqual({ total: 2, running: 1, waiting: 1 });
 	});
 });
 
@@ -234,48 +215,6 @@ const createActiveState = (patch: Partial<State> = {}): State => ({
 	...patch,
 });
 
-describe('countActive', () => {
-	it('a remote active session and a local one, one waiting → both counted, only the active ones', () =>
-		expect(countActive(createActiveState({ asks: [createTestAsk('1', 'vm1:api/main')] }))).toEqual({
-			total: 2,
-			running: 1,
-			waiting: 1,
-		}));
-	it('an active ref with no session → not counted', () =>
-		expect(countActive(createActiveState({ active: ['store/main', 'gone/main'] }))).toEqual({
-			total: 1,
-			running: 1,
-			waiting: 0,
-		}));
-});
-
-describe('countUpdates', () => {
-	const update = (ref: string): MeanwhileItem => ({ ref, kind: 'done', about: null, at: 1 });
-	// Every session has an update; the active ones are vm1:api/main and store/main.
-	const createUpdatesState = (patch: Partial<State> = {}): State =>
-		createActiveState({
-			meanwhile: [update('store/main'), update('store/wrk1'), update('vm1:api/main')],
-			...patch,
-		});
-	const waitingOn = (...refs: string[]): Partial<State> => ({
-		asks: refs.map((ref, index) => createTestAsk(String(index), ref)),
-	});
-
-	it.each([
-		['no overlap: none waiting on you', 3, {}, {}],
-		['every update also waiting', 0, waitingOn('store/main', 'store/wrk1', 'vm1:api/main'), {}],
-		['partial overlap', 2, waitingOn('vm1:api/main'), {}],
-		['this Mac only', 2, waitingOn('vm1:api/main'), { machine: 'local' }],
-		['a remote machine, its update waiting', 0, waitingOn('vm1:api/main'), { machine: 'vm1' }],
-		['a remote machine, waiting elsewhere', 1, waitingOn('store/main'), { machine: 'vm1' }],
-		['the active set', 2, {}, 'active'],
-		['the active set, one waiting', 1, waitingOn('vm1:api/main'), 'active'],
-		['the active set, waiting off it', 2, waitingOn('store/wrk1'), 'active'],
-	] as const)('%s → %d', (_name, expected, patch, scope) =>
-		expect(countUpdates(createUpdatesState(patch), scope)).toBe(expected),
-	);
-});
-
 describe('describeMissingActive', () => {
 	it('its machine out of reach → "<label> · <machine> out of reach"', () =>
 		expect(
@@ -296,64 +235,6 @@ describe('describeMissingActive', () => {
 		).toBe('ghost · gone'));
 });
 
-describe('listActiveTiles', () => {
-	const readTiles = (state: State): string[] =>
-		listActiveTiles(state).map((tile) => ('session' in tile ? tile.session.ref : tile.missing));
-
-	const withSetup = (patch: Partial<State>): State => {
-		const state = createActiveState(patch);
-
-		return {
-			...state,
-			sessions: {
-				...state.sessions,
-				setup: createTestSession({ ref: 'setup', label: 'setup', isPinned: true }),
-			},
-			order: ['setup', ...state.order],
-		};
-	};
-
-	it('active refs in the order activated → a session each, the gone ones as placeholders after', () =>
-		expect(readTiles(createActiveState({ active: ['store/gone', 'vm1:api/main'] }))).toEqual([
-			'vm1:api/main',
-			'store/gone · gone',
-		]));
-	it("this Mac's setup → first, though it is never in the set", () =>
-		expect(readTiles(withSetup({ active: ['vm1:api/main', 'store/main'] }))).toEqual([
-			'setup',
-			'vm1:api/main',
-			'store/main',
-		]));
-	it('nothing activated → the setup session alone', () =>
-		expect(readTiles(withSetup({ active: [] }))).toEqual(['setup']));
-});
-
-describe('listTabRefs', () => {
-	it('on Active → the active sessions that are here, in the order activated', () =>
-		expect(
-			listTabRefs(
-				createActiveState({
-					view: { kind: 'active' },
-					active: ['vm1:api/main', 'x/gone', 'store/main'],
-				}),
-			),
-		).toEqual(['vm1:api/main', 'store/main']));
-	it('on a session opened from Active → the active sessions', () =>
-		expect(
-			listTabRefs(
-				createActiveState({ view: { kind: 'session', ref: 'store/main', from: 'active' } }),
-			),
-		).toEqual(['vm1:api/main', 'store/main']));
-	it("on a session without from → its machine's sessions", () =>
-		expect(
-			listTabRefs(createActiveState({ view: { kind: 'session', ref: 'store/main' } })),
-		).toEqual(['store/main', 'store/wrk1']));
-	it("on a machine's grid → that machine's sessions", () =>
-		expect(listTabRefs(createActiveState({ view: { kind: 'grid', machine: 'vm1' } }))).toEqual([
-			'vm1:api/main',
-		]));
-});
-
 describe('named sessions', () => {
 	const named = createActiveState({ names: { 'vm1:api/main': 'voice os dev' } });
 
@@ -367,14 +248,6 @@ describe('named sessions', () => {
 		expect(readRefTitle(named, 'vm1:api/main')).toBe('vm1:api/main');
 		expect(readRefTitle(named, 'store/main')).toBeUndefined();
 	});
-	it('a named active session waiting → the Active card says it by its name', () =>
-		expect(
-			describeActiveCard({ ...named, asks: [createTestAsk('1', 'vm1:api/main')] }).waiting,
-		).toBe('voice os dev: wants to run x'));
-	it('an unnamed remote active session waiting → the Active card names its machine', () =>
-		expect(
-			describeActiveCard(createActiveState({ asks: [createTestAsk('1', 'vm1:api/main')] })).waiting,
-		).toBe('Build box · api/main: wants to run x'));
 	it('an active session stopped (a crash, its machine away) → only "Not running."', () =>
 		expect(readLastLine(createTestSession({ status: 'stopped' }), 'voice os dev', true)).toBe(
 			'Not running.',
@@ -398,7 +271,7 @@ describe('classifyDiffLine', () => {
 describe('formatDidLine', () => {
 	it.each([
 		['forward store/main: run the tests', 'forwarded store/main: run the tests'],
-		['switch_view mission control', 'went to Mission Control'],
+		['switch_view mission control', 'went to Active'],
 		['switch_view store/wrk1', 'opened store/wrk1'],
 		['switch_view active', 'went to Active'],
 		['activate vm1:store/main', 'activated vm1:store/main'],
@@ -467,7 +340,7 @@ describe('listOtherSessions', () => {
 describe('describeRouteChip', () => {
 	const showScreen = (state: State, ref: string | null): State => ({
 		...state,
-		view: ref ? { kind: 'session', ref } : { kind: 'grid' },
+		view: ref ? { kind: 'session', ref } : { kind: 'active' },
 	});
 	const createBaseState = (): State => ({
 		...createInitialState(),
@@ -479,7 +352,7 @@ describe('describeRouteChip', () => {
 		active: ['store/main', 'store/wrk1'],
 	});
 
-	it('nothing pending → Voice OS decides, spoken or typed on the grid', () => {
+	it('nothing pending → Voice OS decides, spoken or typed off a session', () => {
 		expect(describeRouteChip(showScreen(createBaseState(), null))).toEqual({
 			label: '→ Voice OS',
 			isAnswering: false,
@@ -633,6 +506,27 @@ describe('listDocs', () => {
 			{ url: 'https://claude.ai/a', title: 'A' },
 			{ url: 'https://claude.ai/b', title: 'B' },
 		]);
+	});
+});
+
+describe('readWorkingOn', () => {
+	const requests = [
+		{ text: 'add the login page', at: 1 },
+		{ text: 'line 17: a long paragraph', at: 2 },
+	];
+
+	it.each([
+		['running', 'line 17: a long paragraph'],
+		['blocked', 'line 17: a long paragraph'],
+		['idle', null],
+		['stopped', null],
+		['starting', null],
+	] as const)('%s → %p', (status, want) => {
+		expect(readWorkingOn({ status, requests })).toBe(want);
+	});
+
+	it('running with nothing asked yet → nothing', () => {
+		expect(readWorkingOn({ status: 'running', requests: [] })).toBeNull();
 	});
 });
 

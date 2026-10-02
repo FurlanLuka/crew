@@ -207,16 +207,6 @@ func ListSummaries() ([]Summary, error) {
 	return summaries, nil
 }
 
-// SummariesOf is one workspace's rows — what its page shows, without
-// reading every other workspace file.
-func SummariesOf(name string) ([]Summary, error) {
-	ws, err := Load(name)
-	if err != nil {
-		return nil, err
-	}
-	return summariesOf(ws), nil
-}
-
 func summariesOf(ws *Workspace) []Summary {
 	var summaries []Summary
 	for _, ref := range Refs(ws) {

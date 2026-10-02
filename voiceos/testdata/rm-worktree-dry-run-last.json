@@ -1,0 +1,15 @@
+{
+  "checkouts": [
+    {
+      "ref": "admin/main",
+      "project": "store-front",
+      "path": "/w/admin/main/store-front",
+      "direct": false,
+      "missing": false,
+      "uncommitted": 0,
+      "commits": 0,
+      "size_bytes": 1024
+    }
+  ],
+  "last": true
+}

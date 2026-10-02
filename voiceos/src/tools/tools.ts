@@ -1,6 +1,5 @@
 import {
 	isOfferFresh,
-	isSwitchOfferFresh,
 	OFFER_TTL_MS,
 	type Action,
 	type LastSpokenSend,
@@ -15,19 +14,22 @@ import {
 	chooseSentWords,
 	describeMisroutedAnswer,
 	describeOfferAnswer,
-	isBareAnswer,
-	isMisroutedToSetup,
 	isShortEnoughToAnswer,
 	isWholeSend,
+	readYesToOffer,
 	sendText,
 	type SentWords,
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
-import { countSpokenWords, readLabel } from '../state/helpers.js';
-import { hasQuestionSince } from '../state/asks.js';
+import { countSpokenWords, readLabel, readScreenRef } from '../state/helpers.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
-import { activateSession, deactivateSession, refuseInactive } from './activate.js';
+import {
+	activateSession,
+	deactivateSession,
+	isMoreThanCommand,
+	refuseInactive,
+} from './activate.js';
 import { listSessions } from './list-sessions.js';
 import { isActive, listActiveInOrder } from '../shared/active.js';
 import { decideNotificationReply } from './notification-reply.js';
@@ -59,7 +61,9 @@ import { HOME_VIEW } from '../shared/machines.js';
 import { LOCAL_MACHINE, splitRef } from '../shared/machine-ref.js';
 import { type RefCheck, type ToolResult, fail, succeed, checkRef } from './results.js';
 
-const MIN_REQUEST_WORDS = 4;
+// A request is at least this many words; fewer is a yes, a name or a fragment. Also the instant
+// ack's floor (speech/instant-ack.ts).
+export const MIN_REQUEST_WORDS = 4;
 const log = createLogger('tools');
 
 // A ref that did not check out: an inactive session is asked about ("Activate it?"), anything else
@@ -84,7 +88,7 @@ interface ReadNoteWorkspaceParams {
 
 const readNoteWorkspace = ({ state, named, screen }: ReadNoteWorkspaceParams): string | null => {
 	// A workspace the developer named — matched the way session names are ("storefront" is
-	// store-front) — else the one on screen; on Mission Control, the general notes. null: the name
+	// store-front) — else the one on screen; off a session, the general notes. null: the name
 	// matched none.
 	if (typeof named !== 'string' || !named.trim()) {
 		return readWorkspace(screen);
@@ -177,6 +181,9 @@ export interface ToolContext {
 	doneInTurn?: string[];
 	// Sessions this turn already sent words to: an answer that would send them again does not.
 	sentTo?: Set<string>;
+	// The session a switch or go back took the developer to this turn, words left for it: forwardTo
+	// stays the old screen, so a send there is the developer's, not a guess.
+	movedTo?: string;
 	// The developer's last words to a session as they stood when these were said.
 	lastSpokenSend?: LastSpokenSend | null;
 	// When the developer began saying these words: anything a session asked after that, unheard.
@@ -270,6 +277,50 @@ const describeAskedName = (state: State, toolContext: ToolContext): { context?: 
 	return asked ? { context: `Voice OS just asked: "${asked.text}"` } : {};
 };
 
+interface OpenForTheRestParams {
+	ref: string;
+	// What Voice OS did, for the judge and the kernel: "switched to crew/main".
+	did: string;
+	toolContext: ToolContext;
+}
+
+// After a switch or a go back, words longer than the command may also ask the session for work. Then
+// the turn stays open: the kernel sends that part to where the developer went, and Voice OS says
+// "Sent to X". null: the command was all the words asked.
+const openForTheRest = async ({
+	ref,
+	did,
+	toolContext,
+}: OpenForTheRestParams): Promise<ToolResult | null> => {
+	const said = toolContext.utterance;
+
+	if (
+		said === undefined ||
+		countSpokenWords(said) <= GO_BACK_TO_WORDS ||
+		!(await isMoreThanCommand({
+			ref,
+			toolContext,
+			state: toolContext.getState(),
+			key: 'more_than_command',
+			context: `Voice OS already did: ${did}`,
+		}))
+	) {
+		return null;
+	}
+
+	log.info('more than the command: the rest goes there', { ref });
+	toolContext.movedTo = ref;
+
+	// send_to, never forward: the session was not on screen when the words were said (a long switch to
+	// the screen's own session forwards them before getting here).
+	return {
+		...succeed(
+			`${did}. The developer also asked it something: send_to ${ref} that part (text copied word for word) now.`,
+		),
+		isOpen: true,
+	};
+};
+
 export const executeTool = async (
 	name: string,
 	input: Record<string, unknown>,
@@ -290,19 +341,11 @@ export const executeTool = async (
 
 		case 'ignore_words': {
 			// "Sí." right after "Switch there?" was ignored as an acknowledgement: a bare yes to Voice OS's
-			// own offer is never noise, in any language.
-			const offer = state.switchOffer;
-			const saidAt = toolContext.heardFrom ?? toolContext.now();
+			// own offer is never noise, in any language. Only a yes: a bare no changes nothing, and ignoring
+			// it is how it stays silent.
+			const offer = await readYesToOffer(state, toolContext);
 
-			// Only a yes: a bare no changes nothing, and ignoring it is how it stays silent.
-			if (
-				offer &&
-				isSwitchOfferFresh(offer, saidAt) &&
-				!hasQuestionSince(state, offer.at) &&
-				toolContext.utterance !== undefined &&
-				(await isBareAnswer(toolContext.judge, toolContext.utterance)) &&
-				(await toolContext.judge({ key: 'approves', utterance: toolContext.utterance })) === 'yes'
-			) {
+			if (offer) {
 				return fail(
 					`Not ignored: "${toolContext.utterance}" says yes to Voice OS's ${describeOfferAnswer(offer.kind, offer.ref)}.`,
 				);
@@ -451,20 +494,6 @@ export const executeTool = async (
 				return guarded;
 			}
 
-			if (
-				await isMisroutedToSetup({
-					state,
-					ref,
-					forwardTo: toolContext.forwardTo ?? null,
-					utterance: toolContext.utterance,
-					judge: toolContext.judge,
-				})
-			) {
-				return fail(
-					`Not sent: ${ref} only does crew setup (workspaces, projects, worktrees). Forward it to the session on screen.`,
-				);
-			}
-
 			return sendRecorded({
 				state,
 				ref,
@@ -493,14 +522,14 @@ export const executeTool = async (
 						);
 					}
 
-					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
+					toolContext.dispatch({ type: 'switch_view', view: { kind: 'activate', machine } });
 
 					return succeed(describeMachineSwitch(state, machine));
 				}
 
 				toolContext.dispatch({ type: 'switch_view', view: HOME_VIEW });
 
-				return succeed('showing Mission Control');
+				return succeed('showing Active');
 			}
 
 			const found = checkRef(state, input.ref);
@@ -521,7 +550,7 @@ export const executeTool = async (
 				const machine = findMachine(state, String(input.ref));
 
 				if (machine) {
-					toolContext.dispatch({ type: 'switch_view', view: { kind: 'grid', machine } });
+					toolContext.dispatch({ type: 'switch_view', view: { kind: 'activate', machine } });
 
 					return succeed(describeMachineSwitch(state, machine));
 				}
@@ -588,6 +617,18 @@ export const executeTool = async (
 				...(skipHeld ? { skipHeld: true as const } : {}),
 			});
 
+			// "Switch to crew main, ask it to research live voice" switched and dropped the rest (debug
+			// note 36): the turn stays open for the kernel to send it there.
+			const rest = await openForTheRest({
+				ref: checked.ref,
+				did: `switched to ${checked.ref}`,
+				toolContext,
+			});
+
+			if (rest) {
+				return rest;
+			}
+
 			return succeed(
 				reply.kind === 'stale_held'
 					? `showing ${checked.ref}. Its held update is older than five minutes and was not replayed: send_to it with the developer's question.`
@@ -595,7 +636,19 @@ export const executeTool = async (
 			);
 		}
 
-		case 'play_missed':
+		case 'play_missed': {
+			// "Yes." to the meanwhile line's "Switch there?" was read as "what did I miss?" again, and the
+			// developer heard "Nothing new." (debug note 38).
+			const offer = await readYesToOffer(state, toolContext);
+
+			if (offer) {
+				log.info('yes to the switch offer: not played', { ref: offer.ref });
+
+				return fail(
+					`Not played: "${toolContext.utterance}" says yes to Voice OS's ${describeOfferAnswer(offer.kind, offer.ref)}.`,
+				);
+			}
+
 			if (state.meanwhile.length === 0) {
 				return { ...succeed('nothing is waiting: say "Nothing new."'), reply: 'Nothing new.' };
 			}
@@ -605,6 +658,7 @@ export const executeTool = async (
 			return succeed(
 				`Voice OS says the ${state.meanwhile.length} waiting updates now: say nothing`,
 			);
+		}
 
 		case 'crew_dev': {
 			const checked = checkRef(state, input.ref);
@@ -657,7 +711,15 @@ export const executeTool = async (
 
 			toolContext.dispatch({ type: 'go_back' });
 
-			return succeed('went back: Voice OS says where to');
+			// "Let's go back to what we have to do on the lesson types…" went back and dropped the rest
+			// (debug note 34): the words are for the session it went back to.
+			const landed = readScreenRef(toolContext.getState());
+			const rest =
+				landed && landed !== screen
+					? await openForTheRest({ ref: landed, did: `went back to ${landed}`, toolContext })
+					: null;
+
+			return rest ?? succeed('went back: Voice OS says where to');
 		}
 
 		case 'activate':

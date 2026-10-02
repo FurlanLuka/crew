@@ -3,7 +3,7 @@ import type { Effect, ReducerResult } from './reducer.js';
 import { readShownText } from '../shared/spoken-tags.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { isReachable, readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
-import { isActive } from '../shared/active.js';
+import { canRun } from '../shared/active.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -25,7 +25,7 @@ export const readLabel = (state: State, ref: string): string => {
 
 type SpeakEffect = Extract<Effect, { type: 'speak' }>;
 
-// The session on screen; null on Mission Control, Active or the machines.
+// The session on screen; null on Active, Activate or Settings.
 export const readScreenRef = (state: State): string | null =>
 	state.view.kind === 'session' ? state.view.ref : null;
 
@@ -195,9 +195,10 @@ export const sendNow = ({
 	return { state: next, effects: [{ type: 'worker_send', ref, text, ...(note ? { note } : {}) }] };
 };
 
-// Only an active session runs: words sent to an inactive one wait in its queue until it is activated.
+// Only an active session (or a setup session, for Set up's chat) runs: words sent to an inactive
+// one wait in its queue until it is activated.
 export const startWorker = (state: State, ref: string): ReducerResult => {
-	if (!isActive(state, ref)) {
+	if (!canRun(state, ref)) {
 		return withoutEffects(state);
 	}
 

@@ -5,10 +5,13 @@ import {
 	isClosedAskLine,
 	dropQueued,
 	enqueue,
+	isInstantAck,
+	settleWording,
 	shouldChime,
 	REPLY_FRESH_MS,
 	setMuted,
 	takeNextItem,
+	withoutInstantAcks,
 	type SpeechItem,
 } from './queue.js';
 
@@ -203,5 +206,61 @@ describe('dropClosedAsks', () => {
 			'plain',
 			'open',
 		]);
+	});
+});
+
+describe('instant acks', () => {
+	const ack = { ...createItem('ack', 'high'), source: 'kernel' as const, isFiller: true };
+	const aboutSession = { ...createItem('about', 'low', 'store/main'), isFiller: true };
+
+	it('filler about no session is an ack; filler about a session or any other line is not', () => {
+		expect(isInstantAck(ack)).toBe(true);
+		expect(isInstantAck(aboutSession)).toBe(false);
+		expect(isInstantAck(createItem('line', 'high'))).toBe(false);
+	});
+
+	it('withoutInstantAcks drops the acks alone', () =>
+		expect(
+			withoutInstantAcks(fillQueue(ack, aboutSession, createItem('line', 'normal'))).items.map(
+				(item) => item.id,
+			),
+		).toEqual(['line', 'about']));
+});
+
+describe('settleWording', () => {
+	const waiting: SpeechItem = {
+		...createItem('sent', 'high'),
+		text: 'Sent to crew.',
+		fixedText: 'Sent to crew.',
+		wordingUntil: 600,
+	};
+	const queue = fillQueue(waiting, createItem('other', 'normal'));
+
+	it('gone from the queue → not queued, nothing changes', () =>
+		expect(settleWording(queue, { id: 'played', worded: 'Over to crew.' })).toEqual({
+			queue,
+			isQueued: false,
+		}));
+
+	it('no wording → the fixed text, no longer waiting', () => {
+		const settled = settleWording(queue, { id: 'sent', worded: null });
+
+		expect(settled.isQueued).toBe(true);
+		expect(settled.queue.items[0]).toEqual({
+			...createItem('sent', 'high'),
+			text: 'Sent to crew.',
+			fixedText: 'Sent to crew.',
+		});
+	});
+
+	it('worded → its text, the fixed text kept, no longer waiting', () => {
+		const settled = settleWording(queue, { id: 'sent', worded: 'Over to crew.' });
+
+		expect(settled.queue.items[0]).toEqual({
+			...createItem('sent', 'high'),
+			text: 'Over to crew.',
+			fixedText: 'Sent to crew.',
+		});
+		expect(settled.queue.items[1]?.id).toBe('other');
 	});
 });

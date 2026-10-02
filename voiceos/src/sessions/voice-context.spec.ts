@@ -72,9 +72,9 @@ describe('VOICE_OS_CONTEXT', () => {
 	});
 
 	it('logs, debug notes and notes → the crew commands, never file paths', () => {
-		expect(VOICE_OS_CONTEXT).toContain('`crew voice logs --since=10m`');
-		expect(VOICE_OS_CONTEXT).toContain('`crew voice debug-notes`');
-		expect(VOICE_OS_CONTEXT).toContain('`crew voice notes <workspace>`');
+		expect(VOICE_OS_CONTEXT).toContain('`crew server logs --since=10m`');
+		expect(VOICE_OS_CONTEXT).toContain('`crew server debug-notes`');
+		expect(VOICE_OS_CONTEXT).toContain('`crew server notes <workspace>`');
 		expect(VOICE_OS_CONTEXT).not.toContain('.crew/voiceos');
 	});
 

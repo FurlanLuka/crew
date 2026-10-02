@@ -1,7 +1,7 @@
 {
   "name": "crew",
-  "description": "Drive crew — workspaces of git worktrees, dev servers on stable ports, env bindings between projects, and Voice OS, the voice cockpit for their Claude Code sessions — from Claude Code.",
-  "version": "5.0.0",
+  "description": "Drive crew — workspaces of git worktrees, dev servers on stable ports, env bindings between projects, and crew's server (its page: Set up and Voice OS, the voice cockpit for their Claude Code sessions) — from Claude Code.",
+  "version": "6.0.0",
   "author": {
     "name": "Luka Furlan",
     "url": "https://github.com/FurlanLuka"

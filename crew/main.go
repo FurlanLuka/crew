@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -23,12 +22,9 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/help"
 	"github.com/FurlanLuka/crew/crew/internal/housekeeping"
 	"github.com/FurlanLuka/crew/crew/internal/project"
-	"github.com/FurlanLuka/crew/crew/internal/projectui"
 	"github.com/FurlanLuka/crew/crew/internal/release"
-	"github.com/FurlanLuka/crew/crew/internal/settings"
-	"github.com/FurlanLuka/crew/crew/internal/transfer"
+	"github.com/FurlanLuka/crew/crew/internal/words"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
-	"github.com/FurlanLuka/crew/crew/internal/workspaceui"
 )
 
 var Version = "dev"
@@ -154,17 +150,16 @@ func main() {
 		return
 
 	case "config":
-		if len(os.Args) > 2 {
-			cmdConfig()
-			return
+		// The settings TUI is gone; bare config is what it showed.
+		if len(os.Args) == 2 {
+			os.Args = append(os.Args, "show")
 		}
-		runTUI(settings.NewView())
+		cmdConfig()
+		return
 
-	case "workspace":
-		runTUI(workspaceui.NewView())
-
-	case "project":
-		runTUI(projectui.NewView())
+	case "workspace", "project":
+		cmdRemovedTUI(cmd)
+		return
 
 	case "add":
 		cmdAdd()
@@ -286,9 +281,14 @@ func main() {
 		cmdShow()
 		return
 
-	case "voice":
-		cmdVoice()
+	case "server":
+		cmdServer()
 		return
+
+	case "voice":
+		cmdVoiceAlias()
+		return
+
 	case "update":
 		cmdUpdate()
 		return
@@ -297,13 +297,14 @@ func main() {
 		help.Run(os.Args[2:], jsonOutput)
 		return
 
-	case "":
-		runTUI(mainMenu())
+	case "", "--no-open":
+		cmdBare(os.Args[1:])
+		return
 
 	default:
 		// Try as workspace/worktree ref shortcut (launch directly)
 		if ref, err := workspace.ParseRef(cmd); err == nil && workspace.Addressable(ref) {
-			runTUI(workspace.NewWorktreeView(mustResolve(ref.String()).Ref))
+			openWorktreePage(mustResolve(ref.String()).Ref)
 		} else {
 			fmt.Fprintf(os.Stderr, "Unknown command '%s'. Run 'crew help' for usage.\n", cmd)
 			os.Exit(1)
@@ -311,34 +312,20 @@ func main() {
 	}
 }
 
-func mainMenu() app.Menu {
-	return app.NewMenu([]app.MenuItem{
-		{
-			Label:       "Workspace",
-			Description: "Manage workspaces and launch",
-			Page:        func() app.Page { return workspaceui.NewView() },
-		},
-		{
-			Label:       "Project",
-			Description: "Add/remove projects and configure dev servers",
-			Page:        func() app.Page { return projectui.NewView() },
-		},
-		{
-			Label:       "Export",
-			Description: "Pick projects and workspaces to carry to another machine",
-			Page:        func() app.Page { return transfer.NewExportView("") },
-		},
-		{
-			Label:       "Settings",
-			Description: "Server IP, SSH host, managed configs",
-			Page:        func() app.Page { return settings.NewView() },
-		},
-		{
-			Label:       "Debug",
-			Description: "View debug log",
-			Page:        func() app.Page { return debug.NewView() },
-		},
-	})
+// configureInBrowser is what the removed TUI entry points say after their
+// table: configuration happens on crew's page now.
+const configureInBrowser = "configure in the browser: run crew"
+
+// cmdRemovedTUI is crew workspace / crew project: the TUIs that lived there
+// are the web's Set up now; the words keep a non-interactive meaning — the
+// table, and where to configure.
+func cmdRemovedTUI(cmd string) {
+	if cmd == "workspace" {
+		cmdLsWorkspaces()
+	} else {
+		cmdLsProjects()
+	}
+	fmt.Fprintln(human, configureInBrowser)
 }
 
 func runTUI(page app.Page) {
@@ -374,7 +361,7 @@ func mustResolve(arg string) *workspace.Resolved {
 
 func cmdLs() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings|overrides]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew ls [projects|workspaces|worktrees|bindings|overrides|bases]\n")
 		os.Exit(1)
 	}
 
@@ -389,8 +376,10 @@ func cmdLs() {
 		cmdLsBindings()
 	case "overrides":
 		cmdLsOverrides()
+	case "bases":
+		cmdLsBases()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings|overrides]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown ls target '%s'.\nUsage: crew ls [projects|workspaces|worktrees|bindings|overrides|bases]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -401,16 +390,7 @@ func cmdLsProjects() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	// The remote is read off each checkout — one git call per row, which a
-	// list can afford; it is the project's identity and the export's.
-	type projectOut struct {
-		project.Project
-		Remote string `json:"remote"`
-	}
-	out := []projectOut{}
-	for _, p := range projects {
-		out = append(out, projectOut{Project: p, Remote: project.RemoteOf(p)})
-	}
+	out := projectRows(projects, project.RemoteOf)
 	if jsonOutput {
 		printJSON(out)
 		return
@@ -418,6 +398,24 @@ func cmdLsProjects() {
 	for _, p := range out {
 		fmt.Println(projectLine(p.Project, p.Remote))
 	}
+}
+
+// projectOut is one crew ls projects --json row: the whole pool record and
+// its remote — read off each checkout, one git call per row, which a list
+// can afford; it is the project's identity and the export's.
+type projectOut struct {
+	project.Project
+	Remote string `json:"remote"`
+}
+
+// projectRows pairs each project with its remote; never null. Pure given
+// remoteOf.
+func projectRows(projects []project.Project, remoteOf func(project.Project) string) []projectOut {
+	out := []projectOut{}
+	for _, p := range projects {
+		out = append(out, projectOut{Project: p, Remote: remoteOf(p)})
+	}
+	return out
 }
 
 // projectLine is one row of crew ls projects: name, path, remote or "-".
@@ -434,12 +432,10 @@ func cmdLsWorkspaces() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	type workspaceOut struct {
-		Name         string   `json:"name"`
-		ProjectCount int      `json:"project_count"`
-		Worktrees    []string `json:"worktrees"`
-		DevRunning   bool     `json:"dev_running"`
+	pool, err := project.List()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	out := []workspaceOut{}
@@ -448,14 +444,7 @@ func cmdLsWorkspaces() {
 		if err != nil {
 			continue
 		}
-		row := workspaceOut{Name: name, ProjectCount: len(ws.Projects), Worktrees: []string{}}
-		for _, ref := range workspace.Refs(ws) {
-			row.Worktrees = append(row.Worktrees, ref.Worktree)
-			if dev.Running(ref.Slug()) {
-				row.DevRunning = true
-			}
-		}
-		out = append(out, row)
+		out = append(out, workspaceRow(ws, pool, func(ref workspace.Ref) bool { return dev.Running(ref.Slug()) }))
 	}
 
 	if jsonOutput {
@@ -463,8 +452,40 @@ func cmdLsWorkspaces() {
 		return
 	}
 	for _, w := range out {
-		fmt.Printf("%s\t%d projects\t%s\n", w.Name, w.ProjectCount, strings.Join(w.Worktrees, ","))
+		fmt.Printf("%s\t%s\t%s\n", w.Name, words.Count(w.ProjectCount, "project"), strings.Join(w.Worktrees, ","))
 	}
+}
+
+// workspaceOut is one crew ls workspaces --json row: its members with
+// their mode, its worktrees, and the binding wires between its members —
+// which resolve inside the workspace and which point at a project it lacks.
+type workspaceOut struct {
+	Name         string                  `json:"name"`
+	ProjectCount int                     `json:"project_count"`
+	Projects     []memberOut             `json:"projects"`
+	Worktrees    []string                `json:"worktrees"`
+	DevRunning   bool                    `json:"dev_running"`
+	Wires        []workspace.BindingWire `json:"wires"`
+}
+
+type memberOut struct {
+	Name string `json:"name"`
+	Mode string `json:"mode"`
+}
+
+// workspaceRow builds the row; running is asked per worktree. Pure given it.
+func workspaceRow(ws *workspace.Workspace, pool []project.Project, running func(workspace.Ref) bool) workspaceOut {
+	row := workspaceOut{Name: ws.Name, ProjectCount: len(ws.Projects), Projects: []memberOut{}, Worktrees: []string{}, Wires: workspace.MemberWires(pool, ws)}
+	for _, wp := range ws.Projects {
+		row.Projects = append(row.Projects, memberOut{Name: wp.Name, Mode: workspace.ModeLabel(wp.Mode)})
+	}
+	for _, ref := range workspace.Refs(ws) {
+		row.Worktrees = append(row.Worktrees, ref.Worktree)
+		if running(ref) {
+			row.DevRunning = true
+		}
+	}
+	return row
 }
 
 func cmdOpen() {
@@ -695,12 +716,17 @@ func parseRmProjectArgs(args []string) (name string, keepClone, purge bool, err 
 }
 
 func cmdRmWorkspaceProject() {
-	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew rm workspace <workspace> <project>\n")
+	args, dryRun := extractFlag(os.Args, "--dry-run")
+	if len(args) != 5 {
+		fmt.Fprintf(os.Stderr, "Usage: crew rm workspace <workspace> <project> [--dry-run]\n")
 		os.Exit(1)
 	}
-	wsName := os.Args[3]
-	projName := os.Args[4]
+	wsName := args[3]
+	projName := args[4]
+	if dryRun {
+		printRemovalCost(workspace.ProjectRemovalCost(wsName, projName))
+		return
+	}
 	if err := workspace.RemoveProject(wsName, projName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -741,6 +767,8 @@ type addProjectArgs struct {
 	// newPath: --path=<dir> — adopt a checkout you already have (new name),
 	// or "the repo moved" (existing name).
 	newPath string
+	// scan: --scan lists the checkouts on this machine instead.
+	scan bool
 }
 
 func parseAddProjectArgs(args []string) (addProjectArgs, error) {
@@ -748,7 +776,21 @@ func parseAddProjectArgs(args []string) (addProjectArgs, error) {
 	if len(args) == 0 {
 		return a, errors.New("usage: crew add project <name> <url> | --path=<dir> [--setup=<cmd>] [--env-cmd=<cmd>]")
 	}
+	if args[0] == "--scan" {
+		if len(args) > 1 {
+			return a, fmt.Errorf("--scan takes nothing else, got '%s'", args[1])
+		}
+		a.scan = true
+		return a, nil
+	}
 	a.name = args[0]
+	if exec.IsGitURL(args[0]) {
+		// crew add project <url>: the repo names the project.
+		a.url, a.name = args[0], project.NameFromURL(args[0])
+		if a.name == "" {
+			return a, fmt.Errorf("no project name in '%s' — crew add project <name> %s", args[0], args[0])
+		}
+	}
 	for _, arg := range args[1:] {
 		switch {
 		case strings.HasPrefix(arg, "--setup="):
@@ -782,6 +824,10 @@ func cmdAddProject() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+	if a.scan {
+		cmdScanCheckouts()
+		return
 	}
 	name := a.name
 	existing := project.Get(name)
@@ -1004,18 +1050,25 @@ func cmdAddWorkspace() {
 	}
 }
 
+// configOut is crew config show --json.
+type configOut struct {
+	ServerIP       string `json:"server_ip"`
+	SSHHost        string `json:"ssh_host"`
+	ProxyPort      int    `json:"proxy_port"`
+	ProxyHTTPSPort int    `json:"proxy_https_port"`
+	Domain         string `json:"domain"`
+}
+
+func configDoc(s config.Settings) configOut {
+	return configOut{s.ServerIP, s.SSHHost, s.ProxyPort, s.ProxyHTTPSPort, s.Domain}
+}
+
 func cmdConfig() {
 	switch os.Args[2] {
 	case "show":
 		s := config.LoadSettings()
 		if jsonOutput {
-			printJSON(struct {
-				ServerIP       string `json:"server_ip"`
-				SSHHost        string `json:"ssh_host"`
-				ProxyPort      int    `json:"proxy_port"`
-				ProxyHTTPSPort int    `json:"proxy_https_port"`
-				Domain         string `json:"domain"`
-			}{s.ServerIP, s.SSHHost, s.ProxyPort, s.ProxyHTTPSPort, s.Domain})
+			printJSON(configDoc(s))
 			return
 		}
 		fmt.Printf("server_ip\t%s\n", s.ServerIP)
@@ -1112,39 +1165,4 @@ func cmdDebug() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func cmdUpdate() {
-	selfPath, err := osexec.LookPath("crew")
-	if err != nil {
-		selfPath, err = os.Executable()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: cannot determine crew binary path\n")
-			os.Exit(1)
-		}
-	}
-
-	latest, err := release.LatestVersion()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching latest version: %v\n", err)
-		os.Exit(1)
-	}
-	release.Remember(latest, time.Now())
-
-	if Version == latest {
-		fmt.Printf("crew is already up to date (v%s)\n", Version)
-		// A Voice OS refresh that failed last time, or a build from source, is
-		// brought in line even when crew itself has nothing new.
-		refreshVoice(latest)
-		return
-	}
-
-	fmt.Printf("Updating crew v%s → v%s\n", Version, latest)
-	url := release.AssetURL("crew", latest, runtime.GOOS, runtime.GOARCH)
-	if err := release.InstallBinary(url, "crew", selfPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("crew updated to v%s\n", latest)
-	refreshVoice(latest)
 }

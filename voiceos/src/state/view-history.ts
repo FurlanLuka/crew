@@ -20,7 +20,7 @@ export const pruneViewHistory = (
 	entries.filter(({ view }) =>
 		view.kind === 'session'
 			? isKept(view.ref)
-			: view.kind !== 'grid' || !view.machine || isMachineKept(view.machine),
+			: view.kind !== 'activate' || !view.machine || isMachineKept(view.machine),
 	);
 
 // The view being left goes on top; the same view twice in a row is one.
@@ -47,10 +47,10 @@ const sayView = (state: State, view: View): string => {
 			return sayRef(state, view.ref);
 		case 'active':
 			return 'Active';
-		case 'machines':
-			return 'your machines';
-		case 'grid':
-			return 'Mission Control';
+		case 'activate':
+			return 'Activate';
+		case 'settings':
+			return 'Settings';
 	}
 };
 
@@ -90,15 +90,26 @@ export const decideGoBack = (state: State): GoBackDecision => {
 };
 
 export const describeGoBack = (state: State, decision: GoBackDecision): Effect => {
-	const skipped = decision.skipped.map((ref) => `${sayRef(state, ref)} stopped.`).join(' ');
-	const said =
-		decision.kind === 'back'
-			? `Back to ${sayView(state, decision.view)}.`
-			: 'Nothing to go back to.';
+	const skippedLabels = decision.skipped.map((ref) => sayRef(state, ref));
+	const skipped = skippedLabels.map((label) => `${label} stopped.`).join(' ');
 
-	return sayAck(skipped ? `${skipped} ${said}` : said);
+	if (decision.kind === 'empty') {
+		const said = 'Nothing to go back to.';
+
+		return sayAck(skipped ? `${skipped} ${said}` : said);
+	}
+
+	const label = sayView(state, decision.view);
+	const said = `Back to ${label}.`;
+
+	return sayAck(skipped ? `${skipped} ${said}` : said, {
+		facts: { kind: 'back', label, skipped: skippedLabels },
+	});
 };
 
 // A switch Voice OS made for the developer is said before anything else plays there.
-export const describeSwitching = (state: State, view: View): Effect =>
-	sayAck(`Switching to ${sayView(state, view)}.`);
+export const describeSwitching = (state: State, view: View): Effect => {
+	const label = sayView(state, view);
+
+	return sayAck(`Switching to ${label}.`, { facts: { kind: 'switching', label } });
+};

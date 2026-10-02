@@ -139,23 +139,21 @@ describe('decideActivate', () => {
 		});
 	});
 
-	it("already active → already; this Mac's setup always is", () => {
+	it('already active → already', () => {
 		const state = createState({ active: ['crew/main'] });
 
 		expect(decideActivate({ state, name: 'crew main', machine: null })).toEqual({
 			kind: 'already',
 			ref: 'crew/main',
 		});
-		expect(decideActivate({ state, name: 'setup', machine: null })).toEqual({
-			kind: 'already',
-			ref: 'setup',
-		});
 	});
 
-	it("a remote's setup session, its machine said → that one, not this Mac's", () => {
+	it('a setup session, here or on a machine said → none: setup lives in Set up', () => {
+		expect(decideActivate({ state: createState(), name: 'setup', machine: null })).toEqual({
+			kind: 'none',
+		});
 		expect(decideActivate({ state: createState(), name: 'setup', machine: 'vm1' })).toEqual({
-			kind: 'one',
-			ref: 'vm1:setup',
+			kind: 'none',
 		});
 	});
 });
@@ -180,8 +178,8 @@ describe('activate', () => {
 		const result = await executeTool('activate', { name: null }, tools);
 
 		expect(actions).toEqual([{ type: 'activate', ref: 'store-front/wrk1', announce: true }]);
-		// On its own screen Voice OS says nothing, and the result does not claim it did.
-		expect(result.content).toBe('activated store-front/wrk1: say nothing');
+		// Voice OS says "Activated X." itself, on its own screen too.
+		expect(result.content).toBe('activated store-front/wrk1; Voice OS said so: say nothing');
 	});
 
 	it('"activate this" on Mission Control → fails, nothing dispatched', async () => {
@@ -380,13 +378,13 @@ describe('deactivate', () => {
 		expect(actions).toEqual([{ type: 'deactivate', ref: 'crew/main' }]);
 	});
 
-	it('the setup session → refused, it is always active', async () => {
+	it('the setup session → never active, nothing dispatched', async () => {
 		const { tools, actions } = createContext({ screen: 'setup' });
 
 		expect(await executeTool('deactivate', { ref: null }, tools)).toEqual({
-			ok: false,
-			content: 'the setup session is always active',
-			reply: 'Setup is always active.',
+			ok: true,
+			content: 'setup is not active',
+			reply: "setup isn't active.",
 		});
 		expect(actions).toEqual([]);
 	});

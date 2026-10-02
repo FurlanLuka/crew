@@ -20,6 +20,7 @@ func TestDecideDaemon(t *testing.T) {
 		{"a pushed dev build over a plain dev one → restart", true, "dev", "dev-abc123", DaemonRestart},
 		{"a plain dev build installed → never forced", true, "dev-abc123", "dev", DaemonKeep},
 		{"no stamp → never forced", true, "1.3.0", "", DaemonKeep},
+		{"a pushed dev build over a daemon of unknown version → restart", true, "", "dev-abc123", DaemonRestart},
 	}
 	for _, c := range cases {
 		if got := DecideDaemon(c.running, c.runningVersion, c.installed); got != c.want {

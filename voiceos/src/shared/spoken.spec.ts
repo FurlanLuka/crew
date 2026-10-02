@@ -138,4 +138,9 @@ describe('voice tags', () => {
 		expect(endsInQuestion('Should I push it? [curious]')).toBe(true);
 		expect(endsInQuestion('Pushed. [relieved]')).toBe(false);
 	});
+
+	it('a question mark inside closing quotes → still a question', () => {
+		expect(endsInQuestion('It asks "which one?"')).toBe(true);
+		expect(endsInQuestion('It asks “which one?”')).toBe(true);
+	});
 });

@@ -291,7 +291,7 @@ func Start(p StartParams) (StartResult, error) {
 
 	var warnings []string
 	if !p.NoProxy {
-		if err := EnsureProxy(p.Domain, p.ProxyPort); err != nil {
+		if _, err := EnsureProxy(p.Domain, p.ProxyPort); err != nil {
 			return StartResult{}, err
 		}
 		if w := ProxyWarning(p.ProxyPort); w != "" {
@@ -329,12 +329,25 @@ func StopAll(slug Slug) {
 	StopProxy()
 }
 
+// IsServerSession: the session runs crew's server (the page and Voice OS),
+// its remote daemon or a dev push — never something a dev stop or crew
+// kill takes down, since the page is usually what asked. crew-dev-os is the
+// server's name before the rename, still running until its next restart.
+func IsServerSession(name string) bool {
+	switch name {
+	case "crew-server", "crew-server-remote", "crew-voice-push", "crew-dev-os", "crew-dev-os-remote":
+		return true
+	}
+	return false
+}
+
 // sessionsToStop is every crew session a stop-all takes down: dev
-// sessions and setup runners; the proxy has its own stop. Pure.
+// sessions and setup runners; the proxy has its own stop, the server its
+// own. Pure.
 func sessionsToStop(all []string, proxy string) []string {
 	var out []string
 	for _, s := range all {
-		if s == proxy {
+		if s == proxy || IsServerSession(s) {
 			continue
 		}
 		if strings.HasPrefix(s, "crew-dev-") || strings.HasPrefix(s, "crew-setup-") {

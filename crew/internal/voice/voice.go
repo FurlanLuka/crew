@@ -22,8 +22,15 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
-// SessionName is a var so tests use their own tmux session.
-var SessionName = dev.SessionName(dev.Slug(workspace.VoiceSlug))
+// SessionName is the server's tmux session: outside crew-dev-*, so crew dev
+// stop and crew kill — which take every crew-dev-* down — never stop the
+// page that asked for them. A var so tests use their own tmux session.
+var SessionName = "crew-server"
+
+// LegacySessionName is where a server started by a crew before the rename
+// runs (crew-dev-os): still recognised, so one started before an upgrade
+// reads as running and can be stopped. A var for the same reason.
+var LegacySessionName = dev.SessionName(dev.Slug(workspace.VoiceSlug))
 
 const (
 	RouteServer = "voice"
@@ -73,7 +80,7 @@ func RotatedFiles(base string) []string {
 }
 
 // Binary is where the Voice OS executable lives: downloaded there on the first
-// crew voice (Install), or compiled there from source with `bun run install-dev`.
+// crew server (Install), or compiled there from source with `bun run install-dev`.
 func Binary() string {
 	if bin := os.Getenv("CREW_VOICEOS_BIN"); bin != "" {
 		return bin
@@ -247,6 +254,41 @@ func healthy(port int) bool {
 	return res.StatusCode == http.StatusOK
 }
 
+// ProxyRouteAnswers is whether the server's proxy link works from another
+// device: crew's proxy, asked here for the server's own hostname, reaches
+// it, and the domain is not this machine's loopback (an automatic nip.io
+// name on a machine with no LAN address). Over SSH that link is preferred
+// to a tunnel — a domain set or the automatic server_ip one alike.
+func ProxyRouteAnswers() bool {
+	domain, port, _ := proxySettings()
+	return !isLoopbackDomain(domain) && routeAnswers(port, ProxyHost(domain))
+}
+
+// isLoopbackDomain: a nip.io name (or a bare address) for 127.x, which no
+// other device resolves to this machine. Pure.
+func isLoopbackDomain(domain string) bool {
+	return domain == "" || domain == "localhost" || strings.HasPrefix(domain, "127.")
+}
+
+// routeAnswers asks the proxy on loopback:port for host's health page.
+func routeAnswers(port int, host string) bool {
+	if port <= 0 {
+		return false
+	}
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/healthz", port), nil)
+	if err != nil {
+		return false
+	}
+	req.Host = host
+	client := http.Client{Timeout: time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+	res, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer res.Body.Close()
+	return res.StatusCode == http.StatusOK
+}
+
 func proxySettings() (domain string, port, httpsPort int) {
 	settings := config.LoadSettings()
 	return settings.GetDomain(dev.ResolveHostIP()), settings.GetProxyPort(), settings.GetProxyHTTPSPort()
@@ -256,7 +298,7 @@ func proxySettings() (domain string, port, httpsPort int) {
 func Inspect() Status {
 	st := Status{Binary: Binary()}
 	saved := loadSaved()
-	st.Running = crewExec.TmuxSessionExists(SessionName)
+	st.Running = CockpitRunning()
 	st.Port = saved.Port
 	st.PID = saved.PID
 	st.Healthy = st.Running && healthy(saved.Port)
@@ -269,11 +311,22 @@ func Inspect() Status {
 	return st
 }
 
+func killSessions(names ...string) {
+	for _, name := range names {
+		if crewExec.TmuxSessionExists(name) {
+			crewExec.KillTmuxSession(name)
+		}
+	}
+}
+
 // Start launches Voice OS unless it already answers, registers its proxy
 // route, and waits until it is healthy.
 func Start() (Status, error) {
 	if st := Inspect(); st.Healthy {
 		debug.Log("voice", "already running on %d", st.Port)
+		// A sweep or a crashed stop may have dropped the route while the
+		// server ran; status must never advertise a link nothing serves.
+		ensureRoute(st.Port)
 		return st, nil
 	}
 	if !crewExec.HasTmux() {
@@ -281,12 +334,12 @@ func Start() (Status, error) {
 	}
 	binary := Binary()
 	if _, err := os.Stat(binary); err != nil {
-		return Status{}, fmt.Errorf("Voice OS is not installed at %s — crew voice downloads it (a dev crew: cd voiceos && bun run install-dev)", binary)
+		return Status{}, fmt.Errorf("Voice OS is not installed at %s — crew server downloads it (a dev crew: cd voiceos && bun run install-dev)", binary)
 	}
-	if crewExec.TmuxSessionExists(SessionName) {
+	if CockpitRunning() {
 		// A session that exists but does not answer is a hung or crashed server.
 		debug.Log("voice", "session up but unhealthy — restarting")
-		crewExec.KillTmuxSession(SessionName)
+		killSessions(SessionName, LegacySessionName)
 	}
 
 	port, err := pickPort(loadSaved().Port)
@@ -313,43 +366,80 @@ func Start() (Status, error) {
 		return Status{}, fmt.Errorf("failed to start the Voice OS session: %w", err)
 	}
 
-	route := dev.Route{ServerName: RouteServer, ExternalPort: port, InternalPort: port}
-	if err := dev.SaveRoutes(dev.Slug(workspace.VoiceSlug), []dev.Route{route}); err != nil {
-		debug.Log("voice", "route not saved: %v", err)
-	}
-	if err := dev.EnsureProxy(domain, proxyPort); err != nil {
+	saveRoute(port)
+	launched, err := dev.EnsureProxy(domain, proxyPort)
+	if err != nil {
 		debug.Log("voice", "proxy not started: %v", err)
 	}
-	// Also gives a freshly launched proxy the moment it needs to bind, so the
-	// link printed below is already the HTTPS one.
-	warning := dev.ProxyTLSWarning(domain, httpsPort)
-	if warning != "" {
-		debug.Log("voice", "%s", warning)
-	}
+	// Alongside the health wait, not before it: a freshly launched proxy gets
+	// up to tlsStartWait to bind, so the link printed is already the HTTPS
+	// one, while a start that fails is not held up by it.
+	tlsWarning := make(chan string, 1)
+	go func() { tlsWarning <- dev.ProxyTLSWarning(domain, httpsPort, launched) }()
 
 	deadline := time.Now().Add(healthWait)
 	for time.Now().Before(deadline) {
 		if healthy(port) {
+			warning := <-tlsWarning
+			if warning != "" {
+				debug.Log("voice", "%s", warning)
+			}
 			st := Inspect()
 			st.Warning = warning
 			return st, nil
 		}
 		if !crewExec.TmuxSessionExists(SessionName) {
-			return Status{}, fmt.Errorf("Voice OS exited during start — see crew voice logs")
+			return Status{}, fmt.Errorf("Voice OS exited during start — see crew server logs")
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return Inspect(), fmt.Errorf("Voice OS did not answer within %s — see crew voice logs", healthWait)
+	return Inspect(), fmt.Errorf("Voice OS did not answer within %s — see crew server logs", healthWait)
 }
 
-// Stop ends Voice OS and every Claude session it runs, and drops its route.
-// It kills SessionName rather than going through dev.StopAll, which targets
-// the fixed crew-dev-os name: tests swap SessionName and must never reach a
-// real running Voice OS.
+func saveRoute(port int) {
+	route := dev.Route{ServerName: RouteServer, ExternalPort: port, InternalPort: port}
+	if err := dev.SaveRoutes(dev.Slug(workspace.VoiceSlug), []dev.Route{route}); err != nil {
+		debug.Log("voice", "route not saved: %v", err)
+	}
+}
+
+// ensureRoute writes the server's route unless it is already there for port.
+func ensureRoute(port int) {
+	routes, _ := dev.LoadRoutes(dev.Slug(workspace.VoiceSlug))
+	if routeServes(routes, port) {
+		return
+	}
+	debug.Log("voice", "route missing for %d — rewritten", port)
+	saveRoute(port)
+}
+
+func routeServes(routes []dev.Route, port int) bool {
+	for _, r := range routes {
+		if r.ServerName == RouteServer && r.InternalPort == port {
+			return true
+		}
+	}
+	return false
+}
+
+// Stop ends Voice OS and every Claude session it runs, and drops its route —
+// under the legacy session name too, so a server from before the rename
+// stops like one after it.
 func Stop() {
 	debug.Log("voice", "stop")
-	crewExec.KillTmuxSession(SessionName)
+	killSessions(SessionName, LegacySessionName)
 	if err := dev.SaveRoutes(dev.Slug(workspace.VoiceSlug), nil); err != nil {
 		debug.Log("voice", "route not removed: %v", err)
 	}
+}
+
+// PageURL is crew's page on this machine without its sign-in token — what a
+// line in a terminal may print without handing out the login. "" when the
+// server is not answering.
+func PageURL() string {
+	st := Inspect()
+	if !st.Healthy {
+		return ""
+	}
+	return LoginURL("http", "localhost", st.Port, "")
 }

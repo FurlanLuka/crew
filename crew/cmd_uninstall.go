@@ -23,7 +23,7 @@ func cmdUninstall() {
 	}
 
 	bin, _ := os.Executable()
-	fmt.Printf("This stops every dev server and removes %s.\n", bin)
+	fmt.Printf("This stops every dev server and crew's server, and removes %s.\n", bin)
 	if purge {
 		fmt.Printf("--purge also removes every workspace's checkouts and %s. Uncommitted work in them is lost.\n", config.ConfigDir)
 	} else {

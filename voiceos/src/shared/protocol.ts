@@ -26,6 +26,8 @@ export type StreamItem = { id: string; at: number } & (
 			status: AsideStatus;
 			// Voice OS context that came with the question: the fork reads it, and so does the turn it may become.
 			note?: string;
+			// Asked while its session was on screen: an answer the developer has left by then is held.
+			askedOnScreen?: true;
 	  }
 );
 
@@ -216,8 +218,8 @@ export interface VoiceEntry {
 	isIgnored?: true;
 }
 
-// Mission Control has no session ref, so the voice log keys it by this.
-export const GRID = 'grid';
+// The screens that are not a session (Active, Activate, Settings) share one voice log, keyed by this.
+export const HOME_SCREEN = 'home';
 export const VOICE_LOG_ENTRIES_KEPT = 8;
 // The kernel forgets older exchanges; the panel dims them.
 export const VOICE_MEMORY_MS = 30 * 60_000;
@@ -228,14 +230,14 @@ export const isRemembered = (entry: VoiceEntry, now: number): boolean =>
 // Speech this soon after the words that started Claude's reply is the rest of that request.
 export const FOLLOW_UP_MS = 60_000;
 
-// grid: every session, or one machine's (LOCAL_MACHINE for this Mac). machines: a card per machine,
-// home once another machine is added. active: the developer's active sessions, across machines.
+// active: the developer's active sessions, across machines (home). activate: every worktree to
+// activate, on every machine or one (LOCAL_MACHINE for this Mac). settings: Voice OS's own.
 // A session's from: opened from Active, so its tabs are the active sessions and Esc goes back there.
 export type View =
-	| { kind: 'grid'; machine?: string }
+	| { kind: 'active' }
 	| { kind: 'session'; ref: string; from?: 'active' }
-	| { kind: 'machines' }
-	| { kind: 'active' };
+	| { kind: 'activate'; machine?: string }
+	| { kind: 'settings' };
 
 // Another machine whose sessions this Voice OS drives, as machines.json keeps it.
 export interface MachineConfig {
@@ -365,6 +367,9 @@ export interface SpokenLine {
 	isUpdate?: true;
 	refs?: string[];
 	toldAsks?: ToldAsk[];
+	// Voice OS's own filler (an instant "Okay."): never its question, never what the
+	// developer heard before, never a session's line.
+	isFiller?: true;
 }
 
 export interface Setup {
@@ -418,7 +423,7 @@ export interface State {
 	targetAsk: TargetAsk | null;
 	// Other sessions' "is done" / "needs you", waiting for a quiet moment to be said as one line.
 	meanwhile: MeanwhileItem[];
-	// Per screen (a session ref, or GRID).
+	// Per screen (a session ref, or HOME_SCREEN).
 	voiceLog: Record<string, VoiceEntry[]>;
 	// The developer's last spoken words that still wait or run somewhere (id: what carries them):
 	// a continuation said soon after replaces them.
@@ -434,8 +439,17 @@ export interface State {
 	names: Record<string, string>;
 	// What speech-to-text expects the developer to speak (Soniox language hints).
 	languages: string[];
-	// The Discord voice channel (crew voice discord setup), when set up; null otherwise.
+	// The Discord voice channel (crew server discord setup), when set up; null otherwise.
 	discord: DiscordPresence | null;
+	// Activations of worktrees crew has made but Voice OS has not listed yet (Set up's "Open Voice
+	// OS" right after creating one): applied when a worktrees list has them, dropped after a while.
+	pendingActivations: PendingActivation[];
+}
+
+export interface PendingActivation {
+	ref: string;
+	at: number;
+	isOpening: boolean;
 }
 
 export interface DiscordPresence {
@@ -498,6 +512,8 @@ export type Action =
 			answers: Record<string, string>;
 			isSpoken?: boolean;
 	  }
+	// The page's X on a question: Claude's AskUserQuestion is denied, saying the developer declined.
+	| { type: 'decline_question'; askId: string }
 	| { type: 'answer_plan'; askId: string; isApproved: boolean; message?: string }
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").
@@ -506,8 +522,9 @@ export type Action =
 	// skipHeld: the switch also sends a question, so the old held update is not replayed first.
 	| { type: 'switch_view'; view: View; announce?: true; skipHeld?: true }
 	| { type: 'go_back' }
-	// announce: activated by voice, so Voice OS offers the switch; a click is silent.
-	| { type: 'activate'; ref: string; announce?: true }
+	// announce: activated by voice, so Voice OS offers the switch; a click is silent. open: show it
+	// too (Set up's "Open Voice OS"); a worktree Voice OS has not listed yet is held until it has.
+	| { type: 'activate'; ref: string; announce?: true; open?: true }
 	| { type: 'deactivate'; ref: string }
 	// isCorrection: the developer's words went there by mistake; Voice OS says it stopped it.
 	| { type: 'interrupt'; ref: string; isCorrection?: true }
@@ -606,6 +623,7 @@ export type Observation =
 			isUpdate?: true;
 			refs?: string[];
 			toldAsks?: ToldAsk[];
+			isFiller?: true;
 	  }
 	// The Discord bridge's own state (connected, owner in the channel); null when not set up.
 	| { type: 'discord_presence'; presence: DiscordPresence | null }

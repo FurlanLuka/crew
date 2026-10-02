@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import type { AsideStatus, Observation, PendingAsk, WorktreeInfo } from '../shared/protocol.js';
 import type { HandsEffect } from './mapping.js';
+import type { SetupCommand } from '../crew/commands.js';
 
 // Both ends of a link: the main pings this often, and either end gives up on a side this silent
 // (an SSH link can look open long after the network under it went).
@@ -60,7 +61,7 @@ export type RemoteMessage =
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
 	// An image's bytes, sent before the input that names it.
 	| { type: 'media'; name: string; base64: string }
-	// A remote's own crew asking the main (crew voice logs on a remote reads every machine).
+	// A remote's own crew asking the main (crew server logs on a remote reads every machine).
 	| CrewCall
 	| CallResult
 	| { type: 'pong' };
@@ -69,6 +70,7 @@ export interface CrewCallResult {
 	code: number;
 	stdout: string;
 	stderr: string;
+	timedOut?: true;
 }
 
 // Either side may call the other's crew. A call is never an effect: it is not queued in the outbox
@@ -79,6 +81,9 @@ export interface CrewCall {
 	method: 'crew';
 	args: string[];
 	timeoutMs?: number;
+	// Set up's typed command (crew/commands.ts): a remote that knows it builds the argv from it and
+	// ignores args; an older one strips it and judges args alone.
+	command?: SetupCommand;
 }
 
 export type CallResult =
@@ -148,12 +153,19 @@ const snapshotSchema = z.object({
 // A crew command line, bounded the same wherever it arrives (a link, the query socket).
 export const crewArgsSchema = z.array(z.string().max(1000)).max(20);
 
+// What a release before typed commands accepts as a call's timeout: past it that remote drops the
+// whole line. A newer remote takes a typed command's timeout from the command itself.
+export const OLD_CALL_TIMEOUT_MAX_MS = 300_000;
+
 const callSchema = z.object({
 	type: z.literal('call'),
 	id: z.number().int(),
 	method: z.literal('crew'),
 	args: crewArgsSchema,
-	timeoutMs: z.number().int().positive().max(300_000).optional(),
+	// Set up's longest commands (a clone, an import) get ten minutes.
+	timeoutMs: z.number().int().positive().max(900_000).optional(),
+	// Checked where it runs, against crew/commands.ts.
+	command: z.unknown().optional(),
 });
 
 // One type, two shapes (answered, or failed): the unions below are plain for it.
@@ -162,7 +174,12 @@ const resultSchema = z.union([
 		type: z.literal('result'),
 		id: z.number().int(),
 		ok: z.literal(true),
-		value: z.object({ code: z.number(), stdout: z.string(), stderr: z.string() }),
+		value: z.object({
+			code: z.number(),
+			stdout: z.string(),
+			stderr: z.string(),
+			timedOut: z.literal(true).optional(),
+		}),
 	}),
 	z.object({
 		type: z.literal('result'),

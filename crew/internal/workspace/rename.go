@@ -117,7 +117,7 @@ func renameAllowed(ws *Workspace, from, to Ref) error {
 		return fmt.Errorf("%w on %s — crew dev stop %s first", ErrServersRunning, from, from)
 	}
 	if SetupRunning(from) || exec.TmuxSessionExists(dev.SetupSessionName(slug)) {
-		return fmt.Errorf("%w on %s — crew setup status %s", ErrSetupRunning, from, from)
+		return SetupRunningError(from)
 	}
 	return nil
 }

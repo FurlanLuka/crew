@@ -17,7 +17,7 @@ builds:
       - CGO_ENABLED=0
 
 # Voice OS rides the same release: built by voiceos/scripts/build-release.ts before
-# GoReleaser runs, downloaded by `crew voice` for the matching version.
+# GoReleaser runs, downloaded by `crew` (`crew server start`) for the matching version.
 release:
   extra_files:
     - glob: ../voiceos/dist/voiceos_*.tar.gz

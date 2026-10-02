@@ -67,7 +67,6 @@ describe('resolveRef', () => {
 		expect(resolveRef(state, 'store-front/wrk1')).toBe('store-front/wrk1');
 		expect(resolveRef(state, 'wrk1')).toBe('store-front/wrk1');
 		expect(resolveRef(state, 'work one')).toBe('store-front/wrk1');
-		expect(resolveRef(state, 'setup session')).toBe('setup');
 	});
 
 	it('"main" is ambiguous → the focused workspace decides', () => {
@@ -94,8 +93,15 @@ describe('resolveRef', () => {
 		);
 	});
 
-	it('the setup session → always reached, active set or not', () => {
-		expect(resolveRef(createState({ active: [] }), 'setup')).toBe('setup');
+	it('a setup session → never reached by name, even among every session: it lives in Set up', () => {
+		const state = createState({ active: ['setup'] });
+
+		for (const said of ['setup', 'setup session', 'the setup']) {
+			expect(resolveRef(state, said)).toBeNull();
+			expect(resolveRef(state, said, state.order)).toBeNull();
+		}
+
+		expect(findRefsByName(state, 'setup', state.order)).toEqual([]);
 	});
 });
 
@@ -267,23 +273,23 @@ describe('resolveRef across machines', () => {
 	};
 
 	it("the machine named in front → that machine's session", () => {
-		expect(resolveRef(machineState({ kind: 'grid' }), 'build box store front main')).toBe(
+		expect(resolveRef(machineState({ kind: 'active' }), 'build box store front main')).toBe(
 			'vm1:store-front/main',
 		);
-		expect(resolveRef(machineState({ kind: 'grid' }), 'build box setup')).toBe('vm1:setup');
+		expect(resolveRef(machineState({ kind: 'active' }), 'build box setup')).toBeNull();
 	});
 
 	it('the same name on two machines → the one the developer is in', () => {
-		expect(resolveRef(machineState({ kind: 'grid', machine: 'vm1' }), 'store front main')).toBe(
+		expect(resolveRef(machineState({ kind: 'activate', machine: 'vm1' }), 'store front main')).toBe(
 			'vm1:store-front/main',
 		);
-		expect(resolveRef(machineState({ kind: 'grid', machine: 'local' }), 'store front main')).toBe(
-			'store-front/main',
-		);
+		expect(
+			resolveRef(machineState({ kind: 'activate', machine: 'local' }), 'store front main'),
+		).toBe('store-front/main');
 	});
 
 	it('the same name on two machines, looking at all → nobody guessed', () => {
-		expect(resolveRef(machineState({ kind: 'grid' }), 'store front main')).toBeNull();
+		expect(resolveRef(machineState({ kind: 'active' }), 'store front main')).toBeNull();
 	});
 });
 
@@ -296,15 +302,15 @@ describe('resolveRef by a name the developer gave', () => {
 
 	it('the name, however it is spelled or said → that session, from anywhere', () => {
 		for (const phrase of ['voice os dev', 'Voice-OS dev', 'the voice os dev session']) {
-			expect(resolveRef(named({ kind: 'grid' }), phrase)).toBe('store-front/wrk1');
+			expect(resolveRef(named({ kind: 'active' }), phrase)).toBe('store-front/wrk1');
 		}
 	});
 
 	it('the crew words → still that session', () => {
-		expect(resolveRef(named({ kind: 'grid' }), 'store front work one')).toBe('store-front/wrk1');
+		expect(resolveRef(named({ kind: 'active' }), 'store front work one')).toBe('store-front/wrk1');
 	});
 
 	it('the name gone → no longer resolves', () => {
-		expect(resolveRef(createState({ view: { kind: 'grid' } }), 'voice os dev')).toBeNull();
+		expect(resolveRef(createState({ view: { kind: 'active' } }), 'voice os dev')).toBeNull();
 	});
 });

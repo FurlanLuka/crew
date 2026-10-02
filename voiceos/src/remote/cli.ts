@@ -1,4 +1,4 @@
-// `voiceos remote serve`: this machine's sessions, driven by a main over a link (crew voice remote
+// `voiceos remote serve`: this machine's sessions, driven by a main over a link (crew server remote
 // runs it in tmux). `voiceos remote attach`: what `crew voice _attach` execs at the end of an SSH
 // login, bridging that SSH session's stdio to the serving daemon's socket.
 
@@ -29,7 +29,7 @@ const SILENCE_CHECK_MS = 5_000;
 export interface RemotePaths {
 	dir: string;
 	socket: string;
-	// crew voice logs (debug-notes, notes) here, asking the main through this daemon's link.
+	// crew server logs (debug-notes, notes) here, asking the main through this daemon's link.
 	querySocket: string;
 	daemonFile: string;
 	registryFile: string;

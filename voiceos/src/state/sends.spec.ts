@@ -102,7 +102,7 @@ describe('words sent to a session not on screen', () => {
 	});
 
 	it('on Mission Control → nothing said: the kernel says where the words went', () => {
-		const home = runAt([[5, { type: 'switch_view', view: { kind: 'grid' } }]], onScreen());
+		const home = runAt([[5, { type: 'switch_view', view: { kind: 'active' } }]], onScreen());
 		const result = reduceAt(home, 10, said(OTHER));
 
 		expect(spokenTexts(result)).toEqual([]);
@@ -152,6 +152,42 @@ describe('words sent to a session not on screen', () => {
 		expect(spokenTexts(replied)).toEqual([
 			"Build box is out of reach. I'll send it when it's back.",
 		]);
+	});
+});
+
+describe('the facts a worded follow-up is made from', () => {
+	const factsOf = (result: ReducerResult) =>
+		result.effects.flatMap((effect) =>
+			effect.type === 'speak' && effect.facts ? [effect.facts] : [],
+		);
+
+	it('"Sent to …" → the label as said, and the switch offered only when it is asked', () => {
+		expect(factsOf(reduceAt(onScreen(), 10, said(OTHER)))).toEqual([
+			{ kind: 'sent', label: 'checkout, main', offersSwitch: true },
+		]);
+		expect(factsOf(reduceAt(onScreen(), 10, { type: 'send', ref: OTHER, text: 'hi' }))).toEqual([
+			{ kind: 'sent', label: 'checkout, main', offersSwitch: false },
+		]);
+	});
+
+	it('"Switch there?" appended to "Okay, after its current work." → offered in the same step', () => {
+		const busy = runAt(
+			[[10, { type: 'send', ref: OTHER, text: 'refactor the router' }]],
+			onScreen(),
+		);
+		const result = reduceAt(busy, 20, {
+			type: 'send',
+			ref: OTHER,
+			text: 'also run the linter',
+			ack: { kind: 'instruction' },
+			isSpoken: true,
+		});
+
+		expect(spokenTexts(result)).toEqual(['Okay, after its current work. Switch there?']);
+		expect(factsOf(result)).toEqual([
+			{ kind: 'queued', label: 'checkout, main', offersSwitch: true },
+		]);
+		expect(result.state.switchOffer?.ref).toBe(OTHER);
 	});
 });
 
@@ -260,15 +296,15 @@ describe('the activate and deactivate offers', () => {
 		});
 	});
 
-	it("a remote's setup → \"Personal's setup isn't active. Activate it?\", even inside Personal", () => {
-		for (const view of [undefined, 'personal:crew/main']) {
-			const result = reduceAt(withPersonal(view), 10, {
-				type: 'offer_switch',
-				ref: PERSONAL_SETUP,
-				kind: 'activate',
-			});
+	it('a setup session, here or remote → never offered: it lives in Set up', () => {
+		for (const kind of ['activate', 'deactivate', 'switch'] as const) {
+			for (const ref of [PERSONAL_SETUP, 'setup']) {
+				const start = withPersonal();
+				const result = reduceAt(start, 10, { type: 'offer_switch', ref, kind });
 
-			expect(spokenTexts(result)).toEqual(["Personal's setup isn't active. Activate it?"]);
+				expect(result.state.switchOffer).toBe(start.switchOffer);
+				expect(spokenTexts(result)).toEqual([]);
+			}
 		}
 	});
 
@@ -502,7 +538,7 @@ describe('what goes when sessions go', () => {
 				[1, { type: 'machines', machines: [{ id: 'vm1', host: 'vm1', name: 'Build box' }] }],
 				[2, { type: 'worktrees', worktrees: [worktree(SCREEN), worktree(REMOTE)] }],
 				[3, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
-				[4, { type: 'switch_view', view: { kind: 'grid', machine: 'vm1' } }],
+				[4, { type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } }],
 				[5, { type: 'switch_view', view: { kind: 'session', ref: REMOTE } }],
 				[6, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
 				[7, { type: 'send', ref: REMOTE, text: 'hi', isSpoken: true }],
@@ -514,10 +550,73 @@ describe('what goes when sessions go', () => {
 
 		expect(state.meanwhile).toEqual([]);
 		expect(state.switchOffer).toBeNull();
-		// Build box's grid and its session are gone; this Mac's session and the start stay.
+		// Build box on Activate and its session are gone; this Mac's session and the start stay.
 		expect(state.viewHistory.map(({ view }) => view)).toEqual([
 			{ kind: 'session', ref: SCREEN },
-			{ kind: 'machines' },
+			{ kind: 'active' },
 		]);
+	});
+});
+
+// Set up's chat sends with the same `send` as the page: the setup session runs for it, queues
+// behind its own work, and voice never says where the words went nor offers to follow them.
+describe("Set up's chat sending to a machine's setup session", () => {
+	const withSetup = (): State =>
+		runAt(
+			[
+				[
+					1,
+					{
+						type: 'worktrees',
+						worktrees: [worktree(SCREEN), { ...worktree('setup'), isPinned: true }],
+					},
+				],
+				[2, { type: 'activate', ref: SCREEN }],
+				[3, { type: 'session_started', ref: SCREEN }],
+				[4, { type: 'switch_view', view: { kind: 'session', ref: SCREEN } }],
+				[5, { type: 'worker_exited', ref: 'setup', error: null }],
+			],
+			createInitialState(),
+		);
+	const typed = (text: string): Extract<Input, { type: 'send' }> => ({
+		type: 'send',
+		ref: 'setup',
+		text,
+	});
+
+	it('stopped → started, the words queued for its start; nothing said, nothing offered', () => {
+		const start = withSetup();
+
+		expect(start.sessions.setup?.status).toBe('stopped');
+
+		const result = reduceAt(start, 10, typed('add store-api as a project'));
+
+		expect(result.effects).toContainEqual({ type: 'worker_start', ref: 'setup' });
+		expect(result.state.sessions.setup?.status).toBe('starting');
+		expect(result.state.sessions.setup?.queue.map((queued) => queued.text)).toEqual([
+			'add store-api as a project',
+		]);
+		expect(spokenTexts(result)).toEqual([]);
+		expect(result.state.switchOffer).toBeNull();
+		expect(result.state.active).toEqual([SCREEN]);
+	});
+
+	it('busy → queued behind its work, still nothing said and nothing offered', () => {
+		const busy = runAt(
+			[
+				[10, typed('add store-api as a project')],
+				[11, { type: 'session_started', ref: 'setup' }],
+				[12, { type: 'turn_started', ref: 'setup' } as Input],
+			],
+			withSetup(),
+		);
+		const result = reduceAt(busy, 20, { ...typed('and signals too'), isSpoken: true });
+
+		expect(result.state.sessions.setup?.queue.map((queued) => queued.text)).toContain(
+			'and signals too',
+		);
+		expect(result.effects.filter((effect) => effect.type === 'worker_send')).toEqual([]);
+		expect(spokenTexts(result)).toEqual([]);
+		expect(result.state.switchOffer).toBeNull();
 	});
 });

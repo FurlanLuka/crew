@@ -6,8 +6,8 @@ const ELAPSED_TICK_MS = 1000;
 
 interface SubagentsPanelProps {
 	subagents: Subagent[];
-	// Opens its transcript.
-	onOpen: (taskId: string) => void;
+	// Opens its transcript; Set up's chat has none to open.
+	onOpen?: (taskId: string) => void;
 }
 
 export const SubagentsPanel = ({ subagents, onOpen }: SubagentsPanelProps) => {
@@ -20,26 +20,38 @@ export const SubagentsPanel = ({ subagents, onOpen }: SubagentsPanelProps) => {
 	return (
 		<section className="panel" aria-label="sub-agents">
 			<span className="lbl">sub-agents · {subagents.length}</span>
-			{subagents.map((subagent) => (
-				<button
-					type="button"
-					key={subagent.taskId}
-					className="subagent"
-					data-task={subagent.taskId}
-					onClick={() => onOpen(subagent.taskId)}
-				>
-					<div className="row">
-						<i className="dot running" />
-						<span className="c-ink">{subagent.agentType ?? 'agent'}</span>
-						<span className="el">{formatAge(now - subagent.startedAt)}</span>
+			{subagents.map((subagent) => {
+				const rows = (
+					<>
+						<div className="row">
+							<i className="dot running" />
+							<span className="c-ink">{subagent.agentType ?? 'agent'}</span>
+							<span className="el">{formatAge(now - subagent.startedAt)}</span>
+						</div>
+						<div className="row c-dim">
+							{subagent.description}
+							{subagent.isBackground ? ' · background' : ''}
+						</div>
+						{subagent.step && <div className="row c-dim step">▸ {subagent.step}</div>}
+					</>
+				);
+
+				return onOpen ? (
+					<button
+						type="button"
+						key={subagent.taskId}
+						className="subagent"
+						data-task={subagent.taskId}
+						onClick={() => onOpen(subagent.taskId)}
+					>
+						{rows}
+					</button>
+				) : (
+					<div key={subagent.taskId} className="subagent" data-task={subagent.taskId}>
+						{rows}
 					</div>
-					<div className="row c-dim">
-						{subagent.description}
-						{subagent.isBackground ? ' · background' : ''}
-					</div>
-					{subagent.step && <div className="row c-dim step">▸ {subagent.step}</div>}
-				</button>
-			))}
+				);
+			})}
 		</section>
 	);
 };

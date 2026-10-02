@@ -6,10 +6,10 @@ const sampleRateSchema = z.number().int().min(8000).max(192000);
 const refSchema = z.string().min(1).max(200);
 const machineIdSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
 const viewSchema = z.discriminatedUnion('kind', [
-	z.object({ kind: z.literal('grid'), machine: machineIdSchema.optional() }),
-	z.object({ kind: z.literal('session'), ref: refSchema, from: z.literal('active').optional() }),
-	z.object({ kind: z.literal('machines') }),
 	z.object({ kind: z.literal('active') }),
+	z.object({ kind: z.literal('session'), ref: refSchema, from: z.literal('active').optional() }),
+	z.object({ kind: z.literal('activate'), machine: machineIdSchema.optional() }),
+	z.object({ kind: z.literal('settings') }),
 ]);
 
 const actionSchema = z.discriminatedUnion('type', [
@@ -34,6 +34,7 @@ const actionSchema = z.discriminatedUnion('type', [
 		askId: z.string(),
 		answers: z.record(z.string(), z.string().max(2000)),
 	}),
+	z.object({ type: z.literal('decline_question'), askId: z.string() }),
 	z.object({
 		type: z.literal('answer_plan'),
 		askId: z.string(),
@@ -48,8 +49,8 @@ const actionSchema = z.discriminatedUnion('type', [
 		message: z.string().max(4000).optional(),
 	}),
 	z.object({ type: z.literal('switch_view'), view: viewSchema }),
-	// From the page: silent, so no announce.
-	z.object({ type: z.literal('activate'), ref: refSchema }),
+	// From the page: silent, so no announce. open: Set up's "Open Voice OS" shows it too.
+	z.object({ type: z.literal('activate'), ref: refSchema, open: z.literal(true).optional() }),
 	z.object({ type: z.literal('deactivate'), ref: refSchema }),
 	z.object({ type: z.literal('interrupt'), ref: refSchema }),
 	z.object({ type: z.literal('allow_denied'), denialId: z.string() }),

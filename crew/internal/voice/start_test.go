@@ -2,11 +2,13 @@ package voice
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
@@ -31,6 +33,10 @@ func isolate(t *testing.T) string {
 	SessionName = name
 	dev.ProxySessionName = fmt.Sprintf("crew-test-proxy-voice-%d-%s", os.Getpid(), strings.ToLower(t.Name()))
 	crewExec.CrewBinary = func() (string, error) { return "/usr/bin/true", nil }
+	// HTTPS off: a start must never probe :443, where a real proxy may answer.
+	if err := config.SaveSettings(config.Settings{ProxyHTTPSPort: -1}); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		crewExec.KillTmuxSession(SessionName)
 		crewExec.KillTmuxSession(dev.ProxySessionName)
@@ -103,9 +109,88 @@ func TestStartWithoutBinaryNamesTheInstallStep(t *testing.T) {
 func TestStartReportsABinaryThatExits(t *testing.T) {
 	isolate(t)
 	fakeBinary(t, true)
+	// HTTPS on, on a port nothing serves, and the proxy launched just now: the
+	// TLS wait must run beside the health loop, not hold the failure back.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unserved := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	if err := config.SaveSettings(config.Settings{ProxyHTTPSPort: unserved}); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := Start()
+	began := time.Now()
+	_, err = Start()
 	if err == nil || !strings.Contains(err.Error(), "exited during start") {
 		t.Fatalf("Start error = %v, want exited during start", err)
+	}
+	if took := time.Since(began); took >= 3*time.Second {
+		t.Errorf("a start that failed took %s — held up by the proxy's TLS wait", took)
+	}
+}
+
+// The names a released crew uses are pinned with or without tmux.
+func TestShippedSessionNames(t *testing.T) {
+	names := shippedSessionNames
+	if names.server != "crew-server" || names.remote != "crew-server-remote" {
+		t.Fatalf("shipped names = %+v", names)
+	}
+	if strings.HasPrefix(names.server, "crew-dev-") || strings.HasPrefix(names.remote, "crew-dev-") {
+		t.Fatal("the server's sessions must not match crew dev stop's prefix")
+	}
+	if names.legacy != "crew-dev-os" || names.legacyRemote != "crew-dev-os-remote" {
+		t.Fatalf("legacy names = %+v — a server started before the rename runs under these", names)
+	}
+}
+
+// A server started before the rename runs under the legacy name: it reads
+// as running and stops like one started after it — the cockpit and the
+// remote daemon alike. TestMain gives every name a per-process stand-in.
+func TestLegacySessionNames(t *testing.T) {
+	if !crewExec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	for _, legacy := range []string{LegacySessionName, LegacyRemoteSessionName} {
+		if err := exec.Command("tmux", "new-session", "-d", "-s", legacy, "sleep 60").Run(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { crewExec.KillTmuxSession(legacy) })
+	}
+	if !Inspect().Running || !CockpitRunning() {
+		t.Error("a legacy cockpit session should read as running")
+	}
+	if !InspectRemote().Running || !RemoteRunning() {
+		t.Error("a legacy remote session should read as running")
+	}
+	Stop()
+	StopRemote()
+	if crewExec.TmuxSessionExists(LegacySessionName) || crewExec.TmuxSessionExists(LegacyRemoteSessionName) {
+		t.Error("Stop and StopRemote should take the legacy sessions down")
+	}
+}
+
+// Each reading looks at its own pair of names: a legacy cockpit is not a
+// remote daemon, nor the other way round.
+func TestRunningReadsItsOwnNames(t *testing.T) {
+	if !crewExec.HasTmux() {
+		t.Skip("tmux not available")
+	}
+	for _, tt := range []struct {
+		session         string
+		cockpit, remote bool
+	}{
+		{LegacySessionName, true, false},
+		{LegacyRemoteSessionName, false, true},
+	} {
+		if err := exec.Command("tmux", "new-session", "-d", "-s", tt.session, "sleep 60").Run(); err != nil {
+			t.Fatal(err)
+		}
+		cockpit, remote := CockpitRunning(), RemoteRunning()
+		crewExec.KillTmuxSession(tt.session)
+		if cockpit != tt.cockpit || remote != tt.remote {
+			t.Errorf("%s alone: cockpit %v remote %v, want %v %v", tt.session, cockpit, remote, tt.cockpit, tt.remote)
+		}
 	}
 }

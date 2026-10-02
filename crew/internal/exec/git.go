@@ -365,7 +365,7 @@ func RenameGitBranch(wtDir, oldName, newName string) {
 
 // RunGitCommandTimeout is RunGitCommand with a deadline, for anything that
 // touches the network. A fetch against an unreachable remote must not hang
-// the TUI.
+// the command.
 func RunGitCommandTimeout(dir string, timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

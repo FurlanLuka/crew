@@ -6,6 +6,8 @@ import {
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
+import { toSpokenName } from '../shared/spoken.js';
+import { readSessionLabel } from '../shared/machines.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import {
 	pointLastSpokenAt,
@@ -15,7 +17,7 @@ import {
 	withoutEffects,
 } from './helpers.js';
 import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js';
-import { isActive } from '../shared/active.js';
+import { canRun } from '../shared/active.js';
 import { openRedirect } from './redirect.js';
 import { clearHeldLine } from './held-lines.js';
 
@@ -52,9 +54,11 @@ interface DecideAckParams {
 	ref: string;
 	ack: SendAck | undefined;
 	timing: SendTiming;
+	// The session as said aloud: the worded "after its current work" must leave it to the code.
+	label?: string;
 }
 
-export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => {
+export const decideAck = ({ ref, ack, timing, label }: DecideAckParams): AckOutcome => {
 	// Said from the branch the words actually took, so "after its current work" is always true.
 	// An instruction's turn must end with a spoken report.
 	if (!ack) {
@@ -75,6 +79,10 @@ export const decideAck = ({ ref, ack, timing }: DecideAckParams): AckOutcome => 
 						isNamed: true,
 						priority: 'high',
 						isAck: true,
+						// The one ack worth wording: "Starting it up." is said as it is.
+						...(timing === 'queued' && label !== undefined
+							? { facts: { kind: 'queued', label, offersSwitch: false } }
+							: {}),
 					},
 				]
 			: [],
@@ -277,12 +285,18 @@ const deliverWords = ({
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
 	const timing: SendTiming =
-		session.status === 'stopped' && !isActive(state, ref)
+		session.status === 'stopped' && !canRun(state, ref)
 			? 'inactive'
 			: isStarting
 				? 'starting'
 				: 'queued';
-	const { effects, isOwed } = decideAck({ ref, ack, timing });
+	// The bare name, not "X on vm1": a worded line that says the name alone still names it twice.
+	const { effects, isOwed } = decideAck({
+		ref,
+		ack,
+		timing,
+		label: toSpokenName(readSessionLabel(state, ref)),
+	});
 	const queuedMessage: QueuedMessage = {
 		id: stamped.id,
 		text,

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "store-front",
+    "path": "/Users/dev/code/store-front",
+    "remote": "git@github.com:example/store-front.git",
+    "known": true
+  },
+  {
+    "name": "checkout-api",
+    "path": "/Users/dev/code/acme/checkout-api",
+    "remote": "https://github.com/example/checkout-api.git",
+    "known": false
+  },
+  {
+    "name": "infra-ops",
+    "path": "/Users/dev/repos/infra-ops",
+    "remote": "",
+    "known": false
+  }
+]

@@ -294,11 +294,11 @@ func TestFixCommand_AlwaysPassesThePrompt(t *testing.T) {
 		t.Skip("claude not installed")
 	}
 	res := fixFixture(t)
-	if _, err := FixCommand(res, ""); err == nil {
+	if _, err := FixCommandFor(res, res.Health, ""); err == nil {
 		t.Error("nothing recorded must be refused")
 	}
 	res.Health = &Health{Issues: []Issue{{Stage: StageSmoke, Project: "store-api", Server: "store-api", Detail: "died"}}}
-	cmd, err := FixCommand(res, "")
+	cmd, err := FixCommandFor(res, res.Health, "")
 	if err != nil {
 		t.Fatal(err)
 	}

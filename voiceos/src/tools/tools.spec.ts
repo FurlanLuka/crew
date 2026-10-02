@@ -1,13 +1,19 @@
 import { createToolContext, INSTRUCTION_ACK } from '../../test/support/tool-context.js';
-import { englishJudge, judgeAlways } from '../../test/support/english-judge.js';
+import {
+	englishJudge,
+	judgeAlways,
+	judgeNever,
+	judgeWith,
+} from '../../test/support/english-judge.js';
 import { describe, expect, it } from 'bun:test';
-import { QUESTION_UNHEARD_MS, type SpokenLine } from '../shared/protocol.js';
+import { QUESTION_UNHEARD_MS, type SpokenLine, type View } from '../shared/protocol.js';
+import type { Judge } from '../judge/judge.js';
 import type { NoteWords } from '../memory/notes.js';
 import { formatAge } from '../state/working.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { createNullNotes } from '../../test/support/notes.js';
 import {
-	GRID,
+	HOME_SCREEN,
 	type Action,
 	type ListenMode,
 	type PendingAsk,
@@ -18,12 +24,7 @@ import {
 import { createInitialState, createSession } from '../state/reducer.js';
 import { Store } from '../state/store.js';
 import type { DebugNoteWords } from '../memory/debug-notes.js';
-import {
-	buildNotesPathNote,
-	buildSessionNote,
-	isDuplicateSend,
-	isMisroutedToSetup,
-} from './send.js';
+import { buildNotesPathNote, buildSessionNote, isDuplicateSend } from './send.js';
 import { executeTool, type ToolContext } from './tools.js';
 import { TAKEN_BACK } from './queued.js';
 import { decideEnding, describeToolCall, isAnsweredByForward, isSilentCall } from './call-lines.js';
@@ -138,12 +139,12 @@ describe('executeTool', () => {
 		]);
 	});
 
-	it('switch_view null → Mission Control', async () => {
+	it('switch_view null → Active', async () => {
 		const { tools, actions } = createToolContext();
 
 		await executeTool('switch_view', { ref: null }, tools);
 
-		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'machines' } }]);
+		expect(actions).toEqual([{ type: 'switch_view', view: { kind: 'active' } }]);
 	});
 
 	it('activate on an active session → no dispatch, says so', async () => {
@@ -291,6 +292,56 @@ describe('findSessionsNamedIn', () => {
 
 	it('full ref → that session', () => {
 		expect(findNamed('end store-front/main')).toEqual(['store-front/main']);
+	});
+
+	describe('a name said inside a longer one (debug note 39)', () => {
+		const CREW = ['crew/main', 'crew/research', 'signals/main'];
+
+		const findIn = (utterance: string, names: Record<string, string>) => {
+			const sessions = Object.fromEntries(
+				CREW.map((ref) => [
+					ref,
+					createSession({ ref, label: ref, branch: '', cwd: '/w', dirs: [], isPinned: false }),
+				]),
+			);
+			const { tools } = createToolContext({ sessions, order: CREW, names });
+
+			return findSessionsNamedIn(tools.getState(), utterance);
+		};
+
+		it('"Crew" is crew/main\'s name: "crew research" → crew/research', () => {
+			expect(findIn('go back to crew research', { 'crew/main': 'Crew' })).toEqual([
+				'crew/research',
+			]);
+		});
+
+		it('both named, "Crew" and "Crew Research" → the longer name', () => {
+			expect(
+				findIn('go back to crew research', {
+					'crew/main': 'Crew',
+					'crew/research': 'Crew Research',
+				}),
+			).toEqual(['crew/research']);
+		});
+
+		it('"Crew" alone, or with "research" said elsewhere → crew/main', () => {
+			const names = { 'crew/main': 'Crew' };
+
+			expect(findIn('go to crew', names)).toEqual(['crew/main']);
+			expect(findIn('ask Crew to do research on live voice', names)).toEqual(['crew/main']);
+		});
+
+		it('"Speak" and "Speak Main": "speak main" → Speak Main', () => {
+			expect(
+				findIn('switch to speak main', { 'crew/main': 'Speak', 'crew/research': 'Speak Main' }),
+			).toEqual(['crew/research']);
+		});
+
+		it('two names that do not overlap → both, so which one is asked', () => {
+			expect(
+				findIn('tell crew and signals', { 'crew/main': 'Crew', 'signals/main': 'Signals' }),
+			).toEqual(['crew/main', 'signals/main']);
+		});
 	});
 });
 
@@ -1042,10 +1093,10 @@ describe('the notes path for a session', () => {
 		const notes = notesIn([]);
 
 		expect(buildNotesPathNote({ ref: 'vm1:store-front/main', isAsked: true, notes })).toBe(
-			"The developer's notes for store-front are on the main machine: run `crew voice notes store-front` to read them.",
+			"The developer's notes for store-front are on the main machine: run `crew server notes store-front` to read them.",
 		);
 		expect(buildNotesPathNote({ ref: 'vm1:setup', isAsked: true, notes })).toBe(
-			"The developer's notes for general are on the main machine: run `crew voice notes` to read them.",
+			"The developer's notes for general are on the main machine: run `crew server notes` to read them.",
 		);
 		expect(
 			buildNotesPathNote({ ref: 'vm1:store-front/main', isAsked: false, notes }),
@@ -1126,6 +1177,198 @@ describe('an answer to a question asked while the developer spoke', () => {
 		expect(heard.actions).toEqual([
 			expect.objectContaining({ type: 'send', ref: 'checkout-api/main' }),
 		]);
+	});
+});
+
+describe('a switch or a go back that asks for more (debug notes 34, 36)', () => {
+	const MORE = 'switch to checkout and ask it to run the whole release checklist again';
+
+	const switchTo = (utterance: string, judge: Judge) => {
+		const { tools, actions } = createToolContext({
+			view: { kind: 'session', ref: 'store-front/main' },
+		});
+
+		return {
+			actions,
+			run: () =>
+				executeTool(
+					'switch_view',
+					{ ref: 'checkout-api/main' },
+					{ ...tools, forwardTo: 'store-front/main', utterance, judge },
+				),
+		};
+	};
+
+	it('switched, and the rest asked of it → the turn stays open to send it there', async () => {
+		const { run, actions } = switchTo(
+			MORE,
+			judgeWith({ asks_switch: 'yes', more_than_command: 'yes' }),
+		);
+		const result = await run();
+
+		expect(actions).toEqual([
+			{ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } },
+		]);
+		expect(result.isOpen).toBe(true);
+		expect(result.content).toBe(
+			'switched to checkout-api/main. The developer also asked it something: send_to checkout-api/main that part (text copied word for word) now.',
+		);
+	});
+
+	it('nothing more, or the judge could not tell → just switched', async () => {
+		for (const answer of ['no', 'unclear']) {
+			const { run } = switchTo(MORE, judgeWith({ asks_switch: 'yes', more_than_command: answer }));
+			const result = await run();
+
+			expect(result.isOpen).toBeUndefined();
+			expect(result.content).toBe('showing checkout-api/main');
+		}
+	});
+
+	it('a short "go to checkout" → no judge asked', async () => {
+		const { run } = switchTo('go to checkout', judgeNever);
+
+		expect((await run()).content).toBe('showing checkout-api/main');
+	});
+
+	it('the follow-up send goes where the developer went, though the words were said on another screen', async () => {
+		const { tools, actions } = createToolContext({
+			view: { kind: 'session', ref: 'store-front/main' },
+		});
+		const context = {
+			...tools,
+			forwardTo: 'store-front/main',
+			utterance: MORE,
+			judge: judgeWith({ asks_switch: 'yes', more_than_command: 'yes' }),
+		};
+
+		await executeTool('switch_view', { ref: 'checkout-api/main' }, context);
+		await executeTool(
+			'send_to',
+			{
+				ref: 'checkout-api/main',
+				kind: 'instruction',
+				text: 'run the whole release checklist again',
+			},
+			context,
+		);
+
+		expect(actions.filter((action) => action.type === 'send')).toEqual([
+			expect.objectContaining({
+				ref: 'checkout-api/main',
+				text: 'run the whole release checklist again',
+			}),
+		]);
+	});
+
+	it('the kernel sends the whole words after all → still sent, no second judge call', async () => {
+		const { tools, actions } = createToolContext({
+			view: { kind: 'session', ref: 'store-front/main' },
+		});
+		let moreAsked = 0;
+		const context = {
+			...tools,
+			forwardTo: 'store-front/main',
+			utterance: MORE,
+			judge: (async ({ key }) => {
+				if (key === 'more_than_command') {
+					moreAsked += 1;
+
+					return moreAsked === 1 ? 'yes' : 'no';
+				}
+
+				return key === 'asks_switch' ? 'yes' : 'unclear';
+			}) as Judge,
+		};
+
+		await executeTool('switch_view', { ref: 'checkout-api/main' }, context);
+		await executeTool(
+			'send_to',
+			{ ref: 'checkout-api/main', kind: 'instruction', text: MORE },
+			context,
+		);
+
+		expect(moreAsked).toBe(1);
+		expect(actions.filter((action) => action.type === 'send')).toEqual([
+			expect.objectContaining({ ref: 'checkout-api/main', text: MORE }),
+		]);
+	});
+
+	describe('go back', () => {
+		const SESSION_A: View = { kind: 'session', ref: 'store-front/main' };
+		const SESSION_B: View = { kind: 'session', ref: 'checkout-api/main' };
+
+		const wentBack = async (utterance: string, judge: Judge, back: View = SESSION_A) => {
+			const store = new Store();
+			store.dispatch({
+				type: 'worktrees',
+				worktrees: ['store-front/main', 'checkout-api/main'].map((ref) => ({
+					ref,
+					label: ref,
+					branch: '',
+					cwd: '/w',
+					dirs: [],
+					isPinned: false,
+				})),
+			});
+			store.dispatch({ type: 'active_loaded', refs: ['store-front/main', 'checkout-api/main'] });
+			store.dispatch({ type: 'switch_view', view: back });
+			store.dispatch({ type: 'switch_view', view: SESSION_B });
+			const { tools } = createToolContext();
+			const sends: Action[] = [];
+			const context: ToolContext = {
+				...tools,
+				getState: () => store.state,
+				dispatch: (action) => {
+					if (action.type === 'send') {
+						sends.push(action);
+					}
+
+					store.dispatch(action);
+				},
+				forwardTo: 'checkout-api/main',
+				utterance,
+				judge,
+			};
+			const result = await executeTool('go_back', {}, context);
+
+			return Object.assign(result, { context, sends });
+		};
+
+		const LONG = "Okay, let's go back to what you think we have to do on the lesson types next.";
+
+		it('went back, and the rest asked of the session it went back to → open to send it there', async () => {
+			const result = await wentBack(LONG, judgeWith({ more_than_command: 'yes' }));
+
+			expect(result.isOpen).toBe(true);
+			expect(result.content).toBe(
+				'went back to store-front/main. The developer also asked it something: send_to store-front/main that part (text copied word for word) now.',
+			);
+		});
+
+		it('the follow-up send reaches the session it went back to, not the screen the words were said on', async () => {
+			const result = await wentBack(LONG, judgeWith({ more_than_command: 'yes' }));
+
+			await executeTool(
+				'send_to',
+				{ ref: 'store-front/main', kind: 'question', text: LONG },
+				result.context,
+			);
+
+			expect(result.sends).toEqual([
+				expect.objectContaining({ ref: 'store-front/main', text: LONG }),
+			]);
+		});
+
+		it('nothing more, a short "go back", or back to Mission Control → just went back', async () => {
+			const plain = 'went back: Voice OS says where to';
+
+			expect((await wentBack(LONG, judgeWith({ more_than_command: 'unclear' }))).content).toBe(
+				plain,
+			);
+			expect((await wentBack('Go back.', judgeNever)).content).toBe(plain);
+			expect((await wentBack(LONG, judgeNever, { kind: 'active' })).content).toBe(plain);
+		});
 	});
 });
 
@@ -3971,67 +4214,6 @@ describe('fixes from the live notes', () => {
 		expect(actions).toEqual([
 			{ type: 'send', ref: 'store-front/main', text: 'What does that command do?', aside: true },
 		]);
-	});
-
-	it.each([
-		['Can you reinstall Voice OS and restart it?', true],
-		['Rebuild Voice OS and crew, please.', true],
-		['Voice OS, make a worktree in store front for the search fix.', false],
-		['Okay, setup: register the new project.', false],
-		['Can you add a worktree for the search fix?', false],
-	])(
-		"from another session's screen, %p → misrouted to setup: %p",
-		async (utterance, isMisrouted) => {
-			const base = createToolContext().tools.getState();
-			const state = {
-				...base,
-				sessions: {
-					...base.sessions,
-					'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
-				},
-			};
-
-			expect(
-				await isMisroutedToSetup({
-					judge: englishJudge,
-					state,
-					ref: 'checkout-api/main',
-					forwardTo: 'store-front/main',
-					utterance,
-				}),
-			).toBe(isMisrouted);
-		},
-	);
-
-	it('the setup session on screen, or no session on screen → never refused', async () => {
-		const base = createToolContext().tools.getState();
-		const state = {
-			...base,
-			sessions: {
-				...base.sessions,
-				'checkout-api/main': { ...base.sessions['checkout-api/main']!, isPinned: true },
-			},
-		};
-		const utterance = 'Can you reinstall Voice OS?';
-
-		expect(
-			await isMisroutedToSetup({
-				judge: englishJudge,
-				state,
-				ref: 'checkout-api/main',
-				forwardTo: 'checkout-api/main',
-				utterance,
-			}),
-		).toBe(false);
-		expect(
-			await isMisroutedToSetup({
-				judge: englishJudge,
-				state,
-				ref: 'checkout-api/main',
-				forwardTo: null,
-				utterance,
-			}),
-		).toBe(false);
 	});
 });
 

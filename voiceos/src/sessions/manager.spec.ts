@@ -153,6 +153,28 @@ describe('SessionManager', () => {
 		expect(await answer).toEqual({ behavior: 'deny', message: 'The session was stopped.' });
 	});
 
+	it("the question's X → Claude's AskUserQuestion is denied with why, and the ask closes", async () => {
+		const harness = createHarness();
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+		harness.orientation.resolve('orientation');
+		await waitTick();
+		const answer = harness.manager.permissions.canUseTool('store-front/main')(
+			'AskUserQuestion',
+			{ questions: [{ question: 'Which table?', options: [{ label: 'New' }] }] },
+			{},
+		);
+		const askId = harness.store.state.asks[0]?.id ?? '';
+		harness.store.dispatch({ type: 'decline_question', askId });
+
+		expect(await answer).toEqual({
+			behavior: 'deny',
+			message: 'The developer declined to answer this question.',
+		});
+		expect(harness.store.state.asks).toEqual([]);
+		expect(harness.manager.permissions.countPending()).toBe(0);
+		harness.manager.stopAll();
+	});
+
 	describe('briefing a resumed session', () => {
 		const createResumedHarness = (briefing?: string, { failResume = false } = {}) => {
 			const store = new Store();

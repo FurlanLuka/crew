@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-02T09:30:00Z",
+  "issues": [
+    {
+      "stage": "install",
+      "project": "store-api",
+      "detail": "pnpm install:\nERR_PNPM_NO_MATCHING_VERSION"
+    },
+    {
+      "stage": "smoke",
+      "project": "store-front",
+      "server": "web",
+      "reason": "not listening",
+      "detail": "ready on :3000"
+    }
+  ]
+}

@@ -11,13 +11,17 @@ user-invocable: true
 ---
 
 Set up a crew workspace with the user, one question at a time. $ARGUMENTS may name it.
+(crew's page — bare `crew`, Set up — does the same with forms; this is the conversation.)
 
 1. `crew ls projects` and `crew ls workspaces` first — never re-add what exists.
+   `crew add project --scan` lists the checkouts already on this machine (`known` ones are in
+   the pool) — offer the `new` ones.
 2. Ask what the workspace is for and which repos belong in it: a path on disk, a git URL,
    or a pick from GitHub — `gh auth status`, then `gh repo list <owner> --json
    name,url,description --limit 100` and offer the names (no `gh`: ask for URLs). For each
-   repo not in the pool: `crew add project <name> <url>` (cloned into
-   `~/.crew/projects/<name>`; name = the repo name unless they say otherwise; `a-z 0-9 -`),
+   repo not in the pool: `crew add project <url>` (cloned into
+   `~/.crew/projects/<name>`, named by the repo; `crew add project <name> <url>` for another
+   name; `a-z 0-9 -`),
    or `crew add project <name> --path=<dir>` for a checkout they already have (a bare path
    is refused; the repo's own origin becomes its identity). Then read the repo — README, Makefile,
    package.json, pyproject.toml, mise.toml — for how it installs and runs. If it needs more
@@ -31,14 +35,16 @@ Set up a crew workspace with the user, one question at a time. $ARGUMENTS may na
    confirm the port and command, then `crew dev setup <project> --apply --port=<p>` or
    `crew dev add <project> --name=<n> --port=<p> --cmd="<c>"` (no `--port` for a worker
    that does not listen). Remind them the command must
-   bind `$PORT`.
+   bind `$PORT`. A server under the wrong name: `crew dev add <project> --name=<new>
+   --rename=<old>` keeps its scoped bindings.
 4. Bindings: `crew add binding <project> --scan` for each project; show the proposals; apply
    the unambiguous ones with `--apply`, ask about any marked ambiguous. A monorepo — one
    project with several dev servers — binds per server when its servers want different
    siblings: `crew add binding <project>/<server> --var=… --url=…`, and `crew add binding
    <project>/<server> --scan` reads the env files under that server's `--dir`. A fresh clone has no
    env files to scan, so propose from the README instead (`crew add binding <project>
-   --var=X --url=<proj[/server]>`) and run `--scan` again once a worktree exists.
+   --var=X --url=<proj[/server]>`) and run `--scan` again once a worktree exists. Before
+   adding one by hand, `--dry-run` shows the value it gets in every worktree — show it.
 5. Prove it: `crew check project <name> --wait` per project — a fresh checkout through
    install, env command and a smoke of its servers, then removed. `✗`: `crew setup logs
    check/<name> <name>` (or `crew fix check/<name> --print`) says what failed; fix the

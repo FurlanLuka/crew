@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -13,6 +14,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
 	"github.com/FurlanLuka/crew/crew/internal/project"
+	"github.com/FurlanLuka/crew/crew/internal/words"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -230,52 +232,133 @@ type setupProposal struct {
 
 func cmdDevAdd() {
 	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> [--port=<p>] --cmd=<c> [--dir=<d>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev add <project> --name=<n> [--port=<p>] --cmd=<c> [--dir=<d>] [--rename=<old>]\n")
 		os.Exit(1)
 	}
-
-	projName := os.Args[3]
-	var name, cmd, dir string
-	var port int
-
-	for _, arg := range os.Args[4:] {
-		switch {
-		case strings.HasPrefix(arg, "--name="):
-			name = strings.TrimPrefix(arg, "--name=")
-		case strings.HasPrefix(arg, "--port="):
-			port = intFlag("--port", strings.TrimPrefix(arg, "--port="), true)
-		case strings.HasPrefix(arg, "--cmd="):
-			cmd = strings.TrimPrefix(arg, "--cmd=")
-		case strings.HasPrefix(arg, "--dir="):
-			dir = strings.TrimPrefix(arg, "--dir=")
-		default:
-			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
-			os.Exit(1)
-		}
-	}
-
-	if name == "" || cmd == "" {
-		fmt.Fprintf(os.Stderr, "Error: --name and --cmd are required (--port only for a server that listens)\n")
-		os.Exit(1)
-	}
-
-	p := project.Get(projName)
-	if p == nil {
-		fmt.Fprintf(os.Stderr, "Error: project '%s' not found\n", projName)
-		os.Exit(1)
-	}
-
-	ds := project.DevServer{Name: name, Port: port, Command: cmd, Dir: dir}
-	if err := project.AddDevServer(projName, ds); err != nil {
+	a, err := parseDevAddArgs(os.Args[4:])
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	if ds.Listens() {
-		fmt.Printf("Added dev server '%s' to %s (port %d)\n", name, projName, port)
-	} else {
-		fmt.Printf("Added dev server '%s' to %s (no port — it does not listen)\n", name, projName)
+	line, err := applyDevAdd(os.Args[3], a)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
+	fmt.Fprintln(human, line)
+}
+
+// devAddArgs is what crew dev add was told. rename names the server this
+// one replaces in place — its scoped bindings follow it, which an rm and
+// an add would drop.
+type devAddArgs struct {
+	name, cmd, dir, rename string
+	port                   int
+	portGiven, dirGiven    bool
+}
+
+func parseDevAddArgs(args []string) (devAddArgs, error) {
+	var a devAddArgs
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--name="):
+			a.name = strings.TrimPrefix(arg, "--name=")
+		case strings.HasPrefix(arg, "--port="):
+			// 0 is a port given: "does not listen", which is how a rename
+			// clears the port its server had.
+			raw := strings.TrimPrefix(arg, "--port=")
+			n, err := parseIntFlag(raw, false)
+			if err != nil || n < 0 {
+				return a, fmt.Errorf("--port needs 0 (does not listen) or a port, got '%s'", raw)
+			}
+			a.port, a.portGiven = n, true
+		case strings.HasPrefix(arg, "--cmd="):
+			a.cmd = strings.TrimPrefix(arg, "--cmd=")
+		case strings.HasPrefix(arg, "--dir="):
+			a.dir, a.dirGiven = strings.TrimPrefix(arg, "--dir="), true
+		case strings.HasPrefix(arg, "--rename="):
+			a.rename = strings.TrimPrefix(arg, "--rename=")
+		default:
+			return a, fmt.Errorf("unknown flag '%s'", arg)
+		}
+	}
+	if a.name == "" || (a.cmd == "" && a.rename == "") {
+		return a, errors.New("--name and --cmd are required (--port only for a server that listens; with --rename the old server's values stand)")
+	}
+	return a, nil
+}
+
+// renamedServer is the server a rename records: the old one's values,
+// replaced by whatever was given. Pure.
+func renamedServer(old project.DevServer, a devAddArgs) project.DevServer {
+	ds := old
+	ds.Name = a.name
+	if a.portGiven {
+		ds.Port = a.port
+	}
+	if a.cmd != "" {
+		ds.Command = a.cmd
+	}
+	if a.dirGiven {
+		ds.Dir = a.dir
+	}
+	return ds
+}
+
+// rewrittenLine names the bindings whose values a rename re-pointed — by
+// project and var, never the value — or is empty. Pure.
+func rewrittenLine(projName, old, renamed string, rewritten []project.RetargetedBinding) string {
+	if len(rewritten) == 0 {
+		return ""
+	}
+	labels := make([]string, 0, len(rewritten))
+	for _, r := range rewritten {
+		labels = append(labels, r.Label())
+	}
+	return fmt.Sprintf("\nRewrote {{%s/%s}} → {{%s/%s}} in: %s", projName, old, projName, renamed, strings.Join(labels, ", "))
+}
+
+// applyDevAdd records the server — added, replaced by name, or renamed in
+// place — and says what happened.
+func applyDevAdd(projName string, a devAddArgs) (string, error) {
+	p := project.Get(projName)
+	if p == nil {
+		return "", fmt.Errorf("project '%s' not found", projName)
+	}
+	if a.rename != "" && a.rename != a.name {
+		// Only to carry the old values over; the rename itself refuses an
+		// unknown old name and a taken new one.
+		old, err := project.FindServer(projName, p.DevServers, a.rename)
+		if err != nil {
+			return "", err
+		}
+		ds := renamedServer(old, a)
+		rewritten, err := project.RenameDevServer(projName, a.rename, ds)
+		if err != nil {
+			return "", err
+		}
+		line := fmt.Sprintf("Renamed dev server '%s' → '%s' in %s (%s)", a.rename, a.name, projName, ds.PortLabel())
+		if moved := project.ScopedTo(p.Bindings, a.rename); len(moved) > 0 {
+			line += fmt.Sprintf("; %d scoped binding(s) follow it", len(moved))
+		}
+		return line + rewrittenLine(projName, a.rename, a.name, rewritten), nil
+	}
+	ds := project.DevServer{Name: a.name, Port: a.port, Command: a.cmd, Dir: a.dir}
+	if a.rename != "" {
+		// Renamed onto itself: an edit of the values, the rest kept.
+		old, err := project.FindServer(projName, p.DevServers, a.rename)
+		if err != nil {
+			return "", err
+		}
+		ds = renamedServer(old, a)
+	}
+	if err := project.AddDevServer(projName, ds); err != nil {
+		return "", err
+	}
+	if ds.Listens() {
+		return fmt.Sprintf("Added dev server '%s' to %s (port %d)", ds.Name, projName, ds.Port), nil
+	}
+	return fmt.Sprintf("Added dev server '%s' to %s (no port — it does not listen)", ds.Name, projName), nil
 }
 
 func cmdDevRm() {
@@ -299,18 +382,20 @@ func cmdDevRm() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Removed dev server '%s' from %s\n", serverName, projName)
+	fmt.Fprintf(human, "Removed dev server '%s' from %s\n", serverName, projName)
 	if len(dropped) > 0 {
-		names := make([]string, 0, len(dropped))
-		for _, b := range dropped {
-			names = append(names, b.Var)
-		}
-		noun := "bindings"
-		if len(dropped) == 1 {
-			noun = "binding"
-		}
-		fmt.Printf("Removed %d %s scoped to %s: %s\n", len(dropped), noun, serverName, strings.Join(names, ", "))
+		fmt.Fprintln(human, droppedBindingsLine(serverName, dropped))
 	}
+}
+
+// droppedBindingsLine names the scoped bindings a server's removal took with
+// it. Pure.
+func droppedBindingsLine(server string, dropped []project.Binding) string {
+	names := make([]string, 0, len(dropped))
+	for _, b := range dropped {
+		names = append(names, b.Var)
+	}
+	return fmt.Sprintf("Removed %s scoped to %s: %s", words.Count(len(dropped), "binding"), server, strings.Join(names, ", "))
 }
 
 func cmdDevShow() {
@@ -603,6 +688,20 @@ func cmdDevLogs() {
 		os.Exit(1)
 	}
 
+	if jsonOutput {
+		if follow {
+			fmt.Fprintf(os.Stderr, "Error: --follow streams; --json reads once (use --lines)\n")
+			os.Exit(1)
+		}
+		data, err := os.ReadFile(logFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		printJSON(devLogsDoc(res.Ref.String(), serverName, string(data), lines))
+		return
+	}
+
 	var tool string
 	var args []string
 	switch {
@@ -629,13 +728,30 @@ func cmdDevLogs() {
 	}
 }
 
+// devLogsDoc is `dev logs --json`: the log as clean lines (no escape
+// sequences, no pure-control lines — what a page shows as text), the last
+// n when n > 0, never null. Pure.
+func devLogsDoc(ref, server, text string, n int) map[string]any {
+	return map[string]any{"ref": ref, "server": server, "lines": cleanTail(text, n)}
+}
+
+// cleanTail is the last n lines of a log once cleaned (all of it at n ≤ 0):
+// cleaning first, so a line the cleaning drops never takes a place. Pure.
+func cleanTail(text string, n int) []string {
+	lines := workspace.CleanLogLines(text)
+	if n > 0 && len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return lines
+}
+
 func cmdDevTui() {
 	if len(os.Args) < 4 {
 		fmt.Fprintf(os.Stderr, "Usage: crew dev tui <workspace>[/<worktree>]\n")
 		os.Exit(1)
 	}
 
-	runTUI(workspace.NewWorktreeView(mustResolve(os.Args[3]).Ref))
+	openWorktreePage(mustResolve(os.Args[3]).Ref)
 }
 
 func cmdDevProxy() {

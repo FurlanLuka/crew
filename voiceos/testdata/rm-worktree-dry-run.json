@@ -1,0 +1,35 @@
+{
+  "checkouts": [
+    {
+      "ref": "store-front/wrk1",
+      "project": "store-front",
+      "path": "/w/store-front/wrk1/store-front",
+      "direct": false,
+      "missing": false,
+      "uncommitted": 3,
+      "commits": 2,
+      "size_bytes": 524288000
+    },
+    {
+      "ref": "store-front/wrk1",
+      "project": "store-api",
+      "path": "/w/store-front/wrk1/store-api",
+      "direct": false,
+      "missing": false,
+      "uncommitted": 0,
+      "commits": 0,
+      "size_bytes": 209715200
+    },
+    {
+      "ref": "store-front/wrk1",
+      "project": "signals",
+      "path": "/Users/dev/code/signals",
+      "direct": true,
+      "missing": false,
+      "uncommitted": 0,
+      "commits": 0,
+      "size_bytes": 0
+    }
+  ],
+  "last": false
+}

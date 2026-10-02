@@ -121,12 +121,70 @@ export const findSessionsNamedIn = (
 	const refsNamedInFull = refs.filter((ref) => isNamedInFull(state, ref, utterance, text));
 
 	if (refsNamedInFull.length > 0) {
-		return refsNamedInFull;
+		return keepLongestNames(state, refs, utterance, refsNamedInFull);
 	}
 
 	return refs.filter(
 		(ref) => state.sessions[ref] && isSessionNamed({ ref, text, words, order: refs }),
 	);
+};
+
+const toWordList = (text: string): string[] => toPlainWords(text).trim().split(' ');
+
+// The words that named a session in full: the developer's name for it when said, else its ref.
+const readNamedWords = (state: State, ref: string, plain: string): string[] =>
+	isDisplayNameSaid(state.names[ref], plain)
+		? toWordList(state.names[ref] ?? '')
+		: toWordList(splitRef(ref).local);
+
+// "crew research": the workspace and the worktree said together, as one phrase.
+const readSaidTogether = (ref: string, plain: string): string[] | null => {
+	const { workspace, worktree } = splitRef(ref);
+
+	if (!worktree) {
+		return null;
+	}
+
+	const said = listSpokenForms(worktree)
+		.map((form) => toWordList(`${workspace} ${form}`))
+		.find((phrase) => plain.includes(` ${phrase.join(' ')} `));
+
+	return said ?? null;
+};
+
+const isStrictSubset = (part: string[], whole: string[]): boolean =>
+	part.length < whole.length && part.every((word) => whole.includes(word));
+
+// "Go back to crew research" with crew/main named "Crew": the name "Crew" is said inside "crew
+// research", and only the longer phrase was meant (debug note 39). A session said as workspace and
+// worktree together joins the full names when it contains one of them; then any name said only as part
+// of a longer one drops out. Names that do not overlap all stay: which one is asked, never guessed.
+const keepLongestNames = (
+	state: State,
+	refs: string[],
+	utterance: string,
+	namedInFull: string[],
+): string[] => {
+	const plain = toPlainWords(utterance);
+	const named = new Map(namedInFull.map((ref) => [ref, readNamedWords(state, ref, plain)]));
+	const fullPhrases = [...named.values()];
+
+	for (const ref of refs) {
+		const together = named.has(ref) || !state.sessions[ref] ? null : readSaidTogether(ref, plain);
+
+		if (together && fullPhrases.some((phrase) => isStrictSubset(phrase, together))) {
+			named.set(ref, together);
+		}
+	}
+
+	const isInsideAnother = (ref: string, phrase: string[]): boolean =>
+		[...named].some(([other, longer]) => other !== ref && isStrictSubset(phrase, longer));
+
+	return refs.filter((ref) => {
+		const phrase = named.get(ref);
+
+		return phrase !== undefined && !isInsideAnother(ref, phrase);
+	});
 };
 
 export const findNamedRefs = async (

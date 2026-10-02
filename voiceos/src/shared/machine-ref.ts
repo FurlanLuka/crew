@@ -8,7 +8,7 @@ export const SETUP_REF = 'setup';
 // The id used in views for this Mac's own sessions: never a machine id (machineIdFor refuses it).
 export const LOCAL_MACHINE = 'local';
 
-// What `crew voice logs --machine=main` names: never a machine id either.
+// What `crew server logs --machine=main` names: never a machine id either.
 export const MAIN_MACHINE = 'main';
 
 const SEPARATOR = ':';
@@ -34,6 +34,10 @@ export const splitRef = (ref: string): RefParts => {
 
 export const joinRef = (machine: string | null, local: string): string =>
 	machine ? `${machine}${SEPARATOR}${local}` : local;
+
+// A session's ref from the machine a view is on: LOCAL_MACHINE means this Mac, unprefixed.
+export const refOn = (machine: string, local: string): string =>
+	machine === LOCAL_MACHINE ? local : joinRef(machine, local);
 
 // Works on refs and on ask ids alike: the prefix is always outermost.
 export const machineOf = (refOrId: string): string | null => splitRef(refOrId).machine;

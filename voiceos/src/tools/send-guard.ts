@@ -16,7 +16,11 @@ import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
 
+// Voice OS asked "For X?" itself and holds the words: the kernel's own reply is dropped.
 export const ASK_WHICH_NOTE = 'asked which session';
+// The guard refused and told the kernel to ask the developer which session: that question is the
+// answer, never a reason to forward the words to the screen instead (debug note 37).
+export const KERNEL_ASKS_WHICH_NOTE = 'told to ask which session';
 
 // "on vm1", "on my Mac", or a machine's name or id said anywhere in the words ("vm1 checkout").
 const readMachineSaid = (state: State, utterance: string): string | null => {
@@ -58,15 +62,15 @@ export const guardSendTo = async ({
 	const screen = toolContext.forwardTo;
 	const utterance = toolContext.utterance;
 
-	// On Mission Control nothing is on screen to keep the words: the kernel asks which session itself.
-	// The setup session has its own guard (isMisroutedToSetup): crew setup goes there from any screen.
-	if (
-		!screen ||
-		!state.sessions[screen] ||
-		ref === screen ||
-		utterance === undefined ||
-		state.sessions[ref]?.isPinned
-	) {
+	// "Switch to checkout and ask it…": the rest goes where the developer just went (notes 34, 36).
+	if (toolContext.movedTo === ref) {
+		log.info('sent where the developer just went', { ref });
+
+		return null;
+	}
+
+	// Off a session's screen nothing is there to keep the words: the kernel asks which session itself.
+	if (!screen || !state.sessions[screen] || ref === screen || utterance === undefined) {
 		return null;
 	}
 
@@ -86,9 +90,12 @@ export const guardSendTo = async ({
 		if (words.source === 'earlier') {
 			log.info('earlier words, no session named: asked which', { ref });
 
-			return fail(
-				'Not sent: the developer pointed earlier words at another session without naming it. Ask them in a few words to say which session; nothing was sent.',
-			);
+			return {
+				...fail(
+					'Not sent: the developer pointed earlier words at another session without naming it. Ask them in a few words to say which session; nothing was sent.',
+				),
+				note: KERNEL_ASKS_WHICH_NOTE,
+			};
 		}
 
 		log.info('not named: words kept on the screen', { ref, screen });
@@ -99,9 +106,12 @@ export const guardSendTo = async ({
 	if (isOnOtherMachineSaid(state, ref, utterance)) {
 		log.info('named, but another machine said: asked which', { ref });
 
-		return fail(
-			`Not sent: ${label} is named, but another machine is said beside it. Ask them in a few words which session they mean; nothing was sent.`,
-		);
+		return {
+			...fail(
+				`Not sent: ${label} is named, but another machine is said beside it. Ask them in a few words which session they mean; nothing was sent.`,
+			),
+			note: KERNEL_ASKS_WHICH_NOTE,
+		};
 	}
 
 	// "I meant that for checkout", "send that to checkout too": earlier words pointed at a named session.

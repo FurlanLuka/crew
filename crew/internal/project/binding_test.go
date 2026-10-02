@@ -244,6 +244,130 @@ func TestScopedToAndBoundFor(t *testing.T) {
 	}
 }
 
+// renamePool is the pool the rename cases run over, in memory.
+func renamePool() []Project {
+	return []Project{
+		{Name: "store-api", DevServers: []DevServer{{Name: "store-api", Port: 3000}}, Bindings: []Binding{
+			{Var: "ADMIN_URL", Value: "{{admin/backend}}/v1"},
+			{Var: "ADMIN_HOST", Value: "ws://{{admin/backend.host}}", Server: "store-api"},
+			{Var: "HOME_URL", Value: "{{admin/homepage}}"},
+		}},
+		{Name: "admin", DevServers: []DevServer{{Name: "backend", Port: 3100}, {Name: "homepage", Port: 3001}}, Bindings: []Binding{
+			{Var: "SELF", Value: "{{url:admin/backend}}:{{port:admin/backend}}"},
+			{Var: "NAME", Value: "{{worktree}}"},
+			{Var: "SCOPED", Value: "x", Server: "backend"},
+		}},
+	}
+}
+
+// A rename rewrites every binding in the pool that names the server — any
+// project, any accessor, the pre-2.1 spelling too — and leaves the rest:
+// bare {{proj}}, another server, another project's server of that name.
+func TestRenameServerIn_RewritesTokens(t *testing.T) {
+	pool := renamePool()
+	out, rewritten, err := renameServerIn(pool, "admin", "backend", DevServer{Name: "api", Port: 3100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var labels []string
+	for _, r := range rewritten {
+		labels = append(labels, r.Label())
+	}
+	if got := strings.Join(labels, ", "); got != "store-api ADMIN_URL, store-api ADMIN_HOST (store-api), admin SELF" {
+		t.Errorf("rewritten = %s", got)
+	}
+	values := map[string]string{}
+	for _, p := range out {
+		for _, b := range p.Bindings {
+			values[b.Var] = b.Value
+		}
+	}
+	for v, want := range map[string]string{
+		"ADMIN_URL":  "{{admin/api}}/v1",
+		"ADMIN_HOST": "ws://{{admin/api.host}}",
+		"HOME_URL":   "{{admin/homepage}}",
+		"SELF":       "{{admin/api}}:{{admin/api.port}}",
+		"NAME":       "{{worktree}}",
+	} {
+		if values[v] != want {
+			t.Errorf("%s = %q, want %q", v, values[v], want)
+		}
+	}
+	if names := serverNames(out[1].DevServers); names != "api, homepage" {
+		t.Errorf("servers = %s", names)
+	}
+	if out[1].Bindings[2].Server != "api" {
+		t.Errorf("scoped binding follows: %+v", out[1].Bindings[2])
+	}
+	if pool[1].DevServers[0].Name != "backend" || pool[0].Bindings[0].Value != "{{admin/backend}}/v1" {
+		t.Errorf("the input is left untouched: %+v", pool)
+	}
+}
+
+// A rename never drops a server nor becomes an add: an unknown old name and a
+// new name another server holds are refused.
+func TestRenameServerIn_Refusals(t *testing.T) {
+	for _, tt := range []struct {
+		name, old string
+		ds        DevServer
+		want      string
+	}{
+		{"unknown old", "nope", DevServer{Name: "api"}, "has no dev server 'nope'"},
+		{"taken new", "backend", DevServer{Name: "homepage"}, "already has a server 'homepage'"},
+		{"invalid new", "backend", DevServer{Name: "Web App"}, "invalid"},
+		{"unknown project", "backend", DevServer{Name: "api"}, "not found"},
+	} {
+		proj := "admin"
+		if tt.name == "unknown project" {
+			proj = "ghost"
+		}
+		if _, _, err := renameServerIn(renamePool(), proj, tt.old, tt.ds); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		}
+	}
+	if _, _, err := renameServerIn(renamePool(), "admin", "backend", DevServer{Name: "backend", Port: 9}); err != nil {
+		t.Errorf("renamed onto itself is an edit: %v", err)
+	}
+}
+
+// RenameDevServer writes the pure rename, or nothing.
+func TestRenameDevServer_SavesOrNothing(t *testing.T) {
+	setupPool(t)
+	if _, err := RenameDevServer("admin", "nope", DevServer{Name: "api", Port: 3100}); err == nil {
+		t.Error("unknown old: no error")
+	}
+	if _, err := RenameDevServer("admin", "backend", DevServer{Name: "homepage", Port: 3100}); err == nil {
+		t.Error("taken new: no error")
+	}
+	if names := serverNames(Get("admin").DevServers); names != "backend, homepage" {
+		t.Errorf("a refused rename saves nothing: %s", names)
+	}
+	if _, err := RenameDevServer("admin", "backend", DevServer{Name: "api", Port: 3100}); err != nil {
+		t.Fatal(err)
+	}
+	if names := serverNames(Get("admin").DevServers); names != "api, homepage" {
+		t.Errorf("saved: %s", names)
+	}
+}
+
+func TestRetarget(t *testing.T) {
+	for _, tt := range []struct {
+		value, want string
+		ok          bool
+	}{
+		{"{{admin/backend}}", "{{admin/api}}", true},
+		{"{{admin/backend}} and {{admin/backend}}", "{{admin/api}} and {{admin/api}}", true},
+		{"{{admin}}", "{{admin}}", false},
+		{"{{other/backend}}", "{{other/backend}}", false},
+		{"{{admin/backend.nope}}", "{{admin/backend.nope}}", false},
+	} {
+		got, ok := retarget(tt.value, "admin", "backend", "api")
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("retarget(%q) = %q, %v; want %q, %v", tt.value, got, ok, tt.want, tt.ok)
+		}
+	}
+}
+
 // Removing a server takes its scoped bindings with it in the same write;
 // renaming one keeps them on the new name.
 func TestRemoveAndRenameDevServer_Scopes(t *testing.T) {
@@ -253,17 +377,17 @@ func TestRemoveAndRenameDevServer_Scopes(t *testing.T) {
 	AddBinding("admin", Binding{Var: "C", Value: "x", Server: "homepage"})
 	AddBinding("admin", Binding{Var: "D", Value: "x", Server: "backend"})
 
-	if err := RenameDevServer("admin", "backend", DevServer{Name: "Web App", Port: 3100, Command: "pnpm dev"}); err == nil || !strings.Contains(err.Error(), "invalid") {
+	if _, err := RenameDevServer("admin", "backend", DevServer{Name: "Web App", Port: 3100, Command: "pnpm dev"}); err == nil || !strings.Contains(err.Error(), "invalid") {
 		t.Errorf("a rename keeps the name rule: %v", err)
 	}
 	if p := Get("admin"); p.DevServers[0].Name != "backend" {
 		t.Errorf("a refused rename changes nothing: %+v", p.DevServers)
 	}
-	if err := RenameDevServer("admin", "backend", DevServer{Name: "api", Port: 3100, Command: "pnpm dev"}); err != nil {
+	if _, err := RenameDevServer("admin", "backend", DevServer{Name: "api", Port: 3100, Command: "pnpm dev"}); err != nil {
 		t.Fatal(err)
 	}
 	p := Get("admin")
-	if len(p.DevServers) != 2 || p.DevServers[1].Name != "api" || p.Bindings[1].Server != "api" || p.Bindings[3].Server != "api" {
+	if len(p.DevServers) != 2 || p.DevServers[0].Name != "api" || p.DevServers[1].Name != "homepage" || p.Bindings[1].Server != "api" || p.Bindings[3].Server != "api" {
 		t.Errorf("rename re-scopes: %+v / %+v", p.DevServers, p.Bindings)
 	}
 
@@ -375,19 +499,6 @@ func TestProposeThenAdd_RejectsUnusableVarName(t *testing.T) {
 	}
 	if err := AddBinding("checkout-api", Binding{Var: proposals[0].Var, Value: proposals[0].Template}); err == nil {
 		t.Error("MY-VAR should be rejected as a variable name")
-	}
-}
-
-func TestWithDevServers(t *testing.T) {
-	pool := []Project{{Name: "docs"}, {Name: "api", DevServers: []DevServer{{Name: "api", Port: 3000}}}, {Name: "web", DevServers: []DevServer{{Name: "web", Port: 5173}}},
-		{Name: "jobs", DevServers: []DevServer{{Name: "worker"}}},                             // workers only: not a target
-		{Name: "mixed", DevServers: []DevServer{{Name: "worker"}, {Name: "web", Port: 3001}}}} // one server with a port: a target
-	got := WithDevServers(pool)
-	if len(got) != 3 || got[0].Name != "api" || got[1].Name != "web" || got[2].Name != "mixed" {
-		t.Errorf("%+v", got)
-	}
-	if got := WithDevServers(nil); got != nil {
-		t.Errorf("empty pool → %+v", got)
 	}
 }
 

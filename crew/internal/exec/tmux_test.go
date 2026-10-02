@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/FurlanLuka/crew/crew/internal/config"
 )
 
 // --- Integration tests (require tmux) ---
@@ -479,5 +481,21 @@ func TestKillTmuxSessionNeverKillsAPrefixMatch(t *testing.T) {
 	KillTmuxSession(long)
 	if TmuxSessionExists(long) {
 		t.Errorf("%s still exists after its own kill", long)
+	}
+}
+
+// The send-keys line debug.log records is redacted: a server command carries
+// binding values in its exports.
+func TestTmuxSendKeys_LogsRedacted(t *testing.T) {
+	startPrivateTmux(t)
+	config.ConfigDir = t.TempDir()
+	TmuxSendKeys(fmt.Sprintf("crew-no-such-session-%d", os.Getpid()), "export K='s3cret'; PORT=1 x")
+
+	data, err := os.ReadFile(filepath.Join(config.ConfigDir, "debug.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "export K=…; PORT=1 x") || strings.Contains(string(data), "s3cret") {
+		t.Errorf("debug.log =\n%s", data)
 	}
 }

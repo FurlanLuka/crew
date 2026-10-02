@@ -344,9 +344,9 @@ func TestAddProjects_KeepsOtherProjectsIssues(t *testing.T) {
 	}
 }
 
-// The page's rows get their check through one join; a key mismatch would
-// show plain ● everywhere. And a check of nothing running is nil.
-func TestLoadWorktreePage_JoinsTheCheck(t *testing.T) {
+// The page's rows join the routes by project and server; a key mismatch
+// would show every server stopped. And a check of nothing running is nil.
+func TestLoadWorktreePage_JoinsTheRoutes(t *testing.T) {
 	if !exec.HasTmux() {
 		t.Skip("tmux not available")
 	}
@@ -370,16 +370,9 @@ func TestLoadWorktreePage_JoinsTheCheck(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	page := loadWorktreePage(res, false, false)
-	if page.Items[0].Check != nil || page.CheckHealth != nil {
-		t.Errorf("without a check: %+v", page.Items[0])
-	}
-	page = loadWorktreePage(res, true, false)
-	if c := page.Items[0].Check; c == nil || !c.Alive || c.Listening || c.Port != page.Items[0].Port {
-		t.Errorf("with a check: %+v", page.Items[0])
-	}
-	if page.CheckHealth != nil {
-		t.Errorf("an idle, unreferenced worker is not a failure: %+v", page.CheckHealth)
+	page := loadWorktreePage(res)
+	if it := page.Items[0]; !it.Running || it.Port == 0 || it.URL == "" || page.Session == "" || page.Ref != res.Ref {
+		t.Errorf("joined row: %+v (session %q, ref %v)", it, page.Session, page.Ref)
 	}
 }
 

@@ -1,6 +1,7 @@
 import { readShownText } from '../shared/spoken-tags.js';
 import type { Input, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
 import type { ReducerResult } from './reducer.js';
+import { isOnScreen } from './held-lines.js';
 import { deliverSend } from './delivery.js';
 import { openRedirect } from './redirect.js';
 import {
@@ -50,6 +51,7 @@ export const startAside = ({
 		answer: null,
 		status: 'asking',
 		...(note ? { note } : {}),
+		...(isOnScreen(state, ref) ? { askedOnScreen: true as const } : {}),
 	};
 
 	return {
@@ -106,7 +108,17 @@ export const reduceAside = (
 	if (input.status === 'answered' && input.answer) {
 		return {
 			state: settled,
-			effects: [{ type: 'narrate_aside', ref: input.ref, question, answer: input.answer }],
+			effects: [
+				{
+					type: 'narrate_aside',
+					ref: input.ref,
+					question,
+					answer: input.answer,
+					...(asked?.kind === 'aside' && asked.askedOnScreen
+						? { askedOnScreen: true as const }
+						: {}),
+				},
+			],
 		};
 	}
 

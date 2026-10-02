@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FurlanLuka/crew/crew/internal/app"
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
 	"github.com/FurlanLuka/crew/crew/internal/exec"
@@ -316,29 +315,6 @@ func TestWaitRunnersGone(t *testing.T) {
 	}
 }
 
-// The page opened on a check: a target that is gone means the check
-// passed, and the page's last word is the pass line.
-func TestWorktreeView_CheckPassed(t *testing.T) {
-	setupTestConfig(t)
-	v := NewWorktreeView(CheckRef("api"))
-	msg := v.loadWith(false)()
-	if _, ok := msg.(checkPassedMsg); !ok {
-		t.Fatalf("a gone check loads as checkPassedMsg, got %T", msg)
-	}
-	if msg := NewWorktreeView(Ref{Workspace: "ws", Worktree: "wt"}).loadWith(false)(); msg == nil {
-		t.Fatal("no message")
-	} else if _, ok := msg.(errMsg); !ok {
-		t.Errorf("a missing workspace is an error, got %T", msg)
-	}
-	_, cmd := v.Update(checkPassedMsg{project: "api"})
-	if cmd == nil {
-		t.Fatal("checkPassedMsg should exit")
-	}
-	if out, ok := cmd().(app.ExitWithOutputMsg); !ok || out.Output != CheckPassedLine("api") {
-		t.Errorf("exit message = %+v", cmd())
-	}
-}
-
 // A real smoke on a check: a server that runs and nobody points at passes
 // and the target goes with its session; one the project's own binding
 // points at but that never listens keeps the target.
@@ -518,5 +494,28 @@ func TestReadStatus_At(t *testing.T) {
 	st, _ = ReadStatus(ref)
 	if !st.Projects[0].At.Equal(started) {
 		t.Errorf("not finished → At = %v", st.Projects[0].At)
+	}
+}
+
+// VerdictFor is the whole pass / install-only / failed / alive matrix.
+func TestVerdictFor(t *testing.T) {
+	row := func(state ProjectState) Status {
+		return Status{Projects: []ProjectStatus{{Project: "store-api", State: state}}}
+	}
+	for _, tt := range []struct {
+		state ProjectState
+		smoke bool
+		want  Verdict
+	}{
+		{StateRunning, true, VerdictNone},
+		{StateStarting, false, VerdictNone},
+		{StateOK, true, VerdictPassed},
+		{StateOK, false, VerdictInstallOnly},
+		{StateFailed, true, VerdictFailed},
+		{StateInterrupted, false, VerdictFailed},
+	} {
+		if got := VerdictFor(row(tt.state), tt.smoke); got != tt.want {
+			t.Errorf("%s smoke=%v → %q, want %q", tt.state, tt.smoke, got, tt.want)
+		}
 	}
 }

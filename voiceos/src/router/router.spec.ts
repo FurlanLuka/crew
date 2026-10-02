@@ -6,7 +6,8 @@ import { configureLog } from '../log.js';
 import type { Input, ListenMode, PendingAsk } from '../shared/protocol.js';
 import { Store } from '../state/store.js';
 import { Kernel } from './kernel.js';
-import { DICTATION_NOTE, UtteranceRouter, type KernelTurn } from './router.js';
+import { DICTATION_NOTE, UtteranceRouter, type KernelTurn, type RouterOptions } from './router.js';
+import type { KernelTurnStart } from '../speech/instant-ack.js';
 
 configureLog({ quiet: true });
 
@@ -32,6 +33,7 @@ const createWorktree = (ref: string) => ({
 
 const createHarness = (
 	turn: (text: string) => KernelTurn = () => ({ reply: '', did: [], calls: [] }),
+	onKernelTurn?: RouterOptions['onKernelTurn'],
 ) => {
 	const store = new Store();
 	store.dispatch({
@@ -50,6 +52,7 @@ const createHarness = (
 		store,
 		judge: englishJudge,
 		now: () => 5000,
+		...(onKernelTurn ? { onKernelTurn } : {}),
 		kernel: async (text, { setListenMode, openUrl, heardFrom, ...options }) => {
 			kernelCalls.push({ text, ...options });
 			heardFroms.push(heardFrom);
@@ -62,7 +65,7 @@ const createHarness = (
 	const view = (ref: string | null) =>
 		store.dispatch({
 			type: 'switch_view',
-			view: ref ? { kind: 'session', ref } : { kind: 'grid' },
+			view: ref ? { kind: 'session', ref } : { kind: 'active' },
 		});
 
 	return { store, router, kernelCalls, listenSwitches, docOpeners, heardFroms, inputs, view };
@@ -99,13 +102,13 @@ describe('UtteranceRouter', () => {
 		).toEqual(['Okay.', "What's waiting on me?"]);
 	});
 
-	it('on Mission Control → no screen, logged under the grid', async () => {
+	it('off a session → no screen, logged under home', async () => {
 		const harness = createHarness();
 
 		await harness.router.handle('restart the dev servers');
 
 		expect(harness.kernelCalls[0]).toMatchObject({ forwardTo: null, screen: null });
-		expect(harness.store.state.voiceLog.grid).toHaveLength(1);
+		expect(harness.store.state.voiceLog.home).toHaveLength(1);
 	});
 
 	it('what the kernel did and said is logged; a turn that only ignored the words is marked so', async () => {
@@ -118,7 +121,7 @@ describe('UtteranceRouter', () => {
 		await harness.router.handle('restart the servers');
 		await harness.router.handle('hmm');
 
-		expect(harness.store.state.voiceLog.grid).toEqual([
+		expect(harness.store.state.voiceLog.home).toEqual([
 			{
 				utterance: 'restart the servers',
 				did: ['crew_dev restart store-front/main'],
@@ -167,7 +170,7 @@ describe('UtteranceRouter', () => {
 		await harness.router.handle('next');
 
 		expect(
-			harness.store.state.voiceLog.grid?.map((entry) => [entry.utterance, entry.isFailed ?? false]),
+			harness.store.state.voiceLog.home?.map((entry) => [entry.utterance, entry.isFailed ?? false]),
 		).toEqual([
 			['boom', true],
 			['next', false],
@@ -314,7 +317,7 @@ describe('UtteranceRouter', () => {
 		await router.handle('open checkout');
 
 		expect(store.state.spoken.at(-1)?.text).toContain('Anthropic key');
-		expect(store.state.voiceLog.grid?.[0]?.reply).toContain('Anthropic key');
+		expect(store.state.voiceLog.home?.[0]?.reply).toContain('Anthropic key');
 	});
 
 	it('blank words → nothing at all', async () => {
@@ -474,6 +477,118 @@ describe('UtteranceRouter', () => {
 
 			expect(kept).toEqual([{ text: DUMP, reason: 'store-front/main waits on an answer' }]);
 			expect(harness.kernelCalls).toEqual([]);
+		});
+	});
+
+	describe('the instant ack', () => {
+		const REQUEST = 'run the tests in the api please';
+
+		const ackHarness = (turn?: (text: string) => KernelTurn) => {
+			const turns: KernelTurnStart[] = [];
+			const over: string[] = [];
+			const harness = createHarness(turn, (started) => {
+				turns.push(started);
+
+				return { cancel: () => over.push(started.text) };
+			});
+
+			return { ...harness, turns, over };
+		};
+
+		it('spoken words for the kernel → its clock starts as the router takes them, and stops with the turn', async () => {
+			const harness = ackHarness();
+
+			await harness.router.handle(REQUEST, 'voice', { heardFrom: 1200 });
+
+			expect(harness.turns).toEqual([{ text: REQUEST, startedAt: 5000 }]);
+			expect(harness.over).toEqual([REQUEST]);
+		});
+
+		it('the kernel fails → the turn still stops', async () => {
+			const harness = ackHarness(() => {
+				throw new Error('model down');
+			});
+
+			await harness.router.handle(REQUEST, 'voice');
+
+			expect(harness.over).toEqual([REQUEST]);
+		});
+
+		it('typed or dictated → never: nobody waits in silence for them', async () => {
+			const harness = ackHarness();
+			harness.view('store-front/main');
+
+			await harness.router.handle(REQUEST, 'typed');
+			await harness.router.handle(REQUEST, 'dictated');
+
+			expect(harness.turns).toEqual([]);
+		});
+
+		it('the clock starts as the router takes the words, before a slow judge reads them', async () => {
+			let clock = 1_000;
+			const store = new Store(() => clock);
+			store.dispatch({
+				type: 'worktrees',
+				worktrees: [createWorktree('store-front/main'), createWorktree('checkout-api/main')],
+			});
+			store.dispatch({ type: 'active_loaded', refs: ['store-front/main', 'checkout-api/main'] });
+			store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+			store.dispatch({ type: 'offer_switch', ref: 'checkout-api/main' });
+			const turns: KernelTurnStart[] = [];
+			const router = new UtteranceRouter({
+				store,
+				now: () => clock,
+				// Not a bare no, read in 400 ms: the words go on to the kernel.
+				judge: async () => {
+					clock += 400;
+
+					return 'no';
+				},
+				kernel: async () => ({ reply: '', did: [], calls: [] }),
+				onKernelTurn: (turn) => {
+					turns.push(turn);
+
+					return { cancel: () => undefined };
+				},
+			});
+
+			await router.handle('nope, the other one', 'voice', { heardFrom: 1_001 });
+
+			expect(clock).toBe(1_400);
+			expect(turns).toEqual([{ text: 'nope, the other one', startedAt: 1_000 }]);
+		});
+
+		it('"For checkout?" answered yes by voice → settled by the router, never', async () => {
+			const harness = ackHarness();
+			harness.view('store-front/main');
+			harness.store.dispatch({
+				type: 'ask_which',
+				ref: 'checkout-api/main',
+				screen: 'store-front/main',
+				text: 'put it on top of the checkout branch',
+			});
+			const asked = harness.store.state.targetAsk;
+
+			await harness.router.handle('yes', 'voice', { heardFrom: (asked?.at ?? 0) + 1 });
+
+			expect(asked).not.toBeNull();
+			expect(harness.kernelCalls).toEqual([]);
+			expect(harness.turns).toEqual([]);
+		});
+
+		it('settled by the router (a bare no to "Switch to …?") → never', async () => {
+			const harness = ackHarness();
+			harness.view('store-front/main');
+			harness.store.dispatch({ type: 'offer_switch', ref: 'checkout-api/main' });
+			const offer = harness.store.state.switchOffer;
+
+			await harness.router.handle('no', 'voice', { heardFrom: (offer?.at ?? 0) + 1 });
+
+			expect(harness.inputs).toContainEqual(
+				expect.objectContaining({ type: 'switch_offer_closed' }),
+			);
+			expect(harness.kernelCalls).toEqual([]);
+			expect(harness.turns).toEqual([]);
 		});
 	});
 });

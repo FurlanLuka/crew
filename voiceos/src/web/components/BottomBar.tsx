@@ -1,48 +1,31 @@
-import {
-	type FormEvent,
-	type KeyboardEvent as ReactKeyboardEvent,
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from 'react';
-import { isInDialog } from '../in-dialog.js';
-import { isActive } from '../../shared/active.js';
-import { readSessionLabel } from '../../shared/machines.js';
-import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/protocol.js';
-import { describeRouteChip } from '../../shared/route-chip.js';
-import { Mic, isMicAllowed } from '../audio.js';
-import { PRE_ROLL_MS } from '../ptt.js';
-import { describeListening, type InputMode, isListeningMode } from '../listen-mode.js';
+// The voice bar, docked across the bottom: what the session on screen waits on (its question, plan,
+// permission or confirm), a moment Voice OS asks, the last spoken line, then the mic, where your words
+// go and the listening mode. The mic's logic is use-voice-input.ts.
+import type { Action, ClientMessage, State } from '../../shared/protocol.js';
+import { readLabel } from '../../state/helpers.js';
+import { isListeningMode, type InputMode } from '../listen-mode.js';
+import { readScreenAsk } from '../moments.js';
 import type { ListeningMode } from '../../shared/protocol.js';
-import type { ListenCommand, MicStatus } from '../types.js';
-import { useListenMode } from '../use-listen-mode.js';
 import type { KeptDictation } from '../use-connection.js';
-import type { PcmPlayer } from '../use-speech-player.js';
+import type { VoiceInput } from '../use-voice-input.js';
+import { AskDock } from './AskDock.js';
+import { Composer } from './Composer.js';
+import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
+import { MomentsRow } from './MomentsRow.js';
+import { QueueList } from './QueueList.js';
 
 interface BottomBarProps {
 	state: State;
-	isConnected: boolean;
-	listenCommand: ListenCommand | null;
-	// On demand: "Voice OS" was heard; ignoredAt: when speech without it was last left alone.
+	voice: VoiceInput;
+	// On demand: "Voice OS" was heard; isIgnored: speech without it was just left alone.
 	isAwake: boolean;
-	ignoredAt: number;
-	// A dictation the server could not send, or a press that never got its release: back into the input.
+	isIgnored: boolean;
 	keptDictation: KeptDictation | null;
 	send: (message: ClientMessage) => void;
-	sendBinary: (chunk: ArrayBuffer) => void;
-	player: PcmPlayer;
-	micStatus: MicStatus;
-	onMicStatusChange: (micStatus: MicStatus) => void;
 }
 
-const IGNORED_DOT_MS = 900;
-// Discard asks once more: a misclick must not throw away a long dictation.
-const DISCARD_CONFIRM_MS = 3000;
-
-const MIC_TITLES: Record<InputMode, string> = {
+export const MIC_TITLES: Record<InputMode, string> = {
 	push: 'Hold Space or this button to talk',
 	'on-demand':
 		'On demand: always listening, but only what follows “Voice OS” is taken; say “end of turn” to send at once',
@@ -57,415 +40,63 @@ const DISCORD_TITLES: Record<ListeningMode, string> = {
 	'hands-free': 'Voice via Discord, hands-free: every turn is acted on',
 };
 
-const isTypingInField = (event: KeyboardEvent) =>
-	event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-
-// The mode menu and the dictation buttons take Space as their own click.
-const isOnOwnControl = (event: KeyboardEvent) =>
-	event.target instanceof Element && event.target.closest('.mode-wrap, .composer-side') !== null;
-
-const formatElapsed = (ms: number): string => {
-	const seconds = Math.max(0, Math.floor(ms / 1000));
-
-	return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-};
-
-// The session on screen when it is not active: nothing to type to, only to browse or activate.
-const readInactiveScreen = (state: State): string | null => {
-	const ref = state.view.kind === 'session' ? state.view.ref : null;
-
-	return ref && state.sessions[ref] && !isActive(state, ref) ? ref : null;
-};
-
-// Where a dictation goes when sent: the session on screen, unless it waits on an answer.
-const describeDictationTarget = (state: State): string => {
-	const ref = state.view.kind === 'session' ? state.view.ref : null;
-
-	if (!ref || !state.sessions[ref]) {
-		return 'Stays in the box';
-	}
-
-	return state.asks.some((ask) => ask.ref === ref) ? 'Stays in the box' : `→ ${ref}`;
-};
-
-const useElapsed = (since: number | null): number => {
-	const [now, setNow] = useState(Date.now());
-
-	useEffect(() => {
-		if (since === null) {
-			return;
-		}
-
-		setNow(Date.now());
-		const timer = setInterval(() => setNow(Date.now()), 1000);
-
-		return () => clearInterval(timer);
-	}, [since]);
-
-	return since === null ? 0 : now - since;
-};
+const MicIcon = () => (
+	<svg
+		width="16"
+		height="16"
+		viewBox="0 0 16 16"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.5"
+		aria-hidden="true"
+	>
+		<rect x="6" y="2" width="4" height="8" rx="2" />
+		<path d="M3.5 8a4.5 4.5 0 0 0 9 0M8 12.5V14" />
+	</svg>
+);
 
 export const BottomBar = ({
 	state,
-	isConnected,
-	listenCommand,
+	voice,
 	isAwake,
-	ignoredAt,
+	isIgnored,
 	keptDictation,
 	send,
-	sendBinary,
-	player,
-	micStatus,
-	onMicStatusChange,
 }: BottomBarProps) => {
-	const [draft, setDraft] = useState('');
-	const micRef = useRef<Mic | null>(null);
-	const fieldRef = useRef<HTMLTextAreaElement | null>(null);
-	// Set synchronously on key down/up: a release while the mic is still opening must not be lost.
-	const isPressedRef = useRef(false);
-	const [dictationStartedAt, setDictationStartedAt] = useState<number | null>(null);
-	const [isDiscardArmed, setIsDiscardArmed] = useState(false);
-	const isDictating = dictationStartedAt !== null;
-	const elapsedMs = useElapsed(dictationStartedAt);
-	const route = describeRouteChip(state, { draft });
-	const isAlarm = route.isAnswering && !isDictating;
+	const { listenMode, micStatus, isDictating } = voice;
 	// In the Discord voice channel, Discord is the mic: this page shows what is heard and takes typing.
 	const discord = state.discord?.isOwnerIn ? state.discord : null;
-	const isOnDiscordRef = useRef(false);
-	isOnDiscordRef.current = discord !== null;
-
-	useEffect(() => {
-		player.setNotify((id) => send({ type: 'audio_done', id }));
-	}, [player, send]);
-
-	const getMic = useCallback(() => {
-		micRef.current ??= new Mic({
-			onAudio: sendBinary,
-			onStop: () => {
-				send({ type: 'ptt_stop' });
-
-				if (!isPressedRef.current) {
-					onMicStatusChange('idle');
-				}
-			},
-		});
-
-		return micRef.current;
-	}, [send, sendBinary, onMicStatusChange]);
-
-	const { listenMode, listenModeRef, chooseListenMode } = useListenMode({
-		isConnected,
-		listenCommand,
-		getMic,
-		send,
-		onMicStatusChange,
-	});
-
-	useEffect(() => {
-		// Already allowed: open now so the first press has its pre-roll; a listening mode opens its own.
-		void isMicAllowed().then((isAllowed) =>
-			isAllowed && !isListeningMode(listenModeRef.current)
-				? getMic()
-						.ensure()
-						.catch(() => {
-							// The first press opens it again and reports a denial.
-						})
-				: undefined,
-		);
-	}, [getMic]);
-
-	const handleTalkStart = useCallback(
-		async ({ isDictation = false }: { isDictation?: boolean } = {}) => {
-			// The mic already streams in the listening modes, or Discord has it.
-			if (
-				isPressedRef.current ||
-				isListeningMode(listenModeRef.current) ||
-				isOnDiscordRef.current
-			) {
-				return;
-			}
-
-			isPressedRef.current = true;
-			// Read before stopping: stopping marks the speech as having ended now.
-			const hasRecentSpeech = player.isAudibleWithin(PRE_ROLL_MS);
-			player.stop();
-			const microphone = getMic();
-			const sampleRate = await microphone.ensure().catch(() => null);
-
-			if (sampleRate === null) {
-				isPressedRef.current = false;
-				onMicStatusChange('denied');
-
-				return;
-			}
-
-			// Released while the mic was opening: nothing was started, nothing to stop.
-			if (!isPressedRef.current) {
-				return;
-			}
-
-			// Speech that was audible just before the press would ride in on the pre-roll.
-			microphone.press(
-				() =>
-					send({
-						type: 'ptt_start',
-						sampleRate,
-						...(isDictation ? { dictation: true as const } : {}),
-					}),
-				{ withPreRoll: !hasRecentSpeech },
-			);
-			onMicStatusChange('live');
-
-			if (isDictation) {
-				setDictationStartedAt(Date.now());
-			}
-		},
-		[getMic, player, send, onMicStatusChange],
-	);
-
-	const handleTalkStop = useCallback(() => {
-		if (!isPressedRef.current) {
-			return;
-		}
-
-		isPressedRef.current = false;
-		setDictationStartedAt(null);
-		setIsDiscardArmed(false);
-		// The tail keeps streaming briefly; the mic sends ptt_stop when it is done.
-		micRef.current?.release();
-	}, []);
-
-	const handleDiscard = useCallback(() => {
-		// Words already heard: one more click, so a slip of the mouse loses nothing.
-		if (state.transcript?.text && !isDiscardArmed) {
-			setIsDiscardArmed(true);
-
-			return;
-		}
-
-		send({ type: 'ptt_cancel' });
-		handleTalkStop();
-	}, [state.transcript?.text, isDiscardArmed, send, handleTalkStop]);
-
-	useEffect(() => {
-		if (!isDiscardArmed) {
-			return;
-		}
-
-		const timer = setTimeout(() => setIsDiscardArmed(false), DISCARD_CONFIRM_MS);
-
-		return () => clearTimeout(timer);
-	}, [isDiscardArmed]);
-
-	// The server sends a dictation when its tab drops; this page only has to stop recording.
-	useEffect(() => {
-		if (!isConnected && isDictating) {
-			handleTalkStop();
-		}
-	}, [isConnected, isDictating, handleTalkStop]);
-
-	useEffect(() => {
-		if (keptDictation) {
-			// After anything already typed: a stuck press can end while the developer types.
-			setDraft((typed) =>
-				typed.trim() ? `${typed.trimEnd()} ${keptDictation.text}` : keptDictation.text,
-			);
-			fieldRef.current?.focus();
-		}
-	}, [keptDictation]);
-
-	const chooseMode = useCallback(
-		(mode: InputMode) => {
-			// Switching away mid-dictation sends it: nothing said is ever dropped by a menu.
-			if (isDictating && mode !== 'dictation') {
-				handleTalkStop();
-			}
-
-			chooseListenMode(mode);
-		},
-		[isDictating, handleTalkStop, chooseListenMode],
-	);
-
-	useEffect(() => {
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (
-				event.code !== 'Space' ||
-				event.repeat ||
-				isTypingInField(event) ||
-				isOnOwnControl(event) ||
-				isInDialog(event)
-			) {
-				return;
-			}
-
-			event.preventDefault();
-
-			// Dictation: Space starts it; ending it is a deliberate click on Send.
-			if (listenModeRef.current === 'dictation') {
-				if (!isPressedRef.current) {
-					void handleTalkStart({ isDictation: true });
-				}
-
-				return;
-			}
-
-			void handleTalkStart();
-		};
-
-		const handleKeyUp = (event: KeyboardEvent) => {
-			// A live press always takes its release, wherever focus moved meanwhile: a swallowed key-up
-			// left the mic open for minutes (debug note 30).
-			const isLivePress = isPressedRef.current && listenModeRef.current !== 'dictation';
-
-			if (
-				event.code !== 'Space' ||
-				(!isLivePress && (isTypingInField(event) || isOnOwnControl(event)))
-			) {
-				return;
-			}
-
-			// Also keeps a focused mic button from taking the key-up as a click that would end it.
-			event.preventDefault();
-
-			if (listenModeRef.current !== 'dictation') {
-				handleTalkStop();
-			}
-		};
-
-		// A page that loses focus or is hidden never sees the key-up: the press ends here instead.
-		// A dictation is ended only by Send, so it carries on.
-		const endPressOnLeave = () => {
-			if (listenModeRef.current !== 'dictation') {
-				handleTalkStop();
-			}
-		};
-
-		const handleVisibilityChange = () => {
-			if (document.visibilityState === 'hidden') {
-				endPressOnLeave();
-			}
-		};
-
-		window.addEventListener('keydown', handleKeyDown);
-		window.addEventListener('keyup', handleKeyUp);
-		window.addEventListener('blur', endPressOnLeave);
-		document.addEventListener('visibilitychange', handleVisibilityChange);
-
-		return () => {
-			window.removeEventListener('keydown', handleKeyDown);
-			window.removeEventListener('keyup', handleKeyUp);
-			window.removeEventListener('blur', endPressOnLeave);
-			document.removeEventListener('visibilitychange', handleVisibilityChange);
-		};
-	}, [handleTalkStart, handleTalkStop]);
-
-	const draftChars = draft.trim().length;
-	// Sent anyway, the gateway refused it and the words were gone: they stay in the field instead.
-	const isTooLong = draftChars > MAX_TEXT_CHARS;
-
-	const submitDraft = () => {
-		if (!draft.trim() || isTooLong) {
-			return;
-		}
-
-		send({ type: 'utterance', text: draft.trim() });
-		setDraft('');
-	};
-
-	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		submitDraft();
-	};
-
-	const handleFieldKey = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-		// Enter sends, Shift+Enter is a new line; a composing IME keeps its Enter.
-		if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-			event.preventDefault();
-			submitDraft();
-		}
-	};
-
-	const transcript = state.transcript;
-	const isListening = isListeningMode(listenMode) && micStatus === 'live';
-	const [isIgnoredShown, setIsIgnoredShown] = useState(false);
-	const isShowingTranscript = (micStatus === 'live' || discord !== null) && Boolean(transcript);
-	const fieldValue = isShowingTranscript && transcript ? transcript.text : draft;
-
-	// Grows with the words up to its CSS max height, then scrolls; live words keep their end in view.
-	useLayoutEffect(() => {
-		const field = fieldRef.current;
-
-		if (!field) {
-			return;
-		}
-
-		field.style.height = 'auto';
-		field.style.height = `${field.scrollHeight}px`;
-
-		if (isShowingTranscript) {
-			field.scrollTop = field.scrollHeight;
-		}
-	}, [fieldValue, isShowingTranscript]);
-
-	// The call is heard: a chime, as a press would give the feeling of.
-	useEffect(() => {
-		if (isAwake) {
-			player.playChime();
-		}
-	}, [isAwake, player]);
-
-	// Speech without "Voice OS" was heard and left alone: a brief dot, so the mic is seen to work.
-	useEffect(() => {
-		if (!ignoredAt) {
-			return;
-		}
-
-		setIsIgnoredShown(true);
-		const timer = setTimeout(() => setIsIgnoredShown(false), IGNORED_DOT_MS);
-
-		return () => clearTimeout(timer);
-	}, [ignoredAt]);
-
 	const isDictationMode = listenMode === 'dictation';
+	const isListening = isListeningMode(listenMode) && micStatus === 'live';
 	const discordTitle = discord
 		? discord.isHearing
 			? DISCORD_TITLES[discord.mode]
 			: 'Voice via Discord, but not hearing you: pick a mode to try again'
 		: '';
-	// A dictation or live words already under way keep their box: what was said is never hidden.
-	const inactiveRef = isDictating || isShowingTranscript ? null : readInactiveScreen(state);
-	const routeLabel = isDictationMode ? describeDictationTarget(state) : route.label;
-	const routeClass = isDictationMode
-		? 'dictation'
-		: isAlarm
-			? 'alarm'
-			: route.isForKernel
-				? 'kernel'
-				: '';
+	const viewed = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
+	const ask = readScreenAsk(state);
+	const dispatch = (action: Action) => send({ type: 'action', action });
 
 	return (
-		<footer className={`botbar ${isAlarm ? 'alarm' : ''}`}>
-			<div className="voice-controls">
+		<footer className="vo-bar">
+			{ask && <AskDock ask={ask} label={readLabel(state, ask.ref)} dispatch={dispatch} />}
+			<MomentsRow state={state} dispatch={dispatch} />
+			{viewed && <QueueList session={viewed} dispatch={dispatch} />}
+			<LastSpokenLine state={state} />
+			<div className="vo-composer">
 				{discord ? (
 					<span
-						className={`mic discord ${discord.isHearing ? '' : 'off'}`}
+						className={`vo-mic discord ${discord.isHearing ? '' : 'off'}`}
 						role="img"
 						aria-label={discord.isHearing ? 'Voice via Discord' : 'Voice via Discord, not hearing'}
 						title={discordTitle}
 					>
-						<svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-							<path
-								d="M3 9.5V8a5 5 0 0 1 10 0v1.5M3 9.5h1.5v3H3.5a.5.5 0 0 1-.5-.5Zm10 0h-1.5v3h1a.5.5 0 0 0 .5-.5Z"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinejoin="round"
-							/>
-						</svg>
+						Discord
 					</span>
 				) : (
 					<button
 						type="button"
-						className={`mic ${micStatus === 'live' ? 'live' : ''} ${micStatus === 'denied' ? 'off' : ''} ${
+						className={`vo-mic mic ${micStatus === 'live' ? 'live' : ''} ${micStatus === 'denied' ? 'off' : ''} ${
 							isDictating ? 'dictating' : ''
 						}`}
 						aria-label={
@@ -483,115 +114,64 @@ export const BottomBar = ({
 						onClick={
 							isDictationMode
 								? () =>
-										isDictating ? handleTalkStop() : void handleTalkStart({ isDictation: true })
+										isDictating
+											? voice.handleTalkStop()
+											: void voice.handleTalkStart({ isDictation: true })
 								: undefined
 						}
-						onPointerDown={isDictationMode ? undefined : () => void handleTalkStart()}
-						onPointerUp={isDictationMode ? undefined : handleTalkStop}
-						onPointerLeave={isDictationMode ? undefined : handleTalkStop}
+						onPointerDown={isDictationMode ? undefined : () => void voice.handleTalkStart()}
+						onPointerUp={isDictationMode ? undefined : voice.handleTalkStop}
+						onPointerLeave={isDictationMode ? undefined : voice.handleTalkStop}
 					>
-						<span className={`wave ${micStatus === 'live' ? 'live' : ''}`} aria-hidden="true">
-							<i style={{ animationDelay: '0s' }} />
-							<i style={{ animationDelay: '.1s' }} />
-							<i style={{ animationDelay: '.2s' }} />
-						</span>
+						{micStatus === 'live' ? (
+							<span className="wave live" aria-hidden="true">
+								<i style={{ animationDelay: '0s' }} />
+								<i style={{ animationDelay: '.1s' }} />
+								<i style={{ animationDelay: '.2s' }} />
+							</span>
+						) : (
+							<MicIcon />
+						)}
 					</button>
 				)}
-				<ModeMenu
-					{...(discord
-						? {
-								mode: discord.mode,
-								modes: DISCORD_MODES,
-								onChoose: (mode: InputMode) =>
-									isListeningMode(mode) && send({ type: 'discord_listen', mode }),
-								isOn: discord.isHearing,
-								isAwake: false,
-								isIgnored: false,
-								isDenied: !discord.isHearing,
-								title: discordTitle,
-							}
-						: {
-								mode: listenMode,
-								onChoose: chooseMode,
-								isOn: isListening,
-								isAwake,
-								isIgnored: isIgnoredShown,
-								isDenied: micStatus === 'denied',
-								title: MIC_TITLES[listenMode],
-							})}
-					languages={state.languages}
-					onLanguages={(languages) =>
-						send({ type: 'action', action: { type: 'set_languages', languages } })
-					}
+				<Composer
+					state={state}
+					voice={voice}
+					isAwake={isAwake}
+					isOnDiscord={discord !== null}
+					keptDictation={keptDictation}
+					send={send}
 				/>
-			</div>
-			{inactiveRef ? (
-				<div className="composer inactive">
-					<span className="c-dim">
-						{readSessionLabel(state, inactiveRef)} isn't active: activate it to talk to it.
-					</span>
-					<button
-						type="button"
-						className="pill-button primary"
-						onClick={() => send({ type: 'action', action: { type: 'activate', ref: inactiveRef } })}
-					>
-						Activate
-					</button>
-				</div>
-			) : (
-				<form
-					className={`composer ${isDictating ? 'dictating' : ''} ${isShowingTranscript ? 'hearing' : ''}`}
-					onSubmit={handleSubmit}
-				>
-					<textarea
-						ref={fieldRef}
-						rows={1}
-						value={fieldValue}
-						readOnly={isDictating}
-						onChange={(event) => setDraft(event.target.value)}
-						onKeyDown={handleFieldKey}
-						placeholder={
-							discord
-								? discord.isHearing
-									? 'Voice OS hears you in Discord — or type a command'
-									: 'Not hearing you in Discord — pick a mode to try again, or type a command'
-								: describeListening({
-										mode: isListening || isDictationMode ? listenMode : 'push',
-										isAwake,
-										isDictating,
-									})
-						}
-						aria-label="Say or type a command"
+				{!discord && (
+					<ModeMenu
+						mode={listenMode}
+						onChoose={voice.chooseMode}
+						isOn={isListening}
+						isAwake={isAwake}
+						isIgnored={isIgnored}
+						isDenied={micStatus === 'denied'}
+						title={MIC_TITLES[listenMode]}
+						languages={state.languages}
+						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
 					/>
-					<div className="composer-side">
-						{isDictating ? (
-							<>
-								<span className="dictation-clock" title="Dictating for">
-									<i aria-hidden="true" />
-									{formatElapsed(elapsedMs)}
-								</span>
-								<button
-									type="button"
-									className={`pill-button ghost ${isDiscardArmed ? 'armed' : ''}`}
-									onClick={handleDiscard}
-								>
-									{isDiscardArmed ? 'Discard all?' : 'Discard'}
-								</button>
-								<button type="button" className="pill-button primary" onClick={handleTalkStop}>
-									Send
-								</button>
-							</>
-						) : null}
-						{isTooLong ? (
-							<span className="too-long" role="alert">
-								Too long to send: {draftChars.toLocaleString('en')} of{' '}
-								{MAX_TEXT_CHARS.toLocaleString('en')} characters
-							</span>
-						) : null}
-						<span className={`route ${routeClass}`}>{routeLabel}</span>
-					</div>
-				</form>
-			)}
+				)}
+				{discord && (
+					<ModeMenu
+						mode={discord.mode}
+						modes={DISCORD_MODES}
+						onChoose={(mode: InputMode) =>
+							isListeningMode(mode) && send({ type: 'discord_listen', mode })
+						}
+						isOn={discord.isHearing}
+						isAwake={false}
+						isIgnored={false}
+						isDenied={!discord.isHearing}
+						title={discordTitle}
+						languages={state.languages}
+						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
+					/>
+				)}
+			</div>
 		</footer>
 	);
 };

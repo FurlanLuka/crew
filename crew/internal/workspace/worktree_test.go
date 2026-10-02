@@ -151,15 +151,6 @@ func TestRemoveWorktree(t *testing.T) {
 	}
 }
 
-// checkoutInTrash plants a trash entry, as a removal would.
-func checkoutInTrash(t *testing.T, base string) {
-	t.Helper()
-	dir := filepath.Join(config.TrashDir, "1-"+base)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // trashHolds reports whether a trash entry named after base exists.
 func trashHolds(t *testing.T, base string) bool {
 	t.Helper()
@@ -328,20 +319,64 @@ func TestAddWorktree_CopiesEnvFromSiblingWhenCanonicalHasNone(t *testing.T) {
 	}
 }
 
-func TestTailLog_StripsPromptNoise(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "x.log")
-	os.WriteFile(path, []byte(strings.Join([]string{
-		"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m          \x1b]7;file://Mac/x\x07➜  checkout-api eexport STORE_API_URL='x'; PORT=1 make start",
-		"export STORE_API_URL='http://localhost:1'; PORT=1 make start_uvicorn",
-		"\x1b[31merror: No environment file found at: `.env`\x1b[0m",
-		"make: *** [start_uvicorn] Error 2",
-		"➜  checkout-api git:(crew/x)",
-		"",
-	}, "\n")), 0o644)
+// tailLog reads a log the way the logs view does (CleanLogLines), then drops
+// the prompt crew's command was typed at.
+func TestTailLog(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"prompt noise", []string{
+			"\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m          \x1b]7;file://Mac/x\x07➜  checkout-api eexport STORE_API_URL='x'; PORT=1 make start",
+			"export STORE_API_URL='http://localhost:1'; PORT=1 make start_uvicorn",
+			"\x1b[31merror: No environment file found at: `.env`\x1b[0m",
+			"make: *** [start_uvicorn] Error 2",
+			"➜  checkout-api git:(crew/x)",
+			"",
+		}, "error: No environment file found at: `.env`\nmake: *** [start_uvicorn] Error 2"},
+		{"a progress bar redrawn with \\r and a bracketed-paste prompt", []string{
+			"Downloading 10%\rDownloading 50%\rDownloading 100%",
+			"Error: listen EADDRINUSE",
+			"\x1b[?2004hcheckout-api %",
+			"",
+		}, "Downloading 100%\nError: listen EADDRINUSE"},
+	} {
+		path := filepath.Join(t.TempDir(), "x.log")
+		os.WriteFile(path, []byte(strings.Join(tt.lines, "\n")), 0o644)
+		if got := tailLog(path, 4); got != tt.want {
+			t.Errorf("%s: tailLog =\n%q\nwant\n%q", tt.name, got, tt.want)
+		}
+	}
+}
 
-	got := tailLog(path, 4)
-	want := "error: No environment file found at: `.env`\nmake: *** [start_uvicorn] Error 2"
-	if got != want {
-		t.Errorf("tailLog =\n%q\nwant\n%q", got, want)
+// The CLI asks before it prints the base table, so every refusal must be
+// readable without touching disk.
+func TestWorktreeAddRefusal(t *testing.T) {
+	ws := Workspace{Name: "ws", Projects: []WorkspaceProject{{Name: "api"}}, Worktrees: []Worktree{{Name: "main"}}}
+	direct := Workspace{Name: "ws", Projects: []WorkspaceProject{{Name: "api", Mode: ModeDirect}}, Worktrees: []Worktree{{Name: "main"}}}
+	flat := Workspace{Name: "ws", Projects: []WorkspaceProject{{Name: "api"}}}
+	for _, tt := range []struct {
+		name string
+		ws   Workspace
+		wt   string
+		want string
+	}{
+		{"new name", ws, "wrk1", ""},
+		{"existing", ws, "main", "already has a worktree 'main'"},
+		{"bad name", ws, "Bad Name", "worktree"},
+		{"direct member", direct, "wrk1", "direct mode"},
+		{"pre-2.0", flat, "wrk1", "crew migrate"},
+	} {
+		err := WorktreeAddRefusal(tt.ws, tt.wt)
+		if tt.want == "" {
+			if err != nil {
+				t.Errorf("%s: %v", tt.name, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		}
 	}
 }

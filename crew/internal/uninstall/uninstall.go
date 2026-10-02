@@ -7,6 +7,7 @@ import (
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/dev"
+	"github.com/FurlanLuka/crew/crew/internal/voice"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
 )
 
@@ -28,8 +29,12 @@ type Report struct {
 func Run(purge bool) (Report, error) {
 	var report Report
 
-	debug.Log("uninstall", "stopping all dev sessions (purge=%v)", purge)
+	debug.Log("uninstall", "stopping all dev sessions and crew's server (purge=%v)", purge)
 	dev.StopAll("")
+	// The server lives outside crew-dev-* (a dev stop must not end it), so
+	// it is stopped by name — the cockpit and a remote daemon alike.
+	voice.Stop()
+	voice.StopRemote()
 
 	if purge {
 		names, err := workspace.List()

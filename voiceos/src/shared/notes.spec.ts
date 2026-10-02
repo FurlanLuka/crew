@@ -39,7 +39,7 @@ interface NotesKeyRow {
 	file: string;
 }
 
-// Shared with crew's Go side (crew voice notes), which reads the same table.
+// Shared with crew's Go side (crew server notes), which reads the same table.
 const NOTES_KEYS = JSON.parse(
 	readFileSync(join(import.meta.dir, '../../test/fixtures/shared/notes-keys.json'), 'utf8'),
 ) as NotesKeyRow[];

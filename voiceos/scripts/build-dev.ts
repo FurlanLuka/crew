@@ -1,4 +1,4 @@
-// One Voice OS build for crew voice dev push: `bun scripts/build-dev.ts <bun target> <version> <outfile>`.
+// One Voice OS build for crew server dev push: `bun scripts/build-dev.ts <bun target> <version> <outfile>`.
 // The same flags as a release, stamped with the push's version so every machine of it matches.
 import { join } from 'node:path';
 import { COMPILE_FLAGS } from './compile-flags.js';

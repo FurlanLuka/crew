@@ -39,8 +39,11 @@ export const sendRecorded = async ({
 		TOOLS_THAT_TAKE_WORDS.includes(done as ToolName),
 	);
 
+	// A switch or go back that found more in the words already asked the judge: the rest is the
+	// developer's for where they went, whatever the kernel copied.
 	if (
 		tookWords &&
+		toolContext.movedTo !== ref &&
 		toolContext.utterance !== undefined &&
 		normalizeSaid(words.text) === normalizeSaid(toolContext.utterance) &&
 		(await toolContext.judge({

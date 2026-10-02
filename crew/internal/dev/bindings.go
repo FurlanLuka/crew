@@ -456,17 +456,6 @@ func ParseTarget(arg string) (TargetRef, error) {
 	return TargetRef{Project: proj, Server: server, HasServer: hasServer}, nil
 }
 
-// IsLegacyToken reports whether a value still uses the pre-2.1 {{url:X}} /
-// {{port:X}} spelling, so the list can say so without rewriting anything.
-func IsLegacyToken(value string) bool {
-	for _, m := range tokenPattern.FindAllStringSubmatch(value, -1) {
-		if strings.Contains(m[1], ":") {
-			return true
-		}
-	}
-	return false
-}
-
 // TokenFor spells a token. The one place that knows how; the scan, the CLI
 // shorthands and the legend all come here, so nothing else can drift from
 // what ParseTokens reads.

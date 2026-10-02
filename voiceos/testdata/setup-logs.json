@@ -1,0 +1,10 @@
+{
+  "lines": [
+    "▸ checkout",
+    "✓ checkout 0.9s",
+    "▸ pnpm install",
+    "ERR_PNPM_NO_MATCHING_VERSION"
+  ],
+  "project": "store-api",
+  "ref": "store-front/wrk1"
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "check",
+    "path": "/Users/dev/.crew/checks/store-api.json",
+    "removed": false
+  },
+  {
+    "kind": "logs",
+    "path": "/Users/dev/.crew/logs/old-ws--main",
+    "removed": false
+  },
+  {
+    "kind": "trash",
+    "path": "/Users/dev/.crew/trash",
+    "removed": false
+  },
+  {
+    "kind": "prune",
+    "path": "/Users/dev/.crew/projects/store-api",
+    "removed": false
+  }
+]

@@ -13,7 +13,7 @@ const buildMachine = (patch: Partial<Machine> = {}): Machine => ({
 	...patch,
 });
 
-// refs: every worktree crew has; active: the ones voice reaches (this Mac's setup always does).
+// refs: every worktree crew has; active: the ones voice reaches; setup never is.
 const createState = (refs: string[], patch: Partial<State> = {}): State => {
 	const order = ['setup', ...refs];
 
@@ -119,12 +119,21 @@ describe('describeSessionList', () => {
 		).toBe('store front has store front, main, Build box store front, main.');
 	});
 
-	it(`the active ones, at most ${MAX_NAMES_SAID} → named, setup first, another machine's with it`, () => {
+	it(`the active ones, at most ${MAX_NAMES_SAID} → named, another machine's with it, never setup`, () => {
 		const remote = listRemoteWorktrees(MAX_NAMES_SAID - 1);
-		const state = createState(remote, { active: remote });
+		// A setup stored in the set by an earlier release is still not one.
+		const state = createState(remote, { active: [...remote, 'setup'] });
 
 		expect(describeSessionList({ state, machine: null, workspace: null, isActiveOnly: true })).toBe(
-			'Active: setup, Build box signals, work 1, Build box admin, work 2, Build box signals, work 3, Build box admin, work 4, Build box signals, work 5.',
+			'Active: Build box signals, work 1, Build box admin, work 2, Build box signals, work 3, Build box admin, work 4, Build box signals, work 5.',
+		);
+	});
+
+	it('no active ones → says so, never an empty list', () => {
+		const state = createState(['store-front/main'], { active: [] });
+
+		expect(describeSessionList({ state, machine: null, workspace: null, isActiveOnly: true })).toBe(
+			'No sessions are active. A worktree is reached once it is activated.',
 		);
 	});
 
@@ -135,7 +144,7 @@ describe('describeSessionList', () => {
 		});
 
 		expect(describeSessionList({ state, machine: null, workspace: null, isActiveOnly: true })).toBe(
-			'8 sessions are active, on 2 machines.',
+			'7 sessions are active, on 2 machines.',
 		);
 	});
 });

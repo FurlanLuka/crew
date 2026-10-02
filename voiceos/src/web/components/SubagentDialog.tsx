@@ -22,7 +22,7 @@ export const SubagentDialog = ({ run, isRunning, onClose }: SubagentDialogProps)
 
 	return (
 		<dialog
-			className="dialog subagent-dialog"
+			className="sd"
 			aria-label="sub-agent transcript"
 			ref={(dialog) => {
 				if (dialog && !dialog.open) {
@@ -31,29 +31,30 @@ export const SubagentDialog = ({ run, isRunning, onClose }: SubagentDialogProps)
 			}}
 			onClose={onClose}
 		>
-			<div className="dialog-form">
-				<h2 className="dialog-title">
+			<div className="sd-head">
+				<span className="sd-kicker">sub-agent</span>
+				<h2>
 					{run.agentType ?? 'agent'}{' '}
-					<span className="c-dim">· {describeRunStatus(run, isRunning, now)}</span>
+					<span className="sd-status">· {describeRunStatus(run, isRunning, now)}</span>
 				</h2>
-				<p className="hint">{run.description}</p>
-				<div className="subagent-lines" ref={listRef}>
-					{lines.length === 0 && report === null && <div className="line c-dim">Nothing yet.</div>}
-					{lines.map((item) => (
-						<StreamLine key={item.id} item={item} />
-					))}
-					{report !== null && (
-						<section className="subagent-report" aria-label="report">
-							<span className="lbl">report</span>
-							<Markdown text={report} />
-						</section>
-					)}
-				</div>
-				<div className="dialog-actions">
-					<button type="button" className="btn small" onClick={onClose}>
-						Close
-					</button>
-				</div>
+				<p className="sd-task">{run.description}</p>
+			</div>
+			<div className="sd-lines stream" ref={listRef}>
+				{lines.length === 0 && report === null && <div className="line c-dim">Nothing yet.</div>}
+				{lines.map((item) => (
+					<StreamLine key={item.id} item={item} />
+				))}
+				{report !== null && (
+					<section className="sd-report" aria-label="report">
+						<span className="sd-kicker">report</span>
+						<Markdown text={report} />
+					</section>
+				)}
+			</div>
+			<div className="sd-actions">
+				<button type="button" className="btn sm" onClick={onClose}>
+					Close
+				</button>
 			</div>
 		</dialog>
 	);
