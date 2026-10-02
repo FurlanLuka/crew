@@ -1,11 +1,12 @@
 # crew
 
-CLI + TUI workspace manager for coding agents (Claude Code gets the launch extras and the
-plugin; the CLI is agent-agnostic — docs say "agent" unless the thing is literally Claude).
+CLI workspace manager for coding agents, with a web page for setting it up and talking to its
+sessions (Claude Code gets the launch extras and the plugin; the CLI is agent-agnostic — docs
+say "agent" unless the thing is literally Claude).
 Workspaces hold projects; worktrees are isolated working copies of them, each with stable
 dev-server ports and env bindings that point projects at each other. Go, Bubbletea, module `github.com/FurlanLuka/crew/crew`, source under `crew/`.
-Agent-first: every action is a command with a non-interactive form and `--json`; the TUIs
-compose them. Example names in code, tests and docs are the generic store-front / store-api /
+Agent-first: every action is a command with a non-interactive form and `--json`; crew's page
+(Set up, served by `voiceos/`) composes them, and the one TUI left launches Claude. Example names in code, tests and docs are the generic store-front / store-api /
 checkout-api / signals / admin / infra-ops set — never a real product.
 
 ## Model
@@ -26,17 +27,17 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `rm project` is `workspace.RemoveFromPool(name, TrashClone|KeepClone)` (`pool.go`):
   `PoolRemovalAllowed` (not a member anywhere, no check kept — always, `--keep-clone`
   included) → `project.Remove` → a crew-owned clone to the trash unless kept, an adopted
-  path never moved; `PoolRemovalLine` is the one wording, printed by the CLI and the TUI.
+  path never moved; `PoolRemovalLine` is the one wording, printed by the CLI (the page shows it).
   `--purge` still parses (a note, then the default). `trash.Put` accepts `WorkspacesDir`
   or `ProjectsDir`.
 - **Workspace** — membership: which projects, each `worktree` (default) or `direct`
   (`WorkspaceProject{Name, Mode}`, `ModeLabel`; a `role` key in a pre-4.0 file is ignored
   and dropped on the next save). Pure config, nothing of its own on disk.
   `~/.crew/workspaces/<ws>.json`. `CreateWith(name, specs, opts)` = `Create` +
-  `AddProjects` with the empty workspace taken back on a pre-flight failure — the CLI,
-  the wizard and an import all create through it. `DirectRefusals(ws, pool)` is the one
-  reading of why a project cannot join `ws` directly (held elsewhere, >1 worktree, not a
-  repo), over a pure `directRefusal`; `validateSpecs` and the picker both read it.
+  `AddProjects` with the empty workspace taken back on a pre-flight failure — the CLI
+  and an import both create through it. `directRefusal` (pure) is the one reading of why
+  a project cannot join `ws` directly (held elsewhere, >1 worktree, not a repo);
+  `validateSpecs` reads it.
 - **Worktree** — one working copy of a workspace's projects, at
   `~/.crew/workspaces/<ws>/<wt>/<project>`, branch `crew/<ws>/<wt>/<project>`. Owns its
   **overrides** and its reserved **ports**. Everything crew keys per running unit — route
@@ -72,7 +73,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `resolveTarget` (`cmd_run.go`) — bare `<p>` stdout is the project-wide set, the stderr
   table labels rows `VAR (server)` (`Resolution.Label()`, the one label rule) and names
   the per-server form. Conflicts count a var as injected only when every server gets it
-  (`injectedEverywhere`). `crew dev rm <p> <s>` drops the server's scoped bindings. Precedence
+  (`injectedEverywhere`). `crew dev rm <p> <s>` drops the server's scoped bindings; `dev add --rename`
+  (`project.RenameDevServer`) keeps the server's place, re-scopes them and rewrites every
+  pool binding whose tokens name it (`retarget`, through `ParseTokens`/`TokenFor`). Precedence
   per variable: worktree override > scoped binding (its server) > project-wide binding >
   left alone; overrides stay per var (`VAR`, `proj.VAR` — no scoped keys). A template that
   only partly expands is discarded whole. Resolved values are injected as `export`s ahead
@@ -91,20 +94,19 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   through `human` and as `no_remote` in `--json`) and workspace *membership* (projects
   and modes) to one JSON file; never worktrees, ports or overrides. A v1 bundle still
   reads (its path is only a hint in a `missing` row); a v1 crew refuses a v2 bundle.
-  `crew import` bare is the wizard (one card per item); `--plan` prints
-  `transfer.PlanRows` — `exists` (same remote by `RepoKey`, or nothing to compare) ·
-  `other remote` · `clone` (into `ClonePath(name)`) · `blocked` (that dir is taken) ·
+  `crew import --plan` (and bare `import`) prints `transfer.PlanRows` — `exists` (same
+  remote by `RepoKey`, or nothing to compare) · `other remote` · `clone` (into `ClonePath(name)`) · `blocked` (that dir is taken) ·
   `missing` (no remote) · `ready`/`needs`. `Inspect` reads the pool once
-  (`ProjectStatus{Exists, Local, LocalRemote, CloneDirTaken}`). **One decision for the CLI
-  and the wizard:** `decide(p, remote, st, opts)` (pure, `decide.go`) → `Keep | Record |
+  (`ProjectStatus{Exists, Local, LocalRemote, CloneDirTaken}`). **One decision for every
+  import:** `decide(p, remote, st, opts)` (pure, `decide.go`) → `Keep | Record |
   Clone | Adopt` — exists without `--replace` keeps; a given `--path` adopts; same remote
   records on the local path (config sync, no clone); no remote refuses; else clone under
   the imported name — and `applyDecision` runs it: name validated first, `CloneAllowed`,
   an other-remote replace refused while `WorkspacesWith` is non-empty, then clone, then
   record. `ApplyProject(b, plan, name, ProjectOptions{Path, Replace, Name, Setup, EnvCmd})`
-  and the wizard's `y`/`r`/`p` both go through them; `classify(st, remote) situation`
-  (`decide.go`) is the one reading behind the plan row, the card's status line, keys and
-  guards, and `decide`'s config-sync rule (a config-only export — no remote in the bundle —
+  goes through them (Set up's import page passes the same flags); `classify(st, remote)
+  situation` (`decide.go`) is the one reading behind the plan row and `decide`'s
+  config-sync rule (a config-only export — no remote in the bundle —
   of a project here records like a same-remote one). `Inspect` also records each local
   project's workspaces (`membership()`, the workspace files read once); `--all` refuses up
   front on `Refusals(b, plan, o)` — blocked or missing rows, and under `--replace` an
@@ -113,10 +115,11 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   (`ImportWorkspace(m, CheckoutOptions) (ref, started, err)`) is `workspace.CreateWith`
   — the add-worktree pipeline, runners started on `main`, a pre-flight failure takes the
   empty workspace back; `WorkspaceRow(name, started, health, waited, err)` is the row;
-  `BaseStatuses`/`UpdateBases` give the callers (CLI, wizard card with `ctrl+p`) the base
-  table and `--pull`, `RenderBaseTable(statuses, BasePhase, spinner)` is the one drawing of
-  it (import card, new-worktree form, workspace wizard). `transfer` sits above `project`
-  and `workspace`; only `main` imports it.
+  `BaseStatuses`/`UpdateBases` give the callers the base table and `--pull` (`crew ls
+  bases <ws> [--json]` is the table alone, `FormatBaseStatuses` its text). `crew export -` /
+  `crew import -` are the bundle on stdout / stdin (`transfer.Encode`/`Decode`), bare
+  `import` is `--plan`, and `RenameWarning` names the bindings an `--name` import leaves
+  behind. `transfer` sits above `project` and `workspace`; only `main` imports it.
 - **Setup runners** (`setup_job.go`) — a worktree is made one project at a time, each by
   its own runner: `StartSetup(ref, []ProjectJob{project, install, smoke})` pre-flights
   (members, no live runner for those projects), reserves every server's port
@@ -178,16 +181,16 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   differently. `CheckServers` = one look; `WaitServers` = the loop over what runs (`dev
   check --wait`). `exec.TmuxPaneBusy` reads `pane_current_command`, so a server whose
   command is `sh -c …` reads as an idle shell.
-  The page: `startedAt` → `Settling` window; `recheckMsg` every 2 s while a row is
-  `SmokeUnreached`; those rows render `starting…` and are left out of `CheckHealth` until
-  the window closes. `portOpen` dials 127.0.0.1 then [::1].
+  `portOpen` dials 127.0.0.1 then [::1].
 - **Orientation prompt** — `RenderPrompt` is injected on every launch (`crew claude`, `crew
-  edit`, the page, `FixCommand`), single project or not; it ends with `renderCrewSection`
+  edit`, the page, `FixCommandFor`), single project or not; it ends with `renderCrewSection`
   (the ref, the `crew dev/env/run/fix` lines). `CREW_REF=<ws>/<wt>` is exported in both launch
   paths (`buildClaudeParts`, `exec.ClaudeTask.Ref`).
 - **Proxy** — one tmux session `dev.ProxySessionName` (a var: tests use their own name), its
   launch settings in `~/.crew/dev-proxy.json` (`proxyState{domain, port, error}`);
-  `EnsureProxy` relaunches on a settings mismatch, a recorded exit error, or no record;
+  `EnsureProxy` relaunches on a settings mismatch, a recorded exit error, or no record, and
+  says whether it launched: only a launched proxy gets `ProxyTLSWarning`'s `tlsStartWait`
+  (8 s) to bind HTTPS — `crew server` runs that wait beside its health loop, never ahead of it;
   `crew dev _proxy` records its exit error (`RecordProxyError`). `proxyAnswers` is an HTTP
   GET that must return crew's own status page (`proxyPageMarker`) — a bare dial passes
   against a foreign server on the port; macOS lets two SO_REUSEADDR listeners share one.
@@ -195,8 +198,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   status|stop`, `InspectProxy`.
 - **Non-interactive everywhere.** `crew fix --print`, `dev setup [--apply --port]` (no
   prompts), `migrate --yes`, `uninstall --yes`, `debug --tail=N`, `dev logs --lines=N`,
-  `dev check`, `import --plan|project|workspace|--all`, `setup status [--wait]`, `setup
-  logs --lines=N`; every creating command returns at once and takes `--wait`. `human` (`main.go`) is where
+  `dev check`, `import --plan|project|workspace|--all` (`-` = stdin), `setup status [--wait]`, `setup
+  logs --lines=N`, `add project --scan`, `add binding … --dry-run`, `ls bindings --preview`,
+  `ls bases`, `rm worktree|workspace … --dry-run`, `check project --status`, `update --check`,
+  `export -` (stdout); every creating command returns at once and takes `--wait`. `human` (`main.go`) is where
   progress and narration go: stdout normally, stderr under `--json` (and under `fix
   --print`) so the document on stdout stays parseable. Empty lists marshal as `[]`, never
   null. `add workspace <ws> <p>…` creates the workspace when missing (`CreateWith`).
@@ -205,7 +210,7 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `WorkspacesDir`), prunes git, deletes the `crew/<ws>/<wt>/<project>` branch (crew's
   namespace; commits not on the base are counted into the debug log and stay in the reflog),
   and a detached `rm -rf` clears the trash — a full build in a checkout can be 100+ GB. `main` sweeps leftovers on every start; Settings shows the size and
-  can empty it. The TUI walks worktree sizes asynchronously and keeps them for the view's life.
+  can empty it.
 - **Check** — `crew check project <name>` proves a project reproduces from nothing: the
   target `check/<name>` (`CheckWorkspace` is reserved in `Create` only, so `ParseRef`
   passes), checkout at `~/.crew/workspaces/check/<name>/<name>`, slug `check--<name>`,
@@ -227,23 +232,46 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   → `apply`; every path under `ConfigDir` or refused. Kinds `check` (failed, older than
   `KeepChecks` = 7 d, or passed and never looked at), `setup`/`logs`/`routes` of slugs with
   no worktree and no check (live slugs come from the records plus any slug whose dev or
-  setup tmux session is alive — never parsed back from the name), `lock` (no record behind
+  setup tmux session is alive — `liveSessions`, which for the voice slug adds the server's
+  `voice.SessionName`/legacy name — never parsed back from the name), `lock` (no record behind
   it, older than an hour — creation holds the lock before the file exists), `trash`,
   `prune` (`crew clean` only). `SweepOnStart(args)` in `main` runs it at most hourly
   (stamp `~/.crew/housekeeping.json`), never for `_setup`, `dev _proxy`, `clean`,
   `update` — those, and a start within the hour, get `trash.Sweep` alone; `uninstall`
   gets nothing. `crew clean
   [--dry-run]` prints `RenderReport` rows.
-- **Voice OS** — `voiceos/` (Bun/TypeScript, its own README and tests) is the voice and web
-  cockpit: one Claude Code session per worktree, a Haiku kernel routing speech, Soniox for speech
-  in and out. `crew voice` owns its lifecycle like the proxy's (`internal/voice`); the binary is
-  `~/.crew/bin/voiceos`, downloaded on the first `crew voice` from the release of the same
+- **crew's server** — bare `crew` (`cmdBare`, `cmd_server.go`) starts it when it does not answer
+  and opens its page: tmux only (`bareRequirements` — a missing `claude` is the page's to say),
+  never a key prompt, `shouldOpenBrowser(openEnv)` (pure: tty, not `--json`, not SSH, a display
+  on Linux) decides the browser for bare / `start` / `restart`, `serverLinkLines` prints the
+  link (over SSH: the proxy's when `domain`/`server_ip` is set, else the `ssh -L` line), and a
+  machine running `remote serve` gets `remoteMachineLine`, exit 0. `crew server …`
+  (`cmdServer` → `serverDispatch`, bare = status) is the lifecycle and everything below;
+  `crew voice …` (`cmdVoiceAlias`, bare = start) is the alias forever — Voice OS and older
+  machines call it (`voice _attach`, `voice _restart`, `voice logs --local`, the query
+  socket) — with one stderr note only at a tty (`showAliasNote`). tmux sessions
+  `crew-server` / `crew-server-remote` (`voice.SessionName`, `RemoteSessionName`), outside
+  `crew-dev-*` so `crew dev stop` / `crew kill` never stop the page that asked;
+  `LegacySessionName` (`crew-dev-os[-remote]`) is still read by `Inspect`/`Stop`/
+  `EnsureRemote`, and `dev.IsServerSession` keeps all of them out of `sessionsToStop` and
+  marks them `Kept` in `procs`; uninstall stops them by name. `voice.PageURL()` is the page
+  without its sign-in token — what a terminal line may print.
+- **Voice OS** — `voiceos/` (Bun/TypeScript, its own README and tests) is crew's server: Home,
+  Set up (every config form, each running one crew command, plus a Setup with Claude chat per
+  machine) and Voice OS, the voice and web cockpit — one Claude Code session per worktree, a
+  Haiku kernel routing speech, Soniox for speech in and out. Set up's `--json` reads are
+  pinned by Go-written goldens in `voiceos/testdata/` (`cmd_golden_test.go`, `-update-golden`;
+  `crew-lines.json` is crew's own mutation and refusal lines), and every argv it builds
+  (`voiceos/test/fixtures/shared/setup-argv.json`) must walk `help.Root`
+  (`TestSetupArgvWalkTheTree`). `crew server` owns its lifecycle like the proxy's
+  (`internal/voice`); the binary is
+  `~/.crew/bin/voiceos`, downloaded on the first start from the release of the same
   version (`internal/release.InstallBinary`, shared with `crew update`: staged beside, ad-hoc
   signed on macOS, then renamed over — never rewritten in place) with a `.version` stamp beside
   it; `crew update` refreshes it when the stamp differs and never restarts it.
   `voiceos/scripts/build-release.ts` builds the per-platform archives GoReleaser attaches
   (`release.extra_files`); `bun run install-dev` builds from source into the same path and drops
-  the stamp. **Dev push** (`cmd_voice_dev.go`, `internal/voice/devpush*.go`): `crew voice dev push`
+  the stamp. **Dev push** (`cmd_server_dev.go`, `internal/voice/devpush*.go`): `crew server dev push`
   from a checkout on any machine builds crew + Voice OS per target (`DevPushTargets`: the main plus
   `ssh uname -sm` per remote; a remote asks the main through its query socket, `voice dev _targets`)
   as `dev-<sha>[-dirty-<hash>]`, then hands off to the main (`voice dev _handoff <version>` — no path; the main's link appends
@@ -251,23 +279,23 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   remote source's build over scp → stage + sha256 on every machine (a failure installs nothing) →
   `InstallScript` + restart in `RestartOrder` (other remotes, the main, the source last). Status in
   `~/.crew/voiceos/dev-push.json`. `release.IsDevBuild` (`dev`, `dev-*`) is the one dev rule; a
-  `dev-<sha>` stamp is exact in `DecideDaemon`. `crew voice` checks tmux and `claude` first (`UnmetRequirements`) and hands the
+  `dev-<sha>` stamp is exact in `DecideDaemon`. `crew server start` checks tmux and `claude` first (`UnmetRequirements`) and hands the
   `claude` it found to Voice OS (`VOICEOS_CLAUDE_BIN`): the tmux server's PATH is not the
   caller's. **Remote machines:** the same binary is a remote with `voiceos remote serve` (a
-  daemon in tmux `crew-dev-os-remote`, its own `~/.crew/voiceos/remote/`, a 0600 unix socket) that
-  runs only the session manager; `crew voice remote` starts it, `crew voice _attach` (hidden, stdout
+  daemon in tmux `crew-server-remote`, its own `~/.crew/voiceos/remote/`, a 0600 unix socket) that
+  runs only the session manager; `crew server remote` starts it, `crew voice _attach` (hidden, stdout
   is the link) is what a main runs over `ssh <host>`. The main keeps the one reducer: refs carry the
   machine (`vm1:store-front/main`, `shared/machine-ref.ts`), `remote/mapping.ts` routes hands
   effects and prefixes reports, and a reconnect is a snapshot the main reconciles (`remote/resync.ts`),
   never an event replay; unacked effects ride in the next hello. A remote behind the main's release is
   updated by the main (`crew update` over SSH, once per version; never a downgrade). `~/.crew/voiceos/machines.json` is
-  the machine list (`crew voice machines`, the page, voice), watched by the running Voice OS.
-  **Discord** (optional): `crew voice discord setup` (`cmd_voice_discord.go`,
+  the machine list (`crew server machines`, the page, voice), watched by the running Voice OS.
+  **Discord** (optional): `crew server discord setup` (`cmd_server_discord.go`,
   `internal/voice/discord.go`) takes only the bot token (stdin), checks it against Discord REST
   v10, saves it as `discord.key` beside the other keys (not in `KeyNames`, so the first `crew
-  voice` never asks) and writes `~/.crew/voiceos/discord.json` (guild, channel, owner) atomically,
+  server start` never asks) and writes `~/.crew/voiceos/discord.json` (guild, channel, owner) atomically,
   which the running Voice OS watches; Voice OS reports back in `discord-status.json`.
-  **Queries** (`cmd_voice_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew voice
+  **Queries** (`cmd_server_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew server
   logs|debug-notes [show <n>]|notes` are read-only, `parseQueryArgs` pure (unknown flags fail,
   times made absolute UTC where typed, `--lines` 1–1000), the path by `DecideRole` (`--local` →
   cockpit = main → daemon = remote → machines.json = main → alone). The main reads its own
@@ -288,8 +316,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   other sessions' updates said together once it is quiet — how an off-screen session's long
   answer is heard; `voiceos/test/support/conversation.ts` runs whole spoken
   conversations (real store, kernel with a scripted model, router, voice) for the tests. Its keys
-  live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the first `crew voice`
-  at a tty asks for missing ones and checks them (`CheckKey`: 401/403 is a rejection, anything
+  live in `~/.config/crew-voiceos/*.key` (0600), never in the environment: the page asks for
+  them, `crew server keys set` takes one on stdin, and `crew server start` at a tty asks for
+  missing ones — each checked (`CheckKey`: 401/403 is a rejection, anything
   else saves with a warning). Its prompt evals cost money: never in CI, run locally when asked —
   the `voiceos-evals` project skill (`.claude/skills/voiceos-evals/`) has the suites, commands,
   costs and rules; the `route` suite is classification-only and never part of `all`.
@@ -298,18 +327,23 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   English regex; the speech layer (stop words, "end of turn", the wake word) stays English.
   **Active sessions and names** are Voice OS's own preferences, with no crew command. Only an
   active session exists for voice: its Claude runs and it is in the kernel's turn; an inactive one
-  has no process (`startWorker`, `state/helpers.ts`, refuses an inactive ref — every implicit
-  start: send, "now", reconnect), says nothing (gates in `speech/connect.ts`, `dev/watch.ts`, the
-  reconnect recap, `addMeanwhile`) and is browsed and activated on the page. `shared/active.ts`
-  (`isActive` — true for the main's `SETUP_REF`, always active — and `listActiveRefs`, setup
-  first) is the one reading of `state.active` outside the reducer and its persistence. `state/active.ts` reduces
+  has no process, says nothing (gates in `speech/connect.ts`, `dev/watch.ts`, the reconnect
+  recap, `addMeanwhile`) and is browsed and activated on the page. `shared/active.ts` is the one
+  reading of `state.active` outside the reducer and its persistence: `isActive` (what voice says
+  and hears — never a setup session, this Mac's `setup` or a remote's `vm1:setup`: those live in
+  Set up's chat, never spoken to), `canRun` (what may have a running Claude — an active session or
+  any machine's setup session; only the lifecycle sites ask it: `startWorker` in
+  `state/helpers.ts` refuses a ref it rejects — every implicit start: send, "now", reconnect —
+  and start, stop, resync and delivery go by it), `listActiveRefs` (the active set in the
+  developer's order, setup sessions never in it). `state/active.ts` reduces
   `activate` ("Activated X. Switch there?" by voice, silent from the page), `deactivate` (out of
   the set first, then `stopWorker` — the machine-removal clean-up; "X is working. Deactivate
   anyway?" first) and `active_loaded` (starts actives present and stopped); `machine_resynced`
   (`state/machines.ts`) runs `matchMachine` on every connect: active+stopped starts,
   inactive+running stops ("Stopped N sessions on X that aren't active"). Words to an inactive
   session wait in its queue (nothing starts it) behind `switchOffer` kind `activate` ("X isn't
-  active. Activate it?"); activating starts it and its start sends them; a remote's setup is activated like any other, never replaced by the main's. Kernel tools
+  active. Activate it?"); activating starts it and its start sends them; a remote's setup session runs for its own Set up
+  chat, never replaced by the main's. Kernel tools
   `activate`, `deactivate`, `list_sessions` (counts first) are Voice OS commands even on a
   session's screen; "Voice OS, …" always reaches the kernel. `state.names` (full ref → name,
   unique; an empty name clears). Persisted in `~/.crew/voiceos/active.json` (`pinned.json` read
@@ -333,44 +367,40 @@ crew/
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   cmd_transfer.go      crew export, crew import (parseImportArgs: --plan | project | workspace | --all)
   cmd_launch.go        crew launch, claude, edit          cmd_trash.go  crew trash
-  cmd_housekeeping.go  crew clean          cmd_voice.go  crew voice (start/stop/status/logs, keys + first-run prompt)
+  cmd_housekeeping.go  crew clean          cmd_server*.go  bare crew, crew server (+ the crew voice alias), keys
+  cmd_scan.go          crew add project --scan             cmd_binding_preview.go  add binding --dry-run, ls bindings --preview
+  cmd_rm_cost.go       rm workspace|worktree --dry-run     cmd_update.go  crew update [--check]
+  cmd_golden_test.go   the Go-written goldens in voiceos/testdata/ the web's Set up reads
   cmd_setup_runner.go  crew _setup — the hidden per-project runner (exempt from help/SKILL)
   internal/
     app/        Bubbletea shell, styles, MoveCursor/RowPrefix/RowName
     config/     ~/.crew paths, settings.json
-    debug/      debug.log + its TUI view
+    debug/      debug.log, its tail and parser
     dev/        ports, routes, proxy, binding resolution, conflicts, scan proposals, formatters
     dirsize/    bytes under a directory (pure)
     exec/       git, tmux, editor, ShellQuote, setup steps (mise + lockfile detection)
     help/       structured command tree (help_test pins every command)
     housekeeping/ the sweep: collect → plan (pure) → apply; SweepOnStart, crew clean
     procs/      process inventory and reclaim
-    project/    pool CRUD, bindings, setup — data only, no TUI
-    projectui/  the project TUI above project and workspace: the list, the project page, the add-project
-                wizard, and the server form / binding editor / check card they share; main and workspaceui import it
-    workspaceui/ the workspace TUI above workspace and projectui: the list, the new-workspace wizard, the
-                project picker they share, and the workspace page; only main imports it
-    settings/   settings TUI, trash size + empty, uninstall entry
-    transfer/   export/import bundle: Collect, Covered, Inspect, Clone, Import*; cli.go (PlanRows,
-                ApplyProject, ApplyWorkspace); picker + wizard TUIs
+    project/    pool CRUD, bindings, setup, NameFromURL, checkouts.go (the --scan walk) — data only
+    transfer/   export/import bundle: Collect, Uncovered, Inspect, Clone, Import*, Encode/Decode;
+                cli.go (PlanRows, ApplyProject, RenameWarning, CountPhrase)
     trash/      removed checkouts: rename into ~/.crew/trash, detached rm, sweep on start
     uninstall/  crew uninstall
     release/    crew's GitHub release assets: AssetURL, InstallBinary (crew update and Voice OS)
     voice/      Voice OS lifecycle (tmux session, remembered port, proxy route, login link), its
                 install (install.go), requirements (requirements.go) and API keys (keys.go)
-    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, the worktree page;
-                check.go (the check target), setup_job.go (the runner), store.go (loadFor/updateFor),
-                pool.go (RemoveFromPool, WorkspacesWith), direct.go (DirectRefusals)
+    workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, the launch picker
+                and the worktree (launch) page; check.go (the check target, VerdictFor), setup_job.go
+                (the runner), store.go (loadFor/updateFor), pool.go (RemoveFromPool, WorkspacesWith),
+                direct.go (directRefusal), wires.go (BindingWires), removal_cost.go (rm --dry-run)
 ```
 
 Import boundaries that shape the packages: `dev` cannot import `workspace` (it declares its own
 inputs — `DevProject`, `ResolveParams` — and `workspace.Resolved` builds them). `project` cannot
-import `workspace` and holds no TUI; everything that needs both sides — the project page, the
-wizard, the binding editor's live preview — lives in `projectui`, above them. `workspaceui`
-sits above `projectui` (its page pushes the project page, its picker pushes the add-project
-wizard); `workspace` keeps only the worktree page and the logs view, which `crew dev tui`
-and the `crew <ref>` shortcut open directly. `app.PopPageMsg{Status}` carries a popped
-page's last word to the one it reveals (`app.StatusMsg`).
+import `workspace`; what needs both sides (a binding's preview, a removal's cost) is in
+`workspace` or `main`. `workspace` cannot import `voice`: the page URL the worktree page
+prints is passed in by `main` (`openWorktreePage`).
 
 ### Resolved
 
@@ -381,66 +411,44 @@ every project with its path decided and its pool config attached. Commands go
 
 ### TUI
 
-`crew workspace` → workspaces → enter → the **workspace page**
-(`internal/workspaceui/page.go`): Projects (each member with its mode and pool path; `enter`
-opens the project page, `a` the picker, `d` removes from every worktree) and Worktrees
-(size, `[dev]`, `installing…`, `! health`; `enter` opens the worktree page, `r` renames, `u` duplicates,
-`n`/`+ new worktree` the base table + name in place, `d` removes — the last worktree
-removes the workspace and pops with its status) — one cursor landing on the first
-worktree, `pageRows` identity-keyed, `busy` gating keys while a removal runs, a flat
-pre-2.0 workspace shown with its migrate hint. `n` on the list is the **new-workspace
-wizard** (`wizard.go`), run *in place* in the list (the app stack has push and pop only;
-after `y` the list pushes the worktree page and drops the wizard): name → projects (the
-**picker**, `picker.go`: pool rows with tick and mode, `m` refused with the reason from
-`DirectRefusals`, `a` pushes `projectui.NewInWorkspace` and the host's `Init` reload
-ticks the name that came back; `bindingLines` says which wires between the ticked
-projects resolve) → create (`RenderBaseTable`, `ctrl+p`, `y` → `CreateWith`). The picker
-never acts — `enter` hands its specs to the host. The **worktree page**
-(`workspace/view_worktree.go`): servers with live status and URLs, the same anomaly
-block `crew dev start` prints, launch and open rows, one cursor. `crew project` → list → enter →
-the **project page** (`internal/projectui/page.go`): install (setup, env command, the plan
-`exec.ComposeSteps` previews), servers, bindings with their preview cell (`PreviewBindings`,
-one resolve per worktree) and the `○` rows the env files propose (`ScanEnv` +
-`ProposeBindings`, not yet bound; `A` adds them all), the check row — one cursor
-(`pageRows`, identity-keyed so a reload never moves it), each row edited in place: the
-one-line command form, the `serverForm`, the `bindingEditor` (scope, live preview, `ctrl+t`
-legend). `s`/`b`/`t`/`e` on the list open the page on that section (`jumpTo`). `c` runs
-`crew check project` in place through `checkCard` (shared with the wizard; the poll is what
-applies a verdict, `Init` re-arms it after a pop); `workspace.InspectCheck` is the one
-reading of a check at rest — `SetupStatus` first, then the record — and a failed check's
-health renders on top. `renderProjectPage` is pure and returns the cursor's line; `View`
-windows the body to the terminal minus `pageChrome`, and an open form collapses the other
-sections to one line each. `pageKeys`/`pageCLI` are read by the footer and the handler
-alike; an open form takes every key but esc and ctrl+c. `a` on the list is the
-**add-project wizard** (`wizard.go`): one card per step — source (URL → clone into
-`ClonePath`, `ctrl+p` adopts a path; `project.NewTarget` is the decision it shares with
-`crew add project`), install, servers (`exec.DetectDevCommand` + a port, or the server
-form in place), bindings (the editor in place, only with a target), check (`checkCard`) —
-then the finish card with the exact `crew add workspace` line. Each card explains its
-concept (`copy.go`), applies its command when pressed, and names the CLI form; esc keeps
-what was recorded. A passed check's ✓ table under `setup/check--*` keeps `KeepChecks` in
-housekeeping, so the page's check row can say when it last passed.
+The terminal keeps one interactive view, for launching; configuration is crew's page (Set up).
+`crew launch` bare is the **launch picker** (`workspace/view_picker.go`: every worktree from
+`ListSummaries`, `[dev]` / `installing…` / `! health`, enter pushes the page). `crew launch
+<ref>`, `crew dev tui <ref>` and the `crew <ref>` shortcut open the **worktree page**
+(`workspace/view_worktree.go`): launch rows only (Editor + Claude, Claude in terminal, the
+remote editor, Shell here — one cursor), its servers read-only (running with URL, or stopped),
+the anomaly block `crew dev start` prints, the health block and the runners' table while they
+install (launch rows wait, the shell and `l` stay live), `l` for the logs view
+(`view_dev_logs.go`, runner logs while installing), and `manageLine` — "manage it in crew:
+<page URL without the token> · crew dev start <ref>". It starts, stops, verifies and fixes
+nothing. `renderWorktreePage` and `renderPicker` are pure and snapshot-tested. The removed
+entry points keep a non-interactive meaning: `crew workspace` / `crew project` print the `ls`
+table and "configure in the browser: run crew" (`cmdRemovedTUI`), bare `crew config` is
+`config show`, bare `crew export` is everything to the default file, `crew import <file>` is
+the plan; creation (`landOn`) prints the runners' table and the page URL, never a TUI.
 
 ### New worktree
 
-`AddWorktree`: base-branch table with behind-origin counts (fetches in parallel; `ctrl+p` /
-`--pull` fast-forwards local bases without touching a checked-out feature branch — in the
+`AddWorktree`: base-branch table with behind-origin counts (fetches in parallel; `--pull`
+(Set up's "Pull" button) fast-forwards local bases without touching a checked-out feature branch — in the
 foreground, before the runners) → the worktree recorded, ports reserved → one runner per
 project in the background. Each: git worktree (`git -c core.hooksPath=/dev/null worktree
 add`, the error is git's last stderr line, `mise trust` when there is a `mise.toml`) →
 `.env` copied from the canonical repo or a sibling worktree → install (`mise trust && mise
-install`, then lockfile-detected package manager or the project's `Setup`; a failure ends
+install`, then the lockfile-detected package manager (uv.lock, pnpm-lock.yaml, yarn.lock, bun.lock[b], package-lock.json, in that order) or the project's `Setup`; a failure ends
 that runner, `crew setup <ref> <project>` re-runs) → smoke of its own servers: which panes
 still run and which listen on their port, last log lines for the failed ones, stop. The
-page (`Setup *Status`, `installing()`) shows the table every 2 s and gates start/launch
-until the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
+command prints the table as it stands and returns (`landOn`); `crew setup status` and crew's
+page follow it. The worktree page shows the table every 2 s and holds its launch rows until
+the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
 
 ## Conventions
 
-- **Every feature is a command.** The TUIs compose commands; nothing is TUI-only, and
-  nothing needs a tty except the TUIs, `claude` and `open` (their no-tty error names the
-  data alternative). A new command goes in `help.go` (TUI entries carry a `Notes` line
-  naming the CLI equivalent), and `help_test` requires its usage line and output format
+- **Every feature is a command.** crew's page composes commands (each form shows the argv
+  it runs); nothing is page-only, and nothing needs a tty except the launch view, `claude`
+  and `open` (their no-tty error names the data alternative). A read the page uses gets a
+  `--json` shape pinned by a golden in `voiceos/testdata/`. A new command goes in `help.go`
+  (the launch TUI's entries carry a `Notes` line naming the CLI equivalent), and `help_test` requires its usage line and output format
   verbatim in `skills/crew/SKILL.md` — the skill is what an agent reads. `docs/commands.md` is
   generated from the same tree (`help.RenderMarkdown`; `TestCommandsDocIsCurrent` fails when it
   is stale — `UPDATE_DOCS=1 go test ./internal/help -run TestCommandsDocIsCurrent`). The guides
@@ -451,14 +459,13 @@ until the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
   included; `voiceos/src/tools/definitions.spec.ts` fails when a tool has no section.
 - **Tab-separated output** for CLI list commands; `--json` everywhere via the global flag
   stripper (`extractFlag` stops at `--` so `crew run … -- child --json` keeps the child's flag).
-- **Bubbletea** for every interactive view; arrows/enter/esc; letters as accelerators.
+- **Bubbletea** for the launch view; arrows/enter/esc; letters as accelerators. Every other
+  interactive surface is crew's page.
 - **Show status after every action.**
 - **Warn, never block, at dev-server start.** Crew asserts only facts it owns — ports it
   allocated, projects it placed, URLs it handed out (hence `SmokeUnreached` vs `SmokeIdle`).
-  The one carve-out: the worktree **page** locks its start and launch rows while a failure
-  is *recorded* (`f fix`, `v verify`, logs and shell stay live); a live check never locks,
-  it marks rows and offers `f`. The CLI prints the issues and proceeds. The second
-  carve-out, CLI included: while a setup runner is alive on a worktree, `dev start`,
+  The CLI prints a recorded failure and proceeds; the worktree page shows it and still
+  launches. The one carve-out, CLI included: while a setup runner is alive on a worktree, `dev start`,
   `verify`, `setup`, `duplicate` and `rm workspace <p>` refuse (`ErrSetupRunning`) — crew
   owns the fact that it started an install, and a server on top of it is corruption, not a
   warning. `status` and `logs` (and the noun words) are reserved workspace names
