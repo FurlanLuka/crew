@@ -1,9 +1,9 @@
 // This tab's mic: push to talk, the listening modes and dictation. Owned by Voice OS's page, so its
 // voice bar and its settings set the same mode, and leaving /voice (unmounting) stops listening.
-import { isInDialog } from './in-dialog.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, State } from '../shared/protocol.js';
 import { Mic, isMicAllowed } from './audio.js';
+import { isInDialog } from './in-dialog.js';
 import { type InputMode, isListeningMode } from './listen-mode.js';
 import { PRE_ROLL_MS } from './ptt.js';
 import type { ListenCommand, MicStatus } from './types.js';
@@ -231,7 +231,7 @@ export const useVoiceInput = ({
 
 			if (
 				event.code !== 'Space' ||
-				(!isLivePress && (isTypingInField(event) || isOnOwnControl(event)))
+				(!isLivePress && (isTypingInField(event) || isOnOwnControl(event) || isInDialog(event)))
 			) {
 				return;
 			}

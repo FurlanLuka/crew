@@ -39,7 +39,7 @@ export const SubagentDialog = ({ run, isRunning, onClose }: SubagentDialogProps)
 				</h2>
 				<p className="sd-task">{run.description}</p>
 			</div>
-			<div className="sd-lines stream" ref={listRef}>
+			<div className="sd-lines" ref={listRef}>
 				{lines.length === 0 && report === null && <div className="line c-dim">Nothing yet.</div>}
 				{lines.map((item) => (
 					<StreamLine key={item.id} item={item} />

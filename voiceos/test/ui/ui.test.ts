@@ -932,13 +932,23 @@ describe('voice os ui', () => {
 		});
 		await dialog.getByText('The backoff lives in src/retry.ts.').waitFor({ timeout: 5000 });
 
+		// Space on the focused Close is the dialog's: it closes it, and never talks.
 		const talksBefore = received.filter((entry) => entry.message.type === 'ptt_start').length;
+		expect(
+			await dialog
+				.getByRole('button', { name: 'Close' })
+				.evaluate((el) => el === document.activeElement),
+		).toBe(true);
 		await page.keyboard.down('Space');
 		await Bun.sleep(300);
 		await page.keyboard.up('Space');
+		await dialog.waitFor({ state: 'detached', timeout: 5000 });
 		expect(received.filter((entry) => entry.message.type === 'ptt_start')).toHaveLength(
 			talksBefore,
 		);
+
+		await page.getByRole('button', { name: /start a subagent: Find the retry code/ }).click();
+		await dialog.waitFor({ timeout: 5000 });
 		await page.keyboard.press('Escape');
 		await dialog.waitFor({ state: 'detached', timeout: 5000 });
 		// The page's own Esc would go up a level: given time to arrive, the screen stays.

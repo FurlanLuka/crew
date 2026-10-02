@@ -1,9 +1,9 @@
 // Voice OS, the workhorse: the docked top bar, one view (Active, a session, Activate, Settings) and
 // the docked voice bar. The view is the server's (every tab shows the same); the URL follows it.
-import { isInDialog } from '../in-dialog.js';
 import { useEffect, useRef, useState } from 'react';
 import { parentView } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
+import { isInDialog } from '../in-dialog.js';
 import type { Dispatch, ListenCommand, MicStatus } from '../types.js';
 import type { ConnectionStatus, KeptDictation, OpenRequest } from '../use-connection.js';
 import type { PcmPlayer } from '../use-speech-player.js';

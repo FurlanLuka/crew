@@ -4,6 +4,8 @@ import type { SubagentRun } from '../../shared/protocol.js';
 import { SubagentDialog } from './SubagentDialog.js';
 import { SubagentsPanel } from './SubagentsPanel.js';
 import { StreamLine } from './StreamLine.js';
+import { SessionStream } from './SessionStream.js';
+import { createSession } from '../../state/reducer.js';
 
 const RUN: SubagentRun = {
 	taskId: 't1',
@@ -60,23 +62,60 @@ describe('what opens a transcript', () => {
 		expect(renderToStaticMarkup(<StreamLine item={item} />)).toContain('<div class="line tool">');
 	});
 
-	it("a running sub-agent's card is a button", () => {
-		const html = renderToStaticMarkup(
-			<SubagentsPanel
-				subagents={[
-					{
-						taskId: 't1',
-						agentType: 'Explore',
-						description: 'd',
-						startedAt: 0,
-						step: null,
-						isBackground: false,
-					},
-				]}
-				onOpen={() => undefined}
-			/>,
-		);
+	const SUBAGENT = {
+		taskId: 't1',
+		agentType: 'Explore',
+		description: 'd',
+		startedAt: 0,
+		step: null,
+		isBackground: false,
+	};
 
-		expect(html).toContain('<button type="button" class="subagent" data-task="t1">');
+	it("a running sub-agent's card is a button in Voice OS; in Set up's chat (no onOpen) a plain card", () => {
+		const opens = renderToStaticMarkup(
+			<SubagentsPanel subagents={[SUBAGENT]} onOpen={() => undefined} />,
+		);
+		const plain = renderToStaticMarkup(<SubagentsPanel subagents={[SUBAGENT]} />);
+
+		expect(opens).toContain('<button type="button" class="subagent" data-task="t1">');
+		expect(plain).toContain('<div class="subagent" data-task="t1">');
+		expect(plain).not.toContain('<button');
+	});
+
+	describe('SessionStream', () => {
+		const tool = (id: string, summary: string) =>
+			({ id, at: 1, kind: 'tool', name: 'Agent', summary }) as const;
+		const session = {
+			...createSession({ ref: 'r', label: 'r', branch: '', cwd: '/w', dirs: [], isPinned: false }),
+			stream: [tool('kept', 'start a subagent: kept'), tool('gone', 'start a subagent: gone')],
+		};
+		const countButtons = (html: string) => html.split('<button').length - 1;
+
+		it("no openFor (Set up's chat) → every row a line, even with something drawn under it", () => {
+			const html = renderToStaticMarkup(
+				<SessionStream
+					sessionRef="r"
+					session={session}
+					className="stream"
+					renderAfter={() => <span>recorded</span>}
+				/>,
+			);
+
+			expect(countButtons(html)).toBe(0);
+		});
+
+		it('openFor → only the rows it opens are buttons', () => {
+			const html = renderToStaticMarkup(
+				<SessionStream
+					sessionRef="r"
+					session={session}
+					className="stream"
+					openFor={(item) => (item.id === 'kept' ? () => undefined : null)}
+				/>,
+			);
+
+			expect(countButtons(html)).toBe(1);
+			expect(html).toContain('start a subagent: kept <span class="opens-hint">');
+		});
 	});
 });
