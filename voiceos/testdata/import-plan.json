@@ -14,8 +14,8 @@
   {
     "kind": "project",
     "name": "checkout-api",
-    "status": "clone",
-    "detail": "/Users/dev/.crew/projects/checkout-api"
+    "status": "found",
+    "detail": "/Users/dev/code/checkout-api"
   },
   {
     "kind": "project",

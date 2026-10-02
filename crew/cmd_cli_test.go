@@ -28,6 +28,8 @@ func cliConfig(t *testing.T) string {
 	config.ProjectsDir = filepath.Join(tmp, "projects")
 	config.TrashDir = filepath.Join(tmp, "trash")
 	os.MkdirAll(config.WorkspacesDir, 0o755)
+	// The import plan scans home for checkouts: never the developer's.
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
 	trash.DisableSweepForTest(t)
 	t.Cleanup(func() {
 		config.ConfigDir, config.WorkspacesDir, config.ProjectsDir, config.TrashDir = prev[0], prev[1], prev[2], prev[3]
@@ -144,8 +146,50 @@ func TestExportImportRoundTripOverStdio(t *testing.T) {
 	}
 }
 
+// A repo already checked out under home is offered instead of a second clone: the plan says
+// found with its path (text and --json), and the clone row is gone. Importing the project
+// without --path still clones: only the plan scans.
+func TestImportPlanFindsACheckoutYouHave(t *testing.T) {
+	tmp := cliConfig(t)
+	origin := filepath.Join(tmp, "origin", "store-api")
+	os.MkdirAll(origin, 0o755)
+	git(t, origin, "init", "-q", "-b", "main")
+	git(t, origin, "commit", "-q", "--allow-empty", "-m", "init")
+	have := filepath.Join(tmp, "home", "code", "store-api")
+	git(t, tmp, "clone", "-q", origin, have)
+	bundle := `{"version":2,"projects":[{"name":"store-api","remote":"file://` + origin + `"},{"name":"admin","remote":"git@github.com:example/admin.git"}]}`
+
+	plan, _ := importPlanFrom(t, bundle)
+	want := "project\tstore-api\tfound\t" + have + "\n" +
+		"project\tadmin\tclone\t" + project.ClonePath("admin") + "\n"
+	if plan != want {
+		t.Errorf("plan:\n%q\nwant\n%q", plan, want)
+	}
+
+	prevJSON := jsonOutput
+	jsonOutput = true
+	t.Cleanup(func() { jsonOutput = prevJSON })
+	doc, _ := importPlanFrom(t, bundle)
+	jsonOutput = prevJSON
+	var rows []transfer.PlanRow
+	if err := json.Unmarshal([]byte(doc), &rows); err != nil || len(rows) == 0 || rows[0] != (transfer.PlanRow{Kind: "project", Name: "store-api", Status: "found", Detail: have}) {
+		t.Errorf("--json plan: %v %q", err, doc)
+	}
+
+	out, _ := importFrom(t, bundle, "project", "store-api")
+	if !strings.Contains(out, "imported (cloned)\t"+project.ClonePath("store-api")) {
+		t.Errorf("import project without --path should clone: %q", out)
+	}
+}
+
 // importPlanFrom runs crew import - with bundle on stdin.
 func importPlanFrom(t *testing.T, bundle string) (string, string) {
+	t.Helper()
+	return importFrom(t, bundle)
+}
+
+// importFrom runs crew import - <args> with bundle on stdin.
+func importFrom(t *testing.T, bundle string, args ...string) (string, string) {
 	t.Helper()
 	prevIn := os.Stdin
 	r, w, _ := os.Pipe()
@@ -153,7 +197,7 @@ func importPlanFrom(t *testing.T, bundle string) (string, string) {
 	w.Close()
 	os.Stdin = r
 	defer func() { os.Stdin = prevIn }()
-	return runCLI(t, []string{"import", "-"}, cmdImport)
+	return runCLI(t, append([]string{"import", "-"}, args...), cmdImport)
 }
 
 // The base table every worktree creation opens with, and --pull bringing a

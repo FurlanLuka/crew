@@ -95,7 +95,8 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   and modes) to one JSON file; never worktrees, ports or overrides. A v1 bundle still
   reads (its path is only a hint in a `missing` row); a v1 crew refuses a v2 bundle.
   `crew import --plan` (and bare `import`) prints `transfer.PlanRows` — `exists` (same
-  remote by `RepoKey`, or nothing to compare) · `other remote` · `clone` (into `ClonePath(name)`) · `blocked` (that dir is taken) ·
+  remote by `RepoKey`, or nothing to compare) · `other remote` · `clone` (into `ClonePath(name)`) · `found` (a checkout of that remote already under the scan roots: `MarkFound` over
+  `ScanCheckouts`, run only by the plan, only when something would clone; imports never scan) · `blocked` (that dir is taken) ·
   `missing` (no remote) · `ready`/`needs`. `Inspect` reads the pool once
   (`ProjectStatus{Exists, Local, LocalRemote, CloneDirTaken}`). **One decision for every
   import:** `decide(p, remote, st, opts)` (pure, `decide.go`) → `Keep | Record |

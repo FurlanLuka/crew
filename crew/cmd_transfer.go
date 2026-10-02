@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
+	"github.com/FurlanLuka/crew/crew/internal/debug"
 	"github.com/FurlanLuka/crew/crew/internal/project"
 	"github.com/FurlanLuka/crew/crew/internal/transfer"
 	"github.com/FurlanLuka/crew/crew/internal/workspace"
@@ -302,8 +303,28 @@ func cmdImport() {
 		importAll(a.file, b, a)
 	default:
 		// --plan, or nothing: the wizard is gone, the plan is what it showed.
-		printImportRows(transfer.PlanRows(b, transfer.Inspect(b)))
+		printImportRows(transfer.PlanRows(b, planWithFound(b)))
 	}
+}
+
+// planWithFound is the plan with the checkouts already on this machine that could stand in for
+// a clone. Only the plan scans, and only when something would be cloned.
+func planWithFound(b transfer.Bundle) transfer.Plan {
+	plan := transfer.Inspect(b)
+	if !transfer.NeedsScan(b, plan) {
+		return plan
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		debug.Log("transfer", "plan: no home to scan: %v", err)
+		return plan
+	}
+	pool, err := project.List()
+	if err != nil {
+		debug.Log("transfer", "plan: pool unread, scanning without it: %v", err)
+	}
+	debug.Log("transfer", "plan: scanning %s for checkouts of the bundle's remotes", home)
+	return transfer.MarkFound(plan, b, project.ScanCheckouts(os.DirFS(home), home, config.ConfigDir, pool))
 }
 
 // outcomeWord is the outcome column for a project. The parenthetical says

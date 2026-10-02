@@ -25,6 +25,7 @@ const (
 	sitClone                        // not here; the bundle says where to clone from
 	sitBlocked                      // not here; the clone dir is already taken
 	sitNoRemote                     // not here, nothing to clone: a path is the only way
+	sitFound                        // not here; a checkout of its remote is already on this machine (the plan's only: imports never scan, and clone)
 )
 
 // classify is the one reading of a status and a bundle remote. Pure.
@@ -37,7 +38,10 @@ func classify(st ProjectStatus, remote string) situation {
 	case remote == "":
 		return sitNoRemote
 	case st.CloneDirTaken:
+		// Blocked even with a checkout found: "clone instead" would be refused.
 		return sitBlocked
+	case st.Found != "":
+		return sitFound
 	}
 	return sitClone
 }

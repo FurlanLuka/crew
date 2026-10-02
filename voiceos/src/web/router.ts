@@ -25,7 +25,8 @@ export type SetupPage =
 	| { page: 'machine' }
 	| { page: 'machine-new' }
 	| { page: 'settings' }
-	| { page: 'import' };
+	| { page: 'import' }
+	| { page: 'export' };
 
 export type VoiceRoute =
 	| { kind: 'active' }
@@ -90,6 +91,7 @@ const matchSetup = (parts: string[]): SetupPage => {
 		case 'machine':
 		case 'settings':
 		case 'import':
+		case 'export':
 			return { page: first };
 		case 'machines':
 			return second === 'new' ? { page: 'machine-new' } : { page: 'machine' };
@@ -162,6 +164,7 @@ const setupPath = (page: SetupPage): string => {
 		case 'machine':
 		case 'settings':
 		case 'import':
+		case 'export':
 			return `/setup/${page.page}`;
 		case 'machine-new':
 			return '/setup/machines/new';

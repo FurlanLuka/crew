@@ -1,7 +1,9 @@
 // The page's readers over crew's Go-written goldens: what the page reads is what crew prints.
 import { describe, expect, it } from 'bun:test';
 import { readGolden } from '../../../test/support/fake-crew.js';
-import { describeCost, readBases, readLogText, readPlan } from './readers.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describeCost, readBases, readBundleMembers, readLogText, readPlan } from './readers.js';
 
 describe('readBases (crew ls bases --json)', () => {
 	it('each base and how far behind; a failed fetch keeps its error, never a count', () => {
@@ -31,7 +33,7 @@ describe('readPlan (crew import - --plan --json)', () => {
 		).toEqual([
 			'project store-front exists',
 			'project store-api clone',
-			'project checkout-api clone',
+			'project checkout-api found',
 			'project infra-ops missing',
 			'workspace store-front needs',
 			'workspace admin needs',
@@ -69,5 +71,23 @@ describe('readLogText (crew dev logs / setup logs --json)', () => {
 	it('no document or no lines → nothing', () => {
 		expect(readLogText(undefined)).toBe('');
 		expect(readLogText({ lines: [] })).toBe('');
+	});
+});
+
+describe('readBundleMembers (crew export)', () => {
+	const bundle = readFileSync(
+		join(import.meta.dir, '..', '..', '..', 'testdata', 'export-bundle.json'),
+		'utf8',
+	);
+
+	it("each workspace's members by name, as crew wrote them", () =>
+		expect([...readBundleMembers(bundle)]).toEqual([
+			['store-front', ['store-front', 'store-api']],
+			['signals', ['signals']],
+		]));
+
+	it('anything else reads as no workspaces', () => {
+		expect(readBundleMembers('not json').size).toBe(0);
+		expect(readBundleMembers('{"version":2}').size).toBe(0);
 	});
 });

@@ -210,6 +210,22 @@ const readBundle = (text: string): FakeBundle | null => {
 
 const BAD_BUNDLE = 'stdin is not a crew export (version 2)';
 
+// crew's RepoKey, enough for the fixtures: transport, user@, .git and a trailing / dropped, the
+// scp form folded, the host lower-cased.
+const repoKey = (remote: string): string => {
+	const key = remote
+		.trim()
+		.replace(/^[a-z+]+:\/\//, '')
+		.replace(/^[^@/]+@/, '')
+		.replace(/^([^/:]+):/, '$1/')
+		.replace(/\/+$/, '')
+		.replace(/\.git$/, '');
+	const slash = key.indexOf('/');
+
+	// Only the host is case-blind.
+	return slash < 0 ? key.toLowerCase() : key.slice(0, slash).toLowerCase() + key.slice(slash);
+};
+
 const STEP_NAMES = (project: CrewProject | undefined): string[] => [
 	'checkout',
 	project?.setup ?? 'install',
@@ -397,42 +413,72 @@ export const createFakeCrew = ({
 
 		// transfer.PlanRows over this machine: a project here by name is kept (same remote) or another
 		// repo; a new one clones into crew's projects folder unless that is taken or it has no remote.
-		const planRows = (bundle: FakeBundle): PlanRow[] => [
-			...bundle.projects.map((entry): PlanRow => {
-				const here = findProject(entry.name);
-				const row = { kind: 'project' as const, name: entry.name };
+		// crew add project --scan's known: the pool has that path, or that repo.
+		const isKnown = (checkout: FakeMachine['scan'][number]): boolean =>
+			checkout.known ||
+			machine.projects.some(
+				(project) =>
+					project.path === checkout.path ||
+					(project.remote !== '' && repoKey(project.remote) === repoKey(checkout.remote)),
+			);
 
-				if (here) {
-					return !entry.remote || !here.remote || here.remote === entry.remote
-						? { ...row, status: 'exists', detail: here.path }
-						: { ...row, status: 'other remote', detail: `local ${here.remote || 'no remote'}` };
-				}
+		const planRows = (bundle: FakeBundle): PlanRow[] => {
+			const used = new Set<string>();
 
-				if (!entry.remote) {
-					return { ...row, status: 'missing', detail: 'no git remote — --path=<dir>' };
-				}
+			return [
+				...bundle.projects.map((entry): PlanRow => {
+					const here = findProject(entry.name);
+					const row = { kind: 'project' as const, name: entry.name };
 
-				return machine.projects.some((project) => project.path === clonePath(entry.name))
-					? {
+					if (here) {
+						return !entry.remote || !here.remote || here.remote === entry.remote
+							? { ...row, status: 'exists', detail: here.path }
+							: { ...row, status: 'other remote', detail: `local ${here.remote || 'no remote'}` };
+					}
+
+					if (!entry.remote) {
+						return { ...row, status: 'missing', detail: 'no git remote — --path=<dir>' };
+					}
+
+					if (machine.projects.some((project) => project.path === clonePath(entry.name))) {
+						return {
 							...row,
 							status: 'blocked',
 							detail: `${clonePath(entry.name)} exists — --path=${clonePath(entry.name)} adopts it, or delete it`,
-						}
-					: { ...row, status: 'clone', detail: clonePath(entry.name) };
-			}),
-			...bundle.workspaces.map((membership): PlanRow => {
-				const row = { kind: 'workspace' as const, name: membership.name };
-				const needs = membership.projects
-					.map((member) => member.name)
-					.filter((name) => !findProject(name));
+						};
+					}
 
-				return findWorkspace(membership.name)
-					? { ...row, status: 'exists' }
-					: needs.length
-						? { ...row, status: 'needs', detail: needs.join(', ') }
-						: { ...row, status: 'ready' };
-			}),
-		];
+					// As crew's plan: a checkout of that remote already in the code folders, not one crew
+					// has, stands in — one checkout for one project.
+					const found = machine.scan.find(
+						(checkout) =>
+							!isKnown(checkout) &&
+							!used.has(checkout.path) &&
+							repoKey(checkout.remote) === repoKey(entry.remote ?? ''),
+					);
+
+					if (found) {
+						used.add(found.path);
+
+						return { ...row, status: 'found', detail: found.path };
+					}
+
+					return { ...row, status: 'clone', detail: clonePath(entry.name) };
+				}),
+				...bundle.workspaces.map((membership): PlanRow => {
+					const row = { kind: 'workspace' as const, name: membership.name };
+					const needs = membership.projects
+						.map((member) => member.name)
+						.filter((name) => !findProject(name));
+
+					return findWorkspace(membership.name)
+						? { ...row, status: 'exists' }
+						: needs.length
+							? { ...row, status: 'needs', detail: needs.join(', ') }
+							: { ...row, status: 'ready' };
+				}),
+			];
+		};
 
 		const importProject = (
 			entry: FakeBundle['projects'][number],
@@ -628,12 +674,7 @@ export const createFakeCrew = ({
 				);
 			}
 			case 'scan_checkouts':
-				return json(
-					machine.scan.map((row) => ({
-						...row,
-						known: row.known || machine.projects.some((project) => project.path === row.path),
-					})),
-				);
+				return json(machine.scan.map((row) => ({ ...row, known: isKnown(row) })));
 			case 'setup_status': {
 				if (command.ref.startsWith('check/')) {
 					const check = machine.checks[command.ref.slice('check/'.length)];

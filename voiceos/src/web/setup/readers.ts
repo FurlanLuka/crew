@@ -149,3 +149,33 @@ export const readCheckouts = (json: unknown): FoundCheckout[] =>
 				]
 			: [];
 	});
+
+// crew export's bundle, read only for what the import page needs that the plan rows don't say:
+// each workspace's members by name (crew makes a workspace from exactly those names).
+export const readBundleMembers = (text: string): Map<string, string[]> => {
+	try {
+		const bundle = JSON.parse(text) as { workspaces?: unknown };
+		const workspaces = Array.isArray(bundle.workspaces) ? bundle.workspaces : [];
+
+		return new Map(
+			workspaces.flatMap((raw): [string, string[]][] => {
+				const row = raw as { name?: unknown; projects?: unknown };
+
+				return typeof row.name === 'string' && Array.isArray(row.projects)
+					? [
+							[
+								row.name,
+								row.projects.flatMap((member) =>
+									typeof (member as { name?: unknown }).name === 'string'
+										? [(member as { name: string }).name]
+										: [],
+								),
+							],
+						]
+					: [];
+			}),
+		);
+	} catch {
+		return new Map();
+	}
+};

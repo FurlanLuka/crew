@@ -240,6 +240,20 @@ func TestGoldenEnv(t *testing.T) {
 	}))
 }
 
+// What crew export writes, as the import page reads it: workspaces by their members' names.
+func TestGoldenExportBundle(t *testing.T) {
+	checkGolden(t, "export-bundle.json", transfer.Bundle{Version: transfer.Version,
+		Projects: []transfer.Exported{
+			{Project: project.Project{Name: "store-front", Setup: "pnpm install"}, Remote: "git@github.com:example/store-front.git"},
+			{Project: project.Project{Name: "store-api"}, Remote: "git@github.com:example/store-api.git"},
+			{Project: project.Project{Name: "signals"}},
+		},
+		Workspaces: []transfer.Membership{
+			{Name: "store-front", Projects: []workspace.WorkspaceProject{{Name: "store-front"}, {Name: "store-api"}}},
+			{Name: "signals", Projects: []workspace.WorkspaceProject{{Name: "signals", Mode: workspace.ModeDirect}}},
+		}})
+}
+
 func TestGoldenImportPlan(t *testing.T) {
 	b := transfer.Bundle{Version: transfer.Version,
 		Projects: []transfer.Exported{
@@ -257,7 +271,7 @@ func TestGoldenImportPlan(t *testing.T) {
 		Projects: []transfer.ProjectStatus{
 			{Exists: true, Local: &local, LocalRemote: "git@github.com:example/store-front.git"},
 			{},
-			{},
+			{Found: "/Users/dev/code/checkout-api"},
 			{},
 		},
 		Workspaces: []transfer.WorkspaceStatus{{}, {}},
