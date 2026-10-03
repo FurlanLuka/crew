@@ -3,6 +3,8 @@
 
 export interface FakeQueryParams {
 	failResume?: boolean;
+	// Why a resume fails: by default Claude's own "No conversation found"; a kill says something else.
+	resumeError?: string;
 	holdTurns?: boolean;
 	// What a side-answer fork replies; an Error makes the fork throw.
 	sideReply?: unknown[] | Error;
@@ -28,6 +30,7 @@ interface FakeQueryCall {
 
 export const createFakeQuery = ({
 	failResume = false,
+	resumeError = 'No conversation found with session ID',
 	holdTurns = false,
 	sideReply = [],
 	askOn,
@@ -63,7 +66,7 @@ export const createFakeQuery = ({
 		if (failResume && call.options.resume) {
 			return {
 				[Symbol.asyncIterator]: () => ({
-					next: () => Promise.reject(new Error('No conversation found with session ID')),
+					next: () => Promise.reject(new Error(resumeError)),
 				}),
 				interrupt: async () => undefined,
 				setPermissionMode: async () => undefined,

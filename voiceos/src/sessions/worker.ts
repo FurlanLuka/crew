@@ -167,6 +167,11 @@ export interface WorkerOptions {
 	isPinned: boolean;
 }
 
+// Claude's own words when a resumed session id is not in its store (the CLI's stderr, carried in the
+// SDK's exit error).
+export const isMissingConversation = (message: string): boolean =>
+	message.includes('No conversation found');
+
 export class Worker {
 	private input = new InputChannel();
 	private activeQuery: Query | null = null;
@@ -364,7 +369,10 @@ export class Worker {
 				return;
 			}
 
-			if (resumeId && !this.isInitialized) {
+			// Only Claude saying the conversation is gone starts a fresh one. A kill or crash while it
+			// reopens (a restart, memory pressure) keeps the id, so the next start resumes the same
+			// conversation and its history.
+			if (resumeId && !this.isInitialized && isMissingConversation(message)) {
 				log.warn('resume failed, starting a fresh session', { ref, error: message });
 				this.options.onResumeFailed();
 
