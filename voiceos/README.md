@@ -359,7 +359,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | --- | --- |
 | `token` | The sign-in token (0600, tightened if looser). |
 | `state.json` | Port, pid, start time and machine statuses, for crew (`VOICEOS_RECORD_STATE` only). |
-| `sessions.json` | The registry: each ref's Claude Code session id and briefing version. |
+| `sessions.json` | The registry: each ref's Claude Code session id and briefing version. An id is dropped only when Claude says that conversation is gone (`isMissingConversation`); a kill or crash while it reopens keeps it, so the next start resumes the same history. |
 | `view.json` | The last view shown — saved whenever the view moves (a switch, or an activation that opens its session). |
 | `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |

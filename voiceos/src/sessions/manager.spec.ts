@@ -177,7 +177,10 @@ describe('SessionManager', () => {
 	});
 
 	describe('briefing a resumed session', () => {
-		const createResumedHarness = (briefing?: string, { failResume = false } = {}) => {
+		const createResumedHarness = (
+			briefing?: string,
+			{ failResume = false, resumeError }: { failResume?: boolean; resumeError?: string } = {},
+		) => {
 			const store = new Store();
 			store.dispatch({
 				type: 'worktrees',
@@ -195,7 +198,7 @@ describe('SessionManager', () => {
 			const registryFile = join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json');
 			// Same id the fake reports, as a real resume keeps its id.
 			recordSession({ file: registryFile, ref: 'store-front/main', sessionId: 's-1', briefing });
-			const fake = createFakeQuery({ failResume });
+			const fake = createFakeQuery({ failResume, ...(resumeError ? { resumeError } : {}) });
 			const manager = new SessionManager({
 				...connectStore(store),
 				registryFile,
@@ -275,6 +278,31 @@ describe('SessionManager', () => {
 			expect(session?.stream.filter((item) => item.kind === 'user')).toEqual([
 				expect.objectContaining({ text: 'Check the dev server logs.' }),
 			]);
+			harness.manager.stopAll();
+		});
+
+		it('killed while it reopens → the conversation is kept: no fresh session, the next start resumes it', async () => {
+			const harness = createResumedHarness(BRIEFING_VERSION, {
+				failResume: true,
+				resumeError: 'Claude Code process terminated by signal SIGKILL',
+			});
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+			await waitTick();
+
+			// A failed resume never counts as started: nothing fresh took its place.
+			expect(harness.fake.started).toHaveLength(0);
+			expect(loadRegistry(harness.registryFile)['store-front/main']?.sessionId).toBe('s-1');
+			expect(harness.store.state.sessions['store-front/main']?.status).toBe('stopped');
+			harness.manager.stopAll();
+		});
+
+		it('Claude says the conversation is gone → a fresh one takes its place', async () => {
+			const harness = createResumedHarness(BRIEFING_VERSION, { failResume: true });
+			harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+			await waitTick();
+
+			expect(harness.fake.started).toHaveLength(1);
+			expect(harness.store.state.sessions['store-front/main']?.status).toBe('idle');
 			harness.manager.stopAll();
 		});
 

@@ -767,7 +767,7 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/bin/voiceos` | The Voice OS binary, with a `.version` stamp beside it. |
 | `~/.crew/voiceos/token` | The sign-in token (0600). Deleting it and restarting signs every browser out. |
 | `~/.crew/voiceos/state.json` | The port and pid crew tracks, and each machine's last status. |
-| `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. |
+| `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. There is no time limit: a session keeps its conversation until you clear it or Claude Code no longer has it. |
 | `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart (one saved by an earlier release opens as Active, or Activate for a machine's grid). |
 | `~/.crew/voiceos/voice-off.json` | Whether voice is off (the top bar's **voice**). |
 | `~/.crew/voiceos/active.json`, `names.json` | Your active sessions and session names. An older `pinned.json` is read once, when `active.json` does not exist yet. |
