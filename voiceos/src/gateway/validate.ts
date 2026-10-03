@@ -84,10 +84,6 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('go_back') }),
 	z.object({ type: z.literal('play_meanwhile') }),
 	z.object({ type: z.literal('recap_heard'), refs: z.array(refSchema).max(200) }),
-	z.object({
-		type: z.literal('set_languages'),
-		languages: z.array(z.string().max(8)).max(20),
-	}),
 	z.object({ type: z.literal('set_voice_off'), voiceOff: z.boolean() }),
 	z.object({ type: z.literal('offer_switch'), ref: refSchema }),
 	z.object({

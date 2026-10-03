@@ -2,7 +2,6 @@ import { followSends } from './sends.js';
 import { sayAck, sayRef } from './helpers.js';
 import { isTargetInput, reduceTargetAsk } from './target-ask.js';
 import { addMeanwhile, dropMeanwhileFor, playMeanwhile, settleMeanwhile } from './meanwhile.js';
-import { defaultLanguages, toLanguages } from '../shared/languages.js';
 import {
 	decideGoBack,
 	describeGoBack,
@@ -192,7 +191,6 @@ export const createInitialState = (): State => ({
 	machines: {},
 	active: [],
 	names: {},
-	languages: defaultLanguages(),
 	voiceOff: false,
 	discord: null,
 	pendingActivations: [],
@@ -1004,9 +1002,6 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 		case 'discord_presence':
 			return withoutEffects({ ...state, discord: input.presence });
-
-		case 'set_languages':
-			return withoutEffects({ ...state, languages: toLanguages(input.languages) });
 
 		case 'set_voice_off':
 			if (input.voiceOff === state.voiceOff) {

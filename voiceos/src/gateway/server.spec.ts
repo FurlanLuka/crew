@@ -333,7 +333,6 @@ describe('parseClientMessage', () => {
 		go_back: { type: 'go_back' },
 		play_meanwhile: { type: 'play_meanwhile' },
 		recap_heard: { type: 'recap_heard', refs: ['store/main'] },
-		set_languages: { type: 'set_languages', languages: ['en', 'sl'] },
 		set_voice_off: { type: 'set_voice_off', voiceOff: true },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },
 		ask_which: {

@@ -28,7 +28,6 @@ import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistActive } from './memory/active.js';
 import { persistNames } from './memory/names.js';
-import { persistLanguages } from './memory/languages.js';
 import { persistVoiceOff } from './memory/voice-off.js';
 import { followVoiceOff } from './speech/voice-off.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
@@ -363,7 +362,6 @@ void machines.monitorDevServers();
 // the active sessions of this Mac; a remote's start when its link is up.
 persistActive({ store, file: paths.activeFile, legacyFile: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
-persistLanguages({ store, file: paths.languagesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });
 
 const pollTimer = setInterval(async () => {

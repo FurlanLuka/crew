@@ -662,32 +662,6 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('the languages you speak → picked in the listening menu, kept by the server', async () => {
-		const { context, page } = await openMicTab();
-		await page.getByRole('button', { name: 'Listening mode' }).click();
-		const slovenian = page.getByRole('menuitemcheckbox', { name: 'Slovenian' });
-
-		expect(
-			await page.getByRole('menuitemcheckbox', { name: 'English' }).getAttribute('aria-checked'),
-		).toBe('true');
-		await slovenian.click();
-		await waitUntil(() => store.state.languages.includes('sl'));
-		// The page shows it once the server's change comes back.
-		await page.waitForFunction(
-			() =>
-				[...document.querySelectorAll('[role="menuitemcheckbox"]')].some(
-					(item) =>
-						item.textContent === 'Slovenian' && item.getAttribute('aria-checked') === 'true',
-				),
-			null,
-			{ timeout: 5000 },
-		);
-
-		await slovenian.click();
-		await waitUntil(() => !store.state.languages.includes('sl'));
-		await context.close();
-	}, 20_000);
-
 	it('the input grows with the words up to six lines, then scrolls; Shift+Enter is a new line, Enter sends', async () => {
 		const { context, page, client } = await openMicTab();
 		const field = page.getByRole('textbox', { name: 'Say or type a command' });

@@ -42,9 +42,8 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 
 ## Languages
 
-You can talk to Voice OS in any language, and mix them. Choose the ones you speak under
-**Languages you speak** in the listening menu (the round button next to the mic). Soniox is told
-to expect them; English is the default.
+You can talk to Voice OS in any language, and mix them, even within a sentence. There is nothing to
+pick: Soniox works out which language you're speaking as you speak.
 
 **Works in any language:** where your words go, answers to questions and permissions ("ja",
 "ne", "sí"), approvals and refusals, taking words back ("vergiss das"), "that was for checkout",
@@ -208,7 +207,7 @@ dev servers, and it is active at once. Talk to it by its name like any session; 
 page, or "remove research", stops it and drops it from the list, leaving the folder alone. crew
 keeps them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
 
-**Settings** has the listening mode and languages, the two keys (checked before saving), Discord,
+**Settings** has the listening mode, the two keys (checked before saving), Discord,
 session names, and your machines with their crew version.
 
 **Sending things to Discord.** With Discord set up, ask a session to send something there ("send
@@ -218,7 +217,7 @@ own chat, or to a text channel you pick under **Settings → Discord → Message
 discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
 they post only when you ask.
 
-![Voice OS settings: listening mode, languages, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
+![Voice OS settings: listening mode, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's
 page shows its history and an **Activate** button, with no input box (see
