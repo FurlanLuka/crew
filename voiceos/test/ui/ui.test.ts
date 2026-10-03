@@ -397,6 +397,107 @@ describe('voice os ui', () => {
 		}
 	}, 20_000);
 
+	it("a dev server's logs from its row: crew's lines, followed until paused; Esc closes only the window", async () => {
+		store.dispatch({
+			type: 'dev_servers',
+			ref: 'store-front/main',
+			isSettled: true,
+			servers: [
+				{ name: 'web', port: 4120, url: 'http://localhost:4120', state: 'running', detail: null },
+				{ name: 'api', port: 4121, url: null, state: 'died', detail: null },
+			],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const view = store.state.view;
+		const { context, page } = await signIn();
+		const reads = () => crew.calls.filter((call) => call.command.type === 'dev_logs');
+
+		try {
+			await page.getByRole('button', { name: 'api logs' }).click();
+			const dialog = page.getByRole('dialog', { name: 'dev server logs' });
+			await dialog.getByText('listening').waitFor({ timeout: 5000 });
+			expect(reads().at(-1)?.command).toEqual({
+				type: 'dev_logs',
+				ref: 'store-front/main',
+				server: 'api',
+				lines: 200,
+			});
+
+			// Following reads again every 2 s; paused, nothing more is asked.
+			const followed = reads().length;
+			await waitUntil(() => reads().length > followed, 4000);
+			await dialog.getByRole('button', { name: 'Pause' }).click();
+			const paused = reads().length;
+			await Bun.sleep(2500);
+			expect(reads().length).toBe(paused);
+
+			await page.keyboard.press('Escape');
+			await dialog.waitFor({ state: 'detached', timeout: 5000 });
+			expect(store.state.view).toEqual(view);
+		} finally {
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: true,
+				servers: [],
+			});
+			await context.close();
+		}
+	}, 20_000);
+
+	it("a dev server's logs from its row: crew's lines, a tab per server, followed until paused; Esc closes only the window", async () => {
+		store.dispatch({
+			type: 'dev_servers',
+			ref: 'store-front/main',
+			isSettled: true,
+			servers: [
+				{ name: 'web', port: 4120, url: 'http://localhost:4120', state: 'running', detail: null },
+				{ name: 'api', port: 4121, url: null, state: 'died', detail: null },
+			],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const view = store.state.view;
+		const { context, page } = await signIn();
+		const reads = () => crew.calls.filter((call) => call.command.type === 'dev_logs');
+
+		try {
+			await page.getByRole('button', { name: 'api logs' }).click();
+			const dialog = page.getByRole('dialog', { name: 'dev server logs' });
+			await dialog.getByText('$ api').waitFor({ timeout: 5000 });
+			expect(reads().at(-1)?.command).toEqual({
+				type: 'dev_logs',
+				ref: 'store-front/main',
+				server: 'api',
+				lines: 200,
+			});
+
+			// The other server is a tab away.
+			await dialog.getByRole('button', { name: 'web' }).click();
+			await dialog.getByText('$ web').waitFor({ timeout: 5000 });
+			expect(reads().at(-1)?.command).toMatchObject({ server: 'web' });
+
+			// Following reads again every 2 s; paused, nothing more is asked.
+			const followed = reads().length;
+			await waitUntil(() => reads().length > followed, 4000);
+			await dialog.getByRole('button', { name: 'Pause' }).click();
+			const paused = reads().length;
+			await Bun.sleep(2500);
+			expect(reads().length).toBe(paused);
+
+			await page.keyboard.press('Escape');
+			await dialog.waitFor({ state: 'detached', timeout: 5000 });
+			expect(store.state.view).toEqual(view);
+		} finally {
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: true,
+				servers: [],
+			});
+			await context.close();
+		}
+	}, 20_000);
+
 	it('typed command → sent as an utterance; the chip shows this session for plain text, Voice OS when addressed to another', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
