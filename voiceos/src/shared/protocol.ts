@@ -5,11 +5,11 @@ import type { SendAck } from './ack.js';
 export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'blocked';
 
 // A user item's isApproval: Voice OS's retry of a call the developer allowed once; still the turn's
-// opening words.
+// opening words. Its attachments: the files that went with these words.
 export type StreamItem = {
 	id: string;
 	at: number;
-} & ( // attachments: the files that went with these words.
+} & (
 	| { kind: 'user'; text: string; isApproval?: true; attachments?: Attachment[] }
 	| { kind: 'text'; text: string }
 	// toolUseId: the call's own id, so the row of an Agent call can open its sub-agent's transcript.
@@ -83,6 +83,7 @@ export interface Attachment {
 // The most files waiting on one session, and the biggest one.
 export const MAX_ATTACHMENTS = 10;
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const TOO_BIG_REASON = `over ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB`;
 
 export interface QueuedMessage {
 	id: string;

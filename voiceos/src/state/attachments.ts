@@ -1,15 +1,14 @@
 // Files attached to a session, waiting for the next words that reach it: added when the server has
 // stored them, taken by the developer's words where those enter delivery, given back when the words
-// are cancelled or taken back, and dropped with the rest a session holds when it is deactivated.
+// are cancelled or taken back, and dropped with their machine. A deactivated session keeps them: the
+// page attaches to an inactive session too, and its held words go when it is activated.
 // Pure: every tab replays the same inputs to the same chips.
 import { MAX_ATTACHMENTS, type Attachment, type Input, type State } from '../shared/protocol.js';
+import { machineOf } from '../shared/machine-ref.js';
 import { withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
 
 type AttachmentInput = Extract<Input, { type: 'attachment_added' | 'attachment_removed' }>;
-
-export const isAttachmentInput = (input: Input): input is AttachmentInput =>
-	input.type === 'attachment_added' || input.type === 'attachment_removed';
 
 export const listWaiting = (state: State, ref: string): Attachment[] =>
 	state.attachments[ref] ?? [];
@@ -77,8 +76,13 @@ export const giveBack = (
 		? withWaiting(state, ref, mergeAttachments(attachments, listWaiting(state, ref)))
 		: state;
 
-export const dropWaiting = (state: State, ref: string): State =>
-	state.attachments[ref] ? withWaiting(state, ref, []) : state;
+// A machine removed: its sessions' files go with them.
+export const dropMachineAttachments = (state: State, machine: string): State => ({
+	...state,
+	attachments: Object.fromEntries(
+		Object.entries(state.attachments).filter(([ref]) => machineOf(ref) !== machine),
+	),
+});
 
 // "Sent to checkout with 2 files."
 export const describeCarried = (attachments: Attachment[] | undefined): string =>

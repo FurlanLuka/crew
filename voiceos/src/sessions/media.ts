@@ -19,7 +19,7 @@ import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 // a path on this machine, a file cannot change between the check and the send, and a name that
 // never changes can be cached for good.
 
-const IMAGE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp)$/i;
+export const IMAGE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp)$/i;
 // ![alt](path) — a path without spaces, or one in <angle brackets>.
 const MARKDOWN_IMAGE_PATTERN =
 	/!\[([^\]\n]{0,300})\]\(\s*<?([^)\s>]{1,1000})>?(?:\s+"[^"\n]*")?\s*\)/g;

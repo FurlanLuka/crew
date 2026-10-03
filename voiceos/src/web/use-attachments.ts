@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	MAX_ATTACHMENTS,
 	MAX_ATTACHMENT_BYTES,
+	TOO_BIG_REASON,
 	type Attachment,
 	type ClientMessage,
 	type State,
@@ -35,9 +36,10 @@ interface UseAttachmentsParams {
 	// The session the files are for; null when none is on screen.
 	sessionRef: string | null;
 	send: (message: ClientMessage) => void;
-	// Paste and drop anywhere on the page reach this session (the paperclip always does).
-	isListeningOnPage: boolean;
 }
+
+// What the box sends when it holds only files: the files are the message.
+export const ATTACHED_ONLY_TEXT = '(attached)';
 
 const NO_SESSION_NOTE = 'Open a session to attach files.';
 const NOTE_MS = 4000;
@@ -77,19 +79,16 @@ const hasFiles = (data: DataTransfer | null): boolean =>
 
 let uploadCounter = 0;
 
-export const useAttachments = ({
-	state,
-	sessionRef,
-	send,
-	isListeningOnPage,
-}: UseAttachmentsParams): Attachments => {
+export const useAttachments = ({ state, sessionRef, send }: UseAttachmentsParams): Attachments => {
 	const [uploads, setUploads] = useState<Upload[]>([]);
 	const [note, setNote] = useState<string | null>(null);
 	const waiting = sessionRef ? (state.attachments[sessionRef] ?? []) : [];
 	// Read by the page listeners, which are added once.
-	const latest = useRef({ sessionRef, room: MAX_ATTACHMENTS - waiting.length });
+	// A refused chip takes no room: it never reaches the session.
+	const room = MAX_ATTACHMENTS - waiting.length - uploads.filter((upload) => !upload.error).length;
+	const latest = useRef({ sessionRef, room });
 
-	latest.current = { sessionRef, room: MAX_ATTACHMENTS - waiting.length - uploads.length };
+	latest.current = { sessionRef, room };
 
 	useEffect(() => {
 		if (!note) {
@@ -123,7 +122,7 @@ export const useAttachments = ({
 				index >= room
 					? `${MAX_ATTACHMENTS} files at most`
 					: file.size > MAX_ATTACHMENT_BYTES
-						? 'over 20 MB'
+						? TOO_BIG_REASON
 						: file.size === 0
 							? 'empty file'
 							: null;
@@ -144,11 +143,8 @@ export const useAttachments = ({
 		});
 	}, []);
 
+	// Paste and drop anywhere on the page reach this session (the paperclip always does).
 	useEffect(() => {
-		if (!isListeningOnPage) {
-			return;
-		}
-
 		const handlePaste = (event: ClipboardEvent) => {
 			const files = readFiles(event.clipboardData);
 
@@ -183,7 +179,7 @@ export const useAttachments = ({
 			window.removeEventListener('dragover', handleDragOver);
 			window.removeEventListener('drop', handleDrop);
 		};
-	}, [attach, isListeningOnPage]);
+	}, [attach]);
 
 	return {
 		ref: sessionRef,

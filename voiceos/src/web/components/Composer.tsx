@@ -14,7 +14,7 @@ import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/pro
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { describeListening, isListeningMode } from '../listen-mode.js';
 import { AttachButton } from './AttachmentChips.js';
-import type { Attachments } from '../use-attachments.js';
+import { ATTACHED_ONLY_TEXT, type Attachments } from '../use-attachments.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
 
@@ -27,9 +27,6 @@ interface ComposerProps {
 	attachments: Attachments;
 	send: (message: ClientMessage) => void;
 }
-
-// What the box sends when it holds only files: the files are the message.
-export const ATTACHED_ONLY_TEXT = '(attached)';
 
 const formatElapsed = (ms: number): string => {
 	const seconds = Math.max(0, Math.floor(ms / 1000));

@@ -1,5 +1,6 @@
 import { pruneViewHistory } from './view-history.js';
 import { machineOf } from '../shared/machine-ref.js';
+import { dropMachineAttachments } from './attachments.js';
 import {
 	currentMachine,
 	describeMachineWaiting,
@@ -273,15 +274,7 @@ export const reduceMachine = (
 			);
 
 			return {
-				// Files waiting on its sessions go with them.
-				state: {
-					...removed.state,
-					attachments: Object.fromEntries(
-						Object.entries(removed.state.attachments).filter(
-							([ref]) => machineOf(ref) !== input.id,
-						),
-					),
-				},
+				state: dropMachineAttachments(removed.state, input.id),
 				effects: [
 					...removed.effects,
 					...(queued.length > 0

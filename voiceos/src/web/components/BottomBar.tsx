@@ -83,7 +83,6 @@ export const BottomBar = ({
 		state,
 		sessionRef: viewed?.ref ?? null,
 		send,
-		isListeningOnPage: true,
 	});
 	const ask = readScreenAsk(state);
 	const dispatch = (action: Action) => send({ type: 'action', action });

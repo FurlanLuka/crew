@@ -2160,6 +2160,25 @@ describe('voice off', () => {
 			expect(convo.store.state.attachments).toEqual({});
 		});
 
+		it('only files in the box, Enter → "(attached)" goes straight to the screen session with them, no kernel turn', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			const sends: unknown[] = [];
+			convo.store.onEffect((effect) => {
+				if (effect.type === 'worker_send') {
+					sends.push(effect);
+				}
+			});
+			await convo.startSessions('store-front/main');
+
+			convo.store.dispatch({ type: 'attachment_added', ref: 'store-front/main', attachment: SHOT });
+			await convo.type('(attached)');
+
+			expect(sends).toEqual([
+				{ type: 'worker_send', ref: 'store-front/main', text: '(attached)', attachments: [SHOT] },
+			]);
+			expect(convo.kernelSaw()).toBe('');
+		});
+
 		it('files waiting on checkout, sent to it by name from elsewhere → "Sent to … with 2 files."', async () => {
 			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 			await convo.startSessions('store-front/main', 'checkout-api/main');

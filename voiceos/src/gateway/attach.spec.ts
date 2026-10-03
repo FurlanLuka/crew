@@ -153,13 +153,13 @@ describe('attachFileTo', () => {
 		expect(store.state.attachments[REF]).toEqual([outcome.ok ? outcome.attachment : ATTACHED]);
 	});
 
-	it('an unknown session → 404; a session with 10 waiting → 409; an empty file → 413', () => {
+	it('an unknown session → 404; a session with 10 waiting → 409; an empty file → 400', () => {
 		const { attach, file } = createAttach();
 
 		expect(attach({ ref: 'nowhere/main', ...file('x') })).toMatchObject({ ok: false, status: 404 });
 		expect(attach({ ref: REF, bytes: Buffer.alloc(0), name: 'e', mediaType: '' })).toMatchObject({
 			ok: false,
-			status: 413,
+			status: 400,
 		});
 
 		for (let index = 0; index < MAX_ATTACHMENTS; index++) {
@@ -167,5 +167,27 @@ describe('attachFileTo', () => {
 		}
 
 		expect(attach({ ref: REF, ...file('one more') })).toMatchObject({ ok: false, status: 409 });
+	});
+
+	it('a disk that cannot take it → a 500 the page can show, nothing on the session', () => {
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [{ ref: REF, label: REF, branch: '', cwd: '/w', dirs: [], isPinned: false }],
+		});
+		const attach = attachFileTo({
+			readState: () => store.state,
+			dispatch: (observation) => store.dispatch(observation),
+			store: () => {
+				throw Object.assign(new Error('no space'), { code: 'ENOSPC' });
+			},
+		});
+
+		expect(attach({ ref: REF, bytes: Buffer.from('x'), name: 'x', mediaType: '' })).toEqual({
+			ok: false,
+			status: 500,
+			reason: 'could not be saved',
+		});
+		expect(store.state.attachments).toEqual({});
 	});
 });

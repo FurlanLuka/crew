@@ -14,14 +14,16 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { MAX_ATTACHMENT_BYTES, type Attachment } from '../shared/protocol.js';
-import { storeAttachedImage } from './media.js';
+import { MAX_ATTACHMENT_BYTES, TOO_BIG_REASON, type Attachment } from '../shared/protocol.js';
+import { IMAGE_EXTENSION_PATTERN, storeAttachedImage } from './media.js';
 
-const ID_PATTERN = /^[0-9a-f]{16}\/[^/\\\0]{1,120}$/;
+const ID_PATTERN = /^[0-9a-f]{16}\/[^/\\\0]{1,120}$/u;
 const MAX_NAME_CHARS = 120;
 // A piece of a file on its way to another machine, one link line each: small enough that a slow
 // uplink never goes quiet for long.
 export const CHUNK_BYTES = 256 * 1024;
+// As long as the images sessions show.
+export const ATTACHMENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
 
 // A file name that is safe as one path segment: the browser's name, without any folder, control
 // character or dot-only name; kept readable (unicode, spaces, commas stay).
@@ -60,6 +62,15 @@ export const readAttachmentBytes = (dir: string, id: string): Buffer | null => {
 	}
 };
 
+// Bun's rm throws even forced when the folder above is not one.
+const removeQuietly = (path: string): void => {
+	try {
+		rmSync(path, { force: true });
+	} catch {
+		// Nothing there to remove.
+	}
+};
+
 const writeWhole = (path: string, bytes: Buffer): void => {
 	// Written aside and renamed in: a crash mid-write never leaves a torn file under its name.
 	const partial = `${path}.${process.pid}.tmp`;
@@ -70,12 +81,10 @@ const writeWhole = (path: string, bytes: Buffer): void => {
 		writeFileSync(partial, bytes, { mode: 0o600 });
 		renameSync(partial, path);
 	} catch (error) {
-		rmSync(partial, { force: true });
+		removeQuietly(partial);
 		throw error;
 	}
 };
-
-const isImageType = (mediaType: string): boolean => mediaType.startsWith('image/');
 
 interface StoreAttachmentParams {
 	bytes: Buffer;
@@ -99,30 +108,33 @@ export const storeAttachment = ({
 	}
 
 	if (bytes.length > MAX_ATTACHMENT_BYTES) {
-		return { ok: false, reason: 'over 20 MB' };
+		return { ok: false, reason: TOO_BIG_REASON };
 	}
 
 	const safe = toSafeName(name);
 	const id = `${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}/${safe}`;
-	const path = join(dir, ...id.split('/'));
+	const path = pathOf(dir, id);
+
+	if (!path) {
+		return { ok: false, reason: 'unusable file name' };
+	}
 
 	if (!existsSync(path)) {
 		writeWhole(path, bytes);
 	}
 
-	// An image also gets a thumbnail; one the media folder cannot take (an odd format) is a file.
-	const thumbnail = isImageType(mediaType)
-		? storeAttachedImage({ bytes, mediaType, fileName: safe, dir: mediaDir })
-		: null;
+	// An image, by its type or else its name (a drop may carry no type), also gets a thumbnail; one the
+	// media folder cannot take (an odd format, bytes that are not what they claim) is a file.
+	const thumbnail = storeAttachedImage({ bytes, mediaType, fileName: safe, dir: mediaDir });
 
 	return {
 		ok: true,
 		attachment: {
 			id,
 			name: safe,
-			kind: thumbnail?.ok ? 'image' : 'file',
+			kind: thumbnail.ok ? 'image' : 'file',
 			bytes: bytes.length,
-			...(thumbnail?.ok ? { mediaName: thumbnail.name } : {}),
+			...(thumbnail.ok ? { mediaName: thumbnail.name } : {}),
 		},
 	};
 };
@@ -167,21 +179,28 @@ export const writeChunk = ({
 
 	const partial = `${path}.part`;
 
-	mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 });
+	// A disk that cannot take it refuses this piece alone: the effects after it still apply.
+	try {
+		mkdirSync(join(path, '..'), { recursive: true, mode: 0o700 });
 
-	// The first piece starts the file over: a transfer cut off midway is sent again from the start.
-	if (index === 0) {
-		writeFileSync(partial, Buffer.from(base64, 'base64'), { mode: 0o600 });
-	} else if (existsSync(partial)) {
-		appendFileSync(partial, Buffer.from(base64, 'base64'));
-	} else {
+		// The first piece starts the file over: a transfer cut off midway is sent again from the start.
+		if (index === 0) {
+			writeFileSync(partial, Buffer.from(base64, 'base64'), { mode: 0o600 });
+		} else if (existsSync(partial)) {
+			appendFileSync(partial, Buffer.from(base64, 'base64'));
+		} else {
+			return 'refused';
+		}
+
+		if (index === total - 1) {
+			renameSync(partial, path);
+
+			return 'done';
+		}
+	} catch {
+		removeQuietly(partial);
+
 		return 'refused';
-	}
-
-	if (index === total - 1) {
-		renameSync(partial, path);
-
-		return 'done';
 	}
 
 	return 'kept';
@@ -246,12 +265,10 @@ export const splitAttachedNote = (text: string): { text: string; paths: string[]
 	const after = end < 0 ? '' : lines.slice(end + 1).join('\n');
 
 	return {
-		text: `${text.slice(0, start)}${after}`.trim(),
+		text: [text.slice(0, start).trim(), after.trim()].filter(Boolean).join('\n\n'),
 		paths: listed.filter((line) => line.startsWith('- ')).map((line) => line.slice(2)),
 	};
 };
-
-const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i;
 
 // A file named again from a past turn: its name and kind, no thumbnail (that was this run's).
 export const toPastAttachment = (path: string): Attachment => {
@@ -261,7 +278,7 @@ export const toPastAttachment = (path: string): Attachment => {
 	return {
 		id: `${folder}/${name}`,
 		name,
-		kind: IMAGE_EXTENSION.test(name) ? 'image' : 'file',
+		kind: IMAGE_EXTENSION_PATTERN.test(name) ? 'image' : 'file',
 		bytes: 0,
 	};
 };

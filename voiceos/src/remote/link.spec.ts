@@ -947,8 +947,11 @@ describe('files attached to a remote session', () => {
 		store.dispatch({ type: 'attachment_added', ref: REF, attachment: files.attachment });
 		store.dispatch({ type: 'send', ref: REF, text: 'why does this fail?' });
 
+		let wasSentAtCut = false;
+
 		if (cutAt) {
 			await until(() => network.frames() >= cutAt(before), 'mid-transfer');
+			wasSentAtCut = fake.sent.some((text) => text.endsWith('why does this fail?'));
 			network.cut();
 		}
 
@@ -957,7 +960,7 @@ describe('files attached to a remote session', () => {
 			'the words there',
 		);
 
-		return { files, fake, store };
+		return { files, fake, store, network, wasSentAtCut };
 	};
 
 	it('the pieces go ahead of the words; Claude there reads the file at its own path', async () => {
@@ -971,7 +974,10 @@ describe('files attached to a remote session', () => {
 	});
 
 	it('the link cut mid-transfer → resent on the reconnect, the file whole, the words once', async () => {
-		const { files, fake } = await sendWithFile((before) => before + 2);
+		const { files, fake, network, wasSentAtCut } = await sendWithFile((before) => before + 2);
+
+		expect(network.cuts()).toBe(1);
+		expect(wasSentAtCut).toBe(false);
 
 		expect(readAttachmentBytes(files.thereDir, files.attachment.id)?.equals(files.bytes)).toBe(
 			true,
@@ -989,5 +995,23 @@ describe('files attached to a remote session', () => {
 
 		expect(files.reads()).toBe(1);
 		expect(fake.sent.at(-1)).toContain(files.attachment.name);
+	});
+
+	it('a file gone from the main → the words still go, once, without it', async () => {
+		const files = createFiles();
+		const { host, fake } = startHost({ attachmentsDir: files.thereDir });
+
+		await host.refreshWorktrees();
+
+		const { store } = startMain({ open: createNetwork(host).open, readAttachment: () => null });
+
+		await actWhenConnected(store, () => store.dispatch({ type: 'activate', ref: REF }), 'start');
+		await until(() => store.state.sessions[REF]?.status === 'idle', 'idle');
+		store.dispatch({ type: 'attachment_added', ref: REF, attachment: files.attachment });
+		store.dispatch({ type: 'send', ref: REF, text: 'look' });
+		await until(() => fake.sent.some((text) => text.endsWith('look')), 'the words there');
+
+		expect(fake.sent.filter((text) => text.endsWith('look'))).toEqual(['look']);
+		expect(readAttachmentBytes(files.thereDir, files.attachment.id)).toBeNull();
 	});
 });

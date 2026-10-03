@@ -14,7 +14,7 @@ import { resolveClaudeBin, isCompiled } from '../sessions/claude-bin.js';
 import { loadTranscript, restoreHistory } from '../sessions/history.js';
 import { SessionManager } from '../sessions/manager.js';
 import { readMediaBytes } from '../sessions/media.js';
-import { sweepAttachments } from '../sessions/attachments.js';
+import { ATTACHMENTS_KEPT_MS, sweepAttachments } from '../sessions/attachments.js';
 import { loadRegistry } from '../sessions/registry.js';
 import { SETUP_ORIENTATION, SETUP_REF, createSetupWorktree } from '../sessions/setup-session.js';
 import { VERSION } from '../version.js';
@@ -38,8 +38,6 @@ export interface RemotePaths {
 	attachmentsDir: string;
 	logFile: string;
 }
-
-const ATTACHMENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Its own folder: this machine may also have been a main once, and the two must never share files.
 export const resolveRemotePaths = (voiceDir: string): RemotePaths => {

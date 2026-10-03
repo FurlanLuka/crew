@@ -7,8 +7,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import type { Action, StreamItem } from '../../shared/protocol.js';
 import { AskDock } from '../components/AskDock.js';
 import { AttachButton, AttachmentChips } from '../components/AttachmentChips.js';
-import { ATTACHED_ONLY_TEXT } from '../components/Composer.js';
-import { useAttachments } from '../use-attachments.js';
+import { ATTACHED_ONLY_TEXT, useAttachments } from '../use-attachments.js';
 import { QueueList } from '../components/QueueList.js';
 import { SessionStream } from '../components/SessionStream.js';
 import { SubagentsPanel } from '../components/SubagentsPanel.js';
@@ -39,7 +38,6 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 		state: ctx.state,
 		sessionRef: session ? ref : null,
 		send: ctx.send,
-		isListeningOnPage: true,
 	});
 
 	// Taken whenever it arrives: a "Fix with Claude" from outside Set up lands while the chat is

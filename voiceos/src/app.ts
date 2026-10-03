@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
-import { storeAttachment, sweepAttachments } from './sessions/attachments.js';
+import { ATTACHMENTS_KEPT_MS, storeAttachment, sweepAttachments } from './sessions/attachments.js';
 import type { OpenUrl } from './tools/docs.js';
 import index from './web/index.html';
 import { ensureToken, missingFor, resolvePaths, shouldRecordState, type Keys } from './config.js';
@@ -94,7 +94,7 @@ if (sweptMedia > 0) {
 const attachmentsDir = join(paths.voiceDir, 'attachments');
 const sweptAttachments = sweepAttachments({
 	dir: attachmentsDir,
-	maxAgeMs: MEDIA_KEPT_MS,
+	maxAgeMs: ATTACHMENTS_KEPT_MS,
 	now: Date.now(),
 });
 

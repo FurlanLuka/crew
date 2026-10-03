@@ -82,17 +82,21 @@ interface WithSwitchAskedParams {
 // "Okay, after its current work. Switch there?"): one line, whichever ack it is.
 // The facts say the switch is offered in the same step that appends the question, so a worded line
 // never drops it or asks one that is not open.
+// What a worded line is written from; with files the line is said as it is, since a worded one would
+// drop them.
+const sentFacts = (label: string, offersSwitch: boolean, carried: string) =>
+	carried ? {} : { facts: { kind: 'sent' as const, label, offersSwitch } };
+
 const withSwitchAsked = ({ effects, ref, sentTo, carried }: WithSwitchAskedParams): Effect[] => {
 	const ackAt = effects.findLastIndex((effect) => effect.type === 'speak' && effect.isAck === true);
 
 	if (ackAt < 0) {
 		return [
 			...effects,
-			// With files the line is said as it is: a worded one would drop them.
 			sayAck(`Sent to ${sentTo}${carried}. Switch there?`, {
 				isAsking: true,
 				ref,
-				...(carried ? {} : { facts: { kind: 'sent' as const, label: sentTo, offersSwitch: true } }),
+				...sentFacts(sentTo, true, carried),
 			}),
 		];
 	}
@@ -217,11 +221,7 @@ export const followSends = (
 				? result.effects
 				: [
 						...result.effects,
-						sayAck(`Sent to ${sentTo}${carried}.`, {
-							...(carried
-								? {}
-								: { facts: { kind: 'sent' as const, label: sentTo, offersSwitch: false } }),
-						}),
+						sayAck(`Sent to ${sentTo}${carried}.`, sentFacts(sentTo, false, carried)),
 					];
 
 			// Spoken words that went elsewhere: the developer may want to follow them there.

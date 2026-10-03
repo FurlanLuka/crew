@@ -513,6 +513,42 @@ describe('attached files', () => {
 		harness.manager.stopAll();
 	});
 
+	it('words with a note of their own → the note, then the files, then the words; none here → the note alone', async () => {
+		const harness = createAttachHarness();
+		const stored = storeAttachment({
+			bytes: Buffer.from('a'),
+			name: 'a.txt',
+			mediaType: 'text/plain',
+			dir: harness.attachmentsDir,
+			mediaDir: harness.mediaDir,
+		});
+
+		if (!stored.ok) {
+			throw new Error('not stored');
+		}
+
+		const path = join(harness.attachmentsDir, ...stored.attachment.id.split('/'));
+		harness.store.dispatch({ type: 'activate', ref: REF });
+		await waitTick();
+		harness.store.dispatch({ type: 'attachment_added', ref: REF, attachment: stored.attachment });
+		harness.store.dispatch({ type: 'send', ref: REF, text: 'one', note: '(N)' });
+		await waitTick();
+		harness.store.dispatch({ type: 'turn_ended', ref: REF, costUsd: 0, text: '' });
+		harness.store.dispatch({
+			type: 'attachment_added',
+			ref: REF,
+			attachment: { ...stored.attachment, id: '0123456789abcdef/gone.txt' },
+		});
+		harness.store.dispatch({ type: 'send', ref: REF, text: 'two', note: '(N)' });
+		await waitTick();
+
+		expect(harness.fake.sent.slice(-2)).toEqual([
+			`(N)\n\n${describeAttached([path])}\n\none`,
+			'(N)\n\ntwo',
+		]);
+		harness.manager.stopAll();
+	});
+
 	it('pieces from the main are put together into a file its worker then finds', async () => {
 		const harness = createAttachHarness();
 		const id = '0123456789abcdef/shot.png';

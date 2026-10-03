@@ -3,6 +3,7 @@
 import {
 	MAX_ATTACHMENTS,
 	MAX_ATTACHMENT_BYTES,
+	TOO_BIG_REASON,
 	type Attachment,
 	type Observation,
 	type State,
@@ -47,10 +48,26 @@ export const attachFileTo =
 			return { ok: false, status: 409, reason: `${MAX_ATTACHMENTS} files already waiting` };
 		}
 
-		const stored = store(file);
+		let stored: StoredAttachment;
+
+		try {
+			stored = store(file);
+		} catch (error) {
+			// The error's code only: its message holds the path.
+			log.warn('attachment not stored', {
+				ref,
+				code: (error as NodeJS.ErrnoException).code ?? 'unknown',
+			});
+
+			return { ok: false, status: 500, reason: 'could not be saved' };
+		}
 
 		if (!stored.ok) {
-			return { ok: false, status: 413, reason: stored.reason };
+			return {
+				ok: false,
+				status: stored.reason === TOO_BIG_REASON ? 413 : 400,
+				reason: stored.reason,
+			};
 		}
 
 		dispatch({ type: 'attachment_added', ref, attachment: stored.attachment });
@@ -128,13 +145,13 @@ export const handleAttachRequest = async ({
 	}
 
 	if (Number(request.headers.get('content-length') ?? 0) > MAX_ATTACHMENT_BYTES) {
-		return refuse(413, 'over 20 MB');
+		return refuse(413, TOO_BIG_REASON);
 	}
 
 	const bytes = await readCapped(request, MAX_ATTACHMENT_BYTES);
 
 	if (!bytes) {
-		return refuse(413, 'over 20 MB');
+		return refuse(413, TOO_BIG_REASON);
 	}
 
 	const outcome = attachFile({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { MAX_ATTACHMENTS, type Attachment, type Input, type State } from '../shared/protocol.js';
 import type { Effect } from './reducer.js';
+import { describeCarried } from './attachments.js';
 import { createFixtureState } from '../../test/support/state.js';
 import { idleSession, REF, run, runningSession } from '../../test/support/reduce.js';
 
@@ -113,7 +114,7 @@ describe('the next words take them along', () => {
 		expect(effects.some((effect) => effect.type === 'side_answer')).toBe(true);
 	});
 
-	it('a follow-up folded into queued words, then promoted, carries both their files once each', () => {
+	it('typed words queued behind others, then all promoted, carry both their files once each', () => {
 		const first = run([send('first')], { start: withFiles(runningSession(), REPORT) }).state;
 		const second = run([added(SHOT), added(REPORT), send('second')], { start: first }).state;
 		const { state } = run([{ type: 'promote_all_queued', ref: REF }], { start: second });
@@ -181,6 +182,9 @@ describe('words that never went give their files back', () => {
 
 		expect(waiting(start, ref)).toEqual([REPORT]);
 		expect(
+			run([{ type: 'remove_machine', id: 'other' }], { start }).state.attachments[ref],
+		).toEqual([REPORT]);
+		expect(
 			run([{ type: 'remove_machine', id: 'personal' }], { start }).state.attachments[ref],
 		).toBeUndefined();
 	});
@@ -196,4 +200,145 @@ describe('words sent from elsewhere', () => {
 
 		expect(spoken.some((text) => text.includes('with 2 files'))).toBe(true);
 	});
+});
+
+describe('a deactivated session', () => {
+	it('keeps its files: the page attaches to inactive sessions too', () => {
+		const start = withFiles(idleSession(), REPORT);
+		const { state } = run([{ type: 'deactivate', ref: REF }], { start });
+
+		expect(waiting(state)).toEqual([REPORT]);
+	});
+});
+
+describe('the other ways words reach a working session', () => {
+	const redirect = (patch: Partial<Extract<Input, { type: 'send' }>> = {}): Input =>
+		send('Stop that and fix the login first.', {
+			isSpoken: true,
+			ack: { kind: 'redirect' },
+			...patch,
+		});
+	const askOf = (state: State) => state.asks.find((ask) => ask.kind === 'redirect');
+	const heldWithFile = () =>
+		run([redirect()], { start: withFiles(runningSession(), REPORT) }).state;
+
+	it('a redirect held for a yes keeps its files in the question', () => {
+		const state = heldWithFile();
+
+		expect(askOf(state)).toMatchObject({ attachments: [REPORT] });
+		expect(state.attachments).toEqual({});
+	});
+
+	it.each<[string, (state: State) => Input]>([
+		[
+			'yes',
+			(state) => ({ type: 'answer_redirect', askId: askOf(state)?.id ?? '', isApproved: true }),
+		],
+		[
+			'no',
+			(state) => ({ type: 'answer_redirect', askId: askOf(state)?.id ?? '', isApproved: false }),
+		],
+		['no answer in time', (state) => ({ type: 'command_expired', askId: askOf(state)?.id ?? '' })],
+	])('the redirect answered %s → its words queued with their files', (_, answer) => {
+		const state = heldWithFile();
+		const after = run([answer(state)], { start: state }).state;
+
+		expect(after.sessions[REF]?.queue[0]?.attachments).toEqual([REPORT]);
+	});
+
+	it('other words while the redirect waits → it goes after with its files, the new words with theirs', () => {
+		const state = run(
+			[added(SHOT), send('also run the linter', { ack: { kind: 'instruction' } })],
+			{
+				start: heldWithFile(),
+			},
+		).state;
+
+		expect(state.sessions[REF]?.queue.map((message) => message.attachments)).toEqual([
+			[REPORT],
+			[SHOT],
+		]);
+	});
+
+	it('the held redirect taken back → its files wait again', () => {
+		const state = heldWithFile();
+		const after = run([{ type: 'take_back', ref: REF, id: askOf(state)?.id ?? '' }], {
+			start: state,
+		}).state;
+
+		expect(waiting(after)).toEqual([REPORT]);
+	});
+
+	it('a spoken follow-up that cuts the turn → the cut words already had their files, the rest goes with its own', () => {
+		const spoken = run([send('look at the logs', { isSpoken: true })], {
+			start: withFiles(idleSession(), REPORT),
+		});
+		const { state, effects } = run([added(SHOT), send('and this screenshot', { isSpoken: true })], {
+			start: spoken.state,
+		});
+
+		expect(sendsOf(spoken.effects)[0]?.attachments).toEqual([REPORT]);
+		expect(effects).toContainEqual({ type: 'worker_interrupt', ref: REF, reason: 'follow-up' });
+		expect(state.sessions[REF]?.queue[0]?.attachments).toEqual([SHOT]);
+	});
+
+	it('spoken words queued behind typed work, then more → each message with its own files', () => {
+		const first = run([send('look at the logs', { isSpoken: true })], {
+			start: withFiles(runningSession(), REPORT),
+		}).state;
+		const { state } = run([added(SHOT), send('and this screenshot', { isSpoken: true })], {
+			start: first,
+		});
+
+		expect(state.sessions[REF]?.queue.map((message) => message.attachments)).toEqual([
+			[REPORT],
+			[SHOT],
+		]);
+	});
+
+	it('"send it now" → the words that cut the work carry the files', () => {
+		const { state } = run([send('use the staging table', { isNow: true })], {
+			start: withFiles(runningSession(), REPORT),
+		});
+
+		expect(state.sessions[REF]?.queue[0]?.attachments).toEqual([REPORT]);
+	});
+
+	it('words that answer its open question → the answer goes alone, the files keep waiting', () => {
+		const start = run(
+			[
+				{
+					type: 'ask_opened',
+					ask: {
+						id: 'q1',
+						ref: REF,
+						at: 1,
+						kind: 'question',
+						input: {},
+						questions: [
+							{
+								question: 'Which table?',
+								header: 'Table',
+								options: [{ label: 'staging' }, { label: 'prod' }],
+								multiSelect: false,
+							},
+						],
+					},
+				},
+			],
+			{ start: withFiles(runningSession(), REPORT) },
+		).state;
+		const { state } = run([send('staging')], { start });
+
+		expect(waiting(state)).toEqual([REPORT]);
+	});
+});
+
+describe('describeCarried', () => {
+	it.each<[Attachment[] | undefined, string]>([
+		[undefined, ''],
+		[[], ''],
+		[[REPORT], ' with a file'],
+		[[REPORT, SHOT], ' with 2 files'],
+	])('%p → %p', (attachments, line) => expect(describeCarried(attachments)).toBe(line));
 });

@@ -103,6 +103,17 @@ describe('storeAttachment', () => {
 		).toBe(true);
 	});
 
+	it('an image dropped with no type is known by its extension', () => {
+		const png = Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			Buffer.from('more'),
+		]);
+		const stored = store(png, 'shot.png', '');
+
+		expect(stored.ok && stored.attachment.kind).toBe('image');
+		expect(stored.ok && Boolean(stored.attachment.mediaName)).toBe(true);
+	});
+
 	it('bytes that only claim to be an image are kept as a file', () => {
 		const stored = store(Buffer.from('not really a png'), 'shot.png', 'image/png');
 
@@ -211,6 +222,13 @@ describe('the note to Claude, and reading it back', () => {
 		});
 	});
 
+	it('a note of its own ahead of the files → the words keep it, one blank line apart', () => {
+		expect(splitAttachedNote(`(dictated)\n\n${describeAttached(paths)}\n\nwords`)).toEqual({
+			text: '(dictated)\n\nwords',
+			paths,
+		});
+	});
+
 	it('words without the note are left alone', () => {
 		expect(splitAttachedNote('just words')).toEqual({ text: 'just words', paths: [] });
 	});
@@ -225,5 +243,33 @@ describe('the note to Claude, and reading it back', () => {
 			},
 			{ id: 'fedcba9876543210/shot (1).png', name: 'shot (1).png', kind: 'image', bytes: 0 },
 		]);
+	});
+});
+
+describe('names the id rule must take', () => {
+	it('a long emoji name is stored under an id the rule accepts, and resolves', () => {
+		const root = mkdtempSync(join(tmpdir(), 'voiceos-attachments-emoji-'));
+		const stored = storeAttachment({
+			bytes: Buffer.from('x'),
+			name: '😀'.repeat(130),
+			mediaType: 'text/plain',
+			dir: join(root, 'a'),
+			mediaDir: join(root, 'm'),
+		});
+
+		expect(stored.ok && isAttachmentId(stored.attachment.id)).toBe(true);
+		expect(stored.ok && resolveAttachment(join(root, 'a'), stored.attachment.id)).toBeTruthy();
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it('a piece the disk cannot take is refused, with no half file left', () => {
+		const root = mkdtempSync(join(tmpdir(), 'voiceos-attachments-ro-'));
+		// A file where the folder should be: nothing can be written under it.
+		writeFileSync(join(root, '0123456789abcdef'), '');
+
+		expect(
+			writeChunk({ dir: root, id: '0123456789abcdef/a.bin', index: 0, total: 2, base64: 'eA==' }),
+		).toBe('refused');
+		rmSync(root, { recursive: true, force: true });
 	});
 });

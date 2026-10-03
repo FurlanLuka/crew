@@ -2853,13 +2853,61 @@ describe('attaching files', () => {
 		await context.close();
 	}, 20_000);
 
+	it('Enter while a file still uploads → the words wait, then go once it is in', async () => {
+		const { context, page } = await openSession();
+		const release = Promise.withResolvers<void>();
+
+		await page.route('**/api/attach*', async (route) => {
+			await release.promise;
+			await route.continue();
+		});
+		await handOver(page, 'paste', [{ name: 'slow.txt', type: 'text/plain', base64: btoa('slow') }]);
+		await page.locator('.att-chip.uploading', { hasText: 'slow.txt' }).waitFor({ timeout: 5000 });
+
+		const before = received.length;
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+		await field.fill('read this');
+		await field.press('Enter');
+		await page.getByText('sending once uploaded…').waitFor({ timeout: 5000 });
+		await Bun.sleep(200);
+		expect(received.slice(before).some((entry) => entry.message.type === 'utterance')).toBe(false);
+
+		release.resolve();
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some((entry) => entry.message.type === 'utterance' && entry.message.text === 'read this'),
+		);
+		expect(store.state.attachments[REF]?.map((attachment) => attachment.name)).toEqual([
+			'slow.txt',
+		]);
+		await context.close();
+	}, 20_000);
+
+	it('eleven files dropped at once → ten go, the last one says why', async () => {
+		const { context, page } = await openSession();
+		const files = Array.from({ length: 11 }, (_, index) => ({
+			name: `f${index}.txt`,
+			type: 'text/plain',
+			base64: btoa(`file ${index}`),
+		}));
+
+		await handOver(page, 'drop', files);
+		await page.locator('.att-chip.refused', { hasText: '10 files at most' }).waitFor({
+			timeout: 5000,
+		});
+		await waitUntil(() => store.state.attachments[REF]?.length === 10);
+		await context.close();
+	}, 20_000);
+
 	it('no session on screen → "Open a session to attach files." and nothing uploads', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
+		const before = store.state.attachments;
 
 		await handOver(page, 'drop', [{ name: 'a.txt', type: 'text/plain', base64: btoa('a') }]);
 		await page.getByText('Open a session to attach files.').waitFor({ timeout: 5000 });
-		expect(store.state.attachments).toEqual({});
+		expect(store.state.attachments).toBe(before);
 		await context.close();
 	}, 20_000);
 
