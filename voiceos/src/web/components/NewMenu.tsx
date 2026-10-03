@@ -1,28 +1,18 @@
 // The top bar's "New": a plain session, a worktree to activate, or a machine's page — every way in
 // from one place. The menu keeps ModeMenu's manners: arrows move, Esc closes, a click outside too.
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { countMachineRefs } from '../../shared/active.js';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { isMachineReachable, listMachineIds, readMachineTitle } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
-import { countOf } from '../count.js';
+import { describeCounts } from '../derive.js';
 import type { Dispatch } from '../types.js';
+import { PlusIcon } from './icons.js';
 
 interface NewMenuProps {
 	state: State;
 	dispatch: Dispatch;
 	onNewSession: () => void;
 }
-
-export const describeCounts = (state: State, machine: string): string => {
-	const { worktrees, active, plain } = countMachineRefs(state, machine);
-
-	return [
-		countOf(worktrees, 'worktree'),
-		`${active} active`,
-		...(plain > 0 ? [`${plain} plain`] : []),
-	].join(' · ');
-};
 
 export const NewMenu = ({ state, dispatch, onNewSession }: NewMenuProps) => {
 	const [isOpen, setIsOpen] = useState(false);
@@ -184,12 +174,6 @@ const ICON = {
 	strokeLinejoin: 'round',
 	'aria-hidden': true,
 } as const;
-
-export const PlusIcon = () => (
-	<svg {...ICON} width={14} height={14} strokeWidth={1.8}>
-		<path d="M8 3v10M3 8h10" />
-	</svg>
-);
 
 const ChatIcon = () => (
 	<svg {...ICON}>

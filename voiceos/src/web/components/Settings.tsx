@@ -1,6 +1,6 @@
 // Voice OS settings (the gear): one page with a side menu — how this tab listens, voice off, the two
 // keys, Discord, the names you gave sessions, the machines, and whether crew opens into Voice OS.
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { SPOKEN_LANGUAGES } from '../../shared/languages.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
@@ -324,6 +324,30 @@ export const Settings = ({
 }: SettingsProps) => {
 	const [isAlwaysVoice, setIsAlwaysVoice] = useState(readAlwaysVoice);
 	const [shown, setShown] = useState<string>(SECTIONS[0].id);
+
+	// The menu follows the page: the section nearest the top of the view is the current one.
+	useEffect(() => {
+		const observer = new IntersectionObserver(
+			(entries) => {
+				const seen = entries.find((entry) => entry.isIntersecting);
+
+				if (seen) {
+					setShown(seen.target.id);
+				}
+			},
+			{ rootMargin: '0px 0px -70% 0px' },
+		);
+
+		for (const section of SECTIONS) {
+			const element = document.getElementById(section.id);
+
+			if (element) {
+				observer.observe(element);
+			}
+		}
+
+		return () => observer.disconnect();
+	}, []);
 
 	const goTo = (id: string) => {
 		setShown(id);

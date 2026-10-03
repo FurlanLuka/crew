@@ -1,5 +1,5 @@
-// Voice OS, the workhorse: the docked top bar, one view (Active, a session, Activate, Settings) and
-// the docked voice bar. The view is the server's (every tab shows the same); the URL follows it.
+// Voice OS, the workhorse: the docked top bar, one view (Home, a session, a machine's page, Settings),
+// the docked voice bar and the New session dialog. The view is the server's (every tab shows the same); the URL follows it.
 import { useEffect, useRef, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { parentView } from '../../shared/machines.js';
@@ -77,6 +77,7 @@ export const VoiceOS = ({
 	const [newSessionOn, setNewSessionOn] = useState<string | null>(null);
 	// What the last one left: "Started research on Build box.", or crew's reason it was not.
 	const [newSessionLine, setNewSessionLine] = useState<string | null>(null);
+	const newSessionOpener = useRef<HTMLElement | null>(null);
 	const [isIgnored, setIsIgnored] = useState(false);
 	const missingKeys = listMissingKeys(state);
 	const [isSheetOpen, setIsSheetOpen] = useState(
@@ -120,8 +121,8 @@ export const VoiceOS = ({
 			const isInField =
 				event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
 
-			// A dialog's own Esc closes the dialog only.
-			if (event.key === 'Escape' && !isInField && !isInDialog(event)) {
+			// A dialog's own Esc closes the dialog only, and a menu's closes the menu.
+			if (event.key === 'Escape' && !isInField && !isInDialog(event) && !event.defaultPrevented) {
 				// Up one level: a session → Active (or the machine's Activate it came from).
 				send({
 					type: 'action',
@@ -137,8 +138,15 @@ export const VoiceOS = ({
 
 	const { view } = state;
 	const session = view.kind === 'session' ? state.sessions[view.ref] : undefined;
+
 	// From the top bar or Home: the machine on screen, else this Mac.
 	const openNewSession = (machine?: string) => {
+		// Focus goes back where it was once the dialog closes; a menu item that opened it is gone by then.
+		const opener = document.activeElement;
+		newSessionOpener.current =
+			opener instanceof HTMLElement && !opener.closest('[role="menu"]')
+				? opener
+				: document.querySelector<HTMLElement>('.vo-new');
 		setNewSessionLine(null);
 		setNewSessionOn(
 			machine ?? (view.kind === 'activate' ? view.machine : undefined) ?? LOCAL_MACHINE,
@@ -223,6 +231,7 @@ export const VoiceOS = ({
 					onClose={(line) => {
 						setNewSessionOn(null);
 						setNewSessionLine(line || null);
+						newSessionOpener.current?.focus();
 					}}
 				/>
 			)}

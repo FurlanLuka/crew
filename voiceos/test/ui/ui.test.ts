@@ -214,7 +214,7 @@ describe('voice os ui', () => {
 
 		await page.locator('.launch-choice', { hasText: 'Voice OS' }).click();
 		await page.locator('.vo-moment .wordmark', { hasText: 'Voice OS' }).waitFor({ timeout: 5000 });
-		await page.locator('section[aria-label="Active"]').waitFor({ timeout: 5000 });
+		await page.locator('section[aria-label="Home"]').waitFor({ timeout: 5000 });
 		expect(new URL(page.url()).pathname).toBe('/voice');
 
 		const refs = await page
@@ -927,7 +927,7 @@ describe('voice os ui', () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'setup' } });
-		await page.locator('section[aria-label="Active"]').waitFor({ timeout: 5000 });
+		await page.locator('section[aria-label="Home"]').waitFor({ timeout: 5000 });
 		expect(await page.locator('[data-ref="setup"]').count()).toBe(0);
 
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -2081,12 +2081,38 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('New session with a name another session has → refused in the dialog, crew never asked', async () => {
+		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: 'checkout' });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+		const before = crew.calls.filter((call) => call.command.type === 'chat_add').length;
+		await page
+			.locator('section[aria-label="Home"]')
+			.getByRole('button', { name: 'New session' })
+			.click();
+		const form = page.getByRole('form', { name: /New session on/ });
+		await form.getByRole('textbox', { name: 'Name' }).fill('Checkout');
+		await form.getByRole('button', { name: 'Start session' }).click();
+
+		await form.getByRole('alert').getByText('A session is already called Checkout.').waitFor({
+			timeout: 5000,
+		});
+		expect(crew.calls.filter((call) => call.command.type === 'chat_add').length).toBe(before);
+		await page.keyboard.press('Escape');
+		// Focus is back on what opened it.
+		await page.waitForFunction(
+			() => document.activeElement?.textContent?.includes('New session') === true,
+		);
+		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: '' });
+		await context.close();
+	}, 20_000);
+
 	it("Activate → New session in a folder that is not there: crew's reason, nothing activated", async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'activate' } });
 		const { context, page } = await signIn();
 		const before = store.state.pendingActivations.length;
 		await page
-			.locator('section[aria-label="Activate"]')
+			.locator('section[aria-label="Machines"]')
 			.getByRole('button', { name: 'New session' })
 			.first()
 			.click();
@@ -2234,12 +2260,59 @@ describe('active', () => {
 		await context.close();
 	}, 20_000);
 
+	it('the New menu by keyboard: arrows and Enter pick; Esc closes it only, focus back on New', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } });
+		const { context, page } = await signIn();
+		const button = page.locator('.vo-top').getByRole('button', { name: 'New' });
+		await button.click();
+		await page.getByRole('menu', { name: 'New' }).waitFor({ timeout: 5000 });
+		await page.keyboard.press('ArrowDown');
+		await page.keyboard.press('Enter');
+		await waitUntil(
+			() =>
+				store.state.view.kind === 'activate' &&
+				!('machine' in store.state.view && store.state.view.machine),
+		);
+		// The address follows the view: wait for it before the server moves on, so the page never
+		// sends the old screen back.
+		await page.waitForURL(/\/voice\/activate$/);
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'activate', machine: 'vm1' } });
+		await page.waitForURL(/\/voice\/activate\/vm1$/);
+		await button.click();
+		await page.getByRole('menu', { name: 'New' }).waitFor({ timeout: 5000 });
+		const mark = received.length;
+		console.log(
+			'DBG before',
+			JSON.stringify(store.state.view),
+			JSON.stringify(received.map((r) => r.message)),
+		);
+		await page.keyboard.press('Escape');
+		await page.getByRole('menu', { name: 'New' }).waitFor({ state: 'detached', timeout: 5000 });
+		console.log(
+			'DBG after',
+			JSON.stringify(store.state.view),
+			received.length,
+			JSON.stringify(received.slice(mark).map((r) => r.message)),
+		);
+		expect(store.state.view).toEqual({ kind: 'activate', machine: 'vm1' });
+		expect(await button.evaluate((element) => element === document.activeElement)).toBe(true);
+
+		// The machine page's switcher moves every tab: the view carries the machine.
+		await page.locator('.vb-switch').getByRole('button', { name: 'This Mac' }).click();
+		await waitUntil(
+			() => store.state.view.kind === 'activate' && store.state.view.machine === 'local',
+		);
+		await context.close();
+	}, 20_000);
+
 	it('"New" → Activate a worktree: every worktree by machine; Activate gives it a tab and a row without leaving the page', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
 		await page.locator('.vo-top').getByRole('button', { name: 'New' }).click();
 		await page.getByRole('menuitem', { name: /Activate a worktree/ }).click();
-		await page.locator('section[aria-label="Activate"]').waitFor({ timeout: 5000 });
+		await page.locator('section[aria-label="Machines"]').waitFor({ timeout: 5000 });
+		await page.locator('.vb-machine b').nth(1).waitFor({ timeout: 5000 });
 
 		expect(await page.locator('.vb-machine b').allInnerTexts()).toEqual(['This Mac', 'Build box']);
 		expect(await page.locator('.vb-lib [data-ref="setup"]').count()).toBe(0);
@@ -2391,9 +2464,17 @@ describe('active', () => {
 		// The gear became the Settings tab; the side menu reaches every section.
 		await page.locator('.vo-top .vo-settings', { hasText: 'Settings' }).waitFor({ timeout: 5000 });
 		const nav = settings.getByRole('navigation', { name: 'Settings sections' });
-		await nav.getByRole('button', { name: 'Machines' }).click();
-		expect(await nav.getByRole('button', { name: 'Machines' }).getAttribute('aria-current')).toBe(
-			'true',
+		await nav.getByRole('button', { name: 'Keys' }).click();
+		// The page scrolled to it, and the menu marks it.
+		await page.waitForFunction(() => {
+			const rect = document.getElementById('vs-keys')?.getBoundingClientRect();
+
+			return rect !== undefined && rect.top >= 0 && rect.top < window.innerHeight / 2;
+		});
+		await page.waitForFunction(
+			() =>
+				document.querySelector('nav[aria-label="Settings sections"] button[aria-current="true"]')
+					?.textContent === 'Keys',
 		);
 
 		await settings.getByRole('button', { name: /^Dictation/ }).click();
@@ -2403,7 +2484,7 @@ describe('active', () => {
 
 		await settings.getByRole('button', { name: 'Mute voice' }).click();
 		await waitUntil(() => store.state.voiceOff);
-		await settings.getByRole('button', { name: 'Turn voice on' }).first().click();
+		await settings.locator('#vs-voice').getByRole('button', { name: 'Turn voice on' }).click();
 		await waitUntil(() => !store.state.voiceOff);
 		await context.close();
 	}, 20_000);

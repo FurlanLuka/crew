@@ -2,7 +2,7 @@
 // Activating starts its Claude: it gets a tab and a row on Home, with no page change. Worktrees are
 // made in Set up; a plain session is made from here, in the New session dialog.
 import { useState } from 'react';
-import { isActive, listVoiceRefsOn } from '../../shared/active.js';
+import { countMachineRefs, isActive, listVoiceRefsOn } from '../../shared/active.js';
 import { CHAT_WORKSPACE, isChatRef, LOCAL_MACHINE, splitRef } from '../../shared/machine-ref.js';
 import {
 	isMachineReachable,
@@ -90,7 +90,7 @@ export const listActivateSections = (
 			}
 
 			const isOffline = id !== LOCAL_MACHINE && !isMachineReachable(state, id);
-			const activeCount = all.filter((ref) => isActive(state, ref)).length;
+			const activeCount = countMachineRefs(state, id).active;
 			const status = isOffline
 				? (state.machines[id]?.detail ?? 'not reachable')
 				: `${activeCount} of ${all.length} active`;
@@ -182,7 +182,8 @@ export const Activate = ({
 	onSetUpMachine,
 }: ActivateProps) => {
 	const [query, setQuery] = useState('');
-	const [filter, setFilter] = useState(machine ?? 'all');
+	// The view carries the machine, so every tab shows the same one and New knows where it is.
+	const filter = machine ?? 'all';
 	const sections = listActivateSections(state, filter, query.trim());
 	const machineIds = listMachineIds(state);
 	const one = filter === 'all' ? null : filter;
@@ -190,16 +191,20 @@ export const Activate = ({
 	const isOneUp = one === LOCAL_MACHINE || (one !== null && isMachineReachable(state, one));
 
 	return (
-		<section className="vo-view vo-machine-page" aria-label="Activate">
+		<section className="vo-view vo-machine-page" aria-label="Machines">
 			{machineIds.length > 1 && (
-				<div className="seg vb-switch" role="tablist" aria-label="Machine">
+				<div className="seg vb-switch">
 					{['all', ...machineIds].map((id) => (
 						<button
 							key={id}
 							type="button"
-							role="tab"
-							aria-selected={filter === id}
-							onClick={() => setFilter(id)}
+							aria-pressed={filter === id}
+							onClick={() =>
+								dispatch({
+									type: 'switch_view',
+									view: { kind: 'activate', ...(id === 'all' ? {} : { machine: id }) },
+								})
+							}
 						>
 							{id === 'all' ? (
 								'All machines'

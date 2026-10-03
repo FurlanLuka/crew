@@ -12,6 +12,8 @@ import { listSessionDocs, type SessionDoc } from '../shared/session-docs.js';
 import { hasBackgroundWork } from '../state/subagents.js';
 import { describeWork, formatAge } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
+import { countOf } from './count.js';
+import { countMachineRefs } from '../shared/active.js';
 import { readWorkspace } from '../shared/notes.js';
 import { isSetupRef, machineOf, readMachine } from '../shared/machine-ref.js';
 import {
@@ -286,4 +288,22 @@ export const splitRunReport = (
 	return !isRunning && last?.kind === 'text'
 		? { lines: run.items.slice(0, -1), report: last.text }
 		: { lines: run.items, report: null };
+};
+
+// What a machine holds, in a few words: Home's cards and the New menu say it the same way.
+export const describeCounts = (state: State, machine: string): string => {
+	const { worktrees, active, plain } = countMachineRefs(state, machine);
+
+	return [
+		countOf(worktrees, 'worktree'),
+		`${active} active`,
+		...(plain > 0 ? [`${plain} plain`] : []),
+	].join(' · ');
+};
+
+// A session waiting on the developer: an ask, a confirm, a "needs you" line.
+export const isWaiting = (state: State, ref: string): boolean => {
+	const session = state.sessions[ref];
+
+	return session ? describeSessionBadge(session, state.asks).isAlarm : false;
 };

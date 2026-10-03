@@ -13,15 +13,17 @@ import type { State } from '../../shared/protocol.js';
 import { readWorkLabel } from '../../shared/work-label.js';
 import { describeWork } from '../../state/working.js';
 import {
+	describeCounts,
 	describeMissingActive,
 	describeSessionBadge,
+	isWaiting,
 	readLastLine,
 	readRefTitle,
 } from '../derive.js';
 import type { Dispatch } from '../types.js';
 import { useNow } from '../use-now.js';
 import { countOf } from '../count.js';
-import { describeCounts, PlusIcon } from './NewMenu.js';
+import { PlusIcon } from './icons.js';
 
 interface ActiveViewProps {
 	state: State;
@@ -47,15 +49,10 @@ const SAY_IT = [
 ];
 
 // What waits on you first; otherwise the developer's own order.
-export const sortForHome = (state: State, refs: string[]): string[] => {
-	const isWaiting = (ref: string): boolean => {
-		const session = state.sessions[ref];
-
-		return session ? describeSessionBadge(session, state.asks).isAlarm : false;
-	};
-
-	return [...refs.filter(isWaiting), ...refs.filter((ref) => !isWaiting(ref))];
-};
+export const sortForHome = (state: State, refs: string[]): string[] => [
+	...refs.filter((ref) => isWaiting(state, ref)),
+	...refs.filter((ref) => !isWaiting(state, ref)),
+];
 
 export const ActiveView = ({ state, dispatch, onNewSession }: ActiveViewProps) => {
 	const now = useNow();
@@ -64,14 +61,10 @@ export const ActiveView = ({ state, dispatch, onNewSession }: ActiveViewProps) =
 	const total = refs.length;
 	const machines = countMachines(refs);
 
-	const waiting = refs.filter((ref) => {
-		const session = state.sessions[ref];
-
-		return session ? describeSessionBadge(session, state.asks).isAlarm : false;
-	}).length;
+	const waiting = refs.filter((ref) => isWaiting(state, ref)).length;
 
 	return (
-		<section className="vo-view vo-home" aria-label="Active">
+		<section className="vo-view vo-home" aria-label="Home">
 			<div className="vo-head">
 				<div className="vo-head-text">
 					<h1>Home</h1>

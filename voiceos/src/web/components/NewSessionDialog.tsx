@@ -85,6 +85,12 @@ export const NewSessionDialog = ({ state, machine, dispatch, onClose }: NewSessi
 					dialog.showModal();
 				}
 			}}
+			// Once crew runs it is made either way: closing then would hide a session that still starts.
+			onCancel={(event) => {
+				if (isBusy) {
+					event.preventDefault();
+				}
+			}}
 			onClose={() => onClose('')}
 		>
 			<form aria-label={`New session on ${title}`} onSubmit={(event) => void start(event)}>
@@ -158,7 +164,7 @@ export const NewSessionDialog = ({ state, machine, dispatch, onClose }: NewSessi
 				)}
 				<div className="nsd-actions">
 					<span className="nsd-hint">Or say: “new session on {title} called research”</span>
-					<button type="button" className="btn ghost" onClick={() => onClose('')}>
+					<button type="button" className="btn ghost" disabled={isBusy} onClick={() => onClose('')}>
 						Cancel
 					</button>
 					<button type="submit" className="btn primary" disabled={isBusy}>

@@ -6,7 +6,7 @@ import type { PendingAsk, State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { Activate, describeGroup, listActivateSections } from './Activate.js';
 import { ActiveView, sortForHome } from './ActiveView.js';
-import { listRecentFolders } from './NewSessionDialog.js';
+import { listRecentFolders, NewSessionDialog } from './NewSessionDialog.js';
 import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
 import { DevPanel } from './DevPanel.js';
@@ -268,6 +268,31 @@ describe('Home', () => {
 });
 
 describe('New session dialog', () => {
+	it('a machine out of reach is not offered; opened on it, the dialog falls back to This Mac', () => {
+		const html = renderToStaticMarkup(
+			<NewSessionDialog
+				state={createState({
+					machines: {
+						vm1: {
+							id: 'vm1',
+							host: 'dev@vm1',
+							name: 'Build box',
+							status: 'unreachable',
+							detail: null,
+							since: 1,
+						},
+					},
+				})}
+				machine="vm1"
+				dispatch={noop}
+				onClose={noop}
+			/>,
+		);
+
+		expect(html).toContain('aria-label="New session on This Mac"');
+		expect(html).not.toContain('Build box');
+	});
+
 	it("the folders already used for plain sessions on that machine, each once; never another machine's", () => {
 		const chat = (ref: string, cwd: string) =>
 			createSession({ ref, label: ref, branch: '', cwd, dirs: [], isPinned: false, isChat: true });

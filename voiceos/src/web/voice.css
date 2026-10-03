@@ -973,17 +973,6 @@
 	background: rgba(255, 255, 255, 0.08);
 	color: #fff;
 }
-.lnk {
-	margin-left: auto;
-	padding: 0;
-	border: 0;
-	background: none;
-	color: #fff;
-	font: 12.5px var(--mono);
-	text-decoration: underline;
-	text-underline-offset: 3px;
-	text-decoration-color: rgba(255, 255, 255, 0.3);
-}
 /* Each entry is plain rows like the other panels': no class here may share a name with Set up's
    (its .reply is the chat's floating composer). */
 .voice-log .entry {
@@ -1727,10 +1716,6 @@
 	}
 	.vo-row .sub .m {
 		white-space: normal;
-	}
-	.vs-h {
-		display: grid;
-		gap: 2px;
 	}
 	.box-row .row-actions {
 		flex-wrap: wrap;
