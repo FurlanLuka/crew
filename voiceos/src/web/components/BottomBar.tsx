@@ -4,11 +4,12 @@
 import type { Action, ClientMessage, State } from '../../shared/protocol.js';
 import { readLabel } from '../../state/helpers.js';
 import { isListeningMode, type InputMode } from '../listen-mode.js';
-import { readScreenAsk } from '../moments.js';
+import { readScreenAsk, readScreenDenial } from '../moments.js';
 import type { ListeningMode } from '../../shared/protocol.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
 import { AskDock } from './AskDock.js';
+import { DenialStrip } from './DenialStrip.js';
 import { Composer } from './Composer.js';
 import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
@@ -78,10 +79,14 @@ export const BottomBar = ({
 		: '';
 	const viewed = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
 	const ask = readScreenAsk(state);
+	const denial = readScreenDenial(state);
 	const dispatch = (action: Action) => send({ type: 'action', action });
 
 	return (
 		<footer className="vo-bar">
+			{denial && (
+				<DenialStrip denial={denial} label={readLabel(state, denial.ref)} dispatch={dispatch} />
+			)}
 			{ask && <AskDock ask={ask} label={readLabel(state, ask.ref)} dispatch={dispatch} />}
 			<MomentsRow state={state} dispatch={dispatch} />
 			{viewed && <QueueList session={viewed} dispatch={dispatch} />}

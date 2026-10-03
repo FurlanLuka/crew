@@ -180,21 +180,24 @@ export const readScreenAsk = (state: State): PendingAsk | null => {
 		: null;
 };
 
+// A call auto mode blocked on the session on screen: docked above the voice bar with its answers, like
+// a permission it asks for.
+export const readScreenDenial = (state: State): Denial | null => {
+	const { view } = state;
+
+	return view.kind === 'session'
+		? (state.denials.find((denial) => denial.ref === view.ref) ?? null)
+		: null;
+};
+
 export type SessionState =
-	| { kind: 'denial'; denial: Denial }
 	| { kind: 'dropped'; machine: string; detail: string | null }
 	| { kind: 'crashed'; error: string }
 	| { kind: 'none' };
 
-// The row under a session's header: what's wrong, with the way out. What it waits on is docked
-// above the voice bar instead (readScreenAsk).
+// The row under a session's header: what's wrong, with the way out. What it waits on, a blocked
+// call included, is docked above the voice bar instead (readScreenAsk, readScreenDenial).
 export const describeSessionState = (state: State, ref: string): SessionState => {
-	const denial = state.denials.find((candidate) => candidate.ref === ref);
-
-	if (denial) {
-		return { kind: 'denial', denial };
-	}
-
 	const machine = machineOf(ref);
 
 	if (machine && !isReachable(state, ref)) {

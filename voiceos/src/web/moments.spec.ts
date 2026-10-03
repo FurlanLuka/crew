@@ -4,7 +4,13 @@ import { listHeardAsks } from '../shared/active.js';
 import { isSilenced } from '../speech/connect.js';
 import type { PendingAsk, State } from '../shared/protocol.js';
 import { createInitialState, createSession, type Effect } from '../state/reducer.js';
-import { describeMoment, describeSessionState, readScreenAsk, readSessionAsk } from './moments.js';
+import {
+	describeMoment,
+	describeSessionState,
+	readScreenAsk,
+	readScreenDenial,
+	readSessionAsk,
+} from './moments.js';
 
 const NOW = 1_000_000;
 
@@ -359,4 +365,21 @@ describe('describeSessionState', () => {
 
 	it('nothing wrong → none', () =>
 		expect(describeSessionState(createState(), 'store-front/main').kind).toBe('none'));
+
+	it('a blocked call is not the state row either: it is docked, for the session on screen only', () => {
+		const denial = {
+			id: 'd1',
+			ref: 'store-front/main',
+			at: 1,
+			toolName: 'Bash',
+			summary: 'rm -rf dist',
+		};
+		const blocked = createState({ denials: [denial] });
+
+		expect(describeSessionState(blocked, 'store-front/main').kind).toBe('none');
+		expect(
+			readScreenDenial({ ...blocked, view: { kind: 'session', ref: 'store-front/main' } }),
+		).toEqual(denial);
+		expect(readScreenDenial({ ...blocked, view: { kind: 'active' } })).toBeNull();
+	});
 });

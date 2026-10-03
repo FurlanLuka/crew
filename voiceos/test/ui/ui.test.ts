@@ -1495,7 +1495,8 @@ describe('voice os ui', () => {
 			toolName: 'Bash',
 			summary: 'rm -rf dist',
 		});
-		const strip = page.locator('section[aria-label="denied"]');
+		// Docked above the text box with the other things a session waits on, not under its header.
+		const strip = page.locator('.vo-bar section[aria-label="denied"]');
 		await strip.getByRole('button', { name: /Allow it/ }).click();
 		await waitUntil(() => listSentActions('allow_denied').length > 0);
 
@@ -2049,10 +2050,11 @@ describe('voice os ui', () => {
 		await form.getByRole('textbox', { name: 'Name' }).fill('research');
 		await form.getByRole('button', { name: 'Start session' }).click();
 
-		await page
-			.locator('.vo-notice', { hasText: /^Started research on / })
-			.waitFor({ timeout: 5000 });
+		const started = page.locator('.vo-notice', { hasText: /^Started research on / });
+		await started.waitFor({ timeout: 5000 });
 		expect(await dialog.count()).toBe(0);
+		// It is news for a moment, not a banner that stays.
+		await started.waitFor({ state: 'detached', timeout: 8000 });
 		const made = crew.calls.filter((call) => call.command.type === 'chat_add').at(-1);
 		expect(made?.command).toEqual({ type: 'chat_add', dir: '~/notes', name: 'research' });
 		await waitUntil(() =>

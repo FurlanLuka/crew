@@ -1,3 +1,5 @@
+// A call auto mode blocked, docked above the voice bar like a permission the session asks for: allow
+// it once, or leave it blocked.
 import type { Denial } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 
@@ -7,13 +9,15 @@ interface DenialStripProps {
 	dispatch: Dispatch;
 }
 
-export const DenialStrip = ({ denial, label, dispatch }: DenialStripProps) => {
-	return (
-		<section className="strip crit" aria-label="denied">
-			<span className="lbl c-crit">blocked · {label}</span>
-			<span className="say">
-				Auto mode blocked {label} from trying to {denial.summary}.
-			</span>
+export const DenialStrip = ({ denial, label, dispatch }: DenialStripProps) => (
+	<section className="dock crit" aria-label="denied">
+		<span className="lbl c-crit">
+			blocked · {label} · {denial.toolName}
+		</span>
+		<div className="ask">
+			Auto mode blocked {label} from trying to {denial.summary}.
+		</div>
+		<div className="btns">
 			<button
 				type="button"
 				className="btn primary"
@@ -28,6 +32,6 @@ export const DenialStrip = ({ denial, label, dispatch }: DenialStripProps) => {
 			>
 				Leave it blocked
 			</button>
-		</section>
-	);
-};
+		</div>
+	</section>
+);
