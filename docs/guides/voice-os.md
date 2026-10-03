@@ -193,12 +193,20 @@ ways to start something: **New session** and **Activate a worktree**. On the rig
 each machine with what it holds (worktrees, how many are active, plain sessions), and under them a
 few things you can simply say instead.
 
+![Home: signals/wrk1 asks a question, so it sits first and tinted with Answer ringed; under it the other sessions with what they're doing, and on the right a card for This Mac, Build box and Lab box](../images/voice-os/answer.png)
+
 The bar along the top has the crew mark (back to crew's Home), **Home** with its count, a tab for
 each active session with its state dot (and its machine when it is not This Mac), and **New**. New
 opens a menu: New session, Activate a worktree, and each machine, which opens that machine's page.
 Your Claude usage (weekly and 5-hour), **voice** and the settings gear are on the right; the gear
-becomes a **Settings** tab while Settings is open. Drag a session's tab to put it somewhere else, or focus it and
-press **Alt+←** / **Alt+→**; Home's list follows the same order, and it is kept across restarts.
+becomes a **Settings** tab while Settings is open.
+
+![The New menu open under the top bar: New session, Activate a worktree, then This Mac, Build box and Lab box with what each holds](../images/voice-os/new-menu.png)
+
+Drag a session's tab to put it somewhere else, or focus it and press **Alt+←** / **Alt+→**. A white
+line shows where it will land. Home's list follows the same order, and it is kept across restarts.
+
+![store-front/wrk2's tab being dragged in the top bar, dimmed, with a white line between store-front/main and checkout where it will land](../images/voice-os/tab-drag.png)
 
 **A machine's page** is where you go into a remote. A switcher on top moves between All machines and
 each machine. A machine's header says whether it is connected, its host, **Open in Set up** for a
@@ -207,6 +215,8 @@ grouped by workspace. A worktree with words waiting for it shows them ("1 waitin
 out of reach has its rows dimmed and says why. **Activate** on a row starts that worktree's Claude:
 it gets a tab and a row on Home, and the page stays where it is. Worktrees are made in Set up, not
 here.
+
+![Build box's page: the machine switcher, Build box connected at dev@store-vm, Open in Set up and New session on Build box ringed, then its plain sessions and store-front/wrk2](../images/voice-os/machine.png)
 
 ![All machines: This Mac's plain sessions and worktrees grouped by workspace, Activate on admin/main, Open on the active ones](../images/voice-os/activate.png)
 
@@ -217,6 +227,8 @@ folder" does the same. It is a plain Claude conversation with no crew instructio
 servers, and it is active at once. Talk to it by its name like any session; **Remove** on its page,
 or "remove research", stops it and drops it from the list, leaving the folder alone. crew keeps
 them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
+
+![The New session dialog over Home: This Mac picked, ~/notes as the folder, research as the name, and Start session ringed](../images/voice-os/new-session.png)
 
 **Settings** is one page with a menu down the side: how you listen (four modes, each explained),
 voice off, the two keys (checked before saving), Discord, session names, your machines, and whether
@@ -316,6 +328,8 @@ either one to turn voice back on. Each tab listens again in its own mode, the bo
 channel, and nothing from the quiet time is read out. Voice OS plays its title again each time you
 turn voice off or on, with "Voice" struck through while it is off. The setting is for the whole
 server and lasts across restarts.
+
+![The top bar with voice off: voice is struck through and ringed, next to the settings gear](../images/voice-os/voice-off.png)
 
 ## Talking to sessions
 
@@ -489,6 +503,11 @@ shows it in the dock at the bottom. Answer it the way you would answer a person,
 
 ![A question from a session, with its options in the dock](../images/voice-os/question.png)
 
+A permission looks the same, with the command it wants to run and **Yes** and **No** under it. Type in
+the box below them to say no and tell it why.
+
+![store-front/main asking to run the database migrations: pnpm db:migrate, Yes and No, and a box for no with a reason, docked above the spoken line and the text box](../images/voice-os/permission.png)
+
 - "Yes." · "Go ahead." · "Always." ("Always" is offered when Claude Code suggests a rule. Voice
   OS hands that suggestion back to Claude Code unchanged, so the rule is kept wherever the
   suggestion names: for this session only, or in one of your Claude Code settings files, where it
@@ -525,11 +544,11 @@ Whether auto mode is available depends on your Claude Code account, model and se
 asks for it but does not check what Claude Code did with the request; any permission prompt
 Claude Code raises comes to you like the others.
 
-When auto mode blocks something, the session page shows a red **blocked** strip that says what the
-session was trying to do ("Auto mode blocked store-front/main from trying to run git push"), and
+When auto mode blocks something, the session page docks a red **blocked** prompt above the text box
+that says what the session was trying to do ("Auto mode blocked store-front/main from trying to run git push"), and
 Voice OS tells you.
 
-![The blocked strip, and an "Allowed once" line in the stream](../images/voice-os/approval.png)
+![The blocked prompt docked above the text box, and an "Allowed once" line in the stream](../images/voice-os/approval.png)
 
 - **Allow it** (or say "allow it" / "let it") lets that one call through. The session retries it,
   and the stream shows **✓ Allowed once: …**. Only that call is allowed: auto mode is back for the
@@ -601,6 +620,8 @@ the name and size for anything else, and every tab you have open shows the same 
 chip takes it off. With no session on screen there is nothing to attach to, so Voice OS says "Open
 a session to attach files." and keeps nothing.
 
+![Two files waiting above the box, checkout-error.log and search-spec.pdf with their sizes, and the paperclip ringed](../images/voice-os/attachments.png)
+
 The files go with the next words that reach that session, whether you type them in its box, say
 them on its screen, or say them to it by name from somewhere else ("Sent to checkout with 2 files.").
 Pressing Enter with only files in the box sends them on their own. A file still uploading when you
@@ -616,9 +637,19 @@ restart, and the files themselves are kept for 30 days.
 ## Dev servers
 
 Voice OS starts, stops and watches each worktree's dev servers through crew, on that worktree's own
-ports. The session page's **dev servers** panel shows each server with its state and a small
-open icon at the row's end (its URL is the icon's tooltip). A worktree whose projects have no dev
-servers has no panel: a project without servers (a library, infra) is a whole project.
+ports. The session page's **dev servers** panel shows each server with its state and two small
+icons at the row's end: its log, and the open icon (its URL is the icon's tooltip). A worktree whose
+projects have no dev servers has no panel: a project without servers (a library, infra) is a whole
+project.
+
+![The dev servers panel: web and api running, each with a logs icon and an open icon, web's logs icon ringed, then Restart and Stop](../images/voice-os/dev-servers.png)
+
+The logs icon opens that server's log in a window with a tab for each server. It follows new lines
+every two seconds, marks error lines in red, and stays where you are when you scroll up. **Pause**
+stops following, **Copy** takes the lines, and **Restart dev servers** restarts the worktree's
+servers. Esc closes it.
+
+![web's log in its window over the session page: running on localhost:4100, tabs for web and api, the Vite output with a 502 proxy error in red, and Pause, Copy, Restart dev servers and Close](../images/voice-os/dev-logs.png)
 
 - "Start the dev servers." · "Restart them." · "Stop the servers."
 - "What's wrong with the dev servers here?" Answered from what crew sees: which one died, and which

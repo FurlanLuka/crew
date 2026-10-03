@@ -162,6 +162,11 @@ A worktree's page is one working copy of the workspace:
   final set, server by server. Terminal: `crew add override`.
 - **On disk** — its size and folder, and how each project is in it.
 
+**Logs** opens a page with a tab for each dev server and each project's setup runner. It follows the
+output every two seconds, you can pick how many lines, and it shows the `crew dev logs` it runs.
+
+![store-front/wrk1's Logs: tabs for web, api, worker and each project's setup runner, web's output with Following on, and the crew dev logs command under it](../images/setup/logs.png)
+
 **Rename** moves its checkouts and renames crew's branches; it is refused while its servers run or
 setup is busy with it. **Duplicate** makes fresh checkouts of the same projects on new ports, with
 the values set for this worktree copied across. **Remove worktree** shows what would go first, like
@@ -223,6 +228,8 @@ else in Set up — the board, the forms, Setup with Claude — works on another 
 as on this one: pick it in the picker. A machine that runs an older crew says so in place; crew
 updates it from here.
 
+![This Mac's machine page: crew runs here, Check with Claude, and the projects on it with their worktree counts, store-api's check failed](../images/setup/machines.png)
+
 ## Settings
 
 ![Settings: crew 4.2.0 is out with Update, This machine's addresses and proxy ports, the disk section with Trash and Left behind, and Move to another machine](../images/setup/settings.png)
@@ -255,10 +262,12 @@ remote, their install and env commands, dev servers, bindings, workspace members
 stays (worktrees, ports, worktree values, .env files), shows the `crew export` it runs, and
 **Save crew-export.json** downloads it.
 
-![Export: the store-front workspace ticked with its three projects under it, signals marked setup only, admin unticked, and the crew export command](../images/setup/export.png)
+![Export: store-front and admin ticked with their projects under them, signals marked setup only because it has no remote, what goes with the file and what stays, the crew export command, and Save crew-export.json](../images/setup/export.png)
 
 **Import…** on the other machine takes the file (drop it, or choose it) and shows crew's plan with
 every choice up front:
+
+![Import's first step: drop crew-export.json here, or Choose a file, with the File, Choose and Getting it ready steps above](../images/setup/import.png)
 
 - **Needs a choice** — a project with no remote: **Point at a folder** or **Skip**. A name taken by
   a different repo here: **Import as store-api-2**, **Replace mine** (offered only when no
