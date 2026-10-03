@@ -341,11 +341,18 @@ export const createFakeCrew = ({
 	const calls: FakeCrew['calls'] = [];
 	const failNext = new Set<string>();
 	const devLogs = new Map<string, string[] | { refuse: string }>();
-	const heldLogs = new Map<string, Promise<void>>();
+	const heldLogs = new Map<string, PromiseWithResolvers<void>>();
 	const failing = new Map<string, MachineFailure>();
 
 	const reset = (next: 'golden' | 'empty' = seed) => {
 		devLogs.clear();
+
+		// A test that failed while holding a read must not leave the next ones waiting on it.
+		for (const gate of heldLogs.values()) {
+			gate.resolve();
+		}
+
+		heldLogs.clear();
 		for (const id of [LOCAL_MACHINE, ...remotes]) {
 			machines[id] = seedMachine(next);
 		}
@@ -1412,7 +1419,7 @@ export const createFakeCrew = ({
 			calls.push({ machine, command });
 
 			if (command.type === 'dev_logs') {
-				await heldLogs.get(command.server);
+				await heldLogs.get(command.server)?.promise;
 			}
 
 			return asCrewPrints(command, run(machine, command));
@@ -1422,7 +1429,7 @@ export const createFakeCrew = ({
 		failInstall: (project) => failNext.add(project),
 		holdDevLogs: (server) => {
 			const gate = Promise.withResolvers<void>();
-			heldLogs.set(server, gate.promise);
+			heldLogs.set(server, gate);
 
 			return () => {
 				heldLogs.delete(server);

@@ -413,6 +413,8 @@ describe('voice os ui', () => {
 		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 		const reads = () => crew.calls.filter((call) => call.command.type === 'dev_logs');
 		crew.setDevLogs('worker', { refuse: 'no dev server worker in store-front/main' });
+		// Released in finally too: a failure while web is held must not hang the tests after it.
+		let release = () => {};
 
 		try {
 			await page.getByRole('button', { name: 'api logs' }).click();
@@ -431,7 +433,7 @@ describe('voice os ui', () => {
 
 			// The other server is a tab away. While its first read is still out, api's lines are not
 			// shown under it.
-			const release = crew.holdDevLogs('web');
+			release = crew.holdDevLogs('web');
 			await dialog.getByRole('tab', { name: 'web' }).click();
 			await dialog.getByText('Reading the log…').waitFor({ timeout: 5000 });
 			expect(await dialog.getByText('$ api').count()).toBe(0);
@@ -490,6 +492,7 @@ describe('voice os ui', () => {
 			await Bun.sleep(2500);
 			expect(reads().length).toBe(paused);
 		} finally {
+			release();
 			crew.setDevLogs('worker', null);
 			crew.setDevLogs('api', null);
 			store.dispatch({
