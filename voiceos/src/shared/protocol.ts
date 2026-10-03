@@ -536,6 +536,9 @@ export type Action =
 	// too (Set up's "Open Voice OS"); a worktree Voice OS has not listed yet is held until it has.
 	| { type: 'activate'; ref: string; announce?: true; open?: true }
 	| { type: 'deactivate'; ref: string }
+	// A tab dragged (or moved with Alt+arrow) in the top bar: ref goes just before another active
+	// ref, or to the end with null.
+	| { type: 'move_active'; ref: string; before: string | null }
 	// isCorrection: the developer's words went there by mistake; Voice OS says it stopped it.
 	| { type: 'interrupt'; ref: string; isCorrection?: true }
 	| { type: 'allow_denied'; denialId: string }

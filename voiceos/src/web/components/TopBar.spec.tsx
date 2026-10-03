@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
-import { TopBar } from './TopBar.js';
+import { readDropTarget, readKeyMove, TopBar } from './TopBar.js';
 
 const withSessions = (refs: string[], active: string[] = refs): State => ({
 	...createInitialState(),
@@ -115,4 +115,32 @@ describe('TopBar', () => {
 		expect(render({ ...withSessions([]), discord: { ...DISCORD, isHearing: false } })).toContain(
 			'Voice via Discord · Voice OS · not hearing',
 		));
+});
+
+describe('moving a tab', () => {
+	const refs = ['a/main', 'b/main', 'c/main'];
+
+	it('dropped before a tab → before it; after it → before the next, never before itself; last → the end', () => {
+		expect(readDropTarget(refs, 'c/main', 'a/main', 'before')).toBe('a/main');
+		expect(readDropTarget(refs, 'a/main', 'b/main', 'after')).toBe('c/main');
+		expect(readDropTarget(refs, 'b/main', 'a/main', 'after')).toBe('c/main');
+		expect(readDropTarget(refs, 'a/main', 'c/main', 'after')).toBeNull();
+	});
+
+	it('Alt+← and Alt+→ → one place along; at an end, no move', () => {
+		expect(readKeyMove(refs, 'b/main', -1)).toEqual({ before: 'a/main' });
+		expect(readKeyMove(refs, 'a/main', 1)).toEqual({ before: 'c/main' });
+		expect(readKeyMove(refs, 'b/main', 1)).toEqual({ before: null });
+		expect(readKeyMove(refs, 'a/main', -1)).toBeNull();
+		expect(readKeyMove(refs, 'c/main', 1)).toBeNull();
+	});
+
+	it('every session tab can be dragged and says its keys; Home cannot', () => {
+		const html = render(withSessions(['store-front/main']));
+
+		expect(html).toMatch(
+			/data-ref="store-front\/main" draggable="true" aria-keyshortcuts="Alt\+ArrowLeft Alt\+ArrowRight"/,
+		);
+		expect(html.split('draggable="true"').length - 1).toBe(1);
+	});
 });

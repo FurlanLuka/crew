@@ -196,7 +196,8 @@ The bar along the top has the crew mark (back to crew's Home), **Home** with its
 each active session with its state dot (and its machine when it is not This Mac), and **New**. New
 opens a menu: New session, Activate a worktree, and each machine, which opens that machine's page.
 Your Claude usage (weekly and 5-hour), **voice** and the settings gear are on the right; the gear
-becomes a **Settings** tab while Settings is open.
+becomes a **Settings** tab while Settings is open. Drag a session's tab to put it somewhere else, or focus it and
+press **Alt+←** / **Alt+→**; Home's list follows the same order, and it is kept across restarts.
 
 **A machine's page** is where you go into a remote. A switcher on top moves between All machines and
 each machine. A machine's header says whether it is connected, its host, **Open in Set up** for a

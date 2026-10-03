@@ -332,6 +332,52 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('session tabs move by drag and by Alt+arrows; their order is the active set', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const original = [...store.state.active];
+		const { context, page } = await signIn();
+		const readTabRefs = () =>
+			page
+				.locator('.vo-tab[data-ref]')
+				.evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('data-ref') ?? ''));
+		const at = (ref: string) => store.state.active.indexOf(ref);
+		// The page redraws once the server's state reaches it.
+		const expectTabsToStart = (refs: string[]) =>
+			page.waitForFunction(
+				(want) =>
+					[...document.querySelectorAll('.vo-tab[data-ref]')]
+						.slice(0, want.length)
+						.map((tab) => tab.getAttribute('data-ref'))
+						.join(' ') === want.join(' '),
+				refs,
+				{ timeout: 5000 },
+			);
+
+		try {
+			const [first = '', second = ''] = await readTabRefs();
+			const tab = (ref: string) => page.locator(`.vo-tab[data-ref="${ref}"]`);
+
+			// Dropped on the left half of the first tab: it lands before it.
+			await tab(second).dragTo(tab(first), { targetPosition: { x: 3, y: 8 } });
+			await waitUntil(() => at(second) < at(first));
+			await expectTabsToStart([second, first]);
+
+			// Alt+→ moves the focused tab one place along, and it keeps the focus.
+			await tab(second).focus();
+			await page.keyboard.press('Alt+ArrowRight');
+			await waitUntil(() => at(first) < at(second));
+			await expectTabsToStart([first, second]);
+			expect(await tab(second).evaluate((element) => element === document.activeElement)).toBe(
+				true,
+			);
+			// Nothing else moved the screen.
+			expect(store.state.view).toEqual({ kind: 'active' });
+		} finally {
+			store.dispatch({ type: 'active_loaded', refs: original });
+			await context.close();
+		}
+	}, 20_000);
+
 	it('typed command → sent as an utterance; the chip shows this session for plain text, Voice OS when addressed to another', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });

@@ -85,6 +85,19 @@
 	background: var(--fill);
 	color: #fff;
 }
+/* Session tabs move by drag: the one carried dims, a line shows where it lands. */
+.vo-tab[draggable="true"] {
+	cursor: grab;
+}
+.vo-tab.dragging {
+	opacity: 0.4;
+}
+.vo-tabs .vo-tab.drop-before {
+	box-shadow: inset 2px 0 0 #fff;
+}
+.vo-tabs .vo-tab.drop-after {
+	box-shadow: inset -2px 0 0 #fff;
+}
 .vo-tab[aria-current="true"] {
 	background: var(--elev-3);
 	color: #fff;
