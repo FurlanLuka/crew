@@ -429,10 +429,33 @@ describe('voice os ui', () => {
 				'$ api\nlistening\nGET / 200 4 ms',
 			);
 
-			// The other server is a tab away, and its own lines only.
+			// The other server is a tab away. While its first read is still out, api's lines are not
+			// shown under it.
+			const release = crew.holdDevLogs('web');
 			await dialog.getByRole('tab', { name: 'web' }).click();
-			await dialog.getByText('$ web').waitFor({ timeout: 5000 });
+			await dialog.getByText('Reading the log…').waitFor({ timeout: 5000 });
 			expect(await dialog.getByText('$ api').count()).toBe(0);
+			release();
+			await dialog.getByText('$ web').waitFor({ timeout: 5000 });
+
+			// A restart empties crew's list for a moment: the window stays, with both tabs.
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: false,
+				servers: [],
+			});
+			await Bun.sleep(300);
+			expect(await dialog.getByRole('tab').allInnerTexts()).toEqual(['web', 'api']);
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: true,
+				servers: [
+					{ name: 'web', port: 4120, url: 'http://localhost:4120', state: 'running', detail: null },
+					{ name: 'api', port: 4121, url: null, state: 'died', detail: null },
+				],
+			});
 
 			// Following reads again every 2 s; closed, nothing more is asked.
 			const followed = reads().length;
@@ -443,6 +466,14 @@ describe('voice os ui', () => {
 			const closed = reads().length;
 			await Bun.sleep(2500);
 			expect(reads().length).toBe(closed);
+
+			// A server that has printed nothing yet says so; there is nothing to copy.
+			crew.setDevLogs('api', []);
+			await page.getByRole('button', { name: 'api logs' }).click();
+			await dialog.getByText('No output yet.').waitFor({ timeout: 5000 });
+			expect(await dialog.getByRole('button', { name: 'Copy' }).isDisabled()).toBe(true);
+			await dialog.getByRole('button', { name: 'Close' }).click();
+			await dialog.waitFor({ state: 'detached', timeout: 5000 });
 
 			// crew's refusal says why; paused, it is not asked again.
 			store.dispatch({
@@ -460,6 +491,7 @@ describe('voice os ui', () => {
 			expect(reads().length).toBe(paused);
 		} finally {
 			crew.setDevLogs('worker', null);
+			crew.setDevLogs('api', null);
 			store.dispatch({
 				type: 'dev_servers',
 				ref: 'store-front/main',

@@ -14,7 +14,8 @@ const LOG_LINES = 200;
 const COPIED_MS = 1500;
 
 // A display hint only: the words a failing server's output tends to carry.
-const ERROR_WORDS = /\b(error|exception|traceback|failed|fatal|panic)\b|ECONNREFUSED/i;
+// "KeyError" and "TypeError" count, "errors=0" does not.
+const ERROR_WORDS = /\b\w*(error|exception)\b|\b(traceback|failed|fatal|panic)\b|ECONNREFUSED/i;
 
 export const isErrorLine = (line: string): boolean => ERROR_WORDS.test(line);
 

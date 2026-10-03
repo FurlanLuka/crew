@@ -614,6 +614,8 @@ describe('dev server logs', () => {
 			'ERROR:    Application startup failed.',
 			'GET /api/cart 502 (proxy: connect ECONNREFUSED 127.0.0.1:4121)',
 			'panic: runtime error: index out of range',
+			"KeyError: 'DATABASE_URL'",
+			'TypeError: cart is undefined',
 		]) {
 			expect(isErrorLine(line)).toBe(true);
 		}

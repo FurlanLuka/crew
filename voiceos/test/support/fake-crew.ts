@@ -105,6 +105,8 @@ export interface FakeCrew {
 	failInstall: (project: string) => void;
 	// What `dev logs` answers for a server from now on: its lines, or crew's refusal; null resets.
 	setDevLogs: (server: string, answer: string[] | { refuse: string } | null) => void;
+	// Reads of this server's log wait until the returned release is called: a slow crew, held.
+	holdDevLogs: (server: string) => () => void;
 	// Every command for this machine fails the way the link fails it (out of reach, an older crew),
 	// until reset; null puts it back.
 	failMachine: (id: string, failure: MachineFailure | null) => void;
@@ -339,6 +341,7 @@ export const createFakeCrew = ({
 	const calls: FakeCrew['calls'] = [];
 	const failNext = new Set<string>();
 	const devLogs = new Map<string, string[] | { refuse: string }>();
+	const heldLogs = new Map<string, Promise<void>>();
 	const failing = new Map<string, MachineFailure>();
 
 	const reset = (next: 'golden' | 'empty' = seed) => {
@@ -1408,11 +1411,24 @@ export const createFakeCrew = ({
 		runCrew: async (machine, command) => {
 			calls.push({ machine, command });
 
+			if (command.type === 'dev_logs') {
+				await heldLogs.get(command.server);
+			}
+
 			return asCrewPrints(command, run(machine, command));
 		},
 		machines,
 		calls,
 		failInstall: (project) => failNext.add(project),
+		holdDevLogs: (server) => {
+			const gate = Promise.withResolvers<void>();
+			heldLogs.set(server, gate.promise);
+
+			return () => {
+				heldLogs.delete(server);
+				gate.resolve();
+			};
+		},
 		setDevLogs: (server, answer) => {
 			if (answer) {
 				devLogs.set(server, answer);
