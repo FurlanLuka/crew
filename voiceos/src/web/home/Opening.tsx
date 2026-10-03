@@ -14,9 +14,11 @@ export const isReducedMotion = (): boolean =>
 interface OpeningProps {
 	// crew's server has not answered yet: the title stays until it has.
 	isHeld?: boolean;
+	// It is gone: the page shows it once per load.
+	onDone?: () => void;
 }
 
-export const Opening = ({ isHeld = false }: OpeningProps) => {
+export const Opening = ({ isHeld = false, onDone }: OpeningProps) => {
 	const isReduced = isReducedMotion();
 	// Reduced motion: no opening at all, unless it is what holds the screen while crew connects (then
 	// it shows still: its fades only run with motion).
@@ -47,6 +49,12 @@ export const Opening = ({ isHeld = false }: OpeningProps) => {
 			clearTimeout(gone);
 		};
 	}, [isHeld]);
+
+	useEffect(() => {
+		if (phase === 'gone') {
+			onDone?.();
+		}
+	}, [phase, onDone]);
 
 	if (phase === 'gone') {
 		return null;

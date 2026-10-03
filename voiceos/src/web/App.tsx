@@ -82,6 +82,17 @@ const App = () => {
 	const seenVoiceOff = useRef<boolean | null>(null);
 	// Stable, so a state message mid-moment does not restart its timers.
 	const endMoment = useCallback(() => setMoment(null), []);
+	// Going into Voice OS plays its moment once per page load: after that the crew mark and the
+	// Voice OS card just go there (a reload plays it again).
+	const hasEnteredVoice = useRef(false);
+	const enterVoiceMoment = useCallback((isStruck: boolean) => {
+		if (hasEnteredVoice.current || isReducedMotion()) {
+			return;
+		}
+
+		hasEnteredVoice.current = true;
+		setMoment({ isStruck });
+	}, []);
 	// "Fix with Claude" from the first run: Set up's chat takes it, through its own busy check.
 	const [pendingAsk, setPendingAsk] = useState<string | null>(null);
 	const blockedOpen = useOpenRequest(openRequest);
@@ -158,7 +169,17 @@ const App = () => {
 
 	const goHome = useCallback(() => navigate({ half: 'home' }), [navigate]);
 
-	const isOpening = route.half === 'home' && isFreshHome;
+	// crew's title opens a fresh load of / once: leaving Home, or its fade ending, is the end of it,
+	// so the crew mark never plays it again until the next reload.
+	const [hasOpened, setHasOpened] = useState(!isFreshHome);
+	const isOpening = route.half === 'home' && !hasOpened;
+	const endOpening = useCallback(() => setHasOpened(true), []);
+
+	useEffect(() => {
+		if (route.half !== 'home') {
+			setHasOpened(true);
+		}
+	}, [route.half]);
 	const isSlowToConnect = useIsLate(state === null, SLOW_CONNECT_MS);
 
 	// Only the first Home of a fresh load of / may be replaced: the crew mark always shows Home.
@@ -189,13 +210,10 @@ const App = () => {
 				return;
 			}
 
-			if (!isReducedMotion()) {
-				setMoment({ isStruck: state?.voiceOff ?? false });
-			}
-
+			enterVoiceMoment(state?.voiceOff ?? false);
 			navigate({ half: 'voice', view: state ? toVoiceRoute(state.view) : { kind: 'active' } });
 		},
-		[navigate, state],
+		[navigate, state, enterVoiceMoment],
 	);
 
 	const openSetup = useCallback(
@@ -215,10 +233,7 @@ const App = () => {
 	const openVoiceFromHome = (ref: string) => {
 		writeLastHalf('voice');
 
-		if (!isReducedMotion()) {
-			setMoment({ isStruck: state?.voiceOff ?? false });
-		}
-
+		enterVoiceMoment(state?.voiceOff ?? false);
 		openVoice(ref);
 	};
 
@@ -305,7 +320,7 @@ const App = () => {
 					</Card>
 				)
 			)}
-			{isOpening && <Opening isHeld={state === null} />}
+			{isOpening && <Opening isHeld={state === null} onDone={endOpening} />}
 		</>
 	);
 };

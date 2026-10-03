@@ -1,5 +1,7 @@
-// Which side of a version mismatch needs updating. The main updates a remote that is behind by itself;
-// it never downgrades one, and a build from source ('dev') has no release to update to or from.
+// Which side of a version mismatch needs updating. The main updates a remote that is behind by itself,
+// and one still on a dev build (a dev push's leftover): a main on a release brings every remote to
+// it, as crew update replaces a dev build with the latest release. It never downgrades a release, and
+// a main on a dev build has no release to bring anyone to (dev push moves them all together).
 
 export type VersionFix = 'update-remote' | 'update-main' | 'none';
 
@@ -20,10 +22,16 @@ const compareReleases = (left: number[], right: number[]): number =>
 
 export const decideVersionFix = (main: string, remote: string | null): VersionFix => {
 	const mainRelease = readRelease(main);
-	const remoteRelease = remote === null ? null : readRelease(remote);
 
-	if (!mainRelease || !remoteRelease) {
+	if (!mainRelease || remote === null) {
 		return 'none';
+	}
+
+	const remoteRelease = readRelease(remote);
+
+	// A dev build, or anything that is not a release: the main's release replaces it.
+	if (!remoteRelease) {
+		return 'update-remote';
 	}
 
 	const order = compareReleases(remoteRelease, mainRelease);
