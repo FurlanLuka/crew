@@ -734,3 +734,38 @@ describe('"Open Voice OS" on a worktree crew made moments ago', () => {
 		expect(starts(effects)).toEqual([OTHER]);
 	});
 });
+
+describe('move_active', () => {
+	const ordered = (active: string[]): State => ({ ...known(), active });
+
+	it('before another → just before it; null → the end; nothing starts or stops', () => {
+		const state = ordered([LOCAL, OTHER, REMOTE]);
+		const toFront = run([{ type: 'move_active', ref: REMOTE, before: LOCAL }], { start: state });
+		const toEnd = run([{ type: 'move_active', ref: LOCAL, before: null }], { start: state });
+
+		expect(toFront.state.active).toEqual([REMOTE, LOCAL, OTHER]);
+		expect(toEnd.state.active).toEqual([OTHER, REMOTE, LOCAL]);
+		expect(toFront.effects).toEqual([]);
+		expect(toFront.state.sessions).toBe(state.sessions);
+	});
+
+	it('a ref not active, an anchor not active, or itself → the order as it was', () => {
+		const state = ordered([LOCAL, OTHER]);
+
+		for (const input of [
+			{ type: 'move_active', ref: REMOTE, before: LOCAL },
+			{ type: 'move_active', ref: LOCAL, before: REMOTE },
+			{ type: 'move_active', ref: LOCAL, before: LOCAL },
+		] as const) {
+			expect(run([input], { start: state }).state.active).toEqual([LOCAL, OTHER]);
+		}
+	});
+
+	it('an active ref whose session is gone keeps its place among the moves', () => {
+		const state = ordered([LOCAL, 'gone/main', OTHER]);
+
+		expect(
+			run([{ type: 'move_active', ref: OTHER, before: LOCAL }], { start: state }).state.active,
+		).toEqual([OTHER, LOCAL, 'gone/main']);
+	});
+});

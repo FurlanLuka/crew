@@ -61,6 +61,7 @@ const actionSchema = z.discriminatedUnion('type', [
 	// From the page: silent, so no announce. open: Set up's "Open Voice OS" shows it too.
 	z.object({ type: z.literal('activate'), ref: refSchema, open: z.literal(true).optional() }),
 	z.object({ type: z.literal('deactivate'), ref: refSchema }),
+	z.object({ type: z.literal('move_active'), ref: refSchema, before: refSchema.nullable() }),
 	z.object({ type: z.literal('interrupt'), ref: refSchema }),
 	z.object({ type: z.literal('allow_denied'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_denial'), denialId: z.string() }),

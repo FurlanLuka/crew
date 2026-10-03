@@ -332,6 +332,54 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('session tabs move by drag and by Alt+arrows; their order is the active set', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const original = [...store.state.active];
+		const { context, page } = await signIn();
+		const readTabRefs = () =>
+			page
+				.locator('.vo-tab[data-ref]')
+				.evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('data-ref') ?? ''));
+		const at = (ref: string) => store.state.active.indexOf(ref);
+		// The page redraws once the server's state reaches it.
+		const expectTabsToStart = (refs: string[]) =>
+			page.waitForFunction(
+				(want) =>
+					[...document.querySelectorAll('.vo-tab[data-ref]')]
+						.slice(0, want.length)
+						.map((tab) => tab.getAttribute('data-ref'))
+						.join(' ') === want.join(' '),
+				refs,
+				{ timeout: 5000 },
+			);
+
+		try {
+			const refs = await readTabRefs();
+			expect(refs.length).toBeGreaterThanOrEqual(2);
+			const [first = '', second = ''] = refs;
+			const tab = (ref: string) => page.locator(`.vo-tab[data-ref="${ref}"]`);
+
+			// Dropped on the left half of the first tab: it lands before it.
+			await tab(second).dragTo(tab(first), { targetPosition: { x: 3, y: 8 } });
+			await waitUntil(() => at(second) < at(first));
+			await expectTabsToStart([second, first]);
+
+			// Alt+→ moves the focused tab one place along, and it keeps the focus.
+			await tab(second).focus();
+			await page.keyboard.press('Alt+ArrowRight');
+			await waitUntil(() => at(first) < at(second));
+			await expectTabsToStart([first, second]);
+			expect(await tab(second).evaluate((element) => element === document.activeElement)).toBe(
+				true,
+			);
+			// Nothing else moved the screen.
+			expect(store.state.view).toEqual({ kind: 'active' });
+		} finally {
+			store.dispatch({ type: 'active_loaded', refs: original });
+			await context.close();
+		}
+	}, 20_000);
+
 	it('typed command → sent as an utterance; the chip shows this session for plain text, Voice OS when addressed to another', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -1438,7 +1486,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('blocked strip → "Allow it" lets it through once; "Leave it blocked" dismisses it', async () => {
+	it('a blocked call, docked above the text box → "Allow it" lets it through once; "Leave it blocked" dismisses it', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({
@@ -1447,8 +1495,9 @@ describe('voice os ui', () => {
 			toolName: 'Bash',
 			summary: 'rm -rf dist',
 		});
-		const strip = page.locator('section[aria-label="denied"]');
-		await strip.getByRole('button', { name: /Allow it/ }).click();
+		// Docked above the text box with the other things a session waits on, not under its header.
+		const dock = page.locator('.vo-bar section[aria-label="denied"]');
+		await dock.getByRole('button', { name: /Allow it/ }).click();
 		await waitUntil(() => listSentActions('allow_denied').length > 0);
 
 		store.dispatch({
@@ -1457,8 +1506,8 @@ describe('voice os ui', () => {
 			toolName: 'Bash',
 			summary: 'rm -rf build',
 		});
-		await strip.getByText(/rm -rf build/).waitFor({ timeout: 5000 });
-		await strip.getByRole('button', { name: 'Leave it blocked' }).click();
+		await dock.getByText(/rm -rf build/).waitFor({ timeout: 5000 });
+		await dock.getByRole('button', { name: 'Leave it blocked' }).click();
 		await waitUntil(() => listSentActions('dismiss_denial').length > 0);
 		expect(store.state.denials).toEqual([]);
 		await context.close();
@@ -2001,10 +2050,11 @@ describe('voice os ui', () => {
 		await form.getByRole('textbox', { name: 'Name' }).fill('research');
 		await form.getByRole('button', { name: 'Start session' }).click();
 
-		await page
-			.locator('.vo-notice', { hasText: /^Started research on / })
-			.waitFor({ timeout: 5000 });
+		const started = page.locator('.vo-notice', { hasText: /^Started research on / });
+		await started.waitFor({ timeout: 5000 });
 		expect(await dialog.count()).toBe(0);
+		// It is news for a moment, not a banner that stays.
+		await started.waitFor({ state: 'detached', timeout: 8000 });
 		const made = crew.calls.filter((call) => call.command.type === 'chat_add').at(-1);
 		expect(made?.command).toEqual({ type: 'chat_add', dir: '~/notes', name: 'research' });
 		await waitUntil(() =>
