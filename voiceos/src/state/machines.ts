@@ -1,5 +1,6 @@
 import { pruneViewHistory } from './view-history.js';
 import { machineOf } from '../shared/machine-ref.js';
+import { dropMachineAttachments } from './attachments.js';
 import {
 	currentMachine,
 	describeMachineWaiting,
@@ -273,7 +274,7 @@ export const reduceMachine = (
 			);
 
 			return {
-				state: removed.state,
+				state: dropMachineAttachments(removed.state, input.id),
 				effects: [
 					...removed.effects,
 					...(queued.length > 0

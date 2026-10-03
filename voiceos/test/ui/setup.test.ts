@@ -756,6 +756,27 @@ describe('Setup with Claude', () => {
 		await context.close();
 	}, 20_000);
 
+	it('a file picked with the paperclip goes with the next reply; Send with no words sends it', async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page } = await open('/setup/chat');
+		const chooser = page.waitForEvent('filechooser');
+
+		await page.getByRole('button', { name: 'Attach files' }).click();
+		await (await chooser).setFiles({
+			name: 'compose.yml',
+			mimeType: 'text/yaml',
+			buffer: Buffer.from('services: {}'),
+		});
+		await page.locator('.ss-foot .att-chip', { hasText: 'compose.yml' }).waitFor({ timeout: 5000 });
+		await page.getByRole('button', { name: 'Send', exact: true }).click();
+		await page
+			.locator('.chat .line.user', { hasText: '(attached)' })
+			.locator('.att-chip', { hasText: 'compose.yml' })
+			.waitFor({ timeout: 5000 });
+		expect(server.store.state.attachments.setup).toBeUndefined();
+		await context.close();
+	}, 20_000);
+
 	describe("a remote machine's chat", () => {
 		const VM1 = { id: 'vm1', host: 'dev@vm1', name: 'Build box' };
 		const LOCAL_WORKTREES = [createWorktree('setup', true), createWorktree('store-front/main')];

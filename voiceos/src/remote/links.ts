@@ -22,6 +22,7 @@ export interface MachineLinksOptions {
 	getState: () => State;
 	dispatch: (input: Observation) => void;
 	storeMedia: (name: string, bytes: Buffer) => boolean;
+	readAttachment?: (id: string) => Buffer | null;
 	say: (text: string) => void;
 	updateRemote: UpdateRemote;
 	// This machine's crew, for what a remote asks the main.
@@ -75,6 +76,7 @@ export class MachineLinks {
 				dispatch: this.options.dispatch,
 				setWorktrees: (id, worktrees) => this.setRemoteWorktrees(id, worktrees),
 				storeMedia: this.options.storeMedia,
+				...(this.options.readAttachment ? { readAttachment: this.options.readAttachment } : {}),
 				say: (text) => this.options.say(text),
 				updateRemote: this.options.updateRemote,
 				runLocalCrew: this.options.runLocalCrew,

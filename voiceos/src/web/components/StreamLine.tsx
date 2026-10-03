@@ -4,6 +4,7 @@ import { classifyDiffLine } from '../derive.js';
 import { Markdown } from './Markdown.js';
 import { DocCard } from './DocCard.js';
 import { buildMediaUrl } from '../media.js';
+import { AttachedFiles } from './AttachmentChips.js';
 
 const ASIDE_STATUS_TEXT = {
 	asking: 'asking aside…',
@@ -24,6 +25,11 @@ export const StreamLine = ({ item, onOpen }: StreamLineProps) => {
 		case 'user':
 			return item.isApproval ? (
 				<div className="line approval">✓ Allowed once: {readApprovalSummary(item.text)}</div>
+			) : item.attachments?.length ? (
+				<div className="line user">
+					› {item.text}
+					<AttachedFiles attachments={item.attachments} />
+				</div>
 			) : (
 				<div className="line user">› {item.text}</div>
 			);

@@ -2,7 +2,12 @@
 // /api/crew: what the UI tests and the docs screenshots open. Nothing touches ~/.crew.
 import index from '../../src/web/index.html';
 import { listAllowedOrigins } from '../../src/gateway/auth.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { attachFileTo } from '../../src/gateway/attach.js';
 import { startGateway, type Gateway } from '../../src/gateway/server.js';
+import { storeAttachment } from '../../src/sessions/attachments.js';
 import type { ClientMessage, WorktreeInfo } from '../../src/shared/protocol.js';
 import { Store } from '../../src/state/store.js';
 import { createFakeCrew, type FakeCrew, type FakeCrewOptions } from '../support/fake-crew.js';
@@ -46,6 +51,7 @@ export const startPageServer = ({
 	const received: PageServer['received'] = [];
 	const effects: string[] = [];
 	const latency = { worktreesMs: 0 };
+	const filesRoot = mkdtempSync(join(tmpdir(), 'voiceos-page-files-'));
 
 	// Stands in for the cockpit's crew ls worktrees read: what the store lists, plus the worktrees
 	// the fake crew has made since.
@@ -112,6 +118,16 @@ export const startPageServer = ({
 		onAudio: () => undefined,
 		readHealth: () => ({}),
 		runCrew: crew.runCrew,
+		attachFile: attachFileTo({
+			readState: () => store.state,
+			dispatch: (observation) => store.dispatch(observation),
+			store: (file) =>
+				storeAttachment({
+					...file,
+					dir: join(filesRoot, 'attachments'),
+					mediaDir: join(filesRoot, 'media'),
+				}),
+		}),
 		// No hot reload: its socket would push every file another process saves into pages the test already closed.
 		development: false,
 	});
@@ -127,6 +143,9 @@ export const startPageServer = ({
 		url: (path = '/') => `${base}${path}`,
 		// The login redirects to /; the page then goes where it is sent.
 		loginUrl: () => `${base}/login?token=${PAGE_TOKEN}`,
-		stop: () => gateway.stop(),
+		stop: () => {
+			gateway.stop();
+			rmSync(filesRoot, { recursive: true, force: true });
+		},
 	};
 };

@@ -287,6 +287,19 @@ describe('gateway', () => {
 });
 
 describe('parseClientMessage', () => {
+	it("a chip's ✕ for the longest name a file can have (120 emoji) is taken", () => {
+		const message: ClientMessage = {
+			type: 'action',
+			action: {
+				type: 'attachment_removed',
+				ref: 'store/main',
+				id: `0123456789abcdef/${'😀'.repeat(120)}`,
+			},
+		};
+
+		expect(parseClientMessage(JSON.stringify(message))).toEqual({ ok: true, message });
+	});
+
 	// A field the schema does not know is dropped silently, so every action must come back as sent.
 	const actions: ActionsByType = {
 		send: { type: 'send', ref: 'store/main', text: 'run the tests' },
@@ -297,6 +310,7 @@ describe('parseClientMessage', () => {
 		promote_queued: { type: 'promote_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_all_queued: { type: 'promote_all_queued', ref: 'store/main' },
 		take_back: { type: 'take_back', ref: 'store/main', id: 'q1' },
+		attachment_removed: { type: 'attachment_removed', ref: 'store/main', id: 'abc/shot.png' },
 		held_line_heard: { type: 'held_line_heard', ref: 'store/main', id: 'h1' },
 		answer_permission: {
 			type: 'answer_permission',

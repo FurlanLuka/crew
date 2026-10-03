@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
+import { ATTACHMENTS_KEPT_MS, storeAttachment, sweepAttachments } from './sessions/attachments.js';
 import type { OpenUrl } from './tools/docs.js';
 import index from './web/index.html';
 import { ensureToken, missingFor, resolvePaths, shouldRecordState, type Keys } from './config.js';
@@ -10,6 +11,7 @@ import { CrewAdapter, spawnRunner, startDetached } from './crew/adapter.js';
 import { createSetupRunner } from './crew/api.js';
 import { listAllowedOrigins } from './gateway/auth.js';
 import { startGateway } from './gateway/server.js';
+import { attachFileTo } from './gateway/attach.js';
 import { configureLog, createLogger } from './log.js';
 import { UtteranceRouter } from './router/router.js';
 import { Kernel } from './router/kernel.js';
@@ -88,9 +90,22 @@ if (sweptMedia > 0) {
 	log.info('old media removed', { count: sweptMedia });
 }
 
+// Files the developer attached, by content; a session's Claude reads them at their path.
+const attachmentsDir = join(paths.voiceDir, 'attachments');
+const sweptAttachments = sweepAttachments({
+	dir: attachmentsDir,
+	maxAgeMs: ATTACHMENTS_KEPT_MS,
+	now: Date.now(),
+});
+
+if (sweptAttachments > 0) {
+	log.info('old attachments removed', { count: sweptAttachments });
+}
+
 const manager = new SessionManager({
 	claudeBin: claudeBin ?? undefined,
 	mediaDir,
+	attachmentsDir,
 	...connectStore(store),
 	registryFile: paths.sessionsFile,
 	home: paths.home,
@@ -215,6 +230,7 @@ const machines = connectMachines({
 	voiceDir: paths.voiceDir,
 	home: paths.home,
 	mediaDir,
+	attachmentsDir,
 	crew,
 	runCrew: spawnRunner,
 	manager,
@@ -387,6 +403,11 @@ gateway = startGateway({
 	index,
 	readMedia: (name) => readMediaFile({ name, dir: mediaDir }),
 	runCrew: runSetupCommand,
+	attachFile: attachFileTo({
+		readState: () => store.state,
+		dispatch: (observation) => store.dispatch(observation),
+		store: (params) => storeAttachment({ ...params, dir: attachmentsDir, mediaDir }),
+	}),
 	listAllowedOrigins: (port) =>
 		listAllowedOrigins({
 			port,

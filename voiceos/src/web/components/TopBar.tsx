@@ -130,6 +130,7 @@ export const TopBar = ({ state, dispatch, onHome, onNewSession }: TopBarProps) =
 			dispatch({ type: 'move_active', ref, before: move.before });
 		}
 	};
+
 	const isSettings = view.kind === 'settings';
 
 	return (

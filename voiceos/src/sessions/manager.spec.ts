@@ -7,6 +7,7 @@ import { Store } from '../state/store.js';
 import { SessionManager, connectStore } from './manager.js';
 import { loadRegistry, recordSession } from './registry.js';
 import { BRIEFING_VERSION } from './voice-context.js';
+import { describeAttached, resolveAttachment, storeAttachment } from './attachments.js';
 import { createFakeQuery, type FakeQueryParams } from '../../test/support/fake-query.js';
 
 configureLog({ quiet: true });
@@ -457,5 +458,110 @@ describe('SessionManager', () => {
 				'which file?',
 			]);
 		});
+	});
+});
+
+describe('attached files', () => {
+	const REF = 'store-front/main';
+
+	const createAttachHarness = (options: FakeQueryParams = {}) => {
+		const root = mkdtempSync(join(tmpdir(), 'voiceos-mgr-att-'));
+		const attachmentsDir = join(root, 'attachments');
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [{ ref: REF, label: REF, branch: '', cwd: '/w/main', dirs: [], isPinned: false }],
+		});
+		const fake = createFakeQuery(options);
+		const manager = new SessionManager({
+			...connectStore(store),
+			registryFile: join(root, 'sessions.json'),
+			home: '/h',
+			fetchOrientation: async () => '',
+			runQuery: fake.runQuery,
+			attachmentsDir,
+		});
+		store.onEffect(manager.handle);
+
+		return { store, manager, fake, attachmentsDir, mediaDir: join(root, 'media') };
+	};
+
+	it('Claude reads where each file is, one a line, ahead of the words; a file not here is left out', async () => {
+		const harness = createAttachHarness();
+		const stored = storeAttachment({
+			bytes: Buffer.from('trace'),
+			name: 'trace, full.log',
+			mediaType: 'text/plain',
+			dir: harness.attachmentsDir,
+			mediaDir: harness.mediaDir,
+		});
+
+		if (!stored.ok) {
+			throw new Error('not stored');
+		}
+
+		const missing = { ...stored.attachment, id: '0123456789abcdef/gone.txt', name: 'gone.txt' };
+		harness.store.dispatch({ type: 'activate', ref: REF });
+		await waitTick();
+		harness.store.dispatch({ type: 'attachment_added', ref: REF, attachment: stored.attachment });
+		harness.store.dispatch({ type: 'attachment_added', ref: REF, attachment: missing });
+		harness.store.dispatch({ type: 'send', ref: REF, text: 'why does it fail?' });
+		await waitTick();
+
+		const path = join(harness.attachmentsDir, ...stored.attachment.id.split('/'));
+		expect(harness.fake.sent.at(-1)).toBe(`${describeAttached([path])}\n\nwhy does it fail?`);
+		harness.manager.stopAll();
+	});
+
+	it('words with a note of their own → the note, then the files, then the words; none here → the note alone', async () => {
+		const harness = createAttachHarness();
+		const stored = storeAttachment({
+			bytes: Buffer.from('a'),
+			name: 'a.txt',
+			mediaType: 'text/plain',
+			dir: harness.attachmentsDir,
+			mediaDir: harness.mediaDir,
+		});
+
+		if (!stored.ok) {
+			throw new Error('not stored');
+		}
+
+		const path = join(harness.attachmentsDir, ...stored.attachment.id.split('/'));
+		harness.store.dispatch({ type: 'activate', ref: REF });
+		await waitTick();
+		harness.store.dispatch({ type: 'attachment_added', ref: REF, attachment: stored.attachment });
+		harness.store.dispatch({ type: 'send', ref: REF, text: 'one', note: '(N)' });
+		await waitTick();
+		harness.store.dispatch({ type: 'turn_ended', ref: REF, costUsd: 0, text: '' });
+		harness.store.dispatch({
+			type: 'attachment_added',
+			ref: REF,
+			attachment: { ...stored.attachment, id: '0123456789abcdef/gone.txt' },
+		});
+		harness.store.dispatch({ type: 'send', ref: REF, text: 'two', note: '(N)' });
+		await waitTick();
+
+		expect(harness.fake.sent.slice(-2)).toEqual([
+			`(N)\n\n${describeAttached([path])}\n\none`,
+			'(N)\n\ntwo',
+		]);
+		harness.manager.stopAll();
+	});
+
+	it('pieces from the main are put together into a file its worker then finds', async () => {
+		const harness = createAttachHarness();
+		const id = '0123456789abcdef/shot.png';
+
+		await harness.manager.handle({
+			type: 'attachment_chunk',
+			ref: REF,
+			id,
+			index: 0,
+			total: 1,
+			base64: Buffer.from('png').toString('base64'),
+		});
+
+		expect(resolveAttachment(harness.attachmentsDir, id)).not.toBeNull();
 	});
 });

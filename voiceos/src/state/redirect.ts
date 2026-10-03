@@ -1,4 +1,5 @@
 import {
+	type Attachment,
 	COMMAND_TTL_MS,
 	type Input,
 	type PendingAsk,
@@ -79,6 +80,7 @@ interface OpenRedirectParams {
 	ref: string;
 	text: string;
 	note: string | undefined;
+	attachments: Attachment[] | undefined;
 	stamped: Stamped;
 }
 
@@ -87,6 +89,7 @@ export const openRedirect = ({
 	ref,
 	text,
 	note,
+	attachments,
 	stamped,
 }: OpenRedirectParams): ReducerResult => {
 	// Stopping work the developer started is theirs to confirm; the question is the only thing said.
@@ -97,6 +100,7 @@ export const openRedirect = ({
 		kind: 'redirect',
 		text,
 		...(note ? { note } : {}),
+		...(attachments?.length ? { attachments } : {}),
 		target: state.sessions[ref]?.currentSendId ?? null,
 	};
 
@@ -143,6 +147,7 @@ export const releaseRedirect = ({
 		ref: ask.ref,
 		text: ask.text,
 		note: ask.note,
+		attachments: ask.attachments,
 		isSpoken: false,
 		stamped,
 		shouldStart,
@@ -180,6 +185,7 @@ export const queueHeldRedirect = ({ state, ask, at, isFirst }: QueueHeldRedirect
 		at,
 		reportOwed: true as const,
 		...(ask.note ? { note: ask.note } : {}),
+		...(ask.attachments ? { attachments: ask.attachments } : {}),
 	};
 
 	return updateSession(removeAsk(state, ask), ask.ref, (session) => ({
@@ -213,6 +219,7 @@ const switchTo = ({ state, ask, text, stamped }: SwitchToParams): ReducerResult 
 			ref: ask.ref,
 			text,
 			note: ask.note,
+			attachments: ask.attachments,
 			stamped,
 			isOwed: true,
 		});
@@ -223,6 +230,7 @@ const switchTo = ({ state, ask, text, stamped }: SwitchToParams): ReducerResult 
 		ref: ask.ref,
 		text,
 		note: ask.note,
+		attachments: ask.attachments,
 		isSpoken: false,
 		stamped,
 		ack: { kind: 'instruction' },

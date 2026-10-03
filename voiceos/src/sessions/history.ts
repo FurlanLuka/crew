@@ -6,6 +6,7 @@ import { STREAM_ITEMS_KEPT, createStreamItem, isShownAlready } from '../state/he
 import { createLogger } from '../log.js';
 import { createMapContext, mapMessage, type MediaHooks, type RawMessage } from './events.js';
 import { createMediaHooks, type ImageSource } from './media.js';
+import { splitAttachedNote, toPastAttachment } from './attachments.js';
 
 const log = createLogger('history');
 
@@ -73,13 +74,17 @@ export const convertHistoryToStream = ({
 		if (prompt !== null) {
 			// Harness text is what Claude Code adds to the user's turn that the developer never typed.
 			if (prompt.trim() && !HARNESS_TEXT_PATTERN.test(prompt)) {
+				// The files' note is Voice OS's, never the developer's words: it comes back as chips.
+				const { text, paths } = splitAttachedNote(prompt);
+
 				items.push({
 					id: `h:${message.uuid}`,
 					at,
 					kind: 'user',
-					text: prompt,
+					text,
 					// The transcript keeps no flag: the retry's own words are what mark it.
-					...(isRetryText(prompt) ? { isApproval: true as const } : {}),
+					...(isRetryText(text) ? { isApproval: true as const } : {}),
+					...(paths.length > 0 ? { attachments: paths.map(toPastAttachment) } : {}),
 				});
 			}
 

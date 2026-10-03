@@ -3,6 +3,7 @@ import { configureLog } from '../log.js';
 import { Store } from '../state/store.js';
 import { convertHistoryToStream, restoreHistory, type TranscriptMessage } from './history.js';
 import { createMediaHooks } from './media.js';
+import { describeAttached } from './attachments.js';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -386,5 +387,28 @@ describe('restoreHistory: images', () => {
 			expect(first).toEqual([]);
 			expect(files).toEqual([]);
 		}
+	});
+});
+
+describe('attached files in a past turn', () => {
+	it("the note comes back as the line's files, never as the developer's words", () => {
+		const paths = ['/h/.crew/voiceos/attachments/0123456789abcdef/shot.png'];
+		const items = convertHistoryToStream({
+			messages: [createUserMessage('u1', `${describeAttached(paths)}\n\nwhat is wrong here?`)],
+			ref: 'store/main',
+			now: at,
+		});
+
+		expect(items).toEqual([
+			{
+				id: 'h:u1',
+				at,
+				kind: 'user',
+				text: 'what is wrong here?',
+				attachments: [
+					{ id: '0123456789abcdef/shot.png', name: 'shot.png', kind: 'image', bytes: 0 },
+				],
+			},
+		]);
 	});
 });

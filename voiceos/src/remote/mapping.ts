@@ -8,6 +8,7 @@ import type { Effect } from '../state/reducer.js';
 const HANDS_EFFECTS = [
 	'worker_start',
 	'worker_send',
+	'attachment_chunk',
 	'worker_stop',
 	'worker_interrupt',
 	'worker_set_mode',

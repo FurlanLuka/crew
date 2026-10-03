@@ -32,6 +32,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [Auto mode and approvals](#auto-mode-and-approvals)
 - [Queued messages](#queued-messages)
 - [Docs, images and sub-agents](#docs-images-and-sub-agents)
+- [Attaching files](#attaching-files)
 - [Dev servers](#dev-servers)
 - [Notes and debug notes](#notes-and-debug-notes)
 - [Other machines](#other-machines)
@@ -591,6 +592,27 @@ Instructions always queue, unless you say they go now ("tell it right now to sto
   ends. The last ten sub-agents of each session are kept until Voice OS restarts or the conversation
   is cleared.
 
+## Attaching files
+
+You can hand a session a screenshot, a log or any other file. On a session's page, paste it
+(Cmd+V), drop it anywhere on the page, or click the paperclip beside the box. The same works in Set
+up's Setup with Claude chat. Each file becomes a chip above the box, a thumbnail for an image and
+the name and size for anything else, and every tab you have open shows the same chips. The ✕ on a
+chip takes it off. With no session on screen there is nothing to attach to, so Voice OS says "Open
+a session to attach files." and keeps nothing.
+
+The files go with the next words that reach that session, whether you type them in its box, say
+them on its screen, or say them to it by name from somewhere else ("Sent to checkout with 2 files.").
+Pressing Enter with only files in the box sends them on their own. A file still uploading when you
+press Enter holds the message until it is in; words you speak meanwhile go without it, and it waits
+for the next ones. A question you would normally ask aside goes queued when it carries files,
+because the side answer has no tools to open them.
+
+Claude gets each file as a path on the machine the session runs on and opens it itself, so any file
+type and size up to 20 MB works, and a session on another machine gets its own copy before your
+words arrive. Up to 10 files wait on a session at a time. Chips you never sent are gone after a
+restart, and the files themselves are kept for 30 days.
+
 ## Dev servers
 
 Voice OS starts, stops and watches each worktree's dev servers through crew, on that worktree's own
@@ -752,6 +774,7 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |
+| `~/.crew/voiceos/attachments/` | Files you attached, kept for 30 days. |
 | `~/.crew/voiceos/machines.json` | The other machines. |
 | `~/.crew/voiceos/logs/voiceos.log` | The log, rotated into `.1` … `.5` (`crew server logs`). |
 | `~/.crew/voiceos/logs/debug-notes.jsonl` | Debug notes (`crew server debug-notes`). |

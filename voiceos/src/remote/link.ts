@@ -33,6 +33,7 @@ import {
 	type Snapshot,
 } from './protocol.js';
 import { PendingCalls } from './pending-calls.js';
+import { toChunks } from '../sessions/attachments.js';
 import {
 	DISCORD_SEND_QUERY_MS,
 	isAllowedQuery,
@@ -97,6 +98,8 @@ export interface RemoteLinkOptions {
 	dispatch: (input: Observation) => void;
 	setWorktrees: (machine: string, worktrees: WorktreeInfo[]) => void;
 	storeMedia: (name: string, bytes: Buffer) => boolean;
+	// An attached file's bytes on this machine, sent ahead of the words that carry it.
+	readAttachment?: (id: string) => Buffer | null;
 	say: (text: string) => void;
 	// crew update on that machine, when it runs an older release than this one.
 	updateRemote: UpdateRemote;
@@ -133,6 +136,8 @@ export class RemoteLink {
 	private remoteVersion: string | null = null;
 	// A remote's queries run one at a time: each spawns crew and its SSH fan-out.
 	private queries: Promise<void> = Promise.resolve();
+	// Attachments already queued for that machine: each file crosses once per run.
+	private sentAttachments = new Set<string>();
 
 	constructor(private options: RemoteLinkOptions) {}
 
@@ -167,15 +172,60 @@ export class RemoteLink {
 	}
 
 	send(effect: HandsEffect): void {
+		if (effect.type === 'worker_send') {
+			this.sendAttachments(effect);
+		}
+
+		this.push(effect);
+	}
+
+	// The files go first, through the same outbox as the words: in order, resent on a reconnect, so
+	// the remote has them by the time its worker reads the note. A file the remote has already (a
+	// restarted main sending it again) is kept as it is there.
+	private sendAttachments({
+		ref,
+		attachments,
+	}: Extract<HandsEffect, { type: 'worker_send' }>): void {
+		for (const { id } of attachments ?? []) {
+			if (this.sentAttachments.has(id)) {
+				continue;
+			}
+
+			const bytes = this.options.readAttachment?.(id);
+
+			if (!bytes) {
+				log.warn('attachment not here to send', { machine: this.id, id });
+				continue;
+			}
+
+			const chunks = toChunks(bytes);
+
+			for (const [index, base64] of chunks.entries()) {
+				this.push({ type: 'attachment_chunk', ref, id, index, total: chunks.length, base64 });
+			}
+
+			this.sentAttachments.add(id);
+		}
+	}
+
+	private push(effect: HandsEffect): void {
 		const pushed = pushEffect(this.outbox, effect);
 
 		this.outbox = pushed.outbox;
-		log.info('effect out', {
-			machine: this.id,
-			seq: pushed.sent.seq,
-			type: effect.type,
-			ref: effect.ref,
-		});
+
+		// A file's pieces are one line for the lot, said once it is queued.
+		if (effect.type === 'attachment_chunk') {
+			if (effect.index === effect.total - 1) {
+				log.info('attachment out', { machine: this.id, id: effect.id, chunks: effect.total });
+			}
+		} else {
+			log.info('effect out', {
+				machine: this.id,
+				seq: pushed.sent.seq,
+				type: effect.type,
+				ref: effect.ref,
+			});
+		}
 
 		// Not ready: it rides in the next hello.
 		if (this.isReady) {

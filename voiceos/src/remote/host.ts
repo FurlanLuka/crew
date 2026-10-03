@@ -424,7 +424,11 @@ export class RemoteHost {
 		this.inbox = accepted.inbox;
 
 		for (const effect of accepted.effects) {
-			log.info('effect', { type: effect.type, ref: effect.ref });
+			// A file's pieces are said once, when it is whole (the manager's "attachment received").
+			if (effect.type !== 'attachment_chunk') {
+				log.info('effect', { type: effect.type, ref: effect.ref });
+			}
+
 			this.state = trackEffect(this.state, effect);
 
 			// A send to a session that is not running here (it restarted): the main learns it stopped.

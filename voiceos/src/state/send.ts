@@ -4,6 +4,7 @@ import { answerInWords, completesAsk, resolveAsk } from './asks.js';
 import { isAsideInFlight, startAside } from './aside.js';
 import { cancelCommand, findCommandAsk, holdCommand, readGuardedCommand } from './commands.js';
 import { decideAck, deliverSend, NO_ACK } from './delivery.js';
+import { takeWaiting } from './attachments.js';
 import { pushNotice, updateSession, withoutEffects } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import { continueFirstHalf } from './continuation.js';
@@ -141,8 +142,11 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 		: { state: withoutCommand, effects: [] };
 	const current = released.state;
 
+	// Words with files go as a message, never aside: the side fork has no tools to open them.
+	const carried = takeWaiting(current, input.ref);
+
 	// Checked again here: the session may have finished while the kernel was deciding.
-	if (input.aside && session.status === 'running') {
+	if (input.aside && session.status === 'running' && !carried.attachments) {
 		return isAsideInFlight(session, text)
 			? withoutEffects(current)
 			: startAside({
@@ -155,10 +159,11 @@ const deliverWords = (state: State, input: SendInput, stamped: Stamped): Reducer
 	}
 
 	const delivered = deliverSend({
-		state: current,
+		state: carried.state,
 		ref: input.ref,
 		text,
 		note: input.note?.trim() || undefined,
+		attachments: carried.attachments,
 		isSpoken: Boolean(input.isSpoken),
 		stamped,
 		ack: input.ack,

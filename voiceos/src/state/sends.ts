@@ -14,6 +14,7 @@ import type { Effect, ReducerResult } from './reducer.js';
 import { readScreenRef, sayAck, sayRef } from './helpers.js';
 import { isReachable } from '../shared/machines.js';
 import { withSwitchOffered } from '../shared/follow-up.js';
+import { describeCarried } from './attachments.js';
 import { isDevelopersMessage } from './delivery.js';
 
 export const SEND_NOW_QUESTION = 'Send it now?';
@@ -73,22 +74,29 @@ interface WithSwitchAskedParams {
 	effects: Effect[];
 	ref: string;
 	sentTo: string;
+	// " with 2 files", when the words took the session's attached files along.
+	carried: string;
 }
 
 // The line that says where the words went asks the switch too ("Sent to crew. Switch there?",
 // "Okay, after its current work. Switch there?"): one line, whichever ack it is.
 // The facts say the switch is offered in the same step that appends the question, so a worded line
 // never drops it or asks one that is not open.
-const withSwitchAsked = ({ effects, ref, sentTo }: WithSwitchAskedParams): Effect[] => {
+// What a worded line is written from; with files the line is said as it is, since a worded one would
+// drop them.
+const sentFacts = (label: string, offersSwitch: boolean, carried: string) =>
+	carried ? {} : { facts: { kind: 'sent' as const, label, offersSwitch } };
+
+const withSwitchAsked = ({ effects, ref, sentTo, carried }: WithSwitchAskedParams): Effect[] => {
 	const ackAt = effects.findLastIndex((effect) => effect.type === 'speak' && effect.isAck === true);
 
 	if (ackAt < 0) {
 		return [
 			...effects,
-			sayAck(`Sent to ${sentTo}. Switch there?`, {
+			sayAck(`Sent to ${sentTo}${carried}. Switch there?`, {
 				isAsking: true,
 				ref,
-				facts: { kind: 'sent', label: sentTo, offersSwitch: true },
+				...sentFacts(sentTo, true, carried),
 			}),
 		];
 	}
@@ -205,13 +213,15 @@ export const followSends = (
 
 			const isAcked = result.effects.some((effect) => effect.type === 'speak' && effect.isAck);
 			const sentTo = sayRef(state, input.ref);
+			// The session's waiting files went with these words: they are gone from it now.
+			const carried = state.attachments[input.ref]
+				? ''
+				: describeCarried(before.attachments[input.ref]);
 			const acked = isAcked
 				? result.effects
 				: [
 						...result.effects,
-						sayAck(`Sent to ${sentTo}.`, {
-							facts: { kind: 'sent', label: sentTo, offersSwitch: false },
-						}),
+						sayAck(`Sent to ${sentTo}${carried}.`, sentFacts(sentTo, false, carried)),
 					];
 
 			// Spoken words that went elsewhere: the developer may want to follow them there.
@@ -221,7 +231,7 @@ export const followSends = (
 
 			return {
 				state: { ...state, switchOffer: { ref: input.ref, at: stamped.at } },
-				effects: withSwitchAsked({ effects: result.effects, ref: input.ref, sentTo }),
+				effects: withSwitchAsked({ effects: result.effects, ref: input.ref, sentTo, carried }),
 			};
 		}
 

@@ -2012,3 +2012,83 @@ button.line.opens:hover .opens-hint {
 		width: auto;
 	}
 }
+
+/* Attached files: chips waiting above the box (the voice bar's and Set up's chat), and the ones a sent
+   line carried, under it in the stream. */
+.att-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 24px;
+	min-width: 0;
+}
+.ss-foot .att-row {
+	padding: 0;
+}
+.att-row.sent {
+	padding: 6px 0 0;
+	font-weight: 400;
+}
+.att-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 260px;
+	min-width: 0;
+	padding: 4px 6px 4px 10px;
+	border-radius: 9px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 12px var(--mono);
+	text-decoration: none;
+}
+.att-chip.thumb {
+	padding: 3px;
+}
+.att-chip img {
+	display: block;
+	max-width: 120px;
+	height: 56px;
+	border-radius: 7px;
+	object-fit: cover;
+}
+.att-chip.uploading {
+	opacity: 0.65;
+}
+.att-chip.refused {
+	background: var(--crit-fill);
+	color: var(--crit-text);
+}
+.att-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--label);
+}
+.att-size {
+	flex: none;
+	color: var(--label-3);
+}
+.att-chip.refused .att-size {
+	color: var(--crit-text);
+}
+.att-x {
+	flex: none;
+	padding: 0 4px;
+	border: 0;
+	background: none;
+	color: var(--label-3);
+	font-size: 12px;
+	cursor: pointer;
+}
+.att-x:hover {
+	color: var(--label);
+}
+.att-note {
+	color: var(--label-2);
+	font-size: 13px;
+}
+.att-clip {
+	flex: none;
+}

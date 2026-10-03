@@ -6,6 +6,7 @@ import { forgetSession, loadRegistry, markBriefed, recordSession } from './regis
 import { isChangingWork, runSideAnswer } from './side-answer.js';
 import { Worker, buildWorkerEnv, type WorkerOptions } from './worker.js';
 import { BRIEFING_VERSION, appendVoiceContext } from './voice-context.js';
+import { describeAttached, resolveAttachment, writeChunk } from './attachments.js';
 
 const log = createLogger('sessions');
 
@@ -52,6 +53,8 @@ export interface SessionManagerOptions {
 	claudeBin?: string;
 	runQuery?: WorkerOptions['runQuery'];
 	mediaDir?: string;
+	// Files the developer attached, by id (sessions/attachments.ts); the paths go to Claude.
+	attachmentsDir?: string;
 }
 
 export class SessionManager {
@@ -75,7 +78,9 @@ export class SessionManager {
 			case 'worker_start':
 				return this.start(effect.ref);
 			case 'worker_send':
-				return this.workers.get(effect.ref)?.send(effect.text, effect.note);
+				return this.workers.get(effect.ref)?.send(effect.text, this.noteFor(effect));
+			case 'attachment_chunk':
+				return this.receiveChunk(effect);
 			case 'worker_stop':
 				return this.stop(effect.ref);
 			case 'worker_interrupt':
@@ -94,6 +99,53 @@ export class SessionManager {
 				return;
 		}
 	};
+
+	// The words' note and where their files are on this machine, read ahead of the words.
+	private noteFor({ ref, note, attachments }: Extract<Effect, { type: 'worker_send' }>) {
+		const dir = this.options.attachmentsDir;
+
+		if (!attachments?.length || !dir) {
+			return note;
+		}
+
+		const paths = attachments.flatMap((attachment) => {
+			const path = resolveAttachment(dir, attachment.id);
+
+			if (!path) {
+				log.warn('attachment not on this machine', { ref, id: attachment.id });
+			}
+
+			return path ? [path] : [];
+		});
+
+		if (paths.length === 0) {
+			return note;
+		}
+
+		return [note, describeAttached(paths)].filter(Boolean).join('\n\n');
+	}
+
+	private receiveChunk({
+		ref,
+		id,
+		index,
+		total,
+		base64,
+	}: Extract<Effect, { type: 'attachment_chunk' }>) {
+		const dir = this.options.attachmentsDir;
+
+		if (!dir) {
+			return;
+		}
+
+		const outcome = writeChunk({ dir, id, index, total, base64 });
+
+		if (outcome === 'refused') {
+			log.warn('attachment chunk refused', { ref, id, index, total });
+		} else if (outcome === 'done') {
+			log.info('attachment received', { ref, id });
+		}
+	}
 
 	private async answerAside({
 		ref,

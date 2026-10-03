@@ -13,6 +13,7 @@ import {
 import {
 	HOME_SCREEN,
 	VOICE_LOG_ENTRIES_KEPT,
+	type Attachment,
 	type PendingAsk,
 	type Session,
 	type Stamped,
@@ -43,6 +44,7 @@ import {
 } from './helpers.js';
 import { hasFollowUpWaiting, promoteAllQueued, promoteQueued } from './delivery.js';
 import { reduceTakeBack } from './take-back.js';
+import { giveBack, reduceAttachment } from './attachments.js';
 import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
 import type { FollowUpFacts } from '../shared/follow-up.js';
@@ -75,7 +77,17 @@ export type AskResult =
 
 export type Effect =
 	| { type: 'worker_start'; ref: string }
-	| { type: 'worker_send'; ref: string; text: string; note?: string }
+	| { type: 'worker_send'; ref: string; text: string; note?: string; attachments?: Attachment[] }
+	// One piece of an attached file for a session on another machine, ahead of its worker_send: the
+	// link's outbox keeps them in order and resends them, the remote reassembles the file.
+	| {
+			type: 'attachment_chunk';
+			ref: string;
+			id: string;
+			index: number;
+			total: number;
+			base64: string;
+	  }
 	| { type: 'worker_stop'; ref: string }
 	// reason: 'follow-up' when the developer's own spoken follow-up cut the reply.
 	| { type: 'worker_interrupt'; ref: string; reason?: 'follow-up' }
@@ -191,6 +203,7 @@ export const createInitialState = (): State => ({
 	machines: {},
 	active: [],
 	names: {},
+	attachments: {},
 	voiceOff: false,
 	discord: null,
 	pendingActivations: [],
@@ -510,13 +523,27 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		case 'send':
 			return reduceSend(state, input, stamped);
 
-		case 'cancel_queued':
-			return withoutEffects(
-				updateSession(state, input.ref, (session) => ({
-					...session,
-					queue: session.queue.filter((message) => message.id !== input.queuedId),
-				})),
+		case 'cancel_queued': {
+			// Its files wait again for the next words.
+			const cancelled = state.sessions[input.ref]?.queue.find(
+				(message) => message.id === input.queuedId,
 			);
+
+			return withoutEffects(
+				giveBack(
+					updateSession(state, input.ref, (session) => ({
+						...session,
+						queue: session.queue.filter((message) => message.id !== input.queuedId),
+					})),
+					input.ref,
+					cancelled?.attachments,
+				),
+			);
+		}
+
+		case 'attachment_added':
+		case 'attachment_removed':
+			return reduceAttachment(state, input);
 
 		case 'take_back':
 			return reduceTakeBack(state, input);

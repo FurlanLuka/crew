@@ -1,4 +1,5 @@
 import type { Session } from '../../shared/protocol.js';
+import { describeCarried } from '../../state/attachments.js';
 import type { Dispatch } from '../types.js';
 
 interface QueueListProps {
@@ -16,6 +17,9 @@ export const QueueList = ({ session, dispatch }: QueueListProps) => {
 			{session.queue.map((item, index) => (
 				<div key={item.id} className="qitem">
 					<span className="qtag">queued {index + 1}</span> {item.text}
+					{item.attachments?.length ? (
+						<span className="c-dim"> ·{describeCarried(item.attachments)}</span>
+					) : null}
 					<button
 						type="button"
 						className="btn small"
