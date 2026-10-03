@@ -1,0 +1,56 @@
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "docs/**", ".github/workflows/site.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["site/**", "docs/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  site:
+    # The server is arm64; building on an arm64 runner avoids emulation.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/furlanluka/crew-site:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Release dates come from the tags.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - working-directory: site
+        run: bun install --frozen-lockfile
+      - working-directory: site
+        run: bun run build
+
+      - if: github.event_name != 'pull_request'
+        name: Push the image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build --label org.opencontainers.image.source=https://github.com/${{ github.repository }} -t "$IMAGE" site
+          docker push "$IMAGE"
+
+      # The key is pinned on the server to `deploy crew site`, so all it can send is a tag.
+      - if: github.event_name != 'pull_request'
+        name: Deploy
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/key && chmod 600 ~/.ssh/key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/key root@"$HOST" "site ${{ github.sha }}"

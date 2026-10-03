@@ -1,0 +1,11 @@
+{
+  "name": "crew-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build.ts"
+  },
+  "dependencies": {
+    "marked": "^18"
+  }
+}
