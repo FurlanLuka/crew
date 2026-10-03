@@ -689,8 +689,8 @@ const SHOTS: Shot[] = [
 	{ name: 'settings', view: { kind: 'settings' } },
 	{
 		name: 'session',
-		view: { kind: 'session', ref: 'store-front/main' },
-		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+		view: STORE_FRONT_VIEW,
+		stage: withStoreFrontLine,
 	},
 	{ name: 'active', view: { kind: 'active' }, stage: activeOffline, height: OVERVIEW_HEIGHT },
 	{
@@ -718,8 +718,8 @@ const SHOTS: Shot[] = [
 	{ name: 'approval', view: { kind: 'session', ref: 'checkout-api/main' }, stage: blockCheckout },
 	{
 		name: 'listening-modes',
-		view: { kind: 'session', ref: 'store-front/main' },
-		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+		view: STORE_FRONT_VIEW,
+		stage: withStoreFrontLine,
 		listenMode: 'on-demand',
 		prepare: async (page) => {
 			await page.getByRole('button', { name: 'Listening mode' }).click();
@@ -729,9 +729,9 @@ const SHOTS: Shot[] = [
 	},
 	{
 		name: 'phone',
-		view: { kind: 'session', ref: 'store-front/main' },
+		view: STORE_FRONT_VIEW,
 		viewport: { width: 390, height: 844 },
-		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+		stage: withStoreFrontLine,
 	},
 	{
 		name: 'answer',
@@ -870,9 +870,15 @@ const SHOTS: Shot[] = [
 
 type Clip = { x: number; y: number; width: number; height: number };
 
+// A margin around a cropped shot, so a ring at its edge is not cut.
+const RING_MARGIN = 12;
+const RING_CLASS = 'docs-click-here';
+
 const findClip = async (page: Page, shot: Shot): Promise<Clip | null> => {
+	const viewport = shot.viewport ?? VIEWPORT;
+
 	if (shot.height) {
-		return { x: 0, y: 0, width: (shot.viewport ?? VIEWPORT).width, height: shot.height };
+		return { x: 0, y: 0, width: viewport.width, height: shot.height };
 	}
 
 	if (!shot.around) {
@@ -882,27 +888,25 @@ const findClip = async (page: Page, shot: Shot): Promise<Clip | null> => {
 	const boxes = await Promise.all(
 		shot.around.map((selector) => page.locator(selector).first().boundingBox()),
 	);
-	const top = Math.min(...boxes.map((box) => box?.y ?? VIEWPORT.height));
-	const bottom = Math.max(...boxes.map((box) => (box ? box.y + box.height : 0)));
+	const margin = shot.tight || shot.highlight ? RING_MARGIN : 0;
+	const top = Math.max(0, Math.min(...boxes.map((box) => box?.y ?? viewport.height)) - margin);
+	const bottom = Math.min(
+		viewport.height,
+		Math.max(...boxes.map((box) => (box ? box.y + box.height : 0))) + margin,
+	);
 
 	if (!shot.tight) {
-		return { x: 0, y: top, width: (shot.viewport ?? VIEWPORT).width, height: bottom - top };
+		return { x: 0, y: top, width: viewport.width, height: bottom - top };
 	}
 
-	// A margin around the elements, so a ring at their edge is not cut.
-	const left = Math.max(0, Math.min(...boxes.map((box) => box?.x ?? 0)) - RING_MARGIN);
-	const right = Math.max(...boxes.map((box) => (box ? box.x + box.width : 0))) + RING_MARGIN;
+	const left = Math.max(0, Math.min(...boxes.map((box) => box?.x ?? 0)) - margin);
+	const right = Math.min(
+		viewport.width,
+		Math.max(...boxes.map((box) => (box ? box.x + box.width : 0))) + margin,
+	);
 
-	return {
-		x: left,
-		y: Math.max(0, top - RING_MARGIN),
-		width: right - left,
-		height: bottom - top + RING_MARGIN * 2,
-	};
+	return { x: left, y: top, width: right - left, height: bottom - top };
 };
-
-const RING_MARGIN = 12;
-const RING_CLASS = 'docs-click-here';
 
 // "Click this": a white ring and a soft glow around each element, drawn over the page for the shot.
 const ringClickTargets = async (page: Page, selectors: string[]): Promise<void> => {

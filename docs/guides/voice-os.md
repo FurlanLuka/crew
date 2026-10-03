@@ -216,7 +216,7 @@ out of reach has its rows dimmed and says why. **Activate** on a row starts that
 it gets a tab and a row on Home, and the page stays where it is. Worktrees are made in Set up, not
 here.
 
-![Build box's page: the machine switcher, Build box connected at dev@store-vm, Open in Set up and New session on Build box ringed, then its plain sessions and store-front/wrk2](../images/voice-os/machine.png)
+![Build box's page: the machine switcher, Build box connected at dev@store-vm, Open in Set up, and New session on Build box ringed, then its plain sessions and store-front/wrk2](../images/voice-os/machine.png)
 
 ![All machines: This Mac's plain sessions and worktrees grouped by workspace, Activate on admin/main, Open on the active ones](../images/voice-os/activate.png)
 

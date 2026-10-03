@@ -263,7 +263,7 @@ BatchMode note there. The VM's worktrees then show on its own page in Voice OS (
 **New → Build box**), and Set up's machine picker sets the VM up from your laptop; see
 [Other machines](voice-os.md#other-machines).
 
-![Build box's page in Voice OS on the laptop: connected at dev@store-vm, New session on Build box, and the VM's worktree store-front/wrk2 running](../images/voice-os/machine.png)
+![Build box's page in Voice OS on the laptop: connected at dev@store-vm, New session on Build box, and the VM's worktree store-front/wrk2 active](../images/voice-os/machine.png)
 
 **Updating.** Run `crew update` on the VM as well as on your laptop. The VM's daemon moves to the
 new release on the next connection, at once: a session at work is cut off and resumes on the new release.
