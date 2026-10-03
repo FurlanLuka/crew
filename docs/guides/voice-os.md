@@ -208,7 +208,7 @@ out of reach has its rows dimmed and says why. **Activate** on a row starts that
 it gets a tab and a row on Home, and the page stays where it is. Worktrees are made in Set up, not
 here.
 
-![Activate: every worktree on This Mac and Build box, grouped by workspace, with Activate on admin/main and the active ones marked](../images/voice-os/activate.png)
+![All machines: This Mac's plain sessions and worktrees grouped by workspace, Activate on admin/main, Open on the active ones](../images/voice-os/activate.png)
 
 **Plain sessions.** Not everything is a worktree. **New session** (on Home, in the New menu, or on a
 machine's page) opens a dialog: pick the machine, a folder there (your recent ones are a click
@@ -229,7 +229,7 @@ own chat, or to a text channel you pick under **Settings → Discord → Message
 discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
 they post only when you ask.
 
-![Voice OS settings: listening mode, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
+![Settings: a side menu, the four listening modes as cards, voice on with Mute voice, the Soniox and Anthropic keys with Replace, and Discord not set up](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's
 page shows its history and an **Activate** button, with no input box (see
@@ -431,7 +431,7 @@ else stays quiet until you activate it.
 **Home** shows the active sessions from every machine. An active session's tab is in the top bar,
 and Esc goes back to Home.
 
-![Active: sessions from This Mac and Build box, and one whose machine is out of reach](../images/voice-os/active.png)
+![Home: sessions from This Mac and Build box, the one asking first with Answer, one whose machine is out of reach, and a card for each machine](../images/voice-os/active.png)
 
 - **Activate** starts the session and resumes its conversation. By voice ("Activate the scheduler
   on Build box.") you hear "Activated scheduler. Switch there?"; from the **Activate** button on a

@@ -48,11 +48,19 @@ jobs:
         working-directory: voiceos
         run: bun scripts/build-release.ts "${GITHUB_REF_NAME}"
 
+      # A hand-written docs/releases/<tag>.md wins; without one GoReleaser lists the merged PRs.
+      - name: Release notes
+        id: notes
+        run: |
+          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then
+            echo "args=--release-notes=../docs/releases/${GITHUB_REF_NAME}.md" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --clean ${{ steps.notes.outputs.args }}
           workdir: crew
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
