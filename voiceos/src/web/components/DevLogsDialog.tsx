@@ -46,10 +46,13 @@ export const DevLogsDialog = ({
 			: null,
 		isFollowing ? { pollMs: FOLLOW_MS } : {},
 	);
-	const text = readLogText(log.data);
+	// Until the new tab's first read lands, the last reply is another server's: never shown under this one.
+	const isThisServer = (log.data as { server?: unknown } | null)?.server === server?.name;
+	const text = isThisServer ? readLogText(log.data) : '';
 	const lines = text ? text.split('\n') : [];
-	const listRef = useStickToBottom<HTMLDivElement>(`${server?.name} ${lines.length}`);
-	const failure = log.reply && !text ? log.reply.stderr.trim() : '';
+	// Keyed by server only: it follows new lines itself, and a reader scrolled up stays where they are.
+	const listRef = useStickToBottom<HTMLDivElement>(server?.name ?? '');
+	const failure = log.reply && !log.isLoading && !text ? log.reply.stderr.trim() : '';
 
 	if (!server) {
 		return null;
@@ -88,12 +91,13 @@ export const DevLogsDialog = ({
 					{isFollowing ? 'following, new lines as they come' : 'paused'}
 				</p>
 				{servers.length > 1 && (
-					<div className="seg dl-tabs">
+					<div className="seg dl-tabs" role="tablist" aria-label="Server">
 						{servers.map((candidate) => (
 							<button
 								key={candidate.name}
 								type="button"
-								aria-pressed={candidate.name === server.name}
+								role="tab"
+								aria-selected={candidate.name === server.name}
 								onClick={() => setShown(candidate.name)}
 							>
 								<span className={`dot ${candidate.state === 'running' ? 'ok' : 'ask'}`} />
@@ -110,7 +114,7 @@ export const DevLogsDialog = ({
 					</div>
 				)}
 				{lines.map((line, index) => (
-					// Lines repeat and have no ids; the log only grows, so the index is stable.
+					// Lines repeat and have no ids: an index key costs only re-rendering the rows that shifted.
 					// biome-ignore lint/suspicious/noArrayIndexKey: see above
 					<div key={index} className={isErrorLine(line) ? 'c-crit' : undefined}>
 						{line}

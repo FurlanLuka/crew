@@ -604,8 +604,8 @@ describe('dev server logs', () => {
 		expect(html).toContain('port 4121 · following, new lines as they come');
 		expect(html).toContain('>Restart dev servers<');
 		// A tab per server, the one clicked chosen.
-		expect(html).toMatch(/aria-pressed="false"><span class="dot ok"><\/span>web</);
-		expect(html).toMatch(/aria-pressed="true"><span class="dot ask"><\/span>api</);
+		expect(html).toMatch(/aria-selected="false"><span class="dot ok"><\/span>web</);
+		expect(html).toMatch(/aria-selected="true"><span class="dot ask"><\/span>api</);
 	});
 
 	it('error lines stand out; ordinary ones do not', () => {

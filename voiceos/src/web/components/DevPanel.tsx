@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { type DevOffer, type DevServer, isOfferFresh } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 import { DevLogsDialog } from './DevLogsDialog.js';
@@ -51,6 +51,12 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 	const isOfferShown = isOfferFresh(offer, Date.now()) && offer?.ref === worktree;
 	// The server whose log opens first, by name, so the window lives through every status from crew.
 	const [logsOf, setLogsOf] = useState<string | null>(null);
+	// A restart empties the list for a moment: the open window keeps the servers it knew meanwhile.
+	const known = useRef(servers);
+
+	if (servers.length > 0) {
+		known.current = servers;
+	}
 
 	return (
 		<section className="vo-panel panel" aria-label="dev servers">
@@ -71,10 +77,10 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 					{server.url && <OpenLink name={server.name} url={server.url} />}
 				</div>
 			))}
-			{logsOf && servers.length > 0 && (
+			{logsOf && known.current.length > 0 && (
 				<DevLogsDialog
 					worktree={worktree}
-					servers={servers}
+					servers={known.current}
 					first={logsOf}
 					dispatch={dispatch}
 					onClose={() => setLogsOf(null)}

@@ -103,6 +103,8 @@ export interface FakeCrew {
 	calls: { machine: string; command: SetupCommand }[];
 	// The next install of these projects fails, with crew's real pnpm error.
 	failInstall: (project: string) => void;
+	// What `dev logs` answers for a server from now on: its lines, or crew's refusal; null resets.
+	setDevLogs: (server: string, answer: string[] | { refuse: string } | null) => void;
 	// Every command for this machine fails the way the link fails it (out of reach, an older crew),
 	// until reset; null puts it back.
 	failMachine: (id: string, failure: MachineFailure | null) => void;
@@ -336,9 +338,11 @@ export const createFakeCrew = ({
 	const machines: Record<string, FakeMachine> = {};
 	const calls: FakeCrew['calls'] = [];
 	const failNext = new Set<string>();
+	const devLogs = new Map<string, string[] | { refuse: string }>();
 	const failing = new Map<string, MachineFailure>();
 
 	const reset = (next: 'golden' | 'empty' = seed) => {
+		devLogs.clear();
 		for (const id of [LOCAL_MACHINE, ...remotes]) {
 			machines[id] = seedMachine(next);
 		}
@@ -744,12 +748,23 @@ export const createFakeCrew = ({
 			}
 			case 'setup_logs':
 				return json(readGolden('setup-logs.json'));
-			case 'dev_logs':
+			case 'dev_logs': {
+				const answer = devLogs.get(command.server);
+
+				if (answer && !Array.isArray(answer)) {
+					return refuse(answer.refuse);
+				}
+
+				if (answer) {
+					return json({ ref: command.ref, server: command.server, lines: answer });
+				}
+
 				return json({
 					ref: command.ref,
 					server: command.server,
 					lines: [`$ ${command.server}`, 'listening', 'GET / 200 4 ms'],
 				});
+			}
 			case 'dev_status':
 				return json(
 					readGolden<{ worktree: string }[]>('dev-status.json').filter(
@@ -1398,6 +1413,13 @@ export const createFakeCrew = ({
 		machines,
 		calls,
 		failInstall: (project) => failNext.add(project),
+		setDevLogs: (server, answer) => {
+			if (answer) {
+				devLogs.set(server, answer);
+			} else {
+				devLogs.delete(server);
+			}
+		},
 		failMachine: (id, failure) => {
 			if (failure) {
 				failing.set(id, failure);
