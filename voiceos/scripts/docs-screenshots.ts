@@ -491,8 +491,14 @@ interface Shot {
 	prepare?: (page: Page) => Promise<void>;
 	// Only the top of the page, this tall: the overviews end well above the fold.
 	height?: number;
-	// Only these elements, together.
+	// Only these elements, together; tight: cropped to their own width too, not the page's.
 	around?: string[];
+	tight?: boolean;
+	// What to click in this step: Playwright selectors ringed for the shot. The ring is the script's,
+	// injected into the page, never the app's.
+	highlight?: string[];
+	// What this shot's crew answers beyond its goldens (a dev server's log lines).
+	crewSetup?: (crew: FakeCrew) => void;
 }
 
 const say = (text: string, ref: string, secondsAgo = 4): Step => ({
@@ -604,14 +610,87 @@ const activeOffline = (world: State): State =>
 
 const OVERVIEW_HEIGHT = 420;
 
+// Two files waiting on store-front/main: chips above the box, sent with the next words.
+const attachTwoFiles = (world: State): State =>
+	play(
+		[
+			{
+				input: {
+					type: 'attachment_added',
+					ref: 'store-front/main',
+					attachment: {
+						id: 'a1b2c3d4e5f60718/checkout-error.log',
+						name: 'checkout-error.log',
+						kind: 'file',
+						bytes: 18_432,
+					},
+				},
+				secondsAgo: 20,
+			},
+			{
+				input: {
+					type: 'attachment_added',
+					ref: 'store-front/main',
+					attachment: {
+						id: 'f1e2d3c4b5a69788/search-spec.pdf',
+						name: 'search-spec.pdf',
+						kind: 'file',
+						bytes: 412_000,
+					},
+				},
+				secondsAgo: 12,
+			},
+		],
+		world,
+	);
+
+// store-front/main asks to run its migrations: the permission docked above the box.
+const askToMigrate = (world: State): State =>
+	play(
+		[
+			{
+				input: {
+					type: 'ask_opened',
+					ask: {
+						id: 'p-migrate',
+						ref: 'store-front/main',
+						at: Date.now() - 30_000,
+						kind: 'permission',
+						toolName: 'Bash',
+						summary: 'run the database migrations',
+						input: { command: 'pnpm db:migrate' },
+						suggestions: [],
+					},
+				},
+				secondsAgo: 30,
+			},
+		],
+		world,
+	);
+
+const WEB_LOG = [
+	'$ pnpm dev',
+	'VITE v6.2.1  ready in 412 ms',
+	'Local:   http://localhost:4100/',
+	'[hmr] update /src/catalog/SearchBox.tsx',
+	'GET /api/products?q=mug 200 18 ms',
+	'GET /api/cart 502 (proxy: connect ECONNREFUSED 127.0.0.1:4101)',
+	'[hmr] update /src/catalog/ProductCard.tsx',
+	'GET /api/products?q=mug 200 11 ms',
+];
+
+const STORE_FRONT_VIEW: View = { kind: 'session', ref: 'store-front/main' };
+const withStoreFrontLine = (world: State): State =>
+	play([say(STORE_FRONT_LINE, 'store-front/main')], world);
+
 const SHOTS: Shot[] = [
 	{ name: 'crew-home', dir: 'home', path: '/' },
 	{ name: 'activate', view: { kind: 'activate' } },
 	{ name: 'settings', view: { kind: 'settings' } },
 	{
 		name: 'session',
-		view: { kind: 'session', ref: 'store-front/main' },
-		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+		view: STORE_FRONT_VIEW,
+		stage: withStoreFrontLine,
 	},
 	{ name: 'active', view: { kind: 'active' }, stage: activeOffline, height: OVERVIEW_HEIGHT },
 	{
@@ -639,8 +718,8 @@ const SHOTS: Shot[] = [
 	{ name: 'approval', view: { kind: 'session', ref: 'checkout-api/main' }, stage: blockCheckout },
 	{
 		name: 'listening-modes',
-		view: { kind: 'session', ref: 'store-front/main' },
-		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+		view: STORE_FRONT_VIEW,
+		stage: withStoreFrontLine,
 		listenMode: 'on-demand',
 		prepare: async (page) => {
 			await page.getByRole('button', { name: 'Listening mode' }).click();
@@ -650,9 +729,108 @@ const SHOTS: Shot[] = [
 	},
 	{
 		name: 'phone',
-		view: { kind: 'session', ref: 'store-front/main' },
+		view: STORE_FRONT_VIEW,
 		viewport: { width: 390, height: 844 },
-		stage: (world) => play([say(STORE_FRONT_LINE, 'store-front/main')], world),
+		stage: withStoreFrontLine,
+	},
+	{
+		name: 'answer',
+		view: { kind: 'active' },
+		world: { isSignalsAsking: true },
+		stage: activeOffline,
+		height: OVERVIEW_HEIGHT,
+		highlight: ['.vo-row.waiting .vo-answer'],
+	},
+	{
+		name: 'new-menu',
+		view: { kind: 'active' },
+		stage: activeOffline,
+		prepare: async (page) => {
+			await page.locator('.vo-new').click();
+			await page.getByRole('menu', { name: 'New' }).waitFor();
+		},
+		around: ['.vo-top', '.nm-menu'],
+		tight: true,
+	},
+	{
+		name: 'new-session',
+		view: { kind: 'active' },
+		prepare: async (page) => {
+			await page.locator('section[aria-label="Home"] .vo-head button.primary').click();
+			const form = page.getByRole('form', { name: /New session on/ });
+			await form.getByRole('textbox', { name: 'Folder' }).fill('~/notes');
+			await form.getByRole('textbox', { name: 'Name' }).fill('research');
+			// Off the field, so the only ring is the one on Start session.
+			await page.locator('.nsd-head h2').click();
+		},
+		highlight: ['.nsd button[type="submit"]'],
+	},
+	{
+		name: 'machine',
+		view: { kind: 'activate', machine: REMOTE },
+		highlight: ['.vo-machine-page .vo-head button.primary'],
+	},
+	{
+		name: 'dev-servers',
+		view: STORE_FRONT_VIEW,
+		stage: withStoreFrontLine,
+		around: ['section[aria-label="dev servers"]'],
+		tight: true,
+		highlight: ['button[aria-label="web logs"]'],
+	},
+	{
+		name: 'dev-logs',
+		view: STORE_FRONT_VIEW,
+		stage: withStoreFrontLine,
+		crewSetup: (crew) => crew.setDevLogs('web', WEB_LOG),
+		prepare: async (page) => {
+			await page.getByRole('button', { name: 'web logs' }).click();
+			await page.getByRole('dialog', { name: 'dev server logs' }).getByText('$ pnpm dev').waitFor();
+		},
+	},
+	{
+		name: 'attachments',
+		view: STORE_FRONT_VIEW,
+		stage: (world) => attachTwoFiles(withStoreFrontLine(world)),
+		around: ['.vo-bar'],
+		highlight: ['button[aria-label="Attach files"]'],
+	},
+	{
+		name: 'permission',
+		view: STORE_FRONT_VIEW,
+		stage: (world) => askToMigrate(withStoreFrontLine(world)),
+		around: ['.vo-bar'],
+	},
+	{
+		name: 'voice-off',
+		view: STORE_FRONT_VIEW,
+		stage: (world) =>
+			play(
+				[{ input: { type: 'set_voice_off', voiceOff: true }, secondsAgo: 5 }],
+				withStoreFrontLine(world),
+			),
+		around: ['.vo-top'],
+		highlight: ['.vo-top .vo-voice'],
+	},
+	{
+		name: 'tab-drag',
+		view: { kind: 'active' },
+		stage: activeOffline,
+		prepare: async (page) => {
+			const tabs = page.locator('.vo-tab[data-ref]');
+			const from = await tabs.nth(3).boundingBox();
+			const to = await tabs.nth(1).boundingBox();
+
+			if (!from || !to) {
+				throw new Error('tab-drag: the tabs are not there');
+			}
+
+			// Held mid-drag over the left half of the second tab: the drop line shows where it lands.
+			await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+			await page.mouse.down();
+			await page.mouse.move(to.x + 6, to.y + to.height / 2, { steps: 8 });
+		},
+		around: ['.vo-top'],
 	},
 	{ name: 'board', dir: 'setup', path: '/setup' },
 	{ name: 'workspaces', dir: 'setup', path: '/setup/workspaces' },
@@ -662,6 +840,16 @@ const SHOTS: Shot[] = [
 	{ name: 'new-worktree', dir: 'setup', path: '/setup/workspace/store-front/new-worktree' },
 	{ name: 'settings', dir: 'setup', path: '/setup/settings' },
 	{ name: 'chat', dir: 'setup', path: '/setup/chat' },
+	{ name: 'export', dir: 'setup', path: '/setup/export', height: 820 },
+	{ name: 'import', dir: 'setup', path: '/setup/import', height: 420 },
+	{
+		name: 'logs',
+		dir: 'setup',
+		path: '/setup/worktree/store-front/wrk1/logs',
+		crewSetup: (crew) => crew.setDevLogs('web', WEB_LOG),
+		height: 620,
+	},
+	{ name: 'machines', dir: 'setup', path: '/setup/machine', height: 360 },
 	{ name: 'first-run', dir: 'setup', path: '/setup', crew: 'empty' },
 	{ name: 'board-phone', dir: 'setup', path: '/setup', viewport: { width: 390, height: 844 } },
 	{
@@ -682,9 +870,15 @@ const SHOTS: Shot[] = [
 
 type Clip = { x: number; y: number; width: number; height: number };
 
+// A margin around a cropped shot, so a ring at its edge is not cut.
+const RING_MARGIN = 12;
+const RING_CLASS = 'docs-click-here';
+
 const findClip = async (page: Page, shot: Shot): Promise<Clip | null> => {
+	const viewport = shot.viewport ?? VIEWPORT;
+
 	if (shot.height) {
-		return { x: 0, y: 0, width: (shot.viewport ?? VIEWPORT).width, height: shot.height };
+		return { x: 0, y: 0, width: viewport.width, height: shot.height };
 	}
 
 	if (!shot.around) {
@@ -694,10 +888,38 @@ const findClip = async (page: Page, shot: Shot): Promise<Clip | null> => {
 	const boxes = await Promise.all(
 		shot.around.map((selector) => page.locator(selector).first().boundingBox()),
 	);
-	const top = Math.min(...boxes.map((box) => box?.y ?? VIEWPORT.height));
-	const bottom = Math.max(...boxes.map((box) => (box ? box.y + box.height : 0)));
+	const margin = shot.tight || shot.highlight ? RING_MARGIN : 0;
+	const top = Math.max(0, Math.min(...boxes.map((box) => box?.y ?? viewport.height)) - margin);
+	const bottom = Math.min(
+		viewport.height,
+		Math.max(...boxes.map((box) => (box ? box.y + box.height : 0))) + margin,
+	);
 
-	return { x: 0, y: top, width: VIEWPORT.width, height: bottom - top };
+	if (!shot.tight) {
+		return { x: 0, y: top, width: viewport.width, height: bottom - top };
+	}
+
+	const left = Math.max(0, Math.min(...boxes.map((box) => box?.x ?? 0)) - margin);
+	const right = Math.min(
+		viewport.width,
+		Math.max(...boxes.map((box) => (box ? box.x + box.width : 0))) + margin,
+	);
+
+	return { x: left, y: top, width: right - left, height: bottom - top };
+};
+
+// "Click this": a white ring and a soft glow around each element, drawn over the page for the shot.
+const ringClickTargets = async (page: Page, selectors: string[]): Promise<void> => {
+	await page.addStyleTag({
+		content: `.${RING_CLASS} { outline: 2px solid rgba(255, 255, 255, 0.92) !important; outline-offset: 3px !important; box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.14) !important; border-radius: 10px; }`,
+	});
+
+	for (const selector of selectors) {
+		await page
+			.locator(selector)
+			.first()
+			.evaluate((element, name) => element.classList.add(name), RING_CLASS);
+	}
 };
 
 const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<void> => {
@@ -730,6 +952,10 @@ const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<vo
 		await shot.prepare?.(page);
 		// The stream scrolls to its end, crew's reads land and the mic settles.
 		await page.waitForTimeout(1200);
+
+		if (shot.highlight) {
+			await ringClickTargets(page, shot.highlight);
+		}
 
 		if (errors.length > 0) {
 			throw new Error(`${shot.name}: the page threw: ${errors.join('; ')}`);
@@ -792,6 +1018,7 @@ const main = async (): Promise<void> => {
 			const staged = shot.stage ? shot.stage(world) : world;
 
 			crew = createFakeCrew({ seed: shot.crew ?? 'golden', remotes: [REMOTE] });
+			shot.crewSetup?.(crew);
 			store.snapshot = shot.view
 				? play([{ input: { type: 'switch_view', view: shot.view }, secondsAgo: 1 }], staged)
 				: staged;
