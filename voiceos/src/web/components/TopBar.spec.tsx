@@ -138,8 +138,9 @@ describe('moving a tab', () => {
 	it('every session tab can be dragged and says its keys; Home cannot', () => {
 		const html = render(withSessions(['store-front/main']));
 
+		expect(html).toMatch(/data-ref="store-front\/main"[^>]*draggable="true"/);
 		expect(html).toMatch(
-			/data-ref="store-front\/main" draggable="true" aria-keyshortcuts="Alt\+ArrowLeft Alt\+ArrowRight"/,
+			/data-ref="store-front\/main"[^>]*aria-keyshortcuts="Alt\+ArrowLeft Alt\+ArrowRight"/,
 		);
 		expect(html.split('draggable="true"').length - 1).toBe(1);
 	});

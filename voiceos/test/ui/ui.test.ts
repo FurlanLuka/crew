@@ -354,7 +354,9 @@ describe('voice os ui', () => {
 			);
 
 		try {
-			const [first = '', second = ''] = await readTabRefs();
+			const refs = await readTabRefs();
+			expect(refs.length).toBeGreaterThanOrEqual(2);
+			const [first = '', second = ''] = refs;
 			const tab = (ref: string) => page.locator(`.vo-tab[data-ref="${ref}"]`);
 
 			// Dropped on the left half of the first tab: it lands before it.

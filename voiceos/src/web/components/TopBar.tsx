@@ -83,7 +83,14 @@ export const TopBar = ({ state, dispatch, onHome, onNewSession }: TopBarProps) =
 	};
 
 	const handleDragOver = (event: DragEvent<HTMLButtonElement>, ref: string) => {
-		if (!dragged || dragged === ref) {
+		if (!dragged) {
+			return;
+		}
+
+		// Back over itself nothing would move: no line promises otherwise.
+		if (dragged === ref) {
+			setDrop(null);
+
 			return;
 		}
 
@@ -130,7 +137,18 @@ export const TopBar = ({ state, dispatch, onHome, onNewSession }: TopBarProps) =
 			<button type="button" className="vo-brand" title="Home" onClick={onHome}>
 				crew <span>voice os</span>
 			</button>
-			<nav className="vo-tabs" aria-label="Active sessions">
+			<nav
+				className="vo-tabs"
+				aria-label="Active sessions"
+				onDragLeave={(event) => {
+					if (
+						!(event.relatedTarget instanceof Node) ||
+						!event.currentTarget.contains(event.relatedTarget)
+					) {
+						setDrop(null);
+					}
+				}}
+			>
 				<button
 					type="button"
 					className="vo-tab"
@@ -163,7 +181,8 @@ export const TopBar = ({ state, dispatch, onHome, onNewSession }: TopBarProps) =
 							aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
 							onDragStart={(event) => {
 								event.dataTransfer.effectAllowed = 'move';
-								event.dataTransfer.setData('text/plain', ref);
+								// Its own type, so a tab dropped on the text box never pastes its ref there.
+								event.dataTransfer.setData('application/x-voiceos-ref', ref);
 								setDragged(ref);
 							}}
 							onDragOver={(event) => handleDragOver(event, ref)}
