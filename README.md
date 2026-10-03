@@ -5,15 +5,16 @@
 [![Tests](https://github.com/FurlanLuka/crew/actions/workflows/test.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/test.yml)
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE)
 
-**Talk to your coding agents.** Running a few Claudes at once is great until you become the
-bottleneck, clicking through terminals to see who's stuck. crew turns that into a conversation:
-"tell checkout to run the tests", "what's waiting on me?", "yes, but only on staging".
+**Talk to your coding agents, on every machine you own.** Running a few Claudes at once is great
+until you become the bottleneck, clicking through terminals to see who's stuck. crew turns that into
+a conversation, and it doesn't care where the work runs: your laptop, a big VM, the box under your
+desk. "Build box store front, run the e2e suite." "What's waiting on me?" "Yes, but only on staging."
 
 crew is two things that ship together. **Voice OS** is the page you talk to, one Claude Code session
-per piece of work, on this machine or any other you own. **crew** is the command line underneath
+per piece of work, on this machine or any other you can SSH into. **crew** is the command line underneath
 that gives each of those sessions its own copy of your stack, with its dev servers running.
 
-[Try it](#try-it) · [What it's like](#what-its-like-to-use) · [Other machines](#more-than-one-machine) ·
+[Try it](#try-it) · [Every machine](#every-machine-one-voice) · [What it's like](#what-its-like-to-use) ·
 [Where it stands](#where-it-stands) · [Guides](#learn-more) · [Releases](https://github.com/FurlanLuka/crew/releases)
 
 ## Try it
@@ -30,6 +31,26 @@ Then you open Voice OS, give it two API keys, hold **Space** and talk.
 
 ![The first run: crew lists the git checkouts it found in your code folders, each ticked, with the commands it will run](docs/images/setup/first-run.png)
 
+## Every machine, one voice
+
+Your laptop is the cockpit; the work runs wherever it's fastest. Install crew on a VM or a second
+computer, run `crew server remote` there, and add its SSH host in Set up. Its sessions show up next
+to yours on the same page, with the same voice and the same alerts ("Build box, signals needs you").
+The builds, the dev servers and the Claude sessions stay over there. There are no ports to open: it
+rides the SSH you already use.
+
+Close the laptop or lose the Wi-Fi and the sessions over there keep working. What you say waits and
+is sent when the link is back, and you hear what finished meanwhile. Update the main and it brings
+its remotes along, logs from every machine come back in one query, and any machine can post to your
+Discord.
+
+![Home: four sessions on two machines, the one asking a question first with Answer, and a card for each machine](docs/images/voice-os/active.png)
+
+[Other machines](docs/guides/voice-os.md#other-machines) has the details, and
+[Running crew on a remote VM](docs/guides/remote-vm.md) sets one up from nothing. When you want to
+move your whole setup somewhere new, **Export** saves it to a file and **Import** on the other
+machine walks you through bringing it in.
+
 ## What it's like to use
 
 Every piece of work gets its own copy of your stack and its own Claude Code session. The one on
@@ -44,8 +65,6 @@ without switching to it. Sessions you aren't looking at don't read you their who
 "checkout is done" or "checkout needs you" once it's quiet, and "status update" gets you a short
 spoken recap of where everything is.
 
-![Home: four sessions on two machines, the one asking a question first with Answer, and a card for each machine](docs/images/voice-os/active.png)
-
 Home shows what's running and what waits on you, and **New** starts anything: a worktree, or a plain
 Claude conversation in any folder when the work isn't a worktree at all. You can listen the way that
 fits where you are: hold Space to talk, say "Voice OS, …" when you want it, go fully hands-free, or
@@ -54,15 +73,6 @@ channel and you talk to it from your phone.
 
 The [Voice OS guide](docs/guides/voice-os.md) has the full walkthrough, and the
 [commands page](docs/guides/voice-os-commands.md) lists everything you can say.
-
-## More than one machine
-
-My laptop isn't where everything runs. A VM or a second computer can run its own worktrees and
-sessions, and the machine in front of you drives them over SSH with the same page and the same
-voice. Each machine gets its own page, alerts come in from all of them, and if the link drops the
-work on the other side keeps going. [Other machines](docs/guides/voice-os.md#other-machines) covers
-the three steps to add one. When you want to move your whole setup somewhere new, **Export** saves
-it to a file and **Import** on the other machine walks you through bringing it in.
 
 ## Setting things up
 

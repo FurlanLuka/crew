@@ -17,17 +17,59 @@ document.querySelectorAll('[data-copy]').forEach((button) => {
 
 export function landingPage(): string {
   const body = `<header class="wrap hero">
-<h1>Talk to your coding agents.</h1>
-<p class="lede">Running a few Claudes at once is great until you become the bottleneck, clicking through terminals to see who's stuck. Voice OS turns that into a conversation, with every piece of work in its own copy of your stack.</p>
+<h1>Talk to your coding agents.<br><span class="dim">On every machine you own.</span></h1>
+<p class="lede">Your laptop, a big VM, the box under your desk. Run Claude Code sessions on all of them, each piece of work in its own copy of your stack, and drive every one from a single page by talking to it.</p>
 <div class="install">
 <code>${INSTALL_LINE}</code>
 <button type="button" class="btn quiet small" data-copy="${INSTALL_LINE}">Copy</button>
 </div>
-<p class="after">Then run <code>crew</code>. macOS and Linux · your own Claude Code login · two API keys for voice</p>
+<p class="after">Then run <code>crew</code>. macOS and Linux · add any machine you can SSH into · your own Claude Code login</p>
 </header>
 
 <section class="wrap" aria-label="Voice OS" style="padding-top: 56px">
 <img class="shot" src="/images/voice-os/hero.png" alt="Voice OS: a session on another machine with its work stream, dev servers and spoken summary, and the other active sessions as tabs">
+<p class="caption"><span class="dot amber"></span>This session runs on Build box, a Linux VM. You are talking to it from a Mac.</p>
+</section>
+
+<section class="wrap machines" aria-label="Every machine">
+<div class="text">
+<span class="kicker">Every machine, one voice</span>
+<h2>Your laptop is the cockpit. The work runs wherever it's fastest.</h2>
+<p>Point crew at a machine you can SSH into and its sessions show up next to yours: same page, same voice, same alerts. The heavy builds, the dev servers and the Claude sessions stay over there. Only your words and their answers travel.</p>
+</div>
+<div class="diagram" role="img" aria-label="This Mac, the main, connected over SSH to Build box and Lab box, each running its own sessions">
+<div class="mach you">
+<span class="kicker">Main · in front of you</span>
+<h4><span class="dot"></span>This Mac</h4>
+<span class="host">voice, the page, your keys</span>
+<div class="chip"><span class="dot amber"></span>store-front/main<small>running</small></div>
+<div class="chip"><span class="dot grey"></span>checkout<small>idle</small></div>
+</div>
+<div class="link"><i></i>ssh<i></i></div>
+<div class="mach">
+<span class="kicker">Remote</span>
+<h4><span class="dot"></span>Build box</h4>
+<span class="host">dev@store-vm · Linux VM</span>
+<div class="chip"><span class="dot amber"></span>store-front/wrk2<small>running</small></div>
+<div class="chip"><span class="dot red"></span>signals/wrk1<small>asks you</small></div>
+<div class="chip faint">web · api<small>dev servers up</small></div>
+</div>
+<div class="link"><i></i>ssh<i></i></div>
+<div class="mach">
+<span class="kicker">Remote</span>
+<h4><span class="dot red"></span>Lab box</h4>
+<span class="host">dev@lab-vm · out of reach</span>
+<div class="chip"><span class="dot amber"></span>admin/wrk3<small>still working</small></div>
+<span class="host">Its sessions keep going. Your words wait and are sent when it's back.</span>
+</div>
+</div>
+<div class="facts-row">
+<div class="fact"><b>Add it with its SSH host</b><p>Install crew there, run <code>crew server remote</code>, then add the host in Set up. No ports to open and nothing exposed. It rides the SSH you already use.</p></div>
+<div class="fact"><b>Talk to any session by name</b><p>"Build box store front, run the migrations." Home lists every machine's sessions with whatever waits on you first, and alerts say where they come from.</p></div>
+<div class="fact"><b>Links drop. Work doesn't.</b><p>Close the laptop, lose the Wi-Fi. Sessions over there keep working, and when the link is back you hear what finished meanwhile.</p></div>
+<div class="fact"><b>One crew everywhere</b><p>Update the main and it brings its remotes along. Logs from every machine come back in one query, and any machine can post to your Discord.</p></div>
+</div>
+<a class="more" href="/guides/voice-os/#other-machines">How other machines work →</a>
 </section>
 
 <section class="wrap split" aria-label="What it sounds like" style="padding-top: 120px">
@@ -37,10 +79,10 @@ export function landingPage(): string {
 <p>A small router in the middle decides where your words go, and it's strict about one thing: anything about the actual work goes to the session, in your words. It never answers for it or guesses what you meant.</p>
 </div>
 <div class="talk panel">
-<p class="say you"><span class="who">you</span>checkout, add a retry with backoff to the payment client</p>
-<p class="say vo"><span class="who">voice os</span>Sent to checkout. Switch there?</p>
+<p class="say you"><span class="who">you</span>build box store front, run the e2e suite</p>
+<p class="say vo"><span class="who">voice os</span>Sent to store-front wrk2 on Build box. Switch there?</p>
 <p class="say you"><span class="who">you</span>no, stay. what's waiting on me?</p>
-<p class="say vo"><span class="who">voice os</span>Signals asks: a new events table for clicks, or the orders table?</p>
+<p class="say vo"><span class="who">voice os</span>Build box, signals asks: a new events table for clicks, or the orders table?</p>
 <p class="say you"><span class="who">you</span>the new table</p>
 <p class="say vo"><span class="who">voice os</span>Checkout is done. Retries back off from 200 ms to 3.2 s, all 41 payment tests pass.</p>
 </div>
@@ -56,13 +98,14 @@ export function landingPage(): string {
 <p>Permissions, plans and questions come to you out loud. Say "yes" or "the second one" and the session carries on, while the one on screen stays on screen.</p>
 </div>
 <div class="col">
-<h3>All your machines, one voice</h3>
-<p>A VM or a second computer runs its own sessions, and the page in front of you drives them over SSH. If the link drops, the work over there keeps going.</p>
+<h3>Hand it what you see</h3>
+<p>Paste a screenshot or drop a log on a session's page and it goes along with your next words, to a session on this machine or any other.</p>
 </div>
 </section>
 
 <section class="wrap" aria-label="Home" style="padding-top: 80px">
 <img class="shot" src="/images/voice-os/active.png" alt="Home: sessions on two machines, the one asking a question first, and a card for each machine">
+<p class="caption">Home: every machine's sessions in one list, a card per machine, and Lab box out of reach without anything stopping.</p>
 </section>
 
 <section class="wrap split reverse" aria-label="Set up" style="padding-top: 120px">
@@ -117,7 +160,7 @@ ${COPY_SCRIPT}`;
   return page({
     title: 'crew · Voice OS',
     description:
-      'Talk to your coding agents. crew gives every piece of work its own copy of your stack, and Voice OS lets you drive every Claude Code session by voice.',
+      'Talk to your coding agents, on every machine you own. crew gives every piece of work its own copy of your stack, and Voice OS drives every Claude Code session, here or over SSH, by voice.',
     path: '/',
     section: 'home',
     body,
