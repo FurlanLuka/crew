@@ -1,6 +1,7 @@
 // Voice OS, the workhorse: the docked top bar, one view (Active, a session, Activate, Settings) and
 // the docked voice bar. The view is the server's (every tab shows the same); the URL follows it.
 import { useEffect, useRef, useState } from 'react';
+import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { parentView } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
 import { isInDialog } from '../in-dialog.js';
@@ -14,6 +15,7 @@ import { BeforeYouTalk, listMissingKeys } from './BeforeYouTalk.js';
 import { BottomBar } from './BottomBar.js';
 import { ConnectionBanner } from './ConnectionBanner.js';
 import { Cockpit } from './Cockpit.js';
+import { NewSessionDialog } from './NewSessionDialog.js';
 import { Settings } from './Settings.js';
 import { TopBar } from './TopBar.js';
 
@@ -71,6 +73,10 @@ export const VoiceOS = ({
 	onSetUp,
 }: VoiceOSProps) => {
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
+	// The New session dialog: the machine it opens on, or null while it is closed.
+	const [newSessionOn, setNewSessionOn] = useState<string | null>(null);
+	// What the last one left: "Started research on Build box.", or crew's reason it was not.
+	const [newSessionLine, setNewSessionLine] = useState<string | null>(null);
 	const [isIgnored, setIsIgnored] = useState(false);
 	const missingKeys = listMissingKeys(state);
 	const [isSheetOpen, setIsSheetOpen] = useState(
@@ -131,10 +137,22 @@ export const VoiceOS = ({
 
 	const { view } = state;
 	const session = view.kind === 'session' ? state.sessions[view.ref] : undefined;
+	// From the top bar or Home: the machine on screen, else this Mac.
+	const openNewSession = (machine?: string) => {
+		setNewSessionLine(null);
+		setNewSessionOn(
+			machine ?? (view.kind === 'activate' ? view.machine : undefined) ?? LOCAL_MACHINE,
+		);
+	};
 
 	return (
 		<div className="vo">
-			<TopBar state={state} dispatch={dispatch} onHome={onHome} />
+			<TopBar
+				state={state}
+				dispatch={dispatch}
+				onHome={onHome}
+				onNewSession={() => openNewSession()}
+			/>
 			<main className={`vo-main ${session ? 'in-session' : ''}`}>
 				<div className="vo-notices">
 					<ConnectionBanner status={connectionStatus} isInline />
@@ -144,6 +162,11 @@ export const VoiceOS = ({
 								Open {blockedOpen.title} ↗
 							</a>{' '}
 							— the browser held back opening it for you.
+						</div>
+					)}
+					{newSessionLine && (
+						<div className="vo-notice" role="status">
+							{newSessionLine}
 						</div>
 					)}
 					{micStatus === 'denied' && (
@@ -165,9 +188,12 @@ export const VoiceOS = ({
 					<Cockpit key={session.ref} session={session} state={state} dispatch={dispatch} />
 				) : view.kind === 'activate' ? (
 					<Activate
+						key={view.machine ?? 'all'}
 						state={state}
 						dispatch={dispatch}
 						{...(view.machine ? { machine: view.machine } : {})}
+						onNewSession={openNewSession}
+						onSetUpMachine={onSetUp}
 					/>
 				) : view.kind === 'settings' ? (
 					<Settings
@@ -178,7 +204,7 @@ export const VoiceOS = ({
 						onSetUpMachine={(machine) => onSetUp(machine)}
 					/>
 				) : (
-					<ActiveView state={state} dispatch={dispatch} />
+					<ActiveView state={state} dispatch={dispatch} onNewSession={() => openNewSession()} />
 				)}
 			</main>
 			<BottomBar
@@ -189,6 +215,17 @@ export const VoiceOS = ({
 				keptDictation={keptDictation}
 				send={send}
 			/>
+			{newSessionOn !== null && (
+				<NewSessionDialog
+					state={state}
+					machine={newSessionOn}
+					dispatch={dispatch}
+					onClose={(line) => {
+						setNewSessionOn(null);
+						setNewSessionLine(line || null);
+					}}
+				/>
+			)}
 			{isSheetOpen && missingKeys.length > 0 && (
 				<BeforeYouTalk
 					state={state}

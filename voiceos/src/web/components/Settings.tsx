@@ -1,5 +1,5 @@
-// Voice OS settings (the gear): how this tab listens, the two keys, Discord, the names you gave
-// sessions, the machines, and whether a fresh crew opens straight into Voice OS.
+// Voice OS settings (the gear): one page with a side menu — how this tab listens, voice off, the two
+// keys, Discord, the names you gave sessions, the machines, and whether crew opens into Voice OS.
 import { type FormEvent, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { SPOKEN_LANGUAGES } from '../../shared/languages.js';
@@ -183,11 +183,9 @@ const DiscordSection = ({ state }: { state: State }) => {
 
 	if (!discord) {
 		return (
-			<div className="vs-sec">
-				<div className="vs-h">
-					<b>Discord</b>
-					<span className="m">talk to Voice OS from a private voice channel, on your phone</span>
-				</div>
+			<div className="vs-sec" id="vs-discord">
+				<h2>Discord</h2>
+				<p className="vs-lead">Talk to Voice OS from a private voice channel, on your phone.</p>
 				<div className="box">
 					<div className="box-row">
 						<span className="dot ring" />
@@ -213,11 +211,9 @@ const DiscordSection = ({ state }: { state: State }) => {
 	};
 
 	return (
-		<div className="vs-sec">
-			<div className="vs-h">
-				<b>Discord</b>
-				<span className="m">talk to Voice OS from a private voice channel, on your phone</span>
-			</div>
+		<div className="vs-sec" id="vs-discord">
+			<h2>Discord</h2>
+			<p className="vs-lead">Talk to Voice OS from a private voice channel, on your phone.</p>
 			<div className="box">
 				<div className="box-row">
 					<span className={`dot ${discord.isConnected ? 'ok' : 'run'}`} />
@@ -261,13 +257,11 @@ const NamesSection = ({ state, dispatch }: { state: State; dispatch: Dispatch })
 	const names = Object.entries(state.names);
 
 	return (
-		<div className="vs-sec">
-			<div className="vs-h">
-				<b>Names</b>
-				<span className="m">
-					what you call a session out loud; a name replaces the ref everywhere
-				</span>
-			</div>
+		<div className="vs-sec" id="vs-names">
+			<h2>Names</h2>
+			<p className="vs-lead">
+				What you call a session out loud. A name replaces the ref everywhere.
+			</p>
 			{names.length === 0 ? (
 				<p className="vs-note">
 					No names yet. Rename a session from its page, or say “call checkout payments”.
@@ -310,6 +304,17 @@ const NamesSection = ({ state, dispatch }: { state: State; dispatch: Dispatch })
 	);
 };
 
+// The side menu: each entry scrolls to its section on the one page, so nothing is hidden behind it.
+const SECTIONS = [
+	{ id: 'vs-listening', title: 'Listening' },
+	{ id: 'vs-voice', title: 'Voice' },
+	{ id: 'vs-keys', title: 'Keys' },
+	{ id: 'vs-discord', title: 'Discord' },
+	{ id: 'vs-names', title: 'Names' },
+	{ id: 'vs-machines', title: 'Machines' },
+	{ id: 'vs-opening', title: 'Opening crew' },
+] as const;
+
 export const Settings = ({
 	state,
 	dispatch,
@@ -318,38 +323,49 @@ export const Settings = ({
 	onSetUpMachine,
 }: SettingsProps) => {
 	const [isAlwaysVoice, setIsAlwaysVoice] = useState(readAlwaysVoice);
+	const [shown, setShown] = useState<string>(SECTIONS[0].id);
+
+	const goTo = (id: string) => {
+		setShown(id);
+		document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	};
 
 	return (
-		<section className="vo-view" aria-label="Voice OS settings">
-			<div className="vo-head">
-				<h1>Voice OS settings</h1>
-				<span className="m">this browser and This Mac</span>
-			</div>
-			<div className="vo-lib vs-set">
-				<div className="vs-sec">
-					<div className="vs-h">
-						<b>Listening</b>
-						<span className="m">
-							how your turn starts and ends; the mode menu in the voice bar sets the same thing
-						</span>
-					</div>
-					<div className="seg">
+		<section className="vo-view vs-page" aria-label="Voice OS settings">
+			<nav className="vs-nav" aria-label="Settings sections">
+				<h1>Settings</h1>
+				{SECTIONS.map((section) => (
+					<button
+						key={section.id}
+						type="button"
+						aria-current={shown === section.id}
+						onClick={() => goTo(section.id)}
+					>
+						{section.title}
+					</button>
+				))}
+			</nav>
+			<div className="vs-set">
+				<div className="vs-sec" id="vs-listening">
+					<h2>Listening</h2>
+					<p className="vs-lead">
+						How your turn starts and ends. The menu in the voice bar sets the same thing.
+					</p>
+					<div className="vs-modes">
 						{INPUT_MODES.map((mode) => (
 							<button
 								key={mode}
 								type="button"
+								className="vs-mode"
 								aria-pressed={listenMode === mode}
 								onClick={() => onListenMode(mode)}
 							>
-								{MODE_COPY[mode].name}
+								<b>{MODE_COPY[mode].name}</b>
+								<span>{MODE_COPY[mode].description}</span>
 							</button>
 						))}
 					</div>
-					<p className="vs-note">{MODE_COPY[listenMode].description}</p>
-					<div className="vs-h">
-						<b>Languages you speak</b>
-						<span className="m">what speech-to-text listens for</span>
-					</div>
+					<h3>Languages you speak</h3>
 					<div className="language-grid">
 						{SPOKEN_LANGUAGES.map(({ code, name }) => {
 							const isPicked = state.languages.includes(code);
@@ -375,13 +391,35 @@ export const Settings = ({
 						})}
 					</div>
 				</div>
-				<div className="vs-sec">
-					<div className="vs-h">
-						<b>Keys</b>
-						<span className="m">
-							kept in ~/.config/crew-voiceos on This Mac; crew checks each before saving
-						</span>
+				<div className="vs-sec" id="vs-voice">
+					<h2>Voice</h2>
+					<p className="vs-lead">Turn every voice thing off at once. Typing keeps working.</p>
+					<div className="box">
+						<div className="box-row">
+							<span className={`dot ${state.voiceOff ? '' : 'ok'}`} />
+							<span className="sub">
+								<b>{state.voiceOff ? 'Voice is off' : 'Voice is on'}</b>
+								<span className="m">
+									{state.voiceOff
+										? 'Nothing listens or speaks. Discord’s bot is out of its channel.'
+										: 'Also in the top bar: click “voice”.'}
+								</span>
+							</span>
+							<button
+								type="button"
+								className="btn"
+								onClick={() => dispatch({ type: 'set_voice_off', voiceOff: !state.voiceOff })}
+							>
+								{state.voiceOff ? 'Turn voice on' : 'Mute voice'}
+							</button>
+						</div>
 					</div>
+				</div>
+				<div className="vs-sec" id="vs-keys">
+					<h2>Keys</h2>
+					<p className="vs-lead">
+						Kept on This Mac, readable by you only. crew checks each one before saving it.
+					</p>
 					<div className="box">
 						{KEYS.map((key) => (
 							<KeyRow key={key.name} {...key} isMissing={isKeyMissing(state, key.name)} />
@@ -390,11 +428,9 @@ export const Settings = ({
 				</div>
 				<DiscordSection state={state} />
 				<NamesSection state={state} dispatch={dispatch} />
-				<div className="vs-sec">
-					<div className="vs-h">
-						<b>Machines</b>
-						<span className="m">where your sessions run; added and configured in Set up</span>
-					</div>
+				<div className="vs-sec" id="vs-machines">
+					<h2>Machines</h2>
+					<p className="vs-lead">Where your sessions run. Added and configured in Set up.</p>
 					<div className="box">
 						<div className="box-row">
 							<span className="dot ok" />
@@ -416,21 +452,33 @@ export const Settings = ({
 										{machine.detail ? ` · ${machine.detail}` : ''}
 									</span>
 								</span>
-								<button
-									type="button"
-									className="btn sm ghost"
-									onClick={() => onSetUpMachine(machine.id)}
-								>
-									In Set up
-								</button>
+								<span className="row-actions">
+									<button
+										type="button"
+										className="btn"
+										onClick={() =>
+											dispatch({
+												type: 'switch_view',
+												view: { kind: 'activate', machine: machine.id },
+											})
+										}
+									>
+										Open
+									</button>
+									<button
+										type="button"
+										className="btn ghost"
+										onClick={() => onSetUpMachine(machine.id)}
+									>
+										In Set up
+									</button>
+								</span>
 							</div>
 						))}
 					</div>
 				</div>
-				<div className="vs-sec">
-					<div className="vs-h">
-						<b>Opening crew</b>
-					</div>
+				<div className="vs-sec" id="vs-opening">
+					<h2>Opening crew</h2>
 					<label className="check-line">
 						<input
 							type="checkbox"
@@ -440,7 +488,7 @@ export const Settings = ({
 								setIsAlwaysVoice(event.target.checked);
 							}}
 						/>
-						Always open Voice OS (skip Home when crew opens)
+						Always open Voice OS (skip crew’s Home when crew opens)
 					</label>
 				</div>
 			</div>

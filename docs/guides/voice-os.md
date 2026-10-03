@@ -22,7 +22,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [First run](#first-run)
 - [Set up and the setup session](#set-up-and-the-setup-session)
 - [From two repos to a working feature](#from-two-repos-to-a-working-feature)
-- [Active, Activate and Settings](#active-activate-and-settings)
+- [Home, machines and Settings](#home-machines-and-settings)
 - [Listening modes](#listening-modes)
 - [Voice off](#voice-off)
 - [Talking to sessions](#talking-to-sessions)
@@ -185,31 +185,41 @@ lists them from `API_URL`. Each dev command must listen on the port crew hands i
    whichever device you are using. Without one, it checks what it can from the shell and tells you
    what to look at.
 
-## Active, Activate and Settings
+## Home, machines and Settings
 
-Voice OS opens on **Active**: one row per active session, from every machine, each with its own
-state (asked you, running, done, idle). The bar along the top has the crew mark (back to Home),
-**Active**, a tab for each active session with its state dot (and its machine when it is not This
-Mac), and **+**, which opens **Activate**. Your Claude usage (weekly and 5-hour) and the gear for
-**Settings** are on the right.
+Voice OS opens on **Home**. On the left are your active sessions, one row each, from every machine,
+each with its state. Whatever waits on you comes first, tinted, with **Answer**. Up top sit the two
+ways to start something: **New session** and **Activate a worktree**. On the right is a card for
+each machine with what it holds (worktrees, how many are active, plain sessions), and under them a
+few things you can simply say instead.
 
-**Activate** lists every worktree on every machine, grouped by machine and then workspace, with a
-search field and a machine filter. Each machine heads its group with its state ("4 of 6 active", or
-"not reachable · last seen 2h ago" with its rows dimmed), and a worktree with words waiting for it
-shows them ("1 waiting: …"). **Activate** on a row starts that worktree's Claude: it gets a tab and
-a row in Active, and the page stays where it is. Worktrees are made in Set up, not here.
+The bar along the top has the crew mark (back to crew's Home), **Home** with its count, a tab for
+each active session with its state dot (and its machine when it is not This Mac), and **New**. New
+opens a menu: New session, Activate a worktree, and each machine, which opens that machine's page.
+Your Claude usage (weekly and 5-hour), **voice** and the settings gear are on the right; the gear
+becomes a **Settings** tab while Settings is open.
+
+**A machine's page** is where you go into a remote. A switcher on top moves between All machines and
+each machine. A machine's header says whether it is connected, its host, **Open in Set up** for a
+remote, and **New session on …**. Below a search field come its plain sessions, then its worktrees
+grouped by workspace. A worktree with words waiting for it shows them ("1 waiting: …"); a machine
+out of reach has its rows dimmed and says why. **Activate** on a row starts that worktree's Claude:
+it gets a tab and a row on Home, and the page stays where it is. Worktrees are made in Set up, not
+here.
 
 ![Activate: every worktree on This Mac and Build box, grouped by workspace, with Activate on admin/main and the active ones marked](../images/voice-os/activate.png)
 
-**Plain sessions.** Not everything is a worktree. **New session** on Activate (one per machine) or
-"start a new session called research in my notes folder" makes a plain Claude conversation: it runs
-in the folder you name on that machine (home when you name none), with no crew instructions and no
-dev servers, and it is active at once. Talk to it by its name like any session; **Remove** on its
-page, or "remove research", stops it and drops it from the list, leaving the folder alone. crew
-keeps them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
+**Plain sessions.** Not everything is a worktree. **New session** (on Home, in the New menu, or on a
+machine's page) opens a dialog: pick the machine, a folder there (your recent ones are a click
+away; home when you name none) and a name. Saying "start a new session called research in my notes
+folder" does the same. It is a plain Claude conversation with no crew instructions and no dev
+servers, and it is active at once. Talk to it by its name like any session; **Remove** on its page,
+or "remove research", stops it and drops it from the list, leaving the folder alone. crew keeps
+them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
 
-**Settings** has the listening mode and languages, the two keys (checked before saving), Discord,
-session names, and your machines with their crew version.
+**Settings** is one page with a menu down the side: how you listen (four modes, each explained) and
+the languages you speak, voice off, the two keys (checked before saving), Discord, session names,
+your machines, and whether crew opens straight into Voice OS.
 
 **Sending things to Discord.** With Discord set up, ask a session to send something there ("send
 that screenshot to Discord", "post the summary in Discord") and it runs `crew server discord send`,
@@ -224,8 +234,8 @@ Click a row or a tab to open that session. Opening a session only shows it. An i
 page shows its history and an **Activate** button, with no input box (see
 [Active sessions](#active-sessions)).
 
-**Esc** goes up one level: from a session to Active (or to Activate, for one you opened from
-there), and from Activate or Settings to Active.
+**Esc** goes up one level: from a session to Home (or to the machine's page, for one you opened from
+there), and from a machine's page or Settings to Home.
 
 The session page shows the conversation as it streams, what the session waits on (a question with
 its options, a plan, a permission) docked right above the voice bar, what went wrong under its
@@ -286,7 +296,7 @@ typed text goes to that session.
 > Claude Code. The kernel is skipped, so a typed "deactivate this" reaches Claude, not Voice OS.
 > There are two exceptions: text that starts with another session's name ("checkout, run the
 > tests") goes through the kernel, and so does anything typed while the session is waiting on your
-> answer. Voice OS commands work when spoken, or when typed on Active, Activate or Settings.
+> answer. Voice OS commands work when spoken, or when typed on Home, a machine's page or Settings.
 
 ## Voice off
 
@@ -349,7 +359,7 @@ A follow-up ("and the lint?") is no exception: name checkout again, or switch th
 - "Switch to it." Right after a session's line, opens that session.
 - "Go back." Returns to the session you were on before, saying "Back to crew"; say it again to go
   further back. A session that stopped is passed over ("checkout stopped. Back to crew."). "Go back
-  to checkout" goes to checkout, wherever you came from. "Home" means Active.
+  to checkout" goes to checkout, wherever you came from. "Home" opens Home.
 - "No, that was for store front." Resends your words there. If the session that got them is still
   working on them, it is stopped: "Stopped checkout."
 
@@ -417,8 +427,8 @@ else stays quiet until you activate it.
   activate it there. Its dev servers keep running; crew owns them, and Voice OS says nothing about
   them.
 
-**Active** is Voice OS's home: the active sessions from every machine. An active session's tab is
-in the top bar, and Esc goes back to Active.
+**Home** shows the active sessions from every machine. An active session's tab is in the top bar,
+and Esc goes back to Home.
 
 ![Active: sessions from This Mac and Build box, and one whose machine is out of reach](../images/voice-os/active.png)
 
@@ -440,7 +450,7 @@ in the top bar, and Esc goes back to Active.
   "What's running in the tests?" is about the work, so it still goes to the session. Starting with
   "Voice OS, …" always reaches Voice OS.
 - On a machine that is out of reach, activating adds the session to the set and you hear "Build box
-  is out of reach; it starts when it's back". Its row stays in Active ("… · Build box out of
+  is out of reach; it starts when it's back". Its row stays on Home ("… · Build box out of
   reach"); if the worktree was removed, the row reads "gone". Deactivate it to let it go.
 - A setup session is never active: it runs for Set up's chat (see
   [Set up and the setup session](#set-up-and-the-setup-session)). An `active.json` from an earlier
@@ -787,7 +797,7 @@ shell you ran crew from. Install what it names (`crew doctor --install`), or poi
 **"Reconnecting to the Voice OS server…"** The page lost its connection, usually because Voice OS
 restarted or stopped. It reconnects by itself. If it doesn't, run `crew server status`.
 
-**A machine says "out of reach" or "needs a fix"** (on Activate, in Settings, or in Set up's machine
+**A machine says "out of reach" or "needs a fix"** (on its page, in Settings, or in Set up's machine
 picker). It shows the reason. The common ones:
 
 | It says | Fix |

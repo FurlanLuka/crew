@@ -77,6 +77,12 @@ export const toMachineConfigs = (state: State): MachineConfig[] =>
 export const readMachineTitle = (state: State, machine: string): string =>
 	machine === LOCAL_MACHINE ? 'This Mac' : (state.machines[machine]?.name ?? machine);
 
+// This Mac first, then the other machines in the order they were added.
+export const listMachineIds = (state: State): string[] => [
+	LOCAL_MACHINE,
+	...Object.keys(state.machines),
+];
+
 // Only a connected machine takes what the reducer decides to send; this Mac always does.
 export const isMachineReachable = (state: State, machine: string): boolean =>
 	state.machines[machine]?.status === 'connected';

@@ -11,7 +11,7 @@ is the same command, forever. What one machine runs on another (`crew voice _att
 purpose: an older crew on the other end knows only that one.
 
 **Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Set up,
-Active and Activate, listening modes, voice off, active sessions, approvals, other machines, troubleshooting and
+Home and machine pages, listening modes, voice off, active sessions, approvals, other machines, troubleshooting and
 privacy. [Voice OS commands](../docs/guides/voice-os-commands.md) lists every kernel tool with
 things to say; a tool change updates its section (`src/tools/definitions.spec.ts` checks each has
 one). This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)

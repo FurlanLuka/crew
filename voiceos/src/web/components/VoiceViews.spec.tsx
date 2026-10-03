@@ -5,6 +5,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { PendingAsk, State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { Activate, describeGroup, listActivateSections } from './Activate.js';
+import { ActiveView, sortForHome } from './ActiveView.js';
+import { listRecentFolders } from './NewSessionDialog.js';
 import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
 import { DevPanel } from './DevPanel.js';
@@ -13,6 +15,17 @@ import { SessionStateRow } from './SessionStateRow.js';
 import { Settings } from './Settings.js';
 
 const noop = () => undefined;
+
+const renderActivate = (state: State, machine?: string) =>
+	renderToStaticMarkup(
+		<Activate
+			state={state}
+			dispatch={noop}
+			{...(machine ? { machine } : {})}
+			onNewSession={noop}
+			onSetUpMachine={noop}
+		/>,
+	);
 
 const createState = (patch: Partial<State> = {}): State => {
 	const refs = [
@@ -93,11 +106,14 @@ describe('Activate', () => {
 		expect(describeGroup('chat')).toBe('Plain sessions');
 		expect(describeGroup('store-front')).toBe('store-front');
 
-		const html = renderToStaticMarkup(<Activate state={withChat} dispatch={noop} />);
+		const html = renderActivate(withChat);
 
 		expect(html).toContain('<b>Plain sessions</b>');
 		expect(html).toContain('<b>research</b>');
-		expect(html.split('>New session<').length - 1).toBe(2);
+		// Each machine's heading and its plain sessions' "start another" row.
+		expect(html.split('>New session<').length - 1).toBe(4);
+		expect(html).toContain('Start another in any folder on This Mac.');
+		expect(html).toContain('Start one in any folder on Build box.');
 	});
 
 	it('the search narrows to matching worktrees; a machine with none drops out', () =>
@@ -106,7 +122,7 @@ describe('Activate', () => {
 		).toEqual(['This Mac']));
 
 	it('an active worktree links to its session; an inactive one has Activate', () => {
-		const html = renderToStaticMarkup(<Activate state={createState()} dispatch={noop} />);
+		const html = renderActivate(createState());
 
 		expect(html).toContain('<span class="chip ok">active</span>');
 		expect(html).toMatch(/data-ref="store-front\/wrk1"[\s\S]*?Activate<\/button>/);
@@ -114,22 +130,19 @@ describe('Activate', () => {
 	});
 
 	it('a machine out of reach: its rows dimmed and Activate disabled', () => {
-		const html = renderToStaticMarkup(
-			<Activate
-				state={createState({
-					machines: {
-						vm1: {
-							id: 'vm1',
-							host: 'vm1',
-							name: 'Build box',
-							status: 'unreachable',
-							detail: 'not reachable · last seen 2h ago',
-							since: 1,
-						},
+		const html = renderActivate(
+			createState({
+				machines: {
+					vm1: {
+						id: 'vm1',
+						host: 'vm1',
+						name: 'Build box',
+						status: 'unreachable',
+						detail: 'not reachable · last seen 2h ago',
+						since: 1,
 					},
-				})}
-				dispatch={noop}
-			/>,
+				},
+			}),
 		);
 
 		expect(html).toContain('vb-sec off');
@@ -148,9 +161,133 @@ describe('Activate', () => {
 			};
 		}
 
-		expect(renderToStaticMarkup(<Activate state={state} dispatch={noop} />)).toContain(
-			'1 waiting: “paginate the orders”',
+		expect(renderActivate(state)).toContain('1 waiting: “paginate the orders”');
+	});
+});
+
+describe('a machine page', () => {
+	it('one machine → its name and status, its host, Open in Set up and New session on it', () => {
+		const html = renderActivate(createState(), 'vm1');
+
+		expect(html).toMatch(/<h1>Build box<span class="chip ok">connected<\/span><\/h1>/);
+		expect(html).toContain('dev@vm1');
+		expect(html).toContain('>Open in Set up</button>');
+		expect(html).toContain('>New session on Build box</button>');
+		expect(html).not.toContain('class="vb-machine"');
+	});
+
+	it('This Mac → main, never Open in Set up', () => {
+		const html = renderActivate(createState(), 'local');
+
+		expect(html).toMatch(/<h1>This Mac<span class="chip ok">main<\/span><\/h1>/);
+		expect(html).not.toContain('Open in Set up');
+	});
+
+	it('a machine out of reach → no new session there', () =>
+		expect(
+			renderActivate(
+				createState({
+					machines: {
+						vm1: {
+							id: 'vm1',
+							host: 'dev@vm1',
+							name: 'Build box',
+							status: 'unreachable',
+							detail: null,
+							since: 1,
+						},
+					},
+				}),
+				'vm1',
+			),
+		).toMatch(/disabled=""[^>]*>New session on Build box</));
+});
+
+describe('Home', () => {
+	const asking: PendingAsk = {
+		id: 'q9',
+		ref: 'checkout-api/main',
+		at: 1,
+		kind: 'question',
+		input: {},
+		questions: [{ question: 'Postgres or SQLite?', multiSelect: false, options: [] }],
+	};
+	const home = createState({
+		active: ['store-front/main', 'checkout-api/main'],
+		asks: [asking],
+	});
+	const render = (state: State) =>
+		renderToStaticMarkup(<ActiveView state={state} dispatch={noop} onNewSession={noop} />);
+
+	it('what waits on you first, tinted, with Answer; the rest in the order activated', () => {
+		expect(sortForHome(home, ['store-front/main', 'checkout-api/main'])).toEqual([
+			'checkout-api/main',
+			'store-front/main',
+		]);
+
+		const html = render(home);
+
+		expect(html.indexOf('data-ref="checkout-api/main"')).toBeLessThan(
+			html.indexOf('data-ref="store-front/main"'),
 		);
+		expect(html).toMatch(/vo-row waiting[^>]*data-ref="checkout-api\/main"[\s\S]*?>Answer</);
+		expect(html).toContain('2 sessions on 1 machine. One needs you.');
+	});
+
+	it('New session and Activate a worktree up top; a card per machine with what it holds', () => {
+		const html = render(home);
+
+		expect(html).toContain('>New session</button>');
+		expect(html).toContain('>Activate a worktree</button>');
+		expect(html).toMatch(
+			/data-machine="local"[\s\S]*?This Mac[\s\S]*?main[\s\S]*?3 worktrees · 2 active/,
+		);
+		expect(html).toMatch(
+			/data-machine="vm1"[\s\S]*?Build box[\s\S]*?dev@vm1[\s\S]*?1 worktree · 0 active/,
+		);
+		expect(html).toContain('Or just say it');
+	});
+
+	it('a machine out of reach → its card says why instead of counts', () =>
+		expect(
+			render(
+				createState({
+					machines: {
+						vm1: {
+							id: 'vm1',
+							host: 'dev@vm1',
+							name: 'Build box',
+							status: 'unreachable',
+							detail: 'not reachable · last seen 2h ago',
+							since: 1,
+						},
+					},
+				}),
+			),
+		).toMatch(/data-machine="vm1"[\s\S]*?dot ask[\s\S]*?not reachable · last seen 2h ago/));
+});
+
+describe('New session dialog', () => {
+	it("the folders already used for plain sessions on that machine, each once; never another machine's", () => {
+		const chat = (ref: string, cwd: string) =>
+			createSession({ ref, label: ref, branch: '', cwd, dirs: [], isPinned: false, isChat: true });
+		const state = createState();
+		const withChats = {
+			...state,
+			sessions: {
+				...state.sessions,
+				'chat/a00001': chat('chat/a00001', '/Users/dev/notes'),
+				'chat/a00002': chat('chat/a00002', '/Users/dev/notes'),
+				'chat/a00003': chat('chat/a00003', '/Users/dev/w/store-front'),
+				'vm1:chat/a00004': chat('vm1:chat/a00004', '/var/log'),
+			},
+		};
+
+		expect(listRecentFolders(withChats, 'local')).toEqual([
+			'/Users/dev/notes',
+			'/Users/dev/w/store-front',
+		]);
+		expect(listRecentFolders(withChats, 'vm1')).toEqual(['/var/log']);
 	});
 });
 
@@ -173,7 +310,7 @@ describe('Settings', () => {
 			expect(html).toContain(name);
 		}
 
-		expect(html).toContain('aria-pressed="true">Hands-free');
+		expect(html).toMatch(/aria-pressed="true"><b>Hands-free<\/b>/);
 		expect(html).toContain('Languages you speak');
 	});
 
@@ -201,6 +338,18 @@ describe('Settings', () => {
 				}),
 			),
 		).toContain('Turn off');
+	});
+
+	it('a side menu to every section; Voice says whether it is on, with its one button', () => {
+		const html = render(createState());
+
+		for (const name of ['Listening', 'Voice', 'Keys', 'Discord', 'Names', 'Machines']) {
+			expect(html).toContain(`>${name}</button>`);
+		}
+
+		expect(html).toContain('<b>Voice is on</b>');
+		expect(html).toContain('>Mute voice</button>');
+		expect(render(createState({ voiceOff: true }))).toContain('>Turn voice on</button>');
 	});
 
 	it('names, and the machines with how they are reached', () => {
