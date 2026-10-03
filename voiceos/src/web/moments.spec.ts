@@ -374,12 +374,17 @@ describe('describeSessionState', () => {
 			toolName: 'Bash',
 			summary: 'rm -rf dist',
 		};
-		const blocked = createState({ denials: [denial] });
+		// Another session's comes first: the dock must never offer to allow that one here.
+		const elsewhere = { ...denial, id: 'd0', ref: 'checkout-api/main', summary: 'git push' };
+		const blocked = createState({ denials: [elsewhere, denial] });
 
 		expect(describeSessionState(blocked, 'store-front/main').kind).toBe('none');
 		expect(
 			readScreenDenial({ ...blocked, view: { kind: 'session', ref: 'store-front/main' } }),
 		).toEqual(denial);
+		expect(
+			readScreenDenial({ ...blocked, view: { kind: 'session', ref: 'checkout-api/main' } }),
+		).toEqual(elsewhere);
 		expect(readScreenDenial({ ...blocked, view: { kind: 'active' } })).toBeNull();
 	});
 });

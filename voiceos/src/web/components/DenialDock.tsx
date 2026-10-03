@@ -3,13 +3,13 @@
 import type { Denial } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
 
-interface DenialStripProps {
+interface DenialDockProps {
 	denial: Denial;
 	label: string;
 	dispatch: Dispatch;
 }
 
-export const DenialStrip = ({ denial, label, dispatch }: DenialStripProps) => (
+export const DenialDock = ({ denial, label, dispatch }: DenialDockProps) => (
 	<section className="dock crit" aria-label="denied">
 		<span className="lbl c-crit">
 			blocked · {label} · {denial.toolName}

@@ -79,7 +79,7 @@ export const VoiceOS = ({
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
 	// The New session dialog: the machine it opens on, or null while it is closed.
 	const [newSessionOn, setNewSessionOn] = useState<string | null>(null);
-	// What the last one left: "Started research on Build box.", or crew's reason it was not.
+	// What the last one left: "Started research on Build box.", for a moment.
 	const [newSessionLine, setNewSessionLine] = useState<string | null>(null);
 	const newSessionOpener = useRef<HTMLElement | null>(null);
 

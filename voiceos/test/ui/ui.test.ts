@@ -1486,7 +1486,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('blocked strip → "Allow it" lets it through once; "Leave it blocked" dismisses it', async () => {
+	it('a blocked call, docked above the text box → "Allow it" lets it through once; "Leave it blocked" dismisses it', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({
@@ -1496,8 +1496,8 @@ describe('voice os ui', () => {
 			summary: 'rm -rf dist',
 		});
 		// Docked above the text box with the other things a session waits on, not under its header.
-		const strip = page.locator('.vo-bar section[aria-label="denied"]');
-		await strip.getByRole('button', { name: /Allow it/ }).click();
+		const dock = page.locator('.vo-bar section[aria-label="denied"]');
+		await dock.getByRole('button', { name: /Allow it/ }).click();
 		await waitUntil(() => listSentActions('allow_denied').length > 0);
 
 		store.dispatch({
@@ -1506,8 +1506,8 @@ describe('voice os ui', () => {
 			toolName: 'Bash',
 			summary: 'rm -rf build',
 		});
-		await strip.getByText(/rm -rf build/).waitFor({ timeout: 5000 });
-		await strip.getByRole('button', { name: 'Leave it blocked' }).click();
+		await dock.getByText(/rm -rf build/).waitFor({ timeout: 5000 });
+		await dock.getByRole('button', { name: 'Leave it blocked' }).click();
 		await waitUntil(() => listSentActions('dismiss_denial').length > 0);
 		expect(store.state.denials).toEqual([]);
 		await context.close();
