@@ -21,7 +21,6 @@ describe('followVoiceOff', () => {
 		expect(calls).toEqual([]);
 		await Promise.resolve();
 		store.dispatch({ type: 'set_voice_off', voiceOff: true });
-		store.dispatch({ type: 'set_languages', languages: ['sl'] });
 		store.dispatch({ type: 'set_voice_off', voiceOff: false });
 		await Promise.resolve();
 

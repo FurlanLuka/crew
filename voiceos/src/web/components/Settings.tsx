@@ -2,7 +2,6 @@
 // sessions, the machines, and whether a fresh crew opens straight into Voice OS.
 import { type FormEvent, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
-import { SPOKEN_LANGUAGES } from '../../shared/languages.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
@@ -346,34 +345,6 @@ export const Settings = ({
 						))}
 					</div>
 					<p className="vs-note">{MODE_COPY[listenMode].description}</p>
-					<div className="vs-h">
-						<b>Languages you speak</b>
-						<span className="m">what speech-to-text listens for</span>
-					</div>
-					<div className="language-grid">
-						{SPOKEN_LANGUAGES.map(({ code, name }) => {
-							const isPicked = state.languages.includes(code);
-
-							return (
-								<button
-									key={code}
-									type="button"
-									className="language-item"
-									aria-pressed={isPicked}
-									onClick={() =>
-										dispatch({
-											type: 'set_languages',
-											languages: isPicked
-												? state.languages.filter((picked) => picked !== code)
-												: [...state.languages, code],
-										})
-									}
-								>
-									{name}
-								</button>
-							);
-						})}
-					</div>
 				</div>
 				<div className="vs-sec">
 					<div className="vs-h">

@@ -156,8 +156,6 @@ export const BottomBar = ({
 						isIgnored={isIgnored}
 						isDenied={micStatus === 'denied'}
 						title={MIC_TITLES[listenMode]}
-						languages={state.languages}
-						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
 					/>
 				)}
 				{discord && !isVoiceOff && (
@@ -172,8 +170,6 @@ export const BottomBar = ({
 						isIgnored={false}
 						isDenied={!discord.isHearing}
 						title={discordTitle}
-						languages={state.languages}
-						onLanguages={(languages) => dispatch({ type: 'set_languages', languages })}
 					/>
 				)}
 			</div>

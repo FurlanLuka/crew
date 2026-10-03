@@ -166,7 +166,7 @@ describe('Settings', () => {
 			/>,
 		);
 
-	it('the four listening modes, the chosen one pressed, and the languages', () => {
+	it('the four listening modes, the chosen one pressed; no language list (Soniox detects it)', () => {
 		const html = render(createState());
 
 		for (const name of ['Push to talk', 'On demand', 'Hands-free', 'Dictation']) {
@@ -174,7 +174,7 @@ describe('Settings', () => {
 		}
 
 		expect(html).toContain('aria-pressed="true">Hands-free');
-		expect(html).toContain('Languages you speak');
+		expect(html).not.toContain('Languages you speak');
 	});
 
 	it('a missing key → red with Add; a set one → Replace', () => {
