@@ -24,6 +24,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [From two repos to a working feature](#from-two-repos-to-a-working-feature)
 - [Active, Activate and Settings](#active-activate-and-settings)
 - [Listening modes](#listening-modes)
+- [Voice off](#voice-off)
 - [Talking to sessions](#talking-to-sessions)
 - [Active sessions](#active-sessions)
 - [Session names](#session-names)
@@ -200,6 +201,13 @@ a row in Active, and the page stays where it is. Worktrees are made in Set up, n
 
 ![Activate: every worktree on This Mac and Build box, grouped by workspace, with Activate on admin/main and the active ones marked](../images/voice-os/activate.png)
 
+**Plain sessions.** Not everything is a worktree. **New session** on Activate (one per machine) or
+"start a new session called research in my notes folder" makes a plain Claude conversation: it runs
+in the folder you name on that machine (home when you name none), with no crew instructions and no
+dev servers, and it is active at once. Talk to it by its name like any session; **Remove** on its
+page, or "remove research", stops it and drops it from the list, leaving the folder alone. crew
+keeps them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
+
 **Settings** has the listening mode and languages, the two keys (checked before saving), Discord,
 session names, and your machines with their crew version.
 
@@ -279,6 +287,24 @@ typed text goes to that session.
 > There are two exceptions: text that starts with another session's name ("checkout, run the
 > tests") goes through the kernel, and so does anything typed while the session is waiting on your
 > answer. Voice OS commands work when spoken, or when typed on Active, Activate or Settings.
+
+## Voice off
+
+**voice** in the top bar, next to the settings gear, turns all voice off in one click, for a
+meeting, a call or a quiet office:
+
+- Nothing listens. No tab and no Discord channel streams to Soniox.
+- Nothing speaks.
+- The Discord bot leaves its voice channel.
+
+Typing and the page work as usual. What Voice OS would have said still shows on the page, and you
+answer a question by typing.
+
+While voice is off, **voice** is struck through, both in the top bar and where the mic was. Click
+either one to turn voice back on. Each tab listens again in its own mode, the bot rejoins the
+channel, and nothing from the quiet time is read out. Voice OS plays its title again each time you
+turn voice off or on, with "Voice" struck through while it is off. The setting is for the whole
+server and lasts across restarts.
 
 ## Talking to sessions
 
@@ -711,6 +737,7 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/voiceos/state.json` | The port and pid crew tracks, and each machine's last status. |
 | `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. |
 | `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart (one saved by an earlier release opens as Active, or Activate for a machine's grid). |
+| `~/.crew/voiceos/voice-off.json` | Whether voice is off (the top bar's **voice**). |
 | `~/.crew/voiceos/active.json`, `names.json` | Your active sessions and session names. An older `pinned.json` is read once, when `active.json` does not exist yet. |
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |

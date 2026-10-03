@@ -1578,6 +1578,12 @@ describe('filler and worded lines', () => {
 				async (harness) => harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal' }),
 			],
 			['the developer talks again', async (harness) => harness.voiceOut.talkStarted()],
+			[
+				'voice off',
+				async (harness) => {
+					harness.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+				},
+			],
 		])('%s → no ack', async (_, setup) => {
 			jest.useFakeTimers();
 			const harness = createHarness();
@@ -1948,6 +1954,72 @@ describe('filler and worded lines', () => {
 			await playOut(harness);
 			await flush();
 			expect(harness.listSynthesized()).toEqual(['Over to crew now.']);
+		});
+	});
+
+	describe('voice off', () => {
+		const turnOff = (harness: ReturnType<typeof createHarness>) =>
+			harness.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+
+		it('lines go to the page unplayed, none waits for a gap or the screen, nothing is synthesized', async () => {
+			const harness = createHarness();
+			turnOff(harness);
+			harness.voiceOut.say({ text: 'Tests pass.', priority: 'normal', ref: 'store/wrk1' });
+			harness.voiceOut.say({
+				text: 'store/main asks: merge it?',
+				priority: 'high',
+				ref: 'store/main',
+				isAsking: true,
+			});
+			await flush();
+
+			expect(harness.listSynthesized()).toEqual([]);
+			expect(harness.store.state.spoken.map((line) => [line.text, line.isUnplayed])).toEqual([
+				['Tests pass.', true],
+				['store/main asks: merge it?', true],
+			]);
+		});
+
+		it('turned off mid-clip → the clip is cut on the tab; what was queued drains unplayed', async () => {
+			const harness = createHarness();
+			harness.voiceOut.say({ text: 'first', priority: 'normal' });
+			harness.voiceOut.say({ text: 'second', priority: 'normal' });
+			await flush();
+			const first = harness.clips[0]?.id ?? '';
+
+			turnOff(harness);
+			harness.voiceOut.voiceTurnedOff();
+			await flush();
+
+			expect(harness.listSentKinds()).toContain(`tab-a:cancel:${first}`);
+			expect(harness.listSynthesized()).toEqual(['first']);
+			expect(harness.store.state.spoken.at(-1)).toEqual(
+				expect.objectContaining({ text: 'second', isUnplayed: true }),
+			);
+		});
+
+		it('a session waiting on the developer → never reminded while off', async () => {
+			const harness = createHarness();
+			harness.store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'q1',
+					ref: 'store/main',
+					at: 0,
+					kind: 'question',
+					input: {},
+					questions: [{ question: 'Which one?', header: 'Pick', multiSelect: false, options: [] }],
+				},
+			});
+			turnOff(harness);
+			harness.voiceOut.remind(harness.store.state);
+			harness.tick(REMINDER_MS + 1);
+			harness.voiceOut.remind(harness.store.state);
+			await flush();
+
+			expect(harness.store.state.spoken.some((line) => line.text.includes('still needs you'))).toBe(
+				false,
+			);
 		});
 	});
 });

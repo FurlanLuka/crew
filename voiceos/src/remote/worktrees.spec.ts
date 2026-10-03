@@ -25,4 +25,11 @@ describe('composeWorktrees', () => {
 			['vm1:a/main', 'a/main'],
 		]);
 	});
+
+	it("a remote's plain session → its machine's prefix, still a plain session, its name kept", () => {
+		const chat = { ...worktree('chat/3fa9c1'), label: 'research', isChat: true as const };
+		const composed = composeWorktrees({ setup, local: [], remotes: { vm1: [chat] } });
+
+		expect(composed.at(-1)).toEqual({ ...chat, ref: 'vm1:chat/3fa9c1' });
+	});
 });

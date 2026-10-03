@@ -11,7 +11,7 @@ is the same command, forever. What one machine runs on another (`crew voice _att
 purpose: an older crew on the other end knows only that one.
 
 **Using Voice OS?** Read the [Voice OS guide](../docs/guides/voice-os.md): install, keys, Set up,
-Active and Activate, listening modes, active sessions, approvals, other machines, troubleshooting and
+Active and Activate, listening modes, voice off, active sessions, approvals, other machines, troubleshooting and
 privacy. [Voice OS commands](../docs/guides/voice-os-commands.md) lists every kernel tool with
 things to say; a tool change updates its section (`src/tools/definitions.spec.ts` checks each has
 one). This README is for working on Voice OS itself. [CONTRIBUTING.md](../CONTRIBUTING.md)
@@ -121,7 +121,7 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
 | `src/state/reducer.ts` | The reducer and its effects. The inputs are split by concern into `asks.ts` (permissions, plans, questions, allow-once), `delivery.ts` (send, queue, aside, now), `held-lines.ts` (what a session off screen may say), `machines.ts`, `active.ts` (activate, deactivate, `active_loaded`), `names.ts`, `commands.ts` (`/clear`, `/compact`), `redirect.ts`, `take-back.ts`, `continuation.ts`, `subagents.ts` (the running sub-agents and their transcripts, `subagentRuns`, capped: every browser replays them). `store.ts` stamps and fans out. |
 | `src/shared/` | Types and pure helpers shared by server and page: `protocol.ts` (state, inputs, messages), `machine-ref.ts` (`vm1:store-front/main`), `active.ts` (`isActive`, `listActiveRefs`: the one reading of the active set), `machines.ts` (labels, `parentView`, waiting lists), `spoken.ts` / `spoken-tags.ts`, `notes.ts`, `route-chip.ts`. |
 | `src/router/` | `router.ts` routes each utterance, one at a time. Typed text on a session page goes straight to that session, and everything else goes to the kernel. `kernel.ts` is the Haiku kernel and its prompt. `refs.ts` resolves spoken names to sessions. |
-| `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `activate.ts`, `list-sessions.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
+| `src/tools/` | The kernel's tools: `definitions.ts` (schemas, and the order is part of the prompt), `tools.ts` (execution), and one file per tool that has rules of its own (`answer.ts`, `send.ts`, `queued.ts`, `activate.ts`, `chats.ts` (plain sessions: `new_session`, `remove_session`), `list-sessions.ts`, `rename.ts`, `machines.ts`, `docs.ts`, `hands-free.ts`). `call-lines.ts` and `recent-action.ts` decide what the kernel remembers of its own calls. |
 | `src/sessions/` | One Agent SDK session per worktree (`worker.ts`), started, resumed and stopped by `manager.ts`, with session ids kept in `registry.ts`. `events.ts` maps SDK messages to observations, `permissions.ts` bridges `canUseTool` to the page, `side-answer.ts` runs asides, `history.ts` rebuilds streams from Claude Code's transcripts at boot, `media.ts` stores images, `doc-links.ts` finds docs, `setup-session.ts` defines the setup session, and `voice-context.ts` holds the orientation every session gets. |
 | `src/judge/` | `judge.ts`: one narrow Haiku question about what the developer's words mean, in any language (`JUDGE_QUESTIONS`, a forced `verdict` tool with an enum answer). Asked only by a guard about to act; a timeout or failure is `unclear`, every guard's safe side. It logs the question key, verdict and ms, never the words. Specs use `test/support/english-judge.ts`. |
 | `src/narrator/` | After a turn, `turn.ts` speaks the session's own spoken line, or asks the Sonnet narrator (`narrator.ts`, `prompt.ts`) to summarize one without it. `about.ts` names what a session's question is about (Haiku). |
@@ -350,6 +350,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |
 | `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
+| `voice-off.json` | Voice off (the top bar's "voice"): read before Discord starts, so the bot never joins only to leave. `speech/voice-off.ts` lets go of every listener, the playing clip, the TTS socket and the Discord channel; `VoiceOut` drains lines to the page unplayed. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew server notes`). |
 | `media/` | Images by content hash, swept after 30 days. |

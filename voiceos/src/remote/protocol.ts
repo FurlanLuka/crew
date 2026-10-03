@@ -126,6 +126,8 @@ const worktreeSchema = z.object({
 	cwd: z.string().max(4000),
 	dirs: z.array(z.string().max(4000)).max(50),
 	isPinned: z.boolean(),
+	isChat: z.literal(true).optional(),
+	chatName: z.string().max(200).optional(),
 });
 
 const snapshotSchema = z.object({

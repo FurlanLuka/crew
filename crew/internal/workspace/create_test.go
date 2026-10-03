@@ -66,6 +66,7 @@ func TestNameAvailable(t *testing.T) {
 	for name, want := range map[string]string{
 		"Bad Name": "invalid",
 		"check":    "reserved",
+		"chat":     "reserved",
 		"taken":    "already exists",
 		"free":     "",
 	} {

@@ -221,7 +221,7 @@ crew kill --dry-run
 
 ## `crew ls`
 
-List workspaces, worktrees, projects, bindings, overrides or a workspace's base branches (tab-separated output for scripting; --json for data)
+List workspaces, worktrees, projects, bindings, overrides, a workspace's base branches or the plain Voice OS sessions (tab-separated output for scripting; --json for data)
 
 ### `crew ls workspaces`
 
@@ -310,6 +310,66 @@ Output: `<project>  <base>  <n behind origin/<base>|up to date>[   (checkout is 
 ```bash
 crew ls bases store-front
 crew ls bases store-front --json
+```
+
+### `crew ls chats`
+
+The plain Claude sessions Voice OS runs on this machine beside the worktrees (crew chat add): each one's ref, name and folder.
+
+```
+crew ls chats [--json]
+```
+
+Output: `chat/<id>\t<name>\t<folder>`
+
+--json: [{"id","dir","name","created"}]
+
+```bash
+crew ls chats
+```
+
+## `crew chat`
+
+Plain Claude sessions for Voice OS: a conversation in a folder of your choosing, with no workspace, worktree or crew orientation. Voice OS lists each as chat/<id> beside the worktrees, on whichever machine keeps it (~/.crew/chats.json).
+
+```
+crew chat add [--dir=<path>] [--name=<name>] | rm <id>
+```
+
+### `crew chat add`
+
+Records a plain session in a folder that already exists (home when none is given; ~ is home) and prints its ref. Voice OS lists it within seconds; activate it there to start its Claude.
+
+```
+crew chat add [--dir=<path>] [--name=<name>]
+```
+
+Output: `added\tchat/<id>\t<folder>`
+
+- `--dir=<path>` — The folder it runs in; must exist (default home)
+- `--name=<name>` — What it is called aloud and on the page (at most 60 characters)
+
+--json: {"id","dir","name","created"}; the line goes to stderr. A folder is never created.
+
+```bash
+crew chat add --name=research
+crew chat add --dir=~/notes --name="Weekly notes"
+```
+
+### `crew chat rm`
+
+Drops a plain session's record (chat/<id> or <id>). Its folder is never touched; Voice OS stops listing it.
+
+```
+crew chat rm <id>
+```
+
+Output: `removed\tchat/<id>\t(the folder <folder> is untouched)`
+
+--json: the removed {"id","dir","name","created"}.
+
+```bash
+crew chat rm chat/3fa9c1
 ```
 
 ## `crew show`

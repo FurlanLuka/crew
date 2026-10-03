@@ -329,6 +329,27 @@ describe('VoiceInput', () => {
 		expect(harness.utterances).toEqual([]);
 	});
 
+	it('voice off → every tab and Discord let go: listens and presses cancelled, a dictation sent, nothing listens after', () => {
+		const harness = createHarness();
+		harness.input.listen('c1');
+		harness.input.listen('discord', 48000, 'on-demand');
+		harness.input.start('c2');
+		harness.input.start('c3', 16000, { isDictation: true });
+
+		harness.input.disconnectAll('voice off');
+
+		expect(harness.input.isListening()).toBe(false);
+		// Both listens and the press cancelled; the dictation (index 3) finishes instead.
+		expect([...harness.cancelled].sort()).toEqual([0, 1, 2]);
+		harness.sessions[3]?.onFinal('what I had so far');
+		expect(harness.utterances).toEqual(['what I had so far']);
+		// Audio after it goes nowhere: no stream is fed or opened.
+		harness.input.pushAudio('c1', new Uint8Array(4));
+		harness.input.pushAudio('c2', new Uint8Array(4));
+		expect(harness.sent).toEqual([]);
+		expect(harness.sessions).toHaveLength(4);
+	});
+
 	it("one tab disconnecting → another tab's speech still routes", () => {
 		const harness = createHarness();
 		harness.input.start('c1');

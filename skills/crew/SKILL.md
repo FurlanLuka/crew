@@ -63,6 +63,10 @@ crew ls projects                                           <name>\t<path>\t<remo
 crew ls bindings <project> [--check=<workspace>[/<worktree>]] [--preview]   <var>\t<server|->\t<template>[\t<resolved value>][\t→ <preview>]
 crew ls bases <workspace>                                  <project>  <base>  <n behind origin/<base>|up to date>[   (checkout is on <branch>)]
 crew ls overrides <workspace>/<worktree>                   <key>\t<value>
+crew ls chats [--json]                                     chat/<id>\t<name>\t<folder>
+crew chat add [--dir=<path>] [--name=<name>] | rm <id>
+crew chat add [--dir=<path>] [--name=<name>]               added\tchat/<id>\t<folder>
+crew chat rm <id>                                          removed\tchat/<id>\t(the folder <folder> is untouched)
 crew show <workspace>[/<worktree>]                         <name>\t<path>\t<worktree|direct>
 crew dev status [<workspace>[/<worktree>]]                 <workspace>/<worktree>\t<server>\t<port>\t<url>
 crew dev show <project>                                    <server-name>\t<port>\t<command>[\t<dir>]
@@ -522,6 +526,15 @@ named aloud with the machine's name), its dev servers are its own crew's, and a 
 never stops them: the main reconnects, catches up from a snapshot and says one recap line.
 `crew server machines` lists `<id>\t<name>\t<host>\t<status>` (status as the running Voice OS
 last saw it, `stopped` when it is not running). A machine is a main or a remote, never both.
+
+**Plain sessions: `crew chat`.** Voice OS can run plain Claude sessions beside the worktrees — a
+conversation in a folder of the user's choosing, with no workspace, worktree or crew orientation.
+`crew chat add [--dir=<path>] [--name=<name>]` records one on this machine (`~/.crew/chats.json`; the
+folder must exist, home when none is given, `~` is home; nothing is created) and prints `added\tchat/<id>\t<folder>`;
+`crew ls chats` lists them (`chat/<id>\t<name>\t<folder>`, `--json` `[{id, dir, name, created}]`);
+`crew chat rm <id>` drops the record and never touches the folder. Voice OS lists each as `chat/<id>`
+(`vm1:chat/<id>` on a remote) beside the worktrees; the user usually makes them from Voice OS
+(Activate → New session, or by voice). `chat` is a reserved workspace name.
 
 **Discord.** Optional: while Voice OS runs, a bot of the user's own joins one voice channel of
 their Discord server and takes only one person's voice there (the server owner, or `--user`).

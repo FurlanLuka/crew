@@ -82,6 +82,8 @@ const VoiceSlug = "os"
 var reservedNames = map[string]bool{
 	"status": true, "logs": true,
 	"project": true, "workspace": true, "worktree": true, "binding": true, "override": true,
+	// chat/<id> is a plain Claude session's ref (internal/chat): no workspace may look like one.
+	"chat": true,
 }
 
 // Slug is the flat form used for route files, log directories, tmux sessions

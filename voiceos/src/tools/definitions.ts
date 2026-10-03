@@ -13,6 +13,8 @@ export type ToolName =
 	| 'activate'
 	| 'deactivate'
 	| 'list_sessions'
+	| 'new_session'
+	| 'remove_session'
 	| 'crew_dev'
 	| 'ignore_words'
 	| 'rename_session'
@@ -35,6 +37,8 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'go_back',
 	'activate',
 	'deactivate',
+	'new_session',
+	'remove_session',
 	'crew_dev',
 	'answer',
 	'interrupt',
@@ -293,6 +297,45 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				active_only: { type: 'boolean', description: 'true for "what\'s active?".' },
 			},
 			required: [],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'new_session',
+		description:
+			'"Start a new session", "open a plain Claude session called research", "new session in my notes folder on Build box": a plain Claude conversation, not a worktree — no crew, no dev servers — in a folder on a machine (home when none is named), with the name the developer gave. It is activated and starts by itself. Voice OS says it started: say nothing. Not for a worktree (activate) and never for work in an existing session.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				machine: {
+					type: ['string', 'null'],
+					description: 'A machine named, or null: then the one said in the words, else this one.',
+				},
+				folder: {
+					type: ['string', 'null'],
+					description:
+						'The folder named, as said ("~/notes", "the notes folder" → "~/notes"), or null for home.',
+				},
+				name: { type: ['string', 'null'], description: 'What the developer called it, or null.' },
+			},
+			required: ['machine', 'folder', 'name'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'remove_session',
+		description:
+			'"Remove research", "delete that plain session": stops a plain session and drops it from the list; its folder stays. Only plain sessions (new_session); a worktree is deactivated, never removed here. A working one is asked about first: on a yes, call again with force true.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: REF_PROPERTY,
+				force: {
+					type: 'boolean',
+					description: 'true after the developer said yes to removing a working one.',
+				},
+			},
+			required: ['ref'],
 			additionalProperties: false,
 		},
 	},

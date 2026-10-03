@@ -76,12 +76,32 @@ const App = () => {
 		openRequest,
 		keptDictation,
 	} = useConnection((message) => player.receive(message));
-	const [isMoment, setIsMoment] = useState(false);
+	// The "Voice OS" wordmark moment: "Voice" struck through while voice is off.
+	const [moment, setMoment] = useState<{ isStruck: boolean } | null>(null);
+	const voiceOff = state?.voiceOff ?? null;
+	const seenVoiceOff = useRef<boolean | null>(null);
+	// Stable, so a state message mid-moment does not restart its timers.
+	const endMoment = useCallback(() => setMoment(null), []);
 	// "Fix with Claude" from the first run: Set up's chat takes it, through its own busy check.
 	const [pendingAsk, setPendingAsk] = useState<string | null>(null);
 	const blockedOpen = useOpenRequest(openRequest);
 	const viewNow = state ? viewKey(state.view) : null;
 	const lastPushed = useRef<string | null>(null);
+
+	// Voice turned off or on while Voice OS shows: its moment again, struck or whole. Never for the
+	// value the page loaded with.
+	useEffect(() => {
+		const before = seenVoiceOff.current;
+		seenVoiceOff.current = voiceOff;
+
+		if (before === null || voiceOff === null || before === voiceOff) {
+			return;
+		}
+
+		if (route.half === 'voice' && !isReducedMotion()) {
+			setMoment({ isStruck: voiceOff });
+		}
+	}, [voiceOff, route.half]);
 
 	// Demos and screenshots: window.voiceos.say("…") is heard like speech. The server ignores it
 	// unless it runs with VOICEOS_DEBUG_SPEECH=1.
@@ -170,7 +190,7 @@ const App = () => {
 			}
 
 			if (!isReducedMotion()) {
-				setIsMoment(true);
+				setMoment({ isStruck: state?.voiceOff ?? false });
 			}
 
 			navigate({ half: 'voice', view: state ? toVoiceRoute(state.view) : { kind: 'active' } });
@@ -196,7 +216,7 @@ const App = () => {
 		writeLastHalf('voice');
 
 		if (!isReducedMotion()) {
-			setIsMoment(true);
+			setMoment({ isStruck: state?.voiceOff ?? false });
 		}
 
 		openVoice(ref);
@@ -269,7 +289,13 @@ const App = () => {
 						/>
 					)}
 					{route.half !== 'voice' && <ConnectionBanner status={status} />}
-					{isMoment && <VoiceMoment onDone={() => setIsMoment(false)} />}
+					{moment && (
+						<VoiceMoment
+							key={String(moment.isStruck)}
+							isStruck={moment.isStruck}
+							onDone={endMoment}
+						/>
+					)}
 				</>
 			) : (
 				!isOpening &&

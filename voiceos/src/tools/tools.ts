@@ -1,3 +1,6 @@
+import { isChatRef } from '../shared/machine-ref.js';
+import { removeChat, startChat } from './chats.js';
+import type { RunSetupCommand } from '../crew/api.js';
 import {
 	isOfferFresh,
 	OFFER_TTL_MS,
@@ -202,6 +205,8 @@ export interface ToolContext {
 	dispatch: (action: Action) => void;
 	now: () => number;
 	readHistory: (query: HistoryQuery) => HistoryEntry[];
+	// Runs crew on a machine (the door Set up uses): plain sessions are made and removed there.
+	runCrewOn?: RunSetupCommand;
 	// Words the status update; absent or failed, the plain recap is said.
 	writeRecap?: WriteRecap;
 }
@@ -734,6 +739,12 @@ export const executeTool = async (
 				return refuseRef(checked, toolContext);
 			}
 
+			if (isChatRef(checked.ref)) {
+				return fail(
+					`${checked.ref} is a plain session: it has no dev servers. Say so in a few words.`,
+				);
+			}
+
 			const action = input.action;
 
 			if (action === 'status') {
@@ -797,6 +808,12 @@ export const executeTool = async (
 
 		case 'list_sessions':
 			return listSessions(state, input);
+
+		case 'new_session':
+			return startChat({ state, input, toolContext });
+
+		case 'remove_session':
+			return removeChat({ state, input, toolContext });
 
 		case 'rename_session':
 			// A misheard "commit directly to main" came back as a rename to "directly to main": only words

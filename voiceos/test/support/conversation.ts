@@ -1,6 +1,7 @@
 // A whole voice conversation in a test: the real store, kernel (scripted model), router, narrator
 // and voice, wired as the app wires them. What the developer hears is the list of clips that played
 // to the end, in order, with their own words marked in between.
+import type { RunSetupCommand } from '../../src/crew/api.js';
 import { englishJudge } from './english-judge.js';
 import type { Judge } from '../../src/judge/judge.js';
 import { mkdtempSync } from 'node:fs';
@@ -55,6 +56,8 @@ interface CreateConversationParams {
 	hasInstantAck?: boolean;
 	// Words Voice OS's follow-ups as the app's Haiku writer would; absent, the fixed lines.
 	writeFollowUp?: VoiceOutOptions['writeFollowUp'];
+	// crew on a machine, as Set up's door runs it (plain sessions are made through it).
+	runCrewOn?: RunSetupCommand;
 }
 
 export const createConversation = ({
@@ -66,6 +69,7 @@ export const createConversation = ({
 	machines = [],
 	hasInstantAck = false,
 	writeFollowUp,
+	runCrewOn,
 }: CreateConversationParams) => {
 	let now = 1_000_000;
 	const clock = () => now;
@@ -180,6 +184,7 @@ export const createConversation = ({
 			getState: () => store.state,
 			dispatch: (action) => store.dispatch(action),
 			readHistory: () => [],
+			...(runCrewOn ? { runCrewOn } : {}),
 			mute: () => voiceOut.mute(),
 			saveDebugNote: () => undefined,
 			judge,

@@ -46,5 +46,11 @@ export const toLocalRef = (refOrId: string): string => splitRef(refOrId).local;
 
 export const isSetupRef = (ref: string): boolean => splitRef(ref).local === SETUP_REF;
 
+// A plain Claude session (crew chat): chat/<id>. crew reserves the workspace name, so no worktree
+// ref looks like one.
+export const CHAT_WORKSPACE = 'chat';
+
+export const isChatRef = (ref: string): boolean => splitRef(ref).workspace === CHAT_WORKSPACE;
+
 // Where a session lives, for views: LOCAL_MACHINE for this Mac.
 export const readMachine = (ref: string): string => machineOf(ref) ?? LOCAL_MACHINE;

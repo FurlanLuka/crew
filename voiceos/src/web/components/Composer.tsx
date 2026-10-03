@@ -183,15 +183,17 @@ export const Composer = ({
 				onChange={(event) => setDraft(event.target.value)}
 				onKeyDown={handleFieldKey}
 				placeholder={
-					discord
-						? discord.isHearing
-							? 'Listening on Discord · what you say shows here as you speak'
-							: 'Not hearing you in Discord: pick a mode to try again, or type'
-						: describeListening({
-								mode: isListening || isDictationMode ? listenMode : 'push',
-								isAwake,
-								isDictating,
-							})
+					state.voiceOff
+						? 'Voice is off · type a command'
+						: discord
+							? discord.isHearing
+								? 'Listening on Discord · what you say shows here as you speak'
+								: 'Not hearing you in Discord: pick a mode to try again, or type'
+							: describeListening({
+									mode: isListening || isDictationMode ? listenMode : 'push',
+									isAwake,
+									isDictating,
+								})
 				}
 				aria-label="Say or type a command"
 			/>

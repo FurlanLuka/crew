@@ -31,6 +31,8 @@ export interface DiscordVoiceOptions {
 	openLink?: (target: DiscordTarget, events: VoiceLinkEvents) => VoiceLink;
 	createCodec?: () => OpusCodec;
 	now?: () => number;
+	// Voice off at boot: the bot stays out of the channel from the start, never joining only to leave.
+	startPaused?: boolean;
 }
 
 export interface DiscordVoice {
@@ -39,6 +41,9 @@ export interface DiscordVoice {
 	isOwnerIn: () => boolean;
 	setMode: (mode: ListeningMode) => void;
 	reload: () => void;
+	// Voice off and back on: the bot leaves the channel and joins it again; the setup is kept.
+	pause: () => void;
+	resume: () => void;
 	stop: () => void;
 }
 
@@ -50,6 +55,7 @@ export const startDiscordVoice = (options: DiscordVoiceOptions): DiscordVoice =>
 	let presence: DiscordPresence | null = null;
 	let error = '';
 	let mode = loadDiscordMode(options.voiceDir);
+	let isPaused = options.startPaused ?? false;
 
 	const publish = (next: DiscordPresence | null): void => {
 		presence = next;
@@ -88,6 +94,15 @@ export const startDiscordVoice = (options: DiscordVoiceOptions): DiscordVoice =>
 		if (bridge?.ownerIsIn) {
 			options.onOwnerIn(mode);
 		}
+	};
+
+	// Set up, not in the channel (yet, or paused: `error` says which to crew's status).
+	const publishOut = (channelName: string): void =>
+		publish({ isConnected: false, isOwnerIn: false, isHearing: false, channelName, mode });
+
+	const pausedOn = (current: DiscordSetup): void => {
+		error = 'voice off';
+		publishOut(current.channelName);
 	};
 
 	const disconnect = (): void => {
@@ -136,18 +151,13 @@ export const startDiscordVoice = (options: DiscordVoiceOptions): DiscordVoice =>
 		});
 
 		bridge = current;
-		publish({
-			isConnected: false,
-			isOwnerIn: false,
-			isHearing: false,
-			channelName: next.channelName,
-			mode,
-		});
+		publishOut(next.channelName);
 		log.info('discord set up', { guild: next.guild, channel: next.channel });
 		current.attach(openLink(next, current.events));
 	};
 
 	// Setup and off apply without a restart: the file is read again whenever it changes.
+	// While paused a new setup is only recorded: it is joined when voice is back on.
 	const reload = (): void => {
 		const next = readDiscordSetup(options);
 
@@ -159,7 +169,9 @@ export const startDiscordVoice = (options: DiscordVoiceOptions): DiscordVoice =>
 		setup = next;
 		error = '';
 
-		if (next) {
+		if (next && isPaused) {
+			pausedOn(next);
+		} else if (next) {
 			connect(next);
 		} else {
 			log.info('discord not set up');
@@ -186,6 +198,32 @@ export const startDiscordVoice = (options: DiscordVoiceOptions): DiscordVoice =>
 		isOwnerIn: () => bridge?.ownerIsIn ?? false,
 		setMode,
 		reload,
+		pause: () => {
+			if (isPaused) {
+				return;
+			}
+
+			isPaused = true;
+			disconnect();
+			log.info('discord paused: voice off');
+
+			if (setup) {
+				pausedOn(setup);
+			}
+		},
+		resume: () => {
+			if (!isPaused) {
+				return;
+			}
+
+			isPaused = false;
+			error = '';
+			log.info('discord resumed: voice on');
+
+			if (setup) {
+				connect(setup);
+			}
+		},
 		stop: () => {
 			watcher?.close();
 			disconnect();

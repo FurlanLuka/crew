@@ -1,7 +1,7 @@
 // "What machines do I have?", "what's on Personal?", "what's active?", "what worktrees does scheduler
 // have?": read-only, across every worktree. Heard, not read: counts first, names only when few.
 import { isActive, listActiveRefs, listVoiceRefsOn } from '../shared/active.js';
-import { LOCAL_MACHINE, readMachine, splitRef } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, readMachine, splitRef, CHAT_WORKSPACE } from '../shared/machine-ref.js';
 import { isMachineReachable, readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import type { State } from '../shared/protocol.js';
 import { toSpokenName } from '../shared/spoken.js';
@@ -70,7 +70,7 @@ const describeWorktrees = (
 			: `${place} has ${refs.map((ref) => sayName(state, ref, isMachineSaid)).join(', ')}.`;
 	}
 
-	return `${place} has ${plural(refs.length, 'worktree')} in ${plural(workspaces.length, 'workspace')}; ${active === 0 ? 'none' : active} active. Workspaces: ${workspaces.join(', ')}. Ask which workspace.`;
+	return `${place} has ${plural(refs.length, 'worktree')} in ${plural(workspaces.length, 'workspace')}; ${active === 0 ? 'none' : active} active. Workspaces: ${workspaces.map((name) => (name === CHAT_WORKSPACE ? 'plain sessions' : name)).join(', ')}. Ask which workspace.`;
 };
 
 interface DescribeSessionListParams {

@@ -1,5 +1,7 @@
 // The design's conversations, heard end to end: the real store, kernel, router, narrator and voice,
 // with only the model scripted. Each list is what the developer hears, their own words as "> …".
+import type { SetupCommand } from '../crew/commands.js';
+import { findSessionsNamedIn } from '../tools/session-naming.js';
 import { describe, expect, it } from 'bun:test';
 import { configureLog } from '../log.js';
 import { createConversation, reply, toolUse } from '../../test/support/conversation.js';
@@ -1189,6 +1191,69 @@ describe('conversations', () => {
 		});
 	});
 
+	it('"start a new session called research in my notes" → made by crew, started once it is listed, and it answers to its name', async () => {
+		const added: SetupCommand[] = [];
+		const convo = createConversation({
+			refs: REFS,
+			view: 'store-front/main',
+			runCrewOn: async (_machine, command) => {
+				added.push(command);
+
+				return {
+					kind: 'ran',
+					result: {
+						code: 0,
+						stdout: '{"id":"3fa9c1","dir":"/Users/dev/notes","name":"research"}',
+						stderr: '',
+					},
+				};
+			},
+		});
+		await convo.startSessions('store-front/main');
+
+		convo.script([
+			toolUse('t1', 'new_session', { machine: null, folder: '~/notes', name: 'research' }),
+		]);
+		await convo.say('Start a new session called research in my notes folder.');
+
+		expect(added).toEqual([{ type: 'chat_add', dir: '~/notes', name: 'research' }]);
+		expect(convo.heard.at(-1)).toBe('Started research.');
+
+		// crew lists it on the next poll: the held activation starts it.
+		convo.store.dispatch({
+			type: 'worktrees',
+			worktrees: [
+				...REFS.map((ref) => ({
+					ref,
+					label: ref,
+					branch: '',
+					cwd: `/w/${ref}`,
+					dirs: [],
+					isPinned: false,
+				})),
+				{
+					ref: 'chat/3fa9c1',
+					label: 'research',
+					branch: '',
+					cwd: '/Users/dev/notes',
+					dirs: [],
+					isPinned: false,
+					isChat: true as const,
+					chatName: 'research',
+				},
+			],
+		});
+		await convo.listen();
+
+		expect(convo.store.state.active).toContain('chat/3fa9c1');
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'activate', ref: 'chat/3fa9c1' }),
+		);
+		expect(findSessionsNamedIn(convo.store.state, 'ask research what it found')).toEqual([
+			'chat/3fa9c1',
+		]);
+	});
+
 	it('"status update" → a recap of what waits, said now; the meanwhile line never repeats it', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');
@@ -1993,5 +2058,70 @@ describe('conversations', () => {
 			expect(convo.store.state.active).not.toContain('checkout-api/main');
 			expect(convo.store.state.sessions['checkout-api/main']?.status).toBe('stopped');
 		});
+	});
+});
+
+describe('voice off', () => {
+	it('typed words still reach the session; its answer is on the page unplayed, never heard — not even once voice is back on', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+
+		await convo.type('run the tests');
+		expect(convo.inputs).toContainEqual(
+			expect.objectContaining({ type: 'send', ref: 'store-front/main', text: 'run the tests' }),
+		);
+
+		await convo.answer('store-front/main', 'All 214 tests pass.');
+		// Another session's news would wait for the meanwhile line.
+		convo.store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'add backoff' });
+		await convo.answer('checkout-api/main', 'Backoff added.');
+		await convo.wait(60_000);
+
+		expect(convo.heard).toEqual([]);
+		expect(
+			convo.store.state.spoken
+				.filter((line) => line.text.includes('214 tests'))
+				.map((line) => line.isUnplayed),
+		).toEqual([true]);
+
+		convo.store.dispatch({ type: 'set_voice_off', voiceOff: false });
+		await convo.wait(60_000);
+
+		expect(convo.heard).toEqual([]);
+	});
+
+	it('the session on screen asks → shown unplayed, never heard; a typed answer lands on it', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main');
+		convo.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+
+		convo.store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'q1',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'question',
+				input: {},
+				questions: [{ question: 'Postgres or SQLite?', multiSelect: false, options: [] }],
+			},
+		});
+		await convo.wait(10_000);
+
+		expect(convo.heard).toEqual([]);
+		expect(
+			convo.store.state.spoken
+				.filter((line) => line.text.includes('Postgres or SQLite?'))
+				.map((line) => line.isUnplayed),
+		).toEqual([true]);
+
+		convo.script([
+			toolUse('t1', 'answer', { ref: 'store-front/main', decision: 'choose', text: 'Postgres' }),
+		]);
+		await convo.type('Postgres.');
+
+		expect(convo.store.state.asks).toEqual([]);
+		expect(convo.heard).toEqual([]);
 	});
 });
