@@ -85,6 +85,30 @@
 	background: var(--fill);
 	color: #fff;
 }
+/* Session tabs move by drag: the one carried dims, a line shows where it lands. */
+.vo-tab[draggable="true"] {
+	position: relative;
+	cursor: grab;
+}
+.vo-tab.dragging {
+	opacity: 0.4;
+}
+.vo-tab.drop-before::before,
+.vo-tab.drop-after::after {
+	content: "";
+	position: absolute;
+	top: 6px;
+	bottom: 6px;
+	width: 2px;
+	border-radius: 1px;
+	background: #fff;
+}
+.vo-tab.drop-before::before {
+	left: -2px;
+}
+.vo-tab.drop-after::after {
+	right: -2px;
+}
 .vo-tab[aria-current="true"] {
 	background: var(--elev-3);
 	color: #fff;
@@ -1002,8 +1026,7 @@
 
 /* The state row (what went wrong, with the way out) and the ask dock (what the session waits on). */
 .vs-state,
-.dock,
-.strip {
+.dock {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -1013,13 +1036,11 @@
 	box-shadow: inset 0 -1px 0 var(--hair);
 	font-size: 14px;
 }
-.vs-state .row-actions,
-.strip .btn:first-of-type {
+.vs-state .row-actions {
 	margin-left: auto;
 }
 .vs-state.crit,
-.dock.crit,
-.strip.crit {
+.dock.crit {
 	background: rgba(224, 108, 95, 0.07);
 }
 .vs-state.wait {
@@ -1131,11 +1152,6 @@
 	box-shadow: inset 0 0 0 1px var(--sep);
 	color: #fff;
 	font: 13px var(--sys);
-}
-.strip .say {
-	flex: 1;
-	min-width: 0;
-	color: var(--label-2);
 }
 
 /* The voice bar: a moment, the queue, the spoken line, then the composer. */
@@ -1640,7 +1656,6 @@
 	}
 	.vs-state,
 	.dock,
-	.strip,
 	.vo-offer,
 	.vo-spoken,
 	.vo-composer,

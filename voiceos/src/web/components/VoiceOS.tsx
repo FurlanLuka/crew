@@ -22,6 +22,9 @@ import { TopBar } from './TopBar.js';
 
 const IGNORED_DOT_MS = 900;
 
+// How long a New session line stays in the notices.
+const NEW_SESSION_LINE_MS = 5000;
+
 interface VoiceOSProps {
 	state: State;
 	isConnected: boolean;
@@ -76,9 +79,20 @@ export const VoiceOS = ({
 	const [micStatus, setMicStatus] = useState<MicStatus>('idle');
 	// The New session dialog: the machine it opens on, or null while it is closed.
 	const [newSessionOn, setNewSessionOn] = useState<string | null>(null);
-	// What the last one left: "Started research on Build box.", or crew's reason it was not.
+	// What the last one left: "Started research on Build box.", for a moment.
 	const [newSessionLine, setNewSessionLine] = useState<string | null>(null);
 	const newSessionOpener = useRef<HTMLElement | null>(null);
+
+	// "Started research on Build box." is news for a moment, then the tab up top says the rest.
+	useEffect(() => {
+		if (!newSessionLine) {
+			return;
+		}
+
+		const timer = setTimeout(() => setNewSessionLine(null), NEW_SESSION_LINE_MS);
+
+		return () => clearTimeout(timer);
+	}, [newSessionLine]);
 	const [isIgnored, setIsIgnored] = useState(false);
 	const missingKeys = listMissingKeys(state);
 	const [isSheetOpen, setIsSheetOpen] = useState(

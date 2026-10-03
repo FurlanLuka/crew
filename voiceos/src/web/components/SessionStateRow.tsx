@@ -1,10 +1,8 @@
-// One row under a session's header: a call auto mode blocked, a machine that dropped, or a crash —
-// each with its way out. What the session waits on is docked above the voice bar (BottomBar).
+// One row under a session's header: a machine that dropped, or a crash — each with its way out. What
+// the session waits on, a blocked call included, is docked above the voice bar (BottomBar).
 import type { State } from '../../shared/protocol.js';
-import { readLabel } from '../../state/helpers.js';
 import { describeSessionState } from '../moments.js';
 import type { Dispatch } from '../types.js';
-import { DenialStrip } from './DenialStrip.js';
 
 interface SessionStateRowProps {
 	state: State;
@@ -16,14 +14,6 @@ export const SessionStateRow = ({ state, sessionRef, dispatch }: SessionStateRow
 	const row = describeSessionState(state, sessionRef);
 
 	switch (row.kind) {
-		case 'denial':
-			return (
-				<DenialStrip
-					denial={row.denial}
-					label={readLabel(state, row.denial.ref)}
-					dispatch={dispatch}
-				/>
-			);
 		case 'dropped':
 			return (
 				<div className="vs-state wait" role="status">

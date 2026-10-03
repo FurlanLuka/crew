@@ -151,7 +151,13 @@ describe('persistActive', () => {
 		store.dispatch({ type: 'activate', ref: 'store/wrk1' });
 		expect(readFile(files.file)).toEqual(['store/wrk1']);
 
+		store.dispatch({ type: 'activate', ref: 'store/main' });
+		// A tab dragged: the same set in a new order is a change, and is written.
+		store.dispatch({ type: 'move_active', ref: 'store/main', before: 'store/wrk1' });
+		expect(readFile(files.file)).toEqual(['store/main', 'store/wrk1']);
+
 		store.dispatch({ type: 'deactivate', ref: 'store/wrk1' });
+		store.dispatch({ type: 'deactivate', ref: 'store/main' });
 		expect(readFile(files.file)).toEqual([]);
 
 		writeFileSync(files.file, '["sentinel"]');

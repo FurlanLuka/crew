@@ -15,7 +15,7 @@ import {
 	withoutEffects,
 } from './helpers.js';
 
-const ACTIVE_INPUTS = ['activate', 'deactivate', 'active_loaded'] as const;
+const ACTIVE_INPUTS = ['activate', 'deactivate', 'active_loaded', 'move_active'] as const;
 
 type ActiveInput = Extract<Input, { type: (typeof ACTIVE_INPUTS)[number] }>;
 
@@ -252,6 +252,18 @@ export const matchMachine = (state: State, machine: string): ReducerResult => {
 	};
 };
 
+// ref just before another ref, or at the end with null; anything not in the list leaves it as it was.
+export const moveRef = (refs: string[], ref: string, before: string | null): string[] => {
+	if (!refs.includes(ref) || ref === before || (before !== null && !refs.includes(before))) {
+		return refs;
+	}
+
+	const rest = refs.filter((candidate) => candidate !== ref);
+	const at = before === null ? rest.length : rest.indexOf(before);
+
+	return [...rest.slice(0, at), ref, ...rest.slice(at)];
+};
+
 export const reduceActive = (state: State, input: ActiveInput, at: number): ReducerResult => {
 	switch (input.type) {
 		case 'activate':
@@ -259,6 +271,10 @@ export const reduceActive = (state: State, input: ActiveInput, at: number): Redu
 
 		case 'deactivate':
 			return deactivate(state, input.ref);
+
+		// Only the order: nothing starts or stops, and active.json follows (persistActive).
+		case 'move_active':
+			return withoutEffects({ ...state, active: moveRef(state.active, input.ref, input.before) });
 
 		case 'active_loaded': {
 			// The saved order first; one activated before the file was read follows it. A setup session

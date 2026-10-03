@@ -1,16 +1,17 @@
 // The voice bar, docked across the bottom: what the session on screen waits on (its question, plan,
-// permission or confirm), a moment Voice OS asks, the last spoken line, then the mic, where your words
+// permission, confirm or a call auto mode blocked), a moment Voice OS asks, the last spoken line, then the mic, where your words
 // go and the listening mode. The mic's logic is use-voice-input.ts.
 import type { Action, ClientMessage, State } from '../../shared/protocol.js';
 import { readLabel } from '../../state/helpers.js';
 import { isListeningMode, type InputMode } from '../listen-mode.js';
-import { readScreenAsk } from '../moments.js';
+import { readScreenAsk, readScreenDenial } from '../moments.js';
 import type { ListeningMode } from '../../shared/protocol.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
 import { useAttachments } from '../use-attachments.js';
 import { AskDock } from './AskDock.js';
 import { AttachmentChips } from './AttachmentChips.js';
+import { DenialDock } from './DenialDock.js';
 import { Composer } from './Composer.js';
 import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
@@ -85,10 +86,14 @@ export const BottomBar = ({
 		send,
 	});
 	const ask = readScreenAsk(state);
+	const denial = readScreenDenial(state);
 	const dispatch = (action: Action) => send({ type: 'action', action });
 
 	return (
 		<footer className="vo-bar">
+			{denial && (
+				<DenialDock denial={denial} label={readLabel(state, denial.ref)} dispatch={dispatch} />
+			)}
 			{ask && <AskDock ask={ask} label={readLabel(state, ask.ref)} dispatch={dispatch} />}
 			<MomentsRow state={state} dispatch={dispatch} />
 			{viewed && <QueueList session={viewed} dispatch={dispatch} />}
