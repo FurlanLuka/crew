@@ -1,17 +1,20 @@
-// Voice OS's top bar, docked: the crew mark (Home), Active, one tab per active session, "+" to
-// activate another; on the right Discord, Claude usage, "voice" (off and on) and the settings gear.
+// Voice OS's top bar, docked: the crew mark (crew's Home), Voice OS's Home with its count, one tab per
+// active session, "New" for every way in; on the right Discord, Claude usage, "voice" (off and on)
+// and the settings gear, a labelled tab while Settings is open.
 import { listActiveRefs } from '../../shared/active.js';
 import { machineOf } from '../../shared/machine-ref.js';
 import { hasMachines, isNamed, readMachineName, readSessionLabel } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
 import { describeSessionBadge, readRefTitle } from '../derive.js';
 import type { Dispatch } from '../types.js';
+import { NewMenu } from './NewMenu.js';
 import { VoiceToggle } from './VoiceToggle.js';
 
 interface TopBarProps {
 	state: State;
 	dispatch: Dispatch;
 	onHome: () => void;
+	onNewSession: () => void;
 }
 
 const GearIcon = () => (
@@ -29,13 +32,15 @@ const GearIcon = () => (
 	</svg>
 );
 
-export const TopBar = ({ state, dispatch, onHome }: TopBarProps) => {
+export const TopBar = ({ state, dispatch, onHome, onNewSession }: TopBarProps) => {
 	const { view } = state;
 	const { sevenDay, fiveHour } = state.limits;
 	const discord = state.discord?.isOwnerIn ? state.discord : null;
 	const usage = [sevenDay, fiveHour].filter((value) => value !== null).map((value) => `${value}%`);
 	// With other machines, the usage shown is this Mac's own Claude login.
 	const usageOwner = hasMachines(state) ? 'This Mac’s ' : '';
+	const activeRefs = listActiveRefs(state);
+	const isSettings = view.kind === 'settings';
 
 	return (
 		<header className="vo-top">
@@ -49,10 +54,11 @@ export const TopBar = ({ state, dispatch, onHome }: TopBarProps) => {
 					aria-current={view.kind === 'active'}
 					onClick={() => dispatch({ type: 'switch_view', view: { kind: 'active' } })}
 				>
-					<b>Active</b>
+					<b>Home</b>
+					{activeRefs.length > 0 && <span className="vo-count">{activeRefs.length}</span>}
 				</button>
 				<span className="vo-sep" />
-				{listActiveRefs(state).map((ref) => {
+				{activeRefs.map((ref) => {
 					const session = state.sessions[ref];
 
 					if (!session) {
@@ -80,16 +86,7 @@ export const TopBar = ({ state, dispatch, onHome }: TopBarProps) => {
 						</button>
 					);
 				})}
-				<button
-					type="button"
-					className="vo-tab vo-add"
-					title="Activate a worktree"
-					aria-label="Activate a worktree"
-					aria-current={view.kind === 'activate'}
-					onClick={() => dispatch({ type: 'switch_view', view: { kind: 'activate' } })}
-				>
-					+
-				</button>
+				<NewMenu state={state} dispatch={dispatch} onNewSession={onNewSession} />
 			</nav>
 			<div className="vo-right">
 				{discord && (
@@ -112,15 +109,17 @@ export const TopBar = ({ state, dispatch, onHome }: TopBarProps) => {
 					</span>
 				)}
 				<VoiceToggle isOff={state.voiceOff} dispatch={dispatch} />
+				{/* A quiet icon until Settings is open; then a labelled tab, like the page it is on. */}
 				<button
 					type="button"
-					className="vo-gear"
+					className={isSettings ? 'vo-tab vo-settings' : 'vo-gear'}
 					aria-label="Voice OS settings"
 					title="Voice OS settings"
-					aria-current={view.kind === 'settings'}
+					aria-current={isSettings}
 					onClick={() => dispatch({ type: 'switch_view', view: { kind: 'settings' } })}
 				>
 					<GearIcon />
+					{isSettings && <b>Settings</b>}
 				</button>
 			</div>
 		</header>

@@ -25,7 +25,12 @@ const withSessions = (refs: string[], active: string[] = refs): State => ({
 
 const render = (state: State): string =>
 	renderToStaticMarkup(
-		<TopBar state={state} dispatch={() => undefined} onHome={() => undefined} />,
+		<TopBar
+			state={state}
+			dispatch={() => undefined}
+			onHome={() => undefined}
+			onNewSession={() => undefined}
+		/>,
 	);
 
 const DISCORD = {
@@ -37,16 +42,16 @@ const DISCORD = {
 } as const;
 
 describe('TopBar', () => {
-	it('the crew mark, Active, one tab per active session, then "+"; never an inactive one', () => {
+	it('the crew mark, Home with its count, one tab per active session, then New; never an inactive one', () => {
 		const html = render(
 			withSessions(['store-front/main', 'checkout-api/main'], ['store-front/main']),
 		);
 
 		expect(html).toContain('crew <span>voice os</span>');
-		expect(html).toContain('<b>Active</b>');
+		expect(html).toContain('<b>Home</b><span class="vo-count">1</span>');
 		expect(html).toContain('data-ref="store-front/main"');
 		expect(html).not.toContain('data-ref="checkout-api/main"');
-		expect(html).toContain('aria-label="Activate a worktree"');
+		expect(html).toMatch(/class="vo-new "[^>]*aria-haspopup="menu"[^>]*>.*New/);
 	});
 
 	it('the setup session never gets a tab: it lives in Set up', () =>
@@ -81,10 +86,15 @@ describe('TopBar', () => {
 		);
 	});
 
-	it('settings: the gear is current', () =>
-		expect(render({ ...withSessions([]), view: { kind: 'settings' } })).toMatch(
-			/aria-label="Voice OS settings"[^>]*aria-current="true"/,
-		));
+	it('settings: the gear becomes a labelled tab, current; elsewhere a quiet icon', () => {
+		const html = render({ ...withSessions([]), view: { kind: 'settings' } });
+
+		expect(html).toMatch(
+			/class="vo-tab vo-settings"[^>]*aria-label="Voice OS settings"[^>]*aria-current="true"/,
+		);
+		expect(html).toContain('<b>Settings</b>');
+		expect(render(withSessions([]))).toMatch(/class="vo-gear"[^>]*aria-label="Voice OS settings"/);
+	});
 
 	it('Claude usage on the right, this week then the 5-hour window', () =>
 		expect(

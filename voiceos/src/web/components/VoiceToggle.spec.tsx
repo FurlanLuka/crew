@@ -10,6 +10,7 @@ const renderTop = (voiceOff: boolean) =>
 			state={{ ...createInitialState(), voiceOff }}
 			dispatch={() => undefined}
 			onHome={() => undefined}
+			onNewSession={() => undefined}
 		/>,
 	);
 

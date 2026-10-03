@@ -90,20 +90,120 @@
 	color: #fff;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
-.vo-add {
-	width: 32px;
-	padding: 0;
-	justify-content: center;
-	font: 300 20px / 1 var(--sys);
-	/* The tabs scroll under it; "+" itself never leaves the bar, however many there are. */
-	flex: none;
+/* "New": every way in — a plain session, a worktree, a machine's page. Sticky like "+" was: the tabs
+   scroll under it, it never leaves the bar. */
+.vo-newmenu {
 	position: sticky;
 	right: 0;
+	flex: none;
+	margin-left: 6px;
 	background: #0f1215;
 	box-shadow: -8px 0 8px #0f1215;
 }
-.vo-add:hover {
-	background: #1b1f24;
+.vo-new {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	height: 32px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: 9px;
+	background: var(--fill);
+	color: #fff;
+	font: 600 13px var(--sys);
+	white-space: nowrap;
+}
+.vo-new:hover {
+	background: var(--fill-hover);
+}
+.vo-new.open {
+	background: #fff;
+	color: #000;
+}
+.vo-new-caret {
+	margin-top: -4px;
+	font-size: 12px;
+	opacity: 0.7;
+}
+.nm-menu {
+	position: fixed;
+	z-index: 30;
+	margin-top: 8px;
+	width: 340px;
+	padding: 8px;
+	display: grid;
+	gap: 2px;
+	border-radius: 14px;
+	background: var(--menu);
+	box-shadow:
+		0 0 0 1px rgba(255, 255, 255, 0.1),
+		0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.nm-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 9px 10px;
+	border: 0;
+	border-radius: 10px;
+	background: none;
+	color: var(--label);
+	text-align: left;
+	font: 14px var(--sys);
+}
+.nm-item:hover,
+.nm-item:focus-visible {
+	background: var(--fill);
+	outline: none;
+}
+.nm-item > .dot {
+	margin: 0 12px;
+}
+.nm-ico {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	flex: none;
+	border-radius: 9px;
+	background: rgba(255, 255, 255, 0.06);
+}
+.nm-text {
+	display: grid;
+	flex: 1;
+	min-width: 0;
+}
+.nm-text small {
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.nm-go {
+	color: var(--label-3);
+	font-size: 18px;
+}
+.nm-sep {
+	height: 1px;
+	margin: 6px 4px;
+	background: var(--hair);
+}
+.nm-cap {
+	padding: 4px 10px 2px;
+	font: 600 10.5px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.vo-count {
+	min-width: 18px;
+	height: 18px;
+	padding: 0 5px;
+	display: inline-grid;
+	place-items: center;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+	font: 500 11px var(--mono);
 }
 .vo-sep {
 	width: 1px;
@@ -142,10 +242,11 @@
 	background: none;
 	color: var(--label-2);
 }
-.vo-gear:hover,
-.vo-gear[aria-current="true"] {
-	background: var(--fill);
+.vo-gear:hover {
 	color: #fff;
+}
+.vo-settings {
+	gap: 8px;
 }
 
 .vo-main {
@@ -210,7 +311,8 @@
 .vo-view > .box,
 .vo-list {
 	margin: 16px 24px;
-	border-radius: 4px;
+	border-radius: 12px;
+	overflow: hidden;
 	background: transparent;
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
 }
@@ -252,6 +354,162 @@
 	color: var(--label-2);
 }
 
+/* Home: the sessions, and beside them the machines and the words that do the same. */
+.vo-head-text {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+	flex: 1;
+}
+.vo-head h1 {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.vo-lead {
+	color: var(--label-2);
+	font-size: 14px;
+}
+.vo-home .vo-head,
+.vo-machine-page .vo-head {
+	padding: 28px 32px 20px;
+	border-bottom: 0;
+}
+.vo-home .vo-head h1,
+.vo-machine-page .vo-head h1 {
+	font-size: 28px;
+	letter-spacing: -0.02em;
+}
+.btn.big {
+	min-height: 40px;
+	padding: 0 18px;
+	border-radius: 10px;
+	font: 600 14px var(--sys);
+}
+.vo-home-body {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 28px;
+	padding: 0 32px 32px;
+}
+.vo-home-main {
+	flex: 999 1 560px;
+	min-width: 0;
+}
+.vo-home-main .vo-list,
+.vo-home-main .vo-empty {
+	margin: 0;
+}
+.vo-home-side {
+	flex: 1 1 300px;
+	min-width: 280px;
+	display: grid;
+	gap: 20px;
+}
+.vo-home-side h2 {
+	margin: 0;
+	font: 600 13px var(--sys);
+	color: var(--label-2);
+}
+.vo-machines {
+	display: grid;
+	gap: 10px;
+}
+.vo-machine-card {
+	display: grid;
+	gap: 10px;
+	padding: 16px 18px;
+	border: 0;
+	border-radius: 14px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+	color: var(--label);
+	text-align: left;
+	font: inherit;
+}
+.vo-machine-card:hover {
+	background: var(--elev-2);
+}
+.vo-machine-top {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.vo-machine-top b {
+	flex: 1;
+	font: 600 15px var(--sys);
+}
+.vo-host {
+	font: 12px var(--mono);
+	color: var(--label-3);
+}
+.vo-machine-counts {
+	font-size: 13px;
+	color: var(--label-2);
+}
+.vo-say {
+	display: grid;
+	gap: 6px;
+	padding: 16px 18px;
+	border-radius: 14px;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.vo-say p {
+	margin: 0;
+	color: var(--label);
+}
+.vo-row.waiting {
+	background: var(--crit-fill);
+}
+.vo-row.waiting .topic {
+	color: var(--crit-text);
+}
+.vo-answer {
+	pointer-events: none;
+}
+
+/* A machine's page: which machine, what it is, then its plain sessions and worktrees. */
+.vb-switch {
+	margin: 20px 32px 0;
+	justify-self: start;
+	width: fit-content;
+	max-width: calc(100% - 64px);
+	flex-wrap: wrap;
+}
+/* Plain words in these lists; mono stays for paths and refs. */
+.vo-machine-page .ws-h-row .m,
+.vb-start .m,
+.vs-sec .box-row .sub .m {
+	font: 13px var(--sys);
+	color: var(--label-2);
+}
+.vo-new:focus-visible {
+	outline-offset: -2px;
+}
+.vb-switch button {
+	height: 32px;
+	padding: 0 14px;
+}
+.vo-machine-page .vb-filter {
+	padding: 0 32px;
+}
+.vo-machine-page .vo-lib {
+	padding: 20px 32px 32px;
+}
+.vb-row {
+	grid-template-columns: 10px minmax(0, 1fr) auto;
+	padding: 13px 16px;
+}
+.vb-row .btn {
+	min-height: 34px;
+	padding: 0 16px;
+	border-radius: 9px;
+}
+.vb-start .m {
+	color: var(--label-2);
+}
+
 /* Activate and settings: a library on the flush ground. */
 .vo-lib {
 	display: grid;
@@ -259,7 +517,7 @@
 	padding: 16px 24px 24px;
 }
 .vo-lib .box {
-	border-radius: 4px;
+	border-radius: 12px;
 	background: transparent;
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
 }
@@ -272,8 +530,8 @@
 }
 .vb-filter input {
 	flex: 1 1 220px;
-	max-width: 360px;
-	height: 32px;
+	max-width: 420px;
+	height: 40px;
 	padding: 0 12px;
 	border: 0;
 	border-radius: 9px;
@@ -322,23 +580,106 @@
 	color: #fff;
 }
 
+/* Settings: a side menu beside one page of sections, each a heading, a plain sentence, then its card. */
+.vs-page {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 48px;
+	max-width: 1120px;
+	margin: 0 auto;
+	padding: 32px 32px 48px;
+}
+.vs-nav {
+	position: sticky;
+	top: 24px;
+	flex: 1 1 180px;
+	max-width: 220px;
+	display: grid;
+	gap: 2px;
+}
+.vs-nav h1 {
+	margin: 0 0 14px 12px;
+	font: 650 26px / 1.2 var(--sys);
+	letter-spacing: -0.02em;
+}
+.vs-nav button {
+	height: 36px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: 9px;
+	background: none;
+	color: var(--label-2);
+	text-align: left;
+	font: 500 14px var(--sys);
+}
+.vs-nav button:hover {
+	color: #fff;
+}
+.vs-nav button[aria-current="true"] {
+	background: var(--fill);
+	color: #fff;
+}
 .vs-set {
-	gap: 26px;
-	max-width: 860px;
+	flex: 999 1 520px;
+	min-width: 0;
+	display: grid;
+	gap: 40px;
 }
 .vs-sec {
 	display: grid;
+	gap: 12px;
+	scroll-margin-top: 24px;
+}
+.vs-sec h2 {
+	margin: 0;
+	font: 650 18px var(--sys);
+	letter-spacing: -0.01em;
+}
+.vs-sec h3 {
+	margin: 8px 0 0;
+	font: 600 14px var(--sys);
+}
+.vs-lead {
+	margin: -6px 0 0;
+	color: var(--label-2);
+}
+.vs-sec .box {
+	border-radius: 12px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.vs-sec .box .box-row + .box-row {
+	box-shadow: inset 0 1px 0 var(--sep);
+}
+.vs-modes {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 10px;
 }
-.vs-h {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 10px;
+.vs-mode {
+	display: grid;
+	gap: 4px;
+	padding: 14px;
+	border: 0;
+	border-radius: 12px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+	color: var(--label);
+	text-align: left;
+	font: 14px var(--sys);
 }
-.vs-h b {
-	font: 600 15px var(--sys);
-	color: #fff;
+.vs-mode span {
+	color: var(--label-2);
+	font-size: 12.5px;
+	line-height: 1.4;
+}
+.vs-mode:hover {
+	background: var(--elev-2);
+}
+.vs-mode[aria-pressed="true"] {
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6);
 }
 .vs-note {
 	margin: 0;
@@ -608,17 +949,6 @@
 .vo-panels .row .open-link:focus-visible {
 	background: rgba(255, 255, 255, 0.08);
 	color: #fff;
-}
-.lnk {
-	margin-left: auto;
-	padding: 0;
-	border: 0;
-	background: none;
-	color: #fff;
-	font: 12.5px var(--mono);
-	text-decoration: underline;
-	text-underline-offset: 3px;
-	text-decoration-color: rgba(255, 255, 255, 0.3);
 }
 /* Each entry is plain rows like the other panels': no class here may share a name with Set up's
    (its .reply is the chat's floating composer). */
@@ -1356,10 +1686,6 @@
 	.vo-row .sub .m {
 		white-space: normal;
 	}
-	.vs-h {
-		display: grid;
-		gap: 2px;
-	}
 	.box-row .row-actions {
 		flex-wrap: wrap;
 	}
@@ -1514,4 +1840,160 @@ button.line.opens:hover .opens-hint {
 	border-radius: 10px;
 	box-shadow: none;
 	color: var(--label-2);
+}
+
+/* The New session dialog: a modal over the page. */
+.nsd {
+	width: min(560px, calc(100vw - 32px));
+	padding: 0;
+	border: 0;
+	border-radius: 18px;
+	background: #16191e;
+	color: var(--label);
+	box-shadow:
+		0 0 0 1px rgba(255, 255, 255, 0.1),
+		0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.nsd::backdrop {
+	background: rgba(0, 0, 0, 0.55);
+}
+.nsd form {
+	display: grid;
+	gap: 14px;
+	padding: 28px;
+}
+.nsd-head h2 {
+	margin: 0;
+	font: 650 22px var(--sys);
+	letter-spacing: -0.015em;
+}
+.nsd-head p {
+	margin: 4px 0 6px;
+	color: var(--label-2);
+}
+.nsd-field,
+.nsd-picks {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+.nsd-field {
+	display: grid;
+	gap: 8px;
+}
+.nsd-field legend {
+	padding: 0;
+	margin-bottom: 8px;
+}
+.nsd-label {
+	font: 600 13px var(--sys);
+	color: var(--label);
+}
+.nsd-field input {
+	height: 44px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: 10px;
+	background: #0b0d10;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+	color: #fff;
+	font: 15px var(--sys);
+}
+.nsd-field input.nsd-mono {
+	font: 14px var(--mono);
+}
+.nsd-machines {
+	display: flex;
+	padding: 4px;
+}
+.nsd-machines button {
+	flex: 1;
+	justify-content: center;
+	height: 38px;
+	font-size: 14px;
+}
+.nsd-picks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: -6px;
+}
+.nsd-pick {
+	height: 30px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 8px;
+	background: none;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+	color: var(--label-2);
+	font: 12.5px var(--mono);
+}
+.nsd-pick[aria-pressed="true"] {
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+	color: #fff;
+}
+.nsd-hint {
+	margin: -6px 0 0;
+	font-size: 12.5px;
+	color: var(--label-3);
+}
+.nsd-line {
+	margin: 0;
+	color: var(--crit-text);
+}
+.nsd-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding-top: 6px;
+}
+.nsd-actions .nsd-hint {
+	flex: 1;
+	margin: 0;
+}
+.nsd-actions .btn {
+	min-height: 42px;
+	padding: 0 18px;
+	border-radius: 10px;
+	font: 600 14px var(--sys);
+}
+
+@media (max-width: 720px) {
+	.vo-home .vo-head,
+	.vo-machine-page .vo-head,
+	.vo-home-body,
+	.vs-page {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+	.vb-switch,
+	.vo-machine-page .vb-filter {
+		margin-left: 16px;
+		margin-right: 16px;
+		padding: 0;
+	}
+	.vo-machine-page .vo-lib {
+		padding: 16px;
+	}
+	.vs-nav {
+		position: static;
+		max-width: none;
+		display: flex;
+		flex-wrap: wrap;
+	}
+	.vs-nav h1 {
+		width: 100%;
+	}
+	.vs-modes {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.nsd-actions {
+		flex-wrap: wrap;
+	}
+	.nm-menu {
+		left: 16px;
+		right: 16px;
+		width: auto;
+	}
 }

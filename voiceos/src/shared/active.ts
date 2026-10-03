@@ -1,7 +1,7 @@
 // Which sessions exist for voice. Active: Voice OS runs its Claude and voice drives it fully.
 // Inactive: no process, nothing said, invisible to the kernel — browsable on the page, where it can
 // be activated. The one reading of the set: nothing else reads state.active.
-import { isSetupRef, readMachine } from './machine-ref.js';
+import { isChatRef, isSetupRef, readMachine } from './machine-ref.js';
 import type { PendingAsk, State } from './protocol.js';
 
 // A setup session (this Mac's "setup", a remote's "vm1:setup") is never active: it lives in Set up,
@@ -25,6 +25,23 @@ export const listVoiceRefsOn = (state: State, machine: string | null): string[] 
 	state.order.filter(
 		(ref) => !isSetupRef(ref) && (machine === null || readMachine(ref) === machine),
 	);
+
+export interface MachineCounts {
+	worktrees: number;
+	active: number;
+	plain: number;
+}
+
+// What a machine holds, as Home's cards and the New menu show it.
+export const countMachineRefs = (state: State, machine: string): MachineCounts => {
+	const refs = listVoiceRefsOn(state, machine);
+
+	return {
+		worktrees: refs.filter((ref) => !isChatRef(ref)).length,
+		active: refs.filter((ref) => isActive(state, ref)).length,
+		plain: refs.filter(isChatRef).length,
+	};
+};
 
 // The active sessions in the page's order (state.order): what the kernel's turn lists.
 export const listActiveInOrder = (state: State): string[] =>

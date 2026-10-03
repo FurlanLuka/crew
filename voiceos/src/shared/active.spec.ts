@@ -3,6 +3,7 @@ import type { State } from './protocol.js';
 import { createFixtureState } from '../../test/support/state.js';
 import {
 	canRun,
+	countMachineRefs,
 	isActive,
 	listActiveInOrder,
 	listActiveMissing,
@@ -11,7 +12,7 @@ import {
 	listVoiceRefsOn,
 } from './active.js';
 
-const VM1_REFS = ['vm1:setup', 'vm1:store/main'];
+const VM1_REFS = ['vm1:setup', 'vm1:store/main', 'vm1:chat/3fa9c1'];
 
 // The fixture's refs plus vm1's, with only the given ones in the active set.
 const withActive = (active: string[]): State => ({
@@ -57,7 +58,7 @@ describe('listVoiceRefsOn', () => {
 	it('one machine → its worktrees in the page order, never its setup session', () => {
 		const state = withActive([]);
 
-		expect(listVoiceRefsOn(state, 'vm1')).toEqual(['vm1:store/main']);
+		expect(listVoiceRefsOn(state, 'vm1')).toEqual(['vm1:store/main', 'vm1:chat/3fa9c1']);
 		expect(listVoiceRefsOn(state, 'local')).not.toContain('setup');
 		expect(listVoiceRefsOn(state, 'local').every((ref) => !ref.includes(':'))).toBe(true);
 	});
@@ -98,4 +99,16 @@ describe('listHeardAsks', () => {
 
 		expect(listHeardAsks(state).map((heard) => heard.ref)).toEqual(['store-front/main']);
 	});
+});
+
+describe('countMachineRefs', () => {
+	it('a machine → its worktrees, how many are active, its plain sessions; never the setup session', () =>
+		expect(countMachineRefs(withActive(['vm1:store/main', 'vm1:chat/3fa9c1']), 'vm1')).toEqual({
+			worktrees: 1,
+			active: 2,
+			plain: 1,
+		}));
+
+	it('a machine with nothing → all zero', () =>
+		expect(countMachineRefs(withActive([]), 'gpu')).toEqual({ worktrees: 0, active: 0, plain: 0 }));
 });
