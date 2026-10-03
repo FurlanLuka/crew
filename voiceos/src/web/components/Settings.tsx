@@ -325,14 +325,24 @@ export const Settings = ({
 	const [isAlwaysVoice, setIsAlwaysVoice] = useState(readAlwaysVoice);
 	const [shown, setShown] = useState<string>(SECTIONS[0].id);
 
-	// The menu follows the page: the section nearest the top of the view is the current one.
+	// The menu follows the page: the first section in the top band of the view is the current one.
+	// An observer reports only sections that changed, so the visible set is kept here.
 	useEffect(() => {
+		const visible = new Set<string>();
 		const observer = new IntersectionObserver(
 			(entries) => {
-				const seen = entries.find((entry) => entry.isIntersecting);
+				for (const entry of entries) {
+					if (entry.isIntersecting) {
+						visible.add(entry.target.id);
+					} else {
+						visible.delete(entry.target.id);
+					}
+				}
 
-				if (seen) {
-					setShown(seen.target.id);
+				const first = SECTIONS.find((section) => visible.has(section.id));
+
+				if (first) {
+					setShown(first.id);
 				}
 			},
 			{ rootMargin: '0px 0px -70% 0px' },

@@ -1,5 +1,6 @@
-// Voice OS, the workhorse: the docked top bar, one view (Home, a session, a machine's page, Settings),
-// the docked voice bar and the New session dialog. The view is the server's (every tab shows the same); the URL follows it.
+// Voice OS, the workhorse: the docked top bar, one view (Home, a session, a machine's page,
+// Settings), the docked voice bar and the New session dialog. The view is the server's (every tab
+// shows the same); the URL follows it.
 import { useEffect, useRef, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { parentView } from '../../shared/machines.js';
@@ -123,7 +124,7 @@ export const VoiceOS = ({
 
 			// A dialog's own Esc closes the dialog only, and a menu's closes the menu.
 			if (event.key === 'Escape' && !isInField && !isInDialog(event) && !event.defaultPrevented) {
-				// Up one level: a session → Active (or the machine's Activate it came from).
+				// Up one level: a session → Home (or the machine's page it came from).
 				send({
 					type: 'action',
 					action: { type: 'switch_view', view: parentView(stateRef.current) },

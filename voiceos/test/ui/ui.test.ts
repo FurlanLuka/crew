@@ -2085,26 +2085,36 @@ describe('voice os ui', () => {
 		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: 'checkout' });
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();
-		const before = crew.calls.filter((call) => call.command.type === 'chat_add').length;
-		await page
-			.locator('section[aria-label="Home"]')
-			.getByRole('button', { name: 'New session' })
-			.click();
-		const form = page.getByRole('form', { name: /New session on/ });
-		await form.getByRole('textbox', { name: 'Name' }).fill('Checkout');
-		await form.getByRole('button', { name: 'Start session' }).click();
 
-		await form.getByRole('alert').getByText('A session is already called Checkout.').waitFor({
-			timeout: 5000,
-		});
-		expect(crew.calls.filter((call) => call.command.type === 'chat_add').length).toBe(before);
-		await page.keyboard.press('Escape');
-		// Focus is back on what opened it.
-		await page.waitForFunction(
-			() => document.activeElement?.textContent?.includes('New session') === true,
-		);
-		store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: '' });
-		await context.close();
+		try {
+			const before = crew.calls.filter((call) => call.command.type === 'chat_add').length;
+			await page
+				.locator('section[aria-label="Home"]')
+				.getByRole('button', { name: 'New session' })
+				.click();
+			const form = page.getByRole('form', { name: /New session on/ });
+			await form.getByRole('textbox', { name: 'Name' }).fill('Checkout');
+			await form.getByRole('button', { name: 'Start session' }).click();
+
+			await form.getByRole('alert').getByText('A session is already called Checkout.').waitFor({
+				timeout: 5000,
+			});
+			expect(crew.calls.filter((call) => call.command.type === 'chat_add').length).toBe(before);
+			await page.keyboard.press('Escape');
+			// Focus is back on what opened it.
+			await page.waitForFunction(() => {
+				const focused = document.activeElement;
+
+				return (
+					focused?.matches('section[aria-label="Home"] button') === true &&
+					focused.textContent?.trim() === 'New session'
+				);
+			});
+		} finally {
+			// A taken name left behind would refuse it in every test after this one.
+			store.dispatch({ type: 'rename_session', ref: 'checkout-api/main', name: '' });
+			await context.close();
+		}
 	}, 20_000);
 
 	it("Activate → New session in a folder that is not there: crew's reason, nothing activated", async () => {
@@ -2282,20 +2292,8 @@ describe('active', () => {
 		await button.click();
 		await page.getByRole('menu', { name: 'New' }).waitFor({ timeout: 5000 });
 		const mark = received.length;
-		console.log(
-			'DBG before',
-			JSON.stringify(store.state.view),
-			JSON.stringify(received.map((r) => r.message)),
-		);
 		await page.keyboard.press('Escape');
 		await page.getByRole('menu', { name: 'New' }).waitFor({ state: 'detached', timeout: 5000 });
-		console.log(
-			'DBG after',
-			JSON.stringify(store.state.view),
-			received.length,
-			JSON.stringify(received.slice(mark).map((r) => r.message)),
-		);
-		expect(store.state.view).toEqual({ kind: 'activate', machine: 'vm1' });
 		expect(await button.evaluate((element) => element === document.activeElement)).toBe(true);
 
 		// The machine page's switcher moves every tab: the view carries the machine.
@@ -2303,6 +2301,15 @@ describe('active', () => {
 		await waitUntil(
 			() => store.state.view.kind === 'activate' && store.state.view.machine === 'local',
 		);
+		// The socket keeps order: the switcher's is the only screen change since Esc, so Esc sent none.
+		expect(
+			received
+				.slice(mark)
+				.filter(
+					(entry) => entry.message.type === 'action' && entry.message.action.type === 'switch_view',
+				)
+				.map((entry) => (entry.message as { action: unknown }).action),
+		).toEqual([{ type: 'switch_view', view: { kind: 'activate', machine: 'local' } }]);
 		await context.close();
 	}, 20_000);
 
@@ -2475,6 +2482,13 @@ describe('active', () => {
 			() =>
 				document.querySelector('nav[aria-label="Settings sections"] button[aria-current="true"]')
 					?.textContent === 'Keys',
+		);
+		// Scrolled back up by hand, not through the menu: the menu follows the page.
+		await page.evaluate(() => document.getElementById('vs-listening')?.scrollIntoView());
+		await page.waitForFunction(
+			() =>
+				document.querySelector('nav[aria-label="Settings sections"] button[aria-current="true"]')
+					?.textContent === 'Listening',
 		);
 
 		await settings.getByRole('button', { name: /^Dictation/ }).click();
