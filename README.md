@@ -1,4 +1,4 @@
-![Crew | Voice OS: talk to your coding agents](docs/images/banner.png)
+![Crew | Voice OS: talk to your coding agents, above a session on another machine with its work stream, dev servers and the sessions elsewhere that need you](docs/images/social-preview.png)
 
 [![Latest release](https://img.shields.io/github/v/release/FurlanLuka/crew?label=release)](https://github.com/FurlanLuka/crew/releases/latest)
 [![Platforms: macOS and Linux](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#what-you-need-and-where-your-data-goes)
@@ -15,8 +15,6 @@ that gives each of those sessions its own copy of your stack, with its dev serve
 
 [Try it](#try-it) · [What it's like](#what-its-like-to-use) · [Other machines](#more-than-one-machine) ·
 [Where it stands](#where-it-stands) · [Guides](#learn-more) · [Releases](https://github.com/FurlanLuka/crew/releases)
-
-![Voice OS: an active session, store-front/wrk2 on another machine, with its work stream, dev servers, spoken summary and the sessions elsewhere that need you; the other active sessions are tabs along the top](docs/images/voice-os/hero.png)
 
 ## Try it
 
