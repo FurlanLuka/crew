@@ -98,14 +98,24 @@ const readCapped = async (request: Request, cap: number): Promise<Buffer | null>
 	const chunks: Uint8Array[] = [];
 	let total = 0;
 
-	for await (const chunk of request.body) {
-		total += chunk.byteLength;
+	const reader = request.body.getReader();
+
+	for (;;) {
+		const { done, value } = await reader.read();
+
+		if (done) {
+			break;
+		}
+
+		total += value.byteLength;
 
 		if (total > cap) {
+			await reader.cancel();
+
 			return null;
 		}
 
-		chunks.push(chunk);
+		chunks.push(value);
 	}
 
 	return Buffer.concat(chunks);
