@@ -1,31 +1,52 @@
 // crew's opening: the wordmark fades up on black, one line under it, then it dissolves into Home.
-// Once per load, about 2.5 s; skipped with reduced motion. Never takes a click.
-import { useEffect, useState } from 'react';
+// Once per load, about 2.5 s; skipped with reduced motion. Never takes a click. It is also what a
+// fresh load shows while it waits for crew's server: the page behind it arrives under the title,
+// never a "Connecting…" card that flashes before it.
+import { useEffect, useRef, useState } from 'react';
 
 const OUT_AT_MS = 2000;
-const GONE_AT_MS = 2800;
+// The dissolve: from "out" until it is gone.
+const DISSOLVE_MS = 800;
 
 export const isReducedMotion = (): boolean =>
 	typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export const Opening = () => {
+interface OpeningProps {
+	// crew's server has not answered yet: the title stays until it has.
+	isHeld?: boolean;
+}
+
+export const Opening = ({ isHeld = false }: OpeningProps) => {
+	const isReduced = isReducedMotion();
+	// Reduced motion: no opening at all, unless it is what holds the screen while crew connects (then
+	// it shows still: its fades only run with motion).
 	const [phase, setPhase] = useState<'in' | 'out' | 'gone'>(() =>
-		isReducedMotion() ? 'gone' : 'in',
+		isReduced && !isHeld ? 'gone' : 'in',
 	);
+	const shownAt = useRef(Date.now());
 
 	useEffect(() => {
-		if (phase === 'gone') {
+		if (isHeld || phase === 'gone') {
 			return;
 		}
 
-		const out = setTimeout(() => setPhase('out'), OUT_AT_MS);
-		const gone = setTimeout(() => setPhase('gone'), GONE_AT_MS);
+		// Reduced motion: no fade, it goes as soon as the page is there.
+		if (isReduced) {
+			setPhase('gone');
+
+			return;
+		}
+
+		// At least the full opening, counted from when it first showed.
+		const outIn = Math.max(0, OUT_AT_MS - (Date.now() - shownAt.current));
+		const out = setTimeout(() => setPhase('out'), outIn);
+		const gone = setTimeout(() => setPhase('gone'), outIn + DISSOLVE_MS);
 
 		return () => {
 			clearTimeout(out);
 			clearTimeout(gone);
 		};
-	}, []);
+	}, [isHeld]);
 
 	if (phase === 'gone') {
 		return null;
