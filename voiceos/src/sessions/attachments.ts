@@ -19,6 +19,8 @@ import { IMAGE_EXTENSION_PATTERN, storeAttachedImage } from './media.js';
 
 const ID_PATTERN = /^[0-9a-f]{16}\/[^/\\\0]{1,120}$/u;
 const MAX_NAME_CHARS = 120;
+// Linux takes 255 bytes a name; this leaves room for the `.part` and `.<pid>.tmp` written beside it.
+const MAX_NAME_BYTES = 200;
 // A piece of a file on its way to another machine, one link line each: small enough that a slow
 // uplink never goes quiet for long.
 export const CHUNK_BYTES = 256 * 1024;
@@ -35,7 +37,17 @@ export const toSafeName = (name: string): string => {
 		.trim();
 	const safe = /^\.*$/.test(cleaned) ? 'file' : cleaned;
 
-	return [...safe].slice(0, MAX_NAME_CHARS).join('');
+	let kept = '';
+
+	for (const char of [...safe].slice(0, MAX_NAME_CHARS)) {
+		if (Buffer.byteLength(kept + char) > MAX_NAME_BYTES) {
+			break;
+		}
+
+		kept += char;
+	}
+
+	return kept;
 };
 
 export const isAttachmentId = (id: string): boolean =>

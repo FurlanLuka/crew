@@ -45,7 +45,12 @@ describe('toSafeName', () => {
 	])('%p → %p', (name, safe) => expect(toSafeName(name)).toBe(safe));
 
 	it('keeps at most 120 characters', () => {
-		expect([...toSafeName(`${'é'.repeat(200)}.txt`)]).toHaveLength(120);
+		expect([...toSafeName(`${'a'.repeat(200)}.txt`)]).toHaveLength(120);
+	});
+
+	it('keeps at most 200 bytes, so Linux takes it with what is written beside it', () => {
+		expect(Buffer.byteLength(toSafeName('😀'.repeat(120)))).toBe(200);
+		expect(Buffer.byteLength(toSafeName('é'.repeat(120)))).toBe(200);
 	});
 });
 
