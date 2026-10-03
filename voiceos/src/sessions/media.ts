@@ -156,6 +156,25 @@ interface SaveToolImageParams {
 	dir: string;
 }
 
+// An image the developer attached, kept in the media folder for its thumbnail: named by its type,
+// or by its file name when the browser sent no type.
+export const storeAttachedImage = ({
+	bytes,
+	mediaType,
+	fileName,
+	dir,
+}: {
+	bytes: Buffer;
+	mediaType: string;
+	fileName: string;
+	dir: string;
+}): Stored => {
+	const extension =
+		EXTENSION_BY_MEDIA_TYPE[mediaType] ?? EXTENSION_BY_FILE[extname(fileName).toLowerCase()];
+
+	return extension ? storeImage(bytes, extension, dir) : { ok: false, reason: 'not an image' };
+};
+
 // A screenshot or chart a tool returned, as base64 in its result.
 export const saveToolImage = ({ data, mediaType, dir }: SaveToolImageParams): Stored => {
 	const extension = EXTENSION_BY_MEDIA_TYPE[mediaType];

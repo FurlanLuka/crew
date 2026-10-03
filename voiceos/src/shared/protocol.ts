@@ -6,8 +6,11 @@ export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'block
 
 // A user item's isApproval: Voice OS's retry of a call the developer allowed once; still the turn's
 // opening words.
-export type StreamItem = { id: string; at: number } & (
-	| { kind: 'user'; text: string; isApproval?: true }
+export type StreamItem = {
+	id: string;
+	at: number;
+} & ( // attachments: the files that went with these words.
+	| { kind: 'user'; text: string; isApproval?: true; attachments?: Attachment[] }
 	| { kind: 'text'; text: string }
 	// toolUseId: the call's own id, so the row of an Agent call can open its sub-agent's transcript.
 	| { kind: 'tool'; name: string; summary: string; toolUseId?: string }
@@ -66,6 +69,21 @@ export interface Subagent {
 
 export type GuardedCommand = 'clear' | 'compact';
 
+// A file the developer attached (pasted, dropped or picked), stored on the server by content:
+// id is `<sha16>/<safe name>`, which every machine's store resolves to its own path. mediaName: an
+// image's copy in the media folder, for its thumbnail.
+export interface Attachment {
+	id: string;
+	name: string;
+	kind: 'image' | 'file';
+	bytes: number;
+	mediaName?: string;
+}
+
+// The most files waiting on one session, and the biggest one.
+export const MAX_ATTACHMENTS = 10;
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
 export interface QueuedMessage {
 	id: string;
 	text: string;
@@ -80,6 +98,8 @@ export interface QueuedMessage {
 	reportOwed?: true;
 	// Voice OS's own words (a denied call's retry), not the developer's: "send them all now" leaves it.
 	isRetry?: true;
+	// The files that go with these words.
+	attachments?: Attachment[];
 }
 
 export interface QuestionOption {
@@ -116,7 +136,13 @@ export type PendingAsk = { id: string; ref: string; at: number } & (
 	| { kind: 'command'; command: GuardedCommand; text: string }
 	// Voice OS's own: an instruction that would change a working session's course, held until the
 	// developer says whether to stop that work (target: the turn to stop) and switch to it.
-	| { kind: 'redirect'; text: string; note?: string; target: string | null }
+	| {
+			kind: 'redirect';
+			text: string;
+			note?: string;
+			target: string | null;
+			attachments?: Attachment[];
+	  }
 );
 
 export type HeldAsk = Extract<PendingAsk, { kind: 'command' | 'redirect' }>;
@@ -444,6 +470,9 @@ export interface State {
 	active: string[];
 	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
 	names: Record<string, string>;
+	// Files attached to a session, waiting for the next words that reach it (typed or spoken).
+	// Not kept across restarts.
+	attachments: Record<string, Attachment[]>;
 	// What speech-to-text expects the developer to speak (Soniox language hints).
 	// Voice off (the top bar's "voice"): nothing listens or speaks, Discord's bot leaves its channel;
 	// typing and the page go on. Kept across restarts.
@@ -512,6 +541,8 @@ export type Action =
 	| { type: 'promote_all_queued'; ref: string; answersOffer?: true }
 	// Set by the kernel: the developer takes back words not yet acted on (queued, asked aside, held).
 	| { type: 'take_back'; ref: string; id: string }
+	// A file taken off a session before any words took it (the chip's ✕).
+	| { type: 'attachment_removed'; ref: string; id: string }
 	// Set by the kernel: the developer heard a held line another way (asked about that session by name).
 	| { type: 'held_line_heard'; ref: string; id: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
@@ -586,6 +617,8 @@ export interface WorktreeInfo {
 export type Observation =
 	// What the server observes: never sent by a client.
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
+	// A file attached to a session, once the server has stored it (POST /api/attach).
+	| { type: 'attachment_added'; ref: string; attachment: Attachment }
 	// The developer's notes of a workspace as they now stand (its newest lines), for the page.
 	| { type: 'notes'; workspace: string; lines: string[] }
 	// What a session is working on, named after a turn it spoke for itself.

@@ -13,6 +13,8 @@ import { readSessionLabel } from '../../shared/machines.js';
 import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { describeListening, isListeningMode } from '../listen-mode.js';
+import { AttachButton } from './AttachmentChips.js';
+import type { Attachments } from '../use-attachments.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
 
@@ -22,8 +24,12 @@ interface ComposerProps {
 	isAwake: boolean;
 	isOnDiscord: boolean;
 	keptDictation: KeptDictation | null;
+	attachments: Attachments;
 	send: (message: ClientMessage) => void;
 }
+
+// What the box sends when it holds only files: the files are the message.
+export const ATTACHED_ONLY_TEXT = '(attached)';
 
 const formatElapsed = (ms: number): string => {
 	const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -72,9 +78,12 @@ export const Composer = ({
 	isAwake,
 	isOnDiscord,
 	keptDictation,
+	attachments,
 	send,
 }: ComposerProps) => {
 	const [draft, setDraft] = useState('');
+	// Enter pressed while a file still uploads: sent once it is in, so the words take it along.
+	const [isHeld, setIsHeld] = useState(false);
 	const fieldRef = useRef<HTMLTextAreaElement | null>(null);
 	const { listenMode, micStatus, isDictating } = voice;
 	const elapsedMs = useElapsed(voice.dictationStartedAt);
@@ -96,14 +105,29 @@ export const Composer = ({
 	// Sent anyway, the gateway refused it and the words were gone: they stay in the field instead.
 	const isTooLong = draftChars > MAX_TEXT_CHARS;
 
+	const hasFiles = attachments.waiting.length > 0 || attachments.isUploading;
+
 	const submitDraft = () => {
-		if (!draft.trim() || isTooLong) {
+		if ((!draft.trim() && !hasFiles) || isTooLong) {
 			return;
 		}
 
-		send({ type: 'utterance', text: draft.trim() });
+		if (attachments.isUploading) {
+			setIsHeld(true);
+
+			return;
+		}
+
+		send({ type: 'utterance', text: draft.trim() || ATTACHED_ONLY_TEXT });
 		setDraft('');
 	};
+
+	useEffect(() => {
+		if (isHeld && !attachments.isUploading) {
+			setIsHeld(false);
+			submitDraft();
+		}
+	}, [isHeld, attachments.isUploading]);
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -157,6 +181,7 @@ export const Composer = ({
 				<span className="c-dim">
 					{readSessionLabel(state, inactiveRef)} isn't active: activate it to talk to it.
 				</span>
+				<AttachButton attachments={attachments} />
 				<button
 					type="button"
 					className="btn sm primary"
@@ -216,6 +241,8 @@ export const Composer = ({
 						</button>
 					</>
 				) : null}
+				{isHeld ? <span className="c-dim">sending once uploaded…</span> : null}
+				{!isDictating && attachments.ref ? <AttachButton attachments={attachments} /> : null}
 				{isTooLong ? (
 					<span className="too-long" role="alert">
 						Too long to send: {draftChars.toLocaleString('en')} of{' '}

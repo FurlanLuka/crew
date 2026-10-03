@@ -2124,4 +2124,59 @@ describe('voice off', () => {
 		expect(convo.store.state.asks).toEqual([]);
 		expect(convo.heard).toEqual([]);
 	});
+
+	describe('attached files', () => {
+		const SHOT = {
+			id: '0123456789abcdef/shot.png',
+			name: 'shot.png',
+			kind: 'image' as const,
+			bytes: 10,
+			mediaName: 'a.png',
+		};
+		const LOG = {
+			id: 'fedcba9876543210/trace.log',
+			name: 'trace.log',
+			kind: 'file' as const,
+			bytes: 9,
+		};
+
+		it('a screenshot pasted on the screen session, then "what is wrong here?" → it goes with those words', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			const sends: unknown[] = [];
+			convo.store.onEffect((effect) => {
+				if (effect.type === 'worker_send') {
+					sends.push(effect);
+				}
+			});
+			await convo.startSessions('store-front/main');
+
+			convo.store.dispatch({ type: 'attachment_added', ref: 'store-front/main', attachment: SHOT });
+			convo.script([toolUse('t1', 'send_to', { ref: 'store-front/main', kind: 'question' })]);
+			await convo.say('what is wrong here?');
+
+			expect(sends).toEqual([
+				expect.objectContaining({ ref: 'store-front/main', attachments: [SHOT] }),
+			]);
+			expect(convo.store.state.attachments).toEqual({});
+		});
+
+		it('files waiting on checkout, sent to it by name from elsewhere → "Sent to … with 2 files."', async () => {
+			const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+			await convo.startSessions('store-front/main', 'checkout-api/main');
+
+			convo.store.dispatch({
+				type: 'attachment_added',
+				ref: 'checkout-api/main',
+				attachment: SHOT,
+			});
+			convo.store.dispatch({ type: 'attachment_added', ref: 'checkout-api/main', attachment: LOG });
+			convo.script([toolUse('t1', 'send_to', { ref: 'checkout-api/main', kind: 'instruction' })]);
+			await convo.say('checkout api, look at these');
+
+			expect(convo.heard).toEqual([
+				'> checkout api, look at these',
+				'Sent to checkout api, main with 2 files. Switch there?',
+			]);
+		});
+	});
 });

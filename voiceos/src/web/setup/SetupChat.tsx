@@ -6,6 +6,9 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import type { Action, StreamItem } from '../../shared/protocol.js';
 import { AskDock } from '../components/AskDock.js';
+import { AttachButton, AttachmentChips } from '../components/AttachmentChips.js';
+import { ATTACHED_ONLY_TEXT } from '../components/Composer.js';
+import { useAttachments } from '../use-attachments.js';
 import { QueueList } from '../components/QueueList.js';
 import { SessionStream } from '../components/SessionStream.js';
 import { SubagentsPanel } from '../components/SubagentsPanel.js';
@@ -32,6 +35,12 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 	);
 	const isWorking = session?.status === 'running' || session?.status === 'blocked';
 	const dispatch = (action: Action) => ctx.send({ type: 'action', action });
+	const attachments = useAttachments({
+		state: ctx.state,
+		sessionRef: session ? ref : null,
+		send: ctx.send,
+		isListeningOnPage: true,
+	});
 
 	// Taken whenever it arrives: a "Fix with Claude" from outside Set up lands while the chat is
 	// already open.
@@ -47,12 +56,13 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 		event.preventDefault();
 		const words = text.trim();
 
-		if (!words) {
+		// Files still uploading would be left behind: the button waits for them.
+		if ((!words && attachments.waiting.length === 0) || attachments.isUploading) {
 			return;
 		}
 
 		// Straight to the setup session: busy, it waits in the queue below.
-		dispatch({ type: 'send', ref, text: words });
+		dispatch({ type: 'send', ref, text: words || ATTACHED_ONLY_TEXT });
 		setText('');
 	};
 
@@ -105,6 +115,7 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 					{session && <SubagentsPanel subagents={session.subagents} />}
 					{ask && <AskDock ask={ask} label="setup" dispatch={dispatch} />}
 					{session && <QueueList session={session} dispatch={dispatch} />}
+					<AttachmentChips attachments={attachments} />
 					<form className="reply" onSubmit={submit}>
 						<input
 							ref={fieldRef}
@@ -115,7 +126,8 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 							value={text}
 							onChange={(event) => setText(event.target.value)}
 						/>
-						<button type="submit" className="btn primary">
+						{attachments.ref && <AttachButton attachments={attachments} />}
+						<button type="submit" className="btn primary" disabled={attachments.isUploading}>
 							{isWorking ? 'Queue' : 'Send'}
 						</button>
 					</form>

@@ -297,6 +297,7 @@ describe('parseClientMessage', () => {
 		promote_queued: { type: 'promote_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_all_queued: { type: 'promote_all_queued', ref: 'store/main' },
 		take_back: { type: 'take_back', ref: 'store/main', id: 'q1' },
+		attachment_removed: { type: 'attachment_removed', ref: 'store/main', id: 'abc/shot.png' },
 		held_line_heard: { type: 'held_line_heard', ref: 'store/main', id: 'h1' },
 		answer_permission: {
 			type: 'answer_permission',

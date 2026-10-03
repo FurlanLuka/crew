@@ -267,6 +267,16 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   Activate). For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
+- **Attached files.** The page uploads each file to `POST /api/attach?ref=` (`gateway/attach.ts`:
+  the raw body, its name in `x-file-name`, cookie and exact origin as `/api/crew`, read in a stream
+  that stops at 20 MB with or without a Content-Length). `sessions/attachments.ts` stores it by
+  content as `<sha16>/<safe name>` (images also get a `/media` thumbnail), and `attachment_added`
+  makes it a chip in `state.attachments` (not persisted, at most 10 a session). The developer's
+  words take a session's chips where they enter delivery (`send.ts` `takeWaiting`): into the queued
+  message, the follow-up fold, promote-all and `worker_send.attachments`; a cancel or take-back gives
+  them back, and words with files never go aside. The manager turns the ids into paths in the
+  message's note, one a line (`describeAttached`), so a replay keeps them, and `history.ts` reads
+  that note back as the line's files.
 - **No English patterns over what the developer means.** A guard that reads the developer's words
   (consent, take-back, misroute, mute, listening, a stop, words for a session not on screen, "For
   X?") asks the judge, after
@@ -288,6 +298,10 @@ socket. `voiceos remote attach` bridges an SSH login to it, and `crew voice _att
 - A reconnect is a snapshot the main reconciles (`resync.ts`), with one recap line, and never an
   event replay. Effects not yet acknowledged ride in the next hello and are applied once.
 - `link-state.ts` turns an SSH exit into the reason the machine card shows.
+- An attached file reaches a remote ahead of the words that carry it: `link.ts` sends it as
+  `attachment_chunk` effects of 256 KB through the same outbox (in order, resent on a reconnect),
+  once per file per run, and the host's manager puts it together under `remote/attachments/`
+  (`writeChunk`, a file already there kept as it is).
 - A remote on another release refuses the main. When the remote is behind, the main runs `crew update`
   there over SSH (`ssh.ts` `updateRemoteCrew`, `versions.ts` `decideVersionFix`), once per remote
   version per run, and reconnects; the daemon switches release on that connect, at once. A newer
@@ -353,12 +367,13 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew server notes`). |
 | `media/` | Images by content hash, swept after 30 days. |
+| `attachments/` | Files the developer attached, `<sha16>/<name>`, swept after 30 days. |
 | `machines.json` | Other machines (crew writes it). |
 | `discord.json`, `discord-status.json`, `discord-mode.json` | The Discord voice channel: its setup (crew writes it), whether Voice OS is in it, and the listening mode there. |
 | `logs/voiceos.log` | The log (`crew server logs`). It contains what the developer said. Rotated at 20 MB into `voiceos.log.1` … `.5`, newest first (`log.ts`); `ts` stays the first key of each line, since crew compares it before decoding. |
 | `logs/debug-notes.jsonl` | Debug notes, each with a state snapshot (`memory/debug-notes.ts`, `crew server debug-notes`). Never rotated. |
 | `debug/` | WAVs, only with `VOICEOS_DEBUG_AUDIO=1`. |
-| `remote/` | A remote daemon's own registry, media, sockets (`remote.sock` for the link, `query.sock` for crew's queries), `daemon.json` and log (rotated the same way). |
+| `remote/` | A remote daemon's own registry, media, attachments, sockets (`remote.sock` for the link, `query.sock` for crew's queries), `daemon.json` and log (rotated the same way). |
 
 ## Develop and test
 

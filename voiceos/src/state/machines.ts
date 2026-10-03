@@ -273,7 +273,15 @@ export const reduceMachine = (
 			);
 
 			return {
-				state: removed.state,
+				// Files waiting on its sessions go with them.
+				state: {
+					...removed.state,
+					attachments: Object.fromEntries(
+						Object.entries(removed.state.attachments).filter(
+							([ref]) => machineOf(ref) !== input.id,
+						),
+					),
+				},
 				effects: [
 					...removed.effects,
 					...(queued.length > 0

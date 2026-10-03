@@ -8,6 +8,7 @@ import type { CrewAdapter, CrewRunner } from '../crew/adapter.js';
 import { DevWatch, type DevSay } from '../dev/watch.js';
 import { createLogger } from '../log.js';
 import { storeMediaBytes } from '../sessions/media.js';
+import { readAttachmentBytes } from '../sessions/attachments.js';
 import type { SessionManager } from '../sessions/manager.js';
 import { createSetupWorktree } from '../sessions/setup-session.js';
 import { isMachineReachable, toMachineConfigs } from '../shared/machines.js';
@@ -29,6 +30,7 @@ export interface CockpitMachinesOptions {
 	voiceDir: string;
 	home: string;
 	mediaDir: string;
+	attachmentsDir: string;
 	crew: CrewAdapter;
 	runCrew: CrewRunner;
 	manager: SessionManager;
@@ -81,6 +83,7 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		getState: () => store.state,
 		dispatch: (input) => store.dispatch(input),
 		storeMedia: (name, bytes) => storeMediaBytes({ name, bytes, dir: options.mediaDir }),
+		readAttachment: (id) => readAttachmentBytes(options.attachmentsDir, id),
 		say: options.say,
 		runLocalCrew: options.runCrew,
 		handleLocal: options.manager.handle,

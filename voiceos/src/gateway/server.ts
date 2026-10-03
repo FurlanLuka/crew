@@ -4,6 +4,7 @@ import type { Store } from '../state/store.js';
 import { createLogger } from '../log.js';
 import { isAuthorized, createSessionCookie, areTokensEqual, checkRequest } from './auth.js';
 import { handleCrewRequest, type RunSetupCommand } from '../crew/api.js';
+import { handleAttachRequest, type AttachFile } from './attach.js';
 import { parseClientMessage } from './validate.js';
 import type { MediaFile } from '../sessions/media.js';
 
@@ -30,6 +31,8 @@ export interface GatewayOptions {
 	readMedia?: (name: string) => MediaFile;
 	// Set up's commands (POST /api/crew); tests pass a fake. Without it the route answers 503.
 	runCrew?: RunSetupCommand;
+	// A file attached on a session's page (POST /api/attach). Without it the route answers 503.
+	attachFile?: AttachFile;
 	development?: boolean;
 }
 
@@ -86,6 +89,20 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 					origins,
 					isAuthorized: isAuthorized(request, token),
 					runCrew,
+				});
+			},
+			'/api/attach': (request: Request) => {
+				const { attachFile } = options;
+
+				if (!attachFile) {
+					return createTextResponse(503, 'attachments are not available here');
+				}
+
+				return handleAttachRequest({
+					request,
+					origins,
+					isAuthorized: isAuthorized(request, token),
+					attachFile,
 				});
 			},
 			'/healthz': () => Response.json({ ok: true, ...options.readHealth() }),

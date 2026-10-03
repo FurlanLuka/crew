@@ -31,6 +31,7 @@ const actionSchema = z.discriminatedUnion('type', [
 		answersOffer: z.literal(true).optional(),
 	}),
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
+	z.object({ type: z.literal('attachment_removed'), ref: refSchema, id: z.string().max(200) }),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({
 		type: z.literal('answer_permission'),

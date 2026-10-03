@@ -215,6 +215,8 @@ export const continueFirstHalf = (
 				ref,
 				text,
 				note,
+				// A continuation's files were taken with its first half (send.ts).
+				attachments: undefined,
 				stamped,
 				isOwed: input.ack?.kind !== 'question',
 			});

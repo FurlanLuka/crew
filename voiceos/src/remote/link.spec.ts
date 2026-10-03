@@ -12,6 +12,7 @@ import { createFakeQuery } from '../../test/support/fake-query.js';
 import { createNetwork, until } from '../../test/support/link.js';
 import { worktree } from '../../test/support/reduce.js';
 import { isActive } from '../shared/active.js';
+import { describeAttached, readAttachmentBytes, storeAttachment } from '../sessions/attachments.js';
 import type { WorktreeInfo } from '../shared/protocol.js';
 import { RemoteHost } from './host.js';
 import { MachineLinks } from './links.js';
@@ -35,9 +36,10 @@ interface HostOptions {
 	version?: string;
 	worktrees?: WorktreeInfo[];
 	runCrew?: (args: string[], options?: CrewRunOptions) => Promise<CrewRunResult>;
+	attachmentsDir?: string;
 }
 
-const startHost = ({ version = 'test', runCrew, worktrees }: HostOptions = {}) => {
+const startHost = ({ version = 'test', runCrew, worktrees, attachmentsDir }: HostOptions = {}) => {
 	const fake = createFakeQuery({ askOn: '[ask]' });
 	const registryFile = join(mkdtempSync(join(tmpdir(), 'voiceos-remote-')), 'sessions.json');
 	let manager: SessionManager | null = null;
@@ -53,6 +55,7 @@ const startHost = ({ version = 'test', runCrew, worktrees }: HostOptions = {}) =
 				home: '/h',
 				fetchOrientation: async () => '',
 				runQuery: fake.runQuery,
+				...(attachmentsDir ? { attachmentsDir } : {}),
 			});
 
 			return manager;
@@ -86,6 +89,7 @@ interface MainOptions {
 	updateRemote?: UpdateRemote;
 	// The active set saved by an earlier run, loaded at boot as app.ts does.
 	active?: string[];
+	readAttachment?: (id: string) => Buffer | null;
 }
 
 const startMain = ({
@@ -98,6 +102,7 @@ const startMain = ({
 		throw new Error('no update expected');
 	},
 	active = [],
+	readAttachment,
 }: MainOptions) => {
 	const store = new Store();
 	const said: string[] = [];
@@ -113,6 +118,7 @@ const startMain = ({
 		getState: () => store.state,
 		dispatch: (input) => store.dispatch(input),
 		storeMedia: () => true,
+		...(readAttachment ? { readAttachment } : {}),
 		say: (text) => said.push(text),
 		runLocalCrew: async () => ({ code: 0, stdout: '', stderr: '' }),
 		handleLocal: () => undefined,
@@ -892,5 +898,96 @@ describe('a line from the remote that does not parse', () => {
 			stdout: 'still here',
 		});
 		expect(isConnected(store)).toBe(true);
+	});
+});
+
+describe('files attached to a remote session', () => {
+	const createFiles = () => {
+		const root = mkdtempSync(join(tmpdir(), 'voiceos-remote-att-'));
+		const mainDir = join(root, 'main');
+		const thereDir = join(root, 'there');
+		// Big enough for several pieces.
+		const bytes = Buffer.from(Array.from({ length: 700_000 }, (_, index) => index % 253));
+		const stored = storeAttachment({
+			bytes,
+			name: 'trace.bin',
+			mediaType: 'application/octet-stream',
+			dir: mainDir,
+			mediaDir: join(root, 'media'),
+		});
+
+		if (!stored.ok) {
+			throw new Error('not stored');
+		}
+
+		let reads = 0;
+
+		const readAttachment = (id: string) => {
+			reads++;
+
+			return readAttachmentBytes(mainDir, id);
+		};
+
+		return { attachment: stored.attachment, bytes, thereDir, readAttachment, reads: () => reads };
+	};
+
+	const sendWithFile = async (cutAt?: (frames: number) => number) => {
+		const files = createFiles();
+		const { host, fake } = startHost({ attachmentsDir: files.thereDir });
+
+		await host.refreshWorktrees();
+
+		const network = createNetwork(host);
+		const { store } = startMain({ open: network.open, readAttachment: files.readAttachment });
+
+		await actWhenConnected(store, () => store.dispatch({ type: 'activate', ref: REF }), 'start');
+		await until(() => store.state.sessions[REF]?.status === 'idle', 'idle');
+
+		const before = network.frames();
+		store.dispatch({ type: 'attachment_added', ref: REF, attachment: files.attachment });
+		store.dispatch({ type: 'send', ref: REF, text: 'why does this fail?' });
+
+		if (cutAt) {
+			await until(() => network.frames() >= cutAt(before), 'mid-transfer');
+			network.cut();
+		}
+
+		await until(
+			() => fake.sent.some((text) => text.endsWith('why does this fail?')),
+			'the words there',
+		);
+
+		return { files, fake, store };
+	};
+
+	it('the pieces go ahead of the words; Claude there reads the file at its own path', async () => {
+		const { files, fake } = await sendWithFile();
+		const path = join(files.thereDir, ...files.attachment.id.split('/'));
+
+		expect(fake.sent.at(-1)).toBe(`${describeAttached([path])}\n\nwhy does this fail?`);
+		expect(readAttachmentBytes(files.thereDir, files.attachment.id)?.equals(files.bytes)).toBe(
+			true,
+		);
+	});
+
+	it('the link cut mid-transfer → resent on the reconnect, the file whole, the words once', async () => {
+		const { files, fake } = await sendWithFile((before) => before + 2);
+
+		expect(readAttachmentBytes(files.thereDir, files.attachment.id)?.equals(files.bytes)).toBe(
+			true,
+		);
+		expect(fake.sent.filter((text) => text.endsWith('why does this fail?'))).toHaveLength(1);
+	});
+
+	it('the same file with later words → not sent across again', async () => {
+		const { files, fake, store } = await sendWithFile();
+
+		await until(() => store.state.sessions[REF]?.status === 'idle', 'idle again');
+		store.dispatch({ type: 'attachment_added', ref: REF, attachment: files.attachment });
+		store.dispatch({ type: 'send', ref: REF, text: 'and now?' });
+		await until(() => fake.sent.some((text) => text.endsWith('and now?')), 'the second words');
+
+		expect(files.reads()).toBe(1);
+		expect(fake.sent.at(-1)).toContain(files.attachment.name);
 	});
 });

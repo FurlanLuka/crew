@@ -1,4 +1,11 @@
-import type { Observation, Session, Stamped, State, StreamItem } from '../shared/protocol.js';
+import type {
+	Attachment,
+	Observation,
+	Session,
+	Stamped,
+	State,
+	StreamItem,
+} from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { readShownText } from '../shared/spoken-tags.js';
 import { toSpokenName } from '../shared/spoken.js';
@@ -144,6 +151,8 @@ export interface SendNowParams {
 	ref: string;
 	text: string;
 	note?: string;
+	// The files that go with these words: given explicitly, so Voice OS's own sends never take any.
+	attachments?: Attachment[];
 	isSpoken?: boolean;
 	itemId: string;
 	at: number;
@@ -165,6 +174,7 @@ export const sendNow = ({
 	ref,
 	text,
 	note,
+	attachments,
 	isSpoken = false,
 	itemId,
 	at,
@@ -188,11 +198,29 @@ export const sendNow = ({
 					-REQUESTS_KEPT,
 				),
 			},
-			{ id: itemId, at, kind: 'user', text, ...(isApproval ? { isApproval: true as const } : {}) },
+			{
+				id: itemId,
+				at,
+				kind: 'user',
+				text,
+				...(isApproval ? { isApproval: true as const } : {}),
+				...(attachments?.length ? { attachments } : {}),
+			},
 		),
 	);
 
-	return { state: next, effects: [{ type: 'worker_send', ref, text, ...(note ? { note } : {}) }] };
+	return {
+		state: next,
+		effects: [
+			{
+				type: 'worker_send',
+				ref,
+				text,
+				...(note ? { note } : {}),
+				...(attachments?.length ? { attachments } : {}),
+			},
+		],
+	};
 };
 
 // Only an active session (or a setup session, for Set up's chat) runs: words sent to an inactive
@@ -231,6 +259,7 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		ref,
 		text: head.text,
 		note: head.note,
+		attachments: head.attachments,
 		isSpoken: head.isFollowUp === true || head.isSpoken === true,
 		reportOwed: head.reportOwed === true,
 		sendId: head.id,

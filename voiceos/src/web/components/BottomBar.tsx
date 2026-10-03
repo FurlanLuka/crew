@@ -8,7 +8,9 @@ import { readScreenAsk } from '../moments.js';
 import type { ListeningMode } from '../../shared/protocol.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
+import { useAttachments } from '../use-attachments.js';
 import { AskDock } from './AskDock.js';
+import { AttachmentChips } from './AttachmentChips.js';
 import { Composer } from './Composer.js';
 import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
@@ -77,6 +79,12 @@ export const BottomBar = ({
 			: 'Voice via Discord, but not hearing you: pick a mode to try again'
 		: '';
 	const viewed = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
+	const attachments = useAttachments({
+		state,
+		sessionRef: viewed?.ref ?? null,
+		send,
+		isListeningOnPage: true,
+	});
 	const ask = readScreenAsk(state);
 	const dispatch = (action: Action) => send({ type: 'action', action });
 
@@ -86,6 +94,7 @@ export const BottomBar = ({
 			<MomentsRow state={state} dispatch={dispatch} />
 			{viewed && <QueueList session={viewed} dispatch={dispatch} />}
 			<LastSpokenLine state={state} />
+			<AttachmentChips attachments={attachments} />
 			<div className="vo-composer">
 				{isVoiceOff ? (
 					<VoiceToggle isOff dispatch={dispatch} className="vo-mic" />
@@ -145,6 +154,7 @@ export const BottomBar = ({
 					isAwake={isAwake}
 					isOnDiscord={discord !== null}
 					keptDictation={keptDictation}
+					attachments={attachments}
 					send={send}
 				/>
 				{!discord && !isVoiceOff && (

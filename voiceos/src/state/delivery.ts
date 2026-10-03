@@ -1,5 +1,6 @@
 import {
 	type Action,
+	type Attachment,
 	FOLLOW_UP_MS,
 	type QueuedMessage,
 	type Session,
@@ -21,6 +22,7 @@ import { composeAckText, type SendAck, type SendTiming } from '../shared/ack.js'
 import { canRun } from '../shared/active.js';
 import { openRedirect } from './redirect.js';
 import { clearHeldLine } from './held-lines.js';
+import { joinAttachments } from './attachments.js';
 
 export const joinNotes = (
 	carried: string | undefined,
@@ -96,6 +98,7 @@ interface QueueFollowUpParams {
 	ref: string;
 	text: string;
 	note: string | undefined;
+	attachments: Attachment[] | undefined;
 	stamped: Stamped;
 	isOwed: boolean;
 }
@@ -110,6 +113,7 @@ interface FoldIntoTurnParams {
 	ref: string;
 	text: string;
 	note: string | undefined;
+	attachments: Attachment[] | undefined;
 	stamped: Stamped;
 	isOwed: boolean;
 }
@@ -119,6 +123,7 @@ const foldIntoTurn = ({
 	ref,
 	text,
 	note,
+	attachments,
 	stamped,
 	isOwed,
 }: FoldIntoTurnParams): ReducerResult =>
@@ -127,6 +132,7 @@ const foldIntoTurn = ({
 		ref,
 		text,
 		note,
+		attachments,
 		isSpoken: true,
 		itemId: stamped.id,
 		at: stamped.at,
@@ -138,6 +144,7 @@ const queueFollowUp = ({
 	ref,
 	text,
 	note,
+	attachments,
 	stamped,
 	isOwed,
 }: QueueFollowUpParams): ReducerResult => {
@@ -145,16 +152,18 @@ const queueFollowUp = ({
 	const session = state.sessions[ref];
 
 	if (hasRunningAgents(session)) {
-		return foldIntoTurn({ state, ref, text, note, stamped, isOwed });
+		return foldIntoTurn({ state, ref, text, note, attachments, stamped, isOwed });
 	}
 
 	const head = session?.queue[0];
 
 	if (session && head && hasFollowUpWaiting(session)) {
+		const mergedAttachments = joinAttachments(head.attachments, attachments);
 		const mergedHead = {
 			...head,
 			text: `${head.text} ${text}`,
 			...(head.note || note ? { note: joinNotes(head.note, note) } : {}),
+			...(mergedAttachments ? { attachments: mergedAttachments } : {}),
 			...(head.reportOwed || isOwed ? { reportOwed: true as const } : {}),
 		};
 
@@ -178,12 +187,17 @@ const queueFollowUp = ({
 	// The cut-off turn is never narrated, so what it owed is reported with the follow-up.
 	const isReportOwed =
 		session?.reportOwed || spokenEarlier.some((message) => message.reportOwed) || isOwed;
+	const carriedAttachments = [
+		...spokenEarlier.map((message) => message.attachments),
+		attachments,
+	].reduce(joinAttachments, undefined);
 	const followUpMessage: QueuedMessage = {
 		id: firstSpoken?.id ?? stamped.id,
 		text: [...spokenEarlier.map((message) => message.text), text].join(' '),
 		at: firstSpoken?.at ?? stamped.at,
 		isFollowUp: true,
 		...(carriedNote ? { note: carriedNote } : {}),
+		...(carriedAttachments ? { attachments: carriedAttachments } : {}),
 		...(isReportOwed ? { reportOwed: true as const } : {}),
 	};
 
@@ -203,6 +217,8 @@ export interface DeliverSendParams {
 	ref: string;
 	text: string;
 	note?: string;
+	// The developer's attached files that go with these words.
+	attachments?: Attachment[];
 	isSpoken: boolean;
 	stamped: Stamped;
 	// A stopped session is started for it; false only queues it (a question set aside earlier).
@@ -232,6 +248,7 @@ const deliverWords = ({
 	ref,
 	text,
 	note,
+	attachments,
 	isSpoken,
 	stamped,
 	shouldStart = true,
@@ -254,6 +271,7 @@ const deliverWords = ({
 				ref,
 				text,
 				note,
+				attachments,
 				isSpoken,
 				itemId: stamped.id,
 				at: stamped.at,
@@ -269,19 +287,25 @@ const deliverWords = ({
 	if (isSpoken && (hasWaitingFollowUp || isFollowUp(session, stamped.at))) {
 		const { effects, isOwed } = decideAck({ ref, ack, timing: 'now' });
 
-		return withEffects(queueFollowUp({ state, ref, text, note, stamped, isOwed }), effects);
+		return withEffects(
+			queueFollowUp({ state, ref, text, note, attachments, stamped, isOwed }),
+			effects,
+		);
 	}
 
 	// The developer already said to go now: no switch question, the running turn is replaced.
 	if (isNow && session.status === 'running') {
 		const { effects, isOwed } = decideAck({ ref, ack, timing: 'now' });
 
-		return withEffects(replaceRunning({ state, ref, text, note, stamped, isOwed }), effects);
+		return withEffects(
+			replaceRunning({ state, ref, text, note, attachments, stamped, isOwed }),
+			effects,
+		);
 	}
 
 	// Changing what a working session is doing is the developer's call: they are asked first.
 	if (ack?.kind === 'redirect' && session.status === 'running') {
-		return openRedirect({ state, ref, text, note, stamped });
+		return openRedirect({ state, ref, text, note, attachments, stamped });
 	}
 
 	const isStarting = session.status === 'stopped' || session.status === 'starting';
@@ -303,6 +327,7 @@ const deliverWords = ({
 		text,
 		at: stamped.at,
 		...(note ? { note } : {}),
+		...(attachments?.length ? { attachments } : {}),
 		...(isSpoken && isStarting ? { isSpoken: true as const } : {}),
 		...(isOwed ? { reportOwed: true as const } : {}),
 	};
@@ -323,6 +348,7 @@ interface ReplaceRunningParams {
 	ref: string;
 	text: string;
 	note: string | undefined;
+	attachments: Attachment[] | undefined;
 	stamped: Stamped;
 	isOwed: boolean;
 }
@@ -332,6 +358,7 @@ export const replaceRunning = ({
 	ref,
 	text,
 	note,
+	attachments,
 	stamped,
 	isOwed,
 }: ReplaceRunningParams): ReducerResult => {
@@ -344,7 +371,7 @@ export const replaceRunning = ({
 	}
 
 	if (hasRunningAgents(session)) {
-		return foldIntoTurn({ state, ref, text, note, stamped, isOwed });
+		return foldIntoTurn({ state, ref, text, note, attachments, stamped, isOwed });
 	}
 
 	const message: QueuedMessage = {
@@ -353,6 +380,7 @@ export const replaceRunning = ({
 		at: stamped.at,
 		isFollowUp: true,
 		...(note ? { note } : {}),
+		...(attachments?.length ? { attachments } : {}),
 		...(session.reportOwed || isOwed ? { reportOwed: true as const } : {}),
 	};
 
@@ -481,6 +509,7 @@ const sendFirst = ({ state, ref, message, stamped }: SendFirstParams): ReducerRe
 			ref,
 			text: message.text,
 			note: message.note,
+			attachments: message.attachments,
 			stamped: { ...stamped, id: message.id },
 			isOwed: true,
 		});
@@ -556,11 +585,15 @@ export const promoteAllQueued = ({
 	}
 
 	const note = waiting.map((message) => message.note).reduce(joinNotes, undefined);
+	const attachments = waiting
+		.map((message) => message.attachments)
+		.reduce(joinAttachments, undefined);
 	const merged: QueuedMessage = {
 		id: first.id,
 		text: waiting.map((message) => message.text).join('\n\n'),
 		at: first.at,
 		...(note ? { note } : {}),
+		...(attachments ? { attachments } : {}),
 		...(waiting.some((message) => message.reportOwed) ? { reportOwed: true as const } : {}),
 	};
 	const rest = updateSession(state, ref, (current) => ({

@@ -14,6 +14,7 @@ import { resolveClaudeBin, isCompiled } from '../sessions/claude-bin.js';
 import { loadTranscript, restoreHistory } from '../sessions/history.js';
 import { SessionManager } from '../sessions/manager.js';
 import { readMediaBytes } from '../sessions/media.js';
+import { sweepAttachments } from '../sessions/attachments.js';
 import { loadRegistry } from '../sessions/registry.js';
 import { SETUP_ORIENTATION, SETUP_REF, createSetupWorktree } from '../sessions/setup-session.js';
 import { VERSION } from '../version.js';
@@ -34,8 +35,11 @@ export interface RemotePaths {
 	daemonFile: string;
 	registryFile: string;
 	mediaDir: string;
+	attachmentsDir: string;
 	logFile: string;
 }
+
+const ATTACHMENTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Its own folder: this machine may also have been a main once, and the two must never share files.
 export const resolveRemotePaths = (voiceDir: string): RemotePaths => {
@@ -48,6 +52,7 @@ export const resolveRemotePaths = (voiceDir: string): RemotePaths => {
 		daemonFile: join(dir, 'daemon.json'),
 		registryFile: join(dir, 'sessions.json'),
 		mediaDir: join(dir, 'media'),
+		attachmentsDir: join(dir, 'attachments'),
 		logFile: join(dir, 'logs', 'voiceos-remote.log'),
 	};
 };
@@ -87,6 +92,17 @@ const serve = async (): Promise<void> => {
 		);
 	};
 
+	// Files the main sent ahead of a session's words; old ones go, as on the main.
+	const sweptAttachments = sweepAttachments({
+		dir: remote.attachmentsDir,
+		maxAgeMs: ATTACHMENTS_KEPT_MS,
+		now: Date.now(),
+	});
+
+	if (sweptAttachments > 0) {
+		log.info('old attachments removed', { count: sweptAttachments });
+	}
+
 	const listWorktrees = async () => [
 		createSetupWorktree(paths.home),
 		...(await crew.listWorktrees()),
@@ -101,6 +117,7 @@ const serve = async (): Promise<void> => {
 				registryFile: remote.registryFile,
 				home: paths.home,
 				mediaDir: remote.mediaDir,
+				attachmentsDir: remote.attachmentsDir,
 				claudeBin: claudeBin ?? undefined,
 				fetchOrientation: (ref) =>
 					ref === SETUP_REF ? Promise.resolve(SETUP_ORIENTATION) : crew.fetchOrientation(ref),

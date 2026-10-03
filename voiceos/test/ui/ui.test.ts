@@ -1,10 +1,15 @@
 // The real UI bundle and gateway, with a store the test drives instead of Claude workers and the
 // fake crew behind /api/crew. Voice OS's half; Set up's is setup.test.ts.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import index from '../../src/web/index.html';
 import { listAllowedOrigins } from '../../src/gateway/auth.js';
 import { startGateway, type Gateway } from '../../src/gateway/server.js';
+import { attachFileTo } from '../../src/gateway/attach.js';
+import { storeAttachment } from '../../src/sessions/attachments.js';
 import { configureLog } from '../../src/log.js';
 import type { Action, ClientMessage, WorktreeInfo } from '../../src/shared/protocol.js';
 import { isActive } from '../../src/shared/active.js';
@@ -75,10 +80,21 @@ const ensureIdle = async (ref: string): Promise<void> => {
 };
 
 const crew = createFakeCrew();
+const filesRoot = mkdtempSync(join(tmpdir(), 'voiceos-ui-files-'));
 
 const startServer = (port = 0): Gateway => {
 	return startGateway({
 		runCrew: crew.runCrew,
+		attachFile: attachFileTo({
+			readState: () => store.state,
+			dispatch: (observation) => store.dispatch(observation),
+			store: (file) =>
+				storeAttachment({
+					...file,
+					dir: join(filesRoot, 'attachments'),
+					mediaDir: join(filesRoot, 'media'),
+				}),
+		}),
 		store,
 		token: TOKEN,
 		port,
@@ -185,6 +201,7 @@ afterEach(() => {
 afterAll(async () => {
 	await browser?.close();
 	gateway?.stop();
+	rmSync(filesRoot, { recursive: true, force: true });
 });
 
 describe('voice os ui', () => {
@@ -2726,5 +2743,138 @@ describe('layout', () => {
 		}
 
 		store.dispatch({ type: 'worktrees', worktrees: listed });
+	}, 20_000);
+});
+
+describe('attaching files', () => {
+	const REF = 'store-front/main';
+	// The smallest valid PNG: a 1×1 transparent pixel.
+	const PNG_BASE64 =
+		'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+	const openSession = async (): Promise<SignedInTab> => {
+		await ensureIdle(REF);
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF } });
+
+		for (const attachment of store.state.attachments[REF] ?? []) {
+			store.dispatch({ type: 'attachment_removed', ref: REF, id: attachment.id });
+		}
+
+		return signIn();
+	};
+
+	// A paste or drop as the browser makes it: a DataTransfer holding the files.
+	const handOver = (
+		page: Page,
+		kind: 'paste' | 'drop',
+		files: { name: string; type: string; base64: string }[],
+	) =>
+		page.evaluate(
+			({ kind, files }) => {
+				const data = new DataTransfer();
+
+				for (const file of files) {
+					const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0));
+					data.items.add(new File([bytes], file.name, { type: file.type }));
+				}
+
+				const target = document.querySelector('textarea') ?? document.body;
+				const event =
+					kind === 'paste'
+						? new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+						: new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true });
+
+				target.dispatchEvent(event);
+			},
+			{ kind, files },
+		);
+
+	it('a pasted image → a thumbnail chip on every tab; ✕ takes it off', async () => {
+		const { context, page } = await openSession();
+		const other = await signIn();
+
+		await handOver(page, 'paste', [{ name: 'image.png', type: 'image/png', base64: PNG_BASE64 }]);
+		await page.locator('.att-chip.thumb img').waitFor({ timeout: 5000 });
+		await other.page.locator('.att-chip.thumb img').waitFor({ timeout: 5000 });
+		expect(store.state.attachments[REF]?.[0]).toMatchObject({ name: 'image.png', kind: 'image' });
+
+		await page.getByRole('button', { name: 'Remove image.png' }).click();
+		await waitUntil(() => !store.state.attachments[REF]);
+		await other.page.locator('.att-chip').waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+		await other.context.close();
+	}, 20_000);
+
+	it('a dropped file → a chip with its name and size, never its path in the box', async () => {
+		const { context, page } = await openSession();
+		const field = page.getByRole('textbox', { name: 'Say or type a command' });
+
+		await handOver(page, 'drop', [
+			{ name: 'trace, full.log', type: 'text/plain', base64: btoa('x'.repeat(2048)) },
+		]);
+		await page.locator('.att-chip', { hasText: 'trace, full.log' }).waitFor({ timeout: 5000 });
+		expect(await page.locator('.att-chip .att-size').first().textContent()).toBe('2 KB');
+		expect(await field.inputValue()).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('the paperclip picks files; Enter with no words sends "(attached)"', async () => {
+		const { context, page } = await openSession();
+		const chooser = page.waitForEvent('filechooser');
+
+		await page.getByRole('button', { name: 'Attach files' }).click();
+		await (await chooser).setFiles({
+			name: 'report.pdf',
+			mimeType: 'application/pdf',
+			buffer: Buffer.from('%PDF-1.4 report'),
+		});
+		await page.locator('.att-chip', { hasText: 'report.pdf' }).waitFor({ timeout: 5000 });
+
+		const before = received.length;
+		await page.getByRole('textbox', { name: 'Say or type a command' }).press('Enter');
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some((entry) => entry.message.type === 'utterance' && entry.message.text === '(attached)'),
+		);
+		await context.close();
+	}, 20_000);
+
+	it('words sent with files → the line shows them under it', async () => {
+		const { context, page } = await openSession();
+
+		await handOver(page, 'paste', [{ name: 'notes.txt', type: 'text/plain', base64: btoa('hi') }]);
+		await waitUntil(() => Boolean(store.state.attachments[REF]));
+		store.dispatch({ type: 'send', ref: REF, text: 'what is in this?' });
+
+		const line = page.locator('.line.user', { hasText: 'what is in this?' });
+		await line.locator('.att-chip', { hasText: 'notes.txt' }).waitFor({ timeout: 5000 });
+		await page.locator('.att-row:not(.sent)').waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('no session on screen → "Open a session to attach files." and nothing uploads', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const { context, page } = await signIn();
+
+		await handOver(page, 'drop', [{ name: 'a.txt', type: 'text/plain', base64: btoa('a') }]);
+		await page.getByText('Open a session to attach files.').waitFor({ timeout: 5000 });
+		expect(store.state.attachments).toEqual({});
+		await context.close();
+	}, 20_000);
+
+	it('a file over 20 MB → its chip says so; nothing is sent to the server', async () => {
+		const { context, page } = await openSession();
+
+		await page.evaluate(() => {
+			const data = new DataTransfer();
+			data.items.add(new File([new Uint8Array(20 * 1024 * 1024 + 1)], 'huge.bin'));
+			document.body.dispatchEvent(
+				new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }),
+			);
+		});
+		await page.locator('.att-chip.refused', { hasText: 'over 20 MB' }).waitFor({ timeout: 5000 });
+		expect(store.state.attachments[REF]).toBeUndefined();
+		await context.close();
 	}, 20_000);
 });

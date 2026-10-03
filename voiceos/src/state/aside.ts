@@ -124,7 +124,14 @@ export const reduceAside = (
 
 	// The question changes what the session is doing: that is the developer's call, asked like a redirect.
 	if (input.isChangingWork && state.sessions[input.ref]?.status === 'running') {
-		return openRedirect({ state: settled, ref: input.ref, text: question, note, stamped });
+		return openRedirect({
+			state: settled,
+			ref: input.ref,
+			text: question,
+			note,
+			attachments: undefined,
+			stamped,
+		});
 	}
 
 	// Its turn may have ended while the fork thought: then the question goes to it at once.
