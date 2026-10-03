@@ -949,7 +949,7 @@
 .vo-panels .row a.el {
 	color: #fff;
 }
-/* A dev server's link: an icon at the row's end, the URL in its tooltip. */
+/* A dev server's logs and link: icons at the row's end (logs first), the URL in the link's tooltip. */
 .vo-panels .row .open-link {
 	flex: none;
 	display: inline-grid;
@@ -959,6 +959,15 @@
 	margin-left: auto;
 	border-radius: 6px;
 	color: var(--label-2);
+}
+.vo-panels .row .logs-link {
+	padding: 0;
+	border: 0;
+	background: none;
+	cursor: pointer;
+}
+.vo-panels .row .logs-link + .open-link {
+	margin-left: 0;
 }
 .vo-panels .row .open-link svg {
 	width: 14px;
@@ -1815,6 +1824,25 @@ button.line.opens:hover .opens-hint {
 	justify-content: flex-end;
 	padding: 12px 24px 18px;
 	border-top: 1px solid var(--sep);
+}
+/* A dev server's log: its lines as the terminal printed them, the controls in one row. */
+.dl-lines {
+	gap: 0;
+	font: 12.5px / 1.7 var(--mono);
+	color: var(--label-2);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.dl-actions {
+	gap: 8px;
+	align-items: center;
+}
+.dl-gap {
+	flex: 1;
+}
+.dl-tabs {
+	justify-self: start;
+	margin-top: 8px;
 }
 
 /* Voice off and on: the word "voice", struck through while it is off. */

@@ -1,5 +1,7 @@
+import { useRef, useState } from 'react';
 import { type DevOffer, type DevServer, isOfferFresh } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
+import { DevLogsDialog } from './DevLogsDialog.js';
 
 const DOT_BY_SERVER_STATE: Record<DevServer['state'], string> = {
 	running: 'good',
@@ -22,6 +24,21 @@ const OpenLink = ({ name, url }: { name: string; url: string }) => {
 	);
 };
 
+// A server's log, beside its link: the same size, the first of the two at the row's end.
+const LogsButton = ({ name, onOpen }: { name: string; onOpen: () => void }) => (
+	<button
+		type="button"
+		className="open-link logs-link"
+		aria-label={`${name} logs`}
+		title="Logs"
+		onClick={onOpen}
+	>
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path d="M3 4h10M3 8h10M3 12h6" />
+		</svg>
+	</button>
+);
+
 interface DevPanelProps {
 	worktree: string;
 	servers: DevServer[];
@@ -32,6 +49,14 @@ interface DevPanelProps {
 
 export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: DevPanelProps) => {
 	const isOfferShown = isOfferFresh(offer, Date.now()) && offer?.ref === worktree;
+	// The server whose log opens first, by name, so the window lives through every status from crew.
+	const [logsOf, setLogsOf] = useState<string | null>(null);
+	// A restart empties the list for a moment: the open window keeps the servers it knew meanwhile.
+	const known = useRef(servers);
+
+	if (servers.length > 0) {
+		known.current = servers;
+	}
 
 	return (
 		<section className="vo-panel panel" aria-label="dev servers">
@@ -48,9 +73,19 @@ export const DevPanel = ({ worktree, servers, isStarting, offer, dispatch }: Dev
 					<i className={`dot ${DOT_BY_SERVER_STATE[server.state]}`} />
 					<span className="c-ink">{server.name}</span>
 					{server.state !== 'running' && <span className="c-crit">{server.state}</span>}
+					<LogsButton name={server.name} onOpen={() => setLogsOf(server.name)} />
 					{server.url && <OpenLink name={server.name} url={server.url} />}
 				</div>
 			))}
+			{logsOf && known.current.length > 0 && (
+				<DevLogsDialog
+					worktree={worktree}
+					servers={known.current}
+					first={logsOf}
+					dispatch={dispatch}
+					onClose={() => setLogsOf(null)}
+				/>
+			)}
 			<div className="btns">
 				{servers.length === 0 && !isStarting && (
 					<button

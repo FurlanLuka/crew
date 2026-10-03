@@ -397,6 +397,114 @@ describe('voice os ui', () => {
 		}
 	}, 20_000);
 
+	it("a dev server's logs from its row: crew's lines, a tab per server, Copy, crew's refusal; following stops when it closes", async () => {
+		store.dispatch({
+			type: 'dev_servers',
+			ref: 'store-front/main',
+			isSettled: true,
+			servers: [
+				{ name: 'web', port: 4120, url: 'http://localhost:4120', state: 'running', detail: null },
+				{ name: 'api', port: 4121, url: null, state: 'died', detail: null },
+			],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const view = store.state.view;
+		const { context, page } = await signIn();
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		const reads = () => crew.calls.filter((call) => call.command.type === 'dev_logs');
+		crew.setDevLogs('worker', { refuse: 'no dev server worker in store-front/main' });
+		// Released in finally too: a failure while web is held must not hang the tests after it.
+		let release = () => {};
+
+		try {
+			await page.getByRole('button', { name: 'api logs' }).click();
+			const dialog = page.getByRole('dialog', { name: 'dev server logs' });
+			await dialog.getByText('$ api').waitFor({ timeout: 5000 });
+			expect(reads().at(-1)).toEqual({
+				machine: 'local',
+				command: { type: 'dev_logs', ref: 'store-front/main', server: 'api', lines: 200 },
+			});
+
+			await dialog.getByRole('button', { name: 'Copy' }).click();
+			await dialog.getByRole('button', { name: 'Copied' }).waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+				'$ api\nlistening\nGET / 200 4 ms',
+			);
+
+			// The other server is a tab away. While its first read is still out, api's lines are not
+			// shown under it.
+			release = crew.holdDevLogs('web');
+			await dialog.getByRole('tab', { name: 'web' }).click();
+			await dialog.getByText('Reading the log…').waitFor({ timeout: 5000 });
+			expect(await dialog.getByText('$ api').count()).toBe(0);
+			release();
+			await dialog.getByText('$ web').waitFor({ timeout: 5000 });
+
+			// A restart empties crew's list for a moment: the window stays, with both tabs.
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: false,
+				servers: [],
+			});
+			await Bun.sleep(300);
+			expect(await dialog.getByRole('tab').allInnerTexts()).toEqual(['web', 'api']);
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: true,
+				servers: [
+					{ name: 'web', port: 4120, url: 'http://localhost:4120', state: 'running', detail: null },
+					{ name: 'api', port: 4121, url: null, state: 'died', detail: null },
+				],
+			});
+
+			// Following reads again every 2 s; closed, nothing more is asked.
+			const followed = reads().length;
+			await waitUntil(() => reads().length > followed, 4000);
+			await page.keyboard.press('Escape');
+			await dialog.waitFor({ state: 'detached', timeout: 5000 });
+			expect(store.state.view).toEqual(view);
+			const closed = reads().length;
+			await Bun.sleep(2500);
+			expect(reads().length).toBe(closed);
+
+			// A server that has printed nothing yet says so; there is nothing to copy.
+			crew.setDevLogs('api', []);
+			await page.getByRole('button', { name: 'api logs' }).click();
+			await dialog.getByText('No output yet.').waitFor({ timeout: 5000 });
+			expect(await dialog.getByRole('button', { name: 'Copy' }).isDisabled()).toBe(true);
+			await dialog.getByRole('button', { name: 'Close' }).click();
+			await dialog.waitFor({ state: 'detached', timeout: 5000 });
+
+			// crew's refusal says why; paused, it is not asked again.
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: true,
+				servers: [{ name: 'worker', port: 0, url: null, state: 'died', detail: null }],
+			});
+			await page.getByRole('button', { name: 'worker logs' }).click();
+			await dialog.getByText('no dev server worker in store-front/main').waitFor({ timeout: 5000 });
+			expect(await dialog.getByRole('button', { name: 'Copy' }).isDisabled()).toBe(true);
+			await dialog.getByRole('button', { name: 'Pause' }).click();
+			const paused = reads().length;
+			await Bun.sleep(2500);
+			expect(reads().length).toBe(paused);
+		} finally {
+			release();
+			crew.setDevLogs('worker', null);
+			crew.setDevLogs('api', null);
+			store.dispatch({
+				type: 'dev_servers',
+				ref: 'store-front/main',
+				isSettled: true,
+				servers: [],
+			});
+			await context.close();
+		}
+	}, 25_000);
+
 	it('typed command → sent as an utterance; the chip shows this session for plain text, Voice OS when addressed to another', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -2278,6 +2386,49 @@ describe('active', () => {
 		await empty.getByRole('button', { name: 'Activate a worktree' }).click();
 		await waitUntil(() => store.state.view.kind === 'activate');
 		await context.close();
+	}, 20_000);
+
+	it("another machine's dev server log is read there, and Restart restarts that machine's worktree", async () => {
+		store.dispatch({ type: 'activate', ref: REMOTE });
+		store.dispatch({
+			type: 'dev_servers',
+			ref: REMOTE,
+			isSettled: true,
+			servers: [{ name: 'api', port: 4121, url: null, state: 'died', detail: null }],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REMOTE } });
+		const { context, page } = await signIn();
+
+		try {
+			const mark = received.length;
+			await page.getByRole('button', { name: 'api logs' }).click();
+			await waitUntil(() =>
+				crew.calls.some(
+					(call) =>
+						call.machine === 'vm1' &&
+						call.command.type === 'dev_logs' &&
+						call.command.ref === 'api/main',
+				),
+			);
+			await page
+				.getByRole('dialog', { name: 'dev server logs' })
+				.getByRole('button', { name: 'Restart dev servers' })
+				.click();
+			await waitUntil(() =>
+				received
+					.slice(mark)
+					.some(
+						(entry) =>
+							entry.message.type === 'action' &&
+							entry.message.action.type === 'dev_restart' &&
+							entry.message.action.ref === REMOTE,
+					),
+			);
+		} finally {
+			store.dispatch({ type: 'dev_servers', ref: REMOTE, isSettled: true, servers: [] });
+			store.dispatch({ type: 'deactivate', ref: REMOTE });
+			await context.close();
+		}
 	}, 20_000);
 
 	it('Home → a machine card opens its page; New → a machine opens its page too; its New session starts on it', async () => {

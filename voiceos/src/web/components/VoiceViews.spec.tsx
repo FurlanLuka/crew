@@ -9,6 +9,7 @@ import { ActiveView, sortForHome } from './ActiveView.js';
 import { listRecentFolders, NewSessionDialog } from './NewSessionDialog.js';
 import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
+import { DevLogsDialog, isErrorLine } from './DevLogsDialog.js';
 import { DevPanel } from './DevPanel.js';
 import { MomentsRow } from './MomentsRow.js';
 import { SessionStateRow } from './SessionStateRow.js';
@@ -563,6 +564,65 @@ describe("the session's Dev servers panel", () => {
 		expect(html).toContain('not running');
 		expect(html).toContain('Start · “start dev servers”');
 		expect(html).not.toContain('Set up');
+	});
+});
+
+describe('dev server logs', () => {
+	const SERVERS = [
+		{ name: 'web', port: 4120, url: 'http://localhost:4120', state: 'running', detail: null },
+		{ name: 'api', port: 4121, url: null, state: 'died', detail: null },
+	] as const;
+
+	it('every server row has its logs button, before the open link when there is one', () => {
+		const html = renderToStaticMarkup(
+			<DevPanel
+				worktree="store-front/main"
+				servers={[...SERVERS]}
+				isStarting={false}
+				offer={null}
+				dispatch={noop}
+			/>,
+		);
+
+		expect(html).toMatch(/data-server="web"[\s\S]*?aria-label="web logs"[\s\S]*?Open web/);
+		expect(html).toMatch(/data-server="api"[\s\S]*?aria-label="api logs"/);
+	});
+
+	it('the window says whose log it is, its state and where it listens', () => {
+		const html = renderToStaticMarkup(
+			<DevLogsDialog
+				worktree="vm1:store-front/main"
+				servers={[...SERVERS]}
+				first="api"
+				dispatch={noop}
+				onClose={noop}
+			/>,
+		);
+
+		expect(html).toContain('dev server · vm1:store-front/main');
+		expect(html).toMatch(/api <span class="c-crit">· died<\/span>/);
+		expect(html).toContain('port 4121 · following, new lines as they come');
+		expect(html).toContain('>Restart dev servers<');
+		// A tab per server, the one clicked chosen.
+		expect(html).toMatch(/aria-selected="false"><span class="dot ok"><\/span>web</);
+		expect(html).toMatch(/aria-selected="true"><span class="dot ask"><\/span>api</);
+	});
+
+	it('error lines stand out; ordinary ones do not', () => {
+		for (const line of [
+			'Traceback (most recent call last):',
+			'ERROR:    Application startup failed.',
+			'GET /api/cart 502 (proxy: connect ECONNREFUSED 127.0.0.1:4121)',
+			'panic: runtime error: index out of range',
+			"KeyError: 'DATABASE_URL'",
+			'TypeError: cart is undefined',
+		]) {
+			expect(isErrorLine(line)).toBe(true);
+		}
+
+		for (const line of ['ready on http://localhost:3000', 'GET / 200 4 ms', 'errors=0 ok']) {
+			expect(isErrorLine(line)).toBe(false);
+		}
 	});
 });
 
