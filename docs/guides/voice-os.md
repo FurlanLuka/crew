@@ -42,9 +42,8 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 
 ## Languages
 
-You can talk to Voice OS in any language, and mix them. Choose the ones you speak under
-**Languages you speak** in the listening menu (the round button next to the mic). Soniox is told
-to expect them; English is the default.
+You can talk to Voice OS in any language, and mix them, even within a sentence. There is nothing to
+pick: Soniox works out which language you're speaking as you speak.
 
 **Works in any language:** where your words go, answers to questions and permissions ("ja",
 "ne", "sí"), approvals and refusals, taking words back ("vergiss das"), "that was for checkout",
@@ -217,9 +216,9 @@ servers, and it is active at once. Talk to it by its name like any session; **Re
 or "remove research", stops it and drops it from the list, leaving the folder alone. crew keeps
 them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
 
-**Settings** is one page with a menu down the side: how you listen (four modes, each explained) and
-the languages you speak, voice off, the two keys (checked before saving), Discord, session names,
-your machines, and whether crew opens straight into Voice OS.
+**Settings** is one page with a menu down the side: how you listen (four modes, each explained),
+voice off, the two keys (checked before saving), Discord, session names, your machines, and whether
+crew opens straight into Voice OS.
 
 **Sending things to Discord.** With Discord set up, ask a session to send something there ("send
 that screenshot to Discord", "post the summary in Discord") and it runs `crew server discord send`,
@@ -228,7 +227,7 @@ own chat, or to a text channel you pick under **Settings → Discord → Message
 discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
 they post only when you ask.
 
-![Voice OS settings: listening mode, languages, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
+![Voice OS settings: listening mode, the Soniox and Anthropic keys with Replace, Discord not set up with its four steps, and a session name](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's
 page shows its history and an **Activate** button, with no input box (see

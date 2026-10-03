@@ -331,7 +331,7 @@ export class VoiceInput {
 			this.options.createSession ??
 			((sessionOptions: SttSessionOptions) => new SttSession(sessionOptions));
 
-		return createSession({ ...options, terms, languages: state.languages });
+		return createSession({ ...options, terms });
 	}
 
 	private showPartial(text: string, label?: string): void {

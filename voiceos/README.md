@@ -273,8 +273,8 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   language-neutral fast paths in code: word counts, a closing `?`, verbatim spans, session names,
   option labels. What the kernel already reads while routing is a tool argument instead, at no extra
   call: `deliver`, `my_notes` (required, so it is always decided), `about_last_action`. The speech layer (`speech/turns.ts` stop words and "end of turn", `wake.ts`, filler)
-  and typed keywords stay English on purpose. The languages Soniox expects are `state.languages`
-  (`shared/languages.ts`, saved in `languages.json`), sent as `language_hints`.
+  and typed keywords stay English on purpose. Speech-to-text sends Soniox no `language_hints`: it
+  detects the spoken language itself (hints would only bias it).
 
 ### Remote machines
 
@@ -349,7 +349,6 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `view.json` | The last view shown — saved whenever the view moves (a switch, or an activation that opens its session). |
 | `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |
-| `languages.json` | The languages the developer speaks, sent to Soniox as hints. |
 | `voice-off.json` | Voice off (the top bar's "voice"): read before Discord starts, so the bot never joins only to leave. `speech/voice-off.ts` lets go of every listener, the playing clip, the TTS socket and the Discord channel; `VoiceOut` drains lines to the page unplayed. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew server notes`). |

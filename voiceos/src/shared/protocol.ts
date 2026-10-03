@@ -445,7 +445,6 @@ export interface State {
 	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
 	names: Record<string, string>;
 	// What speech-to-text expects the developer to speak (Soniox language hints).
-	languages: string[];
 	// Voice off (the top bar's "voice"): nothing listens or speaks, Discord's bot leaves its channel;
 	// typing and the page go on. Kept across restarts.
 	voiceOff: boolean;
@@ -551,8 +550,6 @@ export type Action =
 	| { type: 'remove_machine'; id: string }
 	// An empty name clears it: the session shows its crew label again.
 	| { type: 'rename_session'; ref: string; name: string }
-	// The languages the developer speaks, from the listening menu (and loaded at boot).
-	| { type: 'set_languages'; languages: string[] }
 	// The top bar's "voice" (and loaded at boot).
 	| { type: 'set_voice_off'; voiceOff: boolean }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.

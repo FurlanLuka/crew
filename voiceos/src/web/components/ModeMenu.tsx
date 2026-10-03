@@ -1,6 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
-import { SPOKEN_LANGUAGES } from '../../shared/languages.js';
 
 interface ModeCopy {
 	name: string;
@@ -76,9 +75,6 @@ interface ModeMenuProps {
 	isIgnored: boolean;
 	isDenied: boolean;
 	title: string;
-	// The languages speech-to-text expects; toggled here, kept by the server.
-	languages: string[];
-	onLanguages: (languages: string[]) => void;
 }
 
 export const ModeMenu = ({
@@ -90,8 +86,6 @@ export const ModeMenu = ({
 	isIgnored,
 	isDenied,
 	title,
-	languages,
-	onLanguages,
 }: ModeMenuProps) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -128,7 +122,7 @@ export const ModeMenu = ({
 	};
 
 	const handleMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
-		// Every item in the menu, modes and languages alike, in the order shown.
+		// Every item in the menu, in the order shown.
 		const items = [
 			...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'),
 		];
@@ -214,33 +208,6 @@ export const ModeMenu = ({
 							</button>
 						);
 					})}
-					<div className="mode-menu-title languages-title" aria-hidden="true">
-						Languages you speak
-					</div>
-					<div className="language-grid">
-						{SPOKEN_LANGUAGES.map(({ code, name }) => {
-							const isPicked = languages.includes(code);
-
-							return (
-								<button
-									key={code}
-									type="button"
-									role="menuitemcheckbox"
-									aria-checked={isPicked}
-									className="language-item"
-									onClick={() =>
-										onLanguages(
-											isPicked
-												? languages.filter((picked) => picked !== code)
-												: [...languages, code],
-										)
-									}
-								>
-									{name}
-								</button>
-							);
-						})}
-					</div>
 				</div>
 			) : null}
 		</div>

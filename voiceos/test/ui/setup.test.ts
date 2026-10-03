@@ -1310,6 +1310,33 @@ describe('first run', () => {
 		await context.close();
 	}, 20_000);
 
+	it('with motion: the title and the Voice OS moment play once per load, never again on the crew mark or the card', async () => {
+		const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+		const page = await context.newPage();
+		page.on('pageerror', (error) => pageErrors.push(error.message));
+		await page.goto(server.loginUrl());
+		await page.goto(server.url('/'));
+		await page.locator('.intro').first().waitFor({ timeout: 5000 });
+		await page.locator('.intro').waitFor({ state: 'detached', timeout: 8000 });
+
+		const voiceCard = page.locator('.launch-choice', { hasText: 'Voice OS' });
+		await voiceCard.click();
+		await page.locator('.vo-moment').waitFor({ timeout: 3000 });
+		await page.locator('.vo-moment').waitFor({ state: 'detached', timeout: 6000 });
+
+		await page.getByRole('button', { name: 'crew voice os' }).click();
+		await page.locator('main[aria-label="Home"] .launch-choices').waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		expect(await page.locator('.intro').count()).toBe(0);
+
+		await voiceCard.click();
+		await page.waitForURL((url) => url.pathname.startsWith('/voice'));
+		await Bun.sleep(400);
+		expect(await page.locator('.vo-moment').count()).toBe(0);
+		server.store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		await context.close();
+	}, 30_000);
+
 	it('with motion: the opening dissolves onto the first run, Get started takes it on', async () => {
 		server.crew.reset('empty');
 		const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });

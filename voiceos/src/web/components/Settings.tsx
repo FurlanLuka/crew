@@ -2,7 +2,6 @@
 // keys, Discord, the names you gave sessions, the machines, and whether crew opens into Voice OS.
 import { type FormEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
-import { SPOKEN_LANGUAGES } from '../../shared/languages.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
@@ -398,31 +397,6 @@ export const Settings = ({
 								<span>{MODE_COPY[mode].description}</span>
 							</button>
 						))}
-					</div>
-					<h3>Languages you speak</h3>
-					<div className="language-grid">
-						{SPOKEN_LANGUAGES.map(({ code, name }) => {
-							const isPicked = state.languages.includes(code);
-
-							return (
-								<button
-									key={code}
-									type="button"
-									className="language-item"
-									aria-pressed={isPicked}
-									onClick={() =>
-										dispatch({
-											type: 'set_languages',
-											languages: isPicked
-												? state.languages.filter((picked) => picked !== code)
-												: [...state.languages, code],
-										})
-									}
-								>
-									{name}
-								</button>
-							);
-						})}
 					</div>
 				</div>
 				<div className="vs-sec" id="vs-voice">

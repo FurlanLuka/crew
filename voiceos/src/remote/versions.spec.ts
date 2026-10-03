@@ -33,9 +33,10 @@ describe('decideVersionFix', () => {
 		['5.1.0', '5.2.0', 'update-main'],
 		['5.1.0', '5.1.0', 'none'],
 		['dev', '5.0.1', 'none'],
-		['5.1.0', 'dev', 'none'],
+		// A remote left on a dev build (after a dev push) gets the main's release.
+		['5.1.0', 'dev', 'update-remote'],
 		['dev-abc1234', '5.0.1', 'none'],
-		['5.0.1', 'dev-abc1234', 'none'],
+		['v6.1.0', 'dev-a37d779', 'update-remote'],
 		['5.1.0', null, 'none'],
 	] as const)('main %s, remote %p → %s', (main, remote, fix) =>
 		expect(decideVersionFix(main, remote)).toBe(fix),
@@ -83,7 +84,11 @@ describe('planVersionFix', () => {
 		});
 	});
 
-	it("a dev build, or no version to read → the remote's own words", () => {
+	it('a remote on a dev build, under a released main → updated, once per version it ran', () => {
+		expect(plan('v6.1.0', 'dev-a37d779')).toEqual({ kind: 'update', from: 'dev-a37d779' });
+	});
+
+	it("a main on a dev build, or no version to read → the remote's own words", () => {
 		for (const [main, remote] of [
 			['dev', '5.0.1'],
 			['5.1.0', null],
