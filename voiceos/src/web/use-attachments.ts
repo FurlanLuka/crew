@@ -116,10 +116,13 @@ export const useAttachments = ({ state, sessionRef, send }: UseAttachmentsParams
 			return;
 		}
 
-		files.forEach((file, index) => {
+		// Counted as they are accepted: a refused file in the same drop takes no room either.
+		let accepted = 0;
+
+		for (const file of files) {
 			const key = `u${++uploadCounter}`;
 			const refusal =
-				index >= room
+				accepted >= room
 					? `${MAX_ATTACHMENTS} files at most`
 					: file.size > MAX_ATTACHMENT_BYTES
 						? TOO_BIG_REASON
@@ -130,9 +133,10 @@ export const useAttachments = ({ state, sessionRef, send }: UseAttachmentsParams
 			setUploads((current) => [...current, { key, name: file.name || 'pasted', error: refusal }]);
 
 			if (refusal) {
-				return;
+				continue;
 			}
 
+			accepted++;
 			void upload(ref, file).then((error) =>
 				setUploads((current) =>
 					error
@@ -140,7 +144,7 @@ export const useAttachments = ({ state, sessionRef, send }: UseAttachmentsParams
 						: current.filter((item) => item.key !== key),
 				),
 			);
-		});
+		}
 	}, []);
 
 	// Paste and drop anywhere on the page reach this session (the paperclip always does).

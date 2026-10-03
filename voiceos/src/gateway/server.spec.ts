@@ -287,6 +287,19 @@ describe('gateway', () => {
 });
 
 describe('parseClientMessage', () => {
+	it("a chip's ✕ for the longest name a file can have (120 emoji) is taken", () => {
+		const message: ClientMessage = {
+			type: 'action',
+			action: {
+				type: 'attachment_removed',
+				ref: 'store/main',
+				id: `0123456789abcdef/${'😀'.repeat(120)}`,
+			},
+		};
+
+		expect(parseClientMessage(JSON.stringify(message))).toEqual({ ok: true, message });
+	});
+
 	// A field the schema does not know is dropped silently, so every action must come back as sent.
 	const actions: ActionsByType = {
 		send: { type: 'send', ref: 'store/main', text: 'run the tests' },

@@ -2900,6 +2900,28 @@ describe('attaching files', () => {
 		await context.close();
 	}, 20_000);
 
+	it('a refused file takes no room: with one too big, ten more still land', async () => {
+		const { context, page } = await openSession();
+
+		await page.evaluate(() => {
+			const data = new DataTransfer();
+			data.items.add(new File([new Uint8Array(20 * 1024 * 1024 + 1)], 'huge.bin'));
+
+			for (let index = 0; index < 10; index++) {
+				data.items.add(new File([`small ${index}`], `s${index}.txt`, { type: 'text/plain' }));
+			}
+
+			document.body.dispatchEvent(
+				new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }),
+			);
+		});
+		await waitUntil(() => store.state.attachments[REF]?.length === 10);
+		expect(await page.locator('.att-chip.refused').allTextContents()).toEqual([
+			expect.stringContaining('over 20 MB'),
+		]);
+		await context.close();
+	}, 20_000);
+
 	it('no session on screen → "Open a session to attach files." and nothing uploads', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const { context, page } = await signIn();

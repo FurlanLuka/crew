@@ -31,7 +31,8 @@ const actionSchema = z.discriminatedUnion('type', [
 		answersOffer: z.literal(true).optional(),
 	}),
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
-	z.object({ type: z.literal('attachment_removed'), ref: refSchema, id: z.string().max(200) }),
+	// An id is a 16-hex hash, a slash and up to 120 characters, each up to two UTF-16 units.
+	z.object({ type: z.literal('attachment_removed'), ref: refSchema, id: z.string().max(300) }),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({
 		type: z.literal('answer_permission'),

@@ -282,6 +282,22 @@ describe('the other ways words reach a working session', () => {
 		expect(state.sessions[REF]?.queue[0]?.attachments).toEqual([SHOT]);
 	});
 
+	it('more spoken words while the follow-up waits → folded into it, every file once', () => {
+		const LOGS = file('logs.txt');
+		const spoken = run([send('look at the logs', { isSpoken: true })], {
+			start: withFiles(idleSession(), REPORT),
+		}).state;
+		const cut = run([added(SHOT), send('and this screenshot', { isSpoken: true })], {
+			start: spoken,
+		}).state;
+		const { state } = run([added(SHOT), added(LOGS), send('and that too', { isSpoken: true })], {
+			start: cut,
+		});
+
+		expect(state.sessions[REF]?.queue).toHaveLength(1);
+		expect(state.sessions[REF]?.queue[0]?.attachments).toEqual([SHOT, LOGS]);
+	});
+
 	it('spoken words queued behind typed work, then more → each message with its own files', () => {
 		const first = run([send('look at the logs', { isSpoken: true })], {
 			start: withFiles(runningSession(), REPORT),
