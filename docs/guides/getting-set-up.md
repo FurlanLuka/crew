@@ -5,6 +5,8 @@ commands. The quickest way is the browser instead: `crew` opens crew's page, whe
 has a form for each step and a Claude that runs them for you. The example is a store with an API
 and a web app; use your own repos.
 
+![The page way: the first run lists the git checkouts crew found in your code folders, each ticked, with the crew add project commands it will run](../images/setup/first-run.png)
+
 ## 1. Install
 
 ```bash
