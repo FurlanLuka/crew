@@ -9,6 +9,7 @@ import {
 	filterCommands,
 	type MenuEntry,
 	parseVoiceOsCommand,
+	pickStart,
 	planSlash,
 	readTypedName,
 	type SlashAction,
@@ -60,8 +61,10 @@ export const useSlashCommands = ({
 				);
 	const index = Math.min(selected, Math.max(entries.length - 1, 0));
 
-	// A new filter starts at its best match.
-	useEffect(() => setSelected(0), [typed]);
+	// A new filter starts on the command named exactly, else its best match.
+	const start = pickStart(entries, typed ?? '');
+
+	useEffect(() => setSelected(start), [typed]);
 
 	const run = (action: SlashAction): void => {
 		const plan = planSlash(action, sessionRef);
@@ -74,7 +77,7 @@ export const useSlashCommands = ({
 
 		if (plan.crew === 'update') {
 			void runCrew(LOCAL_MACHINE, { type: 'update' }).then((reply) =>
-				setLine(describeUpdate(reply.code, reply.stderr)),
+				setLine(describeUpdate(reply.code, 'json' in reply ? reply.json : undefined, reply.stderr)),
 			);
 		} else if (plan.crew === 'server_restart') {
 			void runCrew(LOCAL_MACHINE, { type: 'server_restart' });

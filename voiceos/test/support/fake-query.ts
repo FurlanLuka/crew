@@ -18,6 +18,8 @@ export interface FakeQueryParams {
 	reloadedCommands?: { name: string; description: string; argumentHint: string }[];
 	// Reload and model calls fail with this.
 	controlError?: Error;
+	// As the real CLI: its init message comes only with the first words.
+	isInitLate?: boolean;
 }
 
 interface FakeQueryCall {
@@ -46,6 +48,7 @@ export const createFakeQuery = ({
 	holdReload = false,
 	reloadedCommands,
 	controlError,
+	isInitLate = false,
 }: FakeQueryParams = {}) => {
 	const reloads: string[] = [];
 	let pushCommands: (next: unknown[]) => void = () => undefined;
@@ -93,9 +96,9 @@ export const createFakeQuery = ({
 		prompts.push(call.options.systemPrompt.append);
 
 		const { signal } = call.options.abortController;
-		const queued: unknown[] = [
-			{ type: 'system', subtype: 'init', session_id: `s-${started.length}` },
-		];
+		const init = { type: 'system', subtype: 'init', session_id: `s-${started.length}` };
+		const queued: unknown[] = isInitLate ? [] : [init];
+		let isInitSent = !isInitLate;
 
 		// Replaced by each wait so a new message or interrupt wakes the stream.
 		let wake: () => void = () => {
@@ -105,6 +108,11 @@ export const createFakeQuery = ({
 		void (async () => {
 			for await (const message of call.prompt) {
 				sent.push(message.message.content);
+
+				if (!isInitSent) {
+					isInitSent = true;
+					queued.push(init);
+				}
 
 				if (askOn && message.message.content.includes(askOn) && call.options.canUseTool) {
 					const answer = await call.options.canUseTool(

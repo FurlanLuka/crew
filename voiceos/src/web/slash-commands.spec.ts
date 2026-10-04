@@ -3,6 +3,7 @@ import {
 	describeUpdate,
 	filterCommands,
 	parseVoiceOsCommand,
+	pickStart,
 	planSlash,
 	readTypedName,
 	type SlashAction,
@@ -175,12 +176,35 @@ describe('planSlash', () => {
 });
 
 describe('describeUpdate', () => {
-	it("installed → a restart offered; failed → crew's own last line", () => {
-		expect(describeUpdate(0, '')).toMatchObject({ offersRestart: true });
-		expect(describeUpdate(1, 'checking…\nerror: offline\n')).toEqual({
+	it("installed → a restart offered; already current → none; failed → crew's last line", () => {
+		expect(describeUpdate(0, { from: '6.4.0', to: '6.5.0', updated: true }, '')).toEqual({
+			text: "crew v6.5.0 is installed on the main machine. Restart crew's server to run it; other machines follow on their next connect.",
+			offersRestart: true,
+		});
+		expect(describeUpdate(0, { from: '6.4.0', to: '6.4.0' }, '')).toEqual({
+			text: 'crew is already up to date (v6.4.0) on the main machine.',
+		});
+		expect(describeUpdate(1, undefined, 'checking…\nerror: offline\n')).toEqual({
 			text: 'error: offline',
 			isError: true,
 		});
-		expect(describeUpdate(1, '')).toEqual({ text: 'The update failed.', isError: true });
+		expect(describeUpdate(0, 'not json', '')).toEqual({
+			text: 'The update failed.',
+			isError: true,
+		});
+	});
+});
+
+describe('pickStart', () => {
+	it('the command named exactly, wherever it is; else the first', () => {
+		const withSkill = [
+			{ name: 'update-config', description: 'Configure', argumentHint: '' },
+			...SESSION,
+		];
+		const entries = filterCommands('update', withSkill, true);
+
+		expect(entries[0]?.name).toBe('update-config');
+		expect(entries[pickStart(entries, 'update')]?.name).toBe('update');
+		expect(pickStart(filterCommands('upd', withSkill, true), 'upd')).toBe(0);
 	});
 });

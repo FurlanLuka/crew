@@ -433,6 +433,9 @@ export class Worker {
 			});
 
 			emit({ type: 'session_started', ref });
+			// Asked of the CLI at once: its init message comes only with the first words, and the menu
+			// is wanted before them.
+			void this.listCommands();
 
 			for await (const message of this.activeQuery) {
 				const raw = message as unknown as InitMessage;
@@ -448,7 +451,6 @@ export class Worker {
 					this.sessionId = raw.session_id;
 					this.options.onSessionId(raw.session_id);
 					log.info('session id', { ref, sessionId: raw.session_id });
-					void this.listCommands();
 				}
 
 				// Skills found as it works, or a plugin added: the "/" menu follows.

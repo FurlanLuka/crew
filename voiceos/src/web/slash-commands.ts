@@ -1,5 +1,6 @@
 // The box's "/" commands: the session's own (from Claude Code, sent to it as words) and Voice OS's,
 // which run here instead. Pure, so the menu and what Enter does are tested without a page.
+import { z } from 'zod';
 import { MODEL_ID_PATTERN, type ClientMessage, type SessionCommand } from '../shared/protocol.js';
 
 export type VoiceOsCommandName =
@@ -144,6 +145,14 @@ export const filterCommands = (
 	return [...matching(theirs), ...matching(ours)];
 };
 
+// Where the menu's highlight starts: on the command named exactly ("/update" is update, not a skill
+// called update-config), else on the best match.
+export const pickStart = (entries: MenuEntry[], typed: string): number =>
+	Math.max(
+		entries.findIndex((entry) => entry.name.toLowerCase() === typed),
+		0,
+	);
+
 export type SlashAction =
 	| { kind: 'reload'; target: 'plugins' | 'skills'; isForced: boolean }
 	| { kind: 'model'; model: string }
@@ -261,11 +270,21 @@ export const planSlash = (action: SlashAction, sessionRef: string | null): Slash
 	}
 };
 
-// crew update's answer: installed (a restart runs it), or crew's own last line.
-export const describeUpdate = (code: number, stderr: string): SlashLine =>
-	code === 0
+const updateSchema = z.object({ to: z.string(), updated: z.boolean().optional() });
+
+// crew update --json's answer: a new release installed (a restart runs it), already current
+// (nothing to restart), or crew's own last line when it failed.
+export const describeUpdate = (code: number, json: unknown, stderr: string): SlashLine => {
+	const result = updateSchema.safeParse(json);
+
+	if (code !== 0 || !result.success) {
+		return { text: stderr.trim().split('\n').at(-1) || 'The update failed.', isError: true };
+	}
+
+	return result.data.updated
 		? {
-				text: "crew is up to date on the main machine. Restart crew's server to run it; other machines follow on their next connect.",
+				text: `crew v${result.data.to} is installed on the main machine. Restart crew's server to run it; other machines follow on their next connect.`,
 				offersRestart: true,
 			}
-		: { text: stderr.trim().split('\n').at(-1) || 'The update failed.', isError: true };
+		: { text: `crew is already up to date (v${result.data.to}) on the main machine.` };
+};

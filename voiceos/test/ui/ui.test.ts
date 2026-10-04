@@ -3284,6 +3284,24 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
+	it('"/update" typed whole runs update, even with a skill named update-config listed first', async () => {
+		await ensureIdle(REF);
+		store.dispatch({
+			type: 'commands_listed',
+			ref: REF,
+			commands: [{ name: 'update-config', description: 'Configure', argumentHint: '' }],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF } });
+		const { context, page } = await signIn();
+		const calls = crew.calls.length;
+
+		await fieldOf(page).fill('/update');
+		await fieldOf(page).press('Enter');
+		await waitUntil(() => crew.calls.slice(calls).some((call) => call.command.type === 'update'));
+		expect(await fieldOf(page).inputValue()).toBe('');
+		await context.close();
+	}, 20_000);
+
 	it('390 wide: the menu fits the screen', async () => {
 		const { context, page } = await openWithCommands();
 

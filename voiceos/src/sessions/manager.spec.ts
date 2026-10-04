@@ -624,6 +624,15 @@ describe('slash commands', () => {
 			item.kind === 'notice' ? [item.text] : [],
 		);
 
+	it('listed as soon as it starts, before any words (the CLI says init only with them)', async () => {
+		const harness = createCommandHarness({ isInitLate: true });
+		await waitTick();
+
+		expect(harness.fake.sent).toEqual([]);
+		expect(harness.store.state.sessions[REF]?.commands).toEqual([REVIEW]);
+		harness.manager.stopAll();
+	});
+
 	it('listed once it starts, and replaced when Claude Code pushes a new list', async () => {
 		const harness = createCommandHarness();
 		await waitTick();
