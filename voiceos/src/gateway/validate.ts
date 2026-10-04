@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_TEXT_CHARS, type ClientMessage } from '../shared/protocol.js';
+import { MAX_TEXT_CHARS, MODEL_ID_PATTERN, type ClientMessage } from '../shared/protocol.js';
 import { isValidHost } from '../shared/machines.js';
 
 const sampleRateSchema = z.number().int().min(8000).max(192000);
@@ -39,11 +39,10 @@ const actionSchema = z.discriminatedUnion('type', [
 		kind: z.enum(['plugins', 'skills']),
 		force: z.literal(true).optional(),
 	}),
-	// A model alias or full id: letters, digits, dots, dashes, brackets ("opus", "claude-opus-5-5[1m]").
 	z.object({
 		type: z.literal('set_model'),
 		ref: refSchema,
-		model: z.string().regex(/^[\w.\-[\]]{1,80}$/),
+		model: z.string().regex(MODEL_ID_PATTERN),
 	}),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({

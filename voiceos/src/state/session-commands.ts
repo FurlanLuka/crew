@@ -38,7 +38,10 @@ export const reduceSessionCommand = (
 					pushNotice({
 						state,
 						ref: input.ref,
-						text: 'Start the session first.',
+						text:
+							state.sessions[input.ref]?.status === 'starting'
+								? 'Wait for the session to start.'
+								: 'Start the session first.',
 						stamped,
 						suffix: 'not-started',
 					}),

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { filterCommands, parseVoiceOsCommand, readTypedName } from './slash-commands.js';
+import {
+	describeUpdate,
+	filterCommands,
+	parseVoiceOsCommand,
+	planSlash,
+	readTypedName,
+	type SlashAction,
+	type SlashPlan,
+} from './slash-commands.js';
 
 const SESSION = [
 	{ name: 'review', description: 'Review a pull request', argumentHint: '<pr>' },
@@ -82,5 +90,97 @@ describe('parseVoiceOsCommand', () => {
 			kind: 'usage',
 			text: 'Open a session to use /stop.',
 		});
+	});
+});
+
+describe('planSlash', () => {
+	const REF = 'store/main';
+	const act = (action: object) => ({ type: 'action', action });
+
+	it.each<[SlashAction, string | null, SlashPlan]>([
+		[
+			{ kind: 'reload', target: 'plugins', isForced: true },
+			REF,
+			{
+				messages: [
+					act({ type: 'reload_session', ref: REF, kind: 'plugins', force: true }),
+				] as never,
+				line: null,
+				crew: null,
+			},
+		],
+		[
+			{ kind: 'reload', target: 'skills', isForced: false },
+			REF,
+			{
+				messages: [act({ type: 'reload_session', ref: REF, kind: 'skills' })] as never,
+				line: null,
+				crew: null,
+			},
+		],
+		[
+			{ kind: 'model', model: 'opus' },
+			REF,
+			{
+				messages: [act({ type: 'set_model', ref: REF, model: 'opus' })] as never,
+				line: null,
+				crew: null,
+			},
+		],
+		[
+			{ kind: 'stop' },
+			REF,
+			{ messages: [act({ type: 'interrupt', ref: REF })] as never, line: null, crew: null },
+		],
+		[{ kind: 'stop' }, null, { messages: [], line: null, crew: null }],
+		[
+			{ kind: 'mute', isMuted: true },
+			null,
+			{
+				messages: [{ type: 'mute', isMuted: true }],
+				line: { text: 'Muted: only what needs you is said.' },
+				crew: null,
+			},
+		],
+		[
+			{ kind: 'mute', isMuted: false },
+			null,
+			{ messages: [{ type: 'mute', isMuted: false }], line: { text: 'Unmuted.' }, crew: null },
+		],
+		[
+			{ kind: 'voice', isOff: true },
+			null,
+			{
+				messages: [act({ type: 'set_voice_off', voiceOff: true })] as never,
+				line: { text: 'Voice is off.' },
+				crew: null,
+			},
+		],
+		[
+			{ kind: 'update' },
+			REF,
+			{ messages: [], line: { text: 'Updating crew on the main machine…' }, crew: 'update' },
+		],
+		[
+			{ kind: 'restart' },
+			null,
+			{ messages: [], line: { text: "Restarting crew's server…" }, crew: 'server_restart' },
+		],
+		[
+			{ kind: 'usage', text: 'Nope.' },
+			REF,
+			{ messages: [], line: { text: 'Nope.', isError: true }, crew: null },
+		],
+	])('%p on %p', (action, ref, expected) => expect(planSlash(action, ref)).toStrictEqual(expected));
+});
+
+describe('describeUpdate', () => {
+	it("installed → a restart offered; failed → crew's own last line", () => {
+		expect(describeUpdate(0, '')).toMatchObject({ offersRestart: true });
+		expect(describeUpdate(1, 'checking…\nerror: offline\n')).toEqual({
+			text: 'error: offline',
+			isError: true,
+		});
+		expect(describeUpdate(1, '')).toEqual({ text: 'The update failed.', isError: true });
 	});
 });

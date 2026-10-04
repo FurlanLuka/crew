@@ -40,6 +40,22 @@ describe('planResync', () => {
 		expect(finished).toEqual([]);
 	});
 
+	it("a fresh main → the session's / commands come back with it", () => {
+		const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+		const { inputs } = planResync(
+			mainWith(),
+			'vm1',
+			snapshot({
+				sessions: [{ ref: 'store/main', status: 'idle', lastTurn: null, commands: [REVIEW] }],
+			}),
+		);
+
+		expect(inputs).toEqual([
+			{ type: 'session_started', ref: REMOTE },
+			{ type: 'commands_listed', ref: REMOTE, commands: [REVIEW] },
+		]);
+	});
+
 	it('a fresh main, an old turn there → no news: not reported', () => {
 		const { inputs } = planResync(
 			mainWith(),

@@ -77,6 +77,8 @@ describe('enqueue', () => {
 		expect(enqueue(muted, createItem('n', 'normal')).isDropped).toBe(true);
 		expect(enqueue(muted, createItem('h', 'high')).isDropped).toBe(false);
 		expect(enqueue(muted, createItem('a', 'alert')).isDropped).toBe(false);
+		// The box's /unmute: chatter is heard again.
+		expect(enqueue(setMuted(muted, false), createItem('n', 'normal')).isDropped).toBe(false);
 	});
 });
 

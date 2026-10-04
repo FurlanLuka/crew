@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import type { SessionStatus } from '../shared/protocol.js';
+import { createFixtureState } from '../../test/support/state.js';
 import { idleSession, REF, run } from '../../test/support/reduce.js';
 
 const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
@@ -46,5 +48,30 @@ describe('session commands', () => {
 			kind: 'notice',
 			text: 'Start the session first.',
 		});
+	});
+
+	it.each<[SessionStatus, 'runs' | string]>([
+		['idle', 'runs'],
+		['running', 'runs'],
+		['blocked', 'runs'],
+		['starting', 'Wait for the session to start.'],
+		['stopped', 'Start the session first.'],
+	])('%s → %s', (status, outcome) => {
+		const start = createFixtureState({});
+		const ref = 'store-front/main';
+		const at = {
+			...start,
+			sessions: { ...start.sessions, [ref]: { ...start.sessions[ref], status } },
+		} as typeof start;
+		const { state, effects } = run([{ type: 'reload_session', ref, kind: 'skills' }], {
+			start: at,
+		});
+
+		if (outcome === 'runs') {
+			expect(effects).toStrictEqual([{ type: 'worker_reload', ref, kind: 'skills' }]);
+		} else {
+			expect(effects).toEqual([]);
+			expect(state.sessions[ref]?.stream.at(-1)).toMatchObject({ kind: 'notice', text: outcome });
+		}
 	});
 });

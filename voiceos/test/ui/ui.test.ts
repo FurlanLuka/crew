@@ -3244,8 +3244,43 @@ describe('slash commands', () => {
 		await fieldOf(page).press('Enter');
 		await page.getByRole('button', { name: "Restart crew's server" }).waitFor({ timeout: 10_000 });
 
-		const ran = crew.calls.slice(calls).map((call) => `${call.machine}:${call.command.type}`);
-		expect(ran).toEqual(['local:update']);
+		const ran = () => crew.calls.slice(calls).map((call) => `${call.machine}:${call.command.type}`);
+		expect(ran()).toEqual(['local:update']);
+
+		await page.getByRole('button', { name: "Restart crew's server" }).click();
+		await waitUntil(() => ran().length === 2);
+		expect(ran()).toEqual(['local:update', 'local:server_restart']);
+		await context.close();
+	}, 20_000);
+
+	it('typed whole and sent: /model, /reload-plugins force and /voice run here, none reaches Claude', async () => {
+		const { context, page } = await openWithCommands();
+		const field = fieldOf(page);
+		const before = received.length;
+		const actions = () =>
+			received
+				.slice(before)
+				.flatMap((entry) => (entry.message.type === 'action' ? [entry.message.action] : []));
+
+		for (const text of ['/model opus', '/reload-plugins force', '/voice off']) {
+			await field.fill(text);
+			await field.press('Enter');
+			await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
+		}
+
+		await page.getByText('Voice is off.').waitFor({ timeout: 5000 });
+		await waitUntil(() => actions().length >= 3);
+		expect(actions()).toEqual([
+			{ type: 'set_model', ref: REF, model: 'opus' },
+			{ type: 'reload_session', ref: REF, kind: 'plugins', force: true },
+			{ type: 'set_voice_off', voiceOff: true },
+		]);
+		expect(received.slice(before).some((entry) => entry.message.type === 'utterance')).toBe(false);
+		expect(await field.inputValue()).toBe('');
+
+		await field.fill('/voice on');
+		await field.press('Enter');
+		await waitUntil(() => !store.state.voiceOff);
 		await context.close();
 	}, 20_000);
 

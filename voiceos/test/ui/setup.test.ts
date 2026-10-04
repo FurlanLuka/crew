@@ -803,6 +803,18 @@ describe('Setup with Claude', () => {
 			),
 		);
 		expect(await field.inputValue()).toBe('');
+
+		await field.fill('/model sonnet');
+		await field.press('Enter');
+		await waitUntil(() =>
+			server.received.some(
+				(entry) =>
+					entry.message.type === 'action' &&
+					entry.message.action.type === 'set_model' &&
+					entry.message.action.ref === 'setup' &&
+					entry.message.action.model === 'sonnet',
+			),
+		);
 		await context.close();
 	}, 20_000);
 

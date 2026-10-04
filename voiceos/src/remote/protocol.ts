@@ -3,7 +3,13 @@
 // the types a remote may send, and trusted beyond that because both sides run the same release.
 
 import { z } from 'zod';
-import type { AsideStatus, Observation, PendingAsk, WorktreeInfo } from '../shared/protocol.js';
+import type {
+	AsideStatus,
+	Observation,
+	PendingAsk,
+	SessionCommand,
+	WorktreeInfo,
+} from '../shared/protocol.js';
 import type { HandsEffect } from './mapping.js';
 import type { SetupCommand } from '../crew/commands.js';
 
@@ -23,6 +29,9 @@ export interface SessionSnapshot {
 	ref: string;
 	status: 'idle' | 'running' | 'starting';
 	lastTurn: LastTurn | null;
+	// Its "/" commands: a main that restarted has none until it hears them again. Absent from an
+	// older remote.
+	commands?: SessionCommand[];
 }
 
 export interface AsideInFlight {
@@ -146,6 +155,16 @@ const snapshotSchema = z.object({
 						head: z.string().max(200).nullable(),
 					})
 					.nullable(),
+				commands: z
+					.array(
+						z.object({
+							name: z.string().max(200),
+							description: z.string().max(1000),
+							argumentHint: z.string().max(200),
+						}),
+					)
+					.max(500)
+					.optional(),
 			}),
 		)
 		.max(500),

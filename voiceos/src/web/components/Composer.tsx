@@ -14,7 +14,8 @@ import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/pro
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { describeListening, isListeningMode } from '../listen-mode.js';
 import { AttachButton } from './AttachmentChips.js';
-import { SlashLine, SlashMenu } from './SlashMenu.js';
+import { SlashMenu } from './SlashMenu.js';
+import { readScreenRef } from '../../state/helpers.js';
 import { useSlashCommands } from '../use-slash-commands.js';
 import { ATTACHED_ONLY_TEXT, type Attachments } from '../use-attachments.js';
 import type { KeptDictation } from '../use-connection.js';
@@ -89,8 +90,8 @@ export const Composer = ({
 	const route = describeRouteChip(state, { draft });
 	const isAlarm = route.isAnswering && !isDictating;
 	const discord = isOnDiscord ? state.discord : null;
-	const screenRef =
-		state.view.kind === 'session' && state.sessions[state.view.ref] ? state.view.ref : null;
+	const onScreen = readScreenRef(state);
+	const screenRef = onScreen && state.sessions[onScreen] ? onScreen : null;
 	const slash = useSlashCommands({
 		state,
 		sessionRef: screenRef,
@@ -218,14 +219,7 @@ export const Composer = ({
 			} ${discord ? 'discord' : ''}`}
 			onSubmit={handleSubmit}
 		>
-			<SlashMenu
-				slash={slash}
-				onPick={(text) => {
-					setDraft(text ?? '');
-					fieldRef.current?.focus();
-				}}
-			/>
-			{slash.entries.length === 0 ? <SlashLine slash={slash} /> : null}
+			<SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />
 			<textarea
 				ref={fieldRef}
 				rows={1}

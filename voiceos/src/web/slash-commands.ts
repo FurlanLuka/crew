@@ -1,6 +1,6 @@
 // The box's "/" commands: the session's own (from Claude Code, sent to it as words) and Voice OS's,
 // which run here instead. Pure, so the menu and what Enter does are tested without a page.
-import type { SessionCommand } from '../shared/protocol.js';
+import { MODEL_ID_PATTERN, type ClientMessage, type SessionCommand } from '../shared/protocol.js';
 
 export type VoiceOsCommandName =
 	| 'reload-plugins'
@@ -177,7 +177,7 @@ export const parseVoiceOsCommand = (text: string, hasSession: boolean): SlashAct
 		case 'reload-skills':
 			return { kind: 'reload', target: 'skills', isForced: false };
 		case 'model':
-			return /^[\w.\-[\]]{1,80}$/.test(argument)
+			return MODEL_ID_PATTERN.test(argument)
 				? { kind: 'model', model: argument }
 				: { kind: 'usage', text: 'Say which model: /model opus, /model sonnet or a model id.' };
 		case 'stop':
@@ -196,3 +196,76 @@ export const parseVoiceOsCommand = (text: string, hasSession: boolean): SlashAct
 			return { kind: 'restart' };
 	}
 };
+
+// What a Voice OS command said back, under the box; offersRestart: the restart an update needs.
+export interface SlashLine {
+	text: string;
+	isError?: true;
+	offersRestart?: true;
+}
+
+export interface SlashPlan {
+	messages: ClientMessage[];
+	line: SlashLine | null;
+	// crew to run on the main, its answer said when it comes.
+	crew: 'update' | 'server_restart' | null;
+}
+
+const plan = (
+	messages: ClientMessage[],
+	line: SlashLine | null = null,
+	crew: SlashPlan['crew'] = null,
+): SlashPlan => ({ messages, line, crew });
+
+// What a Voice OS command does from the page: the messages it sends, the line it shows, the crew it runs.
+export const planSlash = (action: SlashAction, sessionRef: string | null): SlashPlan => {
+	const forSession = (build: (ref: string) => ClientMessage): ClientMessage[] =>
+		sessionRef ? [build(sessionRef)] : [];
+
+	switch (action.kind) {
+		case 'reload':
+			return plan(
+				forSession((ref) => ({
+					type: 'action',
+					action: {
+						type: 'reload_session',
+						ref,
+						kind: action.target,
+						...(action.isForced ? { force: true as const } : {}),
+					},
+				})),
+			);
+		case 'model':
+			return plan(
+				forSession((ref) => ({
+					type: 'action',
+					action: { type: 'set_model', ref, model: action.model },
+				})),
+			);
+		case 'stop':
+			return plan(forSession((ref) => ({ type: 'action', action: { type: 'interrupt', ref } })));
+		case 'mute':
+			return plan([{ type: 'mute', isMuted: action.isMuted }], {
+				text: action.isMuted ? 'Muted: only what needs you is said.' : 'Unmuted.',
+			});
+		case 'voice':
+			return plan([{ type: 'action', action: { type: 'set_voice_off', voiceOff: action.isOff } }], {
+				text: action.isOff ? 'Voice is off.' : 'Voice is on.',
+			});
+		case 'update':
+			return plan([], { text: 'Updating crew on the main machine…' }, 'update');
+		case 'restart':
+			return plan([], { text: "Restarting crew's server…" }, 'server_restart');
+		case 'usage':
+			return plan([], { text: action.text, isError: true });
+	}
+};
+
+// crew update's answer: installed (a restart runs it), or crew's own last line.
+export const describeUpdate = (code: number, stderr: string): SlashLine =>
+	code === 0
+		? {
+				text: "crew is up to date on the main machine. Restart crew's server to run it; other machines follow on their next connect.",
+				offersRestart: true,
+			}
+		: { text: stderr.trim().split('\n').at(-1) || 'The update failed.', isError: true };

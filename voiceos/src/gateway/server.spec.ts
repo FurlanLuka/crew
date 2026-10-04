@@ -449,12 +449,21 @@ describe('parseClientMessage', () => {
 			{ type: 'names_loaded', names: { 'store/main': 'shop' } },
 			{ type: 'rename_session', ref: 'store/main' },
 			{ type: 'rename_session', ref: 'store/main', name: 'x'.repeat(61) },
+			// The model goes to the SDK: only an alias or an id.
+			{ type: 'set_model', ref: 'store/main', model: 'opus; rm -rf ~' },
+			{ type: 'set_model', ref: 'store/main', model: '' },
+			{ type: 'set_model', ref: 'store/main', model: 'x'.repeat(81) },
+			{ type: 'reload_session', ref: 'store/main', kind: 'mcp' },
+			{ type: 'reload_session', ref: 'store/main', kind: 'plugins', force: false },
 		];
 
 		for (const action of refused) {
 			expect(parseClientMessage(JSON.stringify({ type: 'action', action })).ok).toBe(false);
 		}
 	});
+
+	it('a mute without saying which → refused', () =>
+		expect(parseClientMessage(JSON.stringify({ type: 'mute' })).ok).toBe(false));
 
 	it('a client cannot write the voice log (only the router does)', () =>
 		expect(

@@ -14,6 +14,10 @@ export interface FakeQueryParams {
 	commands?: { name: string; description: string; argumentHint: string }[];
 	// A plugin reload asked to hold on cache impact is held.
 	holdReload?: boolean;
+	// What the session lists after a reload (else the same commands).
+	reloadedCommands?: { name: string; description: string; argumentHint: string }[];
+	// Reload and model calls fail with this.
+	controlError?: Error;
 }
 
 interface FakeQueryCall {
@@ -40,6 +44,8 @@ export const createFakeQuery = ({
 	askOn,
 	commands = [],
 	holdReload = false,
+	reloadedCommands,
+	controlError,
 }: FakeQueryParams = {}) => {
 	const reloads: string[] = [];
 	let pushCommands: (next: unknown[]) => void = () => undefined;
@@ -83,6 +89,7 @@ export const createFakeQuery = ({
 		}
 
 		started.push(call.options.cwd);
+		let listed = commands;
 		prompts.push(call.options.systemPrompt.append);
 
 		const { signal } = call.options.abortController;
@@ -146,26 +153,44 @@ export const createFakeQuery = ({
 			},
 			interrupt,
 			setPermissionMode: async () => undefined,
-			supportedCommands: async () => commands,
+			supportedCommands: async () => listed,
 			reloadSkills: async () => {
 				reloads.push('skills');
 
-				return { skills: commands.slice(0, 1) };
+				if (controlError) {
+					throw controlError;
+				}
+
+				listed = reloadedCommands ?? listed;
+
+				return { skills: listed.slice(0, 1) };
 			},
 			reloadPlugins: async (options?: { holdOnCacheImpact?: boolean }) => {
 				reloads.push(options?.holdOnCacheImpact ? 'plugins:hold' : 'plugins');
 
+				if (controlError) {
+					throw controlError;
+				}
+
+				const isHeld = Boolean(options?.holdOnCacheImpact && holdReload);
+
+				listed = isHeld ? listed : (reloadedCommands ?? listed);
+
 				return {
-					commands,
+					commands: listed,
 					agents: [],
 					plugins: [{ name: 'p', path: '/p' }],
 					mcpServers: [],
 					error_count: 0,
-					...(options?.holdOnCacheImpact && holdReload ? { held: true } : {}),
+					...(isHeld ? { held: true } : {}),
 				};
 			},
 			setModel: async (model?: string) => {
 				models.push(model ?? '');
+
+				if (controlError) {
+					throw controlError;
+				}
 			},
 		};
 	}) as never;

@@ -1045,5 +1045,34 @@ describe('files attached to a remote session', () => {
 			expect(store.state.sessions[REF]?.commands).toEqual([REVIEW]);
 			expect(fake.reloads).toEqual(['plugins:hold']);
 		});
+
+		it("a restarted main → the running session's newest commands come back in the snapshot", async () => {
+			const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+			const SHIP = { name: 'ship', description: 'Ship it', argumentHint: '' };
+			const { host, fake } = startHost({ commands: [REVIEW] });
+
+			await host.refreshWorktrees();
+
+			const network = createNetwork(host);
+			const first = startMain({ open: network.open });
+
+			await actWhenConnected(
+				first.store,
+				() => first.store.dispatch({ type: 'activate', ref: REF }),
+				'start',
+			);
+			await until(() => first.store.state.sessions[REF]?.commands?.length === 1, 'the commands');
+			first.links.stopAll();
+			// Pushed while no main listens: only the snapshot can carry it.
+			fake.pushCommands([REVIEW, SHIP]);
+
+			const second = startMain({ open: network.open, runId: 'run-2', active: [REF] });
+
+			await until(
+				() => second.store.state.sessions[REF]?.commands?.length === 2,
+				'the commands again',
+			);
+			expect(second.store.state.sessions[REF]?.commands).toEqual([REVIEW, SHIP]);
+		});
 	});
 });

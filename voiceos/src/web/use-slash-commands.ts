@@ -2,22 +2,18 @@
 // skills are only filled in: the box sends them as words, as before.
 import { type KeyboardEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../shared/machine-ref.js';
-import type { Action, ClientMessage, State } from '../shared/protocol.js';
-import { isOk, runCrew } from './setup/api.js';
+import type { ClientMessage, State } from '../shared/protocol.js';
+import { runCrew } from './setup/api.js';
 import {
+	describeUpdate,
 	filterCommands,
 	type MenuEntry,
 	parseVoiceOsCommand,
+	planSlash,
 	readTypedName,
 	type SlashAction,
+	type SlashLine,
 } from './slash-commands.js';
-
-// What a Voice OS command said back, under the box; `restart` offers the restart an update needs.
-export interface SlashLine {
-	text: string;
-	isError?: true;
-	offersRestart?: true;
-}
 
 export interface SlashCommands {
 	entries: MenuEntry[];
@@ -26,8 +22,8 @@ export interface SlashCommands {
 	dismissLine: () => void;
 	// The box's keys while the menu is open; true when it took the key.
 	handleKey: (event: KeyboardEvent) => boolean;
-	// The text after picking an entry, or null when picking it ran it.
-	pick: (entry: MenuEntry) => string | null;
+	// An entry picked: filled into the box, or run when it needs nothing more.
+	choose: (entry: MenuEntry) => void;
 	// Enter on the box: true when it was a Voice OS command (run here, not sent).
 	runTyped: (text: string) => boolean;
 	restart: () => void;
@@ -41,11 +37,6 @@ interface UseSlashCommandsParams {
 	setText: (text: string) => void;
 	send: (message: ClientMessage) => void;
 }
-
-const failureLine = (stderr: string, fallback: string): SlashLine => ({
-	text: stderr.trim().split('\n').at(-1) || fallback,
-	isError: true,
-});
 
 export const useSlashCommands = ({
 	state,
@@ -71,97 +62,47 @@ export const useSlashCommands = ({
 
 	// A new filter starts at its best match.
 	useEffect(() => setSelected(0), [typed]);
-	const dispatch = (action: Action) => send({ type: 'action', action });
-
-	const restart = (): void => {
-		setLine({ text: "Restarting crew's server…" });
-		void runCrew(LOCAL_MACHINE, { type: 'server_restart' });
-	};
 
 	const run = (action: SlashAction): void => {
-		switch (action.kind) {
-			case 'reload':
-				if (sessionRef) {
-					dispatch({
-						type: 'reload_session',
-						ref: sessionRef,
-						kind: action.target,
-						...(action.isForced ? { force: true as const } : {}),
-					});
-				}
+		const plan = planSlash(action, sessionRef);
 
-				setLine(null);
+		for (const message of plan.messages) {
+			send(message);
+		}
 
-				return;
-			case 'model':
-				if (sessionRef) {
-					dispatch({ type: 'set_model', ref: sessionRef, model: action.model });
-				}
+		setLine(plan.line);
 
-				setLine(null);
-
-				return;
-			case 'stop':
-				if (sessionRef) {
-					dispatch({ type: 'interrupt', ref: sessionRef });
-				}
-
-				setLine(null);
-
-				return;
-			case 'mute':
-				send({ type: 'mute', isMuted: action.isMuted });
-				setLine({ text: action.isMuted ? 'Muted: only what needs you is said.' : 'Unmuted.' });
-
-				return;
-			case 'voice':
-				dispatch({ type: 'set_voice_off', voiceOff: action.isOff });
-				setLine({ text: action.isOff ? 'Voice is off.' : 'Voice is on.' });
-
-				return;
-			case 'update':
-				setLine({ text: 'Updating crew on the main machine…' });
-				void runCrew(LOCAL_MACHINE, { type: 'update' }).then((reply) =>
-					setLine(
-						isOk(reply)
-							? {
-									text: "crew is up to date on the main machine. Restart crew's server to run it; other machines follow on their next connect.",
-									offersRestart: true,
-								}
-							: failureLine(reply.stderr, 'The update failed.'),
-					),
-				);
-
-				return;
-			case 'restart':
-				restart();
-
-				return;
-			case 'usage':
-				setLine({ text: action.text, isError: true });
-
-				return;
+		if (plan.crew === 'update') {
+			void runCrew(LOCAL_MACHINE, { type: 'update' }).then((reply) =>
+				setLine(describeUpdate(reply.code, reply.stderr)),
+			);
+		} else if (plan.crew === 'server_restart') {
+			void runCrew(LOCAL_MACHINE, { type: 'server_restart' });
 		}
 	};
 
-	const pick = (entry: MenuEntry): string | null => {
+	const choose = (entry: MenuEntry): void => {
 		setSelected(0);
 
 		if (entry.source === 'voice-os' && entry.isImmediate) {
 			const action = parseVoiceOsCommand(`/${entry.name}`, Boolean(sessionRef));
 
+			setText('');
+
 			if (action) {
 				run(action);
 			}
 
-			return null;
+			return;
 		}
 
-		return `/${entry.name} `;
+		setText(`/${entry.name} `);
 	};
 
 	const handleKey = (event: KeyboardEvent): boolean => {
-		if (entries.length === 0) {
+		const entry = entries[index];
+
+		if (!entry) {
 			return false;
 		}
 
@@ -176,21 +117,15 @@ export const useSlashCommands = ({
 				setClosedFor(text);
 				break;
 			case 'Tab':
-			case 'Enter': {
-				if (event.key === 'Enter' && (event.shiftKey || event.nativeEvent.isComposing)) {
-					return false;
-				}
-
-				const entry = entries[index];
-
-				if (!entry) {
-					return false;
-				}
-
-				setText(pick(entry) ?? '');
+				choose(entry);
 				break;
-			}
+			case 'Enter':
+				if (event.shiftKey || event.nativeEvent.isComposing) {
+					return false;
+				}
 
+				choose(entry);
+				break;
 			default:
 				return false;
 		}
@@ -218,8 +153,8 @@ export const useSlashCommands = ({
 		line,
 		dismissLine: () => setLine(null),
 		handleKey,
-		pick,
+		choose,
 		runTyped,
-		restart,
+		restart: () => run({ kind: 'restart' }),
 	};
 };

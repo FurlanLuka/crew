@@ -8,7 +8,7 @@ import type { Action, StreamItem } from '../../shared/protocol.js';
 import { AskDock } from '../components/AskDock.js';
 import { AttachButton, AttachmentChips } from '../components/AttachmentChips.js';
 import { ATTACHED_ONLY_TEXT, useAttachments } from '../use-attachments.js';
-import { SlashLine, SlashMenu } from '../components/SlashMenu.js';
+import { SlashMenu } from '../components/SlashMenu.js';
 import { useSlashCommands } from '../use-slash-commands.js';
 import { QueueList } from '../components/QueueList.js';
 import { SessionStream } from '../components/SessionStream.js';
@@ -131,14 +131,7 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 					{session && <QueueList session={session} dispatch={dispatch} />}
 					<AttachmentChips attachments={attachments} />
 					<form className="reply" onSubmit={submit}>
-						<SlashMenu
-							slash={slash}
-							onPick={(picked) => {
-								setText(picked ?? '');
-								fieldRef.current?.focus();
-							}}
-						/>
-						{slash.entries.length === 0 ? <SlashLine slash={slash} /> : null}
+						<SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />
 						<input
 							ref={fieldRef}
 							type="text"

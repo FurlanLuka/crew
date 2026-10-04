@@ -4,12 +4,14 @@ import type { SlashCommands } from '../use-slash-commands.js';
 
 interface SlashMenuProps {
 	slash: SlashCommands;
-	onPick: (text: string | null) => void;
+	// After a pick: the box takes the focus back.
+	onPicked: () => void;
 }
 
-export const SlashMenu = ({ slash, onPick }: SlashMenuProps) => {
+// The menu while one is open, else what the last Voice OS command said.
+export const SlashMenu = ({ slash, onPicked }: SlashMenuProps) => {
 	if (slash.entries.length === 0) {
-		return null;
+		return <SlashLine slash={slash} />;
 	}
 
 	const firstOurs = slash.entries.findIndex((entry) => entry.source === 'voice-os');
@@ -27,7 +29,8 @@ export const SlashMenu = ({ slash, onPick }: SlashMenuProps) => {
 						// Picked on press, so the box keeps its focus.
 						onMouseDown={(event) => {
 							event.preventDefault();
-							onPick(slash.pick(entry));
+							slash.choose(entry);
+							onPicked();
 						}}
 					>
 						<span className="slash-name">/{entry.name}</span>
@@ -40,7 +43,7 @@ export const SlashMenu = ({ slash, onPick }: SlashMenuProps) => {
 	);
 };
 
-export const SlashLine = ({ slash }: { slash: SlashCommands }) =>
+const SlashLine = ({ slash }: { slash: SlashCommands }) =>
 	slash.line ? (
 		<div className={`slash-line ${slash.line.isError ? 'error' : ''}`} role="status">
 			<span>{slash.line.text}</span>

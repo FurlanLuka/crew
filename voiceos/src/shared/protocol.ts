@@ -378,6 +378,10 @@ export interface SwitchOffer {
 // The most text one message carries: the gateway refuses more, so the page never sends it.
 export const MAX_TEXT_CHARS = 20_000;
 
+// A model the box's /model may name: an alias or a full id ("opus", "claude-opus-5-5[1m]"). The page
+// checks it before sending, the gateway again.
+export const MODEL_ID_PATTERN = /^[\w.\-[\]]{1,80}$/;
+
 export const SWITCH_OFFER_MS = 8_000;
 
 // Counted from when it was heard: a question still queued behind a long answer has not been asked,

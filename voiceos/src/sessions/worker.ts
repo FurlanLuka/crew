@@ -180,6 +180,16 @@ export const isMissingConversation = (message: string): boolean =>
 // A long plugin list stays a menu, not a state blob every tab replays.
 const MAX_COMMANDS = 300;
 
+// Rows can share a name: /name runs Claude Code's own when one has it, else the first. The menu
+// shows that one alone.
+const keepRunnable = (commands: SlashCommand[]): SlashCommand[] =>
+	commands.filter((command, index) => {
+		const twin = commands.findIndex((other) => other.name === command.name);
+		const builtin = commands.findIndex((other) => other.name === command.name && other.builtin);
+
+		return builtin >= 0 ? index === builtin : index === twin;
+	});
+
 const toSessionCommand = ({ name, description, argumentHint }: SlashCommand): SessionCommand => ({
 	name,
 	description: description.slice(0, 200),
@@ -330,8 +340,14 @@ export class Worker {
 
 		log.info('model', { ref, model });
 
+		const query = this.activeQuery;
+
+		if (!query) {
+			return;
+		}
+
 		try {
-			await this.activeQuery?.setModel(model);
+			await query.setModel(model);
 			emit({ type: 'session_notice', ref, text: `Model: ${model}.` });
 		} catch (error) {
 			log.warn('set model failed', { ref, model, error: String(error) });
@@ -351,7 +367,7 @@ export class Worker {
 		this.options.emit({
 			type: 'commands_listed',
 			ref: this.options.ref,
-			commands: commands.slice(0, MAX_COMMANDS).map(toSessionCommand),
+			commands: keepRunnable(commands).slice(0, MAX_COMMANDS).map(toSessionCommand),
 		});
 	}
 
@@ -436,8 +452,8 @@ export class Worker {
 				}
 
 				// Skills found as it works, or a plugin added: the "/" menu follows.
-				if (raw.type === 'system' && raw.subtype === 'commands_changed') {
-					this.emitCommands((message as unknown as { commands: SlashCommand[] }).commands);
+				if (message.type === 'system' && message.subtype === 'commands_changed') {
+					this.emitCommands(message.commands);
 				}
 
 				this.followConversation(raw);

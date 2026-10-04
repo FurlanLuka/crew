@@ -667,4 +667,60 @@ describe('slash commands', () => {
 		expect(noticesOf(harness.store)).toEqual(['Skills reloaded: 1 skill.', 'Model: opus.']);
 		harness.manager.stopAll();
 	});
+
+	it('a reload that applies, and a skills reload, refresh the menu', async () => {
+		const harness = createCommandHarness({ reloadedCommands: [REVIEW, SHIP] });
+		await waitTick();
+
+		harness.store.dispatch({ type: 'reload_session', ref: REF, kind: 'plugins', force: true });
+		await waitTick();
+
+		expect(harness.store.state.sessions[REF]?.commands).toEqual([REVIEW, SHIP]);
+
+		const skills = createCommandHarness({ reloadedCommands: [SHIP] });
+		await waitTick();
+		skills.store.dispatch({ type: 'reload_session', ref: REF, kind: 'skills' });
+		await waitTick();
+
+		expect(skills.store.state.sessions[REF]?.commands).toEqual([SHIP]);
+		harness.manager.stopAll();
+		skills.manager.stopAll();
+	});
+
+	it('a reload or a model that fails → said in the stream, never thrown', async () => {
+		const harness = createCommandHarness({ controlError: new Error('boom') });
+		await waitTick();
+
+		harness.store.dispatch({ type: 'reload_session', ref: REF, kind: 'plugins', force: true });
+		harness.store.dispatch({ type: 'set_model', ref: REF, model: 'opus' });
+		await waitTick();
+
+		expect(noticesOf(harness.store)).toEqual([
+			'Could not reload plugins: Error: boom',
+			'Could not switch to opus: Error: boom',
+		]);
+		harness.manager.stopAll();
+	});
+
+	it("rows sharing a name → Claude Code's own kept; long lists and texts cut", async () => {
+		const mine = { name: 'review', description: 'Mine', argumentHint: '' };
+		const builtin = { name: 'review', description: 'Built in', argumentHint: '', builtin: true };
+		const many = Array.from({ length: 320 }, (_, index) => ({
+			name: `c${index}`,
+			description: 'd'.repeat(250),
+			argumentHint: 'h'.repeat(100),
+		}));
+		const harness = createCommandHarness({ commands: [mine, builtin, ...many] });
+		await waitTick();
+
+		const listed = harness.store.state.sessions[REF]?.commands ?? [];
+
+		expect(listed.filter((command) => command.name === 'review')).toEqual([
+			{ name: 'review', description: 'Built in', argumentHint: '' },
+		]);
+		expect(listed).toHaveLength(300);
+		expect(listed[1]?.description).toHaveLength(200);
+		expect(listed[1]?.argumentHint).toHaveLength(80);
+		harness.manager.stopAll();
+	});
 });
