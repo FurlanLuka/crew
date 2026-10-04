@@ -3,7 +3,7 @@
 [![Latest release](https://img.shields.io/github/v/release/FurlanLuka/crew?label=release)](https://github.com/FurlanLuka/crew/releases/latest)
 [![Platforms: macOS and Linux](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#what-you-need-and-where-your-data-goes)
 [![Tests](https://github.com/FurlanLuka/crew/actions/workflows/test.yml/badge.svg)](https://github.com/FurlanLuka/crew/actions/workflows/test.yml)
-[![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Talk to your coding agents, on every machine you own.** Running a few Claudes at once is great
 until you become the bottleneck, clicking through terminals to see who's stuck. crew turns that into
@@ -163,8 +163,4 @@ voice.
 `crew update` keeps crew and Voice OS on the latest release (`crew update --check` only asks). A
 running server keeps its version until `crew server restart`.
 
-**License:** [Functional Source License 1.1, MIT future](LICENSE) (FSL-1.1-MIT). You can use it,
-change it, run it at work and redistribute it for any purpose except a competing use: offering it,
-or something built from it, in a commercial product or service that competes with crew. Each
-release becomes plain MIT two years after it ships. Releases made before the license change stay
-MIT.
+**License:** [MIT](LICENSE).

@@ -153,7 +153,7 @@ export function landingPage(): string {
 <a class="btn primary" href="/start/">Install crew</a>
 <a class="btn quiet" href="${REPO_URL}">Star it on GitHub</a>
 </div>
-<p class="fineprint">FSL-1.1-MIT · every release becomes MIT two years after it ships</p>
+<p class="fineprint">MIT licensed</p>
 </footer>
 ${COPY_SCRIPT}`;
 
