@@ -1,4 +1,4 @@
-export const SITE_URL = 'https://crew.decentrl.network';
+export const SITE_URL = 'https://getcrew.sh';
 export const REPO_URL = 'https://github.com/FurlanLuka/crew';
 export const INSTALL_LINE = 'curl -fsSL https://raw.githubusercontent.com/FurlanLuka/crew/main/install.sh | sh';
 

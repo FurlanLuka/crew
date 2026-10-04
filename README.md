@@ -15,7 +15,7 @@ per piece of work, on this machine or any other you can SSH into. **crew** is th
 that gives each of those sessions its own copy of your stack, with its dev servers running.
 
 [Try it](#try-it) · [Every machine](#every-machine-one-voice) · [What it's like](#what-its-like-to-use) ·
-[Where it stands](#where-it-stands) · [Guides](#learn-more) · [Releases](https://github.com/FurlanLuka/crew/releases)
+[Where it stands](#where-it-stands) · [Guides](#learn-more) · [Releases](https://github.com/FurlanLuka/crew/releases) · [Website](https://getcrew.sh)
 
 ## Try it
 
