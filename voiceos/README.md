@@ -267,6 +267,14 @@ browser (src/web) ──ws──▶ gateway ──▶ router ──▶ kernel (H
   Activate). For a remote session it waits up to `VIEW_RESTORE_MS` for the machine. A page that
   connects within two minutes of a boot that found a saved view hears "Voice OS restarted."
 - `/clear` and `/compact` (typed or said) wait for an explicit yes (`src/state/commands.ts`).
+- **Slash commands.** The worker lists a session's commands (`supportedCommands()` after init,
+  replaced on the SDK's `commands_changed` push) as `commands_listed` into `Session.commands`, not
+  persisted; remotes report theirs. The page's `web/slash-commands.ts` (pure) builds the "/" menu and
+  reads Voice OS's own commands, which never reach Claude: `reload_session` and `set_model` actions
+  become `worker_reload` / `worker_set_model` hands effects (`reloadPlugins({holdOnCacheImpact})`,
+  `reloadSkills()`, `setModel()`), answered with a `session_notice`; `/mute` is the client message
+  `mute`; `/voice` is `set_voice_off`; `/stop` is `interrupt`; `/update` and `/restart` are Set up's
+  `update` and `server_restart` on the main.
 - **Attached files.** The page uploads each file to `POST /api/attach?ref=` (`gateway/attach.ts`:
   the raw body, its name in `x-file-name`, cookie and exact origin as `/api/crew`, read in a stream
   that stops at 20 MB with or without a Content-Length). `sessions/attachments.ts` stores it by

@@ -1,6 +1,11 @@
 import { isChatRef } from '../shared/machine-ref.js';
-import { query as sdkQuery, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { Observation } from '../shared/protocol.js';
+import {
+	query as sdkQuery,
+	type Query,
+	type SDKUserMessage,
+	type SlashCommand,
+} from '@anthropic-ai/claude-agent-sdk';
+import type { Observation, SessionCommand } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { readGuardedCommand } from '../state/commands.js';
 import { createMapContext, mapMessage, readDenial, type RawMessage } from './events.js';
@@ -172,6 +177,18 @@ export interface WorkerOptions {
 export const isMissingConversation = (message: string): boolean =>
 	message.includes('No conversation found');
 
+// A long plugin list stays a menu, not a state blob every tab replays.
+const MAX_COMMANDS = 300;
+
+const toSessionCommand = ({ name, description, argumentHint }: SlashCommand): SessionCommand => ({
+	name,
+	description: description.slice(0, 200),
+	argumentHint: argumentHint.slice(0, 80),
+});
+
+const countOf = (count: number, singular: string): string =>
+	`${count} ${count === 1 ? singular : `${singular}s`}`;
+
 export class Worker {
 	private input = new InputChannel();
 	private activeQuery: Query | null = null;
@@ -257,6 +274,87 @@ export class Worker {
 			);
 	}
 
+	// The box's /reload-plugins and /reload-skills. Plugins are held, unless forced, when applying
+	// would change the tool list the conversation's cached context depends on.
+	async reload(kind: 'plugins' | 'skills', force: boolean): Promise<void> {
+		const { ref, emit } = this.options;
+		const query = this.activeQuery;
+
+		if (!query) {
+			return;
+		}
+
+		log.info('reload', { ref, kind, force });
+
+		try {
+			if (kind === 'skills') {
+				const { skills } = await query.reloadSkills();
+
+				emit({
+					type: 'session_notice',
+					ref,
+					text: `Skills reloaded: ${countOf(skills.length, 'skill')}.`,
+				});
+				await this.listCommands();
+
+				return;
+			}
+
+			const reloaded = await query.reloadPlugins(force ? {} : { holdOnCacheImpact: true });
+
+			if (reloaded.held) {
+				emit({
+					type: 'session_notice',
+					ref,
+					text: "Plugins not reloaded: it would change the session's tools and drop its cached context. Send /reload-plugins force to reload anyway.",
+				});
+
+				return;
+			}
+
+			this.emitCommands(reloaded.commands);
+			emit({
+				type: 'session_notice',
+				ref,
+				text: `Plugins reloaded: ${countOf(reloaded.plugins.length, 'plugin')}, ${countOf(reloaded.commands.length, 'command')}, ${countOf(reloaded.agents.length, 'agent')}${reloaded.error_count > 0 ? `, ${countOf(reloaded.error_count, 'error')}` : ''}.`,
+			});
+		} catch (error) {
+			log.warn('reload failed', { ref, kind, error: String(error) });
+			emit({ type: 'session_notice', ref, text: `Could not reload ${kind}: ${String(error)}` });
+		}
+	}
+
+	// The box's /model: the next turn runs on it.
+	async setModel(model: string): Promise<void> {
+		const { ref, emit } = this.options;
+
+		log.info('model', { ref, model });
+
+		try {
+			await this.activeQuery?.setModel(model);
+			emit({ type: 'session_notice', ref, text: `Model: ${model}.` });
+		} catch (error) {
+			log.warn('set model failed', { ref, model, error: String(error) });
+			emit({ type: 'session_notice', ref, text: `Could not switch to ${model}: ${String(error)}` });
+		}
+	}
+
+	private async listCommands(): Promise<void> {
+		try {
+			this.emitCommands((await this.activeQuery?.supportedCommands()) ?? []);
+		} catch (error) {
+			log.warn('commands not listed', { ref: this.options.ref, error: String(error) });
+		}
+	}
+
+	private emitCommands(commands: SlashCommand[]): void {
+		this.options.emit({
+			type: 'commands_listed',
+			ref: this.options.ref,
+			commands: commands.slice(0, MAX_COMMANDS).map(toSessionCommand),
+		});
+	}
+
 	stop(): void {
 		if (this.isStopped) {
 			return;
@@ -334,6 +432,12 @@ export class Worker {
 					this.sessionId = raw.session_id;
 					this.options.onSessionId(raw.session_id);
 					log.info('session id', { ref, sessionId: raw.session_id });
+					void this.listCommands();
+				}
+
+				// Skills found as it works, or a plugin added: the "/" menu follows.
+				if (raw.type === 'system' && raw.subtype === 'commands_changed') {
+					this.emitCommands((message as unknown as { commands: SlashCommand[] }).commands);
 				}
 
 				this.followConversation(raw);

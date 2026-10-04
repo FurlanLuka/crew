@@ -44,6 +44,7 @@ import {
 } from './helpers.js';
 import { hasFollowUpWaiting, promoteAllQueued, promoteQueued } from './delivery.js';
 import { reduceTakeBack } from './take-back.js';
+import { reduceSessionCommand } from './session-commands.js';
 import { giveBack, reduceAttachment } from './attachments.js';
 import { reduceSend } from './send.js';
 import type { SpeechPriority } from '../speech/queue.js';
@@ -89,6 +90,8 @@ export type Effect =
 			base64: string;
 	  }
 	| { type: 'worker_stop'; ref: string }
+	| { type: 'worker_reload'; ref: string; kind: 'plugins' | 'skills'; force?: true }
+	| { type: 'worker_set_model'; ref: string; model: string }
 	// reason: 'follow-up' when the developer's own spoken follow-up cut the reply.
 	| { type: 'worker_interrupt'; ref: string; reason?: 'follow-up' }
 	| { type: 'worker_set_mode'; ref: string; mode: 'default' | 'auto' }
@@ -544,6 +547,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		case 'attachment_added':
 		case 'attachment_removed':
 			return reduceAttachment(state, input);
+
+		case 'commands_listed':
+		case 'reload_session':
+		case 'set_model':
+			return reduceSessionCommand(state, input, stamped);
 
 		case 'take_back':
 			return reduceTakeBack(state, input);

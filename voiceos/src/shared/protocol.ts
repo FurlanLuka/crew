@@ -235,6 +235,15 @@ export interface Session {
 	askedByLine: string | null;
 	// The last turn this session reported (remote sessions only): a reconnect reports a newer one once.
 	lastTurnId: string | null;
+	// Its slash commands as Claude Code lists them (built-ins usable here, skills, plugin and project
+	// commands), for the box's "/" menu; absent until it has started once. Not persisted.
+	commands?: SessionCommand[];
+}
+
+export interface SessionCommand {
+	name: string;
+	description: string;
+	argumentHint: string;
 }
 
 export interface VoiceEntry {
@@ -544,6 +553,10 @@ export type Action =
 	| { type: 'take_back'; ref: string; id: string }
 	// A file taken off a session before any words took it (the chip's ✕).
 	| { type: 'attachment_removed'; ref: string; id: string }
+	// The box's /reload-plugins and /reload-skills; force: apply even when it costs the cached context.
+	| { type: 'reload_session'; ref: string; kind: 'plugins' | 'skills'; force?: true }
+	// The box's /model: the session's model, switched without a restart.
+	| { type: 'set_model'; ref: string; model: string }
 	// Set by the kernel: the developer heard a held line another way (asked about that session by name).
 	| { type: 'held_line_heard'; ref: string; id: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
@@ -623,6 +636,8 @@ export type Observation =
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
 	// A file attached to a session, once the server has stored it (POST /api/attach).
 	| { type: 'attachment_added'; ref: string; attachment: Attachment }
+	// A session's slash commands, at its start and whenever Claude Code's list changes.
+	| { type: 'commands_listed'; ref: string; commands: SessionCommand[] }
 	// The developer's notes of a workspace as they now stand (its newest lines), for the page.
 	| { type: 'notes'; workspace: string; lines: string[] }
 	// What a session is working on, named after a turn it spoke for itself.
@@ -808,4 +823,6 @@ export type ClientMessage =
 	| { type: 'listen_stop' }
 	| { type: 'audio_done'; id: string }
 	// The listening menu while the owner is on Discord: how the Discord channel listens.
-	| { type: 'discord_listen'; mode: ListeningMode };
+	| { type: 'discord_listen'; mode: ListeningMode }
+	// The box's /mute and /unmute: Voice OS's own chatter, as the kernel's mute.
+	| { type: 'mute'; isMuted: boolean };

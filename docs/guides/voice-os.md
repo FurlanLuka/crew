@@ -33,6 +33,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [Queued messages](#queued-messages)
 - [Docs, images and sub-agents](#docs-images-and-sub-agents)
 - [Attaching files](#attaching-files)
+- [Slash commands](#slash-commands)
 - [Dev servers](#dev-servers)
 - [Notes and debug notes](#notes-and-debug-notes)
 - [Other machines](#other-machines)
@@ -633,6 +634,26 @@ Claude gets each file as a path on the machine the session runs on and opens it 
 type and size up to 20 MB works, and a session on another machine gets its own copy before your
 words arrive. Up to 10 files wait on a session at a time. Chips you never sent are gone after a
 restart, and the files themselves are kept for 30 days.
+
+## Slash commands
+
+Type `/` at the start of a session's box, or in Set up's chat, and a menu opens with that session's
+commands: Claude Code's own that work here, your project and user commands, skills and plugin
+commands, each with its description, then Voice OS's own. Typing narrows it, the arrow keys move,
+Enter or Tab picks, Esc closes. Picking one of Claude's fills it in so you can add what it should work
+on (`/review the auth change`), and it goes to the session as words, as in Claude Code. The list
+follows the session: a skill it discovers or a plugin you add shows up without a restart.
+
+Voice OS's own commands run on the page instead of going to Claude. `/reload-plugins` and
+`/reload-skills` reload that session's plugins or skills and say what changed in its stream; when
+reloading plugins would change the session's tools and throw away its cached context, it holds and
+tells you, and `/reload-plugins force` reloads anyway. `/model opus` (or sonnet, haiku, a model id)
+switches the session's model for its next turn. `/stop` stops its turn. `/mute` and `/unmute` quiet
+Voice OS's chatter the way saying "quiet" does, and `/voice off` and `/voice on` are the top bar's
+voice switch. `/update` installs the latest crew on the main machine, whichever session's box you
+type it in, and offers to restart crew's server; it never restarts by itself, and other machines
+are updated from the main on their next connect. `/restart` restarts crew's server. These are typed
+only: saying them still goes to Voice OS's own understanding of your words.
 
 ## Dev servers
 

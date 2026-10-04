@@ -499,6 +499,11 @@ gateway = startGateway({
 				discord.setMode(message.mode);
 
 				return;
+			case 'mute':
+				log.info('mute from the page', { client, isMuted: message.isMuted });
+				voiceOut.mute(message.isMuted);
+
+				return;
 		}
 	},
 	onAudio: (chunk, client) => voiceIn.pushAudio(client, chunk),

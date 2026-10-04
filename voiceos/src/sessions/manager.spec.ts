@@ -593,3 +593,78 @@ describe('attached files', () => {
 		expect(resolveAttachment(harness.attachmentsDir, id)).not.toBeNull();
 	});
 });
+
+describe('slash commands', () => {
+	const REF = 'store-front/main';
+	const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+	const SHIP = { name: 'ship', description: 'Ship it', argumentHint: '' };
+
+	const createCommandHarness = (options: FakeQueryParams = {}) => {
+		const store = new Store();
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [{ ref: REF, label: REF, branch: '', cwd: '/w/main', dirs: [], isPinned: false }],
+		});
+		const fake = createFakeQuery({ commands: [REVIEW], ...options });
+		const manager = new SessionManager({
+			...connectStore(store),
+			registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-cmd-')), 'sessions.json'),
+			home: '/h',
+			fetchOrientation: async () => '',
+			runQuery: fake.runQuery,
+		});
+		store.onEffect(manager.handle);
+		store.dispatch({ type: 'activate', ref: REF });
+
+		return { store, manager, fake };
+	};
+
+	const noticesOf = (store: Store) =>
+		store.state.sessions[REF]?.stream.flatMap((item) =>
+			item.kind === 'notice' ? [item.text] : [],
+		);
+
+	it('listed once it starts, and replaced when Claude Code pushes a new list', async () => {
+		const harness = createCommandHarness();
+		await waitTick();
+
+		expect(harness.store.state.sessions[REF]?.commands).toEqual([REVIEW]);
+
+		harness.fake.pushCommands([REVIEW, SHIP]);
+		await waitTick();
+
+		expect(harness.store.state.sessions[REF]?.commands).toEqual([REVIEW, SHIP]);
+		harness.manager.stopAll();
+	});
+
+	it('/reload-plugins → reloaded, held on cache impact unless forced, and said in the stream', async () => {
+		const harness = createCommandHarness({ holdReload: true });
+		await waitTick();
+
+		harness.store.dispatch({ type: 'reload_session', ref: REF, kind: 'plugins' });
+		await waitTick();
+		harness.store.dispatch({ type: 'reload_session', ref: REF, kind: 'plugins', force: true });
+		await waitTick();
+
+		expect(harness.fake.reloads).toEqual(['plugins:hold', 'plugins']);
+		expect(noticesOf(harness.store)).toEqual([
+			"Plugins not reloaded: it would change the session's tools and drop its cached context. Send /reload-plugins force to reload anyway.",
+			'Plugins reloaded: 1 plugin, 1 command, 0 agents.',
+		]);
+		harness.manager.stopAll();
+	});
+
+	it('/reload-skills and /model → done live, said in the stream', async () => {
+		const harness = createCommandHarness();
+		await waitTick();
+
+		harness.store.dispatch({ type: 'reload_session', ref: REF, kind: 'skills' });
+		harness.store.dispatch({ type: 'set_model', ref: REF, model: 'opus' });
+		await waitTick();
+
+		expect(harness.fake.reloads).toEqual(['skills']);
+		expect(harness.fake.models).toEqual(['opus']);
+		expect(noticesOf(harness.store)).toEqual(['Skills reloaded: 1 skill.', 'Model: opus.']);
+		harness.manager.stopAll();
+	});
+});

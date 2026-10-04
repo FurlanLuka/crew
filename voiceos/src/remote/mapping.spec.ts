@@ -72,6 +72,11 @@ describe('toMainInput', () => {
 		{ type: 'worker_exited', ref: 'store/main', error: null },
 		{ type: 'history_restored', ref: 'store/main', items: [] },
 		{
+			type: 'commands_listed',
+			ref: 'store/main',
+			commands: [{ name: 'review', description: 'Review a change', argumentHint: '<pr>' }],
+		},
+		{
 			type: 'subagent_started',
 			ref: 'store/main',
 			taskId: 't',

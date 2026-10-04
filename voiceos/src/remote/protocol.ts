@@ -107,6 +107,7 @@ export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'ask_closed',
 	'worker_exited',
 	'history_restored',
+	'commands_listed',
 	'subagent_started',
 	'subagent_step',
 	'subagent_backgrounded',

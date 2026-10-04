@@ -10,6 +10,10 @@ export interface FakeQueryParams {
 	sideReply?: unknown[] | Error;
 	// A message containing these words asks permission mid-turn (a Bash call) and waits for the answer.
 	askOn?: string;
+	// The session's slash commands, as Claude Code lists them.
+	commands?: { name: string; description: string; argumentHint: string }[];
+	// A plugin reload asked to hold on cache impact is held.
+	holdReload?: boolean;
 }
 
 interface FakeQueryCall {
@@ -34,7 +38,12 @@ export const createFakeQuery = ({
 	holdTurns = false,
 	sideReply = [],
 	askOn,
+	commands = [],
+	holdReload = false,
 }: FakeQueryParams = {}) => {
+	const reloads: string[] = [];
+	let pushCommands: (next: unknown[]) => void = () => undefined;
+	const models: string[] = [];
 	// Stands in for the Agent SDK; holdTurns: a turn only ends when interrupted, like a cut reply.
 	const started: string[] = [];
 	const prompts: string[] = [];
@@ -108,6 +117,12 @@ export const createFakeQuery = ({
 			}
 		})();
 
+		// Claude Code's mid-session command list, pushed into the newest session.
+		pushCommands = (next) => {
+			queued.push({ type: 'system', subtype: 'commands_changed', commands: next });
+			wake();
+		};
+
 		const interrupt = async () => {
 			interrupts++;
 			queued.push({ type: 'result', subtype: 'error_during_execution', total_cost_usd: 0 });
@@ -131,11 +146,35 @@ export const createFakeQuery = ({
 			},
 			interrupt,
 			setPermissionMode: async () => undefined,
+			supportedCommands: async () => commands,
+			reloadSkills: async () => {
+				reloads.push('skills');
+
+				return { skills: commands.slice(0, 1) };
+			},
+			reloadPlugins: async (options?: { holdOnCacheImpact?: boolean }) => {
+				reloads.push(options?.holdOnCacheImpact ? 'plugins:hold' : 'plugins');
+
+				return {
+					commands,
+					agents: [],
+					plugins: [{ name: 'p', path: '/p' }],
+					mcpServers: [],
+					error_count: 0,
+					...(options?.holdOnCacheImpact && holdReload ? { held: true } : {}),
+				};
+			},
+			setModel: async (model?: string) => {
+				models.push(model ?? '');
+			},
 		};
 	}) as never;
 
 	return {
 		runQuery,
+		reloads,
+		models,
+		pushCommands: (next: unknown[]) => pushCommands(next),
 		started,
 		prompts,
 		sent,

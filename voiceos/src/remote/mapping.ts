@@ -12,6 +12,8 @@ const HANDS_EFFECTS = [
 	'worker_stop',
 	'worker_interrupt',
 	'worker_set_mode',
+	'worker_reload',
+	'worker_set_model',
 	'resolve_ask',
 	'side_answer',
 ] as const;

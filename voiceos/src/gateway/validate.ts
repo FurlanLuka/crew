@@ -33,6 +33,18 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
 	// An id is a 16-hex hash, a slash and up to 120 characters, each up to two UTF-16 units.
 	z.object({ type: z.literal('attachment_removed'), ref: refSchema, id: z.string().max(300) }),
+	z.object({
+		type: z.literal('reload_session'),
+		ref: refSchema,
+		kind: z.enum(['plugins', 'skills']),
+		force: z.literal(true).optional(),
+	}),
+	// A model alias or full id: letters, digits, dots, dashes, brackets ("opus", "claude-opus-5-5[1m]").
+	z.object({
+		type: z.literal('set_model'),
+		ref: refSchema,
+		model: z.string().regex(/^[\w.\-[\]]{1,80}$/),
+	}),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({
 		type: z.literal('answer_permission'),
@@ -121,6 +133,7 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('listen_stop') }),
 	z.object({ type: z.literal('audio_done'), id: z.string() }),
 	z.object({ type: z.literal('discord_listen'), mode: z.enum(['on-demand', 'hands-free']) }),
+	z.object({ type: z.literal('mute'), isMuted: z.boolean() }),
 ]) satisfies z.ZodType<ClientMessage>;
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };
