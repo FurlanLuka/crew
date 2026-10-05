@@ -21,10 +21,31 @@ const SESSION_ASK_MAX_TURNS = 8;
 const NEEDS_WORK = 'NEEDS_WORK';
 const FILES_MARKER = 'FILES:';
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
-// What a search leaves out when the copy names no files of its own.
-const SECRET_EXCLUDING_GLOB =
-	'!{.env,.env.*,*.pem,*.key,*.p12,id_rsa*,id_ed25519*,*credential*,*secret*}';
-const ANY_FILE_GLOBS = new Set(['*', '**', '**/*', '*.*']);
+// Everything isSecretPath calls a secret, as one ripgrep exclusion (a folder name excludes the folder).
+export const SECRET_EXCLUDING_GLOB =
+	'!{.env,.env.*,*.pem,*.key,*.p12,*.pfx,*.jks,*.keystore,*.kdbx,id_rsa*,id_dsa*,id_ecdsa*,id_ed25519*,.npmrc,.netrc,.pgpass,.pypirc,.git-credentials,*credential*,*Credential*,*secret*,*Secret*,.ssh,.aws,.gnupg,.docker,.kube}';
+// A search narrowed to plain extensions ("*.ts", "**/*.{go,sql}") cannot reach a secret file; any
+// other glob could (".*", "*.local", "**"), so it is replaced by the exclusion.
+const EXTENSION_GLOB_PATTERN = /^(?:\*\*\/)?\*\.(?:[A-Za-z0-9]+|\{[A-Za-z0-9,]+\})$/;
+const SECRET_EXTENSIONS = new Set([
+	'env',
+	'pem',
+	'key',
+	'p12',
+	'pfx',
+	'jks',
+	'keystore',
+	'kdbx',
+	'local',
+]);
+
+const isPlainExtensionGlob = (glob: string): boolean =>
+	EXTENSION_GLOB_PATTERN.test(glob) &&
+	!glob
+		.slice(glob.lastIndexOf('*.') + 2)
+		.replace(/[{}]/g, '')
+		.split(',')
+		.some((extension) => SECRET_EXTENSIONS.has(extension.toLowerCase()));
 
 export const buildSessionAskPrompt = (fromLabel: string, question: string): string =>
 	[
@@ -100,10 +121,12 @@ export const decideForkTool = (
 		return { kind: 'deny', reason: 'That search targets secret files.' };
 	}
 
-	// A search over everything would read .env lines too: it leaves secret files out.
-	return glob === null || ANY_FILE_GLOBS.has(glob)
-		? { kind: 'allow', updatedInput: { ...input, glob: SECRET_EXCLUDING_GLOB } }
-		: { kind: 'allow' };
+	if (glob !== null && isPlainExtensionGlob(glob)) {
+		return { kind: 'allow' };
+	}
+
+	// Any other search would read .env lines too: it searches everything but the secret files.
+	return { kind: 'allow', updatedInput: { ...input, glob: SECRET_EXCLUDING_GLOB } };
 };
 
 export const createForkToolHook =
@@ -196,7 +219,8 @@ export const classifySessionAsk = (messages: RawMessage[]): SessionAskOutcome =>
 	}
 
 	const { kept } = dropCheckpoints(assistant.map(readText).filter((text) => text.trim()));
-	const reply = (kept.at(-1) ?? '').trim();
+	// Joined: the copy may give its answer and its FILES list in separate messages.
+	const reply = kept.join('\n').trim();
 
 	if (!reply) {
 		return {

@@ -1,4 +1,3 @@
-import { isPeerToolName } from './session-ask-tools.js';
 import { findDocLinks } from './doc-links.js';
 import { findShownImages } from './media.js';
 import type { Limits, Observation } from '../shared/protocol.js';
@@ -11,6 +10,7 @@ import {
 	summarizeResult,
 	summarizeTool,
 } from './tool-summary.js';
+import { isPeerToolName } from './session-ask-tools.js';
 
 export interface RawMessage {
 	// Only the fields read here are typed, so a CLI update that adds fields never breaks the mapping.

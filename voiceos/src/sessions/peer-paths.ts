@@ -1,5 +1,6 @@
 // Which files one session may show another: inside its own folders, and never a secret. A secret
 // moves only through request_secret, with the developer's OK.
+import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
 const SECRET_NAME_PATTERNS = [
@@ -37,12 +38,22 @@ export interface SessionRoots {
 	dirs: string[];
 }
 
+// Where a path really is: a symlink inside the worktree pointing at ~/.ssh is judged by its target.
+// A path that does not exist (yet) is judged as written.
+const realPathOf = (path: string): string => {
+	try {
+		return realpathSync(path);
+	} catch {
+		return path;
+	}
+};
+
 // The absolute path inside one of the roots, or null when it points outside all of them.
 export const resolveInsideRoots = (path: string, { cwd, dirs }: SessionRoots): string | null => {
-	const absolute = isAbsolute(path) ? resolve(path) : resolve(cwd, path);
+	const absolute = realPathOf(isAbsolute(path) ? resolve(path) : resolve(cwd, path));
 
 	return [cwd, ...dirs].some((root) => {
-		const rel = relative(resolve(root), absolute);
+		const rel = relative(realPathOf(resolve(root)), absolute);
 
 		return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 	})

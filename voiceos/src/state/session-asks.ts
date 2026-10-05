@@ -4,7 +4,7 @@
 import { listActiveInOrder } from '../shared/active.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { isSetupRef, readMachine } from '../shared/machine-ref.js';
-import { buildPeerNote, describePeerAskAloud } from '../shared/peer-note.js';
+import { buildPeerNote, buildWorkNote, describePeerAskAloud } from '../shared/peer-note.js';
 import type {
 	Attachment,
 	Input,
@@ -30,6 +30,8 @@ export const PEER_REQUEST_TTL_MS = 200_000;
 // Waiting on the developer's Allow: long enough to come back to the desk.
 export const PEER_ASK_TTL_MS = 15 * 60_000;
 const LISTED_SESSIONS = 12;
+// The developer's Allow for a request is its own ask, keyed beside the request.
+const PEER_ASK_SUFFIX = ':ok';
 
 export type AskTarget = { kind: 'one'; ref: string } | { kind: 'refused'; reason: string };
 
@@ -283,7 +285,7 @@ export const reduceSessionAskRequested = (
 				...card,
 			}),
 			ask: {
-				id: `${input.id}:ok`,
+				id: `${input.id}${PEER_ASK_SUFFIX}`,
 				ref: input.ref,
 				at: stamped.at,
 				kind: 'secret',
@@ -383,7 +385,7 @@ export const reduceSessionForkSettled = (
 		const opened = openPeerAsk({
 			state: updateCards(settled, request, { status: 'needs_work', answer: input.answer }),
 			ask: {
-				id: `${request.id}:ok`,
+				id: `${request.id}${PEER_ASK_SUFFIX}`,
 				ref: request.from,
 				at: stamped.at,
 				kind: 'work',
@@ -414,12 +416,31 @@ export const reduceSessionForkSettled = (
 	};
 };
 
-// No answer in time (a remote that dropped and never came back): the asker hears that, once.
-export const reducePeerRequestExpired = (state: State, key: string): ReducerResult => {
+// No answer in time (a remote that dropped and never came back): the asker hears that, once. A
+// secret that never came is told as a copy that failed, as the asker was promised a message.
+export const reducePeerRequestExpired = (
+	state: State,
+	key: string,
+	stamped: Stamped,
+): ReducerResult => {
 	const request = state.peerRequests.find((pending) => pending.id === key);
 
 	if (!request) {
 		return reducePeerAskLapsed(state, key);
+	}
+
+	if (request.kind === 'secret') {
+		return reduceSecretTransferred(
+			state,
+			{
+				type: 'secret_transferred',
+				ref: request.from,
+				id: key,
+				path: null,
+				reason: 'no answer in time',
+			},
+			stamped,
+		);
 	}
 
 	const toLabel = readSessionLabel(state, request.to);
@@ -429,12 +450,14 @@ export const reducePeerRequestExpired = (state: State, key: string): ReducerResu
 			status: 'failed',
 			answer: 'no answer in time',
 		}),
-		effects:
-			request.kind === 'ask'
-				? [answerAsker(request.from, request.id, `No answer from ${toLabel} in time.`)]
-				: [],
+		effects: [answerAsker(request.from, request.id, `No answer from ${toLabel} in time.`)],
 	};
 };
+
+const withoutAsk = (state: State, askId: string): State => ({
+	...state,
+	asks: state.asks.filter((pending) => pending.id !== askId),
+});
 
 const findPeerAsk = (state: State, askId: string): PeerAsk | undefined =>
 	state.asks.find(
@@ -447,24 +470,40 @@ const closePeerAsk = (
 	status: PeerRequestStatus,
 	answer: string,
 ): State => {
-	const rest = { ...state, asks: state.asks.filter((pending) => pending.id !== ask.id) };
-
-	return updateCard(withoutRequest(rest, ask.requestId), ask.ref, cardId(ask.requestId, 'asker'), {
-		status,
-		answer,
-	});
+	return updateCard(
+		withoutRequest(withoutAsk(state, ask.id), ask.requestId),
+		ask.ref,
+		cardId(ask.requestId, 'asker'),
+		{
+			status,
+			answer,
+		},
+	);
 };
 
+// The developer's Allow ran out of time. Its request goes too, even when the ask itself went first
+// (its machine removed), so nothing waits on it forever.
 const reducePeerAskLapsed = (state: State, askId: string): ReducerResult => {
 	const ask = findPeerAsk(state, askId);
 
-	return ask
-		? withoutEffects(closePeerAsk(state, ask, 'refused', 'nobody allowed it in time'))
+	if (ask) {
+		return withoutEffects(closePeerAsk(state, ask, 'refused', 'nobody allowed it in time'));
+	}
+
+	const requestId = askId.endsWith(PEER_ASK_SUFFIX)
+		? askId.slice(0, -PEER_ASK_SUFFIX.length)
+		: null;
+	const request = state.peerRequests.find((pending) => pending.id === requestId);
+
+	return request
+		? withoutEffects(
+				updateCard(withoutRequest(state, request.id), request.from, cardId(request.id, 'asker'), {
+					status: 'refused',
+					answer: 'nobody allowed it in time',
+				}),
+			)
 		: withoutEffects(state);
 };
-
-const WORK_NOTE = (fromLabel: string): string =>
-	`(Voice OS note — ${fromLabel} asked for this and the developer allowed it. Do it; your final reply goes back to ${fromLabel}.)`;
 
 export const reduceAnswerPeer = (
 	state: State,
@@ -482,10 +521,8 @@ export const reduceAnswerPeer = (
 	}
 
 	if (ask.kind === 'secret') {
-		const rest = { ...state, asks: state.asks.filter((pending) => pending.id !== ask.id) };
-
 		return {
-			state: updateCard(rest, ask.ref, cardId(ask.requestId, 'asker'), {
+			state: updateCard(withoutAsk(state, ask.id), ask.ref, cardId(ask.requestId, 'asker'), {
 				status: 'asking',
 				answer: 'allowed: copying',
 			}),
@@ -501,7 +538,7 @@ export const reduceAnswerPeer = (
 		state: closed,
 		ref: ask.to,
 		text: ask.text,
-		note: WORK_NOTE(ask.fromLabel),
+		note: buildWorkNote(ask.fromLabel),
 		isSpoken: false,
 		stamped,
 		from: { ref: ask.ref, label: ask.fromLabel },

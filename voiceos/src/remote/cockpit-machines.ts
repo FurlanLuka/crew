@@ -1,7 +1,6 @@
 // The cockpit's other machines, wired: their links, a dev watch per machine, the one worktree list,
 // and machines.json kept in step with the state (crew writes it; this reads it back).
 
-import { writeSecretFile, type SecretCopy } from '../sessions/secrets.js';
 import { randomUUID } from 'node:crypto';
 import { watch } from 'node:fs';
 import { join } from 'node:path';
@@ -23,6 +22,7 @@ import type { OpenTransport } from './link.js';
 import { MachineLinks } from './links.js';
 import { readMachinesFile, readMainId, sameMachines } from './machines-file.js';
 import { openSshTransport, updateRemoteCrew, type UpdateRemote } from './ssh.js';
+import { type SecretCopy, writeSecretSafely } from '../sessions/secrets.js';
 
 const log = createLogger('remote');
 
@@ -77,8 +77,26 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 	]);
 
 	// A secret the developer allowed, read on any machine, for an asker on any machine: written here
-	// for a session here, sent down its link otherwise. It never enters the state.
+	// for a session here, sent down its link otherwise. It never enters the state, and only a copy the
+	// developer allowed, coming from the machine of the session it was asked from, is taken.
 	const deliverSecret = (copy: SecretCopy): void => {
+		const request = store.state.peerRequests.find(
+			(pending) =>
+				pending.id === copy.id &&
+				pending.kind === 'secret' &&
+				pending.from === copy.toRef &&
+				machineOf(pending.to) === (copy.source ?? null),
+		);
+
+		if (!request) {
+			log.warn('secret dropped: nothing allowed it', {
+				id: copy.id,
+				source: copy.source ?? 'here',
+			});
+
+			return;
+		}
+
 		const machine = machineOf(copy.toRef);
 		const failed = (reason: string) =>
 			store.dispatch({
@@ -90,18 +108,20 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 			});
 
 		if (!machine) {
-			try {
-				const path = writeSecretFile({
+			const path = writeSecretSafely(
+				{
 					dir: options.secretsDir,
 					ref: copy.toRef,
 					id: copy.id,
 					name: copy.name,
 					bytes: copy.bytes,
-				});
+				},
+				(error) => log.warn('secret not written', { id: copy.id, error: String(error) }),
+			);
 
+			if (path) {
 				store.dispatch({ type: 'secret_transferred', ref: copy.toRef, id: copy.id, path });
-			} catch (error) {
-				log.warn('secret not written', { id: copy.id, error: String(error) });
+			} else {
 				failed('it could not be stored');
 			}
 

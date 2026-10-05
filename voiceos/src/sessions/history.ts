@@ -1,4 +1,3 @@
-import { splitPeerNote } from '../shared/peer-note.js';
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import { isRetryText } from '../shared/approval.js';
 import type { StreamItem } from '../shared/protocol.js';
@@ -8,6 +7,7 @@ import { createLogger } from '../log.js';
 import { createMapContext, mapMessage, type MediaHooks, type RawMessage } from './events.js';
 import { createMediaHooks, type ImageSource } from './media.js';
 import { splitAttachedNote, toPastAttachment } from './attachments.js';
+import { splitPeerNote } from '../shared/peer-note.js';
 
 const log = createLogger('history');
 

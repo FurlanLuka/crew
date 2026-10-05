@@ -1,8 +1,6 @@
 // A remote machine's side: its sessions run here, one main at a time drives them over a link.
 // The sessions outlive any link; what happened while no main listened is in the next snapshot.
 
-import { toChunks } from '../sessions/attachments.js';
-import type { SecretCopy } from '../sessions/secrets.js';
 import { DISCORD_SEND_WAIT_MS, isDiscordSendQuery } from './query-allow.js';
 import { createLogger } from '../log.js';
 import type { Observation, SessionStatus, WorktreeInfo } from '../shared/protocol.js';
@@ -34,6 +32,8 @@ import {
 	type SecretMessage,
 	type SequencedEffect,
 } from './protocol.js';
+import { toChunks } from '../sessions/attachments.js';
+import type { SecretCopy } from '../sessions/secrets.js';
 
 const log = createLogger('remote');
 

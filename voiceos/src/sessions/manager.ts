@@ -334,11 +334,7 @@ export class SessionManager {
 			emit: (observation) => {
 				if (observation.type === 'worker_exited' && this.workers.get(ref) === worker) {
 					this.workers.delete(ref);
-					this.peers.settleRef(ref, 'The session ended.');
-
-					if (this.options.secretsDir) {
-						removeSessionSecrets(this.options.secretsDir, ref);
-					}
+					this.ended(ref);
 				}
 
 				this.options.emit(observation);
@@ -378,5 +374,15 @@ export class SessionManager {
 
 		this.workers.delete(ref);
 		worker.stop();
+		this.ended(ref);
+	}
+
+	// Stopped or exited, it waits on no other session any more, and its secret copies go.
+	private ended(ref: string): void {
+		this.peers.settleRef(ref, 'The session ended.');
+
+		if (this.options.secretsDir) {
+			removeSessionSecrets(this.options.secretsDir, ref);
+		}
 	}
 }

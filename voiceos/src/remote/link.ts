@@ -1,6 +1,5 @@
 // The main's end of one machine's link: SSH to it, keep it up, and carry effects out and reports in.
 
-import type { SecretCopy } from '../sessions/secrets.js';
 import { createLogger } from '../log.js';
 import { isActive } from '../shared/active.js';
 import type { CrewRunOptions, CrewRunResult, CrewRunner } from '../crew/adapter.js';
@@ -49,6 +48,7 @@ import {
 	readUpdateOutcome,
 	type UpdateOutcome,
 } from './versions.js';
+import type { SecretCopy } from '../sessions/secrets.js';
 
 const log = createLogger('remote');
 
@@ -459,6 +459,7 @@ export class RemoteLink {
 					toRef: message.toRef,
 					name: message.name,
 					bytes: Buffer.from(message.base64, 'base64'),
+					source: this.id,
 				});
 
 				return;

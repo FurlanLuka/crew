@@ -1,5 +1,4 @@
 import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
-import { PEER_ALLOWED_TOOLS, PEER_SERVER_NAME } from './session-ask-tools.js';
 import { isChatRef } from '../shared/machine-ref.js';
 import {
 	query as sdkQuery,
@@ -14,6 +13,7 @@ import { createMapContext, mapMessage, readDenial, type RawMessage } from './eve
 import { createMediaHooks } from './media.js';
 import type { PermissionBridge } from './permissions.js';
 import { buildBriefing } from './voice-context.js';
+import { PEER_ALLOWED_TOOLS, PEER_SERVER_NAME } from './session-ask-tools.js';
 
 const log = createLogger('worker');
 

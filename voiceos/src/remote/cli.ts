@@ -2,7 +2,6 @@
 // runs it in tmux). `voiceos remote attach`: what `crew voice _attach` execs at the end of an SSH
 // login, bridging that SSH session's stdio to the serving daemon's socket.
 
-import { sweepSecrets, writeSecretFile } from '../sessions/secrets.js';
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +12,7 @@ import { configureLog, createLogger } from '../log.js';
 import { readGitHead } from '../narrator/turn.js';
 import { resolveClaudeBin, isCompiled } from '../sessions/claude-bin.js';
 import { loadTranscript, restoreHistory } from '../sessions/history.js';
+import { startSecretSweep, writeSecretSafely } from '../sessions/secrets.js';
 import { SessionManager } from '../sessions/manager.js';
 import { readMediaBytes } from '../sessions/media.js';
 import {
@@ -109,16 +109,7 @@ const serve = async (): Promise<void> => {
 	}
 
 	// Secrets copied here with the developer's OK: a day at most.
-	const sweepOldSecrets = (): void => {
-		const swept = sweepSecrets(remote.secretsDir, Date.now());
-
-		if (swept > 0) {
-			log.info('old secret copies removed', { count: swept });
-		}
-	};
-
-	sweepOldSecrets();
-	setInterval(sweepOldSecrets, 60 * 60 * 1000);
+	startSecretSweep(remote.secretsDir, (count) => log.info('old secret copies removed', { count }));
 
 	const listWorktrees = async () => [
 		createSetupWorktree(paths.home),
@@ -146,15 +137,10 @@ const serve = async (): Promise<void> => {
 		readGitHead,
 		readMedia: (name) => readMediaBytes(name, remote.mediaDir),
 		readAttachment: (id) => readAttachmentBytes(remote.attachmentsDir, id),
-		writeSecret: (copy) => {
-			try {
-				return writeSecretFile({ dir: remote.secretsDir, ref: copy.toRef, ...copy });
-			} catch (error) {
-				log.warn('secret not written', { id: copy.id, error: String(error) });
-
-				return null;
-			}
-		},
+		writeSecret: (copy) =>
+			writeSecretSafely({ dir: remote.secretsDir, ref: copy.toRef, ...copy }, (error) =>
+				log.warn('secret not written', { id: copy.id, error: String(error) }),
+			),
 		restoreHistory: async (dispatch) => {
 			const worktrees = await listWorktrees().catch(() => [createSetupWorktree(paths.home)]);
 			const infoOf = (ref: string) => worktrees.find((info) => info.ref === ref);

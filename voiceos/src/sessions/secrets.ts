@@ -24,6 +24,8 @@ export interface SecretCopy {
 	toRef: string;
 	name: string;
 	bytes: Buffer;
+	// The machine it was read on, set by the link it came over; absent when read on the main.
+	source?: string;
 }
 
 export type ReadSecret = { ok: true; name: string; bytes: Buffer } | { ok: false; reason: string };
@@ -102,6 +104,34 @@ export const writeSecretFile = ({ dir, ref, id, name, bytes }: WriteSecretFilePa
 	writeFileSync(path, bytes, { mode: 0o600 });
 
 	return path;
+};
+
+// A write that fails is said, never thrown: the asker is told the copy failed.
+export const writeSecretSafely = (
+	params: WriteSecretFileParams,
+	onError: (error: unknown) => void,
+): string | null => {
+	try {
+		return writeSecretFile(params);
+	} catch (error) {
+		onError(error);
+
+		return null;
+	}
+};
+
+// Copies older than a day, swept now and every hour.
+export const startSecretSweep = (dir: string, onSwept: (count: number) => void): void => {
+	const sweep = (): void => {
+		const swept = sweepSecrets(dir, Date.now());
+
+		if (swept > 0) {
+			onSwept(swept);
+		}
+	};
+
+	sweep();
+	setInterval(sweep, 60 * 60 * 1000);
 };
 
 export const removeSessionSecrets = (dir: string, ref: string): void => {

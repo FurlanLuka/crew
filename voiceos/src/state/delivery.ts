@@ -343,7 +343,8 @@ const deliverWords = ({
 	};
 	const queued = updateSession(state, ref, (current) => ({
 		...current,
-		needsUser: null,
+		// Another session's words answer nothing the developer was asked.
+		needsUser: from ? current.needsUser : null,
 		queue: [...current.queue, queuedMessage],
 	}));
 

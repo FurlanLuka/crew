@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
 	checkSharedPath,
 	isSecretPath,
@@ -76,4 +79,33 @@ describe('isSecretPattern', () => {
 	it.each(['*.ts', 'src/**/*.go', '**/README.md'])('%s → safe', (glob) =>
 		expect(isSecretPattern(glob)).toBe(false),
 	);
+});
+
+describe('a symlink inside the worktree', () => {
+	const made: string[] = [];
+
+	afterEach(() => {
+		for (const dir of made.splice(0)) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('pointing outside, or at a secret → judged by where it leads', () => {
+		const home = mkdtempSync(join(tmpdir(), 'peer-paths-'));
+		const cwd = join(home, 'checkout');
+
+		made.push(home);
+		mkdirSync(cwd);
+		mkdirSync(join(home, '.ssh'));
+		writeFileSync(join(home, '.ssh', 'id_ed25519'), 'key');
+		writeFileSync(join(cwd, '.env'), 'A=1');
+		symlinkSync(join(home, '.ssh', 'id_ed25519'), join(cwd, 'notes.txt'));
+		symlinkSync(join(cwd, '.env'), join(cwd, 'config.txt'));
+
+		expect(checkSharedPath('notes.txt', { cwd, dirs: [] })).toMatchObject({ ok: false });
+		expect(checkSharedPath('config.txt', { cwd, dirs: [] })).toMatchObject({
+			ok: false,
+			reason: 'config.txt looks like a secret; use request_secret',
+		});
+	});
 });

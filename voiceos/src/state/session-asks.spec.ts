@@ -338,3 +338,205 @@ describe('a secret', () => {
 		);
 	});
 });
+
+describe('what keeps it tidy', () => {
+	const needsWork = (): State => {
+		const asked = run(
+			[request('ask', 'Does it work on staging?', { session: 'checkout api main' })],
+			{
+				start: sessions(),
+			},
+		);
+
+		return run(
+			[
+				{
+					type: 'session_fork_settled',
+					ref: CHECKOUT,
+					id: 'r1',
+					status: 'needs_work',
+					answer: 'run the staging check',
+					files: [],
+					read: [],
+				},
+			],
+			{ start: asked.state },
+		).state;
+	};
+
+	const allowed = (): State =>
+		run([{ type: 'answer_peer', askId: 'r1:ok', isApproved: true }], { start: needsWork() }).state;
+
+	it('every wait has its timer: the copy 200 s, the Allow 15 min, a secret after Allow 200 s', () => {
+		const asked = run([request('ask', 'q', { session: 'checkout api main' })], {
+			start: sessions(),
+		});
+		const opened = run(
+			[
+				{
+					type: 'session_fork_settled',
+					ref: CHECKOUT,
+					id: 'r1',
+					status: 'needs_work',
+					answer: 'x',
+					files: [],
+					read: [],
+				},
+			],
+			{ start: asked.state },
+		);
+		const secret = run(
+			[request('secret', 'STRIPE_KEY', { session: 'checkout api main', id: 's1' })],
+			{
+				start: sessions(),
+			},
+		);
+		const secretAllowed = run([{ type: 'answer_peer', askId: 's1:ok', isApproved: true }], {
+			start: secret.state,
+		});
+
+		expect(asked.effects).toContainEqual({ type: 'expire_peer', key: 'r1', ms: 200_000 });
+		expect(opened.effects).toContainEqual({ type: 'expire_peer', key: 'r1:ok', ms: 900_000 });
+		expect(opened.effects).toContainEqual(
+			expect.objectContaining({ type: 'speak', source: 'alert', isAsking: true }),
+		);
+		expect(secret.effects).toContainEqual({ type: 'expire_peer', key: 's1:ok', ms: 900_000 });
+		expect(secretAllowed.effects).toContainEqual({ type: 'expire_peer', key: 's1', ms: 200_000 });
+	});
+
+	it('the asker interrupted, or its worker gone → the Allow still waits; its lapse clears the request', () => {
+		const secret = run([request('secret', 'STRIPE_KEY', { session: 'checkout api main' })], {
+			start: sessions(),
+		}).state;
+		const interrupted = run([{ type: 'interrupt', ref: STORE }], { start: secret }).state;
+		const exited = run([{ type: 'worker_exited', ref: STORE, error: null }], {
+			start: interrupted,
+		}).state;
+
+		expect(exited.asks).toMatchObject([{ id: 'r1:ok', kind: 'secret' }]);
+
+		const lapsed = run([{ type: 'peer_expired', key: 'r1:ok' }], { start: exited }).state;
+
+		expect(lapsed.asks).toEqual([]);
+		expect(lapsed.peerRequests).toEqual([]);
+		expect(cardsOf(lapsed, STORE)[0]).toMatchObject({ status: 'refused' });
+	});
+
+	it('an Allow whose ask went first (its machine removed) → its lapse still clears the request', () => {
+		const secret = run([request('secret', 'STRIPE_KEY', { session: 'checkout api main' })], {
+			start: sessions(),
+		}).state;
+		const gone = { ...secret, asks: [] };
+
+		expect(
+			run([{ type: 'peer_expired', key: 'r1:ok' }], { start: gone }).state.peerRequests,
+		).toEqual([]);
+	});
+
+	it('a secret allowed but never copied in time → the asker is told, as it was promised a message', () => {
+		const secret = run([request('secret', 'STRIPE_KEY', { session: 'checkout api main' })], {
+			start: sessions(),
+		}).state;
+		const allowedSecret = run([{ type: 'answer_peer', askId: 'r1:ok', isApproved: true }], {
+			start: secret,
+		}).state;
+		const expired = run([{ type: 'peer_expired', key: 'r1' }], { start: allowedSecret }).state;
+
+		expect(expired.sessions[STORE]?.stream.at(-1)).toMatchObject({
+			kind: 'user',
+			from: CHECKOUT,
+			text: `The secret from ${CHECKOUT} could not be copied: no answer in time.`,
+		});
+		expect(cardsOf(expired, STORE)[0]).toMatchObject({ status: 'failed' });
+	});
+
+	it('a copy that failed → the asker is told why', () => {
+		const secret = run(
+			[
+				request('secret', 'STRIPE_KEY', { session: 'checkout api main' }),
+				{ type: 'answer_peer', askId: 'r1:ok', isApproved: true },
+				{
+					type: 'secret_transferred',
+					ref: CHECKOUT,
+					id: 'r1',
+					path: null,
+					reason: "STRIPE_KEY is not in the session's .env files",
+				},
+			],
+			{ start: sessions() },
+		).state;
+
+		expect(secret.sessions[STORE]?.stream.at(-1)).toMatchObject({
+			text: `The secret from ${CHECKOUT} could not be copied: STRIPE_KEY is not in the session's .env files.`,
+		});
+	});
+
+	it('the allowed work interrupted → nothing goes back to the asker', () => {
+		const stopped = run(
+			[
+				{ type: 'interrupt', ref: CHECKOUT },
+				{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'half done' },
+			],
+			{ start: allowed() },
+		).state;
+
+		expect(stopped.sessions[STORE]?.stream.some((item) => item.kind === 'user' && item.from)).toBe(
+			false,
+		);
+	});
+
+	it("the allowed work cut by the developer's follow-up → the follow-up's turn owes the reply", () => {
+		const cut = run(
+			[
+				{ type: 'send', ref: CHECKOUT, text: 'use the staging token', isNow: true },
+				{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'cut short' },
+			],
+			{ start: allowed() },
+		).state;
+
+		expect(cut.sessions[CHECKOUT]?.replyOwed).toBe(STORE);
+		expect(cut.sessions[STORE]?.stream.some((item) => item.kind === 'user' && item.from)).toBe(
+			false,
+		);
+
+		const done = run([{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'All green.' }], {
+			start: cut,
+		}).state;
+
+		expect(done.sessions[STORE]?.stream.at(-1)).toMatchObject({ from: CHECKOUT });
+	});
+
+	it('a turn started by a tell → quiet unless it speaks for itself; the question it waited on stays', () => {
+		const waiting = run(
+			[{ type: 'narration', ref: CHECKOUT, needsUser: true, text: 'Should I push?' }],
+			{ start: sessions() },
+		).state;
+		const told = run([request('tell', 'fyi: schema changed', { session: 'checkout api main' })], {
+			start: waiting,
+		}).state;
+
+		expect(told.sessions[CHECKOUT]?.needsUser).not.toBeNull();
+
+		const ended = run([{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'Noted.' }], {
+			start: told,
+		});
+
+		expect(ended.effects.some((effect) => effect.type === 'narrate')).toBe(false);
+	});
+
+	it('a refusal counts for nothing; the count starts over with the next turn', () => {
+		const refused = run([request('ask', 'q', { session: 'nobody' })], { start: sessions() }).state;
+
+		expect(refused.sessions[STORE]?.peerRequestsInTurn).toBe(0);
+
+		const counted = run([request('ask', 'q', { session: 'checkout api main', id: 'r2' })], {
+			start: busy(refused, STORE),
+		}).state;
+		const ended = run([{ type: 'turn_ended', ref: STORE, costUsd: 0, text: '' }], {
+			start: counted,
+		}).state;
+
+		expect(counted.sessions[STORE]?.peerRequestsInTurn).toBe(1);
+		expect(ended.sessions[STORE]?.peerRequestsInTurn).toBe(0);
+	});
+});

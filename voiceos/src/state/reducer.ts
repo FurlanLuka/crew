@@ -26,6 +26,7 @@ import {
 import { isAskInput, reduceAsk, restoreAutoEffects, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
+import { isPeerAsk } from '../shared/protocol.js';
 import {
 	carryReplyOwed,
 	reduceAnswerPeer,
@@ -544,7 +545,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		case 'answer_peer':
 			return reduceAnswerPeer(answered, input, stamped);
 		case 'peer_expired':
-			return reducePeerRequestExpired(state, input.key);
+			return reducePeerRequestExpired(state, input.key, stamped);
 	}
 
 	if (isSubagentInput(input)) {
@@ -637,8 +638,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					...current,
 					queue: [],
 					voiceTurnAt: null,
-					// The developer stopped the work: there is nothing to report, nor to replay.
+					// The developer stopped the work: there is nothing to report, nor to replay, nor to
+					// send back to a session that asked for it.
 					reportOwed: false,
+					replyOwed: null,
 					compactingSince: null,
 					allowOnce: null,
 					currentSendId: null,
@@ -806,7 +809,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A turn nobody sent (a background agent reporting back) speaks only through its own tag: its
 			// untagged "still waiting" lines, narrated one after another, were noise.
 			const isSelfStarted = session.currentSendId === null && !session.reportOwed;
-			const isSilent = isSelfStarted && spoken === null;
+			// A turn another session started is between the two of them: heard only through its own tag.
+			const isPeerStarted = session.turnFrom !== null && !session.reportOwed;
+			const isSilent = (isSelfStarted || isPeerStarted) && spoken === null;
 
 			// A promised report is given even for a turn that wrote nothing.
 			if ((input.text.trim() || session.reportOwed) && !isCutOff && !isSilent) {
@@ -846,14 +851,16 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				subagents: current.subagents.filter((subagent) => subagent.isBackground),
 				compactingSince: null,
 			}));
-			// The work a held switch asked about is over: what it wanted goes next, ahead of the queue.
-			const switched = moveHeldRedirectAhead(ended, input.ref, stamped);
-			// Work another session asked for: its reply goes back, or to the follow-up that cut it.
+			// Work another session asked for: its reply goes back, or to the follow-up that cut it (read
+			// before a held switch takes the queue's head).
+			const followUp = ended.sessions[input.ref]?.queue[0];
 			const repaid =
-				session.replyOwed && isCutOff
-					? withoutEffects(carryReplyOwed(switched, input.ref, session.replyOwed))
-					: settleReplyBack(session, switched, input.text, stamped);
-			const dispatched = dispatchQueueHead(repaid.state, input.ref, stamped);
+				session.replyOwed && isCutOff && followUp && !followUp.replyTo
+					? withoutEffects(carryReplyOwed(ended, input.ref, session.replyOwed))
+					: settleReplyBack(session, ended, input.text, stamped);
+			// The work a held switch asked about is over: what it wanted goes next, ahead of the queue.
+			const switched = moveHeldRedirectAhead(repaid.state, input.ref, stamped);
+			const dispatched = dispatchQueueHead(switched, input.ref, stamped);
 
 			return {
 				state: dispatched.state,
@@ -864,7 +871,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		case 'worker_exited': {
 			// A held switch keeps its words: queued for the next start, not dropped with the asks.
 			const heldRedirect = findRedirectAsk(state, input.ref);
-			const settled = { ...state, asks: state.asks.filter((ask) => ask.ref !== input.ref) };
+			// Another session's request docked here waits for the developer, not for this worker.
+			const settled = {
+				...state,
+				asks: state.asks.filter((ask) => ask.ref !== input.ref || isPeerAsk(ask)),
+			};
 			const owed = state.sessions[input.ref]?.reportOwed;
 			const stopped = updateSession(settled, input.ref, (session) => ({
 				...session,

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configureLog } from '../log.js';
 import { Store } from '../state/store.js';
 import { SessionManager, connectStore } from './manager.js';
 import { loadRegistry, recordSession } from './registry.js';
+import { writeSecretFile } from './secrets.js';
 import { BRIEFING_VERSION } from './voice-context.js';
 import { describeAttached, resolveAttachment, storeAttachment } from './attachments.js';
 import { createFakeQuery, type FakeQueryParams } from '../../test/support/fake-query.js';
@@ -738,8 +739,12 @@ describe('sessions asking sessions', () => {
 	const STORE = 'store-front/main';
 	const CHECKOUT = 'checkout-api/main';
 
-	const createPeerHarness = (sideReply: unknown[] = []) => {
+	const createPeerHarness = (
+		sideReply: unknown[] = [],
+		dirs: Partial<Record<'root', string>> = {},
+	) => {
 		const store = new Store();
+		const root = dirs.root;
 		const fake = createFakeQuery({ sideReply, holdTurns: true });
 		const options: Record<string, unknown>[] = [];
 		const runQuery = ((call: { options: Record<string, unknown> }) => {
@@ -751,7 +756,7 @@ describe('sessions asking sessions', () => {
 			ref,
 			label: ref,
 			branch: '',
-			cwd: `/w/${ref}`,
+			cwd: root ? join(root, ref.replace(/\//g, '_')) : `/w/${ref}`,
 			dirs: [],
 			isPinned: false,
 		});
@@ -764,6 +769,13 @@ describe('sessions asking sessions', () => {
 			home: '/h',
 			fetchOrientation: () => Promise.resolve('## crew'),
 			runQuery,
+			...(root
+				? {
+						attachmentsDir: join(root, 'attachments'),
+						mediaDir: join(root, 'media'),
+						secretsDir: join(root, 'secrets'),
+					}
+				: {}),
 		});
 
 		store.onEffect(manager.handle);
@@ -862,5 +874,129 @@ describe('sessions asking sessions', () => {
 
 		expect(settled).toMatchObject([{ status: 'failed', answer: 'it is not running' }]);
 		expect(harness.fake.forks).toEqual([]);
+	});
+});
+
+describe('sessions asking sessions: files and secrets on this machine', () => {
+	const STORE = 'store-front/main';
+	const CHECKOUT = 'checkout-api/main';
+
+	const setup = (sideReply: unknown[] = []) => {
+		const root = mkdtempSync(join(tmpdir(), 'voiceos-peer-files-'));
+		const checkoutDir = join(root, 'checkout-api_main');
+		const store = new Store();
+		const fake = createFakeQuery({ sideReply, holdTurns: true });
+		const settled: unknown[] = [];
+
+		mkdirSync(checkoutDir, { recursive: true });
+		mkdirSync(join(root, 'store-front_main'), { recursive: true });
+		writeFileSync(join(checkoutDir, 'schema.sql'), 'create table orders();');
+		writeFileSync(join(checkoutDir, '.env'), 'STRIPE_KEY=x');
+		store.dispatch({
+			type: 'worktrees',
+			worktrees: [STORE, CHECKOUT].map((ref) => ({
+				ref,
+				label: ref,
+				branch: '',
+				cwd: join(root, ref.replace(/\//g, '_')),
+				dirs: [],
+				isPinned: false,
+			})),
+		});
+		store.subscribe((stamped) => {
+			if (
+				stamped.input.type === 'session_fork_settled' ||
+				stamped.input.type === 'secret_transferred'
+			) {
+				settled.push(stamped.input);
+			}
+		});
+
+		const manager = new SessionManager({
+			...connectStore(store),
+			registryFile: join(root, 'sessions.json'),
+			home: '/h',
+			fetchOrientation: () => Promise.resolve(''),
+			runQuery: fake.runQuery,
+			attachmentsDir: join(root, 'attachments'),
+			mediaDir: join(root, 'media'),
+			secretsDir: join(root, 'secrets'),
+		});
+
+		store.onEffect(manager.handle);
+
+		return { root, store, manager, settled };
+	};
+
+	it('the copy hands over a file and a secret → the file goes, the secret is refused and said so', async () => {
+		const harness = setup([
+			{
+				type: 'assistant',
+				message: { content: [{ type: 'text', text: 'Here it is.\nFILES:\n- schema.sql\n- .env' }] },
+			},
+			{ type: 'result', subtype: 'success' },
+		]);
+
+		harness.store.dispatch({ type: 'activate', ref: CHECKOUT });
+		await waitTick();
+		harness.store.dispatch({ type: 'send', ref: CHECKOUT, text: 'work' });
+		await waitTick();
+		harness.manager.handle({
+			type: 'session_fork',
+			ref: CHECKOUT,
+			id: 'r1',
+			fromLabel: STORE,
+			question: 'q',
+		});
+		await waitTick();
+
+		expect(harness.settled).toMatchObject([
+			{
+				status: 'answered',
+				answer: 'Here it is.\n\n(Not handed over: .env looks like a secret; use request_secret.)',
+				files: [{ name: 'schema.sql' }],
+			},
+		]);
+		harness.manager.stopAll();
+	});
+
+	it('a secret it cannot read, or with no way to send it → not copied, and why', () => {
+		const harness = setup();
+
+		harness.manager.handle({
+			type: 'secret_transfer',
+			ref: CHECKOUT,
+			id: 's1',
+			what: 'NOPE',
+			toRef: STORE,
+		});
+
+		expect(harness.settled).toEqual([
+			{
+				type: 'secret_transferred',
+				ref: CHECKOUT,
+				id: 's1',
+				path: null,
+				reason: "NOPE is not in the session's .env files",
+			},
+		]);
+	});
+
+	it('a session that stops takes its secret copies with it', async () => {
+		const harness = setup();
+		const copy = writeSecretFile({
+			dir: join(harness.root, 'secrets'),
+			ref: STORE,
+			id: 'r1',
+			name: 'STRIPE_KEY.env',
+			bytes: Buffer.from('x'),
+		});
+
+		harness.store.dispatch({ type: 'activate', ref: STORE });
+		await waitTick();
+		harness.manager.handle({ type: 'worker_stop', ref: STORE });
+		await waitTick();
+
+		expect(existsSync(copy)).toBe(false);
 	});
 });

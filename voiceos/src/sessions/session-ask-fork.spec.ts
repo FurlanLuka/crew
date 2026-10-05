@@ -6,6 +6,7 @@ import {
 	createForkToolHook,
 	decideForkTool,
 	runSessionAskFork,
+	SECRET_EXCLUDING_GLOB,
 } from './session-ask-fork.js';
 import type { QueryLaunch } from './worker.js';
 
@@ -49,7 +50,7 @@ describe('decideForkTool', () => {
 			kind: 'allow',
 			updatedInput: {
 				pattern: 'STRIPE',
-				glob: '!{.env,.env.*,*.pem,*.key,*.p12,id_rsa*,id_ed25519*,*credential*,*secret*}',
+				glob: SECRET_EXCLUDING_GLOB,
 			},
 		}));
 
@@ -61,6 +62,36 @@ describe('decideForkTool', () => {
 		expect(decideForkTool('Grep', { pattern: 'x', glob: '*.ts' }, roots)).toEqual({
 			kind: 'allow',
 		});
+	});
+
+	it('a glob that could reach a dotfile (".*", "**", "*.local", "**/*.*") → the secret exclusion instead', () => {
+		for (const glob of ['.*', '**', '**/.*', '*.local', '**/*.*', '*.{env,ts}']) {
+			expect(decideForkTool('Grep', { pattern: 'x', glob }, roots)).toEqual({
+				kind: 'allow',
+				updatedInput: { pattern: 'x', glob: SECRET_EXCLUDING_GLOB },
+			});
+		}
+
+		expect(decideForkTool('Grep', { pattern: 'x', glob: '**/*.{ts,tsx}' }, roots)).toEqual({
+			kind: 'allow',
+		});
+	});
+
+	it('the exclusion covers every kind of file isSecretPath calls a secret', () => {
+		for (const name of [
+			'.env.local',
+			'api.pem',
+			'id_dsa',
+			'.npmrc',
+			'.netrc',
+			'.pgpass',
+			'x.pfx',
+			'x.kdbx',
+		]) {
+			const listed = SECRET_EXCLUDING_GLOB.slice(2, -1).split(',');
+
+			expect(listed.some((glob) => new Bun.Glob(glob).match(name))).toBe(true);
+		}
 	});
 
 	it('Glob listing secrets → denied; any other pattern → allowed', () => {
@@ -128,6 +159,15 @@ describe('classifySessionAsk', () => {
 				.answer,
 		).toBe('It is five.'));
 
+	it('the answer and its FILES list in separate messages → both kept', () =>
+		expect(
+			classifySessionAsk([text('The schema changed.'), text('FILES:\n- db/schema.sql'), success]),
+		).toMatchObject({
+			status: 'answered',
+			answer: 'The schema changed.',
+			files: ['db/schema.sql'],
+		}));
+
 	it('no text, an error, or out of turns → failed with why', () => {
 		expect(classifySessionAsk([success]).answer).toBe('no answer');
 		expect(
@@ -188,6 +228,37 @@ describe('runSessionAskFork', () => {
 			persistSession: false,
 			maxTurns: 8,
 			cwd: '/w/checkout',
+		});
+	});
+
+	it("the copy's hook, as the SDK calls it: a broad search loses the secret files, an ask is refused", async () => {
+		const calls: {
+			options: { hooks: { PreToolUse: { hooks: ((...args: unknown[]) => Promise<unknown>)[] }[] } };
+		}[] = [];
+		const runQuery = ((call: (typeof calls)[number]) => {
+			calls.push(call);
+
+			return (async function* () {
+				yield success;
+			})();
+		}) as never;
+		const signal = new AbortController().signal;
+
+		await runSessionAskFork({ launch, sessionId: 's1', fromLabel: 'a', question: 'q', runQuery });
+
+		const hook = calls[0]?.options.hooks.PreToolUse[0]?.hooks[0];
+		const call = (tool_name: string, tool_input: Record<string, unknown>) =>
+			hook?.({ hook_event_name: 'PreToolUse', tool_name, tool_input }, 't', { signal });
+
+		expect(await call('Grep', { pattern: 'KEY' })).toEqual({
+			hookSpecificOutput: {
+				hookEventName: 'PreToolUse',
+				permissionDecision: 'allow',
+				updatedInput: { pattern: 'KEY', glob: SECRET_EXCLUDING_GLOB },
+			},
+		});
+		expect(await call('mcp__voiceos__ask_session', {})).toMatchObject({
+			hookSpecificOutput: { permissionDecision: 'deny' },
 		});
 	});
 

@@ -73,6 +73,37 @@ describe('mapMessage', () => {
 		expect(mapContext.toolSummaries.get('t1')).toBe('run npm test');
 	});
 
+	it("a call to another session's tools → no tool line or result: its card says it, and a link in the answer is not this session's doc", () => {
+		const mapContext = createMapContext();
+		const call = mapMessage(
+			{
+				type: 'assistant',
+				message: {
+					content: [{ type: 'tool_use', id: 'p1', name: 'mcp__voiceos__ask_session', input: {} }],
+				},
+			},
+			mapContext,
+		);
+		const result = mapMessage(
+			{
+				type: 'user',
+				message: {
+					content: [
+						{
+							type: 'tool_result',
+							tool_use_id: 'p1',
+							content: 'checkout answered: see https://claude.ai/code/artifact/abc',
+						},
+					],
+				},
+			},
+			mapContext,
+		);
+
+		expect(call).toEqual([]);
+		expect(result).toEqual([]);
+	});
+
 	it('traffic from an unknown sub-agent → dropped', () => {
 		expect(
 			mapMessage(

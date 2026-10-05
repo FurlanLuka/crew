@@ -195,7 +195,8 @@ export const sendNow = ({
 			{
 				...session,
 				status: 'running',
-				needsUser: null,
+				// Another session's words answer nothing the developer was asked.
+				needsUser: from ? session.needsUser : null,
 				voiceTurnAt: isSpoken ? at : null,
 				isFresh: false,
 				reportOwed,

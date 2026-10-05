@@ -1,4 +1,3 @@
-import { isPeerAsk } from '../shared/protocol.js';
 import type { Judge } from '../judge/judge.js';
 import { refuseInactive } from './activate.js';
 import { SAID_TO_VOICE_OS, isSaidToVoiceOs } from './said-to-voice-os.js';
@@ -27,6 +26,7 @@ import { forwardChosen } from './forward.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { endsInQuestion } from '../shared/spoken.js';
 import { guardSendTo } from './send-guard.js';
+import { isPeerAsk } from '../shared/protocol.js';
 
 const log = createLogger('tools');
 

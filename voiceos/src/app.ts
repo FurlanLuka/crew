@@ -1,4 +1,3 @@
-import { sweepSecrets, type SecretCopy } from './sessions/secrets.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
@@ -35,6 +34,7 @@ import { persistVoiceOff } from './memory/voice-off.js';
 import { followVoiceOff } from './speech/voice-off.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
+import { type SecretCopy, startSecretSweep } from './sessions/secrets.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
 import { loadRegistry, renameSession } from './sessions/registry.js';
 import { Store } from './state/store.js';
@@ -93,18 +93,8 @@ if (sweptMedia > 0) {
 
 // Secrets one session copied to another, with the developer's OK: a day at most.
 const secretsDir = join(paths.voiceDir, 'secrets');
-const SECRET_SWEEP_MS = 60 * 60 * 1000;
 
-const sweepOldSecrets = (): void => {
-	const swept = sweepSecrets(secretsDir, Date.now());
-
-	if (swept > 0) {
-		log.info('old secret copies removed', { count: swept });
-	}
-};
-
-sweepOldSecrets();
-setInterval(sweepOldSecrets, SECRET_SWEEP_MS);
+startSecretSweep(secretsDir, (count) => log.info('old secret copies removed', { count }));
 
 // Files the developer attached, by content; a session's Claude reads them at their path.
 const attachmentsDir = join(paths.voiceDir, 'attachments');

@@ -1172,7 +1172,13 @@ describe('sessions asking sessions across the link', () => {
 
 	it('a secret there, allowed → copied to the asker here; its value never enters the state', async () => {
 		const both = setupBoth();
+		const logFile = join(both.here, 'voiceos.log');
+		const effects: string[] = [];
 
+		configureLog({ file: logFile, quiet: true });
+		both.main.store.onEffect((effect) => {
+			effects.push(JSON.stringify(effect));
+		});
 		writeFileSync(join(both.there, '.env'), 'STRIPE_KEY=sk_live_never_in_state\n');
 		await startBoth(both);
 		both.main.store.dispatch({
@@ -1194,5 +1200,9 @@ describe('sessions asking sessions across the link', () => {
 		expect(readFileSync(path, 'utf8')).toBe('STRIPE_KEY=sk_live_never_in_state\n');
 		expect(last).toMatchObject({ kind: 'user', from: 'store/main' });
 		expect(both.seen.join('\n')).not.toContain('sk_live_never_in_state');
+		expect(effects.join('\n')).not.toContain('sk_live_never_in_state');
+		expect(readFileSync(logFile, 'utf8')).toContain('secret');
+		expect(readFileSync(logFile, 'utf8')).not.toContain('sk_live_never_in_state');
+		configureLog({ quiet: true });
 	});
 });
