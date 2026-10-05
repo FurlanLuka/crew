@@ -205,7 +205,7 @@ ${toc}
 </div>`;
 
   return page({
-    title: `${title} · crew`,
+    title: `${title} · Crew`,
     description: guide.blurb,
     path: `/guides/${guide.slug}/`,
     section: 'guides',
@@ -239,7 +239,7 @@ ${GUIDES.filter((guide) => !guide.featured).map(row).join('\n')}
 </section>`;
 
   return page({
-    title: 'Guides · crew',
+    title: 'Guides · Crew',
     description: "crew's guides: Voice OS, Set up, what you can say, and every command.",
     path: '/guides/',
     section: 'guides',
@@ -269,7 +269,7 @@ ${pager(
 </article>`;
 
   return page({
-    title: `crew ${release.version}`,
+    title: `v${release.version} · Crew`,
     description: firstSentence(firstParagraph(release.markdown)),
     path: `/releases/${release.version}/`,
     section: 'releases',
@@ -315,7 +315,7 @@ ${earlier.map(row).join('\n')}
 </section>`;
 
   return page({
-    title: 'Releases · crew',
+    title: 'Releases · Crew',
     description: 'Every crew release since 5.0, what changed and why.',
     path: '/releases/',
     section: 'releases',
@@ -330,10 +330,10 @@ function notFoundPage(): string {
 <p><a href="/">Back to the start</a>, or have a look in the <a href="/guides/">guides</a>.</p>
 </header>`;
 
-  return page({ title: 'Not found · crew', description: 'Nothing here.', path: '/404.html', section: 'home', body });
+  return page({ title: 'Not found · Crew', description: 'Nothing here.', path: '/404.html', section: 'home', body });
 }
 
-const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#000"/><text x="16" y="22" font-family="-apple-system,Segoe UI,sans-serif" font-size="18" font-weight="700" fill="#f5f7fa" text-anchor="middle">c</text></svg>`;
+const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#000"/><text x="16" y="22" font-family="-apple-system,Segoe UI,sans-serif" font-size="18" font-weight="700" fill="#f5f7fa" text-anchor="middle">C</text></svg>`;
 
 function build(): void {
   const releases = loadReleases();
