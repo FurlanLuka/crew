@@ -19,7 +19,7 @@ builds:
 # Voice OS rides the same release: built by voiceos/scripts/build-release.ts before
 # GoReleaser runs, downloaded by `crew` (`crew server start`) for the matching version.
 release:
-  # The workflow reads it from the notes' heading (else "crew <version>").
+  # The workflow reads it from the notes' heading (else the tag).
   name_template: "{{ .Env.RELEASE_TITLE }}"
   extra_files:
     - glob: ../voiceos/dist/voiceos_*.tar.gz
