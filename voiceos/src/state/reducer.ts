@@ -813,7 +813,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A turn another session started is between the two of them: heard only through its own tag,
 			// unless it ends asking the developer something.
 			const isPeerStarted =
-				session.turnFrom !== null && !session.reportOwed && !endsInQuestion(input.text);
+				session.turnFrom !== null &&
+				!session.reportOwed &&
+				// Claude often bolds a closing question: the emphasis is not what ends it.
+				!endsInQuestion(input.text.replace(/[*_`]+\s*$/, ''));
 			const isSilent = (isSelfStarted || isPeerStarted) && spoken === null;
 
 			// A promised report is given even for a turn that wrote nothing.
