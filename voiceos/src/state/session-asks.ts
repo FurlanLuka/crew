@@ -20,7 +20,7 @@ import type {
 import { readShownText } from '../shared/spoken-tags.js';
 import { findRefsByName } from '../router/refs.js';
 import { deliverSend } from './delivery.js';
-import { pushStreamItem, updateSession, withoutEffects } from './helpers.js';
+import { pushStreamItem, sayRef, updateSession, withoutEffects } from './helpers.js';
 import type { Effect, ReducerResult } from './reducer.js';
 
 // A few per turn: a session that keeps asking is stuck, and every ask costs a model call.
@@ -195,7 +195,7 @@ const openPeerAsk = ({ state, ask }: OpenPeerAskParams): ReducerResult => ({
 		// Said wherever the developer is: it waits on them, and lapses if nobody answers.
 		{
 			type: 'speak',
-			text: describePeerAskAloud(ask),
+			text: describePeerAskAloud(ask, { from: sayRef(state, ask.ref), to: sayRef(state, ask.to) }),
 			source: 'alert',
 			ref: ask.ref,
 			isAsking: true,

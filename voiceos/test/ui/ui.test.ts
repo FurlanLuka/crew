@@ -1539,6 +1539,57 @@ describe('voice os ui', () => {
 				: [],
 		);
 
+	it('sessions asking sessions: a card on both, the work request docked on the asker with Allow and No', async () => {
+		const { context, page } = await signIn();
+		const ASKER = 'store-front/main';
+		const ASKED = 'checkout-api/main';
+
+		store.dispatch({ type: 'session_started', ref: ASKED });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKER } });
+		store.dispatch({
+			type: 'session_ask_requested',
+			ref: ASKER,
+			id: 'ui-peer-1',
+			kind: 'ask',
+			session: ASKED,
+			text: 'Does /orders work on staging?',
+			files: [],
+		});
+		store.dispatch({
+			type: 'session_fork_settled',
+			ref: ASKED,
+			id: 'ui-peer-1',
+			status: 'needs_work',
+			answer: 'run the staging check for /orders',
+			files: [],
+			read: [],
+		});
+
+		const asker = page.locator('.stream .aside.peer.asker').last();
+
+		await asker.waitFor({ timeout: 5000 });
+		expect(await asker.textContent()).toContain(`asked ${ASKED}`);
+		expect(await asker.textContent()).toContain('would need work: asked you to allow it');
+
+		const dock = page.locator('section[aria-label="request from another session"]');
+
+		expect(await dock.textContent()).toContain('run the staging check for /orders');
+		await dock.getByRole('button', { name: /Allow/ }).click();
+		await waitUntil(() => listSentActions('answer_peer').length > 0);
+		expect(listSentActions('answer_peer').at(-1)).toEqual({
+			type: 'answer_peer',
+			askId: 'ui-peer-1:ok',
+			isApproved: true,
+		});
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKED } });
+		const asked = page.locator('.stream .aside.peer.asked').last();
+
+		await asked.waitFor({ timeout: 5000 });
+		expect(await asked.textContent()).toContain(`${ASKER} asked`);
+		await context.close();
+	}, 20_000);
+
 	// Debug note 45: a long plan scrolls in one box, with Approve still in view.
 	it('a long plan → its text scrolls, Approve stays on screen', async () => {
 		const { context, page } = await signIn();

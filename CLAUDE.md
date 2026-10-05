@@ -374,6 +374,24 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `CREW_REF`, no dev-server reads; the crew name is its given name (`readGivenName`). Made and removed
   through Set up's door (`chat_add`/`chat_rm`, the kernel's `new_session`/`remove_session` via
   `runCrewOn`); a new ref's activation is held until it is listed.
+  **Sessions asking sessions** (`sessions/session-ask-tools.ts`, `session-ask-fork.ts`, `fork.ts`,
+  `peer-paths.ts`, `secrets.ts`, `state/session-asks.ts`): every non-setup session gets an in-process
+  MCP server `voiceos` (`ask_session`, `tell_session`, `request_secret`; constant names and
+  descriptions, `alwaysLoad`, in `allowedTools`), built fresh per query by `SessionAskBridge.serverFor`
+  and carried in `QueryLaunch.peerServer`, so forks declare the same tools and keep the prompt cache
+  (their hooks deny every call). A call is reported as `session_ask_requested` and its tool call waits
+  (190 s) for `session_ask_answered`; the main's reducer decides everything: the name (asker's
+  machine first, else a refusal listing candidates), the limits (3 per turn, no tell back to the
+  session whose message started the turn), cards on both streams (`StreamItem` `session_ask`). An ask
+  runs a read-only fork on the target's machine (`session_fork` → `runSessionAskFork`: Read/Grep/Glob
+  inside the session's roots, secret paths and globs denied by `decideForkTool`) → `session_fork_settled`;
+  `needs_work` opens a held `work` ask (docked on the asker, spoken, 15 min) whose Allow queues the work
+  to the target with `replyTo`, and the turn's final text goes back (`settleReplyBack`). A tell is a
+  queued message with `from` (`QueuedMessage.from`, the peer note, never `isDevelopersMessage`). A
+  secret opens a held `secret` ask; Allow → `secret_transfer` to the target's machine, which reads it
+  and sends the bytes beside the state (`SecretMessage` on the link, `deliverSecret` on the main) into
+  a 0600 temp file under `voiceos/secrets/<ref>/` (gone when the session stops, swept after 24 h);
+  only the path reaches the asker. Handed-over files cross machines as `attachment_chunk`s both ways.
 - A workspace with no `worktrees` predates 2.0. It keeps flat paths and a bare slug until
   `crew migrate` runs; `crew add worktree` is the one thing that refuses it.
 

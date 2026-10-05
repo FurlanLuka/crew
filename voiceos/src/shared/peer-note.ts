@@ -12,10 +12,14 @@ export const buildPeerNote = (fromLabel: string): string =>
 	`${PEER_NOTE_HEAD}${fromLabel}${PEER_NOTE_TAIL}`;
 
 // What Voice OS says when another session's request waits on the developer's Allow.
-export const describePeerAskAloud = (ask: PeerAsk): string =>
+// names: the two sessions as they are said aloud ("store front, main"), else their labels.
+export const describePeerAskAloud = (
+	ask: PeerAsk,
+	names: { from: string; to: string } = { from: ask.fromLabel, to: ask.toLabel },
+): string =>
 	ask.kind === 'work'
-		? `${ask.fromLabel} wants ${ask.toLabel} to ${ask.text.replace(/[.!?]+$/, '')}. Allow?`
-		: `${ask.fromLabel} wants a copy of ${ask.toLabel}'s ${ask.what}. Allow?`;
+		? `${names.from} wants ${names.to} to ${ask.text.replace(/[.!?]+$/, '')}. Allow?`
+		: `${names.from} wants a copy of ${names.to}'s ${ask.what}. Allow?`;
 
 // Found anywhere in the prompt: other notes (attached files, a situation) can sit around it.
 export const splitPeerNote = (text: string): { text: string; from: string | null } => {

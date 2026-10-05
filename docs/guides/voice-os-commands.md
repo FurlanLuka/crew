@@ -236,8 +236,12 @@ never removed by voice: deactivate stops one, and Set up removes it.
 - "No, use a new branch." Declines, and your reason reaches the session.
 - "Yes, but push to a new branch afterwards." Approves, with an instruction.
 - "The second one." · "Reuse orders." Picks an option by position or by name.
+- "Yes." · "No." to another session's request: "Store front wants checkout to run the staging
+  check. Allow?", or "… wants a copy of checkout's STRIPE_KEY. Allow?".
 
-**What happens:** the session continues with your answer, and the dock on the page closes.
+**What happens:** the session continues with your answer, and the dock on the page closes. Allowing
+another session's request sends the work to the session it names (its reply goes back to the one
+that asked), or copies the secret into a private temp file for the session that asked.
 
 **In practice:**
 
@@ -249,7 +253,8 @@ never removed by voice: deactivate stops one, and Set up removes it.
 - A question a session asked at the end of its reply ("want me to push it?") is not a pending
   question. Your reply goes to the session as words, with `forward`.
 
-See [Questions, plans and permissions](voice-os.md#questions-plans-and-permissions).
+See [Questions, plans and permissions](voice-os.md#questions-plans-and-permissions) and
+[Sessions asking each other](voice-os.md#sessions-asking-each-other).
 
 ### Let a blocked call through once — `allow_denied`
 
