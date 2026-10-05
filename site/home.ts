@@ -158,7 +158,7 @@ export function landingPage(): string {
 ${COPY_SCRIPT}`;
 
   return page({
-    title: 'crew · Voice OS',
+    title: 'Crew · Voice OS',
     description:
       'Talk to your coding agents, on every machine you own. crew gives every piece of work its own copy of your stack, and Voice OS drives every Claude Code session, here or over SSH, by voice.',
     path: '/',
@@ -215,7 +215,7 @@ export function startPage(): string {
 </section>`;
 
   return page({
-    title: 'Get started · crew',
+    title: 'Get started · Crew',
     description: 'Install crew, tick your repos, give Voice OS its two keys and start talking. About five minutes.',
     path: '/start/',
     section: 'start',
