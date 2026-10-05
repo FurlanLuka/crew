@@ -1,3 +1,4 @@
+import { sweepSecrets, type SecretCopy } from './sessions/secrets.js';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMediaFile, sweepMedia } from './sessions/media.js';
@@ -90,6 +91,20 @@ if (sweptMedia > 0) {
 	log.info('old media removed', { count: sweptMedia });
 }
 
+// Secrets one session copied to another, with the developer's OK: a day at most.
+const secretsDir = join(paths.voiceDir, 'secrets');
+const SECRET_SWEEP_MS = 60 * 60 * 1000;
+const sweepOldSecrets = (): void => {
+	const swept = sweepSecrets(secretsDir, Date.now());
+
+	if (swept > 0) {
+		log.info('old secret copies removed', { count: swept });
+	}
+};
+
+sweepOldSecrets();
+setInterval(sweepOldSecrets, SECRET_SWEEP_MS);
+
 // Files the developer attached, by content; a session's Claude reads them at their path.
 const attachmentsDir = join(paths.voiceDir, 'attachments');
 const sweptAttachments = sweepAttachments({
@@ -102,10 +117,15 @@ if (sweptAttachments > 0) {
 	log.info('old attachments removed', { count: sweptAttachments });
 }
 
+// Set once the machines are connected: a secret read here may be for an asker on another machine.
+let deliverSecret: ((copy: SecretCopy) => void) | null = null;
+
 const manager = new SessionManager({
 	claudeBin: claudeBin ?? undefined,
 	mediaDir,
 	attachmentsDir,
+	secretsDir,
+	onSecret: (copy) => deliverSecret?.(copy),
 	...connectStore(store),
 	registryFile: paths.sessionsFile,
 	home: paths.home,
@@ -231,6 +251,7 @@ const machines = connectMachines({
 	home: paths.home,
 	mediaDir,
 	attachmentsDir,
+	secretsDir,
 	crew,
 	runCrew: spawnRunner,
 	manager,
@@ -238,6 +259,8 @@ const machines = connectMachines({
 	sayLine: (line) => voiceOut.say(line),
 	onStatusesChanged: () => recordState(),
 });
+
+deliverSecret = machines.deliverSecret;
 
 // "Open the doc" opens in the tab that asked: the developer may be on a phone, far from this Mac.
 const openUrlFor =

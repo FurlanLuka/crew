@@ -56,6 +56,7 @@ export type MainMessage =
 	// runId: this main process; pending: effects sent before and not acknowledged, applied first.
 	| { type: 'hello'; version: string; mainId: string; runId: string; pending: SequencedEffect[] }
 	| { type: 'effect'; seq: number; effect: HandsEffect }
+	| SecretMessage
 	| CrewCall
 	| CallResult
 	| { type: 'ping' };
@@ -70,10 +71,24 @@ export type RemoteMessage =
 	| { type: 'worktrees'; worktrees: WorktreeInfo[] }
 	// An image's bytes, sent before the input that names it.
 	| { type: 'media'; name: string; base64: string }
+	// A file one session hands another (an ask's answer, a tell), sent before the input that names it.
+	| { type: 'attachment_chunk'; id: string; index: number; total: number; base64: string }
+	// A secret the developer allowed, on its way to the asker's machine. Never an input: it would
+	// land in state.
+	| SecretMessage
 	// A remote's own crew asking the main (crew server logs on a remote reads every machine).
 	| CrewCall
 	| CallResult
 	| { type: 'pong' };
+
+// toRef: the asker, as the receiving side knows it (the main's ref going up, the local one coming down).
+export interface SecretMessage {
+	type: 'secret';
+	id: string;
+	toRef: string;
+	name: string;
+	base64: string;
+}
 
 export interface CrewCallResult {
 	code: number;
@@ -123,6 +138,9 @@ export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'subagent_ended',
 	'subagent_item',
 	'aside_settled',
+	'session_ask_requested',
+	'session_fork_settled',
+	'secret_transferred',
 	'conversation_reset',
 	'compacting',
 	'session_notice',
@@ -211,6 +229,14 @@ const resultSchema = z.union([
 	}),
 ]);
 
+const secretSchema = z.object({
+	type: z.literal('secret'),
+	id: z.string().max(100),
+	toRef: z.string().max(400),
+	name: z.string().max(200),
+	base64: z.string().max(2 * 1024 * 1024),
+});
+
 const remoteSchema = z.union([
 	z.object({
 		type: z.literal('hello'),
@@ -232,6 +258,14 @@ const remoteSchema = z.union([
 		name: z.string().max(200),
 		base64: z.string(),
 	}),
+	z.object({
+		type: z.literal('attachment_chunk'),
+		id: z.string().max(400),
+		index: z.number().int().nonnegative(),
+		total: z.number().int().positive(),
+		base64: z.string(),
+	}),
+	secretSchema,
 	callSchema,
 	resultSchema,
 	z.object({ type: z.literal('pong') }),
@@ -255,6 +289,7 @@ const mainSchema = z.union([
 		seq: z.number().int().positive(),
 		effect: sequencedSchema.shape.effect,
 	}),
+	secretSchema,
 	callSchema,
 	resultSchema,
 	z.object({ type: z.literal('ping') }),

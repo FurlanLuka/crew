@@ -37,6 +37,7 @@ describe('connectMachines', () => {
 			voiceDir: mkdtempSync(join(tmpdir(), 'voiceos-cockpit-')),
 			home: '/h',
 			mediaDir: '/h/media',
+			secretsDir: '/h/secrets',
 			attachmentsDir: '/h/attachments',
 			crew: { listWorktrees: async () => [] } as unknown as CrewAdapter,
 			runCrew: async () => ({
@@ -80,6 +81,7 @@ describe('connectMachines', () => {
 			voiceDir: mkdtempSync(join(tmpdir(), 'voiceos-cockpit-')),
 			home: '/h',
 			mediaDir: '/h/media',
+			secretsDir: '/h/secrets',
 			attachmentsDir: '/h/attachments',
 			crew: {
 				listWorktrees: async () => [worktree('setup', true), worktree('checkout-api/main')],

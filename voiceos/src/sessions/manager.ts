@@ -1,6 +1,7 @@
 import type { Effect } from '../state/reducer.js';
 import type { Observation, Session, State } from '../shared/protocol.js';
 import { runSessionAskFork } from './session-ask-fork.js';
+import { readSecret, removeSessionSecrets, type SecretCopy } from './secrets.js';
 import { SessionAskBridge, storeSessionFiles } from './session-ask-tools.js';
 import { createLogger } from '../log.js';
 import { PermissionBridge } from './permissions.js';
@@ -57,6 +58,10 @@ export interface SessionManagerOptions {
 	mediaDir?: string;
 	// Files the developer attached, by id (sessions/attachments.ts); the paths go to Claude.
 	attachmentsDir?: string;
+	// Where secret copies for this machine's sessions are kept: a session's go when it stops.
+	secretsDir?: string;
+	// A secret the developer allowed, read here: its bytes go to the asker's machine beside the state.
+	onSecret?: (copy: SecretCopy) => void;
 }
 
 export class SessionManager {
@@ -103,6 +108,8 @@ export class SessionManager {
 				return this.answerAside(effect);
 			case 'session_fork':
 				return this.answerSessionAsk(effect);
+			case 'secret_transfer':
+				return this.copySecret(effect);
 			case 'session_ask_answered':
 				if (!this.peers.answer(effect.id, { text: effect.text, files: effect.files })) {
 					log.debug('peer answer for no waiting call', { ref: effect.ref, id: effect.id });
@@ -236,6 +243,26 @@ export class SessionManager {
 		});
 	}
 
+	private copySecret({ ref, id, what, toRef }: Extract<Effect, { type: 'secret_transfer' }>): void {
+		const session = this.options.readSession(ref);
+		const read = session
+			? readSecret(what, { cwd: session.cwd, dirs: session.dirs })
+			: ({ ok: false, reason: 'that session is not on this machine' } as const);
+
+		if (!read.ok || !this.options.onSecret) {
+			const reason = read.ok ? 'secrets cannot be copied from here' : read.reason;
+
+			log.info('secret not copied', { ref, id, reason });
+			this.options.emit({ type: 'secret_transferred', ref, id, path: null, reason });
+
+			return;
+		}
+
+		// The name and size only: never the value.
+		log.info('secret read', { ref, id, bytes: read.bytes.length });
+		this.options.onSecret({ id, toRef, name: read.name, bytes: read.bytes });
+	}
+
 	listRunning(): string[] {
 		return [...this.workers.keys()];
 	}
@@ -308,6 +335,10 @@ export class SessionManager {
 				if (observation.type === 'worker_exited' && this.workers.get(ref) === worker) {
 					this.workers.delete(ref);
 					this.peers.settleRef(ref, 'The session ended.');
+
+					if (this.options.secretsDir) {
+						removeSessionSecrets(this.options.secretsDir, ref);
+					}
 				}
 
 				this.options.emit(observation);

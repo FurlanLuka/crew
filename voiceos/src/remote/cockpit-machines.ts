@@ -1,6 +1,7 @@
 // The cockpit's other machines, wired: their links, a dev watch per machine, the one worktree list,
 // and machines.json kept in step with the state (crew writes it; this reads it back).
 
+import { writeSecretFile, type SecretCopy } from '../sessions/secrets.js';
 import { randomUUID } from 'node:crypto';
 import { watch } from 'node:fs';
 import { join } from 'node:path';
@@ -8,11 +9,11 @@ import type { CrewAdapter, CrewRunner } from '../crew/adapter.js';
 import { DevWatch, type DevSay } from '../dev/watch.js';
 import { createLogger } from '../log.js';
 import { storeMediaBytes } from '../sessions/media.js';
-import { readAttachmentBytes } from '../sessions/attachments.js';
+import { readAttachmentBytes, writeChunk } from '../sessions/attachments.js';
 import type { SessionManager } from '../sessions/manager.js';
 import { createSetupWorktree } from '../sessions/setup-session.js';
 import { isMachineReachable, toMachineConfigs } from '../shared/machines.js';
-import { LOCAL_MACHINE, machineOf } from '../shared/machine-ref.js';
+import { LOCAL_MACHINE, machineOf, toLocalRef } from '../shared/machine-ref.js';
 import type { State } from '../shared/protocol.js';
 import type { MachineChange } from '../state/reducer.js';
 import type { Store } from '../state/store.js';
@@ -31,6 +32,8 @@ export interface CockpitMachinesOptions {
 	home: string;
 	mediaDir: string;
 	attachmentsDir: string;
+	// Where secret copies for this machine's sessions are kept.
+	secretsDir: string;
 	crew: CrewAdapter;
 	runCrew: CrewRunner;
 	manager: SessionManager;
@@ -73,6 +76,43 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		[LOCAL_MACHINE, new DevWatch({ store, crew: options.crew, say: options.sayLine })],
 	]);
 
+	// A secret the developer allowed, read on any machine, for an asker on any machine: written here
+	// for a session here, sent down its link otherwise. It never enters the state.
+	const deliverSecret = (copy: SecretCopy): void => {
+		const machine = machineOf(copy.toRef);
+		const failed = (reason: string) =>
+			store.dispatch({
+				type: 'secret_transferred',
+				ref: copy.toRef,
+				id: copy.id,
+				path: null,
+				reason,
+			});
+
+		if (!machine) {
+			try {
+				const path = writeSecretFile({
+					dir: options.secretsDir,
+					ref: copy.toRef,
+					id: copy.id,
+					name: copy.name,
+					bytes: copy.bytes,
+				});
+
+				store.dispatch({ type: 'secret_transferred', ref: copy.toRef, id: copy.id, path });
+			} catch (error) {
+				log.warn('secret not written', { id: copy.id, error: String(error) });
+				failed('it could not be stored');
+			}
+
+			return;
+		}
+
+		if (!links.get(machine)?.sendSecret({ ...copy, toRef: toLocalRef(copy.toRef) })) {
+			failed('its machine is out of reach');
+		}
+	};
+
 	const links = new MachineLinks({
 		version: VERSION,
 		mainId: readMainId(join(options.voiceDir, 'main-id')),
@@ -84,6 +124,12 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		dispatch: (input) => store.dispatch(input),
 		storeMedia: (name, bytes) => storeMediaBytes({ name, bytes, dir: options.mediaDir }),
 		readAttachment: (id) => readAttachmentBytes(options.attachmentsDir, id),
+		writeAttachmentChunk: (chunk) => {
+			if (writeChunk({ dir: options.attachmentsDir, ...chunk }) === 'refused') {
+				log.warn('handed-over file refused', { id: chunk.id });
+			}
+		},
+		receiveSecret: deliverSecret,
 		say: options.say,
 		runLocalCrew: options.runCrew,
 		handleLocal: options.manager.handle,
@@ -191,6 +237,7 @@ export const connectMachines = (options: CockpitMachinesOptions) => {
 		},
 		// Set up runs its commands on another machine through that machine's link.
 		getLink: (id: string) => links.get(id),
+		deliverSecret,
 		stop: () => links.stopAll(),
 	};
 };
