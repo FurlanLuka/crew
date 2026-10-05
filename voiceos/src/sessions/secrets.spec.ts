@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { readSecret, removeSessionSecrets, sweepSecrets, writeSecretFile } from './secrets.js';
 
 const made: string[] = [];
+
 const scratch = (): string => {
 	const dir = mkdtempSync(join(tmpdir(), 'secrets-'));
 

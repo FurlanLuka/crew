@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CrewRunOptions, CrewRunResult } from '../crew/adapter.js';
@@ -15,6 +15,7 @@ import { isActive } from '../shared/active.js';
 import { describeAttached, readAttachmentBytes, storeAttachment } from '../sessions/attachments.js';
 import type { WorktreeInfo } from '../shared/protocol.js';
 import { RemoteHost } from './host.js';
+import { writeSecretFile, type SecretCopy } from '../sessions/secrets.js';
 import { MachineLinks } from './links.js';
 import { CallFailure, type OpenTransport } from './link.js';
 import type { UpdateRemote } from './ssh.js';
@@ -38,6 +39,9 @@ interface HostOptions {
 	runCrew?: (args: string[], options?: CrewRunOptions) => Promise<CrewRunResult>;
 	attachmentsDir?: string;
 	commands?: { name: string; description: string; argumentHint: string }[];
+	// What a fork of a session there answers.
+	sideReply?: unknown[];
+	secretsDir?: string;
 }
 
 const startHost = ({
@@ -46,15 +50,17 @@ const startHost = ({
 	worktrees,
 	attachmentsDir,
 	commands = [],
+	sideReply = [],
+	secretsDir,
 }: HostOptions = {}) => {
-	const fake = createFakeQuery({ askOn: '[ask]', commands });
+	const fake = createFakeQuery({ askOn: '[ask]', commands, sideReply });
 	const registryFile = join(mkdtempSync(join(tmpdir(), 'voiceos-remote-')), 'sessions.json');
 	let manager: SessionManager | null = null;
 	let isBusyThere = false;
 	const host = new RemoteHost({
 		version,
 		host: 'vm1',
-		createManager: ({ readSession, emit }) => {
+		createManager: ({ readSession, emit, sendSecret }) => {
 			manager = new SessionManager({
 				readSession,
 				emit,
@@ -62,7 +68,9 @@ const startHost = ({
 				home: '/h',
 				fetchOrientation: async () => '',
 				runQuery: fake.runQuery,
+				onSecret: sendSecret,
 				...(attachmentsDir ? { attachmentsDir } : {}),
+				...(secretsDir ? { secretsDir } : {}),
 			});
 
 			return manager;
@@ -71,6 +79,12 @@ const startHost = ({
 		runCrew: runCrew ?? (async () => ({ code: 0, stdout: '', stderr: '' })),
 		readGitHead: async () => 'abc123',
 		readMedia: () => null,
+		...(secretsDir
+			? {
+					writeSecret: (copy: SecretCopy) =>
+						writeSecretFile({ dir: secretsDir, ref: copy.toRef, ...copy }),
+				}
+			: {}),
 		restoreHistory: async () => undefined,
 		onBusyChanged: (isBusy) => {
 			isBusyThere = isBusy;
@@ -97,6 +111,9 @@ interface MainOptions {
 	// The active set saved by an earlier run, loaded at boot as app.ts does.
 	active?: string[];
 	readAttachment?: (id: string) => Buffer | null;
+	// A secret read on a machine, for an asker anywhere (cockpit-machines' deliverSecret).
+	receiveSecret?: (copy: SecretCopy) => void;
+	localWorktrees?: WorktreeInfo[];
 }
 
 const startMain = ({
@@ -110,6 +127,8 @@ const startMain = ({
 	},
 	active = [],
 	readAttachment,
+	receiveSecret,
+	localWorktrees = [],
 }: MainOptions) => {
 	const store = new Store();
 	const said: string[] = [];
@@ -126,6 +145,7 @@ const startMain = ({
 		dispatch: (input) => store.dispatch(input),
 		storeMedia: () => true,
 		...(readAttachment ? { readAttachment } : {}),
+		...(receiveSecret ? { receiveSecret } : {}),
 		say: (text) => said.push(text),
 		runLocalCrew: async () => ({ code: 0, stdout: '', stderr: '' }),
 		handleLocal: () => undefined,
@@ -145,7 +165,7 @@ const startMain = ({
 	store.subscribe(() => queueMicrotask(() => links.sync()));
 	store.dispatch({ type: 'machines', machines: [VM1] });
 	store.dispatch({ type: 'active_loaded', refs: active });
-	links.setLocalWorktrees([]);
+	links.setLocalWorktrees(localWorktrees);
 	stops.push(() => links.stopAll());
 
 	return { store, said, narrated, links };
@@ -1074,5 +1094,105 @@ describe('files attached to a remote session', () => {
 			);
 			expect(second.store.state.sessions[REF]?.commands).toEqual([REVIEW, SHIP]);
 		});
+	});
+});
+
+describe('sessions asking sessions across the link', () => {
+	const ASKER = 'store-front/main';
+
+	const setupBoth = (sideReply: unknown[] = []) => {
+		const there = mkdtempSync(join(tmpdir(), 'voiceos-peer-there-'));
+		const here = mkdtempSync(join(tmpdir(), 'voiceos-peer-here-'));
+		const remote = startHost({
+			sideReply,
+			secretsDir: join(there, 'secrets'),
+			worktrees: [{ ...worktree('store/main'), cwd: there }],
+		});
+		const network = createNetwork(remote.host);
+		const delivered: SecretCopy[] = [];
+		const main = startMain({
+			open: network.open,
+			localWorktrees: [worktree(ASKER)],
+			receiveSecret: (copy) => {
+				delivered.push(copy);
+
+				const path = writeSecretFile({ dir: join(here, 'secrets'), ref: copy.toRef, ...copy });
+
+				main.store.dispatch({ type: 'secret_transferred', ref: copy.toRef, id: copy.id, path });
+			},
+		});
+		const seen: string[] = [];
+
+		main.store.subscribe((stamped) => seen.push(JSON.stringify(stamped.input)));
+
+		return { there, here, remote, main, delivered, seen };
+	};
+
+	const startBoth = async ({ main, remote }: ReturnType<typeof setupBoth>) => {
+		await remote.host.refreshWorktrees();
+		await actWhenConnected(
+			main.store,
+			() => main.store.dispatch({ type: 'activate', ref: REF }),
+			'start',
+		);
+		await until(() => main.store.state.sessions[REF]?.status === 'idle', 'remote idle');
+		main.store.dispatch({ type: 'activate', ref: ASKER });
+		main.store.dispatch({ type: 'session_started', ref: ASKER });
+	};
+
+	it('a session here asks one there → the copy runs there, the answer comes back to the asker', async () => {
+		const both = setupBoth([
+			{ type: 'assistant', message: { content: [{ type: 'text', text: 'Five tries.' }] } },
+			{ type: 'result', subtype: 'success' },
+		]);
+
+		await startBoth(both);
+		both.main.store.dispatch({
+			type: 'session_ask_requested',
+			ref: ASKER,
+			id: 'r1',
+			kind: 'ask',
+			session: REF,
+			text: 'Which retry limit?',
+			files: [],
+		});
+		await until(
+			() =>
+				both.main.store.state.sessions[ASKER]?.stream.some(
+					(item) => item.kind === 'session_ask' && item.status === 'answered',
+				) ?? false,
+			'answered',
+		);
+
+		expect(both.remote.fake.forks).toHaveLength(1);
+		expect(
+			both.main.store.state.sessions[REF]?.stream.find((item) => item.kind === 'session_ask'),
+		).toMatchObject({ role: 'asked', status: 'answered', answer: 'Five tries.' });
+	});
+
+	it('a secret there, allowed → copied to the asker here; its value never enters the state', async () => {
+		const both = setupBoth();
+
+		writeFileSync(join(both.there, '.env'), 'STRIPE_KEY=sk_live_never_in_state\n');
+		await startBoth(both);
+		both.main.store.dispatch({
+			type: 'session_ask_requested',
+			ref: ASKER,
+			id: 'r2',
+			kind: 'secret',
+			session: REF,
+			text: 'STRIPE_KEY',
+			files: [],
+		});
+		both.main.store.dispatch({ type: 'answer_peer', askId: 'r2:ok', isApproved: true });
+		await until(() => both.delivered.length === 1, 'the copy');
+
+		const last = both.main.store.state.sessions[ASKER]?.stream.at(-1);
+		const path = join(both.here, 'secrets', 'store-front_main', 'r2', 'STRIPE_KEY.env');
+
+		expect(both.delivered[0]?.toRef).toBe(ASKER);
+		expect(readFileSync(path, 'utf8')).toBe('STRIPE_KEY=sk_live_never_in_state\n');
+		expect(last).toMatchObject({ kind: 'user', from: 'store/main' });
+		expect(both.seen.join('\n')).not.toContain('sk_live_never_in_state');
 	});
 });

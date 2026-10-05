@@ -94,6 +94,7 @@ if (sweptMedia > 0) {
 // Secrets one session copied to another, with the developer's OK: a day at most.
 const secretsDir = join(paths.voiceDir, 'secrets');
 const SECRET_SWEEP_MS = 60 * 60 * 1000;
+
 const sweepOldSecrets = (): void => {
 	const swept = sweepSecrets(secretsDir, Date.now());
 
