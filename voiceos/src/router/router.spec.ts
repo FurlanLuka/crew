@@ -538,9 +538,12 @@ describe('UtteranceRouter', () => {
 			const router = new UtteranceRouter({
 				store,
 				now: () => clock,
-				// Not a bare no, read in 400 ms: the words go on to the kernel.
-				judge: async () => {
-					clock += 400;
+				// Not a bare answer, read in 400 ms (the yes and no readings run side by side): the words
+				// go on to the kernel.
+				judge: async ({ key }) => {
+					if (key === 'refuses') {
+						clock += 400;
+					}
 
 					return 'no';
 				},

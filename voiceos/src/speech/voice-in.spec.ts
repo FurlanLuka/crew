@@ -502,11 +502,12 @@ describe('VoiceInput hands-free', () => {
 		expect(harness.sent).toEqual([960]);
 	});
 
-	it('two words of real speech → speech cut once; the turn ends → routed, speech may resume', async () => {
+	// Debug note 44: waiting for a second word made talking over Voice OS take a second to cut it.
+	it('the first real word → speech cut once; the turn ends → routed, speech may resume', async () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
 		harness.session?.onPartial('open');
-		expect(harness.talkStarts).toEqual([]);
+		expect(harness.talkStarts).toEqual([1]);
 		harness.session?.onPartial('open store');
 		harness.session?.onPartial('open store front');
 		expect(harness.talkStarts).toEqual([1]);
@@ -519,10 +520,10 @@ describe('VoiceInput hands-free', () => {
 		expect(harness.store.state.transcript).toBeNull();
 	});
 
-	it('a one-word turn still cuts in when it ends', async () => {
+	it('a filler never cuts in; a real word that ends the turn after it does', async () => {
 		const harness = createHarness();
 		harness.input.listen('c1');
-		harness.session?.onPartial('push');
+		harness.session?.onPartial('um');
 		expect(harness.talkStarts).toEqual([]);
 		harness.session?.onSegment?.('push');
 		await waitForSettle();
@@ -539,6 +540,16 @@ describe('VoiceInput hands-free', () => {
 		harness.session?.onSegment?.('Stop.');
 		expect(harness.talkStarts).toEqual([1]);
 		expect(harness.utterances).toEqual(['Stop.']);
+	});
+
+	it("one word of Voice OS's own line heard back → no barge-in: one word is not enough to be the developer", () => {
+		const harness = createHarness({
+			listSpokenLines: () => createSpoken('Switching to checkout'),
+			now: () => 1000,
+		});
+		harness.input.listen('c1');
+		harness.session?.onPartial('checkout');
+		expect(harness.talkStarts).toEqual([]);
 	});
 
 	it('Voice OS heard through the mic → no barge-in, no transcript, the turn dropped', () => {

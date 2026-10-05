@@ -100,6 +100,7 @@ describe('describeMoment', () => {
 		expect(moment?.answers.map((answer) => answer.label)).toEqual([
 			'Go to checkout-api/main',
 			'Go to vm1:api/main',
+			'Not now',
 		]);
 	});
 
@@ -123,7 +124,7 @@ describe('describeMoment', () => {
 			),
 		).toBeNull());
 
-	it('the meanwhile line about the screen and another session → still shown: the other one is news', () =>
+	it("the meanwhile line about the screen and another session → still shown, with no button for the screen's", () =>
 		expect(
 			describeMoment(
 				createState({
@@ -141,7 +142,60 @@ describe('describeMoment', () => {
 				}),
 				NOW,
 			)?.answers.map((answer) => answer.label),
-		).toEqual(['Go to checkout-api/main', 'Go to vm1:api/main']));
+		).toEqual(['Go to vm1:api/main', 'Not now']));
+
+	// Debug note 51: "Stay here", then another tab brought the same line back as a card.
+	const offeredLine = {
+		id: 'l2',
+		text: 'Meanwhile, checkout said: tests pass. Switch there?',
+		source: 'narrator' as const,
+		at: NOW - 5000,
+		isUpdate: true as const,
+		isAsking: true as const,
+		ref: 'checkout-api/main',
+		refs: ['checkout-api/main'],
+	};
+
+	it('a meanwhile line that offered a switch → the offer card says that line, not "Sent to"', () =>
+		expect(
+			describeMoment(
+				createState({
+					spoken: [offeredLine],
+					switchOffer: { ref: 'checkout-api/main', at: NOW - 5100 },
+				}),
+				NOW,
+			)?.text,
+		).toBe('Meanwhile, checkout said: tests pass. Switch there?'));
+
+	it('an asking line about it said before the offer → not the offer\'s line: "Sent to"', () =>
+		expect(
+			describeMoment(
+				createState({
+					spoken: [offeredLine],
+					switchOffer: { ref: 'checkout-api/main', at: NOW - 1000 },
+				}),
+				NOW,
+			)?.text,
+		).toBe('Sent to checkout-api/main. Switch there?'));
+
+	it('a meanwhile line that told an ask but offered no switch → its card still shows', () =>
+		expect(
+			describeMoment(
+				createState({
+					view: { kind: 'session', ref: 'store-front/main' },
+					spoken: [{ ...offeredLine, ref: undefined, refs: ['checkout-api/main'] }],
+				}),
+				NOW,
+			)?.answers.map((answer) => answer.label),
+		).toEqual(['Go to checkout-api/main', 'Not now']));
+
+	it('its offer declined, lapsed or left by a switch → no card for that line on any screen', () =>
+		expect(
+			describeMoment(
+				createState({ view: { kind: 'session', ref: 'vm1:api/main' }, spoken: [offeredLine] }),
+				NOW,
+			),
+		).toBeNull());
 
 	it('"Send it now?" → Send now promotes the queued words; Keep it queued sets it aside', () => {
 		const moment = describeMoment(

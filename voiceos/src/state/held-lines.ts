@@ -286,6 +286,36 @@ const markNewsHeard = (state: State, ref: string): State =>
 		? { ...state, meanwhile: state.meanwhile.filter((item) => item.ref !== ref) }
 		: state;
 
+// The meanwhile line said the start of this session's held line ("checkout said: all tests pass"):
+// a switch there says only the rest, or nothing when that was all of it (debug note 42). A question
+// still waits to be asked there, and a line newer than this one, or one whose start the line did not
+// say, is left as it is.
+const dropHeardStart = (state: State, ref: string, line: SpokenLine): State => {
+	const held = state.sessions[ref]?.heldLine;
+
+	if (held?.kind !== 'line' || held.isAsking || held.at > line.at) {
+		return state;
+	}
+
+	const about = describeDoneAbout(held.text);
+
+	// A first sentence too long to say whole was cut ("…"): the rest would start mid-sentence, so the
+	// switch says the line whole.
+	if (!about || about.endsWith('…') || !line.text.includes(about)) {
+		return state;
+	}
+
+	const words = stripTags(cleanSpokenText(held.text)).split(/\s+/).filter(Boolean);
+	const rest = words.slice(countWords(about)).join(' ');
+
+	return /[\p{L}\p{N}]/u.test(rest)
+		? updateSession(state, ref, (session) => ({
+				...session,
+				heldLine: { ...held, text: rest },
+			}))
+		: clearHeldLine(state, ref);
+};
+
 // An ask the meanwhile line said in full is no longer only announced: a reply answers it. Only while
 // it is still the ask the session holds; a newer one from it was not what the line said.
 const hearToldAsks = (state: State, line: SpokenLine): State =>
@@ -300,7 +330,10 @@ const hearToldAsks = (state: State, line: SpokenLine): State =>
 export const markHeard = (state: State, line: SpokenLine, at: number, isCut: boolean): State => {
 	// An update talked over was not heard to its end; a question talked over is being answered.
 	const refs = line.isUpdate && !isCut ? (line.refs ?? (line.ref ? [line.ref] : [])) : [];
-	const updated = refs.reduce((next, ref) => markNewsHeard(next, ref), hearToldAsks(state, line));
+	const updated = refs.reduce(
+		(next, ref) => dropHeardStart(markNewsHeard(next, ref), ref, line),
+		hearToldAsks(state, line),
+	);
 	const offer = updated.switchOffer;
 	const target = updated.targetAsk;
 

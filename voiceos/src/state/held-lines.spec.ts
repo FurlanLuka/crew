@@ -983,3 +983,95 @@ describe('an answer settles the waiting update of its session', () => {
 		});
 	}
 });
+
+describe('a held line whose start the meanwhile line said (debug note 42)', () => {
+	const FIRST = 'All forty payment tests pass on the retry branch.';
+	const SECOND = 'The backoff now starts at two hundred milliseconds and doubles each try.';
+	const elsewhere = (text: string, isAsking = false): State =>
+		holdLine({
+			state: { ...idleSession(), view: { kind: 'session', ref: 'store/wrk1' } },
+			ref: REF,
+			content: { kind: 'line', text, isAsking },
+			stamped: { id: 'h1', at: 1 },
+		});
+
+	const hear = (start: State, text: string, isCut = false): State => {
+		const spoken = run(
+			[{ type: 'spoken', text, source: 'narrator', isUpdate: true, refs: [REF] }],
+			{ start },
+		).state;
+		const lineId = spoken.spoken.at(-1)?.id ?? '';
+
+		return run([{ type: 'spoken_ended', lineId, isCut }], { start: spoken }).state;
+	};
+
+	const lineFor = (held: string) =>
+		`Meanwhile, store, main said: ${describeDoneAbout(held) ?? ''}.`;
+
+	it('the line said all of it → nothing is held, so a switch says nothing again', () =>
+		expect(heldOf(hear(elsewhere(FIRST), lineFor(FIRST)))).toBeNull());
+
+	it('the line said its start → only the rest is held', () => {
+		const held = `${FIRST} ${SECOND} ${SECOND}`;
+		const state = hear(elsewhere(held), lineFor(held));
+
+		expect(heldOf(state)).toMatchObject({ kind: 'line', text: `${SECOND} ${SECOND}` });
+	});
+
+	it('the switch there says only the rest; after a line that said all of it, nothing', () => {
+		const held = `${FIRST} ${SECOND} ${SECOND}`;
+		const switchThere = (start: State) =>
+			run([{ type: 'switch_view', view: { kind: 'session', ref: REF } }], { start }).effects;
+
+		expect(said(switchThere(hear(elsewhere(held), lineFor(held))))).toEqual([
+			`${SECOND} ${SECOND.slice(0, -1)}.`,
+		]);
+		expect(said(switchThere(hear(elsewhere(FIRST), lineFor(FIRST))))).toEqual([]);
+	});
+
+	it('all of it said, with earlier updates on the page → nothing held: the page shows them', () => {
+		const twice = holdLine({
+			state: elsewhere(FIRST),
+			ref: REF,
+			content: { kind: 'line', text: FIRST, isAsking: false },
+			stamped: { id: 'h2', at: 2 },
+		});
+
+		expect(heldOf(twice)).toMatchObject({ missed: 1 });
+		expect(heldOf(hear(twice, lineFor(FIRST)))).toBeNull();
+	});
+
+	it('a first sentence too long to say whole → the line is kept whole, never replayed mid-sentence', () => {
+		const long = `${'The retry client now backs off and '.repeat(8).trim()} stops.`;
+
+		expect(describeDoneAbout(long)?.endsWith('…')).toBe(true);
+		expect(heldOf(hear(elsewhere(long), lineFor(long)))).toMatchObject({ text: long });
+	});
+
+	it('a line held after the meanwhile line was said → kept whole: the line was not about it', () => {
+		const spoken = run(
+			[{ type: 'spoken', text: lineFor(FIRST), source: 'narrator', isUpdate: true, refs: [REF] }],
+			{ start: elsewhere(FIRST) },
+		).state;
+		const line = spoken.spoken.at(-1);
+		const newer = holdLine({
+			state: spoken,
+			ref: REF,
+			content: { kind: 'line', text: FIRST, isAsking: false },
+			stamped: { id: 'h3', at: (line?.at ?? 0) + 1 },
+		});
+		const ended = run([{ type: 'spoken_ended', lineId: line?.id ?? '', isCut: false }], {
+			start: newer,
+		}).state;
+
+		expect(heldOf(ended)).toMatchObject({ id: 'h3', text: FIRST });
+	});
+
+	it('a question, a line cut short, or a line that said something else → held as it was', () => {
+		expect(heldOf(hear(elsewhere(FIRST, true), lineFor(FIRST)))).toMatchObject({ text: FIRST });
+		expect(heldOf(hear(elsewhere(FIRST), lineFor(FIRST), true))).toMatchObject({ text: FIRST });
+		expect(heldOf(hear(elsewhere(FIRST), 'Meanwhile, store, main finished.'))).toMatchObject({
+			text: FIRST,
+		});
+	});
+});

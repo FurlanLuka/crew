@@ -1352,6 +1352,10 @@ describe('voice os ui', () => {
 		expect(await page.locator('[aria-label="docs"]').getByText('Retry plan').isVisible()).toBe(
 			true,
 		);
+		// Debug note 48: the link is as wide as its image, so a click beside it opens nothing.
+		const link = await stream.locator('.shown-image').first().boundingBox();
+		const row = await stream.boundingBox();
+		expect(link && row ? link.width < row.width / 2 : false).toBe(true);
 		await context.close();
 	}, 20_000);
 
@@ -1534,6 +1538,36 @@ describe('voice os ui', () => {
 				? [entry.message.action]
 				: [],
 		);
+
+	// Debug note 45: a long plan scrolls in one box, with Approve still in view.
+	it('a long plan → its text scrolls, Approve stays on screen', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ui-plan-long',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'plan',
+				input: {},
+				plan: Array.from({ length: 80 }, (_, index) => `${index + 1}. Step ${index + 1}.`).join(
+					'\n',
+				),
+			},
+		});
+		const dock = page.locator('section[aria-label="plan"]');
+		const quote = dock.locator('.quote');
+		await quote.waitFor({ timeout: 5000 });
+
+		expect(await quote.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+		const approve = await dock.getByRole('button', { name: /Approve/ }).boundingBox();
+		const viewport = page.viewportSize();
+		expect(approve && viewport ? approve.y + approve.height <= viewport.height : false).toBe(true);
+		expect(await dock.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+		store.dispatch({ type: 'ask_closed', askId: 'ui-plan-long' });
+		await context.close();
+	}, 20_000);
 
 	it('plan dock → Approve approves; "Change the plan…" rejects it with the reason', async () => {
 		const { context, page } = await signIn();

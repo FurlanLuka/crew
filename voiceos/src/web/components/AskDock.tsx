@@ -70,7 +70,7 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 
 	if (ask.kind === 'plan') {
 		return (
-			<section className="dock amber" aria-label="plan">
+			<section className="dock amber plan" aria-label="plan">
 				<span className="lbl c-amber">plan ready · {label}</span>
 				<div className="quote">
 					<Markdown text={ask.plan} />

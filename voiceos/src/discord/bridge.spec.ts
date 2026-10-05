@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { createChimeSamples } from '../web/pcm.js';
 import { FRAME_SAMPLES } from './audio.js';
-import { type ClipSink, DiscordBridge, SILENCE_AFTER_MS, type VoiceLink } from './bridge.js';
+import {
+	type ClipSink,
+	DiscordBridge,
+	LEAD_IN_FRAMES,
+	SILENCE_AFTER_MS,
+	type VoiceLink,
+} from './bridge.js';
 import type { OpusCodec } from './codec.js';
 
 // 20 ms of 24 kHz mono: one 48 kHz stereo frame once raised.
@@ -177,7 +183,7 @@ describe('DiscordBridge: speech out', () => {
 		t.bridge.events.onPlaybackIdle();
 
 		expect(t.clips).toHaveLength(1);
-		expect(t.clips[0]?.packets).toHaveLength(2);
+		expect(t.clips[0]?.packets).toHaveLength(LEAD_IN_FRAMES + 2);
 		expect(t.clips[0]?.isEnded).toBe(true);
 		expect(t.done).toEqual(['a']);
 	});
@@ -190,7 +196,7 @@ describe('DiscordBridge: speech out', () => {
 
 		// 24 kHz samples become 48 kHz stereo: 8 bytes each, 3840 to a frame.
 		const chimeFrames = Math.floor((createChimeSamples(24_000).length * 8) / 3840);
-		const kinds = t.clips[0]?.packets.map((packet) => packet[0]);
+		const kinds = t.clips[0]?.packets.slice(LEAD_IN_FRAMES).map((packet) => packet[0]);
 
 		// The chime fades out to silence, so only its start is sure to sound.
 		expect(kinds).toHaveLength(chimeFrames + 1);
@@ -204,7 +210,48 @@ describe('DiscordBridge: speech out', () => {
 		t.bridge.events.onOwner(true);
 		t.bridge.send(audio('a'));
 
-		expect(t.clips[0]?.packets).toEqual([new Uint8Array([0])]);
+		expect(t.clips[0]?.packets.slice(LEAD_IN_FRAMES)).toEqual([new Uint8Array([0])]);
+	});
+
+	it('a new clip → opens with the silent lead-in, so the start is not lost', () => {
+		const t = setup();
+
+		t.bridge.events.onOwner(true);
+		t.bridge.send({
+			...audio('a'),
+			base64: Buffer.from(new Uint8Array(FRAME_SAMPLES).fill(1)).toString('base64'),
+		});
+
+		const kinds = t.clips[0]?.packets.map((packet) => packet[0]);
+
+		expect(kinds?.slice(0, LEAD_IN_FRAMES)).toEqual(Array(LEAD_IN_FRAMES).fill(0));
+		expect(kinds?.slice(LEAD_IN_FRAMES)).toEqual([1]);
+	});
+
+	it('lines back to back → no lead-in between them; one after a pause → the lead-in again', () => {
+		const t = setup();
+		// Each line's last chunk is empty: what a clip holds is its lead-in alone.
+		const packetsOf = (index: number) => t.clips[index]?.packets.length;
+
+		t.bridge.events.onOwner(true);
+		t.bridge.send(audio('a', true));
+		t.bridge.send(audio('b', true));
+		// b plays out for a while: the pause counts from when it finished, not from its last chunk.
+		t.advance(800);
+		t.bridge.events.onPlaybackIdle();
+		t.advance(999);
+		t.bridge.send(audio('c', true));
+		t.bridge.events.onPlaybackIdle();
+		t.advance(1_000);
+		t.bridge.send(audio('d', true));
+
+		// a: the first line; b: while a still plays; c: under a second after b played; d: after a pause.
+		expect(t.clips.map((_, index) => packetsOf(index))).toEqual([
+			LEAD_IN_FRAMES,
+			0,
+			0,
+			LEAD_IN_FRAMES,
+		]);
 	});
 
 	it('a part frame at the end → padded and sent before the clip ends', () => {
@@ -216,11 +263,11 @@ describe('DiscordBridge: speech out', () => {
 
 		t.bridge.events.onOwner(true);
 		t.bridge.send(half);
-		expect(t.clips[0]?.packets).toEqual([]);
+		expect(t.clips[0]?.packets.slice(LEAD_IN_FRAMES)).toEqual([]);
 
 		t.bridge.send(audio('a', true));
 
-		expect(t.clips[0]?.packets).toEqual([new Uint8Array([1])]);
+		expect(t.clips[0]?.packets.slice(LEAD_IN_FRAMES)).toEqual([new Uint8Array([1])]);
 		expect(t.clips[0]?.isEnded).toBe(true);
 	});
 
