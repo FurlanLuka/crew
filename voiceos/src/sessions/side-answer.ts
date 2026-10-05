@@ -1,8 +1,8 @@
-import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
+import { query as sdkQuery, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
 import { createLogger } from '../log.js';
-import { readSpokenTag } from '../shared/spoken-tags.js';
 import type { RawMessage } from './events.js';
-import { buildQueryOptions, type QueryLaunch } from './worker.js';
+import { dropCheckpoints, hasToolUse, isTopLevelAssistant, readText, runFork } from './fork.js';
+import type { QueryLaunch } from './worker.js';
 
 const log = createLogger('side-answer');
 
@@ -25,33 +25,9 @@ export type SideAnswerOutcome =
 	| { status: 'queued'; reason: string }
 	| { status: 'failed'; reason: string };
 
-const readText = (message: RawMessage): string => {
-	const content = message.message?.content;
-
-	if (!Array.isArray(content)) {
-		return '';
-	}
-
-	return (content as Record<string, unknown>[])
-		.filter((block) => block.type === 'text' && typeof block.text === 'string')
-		.map((block) => block.text as string)
-		.join('\n');
-};
-
-const hasToolUse = (message: RawMessage): boolean => {
-	const content = message.message?.content;
-
-	return (
-		Array.isArray(content) &&
-		(content as Record<string, unknown>[]).some((block) => block.type === 'tool_use')
-	);
-};
-
 export const classifySideAnswer = (messages: RawMessage[]): SideAnswerOutcome => {
 	// Whatever the fork could not answer beside the work becomes work: queued, never dropped.
-	const assistantMessages = messages.filter(
-		(message) => message.type === 'assistant' && !message.parent_tool_use_id,
-	);
+	const assistantMessages = messages.filter(isTopLevelAssistant);
 
 	if (assistantMessages.some(hasToolUse)) {
 		return { status: 'queued', reason: 'reached for a tool' };
@@ -77,16 +53,18 @@ export const classifySideAnswer = (messages: RawMessage[]): SideAnswerOutcome =>
 		return { status: 'queued', reason: marker };
 	}
 
-	// The fork resumes mid-work and may first finish a message it had started — a checkpoint, with
-	// its own spoken line. Those are left out; an answer split over several messages stays whole.
-	const kept = texts.filter((text, index) => index === texts.length - 1 || !readSpokenTag(text));
+	const { kept, dropped } = dropCheckpoints(texts);
 
-	return {
-		status: 'answered',
-		answer: kept.join('\n').trim(),
-		dropped: texts.length - kept.length,
-	};
+	return { status: 'answered', answer: kept.join('\n').trim(), dropped };
 };
+
+const denyEveryTool: HookCallback = async () => ({
+	hookSpecificOutput: {
+		hookEventName: 'PreToolUse' as const,
+		permissionDecision: 'deny' as const,
+		permissionDecisionReason: 'A side answer runs no tools.',
+	},
+});
 
 export interface RunSideAnswerParams {
 	launch: QueryLaunch;
@@ -112,76 +90,34 @@ export const runSideAnswer = async ({
 	}
 
 	const startedAt = Date.now();
-	const abort = new AbortController();
-	const messages: RawMessage[] = [];
-	// An object, so the timer's write is visible where it is read after the loop.
-	const stop: { reason: 'timeout' | 'tool use' | null } = { reason: null };
-	const timer = setTimeout(() => {
-		stop.reason = 'timeout';
-		abort.abort();
-	}, timeoutMs);
 
 	log.info('start', { cwd: launch.cwd, sessionId, chars: question.length });
 
-	try {
-		// Forked from the end, even mid tool call: the CLI resumes an unanswered call fine, while a
-		// resumeSessionAt uuid can name a message the transcript does not hold yet.
-		const sideQuery = runQuery({
-			prompt: buildSidePrompt(question),
-			options: {
-				...buildQueryOptions(launch),
-				abortController: abort,
-				resume: sessionId,
-				forkSession: true,
-				persistSession: false,
-				maxTurns: 1,
-				// Deny rules and allow rules both run after hooks: this stops even an always-allowed tool.
-				hooks: {
-					PreToolUse: [
-						{
-							hooks: [
-								async () => ({
-									hookSpecificOutput: {
-										hookEventName: 'PreToolUse' as const,
-										permissionDecision: 'deny' as const,
-										permissionDecisionReason: 'A side answer runs no tools.',
-									},
-								}),
-							],
-						},
-					],
-				},
-			},
-		});
+	const run = await runFork({
+		launch,
+		sessionId,
+		prompt: buildSidePrompt(question),
+		maxTurns: 1,
+		preToolUse: denyEveryTool,
+		timeoutMs,
+		// Reaching for a tool already means "not answerable aside": no need to wait for the denial.
+		shouldStop: (message) => isTopLevelAssistant(message) && hasToolUse(message),
+		runQuery,
+	});
 
-		for await (const message of sideQuery) {
-			const raw = message as unknown as RawMessage;
+	if (run.kind === 'failed') {
+		log.warn('failed', { sessionId, error: run.reason, ms: Date.now() - startedAt });
 
-			messages.push(raw);
-
-			// Reaching for a tool already means "not answerable aside": no need to wait for the denial.
-			if (raw.type === 'assistant' && !raw.parent_tool_use_id && hasToolUse(raw)) {
-				stop.reason = 'tool use';
-				abort.abort();
-				break;
-			}
-		}
-	} catch (error) {
-		if (!abort.signal.aborted) {
-			log.warn('failed', { sessionId, error: String(error), ms: Date.now() - startedAt });
-
-			return { status: 'failed', reason: String(error) };
-		}
-	} finally {
-		clearTimeout(timer);
+		return { status: 'failed', reason: run.reason };
 	}
 
-	if (stop.reason === 'timeout') {
+	if (run.kind === 'timed_out') {
 		log.warn('timed out', { sessionId, ms: Date.now() - startedAt });
 
 		return { status: 'failed', reason: 'timed out' };
 	}
 
+	const messages = run.messages;
 	const outcome = classifySideAnswer(messages);
 
 	log.info('settled', {
