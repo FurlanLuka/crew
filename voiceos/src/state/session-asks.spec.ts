@@ -524,6 +524,25 @@ describe('what keeps it tidy', () => {
 		expect(ended.effects.some((effect) => effect.type === 'narrate')).toBe(false);
 	});
 
+	it('a turn started by a tell that ends asking the developer → narrated, so it is heard', () => {
+		const told = run([request('tell', 'fyi: schema changed', { session: 'checkout api main' })], {
+			start: sessions(),
+		}).state;
+		const ended = run(
+			[
+				{
+					type: 'turn_ended',
+					ref: CHECKOUT,
+					costUsd: 0,
+					text: 'The schema changed. Should I migrate now?',
+				},
+			],
+			{ start: told },
+		);
+
+		expect(ended.effects.some((effect) => effect.type === 'narrate')).toBe(true);
+	});
+
 	it('a refusal counts for nothing; the count starts over with the next turn', () => {
 		const refused = run([request('ask', 'q', { session: 'nobody' })], { start: sessions() }).state;
 

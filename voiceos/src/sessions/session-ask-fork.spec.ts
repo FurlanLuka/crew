@@ -54,31 +54,28 @@ describe('decideForkTool', () => {
 			},
 		}));
 
-	it('Grep aimed at a secret file, by path or glob → denied; a narrow glob → as asked', () => {
+	it('Grep aimed at a secret file, by path or glob → denied', () => {
 		expect(decideForkTool('Grep', { pattern: 'x', path: '/w/checkout/.env' }, roots).kind).toBe(
 			'deny',
 		);
 		expect(decideForkTool('Grep', { pattern: 'x', glob: '.env*' }, roots).kind).toBe('deny');
-		expect(decideForkTool('Grep', { pattern: 'x', glob: '*.ts' }, roots)).toEqual({
-			kind: 'allow',
-			updatedInput: { pattern: 'x', glob: SECRET_EXCLUDING_GLOB },
-		});
 	});
 
-	it('a glob that could reach a dotfile (".*", "**", "*.local", "**/*.*") → the secret exclusion instead', () => {
-		for (const glob of ['.*', '**', '**/.*', '*.local', '**/*.*', '*.{env,ts}']) {
+	it('a glob of its own → denied with how to narrow instead: even *.json reaches client_secret.json', () => {
+		for (const glob of ['.*', '**', '*.local', '*.ts', '*.json', 'src/**/*.ts']) {
 			expect(decideForkTool('Grep', { pattern: 'x', glob }, roots)).toEqual({
-				kind: 'allow',
-				updatedInput: { pattern: 'x', glob: SECRET_EXCLUDING_GLOB },
+				kind: 'deny',
+				reason:
+					'Grep here takes no glob: narrow the search with path (secret files are always left out).',
 			});
 		}
-
-		// A plain extension too: client_secret.json is a secret by its name.
-		expect(decideForkTool('Grep', { pattern: 'x', glob: '*.json' }, roots)).toEqual({
-			kind: 'allow',
-			updatedInput: { pattern: 'x', glob: SECRET_EXCLUDING_GLOB },
-		});
 	});
+
+	it('narrowed by path → allowed, still leaving the secret files out', () =>
+		expect(decideForkTool('Grep', { pattern: 'x', path: '/w/checkout/src' }, roots)).toEqual({
+			kind: 'allow',
+			updatedInput: { pattern: 'x', path: '/w/checkout/src', glob: SECRET_EXCLUDING_GLOB },
+		}));
 
 	it('the exclusion covers every kind of file isSecretPath calls a secret', () => {
 		for (const name of [

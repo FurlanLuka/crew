@@ -27,6 +27,7 @@ import { isAskInput, reduceAsk, restoreAutoEffects, settleAsksForSession } from 
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
 import { isPeerAsk } from '../shared/protocol.js';
+import { endsInQuestion } from '../shared/spoken.js';
 import {
 	carryReplyOwed,
 	reduceAnswerPeer,
@@ -809,8 +810,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			// A turn nobody sent (a background agent reporting back) speaks only through its own tag: its
 			// untagged "still waiting" lines, narrated one after another, were noise.
 			const isSelfStarted = session.currentSendId === null && !session.reportOwed;
-			// A turn another session started is between the two of them: heard only through its own tag.
-			const isPeerStarted = session.turnFrom !== null && !session.reportOwed;
+			// A turn another session started is between the two of them: heard only through its own tag,
+			// unless it ends asking the developer something.
+			const isPeerStarted =
+				session.turnFrom !== null && !session.reportOwed && !endsInQuestion(input.text);
 			const isSilent = (isSelfStarted || isPeerStarted) && spoken === null;
 
 			// A promised report is given even for a turn that wrote nothing.

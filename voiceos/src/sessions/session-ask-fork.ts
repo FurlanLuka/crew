@@ -131,8 +131,16 @@ export const decideForkTool = (
 		return { kind: 'deny', reason: 'That search targets secret files.' };
 	}
 
-	// Any narrowing could still reach a secret by its name (client_secret.json): every search runs
-	// over everything but the secret files instead.
+	// A glob of its own could still reach a secret by its name (client_secret.json), and the one
+	// glob a search takes is the secret exclusion: narrowing is done with path.
+	if (glob !== null) {
+		return {
+			kind: 'deny',
+			reason:
+				'Grep here takes no glob: narrow the search with path (secret files are always left out).',
+		};
+	}
+
 	return { kind: 'allow', updatedInput: { ...input, glob: SECRET_EXCLUDING_GLOB } };
 };
 
