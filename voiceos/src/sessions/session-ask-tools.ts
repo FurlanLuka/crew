@@ -27,6 +27,11 @@ export const PEER_TOOL_NAMES = ['ask_session', 'tell_session', 'request_secret']
 export const PEER_ALLOWED_TOOLS = PEER_TOOL_NAMES.map(
 	(name) => `mcp__${PEER_SERVER_NAME}__${name}`,
 );
+
+// The exchange shows as its own card on both pages: the raw tool row would say it twice.
+export const isPeerToolName = (name: string): boolean =>
+	name.startsWith(`mcp__${PEER_SERVER_NAME}__`);
+
 // Below the server's own timeout, so the call always ends with a sentence rather than an MCP error.
 export const PEER_CALL_DEADLINE_MS = 190_000;
 const PEER_SERVER_TIMEOUT_MS = 200_000;

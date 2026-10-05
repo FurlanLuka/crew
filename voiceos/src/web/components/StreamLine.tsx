@@ -5,6 +5,7 @@ import { Markdown } from './Markdown.js';
 import { DocCard } from './DocCard.js';
 import { buildMediaUrl } from '../media.js';
 import { AttachedFiles } from './AttachmentChips.js';
+import { PeerCard } from './PeerCard.js';
 
 const ASIDE_STATUS_TEXT = {
 	asking: 'asking aside…',
@@ -23,6 +24,18 @@ interface StreamLineProps {
 export const StreamLine = ({ item, onOpen }: StreamLineProps) => {
 	switch (item.kind) {
 		case 'user':
+			// Another session's words: labelled as theirs, never shown as the developer's.
+			if (item.from) {
+				return (
+					<div className="aside peer">
+						<div className="line user">
+							› <span className="c-amber">from {item.from}</span> {item.text}
+						</div>
+						{item.attachments?.length ? <AttachedFiles attachments={item.attachments} /> : null}
+					</div>
+				);
+			}
+
 			return item.isApproval ? (
 				<div className="line approval">✓ Allowed once: {readApprovalSummary(item.text)}</div>
 			) : item.attachments?.length ? (
@@ -75,6 +88,8 @@ export const StreamLine = ({ item, onOpen }: StreamLineProps) => {
 		}
 		case 'doc':
 			return <DocCard url={item.url} title={item.title} />;
+		case 'session_ask':
+			return <PeerCard item={item} />;
 		case 'aside':
 			return (
 				<div className="aside" data-status={item.status}>

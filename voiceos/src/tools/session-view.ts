@@ -35,7 +35,7 @@ const listRecentLines = (state: State, ref: string, count: number): string[] => 
 		.slice(-count)
 		.map((item) =>
 			item.kind === 'user'
-				? `developer: ${item.text}`
+				? `${item.from ? `session ${item.from}` : 'developer'}: ${item.text}`
 				: item.kind === 'text'
 					? `claude: ${item.text.slice(0, 300)}`
 					: '',

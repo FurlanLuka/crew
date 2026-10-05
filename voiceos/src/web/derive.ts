@@ -115,7 +115,9 @@ export const readLastLine = (session: Session, label: string, isSessionActive: b
 		if (item.kind === 'user') {
 			return item.isApproval
 				? `allowed once: ${readApprovalSummary(item.text)}`
-				: `you: ${item.text}`;
+				: item.from
+					? `from ${item.from}: ${item.text}`
+					: `you: ${item.text}`;
 		}
 	}
 
