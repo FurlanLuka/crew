@@ -61,6 +61,7 @@ describe('decideForkTool', () => {
 		expect(decideForkTool('Grep', { pattern: 'x', glob: '.env*' }, roots).kind).toBe('deny');
 		expect(decideForkTool('Grep', { pattern: 'x', glob: '*.ts' }, roots)).toEqual({
 			kind: 'allow',
+			updatedInput: { pattern: 'x', glob: SECRET_EXCLUDING_GLOB },
 		});
 	});
 
@@ -72,8 +73,10 @@ describe('decideForkTool', () => {
 			});
 		}
 
-		expect(decideForkTool('Grep', { pattern: 'x', glob: '**/*.{ts,tsx}' }, roots)).toEqual({
+		// A plain extension too: client_secret.json is a secret by its name.
+		expect(decideForkTool('Grep', { pattern: 'x', glob: '*.json' }, roots)).toEqual({
 			kind: 'allow',
+			updatedInput: { pattern: 'x', glob: SECRET_EXCLUDING_GLOB },
 		});
 	});
 

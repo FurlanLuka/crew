@@ -21,31 +21,41 @@ const SESSION_ASK_MAX_TURNS = 8;
 const NEEDS_WORK = 'NEEDS_WORK';
 const FILES_MARKER = 'FILES:';
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
-// Everything isSecretPath calls a secret, as one ripgrep exclusion (a folder name excludes the folder).
-export const SECRET_EXCLUDING_GLOB =
-	'!{.env,.env.*,*.pem,*.key,*.p12,*.pfx,*.jks,*.keystore,*.kdbx,id_rsa*,id_dsa*,id_ecdsa*,id_ed25519*,.npmrc,.netrc,.pgpass,.pypirc,.git-credentials,*credential*,*Credential*,*secret*,*Secret*,.ssh,.aws,.gnupg,.docker,.kube}';
-// A search narrowed to plain extensions ("*.ts", "**/*.{go,sql}") cannot reach a secret file; any
-// other glob could (".*", "*.local", "**"), so it is replaced by the exclusion.
-const EXTENSION_GLOB_PATTERN = /^(?:\*\*\/)?\*\.(?:[A-Za-z0-9]+|\{[A-Za-z0-9,]+\})$/;
-const SECRET_EXTENSIONS = new Set([
-	'env',
-	'pem',
-	'key',
-	'p12',
-	'pfx',
-	'jks',
-	'keystore',
-	'kdbx',
-	'local',
-]);
+const SECRET_GLOBS = [
+	'.env',
+	'.env.*',
+	'*.pem',
+	'*.key',
+	'*.p12',
+	'*.pfx',
+	'*.jks',
+	'*.keystore',
+	'*.kdbx',
+	'id_rsa*',
+	'id_dsa*',
+	'id_ecdsa*',
+	'id_ed25519*',
+	'.npmrc',
+	'.netrc',
+	'.pgpass',
+	'.pypirc',
+	'.git-credentials',
+	'*credential*',
+	'*secret*',
+	'.ssh',
+	'.aws',
+	'.gnupg',
+	'.docker',
+	'.kube',
+];
+const capitalize = (glob: string): string =>
+	glob.replace(/[a-z]/, (letter) => letter.toUpperCase());
 
-const isPlainExtensionGlob = (glob: string): boolean =>
-	EXTENSION_GLOB_PATTERN.test(glob) &&
-	!glob
-		.slice(glob.lastIndexOf('*.') + 2)
-		.replace(/[{}]/g, '')
-		.split(',')
-		.some((extension) => SECRET_EXTENSIONS.has(extension.toLowerCase()));
+// Everything isSecretPath calls a secret, as one ripgrep exclusion (a folder name excludes the
+// folder). ripgrep matches case, isSecretPath does not: each name goes in lower, upper and title case.
+export const SECRET_EXCLUDING_GLOB = `!{${[
+	...new Set(SECRET_GLOBS.flatMap((glob) => [glob, glob.toUpperCase(), capitalize(glob)])),
+].join(',')}}`;
 
 export const buildSessionAskPrompt = (fromLabel: string, question: string): string =>
 	[
@@ -121,11 +131,8 @@ export const decideForkTool = (
 		return { kind: 'deny', reason: 'That search targets secret files.' };
 	}
 
-	if (glob !== null && isPlainExtensionGlob(glob)) {
-		return { kind: 'allow' };
-	}
-
-	// Any other search would read .env lines too: it searches everything but the secret files.
+	// Any narrowing could still reach a secret by its name (client_secret.json): every search runs
+	// over everything but the secret files instead.
 	return { kind: 'allow', updatedInput: { ...input, glob: SECRET_EXCLUDING_GLOB } };
 };
 
