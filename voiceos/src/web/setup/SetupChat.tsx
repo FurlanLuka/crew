@@ -8,6 +8,8 @@ import type { Action, StreamItem } from '../../shared/protocol.js';
 import { AskDock } from '../components/AskDock.js';
 import { AttachButton, AttachmentChips } from '../components/AttachmentChips.js';
 import { ATTACHED_ONLY_TEXT, useAttachments } from '../use-attachments.js';
+import { SlashMenu } from '../components/SlashMenu.js';
+import { useSlashCommands } from '../use-slash-commands.js';
 import { QueueList } from '../components/QueueList.js';
 import { SessionStream } from '../components/SessionStream.js';
 import { SubagentsPanel } from '../components/SubagentsPanel.js';
@@ -50,9 +52,23 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 		}
 	}, [draft]);
 
+	const slash = useSlashCommands({
+		state: ctx.state,
+		sessionRef: session ? ref : null,
+		text,
+		setText,
+		send: ctx.send,
+	});
+
 	const submit = (event: FormEvent) => {
 		event.preventDefault();
 		const words = text.trim();
+
+		if (slash.runTyped(words)) {
+			setText('');
+
+			return;
+		}
 
 		// Files still uploading would be left behind: the button waits for them.
 		if ((!words && attachments.waiting.length === 0) || attachments.isUploading) {
@@ -115,6 +131,7 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 					{session && <QueueList session={session} dispatch={dispatch} />}
 					<AttachmentChips attachments={attachments} />
 					<form className="reply" onSubmit={submit}>
+						<SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />
 						<input
 							ref={fieldRef}
 							type="text"
@@ -123,6 +140,9 @@ export const SetupChat = ({ ctx, draft, onDraftUsed }: SetupChatProps) => {
 							autoComplete="off"
 							value={text}
 							onChange={(event) => setText(event.target.value)}
+							onKeyDown={(event) => {
+								slash.handleKey(event);
+							}}
 						/>
 						{attachments.ref && <AttachButton attachments={attachments} />}
 						<button type="submit" className="btn primary" disabled={attachments.isUploading}>

@@ -8,6 +8,7 @@ import {
 	trackEffect,
 	trackObservation,
 } from './host-state.js';
+import type { Observation } from '../shared/protocol.js';
 
 const send = (seq: number) => ({
 	seq,
@@ -100,5 +101,27 @@ describe('a message taken', () => {
 		state = trackEffect(state, { type: 'worker_send', ref: 'a/b', text: 'go' });
 
 		expect(buildSnapshot(state, []).sessions[0]?.status).toBe('running');
+	});
+});
+
+describe("a session's commands on the remote", () => {
+	it('kept through its turns and given in the snapshot', () => {
+		const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+		const observations: Observation[] = [
+			{ type: 'session_started', ref: 'store/main' },
+			{ type: 'commands_listed', ref: 'store/main', commands: [REVIEW] },
+			{ type: 'turn_started', ref: 'store/main' },
+			{ type: 'turn_ended', ref: 'store/main', costUsd: 0, text: 'ok', turnId: 't1' },
+		];
+		const state = observations.reduce(trackObservation, createHostState());
+
+		expect(buildSnapshot(state, []).sessions).toEqual([
+			{
+				ref: 'store/main',
+				status: 'idle',
+				lastTurn: { id: 't1', text: 'ok', costUsd: 0, head: null },
+				commands: [REVIEW],
+			},
+		]);
 	});
 });

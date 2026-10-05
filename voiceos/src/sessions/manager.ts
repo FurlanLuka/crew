@@ -87,6 +87,10 @@ export class SessionManager {
 				return this.workers.get(effect.ref)?.interrupt(effect.reason);
 			case 'worker_set_mode':
 				return this.workers.get(effect.ref)?.setMode(effect.mode);
+			case 'worker_reload':
+				return this.workers.get(effect.ref)?.reload(effect.kind, Boolean(effect.force));
+			case 'worker_set_model':
+				return this.workers.get(effect.ref)?.setModel(effect.model);
 			case 'side_answer':
 				return this.answerAside(effect);
 			case 'resolve_ask':

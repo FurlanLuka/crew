@@ -14,6 +14,17 @@ describe('routeEffect', () => {
 		});
 	});
 
+	it.each([
+		{ type: 'worker_reload' as const, ref: 'vm1:store/main', kind: 'plugins' as const },
+		{ type: 'worker_set_model' as const, ref: 'vm1:store/main', model: 'opus' },
+	])('$type to a remote session → that machine, the ref as it knows it', (effect) =>
+		expect(routeEffect(effect)).toEqual({
+			kind: 'remote',
+			machine: 'vm1',
+			effect: { ...effect, ref: 'store/main' },
+		}),
+	);
+
 	it('an answer to a remote ask → the ref and the ask id both lose the prefix', () => {
 		expect(
 			routeEffect({
@@ -71,6 +82,11 @@ describe('toMainInput', () => {
 		{ type: 'ask_closed', askId: 'ask-store/main-1' },
 		{ type: 'worker_exited', ref: 'store/main', error: null },
 		{ type: 'history_restored', ref: 'store/main', items: [] },
+		{
+			type: 'commands_listed',
+			ref: 'store/main',
+			commands: [{ name: 'review', description: 'Review a change', argumentHint: '<pr>' }],
+		},
 		{
 			type: 'subagent_started',
 			ref: 'store/main',

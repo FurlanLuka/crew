@@ -10,13 +10,14 @@ import type {
 	Snapshot,
 	SessionSnapshot,
 } from './protocol.js';
-import type { WorktreeInfo } from '../shared/protocol.js';
+import type { SessionCommand, WorktreeInfo } from '../shared/protocol.js';
 
 export type HostSessionStatus = 'stopped' | 'starting' | 'idle' | 'running';
 
 export interface HostSession {
 	status: HostSessionStatus;
 	lastTurn: LastTurn | null;
+	commands?: SessionCommand[];
 }
 
 export interface HostState {
@@ -31,7 +32,7 @@ const setStatus = (state: HostState, ref: string, status: HostSessionStatus): Ho
 	...state,
 	sessions: {
 		...state.sessions,
-		[ref]: { lastTurn: state.sessions[ref]?.lastTurn ?? null, status },
+		[ref]: { ...state.sessions[ref], lastTurn: state.sessions[ref]?.lastTurn ?? null, status },
 	},
 });
 
@@ -76,6 +77,7 @@ export const trackObservation = (state: HostState, observation: Observation): Ho
 						sessions: {
 							...ended.sessions,
 							[observation.ref]: {
+								...ended.sessions[observation.ref],
 								status: 'idle',
 								lastTurn: {
 									id: observation.turnId,
@@ -88,6 +90,18 @@ export const trackObservation = (state: HostState, observation: Observation): Ho
 					}
 				: ended;
 		}
+		case 'commands_listed':
+			return {
+				...state,
+				sessions: {
+					...state.sessions,
+					[observation.ref]: {
+						status: state.sessions[observation.ref]?.status ?? 'idle',
+						lastTurn: state.sessions[observation.ref]?.lastTurn ?? null,
+						commands: observation.commands,
+					},
+				},
+			};
 		case 'worker_exited':
 			return {
 				...setStatus(state, observation.ref, 'stopped'),
@@ -124,6 +138,7 @@ export const buildSnapshot = (state: HostState, worktrees: WorktreeInfo[]): Snap
 				ref,
 				status: session.status as SessionSnapshot['status'],
 				lastTurn: session.lastTurn,
+				...(session.commands ? { commands: session.commands } : {}),
 			}),
 		),
 	asks: state.asks,

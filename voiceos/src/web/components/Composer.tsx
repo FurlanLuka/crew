@@ -14,6 +14,9 @@ import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/pro
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { describeListening, isListeningMode } from '../listen-mode.js';
 import { AttachButton } from './AttachmentChips.js';
+import { SlashMenu } from './SlashMenu.js';
+import { readScreenRef } from '../../state/helpers.js';
+import { useSlashCommands } from '../use-slash-commands.js';
 import { ATTACHED_ONLY_TEXT, type Attachments } from '../use-attachments.js';
 import type { KeptDictation } from '../use-connection.js';
 import type { VoiceInput } from '../use-voice-input.js';
@@ -87,6 +90,15 @@ export const Composer = ({
 	const route = describeRouteChip(state, { draft });
 	const isAlarm = route.isAnswering && !isDictating;
 	const discord = isOnDiscord ? state.discord : null;
+	const onScreen = readScreenRef(state);
+	const screenRef = onScreen && state.sessions[onScreen] ? onScreen : null;
+	const slash = useSlashCommands({
+		state,
+		sessionRef: screenRef,
+		text: draft,
+		setText: setDraft,
+		send,
+	});
 
 	useEffect(() => {
 		if (keptDictation) {
@@ -106,6 +118,12 @@ export const Composer = ({
 
 	const submitDraft = () => {
 		if ((!draft.trim() && !hasFiles) || isTooLong) {
+			return;
+		}
+
+		if (slash.runTyped(draft)) {
+			setDraft('');
+
 			return;
 		}
 
@@ -132,6 +150,10 @@ export const Composer = ({
 	};
 
 	const handleFieldKey = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+		if (slash.handleKey(event)) {
+			return;
+		}
+
 		// Enter sends, Shift+Enter is a new line; a composing IME keeps its Enter.
 		if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
 			event.preventDefault();
@@ -197,6 +219,7 @@ export const Composer = ({
 			} ${discord ? 'discord' : ''}`}
 			onSubmit={handleSubmit}
 		>
+			<SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />
 			<textarea
 				ref={fieldRef}
 				rows={1}

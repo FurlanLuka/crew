@@ -38,6 +38,11 @@ export const planResync = (state: State, machine: string, snapshot: Snapshot): R
 			inputs.push({ type: 'session_started', ref });
 		}
 
+		// Listed once at its start, which a main that restarted since never heard.
+		if (remote.commands) {
+			inputs.push({ type: 'commands_listed', ref, commands: remote.commands });
+		}
+
 		if (remote.status === 'running') {
 			if (!wasWorking) {
 				inputs.push({ type: 'turn_started', ref });

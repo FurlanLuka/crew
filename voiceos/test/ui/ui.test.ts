@@ -3149,3 +3149,166 @@ describe('attaching files', () => {
 		await context.close();
 	}, 20_000);
 });
+
+describe('slash commands', () => {
+	const REF = 'store-front/main';
+
+	const openWithCommands = async (): Promise<SignedInTab> => {
+		await ensureIdle(REF);
+		store.dispatch({
+			type: 'commands_listed',
+			ref: REF,
+			commands: [
+				{ name: 'review', description: 'Review a pull request', argumentHint: '<pr>' },
+				{ name: 'release-notes', description: 'Write the release notes', argumentHint: '' },
+			],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF } });
+
+		return signIn();
+	};
+
+	const fieldOf = (page: Page) => page.getByRole('textbox', { name: 'Say or type a command' });
+
+	it('"/" → the session\'s commands, then Voice OS\'s; typing narrows it; Enter fills it in', async () => {
+		const { context, page } = await openWithCommands();
+		const field = fieldOf(page);
+
+		await field.fill('/');
+		const menu = page.getByRole('listbox', { name: 'Commands' });
+		await menu.waitFor({ timeout: 5000 });
+		expect(await menu.getByRole('option').first().textContent()).toContain('/review');
+		expect(await menu.getByText('Voice OS', { exact: true }).count()).toBe(1);
+
+		await field.fill('/rel');
+		expect(await menu.getByRole('option').first().textContent()).toContain('/release-notes');
+		await field.press('Enter');
+		expect(await field.inputValue()).toBe('/release-notes ');
+		await menu.waitFor({ state: 'detached', timeout: 5000 });
+
+		await field.fill('/rev');
+		await field.press('Escape');
+		await menu.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a skill with words → sent to the session as typed', async () => {
+		const { context, page } = await openWithCommands();
+		const before = received.length;
+
+		await fieldOf(page).fill('/review 42');
+		await fieldOf(page).press('Enter');
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some((entry) => entry.message.type === 'utterance' && entry.message.text === '/review 42'),
+		);
+		await context.close();
+	}, 20_000);
+
+	it('/mute → the mute message and a line; /reload-plugins picked from the menu → the reload action', async () => {
+		const { context, page } = await openWithCommands();
+		const field = fieldOf(page);
+		const before = received.length;
+
+		await field.fill('/mute');
+		await field.press('Enter');
+		await page.getByText('Muted: only what needs you is said.').waitFor({ timeout: 5000 });
+
+		await field.fill('/reload-p');
+		await page.getByRole('option', { name: /reload-plugins/ }).dispatchEvent('mousedown');
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some(
+					(entry) =>
+						entry.message.type === 'action' &&
+						entry.message.action.type === 'reload_session' &&
+						entry.message.action.kind === 'plugins',
+				),
+		);
+		expect(
+			received
+				.slice(before)
+				.some((entry) => entry.message.type === 'mute' && entry.message.isMuted),
+		).toBe(true);
+		expect(received.slice(before).some((entry) => entry.message.type === 'utterance')).toBe(false);
+		await context.close();
+	}, 20_000);
+
+	it('/update → crew updated on the main, with a restart offered and never done by itself', async () => {
+		const { context, page } = await openWithCommands();
+		const calls = crew.calls.length;
+
+		await fieldOf(page).fill('/update');
+		await fieldOf(page).press('Enter');
+		await page.getByRole('button', { name: "Restart crew's server" }).waitFor({ timeout: 10_000 });
+
+		const ran = () => crew.calls.slice(calls).map((call) => `${call.machine}:${call.command.type}`);
+		expect(ran()).toEqual(['local:update']);
+
+		await page.getByRole('button', { name: "Restart crew's server" }).click();
+		await waitUntil(() => ran().length === 2);
+		expect(ran()).toEqual(['local:update', 'local:server_restart']);
+		await context.close();
+	}, 20_000);
+
+	it('typed whole and sent: /model, /reload-plugins force and /voice run here, none reaches Claude', async () => {
+		const { context, page } = await openWithCommands();
+		const field = fieldOf(page);
+		const before = received.length;
+		const actions = () =>
+			received
+				.slice(before)
+				.flatMap((entry) => (entry.message.type === 'action' ? [entry.message.action] : []));
+
+		for (const text of ['/model opus', '/reload-plugins force', '/voice off']) {
+			await field.fill(text);
+			await field.press('Enter');
+			await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
+		}
+
+		await page.getByText('Voice is off.').waitFor({ timeout: 5000 });
+		await waitUntil(() => actions().length >= 3);
+		expect(actions()).toEqual([
+			{ type: 'set_model', ref: REF, model: 'opus' },
+			{ type: 'reload_session', ref: REF, kind: 'plugins', force: true },
+			{ type: 'set_voice_off', voiceOff: true },
+		]);
+		expect(received.slice(before).some((entry) => entry.message.type === 'utterance')).toBe(false);
+		expect(await field.inputValue()).toBe('');
+
+		await field.fill('/voice on');
+		await field.press('Enter');
+		await waitUntil(() => !store.state.voiceOff);
+		await context.close();
+	}, 20_000);
+
+	it('"/update" typed whole runs update, even with a skill named update-config listed first', async () => {
+		await ensureIdle(REF);
+		store.dispatch({
+			type: 'commands_listed',
+			ref: REF,
+			commands: [{ name: 'update-config', description: 'Configure', argumentHint: '' }],
+		});
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: REF } });
+		const { context, page } = await signIn();
+		const calls = crew.calls.length;
+
+		await fieldOf(page).fill('/update');
+		await fieldOf(page).press('Enter');
+		await waitUntil(() => crew.calls.slice(calls).some((call) => call.command.type === 'update'));
+		expect(await fieldOf(page).inputValue()).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('390 wide: the menu fits the screen', async () => {
+		const { context, page } = await openWithCommands();
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		await fieldOf(page).fill('/');
+		await page.getByRole('listbox', { name: 'Commands' }).waitFor({ timeout: 5000 });
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+		await context.close();
+	}, 20_000);
+});

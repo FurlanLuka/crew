@@ -353,6 +353,7 @@ export const createFakeCrew = ({
 		}
 
 		heldLogs.clear();
+
 		for (const id of [LOCAL_MACHINE, ...remotes]) {
 			machines[id] = seedMachine(next);
 		}

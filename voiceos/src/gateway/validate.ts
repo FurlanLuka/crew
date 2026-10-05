@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_TEXT_CHARS, type ClientMessage } from '../shared/protocol.js';
+import { MAX_TEXT_CHARS, MODEL_ID_PATTERN, type ClientMessage } from '../shared/protocol.js';
 import { isValidHost } from '../shared/machines.js';
 
 const sampleRateSchema = z.number().int().min(8000).max(192000);
@@ -33,6 +33,17 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('take_back'), ref: refSchema, id: z.string() }),
 	// An id is a 16-hex hash, a slash and up to 120 characters, each up to two UTF-16 units.
 	z.object({ type: z.literal('attachment_removed'), ref: refSchema, id: z.string().max(300) }),
+	z.object({
+		type: z.literal('reload_session'),
+		ref: refSchema,
+		kind: z.enum(['plugins', 'skills']),
+		force: z.literal(true).optional(),
+	}),
+	z.object({
+		type: z.literal('set_model'),
+		ref: refSchema,
+		model: z.string().regex(MODEL_ID_PATTERN),
+	}),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({
 		type: z.literal('answer_permission'),
@@ -121,6 +132,7 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('listen_stop') }),
 	z.object({ type: z.literal('audio_done'), id: z.string() }),
 	z.object({ type: z.literal('discord_listen'), mode: z.enum(['on-demand', 'hands-free']) }),
+	z.object({ type: z.literal('mute'), isMuted: z.boolean() }),
 ]) satisfies z.ZodType<ClientMessage>;
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };

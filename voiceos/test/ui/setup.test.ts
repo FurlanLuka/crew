@@ -777,6 +777,47 @@ describe('Setup with Claude', () => {
 		await context.close();
 	}, 20_000);
 
+	it('"/" in the chat → the setup session\'s commands; /reload-skills picked runs on it', async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		server.store.dispatch({
+			type: 'commands_listed',
+			ref: 'setup',
+			commands: [{ name: 'crew', description: 'Drive crew', argumentHint: '' }],
+		});
+		const { context, page } = await open('/setup/chat');
+		const field = page.getByLabel('Reply to setup');
+
+		await field.fill('/');
+		const menu = page.getByRole('listbox', { name: 'Commands' });
+		await menu.waitFor({ timeout: 5000 });
+		expect(await menu.getByRole('option').first().textContent()).toContain('/crew');
+
+		await field.fill('/reload-s');
+		await field.press('Enter');
+		await waitUntil(() =>
+			server.received.some(
+				(entry) =>
+					entry.message.type === 'action' &&
+					entry.message.action.type === 'reload_session' &&
+					entry.message.action.ref === 'setup',
+			),
+		);
+		expect(await field.inputValue()).toBe('');
+
+		await field.fill('/model sonnet');
+		await field.press('Enter');
+		await waitUntil(() =>
+			server.received.some(
+				(entry) =>
+					entry.message.type === 'action' &&
+					entry.message.action.type === 'set_model' &&
+					entry.message.action.ref === 'setup' &&
+					entry.message.action.model === 'sonnet',
+			),
+		);
+		await context.close();
+	}, 20_000);
+
 	describe("a remote machine's chat", () => {
 		const VM1 = { id: 'vm1', host: 'dev@vm1', name: 'Build box' };
 		const LOCAL_WORKTREES = [createWorktree('setup', true), createWorktree('store-front/main')];

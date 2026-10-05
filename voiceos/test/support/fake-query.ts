@@ -10,6 +10,16 @@ export interface FakeQueryParams {
 	sideReply?: unknown[] | Error;
 	// A message containing these words asks permission mid-turn (a Bash call) and waits for the answer.
 	askOn?: string;
+	// The session's slash commands, as Claude Code lists them.
+	commands?: { name: string; description: string; argumentHint: string }[];
+	// A plugin reload asked to hold on cache impact is held.
+	holdReload?: boolean;
+	// What the session lists after a reload (else the same commands).
+	reloadedCommands?: { name: string; description: string; argumentHint: string }[];
+	// Reload and model calls fail with this.
+	controlError?: Error;
+	// As the real CLI: its init message comes only with the first words.
+	isInitLate?: boolean;
 }
 
 interface FakeQueryCall {
@@ -34,7 +44,15 @@ export const createFakeQuery = ({
 	holdTurns = false,
 	sideReply = [],
 	askOn,
+	commands = [],
+	holdReload = false,
+	reloadedCommands,
+	controlError,
+	isInitLate = false,
 }: FakeQueryParams = {}) => {
+	const reloads: string[] = [];
+	let pushCommands: (next: unknown[]) => void = () => undefined;
+	const models: string[] = [];
 	// Stands in for the Agent SDK; holdTurns: a turn only ends when interrupted, like a cut reply.
 	const started: string[] = [];
 	const prompts: string[] = [];
@@ -74,12 +92,13 @@ export const createFakeQuery = ({
 		}
 
 		started.push(call.options.cwd);
+		let listed = commands;
 		prompts.push(call.options.systemPrompt.append);
 
 		const { signal } = call.options.abortController;
-		const queued: unknown[] = [
-			{ type: 'system', subtype: 'init', session_id: `s-${started.length}` },
-		];
+		const init = { type: 'system', subtype: 'init', session_id: `s-${started.length}` };
+		const queued: unknown[] = isInitLate ? [] : [init];
+		let isInitSent = !isInitLate;
 
 		// Replaced by each wait so a new message or interrupt wakes the stream.
 		let wake: () => void = () => {
@@ -89,6 +108,11 @@ export const createFakeQuery = ({
 		void (async () => {
 			for await (const message of call.prompt) {
 				sent.push(message.message.content);
+
+				if (!isInitSent) {
+					isInitSent = true;
+					queued.push(init);
+				}
 
 				if (askOn && message.message.content.includes(askOn) && call.options.canUseTool) {
 					const answer = await call.options.canUseTool(
@@ -107,6 +131,12 @@ export const createFakeQuery = ({
 				wake();
 			}
 		})();
+
+		// Claude Code's mid-session command list, pushed into the newest session.
+		pushCommands = (next) => {
+			queued.push({ type: 'system', subtype: 'commands_changed', commands: next });
+			wake();
+		};
 
 		const interrupt = async () => {
 			interrupts++;
@@ -131,11 +161,53 @@ export const createFakeQuery = ({
 			},
 			interrupt,
 			setPermissionMode: async () => undefined,
+			supportedCommands: async () => listed,
+			reloadSkills: async () => {
+				reloads.push('skills');
+
+				if (controlError) {
+					throw controlError;
+				}
+
+				listed = reloadedCommands ?? listed;
+
+				return { skills: listed.slice(0, 1) };
+			},
+			reloadPlugins: async (options?: { holdOnCacheImpact?: boolean }) => {
+				reloads.push(options?.holdOnCacheImpact ? 'plugins:hold' : 'plugins');
+
+				if (controlError) {
+					throw controlError;
+				}
+
+				const isHeld = Boolean(options?.holdOnCacheImpact && holdReload);
+
+				listed = isHeld ? listed : (reloadedCommands ?? listed);
+
+				return {
+					commands: listed,
+					agents: [],
+					plugins: [{ name: 'p', path: '/p' }],
+					mcpServers: [],
+					error_count: 0,
+					...(isHeld ? { held: true } : {}),
+				};
+			},
+			setModel: async (model?: string) => {
+				models.push(model ?? '');
+
+				if (controlError) {
+					throw controlError;
+				}
+			},
 		};
 	}) as never;
 
 	return {
 		runQuery,
+		reloads,
+		models,
+		pushCommands: (next: unknown[]) => pushCommands(next),
 		started,
 		prompts,
 		sent,

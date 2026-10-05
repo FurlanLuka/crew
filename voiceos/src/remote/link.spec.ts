@@ -37,10 +37,17 @@ interface HostOptions {
 	worktrees?: WorktreeInfo[];
 	runCrew?: (args: string[], options?: CrewRunOptions) => Promise<CrewRunResult>;
 	attachmentsDir?: string;
+	commands?: { name: string; description: string; argumentHint: string }[];
 }
 
-const startHost = ({ version = 'test', runCrew, worktrees, attachmentsDir }: HostOptions = {}) => {
-	const fake = createFakeQuery({ askOn: '[ask]' });
+const startHost = ({
+	version = 'test',
+	runCrew,
+	worktrees,
+	attachmentsDir,
+	commands = [],
+}: HostOptions = {}) => {
+	const fake = createFakeQuery({ askOn: '[ask]', commands });
 	const registryFile = join(mkdtempSync(join(tmpdir(), 'voiceos-remote-')), 'sessions.json');
 	let manager: SessionManager | null = null;
 	let isBusyThere = false;
@@ -1013,5 +1020,59 @@ describe('files attached to a remote session', () => {
 
 		expect(fake.sent.filter((text) => text.endsWith('look'))).toEqual(['look']);
 		expect(readAttachmentBytes(files.thereDir, files.attachment.id)).toBeNull();
+	});
+
+	describe("a remote session's slash commands", () => {
+		it('its commands reach the main; a reload typed on the main runs there and is said here', async () => {
+			const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+			const { host, fake } = startHost({ commands: [REVIEW] });
+
+			await host.refreshWorktrees();
+
+			const { store } = startMain({ open: createNetwork(host).open });
+
+			await actWhenConnected(store, () => store.dispatch({ type: 'activate', ref: REF }), 'start');
+			await until(() => store.state.sessions[REF]?.commands?.length === 1, 'the commands');
+			store.dispatch({ type: 'reload_session', ref: REF, kind: 'plugins' });
+			await until(
+				() =>
+					store.state.sessions[REF]?.stream.some(
+						(item) => item.kind === 'notice' && item.text.startsWith('Plugins reloaded'),
+					) ?? false,
+				'the notice',
+			);
+
+			expect(store.state.sessions[REF]?.commands).toEqual([REVIEW]);
+			expect(fake.reloads).toEqual(['plugins:hold']);
+		});
+
+		it("a restarted main → the running session's newest commands come back in the snapshot", async () => {
+			const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+			const SHIP = { name: 'ship', description: 'Ship it', argumentHint: '' };
+			const { host, fake } = startHost({ commands: [REVIEW] });
+
+			await host.refreshWorktrees();
+
+			const network = createNetwork(host);
+			const first = startMain({ open: network.open });
+
+			await actWhenConnected(
+				first.store,
+				() => first.store.dispatch({ type: 'activate', ref: REF }),
+				'start',
+			);
+			await until(() => first.store.state.sessions[REF]?.commands?.length === 1, 'the commands');
+			first.links.stopAll();
+			// Pushed while no main listens: only the snapshot can carry it.
+			fake.pushCommands([REVIEW, SHIP]);
+
+			const second = startMain({ open: network.open, runId: 'run-2', active: [REF] });
+
+			await until(
+				() => second.store.state.sessions[REF]?.commands?.length === 2,
+				'the commands again',
+			);
+			expect(second.store.state.sessions[REF]?.commands).toEqual([REVIEW, SHIP]);
+		});
 	});
 });

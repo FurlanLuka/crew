@@ -311,6 +311,8 @@ describe('parseClientMessage', () => {
 		promote_all_queued: { type: 'promote_all_queued', ref: 'store/main' },
 		take_back: { type: 'take_back', ref: 'store/main', id: 'q1' },
 		attachment_removed: { type: 'attachment_removed', ref: 'store/main', id: 'abc/shot.png' },
+		reload_session: { type: 'reload_session', ref: 'store/main', kind: 'plugins', force: true },
+		set_model: { type: 'set_model', ref: 'store/main', model: 'claude-opus-5-5[1m]' },
 		held_line_heard: { type: 'held_line_heard', ref: 'store/main', id: 'h1' },
 		answer_permission: {
 			type: 'answer_permission',
@@ -381,6 +383,7 @@ describe('parseClientMessage', () => {
 		{ type: 'listen_stop' },
 		{ type: 'audio_done', id: 's1' },
 		{ type: 'discord_listen', mode: 'on-demand' },
+		{ type: 'mute', isMuted: false },
 	];
 
 	it.each(messages.map((message) => [JSON.stringify(message), message] as const))(
@@ -446,12 +449,21 @@ describe('parseClientMessage', () => {
 			{ type: 'names_loaded', names: { 'store/main': 'shop' } },
 			{ type: 'rename_session', ref: 'store/main' },
 			{ type: 'rename_session', ref: 'store/main', name: 'x'.repeat(61) },
+			// The model goes to the SDK: only an alias or an id.
+			{ type: 'set_model', ref: 'store/main', model: 'opus; rm -rf ~' },
+			{ type: 'set_model', ref: 'store/main', model: '' },
+			{ type: 'set_model', ref: 'store/main', model: 'x'.repeat(81) },
+			{ type: 'reload_session', ref: 'store/main', kind: 'mcp' },
+			{ type: 'reload_session', ref: 'store/main', kind: 'plugins', force: false },
 		];
 
 		for (const action of refused) {
 			expect(parseClientMessage(JSON.stringify({ type: 'action', action })).ok).toBe(false);
 		}
 	});
+
+	it('a mute without saying which → refused', () =>
+		expect(parseClientMessage(JSON.stringify({ type: 'mute' })).ok).toBe(false));
 
 	it('a client cannot write the voice log (only the router does)', () =>
 		expect(
