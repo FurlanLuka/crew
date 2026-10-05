@@ -48,14 +48,14 @@ jobs:
         working-directory: voiceos
         run: bun scripts/build-release.ts "${GITHUB_REF_NAME}"
 
-      # A hand-written docs/releases/<tag>.md wins: its heading ("# crew 6.5.0: A / menu in every
-      # session") is the release's title, the rest its notes. Without one the title is "crew 6.5.0" and
+      # A hand-written docs/releases/<tag>.md wins: its heading ("# v6.5.0: A / menu in every
+      # session") is the release's title, the rest its notes. Without one the title is the tag and
       # GoReleaser lists the merged PRs.
       - name: Release notes
         id: notes
         run: |
           notes="docs/releases/${GITHUB_REF_NAME}.md"
-          title="crew ${GITHUB_REF_NAME#v}"
+          title="${GITHUB_REF_NAME}"
           if [ -f "$notes" ]; then
             heading="$(head -n 1 "$notes")"
             case "$heading" in "# "*) title="${heading#\# }" ;; esac
