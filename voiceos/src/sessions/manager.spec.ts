@@ -733,3 +733,134 @@ describe('slash commands', () => {
 		harness.manager.stopAll();
 	});
 });
+
+describe('sessions asking sessions', () => {
+	const STORE = 'store-front/main';
+	const CHECKOUT = 'checkout-api/main';
+
+	const createPeerHarness = (sideReply: unknown[] = []) => {
+		const store = new Store();
+		const fake = createFakeQuery({ sideReply, holdTurns: true });
+		const options: Record<string, unknown>[] = [];
+		const runQuery = ((call: { options: Record<string, unknown> }) => {
+			options.push(call.options);
+
+			return (fake.runQuery as unknown as (call: unknown) => unknown)(call);
+		}) as typeof fake.runQuery;
+		const worktree = (ref: string) => ({
+			ref,
+			label: ref,
+			branch: '',
+			cwd: `/w/${ref}`,
+			dirs: [],
+			isPinned: false,
+		});
+
+		store.dispatch({ type: 'worktrees', worktrees: [worktree(STORE), worktree(CHECKOUT)] });
+
+		const manager = new SessionManager({
+			...connectStore(store),
+			registryFile: join(mkdtempSync(join(tmpdir(), 'voiceos-mgr-')), 'sessions.json'),
+			home: '/h',
+			fetchOrientation: () => Promise.resolve('## crew'),
+			runQuery,
+		});
+
+		store.onEffect(manager.handle);
+
+		return { store, manager, fake, options };
+	};
+
+	it('every session gets the tools, allowed without asking; its forks declare the same tools', async () => {
+		const harness = createPeerHarness([
+			{ type: 'assistant', message: { content: [{ type: 'text', text: 'Five.' }] } },
+			{ type: 'result', subtype: 'success' },
+		]);
+
+		harness.store.dispatch({ type: 'activate', ref: CHECKOUT });
+		await waitTick();
+		harness.store.dispatch({ type: 'send', ref: CHECKOUT, text: 'work' });
+		await waitTick();
+		harness.manager.handle({
+			type: 'session_fork',
+			ref: CHECKOUT,
+			id: 'r1',
+			fromLabel: STORE,
+			question: 'q',
+		});
+		await waitTick();
+
+		const [session, fork] = harness.options;
+
+		expect(Object.keys((session?.mcpServers as object) ?? {})).toEqual(['voiceos']);
+		expect(session?.allowedTools).toEqual([
+			'mcp__voiceos__ask_session',
+			'mcp__voiceos__tell_session',
+			'mcp__voiceos__request_secret',
+		]);
+		expect(Object.keys((fork?.mcpServers as object) ?? {})).toEqual(['voiceos']);
+		expect(fork?.allowedTools).toBeUndefined();
+		harness.manager.stopAll();
+	});
+
+	it("a copy answers another session's ask and the main hears it settled", async () => {
+		const harness = createPeerHarness([
+			{ type: 'assistant', message: { content: [{ type: 'text', text: 'Five tries.' }] } },
+			{ type: 'result', subtype: 'success' },
+		]);
+		const settled: unknown[] = [];
+
+		harness.store.subscribe((stamped) => {
+			if (stamped.input.type === 'session_fork_settled') {
+				settled.push(stamped.input);
+			}
+		});
+		harness.store.dispatch({ type: 'activate', ref: CHECKOUT });
+		await waitTick();
+		harness.store.dispatch({ type: 'send', ref: CHECKOUT, text: 'work' });
+		await waitTick();
+		harness.manager.handle({
+			type: 'session_fork',
+			ref: CHECKOUT,
+			id: 'r1',
+			fromLabel: STORE,
+			question: 'q',
+		});
+		await waitTick();
+
+		expect(settled).toEqual([
+			{
+				type: 'session_fork_settled',
+				ref: CHECKOUT,
+				id: 'r1',
+				status: 'answered',
+				answer: 'Five tries.',
+				files: [],
+				read: [],
+			},
+		]);
+		harness.manager.stopAll();
+	});
+
+	it('a target that is not running → failed at once, no copy', async () => {
+		const harness = createPeerHarness();
+		const settled: unknown[] = [];
+
+		harness.store.subscribe((stamped) => {
+			if (stamped.input.type === 'session_fork_settled') {
+				settled.push(stamped.input);
+			}
+		});
+		harness.manager.handle({
+			type: 'session_fork',
+			ref: CHECKOUT,
+			id: 'r1',
+			fromLabel: STORE,
+			question: 'q',
+		});
+		await waitTick();
+
+		expect(settled).toMatchObject([{ status: 'failed', answer: 'it is not running' }]);
+		expect(harness.fake.forks).toEqual([]);
+	});
+});

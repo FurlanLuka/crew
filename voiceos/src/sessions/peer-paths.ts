@@ -22,6 +22,15 @@ export const isSecretPath = (path: string): boolean => {
 	);
 };
 
+// A glob that could name secret files: "**/.env*" as much as ".env". Judged with its wildcards
+// taken out, since any name it matches might be a secret.
+export const isSecretPattern = (pattern: string): boolean =>
+	pattern.split(/[{},]/).some((part) => {
+		const literal = part.replace(/[*?[\]!]/g, '');
+
+		return literal !== '' && isSecretPath(literal);
+	});
+
 // The session's folders: its worktree and any extra directories it works in.
 export interface SessionRoots {
 	cwd: string;

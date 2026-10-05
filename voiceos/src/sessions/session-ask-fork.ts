@@ -6,7 +6,12 @@ import { createLogger } from '../log.js';
 import type { PeerForkStatus } from '../shared/protocol.js';
 import type { RawMessage } from './events.js';
 import { dropCheckpoints, isTopLevelAssistant, readText, runFork } from './fork.js';
-import { isSecretPath, resolveInsideRoots, type SessionRoots } from './peer-paths.js';
+import {
+	isSecretPath,
+	isSecretPattern,
+	resolveInsideRoots,
+	type SessionRoots,
+} from './peer-paths.js';
 import type { QueryLaunch } from './worker.js';
 
 const log = createLogger('session-asks');
@@ -84,14 +89,14 @@ export const decideForkTool = (
 	const pattern = readString(input, 'pattern') ?? '';
 
 	if (toolName === 'Glob') {
-		return isSecretPath(pattern)
+		return isSecretPattern(pattern)
 			? { kind: 'deny', reason: 'That pattern lists secret files.' }
 			: { kind: 'allow' };
 	}
 
 	const glob = readString(input, 'glob');
 
-	if (glob !== null && isSecretPath(glob)) {
+	if (glob !== null && isSecretPattern(glob)) {
 		return { kind: 'deny', reason: 'That search targets secret files.' };
 	}
 
