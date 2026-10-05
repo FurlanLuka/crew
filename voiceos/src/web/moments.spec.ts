@@ -156,7 +156,7 @@ describe('describeMoment', () => {
 		refs: ['checkout-api/main'],
 	};
 
-	it('a meanwhile line that offered a switch → the offer card says that line, not "Sent to"', () =>
+	it('a meanwhile line that offered a switch → the card asks only "Switch to …?", never "Sent to"', () =>
 		expect(
 			describeMoment(
 				createState({
@@ -165,7 +165,7 @@ describe('describeMoment', () => {
 				}),
 				NOW,
 			)?.text,
-		).toBe('Meanwhile, checkout said: tests pass. Switch there?'));
+		).toBe('Switch to checkout-api/main?'));
 
 	it('an asking line about it said before the offer → not the offer\'s line: "Sent to"', () =>
 		expect(

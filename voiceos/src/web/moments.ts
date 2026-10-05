@@ -35,9 +35,9 @@ export interface Moment {
 // A meanwhile line stays answerable this long after it was said.
 const MEANWHILE_SHOWN_MS = 60_000;
 
-// The meanwhile line that offered this switch ("…, checkout said: tests pass. Switch there?").
-const findOfferLine = (state: State, offer: SwitchOffer): SpokenLine | undefined =>
-	state.spoken.findLast(
+// A meanwhile line asked this switch ("…, checkout said: tests pass. Switch there?").
+const isMeanwhileOffer = (state: State, offer: SwitchOffer): boolean =>
+	state.spoken.some(
 		(line) => line.isUpdate && line.isAsking && line.ref === offer.ref && line.at >= offer.at,
 	);
 
@@ -93,8 +93,11 @@ const describeSwitchOffer = (state: State): Moment | null => {
 		default:
 			return {
 				key,
-				// The meanwhile line asked it: the card says that line, not "Sent to".
-				text: findOfferLine(state, offer)?.text ?? `Sent to ${label}. Switch there?`,
+				// The meanwhile line asked it, shown just below: the card asks only the question, and never
+				// "Sent to" for words nobody sent.
+				text: isMeanwhileOffer(state, offer)
+					? `Switch to ${label}?`
+					: `Sent to ${label}. Switch there?`,
 				say: 'say yes, or keep talking',
 				answers: [
 					{
