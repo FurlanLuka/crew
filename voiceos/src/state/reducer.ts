@@ -26,6 +26,15 @@ import {
 import { isAskInput, reduceAsk, restoreAutoEffects, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
+import {
+	carryReplyOwed,
+	reduceAnswerPeer,
+	reducePeerRequestExpired,
+	reduceSecretTransferred,
+	reduceSessionAskRequested,
+	reduceSessionForkSettled,
+	settleReplyBack,
+} from './session-asks.js';
 import { findRedirectAsk, isRedirectInput, queueHeldRedirect, reduceRedirect } from './redirect.js';
 import { hasBackgroundWork, isSubagentInput, reduceSubagent } from './subagents.js';
 import { isDevInput, reduceDev } from './dev.js';
@@ -123,6 +132,15 @@ export type Effect =
 			answer: string;
 			askedOnScreen?: true;
 	  }
+	// Run a read-only copy of the asked session (ref) to answer another session.
+	| { type: 'session_fork'; ref: string; id: string; fromLabel: string; question: string }
+	// The answer to a session's ask, tell or secret request (ref: the asker): its waiting tool call returns.
+	| { type: 'session_ask_answered'; ref: string; id: string; text: string; files: Attachment[] }
+	// Read a secret from the target session's folders (ref) and copy it to the asker's machine. The
+	// value never passes through state: it moves machine to machine beside it.
+	| { type: 'secret_transfer'; ref: string; id: string; what: string; toRef: string }
+	// Comes back as peer_expired after ms: a request between sessions, or its Allow, lapses.
+	| { type: 'expire_peer'; key: string; ms: number }
 	// Lets a held command lapse: command_expired comes back after COMMAND_TTL_MS.
 	| { type: 'expire_command'; askId: string }
 	// reply: the answer to what the developer just said (no chime before it).
@@ -183,6 +201,7 @@ export interface ReducerResult {
 
 export const createInitialState = (): State => ({
 	seq: 0,
+	peerRequests: [],
 	sessions: {},
 	order: [],
 	view: HOME_VIEW,
@@ -229,6 +248,9 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	subagentRuns: [],
 	compactingSince: null,
 	reportOwed: false,
+	turnFrom: null,
+	replyOwed: null,
+	peerRequestsInTurn: 0,
 	spokenInTurn: [],
 	currentSendId: null,
 	heldLine: null,
@@ -510,6 +532,19 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 
 	if (isAsideInput(input)) {
 		return reduceAside(state, input, stamped);
+	}
+
+	switch (input.type) {
+		case 'session_ask_requested':
+			return reduceSessionAskRequested(state, input, stamped);
+		case 'session_fork_settled':
+			return reduceSessionForkSettled(state, input, stamped);
+		case 'secret_transferred':
+			return reduceSecretTransferred(state, input, stamped);
+		case 'answer_peer':
+			return reduceAnswerPeer(answered, input, stamped);
+		case 'peer_expired':
+			return reducePeerRequestExpired(state, input.key);
 	}
 
 	if (isSubagentInput(input)) {
@@ -798,6 +833,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				allowOnce: null,
 				voiceTurnAt: null,
 				reportOwed: false,
+				turnFrom: null,
+				replyOwed: null,
+				peerRequestsInTurn: 0,
 				spokenInTurn: [],
 				lineBeforeAsk: null,
 				askedByLine: null,
@@ -810,9 +848,17 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			}));
 			// The work a held switch asked about is over: what it wanted goes next, ahead of the queue.
 			const switched = moveHeldRedirectAhead(ended, input.ref, stamped);
-			const dispatched = dispatchQueueHead(switched, input.ref, stamped);
+			// Work another session asked for: its reply goes back, or to the follow-up that cut it.
+			const repaid =
+				session.replyOwed && isCutOff
+					? withoutEffects(carryReplyOwed(switched, input.ref, session.replyOwed))
+					: settleReplyBack(session, switched, input.text, stamped);
+			const dispatched = dispatchQueueHead(repaid.state, input.ref, stamped);
 
-			return { state: dispatched.state, effects: [...effects, ...dispatched.effects] };
+			return {
+				state: dispatched.state,
+				effects: [...effects, ...repaid.effects, ...dispatched.effects],
+			};
 		}
 
 		case 'worker_exited': {
@@ -831,6 +877,9 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				subagents: [],
 				compactingSince: null,
 				reportOwed: false,
+				turnFrom: null,
+				replyOwed: null,
+				peerRequestsInTurn: 0,
 				currentSendId: null,
 				heldLine: null,
 				lineBeforeAsk: null,

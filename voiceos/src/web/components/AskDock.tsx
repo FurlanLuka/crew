@@ -150,5 +150,33 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 		);
 	}
 
+	if (ask.kind === 'work' || ask.kind === 'secret') {
+		const answer = (isApproved: boolean) =>
+			dispatch({ type: 'answer_peer', askId: ask.id, isApproved });
+
+		return (
+			<section className="dock amber" aria-label="request from another session">
+				<span className="lbl c-amber">
+					{ask.kind === 'work' ? 'work for another session' : 'a secret'} · {ask.fromLabel} →{' '}
+					{ask.toLabel}
+				</span>
+				<div className="ask">
+					{ask.kind === 'work'
+						? `${ask.fromLabel} wants ${ask.toLabel} to do this and report back.`
+						: `${ask.fromLabel} wants a copy of ${ask.toLabel}'s ${ask.what}, into a private temp file. Neither session sees the value.`}
+				</div>
+				{ask.kind === 'work' && <div className="cmd">{ask.text}</div>}
+				<div className="btns">
+					<button type="button" className="btn primary" onClick={() => answer(true)}>
+						Allow{describeSaid(ask, 'yes')}
+					</button>
+					<button type="button" className="btn danger" onClick={() => answer(false)}>
+						No{describeSaid(ask, 'no')}
+					</button>
+				</div>
+			</section>
+		);
+	}
+
 	return <QuestionDock ask={ask} label={label} dispatch={dispatch} />;
 };

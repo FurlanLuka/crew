@@ -215,6 +215,10 @@ const describeAsk = (ask: PendingAsk): string => {
 			return `waits on your yes to /${ask.command}`;
 		case 'redirect':
 			return 'waits on your yes to switch';
+		case 'work':
+			return `wants ${ask.toLabel} to ${ask.text}`;
+		case 'secret':
+			return `wants a copy of ${ask.toLabel}'s ${ask.what}`;
 		case 'question':
 			return ask.questions[0]?.question ?? 'has a question';
 	}

@@ -328,6 +328,7 @@ describe('parseClientMessage', () => {
 		decline_question: { type: 'decline_question', askId: 'a1' },
 		answer_command: { type: 'answer_command', askId: 'a1', isApproved: true },
 		answer_redirect: { type: 'answer_redirect', askId: 'a1', isApproved: false, message: 'do X' },
+		answer_peer: { type: 'answer_peer', askId: 'a1', isApproved: true },
 		answer_plan: {
 			type: 'answer_plan',
 			askId: 'a1',

@@ -2,6 +2,7 @@ import {
 	type Action,
 	type Attachment,
 	FOLLOW_UP_MS,
+	type PeerFrom,
 	type QueuedMessage,
 	type Session,
 	type SessionStatus,
@@ -226,6 +227,10 @@ export interface DeliverSendParams {
 	ack?: SendAck;
 	// Said to go right now: a running turn is replaced instead of queued behind.
 	isNow?: boolean;
+	// Another session's words (a tell, or work the developer allowed for it), never the developer's.
+	from?: PeerFrom;
+	// The turn that handles these words owes its final text to this session.
+	replyTo?: string;
 }
 
 const withEffects = (result: ReducerResult, effects: Effect[]): ReducerResult => ({
@@ -254,7 +259,10 @@ const deliverWords = ({
 	shouldStart = true,
 	ack,
 	isNow = false,
+	from,
+	replyTo,
 }: DeliverSendParams): ReducerResult => {
+	const peer = { ...(from ? { from } : {}), ...(replyTo ? { replyTo } : {}) };
 	// Words that reach the session itself: sent now, cut into the running reply, or queued behind it.
 	const session = state.sessions[ref];
 
@@ -276,6 +284,7 @@ const deliverWords = ({
 				itemId: stamped.id,
 				at: stamped.at,
 				reportOwed: isOwed,
+				...peer,
 			}),
 			effects,
 		);
@@ -330,6 +339,7 @@ const deliverWords = ({
 		...(attachments?.length ? { attachments } : {}),
 		...(isSpoken && isStarting ? { isSpoken: true as const } : {}),
 		...(isOwed ? { reportOwed: true as const } : {}),
+		...peer,
 	};
 	const queued = updateSession(state, ref, (current) => ({
 		...current,
@@ -551,7 +561,10 @@ export const promoteQueued = ({
 	return sendFirst({ state: rest, ref, message, stamped });
 };
 
-export const isDevelopersMessage = (message: QueuedMessage): boolean => !message.isRetry;
+// Voice OS's retries and other sessions' words are not the developer's: never merged into theirs,
+// promoted with theirs or taken back as theirs.
+export const isDevelopersMessage = (message: QueuedMessage): boolean =>
+	!message.isRetry && !message.from;
 
 // The yes to "Send it now?", spoken or clicked: with more than one of theirs waiting they all go now,
 // as one (as "send it now" by voice does), else the words it was asked about.

@@ -1,6 +1,7 @@
 import type {
 	Attachment,
 	Observation,
+	PeerFrom,
 	Session,
 	Stamped,
 	State,
@@ -162,6 +163,10 @@ export interface SendNowParams {
 	sendId?: string;
 	// Voice OS's retry of a call the developer allowed once: shown as the approval, not as their words.
 	isApproval?: boolean;
+	// Another session's words: labelled with it on the page, and that session is not told back from this turn.
+	from?: PeerFrom;
+	// This turn's final text goes back to that session (work the developer allowed for it).
+	replyTo?: string;
 }
 
 // A turn the session began by itself (a background agent reported back) is work under way, though
@@ -181,6 +186,8 @@ export const sendNow = ({
 	reportOwed = false,
 	sendId,
 	isApproval = false,
+	from,
+	replyTo,
 }: SendNowParams): ReducerResult => {
 	// The note goes to the worker only: the stream records what the developer said.
 	const next = updateSession(state, ref, (session) =>
@@ -192,6 +199,9 @@ export const sendNow = ({
 				voiceTurnAt: isSpoken ? at : null,
 				isFresh: false,
 				reportOwed,
+				turnFrom: from?.ref ?? null,
+				replyOwed: replyTo ?? null,
+				peerRequestsInTurn: 0,
 				spokenInTurn: [],
 				currentSendId: sendId ?? itemId,
 				requests: [...session.requests, { text: truncateText(text, MAX_REQUEST_CHARS), at }].slice(
@@ -205,6 +215,7 @@ export const sendNow = ({
 				text,
 				...(isApproval ? { isApproval: true as const } : {}),
 				...(attachments?.length ? { attachments } : {}),
+				...(from ? { from: from.label } : {}),
 			},
 		),
 	);
@@ -264,6 +275,8 @@ export const dispatchQueueHead = (state: State, ref: string, stamped: Stamped): 
 		reportOwed: head.reportOwed === true,
 		sendId: head.id,
 		isApproval: head.isRetry === true,
+		...(head.from ? { from: head.from } : {}),
+		...(head.replyTo ? { replyTo: head.replyTo } : {}),
 		itemId: `${stamped.id}:q`,
 		at: stamped.at,
 	});

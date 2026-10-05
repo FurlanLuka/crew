@@ -70,6 +70,7 @@ const actionSchema = z.discriminatedUnion('type', [
 		isApproved: z.boolean(),
 		message: z.string().max(4000).optional(),
 	}),
+	z.object({ type: z.literal('answer_peer'), askId: z.string(), isApproved: z.boolean() }),
 	z.object({ type: z.literal('switch_view'), view: viewSchema }),
 	// From the page: silent, so no announce. open: Set up's "Open Voice OS" shows it too.
 	z.object({ type: z.literal('activate'), ref: refSchema, open: z.literal(true).optional() }),

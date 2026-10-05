@@ -228,6 +228,10 @@ export const connectSpeech = ({
 				return narrateTurn(effect);
 			case 'narrate_aside':
 				return narrateAside(effect);
+			case 'expire_peer':
+				setTimer(() => store.dispatch({ type: 'peer_expired', key: effect.key }), effect.ms);
+
+				return;
 			case 'expire_command':
 				setTimer(
 					() => store.dispatch({ type: 'command_expired', askId: effect.askId }),
