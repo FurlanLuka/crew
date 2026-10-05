@@ -534,7 +534,7 @@ describe('what keeps it tidy', () => {
 					type: 'turn_ended',
 					ref: CHECKOUT,
 					costUsd: 0,
-					text: 'The schema changed. Should I migrate now?',
+					text: 'The schema changed. **Should I migrate now?**',
 				},
 			],
 			{ start: told },
