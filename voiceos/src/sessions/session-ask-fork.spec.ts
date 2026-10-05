@@ -40,7 +40,7 @@ describe('decideForkTool', () => {
 			expect(decideForkTool(name, {}, roots)).toEqual({
 				kind: 'deny',
 				reason:
-					'Only Read, Grep and Glob run here. If answering needs more, reply NEEDS_WORK: and what would have to run.',
+					'Only Read, Grep and Glob run here: use Read for a file, Grep to search, Glob to list. If answering needs more, reply NEEDS_WORK: and what would have to run.',
 			});
 		}
 	});
@@ -130,6 +130,16 @@ describe('classifySessionAsk', () => {
 			read: ['/w/checkout/src/retry.ts'],
 		}));
 
+	it('a secret it reached for (refused) → not listed as read', () =>
+		expect(
+			classifySessionAsk([
+				toolUse('Read', { file_path: '/w/checkout/.env' }),
+				toolUse('Read', { file_path: '/w/checkout/retry.ts' }),
+				text('Five.'),
+				success,
+			]).read,
+		).toEqual(['/w/checkout/retry.ts']));
+
 	it('a FILES list → the answer without it, the paths handed over once each', () =>
 		expect(
 			classifySessionAsk([
@@ -181,10 +191,10 @@ describe('classifySessionAsk', () => {
 
 describe('the prompt', () => {
 	it('says who asks, what the copy may do, the secret rule and the reply shape', () =>
-		expect(buildSessionAskPrompt('store-front/main', 'Which retry limit?')).toBe(
+		expect(buildSessionAskPrompt('store-front/main', 'Which retry limit?', '/w/checkout')).toBe(
 			[
-				'Another session, store-front/main, asks you this while you work on something else. It is not a new task and not the developer.',
-				'Answer from this conversation first. If you need to look something up, read and search files in your own folders (Read, Grep, Glob); nothing else runs here and nothing you do here changes your work.',
+				'Another session, store-front/main, asks you this while you work on something else. It is not a new task and not the developer. The question is about your own work and your own files unless it says otherwise.',
+				'Answer from this conversation first. If you need to look something up, use Read, Grep and Glob on your own folders (your worktree is /w/checkout); Bash and every other tool are refused here, and nothing you do here changes your work.',
 				'Never repeat a secret value (a key, token or password): name the variable or the file instead.',
 				'Reply with the answer only, written for another Claude: plain and complete, a few sentences or a short list. If answering would need running something (tests, a command, a server, a database), reply NEEDS_WORK: and one line saying exactly what would have to run. To hand over files, end with a line FILES: and then one path per line, inside your folders.',
 				'',
