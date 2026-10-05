@@ -1,3 +1,5 @@
+import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
+import { PEER_ALLOWED_TOOLS, PEER_SERVER_NAME } from './session-ask-tools.js';
 import { isChatRef } from '../shared/machine-ref.js';
 import {
 	query as sdkQuery,
@@ -118,6 +120,9 @@ export interface QueryLaunch {
 	orientation: string;
 	model?: string;
 	claudeBin?: string;
+	// The tools for reaching other sessions: a fresh server per query. Forks get them too (their hooks
+	// deny every call), so the session and its forks share one cached prefix.
+	peerServer?: () => McpSdkServerConfigWithInstance;
 }
 
 export const buildQueryOptions = ({
@@ -127,6 +132,7 @@ export const buildQueryOptions = ({
 	orientation,
 	model,
 	claudeBin,
+	peerServer,
 }: QueryLaunch) => {
 	// Shared by the session and its side-answer fork: the same prefix is what lets the fork hit the prompt cache.
 	return {
@@ -137,6 +143,7 @@ export const buildQueryOptions = ({
 		systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: orientation },
 		...(model ? { model } : {}),
 		...(claudeBin ? { pathToClaudeCodeExecutable: claudeBin } : {}),
+		...(peerServer ? { mcpServers: { [PEER_SERVER_NAME]: peerServer() } } : {}),
 	};
 };
 
@@ -170,6 +177,7 @@ export interface WorkerOptions {
 	mediaDir?: string;
 	// The setup session (isPinned) shows no images from its folder (the home folder).
 	isPinned: boolean;
+	peerServer?: () => McpSdkServerConfigWithInstance;
 }
 
 // Claude's own words when a resumed session id is not in its store (the CLI's stderr, carried in the
@@ -219,9 +227,9 @@ export class Worker {
 	}
 
 	get launch(): QueryLaunch {
-		const { cwd, dirs, env, orientation, model, claudeBin } = this.options;
+		const { cwd, dirs, env, orientation, model, claudeBin, peerServer } = this.options;
 
-		return { cwd, dirs, env, orientation, model, claudeBin };
+		return { cwd, dirs, env, orientation, model, claudeBin, ...(peerServer ? { peerServer } : {}) };
 	}
 
 	start(): void {
@@ -425,6 +433,8 @@ export class Worker {
 					permissionMode: this.options.permissionMode ?? 'auto',
 					canUseTool: permissions.canUseTool(ref, cwd) as never,
 					includePartialMessages: true,
+					// Reaching other sessions never asks the developer: the main decides each call.
+					...(this.options.peerServer ? { allowedTools: PEER_ALLOWED_TOOLS } : {}),
 					// A sub-agent's own text and results: its transcript on the page.
 					forwardSubagentText: true,
 					...(resumeId ? { resume: resumeId } : {}),
