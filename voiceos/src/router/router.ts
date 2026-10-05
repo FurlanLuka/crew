@@ -5,6 +5,7 @@ import {
 	isSwitchOfferFresh,
 	type ListenMode,
 	type State,
+	type SwitchOffer,
 	type VoiceEntry,
 } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
@@ -22,6 +23,9 @@ import { readSessionLabel } from '../shared/machines.js';
 import type { Judge } from '../judge/judge.js';
 import { isBareNo, isBareYes, isShortEnoughToAnswer } from '../tools/send.js';
 import type { KernelTurnHandle, KernelTurnStart } from '../speech/instant-ack.js';
+
+// A plain switch offer: activate and deactivate offers are answered elsewhere.
+const isSwitchKind = (offer: SwitchOffer): boolean => (offer.kind ?? 'switch') === 'switch';
 
 const log = createLogger('router');
 
@@ -158,18 +162,20 @@ export class UtteranceRouter {
 			}
 		}
 
-		// "Switch to checkout?" answered with a bare no: the offer closes and nothing else happens. Never
-		// the kernel's to read, where a "no" can look like a reply to that session's update. A question
-		// asked after the offer is what a bare no answers: then the kernel reads it.
+		// Voice OS's own open offer ("Switch to checkout?", "Send it now?") answered with a bare yes or no
+		// is code's to answer, never the kernel's: a "no" can look like a reply to that session's update,
+		// and a refused forward was once answered from memory instead of switching (debug note 49). A
+		// question asked after the offer is what a bare answer answers: then the kernel reads it.
 		const offer = store.state.switchOffer;
-
-		if (
+		const offerAnswer =
 			offer &&
 			source === 'voice' &&
 			isSwitchOfferFresh(offer, heardFrom) &&
-			!hasQuestionSince(store.state, offer.at) &&
-			(await isBareNo(this.options.judge, trimmedText))
-		) {
+			!hasQuestionSince(store.state, offer.at)
+				? await this.readOfferAnswer(offer, trimmedText)
+				: null;
+
+		if (offer && offerAnswer === 'no') {
 			log.info('switch offer declined', { ref: offer.ref });
 			store.dispatch({ type: 'switch_offer_closed', at: offer.at });
 			// In the screen's voice log like any turn: debug notes read what was said there.
@@ -187,18 +193,16 @@ export class UtteranceRouter {
 			return;
 		}
 
-		// "Okay, after its current work. Send it now?" answered with a bare yes: the queued words go now
-		// (they cut the current work, as "send it now" does). Code's to answer, like the no above: the
-		// kernel never sees this offer.
-		if (
-			offer?.kind === 'send_now' &&
-			offer.queuedId &&
-			source === 'voice' &&
-			isSwitchOfferFresh(offer, heardFrom) &&
-			!hasQuestionSince(store.state, offer.at) &&
-			(await isBareYes(this.options.judge, trimmedText))
-		) {
+		// "Okay, after its current work. Send it now?": the queued words go now (they cut the current
+		// work, as "send it now" does).
+		if (offer?.kind === 'send_now' && offer.queuedId && offerAnswer === 'yes') {
 			this.sendQueuedNow({ ref: offer.ref, queuedId: offer.queuedId, utterance: trimmedText });
+
+			return;
+		}
+
+		if (offer && isSwitchKind(offer) && offerAnswer === 'yes') {
+			this.acceptSwitchOffer(offer.ref, trimmedText);
 
 			return;
 		}
@@ -296,6 +300,35 @@ export class UtteranceRouter {
 			type: 'voice_logged',
 			screen: readScreenRef(store.state) ?? HOME_SCREEN,
 			entry: { utterance, did: ['send it now: yes'], reply: '', at: this.now() },
+		});
+	}
+
+	// Both readings at once: a yes is not kept waiting behind the no's judge call. Only offers a yes
+	// answers in code ask for one.
+	private async readOfferAnswer(offer: SwitchOffer, text: string): Promise<'yes' | 'no' | null> {
+		const { judge } = this.options;
+		const isYesAnswered = offer.kind === 'send_now' ? Boolean(offer.queuedId) : isSwitchKind(offer);
+		const [isNo, isYes] = await Promise.all([
+			isBareNo(judge, text),
+			isYesAnswered ? isBareYes(judge, text) : false,
+		]);
+
+		return isNo ? 'no' : isYes ? 'yes' : null;
+	}
+
+	private acceptSwitchOffer(ref: string, utterance: string): void {
+		const { store } = this.options;
+		// Logged where it was said, like the no: the switch moves the screen.
+		const screen = readScreenRef(store.state) ?? HOME_SCREEN;
+
+		log.info('switch offer accepted', { ref });
+		// Said like the kernel's switch: "Switching to checkout.", then what it held plays.
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref }, announce: true });
+
+		store.dispatch({
+			type: 'voice_logged',
+			screen,
+			entry: { utterance, did: [`switched to ${ref}`], reply: '', at: this.now() },
 		});
 	}
 

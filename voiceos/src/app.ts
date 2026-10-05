@@ -297,6 +297,10 @@ const voiceIn: VoiceInput = new VoiceInput({
 // Before Discord starts: with voice off its bot never joins the channel only to leave it.
 persistVoiceOff({ store, file: paths.voiceOffFile });
 
+const DISCORD_GREETING_DELAY_MS = 1500;
+// One greeting at a time: leaving and coming back inside the delay must not say it twice.
+let discordGreeting: ReturnType<typeof setTimeout> | null = null;
+
 const discord = startDiscordVoice({
 	store,
 	voiceDir: paths.voiceDir,
@@ -314,13 +318,32 @@ const discord = startDiscordVoice({
 			return;
 		}
 
-		voiceOut.say({
-			text: "You're on Discord now: Voice OS listens here.",
-			priority: 'high',
-			source: 'kernel',
-		});
+		// Said once the channel has settled: right on joining, Discord was still keying the new member
+		// in and the start of the line was lost (debug note 47).
+		if (discordGreeting) {
+			clearTimeout(discordGreeting);
+		}
+
+		discordGreeting = setTimeout(() => {
+			discordGreeting = null;
+
+			if (store.state.voiceOff || !seat.isOnDiscord) {
+				return;
+			}
+
+			voiceOut.say({
+				text: "You're on Discord now: Voice OS listens here.",
+				priority: 'high',
+				source: 'kernel',
+			});
+		}, DISCORD_GREETING_DELAY_MS);
 	},
 	onOwnerOut: () => {
+		if (discordGreeting) {
+			clearTimeout(discordGreeting);
+			discordGreeting = null;
+		}
+
 		voiceIn.disconnect(DISCORD_CLIENT);
 		seat.discordLeft();
 	},

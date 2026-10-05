@@ -76,7 +76,6 @@ interface Listening {
 
 const log = createLogger('voice-in');
 
-const BARGE_IN_WORDS = 2;
 const QUIET_MS = 8_000;
 const HOLD_MS = 5_000;
 // Speech-to-text reports new words about half a second after they start: 1.2 s missed a
@@ -288,8 +287,10 @@ export class Listener {
 			INTERRUPT_PATTERN.test(normalizeUtterance(text)) ||
 			STANDALONE_WORDS.has(normalizeUtterance(text));
 
-		// Two real words before speech is cut: a cough or one stray word must not silence it.
-		if (!listening.isTalking && (countWords(text) >= BARGE_IN_WORDS || isStandalone)) {
+		// The first real word cuts speech: it already comes about half a second after it was said, and
+		// waiting for a second one made talking over Voice OS feel ignored (debug note 44). A filler
+		// ("um", "mm") never does.
+		if (!listening.isTalking && (hasRealWords(text) || isStandalone)) {
 			this.raiseTalk(listening);
 		}
 

@@ -4,7 +4,14 @@
 import { listHeardAsks } from '../shared/active.js';
 import { isReachable, readMachineTitle, readSessionLabel } from '../shared/machines.js';
 import { machineOf } from '../shared/machine-ref.js';
-import type { Action, Denial, PendingAsk, SpokenLine, State } from '../shared/protocol.js';
+import type {
+	Action,
+	Denial,
+	PendingAsk,
+	SpokenLine,
+	State,
+	SwitchOffer,
+} from '../shared/protocol.js';
 import { countOf } from './count.js';
 import { readScreenRef } from '../state/helpers.js';
 import { readSendNowAction } from '../state/delivery.js';
@@ -27,6 +34,12 @@ export interface Moment {
 
 // A meanwhile line stays answerable this long after it was said.
 const MEANWHILE_SHOWN_MS = 60_000;
+
+// A meanwhile line asked this switch ("…, checkout said: tests pass. Switch there?").
+const isMeanwhileOffer = (state: State, offer: SwitchOffer): boolean =>
+	state.spoken.some(
+		(line) => line.isUpdate && line.isAsking && line.ref === offer.ref && line.at >= offer.at,
+	);
 
 const describeSwitchOffer = (state: State): Moment | null => {
 	const offer = state.switchOffer;
@@ -80,7 +93,11 @@ const describeSwitchOffer = (state: State): Moment | null => {
 		default:
 			return {
 				key,
-				text: `Sent to ${label}. Switch there?`,
+				// The meanwhile line asked it, shown just below: the card asks only the question, and never
+				// "Sent to" for words nobody sent.
+				text: isMeanwhileOffer(state, offer)
+					? `Switch to ${label}?`
+					: `Sent to ${label}. Switch there?`,
 				say: 'say yes, or keep talking',
 				answers: [
 					{
@@ -118,10 +135,15 @@ const describeTargetAsk = (state: State): Moment | null => {
 	};
 };
 
+// A line that offered a switch is answered through the offer: once that is answered, declined or gone,
+// the line is not offered again on the next screen (debug note 51).
 const findMeanwhileLine = (state: State, now: number): SpokenLine | null => {
 	const line = state.spoken.at(-1);
+	const hasOffered = line?.isAsking === true && line.ref !== undefined;
 
-	return line?.isUpdate && line.refs?.length && now - line.at < MEANWHILE_SHOWN_MS ? line : null;
+	return line?.isUpdate && line.refs?.length && !hasOffered && now - line.at < MEANWHILE_SHOWN_MS
+		? line
+		: null;
 };
 
 const describeMeanwhile = (state: State, now: number): Moment | null => {
@@ -138,13 +160,18 @@ const describeMeanwhile = (state: State, now: number): Moment | null => {
 			key: `meanwhile-${line.id}`,
 			text: line.text,
 			say: 'said once it was quiet',
-			answers: (line.refs ?? [])
-				.filter((ref) => state.sessions[ref])
-				.map((ref, index) => ({
-					label: `Go to ${readSessionLabel(state, ref)}`,
-					action: { type: 'switch_view', view: { kind: 'session', ref } },
-					...(index === 0 ? { isPrimary: true as const } : {}),
-				})),
+			answers: [
+				...(line.refs ?? [])
+					.filter((ref) => state.sessions[ref] && ref !== screen)
+					.map(
+						(ref, index): MomentAnswer => ({
+							label: `Go to ${readSessionLabel(state, ref)}`,
+							action: { type: 'switch_view', view: { kind: 'session', ref } },
+							...(index === 0 ? { isPrimary: true as const } : {}),
+						}),
+					),
+				{ label: 'Not now', action: null },
+			],
 		};
 	}
 

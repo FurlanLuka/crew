@@ -828,6 +828,10 @@
 }
 .line.shown-image {
 	display: block;
+	/* As wide as the image: a click beside it is not a click on it (debug note 48). */
+	justify-self: start;
+	width: fit-content;
+	max-width: 100%;
 	margin: 6px 0;
 }
 .line.shown-image img {
@@ -1066,6 +1070,14 @@
 }
 .dock.amber {
 	background: rgba(240, 160, 44, 0.06);
+}
+/* A plan is read before it is approved: one tall scroller for its text, the buttons always in view
+   (debug note 45). */
+.dock.plan {
+	max-height: none;
+}
+.dock.plan .quote {
+	max-height: 50vh;
 }
 /* Docked above the voice bar, flush like the moments row: a hairline on top and below. */
 .vo-bar > .dock {

@@ -20,6 +20,12 @@ export const DISCORD_CLIENT = 'discord';
 export const SILENCE_AFTER_MS = 60;
 const SILENCE_TICK_MS = 20;
 const MONO_SILENCE = new Uint8Array(FRAME_SAMPLES * 2);
+// A clip after a pause opens with 200 ms of silence: Discord's listeners drop the first frames after
+// a pause while their buffers wake, and that cost the start of what Voice OS said (debug note 47).
+// Lines back to back need none.
+export const LEAD_IN_FRAMES = 10;
+const LEAD_IN_AFTER_MS = 1000;
+const STEREO_SILENCE = new Uint8Array(FRAME_SAMPLES * 4);
 
 export interface VoiceLinkEvents {
 	onConnected: (isConnected: boolean, error?: string) => void;
@@ -82,6 +88,7 @@ export class DiscordBridge {
 	private playing: Playing | null = null;
 	private isOwnerIn = false;
 	private lastPacketAt = 0;
+	private lastClipEndedAt: number | null = null;
 	private silenceTimer: unknown = null;
 	// A run of undecodable packets (E2EE still settling) is logged once, not 50 times a second.
 	private decodeFailures = 0;
@@ -217,6 +224,10 @@ export class DiscordBridge {
 		}
 
 		if (this.playing?.id !== message.id) {
+			const isAfterPause =
+				!this.playing &&
+				(this.lastClipEndedAt === null || this.now() - this.lastClipEndedAt >= LEAD_IN_AFTER_MS);
+
 			this.playing?.sink.end();
 			this.playing = {
 				id: message.id,
@@ -224,6 +235,10 @@ export class DiscordBridge {
 				splitter: new FrameSplitter(),
 				hasEnded: false,
 			};
+
+			for (let frame = 0; isAfterPause && frame < LEAD_IN_FRAMES; frame++) {
+				this.playing.sink.push(this.options.codec.encode(STEREO_SILENCE));
+			}
 
 			if (message.hasChime) {
 				this.encodeInto(
@@ -274,6 +289,8 @@ export class DiscordBridge {
 			return;
 		}
 
+		// Timed from when Discord finished playing it: its chunks are pushed faster than they play.
+		this.lastClipEndedAt = this.now();
 		this.playing = null;
 		this.options.onClipDone(playing.id);
 	}

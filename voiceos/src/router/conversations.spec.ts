@@ -1519,11 +1519,18 @@ describe('conversations', () => {
 			expect(convo.store.state.switchOffer).toBeNull();
 		});
 
-		it('"Switch to …?" answered yes → switched there, and said', async () => {
+		// Debug note 49: left to the kernel, a yes was once answered from memory and the screen stayed.
+		it('"Switch to …?" answered yes → switched there by code and said; the kernel never reads it', async () => {
 			const convo = await offerAfterHeardUpdate();
+			const kernelBefore = convo.kernelSaw();
 
-			convo.script([toolUse('t2', 'switch_view', { ref: 'checkout-api/main' })]);
 			await convo.say('Yes.');
+
+			expect(convo.kernelSaw()).toBe(kernelBefore);
+			expect(convo.store.state.voiceLog['store-front/main']?.at(-1)).toMatchObject({
+				utterance: 'Yes.',
+				did: ['switched to checkout-api/main'],
+			});
 
 			expect(convo.store.state.view).toEqual({
 				kind: 'session',
@@ -1588,6 +1595,28 @@ describe('conversations', () => {
 			expect(convo.store.state.switchOffer).toBeNull();
 		});
 
+		it('"Switch to …?", then the screen\'s session asks a permission → a bare yes approves it through the kernel; no switch', async () => {
+			const convo = await offerAfterHeardUpdate();
+			const offerAt = convo.store.state.switchOffer?.at ?? 0;
+			convo.store.dispatch({
+				type: 'ask_opened',
+				ask: permissionFrom('store-front/main', offerAt + 1),
+			});
+			await convo.listen();
+			const kernelBefore = convo.kernelSaw();
+
+			convo.script([
+				toolUse('t2', 'answer', { ref: 'store-front/main', decision: 'yes', text: '' }),
+			]);
+			await convo.say('Yes.');
+
+			expect(convo.kernelSaw()).not.toBe(kernelBefore);
+			expect(convo.inputs).toContainEqual(
+				expect.objectContaining({ type: 'answer_permission', askId: 'p1', decision: 'allow' }),
+			);
+			expect(convo.store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		});
+
 		it('"Switch to …?", then the screen\'s session ends its turn on a question → a bare no is its answer: the kernel reads it', async () => {
 			const convo = await offerAfterHeardUpdate();
 			await convo.wait(1_000);
@@ -1647,7 +1676,7 @@ describe('conversations', () => {
 			expect(convo.store.state.asks.map((ask) => ask.id)).toEqual(['p1']);
 		});
 
-		it('"Switch to …?" kept past its 8 s while the developer speaks → a yes begun in time still reaches the kernel as the offer\'s answer', async () => {
+		it('"Switch to …?" kept past its 8 s while the developer speaks → a yes begun in time still answers the offer: switched, without the kernel', async () => {
 			const convo = await offerAfterHeardUpdate();
 			convo.store.dispatch({
 				type: 'transcript',
@@ -1657,10 +1686,10 @@ describe('conversations', () => {
 			expect(convo.store.state.switchOffer?.ref).toBe('checkout-api/main');
 
 			convo.store.dispatch({ type: 'transcript', transcript: null });
-			convo.script([toolUse('t2', 'switch_view', { ref: 'checkout-api/main' })]);
+			const kernelBefore = convo.kernelSaw();
 			await convo.say('Yes.', { startedAgoMs: 3_000 });
 
-			expect(convo.kernelSaw()).toContain('switch_offer');
+			expect(convo.kernelSaw()).toBe(kernelBefore);
 			expect(convo.store.state.view).toEqual({
 				kind: 'session',
 				ref: 'checkout-api/main',
