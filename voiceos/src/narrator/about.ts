@@ -9,7 +9,7 @@ import { createLogger } from '../log.js';
 const log = createLogger('about');
 
 // A few words from a short message: Haiku.
-export const ABOUT_MODEL = 'claude-haiku-4-5';
+export const ABOUT_MODEL = 'claude-haiku-5-5';
 const MAX_BODY_CHARS = 2_000;
 
 export interface AboutInput {

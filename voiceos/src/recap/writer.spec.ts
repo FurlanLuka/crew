@@ -25,7 +25,7 @@ describe('createRecapWriter', () => {
 		});
 
 		expect(await write(RECAP)).toBe('Checkout is waiting on you.');
-		expect(calls[0]?.model).toBe('claude-haiku-4-5');
+		expect(calls[0]?.model).toBe('claude-haiku-5-5');
 		expect(calls[0]?.messages?.[0]?.content).toContain('time asked about: the last hour');
 	});
 

@@ -10,7 +10,7 @@ import { sayRef } from '../state/helpers.js';
 import { formatAge } from '../state/working.js';
 
 // A few sentences, fast: Haiku. Its latency is what the developer waits through.
-export const RECAP_MODEL = 'claude-haiku-4-5';
+export const RECAP_MODEL = 'claude-haiku-5-5';
 // The turns read per session: older ones in the window add length, not news.
 export const MAX_TURNS_PER_SESSION = 4;
 const MAX_DID_CHARS = 300;
