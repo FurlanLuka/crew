@@ -10,6 +10,7 @@ import {
 	summarizeResult,
 	summarizeTool,
 } from './tool-summary.js';
+import { isPeerToolName } from './session-ask-tools.js';
 
 export interface RawMessage {
 	// Only the fields read here are typed, so a CLI update that adds fields never breaks the mapping.
@@ -327,7 +328,16 @@ export const mapMessage = (
 
 					mapContext.toolSummaries.set(readString(block.id), summary);
 					mapContext.toolNames.set(readString(block.id), name);
-					observations.push({ type: 'tool', ref, name, summary, toolUseId: readString(block.id) });
+
+					if (!isPeerToolName(name)) {
+						observations.push({
+							type: 'tool',
+							ref,
+							name,
+							summary,
+							toolUseId: readString(block.id),
+						});
+					}
 				}
 			}
 
@@ -342,11 +352,16 @@ export const mapMessage = (
 					continue;
 				}
 
+				const toolName = mapContext.toolNames.get(readString(block.tool_use_id)) ?? '';
+
+				// Another session's answer is on its card; a link inside it is not this session's doc.
+				if (isPeerToolName(toolName)) {
+					continue;
+				}
+
 				const { ok: isOk, summary } = summarizeResult(block);
 
 				observations.push({ type: 'tool_result', ref, ok: isOk, summary });
-
-				const toolName = mapContext.toolNames.get(readString(block.tool_use_id)) ?? '';
 
 				// A screenshot or chart a tool made is shown; an image the session only read is not.
 				if (isOk && toolName !== 'Read') {

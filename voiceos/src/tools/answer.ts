@@ -26,6 +26,7 @@ import { forwardChosen } from './forward.js';
 import { refuseAnnouncedOnly } from './announced.js';
 import { endsInQuestion } from '../shared/spoken.js';
 import { guardSendTo } from './send-guard.js';
+import { isPeerAsk } from '../shared/protocol.js';
 
 const log = createLogger('tools');
 
@@ -136,6 +137,18 @@ export const buildAnswerActions = ({
 						...(addedWords ? { message: addedWords } : {}),
 					},
 				],
+			};
+		}
+
+		case 'work':
+		case 'secret': {
+			if (decision === 'choose' || decision === 'always') {
+				return { ok: false, error: "another session's request is answered yes or no" };
+			}
+
+			return {
+				ok: true,
+				actions: [{ type: 'answer_peer', askId: ask.id, isApproved: decision !== 'no' }],
 			};
 		}
 
@@ -509,7 +522,9 @@ export const answerAsk = async ({
 	// yes with no holding back in it at all.
 	const isApproval = heardAsk.kind !== 'question' && (decision === 'yes' || decision === 'always');
 	const consentKey =
-		heardAsk.kind === 'command' || heardAsk.kind === 'redirect' ? 'approves_plainly' : 'approves';
+		heardAsk.kind === 'command' || heardAsk.kind === 'redirect' || isPeerAsk(heardAsk)
+			? 'approves_plainly'
+			: 'approves';
 
 	if (
 		isApproval &&

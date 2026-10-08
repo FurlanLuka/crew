@@ -787,6 +787,15 @@
 .aside .line.user {
 	font-weight: 500;
 }
+/* Another session in the conversation: an amber rail where this one asked or was told; the card of
+   a copy answering for this session is dimmed, as its own conversation never saw it. */
+.aside.peer {
+	box-shadow: inset 2px 0 0 var(--amber);
+}
+.aside.peer.asked {
+	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.175);
+	opacity: 0.8;
+}
 .diff {
 	margin: 4px 0;
 	border-radius: 4px;

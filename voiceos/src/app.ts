@@ -34,6 +34,7 @@ import { persistVoiceOff } from './memory/voice-off.js';
 import { followVoiceOff } from './speech/voice-off.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
+import { type SecretCopy, startSecretSweep } from './sessions/secrets.js';
 import { loadTranscript, restoreHistory } from './sessions/history.js';
 import { loadRegistry, renameSession } from './sessions/registry.js';
 import { Store } from './state/store.js';
@@ -90,6 +91,11 @@ if (sweptMedia > 0) {
 	log.info('old media removed', { count: sweptMedia });
 }
 
+// Secrets one session copied to another, with the developer's OK: a day at most.
+const secretsDir = join(paths.voiceDir, 'secrets');
+
+startSecretSweep(secretsDir, (count) => log.info('old secret copies removed', { count }));
+
 // Files the developer attached, by content; a session's Claude reads them at their path.
 const attachmentsDir = join(paths.voiceDir, 'attachments');
 const sweptAttachments = sweepAttachments({
@@ -102,10 +108,15 @@ if (sweptAttachments > 0) {
 	log.info('old attachments removed', { count: sweptAttachments });
 }
 
+// Set once the machines are connected: a secret read here may be for an asker on another machine.
+let deliverSecret: ((copy: SecretCopy) => void) | null = null;
+
 const manager = new SessionManager({
 	claudeBin: claudeBin ?? undefined,
 	mediaDir,
 	attachmentsDir,
+	secretsDir,
+	onSecret: (copy) => deliverSecret?.(copy),
 	...connectStore(store),
 	registryFile: paths.sessionsFile,
 	home: paths.home,
@@ -231,6 +242,7 @@ const machines = connectMachines({
 	home: paths.home,
 	mediaDir,
 	attachmentsDir,
+	secretsDir,
 	crew,
 	runCrew: spawnRunner,
 	manager,
@@ -238,6 +250,8 @@ const machines = connectMachines({
 	sayLine: (line) => voiceOut.say(line),
 	onStatusesChanged: () => recordState(),
 });
+
+deliverSecret = machines.deliverSecret;
 
 // "Open the doc" opens in the tab that asked: the developer may be on a phone, far from this Mac.
 const openUrlFor =

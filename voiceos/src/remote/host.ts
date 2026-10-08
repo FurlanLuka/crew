@@ -29,8 +29,11 @@ import {
 	type CrewCall,
 	type CrewCallResult,
 	type RemoteMessage,
+	type SecretMessage,
 	type SequencedEffect,
 } from './protocol.js';
+import { toChunks } from '../sessions/attachments.js';
+import type { SecretCopy } from '../sessions/secrets.js';
 
 const log = createLogger('remote');
 
@@ -131,7 +134,13 @@ export interface RemoteHostOptions {
 	createManager: (port: {
 		readSession: (ref: string) => (WorktreeInfo & { status: SessionStatus }) | undefined;
 		emit: (observation: Observation) => void;
+		// A secret read here, going to the main and on to its asker.
+		sendSecret: (copy: SecretCopy) => void;
 	}) => HandsManager;
+	// A file handed over by a session here, sent ahead of the report that names it.
+	readAttachment?: (id: string) => Uint8Array | null;
+	// A secret copy for a session here: its temp file's path.
+	writeSecret?: (copy: SecretCopy) => string | null;
 	listWorktrees: () => Promise<WorktreeInfo[]>;
 	runCrew: CrewRunner;
 	readGitHead: (cwd: string) => Promise<string | null>;
@@ -158,6 +167,7 @@ interface Attachment {
 	connection: Connection;
 	mainId: string | null;
 	mediaSent: Set<string>;
+	attachmentsSent: Set<string>;
 	lastHeard: number;
 }
 
@@ -185,6 +195,7 @@ export class RemoteHost {
 					: undefined;
 			},
 			emit: (observation) => this.report(observation),
+			sendSecret: (copy) => this.sendSecret(copy),
 		});
 	}
 
@@ -216,6 +227,7 @@ export class RemoteHost {
 			connection,
 			mainId: null,
 			mediaSent: new Set(),
+			attachmentsSent: new Set(),
 			lastHeard: this.now(),
 		};
 
@@ -332,6 +344,10 @@ export class RemoteHost {
 				return;
 			case 'ping':
 				this.send(attachment, { type: 'pong' });
+
+				return;
+			case 'secret':
+				this.receiveSecret(message);
 
 				return;
 		}
@@ -518,7 +534,67 @@ export class RemoteHost {
 			this.sendMedia(attached, stamped.name);
 		}
 
+		if (stamped.type === 'session_ask_requested' || stamped.type === 'session_fork_settled') {
+			this.sendAttachments(
+				attached,
+				stamped.files.map((file) => file.id),
+			);
+		}
+
 		this.send(attached, { type: 'input', input: stamped });
+	}
+
+	// A file one session hands another goes ahead of the report that names it, once per link.
+	private sendAttachments(attachment: Attachment, ids: string[]): void {
+		for (const id of ids) {
+			const bytes = attachment.attachmentsSent.has(id) ? null : this.options.readAttachment?.(id);
+
+			if (!bytes) {
+				continue;
+			}
+
+			const chunks = toChunks(Buffer.from(bytes));
+
+			for (const [index, base64] of chunks.entries()) {
+				this.send(attachment, {
+					type: 'attachment_chunk',
+					id,
+					index,
+					total: chunks.length,
+					base64,
+				});
+			}
+
+			attachment.attachmentsSent.add(id);
+		}
+	}
+
+	// Straight to the main, never through the reports: a secret must not reach any state.
+	private sendSecret({ id, toRef, name, bytes }: SecretCopy): void {
+		const attached = this.attached;
+
+		if (!attached?.mainId) {
+			log.warn('secret not sent: no main', { id });
+
+			return;
+		}
+
+		log.info('secret out', { id, bytes: bytes.length });
+		this.send(attached, { type: 'secret', id, toRef, name, base64: bytes.toString('base64') });
+	}
+
+	private receiveSecret({ id, toRef, name, base64 }: SecretMessage): void {
+		const path =
+			this.options.writeSecret?.({ id, toRef, name, bytes: Buffer.from(base64, 'base64') }) ?? null;
+
+		log.info('secret in', { id, stored: Boolean(path) });
+		this.report({
+			type: 'secret_transferred',
+			ref: toRef,
+			id,
+			path,
+			...(path ? {} : { reason: 'it could not be stored on that machine' }),
+		});
 	}
 
 	// An image's bytes go ahead of the report that shows it, once per link.

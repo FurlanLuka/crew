@@ -16,6 +16,10 @@ const HANDS_EFFECTS = [
 	'worker_set_model',
 	'resolve_ask',
 	'side_answer',
+	'session_fork',
+	'session_ask_answered',
+	// toRef stays as the main knows it: the copy comes back to the main, which sends it on.
+	'secret_transfer',
 ] as const;
 
 // What a session manager does; everything else (speech, narration, dev) stays with the main.

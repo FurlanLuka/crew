@@ -4,6 +4,7 @@ import { Store } from '../state/store.js';
 import { convertHistoryToStream, restoreHistory, type TranscriptMessage } from './history.js';
 import { createMediaHooks } from './media.js';
 import { describeAttached } from './attachments.js';
+import { buildPeerNote, buildWorkNote } from '../shared/peer-note.js';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -115,6 +116,21 @@ describe('convertHistoryToStream', () => {
 				text: 'The user allows this once: retry "run git push" now.',
 				isApproval: true,
 			},
+		]));
+
+	it("another session's words, told or allowed as work → restored as theirs, never as the developer's", () =>
+		expect(
+			convertHistoryToStream({
+				messages: [
+					createUserMessage('u1', `${buildPeerNote('checkout')}\n\nthe schema changed`),
+					createUserMessage('u2', `${buildWorkNote('store-front/main')}\n\nrun the staging check`),
+				],
+				ref: 'store-front/main',
+				now: 0,
+			}),
+		).toEqual([
+			{ id: 'h:u1', at, kind: 'user', text: 'the schema changed', from: 'checkout' },
+			{ id: 'h:u2', at, kind: 'user', text: 'run the staging check', from: 'store-front/main' },
 		]));
 
 	it('a message with its spoken line → restored without the tag', () =>

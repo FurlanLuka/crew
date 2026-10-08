@@ -12,9 +12,14 @@ import { configureLog, createLogger } from '../log.js';
 import { readGitHead } from '../narrator/turn.js';
 import { resolveClaudeBin, isCompiled } from '../sessions/claude-bin.js';
 import { loadTranscript, restoreHistory } from '../sessions/history.js';
+import { startSecretSweep, writeSecretSafely } from '../sessions/secrets.js';
 import { SessionManager } from '../sessions/manager.js';
 import { readMediaBytes } from '../sessions/media.js';
-import { ATTACHMENTS_KEPT_MS, sweepAttachments } from '../sessions/attachments.js';
+import {
+	ATTACHMENTS_KEPT_MS,
+	readAttachmentBytes,
+	sweepAttachments,
+} from '../sessions/attachments.js';
 import { loadRegistry } from '../sessions/registry.js';
 import { SETUP_ORIENTATION, SETUP_REF, createSetupWorktree } from '../sessions/setup-session.js';
 import { VERSION } from '../version.js';
@@ -36,6 +41,7 @@ export interface RemotePaths {
 	registryFile: string;
 	mediaDir: string;
 	attachmentsDir: string;
+	secretsDir: string;
 	logFile: string;
 }
 
@@ -51,6 +57,7 @@ export const resolveRemotePaths = (voiceDir: string): RemotePaths => {
 		registryFile: join(dir, 'sessions.json'),
 		mediaDir: join(dir, 'media'),
 		attachmentsDir: join(dir, 'attachments'),
+		secretsDir: join(dir, 'secrets'),
 		logFile: join(dir, 'logs', 'voiceos-remote.log'),
 	};
 };
@@ -101,6 +108,9 @@ const serve = async (): Promise<void> => {
 		log.info('old attachments removed', { count: sweptAttachments });
 	}
 
+	// Secrets copied here with the developer's OK: a day at most.
+	startSecretSweep(remote.secretsDir, (count) => log.info('old secret copies removed', { count }));
+
 	const listWorktrees = async () => [
 		createSetupWorktree(paths.home),
 		...(await crew.listWorktrees()),
@@ -108,7 +118,7 @@ const serve = async (): Promise<void> => {
 	const host = new RemoteHost({
 		version: VERSION,
 		host: hostname(),
-		createManager: ({ readSession, emit }) =>
+		createManager: ({ readSession, emit, sendSecret }) =>
 			new SessionManager({
 				readSession,
 				emit,
@@ -116,6 +126,8 @@ const serve = async (): Promise<void> => {
 				home: paths.home,
 				mediaDir: remote.mediaDir,
 				attachmentsDir: remote.attachmentsDir,
+				secretsDir: remote.secretsDir,
+				onSecret: sendSecret,
 				claudeBin: claudeBin ?? undefined,
 				fetchOrientation: (ref) =>
 					ref === SETUP_REF ? Promise.resolve(SETUP_ORIENTATION) : crew.fetchOrientation(ref),
@@ -124,6 +136,11 @@ const serve = async (): Promise<void> => {
 		runCrew: spawnRunner,
 		readGitHead,
 		readMedia: (name) => readMediaBytes(name, remote.mediaDir),
+		readAttachment: (id) => readAttachmentBytes(remote.attachmentsDir, id),
+		writeSecret: (copy) =>
+			writeSecretSafely({ dir: remote.secretsDir, ref: copy.toRef, ...copy }, (error) =>
+				log.warn('secret not written', { id: copy.id, error: String(error) }),
+			),
 		restoreHistory: async (dispatch) => {
 			const worktrees = await listWorktrees().catch(() => [createSetupWorktree(paths.home)]);
 			const infoOf = (ref: string) => worktrees.find((info) => info.ref === ref);

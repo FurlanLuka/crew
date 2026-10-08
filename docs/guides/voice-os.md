@@ -33,6 +33,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [Queued messages](#queued-messages)
 - [Docs, images and sub-agents](#docs-images-and-sub-agents)
 - [Attaching files](#attaching-files)
+- [Sessions asking each other](#sessions-asking-each-other)
 - [Slash commands](#slash-commands)
 - [Dev servers](#dev-servers)
 - [Notes and debug notes](#notes-and-debug-notes)
@@ -535,6 +536,9 @@ looking at. If two things are waiting and it is unclear which you mean, Voice OS
 `/clear` and `/compact`, typed or said ("slash compact"), wait for a yes before they reach the
 session.
 
+Another session's request for work, or for a secret, docks and is answered the same way. See
+[Sessions asking each other](#sessions-asking-each-other).
+
 ## Auto mode and approvals
 
 Sessions run in Claude Code's **auto** permission mode. Routine work runs without asking, and
@@ -634,6 +638,47 @@ Claude gets each file as a path on the machine the session runs on and opens it 
 type and size up to 20 MB works, and a session on another machine gets its own copy before your
 words arrive. Up to 10 files wait on a session at a time. Chips you never sent are gone after a
 restart, and the files themselves are kept for 30 days.
+
+## Sessions asking each other
+
+Your sessions can reach each other, on the same machine or across machines. Each one has three tools
+for it, and they use them when the work needs another session's knowledge or files. You can also
+just tell a session to: "ask checkout which retry limit it used", "pass the new schema to checkout".
+Names work the way they do when you talk: "checkout" means the session on the asking session's own
+machine first, and a name that still matches two sessions comes back as a question to you ("Checkout
+on This Mac or on Build box?").
+
+**Asking.** `ask_session` gets an answer without interrupting the other session. Voice OS makes a
+copy of that session's conversation, and the copy answers from what the session knows. When it has
+to look something up it can read and search files in that session's own folders, nothing else: it
+cannot run commands, change files or reach another worktree. The asking session waits for the
+answer, up to three minutes, and can get files back with it. The other session never notices.
+
+**When an answer needs real work.** If the copy would have to run something (the tests, a server, a
+query), it says so instead of answering, and Voice OS asks you: "Store front wants checkout to run
+the staging check. Allow?" The request docks above the box on the asking session's screen, like a
+permission, and a bare "yes" or "no" answers it from anywhere. Allow, and the work goes to checkout as
+store front's request; when that turn ends, checkout's reply goes back to store front as a message.
+No, or 15 minutes without an answer, and nothing happens.
+
+**Telling.** `tell_session` hands the other session a message and files after its current work, the
+way your own queued words wait. It arrives marked as coming from that session, and it is information,
+not a task: the session uses it if it fits what you asked it to do and never starts other work
+because of it. Its card says who sent it, and it is never merged with your own queued words.
+
+**Secrets.** Files that look like secrets (`.env`, keys, certificates, credentials) never go through
+asks or tells, and the copy never reads them. A session that needs one asks with `request_secret`,
+naming an env variable (`STRIPE_KEY`) or a file in the other session's folders, and you are always
+asked first: "Store front wants a copy of checkout's STRIPE_KEY. Allow?" Allow, and Voice OS copies
+it straight from one machine to the other into a temp file only you can read. The asking session
+gets the path and copies or sources it from there; neither Claude, the page, the voice log nor the
+log ever holds the value. The copy is deleted when that session stops, and after a day at the latest.
+
+On the page, the asking session shows a card where it asked, with the answer and any files, and the
+asked session shows the same exchange dimmed, since its own conversation never saw it. Voice stays
+quiet unless something needs your Allow. A session can make three requests to other sessions per
+turn, and a session told something by another cannot tell it back in the same turn, so two sessions
+never keep each other going while you are away.
 
 ## Slash commands
 
@@ -918,7 +963,9 @@ five older files (`voiceos.log.1` … `.5`); `crew server logs` reads them all.
   turn, the session's final message goes to the narrator when it has no spoken line. To word its own
   short lines, Voice OS sends Haiku only what the line says (a session's name, whether a switch is
   offered), never a command or a path.
-- **Your Claude Code sessions** talk to Anthropic as Claude Code always does, on your login.
+- **Your Claude Code sessions** talk to Anthropic as Claude Code always does, on your login. When
+  one session asks another, the copy that answers is a short Claude Code run of its own on the same
+  login. See [Sessions asking each other](#sessions-asking-each-other).
 
 **What stays on your machine:** everything under `~/.crew/voiceos/` (see
 [Where state lives](#where-state-lives)). The log records what you said and where it went, so treat

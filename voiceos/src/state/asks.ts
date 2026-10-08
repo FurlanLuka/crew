@@ -1,4 +1,5 @@
 import {
+	isPeerAsk,
 	isSdkAsk,
 	type AllowOnce,
 	type Denial,
@@ -35,6 +36,7 @@ import {
 	isOnScreen,
 	isShortLine,
 } from './held-lines.js';
+import { describePeerAskAloud } from '../shared/peer-note.js';
 
 const ASK_INPUTS = [
 	'answer_permission',
@@ -94,7 +96,11 @@ export const settleAsksForSession = (state: State, ref: string, message: string)
 			result: { behavior: 'deny', message },
 		}));
 
-	return { state: { ...state, asks: state.asks.filter((ask) => ask.ref !== ref) }, effects };
+	// Another session's request docked here waits for the developer, whatever this session does.
+	return {
+		state: { ...state, asks: state.asks.filter((ask) => ask.ref !== ref || isPeerAsk(ask)) },
+		effects,
+	};
 };
 
 export const buildPermissionResult = (
@@ -133,6 +139,9 @@ export const describeAskAloud = (ask: PendingAsk, label: string): string => {
 			return describeQuestionAloud(ask, label);
 		case 'redirect':
 			return `${label} is waiting to hear whether to switch: say yes, or it goes after.`;
+		case 'work':
+		case 'secret':
+			return describePeerAskAloud(ask);
 	}
 };
 

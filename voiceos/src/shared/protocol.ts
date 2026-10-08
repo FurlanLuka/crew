@@ -9,8 +9,8 @@ export type SessionStatus = 'stopped' | 'starting' | 'idle' | 'running' | 'block
 export type StreamItem = {
 	id: string;
 	at: number;
-} & (
-	| { kind: 'user'; text: string; isApproval?: true; attachments?: Attachment[] }
+} & ( // from: another session's label, when its words came from that session (a tell), not the developer.
+	| { kind: 'user'; text: string; isApproval?: true; attachments?: Attachment[]; from?: string }
 	| { kind: 'text'; text: string }
 	// toolUseId: the call's own id, so the row of an Agent call can open its sub-agent's transcript.
 	| { kind: 'tool'; name: string; summary: string; toolUseId?: string }
@@ -32,7 +32,46 @@ export type StreamItem = {
 			// Asked while its session was on screen: an answer the developer has left by then is held.
 			askedOnScreen?: true;
 	  }
+	// Another session asked this one (asked) or this one asked another (asker): one exchange, shown on both.
+	| {
+			kind: 'session_ask';
+			requestId: string;
+			role: 'asker' | 'asked';
+			request: PeerRequestKind;
+			// The other session's label.
+			peer: string;
+			text: string;
+			status: PeerRequestStatus;
+			// The answer, or why it was refused or failed.
+			answer?: string;
+			files?: Attachment[];
+			// What the copy that answered read.
+			read?: string[];
+	  }
 );
+
+// ask: answered by a read-only copy of the other session. tell: information queued for it.
+// secret: a value or file copied into a private temp file, only with the developer's OK.
+export type PeerRequestKind = 'ask' | 'tell' | 'secret';
+export type PeerRequestStatus =
+	| 'asking'
+	| 'answered'
+	| 'sent'
+	| 'needs_work'
+	| 'waiting_ok'
+	| 'refused'
+	| 'failed';
+
+export interface PeerRequest {
+	id: string;
+	kind: PeerRequestKind;
+	from: string;
+	to: string;
+	at: number;
+}
+
+// What another session's copy reported back for an ask.
+export type PeerForkStatus = 'answered' | 'needs_work' | 'failed';
 
 // What a sub-agent said or did, as the session's own stream lines are kept.
 export type SubagentItem = Extract<StreamItem, { kind: 'text' | 'tool' | 'tool_result' }>;
@@ -101,6 +140,15 @@ export interface QueuedMessage {
 	isRetry?: true;
 	// The files that go with these words.
 	attachments?: Attachment[];
+	// Another session's words (a tell, or the answer to its Allowed work), never the developer's.
+	from?: PeerFrom;
+	// The turn that handles these words owes its final text to this session (work the developer allowed).
+	replyTo?: string;
+}
+
+export interface PeerFrom {
+	ref: string;
+	label: string;
 }
 
 export interface QuestionOption {
@@ -144,13 +192,36 @@ export type PendingAsk = { id: string; ref: string; at: number } & (
 			target: string | null;
 			attachments?: Attachment[];
 	  }
+	// Voice OS's own, for another session (ref: the session that asked; to: the one that would act):
+	// work its copy could not do without running something, or a secret it wants copied.
+	| {
+			kind: 'work';
+			to: string;
+			fromLabel: string;
+			toLabel: string;
+			text: string;
+			requestId: string;
+	  }
+	| {
+			kind: 'secret';
+			to: string;
+			fromLabel: string;
+			toLabel: string;
+			// An env variable name or a file path in that session's folders.
+			what: string;
+			requestId: string;
+	  }
 );
 
-export type HeldAsk = Extract<PendingAsk, { kind: 'command' | 'redirect' }>;
+export type HeldAsk = Extract<PendingAsk, { kind: 'command' | 'redirect' | 'work' | 'secret' }>;
+export type PeerAsk = Extract<PendingAsk, { kind: 'work' | 'secret' }>;
 export type SdkAsk = Exclude<PendingAsk, HeldAsk>;
 
+export const isPeerAsk = (ask: PendingAsk): ask is PeerAsk =>
+	ask.kind === 'work' || ask.kind === 'secret';
+
 export const isHeldAsk = (ask: PendingAsk): ask is HeldAsk =>
-	ask.kind === 'command' || ask.kind === 'redirect';
+	ask.kind === 'command' || ask.kind === 'redirect' || isPeerAsk(ask);
 
 export const isSdkAsk = (ask: PendingAsk): ask is SdkAsk => !isHeldAsk(ask);
 
@@ -223,6 +294,14 @@ export interface Session {
 	spokenInTurn: string[];
 	// Which message the running turn is working on: a continuation or a redirect replaces it.
 	currentSendId: string | null;
+	// The session whose words started the running turn: it is not told back from this turn, so two
+	// sessions never keep each other going.
+	turnFrom: string | null;
+	// The running turn does work another session asked for and the developer allowed: its final text
+	// goes back to that session.
+	replyOwed: string | null;
+	// Asks and tells this session made during its running turn: a few at most.
+	peerRequestsInTurn: number;
 	// Asides replaced by a continuation, remembered past the stream's trim: their answer never plays.
 	withdrawnAsides: string[];
 	heldLine: HeldLine | null;
@@ -448,6 +527,8 @@ export const isOfferFresh = (offer: DevOffer | null, now: number): offer is DevO
 
 export interface State {
 	seq: number;
+	// Asks and secret copies between sessions still in flight: what a settle or expiry is matched to.
+	peerRequests: PeerRequest[];
 	sessions: Record<string, Session>;
 	order: string[];
 	view: View;
@@ -577,6 +658,8 @@ export type Action =
 	| { type: 'answer_command'; askId: string; isApproved: boolean }
 	// message: words added to the answer ("yes, and use staging"; "no, do the seed script instead").
 	| { type: 'answer_redirect'; askId: string; isApproved: boolean; message?: string }
+	// Allow or refuse what another session asked for: work for a third session, or a secret copied.
+	| { type: 'answer_peer'; askId: string; isApproved: boolean }
 	// announce: Voice OS made the switch (a voice command), so it says so; a click is silent.
 	// skipHeld: the switch also sends a question, so the old held update is not replayed first.
 	| { type: 'switch_view'; view: View; announce?: true; skipHeld?: true }
@@ -736,6 +819,29 @@ export type Observation =
 			// The fork found the question means the current work should change: a switch, not a queue.
 			isChangingWork?: boolean;
 	  }
+	// A session's tool asked, told or requested a secret from another session (ref: the asker).
+	| {
+			type: 'session_ask_requested';
+			ref: string;
+			id: string;
+			kind: PeerRequestKind;
+			// The other session as the asking Claude wrote it.
+			session: string;
+			text: string;
+			files: Attachment[];
+	  }
+	// The copy of the asked session (ref) settled an ask.
+	| {
+			type: 'session_fork_settled';
+			ref: string;
+			id: string;
+			status: PeerForkStatus;
+			answer: string;
+			files: Attachment[];
+			read: string[];
+	  }
+	// A secret the developer allowed was copied (or not) into a temp file on the asker's machine.
+	| { type: 'secret_transferred'; ref: string; id: string; path: string | null; reason?: string }
 	// /clear (or /reset, /new) started a new conversation in the same process.
 	| { type: 'conversation_reset'; ref: string }
 	// The session's context is being compacted (true), or that ended (false).
@@ -743,6 +849,8 @@ export type Observation =
 	| { type: 'session_notice'; ref: string; text: string }
 	// A held /clear or /compact went unanswered for COMMAND_TTL_MS.
 	| { type: 'command_expired'; askId: string }
+	// A request between sessions, or the developer's Allow for one, ran out of time.
+	| { type: 'peer_expired'; key: string }
 	// machines.json as it now stands.
 	| { type: 'machines'; machines: MachineConfig[] }
 	| { type: 'machine_status'; id: string; status: MachineStatus; detail?: string | null }

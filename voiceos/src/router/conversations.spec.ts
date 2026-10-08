@@ -2228,3 +2228,43 @@ describe('voice off', () => {
 		});
 	});
 });
+
+describe('another session asks for work', () => {
+	it('"Store-front wants checkout to …. Allow?" heard, a bare yes allows it: checkout gets the work', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+		convo.store.dispatch({
+			type: 'session_ask_requested',
+			ref: 'store-front/main',
+			id: 'r1',
+			kind: 'ask',
+			session: 'checkout api main',
+			text: 'Does /orders work on staging?',
+			files: [],
+		});
+		convo.store.dispatch({
+			type: 'session_fork_settled',
+			ref: 'checkout-api/main',
+			id: 'r1',
+			status: 'needs_work',
+			answer: 'run the staging check for /orders',
+			files: [],
+			read: [],
+		});
+		await convo.listen();
+
+		expect(convo.heard).toContain(
+			'store front, main wants checkout api, main to run the staging check for /orders. Allow?',
+		);
+
+		convo.script([toolUse('t1', 'answer', { ref: 'store-front/main', decision: 'yes', text: '' })]);
+		await convo.say('Yes.');
+
+		expect(convo.inputs).toContainEqual({ type: 'answer_peer', askId: 'r1:ok', isApproved: true });
+		expect(convo.store.state.sessions['checkout-api/main']?.stream.at(-1)).toMatchObject({
+			kind: 'user',
+			from: 'store-front/main',
+		});
+	});
+});

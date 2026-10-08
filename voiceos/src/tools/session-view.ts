@@ -35,7 +35,7 @@ const listRecentLines = (state: State, ref: string, count: number): string[] => 
 		.slice(-count)
 		.map((item) =>
 			item.kind === 'user'
-				? `developer: ${item.text}`
+				? `${item.from ? `session ${item.from}` : 'developer'}: ${item.text}`
 				: item.kind === 'text'
 					? `claude: ${item.text.slice(0, 300)}`
 					: '',
@@ -68,6 +68,11 @@ const describePending = (ask: PendingAsk): Record<string, unknown> => {
 		case 'redirect':
 			// Voice OS asked "stop it and switch?": the developer's yes or no answers it.
 			return { kind: 'confirm', switch_to: ask.text };
+		case 'work':
+			// Voice OS asked "X wants Y to …. Allow?": the developer's yes or no answers it.
+			return { kind: 'confirm', allow_work: `${ask.toLabel}: ${ask.text}` };
+		case 'secret':
+			return { kind: 'confirm', allow_secret: `${ask.toLabel}'s ${ask.what}` };
 		case 'question': {
 			// The one asked now: several questions are answered one at a time.
 			const open = findOpenQuestion(ask);

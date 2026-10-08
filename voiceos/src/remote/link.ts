@@ -48,6 +48,7 @@ import {
 	readUpdateOutcome,
 	type UpdateOutcome,
 } from './versions.js';
+import type { SecretCopy } from '../sessions/secrets.js';
 
 const log = createLogger('remote');
 
@@ -100,6 +101,15 @@ export interface RemoteLinkOptions {
 	storeMedia: (name: string, bytes: Buffer) => boolean;
 	// An attached file's bytes on this machine, sent ahead of the words that carry it.
 	readAttachment?: (id: string) => Buffer | null;
+	// A file a session on that machine handed over: its pieces, stored here as an attachment.
+	writeAttachmentChunk?: (chunk: {
+		id: string;
+		index: number;
+		total: number;
+		base64: string;
+	}) => void;
+	// A secret read there, for an asker anywhere: the main sends it on.
+	receiveSecret?: (copy: SecretCopy) => void;
 	say: (text: string) => void;
 	// crew update on that machine, when it runs an older release than this one.
 	updateRemote: UpdateRemote;
@@ -173,20 +183,35 @@ export class RemoteLink {
 
 	send(effect: HandsEffect): void {
 		if (effect.type === 'worker_send') {
-			this.sendAttachments(effect);
+			this.sendAttachments(effect.ref, effect.attachments ?? []);
+		}
+
+		// Files another session handed over go ahead of the answer that names them.
+		if (effect.type === 'session_ask_answered') {
+			this.sendAttachments(effect.ref, effect.files);
 		}
 
 		this.push(effect);
 	}
 
+	// A secret for a session there: straight down the link, never queued (a resend would outlive the
+	// developer's one-time Allow). Not ready: not sent, and the asker hears it failed.
+	sendSecret({ id, toRef, name, bytes }: SecretCopy): boolean {
+		if (!this.isReady) {
+			return false;
+		}
+
+		log.info('secret out', { machine: this.id, id, bytes: bytes.length });
+		this.write({ type: 'secret', id, toRef, name, base64: bytes.toString('base64') });
+
+		return true;
+	}
+
 	// The files go first, through the same outbox as the words: in order, resent on a reconnect, so
 	// the remote has them by the time its worker reads the note. A file the remote has already (a
 	// restarted main sending it again) is kept as it is there.
-	private sendAttachments({
-		ref,
-		attachments,
-	}: Extract<HandsEffect, { type: 'worker_send' }>): void {
-		for (const { id } of attachments ?? []) {
+	private sendAttachments(ref: string, attachments: { id: string }[]): void {
+		for (const { id } of attachments) {
 			if (this.sentAttachments.has(id)) {
 				continue;
 			}
@@ -421,6 +446,21 @@ export class RemoteLink {
 				if (!this.options.storeMedia(message.name, Buffer.from(message.base64, 'base64'))) {
 					log.warn('media refused', { machine: this.id, name: message.name });
 				}
+
+				return;
+			case 'attachment_chunk':
+				this.options.writeAttachmentChunk?.(message);
+
+				return;
+			case 'secret':
+				log.info('secret in', { machine: this.id, id: message.id });
+				this.options.receiveSecret?.({
+					id: message.id,
+					toRef: message.toRef,
+					name: message.name,
+					bytes: Buffer.from(message.base64, 'base64'),
+					source: this.id,
+				});
 
 				return;
 			case 'result':

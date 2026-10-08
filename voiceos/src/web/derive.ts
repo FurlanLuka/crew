@@ -115,7 +115,9 @@ export const readLastLine = (session: Session, label: string, isSessionActive: b
 		if (item.kind === 'user') {
 			return item.isApproval
 				? `allowed once: ${readApprovalSummary(item.text)}`
-				: `you: ${item.text}`;
+				: item.from
+					? `from ${item.from}: ${item.text}`
+					: `you: ${item.text}`;
 		}
 	}
 
@@ -215,6 +217,10 @@ const describeAsk = (ask: PendingAsk): string => {
 			return `waits on your yes to /${ask.command}`;
 		case 'redirect':
 			return 'waits on your yes to switch';
+		case 'work':
+			return `wants ${ask.toLabel} to ${ask.text}`;
+		case 'secret':
+			return `wants a copy of ${ask.toLabel}'s ${ask.what}`;
 		case 'question':
 			return ask.questions[0]?.question ?? 'has a question';
 	}

@@ -1,6 +1,7 @@
 // Every other machine's link, kept in step with the machines the state knows, and the one worktree
 // list they all feed.
 
+import type { RemoteLinkOptions } from './link.js';
 import { createLogger } from '../log.js';
 import { diffMachines } from '../shared/machines.js';
 import type { MachineConfig, Observation, State, WorktreeInfo } from '../shared/protocol.js';
@@ -23,6 +24,8 @@ export interface MachineLinksOptions {
 	dispatch: (input: Observation) => void;
 	storeMedia: (name: string, bytes: Buffer) => boolean;
 	readAttachment?: (id: string) => Buffer | null;
+	writeAttachmentChunk?: RemoteLinkOptions['writeAttachmentChunk'];
+	receiveSecret?: RemoteLinkOptions['receiveSecret'];
 	say: (text: string) => void;
 	updateRemote: UpdateRemote;
 	// This machine's crew, for what a remote asks the main.
@@ -77,6 +80,10 @@ export class MachineLinks {
 				setWorktrees: (id, worktrees) => this.setRemoteWorktrees(id, worktrees),
 				storeMedia: this.options.storeMedia,
 				...(this.options.readAttachment ? { readAttachment: this.options.readAttachment } : {}),
+				...(this.options.writeAttachmentChunk
+					? { writeAttachmentChunk: this.options.writeAttachmentChunk }
+					: {}),
+				...(this.options.receiveSecret ? { receiveSecret: this.options.receiveSecret } : {}),
 				say: (text) => this.options.say(text),
 				updateRemote: this.options.updateRemote,
 				runLocalCrew: this.options.runLocalCrew,

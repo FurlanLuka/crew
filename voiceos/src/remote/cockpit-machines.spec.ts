@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CrewAdapter } from '../crew/adapter.js';
@@ -37,6 +37,7 @@ describe('connectMachines', () => {
 			voiceDir: mkdtempSync(join(tmpdir(), 'voiceos-cockpit-')),
 			home: '/h',
 			mediaDir: '/h/media',
+			secretsDir: '/h/secrets',
 			attachmentsDir: '/h/attachments',
 			crew: { listWorktrees: async () => [] } as unknown as CrewAdapter,
 			runCrew: async () => ({
@@ -80,6 +81,7 @@ describe('connectMachines', () => {
 			voiceDir: mkdtempSync(join(tmpdir(), 'voiceos-cockpit-')),
 			home: '/h',
 			mediaDir: '/h/media',
+			secretsDir: '/h/secrets',
 			attachmentsDir: '/h/attachments',
 			crew: {
 				listWorktrees: async () => [worktree('setup', true), worktree('checkout-api/main')],
@@ -102,6 +104,79 @@ describe('connectMachines', () => {
 				ref: 'checkout-api/main',
 				from: 'active',
 			});
+		} finally {
+			machines.stop();
+		}
+	});
+});
+
+describe('a secret copy arriving on the main', () => {
+	const setup = () => {
+		const root = mkdtempSync(join(tmpdir(), 'voiceos-secret-in-'));
+		const store = new Store();
+		const machines = connectMachines({
+			store,
+			voiceDir: root,
+			home: '/h',
+			mediaDir: join(root, 'media'),
+			secretsDir: join(root, 'secrets'),
+			attachmentsDir: join(root, 'attachments'),
+			crew: { listWorktrees: async () => [] } as unknown as CrewAdapter,
+			runCrew: async () => ({ code: 0, stdout: '', stderr: '' }),
+			manager: { handle: () => undefined, listRunning: () => [] } as unknown as SessionManager,
+			say: () => undefined,
+			sayLine: () => undefined,
+			onStatusesChanged: () => undefined,
+			open: () => ({ write: () => undefined, close: () => undefined }),
+		});
+		const transferred: unknown[] = [];
+
+		store.subscribe((stamped) => {
+			if (stamped.input.type === 'secret_transferred') {
+				transferred.push(stamped.input);
+			}
+		});
+
+		return { root, store, machines, transferred };
+	};
+
+	const allowedRequest = {
+		id: 's1',
+		kind: 'secret' as const,
+		from: 'store-front/main',
+		to: 'vm1:checkout-api/main',
+		at: 1,
+	};
+	const copy = { id: 's1', toRef: 'store-front/main', name: 'K.env', bytes: Buffer.from('K=v\n') };
+
+	it('one the developer allowed, from the machine it was asked of → written here, only its path said', () => {
+		const { root, store, machines, transferred } = setup();
+
+		try {
+			store.state.peerRequests.push(allowedRequest);
+			machines.deliverSecret({ ...copy, source: 'vm1' });
+
+			const path = join(root, 'secrets', 'store-front_main', 's1', 'K.env');
+
+			expect(readFileSync(path, 'utf8')).toBe('K=v\n');
+			expect(transferred).toEqual([
+				{ type: 'secret_transferred', ref: 'store-front/main', id: 's1', path },
+			]);
+		} finally {
+			machines.stop();
+		}
+	});
+
+	it('nothing allowed it, or it came from another machine → dropped, nothing written', () => {
+		const { root, store, machines, transferred } = setup();
+
+		try {
+			machines.deliverSecret({ ...copy, source: 'vm1' });
+			store.state.peerRequests.push(allowedRequest);
+			machines.deliverSecret({ ...copy, source: 'vm2' });
+
+			expect(transferred).toEqual([]);
+			expect(existsSync(join(root, 'secrets'))).toBe(false);
 		} finally {
 			machines.stop();
 		}
