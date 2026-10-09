@@ -9,13 +9,13 @@ import {
 	readMode,
 	toSdkMode,
 } from '../shared/modes.js';
-import {
-	type Input,
-	type PermissionSuggestion,
-	type SessionMode,
-	type SessionModeEntry,
-	type Stamped,
-	type State,
+import type {
+	Input,
+	PermissionSuggestion,
+	SessionMode,
+	SessionModeEntry,
+	Stamped,
+	State,
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
 import { isWorkerUp, pushNotice, updateSession, withoutEffects } from './helpers.js';

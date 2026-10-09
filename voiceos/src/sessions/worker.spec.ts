@@ -247,10 +247,12 @@ describe('Worker', () => {
 				runQuery: () =>
 					queryOptions.length === 1
 						? {
-								async *[Symbol.asyncIterator]() {
-									await gate.promise;
-									throw new Error('No conversation found with session ID: s-old');
-								},
+								[Symbol.asyncIterator]: () => ({
+									next: async () => {
+										await gate.promise;
+										throw new Error('No conversation found with session ID: s-old');
+									},
+								}),
 								setPermissionMode: async () => undefined,
 							}
 						: { async *[Symbol.asyncIterator]() {}, setPermissionMode: async () => undefined },
