@@ -1067,13 +1067,21 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			);
 		}
 
-		case 'context_usage':
+		case 'context_usage': {
+			const current = state.sessions[input.ref]?.context;
+
+			// A turn and the compaction inside it can each report the same reading: the page needn't redraw.
+			if (current?.used === input.used && current.max === input.max) {
+				return withoutEffects(state);
+			}
+
 			return withoutEffects(
 				updateSession(state, input.ref, (session) => ({
 					...session,
 					context: { used: input.used, max: input.max },
 				})),
 			);
+		}
 
 		case 'compacting': {
 			const isStarting = input.isCompacting && state.sessions[input.ref]?.compactingSince === null;

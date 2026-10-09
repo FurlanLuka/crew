@@ -83,6 +83,11 @@ describe('context meter', () => {
 		}).state;
 
 		expect(read.sessions[REF]?.context).toEqual({ used: 41_600, max: 200_000 });
+		// The same reading again leaves the state as it was.
+		expect(
+			run([{ type: 'context_usage', ref: REF, used: 41_600, max: 200_000 }], { start: read }).state
+				.sessions[REF],
+		).toBe(read.sessions[REF]);
 		expect(
 			run([{ type: 'conversation_reset', ref: REF }], { start: read }).state.sessions[REF]?.context,
 		).toBeNull();
