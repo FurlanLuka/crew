@@ -29,6 +29,7 @@ interface FakeQueryCall {
 		cwd: string;
 		resume?: string;
 		forkSession?: boolean;
+		permissionMode?: string;
 		systemPrompt: { append: string };
 		canUseTool?: (
 			toolName: string,
@@ -53,6 +54,8 @@ export const createFakeQuery = ({
 	const reloads: string[] = [];
 	let pushCommands: (next: unknown[]) => void = () => undefined;
 	const models: string[] = [];
+	// The mode each query opened in, then every switch, in order.
+	const modes: string[] = [];
 	// Stands in for the Agent SDK; holdTurns: a turn only ends when interrupted, like a cut reply.
 	const started: string[] = [];
 	const prompts: string[] = [];
@@ -92,6 +95,7 @@ export const createFakeQuery = ({
 		}
 
 		started.push(call.options.cwd);
+		modes.push(`open ${call.options.permissionMode ?? 'none'}`);
 		let listed = commands;
 		prompts.push(call.options.systemPrompt.append);
 
@@ -160,7 +164,9 @@ export const createFakeQuery = ({
 				}
 			},
 			interrupt,
-			setPermissionMode: async () => undefined,
+			setPermissionMode: async (mode: string) => {
+				modes.push(`set ${mode}`);
+			},
 			supportedCommands: async () => listed,
 			reloadSkills: async () => {
 				reloads.push('skills');
@@ -207,6 +213,7 @@ export const createFakeQuery = ({
 		runQuery,
 		reloads,
 		models,
+		modes,
 		pushCommands: (next: unknown[]) => pushCommands(next),
 		started,
 		prompts,

@@ -25,6 +25,7 @@ import {
 } from './send.js';
 import { type HandsFreeResult, toListenMode } from './hands-free.js';
 import { countSpokenWords, readLabel, readScreenRef } from '../state/helpers.js';
+import { setSessionMode } from './set-mode.js';
 import { isDeliverWish } from '../state/delivery.js';
 import { answerAsk } from './answer.js';
 import {
@@ -814,6 +815,9 @@ export const executeTool = async (
 
 		case 'remove_session':
 			return removeChat({ state, input, toolContext });
+
+		case 'set_mode':
+			return setSessionMode({ state, input, toolContext });
 
 		case 'rename_session':
 			// A misheard "commit directly to main" came back as a rename to "directly to main": only words

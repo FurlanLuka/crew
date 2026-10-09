@@ -9,6 +9,8 @@ import { hasMachines, isNamed, readMachineName, readSessionLabel } from '../../s
 import type { State } from '../../shared/protocol.js';
 import { describeSessionBadge, readRefTitle } from '../derive.js';
 import type { Dispatch } from '../types.js';
+import { readMode } from '../../state/session-modes.js';
+import { SkipBadge } from './ModeChip.js';
 import { NewMenu } from './NewMenu.js';
 import { VoiceToggle } from './VoiceToggle.js';
 
@@ -197,6 +199,7 @@ export const TopBar = ({ state, dispatch, onHome, onNewSession }: TopBarProps) =
 							<span className={`dot ${badge.dot}`} />
 							{readSessionLabel(state, ref)}
 							{machine && <small>{machine}</small>}
+							{readMode(state, ref) === 'skip' && <SkipBadge />}
 						</button>
 					);
 				})}

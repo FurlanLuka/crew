@@ -117,6 +117,7 @@ export type CallResult =
 // What a remote may report. Anything else (limits, narration, the cockpit's own inputs) is dropped.
 export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'session_started',
+	'mode_refused',
 	'turn_started',
 	'text_delta',
 	'assistant_text',

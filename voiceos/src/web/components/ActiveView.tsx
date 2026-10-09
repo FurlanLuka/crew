@@ -24,6 +24,8 @@ import type { Dispatch } from '../types.js';
 import { useNow } from '../use-now.js';
 import { countOf } from '../count.js';
 import { PlusIcon } from './icons.js';
+import { SkipBadge } from './ModeChip.js';
+import { readMode } from '../../state/session-modes.js';
 
 interface ActiveViewProps {
 	state: State;
@@ -148,6 +150,7 @@ export const ActiveView = ({ state, dispatch, onNewSession }: ActiveViewProps) =
 										<span className={`dot ${badge.dot}`} />
 										<span className="sub">
 											<b>{label}</b>
+											{readMode(state, ref) === 'skip' && <SkipBadge />}
 											<span className="m">{where}</span>
 										</span>
 										<span className="sub">

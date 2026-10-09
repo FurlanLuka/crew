@@ -193,7 +193,22 @@ describe('machine_resynced', () => {
 			start: idleOffline,
 		});
 
-		expect(effects).toEqual([{ type: 'worker_send', ref: REMOTE, text: 'run the tests' }]);
+		expect(effects).toEqual([
+			{ type: 'worker_send', ref: REMOTE, text: 'run the tests' },
+			{ type: 'worker_set_mode', ref: REMOTE, mode: 'auto' },
+		]);
+	});
+
+	it("a running session's mode → told again, so a switch the link dropped is put right", () => {
+		const skipped = connected([
+			{ type: 'modes_loaded', modes: { [REMOTE]: { mode: 'skip' } } },
+			{ type: 'machine_status', id: 'vm1', status: 'unreachable' },
+		]);
+		const { effects } = run([{ type: 'machine_resynced', id: 'vm1', inputs: [] }], {
+			start: skipped,
+		});
+
+		expect(effects).toEqual([{ type: 'worker_set_mode', ref: REMOTE, mode: 'bypassPermissions' }]);
 	});
 });
 
@@ -245,7 +260,7 @@ describe('guardUnreachable', () => {
 			start: stopped,
 		});
 
-		expect(effects).toEqual([{ type: 'worker_start', ref: 'store/main' }]);
+		expect(effects).toEqual([{ type: 'worker_start', ref: 'store/main', mode: 'auto' }]);
 	});
 });
 
@@ -299,7 +314,7 @@ describe('words waiting for a stopped session there', () => {
 		const back = run([{ type: 'machine_resynced', id: 'vm1', inputs: [] }], { start: offline });
 
 		// Once: the matching-up after the drain finds it starting already.
-		expect(back.effects).toEqual([{ type: 'worker_start', ref: REMOTE }]);
+		expect(back.effects).toEqual([{ type: 'worker_start', ref: REMOTE, mode: 'auto' }]);
 
 		const started = run([{ type: 'session_started', ref: REMOTE }], { start: back.state });
 

@@ -49,7 +49,7 @@ describe('activate', () => {
 
 		expect(state.active).toEqual([OTHER]);
 		expect(state.sessions[OTHER]?.status).toBe('starting');
-		expect(effects).toEqual([{ type: 'worker_start', ref: OTHER }]);
+		expect(effects).toEqual([{ type: 'worker_start', ref: OTHER, mode: 'auto' }]);
 	});
 
 	it('by voice → started, "Activated X. Switch there?" and the switch offer open', () => {
@@ -526,11 +526,12 @@ describe("a machine's sessions matched up when its link connects", () => {
 		expect(said(effects)).toEqual([]);
 	});
 
-	it('active and running there → left running, nothing said', () => {
+	it('active and running there → left running, nothing said, its mode told again', () => {
 		const { state, effects } = resynced(known([{ type: 'activate', ref: REMOTE }]), [REMOTE]);
 
 		expect(state.sessions[REMOTE]?.status).toBe('idle');
-		expect(effects).toEqual([]);
+		// Its mode is told again (a switch the link dropped is put right); nothing else.
+		expect(effects).toEqual([{ type: 'worker_set_mode', ref: REMOTE, mode: 'auto' }]);
 	});
 
 	it('inactive and stopped → nothing', () => {

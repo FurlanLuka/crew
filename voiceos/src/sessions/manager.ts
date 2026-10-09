@@ -1,5 +1,5 @@
 import type { Effect } from '../state/reducer.js';
-import type { Observation, Session, State } from '../shared/protocol.js';
+import type { Observation, SdkMode, Session, State } from '../shared/protocol.js';
 import { runSessionAskFork } from './session-ask-fork.js';
 import { readSecret, removeSessionSecrets, type SecretCopy } from './secrets.js';
 import { SessionAskBridge, storeSessionFiles } from './session-ask-tools.js';
@@ -52,7 +52,6 @@ export interface SessionManagerOptions {
 	shouldKeepApiKey?: boolean;
 	model?: string;
 	maxBudgetUsd?: number;
-	permissionMode?: 'auto' | 'default';
 	claudeBin?: string;
 	runQuery?: WorkerOptions['runQuery'];
 	mediaDir?: string;
@@ -68,6 +67,8 @@ export class SessionManager {
 	// Owns processes, never state: every change it observes goes back through emit.
 	private workers = new Map<string, Worker>();
 	private pendingStarts = new Map<string, number>();
+	// Each session's mode, from the main: what its worker starts in.
+	private modes = new Map<string, SdkMode>();
 	private generation = 0;
 	readonly permissions: PermissionBridge;
 	readonly peers: SessionAskBridge;
@@ -89,6 +90,8 @@ export class SessionManager {
 	handle = (effect: Effect): void | Promise<void> => {
 		switch (effect.type) {
 			case 'worker_start':
+				this.modes.set(effect.ref, effect.mode);
+
 				return this.start(effect.ref);
 			case 'worker_send':
 				return this.workers.get(effect.ref)?.send(effect.text, this.noteFor(effect));
@@ -99,6 +102,9 @@ export class SessionManager {
 			case 'worker_interrupt':
 				return this.workers.get(effect.ref)?.interrupt(effect.reason);
 			case 'worker_set_mode':
+				// Kept even before the worker exists: a start still waiting on its orientation uses it.
+				this.modes.set(effect.ref, effect.mode);
+
 				return this.workers.get(effect.ref)?.setMode(effect.mode);
 			case 'worker_reload':
 				return this.workers.get(effect.ref)?.reload(effect.kind, Boolean(effect.force));
@@ -349,7 +355,7 @@ export class SessionManager {
 			runQuery: this.options.runQuery,
 			model: this.options.model,
 			maxBudgetUsd: this.options.maxBudgetUsd,
-			permissionMode: this.options.permissionMode,
+			permissionMode: this.modes.get(ref) ?? 'auto',
 			claudeBin: this.options.claudeBin,
 			// The setup session lives in Set up's chat, out of the other sessions' reach.
 			...(session.isPinned

@@ -683,7 +683,7 @@ describe('promote_queued', () => {
 			'then the tests',
 			'use proxy pair',
 		]);
-		expect(effects).toEqual([{ type: 'worker_start', ref: REF }]);
+		expect(effects).toEqual([{ type: 'worker_start', ref: REF, mode: 'auto' }]);
 		expect(unknown.state.sessions[REF]).toEqual(stopped.sessions[REF]);
 		expect(unknown.effects).toEqual([]);
 	});
@@ -723,7 +723,7 @@ describe('send said to go right now', () => {
 		}).state;
 		const { state, effects } = run([now], { start: stopped });
 
-		expect(effects).toContainEqual({ type: 'worker_start', ref: REF });
+		expect(effects).toContainEqual({ type: 'worker_start', ref: REF, mode: 'auto' });
 		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual([
 			'why is the build red?',
 		]);
@@ -805,7 +805,7 @@ describe('promote_all_queued', () => {
 		};
 		const { state, effects } = run([promoteAll], { start: withRetry });
 
-		expect(effects).toEqual([{ type: 'worker_start', ref: REF }]);
+		expect(effects).toEqual([{ type: 'worker_start', ref: REF, mode: 'auto' }]);
 		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual([
 			'use proxy pair\n\nthen the tests',
 			retry.text,
@@ -847,7 +847,7 @@ describe('words for a session that is not active', () => {
 			start: inactive(),
 		});
 
-		expect(effects).not.toContainEqual({ type: 'worker_start', ref: REF });
+		expect(effects).not.toContainEqual({ type: 'worker_start', ref: REF, mode: 'auto' });
 		expect(state.sessions[REF]?.status).toBe('stopped');
 		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual(['run the tests']);
 	});
@@ -858,7 +858,7 @@ describe('words for a session that is not active', () => {
 			{ start: inactive() },
 		);
 
-		expect(effects).not.toContainEqual({ type: 'worker_start', ref: REF });
+		expect(effects).not.toContainEqual({ type: 'worker_start', ref: REF, mode: 'auto' });
 		expect(state.sessions[REF]?.status).toBe('stopped');
 	});
 
@@ -888,7 +888,7 @@ describe('words for a session that is not active', () => {
 		const activated = run([{ type: 'activate', ref: REF }], { start: queued });
 		const { effects } = run([{ type: 'session_started', ref: REF }], { start: activated.state });
 
-		expect(activated.effects).toContainEqual({ type: 'worker_start', ref: REF });
+		expect(activated.effects).toContainEqual({ type: 'worker_start', ref: REF, mode: 'auto' });
 		expect(effects).toContainEqual(
 			expect.objectContaining({ type: 'worker_send', ref: REF, text: 'run the tests' }),
 		);

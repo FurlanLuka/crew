@@ -347,6 +347,8 @@ export const describeOfferAnswer = (kind: SwitchOfferKind | undefined, ref: stri
 			return `"Activate it?" about ${ref}: call activate with name ${ref}`;
 		case 'deactivate':
 			return `"Deactivate anyway?" about ${ref}: call deactivate ${ref}`;
+		case 'skip_mode':
+			return `"Skip permissions?" about ${ref}: call set_mode ${ref} skip`;
 		case 'send_now':
 			return `"Send it now?" about the words queued for ${ref}: call queued_message now ${ref}`;
 		default:

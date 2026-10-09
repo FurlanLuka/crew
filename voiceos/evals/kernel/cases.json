@@ -6562,6 +6562,147 @@
 			],
 			"forbid_calls": ["activate", "deactivate"],
 			"no_reply": true
+		},
+		{
+			"id": "mode-plan-on-screen",
+			"utterance": "Switch to plan mode.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "set_mode",
+					"ref": "store-front/main",
+					"input": {
+						"mode": "plan"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "mode-ask-named",
+			"utterance": "Put checkout api in ask mode.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "set_mode",
+					"ref": "checkout-api/main",
+					"input": {
+						"mode": "ask"
+					}
+				}
+			],
+			"forbid_calls": ["forward", "send_to"]
+		},
+		{
+			"id": "mode-skip-here",
+			"utterance": "Skip permissions here.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "set_mode",
+					"ref": "store-front/main",
+					"input": {
+						"mode": "skip"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "mode-back-to-auto",
+			"utterance": "Back to auto mode.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "set_mode",
+					"ref": "store-front/main",
+					"input": {
+						"mode": "auto"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "mode-plan-de",
+			"utterance": "Wechsel in den Plan-Modus.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "set_mode",
+					"ref": "store-front/main",
+					"input": {
+						"mode": "plan"
+					}
+				}
+			],
+			"forbid_calls": ["forward"]
+		},
+		{
+			"id": "work-plan-this-out",
+			"utterance": "Plan this out before you touch the router.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["set_mode"],
+			"no_reply": true
+		},
+		{
+			"id": "work-skip-the-tests",
+			"utterance": "Skip the tests for now and just push it.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["set_mode"],
+			"no_reply": true
+		},
+		{
+			"id": "work-skip-that",
+			"utterance": "Skip that, do the next one.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "forward"
+				}
+			],
+			"forbid_calls": ["set_mode"],
+			"no_reply": true
+		},
+		{
+			"id": "work-ask-checkout-whether",
+			"utterance": "Ask checkout api whether the retries are capped.",
+			"context": {
+				"view": "store-front/main"
+			},
+			"calls": [
+				{
+					"name": "send_to",
+					"ref": "checkout-api/main"
+				}
+			],
+			"forbid_calls": ["set_mode"]
 		}
 	]
 }

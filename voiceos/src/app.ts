@@ -30,6 +30,7 @@ import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistActive } from './memory/active.js';
 import { persistNames } from './memory/names.js';
+import { persistModes } from './memory/modes.js';
 import { persistVoiceOff } from './memory/voice-off.js';
 import { followVoiceOff } from './speech/voice-off.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
@@ -413,6 +414,8 @@ void machines.monitorDevServers();
 
 // Before the view: a saved session view opened from Active finds its session already active. Starts
 // the active sessions of this Mac; a remote's start when its link is up.
+// Before the active set: the sessions it starts start in their saved mode.
+persistModes({ store, file: paths.modesFile });
 persistActive({ store, file: paths.activeFile, legacyFile: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });

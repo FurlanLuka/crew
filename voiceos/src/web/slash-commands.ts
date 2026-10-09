@@ -1,12 +1,19 @@
 // The box's "/" commands: the session's own (from Claude Code, sent to it as words) and Voice OS's,
 // which run here instead. Pure, so the menu and what Enter does are tested without a page.
 import { z } from 'zod';
-import { MODEL_ID_PATTERN, type ClientMessage, type SessionCommand } from '../shared/protocol.js';
+import {
+	MODEL_ID_PATTERN,
+	type ClientMessage,
+	type SessionCommand,
+	type SessionMode,
+} from '../shared/protocol.js';
+import { isSessionMode } from '../shared/modes.js';
 
 export type VoiceOsCommandName =
 	| 'reload-plugins'
 	| 'reload-skills'
 	| 'model'
+	| 'mode'
 	| 'stop'
 	| 'mute'
 	| 'unmute'
@@ -43,6 +50,13 @@ export const VOICE_OS_COMMANDS: VoiceOsCommand[] = [
 		name: 'model',
 		description: "Switch this session's model",
 		argumentHint: '<opus | sonnet | haiku | model id>',
+		isForSession: true,
+		isArgumentRequired: true,
+	},
+	{
+		name: 'mode',
+		description: "Switch this session's permission mode",
+		argumentHint: '<auto | plan | ask | skip>',
 		isForSession: true,
 		isArgumentRequired: true,
 	},
@@ -156,6 +170,7 @@ export const pickStart = (entries: MenuEntry[], typed: string): number =>
 export type SlashAction =
 	| { kind: 'reload'; target: 'plugins' | 'skills'; isForced: boolean }
 	| { kind: 'model'; model: string }
+	| { kind: 'mode'; mode: SessionMode }
 	| { kind: 'stop' }
 	| { kind: 'mute'; isMuted: boolean }
 	| { kind: 'voice'; isOff: boolean }
@@ -189,6 +204,10 @@ export const parseVoiceOsCommand = (text: string, hasSession: boolean): SlashAct
 			return MODEL_ID_PATTERN.test(argument)
 				? { kind: 'model', model: argument }
 				: { kind: 'usage', text: 'Say which model: /model opus, /model sonnet or a model id.' };
+		case 'mode':
+			return isSessionMode(argument)
+				? { kind: 'mode', mode: argument }
+				: { kind: 'usage', text: 'Say which mode: /mode auto, plan, ask or skip.' };
 		case 'stop':
 			return { kind: 'stop' };
 		case 'mute':
@@ -249,6 +268,13 @@ export const planSlash = (action: SlashAction, sessionRef: string | null): Slash
 				forSession((ref) => ({
 					type: 'action',
 					action: { type: 'set_model', ref, model: action.model },
+				})),
+			);
+		case 'mode':
+			return plan(
+				forSession((ref) => ({
+					type: 'action',
+					action: { type: 'set_mode', ref, mode: action.mode, by: 'page' },
 				})),
 			);
 		case 'stop':

@@ -28,6 +28,8 @@ const describeOffer = (state: State, ref: string, kind: SwitchOfferKind): string
 			return `${sayRef(state, ref)} isn't active. Activate it?`;
 		case 'deactivate':
 			return `${sayRef(state, ref)} is working. Deactivate anyway?`;
+		case 'skip_mode':
+			return `Skip permissions for ${sayRef(state, ref)}?`;
 		case 'switch':
 			return `Switch to ${sayRef(state, ref)}?`;
 		// Asked on the ack line itself (withSendNowAsked), never on its own.
@@ -289,8 +291,9 @@ export const followSends = (
 		}
 
 		case 'offer_switch': {
-			// Activate and deactivate answer what the developer just asked: they replace an older offer.
-			const isAnswer = input.kind === 'activate' || input.kind === 'deactivate';
+			// Activate, deactivate and Skip answer what the developer just asked: they replace an older offer.
+			const isAnswer =
+				input.kind === 'activate' || input.kind === 'deactivate' || input.kind === 'skip_mode';
 
 			// "Switch to X?" is about a session voice reaches; an inactive one is only ever offered activation.
 			// A setup session is Set up's: voice never offers it.

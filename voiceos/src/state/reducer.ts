@@ -14,6 +14,7 @@ import {
 	HOME_SCREEN,
 	VOICE_LOG_ENTRIES_KEPT,
 	type Attachment,
+	type SdkMode,
 	type PendingAsk,
 	type Session,
 	type Stamped,
@@ -23,7 +24,7 @@ import {
 	type VoiceEntry,
 	type WorktreeInfo,
 } from '../shared/protocol.js';
-import { isAskInput, reduceAsk, restoreAutoEffects, settleAsksForSession } from './asks.js';
+import { isAskInput, reduceAsk, restoreModeEffects, settleAsksForSession } from './asks.js';
 import { isAsideInput, reduceAside } from './aside.js';
 import { isCommandInput, reduceCommand } from './commands.js';
 import { isPeerAsk } from '../shared/protocol.js';
@@ -75,6 +76,7 @@ import {
 	toShownView,
 } from './active.js';
 import { isNameInput, reduceName } from './names.js';
+import { isModeInput, reduceSessionMode } from './session-modes.js';
 import { isActive } from '../shared/active.js';
 
 export const SPOKEN_LINES_KEPT = 20;
@@ -88,7 +90,7 @@ export type AskResult =
 	| { behavior: 'deny'; message: string };
 
 export type Effect =
-	| { type: 'worker_start'; ref: string }
+	| { type: 'worker_start'; ref: string; mode: SdkMode }
 	| { type: 'worker_send'; ref: string; text: string; note?: string; attachments?: Attachment[] }
 	// One piece of an attached file for a session on another machine, ahead of its worker_send: the
 	// link's outbox keeps them in order and resends them, the remote reassembles the file.
@@ -105,7 +107,7 @@ export type Effect =
 	| { type: 'worker_set_model'; ref: string; model: string }
 	// reason: 'follow-up' when the developer's own spoken follow-up cut the reply.
 	| { type: 'worker_interrupt'; ref: string; reason?: 'follow-up' }
-	| { type: 'worker_set_mode'; ref: string; mode: 'default' | 'auto' }
+	| { type: 'worker_set_mode'; ref: string; mode: SdkMode }
 	| { type: 'resolve_ask'; ref: string; askId: string; result: AskResult }
 	// spoken: the session's own line for the turn's final message; null sends it to the narrator.
 	| {
@@ -227,6 +229,7 @@ export const createInitialState = (): State => ({
 	machines: {},
 	active: [],
 	names: {},
+	modes: {},
 	attachments: {},
 	voiceOff: false,
 	discord: null,
@@ -498,6 +501,10 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	}
 
 	// Names are this Voice OS's own too: a session out of reach is renamed like any other.
+	if (isModeInput(input)) {
+		return reduceSessionMode(state, input, stamped);
+	}
+
 	if (isNameInput(input)) {
 		return reduceName(state, input);
 	}
@@ -655,7 +662,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					...(input.isCorrection ? [sayAck(`Stopped ${sayRef(state, input.ref)}.`)] : []),
 					{ type: 'worker_interrupt', ref: input.ref },
 					// An allowance still waiting goes with the work it was for.
-					...restoreAutoEffects(session),
+					...restoreModeEffects(state, session),
 				],
 			};
 		}
@@ -794,8 +801,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				return withoutEffects(state);
 			}
 
-			// An allowance still waiting ends with the turn: the next one runs in auto mode again.
-			const effects: Effect[] = restoreAutoEffects(session);
+			// An allowance still waiting ends with the turn: the next one runs in its own mode again.
+			const effects: Effect[] = restoreModeEffects(state, session);
 
 			// A reply cut off by the developer's follow-up is not narrated: they are already past it.
 			const isCutOff = hasFollowUpWaiting(session);

@@ -38,7 +38,7 @@ describe('inbox', () => {
 
 describe('host state', () => {
 	it('a turn → running, then idle with its last turn kept', () => {
-		let state = trackEffect(createHostState(), { type: 'worker_start', ref: 'a/b' });
+		let state = trackEffect(createHostState(), { type: 'worker_start', ref: 'a/b', mode: 'auto' });
 
 		state = trackObservation(state, { type: 'session_started', ref: 'a/b' });
 		state = trackObservation(state, { type: 'turn_started', ref: 'a/b' });

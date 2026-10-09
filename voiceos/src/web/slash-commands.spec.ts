@@ -71,6 +71,10 @@ describe('parseVoiceOsCommand', () => {
 			'/model',
 			{ kind: 'usage', text: 'Say which model: /model opus, /model sonnet or a model id.' },
 		],
+		['/mode plan', { kind: 'mode', mode: 'plan' }],
+		['/mode skip', { kind: 'mode', mode: 'skip' }],
+		['/mode', { kind: 'usage', text: 'Say which mode: /mode auto, plan, ask or skip.' }],
+		['/mode bypass', { kind: 'usage', text: 'Say which mode: /mode auto, plan, ask or skip.' }],
 		['/stop', { kind: 'stop' }],
 		['/mute', { kind: 'mute', isMuted: true }],
 		['/unmute', { kind: 'mute', isMuted: false }],
@@ -124,6 +128,15 @@ describe('planSlash', () => {
 			REF,
 			{
 				messages: [act({ type: 'set_model', ref: REF, model: 'opus' })] as never,
+				line: null,
+				crew: null,
+			},
+		],
+		[
+			{ kind: 'mode', mode: 'ask' },
+			REF,
+			{
+				messages: [act({ type: 'set_mode', ref: REF, mode: 'ask', by: 'page' })] as never,
 				line: null,
 				crew: null,
 			},

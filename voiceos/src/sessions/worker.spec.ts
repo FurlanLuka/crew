@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'bun:test';
 import type { Observation } from '../shared/protocol.js';
 import { PermissionBridge } from './permissions.js';
-import { Worker, buildWorkerEnv } from './worker.js';
+import { Worker, buildWorkerEnv, isRootOutsideSandbox } from './worker.js';
+import type { SdkMode } from '../shared/protocol.js';
 
 const base = {
 	PATH: '/usr/bin',
@@ -76,10 +77,27 @@ describe('buildWorkerEnv', () => {
 	});
 });
 
+describe('isRootOutsideSandbox', () => {
+	it.each([
+		[0, undefined, true],
+		[0, '1', false],
+		[501, undefined, false],
+		[undefined, undefined, false],
+	] as const)('uid %s, IS_SANDBOX %s → %s', (uid, isSandbox, expected) =>
+		expect(isRootOutsideSandbox(uid, isSandbox)).toBe(expected),
+	);
+});
+
 describe('Worker', () => {
 	const createWorker = (
 		messages: unknown[],
-		extra: { mediaDir?: string; isPinned?: boolean; env?: Record<string, string> } = {},
+		extra: {
+			mediaDir?: string;
+			isPinned?: boolean;
+			env?: Record<string, string>;
+			permissionMode?: SdkMode;
+			isRootOutsideSandbox?: boolean;
+		} = {},
 	) => {
 		const prompts: string[] = [];
 		const queryOptions: { env?: Record<string, string | undefined> }[] = [];
@@ -91,6 +109,7 @@ describe('Worker', () => {
 			cwd: '/w',
 			dirs: [],
 			isPinned: false,
+			isRootOutsideSandbox: false,
 			...extra,
 			orientation: '',
 			resumeId: null,
@@ -147,6 +166,69 @@ describe('Worker', () => {
 		worker.start();
 
 		expect(queryOptions.map((options) => options.env)).toEqual([env]);
+	});
+
+	describe('permission mode', () => {
+		const modeOf = (options: unknown) =>
+			options as { permissionMode?: string; allowDangerouslySkipPermissions?: boolean };
+
+		it("starts in the session's mode, allowed to be switched into Skip later", () => {
+			const { worker, queryOptions } = createWorker([], { permissionMode: 'plan' });
+
+			worker.start();
+
+			expect(queryOptions.map(modeOf)).toMatchObject([
+				{ permissionMode: 'plan', allowDangerouslySkipPermissions: true },
+			]);
+		});
+
+		it("a copy of the session (an aside, another session's ask) never runs in its mode", () => {
+			const { worker } = createWorker([], { permissionMode: 'bypassPermissions' });
+
+			expect(worker.launch).not.toHaveProperty('permissionMode');
+			expect(worker.launch).not.toHaveProperty('allowDangerouslySkipPermissions');
+		});
+
+		it('a mode set before the query opens → the query opens in it', async () => {
+			const { worker, queryOptions } = createWorker([]);
+
+			await worker.setMode('default');
+			worker.start();
+
+			expect(modeOf(queryOptions[0]).permissionMode).toBe('default');
+		});
+
+		it('as root, Skip at start → starts in Auto without the flag, and says why', () => {
+			const { worker, queryOptions, observations } = createWorker([], {
+				permissionMode: 'bypassPermissions',
+				isRootOutsideSandbox: true,
+			});
+
+			worker.start();
+
+			expect(modeOf(queryOptions[0])).toMatchObject({ permissionMode: 'auto' });
+			expect(modeOf(queryOptions[0]).allowDangerouslySkipPermissions).toBeUndefined();
+			expect(observations).toContainEqual({
+				type: 'mode_refused',
+				ref: 'store/main',
+				mode: 'bypassPermissions',
+				kept: 'auto',
+				reason: 'root',
+			});
+		});
+
+		it('as root, a switch to Skip → refused, the mode it runs kept', async () => {
+			const { worker, observations } = createWorker([], {
+				permissionMode: 'default',
+				isRootOutsideSandbox: true,
+			});
+
+			await worker.setMode('bypassPermissions');
+
+			expect(observations).toContainEqual(
+				expect.objectContaining({ type: 'mode_refused', kept: 'default' }),
+			);
+		});
 	});
 
 	// Without it the SDK forwards only a sub-agent's calls: its transcript on the page would be empty.

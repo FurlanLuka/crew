@@ -12,6 +12,7 @@ import { readShownText } from '../shared/spoken-tags.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { isReachable, readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
 import { canRun } from '../shared/active.js';
+import { toSdkMode } from '../shared/modes.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -242,7 +243,9 @@ export const startWorker = (state: State, ref: string): ReducerResult => {
 		return withoutEffects(state);
 	}
 
-	const effects: Effect[] = [{ type: 'worker_start', ref }];
+	const effects: Effect[] = [
+		{ type: 'worker_start', ref, mode: toSdkMode(state.modes[ref]?.mode ?? 'auto') },
+	];
 
 	return {
 		state: updateSession(state, ref, (session) => ({

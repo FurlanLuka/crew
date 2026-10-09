@@ -46,7 +46,7 @@ describe('routeEffect', () => {
 	});
 
 	it('this Mac → local, unchanged', () => {
-		const effect = { type: 'worker_start' as const, ref: 'store/main' };
+		const effect = { type: 'worker_start' as const, ref: 'store/main', mode: 'auto' as const };
 
 		expect(routeEffect(effect)).toEqual({ kind: 'local', effect });
 	});
@@ -134,6 +134,13 @@ describe('toMainInput', () => {
 		{ type: 'conversation_reset', ref: 'store/main' },
 		{ type: 'compacting', ref: 'store/main', isCompacting: true },
 		{ type: 'session_notice', ref: 'store/main', text: 'n' },
+		{
+			type: 'mode_refused',
+			ref: 'store/main',
+			mode: 'bypassPermissions',
+			kept: 'auto',
+			reason: 'root',
+		},
 	];
 
 	it('covers every report a remote may make', () => {

@@ -29,6 +29,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [Active sessions](#active-sessions)
 - [Session names](#session-names)
 - [Questions, plans and permissions](#questions-plans-and-permissions)
+- [Permission modes](#permission-modes)
 - [Auto mode and approvals](#auto-mode-and-approvals)
 - [Queued messages](#queued-messages)
 - [Docs, images and sub-agents](#docs-images-and-sub-agents)
@@ -539,9 +540,28 @@ session.
 Another session's request for work, or for a secret, docks and is answered the same way. See
 [Sessions asking each other](#sessions-asking-each-other).
 
+## Permission modes
+
+Each session has a permission mode, shown on the chip left of its text box. Tap the chip and pick
+one, type `/mode plan` (or auto, ask, skip), or say "switch to plan mode" or "put checkout in ask
+mode". The session switches at once and keeps the mode until you change it, across restarts too, and
+its stream shows the change ("Mode: Plan").
+
+- **Auto**, the default: Claude Code's classifier lets routine work run and blocks what looks risky
+  (see below).
+- **Plan**: the session plans and changes nothing. Approving its plan puts it back in the mode it had
+  before Plan.
+- **Ask**: every permission comes to you as a card, the way Claude Code asks in a terminal.
+- **Skip**: Claude Code's skip-permissions mode. Everything runs, nothing is checked. Said aloud,
+  Voice OS asks first ("Skip permissions for checkout?"), and a session in Skip shows **skip** on its
+  tab and in Active. Claude Code refuses Skip when it runs as root, so on such a machine the session
+  stays in the mode it had, with a line saying why.
+
+Questions and plans always come to you, in every mode. Set up's chat stays in Auto.
+
 ## Auto mode and approvals
 
-Sessions run in Claude Code's **auto** permission mode. Routine work runs without asking, and
+Sessions start in Claude Code's **auto** permission mode. Routine work runs without asking, and
 Claude Code blocks a call it judges risky instead of running it. You do not approve every file
 edit and command. Plans and questions are different: they always wait for you, in any mode.
 
@@ -693,7 +713,8 @@ Voice OS's own commands run on the page instead of going to Claude. `/reload-plu
 `/reload-skills` reload that session's plugins or skills and say what changed in its stream; when
 reloading plugins would change the session's tools and throw away its cached context, it holds and
 tells you, and `/reload-plugins force` reloads anyway. `/model opus` (or sonnet, haiku, a model id)
-switches the session's model for its next turn. `/stop` stops its turn. `/mute` and `/unmute` quiet
+switches the session's model for its next turn, and `/mode plan` (or auto, ask, skip) its permission
+mode. `/stop` stops its turn. `/mute` and `/unmute` quiet
 Voice OS's chatter the way saying "quiet" does, and `/voice off` and `/voice on` are the top bar's
 voice switch. `/update` installs the latest crew on the main machine, whichever session's box you
 type it in, and offers to restart crew's server; it never restarts by itself, and other machines
@@ -867,7 +888,7 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. There is no time limit: a session keeps its conversation until you clear it or Claude Code no longer has it. |
 | `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart (one saved by an earlier release opens as Active, or Activate for a machine's grid). |
 | `~/.crew/voiceos/voice-off.json` | Whether voice is off (the top bar's **voice**). |
-| `~/.crew/voiceos/active.json`, `names.json` | Your active sessions and session names. An older `pinned.json` is read once, when `active.json` does not exist yet. |
+| `~/.crew/voiceos/active.json`, `names.json`, `modes.json` | Your active sessions, session names and each session's permission mode. An older `pinned.json` is read once, when `active.json` does not exist yet. |
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |
