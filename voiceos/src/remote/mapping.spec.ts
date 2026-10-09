@@ -134,6 +134,7 @@ describe('toMainInput', () => {
 		{ type: 'conversation_reset', ref: 'store/main' },
 		{ type: 'compacting', ref: 'store/main', isCompacting: true },
 		{ type: 'session_notice', ref: 'store/main', text: 'n' },
+		{ type: 'context_usage', ref: 'store/main', used: 41_600, max: 200_000 },
 		{
 			type: 'mode_refused',
 			ref: 'store/main',

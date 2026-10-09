@@ -3397,6 +3397,33 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
+	it("the context meter: how full the session is, right of the box; Compact goes through Voice OS's confirm", async () => {
+		store.dispatch({ type: 'conversation_reset', ref: REF });
+		const { context, page } = await openWithCommands();
+
+		expect(await page.locator('.ctx-meter').count()).toBe(0);
+
+		store.dispatch({ type: 'context_usage', ref: REF, used: 150_000, max: 200_000 });
+		const meter = page.locator('.ctx-meter');
+
+		await meter.waitFor({ timeout: 5000 });
+		expect(await meter.textContent()).toBe('150k / 200k');
+		expect(await meter.getAttribute('class')).toContain('high');
+
+		await meter.click();
+		await page.getByRole('menuitem', { name: /Compact/ }).click();
+		await waitUntil(() =>
+			store.state.asks.some(
+				(ask) => ask.ref === REF && ask.kind === 'command' && ask.command === 'compact',
+			),
+		);
+		expect(await page.getByRole('menu').count()).toBe(0);
+
+		const held = store.state.asks.find((ask) => ask.ref === REF && ask.kind === 'command');
+		store.dispatch({ type: 'answer_command', askId: held?.id ?? '', isApproved: false });
+		await context.close();
+	}, 20_000);
+
 	it('at phone width the chip and the box share one row', async () => {
 		const { context, page } = await openWithCommands();
 

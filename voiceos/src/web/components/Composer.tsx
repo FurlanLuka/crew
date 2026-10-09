@@ -16,6 +16,7 @@ import { describeListening, isListeningMode } from '../listen-mode.js';
 import { AttachButton } from './AttachmentChips.js';
 import { SlashMenu } from './SlashMenu.js';
 import { ModeChip } from './ModeChip.js';
+import { ContextMeter } from './ContextMeter.js';
 import { readScreenRef } from '../../state/helpers.js';
 import { useSlashCommands } from '../use-slash-commands.js';
 import { ATTACHED_ONLY_TEXT, type Attachments } from '../use-attachments.js';
@@ -270,6 +271,13 @@ export const Composer = ({
 						Too long to send: {draftChars.toLocaleString('en')} of{' '}
 						{MAX_TEXT_CHARS.toLocaleString('en')} characters
 					</span>
+				) : null}
+				{!isDictating && screenRef && state.sessions[screenRef]?.context ? (
+					<ContextMeter
+						sessionRef={screenRef}
+						context={state.sessions[screenRef].context}
+						send={send}
+					/>
 				) : null}
 				<span className={`vo-route route ${routeClass}`}>{routeLabel}</span>
 			</div>

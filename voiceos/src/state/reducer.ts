@@ -252,6 +252,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	subagents: [],
 	subagentRuns: [],
 	compactingSince: null,
+	context: null,
 	reportOwed: false,
 	turnFrom: null,
 	replyOwed: null,
@@ -1051,6 +1052,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				subagents: [],
 				subagentRuns: [],
 				compactingSince: null,
+				// Until the cleared session's first reading: the old number no longer holds.
+				context: null,
 			}));
 
 			return withoutEffects(
@@ -1063,6 +1066,14 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				}),
 			);
 		}
+
+		case 'context_usage':
+			return withoutEffects(
+				updateSession(state, input.ref, (session) => ({
+					...session,
+					context: { used: input.used, max: input.max },
+				})),
+			);
 
 		case 'compacting': {
 			const isStarting = input.isCompacting && state.sessions[input.ref]?.compactingSince === null;

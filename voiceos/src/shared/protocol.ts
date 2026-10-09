@@ -307,6 +307,9 @@ export interface Session {
 	heldLine: HeldLine | null;
 	// When its context compaction began; null when none runs. The SDK reports no progress.
 	compactingSince: number | null;
+	// How full its context is, as Claude Code last reported it; null before the first reading and
+	// right after a clear.
+	context: ContextUsage | null;
 	// When its latest spoken line came, if nothing but a question or plan has come since: such a line
 	// asked it, and Voice OS does not ask it again.
 	lineBeforeAsk: { at: number; text: string } | null;
@@ -456,6 +459,13 @@ export interface SwitchOffer {
 // Answered at once or not at all: a later "yes" belongs to something else.
 // The most text one message carries: the gateway refuses more, so the page never sends it.
 export const MAX_TEXT_CHARS = 20_000;
+
+// Tokens in a session's context and the window they are measured against (Claude Code's
+// autocompact window).
+export interface ContextUsage {
+	used: number;
+	max: number;
+}
 
 // A session's permission mode, as the developer picks it (the chip, /mode, voice). Each is a Claude
 // Code mode: Auto its classifier, Plan plans only, Ask brings every permission to the developer,
@@ -763,6 +773,8 @@ export type Observation =
 	// The held line was announced ("<session> is done", "needs you").
 	| { type: 'held_line_announced'; ref: string; id: string }
 	| { type: 'session_started'; ref: string }
+	// How full its context is now: after each turn, a compaction, a clear, or a start.
+	| { type: 'context_usage'; ref: string; used: number; max: number }
 	// A worker could not run the mode it was asked for (Skip as root: Claude Code refuses it); kept is
 	// the mode it runs instead.
 	| { type: 'mode_refused'; ref: string; mode: SdkMode; kept: SdkMode; reason: 'root' }

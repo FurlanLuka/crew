@@ -75,3 +75,16 @@ describe('session commands', () => {
 		}
 	});
 });
+
+describe('context meter', () => {
+	it("a reading → the session's context; a clear → none until the next reading", () => {
+		const read = run([{ type: 'context_usage', ref: REF, used: 41_600, max: 200_000 }], {
+			start: idleSession(),
+		}).state;
+
+		expect(read.sessions[REF]?.context).toEqual({ used: 41_600, max: 200_000 });
+		expect(
+			run([{ type: 'conversation_reset', ref: REF }], { start: read }).state.sessions[REF]?.context,
+		).toBeNull();
+	});
+});

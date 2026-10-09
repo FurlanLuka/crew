@@ -155,6 +155,23 @@ describe('SessionManager', () => {
 		harness.manager.stopAll();
 	});
 
+	it("a turn through the manager → the session's context reading in state", async () => {
+		const harness = createHarness();
+
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+		harness.orientation.resolve('orientation');
+		await waitTick();
+		harness.store.dispatch({ type: 'send', ref: 'store-front/main', text: 'run the tests' });
+		await waitTick();
+		await waitTick();
+
+		expect(harness.store.state.sessions['store-front/main']?.context).toEqual({
+			used: 1000,
+			max: 200_000,
+		});
+		harness.manager.stopAll();
+	});
+
 	it('a second start while one is preparing → ignored', async () => {
 		const harness = createHarness();
 		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });

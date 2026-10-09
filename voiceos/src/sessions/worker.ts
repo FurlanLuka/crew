@@ -183,6 +183,12 @@ export interface WorkerOptions {
 	peerServer?: () => McpSdkServerConfigWithInstance;
 }
 
+// What leaves the context a different size: a turn, a compaction finished, a clear.
+const changesContext = (observation: Observation): boolean =>
+	observation.type === 'turn_ended' ||
+	observation.type === 'conversation_reset' ||
+	(observation.type === 'compacting' && !observation.isCompacting);
+
 // Claude Code's own rule: Skip (and the flag that allows it) is refused as root unless IS_SANDBOX
 // says the machine is a deliberate sandbox.
 export const isRootOutsideSandbox = (
@@ -401,6 +407,25 @@ export class Worker {
 		}
 	}
 
+	// How full the context is, for the box's meter. 'summary' answers from the last response's usage:
+	// no token-count calls on every turn.
+	private async readContext(): Promise<void> {
+		const { ref, emit } = this.options;
+
+		try {
+			const usage = await this.activeQuery?.getContextUsage({ detail: 'summary' });
+
+			if (!usage) {
+				return;
+			}
+
+			log.debug('context', { ref, used: usage.totalTokens, max: usage.rawMaxTokens });
+			emit({ type: 'context_usage', ref, used: usage.totalTokens, max: usage.rawMaxTokens });
+		} catch (error) {
+			log.warn('context not read', { ref, error: String(error) });
+		}
+	}
+
 	private async listCommands(): Promise<void> {
 		try {
 			this.emitCommands((await this.activeQuery?.supportedCommands()) ?? []);
@@ -502,6 +527,8 @@ export class Worker {
 					this.sessionId = raw.session_id;
 					this.options.onSessionId(raw.session_id);
 					log.info('session id', { ref, sessionId: raw.session_id });
+					// A resumed session is as full as it was: the meter shows it before the first turn.
+					void this.readContext();
 				}
 
 				// Skills found as it works, or a plugin added: the "/" menu follows.
@@ -527,6 +554,10 @@ export class Worker {
 					}
 
 					emit(observation);
+
+					if (changesContext(observation)) {
+						void this.readContext();
+					}
 				}
 			}
 

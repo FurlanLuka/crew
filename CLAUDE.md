@@ -369,7 +369,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   it rides on `worker_start`, the manager keeps it through the start window, a resync re-sends it,
   an approved plan returns to `beforePlan` (carried on the allow as `setMode`), an allow-once restores
   it, "always" drops `setMode` suggestions, forks never inherit it, and a worker as root refuses Skip
-  (`mode_refused`). Setup sessions stay Auto. **Voice off** (`State.voiceOff`, `set_voice_off`, the top bar's
+  (`mode_refused`). Setup sessions stay Auto. **Context meter:** the worker reads `getContextUsage({detail:'summary'})` after its init, each
+  turn, a finished compaction and a clear (`context_usage` → `Session.context`, cleared by
+  `conversation_reset`); the composer's `ContextMeter` shows it and sends `/compact` or `/clear`,
+  which go through the held-command confirm. **Voice off** (`State.voiceOff`, `set_voice_off`, the top bar's
   struck "voice", `voice-off.json`) is server-wide: no listener or TTS socket, Discord's bot out of
   its channel (`pause`/`resume`), lines to the page unplayed; distinct from the kernel's `mute`
   (less chatter).

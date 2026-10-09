@@ -35,6 +35,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [Docs, images and sub-agents](#docs-images-and-sub-agents)
 - [Attaching files](#attaching-files)
 - [Sessions asking each other](#sessions-asking-each-other)
+- [Context meter](#context-meter)
 - [Slash commands](#slash-commands)
 - [Dev servers](#dev-servers)
 - [Notes and debug notes](#notes-and-debug-notes)
@@ -699,6 +700,14 @@ asked session shows the same exchange dimmed, since its own conversation never s
 quiet unless something needs your Allow. A session can make three requests to other sessions per
 turn, and a session told something by another cannot tell it back in the same turn, so two sessions
 never keep each other going while you are away.
+
+## Context meter
+
+Right of a session's text box, a meter says how full its context is ("42k / 200k"), measured against
+the window Claude Code compacts at. It turns amber from 70 % and red from 90 %, and it updates after
+every turn, a compaction or a clear. Tap it for **Compact** (summarize the conversation so far) or
+**Clear** (start a fresh one): either goes to the session as `/compact` or `/clear`, so Voice OS asks
+you to confirm first, as it does when you type them.
 
 ## Slash commands
 

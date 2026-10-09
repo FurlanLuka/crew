@@ -1403,6 +1403,46 @@
 	color: var(--crit-text);
 	font: 11px var(--mono);
 }
+.ctx-wrap {
+	position: relative;
+	flex: none;
+}
+.ctx-meter {
+	padding: 3px 10px;
+	border: 0;
+	border-radius: 9px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 12px var(--mono);
+	white-space: nowrap;
+	cursor: pointer;
+}
+.ctx-meter:hover,
+.ctx-meter[aria-expanded="true"] {
+	color: var(--label);
+	background: var(--fill-hover);
+}
+.ctx-meter.high {
+	color: var(--amber);
+	background: var(--amber-fill);
+}
+.ctx-meter.full {
+	color: var(--crit-text);
+	background: var(--crit-fill);
+}
+.ctx-menu {
+	position: absolute;
+	right: -8px;
+	bottom: calc(100% + 10px);
+	z-index: 21;
+	display: grid;
+	width: max-content;
+	min-width: 230px;
+	padding: 6px;
+	border-radius: 12px;
+	background: var(--menu);
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
 .perm-wrap {
 	position: relative;
 	flex: none;
@@ -1733,6 +1773,7 @@
 	.vo-usage,
 	.vo-discord,
 	.vo-route,
+	.ctx-wrap,
 	.mode-wrap {
 		display: none;
 	}
