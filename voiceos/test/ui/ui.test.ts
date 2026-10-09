@@ -3450,7 +3450,7 @@ describe('slash commands', () => {
 		await page.setViewportSize({ width: 390, height: 800 });
 		// The context meter is left out at this width, like the route chip.
 		store.dispatch({ type: 'context_usage', ref: REF, used: 41_600, max: 200_000 });
-		await page.waitForTimeout(200);
+		await page.locator('.ctx-wrap').waitFor({ state: 'attached', timeout: 5000 });
 		expect(await page.locator('.ctx-wrap').isVisible()).toBe(false);
 		store.dispatch({ type: 'conversation_reset', ref: REF });
 		const chip = await page.locator('.perm-chip').boundingBox();

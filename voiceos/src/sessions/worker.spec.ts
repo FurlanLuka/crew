@@ -238,6 +238,32 @@ describe('Worker', () => {
 			expect(asked).toHaveLength(readings);
 		});
 
+		it('where Claude Code compacts on its own → sent along; with auto-compaction off → left out', async () => {
+			const answer = (isAutoCompactEnabled: boolean) => async () => ({
+				totalTokens: 41_600,
+				rawMaxTokens: 200_000,
+				isAutoCompactEnabled,
+				autoCompactThreshold: 167_000,
+			});
+			const readings = async (isOn: boolean) =>
+				(await run([turnEnded], answer(isOn))).observations.filter(
+					(observation) => observation.type === 'context_usage',
+				);
+
+			expect(await readings(true)).toEqual([
+				{
+					type: 'context_usage',
+					ref: 'store/main',
+					used: 41_600,
+					max: 200_000,
+					compactAt: 167_000,
+				},
+			]);
+			expect(await readings(false)).toEqual([
+				{ type: 'context_usage', ref: 'store/main', used: 41_600, max: 200_000 },
+			]);
+		});
+
 		it('the reading fails → nothing reported, the session goes on', async () => {
 			const { observations } = await run([turnEnded], async () => {
 				throw new Error('control request timed out');

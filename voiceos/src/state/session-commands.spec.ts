@@ -77,6 +77,26 @@ describe('session commands', () => {
 });
 
 describe('context meter', () => {
+	it('where Claude Code compacts → kept with the reading; a reading without it → replaced', () => {
+		const withPoint = run(
+			[{ type: 'context_usage', ref: REF, used: 41_600, max: 200_000, compactAt: 167_000 }],
+			{ start: idleSession() },
+		).state;
+
+		expect(withPoint.sessions[REF]?.context).toEqual({
+			used: 41_600,
+			max: 200_000,
+			compactAt: 167_000,
+		});
+
+		const without = run([{ type: 'context_usage', ref: REF, used: 41_600, max: 200_000 }], {
+			start: withPoint,
+		}).state;
+
+		expect(without.sessions[REF]).not.toBe(withPoint.sessions[REF]);
+		expect(without.sessions[REF]?.context).toEqual({ used: 41_600, max: 200_000 });
+	});
+
 	it("a reading → the session's context; a clear → none until the next reading", () => {
 		const read = run([{ type: 'context_usage', ref: REF, used: 41_600, max: 200_000 }], {
 			start: idleSession(),

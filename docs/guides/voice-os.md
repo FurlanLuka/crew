@@ -705,9 +705,10 @@ never keep each other going while you are away.
 
 Right of a session's text box, a meter says how full its context is ("42k / 200k" of the model's
 window). It turns amber as Claude Code gets close to compacting on its own and red just before it
-does (hover it for the exact numbers), and it updates after every turn, a compaction or a clear. Tap it for **Compact** (summarize the conversation so far) or
-**Clear** (start a fresh one): either goes to the session as `/compact` or `/clear`, so Voice OS asks
-you to confirm first, as it does when you type them.
+does (hover it for the exact numbers), and it updates after every turn, a compaction or a clear. Tap
+it for **Compact** (summarize the conversation so far) or **Clear** (start a fresh one): either goes
+to the session as `/compact` or `/clear`, so Voice OS asks you to confirm first, as it does when you
+type them.
 
 ## Slash commands
 
