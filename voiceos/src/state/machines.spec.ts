@@ -206,6 +206,19 @@ describe('machine_resynced', () => {
 		]);
 	});
 
+	it('a mode picked while its machine is out of reach → kept, never refused, and applied on reconnect', () => {
+		const offline = connected([{ type: 'machine_status', id: 'vm1', status: 'unreachable' }]);
+		const picked = run([{ type: 'set_mode', ref: REMOTE, mode: 'plan', by: 'page' }], {
+			start: offline,
+		});
+
+		expect(picked.state.modes[REMOTE]).toEqual({ mode: 'plan' });
+		expect(picked.effects.some((effect) => effect.type === 'speak')).toBe(false);
+		expect(
+			run([{ type: 'machine_resynced', id: 'vm1', inputs: [] }], { start: picked.state }).effects,
+		).toContainEqual({ type: 'worker_set_mode', ref: REMOTE, mode: 'plan' });
+	});
+
 	it("a running session's mode → told again, so a switch the link dropped is put right", () => {
 		const skipped = connected([
 			{ type: 'modes_loaded', modes: { [REMOTE]: { mode: 'skip' } } },

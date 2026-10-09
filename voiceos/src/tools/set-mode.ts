@@ -6,7 +6,7 @@ import { toSpokenName } from '../shared/spoken.js';
 import { readLabel, readScreenRef } from '../state/helpers.js';
 import {
 	canChooseMode,
-	describeModeAloud,
+	describeModeSet,
 	isSessionMode,
 	MODE_LABELS,
 	readMode,
@@ -89,12 +89,7 @@ export const setSessionMode = ({ state, input, toolContext }: SetModeParams): To
 
 	return {
 		...succeed(`${ref} is in ${mode} mode; Voice OS said so: say nothing`),
-		reply:
-			ref === screen
-				? mode === 'skip'
-					? 'Skipping permissions.'
-					: `${name} mode.`
-				: `${label} is ${describeModeAloud(mode)}.`,
+		reply: describeModeSet(mode, ref === screen ? null : label),
 		recordAs,
 	};
 };

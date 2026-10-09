@@ -32,6 +32,14 @@ export const readMode = (state: State, ref: string): SessionMode =>
 export const canChooseMode = (state: State, ref: string): boolean =>
 	Boolean(state.sessions[ref]) && !isSetupRef(ref) && !state.sessions[ref]?.isPinned;
 
-// What a mode is called aloud: "Plan mode.", "Skipping permissions."
-export const describeModeAloud = (mode: SessionMode): string =>
-	mode === 'skip' ? 'skipping permissions' : `in ${MODE_LABELS[mode]} mode`;
+// What Voice OS says once a mode is set: "Plan mode." for the session on screen, "Checkout is in
+// Plan mode." for another. Skip is said as what it does.
+export const describeModeSet = (mode: SessionMode, label: string | null): string => {
+	if (label === null) {
+		return mode === 'skip' ? 'Skipping permissions.' : `${MODE_LABELS[mode]} mode.`;
+	}
+
+	return mode === 'skip'
+		? `${label} is skipping permissions.`
+		: `${label} is in ${MODE_LABELS[mode]} mode.`;
+};

@@ -92,6 +92,31 @@ describe('persistModes', () => {
 		expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ 'crew/main': { mode: 'ask' } });
 	});
 
+	it('the log: a pick says from and to; the saved modes loading at boot say nothing', () => {
+		const logFile = join(mkdtempSync(join(tmpdir(), 'voiceos-modes-log-')), 'voiceos.log');
+		const file = createModesFile('{"crew/main": {"mode": "skip"}}');
+		const store = bootStore();
+
+		configureLog({ quiet: true, file: logFile });
+
+		try {
+			persistModes({ store, file });
+			store.dispatch({ type: 'set_mode', ref: 'crew/wrk1', mode: 'plan', by: 'voice' });
+		} finally {
+			configureLog({ quiet: true });
+		}
+
+		const lines = readFileSync(logFile, 'utf8')
+			.trim()
+			.split('\n')
+			.map((line) => JSON.parse(line) as Record<string, unknown>)
+			.filter((line) => line.msg === 'mode set');
+
+		expect(lines).toEqual([
+			expect.objectContaining({ ref: 'crew/wrk1', from: 'auto', to: 'plan', by: 'voice' }),
+		]);
+	});
+
 	it('back to Auto → its entry leaves the file', () => {
 		const file = createModesFile('{"crew/main": {"mode": "plan"}}');
 		const store = bootStore();

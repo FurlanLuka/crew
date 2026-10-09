@@ -52,17 +52,20 @@ export const persistModes = ({ store, file }: PersistModesParams): void => {
 		}
 
 		// The reducer stays pure: every change, a pick or a plan approved, is read off the state it left.
-		for (const ref of new Set([...Object.keys(seen), ...Object.keys(state.modes)])) {
-			const from = seen[ref]?.mode ?? 'auto';
-			const to = readMode(state, ref);
+		// An input that touched no mode leaves the same object; the saved modes loading are no change.
+		if (state.modes !== seen && input.type !== 'modes_loaded') {
+			for (const ref of new Set([...Object.keys(seen), ...Object.keys(state.modes)])) {
+				const from = seen[ref]?.mode ?? 'auto';
+				const to = readMode(state, ref);
 
-			if (from !== to) {
-				log.info('mode set', {
-					ref,
-					from,
-					to,
-					by: input.type === 'set_mode' ? input.by : input.type,
-				});
+				if (from !== to) {
+					log.info('mode set', {
+						ref,
+						from,
+						to,
+						by: input.type === 'set_mode' ? input.by : input.type,
+					});
+				}
 			}
 		}
 
