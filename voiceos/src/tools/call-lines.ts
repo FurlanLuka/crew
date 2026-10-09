@@ -1,6 +1,6 @@
 import { SWITCH_OFFERED_NOTE } from './announced.js';
 import { ASK_WHICH_NOTE, KERNEL_ASKS_WHICH_NOTE } from './send-guard.js';
-import { ACTIVATE_OFFERED_NOTE } from './activate.js';
+import { OFFER_ASKED_NOTE } from './activate.js';
 import { type ToolCall, type ToolName, MUTATING_TOOLS } from './definitions.js';
 import { clipQuoted } from './recent-action.js';
 import { isShortEnoughToAnswer } from './send.js';
@@ -234,7 +234,7 @@ export const decideEnding = ({
 			(call) =>
 				call.note === SWITCH_OFFERED_NOTE ||
 				call.note === ASK_WHICH_NOTE ||
-				call.note === ACTIVATE_OFFERED_NOTE,
+				call.note === OFFER_ASKED_NOTE,
 		) ||
 		isActivatedWithWords(turn.calls)
 	) {

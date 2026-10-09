@@ -8,7 +8,7 @@ import {
 	type SessionMode,
 	type State,
 } from '../../shared/protocol.js';
-import { canChooseMode, readMode } from '../../state/session-modes.js';
+import { canChooseMode, readMode } from '../../shared/modes.js';
 
 const MODE_HINTS: Record<SessionMode, string> = {
 	auto: "Claude Code's classifier decides",

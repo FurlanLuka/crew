@@ -79,8 +79,10 @@ const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
 			return;
 		}
 
-		// Its name goes with it, and so does the page: back to Active, before the next listing drops it.
+		// Its name and mode go with it, and so does the page: back to Active, before the next listing
+		// drops it.
 		dispatch({ type: 'rename_session', ref: session.ref, name: '' });
+		dispatch({ type: 'set_mode', ref: session.ref, mode: 'auto', by: 'page' });
 		dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		onState(null);
 	};

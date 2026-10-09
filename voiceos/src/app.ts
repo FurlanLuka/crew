@@ -412,10 +412,10 @@ function recordState(): void {
 await machines.refreshWorktrees();
 void machines.monitorDevServers();
 
-// Before the view: a saved session view opened from Active finds its session already active. Starts
-// the active sessions of this Mac; a remote's start when its link is up.
 // Before the active set: the sessions it starts start in their saved mode.
 persistModes({ store, file: paths.modesFile });
+// Before the view: a saved session view opened from Active finds its session already active. Starts
+// the active sessions of this Mac; a remote's start when its link is up.
 persistActive({ store, file: paths.activeFile, legacyFile: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });

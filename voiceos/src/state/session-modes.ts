@@ -1,16 +1,24 @@
 // A session's permission mode: picked by the developer (the chip, /mode, voice), kept per session
 // until changed, and run by its worker as a Claude Code mode. Pure: modes.json is memory/modes.ts's.
 import { isSetupRef } from '../shared/machine-ref.js';
-import { fromSdkMode, isSessionMode, MODE_LABELS, toSdkMode } from '../shared/modes.js';
+import {
+	canChooseMode,
+	fromSdkMode,
+	isSessionMode,
+	MODE_LABELS,
+	readMode,
+	toSdkMode,
+} from '../shared/modes.js';
 import {
 	type Input,
+	type PermissionSuggestion,
 	type SessionMode,
 	type SessionModeEntry,
 	type Stamped,
 	type State,
 } from '../shared/protocol.js';
 import type { Effect, ReducerResult } from './reducer.js';
-import { pushNotice, updateSession, withoutEffects } from './helpers.js';
+import { isWorkerUp, pushNotice, updateSession, withoutEffects } from './helpers.js';
 
 const MODE_INPUTS = ['set_mode', 'modes_loaded', 'mode_refused'] as const;
 
@@ -20,9 +28,6 @@ const MODE_INPUT_SET = new Set<string>(MODE_INPUTS);
 
 export const isModeInput = (input: Input): input is ModeInput => MODE_INPUT_SET.has(input.type);
 
-export const readMode = (state: State, ref: string): SessionMode =>
-	state.modes[ref]?.mode ?? 'auto';
-
 // What an approved plan returns to: the mode before Plan. A plan Claude entered by itself (the chip
 // never said Plan) returns to the chip's mode.
 export const modeAfterPlanApproval = (state: State, ref: string): SessionMode => {
@@ -31,15 +36,11 @@ export const modeAfterPlanApproval = (state: State, ref: string): SessionMode =>
 	return entry?.mode === 'plan' ? (entry.beforePlan ?? 'auto') : (entry?.mode ?? 'auto');
 };
 
-// The setup sessions are crew's own: they keep Auto, out of the chip's reach.
-export const canChooseMode = (state: State, ref: string): boolean =>
-	Boolean(state.sessions[ref]) && !isSetupRef(ref) && !state.sessions[ref]?.isPinned;
-
-// A worker is there to switch: starting (its manager keeps the mode for the start) or running.
+// A worker is there to switch: starting (its manager keeps the mode for the start) or up.
 const hasWorker = (state: State, ref: string): boolean => {
 	const status = state.sessions[ref]?.status;
 
-	return status === 'starting' || status === 'idle' || status === 'running' || status === 'blocked';
+	return status === 'starting' || isWorkerUp(status);
 };
 
 const toEntry = (state: State, ref: string, mode: SessionMode): SessionModeEntry => {
@@ -61,7 +62,7 @@ interface StoreModeParams {
 	mode: SessionMode;
 }
 
-// The mode as the state keeps it, an allow-once ended with it: its later restore would undo the
+// The mode as the state keeps it; ends a pending allow-once too, whose later restore would undo the
 // choice. Auto is kept as no entry.
 export const storeMode = ({ state, ref, mode }: StoreModeParams): State => {
 	const entry = toEntry(state, ref, mode);
@@ -121,7 +122,7 @@ const setMode = (
 	};
 };
 
-const loadModes = (
+const mergeSavedModes = (
 	state: State,
 	input: Extract<ModeInput, { type: 'modes_loaded' }>,
 ): ReducerResult => {
@@ -179,7 +180,7 @@ export const reduceSessionMode = (
 		case 'set_mode':
 			return setMode(state, input, stamped);
 		case 'modes_loaded':
-			return loadModes(state, input);
+			return mergeSavedModes(state, input);
 		case 'mode_refused':
 			return refuseMode(state, input, stamped);
 	}
@@ -187,6 +188,5 @@ export const reduceSessionMode = (
 
 // "Allow always" never moves the mode behind the chip: a card's suggestions may hold a setMode
 // (an edit card's acceptEdits), which only the developer's pick may change.
-export const withoutModeChanges = (
-	suggestions: Record<string, unknown>[],
-): Record<string, unknown>[] => suggestions.filter((suggestion) => suggestion.type !== 'setMode');
+export const withoutModeChanges = (suggestions: PermissionSuggestion[]): PermissionSuggestion[] =>
+	suggestions.filter((suggestion) => suggestion.type !== 'setMode');

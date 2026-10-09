@@ -2103,6 +2103,21 @@ describe('permission modes', () => {
 		expect(convo.inputs).not.toContainEqual(expect.objectContaining({ type: 'send' }));
 	});
 
+	it('"put checkout in ask mode" from another screen → checkout in Ask, said by name, the screen\'s session untouched', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		convo.script([toolUse('t1', 'set_mode', { ref: 'checkout-api/main', mode: 'ask' })]);
+		await convo.say('Put checkout api in ask mode.');
+
+		expect(convo.heard).toEqual([
+			'> Put checkout api in ask mode.',
+			'checkout api, main is in Ask mode.',
+		]);
+		expect(convo.store.state.modes).toEqual({ 'checkout-api/main': { mode: 'ask' } });
+		expect(convo.inputs).not.toContainEqual(expect.objectContaining({ type: 'send' }));
+	});
+
 	it('"skip permissions for checkout" → asked first; yes switches it, the screen\'s session untouched', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
 		await convo.startSessions('store-front/main', 'checkout-api/main');
@@ -2121,7 +2136,7 @@ describe('permission modes', () => {
 
 		expect(convo.heard.slice(-2)).toEqual([
 			'> Yes.',
-			'checkout api, main is in Skip permissions mode.',
+			'checkout api, main is skipping permissions.',
 		]);
 		expect(convo.store.state.modes).toEqual({ 'checkout-api/main': { mode: 'skip' } });
 	});

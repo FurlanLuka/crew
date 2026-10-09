@@ -89,16 +89,51 @@ describe('set_mode', () => {
 		expect(result).toMatchObject({ ok: false, isFinal: true });
 	});
 
-	it('a yes to "Skip permissions for X?" → switched', async () => {
+	it('a yes to "Skip permissions for X?" → switched, "Skipping permissions." said', async () => {
 		const { tools, actions } = createContext({
 			patch: { switchOffer: { ref: 'store-front/main', at: 900, kind: 'skip_mode' } },
 		});
-
-		await executeTool('set_mode', { ref: 'store-front/main', mode: 'skip' }, tools);
+		const result = await executeTool('set_mode', { ref: 'store-front/main', mode: 'skip' }, tools);
 
 		expect(actions).toEqual([
 			{ type: 'set_mode', ref: 'store-front/main', mode: 'skip', by: 'voice' },
 		]);
+		expect(result).toMatchObject({ reply: 'Skipping permissions.' });
+	});
+
+	it('a yes for a session not on screen → said by its name', async () => {
+		const { tools } = createContext({
+			patch: { switchOffer: { ref: 'checkout-api/main', at: 900, kind: 'skip_mode' } },
+		});
+
+		expect(
+			await executeTool('set_mode', { ref: 'checkout-api/main', mode: 'skip' }, tools),
+		).toMatchObject({ reply: 'checkout api, main is skipping permissions.' });
+	});
+
+	it('a Skip confirm for another session, or one gone stale → asked again, nothing switched', async () => {
+		for (const switchOffer of [
+			{ ref: 'checkout-api/main', at: 900, kind: 'skip_mode' as const },
+			{ ref: 'store-front/main', at: -100_000, kind: 'skip_mode' as const },
+		]) {
+			const { tools, actions } = createContext({ patch: { switchOffer } });
+
+			await executeTool('set_mode', { ref: null, mode: 'skip' }, tools);
+
+			expect(actions).toEqual([
+				{ type: 'offer_switch', ref: 'store-front/main', kind: 'skip_mode' },
+			]);
+		}
+	});
+
+	it('an inactive session named → switched all the same: it starts in it', async () => {
+		const { tools, actions } = createContext({ patch: { active: ['store-front/main'] } });
+		const result = await executeTool('set_mode', { ref: 'checkout-api/main', mode: 'plan' }, tools);
+
+		expect(actions).toEqual([
+			{ type: 'set_mode', ref: 'checkout-api/main', mode: 'plan', by: 'voice' },
+		]);
+		expect(result).toMatchObject({ reply: 'checkout api, main is in Plan mode.' });
 	});
 
 	it('the mode it already has → said, nothing dispatched', async () => {
@@ -111,16 +146,29 @@ describe('set_mode', () => {
 		expect(result).toMatchObject({ reply: 'store front, main is already in Plan.' });
 	});
 
-	it('a setup session, no session on screen, or an unknown mode → nothing switched', async () => {
-		for (const [input, screen] of [
-			[{ ref: 'setup', mode: 'plan' }, 'store-front/main'],
-			[{ ref: null, mode: 'plan' }, null],
-			[{ ref: null, mode: 'loud' }, 'store-front/main'],
-		] as const) {
-			const { tools, actions } = createContext({ screen });
+	it.each([
+		[
+			'a setup session',
+			{ ref: 'setup', mode: 'plan' },
+			'store-front/main',
+			{ ok: true, reply: 'Setup sessions stay in Auto.' },
+		],
+		[
+			'no session on screen',
+			{ ref: null, mode: 'plan' },
+			null,
+			{ ok: false, content: 'no session on screen: ask which session, in a few words' },
+		],
+		[
+			'an unknown mode',
+			{ ref: null, mode: 'loud' },
+			'store-front/main',
+			{ ok: false, content: 'mode must be auto, plan, ask or skip' },
+		],
+	] as const)('%s → nothing switched, and why', async (_case, input, screen, outcome) => {
+		const { tools, actions } = createContext({ screen });
 
-			await executeTool('set_mode', input, tools);
-			expect(actions).toEqual([]);
-		}
+		expect(await executeTool('set_mode', input, tools)).toMatchObject(outcome);
+		expect(actions).toEqual([]);
 	});
 });

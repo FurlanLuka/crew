@@ -2293,6 +2293,7 @@ describe('voice os ui', () => {
 			}));
 		store.dispatch({ type: 'worktrees', worktrees: [...others, chat] });
 		store.dispatch({ type: 'activate', ref: 'chat/3fa9c1' });
+		store.dispatch({ type: 'set_mode', ref: 'chat/3fa9c1', mode: 'plan', by: 'page' });
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'chat/3fa9c1' } });
 		const { context, page } = await signIn();
 		const head = page.locator('.vo-head');
@@ -2312,6 +2313,7 @@ describe('voice os ui', () => {
 		});
 		expect(store.state.active).not.toContain('chat/3fa9c1');
 		expect(store.state.names['chat/3fa9c1']).toBeUndefined();
+		expect(store.state.modes['chat/3fa9c1']).toBeUndefined();
 		await context.close();
 	}, 20_000);
 

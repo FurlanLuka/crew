@@ -89,6 +89,13 @@ describe('add_machine / rename_machine / remove_machine', () => {
 		]);
 	});
 
+	it("remove → its sessions' modes go with it", () => {
+		const skipped = connected([{ type: 'modes_loaded', modes: { [REMOTE]: { mode: 'skip' } } }]);
+		const { state } = run([{ type: 'remove_machine', id: 'vm1' }], { start: skipped });
+
+		expect(state.modes).toEqual({});
+	});
+
 	it('remove with words waiting for it → saved, and the dropped words said', () => {
 		const offline = connected([
 			{ type: 'machine_status', id: 'vm1', status: 'unreachable', detail: 'The link closed.' },
@@ -319,6 +326,20 @@ describe('words waiting for a stopped session there', () => {
 		const started = run([{ type: 'session_started', ref: REMOTE }], { start: back.state });
 
 		expect(started.effects).toEqual([{ type: 'worker_send', ref: REMOTE, text: 'run the tests' }]);
+	});
+
+	it('a stopped session with a mode → started in it on reconnect, not told it again after', () => {
+		const offline = run([
+			{ type: 'machines', machines: [VM1] },
+			{ type: 'worktrees', worktrees: [{ ...worktree(REMOTE), label: 'store/main' }] },
+			{ type: 'machine_resynced', id: 'vm1', inputs: [] },
+			{ type: 'machine_status', id: 'vm1', status: 'unreachable' },
+			{ type: 'modes_loaded', modes: { [REMOTE]: { mode: 'plan' } } },
+			{ type: 'activate', ref: REMOTE },
+		]).state;
+		const back = run([{ type: 'machine_resynced', id: 'vm1', inputs: [] }], { start: offline });
+
+		expect(back.effects).toEqual([{ type: 'worker_start', ref: REMOTE, mode: 'plan' }]);
 	});
 
 	it('the session is not active → on reconnect it is not started; the words keep waiting', () => {

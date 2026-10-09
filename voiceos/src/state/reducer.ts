@@ -501,12 +501,13 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	}
 
 	// Names are this Voice OS's own too: a session out of reach is renamed like any other.
-	if (isModeInput(input)) {
-		return reduceSessionMode(state, input, stamped);
-	}
-
 	if (isNameInput(input)) {
 		return reduceName(state, input);
+	}
+
+	// A mode is kept for a session out of reach too: its start, or the resync, applies it when it is back.
+	if (isModeInput(input)) {
+		return reduceSessionMode(state, input, stamped);
 	}
 
 	const unreachable = guardUnreachable(state, input, stamped);

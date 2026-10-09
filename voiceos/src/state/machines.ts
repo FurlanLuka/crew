@@ -25,14 +25,14 @@ import type {
 import type { Effect, MachineChange, ReducerResult } from './reducer.js';
 import {
 	dispatchQueueHead,
+	isWorkerUp,
 	releaseRefs,
 	startWorker,
 	updateSession,
 	withoutEffects,
 } from './helpers.js';
 import { matchMachine } from './active.js';
-import { canChooseMode, readMode } from './session-modes.js';
-import { toSdkMode } from '../shared/modes.js';
+import { canChooseMode, readMode, toSdkMode } from '../shared/modes.js';
 import { canRun, isActive } from '../shared/active.js';
 
 const MACHINE_INPUTS = [
@@ -211,10 +211,9 @@ const resync = ({ state, id, inputs, stamped, reduceInner }: ResyncParams): Redu
 	// A mode switch the link dropped (the main restarted before the remote took it) is put right:
 	// each running session there is told its mode again. A session starting now has it already.
 	const modes = matched.state.order.flatMap((ref): Effect[] => {
-		const status = matched.state.sessions[ref]?.status;
-		const isRunning = status === 'idle' || status === 'running' || status === 'blocked';
-
-		return machineOf(ref) === id && isRunning && canChooseMode(matched.state, ref)
+		return machineOf(ref) === id &&
+			isWorkerUp(matched.state.sessions[ref]?.status) &&
+			canChooseMode(matched.state, ref)
 			? [{ type: 'worker_set_mode', ref, mode: toSdkMode(readMode(matched.state, ref)) }]
 			: [];
 	});

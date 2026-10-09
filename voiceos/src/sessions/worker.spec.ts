@@ -97,6 +97,8 @@ describe('Worker', () => {
 			env?: Record<string, string>;
 			permissionMode?: SdkMode;
 			isRootOutsideSandbox?: boolean;
+			resumeId?: string;
+			runQuery?: (call: { options: Record<string, unknown> }) => unknown;
 		} = {},
 	) => {
 		const prompts: string[] = [];
@@ -112,7 +114,7 @@ describe('Worker', () => {
 			isRootOutsideSandbox: false,
 			...extra,
 			orientation: '',
-			resumeId: null,
+			resumeId: extra.resumeId ?? null,
 			env: extra.env ?? {},
 			permissions: new PermissionBridge(
 				() => undefined,
@@ -133,6 +135,10 @@ describe('Worker', () => {
 				options: { env?: Record<string, string | undefined> };
 			}) => {
 				queryOptions.push(call.options);
+
+				if (extra.runQuery) {
+					return extra.runQuery(call);
+				}
 
 				void (async () => {
 					for await (const message of call.prompt) {
@@ -218,16 +224,50 @@ describe('Worker', () => {
 		});
 
 		it('as root, a switch to Skip → refused, the mode it runs kept', async () => {
-			const { worker, observations } = createWorker([], {
+			const { worker, observations, queryOptions } = createWorker([], {
 				permissionMode: 'default',
 				isRootOutsideSandbox: true,
 			});
 
 			await worker.setMode('bypassPermissions');
+			worker.start();
 
 			expect(observations).toContainEqual(
 				expect.objectContaining({ type: 'mode_refused', kept: 'default' }),
 			);
+			// The mode never moved to Skip: no query, now or reopened later, opens in it as root.
+			expect(modeOf(queryOptions[0])).toMatchObject({ permissionMode: 'default' });
+			expect(modeOf(queryOptions[0]).allowDangerouslySkipPermissions).toBeUndefined();
+		});
+
+		it('a switch, then the query reopened (a resume Claude no longer has) → it reopens in the new mode', async () => {
+			const gate = Promise.withResolvers<void>();
+			const { worker, queryOptions } = createWorker([], {
+				resumeId: 's-old',
+				runQuery: () =>
+					queryOptions.length === 1
+						? {
+								async *[Symbol.asyncIterator]() {
+									await gate.promise;
+									throw new Error('No conversation found with session ID: s-old');
+								},
+								setPermissionMode: async () => undefined,
+							}
+						: { async *[Symbol.asyncIterator]() {}, setPermissionMode: async () => undefined },
+			});
+
+			worker.start();
+			await worker.setMode('plan');
+			gate.resolve();
+
+			while (queryOptions.length < 2) {
+				await Bun.sleep(1);
+			}
+
+			expect(queryOptions.map((options) => modeOf(options).permissionMode)).toEqual([
+				'auto',
+				'plan',
+			]);
 		});
 	});
 

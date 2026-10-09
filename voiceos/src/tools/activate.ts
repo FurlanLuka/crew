@@ -15,9 +15,9 @@ import type { ToolContext } from './tools.js';
 
 const log = createLogger('tools');
 
-// Voice OS asked "…isn't active. Activate it?" or "…Deactivate anyway?" itself: the kernel's own words
-// would say it twice.
-export const ACTIVATE_OFFERED_NOTE = 'activate offered';
+// Voice OS asked "…isn't active. Activate it?", "…Deactivate anyway?" or "Skip permissions for X?"
+// itself: the kernel's own words would say it twice.
+export const OFFER_ASKED_NOTE = 'activate offered';
 
 export type ActivateDecision =
 	| { kind: 'one'; ref: string }
@@ -313,7 +313,7 @@ export const deactivateSession = async ({
 		toolContext.dispatch({ type: 'offer_switch', ref, kind: 'deactivate' });
 
 		return {
-			note: ACTIVATE_OFFERED_NOTE,
+			note: OFFER_ASKED_NOTE,
 			recordAs: { name: 'deactivate', input: { ...input, ref } },
 			...fail(
 				`Not deactivated yet: ${ref} is working, and Voice OS asked "${label} is working. Deactivate anyway?" itself: say nothing.`,
@@ -361,7 +361,7 @@ export const refuseInactive = ({
 	log.info('not active: asked to activate', { ref, hasWords: Boolean(words) });
 
 	return {
-		note: ACTIVATE_OFFERED_NOTE,
+		note: OFFER_ASKED_NOTE,
 		...fail(
 			`Nothing was done: ${ref} is not active. Voice OS asked "… isn't active. Activate it?" itself${words ? '; the words wait for it' : ''}: say nothing.`,
 		),

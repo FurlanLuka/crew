@@ -76,6 +76,22 @@ describe('persistModes', () => {
 		});
 	});
 
+	it('a plan approved → the mode it returned to is what the file keeps', () => {
+		const file = createModesFile('{"crew/main": {"mode": "plan", "beforePlan": "ask"}}');
+		const store = bootStore();
+
+		persistModes({ store, file });
+		store.dispatch({ type: 'activate', ref: 'crew/main' });
+		store.dispatch({ type: 'session_started', ref: 'crew/main' });
+		store.dispatch({
+			type: 'ask_opened',
+			ask: { id: 'plan1', ref: 'crew/main', at: 1, kind: 'plan', input: {}, plan: 'x' },
+		});
+		store.dispatch({ type: 'answer_plan', askId: 'plan1', isApproved: true });
+
+		expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ 'crew/main': { mode: 'ask' } });
+	});
+
 	it('back to Auto → its entry leaves the file', () => {
 		const file = createModesFile('{"crew/main": {"mode": "plan"}}');
 		const store = bootStore();

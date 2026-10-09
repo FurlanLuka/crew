@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { writeJsonAtomic } from './json-file.js';
 import { createLogger } from '../log.js';
 import type { SessionModeEntry } from '../shared/protocol.js';
-import { readMode } from '../state/session-modes.js';
+import { readMode } from '../shared/modes.js';
 import type { Store } from '../state/store.js';
 
 const log = createLogger('modes');
@@ -37,9 +37,9 @@ interface PersistModesParams {
 	file: string;
 }
 
-// Call before the active set is loaded: the sessions it starts start in their saved mode.
 export const persistModes = ({ store, file }: PersistModesParams): void => {
 	let written = loadModes(file);
+	let seen: Record<string, SessionModeEntry> = {};
 	// Before the saved modes are merged, state.modes is only what was picked since boot: writing it
 	// would lose the rest.
 	let isLoaded = false;
@@ -51,15 +51,22 @@ export const persistModes = ({ store, file }: PersistModesParams): void => {
 			isLoaded = true;
 		}
 
-		// The reducer stays pure: what a pick did is read off the state it left.
-		if (input.type === 'set_mode') {
-			log.info('mode set', {
-				ref: input.ref,
-				asked: input.mode,
-				now: readMode(state, input.ref),
-				by: input.by,
-			});
+		// The reducer stays pure: every change, a pick or a plan approved, is read off the state it left.
+		for (const ref of new Set([...Object.keys(seen), ...Object.keys(state.modes)])) {
+			const from = seen[ref]?.mode ?? 'auto';
+			const to = readMode(state, ref);
+
+			if (from !== to) {
+				log.info('mode set', {
+					ref,
+					from,
+					to,
+					by: input.type === 'set_mode' ? input.by : input.type,
+				});
+			}
 		}
+
+		seen = state.modes;
 
 		if (input.type === 'mode_refused') {
 			log.warn('mode refused', { ref: input.ref, mode: input.mode, kept: input.kept });

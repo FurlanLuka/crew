@@ -2,11 +2,17 @@
 // asked once ("Skip permissions for checkout?"): it runs everything unchecked, and a misheard word
 // must not turn checks off.
 import { isSwitchOfferFresh, type State } from '../shared/protocol.js';
-import { isSessionMode, MODE_LABELS } from '../shared/modes.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { readLabel, readScreenRef } from '../state/helpers.js';
-import { canChooseMode, readMode } from '../state/session-modes.js';
-import { ACTIVATE_OFFERED_NOTE } from './activate.js';
+import {
+	canChooseMode,
+	describeModeAloud,
+	isSessionMode,
+	MODE_LABELS,
+	readMode,
+} from '../shared/modes.js';
+import { isSetupRef } from '../shared/machine-ref.js';
+import { OFFER_ASKED_NOTE } from './activate.js';
 import { checkRef, fail, succeed, type ToolResult } from './results.js';
 import type { ToolContext } from './tools.js';
 
@@ -28,6 +34,11 @@ export const setSessionMode = ({ state, input, toolContext }: SetModeParams): To
 
 	if (!named && !screen) {
 		return fail('no session on screen: ask which session, in a few words');
+	}
+
+	// Crew's own setup sessions are never active, so never found below: said here.
+	if (named && isSetupRef(named.trim())) {
+		return { ...succeed(`${named} is a setup session`), reply: 'Setup sessions stay in Auto.' };
 	}
 
 	const checked = named ? checkRef(state, named) : { ok: true as const, ref: screen ?? '' };
@@ -67,7 +78,7 @@ export const setSessionMode = ({ state, input, toolContext }: SetModeParams): To
 		toolContext.dispatch({ type: 'offer_switch', ref, kind: 'skip_mode' });
 
 		return {
-			note: ACTIVATE_OFFERED_NOTE,
+			note: OFFER_ASKED_NOTE,
 			recordAs,
 			...fail(`Not set yet: Voice OS asked "Skip permissions for ${label}?" itself: say nothing.`),
 			isFinal: true,
@@ -78,7 +89,12 @@ export const setSessionMode = ({ state, input, toolContext }: SetModeParams): To
 
 	return {
 		...succeed(`${ref} is in ${mode} mode; Voice OS said so: say nothing`),
-		reply: ref === screen ? `${name} mode.` : `${label} is in ${name} mode.`,
+		reply:
+			ref === screen
+				? mode === 'skip'
+					? 'Skipping permissions.'
+					: `${name} mode.`
+				: `${label} is ${describeModeAloud(mode)}.`,
 		recordAs,
 	};
 };

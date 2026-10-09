@@ -2,7 +2,7 @@
 // lists for the "/" menu, a reload of its plugins or skills, and its model. Each reaches the worker
 // as an effect (a remote session's through the link) and comes back as a line in the stream.
 import type { Input, Stamped, State } from '../shared/protocol.js';
-import { pushNotice, updateSession, withoutEffects } from './helpers.js';
+import { isWorkerUp, pushNotice, updateSession, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
 
 type SessionCommandInput = Extract<
@@ -10,12 +10,7 @@ type SessionCommandInput = Extract<
 	{ type: 'commands_listed' | 'reload_session' | 'set_model' }
 >;
 
-// A worker is there to ask: started, and not yet stopped.
-const hasWorker = (state: State, ref: string): boolean => {
-	const status = state.sessions[ref]?.status;
-
-	return status === 'idle' || status === 'running' || status === 'blocked';
-};
+const hasWorker = (state: State, ref: string): boolean => isWorkerUp(state.sessions[ref]?.status);
 
 export const reduceSessionCommand = (
 	state: State,
